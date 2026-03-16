@@ -2,7 +2,10 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
+import {
+  getResourceCategoryPolicy,
+  isProductionScheduleExcludedCuttingResourceCd
+} from './policies/resource-category-policy.service.js';
 import { getProductionScheduleSearchState } from './production-schedule-search-state.service.js';
 import { getResourceNameMapByResourceCds } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
@@ -208,9 +211,6 @@ export async function getProductionScheduleProgressOverview(
     })
   ]);
 
-  const excludedResourceCdSet = new Set(
-    resourceCategoryPolicy.cuttingExcludedResourceCds.map((value) => value.toUpperCase())
-  );
   const resourceNameMap = await getResourceNameMapByResourceCds(rows.map((row) => row.fsigencd));
 
   const seibanDueDateMap = new Map(seibanDueDateRows.map((row) => [row.fseiban, row.dueDate] as const));
@@ -288,7 +288,7 @@ export async function getProductionScheduleProgressOverview(
     if (!resourceCd) {
       return;
     }
-    if (excludedResourceCdSet.has(resourceCd.toUpperCase())) {
+    if (isProductionScheduleExcludedCuttingResourceCd(resourceCd, resourceCategoryPolicy)) {
       return;
     }
     part.processes.push({

@@ -13,12 +13,12 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 export const DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS = ['10', 'MSZ'] as const;
 export const STATIC_GRINDING_RESOURCE_CDS = ['305', '581', '582', '583', '584', '585', '586', '587', '588', '589'] as const;
 
-const normalizeResourceCd = (value: string): string => value.trim();
+export const normalizeProductionScheduleResourceCd = (value: string): string => value.trim().toUpperCase();
 
-const normalizeResourceCdList = (values: string[]): string[] => {
+export const normalizeProductionScheduleResourceCdList = (values: string[]): string[] => {
   const unique = new Set<string>();
   for (const raw of values) {
-    const normalized = normalizeResourceCd(raw);
+    const normalized = normalizeProductionScheduleResourceCd(raw);
     if (normalized.length === 0) continue;
     unique.add(normalized);
   }
@@ -99,7 +99,7 @@ export async function getResourceCategoryPolicy(scope: ResourceCategoryPolicySco
 
   return {
     grindingResourceCds: [...STATIC_GRINDING_RESOURCE_CDS],
-    cuttingExcludedResourceCds: normalizeResourceCdList(
+    cuttingExcludedResourceCds: normalizeProductionScheduleResourceCdList(
       config?.cuttingExcludedResourceCds && config.cuttingExcludedResourceCds.length > 0
         ? config.cuttingExcludedResourceCds
         : [...DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS]
@@ -108,15 +108,21 @@ export async function getResourceCategoryPolicy(scope: ResourceCategoryPolicySco
 }
 
 export function isProductionScheduleGrindingResourceCd(resourceCd: string, policy: ResourceCategoryPolicy): boolean {
-  const normalized = normalizeResourceCd(resourceCd);
+  const normalized = normalizeProductionScheduleResourceCd(resourceCd);
   return policy.grindingResourceCds.includes(normalized);
 }
 
+export function isProductionScheduleExcludedCuttingResourceCd(resourceCd: string, policy: ResourceCategoryPolicy): boolean {
+  const normalized = normalizeProductionScheduleResourceCd(resourceCd);
+  if (normalized.length === 0) return false;
+  return policy.cuttingExcludedResourceCds.includes(normalized);
+}
+
 export function isProductionScheduleCuttingResourceCd(resourceCd: string, policy: ResourceCategoryPolicy): boolean {
-  const normalized = normalizeResourceCd(resourceCd);
+  const normalized = normalizeProductionScheduleResourceCd(resourceCd);
   if (normalized.length === 0) return false;
   if (isProductionScheduleGrindingResourceCd(normalized, policy)) return false;
-  return !policy.cuttingExcludedResourceCds.includes(normalized);
+  return !isProductionScheduleExcludedCuttingResourceCd(normalized, policy);
 }
 
 export function filterProductionScheduleResourceCdsByCategoryWithPolicy(

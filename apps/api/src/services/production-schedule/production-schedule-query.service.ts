@@ -14,6 +14,8 @@ import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-polic
 import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
   getResourceCategoryPolicy,
+  isProductionScheduleExcludedCuttingResourceCd,
+  normalizeProductionScheduleResourceCd,
   type ResourceCategoryPolicy
 } from './policies/resource-category-policy.service.js';
 import {
@@ -87,18 +89,21 @@ const buildResourceConditions = (params: {
   locationKey: string;
 }): Prisma.Sql[] => {
   const { locationKey, resourceCds, assignedOnlyCds } = params;
+  const normalizedResourceExpr = Prisma.sql`UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'))`;
+  const normalizedResourceCds = resourceCds.map((cd) => normalizeProductionScheduleResourceCd(cd));
+  const normalizedAssignedOnlyCds = assignedOnlyCds.map((cd) => normalizeProductionScheduleResourceCd(cd));
   const resourceConditions: Prisma.Sql[] = [];
 
-  if (resourceCds.length > 0) {
+  if (normalizedResourceCds.length > 0) {
     resourceConditions.push(
-      Prisma.sql`("CsvDashboardRow"."rowData"->>'FSIGENCD') IN (${Prisma.join(
-        resourceCds.map((cd) => Prisma.sql`${cd}`),
+      Prisma.sql`${normalizedResourceExpr} IN (${Prisma.join(
+        normalizedResourceCds.map((cd) => Prisma.sql`${cd}`),
         ','
       )})`
     );
   }
 
-  if (assignedOnlyCds.length > 0) {
+  if (normalizedAssignedOnlyCds.length > 0) {
     resourceConditions.push(
       Prisma.sql`"CsvDashboardRow"."id" IN (
         SELECT "csvDashboardRowId"
@@ -106,7 +111,7 @@ const buildResourceConditions = (params: {
         WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
           AND "location" = ${locationKey}
           AND "resourceCd" IN (${Prisma.join(
-            assignedOnlyCds.map((cd) => Prisma.sql`${cd}`),
+            normalizedAssignedOnlyCds.map((cd) => Prisma.sql`${cd}`),
             ','
           )})
       )`
@@ -120,21 +125,22 @@ const buildResourceCategoryCondition = (
   resourceCategory: ProductionScheduleResourceCategory | undefined,
   policy: ResourceCategoryPolicy
 ): Prisma.Sql => {
+  const normalizedResourceExpr = Prisma.sql`UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'))`;
   if (!resourceCategory) {
     return Prisma.empty;
   }
 
   const grindingCds = policy.grindingResourceCds.map((cd) => Prisma.sql`${cd}`);
   if (resourceCategory === 'grinding') {
-    return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') IN (${Prisma.join(grindingCds, ',')})`;
+    return Prisma.sql`AND ${normalizedResourceExpr} IN (${Prisma.join(grindingCds, ',')})`;
   }
 
   const excludedCds = policy.cuttingExcludedResourceCds.map((cd) => Prisma.sql`${cd}`);
   if (excludedCds.length === 0) {
-    return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(grindingCds, ',')})`;
+    return Prisma.sql`AND ${normalizedResourceExpr} NOT IN (${Prisma.join(grindingCds, ',')})`;
   }
 
-  return Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(grindingCds, ',')}) AND ("CsvDashboardRow"."rowData"->>'FSIGENCD') NOT IN (${Prisma.join(excludedCds, ',')})`;
+  return Prisma.sql`AND ${normalizedResourceExpr} NOT IN (${Prisma.join(grindingCds, ',')}) AND ${normalizedResourceExpr} NOT IN (${Prisma.join(excludedCds, ',')})`;
 };
 
 const buildQueryWhere = (params: {
@@ -389,10 +395,17 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
 
 export type ProductionScheduleResourceListResult = {
   resources: string[];
+  resourceItems: Array<{
+    resourceCd: string;
+    excluded: boolean;
+  }>;
   resourceNameMap: ProductionScheduleResourceNameMap;
 };
 
-export async function listProductionScheduleResources(): Promise<ProductionScheduleResourceListResult> {
+export async function listProductionScheduleResources(scope: {
+  siteKey?: string;
+  deviceScopeKey?: string;
+}): Promise<ProductionScheduleResourceListResult> {
   const resources = await prisma.$queryRaw<Array<{ resourceCd: string }>>`
     SELECT DISTINCT ("rowData"->>'FSIGENCD') AS "resourceCd"
     FROM "CsvDashboardRow"
@@ -403,9 +416,15 @@ export async function listProductionScheduleResources(): Promise<ProductionSched
     ORDER BY ("rowData"->>'FSIGENCD') ASC
   `;
   const resourceCds = resources.map((row) => row.resourceCd);
+  const policy = await getResourceCategoryPolicy(scope);
   const resourceNameMap = await getResourceNameMapByResourceCds(resourceCds);
+  const resourceItems = resourceCds.map((resourceCd) => ({
+    resourceCd,
+    excluded: isProductionScheduleExcludedCuttingResourceCd(resourceCd, policy)
+  }));
   return {
     resources: resourceCds,
+    resourceItems,
     resourceNameMap
   };
 }

@@ -729,11 +729,16 @@ export async function completeKioskProductionScheduleRow(rowId: string) {
 }
 
 export async function getKioskProductionScheduleResources() {
-  const { data } = await api.get<{ resources: string[]; resourceNameMap?: Record<string, string[]> }>(
+  const { data } = await api.get<{
+    resources: string[];
+    resourceItems?: Array<{ resourceCd: string; excluded: boolean }>;
+    resourceNameMap?: Record<string, string[]>;
+  }>(
     '/kiosk/production-schedule/resources'
   );
   return {
     resources: data.resources,
+    resourceItems: data.resourceItems ?? data.resources.map((resourceCd) => ({ resourceCd, excluded: false })),
     resourceNameMap: data.resourceNameMap ?? {}
   };
 }

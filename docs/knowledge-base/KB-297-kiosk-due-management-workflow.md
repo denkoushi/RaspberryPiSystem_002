@@ -93,6 +93,31 @@ category: knowledge-base
   - `apps/api/src/routes/kiosk/production-schedule/resources.ts`
   - `apps/web/src/features/kiosk/productionSchedule/resourceCategory.ts`
 
+## 切削除外リスト追随修正（policy統一 + resources拡張、2026-03-16 実装）
+
+- **Context**:
+  - 管理コンソールで除外資源CDを追加/削除しても、画面経路によって追随しない状態が残っていた。
+  - 運用上は「設定変更に自動追随」が必須。
+- **Fix**:
+  - API policy層に `resourceCd` 正規化（`trim + uppercase`）と除外判定を集約。
+  - `production-schedule` / `progress-overview` / `due-management` / `resource-load-estimator` を共通判定へ統一。
+  - `GET /api/kiosk/production-schedule/resources` を後方互換で拡張し、`resourceItems[{resourceCd, excluded}]` を追加。
+  - Web の資源CDボタンを `resourceItems.excluded` 追随へ変更（静的既定値依存を回避）。
+- **Verification**:
+  - `pnpm -r lint --max-warnings=0` 成功
+  - `pnpm --filter @raspi-system/api build` 成功
+  - `pnpm --filter @raspi-system/web build` 成功
+  - `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/resource-category-policy.service.test.ts src/services/production-schedule/__tests__/production-schedule-query.service.test.ts` 成功（13 tests）
+  - 補足: `pnpm --filter @raspi-system/api test` 全件はローカルDB未起動（`localhost:5432`）で統合テスト失敗。DB起動後に再実行が必要。
+- **Prevention**:
+  - 除外判定の新規実装は policy ヘルパー経由のみとし、呼び出し側の重複判定を禁止。
+  - resources API は後方互換のまま拡張を継続し、段階移行を可能にする。
+- **References**:
+  - `apps/api/src/services/production-schedule/policies/resource-category-policy.service.ts`
+  - `apps/api/src/services/production-schedule/production-schedule-query.service.ts`
+  - `apps/api/src/routes/kiosk/production-schedule/resources.ts`
+  - `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+
 ## Location Scope Phase1（挙動不変の境界導入、2026-03-14）
 
 - **背景**:

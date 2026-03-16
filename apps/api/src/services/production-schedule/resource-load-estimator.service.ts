@@ -2,7 +2,11 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
+import {
+  getResourceCategoryPolicy,
+  isProductionScheduleExcludedCuttingResourceCd,
+  normalizeProductionScheduleResourceCd
+} from './policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 type ResourceLoadRow = {
@@ -51,7 +55,6 @@ export async function estimateResourceLoadSignals(params: {
   const resourceCategory = await getResourceCategoryPolicy({
     deviceScopeKey: params.locationKey
   });
-  const excludedSet = new Set(resourceCategory.cuttingExcludedResourceCds.map((value) => value.toUpperCase()));
 
   const rows = await prisma.$queryRaw<ResourceLoadRow[]>`
     SELECT
@@ -80,8 +83,8 @@ export async function estimateResourceLoadSignals(params: {
   const rowsBySeiban = new Map<string, ResourceLoadRow[]>();
   const resourceTotals = new Map<string, number>();
   for (const row of rows) {
-    const normalizedCd = row.resourceCd.trim().toUpperCase();
-    if (!normalizedCd || excludedSet.has(normalizedCd)) continue;
+    const normalizedCd = normalizeProductionScheduleResourceCd(row.resourceCd);
+    if (!normalizedCd || isProductionScheduleExcludedCuttingResourceCd(normalizedCd, resourceCategory)) continue;
     const list = rowsBySeiban.get(row.fseiban) ?? [];
     list.push(row);
     rowsBySeiban.set(row.fseiban, list);

@@ -402,8 +402,16 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const body = res.json() as { resources: string[]; resourceNameMap: Record<string, string[]> };
+    const body = res.json() as {
+      resources: string[];
+      resourceItems: Array<{ resourceCd: string; excluded: boolean }>;
+      resourceNameMap: Record<string, string[]>;
+    };
     expect(body.resources).toEqual(['1', '2']);
+    expect(body.resourceItems).toEqual([
+      { resourceCd: '1', excluded: false },
+      { resourceCd: '2', excluded: false }
+    ]);
     expect(body.resourceNameMap['1']).toEqual(['1号機', '1号機-予備']);
     expect(body.resourceNameMap['2']).toEqual(['2号機']);
   });
@@ -1414,6 +1422,27 @@ describe('Kiosk Production Schedule API', () => {
     const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }>; total: number };
     expect(body.rows).toHaveLength(0);
     expect(body.total).toBe(0);
+  });
+
+  it('marks configured excluded resources in resources API', async () => {
+    await prisma.productionScheduleResourceCategoryConfig.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        location: 'Test',
+        cuttingExcludedResourceCds: ['2']
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/resources',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      resourceItems: Array<{ resourceCd: string; excluded: boolean }>;
+    };
+    expect(body.resourceItems.find((item) => item.resourceCd === '2')?.excluded).toBe(true);
   });
 
   it('paginates results in sorted order', async () => {

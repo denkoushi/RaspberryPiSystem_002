@@ -4,6 +4,7 @@ import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
   getResourceCategoryPolicy,
   isProductionScheduleCuttingResourceCd,
+  isProductionScheduleExcludedCuttingResourceCd,
   resolveResourceCategorySiteResolution,
   resolveResourceCategorySiteKey
 } from '../policies/resource-category-policy.service.js';
@@ -77,7 +78,9 @@ describe('resource-category-policy.service', () => {
     };
     expect(isProductionScheduleCuttingResourceCd('100', policy)).toBe(true);
     expect(isProductionScheduleCuttingResourceCd('10', policy)).toBe(false);
+    expect(isProductionScheduleCuttingResourceCd('msz', policy)).toBe(false);
     expect(isProductionScheduleCuttingResourceCd('305', policy)).toBe(false);
+    expect(isProductionScheduleExcludedCuttingResourceCd('  msz ', policy)).toBe(true);
     const filtered = filterProductionScheduleResourceCdsByCategoryWithPolicy(
       ['305', '100', '10', 'MSZ'],
       'cutting',

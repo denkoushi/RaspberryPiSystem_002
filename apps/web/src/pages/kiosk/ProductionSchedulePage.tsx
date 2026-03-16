@@ -279,11 +279,16 @@ export function ProductionSchedulePage() {
     [resourceNameMap]
   );
   const visibleResourceCds = useMemo(() => {
+    const cuttingExcludedResourceCds = (resourcesQuery.data?.resourceItems ?? [])
+      .filter((item) => item.excluded)
+      .map((item) => item.resourceCd);
     return filterResourceCdsByCategory(resourcesQuery.data?.resources ?? [], {
       showGrinding: showGrindingResources,
       showCutting: showCuttingResources
+    }, {
+      cuttingExcludedResourceCds
     });
-  }, [resourcesQuery.data?.resources, showCuttingResources, showGrindingResources]);
+  }, [resourcesQuery.data?.resourceItems, resourcesQuery.data?.resources, showCuttingResources, showGrindingResources]);
 
   const prioritizedVisibleResourceCds = useMemo(
     () =>

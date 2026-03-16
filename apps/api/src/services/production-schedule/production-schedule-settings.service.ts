@@ -5,7 +5,8 @@ import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
-  DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS
+  DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS,
+  normalizeProductionScheduleResourceCdList
 } from './policies/resource-category-policy.service.js';
 
 const normalizeLocation = (location: string): string => location.trim();
@@ -19,16 +20,6 @@ const DEFAULT_PROCESSING_TYPE_OPTIONS = [
   { code: 'その他01', label: 'その他01', priority: 4, enabled: true },
   { code: 'その他02', label: 'その他02', priority: 5, enabled: true }
 ] as const;
-
-const normalizeResourceCdList = (values: string[]): string[] => {
-  const unique = new Set<string>();
-  for (const raw of values) {
-    const normalized = raw.trim();
-    if (normalized.length === 0) continue;
-    unique.add(normalized);
-  }
-  return Array.from(unique).sort((a, b) => a.localeCompare(b));
-};
 
 const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 const normalizeGroupCd = (value: string): string => value.trim().toUpperCase();
@@ -53,7 +44,7 @@ export async function getProductionScheduleResourceCategorySettings(location: st
 
   return {
     location: normalizedLocation,
-    cuttingExcludedResourceCds: normalizeResourceCdList(
+    cuttingExcludedResourceCds: normalizeProductionScheduleResourceCdList(
       config?.cuttingExcludedResourceCds?.length
         ? config.cuttingExcludedResourceCds
         : [...DEFAULT_CUTTING_EXCLUDED_RESOURCE_CDS]
@@ -66,7 +57,7 @@ export async function upsertProductionScheduleResourceCategorySettings(params: {
   cuttingExcludedResourceCds: string[];
 }): Promise<{ location: string; cuttingExcludedResourceCds: string[] }> {
   const location = normalizeSiteLocation(params.location);
-  const cuttingExcludedResourceCds = normalizeResourceCdList(params.cuttingExcludedResourceCds);
+  const cuttingExcludedResourceCds = normalizeProductionScheduleResourceCdList(params.cuttingExcludedResourceCds);
 
   const updated = await prisma.productionScheduleResourceCategoryConfig.upsert({
     where: {
@@ -91,7 +82,7 @@ export async function upsertProductionScheduleResourceCategorySettings(params: {
 
   return {
     location: updated.location,
-    cuttingExcludedResourceCds: normalizeResourceCdList(updated.cuttingExcludedResourceCds)
+    cuttingExcludedResourceCds: normalizeProductionScheduleResourceCdList(updated.cuttingExcludedResourceCds)
   };
 }
 
