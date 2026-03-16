@@ -1,7 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 
 import { getProductionScheduleOrderUsage } from '../../../services/production-schedule/production-schedule-query.service.js';
-import { productionScheduleQuerySchema, parseCsvList, type KioskRouteDeps } from './shared.js';
+import {
+  productionScheduleQuerySchema,
+  parseCsvList,
+  toLegacyLocationKeyFromDeviceScope,
+  type KioskRouteDeps
+} from './shared.js';
 
 export async function registerProductionScheduleOrderUsageRoute(
   app: FastifyInstance,
@@ -15,7 +20,7 @@ export async function registerProductionScheduleOrderUsageRoute(
     const resourceCds = parseCsvList(query.resourceCds);
 
     const usage = await getProductionScheduleOrderUsage({
-      locationKey: deviceScopeKey,
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
       resourceCds
     });
 

@@ -4,6 +4,7 @@ import { upsertProductionScheduleProcessingType } from '../../../services/produc
 import {
   productionScheduleProcessingBodySchema,
   productionScheduleProcessingParamsSchema,
+  toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
 
@@ -21,7 +22,7 @@ export async function registerProductionScheduleProcessingRoute(
     return upsertProductionScheduleProcessingType({
       rowId: params.rowId,
       processingType: body.processingType ?? '',
-      locationKey: deviceScopeKey
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey)
     });
   });
 }

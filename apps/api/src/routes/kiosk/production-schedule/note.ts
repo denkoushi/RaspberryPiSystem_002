@@ -4,6 +4,7 @@ import { upsertProductionScheduleNote } from '../../../services/production-sched
 import {
   productionScheduleNoteBodySchema,
   productionScheduleNoteParamsSchema,
+  toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
 
@@ -21,7 +22,7 @@ export async function registerProductionScheduleNoteRoute(
     return upsertProductionScheduleNote({
       rowId: params.rowId,
       note: body.note,
-      locationKey: deviceScopeKey
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey)
     });
   });
 }

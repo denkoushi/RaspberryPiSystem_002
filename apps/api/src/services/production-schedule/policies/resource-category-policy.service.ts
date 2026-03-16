@@ -1,6 +1,11 @@
 import type { ProductionScheduleResourceCategory } from '@raspi-system/shared-types';
 
-import { DEFAULT_LOCATION_SCOPE_KEY, resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import {
+  DEFAULT_LOCATION_SCOPE_KEY,
+  resolveSiteKeyFromScopeKey,
+  type DeviceScopeKey,
+  type SiteKey
+} from '../../../lib/location-scope-resolver.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -26,8 +31,10 @@ export type ResourceCategoryPolicy = {
 };
 
 export type ResourceCategoryPolicyScope = {
-  siteKey?: string;
-  deviceScopeKey?: string;
+  // Site-shared setting should be preferred when available.
+  siteKey?: SiteKey | string;
+  // Device scope is accepted only as a fallback input to derive siteKey.
+  deviceScopeKey?: DeviceScopeKey | string;
 };
 
 export type ResourceCategorySiteResolution = {

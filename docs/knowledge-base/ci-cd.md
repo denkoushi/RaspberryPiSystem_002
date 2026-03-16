@@ -543,3 +543,38 @@ update-frequency: high
 - `apps/api/src/services/production-schedule/due-management-learning-event.repository.ts`
 - [KB-297](./KB-297-kiosk-due-management-workflow.md#b第5段階オフライン学習評価--イベントログ2026-03-08)
 
+---
+
+### [KB-302] location-scope-resolver のブランド型 CI ビルド失敗と verify-phase12-real の ping 失敗
+
+**発生日**: 2026-03-16
+
+**事象1（CI ビルド）**:
+- GitHub Actions CI の `Build API` ステップで `tsc -p tsconfig.build.json` が失敗
+- エラー: `location-scope-resolver.ts(113,5): Type 'string' is not assignable to type 'SiteKey'`、`(114,5): Type 'string' is not assignable to type 'DeviceName'`
+
+**根本原因**:
+- `resolveStandardLocationScopeContext` 内で `resolveSiteKeyFromScopeKey`/`resolveDeviceNameFromScopeKey` の戻り値（`string`）を `StandardLocationScopeContext` の `siteKey`/`deviceName`（ブランド型）に直接代入していた
+- ローカル `pnpm test` はビルドを実行しないため検出されない
+
+**有効だった対策**:
+- ✅ `asSiteKey(resolveSiteKeyFromScopeKey(...))` / `asDeviceName(resolveDeviceNameFromScopeKey(...))` で明示キャスト
+
+**事象2（verify-phase12-real.sh）**:
+- `./scripts/deploy/verify-phase12-real.sh` 実行時に「エラー: Pi5に到達できません」で即終了
+- スクリプトは先頭で `ping -c 1 -W 2 100.106.158.2` による到達判定を行う
+
+**根本原因**:
+- ICMP（ping）がブロックされる環境（一部ネットワーク・ファイアウォール）では、HTTPS/SSH 経路は正常でも ping が通らない場合がある
+
+**有効だった対策**:
+- ✅ runbook（deploy-status-recovery.md）の実機検証チェックリスト項目を curl/ssh で手動実行すれば同等検証が可能
+
+**再発防止**:
+- デプロイ前に `pnpm --filter @raspi-system/api build` を実行して型チェックを通す
+- verify-phase12-real が ping で失敗する環境では、runbook の手動項目で代替検証する
+
+**解決状況**: ✅ **解決済み（2026-03-16）**
+
+**関連**: [EXEC_PLAN.md](../../EXEC_PLAN.md) Surprises & Discoveries、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
+

@@ -10,7 +10,7 @@ update-frequency: medium
 
 # Location Scope 命名規約ガイド
 
-最終更新: 2026-03-16（Phase12 完全体化）
+最終更新: 2026-03-16（Phase13 安全リファクタ追記）
 
 ## 目的
 
@@ -41,6 +41,10 @@ update-frequency: medium
 4. **表示用フィールドと保存用キーを混同しない**
 - APIレスポンスの `targetLocation` / `actorLocation` は表示用。
 - 永続化・検索条件は `siteKey` / `deviceScopeKey` を使う。
+
+5. **旧契約への橋渡しは境界ヘルパーに限定する**
+- `locationKey` を要求する既存契約へは、ルート境界の `toLegacyLocationKeyFromDeviceScope()` を通して橋渡しする。
+- 機能実装側で `deviceScopeKey -> locationKey` の再変換を増やさない。
 
 ## 実装パターン
 

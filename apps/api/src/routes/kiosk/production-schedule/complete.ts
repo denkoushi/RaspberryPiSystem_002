@@ -1,7 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 
 import { completeProductionScheduleRow } from '../../../services/production-schedule/production-schedule-command.service.js';
-import { productionScheduleCompleteParamsSchema, type KioskRouteDeps } from './shared.js';
+import {
+  productionScheduleCompleteParamsSchema,
+  toLegacyLocationKeyFromDeviceScope,
+  type KioskRouteDeps
+} from './shared.js';
 
 export async function registerProductionScheduleCompleteRoute(
   app: FastifyInstance,
@@ -17,7 +21,7 @@ export async function registerProductionScheduleCompleteRoute(
 
     return completeProductionScheduleRow({
       rowId: params.rowId,
-      locationKey: deviceScopeKey,
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
       debugSessionId
     });
   });

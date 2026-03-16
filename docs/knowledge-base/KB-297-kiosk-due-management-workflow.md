@@ -320,6 +320,24 @@ category: knowledge-base
   - 手動UI検証を除く運用検証は `verify-phase12-real.sh` で再現可能になった。
   - 境界変数名は `deviceScopeKey` / `siteKey` を使い、`locationKey` は既存サービス契約への橋渡し時のみ使用する方針が有効。
 
+## Location Scope Phase13（安全リファクタ、2026-03-16）
+
+- **背景**:
+  - Phase12 のフォローアップとして、互換橋渡しを境界に集約し、`locationKey` 文字列再解釈の再発を防止する必要があった。
+- **実装**:
+  - `location-scope-resolver.ts`: 境界型（`SiteKey` / `DeviceScopeKey` / `DeviceName` / `InfraHost`）を明示化。`resolveStandardLocationScopeContext` で `asSiteKey` / `asDeviceName` によるブランド型キャストを追加。
+  - `production-schedule/shared.ts`: `toLegacyLocationKeyFromDeviceScope()` を追加し、ルート境界で橋渡しを集約。
+  - `production-schedule/*.ts`: 各ルートで `toLegacyLocationKeyFromDeviceScope(deviceScopeKey)` 経由に統一。
+  - `shared.test.ts`: dedup と bridge ヘルパーの回帰テストを追加。
+  - resource-category / due-management / ranking-scope にスコープ（site/device）のコメント・型を追加。
+- **検証**:
+  - CI: 初回は `resolveStandardLocationScopeContext` の `string` → ブランド型代入で型エラー。`asSiteKey` / `asDeviceName` で修正後 success。
+  - デプロイ: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260316-113951-26071` / `20260316-114704-25137` / `20260316-115552-26872`）。
+- **実機検証**:
+  - `verify-phase12-real.sh` は先頭の `ping` 判定で「Pi5に到達できません」と停止（ICMP ブロック環境）。runbook の curl/ssh 項目を手動実行して代替検証。
+  - APIヘルス ok、deploy-status 両Pi4 false、キオスクAPI・納期管理API群 200、global-rank/actual-hours/stats、fallback 0件、PUT auto-generate 200、Pi3/Pi4 サービス active。
+- **トラブルシューティング**: [KB-302](../knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)
+
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
 - **背景**:

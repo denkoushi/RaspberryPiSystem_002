@@ -4,6 +4,7 @@ import { upsertProductionScheduleOrder } from '../../../services/production-sche
 import {
   productionScheduleOrderBodySchema,
   productionScheduleOrderParamsSchema,
+  toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
 
@@ -22,7 +23,7 @@ export async function registerProductionScheduleOrderRoute(
       rowId: params.rowId,
       resourceCd: body.resourceCd,
       orderNumber: body.orderNumber,
-      locationKey: deviceScopeKey
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey)
     });
   });
 }

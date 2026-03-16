@@ -60,6 +60,7 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | Pi3 signage-lite | Pi5経由で `ssh denkon5sd02@100.106.158.2 "ssh -o StrictHostKeyChecking=no signageras3@100.105.224.86 'systemctl is-active signage-lite.service'"` | `active` |
 | Pi3/Pi4サービス簡易一括確認（Phase7確認） | `./scripts/deploy/verify-services-real.sh` | Pi3 signage-lite/timer、Pi4 kiosk-browser が `active` |
 | Phase12 一括自動検証（2026-03-16追加） | `./scripts/deploy/verify-phase12-real.sh` | API/サービス/fallback監視/auto-generate が PASS（WARN は内容確認） |
+| verify-phase12 ping 失敗時（2026-03-16追加） | ICMP がブロックされる環境で「Pi5に到達できません」と出る場合、上記 runbook の curl/ssh 項目を手動実行して同等検証する。HTTPS/SSH 経路は正常でも ping が通らない環境がある（[KB-302](../knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)） | 手動項目で全項目合格 |
 | 納期管理新UI（V2有効時） | 実機で納期管理画面を開き、左レール・アクティブコンテキストバー・詳細パネル構成、製番選択時の視認表現、主要操作（一覧・選択・詳細・編集）を確認 | 新レイアウト表示・操作正常 |
 | 納期管理UI Phase1（開閉式・重複削除、2026-03-13追加） | 左ペイン3セクションが開閉できること、詳細パネルに製番・機種の重複表示がないこと、製番一覧・選択・詳細・編集が正常に動作すること | 開閉・表示・操作正常 |
 | 納期管理UI Phase2（開閉アイコン化・デフォルト閉じ・状態記憶・最下段カード削除、2026-03-13追加） | 開閉ボタンがアイコン化されていること、初回表示で全セクションが閉じていること、開閉操作後にリロードしても状態が復元されること、最下段カードが表示されず製番登録・削除がチップで動作すること | アイコン・デフォルト閉じ・状態記憶・チップ操作正常 |
@@ -120,5 +121,6 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 
 - [ADR-20260306: 端末別メンテナンス状態](../decisions/ADR-20260306-deploy-status-per-client-maintenance.md)
 - [deployment.md](../guides/deployment.md): デプロイ標準手順
+- [location-scope-naming.md](../guides/location-scope-naming.md): `deviceScopeKey/siteKey` 命名規約と互換橋渡し（Phase13）
 - [KB-183](../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装)
 - [KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時): Pi4 デプロイハングの詳細

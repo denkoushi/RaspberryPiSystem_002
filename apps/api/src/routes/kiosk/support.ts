@@ -6,6 +6,7 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { sendSlackNotification } from '../../services/notifications/slack-webhook.js';
+import type { ClientDeviceForScopeResolution, LocationScopeContext } from './shared.js';
 
 const supportMessageSchema = z.object({
   message: z.string().min(1).max(1000),
@@ -15,6 +16,7 @@ const supportMessageSchema = z.object({
 type SupportRouteDeps = {
   normalizeClientKey: (rawKey: unknown) => string | undefined;
   checkRateLimit: (clientKey: string, ip: string) => Promise<boolean>;
+  resolveLocationScopeContext: (clientDevice: ClientDeviceForScopeResolution) => LocationScopeContext;
 };
 
 export async function registerKioskSupportRoute(
@@ -55,6 +57,8 @@ export async function registerKioskSupportRoute(
     if (!clientDevice) {
       throw new ApiError(401, 'クライアントキーが無効です', undefined, 'CLIENT_KEY_INVALID');
     }
+    const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+    const actorLocation = locationScopeContext.deviceScopeKey;
 
     // clientIdはリクエストボディから取得（なければclientDevice.idを使用）
     const clientId = (request.body as { clientId?: string })?.clientId || clientDevice.id;
@@ -72,7 +76,7 @@ export async function registerKioskSupportRoute(
           clientId,
           clientDeviceId: clientDevice.id,
           clientName: clientDevice.name,
-          location: clientDevice.location,
+          location: actorLocation,
           userMessage: body.message
         } as Prisma.InputJsonValue
       }
@@ -85,7 +89,7 @@ export async function registerKioskSupportRoute(
     sendSlackNotification({
       clientId,
       clientName: clientDevice.name,
-      location: clientDevice.location || undefined,
+      location: actorLocation,
       page: body.page,
       message: body.message,
       requestId: request.id

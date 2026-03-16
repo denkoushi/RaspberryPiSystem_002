@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { getProductionScheduleProcessingTypeOptions } from '../../../services/production-schedule/production-schedule-settings.service.js';
-import type { KioskRouteDeps } from './shared.js';
+import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleProcessingTypeOptionsRoute(
   app: FastifyInstance,
@@ -11,7 +11,7 @@ export async function registerProductionScheduleProcessingTypeOptionsRoute(
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
-    const settings = await getProductionScheduleProcessingTypeOptions(deviceScopeKey);
+    const settings = await getProductionScheduleProcessingTypeOptions(toLegacyLocationKeyFromDeviceScope(deviceScopeKey));
     return {
       options: settings.options
     };

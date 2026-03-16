@@ -55,3 +55,4 @@ owners: [api]
 
 - 新規コードでは、境界変数に `locationKey` を使わない（`deviceScopeKey` または `siteKey` を使用）
 - 命名規約は `docs/guides/location-scope-naming.md` を唯一の参照として運用する
+- **Phase13 完了（2026-03-16）**: 互換橋渡しを `toLegacyLocationKeyFromDeviceScope()` に集約し、境界型（SiteKey/DeviceScopeKey/DeviceName/InfraHost）を明示化。`locationKey` 文字列再解釈の再発防止を実施済み。詳細は [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#location-scope-phase13安全リファクタ2026-03-16)

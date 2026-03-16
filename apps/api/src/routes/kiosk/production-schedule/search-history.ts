@@ -4,7 +4,11 @@ import {
   getProductionScheduleSearchHistory,
   updateProductionScheduleSearchHistory
 } from '../../../services/production-schedule/production-schedule-search-state.service.js';
-import { productionScheduleSearchHistoryBodySchema, type KioskRouteDeps } from './shared.js';
+import {
+  productionScheduleSearchHistoryBodySchema,
+  toLegacyLocationKeyFromDeviceScope,
+  type KioskRouteDeps
+} from './shared.js';
 
 export async function registerProductionScheduleSearchHistoryRoute(
   app: FastifyInstance,
@@ -23,7 +27,7 @@ export async function registerProductionScheduleSearchHistoryRoute(
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const body = productionScheduleSearchHistoryBodySchema.parse(request.body);
     return updateProductionScheduleSearchHistory({
-      locationKey: deviceScopeKey,
+      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
       history: body.history
     });
   });

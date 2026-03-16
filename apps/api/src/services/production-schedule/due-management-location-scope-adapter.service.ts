@@ -46,6 +46,8 @@ export const toDueManagementScopeFromContext = (context: DueManagementScopeConte
     siteKey: context.siteKey
   });
 
+// Legacy compatibility bridge for existing storage contracts.
+// Keep this conversion in adapter boundary; route/service callers should keep `deviceScopeKey` naming.
 export const resolveDueManagementStorageLocationKey = (scope: DueManagementScope): string => scope.deviceScopeKey;
 
 export async function listDueManagementSummariesWithScope(
