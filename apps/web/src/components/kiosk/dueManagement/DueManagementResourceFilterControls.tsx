@@ -1,13 +1,7 @@
-import { PillToggle } from '../../layout/PillToggle';
-
 type DueManagementResourceFilterControlsProps = {
   resourceCds: string[];
   selectedResourceCd: string;
   onSelectResourceCd: (resourceCd: string) => void;
-  showGrindingResources: boolean;
-  onToggleGrindingResources: () => void;
-  showCuttingResources: boolean;
-  onToggleCuttingResources: () => void;
   disabled?: boolean;
 };
 
@@ -15,10 +9,6 @@ export function DueManagementResourceFilterControls({
   resourceCds,
   selectedResourceCd,
   onSelectResourceCd,
-  showGrindingResources,
-  onToggleGrindingResources,
-  showCuttingResources,
-  onToggleCuttingResources,
   disabled = false
 }: DueManagementResourceFilterControlsProps) {
   return (
@@ -37,28 +27,6 @@ export function DueManagementResourceFilterControls({
           </option>
         ))}
       </select>
-      <PillToggle
-        isActive={showGrindingResources}
-        onClick={onToggleGrindingResources}
-        disabled={disabled}
-        size="md"
-        className="h-9 whitespace-nowrap"
-        activeClassName="border-emerald-300 bg-emerald-500 text-white"
-        inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
-      >
-        研削工程
-      </PillToggle>
-      <PillToggle
-        isActive={showCuttingResources}
-        onClick={onToggleCuttingResources}
-        disabled={disabled}
-        size="md"
-        className="h-9 whitespace-nowrap"
-        activeClassName="border-emerald-300 bg-emerald-500 text-white"
-        inactiveClassName="border-white/30 bg-white/5 text-white/80 hover:bg-white/10"
-      >
-        切削工程
-      </PillToggle>
     </div>
   );
 }

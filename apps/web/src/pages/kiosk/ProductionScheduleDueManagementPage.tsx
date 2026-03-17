@@ -35,9 +35,7 @@ import {
   DUE_MANAGEMENT_FILTERS_STORAGE_KEY,
   hasDueManagementResourceFilter,
   sanitizeDueManagementFiltersState,
-  toDueManagementFilterParams,
-  toggleDueManagementCuttingFilter,
-  toggleDueManagementGrindingFilter
+  toDueManagementFilterParams
 } from '../../features/kiosk/productionSchedule/dueManagementFilters';
 import {
   buildDailyPlanMetaBySeiban,
@@ -322,14 +320,6 @@ export function ProductionScheduleDueManagementPage() {
     }));
   };
 
-  const toggleGrindingResources = () => {
-    setDueManagementFilters((prev) => toggleDueManagementGrindingFilter(prev));
-  };
-
-  const toggleCuttingResources = () => {
-    setDueManagementFilters((prev) => toggleDueManagementCuttingFilter(prev));
-  };
-
   const saveDailyPlan = async () => {
     await updateDailyPlanMutation.mutateAsync({
       orderedFseibans: orderedPlanFseibans
@@ -557,10 +547,6 @@ export function ProductionScheduleDueManagementPage() {
       resourceCds={visibleResourceCds}
       selectedResourceCd={dueManagementFilters.selectedResourceCd}
       onSelectResourceCd={setSelectedResourceCd}
-      showGrindingResources={dueManagementFilters.showGrindingResources}
-      onToggleGrindingResources={toggleGrindingResources}
-      showCuttingResources={dueManagementFilters.showCuttingResources}
-      onToggleCuttingResources={toggleCuttingResources}
       disabled={resourcesQuery.isLoading}
     />
   );
