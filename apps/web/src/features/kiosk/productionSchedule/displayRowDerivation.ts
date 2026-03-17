@@ -168,6 +168,24 @@ export const extractPartNameOptions = (rows: NormalizedScheduleRow[]): string[] 
   return Array.from(partNameMap.values()).sort((a, b) => a.localeCompare(b, 'ja'));
 };
 
+export const filterRowsBySelectedOrderNumbers = (
+  rows: NormalizedScheduleRow[],
+  selectedOrderNumbers: string[]
+): NormalizedScheduleRow[] => {
+  if (selectedOrderNumbers.length === 0) {
+    return rows;
+  }
+  const selectedSet = new Set(
+    selectedOrderNumbers
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+  );
+  if (selectedSet.size === 0) {
+    return rows;
+  }
+  return rows.filter((row) => selectedSet.has(String(row.data.ProductNo ?? '').trim()));
+};
+
 export const deriveDisplayRows = (
   normalizedRows: NormalizedScheduleRow[],
   isDisplayRankContext: boolean

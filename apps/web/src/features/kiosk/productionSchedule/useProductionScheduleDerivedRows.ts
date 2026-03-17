@@ -11,6 +11,7 @@ import {
   extractMachineNameOptions,
   extractPartNameOptions,
   filterRowsByMachineAndPart,
+  filterRowsBySelectedOrderNumbers,
   normalizeScheduleRows,
   type NormalizedScheduleRow,
   type RawScheduleRow
@@ -29,6 +30,7 @@ type Params = {
   showCuttingResources: boolean;
   selectedMachineName: string;
   selectedPartName: string;
+  selectedOrderNumbers: string[];
   containerWidth: number;
 };
 
@@ -59,6 +61,7 @@ export const useProductionScheduleDerivedRows = ({
   showCuttingResources,
   selectedMachineName,
   selectedPartName,
+  selectedOrderNumbers,
   containerWidth
 }: Params): Result => {
   const sourceRows = rows ?? EMPTY_ROWS;
@@ -75,12 +78,16 @@ export const useProductionScheduleDerivedRows = ({
     [machineToSeibanIndex, normalizedRows, selectedMachineName]
   );
   const partNameOptions = useMemo(() => extractPartNameOptions(machineFilteredRows), [machineFilteredRows]);
-  const filteredRows = useMemo(
+  const machineAndPartFilteredRows = useMemo(
     () =>
       filterRowsByMachineAndPart(normalizedRows, machineToSeibanIndex, selectedMachineName, selectedPartName, {
         skipMachineFilterIfNoIndexHit: true
       }),
     [machineToSeibanIndex, normalizedRows, selectedMachineName, selectedPartName]
+  );
+  const filteredRows = useMemo(
+    () => filterRowsBySelectedOrderNumbers(machineAndPartFilteredRows, selectedOrderNumbers),
+    [machineAndPartFilteredRows, selectedOrderNumbers]
   );
 
   const isResourceRankFilterActive =

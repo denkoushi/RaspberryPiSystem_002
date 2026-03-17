@@ -642,6 +642,7 @@ export interface ProductionScheduleProgressOverviewResult {
 export async function getKioskProductionSchedule(params?: {
   productNo?: string;
   q?: string;
+  productNos?: string;
   resourceCds?: string;
   resourceAssignedOnlyCds?: string;
   resourceCategory?: 'grinding' | 'cutting';
@@ -687,6 +688,11 @@ export async function getKioskProductionSchedule(params?: {
     // #endregion agent log
   }
   return data;
+}
+
+export interface KioskProductionScheduleOrderSearchResponse {
+  partNameOptions: string[];
+  orders: string[];
 }
 
 export async function completeKioskProductionScheduleRow(rowId: string) {
@@ -1051,6 +1057,20 @@ export async function getKioskProductionScheduleOrderUsage(params?: { resourceCd
     params
   });
   return data.usage;
+}
+
+export async function getKioskProductionScheduleOrderSearchCandidates(params: {
+  resourceCds: string;
+  resourceCategory?: 'grinding' | 'cutting';
+  machineName?: string;
+  productNoPrefix: string;
+  partName?: string;
+}) {
+  const { data } = await api.get<KioskProductionScheduleOrderSearchResponse>(
+    '/kiosk/production-schedule/order-search',
+    { params }
+  );
+  return data;
 }
 
 export async function updateKioskProductionScheduleOrder(

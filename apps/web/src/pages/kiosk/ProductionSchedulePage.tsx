@@ -14,6 +14,7 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { ProductionOrderSearchModal } from '../../components/kiosk/ProductionOrderSearchModal';
 import { ProductionScheduleHistoryStrip } from '../../components/kiosk/ProductionScheduleHistoryStrip';
 import { ProductionScheduleResourceFilters } from '../../components/kiosk/ProductionScheduleResourceFilters';
 import { ProductionScheduleTable } from '../../components/kiosk/ProductionScheduleTable';
@@ -25,6 +26,7 @@ import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../feature
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
+import { useProductionOrderSearch } from '../../features/kiosk/productionSchedule/useProductionOrderSearch';
 import { useProductionScheduleDerivedRows } from '../../features/kiosk/productionSchedule/useProductionScheduleDerivedRows';
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import {
@@ -108,6 +110,7 @@ export function ProductionSchedulePage() {
   const [containerWidth, setContainerWidth] = useState(1200);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
+  const [selectedOrderNumbers, setSelectedOrderNumbers] = useState<string[]>([]);
   const {
     normalizedActiveQueries,
     normalizedResourceCds,
@@ -126,6 +129,7 @@ export function ProductionSchedulePage() {
     showGrindingResources,
     showCuttingResources,
     selectedMachineName,
+    selectedOrderNumbers,
     history
   });
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -262,6 +266,7 @@ export function ProductionSchedulePage() {
     showCuttingResources,
     selectedMachineName,
     selectedPartName,
+    selectedOrderNumbers,
     containerWidth
   });
 
@@ -290,6 +295,18 @@ export function ProductionSchedulePage() {
     });
     return Array.from(unique.values()).sort((a, b) => a.localeCompare(b, 'ja'));
   }, [machineNameOptions, machineNameOptionsFromHistory]);
+
+  const isOrderSearchEnabled =
+    (showGrindingResources || showCuttingResources) && normalizedResourceCds.length > 0;
+  const orderSearch = useProductionOrderSearch({
+    enabled: isOrderSearchEnabled,
+    resourceCds: normalizedResourceCds,
+    resourceCategory: selectedResourceCategory,
+    machineName: selectedMachineName,
+    onConfirmSelection: (selectedOrders) => {
+      setSelectedOrderNumbers(selectedOrders);
+    }
+  });
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
     resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
@@ -379,6 +396,7 @@ export function ProductionSchedulePage() {
 
   const clearAllFilters = () => {
     resetSearchConditions();
+    setSelectedOrderNumbers([]);
   };
 
 
@@ -578,6 +596,8 @@ export function ProductionSchedulePage() {
         selectedPartName={selectedPartName}
         partNameOptions={partNameOptions}
         onPartNameChange={handlePartNameChange}
+        onOpenOrderSearch={orderSearch.open}
+        isOrderSearchEnabled={isOrderSearchEnabled}
         disabled={scheduleQuery.isFetching || completePending}
         isFetching={scheduleQuery.isFetching}
         showFetching={hasQuery}
@@ -664,6 +684,25 @@ export function ProductionSchedulePage() {
         onChange={setKeyboardValue}
         onCancel={() => setIsKeyboardOpen(false)}
         onConfirm={confirmKeyboard}
+      />
+      <ProductionOrderSearchModal
+        isOpen={orderSearch.isOpen}
+        productNoInput={orderSearch.productNoInput}
+        onInputChange={orderSearch.setProductNoInput}
+        onClose={orderSearch.close}
+        onAppendDigit={orderSearch.appendDigit}
+        onBackspace={orderSearch.backspace}
+        onClear={orderSearch.clear}
+        selectedPartName={orderSearch.selectedPartName}
+        partNameOptions={orderSearch.partNameOptions}
+        onPartNameChange={orderSearch.setSelectedPartName}
+        orders={orderSearch.orders}
+        selectedOrderNumbers={orderSearch.selectedOrderNumbers}
+        onToggleOrder={orderSearch.toggleOrderNumber}
+        onConfirm={orderSearch.confirm}
+        canConfirm={orderSearch.canConfirm}
+        canSelectPart={orderSearch.canFetchCandidates}
+        isLoading={orderSearch.isLoading}
       />
     </div>
   );

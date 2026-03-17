@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 49件  
+**件数**: 50件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -4280,5 +4280,34 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **関連**: [KB-297](./KB-297-kiosk-due-management-workflow.md#生産スケジュール-機種名部品名検索2026-03-17)、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)「生産スケジュール 機種名検索」
 
 **解決状況**: ✅ **実装完了・デプロイ完了・実機検証完了**（2026-03-17）
+
+---
+
+### [KB-305] 生産スケジュール 製造order番号ポップアップ検索（5桁候補・部品選択・チェック確定）
+
+**実装日時**: 2026-03-17
+
+**仕様**:
+- A条件（工程: 研削/切削のいずれかをON、かつ資源CDを1件以上選択）時のみ「製造order検索」ボタンを活性化。
+- ボタン押下でポップアップを開き、製造order番号入力（0-9テンキー、Backspace、Clear）を行う。
+- 5桁入力で `GET /api/kiosk/production-schedule/order-search` から部品名候補を取得し、部品名選択時のみ製造order番号チェックリストを表示。
+- 製造order番号をチェックして確定すると、一覧は既存の機種名/部品名/資源条件に加えて選択した製造order番号で追加絞り込みされる。
+
+**実装ポイント**:
+- APIは `/kiosk/production-schedule` 本体を肥大化させず、`order-search` 専用ルートで候補取得を分離。
+- Webは `useProductionOrderSearch` に状態遷移（入力・候補取得・選択）を集約し、`ProductionOrderSearchModal` は表示責務に限定。
+- 一覧反映は `filterRowsBySelectedOrderNumbers`（純粋関数）で適用し、既存フィルタ後段に追加。
+- `productNos` クエリを追加し、登録製番検索履歴とは独立して選択済み製造order番号を API へ伝搬。
+
+**テスト**:
+- API: `production-schedule-query.service` の単体テスト更新、`kiosk-production-schedule-order-search.integration.test.ts` を追加。
+- Web: `useProductionScheduleQueryParams.test.ts` と `displayRowDerivation.machinePart.test.ts` に製造orderフィルタ関連ケースを追加。
+
+**注意点（ローカル検証）**:
+- API統合テストはローカルPostgreSQL起動が前提。DB未起動環境では `kiosk-production-schedule-order-search.integration.test.ts` は接続エラーになる。
+
+**関連**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 実機検証チェック、[KB-297](./KB-297-kiosk-due-management-workflow.md)
+
+**解決状況**: ✅ **実装完了（テスト/lint完了、実機検証待ち）**（2026-03-17）
 
 ---

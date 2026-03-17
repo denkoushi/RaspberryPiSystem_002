@@ -11,6 +11,7 @@ type Params = {
   showGrindingResources: boolean;
   showCuttingResources: boolean;
   selectedMachineName: string;
+  selectedOrderNumbers: string[];
   history: string[];
 };
 
@@ -46,6 +47,7 @@ export const useProductionScheduleQueryParams = ({
   showGrindingResources,
   showCuttingResources,
   selectedMachineName,
+  selectedOrderNumbers,
   history
 }: Params) => {
   const normalizedActiveQueries = useMemo(() => normalizeUniqueStrings(activeQueries), [activeQueries]);
@@ -55,6 +57,10 @@ export const useProductionScheduleQueryParams = ({
     [activeResourceAssignedOnlyCds]
   );
   const normalizedHistory = useMemo(() => normalizeHistoryList(history), [history]);
+  const normalizedSelectedOrderNumbers = useMemo(
+    () => normalizeUniqueStrings(selectedOrderNumbers),
+    [selectedOrderNumbers]
+  );
   const selectedResourceCategory = useMemo<'grinding' | 'cutting' | undefined>(() => {
     if (showGrindingResources === showCuttingResources) return undefined;
     return showGrindingResources ? 'grinding' : 'cutting';
@@ -63,6 +69,10 @@ export const useProductionScheduleQueryParams = ({
   const queryParams = useMemo(
     () => ({
       q: normalizedActiveQueries.length > 0 ? normalizedActiveQueries.join(',') : undefined,
+      productNos:
+        normalizedSelectedOrderNumbers.length > 0
+          ? normalizedSelectedOrderNumbers.join(',')
+          : undefined,
       resourceCds: normalizedResourceCds.length > 0 ? normalizedResourceCds.join(',') : undefined,
       resourceAssignedOnlyCds: normalizedAssignedOnlyCds.length > 0 ? normalizedAssignedOnlyCds.join(',') : undefined,
       resourceCategory: selectedResourceCategory,
@@ -80,6 +90,7 @@ export const useProductionScheduleQueryParams = ({
       hasNoteOnlyFilter,
       normalizedActiveQueries,
       normalizedAssignedOnlyCds,
+      normalizedSelectedOrderNumbers,
       normalizedResourceCds,
       selectedMachineName,
       selectedResourceCategory
@@ -96,6 +107,7 @@ export const useProductionScheduleQueryParams = ({
 
   const hasQuery =
     normalizedActiveQueries.length > 0 ||
+    normalizedSelectedOrderNumbers.length > 0 ||
     normalizedAssignedOnlyCds.length > 0 ||
     hasNoteOnlyFilter ||
     hasDueDateOnlyFilter ||
@@ -105,6 +117,7 @@ export const useProductionScheduleQueryParams = ({
     normalizedActiveQueries,
     normalizedResourceCds,
     normalizedAssignedOnlyCds,
+    normalizedSelectedOrderNumbers,
     normalizedHistory,
     visibleHistory: normalizedHistory,
     selectedResourceCategory,

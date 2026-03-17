@@ -25,6 +25,8 @@ type ProductionScheduleToolbarProps = {
   selectedPartName: string;
   partNameOptions: string[];
   onPartNameChange: (value: string) => void;
+  onOpenOrderSearch: () => void;
+  isOrderSearchEnabled: boolean;
   disabled?: boolean;
   isFetching?: boolean;
   showFetching?: boolean;
@@ -52,6 +54,8 @@ export function ProductionScheduleToolbar({
   selectedPartName,
   partNameOptions,
   onPartNameChange,
+  onOpenOrderSearch,
+  isOrderSearchEnabled,
   disabled = false,
   isFetching = false,
   showFetching = false
@@ -163,6 +167,15 @@ export function ProductionScheduleToolbar({
               </option>
             ))}
           </select>
+          <Button
+            type="button"
+            variant={isOrderSearchEnabled ? 'primary' : 'secondary'}
+            className="h-10 whitespace-nowrap shrink-0"
+            onClick={onOpenOrderSearch}
+            disabled={disabled || !isOrderSearchEnabled}
+          >
+            製造order検索
+          </Button>
           {showFetching && isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </Row>
       </Row>

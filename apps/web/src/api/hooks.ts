@@ -73,6 +73,7 @@ import {
   getKioskConfig,
   getKioskEmployees,
   getKioskProductionSchedule,
+  getKioskProductionScheduleOrderSearchCandidates,
   getKioskProductionScheduleOrderUsage,
   getKioskProductionScheduleResources,
   getKioskProductionScheduleDueManagementSummary,
@@ -251,6 +252,7 @@ export function useKioskProductionSchedule(
   params?: {
     productNo?: string;
     q?: string;
+    productNos?: string;
     resourceCds?: string;
     resourceAssignedOnlyCds?: string;
     resourceCategory?: 'grinding' | 'cutting';
@@ -271,6 +273,23 @@ export function useKioskProductionSchedule(
     refetchInterval: options?.pauseRefetch ? false : 30000,
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled ?? true
+  });
+}
+
+export function useKioskProductionScheduleOrderSearchCandidates(
+  params: {
+    resourceCds: string;
+    resourceCategory?: 'grinding' | 'cutting';
+    machineName?: string;
+    productNoPrefix: string;
+    partName?: string;
+  } | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-order-search', params],
+    queryFn: () => getKioskProductionScheduleOrderSearchCandidates(params!),
+    enabled: (options?.enabled ?? true) && Boolean(params)
   });
 }
 
