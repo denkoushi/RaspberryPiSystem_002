@@ -4304,10 +4304,18 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - Web: `useProductionScheduleQueryParams.test.ts` と `displayRowDerivation.machinePart.test.ts` に製造orderフィルタ関連ケースを追加。
 
 **注意点（ローカル検証）**:
-- API統合テストはローカルPostgreSQL起動が前提。DB未起動環境では `kiosk-production-schedule-order-search.integration.test.ts` は接続エラーになる。
+- API統合テストはローカルPostgreSQL起動が前提。DB未起動環境では `kiosk-production-schedule-order-search.integration.test.ts` は接続エラーになる。DockerでPostgresを起動するか、一時コンテナ（`docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=borrow_return postgres:15-alpine`）＋`prisma migrate deploy` 後に `DATABASE_URL` を指定して実行すれば通過する。
+
+**デプロイ・実機検証（2026-03-17）**:
+- デプロイ対象: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ（`--limit` で実行）。Pi3は対象外。
+- 実機検証: `./scripts/deploy/verify-phase12-real.sh` で全24項目PASS。order-search API は `GET .../order-search?resourceCds=305&resourceCategory=grinding&productNoPrefix=12345` で 200 かつ `partNameOptions`/`orders` 返却、5桁未満で 400 を確認。
+
+**知見・トラブルシューティング**:
+- 統合テストをスキップする案は採用しない（テストにならない）。DB接続できない環境では一時Postgresを立てて実行する。
+- デプロイは既存標準手順（`scripts/update-all-clients.sh`＋`docs/guides/deployment.md`）に従い、1台ずつ順番に実行する。
 
 **関連**: [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 実機検証チェック、[KB-297](./KB-297-kiosk-due-management-workflow.md)
 
-**解決状況**: ✅ **実装完了（テスト/lint完了、実機検証待ち）**（2026-03-17）
+**解決状況**: ✅ **実装・デプロイ・実機検証完了**（2026-03-17）
 
 ---
