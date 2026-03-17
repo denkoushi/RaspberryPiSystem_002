@@ -25,6 +25,17 @@ import {
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
+/** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
+function normalizeMachineNameForCompare(value: string | null | undefined): string {
+  if (value == null) return '';
+  const s = String(value).trim();
+  const half =
+    s.replace(/[\uFF01-\uFF5E]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0xfee0)
+    ).replace(/\u3000/g, ' ');
+  return half.toUpperCase();
+}
+
 type ProductionScheduleRow = {
   id: string;
   occurredAt: Date;
@@ -236,22 +247,43 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     locationKey
   });
   const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory, resourceCategoryPolicy);
-  const normalizedMachineName = machineName?.trim().toUpperCase() ?? '';
-  const machineNameCondition =
-    normalizedMachineName.length > 0
-      ? Prisma.sql`AND EXISTS (
-          SELECT 1
-          FROM "CsvDashboardRow" AS "MachineRow"
-          WHERE "MachineRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND ${buildMaxProductNoWinnerCondition('MachineRow')}
-            AND ("MachineRow"."rowData"->>'FSEIBAN') = ("CsvDashboardRow"."rowData"->>'FSEIBAN')
-            AND (
-              UPPER(COALESCE("MachineRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
-              OR UPPER(COALESCE("MachineRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
-            )
-            AND UPPER(BTRIM(COALESCE("MachineRow"."rowData"->>'FHINMEI', ''))) = ${normalizedMachineName}
-        )`
-      : Prisma.empty;
+  const normalizedMachineName = normalizeMachineNameForCompare(machineName);
+  let machineNameCondition: Prisma.Sql = Prisma.empty;
+  if (normalizedMachineName.length > 0) {
+    type MachineRow = { fseiban: string | null; fhinmei: string | null };
+    const machineRows = await prisma.$queryRaw<MachineRow[]>`
+      SELECT
+        "rowData"->>'FSEIBAN' AS "fseiban",
+        "rowData"->>'FHINMEI' AS "fhinmei"
+      FROM "CsvDashboardRow"
+      WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+        AND (
+          UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+          OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+        )
+    `;
+    const matchingFseibans = Array.from(
+      new Set(
+        machineRows
+          .filter(
+            (r) =>
+              r.fseiban != null &&
+              r.fhinmei != null &&
+              normalizeMachineNameForCompare(r.fhinmei) === normalizedMachineName
+          )
+          .map((r) => r.fseiban as string)
+      )
+    );
+    if (matchingFseibans.length === 0) {
+      machineNameCondition = Prisma.sql`AND 1 = 0`;
+    } else {
+      machineNameCondition = Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(
+        matchingFseibans.map((s) => Prisma.sql`${s}`),
+        ','
+      )})`;
+    }
+  }
 
   // 登録製番なし かつ 割当なし の場合は検索しない。
   // - 資源CD単独（resourceCds）

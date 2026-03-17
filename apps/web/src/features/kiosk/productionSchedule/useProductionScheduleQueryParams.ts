@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 
+import { toHalfWidthAscii } from './machineName';
+
 type Params = {
   activeQueries: string[];
   activeResourceCds: string[];
@@ -64,7 +66,10 @@ export const useProductionScheduleQueryParams = ({
       resourceCds: normalizedResourceCds.length > 0 ? normalizedResourceCds.join(',') : undefined,
       resourceAssignedOnlyCds: normalizedAssignedOnlyCds.length > 0 ? normalizedAssignedOnlyCds.join(',') : undefined,
       resourceCategory: selectedResourceCategory,
-      machineName: selectedMachineName.trim().length > 0 ? selectedMachineName.trim() : undefined,
+      machineName:
+        selectedMachineName.trim().length > 0
+          ? toHalfWidthAscii(selectedMachineName.trim()).toUpperCase()
+          : undefined,
       hasNoteOnly: hasNoteOnlyFilter || undefined,
       hasDueDateOnly: hasDueDateOnlyFilter || undefined,
       page: 1,
