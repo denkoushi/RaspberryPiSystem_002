@@ -154,6 +154,32 @@ category: knowledge-base
   - [deployment.md](../guides/deployment.md)（1台ずつ順番デプロイ）
   - [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)（実機検証チェックリスト）
 
+## 生産スケジュール 機種名・部品名検索（2026-03-17）
+
+- **仕様（A条件）**:
+  - 機種名で絞るには「機種名」＋「工程（研削/切削）」＋「資源CD」の3つを指定する（AND条件）。
+  - API: `GET /api/kiosk/production-schedule?resourceCategory=grinding&resourceCds=305&machineName=サーボストッパ` 等で 200 かつ該当製番のみ返却。
+  - UI: 生産スケジュール画面で機種名ドロップダウン→工程と資源CDを選択→検索で該当機種の製番・部品のみ表示。
+- **正規化（全角/半角）**:
+  - フロント: `useProductionScheduleQueryParams.ts` で API 送信時に `toHalfWidthAscii(selectedMachineName.trim()).toUpperCase()` で正規化。
+  - API: `production-schedule-query.service.ts` で `normalizeMachineNameForCompare` を追加。機種行（MH/SH）を取得して Node 側で正規化比較し、一致する FSEIBAN で IN 条件を組み立てる。
+- **トラブルシュート（機種名検索が効かない）**:
+  - 症状: 機種名を指定しても結果が0件または期待と異なる。
+  - 原因: 実機API検証で全角/半角の不一致が判明。CSV由来の機種名とUI入力の正規化が揃っていなかった。
+  - 対策: 上記のフロント・API両方の正規化を導入して解消。
+- **トラブルシュート（機種名・部品名ドロップダウンが空になる）**:
+  - 症状: API で `machineName` 絞り込みをすると MH/SH 行が返らず、クライアントの「機種→製番」インデックスが空になり、全件除外されて一覧が空になる。
+  - 原因: 機種名指定時はAPIが該当製番の行のみ返すため、機種名を持つMH/SH行が結果に含まれず、ドロップダウン用の機種一覧が構築できない。
+  - 対策: `displayRowDerivation.ts` の `filterRowsByMachineAndPart` にオプション `skipMachineFilterIfNoIndexHit: true` を追加。インデックス未ヒット時は機種名の再絞り込みをスキップし、API が返した行をそのまま表示。`useProductionScheduleDerivedRows.ts` からそのオプションを渡す。
+- **実機検証（2026-03-17）**:
+  - API: `machineName` 付き・なしとも 200 で応答することを確認。実機では production-schedule データが 0 件のため、絞り込み結果件数はデータあり環境で別途確認。
+  - Phase12 一括検証（`verify-phase12-real.sh`）は全24項目 PASS。
+- **References**:
+  - `apps/api/src/services/production-schedule/production-schedule-query.service.ts`（`normalizeMachineNameForCompare`）
+  - `apps/web/src/features/kiosk/productionSchedule/useProductionScheduleQueryParams.ts`（`toHalfWidthAscii`）
+  - `apps/web/src/features/kiosk/productionSchedule/displayRowDerivation.ts`（`skipMachineFilterIfNoIndexHit`）
+  - [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)（生産スケジュール 機種名検索チェック項目）
+
 ## Location Scope Phase1（挙動不変の境界導入、2026-03-14）
 
 - **背景**:

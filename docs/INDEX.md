@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-17）
+
+- **✅ 生産スケジュール 機種名・部品名検索 実装・デプロイ・実機検証完了**: 機種名＋工程＋資源CDのA条件で検索可能に。全角/半角正規化（フロント: `toHalfWidthAscii`、API: `normalizeMachineNameForCompare`）と、機種名指定時のドロップダウン空対策（`skipMachineFilterIfNoIndexHit`）を実施。**実機検証**: API 200・Phase12 全24項目PASS。実機データ0件環境では絞り込み件数確認はスキップ可（runbookに注記）。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#生産スケジュール-機種名部品名検索2026-03-17) / [frontend.md KB-304](./knowledge-base/frontend.md#kb-304-生産スケジュール-機種名部品名検索a条件全角半角正規化ドロップダウン空対策) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-16）
 
 - **✅ 除外資源CD Location整合化（site優先 + shared互換）デプロイ・実機検証完了**: policy参照を `siteKey` 優先 + `shared` フォールバックへ拡張し、管理コンソール保存を `siteKey` + `shared` 二重保存（Tx）へ変更。**デプロイ**: Pi5・raspi4-robodrill01 は初回成功。raspberrypi4（研削メイン）は初回接続タイムアウトのため未達だったが、復旧後に `--limit "raspberrypi4"` で再デプロイし**3台完了**。**実機検証**: OK（KUMITATE2 除外・進捗一覧非表示を確認）。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#除外資源cd-location整合化site優先--shared互換2026-03-16-実装) / [EXEC_PLAN.md](../EXEC_PLAN.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
