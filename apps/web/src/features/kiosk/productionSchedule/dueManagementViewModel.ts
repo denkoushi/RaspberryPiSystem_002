@@ -1,4 +1,5 @@
 import { deriveGlobalRankFlags } from './dueManagement';
+import { partMatchesResourceFilter, type DueManagementResourceFilterParams } from './resourceCategory';
 
 import type {
   ProductionScheduleDueManagementDailyPlanResult,
@@ -210,6 +211,14 @@ export const buildOrderedParts = (
   orderedFhincds
     .map((fhincd) => partsByFhincd.get(fhincd))
     .filter((part): part is ProductionScheduleDueManagementPartItem => Boolean(part));
+
+export const filterPartsByResourceFilter = (
+  orderedParts: ProductionScheduleDueManagementPartItem[],
+  filter: DueManagementResourceFilterParams,
+  options?: {
+    cuttingExcludedResourceCds?: string[];
+  }
+) => orderedParts.filter((part) => partMatchesResourceFilter(part, filter, options));
 
 export const resolveNextSelectedFseiban = (params: {
   selectedFseiban: string | null;

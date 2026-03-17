@@ -33,6 +33,7 @@ import { movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/pr
 import {
   DEFAULT_DUE_MANAGEMENT_FILTERS_STATE,
   DUE_MANAGEMENT_FILTERS_STORAGE_KEY,
+  hasDueManagementResourceFilter,
   sanitizeDueManagementFiltersState,
   toDueManagementFilterParams,
   toggleDueManagementCuttingFilter,
@@ -51,13 +52,14 @@ import {
   buildTriageBySeiban,
   buildTriageCandidates,
   buildTriageZoneCounts,
+  filterPartsByResourceFilter,
   filterGlobalRankItems,
   type GlobalRankFilter,
   resolveNextSelectedFseiban
 } from '../../features/kiosk/productionSchedule/dueManagementViewModel';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
-import { filterResourceCdsByCategory } from '../../features/kiosk/productionSchedule/resourceCategory';
+import { getGrindingAndCuttingResourceCds } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { useDueManagementSelectionActions } from '../../features/kiosk/productionSchedule/useDueManagementSelectionActions';
 import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
@@ -284,24 +286,21 @@ export function ProductionScheduleDueManagementPage() {
     window.localStorage.setItem(DUE_MANAGEMENT_FILTERS_STORAGE_KEY, JSON.stringify(dueManagementFilters));
   }, [dueManagementFilters]);
 
-  const visibleResourceCds = useMemo(() => {
-    const cuttingExcludedResourceCds = (resourcesQuery.data?.resourceItems ?? [])
-      .filter((item) => item.excluded)
-      .map((item) => item.resourceCd);
-    return filterResourceCdsByCategory(
-      resourcesQuery.data?.resources ?? [],
-      {
-        showGrinding: dueManagementFilters.showGrindingResources,
-        showCutting: dueManagementFilters.showCuttingResources
-      },
-      { cuttingExcludedResourceCds }
-    );
-  }, [
-    dueManagementFilters.showCuttingResources,
-    dueManagementFilters.showGrindingResources,
-    resourcesQuery.data?.resourceItems,
-    resourcesQuery.data?.resources
-  ]);
+  const cuttingExcludedResourceCds = useMemo(
+    () =>
+      (resourcesQuery.data?.resourceItems ?? [])
+        .filter((item) => item.excluded)
+        .map((item) => item.resourceCd),
+    [resourcesQuery.data?.resourceItems]
+  );
+
+  const visibleResourceCds = useMemo(
+    () =>
+      getGrindingAndCuttingResourceCds(resourcesQuery.data?.resources ?? [], {
+        cuttingExcludedResourceCds
+      }),
+    [cuttingExcludedResourceCds, resourcesQuery.data?.resources]
+  );
 
   useEffect(() => {
     if (!dueManagementFilters.selectedResourceCd) {
@@ -375,6 +374,19 @@ export function ProductionScheduleDueManagementPage() {
   const partsByFhincd = useMemo(() => buildPartsByFhincd(detail), [detail]);
 
   const orderedParts = useMemo(() => buildOrderedParts(orderedFhincds, partsByFhincd), [orderedFhincds, partsByFhincd]);
+  const rightPanelFilterActive = useMemo(
+    () => hasDueManagementResourceFilter(dueManagementFilters),
+    [dueManagementFilters]
+  );
+  const filteredOrderedParts = useMemo(
+    () =>
+      rightPanelFilterActive
+        ? filterPartsByResourceFilter(orderedParts, dueManagementFilterParams, {
+            cuttingExcludedResourceCds
+          })
+        : orderedParts,
+    [cuttingExcludedResourceCds, dueManagementFilterParams, orderedParts, rightPanelFilterActive]
+  );
 
   useEffect(() => {
     const incomingEtag = searchStateQuery.data?.etag ?? null;
@@ -643,12 +655,13 @@ export function ProductionScheduleDueManagementPage() {
               fseiban={detailQuery.data?.fseiban ?? null}
               dueDate={detailQuery.data?.dueDate ?? null}
               processingTypeDueDates={detailQuery.data?.processingTypeDueDates ?? []}
-              orderedParts={orderedParts}
+              orderedParts={filteredOrderedParts}
               processingTypeOptions={processingTypeOptionsQuery.data ?? []}
               updatePartProcessingPending={updatePartProcessingMutation.isPending}
               updatePartPrioritiesPending={updatePartPrioritiesMutation.isPending}
               updatePartNotePending={updatePartNoteMutation.isPending}
               updateProcessingDueDatePending={updateProcessingDueDateMutation.isPending}
+              conflictDisabled={rightPanelFilterActive}
               headerLeftControls={resourceFilterControls}
               onOpenDatePicker={openDatePicker}
               onOpenProcessingDueDatePicker={openProcessingDueDatePicker}
@@ -1017,7 +1030,8 @@ export function ProductionScheduleDueManagementPage() {
               type="button"
               onClick={savePartPriorities}
               className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
-              disabled={!selectedFseiban || updatePartPrioritiesMutation.isPending}
+              disabled={!selectedFseiban || updatePartPrioritiesMutation.isPending || rightPanelFilterActive}
+              title={rightPanelFilterActive ? 'フィルタ中は優先順位保存を無効化しています' : undefined}
             >
               {updatePartPrioritiesMutation.isPending ? '保存中...' : '優先順位を保存'}
             </button>
@@ -1026,10 +1040,10 @@ export function ProductionScheduleDueManagementPage() {
         <div className="h-[calc(100%-52px)] overflow-auto p-4">
           {detailQuery.isLoading ? <p className="text-sm text-white/80">読み込み中...</p> : null}
           {detailQuery.isError ? <p className="text-sm text-rose-300">詳細取得に失敗しました。</p> : null}
-          {!detailQuery.isLoading && orderedParts.length === 0 ? (
+          {!detailQuery.isLoading && filteredOrderedParts.length === 0 ? (
             <p className="text-sm text-white/80">製番を選択してください。</p>
           ) : null}
-          {orderedParts.length > 0 ? (
+          {filteredOrderedParts.length > 0 ? (
             <table className="w-full border-collapse text-left text-xs text-white">
               <thead>
                 <tr className="border-b border-white/20 text-white/80">
@@ -1048,7 +1062,7 @@ export function ProductionScheduleDueManagementPage() {
                 </tr>
               </thead>
               <tbody>
-                {orderedParts.map((part, index) => (
+                {filteredOrderedParts.map((part, index) => (
                   <tr key={part?.fhincd ?? index} className="border-b border-white/10">
                     <td className="px-2 py-2">{index + 1}</td>
                     <td className="px-2 py-2 font-mono">{part?.fhincd}</td>
@@ -1125,7 +1139,8 @@ export function ProductionScheduleDueManagementPage() {
                           type="button"
                           className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600 disabled:opacity-50"
                           onClick={() => setOrderedFhincds((prev) => movePriorityItem(prev, index, -1))}
-                          disabled={index === 0}
+                          disabled={index === 0 || rightPanelFilterActive}
+                          title={rightPanelFilterActive ? 'フィルタ中は並び替えを無効化しています' : undefined}
                         >
                           ↑
                         </button>
@@ -1133,7 +1148,8 @@ export function ProductionScheduleDueManagementPage() {
                           type="button"
                           className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600 disabled:opacity-50"
                           onClick={() => setOrderedFhincds((prev) => movePriorityItem(prev, index, 1))}
-                          disabled={index === orderedParts.length - 1}
+                          disabled={index === filteredOrderedParts.length - 1 || rightPanelFilterActive}
+                          title={rightPanelFilterActive ? 'フィルタ中は並び替えを無効化しています' : undefined}
                         >
                           ↓
                         </button>

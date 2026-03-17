@@ -15,6 +15,7 @@ type DueManagementDetailPanelProps = {
   updatePartPrioritiesPending: boolean;
   updatePartNotePending: boolean;
   updateProcessingDueDatePending: boolean;
+  conflictDisabled?: boolean;
   onOpenDatePicker: () => void;
   onOpenProcessingDueDatePicker: (processingType: string, dueDate: string | null) => void;
   onSavePartPriorities: () => void;
@@ -56,7 +57,8 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
             type="button"
             onClick={props.onSavePartPriorities}
             className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
-            disabled={!props.selectedFseiban || props.updatePartPrioritiesPending}
+            disabled={!props.selectedFseiban || props.updatePartPrioritiesPending || props.conflictDisabled}
+            title={props.conflictDisabled ? 'フィルタ中は優先順位保存を無効化しています' : undefined}
           >
             {props.updatePartPrioritiesPending ? '保存中...' : '優先順位を保存'}
           </button>
@@ -165,7 +167,8 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
                         type="button"
                         className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600 disabled:opacity-50"
                         onClick={() => props.onMovePart(index, -1)}
-                        disabled={index === 0}
+                        disabled={index === 0 || props.conflictDisabled}
+                        title={props.conflictDisabled ? 'フィルタ中は並び替えを無効化しています' : undefined}
                       >
                         ↑
                       </button>
@@ -173,7 +176,8 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
                         type="button"
                         className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600 disabled:opacity-50"
                         onClick={() => props.onMovePart(index, 1)}
-                        disabled={index === props.orderedParts.length - 1}
+                        disabled={index === props.orderedParts.length - 1 || props.conflictDisabled}
+                        title={props.conflictDisabled ? 'フィルタ中は並び替えを無効化しています' : undefined}
                       >
                         ↓
                       </button>

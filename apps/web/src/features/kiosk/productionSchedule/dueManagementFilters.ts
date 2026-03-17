@@ -54,6 +54,11 @@ export const toDueManagementFilterParams = (state: DueManagementFiltersState) =>
   };
 };
 
+export const hasDueManagementResourceFilter = (state: DueManagementFiltersState) => {
+  const resourceCategory = resolveDueManagementResourceCategory(state);
+  return state.selectedResourceCd.trim().length > 0 || typeof resourceCategory === 'string';
+};
+
 export const toggleDueManagementGrindingFilter = (
   state: DueManagementFiltersState
 ): DueManagementFiltersState => {
