@@ -5,6 +5,7 @@ import {
   extractMachineNameOptions,
   extractPartNameOptions,
   filterRowsByMachineAndPart,
+  filterRowsBySelectedOrderNumbers,
   normalizeScheduleRows
 } from './displayRowDerivation';
 
@@ -69,5 +70,22 @@ describe('displayRowDerivation machine/part filters', () => {
 
     expect(filtered).toHaveLength(2);
     expect(extractPartNameOptions(filtered)).toEqual(['部品X', '部品Y']);
+  });
+
+  it('選択した製造order番号だけを表示対象にする', () => {
+    const rows = normalizeScheduleRows([
+      {
+        id: 'row-1',
+        rowData: { ProductNo: '1234500001', FSEIBAN: 'S001', FHINCD: 'P001', FHINMEI: '部品X', FSIGENCD: '305' }
+      },
+      {
+        id: 'row-2',
+        rowData: { ProductNo: '1234500002', FSEIBAN: 'S001', FHINCD: 'P002', FHINMEI: '部品Y', FSIGENCD: '305' }
+      }
+    ]);
+
+    const filtered = filterRowsBySelectedOrderNumbers(rows, ['1234500002']);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]?.data.ProductNo).toBe('1234500002');
   });
 });

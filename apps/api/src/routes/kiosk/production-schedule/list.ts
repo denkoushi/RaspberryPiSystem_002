@@ -21,6 +21,7 @@ export async function registerProductionScheduleListRoute(
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 400;
     const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
+    const productNos = parseCsvList(query.productNos);
     const machineName = query.machineName?.trim();
     const resourceCds = parseCsvList(query.resourceCds);
     const assignedOnlyCds = parseCsvList(query.resourceAssignedOnlyCds);
@@ -32,6 +33,7 @@ export async function registerProductionScheduleListRoute(
       page,
       pageSize,
       queryText: rawQueryText,
+      productNos,
       machineName: machineName && machineName.length > 0 ? machineName : undefined,
       resourceCds,
       assignedOnlyCds,

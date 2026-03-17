@@ -9,6 +9,7 @@ export const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01'
 export const productionScheduleQuerySchema = z.object({
   productNo: z.string().min(1).max(100).optional(),
   q: z.string().min(1).max(200).optional(),
+  productNos: z.string().min(1).max(4000).optional(),
   resourceCds: z.string().min(1).max(400).optional(),
   resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
   resourceCategory: z.enum(['grinding', 'cutting']).optional(),
@@ -23,6 +24,14 @@ export const productionScheduleQuerySchema = z.object({
     .transform((v) => v === 'true' || v === '1'),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(2000).optional()
+});
+
+export const productionScheduleOrderSearchQuerySchema = z.object({
+  resourceCds: z.string().min(1).max(400),
+  resourceCategory: z.enum(['grinding', 'cutting']).optional(),
+  machineName: z.string().min(1).max(200).optional(),
+  productNoPrefix: z.string().regex(/^\d{5,10}$/),
+  partName: z.string().min(1).max(200).optional()
 });
 
 export const parseCsvList = (value: string | undefined): string[] => {

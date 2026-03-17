@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { registerProductionScheduleListRoute } from './list.js';
 import { registerProductionScheduleResourcesRoute } from './resources.js';
 import { registerProductionScheduleOrderUsageRoute } from './order-usage.js';
+import { registerProductionScheduleOrderSearchRoute } from './order-search.js';
 import { registerProductionScheduleCompleteRoute } from './complete.js';
 import { registerProductionScheduleNoteRoute } from './note.js';
 import { registerProductionScheduleDueDateRoute } from './due-date.js';
@@ -33,6 +34,7 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleListRoute(app, deps);
   await registerProductionScheduleResourcesRoute(app, deps);
   await registerProductionScheduleOrderUsageRoute(app, deps);
+  await registerProductionScheduleOrderSearchRoute(app, deps);
   await registerProductionScheduleCompleteRoute(app, deps);
   await registerProductionScheduleNoteRoute(app, deps);
   await registerProductionScheduleDueDateRoute(app, deps);

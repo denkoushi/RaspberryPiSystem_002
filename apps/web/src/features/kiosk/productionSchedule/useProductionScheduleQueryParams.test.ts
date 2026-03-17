@@ -15,6 +15,7 @@ describe('useProductionScheduleQueryParams', () => {
         showGrindingResources: true,
         showCuttingResources: false,
         selectedMachineName: 'MACHINE-A',
+        selectedOrderNumbers: [],
         history: []
       })
     );
@@ -35,6 +36,7 @@ describe('useProductionScheduleQueryParams', () => {
         showGrindingResources: true,
         showCuttingResources: false,
         selectedMachineName: '',
+        selectedOrderNumbers: [],
         history: []
       })
     );
@@ -54,11 +56,32 @@ describe('useProductionScheduleQueryParams', () => {
         showGrindingResources: false,
         showCuttingResources: false,
         selectedMachineName: '',
+        selectedOrderNumbers: [],
         history: ['SEIBAN-001']
       })
     );
 
     expect(result.current.hasQuery).toBe(true);
     expect(result.current.queryParams.q).toBe('SEIBAN-001');
+  });
+
+  it('選択済み製造order番号がある場合は productNos で問い合わせる', () => {
+    const { result } = renderHook(() =>
+      useProductionScheduleQueryParams({
+        activeQueries: [],
+        activeResourceCds: [],
+        activeResourceAssignedOnlyCds: [],
+        hasNoteOnlyFilter: false,
+        hasDueDateOnlyFilter: false,
+        showGrindingResources: false,
+        showCuttingResources: false,
+        selectedMachineName: '',
+        selectedOrderNumbers: ['1234500001', '1234500002'],
+        history: []
+      })
+    );
+
+    expect(result.current.hasQuery).toBe(true);
+    expect(result.current.queryParams.productNos).toBe('1234500001,1234500002');
   });
 });
