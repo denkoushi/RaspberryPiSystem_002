@@ -98,7 +98,9 @@ export function ProductionSchedulePage() {
     hasNoteOnlyFilter,
     hasDueDateOnlyFilter,
     showGrindingResources,
-    showCuttingResources
+    showCuttingResources,
+    selectedMachineName,
+    selectedPartName
   } = searchConditions;
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
   const [, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
@@ -123,6 +125,7 @@ export function ProductionSchedulePage() {
     hasDueDateOnlyFilter,
     showGrindingResources,
     showCuttingResources,
+    selectedMachineName,
     history
   });
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -150,7 +153,10 @@ export function ProductionSchedulePage() {
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions({ pauseRefetch });
   const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch });
   const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch });
-  const progressBySeiban = historyProgressQuery.data?.progressBySeiban ?? {};
+  const progressBySeiban = useMemo(
+    () => historyProgressQuery.data?.progressBySeiban ?? {},
+    [historyProgressQuery.data?.progressBySeiban]
+  );
 
   // Debug: 「10往復目くらいでたまに数秒待つ」が、(a) 完了API遅延なのか (b) 再取得競合なのかを分離する
   const scheduleFetchStartRef = useRef<number | null>(null);
@@ -233,7 +239,9 @@ export function ProductionSchedulePage() {
     itemSeparatorWidth,
     checkWidth,
     itemColumnWidths,
-    rowPairs
+    rowPairs,
+    machineNameOptions,
+    partNameOptions
   } = useProductionScheduleDerivedRows({
     rows: (scheduleQuery.data?.rows ?? []) as Array<{
       id: string;
@@ -252,8 +260,36 @@ export function ProductionSchedulePage() {
     selectedResourceCategory,
     showGrindingResources,
     showCuttingResources,
+    selectedMachineName,
+    selectedPartName,
     containerWidth
   });
+
+  const machineNameOptionsFromHistory = useMemo(() => {
+    const unique = new Map<string, string>();
+    Object.values(progressBySeiban).forEach((item) => {
+      const machineName = String(item.machineName ?? '').trim();
+      if (machineName.length === 0) return;
+      const key = machineName.toUpperCase();
+      if (!unique.has(key)) {
+        unique.set(key, machineName);
+      }
+    });
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b, 'ja'));
+  }, [progressBySeiban]);
+
+  const mergedMachineNameOptions = useMemo(() => {
+    const unique = new Map<string, string>();
+    [...machineNameOptionsFromHistory, ...machineNameOptions].forEach((machineName) => {
+      const trimmed = machineName.trim();
+      if (trimmed.length === 0) return;
+      const key = trimmed.toUpperCase();
+      if (!unique.has(key)) {
+        unique.set(key, trimmed);
+      }
+    });
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b, 'ja'));
+  }, [machineNameOptions, machineNameOptionsFromHistory]);
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
     resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
@@ -423,6 +459,17 @@ export function ProductionSchedulePage() {
     setSearchConditions((prev) => ({ showCuttingResources: !prev.showCuttingResources }));
   };
 
+  const handleMachineNameChange = (value: string) => {
+    setSearchConditions((prev) => ({
+      selectedMachineName: value,
+      selectedPartName: value === prev.selectedMachineName ? prev.selectedPartName : ''
+    }));
+  };
+
+  const handlePartNameChange = (value: string) => {
+    setSearchConditions({ selectedPartName: value });
+  };
+
   useEffect(() => {
     if (!selectedResourceCategory) {
       return;
@@ -436,6 +483,17 @@ export function ProductionSchedulePage() {
       activeResourceAssignedOnlyCds: prev.activeResourceAssignedOnlyCds.filter(shouldKeepResourceCd)
     }));
   }, [selectedResourceCategory, setSearchConditions]);
+
+  useEffect(() => {
+    if (selectedMachineName.trim().length === 0) {
+      if (selectedPartName.trim().length === 0) return;
+      setSearchConditions({ selectedPartName: '' });
+      return;
+    }
+    if (selectedPartName.trim().length > 0 && !partNameOptions.includes(selectedPartName)) {
+      setSearchConditions({ selectedPartName: '' });
+    }
+  }, [partNameOptions, selectedMachineName, selectedPartName, setSearchConditions]);
 
   const getAvailableOrders = (resourceCd: string, current: number | null) => {
     const usage = orderUsageQuery.data?.[resourceCd] ?? [];
@@ -514,6 +572,12 @@ export function ProductionSchedulePage() {
         onToggleGrindingResources={toggleGrindingResources}
         showCuttingResources={showCuttingResources}
         onToggleCuttingResources={toggleCuttingResources}
+        selectedMachineName={selectedMachineName}
+        machineNameOptions={mergedMachineNameOptions}
+        onMachineNameChange={handleMachineNameChange}
+        selectedPartName={selectedPartName}
+        partNameOptions={partNameOptions}
+        onPartNameChange={handlePartNameChange}
         disabled={scheduleQuery.isFetching || completePending}
         isFetching={scheduleQuery.isFetching}
         showFetching={hasQuery}

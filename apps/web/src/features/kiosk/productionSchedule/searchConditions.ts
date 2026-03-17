@@ -9,6 +9,8 @@ export type ProductionScheduleSearchConditions = {
   hasDueDateOnlyFilter: boolean;
   showGrindingResources: boolean;
   showCuttingResources: boolean;
+  selectedMachineName: string;
+  selectedPartName: string;
   inputQuery: string;
 };
 
@@ -25,5 +27,7 @@ export const DEFAULT_SEARCH_CONDITIONS: ProductionScheduleSearchConditions = {
   hasDueDateOnlyFilter: false,
   showGrindingResources: false,
   showCuttingResources: false,
+  selectedMachineName: '',
+  selectedPartName: '',
   inputQuery: ''
 };

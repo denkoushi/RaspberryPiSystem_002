@@ -2000,6 +2000,79 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows[0]?.rowData.FSIGENCD).toBe('305');
   });
 
+  it('allows machineName + resource filters without q and returns matching machine seiban rows', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: [
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-machine-a',
+          rowData: {
+            ProductNo: '0090',
+            FSEIBAN: 'CATM',
+            FHINCD: 'P1',
+            FHINMEI: '部品A',
+            FSIGENCD: '305',
+            FKOJUN: '10',
+            progress: ''
+          }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-machine-a-tag',
+          rowData: {
+            ProductNo: '0091',
+            FSEIBAN: 'CATM',
+            FHINCD: 'MH001',
+            FHINMEI: 'MACHINE-A',
+            FSIGENCD: '999',
+            FKOJUN: '20',
+            progress: ''
+          }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-machine-b',
+          rowData: {
+            ProductNo: '0092',
+            FSEIBAN: 'CATN',
+            FHINCD: 'P2',
+            FHINMEI: '部品B',
+            FSIGENCD: '305',
+            FKOJUN: '10',
+            progress: ''
+          }
+        },
+        {
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(),
+          dataHash: 'hash-machine-b-tag',
+          rowData: {
+            ProductNo: '0093',
+            FSEIBAN: 'CATN',
+            FHINCD: 'MH002',
+            FHINMEI: 'MACHINE-B',
+            FSIGENCD: '999',
+            FKOJUN: '20',
+            progress: ''
+          }
+        }
+      ]
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?resourceCategory=grinding&resourceCds=305&machineName=MACHINE-A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }>; total: number };
+    expect(body.rows.map((row) => row.rowData.ProductNo)).toEqual(['0090']);
+    expect(body.total).toBe(1);
+  });
+
   it('does not search when only resourceCategory is specified (without q/assignedOnly)', async () => {
     const res = await app.inject({
       method: 'GET',

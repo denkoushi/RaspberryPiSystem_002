@@ -253,7 +253,10 @@ export function useKioskProductionSchedule(
     q?: string;
     resourceCds?: string;
     resourceAssignedOnlyCds?: string;
+    resourceCategory?: 'grinding' | 'cutting';
+    machineName?: string;
     hasNoteOnly?: boolean;
+    hasDueDateOnly?: boolean;
     page?: number;
     pageSize?: number;
   },

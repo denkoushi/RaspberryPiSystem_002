@@ -41,6 +41,7 @@ export type ProductionScheduleListParams = {
   page: number;
   pageSize: number;
   queryText: string;
+  machineName?: string;
   resourceCds: string[];
   assignedOnlyCds: string[];
   resourceCategory?: ProductionScheduleResourceCategory;
@@ -147,10 +148,18 @@ const buildQueryWhere = (params: {
   textConditions: Prisma.Sql[];
   resourceConditions: Prisma.Sql[];
   resourceCategoryCondition: Prisma.Sql;
+  machineNameCondition: Prisma.Sql;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
 }): Prisma.Sql => {
-  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly } = params;
+  const {
+    textConditions,
+    resourceConditions,
+    resourceCategoryCondition,
+    machineNameCondition,
+    hasNoteOnly,
+    hasDueDateOnly
+  } = params;
 
   const textWhere =
     textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
@@ -168,7 +177,7 @@ const buildQueryWhere = (params: {
           ? Prisma.sql`AND ${resourceWhere}`
           : Prisma.empty;
 
-  queryWhere = Prisma.sql`${queryWhere} ${resourceCategoryCondition}`;
+  queryWhere = Prisma.sql`${queryWhere} ${resourceCategoryCondition} ${machineNameCondition}`;
 
   if (hasNoteOnly) {
     queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
@@ -197,6 +206,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     page,
     pageSize,
     queryText,
+    machineName,
     resourceCds,
     assignedOnlyCds,
     resourceCategory,
@@ -226,6 +236,22 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     locationKey
   });
   const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory, resourceCategoryPolicy);
+  const normalizedMachineName = machineName?.trim().toUpperCase() ?? '';
+  const machineNameCondition =
+    normalizedMachineName.length > 0
+      ? Prisma.sql`AND EXISTS (
+          SELECT 1
+          FROM "CsvDashboardRow" AS "MachineRow"
+          WHERE "MachineRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+            AND ${buildMaxProductNoWinnerCondition('MachineRow')}
+            AND ("MachineRow"."rowData"->>'FSEIBAN') = ("CsvDashboardRow"."rowData"->>'FSEIBAN')
+            AND (
+              UPPER(COALESCE("MachineRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+              OR UPPER(COALESCE("MachineRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+            )
+            AND UPPER(BTRIM(COALESCE("MachineRow"."rowData"->>'FHINMEI', ''))) = ${normalizedMachineName}
+        )`
+      : Prisma.empty;
 
   // 登録製番なし かつ 割当なし の場合は検索しない。
   // - 資源CD単独（resourceCds）
@@ -235,6 +261,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   // 割当のみは対象が少ないため単独検索を許可する。
   const hasOnlyResourceFilters =
     textConditions.length === 0 &&
+    normalizedMachineName.length === 0 &&
     filteredAssignedOnlyCds.length === 0 &&
     (filteredResourceCds.length > 0 || resourceCategory !== undefined);
 
@@ -255,6 +282,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     textConditions,
     resourceConditions,
     resourceCategoryCondition,
+    machineNameCondition,
     hasNoteOnly,
     hasDueDateOnly
   });

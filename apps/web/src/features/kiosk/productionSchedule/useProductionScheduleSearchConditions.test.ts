@@ -28,7 +28,9 @@ describe('useProductionScheduleSearchConditions', () => {
         conditions: {
           ...DEFAULT_SEARCH_CONDITIONS,
           inputQuery: 'SEIBAN-001',
-          hasNoteOnlyFilter: true
+          hasNoteOnlyFilter: true,
+          selectedMachineName: 'MACHINE-A',
+          selectedPartName: 'PART-A'
         }
       })
     );
@@ -37,6 +39,8 @@ describe('useProductionScheduleSearchConditions', () => {
 
     expect(result.current[0].inputQuery).toBe('SEIBAN-001');
     expect(result.current[0].hasNoteOnlyFilter).toBe(true);
+    expect(result.current[0].selectedMachineName).toBe('MACHINE-A');
+    expect(result.current[0].selectedPartName).toBe('PART-A');
   });
 
   it('条件変更時に debounce 後 localStorage へ保存する', () => {
@@ -46,7 +50,9 @@ describe('useProductionScheduleSearchConditions', () => {
       result.current[1]({
         inputQuery: 'M12345',
         activeQueries: ['M12345'],
-        hasDueDateOnlyFilter: true
+        hasDueDateOnlyFilter: true,
+        selectedMachineName: 'MACHINE-B',
+        selectedPartName: 'PART-B'
       });
     });
 
@@ -64,6 +70,8 @@ describe('useProductionScheduleSearchConditions', () => {
         inputQuery: string;
         activeQueries: string[];
         hasDueDateOnlyFilter: boolean;
+        selectedMachineName: string;
+        selectedPartName: string;
       };
     };
 
@@ -71,5 +79,7 @@ describe('useProductionScheduleSearchConditions', () => {
     expect(parsed.conditions.inputQuery).toBe('M12345');
     expect(parsed.conditions.activeQueries).toEqual(['M12345']);
     expect(parsed.conditions.hasDueDateOnlyFilter).toBe(true);
+    expect(parsed.conditions.selectedMachineName).toBe('MACHINE-B');
+    expect(parsed.conditions.selectedPartName).toBe('PART-B');
   });
 });

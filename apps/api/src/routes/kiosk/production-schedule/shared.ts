@@ -12,6 +12,7 @@ export const productionScheduleQuerySchema = z.object({
   resourceCds: z.string().min(1).max(400).optional(),
   resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
   resourceCategory: z.enum(['grinding', 'cutting']).optional(),
+  machineName: z.string().min(1).max(200).optional(),
   hasNoteOnly: z
     .string()
     .optional()

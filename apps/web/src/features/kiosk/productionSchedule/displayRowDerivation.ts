@@ -1,4 +1,5 @@
 import { buildResourceLocalRankMap } from './displayRank';
+import { toHalfWidthAscii } from './machineName';
 
 export type ScheduleRowData = {
   ProductNo?: string;
@@ -24,7 +25,7 @@ export type NormalizedScheduleRow = {
   dueDate: string | null;
 };
 
-type RawScheduleRow = {
+export type RawScheduleRow = {
   id: string;
   rowData?: unknown;
   processingOrder?: number | null;
@@ -33,6 +34,14 @@ type RawScheduleRow = {
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
+};
+
+const normalizeComparisonText = (value: string | null | undefined): string =>
+  toHalfWidthAscii((value ?? '').trim()).toUpperCase();
+
+const isMachinePartCode = (fhincd: string | null | undefined): boolean => {
+  const normalized = normalizeComparisonText(fhincd);
+  return normalized.startsWith('MH') || normalized.startsWith('SH');
 };
 
 export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedScheduleRow[] => {
@@ -77,10 +86,83 @@ export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedS
   });
 
   // FHINCDがMH/SHで始まるアイテム（機種名）は検索用製番ボタンにのみ表示し、一覧からは除外
-  return mapped.filter((row) => {
-    const fhincd = String(row.data.FHINCD ?? '').toUpperCase();
-    return !fhincd.startsWith('MH') && !fhincd.startsWith('SH');
+  return mapped.filter((row) => !isMachinePartCode(String(row.data.FHINCD ?? '')));
+};
+
+export const buildMachineToSeibanIndex = (sourceRows: RawScheduleRow[]): Map<string, Set<string>> => {
+  const index = new Map<string, Set<string>>();
+  sourceRows.forEach((row) => {
+    const rowData = (row.rowData ?? {}) as ScheduleRowData;
+    const machineName = String(rowData.FHINMEI ?? '').trim();
+    const fseiban = String(rowData.FSEIBAN ?? '').trim();
+    if (!isMachinePartCode(String(rowData.FHINCD ?? '')) || machineName.length === 0 || fseiban.length === 0) {
+      return;
+    }
+
+    const machineKey = normalizeComparisonText(machineName);
+    const bucket = index.get(machineKey) ?? new Set<string>();
+    bucket.add(fseiban);
+    index.set(machineKey, bucket);
   });
+  return index;
+};
+
+export const extractMachineNameOptions = (sourceRows: RawScheduleRow[]): string[] => {
+  const machineNameMap = new Map<string, string>();
+  sourceRows.forEach((row) => {
+    const rowData = (row.rowData ?? {}) as ScheduleRowData;
+    const machineName = String(rowData.FHINMEI ?? '').trim();
+    if (!isMachinePartCode(String(rowData.FHINCD ?? '')) || machineName.length === 0) {
+      return;
+    }
+    const key = normalizeComparisonText(machineName);
+    if (!machineNameMap.has(key)) {
+      machineNameMap.set(key, machineName);
+    }
+  });
+  return Array.from(machineNameMap.values()).sort((a, b) => a.localeCompare(b, 'ja'));
+};
+
+export const filterRowsByMachineAndPart = (
+  rows: NormalizedScheduleRow[],
+  machineToSeibanIndex: Map<string, Set<string>>,
+  selectedMachineName: string,
+  selectedPartName: string
+): NormalizedScheduleRow[] => {
+  const selectedMachineKey = normalizeComparisonText(selectedMachineName);
+  const selectedPartKey = normalizeComparisonText(selectedPartName);
+  const selectedSeibans = selectedMachineKey.length > 0 ? machineToSeibanIndex.get(selectedMachineKey) : undefined;
+
+  return rows.filter((row) => {
+    if (selectedMachineKey.length > 0) {
+      const fseiban = String(row.data.FSEIBAN ?? '').trim();
+      if (!selectedSeibans || !selectedSeibans.has(fseiban)) {
+        return false;
+      }
+    }
+    if (selectedPartKey.length > 0) {
+      const fhinmei = normalizeComparisonText(String(row.data.FHINMEI ?? ''));
+      if (fhinmei !== selectedPartKey) {
+        return false;
+      }
+    }
+    return true;
+  });
+};
+
+export const extractPartNameOptions = (rows: NormalizedScheduleRow[]): string[] => {
+  const partNameMap = new Map<string, string>();
+  rows.forEach((row) => {
+    const partName = String(row.data.FHINMEI ?? '').trim();
+    if (partName.length === 0) {
+      return;
+    }
+    const key = normalizeComparisonText(partName);
+    if (!partNameMap.has(key)) {
+      partNameMap.set(key, partName);
+    }
+  });
+  return Array.from(partNameMap.values()).sort((a, b) => a.localeCompare(b, 'ja'));
 };
 
 export const deriveDisplayRows = (
