@@ -106,6 +106,15 @@ export const productionScheduleDueManagementSeibanParamsSchema = z.object({
   fseiban: z.string().min(1).max(20).transform((value) => value.trim())
 });
 
+export const productionScheduleDueManagementFilterQuerySchema = z.object({
+  resourceCd: z
+    .string()
+    .max(100)
+    .optional()
+    .transform((value) => (typeof value === 'string' ? value.trim() : undefined)),
+  resourceCategory: z.enum(['grinding', 'cutting']).optional()
+});
+
 export const productionScheduleDueManagementSeibanProcessingParamsSchema = z.object({
   fseiban: z.string().min(1).max(20).transform((value) => value.trim()),
   processingType: z.string().min(1).max(20).transform((value) => value.trim())
@@ -149,7 +158,7 @@ export const productionScheduleDueManagementGlobalRankAutoGenerateBodySchema = z
   })
   .optional();
 
-export const productionScheduleDueManagementGlobalRankQuerySchema = z.object({
+export const productionScheduleDueManagementGlobalRankQuerySchema = productionScheduleDueManagementFilterQuerySchema.extend({
   targetLocation: z.string().min(1).max(100).optional(),
   rankingScope: z.enum(['globalShared', 'locationScoped', 'localTemporary']).optional()
 });

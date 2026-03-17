@@ -21,6 +21,7 @@ type DueManagementDetailPanelProps = {
   onSaveProcessingType: (fhincd: string, processingType: string) => void;
   onOpenPartNoteModal: (fhincd: string, note: string | null) => void;
   onMovePart: (index: number, direction: -1 | 1) => void;
+  headerLeftControls?: React.ReactNode;
 };
 
 export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
@@ -31,6 +32,7 @@ export function DueManagementDetailPanel(props: DueManagementDetailPanelProps) {
           <h2 className="text-sm font-semibold text-white">部品優先順位（製番単位）</h2>
         </div>
         <div className="flex items-center gap-2">
+          {props.headerLeftControls}
           <button
             type="button"
             onClick={props.onOpenDatePicker}

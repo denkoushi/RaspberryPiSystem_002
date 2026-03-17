@@ -563,6 +563,11 @@ export interface DueManagementTargetContext {
   rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
 }
 
+export interface DueManagementResourceFilterContext {
+  resourceCd?: string;
+  resourceCategory?: 'grinding' | 'cutting';
+}
+
 export interface ProductionScheduleDueManagementPartProcessItem {
   rowId: string;
   resourceCd: string;
@@ -743,23 +748,26 @@ export async function getKioskProductionScheduleResources() {
   };
 }
 
-export async function getKioskProductionScheduleDueManagementSummary() {
+export async function getKioskProductionScheduleDueManagementSummary(context?: DueManagementResourceFilterContext) {
   const { data } = await api.get<{ summaries: ProductionScheduleDueManagementSummaryItem[] }>(
-    '/kiosk/production-schedule/due-management/summary'
+    '/kiosk/production-schedule/due-management/summary',
+    { params: context }
   );
   return data.summaries;
 }
 
-export async function getKioskProductionScheduleDueManagementTriage() {
+export async function getKioskProductionScheduleDueManagementTriage(context?: DueManagementResourceFilterContext) {
   const { data } = await api.get<ProductionScheduleDueManagementTriageResult>(
-    '/kiosk/production-schedule/due-management/triage'
+    '/kiosk/production-schedule/due-management/triage',
+    { params: context }
   );
   return data;
 }
 
-export async function getKioskProductionScheduleDueManagementDailyPlan() {
+export async function getKioskProductionScheduleDueManagementDailyPlan(context?: DueManagementResourceFilterContext) {
   const { data } = await api.get<ProductionScheduleDueManagementDailyPlanResult>(
-    '/kiosk/production-schedule/due-management/daily-plan'
+    '/kiosk/production-schedule/due-management/daily-plan',
+    { params: context }
   );
   return data;
 }
@@ -773,7 +781,9 @@ export async function updateKioskProductionScheduleDueManagementDailyPlan(payloa
   return data;
 }
 
-export async function getKioskProductionScheduleDueManagementGlobalRank(context?: DueManagementTargetContext) {
+export async function getKioskProductionScheduleDueManagementGlobalRank(
+  context?: DueManagementTargetContext & DueManagementResourceFilterContext
+) {
   const { data } = await api.get<ProductionScheduleDueManagementGlobalRankResult>(
     '/kiosk/production-schedule/due-management/global-rank',
     { params: context }
@@ -792,7 +802,9 @@ export async function updateKioskProductionScheduleDueManagementGlobalRank(paylo
   return data;
 }
 
-export async function getKioskProductionScheduleDueManagementGlobalRankProposal(context?: DueManagementTargetContext) {
+export async function getKioskProductionScheduleDueManagementGlobalRankProposal(
+  context?: DueManagementTargetContext & DueManagementResourceFilterContext
+) {
   const { data } = await api.get<ProductionScheduleDueManagementGlobalRankProposal>(
     '/kiosk/production-schedule/due-management/global-rank/proposal',
     { params: context }
@@ -830,9 +842,13 @@ export async function getKioskProductionScheduleProcessingTypeOptions() {
   return data.options;
 }
 
-export async function getKioskProductionScheduleDueManagementSeibanDetail(fseiban: string) {
+export async function getKioskProductionScheduleDueManagementSeibanDetail(
+  fseiban: string,
+  context?: DueManagementResourceFilterContext
+) {
   const { data } = await api.get<{ detail: ProductionScheduleDueManagementSeibanDetail }>(
-    `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}`
+    `/kiosk/production-schedule/due-management/seiban/${encodeURIComponent(fseiban)}`,
+    { params: context }
   );
   return data.detail;
 }

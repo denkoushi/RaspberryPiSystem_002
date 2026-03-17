@@ -945,6 +945,95 @@ describe('Kiosk Production Schedule API', () => {
     expect(itemA?.reasons.some((reason) => reason.code === 'SURFACE_PRIORITY')).toBe(true);
   });
 
+  it('filters due-management read endpoints by resourceCd', async () => {
+    const stateGetRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const etag = stateGetRes.headers.etag;
+    expect(typeof etag).toBe('string');
+
+    const statePutRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': String(etag) },
+      payload: { state: { history: ['A', 'B'] } }
+    });
+    expect(statePutRes.statusCode).toBe(200);
+
+    const saveSelectionRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/triage/selection',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { selectedFseibans: ['A', 'B'] }
+    });
+    expect(saveSelectionRes.statusCode).toBe(200);
+
+    const savePlanRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFseibans: ['A', 'B'] }
+    });
+    expect(savePlanRes.statusCode).toBe(200);
+
+    const saveRankRes = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/due-management/global-rank',
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { orderedFseibans: ['A', 'B'] }
+    });
+    expect(saveRankRes.statusCode).toBe(200);
+
+    const summaryFilteredRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/summary?resourceCd=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(summaryFilteredRes.statusCode).toBe(200);
+    const summaryFilteredBody = summaryFilteredRes.json() as { summaries: Array<{ fseiban: string }> };
+    expect(summaryFilteredBody.summaries.map((item) => item.fseiban)).toEqual(['A']);
+
+    const triageFilteredRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/triage?resourceCd=2',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(triageFilteredRes.statusCode).toBe(200);
+    const triageFilteredBody = triageFilteredRes.json() as {
+      zones: {
+        danger: Array<{ fseiban: string }>;
+        caution: Array<{ fseiban: string }>;
+        safe: Array<{ fseiban: string }>;
+      };
+    };
+    const triageFseibans = [
+      ...triageFilteredBody.zones.danger,
+      ...triageFilteredBody.zones.caution,
+      ...triageFilteredBody.zones.safe
+    ].map((item) => item.fseiban);
+    expect(triageFseibans).toEqual(['B']);
+
+    const dailyPlanFilteredRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/daily-plan?resourceCd=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(dailyPlanFilteredRes.statusCode).toBe(200);
+    const dailyPlanFilteredBody = dailyPlanFilteredRes.json() as { orderedFseibans: string[] };
+    expect(dailyPlanFilteredBody.orderedFseibans).toEqual(['A']);
+
+    const globalRankFilteredRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/global-rank?resourceCd=2',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(globalRankFilteredRes.statusCode).toBe(200);
+    const globalRankFilteredBody = globalRankFilteredRes.json() as { orderedFseibans: string[] };
+    expect(globalRankFilteredBody.orderedFseibans).toEqual(['B']);
+  });
+
   it('updates due-management triage selection and returns selected state', async () => {
     const stateGetRes = await app.inject({
       method: 'GET',

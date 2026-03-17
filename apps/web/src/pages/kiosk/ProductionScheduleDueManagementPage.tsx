@@ -8,6 +8,7 @@ import {
   useKioskProductionScheduleDueManagementSeibanDetail,
   useKioskProductionScheduleDueManagementSummary,
   useKioskProductionScheduleDueManagementTriage,
+  useKioskProductionScheduleResources,
   useKioskProductionScheduleProcessingTypeOptions,
   useKioskProductionScheduleSearchState,
   useUpdateKioskProductionScheduleDueManagementPartNote,
@@ -24,10 +25,19 @@ import { DueManagementActiveContextBar } from '../../components/kiosk/dueManagem
 import { DueManagementDetailPanel } from '../../components/kiosk/dueManagement/DueManagementDetailPanel';
 import { DueManagementLayoutShell } from '../../components/kiosk/dueManagement/DueManagementLayoutShell';
 import { DueManagementLeftRail } from '../../components/kiosk/dueManagement/DueManagementLeftRail';
+import { DueManagementResourceFilterControls } from '../../components/kiosk/dueManagement/DueManagementResourceFilterControls';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { movePriorityItem, normalizeDueDateInput } from '../../features/kiosk/productionSchedule/dueManagement';
+import {
+  DEFAULT_DUE_MANAGEMENT_FILTERS_STATE,
+  DUE_MANAGEMENT_FILTERS_STORAGE_KEY,
+  sanitizeDueManagementFiltersState,
+  toDueManagementFilterParams,
+  toggleDueManagementCuttingFilter,
+  toggleDueManagementGrindingFilter
+} from '../../features/kiosk/productionSchedule/dueManagementFilters';
 import {
   buildDailyPlanMetaBySeiban,
   buildFilteredTriageCandidates,
@@ -47,6 +57,7 @@ import {
 } from '../../features/kiosk/productionSchedule/dueManagementViewModel';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { filterResourceCdsByCategory } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { useDueManagementSelectionActions } from '../../features/kiosk/productionSchedule/useDueManagementSelectionActions';
 import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
@@ -81,6 +92,24 @@ export function ProductionScheduleDueManagementPage() {
     const stored = window.localStorage.getItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY)?.trim();
     return stored && stored.length > 0 ? stored : DEFAULT_TARGET_LOCATIONS[0];
   });
+  const [dueManagementFilters, setDueManagementFilters] = useState(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_DUE_MANAGEMENT_FILTERS_STATE;
+    }
+    const stored = window.localStorage.getItem(DUE_MANAGEMENT_FILTERS_STORAGE_KEY);
+    if (!stored) {
+      return DEFAULT_DUE_MANAGEMENT_FILTERS_STATE;
+    }
+    try {
+      return sanitizeDueManagementFiltersState(JSON.parse(stored));
+    } catch {
+      return DEFAULT_DUE_MANAGEMENT_FILTERS_STATE;
+    }
+  });
+  const dueManagementFilterParams = useMemo(
+    () => toDueManagementFilterParams(dueManagementFilters),
+    [dueManagementFilters]
+  );
   const rankingContext = useMemo(
     () => ({
       targetLocation: canSelectTargetLocation ? targetLocation : undefined,
@@ -88,12 +117,22 @@ export function ProductionScheduleDueManagementPage() {
     }),
     [canSelectTargetLocation, targetLocation]
   );
+  const dueManagementGlobalRankContext = useMemo(
+    () => ({
+      ...rankingContext,
+      ...dueManagementFilterParams
+    }),
+    [dueManagementFilterParams, rankingContext]
+  );
 
-  const summaryQuery = useKioskProductionScheduleDueManagementSummary();
-  const triageQuery = useKioskProductionScheduleDueManagementTriage();
-  const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan();
-  const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank(rankingContext);
-  const globalRankProposalQuery = useKioskProductionScheduleDueManagementGlobalRankProposal(rankingContext);
+  const summaryQuery = useKioskProductionScheduleDueManagementSummary(dueManagementFilterParams);
+  const triageQuery = useKioskProductionScheduleDueManagementTriage(dueManagementFilterParams);
+  const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan(dueManagementFilterParams);
+  const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank(dueManagementGlobalRankContext);
+  const globalRankProposalQuery = useKioskProductionScheduleDueManagementGlobalRankProposal(
+    dueManagementGlobalRankContext
+  );
+  const resourcesQuery = useKioskProductionScheduleResources();
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions();
   const searchStateQuery = useKioskProductionScheduleSearchState();
   const updateSearchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -122,7 +161,10 @@ export function ProductionScheduleDueManagementPage() {
   const [isDailyPlanDirty, setIsDailyPlanDirty] = useState(false);
 
   const [selectedFseiban, setSelectedFseiban] = useState<string | null>(null);
-  const detailQuery = useKioskProductionScheduleDueManagementSeibanDetail(selectedFseiban);
+  const detailQuery = useKioskProductionScheduleDueManagementSeibanDetail(
+    selectedFseiban,
+    dueManagementFilterParams
+  );
   const updateDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanDueDate();
   const updateProcessingDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate();
   const updatePartPrioritiesMutation = useUpdateKioskProductionScheduleDueManagementPartPriorities();
@@ -236,6 +278,58 @@ export function ProductionScheduleDueManagementPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY, targetLocation);
   }, [targetLocation]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(DUE_MANAGEMENT_FILTERS_STORAGE_KEY, JSON.stringify(dueManagementFilters));
+  }, [dueManagementFilters]);
+
+  const visibleResourceCds = useMemo(() => {
+    const cuttingExcludedResourceCds = (resourcesQuery.data?.resourceItems ?? [])
+      .filter((item) => item.excluded)
+      .map((item) => item.resourceCd);
+    return filterResourceCdsByCategory(
+      resourcesQuery.data?.resources ?? [],
+      {
+        showGrinding: dueManagementFilters.showGrindingResources,
+        showCutting: dueManagementFilters.showCuttingResources
+      },
+      { cuttingExcludedResourceCds }
+    );
+  }, [
+    dueManagementFilters.showCuttingResources,
+    dueManagementFilters.showGrindingResources,
+    resourcesQuery.data?.resourceItems,
+    resourcesQuery.data?.resources
+  ]);
+
+  useEffect(() => {
+    if (!dueManagementFilters.selectedResourceCd) {
+      return;
+    }
+    if (visibleResourceCds.includes(dueManagementFilters.selectedResourceCd)) {
+      return;
+    }
+    setDueManagementFilters((prev) => ({
+      ...prev,
+      selectedResourceCd: ''
+    }));
+  }, [dueManagementFilters.selectedResourceCd, visibleResourceCds]);
+
+  const setSelectedResourceCd = (resourceCd: string) => {
+    setDueManagementFilters((prev) => ({
+      ...prev,
+      selectedResourceCd: resourceCd.trim()
+    }));
+  };
+
+  const toggleGrindingResources = () => {
+    setDueManagementFilters((prev) => toggleDueManagementGrindingFilter(prev));
+  };
+
+  const toggleCuttingResources = () => {
+    setDueManagementFilters((prev) => toggleDueManagementCuttingFilter(prev));
+  };
 
   const saveDailyPlan = async () => {
     await updateDailyPlanMutation.mutateAsync({
@@ -446,6 +540,19 @@ export function ProductionScheduleDueManagementPage() {
     );
   };
 
+  const resourceFilterControls = (
+    <DueManagementResourceFilterControls
+      resourceCds={visibleResourceCds}
+      selectedResourceCd={dueManagementFilters.selectedResourceCd}
+      onSelectResourceCd={setSelectedResourceCd}
+      showGrindingResources={dueManagementFilters.showGrindingResources}
+      onToggleGrindingResources={toggleGrindingResources}
+      showCuttingResources={dueManagementFilters.showCuttingResources}
+      onToggleCuttingResources={toggleCuttingResources}
+      disabled={resourcesQuery.isLoading}
+    />
+  );
+
   if (DUE_MANAGEMENT_LAYOUT_V2_ENABLED) {
     const selectedTriage = selectedFseiban ? triageBySeiban.get(selectedFseiban) ?? null : null;
     const triageZoneLabel = selectedTriage
@@ -542,6 +649,7 @@ export function ProductionScheduleDueManagementPage() {
               updatePartPrioritiesPending={updatePartPrioritiesMutation.isPending}
               updatePartNotePending={updatePartNoteMutation.isPending}
               updateProcessingDueDatePending={updateProcessingDueDateMutation.isPending}
+              headerLeftControls={resourceFilterControls}
               onOpenDatePicker={openDatePicker}
               onOpenProcessingDueDatePicker={openProcessingDueDatePicker}
               onSavePartPriorities={savePartPriorities}
@@ -885,6 +993,7 @@ export function ProductionScheduleDueManagementPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {resourceFilterControls}
             <button
               type="button"
               onClick={openDatePicker}

@@ -319,34 +319,42 @@ export function useKioskProductionScheduleHistoryProgress(options?: { pauseRefet
   });
 }
 
-export function useKioskProductionScheduleDueManagementSummary() {
+type DueManagementFilterContext = {
+  resourceCd?: string;
+  resourceCategory?: 'grinding' | 'cutting';
+};
+
+export function useKioskProductionScheduleDueManagementSummary(context?: DueManagementFilterContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-summary'],
-    queryFn: getKioskProductionScheduleDueManagementSummary,
+    queryKey: ['kiosk-production-schedule-due-management-summary', context],
+    queryFn: () => getKioskProductionScheduleDueManagementSummary(context),
     refetchInterval: 30000
   });
 }
 
-export function useKioskProductionScheduleDueManagementTriage() {
+export function useKioskProductionScheduleDueManagementTriage(context?: DueManagementFilterContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-triage'],
-    queryFn: getKioskProductionScheduleDueManagementTriage,
+    queryKey: ['kiosk-production-schedule-due-management-triage', context],
+    queryFn: () => getKioskProductionScheduleDueManagementTriage(context),
     refetchInterval: 30000
   });
 }
 
-export function useKioskProductionScheduleDueManagementDailyPlan() {
+export function useKioskProductionScheduleDueManagementDailyPlan(context?: DueManagementFilterContext) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-daily-plan'],
-    queryFn: getKioskProductionScheduleDueManagementDailyPlan,
+    queryKey: ['kiosk-production-schedule-due-management-daily-plan', context],
+    queryFn: () => getKioskProductionScheduleDueManagementDailyPlan(context),
     refetchInterval: 30000
   });
 }
 
-export function useKioskProductionScheduleDueManagementSeibanDetail(fseiban: string | null) {
+export function useKioskProductionScheduleDueManagementSeibanDetail(
+  fseiban: string | null,
+  context?: DueManagementFilterContext
+) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-due-management-seiban', fseiban],
-    queryFn: () => getKioskProductionScheduleDueManagementSeibanDetail(fseiban ?? ''),
+    queryKey: ['kiosk-production-schedule-due-management-seiban', fseiban, context],
+    queryFn: () => getKioskProductionScheduleDueManagementSeibanDetail(fseiban ?? '', context),
     enabled: typeof fseiban === 'string' && fseiban.trim().length > 0
   });
 }
@@ -480,6 +488,8 @@ export function useUpdateKioskProductionScheduleDueManagementDailyPlan() {
 type DueManagementTargetContext = {
   targetLocation?: string;
   rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary';
+  resourceCd?: string;
+  resourceCategory?: 'grinding' | 'cutting';
 };
 
 export function useKioskProductionScheduleDueManagementGlobalRank(context?: DueManagementTargetContext) {
@@ -495,12 +505,9 @@ export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
   return useMutation({
     mutationFn: (payload: { orderedFseibans: string[]; targetLocation?: string; rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary' }) =>
       updateKioskProductionScheduleDueManagementGlobalRank(payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank', {
-          targetLocation: variables.targetLocation,
-          rankingScope: variables.rankingScope
-        }]
+        queryKey: ['kiosk-production-schedule-due-management-global-rank']
       });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-daily-plan']
@@ -522,18 +529,12 @@ export function useAutoGenerateKioskProductionScheduleDueManagementGlobalRank() 
   return useMutation({
     mutationFn: (payload?: { minCandidateCount?: number; maxReorderDeltaRatio?: number; keepExistingTail?: boolean; targetLocation?: string; rankingScope?: 'globalShared' | 'locationScoped' | 'localTemporary' }) =>
       autoGenerateKioskProductionScheduleDueManagementGlobalRank(payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank', {
-          targetLocation: variables?.targetLocation,
-          rankingScope: variables?.rankingScope
-        }]
+        queryKey: ['kiosk-production-schedule-due-management-global-rank']
       });
       void queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal', {
-          targetLocation: variables?.targetLocation,
-          rankingScope: variables?.rankingScope
-        }]
+        queryKey: ['kiosk-production-schedule-due-management-global-rank-proposal']
       });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-daily-plan']

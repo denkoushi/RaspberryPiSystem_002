@@ -6,6 +6,10 @@ import { dueManagementLearningEventRepository } from '../../../services/producti
 import { resolveRankingScopePolicy } from '../../../services/production-schedule/due-management-ranking-scope-policy.service.js';
 import { evaluateDueManagementLearningReport } from '../../../services/production-schedule/due-management-learning-evaluator.service.js';
 import {
+  hasDueManagementResourceFilter,
+  listDueManagementFilteredFseibans
+} from '../../../services/production-schedule/due-management-resource-filter.service.js';
+import {
   listDueManagementGlobalRank,
   replaceDueManagementGlobalRank
 } from '../../../services/production-schedule/due-management-global-rank.service.js';
@@ -68,8 +72,15 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
       targetLocation: scopePolicy.targetLocation,
       scope: scopePolicy.scope
     });
+    const filteredOrderedFseibans = hasDueManagementResourceFilter(query)
+      ? await listDueManagementFilteredFseibans({
+          locationScope: toDueManagementScopeFromContext({ deviceScopeKey: scopePolicy.targetLocation }),
+          targetFseibans: orderedFseibans,
+          filter: query
+        })
+      : orderedFseibans;
     return {
-      orderedFseibans,
+      orderedFseibans: filteredOrderedFseibans,
       targetLocation: scopePolicy.targetLocation,
       actorLocation,
       rankingScope: scopePolicy.scope
