@@ -66,12 +66,20 @@ export const useProductionScheduleDerivedRows = ({
   const machineToSeibanIndex = useMemo(() => buildMachineToSeibanIndex(sourceRows), [sourceRows]);
   const machineNameOptions = useMemo(() => extractMachineNameOptions(sourceRows), [sourceRows]);
   const machineFilteredRows = useMemo(
-    () => filterRowsByMachineAndPart(normalizedRows, machineToSeibanIndex, selectedMachineName, ''),
+    () =>
+      filterRowsByMachineAndPart(normalizedRows, machineToSeibanIndex, selectedMachineName, '', {
+        // API側ですでに machineName 絞り込み済みの場合、MH/SH行が無く index が空でも
+        // 部品候補・一覧を落とさないようにする。
+        skipMachineFilterIfNoIndexHit: true
+      }),
     [machineToSeibanIndex, normalizedRows, selectedMachineName]
   );
   const partNameOptions = useMemo(() => extractPartNameOptions(machineFilteredRows), [machineFilteredRows]);
   const filteredRows = useMemo(
-    () => filterRowsByMachineAndPart(normalizedRows, machineToSeibanIndex, selectedMachineName, selectedPartName),
+    () =>
+      filterRowsByMachineAndPart(normalizedRows, machineToSeibanIndex, selectedMachineName, selectedPartName, {
+        skipMachineFilterIfNoIndexHit: true
+      }),
     [machineToSeibanIndex, normalizedRows, selectedMachineName, selectedPartName]
   );
 

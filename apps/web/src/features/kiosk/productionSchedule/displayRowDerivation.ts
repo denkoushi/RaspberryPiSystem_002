@@ -127,14 +127,17 @@ export const filterRowsByMachineAndPart = (
   rows: NormalizedScheduleRow[],
   machineToSeibanIndex: Map<string, Set<string>>,
   selectedMachineName: string,
-  selectedPartName: string
+  selectedPartName: string,
+  options?: { skipMachineFilterIfNoIndexHit?: boolean }
 ): NormalizedScheduleRow[] => {
   const selectedMachineKey = normalizeComparisonText(selectedMachineName);
   const selectedPartKey = normalizeComparisonText(selectedPartName);
   const selectedSeibans = selectedMachineKey.length > 0 ? machineToSeibanIndex.get(selectedMachineKey) : undefined;
+  const shouldApplyMachineFilter =
+    selectedMachineKey.length > 0 && !(options?.skipMachineFilterIfNoIndexHit && !selectedSeibans);
 
   return rows.filter((row) => {
-    if (selectedMachineKey.length > 0) {
+    if (shouldApplyMachineFilter) {
       const fseiban = String(row.data.FSEIBAN ?? '').trim();
       if (!selectedSeibans || !selectedSeibans.has(fseiban)) {
         return false;

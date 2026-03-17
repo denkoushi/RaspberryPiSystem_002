@@ -48,4 +48,26 @@ describe('displayRowDerivation machine/part filters', () => {
     expect(machineAndPartFiltered).toHaveLength(1);
     expect(machineAndPartFiltered[0]?.data.FHINMEI).toBe('部品Y');
   });
+
+  it('APIでmachineName絞り込み済みでMH/SH行が無い場合は部品を落とさない', () => {
+    const apiFilteredPartRows = [
+      {
+        id: 'part-row-1',
+        rowData: { FSEIBAN: 'S001', FHINCD: 'P001', FHINMEI: '部品X', FSIGENCD: '305' }
+      },
+      {
+        id: 'part-row-2',
+        rowData: { FSEIBAN: 'S001', FHINCD: 'P002', FHINMEI: '部品Y', FSIGENCD: '305' }
+      }
+    ];
+    const machineToSeibanIndex = buildMachineToSeibanIndex(apiFilteredPartRows);
+    const rows = normalizeScheduleRows(apiFilteredPartRows);
+
+    const filtered = filterRowsByMachineAndPart(rows, machineToSeibanIndex, '機種A', '', {
+      skipMachineFilterIfNoIndexHit: true
+    });
+
+    expect(filtered).toHaveLength(2);
+    expect(extractPartNameOptions(filtered)).toEqual(['部品X', '部品Y']);
+  });
 });
