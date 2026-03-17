@@ -25,6 +25,17 @@ import {
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
+/** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
+function normalizeMachineNameForCompare(value: string | null | undefined): string {
+  if (value == null) return '';
+  const s = String(value).trim();
+  const half =
+    s.replace(/[\uFF01-\uFF5E]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0xfee0)
+    ).replace(/\u3000/g, ' ');
+  return half.toUpperCase();
+}
+
 type ProductionScheduleRow = {
   id: string;
   occurredAt: Date;
@@ -41,6 +52,7 @@ export type ProductionScheduleListParams = {
   page: number;
   pageSize: number;
   queryText: string;
+  machineName?: string;
   resourceCds: string[];
   assignedOnlyCds: string[];
   resourceCategory?: ProductionScheduleResourceCategory;
@@ -147,10 +159,18 @@ const buildQueryWhere = (params: {
   textConditions: Prisma.Sql[];
   resourceConditions: Prisma.Sql[];
   resourceCategoryCondition: Prisma.Sql;
+  machineNameCondition: Prisma.Sql;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
 }): Prisma.Sql => {
-  const { textConditions, resourceConditions, resourceCategoryCondition, hasNoteOnly, hasDueDateOnly } = params;
+  const {
+    textConditions,
+    resourceConditions,
+    resourceCategoryCondition,
+    machineNameCondition,
+    hasNoteOnly,
+    hasDueDateOnly
+  } = params;
 
   const textWhere =
     textConditions.length > 0 ? Prisma.sql`(${Prisma.join(textConditions, ' OR ')})` : Prisma.empty;
@@ -168,7 +188,7 @@ const buildQueryWhere = (params: {
           ? Prisma.sql`AND ${resourceWhere}`
           : Prisma.empty;
 
-  queryWhere = Prisma.sql`${queryWhere} ${resourceCategoryCondition}`;
+  queryWhere = Prisma.sql`${queryWhere} ${resourceCategoryCondition} ${machineNameCondition}`;
 
   if (hasNoteOnly) {
     queryWhere = Prisma.sql`${queryWhere} AND "CsvDashboardRow"."id" IN (
@@ -197,6 +217,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     page,
     pageSize,
     queryText,
+    machineName,
     resourceCds,
     assignedOnlyCds,
     resourceCategory,
@@ -226,6 +247,43 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     locationKey
   });
   const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory, resourceCategoryPolicy);
+  const normalizedMachineName = normalizeMachineNameForCompare(machineName);
+  let machineNameCondition: Prisma.Sql = Prisma.empty;
+  if (normalizedMachineName.length > 0) {
+    type MachineRow = { fseiban: string | null; fhinmei: string | null };
+    const machineRows = await prisma.$queryRaw<MachineRow[]>`
+      SELECT
+        "rowData"->>'FSEIBAN' AS "fseiban",
+        "rowData"->>'FHINMEI' AS "fhinmei"
+      FROM "CsvDashboardRow"
+      WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+        AND (
+          UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+          OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+        )
+    `;
+    const matchingFseibans = Array.from(
+      new Set(
+        machineRows
+          .filter(
+            (r) =>
+              r.fseiban != null &&
+              r.fhinmei != null &&
+              normalizeMachineNameForCompare(r.fhinmei) === normalizedMachineName
+          )
+          .map((r) => r.fseiban as string)
+      )
+    );
+    if (matchingFseibans.length === 0) {
+      machineNameCondition = Prisma.sql`AND 1 = 0`;
+    } else {
+      machineNameCondition = Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(
+        matchingFseibans.map((s) => Prisma.sql`${s}`),
+        ','
+      )})`;
+    }
+  }
 
   // 登録製番なし かつ 割当なし の場合は検索しない。
   // - 資源CD単独（resourceCds）
@@ -235,6 +293,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   // 割当のみは対象が少ないため単独検索を許可する。
   const hasOnlyResourceFilters =
     textConditions.length === 0 &&
+    normalizedMachineName.length === 0 &&
     filteredAssignedOnlyCds.length === 0 &&
     (filteredResourceCds.length > 0 || resourceCategory !== undefined);
 
@@ -255,6 +314,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     textConditions,
     resourceConditions,
     resourceCategoryCondition,
+    machineNameCondition,
     hasNoteOnly,
     hasDueDateOnly
   });

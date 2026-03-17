@@ -3,24 +3,20 @@ import { useMemo } from 'react';
 import { computeColumnWidths, type TableColumnDefinition } from '../columnWidth';
 
 import {
+  buildMachineToSeibanIndex,
   buildRowPairs,
   collectResourceCds,
   countCompletion,
   deriveDisplayRows,
+  extractMachineNameOptions,
+  extractPartNameOptions,
+  filterRowsByMachineAndPart,
   normalizeScheduleRows,
-  type NormalizedScheduleRow
+  type NormalizedScheduleRow,
+  type RawScheduleRow
 } from './displayRowDerivation';
 
-type RawScheduleRow = {
-  id: string;
-  rowData?: unknown;
-  processingOrder?: number | null;
-  globalRank?: number | null;
-  actualPerPieceMinutes?: number | null;
-  processingType?: string | null;
-  note?: string | null;
-  dueDate?: string | null;
-};
+const EMPTY_ROWS: RawScheduleRow[] = [];
 
 type Params = {
   rows: RawScheduleRow[] | undefined;
@@ -31,6 +27,8 @@ type Params = {
   selectedResourceCategory: 'grinding' | 'cutting' | undefined;
   showGrindingResources: boolean;
   showCuttingResources: boolean;
+  selectedMachineName: string;
+  selectedPartName: string;
   containerWidth: number;
 };
 
@@ -46,6 +44,8 @@ type Result = {
   checkWidth: number;
   itemColumnWidths: number[];
   rowPairs: Array<[NormalizedScheduleRow, NormalizedScheduleRow | undefined]>;
+  machineNameOptions: string[];
+  partNameOptions: string[];
 };
 
 export const useProductionScheduleDerivedRows = ({
@@ -57,9 +57,31 @@ export const useProductionScheduleDerivedRows = ({
   selectedResourceCategory,
   showGrindingResources,
   showCuttingResources,
+  selectedMachineName,
+  selectedPartName,
   containerWidth
 }: Params): Result => {
-  const normalizedRows = useMemo(() => normalizeScheduleRows(rows ?? []), [rows]);
+  const sourceRows = rows ?? EMPTY_ROWS;
+  const normalizedRows = useMemo(() => normalizeScheduleRows(sourceRows), [sourceRows]);
+  const machineToSeibanIndex = useMemo(() => buildMachineToSeibanIndex(sourceRows), [sourceRows]);
+  const machineNameOptions = useMemo(() => extractMachineNameOptions(sourceRows), [sourceRows]);
+  const machineFilteredRows = useMemo(
+    () =>
+      filterRowsByMachineAndPart(normalizedRows, machineToSeibanIndex, selectedMachineName, '', {
+        // API側ですでに machineName 絞り込み済みの場合、MH/SH行が無く index が空でも
+        // 部品候補・一覧を落とさないようにする。
+        skipMachineFilterIfNoIndexHit: true
+      }),
+    [machineToSeibanIndex, normalizedRows, selectedMachineName]
+  );
+  const partNameOptions = useMemo(() => extractPartNameOptions(machineFilteredRows), [machineFilteredRows]);
+  const filteredRows = useMemo(
+    () =>
+      filterRowsByMachineAndPart(normalizedRows, machineToSeibanIndex, selectedMachineName, selectedPartName, {
+        skipMachineFilterIfNoIndexHit: true
+      }),
+    [machineToSeibanIndex, normalizedRows, selectedMachineName, selectedPartName]
+  );
 
   const isResourceRankFilterActive =
     normalizedResourceCds.length > 0 || normalizedAssignedOnlyCds.length > 0;
@@ -69,16 +91,16 @@ export const useProductionScheduleDerivedRows = ({
   const isDisplayRankContext = isResourceRankFilterActive || isSeibanScopedRankActive;
 
   const displayRows = useMemo(
-    () => deriveDisplayRows(normalizedRows, isDisplayRankContext),
-    [normalizedRows, isDisplayRankContext]
+    () => deriveDisplayRows(filteredRows, isDisplayRankContext),
+    [filteredRows, isDisplayRankContext]
   );
 
   const { completedCount, incompleteCount } = useMemo(
-    () => countCompletion(normalizedRows),
-    [normalizedRows]
+    () => countCompletion(filteredRows),
+    [filteredRows]
   );
 
-  const resourceCdsInRows = useMemo(() => collectResourceCds(normalizedRows), [normalizedRows]);
+  const resourceCdsInRows = useMemo(() => collectResourceCds(filteredRows), [filteredRows]);
 
   const isTwoColumn = containerWidth >= 1200;
   const itemSeparatorWidth = isTwoColumn ? 24 : 0;
@@ -120,6 +142,8 @@ export const useProductionScheduleDerivedRows = ({
     itemSeparatorWidth,
     checkWidth,
     itemColumnWidths,
-    rowPairs
+    rowPairs,
+    machineNameOptions,
+    partNameOptions
   };
 };

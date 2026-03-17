@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 
+import { toHalfWidthAscii } from './machineName';
+
 type Params = {
   activeQueries: string[];
   activeResourceCds: string[];
@@ -8,6 +10,7 @@ type Params = {
   hasDueDateOnlyFilter: boolean;
   showGrindingResources: boolean;
   showCuttingResources: boolean;
+  selectedMachineName: string;
   history: string[];
 };
 
@@ -42,6 +45,7 @@ export const useProductionScheduleQueryParams = ({
   hasDueDateOnlyFilter,
   showGrindingResources,
   showCuttingResources,
+  selectedMachineName,
   history
 }: Params) => {
   const normalizedActiveQueries = useMemo(() => normalizeUniqueStrings(activeQueries), [activeQueries]);
@@ -62,6 +66,10 @@ export const useProductionScheduleQueryParams = ({
       resourceCds: normalizedResourceCds.length > 0 ? normalizedResourceCds.join(',') : undefined,
       resourceAssignedOnlyCds: normalizedAssignedOnlyCds.length > 0 ? normalizedAssignedOnlyCds.join(',') : undefined,
       resourceCategory: selectedResourceCategory,
+      machineName:
+        selectedMachineName.trim().length > 0
+          ? toHalfWidthAscii(selectedMachineName.trim()).toUpperCase()
+          : undefined,
       hasNoteOnly: hasNoteOnlyFilter || undefined,
       hasDueDateOnly: hasDueDateOnlyFilter || undefined,
       page: 1,
@@ -73,15 +81,25 @@ export const useProductionScheduleQueryParams = ({
       normalizedActiveQueries,
       normalizedAssignedOnlyCds,
       normalizedResourceCds,
+      selectedMachineName,
       selectedResourceCategory
     ]
   );
+
+  const hasProcessingCategorySelection = showGrindingResources || showCuttingResources;
+  const hasAnyResourceSelection =
+    normalizedResourceCds.length > 0 || normalizedAssignedOnlyCds.length > 0;
+  const hasMachineScopedResourceQuery =
+    selectedMachineName.trim().length > 0 &&
+    hasProcessingCategorySelection &&
+    hasAnyResourceSelection;
 
   const hasQuery =
     normalizedActiveQueries.length > 0 ||
     normalizedAssignedOnlyCds.length > 0 ||
     hasNoteOnlyFilter ||
-    hasDueDateOnlyFilter;
+    hasDueDateOnlyFilter ||
+    hasMachineScopedResourceQuery;
 
   return {
     normalizedActiveQueries,

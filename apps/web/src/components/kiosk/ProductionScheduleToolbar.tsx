@@ -19,6 +19,12 @@ type ProductionScheduleToolbarProps = {
   onToggleGrindingResources: () => void;
   showCuttingResources: boolean;
   onToggleCuttingResources: () => void;
+  selectedMachineName: string;
+  machineNameOptions: string[];
+  onMachineNameChange: (value: string) => void;
+  selectedPartName: string;
+  partNameOptions: string[];
+  onPartNameChange: (value: string) => void;
   disabled?: boolean;
   isFetching?: boolean;
   showFetching?: boolean;
@@ -40,6 +46,12 @@ export function ProductionScheduleToolbar({
   onToggleGrindingResources,
   showCuttingResources,
   onToggleCuttingResources,
+  selectedMachineName,
+  machineNameOptions,
+  onMachineNameChange,
+  selectedPartName,
+  partNameOptions,
+  onPartNameChange,
   disabled = false,
   isFetching = false,
   showFetching = false
@@ -123,6 +135,34 @@ export function ProductionScheduleToolbar({
           >
             切削工程
           </PillToggle>
+          <select
+            value={selectedMachineName}
+            onChange={(event) => onMachineNameChange(event.target.value)}
+            className="h-10 min-w-36 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900"
+            disabled={disabled}
+            aria-label="機種名フィルタ"
+          >
+            <option value="">機種名: 全て</option>
+            {machineNameOptions.map((machineName) => (
+              <option key={machineName} value={machineName}>
+                {machineName}
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedPartName}
+            onChange={(event) => onPartNameChange(event.target.value)}
+            className="h-10 min-w-36 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900"
+            disabled={disabled || selectedMachineName.trim().length === 0}
+            aria-label="部品名フィルタ"
+          >
+            <option value="">部品名: 全て</option>
+            {partNameOptions.map((partName) => (
+              <option key={partName} value={partName}>
+                {partName}
+              </option>
+            ))}
+          </select>
           {showFetching && isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </Row>
       </Row>

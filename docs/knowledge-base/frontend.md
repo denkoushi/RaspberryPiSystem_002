@@ -4262,3 +4262,23 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **実装完了・デプロイ完了・実機検証完了**（2026-03-17）
 
 ---
+
+### [KB-304] 生産スケジュール 機種名・部品名検索（A条件・全角半角正規化・ドロップダウン空対策）
+
+**実装日時**: 2026-03-17
+
+**仕様**:
+- 機種名で絞るには「機種名」＋「工程（研削/切削）」＋「資源CD」の3つを指定する（A条件）。UI: 機種名ドロップダウン→工程と資源CDを選択→検索で該当機種の製番・部品のみ表示。
+- 機種名は全角/半角混在でも正規化されて一致する（フロント: `toHalfWidthAscii` + `toUpperCase`、API: `normalizeMachineNameForCompare`）。
+
+**トラブルシュート（機種名検索が効かない）**:
+- 症状: 機種名を指定しても結果が0件または期待と異なる。原因: 全角/半角の不一致（CSV由来の機種名とUI入力の正規化が揃っていなかった）。対策: フロントで `useProductionScheduleQueryParams` 送信時に正規化、API で MH/SH 行を正規化比較して FSEIBAN IN 条件を組み立て。
+
+**トラブルシュート（機種名・部品名ドロップダウンが空になる）**:
+- 症状: 機種名指定で検索すると一覧が空になる。原因: API が該当製番の行のみ返すため MH/SH 行が含まれず、クライアントの機種→製番インデックスが空になり全件除外されていた。対策: `filterRowsByMachineAndPart` に `skipMachineFilterIfNoIndexHit: true` を追加し、インデックス未ヒット時は機種名の再絞り込みをスキップして API 返却行をそのまま表示。`useProductionScheduleDerivedRows` からオプションを渡す。
+
+**関連**: [KB-297](./KB-297-kiosk-due-management-workflow.md#生産スケジュール-機種名部品名検索2026-03-17)、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)「生産スケジュール 機種名検索」
+
+**解決状況**: ✅ **実装完了・デプロイ完了・実機検証完了**（2026-03-17）
+
+---

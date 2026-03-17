@@ -40,6 +40,8 @@ const sanitizeConditions = (value: unknown): ProductionScheduleSearchConditions 
     hasDueDateOnlyFilter: sanitizeBoolean(raw.hasDueDateOnlyFilter, DEFAULT_SEARCH_CONDITIONS.hasDueDateOnlyFilter),
     showGrindingResources: sanitizeBoolean(raw.showGrindingResources, DEFAULT_SEARCH_CONDITIONS.showGrindingResources),
     showCuttingResources: sanitizeBoolean(raw.showCuttingResources, DEFAULT_SEARCH_CONDITIONS.showCuttingResources),
+    selectedMachineName: sanitizeString(raw.selectedMachineName, DEFAULT_SEARCH_CONDITIONS.selectedMachineName),
+    selectedPartName: sanitizeString(raw.selectedPartName, DEFAULT_SEARCH_CONDITIONS.selectedPartName),
     inputQuery: sanitizeString(raw.inputQuery, DEFAULT_SEARCH_CONDITIONS.inputQuery)
   };
 };
