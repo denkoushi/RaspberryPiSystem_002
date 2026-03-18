@@ -69,7 +69,7 @@ export function ProductionScheduleResourceFilterDropdown({
           id={panelId}
           role="dialog"
           aria-label="資源CDフィルタ"
-          className="absolute right-0 z-20 mt-2 w-[34rem] rounded-lg border border-white/20 bg-slate-950/95 p-3 shadow-xl"
+          className="absolute right-0 z-20 mt-2 w-[min(94vw,64rem)] rounded-lg border border-white/20 bg-slate-950/95 p-3 shadow-xl"
         >
           <div className="mb-2 grid grid-cols-2 gap-2">
             <div className="rounded border border-white/15 bg-white/5 p-2">
@@ -112,7 +112,7 @@ export function ProductionScheduleResourceFilterDropdown({
             </div>
           </div>
 
-          <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+          <div className="grid max-h-80 grid-cols-1 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
             {items.map((item) => {
               const displayName = getDisplayName(item.resourceNames);
               return (
@@ -121,7 +121,7 @@ export function ProductionScheduleResourceFilterDropdown({
                     <span className="font-mono">{item.resourceCd}</span>
                     <span className="ml-1 text-white/70">: {displayName}</span>
                   </p>
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-2 flex items-center justify-between gap-2">
                     <button
                       type="button"
                       className={`rounded border px-2 py-1 text-[11px] font-semibold ${
