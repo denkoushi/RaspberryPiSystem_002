@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 
 import { useKioskProductionScheduleProgressOverview } from '../../api/hooks';
+import { ProgressOverviewSeibanFilterDropdown } from '../../components/kiosk/ProgressOverviewSeibanFilterDropdown';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { useProgressOverviewSeibanFilter } from '../../features/kiosk/productionSchedule/useProgressOverviewSeibanFilter';
 
 const formatUpdatedAt = (value: string | null): string => {
   if (!value) return '-';
@@ -29,8 +31,24 @@ const getResourceAriaLabel = (resourceCd: string, resourceNames?: string[]): str
 export function ProductionScheduleProgressOverviewPage() {
   const overviewQuery = useKioskProductionScheduleProgressOverview();
   const overview = overviewQuery.data;
-  const hasScheduledItems = (overview?.scheduled.length ?? 0) > 0;
+  const scheduledItems = useMemo(() => overview?.scheduled ?? [], [overview?.scheduled]);
+  const hasScheduledItems = scheduledItems.length > 0;
   const updatedAtLabel = useMemo(() => formatUpdatedAt(overview?.updatedAt ?? null), [overview?.updatedAt]);
+  const filterCandidates = useMemo(
+    () =>
+      scheduledItems.map((item) => ({
+        fseiban: item.fseiban,
+        machineName: item.machineName
+      })),
+    [scheduledItems]
+  );
+  const { items, selectedSet, selectedCount, totalCount, isAllOff, toggle, setAll } =
+    useProgressOverviewSeibanFilter(filterCandidates);
+  const visibleScheduledItems = useMemo(
+    () => scheduledItems.filter((item) => selectedSet.has(item.fseiban)),
+    [scheduledItems, selectedSet]
+  );
+  const hasVisibleScheduledItems = visibleScheduledItems.length > 0;
 
   return (
     <div className="flex h-full flex-col gap-2">
@@ -40,14 +58,23 @@ export function ProductionScheduleProgressOverviewPage() {
             <h2 className="whitespace-nowrap text-sm font-semibold text-white">進捗一覧</h2>
             <p className="truncate text-[11px] text-white/70">最終更新: {updatedAtLabel}</p>
           </div>
-          <button
-            type="button"
-            className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
-            onClick={() => void overviewQuery.refetch()}
-            disabled={overviewQuery.isFetching}
-          >
-            {overviewQuery.isFetching ? '更新中...' : '手動更新'}
-          </button>
+          <div className="flex items-center gap-2">
+            <ProgressOverviewSeibanFilterDropdown
+              items={items}
+              selectedCount={selectedCount}
+              totalCount={totalCount}
+              onToggle={toggle}
+              onSetAll={setAll}
+            />
+            <button
+              type="button"
+              className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+              onClick={() => void overviewQuery.refetch()}
+              disabled={overviewQuery.isFetching}
+            >
+              {overviewQuery.isFetching ? '更新中...' : '手動更新'}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -59,10 +86,13 @@ export function ProductionScheduleProgressOverviewPage() {
             登録製番がありません。生産スケジュール画面で製番を登録してください。
           </p>
         ) : null}
+        {!overviewQuery.isLoading && !overviewQuery.isError && hasScheduledItems && isAllOff ? (
+          <p className="text-sm text-white/80">フィルタで非表示にしています。製番フィルタで表示対象をONにしてください。</p>
+        ) : null}
 
-        {!overviewQuery.isLoading && !overviewQuery.isError && hasScheduledItems ? (
+        {!overviewQuery.isLoading && !overviewQuery.isError && hasVisibleScheduledItems ? (
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-4">
-            {(overview?.scheduled ?? []).map((item) => (
+            {visibleScheduledItems.map((item) => (
               <article key={item.fseiban} className="rounded border border-white/20 bg-slate-800/60 p-2">
                 <header className="mb-1 flex flex-wrap items-center gap-2 border-b border-white/15 pb-1">
                   <span className="font-mono text-sm text-white">{item.fseiban}</span>

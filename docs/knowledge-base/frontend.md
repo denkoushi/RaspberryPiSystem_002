@@ -4319,3 +4319,37 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **解決状況**: ✅ **実装・デプロイ・実機検証完了**（2026-03-17）
 
 ---
+
+### [KB-306] キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存）
+
+**実装日時**: 2026-03-18
+
+**仕様**:
+- 進捗一覧ヘッダーの「手動更新」左に、E案の「製番フィルタ」ドロップダウンを追加。
+- フィルタ候補は `scheduled` の製番のみを対象とし、並び順はカード順を維持。
+- 初期状態は全製番ON。全OFF時は「フィルタで非表示にしています」を表示。
+- 展開パネルは複数列（2〜3列）で表示し、各項目は「製番 + 機種名」を表示。
+
+**実装内容**:
+- `useProgressOverviewSeibanFilter` フックを新設し、選択状態（ON/OFF）を `localStorage` に端末別保存。
+- 保存フォーマットは `schemaVersion` 付きで管理し、候補増減時は「既存値維持 + 新規製番ON補完 + 旧製番除外」を実施。
+- `ProgressOverviewSeibanFilterDropdown` コンポーネントを新設し、UI責務をページ本体から分離。
+- `ProductionScheduleProgressOverviewPage` はデータ取得・可視カード導出・空状態分岐に責務を限定。
+
+**関連ファイル**:
+- `apps/web/src/features/kiosk/productionSchedule/useProgressOverviewSeibanFilter.ts`
+- `apps/web/src/components/kiosk/ProgressOverviewSeibanFilterDropdown.tsx`
+- `apps/web/src/pages/kiosk/ProductionScheduleProgressOverviewPage.tsx`
+
+**検証**:
+- `pnpm --filter @raspi-system/web lint` 成功
+- `pnpm --filter @raspi-system/web build` 成功
+
+**関連KB**:
+- [KB-282](./frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): 製番ボタンの機種名表示
+- [KB-283](./frontend.md#kb-283-生産スケジュール検索条件の端末別localstorage保存): 端末別保存方針
+- [KB-295](./frontend.md#kb-295-生産スケジュール登録製番ボタン並び替えui): 登録製番UI拡張
+
+**解決状況**: ✅ **実装完了**（2026-03-18）
+
+---
