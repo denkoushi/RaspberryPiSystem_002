@@ -15,13 +15,13 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { ProductionOrderSearchModal } from '../../components/kiosk/ProductionOrderSearchModal';
-import { ProductionScheduleHistoryStrip } from '../../components/kiosk/ProductionScheduleHistoryStrip';
+import { ProductionScheduleResourceFilterDropdown } from '../../components/kiosk/ProductionScheduleResourceFilterDropdown';
 import { ProductionScheduleResourceFilters } from '../../components/kiosk/ProductionScheduleResourceFilters';
+import { ProductionScheduleSeibanFilterDropdown } from '../../components/kiosk/ProductionScheduleSeibanFilterDropdown';
 import { ProductionScheduleTable } from '../../components/kiosk/ProductionScheduleTable';
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
 import { type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
-import { moveHistoryItemLeft, moveHistoryItemRight } from '../../features/kiosk/productionSchedule/historyOrder';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
@@ -316,13 +316,6 @@ export function ProductionSchedulePage() {
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data?.resourceNameMap]
   );
-  const getResourceTooltip = useCallback(
-    (resourceCd: string) => {
-      const names = resourceNameMap[resourceCd] ?? [];
-      return names.length > 0 ? names.join('\n') : undefined;
-    },
-    [resourceNameMap]
-  );
   const getResourceAriaLabel = useCallback(
     (resourceCd: string, suffix?: string) => {
       const names = resourceNameMap[resourceCd] ?? [];
@@ -351,6 +344,37 @@ export function ProductionSchedulePage() {
         normalizedActiveQueries.length > 0
       ),
     [visibleResourceCds, resourceCdsInRows, normalizedActiveQueries.length]
+  );
+  const seibanFilterItems = useMemo(
+    () =>
+      visibleHistory.map((fseiban) => ({
+        fseiban,
+        machineName: progressBySeiban[fseiban]?.machineName,
+        selected: normalizedActiveQueries.includes(fseiban)
+      })),
+    [normalizedActiveQueries, progressBySeiban, visibleHistory]
+  );
+  const selectedSeibanCount = useMemo(
+    () => seibanFilterItems.filter((item) => item.selected).length,
+    [seibanFilterItems]
+  );
+  const resourceFilterItems = useMemo(
+    () =>
+      prioritizedVisibleResourceCds.map((resourceCd) => ({
+        resourceCd,
+        resourceNames: resourceNameMap[resourceCd] ?? [],
+        selected: normalizedResourceCds.includes(resourceCd),
+        assignedOnlySelected: normalizedAssignedOnlyCds.includes(resourceCd)
+      })),
+    [normalizedAssignedOnlyCds, normalizedResourceCds, prioritizedVisibleResourceCds, resourceNameMap]
+  );
+  const selectedResourceCount = useMemo(
+    () => resourceFilterItems.filter((item) => item.selected).length,
+    [resourceFilterItems]
+  );
+  const selectedAssignedOnlyCount = useMemo(
+    () => resourceFilterItems.filter((item) => item.assignedOnlySelected).length,
+    [resourceFilterItems]
   );
 
   const { updateSharedSearchState } = useSharedSearchHistory({
@@ -409,44 +433,10 @@ export function ProductionSchedulePage() {
       return { activeQueries: next };
     });
   };
-
-  const removeHistoryQuery = (value: string) => {
-    setSearchConditions((prev) => ({ activeQueries: prev.activeQueries.filter((item) => item !== value) }));
-    // NOTE: ユーザー要望により「登録製番リスト＝サイネージ表示」と同期する（削除も共有）
-    // そのため削除は端末ローカル非表示（hiddenHistory）ではなく shared history を更新する。
-    const nextHistory = normalizedHistory.filter((item) => item !== value);
-    setHistory(nextHistory);
-    setHiddenHistory((prev) => prev.filter((item) => item !== value));
-    if (inputQuery === value) {
-      setSearchConditions({ inputQuery: '' });
-    }
-    void updateSharedSearchState(nextHistory, { type: 'remove', value });
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:remove-history',message:'history item removed (shared)',data:{removed:value},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H-delete-not-propagating'})}).catch(()=>{});
-    // #endregion agent log
-  };
-
-  const confirmRemoveHistoryQuery = (value: string) => {
-    const message = `検索履歴「${value}」を削除しますか？`;
-    if (!window.confirm(message)) {
-      return;
-    }
-    removeHistoryQuery(value);
-  };
-
-  const handleMoveHistoryLeft = (value: string) => {
-    const nextHistory = moveHistoryItemLeft(normalizedHistory, value);
-    if (nextHistory === normalizedHistory) return;
-    setHistory(nextHistory);
-    void updateSharedSearchState(nextHistory, { type: 'reorder', value, direction: 'left' });
-  };
-
-  const handleMoveHistoryRight = (value: string) => {
-    const nextHistory = moveHistoryItemRight(normalizedHistory, value);
-    if (nextHistory === normalizedHistory) return;
-    setHistory(nextHistory);
-    void updateSharedSearchState(nextHistory, { type: 'reorder', value, direction: 'right' });
+  const setAllHistoryQueries = (selected: boolean) => {
+    setSearchConditions({
+      activeQueries: selected ? visibleHistory : []
+    });
   };
 
   const toggleResourceCd = (value: string) => {
@@ -466,6 +456,16 @@ export function ProductionSchedulePage() {
         ? prev.activeResourceAssignedOnlyCds.filter((item) => item !== value)
         : [...prev.activeResourceAssignedOnlyCds, value];
       return { activeResourceAssignedOnlyCds: next };
+    });
+  };
+  const setAllResourceCds = (selected: boolean) => {
+    setSearchConditions({
+      activeResourceCds: selected ? prioritizedVisibleResourceCds : []
+    });
+  };
+  const setAllAssignedOnlyCds = (selected: boolean) => {
+    setSearchConditions({
+      activeResourceAssignedOnlyCds: selected ? prioritizedVisibleResourceCds : []
     });
   };
 
@@ -610,18 +610,27 @@ export function ProductionSchedulePage() {
         getColorClasses={getResourceColorClasses}
         onToggleResourceCd={toggleResourceCd}
         onToggleAssignedOnlyCd={toggleAssignedOnlyCd}
-        getResourceTooltip={getResourceTooltip}
         getResourceAriaLabel={getResourceAriaLabel}
-      />
-
-      <ProductionScheduleHistoryStrip
-        visibleHistory={visibleHistory}
-        normalizedActiveQueries={normalizedActiveQueries}
-        progressBySeiban={progressBySeiban}
-        onToggleHistoryQuery={toggleHistoryQuery}
-        onConfirmRemoveHistoryQuery={confirmRemoveHistoryQuery}
-        onMoveHistoryLeft={handleMoveHistoryLeft}
-        onMoveHistoryRight={handleMoveHistoryRight}
+        rightActions={
+          <>
+            <ProductionScheduleSeibanFilterDropdown
+              items={seibanFilterItems}
+              selectedCount={selectedSeibanCount}
+              totalCount={seibanFilterItems.length}
+              onToggle={toggleHistoryQuery}
+              onSetAll={setAllHistoryQueries}
+            />
+            <ProductionScheduleResourceFilterDropdown
+              items={resourceFilterItems}
+              selectedCount={selectedResourceCount}
+              assignedOnlySelectedCount={selectedAssignedOnlyCount}
+              onToggleResource={toggleResourceCd}
+              onToggleAssignedOnly={toggleAssignedOnlyCd}
+              onSetAllResource={setAllResourceCds}
+              onSetAllAssignedOnly={setAllAssignedOnlyCds}
+            />
+          </>
+        }
       />
 
       {isDisplayRankContext ? (

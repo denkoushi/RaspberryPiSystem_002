@@ -4362,3 +4362,42 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - フィルタ状態が復元されない場合は `localStorage` の `kiosk-progress-overview-seiban-filter` を確認。schemaVersion が変わるとマイグレーションで既存値維持＋新規ON補完。
 
 ---
+
+### [KB-307] 生産スケジュールUI統一（登録製番・資源CDドロップダウン併設）
+
+**実装日時**: 2026-03-18
+
+**仕様**:
+- 生産スケジュール画面の登録製番操作を、進捗一覧と同型のドロップダウンUIへ統一。
+- 登録製番は複数選択ON/OFFを維持し、削除アイコンと左右移動アイコンは非表示化。
+- 登録製番の削除は納期管理画面側の既存導線（共有history更新）へ一本化。
+- 資源CDは既存の横スクロールUIを維持したまま、同時にドロップダウンUIでも選択可能化。
+- 資源CDドロップダウンは「通常」「割当」の両トグルを提供し、ホバー値（資源名）を項目内へ常時併記。
+- 資源CD横スクロール領域の右側に余白を確保し、縦並びボタン（登録製番/資源CD）を配置。
+
+**実装内容**:
+- `ProductionScheduleSeibanFilterDropdown` を新設し、登録製番の選択UIをコンポーネント化。
+- `ProductionScheduleResourceFilterDropdown` を新設し、資源CDの通常/割当トグルを1画面で操作可能化。
+- `ProductionScheduleResourceFilters` に `rightActions` 領域を追加し、横スクロール + 右側縦ボタンのレイアウトへ分離。
+- `ProductionSchedulePage` は既存状態（`activeQueries` / `activeResourceCds` / `activeResourceAssignedOnlyCds`）を保持したまま、新UIをイベント委譲で統合。
+- 未使用化した `ProductionScheduleHistoryStrip` / `SeibanHistoryButton` / `historyOrder.ts` を削除し、`useSharedSearchHistory` から reorder 分岐を整理。
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/ProductionScheduleSeibanFilterDropdown.tsx`
+- `apps/web/src/components/kiosk/ProductionScheduleResourceFilterDropdown.tsx`
+- `apps/web/src/components/kiosk/ProductionScheduleResourceFilters.tsx`
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+- `apps/web/src/features/kiosk/productionSchedule/useSharedSearchHistory.ts`
+
+**検証**:
+- `pnpm --filter @raspi-system/web lint` 成功
+- `pnpm --filter @raspi-system/web build` 成功
+
+**知見・トラブルシュート**:
+- 登録製番削除は生産スケジュール画面からは実行できないが、納期管理画面（`DueManagementLeftRail`）から共有historyを削除可能。
+- 資源名の表示はドロップダウンへ集約したため、横スクロールPillの `title` ホバーは廃止。
+- 選択状態の契約（search-state / query params）は既存互換を維持しているため、API変更は不要。
+
+**解決状況**: ✅ **実装完了**（2026-03-18）
+
+---
