@@ -4393,11 +4393,17 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - `pnpm --filter @raspi-system/web lint` 成功
 - `pnpm --filter @raspi-system/web build` 成功
 
+**デプロイ・実機検証**（2026-03-18）:
+- ブランチ `feat/production-schedule-dropdown-ui-unify`。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつデプロイ（`scripts/update-all-clients.sh` 標準手順、`--limit` で1台ずつ）。
+- Phase12 一括検証: `./scripts/deploy/verify-phase12-real.sh` で PASS 24 / WARN 1（Pi3 signage は offline 時スキップ可）/ FAIL 0。
+- 実機検証OK: 登録製番ドロップダウン・削除導線分離・資源CD横スクロール＋右端縦ボタン・資源CDドロップダウン（通常/割当トグル・資源名併記）を実機で確認済み。
+
 **知見・トラブルシュート**:
 - 登録製番削除は生産スケジュール画面からは実行できないが、納期管理画面（`DueManagementLeftRail`）から共有historyを削除可能。
 - 資源名の表示はドロップダウンへ集約したため、横スクロールPillの `title` ホバーは廃止。
 - 選択状態の契約（search-state / query params）は既存互換を維持しているため、API変更は不要。
+- **CI Trivy（web イメージ）**: Caddy 同梱 Go バイナリ由来で CVE-2026-25679 / CVE-2026-27137 が検出された場合、既存運用に合わせ `.trivyignore` に該当 CVE を追記して CI を通す。Caddy アップストリーム対応待ち。
 
-**解決状況**: ✅ **実装完了**（2026-03-18）
+**解決状況**: ✅ **実装・デプロイ・実機検証完了**（2026-03-18）
 
 ---

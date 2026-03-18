@@ -222,7 +222,7 @@ update-frequency: high
 | [KB-304](./frontend.md#kb-304-生産スケジュール-機種名部品名検索a条件全角半角正規化ドロップダウン空対策) | 生産スケジュール 機種名・部品名検索（A条件・全角半角正規化・ドロップダウン空対策） | ✅ 実装完了（2026-03-17） |
 | [KB-305](./frontend.md#kb-305-生産スケジュール-製造order番号ポップアップ検索5桁候補部品選択チェック確定) | 生産スケジュール 製造order番号ポップアップ検索（5桁候補・部品選択・チェック確定） | ✅ 実装・デプロイ・実機検証完了（2026-03-17） |
 | [KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) | キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存） | ✅ 実装・デプロイ・実機検証完了（2026-03-18） |
-| [KB-307](./frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設) | 生産スケジュールUI統一（登録製番・資源CDドロップダウン併設） | ✅ 実装完了（2026-03-18） |
+| [KB-307](./frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設) | 生産スケジュールUI統一（登録製番・資源CDドロップダウン併設） | ✅ デプロイ・実機検証完了（2026-03-18） |
 
 ### インフラ関連
 
@@ -575,5 +575,5 @@ update-frequency: high
 - 2026-03-06: KB-294を追加（生産スケジュール資源CDボタン優先並び）→ 2026-03-06に実装完了・デプロイ完了・実機検証OK。登録製番検索時、検索結果に含まれる資源CDを左側に優先表示。`prioritizeResourceCdsByPresence` 純粋関数（resourcePriority.ts）、ProductionSchedulePage で prioritizedVisibleResourceCds を導出。Run ID `20260306-184128-18022`、約19分（Pi5+Pi4×2+Pi3）。
 - 2026-03-06: KB-295を追加（生産スケジュール登録製番ボタン並び替えUI）→ 案3（カード下辺左右矢印）で実装。`moveHistoryItemLeft`/`moveHistoryItemRight` 純粋関数（historyOrder.ts）、SeibanHistoryButton に矢印追加、search-state で全端末同期。409 競合時は rebase して再試行。lint・ユニットテスト成功。
 - 2026-03-18: KB-306を追加（キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存））→ 進捗一覧ヘッダーに製番フィルタを追加。候補は `scheduled` のみ、初期全ON、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（schemaVersion付き）で端末別保存。`useProgressOverviewSeibanFilter` と `ProgressOverviewSeibanFilterDropdown` を新設し、ページ本体の責務を表示合成に限定。web lint/build 成功。**実機検証完了**: Phase12 全24項目PASS（progress-overview API を verify-phase12-real.sh に追加）、実機UIで製番フィルタ・永続化を確認。deploy-status-recovery.md にチェックリスト追加。知見: Mac から Tailscale 経由でブラウザアクセスすると自己署名証明書で chrome-error になるため、UI検証は実機/VNC での確認が必要。
-- 2026-03-18: KB-307を追加（生産スケジュールUI統一（登録製番・資源CDドロップダウン併設））→ 生産スケジュールで登録製番をドロップダウン化（複数選択ON/OFF維持、削除/左右移動は非表示）、資源CDは横スクロールUIを維持しつつドロップダウン併設（通常/割当の両トグル）。資源名はドロップダウン内に併記し、ホバー表示を廃止。`ProductionScheduleResourceFilters` に `rightActions` を追加して右端縦ボタンレイアウトへ変更。`ProductionScheduleHistoryStrip` / `SeibanHistoryButton` / `historyOrder.ts` は未使用化に伴い削除。web lint/build 成功。
+- 2026-03-18: KB-307を追加（生産スケジュールUI統一（登録製番・資源CDドロップダウン併設））→ 生産スケジュールで登録製番をドロップダウン化（複数選択ON/OFF維持、削除/左右移動は非表示）、資源CDは横スクロールUIを維持しつつドロップダウン併設（通常/割当の両トグル）。資源名はドロップダウン内に併記し、ホバー表示を廃止。`ProductionScheduleResourceFilters` に `rightActions` を追加して右端縦ボタンレイアウトへ変更。`ProductionScheduleHistoryStrip` / `SeibanHistoryButton` / `historyOrder.ts` は未使用化に伴い削除。web lint/build 成功。**デプロイ・実機検証完了を反映**: ブランチ `feat/production-schedule-dropdown-ui-unify`、Pi5→raspberrypi4→raspi4-robodrill01 の順に1台ずつデプロイ。Phase12 24項目PASS、実機検証OK。CI Trivy（web イメージ）で Caddy/Go 由来 CVE 検出時は `.trivyignore` に該当 CVE を追記する運用を KB-307 に記載。
 - 2026-03-05: KB-290を追加（Dropbox容量不足の恒久対策（チャンクアップロード・自動削除・再試行））→ 2026-03-05に解決完了・デプロイ完了・実機検証OK。Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一を実装。Pi5のみデプロイ（Run ID: 20260305-085419-3769）。手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録を確認。同日、同一ターゲット内削除限定（67c4de1）をデプロイ（Run ID: 20260305-093035-20970）。`listBackups({ prefix })`＋`matchesSource`でDB失敗時にCSVが消える種類偏りを防止。`POST /api/backup/internal`で実機検証成功
