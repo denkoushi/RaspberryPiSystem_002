@@ -4,6 +4,18 @@ export type TableColumnDefinition = {
   dataType?: 'date' | 'text' | 'number';
 };
 
+/**
+ * When total width exceeds containerWidth, columns in this list are shrunk first.
+ * Columns not in the list are shrunk last (品名など).
+ */
+export type ShrinkFirstKeys = string[];
+
+/**
+ * When total width is less than containerWidth, surplus is assigned to these columns in order.
+ * First key gets the surplus first (e.g. give all to 品名).
+ */
+export type PriorityGrowKeys = string[];
+
 type ColumnWidthOptions<Row extends Record<string, unknown>> = {
   columns: TableColumnDefinition[];
   rows: Row[];
@@ -12,6 +24,10 @@ type ColumnWidthOptions<Row extends Record<string, unknown>> = {
   scale?: number;
   fixedWidths?: Record<string, number | null | undefined>;
   formatCellValue?: (column: TableColumnDefinition, value: unknown) => string;
+  /** Columns that receive surplus width first when total < containerWidth. */
+  priorityGrowKeys?: PriorityGrowKeys;
+  /** Columns that are shrunk first when total > containerWidth (others shrink last). */
+  shrinkFirstKeys?: ShrinkFirstKeys;
 };
 
 const DEFAULT_MIN_WIDTH = 60;
@@ -26,7 +42,9 @@ export function computeColumnWidths<Row extends Record<string, unknown>>(
     fontSizePx,
     scale = 1,
     fixedWidths,
-    formatCellValue
+    formatCellValue,
+    priorityGrowKeys,
+    shrinkFirstKeys
   } = options;
 
   if (columns.length === 0) {
@@ -59,20 +77,37 @@ export function computeColumnWidths<Row extends Record<string, unknown>>(
     return Math.max(minWidth, required);
   });
 
+  const columnKeys = columns.map((c) => c.key);
   const widths = columns.map((_, i) => Math.round(fixed[i] ?? requiredWidths[i]));
   const total = widths.reduce((sum, w) => sum + w, 0);
 
   if (total <= containerWidth) {
+    const surplus = containerWidth - total;
+    if (surplus > 0 && priorityGrowKeys?.length) {
+      for (const key of priorityGrowKeys) {
+        const i = columnKeys.indexOf(key);
+        if (i >= 0) {
+          widths[i] += surplus;
+          break;
+        }
+      }
+    }
     return widths;
   }
 
   const scaleDown = containerWidth / total;
   const minWidths = widths.map((w) => Math.min(w, minWidth));
   const scaled = widths.map((w, i) => Math.max(minWidths[i], Math.floor(w * scaleDown)));
-  return shrinkToFit(scaled, minWidths, containerWidth);
+  return shrinkToFit(scaled, minWidths, containerWidth, columnKeys, shrinkFirstKeys);
 }
 
-function shrinkToFit(widths: number[], minWidths: number[], containerWidth: number): number[] {
+function shrinkToFit(
+  widths: number[],
+  minWidths: number[],
+  containerWidth: number,
+  columnKeys?: string[],
+  shrinkFirstKeys?: string[]
+): number[] {
   const total = widths.reduce((sum, w) => sum + w, 0);
   if (total <= containerWidth) {
     return widths;
@@ -89,21 +124,53 @@ function shrinkToFit(widths: number[], minWidths: number[], containerWidth: numb
   }
 
   let remaining = total - containerWidth;
-  const adjustableTotal = adjustable.reduce((sum, i) => sum + (widths[i] - minWidths[i]), 0);
-  adjustable.forEach((i) => {
-    if (remaining <= 0) return;
-    const room = widths[i] - minWidths[i];
-    const reduce = adjustableTotal > 0 ? Math.ceil((remaining * room) / adjustableTotal) : 0;
-    const applied = Math.min(room, reduce);
-    widths[i] -= applied;
-    remaining -= applied;
-  });
+
+  if (shrinkFirstKeys?.length && columnKeys?.length) {
+    const order = buildShrinkOrder(adjustable, columnKeys, shrinkFirstKeys);
+    for (const i of order) {
+      if (remaining <= 0) break;
+      const room = widths[i] - minWidths[i];
+      const applied = Math.min(room, remaining);
+      widths[i] -= applied;
+      remaining -= applied;
+    }
+  } else {
+    const adjustableTotal = adjustable.reduce((sum, i) => sum + (widths[i] - minWidths[i]), 0);
+    adjustable.forEach((i) => {
+      if (remaining <= 0) return;
+      const room = widths[i] - minWidths[i];
+      const reduce = adjustableTotal > 0 ? Math.ceil((remaining * room) / adjustableTotal) : 0;
+      const applied = Math.min(room, reduce);
+      widths[i] -= applied;
+      remaining -= applied;
+    });
+  }
 
   if (remaining > 0) {
     widths[widths.length - 1] = Math.max(1, widths[widths.length - 1] - remaining);
   }
 
   return widths;
+}
+
+function buildShrinkOrder(
+  adjustable: number[],
+  columnKeys: string[],
+  shrinkFirstKeys: string[]
+): number[] {
+  const firstSet = new Set(shrinkFirstKeys);
+  const first: number[] = [];
+  const last: number[] = [];
+  for (const i of adjustable) {
+    const key = columnKeys[i];
+    if (key != null && firstSet.has(key)) {
+      first.push(i);
+    } else {
+      last.push(i);
+    }
+  }
+  first.sort((a, b) => shrinkFirstKeys.indexOf(columnKeys[a]!) - shrinkFirstKeys.indexOf(columnKeys[b]!));
+  return [...first, ...last];
 }
 
 function approxTextEm(text: string): number {

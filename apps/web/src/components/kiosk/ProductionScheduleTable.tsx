@@ -117,7 +117,7 @@ function ProductionScheduleTableCells({
               value={row.processingType ?? ''}
               onChange={(event) => handleProcessingChange(row.id, event.target.value)}
               disabled={completePending || row.isCompleted || processingPending}
-              className="h-7 w-24 rounded border border-slate-300 bg-white px-2 text-sm text-black"
+              className="h-7 w-20 min-w-0 rounded border border-slate-300 bg-white px-2 text-xs text-black"
             >
               <option value="">-</option>
               {processingTypeOptions
@@ -132,7 +132,10 @@ function ProductionScheduleTableCells({
             <span
               className={[
                 column.key === 'ProductNo' || column.key === 'FSIGENCD' ? 'font-mono' : '',
-                column.key === 'ProductNo' || column.key === 'FHINCD' ? 'break-all' : ''
+                column.key === 'ProductNo' || column.key === 'FHINCD' || column.key === 'FSEIBAN'
+                  ? 'break-all'
+                  : '',
+                column.key === 'FHINCD' ? 'line-clamp-3 min-w-0' : ''
               ]
                 .filter(Boolean)
                 .join(' ')}
