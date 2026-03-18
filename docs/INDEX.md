@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-18）
 
+- **✅ 進捗一覧製番フィルタ 実装・デプロイ・実機検証完了**: 進捗一覧ヘッダーに「製番フィルタ (n/m)」ドロップダウンを追加。候補は `scheduled` 製番のみ、製番＋機種名を複数列表示。ON/OFFでカード表示を絞り込み、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（schemaVersion付き）で端末別保存。`verify-phase12-real.sh` に progress-overview API チェックを追加。**知見**: Mac から Tailscale 経由でブラウザアクセスすると自己署名証明書で chrome-error になるため、UI検証は実機/VNC での確認が必要。詳細は [KB-306](./knowledge-base/frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
 - **✅ 生産スケジュール一覧 列幅調整 実装・デプロイ・実機検証完了**: 品番3行上限・製番折り返し・処理列縮小・品名優先配分を採用。`columnWidth.ts` に `priorityGrowKeys`/`shrinkFirstKeys` を追加し、画面幅変化に強い列幅再配分を実装。**デプロイ**: ブランチ `feat/kiosk-table-width-tuning`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ。**実機検証**: Phase12 全24項目PASS、実機OK。詳細は [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) の「生産スケジュール一覧 列幅調整」を参照。
 
 ### 🆕 最新アップデート（2026-03-17）

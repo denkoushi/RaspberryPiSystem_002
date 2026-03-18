@@ -146,6 +146,9 @@ check_contains "actual-hours/stats fields" "${ACTUAL_STATS_JSON}" '"totalRawRows
 SIGNAGE_JSON="$(curl -sk "${BASE_URL}/api/signage/content" 2>&1 || true)"
 check_contains "サイネージAPI layoutConfig" "${SIGNAGE_JSON}" '"layoutConfig"'
 
+PROGRESS_OVERVIEW_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+check_http_code "進捗一覧API progress-overview" "${PROGRESS_OVERVIEW_CODE}" "200"
+
 echo ""
 echo "--- Pi5 remote checks ---"
 BACKUP_INFO="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ls -lh /opt/RaspberryPiSystem_002/config/backup.json 2>&1" || true)"

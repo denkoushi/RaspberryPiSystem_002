@@ -613,6 +613,13 @@ category: knowledge-base
   - **Docker 再起動後**: Cursor サンドボックス経由で `pnpm test:api` 実行時に Docker ソケット EOF が発生することがある。Mac 上で Docker を再起動後、ターミナルから直接実行すれば正常に動作する。
   - **postgres-test-local 競合**: 既存コンテナが残っている場合は `docker rm -f postgres-test-local` で削除してから再実行。
 
+## 進捗一覧製番フィルタ（2026-03-18）
+
+- **背景**: 進捗一覧で製番単位の表示/非表示を切り替えられるよう、製番フィルタドロップダウンを追加。
+- **実装**: 手動更新ボタン左に「製番フィルタ (n/m)」ドロップダウン。候補は `scheduled` 製番のみ、製番＋機種名を複数列表示。ON/OFFでカード表示を絞り込み、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（`kiosk-progress-overview-seiban-filter`、schemaVersion付き）で端末別保存。`useProgressOverviewSeibanFilter` フック、`ProgressOverviewSeibanFilterDropdown` コンポーネントを新設。
+- **デプロイ**: ブランチ `feat/kiosk-progress-overview-seiban-filter-dropdown`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。
+- **実機検証**: Phase12 全24項目PASS（`verify-phase12-real.sh` に progress-overview API チェックを追加）、実機UIで製番フィルタ・永続化を確認OK。詳細は [KB-306](../frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
+
 ## デプロイ・実機検証（2026-03-07）
 
 - **デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）

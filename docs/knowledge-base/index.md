@@ -221,7 +221,7 @@ update-frequency: high
 | [KB-303](./frontend.md#kb-303-納期管理右ペイン-資源cdfilterドロップダウンのみ研削切削ボタン削除) | 納期管理右ペイン 資源CDフィルタ（ドロップダウンのみ・研削/切削ボタン削除） | ✅ 実装完了（2026-03-17） |
 | [KB-304](./frontend.md#kb-304-生産スケジュール-機種名部品名検索a条件全角半角正規化ドロップダウン空対策) | 生産スケジュール 機種名・部品名検索（A条件・全角半角正規化・ドロップダウン空対策） | ✅ 実装完了（2026-03-17） |
 | [KB-305](./frontend.md#kb-305-生産スケジュール-製造order番号ポップアップ検索5桁候補部品選択チェック確定) | 生産スケジュール 製造order番号ポップアップ検索（5桁候補・部品選択・チェック確定） | ✅ 実装・デプロイ・実機検証完了（2026-03-17） |
-| [KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) | キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存） | ✅ 実装完了（2026-03-18） |
+| [KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) | キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存） | ✅ 実装・デプロイ・実機検証完了（2026-03-18） |
 
 ### インフラ関連
 
@@ -573,5 +573,5 @@ update-frequency: high
 - 2026-03-05: KB-291を追加（ロボドリル01 NFCスキャンが反応しない調査・恒久対策）→ 2026-03-05に解決完了・デプロイ完了・実機検証OK。pcscd未導入/非稼働・Docker未導入が根因。nfc-agent-lifecycle.ymlでpcscd導入・起動・nfc-agent起動保証を実装。吊具・計測機器のNFCタグで画面遷移を実機確認。
 - 2026-03-06: KB-294を追加（生産スケジュール資源CDボタン優先並び）→ 2026-03-06に実装完了・デプロイ完了・実機検証OK。登録製番検索時、検索結果に含まれる資源CDを左側に優先表示。`prioritizeResourceCdsByPresence` 純粋関数（resourcePriority.ts）、ProductionSchedulePage で prioritizedVisibleResourceCds を導出。Run ID `20260306-184128-18022`、約19分（Pi5+Pi4×2+Pi3）。
 - 2026-03-06: KB-295を追加（生産スケジュール登録製番ボタン並び替えUI）→ 案3（カード下辺左右矢印）で実装。`moveHistoryItemLeft`/`moveHistoryItemRight` 純粋関数（historyOrder.ts）、SeibanHistoryButton に矢印追加、search-state で全端末同期。409 競合時は rebase して再試行。lint・ユニットテスト成功。
-- 2026-03-18: KB-306を追加（キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存））→ 進捗一覧ヘッダーに製番フィルタを追加。候補は `scheduled` のみ、初期全ON、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（schemaVersion付き）で端末別保存。`useProgressOverviewSeibanFilter` と `ProgressOverviewSeibanFilterDropdown` を新設し、ページ本体の責務を表示合成に限定。web lint/build 成功。
+- 2026-03-18: KB-306を追加（キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存））→ 進捗一覧ヘッダーに製番フィルタを追加。候補は `scheduled` のみ、初期全ON、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（schemaVersion付き）で端末別保存。`useProgressOverviewSeibanFilter` と `ProgressOverviewSeibanFilterDropdown` を新設し、ページ本体の責務を表示合成に限定。web lint/build 成功。**実機検証完了**: Phase12 全24項目PASS（progress-overview API を verify-phase12-real.sh に追加）、実機UIで製番フィルタ・永続化を確認。deploy-status-recovery.md にチェックリスト追加。知見: Mac から Tailscale 経由でブラウザアクセスすると自己署名証明書で chrome-error になるため、UI検証は実機/VNC での確認が必要。
 - 2026-03-05: KB-290を追加（Dropbox容量不足の恒久対策（チャンクアップロード・自動削除・再試行））→ 2026-03-05に解決完了・デプロイ完了・実機検証OK。Upload Session（チャンクアップロード）、`insufficient_space`検知時の最古優先削除＋再試行、DatabaseBackupTargetの一時ファイル経路改善、手動・スケジュールの救済ポリシー統一を実装。Pi5のみデプロイ（Run ID: 20260305-085419-3769）。手動CSVバックアップ（employees）成功、Dropboxアップロード成功、履歴に`dropbox`・`COMPLETED`で記録を確認。同日、同一ターゲット内削除限定（67c4de1）をデプロイ（Run ID: 20260305-093035-20970）。`listBackups({ prefix })`＋`matchesSource`でDB失敗時にCSVが消える種類偏りを防止。`POST /api/backup/internal`で実機検証成功

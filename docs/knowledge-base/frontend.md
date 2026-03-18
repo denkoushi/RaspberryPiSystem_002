@@ -4350,6 +4350,15 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - [KB-283](./frontend.md#kb-283-生産スケジュール検索条件の端末別localstorage保存): 端末別保存方針
 - [KB-295](./frontend.md#kb-295-生産スケジュール登録製番ボタン並び替えui): 登録製番UI拡張
 
-**解決状況**: ✅ **実装完了**（2026-03-18）
+**解決状況**: ✅ **実装・デプロイ・実機検証完了**（2026-03-18）
+
+**実機検証**（2026-03-18）:
+- API: `GET /api/kiosk/production-schedule/progress-overview` 200 OK（verify-phase12-real.sh に追加済み）
+- UI: キオスク実機（raspberrypi4 / raspi4-robodrill01）で進捗一覧画面を開き、製番フィルタドロップダウン・ON/OFF・永続化を手動確認（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) チェックリスト参照）
+
+**知見・トラブルシュート**:
+- 進捗一覧APIは `verify-phase12-real.sh` で自動検証。Phase12 全24項目PASSで確認。
+- Mac から Tailscale 経由（`https://100.106.158.2/kiosk`）でブラウザアクセスすると、自己署名証明書により chrome-error になる。UI検証は実機（VNC または現地操作）での確認が必要。
+- フィルタ状態が復元されない場合は `localStorage` の `kiosk-progress-overview-seiban-filter` を確認。schemaVersion が変わるとマイグレーションで既存値維持＋新規ON補完。
 
 ---
