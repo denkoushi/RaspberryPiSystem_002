@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>資源CDドロップダウン デザインプレビュー</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 16px; margin: 0; }
+    .panel {
+      width: min(94vw, 64rem);
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(2, 6, 23, 0.95);
+      padding: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    }
+    /* レイアウトのみ1行（見た目は元のデザイン） */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 16px;
+      margin-bottom: 8px;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+    }
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .toolbar-label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.8);
+      white-space: nowrap;
+    }
+    .btn {
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid;
+    }
+    .btn-on { border-color: rgba(52,211,153,0.6); background: rgba(16,185,129,0.2); color: #a7f3d0; }
+    .btn-off { border-color: rgba(148,163,184,0.5); background: rgba(100,116,139,0.2); color: #e2e8f0; }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      max-height: 320px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .card {
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.05);
+      padding: 2px 8px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .card .text {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .card .text .line1-wrap {
+      min-height: 32px;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+    }
+    .card .text .line1 {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: #fff;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1;
+    }
+    .card .text .line2 {
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1;
+    }
+    .card .btns {
+      flex-shrink: 0;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card .btns .btn {
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .caption { margin-bottom: 8px; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <p class="caption">資源CDフィルタ（レイアウト: 最上段1行・4列 / デザイン: 元のスタイル）</p>
+  <div class="panel">
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">通常 (3/8)</span>
+        <button type="button" class="btn btn-on">全ON</button>
+        <button type="button" class="btn btn-off">全OFF</button>
+      </div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">割当 (2/8)</span>
+        <button type="button" class="btn btn-on">全ON</button>
+        <button type="button" class="btn btn-off">全OFF</button>
+      </div>
+    </div>
+    <div class="card-grid">
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">305</p></div>
+          <p class="line2">研削機A</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-on">通常</button>
+          <button type="button" class="btn btn-off">割当</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">306</p></div>
+          <p class="line2">研削機B / 予備</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-on">通常</button>
+          <button type="button" class="btn btn-on">割当</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">401</p></div>
+          <p class="line2">切削機C</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-off">通常</button>
+          <button type="button" class="btn btn-off">割当</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">402</p></div>
+          <p class="line2">切削機D</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-off">通常</button>
+          <button type="button" class="btn btn-off">割当</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">501</p></div>
+          <p class="line2">測定機E</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-off">通常</button>
+          <button type="button" class="btn btn-off">割当</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">502</p></div>
+          <p class="line2">測定機F</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-off">通常</button>
+          <button type="button" class="btn btn-off">割当</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">601</p></div>
+          <p class="line2">その他G</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-off">通常</button>
+          <button type="button" class="btn btn-off">割当</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="text">
+          <div class="line1-wrap"><p class="line1">602</p></div>
+          <p class="line2">その他H</p>
+        </div>
+        <div class="btns">
+          <button type="button" class="btn btn-off">通常</button>
+          <button type="button" class="btn btn-off">割当</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

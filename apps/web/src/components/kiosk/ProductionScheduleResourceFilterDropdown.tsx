@@ -116,12 +116,16 @@ export function ProductionScheduleResourceFilterDropdown({
             {items.map((item) => {
               const displayName = getDisplayName(item.resourceNames);
               return (
-                <div key={item.resourceCd} className="rounded border border-white/20 bg-white/5 p-2">
-                  <p className="truncate text-[11px] font-semibold text-white">
-                    <span className="font-mono">{item.resourceCd}</span>
-                    <span className="ml-1 text-white/70">: {displayName}</span>
-                  </p>
-                  <div className="mt-2 flex items-center justify-between gap-2">
+                <div key={item.resourceCd} className="flex items-start gap-2 rounded border border-white/20 bg-white/5 px-2 py-0.5">
+                  <div className="min-w-0 flex-1 space-y-0">
+                    <div className="flex min-h-8 min-w-0 items-center">
+                      <p className="min-w-0 truncate font-mono text-[11px] font-semibold leading-none text-white">
+                        {item.resourceCd}
+                      </p>
+                    </div>
+                    <p className="min-w-0 truncate text-[11px] leading-none text-white/70">{displayName}</p>
+                  </div>
+                  <div className="flex min-h-8 shrink-0 items-center gap-2">
                     <button
                       type="button"
                       className={`rounded border px-2 py-1 text-[11px] font-semibold ${
