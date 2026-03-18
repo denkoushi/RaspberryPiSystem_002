@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-18）
+
+- **✅ 生産スケジュール一覧 列幅調整 実装・デプロイ・実機検証完了**: 品番3行上限・製番折り返し・処理列縮小・品名優先配分を採用。`columnWidth.ts` に `priorityGrowKeys`/`shrinkFirstKeys` を追加し、画面幅変化に強い列幅再配分を実装。**デプロイ**: ブランチ `feat/kiosk-table-width-tuning`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ。**実機検証**: Phase12 全24項目PASS、実機OK。詳細は [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) の「生産スケジュール一覧 列幅調整」を参照。
+
 ### 🆕 最新アップデート（2026-03-17）
 
 - **✅ 生産スケジュール 機種名・部品名検索 実装・デプロイ・実機検証完了**: 機種名＋工程＋資源CDのA条件で検索可能に。全角/半角正規化（フロント: `toHalfWidthAscii`、API: `normalizeMachineNameForCompare`）と、機種名指定時のドロップダウン空対策（`skipMachineFilterIfNoIndexHit`）を実施。**実機検証**: API 200・Phase12 全24項目PASS。実機データ0件環境では絞り込み件数確認はスキップ可（runbookに注記）。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#生産スケジュール-機種名部品名検索2026-03-17) / [frontend.md KB-304](./knowledge-base/frontend.md#kb-304-生産スケジュール-機種名部品名検索a条件全角半角正規化ドロップダウン空対策) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
