@@ -21,7 +21,7 @@ ARG VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=false
 ENV VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED}
 RUN cd apps/web && pnpm run build
 
-FROM caddy:2.11-alpine
+FROM caddy:2.11.2-alpine
 WORKDIR /srv
 # envsubstをインストールし、Trivy指摘のzlibを修正版へ更新する
 RUN apk add --no-cache gettext \
