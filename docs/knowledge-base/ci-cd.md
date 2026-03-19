@@ -604,6 +604,11 @@ update-frequency: high
 - セキュリティ例外（`.trivyignore`）は恒久対策の代替にしない
 - Dockerfile の Caddy build stage で依存バージョンを明示し、変更時は CVE 影響を再検証する
 
+**統合ブランチ（2026-03-19）**:
+- `feat/production-schedule-ui-unify-caddy-secfix` で本 Caddy 自前ビルドと生産スケジュールUI統一（[frontend.md KB-307](./frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設)）を統合。
+- `feat/production-schedule-dropdown-ui-unify` をベースに本コミットを cherry-pick。Dockerfile.web で衝突時は自前ビルド側を採用。
+- デプロイ・実機検証: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ。Phase12 25項目PASS、実機OK。
+
 **解決状況**: ✅ **解決済み（2026-03-19）**
 
 **関連ファイル**:

@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 50件  
+**件数**: 57件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -4402,8 +4402,46 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - 登録製番削除は生産スケジュール画面からは実行できないが、納期管理画面（`DueManagementLeftRail`）から共有historyを削除可能。
 - 資源名の表示はドロップダウンへ集約したため、横スクロールPillの `title` ホバーは廃止。
 - 選択状態の契約（search-state / query params）は既存互換を維持しているため、API変更は不要。
-- **CI Trivy（web イメージ）**: Caddy 同梱 Go バイナリ由来で CVE-2026-25679 / CVE-2026-27137 が検出された場合、既存運用に合わせ `.trivyignore` に該当 CVE を追記して CI を通す。Caddy アップストリーム対応待ち。
+- **CI Trivy（web イメージ）**: Caddy 同梱 Go バイナリ由来で CVE が検出された場合、Caddy 自前ビルド（[ci-cd.md KB-307](./ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する)）で恒久対策済み。統合ブランチで両方の機能を維持。
 
-**解決状況**: ✅ **実装・デプロイ・実機検証完了**（2026-03-18）
+**統合ブランチ（2026-03-19）**:
+- `feat/production-schedule-ui-unify-caddy-secfix` で UI 統一と Caddy 自前ビルド（Trivy CVE 解消）を統合。
+- `feat/production-schedule-dropdown-ui-unify` をベースに Caddy 自前ビルドコミットを cherry-pick。Dockerfile.web で衝突時は自前ビルド側を採用。
+- デプロイ: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ。Phase12 25項目PASS、実機検証OK。
+
+**解決状況**: ✅ **実装・デプロイ・実機検証完了**（2026-03-18）。統合ブランチで main マージ予定（2026-03-19）。
+
+---
+
+### [KB-308] 生産スケジュールUIが古いのに戻った事象（ブランチ分岐によるデプロイ内容ずれ）
+
+**発生日**: 2026-03-19
+
+**事象**:
+- デプロイ後に生産スケジュール画面の製番登録カード・資源CDドロップダウンが古いUIに戻っていた
+- `VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED` は `true` のまま、配信される JavaScript バンドルに新UIの文字列が含まれていなかった
+
+**根本原因**:
+- デプロイしたブランチ（`feat/kiosk-loan-card-pattern-b`）には生産スケジュールUI統一のコミットが含まれていなかった
+- UI統一は別ブランチ（`feat/production-schedule-dropdown-ui-unify`）に存在し、ブランチ分岐によりデプロイ内容がずれていた
+
+**調査手順**:
+1. サーバー上の `VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED` を確認 → `true`（問題なし）
+2. 配信されている main bundle を取得し、新UI文字列（例: `登録製番 (n/m)`）の有無を確認 → 旧UI文字列のみ
+3. `git log` でデプロイブランチと UI 統一ブランチのコミット履歴を比較 → UI統一コミットがデプロイブランチに含まれていないことを確認
+
+**有効だった対策**:
+- ✅ 統合ブランチ `feat/production-schedule-ui-unify-caddy-secfix` を作成
+- ✅ `feat/production-schedule-dropdown-ui-unify` をベースに、Caddy 自前ビルド（Trivy CVE 解消）のコミットを cherry-pick
+- ✅ Dockerfile.web の cherry-pick 衝突時は自前ビルド側（multi-stage Caddy build）を採用
+- ✅ 統合ブランチを Pi5 → raspberrypi4 → raspi4-robodrill01 の順にデプロイし、実機検証で両機能（UI統一・Caddy CVE解消）を確認
+
+**再発防止**:
+- デプロイ前に、対象ブランチに期待する機能のコミットが含まれているか `git log` で確認する
+- 複数機能を統合する場合は、統合ブランチを作成してからデプロイする運用を推奨
+
+**解決状況**: ✅ **解決済み**（2026-03-19）
+
+**関連**: [KB-307](#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設)、[ci-cd.md KB-307](./ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する)、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
 
 ---

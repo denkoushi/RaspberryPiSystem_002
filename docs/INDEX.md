@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-03-19）
 
+- **✅ 統合ブランチ（生産スケジュールUI統一 + Caddy自前ビルド）デプロイ・実機検証・mainマージ完了**: `feat/production-schedule-ui-unify-caddy-secfix` で UI 統一（製番登録カード・資源CDドロップダウン）と Caddy 自前ビルド（Trivy CVE 解消）を統合。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。**実機検証**: Phase12 25項目PASS、実機OK。**知見**: 生産スケジュールUIが古いのに戻った事象はブランチ分岐（デプロイブランチにUI統一が含まれていなかった）が原因。統合ブランチ作成・cherry-pick で解決。詳細は [KB-308](./knowledge-base/frontend.md#kb-308-生産スケジュールuiが古いのに戻った事象ブランチ分岐によるデプロイ内容ずれ) / [KB-307](./knowledge-base/frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設) / [ci-cd.md KB-307](./knowledge-base/ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
 - **✅ Caddy自前ビルド移行で Trivy image web の CVE を解消**: `Dockerfile.web` を公式 Caddy イメージ依存から multi-stage 自前ビルドへ変更し、`grpc` を修正版へ固定。`trivy image` の HIGH/CRITICAL スキャンで `usr/bin/caddy` を含め 0 件を確認。背景と再発防止は [KB-307](./knowledge-base/ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) を参照。
 
 ### 🆕 最新アップデート（2026-03-18）
