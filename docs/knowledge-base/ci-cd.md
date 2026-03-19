@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - CI/CD関連
 tags: [トラブルシューティング, CI/CD, GitHub Actions, テスト]
 audience: [開発者]
-last-verified: 2025-12-07
+last-verified: 2026-03-19
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: high
@@ -11,7 +11,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 9件  
+**件数**: 13件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -577,4 +577,37 @@ update-frequency: high
 **解決状況**: ✅ **解決済み（2026-03-16）**
 
 **関連**: [EXEC_PLAN.md](../../EXEC_PLAN.md) Surprises & Discoveries、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
+
+---
+
+### [KB-307] Trivy image web が `usr/bin/caddy` の CVE を検出して CI が失敗する
+
+**発生日**: 2026-03-19
+
+**事象**:
+- GitHub Actions の `docker-build` ジョブ内 `Security scan (Trivy image web)` が失敗
+- 対象は `usr/bin/caddy`（gobinary）で、`CVE-2026-33186` / `CVE-2026-25679` / `CVE-2026-27137`
+- `caddy:2.11-alpine` や `caddy:2.11.2-alpine` へタグ更新だけでは再発
+
+**根本原因**:
+- Web runtime が公式配布 Caddy バイナリ依存で、内部の Go 依存（`grpc` / `stdlib`）を直接制御できなかった
+- `FROM caddy:*` のタグ更新のみでは、Trivy が検出する組み込み依存の修正版反映を保証できなかった
+
+**有効だった対策**:
+- ✅ `infrastructure/docker/Dockerfile.web` を multi-stage の Caddy 自前ビルドへ変更
+- ✅ `golang:1.26.1-alpine` で Caddy をビルドし、`google.golang.org/grpc v1.79.3` を `replace` で固定
+- ✅ runtime を `alpine:3.23` に変更し、build stage から `/usr/bin/caddy` をコピー
+- ✅ `trivy image --skip-db-update --severity HIGH,CRITICAL --ignore-unfixed --format table raspisys-web:ci` で `usr/bin/caddy` 含め HIGH/CRITICAL が 0 件を確認
+
+**再発防止**:
+- `caddy` のベースタグ更新だけでなく、Trivy 実測結果で判定する
+- セキュリティ例外（`.trivyignore`）は恒久対策の代替にしない
+- Dockerfile の Caddy build stage で依存バージョンを明示し、変更時は CVE 影響を再検証する
+
+**解決状況**: ✅ **解決済み（2026-03-19）**
+
+**関連ファイル**:
+- `infrastructure/docker/Dockerfile.web`
+- `.trivyignore`
+- `.github/workflows/ci.yml`
 
