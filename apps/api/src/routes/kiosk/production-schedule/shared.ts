@@ -65,7 +65,8 @@ export const productionScheduleOrderParamsSchema = z.object({
 
 export const productionScheduleOrderBodySchema = z.object({
   resourceCd: z.string().min(1).max(100),
-  orderNumber: z.number().int().min(ORDER_NUMBER_MIN).max(ORDER_NUMBER_MAX).nullable()
+  orderNumber: z.number().int().min(ORDER_NUMBER_MIN).max(ORDER_NUMBER_MAX).nullable(),
+  targetLocation: z.string().min(1).max(100).optional()
 });
 
 export const productionScheduleNoteParamsSchema = z.object({
@@ -182,6 +183,11 @@ export const productionScheduleDueManagementLearningReportQuerySchema = z.object
   to: z.string().datetime().optional(),
   targetLocation: z.string().min(1).max(100).optional(),
   rankingScope: z.enum(['globalShared', 'locationScoped', 'localTemporary']).optional()
+});
+
+export const productionScheduleDueManagementManualOrderOverviewQuerySchema = z.object({
+  targetLocation: z.string().min(1).max(100).optional(),
+  resourceCd: z.string().max(100).optional()
 });
 
 export const productionScheduleDueManagementActualHoursImportBodySchema = z.object({

@@ -36,6 +36,8 @@ export type RawScheduleRow = {
   dueDate?: string | null;
 };
 
+export type ProductionScheduleSortMode = 'auto' | 'manual';
+
 const normalizeComparisonText = (value: string | null | undefined): string =>
   toHalfWidthAscii((value ?? '').trim()).toUpperCase();
 
@@ -188,8 +190,44 @@ export const filterRowsBySelectedOrderNumbers = (
 
 export const deriveDisplayRows = (
   normalizedRows: NormalizedScheduleRow[],
-  isDisplayRankContext: boolean
+  params: {
+    isDisplayRankContext: boolean;
+    sortMode: ProductionScheduleSortMode;
+    manualSortEnabled: boolean;
+  }
 ): NormalizedScheduleRow[] => {
+  const { isDisplayRankContext, sortMode, manualSortEnabled } = params;
+
+  if (sortMode === 'manual' && manualSortEnabled) {
+    const toStableNumber = (value: string | null | undefined) => {
+      const trimmed = String(value ?? '').trim();
+      if (!/^\d+$/.test(trimmed)) return Number.MAX_SAFE_INTEGER;
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+    };
+
+    return [...normalizedRows].sort((left, right) => {
+      const leftOrder = left.processingOrder ?? Number.MAX_SAFE_INTEGER;
+      const rightOrder = right.processingOrder ?? Number.MAX_SAFE_INTEGER;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+
+      const leftFseiban = String(left.data.FSEIBAN ?? '');
+      const rightFseiban = String(right.data.FSEIBAN ?? '');
+      const fseibanDiff = leftFseiban.localeCompare(rightFseiban, 'ja');
+      if (fseibanDiff !== 0) return fseibanDiff;
+
+      const productNoDiff =
+        toStableNumber(String(left.data.ProductNo ?? '')) - toStableNumber(String(right.data.ProductNo ?? ''));
+      if (productNoDiff !== 0) return productNoDiff;
+
+      const fkojunDiff =
+        toStableNumber(String(left.data.FKOJUN ?? '')) - toStableNumber(String(right.data.FKOJUN ?? ''));
+      if (fkojunDiff !== 0) return fkojunDiff;
+
+      return left.id.localeCompare(right.id, 'ja');
+    });
+  }
+
   if (!isDisplayRankContext) {
     return normalizedRows;
   }

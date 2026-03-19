@@ -516,6 +516,23 @@ export interface ProductionScheduleDueManagementGlobalRankResult {
   orderedFseibans: string[];
 }
 
+export interface ProductionScheduleDueManagementManualOrderOverviewResource {
+  resourceCd: string;
+  assignedCount: number;
+  maxOrderNumber: number | null;
+  avgGlobalRankGap: number | null;
+  comparedCount: number;
+  missingGlobalRankCount: number;
+  lastUpdatedAt: string | null;
+  lastUpdatedBy: string | null;
+}
+
+export interface ProductionScheduleDueManagementManualOrderOverviewResult {
+  actorLocation: string;
+  targetLocation: string;
+  resources: ProductionScheduleDueManagementManualOrderOverviewResource[];
+}
+
 export interface ProductionScheduleDueManagementGlobalRankScoreBreakdown {
   resourceDemandScore: number;
   dueUrgencyScore: number;
@@ -798,6 +815,16 @@ export async function getKioskProductionScheduleDueManagementGlobalRank(
   return data;
 }
 
+export async function getKioskProductionScheduleDueManagementManualOrderOverview(
+  context?: DueManagementTargetContext & DueManagementResourceFilterContext
+) {
+  const { data } = await api.get<ProductionScheduleDueManagementManualOrderOverviewResult>(
+    '/kiosk/production-schedule/due-management/manual-order-overview',
+    { params: context }
+  );
+  return data;
+}
+
 export async function updateKioskProductionScheduleDueManagementGlobalRank(payload: {
   orderedFseibans: string[];
   targetLocation?: string;
@@ -1075,7 +1102,7 @@ export async function getKioskProductionScheduleOrderSearchCandidates(params: {
 
 export async function updateKioskProductionScheduleOrder(
   rowId: string,
-  payload: { resourceCd: string; orderNumber: number | null }
+  payload: { resourceCd: string; orderNumber: number | null; targetLocation?: string }
 ) {
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const startTime = typeof performance !== 'undefined' ? performance.now() : 0;

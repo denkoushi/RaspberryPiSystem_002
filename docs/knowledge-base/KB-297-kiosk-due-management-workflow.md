@@ -2,9 +2,10 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-16
+last-verified: 2026-03-19
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
+  - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
   - ../guides/csv-import-export.md
 category: knowledge-base
 ---
@@ -58,6 +59,32 @@ category: knowledge-base
 - ポリシー層を分離して、工程カテゴリ判定・表面処理優先を呼び出し側から隔離
 - 切削除外リストはロケーション別設定で変更可能にし、コード修正なしで運用調整可能
 - 回帰防止として、ポリシーユニットテストとキオスク統合テスト（due-management系）を追加
+
+## 生産順序モード拡張（手動順番/自動順番 + targetLocation、2026-03-19）
+
+- **Context**:
+  - 全体ランキング精度が改善途上のため、現場ではオペレーターの手動順番を並行運用する必要がある。
+  - 現場リーダーが自席から代理設定できるよう、`targetLocation` を指定した更新基盤が必要になった。
+- **Fix**:
+  - 生産スケジュール画面に `自動順番 / 手動順番` を追加し、既定を `手動順番` に設定。
+  - 手動順番は「単一資源CD表示時のみ」有効化し、それ以外は `資源順番` ドロップダウンをグレーアウト。
+  - 手動順番の並びは `processingOrder` 昇順（未設定は末尾）へ分離し、`auto` は既存 `globalRank` 表示ロジックを維持。
+  - `PUT /api/kiosk/production-schedule/:rowId/order` に `targetLocation`（任意）を追加。
+    - 未指定: 従来どおり actor location を更新。
+    - 指定時: 代理更新可否を境界でガードし、不正な他拠点更新は `403 TARGET_LOCATION_FORBIDDEN`。
+  - 監査用に order 更新ログへ `actorLocation/targetLocation/actorClientKey/resourceCd/orderNumber` を記録。
+  - 学習イベントに `manual_order_update` を追加し、`actorLocation/targetLocation/resourceCd/reorderDelta` を記録。
+  - 納期管理画面に `手動順番 全体像` パネルを追加し、工程別設定件数・自動順位との乖離・最終更新時刻/更新者を可視化。
+- **Verification**:
+  - `pnpm --filter @raspi-system/web test -- src/features/kiosk/productionSchedule/displayRank.test.ts src/features/kiosk/productionSchedule/displayRowDerivation.machinePart.test.ts src/features/kiosk/productionSchedule/displayRowDerivation.sortMode.test.ts` 成功（9 tests）。
+  - `pnpm --filter @raspi-system/web exec tsc --noEmit` 成功。
+  - API側 `tsc --noEmit` は既存の `rootDir/include` 設定起因で失敗（今回差分起因ではないため既知）。
+  - **デプロイ・実機検証（2026-03-19）**: ブランチ `feat/production-schedule-target-location-ordering`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。Phase12 26項目PASS（manual-order-overview API チェック追加）、実機OK。
+  - **CI修正**: `ProductionScheduleGlobalRank` の正しいカラムは `priorityOrder`（`rankOrder` は存在しない）。`due-management-manual-order-overview.service.ts` で誤参照していたため修正。
+- **Prevention**:
+  - `targetLocation` の変換・検証は route 境界に閉じ込め、service 契約は `locationKey` を維持。
+  - 手動順番の有効条件を UI とソート戦略の両方で一致させ、単一資源CD条件の逸脱を防止。
+  - 代理更新や学習イベント追加時も既存API互換（未指定時の挙動）を壊さない。
 
 ## 切削除外リストで一部資源CDのみ除外される事象（2026-03-16 調査）
 

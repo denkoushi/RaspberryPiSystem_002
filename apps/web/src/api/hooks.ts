@@ -80,6 +80,7 @@ import {
   getKioskProductionScheduleDueManagementTriage,
   getKioskProductionScheduleDueManagementDailyPlan,
   getKioskProductionScheduleDueManagementGlobalRank,
+  getKioskProductionScheduleDueManagementManualOrderOverview,
   getKioskProductionScheduleDueManagementGlobalRankProposal,
   autoGenerateKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementSeibanDetail,
@@ -522,6 +523,14 @@ export function useKioskProductionScheduleDueManagementGlobalRank(context?: DueM
   });
 }
 
+export function useKioskProductionScheduleDueManagementManualOrderOverview(context?: DueManagementTargetContext) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-due-management-manual-order-overview', context],
+    queryFn: () => getKioskProductionScheduleDueManagementManualOrderOverview(context),
+    refetchInterval: 30000
+  });
+}
+
 export function useUpdateKioskProductionScheduleDueManagementGlobalRank() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -692,7 +701,13 @@ export function useUpdateKioskProductionScheduleOrder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ['kiosk-production-schedule', 'write', 'order'],
-    mutationFn: ({ rowId, payload }: { rowId: string; payload: { resourceCd: string; orderNumber: number | null } }) =>
+    mutationFn: ({
+      rowId,
+      payload
+    }: {
+      rowId: string;
+      payload: { resourceCd: string; orderNumber: number | null; targetLocation?: string };
+    }) =>
       updateKioskProductionScheduleOrder(rowId, payload),
     onMutate: () => {
       // NOTE: cancelQueries は「進行中の取得」と「更新」が競合しやすい場面で有効。
@@ -705,6 +720,7 @@ export function useUpdateKioskProductionScheduleOrder() {
       // UI待ちを作らない（mutation完了は即返し、裏で再取得）
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-manual-order-overview'] });
     }
   });
 }
