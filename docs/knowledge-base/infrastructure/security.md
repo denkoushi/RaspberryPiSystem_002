@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - セキュリティ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-02-13
+last-verified: 2026-03-20
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,10 +11,47 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 19件  
+**件数**: 20件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
+
+---
+
+### [KB-309] GitHub 開発者アカウントの衛生チェック（ForceMemo / GlassWorm 系サプライチェーン対策）
+
+**状況**: 2026-03 時点で公開されている調査（例: StepSecurity の ForceMemo、GlassWorm 系 VS Code / Cursor 拡張経由のトークン窃取）を踏まえ、**本リポジトリのメンテナ**が実施した予防的確認と、その後のトラブルシュート要点を記録する。
+
+**背景（要約）**:
+- **侵入の典型**: 悪意あるエディタ拡張等から **GitHub トークン**が窃取され、アカウントが乗っ取られる。
+- **ForceMemo 系の特徴（報告ベース）**: デフォルトブランチへの **force-push**、末尾への **難読化 Python**（`setup.py` / `main.py` 等）、**author 日付を偽装**しつつ **committer** で改ざんが露呈するケース、オンチェーン **Solana memo** 経由の C2 など。
+- **検索用 IOC（報告例）**: 変数名 `lzcdrtfxyqiplpd`（GitHub Code Search で既知侵害の横断調査に使われる）。
+
+**本プロジェクトでの実施結果（2026-03-20 時点）**:
+1. **2FA**: GitHub アカウントで **二要素認証（認証アプリ）を有効化**。リカバリコードはオフライン保管。
+2. **PAT**: **Classic** / **Fine-grained** とも、**期限切れトークンを削除**（実運用上は既に失効済み）。今後は用途が明確なものだけを **最小権限・期限付き**で再発行する方針。
+3. **セッション**: `https://github.com/settings/sessions` で一覧確認。**同一 IP の複数 active** はブラウザ/クライアント別セッションで起こり得るため、国・端末が不審なものだけを失効。
+4. **SSH keys**: 登録は **1 本のみ**で、用途と一致を確認。
+5. **GPG**: 署名未運用のため **鍵なし**（Vigilant mode は任意）。
+6. **Cursor 拡張**: インストール済みは **日本語 Language Pack のみ**（拡張表面は最小）。
+7. **リポジトリ調査（ローカルクローン）**: マーカー文字列 `lzcdrtfxyqiplpd` **ヒットなし**。`git push --dry-run` で **認証成功**（期限切れ PAT 削除後も **GitHub CLI / OS 資格情報**側の認証が有効な構成）。
+
+**トラブルシューティング**:
+| 症状 | 確認・対処 |
+|------|------------|
+| 2FA 後に `git push` が失敗 | HTTPS で **アカウントパスワード**を使っていた場合は不可。**PAT** 再発行、`gh auth login`、または **SSH** へ切替。 |
+| 期限切れ PAT を消したら push できない | `gh auth status` を確認。必要なら `gh auth login`。CI やスクリプトに貼っていた PAT は **該当 Secrets も更新**。 |
+| 履歴が「見た目変わらない」のにコード末尾が増えている | `git log` で **author date と committer date の大きな乖離**、committer が `null` 等の報告あり。疑わしければ **直近のデフォルトブランチとタグ/リリース**を再確認し、GitHub Security / メンテナに連絡。 |
+| 依存インストールで怪しいネットワーク | `setup.py` 実行で **Solana RPC** や **nodejs.org への異常 DL** が混ざる報告あり。CI では egress 制限・監査（例: allowlist）を検討。 |
+
+**参考（外部・一次に近い調査）**:
+- [StepSecurity: ForceMemo](https://www.stepsecurity.io/blog/forcememo-hundreds-of-github-python-repos-compromised-via-account-takeover-and-force-push)
+- [Truesec: GlassWorm](https://www.truesec.com/hub/blog/glassworm-self-propagating-vscode-extension)
+- [GitHub Blog: supply chain hardening（一般対策）](https://github.blog/security-2/supply-chain-security/strengthening-supply-chain-security-preparing-for-the-next-malware-campaign/)
+
+**再発防止（運用）**:
+- メンテナは **四半期に一度**、上記 1〜5 を棚卸し（拡張は随時）。
+- **`pip install git+https://github.com/...`** 利用時は、**デフォルトブランチの差分**を人間が確認するか、タグ/リリース固定を優先。
 
 ---
 
