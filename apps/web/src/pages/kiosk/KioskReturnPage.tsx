@@ -202,20 +202,16 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                             {loan.riggingGear?.name ?? '吊具'}
                           </p>
                         </>
-                      ) : (
+                      ) : loan.item ? (
                         <>
                           <div className="flex items-center gap-1 mb-1">
                             <span className="text-sm">🔧</span>
                             <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
-                              {loan.item?.name ?? (
-                                <span className="text-sm text-white/90">
-                                  {loan.photoUrl ? '写真撮影モード' : 'アイテム'}
-                                </span>
-                              )}
+                              {loan.item.name}
                             </p>
                           </div>
                         </>
-                      )}
+                      ) : null}
                       <p className={`text-sm font-semibold mt-1 ${isOverdue ? 'text-red-200' : 'text-white/95'}`}>
                         {loan.employee?.displayName ?? '従業員情報なし'}
                       </p>
@@ -225,6 +221,11 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                           <span className="ml-2 font-bold text-red-200">⚠ 期限超過</span>
                         )}
                       </p>
+                      {loan.client?.location ? (
+                        <p className={`text-xs mt-0.5 ${isOverdue ? 'text-red-200/90' : 'text-white/80'}`}>
+                          {loan.client.location}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex flex-col gap-2 items-start md:items-end">

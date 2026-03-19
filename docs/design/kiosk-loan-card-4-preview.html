@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>持出一覧カード 4番（工具・写真持出）デザインプレビュー</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-800 text-white p-8">
+  <div class="max-w-4xl mx-auto space-y-8">
+    <h1 class="text-2xl font-bold mb-6">持出一覧カード 4番（工具・写真持出）デザインプレビュー</h1>
+    <p class="text-slate-300 text-sm">色: 青 (blue-500) / アイコン: 🔧</p>
+
+    <section class="space-y-4">
+      <h2 class="text-lg font-semibold text-slate-200">パターンA: 工具（サムネイルなし）</h2>
+      <ul class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <li class="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between border-2 border-blue-700 bg-blue-500 text-white shadow-lg">
+          <div class="flex flex-1 gap-3">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1 mb-1">
+                <span class="text-sm">🔧</span>
+                <p class="text-base font-bold truncate text-white">ドライバーセット</p>
+              </div>
+              <p class="text-sm font-semibold mt-1 text-white/95">山田 太郎</p>
+              <p class="text-sm mt-1 text-white/90">2026/3/19 14:30:00</p>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 items-start md:items-end">
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">返却</button>
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-transparent text-white/90 hover:text-white hover:bg-white/20">取消</button>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-lg font-semibold text-slate-200">パターンB: 写真持出（サムネイルあり）</h2>
+      <ul class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <li class="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between border-2 border-blue-700 bg-blue-500 text-white shadow-lg">
+          <div class="flex flex-1 gap-3">
+            <div class="flex-shrink-0">
+              <div class="h-[72px] w-[72px] rounded object-cover border border-white/10 bg-slate-600 flex items-center justify-center text-2xl">📷</div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold mt-1 text-white/95">佐藤 花子</p>
+              <p class="text-sm mt-1 text-white/90">2026/3/19 15:45:00</p>
+              <p class="text-xs mt-0.5 text-white/80">工具倉庫</p>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 items-start md:items-end">
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">返却</button>
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-transparent text-white/90 hover:text-white hover:bg-white/20">取消</button>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-lg font-semibold text-slate-200">グリッド内表示（grid-cols-5 想定）</h2>
+      <ul class="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <li class="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between border-2 border-blue-700 bg-blue-500 text-white shadow-lg">
+          <div class="flex flex-1 gap-3 min-w-0">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1 mb-1">
+                <span class="text-sm">🔧</span>
+                <p class="text-base font-bold truncate text-white">トルクレンチ</p>
+              </div>
+              <p class="text-sm font-semibold mt-1 text-white/95 truncate">田中</p>
+              <p class="text-sm mt-1 text-white/90">3/19 14:30</p>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 items-start md:items-end flex-shrink-0">
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-emerald-500 text-white">返却</button>
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-transparent text-white/90">取消</button>
+          </div>
+        </li>
+        <li class="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between border-2 border-blue-700 bg-blue-500 text-white shadow-lg">
+          <div class="flex flex-1 gap-3 min-w-0">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold mt-1 text-white/95 truncate">鈴木</p>
+              <p class="text-sm mt-1 text-white/90">3/19 15:00</p>
+              <p class="text-xs mt-0.5 text-white/80 truncate">Pi4キオスク1</p>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 items-start md:items-end flex-shrink-0">
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-emerald-500 text-white">返却</button>
+            <button class="rounded-md px-3 py-1 h-auto text-sm font-semibold bg-transparent text-white/90">取消</button>
+          </div>
+        </li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>
