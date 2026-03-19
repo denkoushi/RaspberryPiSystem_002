@@ -62,7 +62,7 @@ export async function listDueManagementManualOrderOverview(params: Params): Prom
       },
       select: {
         fseiban: true,
-        rankOrder: true
+        priorityOrder: true
       }
     }),
     prisma.dueManagementOutcomeEvent.findMany({
@@ -86,7 +86,7 @@ export async function listDueManagementManualOrderOverview(params: Params): Prom
   globalRanks.forEach((item) => {
     const fseiban = item.fseiban.trim();
     if (!fseiban) return;
-    globalRankMap.set(fseiban, item.rankOrder);
+    globalRankMap.set(fseiban, item.priorityOrder);
   });
 
   const latestUpdateByResource = new Map<string, { lastUpdatedAt: string; lastUpdatedBy: string | null }>();
