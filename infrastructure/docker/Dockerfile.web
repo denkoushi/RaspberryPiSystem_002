@@ -21,11 +21,41 @@ ARG VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=false
 ENV VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED}
 RUN cd apps/web && pnpm run build
 
-FROM caddy:2.11-alpine
+FROM golang:1.26.1-alpine AS caddy-build
+WORKDIR /src
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN apk add --no-cache git build-base
+RUN cat <<'EOF' > go.mod
+module caddybuilder
+
+go 1.26
+
+require github.com/caddyserver/caddy/v2 v2.11.2
+
+replace google.golang.org/grpc => google.golang.org/grpc v1.79.3
+EOF
+RUN cat <<'EOF' > main.go
+package main
+
+import (
+	_ "github.com/caddyserver/caddy/v2/modules/standard"
+	caddycmd "github.com/caddyserver/caddy/v2/cmd"
+)
+
+func main() {
+	caddycmd.Main()
+}
+EOF
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -mod=mod -trimpath -ldflags="-s -w" -o /usr/bin/caddy main.go
+
+FROM alpine:3.23
 WORKDIR /srv
 # envsubstをインストールし、Trivy指摘のzlibを修正版へ更新する
-RUN apk add --no-cache gettext \
+RUN apk add --no-cache ca-certificates gettext libcap \
   && apk upgrade --no-cache zlib
+COPY --from=caddy-build /usr/bin/caddy /usr/bin/caddy
+RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
 COPY --from=build /app/apps/web/dist ./site
 COPY infrastructure/docker/Caddyfile ./Caddyfile
 COPY infrastructure/docker/Caddyfile.production ./Caddyfile.production

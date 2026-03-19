@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-19）
+
+- **✅ Caddy自前ビルド移行で Trivy image web の CVE を解消**: `Dockerfile.web` を公式 Caddy イメージ依存から multi-stage 自前ビルドへ変更し、`grpc` を修正版へ固定。`trivy image` の HIGH/CRITICAL スキャンで `usr/bin/caddy` を含め 0 件を確認。背景と再発防止は [KB-307](./knowledge-base/ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する) を参照。
+
 ### 🆕 最新アップデート（2026-03-18）
 
 - **✅ 進捗一覧製番フィルタ 実装・デプロイ・実機検証完了**: 進捗一覧ヘッダーに「製番フィルタ (n/m)」ドロップダウンを追加。候補は `scheduled` 製番のみ、製番＋機種名を複数列表示。ON/OFFでカード表示を絞り込み、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（schemaVersion付き）で端末別保存。`verify-phase12-real.sh` に progress-overview API チェックを追加。**知見**: Mac から Tailscale 経由でブラウザアクセスすると自己署名証明書で chrome-error になるため、UI検証は実機/VNC での確認が必要。詳細は [KB-306](./knowledge-base/frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) を参照。
