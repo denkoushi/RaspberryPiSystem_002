@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-03-20）
+
+- **📝 GitHub メンテナ向け衛生チェックを KB 化（ForceMemo / GlassWorm 系を背景に整理）**: 2FA 有効化、期限切れ PAT 削除、セッション/SSH/GPG 確認、Cursor 拡張の最小化、ローカルクローンでの IOC 検索と `git push --dry-run` による認証確認の記録。手順・トラブルシュートは [KB-309（`infrastructure/security.md`）](./knowledge-base/infrastructure/security.md) を参照。
+
 ### 🆕 最新アップデート（2026-03-19）
 
 - **✅ 生産順序モード拡張（自動順番/手動順番 + targetLocation + 全体像パネル）実装完了**: 生産スケジュールに `自動順番 / 手動順番` トグルを追加し、既定を手動順番へ変更。手動順番は単一資源CD表示時のみ有効化し、それ以外は `資源順番` を無効化。`PUT /api/kiosk/production-schedule/:rowId/order` に `targetLocation` を追加し、代理更新ポリシーと監査ログを導入。学習イベントに `manual_order_update` を追加。納期管理左ペインに「手動順番 全体像」パネルを追加し、工程別設定件数・乖離・最終更新を可視化。詳細は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#生産順序モード拡張手動順番自動順番--targetlocation2026-03-19) / [ADR-20260319](./decisions/ADR-20260319-production-schedule-manual-order-target-location.md) を参照。

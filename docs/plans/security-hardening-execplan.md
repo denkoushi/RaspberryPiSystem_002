@@ -23,6 +23,8 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
 
 **Phase 9/10実装完了（2025-12-14）**: インターネット接続時の追加防御（管理画面IP制限、Webhookアラート、セキュリティヘッダー、レート制限）と認証・監視強化（MFA、リアルタイム監視、権限監査）を実装完了。実機テストも完了し、ローカルネットワークとインターネットの両環境で安全に運用可能。詳細仕様は [security/phase9-10-specifications.md](../security/phase9-10-specifications.md) を参照。
 
+**GitHub / 開発者ワークステーション衛生（2026-03-20）**: サーバ本体のハードニングに加え、**GitHub メンテナアカウント**の乗っ取り・サプライチェーン汚染（報告例: ForceMemo、GlassWorm）対策として、2FA・PAT 棚卸し・セッション/SSH 確認・エディタ拡張の最小化を推奨。実施記録とトラブルシュートは [KB-309](../knowledge-base/infrastructure/security.md) を参照。
+
 ## Progress
 
 ### Phase 0: 準備・設計
