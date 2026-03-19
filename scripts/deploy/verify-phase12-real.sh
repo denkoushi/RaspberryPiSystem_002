@@ -149,6 +149,9 @@ check_contains "サイネージAPI layoutConfig" "${SIGNAGE_JSON}" '"layoutConfi
 PROGRESS_OVERVIEW_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "進捗一覧API progress-overview" "${PROGRESS_OVERVIEW_CODE}" "200"
 
+MANUAL_ORDER_OVERVIEW_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+check_contains "manual-order-overview API" "${MANUAL_ORDER_OVERVIEW_JSON}" '"actorLocation".*"targetLocation".*"resources"'
+
 echo ""
 echo "--- Pi5 remote checks ---"
 BACKUP_INFO="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ls -lh /opt/RaspberryPiSystem_002/config/backup.json 2>&1" || true)"

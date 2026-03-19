@@ -79,6 +79,8 @@ category: knowledge-base
   - `pnpm --filter @raspi-system/web test -- src/features/kiosk/productionSchedule/displayRank.test.ts src/features/kiosk/productionSchedule/displayRowDerivation.machinePart.test.ts src/features/kiosk/productionSchedule/displayRowDerivation.sortMode.test.ts` 成功（9 tests）。
   - `pnpm --filter @raspi-system/web exec tsc --noEmit` 成功。
   - API側 `tsc --noEmit` は既存の `rootDir/include` 設定起因で失敗（今回差分起因ではないため既知）。
+  - **デプロイ・実機検証（2026-03-19）**: ブランチ `feat/production-schedule-target-location-ordering`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。Phase12 26項目PASS（manual-order-overview API チェック追加）、実機OK。
+  - **CI修正**: `ProductionScheduleGlobalRank` の正しいカラムは `priorityOrder`（`rankOrder` は存在しない）。`due-management-manual-order-overview.service.ts` で誤参照していたため修正。
 - **Prevention**:
   - `targetLocation` の変換・検証は route 境界に閉じ込め、service 契約は `locationKey` を維持。
   - 手動順番の有効条件を UI とソート戦略の両方で一致させ、単一資源CD条件の逸脱を防止。
