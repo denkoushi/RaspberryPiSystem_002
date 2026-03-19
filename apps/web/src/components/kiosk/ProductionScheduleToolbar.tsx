@@ -3,6 +3,8 @@ import { Row } from '../layout/Row';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 
+import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
+
 type ProductionScheduleToolbarProps = {
   inputQuery: string;
   onInputChange: (value: string) => void;
@@ -27,6 +29,9 @@ type ProductionScheduleToolbarProps = {
   onPartNameChange: (value: string) => void;
   onOpenOrderSearch: () => void;
   isOrderSearchEnabled: boolean;
+  sortMode: ProductionScheduleSortMode;
+  onSortModeChange: (mode: ProductionScheduleSortMode) => void;
+  canUseManualSort: boolean;
   disabled?: boolean;
   isFetching?: boolean;
   showFetching?: boolean;
@@ -56,6 +61,9 @@ export function ProductionScheduleToolbar({
   onPartNameChange,
   onOpenOrderSearch,
   isOrderSearchEnabled,
+  sortMode,
+  onSortModeChange,
+  canUseManualSort,
   disabled = false,
   isFetching = false,
   showFetching = false
@@ -142,7 +150,7 @@ export function ProductionScheduleToolbar({
           <select
             value={selectedMachineName}
             onChange={(event) => onMachineNameChange(event.target.value)}
-            className="h-10 min-w-36 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900"
+            className="h-10 min-w-32 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900"
             disabled={disabled}
             aria-label="機種名フィルタ"
           >
@@ -156,7 +164,7 @@ export function ProductionScheduleToolbar({
           <select
             value={selectedPartName}
             onChange={(event) => onPartNameChange(event.target.value)}
-            className="h-10 min-w-36 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900"
+            className="h-10 min-w-32 rounded border border-slate-300 bg-white px-2 text-sm text-slate-900"
             disabled={disabled || selectedMachineName.trim().length === 0}
             aria-label="部品名フィルタ"
           >
@@ -170,7 +178,7 @@ export function ProductionScheduleToolbar({
           <Button
             type="button"
             variant={isOrderSearchEnabled ? 'primary' : 'secondary'}
-            className="h-10 whitespace-nowrap shrink-0"
+            className="h-10 px-3 whitespace-nowrap shrink-0"
             onClick={onOpenOrderSearch}
             disabled={disabled || !isOrderSearchEnabled}
           >
@@ -179,14 +187,40 @@ export function ProductionScheduleToolbar({
           {showFetching && isFetching ? <span className="text-xs text-white/70">更新中...</span> : null}
         </Row>
       </Row>
-      <div className="ml-auto flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
-        <span className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-          完了 {completedCount}
-        </span>
-        <span className="text-white/70">/</span>
-        <span className="text-red-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-          未完 {incompleteCount}
-        </span>
+      <div className="ml-auto flex flex-col items-end gap-1 text-sm font-semibold whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          <span className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+            完了 {completedCount}
+          </span>
+          <span className="text-white/70">/</span>
+          <span className="text-red-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+            未完 {incompleteCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 rounded border border-white/20 bg-white/5 p-1">
+          <button
+            type="button"
+            onClick={() => onSortModeChange('auto')}
+            disabled={disabled}
+            className={`rounded px-2 py-1 text-xs font-semibold ${
+              sortMode === 'auto' ? 'bg-emerald-500 text-white' : 'text-white/80 hover:bg-white/10'
+            }`}
+            aria-label="自動順番モードに切り替え"
+          >
+            自動順番
+          </button>
+          <button
+            type="button"
+            onClick={() => onSortModeChange('manual')}
+            disabled={disabled || !canUseManualSort}
+            className={`rounded px-2 py-1 text-xs font-semibold ${
+              sortMode === 'manual' ? 'bg-blue-500 text-white' : 'text-white/80 hover:bg-white/10'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+            aria-label="手動順番モードに切り替え"
+          >
+            手動順番
+          </button>
+        </div>
       </div>
     </Row>
   );

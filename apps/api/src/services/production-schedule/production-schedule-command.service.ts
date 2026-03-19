@@ -346,8 +346,9 @@ export async function upsertProductionScheduleOrder(params: {
   resourceCd: string;
   orderNumber: number | null;
   locationKey: string;
+  actorLocationKey?: string;
 }): Promise<{ success: true; orderNumber: number | null }> {
-  const { rowId, resourceCd, orderNumber, locationKey } = params;
+  const { rowId, resourceCd, orderNumber, locationKey, actorLocationKey } = params;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
     select: { id: true, rowData: true }
@@ -358,6 +359,18 @@ export async function upsertProductionScheduleOrder(params: {
 
   const rowData = row.rowData as Record<string, unknown>;
   const rowResourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD : '';
+  const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
+    where: {
+      csvDashboardRowId_location: {
+        csvDashboardRowId: row.id,
+        location: locationKey
+      }
+    },
+    select: {
+      orderNumber: true,
+      resourceCd: true
+    }
+  });
   if (rowResourceCd && rowResourceCd !== resourceCd) {
     throw new ApiError(400, '資源CDが一致しません');
   }
@@ -367,6 +380,27 @@ export async function upsertProductionScheduleOrder(params: {
       where: {
         csvDashboardRowId: row.id,
         location: locationKey
+      }
+    });
+    const fseibanRaw = rowData.FSEIBAN;
+    const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
+    const isCompleted = rowData.progress === COMPLETED_PROGRESS_VALUE;
+    await dueManagementLearningEventRepository.saveOutcomeEvent({
+      locationKey,
+      eventType: 'manual_order_update',
+      csvDashboardRowId: row.id,
+      fseiban: fseiban.length > 0 ? fseiban : null,
+      isCompleted,
+      occurredAt: new Date(),
+      metadata: {
+        from: 'kiosk_order_update',
+        actorLocation: actorLocationKey ?? locationKey,
+        targetLocation: locationKey,
+        resourceCd,
+        previousResourceCd: currentAssignment?.resourceCd ?? null,
+        previousOrderNumber: currentAssignment?.orderNumber ?? null,
+        nextOrderNumber: null,
+        reorderDelta: null
       }
     });
     return { success: true, orderNumber: null };
@@ -402,6 +436,30 @@ export async function upsertProductionScheduleOrder(params: {
       location: locationKey,
       resourceCd,
       orderNumber
+    }
+  });
+
+  const fseibanRaw = rowData.FSEIBAN;
+  const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
+  const isCompleted = rowData.progress === COMPLETED_PROGRESS_VALUE;
+  const reorderDelta =
+    typeof currentAssignment?.orderNumber === 'number' ? orderNumber - currentAssignment.orderNumber : null;
+  await dueManagementLearningEventRepository.saveOutcomeEvent({
+    locationKey,
+    eventType: 'manual_order_update',
+    csvDashboardRowId: row.id,
+    fseiban: fseiban.length > 0 ? fseiban : null,
+    isCompleted,
+    occurredAt: new Date(),
+    metadata: {
+      from: 'kiosk_order_update',
+      actorLocation: actorLocationKey ?? locationKey,
+      targetLocation: locationKey,
+      resourceCd,
+      previousResourceCd: currentAssignment?.resourceCd ?? null,
+      previousOrderNumber: currentAssignment?.orderNumber ?? null,
+      nextOrderNumber: orderNumber,
+      reorderDelta
     }
   });
 

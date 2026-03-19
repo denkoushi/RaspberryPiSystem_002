@@ -37,10 +37,13 @@ import { useProductionScheduleSearchConditions } from '../../features/kiosk/prod
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
+import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
+
 const NOTE_MAX_LENGTH = 100;
 
 const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
 const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
+const SORT_MODE_KEY = 'production-schedule-sort-mode';
 const NOTE_COLUMN_WIDTH = 140;
 const DUE_DATE_COLUMN_WIDTH = 110;
 
@@ -106,6 +109,7 @@ export function ProductionSchedulePage() {
   } = searchConditions;
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
   const [, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
+  const [sortMode, setSortMode] = useLocalStorage<ProductionScheduleSortMode>(SORT_MODE_KEY, 'manual');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -238,6 +242,7 @@ export function ProductionSchedulePage() {
     completedCount,
     incompleteCount,
     resourceCdsInRows,
+    manualSortEnabled,
     isDisplayRankContext,
     isTwoColumn,
     itemSeparatorWidth,
@@ -267,6 +272,7 @@ export function ProductionSchedulePage() {
     selectedMachineName,
     selectedPartName,
     selectedOrderNumbers,
+    sortMode,
     containerWidth
   });
 
@@ -598,6 +604,9 @@ export function ProductionSchedulePage() {
         onPartNameChange={handlePartNameChange}
         onOpenOrderSearch={orderSearch.open}
         isOrderSearchEnabled={isOrderSearchEnabled}
+        sortMode={sortMode}
+        onSortModeChange={setSortMode}
+        canUseManualSort={manualSortEnabled}
         disabled={scheduleQuery.isFetching || completePending}
         isFetching={scheduleQuery.isFetching}
         showFetching={hasQuery}
@@ -633,7 +642,12 @@ export function ProductionSchedulePage() {
         }
       />
 
-      {isDisplayRankContext ? (
+      {sortMode === 'manual' && !manualSortEnabled ? (
+        <p className="text-xs font-semibold text-amber-300">
+          手動順番は単一の資源CDで表示しているときのみ有効です。
+        </p>
+      ) : null}
+      {sortMode === 'auto' && isDisplayRankContext ? (
         <p className="text-xs font-semibold text-white/70">
           全体順位は表示対象内の表示順位として 1 から再採番しています（保存値は変更しません）。
         </p>
@@ -662,6 +676,7 @@ export function ProductionSchedulePage() {
           processingPending={processingPending}
           notePending={notePending}
           dueDatePending={dueDatePending}
+          canEditProcessingOrder={sortMode === 'manual' && manualSortEnabled}
           processingTypeOptions={processingTypeOptionsQuery.data ?? []}
           getAvailableOrders={getAvailableOrders}
           handleComplete={handleComplete}

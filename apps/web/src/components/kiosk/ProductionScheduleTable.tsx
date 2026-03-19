@@ -23,6 +23,7 @@ type ProductionScheduleTableProps = {
   processingPending: boolean;
   notePending: boolean;
   dueDatePending: boolean;
+  canEditProcessingOrder: boolean;
   processingTypeOptions: ProcessingTypeOption[];
   getAvailableOrders: (resourceCd: string, current: number | null) => number[];
   handleComplete: (rowId: string) => void;
@@ -44,6 +45,7 @@ type RowCellProps = {
   processingPending: boolean;
   notePending: boolean;
   dueDatePending: boolean;
+  canEditProcessingOrder: boolean;
   processingTypeOptions: ProcessingTypeOption[];
   getAvailableOrders: (resourceCd: string, current: number | null) => number[];
   handleComplete: (rowId: string) => void;
@@ -65,6 +67,7 @@ function ProductionScheduleTableCells({
   processingPending,
   notePending,
   dueDatePending,
+  canEditProcessingOrder,
   processingTypeOptions,
   getAvailableOrders,
   handleComplete,
@@ -100,7 +103,13 @@ function ProductionScheduleTableCells({
                 <select
                   value={row.processingOrder ?? ''}
                   onChange={(event) => handleOrderChange(row.id, resourceCd, event.target.value)}
-                  disabled={completePending || row.isCompleted || resourceCd.length === 0 || orderPending}
+                  disabled={
+                    completePending ||
+                    row.isCompleted ||
+                    resourceCd.length === 0 ||
+                    orderPending ||
+                    !canEditProcessingOrder
+                  }
                   className="h-7 w-16 rounded border border-slate-300 bg-white px-2 text-sm text-black"
                 >
                   <option value="">-</option>
@@ -198,6 +207,7 @@ export function ProductionScheduleTable({
   processingPending,
   notePending,
   dueDatePending,
+  canEditProcessingOrder,
   processingTypeOptions,
   getAvailableOrders,
   handleComplete,
@@ -271,6 +281,7 @@ export function ProductionScheduleTable({
                   processingPending={processingPending}
                   notePending={notePending}
                   dueDatePending={dueDatePending}
+                  canEditProcessingOrder={canEditProcessingOrder}
                   processingTypeOptions={processingTypeOptions}
                   getAvailableOrders={getAvailableOrders}
                   handleComplete={handleComplete}
@@ -294,6 +305,7 @@ export function ProductionScheduleTable({
                       processingPending={processingPending}
                       notePending={notePending}
                       dueDatePending={dueDatePending}
+                      canEditProcessingOrder={canEditProcessingOrder}
                       processingTypeOptions={processingTypeOptions}
                       getAvailableOrders={getAvailableOrders}
                       handleComplete={handleComplete}

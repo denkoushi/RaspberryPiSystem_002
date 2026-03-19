@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   useKioskProductionScheduleDueManagementDailyPlan,
   useKioskProductionScheduleDueManagementGlobalRank,
+  useKioskProductionScheduleDueManagementManualOrderOverview,
   useKioskProductionScheduleDueManagementGlobalRankProposal,
   useKioskProductionScheduleDueManagementSeibanDetail,
   useKioskProductionScheduleDueManagementSummary,
@@ -129,6 +130,8 @@ export function ProductionScheduleDueManagementPage() {
   const triageQuery = useKioskProductionScheduleDueManagementTriage(dueManagementFilterParams);
   const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan(dueManagementFilterParams);
   const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank(dueManagementGlobalRankContext);
+  const manualOrderOverviewQuery =
+    useKioskProductionScheduleDueManagementManualOrderOverview(dueManagementGlobalRankContext);
   const globalRankProposalQuery = useKioskProductionScheduleDueManagementGlobalRankProposal(
     dueManagementGlobalRankContext
   );
@@ -608,6 +611,10 @@ export function ProductionScheduleDueManagementPage() {
               globalRankLoading={globalRankQuery.isLoading}
               globalRankError={globalRankQuery.isError}
               globalRankProposalLoading={globalRankProposalQuery.isLoading}
+              manualOrderOverviewLoading={manualOrderOverviewQuery.isLoading}
+              manualOrderOverviewError={manualOrderOverviewQuery.isError}
+              manualOrderOverviewResources={manualOrderOverviewQuery.data?.resources ?? []}
+              manualOrderOverviewTargetLocation={manualOrderOverviewQuery.data?.targetLocation ?? null}
               globalRankFilter={globalRankFilter}
               onGlobalRankFilterChange={setGlobalRankFilter}
               globalRankItems={filteredGlobalRankItems}

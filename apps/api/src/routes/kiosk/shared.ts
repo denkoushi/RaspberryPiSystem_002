@@ -114,3 +114,7 @@ export const shouldRequireTargetLocationForActor = (actorLocation: string): bool
   }
   return actorLocation === MAC_LOCATION_ALIAS;
 };
+
+export const canProxyTargetLocation = (actorLocation: string): boolean => {
+  return actorLocation === MAC_LOCATION_ALIAS;
+};

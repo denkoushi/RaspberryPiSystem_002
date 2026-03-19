@@ -13,6 +13,7 @@ import {
   filterRowsByMachineAndPart,
   filterRowsBySelectedOrderNumbers,
   normalizeScheduleRows,
+  type ProductionScheduleSortMode,
   type NormalizedScheduleRow,
   type RawScheduleRow
 } from './displayRowDerivation';
@@ -31,6 +32,7 @@ type Params = {
   selectedMachineName: string;
   selectedPartName: string;
   selectedOrderNumbers: string[];
+  sortMode: ProductionScheduleSortMode;
   containerWidth: number;
 };
 
@@ -40,6 +42,7 @@ type Result = {
   completedCount: number;
   incompleteCount: number;
   resourceCdsInRows: string[];
+  manualSortEnabled: boolean;
   isDisplayRankContext: boolean;
   isTwoColumn: boolean;
   itemSeparatorWidth: number;
@@ -62,6 +65,7 @@ export const useProductionScheduleDerivedRows = ({
   selectedMachineName,
   selectedPartName,
   selectedOrderNumbers,
+  sortMode,
   containerWidth
 }: Params): Result => {
   const sourceRows = rows ?? EMPTY_ROWS;
@@ -96,18 +100,23 @@ export const useProductionScheduleDerivedRows = ({
     normalizedActiveQueries.length > 0 &&
     (selectedResourceCategory !== undefined || (showGrindingResources && showCuttingResources));
   const isDisplayRankContext = isResourceRankFilterActive || isSeibanScopedRankActive;
+  const resourceCdsInRows = useMemo(() => collectResourceCds(filteredRows), [filteredRows]);
+  const manualSortEnabled = resourceCdsInRows.length === 1;
 
   const displayRows = useMemo(
-    () => deriveDisplayRows(filteredRows, isDisplayRankContext),
-    [filteredRows, isDisplayRankContext]
+    () =>
+      deriveDisplayRows(filteredRows, {
+        isDisplayRankContext,
+        sortMode,
+        manualSortEnabled
+      }),
+    [filteredRows, isDisplayRankContext, manualSortEnabled, sortMode]
   );
 
   const { completedCount, incompleteCount } = useMemo(
     () => countCompletion(filteredRows),
     [filteredRows]
   );
-
-  const resourceCdsInRows = useMemo(() => collectResourceCds(filteredRows), [filteredRows]);
 
   const isTwoColumn = containerWidth >= 1200;
   const itemSeparatorWidth = isTwoColumn ? 24 : 0;
@@ -147,6 +156,7 @@ export const useProductionScheduleDerivedRows = ({
     completedCount,
     incompleteCount,
     resourceCdsInRows,
+    manualSortEnabled,
     isDisplayRankContext,
     isTwoColumn,
     itemSeparatorWidth,
