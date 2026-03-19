@@ -31,6 +31,9 @@ type UpdateOrderParams = {
   rowId: string;
   resourceCd: string;
   nextValue: string;
+  targetLocation?: string;
+  onSuccess?: () => void;
+  onError?: (error: unknown) => void;
 };
 
 const sanitizeNote = (value: string, noteMaxLength: number) => {
@@ -108,9 +111,26 @@ export const useProductionScheduleMutations = ({ isSearchStateWriting, noteMaxLe
     ]
   );
 
-  const updateOrder = ({ rowId, resourceCd, nextValue }: UpdateOrderParams) => {
+  const updateOrder = ({
+    rowId,
+    resourceCd,
+    nextValue,
+    targetLocation,
+    onSuccess,
+    onError
+  }: UpdateOrderParams) => {
     const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
-    orderMutation.mutate({ rowId, payload: { resourceCd, orderNumber } });
+    const payload = {
+      resourceCd,
+      orderNumber,
+      ...(targetLocation ? { targetLocation } : {})
+    };
+    const variables = { rowId, payload };
+    if (onSuccess || onError) {
+      orderMutation.mutate(variables, { onSuccess, onError });
+      return;
+    }
+    orderMutation.mutate(variables);
   };
 
   const updateProcessing = (rowId: string, nextValue: string) => {

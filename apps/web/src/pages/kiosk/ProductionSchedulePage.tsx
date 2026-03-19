@@ -35,6 +35,7 @@ import {
 } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditions } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
+import { useKioskTargetLocation } from '../../features/kiosk/targetLocation/useKioskTargetLocation';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
@@ -110,9 +111,11 @@ export function ProductionSchedulePage() {
   const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
   const [, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
   const [sortMode, setSortMode] = useLocalStorage<ProductionScheduleSortMode>(SORT_MODE_KEY, 'manual');
+  const { targetLocation } = useKioskTargetLocation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [orderUpdateErrorMessage, setOrderUpdateErrorMessage] = useState<string | null>(null);
   const [keyboardValue, setKeyboardValue] = useState('');
   const [selectedOrderNumbers, setSelectedOrderNumbers] = useState<string[]>([]);
   const {
@@ -525,7 +528,29 @@ export function ProductionSchedulePage() {
   };
 
   const handleOrderChange = (rowId: string, resourceCd: string, nextValue: string) => {
-    updateOrder({ rowId, resourceCd, nextValue });
+    setOrderUpdateErrorMessage(null);
+    updateOrder({
+      rowId,
+      resourceCd,
+      nextValue,
+      targetLocation,
+      onError: (error) => {
+        if (isAxiosError(error)) {
+          const responseData = error.response?.data as { code?: string; message?: string } | undefined;
+          if (error.response?.status === 403 && responseData?.code === 'TARGET_LOCATION_FORBIDDEN') {
+            setOrderUpdateErrorMessage(
+              'この端末では選択中の対象拠点へ手動順番更新できません。対象拠点を確認してください。'
+            );
+            return;
+          }
+          if (typeof responseData?.message === 'string' && responseData.message.trim().length > 0) {
+            setOrderUpdateErrorMessage(responseData.message);
+            return;
+          }
+        }
+        setOrderUpdateErrorMessage('手動順番の更新に失敗しました。時間をおいて再試行してください。');
+      }
+    });
   };
 
   const handleProcessingChange = (rowId: string, nextValue: string) => {
@@ -646,6 +671,9 @@ export function ProductionSchedulePage() {
         <p className="text-xs font-semibold text-amber-300">
           手動順番は単一の資源CDで表示しているときのみ有効です。
         </p>
+      ) : null}
+      {orderUpdateErrorMessage ? (
+        <p className="text-xs font-semibold text-rose-300">{orderUpdateErrorMessage}</p>
       ) : null}
       {sortMode === 'auto' && isDisplayRankContext ? (
         <p className="text-xs font-semibold text-white/70">

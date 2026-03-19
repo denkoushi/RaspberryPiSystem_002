@@ -60,14 +60,11 @@ import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDue
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 import { getGrindingAndCuttingResourceCds } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { useDueManagementSelectionActions } from '../../features/kiosk/productionSchedule/useDueManagementSelectionActions';
+import { useKioskTargetLocation } from '../../features/kiosk/targetLocation/useKioskTargetLocation';
 import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
-import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 const NOTE_MAX_LENGTH = 100;
-const DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY = 'due-management-target-location';
 const DUE_MANAGEMENT_SECTION_OPEN_STORAGE_KEY = 'due-management-section-open';
-const DEFAULT_TARGET_LOCATIONS = ['第2工場', 'トークプラザ', '第1工場'] as const;
-const TARGET_LOCATION_SELECTOR_ENABLED = import.meta.env.VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED !== 'false';
 const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = import.meta.env.VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED === 'true';
 
 const normalizeHistoryList = (items: string[]) => {
@@ -85,14 +82,8 @@ const normalizeHistoryList = (items: string[]) => {
 };
 
 export function ProductionScheduleDueManagementPage() {
-  const isMac =
-    typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
-  const canSelectTargetLocation = isMac && TARGET_LOCATION_SELECTOR_ENABLED;
-  const [targetLocation, setTargetLocation] = useState<string>(() => {
-    if (typeof window === 'undefined') return DEFAULT_TARGET_LOCATIONS[0];
-    const stored = window.localStorage.getItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY)?.trim();
-    return stored && stored.length > 0 ? stored : DEFAULT_TARGET_LOCATIONS[0];
-  });
+  const canSelectTargetLocation = true;
+  const { targetLocation, targetLocations, setTargetLocation } = useKioskTargetLocation();
   const [dueManagementFilters, setDueManagementFilters] = useState(() => {
     if (typeof window === 'undefined') {
       return DEFAULT_DUE_MANAGEMENT_FILTERS_STATE;
@@ -276,11 +267,6 @@ export function ProductionScheduleDueManagementPage() {
       ...rankingContext
     });
   };
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY, targetLocation);
-  }, [targetLocation]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -593,7 +579,7 @@ export function ProductionScheduleDueManagementPage() {
               triagePending={selectionActions.isPending}
               canSelectTargetLocation={canSelectTargetLocation}
               targetLocation={targetLocation}
-              targetLocations={DEFAULT_TARGET_LOCATIONS}
+              targetLocations={targetLocations}
               onTargetLocationChange={setTargetLocation}
               autoGeneratePending={autoGenerateGlobalRankMutation.isPending}
               autoGenerateError={autoGenerateGlobalRankMutation.isError}
@@ -769,7 +755,7 @@ export function ProductionScheduleDueManagementPage() {
                   onChange={(event) => setTargetLocation(event.target.value)}
                   className="h-7 rounded border border-white/30 bg-slate-800 px-2 text-[11px] text-white"
                 >
-                  {DEFAULT_TARGET_LOCATIONS.map((location) => (
+                  {targetLocations.map((location) => (
                     <option key={location} value={location}>
                       対象: {location}
                     </option>

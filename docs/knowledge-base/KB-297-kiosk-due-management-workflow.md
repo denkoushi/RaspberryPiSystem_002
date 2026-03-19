@@ -86,6 +86,24 @@ category: knowledge-base
   - 手動順番の有効条件を UI とソート戦略の両方で一致させ、単一資源CD条件の逸脱を防止。
   - 代理更新や学習イベント追加時も既存API互換（未指定時の挙動）を壊さない。
 
+## 代理更新UI連携（案B、2026-03-19）
+
+- **Context**:
+  - API は `targetLocation` を受け付けるが、生産スケジュール画面の順番更新が `targetLocation` を送っていなかった。
+  - そのため、Mac 以外からの代理更新可否（`403 TARGET_LOCATION_FORBIDDEN`）を現場が画面上で判断しづらかった。
+- **Fix**:
+  - `targetLocation` の保存・正規化を `useKioskTargetLocation` に集約し、納期管理画面の直接 `localStorage` 依存を削除。
+  - 納期管理画面の対象拠点セレクタは全端末で表示し、選択値を共通状態として保持。
+  - 生産スケジュール画面の順番更新（`PUT /kiosk/production-schedule/:rowId/order`）に `targetLocation` を注入。
+  - `403 TARGET_LOCATION_FORBIDDEN` を画面内メッセージで明示し、端末制約を運用者が把握できるようにした。
+- **Verification**:
+  - `pnpm --filter @raspi-system/web lint` 成功。
+  - `pnpm --filter @raspi-system/web test` 成功（66 passed）。
+  - `pnpm --filter @raspi-system/web build` 成功。
+- **Prevention**:
+  - `targetLocation` の取得・保存を共通フックに一本化し、画面ごとの二重実装を避ける。
+  - 順番更新の payload 生成は mutation 層に閉じ、画面側は入力値注入に限定する。
+
 ## 切削除外リストで一部資源CDのみ除外される事象（2026-03-16 調査）
 
 - **Context**:
