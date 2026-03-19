@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 50件  
+**件数**: 57件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -4360,5 +4360,88 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - 進捗一覧APIは `verify-phase12-real.sh` で自動検証。Phase12 全24項目PASSで確認。
 - Mac から Tailscale 経由（`https://100.106.158.2/kiosk`）でブラウザアクセスすると、自己署名証明書により chrome-error になる。UI検証は実機（VNC または現地操作）での確認が必要。
 - フィルタ状態が復元されない場合は `localStorage` の `kiosk-progress-overview-seiban-filter` を確認。schemaVersion が変わるとマイグレーションで既存値維持＋新規ON補完。
+
+---
+
+### [KB-307] 生産スケジュールUI統一（登録製番・資源CDドロップダウン併設）
+
+**実装日時**: 2026-03-18
+
+**仕様**:
+- 生産スケジュール画面の登録製番操作を、進捗一覧と同型のドロップダウンUIへ統一。
+- 登録製番は複数選択ON/OFFを維持し、削除アイコンと左右移動アイコンは非表示化。
+- 登録製番の削除は納期管理画面側の既存導線（共有history更新）へ一本化。
+- 資源CDは既存の横スクロールUIを維持したまま、同時にドロップダウンUIでも選択可能化。
+- 資源CDドロップダウンは「通常」「割当」の両トグルを提供し、ホバー値（資源名）を項目内へ常時併記。
+- 資源CD横スクロール領域の右側に余白を確保し、縦並びボタン（登録製番/資源CD）を配置。
+
+**実装内容**:
+- `ProductionScheduleSeibanFilterDropdown` を新設し、登録製番の選択UIをコンポーネント化。
+- `ProductionScheduleResourceFilterDropdown` を新設し、資源CDの通常/割当トグルを1画面で操作可能化。
+- `ProductionScheduleResourceFilters` に `rightActions` 領域を追加し、横スクロール + 右側縦ボタンのレイアウトへ分離。
+- `ProductionSchedulePage` は既存状態（`activeQueries` / `activeResourceCds` / `activeResourceAssignedOnlyCds`）を保持したまま、新UIをイベント委譲で統合。
+- 未使用化した `ProductionScheduleHistoryStrip` / `SeibanHistoryButton` / `historyOrder.ts` を削除し、`useSharedSearchHistory` から reorder 分岐を整理。
+
+**関連ファイル**:
+- `apps/web/src/components/kiosk/ProductionScheduleSeibanFilterDropdown.tsx`
+- `apps/web/src/components/kiosk/ProductionScheduleResourceFilterDropdown.tsx`
+- `apps/web/src/components/kiosk/ProductionScheduleResourceFilters.tsx`
+- `apps/web/src/pages/kiosk/ProductionSchedulePage.tsx`
+- `apps/web/src/features/kiosk/productionSchedule/useSharedSearchHistory.ts`
+
+**検証**:
+- `pnpm --filter @raspi-system/web lint` 成功
+- `pnpm --filter @raspi-system/web build` 成功
+
+**デプロイ・実機検証**（2026-03-18）:
+- ブランチ `feat/production-schedule-dropdown-ui-unify`。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつデプロイ（`scripts/update-all-clients.sh` 標準手順、`--limit` で1台ずつ）。
+- Phase12 一括検証: `./scripts/deploy/verify-phase12-real.sh` で PASS 24 / WARN 1（Pi3 signage は offline 時スキップ可）/ FAIL 0。
+- 実機検証OK: 登録製番ドロップダウン・削除導線分離・資源CD横スクロール＋右端縦ボタン・資源CDドロップダウン（通常/割当トグル・資源名併記）を実機で確認済み。
+
+**知見・トラブルシュート**:
+- 登録製番削除は生産スケジュール画面からは実行できないが、納期管理画面（`DueManagementLeftRail`）から共有historyを削除可能。
+- 資源名の表示はドロップダウンへ集約したため、横スクロールPillの `title` ホバーは廃止。
+- 選択状態の契約（search-state / query params）は既存互換を維持しているため、API変更は不要。
+- **CI Trivy（web イメージ）**: Caddy 同梱 Go バイナリ由来で CVE が検出された場合、Caddy 自前ビルド（[ci-cd.md KB-307](./ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する)）で恒久対策済み。統合ブランチで両方の機能を維持。
+
+**統合ブランチ（2026-03-19）**:
+- `feat/production-schedule-ui-unify-caddy-secfix` で UI 統一と Caddy 自前ビルド（Trivy CVE 解消）を統合。
+- `feat/production-schedule-dropdown-ui-unify` をベースに Caddy 自前ビルドコミットを cherry-pick。Dockerfile.web で衝突時は自前ビルド側を採用。
+- デプロイ: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ。Phase12 25項目PASS、実機検証OK。
+
+**解決状況**: ✅ **実装・デプロイ・実機検証完了**（2026-03-18）。統合ブランチで main マージ予定（2026-03-19）。
+
+---
+
+### [KB-308] 生産スケジュールUIが古いのに戻った事象（ブランチ分岐によるデプロイ内容ずれ）
+
+**発生日**: 2026-03-19
+
+**事象**:
+- デプロイ後に生産スケジュール画面の製番登録カード・資源CDドロップダウンが古いUIに戻っていた
+- `VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED` は `true` のまま、配信される JavaScript バンドルに新UIの文字列が含まれていなかった
+
+**根本原因**:
+- デプロイしたブランチ（`feat/kiosk-loan-card-pattern-b`）には生産スケジュールUI統一のコミットが含まれていなかった
+- UI統一は別ブランチ（`feat/production-schedule-dropdown-ui-unify`）に存在し、ブランチ分岐によりデプロイ内容がずれていた
+
+**調査手順**:
+1. サーバー上の `VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED` を確認 → `true`（問題なし）
+2. 配信されている main bundle を取得し、新UI文字列（例: `登録製番 (n/m)`）の有無を確認 → 旧UI文字列のみ
+3. `git log` でデプロイブランチと UI 統一ブランチのコミット履歴を比較 → UI統一コミットがデプロイブランチに含まれていないことを確認
+
+**有効だった対策**:
+- ✅ 統合ブランチ `feat/production-schedule-ui-unify-caddy-secfix` を作成
+- ✅ `feat/production-schedule-dropdown-ui-unify` をベースに、Caddy 自前ビルド（Trivy CVE 解消）のコミットを cherry-pick
+- ✅ Dockerfile.web の cherry-pick 衝突時は自前ビルド側（multi-stage Caddy build）を採用
+- ✅ 統合ブランチを Pi5 → raspberrypi4 → raspi4-robodrill01 の順にデプロイし、実機検証で両機能（UI統一・Caddy CVE解消）を確認
+
+**再発防止**:
+- デプロイ前に、対象ブランチに期待する機能のコミットが含まれているか `git log` で確認する
+- 複数機能を統合する場合は、統合ブランチを作成してからデプロイする運用を推奨
+
+**解決状況**: ✅ **解決済み**（2026-03-19）
+
+**関連**: [KB-307](#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設)、[ci-cd.md KB-307](./ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する)、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)
 
 ---

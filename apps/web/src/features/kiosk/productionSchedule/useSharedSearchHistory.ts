@@ -1,12 +1,9 @@
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { moveHistoryItemLeft, moveHistoryItemRight } from './historyOrder';
 import { normalizeHistoryList } from './useProductionScheduleQueryParams';
 
-export type SearchStateOperation =
-  | { type: 'add' | 'remove'; value: string }
-  | { type: 'reorder'; value: string; direction: 'left' | 'right' };
+export type SearchStateOperation = { type: 'add' | 'remove'; value: string };
 
 type SearchStateQueryLike = {
   data?: {
@@ -75,12 +72,6 @@ export const useSharedSearchHistory = ({
               break;
             case 'remove':
               rebasedHistory = latestHistory.filter((item) => item !== operation.value);
-              break;
-            case 'reorder':
-              rebasedHistory =
-                operation.direction === 'left'
-                  ? moveHistoryItemLeft(latestHistory, operation.value)
-                  : moveHistoryItemRight(latestHistory, operation.value);
               break;
           }
           setHistory(rebasedHistory);
