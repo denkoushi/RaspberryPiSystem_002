@@ -23,7 +23,9 @@ export const productionScheduleQuerySchema = z.object({
     .optional()
     .transform((v) => v === 'true' || v === '1'),
   page: z.coerce.number().int().min(1).optional(),
-  pageSize: z.coerce.number().int().min(1).max(2000).optional()
+  pageSize: z.coerce.number().int().min(1).max(2000).optional(),
+  /** v2: Mac の一覧/usage 取得時に必須（サーバ側で検証） */
+  targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
 export const productionScheduleOrderSearchQuerySchema = z.object({
@@ -66,7 +68,9 @@ export const productionScheduleOrderParamsSchema = z.object({
 export const productionScheduleOrderBodySchema = z.object({
   resourceCd: z.string().min(1).max(100),
   orderNumber: z.number().int().min(ORDER_NUMBER_MIN).max(ORDER_NUMBER_MAX).nullable(),
-  targetLocation: z.string().min(1).max(100).optional()
+  targetLocation: z.string().min(1).max(100).optional(),
+  /** v2: Mac 代理更新時に必須 */
+  targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
 export const productionScheduleNoteParamsSchema = z.object({
@@ -187,6 +191,10 @@ export const productionScheduleDueManagementLearningReportQuerySchema = z.object
 
 export const productionScheduleDueManagementManualOrderOverviewQuerySchema = z.object({
   targetLocation: z.string().min(1).max(100).optional(),
+  /** v2: 工場キー（必須・サーバ側で検証） */
+  siteKey: z.string().min(1).max(100).optional(),
+  /** v2: 端末で絞り込み。`__legacy_site__` で旧サイト単位行のみ */
+  deviceScopeKey: z.string().min(1).max(200).optional(),
   resourceCd: z.string().max(100).optional()
 });
 

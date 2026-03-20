@@ -63,12 +63,17 @@ import { useDueManagementSelectionActions } from '../../features/kiosk/productio
 import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
+import type { ProductionScheduleDueManagementManualOrderOverviewResultV2 } from '../../api/client';
+
 const NOTE_MAX_LENGTH = 100;
 const DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY = 'due-management-target-location';
 const DUE_MANAGEMENT_SECTION_OPEN_STORAGE_KEY = 'due-management-section-open';
 const DEFAULT_TARGET_LOCATIONS = ['第2工場', 'トークプラザ', '第1工場'] as const;
 const TARGET_LOCATION_SELECTOR_ENABLED = import.meta.env.VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED !== 'false';
 const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = import.meta.env.VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED === 'true';
+const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
+  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+const DUE_MANAGEMENT_OVERVIEW_DEVICE_KEY = 'due-management-manual-order-overview-device';
 
 const normalizeHistoryList = (items: string[]) => {
   const unique = new Set<string>();
@@ -92,6 +97,10 @@ export function ProductionScheduleDueManagementPage() {
     if (typeof window === 'undefined') return DEFAULT_TARGET_LOCATIONS[0];
     const stored = window.localStorage.getItem(DUE_MANAGEMENT_TARGET_LOCATION_STORAGE_KEY)?.trim();
     return stored && stored.length > 0 ? stored : DEFAULT_TARGET_LOCATIONS[0];
+  });
+  const [overviewDeviceScopeKey, setOverviewDeviceScopeKey] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(DUE_MANAGEMENT_OVERVIEW_DEVICE_KEY)?.trim() ?? '';
   });
   const [dueManagementFilters, setDueManagementFilters] = useState(() => {
     if (typeof window === 'undefined') {
@@ -130,14 +139,63 @@ export function ProductionScheduleDueManagementPage() {
   const triageQuery = useKioskProductionScheduleDueManagementTriage(dueManagementFilterParams);
   const dailyPlanQuery = useKioskProductionScheduleDueManagementDailyPlan(dueManagementFilterParams);
   const globalRankQuery = useKioskProductionScheduleDueManagementGlobalRank(dueManagementGlobalRankContext);
-  const manualOrderOverviewQuery =
-    useKioskProductionScheduleDueManagementManualOrderOverview(dueManagementGlobalRankContext);
+  const searchStateQuery = useKioskProductionScheduleSearchState();
+  const actorSiteKey = searchStateQuery.data?.locationScope?.siteKey;
+  const manualOrderOverviewContext = useMemo(() => {
+    if (!MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED) {
+      return { ...rankingContext, ...dueManagementFilterParams };
+    }
+    const siteKeyForOverview = canSelectTargetLocation ? targetLocation : (actorSiteKey ?? '');
+    return {
+      ...dueManagementFilterParams,
+      rankingScope: 'globalShared' as const,
+      siteKey: siteKeyForOverview,
+      ...(overviewDeviceScopeKey.trim() ? { deviceScopeKey: overviewDeviceScopeKey.trim() } : {})
+    };
+  }, [
+    actorSiteKey,
+    canSelectTargetLocation,
+    dueManagementFilterParams,
+    overviewDeviceScopeKey,
+    rankingContext,
+    targetLocation
+  ]);
+  const manualOrderOverviewEnabled =
+    !MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED ||
+    Boolean((canSelectTargetLocation ? targetLocation : actorSiteKey)?.trim());
+  const manualOrderOverviewQuery = useKioskProductionScheduleDueManagementManualOrderOverview(
+    manualOrderOverviewContext,
+    { enabled: manualOrderOverviewEnabled }
+  );
   const globalRankProposalQuery = useKioskProductionScheduleDueManagementGlobalRankProposal(
     dueManagementGlobalRankContext
   );
+  const manualOrderOverviewData = manualOrderOverviewQuery.data;
+  const manualOrderOverviewIsV2 = Boolean(manualOrderOverviewData && 'devices' in manualOrderOverviewData);
+  const manualOverviewDevices: ProductionScheduleDueManagementManualOrderOverviewResultV2['devices'] =
+    manualOrderOverviewIsV2 && manualOrderOverviewData && 'devices' in manualOrderOverviewData
+      ? manualOrderOverviewData.devices
+      : [];
+  const manualOverviewResourcesV1 =
+    manualOrderOverviewData && 'resources' in manualOrderOverviewData ? manualOrderOverviewData.resources : [];
+  const manualOverviewRegisteredKeys =
+    manualOrderOverviewIsV2 &&
+    manualOrderOverviewData &&
+    'registeredDeviceScopeKeys' in manualOrderOverviewData
+      ? manualOrderOverviewData.registeredDeviceScopeKeys
+      : [];
+  const manualOverviewTargetLocationV1 =
+    manualOrderOverviewData && 'targetLocation' in manualOrderOverviewData
+      ? manualOrderOverviewData.targetLocation
+      : null;
+  const manualOverviewSiteKeyLabel =
+    MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED && canSelectTargetLocation
+      ? targetLocation
+      : MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED
+        ? actorSiteKey ?? null
+        : null;
   const resourcesQuery = useKioskProductionScheduleResources();
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions();
-  const searchStateQuery = useKioskProductionScheduleSearchState();
   const updateSearchStateMutation = useUpdateKioskProductionScheduleSearchState();
   const updateTriageSelectionMutation = useUpdateKioskProductionScheduleDueManagementTriageSelection();
   const updateDailyPlanMutation = useUpdateKioskProductionScheduleDueManagementDailyPlan();
@@ -613,8 +671,19 @@ export function ProductionScheduleDueManagementPage() {
               globalRankProposalLoading={globalRankProposalQuery.isLoading}
               manualOrderOverviewLoading={manualOrderOverviewQuery.isLoading}
               manualOrderOverviewError={manualOrderOverviewQuery.isError}
-              manualOrderOverviewResources={manualOrderOverviewQuery.data?.resources ?? []}
-              manualOrderOverviewTargetLocation={manualOrderOverviewQuery.data?.targetLocation ?? null}
+              manualOrderOverviewResources={manualOverviewResourcesV1}
+              manualOrderOverviewTargetLocation={manualOverviewTargetLocationV1}
+              manualOrderDeviceScopeV2={MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED}
+              manualOrderOverviewSiteKey={manualOverviewSiteKeyLabel}
+              manualOrderOverviewDevices={manualOverviewDevices}
+              manualOrderRegisteredDeviceScopeKeys={manualOverviewRegisteredKeys}
+              overviewDeviceScopeKey={overviewDeviceScopeKey}
+              onOverviewDeviceScopeKeyChange={(value) => {
+                setOverviewDeviceScopeKey(value);
+                if (typeof window !== 'undefined') {
+                  window.localStorage.setItem(DUE_MANAGEMENT_OVERVIEW_DEVICE_KEY, value);
+                }
+              }}
               globalRankFilter={globalRankFilter}
               onGlobalRankFilterChange={setGlobalRankFilter}
               globalRankItems={filteredGlobalRankItems}

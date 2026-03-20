@@ -1,3 +1,9 @@
+import {
+  MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY,
+  type ProductionScheduleDueManagementManualOrderOverviewDeviceSlice,
+  type ProductionScheduleDueManagementManualOrderOverviewResource,
+  type ProductionScheduleDueManagementTriageItem
+} from '../../../api/client';
 import { formatDueDate } from '../../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../../features/kiosk/productionSchedule/machineName';
 
@@ -6,10 +12,6 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { DueManagementDailyTriageCandidateList } from './DueManagementDailyTriageCandidateList';
 import { DueManagementGlobalRankCardActions } from './DueManagementGlobalRankCardActions';
 
-import type {
-  ProductionScheduleDueManagementTriageItem,
-  ProductionScheduleDueManagementManualOrderOverviewResource,
-} from '../../../api/client';
 import type {
   GlobalRankFilter,
   GlobalRankItem,
@@ -45,6 +47,12 @@ type DueManagementLeftRailProps = {
   manualOrderOverviewError: boolean;
   manualOrderOverviewResources: ProductionScheduleDueManagementManualOrderOverviewResource[];
   manualOrderOverviewTargetLocation: string | null;
+  manualOrderDeviceScopeV2: boolean;
+  manualOrderOverviewSiteKey: string | null;
+  manualOrderOverviewDevices: ProductionScheduleDueManagementManualOrderOverviewDeviceSlice[];
+  manualOrderRegisteredDeviceScopeKeys: string[];
+  overviewDeviceScopeKey: string;
+  onOverviewDeviceScopeKeyChange: (value: string) => void;
   globalRankFilter: GlobalRankFilter;
   onGlobalRankFilterChange: (filter: GlobalRankFilter) => void;
   globalRankItems: GlobalRankItem[];
@@ -209,11 +217,35 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             納期設定後に全体順位を生成し、必要箇所を微調整します。今日の計画順はこの順位を起点に反映します。
           </p>
           <div className="mb-2 rounded border border-cyan-300/30 bg-cyan-500/10 p-2">
-            <div className="mb-1 flex items-center justify-between">
-              <h4 className="text-[11px] font-semibold text-cyan-100">手動順番 全体像</h4>
-              <span className="text-[10px] text-cyan-200/80">
-                {props.manualOrderOverviewTargetLocation ? `対象: ${props.manualOrderOverviewTargetLocation}` : ''}
-              </span>
+            <div className="mb-1 flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-[11px] font-semibold text-cyan-100">手動順番 全体像</h4>
+                <span className="text-[10px] text-cyan-200/80">
+                  {props.manualOrderDeviceScopeV2 && props.manualOrderOverviewSiteKey
+                    ? `工場: ${props.manualOrderOverviewSiteKey}`
+                    : props.manualOrderOverviewTargetLocation
+                      ? `対象: ${props.manualOrderOverviewTargetLocation}`
+                      : ''}
+                </span>
+              </div>
+              {props.manualOrderDeviceScopeV2 ? (
+                <select
+                  value={props.overviewDeviceScopeKey}
+                  onChange={(event) => props.onOverviewDeviceScopeKeyChange(event.target.value)}
+                  className="h-7 w-full rounded border border-cyan-200/30 bg-slate-900 px-2 text-[10px] text-cyan-50"
+                  aria-label="手動順番の表示端末"
+                >
+                  <option value="">全端末</option>
+                  {props.manualOrderRegisteredDeviceScopeKeys.map((key) => (
+                    <option key={key} value={key}>
+                      {key}
+                    </option>
+                  ))}
+                  <option value={MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY}>
+                    レガシー（サイト単位・旧データ）
+                  </option>
+                </select>
+              ) : null}
             </div>
             {props.manualOrderOverviewLoading ? (
               <p className="text-[10px] text-cyan-100/80">手動順番状況を読み込み中...</p>
@@ -221,28 +253,70 @@ export function DueManagementLeftRail(props: DueManagementLeftRailProps) {
             {props.manualOrderOverviewError ? (
               <p className="text-[10px] text-rose-200">手動順番状況の取得に失敗しました</p>
             ) : null}
-            {!props.manualOrderOverviewLoading && props.manualOrderOverviewResources.length === 0 ? (
+            {!props.manualOrderOverviewLoading &&
+            !props.manualOrderDeviceScopeV2 &&
+            props.manualOrderOverviewResources.length === 0 ? (
               <p className="text-[10px] text-cyan-100/80">手動順番の設定データはまだありません</p>
             ) : null}
-            <div className="space-y-1">
-              {props.manualOrderOverviewResources.map((resource) => (
-                <div key={`manual-overview-${resource.resourceCd}`} className="rounded border border-cyan-200/20 bg-slate-900/40 p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-white">{resource.resourceCd}</span>
-                    <span className="text-[10px] text-cyan-100/80">
-                      最終: {formatUpdatedAt(resource.lastUpdatedAt)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-cyan-100/90">
-                    <span>設定件数: {resource.assignedCount}</span>
-                    <span>最大順番: {resource.maxOrderNumber ?? '-'}</span>
-                    <span>乖離平均: {resource.avgGlobalRankGap ?? '-'}</span>
-                    <span>比較件数: {resource.comparedCount}</span>
-                    <span>順位未設定: {resource.missingGlobalRankCount}</span>
-                    <span>更新者: {resource.lastUpdatedBy ?? '-'}</span>
-                  </div>
-                </div>
-              ))}
+            {!props.manualOrderOverviewLoading &&
+            props.manualOrderDeviceScopeV2 &&
+            props.manualOrderOverviewDevices.length === 0 ? (
+              <p className="text-[10px] text-cyan-100/80">手動順番の設定データはまだありません</p>
+            ) : null}
+            <div className="space-y-2">
+              {props.manualOrderDeviceScopeV2
+                ? props.manualOrderOverviewDevices.map((device) => (
+                    <div
+                      key={`manual-overview-dev-${device.deviceScopeKey}`}
+                      className="rounded border border-cyan-200/25 bg-slate-900/50 p-2"
+                    >
+                      <div className="mb-1 text-[10px] font-semibold text-cyan-100">{device.label}</div>
+                      <div className="space-y-1">
+                        {device.resources.length === 0 ? (
+                          <p className="text-[10px] text-cyan-100/70">（データなし）</p>
+                        ) : null}
+                        {device.resources.map((resource) => (
+                          <div
+                            key={`manual-overview-${device.deviceScopeKey}-${resource.resourceCd}`}
+                            className="rounded border border-cyan-200/20 bg-slate-900/40 p-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-white">{resource.resourceCd}</span>
+                              <span className="text-[10px] text-cyan-100/80">
+                                最終: {formatUpdatedAt(resource.lastUpdatedAt)}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-cyan-100/90">
+                              <span>設定件数: {resource.assignedCount}</span>
+                              <span>最大順番: {resource.maxOrderNumber ?? '-'}</span>
+                              <span>乖離平均: {resource.avgGlobalRankGap ?? '-'}</span>
+                              <span>比較件数: {resource.comparedCount}</span>
+                              <span>順位未設定: {resource.missingGlobalRankCount}</span>
+                              <span>更新者: {resource.lastUpdatedBy ?? '-'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                : props.manualOrderOverviewResources.map((resource) => (
+                    <div key={`manual-overview-${resource.resourceCd}`} className="rounded border border-cyan-200/20 bg-slate-900/40 p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-white">{resource.resourceCd}</span>
+                        <span className="text-[10px] text-cyan-100/80">
+                          最終: {formatUpdatedAt(resource.lastUpdatedAt)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-cyan-100/90">
+                        <span>設定件数: {resource.assignedCount}</span>
+                        <span>最大順番: {resource.maxOrderNumber ?? '-'}</span>
+                        <span>乖離平均: {resource.avgGlobalRankGap ?? '-'}</span>
+                        <span>比較件数: {resource.comparedCount}</span>
+                        <span>順位未設定: {resource.missingGlobalRankCount}</span>
+                        <span>更新者: {resource.lastUpdatedBy ?? '-'}</span>
+                      </div>
+                    </div>
+                  ))}
             </div>
           </div>
           <div className="mb-2 flex flex-wrap gap-1">

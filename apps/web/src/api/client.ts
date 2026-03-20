@@ -527,11 +527,32 @@ export interface ProductionScheduleDueManagementManualOrderOverviewResource {
   lastUpdatedBy: string | null;
 }
 
-export interface ProductionScheduleDueManagementManualOrderOverviewResult {
+/** API manual-order-overview v2: 旧サイト単位行のみを絞り込むときの deviceScopeKey */
+export const MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY = '__legacy_site__';
+
+export interface ProductionScheduleDueManagementManualOrderOverviewDeviceSlice {
+  deviceScopeKey: string;
+  label: string;
+  resources: ProductionScheduleDueManagementManualOrderOverviewResource[];
+}
+
+export interface ProductionScheduleDueManagementManualOrderOverviewResultV1 {
   actorLocation: string;
   targetLocation: string;
   resources: ProductionScheduleDueManagementManualOrderOverviewResource[];
 }
+
+export interface ProductionScheduleDueManagementManualOrderOverviewResultV2 {
+  actorLocation: string;
+  siteKey: string;
+  deviceScopeKey: string | null;
+  registeredDeviceScopeKeys: string[];
+  devices: ProductionScheduleDueManagementManualOrderOverviewDeviceSlice[];
+}
+
+export type ProductionScheduleDueManagementManualOrderOverviewResult =
+  | ProductionScheduleDueManagementManualOrderOverviewResultV1
+  | ProductionScheduleDueManagementManualOrderOverviewResultV2;
 
 export interface ProductionScheduleDueManagementGlobalRankScoreBreakdown {
   resourceDemandScore: number;
@@ -668,6 +689,8 @@ export async function getKioskProductionSchedule(params?: {
   hasDueDateOnly?: boolean;
   page?: number;
   pageSize?: number;
+  /** v2: Mac が参照する端末の deviceScopeKey */
+  targetDeviceScopeKey?: string;
 }) {
   const reqSeq = cursorDebugEnabled ? nextDebugReqSeq() : 0;
   const t0 = performance.now();
@@ -816,11 +839,36 @@ export async function getKioskProductionScheduleDueManagementGlobalRank(
 }
 
 export async function getKioskProductionScheduleDueManagementManualOrderOverview(
-  context?: DueManagementTargetContext & DueManagementResourceFilterContext
+  context?: DueManagementTargetContext &
+    DueManagementResourceFilterContext & {
+      siteKey?: string;
+      deviceScopeKey?: string;
+    }
 ) {
+  const params: Record<string, string | undefined> = {};
+  if (context?.siteKey) {
+    params.siteKey = context.siteKey;
+    if (context.deviceScopeKey) {
+      params.deviceScopeKey = context.deviceScopeKey;
+    }
+  } else if (context?.targetLocation) {
+    params.targetLocation = context.targetLocation;
+  }
+  if (context?.rankingScope) params.rankingScope = context.rankingScope;
+  if (context?.resourceCd) params.resourceCd = context.resourceCd;
+  if (context?.resourceCategory) params.resourceCategory = context.resourceCategory;
+
   const { data } = await api.get<ProductionScheduleDueManagementManualOrderOverviewResult>(
     '/kiosk/production-schedule/due-management/manual-order-overview',
-    { params: context }
+    { params }
+  );
+  return data;
+}
+
+export async function getKioskProductionScheduleManualOrderSiteDevices(siteKey: string) {
+  const { data } = await api.get<{ siteKey: string; deviceScopeKeys: string[] }>(
+    '/kiosk/production-schedule/manual-order/site-devices',
+    { params: { siteKey } }
   );
   return data;
 }
@@ -1079,7 +1127,10 @@ export async function verifyKioskDueManagementAccessPassword(payload: { password
   return data;
 }
 
-export async function getKioskProductionScheduleOrderUsage(params?: { resourceCds?: string }) {
+export async function getKioskProductionScheduleOrderUsage(params?: {
+  resourceCds?: string;
+  targetDeviceScopeKey?: string;
+}) {
   const { data } = await api.get<{ usage: Record<string, number[]> }>('/kiosk/production-schedule/order-usage', {
     params
   });
@@ -1102,7 +1153,12 @@ export async function getKioskProductionScheduleOrderSearchCandidates(params: {
 
 export async function updateKioskProductionScheduleOrder(
   rowId: string,
-  payload: { resourceCd: string; orderNumber: number | null; targetLocation?: string }
+  payload: {
+    resourceCd: string;
+    orderNumber: number | null;
+    targetLocation?: string;
+    targetDeviceScopeKey?: string;
+  }
 ) {
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const startTime = typeof performance !== 'undefined' ? performance.now() : 0;
@@ -1264,12 +1320,18 @@ export type ProductionScheduleSearchStateResponse = {
   state: ProductionScheduleSearchState | null;
   updatedAt: string | null;
   etag: string | null;
+  locationScope?: {
+    deviceScopeKey: string;
+    siteKey: string;
+  };
 };
 
 export async function getKioskProductionScheduleSearchState(): Promise<ProductionScheduleSearchStateResponse> {
-  const response = await api.get<{ state: ProductionScheduleSearchState | null; updatedAt: string | null }>(
-    '/kiosk/production-schedule/search-state'
-  );
+  const response = await api.get<{
+    state: ProductionScheduleSearchState | null;
+    updatedAt: string | null;
+    locationScope?: { deviceScopeKey: string; siteKey: string };
+  }>('/kiosk/production-schedule/search-state');
   const etag = (response.headers?.etag as string | undefined) ?? null;
   return { ...response.data, etag };
 }

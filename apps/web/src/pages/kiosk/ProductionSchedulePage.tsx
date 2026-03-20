@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useKioskProductionSchedule,
+  useKioskProductionScheduleManualOrderSiteDevices,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources,
   useKioskProductionScheduleHistoryProgress,
@@ -36,10 +37,16 @@ import {
 import { useProductionScheduleSearchConditions } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
 
 const NOTE_MAX_LENGTH = 100;
+const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
+  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+const PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY = 'production-schedule-mac-target-site';
+const PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY = 'production-schedule-mac-target-device';
+const DEFAULT_MAC_TARGET_SITES = ['第2工場', 'トークプラザ', '第1工場'] as const;
 
 const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
 const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
@@ -93,6 +100,34 @@ function CalendarIcon({ className }: { className?: string }) {
 
 export function ProductionSchedulePage() {
   const queryClient = useQueryClient();
+  const isMac =
+    typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
+  const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
+  const [macTargetSite, setMacTargetSite] = useState<string>(() => {
+    if (typeof window === 'undefined') return DEFAULT_MAC_TARGET_SITES[0];
+    const stored = window.localStorage.getItem(PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY)?.trim();
+    return stored && stored.length > 0 ? stored : DEFAULT_MAC_TARGET_SITES[0];
+  });
+  const [macTargetDevice, setMacTargetDevice] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return window.localStorage.getItem(PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY)?.trim() ?? '';
+  });
+  const macSiteDevicesQuery = useKioskProductionScheduleManualOrderSiteDevices(
+    macManualOrderV2 ? macTargetSite : undefined,
+    { enabled: macManualOrderV2 }
+  );
+  useEffect(() => {
+    if (!macManualOrderV2) return;
+    const keys = macSiteDevicesQuery.data?.deviceScopeKeys ?? [];
+    if (keys.length === 0) return;
+    if (!macTargetDevice || !keys.includes(macTargetDevice)) {
+      const next = keys[0] ?? '';
+      setMacTargetDevice(next);
+      if (typeof window !== 'undefined' && next) {
+        window.localStorage.setItem(PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY, next);
+      }
+    }
+  }, [macManualOrderV2, macSiteDevicesQuery.data?.deviceScopeKeys, macTargetDevice]);
   const cursorDebugEnabled = typeof window !== 'undefined' && window.location.search.includes('cursor_debug=30be23');
   const [searchConditions, setSearchConditions, resetSearchConditions] = useProductionScheduleSearchConditions();
   const {
@@ -136,6 +171,17 @@ export function ProductionSchedulePage() {
     selectedOrderNumbers,
     history
   });
+  const scheduleListParams = useMemo(
+    () => ({
+      ...queryParams,
+      ...(macManualOrderV2 && macTargetDevice.trim().length > 0
+        ? { targetDeviceScopeKey: macTargetDevice.trim() }
+        : {})
+    }),
+    [macManualOrderV2, macTargetDevice, queryParams]
+  );
+  const macScheduleQueryEnabled =
+    hasQuery && (!macManualOrderV2 || macTargetDevice.trim().length > 0);
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
   const {
     completePending,
@@ -153,10 +199,15 @@ export function ProductionSchedulePage() {
     completeRow
   } = useProductionScheduleMutations({
     isSearchStateWriting: searchStateMutation.isPending,
-    noteMaxLength: NOTE_MAX_LENGTH
+    noteMaxLength: NOTE_MAX_LENGTH,
+    productionScheduleTargetDeviceScopeKey:
+      macManualOrderV2 && macTargetDevice.trim().length > 0 ? macTargetDevice.trim() : undefined
   });
 
-  const scheduleQuery = useKioskProductionSchedule(queryParams, { enabled: hasQuery, pauseRefetch });
+  const scheduleQuery = useKioskProductionSchedule(scheduleListParams, {
+    enabled: macScheduleQueryEnabled,
+    pauseRefetch
+  });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch });
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions({ pauseRefetch });
   const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch });
@@ -316,7 +367,13 @@ export function ProductionSchedulePage() {
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
     resourceCdsInRows.length > 0 ? resourceCdsInRows.join(',') : undefined,
-    { pauseRefetch }
+    {
+      pauseRefetch,
+      enabled: !macManualOrderV2 || macTargetDevice.trim().length > 0,
+      ...(macManualOrderV2 && macTargetDevice.trim().length > 0
+        ? { targetDeviceScopeKey: macTargetDevice.trim() }
+        : {})
+    }
   );
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -575,6 +632,58 @@ export function ProductionSchedulePage() {
 
   return (
     <div className="flex h-full flex-col gap-2" ref={containerRef}>
+      {macManualOrderV2 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-50">
+          <span className="font-semibold text-amber-100">Mac: 表示・更新先端末</span>
+          <select
+            value={macTargetSite}
+            onChange={(event) => {
+              const next = event.target.value;
+              setMacTargetSite(next);
+              setMacTargetDevice('');
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem(PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY, next);
+                window.localStorage.removeItem(PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY);
+              }
+            }}
+            className="h-8 max-w-[200px] rounded border border-amber-300/50 bg-slate-900 px-2 text-xs text-white"
+            aria-label="工場を選択"
+          >
+            {DEFAULT_MAC_TARGET_SITES.map((site) => (
+              <option key={site} value={site}>
+                {site}
+              </option>
+            ))}
+          </select>
+          <select
+            value={macTargetDevice}
+            onChange={(event) => {
+              const next = event.target.value;
+              setMacTargetDevice(next);
+              if (typeof window !== 'undefined' && next) {
+                window.localStorage.setItem(PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY, next);
+              }
+            }}
+            disabled={macSiteDevicesQuery.isLoading || (macSiteDevicesQuery.data?.deviceScopeKeys.length ?? 0) === 0}
+            className="h-8 max-w-[min(100%,360px)] flex-1 rounded border border-amber-300/50 bg-slate-900 px-2 text-xs text-white disabled:opacity-50"
+            aria-label="端末 deviceScopeKey を選択"
+          >
+            {(macSiteDevicesQuery.data?.deviceScopeKeys ?? []).length === 0 ? (
+              <option value="">登録端末を読み込み中…</option>
+            ) : null}
+            {(macSiteDevicesQuery.data?.deviceScopeKeys ?? []).map((key) => (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            ))}
+          </select>
+          {macManualOrderV2 && macTargetDevice.trim().length === 0 ? (
+            <span className="text-rose-200">
+              端末を選択してください（未指定の場合、一覧取得は 400 になります）
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       <ProductionScheduleToolbar
         inputQuery={inputQuery}

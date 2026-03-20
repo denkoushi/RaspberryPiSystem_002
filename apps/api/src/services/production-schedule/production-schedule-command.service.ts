@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
@@ -349,6 +350,7 @@ export async function upsertProductionScheduleOrder(params: {
   actorLocationKey?: string;
 }): Promise<{ success: true; orderNumber: number | null }> {
   const { rowId, resourceCd, orderNumber, locationKey, actorLocationKey } = params;
+  const siteKey = resolveSiteKeyFromScopeKey(locationKey.trim());
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
     select: { id: true, rowData: true }
@@ -428,12 +430,14 @@ export async function upsertProductionScheduleOrder(params: {
     },
     update: {
       resourceCd,
-      orderNumber
+      orderNumber,
+      siteKey
     },
     create: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
       csvDashboardRowId: row.id,
       location: locationKey,
+      siteKey,
       resourceCd,
       orderNumber
     }

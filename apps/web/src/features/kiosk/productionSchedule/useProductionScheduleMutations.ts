@@ -13,6 +13,8 @@ const WRITE_REFETCH_COOLDOWN_MS = 2500;
 type Params = {
   isSearchStateWriting: boolean;
   noteMaxLength: number;
+  /** Mac + manual-order v2: 手動順番の書き込み先端末 */
+  productionScheduleTargetDeviceScopeKey?: string;
 };
 
 type SaveNoteParams = {
@@ -37,7 +39,11 @@ const sanitizeNote = (value: string, noteMaxLength: number) => {
   return value.replace(/\r?\n/g, '').trim().slice(0, noteMaxLength);
 };
 
-export const useProductionScheduleMutations = ({ isSearchStateWriting, noteMaxLength }: Params) => {
+export const useProductionScheduleMutations = ({
+  isSearchStateWriting,
+  noteMaxLength,
+  productionScheduleTargetDeviceScopeKey
+}: Params) => {
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
   const processingMutation = useUpdateKioskProductionScheduleProcessing();
@@ -110,7 +116,16 @@ export const useProductionScheduleMutations = ({ isSearchStateWriting, noteMaxLe
 
   const updateOrder = ({ rowId, resourceCd, nextValue }: UpdateOrderParams) => {
     const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
-    orderMutation.mutate({ rowId, payload: { resourceCd, orderNumber } });
+    orderMutation.mutate({
+      rowId,
+      payload: {
+        resourceCd,
+        orderNumber,
+        ...(productionScheduleTargetDeviceScopeKey
+          ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
+          : {})
+      }
+    });
   };
 
   const updateProcessing = (rowId: string, nextValue: string) => {

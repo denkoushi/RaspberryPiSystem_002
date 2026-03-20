@@ -149,8 +149,30 @@ check_contains "サイネージAPI layoutConfig" "${SIGNAGE_JSON}" '"layoutConfi
 PROGRESS_OVERVIEW_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "進捗一覧API progress-overview" "${PROGRESS_OVERVIEW_CODE}" "200"
 
+# manual-order-overview: v1 は targetLocation+resources、v2（device-scope）は siteKey 必須で devices[]
 MANUAL_ORDER_OVERVIEW_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
-check_contains "manual-order-overview API" "${MANUAL_ORDER_OVERVIEW_JSON}" '"actorLocation".*"targetLocation".*"resources"'
+if printf "%s" "${MANUAL_ORDER_OVERVIEW_JSON}" | grep -Eq '"resources"'; then
+  check_contains "manual-order-overview API (v1)" "${MANUAL_ORDER_OVERVIEW_JSON}" '"actorLocation".*"targetLocation".*"resources"'
+elif printf "%s" "${MANUAL_ORDER_OVERVIEW_JSON}" | grep -Eq 'SITE_KEY_REQUIRED|"siteKey"'; then
+  SITE_FOR_OVERVIEW="$(printf "%s" "${GLOBAL_RANK_JSON}" | python3 -c "
+import json, sys
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+    a = (d.get('actorLocation') or '').strip()
+    sep = ' - '
+    i = a.find(sep)
+    print((a[:i] if i >= 0 else a).strip() or '第2工場')
+except Exception:
+    print('第2工場')
+" 2>/dev/null || echo '第2工場')"
+  SITE_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "${SITE_FOR_OVERVIEW}" 2>/dev/null || echo '%E7%AC%AC2%E5%B7%A5%E5%A0%B4')"
+  MANUAL_ORDER_V2_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview?siteKey=${SITE_ENC}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+  check_contains "manual-order-overview API (v2 devices[])" "${MANUAL_ORDER_V2_JSON}" '"devices"'
+  check_contains "manual-order-overview API (v2 siteKey)" "${MANUAL_ORDER_V2_JSON}" '"siteKey"'
+else
+  log_fail "manual-order-overview API" "v1/v2 いずれの形にも一致しません"
+fi
 
 echo ""
 echo "--- Pi5 remote checks ---"

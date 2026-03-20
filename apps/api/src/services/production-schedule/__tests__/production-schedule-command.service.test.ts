@@ -131,9 +131,38 @@ describe('production-schedule-command.service', () => {
     expect(prisma.productionScheduleOrderAssignment.deleteMany).toHaveBeenCalledWith({
       where: {
         csvDashboardRowId: 'row-3',
-        location: 'kiosk-1',
-      },
+        location: 'kiosk-1'
+      }
     });
+  });
+
+  it('手動順番 upsert で siteKey が保存される', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
+      id: 'row-site',
+      rowData: { FSIGENCD: 'R01' }
+    } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findFirst).mockResolvedValue(null as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.upsert).mockResolvedValue({} as never);
+
+    await upsertProductionScheduleOrder({
+      rowId: 'row-site',
+      locationKey: '第2工場 - kioskA',
+      resourceCd: 'R01',
+      orderNumber: 2
+    });
+
+    expect(prisma.productionScheduleOrderAssignment.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          location: '第2工場 - kioskA',
+          siteKey: '第2工場'
+        }),
+        update: expect.objectContaining({
+          siteKey: '第2工場'
+        })
+      })
+    );
   });
 });
 

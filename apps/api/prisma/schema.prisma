@@ -678,7 +678,10 @@ model ProductionScheduleOrderAssignment {
   id                String   @id @default(uuid())
   csvDashboardId    String
   csvDashboardRowId String
+  /// 手動順番の保存キー（deviceScopeKey）。旧データで工場名のみの行は siteKey と同一になりうる。
   location          String
+  /// location（deviceScopeKey）から導出した工場キー。overview 集計に使用。
+  siteKey           String
   resourceCd        String
   orderNumber       Int
   createdAt         DateTime @default(now())
@@ -689,6 +692,7 @@ model ProductionScheduleOrderAssignment {
   @@unique([csvDashboardId, location, resourceCd, orderNumber])
   @@unique([csvDashboardRowId, location])
   @@index([csvDashboardId, location, resourceCd])
+  @@index([csvDashboardId, siteKey])
 }
 
 model ProductionScheduleProgress {

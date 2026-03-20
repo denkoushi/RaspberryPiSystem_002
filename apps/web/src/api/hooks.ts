@@ -81,6 +81,7 @@ import {
   getKioskProductionScheduleDueManagementDailyPlan,
   getKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementManualOrderOverview,
+  getKioskProductionScheduleManualOrderSiteDevices,
   getKioskProductionScheduleDueManagementGlobalRankProposal,
   autoGenerateKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementSeibanDetail,
@@ -262,6 +263,7 @@ export function useKioskProductionSchedule(
     hasDueDateOnly?: boolean;
     page?: number;
     pageSize?: number;
+    targetDeviceScopeKey?: string;
   },
   options?: { enabled?: boolean; pauseRefetch?: boolean }
 ) {
@@ -310,11 +312,19 @@ export function useKioskProductionScheduleProcessingTypeOptions(options?: { paus
   });
 }
 
-export function useKioskProductionScheduleOrderUsage(resourceCds?: string, options?: { pauseRefetch?: boolean }) {
+export function useKioskProductionScheduleOrderUsage(
+  resourceCds?: string,
+  options?: { pauseRefetch?: boolean; targetDeviceScopeKey?: string; enabled?: boolean }
+) {
   return useQuery({
-    queryKey: ['kiosk-production-schedule-order-usage', resourceCds],
-    queryFn: () => getKioskProductionScheduleOrderUsage(resourceCds ? { resourceCds } : undefined),
+    queryKey: ['kiosk-production-schedule-order-usage', resourceCds, options?.targetDeviceScopeKey],
+    queryFn: () =>
+      getKioskProductionScheduleOrderUsage({
+        ...(resourceCds ? { resourceCds } : {}),
+        ...(options?.targetDeviceScopeKey ? { targetDeviceScopeKey: options.targetDeviceScopeKey } : {})
+      }),
     refetchInterval: options?.pauseRefetch ? false : 15000,
+    enabled: options?.enabled ?? true
   });
 }
 
@@ -523,11 +533,29 @@ export function useKioskProductionScheduleDueManagementGlobalRank(context?: DueM
   });
 }
 
-export function useKioskProductionScheduleDueManagementManualOrderOverview(context?: DueManagementTargetContext) {
+export function useKioskProductionScheduleDueManagementManualOrderOverview(
+  context?: DueManagementTargetContext & {
+    siteKey?: string;
+    deviceScopeKey?: string;
+  },
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ['kiosk-production-schedule-due-management-manual-order-overview', context],
     queryFn: () => getKioskProductionScheduleDueManagementManualOrderOverview(context),
-    refetchInterval: 30000
+    refetchInterval: 30000,
+    enabled: options?.enabled ?? true
+  });
+}
+
+export function useKioskProductionScheduleManualOrderSiteDevices(
+  siteKey: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-manual-order-site-devices', siteKey],
+    queryFn: () => getKioskProductionScheduleManualOrderSiteDevices(siteKey!),
+    enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0)
   });
 }
 
@@ -706,7 +734,12 @@ export function useUpdateKioskProductionScheduleOrder() {
       payload
     }: {
       rowId: string;
-      payload: { resourceCd: string; orderNumber: number | null; targetLocation?: string };
+      payload: {
+        resourceCd: string;
+        orderNumber: number | null;
+        targetLocation?: string;
+        targetDeviceScopeKey?: string;
+      };
     }) =>
       updateKioskProductionScheduleOrder(rowId, payload),
     onMutate: () => {
