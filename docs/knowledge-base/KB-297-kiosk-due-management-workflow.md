@@ -119,6 +119,11 @@ category: knowledge-base
   - **ルート**: `/kiosk/production-schedule/manual-order`（`App.tsx`）。**ナビ**: `KioskHeader` に「手動順番」（生産スケジュールと進捗一覧の間）。
   - **データ**: 上ペインは `site-devices` + `manual-order-overview` を `useManualOrderPageController` で統合。下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable`。
   - **検索条件**: `useProductionScheduleSearchConditionsWithStorageKey` により **専用 localStorage キー**で通常の生産スケジュールページと干渉しない。
+  - **登録製番（検索履歴）・search-state（2026-03-19 実装）**:
+    - 通常の `ProductionSchedulePage` と同様、`GET/PUT .../kiosk/production-schedule/search-state`（共有ストレージ）と [`useSharedSearchHistory`](../../apps/web/src/features/kiosk/productionSchedule/useSharedSearchHistory.ts) を `ProductionScheduleManualOrderPage` に配線。
+    - localStorage の履歴・非表示履歴キーは [`kioskProductionScheduleSharedStorageKeys.ts`](../../apps/web/src/features/kiosk/productionSchedule/kioskProductionScheduleSharedStorageKeys.ts)（`production-schedule-search-history` / `production-schedule-search-history-hidden`）で通常ページと **同一**（検索条件の専用キーとは分離したまま）。
+    - `useProductionScheduleMutations` の `isSearchStateWriting` は `useUpdateKioskProductionScheduleSearchState` の `isPending` と整合。
+  - **製番ドロップダウンの機種名**: `useKioskProductionScheduleHistoryProgress` の `progressBySeiban` を `ProductionScheduleSeibanFilterDropdown` へ渡す表示と、通常ページを揃える。
   - **保存**: `PUT /api/kiosk/production-schedule/:rowId/order` + `targetDeviceScopeKey`（device-scope v2 前提）。ミューテーションは `useProductionScheduleMutations` の `orderError` / `resetOrderError` でカード／バーに集約。
   - **静的プレビュー**: [docs/design-previews/README.md](../design-previews/README.md)（実装検討用 HTML、本番挙動の代替ではない）。
 - **Deploy / verify（実績、2026-03-20）**:

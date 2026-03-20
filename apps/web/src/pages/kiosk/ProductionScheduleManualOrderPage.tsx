@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useKioskProductionSchedule, useKioskProductionScheduleOrderUsage, useKioskProductionScheduleProcessingTypeOptions, useKioskProductionScheduleResources } from '../../api/hooks';
+import {
+  useKioskProductionSchedule,
+  useKioskProductionScheduleHistoryProgress,
+  useKioskProductionScheduleOrderUsage,
+  useKioskProductionScheduleProcessingTypeOptions,
+  useKioskProductionScheduleResources,
+  useKioskProductionScheduleSearchState,
+  useUpdateKioskProductionScheduleSearchState
+} from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
@@ -14,6 +22,10 @@ import { ProductionScheduleTable } from '../../components/kiosk/ProductionSchedu
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
 import { type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
+import {
+  KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_HIDDEN_KEY,
+  KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_KEY
+} from '../../features/kiosk/productionSchedule/kioskProductionScheduleSharedStorageKeys';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
@@ -25,14 +37,13 @@ import { useProductionScheduleDerivedRows } from '../../features/kiosk/productio
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { normalizeHistoryList, useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
+import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 
 import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
 
 const NOTE_MAX_LENGTH = 100;
 const MANUAL_ORDER_PAGE_SEARCH_STORAGE_KEY = 'manual-order-page-search-conditions';
-const MANUAL_ORDER_PAGE_HISTORY_STORAGE_KEY = 'manual-order-page-search-history';
-const MANUAL_ORDER_PAGE_HIDDEN_HISTORY_STORAGE_KEY = 'manual-order-page-search-history-hidden';
 const MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY = 'manual-order-page-sort-mode';
 const DUE_DATE_COLUMN_WIDTH = 110;
 const NOTE_COLUMN_WIDTH = 140;
@@ -112,8 +123,11 @@ export function ProductionScheduleManualOrderPage() {
     selectedMachineName,
     selectedPartName
   } = searchConditions;
-  const [history, setHistory] = useLocalStorage<string[]>(MANUAL_ORDER_PAGE_HISTORY_STORAGE_KEY, []);
-  const [, setHiddenHistory] = useLocalStorage<string[]>(MANUAL_ORDER_PAGE_HIDDEN_HISTORY_STORAGE_KEY, []);
+  const [history, setHistory] = useLocalStorage<string[]>(KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_KEY, []);
+  const [, setHiddenHistory] = useLocalStorage<string[]>(
+    KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_HIDDEN_KEY,
+    []
+  );
   const [sortMode, setSortMode] = useLocalStorage<ProductionScheduleSortMode>(
     MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY,
     'manual'
@@ -154,6 +168,7 @@ export function ProductionScheduleManualOrderPage() {
     [activeDeviceScopeKey, queryParams]
   );
 
+  const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
   const {
     completePending,
     orderPending,
@@ -169,7 +184,7 @@ export function ProductionScheduleManualOrderPage() {
     orderError,
     resetOrderError
   } = useProductionScheduleMutations({
-    isSearchStateWriting: false,
+    isSearchStateWriting: searchStateMutation.isPending,
     noteMaxLength: NOTE_MAX_LENGTH,
     productionScheduleTargetDeviceScopeKey:
       activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined
@@ -181,6 +196,12 @@ export function ProductionScheduleManualOrderPage() {
   });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch });
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions({ pauseRefetch });
+  const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch });
+  const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch });
+  const progressBySeiban = useMemo(
+    () => historyProgressQuery.data?.progressBySeiban ?? {},
+    [historyProgressQuery.data?.progressBySeiban]
+  );
 
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
@@ -315,10 +336,10 @@ export function ProductionScheduleManualOrderPage() {
     () =>
       visibleHistory.map((fseiban) => ({
         fseiban,
-        machineName: undefined,
+        machineName: progressBySeiban[fseiban]?.machineName,
         selected: normalizedActiveQueries.includes(fseiban)
       })),
-    [normalizedActiveQueries, visibleHistory]
+    [normalizedActiveQueries, progressBySeiban, visibleHistory]
   );
   const selectedSeibanCount = useMemo(
     () => seibanFilterItems.filter((item) => item.selected).length,
@@ -343,6 +364,14 @@ export function ProductionScheduleManualOrderPage() {
     () => resourceFilterItems.filter((item) => item.assignedOnlySelected).length,
     [resourceFilterItems]
   );
+
+  const { updateSharedSearchState } = useSharedSearchHistory({
+    normalizedHistory,
+    setHistory,
+    setHiddenHistory,
+    searchStateQuery,
+    searchStateMutation
+  });
 
   const {
     editingNoteValue,
@@ -374,6 +403,7 @@ export function ProductionScheduleManualOrderPage() {
       const nextHistory = normalizeHistoryList([trimmed, ...normalizedHistory]);
       setHistory(nextHistory);
       setHiddenHistory((prev) => prev.filter((item) => item.trim() !== trimmed));
+      void updateSharedSearchState(nextHistory, { type: 'add', value: trimmed });
     }
   };
   const clearAllFilters = () => {
