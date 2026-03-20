@@ -113,6 +113,21 @@ category: knowledge-base
 - **Troubleshooting**:
   - **`[ERROR] --detach requires RASPI_SERVER_HOST`**: Mac から `--detach` を付けて実行する場合、`RASPI_SERVER_HOST` 未設定で停止する。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` を先に設定（[deployment.md](../guides/deployment.md)「デタッチ実行」、[KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 
+## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
+
+- **Context**:
+  - 手動順番専用ページ上ペインの本文フォントを生産スケジュール一覧（`text-xs`）と揃え、高密度表示を統一したい。
+  - 部品行のみ割当のとき、上ペイン行明細で機種名が空になる事象が報告された。
+- **Fix（仕様）**:
+  - **Web**: [`manualOrderOverviewTypography.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewTypography.ts) に `KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS = 'text-xs'` を追加。`ManualOrderDeviceCard` と `ManualOrderOverviewRowBlock` で参照し、本文のみ `text-xs` を適用（カード全体にはかけない）。
+  - **API**: [`due-management-manual-order-overview.service.ts`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) で機種名解決を `buildSeibanToMachineName`（割当行のみから MH/SH を探す）から [`fetchSeibanProgressRows`](../../apps/api/src/services/production-schedule/seiban-progress.service.ts) 経由へ変更。CsvDashboardRow 全体から製番単位で機種名を取得し、割当が部品行のみのときも機種名が返るように修正。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/manual-order-overview-density-align`**。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`--detach --follow`。
+  - **Run ID 例**: `20260320-201540-12802`（Pi5）/ `20260320-202332-28162`（raspberrypi4）/ `20260320-202831-30296`（raspi4-robodrill01）、いずれも success。
+  - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**。
+- **Troubleshooting**:
+  - **機種名が空**: 割当行のみから MH/SH を探していた旧実装が原因。`fetchSeibanProgressRows` で製番全体の CsvDashboardRow を参照するよう修正済み。
+
 ## 手動順番 専用ページ（キオスク）追加（2026-03-20）
 
 - **Context**:
