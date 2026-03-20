@@ -2,13 +2,19 @@
 title: CIテスト失敗のトラブルシューティングガイド
 tags: [CI/CD, トラブルシューティング, GitHub Actions]
 audience: [開発者]
-last-verified: 2026-03-07
+last-verified: 2026-03-20
 related: [../knowledge-base/ci-cd.md, development.md]
 category: guides
 update-frequency: high
 ---
 
 # CIテスト失敗のトラブルシューティングガイド
+
+## Trivy（`aquasecurity/trivy-action`）が解決できない
+
+**症状**: ログ先頭付近で `Unable to resolve action aquasecurity/trivy-action@...` と出てジョブが開始しない。
+
+**対処**: ワークフローで **タグではなく commit SHA に pin** する。背景・手順・再発防止はナレッジ **[KB-310](../knowledge-base/ci-cd.md#kb-310-trivy-action-の-github-actions-参照解決失敗unable-to-resolve-action)** を参照（本リポジトリでは `.github/workflows/ci.yml` を SHA 固定で運用）。
 
 ## 概要
 

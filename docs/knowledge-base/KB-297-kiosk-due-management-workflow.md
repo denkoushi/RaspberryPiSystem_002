@@ -127,10 +127,10 @@ category: knowledge-base
   - **保存**: `PUT /api/kiosk/production-schedule/:rowId/order` + `targetDeviceScopeKey`（device-scope v2 前提）。ミューテーションは `useProductionScheduleMutations` の `orderError` / `resetOrderError` でカード／バーに集約。
   - **静的プレビュー**: [docs/design-previews/README.md](../design-previews/README.md)（実装検討用 HTML、本番挙動の代替ではない）。
 - **Deploy / verify（実績、2026-03-20）**:
-  - **ブランチ**: `feature/kiosk-manual-order-page`。
-  - **デプロイ**: [deployment.md](../guides/deployment.md) 標準。対象は **Pi5 + Pi4 キオスクのみ**（Pi3 サイネージは本変更の必須対象外）。**1台ずつ順番**: `--limit "raspberrypi5"` → `--limit "raspberrypi4"` → `--limit "raspi4-robodrill01"`、`--detach --follow`。
+  - **初回（専用ページ本体）**: ブランチ `feature/kiosk-manual-order-page`。[deployment.md](../guides/deployment.md) 標準。**1台ずつ順番**: `--limit "raspberrypi5"` → `--limit "raspberrypi4"` → `--limit "raspi4-robodrill01"`（Pi3 除外）、`--detach --follow`。
+  - **追従（登録製番履歴共有 + CI/テスト安定化）**: ブランチ `feat/kiosk-manual-order-shared-search-history`。同じく Pi5 → raspberrypi4 → raspi4-robodrill01 を1台ずつ。**デプロイ Run ID 例**: `20260320-151334-11088`（Pi5）/ `20260320-152207-21899`（raspberrypi4）/ `20260320-152629-30597`（raspi4-robodrill01）、いずれも **exit 0 / success**。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` — **PASS 27 / WARN 0 / FAIL 0**（`manual-order-overview` v2 は `siteKey` 導出付きで検証）。
-  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、ヘッダー遷移・鉛筆で端末切替・下ペイン編集・保存フィードバックを確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
+  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、(1) ヘッダー遷移・鉛筆で端末切替・下ペイン編集・保存フィードバック、(2) **登録製番履歴が通常の生産スケジュール画面と共有されること**（一方で登録した製番が他端末・他画面の履歴に現れる）、(3) **製番ドロップダウンに機種名が通常ページと同様に付くこと**、を確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
 - **ローカル品質ゲート（開発時）**:
   - `pnpm --filter @raspi-system/web lint` / `build` / `test`（Vitest）。
   - API 統合テスト: `pnpm test:api`（`scripts/test/run-tests.sh`、PostgreSQL `postgres-test-local`。終了後 `scripts/test/stop-postgres.sh` でテスト用コンテナ削除）。
