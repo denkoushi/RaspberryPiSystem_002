@@ -27,6 +27,7 @@ import {
   KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_HIDDEN_KEY,
   KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_KEY
 } from '../../features/kiosk/productionSchedule/kioskProductionScheduleSharedStorageKeys';
+import { buildConditionsAfterPencilFromFirstResourceCd } from '../../features/kiosk/productionSchedule/manualOrderLowerPaneSearch';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
@@ -147,7 +148,8 @@ export function ProductionScheduleManualOrderPage() {
     visibleHistory,
     selectedResourceCategory,
     queryParams,
-    hasQuery
+    hasQuery,
+    hasResourceCategoryResourceSelection
   } = useProductionScheduleQueryParams({
     activeQueries,
     activeResourceCds,
@@ -160,6 +162,8 @@ export function ProductionScheduleManualOrderPage() {
     selectedOrderNumbers,
     history
   });
+
+  const hasScheduleFilterQuery = hasQuery || hasResourceCategoryResourceSelection;
 
   const scheduleListParams = useMemo(
     () => ({
@@ -192,7 +196,7 @@ export function ProductionScheduleManualOrderPage() {
   });
 
   const scheduleQuery = useKioskProductionSchedule(scheduleListParams, {
-    enabled: hasQuery && activeDeviceScopeKey.trim().length > 0,
+    enabled: hasScheduleFilterQuery && activeDeviceScopeKey.trim().length > 0,
     pauseRefetch
   });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch });
@@ -540,6 +544,14 @@ export function ProductionScheduleManualOrderPage() {
   }, [activeDeviceScopeKey, deviceCards]);
 
   const handleSelectDevice = (deviceScopeKey: string) => {
+    setSelectedOrderNumbers([]);
+    const card = deviceCards.find((device) => device.deviceScopeKey === deviceScopeKey);
+    const firstCd = card?.resources[0]?.resourceCd?.trim();
+    if (firstCd) {
+      setSearchConditions(buildConditionsAfterPencilFromFirstResourceCd(firstCd));
+    } else {
+      resetSearchConditions();
+    }
     setActiveDeviceScopeKey(deviceScopeKey);
     const nextEl = document.querySelector<HTMLElement>(`[data-device-scope-key="${deviceScopeKey}"]`);
     if (nextEl) {
@@ -583,6 +595,8 @@ export function ProductionScheduleManualOrderPage() {
                   defaultSites={defaultSites}
                   onSiteChange={(next) => {
                     setActiveDeviceScopeKey('');
+                    resetSearchConditions();
+                    setSelectedOrderNumbers([]);
                     handleSiteChange(next);
                   }}
                 />
@@ -638,7 +652,7 @@ export function ProductionScheduleManualOrderPage() {
             canUseManualSort={manualSortEnabled}
             disabled={scheduleQuery.isFetching || completePending}
             isFetching={scheduleQuery.isFetching}
-            showFetching={hasQuery}
+            showFetching={hasScheduleFilterQuery}
           />
 
           <div className="mt-2">
@@ -686,7 +700,7 @@ export function ProductionScheduleManualOrderPage() {
 
           {!canShowSchedule ? (
             <p className="mt-3 text-sm font-semibold text-white/80">上ペインで端末を選択してください。</p>
-          ) : !hasQuery ? (
+          ) : !hasScheduleFilterQuery ? (
             <p className="mt-3 text-sm font-semibold text-white/80">検索してください。</p>
           ) : scheduleQuery.isLoading ? (
             <p className="mt-3 text-sm font-semibold text-white/80">読み込み中...</p>

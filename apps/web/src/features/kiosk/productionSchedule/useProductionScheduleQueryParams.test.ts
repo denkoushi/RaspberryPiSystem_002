@@ -42,6 +42,7 @@ describe('useProductionScheduleQueryParams', () => {
     );
 
     expect(result.current.hasQuery).toBe(false);
+    expect(result.current.hasResourceCategoryResourceSelection).toBe(true);
     expect(result.current.queryParams.machineName).toBeUndefined();
   });
 

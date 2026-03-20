@@ -113,6 +113,10 @@ export const useProductionScheduleQueryParams = ({
     hasDueDateOnlyFilter ||
     hasMachineScopedResourceQuery;
 
+  /** 機種名なしでも API は resourceCds + resourceCategory で絞り込み可能（手動順番下ペイン用） */
+  const hasResourceCategoryResourceSelection =
+    hasProcessingCategorySelection && hasAnyResourceSelection;
+
   return {
     normalizedActiveQueries,
     normalizedResourceCds,
@@ -122,6 +126,7 @@ export const useProductionScheduleQueryParams = ({
     visibleHistory: normalizedHistory,
     selectedResourceCategory,
     queryParams,
-    hasQuery
+    hasQuery,
+    hasResourceCategoryResourceSelection
   };
 };

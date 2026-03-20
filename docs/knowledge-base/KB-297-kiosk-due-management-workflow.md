@@ -128,6 +128,17 @@ category: knowledge-base
 - **Troubleshooting**:
   - **機種名が空**: 割当行のみから MH/SH を探していた旧実装が原因。`fetchSeibanProgressRows` で製番全体の CsvDashboardRow を参照するよう修正済み。
 
+## 手動順番 下ペイン 鉛筆・工場変更時のフィルタリセット（2026-03-20）
+
+- **Context**:
+  - 上ペインで端末（鉛筆）や工場を切り替えたとき、下ペインの絞り込みが残ると誤操作しやすい。
+  - 鉛筆選択直後は、当該端末の先頭資源に合わせて一覧を出したい（機種名未入力でも API は `resourceCds` + `resourceCategory` で絞り込み可能）。
+- **Fix（仕様）**:
+  - **鉛筆**: `selectedOrderNumbers` をクリアし、検索条件を `DEFAULT_SEARCH_CONDITIONS` 相当に戻したうえで、カード先頭資源 `resources[0].resourceCd` を1件選択し、`isGrindingResourceCd` に応じて研削/切削トグルを整合（純関数 [`manualOrderLowerPaneSearch.ts`](../../apps/web/src/features/kiosk/productionSchedule/manualOrderLowerPaneSearch.ts)）。
+  - **工場変更**: 編集端末をクリアしつつ、`resetSearchConditions` + `selectedOrderNumbers` クリア（先頭資源の自動指定はしない）。
+  - **一覧取得**: 手動順番ページのみ、`hasQuery` に加え `useProductionScheduleQueryParams` の `hasResourceCategoryResourceSelection`（工程ONかつ資源選択あり）で `useKioskProductionSchedule` を有効化。ツールバー「取得中表示」や「検索してください」も同じ合成条件に合わせる。
+  - **不変**: ソートモード（`MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY`）と共有登録製番履歴（`kioskProductionScheduleSharedStorageKeys`）はリセットしない。
+
 ## 手動順番 専用ページ（キオスク）追加（2026-03-20）
 
 - **Context**:
