@@ -31,6 +31,58 @@ function PencilIcon() {
   );
 }
 
+function RowDetailBlock({
+  fseiban,
+  fhincd,
+  processLabel,
+  machineName,
+  partName
+}: {
+  fseiban: string;
+  fhincd: string;
+  processLabel: string;
+  machineName: string;
+  partName: string;
+}) {
+  const line2 = Boolean(machineName.trim()) || Boolean(partName.trim());
+  return (
+    <div className="rounded bg-slate-800/90 px-1.5 py-1 text-[10px] leading-snug text-white/85">
+      <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+        {fseiban.trim().length > 0 ? <span className="font-semibold tabular-nums text-white">{fseiban}</span> : null}
+        {fseiban.trim().length > 0 && fhincd.trim().length > 0 ? (
+          <span className="text-white/35" aria-hidden>
+            ·
+          </span>
+        ) : null}
+        {fhincd.trim().length > 0 ? (
+          <span className="font-mono text-[9px] text-slate-200">{fhincd}</span>
+        ) : null}
+        {processLabel.trim().length > 0 ? (
+          <>
+            {(fseiban.trim().length > 0 || fhincd.trim().length > 0) ? (
+              <span className="text-white/35" aria-hidden>
+                ·
+              </span>
+            ) : null}
+            <span className="text-white/55">{processLabel}</span>
+          </>
+        ) : null}
+      </div>
+      {line2 ? (
+        <div className="mt-0.5 truncate text-[9px] text-white/50" title={[machineName, partName].filter(Boolean).join(' · ')}>
+          {machineName.trim().length > 0 ? <span className="text-slate-400">{machineName}</span> : null}
+          {machineName.trim().length > 0 && partName.trim().length > 0 ? (
+            <span className="mx-1 text-white/30" aria-hidden>
+              ·
+            </span>
+          ) : null}
+          {partName.trim().length > 0 ? <span>{partName}</span> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ManualOrderDeviceCard({
   deviceScopeKey,
   label,
@@ -74,21 +126,37 @@ export function ManualOrderDeviceCard({
       {status === 'saving' ? <p className="mb-1 text-[11px] text-amber-200">保存中…</p> : null}
       {status === 'error' ? <p className="mb-1 text-[11px] text-rose-200">保存に失敗しました</p> : null}
 
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {resources.length === 0 ? (
           <p className="rounded bg-slate-800 px-2 py-1 text-[11px] text-white/60">手動順番は未設定です</p>
         ) : (
-          resources.map((resource) => (
-            <div key={resource.resourceCd} className="rounded bg-slate-800 px-2 py-1 text-[11px] text-white/80">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-white">{resource.resourceCd}</span>
-                <span className="text-white/60">{resource.assignedCount}件</span>
+          resources.map((resource) => {
+            const rows = resource.rows ?? [];
+            return (
+              <div key={resource.resourceCd} className="rounded bg-slate-800/80 px-2 py-1.5">
+                <div className="mb-1 flex items-center justify-between gap-2 text-[10px]">
+                  <span className="font-semibold text-white">{resource.resourceCd}</span>
+                  <span className="shrink-0 text-white/55">{resource.assignedCount}件</span>
+                </div>
+                {rows.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {rows.map((row) => (
+                      <RowDetailBlock
+                        key={`${resource.resourceCd}-${row.orderNumber}-${row.fseiban}-${row.fhincd}`}
+                        fseiban={row.fseiban}
+                        fhincd={row.fhincd}
+                        processLabel={row.processLabel}
+                        machineName={row.machineName}
+                        partName={row.partName}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-white/45">行データを取得できませんでした</p>
+                )}
               </div>
-              <div className="mt-0.5 text-white/60">
-                最大順番: {resource.maxOrderNumber ?? '-'} / 比較件数: {resource.comparedCount}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </article>

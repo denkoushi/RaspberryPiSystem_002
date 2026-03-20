@@ -5,6 +5,16 @@ import {
 } from '../../lib/manual-order-device-scope.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 
+/** キオスク上ペイン用の行スナップショット（集計・学習用の指標は resources 直下で従来どおり） */
+export type ManualOrderOverviewRow = {
+  orderNumber: number;
+  fseiban: string;
+  fhincd: string;
+  processLabel: string;
+  machineName: string;
+  partName: string;
+};
+
 export type ManualOrderOverviewResource = {
   resourceCd: string;
   assignedCount: number;
@@ -14,6 +24,7 @@ export type ManualOrderOverviewResource = {
   missingGlobalRankCount: number;
   lastUpdatedAt: string | null;
   lastUpdatedBy: string | null;
+  rows: ManualOrderOverviewRow[];
 };
 
 type ManualOrderOverview = {
@@ -31,7 +42,10 @@ type AssignmentRow = {
   orderNumber: number;
   updatedAt: Date;
   location: string;
-  csvDashboardRow: { rowData: unknown };
+  csvDashboardRow: {
+    rowData: unknown;
+    rowNotes: ReadonlyArray<{ processingType: string | null }>;
+  };
 };
 
 type EventRow = {
@@ -47,6 +61,71 @@ const toNumber = (value: unknown): number | null => {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+};
+
+const strField = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+
+const isMachinePartCode = (fhincd: string): boolean => {
+  const normalized = fhincd.trim().toUpperCase();
+  return normalized.startsWith('MH') || normalized.startsWith('SH');
+};
+
+const buildSeibanToMachineName = (assignments: AssignmentRow[]): Map<string, string> => {
+  const map = new Map<string, string>();
+  for (const assignment of assignments) {
+    const rowData = assignment.csvDashboardRow.rowData as Record<string, unknown>;
+    const fhincd = strField(rowData.FHINCD);
+    if (!isMachinePartCode(fhincd)) continue;
+    const fseiban = strField(rowData.FSEIBAN);
+    if (!fseiban) continue;
+    const fhinmei = strField(rowData.FHINMEI);
+    if (fhinmei.length === 0 || map.has(fseiban)) continue;
+    map.set(fseiban, fhinmei);
+  }
+  return map;
+};
+
+const resolveProcessLabel = (
+  rowData: Record<string, unknown>,
+  rowNotes: ReadonlyArray<{ processingType: string | null }>
+): string => {
+  const fromNote = rowNotes[0]?.processingType;
+  const trimmedNote = typeof fromNote === 'string' ? fromNote.trim() : '';
+  if (trimmedNote.length > 0) return trimmedNote;
+  const fkojun = rowData.FKOJUN;
+  if (typeof fkojun === 'number' && Number.isFinite(fkojun)) return String(fkojun);
+  if (typeof fkojun === 'string' && fkojun.trim().length > 0) return fkojun.trim();
+  return '';
+};
+
+const assignmentToOverviewRow = (
+  assignment: AssignmentRow,
+  machineBySeiban: Map<string, string>
+): ManualOrderOverviewRow => {
+  const rowData = assignment.csvDashboardRow.rowData as Record<string, unknown>;
+  const notes = assignment.csvDashboardRow.rowNotes;
+  const fseiban = strField(rowData.FSEIBAN);
+  const fhincd = strField(rowData.FHINCD);
+  const fhinmei = strField(rowData.FHINMEI);
+  const processLabel = resolveProcessLabel(rowData, notes);
+  if (isMachinePartCode(fhincd)) {
+    return {
+      orderNumber: assignment.orderNumber,
+      fseiban,
+      fhincd,
+      processLabel,
+      machineName: fhinmei,
+      partName: ''
+    };
+  }
+  return {
+    orderNumber: assignment.orderNumber,
+    fseiban,
+    fhincd,
+    processLabel,
+    machineName: machineBySeiban.get(fseiban) ?? '',
+    partName: fhinmei
+  };
 };
 
 const collectLatestUpdateByResource = (
@@ -70,70 +149,59 @@ const collectLatestUpdateByResource = (
 };
 
 const buildManualOrderOverviewResources = (
-  assignments: Array<{
-    resourceCd: string;
-    orderNumber: number;
-    updatedAt: Date;
-    csvDashboardRow: { rowData: unknown };
-  }>,
+  assignments: AssignmentRow[],
   globalRankMap: Map<string, number>,
   latestUpdateByResource: Map<string, { lastUpdatedAt: string; lastUpdatedBy: string | null }>
 ): ManualOrderOverviewResource[] => {
-  const buckets = new Map<
-    string,
-    {
-      assignedCount: number;
-      maxOrderNumber: number | null;
-      comparedCount: number;
-      missingGlobalRankCount: number;
-      totalGap: number;
-      fallbackLatestUpdatedAt: string | null;
-    }
-  >();
+  const machineBySeiban = buildSeibanToMachineName(assignments);
+  const byResource = new Map<string, AssignmentRow[]>();
+  for (const assignment of assignments) {
+    const list = byResource.get(assignment.resourceCd) ?? [];
+    list.push(assignment);
+    byResource.set(assignment.resourceCd, list);
+  }
 
-  assignments.forEach((assignment) => {
-    const bucket =
-      buckets.get(assignment.resourceCd) ??
-      {
-        assignedCount: 0,
-        maxOrderNumber: null,
-        comparedCount: 0,
-        missingGlobalRankCount: 0,
-        totalGap: 0,
-        fallbackLatestUpdatedAt: null
-      };
-    bucket.assignedCount += 1;
-    bucket.maxOrderNumber =
-      bucket.maxOrderNumber === null ? assignment.orderNumber : Math.max(bucket.maxOrderNumber, assignment.orderNumber);
-    if (!bucket.fallbackLatestUpdatedAt) {
-      bucket.fallbackLatestUpdatedAt = assignment.updatedAt.toISOString();
-    }
+  return Array.from(byResource.entries())
+    .map(([resourceCdValue, group]) => {
+      const sorted = [...group].sort((left, right) => left.orderNumber - right.orderNumber);
+      const rows = sorted.map((a) => assignmentToOverviewRow(a, machineBySeiban));
 
-    const rowData = assignment.csvDashboardRow.rowData as Record<string, unknown>;
-    const fseiban = typeof rowData.FSEIBAN === 'string' ? rowData.FSEIBAN.trim() : '';
-    const autoRank = fseiban.length > 0 ? globalRankMap.get(fseiban) : undefined;
-    if (typeof autoRank !== 'number') {
-      bucket.missingGlobalRankCount += 1;
-    } else {
-      bucket.comparedCount += 1;
-      bucket.totalGap += Math.abs(assignment.orderNumber - autoRank);
-    }
-    buckets.set(assignment.resourceCd, bucket);
-  });
+      let assignedCount = 0;
+      let maxOrderNumber: number | null = null;
+      let comparedCount = 0;
+      let missingGlobalRankCount = 0;
+      let totalGap = 0;
+      let fallbackLatestUpdatedAt: string | null = null;
 
-  return Array.from(buckets.entries())
-    .map(([resourceCdValue, bucket]) => {
+      for (const assignment of sorted) {
+        assignedCount += 1;
+        maxOrderNumber =
+          maxOrderNumber === null ? assignment.orderNumber : Math.max(maxOrderNumber, assignment.orderNumber);
+        if (!fallbackLatestUpdatedAt) {
+          fallbackLatestUpdatedAt = assignment.updatedAt.toISOString();
+        }
+        const rowData = assignment.csvDashboardRow.rowData as Record<string, unknown>;
+        const fseiban = typeof rowData.FSEIBAN === 'string' ? rowData.FSEIBAN.trim() : '';
+        const autoRank = fseiban.length > 0 ? globalRankMap.get(fseiban) : undefined;
+        if (typeof autoRank !== 'number') {
+          missingGlobalRankCount += 1;
+        } else {
+          comparedCount += 1;
+          totalGap += Math.abs(assignment.orderNumber - autoRank);
+        }
+      }
+
       const latest = latestUpdateByResource.get(resourceCdValue);
       return {
         resourceCd: resourceCdValue,
-        assignedCount: bucket.assignedCount,
-        maxOrderNumber: bucket.maxOrderNumber,
-        avgGlobalRankGap:
-          bucket.comparedCount > 0 ? Number((bucket.totalGap / bucket.comparedCount).toFixed(2)) : null,
-        comparedCount: bucket.comparedCount,
-        missingGlobalRankCount: bucket.missingGlobalRankCount,
-        lastUpdatedAt: latest?.lastUpdatedAt ?? bucket.fallbackLatestUpdatedAt,
-        lastUpdatedBy: latest?.lastUpdatedBy ?? null
+        assignedCount,
+        maxOrderNumber,
+        avgGlobalRankGap: comparedCount > 0 ? Number((totalGap / comparedCount).toFixed(2)) : null,
+        comparedCount,
+        missingGlobalRankCount,
+        lastUpdatedAt: latest?.lastUpdatedAt ?? fallbackLatestUpdatedAt,
+        lastUpdatedBy: latest?.lastUpdatedBy ?? null,
+        rows
       };
     })
     .sort((left, right) => {
@@ -163,7 +231,11 @@ export async function listDueManagementManualOrderOverview(params: Params): Prom
         location: true,
         csvDashboardRow: {
           select: {
-            rowData: true
+            rowData: true,
+            rowNotes: {
+              select: { processingType: true },
+              take: 1
+            }
           }
         }
       },
@@ -266,7 +338,11 @@ export async function listDueManagementManualOrderOverviewV2(params: {
         location: true,
         csvDashboardRow: {
           select: {
-            rowData: true
+            rowData: true,
+            rowNotes: {
+              select: { processingType: true },
+              take: 1
+            }
           }
         }
       },

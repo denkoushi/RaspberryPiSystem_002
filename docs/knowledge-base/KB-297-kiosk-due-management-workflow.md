@@ -118,6 +118,7 @@ category: knowledge-base
 - **Spec（契約・境界）**:
   - **ルート**: `/kiosk/production-schedule/manual-order`（`App.tsx`）。**ナビ**: `KioskHeader` に「手動順番」（生産スケジュールと進捗一覧の間）。
   - **データ**: 上ペインは `site-devices` + `manual-order-overview` を `useManualOrderPageController` で統合。下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable`。
+  - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName`（同一製番の MH/SH 行の `FHINMEI`）/ `partName`（部品行の `FHINMEI`）。キオスク上ペインは `ManualOrderDeviceCard` で **製番·品番·工順（1行）＋機種·品名（2行目）** の高密度表示。`assignedCount`・`maxOrderNumber`・`comparedCount` 等の集計は従来どおり（納期管理「手動順番 全体像」や全体ランキング改善用の保存と整合）。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。
   - **検索条件**: `useProductionScheduleSearchConditionsWithStorageKey` により **専用 localStorage キー**で通常の生産スケジュールページと干渉しない。
   - **登録製番（検索履歴）・search-state（2026-03-19 実装）**:
     - 通常の `ProductionSchedulePage` と同様、`GET/PUT .../kiosk/production-schedule/search-state`（共有ストレージ）と [`useSharedSearchHistory`](../../apps/web/src/features/kiosk/productionSchedule/useSharedSearchHistory.ts) を `ProductionScheduleManualOrderPage` に配線。

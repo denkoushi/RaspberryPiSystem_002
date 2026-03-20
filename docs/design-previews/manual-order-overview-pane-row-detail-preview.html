@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>手動順番 — 上ペイン行明細（高密度）デザインプレビュー</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --bg: #0f172a;
+      --panel: rgba(15, 23, 42, 0.5);
+      --card: rgba(30, 41, 59, 0.85);
+      --row-bg: rgba(51, 65, 85, 0.55);
+      --border: rgba(255, 255, 255, 0.1);
+      --cyan: #22d3ee;
+      --amber: #fbbf24;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+    .page {
+      max-width: min(100%, 1400px);
+      margin: 0 auto;
+      padding: 10px 12px 24px;
+    }
+    .note {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(30, 41, 59, 0.6);
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+    .note strong { color: var(--cyan); }
+    .note code {
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.35);
+      color: #e2e8f0;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .sub {
+      margin: 0 0 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .map {
+      margin: 0 0 10px;
+      font-size: 9px;
+      color: #64748b;
+      letter-spacing: 0.02em;
+    }
+
+    .overview {
+      display: flex;
+      flex-direction: column;
+      min-height: 240px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+    }
+    .overview-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .overview-head h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .overview-head .count {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .device-card {
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.6);
+      padding: 6px 7px 7px;
+      transition: opacity 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .device-card.active {
+      border-color: rgba(34, 211, 238, 0.55);
+      box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.28);
+    }
+    .device-card.dimmed { opacity: 0.55; }
+    .device-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .device-top .titles { min-width: 0; }
+    .device-top .label {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: #a5f3fc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .device-top .key {
+      margin: 1px 0 0;
+      font-size: 9px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .btn-pencil {
+      flex-shrink: 0;
+      padding: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--amber);
+      cursor: default;
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .resource-block { margin-top: 5px; }
+    .resource-block:first-of-type { margin-top: 0; }
+    .resource-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 3px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: var(--card);
+      font-size: 10px;
+    }
+    .resource-head .rcd { font-weight: 700; color: var(--text); }
+    .resource-head .meta { font-size: 9px; color: var(--muted); }
+
+    /* 行: 本文2行のみ（順位・差分は画面に出さない） */
+    .row-card {
+      margin-top: 3px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background: var(--row-bg);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .row-card:first-child { margin-top: 0; }
+
+    .body { min-width: 0; }
+    .r1 {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 5px;
+      font-size: 10px;
+    }
+    .r1 .sb {
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .r1 .dot { color: #64748b; flex-shrink: 0; }
+    .r1 .hin {
+      font-family: ui-monospace, monospace;
+      font-size: 9px;
+      color: #cbd5e1;
+    }
+    .r1 .proc {
+      font-size: 9px;
+      color: var(--muted);
+    }
+    .r2 {
+      margin-top: 2px;
+      font-size: 9px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .r2 .m { color: #a8b8c8; }
+    .r2 .sep { margin: 0 3px; opacity: 0.45; }
+
+    .empty-res {
+      margin: 0;
+      padding: 5px 6px;
+      border-radius: 4px;
+      background: rgba(30, 41, 59, 0.9);
+      color: var(--muted);
+      font-size: 9px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>手動順番 · 上ペイン行明細（高密度）</h1>
+    <p class="sub">静的 HTML。項目名は出さず、<strong>順序・字重・モノスペース</strong>で識別。キオスクの「一覧を一目で掃う」用途向け。</p>
+
+    <p class="note">
+      <strong>注意:</strong> 本番 <code>manual-order-overview</code> は現状資源 CD 集計のみ。このモックは API 拡張後のカード内行の見た目合意用。
+      <a href="./manual-order-leader-overview-preview.html" style="color:#7dd3fc;">leader-overview</a> は閲覧＋編集デモ込みの別カンプです。
+    </p>
+    <p class="note">
+      <strong>方針:</strong> 手動順と自動順（全体ランキング）の突合・差分などは、<strong>算出式ブラッシュアップ用にサーバ側でイベント／集計として保存</strong>する想定でよいが、<strong>キオスク上ペインには表示しない</strong>（現場は作業対象の識別に集中）。
+    </p>
+
+    <p class="map">読み方（固定順）: 1行目 製番 · 品番 · 工順 → 2行目 機種名 · 品名</p>
+
+    <section class="overview" aria-label="全体把握">
+      <div class="overview-head">
+        <h2>全体把握</h2>
+        <p class="count">3 端末</p>
+      </div>
+      <div class="grid">
+        <article class="device-card active" data-device-scope-key="raspberrypi4-kiosk1">
+          <div class="device-top">
+            <div class="titles">
+              <p class="label">研削メイン（Pi4）</p>
+              <p class="key">raspberrypi4-kiosk1</p>
+            </div>
+            <span class="btn-pencil" title="編集">✎</span>
+          </div>
+          <div class="resource-block">
+            <div class="resource-head">
+              <span class="rcd">305</span>
+              <span class="meta">4 件</span>
+            </div>
+            <div class="row-card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00412</span><span class="dot">·</span><span class="hin">MHD-10432-A</span><span class="dot">·</span><span class="proc">外径仕上</span>
+                </div>
+                <div class="r2"><span class="m">サーボストッパY2</span><span class="sep">·</span>メインシャフト 熱処理後仕上げ</div>
+              </div>
+            </div>
+            <div class="row-card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00388</span><span class="dot">·</span><span class="hin">HSG-8821</span><span class="dot">·</span><span class="proc">内面</span>
+                </div>
+                <div class="r2"><span class="m">旋盤LX-40</span><span class="sep">·</span>ハウジングB</div>
+              </div>
+            </div>
+            <div class="row-card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00405</span><span class="dot">·</span><span class="hin">PLT-3301</span>
+                </div>
+                <div class="r2"><span class="m">搬送ロボ腕</span><span class="sep">·</span>プレートC</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="device-card dimmed" data-device-scope-key="raspi4-robodrill01">
+          <div class="device-top">
+            <div class="titles">
+              <p class="label">RoboDrill01</p>
+              <p class="key">raspi4-robodrill01</p>
+            </div>
+            <span class="btn-pencil">✎</span>
+          </div>
+          <div class="resource-block">
+            <div class="resource-head">
+              <span class="rcd">310</span>
+              <span class="meta">2 件</span>
+            </div>
+            <div class="row-card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00420</span><span class="dot">·</span><span class="hin">DR-4400</span><span class="dot">·</span><span class="proc">タップ前</span>
+                </div>
+                <div class="r2"><span class="m">ドリルD1</span><span class="sep">·</span>穴あけ8φ ボディ</div>
+              </div>
+            </div>
+            <div class="row-card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00418</span><span class="dot">·</span><span class="hin">JIG-2188</span><span class="dot">·</span><span class="proc">面取</span>
+                </div>
+                <div class="r2"><span class="m">治具K系</span><span class="sep">·</span>取付ブロック</div>
+              </div>
+            </div>
+          </div>
+          <div class="resource-block">
+            <div class="resource-head">
+              <span class="rcd">315</span>
+              <span class="meta">0 件</span>
+            </div>
+            <p class="empty-res">手動順番は未設定です</p>
+          </div>
+        </article>
+
+        <article class="device-card dimmed" data-device-scope-key="tools03-kiosk">
+          <div class="device-top">
+            <div class="titles">
+              <p class="label">切削キオスク（例）</p>
+              <p class="key">tools03-kiosk</p>
+            </div>
+            <span class="btn-pencil">✎</span>
+          </div>
+          <div class="resource-block">
+            <div class="resource-head">
+              <span class="rcd">MSZ</span>
+              <span class="meta">1 件</span>
+            </div>
+            <div class="row-card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00433</span><span class="dot">·</span><span class="hin">BSE-7710</span><span class="dot">·</span><span class="proc">粗形</span>
+                </div>
+                <div class="r2"><span class="m">MC M-200</span><span class="sep">·</span>ベース板粗削り</div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

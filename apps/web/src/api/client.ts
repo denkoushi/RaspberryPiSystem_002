@@ -516,6 +516,16 @@ export interface ProductionScheduleDueManagementGlobalRankResult {
   orderedFseibans: string[];
 }
 
+/** manual-order-overview: 資源内の1行（上ペイン行明細用。順位差分は含めない） */
+export interface ProductionScheduleDueManagementManualOrderOverviewRow {
+  orderNumber: number;
+  fseiban: string;
+  fhincd: string;
+  processLabel: string;
+  machineName: string;
+  partName: string;
+}
+
 export interface ProductionScheduleDueManagementManualOrderOverviewResource {
   resourceCd: string;
   assignedCount: number;
@@ -525,6 +535,7 @@ export interface ProductionScheduleDueManagementManualOrderOverviewResource {
   missingGlobalRankCount: number;
   lastUpdatedAt: string | null;
   lastUpdatedBy: string | null;
+  rows: ProductionScheduleDueManagementManualOrderOverviewRow[];
 }
 
 /** API manual-order-overview v2: 旧サイト単位行のみを絞り込むときの deviceScopeKey */
