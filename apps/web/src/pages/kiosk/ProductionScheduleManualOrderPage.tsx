@@ -14,6 +14,7 @@ import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { ManualOrderActiveDeviceBanner } from '../../components/kiosk/manualOrder/ManualOrderActiveDeviceBanner';
 import { ManualOrderOverviewPane } from '../../components/kiosk/manualOrder/ManualOrderOverviewPane';
+import { ManualOrderSiteToolbar } from '../../components/kiosk/manualOrder/ManualOrderSiteToolbar';
 import { ProductionOrderSearchModal } from '../../components/kiosk/ProductionOrderSearchModal';
 import { ProductionScheduleResourceFilterDropdown } from '../../components/kiosk/ProductionScheduleResourceFilterDropdown';
 import { ProductionScheduleResourceFilters } from '../../components/kiosk/ProductionScheduleResourceFilters';
@@ -567,28 +568,6 @@ export function ProductionScheduleManualOrderPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2" ref={containerRef}>
-      <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold text-white">手動順番</h2>
-        <select
-          value={siteKey}
-          onChange={(event) => {
-            setActiveDeviceScopeKey('');
-            handleSiteChange(event.target.value);
-          }}
-          className="h-8 rounded border border-white/20 bg-slate-900 px-2 text-xs text-white"
-          aria-label="工場を選択"
-        >
-          {defaultSites.map((site) => (
-            <option key={site} value={site}>
-              {site}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-white/60">
-          端末一覧: {siteDevicesQuery.data?.deviceScopeKeys.length ?? 0}
-        </span>
-      </div>
-
       <div className="grid min-h-0 flex-1 grid-rows-[0.95fr_1.25fr] gap-2">
         <div className="min-h-0 overflow-hidden">
           <ManualOrderActiveDeviceBanner
@@ -598,6 +577,16 @@ export function ProductionScheduleManualOrderPage() {
           />
           <div className="h-[calc(100%-2.2rem)] min-h-0">
             <ManualOrderOverviewPane
+              siteToolbar={
+                <ManualOrderSiteToolbar
+                  siteKey={siteKey}
+                  defaultSites={defaultSites}
+                  onSiteChange={(next) => {
+                    setActiveDeviceScopeKey('');
+                    handleSiteChange(next);
+                  }}
+                />
+              }
               devices={deviceCards}
               activeDeviceScopeKey={activeDeviceScopeKey}
               statusMap={statusMap}
