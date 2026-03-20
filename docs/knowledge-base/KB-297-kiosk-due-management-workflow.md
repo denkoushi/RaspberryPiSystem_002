@@ -130,8 +130,10 @@ category: knowledge-base
 - **Deploy / verify（実績、2026-03-20）**:
   - **初回（専用ページ本体）**: ブランチ `feature/kiosk-manual-order-page`。[deployment.md](../guides/deployment.md) 標準。**1台ずつ順番**: `--limit "raspberrypi5"` → `--limit "raspberrypi4"` → `--limit "raspi4-robodrill01"`（Pi3 除外）、`--detach --follow`。
   - **追従（登録製番履歴共有 + CI/テスト安定化）**: ブランチ `feat/kiosk-manual-order-shared-search-history`。同じく Pi5 → raspberrypi4 → raspi4-robodrill01 を1台ずつ。**デプロイ Run ID 例**: `20260320-151334-11088`（Pi5）/ `20260320-152207-21899`（raspberrypi4）/ `20260320-152629-30597`（raspi4-robodrill01）、いずれも **exit 0 / success**。
+  - **main 反映（overview 行明細 `rows[]` + 上ペイン高密度）**: ブランチ **`main`**（コミット例: `feat(kiosk): manual-order-overview に行明細 rows[] と上ペイン高密度表示`）。**CI**: GitHub Actions 成功（例: Run `23332683133`）。**デプロイ**: 対象 Pi5 + Pi4×2 のみ（Pi3 除外）、**1台ずつ順番**（`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01`）。**Run ID 例**: `20260320-175411-21044` / `20260320-180217-22594` / `20260320-180649-2465`（いずれも success）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` — **PASS 27 / WARN 0 / FAIL 0**（`manual-order-overview` v2 は `siteKey` 導出付きで検証）。
-  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、(1) ヘッダー遷移・鉛筆で端末切替・下ペイン編集・保存フィードバック、(2) **登録製番履歴が通常の生産スケジュール画面と共有されること**（一方で登録した製番が他端末・他画面の履歴に現れる）、(3) **製番ドロップダウンに機種名が通常ページと同様に付くこと**、を確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
+  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、(1) ヘッダー遷移・鉛筆で端末切替・下ペイン編集・保存フィードバック、(2) **登録製番履歴が通常の生産スケジュール画面と共有されること**（一方で登録した製番が他端末・他画面の履歴に現れる）、(3) **製番ドロップダウンに機種名が通常ページと同様に付くこと**、(4) **上ペイン**: 資源CDごとに **製番・品番・工順（1行）＋機種・品名（2行目）** が手動順の並びで表示されること（`resources[].rows[]`）、を確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
+  - **注記（`rows[]` と空データ）**: device-scope v2 で `manual-order-overview?siteKey=...` の **`resources` が 0 件**のとき、API 上は `rows[]` の中身を検証できない。Phase12 の合格と、手動UIの「表示のみ」で代替可（データあり環境で再確認）。
 - **ローカル品質ゲート（開発時）**:
   - `pnpm --filter @raspi-system/web lint` / `build` / `test`（Vitest）。
   - API 統合テスト: `pnpm test:api`（`scripts/test/run-tests.sh`、PostgreSQL `postgres-test-local`。終了後 `scripts/test/stop-postgres.sh` でテスト用コンテナ削除）。
@@ -139,6 +141,7 @@ category: knowledge-base
   - **ESLint import/order**: `ProductionScheduleManualOrderPage.tsx` 等で import 順エラー → `eslint --fix` または deployment.md の import グループ規則に合わせる。
   - **型エラー（製番検索モーダル）**: `ProductionOrderSearchModal` は `useProductionOrderSearch` の戻り値（`productNoInput` 等）と props を一致させる（古い prop 名はビルド失敗）。
   - **Phase12 と overview**: device-scope v2 時は無印 `manual-order-overview` が 400 になるのは仕様。スクリプトが `global-rank` から `siteKey` を導出できているか確認（[KB-302](../knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗) — ping 失敗時は手動 curl 代替）。
+  - **`rows[]` が curl で見えない**: `resources` が空のときは `rows[]` も返らない。本番データで手動順の行が存在する端末・サイトで再確認する。
 - **main マージ**: ドキュメント反映後、PR 経由で `main` へ統合（運用標準）。
 
 ## 切削除外リストで一部資源CDのみ除外される事象（2026-03-16 調査）
