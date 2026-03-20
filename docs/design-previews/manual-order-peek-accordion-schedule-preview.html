@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>【検討用】手動順番 — 全端末横カード＋鉛筆／下ペイン（静的プレビュー）</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --bg: #0a0e14;
+      --panel: #121922;
+      --card: #161e2a;
+      --border: rgba(255, 255, 255, 0.07);
+      --cyan: #22d3ee;
+      --amber: #fbbf24;
+      --text: #e8edf4;
+      --muted: #7d8fa3;
+      --warn: #fbbf24;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+    .shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .draft-banner {
+      margin: 6px 8px 0;
+      padding: 6px 8px;
+      font-size: 10px;
+      color: var(--muted);
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px dashed rgba(251, 191, 36, 0.35);
+      border-radius: 4px;
+    }
+    .draft-banner strong { color: var(--amber); }
+    .bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      padding: 6px 8px;
+      flex-shrink: 0;
+    }
+    h1 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    select {
+      margin-left: auto;
+      padding: 2px 6px;
+      font-size: 11px;
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .top {
+      flex-shrink: 0;
+      padding: 0 8px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .anno {
+      font-size: 9px;
+      color: var(--muted);
+      margin: 4px 0 4px 2px;
+    }
+    .anno kbd {
+      font-family: inherit;
+      padding: 0 3px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-size: 8px;
+    }
+    .device-strip {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .device-card {
+      flex: 0 0 auto;
+      width: min(220px, 72vw);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 6px 6px;
+      display: flex;
+      flex-direction: column;
+      min-height: 140px;
+      max-height: 200px;
+    }
+    /* 想定: 鉛筆で「この端末」を下ペインに載せたときの強調（見た目のみ） */
+    .device-card.is-focused {
+      border-color: rgba(34, 211, 238, 0.45);
+      box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.2);
+    }
+    .device-card__head {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin-bottom: 4px;
+      min-width: 0;
+    }
+    .device-card__title { flex: 1; min-width: 0; }
+    .device-card__loc {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--cyan);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .device-card__rcd {
+      font-size: 9px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+    .device-card__rcd strong { color: var(--text); }
+    /* 鉛筆は「配置イメージ」用。クリックも保存もしない。 */
+    .pencil-mock {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--amber);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pencil-mock svg { width: 14px; height: 14px; }
+
+    .device-card__list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-height: 0;
+    }
+    .oc {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2px 4px;
+      padding: 3px 4px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      border-left: 2px solid transparent;
+      font-size: 9px;
+    }
+    .oc.r { border-left-color: var(--danger); }
+    .oc.w { border-left-color: var(--warn); }
+    .oc .sb { font-weight: 700; font-size: 10px; }
+    .oc .sub { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .oc .meta { color: var(--muted); font-size: 8px; align-self: start; }
+
+    .bottom {
+      flex: 1;
+      min-height: 220px;
+      display: flex;
+      flex-direction: column;
+      padding: 6px 8px 10px;
+    }
+    .bottom-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--amber);
+      margin-bottom: 4px;
+    }
+    .schedule-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--panel);
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .sch-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      padding: 5px 6px;
+      background: var(--card);
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .sch-bar .tag {
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(251, 191, 36, 0.12);
+      color: var(--amber);
+      font-weight: 600;
+    }
+    .sch-bar .device-name { color: var(--cyan); font-weight: 600; }
+    .sch-scroll { flex: 1; overflow: auto; min-height: 0; }
+    .sch-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+    .sch-table th,
+    .sch-table td {
+      padding: 5px 6px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .sch-table th {
+      position: sticky;
+      top: 0;
+      background: #1a222e;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 9px;
+      z-index: 1;
+    }
+    .sch-table tr.focus td { background: rgba(34, 211, 238, 0.06); }
+    .sch-mini { color: var(--muted); font-size: 9px; }
+    .mini-btn-mock {
+      display: inline-block;
+      padding: 3px 6px;
+      font-size: 9px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--muted);
+      opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="draft-banner">
+      <strong>検討用デザインプレビュー</strong> — 静的モックです。保存・API・クリック挙動はありません。レイアウトと情報の置き場の議論用です。
+    </div>
+
+    <div class="bar">
+      <h1>手動順番</h1>
+      <select aria-label="工場" disabled>
+        <option>第2工場</option>
+      </select>
+    </div>
+
+    <div class="top">
+      <p class="anno">
+        上: 工場内の全端末を<strong>横スクロール</strong>のカードで並べる想定。各カード右の鉛筆は「下ペインでこの端末の順番を扱う」入口の<strong>配置イメージ</strong>。
+        中央カードだけ枠を光らせ、下の表と<strong>同じ端末</strong>であることを示す例。
+      </p>
+      <div class="device-strip" aria-hidden="true">
+        <article class="device-card">
+          <div class="device-card__head">
+            <div class="device-card__title">
+              <div class="device-card__loc">raspberrypi4-kiosk（研削）</div>
+              <div class="device-card__rcd">資源CD <strong>305</strong></div>
+            </div>
+            <div class="pencil-mock" title="デザイン上の鉛筆（操作なし）">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+            </div>
+          </div>
+          <div class="device-card__list">
+            <div class="oc r"><div><div class="sb">25A-00412</div><div class="sub">サーボY2 · メインシャフト</div></div><div class="meta">+9</div></div>
+            <div class="oc w"><div><div class="sb">25A-00388</div><div class="sub">LX-40 · ハウジングB</div></div><div class="meta">未</div></div>
+            <div class="oc"><div><div class="sb">25A-00405</div><div class="sub">ロボ腕 · プレートC</div></div><div class="meta">−1</div></div>
+            <div class="oc"><div><div class="sb">25A-00391</div><div class="sub">プレス5t · ブッシュD</div></div><div class="meta">0</div></div>
+          </div>
+        </article>
+
+        <article class="device-card is-focused">
+          <div class="device-card__head">
+            <div class="device-card__title">
+              <div class="device-card__loc">raspi4-robodrill01</div>
+              <div class="device-card__rcd">資源CD <strong>310</strong></div>
+            </div>
+            <div class="pencil-mock" title="デザイン上の鉛筆（操作なし）">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+            </div>
+          </div>
+          <div class="device-card__list">
+            <div class="oc"><div><div class="sb">25A-00420</div><div class="sub">ドリルD1 · ドリル刃体</div></div><div class="meta">+1</div></div>
+            <div class="oc w"><div><div class="sb">25A-00418</div><div class="sub">治具 · ブロック</div></div><div class="meta">+11</div></div>
+          </div>
+        </article>
+
+        <article class="device-card">
+          <div class="device-card__head">
+            <div class="device-card__title">
+              <div class="device-card__loc">tools03-kiosk（切削）</div>
+              <div class="device-card__rcd">資源CD <strong>MSZ</strong></div>
+            </div>
+            <div class="pencil-mock" title="デザイン上の鉛筆（操作なし）">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+            </div>
+          </div>
+          <div class="device-card__list">
+            <div class="oc"><div><div class="sb">25A-00433</div><div class="sub">M-200 · ベース板</div></div><div class="meta">0</div></div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="bottom-label">生産スケジュール（下ペイン・既存UIに近いイメージ）</div>
+      <div class="schedule-panel">
+        <div class="sch-bar">
+          <span class="tag">手動順番</span>
+          <span class="device-name">raspi4-robodrill01</span>
+          <span>資源CD <strong>310</strong></span>
+          <span class="sch-mini">（上の強調カードと同一端末の例）</span>
+        </div>
+        <div class="sch-scroll">
+          <table class="sch-table">
+            <thead>
+              <tr>
+                <th>製番</th>
+                <th>品名</th>
+                <th>品番</th>
+                <th>機種</th>
+                <th>資源順</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="focus">
+                <td>25A-00420</td>
+                <td>ドリル刃体</td>
+                <td class="sch-mini">DR-4400</td>
+                <td class="sch-mini">ドリルD1</td>
+                <td>1</td>
+                <td><span class="mini-btn-mock">↑</span> <span class="mini-btn-mock">↓</span></td>
+              </tr>
+              <tr>
+                <td>25A-00418</td>
+                <td>ブロック</td>
+                <td class="sch-mini">JIG-2188</td>
+                <td class="sch-mini">治具</td>
+                <td>2</td>
+                <td><span class="mini-btn-mock">↑</span> <span class="mini-btn-mock">↓</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

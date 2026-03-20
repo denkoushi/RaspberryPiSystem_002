@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>手動順番</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --bg: #0a0e14;
+      --panel: #121922;
+      --card: #161e2a;
+      --border: rgba(255, 255, 255, 0.07);
+      --cyan: #22d3ee;
+      --text: #e8edf4;
+      --muted: #7d8fa3;
+      --warn: #fbbf24;
+      --danger: #f87171;
+      --ok: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+    .wrap {
+      max-width: min(100%, 1920px);
+      margin: 0 auto;
+      padding: 6px 8px 12px;
+    }
+    .bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
+      margin-bottom: 6px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    select {
+      margin-left: auto;
+      padding: 2px 6px;
+      font-size: 11px;
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    @media (max-width: 400px) {
+      select { margin-left: 0; width: 100%; }
+    }
+    .grid {
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+    }
+    @media (min-width: 700px) {
+      .grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    }
+    @media (min-width: 1200px) {
+      .grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+    }
+    .device {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      min-width: 0;
+    }
+    .res {
+      padding: 4px 5px 5px;
+      border-bottom: 1px solid var(--border);
+    }
+    .res:last-child { border-bottom: none; }
+    /* Location（端末表示名）と資源CDを1行 */
+    .res-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 4px;
+      margin-bottom: 3px;
+      font-size: 10px;
+      min-width: 0;
+    }
+    .res-line .loc {
+      font-weight: 600;
+      color: var(--cyan);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .res-line .sep { color: var(--muted); flex-shrink: 0; }
+    .res-line .rcd {
+      font-weight: 700;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+    .res-line .cnt {
+      margin-left: auto;
+      flex-shrink: 0;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .list { display: flex; flex-direction: column; gap: 2px; }
+
+    .card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 6px;
+      align-items: center;
+      padding: 3px 5px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      border-left: 2px solid transparent;
+    }
+    .card.r { border-left-color: var(--danger); }
+    .card.w { border-left-color: var(--warn); }
+
+    .body { min-width: 0; }
+    .r1 {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 6px;
+      font-size: 10px;
+    }
+    .r1 .sb { font-weight: 700; color: var(--text); }
+    .r1 .hin { color: var(--muted); font-family: ui-monospace, monospace; font-size: 9px; }
+    .r1 .proc { color: var(--muted); font-size: 9px; }
+    .r2 {
+      margin-top: 1px;
+      font-size: 9px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .r2 .m { color: #a8b8c8; }
+    .r2 .dot { margin: 0 3px; opacity: 0.5; }
+
+    .meta {
+      text-align: right;
+      font-size: 9px;
+      color: var(--muted);
+      line-height: 1.15;
+      white-space: nowrap;
+    }
+    .pill {
+      display: inline-block;
+      margin-left: 2px;
+      padding: 0 3px;
+      border-radius: 2px;
+      font-size: 8px;
+      font-weight: 700;
+      vertical-align: 1px;
+    }
+    .pill.bad { background: rgba(248, 113, 113, 0.18); color: #fecaca; }
+    .pill.ok { background: rgba(74, 222, 128, 0.12); color: #bbf7d0; }
+    .empty { margin: 0; font-size: 10px; color: var(--muted); }
+
+    /* —— 編集モード（操作優先・1列・太い行） —— */
+    .split {
+      margin: 14px 0 8px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .split h2 {
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .split p.hint {
+      margin: 0 0 8px;
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .edit-shell {
+      max-width: 520px;
+    }
+    .edit-shell .device {
+      border-color: rgba(34, 211, 238, 0.2);
+    }
+    .card--edit {
+      grid-template-columns: 26px minmax(0, 1fr) auto minmax(88px, auto);
+      gap: 8px 10px;
+      align-items: center;
+      min-height: 48px;
+      padding: 8px 10px;
+      border-radius: 6px;
+    }
+    .card--edit .r1 { font-size: 11px; }
+    .card--edit .r2 { font-size: 10px; white-space: normal; }
+    .card--edit .meta { font-size: 10px; }
+    .drag {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+      letter-spacing: -0.15em;
+      user-select: none;
+      cursor: grab;
+    }
+    .moves {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: stretch;
+    }
+    .btn-move {
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .btn-move:active {
+      background: rgba(34, 211, 238, 0.15);
+    }
+    .btn-move:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .edit-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      background: #0891b2;
+      color: #fff;
+      cursor: pointer;
+    }
+    .btn-ghost {
+      padding: 8px 14px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">
+      <h1>手動順番</h1>
+      <select aria-label="工場">
+        <option>第2工場</option>
+        <option>第1工場</option>
+        <option>トークプラザ</option>
+      </select>
+    </div>
+
+    <div class="grid">
+      <section class="device">
+        <div class="res">
+          <div class="res-line">
+            <span class="loc">raspberrypi4-kiosk（研削）</span><span class="sep">·</span><span class="rcd">305</span>
+            <span class="cnt">4</span>
+          </div>
+          <div class="list">
+            <div class="card r">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00412</span>
+                  <span class="hin">MHD-10432-A</span>
+                  <span class="proc">外径仕上</span>
+                </div>
+                <div class="r2"><span class="m">サーボストッパY2</span><span class="dot">·</span>メインシャフト 熱処理後仕上げ</div>
+              </div>
+              <div class="meta">12<span class="pill bad">+9</span></div>
+            </div>
+            <div class="card w">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00388</span>
+                  <span class="hin">HSG-8821</span>
+                  <span class="proc">内面</span>
+                </div>
+                <div class="r2"><span class="m">旋盤LX-40</span><span class="dot">·</span>ハウジングB</div>
+              </div>
+              <div class="meta">—<span class="pill bad">未</span></div>
+            </div>
+            <div class="card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00405</span>
+                  <span class="hin">PLT-3301</span>
+                </div>
+                <div class="r2"><span class="m">搬送ロボ腕</span><span class="dot">·</span>プレートC</div>
+              </div>
+              <div class="meta">5<span class="pill ok">−1</span></div>
+            </div>
+            <div class="card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00391</span>
+                  <span class="hin">BSH-0092</span>
+                </div>
+                <div class="r2"><span class="m">プレス5t</span><span class="dot">·</span>ブッシュD</div>
+              </div>
+              <div class="meta">8<span class="pill ok">0</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="device">
+        <div class="res">
+          <div class="res-line">
+            <span class="loc">raspi4-robodrill01</span><span class="sep">·</span><span class="rcd">310</span>
+            <span class="cnt">3</span>
+          </div>
+          <div class="list">
+            <div class="card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00420</span>
+                  <span class="hin">DR-4400</span>
+                  <span class="proc">タップ前</span>
+                </div>
+                <div class="r2"><span class="m">ドリルD1</span><span class="dot">·</span>穴あけ8φ</div>
+              </div>
+              <div class="meta">3<span class="pill ok">+1</span></div>
+            </div>
+            <div class="card w">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00418</span>
+                  <span class="hin">JIG-2188</span>
+                  <span class="proc">面取</span>
+                </div>
+                <div class="r2"><span class="m">治具K系</span><span class="dot">·</span>取付ブロック</div>
+              </div>
+              <div class="meta">18<span class="pill bad">+11</span></div>
+            </div>
+            <div class="card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00401</span>
+                  <span class="hin">SPC-12</span>
+                </div>
+                <div class="r2"><span class="m">スペーサー</span><span class="dot">·</span>12mm</div>
+              </div>
+              <div class="meta">9<span class="pill ok">+2</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="res">
+          <div class="res-line">
+            <span class="loc">raspi4-robodrill01</span><span class="sep">·</span><span class="rcd">315</span>
+            <span class="cnt">0</span>
+          </div>
+          <p class="empty">—</p>
+        </div>
+      </section>
+
+      <section class="device">
+        <div class="res">
+          <div class="res-line">
+            <span class="loc">tools03-kiosk（切削）</span><span class="sep">·</span><span class="rcd">MSZ</span>
+            <span class="cnt">2</span>
+          </div>
+          <div class="list">
+            <div class="card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00433</span>
+                  <span class="hin">BSE-7710</span>
+                  <span class="proc">粗形</span>
+                </div>
+                <div class="r2"><span class="m">MC M-200</span><span class="dot">·</span>ベース板粗削り</div>
+              </div>
+              <div class="meta">7<span class="pill ok">0</span></div>
+            </div>
+            <div class="card">
+              <div class="body">
+                <div class="r1">
+                  <span class="sb">25A-00429</span>
+                  <span class="hin">CVR-112</span>
+                </div>
+                <div class="r2"><span class="m">MC M-200</span><span class="dot">·</span>カバー板</div>
+              </div>
+              <div class="meta">11<span class="pill ok">+3</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="split">
+      <h2>編集モード（操作優先）</h2>
+      <p class="hint">一覧は高密度のまま。順番付けは行を太くし、つかみ（将来ドラッグ）＋↑↓で誤タップを減らす想定。↓はデモ用に並べ替えのみ（保存なし）。</p>
+      <div class="edit-shell">
+        <section class="device">
+          <div class="res">
+            <div class="res-line">
+              <span class="loc">raspberrypi4-kiosk（研削）</span><span class="sep">·</span><span class="rcd">305</span>
+              <span class="cnt">4</span>
+            </div>
+            <div class="list" id="edit-list">
+              <div class="card card--edit r">
+                <div class="drag" title="並べ替え（ドラッグ想定）">⋮<br />⋮</div>
+                <div class="body">
+                  <div class="r1">
+                    <span class="sb">25A-00412</span>
+                    <span class="hin">MHD-10432-A</span>
+                    <span class="proc">外径仕上</span>
+                  </div>
+                  <div class="r2"><span class="m">サーボストッパY2</span><span class="dot">·</span>メインシャフト 熱処理後仕上げ</div>
+                </div>
+                <div class="meta">12<span class="pill bad">+9</span></div>
+                <div class="moves">
+                  <button type="button" class="btn-move" data-dir="up" aria-label="上へ">↑</button>
+                  <button type="button" class="btn-move" data-dir="down" aria-label="下へ">↓</button>
+                </div>
+              </div>
+              <div class="card card--edit w">
+                <div class="drag">⋮<br />⋮</div>
+                <div class="body">
+                  <div class="r1">
+                    <span class="sb">25A-00388</span>
+                    <span class="hin">HSG-8821</span>
+                    <span class="proc">内面</span>
+                  </div>
+                  <div class="r2"><span class="m">旋盤LX-40</span><span class="dot">·</span>ハウジングB</div>
+                </div>
+                <div class="meta">—<span class="pill bad">未</span></div>
+                <div class="moves">
+                  <button type="button" class="btn-move" data-dir="up" aria-label="上へ">↑</button>
+                  <button type="button" class="btn-move" data-dir="down" aria-label="下へ">↓</button>
+                </div>
+              </div>
+              <div class="card card--edit">
+                <div class="drag">⋮<br />⋮</div>
+                <div class="body">
+                  <div class="r1">
+                    <span class="sb">25A-00405</span>
+                    <span class="hin">PLT-3301</span>
+                  </div>
+                  <div class="r2"><span class="m">搬送ロボ腕</span><span class="dot">·</span>プレートC</div>
+                </div>
+                <div class="meta">5<span class="pill ok">−1</span></div>
+                <div class="moves">
+                  <button type="button" class="btn-move" data-dir="up" aria-label="上へ">↑</button>
+                  <button type="button" class="btn-move" data-dir="down" aria-label="下へ">↓</button>
+                </div>
+              </div>
+              <div class="card card--edit">
+                <div class="drag">⋮<br />⋮</div>
+                <div class="body">
+                  <div class="r1">
+                    <span class="sb">25A-00391</span>
+                    <span class="hin">BSH-0092</span>
+                  </div>
+                  <div class="r2"><span class="m">プレス5t</span><span class="dot">·</span>ブッシュD</div>
+                </div>
+                <div class="meta">8<span class="pill ok">0</span></div>
+                <div class="moves">
+                  <button type="button" class="btn-move" data-dir="up" aria-label="上へ">↑</button>
+                  <button type="button" class="btn-move" data-dir="down" aria-label="下へ">↓</button>
+                </div>
+              </div>
+            </div>
+            <div class="edit-actions">
+              <button type="button" class="btn-primary" id="edit-save-demo">保存（デモ・未接続）</button>
+              <button type="button" class="btn-ghost" id="edit-cancel-demo">キャンセル</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var list = document.getElementById("edit-list");
+      if (!list) return;
+
+      function refreshEdgeButtons() {
+        var cards = list.querySelectorAll(".card--edit");
+        cards.forEach(function (card, i) {
+          var up = card.querySelector('.btn-move[data-dir="up"]');
+          var down = card.querySelector('.btn-move[data-dir="down"]');
+          if (up) up.disabled = i === 0;
+          if (down) down.disabled = i === cards.length - 1;
+        });
+      }
+
+      list.addEventListener("click", function (e) {
+        var btn = e.target.closest(".btn-move");
+        if (!btn || btn.disabled) return;
+        var card = btn.closest(".card--edit");
+        if (!card) return;
+        var dir = btn.getAttribute("data-dir");
+        if (dir === "up") {
+          var prev = card.previousElementSibling;
+          if (prev) list.insertBefore(card, prev);
+        } else if (dir === "down") {
+          var next = card.nextElementSibling;
+          if (next) list.insertBefore(next, card);
+        }
+        refreshEdgeButtons();
+      });
+
+      refreshEdgeButtons();
+
+      var saveBtn = document.getElementById("edit-save-demo");
+      if (saveBtn) {
+        saveBtn.addEventListener("click", function () {
+          alert("デモ: 本番では API 保存・楽観ロック等をここに接続。");
+        });
+      }
+      var cancelBtn = document.getElementById("edit-cancel-demo");
+      if (cancelBtn) {
+        cancelBtn.addEventListener("click", function () {
+          location.reload();
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

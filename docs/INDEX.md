@@ -8,8 +8,16 @@
 
 ## 🎯 目的別インデックス
 
+### デザインプレビュー（静的 HTML）
+
+- **手動順番リーダー俯瞰（静的プレビュー）**: [design-previews/manual-order-leader-overview-preview.html](./design-previews/manual-order-leader-overview-preview.html) — [design-previews/README.md](./design-previews/README.md) 参照。
+- **手動順番 全端末横カード＋鉛筆／下ペイン（検討用静的プレビュー）**: [design-previews/manual-order-peek-accordion-schedule-preview.html](./design-previews/manual-order-peek-accordion-schedule-preview.html)
+- **手動順番 編集中グレーアウト＋大きな端末名（検討用静的プレビュー）**: [design-previews/manual-order-edit-focus-gray-preview.html](./design-previews/manual-order-edit-focus-gray-preview.html)
+- **手動順番フロー（全体把握 ↔ 生産スケジュール）**: [design-previews/manual-order-schedule-to-overview-flow-preview.html](./design-previews/manual-order-schedule-to-overview-flow-preview.html)
+
 ### 🆕 最新アップデート（2026-03-20）
 
+- **✅ 手動順番 専用ページ（キオスク）を追加**: ルート `/kiosk/production-schedule/manual-order` を新設し、ヘッダーに `手動順番` を追加（生産スケジュールと進捗一覧の間）。上ペインは工場内全端末の俯瞰カード、下ペインは既存生産スケジュールUIを再利用。`site-devices + manual-order-overview` を統合し、`targetDeviceScopeKey` で端末単位更新を実施。検索条件は専用 storage key で既存ページと分離。詳細は [KB-297 専用ページ節](./knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-専用ページキオスク追加2026-03-20) を参照。
 - **📝 GitHub メンテナ向け衛生チェックを KB 化（ForceMemo / GlassWorm 系を背景に整理）**: 2FA 有効化、期限切れ PAT 削除、セッション/SSH/GPG 確認、Cursor 拡張の最小化、ローカルクローンでの IOC 検索と `git push --dry-run` による認証確認の記録。手順・トラブルシュートは [KB-309（`infrastructure/security.md`）](./knowledge-base/infrastructure/security.md) を参照。
 
 ### 🆕 最新アップデート（2026-03-19）

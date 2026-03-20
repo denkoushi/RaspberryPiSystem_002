@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>手動順番フロー — 全体把握 ↔ 生産スケジュール</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --bg: #0a0e14;
+      --panel: #121922;
+      --card: #161e2a;
+      --border: rgba(255, 255, 255, 0.07);
+      --cyan: #22d3ee;
+      --amber: #fbbf24;
+      --text: #e8edf4;
+      --muted: #7d8fa3;
+      --danger: #f87171;
+      --ok: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1.25;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 10px 10px 24px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .lead {
+      margin: 0 0 14px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .step {
+      margin-bottom: 14px;
+    }
+    .step-h {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      background: rgba(34, 211, 238, 0.15);
+      font-size: 10px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px;
+      overflow: hidden;
+    }
+    .panel.schedule {
+      border-color: rgba(251, 191, 36, 0.25);
+      box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.06);
+    }
+    .arrow {
+      text-align: center;
+      padding: 6px 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1;
+    }
+    .cta-row {
+      display: flex;
+      justify-content: center;
+      padding: 4px 0 8px;
+    }
+    .btn-fake {
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid rgba(34, 211, 238, 0.35);
+      border-radius: 6px;
+      background: rgba(34, 211, 238, 0.1);
+      color: var(--cyan);
+      cursor: default;
+    }
+    .res-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0 4px;
+      margin-bottom: 4px;
+      font-size: 10px;
+    }
+    .res-line .loc { font-weight: 600; color: var(--cyan); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .res-line .sep { color: var(--muted); }
+    .res-line .rcd { font-weight: 700; }
+    .res-line .cnt { margin-left: auto; color: var(--muted); }
+    .list { display: flex; flex-direction: column; gap: 2px; }
+    .card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 6px;
+      padding: 3px 5px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      border-left: 2px solid transparent;
+    }
+    .card.neworder {
+      border-left-color: var(--ok);
+      background: rgba(74, 222, 128, 0.06);
+    }
+    .r1 { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 10px; }
+    .r1 .sb { font-weight: 700; }
+    .r1 .hin { color: var(--muted); font-family: ui-monospace, monospace; font-size: 9px; }
+    .r1 .proc { color: var(--muted); font-size: 9px; }
+    .r2 { margin-top: 1px; font-size: 9px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { text-align: right; font-size: 9px; color: var(--muted); white-space: nowrap; }
+    .pill { display: inline-block; margin-left: 2px; padding: 0 3px; border-radius: 2px; font-size: 8px; font-weight: 700; vertical-align: 1px; }
+    .pill.bad { background: rgba(248, 113, 113, 0.18); color: #fecaca; }
+    .pill.ok { background: rgba(74, 222, 128, 0.12); color: #bbf7d0; }
+
+    .sch-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+      padding: 5px 6px;
+      background: var(--card);
+      border-radius: 4px;
+      font-size: 10px;
+    }
+    .sch-bar .tag {
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(251, 191, 36, 0.12);
+      color: var(--amber);
+      font-weight: 600;
+    }
+    .sch-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+    .sch-table th,
+    .sch-table td {
+      padding: 4px 5px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .sch-table th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 9px;
+    }
+    .sch-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+    .sch-table tr.focus td { background: rgba(34, 211, 238, 0.06); }
+    .sch-mini {
+      color: var(--muted);
+      font-size: 9px;
+    }
+    .cell-act {
+      white-space: nowrap;
+    }
+    .mini-btn {
+      padding: 3px 6px;
+      font-size: 9px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      cursor: default;
+    }
+    .note {
+      margin: 8px 0 0;
+      font-size: 9px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>手動順番フロー（プレビュー）</h1>
+    <p class="lead">全体把握の薄い表で状況を見る → 必要なときだけ生産スケジュールの文脈（フィルタ・行の同一性）で対象を探し順番付け → 保存後に全体表へ反映、という流れの見た目イメージ。</p>
+
+    <div class="step">
+      <div class="step-h"><span class="step-num">1</span> 全体把握（常時・高密度）</div>
+      <div class="panel">
+        <div class="res-line">
+          <span class="loc">raspberrypi4-kiosk（研削）</span><span class="sep">·</span><span class="rcd">305</span>
+          <span class="cnt">3</span>
+        </div>
+        <div class="list">
+          <div class="card">
+            <div class="body">
+              <div class="r1"><span class="sb">25A-00412</span><span class="hin">MHD-10432-A</span><span class="proc">外径仕上</span></div>
+              <div class="r2">サーボY2 · メインシャフト</div>
+            </div>
+            <div class="meta">12<span class="pill bad">+9</span></div>
+          </div>
+          <div class="card">
+            <div class="body">
+              <div class="r1"><span class="sb">25A-00405</span><span class="hin">PLT-3301</span></div>
+              <div class="r2">搬送ロボ · プレートC</div>
+            </div>
+            <div class="meta">5<span class="pill ok">−1</span></div>
+          </div>
+          <div class="card">
+            <div class="body">
+              <div class="r1"><span class="sb">25A-00391</span><span class="hin">BSH-0092</span></div>
+              <div class="r2">プレス5t · ブッシュD</div>
+            </div>
+            <div class="meta">8<span class="pill ok">0</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cta-row">
+      <span class="btn-fake">305 の手動順を編集（生産スケジュールを開く）</span>
+    </div>
+    <div class="arrow">↓</div>
+
+    <div class="step">
+      <div class="step-h"><span class="step-num">2</span> 生産スケジュール（一時表示・既存UIイメージ）</div>
+      <div class="panel schedule">
+        <div class="sch-bar">
+          <span class="tag">手動順番</span>
+          <span>資源CD <strong>305</strong> 単一表示</span>
+          <span class="sch-mini">（検索・工程トグルは実機と同様）</span>
+        </div>
+        <table class="sch-table">
+          <thead>
+            <tr>
+              <th>製番</th>
+              <th>品名</th>
+              <th>品番</th>
+              <th>機種</th>
+              <th>資源順</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="focus">
+              <td>25A-00412</td>
+              <td>メインシャフト</td>
+              <td class="sch-mini">MHD-10432-A</td>
+              <td class="sch-mini">サーボY2</td>
+              <td>1</td>
+              <td class="cell-act"><span class="mini-btn">↑↓</span></td>
+            </tr>
+            <tr>
+              <td>25A-00388</td>
+              <td>ハウジングB</td>
+              <td class="sch-mini">HSG-8821</td>
+              <td class="sch-mini">LX-40</td>
+              <td>—</td>
+              <td class="cell-act"><span class="mini-btn">順に入れる</span></td>
+            </tr>
+            <tr>
+              <td>25A-00405</td>
+              <td>プレートC</td>
+              <td class="sch-mini">PLT-3301</td>
+              <td class="sch-mini">ロボ腕</td>
+              <td>2</td>
+              <td class="cell-act"><span class="mini-btn">↑↓</span></td>
+            </tr>
+            <tr>
+              <td>25A-00391</td>
+              <td>ブッシュD</td>
+              <td class="sch-mini">BSH-0092</td>
+              <td class="sch-mini">プレス5t</td>
+              <td>3</td>
+              <td class="cell-act"><span class="mini-btn">↑↓</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="note">ここで「どの行が手動リストの何番目か」を確定。保存でサーバへ。閉じると再び①の密度に戻る想定。</p>
+      </div>
+    </div>
+
+    <div class="arrow">↓ 保存後</div>
+
+    <div class="step">
+      <div class="step-h"><span class="step-num">3</span> 全体把握へ反映（同じ見た目・並びだけ更新）</div>
+      <div class="panel">
+        <div class="res-line">
+          <span class="loc">raspberrypi4-kiosk（研削）</span><span class="sep">·</span><span class="rcd">305</span>
+          <span class="cnt">4</span>
+        </div>
+        <div class="list">
+          <div class="card">
+            <div class="body">
+              <div class="r1"><span class="sb">25A-00412</span><span class="hin">MHD-10432-A</span><span class="proc">外径仕上</span></div>
+              <div class="r2">サーボY2 · メインシャフト</div>
+            </div>
+            <div class="meta">12<span class="pill bad">+9</span></div>
+          </div>
+          <div class="card neworder">
+            <div class="body">
+              <div class="r1"><span class="sb">25A-00388</span><span class="hin">HSG-8821</span><span class="proc">内面</span></div>
+              <div class="r2">LX-40 · ハウジングB</div>
+            </div>
+            <div class="meta">—<span class="pill bad">未</span></div>
+          </div>
+          <div class="card">
+            <div class="body">
+              <div class="r1"><span class="sb">25A-00405</span><span class="hin">PLT-3301</span></div>
+              <div class="r2">搬送ロボ · プレートC</div>
+            </div>
+            <div class="meta">5<span class="pill ok">−1</span></div>
+          </div>
+          <div class="card">
+            <div class="body">
+              <div class="r1"><span class="sb">25A-00391</span><span class="hin">BSH-0092</span></div>
+              <div class="r2">プレス5t · ブッシュD</div>
+            </div>
+            <div class="meta">8<span class="pill ok">0</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

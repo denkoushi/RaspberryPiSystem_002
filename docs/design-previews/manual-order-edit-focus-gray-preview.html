@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>【検討用】手動順番 — 編集中は他カードをグレーアウト＋端末名を大きく表示</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --bg: #0a0e14;
+      --panel: #121922;
+      --card: #161e2a;
+      --border: rgba(255, 255, 255, 0.07);
+      --cyan: #22d3ee;
+      --amber: #fbbf24;
+      --text: #e8edf4;
+      --muted: #7d8fa3;
+      --danger: #f87171;
+      --warn: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1.25;
+    }
+    .shell {
+      max-width: 1200px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .draft-banner {
+      margin: 6px 8px 0;
+      padding: 6px 8px;
+      font-size: 10px;
+      color: var(--muted);
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px dashed rgba(251, 191, 36, 0.35);
+      border-radius: 4px;
+    }
+    .draft-banner strong { color: var(--amber); }
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 8px;
+    }
+    h1 { margin: 0; font-size: 13px; font-weight: 700; color: var(--cyan); }
+
+    .anno {
+      font-size: 9px;
+      color: var(--muted);
+      margin: 4px 8px 6px;
+    }
+
+    /* 上ペイン: 全体を relative にし、背面に大きな「編集中」ラベル */
+    .top-zone {
+      position: relative;
+      padding: 0 8px 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .watermark {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      text-align: center;
+      padding: 8px;
+    }
+    .watermark-k {
+      font-size: clamp(14px, 2.5vw, 22px);
+      font-weight: 700;
+      color: rgba(232, 237, 244, 0.22);
+      letter-spacing: 0.15em;
+    }
+    .watermark-name {
+      margin-top: 4px;
+      font-size: clamp(22px, 5vw, 42px);
+      font-weight: 800;
+      color: rgba(34, 211, 238, 0.2);
+      line-height: 1.1;
+      word-break: break-all;
+      max-width: 95%;
+    }
+
+    .device-strip {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      align-items: stretch;
+    }
+    .device-card {
+      flex: 0 0 auto;
+      width: min(240px, 90vw);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 8px 8px;
+      min-height: 160px;
+      display: flex;
+      flex-direction: column;
+    }
+    .device-card--dim {
+      opacity: 0.42;
+      filter: grayscale(0.65);
+    }
+    .device-card--active {
+      opacity: 1;
+      filter: none;
+      z-index: 3;
+      border-color: rgba(34, 211, 238, 0.55);
+      box-shadow:
+        0 0 0 2px rgba(34, 211, 238, 0.15),
+        0 8px 24px rgba(0, 0, 0, 0.45);
+      background: #141c28;
+    }
+    .device-card__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .device-card__loc {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .device-card--active .device-card__loc { color: var(--cyan); }
+    .device-card__rcd { font-size: 9px; color: var(--muted); margin-top: 2px; }
+    .device-card__rcd strong { color: var(--text); }
+    .badge {
+      font-size: 8px;
+      font-weight: 700;
+      padding: 2px 5px;
+      border-radius: 3px;
+      background: rgba(34, 211, 238, 0.15);
+      color: var(--cyan);
+      white-space: nowrap;
+    }
+    .device-card--dim .badge { opacity: 0.7; }
+
+    .mini-list { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+    .row {
+      padding: 4px 5px;
+      background: var(--card);
+      border-radius: 4px;
+      border-left: 2px solid transparent;
+      font-size: 9px;
+    }
+    .row.r { border-left-color: var(--danger); }
+    .row.w { border-left-color: var(--warn); }
+    .row .sb { font-weight: 700; font-size: 10px; }
+    .row .sub { color: var(--muted); margin-top: 1px; }
+
+    /* 下ペイン（既存スケジュールの置き場イメージのみ） */
+    .bottom {
+      flex: 1;
+      padding: 8px;
+    }
+    .bottom-t {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--amber);
+      margin-bottom: 6px;
+    }
+    .sch {
+      background: var(--panel);
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .sch-bar {
+      padding: 6px 8px;
+      background: var(--card);
+      font-size: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sch-bar strong { color: var(--cyan); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+    th, td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #1a222e;
+      color: var(--muted);
+      font-size: 9px;
+    }
+    tr.hl td { background: rgba(34, 211, 238, 0.07); }
+    .mut { color: var(--muted); font-size: 9px; }
+    .dd-mock {
+      display: inline-block;
+      min-width: 48px;
+      padding: 2px 6px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--muted);
+      font-size: 9px;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="draft-banner">
+      <strong>検討用デザインプレビュー</strong> — 静的モック。下ペインのドロップダウン等は見た目のみです。
+    </div>
+    <div class="bar">
+      <h1>手動順番</h1>
+    </div>
+    <p class="anno">
+      編集モード想定: 左右のカードを<strong>グレーアウト</strong>し、背面に<strong>大きな「編集中」＋端末名</strong>を重ねて、どの端末の下ペインかを強調する例です。
+    </p>
+
+    <div class="top-zone">
+      <div class="watermark" aria-hidden="true">
+        <span class="watermark-k">編集中</span>
+        <span class="watermark-name">raspi4-robodrill01</span>
+      </div>
+      <div class="device-strip">
+        <article class="device-card device-card--dim">
+          <div class="device-card__head">
+            <div>
+              <div class="device-card__loc">raspberrypi4-kiosk（研削）</div>
+              <div class="device-card__rcd">資源CD <strong>305</strong></div>
+            </div>
+          </div>
+          <div class="mini-list">
+            <div class="row r"><div class="sb">25A-00412</div><div class="sub">メインシャフト</div></div>
+            <div class="row w"><div class="sb">25A-00388</div><div class="sub">ハウジングB</div></div>
+            <div class="row"><div class="sb">25A-00405</div><div class="sub">プレートC</div></div>
+          </div>
+        </article>
+
+        <article class="device-card device-card--active">
+          <div class="device-card__head">
+            <div>
+              <div class="device-card__loc">raspi4-robodrill01</div>
+              <div class="device-card__rcd">資源CD <strong>310</strong></div>
+            </div>
+            <span class="badge">編集中</span>
+          </div>
+          <div class="mini-list">
+            <div class="row"><div class="sb">25A-00420</div><div class="sub">ドリル刃体</div></div>
+            <div class="row w"><div class="sb">25A-00418</div><div class="sub">ブロック</div></div>
+          </div>
+        </article>
+
+        <article class="device-card device-card--dim">
+          <div class="device-card__head">
+            <div>
+              <div class="device-card__loc">tools03-kiosk（切削）</div>
+              <div class="device-card__rcd">資源CD <strong>MSZ</strong></div>
+            </div>
+          </div>
+          <div class="mini-list">
+            <div class="row"><div class="sb">25A-00433</div><div class="sub">ベース板</div></div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="bottom-t">下ペイン — 生産スケジュールと同じUI想定（順位はドロップダウン）</div>
+      <div class="sch">
+        <div class="sch-bar">
+          手動順番 · 資源CD <strong>310</strong> · <strong>raspi4-robodrill01</strong> と同期する例
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>製番</th>
+              <th>品名</th>
+              <th>資源順（DD）</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="hl">
+              <td>25A-00420</td>
+              <td>ドリル刃体</td>
+              <td><span class="dd-mock">1 ▾</span></td>
+            </tr>
+            <tr>
+              <td>25A-00418</td>
+              <td>ブロック</td>
+              <td><span class="dd-mock">2 ▾</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

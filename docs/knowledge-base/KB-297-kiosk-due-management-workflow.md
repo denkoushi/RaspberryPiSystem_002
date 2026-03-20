@@ -99,6 +99,26 @@ category: knowledge-base
   - ローカル API テストが大量失敗: **Postgres 未起動**のことが多い。Docker で DB 起動後 `prisma migrate deploy` を実施。
   - Web lint（import 順）: `pnpm exec eslint --fix` で自動修正可。
 
+## 手動順番 専用ページ（キオスク）追加（2026-03-20）
+
+- **Context**:
+  - 現場リーダーが「全体把握（端末横断）→下ペイン編集（既存スケジュールUI）」を1画面で行いたい要求が明確化。
+  - 既存 `ProductionSchedulePage` の丸ごと複製は責務肥大を招くため、部品再利用で専用ページを追加する方針にした。
+- **Fix**:
+  - ルート `/kiosk/production-schedule/manual-order` を追加し、ヘッダーに `手動順番` ナビを追加（生産スケジュールと進捗一覧の間）。
+  - 上ペインは `site-devices` + `manual-order-overview` を統合し、工場内全端末カードを表示（空カード含む、返却順固定）。
+  - 下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable` を再利用。
+  - 端末選択は鉛筆で `targetDeviceScopeKey` を切替、順番変更は既存 `PUT /kiosk/production-schedule/:rowId/order` 契約で即保存。
+  - 検索条件は専用 storage key に分離し、既存生産スケジュール画面と干渉しないようにした。
+- **UX/State**:
+  - 編集中端末は上端バナー（端末名 + 資源CD）で表示。
+  - 非編集中カードは読める程度にグレーアウト。
+  - 保存中はカード単位で軽いローディング、失敗はカード強調 + 下ペイン上部バーで通知。
+  - 保存成功メッセージは出さず、上ペイン反映でフィードバック。
+- **Verification**:
+  - `pnpm --filter @raspi-system/web lint` 成功。
+  - `pnpm --filter @raspi-system/web build` 成功。
+
 ## 切削除外リストで一部資源CDのみ除外される事象（2026-03-16 調査）
 
 - **Context**:
