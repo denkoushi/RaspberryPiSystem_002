@@ -1,3 +1,4 @@
+import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../../../features/kiosk/manualOrder/manualOrderOverviewTypography';
 import { presentManualOrderRow } from '../../../features/kiosk/manualOrder/manualOrderRowPresentation';
 
 type Props = {
@@ -28,22 +29,22 @@ export function ManualOrderOverviewRowBlock({
 
   return (
     <div
-      className="min-w-0 space-y-1 rounded bg-slate-800/90 px-3 py-2 leading-snug text-white/85"
+      className={`min-w-0 space-y-1 rounded bg-slate-800/90 px-3 py-2 leading-snug text-white/85 ${KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS}`}
       title={title}
     >
       {showLine1 ? (
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xl">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
           {seiban.length > 0 ? <span className="font-semibold tabular-nums text-white">{seiban}</span> : null}
           {seiban.length > 0 && hincd.length > 0 ? (
             <span className="text-white/35" aria-hidden>
               ·
             </span>
           ) : null}
-          {hincd.length > 0 ? <span className="font-mono text-lg text-slate-200">{hincd}</span> : null}
+          {hincd.length > 0 ? <span className="font-mono text-slate-200">{hincd}</span> : null}
         </div>
       ) : null}
       {showLine2 ? (
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xl">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
           {proc.length > 0 ? <span className="text-white/55">{proc}</span> : null}
           {proc.length > 0 && part.length > 0 ? (
             <span className="text-white/35" aria-hidden>
@@ -54,7 +55,7 @@ export function ManualOrderOverviewRowBlock({
         </div>
       ) : null}
       {showLine3 ? (
-        <div className="truncate text-lg text-slate-400" title={mach}>
+        <div className="truncate text-slate-400" title={mach}>
           {mach}
         </div>
       ) : null}

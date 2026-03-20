@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>手動順番 — 上ペインカード（Location1行・機種名・2倍フォント）プレビュー</title>
+  <title>手動順番 — 上ペインカード（Location1行・機種名・生産スケジュールと同じ text-xs）</title>
   <style>
     :root {
       --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
@@ -20,12 +20,13 @@
       --res-bg: rgba(30, 41, 59, 0.8);
     }
     * { box-sizing: border-box; }
+    /* 本文は生産スケジュール一覧（ProductionScheduleTable の text-xs）に合わせる ≒ 12px */
     body {
       margin: 0;
       font-family: var(--font);
       background: var(--bg);
       color: var(--text);
-      font-size: 16px;
+      font-size: 12px;
       line-height: 1.35;
     }
     .page {
@@ -64,8 +65,9 @@
       justify-content: space-between;
       margin-bottom: 12px;
     }
-    .overview-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
-    .overview-head span { font-size: 16px; color: var(--muted); }
+    /* ペインヘッダは実装の ManualOrderPaneHeader（見出し text-sm・端末数 text-xs）に近い */
+    .overview-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+    .overview-head span { font-size: 12px; color: var(--muted); }
 
     .grid {
       display: grid;
@@ -94,9 +96,9 @@
     .card-head-main { min-width: 0; flex: 1; }
     .location {
       margin: 0;
-      font-size: 24px;
+      font-size: 12px;
       font-weight: 600;
-      line-height: 1.2;
+      line-height: 1.25;
       color: var(--cyan);
       white-space: nowrap;
       overflow: hidden;
@@ -125,7 +127,7 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 8px;
-      font-size: 20px;
+      font-size: 12px;
     }
     .resource-top .cd { font-weight: 600; }
     .resource-top .cnt { color: rgba(255, 255, 255, 0.55); flex-shrink: 0; }
@@ -135,7 +137,7 @@
       background: var(--row-bg);
       padding: 8px 12px;
       margin-bottom: 4px;
-      font-size: 20px;
+      font-size: 12px;
       line-height: 1.35;
       color: rgba(255, 255, 255, 0.85);
     }
@@ -143,12 +145,12 @@
     .row1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
     .row1 .sep { color: rgba(255, 255, 255, 0.35); }
     .row1 .seiban { font-weight: 600; font-variant-numeric: tabular-nums; color: #fff; }
-    .row1 .hincd { font-family: ui-monospace, Menlo, monospace; font-size: 18px; color: #e2e8f0; }
+    .row1 .hincd { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: #e2e8f0; }
     .row-line2 .proc { color: rgba(255, 255, 255, 0.55); }
     .row-line2 .partnm { color: rgba(255, 255, 255, 0.85); }
     .row-line3 {
       margin-top: 4px;
-      font-size: 18px;
+      font-size: 12px;
       color: #94a3b8;
       white-space: nowrap;
       overflow: hidden;
@@ -162,7 +164,7 @@
 <body>
   <div class="page">
     <h1>手動順番 — 上ペイン端末カード（プレビュー）</h1>
-    <p class="sub">実装ターゲット: <code>ManualOrderDeviceCard</code> — Location は1行のみ。行ブロックは <strong>1行目: 製番·品番</strong>、<strong>2行目: 工順·部品名</strong>（`partName`）、<strong>3行目: 機種名</strong>（`machineName`）。フォントは従来比おおよそ2倍。</p>
+    <p class="sub">実装ターゲット: <code>ManualOrderDeviceCard</code> — Location は1行のみ。行ブロックは <strong>1行目: 製番·品番</strong>、<strong>2行目: 工順·部品名</strong>（`partName`）、<strong>3行目: 機種名</strong>（`machineName`）。<strong>フォントサイズは生産スケジュール一覧（<code>ProductionScheduleTable</code> の <code>text-xs</code>）と同じ。</strong></p>
     <div class="note">
       <strong>静的モック</strong> — API なし。Safari で <code>file://</code> 表示可（外部リソースなし）。本番の色・Tailwind とは数 px 差があり得ます。
     </div>
@@ -179,7 +181,7 @@
               <p class="location" title="第2工場 - RoboDrill01">第2工場 - RoboDrill01</p>
             </div>
             <div class="btn-edit" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
             </div>
           </div>
           <div class="resource">
@@ -219,7 +221,7 @@
               <p class="location">第2工場 - Pi4-02</p>
             </div>
             <div class="btn-edit" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
             </div>
           </div>
           <div class="resource">
@@ -251,10 +253,10 @@
               <!-- 未設定カード（行ブロックなし） -->
             </div>
             <div class="btn-edit" aria-hidden="true">
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
             </div>
           </div>
-          <p style="margin:0;padding:10px 12px;border-radius:8px;background:rgba(30,41,59,1);font-size:18px;color:rgba(255,255,255,0.6);">手動順番は未設定です</p>
+          <p style="margin:0;padding:10px 12px;border-radius:8px;background:rgba(30,41,59,1);font-size:12px;color:rgba(255,255,255,0.6);">手動順番は未設定です</p>
         </article>
       </div>
     </section>
