@@ -99,6 +99,20 @@ category: knowledge-base
   - ローカル API テストが大量失敗: **Postgres 未起動**のことが多い。Docker で DB 起動後 `prisma migrate deploy` を実施。
   - Web lint（import 順）: `pnpm exec eslint --fix` で自動修正可。
 
+## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
+
+- **Context**:
+  - 手動順番専用ページの上ペインがコンポーネント肥大しやすく、表示整形とテスト境界を固定したい。
+- **Fix（仕様）**:
+  - **純関数**: [`apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（Vitest）、`ManualOrderOverviewRowBlock`、`ManualOrderPaneHeader`、`ManualOrderSiteToolbar` で JSX と表示ロジックを分離。
+  - **API/データ契約**: 変更なし（`manual-order-overview` の `resources[].rows[]` 等は従来どおり）。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/kiosk-manual-order-ui-solid`**。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`--detach --follow`。
+  - **Run ID 例**: `20260320-190147-27980`（Pi5）/ `20260320-190559-20664`（raspberrypi4）/ `20260320-191024-14641`（raspi4-robodrill01）。
+  - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**。
+- **Troubleshooting**:
+  - **`[ERROR] --detach requires RASPI_SERVER_HOST`**: Mac から `--detach` を付けて実行する場合、`RASPI_SERVER_HOST` 未設定で停止する。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` を先に設定（[deployment.md](../guides/deployment.md)「デタッチ実行」、[KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+
 ## 手動順番 専用ページ（キオスク）追加（2026-03-20）
 
 - **Context**:

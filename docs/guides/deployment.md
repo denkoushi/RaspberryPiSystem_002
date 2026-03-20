@@ -646,6 +646,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 **ポイント**:
 - Mac/SSH経由の実行はクライアント側タイムアウトで「途中停止して見える」ことがあります。
 - `scripts/update-all-clients.sh` の **リモート実行はデフォルトでデタッチ**されます（Pi5側で処理が継続）。
+- **明示 `--detach` / `--job`**: Mac から実行する場合、`RASPI_SERVER_HOST` が未設定だと `[ERROR] --detach requires RASPI_SERVER_HOST (remote Pi5).` で停止します。先に `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` を設定してください（[KB-238](../knowledge-base/infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) と併せて理解）。
 - 前景で実行したい場合は **`--foreground` を明示**してください（長時間は非推奨）。
 - 進捗は `--attach` / `--status` で確認できます。
 
