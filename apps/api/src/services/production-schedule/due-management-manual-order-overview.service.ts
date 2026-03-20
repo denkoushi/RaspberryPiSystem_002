@@ -4,6 +4,7 @@ import {
   MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY
 } from '../../lib/manual-order-device-scope.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { fetchSeibanProgressRows } from './seiban-progress.service.js';
 
 /** キオスク上ペイン用の行スナップショット（集計・学習用の指標は resources 直下で従来どおり） */
 export type ManualOrderOverviewRow = {
@@ -70,17 +71,26 @@ const isMachinePartCode = (fhincd: string): boolean => {
   return normalized.startsWith('MH') || normalized.startsWith('SH');
 };
 
-const buildSeibanToMachineName = (assignments: AssignmentRow[]): Map<string, string> => {
+/**
+ * 製番ごとの機種名（同一製番の MH/SH 行の FHINMEI）。
+ * 手動順番の割当行だけでは部品行のみのことがあり得るため、生産スケジュール一覧と同様に
+ * CsvDashboardRow 全体から解決する（fetchSeibanProgressRows と整合）。
+ */
+const buildMachineNameBySeibanFromDashboard = async (assignments: AssignmentRow[]): Promise<Map<string, string>> => {
+  const fseibans = [
+    ...new Set(
+      assignments
+        .map((a) => strField((a.csvDashboardRow.rowData as Record<string, unknown>).FSEIBAN))
+        .filter((s) => s.length > 0)
+    )
+  ];
+  const progressRows = await fetchSeibanProgressRows(fseibans);
   const map = new Map<string, string>();
-  for (const assignment of assignments) {
-    const rowData = assignment.csvDashboardRow.rowData as Record<string, unknown>;
-    const fhincd = strField(rowData.FHINCD);
-    if (!isMachinePartCode(fhincd)) continue;
-    const fseiban = strField(rowData.FSEIBAN);
-    if (!fseiban) continue;
-    const fhinmei = strField(rowData.FHINMEI);
-    if (fhinmei.length === 0 || map.has(fseiban)) continue;
-    map.set(fseiban, fhinmei);
+  for (const row of progressRows) {
+    const fb = row.fseiban?.trim();
+    if (!fb) continue;
+    const mn = row.machineName?.trim();
+    if (mn && mn.length > 0) map.set(fb, mn);
   }
   return map;
 };
@@ -108,13 +118,14 @@ const assignmentToOverviewRow = (
   const fhincd = strField(rowData.FHINCD);
   const fhinmei = strField(rowData.FHINMEI);
   const processLabel = resolveProcessLabel(rowData, notes);
+  const machineFromDashboard = machineBySeiban.get(fseiban) ?? '';
   if (isMachinePartCode(fhincd)) {
     return {
       orderNumber: assignment.orderNumber,
       fseiban,
       fhincd,
       processLabel,
-      machineName: fhinmei,
+      machineName: fhinmei.length > 0 ? fhinmei : machineFromDashboard,
       partName: ''
     };
   }
@@ -123,7 +134,7 @@ const assignmentToOverviewRow = (
     fseiban,
     fhincd,
     processLabel,
-    machineName: machineBySeiban.get(fseiban) ?? '',
+    machineName: machineFromDashboard,
     partName: fhinmei
   };
 };
@@ -151,9 +162,9 @@ const collectLatestUpdateByResource = (
 const buildManualOrderOverviewResources = (
   assignments: AssignmentRow[],
   globalRankMap: Map<string, number>,
-  latestUpdateByResource: Map<string, { lastUpdatedAt: string; lastUpdatedBy: string | null }>
+  latestUpdateByResource: Map<string, { lastUpdatedAt: string; lastUpdatedBy: string | null }>,
+  machineBySeiban: Map<string, string>
 ): ManualOrderOverviewResource[] => {
-  const machineBySeiban = buildSeibanToMachineName(assignments);
   const byResource = new Map<string, AssignmentRow[]>();
   for (const assignment of assignments) {
     const list = byResource.get(assignment.resourceCd) ?? [];
@@ -279,7 +290,8 @@ export async function listDueManagementManualOrderOverview(params: Params): Prom
   });
 
   const latestUpdateByResource = collectLatestUpdateByResource(recentEvents as EventRow[], targetLocation);
-  const resources = buildManualOrderOverviewResources(assignments, globalRankMap, latestUpdateByResource);
+  const machineBySeiban = await buildMachineNameBySeibanFromDashboard(assignments);
+  const resources = buildManualOrderOverviewResources(assignments, globalRankMap, latestUpdateByResource, machineBySeiban);
 
   return {
     targetLocation,
@@ -386,9 +398,11 @@ export async function listDueManagementManualOrderOverviewV2(params: {
   });
 
   const eventRows = recentEvents as EventRow[];
+  const assignmentRows = assignments as AssignmentRow[];
+  const machineBySeiban = await buildMachineNameBySeibanFromDashboard(assignmentRows);
 
   const byLocation = new Map<string, AssignmentRow[]>();
-  for (const a of assignments as AssignmentRow[]) {
+  for (const a of assignmentRows) {
     const list = byLocation.get(a.location) ?? [];
     list.push(a);
     byLocation.set(a.location, list);
@@ -400,17 +414,18 @@ export async function listDueManagementManualOrderOverviewV2(params: {
     return [...legacyKeys, ...deviceKeys];
   };
 
-  const devices: ManualOrderOverviewDeviceSlice[] = sortLocationKeys([...byLocation.keys()]).map((loc) => {
+  const devices: ManualOrderOverviewDeviceSlice[] = [];
+  for (const loc of sortLocationKeys([...byLocation.keys()])) {
     const sliceAssignments = byLocation.get(loc) ?? [];
     const latestMap = collectLatestUpdateByResource(eventRows, loc);
-    const resources = buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap);
+    const resources = buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban);
     const isLegacySiteRow = loc === siteKey;
-    return {
+    devices.push({
       deviceScopeKey: isLegacySiteRow ? MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY : loc,
       label: isLegacySiteRow ? 'レガシー（サイト単位・旧データ）' : loc,
       resources
-    };
-  });
+    });
+  }
 
   return {
     siteKey,
