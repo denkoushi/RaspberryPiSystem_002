@@ -2,10 +2,11 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-19
+last-verified: 2026-03-20
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
+  - ../decisions/ADR-20260319-manual-order-device-scope-v2.md
   - ../guides/csv-import-export.md
 category: knowledge-base
 ---
@@ -85,6 +86,18 @@ category: knowledge-base
   - `targetLocation` の変換・検証は route 境界に閉じ込め、service 契約は `locationKey` を維持。
   - 手動順番の有効条件を UI とソート戦略の両方で一致させ、単一資源CD条件の逸脱を防止。
   - 代理更新や学習イベント追加時も既存API互換（未指定時の挙動）を壊さない。
+
+### Device-scope v2: manual order, Mac proxy, Pi4 scope, UI hints (2026-03-20)
+
+- **Spec / progress**: `ProductionScheduleOrderAssignment.siteKey` と端末キー `deviceScopeKey`（`ClientDevice.location`）で手動順番を保存。工場俯瞰 API は `siteKey` 必須・`devices[]` 返却（`KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED`）。ADR: [ADR-20260319-manual-order-device-scope-v2](../decisions/ADR-20260319-manual-order-device-scope-v2.md)。
+- **Leader ops（代理更新）**: API 上、**`ClientDevice.location === 'Mac'`** の端末だけが他端末向けに `targetDeviceScopeKey` を付与可能。**Apple 開発用 Mac 専用ではない**。現場リーダー用デスク PC を **`location=Mac` として登録し、専用 `clientKey` でキオスクを開く**運用とする。
+- **Pi4 kiosk alone**: **その端末自身**の手動順番のみ変更可。他 Pi4 の代理は不可（`targetDeviceScopeKey` / `targetLocation` は 400）。
+- **UI**: 文言「今日判断系」は無い。**当日計画への反映**内の **「今日対象候補（トリアージ属性）」** が相当。サマリは **製番登録・納期前提**内の対象候補/危険/注意/余裕。**手動順番 全体像**で v2 時に変わるのは主に**左レール内のシアン枠**（工場→端末の2段・端末切替で枠内の資源CD別集計が変わる）。
+- **Deploy / verify（実績）**: `feat/device-scope-manual-order` を Pi5 → `raspberrypi4` → `raspi4-robodrill01` の順に `--limit` でデプロイ（Pi3 除外）。`./scripts/deploy/verify-phase12-real.sh` は v2 有効時 `global-rank` の `actorLocation` から `siteKey` を導出し `manual-order-overview?siteKey=...` を検証するよう更新済み。
+- **Troubleshooting**:
+  - Phase12 が `manual-order-overview` で失敗: v2 有効時は **無印 overview は 400**（`siteKey` 必須）。スクリプトが最新か、`siteKey` 付きで叩けているか確認。
+  - ローカル API テストが大量失敗: **Postgres 未起動**のことが多い。Docker で DB 起動後 `prisma migrate deploy` を実施。
+  - Web lint（import 順）: `pnpm exec eslint --fix` で自動修正可。
 
 ## 切削除外リストで一部資源CDのみ除外される事象（2026-03-16 調査）
 
