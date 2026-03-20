@@ -99,6 +99,20 @@ category: knowledge-base
   - ローカル API テストが大量失敗: **Postgres 未起動**のことが多い。Docker で DB 起動後 `prisma migrate deploy` を実施。
   - Web lint（import 順）: `pnpm exec eslint --fix` で自動修正可。
 
+## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
+
+- **Context**:
+  - 手動順番専用ページの上ペインがコンポーネント肥大しやすく、表示整形とテスト境界を固定したい。
+- **Fix（仕様）**:
+  - **純関数**: [`apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（Vitest）、`ManualOrderOverviewRowBlock`、`ManualOrderPaneHeader`、`ManualOrderSiteToolbar` で JSX と表示ロジックを分離。
+  - **API/データ契約**: 変更なし（`manual-order-overview` の `resources[].rows[]` 等は従来どおり）。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/kiosk-manual-order-ui-solid`**。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`--detach --follow`。
+  - **Run ID 例**: `20260320-190147-27980`（Pi5）/ `20260320-190559-20664`（raspberrypi4）/ `20260320-191024-14641`（raspi4-robodrill01）。
+  - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**。
+- **Troubleshooting**:
+  - **`[ERROR] --detach requires RASPI_SERVER_HOST`**: Mac から `--detach` を付けて実行する場合、`RASPI_SERVER_HOST` 未設定で停止する。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` を先に設定（[deployment.md](../guides/deployment.md)「デタッチ実行」、[KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+
 ## 手動順番 専用ページ（キオスク）追加（2026-03-20）
 
 - **Context**:
@@ -118,7 +132,9 @@ category: knowledge-base
 - **Spec（契約・境界）**:
   - **ルート**: `/kiosk/production-schedule/manual-order`（`App.tsx`）。**ナビ**: `KioskHeader` に「手動順番」（生産スケジュールと進捗一覧の間）。
   - **データ**: 上ペインは `site-devices` + `manual-order-overview` を `useManualOrderPageController` で統合。下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable`。
-  - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName`（同一製番の MH/SH 行の `FHINMEI`）/ `partName`（部品行の `FHINMEI`）。キオスク上ペインは `ManualOrderDeviceCard` で **製番·品番·工順（1行）＋機種·品名（2行目）** の高密度表示。`assignedCount`・`maxOrderNumber`・`comparedCount` 等の集計は従来どおり（納期管理「手動順番 全体像」や全体ランキング改善用の保存と整合）。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。
+  - **上辺1行（余白削減）**: `ManualOrderOverviewPane` に `siteToolbar`（手動順番見出し・工場 `<select>`）を渡し、**全体把握**・**N 端末**と同一フレックス行にまとめる（旧2段ヘッダを廃止）。重複していた「端末一覧: N」表記は **N 端末**に一本化。
+  - **行表示のプレゼンテーション層（SOLID 寄せ）**: [`apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（純関数・Vitest）と、カード内行 UI の [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。上ペイン統合ヘッダは [`ManualOrderPaneHeader.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)、工場選択左クラスタは [`ManualOrderSiteToolbar.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderSiteToolbar.tsx)。
+  - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName`（同一製番の MH/SH 行の `FHINMEI`）/ `partName`（部品行の `FHINMEI`）。キオスク上ペインは `ManualOrderDeviceCard` で **1行目: 製番·品番**、**2行目: 工順·部品名**（`processLabel` の右に `partName`）、**3行目: 機種名**（`machineName`）。空のブロックは省略（フォントは読みやすさ優先で従来比おおよそ2倍）。**カードヘッダ**は Location **1行**（`label` と `deviceScopeKey` が同一のときの二重表示をやめる）。`assignedCount`・`maxOrderNumber`・`comparedCount` 等の集計は従来どおり（納期管理「手動順番 全体像」や全体ランキング改善用の保存と整合）。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。静的プレビュー: [manual-order-device-card-location-machine-preview.html](../design-previews/manual-order-device-card-location-machine-preview.html)。
   - **検索条件**: `useProductionScheduleSearchConditionsWithStorageKey` により **専用 localStorage キー**で通常の生産スケジュールページと干渉しない。
   - **登録製番（検索履歴）・search-state（2026-03-19 実装）**:
     - 通常の `ProductionSchedulePage` と同様、`GET/PUT .../kiosk/production-schedule/search-state`（共有ストレージ）と [`useSharedSearchHistory`](../../apps/web/src/features/kiosk/productionSchedule/useSharedSearchHistory.ts) を `ProductionScheduleManualOrderPage` に配線。

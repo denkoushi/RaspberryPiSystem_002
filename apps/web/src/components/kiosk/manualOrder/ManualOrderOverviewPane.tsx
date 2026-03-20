@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
 import { ManualOrderDeviceCard } from './ManualOrderDeviceCard';
+import { ManualOrderPaneHeader } from './ManualOrderPaneHeader';
 
 import type { ManualOrderOverviewDeviceCard } from '../../../features/kiosk/productionSchedule/useManualOrderPageController';
 
 type Props = {
+  /** 手動順番見出し・工場選択など（上辺1行の左側クラスタ） */
+  siteToolbar: ReactNode;
   devices: ManualOrderOverviewDeviceCard[];
   activeDeviceScopeKey: string;
   statusMap: Record<string, 'idle' | 'saving' | 'error'>;
@@ -14,6 +17,7 @@ type Props = {
 };
 
 export function ManualOrderOverviewPane({
+  siteToolbar,
   devices,
   activeDeviceScopeKey,
   statusMap,
@@ -30,10 +34,7 @@ export function ManualOrderOverviewPane({
 
   return (
     <section className="flex h-full flex-col rounded border border-white/10 bg-slate-900/50 p-2">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-white">全体把握</h2>
-        <p className="text-xs text-white/60">{devices.length} 端末</p>
-      </div>
+      <ManualOrderPaneHeader leading={siteToolbar} deviceCount={devices.length} />
       {devices.length === 0 ? (
         <p className="rounded bg-slate-800/80 px-3 py-2 text-xs text-white/70">{emptyMessage}</p>
       ) : (
