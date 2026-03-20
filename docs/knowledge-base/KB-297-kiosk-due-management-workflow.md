@@ -99,6 +99,42 @@ category: knowledge-base
   - ローカル API テストが大量失敗: **Postgres 未起動**のことが多い。Docker で DB 起動後 `prisma migrate deploy` を実施。
   - Web lint（import 順）: `pnpm exec eslint --fix` で自動修正可。
 
+## 手動順番 専用ページ（キオスク）追加（2026-03-20）
+
+- **Context**:
+  - 現場リーダーが「全体把握（端末横断）→下ペイン編集（既存スケジュールUI）」を1画面で行いたい要求が明確化。
+  - 既存 `ProductionSchedulePage` の丸ごと複製は責務肥大を招くため、部品再利用で専用ページを追加する方針にした。
+- **Fix**:
+  - ルート `/kiosk/production-schedule/manual-order` を追加し、ヘッダーに `手動順番` ナビを追加（生産スケジュールと進捗一覧の間）。
+  - 上ペインは `site-devices` + `manual-order-overview` を統合し、工場内全端末カードを表示（空カード含む、返却順固定）。
+  - 下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable` を再利用。
+  - 端末選択は鉛筆で `targetDeviceScopeKey` を切替、順番変更は既存 `PUT /kiosk/production-schedule/:rowId/order` 契約で即保存。
+  - 検索条件は専用 storage key に分離し、既存生産スケジュール画面と干渉しないようにした。
+- **UX/State**:
+  - 編集中端末は上端バナー（端末名 + 資源CD）で表示。
+  - 非編集中カードは読める程度にグレーアウト。
+  - 保存中はカード単位で軽いローディング、失敗はカード強調 + 下ペイン上部バーで通知。
+  - 保存成功メッセージは出さず、上ペイン反映でフィードバック。
+- **Spec（契約・境界）**:
+  - **ルート**: `/kiosk/production-schedule/manual-order`（`App.tsx`）。**ナビ**: `KioskHeader` に「手動順番」（生産スケジュールと進捗一覧の間）。
+  - **データ**: 上ペインは `site-devices` + `manual-order-overview` を `useManualOrderPageController` で統合。下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable`。
+  - **検索条件**: `useProductionScheduleSearchConditionsWithStorageKey` により **専用 localStorage キー**で通常の生産スケジュールページと干渉しない。
+  - **保存**: `PUT /api/kiosk/production-schedule/:rowId/order` + `targetDeviceScopeKey`（device-scope v2 前提）。ミューテーションは `useProductionScheduleMutations` の `orderError` / `resetOrderError` でカード／バーに集約。
+  - **静的プレビュー**: [docs/design-previews/README.md](../design-previews/README.md)（実装検討用 HTML、本番挙動の代替ではない）。
+- **Deploy / verify（実績、2026-03-20）**:
+  - **ブランチ**: `feature/kiosk-manual-order-page`。
+  - **デプロイ**: [deployment.md](../guides/deployment.md) 標準。対象は **Pi5 + Pi4 キオスクのみ**（Pi3 サイネージは本変更の必須対象外）。**1台ずつ順番**: `--limit "raspberrypi5"` → `--limit "raspberrypi4"` → `--limit "raspi4-robodrill01"`、`--detach --follow`。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` — **PASS 27 / WARN 0 / FAIL 0**（`manual-order-overview` v2 は `siteKey` 導出付きで検証）。
+  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、ヘッダー遷移・鉛筆で端末切替・下ペイン編集・保存フィードバックを確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
+- **ローカル品質ゲート（開発時）**:
+  - `pnpm --filter @raspi-system/web lint` / `build` / `test`（Vitest）。
+  - API 統合テスト: `pnpm test:api`（`scripts/test/run-tests.sh`、PostgreSQL `postgres-test-local`。終了後 `scripts/test/stop-postgres.sh` でテスト用コンテナ削除）。
+- **Troubleshooting**:
+  - **ESLint import/order**: `ProductionScheduleManualOrderPage.tsx` 等で import 順エラー → `eslint --fix` または deployment.md の import グループ規則に合わせる。
+  - **型エラー（製番検索モーダル）**: `ProductionOrderSearchModal` は `useProductionOrderSearch` の戻り値（`productNoInput` 等）と props を一致させる（古い prop 名はビルド失敗）。
+  - **Phase12 と overview**: device-scope v2 時は無印 `manual-order-overview` が 400 になるのは仕様。スクリプトが `global-rank` から `siteKey` を導出できているか確認（[KB-302](../knowledge-base/ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗) — ping 失敗時は手動 curl 代替）。
+- **main マージ**: ドキュメント反映後、PR 経由で `main` へ統合（運用標準）。
+
 ## 切削除外リストで一部資源CDのみ除外される事象（2026-03-16 調査）
 
 - **Context**:

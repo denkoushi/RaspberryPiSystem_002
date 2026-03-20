@@ -8,8 +8,16 @@
 
 ## 🎯 目的別インデックス
 
+### デザインプレビュー（静的 HTML）
+
+- **手動順番リーダー俯瞰（静的プレビュー）**: [design-previews/manual-order-leader-overview-preview.html](./design-previews/manual-order-leader-overview-preview.html) — [design-previews/README.md](./design-previews/README.md) 参照。
+- **手動順番 全端末横カード＋鉛筆／下ペイン（検討用静的プレビュー）**: [design-previews/manual-order-peek-accordion-schedule-preview.html](./design-previews/manual-order-peek-accordion-schedule-preview.html)
+- **手動順番 編集中グレーアウト＋大きな端末名（検討用静的プレビュー）**: [design-previews/manual-order-edit-focus-gray-preview.html](./design-previews/manual-order-edit-focus-gray-preview.html)
+- **手動順番フロー（全体把握 ↔ 生産スケジュール）**: [design-previews/manual-order-schedule-to-overview-flow-preview.html](./design-previews/manual-order-schedule-to-overview-flow-preview.html)
+
 ### 🆕 最新アップデート（2026-03-20）
 
+- **✅ 手動順番 専用ページ（キオスク）・デプロイ・実機検証・ドキュメント反映**: ルート `/kiosk/production-schedule/manual-order`、ヘッダー `手動順番`。上ペイン俯瞰＋下ペイン既存スケジュールUI再利用、検索条件は専用 storage key。**デプロイ**: ブランチ `feature/kiosk-manual-order-page`、Pi5 → raspberrypi4 → raspi4-robodrill01 を `--limit` で1台ずつ（Pi3 除外）。**実機**: `verify-phase12-real.sh` PASS 27/0/0。手動UIは実機/VNC 推奨。**参照**: [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-専用ページキオスク追加2026-03-20) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [deployment.md](./guides/deployment.md)。
 - **📝 GitHub メンテナ向け衛生チェックを KB 化（ForceMemo / GlassWorm 系を背景に整理）**: 2FA 有効化、期限切れ PAT 削除、セッション/SSH/GPG 確認、Cursor 拡張の最小化、ローカルクローンでの IOC 検索と `git push --dry-run` による認証確認の記録。手順・トラブルシュートは [KB-309（`infrastructure/security.md`）](./knowledge-base/infrastructure/security.md) を参照。
 
 ### 🆕 最新アップデート（2026-03-19）

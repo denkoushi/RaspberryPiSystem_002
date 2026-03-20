@@ -161,6 +161,8 @@ export const useProductionScheduleMutations = ({
     isWriting,
     isWriteCooldown,
     pauseRefetch,
+    orderError: orderMutation.isError ? orderMutation.error : null,
+    resetOrderError: () => orderMutation.reset(),
     updateOrder,
     updateProcessing,
     saveNote,

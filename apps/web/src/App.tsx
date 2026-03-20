@@ -27,6 +27,7 @@ import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPa
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
+import { ProductionScheduleManualOrderPage } from './pages/kiosk/ProductionScheduleManualOrderPage';
 import { ProductionSchedulePage } from './pages/kiosk/ProductionSchedulePage';
 import { ProductionScheduleProgressOverviewPage } from './pages/kiosk/ProductionScheduleProgressOverviewPage';
 import { LoginPage } from './pages/LoginPage';
@@ -58,6 +59,7 @@ function App() {
           <Route path="/kiosk/rigging/borrow" element={<KioskRiggingBorrowPage />} />
           <Route path="/kiosk/call" element={<KioskCallPage />} />
           <Route path="/kiosk/production-schedule" element={<ProductionSchedulePage />} />
+          <Route path="/kiosk/production-schedule/manual-order" element={<ProductionScheduleManualOrderPage />} />
           <Route path="/kiosk/production-schedule/progress-overview" element={<ProductionScheduleProgressOverviewPage />} />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
         </Route>

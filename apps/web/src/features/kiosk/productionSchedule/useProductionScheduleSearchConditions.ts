@@ -46,11 +46,11 @@ const sanitizeConditions = (value: unknown): ProductionScheduleSearchConditions 
   };
 };
 
-const loadConditions = (): ProductionScheduleSearchConditions => {
+const loadConditions = (storageKey: string): ProductionScheduleSearchConditions => {
   if (typeof window === 'undefined') {
     return DEFAULT_SEARCH_CONDITIONS;
   }
-  const stored = window.localStorage.getItem(SEARCH_CONDITIONS_STORAGE_KEY);
+  const stored = window.localStorage.getItem(storageKey);
   if (!stored) return DEFAULT_SEARCH_CONDITIONS;
 
   try {
@@ -65,7 +65,13 @@ const loadConditions = (): ProductionScheduleSearchConditions => {
 };
 
 export function useProductionScheduleSearchConditions() {
-  const [conditions, setConditionsState] = useState<ProductionScheduleSearchConditions>(loadConditions);
+  return useProductionScheduleSearchConditionsWithStorageKey(SEARCH_CONDITIONS_STORAGE_KEY);
+}
+
+export function useProductionScheduleSearchConditionsWithStorageKey(storageKey: string) {
+  const [conditions, setConditionsState] = useState<ProductionScheduleSearchConditions>(() =>
+    loadConditions(storageKey)
+  );
 
   const setConditions = useCallback((patch: SearchConditionsPatch) => {
     setConditionsState((prev) => {
@@ -90,13 +96,13 @@ export function useProductionScheduleSearchConditions() {
     if (typeof window === 'undefined') return undefined;
 
     const timer = window.setTimeout(() => {
-      window.localStorage.setItem(SEARCH_CONDITIONS_STORAGE_KEY, JSON.stringify(persistedValue));
+      window.localStorage.setItem(storageKey, JSON.stringify(persistedValue));
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [persistedValue]);
+  }, [persistedValue, storageKey]);
 
   return [conditions, setConditions, reset] as const;
 }

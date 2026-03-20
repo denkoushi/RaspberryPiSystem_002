@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-20) **手動順番 専用ページ（キオスク）実装・デプロイ・実機検証・ドキュメント反映・mainマージ**: ルート `/kiosk/production-schedule/manual-order`、ヘッダー `手動順番`、上ペイン俯瞰＋下ペイン既存スケジュールUI再利用、`useProductionScheduleSearchConditionsWithStorageKey` で検索条件を専用キー化。**デプロイ**: `feature/kiosk-manual-order-page`、Pi5 → raspberrypi4 → raspi4-robodrill01 を [deployment.md](./docs/guides/deployment.md) に従い `--limit` で1台ずつ（Pi3 除外）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` PASS 27 / WARN 0 / FAIL 0。手動UIは Runbook チェックリストに追記。**知見**: ESLint import/order、製番検索モーダルは `useProductionOrderSearch` 契約に合わせる。ローカルは `pnpm test:api` + `stop-postgres.sh` でDBテスト。**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-専用ページキオスク追加2026-03-20) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
 - [x] (2026-03-20) **ドキュメント: GitHub メンテナ衛生（KB-309）を追記**: ForceMemo / GlassWorm 系を背景に、2FA・PAT・セッション/SSH・拡張最小化・ローカル IOC 確認と `git push --dry-run` 検証の知見を [KB-309](./docs/knowledge-base/infrastructure/security.md) に集約。`docs/INDEX.md` / `docs/knowledge-base/index.md` / `security-hardening-execplan.md` に索引・参照を追加。
 - [x] (2026-03-19) **生産順序モード拡張（自動/手動順番 + targetLocation + 全体像パネル）デプロイ・実機検証・mainマージ完了**: 生産スケジュールに `自動順番 / 手動順番` トグルを追加し、既定を手動順番に設定。単一資源CD表示時のみ手動編集・ソート有効化。`PUT /api/kiosk/production-schedule/:rowId/order` に `targetLocation` を追加し、代理更新ポリシー・監査ログ・`manual_order_update` 学習イベントを導入。納期管理左ペインに「手動順番 全体像」パネルを追加。**デプロイ**: ブランチ `feat/production-schedule-target-location-ordering`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。**実機検証**: Phase12 26項目PASS（manual-order-overview API チェック追加）、実機OK。**知見**: CI初回で `ProductionScheduleGlobalRank` の `rankOrder` 参照が失敗。正しいカラムは `priorityOrder`。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#生産順序モード拡張手動順番自動順番--targetlocation2026-03-19) / [ADR-20260319](./docs/decisions/ADR-20260319-production-schedule-manual-order-target-location.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) を参照。
 - [x] (2026-03-20) **手動順番 deviceScopeKey 正規化（siteKey / Mac targetDeviceScopeKey / overview devices[]）デプロイ・実機検証・ドキュメント反映**: `ProductionScheduleOrderAssignment.siteKey` 追加マイグレーション、`KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED` で v1/v2 切替、**`ClientDevice.location === Mac`** の端末のみ `targetDeviceScopeKey` 代理可、overview は `siteKey` + `devices[]` + `__legacy_site__`、`GET .../search-state` に `locationScope`、Web は `VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED`。**デプロイ実績**: ブランチ `feat/device-scope-manual-order`、Pi5 → raspberrypi4 → raspi4-robodrill01 を `--limit` 順（Pi3 除外）。**実機検証**: `verify-phase12-real.sh` を v2 の `siteKey` 付き overview 検証へ更新し PASS。**知見**: Pi4 同士の代理不可・「Mac」は登録 location 名・UI は「今日対象候補（トリアージ属性）」が目印。KB: [KB-297 Device-scope v2](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#device-scope-v2-manual-order-mac-proxy-pi4-scope-ui-hints-2026-03-20) / Runbook: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)（生産順序モード拡張 + device-scope v2 行）。ADR: [ADR-20260319-manual-order-device-scope-v2](./docs/decisions/ADR-20260319-manual-order-device-scope-v2.md)。**次アクション**: 継続実機確認は [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) と `./scripts/deploy/verify-phase12-real.sh` に従う。
@@ -698,6 +699,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-20）: **手動順番専用ページ**は `ProductionSchedulePage` を丸ごと複製せず、`useProductionScheduleMutations` / テーブル / ツールバー等を再利用し、**検索条件の localStorage だけ専用キー**（`useProductionScheduleSearchConditionsWithStorageKey`）で既存画面と分離した。製番ポップアップは `ProductionOrderSearchModal` の props を **`useProductionOrderSearch` の戻り値と一致**させないと `tsc` が失敗（旧 prop 名は不可）。
 - 観測（2026-03-20）: **手動順番 device-scope v2** では、1 台の Pi4 キオスクから他 Pi4 の手動順番をまとめて更新する運用は **不可**。`targetDeviceScopeKey` は **`ClientDevice.location === 'Mac'`** の端末のみ。リーダー用デスク PC を `Mac` 登録＋専用 clientKey で代理する。**UI**: 「今日判断系」という文言は無く、相当は **「今日対象候補（トリアージ属性）」**（当日計画）。全体像の v2 変更は主に **左レールのシアン枠**。**詳細**: [KB-297 Device-scope v2](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#device-scope-v2-manual-order-mac-proxy-pi4-scope-ui-hints-2026-03-20)。
 - 観測（2026-03-16）: **`shared` に除外設定が存在しても、参照キーが `siteKey` に寄ると除外漏れが再発する**。`siteKey` 優先 + `shared` フォールバック参照と、保存時の `siteKey/shared` 二重保存を組み合わせると、Location リファクタを壊さずに既存データ互換を維持できる。
 - 観測（2026-03-16）: **resources APIの契約を「全件 + excludedフラグ」に拡張すると、後方互換を維持したままUI追随を実現できる**。既存 `resources` / `resourceNameMap` はそのまま利用でき、新規 `resourceItems[{resourceCd, excluded}]` を参照するクライアントだけが除外追随の恩恵を受ける。段階移行とロールバックが容易。
@@ -928,6 +930,8 @@
 
 ## Decision Log
 
+- 決定（2026-03-20）: **手動順番の俯瞰＋下ペイン編集**は、既存 `/kiosk/production-schedule` と別ルート（`/kiosk/production-schedule/manual-order`）で提供し、**ページ複製ではなくコンポーネント再利用 + 検索条件ストレージ分離**で実装する（責務肥大と二重保守を避ける）。  
+  参照: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-専用ページキオスク追加2026-03-20)
 - 決定（2026-03-09）: **全体順位は行単位スナップショットとして別管理**し、`processingOrder`（資源CD別順番）とは統合しない。  
   理由: 目的が異なる2種類の順位を同一列/同一制約で扱うと運用衝突が起きるため。`globalRank` は全体最適の参照値、`processingOrder` は現場実行順として責務分離する。  
   参照: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#b第6段階行単位全体順位スナップショット導入phase-12026-03-09), [ADR-20260308](./docs/decisions/ADR-20260308-due-management-offline-learning-events.md)
@@ -1579,6 +1583,17 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 手動順番専用ページ main マージ後（2026-03-20）
+
+**概要**: キオスク専用ルート・デプロイ・Phase12 自動検証まで完了。残りは **現地UIの最終確認**と、既知の横断課題の継続。
+
+**候補タスク**:
+1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「手動順番 専用ページ」行に従い、ヘッダー遷移・鉛筆・上下ペイン連携・保存/失敗表示を確認（Mac 直ブラウザは自己署名で失敗しやすい）。
+2. **切削除外リスト収束**: 下記「切削除外リスト全件除外の収束」を継続（policy 単一入口・resources API 整合）。
+3. **任意**: 専用ページの E2E smoke シナリオ追加（`client-key`・seed 前提は [Surprises](./EXEC_PLAN.md#surprises--discoveries) の E2E 注記どおり）。
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-専用ページキオスク追加2026-03-20)
 
 ### 切削除外リスト全件除外の収束（2026-03-16 計画確定）
 
