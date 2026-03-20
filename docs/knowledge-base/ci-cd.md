@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - CI/CD関連
 tags: [トラブルシューティング, CI/CD, GitHub Actions, テスト]
 audience: [開発者]
-last-verified: 2026-03-19
+last-verified: 2026-03-20
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: high
@@ -11,8 +11,33 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 13件  
+**件数**: 14件  
 **索引**: [index.md](./index.md)
+
+---
+
+### [KB-310] trivy-action の GitHub Actions 参照解決失敗（Unable to resolve action）
+
+**発生日**: 2026-03-20
+
+**事象**:
+- GitHub Actions のワークフロー実行が、ジョブ内ステップに入る前に失敗する
+- ログに `Unable to resolve action aquasecurity/trivy-action@<ref>`（または同等の action 解決エラー）が出る
+
+**根本原因**:
+- Marketplace 上の **タグ/ブランチ参照**が削除・変更された、または Actions の解決経路側の不整合で、**過去に通っていた `@x.y.z` が突然解決不能**になることがある（アプリコード変更とは無関係に CI だけが赤くなる）
+
+**修正方針（最小・推奨）**:
+- `uses: aquasecurity/trivy-action@<tag>` のみに依存しない
+- **リポジトリのフル commit SHA に pin** する（例: `uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0`）
+- 必要に応じて [公式リリース / コミット一覧](https://github.com/aquasecurity/trivy-action) で、検証済みの SHA を選ぶ
+
+**再発防止**:
+- セキュリティスキャン系アクションは **タグ floating を避け、SHA pin + コメントで人間可読版**を残す
+- CI 失敗時は「直近の workflow 変更がなくても」action 参照切れを疑う
+
+**関連ファイル**:
+- `.github/workflows/ci.yml`
 
 ---
 

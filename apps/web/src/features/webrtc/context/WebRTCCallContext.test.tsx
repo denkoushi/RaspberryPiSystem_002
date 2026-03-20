@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -50,7 +50,10 @@ function LocationDisplay() {
 describe('WebRTCCallProvider', () => {
   it('switches to /kiosk/call on incoming and returns to previous path on idle', async () => {
     const { getByTestId } = render(
-      <MemoryRouter initialEntries={['/signage']}>
+      <MemoryRouter
+        initialEntries={['/signage']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <WebRTCCallProvider>
           <LocationDisplay />
         </WebRTCCallProvider>
@@ -59,12 +62,16 @@ describe('WebRTCCallProvider', () => {
 
     expect(getByTestId('location').textContent).toBe('/signage');
 
-    setMockState({ callState: 'incoming' });
+    act(() => {
+      setMockState({ callState: 'incoming' });
+    });
     await waitFor(() => {
       expect(getByTestId('location').textContent).toBe('/kiosk/call');
     });
 
-    setMockState({ callState: 'idle' });
+    act(() => {
+      setMockState({ callState: 'idle' });
+    });
     await waitFor(() => {
       expect(getByTestId('location').textContent).toBe('/signage');
     });

@@ -455,7 +455,7 @@ jobs:
           }
 
       - name: Security scan (Trivy fs)
-        uses: aquasecurity/trivy-action@0.25.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: 'fs'
           ignore-unfixed: true
@@ -473,7 +473,7 @@ jobs:
         run: docker build -t raspisys-web:ci -f infrastructure/docker/Dockerfile.web .
 
       - name: Security scan (Trivy image api)
-        uses: aquasecurity/trivy-action@0.25.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: 'image'
           image-ref: 'raspisys-api:ci'
@@ -483,7 +483,7 @@ jobs:
           scanners: 'vuln'
 
       - name: Security scan (Trivy image web)
-        uses: aquasecurity/trivy-action@0.25.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: 'image'
           image-ref: 'raspisys-web:ci'

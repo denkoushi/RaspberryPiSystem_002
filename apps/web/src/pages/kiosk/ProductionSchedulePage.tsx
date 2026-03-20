@@ -23,6 +23,10 @@ import { ProductionScheduleTable } from '../../components/kiosk/ProductionSchedu
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
 import { type TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
+import {
+  KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_HIDDEN_KEY,
+  KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_KEY
+} from '../../features/kiosk/productionSchedule/kioskProductionScheduleSharedStorageKeys';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
@@ -48,8 +52,6 @@ const PRODUCTION_SCHEDULE_MAC_TARGET_SITE_KEY = 'production-schedule-mac-target-
 const PRODUCTION_SCHEDULE_MAC_TARGET_DEVICE_KEY = 'production-schedule-mac-target-device';
 const DEFAULT_MAC_TARGET_SITES = ['第2工場', 'トークプラザ', '第1工場'] as const;
 
-const SEARCH_HISTORY_KEY = 'production-schedule-search-history';
-const SEARCH_HISTORY_HIDDEN_KEY = 'production-schedule-search-history-hidden';
 const SORT_MODE_KEY = 'production-schedule-sort-mode';
 const NOTE_COLUMN_WIDTH = 140;
 const DUE_DATE_COLUMN_WIDTH = 110;
@@ -142,8 +144,11 @@ export function ProductionSchedulePage() {
     selectedMachineName,
     selectedPartName
   } = searchConditions;
-  const [history, setHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_KEY, []);
-  const [, setHiddenHistory] = useLocalStorage<string[]>(SEARCH_HISTORY_HIDDEN_KEY, []);
+  const [history, setHistory] = useLocalStorage<string[]>(KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_KEY, []);
+  const [, setHiddenHistory] = useLocalStorage<string[]>(
+    KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_HIDDEN_KEY,
+    []
+  );
   const [sortMode, setSortMode] = useLocalStorage<ProductionScheduleSortMode>(SORT_MODE_KEY, 'manual');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(1200);
