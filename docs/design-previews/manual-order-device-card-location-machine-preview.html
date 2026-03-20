@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>手動順番 — 上ペインカード（Location1行・機種名・2倍フォント）プレビュー</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --bg: #0f172a;
+      --panel: rgba(15, 23, 42, 0.5);
+      --card-bg: rgba(15, 23, 42, 0.6);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --card-active: rgba(34, 211, 238, 0.35);
+      --cyan: #a5f3fc;
+      --amber: #fcd34d;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --row-bg: rgba(51, 65, 85, 0.9);
+      --res-bg: rgba(30, 41, 59, 0.8);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 16px;
+      line-height: 1.35;
+    }
+    .page {
+      max-width: min(100%, 1200px);
+      margin: 0 auto;
+      padding: 16px 20px 32px;
+    }
+    .note {
+      margin: 0 0 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      background: rgba(30, 41, 59, 0.6);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .note strong { color: var(--cyan); }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .sub { margin: 0 0 16px; font-size: 16px; color: var(--muted); }
+
+    .overview {
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+    }
+    .overview-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .overview-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
+    .overview-head span { font-size: 16px; color: var(--muted); }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    }
+
+    /* Card ≈ ManualOrderDeviceCard（実装と同趣旨） */
+    .card {
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      padding: 16px;
+    }
+    .card.active {
+      border-color: rgba(34, 211, 238, 0.7);
+      box-shadow: 0 0 0 1px var(--card-active);
+    }
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .card-head-main { min-width: 0; flex: 1; }
+    .location {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.2;
+      color: var(--cyan);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .btn-edit {
+      flex-shrink: 0;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--amber);
+      cursor: default;
+    }
+    .btn-edit svg { display: block; }
+
+    .resource {
+      border-radius: 8px;
+      background: var(--res-bg);
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .resource:last-child { margin-bottom: 0; }
+    .resource-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 20px;
+    }
+    .resource-top .cd { font-weight: 600; }
+    .resource-top .cnt { color: rgba(255, 255, 255, 0.55); flex-shrink: 0; }
+
+    .row-block {
+      border-radius: 6px;
+      background: var(--row-bg);
+      padding: 8px 12px;
+      margin-bottom: 4px;
+      font-size: 20px;
+      line-height: 1.35;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .row-block:last-child { margin-bottom: 0; }
+    .row1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+    .row1 .sep { color: rgba(255, 255, 255, 0.35); }
+    .row1 .seiban { font-weight: 600; font-variant-numeric: tabular-nums; color: #fff; }
+    .row1 .hincd { font-family: ui-monospace, Menlo, monospace; font-size: 18px; color: #e2e8f0; }
+    .row-line2 .proc { color: rgba(255, 255, 255, 0.55); }
+    .row-line2 .partnm { color: rgba(255, 255, 255, 0.85); }
+    .row-line3 {
+      margin-top: 4px;
+      font-size: 18px;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row-inner-gap { margin-top: 4px; }
+
+    .card.dim { opacity: 0.55; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>手動順番 — 上ペイン端末カード（プレビュー）</h1>
+    <p class="sub">実装ターゲット: <code>ManualOrderDeviceCard</code> — Location は1行のみ。行ブロックは <strong>1行目: 製番·品番</strong>、<strong>2行目: 工順·部品名</strong>（`partName`）、<strong>3行目: 機種名</strong>（`machineName`）。フォントは従来比おおよそ2倍。</p>
+    <div class="note">
+      <strong>静的モック</strong> — API なし。Safari で <code>file://</code> 表示可（外部リソースなし）。本番の色・Tailwind とは数 px 差があり得ます。
+    </div>
+
+    <section class="overview" aria-label="全体把握">
+      <div class="overview-head">
+        <h2>全体把握</h2>
+        <span>3 端末</span>
+      </div>
+      <div class="grid">
+        <article class="card active" aria-label="編集中の例">
+          <div class="card-head">
+            <div class="card-head-main">
+              <p class="location" title="第2工場 - RoboDrill01">第2工場 - RoboDrill01</p>
+            </div>
+            <div class="btn-edit" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            </div>
+          </div>
+          <div class="resource">
+            <div class="resource-top">
+              <span class="cd">080</span>
+              <span class="cnt">3件</span>
+            </div>
+            <div class="row-block">
+              <div class="row1">
+                <span class="seiban">BA1S3360</span><span class="sep">·</span><span class="hincd">MD005272711</span>
+              </div>
+              <div class="row1 row-inner-gap row-line2">
+                <span class="proc">200</span><span class="sep">·</span><span class="partnm">シャフト A</span>
+              </div>
+              <div class="row-line3">X軸ベース</div>
+            </div>
+            <div class="row-block">
+              <div class="row1">
+                <span class="seiban">BA1S4354</span><span class="sep">·</span><span class="hincd">MD005272711</span>
+              </div>
+              <div class="row1 row-inner-gap row-line2"><span class="proc">200</span></div>
+              <div class="row-line3">X軸ベース</div>
+            </div>
+            <div class="row-block">
+              <div class="row1">
+                <span class="seiban">BA1S4355</span><span class="sep">·</span><span class="hincd">MD005243450</span>
+              </div>
+              <div class="row1 row-inner-gap row-line2"><span class="proc">200</span></div>
+              <div class="row-line3">X軸ベース</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card dim" aria-label="複数機種の例">
+          <div class="card-head">
+            <div class="card-head-main">
+              <p class="location">第2工場 - Pi4-02</p>
+            </div>
+            <div class="btn-edit" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            </div>
+          </div>
+          <div class="resource">
+            <div class="resource-top">
+              <span class="cd">050</span>
+              <span class="cnt">2件</span>
+            </div>
+            <div class="row-block">
+              <div class="row1">
+                <span class="seiban">ZZ0001</span><span class="sep">·</span><span class="hincd">MH001</span>
+              </div>
+              <div class="row1 row-inner-gap row-line2"><span class="proc">10</span></div>
+              <div class="row-line3">A軸テーブル</div>
+            </div>
+            <div class="row-block">
+              <div class="row1">
+                <span class="seiban">ZZ0002</span><span class="sep">·</span><span class="hincd">SH002</span>
+              </div>
+              <div class="row1 row-inner-gap row-line2"><span class="proc">20</span></div>
+              <div class="row-line3">タレット</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card dim" aria-label="機種名なし・未設定に近い例">
+          <div class="card-head">
+            <div class="card-head-main">
+              <p class="location">トークプラザ - Kiosk03</p>
+              <!-- 未設定カード（行ブロックなし） -->
+            </div>
+            <div class="btn-edit" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+            </div>
+          </div>
+          <p style="margin:0;padding:10px 12px;border-radius:8px;background:rgba(30,41,59,1);font-size:18px;color:rgba(255,255,255,0.6);">手動順番は未設定です</p>
+        </article>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

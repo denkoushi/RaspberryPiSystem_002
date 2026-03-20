@@ -15,6 +15,7 @@
 - **手動順番 編集中グレーアウト＋大きな端末名（検討用静的プレビュー）**: [design-previews/manual-order-edit-focus-gray-preview.html](./design-previews/manual-order-edit-focus-gray-preview.html)
 - **手動順番フロー（全体把握 ↔ 生産スケジュール）**: [design-previews/manual-order-schedule-to-overview-flow-preview.html](./design-previews/manual-order-schedule-to-overview-flow-preview.html)
 - **手動順番 上ペイン行明細（高密度・ラベルなし）**: [design-previews/manual-order-overview-pane-row-detail-preview.html](./design-previews/manual-order-overview-pane-row-detail-preview.html) — [design-previews/README.md](./design-previews/README.md)
+- **手動順番 上ペイン端末カード（3行: 製番品番 / 工順部品名 / 機種名・大フォント）**: [design-previews/manual-order-device-card-location-machine-preview.html](./design-previews/manual-order-device-card-location-machine-preview.html) — [design-previews/README.md](./design-previews/README.md)
 
 ### 🆕 最新アップデート（2026-03-20）
 
