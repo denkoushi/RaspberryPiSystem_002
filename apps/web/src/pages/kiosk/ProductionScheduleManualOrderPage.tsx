@@ -27,10 +27,14 @@ import {
   KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_HIDDEN_KEY,
   KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_KEY
 } from '../../features/kiosk/productionSchedule/kioskProductionScheduleSharedStorageKeys';
-import { buildConditionsAfterPencilFromFirstResourceCd } from '../../features/kiosk/productionSchedule/manualOrderLowerPaneSearch';
+import {
+  buildConditionsAfterPencilFromFirstResourceCd,
+  mergeManualOrderPencilPreservedSearchFields
+} from '../../features/kiosk/productionSchedule/manualOrderLowerPaneSearch';
 import { filterResourceCdsByCategory, isGrindingResourceCd } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { getResourceColorClasses, ORDER_NUMBERS } from '../../features/kiosk/productionSchedule/resourceColors';
 import { prioritizeResourceCdsByPresence } from '../../features/kiosk/productionSchedule/resourcePriority';
+import { DEFAULT_SEARCH_CONDITIONS } from '../../features/kiosk/productionSchedule/searchConditions';
 import { useManualOrderCardState } from '../../features/kiosk/productionSchedule/useManualOrderCardState';
 import { useManualOrderPageController } from '../../features/kiosk/productionSchedule/useManualOrderPageController';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
@@ -547,11 +551,12 @@ export function ProductionScheduleManualOrderPage() {
     setSelectedOrderNumbers([]);
     const card = deviceCards.find((device) => device.deviceScopeKey === deviceScopeKey);
     const firstCd = card?.resources[0]?.resourceCd?.trim();
-    if (firstCd) {
-      setSearchConditions(buildConditionsAfterPencilFromFirstResourceCd(firstCd));
-    } else {
-      resetSearchConditions();
-    }
+    setSearchConditions((prev) =>
+      mergeManualOrderPencilPreservedSearchFields(
+        firstCd ? buildConditionsAfterPencilFromFirstResourceCd(firstCd) : DEFAULT_SEARCH_CONDITIONS,
+        prev
+      )
+    );
     setActiveDeviceScopeKey(deviceScopeKey);
     const nextEl = document.querySelector<HTMLElement>(`[data-device-scope-key="${deviceScopeKey}"]`);
     if (nextEl) {
