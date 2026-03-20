@@ -24,6 +24,7 @@ import { registerProductionScheduleDueManagementTriageRoute } from './due-manage
 import { registerProductionScheduleDueManagementGlobalRankRoute } from './due-management-global-rank.js';
 import { registerProductionScheduleDueManagementActualHoursRoute } from './due-management-actual-hours.js';
 import { registerProductionScheduleDueManagementManualOrderOverviewRoute } from './due-management-manual-order-overview.js';
+import { registerProductionScheduleManualOrderSiteDevicesRoute } from './manual-order-site-devices.js';
 import { registerProductionScheduleProcessingTypeOptionsRoute } from './processing-type-options.js';
 import { registerProductionScheduleProgressOverviewRoute } from './progress-overview.js';
 import type { KioskRouteDeps } from './shared.js';
@@ -55,6 +56,7 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleDueManagementTriageRoute(app, deps);
   await registerProductionScheduleDueManagementGlobalRankRoute(app, deps);
   await registerProductionScheduleDueManagementManualOrderOverviewRoute(app, deps);
+  await registerProductionScheduleManualOrderSiteDevicesRoute(app, deps);
   await registerProductionScheduleDueManagementActualHoursRoute(app, deps);
   await registerProductionScheduleProcessingTypeOptionsRoute(app, deps);
   await registerProductionScheduleProgressOverviewRoute(app, deps);

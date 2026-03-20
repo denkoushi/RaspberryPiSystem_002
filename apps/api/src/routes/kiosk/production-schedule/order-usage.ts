@@ -7,6 +7,7 @@ import {
   toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
+import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 
 export async function registerProductionScheduleOrderUsageRoute(
   app: FastifyInstance,
@@ -19,8 +20,13 @@ export async function registerProductionScheduleOrderUsageRoute(
     const query = productionScheduleQuerySchema.parse(request.query);
     const resourceCds = parseCsvList(query.resourceCds);
 
+    const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
+      actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      targetDeviceScopeKey: query.targetDeviceScopeKey
+    });
+
     const usage = await getProductionScheduleOrderUsage({
-      locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
+      locationKey: assignmentLocationKey,
       resourceCds
     });
 

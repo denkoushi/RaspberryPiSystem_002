@@ -20,7 +20,14 @@ export async function registerProductionScheduleSearchStateRoute(
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
     const result = await getProductionScheduleSearchState(deviceScopeKey);
     reply.header('ETag', result.etag);
-    return { state: result.state, updatedAt: result.updatedAt };
+    return {
+      state: result.state,
+      updatedAt: result.updatedAt,
+      locationScope: {
+        deviceScopeKey: locationScopeContext.deviceScopeKey,
+        siteKey: locationScopeContext.siteKey
+      }
+    };
   });
 
   app.put('/kiosk/production-schedule/search-state', { config: { rateLimit: false } }, async (request, reply) => {

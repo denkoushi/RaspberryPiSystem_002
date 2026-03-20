@@ -135,7 +135,12 @@ const envSchema = z.object({
   ACTUAL_HOURS_SHARED_FALLBACK_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('false')
-  )
+  ),
+  // 手動順番を deviceScopeKey 正とし、Mac 代理は targetDeviceScopeKey 必須にする v2 契約（無効時は従来の targetLocation 動作）
+  KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('true')
+  ).transform((v) => v === 'true')
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') {
     return;
