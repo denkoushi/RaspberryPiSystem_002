@@ -138,6 +138,14 @@ category: knowledge-base
   - **工場変更**: 編集端末をクリアしつつ、`resetSearchConditions` + `selectedOrderNumbers` クリア（先頭資源の自動指定はしない）。
   - **一覧取得**: 手動順番ページのみ、`hasQuery` に加え `useProductionScheduleQueryParams` の `hasResourceCategoryResourceSelection`（工程ONかつ資源選択あり）で `useKioskProductionSchedule` を有効化。ツールバー「取得中表示」や「検索してください」も同じ合成条件に合わせる。
   - **不変**: ソートモード（`MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY`）と共有登録製番履歴（`kioskProductionScheduleSharedStorageKeys`）はリセットしない。
+- **Deploy / verify（実績、2026-03-20）**:
+  - ブランチ **`feat/manual-order-pencil-lower-pane-reset`**（コミット例: `cf27935a`）。**対象**: Pi5 + Pi4×2 のみ（Pi3 除外）、[deployment.md](../guides/deployment.md) の **1台ずつ順番**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` → `--limit "raspberrypi5"` → `raspberrypi4` → `raspi4-robodrill01`、`--detach --follow`）。
+  - **Run ID 例**: `20260320-214327-13205`（Pi5）/ `20260320-215018-18468`（raspberrypi4）/ `20260320-215450-29665`（raspi4-robodrill01）、いずれも success。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**（API・deploy-status・manual-order-overview v2・Pi4/Pi3 サービス等）。
+- **UI（実機/VNC・推奨）**: Phase12 はブラウザを開かない。鉛筆で端末を切替えたとき下ペインの検索・資源・製造order追加絞り込みが初期化され先頭資源が選ばれること、工場変更で下ペインがクリアされることは、キオスク実機または Pi5 経由 VNC で `/kiosk/production-schedule/manual-order` を開き目視確認する（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の該当行を参照）。
+- **Troubleshooting**:
+  - **`pnpm -r test` だけでは API 統合テストが DB なしで失敗**: ローカルは `pnpm --filter @raspi-system/web test` と `pnpm test:api`（Docker `postgres-test-local`）に分ける。終了後 `bash scripts/test/stop-postgres.sh` でテスト用コンテナを削除する運用が既存ドキュメントと整合。
+  - **機種名なしで先頭資源のみ**: メイン生産スケジュール画面の `hasQuery` は機種名付きの機械スコープ検索を想定しているが、手動順番ページでは `hasResourceCategoryResourceSelection` を追加し API の `resourceCds` + `resourceCategory` と整合させている。一覧が空のときは `activeDeviceScopeKey`・資源0件カード・検索条件を確認。
 
 ## 手動順番 専用ページ（キオスク）追加（2026-03-20）
 
