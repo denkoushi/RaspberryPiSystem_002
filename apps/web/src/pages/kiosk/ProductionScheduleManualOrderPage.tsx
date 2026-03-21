@@ -12,7 +12,6 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
-import { ManualOrderActiveDeviceBanner } from '../../components/kiosk/manualOrder/ManualOrderActiveDeviceBanner';
 import { ManualOrderOverviewPane } from '../../components/kiosk/manualOrder/ManualOrderOverviewPane';
 import { ManualOrderSiteToolbar } from '../../components/kiosk/manualOrder/ManualOrderSiteToolbar';
 import { ProductionOrderSearchModal } from '../../components/kiosk/ProductionOrderSearchModal';
@@ -113,8 +112,6 @@ export function ProductionScheduleManualOrderPage() {
     setDeviceStatus,
     clearDeviceStatus
   } = useManualOrderCardState(deviceCards.map((device) => device.deviceScopeKey));
-  const [activeResourceCdForBanner, setActiveResourceCdForBanner] = useState<string | null>(null);
-
   const [searchConditions, setSearchConditions, resetSearchConditions] =
     useProductionScheduleSearchConditionsWithStorageKey(MANUAL_ORDER_PAGE_SEARCH_STORAGE_KEY);
   const {
@@ -538,15 +535,6 @@ export function ProductionScheduleManualOrderPage() {
     clearDeviceStatus(activeDeviceScopeKey);
   }, [activeDeviceScopeKey, clearDeviceStatus, orderError, orderPending, setDeviceStatus]);
 
-  useEffect(() => {
-    const current = deviceCards.find((device) => device.deviceScopeKey === activeDeviceScopeKey);
-    if (!current || current.resources.length === 0) {
-      setActiveResourceCdForBanner(null);
-      return;
-    }
-    setActiveResourceCdForBanner(current.resources[0]?.resourceCd ?? null);
-  }, [activeDeviceScopeKey, deviceCards]);
-
   const handleSelectDevice = (deviceScopeKey: string) => {
     setSelectedOrderNumbers([]);
     const card = deviceCards.find((device) => device.deviceScopeKey === deviceScopeKey);
@@ -568,15 +556,9 @@ export function ProductionScheduleManualOrderPage() {
     }
   };
 
-  const activeDeviceLabel = useMemo(() => {
-    const matched = deviceCards.find((device) => device.deviceScopeKey === activeDeviceScopeKey);
-    if (!matched) return '';
-    return matched.label;
-  }, [activeDeviceScopeKey, deviceCards]);
-
   const canShowSchedule = activeDeviceScopeKey.trim().length > 0;
   const lowerPaneStatusMessage = !canShowSchedule
-    ? '上ペインの鉛筆から編集対象端末を選択してください。'
+    ? '上ペインの「編集」から編集対象端末を選択してください。'
     : scheduleQuery.isFetching
       ? '読み込み中…'
       : orderError
@@ -587,12 +569,7 @@ export function ProductionScheduleManualOrderPage() {
     <div className="flex h-full min-h-0 flex-col gap-2" ref={containerRef}>
       <div className="grid min-h-0 flex-1 grid-rows-[0.95fr_1.25fr] gap-2">
         <div className="min-h-0 overflow-hidden">
-          <ManualOrderActiveDeviceBanner
-            visible={Boolean(activeDeviceScopeKey)}
-            label={activeDeviceLabel}
-            resourceCd={activeResourceCdForBanner}
-          />
-          <div className="h-[calc(100%-2.2rem)] min-h-0">
+          <div className="h-full min-h-0">
             <ManualOrderOverviewPane
               siteToolbar={
                 <ManualOrderSiteToolbar
