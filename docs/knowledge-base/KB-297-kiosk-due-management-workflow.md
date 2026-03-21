@@ -163,15 +163,15 @@ category: knowledge-base
   - 上ペインに割当 UI に無い資源が載ると運用が紛らわしい。カード先頭の Location 行が工場ドロップダウンと重複し幅を圧迫する。下ペインのツールバー＋資源帯が縦に大きい。
 - **Fix（仕様）**:
   - **API**: [`mergeManualOrderOverviewResourcesWithAssignmentOrder`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) は **割当順が1件以上ある端末**では `assignmentOrder` のスロットのみ返し、割当に無い `derived` 資源は **末尾に付けない**。`assignmentOrder` が空のときは関数単体契約として `derived` をそのまま返す（v2 では割当0件端末は呼び出し側で `[]`）。Vitest: `merge-manual-order-resource-assignments.test.ts`。
-  - **Web**: [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で `{siteKey} - ` プレフィックスのみ除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) に集約）。下ペインは [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) と `hasScheduleFilterQuery` で折りたたみ／常時表示を切替（[`ProductionScheduleManualOrderPage`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)）。キオスク最上段は [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) が同フックを利用。
+  - **Web**: [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で `{siteKey} - ` プレフィックスのみ除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) に集約）。下ペインのツールバー＋資源帯は [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) で包み、**見た目の開閉は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の `isVisible` のみ**（絞り込み有無とは独立）。一覧取得の `enabled`・空状態「検索してください」・`showFetching` 等は従来どおり [`hasScheduleFilterQuery`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)（`hasQuery || hasResourceCategoryResourceSelection`）。キオスク最上段は [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) が同フックを拡張利用。
 - **Deploy / verify（実績、2026-03-21）**:
   - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
   - **Run ID**: `20260321-145746-1455`（Pi5）/ `20260321-150253-8405`（raspberrypi4）/ `20260321-150735-6173`（raspi4-robodrill01）、いずれも success。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21、Mac から実行）。
 - **UI（実機/VNC・推奨）**:
-  - `/kiosk/production-schedule/manual-order` で上ペイン資源が割当と一致すること、Location 行の工場名重複が無いこと、下ペイン帯のホバー展開／絞り込み時の常時表示をマウスで確認（Phase12 はブラウザを開かない）。
+  - `/kiosk/production-schedule/manual-order` で上ペイン資源が割当と一致すること、Location 行の工場名重複が無いこと、下ペイン見出し行**右端アイコン**へマウスを乗せて帯が展開し、パネル外に出すと遅延後に折りたたまれることを確認（Phase12 はブラウザを開かない）。絞り込み有無で帯が常時開いたままにならないこと。
 - **Troubleshooting**:
-  - **下ペイン帯が開かない**: タッチのみ端末ではホバーできない（最上段メニューと同様 **マウス前提**）。絞り込み条件を1つでも入れると帯は常時表示。
+  - **下ペイン帯が開かない**: タッチのみ端末ではホバーできない（最上段メニューと同様 **マウス前提**）。**右端のスライダー型アイコン**（十分な hit area）へポインタを載せる。
   - **上ペインに想定外の資源が無い**: 割当モーダルで登録した CD のみが v2 overview に載る。DB に残る割当外の行は下ペイン一覧（別クエリ）で確認。
 
 ## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
@@ -224,7 +224,7 @@ category: knowledge-base
 - **UX/State**:
   - 編集中端末は**該当カード**のヘッダー行に「編集中」と **「編集」** ボタンで示す（グローバル帯バナーは廃止）。
   - **手動順番ルート**ではキオスク最上段メニュー（`KioskLayout` ヘッダー）は既定で非表示。マウスを画面上端付近へ寄せるとスライド表示（`useKioskTopEdgeHeaderReveal`）。タッチ専用代替は未実装。
-  - **下ペイン**の `ProductionScheduleToolbar` と資源帯は、一覧の絞り込み条件（`hasScheduleFilterQuery` と同値の判定）が無いとき **折りたたみ**、ペイン上端の細いホットゾーンへマウスを乗せると展開（`useTimedHoverReveal`）。条件が入っているときは **常時表示**。タッチのみ端末ではホバーできないため帯が畳んだままになりうる（最上段メニューと同様 **マウス前提**）。
+  - **下ペイン**の `ProductionScheduleToolbar` と資源帯は、[`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) で **既定折りたたみ**、見出し行**右端ホットゾーン**へマウスを乗せると展開（`useTimedHoverReveal`）。**開閉は絞り込み条件と独立**（一覧取得の有効化は `hasScheduleFilterQuery`）。タッチのみ端末ではホバーできないため帯が畳んだままになりうる（最上段メニューと同様 **マウス前提**）。
   - 非編集中カードは読める程度にグレーアウト。
   - 保存中はカード単位で軽いローディング、失敗はカード強調 + 下ペイン上部バーで通知。
   - 保存成功メッセージは出さず、上ペイン反映でフィードバック。

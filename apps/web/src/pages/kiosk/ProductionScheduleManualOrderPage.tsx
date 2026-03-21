@@ -1,5 +1,4 @@
 import axios from 'axios';
-import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -16,6 +15,7 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { ManualOrderLowerPaneCollapsibleToolbar } from '../../components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar';
 import { ManualOrderOverviewPane } from '../../components/kiosk/manualOrder/ManualOrderOverviewPane';
 import { ManualOrderResourceAssignmentModal } from '../../components/kiosk/manualOrder/ManualOrderResourceAssignmentModal';
 import { ManualOrderSiteToolbar } from '../../components/kiosk/manualOrder/ManualOrderSiteToolbar';
@@ -177,7 +177,7 @@ export function ProductionScheduleManualOrderPage() {
 
   const hasScheduleFilterQuery = hasQuery || hasResourceCategoryResourceSelection;
   const lowerPaneToolbarReveal = useTimedHoverReveal(true);
-  const lowerPaneToolbarExpanded = hasScheduleFilterQuery || lowerPaneToolbarReveal.isVisible;
+  const lowerPaneToolbarExpanded = lowerPaneToolbarReveal.isVisible;
 
   const scheduleListParams = useMemo(
     () => ({
@@ -681,100 +681,82 @@ export function ProductionScheduleManualOrderPage() {
         </div>
 
         <section className="manual-order-lower-pane-scroll min-h-0 overflow-auto rounded border border-white/10 bg-slate-900/40 p-2">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-amber-200">生産スケジュール（既存UI）</p>
-            {lowerPaneStatusMessage ? (
-              <span className="text-xs text-amber-200">{lowerPaneStatusMessage}</span>
-            ) : null}
-          </div>
-
-          <div>
-            <div
-              className="h-2 shrink-0 cursor-default"
-              onMouseEnter={lowerPaneToolbarReveal.onHotZoneEnter}
-              aria-hidden
+          <ManualOrderLowerPaneCollapsibleToolbar
+            title="生産スケジュール（既存UI）"
+            statusMessage={lowerPaneStatusMessage}
+            expanded={lowerPaneToolbarExpanded}
+            onTriggerEnter={lowerPaneToolbarReveal.onHotZoneEnter}
+            onPanelMouseEnter={lowerPaneToolbarReveal.onHeaderMouseEnter}
+            onPanelMouseLeave={lowerPaneToolbarReveal.onHeaderMouseLeave}
+          >
+            <ProductionScheduleToolbar
+              inputQuery={inputQuery}
+              onInputChange={(value) => setSearchConditions({ inputQuery: value })}
+              onOpenKeyboard={openKeyboard}
+              onSearch={() => applySearch(inputQuery)}
+              onClear={clearAllFilters}
+              completedCount={completedCount}
+              incompleteCount={incompleteCount}
+              hasNoteOnly={hasNoteOnlyFilter}
+              onToggleHasNoteOnly={() =>
+                setSearchConditions((prev) => ({ hasNoteOnlyFilter: !prev.hasNoteOnlyFilter }))
+              }
+              hasDueDateOnly={hasDueDateOnlyFilter}
+              onToggleHasDueDateOnly={() =>
+                setSearchConditions((prev) => ({ hasDueDateOnlyFilter: !prev.hasDueDateOnlyFilter }))
+              }
+              showGrindingResources={showGrindingResources}
+              onToggleGrindingResources={toggleGrindingResources}
+              showCuttingResources={showCuttingResources}
+              onToggleCuttingResources={toggleCuttingResources}
+              selectedMachineName={selectedMachineName}
+              machineNameOptions={machineNameOptions}
+              onMachineNameChange={handleMachineNameChange}
+              selectedPartName={selectedPartName}
+              partNameOptions={partNameOptions}
+              onPartNameChange={handlePartNameChange}
+              onOpenOrderSearch={orderSearch.open}
+              isOrderSearchEnabled={isOrderSearchEnabled}
+              sortMode={sortMode}
+              onSortModeChange={setSortMode}
+              canUseManualSort={manualSortEnabled}
+              disabled={scheduleQuery.isFetching || completePending}
+              isFetching={scheduleQuery.isFetching}
+              showFetching={hasScheduleFilterQuery}
             />
-            <div
-              className={clsx(
-                'overflow-hidden transition-[max-height] duration-200 ease-out',
-                lowerPaneToolbarExpanded ? 'max-h-[min(40rem,90vh)]' : 'max-h-0'
-              )}
-              aria-expanded={lowerPaneToolbarExpanded}
-            >
-              <div
-                onMouseEnter={lowerPaneToolbarReveal.onHeaderMouseEnter}
-                onMouseLeave={lowerPaneToolbarReveal.onHeaderMouseLeave}
-              >
-                <ProductionScheduleToolbar
-                  inputQuery={inputQuery}
-                  onInputChange={(value) => setSearchConditions({ inputQuery: value })}
-                  onOpenKeyboard={openKeyboard}
-                  onSearch={() => applySearch(inputQuery)}
-                  onClear={clearAllFilters}
-                  completedCount={completedCount}
-                  incompleteCount={incompleteCount}
-                  hasNoteOnly={hasNoteOnlyFilter}
-                  onToggleHasNoteOnly={() =>
-                    setSearchConditions((prev) => ({ hasNoteOnlyFilter: !prev.hasNoteOnlyFilter }))
-                  }
-                  hasDueDateOnly={hasDueDateOnlyFilter}
-                  onToggleHasDueDateOnly={() =>
-                    setSearchConditions((prev) => ({ hasDueDateOnlyFilter: !prev.hasDueDateOnlyFilter }))
-                  }
-                  showGrindingResources={showGrindingResources}
-                  onToggleGrindingResources={toggleGrindingResources}
-                  showCuttingResources={showCuttingResources}
-                  onToggleCuttingResources={toggleCuttingResources}
-                  selectedMachineName={selectedMachineName}
-                  machineNameOptions={machineNameOptions}
-                  onMachineNameChange={handleMachineNameChange}
-                  selectedPartName={selectedPartName}
-                  partNameOptions={partNameOptions}
-                  onPartNameChange={handlePartNameChange}
-                  onOpenOrderSearch={orderSearch.open}
-                  isOrderSearchEnabled={isOrderSearchEnabled}
-                  sortMode={sortMode}
-                  onSortModeChange={setSortMode}
-                  canUseManualSort={manualSortEnabled}
-                  disabled={scheduleQuery.isFetching || completePending}
-                  isFetching={scheduleQuery.isFetching}
-                  showFetching={hasScheduleFilterQuery}
-                />
 
-                <div className="mt-2">
-                  <ProductionScheduleResourceFilters
-                    resourceCds={prioritizedVisibleResourceCds}
-                    normalizedResourceCds={normalizedResourceCds}
-                    normalizedAssignedOnlyCds={normalizedAssignedOnlyCds}
-                    getColorClasses={getResourceColorClasses}
-                    onToggleResourceCd={toggleResourceCd}
-                    onToggleAssignedOnlyCd={toggleAssignedOnlyCd}
-                    getResourceAriaLabel={getResourceAriaLabel}
-                    rightActions={
-                      <>
-                        <ProductionScheduleSeibanFilterDropdown
-                          items={seibanFilterItems}
-                          selectedCount={selectedSeibanCount}
-                          totalCount={seibanFilterItems.length}
-                          onToggle={toggleHistoryQuery}
-                          onSetAll={setAllHistoryQueries}
-                        />
-                        <ProductionScheduleResourceFilterDropdown
-                          items={resourceFilterItems}
-                          selectedCount={selectedResourceCount}
-                          assignedOnlySelectedCount={selectedAssignedOnlyCount}
-                          onToggleResource={toggleResourceCd}
-                          onToggleAssignedOnly={toggleAssignedOnlyCd}
-                          onSetAllResource={setAllResourceCds}
-                          onSetAllAssignedOnly={setAllAssignedOnlyCds}
-                        />
-                      </>
-                    }
-                  />
-                </div>
-              </div>
+            <div className="mt-2">
+              <ProductionScheduleResourceFilters
+                resourceCds={prioritizedVisibleResourceCds}
+                normalizedResourceCds={normalizedResourceCds}
+                normalizedAssignedOnlyCds={normalizedAssignedOnlyCds}
+                getColorClasses={getResourceColorClasses}
+                onToggleResourceCd={toggleResourceCd}
+                onToggleAssignedOnlyCd={toggleAssignedOnlyCd}
+                getResourceAriaLabel={getResourceAriaLabel}
+                rightActions={
+                  <>
+                    <ProductionScheduleSeibanFilterDropdown
+                      items={seibanFilterItems}
+                      selectedCount={selectedSeibanCount}
+                      totalCount={seibanFilterItems.length}
+                      onToggle={toggleHistoryQuery}
+                      onSetAll={setAllHistoryQueries}
+                    />
+                    <ProductionScheduleResourceFilterDropdown
+                      items={resourceFilterItems}
+                      selectedCount={selectedResourceCount}
+                      assignedOnlySelectedCount={selectedAssignedOnlyCount}
+                      onToggleResource={toggleResourceCd}
+                      onToggleAssignedOnly={toggleAssignedOnlyCd}
+                      onSetAllResource={setAllResourceCds}
+                      onSetAllAssignedOnly={setAllAssignedOnlyCds}
+                    />
+                  </>
+                }
+              />
             </div>
-          </div>
+          </ManualOrderLowerPaneCollapsibleToolbar>
 
           {sortMode === 'manual' && !manualSortEnabled ? (
             <p className="mt-2 text-xs font-semibold text-amber-300">
