@@ -1,24 +1,6 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
-/**
- * 沉浸式キオスク（上端ヘッダー既定非表示）ではナビがビューポート外になり得る。
- * `useKioskTopEdgeHeaderReveal` と同様に上端へマウスを移してヘッダーを表示する。
- */
-async function revealKioskHeader(page: Page): Promise<void> {
-  const size = page.viewportSize();
-  if (!size) return;
-  await page.mouse.move(size.width / 2, 2);
-  await page.waitForFunction(
-    () => {
-      const h = document.querySelector('header');
-      if (!h) return true;
-      const rect = h.getBoundingClientRect();
-      return rect.bottom > 8 && rect.top >= -2;
-    },
-    { timeout: 5000 }
-  );
-  await page.waitForTimeout(250);
-}
+import { revealKioskHeader } from '../helpers';
 
 test.describe('キオスク画面スモーク', () => {
   test('初期表示でキオスク端末にリダイレクトされる', async ({ page }) => {
