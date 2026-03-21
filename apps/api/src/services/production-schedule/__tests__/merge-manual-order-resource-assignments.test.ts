@@ -28,9 +28,9 @@ const sampleDerived = [
 ];
 
 describe('mergeManualOrderOverviewResourcesWithAssignmentOrder', () => {
-  it('orders by assignment first then appends unassigned derived resources', () => {
+  it('returns only assignment order slots; does not append derived resources outside assignment', () => {
     const merged = mergeManualOrderOverviewResourcesWithAssignmentOrder(['500', '080'], sampleDerived);
-    expect(merged.map((r) => r.resourceCd)).toEqual(['500', '080', '305']);
+    expect(merged.map((r) => r.resourceCd)).toEqual(['500', '080']);
     expect(merged[1]!.rows).toEqual([]);
     expect(merged[1]!.assignedCount).toBe(0);
   });

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -48,6 +49,7 @@ import { normalizeHistoryList, useProductionScheduleQueryParams } from '../../fe
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useTimedHoverReveal } from '../../hooks/useTimedHoverReveal';
 
 import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
 
@@ -174,6 +176,8 @@ export function ProductionScheduleManualOrderPage() {
   });
 
   const hasScheduleFilterQuery = hasQuery || hasResourceCategoryResourceSelection;
+  const lowerPaneToolbarReveal = useTimedHoverReveal(true);
+  const lowerPaneToolbarExpanded = hasScheduleFilterQuery || lowerPaneToolbarReveal.isVisible;
 
   const scheduleListParams = useMemo(
     () => ({
@@ -684,72 +688,92 @@ export function ProductionScheduleManualOrderPage() {
             ) : null}
           </div>
 
-          <ProductionScheduleToolbar
-            inputQuery={inputQuery}
-            onInputChange={(value) => setSearchConditions({ inputQuery: value })}
-            onOpenKeyboard={openKeyboard}
-            onSearch={() => applySearch(inputQuery)}
-            onClear={clearAllFilters}
-            completedCount={completedCount}
-            incompleteCount={incompleteCount}
-            hasNoteOnly={hasNoteOnlyFilter}
-            onToggleHasNoteOnly={() =>
-              setSearchConditions((prev) => ({ hasNoteOnlyFilter: !prev.hasNoteOnlyFilter }))
-            }
-            hasDueDateOnly={hasDueDateOnlyFilter}
-            onToggleHasDueDateOnly={() =>
-              setSearchConditions((prev) => ({ hasDueDateOnlyFilter: !prev.hasDueDateOnlyFilter }))
-            }
-            showGrindingResources={showGrindingResources}
-            onToggleGrindingResources={toggleGrindingResources}
-            showCuttingResources={showCuttingResources}
-            onToggleCuttingResources={toggleCuttingResources}
-            selectedMachineName={selectedMachineName}
-            machineNameOptions={machineNameOptions}
-            onMachineNameChange={handleMachineNameChange}
-            selectedPartName={selectedPartName}
-            partNameOptions={partNameOptions}
-            onPartNameChange={handlePartNameChange}
-            onOpenOrderSearch={orderSearch.open}
-            isOrderSearchEnabled={isOrderSearchEnabled}
-            sortMode={sortMode}
-            onSortModeChange={setSortMode}
-            canUseManualSort={manualSortEnabled}
-            disabled={scheduleQuery.isFetching || completePending}
-            isFetching={scheduleQuery.isFetching}
-            showFetching={hasScheduleFilterQuery}
-          />
-
-          <div className="mt-2">
-            <ProductionScheduleResourceFilters
-              resourceCds={prioritizedVisibleResourceCds}
-              normalizedResourceCds={normalizedResourceCds}
-              normalizedAssignedOnlyCds={normalizedAssignedOnlyCds}
-              getColorClasses={getResourceColorClasses}
-              onToggleResourceCd={toggleResourceCd}
-              onToggleAssignedOnlyCd={toggleAssignedOnlyCd}
-              getResourceAriaLabel={getResourceAriaLabel}
-              rightActions={
-                <>
-                  <ProductionScheduleSeibanFilterDropdown
-                    items={seibanFilterItems}
-                    selectedCount={selectedSeibanCount}
-                    totalCount={seibanFilterItems.length}
-                    onToggle={toggleHistoryQuery}
-                    onSetAll={setAllHistoryQueries}
-                  />
-                  <ProductionScheduleResourceFilterDropdown
-                    items={resourceFilterItems}
-                    selectedCount={selectedResourceCount}
-                    assignedOnlySelectedCount={selectedAssignedOnlyCount}
-                    onToggleResource={toggleResourceCd}
-                    onToggleAssignedOnly={toggleAssignedOnlyCd}
-                    onSetAllResource={setAllResourceCds}
-                    onSetAllAssignedOnly={setAllAssignedOnlyCds}
-                  />
-                </>
-              }
+          <div>
+            <div
+              className="h-2 shrink-0 cursor-default"
+              onMouseEnter={lowerPaneToolbarReveal.onHotZoneEnter}
+              aria-hidden
             />
+            <div
+              className={clsx(
+                'overflow-hidden transition-[max-height] duration-200 ease-out',
+                lowerPaneToolbarExpanded ? 'max-h-[min(40rem,90vh)]' : 'max-h-0'
+              )}
+              aria-expanded={lowerPaneToolbarExpanded}
+            >
+              <div
+                onMouseEnter={lowerPaneToolbarReveal.onHeaderMouseEnter}
+                onMouseLeave={lowerPaneToolbarReveal.onHeaderMouseLeave}
+              >
+                <ProductionScheduleToolbar
+                  inputQuery={inputQuery}
+                  onInputChange={(value) => setSearchConditions({ inputQuery: value })}
+                  onOpenKeyboard={openKeyboard}
+                  onSearch={() => applySearch(inputQuery)}
+                  onClear={clearAllFilters}
+                  completedCount={completedCount}
+                  incompleteCount={incompleteCount}
+                  hasNoteOnly={hasNoteOnlyFilter}
+                  onToggleHasNoteOnly={() =>
+                    setSearchConditions((prev) => ({ hasNoteOnlyFilter: !prev.hasNoteOnlyFilter }))
+                  }
+                  hasDueDateOnly={hasDueDateOnlyFilter}
+                  onToggleHasDueDateOnly={() =>
+                    setSearchConditions((prev) => ({ hasDueDateOnlyFilter: !prev.hasDueDateOnlyFilter }))
+                  }
+                  showGrindingResources={showGrindingResources}
+                  onToggleGrindingResources={toggleGrindingResources}
+                  showCuttingResources={showCuttingResources}
+                  onToggleCuttingResources={toggleCuttingResources}
+                  selectedMachineName={selectedMachineName}
+                  machineNameOptions={machineNameOptions}
+                  onMachineNameChange={handleMachineNameChange}
+                  selectedPartName={selectedPartName}
+                  partNameOptions={partNameOptions}
+                  onPartNameChange={handlePartNameChange}
+                  onOpenOrderSearch={orderSearch.open}
+                  isOrderSearchEnabled={isOrderSearchEnabled}
+                  sortMode={sortMode}
+                  onSortModeChange={setSortMode}
+                  canUseManualSort={manualSortEnabled}
+                  disabled={scheduleQuery.isFetching || completePending}
+                  isFetching={scheduleQuery.isFetching}
+                  showFetching={hasScheduleFilterQuery}
+                />
+
+                <div className="mt-2">
+                  <ProductionScheduleResourceFilters
+                    resourceCds={prioritizedVisibleResourceCds}
+                    normalizedResourceCds={normalizedResourceCds}
+                    normalizedAssignedOnlyCds={normalizedAssignedOnlyCds}
+                    getColorClasses={getResourceColorClasses}
+                    onToggleResourceCd={toggleResourceCd}
+                    onToggleAssignedOnlyCd={toggleAssignedOnlyCd}
+                    getResourceAriaLabel={getResourceAriaLabel}
+                    rightActions={
+                      <>
+                        <ProductionScheduleSeibanFilterDropdown
+                          items={seibanFilterItems}
+                          selectedCount={selectedSeibanCount}
+                          totalCount={seibanFilterItems.length}
+                          onToggle={toggleHistoryQuery}
+                          onSetAll={setAllHistoryQueries}
+                        />
+                        <ProductionScheduleResourceFilterDropdown
+                          items={resourceFilterItems}
+                          selectedCount={selectedResourceCount}
+                          assignedOnlySelectedCount={selectedAssignedOnlyCount}
+                          onToggleResource={toggleResourceCd}
+                          onToggleAssignedOnly={toggleAssignedOnlyCd}
+                          onSetAllResource={setAllResourceCds}
+                          onSetAllAssignedOnly={setAllAssignedOnlyCds}
+                        />
+                      </>
+                    }
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           {sortMode === 'manual' && !manualSortEnabled ? (

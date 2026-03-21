@@ -4,6 +4,7 @@ import {
   useKioskProductionScheduleDueManagementManualOrderOverview,
   useKioskProductionScheduleManualOrderSiteDevices
 } from '../../../api/hooks';
+import { stripSitePrefixFromDeviceLabel } from '../manualOrder/manualOrderDeviceDisplayLabel';
 
 import type { ProductionScheduleDueManagementManualOrderOverviewResource } from '../../../api/client';
 
@@ -34,15 +35,16 @@ export function useManualOrderPageController() {
     const overview = overviewQuery.data;
     if (overview && 'devices' in overview) {
       overview.devices.forEach((device) => {
+        const rawLabel = device.label?.trim() || device.deviceScopeKey;
         map.set(device.deviceScopeKey, {
           deviceScopeKey: device.deviceScopeKey,
-          label: device.label?.trim() || device.deviceScopeKey,
+          label: stripSitePrefixFromDeviceLabel(siteKey, rawLabel),
           resources: device.resources
         });
       });
     }
     return map;
-  }, [overviewQuery.data]);
+  }, [overviewQuery.data, siteKey]);
 
   const deviceCards = useMemo<ManualOrderOverviewDeviceCard[]>(() => {
     const keys = siteDevicesQuery.data?.deviceScopeKeys ?? [];

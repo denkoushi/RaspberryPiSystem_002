@@ -143,7 +143,7 @@ category: knowledge-base
   - **API**（`KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED` 時のみ有効、無効時は 404）:
     - `GET /api/kiosk/production-schedule/manual-order-resource-assignments?siteKey=...` → `{ siteKey, assignments: [{ deviceScopeKey, resourceCds[] }] }`
     - `PUT /api/kiosk/production-schedule/manual-order-resource-assignments` → body `{ siteKey, deviceScopeKey, resourceCds[] }`（端末単位の全置換）。他端末が使用中の資源を奪おうとした場合は **`409` / `RESOURCE_ALREADY_ASSIGNED`**。
-  - **overview 統合**: [`listDueManagementManualOrderOverviewV2`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) が **登録端末すべて** を `devices[]` に出し、**割当行が無い端末**は `resources: []`（資源未割り当て）。割当がある端末は [`mergeManualOrderOverviewResourcesWithAssignmentOrder`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) で **割当順優先・行なしは空 `rows[]`・割当外の既存集計は末尾**。**レガシー**（`location === siteKey`）は割当0件のとき従来どおり行データから集計（後方互換）。
+  - **overview 統合**: [`listDueManagementManualOrderOverviewV2`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) が **登録端末すべて** を `devices[]` に出し、**割当行が無い端末**は `resources: []`（資源未割り当て）。割当がある端末は [`mergeManualOrderOverviewResourcesWithAssignmentOrder`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) で **割当に登録した資源CDのみを割当順で返す**（行なしは空 `rows[]`。割当に無い行集計は `resources[]` に載せない）。**レガシー**（`location === siteKey`）は割当0件のとき従来どおり行データから集計（後方互換）。
   - **Web**: カードヘッダーに **「資源」**（[`ManualOrderResourceAssignmentModal`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderResourceAssignmentModal.tsx)）。候補は既存 `GET .../resources` 相当（ページの `visibleResourceCds`）。保存成功で **assignments + manual-order-overview** を invalidate。
 - **Verification**:
   - API: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/merge-manual-order-resource-assignments.test.ts`
@@ -154,6 +154,25 @@ category: knowledge-base
   - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（`manual-order-resource-assignments` の `assignments` 検証を含む）。
 - **Troubleshooting**:
   - **409**: 同じ工場でその資源は既に別端末に割り当て済み。先に相手端末の割り当てを外す。
+
+<a id="manual-order-pane-polish-2026-03-21"></a>
+
+## 手動順番 overview 割当のみ・カードラベル短縮・下ペイン折りたたみ（2026-03-21）
+
+- **Context**:
+  - 上ペインに割当 UI に無い資源が載ると運用が紛らわしい。カード先頭の Location 行が工場ドロップダウンと重複し幅を圧迫する。下ペインのツールバー＋資源帯が縦に大きい。
+- **Fix（仕様）**:
+  - **API**: [`mergeManualOrderOverviewResourcesWithAssignmentOrder`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) は **割当順が1件以上ある端末**では `assignmentOrder` のスロットのみ返し、割当に無い `derived` 資源は **末尾に付けない**。`assignmentOrder` が空のときは関数単体契約として `derived` をそのまま返す（v2 では割当0件端末は呼び出し側で `[]`）。Vitest: `merge-manual-order-resource-assignments.test.ts`。
+  - **Web**: [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で `{siteKey} - ` プレフィックスのみ除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) に集約）。下ペインは [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) と `hasScheduleFilterQuery` で折りたたみ／常時表示を切替（[`ProductionScheduleManualOrderPage`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)）。キオスク最上段は [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) が同フックを利用。
+- **Deploy / verify（実績、2026-03-21）**:
+  - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
+  - **Run ID**: `20260321-145746-1455`（Pi5）/ `20260321-150253-8405`（raspberrypi4）/ `20260321-150735-6173`（raspi4-robodrill01）、いずれも success。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21、Mac から実行）。
+- **UI（実機/VNC・推奨）**:
+  - `/kiosk/production-schedule/manual-order` で上ペイン資源が割当と一致すること、Location 行の工場名重複が無いこと、下ペイン帯のホバー展開／絞り込み時の常時表示をマウスで確認（Phase12 はブラウザを開かない）。
+- **Troubleshooting**:
+  - **下ペイン帯が開かない**: タッチのみ端末ではホバーできない（最上段メニューと同様 **マウス前提**）。絞り込み条件を1つでも入れると帯は常時表示。
+  - **上ペインに想定外の資源が無い**: 割当モーダルで登録した CD のみが v2 overview に載る。DB に残る割当外の行は下ペイン一覧（別クエリ）で確認。
 
 ## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
 
@@ -205,6 +224,7 @@ category: knowledge-base
 - **UX/State**:
   - 編集中端末は**該当カード**のヘッダー行に「編集中」と **「編集」** ボタンで示す（グローバル帯バナーは廃止）。
   - **手動順番ルート**ではキオスク最上段メニュー（`KioskLayout` ヘッダー）は既定で非表示。マウスを画面上端付近へ寄せるとスライド表示（`useKioskTopEdgeHeaderReveal`）。タッチ専用代替は未実装。
+  - **下ペイン**の `ProductionScheduleToolbar` と資源帯は、一覧の絞り込み条件（`hasScheduleFilterQuery` と同値の判定）が無いとき **折りたたみ**、ペイン上端の細いホットゾーンへマウスを乗せると展開（`useTimedHoverReveal`）。条件が入っているときは **常時表示**。タッチのみ端末ではホバーできないため帯が畳んだままになりうる（最上段メニューと同様 **マウス前提**）。
   - 非編集中カードは読める程度にグレーアウト。
   - 保存中はカード単位で軽いローディング、失敗はカード強調 + 下ペイン上部バーで通知。
   - 保存成功メッセージは出さず、上ペイン反映でフィードバック。
@@ -212,7 +232,7 @@ category: knowledge-base
   - **ルート**: `/kiosk/production-schedule/manual-order`（`App.tsx`）。**ナビ**: `KioskHeader` に「手動順番」（生産スケジュールと進捗一覧の間）。
   - **データ**: 上ペインは `site-devices` + `manual-order-overview` を `useManualOrderPageController` で統合。下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable`。
   - **上辺1行（余白削減）**: `ManualOrderOverviewPane` に `siteToolbar`（手動順番見出し・工場 `<select>`）を渡し、**全体把握**・**N 端末**と同一フレックス行にまとめる（旧2段ヘッダを廃止）。重複していた「端末一覧: N」表記は **N 端末**に一本化。
-  - **行表示のプレゼンテーション層（SOLID 寄せ）**: [`manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（純関数・Vitest）。**行ブロックは2行**: 1行目＝製番·品番·工順、2行目＝品名·機種名。機種名は [`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts)（半角大文字）で他画面と整合。UI は [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。**端末カード最上段**は [`ManualOrderDeviceCardHeaderRow.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx)（Location·先頭資源CD·件数·編集中·編集）。複数資源時は先頭のみヘッダー1行に含め、2件目以降はブロック内に `資源CD·件数` のみ。上ペイン本文の `text-xs` は [`manualOrderOverviewTypography.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewTypography.ts)。グリッド列数は [`ManualOrderOverviewPane.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx)（例: `md:grid-cols-4` / `xl:grid-cols-6` でカード幅を圧縮）。パス接頭辞定数は [`kioskManualOrderRoutes.ts`](../../apps/web/src/features/kiosk/manualOrder/kioskManualOrderRoutes.ts)。上ペイン統合ヘッダは [`ManualOrderPaneHeader.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)、工場選択は [`ManualOrderSiteToolbar.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderSiteToolbar.tsx)。
+  - **行表示のプレゼンテーション層（SOLID 寄せ）**: [`manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（純関数・Vitest）。**行ブロックは2行**: 1行目＝製番·品番·工順、2行目＝品名·機種名。機種名は [`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts)（半角大文字）で他画面と整合。UI は [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。**端末カード最上段**は [`ManualOrderDeviceCardHeaderRow.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx)（Location·先頭資源CD·件数·編集中·編集）。複数資源時は先頭のみヘッダー1行に含め、2件目以降はブロック内に `資源CD·件数` のみ。上ペイン本文の `text-xs` は [`manualOrderOverviewTypography.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewTypography.ts)。**カード Location 行の重複削減**: 選択中工場の `siteKey` と一致する `{siteKey} - ` プレフィックスだけを [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) で集約）。グリッド列数は [`ManualOrderOverviewPane.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx)（例: `md:grid-cols-4` / `xl:grid-cols-6` でカード幅を圧縮）。パス接頭辞定数は [`kioskManualOrderRoutes.ts`](../../apps/web/src/features/kiosk/manualOrder/kioskManualOrderRoutes.ts)。上ペイン統合ヘッダは [`ManualOrderPaneHeader.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)、工場選択は [`ManualOrderSiteToolbar.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderSiteToolbar.tsx)。
   - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName` / `partName`（API 解決経路は従来どおり上記サービス参照）。キオスク上ペインの**行ブロック表示**は `presentManualOrderRow` により **1行目: 製番·品番·工順**、**2行目: 品名·機種名**（機種は `normalizeMachineName`）。空セグメントは省略。**本文フォントは生産スケジュール一覧の `text-xs` と同じ。** `assignedCount` 等の集計は従来どおり。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。静的プレビューは実装と乖離しうるため [design-previews](../design-previews/README.md) を参照。
   - **検索条件**: `useProductionScheduleSearchConditionsWithStorageKey` により **専用 localStorage キー**で通常の生産スケジュールページと干渉しない。
   - **登録製番（検索履歴）・search-state（2026-03-19 実装）**:
