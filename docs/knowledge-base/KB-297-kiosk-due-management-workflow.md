@@ -165,14 +165,32 @@ category: knowledge-base
   - **API**: [`mergeManualOrderOverviewResourcesWithAssignmentOrder`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) は **割当順が1件以上ある端末**では `assignmentOrder` のスロットのみ返し、割当に無い `derived` 資源は **末尾に付けない**。`assignmentOrder` が空のときは関数単体契約として `derived` をそのまま返す（v2 では割当0件端末は呼び出し側で `[]`）。Vitest: `merge-manual-order-resource-assignments.test.ts`。
   - **Web**: [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で `{siteKey} - ` プレフィックスのみ除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) に集約）。下ペインのツールバー＋資源帯は [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) で包み、**見た目の開閉は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の `isVisible` のみ**（絞り込み有無とは独立）。一覧取得の `enabled`・空状態「検索してください」・`showFetching` 等は従来どおり [`hasScheduleFilterQuery`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)（`hasQuery || hasResourceCategoryResourceSelection`）。キオスク最上段は [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) が同フックを拡張利用。
 - **Deploy / verify（実績、2026-03-21）**:
-  - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
+  - ブランチ **`feat/manual-order-pane-assignment-label-toolbar`**（API 割当のみ・ラベル短縮・当時の下ペイン折りたたみ初版）。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
   - **Run ID**: `20260321-145746-1455`（Pi5）/ `20260321-150253-8405`（raspberrypi4）/ `20260321-150735-6173`（raspi4-robodrill01）、いずれも success。
-  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21、Mac から実行）。
+  - **下ペイン右端ホバー・開閉と絞り込み分離**の本番反映は別ブランチ **`feat/manual-order-lower-pane-toolbar-hover`**（Run ID・Phase12 は [下ペイン帯ホバー節](#manual-order-lower-pane-toolbar-hover-2026-03-21)）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（上記各デプロイ後に再実行）。
 - **UI（実機/VNC・推奨）**:
   - `/kiosk/production-schedule/manual-order` で上ペイン資源が割当と一致すること、Location 行の工場名重複が無いこと、下ペイン見出し行**右端アイコン**へマウスを乗せて帯が展開し、パネル外に出すと遅延後に折りたたまれることを確認（Phase12 はブラウザを開かない）。絞り込み有無で帯が常時開いたままにならないこと。
 - **Troubleshooting**:
   - **下ペイン帯が開かない**: タッチのみ端末ではホバーできない（最上段メニューと同様 **マウス前提**）。**右端のスライダー型アイコン**（十分な hit area）へポインタを載せる。
   - **上ペインに想定外の資源が無い**: 割当モーダルで登録した CD のみが v2 overview に載る。DB に残る割当外の行は下ペイン一覧（別クエリ）で確認。
+
+<a id="manual-order-lower-pane-toolbar-hover-2026-03-21"></a>
+
+## 手動順番 下ペイン ツールバー帯 右端ホバー展開（2026-03-21）
+
+- **Context**:
+  - 下ペイン帯の展開を `hasScheduleFilterQuery` と OR すると、絞り込み有効時に常時展開となり上ペイン（ヘッダーはホバーのみ）と挙動が揃わない。細い `h-2` ホットゾーンは実機で発見しづらい。
+- **Fix（仕様）**:
+  - **Web**: [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) が見出し行（タイトル・ステータス・**右端トリガー**）と `max-height` 折りたたみ枠を担当。子は `children` で注入（SOLID: ページはフック＋業務 UI のみ）。**見た目の開閉**は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の `isVisible` のみ。`hasScheduleFilterQuery` は [`useKioskProductionSchedule`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx) の `enabled`・空状態「検索してください」・`showFetching` 等にのみ使用。Vitest: [`ManualOrderLowerPaneCollapsibleToolbar.test.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.test.tsx)。
+- **Deploy / verify（実績、2026-03-21）**:
+  - ブランチ **`feat/manual-order-lower-pane-toolbar-hover`**。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`、`--detach --follow`。
+  - **Run ID**: `20260321-162637-28864`（Pi5）/ `20260321-163112-2184`（raspberrypi4）/ `20260321-163710-15180`（raspi4-robodrill01）、いずれも success。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21、Mac から実行）。
+- **知見**:
+  - 製番／資源のドロップダウンがポータルで body 側に出ると、マウスが折りたたみラッパー外に出て **`mouseleave` により帯が閉じうる**。運用上問題になったらコンポーネント境界で遅延クローズ等を最小追加する（実装計画上のリスク）。
+- **Troubleshooting**:
+  - **帯が開かない**: タッチのみ端末ではホバー不可（最上段メニューと同様 **マウス前提**）。**見出し行右端のスライダー型アイコン**へポインタを載せる。
 
 ## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
 
