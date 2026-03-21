@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { clickByRoleSafe, closeDialogWithEscape } from './helpers';
+import { clickByRoleSafe, closeDialogWithEscape, revealKioskHeader } from './helpers';
 
 test.describe('キオスク画面', () => {
   test('キオスク初期表示でヘッダーとナビゲーションが見える', async ({ page }) => {
@@ -8,6 +8,7 @@ test.describe('キオスク画面', () => {
     await expect(page.getByText(/キオスク端末/i)).toBeVisible();
     // defaultMode により /kiosk/tag または /kiosk/photo へ遷移するが、ヘッダーナビは共通
     await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
+    await revealKioskHeader(page);
     await expect(page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first()).toBeVisible();
     await expect(page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first()).toBeVisible();
   });
@@ -15,6 +16,7 @@ test.describe('キオスク画面', () => {
   test('持出と吊具持出のナビゲーションが動作する', async ({ page }) => {
     await page.goto('/kiosk/tag', { waitUntil: 'networkidle' });
     await expect(page).toHaveURL(/\/kiosk\/tag/);
+    await revealKioskHeader(page);
 
     // 吊具持出へ遷移
     const riggingLink = page.getByRole('link', { name: '吊具 持出' }).first();
@@ -24,6 +26,7 @@ test.describe('キオスク画面', () => {
     await expect(page).toHaveURL(/\/kiosk\/rigging\/borrow/);
 
     // 持出（タグまたはフォト）へ戻れることを確認
+    await revealKioskHeader(page);
     const borrowLink = page.getByRole('link', { name: '持出' }).first();
     await borrowLink.waitFor({ state: 'visible' });
     await borrowLink.scrollIntoViewIfNeeded();
@@ -38,6 +41,7 @@ test.describe('キオスク画面', () => {
     
     // ヘッダーが表示されるまで待つ
     await expect(page.getByText(/キオスク端末/i)).toBeVisible();
+    await revealKioskHeader(page);
 
     // サイネージボタンをクリックしてモーダルを開く
     const signageButton = page.getByRole('button', { name: 'サイネージ' });
@@ -50,6 +54,7 @@ test.describe('キオスク画面', () => {
     await closeDialogWithEscape(page);
     await expect(page.getByText('サイネージプレビュー')).toBeHidden({ timeout: 5000 });
 
+    await revealKioskHeader(page);
     // 電源メニューを開く
     const powerButton = page.getByLabel('電源メニュー');
     await powerButton.waitFor({ state: 'visible' });

@@ -42,11 +42,14 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
       env: {
+        // apps/api/.env が NODE_ENV=production の場合、CORS が無効化され Web(4173)→API(8080) の preflight が 404 になる。
+        // E2E では development に固定し、ローカルでも CI と同様にクロスオリジンを許可する。
+        NODE_ENV: 'development',
         DATABASE_URL: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return',
         JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'test-access-secret-1234567890',
         JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'test-refresh-secret-1234567890',
-        // NODE_ENVを'test'に設定すると、main.tsでサーバーが起動しないため削除
-        // 代わりに、E2Eテスト用の環境変数を使用
+        BACKUP_CONFIG_PATH: process.env.BACKUP_CONFIG_PATH || '/tmp/e2e-backup.json',
+        BACKUP_STORAGE_DIR: process.env.BACKUP_STORAGE_DIR || '/tmp/e2e-backups',
       },
     },
     {
