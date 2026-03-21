@@ -33,9 +33,9 @@ export function ManualOrderOverviewRowBlock({
   if (seiban.length > 0) rowASegments.push({ text: seiban, className: 'font-semibold tabular-nums text-white' });
   if (hincd.length > 0) rowASegments.push({ text: hincd, className: 'font-mono text-slate-200' });
   if (proc.length > 0) rowASegments.push({ text: proc, className: 'text-white/55' });
+  if (part.length > 0) rowASegments.push({ text: part, className: 'min-w-0 truncate text-white/85' });
 
   const rowBSegments: Array<{ text: string; className: string; title?: string }> = [];
-  if (part.length > 0) rowBSegments.push({ text: part, className: 'min-w-0 truncate text-white/85' });
   if (mach.length > 0) rowBSegments.push({ text: mach, className: 'truncate text-slate-400', title: mach });
 
   return (

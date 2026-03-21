@@ -8,7 +8,7 @@ import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
-import { KIOSK_MANUAL_ORDER_PATH_PREFIX } from '../features/kiosk/manualOrder/kioskManualOrderRoutes';
+import { usesKioskImmersiveLayout } from '../features/kiosk/kioskImmersiveLayoutPolicy';
 import { useKioskTopEdgeHeaderReveal } from '../hooks/useKioskTopEdgeHeaderReveal';
 
 export function KioskLayout() {
@@ -19,8 +19,8 @@ export function KioskLayout() {
   const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const isManualOrderLayout = location.pathname.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX);
-  const headerReveal = useKioskTopEdgeHeaderReveal(isManualOrderLayout);
+  const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
+  const headerReveal = useKioskTopEdgeHeaderReveal(immersiveKioskLayout);
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -44,12 +44,12 @@ export function KioskLayout() {
     <div
       className={clsx(
         'bg-slate-800 text-white',
-        isManualOrderLayout ? 'flex h-screen min-h-0 flex-col' : 'min-h-screen'
+        immersiveKioskLayout ? 'flex h-screen min-h-0 flex-col' : 'min-h-screen'
       )}
     >
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
-      {isManualOrderLayout ? (
+      {immersiveKioskLayout ? (
         <div
           className="pointer-events-auto fixed top-0 left-0 right-0 z-[60] h-3"
           onMouseEnter={headerReveal.onHotZoneEnter}
@@ -59,13 +59,13 @@ export function KioskLayout() {
       <header
         className={clsx(
           'border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur',
-          isManualOrderLayout &&
+          immersiveKioskLayout &&
             'fixed top-0 right-0 left-0 z-50 shadow-lg transition-transform duration-200 ease-out',
-          isManualOrderLayout && !headerReveal.isVisible && '-translate-y-full',
-          isManualOrderLayout && headerReveal.isVisible && 'translate-y-0'
+          immersiveKioskLayout && !headerReveal.isVisible && '-translate-y-full',
+          immersiveKioskLayout && headerReveal.isVisible && 'translate-y-0'
         )}
-        onMouseEnter={isManualOrderLayout ? headerReveal.onHeaderMouseEnter : undefined}
-        onMouseLeave={isManualOrderLayout ? headerReveal.onHeaderMouseLeave : undefined}
+        onMouseEnter={immersiveKioskLayout ? headerReveal.onHeaderMouseEnter : undefined}
+        onMouseLeave={immersiveKioskLayout ? headerReveal.onHeaderMouseLeave : undefined}
       >
         <KioskHeader
           clientKey={clientKey}
@@ -78,7 +78,7 @@ export function KioskLayout() {
       <main
         className={clsx(
           'flex flex-col gap-4 px-4 py-4',
-          isManualOrderLayout ? 'min-h-0 flex-1' : 'h-[calc(100vh-6rem)]'
+          immersiveKioskLayout ? 'min-h-0 flex-1' : 'h-[calc(100vh-6rem)]'
         )}
       >
         <h1 className="sr-only">キオスク</h1>

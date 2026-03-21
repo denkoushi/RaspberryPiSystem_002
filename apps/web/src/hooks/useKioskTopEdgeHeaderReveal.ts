@@ -10,7 +10,7 @@ export type KioskTopEdgeHeaderRevealHandlers = {
 };
 
 /**
- * 手動順番などで最上段ヘッダーをデフォルト非表示にし、上端ホバーで表示する。
+ * 沉浸式キオスク（`usesKioskImmersiveLayout` が true のルート）で最上段ヘッダーを既定非表示にし、上端ホバーで表示する。
  * マウス操作前提（タッチは未対応）。
  */
 export function useKioskTopEdgeHeaderReveal(enabled: boolean): KioskTopEdgeHeaderRevealHandlers {

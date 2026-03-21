@@ -192,6 +192,28 @@ category: knowledge-base
 - **Troubleshooting**:
   - **帯が開かない**: タッチのみ端末ではホバー不可（最上段メニューと同様 **マウス前提**）。**見出し行右端のスライダー型アイコン**へポインタを載せる。
 
+<a id="kiosk-immersive-allowlist-manual-order-row-2026-03-21"></a>
+
+## キオスク沉浸式 allowlist 拡張 + 手動順番上ペイン行（品名を工順直後）（2026-03-21）
+
+- **Context**:
+  - 沉浸式（上端ホバーで `KioskLayout` 最上段をリビール）は当初 **手動順番ルートのみ** としていたが、タグ持出・計測/吊具持出・**生産スケジュール本体**・**進捗一覧**でも操作領域を広げたい要望があった。
+  - 手動順番上ペインの行表示で、**品名を工順の直後（1行目）**に寄せ、**2行目は機種名のみ**とするレイアウトに変更した（現場の視線移動を減らす）。
+- **Fix（仕様）**:
+  - **沉浸式の単一判定源**: [`kioskImmersiveLayoutPolicy.ts`](../../apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts) の `usesKioskImmersiveLayout(pathname)`。[`KioskLayout.tsx`](../../apps/web/src/layouts/KioskLayout.tsx) がこれを参照し、該当ルートで `flex` 沉浸式＋上端リビールを有効化。allowlist・除外は [KB-311](./KB-311-kiosk-immersive-header-allowlist.md) を参照。
+  - **手動順番行**: [`presentManualOrderRow`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) — **Row A**: 製番·品番·工順·品名（いずれかが空なら省略）、**Row B**: `normalizeMachineName` 適用済みの機種名のみ。Vitest: [`manualOrderRowPresentation.test.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.test.ts)。UI: [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。
+  - **E2E**: 沉浸式でヘッダー非表示のままナビを叩くと失敗するため、[`kiosk-smoke.spec.ts`](../../e2e/smoke/kiosk-smoke.spec.ts) に **`revealKioskHeader()`**（上端ホバー相当）を追加。
+- **Deploy / verify（実績、2026-03-21）**:
+  - ブランチ **`feat/kiosk-immersive-layout-manual-order-row`**。[deployment.md](../guides/deployment.md) 標準。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**・リソース僅少のため Pi3 は専用手順）、`--limit` で **1台ずつ順番**。
+  - **Run ID**: `20260321-192700-29456`（Pi5 / server）/ `20260321-193059-19711`（raspberrypi4）/ `20260321-193547-13867`（raspi4-robodrill01）、いずれも success。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21、Tailscale 経由で実施）。
+- **知見**:
+  - ルート追加時は **ポリシー＋Vitest** を同時更新しないと、沉浸式の有無がブレる（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md)）。
+  - ローカル Web テストで `NODE_ENV=production` が残ると React `act(...)` 警告・失敗が出ることがある → **`NODE_ENV=test`** を明示して `pnpm --filter @raspi-system/web test` を実行。
+- **Troubleshooting**:
+  - **某画面だけヘッダーが常時出る / 常に隠れる**: `usesKioskImmersiveLayout` の allowlist と pathname（末尾 `/` 正規化）を確認。`/kiosk/production-schedule` は **完全一致**、手動順番・進捗一覧は **接頭辞**。
+  - **Phase12 はブラウザを開かない**: allowlist 各 URL の上端リビール・手動順番の Row A/B は **実機または Pi5 経由 VNC** で目視（Mac 直 `https` は自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
+
 ## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
 
 - **Context**:
@@ -241,7 +263,7 @@ category: knowledge-base
   - 検索条件は専用 storage key に分離し、既存生産スケジュール画面と干渉しないようにした。
 - **UX/State**:
   - 編集中端末は**該当カード**のヘッダー行に「編集中」と **「編集」** ボタンで示す（グローバル帯バナーは廃止）。
-  - **手動順番ルート**ではキオスク最上段メニュー（`KioskLayout` ヘッダー）は既定で非表示。マウスを画面上端付近へ寄せるとスライド表示（`useKioskTopEdgeHeaderReveal`）。タッチ専用代替は未実装。
+  - **沉浸式 allowlist** に含まれるルート（手動順番・進捗一覧・タグ/計測/吊具持出・生産スケジュール本体等。詳細は [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)）では、キオスク最上段メニュー（`KioskLayout` ヘッダー）を既定で非表示にし、マウスを画面上端付近へ寄せるとスライド表示（`useKioskTopEdgeHeaderReveal`）。タッチ専用代替は未実装。
   - **下ペイン**の `ProductionScheduleToolbar` と資源帯は、[`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) で **既定折りたたみ**、見出し行**右端ホットゾーン**へマウスを乗せると展開（`useTimedHoverReveal`）。**開閉は絞り込み条件と独立**（一覧取得の有効化は `hasScheduleFilterQuery`）。タッチのみ端末ではホバーできないため帯が畳んだままになりうる（最上段メニューと同様 **マウス前提**）。
   - 非編集中カードは読める程度にグレーアウト。
   - 保存中はカード単位で軽いローディング、失敗はカード強調 + 下ペイン上部バーで通知。
@@ -250,8 +272,8 @@ category: knowledge-base
   - **ルート**: `/kiosk/production-schedule/manual-order`（`App.tsx`）。**ナビ**: `KioskHeader` に「手動順番」（生産スケジュールと進捗一覧の間）。
   - **データ**: 上ペインは `site-devices` + `manual-order-overview` を `useManualOrderPageController` で統合。下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable`。
   - **上辺1行（余白削減）**: `ManualOrderOverviewPane` に `siteToolbar`（手動順番見出し・工場 `<select>`）を渡し、**全体把握**・**N 端末**と同一フレックス行にまとめる（旧2段ヘッダを廃止）。重複していた「端末一覧: N」表記は **N 端末**に一本化。
-  - **行表示のプレゼンテーション層（SOLID 寄せ）**: [`manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（純関数・Vitest）。**行ブロックは2行**: 1行目＝製番·品番·工順、2行目＝品名·機種名。機種名は [`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts)（半角大文字）で他画面と整合。UI は [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。**端末カード最上段**は [`ManualOrderDeviceCardHeaderRow.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx)（Location·先頭資源CD·件数·編集中·編集）。複数資源時は先頭のみヘッダー1行に含め、2件目以降はブロック内に `資源CD·件数` のみ。上ペイン本文の `text-xs` は [`manualOrderOverviewTypography.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewTypography.ts)。**カード Location 行の重複削減**: 選択中工場の `siteKey` と一致する `{siteKey} - ` プレフィックスだけを [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) で集約）。グリッド列数は [`ManualOrderOverviewPane.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx)（例: `md:grid-cols-4` / `xl:grid-cols-6` でカード幅を圧縮）。パス接頭辞定数は [`kioskManualOrderRoutes.ts`](../../apps/web/src/features/kiosk/manualOrder/kioskManualOrderRoutes.ts)。上ペイン統合ヘッダは [`ManualOrderPaneHeader.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)、工場選択は [`ManualOrderSiteToolbar.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderSiteToolbar.tsx)。
-  - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName` / `partName`（API 解決経路は従来どおり上記サービス参照）。キオスク上ペインの**行ブロック表示**は `presentManualOrderRow` により **1行目: 製番·品番·工順**、**2行目: 品名·機種名**（機種は `normalizeMachineName`）。空セグメントは省略。**本文フォントは生産スケジュール一覧の `text-xs` と同じ。** `assignedCount` 等の集計は従来どおり。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。静的プレビューは実装と乖離しうるため [design-previews](../design-previews/README.md) を参照。
+  - **行表示のプレゼンテーション層（SOLID 寄せ）**: [`manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（純関数・Vitest）。**行ブロックは2行（2026-03-21 更新）**: **Row A**＝製番·品番·**工順·品名**（空は省略）、**Row B**＝**機種名のみ**（[`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts) で半角大文字）。UI は [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。**端末カード最上段**は [`ManualOrderDeviceCardHeaderRow.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx)（Location·先頭資源CD·件数·編集中·編集）。複数資源時は先頭のみヘッダー1行に含め、2件目以降はブロック内に `資源CD·件数` のみ。上ペイン本文の `text-xs` は [`manualOrderOverviewTypography.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewTypography.ts)。**カード Location 行の重複削減**: 選択中工場の `siteKey` と一致する `{siteKey} - ` プレフィックスだけを [`stripSitePrefixFromDeviceLabel`](../../apps/web/src/features/kiosk/manualOrder/manualOrderDeviceDisplayLabel.ts) で除去（[`useManualOrderPageController`](../../apps/web/src/features/kiosk/productionSchedule/useManualOrderPageController.ts) で集約）。グリッド列数は [`ManualOrderOverviewPane.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx)（例: `md:grid-cols-4` / `xl:grid-cols-6` でカード幅を圧縮）。パス接頭辞定数は [`kioskManualOrderRoutes.ts`](../../apps/web/src/features/kiosk/manualOrder/kioskManualOrderRoutes.ts)。上ペイン統合ヘッダは [`ManualOrderPaneHeader.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)、工場選択は [`ManualOrderSiteToolbar.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderSiteToolbar.tsx)。沉浸式 allowlist・上端リビールは [KB-311](./KB-311-kiosk-immersive-header-allowlist.md) / [沉浸式拡張節](#kiosk-immersive-allowlist-manual-order-row-2026-03-21)。
+  - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName` / `partName`（API 解決経路は従来どおり上記サービス参照）。キオスク上ペインの**行ブロック表示**は `presentManualOrderRow` により **Row A: 製番·品番·工順·品名**、**Row B: 機種名のみ**（2026-03-21）。空セグメントは省略。**本文フォントは生産スケジュール一覧の `text-xs` と同じ。** `assignedCount` 等の集計は従来どおり。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。静的プレビューは実装と乖離しうるため [design-previews](../design-previews/README.md) を参照。
   - **検索条件**: `useProductionScheduleSearchConditionsWithStorageKey` により **専用 localStorage キー**で通常の生産スケジュールページと干渉しない。
   - **登録製番（検索履歴）・search-state（2026-03-19 実装）**:
     - 通常の `ProductionSchedulePage` と同様、`GET/PUT .../kiosk/production-schedule/search-state`（共有ストレージ）と [`useSharedSearchHistory`](../../apps/web/src/features/kiosk/productionSchedule/useSharedSearchHistory.ts) を `ProductionScheduleManualOrderPage` に配線。
@@ -265,7 +287,7 @@ category: knowledge-base
   - **追従（登録製番履歴共有 + CI/テスト安定化）**: ブランチ `feat/kiosk-manual-order-shared-search-history`。同じく Pi5 → raspberrypi4 → raspi4-robodrill01 を1台ずつ。**デプロイ Run ID 例**: `20260320-151334-11088`（Pi5）/ `20260320-152207-21899`（raspberrypi4）/ `20260320-152629-30597`（raspi4-robodrill01）、いずれも **exit 0 / success**。
   - **main 反映（overview 行明細 `rows[]` + 上ペイン高密度）**: ブランチ **`main`**（コミット例: `feat(kiosk): manual-order-overview に行明細 rows[] と上ペイン高密度表示`）。**CI**: GitHub Actions 成功（例: Run `23332683133`）。**デプロイ**: 対象 Pi5 + Pi4×2 のみ（Pi3 除外）、**1台ずつ順番**（`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01`）。**Run ID 例**: `20260320-175411-21044` / `20260320-180217-22594` / `20260320-180649-2465`（いずれも success）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` — **PASS 27 / WARN 0 / FAIL 0**（`manual-order-overview` v2 は `siteKey` 導出付きで検証）。
-  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、(1) **最上段メニュー**は上端ホバーで表示できること・他キオスク画面では従来表示、(2) **「編集」**で端末切替・下ペイン編集・保存フィードバック、(3) 登録製番履歴共有・製番ドロップダウン機種名、(4) 上ペイン行が **製番・品番・工順 / 品名・機種名** の2行であること、を確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
+  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、(1) **最上段メニュー**は上端ホバーで表示できること（沉浸式 allowlist 拡張後は **タグ持出・計測/吊具・生産スケジュール本体・進捗一覧** でも同様。除外例は [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)）、(2) **「編集」**で端末切替・下ペイン編集・保存フィードバック、(3) 登録製番履歴共有・製番ドロップダウン機種名、(4) 上ペイン行が **製番·品番·工順·品名（1行目）/ 機種名のみ（2行目）** であること、を確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
   - **注記（`rows[]` と空データ）**: device-scope v2 で `manual-order-overview?siteKey=...` の **`resources` が 0 件**のとき、API 上は `rows[]` の中身を検証できない。Phase12 の合格と、手動UIの「表示のみ」で代替可（データあり環境で再確認）。
 - **ローカル品質ゲート（開発時）**:
   - `pnpm --filter @raspi-system/web lint` / `build` / `test`（Vitest）。
