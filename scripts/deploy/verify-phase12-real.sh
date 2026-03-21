@@ -170,6 +170,8 @@ except Exception:
   MANUAL_ORDER_V2_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview?siteKey=${SITE_ENC}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
   check_contains "manual-order-overview API (v2 devices[])" "${MANUAL_ORDER_V2_JSON}" '"devices"'
   check_contains "manual-order-overview API (v2 siteKey)" "${MANUAL_ORDER_V2_JSON}" '"siteKey"'
+  MANUAL_ORDER_ASSIGN_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/manual-order-resource-assignments?siteKey=${SITE_ENC}" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+  check_contains "manual-order-resource-assignments API" "${MANUAL_ORDER_ASSIGN_JSON}" '"assignments"'
 else
   log_fail "manual-order-overview API" "v1/v2 いずれの形にも一致しません"
 fi

@@ -1,18 +1,22 @@
+import axios from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useKioskProductionSchedule,
   useKioskProductionScheduleHistoryProgress,
+  useKioskProductionScheduleManualOrderResourceAssignments,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleProcessingTypeOptions,
   useKioskProductionScheduleResources,
   useKioskProductionScheduleSearchState,
+  useUpdateKioskProductionScheduleManualOrderResourceAssignments,
   useUpdateKioskProductionScheduleSearchState
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { ManualOrderOverviewPane } from '../../components/kiosk/manualOrder/ManualOrderOverviewPane';
+import { ManualOrderResourceAssignmentModal } from '../../components/kiosk/manualOrder/ManualOrderResourceAssignmentModal';
 import { ManualOrderSiteToolbar } from '../../components/kiosk/manualOrder/ManualOrderSiteToolbar';
 import { ProductionOrderSearchModal } from '../../components/kiosk/ProductionOrderSearchModal';
 import { ProductionScheduleResourceFilterDropdown } from '../../components/kiosk/ProductionScheduleResourceFilterDropdown';
@@ -48,6 +52,9 @@ import { useLocalStorage } from '../../hooks/useLocalStorage';
 import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
 
 const NOTE_MAX_LENGTH = 100;
+
+const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
+  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
 const MANUAL_ORDER_PAGE_SEARCH_STORAGE_KEY = 'manual-order-page-search-conditions';
 const MANUAL_ORDER_PAGE_SORT_MODE_STORAGE_KEY = 'manual-order-page-sort-mode';
 const DUE_DATE_COLUMN_WIDTH = 110;
@@ -136,6 +143,8 @@ export function ProductionScheduleManualOrderPage() {
     'manual'
   );
   const [selectedOrderNumbers, setSelectedOrderNumbers] = useState<string[]>([]);
+  const [assignmentModalDeviceKey, setAssignmentModalDeviceKey] = useState<string | null>(null);
+  const [assignmentSaveError, setAssignmentSaveError] = useState<string | null>(null);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [keyboardValue, setKeyboardValue] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -201,6 +210,11 @@ export function ProductionScheduleManualOrderPage() {
     pauseRefetch
   });
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch });
+  const manualOrderResourceAssignmentsQuery = useKioskProductionScheduleManualOrderResourceAssignments(
+    MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED ? siteKey : undefined,
+    { enabled: MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED && Boolean(siteKey.trim()) }
+  );
+  const updateResourceAssignments = useUpdateKioskProductionScheduleManualOrderResourceAssignments();
   const processingTypeOptionsQuery = useKioskProductionScheduleProcessingTypeOptions({ pauseRefetch });
   const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch });
   const historyProgressQuery = useKioskProductionScheduleHistoryProgress({ pauseRefetch });
@@ -327,6 +341,66 @@ export function ProductionScheduleManualOrderPage() {
       }
     );
   }, [resourcesQuery.data?.resourceItems, resourcesQuery.data?.resources, showCuttingResources, showGrindingResources]);
+
+  const modalInitialResourceCds = useMemo(() => {
+    if (!assignmentModalDeviceKey || !manualOrderResourceAssignmentsQuery.data?.assignments) return [];
+    const found = manualOrderResourceAssignmentsQuery.data.assignments.find(
+      (a) => a.deviceScopeKey === assignmentModalDeviceKey
+    );
+    return found?.resourceCds ?? [];
+  }, [assignmentModalDeviceKey, manualOrderResourceAssignmentsQuery.data?.assignments]);
+
+  const resolveResourceCdInUseByOther = useCallback(
+    (resourceCd: string) => {
+      const list = manualOrderResourceAssignmentsQuery.data?.assignments ?? [];
+      for (const a of list) {
+        if (a.deviceScopeKey === assignmentModalDeviceKey) continue;
+        if (a.resourceCds.includes(resourceCd)) return a.deviceScopeKey;
+      }
+      return undefined;
+    },
+    [manualOrderResourceAssignmentsQuery.data?.assignments, assignmentModalDeviceKey]
+  );
+
+  const assignmentModalDeviceLabel = useMemo(() => {
+    if (!assignmentModalDeviceKey) return '';
+    const card = deviceCards.find((d) => d.deviceScopeKey === assignmentModalDeviceKey);
+    return card?.label?.trim() || assignmentModalDeviceKey;
+  }, [assignmentModalDeviceKey, deviceCards]);
+
+  const closeResourceAssignmentModal = useCallback(() => {
+    setAssignmentModalDeviceKey(null);
+    setAssignmentSaveError(null);
+  }, []);
+
+  const saveResourceAssignment = useCallback(
+    (resourceCds: string[]) => {
+      if (!assignmentModalDeviceKey) return;
+      setAssignmentSaveError(null);
+      updateResourceAssignments.mutate(
+        { siteKey, deviceScopeKey: assignmentModalDeviceKey, resourceCds },
+        {
+          onSuccess: () => {
+            setAssignmentModalDeviceKey(null);
+            setAssignmentSaveError(null);
+          },
+          onError: (err: unknown) => {
+            if (axios.isAxiosError(err)) {
+              const data = err.response?.data;
+              const msg =
+                data && typeof data === 'object' && 'message' in data
+                  ? String((data as { message?: string }).message)
+                  : '保存に失敗しました';
+              setAssignmentSaveError(msg);
+              return;
+            }
+            setAssignmentSaveError('保存に失敗しました');
+          }
+        }
+      );
+    },
+    [assignmentModalDeviceKey, siteKey, updateResourceAssignments]
+  );
 
   const prioritizedVisibleResourceCds = useMemo(
     () =>
@@ -579,6 +653,7 @@ export function ProductionScheduleManualOrderPage() {
                     setActiveDeviceScopeKey('');
                     resetSearchConditions();
                     setSelectedOrderNumbers([]);
+                    setAssignmentModalDeviceKey(null);
                     handleSiteChange(next);
                   }}
                 />
@@ -587,6 +662,14 @@ export function ProductionScheduleManualOrderPage() {
               activeDeviceScopeKey={activeDeviceScopeKey}
               statusMap={statusMap}
               onSelectDevice={handleSelectDevice}
+              onOpenResourceAssignment={
+                MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED
+                  ? (key) => {
+                      setAssignmentSaveError(null);
+                      setAssignmentModalDeviceKey(key);
+                    }
+                  : undefined
+              }
               isLoading={siteDevicesQuery.isLoading || overviewQuery.isLoading}
               isError={siteDevicesQuery.isError || overviewQuery.isError}
             />
@@ -762,6 +845,20 @@ export function ProductionScheduleManualOrderPage() {
         canSelectPart={orderSearch.canFetchCandidates}
         isLoading={orderSearch.isLoading}
       />
+      {MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED ? (
+        <ManualOrderResourceAssignmentModal
+          isOpen={assignmentModalDeviceKey !== null}
+          onClose={closeResourceAssignmentModal}
+          deviceLabel={assignmentModalDeviceLabel}
+          candidateResourceCds={visibleResourceCds}
+          resourceNameMap={resourceNameMap}
+          initialResourceCds={modalInitialResourceCds}
+          isSaving={updateResourceAssignments.isPending}
+          saveError={assignmentSaveError}
+          onSave={saveResourceAssignment}
+          resolveInUseByOther={resolveResourceCdInUseByOther}
+        />
+      ) : null}
     </div>
   );
 }

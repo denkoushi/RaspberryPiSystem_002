@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-21
+last-verified: 2026-03-20
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -131,6 +131,25 @@ category: knowledge-base
 - **Troubleshooting**:
   - **Pi5 が detach で先に戻る**: Mac から `update-all-clients.sh` は既定でリモート detach。Pi5 実行後は **`--attach <run_id>`** で Ansible 完了を待ってから Pi4 を走らせるか、**`--foreground`** で最初からブロック実行する。
   - **順序**: Web バンドルは Pi5 の Docker `web` に載るため **必ず Pi5 を先**、続けて各 Pi4（`kiosk-browser` 再起動で新バンドルを取得）。
+
+<a id="manual-order-resource-assignment-2026-03-20"></a>
+
+## 手動順番 上ペイン 資源CD割り当て（DB・API・モーダル）（2026-03-20）
+
+- **Context**:
+  - device-scope v2 で工場内の各端末カードに、表示する資源CDを **複数・優先順** で明示したい。同一資源は1端末のみ。未設定時は上ペインを「資源未割り当て」とし、下ペインの鉛筆先頭資源は overview の先頭資源に追従させる。
+- **Fix（仕様）**:
+  - **DB**: `ProductionScheduleManualOrderResourceAssignment`（`csvDashboardId`, `siteKey`, `deviceScopeKey`, `resourceCd`, `priority`）。`@@unique` で **工場内の資源重複禁止**・端末内の順位・資源の一意性を担保。
+  - **API**（`KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED` 時のみ有効、無効時は 404）:
+    - `GET /api/kiosk/production-schedule/manual-order-resource-assignments?siteKey=...` → `{ siteKey, assignments: [{ deviceScopeKey, resourceCds[] }] }`
+    - `PUT /api/kiosk/production-schedule/manual-order-resource-assignments` → body `{ siteKey, deviceScopeKey, resourceCds[] }`（端末単位の全置換）。他端末が使用中の資源を奪おうとした場合は **`409` / `RESOURCE_ALREADY_ASSIGNED`**。
+  - **overview 統合**: [`listDueManagementManualOrderOverviewV2`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) が **登録端末すべて** を `devices[]` に出し、**割当行が無い端末**は `resources: []`（資源未割り当て）。割当がある端末は [`mergeManualOrderOverviewResourcesWithAssignmentOrder`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) で **割当順優先・行なしは空 `rows[]`・割当外の既存集計は末尾**。**レガシー**（`location === siteKey`）は割当0件のとき従来どおり行データから集計（後方互換）。
+  - **Web**: カードヘッダーに **「資源」**（[`ManualOrderResourceAssignmentModal`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderResourceAssignmentModal.tsx)）。候補は既存 `GET .../resources` 相当（ページの `visibleResourceCds`）。保存成功で **assignments + manual-order-overview** を invalidate。
+- **Verification**:
+  - API: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/merge-manual-order-resource-assignments.test.ts`
+  - 実機一括: `./scripts/deploy/verify-phase12-real.sh`（v2 分岐で `manual-order-resource-assignments` の `assignments` を検証）
+- **Troubleshooting**:
+  - **409**: 同じ工場でその資源は既に別端末に割り当て済み。先に相手端末の割り当てを外す。
 
 ## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
 

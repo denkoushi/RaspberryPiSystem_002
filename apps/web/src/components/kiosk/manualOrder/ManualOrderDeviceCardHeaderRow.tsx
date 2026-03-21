@@ -9,6 +9,8 @@ type Props = {
   assignedCount?: number;
   isActive: boolean;
   onEdit: () => void;
+  /** 資源CD割り当てモーダル（手動順番 v2） */
+  onResourceSettings?: () => void;
 };
 
 /**
@@ -19,7 +21,8 @@ export function ManualOrderDeviceCardHeaderRow({
   resourceCd,
   assignedCount,
   isActive,
-  onEdit
+  onEdit,
+  onResourceSettings
 }: Props) {
   const hasResource = Boolean(resourceCd?.trim().length);
   const cd = resourceCd?.trim() ?? '';
@@ -47,6 +50,16 @@ export function ManualOrderDeviceCardHeaderRow({
         <span className="shrink-0 text-xs font-semibold text-amber-200" aria-current="true">
           編集中
         </span>
+      ) : null}
+      {onResourceSettings ? (
+        <button
+          type="button"
+          onClick={onResourceSettings}
+          className="shrink-0 rounded border border-cyan-500/40 bg-cyan-500/15 px-2 py-1 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/25"
+          aria-label={`${locationLine} の資源割り当て`}
+        >
+          資源
+        </button>
       ) : null}
       <button
         type="button"

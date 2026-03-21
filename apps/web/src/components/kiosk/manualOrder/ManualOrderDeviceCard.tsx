@@ -15,6 +15,7 @@ type Props = {
   isDimmed: boolean;
   status: 'idle' | 'saving' | 'error';
   onSelect: (deviceScopeKey: string) => void;
+  onOpenResourceAssignment?: (deviceScopeKey: string) => void;
 };
 
 export function ManualOrderDeviceCard({
@@ -24,7 +25,8 @@ export function ManualOrderDeviceCard({
   isActive,
   isDimmed,
   status,
-  onSelect
+  onSelect,
+  onOpenResourceAssignment
 }: Props) {
   const locationLine = label.trim().length > 0 ? label.trim() : deviceScopeKey.trim();
   const firstResource = resources[0];
@@ -47,6 +49,9 @@ export function ManualOrderDeviceCard({
         assignedCount={firstResource?.assignedCount}
         isActive={isActive}
         onEdit={() => onSelect(deviceScopeKey)}
+        onResourceSettings={
+          onOpenResourceAssignment ? () => onOpenResourceAssignment(deviceScopeKey) : undefined
+        }
       />
 
       {status === 'saving' ? <p className="mb-2 text-amber-200">保存中…</p> : null}
@@ -54,7 +59,7 @@ export function ManualOrderDeviceCard({
 
       <div className="space-y-2">
         {resources.length === 0 ? (
-          <p className="rounded bg-slate-800 px-3 py-2 text-white/60">手動順番は未設定です</p>
+          <p className="rounded bg-slate-800 px-3 py-2 text-white/60">資源未割り当て</p>
         ) : (
           resources.map((resource, index) => {
             const rows = resource.rows ?? [];
@@ -81,7 +86,7 @@ export function ManualOrderDeviceCard({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-white/45">行データを取得できませんでした</p>
+                  <p className="text-white/45">未設定</p>
                 )}
               </div>
             );

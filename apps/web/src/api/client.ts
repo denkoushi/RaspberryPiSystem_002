@@ -884,6 +884,32 @@ export async function getKioskProductionScheduleManualOrderSiteDevices(siteKey: 
   return data;
 }
 
+export interface ManualOrderResourceAssignmentDevice {
+  deviceScopeKey: string;
+  resourceCds: string[];
+}
+
+export async function getKioskProductionScheduleManualOrderResourceAssignments(siteKey: string) {
+  const { data } = await api.get<{
+    siteKey: string;
+    assignments: ManualOrderResourceAssignmentDevice[];
+  }>('/kiosk/production-schedule/manual-order-resource-assignments', { params: { siteKey } });
+  return data;
+}
+
+export async function putKioskProductionScheduleManualOrderResourceAssignments(payload: {
+  siteKey: string;
+  deviceScopeKey: string;
+  resourceCds: string[];
+}) {
+  const { data } = await api.put<{
+    siteKey: string;
+    deviceScopeKey: string;
+    resourceCds: string[];
+  }>('/kiosk/production-schedule/manual-order-resource-assignments', payload);
+  return data;
+}
+
 export async function updateKioskProductionScheduleDueManagementGlobalRank(payload: {
   orderedFseibans: string[];
   targetLocation?: string;

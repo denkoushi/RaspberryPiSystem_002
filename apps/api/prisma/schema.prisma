@@ -695,6 +695,23 @@ model ProductionScheduleOrderAssignment {
   @@index([csvDashboardId, siteKey])
 }
 
+/// 手動順番（キオスク）上ペイン: 端末ごとの資源CD割り当て（複数・優先順）。工場単位で資源の重複は禁止。
+model ProductionScheduleManualOrderResourceAssignment {
+  id               String   @id @default(uuid())
+  csvDashboardId   String
+  siteKey          String
+  deviceScopeKey   String
+  resourceCd       String
+  priority         Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([csvDashboardId, siteKey, resourceCd], map: "ps_mo_res_assign_site_resource_cd_key")
+  @@unique([csvDashboardId, deviceScopeKey, priority], map: "ps_mo_res_assign_device_priority_key")
+  @@unique([csvDashboardId, deviceScopeKey, resourceCd], map: "ps_mo_res_assign_device_resource_cd_key")
+  @@index([csvDashboardId, siteKey])
+}
+
 model ProductionScheduleProgress {
   // 1:1で固定（csvDashboardRowIdを主キーにすることで、DB側で別ID生成が不要）
   csvDashboardRowId String   @id

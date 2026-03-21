@@ -12,6 +12,8 @@ type Props = {
   activeDeviceScopeKey: string;
   statusMap: Record<string, 'idle' | 'saving' | 'error'>;
   onSelectDevice: (deviceScopeKey: string) => void;
+  /** deviceScope v2: 資源割り当てモーダル */
+  onOpenResourceAssignment?: (deviceScopeKey: string) => void;
   isLoading: boolean;
   isError: boolean;
 };
@@ -22,6 +24,7 @@ export function ManualOrderOverviewPane({
   activeDeviceScopeKey,
   statusMap,
   onSelectDevice,
+  onOpenResourceAssignment,
   isLoading,
   isError
 }: Props) {
@@ -49,6 +52,7 @@ export function ManualOrderOverviewPane({
               isDimmed={hasActive && activeDeviceScopeKey !== device.deviceScopeKey}
               status={statusMap[device.deviceScopeKey] ?? 'idle'}
               onSelect={onSelectDevice}
+              onOpenResourceAssignment={onOpenResourceAssignment}
             />
           ))}
         </div>

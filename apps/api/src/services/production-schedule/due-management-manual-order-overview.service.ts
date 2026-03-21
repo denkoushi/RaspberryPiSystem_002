@@ -225,6 +225,42 @@ const buildManualOrderOverviewResources = (
     });
 };
 
+/**
+ * 手動順番カードの資源割り当て順を反映する。
+ * 1) assignmentOrder の順を優先 2) 割当先だが行が無い資源は空行 3) 割当外の既存集計は末尾
+ */
+export function mergeManualOrderOverviewResourcesWithAssignmentOrder(
+  assignmentOrder: string[],
+  derived: ManualOrderOverviewResource[]
+): ManualOrderOverviewResource[] {
+  const byCd = new Map(derived.map((r) => [r.resourceCd, r]));
+  const used = new Set<string>();
+  const result: ManualOrderOverviewResource[] = [];
+  for (const cd of assignmentOrder) {
+    const existing = byCd.get(cd);
+    if (existing) {
+      result.push(existing);
+    } else {
+      result.push({
+        resourceCd: cd,
+        assignedCount: 0,
+        maxOrderNumber: null,
+        avgGlobalRankGap: null,
+        comparedCount: 0,
+        missingGlobalRankCount: 0,
+        lastUpdatedAt: null,
+        lastUpdatedBy: null,
+        rows: []
+      });
+    }
+    used.add(cd);
+  }
+  for (const r of derived) {
+    if (!used.has(r.resourceCd)) result.push(r);
+  }
+  return result;
+}
+
 export async function listDueManagementManualOrderOverview(params: Params): Promise<ManualOrderOverview> {
   const targetLocation = params.targetLocation.trim();
   const resourceCd = params.resourceCd?.trim();
@@ -340,7 +376,7 @@ export async function listDueManagementManualOrderOverviewV2(params: {
     }
   }
 
-  const [assignments, globalRanks, recentEvents] = await Promise.all([
+  const [assignments, globalRanks, recentEvents, manualResourceAssignmentRows] = await Promise.all([
     prisma.productionScheduleOrderAssignment.findMany({
       where: assignmentWhere,
       select: {
@@ -387,6 +423,17 @@ export async function listDueManagementManualOrderOverviewV2(params: {
         occurredAt: 'desc'
       },
       take: 800
+    }),
+    prisma.productionScheduleManualOrderResourceAssignment.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        siteKey
+      },
+      orderBy: [{ deviceScopeKey: 'asc' }, { priority: 'asc' }],
+      select: {
+        deviceScopeKey: true,
+        resourceCd: true
+      }
     })
   ]);
 
@@ -408,21 +455,53 @@ export async function listDueManagementManualOrderOverviewV2(params: {
     byLocation.set(a.location, list);
   }
 
-  const sortLocationKeys = (keys: string[]): string[] => {
-    const legacyKeys = keys.filter((k) => k === siteKey);
-    const deviceKeys = keys.filter((k) => k !== siteKey).sort((a, b) => a.localeCompare(b, 'ja'));
-    return [...legacyKeys, ...deviceKeys];
-  };
+  const assignmentOrderByDevice = new Map<string, string[]>();
+  for (const row of manualResourceAssignmentRows) {
+    const key = row.deviceScopeKey.trim();
+    const list = assignmentOrderByDevice.get(key) ?? [];
+    list.push(row.resourceCd.trim());
+    assignmentOrderByDevice.set(key, list);
+  }
 
   const devices: ManualOrderOverviewDeviceSlice[] = [];
-  for (const loc of sortLocationKeys([...byLocation.keys()])) {
+
+  const legacyAssignmentOrder = assignmentOrderByDevice.get(MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY) ?? [];
+  const showLegacy =
+    byLocation.has(siteKey) || legacyAssignmentOrder.length > 0;
+  if (showLegacy) {
+    const sliceAssignments = byLocation.get(siteKey) ?? [];
+    const latestMap = collectLatestUpdateByResource(eventRows, siteKey);
+    const resources =
+      legacyAssignmentOrder.length === 0
+        ? buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+        : mergeManualOrderOverviewResourcesWithAssignmentOrder(
+            legacyAssignmentOrder,
+            buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+          );
+    devices.push({
+      deviceScopeKey: MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY,
+      label: 'レガシー（サイト単位・旧データ）',
+      resources
+    });
+  }
+
+  const sortDeviceKeys = (keys: string[]): string[] =>
+    [...keys].sort((a, b) => a.localeCompare(b, 'ja'));
+
+  for (const loc of sortDeviceKeys(registeredDeviceScopeKeys)) {
     const sliceAssignments = byLocation.get(loc) ?? [];
     const latestMap = collectLatestUpdateByResource(eventRows, loc);
-    const resources = buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban);
-    const isLegacySiteRow = loc === siteKey;
+    const assignmentOrder = assignmentOrderByDevice.get(loc) ?? [];
+    const resources =
+      assignmentOrder.length === 0
+        ? []
+        : mergeManualOrderOverviewResourcesWithAssignmentOrder(
+            assignmentOrder,
+            buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+          );
     devices.push({
-      deviceScopeKey: isLegacySiteRow ? MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY : loc,
-      label: isLegacySiteRow ? 'レガシー（サイト単位・旧データ）' : loc,
+      deviceScopeKey: loc,
+      label: loc,
       resources
     });
   }

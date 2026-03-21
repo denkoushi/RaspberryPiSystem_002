@@ -82,6 +82,8 @@ import {
   getKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementManualOrderOverview,
   getKioskProductionScheduleManualOrderSiteDevices,
+  getKioskProductionScheduleManualOrderResourceAssignments,
+  putKioskProductionScheduleManualOrderResourceAssignments,
   getKioskProductionScheduleDueManagementGlobalRankProposal,
   autoGenerateKioskProductionScheduleDueManagementGlobalRank,
   getKioskProductionScheduleDueManagementSeibanDetail,
@@ -556,6 +558,33 @@ export function useKioskProductionScheduleManualOrderSiteDevices(
     queryKey: ['kiosk-production-schedule-manual-order-site-devices', siteKey],
     queryFn: () => getKioskProductionScheduleManualOrderSiteDevices(siteKey!),
     enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0)
+  });
+}
+
+export function useKioskProductionScheduleManualOrderResourceAssignments(
+  siteKey: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-manual-order-resource-assignments', siteKey],
+    queryFn: () => getKioskProductionScheduleManualOrderResourceAssignments(siteKey!),
+    enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0),
+    refetchInterval: 30000
+  });
+}
+
+export function useUpdateKioskProductionScheduleManualOrderResourceAssignments() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ['kiosk-production-schedule', 'write', 'manual-order-resource-assignments'],
+    mutationFn: (payload: { siteKey: string; deviceScopeKey: string; resourceCds: string[] }) =>
+      putKioskProductionScheduleManualOrderResourceAssignments(payload),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-manual-order-resource-assignments', variables.siteKey]
+      });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-manual-order-overview'] });
+    }
   });
 }
 
