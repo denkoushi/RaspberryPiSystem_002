@@ -32,7 +32,7 @@ describe('presentManualOrderRow', () => {
     expect(p!.title).toBe('BA1 · MD1 · 10');
   });
 
-  it('returns row B for part and machine (normalized)', () => {
+  it('returns row A for part and row B for machine (normalized)', () => {
     const p = presentManualOrderRow({
       fseiban: '',
       fhincd: '',
@@ -40,7 +40,7 @@ describe('presentManualOrderRow', () => {
       machineName: 'abc',
       partName: 'シャフト'
     });
-    expect(p!.showRowA).toBe(false);
+    expect(p!.showRowA).toBe(true);
     expect(p!.showRowB).toBe(true);
     expect(p!.mach).toBe('ABC');
     expect(p!.part).toBe('シャフト');
@@ -61,7 +61,7 @@ describe('presentManualOrderRow', () => {
     expect(p!.title).toBe('X軸ベース');
   });
 
-  it('returns row B for part only when machine normalizes to empty', () => {
+  it('returns row A for part only when machine normalizes to empty', () => {
     const p = presentManualOrderRow({
       fseiban: '',
       fhincd: '',
@@ -69,7 +69,8 @@ describe('presentManualOrderRow', () => {
       machineName: '   ',
       partName: '品B'
     });
-    expect(p!.showRowB).toBe(true);
+    expect(p!.showRowA).toBe(true);
+    expect(p!.showRowB).toBe(false);
     expect(p!.mach).toBe('');
     expect(p!.part).toBe('品B');
     expect(p!.title).toBe('品B');

@@ -20,9 +20,9 @@ export type ManualOrderRowPresentation = {
   /** `normalizeMachineName` 適用済み */
   mach: string;
   part: string;
-  /** 1行目: 製番 · 品番 · 工順 */
+  /** 1行目: 製番 · 品番 · 工順 · 品名（空は省略） */
   showRowA: boolean;
-  /** 2行目: 品名 · 機種名 */
+  /** 2行目: 機種名のみ */
   showRowB: boolean;
   /** 行コンテナの title（ツールチップ） */
   title: string;
@@ -38,8 +38,8 @@ export function presentManualOrderRow(fields: ManualOrderRowFields): ManualOrder
   const mach = normalizeMachineName(fields.machineName);
   const part = fields.partName.trim();
 
-  const showRowA = seiban.length > 0 || hincd.length > 0 || proc.length > 0;
-  const showRowB = part.length > 0 || mach.length > 0;
+  const showRowA = seiban.length > 0 || hincd.length > 0 || proc.length > 0 || part.length > 0;
+  const showRowB = mach.length > 0;
 
   if (!showRowA && !showRowB) return null;
 
