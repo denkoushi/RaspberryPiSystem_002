@@ -15,6 +15,7 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { ManualOrderLowerPaneCollapsibleToolbar } from '../../components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar';
 import { ProductionOrderSearchModal } from '../../components/kiosk/ProductionOrderSearchModal';
 import { ProductionScheduleResourceFilterDropdown } from '../../components/kiosk/ProductionScheduleResourceFilterDropdown';
 import { ProductionScheduleResourceFilters } from '../../components/kiosk/ProductionScheduleResourceFilters';
@@ -41,6 +42,7 @@ import {
 import { useProductionScheduleSearchConditions } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useTimedHoverReveal } from '../../hooks/useTimedHoverReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
@@ -262,6 +264,10 @@ export function ProductionSchedulePage() {
     scheduleQuery.isFetching,
     scheduleQuery.isLoading
   ]);
+
+  const searchToolbarReveal = useTimedHoverReveal(true);
+  const searchToolbarExpanded = searchToolbarReveal.isVisible;
+  const searchToolbarStatusMessage = scheduleQuery.isFetching ? '読み込み中…' : null;
 
   const tableColumns: TableColumnDefinition[] = useMemo(
     () => [
@@ -690,71 +696,82 @@ export function ProductionSchedulePage() {
         </div>
       ) : null}
 
-      <ProductionScheduleToolbar
-        inputQuery={inputQuery}
-        onInputChange={(value) => setSearchConditions({ inputQuery: value })}
-        onOpenKeyboard={openKeyboard}
-        onSearch={() => applySearch(inputQuery)}
-        onClear={clearAllFilters}
-        completedCount={completedCount}
-        incompleteCount={incompleteCount}
-        hasNoteOnly={hasNoteOnlyFilter}
-        onToggleHasNoteOnly={() =>
-          setSearchConditions((prev) => ({ hasNoteOnlyFilter: !prev.hasNoteOnlyFilter }))
-        }
-        hasDueDateOnly={hasDueDateOnlyFilter}
-        onToggleHasDueDateOnly={() =>
-          setSearchConditions((prev) => ({ hasDueDateOnlyFilter: !prev.hasDueDateOnlyFilter }))
-        }
-        showGrindingResources={showGrindingResources}
-        onToggleGrindingResources={toggleGrindingResources}
-        showCuttingResources={showCuttingResources}
-        onToggleCuttingResources={toggleCuttingResources}
-        selectedMachineName={selectedMachineName}
-        machineNameOptions={mergedMachineNameOptions}
-        onMachineNameChange={handleMachineNameChange}
-        selectedPartName={selectedPartName}
-        partNameOptions={partNameOptions}
-        onPartNameChange={handlePartNameChange}
-        onOpenOrderSearch={orderSearch.open}
-        isOrderSearchEnabled={isOrderSearchEnabled}
-        sortMode={sortMode}
-        onSortModeChange={setSortMode}
-        canUseManualSort={manualSortEnabled}
-        disabled={scheduleQuery.isFetching || completePending}
-        isFetching={scheduleQuery.isFetching}
-        showFetching={hasQuery}
-      />
+      <ManualOrderLowerPaneCollapsibleToolbar
+        title="検索・資源フィルタ"
+        statusMessage={searchToolbarStatusMessage}
+        expanded={searchToolbarExpanded}
+        onTriggerEnter={searchToolbarReveal.onHotZoneEnter}
+        onPanelMouseEnter={searchToolbarReveal.onHeaderMouseEnter}
+        onPanelMouseLeave={searchToolbarReveal.onHeaderMouseLeave}
+      >
+        <ProductionScheduleToolbar
+          inputQuery={inputQuery}
+          onInputChange={(value) => setSearchConditions({ inputQuery: value })}
+          onOpenKeyboard={openKeyboard}
+          onSearch={() => applySearch(inputQuery)}
+          onClear={clearAllFilters}
+          completedCount={completedCount}
+          incompleteCount={incompleteCount}
+          hasNoteOnly={hasNoteOnlyFilter}
+          onToggleHasNoteOnly={() =>
+            setSearchConditions((prev) => ({ hasNoteOnlyFilter: !prev.hasNoteOnlyFilter }))
+          }
+          hasDueDateOnly={hasDueDateOnlyFilter}
+          onToggleHasDueDateOnly={() =>
+            setSearchConditions((prev) => ({ hasDueDateOnlyFilter: !prev.hasDueDateOnlyFilter }))
+          }
+          showGrindingResources={showGrindingResources}
+          onToggleGrindingResources={toggleGrindingResources}
+          showCuttingResources={showCuttingResources}
+          onToggleCuttingResources={toggleCuttingResources}
+          selectedMachineName={selectedMachineName}
+          machineNameOptions={mergedMachineNameOptions}
+          onMachineNameChange={handleMachineNameChange}
+          selectedPartName={selectedPartName}
+          partNameOptions={partNameOptions}
+          onPartNameChange={handlePartNameChange}
+          onOpenOrderSearch={orderSearch.open}
+          isOrderSearchEnabled={isOrderSearchEnabled}
+          sortMode={sortMode}
+          onSortModeChange={setSortMode}
+          canUseManualSort={manualSortEnabled}
+          disabled={scheduleQuery.isFetching || completePending}
+          isFetching={scheduleQuery.isFetching}
+          showFetching={hasQuery}
+        />
 
-      <ProductionScheduleResourceFilters
-        resourceCds={prioritizedVisibleResourceCds}
-        normalizedResourceCds={normalizedResourceCds}
-        normalizedAssignedOnlyCds={normalizedAssignedOnlyCds}
-        getColorClasses={getResourceColorClasses}
-        onToggleResourceCd={toggleResourceCd}
-        onToggleAssignedOnlyCd={toggleAssignedOnlyCd}
-        getResourceAriaLabel={getResourceAriaLabel}
-        rightActions={
-          <>
-            <ProductionScheduleSeibanFilterDropdown
-              items={seibanFilterItems}
-              selectedCount={selectedSeibanCount}
-              totalCount={seibanFilterItems.length}
-              onToggle={toggleHistoryQuery}
-              onSetAll={setAllHistoryQueries}
-            />
-            <ProductionScheduleResourceFilterDropdown
-              items={resourceFilterItems}
-              selectedCount={selectedResourceCount}
-              assignedOnlySelectedCount={selectedAssignedOnlyCount}
-              onToggleResource={toggleResourceCd}
-              onToggleAssignedOnly={toggleAssignedOnlyCd}
-              onSetAllResource={setAllResourceCds}
-              onSetAllAssignedOnly={setAllAssignedOnlyCds}
-            />
-          </>
-        }
-      />
+        <div className="mt-2">
+          <ProductionScheduleResourceFilters
+            resourceCds={prioritizedVisibleResourceCds}
+            normalizedResourceCds={normalizedResourceCds}
+            normalizedAssignedOnlyCds={normalizedAssignedOnlyCds}
+            getColorClasses={getResourceColorClasses}
+            onToggleResourceCd={toggleResourceCd}
+            onToggleAssignedOnlyCd={toggleAssignedOnlyCd}
+            getResourceAriaLabel={getResourceAriaLabel}
+            rightActions={
+              <>
+                <ProductionScheduleSeibanFilterDropdown
+                  items={seibanFilterItems}
+                  selectedCount={selectedSeibanCount}
+                  totalCount={seibanFilterItems.length}
+                  onToggle={toggleHistoryQuery}
+                  onSetAll={setAllHistoryQueries}
+                />
+                <ProductionScheduleResourceFilterDropdown
+                  items={resourceFilterItems}
+                  selectedCount={selectedResourceCount}
+                  assignedOnlySelectedCount={selectedAssignedOnlyCount}
+                  onToggleResource={toggleResourceCd}
+                  onToggleAssignedOnly={toggleAssignedOnlyCd}
+                  onSetAllResource={setAllResourceCds}
+                  onSetAllAssignedOnly={setAllAssignedOnlyCds}
+                />
+              </>
+            }
+          />
+        </div>
+      </ManualOrderLowerPaneCollapsibleToolbar>
 
       {sortMode === 'manual' && !manualSortEnabled ? (
         <p className="text-xs font-semibold text-amber-300">
