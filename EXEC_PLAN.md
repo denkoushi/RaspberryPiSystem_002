@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-21) **キオスク沉浸式 allowlist 拡張（タグ/計測/吊具/生産スケジュール本体/進捗一覧/手動順番）+ 手動順番上ペイン行（品名を工順直後・2行目は機種のみ）+ E2E `revealKioskHeader`・デプロイ・実機検証・ドキュメント反映・main マージ**: [`kioskImmersiveLayoutPolicy.ts`](./apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts) の `usesKioskImmersiveLayout` を単一判定源に拡張。[`presentManualOrderRow`](./apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) / [`ManualOrderOverviewRowBlock`](./apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。Vitest [`kioskImmersiveLayoutPolicy.test.ts`](./apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.test.ts) / [`manualOrderRowPresentation.test.ts`](./apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.test.ts)。E2E [`kiosk-smoke.spec.ts`](./e2e/smoke/kiosk-smoke.spec.ts) に `revealKioskHeader()`。**デプロイ**: ブランチ `feat/kiosk-immersive-layout-manual-order-row`、Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**）、`--limit` 1台ずつ。**Run ID**: `20260321-192700-29456` / `20260321-193059-19711` / `20260321-193547-13867`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21）。**知見**: ローカル Web テストは `NODE_ENV=test` 推奨（`production` 残留で `act` 系が出うる）。**参照**: [KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) / [KB-297 沉浸式拡張節](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#kiosk-immersive-allowlist-manual-order-row-2026-03-21) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
 - [x] (2026-03-21) **手動順番 下ペイン帯 右端ホバー展開（`ManualOrderLowerPaneCollapsibleToolbar`・開閉と `hasScheduleFilterQuery` 分離）・デプロイ・実機検証・ドキュメント反映・main マージ**: 見出し行右端ホバーでツールバー＋資源帯を展開。Vitest: `ManualOrderLowerPaneCollapsibleToolbar.test.tsx`。**デプロイ**: ブランチ `feat/manual-order-lower-pane-toolbar-hover`、Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`--detach --follow`。**Run ID**: `20260321-162637-28864` / `20260321-163112-2184` / `20260321-163710-15180`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。**main マージ**: [PR #30](https://github.com/denkoushi/RaspberryPiSystem_002/pull/30) merge `9ba0c195`（2026-03-21）。**参照**: [KB-297 下ペイン帯ホバー節](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-lower-pane-toolbar-hover-2026-03-21) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
 - [x] (2026-03-21) **手動順番 ペイン polish（割当のみ overview・ラベル短縮・下ペイン折りたたみ）・デプロイ・実機検証・ドキュメント反映・main マージ**: `mergeManualOrderOverviewResourcesWithAssignmentOrder` は割当1件以上の端末で割当スロットのみ返却（割当外 `derived` は付けない）。空割当時は関数契約で `derived` そのまま。`stripSitePrefixFromDeviceLabel`・`useTimedHoverReveal`・`useKioskTopEdgeHeaderReveal` リファクタ。Vitest: `merge-manual-order-resource-assignments.test.ts` / `manualOrderDeviceDisplayLabel.test.ts`。**デプロイ**: ブランチ `feat/manual-order-pane-assignment-label-toolbar`、Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`--detach --follow`。**Run ID**: `20260321-145746-1455` / `20260321-150253-8405` / `20260321-150735-6173`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。**main マージ**: [PR #29](https://github.com/denkoushi/RaspberryPiSystem_002/pull/29) merge `c1193861`（2026-03-21）。**参照**: [KB-297 ペイン polish 節](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-pane-polish-2026-03-21) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
 - [x] (2026-03-21) **手動順番 上ペイン 資源CD割り当て・デプロイ・実機検証・ドキュメント反映・main マージ**: `ProductionScheduleManualOrderResourceAssignment` と `GET|PUT /api/kiosk/production-schedule/manual-order-resource-assignments`（v2 時のみ・競合 `409 RESOURCE_ALREADY_ASSIGNED`）。`manual-order-overview` は登録端末を全件返し割当順で `resources[]` を合成。Web は `ManualOrderResourceAssignmentModal` とカード **「資源」**。Vitest: `merge-manual-order-resource-assignments.test.ts`。`verify-phase12-real.sh` に assignments 検証を追加。**デプロイ**: ブランチ `feat/manual-order-resource-assignment-ui`、Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`--detach --follow`。**Run ID**: `20260321-111725-4914`（Pi5）/ `20260321-112232-987`（raspberrypi4）/ `20260321-112706-12728`（raspi4-robodrill01）、いずれも success。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-21）。**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-resource-assignment-2026-03-20) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
@@ -1598,12 +1599,23 @@
 
 ## Next Steps（将来のタスク）
 
+### 沉浸式 allowlist 拡張・手動順番行レイアウト main マージ後（2026-03-21）
+
+**概要**: `feat/kiosk-immersive-layout-manual-order-row` を main へ統合。Phase12 **PASS 28/0/0** 済み。残りは **allowlist 全 URL の現地目視**（上端リビール・除外ルートが従来表示であること）と、**手動順番 Row A/B**（製番·品番·工順·品名 / 機種のみ）の確認。
+
+**候補タスク**:
+1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「キオスク沉浸式 allowlist 拡張」行・[KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) の対象表に従い、タグ/計測/吊具/生産スケジュール本体/進捗一覧/手動順番でヘッダー挙動を確認。`/kiosk/production-schedule/due-management` 等 **非沉浸式** のままであること。
+2. **切削除外リスト収束**: 下記「切削除外リスト全件除外の収束」を継続。
+3. **任意**: 沉浸式キオスクの E2E シナリオ拡張（`revealKioskHeader` パターンの再利用）、タッチ端末向けヘッダー操作の要否検討（現状マウス前提）。
+
+**参照**: [KB-297 沉浸式拡張節](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#kiosk-immersive-allowlist-manual-order-row-2026-03-21) / [KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)
+
 ### 手動順番専用ページ main マージ後（2026-03-20）
 
 **概要**: キオスク専用ルート・`rows[]` 行明細 API・順次デプロイ・Phase12 自動検証まで完了。残りは **現地UIの最終確認**（特に **上ペイン行一覧の高密度表示**・`resources[].rows[]` がデータありで反映されること）と、既知の横断課題の継続。
 
 **候補タスク**:
-1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「手動順番 専用ページ」行に従い、ヘッダー遷移・鉛筆・上下ペイン連携・保存/失敗表示・**上ペイン行明細（製番・品番・工順 / 機種・品名）**を確認（Mac 直ブラウザは自己署名で失敗しやすい）。本番で `resources` が空のときは `rows[]` の見え方検証はスキップされうる。
+1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「手動順番 専用ページ」行に従い、ヘッダー遷移・鉛筆・上下ペイン連携・保存/失敗表示・**上ペイン行明細（製番·品番·工順·品名 / 機種名のみ、2026-03-21 レイアウト）**を確認（Mac 直ブラウザは自己署名で失敗しやすい）。本番で `resources` が空のときは `rows[]` の見え方検証はスキップされうる。
 2. **切削除外リスト収束**: 下記「切削除外リスト全件除外の収束」を継続（policy 単一入口・resources API 整合）。
 3. **任意**: 専用ページの E2E smoke シナリオ追加（`client-key`・seed 前提は [Surprises](./EXEC_PLAN.md#surprises--discoveries) の E2E 注記どおり）。
 
