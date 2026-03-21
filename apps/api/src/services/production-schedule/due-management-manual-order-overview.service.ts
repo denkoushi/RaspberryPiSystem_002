@@ -227,14 +227,18 @@ const buildManualOrderOverviewResources = (
 
 /**
  * 手動順番カードの資源割り当て順を反映する。
- * 1) assignmentOrder の順を優先 2) 割当先だが行が無い資源は空行 3) 割当外の既存集計は末尾
+ * - `assignmentOrder` が空: `derived` をそのまま返す（レガシー／単体テスト契約。v2 では割当0件端末は呼び出し側で `[]` を返す）。
+ * - それ以外: `assignmentOrder` の順のみ返す。割当先だが行が無い資源は空 rows のプレースホルダ。
+ *   割当に含めない derived の資源は末尾に付けない（割当 UI が表示対象の唯一のソース）。
  */
 export function mergeManualOrderOverviewResourcesWithAssignmentOrder(
   assignmentOrder: string[],
   derived: ManualOrderOverviewResource[]
 ): ManualOrderOverviewResource[] {
+  if (assignmentOrder.length === 0) {
+    return [...derived];
+  }
   const byCd = new Map(derived.map((r) => [r.resourceCd, r]));
-  const used = new Set<string>();
   const result: ManualOrderOverviewResource[] = [];
   for (const cd of assignmentOrder) {
     const existing = byCd.get(cd);
@@ -253,10 +257,6 @@ export function mergeManualOrderOverviewResourcesWithAssignmentOrder(
         rows: []
       });
     }
-    used.add(cd);
-  }
-  for (const r of derived) {
-    if (!used.has(r.resourceCd)) result.push(r);
   }
   return result;
 }

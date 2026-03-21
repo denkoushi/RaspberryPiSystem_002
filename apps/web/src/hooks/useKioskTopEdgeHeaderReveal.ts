@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 
-const CLOSE_DELAY_MS = 320;
+import { useTimedHoverReveal } from './useTimedHoverReveal';
 
 export type KioskTopEdgeHeaderRevealHandlers = {
   isVisible: boolean;
@@ -14,39 +14,7 @@ export type KioskTopEdgeHeaderRevealHandlers = {
  * マウス操作前提（タッチは未対応）。
  */
 export function useKioskTopEdgeHeaderReveal(enabled: boolean): KioskTopEdgeHeaderRevealHandlers {
-  const [isVisible, setIsVisible] = useState(false);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearCloseTimer = useCallback(() => {
-    if (closeTimerRef.current !== null) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-  }, []);
-
-  const open = useCallback(() => {
-    clearCloseTimer();
-    setIsVisible(true);
-  }, [clearCloseTimer]);
-
-  const scheduleClose = useCallback(() => {
-    clearCloseTimer();
-    closeTimerRef.current = setTimeout(() => {
-      closeTimerRef.current = null;
-      setIsVisible(false);
-    }, CLOSE_DELAY_MS);
-  }, [clearCloseTimer]);
-
-  useEffect(() => {
-    if (!enabled) {
-      clearCloseTimer();
-      setIsVisible(false);
-      return;
-    }
-    return () => {
-      clearCloseTimer();
-    };
-  }, [enabled, clearCloseTimer]);
+  const { open, ...handlers } = useTimedHoverReveal(enabled);
 
   useEffect(() => {
     if (!enabled) return;
@@ -60,25 +28,5 @@ export function useKioskTopEdgeHeaderReveal(enabled: boolean): KioskTopEdgeHeade
     return () => window.removeEventListener('mousemove', onMove);
   }, [enabled, open]);
 
-  const onHotZoneEnter = useCallback(() => {
-    if (!enabled) return;
-    open();
-  }, [enabled, open]);
-
-  const onHeaderMouseEnter = useCallback(() => {
-    if (!enabled) return;
-    open();
-  }, [enabled, open]);
-
-  const onHeaderMouseLeave = useCallback(() => {
-    if (!enabled) return;
-    scheduleClose();
-  }, [enabled, scheduleClose]);
-
-  return {
-    isVisible,
-    onHotZoneEnter,
-    onHeaderMouseEnter,
-    onHeaderMouseLeave
-  };
+  return handlers;
 }
