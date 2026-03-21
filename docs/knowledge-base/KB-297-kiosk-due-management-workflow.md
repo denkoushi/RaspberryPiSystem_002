@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-20
+last-verified: 2026-03-21
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -148,6 +148,10 @@ category: knowledge-base
 - **Verification**:
   - API: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/merge-manual-order-resource-assignments.test.ts`
   - 実機一括: `./scripts/deploy/verify-phase12-real.sh`（v2 分岐で `manual-order-resource-assignments` の `assignments` を検証）
+- **Deploy / verify（実績、2026-03-21）**:
+  - ブランチ **`feat/manual-order-resource-assignment-ui`**。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`--detach --follow`。
+  - **Run ID**: `20260321-111725-4914`（Pi5）/ `20260321-112232-987`（raspberrypi4）/ `20260321-112706-12728`（raspi4-robodrill01）、いずれも success。
+  - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（`manual-order-resource-assignments` の `assignments` 検証を含む）。
 - **Troubleshooting**:
   - **409**: 同じ工場でその資源は既に別端末に割り当て済み。先に相手端末の割り当てを外す。
 
