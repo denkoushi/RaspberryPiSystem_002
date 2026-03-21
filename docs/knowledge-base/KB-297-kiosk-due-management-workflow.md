@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-20
+last-verified: 2026-03-21
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -112,6 +112,25 @@ category: knowledge-base
   - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**。
 - **Troubleshooting**:
   - **`[ERROR] --detach requires RASPI_SERVER_HOST`**: Mac から `--detach` を付けて実行する場合、`RASPI_SERVER_HOST` 未設定で停止する。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` を先に設定（[deployment.md](../guides/deployment.md)「デタッチ実行」、[KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+
+## 手動順番 overview UI（上端ヘッダーリビール・カード密度・グリッド）（2026-03-21）
+
+- **Context**:
+  - 手動順番専用ルートでキオスク最上段メニューを畳みつつ操作領域を確保し、端末カードの情報密度とグリッド列数を調整したい。
+- **Fix（仕様）**:
+  - **ルート限定ヘッダー**: [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) と [`KioskLayout`](../../apps/web/src/layouts/KioskLayout.tsx) で **`/kiosk/production-schedule/manual-order` のときのみ** 既定で `KioskLayout` 最上段を非表示。画面上端付近へポインタを寄せるとスライドイン（タッチ専用代替は未実装）。
+  - **カード**: `ManualOrderActiveDeviceBanner` を廃止。編集状態は [`ManualOrderDeviceCardHeaderRow`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx) / [`ManualOrderDeviceCard`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCard.tsx) の「編集中」表示とグレーアウトで示す。複数資源時は先頭のみヘッダー1行、2件目以降はブロック内に `資源CD·件数`（全体仕様は本ファイル「手動順番 専用ページ」節の Spec を参照）。
+  - **行表示**: [`presentManualOrderRow`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts)（純関数・Vitest [`manualOrderRowPresentation.test.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.test.ts)）。
+  - **グリッド**: [`ManualOrderOverviewPane`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx) で `md:grid-cols-4` / `xl:grid-cols-6`。
+  - **API**: 変更なし（`manual-order-overview` 契約は従来どおり）。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/kiosk-manual-order-overview-ui`**。
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ（[deployment.md](../guides/deployment.md)）。
+  - **Run ID**: `20260321-094548-8867`（Pi5、`--limit server`、既定 detach のため **`./scripts/update-all-clients.sh --attach 20260321-094548-8867`** で完了待機）/ `20260321-095056`（raspberrypi4、`--foreground`）/ `20260321-095528`（raspi4-robodrill01、`--foreground`）。
+  - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**（2026-03-21）。
+- **Troubleshooting**:
+  - **Pi5 が detach で先に戻る**: Mac から `update-all-clients.sh` は既定でリモート detach。Pi5 実行後は **`--attach <run_id>`** で Ansible 完了を待ってから Pi4 を走らせるか、**`--foreground`** で最初からブロック実行する。
+  - **順序**: Web バンドルは Pi5 の Docker `web` に載るため **必ず Pi5 を先**、続けて各 Pi4（`kiosk-browser` 再起動で新バンドルを取得）。
 
 ## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
 
