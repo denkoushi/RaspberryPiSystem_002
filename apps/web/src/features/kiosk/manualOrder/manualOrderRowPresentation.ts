@@ -2,6 +2,8 @@
  * 手動順番 overview 行の表示ルール（純関数）。UI / React に依存しない。
  */
 
+import { normalizeMachineName } from '../productionSchedule/machineName';
+
 export type ManualOrderRowFields = {
   fseiban: string;
   fhincd: string;
@@ -15,11 +17,13 @@ export type ManualOrderRowPresentation = {
   seiban: string;
   hincd: string;
   proc: string;
+  /** `normalizeMachineName` 適用済み */
   mach: string;
   part: string;
-  showLine1: boolean;
-  showLine2: boolean;
-  showLine3: boolean;
+  /** 1行目: 製番 · 品番 · 工順 */
+  showRowA: boolean;
+  /** 2行目: 品名 · 機種名 */
+  showRowB: boolean;
   /** 行コンテナの title（ツールチップ） */
   title: string;
 };
@@ -31,14 +35,13 @@ export function presentManualOrderRow(fields: ManualOrderRowFields): ManualOrder
   const seiban = fields.fseiban.trim();
   const hincd = fields.fhincd.trim();
   const proc = fields.processLabel.trim();
-  const mach = fields.machineName.trim();
+  const mach = normalizeMachineName(fields.machineName);
   const part = fields.partName.trim();
 
-  const showLine1 = seiban.length > 0 || hincd.length > 0;
-  const showLine2 = proc.length > 0 || part.length > 0;
-  const showLine3 = mach.length > 0;
+  const showRowA = seiban.length > 0 || hincd.length > 0 || proc.length > 0;
+  const showRowB = part.length > 0 || mach.length > 0;
 
-  if (!showLine1 && !showLine2 && !showLine3) return null;
+  if (!showRowA && !showRowB) return null;
 
   const title = [seiban, hincd, proc, part, mach].filter((s) => s.length > 0).join(' · ');
 
@@ -48,9 +51,8 @@ export function presentManualOrderRow(fields: ManualOrderRowFields): ManualOrder
     proc,
     mach,
     part,
-    showLine1,
-    showLine2,
-    showLine3,
+    showRowA,
+    showRowB,
     title
   };
 }

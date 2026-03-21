@@ -17,6 +17,10 @@
 - **手動順番 上ペイン行明細（高密度・ラベルなし）**: [design-previews/manual-order-overview-pane-row-detail-preview.html](./design-previews/manual-order-overview-pane-row-detail-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **手動順番 上ペイン端末カード（3行: 製番品番 / 工順部品名 / 機種名・本文は生産スケジュールと同じ text-xs）**: [design-previews/manual-order-device-card-location-machine-preview.html](./design-previews/manual-order-device-card-location-machine-preview.html) — [design-previews/README.md](./design-previews/README.md)
 
+### 🆕 最新アップデート（2026-03-21）
+
+- **✅ 手動順番 overview UI（上端ヘッダーリビール・カード密度・グリッド）・デプロイ・実機検証・ドキュメント反映・main マージ**: 手動順番ルートのみ `KioskLayout` 最上段を既定非表示＋上端ホバーで表示（`useKioskTopEdgeHeaderReveal`）。`ManualOrderActiveDeviceBanner` 廃止、カードヘッダーで編集中表示。`ManualOrderOverviewPane` を `md:grid-cols-4` / `xl:grid-cols-6`。API 不変。ブランチ `feat/kiosk-manual-order-overview-ui`。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）・1台ずつ。Run ID: `20260321-094548-8867` / `20260321-095056` / `20260321-095528`。**Phase12**: `verify-phase12-real.sh` **PASS 27/0/0**（2026-03-21）。**知見**: Pi5 既定 detach → **`--attach <run_id>`** で完了待機後に Pi4 を実行、または **`--foreground`**。**参照**: [KB-297 overview UI 節](./knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-overview-ui上端ヘッダーリビールカード密度グリッド2026-03-21) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-03-20）
 
 - **✅ 手動順番 鉛筆時 登録製番チップ維持・デプロイ・実機検証・main マージ**: 鉛筆で `DEFAULT`＋先頭資源へ戻す際、**登録製番チップ（`activeQueries`）のみ前状態を維持**（`mergeManualOrderPencilPreservedSearchFields`）。`inputQuery` は空に戻す。ブランチ `feat/manual-order-pencil-preserve-seiban`。**デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）・1台ずつ。Run ID: `20260320-223140-3362` / `20260320-223518-30451` / `20260320-223949-27315`。**Phase12**: PASS 27/0/0（再検証含む）。**main**: fast-forward 取り込み済み（2026-03-20）。**経緯**: 先行デプロイ `feat/manual-order-pencil-lower-pane-reset`（Run ID 例 `214327` 系）に続く。**参照**: [KB-297 下ペインリセット節](./knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-下ペイン-鉛筆工場変更時のフィルタリセット2026-03-20) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。

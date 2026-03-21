@@ -15,59 +15,76 @@ describe('presentManualOrderRow', () => {
     ).toBeNull();
   });
 
-  it('returns presentation with line1 only (seiban + hincd)', () => {
+  it('returns row A only (seiban + hincd + proc)', () => {
     const p = presentManualOrderRow({
-        fseiban: ' BA1 ',
-        fhincd: ' MD1 ',
-        processLabel: '',
-        machineName: '',
-        partName: ''
-      });
+      fseiban: ' BA1 ',
+      fhincd: ' MD1 ',
+      processLabel: '10',
+      machineName: '',
+      partName: ''
+    });
     expect(p).not.toBeNull();
     expect(p!.seiban).toBe('BA1');
     expect(p!.hincd).toBe('MD1');
-    expect(p!.showLine1).toBe(true);
-    expect(p!.showLine2).toBe(false);
-    expect(p!.showLine3).toBe(false);
-    expect(p!.title).toBe('BA1 · MD1');
+    expect(p!.proc).toBe('10');
+    expect(p!.showRowA).toBe(true);
+    expect(p!.showRowB).toBe(false);
+    expect(p!.title).toBe('BA1 · MD1 · 10');
   });
 
-  it('returns line2 for process and part with separator logic', () => {
+  it('returns row B for part and machine (normalized)', () => {
     const p = presentManualOrderRow({
-        fseiban: '',
-        fhincd: '',
-        processLabel: '200',
-        machineName: '',
-        partName: 'シャフト'
-      });
-    expect(p!.showLine2).toBe(true);
-    expect(p!.proc).toBe('200');
+      fseiban: '',
+      fhincd: '',
+      processLabel: '',
+      machineName: 'abc',
+      partName: 'シャフト'
+    });
+    expect(p!.showRowA).toBe(false);
+    expect(p!.showRowB).toBe(true);
+    expect(p!.mach).toBe('ABC');
     expect(p!.part).toBe('シャフト');
-    expect(p!.title).toBe('200 · シャフト');
+    expect(p!.title).toBe('シャフト · ABC');
   });
 
-  it('returns line3 for machine only (no line1/2)', () => {
+  it('returns row B for machine only after normalize', () => {
     const p = presentManualOrderRow({
-        fseiban: '',
-        fhincd: '',
-        processLabel: '',
-        machineName: '  X軸ベース ',
-        partName: ''
-      });
-    expect(p!.showLine3).toBe(true);
+      fseiban: '',
+      fhincd: '',
+      processLabel: '',
+      machineName: '  x軸ベース ',
+      partName: ''
+    });
+    expect(p!.showRowA).toBe(false);
+    expect(p!.showRowB).toBe(true);
     expect(p!.mach).toBe('X軸ベース');
     expect(p!.title).toBe('X軸ベース');
   });
 
-  it('returns full three lines', () => {
+  it('returns row B for part only when machine normalizes to empty', () => {
     const p = presentManualOrderRow({
-        fseiban: 'S1',
-        fhincd: 'H1',
-        processLabel: '10',
-        machineName: '機種A',
-        partName: '品B'
-      });
-    expect(p!.showLine1 && p!.showLine2 && p!.showLine3).toBe(true);
+      fseiban: '',
+      fhincd: '',
+      processLabel: '',
+      machineName: '   ',
+      partName: '品B'
+    });
+    expect(p!.showRowB).toBe(true);
+    expect(p!.mach).toBe('');
+    expect(p!.part).toBe('品B');
+    expect(p!.title).toBe('品B');
+  });
+
+  it('returns both rows with full fields', () => {
+    const p = presentManualOrderRow({
+      fseiban: 'S1',
+      fhincd: 'H1',
+      processLabel: '10',
+      machineName: '機種a',
+      partName: '品B'
+    });
+    expect(p!.showRowA && p!.showRowB).toBe(true);
+    expect(p!.mach).toBe('機種A');
     expect(p!.title).toBe('S1 · H1 · 10 · 品B · 機種A');
   });
 });

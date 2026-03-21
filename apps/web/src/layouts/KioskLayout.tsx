@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
@@ -7,6 +8,8 @@ import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
+import { KIOSK_MANUAL_ORDER_PATH_PREFIX } from '../features/kiosk/manualOrder/kioskManualOrderRoutes';
+import { useKioskTopEdgeHeaderReveal } from '../hooks/useKioskTopEdgeHeaderReveal';
 
 export function KioskLayout() {
   const clientKey = getResolvedClientKey();
@@ -16,6 +19,8 @@ export function KioskLayout() {
   const { data: deployStatus } = useDeployStatus();
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const isManualOrderLayout = location.pathname.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX);
+  const headerReveal = useKioskTopEdgeHeaderReveal(isManualOrderLayout);
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -36,10 +41,32 @@ export function KioskLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-800 text-white">
+    <div
+      className={clsx(
+        'bg-slate-800 text-white',
+        isManualOrderLayout ? 'flex h-screen min-h-0 flex-col' : 'min-h-screen'
+      )}
+    >
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
-      <header className="border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur">
+      {isManualOrderLayout ? (
+        <div
+          className="pointer-events-auto fixed top-0 left-0 right-0 z-[60] h-3"
+          onMouseEnter={headerReveal.onHotZoneEnter}
+          aria-hidden
+        />
+      ) : null}
+      <header
+        className={clsx(
+          'border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur',
+          isManualOrderLayout &&
+            'fixed top-0 right-0 left-0 z-50 shadow-lg transition-transform duration-200 ease-out',
+          isManualOrderLayout && !headerReveal.isVisible && '-translate-y-full',
+          isManualOrderLayout && headerReveal.isVisible && 'translate-y-0'
+        )}
+        onMouseEnter={isManualOrderLayout ? headerReveal.onHeaderMouseEnter : undefined}
+        onMouseLeave={isManualOrderLayout ? headerReveal.onHeaderMouseLeave : undefined}
+      >
         <KioskHeader
           clientKey={clientKey}
           clientId={selfClientId}
@@ -48,7 +75,12 @@ export function KioskLayout() {
           pathname={location.pathname}
         />
       </header>
-      <main className="flex h-[calc(100vh-6rem)] flex-col gap-4 px-4 py-4">
+      <main
+        className={clsx(
+          'flex flex-col gap-4 px-4 py-4',
+          isManualOrderLayout ? 'min-h-0 flex-1' : 'h-[calc(100vh-6rem)]'
+        )}
+      >
         <h1 className="sr-only">キオスク</h1>
         <Outlet />
       </main>

@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-20
+last-verified: 2026-03-21
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -113,6 +113,25 @@ category: knowledge-base
 - **Troubleshooting**:
   - **`[ERROR] --detach requires RASPI_SERVER_HOST`**: Mac から `--detach` を付けて実行する場合、`RASPI_SERVER_HOST` 未設定で停止する。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` を先に設定（[deployment.md](../guides/deployment.md)「デタッチ実行」、[KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 
+## 手動順番 overview UI（上端ヘッダーリビール・カード密度・グリッド）（2026-03-21）
+
+- **Context**:
+  - 手動順番専用ルートでキオスク最上段メニューを畳みつつ操作領域を確保し、端末カードの情報密度とグリッド列数を調整したい。
+- **Fix（仕様）**:
+  - **ルート限定ヘッダー**: [`useKioskTopEdgeHeaderReveal`](../../apps/web/src/hooks/useKioskTopEdgeHeaderReveal.ts) と [`KioskLayout`](../../apps/web/src/layouts/KioskLayout.tsx) で **`/kiosk/production-schedule/manual-order` のときのみ** 既定で `KioskLayout` 最上段を非表示。画面上端付近へポインタを寄せるとスライドイン（タッチ専用代替は未実装）。
+  - **カード**: `ManualOrderActiveDeviceBanner` を廃止。編集状態は [`ManualOrderDeviceCardHeaderRow`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx) / [`ManualOrderDeviceCard`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCard.tsx) の「編集中」表示とグレーアウトで示す。複数資源時は先頭のみヘッダー1行、2件目以降はブロック内に `資源CD·件数`（全体仕様は本ファイル「手動順番 専用ページ」節の Spec を参照）。
+  - **行表示**: [`presentManualOrderRow`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts)（純関数・Vitest [`manualOrderRowPresentation.test.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.test.ts)）。
+  - **グリッド**: [`ManualOrderOverviewPane`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx) で `md:grid-cols-4` / `xl:grid-cols-6`。
+  - **API**: 変更なし（`manual-order-overview` 契約は従来どおり）。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/kiosk-manual-order-overview-ui`**。
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ（[deployment.md](../guides/deployment.md)）。
+  - **Run ID**: `20260321-094548-8867`（Pi5、`--limit server`、既定 detach のため **`./scripts/update-all-clients.sh --attach 20260321-094548-8867`** で完了待機）/ `20260321-095056`（raspberrypi4、`--foreground`）/ `20260321-095528`（raspi4-robodrill01、`--foreground`）。
+  - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 0 / FAIL 0**（2026-03-21）。
+- **Troubleshooting**:
+  - **Pi5 が detach で先に戻る**: Mac から `update-all-clients.sh` は既定でリモート detach。Pi5 実行後は **`--attach <run_id>`** で Ansible 完了を待ってから Pi4 を走らせるか、**`--foreground`** で最初からブロック実行する。
+  - **順序**: Web バンドルは Pi5 の Docker `web` に載るため **必ず Pi5 を先**、続けて各 Pi4（`kiosk-browser` 再起動で新バンドルを取得）。
+
 ## 手動順番 overview 密度調整 + 機種名表示修正（2026-03-20）
 
 - **Context**:
@@ -158,10 +177,11 @@ category: knowledge-base
   - ルート `/kiosk/production-schedule/manual-order` を追加し、ヘッダーに `手動順番` ナビを追加（生産スケジュールと進捗一覧の間）。
   - 上ペインは `site-devices` + `manual-order-overview` を統合し、工場内全端末カードを表示（空カード含む、返却順固定）。
   - 下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable` を再利用。
-  - 端末選択は鉛筆で `targetDeviceScopeKey` を切替、順番変更は既存 `PUT /kiosk/production-schedule/:rowId/order` 契約で即保存。
+  - 端末選択はカードの **「編集」** で `targetDeviceScopeKey` を切替、順番変更は既存 `PUT /kiosk/production-schedule/:rowId/order` 契約で即保存。
   - 検索条件は専用 storage key に分離し、既存生産スケジュール画面と干渉しないようにした。
 - **UX/State**:
-  - 編集中端末は上端バナー（端末名 + 資源CD）で表示。
+  - 編集中端末は**該当カード**のヘッダー行に「編集中」と **「編集」** ボタンで示す（グローバル帯バナーは廃止）。
+  - **手動順番ルート**ではキオスク最上段メニュー（`KioskLayout` ヘッダー）は既定で非表示。マウスを画面上端付近へ寄せるとスライド表示（`useKioskTopEdgeHeaderReveal`）。タッチ専用代替は未実装。
   - 非編集中カードは読める程度にグレーアウト。
   - 保存中はカード単位で軽いローディング、失敗はカード強調 + 下ペイン上部バーで通知。
   - 保存成功メッセージは出さず、上ペイン反映でフィードバック。
@@ -169,8 +189,8 @@ category: knowledge-base
   - **ルート**: `/kiosk/production-schedule/manual-order`（`App.tsx`）。**ナビ**: `KioskHeader` に「手動順番」（生産スケジュールと進捗一覧の間）。
   - **データ**: 上ペインは `site-devices` + `manual-order-overview` を `useManualOrderPageController` で統合。下ペインは既存 `ProductionScheduleToolbar` / `ProductionScheduleResourceFilters` / `ProductionScheduleTable`。
   - **上辺1行（余白削減）**: `ManualOrderOverviewPane` に `siteToolbar`（手動順番見出し・工場 `<select>`）を渡し、**全体把握**・**N 端末**と同一フレックス行にまとめる（旧2段ヘッダを廃止）。重複していた「端末一覧: N」表記は **N 端末**に一本化。
-  - **行表示のプレゼンテーション層（SOLID 寄せ）**: [`apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（純関数・Vitest）と、カード内行 UI の [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。上ペイン本文の `text-xs`（下ペイン表と揃える）は [`manualOrderOverviewTypography.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewTypography.ts)。上ペイン統合ヘッダは [`ManualOrderPaneHeader.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)、工場選択左クラスタは [`ManualOrderSiteToolbar.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderSiteToolbar.tsx)。
-  - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName`（同一製番の MH/SH 行の `FHINMEI`）/ `partName`（部品行の `FHINMEI`）。**API の `machineName` 解決**は [`due-management-manual-order-overview.service.ts`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) が [`fetchSeibanProgressRows`](../../apps/api/src/services/production-schedule/seiban-progress.service.ts) を用い、CsvDashboardRow 全体から製番単位で機種名を取得する（手動順番の割当行だけから MH/SH を拾うと、割当が部品行のみのとき機種名が空になるため、2026-03-20 に修正）。キオスク上ペインは `ManualOrderDeviceCard` で **1行目: 製番·品番**、**2行目: 工順·部品名**（`processLabel` の右に `partName`）、**3行目: 機種名**（`machineName`）。空のブロックは省略。**本文フォントは生産スケジュール一覧（[`ProductionScheduleTable`](../../apps/web/src/components/kiosk/ProductionScheduleTable.tsx) の `text-xs`）と同じ。** **カードヘッダ**は Location **1行**（`label` と `deviceScopeKey` が同一のときの二重表示をやめる）。`assignedCount`・`maxOrderNumber`・`comparedCount` 等の集計は従来どおり（納期管理「手動順番 全体像」や全体ランキング改善用の保存と整合）。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。静的プレビュー: [manual-order-device-card-location-machine-preview.html](../design-previews/manual-order-device-card-location-machine-preview.html)。
+  - **行表示のプレゼンテーション層（SOLID 寄せ）**: [`manualOrderRowPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) の `presentManualOrderRow`（純関数・Vitest）。**行ブロックは2行**: 1行目＝製番·品番·工順、2行目＝品名·機種名。機種名は [`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts)（半角大文字）で他画面と整合。UI は [`ManualOrderOverviewRowBlock.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewRowBlock.tsx)。**端末カード最上段**は [`ManualOrderDeviceCardHeaderRow.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx)（Location·先頭資源CD·件数·編集中·編集）。複数資源時は先頭のみヘッダー1行に含め、2件目以降はブロック内に `資源CD·件数` のみ。上ペイン本文の `text-xs` は [`manualOrderOverviewTypography.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewTypography.ts)。グリッド列数は [`ManualOrderOverviewPane.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderOverviewPane.tsx)（例: `md:grid-cols-4` / `xl:grid-cols-6` でカード幅を圧縮）。パス接頭辞定数は [`kioskManualOrderRoutes.ts`](../../apps/web/src/features/kiosk/manualOrder/kioskManualOrderRoutes.ts)。上ペイン統合ヘッダは [`ManualOrderPaneHeader.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)、工場選択は [`ManualOrderSiteToolbar.tsx`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderSiteToolbar.tsx)。
+  - **manual-order-overview の行明細 `resources[].rows[]`（2026-03-20）**: 資源 CD ごとに手動順の行を `orderNumber` 昇順で返す。各要素は `fseiban` / `fhincd` / `processLabel`（`ProductionScheduleRowNote.processingType` があれば優先、なければ `FKOJUN`）/ `machineName` / `partName`（API 解決経路は従来どおり上記サービス参照）。キオスク上ペインの**行ブロック表示**は `presentManualOrderRow` により **1行目: 製番·品番·工順**、**2行目: 品名·機種名**（機種は `normalizeMachineName`）。空セグメントは省略。**本文フォントは生産スケジュール一覧の `text-xs` と同じ。** `assignedCount` 等の集計は従来どおり。**手動 vs 自動順の差分はキオスク上ペインには表示しない**（デザイン方針）。静的プレビューは実装と乖離しうるため [design-previews](../design-previews/README.md) を参照。
   - **検索条件**: `useProductionScheduleSearchConditionsWithStorageKey` により **専用 localStorage キー**で通常の生産スケジュールページと干渉しない。
   - **登録製番（検索履歴）・search-state（2026-03-19 実装）**:
     - 通常の `ProductionSchedulePage` と同様、`GET/PUT .../kiosk/production-schedule/search-state`（共有ストレージ）と [`useSharedSearchHistory`](../../apps/web/src/features/kiosk/productionSchedule/useSharedSearchHistory.ts) を `ProductionScheduleManualOrderPage` に配線。
@@ -184,7 +204,7 @@ category: knowledge-base
   - **追従（登録製番履歴共有 + CI/テスト安定化）**: ブランチ `feat/kiosk-manual-order-shared-search-history`。同じく Pi5 → raspberrypi4 → raspi4-robodrill01 を1台ずつ。**デプロイ Run ID 例**: `20260320-151334-11088`（Pi5）/ `20260320-152207-21899`（raspberrypi4）/ `20260320-152629-30597`（raspi4-robodrill01）、いずれも **exit 0 / success**。
   - **main 反映（overview 行明細 `rows[]` + 上ペイン高密度）**: ブランチ **`main`**（コミット例: `feat(kiosk): manual-order-overview に行明細 rows[] と上ペイン高密度表示`）。**CI**: GitHub Actions 成功（例: Run `23332683133`）。**デプロイ**: 対象 Pi5 + Pi4×2 のみ（Pi3 除外）、**1台ずつ順番**（`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01`）。**Run ID 例**: `20260320-175411-21044` / `20260320-180217-22594` / `20260320-180649-2465`（いずれも success）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` — **PASS 27 / WARN 0 / FAIL 0**（`manual-order-overview` v2 は `siteKey` 導出付きで検証）。
-  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、(1) ヘッダー遷移・鉛筆で端末切替・下ペイン編集・保存フィードバック、(2) **登録製番履歴が通常の生産スケジュール画面と共有されること**（一方で登録した製番が他端末・他画面の履歴に現れる）、(3) **製番ドロップダウンに機種名が通常ページと同様に付くこと**、(4) **上ペイン**: 資源CDごとに **製番・品番・工順（1行）＋機種・品名（2行目）** が手動順の並びで表示されること（`resources[].rows[]`）、を確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
+  - **手動UI**: Phase12 はブラウザの専用ページを見ない。**実機/VNC** で `/kiosk/production-schedule/manual-order` を開き、(1) **最上段メニュー**は上端ホバーで表示できること・他キオスク画面では従来表示、(2) **「編集」**で端末切替・下ペイン編集・保存フィードバック、(3) 登録製番履歴共有・製番ドロップダウン機種名、(4) 上ペイン行が **製番・品番・工順 / 品名・機種名** の2行であること、を確認（Mac 直ブラウザは自己署名で失敗しやすい → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記どおり）。
   - **注記（`rows[]` と空データ）**: device-scope v2 で `manual-order-overview?siteKey=...` の **`resources` が 0 件**のとき、API 上は `rows[]` の中身を検証できない。Phase12 の合格と、手動UIの「表示のみ」で代替可（データあり環境で再確認）。
 - **ローカル品質ゲート（開発時）**:
   - `pnpm --filter @raspi-system/web lint` / `build` / `test`（Vitest）。

@@ -38,7 +38,7 @@ export function ManualOrderOverviewPane({
       {devices.length === 0 ? (
         <p className="rounded bg-slate-800/80 px-3 py-2 text-xs text-white/70">{emptyMessage}</p>
       ) : (
-        <div className="grid grid-cols-1 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 overflow-y-auto pr-1 md:grid-cols-4 xl:grid-cols-6">
           {devices.map((device) => (
             <ManualOrderDeviceCard
               key={device.deviceScopeKey}
