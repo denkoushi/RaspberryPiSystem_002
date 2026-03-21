@@ -192,6 +192,26 @@ category: knowledge-base
 - **Troubleshooting**:
   - **帯が開かない**: タッチのみ端末ではホバー不可（最上段メニューと同様 **マウス前提**）。**見出し行右端のスライダー型アイコン**へポインタを載せる。
 
+<a id="production-schedule-main-toolbar-hover-2026-03-21"></a>
+
+## 生産スケジュール本体 検索・資源フィルタ帯 ホバー展開（2026-03-21）
+
+- **Context**:
+  - キオスク **生産スケジュール本体**（`/kiosk/production-schedule`、沉浸式 allowlist 対象）は最上段メニューを上端ホバーで出す一方、検索バー＋資源フィルタが常時表示で表示領域を圧迫していた。手動順番下ペインと同様、**ホバーで帯を出す**挙動に揃えたい。
+- **Fix（仕様）**:
+  - **Web**: [`ProductionSchedulePage.tsx`](../../apps/web/src/pages/kiosk/ProductionSchedulePage.tsx) で [`ManualOrderLowerPaneCollapsibleToolbar`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderLowerPaneCollapsibleToolbar.tsx) に [`ProductionScheduleToolbar`](../../apps/web/src/components/kiosk/ProductionScheduleToolbar.tsx) と [`ProductionScheduleResourceFilters`](../../apps/web/src/components/kiosk/ProductionScheduleResourceFilters.tsx) を包む。**見た目の開閉**は [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts)。見出し文言は **「検索・資源フィルタ」**。Mac 向け端末選択バー（`macManualOrderV2`）は折りたたみ対象外のまま上段に配置。API 契約・DB 変更なし。
+- **E2E / ローカル検証**:
+  - 沉浸式ヘッダーと同様、ナビ・サイネージ／電源ボタン操作前に **上端ホバー**が必要。[`revealKioskHeader`](../../e2e/helpers.ts) を [`kiosk.spec.ts`](../../e2e/kiosk.spec.ts) と [`kiosk-smoke.spec.ts`](../../e2e/smoke/kiosk-smoke.spec.ts) で共有。
+  - **Playwright（`CI=true`）**: `apps/api/.env` が `NODE_ENV=production` の開発マシンでは **CORS が無効**になり、Web(4173)→API(8080) の **OPTIONS が 404** → 管理画面バックアップ E2E 等が `waitForResponse` タイムアウトしうる。[`playwright.config.ts`](../../playwright.config.ts) の API `webServer.env` に **`NODE_ENV: development`** を明示（子プロセスでは dotenv が既存 env を上書きしない前提で有効）。
+  - **Web Vitest**: シェルに **`NODE_ENV=production` が残っている**と React production ビルドとなり `act(...) is not supported in production builds` で大量失敗する → **`NODE_ENV=development`** で `pnpm --filter @raspi-system/web test` を実行。
+- **Deploy / verify（実績、2026-03-21）**:
+  - ブランチ **`feat/kiosk-production-schedule-collapsible-toolbar`**。[deployment.md](../guides/deployment.md) 標準の `scripts/update-all-clients.sh`。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**）、`--limit` で **1台ずつ順番**。`export RASPI_SERVER_HOST=100.106.158.2`（ホストのみの場合はスクリプトが `denkon5sd02@` を付与する運用に合わせる）。
+  - **ログ接頭辞例**: Pi5 `ansible-update-20260321-214954`（以降 Pi4 は連続実行で別ログ）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（本変更は API 追加なしのため Phase12 は回帰中心。帯 UI はスクリプト外）。
+- **Troubleshooting**:
+  - **帯が開かない**: タッチのみでは不可。**「検索・資源フィルタ」行右端のスライダー型アイコン**へマウスを載せる。
+  - **ローカル E2E が backup 系でタイムアウト**: Pi5 起動 API の `NODE_ENV` と CORS を確認（上記 `playwright.config.ts`）。
+
 <a id="kiosk-immersive-allowlist-manual-order-row-2026-03-21"></a>
 
 ## キオスク沉浸式 allowlist 拡張 + 手動順番上ペイン行（品名を工順直後）（2026-03-21）
