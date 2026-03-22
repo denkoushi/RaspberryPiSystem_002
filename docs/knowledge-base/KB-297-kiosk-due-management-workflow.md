@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-21
+last-verified: 2026-03-23
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -98,6 +98,25 @@ category: knowledge-base
   - Phase12 が `manual-order-overview` で失敗: v2 有効時は **無印 overview は 400**（`siteKey` 必須）。スクリプトが最新か、`siteKey` 付きで叩けているか確認。
   - ローカル API テストが大量失敗: **Postgres 未起動**のことが多い。Docker で DB 起動後 `prisma migrate deploy` を実施。
   - Web lint（import 順）: `pnpm exec eslint --fix` で自動修正可。
+
+<a id="manual-order-pi4-target-device-scope-key-web-fix-2026-03-23"></a>
+
+### 手動順番 Pi4 下ペイン「取得に失敗」— `targetDeviceScopeKey` の Web 付与誤り（2026-03-23）
+
+- **Context**:
+  - 手動順番専用ページで上ペインの「編集」を押すと、下ペインの `GET /api/kiosk/production-schedule`（および `order-usage`）にクエリ `targetDeviceScopeKey` が付与されていた。
+  - device-scope v2 では **キオスク（Pi4 等）は `targetDeviceScopeKey` を送ってはならない**（`resolveProductionScheduleAssignmentLocationKey` が `TARGET_DEVICE_SCOPE_KEY_FORBIDDEN` で 400）。**Mac 相当（`ClientDevice.location === 'Mac'`）の端末のみ**代理指定可。
+  - 通常の生産スケジュール画面（`ProductionSchedulePage`）は `isMacEnvironment(userAgent)` で **Mac のときだけ** `targetDeviceScopeKey` を付けていたが、`ProductionScheduleManualOrderPage` は **常に付与**しており、Mac ブラウザでは問題が表面化しにくく、**Pi4 キオスク（Linux arm User-Agent）では必ず 400** となり「取得に失敗しました」と表示された。
+- **Fix（Web）**:
+  - [`ProductionScheduleManualOrderPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx) で `isMacEnvironment` と `VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED` から `macManualOrderV2` を導出し、**Mac かつ v2 のときだけ** `scheduleListParams` / `useProductionScheduleMutations` の `productionScheduleTargetDeviceScopeKey` / `useKioskProductionScheduleOrderUsage` の `targetDeviceScopeKey` を付与（`ProductionSchedulePage` と同型）。
+  - API 変更なし。
+- **Deploy / verify（実績）**:
+  - ブランチ **`fix/phase12-verify-ping-retry`** に手動順番修正を含め、`infrastructure/ansible/inventory.yml` で **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ**（Pi3 除外）、`--limit` 1 台ずつ、`--detach --follow`（`RASPI_SERVER_HOST` 必須）。
+  - **Run ID 例**: `20260323-083523-8980`（Pi5）/ `20260323-084021-9264`（raspberrypi4）/ `20260323-084439-11342`（raspi4-robodrill01）。
+  - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23）。
+- **Troubleshooting**:
+  - 下ペインが「取得に失敗」で、API が **400** + `errorCode: TARGET_DEVICE_SCOPE_KEY_FORBIDDEN**: キオスクから `targetDeviceScopeKey` が送られていないか、Web ビルドが古い可能性。Pi5 の `web` イメージ／キャッシュとキオスクのハードリロードを確認。
+  - **Pi4 で他端末カードを選んだときのデータ**: キオスクは API 上 **自端末の assignment スコープ**のみ。上ペインで別端末を選んでも、クエリから `targetDeviceScopeKey` を外すと一覧は **actor（当該 Pi4）**基準で解決される（他端末の割当を Pi4 から代理閲覧する要件は別途 API ポリシー検討が必要）。
 
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
