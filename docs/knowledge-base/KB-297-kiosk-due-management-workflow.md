@@ -890,15 +890,16 @@ category: knowledge-base
   - **Web のみ**（API 不変）。[`ProductionScheduleProgressOverviewPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleProgressOverviewPage.tsx) は取得・フィルタ・空状態・グリッド枠のみ。カード・行は [`ProgressOverviewSeibanCard.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewSeibanCard.tsx) / [`ProgressOverviewPartRow.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx)。純関数・GRID 定数は [`progressOverviewPresentation.ts`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts)（`PROGRESS_OVERVIEW_CARD_GRID_CLASS` 等）。
   - 部品名列・資源CD列に **`min-w-0`**（狭いカードでも折り返しが効くように）。納期列は **`w-[84px] whitespace-nowrap`** のまま。資源CDは **`flex`** で全件表示・**`flex-wrap`** で段数制限なし。
 - **Deploy / verify（実績、2026-03-22）**:
-  - ブランチ **`feat/kiosk-progress-overview-five-cols-layout`**。[deployment.md](../guides/deployment.md) 標準の `scripts/update-all-clients.sh`。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**）、`--limit` で **1台ずつ**、`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`、`--detach --follow`。
-  - **Run ID（ログ接頭辞）**: Pi5 `ansible-update-20260322-084633-25240`、raspberrypi4 `ansible-update-20260322-085040-1342`。
-  - **raspi4-robodrill01**: デプロイは **未実施**（プリフライトで `ssh: connect to host 100.123.1.113 port 22: Connection timed out`）。端末復旧後に `--limit "raspi4-robodrill01"` で再実行する。
-  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 26 / WARN 1 / FAIL 1**（2026-03-22 実行）。**FAIL**: Pi4 robodrill01 の kiosk/status-agent 確認で SSH タイムアウト（上記と同根）。**WARN**: Pi3 signage（offline 時は runbook 注記どおりスキップ可）。API 群・Pi5 リモート・**raspberrypi4** サービスは **PASS**。進捗一覧 API も PASS。
+  - **初回デプロイ（機能ブランチ）**: **`feat/kiosk-progress-overview-five-cols-layout`**。[deployment.md](../guides/deployment.md) 標準の `scripts/update-all-clients.sh`。**対象**: Pi5 → raspberrypi4 のみ成功。**Run ID（ログ接頭辞）**: Pi5 `ansible-update-20260322-084633-25240`、raspberrypi4 `ansible-update-20260322-085040-1342`。**raspi4-robodrill01** は当時 SSH タイムアウトのため **未デプロイ**。
+  - **本番追従（`main`・3台順次）**: 通信復旧後、`main` を Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**）・`--limit` 1台ずつ・`RASPI_SERVER_HOST`・`--detach --follow`。**Run ID**: `20260322-212809-1338`（Pi5）/ `20260322-213031-27169`（raspberrypi4）/ `20260322-213507-5127`（raspi4-robodrill01）、いずれも success。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 27 / WARN 1 / FAIL 0**（2026-03-22）。**WARN**: auto-tuning scheduler ログ件数 0（スクリプト上 PUT auto-generate=200 を代替判定）。進捗一覧 API・両 Pi4・Pi3 signage・`verify-services-real.sh` は **PASS**。
+  - **Phase12 冒頭の Pi5 到達判定（知見・TS）**: 旧実装は **`ping -c 1 -W 2`** のみ。Tailscale で RTT が大きいと **ICMP が偶発失敗**し、「Pi5に到達できません」で **verify-phase12-real.sh** または **`verify-services-real.sh`** だけが落ちることがある（API/SSH は成功しているのに失敗する場合は本件を疑う）。**対策（実装済み）**: `verify-phase12-real.sh` / `verify-services-real.sh` で **短い再試行**（最大5回・各 `ping -c 1 -W 5`・間隔1秒）。
 - **ローカルテスト（知見）**:
   - `pnpm test:api` はシェルに **`NODE_ENV=production` が残る**と JWT Zod が本番強度を要求し失敗しうる → **`NODE_ENV=test`** を付与。
   - `scripts/test/run-tests.sh` が **5432 利用ありと判断して `POSTGRES_PORT=55432`** に切り替える一方、既存 **`postgres-test-local` が 5432** のときは **`POSTGRES_PORT=5432` を明示**すると接続一致する。
 - **Troubleshooting**:
   - **RoboDrill01 に SSH 不能**: Tailscale・電源・ケーブル・`inventory` の `ansible_host` を確認。復旧後に **単体 `--limit "raspi4-robodrill01"`** でデプロイし、`verify-phase12-real.sh` を再実行。
+  - **Phase12 が「Pi5に到達できません」だけ失敗**: 上記 **ICMP 再試行** 前のスクリプトでは再現しうる。最新の `verify-phase12-real.sh` / `verify-services-real.sh` を使うか、しばらく待って再実行。TCP（`curl`/`ssh`）は通るが ping だけ落ちる場合は本件と整合。
 
 ## デプロイ・実機検証（2026-03-07）
 

@@ -78,16 +78,39 @@ check_dual_active_lines() {
   fi
 }
 
+# Pi5 到達判定: Tailscale 等で RTT が大きいと ICMP が偶発失敗するため短い再試行する（各試行は -W 5 秒）
+pi5_reachable_tailscale() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if ping -c 1 -W 5 100.106.158.2 >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+pi5_reachable_local() {
+  local attempt
+  for attempt in 1 2 3; do
+    if ping -c 1 -W 5 192.168.10.230 >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 # network_modeを確認し、到達可能なIPを選択
 NETWORK_MODE=$(grep -E '^network_mode:' infrastructure/ansible/group_vars/all.yml | awk '{print $2}' | tr -d '"')
 
-if ping -c 1 -W 2 100.106.158.2 >/dev/null 2>&1; then
+if pi5_reachable_tailscale; then
   PI5_IP="100.106.158.2"
   PI3_IP="100.105.224.86"
   PI4_IP="100.74.144.79"
   PI4_ROBODRILL_IP="100.123.1.113"
   ACTUAL_MODE="tailscale"
-elif ping -c 1 -W 2 192.168.10.230 >/dev/null 2>&1; then
+elif pi5_reachable_local; then
   PI5_IP="192.168.10.230"
   PI3_IP="192.168.10.109"
   PI4_IP="192.168.10.223"
