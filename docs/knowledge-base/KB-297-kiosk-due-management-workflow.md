@@ -880,6 +880,26 @@ category: knowledge-base
 - **デプロイ**: ブランチ `feat/kiosk-progress-overview-seiban-filter-dropdown`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行。
 - **実機検証**: Phase12 全24項目PASS（`verify-phase12-real.sh` に progress-overview API チェックを追加）、実機UIで製番フィルタ・永続化を確認OK。詳細は [KB-306](../frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
 
+<a id="progress-overview-five-cols-layout-2026-03-22"></a>
+
+## 進捗一覧 5列グリッド・「納期」「実」ラベル削除・presentation 分割（2026-03-22）
+
+- **Context**:
+  - 進捗一覧（`/kiosk/production-schedule/progress-overview`）で、カード内の黄色ラベル「納期」「実」が横方向を圧迫していた。広い画面では **1行あたり5カード**（`xl:grid-cols-5`）にし、ラベルを外して日付・資源CDチップのみ表示する。
+- **Fix（仕様）**:
+  - **Web のみ**（API 不変）。[`ProductionScheduleProgressOverviewPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleProgressOverviewPage.tsx) は取得・フィルタ・空状態・グリッド枠のみ。カード・行は [`ProgressOverviewSeibanCard.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewSeibanCard.tsx) / [`ProgressOverviewPartRow.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx)。純関数・GRID 定数は [`progressOverviewPresentation.ts`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts)（`PROGRESS_OVERVIEW_CARD_GRID_CLASS` 等）。
+  - 部品名列・資源CD列に **`min-w-0`**（狭いカードでも折り返しが効くように）。納期列は **`w-[84px] whitespace-nowrap`** のまま。資源CDは **`flex`** で全件表示・**`flex-wrap`** で段数制限なし。
+- **Deploy / verify（実績、2026-03-22）**:
+  - ブランチ **`feat/kiosk-progress-overview-five-cols-layout`**。[deployment.md](../guides/deployment.md) 標準の `scripts/update-all-clients.sh`。**対象**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（**Pi3 除外**）、`--limit` で **1台ずつ**、`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`、`--detach --follow`。
+  - **Run ID（ログ接頭辞）**: Pi5 `ansible-update-20260322-084633-25240`、raspberrypi4 `ansible-update-20260322-085040-1342`。
+  - **raspi4-robodrill01**: デプロイは **未実施**（プリフライトで `ssh: connect to host 100.123.1.113 port 22: Connection timed out`）。端末復旧後に `--limit "raspi4-robodrill01"` で再実行する。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 26 / WARN 1 / FAIL 1**（2026-03-22 実行）。**FAIL**: Pi4 robodrill01 の kiosk/status-agent 確認で SSH タイムアウト（上記と同根）。**WARN**: Pi3 signage（offline 時は runbook 注記どおりスキップ可）。API 群・Pi5 リモート・**raspberrypi4** サービスは **PASS**。進捗一覧 API も PASS。
+- **ローカルテスト（知見）**:
+  - `pnpm test:api` はシェルに **`NODE_ENV=production` が残る**と JWT Zod が本番強度を要求し失敗しうる → **`NODE_ENV=test`** を付与。
+  - `scripts/test/run-tests.sh` が **5432 利用ありと判断して `POSTGRES_PORT=55432`** に切り替える一方、既存 **`postgres-test-local` が 5432** のときは **`POSTGRES_PORT=5432` を明示**すると接続一致する。
+- **Troubleshooting**:
+  - **RoboDrill01 に SSH 不能**: Tailscale・電源・ケーブル・`inventory` の `ansible_host` を確認。復旧後に **単体 `--limit "raspi4-robodrill01"`** でデプロイし、`verify-phase12-real.sh` を再実行。
+
 ## デプロイ・実機検証（2026-03-07）
 
 - **デプロイ**: Run ID `20260307-093857-20934`、`state: success`、約15分（Pi5+Pi4×2、`--limit "server:kiosk"`）
