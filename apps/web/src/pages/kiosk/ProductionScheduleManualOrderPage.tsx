@@ -50,6 +50,7 @@ import { useProductionScheduleSearchConditionsWithStorageKey } from '../../featu
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useTimedHoverReveal } from '../../hooks/useTimedHoverReveal';
+import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 import type { ProductionScheduleSortMode } from '../../features/kiosk/productionSchedule/displayRowDerivation';
 
@@ -106,6 +107,10 @@ function CalendarIcon({ className }: { className?: string }) {
 }
 
 export function ProductionScheduleManualOrderPage() {
+  const isMac =
+    typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
+  const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
+
   const {
     siteKey,
     defaultSites,
@@ -182,9 +187,11 @@ export function ProductionScheduleManualOrderPage() {
   const scheduleListParams = useMemo(
     () => ({
       ...queryParams,
-      ...(activeDeviceScopeKey.trim().length > 0 ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() } : {})
+      ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
+        ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
+        : {})
     }),
-    [activeDeviceScopeKey, queryParams]
+    [activeDeviceScopeKey, macManualOrderV2, queryParams]
   );
 
   const searchStateMutation = useUpdateKioskProductionScheduleSearchState();
@@ -206,7 +213,9 @@ export function ProductionScheduleManualOrderPage() {
     isSearchStateWriting: searchStateMutation.isPending,
     noteMaxLength: NOTE_MAX_LENGTH,
     productionScheduleTargetDeviceScopeKey:
-      activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined
+      macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
+        ? activeDeviceScopeKey.trim()
+        : undefined
   });
 
   const scheduleQuery = useKioskProductionSchedule(scheduleListParams, {
@@ -313,7 +322,9 @@ export function ProductionScheduleManualOrderPage() {
     {
       pauseRefetch,
       enabled: activeDeviceScopeKey.trim().length > 0,
-      targetDeviceScopeKey: activeDeviceScopeKey.trim() || undefined
+      ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
+        ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
+        : {})
     }
   );
 
