@@ -157,6 +157,25 @@ category: knowledge-base
 - **Deploy / verify（実績）**: ブランチ **`feat/sitekey-shared-manual-rank-sync`**（siteKey 同期デプロイに続く API 追従デプロイ）。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1 台ずつ、`RASPI_SERVER_HOST` + `--foreground`。**Ansible ログ timestamp**: `20260323-113105`（Pi5）/ `20260323-113715`（raspberrypi4）/ `20260323-114137`（raspi4-robodrill01）。**自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23、`manual-order-overview` v2・`siteKey` 導出含む）。
 - **Troubleshooting**: 割当済みなのに上ペイン行が空に見えるときは `GET .../manual-order-overview?siteKey=<工場>` で当該端末の `resources[]` に正本 `resourceCd` と `rows[]` が載るか確認。旧 `location=...` 行が DB に残っていても本修正後は site 優先で表示される（データ削除不要）。
 
+<a id="production-schedule-filter-dropdown-portal-2026-03-23"></a>
+
+### 生産スケジュール 登録製番・資源CDドロップダウンを Portal 配置（overflow クリップ解消、2026-03-23）
+
+- **Context**:
+  - 折りたたみツールバー（[生産スケジュール本体 検索・資源フィルタ帯 ホバー展開](#production-schedule-main-toolbar-hover-2026-03-21)）内で、登録製番・資源CDのドロップダウンパネルが **親の `overflow` で切り取られる**ことがあった。
+- **Fix（Web）**:
+  - [`AnchoredDropdownPortal.tsx`](../../apps/web/src/components/kiosk/AnchoredDropdownPortal.tsx): `document.body` へ `createPortal` し、`fixed` + アンカー要素の `getBoundingClientRect()` で位置決め（右寄せは `translateX(-100%)`）。外側クリックはアンカーとパネルの両方を考慮。
+  - [`ProductionScheduleSeibanFilterDropdown.tsx`](../../apps/web/src/components/kiosk/ProductionScheduleSeibanFilterDropdown.tsx) / [`ProductionScheduleResourceFilterDropdown.tsx`](../../apps/web/src/components/kiosk/ProductionScheduleResourceFilterDropdown.tsx) から利用。API 変更なし。
+- **CI / 型**:
+  - Docker ビルド（`pnpm run build`）で `RefObject<HTMLDivElement | null>` を `div` の `ref` に渡すと **TS2322**（`LegacyRef` 不一致）になる場合がある。props は `RefObject<HTMLElement>` / `RefObject<HTMLDivElement>`（`null` をジェネリクスに含めない）に揃える（`main`: `4b799762`）。
+- **Deploy / verify（実績）**:
+  - ブランチ **`main`**。対象は Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ（Pi3 除外）、[`deployment.md`](../guides/deployment.md) の **1台ずつ順番**（`--limit` 各ホスト、`--detach --follow`、`RASPI_SERVER_HOST` 必須）。
+  - **Run ID**: `20260323-131306-17247`（Pi5）/ `20260323-132133-31976`（raspberrypi4）/ `20260323-132555-23983`（raspi4-robodrill01）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23）。
+- **Troubleshooting**:
+  - **CI の web ビルドのみ失敗**（`AnchoredDropdownPortal.tsx` TS2322）: 上記の `RefObject` 型定義を確認。ローカル `pnpm --filter @raspi-system/web build` で再現可能。
+  - **見た目の確認**: Phase12 は API・サービス中心のため、ドロップダウンが画面端で切れないことは **実機/VNC** で `/kiosk/production-schedule` を開き、登録製番・資源CDのドロップダウンを展開して確認（自己署名で Mac 直ブラウザが失敗しうる件は [KB-306](../knowledge-base/frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
+
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
 - **Context**:
