@@ -26,6 +26,7 @@ import { ProductionScheduleSeibanFilterDropdown } from '../../components/kiosk/P
 import { ProductionScheduleTable } from '../../components/kiosk/ProductionScheduleTable';
 import { ProductionScheduleToolbar } from '../../components/kiosk/ProductionScheduleToolbar';
 import { type TableColumnDefinition } from '../../features/kiosk/columnWidth';
+import { joinManualOrderResourceDisplayNames } from '../../features/kiosk/manualOrder/manualOrderOverviewCardPresentation';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import {
   KIOSK_PRODUCTION_SCHEDULE_SEARCH_HISTORY_HIDDEN_KEY,
@@ -332,6 +333,10 @@ export function ProductionScheduleManualOrderPage() {
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data?.resourceNameMap]
+  );
+  const resolveResourceDisplayName = useCallback(
+    (resourceCd: string) => joinManualOrderResourceDisplayNames(resourceNameMap[resourceCd]),
+    [resourceNameMap]
   );
   const getResourceAriaLabel = useCallback(
     (resourceCd: string, suffix?: string) => {
@@ -688,6 +693,7 @@ export function ProductionScheduleManualOrderPage() {
               }
               isLoading={siteDevicesQuery.isLoading || overviewQuery.isLoading}
               isError={siteDevicesQuery.isError || overviewQuery.isError}
+              resolveResourceDisplayName={resolveResourceDisplayName}
             />
           </div>
         </div>
