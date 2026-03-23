@@ -187,6 +187,7 @@ export function ProductionScheduleManualOrderPage() {
   const scheduleListParams = useMemo(
     () => ({
       ...queryParams,
+      allowResourceOnly: true,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})

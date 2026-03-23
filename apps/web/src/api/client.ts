@@ -700,6 +700,7 @@ export async function getKioskProductionSchedule(params?: {
   hasDueDateOnly?: boolean;
   page?: number;
   pageSize?: number;
+  allowResourceOnly?: boolean;
   /** v2: Mac が参照する端末の deviceScopeKey */
   targetDeviceScopeKey?: string;
 }) {

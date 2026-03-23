@@ -59,6 +59,7 @@ export type ProductionScheduleListParams = {
   resourceCategory?: ProductionScheduleResourceCategory;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
+  allowResourceOnly?: boolean;
   locationKey: string;
   siteKey?: string;
 };
@@ -282,6 +283,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     resourceCategory,
     hasNoteOnly,
     hasDueDateOnly,
+    allowResourceOnly = false,
     locationKey,
     siteKey
   } = params;
@@ -322,7 +324,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     filteredAssignedOnlyCds.length === 0 &&
     (filteredResourceCds.length > 0 || resourceCategory !== undefined);
 
-  if (hasOnlyResourceFilters) {
+  if (hasOnlyResourceFilters && !allowResourceOnly) {
     return {
       page,
       pageSize,

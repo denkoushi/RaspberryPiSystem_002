@@ -265,6 +265,7 @@ export function useKioskProductionSchedule(
     hasDueDateOnly?: boolean;
     page?: number;
     pageSize?: number;
+    allowResourceOnly?: boolean;
     targetDeviceScopeKey?: string;
   },
   options?: { enabled?: boolean; pauseRefetch?: boolean }

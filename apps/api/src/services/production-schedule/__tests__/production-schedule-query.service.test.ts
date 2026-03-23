@@ -68,6 +68,47 @@ describe('production-schedule-query.service', () => {
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 
+  it('allowResourceOnly=true のときは資源CD単独指定でも一覧取得へ進む', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-1',
+          occurredAt: new Date('2026-03-23T00:00:00.000Z'),
+          rowData: {
+            ProductNo: '0001',
+            FSEIBAN: 'A',
+            FHINCD: 'X',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: '',
+          },
+          processingOrder: 2,
+          globalRank: 5,
+          note: null,
+          processingType: null,
+          dueDate: null,
+        },
+      ] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: '',
+      productNos: [],
+      resourceCds: ['R01'],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.rows).toHaveLength(1);
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+  });
+
   it('資源CD一覧をresourceCd配列へ整形して返す', async () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([
       { resourceCd: 'R01' },

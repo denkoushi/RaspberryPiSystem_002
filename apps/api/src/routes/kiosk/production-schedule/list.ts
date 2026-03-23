@@ -46,6 +46,7 @@ export async function registerProductionScheduleListRoute(
       resourceCategory,
       hasNoteOnly,
       hasDueDateOnly,
+      allowResourceOnly: query.allowResourceOnly === true,
       locationKey: assignmentLocationKey,
       siteKey: locationScopeContext.siteKey
     });
