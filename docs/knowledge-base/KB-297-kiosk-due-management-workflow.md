@@ -197,6 +197,24 @@ category: knowledge-base
   - **工場セレクトに触りたいのにヘッダが畳まれたまま**: カードグリッドからポインタを外す（約 280ms 後にヘッダ再表示）。タッチのみ運用ではホバー格納の恩恵は限定的。
   - **名称が出ない**: `resourceNameMap[cd]` が空のときは仕様どおり2行目は **資源CD·件数**のみ。
 
+<a id="manual-order-overview-fkojun-display-only-2026-03-23"></a>
+
+### 手動順番 上ペイン 工順(FKOJUN)のみ表示（processingType 混在解消、2026-03-23）
+
+- **Context**:
+  - 手動順番上ペインカードの行表示で「工順」が `processingType` と `FKOJUN` を混在させていた。実データで `processingType='塗装'` が1件だけ残っていた場合、上ペインでは「塗装」、下ペインでは `FKOJUN`（例: 200）と不整合になる事象があった。
+  - 仕様として**上ペインは工順（FKOJUN）のみ**を表示し、下ペインと一貫させたい。
+- **Fix（API・Web・関心事分離）**:
+  - **API**: [`due-management-manual-order-overview.service.ts`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) に `resolveProcessOrderLabel` を追加し、**FKOJUN のみ**を使用。`ManualOrderOverviewRow` に `processOrderLabel` を追加、`processLabel` は後方互換で維持。
+  - **Web**: [`ManualOrderRowFields`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) / [`ManualOrderDeviceCard`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCard.tsx) を `processOrderLabel` ベースに変更。
+  - **単体**: `merge-manual-order-resource-assignments.test.ts`、`manualOrderRowPresentation.test.ts`。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/manual-order-overview-fkojun-display-only`**。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`RASPI_SERVER_HOST` + `--foreground`。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23）。
+- **Troubleshooting**:
+  - 上ペインと下ペインで「工順」表示が一致しない場合: API の `processOrderLabel`（FKOJUN）と `processLabel`（旧: processingType 優先）の使い分けを確認。本修正後は上ペインは **`processOrderLabel`** のみ使用。
+  - 旧 `processLabel` は後方互換のため API には残るが、キオスク上ペインでは参照しない。
+
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
 - **Context**:

@@ -8,7 +8,7 @@ describe('presentManualOrderRow', () => {
       presentManualOrderRow({
         fseiban: '',
         fhincd: '  ',
-        processLabel: '',
+        processOrderLabel: '',
         machineName: '',
         partName: '\t'
       })
@@ -19,7 +19,7 @@ describe('presentManualOrderRow', () => {
     const p = presentManualOrderRow({
       fseiban: ' BA1 ',
       fhincd: ' MD1 ',
-      processLabel: '10',
+      processOrderLabel: '10',
       machineName: '',
       partName: ''
     });
@@ -36,7 +36,7 @@ describe('presentManualOrderRow', () => {
     const p = presentManualOrderRow({
       fseiban: '',
       fhincd: '',
-      processLabel: '',
+      processOrderLabel: '',
       machineName: 'abc',
       partName: 'シャフト'
     });
@@ -51,7 +51,7 @@ describe('presentManualOrderRow', () => {
     const p = presentManualOrderRow({
       fseiban: '',
       fhincd: '',
-      processLabel: '',
+      processOrderLabel: '',
       machineName: '  x軸ベース ',
       partName: ''
     });
@@ -65,7 +65,7 @@ describe('presentManualOrderRow', () => {
     const p = presentManualOrderRow({
       fseiban: '',
       fhincd: '',
-      processLabel: '',
+      processOrderLabel: '',
       machineName: '   ',
       partName: '品B'
     });
@@ -80,7 +80,7 @@ describe('presentManualOrderRow', () => {
     const p = presentManualOrderRow({
       fseiban: 'S1',
       fhincd: 'H1',
-      processLabel: '10',
+      processOrderLabel: '10',
       machineName: '機種a',
       partName: '品B'
     });

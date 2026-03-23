@@ -94,7 +94,7 @@ export function ManualOrderDeviceCard({
                         key={`${resource.resourceCd}-${row.orderNumber}-${row.fseiban}-${row.fhincd}`}
                         fseiban={row.fseiban}
                         fhincd={row.fhincd}
-                        processLabel={row.processLabel}
+                        processOrderLabel={row.processOrderLabel ?? row.processLabel}
                         machineName={row.machineName}
                         partName={row.partName}
                       />
