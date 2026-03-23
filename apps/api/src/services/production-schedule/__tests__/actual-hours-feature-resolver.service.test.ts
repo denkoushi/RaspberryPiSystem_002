@@ -49,4 +49,26 @@ describe('actual-hours-feature-resolver.service', () => {
       matchedResourceCd: '27M'
     });
   });
+
+  it('既定戦略では少数サンプルを資源中央値へ縮小する', () => {
+    const resolver = createActualHoursFeatureResolver({
+      features: [
+        { fhincd: 'MD0001', resourceCd: '26M', sampleCount: 1, medianPerPieceMinutes: 10, p75PerPieceMinutes: 20 },
+        { fhincd: 'MD0002', resourceCd: '26M', sampleCount: 20, medianPerPieceMinutes: 4, p75PerPieceMinutes: 7 },
+      ],
+    });
+
+    const result = resolver.resolve({ fhincd: 'MD0001', resourceCd: '26M' });
+    expect(result.perPieceMinutes).toBe(5.5);
+  });
+
+  it('legacyP75戦略では従来どおりp75優先で返す', () => {
+    const resolver = createActualHoursFeatureResolver({
+      features: [{ fhincd: 'MD0001', resourceCd: '26M', sampleCount: 3, medianPerPieceMinutes: 10, p75PerPieceMinutes: 20 }],
+      strategy: 'legacyP75',
+    });
+
+    const result = resolver.resolve({ fhincd: 'MD0001', resourceCd: '26M' });
+    expect(result.perPieceMinutes).toBe(20);
+  });
 });

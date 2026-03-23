@@ -4,11 +4,7 @@ import {
 } from '@raspi-system/shared-types';
 
 import { prisma } from '../../lib/prisma.js';
-import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
-import {
-  pickActualHoursRowsByLocationPriority,
-  resolveActualHoursLocationCandidates
-} from './actual-hours-location-scope.service.js';
+import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-context.service.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
@@ -19,7 +15,6 @@ import {
   type ResourceCategoryPolicy
 } from './policies/resource-category-policy.service.js';
 import {
-  getResourceGroupCandidatesByResourceCds,
   getResourceNameMapByResourceCds,
   type ProductionScheduleResourceNameMap
 } from './resource-master.service.js';
@@ -429,57 +424,16 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       return typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
     })
     .filter((resourceCd) => resourceCd.length > 0);
-  const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
-  const [featureRowsWithLocation, resourceCodeMappings, resourceGroupCandidatesByResourceCd] = await Promise.all([
-    prisma.productionScheduleActualHoursFeature.findMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: { in: actualHoursLocationCandidates }
-      },
-      select: {
-        location: true,
-        fhincd: true,
-        resourceCd: true,
-        medianPerPieceMinutes: true,
-        p75PerPieceMinutes: true
-      }
-    }),
-    prisma.productionScheduleResourceCodeMapping.findMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
-        enabled: true
-      },
-      orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
-      select: {
-        fromResourceCd: true,
-        toResourceCd: true,
-        priority: true,
-        enabled: true
-      }
-    }),
-    getResourceGroupCandidatesByResourceCds(rowResourceCds)
-  ]);
-  const featureRows = pickActualHoursRowsByLocationPriority(
-    featureRowsWithLocation,
-    actualHoursLocationCandidates
-  ).map((row) => ({
-    fhincd: row.fhincd,
-    resourceCd: row.resourceCd,
-    medianPerPieceMinutes: row.medianPerPieceMinutes,
-    p75PerPieceMinutes: row.p75PerPieceMinutes
-  }));
-  const featureResolver = createActualHoursFeatureResolver({
-    features: featureRows,
-    resourceCodeMappings,
-    resourceGroupCandidatesByResourceCd
+  const actualHoursReadContext = await loadActualHoursReadContext({
+    locationKey,
+    resourceCds: rowResourceCds,
   });
 
   const rowsWithActualHours = rows.map((row) => {
     const rowData = (row.rowData ?? {}) as Record<string, unknown>;
     const fhincd = typeof rowData.FHINCD === 'string' ? rowData.FHINCD.trim() : '';
     const resourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
-    const perPieceMinutes = featureResolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
+    const perPieceMinutes = actualHoursReadContext.resolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
     return {
       ...row,
       actualPerPieceMinutes: perPieceMinutes

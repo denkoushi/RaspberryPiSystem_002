@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
-import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
+import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-context.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { TuningParamsRepository } from './repositories/tuning-params.repository.js';
 import { analyzeCompletionHistorySignals } from './completion-history-analyzer.service.js';
@@ -125,7 +125,7 @@ type ActualHoursSignal = {
 
 const ACTUAL_HOURS_DEFAULT_SCORE = 0.35;
 
-const loadActualHoursSignals = async (params: {
+export const loadActualHoursSignals = async (params: {
   locationScope: DueManagementScope;
   candidateFseibans: string[];
 }): Promise<Map<string, ActualHoursSignal>> => {
@@ -134,61 +134,6 @@ const loadActualHoursSignals = async (params: {
   if (params.candidateFseibans.length === 0) {
     return result;
   }
-
-  const featureDelegate = (prisma as unknown as {
-    productionScheduleActualHoursFeature?: {
-      findMany: (args: unknown) => Promise<Array<{
-        fhincd: string;
-        resourceCd: string;
-        sampleCount: number;
-        medianPerPieceMinutes: number;
-        p75PerPieceMinutes: number | null;
-      }>>;
-    };
-  }).productionScheduleActualHoursFeature;
-  if (!featureDelegate) {
-    return result;
-  }
-
-  const featureRows = await featureDelegate.findMany({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey,
-    },
-    select: {
-      fhincd: true,
-      resourceCd: true,
-      sampleCount: true,
-      medianPerPieceMinutes: true,
-      p75PerPieceMinutes: true,
-    },
-  });
-  if (featureRows.length === 0) {
-    return result;
-  }
-  const sampleCountMap = new Map(
-    featureRows.map(
-      (row) => [`${row.fhincd.trim().toUpperCase()}__${row.resourceCd.trim().toUpperCase()}`, row.sampleCount] as const
-    )
-  );
-  const mappingRows = await prisma.productionScheduleResourceCodeMapping.findMany({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey,
-      enabled: true,
-    },
-    orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
-    select: {
-      fromResourceCd: true,
-      toResourceCd: true,
-      priority: true,
-      enabled: true,
-    },
-  });
-  const resolver = createActualHoursFeatureResolver({
-    features: featureRows,
-    resourceCodeMappings: mappingRows,
-  });
 
   const candidateList = Prisma.join(params.candidateFseibans.map((fseiban) => Prisma.sql`${fseiban}`));
   const rowSignals = await prisma.$queryRaw<Array<{
@@ -205,6 +150,13 @@ const loadActualHoursSignals = async (params: {
       AND "rowData"->>'FSEIBAN' IN (${candidateList})
       AND COALESCE("rowData"->>'FPROGRESS', '') <> '完了'
   `);
+  const actualHoursReadContext = await loadActualHoursReadContext({
+    locationKey,
+    resourceCds: rowSignals.map((row) => row.resourceCd?.trim() ?? '').filter((resourceCd) => resourceCd.length > 0),
+  });
+  if (actualHoursReadContext.selectedFeatureCount <= 0) {
+    return result;
+  }
 
   const aggregateMap = new Map<string, { totalRows: number; matchedRows: number; sampleCountSum: number }>();
   for (const row of rowSignals) {
@@ -222,11 +174,13 @@ const loadActualHoursSignals = async (params: {
     const fhincd = row.fhincd?.trim() ?? '';
     const resourceCd = row.resourceCd?.trim() ?? '';
     if (fhincd && resourceCd) {
-      const resolved = resolver.resolve({ fhincd, resourceCd });
+      const resolved = actualHoursReadContext.resolver.resolve({ fhincd, resourceCd });
       if (resolved.perPieceMinutes !== null && resolved.matchedResourceCd) {
         current.matchedRows += 1;
-        const sampleCount =
-          sampleCountMap.get(`${fhincd.trim().toUpperCase()}__${resolved.matchedResourceCd}`) ?? 0;
+        const sampleCount = actualHoursReadContext.getSampleCountForResolved({
+          fhincd,
+          matchedResourceCd: resolved.matchedResourceCd,
+        });
         current.sampleCountSum += sampleCount;
       }
     }

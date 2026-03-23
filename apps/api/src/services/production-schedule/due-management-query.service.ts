@@ -1,11 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
-import { createActualHoursFeatureResolver } from './actual-hours-feature-resolver.service.js';
-import {
-  pickActualHoursRowsByLocationPriority,
-  resolveActualHoursLocationCandidates
-} from './actual-hours-location-scope.service.js';
+import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-context.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import {
   getResourceCategoryPolicy,
@@ -13,7 +9,6 @@ import {
 } from './policies/resource-category-policy.service.js';
 import { getProcessingTypePriority } from './policies/processing-priority-policy.js';
 import {
-  getResourceGroupCandidatesByResourceCds,
   getResourceNameMapByResourceCds
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
@@ -132,57 +127,8 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
   });
   const dueDateMap = new Map(dueDateRows.map((row) => [row.fseiban, row.dueDate] as const));
 
-  const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
-  const [featureRowsWithLocation, resourceCodeMappings] = await Promise.all([
-    prisma.productionScheduleActualHoursFeature.findMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: { in: actualHoursLocationCandidates }
-      },
-      select: {
-        location: true,
-        fhincd: true,
-        resourceCd: true,
-        sampleCount: true,
-        medianPerPieceMinutes: true,
-        p75PerPieceMinutes: true
-      }
-    }),
-    prisma.productionScheduleResourceCodeMapping.findMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
-        enabled: true
-      },
-      orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
-      select: {
-        fromResourceCd: true,
-        toResourceCd: true,
-        priority: true,
-        enabled: true
-      }
-    })
-  ]);
-  const featureRows = pickActualHoursRowsByLocationPriority(
-    featureRowsWithLocation,
-    actualHoursLocationCandidates
-  ).map((row) => ({
-    fhincd: row.fhincd,
-    resourceCd: row.resourceCd,
-    sampleCount: row.sampleCount,
-    medianPerPieceMinutes: row.medianPerPieceMinutes,
-    p75PerPieceMinutes: row.p75PerPieceMinutes
-  }));
-  const summaryFetchedFeatureCountsByLocation = featureRowsWithLocation.reduce<Record<string, number>>((acc, row) => {
-    const key = row.location.trim() || '__empty__';
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
-  // #region agent log
-  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H3',location:'due-management-query.service.ts:listDueManagementSummaries:184',message:'actual-hours feature rows fetched for due summary',data:{locationKey,actualHoursLocationCandidates,summaryRows:summaryRows.length,featureRowsFetched:featureRowsWithLocation.length,featureRowsSelected:featureRows.length,resourceCodeMappings:resourceCodeMappings.length,summaryFetchedFeatureCountsByLocation},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const actualSignalMap = new Map<string, { estimatedMinutes: number; coverageRatio: number }>();
-  if (featureRows.length > 0 && summaryRows.length > 0) {
+  if (summaryRows.length > 0) {
     const fseibanList = Prisma.join(summaryRows.map((row) => Prisma.sql`${row.fseiban}`));
     const rows = await prisma.$queryRaw<
       Array<{ fseiban: string; fhincd: string | null; resourceCd: string | null }>
@@ -197,14 +143,13 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
         AND "rowData"->>'FSEIBAN' IN (${fseibanList})
         AND COALESCE("rowData"->>'FPROGRESS', '') <> '完了'
     `);
-    const resourceGroupCandidatesByResourceCd = await getResourceGroupCandidatesByResourceCds(
-      rows.map((row) => row.resourceCd?.trim() ?? '').filter((resourceCd) => resourceCd.length > 0)
-    );
-    const featureResolverWithGroup = createActualHoursFeatureResolver({
-      features: featureRows,
-      resourceCodeMappings,
-      resourceGroupCandidatesByResourceCd
+    const actualHoursReadContext = await loadActualHoursReadContext({
+      locationKey,
+      resourceCds: rows.map((row) => row.resourceCd?.trim() ?? '').filter((resourceCd) => resourceCd.length > 0)
     });
+    // #region agent log
+    void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H3',location:'due-management-query.service.ts:listDueManagementSummaries:184',message:'actual-hours feature rows fetched for due summary',data:{locationKey,actualHoursLocationCandidates:actualHoursReadContext.locationCandidates,summaryRows:summaryRows.length,featureRowsSelected:actualHoursReadContext.selectedFeatureCount,resourceCodeMappings:actualHoursReadContext.resourceCodeMappingCount,summaryFetchedFeatureCountsByLocation:actualHoursReadContext.fetchedFeatureCountByLocation},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const aggregateMap = new Map<string, { totalRows: number; matchedRows: number }>();
     for (const row of rows) {
       const fseiban = row.fseiban?.trim();
@@ -217,7 +162,7 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
       const fhincd = row.fhincd?.trim() ?? '';
       const resourceCd = row.resourceCd?.trim() ?? '';
       if (fhincd && resourceCd) {
-        const resolved = featureResolverWithGroup.resolve({ fhincd, resourceCd });
+        const resolved = actualHoursReadContext.resolver.resolve({ fhincd, resourceCd });
         if (resolved.perPieceMinutes !== null) {
           current.matchedRows += 1;
         }
@@ -310,60 +255,13 @@ export async function getDueManagementSeibanDetail(params: {
   const resourceCategoryPolicy = await getResourceCategoryPolicy({
     deviceScopeKey: locationKey
   });
-  const actualHoursLocationCandidates = resolveActualHoursLocationCandidates(locationKey);
-  const [detailFeatureRowsWithLocation, detailResourceCodeMappings, detailResourceGroupCandidatesByResourceCd] =
-    await Promise.all([
-    prisma.productionScheduleActualHoursFeature.findMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: { in: actualHoursLocationCandidates }
-      },
-      select: {
-        location: true,
-        fhincd: true,
-        resourceCd: true,
-        medianPerPieceMinutes: true,
-        p75PerPieceMinutes: true
-      }
-    }),
-    prisma.productionScheduleResourceCodeMapping.findMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        location: locationKey,
-        enabled: true
-      },
-      orderBy: [{ fromResourceCd: 'asc' }, { priority: 'asc' }, { toResourceCd: 'asc' }],
-      select: {
-        fromResourceCd: true,
-        toResourceCd: true,
-        priority: true,
-        enabled: true
-      }
-    }),
-    getResourceGroupCandidatesByResourceCds(rows.map((row) => row.fsigencd ?? ''))
-  ]);
-  const detailFeatureRows = pickActualHoursRowsByLocationPriority(
-    detailFeatureRowsWithLocation,
-    actualHoursLocationCandidates
-  ).map((row) => ({
-    fhincd: row.fhincd,
-    resourceCd: row.resourceCd,
-    medianPerPieceMinutes: row.medianPerPieceMinutes,
-    p75PerPieceMinutes: row.p75PerPieceMinutes
-  }));
-  const detailFetchedFeatureCountsByLocation = detailFeatureRowsWithLocation.reduce<Record<string, number>>((acc, row) => {
-    const key = row.location.trim() || '__empty__';
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
-  // #region agent log
-  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H5',location:'due-management-query.service.ts:getDueManagementSeibanDetail:355',message:'actual-hours feature rows fetched for seiban detail',data:{locationKey,fseiban,actualHoursLocationCandidates,detailRows:rows.length,featureRowsFetched:detailFeatureRowsWithLocation.length,featureRowsSelected:detailFeatureRows.length,resourceCodeMappings:detailResourceCodeMappings.length,detailFetchedFeatureCountsByLocation},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  const detailFeatureResolver = createActualHoursFeatureResolver({
-    features: detailFeatureRows,
-    resourceCodeMappings: detailResourceCodeMappings,
-    resourceGroupCandidatesByResourceCd: detailResourceGroupCandidatesByResourceCd
+  const detailActualHoursReadContext = await loadActualHoursReadContext({
+    locationKey,
+    resourceCds: rows.map((row) => row.fsigencd ?? '')
   });
+  // #region agent log
+  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H5',location:'due-management-query.service.ts:getDueManagementSeibanDetail:355',message:'actual-hours feature rows fetched for seiban detail',data:{locationKey,fseiban,actualHoursLocationCandidates:detailActualHoursReadContext.locationCandidates,detailRows:rows.length,featureRowsSelected:detailActualHoursReadContext.selectedFeatureCount,resourceCodeMappings:detailActualHoursReadContext.resourceCodeMappingCount,detailFetchedFeatureCountsByLocation:detailActualHoursReadContext.fetchedFeatureCountByLocation},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const resourceNameMap = await getResourceNameMapByResourceCds(rows.map((row) => row.fsigencd ?? ''));
 
   const grouped = new Map<
@@ -400,7 +298,7 @@ export async function getDueManagementSeibanDetail(params: {
 
     const current = grouped.get(fhincd);
     const processingPriority = getProcessingTypePriority(row.processingType);
-    const perPieceMinutes = detailFeatureResolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
+    const perPieceMinutes = detailActualHoursReadContext.resolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
     const isActualMatched = perPieceMinutes !== null;
     if (!current) {
       grouped.set(fhincd, {

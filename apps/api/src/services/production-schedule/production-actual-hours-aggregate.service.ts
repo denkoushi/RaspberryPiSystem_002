@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 
 const DEFAULT_RECENT_DAYS_EXCLUDED = 30;
+const DEFAULT_LOOKBACK_DAYS = 365;
 const DEFAULT_OUTLIER_MAX_PER_PIECE_MINUTES = 600;
 
 type GroupStats = {
@@ -59,15 +60,19 @@ export class ProductionActualHoursAggregateService {
     locationKey: string;
     csvDashboardId?: string;
     recentDaysExcluded?: number;
+    lookbackDays?: number;
     outlierMaxPerPieceMinutes?: number;
     minSampleCount?: number;
   }): Promise<ProductionActualHoursAggregateResult> {
     const csvDashboardId = params.csvDashboardId ?? PRODUCTION_SCHEDULE_DASHBOARD_ID;
     const recentDaysExcluded = params.recentDaysExcluded ?? DEFAULT_RECENT_DAYS_EXCLUDED;
+    const lookbackDays = params.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
     const outlierMaxPerPieceMinutes = params.outlierMaxPerPieceMinutes ?? DEFAULT_OUTLIER_MAX_PER_PIECE_MINUTES;
     const minSampleCount = params.minSampleCount ?? 1;
     const recentCutoff = new Date();
     recentCutoff.setUTCDate(recentCutoff.getUTCDate() - recentDaysExcluded);
+    const lookbackFrom = new Date(recentCutoff);
+    lookbackFrom.setUTCDate(lookbackFrom.getUTCDate() - lookbackDays);
 
     const [rows, totalRawRows] = await Promise.all([
       prisma.productionScheduleActualHoursCanonical.findMany({
@@ -99,6 +104,9 @@ export class ProductionActualHoursAggregateService {
         excludedRecentRows += 1;
         continue;
       }
+      if (row.workDate < lookbackFrom) {
+        continue;
+      }
       if (row.perPieceMinutes > outlierMaxPerPieceMinutes) {
         excludedOutlierRows += 1;
         continue;
@@ -127,7 +135,7 @@ export class ProductionActualHoursAggregateService {
         sampleCount: sorted.length,
         medianPerPieceMinutes: percentileFromSorted(sorted, 0.5),
         p75PerPieceMinutes: percentileFromSorted(sorted, 0.75),
-        windowFrom: new Date(0),
+        windowFrom: lookbackFrom,
         windowTo: recentCutoff,
         recentDaysExcluded,
       });

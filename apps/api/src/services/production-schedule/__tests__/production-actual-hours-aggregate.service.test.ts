@@ -65,6 +65,7 @@ describe('production-actual-hours-aggregate.service', () => {
     const result = await service.rebuild({
       locationKey: 'kiosk-1',
       recentDaysExcluded: 30,
+      lookbackDays: 5000,
     });
 
     expect(result.featureKeyCount).toBe(1);

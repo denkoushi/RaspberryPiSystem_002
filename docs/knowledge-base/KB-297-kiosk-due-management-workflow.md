@@ -1950,6 +1950,31 @@ category: knowledge-base
 - **手動CSV取り込み**: `data_20210101_20221231.csv`（6.4MB）、`data_20230101_20241231.csv`（5.5MB）を分割投入（48チャンク、約25万文字/チャンク）で実施
 - **結果**: `totalRawRows: 205766`, `totalCanonicalRows: 146644`, `totalFeatureKeys: 10436`
 
+### 実績基準時間 推定式見直し（2026-03-23）
+
+- **背景**:
+  - `actualPerPieceMinutes` は `p75PerPieceMinutes ?? medianPerPieceMinutes` で表示しており、代表値としては過大側に寄りやすかった。
+  - 所要は総分だが、現行の生産スケジュール入力には個数が無いため、まずは `分/個` 指標の信頼性改善を優先した。
+- **実DB評価（第2工場 - kensakuMain）**:
+  - Canonical 期間: `2021-01-04` 〜 `2024-12-28`、件数 `146,644`。
+  - 2024 holdout（学習: 2021-2023、評価: 2024）で比較:
+    - `median`: `MAE 14.925`, `bias -6.815`
+    - `p75`: `MAE 17.092`, `bias 3.036`
+    - `shrinkage(k=3) + median`: `MAE 14.734`, `bias -7.756`
+  - 直近1年（2023）学習 + 2024評価では `k=3` が最良（`MAE 14.663`）。
+- **採用式**:
+  - `w * median(FHINCD×FSIGENCD) + (1 - w) * median(FSIGENCD)`、`w = n / (n + 3)`。
+  - `n` はキーの `sampleCount`。キー欠損時は資源中央値、さらに欠損時は全体中央値へフォールバック。
+- **実装**:
+  - `actual-hours` 共通読取コンテキストを新設し、query/scoring の特徴量解決経路を統一。
+  - resolver は戦略差し替え可能化し、既定を `shrinkedMedianV1`、互換として `legacyP75` を維持。
+  - Feature 集約は直近除外（30日）に加え lookback 365日を既定化。
+- **非対象（次段）**:
+  - 個数未取込のため、`所要(総分)` と `実績総工数` の厳密比較は今回の変更対象外。
+  - 将来は個数取込後に総工数推定モジュールを追加する。
+- **参照**:
+  - [ADR-20260323-actual-hours-baseline-estimation](../decisions/ADR-20260323-actual-hours-baseline-estimation.md)
+
 ### 全端末共有優先順位（Mac対象ロケーション指定）デプロイ・実機検証（2026-03-10）
 
 - **実装概要**: `global-rank` API に `targetLocation` / `rankingScope`（`globalShared` / `locationScoped` / `localTemporary`）を拡張。`ProductionScheduleGlobalRankTemporaryOverride` テーブルを追加。Mac から対象拠点を明示指定可能。移行手順は [mac-target-location-migration.md](../runbooks/mac-target-location-migration.md) を参照。
