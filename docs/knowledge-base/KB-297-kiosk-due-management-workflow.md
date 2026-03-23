@@ -209,11 +209,34 @@ category: knowledge-base
   - **Web**: [`ManualOrderRowFields`](../../apps/web/src/features/kiosk/manualOrder/manualOrderRowPresentation.ts) / [`ManualOrderDeviceCard`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCard.tsx) を `processOrderLabel` ベースに変更。
   - **単体**: `merge-manual-order-resource-assignments.test.ts`、`manualOrderRowPresentation.test.ts`。
 - **Deploy / verify（実績）**:
-  - ブランチ **`feat/manual-order-overview-fkojun-display-only`**。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`RASPI_SERVER_HOST` + `--foreground`。
+  - ブランチ **`feat/manual-order-overview-fkojun-display-only`**（**[PR #33](https://github.com/denkoushi/RaspberryPiSystem_002/pull/33)** で `main` へマージ。同一ブランチに [進捗一覧 納期列コンパクト](#progress-overview-due-column-compact-2026-03-23) の Web 変更も含む）。
+  - Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1台ずつ、`RASPI_SERVER_HOST` + **`--detach --follow`**（または `--foreground`）。
+  - **Detach Run ID（Web 納期コンパクト含むデプロイ実績）**: `20260323-161714-15600`（Pi5）/ `20260323-162116-16052`（raspberrypi4）/ `20260323-162542-3008`（raspi4-robodrill01）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23）。
 - **Troubleshooting**:
   - 上ペインと下ペインで「工順」表示が一致しない場合: API の `processOrderLabel`（FKOJUN）と `processLabel`（旧: processingType 優先）の使い分けを確認。本修正後は上ペインは **`processOrderLabel`** のみ使用。
   - 旧 `processLabel` は後方互換のため API には残るが、キオスク上ペインでは参照しない。
+
+<a id="progress-overview-due-column-compact-2026-03-23"></a>
+
+### 進捗一覧 納期列コンパクト表示（MM/DD_曜・資源CDチップ余白詰め、2026-03-23）
+
+- **Context**:
+  - 進捗一覧カード内テーブルで、品名・納期・資源CDチップの横並びにおいて、納期列の固定幅（`84px`）と `M/D(曜)` 表記が横方向を取り、資源CDチップ列が狭く折り返しやすかった。
+  - 他画面の納期表記（`formatDueDate` の括弧付き曜日）と同一にすると列幅を削りにくいため、**進捗一覧専用**の短い表記に分離したい。
+- **Fix（Web・境界分離）**:
+  - **日付**: [`formatDueDate.ts`](../../apps/web/src/features/kiosk/productionSchedule/formatDueDate.ts) に `formatDueDateForProgressOverview` を追加。`YYYY-MM-DD` 接頭辞の解釈は内部ヘルパ `tryParseDueDatePartsFromIsoPrefix` に集約し、既存 `formatDueDate` と共有。**表示**: `MM/DD_曜`（ゼロ埋め、曜日は `_` 区切り・括弧なし。例: `03/23_月`）。
+  - **レイアウト**: [`progressOverviewPresentation.ts`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts) にセル／チップ用 Tailwind 定数と `progressOverviewProcessChipClassName` を集約。[`ProgressOverviewPartRow.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx) は納期セルを `w-[7ch] max-w-[7ch]` + `font-mono` `tabular-nums`、チップは `px-1`・`gap-0.5`・`leading-none` で横スペースを確保。品名は `line-clamp-2`。
+  - **API**: 変更なし（`GET /api/kiosk/production-schedule/progress-overview` 契約は従来どおり）。
+  - **単体**: [`formatDueDate.test.ts`](../../apps/web/src/features/kiosk/productionSchedule/formatDueDate.test.ts) に `formatDueDateForProgressOverview` を追加。
+- **Deploy / verify（実績）**:
+  - **コード**: `main` 取り込みコミット `9d260a93`（**[PR #33](https://github.com/denkoushi/RaspberryPiSystem_002/pull/33)**）。手動順番 FKOJUN 修正と同一ブランチで本番反映。
+  - **本番デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）・1台ずつ。上記 **Detach Run ID** 参照。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（進捗一覧 API 200 を含む）。
+- **Troubleshooting**:
+  - **4枚並ばない**: 画面幅・資源CD文字数・品名列の取り方次第。納期列の削減だけでは保証されない。列数は [`PROGRESS_OVERVIEW_CARD_GRID_CLASS`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts)（`xl:grid-cols-5`）もレバー。
+  - **他画面の納期が変わった**: 進捗一覧以外は引き続き `formatDueDate`（`M/D(曜)`）。進捗一覧のみ `formatDueDateForProgressOverview`。
+  - **Mac ブラウザでキオスク URL を開きたい**: 自己署名 TLS で `chrome-error` になりやすい（[KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。レイアウトの目視は **実機 Pi4 / VNC** を推奨。
 
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
