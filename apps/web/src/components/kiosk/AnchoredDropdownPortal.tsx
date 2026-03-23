@@ -7,8 +7,8 @@ type AnchoredDropdownPortalProps = {
   isOpen: boolean;
   id: string;
   ariaLabel: string;
-  anchorRef: RefObject<HTMLElement | null>;
-  panelRef: RefObject<HTMLDivElement | null>;
+  anchorRef: RefObject<HTMLElement>;
+  panelRef: RefObject<HTMLDivElement>;
   className: string;
   children: ReactNode;
   offsetY?: number;
@@ -22,7 +22,7 @@ type AnchorPosition = {
 const DEFAULT_OFFSET_Y = 8;
 
 const resolveAnchorPosition = (
-  anchorRef: RefObject<HTMLElement | null>,
+  anchorRef: RefObject<HTMLElement>,
   offsetY: number
 ): AnchorPosition | null => {
   const anchor = anchorRef.current;
