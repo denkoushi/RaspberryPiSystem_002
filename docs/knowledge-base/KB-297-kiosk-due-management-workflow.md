@@ -1950,6 +1950,8 @@ category: knowledge-base
 - **手動CSV取り込み**: `data_20210101_20221231.csv`（6.4MB）、`data_20230101_20241231.csv`（5.5MB）を分割投入（48チャンク、約25万文字/チャンク）で実施
 - **結果**: `totalRawRows: 205766`, `totalCanonicalRows: 146644`, `totalFeatureKeys: 10436`
 
+<a id="実績基準時間-推定式見直し2026-03-23"></a>
+
 ### 実績基準時間 推定式見直し（2026-03-23）
 
 - **背景**:
@@ -1974,6 +1976,19 @@ category: knowledge-base
   - 将来は個数取込後に総工数推定モジュールを追加する。
 - **参照**:
   - [ADR-20260323-actual-hours-baseline-estimation](../decisions/ADR-20260323-actual-hours-baseline-estimation.md)
+- **Deploy / verify（実績、2026-03-23）**:
+  - **コード基準**: `main` の API 変更（例: `de0cb8fd`）を Pi5 に反映後、キオスク用に Pi4 を追随。
+  - **デプロイ（Pi3 除外・1台ずつ）**: [`deployment.md`](../guides/deployment.md) の **`--limit` 順番**、`RASPI_SERVER_HOST` 必須、`--detach --follow`。
+    - Detach Run ID: `20260323-194941-30819`（`raspberrypi5`）/ `20260323-195832-8661`（`raspberrypi4`）/ `20260323-200352-7201`（`raspi4-robodrill01`）。
+  - **自動実機検証**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` → **PASS 28 / WARN 0 / FAIL 0**（`actual-hours/stats`・納期管理 API 群・`manual-order-overview` v2・Pi4×2・Pi3 signage を含む）。
+- **仕様（運用で押さえる点）**:
+  - `actualPerPieceMinutes` の**既定**は **`shrinkedMedianV1`**（`w=n/(n+3)` の縮小中央値）。互換が必要な場合のみ resolver で **`legacyP75`**（従来 `p75 ?? median`）へ切替可能。
+  - 公開 JSON に戦略ラベルが無い場合、デプロイ前後で**同じキーの数値が中央値寄りに変わる**ことが主な見え方の差分。
+- **知見**:
+  - Phase12 スクリプトは `actual-hours/stats` の**フィールド存在**を検査するに留まる。**数値が縮小中央値戦略に更新されたこと**の確認は、代表行の `GET .../production-schedule` や納期管理詳細の `actualPerPieceMinutes` をサンプル比較する、または本番読み取りのみの SQL で特徴量を確認する。
+- **Troubleshooting**:
+  - **200 だが実績列が空に近い**: Feature 集約は **lookback 365 日 + 直近 30 日除外**。古い実績だけのキーは窓外になりうる。取込期間・集約ウィンドウを確認（本 ADR・実装）。
+  - **一覧とスコアの根拠が食い違う**: 本変更後は `actual-hours-read-context` で query / scoring の読取を統一済み。差が残る場合は **未更新 API コンテナ**・**古い Pi5 イメージ**を疑い、デプロイログと `docker compose ps` を確認。
 
 ### 全端末共有優先順位（Mac対象ロケーション指定）デプロイ・実機検証（2026-03-10）
 
