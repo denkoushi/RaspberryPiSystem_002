@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
+import { AnchoredDropdownPortal } from './AnchoredDropdownPortal';
+
 type ProductionScheduleResourceFilterItem = {
   resourceCd: string;
   resourceNames: string[];
@@ -33,6 +35,7 @@ export function ProductionScheduleResourceFilterDropdown({
 }: ProductionScheduleResourceFilterDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const panelId = useId();
   const totalCount = items.length;
   const isDisabled = totalCount === 0;
@@ -40,7 +43,10 @@ export function ProductionScheduleResourceFilterDropdown({
   useEffect(() => {
     if (!isOpen) return undefined;
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const isInsideRoot = rootRef.current?.contains(target) ?? false;
+      const isInsidePanel = panelRef.current?.contains(target) ?? false;
+      if (!isInsideRoot && !isInsidePanel) {
         setIsOpen(false);
       }
     };
@@ -64,13 +70,14 @@ export function ProductionScheduleResourceFilterDropdown({
         資源CD ({selectedCount}/{totalCount}) 割当 ({assignedOnlySelectedCount}/{totalCount})
       </button>
 
-      {isOpen ? (
-        <div
-          id={panelId}
-          role="dialog"
-          aria-label="資源CDフィルタ"
-          className="absolute right-0 z-20 mt-2 w-[min(94vw,64rem)] rounded-lg border border-white/20 bg-slate-950/95 p-3 shadow-xl"
-        >
+      <AnchoredDropdownPortal
+        isOpen={isOpen}
+        id={panelId}
+        ariaLabel="資源CDフィルタ"
+        anchorRef={rootRef}
+        panelRef={panelRef}
+        className="w-[min(94vw,64rem)] rounded-lg border border-white/20 bg-slate-950/95 p-3 shadow-xl"
+      >
           <div className="mb-2 grid grid-cols-2 gap-2">
             <div className="rounded border border-white/15 bg-white/5 p-2">
               <p className="mb-1 text-[11px] text-white/80">通常 ({selectedCount}/{totalCount})</p>
@@ -153,8 +160,7 @@ export function ProductionScheduleResourceFilterDropdown({
               );
             })}
           </div>
-        </div>
-      ) : null}
+      </AnchoredDropdownPortal>
     </div>
   );
 }

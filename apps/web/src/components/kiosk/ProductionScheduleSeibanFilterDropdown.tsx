@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
+import { AnchoredDropdownPortal } from './AnchoredDropdownPortal';
+
 type ProductionScheduleSeibanFilterItem = {
   fseiban: string;
   machineName?: string | null;
@@ -25,13 +27,17 @@ export function ProductionScheduleSeibanFilterDropdown({
 }: ProductionScheduleSeibanFilterDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const panelId = useId();
   const isDisabled = totalCount === 0;
 
   useEffect(() => {
     if (!isOpen) return undefined;
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const isInsideRoot = rootRef.current?.contains(target) ?? false;
+      const isInsidePanel = panelRef.current?.contains(target) ?? false;
+      if (!isInsideRoot && !isInsidePanel) {
         setIsOpen(false);
       }
     };
@@ -55,13 +61,14 @@ export function ProductionScheduleSeibanFilterDropdown({
         登録製番 ({selectedCount}/{totalCount})
       </button>
 
-      {isOpen ? (
-        <div
-          id={panelId}
-          role="dialog"
-          aria-label="登録製番フィルタ"
-          className="absolute right-0 z-20 mt-2 w-[31rem] rounded-lg border border-white/20 bg-slate-950/95 p-3 shadow-xl"
-        >
+      <AnchoredDropdownPortal
+        isOpen={isOpen}
+        id={panelId}
+        ariaLabel="登録製番フィルタ"
+        anchorRef={rootRef}
+        panelRef={panelRef}
+        className="w-[31rem] rounded-lg border border-white/20 bg-slate-950/95 p-3 shadow-xl"
+      >
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs text-white/80">表示対象を選択 ({selectedCount}/{totalCount})</p>
             <div className="flex items-center gap-1.5">
@@ -101,8 +108,7 @@ export function ProductionScheduleSeibanFilterDropdown({
               </button>
             ))}
           </div>
-        </div>
-      ) : null}
+      </AnchoredDropdownPortal>
     </div>
   );
 }
