@@ -713,6 +713,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-23）: 手動順番を `siteKey` 正本へ寄せるだけでは一覧表示の完全同期にならず、`manual-order-overview` 側で `siteKey` 行を端末カード表示へ再配分する補完が必要だった。加えて global-rank は `shared-global-rank` 固定読み書きを残すと端末差分が再発するため、`siteKey` 保存を正本にして legacy をフォールバック参照へ限定することで同期を安定化できた（Pi5+Pi4×2 実機確認済み）。
 - 観測（2026-03-20）: 手動順番で鉛筆後に **登録製番チップ（`activeQueries`）だけ**を残すには、`buildConditionsAfterPencilFromFirstResourceCd` で作った `DEFAULT` 相当へ、**`mergeManualOrderPencilPreservedSearchFields(prev, next)`** で `activeQueries` をマージする必要がある。**ツールバー検索欄 `inputQuery` は空に戻す**のが仕様（チップとテキスト欄を混同しない）。実装・Vitest: [`manualOrderLowerPaneSearch.ts`](./apps/web/src/features/kiosk/productionSchedule/manualOrderLowerPaneSearch.ts)。
 - 観測（2026-03-20）: Mac から `./scripts/update-all-clients.sh ... --detach`（または `--job`）を実行する際、**`RASPI_SERVER_HOST` が未設定**だと **`[ERROR] --detach requires RASPI_SERVER_HOST (remote Pi5).`** で即終了する（デタッチ実行は Pi5 上のリモートランナー前提）。**対策**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`（[deployment.md](./docs/guides/deployment.md)）。Pi5 のみ `--limit` でも同様。**関連**: [KB-238](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)（`raspberrypi5` 対象時の必須チェック）。
 - 観測（2026-03-20）: **device-scope v2** かつ **`manual-order-overview?siteKey=...` で `resources` が空（0件）** の本番環境では、**`rows[]` の構造確認は curl だけではできない**（要素が返らない）。`verify-phase12-real.sh` は `devices[]` / `siteKey` で PASS する。行明細の見た目・配列中身は **データあり環境の実機/VNC** または staging で確認する。詳細は [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-専用ページキオスク追加2026-03-20) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)。
@@ -948,6 +949,9 @@
 
 ## Decision Log
 
+- 決定（2026-03-23）: 手動順番（resource別）と全体ランキング（global-rank/row-rank）の canonical 保存単位は **`siteKey`（工場）** に統一し、API 境界で legacy（`deviceScopeKey` / `shared-global-rank`）互換読み取りを維持する。  
+  理由: 端末間で同一工場の結果を一致させる要件を最小差分で満たしつつ、既存データ互換を壊さず段階移行するため。  
+  参照: [ADR-20260323](./docs/decisions/ADR-20260323-sitekey-canonical-manual-order-and-global-rank.md), [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-sitekey-canonical-sync-2026-03-23)
 - 決定（2026-03-20）: **手動順番の俯瞰＋下ペイン編集**は、既存 `/kiosk/production-schedule` と別ルート（`/kiosk/production-schedule/manual-order`）で提供し、**ページ複製ではなくコンポーネント再利用 + 検索条件ストレージ分離**で実装する（責務肥大と二重保守を避ける）。  
   参照: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#手動順番-専用ページキオスク追加2026-03-20)
 - 決定（2026-03-09）: **全体順位は行単位スナップショットとして別管理**し、`processingOrder`（資源CD別順番）とは統合しない。  
@@ -1094,6 +1098,20 @@
   日付/担当: 2026-01-31 / KB-217 デプロイ再整備
 
 ## Outcomes & Retrospective
+
+### 工場共有の順番・ランキング同期 完了（2026-03-23）
+
+**達成事項**:
+- 手動順番と全体ランキングの保存正本を `siteKey` に統一し、端末間同期を実現
+- 互換読み取り（`deviceScopeKey` / `shared-global-rank`）を境界に閉じ込め、既存データとの共存を維持
+- Pi3 除外で Pi5 -> raspberrypi4 -> raspi4-robodrill01 の順に段階デプロイし、`verify-phase12-real.sh` が **PASS 28 / WARN 0 / FAIL 0**
+- API 実測で「Pi4変更 -> 別Pi4反映」「global-rank変更 -> 別端末反映」を確認
+
+**学んだこと**:
+- canonical 変更は DB 書き込みだけでなく、overview/read API の優先順位とフォールバック順の整合が必要
+- 段階デプロイ時は `--limit` で 1台ずつ固定し、実機同期確認を各段階で挟むと切り戻し判断が容易
+
+**参照**: [ADR-20260323](./docs/decisions/ADR-20260323-sitekey-canonical-manual-order-and-global-rank.md), [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-sitekey-canonical-sync-2026-03-23), [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
 
 ### Milestone 1-4 完了（2025-11-18）
 
