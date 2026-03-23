@@ -176,6 +176,27 @@ category: knowledge-base
   - **CI の web ビルドのみ失敗**（`AnchoredDropdownPortal.tsx` TS2322）: 上記の `RefObject` 型定義を確認。ローカル `pnpm --filter @raspi-system/web build` で再現可能。
   - **見た目の確認**: Phase12 は API・サービス中心のため、ドロップダウンが画面端で切れないことは **実機/VNC** で `/kiosk/production-schedule` を開き、登録製番・資源CDのドロップダウンを展開して確認（自己署名で Mac 直ブラウザが失敗しうる件は [KB-306](../knowledge-base/frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
 
+<a id="manual-order-overview-card-two-line-header-2026-03-23"></a>
+
+### 手動順番 上ペイン 端末カード2行ヘッダー・全体把握行のホバー格納（2026-03-23）
+
+- **Context**:
+  - 端末カード先頭を **1行**（ロケーション · 資源CD · 件数 · 操作）から **2行**にし、**資源名称**（`GET .../resources` の `resourceNameMap`）を2行目に載せたい。
+  - 縦スペース確保のため、**カード一覧（空メッセージ含む）にポインタがある間**は [`ManualOrderPaneHeader`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderPaneHeader.tsx)（手動順番見出し・工場選択｜全体把握｜N端末）を畳む。
+- **Fix（Web・関心事分離）**:
+  - **純関数**: [`manualOrderOverviewCardPresentation.ts`](../../apps/web/src/features/kiosk/manualOrder/manualOrderOverviewCardPresentation.ts)（`joinManualOrderResourceDisplayNames`・Vitest）。
+  - **カード**: [`ManualOrderDeviceCardHeaderRow`](../../apps/web/src/components/kiosk/manualOrder/ManualOrderDeviceCardHeaderRow.tsx) — 1行目＝ロケーション＋編集・資源・編集中、2行目＝名称·資源CD·件数（名称はマスタ無しなら省略して CD·件数のみ）。
+  - **上ペイン**: [`useToolbarCollapseWhileContentHovered`](../../apps/web/src/hooks/useToolbarCollapseWhileContentHovered.ts) — 下ペインの [`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts)（ホバーで**開く**）とは逆方向のため **別フック**。
+  - **API/データ契約**: 変更なし（名称は既存 `resourceNameMap` をページから `resolveResourceDisplayName` 注入）。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/kiosk-manual-order-card-two-line-header-hover-toolbar`**。Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ（Pi3 除外）、[`deployment.md`](../guides/deployment.md) の **1台ずつ**（`--limit` 各ホスト、`--detach --follow`、`RASPI_SERVER_HOST` 必須）。
+  - **Detach Run ID**: `20260323-143949-27009`（Pi5）/ `20260323-144352-15929`（raspberrypi4）/ `20260323-144807-4866`（raspi4-robodrill01）。
+  - **コミット（機能）**: `90520568`。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23）。
+- **Troubleshooting**:
+  - **工場セレクトに触りたいのにヘッダが畳まれたまま**: カードグリッドからポインタを外す（約 280ms 後にヘッダ再表示）。タッチのみ運用ではホバー格納の恩恵は限定的。
+  - **名称が出ない**: `resourceNameMap[cd]` が空のときは仕様どおり2行目は **資源CD·件数**のみ。
+
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
 - **Context**:
