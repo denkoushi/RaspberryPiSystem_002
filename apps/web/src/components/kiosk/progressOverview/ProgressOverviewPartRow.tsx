@@ -1,8 +1,13 @@
-import { formatDueDate } from '../../../features/kiosk/productionSchedule/formatDueDate';
+import { formatDueDateForProgressOverview } from '../../../features/kiosk/productionSchedule/formatDueDate';
 import {
   isProgressOverviewDueDateOverdue,
+  progressOverviewProcessChipClassName,
   progressOverviewResourceAriaLabel,
-  progressOverviewResourceTooltip
+  progressOverviewResourceTooltip,
+  PROGRESS_OVERVIEW_PART_ROW_DUE_CELL_CLASS,
+  PROGRESS_OVERVIEW_PART_ROW_PRODUCT_CELL_CLASS,
+  PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS,
+  PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CHIPS_CLASS
 } from '../../../features/kiosk/productionSchedule/progressOverviewPresentation';
 
 import type {
@@ -17,11 +22,7 @@ type ProgressOverviewPartRowProps = {
 function ProcessChip({ process }: { process: ProductionScheduleProgressOverviewProcessItem }) {
   return (
     <span
-      className={`rounded border px-1.5 py-0.5 text-[10px] ${
-        process.isCompleted
-          ? 'border-slate-400 bg-white/10 text-white/70 opacity-50 grayscale'
-          : 'border-blue-300 bg-blue-500/30 text-blue-100'
-      }`}
+      className={progressOverviewProcessChipClassName(process.isCompleted)}
       title={progressOverviewResourceTooltip(process.resourceNames)}
       aria-label={progressOverviewResourceAriaLabel(process.resourceCd, process.resourceNames)}
     >
@@ -33,18 +34,20 @@ function ProcessChip({ process }: { process: ProductionScheduleProgressOverviewP
 export function ProgressOverviewPartRow({ part }: ProgressOverviewPartRowProps) {
   return (
     <tr className="border-b border-white/10">
-      <td className="min-w-0 px-1 py-1">{part.fhinmei || '-'}</td>
-      <td className="w-[84px] whitespace-nowrap px-1 py-1 pr-0.5">
+      <td className={PROGRESS_OVERVIEW_PART_ROW_PRODUCT_CELL_CLASS}>
+        <span className="line-clamp-2 break-words">{part.fhinmei || '-'}</span>
+      </td>
+      <td className={PROGRESS_OVERVIEW_PART_ROW_DUE_CELL_CLASS}>
         <span
           className={
             isProgressOverviewDueDateOverdue(part.dueDate) ? 'font-semibold text-rose-300' : 'text-white'
           }
         >
-          {formatDueDate(part.dueDate)}
+          {formatDueDateForProgressOverview(part.dueDate)}
         </span>
       </td>
-      <td className="min-w-0 px-0.5 py-1">
-        <div className="flex flex-wrap gap-1">
+      <td className={PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS}>
+        <div className={PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CHIPS_CLASS}>
           {part.processes.map((process) => (
             <ProcessChip key={process.rowId} process={process} />
           ))}

@@ -226,7 +226,7 @@ category: knowledge-base
   - 他画面の納期表記（`formatDueDate` の括弧付き曜日）と同一にすると列幅を削りにくいため、**進捗一覧専用**の短い表記に分離したい。
 - **Fix（Web・境界分離）**:
   - **日付**: [`formatDueDate.ts`](../../apps/web/src/features/kiosk/productionSchedule/formatDueDate.ts) に `formatDueDateForProgressOverview` を追加。`YYYY-MM-DD` 接頭辞の解釈は内部ヘルパ `tryParseDueDatePartsFromIsoPrefix` に集約し、既存 `formatDueDate` と共有。**表示**: `MM/DD_曜`（ゼロ埋め、曜日は `_` 区切り・括弧なし。例: `03/23_月`）。
-  - **レイアウト**: [`progressOverviewPresentation.ts`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts) にセル／チップ用 Tailwind 定数と `progressOverviewProcessChipClassName` を集約。[`ProgressOverviewPartRow.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx) は納期セルを `w-[7ch] max-w-[7ch]` + `font-mono` `tabular-nums`、チップは `px-1`・`gap-0.5`・`leading-none` で横スペースを確保。品名は `line-clamp-2`。
+  - **レイアウト（初期）**: [`progressOverviewPresentation.ts`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts) にセル／チップ用 Tailwind 定数と `progressOverviewProcessChipClassName` を集約。[`ProgressOverviewPartRow.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx) は納期列をコンパクト化（`font-mono` `tabular-nums`・`text-[11px]` 等）、チップは `px-1`・`gap-0.5`・`leading-none`。品名は `line-clamp-2`。**余白詰め後の重なり対策**は [下記「納期と資源CDチップの重なり防止」](#progress-overview-due-resource-no-overlap-2026-03-23) を参照。
   - **API**: 変更なし（`GET /api/kiosk/production-schedule/progress-overview` 契約は従来どおり）。
   - **単体**: [`formatDueDate.test.ts`](../../apps/web/src/features/kiosk/productionSchedule/formatDueDate.test.ts) に `formatDueDateForProgressOverview` を追加。
 - **Deploy / verify（実績）**:
@@ -237,6 +237,26 @@ category: knowledge-base
   - **4枚並ばない**: 画面幅・資源CD文字数・品名列の取り方次第。納期列の削減だけでは保証されない。列数は [`PROGRESS_OVERVIEW_CARD_GRID_CLASS`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts)（`xl:grid-cols-5`）もレバー。
   - **他画面の納期が変わった**: 進捗一覧以外は引き続き `formatDueDate`（`M/D(曜)`）。進捗一覧のみ `formatDueDateForProgressOverview`。
   - **Mac ブラウザでキオスク URL を開きたい**: 自己署名 TLS で `chrome-error` になりやすい（[KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。レイアウトの目視は **実機 Pi4 / VNC** を推奨。
+
+<a id="progress-overview-due-resource-no-overlap-2026-03-23"></a>
+
+### 進捗一覧 納期と資源CDチップの重なり防止（オプションA・最小ギャップ、2026-03-23）
+
+- **Context**:
+  - [進捗一覧 納期列コンパクト](#progress-overview-due-column-compact-2026-03-23) の余白詰め後、**納期文字列と資源CDチップが視覚的に重なる**不具合が報告された。
+  - 対処案は **オプションA（採用）**: 安全性優先で、納期列と資源列の境界に**最小限のギャップ**を常に確保し、重なりを防ぐ。**オプションB**（さらに詰めてチップ列を広げる）は却下（リスク大）。
+- **Fix（Web・presentation 層）**:
+  - [`progressOverviewPresentation.ts`](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts): 納期セル `PROGRESS_OVERVIEW_PART_ROW_DUE_CELL_CLASS` を `w-[78px]` `whitespace-nowrap`、資源セルに `pl-1`（納期との境界ギャップ）。コメントで「重なりを防ぐため最小限のギャップ」を明示。
+  - [`ProgressOverviewPartRow.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx): 上記定数を使用（API 不変）。
+  - **日付表記**は引き続き `formatDueDateForProgressOverview`（`MM/DD_曜`）。
+- **Deploy / verify（実績）**:
+  - **PR**: [#35](https://github.com/denkoushi/RaspberryPiSystem_002/pull/35)（ブランチ `fix/kiosk-progress-overview-due-no-overlap`）。
+  - **本番デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）・1台ずつ。Detach Run ID: `20260323-173508-8385`（Pi5）/ `20260323-174036-12818`（raspberrypi4）/ `20260323-174600-1356`（raspi4-robodrill01）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23、エージェント実行・進捗一覧 API 200 含む）。
+  - **実機目視**: オペレーター確認済み（重なり解消）。
+- **Troubleshooting**:
+  - **まだ詰まりすぎる / 逆に空きすぎ**: `w-[78px]` と資源側 `pl-1`・チップ `px-1` のバランスを調整。他画面の `formatDueDate` は変更しない。
+  - **Pi3 を更新したい**: 本変更は Web バンドル配信が中心だが、**Pi3 はリソース僅少のため** [deployment.md](../guides/deployment.md) の **Pi3 専用手順**に従う（本件では Pi5+Pi4×2 のみデプロイ）。
 
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
