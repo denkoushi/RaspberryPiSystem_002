@@ -113,15 +113,21 @@
       box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.28);
     }
     .device-card.dimmed { opacity: 0.55; }
+    /* カード最上段は2行のみ（本番 ManualOrderDeviceCardHeaderRow の1行→2行化の目安） */
     .device-top {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .device-line1 {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 6px;
-      margin-bottom: 6px;
     }
-    .device-top .titles { min-width: 0; }
-    .device-top .label {
+    .device-line1 .titles { min-width: 0; flex: 1; }
+    .device-line1 .label {
       margin: 0;
       font-size: 11px;
       font-weight: 600;
@@ -130,25 +136,38 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .device-top .key {
-      margin: 1px 0 0;
-      font-size: 9px;
-      color: var(--muted);
+    /* 2行目: 資源名称 · 資源CD · 件数（deviceScopeKey はここには出さない） */
+    .device-line2 {
+      margin: 0;
+      min-width: 0;
+      font-size: 10px;
+      line-height: 1.3;
+      color: rgba(255, 255, 255, 0.75);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .btn-pencil {
+    .device-line2 .res-name { color: #cbd5e1; }
+    .device-line2 .sep { margin: 0 3px; color: #64748b; }
+    .device-line2 .rcd { font-family: ui-monospace, monospace; font-weight: 600; color: #f1f5f9; }
+    .device-line2 .cnt { color: rgba(255, 255, 255, 0.5); font-variant-numeric: tabular-nums; }
+    .device-actions {
+      display: flex;
       flex-shrink: 0;
-      padding: 5px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--amber);
-      cursor: default;
-      font-size: 11px;
-      line-height: 1;
+      align-items: center;
+      gap: 4px;
     }
+    .btn-mini {
+      padding: 3px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1.2;
+      cursor: default;
+    }
+    .btn-mini.res { border-color: rgba(34, 211, 238, 0.35); background: rgba(34, 211, 238, 0.12); color: #a5f3fc; }
 
     .resource-block { margin-top: 5px; }
     .resource-block:first-of-type { margin-top: 0; }
@@ -223,7 +242,7 @@
 <body>
   <div class="page">
     <h1>手動順番 · 上ペイン行明細（高密度）</h1>
-    <p class="sub">静的 HTML。項目名は出さず、<strong>順序・字重・モノスペース</strong>で識別。キオスクの「一覧を一目で掃う」用途向け。</p>
+    <p class="sub">静的 HTML。端末カード<strong>先頭は2行</strong>（本番は現状1行の <code>ManualOrderDeviceCardHeaderRow</code> を2行化する想定）。行明細は項目名は出さず、<strong>順序・字重・モノスペース</strong>で識別。</p>
 
     <p class="note">
       <strong>注意:</strong> 本番 <code>manual-order-overview</code> は現状資源 CD 集計のみ。このモックは API 拡張後のカード内行の見た目合意用。
@@ -233,7 +252,8 @@
       <strong>方針:</strong> 手動順と自動順（全体ランキング）の突合・差分などは、<strong>算出式ブラッシュアップ用にサーバ側でイベント／集計として保存</strong>する想定でよいが、<strong>キオスク上ペインには表示しない</strong>（現場は作業対象の識別に集中）。
     </p>
 
-    <p class="map">読み方（固定順）: 1行目 製番 · 品番 · 工順 → 2行目 機種名 · 品名</p>
+    <p class="map">カード最上段: <strong>1行目</strong> 端末表示名 ＋ 操作（資源・編集 等）／<strong>2行目</strong> 資源名称 · 資源CD · 件数。<span style="color:#64748b">（deviceScopeKey は表示しない。本番は現状1行のため、ここは2行化のカンプ）</span></p>
+    <p class="map">行ブロック内: 1行目 製番 · 品番 · 工順 → 2行目 機種名 · 品名</p>
 
     <section class="overview" aria-label="全体把握">
       <div class="overview-head">
@@ -243,17 +263,21 @@
       <div class="grid">
         <article class="device-card active" data-device-scope-key="raspberrypi4-kiosk1">
           <div class="device-top">
-            <div class="titles">
-              <p class="label">研削メイン（Pi4）</p>
-              <p class="key">raspberrypi4-kiosk1</p>
+            <div class="device-line1">
+              <div class="titles">
+                <p class="label">研削メイン（Pi4）</p>
+              </div>
+              <div class="device-actions">
+                <span class="btn-mini" style="border-color:rgba(251,191,36,0.45);color:#fbbf24;">編集中</span>
+                <span class="btn-mini res">資源</span>
+                <button type="button" class="btn-mini" style="color:#fcd34d;border-color:rgba(255,255,255,0.25);">編集</button>
+              </div>
             </div>
-            <span class="btn-pencil" title="編集">✎</span>
+            <p class="device-line2" title="先頭資源の名称・CD・件数">
+              <span class="res-name">平面研削ライン</span><span class="sep">·</span><span class="rcd">305</span><span class="sep">·</span><span class="cnt">4件</span>
+            </p>
           </div>
           <div class="resource-block">
-            <div class="resource-head">
-              <span class="rcd">305</span>
-              <span class="meta">4 件</span>
-            </div>
             <div class="row-card">
               <div class="body">
                 <div class="r1">
@@ -283,17 +307,20 @@
 
         <article class="device-card dimmed" data-device-scope-key="raspi4-robodrill01">
           <div class="device-top">
-            <div class="titles">
-              <p class="label">RoboDrill01</p>
-              <p class="key">raspi4-robodrill01</p>
+            <div class="device-line1">
+              <div class="titles">
+                <p class="label">RoboDrill01</p>
+              </div>
+              <div class="device-actions">
+                <span class="btn-mini res">資源</span>
+                <button type="button" class="btn-mini" style="color:#fcd34d;border-color:rgba(255,255,255,0.25);">編集</button>
+              </div>
             </div>
-            <span class="btn-pencil">✎</span>
+            <p class="device-line2">
+              <span class="res-name">立型マシニング</span><span class="sep">·</span><span class="rcd">310</span><span class="sep">·</span><span class="cnt">2件</span>
+            </p>
           </div>
           <div class="resource-block">
-            <div class="resource-head">
-              <span class="rcd">310</span>
-              <span class="meta">2 件</span>
-            </div>
             <div class="row-card">
               <div class="body">
                 <div class="r1">
@@ -322,17 +349,20 @@
 
         <article class="device-card dimmed" data-device-scope-key="tools03-kiosk">
           <div class="device-top">
-            <div class="titles">
-              <p class="label">切削キオスク（例）</p>
-              <p class="key">tools03-kiosk</p>
+            <div class="device-line1">
+              <div class="titles">
+                <p class="label">切削キオスク（例）</p>
+              </div>
+              <div class="device-actions">
+                <span class="btn-mini res">資源</span>
+                <button type="button" class="btn-mini" style="color:#fcd34d;border-color:rgba(255,255,255,0.25);">編集</button>
+              </div>
             </div>
-            <span class="btn-pencil">✎</span>
+            <p class="device-line2">
+              <span class="res-name">マシニングセンタ</span><span class="sep">·</span><span class="rcd">MSZ</span><span class="sep">·</span><span class="cnt">1件</span>
+            </p>
           </div>
           <div class="resource-block">
-            <div class="resource-head">
-              <span class="rcd">MSZ</span>
-              <span class="meta">1 件</span>
-            </div>
             <div class="row-card">
               <div class="body">
                 <div class="r1">

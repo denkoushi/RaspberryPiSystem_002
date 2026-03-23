@@ -1,5 +1,7 @@
 import clsx from 'clsx';
+import { useMemo } from 'react';
 
+import { buildManualOrderCardResourceSubtitleParts } from '../../../features/kiosk/manualOrder/manualOrderOverviewCardPresentation';
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../../../features/kiosk/manualOrder/manualOrderOverviewTypography';
 
 import { ManualOrderDeviceCardHeaderRow } from './ManualOrderDeviceCardHeaderRow';
@@ -16,6 +18,8 @@ type Props = {
   status: 'idle' | 'saving' | 'error';
   onSelect: (deviceScopeKey: string) => void;
   onOpenResourceAssignment?: (deviceScopeKey: string) => void;
+  /** 資源CDに対する表示名（マスタの `resourceNameMap` 由来。未設定時は2行目に名称なし） */
+  resolveResourceDisplayName?: (resourceCd: string) => string;
 };
 
 export function ManualOrderDeviceCard({
@@ -26,10 +30,22 @@ export function ManualOrderDeviceCard({
   isDimmed,
   status,
   onSelect,
-  onOpenResourceAssignment
+  onOpenResourceAssignment,
+  resolveResourceDisplayName
 }: Props) {
   const locationLine = label.trim().length > 0 ? label.trim() : deviceScopeKey.trim();
   const firstResource = resources[0];
+
+  const resourceSubtitle = useMemo(() => {
+    const cd = firstResource?.resourceCd?.trim() ?? '';
+    if (!cd) return null;
+    const displayName = resolveResourceDisplayName?.(cd)?.trim() ?? '';
+    return buildManualOrderCardResourceSubtitleParts({
+      resourceCd: cd,
+      assignedCount: firstResource.assignedCount,
+      displayName
+    });
+  }, [firstResource?.assignedCount, firstResource?.resourceCd, resolveResourceDisplayName]);
 
   return (
     <article
@@ -45,8 +61,7 @@ export function ManualOrderDeviceCard({
     >
       <ManualOrderDeviceCardHeaderRow
         locationLine={locationLine}
-        resourceCd={firstResource?.resourceCd}
-        assignedCount={firstResource?.assignedCount}
+        resourceSubtitle={resourceSubtitle}
         isActive={isActive}
         onEdit={() => onSelect(deviceScopeKey)}
         onResourceSettings={
