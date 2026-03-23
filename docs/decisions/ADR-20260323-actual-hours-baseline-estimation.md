@@ -36,6 +36,12 @@ Status: accepted
   - `actualPerPieceMinutes` の意味が変わるため、過去運用値との見え方が変化する。
   - 個数未取込のため、`所要(総分)` との厳密比較は引き続き別段の実装が必要。
 
+## Verification
+
+- **2026-03-23（本番）**: `main` 反映後、`./scripts/deploy/verify-phase12-real.sh` を実行し **PASS 28 / WARN 0 / FAIL 0**（納期管理 `actual-hours/stats`・他 Phase12 項目・Pi4×2・Pi3 signage を含む）。
+- **デプロイ（Pi3 除外・1台ずつ）**: Detach Run ID — Pi5 `20260323-194941-30819`、raspberrypi4 `20260323-195832-8661`、raspi4-robodrill01 `20260323-200352-7201`（[`deployment.md`](../guides/deployment.md) `--limit` 順）。
+- **詳細・トラブルシュート**: [KB-297 §実績基準時間推定式見直し](../knowledge-base/KB-297-kiosk-due-management-workflow.md#実績基準時間-推定式見直し2026-03-23)
+
 ## References
 
 - API:
