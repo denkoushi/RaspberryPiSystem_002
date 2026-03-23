@@ -148,6 +148,15 @@ category: knowledge-base
   - ローカル統合テストで `kiosk-production-schedule.integration.test.ts` が全落ちする場合、`localhost:5432` の Postgres 未起動が典型（`pnpm test:api` の起動スクリプト利用）。
   - **上ペインカードが「未設定」のまま増えない（2026-03-23 追記）**: `manual-order-resource-assignments` で資源割当済みでも、同端末に旧 `deviceScopeKey` 行（例: `resourceCd=500`）が残っていると `manual-order-overview` が端末sliceを優先し、`siteKey` 正本（例: `581`）を拾えず `rows: []` になることがある。対策として `manual-order-overview` の資源解決を **割当順 + siteKey 正本優先** に修正し、site に無い場合のみ端末sliceを補助参照する（旧データ削除は不要）。
 
+<a id="manual-order-overview-assigned-resource-sitekey-priority-2026-03-23"></a>
+
+### manual-order-overview 割当資源の siteKey 正本優先（旧 slice 行混在、2026-03-23）
+
+- **Context**: 上記「工場共有同期」とは別コミットで、overview 集約のみを修正。端末に旧 `deviceScopeKey` 行が残ると derived が slice 優先となり、割当済み `siteKey` 正本が `mergeManualOrderOverviewResourcesWithAssignmentOrder` に渡らずカードが空に見える事象があった。
+- **Fix（API）**: [`resolveManualOrderOverviewResourcesForAssignedDevice`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) を追加し、割当スロットごとに **site 正本 → 無ければ端末 slice**。単体: [`merge-manual-order-resource-assignments.test.ts`](../../apps/api/src/services/production-schedule/__tests__/merge-manual-order-resource-assignments.test.ts)。
+- **Deploy / verify（実績）**: ブランチ **`feat/sitekey-shared-manual-rank-sync`**（siteKey 同期デプロイに続く API 追従デプロイ）。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1 台ずつ、`RASPI_SERVER_HOST` + `--foreground`。**Ansible ログ timestamp**: `20260323-113105`（Pi5）/ `20260323-113715`（raspberrypi4）/ `20260323-114137`（raspi4-robodrill01）。**自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23、`manual-order-overview` v2・`siteKey` 導出含む）。
+- **Troubleshooting**: 割当済みなのに上ペイン行が空に見えるときは `GET .../manual-order-overview?siteKey=<工場>` で当該端末の `resources[]` に正本 `resourceCd` と `rows[]` が載るか確認。旧 `location=...` 行が DB に残っていても本修正後は site 優先で表示される（データ削除不要）。
+
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
 - **Context**:
