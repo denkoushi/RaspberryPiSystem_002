@@ -1,6 +1,8 @@
 # ADR-20260319: 手動順番の deviceScopeKey 正規化（siteKey 導出 + Mac 代理 targetDeviceScopeKey）
 
-Status: accepted
+Status: superseded
+
+Superseded by: [ADR-20260323-sitekey-canonical-manual-order-and-global-rank](./ADR-20260323-sitekey-canonical-manual-order-and-global-rank.md)
 
 ## Context
 

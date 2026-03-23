@@ -261,6 +261,27 @@ export function mergeManualOrderOverviewResourcesWithAssignmentOrder(
   return result;
 }
 
+/**
+ * v2 端末カード向けの資源解決ポリシー。
+ * - 割当なし: []（既存契約）
+ * - 割当あり: 割当順に評価し、site 正本を優先。site に無ければ端末 slice を補助参照。
+ * - どちらにも無ければプレースホルダ（rows: []）
+ */
+export function resolveManualOrderOverviewResourcesForAssignedDevice(params: {
+  assignmentOrder: string[];
+  siteScopeDerivedResources: ManualOrderOverviewResource[];
+  sliceDerivedResources: ManualOrderOverviewResource[];
+}): ManualOrderOverviewResource[] {
+  const { assignmentOrder, siteScopeDerivedResources, sliceDerivedResources } = params;
+  if (assignmentOrder.length === 0) return [];
+
+  const siteByCd = new Map(siteScopeDerivedResources.map((r) => [r.resourceCd, r]));
+  const sliceByCd = new Map(sliceDerivedResources.map((r) => [r.resourceCd, r]));
+  const mergedDerived = assignmentOrder.map((cd) => siteByCd.get(cd) ?? sliceByCd.get(cd)).filter(Boolean) as
+    ManualOrderOverviewResource[];
+  return mergeManualOrderOverviewResourcesWithAssignmentOrder(assignmentOrder, mergedDerived);
+}
+
 export async function listDueManagementManualOrderOverview(params: Params): Promise<ManualOrderOverview> {
   const targetLocation = params.targetLocation.trim();
   const resourceCd = params.resourceCd?.trim();
@@ -464,19 +485,29 @@ export async function listDueManagementManualOrderOverviewV2(params: {
   }
 
   const devices: ManualOrderOverviewDeviceSlice[] = [];
+  const siteScopeAssignments = byLocation.get(siteKey) ?? [];
+  const siteScopeLatestMap = collectLatestUpdateByResource(eventRows, siteKey);
+  const siteScopeDerivedResources = buildManualOrderOverviewResources(
+    siteScopeAssignments,
+    globalRankMap,
+    siteScopeLatestMap,
+    machineBySeiban
+  );
 
   const legacyAssignmentOrder = assignmentOrderByDevice.get(MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY) ?? [];
+  const hasDeviceScopedAssignments = manualResourceAssignmentRows.some(
+    (row) => row.deviceScopeKey.trim() !== MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY
+  );
   const showLegacy =
-    byLocation.has(siteKey) || legacyAssignmentOrder.length > 0;
+    (byLocation.has(siteKey) || legacyAssignmentOrder.length > 0) &&
+    !hasDeviceScopedAssignments;
   if (showLegacy) {
-    const sliceAssignments = byLocation.get(siteKey) ?? [];
-    const latestMap = collectLatestUpdateByResource(eventRows, siteKey);
     const resources =
       legacyAssignmentOrder.length === 0
-        ? buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+        ? siteScopeDerivedResources
         : mergeManualOrderOverviewResourcesWithAssignmentOrder(
             legacyAssignmentOrder,
-            buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+            siteScopeDerivedResources
           );
     devices.push({
       deviceScopeKey: MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY,
@@ -492,13 +523,17 @@ export async function listDueManagementManualOrderOverviewV2(params: {
     const sliceAssignments = byLocation.get(loc) ?? [];
     const latestMap = collectLatestUpdateByResource(eventRows, loc);
     const assignmentOrder = assignmentOrderByDevice.get(loc) ?? [];
-    const resources =
-      assignmentOrder.length === 0
-        ? []
-        : mergeManualOrderOverviewResourcesWithAssignmentOrder(
-            assignmentOrder,
-            buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
-          );
+    const sliceDerivedResources = buildManualOrderOverviewResources(
+      sliceAssignments,
+      globalRankMap,
+      latestMap,
+      machineBySeiban
+    );
+    const resources = resolveManualOrderOverviewResourcesForAssignedDevice({
+      assignmentOrder,
+      siteScopeDerivedResources,
+      sliceDerivedResources
+    });
     devices.push({
       deviceScopeKey: loc,
       label: loc,

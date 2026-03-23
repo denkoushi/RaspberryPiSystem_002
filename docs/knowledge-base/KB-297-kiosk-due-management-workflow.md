@@ -118,6 +118,45 @@ category: knowledge-base
   - 下ペインが「取得に失敗」で、API が **400** + `errorCode: TARGET_DEVICE_SCOPE_KEY_FORBIDDEN**: キオスクから `targetDeviceScopeKey` が送られていないか、Web ビルドが古い可能性。Pi5 の `web` イメージ／キャッシュとキオスクのハードリロードを確認。
   - **Pi4 で他端末カードを選んだときのデータ**: キオスクは API 上 **自端末の assignment スコープ**のみ。上ペインで別端末を選んでも、クエリから `targetDeviceScopeKey` を外すと一覧は **actor（当該 Pi4）**基準で解決される（他端末の割当を Pi4 から代理閲覧する要件は別途 API ポリシー検討が必要）。
 
+<a id="manual-order-sitekey-canonical-sync-2026-03-23"></a>
+
+### 手動順番・全体ランキングの工場共有同期（`siteKey` 正本、2026-03-23）
+
+- **Context**:
+  - 手動順番は `deviceScopeKey` 保存、全体ランキング（globalShared）は `shared-global-rank` 保存で運用されており、同一工場内でも端末ごとに表示差分が発生した。
+  - 要件は「資源CDごとの手動順番」と「全体ランキング（行単位表示含む）」の両方を工場単位で同期すること。
+- **Fix（API/保存契約）**:
+  - 手動順番:
+    - `resolveProductionScheduleAssignmentLocationKey` は v2 有効時に **`siteKey` を返す**よう変更（Mac は `targetDeviceScopeKey` を検証した上でその工場へ、キオスクは自工場へ）。
+    - `PUT /kiosk/production-schedule/:rowId/order` と `PUT /kiosk/production-schedule/:rowId/complete` は工場キーで更新。
+    - 読み取りは `location=siteKey` を優先しつつ `siteKey=siteKey` の legacy 行をフォールバック参照（`processingOrder`/`order-usage`/assigned-only 条件）。
+  - 全体ランキング:
+    - `globalShared` の保存先を `shared-global-rank` 固定から **`siteKey` 保存**へ変更。
+    - 参照時は `siteKey` を優先し、空の場合のみ `shared-global-rank` をフォールバック参照（互換）。
+    - 生産スケジュール一覧の `globalRank` 参照優先順も `siteKey -> shared-global-rank -> locationKey` へ更新。
+  - overview:
+    - `manual-order-overview` は `siteKey` 正本行を各端末割当（resource assignments）へ再配分して表示できるよう調整。
+- **Deploy / verify（実績）**:
+  - ブランチ **`feat/sitekey-shared-manual-rank-sync`**。
+  - **デプロイ**（Pi3 除外、1台ずつ）: `20260323-100741-24963`（Pi5）/ `20260323-101322-22407`（raspberrypi4）/ `20260323-101738-18203`（raspi4-robodrill01）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。
+  - **同期実測（API）**:
+    - `client-key-raspberrypi4-kiosk1` で手動順番を更新 -> `client-key-raspi4-robodrill01-kiosk1` で同一 row の `processingOrder` 反映を確認。
+    - `global-rank`（`targetLocation=第2工場&rankingScope=globalShared`）を片側更新 -> 他端末で同順序反映を確認。
+- **Troubleshooting**:
+  - `global-rank` 手動保存の `reasonCode` は enum 制約があるため、任意文字列を送ると 400 になる。検証時は `reasonCode` 省略または許可コードを使う。
+  - ローカル統合テストで `kiosk-production-schedule.integration.test.ts` が全落ちする場合、`localhost:5432` の Postgres 未起動が典型（`pnpm test:api` の起動スクリプト利用）。
+  - **上ペインカードが「未設定」のまま増えない（2026-03-23 追記）**: `manual-order-resource-assignments` で資源割当済みでも、同端末に旧 `deviceScopeKey` 行（例: `resourceCd=500`）が残っていると `manual-order-overview` が端末sliceを優先し、`siteKey` 正本（例: `581`）を拾えず `rows: []` になることがある。対策として `manual-order-overview` の資源解決を **割当順 + siteKey 正本優先** に修正し、site に無い場合のみ端末sliceを補助参照する（旧データ削除は不要）。
+
+<a id="manual-order-overview-assigned-resource-sitekey-priority-2026-03-23"></a>
+
+### manual-order-overview 割当資源の siteKey 正本優先（旧 slice 行混在、2026-03-23）
+
+- **Context**: 上記「工場共有同期」とは別コミットで、overview 集約のみを修正。端末に旧 `deviceScopeKey` 行が残ると derived が slice 優先となり、割当済み `siteKey` 正本が `mergeManualOrderOverviewResourcesWithAssignmentOrder` に渡らずカードが空に見える事象があった。
+- **Fix（API）**: [`resolveManualOrderOverviewResourcesForAssignedDevice`](../../apps/api/src/services/production-schedule/due-management-manual-order-overview.service.ts) を追加し、割当スロットごとに **site 正本 → 無ければ端末 slice**。単体: [`merge-manual-order-resource-assignments.test.ts`](../../apps/api/src/services/production-schedule/__tests__/merge-manual-order-resource-assignments.test.ts)。
+- **Deploy / verify（実績）**: ブランチ **`feat/sitekey-shared-manual-rank-sync`**（siteKey 同期デプロイに続く API 追従デプロイ）。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）、`--limit` 1 台ずつ、`RASPI_SERVER_HOST` + `--foreground`。**Ansible ログ timestamp**: `20260323-113105`（Pi5）/ `20260323-113715`（raspberrypi4）/ `20260323-114137`（raspi4-robodrill01）。**自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**（2026-03-23、`manual-order-overview` v2・`siteKey` 導出含む）。
+- **Troubleshooting**: 割当済みなのに上ペイン行が空に見えるときは `GET .../manual-order-overview?siteKey=<工場>` で当該端末の `resources[]` に正本 `resourceCd` と `rows[]` が載るか確認。旧 `location=...` 行が DB に残っていても本修正後は site 優先で表示される（データ削除不要）。
+
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
 - **Context**:

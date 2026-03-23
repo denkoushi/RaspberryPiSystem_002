@@ -351,6 +351,7 @@ export async function upsertProductionScheduleOrder(params: {
 }): Promise<{ success: true; orderNumber: number | null }> {
   const { rowId, resourceCd, orderNumber, locationKey, actorLocationKey } = params;
   const siteKey = resolveSiteKeyFromScopeKey(locationKey.trim());
+  const isSiteCanonicalLocation = locationKey === siteKey;
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
     select: { id: true, rowData: true }
@@ -378,6 +379,15 @@ export async function upsertProductionScheduleOrder(params: {
   }
 
   if (orderNumber === null) {
+    if (isSiteCanonicalLocation) {
+      await prisma.productionScheduleOrderAssignment.deleteMany({
+        where: {
+          csvDashboardRowId: row.id,
+          siteKey,
+          location: { not: locationKey }
+        }
+      });
+    }
     await prisma.productionScheduleOrderAssignment.deleteMany({
       where: {
         csvDashboardRowId: row.id,
@@ -442,6 +452,15 @@ export async function upsertProductionScheduleOrder(params: {
       orderNumber
     }
   });
+  if (isSiteCanonicalLocation) {
+    await prisma.productionScheduleOrderAssignment.deleteMany({
+      where: {
+        csvDashboardRowId: row.id,
+        siteKey,
+        location: { not: locationKey }
+      }
+    });
+  }
 
   const fseibanRaw = rowData.FSEIBAN;
   const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';

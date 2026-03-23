@@ -106,7 +106,7 @@ export async function listDueManagementGlobalRank(params: {
   const readLocation =
     scope === 'locationScoped'
       ? params.locationKey
-      : GLOBAL_SHARED_LOCATION_KEY;
+      : params.locationKey;
   const rows = await prisma.productionScheduleGlobalRank.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -115,6 +115,17 @@ export async function listDueManagementGlobalRank(params: {
     orderBy: [{ priorityOrder: 'asc' }, { fseiban: 'asc' }],
     select: { fseiban: true }
   });
+  if (rows.length === 0 && scope === 'globalShared' && readLocation !== GLOBAL_SHARED_LOCATION_KEY) {
+    const legacyRows = await prisma.productionScheduleGlobalRank.findMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        location: GLOBAL_SHARED_LOCATION_KEY
+      },
+      orderBy: [{ priorityOrder: 'asc' }, { fseiban: 'asc' }],
+      select: { fseiban: true }
+    });
+    return legacyRows.map((row) => row.fseiban);
+  }
   return rows.map((row) => row.fseiban);
 }
 
@@ -168,7 +179,7 @@ export async function replaceDueManagementGlobalRank(params: {
   const writeLocation =
     scope === 'locationScoped'
       ? params.locationKey
-      : GLOBAL_SHARED_LOCATION_KEY;
+      : params.locationKey;
   return replaceGlobalRankInternal({
     locationKey: writeLocation,
     orderedFseibans: params.orderedFseibans,
@@ -193,7 +204,7 @@ export async function mergeDueManagementGlobalRank(params: {
     locationKey:
       (params.scope ?? 'globalShared') === 'locationScoped'
         ? params.locationKey
-        : GLOBAL_SHARED_LOCATION_KEY,
+        : params.locationKey,
     orderedFseibans: merged,
     sourceType: 'manual'
   });
