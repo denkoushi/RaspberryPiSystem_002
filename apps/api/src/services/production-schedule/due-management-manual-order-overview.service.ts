@@ -11,6 +11,9 @@ export type ManualOrderOverviewRow = {
   orderNumber: number;
   fseiban: string;
   fhincd: string;
+  /** 工順（FKOJUN）表示用。処理種別とは別契約。 */
+  processOrderLabel: string;
+  /** @deprecated 後方互換。`processOrderLabel` を使用すること。 */
   processLabel: string;
   machineName: string;
   partName: string;
@@ -95,13 +98,7 @@ const buildMachineNameBySeibanFromDashboard = async (assignments: AssignmentRow[
   return map;
 };
 
-const resolveProcessLabel = (
-  rowData: Record<string, unknown>,
-  rowNotes: ReadonlyArray<{ processingType: string | null }>
-): string => {
-  const fromNote = rowNotes[0]?.processingType;
-  const trimmedNote = typeof fromNote === 'string' ? fromNote.trim() : '';
-  if (trimmedNote.length > 0) return trimmedNote;
+const resolveProcessOrderLabel = (rowData: Record<string, unknown>): string => {
   const fkojun = rowData.FKOJUN;
   if (typeof fkojun === 'number' && Number.isFinite(fkojun)) return String(fkojun);
   if (typeof fkojun === 'string' && fkojun.trim().length > 0) return fkojun.trim();
@@ -113,18 +110,18 @@ const assignmentToOverviewRow = (
   machineBySeiban: Map<string, string>
 ): ManualOrderOverviewRow => {
   const rowData = assignment.csvDashboardRow.rowData as Record<string, unknown>;
-  const notes = assignment.csvDashboardRow.rowNotes;
   const fseiban = strField(rowData.FSEIBAN);
   const fhincd = strField(rowData.FHINCD);
   const fhinmei = strField(rowData.FHINMEI);
-  const processLabel = resolveProcessLabel(rowData, notes);
+  const processOrderLabel = resolveProcessOrderLabel(rowData);
   const machineFromDashboard = machineBySeiban.get(fseiban) ?? '';
   if (isMachinePartCode(fhincd)) {
     return {
       orderNumber: assignment.orderNumber,
       fseiban,
       fhincd,
-      processLabel,
+      processOrderLabel,
+      processLabel: processOrderLabel,
       machineName: fhinmei.length > 0 ? fhinmei : machineFromDashboard,
       partName: ''
     };
@@ -133,7 +130,8 @@ const assignmentToOverviewRow = (
     orderNumber: assignment.orderNumber,
     fseiban,
     fhincd,
-    processLabel,
+    processOrderLabel,
+    processLabel: processOrderLabel,
     machineName: machineFromDashboard,
     partName: fhinmei
   };

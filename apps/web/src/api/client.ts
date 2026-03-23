@@ -521,6 +521,9 @@ export interface ProductionScheduleDueManagementManualOrderOverviewRow {
   orderNumber: number;
   fseiban: string;
   fhincd: string;
+  /** 工順（FKOJUN）表示用。処理種別とは別。 */
+  processOrderLabel: string;
+  /** @deprecated 後方互換。`processOrderLabel` を使用。 */
   processLabel: string;
   machineName: string;
   partName: string;

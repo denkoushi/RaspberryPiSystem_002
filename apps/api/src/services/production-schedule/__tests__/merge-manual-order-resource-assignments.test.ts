@@ -15,7 +15,17 @@ const sampleDerived = [
     missingGlobalRankCount: 0,
     lastUpdatedAt: null,
     lastUpdatedBy: null,
-    rows: [{ orderNumber: 1, fseiban: 'A', fhincd: 'x', processLabel: '', machineName: '', partName: '' }]
+    rows: [
+      {
+        orderNumber: 1,
+        fseiban: 'A',
+        fhincd: 'x',
+        processOrderLabel: '',
+        processLabel: '',
+        machineName: '',
+        partName: ''
+      }
+    ]
   },
   {
     resourceCd: '500',
@@ -26,7 +36,17 @@ const sampleDerived = [
     missingGlobalRankCount: 0,
     lastUpdatedAt: null,
     lastUpdatedBy: null,
-    rows: [{ orderNumber: 2, fseiban: 'B', fhincd: 'y', processLabel: '', machineName: '', partName: '' }]
+    rows: [
+      {
+        orderNumber: 2,
+        fseiban: 'B',
+        fhincd: 'y',
+        processOrderLabel: '',
+        processLabel: '',
+        machineName: '',
+        partName: ''
+      }
+    ]
   }
 ];
 
@@ -56,7 +76,17 @@ describe('resolveManualOrderOverviewResourcesForAssignedDevice', () => {
         missingGlobalRankCount: 0,
         lastUpdatedAt: null,
         lastUpdatedBy: null,
-        rows: [{ orderNumber: 1, fseiban: 'S', fhincd: 'site', processLabel: '', machineName: '', partName: '' }]
+        rows: [
+          {
+            orderNumber: 1,
+            fseiban: 'S',
+            fhincd: 'site',
+            processOrderLabel: '',
+            processLabel: '',
+            machineName: '',
+            partName: ''
+          }
+        ]
       }
     ];
     const sliceDerived = [
@@ -69,7 +99,17 @@ describe('resolveManualOrderOverviewResourcesForAssignedDevice', () => {
         missingGlobalRankCount: 0,
         lastUpdatedAt: null,
         lastUpdatedBy: null,
-        rows: [{ orderNumber: 2, fseiban: 'L', fhincd: 'legacy', processLabel: '', machineName: '', partName: '' }]
+        rows: [
+          {
+            orderNumber: 2,
+            fseiban: 'L',
+            fhincd: 'legacy',
+            processOrderLabel: '',
+            processLabel: '',
+            machineName: '',
+            partName: ''
+          }
+        ]
       }
     ];
 

@@ -7,7 +7,7 @@ import { normalizeMachineName } from '../productionSchedule/machineName';
 export type ManualOrderRowFields = {
   fseiban: string;
   fhincd: string;
-  processLabel: string;
+  processOrderLabel: string;
   machineName: string;
   partName: string;
 };
@@ -34,7 +34,7 @@ export type ManualOrderRowPresentation = {
 export function presentManualOrderRow(fields: ManualOrderRowFields): ManualOrderRowPresentation | null {
   const seiban = fields.fseiban.trim();
   const hincd = fields.fhincd.trim();
-  const proc = fields.processLabel.trim();
+  const proc = fields.processOrderLabel.trim();
   const mach = normalizeMachineName(fields.machineName);
   const part = fields.partName.trim();
 

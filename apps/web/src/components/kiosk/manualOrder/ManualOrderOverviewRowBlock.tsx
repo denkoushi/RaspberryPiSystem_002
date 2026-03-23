@@ -6,7 +6,7 @@ import { presentManualOrderRow } from '../../../features/kiosk/manualOrder/manua
 type Props = {
   fseiban: string;
   fhincd: string;
-  processLabel: string;
+  processOrderLabel: string;
   machineName: string;
   partName: string;
 };
@@ -14,14 +14,14 @@ type Props = {
 export function ManualOrderOverviewRowBlock({
   fseiban,
   fhincd,
-  processLabel,
+  processOrderLabel,
   machineName,
   partName
 }: Props) {
   const p = presentManualOrderRow({
     fseiban,
     fhincd,
-    processLabel,
+    processOrderLabel,
     machineName,
     partName
   });
