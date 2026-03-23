@@ -1,11 +1,14 @@
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
+import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
 import { canProxyTargetLocation } from '../shared.js';
 
 /**
  * 生産スケジュールの手動順番（assignment）参照・更新で使う location（deviceScopeKey）を解決する。
  * v2 有効時: Mac は targetDeviceScopeKey 必須、キオスクは自端末のみ。
+ * ただし保存単位は工場共有（siteKey canonical）に寄せるため、
+ * 解決結果は siteKey を返す。
  */
 export async function resolveProductionScheduleAssignmentLocationKey(params: {
   actorDeviceScopeKey: string;
@@ -26,7 +29,7 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
       );
     }
     await assertRegisteredDeviceScopeKey(requested);
-    return requested;
+    return resolveSiteKeyFromScopeKey(requested);
   }
   if (requested) {
     throw new ApiError(
@@ -36,5 +39,5 @@ export async function resolveProductionScheduleAssignmentLocationKey(params: {
       'TARGET_DEVICE_SCOPE_KEY_FORBIDDEN'
     );
   }
-  return actor;
+  return resolveSiteKeyFromScopeKey(actor);
 }

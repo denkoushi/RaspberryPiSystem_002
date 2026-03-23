@@ -464,19 +464,29 @@ export async function listDueManagementManualOrderOverviewV2(params: {
   }
 
   const devices: ManualOrderOverviewDeviceSlice[] = [];
+  const siteScopeAssignments = byLocation.get(siteKey) ?? [];
+  const siteScopeLatestMap = collectLatestUpdateByResource(eventRows, siteKey);
+  const siteScopeDerivedResources = buildManualOrderOverviewResources(
+    siteScopeAssignments,
+    globalRankMap,
+    siteScopeLatestMap,
+    machineBySeiban
+  );
 
   const legacyAssignmentOrder = assignmentOrderByDevice.get(MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY) ?? [];
+  const hasDeviceScopedAssignments = manualResourceAssignmentRows.some(
+    (row) => row.deviceScopeKey.trim() !== MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY
+  );
   const showLegacy =
-    byLocation.has(siteKey) || legacyAssignmentOrder.length > 0;
+    (byLocation.has(siteKey) || legacyAssignmentOrder.length > 0) &&
+    !hasDeviceScopedAssignments;
   if (showLegacy) {
-    const sliceAssignments = byLocation.get(siteKey) ?? [];
-    const latestMap = collectLatestUpdateByResource(eventRows, siteKey);
     const resources =
       legacyAssignmentOrder.length === 0
-        ? buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+        ? siteScopeDerivedResources
         : mergeManualOrderOverviewResourcesWithAssignmentOrder(
             legacyAssignmentOrder,
-            buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+            siteScopeDerivedResources
           );
     devices.push({
       deviceScopeKey: MANUAL_ORDER_LEGACY_SITE_BUCKET_KEY,
@@ -492,12 +502,16 @@ export async function listDueManagementManualOrderOverviewV2(params: {
     const sliceAssignments = byLocation.get(loc) ?? [];
     const latestMap = collectLatestUpdateByResource(eventRows, loc);
     const assignmentOrder = assignmentOrderByDevice.get(loc) ?? [];
+    const derivedResources =
+      sliceAssignments.length > 0
+        ? buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+        : siteScopeDerivedResources;
     const resources =
       assignmentOrder.length === 0
         ? []
         : mergeManualOrderOverviewResourcesWithAssignmentOrder(
             assignmentOrder,
-            buildManualOrderOverviewResources(sliceAssignments, globalRankMap, latestMap, machineBySeiban)
+            derivedResources
           );
     devices.push({
       deviceScopeKey: loc,

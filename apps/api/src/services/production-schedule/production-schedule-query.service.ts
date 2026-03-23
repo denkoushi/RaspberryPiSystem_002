@@ -123,7 +123,10 @@ const buildResourceConditions = (params: {
         SELECT "csvDashboardRowId"
         FROM "ProductionScheduleOrderAssignment"
         WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND "location" = ${locationKey}
+          AND (
+            "location" = ${locationKey}
+            OR "siteKey" = ${locationKey}
+          )
           AND "resourceCd" IN (${Prisma.join(
             normalizedAssignedOnlyCds.map((cd) => Prisma.sql`${cd}`),
             ','
@@ -352,6 +355,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     WHERE ${baseWhere} ${queryWhere}
   `;
   const total = Number(countRows[0]?.total ?? 0n);
+  const siteScopedGlobalRankLocation = siteKey?.trim().length ? siteKey.trim() : locationKey;
 
   const offset = (page - 1) * pageSize;
   const rows = await prisma.$queryRaw<ProductionScheduleRow[]>`
@@ -372,7 +376,13 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         SELECT "orderNumber"
         FROM "ProductionScheduleOrderAssignment"
         WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-          AND "location" = ${locationKey}
+          AND (
+            "location" = ${locationKey}
+            OR "siteKey" = ${locationKey}
+          )
+        ORDER BY
+          CASE WHEN "location" = ${locationKey} THEN 0 ELSE 1 END ASC,
+          "updatedAt" DESC
         LIMIT 1
       ) AS "processingOrder",
       (
@@ -380,8 +390,12 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         FROM "ProductionScheduleGlobalRowRank"
         WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
           AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND "location" IN (${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
-        ORDER BY CASE WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 0 ELSE 1 END ASC
+          AND "location" IN (${siteScopedGlobalRankLocation}, ${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
+        ORDER BY CASE
+          WHEN "location" = ${siteScopedGlobalRankLocation} THEN 0
+          WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 1
+          ELSE 2
+        END ASC
         LIMIT 1
       ) AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",
@@ -618,20 +632,29 @@ export async function getProductionScheduleOrderUsage(
 ): Promise<Record<string, number[]>> {
   const { locationKey, resourceCds } = params;
   const usageRows = await prisma.$queryRaw<Array<{ resourceCd: string; orderNumbers: number[] }>>`
+    WITH scoped AS (
+      SELECT
+        "resourceCd",
+        "orderNumber"
+      FROM "ProductionScheduleOrderAssignment"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND (
+          "location" = ${locationKey}
+          OR "siteKey" = ${locationKey}
+        )
+        ${
+          resourceCds.length > 0
+            ? Prisma.sql`AND "resourceCd" IN (${Prisma.join(
+                resourceCds.map((cd) => Prisma.sql`${cd}`),
+                ','
+              )})`
+            : Prisma.empty
+        }
+    )
     SELECT
       "resourceCd" AS "resourceCd",
-      array_agg("orderNumber" ORDER BY "orderNumber") AS "orderNumbers"
-    FROM "ProductionScheduleOrderAssignment"
-    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "location" = ${locationKey}
-      ${
-        resourceCds.length > 0
-          ? Prisma.sql`AND "resourceCd" IN (${Prisma.join(
-              resourceCds.map((cd) => Prisma.sql`${cd}`),
-              ','
-            )})`
-          : Prisma.empty
-      }
+      array_agg(DISTINCT "orderNumber" ORDER BY "orderNumber") AS "orderNumbers"
+    FROM scoped
     GROUP BY "resourceCd"
   `;
 

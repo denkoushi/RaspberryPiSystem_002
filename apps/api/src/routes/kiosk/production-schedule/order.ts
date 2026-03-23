@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
+import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
 import { upsertProductionScheduleOrder } from '../../../services/production-schedule/production-schedule-command.service.js';
 import { canProxyTargetLocation } from '../shared.js';
@@ -48,7 +49,7 @@ export async function registerProductionScheduleOrderRoute(
           );
         }
         await assertRegisteredDeviceScopeKey(requestedTargetDeviceScopeKey);
-        targetLocation = requestedTargetDeviceScopeKey;
+        targetLocation = resolveSiteKeyFromScopeKey(requestedTargetDeviceScopeKey);
       } else {
         if (requestedTargetDeviceScopeKey) {
           throw new ApiError(
@@ -66,7 +67,7 @@ export async function registerProductionScheduleOrderRoute(
             'TARGET_LOCATION_FORBIDDEN'
           );
         }
-        targetLocation = actorLocation;
+        targetLocation = locationScopeContext.siteKey;
       }
     } else {
       const requestedTargetLocation = body.targetLocation?.trim();
