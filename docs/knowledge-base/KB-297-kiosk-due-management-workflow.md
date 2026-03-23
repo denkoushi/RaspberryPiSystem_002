@@ -146,6 +146,7 @@ category: knowledge-base
 - **Troubleshooting**:
   - `global-rank` 手動保存の `reasonCode` は enum 制約があるため、任意文字列を送ると 400 になる。検証時は `reasonCode` 省略または許可コードを使う。
   - ローカル統合テストで `kiosk-production-schedule.integration.test.ts` が全落ちする場合、`localhost:5432` の Postgres 未起動が典型（`pnpm test:api` の起動スクリプト利用）。
+  - **上ペインカードが「未設定」のまま増えない（2026-03-23 追記）**: `manual-order-resource-assignments` で資源割当済みでも、同端末に旧 `deviceScopeKey` 行（例: `resourceCd=500`）が残っていると `manual-order-overview` が端末sliceを優先し、`siteKey` 正本（例: `581`）を拾えず `rows: []` になることがある。対策として `manual-order-overview` の資源解決を **割当順 + siteKey 正本優先** に修正し、site に無い場合のみ端末sliceを補助参照する（旧データ削除は不要）。
 
 ## 手動順番 上ペイン SOLID リファクタ（2026-03-20）
 
