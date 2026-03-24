@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2025-12-31
+最終更新: 2026-03-24
 
 ## 概要
 
@@ -404,11 +404,11 @@ cd apps/web && pnpm build && cd ../..
 **検証手順**:
 
 1. **CSVファイルの準備**
-   - 以下のCSVファイルを作成（UTF-8エンコーディング）:
+   - 以下のCSVファイルを作成（UTF-8エンコーディング）。任意列 **`idNum`（旧番号）** を含めてもよい（ヘッダー候補: `idNum`, `ID_num`, `旧番号`。詳細は [csv-import-export.md](./csv-import-export.md)）:
    ```csv
-   managementNumber,name,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid
-   RG-TEST-001,テスト吊具1,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,テスト用,04C362E1330289
-   RG-TEST-002,テスト吊具2,工具庫B,品質管理部,2021-06-01,5,5,3000,80,15,AVAILABLE,,04DE8366BC2A81
+   managementNumber,name,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid,idNum
+   RG-TEST-001,テスト吊具1,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,テスト用,04C362E1330289,101
+   RG-TEST-002,テスト吊具2,工具庫B,品質管理部,2021-06-01,5,5,3000,80,15,AVAILABLE,,04DE8366BC2A81,
    ```
 
 2. **管理画面でCSVインポート（UI経由）**
@@ -425,6 +425,7 @@ cd apps/web && pnpm build && cd ../..
 - [x] `usableYears`フィールドが正しく保存されているか
 - [x] 管理画面の吊具一覧で`usableYears`が表示されるか
 - [x] 編集画面で`usableYears`が表示・編集できるか
+- [ ] `idNum`（旧番号）列を含めた取り込みで、一覧・検索・一意制約（重複時は失敗）が期待どおりか（[KB-312](../knowledge-base/KB-312-rigging-idnum-deploy-verification.md)）
 
 **検証日時**: 2025-01-XX
 **検証結果**: ✅ 成功
@@ -513,6 +514,7 @@ cd apps/web && pnpm build && cd ../..
 - [x] `usableYears`入力フィールドが表示されるか
 - [x] `usableYears`が正しく保存・更新されるか
 - [x] 一覧表と編集フォームが重ならず、使いやすいか
+- [ ] **旧番号（`idNum`）**: フォームに「旧番号」があること、一覧に「旧番号」列があること、検索プレースホルダに「旧番号」が含まれること、同一 `idNum` を別レコードに付与すると保存が拒否されること（[KB-312](../knowledge-base/KB-312-rigging-idnum-deploy-verification.md)）
 
 **検証日時**: 2025-01-XX
 **検証結果**: ✅ 成功
