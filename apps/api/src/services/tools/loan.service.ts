@@ -39,7 +39,7 @@ export interface ActiveLoanQuery {
 interface LoanWithRelations extends Loan {
   item: { id: string; itemCode: string; name: string; nfcTagUid: string | null } | null;
   measuringInstrument?: { id: string; managementNumber: string; name: string } | null;
-  riggingGear?: { id: string; managementNumber: string; name: string } | null;
+  riggingGear?: { id: string; managementNumber: string; name: string; idNum?: string | null } | null;
   employee: { id: string; employeeCode: string; displayName: string; nfcTagUid: string | null } | null;
   client?: { id: string; name: string; location: string | null } | null;
 }

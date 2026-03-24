@@ -941,6 +941,9 @@ export class SignageRenderer {
         const managementText = isInstrument || isRigging
           ? (tool.managementNumber || tool.itemCode || '')
           : (tool.itemCode || '');
+        const riggingIdNumText = isRigging && tool.idNum && tool.idNum.trim().length > 0
+          ? `旧:${tool.idNum.trim()}`
+          : '';
         // 提案3カラーパレット: 工場現場特化・高視認性テーマ
         // 工具: bg-blue-500 (RGB: 59,130,246), ボーダー: border-blue-700 (RGB: 29,78,216)
         // 計測機器: bg-purple-600 (RGB: 147,51,234), ボーダー: border-purple-800 (RGB: 107,33,168)
@@ -1036,6 +1039,13 @@ export class SignageRenderer {
               ? `<text x="${textX}" y="${warningY}"
                   font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
                   ⚠ 期限超過
+                </text>`
+              : ''
+            }
+            ${riggingIdNumText
+              ? `<text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding - Math.round(18 * scale)}"
+                  text-anchor="end" font-size="${Math.max(12, Math.round(12 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+                  ${this.escapeXml(riggingIdNumText)}
                 </text>`
               : ''
             }

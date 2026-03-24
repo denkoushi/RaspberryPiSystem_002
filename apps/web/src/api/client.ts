@@ -2185,7 +2185,9 @@ export interface SignageContentResponse {
     employeeName?: string | null;
     borrowedAt?: string | null;
     isInstrument?: boolean;
+    isRigging?: boolean;
     managementNumber?: string | null;
+    idNum?: string | null;
   }>;
   measuringInstruments?: Array<{
     id: string;

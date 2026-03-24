@@ -4,6 +4,7 @@ import { api, getResolvedClientKey, postClientLogs } from '../../api/client';
 import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { presentActiveLoanListLines } from '../../features/kiosk/activeLoanListLines';
 
 import type { Loan, ReturnPayload } from '../../api/types';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -144,14 +145,13 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
               const borrowedAt = new Date(loan.borrowedAt);
               const dueAt = loan.dueAt ? new Date(loan.dueAt) : new Date(borrowedAt.getTime() + 12 * 60 * 60 * 1000);
               const isOverdue = new Date() > dueAt;
-              const isInstrument = Boolean(loan.measuringInstrument);
-              const isRigging = Boolean(loan.riggingGear);
+              const presentation = presentActiveLoanListLines(loan);
 
               const baseCardClass = isOverdue
                 ? 'border-2 border-red-700 bg-red-600 text-white shadow-lg'
-                : isRigging
+                : presentation.kind === 'rigging'
                   ? 'border-2 border-orange-700 bg-orange-500 text-white shadow-lg'
-                  : isInstrument
+                  : presentation.kind === 'instrument'
                     ? 'border-2 border-purple-800 bg-purple-600 text-white shadow-lg'
                     : 'border-2 border-blue-700 bg-blue-500 text-white shadow-lg';
 
@@ -178,43 +178,31 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                     )}
                     {/* 貸出情報 */}
                     <div className="flex-1 min-w-0">
-                      {isInstrument ? (
+                      {presentation.kind === 'instrument' ? (
                         <>
-                          <div className="flex items-center gap-1 mb-1">
-                            <span className="text-sm">📏</span>
+                          <div className="mb-1">
                             <p className={`text-sm font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
-                              {loan.measuringInstrument?.managementNumber ?? '管理番号なし'}
+                              {presentation.primaryLine}
                             </p>
                           </div>
                           <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
-                            {loan.measuringInstrument?.name ?? '計測機器'}
+                            {presentation.nameLine}
                           </p>
                         </>
-                      ) : isRigging ? (
+                      ) : presentation.kind === 'rigging' ? (
                         <>
-                          <div className="flex items-center gap-1 mb-1">
-                            <span className="text-sm">⚙️</span>
+                          <div className="mb-1">
                             <p className={`text-sm font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
-                              {loan.riggingGear?.managementNumber ?? '管理番号なし'}
+                              {presentation.primaryLine}
                             </p>
                           </div>
                           <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
-                            {loan.riggingGear?.name ?? '吊具'}
+                            {presentation.nameLine}
                           </p>
+                          <p className={`text-xs mt-1 ${isOverdue ? 'text-red-200' : 'text-white/85'}`}>{presentation.idNumLine}</p>
                         </>
                       ) : (
-                        <>
-                          <div className="flex items-center gap-1 mb-1">
-                            <span className="text-sm">🔧</span>
-                            <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
-                              {loan.item?.name ?? (
-                                <span className="text-sm text-white/90">
-                                  {loan.photoUrl ? '写真撮影モード' : 'アイテム'}
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        </>
+                        <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>{presentation.primaryLine}</p>
                       )}
                       <p className={`text-sm font-semibold mt-1 ${isOverdue ? 'text-red-200' : 'text-white/95'}`}>
                         {loan.employee?.displayName ?? '従業員情報なし'}

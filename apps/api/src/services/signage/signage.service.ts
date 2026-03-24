@@ -74,6 +74,7 @@ export interface SignageContentResponse {
     isInstrument?: boolean;
     isRigging?: boolean;
     managementNumber?: string | null;
+    idNum?: string | null;
   }>;
   measuringInstruments?: Array<{
     id: string;
@@ -514,6 +515,7 @@ export class SignageService {
       isInstrument?: boolean;
       isRigging?: boolean;
       managementNumber?: string | null;
+      idNum?: string | null;
     }>
   > {
     // まずは現在貸出中（returnedAt / cancelledAt が null）の工具・計測機器・吊具を取得
@@ -571,6 +573,7 @@ export class SignageService {
             : isRigging
               ? loan.riggingGear?.managementNumber
               : null,
+          idNum: isRigging ? (loan.riggingGear?.idNum ?? null) : null,
         };
       })
       .filter((tool) => Boolean(tool.itemCode) || tool.isInstrument || tool.isRigging)

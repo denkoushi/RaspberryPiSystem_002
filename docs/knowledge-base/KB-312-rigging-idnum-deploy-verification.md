@@ -23,7 +23,9 @@ category: knowledge-base
 | API | `POST/PUT /api/rigging-gears` のボディに任意 `idNum`。空文字は `null` 正規化 |
 | 一覧検索 | `GET /api/rigging-gears?search=` は **名称・管理番号・idNum** の部分一致（大文字小文字区別なし） |
 | 管理 UI | `/admin/tools/rigging-gears` … フォーム「旧番号」、一覧「旧番号」列、検索プレースホルダ「名称・管理番号・旧番号で検索」 |
-| キオスク | `/kiosk/rigging/borrow` … 吊具情報ブロックに **旧番号** 行（未設定時は `-`） |
+| キオスク | `/kiosk/rigging/borrow` … 吊具情報ブロックに **旧番号** 行（未設定時は `-`） / `/kiosk/tag` の持出一覧で **吊具カードに旧番号** を表示 |
+| 持出一覧UI | `/kiosk/tag` の持出一覧カードから種別アイコン（📏/⚙️/🔧）を削除 |
+| サイネージ | 持出カードで吊具のみ **旧番号** を表示（計測機器・工具は表示なし） |
 | CSV | `rigging-gears.csv` に任意列 `idNum`（ヘッダー候補: `idNum`, `ID_num`, `旧番号`）。[csv-import-export.md](../guides/csv-import-export.md) 参照 |
 | ワンショット | `apps/api/scripts/import-rigging.ts` … 列 `ID_num` を `idNum` に保存 |
 
@@ -53,6 +55,10 @@ category: knowledge-base
 3. **キオスク吊具持出**（raspberrypi4）  
    - タグスキャン後、右ペインに **旧番号** が表示されること（未設定は `-`）  
    - [KB-267](./frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) の既存項目（名称・管理番号・保管場所・荷重・寸法）が従来どおりであること
+4. **キオスク持出一覧 / サイネージ**（raspberrypi4）  
+   - `/kiosk/tag` の持出一覧で、計測機器・吊具・工具カードの絵文字アイコンが出ないこと  
+   - 吊具カードで `旧番号: ...` が表示されること（未設定は `-`）  
+   - サイネージ持出カードでも吊具のみ旧番号が表示されること
 
 ### RoboDrill01（`raspi4-robodrill01`）
 
@@ -66,6 +72,7 @@ category: knowledge-base
 | `raspi4-robodrill01` が `UNREACHABLE` / SSH timeout | Tailscale オフライン、IP 変更、ファイアウォール | `tailscale status`、現地電源・LAN、[KB-281](./infrastructure/ansible-deployment.md) の到達不可時の `--limit` 切り分け |
 | 旧番号を保存できない（409） | `idNum` の UNIQUE 衝突 | 既存レコードの `idNum` を確認し重複を解消 |
 | キオスクに旧番号が出ない | 未デプロイ・ブラウザキャッシュ・マスタ未設定 | 対象 Pi4 のデプロイログ確認、`idNum` 入力済みか、強制リロード |
+| サイネージに旧番号が出ない | APIが旧レスポンス / レンダラ未更新 / キャッシュ | `GET /api/signage/content` の `tools[].idNum` を確認し、render-worker 再生成後に表示更新を確認 |
 
 ## Prevention
 
