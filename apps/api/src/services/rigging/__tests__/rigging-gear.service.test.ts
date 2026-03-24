@@ -58,6 +58,7 @@ describe('RiggingGearService', () => {
             OR: [
               { name: { contains: 'RG', mode: 'insensitive' } },
               { managementNumber: { contains: 'RG', mode: 'insensitive' } },
+              { idNum: { contains: 'RG', mode: 'insensitive' } },
             ],
           },
           { status: 'IN_USE' },

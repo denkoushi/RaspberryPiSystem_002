@@ -167,7 +167,7 @@ export function MasterImportPage() {
         description="USBメモリ上の rigging-gears.csv をPCにコピーした後、以下から選択してアップロードしてください。"
         formatSpec={{
           required: 'managementNumber（管理番号、例: RG-001）, name（名称）',
-          optional: 'storageLocation, department, startedAt, usableYears, maxLoadTon, lengthMm, widthMm, thicknessMm, status, notes, rfidTagUid'
+          optional: 'idNum（旧番号・任意）, storageLocation, department, startedAt, usableYears, maxLoadTon, lengthMm, widthMm, thicknessMm, status, notes, rfidTagUid'
         }}
       />
 

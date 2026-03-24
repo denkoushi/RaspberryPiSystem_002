@@ -272,6 +272,9 @@ export function KioskRiggingBorrowPage() {
                       <dt className="font-semibold text-slate-600">管理番号</dt>
                       <dd className="font-semibold text-slate-900">{riggingGear.managementNumber || '-'}</dd>
 
+                      <dt className="font-semibold text-slate-600">旧番号</dt>
+                      <dd className="font-semibold text-slate-900">{riggingGear.idNum ?? '-'}</dd>
+
                       <dt className="font-semibold text-slate-600">保管場所</dt>
                       <dd className="font-semibold text-slate-900">{riggingGear.storageLocation ?? '-'}</dd>
 

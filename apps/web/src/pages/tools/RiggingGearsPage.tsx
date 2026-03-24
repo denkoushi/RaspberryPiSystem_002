@@ -58,6 +58,7 @@ export function RiggingGearsPage() {
     const payload: FormState = {
       name: form.name,
       managementNumber: form.managementNumber,
+      idNum: form.idNum?.trim() ? form.idNum.trim() : null,
       storageLocation: form.storageLocation || null,
       department: form.department || null,
       maxLoadTon: form.maxLoadTon ?? null,
@@ -135,7 +136,7 @@ export function RiggingGearsPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="名称または管理番号で検索"
+              placeholder="名称・管理番号・旧番号で検索"
               className="md:max-w-xs"
             />
             <select
@@ -156,11 +157,12 @@ export function RiggingGearsPage() {
           {isLoading ? (
             <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
           ) : (
-            <table className="w-full table-fixed text-left text-sm min-w-[1100px]">
+            <table className="w-full table-fixed text-left text-sm min-w-[1200px]">
               <thead className="bg-slate-100">
                 <tr className="border-b-2 border-slate-500">
                   <th className="w-40 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">名称</th>
                   <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">管理番号</th>
+                  <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">旧番号</th>
                   <th className="w-32 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">保管場所</th>
                   <th className="w-28 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">部署</th>
                   <th className="w-24 px-2 py-1 text-sm font-semibold text-slate-900 whitespace-nowrap">荷重(t)</th>
@@ -177,6 +179,7 @@ export function RiggingGearsPage() {
                       {gear.name}
                     </td>
                     <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.managementNumber}</td>
+                    <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900 whitespace-nowrap">{gear.idNum ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700 whitespace-nowrap text-ellipsis overflow-hidden" title={gear.storageLocation ?? '-'}>
                       {gear.storageLocation ?? '-'}
                     </td>
@@ -206,7 +209,7 @@ export function RiggingGearsPage() {
                 ))}
                 {riggings?.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-2 py-4 text-center text-sm text-slate-700">
+                    <td colSpan={10} className="px-2 py-4 text-center text-sm text-slate-700">
                       該当する吊具がありません
                     </td>
                   </tr>
@@ -229,6 +232,11 @@ export function RiggingGearsPage() {
               value={form.managementNumber ?? ''}
               onChange={(e) => setForm((f: FormState) => ({ ...f, managementNumber: e.target.value }))}
               placeholder="管理番号（必須）"
+            />
+            <Input
+              value={form.idNum ?? ''}
+              onChange={(e) => setForm((f: FormState) => ({ ...f, idNum: e.target.value || null }))}
+              placeholder="旧番号（任意）"
             />
             <Input
               value={form.storageLocation ?? ''}

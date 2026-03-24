@@ -5,6 +5,7 @@ export interface RiggingGear {
   id: string;
   name: string;
   managementNumber: string;
+  idNum?: string | null;
   storageLocation?: string | null;
   department?: string | null;
   maxLoadTon?: number | null;

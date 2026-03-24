@@ -6,6 +6,12 @@ const { RiggingStatus, InspectionResult } = pkg;
 export const riggingGearBaseSchema = z.object({
   name: z.string().min(1, '名称は必須です'),
   managementNumber: z.string().min(1, '管理番号は必須です'),
+  idNum: z.preprocess((val) => {
+    if (typeof val === 'string' && val.trim() === '') {
+      return null;
+    }
+    return val;
+  }, z.string().trim().min(1).optional().nullable()),
   storageLocation: z.string().optional().nullable(),
   department: z.string().optional().nullable(),
   maxLoadTon: z.coerce.number().optional().nullable(),

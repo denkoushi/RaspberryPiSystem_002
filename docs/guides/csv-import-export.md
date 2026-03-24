@@ -408,6 +408,7 @@ MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE
 
 | 列名 | 形式 | 説明 | 例 |
 |------|------|------|-----|
+| `idNum` | 文字列 | 旧番号（任意、一意） | `101`, `K02A-OLD` |
 | `storageLocation` | 文字列 | 保管場所 | `工具庫A` |
 | `department` | 文字列 | 管理部署 | `製造部` |
 | `startedAt` | 日付（YYYY-MM-DD） | 使用開始日 | `2020-01-01` |
@@ -423,15 +424,16 @@ MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE
 #### CSV例
 
 ```csv
-managementNumber,name,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid
-RG-001,ワイヤーロープ 10t,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,,04C362E1330289
-RG-002,チェーンブロック 5t,工具庫B,製造部,2019-06-01,15,5,3000,80,15,AVAILABLE,定期点検必要,
-RG-003,スリングベルト 3t,工具庫A,製造部,2021-03-15,8,3,2000,50,10,IN_USE,,04DE8366BC2A81
+managementNumber,name,idNum,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid
+RG-001,ワイヤーロープ 10t,101,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,,04C362E1330289
+RG-002,チェーンブロック 5t,,工具庫B,製造部,2019-06-01,15,5,3000,80,15,AVAILABLE,定期点検必要,
+RG-003,スリングベルト 3t,305,工具庫A,製造部,2021-03-15,8,3,2000,50,10,IN_USE,,04DE8366BC2A81
 ```
 
 #### バリデーションルール
 
 - `managementNumber`: 1文字以上（一意）
+- `idNum`: 未指定可。指定時は一意
 - `name`: 1文字以上
 - `rfidTagUid`: 既存の従業員・工具・計測機器・吊具で使用されていないこと
 - CSV内で`rfidTagUid`が重複していないこと

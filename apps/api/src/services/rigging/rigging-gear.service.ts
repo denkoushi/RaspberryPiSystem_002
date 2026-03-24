@@ -5,6 +5,7 @@ import { RiggingStatus, type Prisma } from '@prisma/client';
 export interface RiggingGearInput {
   name: string;
   managementNumber: string;
+  idNum?: string | null;
   storageLocation?: string | null;
   department?: string | null;
   maxLoadTon?: number | null;
@@ -29,7 +30,8 @@ export class RiggingGearService {
       filters.push({
         OR: [
           { name: { contains: query.search, mode: 'insensitive' } },
-          { managementNumber: { contains: query.search, mode: 'insensitive' } }
+          { managementNumber: { contains: query.search, mode: 'insensitive' } },
+          { idNum: { contains: query.search, mode: 'insensitive' } }
         ]
       });
     }
@@ -60,6 +62,7 @@ export class RiggingGearService {
         data: {
           name: input.name,
           managementNumber: input.managementNumber,
+          idNum: input.idNum ?? undefined,
           storageLocation: input.storageLocation,
           department: input.department,
           maxLoadTon: input.maxLoadTon ?? undefined,
@@ -93,6 +96,7 @@ export class RiggingGearService {
         data: {
           name: input.name,
           managementNumber: input.managementNumber,
+          idNum: input.idNum,
           storageLocation: input.storageLocation,
           department: input.department,
           maxLoadTon: input.maxLoadTon,

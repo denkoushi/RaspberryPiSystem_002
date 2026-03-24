@@ -182,6 +182,7 @@ model RiggingGear {
   id                String                    @id @default(uuid())
   name              String
   managementNumber  String                    @unique
+  idNum             String?                   @unique
   storageLocation   String?
   department        String?
   maxLoadTon        Float?

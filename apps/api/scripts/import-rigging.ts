@@ -96,12 +96,14 @@ async function main() {
     const lengthMm = parseNumber(row.lengthMm);
     const widthMm = parseNumber(row.widthMm);
     const thicknessMm = parseNumber(row.thicknessMm);
+    const idNum = row.ID_num.trim() || null;
 
     await prisma.riggingGear.upsert({
       where: { managementNumber: row.managementNumber },
       create: {
         name: row.name || '吊具',
         managementNumber: row.managementNumber,
+        idNum,
         storageLocation: row.storageLocation || null,
         department: row.manageDept || null,
         maxLoadTon,
@@ -112,6 +114,7 @@ async function main() {
       },
       update: {
         name: row.name || '吊具',
+        idNum,
         storageLocation: row.storageLocation || null,
         department: row.manageDept || null,
         maxLoadTon,

@@ -14,6 +14,10 @@ const { RiggingStatus } = pkg;
 const riggingGearCsvSchema = z.object({
   name: z.string().min(1, '名称は必須です'),
   managementNumber: z.string().min(1, '管理番号は必須です'),
+  idNum: z.string().optional().nullable().transform((val) => {
+    if (!val || val.trim() === '') return null;
+    return val.trim();
+  }),
   storageLocation: z.string().optional().nullable(),
   department: z.string().optional().nullable(),
   startedAt: z.string().optional().nullable().transform((val) => {
@@ -222,6 +226,7 @@ export class RiggingGearCsvImporter implements CsvImporter {
 
             const updateData = {
               name: row.name,
+              idNum: row.idNum ?? undefined,
               storageLocation: row.storageLocation,
               department: row.department,
               startedAt: row.startedAt ?? undefined,
@@ -279,6 +284,7 @@ export class RiggingGearCsvImporter implements CsvImporter {
               data: {
                 name: row.name,
                 managementNumber: row.managementNumber,
+                idNum: row.idNum ?? undefined,
                 storageLocation: row.storageLocation,
                 department: row.department,
                 startedAt: row.startedAt ?? undefined,
