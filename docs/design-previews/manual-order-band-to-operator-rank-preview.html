@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>手動順番プレビュー: 帯分けからオペレーター確定順へ</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --bg: #070b12;
+      --panel: #111827;
+      --card: #1a2535;
+      --line: rgba(255, 255, 255, 0.1);
+      --text: #e8eef7;
+      --muted: #92a3bc;
+      --cyan: #22d3ee;
+      --blue: #60a5fa;
+      --amber: #fbbf24;
+      --rose: #fb7185;
+      --green: #4ade80;
+      --purple: #a78bfa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background:
+        radial-gradient(1200px 600px at 80% -100px, rgba(34, 211, 238, 0.08), transparent 60%),
+        radial-gradient(900px 500px at 0% 0%, rgba(167, 139, 250, 0.08), transparent 55%),
+        var(--bg);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .wrap {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--cyan);
+      letter-spacing: 0.02em;
+    }
+    .subtitle {
+      margin: 6px 0 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      gap: 10px;
+      min-height: 760px;
+    }
+    .pane {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .pane-h {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .pane-h h2 {
+      margin: 0;
+      font-size: 12px;
+      color: #d8e7fb;
+    }
+    .tag {
+      border-radius: 6px;
+      border: 1px solid rgba(96, 165, 250, 0.4);
+      background: rgba(96, 165, 250, 0.14);
+      color: #cbe3ff;
+      padding: 2px 7px;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .scroll {
+      overflow: auto;
+      min-height: 0;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .device {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .device.active {
+      border-color: rgba(34, 211, 238, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.16);
+    }
+    .device-h {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .device .name {
+      font-weight: 700;
+      color: #dbecff;
+      font-size: 11px;
+    }
+    .mini {
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .chip {
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(148, 163, 184, 0.12);
+      color: #dbe8fa;
+      border-radius: 999px;
+      font-size: 10px;
+      padding: 2px 6px;
+    }
+    .chip.warn {
+      border-color: rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.12);
+      color: #ffefc2;
+    }
+    .chip.hot {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: rgba(251, 113, 133, 0.12);
+      color: #ffd2db;
+    }
+    .toolbar {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      font-size: 10px;
+    }
+    .btn {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .btn.primary {
+      border-color: rgba(34, 211, 238, 0.45);
+      background: rgba(34, 211, 238, 0.16);
+      color: #baf5ff;
+    }
+    .btn.ok {
+      border-color: rgba(74, 222, 128, 0.45);
+      background: rgba(74, 222, 128, 0.15);
+      color: #cbfbd8;
+    }
+    .lanes {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .lane {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      display: flex;
+      flex-direction: column;
+      min-height: 500px;
+    }
+    .lane-h {
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 4px;
+    }
+    .lane.hot .lane-h { color: #ffd3dc; background: rgba(251, 113, 133, 0.08); }
+    .lane.mid .lane-h { color: #ffeac3; background: rgba(251, 191, 36, 0.08); }
+    .lane.low .lane-h { color: #d3ebff; background: rgba(96, 165, 250, 0.08); }
+    .lane.hold .lane-h { color: #e4d8ff; background: rgba(167, 139, 250, 0.08); }
+    .lane-b {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+      overflow: auto;
+    }
+    .item {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background: var(--card);
+      padding: 7px;
+      display: grid;
+      gap: 4px;
+    }
+    .item.top {
+      border-color: rgba(34, 211, 238, 0.45);
+      box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.13);
+    }
+    .row1, .row2, .row3 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .row1 .fseiban {
+      font-weight: 800;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.02em;
+    }
+    .row1 .due {
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .row2 {
+      font-size: 10px;
+      color: #d2ddef;
+    }
+    .row3 {
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .ops {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .ops .mini-btn {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 5px;
+      color: #e8eef7;
+      padding: 2px 5px;
+      font-size: 9px;
+      font-weight: 700;
+    }
+    .impact {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 8px;
+    }
+    .impact h3 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      color: #d7e7ff;
+    }
+    .impact ul {
+      margin: 0;
+      padding-left: 16px;
+      color: #d7e1f2;
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    .rank-card {
+      border: 1px solid rgba(74, 222, 128, 0.35);
+      background: rgba(74, 222, 128, 0.08);
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .rank-card h3 {
+      margin: 0 0 6px;
+      font-size: 11px;
+      color: #d8ffe5;
+    }
+    .rank-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 10px;
+    }
+    .rank-list li {
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      gap: 6px;
+      align-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.17);
+      border-radius: 6px;
+      padding: 4px 6px;
+    }
+    .rank-no {
+      text-align: center;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.16);
+      font-weight: 800;
+      color: #f1f8ff;
+    }
+    .callout {
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px dashed rgba(255, 255, 255, 0.25);
+      border-radius: 8px;
+      font-size: 10px;
+      color: #dce6f8;
+      background: rgba(255, 255, 255, 0.03);
+      line-height: 1.45;
+    }
+    @media (max-width: 1200px) {
+      .layout { grid-template-columns: 1fr; }
+      .lanes { grid-template-columns: 1fr 1fr; }
+      .lane { min-height: 260px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>手動順番ワークフロー（帯分け → 確定順位）</h1>
+    <p class="subtitle">
+      目的: 全体ランキング未完成でも、<strong>各オペレーターに渡せる資源CDごとの確定順位</strong>へ落とす。帯分けは下書き、最後は連番を確定する。
+    </p>
+
+    <div class="layout">
+      <aside class="pane">
+        <div class="pane-h">
+          <h2>上ペイン: 編集対象の選択</h2>
+          <span class="tag">STEP 1</span>
+        </div>
+        <div class="scroll">
+          <div class="device active">
+            <div class="device-h">
+              <span class="name">第2工場 - raspberrypi4-kiosk1</span>
+              <span class="chip hot">編集中</span>
+            </div>
+            <div class="mini">資源: 500 / 581 / 305</div>
+            <div class="chip-row" style="margin-top:4px;">
+              <span class="chip hot">500 未確定 9件</span>
+              <span class="chip warn">581 未確定 4件</span>
+              <span class="chip">305 確定済み</span>
+            </div>
+          </div>
+          <div class="device">
+            <div class="device-h">
+              <span class="name">第2工場 - raspi4-robodrill01</span>
+              <span class="chip">閲覧</span>
+            </div>
+            <div class="mini">資源: 700 / 900</div>
+          </div>
+          <div class="device">
+            <div class="device-h">
+              <span class="name">トークプラザ - kiosk1</span>
+              <span class="chip">閲覧</span>
+            </div>
+            <div class="mini">資源: 210 / 350</div>
+          </div>
+          <div class="impact">
+            <h3>この画面の使い方（要点）</h3>
+            <ul>
+              <li>まず資源CDを1つ選ぶ（単一資源で編集）。</li>
+              <li>帯A/B/C/保留の順に並びを確認。</li>
+              <li>帯内を微調整して、最後に連番確定。</li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+
+      <main class="pane">
+        <div class="pane-h">
+          <h2>下ペイン: 500 の item を帯分け編集</h2>
+          <span class="tag">STEP 2-3</span>
+        </div>
+        <div class="scroll">
+          <div class="toolbar">
+            <span class="chip hot">帯A: 納期切迫</span>
+            <span class="chip warn">帯B: 納期近 + 残工程多</span>
+            <span class="chip">帯C: 余裕</span>
+            <span class="chip">保留: 情報待ち</span>
+            <button class="btn">帯で自動整列</button>
+            <button class="btn primary">帯内のみ手動調整</button>
+            <button class="btn ok">500 の連番を確定</button>
+          </div>
+
+          <div class="lanes">
+            <section class="lane hot">
+              <div class="lane-h">帯A（先に処理）<span>3件</span></div>
+              <div class="lane-b">
+                <article class="item top">
+                  <div class="row1"><span class="fseiban">25A-00412</span><span class="due">納期: 03/24</span></div>
+                  <div class="row2"><span>MHD-10432-A / メインシャフト</span><span>残工程: 5</span></div>
+                  <div class="row3">
+                    <span>候補順位: A-1</span>
+                    <span class="ops"><span class="mini-btn">先頭へ</span><span class="mini-btn">1つ下へ</span></span>
+                  </div>
+                </article>
+                <article class="item">
+                  <div class="row1"><span class="fseiban">25A-00388</span><span class="due">納期: 03/24</span></div>
+                  <div class="row2"><span>HSG-8821 / ハウジングB</span><span>残工程: 4</span></div>
+                  <div class="row3">
+                    <span>候補順位: A-2</span>
+                    <span class="ops"><span class="mini-btn">上へ</span><span class="mini-btn">下へ</span></span>
+                  </div>
+                </article>
+                <article class="item">
+                  <div class="row1"><span class="fseiban">25A-00531</span><span class="due">納期: 03/25</span></div>
+                  <div class="row2"><span>PLT-3301 / プレートC</span><span>残工程: 6</span></div>
+                  <div class="row3">
+                    <span>候補順位: A-3</span>
+                    <span class="ops"><span class="mini-btn">Bへ送る</span></span>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="lane mid">
+              <div class="lane-h">帯B（早めに処理）<span>2件</span></div>
+              <div class="lane-b">
+                <article class="item">
+                  <div class="row1"><span class="fseiban">25A-00391</span><span class="due">納期: 03/26</span></div>
+                  <div class="row2"><span>BSH-0092 / ブッシュD</span><span>残工程: 5</span></div>
+                  <div class="row3">
+                    <span>候補順位: B-1</span>
+                    <span class="ops"><span class="mini-btn">Aへ上げる</span></span>
+                  </div>
+                </article>
+                <article class="item">
+                  <div class="row1"><span class="fseiban">25A-00405</span><span class="due">納期: 03/26</span></div>
+                  <div class="row2"><span>PLT-8820 / プレートF</span><span>残工程: 3</span></div>
+                  <div class="row3">
+                    <span>候補順位: B-2</span>
+                    <span class="ops"><span class="mini-btn">下へ</span></span>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="lane low">
+              <div class="lane-h">帯C（余裕）<span>3件</span></div>
+              <div class="lane-b">
+                <article class="item">
+                  <div class="row1"><span class="fseiban">25A-00211</span><span class="due">納期: 03/30</span></div>
+                  <div class="row2"><span>GSK-1200 / ガスケット</span><span>残工程: 2</span></div>
+                  <div class="row3"><span>候補順位: C-1</span><span class="ops"><span class="mini-btn">Bへ上げる</span></span></div>
+                </article>
+                <article class="item">
+                  <div class="row1"><span class="fseiban">25A-00108</span><span class="due">納期: 04/02</span></div>
+                  <div class="row2"><span>NUT-551 / ナット</span><span>残工程: 1</span></div>
+                  <div class="row3"><span>候補順位: C-2</span><span class="ops"><span class="mini-btn">保持</span></span></div>
+                </article>
+              </div>
+            </section>
+
+            <section class="lane hold">
+              <div class="lane-h">保留（情報待ち）<span>2件</span></div>
+              <div class="lane-b">
+                <article class="item">
+                  <div class="row1"><span class="fseiban">25A-00600</span><span class="due">納期: 未設定</span></div>
+                  <div class="row2"><span>RNG-991 / リング</span><span>残工程: ?</span></div>
+                  <div class="row3"><span>候補順位: 保留</span><span class="ops"><span class="mini-btn">納期入力へ</span></span></div>
+                </article>
+              </div>
+            </section>
+          </div>
+
+          <div class="callout">
+            ポイント: ここでは「いきなり1位から全件を決めない」。<br />
+            先に帯を整え、帯の中だけ順序を詰める。最後に「500 の連番を確定」を押して、A→B→C→保留の順で 1..N を保存する。
+          </div>
+        </div>
+      </main>
+
+      <aside class="pane">
+        <div class="pane-h">
+          <h2>確定結果と配布イメージ</h2>
+          <span class="tag">STEP 4</span>
+        </div>
+        <div class="scroll">
+          <div class="rank-card">
+            <h3>資源CD 500: オペレーター提示順（確定）</h3>
+            <ol class="rank-list">
+              <li><span class="rank-no">1</span><span>25A-00412 / MHD-10432-A</span><span>帯A</span></li>
+              <li><span class="rank-no">2</span><span>25A-00388 / HSG-8821</span><span>帯A</span></li>
+              <li><span class="rank-no">3</span><span>25A-00531 / PLT-3301</span><span>帯A</span></li>
+              <li><span class="rank-no">4</span><span>25A-00391 / BSH-0092</span><span>帯B</span></li>
+              <li><span class="rank-no">5</span><span>25A-00405 / PLT-8820</span><span>帯B</span></li>
+              <li><span class="rank-no">6</span><span>25A-00211 / GSK-1200</span><span>帯C</span></li>
+              <li><span class="rank-no">7</span><span>25A-00108 / NUT-551</span><span>帯C</span></li>
+            </ol>
+          </div>
+
+          <div class="impact">
+            <h3>他資源CDへ進む順番（推奨）</h3>
+            <ul>
+              <li>未確定件数が多い資源を先に処理（例: 581）。</li>
+              <li>納期切迫 item が多い資源を優先。</li>
+              <li>同じ流れを各資源CDで繰り返し、順次確定。</li>
+            </ul>
+          </div>
+
+          <div class="impact">
+            <h3>このプレビューの意図</h3>
+            <ul>
+              <li>帯分けは終点ではなく、確定順位作成の前段。</li>
+              <li>最終成果物は各資源CDの 1..N（オペレーター提示用）。</li>
+              <li>全体ランキング未成熟でも運用できる。</li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>
