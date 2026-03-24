@@ -23,13 +23,15 @@ category: knowledge-base
 | API | `POST/PUT /api/rigging-gears` のボディに任意 `idNum`。空文字は `null` 正規化 |
 | 一覧検索 | `GET /api/rigging-gears?search=` は **名称・管理番号・idNum** の部分一致（大文字小文字区別なし） |
 | 管理 UI | `/admin/tools/rigging-gears` … フォーム「旧番号」、一覧「旧番号」列、検索プレースホルダ「名称・管理番号・旧番号で検索」 |
-| キオスク | `/kiosk/rigging/borrow` … 吊具情報ブロックに **旧番号** 行（未設定時は `-`） / `/kiosk/tag` の持出一覧で **吊具カードに旧番号** を表示 |
-| 持出一覧UI | `/kiosk/tag` の持出一覧カードから種別アイコン（📏/⚙️/🔧）を削除 |
+| キオスク | `/kiosk/rigging/borrow` … 吊具情報ブロックに **旧番号** 行（未設定時は `-`） / `/kiosk/tag` の持出一覧で吊具 **idNum** を表示（下記「持出一覧レイアウト」） |
+| 持出一覧UI | `/kiosk/tag` の持出一覧カードから種別アイコン（📏/⚙️/🔧）を削除。吊具は **管理番号と同一行**に idNum の**値のみ**（プレフィックス「旧番号:」なし、未設定は `-`）。実装: `presentActiveLoanListLines` → `KioskReturnPage` |
 | サイネージ | 持出カードで吊具のみ **旧番号** を表示（計測機器・工具は表示なし） |
 | CSV | `rigging-gears.csv` に任意列 `idNum`（ヘッダー候補: `idNum`, `ID_num`, `旧番号`）。[csv-import-export.md](../guides/csv-import-export.md) 参照 |
 | ワンショット | `apps/api/scripts/import-rigging.ts` … 列 `ID_num` を `idNum` に保存 |
 
 ## デプロイ実績（2026-03-24）
+
+### 初回（idNum 一覧・サイネージ・マスタ周り）
 
 - **手順**: [deployment.md](../guides/deployment.md) 運用標準。Mac から `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <ホスト> --foreground`（**対象は Pi5 + kiosk の Pi4 のみ**。**Pi3 除外**、**1台ずつ順番**）
 - **成功**:
@@ -38,11 +40,17 @@ category: knowledge-base
 - **未実施（別日再挑戦）**:
   - `raspi4-robodrill01` … preflight で **SSH `Connection timed out`**（inventory 上の Tailscale 先 `100.123.1.113:22`）。端末電源・Tailscale・ACL・現地ネットを確認のうえ、同コマンドで `--limit raspi4-robodrill01` のみ再実行
 
+### 追従（持出一覧レイアウト: 管理番号と idNum 同一行）
+
+- **変更**: `main` の `4b8039c7`（Web のみ・静的プレビュー HTML 同梱）。吊具カードで idNum を名称下の別行から **管理番号行へ移動**（値のみ表示）。
+- **手順**: 上記と同じく `update-all-clients.sh`。**2026-03-24 再デプロイ**で `raspberrypi5` → `raspberrypi4` は success。`raspi4-robodrill01` は **再び preflight SSH timeout**（先項と同じ切り分け）。
+
 ## 実機検証
 
 ### 自動確認（実施済み）
 
 - Pi5 上 API: `GET https://<Pi5>/api/system/health` → **200**、`status: ok`（2026-03-24、運用ネットワークからの到達確認）
+- **追従デプロイ後（2026-03-24）**: Tailscale 経由で `GET https://100.106.158.2/api/system/health` → **200**、`status: ok`（リモート自動確認。DB/memory 警告は既存の運用メッセージ）
 
 ### 運用手動確認（デプロイ済み Pi5 + raspberrypi4 を対象）
 
@@ -57,8 +65,8 @@ category: knowledge-base
    - [KB-267](./frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) の既存項目（名称・管理番号・保管場所・荷重・寸法）が従来どおりであること
 4. **キオスク持出一覧 / サイネージ**（raspberrypi4）  
    - `/kiosk/tag` の持出一覧で、計測機器・吊具・工具カードの絵文字アイコンが出ないこと  
-   - 吊具カードで `旧番号: ...` が表示されること（未設定は `-`）  
-   - サイネージ持出カードでも吊具のみ旧番号が表示されること
+   - 吊具カードで **管理番号と同一行**に idNum（**値のみ**、未設定は `-`。**「旧番号:」プレフィックスは持出一覧では付けない** ― 吊具持出画面 `/kiosk/rigging/borrow` のブロックは従来どおり「旧番号」ラベルあり）  
+   - サイネージ持出カードでも吊具のみ旧番号が表示されること（API/SVG の表記は既存どおり）
 
 ### RoboDrill01（`raspi4-robodrill01`）
 
@@ -73,6 +81,8 @@ category: knowledge-base
 | 旧番号を保存できない（409） | `idNum` の UNIQUE 衝突 | 既存レコードの `idNum` を確認し重複を解消 |
 | キオスクに旧番号が出ない | 未デプロイ・ブラウザキャッシュ・マスタ未設定 | 対象 Pi4 のデプロイログ確認、`idNum` 入力済みか、強制リロード |
 | サイネージに旧番号が出ない | APIが旧レスポンス / レンダラ未更新 / キャッシュ | `GET /api/signage/content` の `tools[].idNum` を確認し、render-worker 再生成後に表示更新を確認 |
+| 持出一覧で idNum が名称の下に残る | ブラウザキャッシュ・未デプロイの Pi4 | 対象 Pi4 で `update-all-clients.sh` ログ確認、キオスクで強制リロード（必要なら `kiosk-browser` 再起動） |
+| 管理番号が長く idNum が折り返される | 仕様上 `flex-wrap` で折り返し可 | 狭いカード幅では2行になることがある。運用上問題なら `truncate` / 表示順の見直しを検討 |
 
 ## Prevention
 
@@ -82,7 +92,7 @@ category: knowledge-base
 
 ## References
 
-- 実装（参考）: `apps/api/prisma/schema.prisma`（`RiggingGear.idNum`）、`apps/api/src/routes/rigging/schemas.ts`、`apps/api/src/services/rigging/rigging-gear.service.ts`、`apps/web/src/pages/tools/RiggingGearsPage.tsx`、`apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`
+- 実装（参考）: `apps/api/prisma/schema.prisma`（`RiggingGear.idNum`）、`apps/api/src/routes/rigging/schemas.ts`、`apps/api/src/services/rigging/rigging-gear.service.ts`、`apps/web/src/pages/tools/RiggingGearsPage.tsx`、`apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`、`apps/web/src/features/kiosk/activeLoanListLines.ts`、`apps/web/src/pages/kiosk/KioskReturnPage.tsx`
 - [KB-267 吊具持出画面に吊具情報表示を追加](./frontend.md#kb-267-吊具持出画面に吊具情報表示を追加)
 - [csv-import-export.md](../guides/csv-import-export.md)（吊具 CSV の `idNum`）
 - [verification-checklist.md](../guides/verification-checklist.md)（6.4 / 6.6.3）
