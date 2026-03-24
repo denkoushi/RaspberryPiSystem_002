@@ -191,15 +191,23 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                         </>
                       ) : presentation.kind === 'rigging' ? (
                         <>
-                          <div className="mb-1">
-                            <p className={`text-sm font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
+                          <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <p
+                              className={`min-w-0 flex-1 text-sm font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}
+                            >
                               {presentation.primaryLine}
                             </p>
+                            {presentation.idNumLine != null ? (
+                              <span
+                                className={`shrink-0 text-xs font-semibold ${isOverdue ? 'text-red-200' : 'text-white/85'}`}
+                              >
+                                {presentation.idNumLine}
+                              </span>
+                            ) : null}
                           </div>
                           <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>
                             {presentation.nameLine}
                           </p>
-                          <p className={`text-xs mt-1 ${isOverdue ? 'text-red-200' : 'text-white/85'}`}>{presentation.idNumLine}</p>
                         </>
                       ) : (
                         <p className={`text-base font-bold truncate ${isOverdue ? 'text-red-200' : 'text-white'}`}>{presentation.primaryLine}</p>

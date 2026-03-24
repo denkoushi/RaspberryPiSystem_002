@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>持出一覧</title>
+  <style>
+    :root {
+      --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, sans-serif;
+      --page-bg: #0f172a;
+      --card-title-bg: rgba(30, 41, 59, 0.95);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.9);
+      --rigging-border: #c2410c;
+      --rigging-bg: #f97316;
+      --instrument-border: #5b21b6;
+      --instrument-bg: #9333ea;
+      --item-border: #1d4ed8;
+      --item-bg: #3b82f6;
+      --btn-bg: rgba(255, 255, 255, 0.95);
+      --btn-text: #0f172a;
+      --ghost: rgba(255, 255, 255, 0.9);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--page-bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+    /* 外枠 ≈ Card title=持出一覧 */
+    .panel {
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: var(--card-title-bg);
+      overflow: hidden;
+    }
+    .panel-h {
+      padding: 12px 16px;
+      font-weight: 600;
+      font-size: 16px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .panel-body {
+      padding: 12px 12px 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    /* ≈ KioskReturnPage li card */
+    .loan-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      border-radius: 8px;
+      border-width: 2px;
+      border-style: solid;
+      padding: 12px;
+      min-height: 140px;
+    }
+    .loan-card.rigging {
+      border-color: var(--rigging-border);
+      background: var(--rigging-bg);
+      color: #fff;
+    }
+    .loan-card.instrument {
+      border-color: var(--instrument-border);
+      background: var(--instrument-bg);
+      color: #fff;
+    }
+    .loan-card.item {
+      border-color: var(--item-border);
+      background: var(--item-bg);
+      color: #fff;
+    }
+
+    @media (min-width: 768px) {
+      .loan-card {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+    }
+
+    .row-main {
+      display: flex;
+      flex: 1;
+      gap: 12px;
+      min-width: 0;
+    }
+    .thumb {
+      flex-shrink: 0;
+      width: 72px;
+      height: 72px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    .body { flex: 1; min-width: 0; }
+
+    /* 管理番号と id 値を同一行（truncate 想定で flex） */
+    .mgmt-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 8px 10px;
+      margin-bottom: 4px;
+    }
+    .mgmt-num {
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .id-num {
+      font-size: 12px;
+      font-weight: 600;
+      opacity: 0.92;
+      white-space: nowrap;
+    }
+    .name-line {
+      font-size: 16px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .meta {
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 4px;
+      opacity: 0.95;
+    }
+    .date-line {
+      font-size: 13px;
+      margin-top: 4px;
+      opacity: 0.9;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    @media (min-width: 768px) {
+      .actions { align-items: flex-end; }
+    }
+    .btn {
+      font: inherit;
+      font-weight: 600;
+      font-size: 13px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: default;
+    }
+    .btn-primary {
+      background: var(--btn-bg);
+      color: var(--btn-text);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--ghost);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <div class="panel-h">持出一覧</div>
+      <div class="panel-body">
+        <div class="grid">
+          <article class="loan-card rigging">
+            <div class="row-main">
+              <div class="thumb">72×72</div>
+              <div class="body">
+                <div class="mgmt-row">
+                  <span class="mgmt-num">K02A</span>
+                  <span class="id-num">101</span>
+                </div>
+                <div class="name-line">ワイヤーロープスリング 2t</div>
+                <p class="meta">山田 太郎</p>
+                <p class="date-line">2026/03/24 14:30:00</p>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-primary">返却</button>
+              <button type="button" class="btn btn-ghost">取消</button>
+            </div>
+          </article>
+
+          <article class="loan-card rigging">
+            <div class="row-main">
+              <div class="thumb">—</div>
+              <div class="body">
+                <div class="mgmt-row">
+                  <span class="mgmt-num">K30B</span>
+                  <span class="id-num">-</span>
+                </div>
+                <div class="name-line">シャックル M12</div>
+                <p class="meta">佐藤 花子</p>
+                <p class="date-line">2026/03/24 9:15:22</p>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-primary">返却</button>
+              <button type="button" class="btn btn-ghost">取消</button>
+            </div>
+          </article>
+
+          <article class="loan-card instrument">
+            <div class="row-main">
+              <div class="thumb">写真</div>
+              <div class="body">
+                <div class="mgmt-row">
+                  <span class="mgmt-num">M-8841</span>
+                </div>
+                <div class="name-line">デジタルノギス</div>
+                <p class="meta">鈴木 一郎</p>
+                <p class="date-line">2026/03/23 11:00:00</p>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-primary">返却</button>
+              <button type="button" class="btn btn-ghost">取消</button>
+            </div>
+          </article>
+
+          <article class="loan-card item">
+            <div class="row-main">
+              <div class="thumb">—</div>
+              <div class="body">
+                <div class="name-line" style="font-size:15px;">トルクレンチセット</div>
+                <p class="meta">高橋 次郎</p>
+                <p class="date-line">2026/03/24 16:02:11</p>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-primary">返却</button>
+              <button type="button" class="btn btn-ghost">取消</button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -6,6 +6,7 @@ export type ActiveLoanListLines = {
   kind: ActiveLoanCardKind;
   primaryLine: string;
   nameLine?: string;
+  /** 吊具のみ。idNum の表示用（プレフィックスなし）。未設定・空は `-`。 */
   idNumLine?: string;
 };
 
@@ -24,7 +25,7 @@ export function presentActiveLoanListLines(loan: Loan): ActiveLoanListLines {
       kind: 'rigging',
       primaryLine: loan.riggingGear.managementNumber ?? '管理番号なし',
       nameLine: loan.riggingGear.name ?? '吊具',
-      idNumLine: `旧番号: ${idNum && idNum.length > 0 ? idNum : '-'}`
+      idNumLine: idNum && idNum.length > 0 ? idNum : '-'
     };
   }
 

@@ -14,7 +14,7 @@ describe('presentActiveLoanListLines', () => {
     expect(lines.kind).toBe('rigging');
     expect(lines.primaryLine).toBe('K30B');
     expect(lines.nameLine).toBe('ナイロンスリング');
-    expect(lines.idNumLine).toBe('旧番号: 101');
+    expect(lines.idNumLine).toBe('101');
   });
 
   it('returns fallback idNum line for rigging when idNum is null', () => {
@@ -26,7 +26,7 @@ describe('presentActiveLoanListLines', () => {
       riggingGear: { id: 'r1', managementNumber: 'K30B', name: 'ナイロンスリング', idNum: null, status: 'AVAILABLE', createdAt: '', updatedAt: '' }
     });
     expect(lines.kind).toBe('rigging');
-    expect(lines.idNumLine).toBe('旧番号: -');
+    expect(lines.idNumLine).toBe('-');
   });
 
   it('returns instrument lines without idNum line', () => {
