@@ -25,7 +25,7 @@
 
 ### 🆕 最新アップデート（2026-03-24）
 
-- **✅ 吊具マスタ `idNum`（旧番号）・本番デプロイ（Pi5 + raspberrypi4）・ドキュメント反映**: 任意の旧番号を保持し管理コンソール・キオスク吊具持出・CSV で利用。`raspi4-robodrill01` は preflight で SSH timeout のため **別日再デプロイ**。`update-all-clients.sh` はローカル未コミット変更で fail-fast → **stash / commit** してから実行。**参照**: [KB-312](./knowledge-base/KB-312-rigging-idnum-deploy-verification.md) / [verification-checklist.md](./guides/verification-checklist.md)（6.4・6.6.3）/ [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **✅ 吊具マスタ `idNum`（旧番号）・本番デプロイ（Pi5 + raspberrypi4）・持出一覧同一行レイアウト追従**: 任意の旧番号を保持し管理コンソール・キオスク吊具持出・CSV で利用。`/kiosk/tag` 持出一覧は管理番号と同一行に idNum（値のみ）。`raspi4-robodrill01` は preflight で SSH timeout のため **別日再デプロイ**。`update-all-clients.sh` はローカル未コミット変更で fail-fast → **stash / commit** してから実行。**参照**: [KB-312](./knowledge-base/KB-312-rigging-idnum-deploy-verification.md) / [verification-checklist.md](./guides/verification-checklist.md)（6.4・6.6.3・6.6.4）/ [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-03-23）
 
