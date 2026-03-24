@@ -17,6 +17,10 @@
 - **手動順番 上ペイン行明細（高密度・ラベルなし）**: [design-previews/manual-order-overview-pane-row-detail-preview.html](./design-previews/manual-order-overview-pane-row-detail-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **手動順番 上ペイン端末カード（3行: 製番品番 / 工順部品名 / 機種名・本文は生産スケジュールと同じ text-xs）**: [design-previews/manual-order-device-card-location-machine-preview.html](./design-previews/manual-order-device-card-location-machine-preview.html) — [design-previews/README.md](./design-previews/README.md)
 
+### 🆕 最新アップデート（2026-03-24）
+
+- **✅ 吊具マスタ `idNum`（旧番号）・本番デプロイ（Pi5 + raspberrypi4）・ドキュメント反映**: 任意の旧番号を保持し管理コンソール・キオスク吊具持出・CSV で利用。`raspi4-robodrill01` は preflight で SSH timeout のため **別日再デプロイ**。`update-all-clients.sh` はローカル未コミット変更で fail-fast → **stash / commit** してから実行。**参照**: [KB-312](./knowledge-base/KB-312-rigging-idnum-deploy-verification.md) / [verification-checklist.md](./guides/verification-checklist.md)（6.4・6.6.3）/ [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-03-23）
 
 - **✅ 実績基準時間 推定式見直し（`p75優先` → `縮小中央値`）実装・回帰テスト・ドキュメント反映完了**: `actual-hours` 読取を共通コンテキスト化し、`actualPerPieceMinutes` の既定戦略を `shrinkedMedianV1`（`w = n/(n+3)`）へ変更。query/scoring の解決経路を統一し、Feature 集約は lookback 365日を既定化。**検証**: API lint/build、`actual-hours-feature-resolver` / `production-schedule-query` / `due-management-scoring` テスト通過。**参照**: [KB-297 推定式見直し節](./knowledge-base/KB-297-kiosk-due-management-workflow.md#実績基準時間-推定式見直し2026-03-23) / [ADR-20260323 実績基準時間推定式](./decisions/ADR-20260323-actual-hours-baseline-estimation.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
