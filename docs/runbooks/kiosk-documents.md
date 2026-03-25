@@ -48,6 +48,12 @@
 - 左: 検索・取込元フィルタ・一覧
 - 右: 1ページ / 見開き、拡大、スクロール
 
+## デプロイ後確認（本番・実機）
+
+1. **一括自動（推奨）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` を実行する。キオスク要領書向けに **`GET /api/kiosk-documents` が 200** かつ **`documents` 配列** を含むこともここで検証される（[deployment.md](../guides/deployment.md) の実機検証方針に準拠）。
+2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**（2026-03-25）。Pi3 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
+3. **UI**: キオスクで「要領書」タブから一覧・閲覧ができること（沉浸式ヘッダーは上端ホバーで表示、[KB-311](../knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)）。
+
 ## トラブルシュート
 
 | 事象 | 確認 |

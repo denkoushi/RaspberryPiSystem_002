@@ -36,8 +36,36 @@ category: knowledge-base
 3. `GET /api/kiosk-documents/:id` で `pageUrls` が非空か
 4. Gmail: `backup.json` の `kioskDocumentGmailIngest` と Gmail トークン、API ログ `[KioskDocumentGmailIngestion]`
 
+## 仕様（運用で押さえる点）
+
+- **キオスク URL**: `/kiosk/documents`。沉浸式レイアウト（上端ホバーでヘッダー表示）は [KB-311](./KB-311-kiosk-immersive-header-allowlist.md) の allowlist に含める。
+- **認可**: 一覧・詳細は **登録端末の `x-client-key`** または **JWT（ADMIN / MANAGER / VIEWER）**。アップロード・Gmail 取り込み・PATCH/DELETE は **ADMIN / MANAGER**。
+- **キオスク一覧**: `enabled=true` の行のみ（無効化した文書は管理画面では見えるがキオスクでは出ない）。
+- **重複**: Gmail は `gmailDedupeKey`（メッセージID＋添付ファイル名などから生成）で一意。手動は Gmail と別系統で複数可。
+
+## 実機検証（2026-03-25）
+
+- **デプロイ**: ブランチ `feature/kiosk-documents-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（Pi3 サイネージは今回の機能対象外のため未実施）。
+- **一括自動**: `./scripts/deploy/verify-phase12-real.sh` を実行。スクリプトは **`GET /api/kiosk-documents` が 200** かつ JSON に **`"documents"`** があることを検証する（要領書APIの回帰）。**サマリの目安**: Pi3・各 Pi4 へ Pi5 経由 SSH がすべて通るとき **PASS 30 / WARN 0 / FAIL 0**（2026-03-25 再開検証で確認）。Pi3 が offline のときは Pi3 行が **WARN** となり **PASS 29 / WARN 1 / FAIL 0** になりうる（全体は FAIL にしない設計）。
+- **API の手動確認例**（Tailscale 主運用・Pi5 の例。キーは inventory の kiosk 用に合わせる）:
+
+```bash
+curl -sk -o /dev/null -w "%{http_code}\n" "https://100.106.158.2/api/kiosk-documents" \
+  -H "x-client-key: client-key-raspberrypi4-kiosk1"
+curl -sk "https://100.106.158.2/api/kiosk-documents" \
+  -H "x-client-key: client-key-raspberrypi4-kiosk1" | head -c 500
+```
+
+- **UI（実機/VNC）**: キオスクで **「要領書」タブ** → `/kiosk/documents` で一覧・検索・1ページ/見開き・ズームが使えること。管理画面 `/admin/kiosk-documents` でアップロードした PDF が一覧に出ること。
+
+## 知見・トラブルシュート（Phase12・SSH）
+
+- **`Pi4 robodrill01 kiosk/status-agent` が FAIL（SSH timeout）**: Mac→Pi5→RoboDrill の **ジャンプ SSH** が一時的にタイムアウトすることがある。Tailscale・現地電源・`tailscale status` を確認し、**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**すると PASS に戻る例がある（2026-03-25 に初回 timeout → 再実行で PASS）。
+- **Pi3 が WARN**: スクリプトは Pi3 未到達時 **WARN** にし、全体は FAIL にしない設計。サイネージの専用手順は [deployment.md §Pi3](../guides/deployment.md) および [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
+
 ## References
 
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
+- 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)
 - 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`
 - 設定スキーマ: `apps/api/src/services/backup/backup-config.ts`（`kioskDocumentGmailIngest`）

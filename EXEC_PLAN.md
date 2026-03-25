@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-03-25) **キオスク要領書 PDF（`KioskDocument`・手動アップロード / Gmail `kioskDocumentGmailIngest`・Port+Adapter・`/kiosk/documents`・`/admin/kiosk-documents`）実装・ドキュメント反映**: ブランチ `feature/kiosk-documents-v1`。Prisma + `20260325120000_add_kiosk_documents`。API `/api/kiosk-documents`（`x-client-key` または JWT）。Gmail は `storage.provider=gmail` 前提。ローカル `pnpm --filter @raspi-system/api run build` / `pnpm --filter @raspi-system/web run build` 通過、関連 Vitest 通過。**ドキュメント**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md) / [kiosk-documents.md](./docs/runbooks/kiosk-documents.md) / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md) / 本ファイル。**本番**: `prisma migrate deploy` 後にデプロイ（運用フローに従う）。**マージは依頼時**。
+- [x] (2026-03-25) **キオスク要領書 PDF（`KioskDocument`・手動/Gmail・Port+Adapter・`/kiosk/documents`・`/admin/kiosk-documents`）実装・本番デプロイ・実機検証・ドキュメント反映**: ブランチ `feature/kiosk-documents-v1`。Prisma `20260325120000_add_kiosk_documents`。API `/api/kiosk-documents`。**本番デプロイ**: [deployment.md](./docs/guides/deployment.md) に従い Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ（Pi3 除外）。**実機検証**: `verify-phase12-real.sh` に要領書 API チェックを追加し **PASS 30 / WARN 0 / FAIL 0**（2026-03-25）。**ドキュメント**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md) / [KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)（`/kiosk/documents` 追記）/ [kiosk-documents.md](./docs/runbooks/kiosk-documents.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [docs/INDEX.md](./docs/INDEX.md) / 本ファイル。**マージは依頼時**。
 - [x] (2026-03-25) **工具貸出 active loan の `clientId` 手動補正（`PUT /api/tools/loans/:id/client`）・Pi5+Pi4×2 順次デプロイ（Pi3 除外）・実機検証・ドキュメント反映・`main` マージ**: `LoanClientAssignmentService` / ルート登録 / ユニット・統合テスト。旧 borrow で `clientId` null の active loan 向け運用 API（BORROW 履歴補完・`ADJUST` 監査・別 client は 409）。**デプロイ**: `feat/resolve-clientid-rigging-instrument-borrow` を [deployment.md](./docs/guides/deployment.md) に従い `--limit` 1台ずつ。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。**ドキュメント**: [kb-kiosk-rigging-return-cancel-investigation.md](./docs/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md) / 本ファイル。
 - [x] (2026-03-24) **キオスク持出一覧: 吊具 idNum を管理番号と同一行（値のみ）・プレビュー HTML・再デプロイ（Pi5 + raspberrypi4、`raspi4-robodrill01` は SSH timeout 継続）・リモートヘルス確認・ドキュメント反映（KB-312・verification-checklist 6.6.4・本ファイル）**: Web のみ（`presentActiveLoanListLines` / `KioskReturnPage`）。`main` `4b8039c7`。**本番**: `update-all-clients.sh` で Pi5 → raspberrypi4 成功、`raspi4-robodrill01` は別日。**自動確認**: `GET https://100.106.158.2/api/system/health` → 200 `ok`。**手動**: キオスク `/kiosk/tag` の見た目は現地で確認推奨。**参照**: [KB-312](./docs/knowledge-base/KB-312-rigging-idnum-deploy-verification.md) / [kiosk-return-loan-card-idnum-row-preview.html](./docs/design-previews/kiosk-return-loan-card-idnum-row-preview.html)。
 - [x] (2026-03-24) **吊具マスタ `idNum`（旧番号）・DB/API/管理UI/キオスク/CSV・本番デプロイ（Pi5 + raspberrypi4、`raspi4-robodrill01` は SSH timeout で別日）・実機ヘルス確認・ドキュメント反映（KB-312・verification-checklist・deploy-status-recovery・INDEX・本ファイル）**: Prisma `RiggingGear.idNum`（nullable + UNIQUE）、検索 OR 拡張、共有型・インポータ・`import-rigging` 対応。**ローカル**: API ユニット（rigging-gear）通過推奨。**本番**: `update-all-clients.sh` で Pi5 → raspberrypi4 のみ成功例、`--limit raspi4-robodrill01` は到達復旧後に再実行。**自動確認**: `GET /api/system/health` → 200 `ok`。**参照**: [KB-312](./docs/knowledge-base/KB-312-rigging-idnum-deploy-verification.md) / [csv-import-export.md](./docs/guides/csv-import-export.md)。
@@ -1634,6 +1634,17 @@
 
 ## Next Steps（将来のタスク）
 
+### キオスク要領書 PDF（2026-03-25）
+
+**概要**: `feature/kiosk-documents-v1` で `KioskDocument`・API・キオスク/管理 UI・`verify-phase12-real.sh` への要領書 API 検証を実装。本番は Pi5→Pi4×2 を順次デプロイ済み。実機で **PASS 30 / WARN 0 / FAIL 0** を記録（[KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md)）。
+
+**候補タスク**:
+1. **`main` へマージ**: PR 作成・レビュー後にマージ（明示依頼時）。
+2. **Gmail 取り込みの本番運用試験**: `storage.provider=gmail`・`kioskDocumentGmailIngest`・未読 PDF のエンドツーエンド（取り込み後の既読/アーカイブ・重複スキップ）を一度通す。
+3. **任意**: ビューア第2フェーズ（例: PDF.js）や、生産スケジュール行との紐付けは [production-documents-feature-plan.md](./docs/plans/production-documents-feature-plan.md) 系の計画と役割分担を整理する。
+
+**参照**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md) / [kiosk-documents.md](./docs/runbooks/kiosk-documents.md)
+
 ### 実績基準時間・生産スケジュール個数（2026-03-23）
 
 **概要**: `shrinkedMedianV1` と lookback 365 日は本番反映・Phase12 実機検証済み（[KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#実績基準時間-推定式見直し2026-03-23)）。**生産スケジュール CSV に個数が無い**前提のままでは「所要(総分)」と実績総工数の厳密突合は未実施。
@@ -1650,7 +1661,7 @@
 **概要**: `feat/kiosk-immersive-layout-manual-order-row` を main へ統合。Phase12 **PASS 28/0/0** 済み。残りは **allowlist 全 URL の現地目視**（上端リビール・除外ルートが従来表示であること）と、**手動順番 Row A/B**（製番·品番·工順·品名 / 機種のみ）の確認。
 
 **候補タスク**:
-1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「キオスク沉浸式 allowlist 拡張」行・[KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) の対象表に従い、タグ/計測/吊具/生産スケジュール本体/進捗一覧/手動順番でヘッダー挙動を確認。`/kiosk/production-schedule/due-management` 等 **非沉浸式** のままであること。
+1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「キオスク沉浸式 allowlist 拡張」行・[KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) の対象表に従い、タグ/計測/吊具/生産スケジュール本体/進捗一覧/手動順番/**要領書 `/kiosk/documents`** でヘッダー挙動を確認。`/kiosk/production-schedule/due-management` 等 **非沉浸式** のままであること。
 2. **切削除外リスト収束**: 下記「切削除外リスト全件除外の収束」を継続。
 3. **任意**: 沉浸式キオスクの E2E シナリオ拡張（`revealKioskHeader` パターンの再利用）、タッチ端末向けヘッダー操作の要否検討（現状マウス前提）。
 
