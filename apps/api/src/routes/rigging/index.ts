@@ -7,6 +7,7 @@ import {
   RiggingInspectionRecordService,
   RiggingLoanService
 } from '../../services/rigging/index.js';
+import { resolveClientDeviceId } from '../../services/clients/client-device-resolution.service.js';
 import {
   riggingBorrowSchema,
   riggingGearCreateSchema,
@@ -172,7 +173,9 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
   // 貸出
   app.post('/rigging-gears/borrow', { preHandler: allowWrite }, async (request) => {
     const body = riggingBorrowSchema.parse(request.body);
-    const loan = await loanService.borrow(body);
+    const headerKey = request.headers['x-client-key'];
+    const resolvedClientId = await resolveClientDeviceId(body.clientId, headerKey);
+    const loan = await loanService.borrow({ ...body, clientId: resolvedClientId });
     return { loan };
   });
 

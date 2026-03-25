@@ -8,6 +8,7 @@ import {
   MeasuringInstrumentTagService,
   InspectionRecordService
 } from '../../services/measuring-instruments/index.js';
+import { resolveClientDeviceId } from '../../services/clients/client-device-resolution.service.js';
 import {
   instrumentQuerySchema,
   instrumentCreateSchema,
@@ -229,7 +230,9 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     if (!body.instrumentTagUid && !body.instrumentId) {
       throw new ApiError(400, '計測機器が選択されていません');
     }
-    const loan = await instrumentLoanService.borrow(body);
+    const headerKey = request.headers['x-client-key'];
+    const resolvedClientId = await resolveClientDeviceId(body.clientId, headerKey);
+    const loan = await instrumentLoanService.borrow({ ...body, clientId: resolvedClientId });
     return { loan };
   });
 

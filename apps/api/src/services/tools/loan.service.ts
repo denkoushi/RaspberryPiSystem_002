@@ -6,6 +6,7 @@ import { logger } from '../../lib/logger.js';
 import { ItemService } from './item.service.js';
 import { EmployeeService } from './employee.service.js';
 import { CameraService } from '../camera/index.js';
+import { resolveClientDeviceId } from '../clients/client-device-resolution.service.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import sharp from 'sharp';
 import { cameraConfig } from '../../config/camera.config.js';
@@ -62,21 +63,7 @@ export class LoanService {
     clientId: string | undefined,
     apiKeyHeader: string | string[] | undefined
   ): Promise<string | undefined> {
-    if (clientId) {
-      const client = await prisma.clientDevice.findUnique({ where: { id: clientId } });
-      if (!client) {
-        throw new ApiError(404, '指定されたクライアントが存在しません');
-      }
-      return client.id;
-    }
-    if (typeof apiKeyHeader === 'string') {
-      const client = await prisma.clientDevice.findUnique({ where: { apiKey: apiKeyHeader } });
-      if (!client) {
-        throw new ApiError(401, 'クライアント API キーが不正です');
-      }
-      return client.id;
-    }
-    return undefined;
+    return resolveClientDeviceId(clientId, apiKeyHeader);
   }
 
   /**
