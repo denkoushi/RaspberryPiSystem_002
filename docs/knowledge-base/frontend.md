@@ -3704,7 +3704,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **拡張（2026-03-24、旧番号 `idNum`）**:
 - 吊具マスタに任意の `idNum`（旧番号）を保持。未設定は `-` 表示。一覧検索は名称・管理番号・`idNum` の OR。
 - 表示ブロックに **旧番号** 行を追加（`KioskRiggingBorrowPage.tsx`）。
-- デプロイ実績・RoboDrill01 未到達時の切り分け・CSV は [KB-312](./KB-312-rigging-idnum-deploy-verification.md)。
+- デプロイ実績・Pi5 経由疎通の切り分け・CSV は [KB-312](./KB-312-rigging-idnum-deploy-verification.md)（2026-03-25 時点 Pi5+Pi4×2 完了・Phase12 PASS）。
 
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了・実機検証完了**（2026-02-18）
 
