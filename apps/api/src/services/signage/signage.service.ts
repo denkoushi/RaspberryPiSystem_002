@@ -1,5 +1,6 @@
 import { Prisma, SignageContentType, SignageDisplayMode } from '@prisma/client';
 import type { SignageSchedule } from '@prisma/client';
+import { formatClientDeviceLocationLabel } from '@raspi-system/shared-types';
 
 type ScheduleSummary = Pick<
   SignageSchedule,
@@ -70,6 +71,7 @@ export interface SignageContentResponse {
     name: string;
     thumbnailUrl?: string | null;
     employeeName?: string | null;
+    clientLocation?: string;
     borrowedAt?: string | null;
     isInstrument?: boolean;
     isRigging?: boolean;
@@ -511,6 +513,7 @@ export class SignageService {
       name: string;
       thumbnailUrl: string | null;
       employeeName?: string | null;
+      clientLocation?: string;
       borrowedAt?: string | null;
       isInstrument?: boolean;
       isRigging?: boolean;
@@ -527,6 +530,7 @@ export class SignageService {
       include: {
         item: true,
         employee: true,
+        client: true,
         measuringInstrument: true,
         riggingGear: true,
       },
@@ -564,6 +568,7 @@ export class SignageService {
           name,
           thumbnailUrl: this.buildThumbnailUrl(loan.photoUrl),
           employeeName: loan.employee?.displayName ?? null,
+          clientLocation: formatClientDeviceLocationLabel(loan.client?.location),
           borrowedAt: borrowedAt,
           isOver12Hours: isOver12Hours,
           isInstrument,

@@ -15,6 +15,7 @@ describe('presentActiveLoanListLines', () => {
     expect(lines.primaryLine).toBe('K30B');
     expect(lines.nameLine).toBe('ナイロンスリング');
     expect(lines.idNumLine).toBe('101');
+    expect(lines.clientLocationLine).toBe('-');
   });
 
   it('returns fallback idNum line for rigging when idNum is null', () => {
@@ -27,6 +28,7 @@ describe('presentActiveLoanListLines', () => {
     });
     expect(lines.kind).toBe('rigging');
     expect(lines.idNumLine).toBe('-');
+    expect(lines.clientLocationLine).toBe('-');
   });
 
   it('returns instrument lines without idNum line', () => {
@@ -41,6 +43,7 @@ describe('presentActiveLoanListLines', () => {
     expect(lines.primaryLine).toBe('M-001');
     expect(lines.nameLine).toBe('ノギス');
     expect(lines.idNumLine).toBeUndefined();
+    expect(lines.clientLocationLine).toBe('-');
   });
 
   it('returns photo mode label for generic item when item is null', () => {
@@ -53,5 +56,18 @@ describe('presentActiveLoanListLines', () => {
     });
     expect(lines.kind).toBe('item');
     expect(lines.primaryLine).toBe('写真撮影モード');
+    expect(lines.clientLocationLine).toBe('-');
+  });
+
+  it('normalizes client location for display', () => {
+    const lines = presentActiveLoanListLines({
+      id: 'loan-5',
+      borrowedAt: '2026-03-24T08:22:31.000Z',
+      employee: { id: 'e1', employeeCode: '0001', displayName: '山田太郎', status: 'ACTIVE', createdAt: '', updatedAt: '' },
+      item: { id: 'i1', itemCode: 'I-001', name: 'ドライバー', status: 'AVAILABLE', createdAt: '', updatedAt: '' },
+      client: { id: 'c1', name: 'kiosk1', location: '  研削エリア  ' }
+    });
+    expect(lines.kind).toBe('item');
+    expect(lines.clientLocationLine).toBe('研削エリア');
   });
 });
