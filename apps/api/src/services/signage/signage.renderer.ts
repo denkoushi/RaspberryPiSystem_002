@@ -936,6 +936,7 @@ export class SignageRenderer {
         const [borrowedDate, borrowedTime] = borrowedText.split(' ');
         const primaryText = tool.name || '写真撮影モード';
         const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
+        const clientLocationText = tool.clientLocation?.trim() ? tool.clientLocation.trim() : '-';
         const isInstrument = Boolean(tool.isInstrument);
         const isRigging = Boolean(tool.isRigging);
         const managementText = isInstrument || isRigging
@@ -1007,12 +1008,13 @@ export class SignageRenderer {
         // 統一された情報の並び順: 名称、従業員名、日付+時刻（横並び）、警告
         // すべてのアイテム種別（工具/計測機器/吊具）で同じ順序に統一
         const primaryY = textStartY + Math.round(20 * scale); // 名称の位置（全アイテム共通）
-        const nameY = primaryY + Math.round(28 * scale); // primaryText(18px) + 28px間隔（約1.6倍）
-        const dateTimeY = nameY + Math.round(26 * scale); // secondary(16px) + 26px間隔（約1.6倍）
+        const nameY = primaryY + Math.round(24 * scale); // primaryText から1段目（従業員）
+        const locationY = nameY + Math.round(20 * scale); // 端末場所
+        const dateTimeY = locationY + Math.round(20 * scale); // 日付+時刻
         // 日付と時刻を横並びに配置（同じY座標、X座標をずらす）
         const dateX = textX;
         const timeX = textX + (borrowedDate ? Math.round(80 * scale) : 0); // 日付の右側に時刻を配置（日付がない場合は左端から）
-        const warningY = dateTimeY + Math.round(24 * scale); // date/time(14px) + 24px間隔（約1.7倍）
+        const warningY = dateTimeY + Math.round(18 * scale); // date/time の直下に警告表示
         return `
           <g>
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
@@ -1026,6 +1028,10 @@ export class SignageRenderer {
             <text x="${textX}" y="${nameY}"
               font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${this.escapeXml(secondary)}
+            </text>
+            <text x="${textX}" y="${locationY}"
+              font-size="${Math.max(12, Math.round(13 * scale))}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
+              ${this.escapeXml(`端末場所: ${clientLocationText}`)}
             </text>
             <text x="${dateX}" y="${dateTimeY}"
               font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">

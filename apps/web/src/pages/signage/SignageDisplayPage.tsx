@@ -1,3 +1,4 @@
+import { formatClientDeviceLocationLabel } from '@raspi-system/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 
 import { getSignageVisualizationImageUrl, type SignageContentResponse, type SignageSlot, type SignageSlotConfig } from '../../api/client';
@@ -31,6 +32,7 @@ const renderPdfImage = (src?: string, alt?: string) => {
 function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean }) {
   const isInstrument = Boolean(tool.isInstrument);
   const isRigging = Boolean(tool.isRigging);
+  const clientLocation = formatClientDeviceLocationLabel(tool.clientLocation);
   
   // 計測機器は藍系背景、工具は従来の背景
   const borderClass = isInstrument
@@ -71,6 +73,9 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
             <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
               {tool.name}
             </p>
+            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
+              端末場所: {clientLocation}
+            </p>
           </>
         ) : isRigging ? (
           <>
@@ -83,6 +88,9 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
             <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
               旧番号: {tool.idNum?.trim() ? tool.idNum.trim() : '-'}
             </p>
+            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
+              端末場所: {clientLocation}
+            </p>
           </>
         ) : (
           <>
@@ -91,6 +99,9 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
             </p>
             <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} uppercase tracking-[0.3em] text-white/50`}>
               {tool.itemCode}
+            </p>
+            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
+              端末場所: {clientLocation}
             </p>
           </>
         )}

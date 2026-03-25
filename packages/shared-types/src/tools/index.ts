@@ -3,6 +3,7 @@
  */
 import type { MeasuringInstrument } from '../measuring-instruments/index.js';
 import type { RiggingGear } from '../rigging/index.js';
+export { formatClientDeviceLocationLabel } from './client-device-location.js';
 
 export interface Employee {
   id: string;

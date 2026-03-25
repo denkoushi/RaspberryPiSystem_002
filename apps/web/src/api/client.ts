@@ -2183,6 +2183,7 @@ export interface SignageContentResponse {
     name: string;
     thumbnailUrl: string | null;
     employeeName?: string | null;
+    clientLocation?: string;
     borrowedAt?: string | null;
     isInstrument?: boolean;
     isRigging?: boolean;
