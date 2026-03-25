@@ -1,5 +1,8 @@
 export type KioskDocumentLayoutMode = 'single' | 'spread';
 
+/** ビューアの横幅モード（標準 / ビュー幅フィット） */
+export type KioskDocumentWidthMode = 'default' | 'fit';
+
 /**
  * ページURLを「1ページ1行」または「見開き2ページ1行」に分割する（API/React に依存しない）
  */
