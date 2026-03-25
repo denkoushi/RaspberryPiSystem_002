@@ -18,6 +18,11 @@
 - **手動順番 上ペイン端末カード（3行: 製番品番 / 工順部品名 / 機種名・本文は生産スケジュールと同じ text-xs）**: [design-previews/manual-order-device-card-location-machine-preview.html](./design-previews/manual-order-device-card-location-machine-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **手動順番 帯分け → オペレーター確定順位（静的プレビュー）**: [design-previews/manual-order-band-to-operator-rank-preview.html](./design-previews/manual-order-band-to-operator-rank-preview.html) — [design-previews/README.md](./design-previews/README.md)
 
+### キオスク要領書（PDF）
+
+- **仕様・トラブルシュート**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md)
+- **運用手順**: [kiosk-documents.md](./runbooks/kiosk-documents.md)
+
 ### 調査・分析
 
 - **生産日程 `FSIGENSHOYORYO`（所要・総分）分析**: [analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md](./analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md) — current snapshot の分布、資源別偏り、外れ値、納期 coverage、帯算出への使い方を整理。再実行 SQL 付き。

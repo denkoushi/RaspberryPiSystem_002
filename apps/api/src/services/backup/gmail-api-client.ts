@@ -13,6 +13,8 @@ export interface GmailMessage {
   labelIds: string[];
   snippet: string;
   payload?: {
+    mimeType?: string;
+    filename?: string;
     headers?: Array<{ name: string; value: string }>;
     parts?: Array<{
       partId: string;
@@ -460,6 +462,65 @@ export class GmailApiClient {
    * @param messageId メッセージID
    * @returns 添付ファイルのBufferとファイル名
    */
+  /**
+   * メール内のPDF添付を列挙（application/pdf または .pdf 拡張子）
+   */
+  async listPdfAttachments(messageId: string): Promise<
+    Array<{ attachmentId: string; filename: string; mimeType: string }>
+  > {
+    const message = await this.getMessage(messageId);
+    const results: Array<{ attachmentId: string; filename: string; mimeType: string }> = [];
+
+    const isPdfPart = (mimeType: string | undefined, filename: string | undefined): boolean => {
+      const mt = (mimeType ?? '').toLowerCase();
+      if (mt === 'application/pdf') {
+        return true;
+      }
+      const fn = (filename ?? '').toLowerCase();
+      return fn.endsWith('.pdf');
+    };
+
+    type PartsType = NonNullable<GmailMessage['payload']>['parts'];
+    const walk = (parts: PartsType | undefined): void => {
+      if (!parts || !Array.isArray(parts)) {
+        return;
+      }
+      for (const part of parts) {
+        const fn = part.filename || '';
+        const mt = part.mimeType || '';
+        if (part.body?.attachmentId && isPdfPart(mt, fn)) {
+          results.push({
+            attachmentId: part.body.attachmentId,
+            filename: fn || 'document.pdf',
+            mimeType: mt || 'application/pdf',
+          });
+        }
+        if (part.parts) {
+          walk(part.parts);
+        }
+      }
+    };
+
+    if (!message.payload) {
+      return results;
+    }
+
+    if (message.payload.body?.attachmentId) {
+      const rootMime = message.payload.mimeType;
+      const rootName = message.payload.filename;
+      if (isPdfPart(rootMime, rootName)) {
+        results.push({
+          attachmentId: message.payload.body.attachmentId,
+          filename: rootName || 'document.pdf',
+          mimeType: rootMime || 'application/pdf',
+        });
+      }
+    }
+
+    walk(message.payload.parts);
+    return results;
+  }
+
   async getFirstAttachment(messageId: string): Promise<{ buffer: Buffer; filename: string } | null> {
     const message = await this.getMessage(messageId);
     

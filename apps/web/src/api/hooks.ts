@@ -139,6 +139,12 @@ import {
   uploadSignagePdf,
   updateSignagePdf,
   deleteSignagePdf,
+  getKioskDocuments,
+  getKioskDocumentDetail,
+  uploadKioskDocument,
+  deleteKioskDocument,
+  patchKioskDocumentEnabled,
+  triggerKioskDocumentGmailIngest,
   getSignageEmergency,
   setSignageEmergency,
   getSignageContent,
@@ -150,6 +156,7 @@ import {
   deleteVisualizationDashboard,
   type SignageSchedule,
   type SignagePdf,
+  type KioskDocumentSource,
   type ClientLogLevel,
   getNetworkModeStatus,
   getMeasuringInstruments,
@@ -1365,6 +1372,55 @@ export function useSignagePdfMutations() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-pdfs'] })
   });
   return { upload, update, remove };
+}
+
+export function useKioskDocuments(params?: {
+  q?: string;
+  sourceType?: KioskDocumentSource;
+  hideDisabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: ['kiosk-documents', params],
+    queryFn: () => getKioskDocuments(params),
+  });
+}
+
+export function useKioskDocumentDetail(id: string | null) {
+  return useQuery({
+    queryKey: ['kiosk-document', id],
+    queryFn: () => getKioskDocumentDetail(id!),
+    enabled: Boolean(id),
+  });
+}
+
+export function useKioskDocumentMutations() {
+  const queryClient = useQueryClient();
+  const upload = useMutation({
+    mutationFn: uploadKioskDocument,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteKioskDocument(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-document'] });
+    },
+  });
+  const setEnabled = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => patchKioskDocumentEnabled(id, enabled),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+    },
+  });
+  const ingestGmail = useMutation({
+    mutationFn: (params?: { scheduleId?: string }) => triggerKioskDocumentGmailIngest(params),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+    },
+  });
+  return { upload, remove, setEnabled, ingestGmail };
 }
 
 export function useSignageEmergency() {

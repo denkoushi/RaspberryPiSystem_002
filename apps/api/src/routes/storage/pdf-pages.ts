@@ -36,8 +36,14 @@ export function registerPdfPageRoutes(app: FastifyInstance): void {
       // ファイルを読み込む
       const imageBuffer = await fs.readFile(filePath);
 
-      // Content-Typeを設定
-      reply.type('image/png');
+      const lower = filename.toLowerCase();
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+        reply.type('image/jpeg');
+      } else if (lower.endsWith('.webp')) {
+        reply.type('image/webp');
+      } else {
+        reply.type('image/png');
+      }
 
       // 画像データを返す
       return reply.send(imageBuffer);

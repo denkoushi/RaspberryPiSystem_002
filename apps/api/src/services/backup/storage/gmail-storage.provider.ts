@@ -82,6 +82,13 @@ export class GmailStorageProvider implements StorageProvider {
   }
 
   /**
+   * 要領書Gmail取り込みなど、StorageProvider契約外でGmail APIへアクセスする用途（同一OAuth/ゲートを再利用）
+   */
+  getGmailApiClient(): GmailApiClient {
+    return this.gmailClient;
+  }
+
+  /**
    * アクセストークンを更新する
    */
   private async refreshAccessTokenIfNeeded(): Promise<void> {

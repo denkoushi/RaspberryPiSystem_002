@@ -22,7 +22,9 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/production-schedule/manual-order'],
     ['/kiosk/production-schedule/manual-order/extra'],
     ['/kiosk/production-schedule/progress-overview'],
-    ['/kiosk/production-schedule/progress-overview/']
+    ['/kiosk/production-schedule/progress-overview/'],
+    ['/kiosk/documents'],
+    ['/kiosk/documents/']
   ])('true for %s', (path) => {
     expect(usesKioskImmersiveLayout(path)).toBe(true);
   });

@@ -14,6 +14,7 @@ import { CsvDashboardsPage } from './pages/admin/CsvDashboardsPage';
 import { CsvImportPage } from './pages/admin/CsvImportPage';
 import { DashboardPage } from './pages/admin/DashboardPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
+import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
@@ -23,6 +24,7 @@ import { SignageSchedulesPage } from './pages/admin/SignageSchedulesPage';
 import { VisualizationDashboardsPage } from './pages/admin/VisualizationDashboardsPage';
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
+import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
@@ -62,6 +64,7 @@ function App() {
           <Route path="/kiosk/production-schedule/manual-order" element={<ProductionScheduleManualOrderPage />} />
           <Route path="/kiosk/production-schedule/progress-overview" element={<ProductionScheduleProgressOverviewPage />} />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
+          <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
         </Route>
       </Route>
       {/* 開発用: UI確認のための一時的なルート */}
@@ -111,6 +114,7 @@ function App() {
         <Route path="gmail">
           <Route path="config" element={<GmailConfigPage />} />
         </Route>
+        <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
         <Route path="signage">
           <Route path="schedules" element={<SignageSchedulesPage />} />
           <Route path="pdfs" element={<SignagePdfsPage />} />

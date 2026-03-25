@@ -1186,6 +1186,32 @@ model Alert {
   @@index([type])
 }
 
+enum KioskDocumentSource {
+  MANUAL
+  GMAIL
+}
+
+/// キオスク「要領書」用PDF（手動アップロード / Gmail取り込み）
+model KioskDocument {
+  id                   String              @id @default(uuid())
+  title                String
+  filename             String
+  filePath             String
+  sourceType           KioskDocumentSource
+  gmailMessageId       String?
+  sourceAttachmentName String?
+  /// Gmail同一添付の再取り込み防止（例: messageId + 元ファイル名のハッシュ）
+  gmailDedupeKey       String?             @unique
+  pageCount            Int?
+  enabled              Boolean             @default(true)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([enabled])
+  @@index([title])
+  @@index([sourceType])
+}
+
 model AlertDelivery {
   id            String              @id @default(uuid())
   alertId       String // Alert.id（ファイルのid）

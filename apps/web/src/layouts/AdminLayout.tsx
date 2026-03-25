@@ -52,6 +52,7 @@ export function AdminLayout() {
           { to: '/admin/tools/rigging-gears', label: '吊具' },
           { to: '/admin/tools/history', label: '履歴' },
           { to: '/admin/clients', label: 'クライアント端末' },
+          { to: '/admin/kiosk-documents', label: '要領書（キオスク）' },
           { to: '/admin/import', label: 'CSV取り込み' },
           { to: '/admin/csv-dashboards', label: 'CSVダッシュボード' },
           { to: '/admin/production-schedule-settings', label: '生産スケジュール設定' },
@@ -130,6 +131,9 @@ export function AdminLayout() {
             </NavLink>
             <NavLink to="/admin/clients" className={linkClass}>
               クライアント端末
+            </NavLink>
+            <NavLink to="/admin/kiosk-documents" className={linkClass}>
+              要領書（キオスク）
             </NavLink>
             <NavLink to="/admin/import" className={linkClass}>
               CSV取り込み
