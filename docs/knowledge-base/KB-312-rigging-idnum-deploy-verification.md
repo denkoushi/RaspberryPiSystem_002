@@ -2,7 +2,7 @@
 title: KB-312 吊具マスター idNum（旧番号）追加・デプロイ・実機検証
 tags: [吊具, マスター, キオスク, デプロイ, Prisma]
 audience: [開発者, 運用者]
-last-verified: 2026-03-24
+last-verified: 2026-03-25
 category: knowledge-base
 ---
 
@@ -10,7 +10,7 @@ category: knowledge-base
 
 ## Context
 
-- **いつ**: 2026-03-24（実装は `main` へ先行マージ済み。本 KB はデプロイ実績・検証・運用知見の記録）
+- **いつ**: 2026-03-24 以降更新（実装は `main` へ先行マージ済み。本 KB はデプロイ実績・検証・運用知見の記録）。**2026-03-25**: 3 台すべてデプロイ成功後に Phase12 自動検証 **PASS 28/0/0**
 - **目的**: 現行の管理番号（例: `K02A`）に加え、過去の数字3桁など**旧番号**を `idNum` として保持し、管理コンソールとキオスク吊具持出画面の双方で参照できるようにする
 - **Pi3**: 本変更は**サイネージ（Pi3）非対象**。Pi3 専用デプロイ手順は不要（[deployment.md](../guides/deployment.md)「ラズパイ3（サイネージ）の更新」参照）
 
@@ -45,12 +45,20 @@ category: knowledge-base
 - **変更**: `main` の `4b8039c7`（Web のみ・静的プレビュー HTML 同梱）。吊具カードで idNum を名称下の別行から **管理番号行へ移動**（値のみ表示）。
 - **手順**: 上記と同じく `update-all-clients.sh`。**2026-03-24 再デプロイ**で `raspberrypi5` → `raspberrypi4` は success。`raspi4-robodrill01` は **再び preflight SSH timeout**（先項と同じ切り分け）。
 
+### 全台追従（2026-03-25）
+
+- **手順**: [deployment.md](../guides/deployment.md) どおり `main` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01`** の順に `--limit` 1 台ずつ・`--foreground`。Pi3 は対象外。
+- **結果**: 3 台ともデプロイサマリ・ポストヘルス **success**（例: RoboDrill 側ログ `logs/ansible-update-20260325-084123.log`）。
+- **知見（fail-fast）**: `update-all-clients.sh` は **未追跡ファイル**（`git ls-files --others --exclude-standard`）でも停止する → **`git stash push -u`** で退避してから実行し、後で `stash pop`（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) と併記）。
+- **知見（疎通）**: **Mac → Pi4（Tailscale）直**はタイムアウトしうるが、**Pi5 上から**は同じ Pi4 に ping/SSH 可能な場合がある（Tailscale ACL）。運用確認・切り分けは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)「Pi4/Pi3 サービス確認の接続経路」どおり **Pi5 経由**を正とする。
+
 ## 実機検証
 
 ### 自動確認（実施済み）
 
 - Pi5 上 API: `GET https://<Pi5>/api/system/health` → **200**、`status: ok`（2026-03-24、運用ネットワークからの到達確認）
 - **追従デプロイ後（2026-03-24）**: Tailscale 経由で `GET https://100.106.158.2/api/system/health` → **200**、`status: ok`（リモート自動確認。DB/memory 警告は既存の運用メッセージ）
+- **Phase12 一括（2026-03-25）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` → **PASS 28 / WARN 0 / FAIL 0**。API ヘルス・`deploy-status`（両 Pi4 キー）・`/tools/loans/active`・納期管理 API 群・サイネージ `layoutConfig`・Pi5 上 `backup.json` / `prisma migrate status`・**Pi5 経由**の Pi4×2 / Pi3 サービス `active`・`verify-services-real.sh` を包含。
 
 ### 運用手動確認（デプロイ済み Pi5 + raspberrypi4 を対象）
 
@@ -76,7 +84,8 @@ category: knowledge-base
 
 | 症状 | 想定原因 | 対処 |
 |------|-----------|------|
-| `update-all-clients.sh` が即終了し「未commit変更」 | ローカル（または Pi5 実行時の作業ツリー）に未コミットがある | [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) … `git stash` / commit してから再実行 |
+| `update-all-clients.sh` が即終了し「未commit変更」 | ローカル（または Pi5 実行時の作業ツリー）に**未コミット・未追跡**がある | [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) … `git stash`（必要なら **`-u`**）/ commit してから再実行 |
+| Mac から Pi4 Tailscale IP へ SSH が timeout | Tailscale ACL（Mac 直は不可・Pi5 経由は可 等） | 疎通・サービス確認は **Pi5 経由**（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) セクション4）。デプロイは Pi5 上 Ansible のため経路は正しい |
 | `raspi4-robodrill01` が `UNREACHABLE` / SSH timeout | Tailscale オフライン、IP 変更、ファイアウォール | `tailscale status`、現地電源・LAN、[KB-281](./infrastructure/ansible-deployment.md) の到達不可時の `--limit` 切り分け |
 | 旧番号を保存できない（409） | `idNum` の UNIQUE 衝突 | 既存レコードの `idNum` を確認し重複を解消 |
 | キオスクに旧番号が出ない | 未デプロイ・ブラウザキャッシュ・マスタ未設定 | 対象 Pi4 のデプロイログ確認、`idNum` 入力済みか、強制リロード |
@@ -95,5 +104,6 @@ category: knowledge-base
 - 実装（参考）: `apps/api/prisma/schema.prisma`（`RiggingGear.idNum`）、`apps/api/src/routes/rigging/schemas.ts`、`apps/api/src/services/rigging/rigging-gear.service.ts`、`apps/web/src/pages/tools/RiggingGearsPage.tsx`、`apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`、`apps/web/src/features/kiosk/activeLoanListLines.ts`、`apps/web/src/pages/kiosk/KioskReturnPage.tsx`
 - [KB-267 吊具持出画面に吊具情報表示を追加](./frontend.md#kb-267-吊具持出画面に吊具情報表示を追加)
 - [csv-import-export.md](../guides/csv-import-export.md)（吊具 CSV の `idNum`）
-- [verification-checklist.md](../guides/verification-checklist.md)（6.4 / 6.6.3）
+- [verification-checklist.md](../guides/verification-checklist.md)（6.4 / 6.6.3 / 6.6.4）
 - [deployment.md](../guides/deployment.md)
+- [verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)（Phase12 実機一括検証）
