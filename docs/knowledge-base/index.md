@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-03-24
+last-verified: 2026-03-25
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -20,7 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| キオスク貸出（調査報告） | [kb-kiosk-rigging-return-cancel-investigation.md](./kb-kiosk-rigging-return-cancel-investigation.md) | 1件 | 吊具持出し・返却の仕様と「使用中」判定／返却後に再スキャンで使用中アラートが出る事象の調査（取消との混在有無） |
+| キオスク貸出（調査報告） | [kb-kiosk-rigging-return-cancel-investigation.md](./kb-kiosk-rigging-return-cancel-investigation.md) | 1件 | 吊具持出し・返却の仕様と「使用中」判定／取消混在調査／**`Loan.clientId` 手動補正 API**（`PUT /api/tools/loans/:id/client`）・本番デプロイ・Phase12 検証・TS（2026-03-25 追記） |
 | キオスクIME・電源（電源はSOLIDリファクタ完了・遅延原因特定・連打防止オーバーレイ実装完了） | [KB-investigation-kiosk-ime-and-power-regression.md](./KB-investigation-kiosk-ime-and-power-regression.md), [KB-288-power-actions-bind-mount-deleted-inode.md](./KB-288-power-actions-bind-mount-deleted-inode.md), [KB-investigation-kiosk-schedule-regression-20260301.md](./KB-investigation-kiosk-schedule-regression-20260301.md), [ansible-deployment.md#KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる), [frontend.md#KB-286](./frontend.md#kb-286-電源操作の連打防止オーバーレイ実装react-portal-による表示失敗の解決), [frontend.md#KB-287](./frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) | 6件 | 備考欄の日本語入力: **KB-287 解決済み**（IBus 単一オーナー化で im-launch 競合を抑止）。電源ボタン: **SOLIDリファクタ完了**。電源操作遅延: **原因特定**。**連打防止オーバーレイ**: 実装完了（KB-286）。**電源・連打防止不具合**: KB-288 で根本原因特定済み。恒久対策（notify: restart api）実装済み（2026-03-01）。**IME は Firefox で正常動作**。 |
 | API関連 | [api.md](./api.md) | 62件 | APIエラー、レート制限、認証、履歴、サイネージ、キオスクサポート、温度表示、環境変数バリデーション、WebRTCシグナリング、WebRTC通話IDの統一、CSVインポートエラーハンドリング、CSVインポートスケジュール間隔設定、FSEIBANバリデーション修正、生産スケジュール画面のパフォーマンス最適化と検索機能改善（API側）、生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索・工程カテゴリフィルタ）、生産スケジュール検索状態の全キオスク間共有化、生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正、生産スケジュール検索登録製番の削除・追加が巻き戻る競合問題（CAS導入）、Gmail認証切れ時のSlack通知機能追加、Gmail認証切れの実機調査と回復、生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化、history-progressエンドポイント追加と製番進捗集計サービス、Gmailゴミ箱自動削除機能（深夜バッチ）、生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化）、未点検加工機サイネージ可視化データソースの追加、`kiosk`/`clients` ルート分割とサービス層抽出、加工機点検状況サイネージの集計一致と2列表示最適化（未点検は終端）、`backup`/`imports`ルート分割とサービス層移設、コード品質改善フェーズ2（Ratchet）〜フェーズ4第五弾（5本実装）、加工機点検状況サイネージのカードレイアウト変更と背景色改善、Gmail APIレート制限エラー（429）の対処方法、生産スケジュールprogress別テーブル化（CSV取り込み時の上書きリスク回避）、生産スケジュールデータ削除ルール（重複loser即時削除・1年超過は保存しない）、Gmail csvDashboards取得を10分30件運用へ最適化、CSVダッシュボード重複削除共通化とエラーメール廃棄ポリシー統一、生産スケジュールhistory-progressエンドポイントにmachineName追加、生産スケジュールhistory-progressエンドポイントのmachineName取得にSH追加、**実績工数CSV手動投入で413 Payload Too Large（KB-301）** |
 | API関連（Gmail 429調査） | [KB-217-gmail-api-429-early-retry.md](./KB-217-gmail-api-429-early-retry.md) | 1件 | Gmail API 429エラー - クールダウン解除直後の再発 |

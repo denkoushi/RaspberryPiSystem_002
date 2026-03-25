@@ -23,6 +23,14 @@ export const loanParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+export const assignLoanClientParamsSchema = z.object({
+  id: z.string().uuid()
+});
+
+export const assignLoanClientBodySchema = z.object({
+  clientId: z.string().uuid()
+});
+
 export const cancelSchema = z.object({
   loanId: z.string().uuid(),
   clientId: z.string().uuid().optional(),

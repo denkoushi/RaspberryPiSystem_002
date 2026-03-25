@@ -1,14 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { LoanService } from '../../../services/tools/loan.service.js';
+import { LoanClientAssignmentService } from '../../../services/tools/loan-client-assignment.service.js';
 import { registerBorrowRoute } from './borrow.js';
 import { registerReturnRoute } from './return.js';
 import { registerActiveLoansRoute } from './active.js';
 import { registerPhotoBorrowRoute } from './photo-borrow.js';
 import { registerLoanDeleteRoute } from './delete.js';
 import { registerLoanCancelRoute } from './cancel.js';
+import { registerLoanAssignClientRoute } from './assign-client.js';
 
 export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
   const loanService = new LoanService();
+  const assignmentService = new LoanClientAssignmentService();
 
   await app.register(
     async (subApp) => {
@@ -18,6 +21,7 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
       registerPhotoBorrowRoute(subApp, loanService);
       registerLoanDeleteRoute(subApp, loanService);
       registerLoanCancelRoute(subApp, loanService);
+      registerLoanAssignClientRoute(subApp, assignmentService);
     },
     { prefix: '/loans' },
   );
