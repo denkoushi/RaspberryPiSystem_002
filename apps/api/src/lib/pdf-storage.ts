@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { convertPdfToImages } from './pdf-converter.js';
+import { convertPdfToImages, type PdfConversionOptions } from './pdf-converter.js';
 import { logger } from './logger.js';
 
 const getStorageBaseDir = () =>
@@ -117,12 +117,17 @@ export class PdfStorage {
 
   /**
    * PDFを画像に変換してページURL一覧を取得
-   * 
-   * @param pdfId PDFのID
+   *
+   * @param pdfId PDFのID（出力サブディレクトリ名）
    * @param pdfFilePath PDFファイルのパス
+   * @param renderOptions 省略時は SIGNAGE_PDF_DPI（既定150）と JPEG 品質85。指定時はその dpi/quality を優先
    * @returns ページ画像のURL一覧
    */
-  static async convertPdfToPages(pdfId: string, pdfFilePath: string): Promise<string[]> {
+  static async convertPdfToPages(
+    pdfId: string,
+    pdfFilePath: string,
+    renderOptions?: Partial<Pick<PdfConversionOptions, 'dpi' | 'quality'>>,
+  ): Promise<string[]> {
     const outputDir = path.join(PDF_PAGES_DIR, pdfId);
     
     // 既に変換済みの場合は既存の画像を返す
@@ -156,15 +161,18 @@ export class PdfStorage {
       return [];
     }
 
+    const defaultDpi = parseInt(process.env.SIGNAGE_PDF_DPI || '150', 10);
+    const defaultQuality = 85;
+    const dpi = renderOptions?.dpi ?? defaultDpi;
+    const quality = renderOptions?.quality ?? defaultQuality;
+
     try {
-      // 環境変数でDPIを設定可能（デフォルト: 150、4K表示の場合は300推奨）
-      const dpi = parseInt(process.env.SIGNAGE_PDF_DPI || '150', 10);
       await fs.mkdir(outputDir, { recursive: true });
       await convertPdfToImages(pdfFilePath, outputDir, {
         prefix: pdfId,
         format: 'jpeg',
         dpi,
-        quality: 85,
+        quality,
       });
       
       // 変換された画像ファイルを取得
@@ -179,11 +187,17 @@ export class PdfStorage {
 
       return pageFiles.map((file) => `/api/storage/pdf-pages/${pdfId}/${file}`);
     } catch (error) {
-      // 変換に失敗した場合はエラーログを出力して空配列を返す
       logger.error(
         { pdfId, pdfFilePath, error: (error as Error).message },
         'PDF変換エラーが発生しました'
       );
+      try {
+        await fs.rm(outputDir, { recursive: true, force: true });
+      } catch (rmErr) {
+        if ((rmErr as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn({ pdfId, outputDir, err: rmErr }, 'Failed to clean partial pdf-pages output after conversion error');
+        }
+      }
       return [];
     }
   }

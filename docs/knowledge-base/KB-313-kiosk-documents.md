@@ -20,8 +20,28 @@ category: knowledge-base
   - `POST` 手動アップロード: ADMIN/MANAGER
   - `POST /ingest-gmail`: ADMIN/MANAGER（手動トリガ）
   - `PATCH` / `DELETE`: ADMIN/MANAGER
-- **ページ画像**: 既存 `PdfStorage.convertPdfToPages` → `GET /api/storage/pdf-pages/:pdfId/:filename`（JPEG 時は `image/jpeg` を返却）
+- **ページ画像**: `PdfStorage.convertPdfToPages`（要領書は `PdfStorageRenderAdapter` 経由で **キオスク専用 DPI/品質** を指定可）→ `GET /api/storage/pdf-pages/:pdfId/:filename`（JPEG 時は `image/jpeg` を返却）
 - **Gmail**: `GmailApiClient.listPdfAttachments` で PDF のみ列挙。検索クエリは `buildKioskDocumentGmailSearchQuery`（件名・任意 `from`・`is:unread`）
+
+### 環境変数（要領書の軽量化・サイネージとの分離）
+
+| 変数 | 役割 | 既定（未設定時） |
+|------|------|------------------|
+| `KIOSK_DOCUMENT_PDF_DPI` | 要領書 PDF→JPEG の解像度（`pdftoppm -r`） | `120` |
+| `KIOSK_DOCUMENT_JPEG_QUALITY` | JPEG 品質（1–100） | `78` |
+
+サイネージは従来どおり `SIGNAGE_PDF_DPI`（未設定時 150）を `convertPdfToPages` のデフォルトとして利用する。**要領書だけ** Pi4 向けに軽くしたい場合は上記 2 つを API コンテナに設定する。
+
+**キャッシュ注意**: `pdf-pages/{文書UUID}/` に既に `.jpg` があると **再変換されない**。DPI/品質を変えたあと画質が変わらないときは、当該ディレクトリを削除するか、管理画面で該当文書を削除して再登録する（運用は [kiosk-documents.md runbook](../runbooks/kiosk-documents.md) 参照）。
+
+### ストレージ掃除（孤児ファイル）
+
+DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内の未参照 `.pdf` を検出・削除する CLI がある（既定は dry-run）。
+
+- `pnpm --filter @raspi-system/api run cleanup:pdf-orphans`（dry-run）
+- `pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans.ts --execute`（実削除）
+
+誤削除防止のため、**初回は必ず dry-run で一覧を確認**すること。
 
 ## Symptoms / よくある事象
 
@@ -67,5 +87,6 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
 - 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)
-- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`
+- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/features/kiosk/documents/`
+- 孤児掃除 CLI: `apps/api/src/scripts/cleanup-pdf-storage-orphans.ts`（`pnpm --filter @raspi-system/api run cleanup:pdf-orphans`）
 - 設定スキーマ: `apps/api/src/services/backup/backup-config.ts`（`kioskDocumentGmailIngest`）

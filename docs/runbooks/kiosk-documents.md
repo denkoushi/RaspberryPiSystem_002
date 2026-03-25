@@ -45,8 +45,25 @@
 ## キオスク表示確認
 
 - URL: `/kiosk/documents`
-- 左: 検索・取込元フィルタ・一覧
-- 右: 1ページ / 見開き、拡大、スクロール
+- 左: 検索・取込元フィルタ・一覧（**一覧を隠す**で閉じ、表示領域をビューアに譲る）
+- 右: **1ページ** / **見開き**、**標準幅** / **幅いっぱい**、拡大（標準幅時のみ。幅いっぱい時はズーム無効）、スクロール
+
+## 要領書用 JPEG 設定（API）
+
+- `KIOSK_DOCUMENT_PDF_DPI`（既定 120）、`KIOSK_DOCUMENT_JPEG_QUALITY`（既定 78）で Pi4 負荷を抑える。サイネージの `SIGNAGE_PDF_DPI` とは独立。
+- 設定変更後も `pdf-pages/{id}` に古い JPEG が残っていると **見た目は変わらない**。必要なら該当フォルダ削除または文書の再登録。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
+
+## 孤児 PDF / ページ画像の掃除（任意）
+
+ストレージ上に残った未参照ファイルを減らす（**既定は dry-run**）。
+
+```bash
+pnpm --filter @raspi-system/api run cleanup:pdf-orphans
+# 実削除する場合のみ
+pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans.ts --execute
+```
+
+`PDF_STORAGE_DIR` が本番と一致していること（API と同じ環境）を確認してから `--execute` を使うこと。
 
 ## デプロイ後確認（本番・実機）
 
