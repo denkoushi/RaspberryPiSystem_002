@@ -69,6 +69,9 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - 左ペイン（検索・取込元フィルタ・一覧）は **既定で表示**。「**一覧を隠す**」で閉じ、ビューア側の表示幅を広げられる。
 - 右側: **1ページ** / **見開き**、**標準幅** / **幅いっぱい**（ビュー幅にフィット）、縦スクロール。
 - **拡大（ズーム）**は **標準幅** 表示時のみ有効。**幅いっぱい** 時は無効（二重スケールを避ける仕様）。
+- **コントラスト（ダーク UI）**: ビューア上部ツールバー等で `Button` の **`ghostOnDark`** variant を使う（従来 `ghost` は `!text-slate-900` 系で **暗背景では文字が見えない**）。ライト専用の `ghost` と分離する。
+- **ツールバー**: `KioskDocumentsViewerToolbar` でタイトル行と操作行を分離し、長い文書名でも **2行目にタイトル**を回して溢れを抑える。
+- **Pi4 スクロール負荷軽減**: `useKioskDocumentNearVisibleRows` がスクロールコンテナを `root` とする `IntersectionObserver` で **近傍のページ行だけ** `<img>` をマウント。`KioskDocumentViewerPageRow` は **プレースホルダ**・`loading="lazy"`・`decoding="async"`。近傍インデックス計算は `kioskDocumentViewerVisibility.ts` の純関数＋ Vitest（`kioskDocumentViewerVisibility.test.ts`）で固定。
 - 実装の主たる分割先: `apps/web/src/features/kiosk/documents/`（ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`）。
 
 ## 実機検証
@@ -76,7 +79,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **デプロイ（要領書・ビューア改修）**: ブランチ `feature/kiosk-documents-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（キオスク要領書の対象は Pi5 + Pi4 キオスク。Pi3 サイネージ本体へのデプロイは [deployment.md §Pi3](../guides/deployment.md) の専用手順のみ別途）。
 - **一括自動（Phase12）**: `./scripts/deploy/verify-phase12-real.sh`。**`GET /api/kiosk-documents` が 200** かつ JSON に **`"documents"`** があることを検証（要領書 API の回帰）。
 - **サマリの目安**: Pi3・各 Pi4 へ Pi5 経由 SSH がすべて通るとき **PASS 30 / WARN 0 / FAIL 0**。Pi3 が offline のときは Pi3 行が **WARN** となり **PASS 29 / WARN 1** になりうる（全体は FAIL にしない設計）。
-- **記録（2026-03-25）**: 上記順次デプロイ後にスクリプトを **再実行**し **PASS 30 / WARN 0 / FAIL 0** を確認（Pi3 online 時は Pi3 行も PASS。ビューア改修反映後の本番相当）。
+- **記録（2026-03-25）**: 初回要領書デプロイ後に **PASS 30 / WARN 0 / FAIL 0** を確認。**ビューア改修**（コントラスト・ツールバー・近傍マウント／lazy、`06239cb1` 相当）を Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ **`--limit` 1台ずつ**で反映後、Detach Run ID 例: `20260325-214430-20154` / `214839-2765` / `215311-11636`。その後 **再度** `./scripts/deploy/verify-phase12-real.sh` を実行し **PASS 30 / WARN 0 / FAIL 0**（本セッション実測・Pi3 online 時）。
 - **API の手動確認例**（Tailscale 主運用・Pi5 の例。キーは inventory の kiosk 用に合わせる）:
 
 ```bash
@@ -94,6 +97,8 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **`Pi4 robodrill01 kiosk/status-agent` が FAIL（SSH timeout）**: Mac→Pi5→RoboDrill の **ジャンプ SSH** が一時的にタイムアウトすることがある。Tailscale・現地電源・`tailscale status` を確認し、**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**すると PASS に戻る例がある（2026-03-25 に初回 timeout → 再実行で PASS）。
 - **Pi3 が WARN**: スクリプトは Pi3 未到達時 **WARN** にし、全体は FAIL にしない設計。サイネージの専用手順は [deployment.md §Pi3](../guides/deployment.md) および [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
 - **Mac ブラウザでキオスク UI を見たい**: 自己署名 HTTPS で `chrome-error` になりやすい。**実機キオスクまたは VNC** で `/kiosk/documents` を確認する（[KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
+- **ツールバーのアイコン／文字が暗背景で見えない**: 要領書ビューアは `ghostOnDark` を使う。`ghost` のままだと意図せず非表示に近い色になる → 当該 `Button` の variant を見直す（`apps/web/src/components/ui/Button.tsx`）。
+- **開発時 ESLint `import/order`**: `features/kiosk/documents` 配下でコンポーネント分割すると、**型 import と値 import のブロック順・空行**で `import/order` が落ちうる。`pnpm --filter @raspi-system/web lint` で先に確認する。
 
 ## References
 

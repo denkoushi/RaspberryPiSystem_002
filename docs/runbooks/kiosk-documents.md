@@ -47,6 +47,8 @@
 - URL: `/kiosk/documents`（沉浸式レイアウト。最上段メニューは上端ホバーで表示、[KB-311](../knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)）
 - 左: 検索・取込元フィルタ・一覧（**既定は表示**。**一覧を隠す**で閉じ、表示領域をビューアに譲る）
 - 右: **1ページ** / **見開き**、**標準幅** / **幅いっぱい**、**拡大**（**標準幅** のときのみ有効。**幅いっぱい** 時は無効・仕様）、スクロール
+- ツールバー: 文書タイトルは **2行目** に回し、操作ボタンと競合しにくい（`KioskDocumentsViewerToolbar`）。ダーク背景では **`ghostOnDark`** ボタンで視認性を確保（`ghost` 単体は薄く見えることがある）。
+- 長い PDF: スクロール時は **近傍のページ画像のみ** DOM に載る（Pi4 の負荷対策）。オフスクリーンはプレースホルダ＋ `loading="lazy"`。
 
 ## 要領書用 JPEG 設定（API）
 
@@ -68,8 +70,8 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 ## デプロイ後確認（本番・実機）
 
 1. **一括自動（推奨）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` を実行する。キオスク要領書向けに **`GET /api/kiosk-documents` が 200** かつ **`documents` 配列** を含むこともここで検証される（[deployment.md](../guides/deployment.md) の実機検証方針に準拠）。
-2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**。`feature/kiosk-documents-v1` デプロイ後の再実行でも同サマリを確認済み（2026-03-25）。Pi3 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
-3. **UI**: 上記「キオスク表示確認」のとおり、実機/VNC でタブ遷移・一覧・閲覧・表示モードを確認する（詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。
+2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**。要領書初回デプロイおよび **ビューア改修**（コントラスト・スクロール最適化）反映後の再実行でも同サマリを確認済み（2026-03-25、実測ログ）。Pi3 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
+3. **UI**: 上記「キオスク表示確認」のとおり、実機/VNC でタブ遷移・一覧・閲覧・表示モードを確認する。**追加**: ツールバー操作が **暗背景でも読める**こと、長文書で **スクロールが極端に重くない**こと（Pi4）。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
 
 ## トラブルシュート
 
@@ -77,6 +79,7 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 |------|------|
 | 一覧が空 | ドキュメントが `enabled` か、キオスクは無効行を非表示 |
 | 拡大できない | **幅いっぱい** 表示中は仕様で無効。**標準幅** に切り替える |
+| ツールバーが見えない／極端に薄い | ダーク UI では `ghost` ではなく **`ghostOnDark`** を使う設計。再発時は当該 `Button` variant を確認（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |
 | 画像 broken | `GET /api/storage/pdf-pages/...` が 200 か、JPEG の Content-Type が `image/jpeg` か |
 | Gmail 取り込み 400 | `storage.provider=gmail` かトークンがあるか |
 | 重複しない | 同一 `messageId`+ファイル名は意図的にスキップ |
