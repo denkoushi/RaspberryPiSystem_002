@@ -2,7 +2,7 @@
 title: KB-311 キオスク沉浸式レイアウト（上端ヘッダーリビール）の URL allowlist
 tags: [キオスク, フロントエンド, KioskLayout]
 audience: [開発者]
-last-verified: 2026-03-21
+last-verified: 2026-03-25
 category: knowledge-base
 ---
 
@@ -26,7 +26,7 @@ category: knowledge-base
 
 | 種別 | パス |
 |------|------|
-| 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule` |
+| 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)） |
 | `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview` |
 
 ### 除外例（false）

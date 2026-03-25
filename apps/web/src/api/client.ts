@@ -2328,6 +2328,78 @@ export function getSignageVisualizationImageUrl(dashboardId: string): string {
   return `${normalized}/signage/visualization-image/${dashboardId}`;
 }
 
+/** 要領書PDFページ画像URL（/api/storage/pdf-pages/... をフルURL化） */
+export function resolveKioskDocumentPageImageUrl(apiPath: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const normalized = base.replace(/\/$/, '');
+  const suffix = apiPath.startsWith('/api') ? apiPath.slice(4) : apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+  return `${normalized}${suffix}`;
+}
+
+export type KioskDocumentSource = 'MANUAL' | 'GMAIL';
+
+export interface KioskDocumentSummary {
+  id: string;
+  title: string;
+  filename: string;
+  sourceType: KioskDocumentSource;
+  gmailMessageId: string | null;
+  sourceAttachmentName: string | null;
+  pageCount: number | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KioskDocumentDetailResponse {
+  document: KioskDocumentSummary;
+  pageUrls: string[];
+}
+
+export async function getKioskDocuments(params?: {
+  q?: string;
+  sourceType?: KioskDocumentSource;
+  hideDisabled?: boolean;
+}) {
+  const { data } = await api.get<{ documents: KioskDocumentSummary[] }>('/kiosk-documents', {
+    params: {
+      q: params?.q,
+      sourceType: params?.sourceType,
+      hideDisabled: params?.hideDisabled,
+    },
+  });
+  return data.documents;
+}
+
+export async function getKioskDocumentDetail(id: string) {
+  const { data } = await api.get<KioskDocumentDetailResponse>(`/kiosk-documents/${id}`);
+  return data;
+}
+
+export async function uploadKioskDocument(payload: { file: File; title?: string }) {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  if (payload.title?.trim()) {
+    formData.append('title', payload.title.trim());
+  }
+  const { data } = await api.post<KioskDocumentDetailResponse>('/kiosk-documents', formData);
+  return data;
+}
+
+export async function deleteKioskDocument(id: string) {
+  await api.delete(`/kiosk-documents/${id}`);
+}
+
+export async function patchKioskDocumentEnabled(id: string, enabled: boolean) {
+  const { data } = await api.patch<{ document: KioskDocumentSummary }>(`/kiosk-documents/${id}`, { enabled });
+  return data.document;
+}
+
+export async function triggerKioskDocumentGmailIngest(params?: { scheduleId?: string }) {
+  const { data } = await api.post<{ results: unknown[] }>('/kiosk-documents/ingest-gmail', params ?? {});
+  return data.results;
+}
+
 // CSVダッシュボード関連の型定義
 export interface CsvDashboard {
   id: string;

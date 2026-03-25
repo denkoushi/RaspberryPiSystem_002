@@ -172,6 +172,12 @@ check_contains "サイネージAPI layoutConfig" "${SIGNAGE_JSON}" '"layoutConfi
 PROGRESS_OVERVIEW_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "進捗一覧API progress-overview" "${PROGRESS_OVERVIEW_CODE}" "200"
 
+KIOSK_DOCS_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+check_http_code "キオスク要領書API GET /api/kiosk-documents" "${KIOSK_DOCS_CODE}" "200"
+
+KIOSK_DOCS_JSON="$(curl -sk "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+check_contains "キオスク要領書API documents配列" "${KIOSK_DOCS_JSON}" '"documents"'
+
 # manual-order-overview: v1 は targetLocation+resources、v2（device-scope）は siteKey 必須で devices[]
 MANUAL_ORDER_OVERVIEW_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 if printf "%s" "${MANUAL_ORDER_OVERVIEW_JSON}" | grep -Eq '"resources"'; then

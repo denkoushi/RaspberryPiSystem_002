@@ -165,7 +165,21 @@ export const BackupConfigSchema = z.object({
     enabled: z.boolean().default(false), // Dropboxからのリストア機能を有効にするか
     verifyIntegrity: z.boolean().default(true), // リストア時に整合性検証を実行するか
     defaultTargetKind: z.enum(['database', 'csv']).optional() // デフォルトのリストア対象の種類
-  }).optional().default({ enabled: false, verifyIntegrity: true })
+  }).optional().default({ enabled: false, verifyIntegrity: true }),
+  /// キオスク要領書: GmailからPDF添付を取り込むスケジュール（storage.provider=gmail かつトークン有効時のみ動作）
+  kioskDocumentGmailIngest: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string().optional(),
+        subjectPattern: z.string(),
+        fromEmail: z.string().optional(),
+        schedule: z.string(),
+        enabled: z.boolean().default(true),
+      })
+    )
+    .optional()
+    .default([]),
 });
 
 export type BackupConfig = z.infer<typeof BackupConfigSchema>;
@@ -281,5 +295,6 @@ export const defaultBackupConfig: BackupConfig = {
   restoreFromDropbox: {
     enabled: false,
     verifyIntegrity: true
-  }
+  },
+  kioskDocumentGmailIngest: []
 };

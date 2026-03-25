@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-25) **キオスク要領書 PDF（`KioskDocument`・手動/Gmail・Port+Adapter・`/kiosk/documents`・`/admin/kiosk-documents`）実装・本番デプロイ・実機検証・ドキュメント反映・`main` マージ**: ブランチ `feature/kiosk-documents-v1`。Prisma `20260325120000_add_kiosk_documents`。API `/api/kiosk-documents`。**Web**: ビューアを `features/kiosk/documents` に分割し、左ペイン既定表示・「一覧を隠す」、**標準幅** / **幅いっぱい**、拡大は標準幅時のみ、API 側は `KIOSK_DOCUMENT_*` で PDF→JPEG 負荷調整（サイネージ `SIGNAGE_PDF_DPI` と独立）。**本番デプロイ（初回要領書）**: [deployment.md](./docs/guides/deployment.md) に従い Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ（Pi3 キオスク対象外）。Detach Run ID 例: `20260325-204757-12305` / `205328-3725` / `205755-7392`。**ビューア改修デプロイ（2026-03-25）**: `ghostOnDark`・`KioskDocumentsViewerToolbar`（タイトル2行）・近傍マウント+lazy+`kioskDocumentViewerVisibility`/Vitest（コミット例 `06239cb1`）。同順序の追加 Run ID 例: `20260325-214430-20154` / `214839-2765` / `215311-11636`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（初回デプロイ後およびビューア改修反映後のいずれも再確認済み）。**ドキュメント**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md) / [KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) / [kiosk-documents.md](./docs/runbooks/kiosk-documents.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [docs/INDEX.md](./docs/INDEX.md) / 本ファイル。**`main` マージ**: Pull Request 経由（2026-03-25）。
 - [x] (2026-03-25) **工具貸出 active loan の `clientId` 手動補正（`PUT /api/tools/loans/:id/client`）・Pi5+Pi4×2 順次デプロイ（Pi3 除外）・実機検証・ドキュメント反映・`main` マージ**: `LoanClientAssignmentService` / ルート登録 / ユニット・統合テスト。旧 borrow で `clientId` null の active loan 向け運用 API（BORROW 履歴補完・`ADJUST` 監査・別 client は 409）。**デプロイ**: `feat/resolve-clientid-rigging-instrument-borrow` を [deployment.md](./docs/guides/deployment.md) に従い `--limit` 1台ずつ。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。**ドキュメント**: [kb-kiosk-rigging-return-cancel-investigation.md](./docs/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md) / [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md) / 本ファイル。
 - [x] (2026-03-24) **キオスク持出一覧: 吊具 idNum を管理番号と同一行（値のみ）・プレビュー HTML・再デプロイ（Pi5 + raspberrypi4、`raspi4-robodrill01` は SSH timeout 継続）・リモートヘルス確認・ドキュメント反映（KB-312・verification-checklist 6.6.4・本ファイル）**: Web のみ（`presentActiveLoanListLines` / `KioskReturnPage`）。`main` `4b8039c7`。**本番**: `update-all-clients.sh` で Pi5 → raspberrypi4 成功、`raspi4-robodrill01` は別日。**自動確認**: `GET https://100.106.158.2/api/system/health` → 200 `ok`。**手動**: キオスク `/kiosk/tag` の見た目は現地で確認推奨。**参照**: [KB-312](./docs/knowledge-base/KB-312-rigging-idnum-deploy-verification.md) / [kiosk-return-loan-card-idnum-row-preview.html](./docs/design-previews/kiosk-return-loan-card-idnum-row-preview.html)。
 - [x] (2026-03-24) **吊具マスタ `idNum`（旧番号）・DB/API/管理UI/キオスク/CSV・本番デプロイ（Pi5 + raspberrypi4、`raspi4-robodrill01` は SSH timeout で別日）・実機ヘルス確認・ドキュメント反映（KB-312・verification-checklist・deploy-status-recovery・INDEX・本ファイル）**: Prisma `RiggingGear.idNum`（nullable + UNIQUE）、検索 OR 拡張、共有型・インポータ・`import-rigging` 対応。**ローカル**: API ユニット（rigging-gear）通過推奨。**本番**: `update-all-clients.sh` で Pi5 → raspberrypi4 のみ成功例、`--limit raspi4-robodrill01` は到達復旧後に再実行。**自動確認**: `GET /api/system/health` → 200 `ok`。**参照**: [KB-312](./docs/knowledge-base/KB-312-rigging-idnum-deploy-verification.md) / [csv-import-export.md](./docs/guides/csv-import-export.md)。
@@ -723,6 +724,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-25）: 要領書ビューアのダークツールバーで **`Button` variant `ghost`** を使うと、Tailwind の `!text-slate-900` 系で **文字が実質見えない**。**`ghostOnDark`** を分離して解消。長い PDF の縦スクロールは Pi4 で重くなりうるため、**近傍ページのみ `<img>` マウント**＋ lazy／プレースホルダで負荷を抑えた（純関数＋ Vitestで近傍インデックスを固定）。**関連**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md)。
+- 観測（2026-03-25）: キオスク要領書は **Pi5→各 Pi4 を `--limit` で1台ずつ**デプロイすると、プリフライト ping も **limit されたホストのみ**となり、**Pi3 を対象に含めない運用**では Pi3 の電源/到達と切り離して進められる（Pi3 本体の更新は [deployment.md](./docs/guides/deployment.md) の Pi3 専用手順へ分離）。**UI**: **幅いっぱい**表示中は **拡大を無効**にし、二重スケールと操作混乱を避ける。**関連**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md)。
 - 観測（2026-03-23）: 手動順番上ペインで **ツールバー行をホバーで畳む**挙動は、下ペインの **ホバーで開く**（`useTimedHoverReveal`）と状態遷移が逆なので、[`useToolbarCollapseWhileContentHovered`](./apps/web/src/hooks/useToolbarCollapseWhileContentHovered.ts) を **別フック**にした（SRP・誤用防止）。**関連**: [KB-297 2行カード節](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-overview-card-two-line-header-2026-03-23)。
 - 観測（2026-03-23）: [`AnchoredDropdownPortal`](./apps/web/src/components/kiosk/AnchoredDropdownPortal.tsx) の props で **`RefObject<HTMLDivElement | null>`** を `div` の `ref` に渡すと、ローカル Web ビルドでは通っても **Docker ビルド経路の `tsc -b`（CI）で TS2322**（`LegacyRef` 不一致）になることがある。**対策**: `RefObject<HTMLDivElement>`（ジェネリクスに `null` を含めない）へ統一（`4b799762`）。**関連**: [KB-297 Portal 節](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#production-schedule-filter-dropdown-portal-2026-03-23)。
 - 観測（2026-03-23）: **割当済み資源**が `manual-order-overview` のカードに載るのに `rows[]` が空に見える事象は、`PUT /order` の siteKey 正本化だけでは足りず、overview 集約で **端末 slice 由来の derived が site 正本より先に採用**されていたことが原因だった。`resolveManualOrderOverviewResourcesForAssignedDevice` で **割当順ごとに site 正本 → slice フォールバック**にすると解消。`verify-phase12-real.sh` の `manual-order-overview` v2 検証で回帰を確認（PASS 28/0/0）。
@@ -1111,6 +1114,19 @@
   日付/担当: 2026-01-31 / KB-217 デプロイ再整備
 
 ## Outcomes & Retrospective
+
+### キオスク要領書 PDF・ビューア改修 完了（2026-03-25）
+
+**達成事項**:
+- `KioskDocument`・API・管理/キオスク UI・沉浸式 allowlist・Phase12 に `GET /api/kiosk-documents` 検証を組み込み済み
+- ビューアの **視認性**（`ghostOnDark`）・**ツールバー溢れ対策**（タイトル2行）・**Pi4 スクロール負荷**（近傍マウント・lazy・純関数+Vitest）を本番へ反映
+- Pi5 → Pi4×2 を `--limit` 1台ずつデプロイし、`verify-phase12-real.sh` が **PASS 30 / WARN 0 / FAIL 0**（ビューア改修後も再確認）
+
+**学んだこと**:
+- ダーク UI では「薄い見た目の ghost」をそのまま流用しない。**用途別 variant** でコントラストを契約化する
+- 画像多数の縦スクロールは **DOM 数とデコード**がボトルネックになりやすい → 可視近傍に絞ると現場体感が安定
+
+**参照**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md), [kiosk-documents.md](./docs/runbooks/kiosk-documents.md), [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md)
 
 ### 工場共有の順番・ランキング同期 完了（2026-03-23）
 
@@ -1633,6 +1649,16 @@
 
 ## Next Steps（将来のタスク）
 
+### キオスク要領書 PDF（2026-03-25）
+
+**概要**: `feature/kiosk-documents-v1` で `KioskDocument`・API・キオスク/管理 UI・ビューア（`features/kiosk/documents`・左ペイン開閉・標準/幅いっぱい・ズーム・`ghostOnDark`/近傍 lazy）・`verify-phase12-real.sh` の要領書 API 検証を実装。本番は Pi5→Pi4×2 を `--limit` 順次デプロイ済み。デプロイ後に `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0** を再確認（[KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md)）。**`main` への統合**は Progress の当該項目（Pull Request マージ）で完了する。
+
+**候補タスク**:
+1. **Gmail 取り込みの本番運用試験**: `storage.provider=gmail`・`kioskDocumentGmailIngest`・未読 PDF のエンドツーエンド（取り込み後の既読/アーカイブ・重複スキップ）を一度通す。
+2. **任意**: ビューア第2フェーズ（例: PDF.js）や、生産スケジュール行との紐付けは [production-documents-feature-plan.md](./docs/plans/production-documents-feature-plan.md) 系の計画と役割分担を整理する。
+
+**参照**: [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md) / [kiosk-documents.md](./docs/runbooks/kiosk-documents.md)
+
 ### 実績基準時間・生産スケジュール個数（2026-03-23）
 
 **概要**: `shrinkedMedianV1` と lookback 365 日は本番反映・Phase12 実機検証済み（[KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#実績基準時間-推定式見直し2026-03-23)）。**生産スケジュール CSV に個数が無い**前提のままでは「所要(総分)」と実績総工数の厳密突合は未実施。
@@ -1649,7 +1675,7 @@
 **概要**: `feat/kiosk-immersive-layout-manual-order-row` を main へ統合。Phase12 **PASS 28/0/0** 済み。残りは **allowlist 全 URL の現地目視**（上端リビール・除外ルートが従来表示であること）と、**手動順番 Row A/B**（製番·品番·工順·品名 / 機種のみ）の確認。
 
 **候補タスク**:
-1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「キオスク沉浸式 allowlist 拡張」行・[KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) の対象表に従い、タグ/計測/吊具/生産スケジュール本体/進捗一覧/手動順番でヘッダー挙動を確認。`/kiosk/production-schedule/due-management` 等 **非沉浸式** のままであること。
+1. **現地UI（実機/VNC）**: [deploy-status-recovery.md](./docs/runbooks/deploy-status-recovery.md) の「キオスク沉浸式 allowlist 拡張」行・[KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) の対象表に従い、タグ/計測/吊具/生産スケジュール本体/進捗一覧/手動順番/**要領書 `/kiosk/documents`** でヘッダー挙動を確認。`/kiosk/production-schedule/due-management` 等 **非沉浸式** のままであること。
 2. **切削除外リスト収束**: 下記「切削除外リスト全件除外の収束」を継続。
 3. **任意**: 沉浸式キオスクの E2E シナリオ拡張（`revealKioskHeader` パターンの再利用）、タッチ端末向けヘッダー操作の要否検討（現状マウス前提）。
 
@@ -2652,6 +2678,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-25 — キオスク要領書ビューア改修（`ghostOnDark`・ツールバー2行・近傍 lazy）の実機検証 **PASS 30/0/0**、KB-313 / kiosk-documents runbook / deploy-status-recovery / knowledge-base index / Outcomes・Surprises・Next Steps・Progress（`main` マージ記載）を更新。
 変更履歴: 2026-03-20 — 手動順番 device-scope v2 のデプロイ実績・Phase12（`manual-order-overview` の `siteKey` 検証）・運用知見を反映。Progress / Surprises / KB-297 / deploy-status-recovery / docs/INDEX / knowledge-base index を同期更新。
 変更履歴: 2026-03-16（17回目） — 除外資源CD Location整合化の進捗を反映。Progress・INDEX・KB-297 の「raspberrypi4 明日デプロイ予定」を、接続復旧後の再デプロイ完了（3台デプロイ済み）に更新。
 変更履歴: 2026-03-16（16回目） — Location Scope Phase12（完全体化）を反映。Progress に Runbook自動化（`verify-phase12-real.sh`）、命名規約ガイド（`location-scope-naming.md`）、横展開監査（`location-scope-phase12-cross-module-audit.md`）、UI手動確認記録（未完理由付き）を追記。`production-schedule` ルート境界のローカル変数名を `deviceScopeKey` 明示へ統一（サービス契約は不変）。Surprises に境界命名混在の是正知見を追加。Next Steps を Phase12 完了後基準へ更新。KB-297 / deploy-status-recovery / docs/INDEX を同期更新。

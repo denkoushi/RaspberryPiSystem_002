@@ -84,6 +84,7 @@ export function KioskHeader({
   const isManualOrderActive = pathname.startsWith('/kiosk/production-schedule/manual-order');
   const isProgressOverviewActive = pathname.startsWith('/kiosk/production-schedule/progress-overview');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
+  const isDocumentsActive = pathname.startsWith('/kiosk/documents');
   const formatKey = (value: string) => {
     if (!value) return '未設定';
     if (value.length <= 8) return value;
@@ -288,6 +289,12 @@ export function KioskHeader({
             className={() => navClass(isProgressOverviewActive, 'bg-cyan-600 text-white')}
           >
             進捗一覧
+          </NavLink>
+          <NavLink
+            to="/kiosk/documents"
+            className={() => navClass(isDocumentsActive, 'bg-teal-600 text-white')}
+          >
+            要領書
           </NavLink>
           <button
             type="button"

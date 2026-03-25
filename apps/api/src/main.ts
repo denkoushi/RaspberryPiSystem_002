@@ -3,6 +3,7 @@ import { logger } from './lib/logger.js';
 import { env } from './config/env.js';
 import { getBackupScheduler } from './services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from './services/imports/csv-import-scheduler.js';
+import { getKioskDocumentGmailScheduler } from './services/kiosk-documents/kiosk-document-gmail.scheduler.js';
 import { getGmailTrashCleanupScheduler } from './services/gmail/gmail-trash-cleanup.scheduler.js';
 import { getDueManagementTuningOrchestrator } from './services/production-schedule/auto-tuning/tuning-orchestrator.service.js';
 import { getAlertsDispatcher } from './services/alerts/alerts-dispatcher.js';
@@ -35,6 +36,10 @@ if (process.env['NODE_ENV'] !== 'test') {
       await csvImportScheduler.start();
       
       logger.info('CSV import scheduler started');
+
+      const kioskDocGmailScheduler = getKioskDocumentGmailScheduler();
+      await kioskDocGmailScheduler.start();
+      logger.info('Kiosk document Gmail scheduler started');
 
       const gmailTrashCleanupScheduler = getGmailTrashCleanupScheduler();
       await gmailTrashCleanupScheduler.start();
@@ -69,6 +74,7 @@ if (process.env['NODE_ENV'] !== 'test') {
           await alertsIngestor.stop();
           await alertsDbDispatcher.stop();
           await alertsDispatcher.stop();
+          getKioskDocumentGmailScheduler().stop();
           gmailTrashCleanupScheduler.stop();
           dueManagementTuningOrchestrator.stop();
           await app.close();

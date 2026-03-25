@@ -413,6 +413,51 @@ describe('GmailApiClient', () => {
     });
   });
 
+  describe('listPdfAttachments', () => {
+    it('collects PDF parts by mime type or .pdf extension', async () => {
+      const mockMessageId = 'msg-pdf';
+      const mockMessageResponse = {
+        data: {
+          id: mockMessageId,
+          payload: {
+            parts: [
+              {
+                partId: '0',
+                mimeType: 'text/plain',
+                body: { size: 1 },
+              },
+              {
+                partId: '1',
+                mimeType: 'application/pdf',
+                filename: 'a.pdf',
+                body: { attachmentId: 'att-a', size: 10 },
+              },
+              {
+                partId: '2',
+                mimeType: 'application/octet-stream',
+                filename: 'b.PDF',
+                body: { attachmentId: 'att-b', size: 10 },
+              },
+              {
+                partId: '3',
+                mimeType: 'image/png',
+                filename: 'x.png',
+                body: { attachmentId: 'att-x', size: 10 },
+              },
+            ],
+          },
+        },
+      };
+
+      mockGmail.users.messages.get.mockResolvedValueOnce(mockMessageResponse);
+
+      const result = await gmailClient.listPdfAttachments(mockMessageId);
+
+      expect(result).toHaveLength(2);
+      expect(result.map((r) => r.filename).sort()).toEqual(['a.pdf', 'b.PDF']);
+    });
+  });
+
   describe('trashMessage', () => {
     it('should add processed label then trash message', async () => {
       const messageId = 'msg-trash-1';

@@ -18,6 +18,13 @@ import {
   updateBackupTargetParamsSchema,
 } from './schemas.js';
 
+async function reloadBackupRelatedSchedulers(): Promise<void> {
+  const { getBackupScheduler } = await import('../../services/backup/backup-scheduler.js');
+  await getBackupScheduler().reload();
+  const { getKioskDocumentGmailScheduler } = await import('../../services/kiosk-documents/kiosk-document-gmail.scheduler.js');
+  await getKioskDocumentGmailScheduler().reload();
+}
+
 export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
 
@@ -79,8 +86,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     const config = backupConfigBodySchema.parse(request.body) as BackupConfig;
     await BackupConfigLoader.save(config);
     // スケジューラーを再読み込み（設定変更を即時反映）
-    const { getBackupScheduler } = await import('../../services/backup/backup-scheduler.js');
-    await getBackupScheduler().reload();
+    await reloadBackupRelatedSchedulers();
 
     const historyService = new BackupConfigHistoryService();
     await historyService.recordChange({
@@ -162,8 +168,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     await BackupConfigLoader.save(config);
 
     // スケジューラーを再読み込み（ターゲット追加を即時反映）
-    const { getBackupScheduler } = await import('../../services/backup/backup-scheduler.js');
-    await getBackupScheduler().reload();
+    await reloadBackupRelatedSchedulers();
 
     const historyService = new BackupConfigHistoryService();
     await historyService.recordChange({
@@ -248,8 +253,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     config.targets.push(mergedTarget);
     await BackupConfigLoader.save(config);
 
-    const { getBackupScheduler } = await import('../../services/backup/backup-scheduler.js');
-    await getBackupScheduler().reload();
+    await reloadBackupRelatedSchedulers();
 
     const historyService = new BackupConfigHistoryService();
     await historyService.recordChange({
@@ -335,8 +339,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     await BackupConfigLoader.save(config);
 
     // スケジューラーを再読み込み（ターゲット更新を即時反映）
-    const { getBackupScheduler } = await import('../../services/backup/backup-scheduler.js');
-    await getBackupScheduler().reload();
+    await reloadBackupRelatedSchedulers();
 
     const historyService = new BackupConfigHistoryService();
     await historyService.recordChange({
@@ -369,8 +372,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
     await BackupConfigLoader.save(config);
 
     // スケジューラーを再読み込み（ターゲット削除を即時反映）
-    const { getBackupScheduler } = await import('../../services/backup/backup-scheduler.js');
-    await getBackupScheduler().reload();
+    await reloadBackupRelatedSchedulers();
 
     const historyService = new BackupConfigHistoryService();
     await historyService.recordChange({
