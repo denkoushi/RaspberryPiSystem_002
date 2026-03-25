@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
-import { createTestClientDevice, createTestEmployee, createTestItem } from './helpers.js';
+import { prisma } from '../../lib/prisma.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestItem, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -202,6 +203,78 @@ describe('GET /api/tools/loans/active', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/tools/loans/active',
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe('PUT /api/tools/loans/:id/client', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let token: string;
+  let targetClientId: string;
+  let loanId: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    const manager = await createTestUser('MANAGER');
+    token = manager.token;
+
+    const client = await createTestClientDevice();
+    targetClientId = client.id;
+    const employee = await createTestEmployee();
+    const item = await createTestItem();
+
+    const loan = await prisma.loan.create({
+      data: {
+        itemId: item.id,
+        employeeId: employee.id,
+        clientId: null,
+      },
+    });
+    loanId = loan.id;
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('active loanにclientIdを再紐付けできる', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tools/loans/${loanId}/client`,
+      headers: {
+        ...createAuthHeader(token),
+        'Content-Type': 'application/json',
+      },
+      payload: {
+        clientId: targetClientId,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.loan.clientId).toBe(targetClientId);
+    expect(body.loan.client.id).toBe(targetClientId);
+  });
+
+  it('未認証では401を返す', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/tools/loans/${loanId}/client`,
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        clientId: targetClientId,
+      },
     });
 
     expect(response.statusCode).toBe(401);
