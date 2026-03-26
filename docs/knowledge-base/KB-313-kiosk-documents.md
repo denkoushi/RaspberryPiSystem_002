@@ -82,6 +82,12 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **キオスク一覧**: `enabled=true` の行のみ（無効化した文書は管理画面では見えるがキオスクでは出ない）。
 - **重複**: Gmail は `gmailDedupeKey`（メッセージID＋添付ファイル名などから生成）で一意。手動は Gmail と別系統で複数可。
 
+### フリーワード検索（`q`）
+
+- 一覧 API の `q` は、ルートで `normalizeDocumentText`（NFKC・連続空白の圧縮・小文字化）したあと、**タイトル系・ファイル名・`extractedText`・確定メタ**（管理画面では `includeCandidates=true` のとき **候補メタ**も）に対して **部分一致**でマッチする。実装は Prisma の `contains`（PostgreSQL では `ILIKE '%…%'` 相当、大文字小文字は区別しない）。
+- **PostgreSQL `simple` 辞書の全文検索（`to_tsvector` / `plainto_tsquery`）は使わない**。日本語の文中の連続文字列にもヒットしやすい代わりに、関連度ランキングはなく **並びは `createdAt` 降順**。
+- 検索文字列に含まれる **`%` はリポジトリ側で除去**し、ILIKE のワイルドカードとしての誤動作（意図しない広い一致）を防ぐ。`_` は ILIKE の1文字ワイルドカードとして解釈されうるが、品番などに `_` が含まれるため現状は除去しない（トレードオフは [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）。
+
 ### キオスクビューア UI（`/kiosk/documents`・2026-03）
 
 - 左ペイン（検索・取込元フィルタ・一覧）は **既定で表示**。「**一覧を隠す**」で閉じ、ビューア側の表示幅を広げられる。
@@ -127,6 +133,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 
 ## References
 
+- 検索方式の判断: [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
 - 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)
 - 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/features/kiosk/documents/`
