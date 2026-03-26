@@ -84,9 +84,13 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ## 実機検証
 
+- **デプロイ（OCR・メタデータ・全文検索）**: ブランチ `feature/kiosk-documents-ocr-metadata-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（2026-03-26）。Prisma `20260326100000_add_kiosk_document_ocr_metadata`。Pi3 は今回のキオスク要領書対象外（リソース制約・専用手順は deployment §Pi3）。
+- **Phase12 自動検証（2026-03-26・本セッション）**: `./scripts/deploy/verify-phase12-real.sh` を実行。**1回目**は Pi5 経由の Pi3 SSH が `Connection closed` となり **Pi3 行が FAIL**（全体 exit 1）。**数分後に再実行**し **PASS 30 / WARN 0 / FAIL 0** を確認（Pi3 も `signage-lite` / timer が active）。偶発切断時は再実行を優先。スクリプト側は同一メッセージを **WARN** 扱いに寄せる修正済み（`verify-phase12-real.sh`）。
+- **API 追加確認（RoboDrill 端末キー）**: `GET /api/kiosk-documents` に `x-client-key: client-key-raspi4-robodrill01-kiosk1` を付与し、応答 `documents[]` に `ocrStatus`・`candidate*`・`confirmed*`・`extractedText` 等の拡張フィールドが載ることを確認（本セッション・curl + JSON キー一覧）。
+
 - **デプロイ（要領書・ビューア改修）**: ブランチ `feature/kiosk-documents-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（キオスク要領書の対象は Pi5 + Pi4 キオスク。Pi3 サイネージ本体へのデプロイは [deployment.md §Pi3](../guides/deployment.md) の専用手順のみ別途）。
 - **一括自動（Phase12）**: `./scripts/deploy/verify-phase12-real.sh`。**`GET /api/kiosk-documents` が 200** かつ JSON に **`"documents"`** があることを検証（要領書 API の回帰）。
-- **サマリの目安**: Pi3・各 Pi4 へ Pi5 経由 SSH がすべて通るとき **PASS 30 / WARN 0 / FAIL 0**。Pi3 が offline のときは Pi3 行が **WARN** となり **PASS 29 / WARN 1** になりうる（全体は FAIL にしない設計）。
+- **サマリの目安**: Pi3・各 Pi4 へ Pi5 経由 SSH がすべて通るとき **PASS 30 / WARN 0 / FAIL 0**。Pi3 が offline / SSH 切断（`timed out` / `No route` / `offline` / **`Connection closed`**）のときは Pi3 行が **WARN** となり **PASS 29 / WARN 1** になりうる（全体は exit 0 想定。2026-03-26 より `Connection closed` を WARN に分類）。
 - **記録（2026-03-25）**: 初回要領書デプロイ後に **PASS 30 / WARN 0 / FAIL 0** を確認。**ビューア改修**（コントラスト・ツールバー・近傍マウント／lazy、`06239cb1` 相当）を Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ **`--limit` 1台ずつ**で反映後、Detach Run ID 例: `20260325-214430-20154` / `214839-2765` / `215311-11636`。その後 **再度** `./scripts/deploy/verify-phase12-real.sh` を実行し **PASS 30 / WARN 0 / FAIL 0**（本セッション実測・Pi3 online 時）。
 - **API の手動確認例**（Tailscale 主運用・Pi5 の例。キーは inventory の kiosk 用に合わせる）:
 
@@ -103,6 +107,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 
 - **`update-all-clients.sh --limit <単一ホスト>`**: プリフライトの `ansible ping` も **同じ `--limit`** が付く。Pi3 を今回の対象に含めなければ、Pi3 offline でも Pi5→Pi4 の順次デプロイを進められる（Pi3 本体の更新は別途、リソース制約向け手順に従う）。
 - **`Pi4 robodrill01 kiosk/status-agent` が FAIL（SSH timeout）**: Mac→Pi5→RoboDrill の **ジャンプ SSH** が一時的にタイムアウトすることがある。Tailscale・現地電源・`tailscale status` を確認し、**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**すると PASS に戻る例がある（2026-03-25 に初回 timeout → 再実行で PASS）。
+- **Phase12 で `Pi3 signage-lite/timer` が FAIL（`Connection closed`）**: Pi5 経由の Pi3 SSH が途中で切断されると、スクリプトが **FAIL** になることがあった（2026-03-26 実測）。**再実行**で Pi3 が応答すれば **PASS 30** に戻る。`verify-phase12-real.sh` は `Connection closed` を **WARN**（未到達想定）に分類するよう更新済み。Pi3 本体の保守は [deployment.md §Pi3](../guides/deployment.md) に従う。
 - **Pi3 が WARN**: スクリプトは Pi3 未到達時 **WARN** にし、全体は FAIL にしない設計。サイネージの専用手順は [deployment.md §Pi3](../guides/deployment.md) および [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
 - **Mac ブラウザでキオスク UI を見たい**: 自己署名 HTTPS で `chrome-error` になりやすい。**実機キオスクまたは VNC** で `/kiosk/documents` を確認する（[KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
 - **ツールバーのアイコン／文字が暗背景で見えない**: 要領書ビューアは `ghostOnDark` を使う。`ghost` のままだと意図せず非表示に近い色になる → 当該 `Button` の variant を見直す（`apps/web/src/components/ui/Button.tsx`）。

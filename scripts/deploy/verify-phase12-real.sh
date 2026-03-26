@@ -253,8 +253,8 @@ check_dual_active_lines "Pi4 robodrill01 kiosk/status-agent" "${PI4_ROBO_STATUS}
 PI3_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI3_USER}@${PI3_IP} 'systemctl is-active signage-lite.service signage-lite-update.timer' 2>&1" || true)"
 if [ "$(printf "%s\n" "${PI3_STATUS}" | grep -Ec '^active$' || true)" -ge 2 ]; then
   log_pass "Pi3 signage-lite/timer"
-elif printf "%s" "${PI3_STATUS}" | grep -Eqi 'timed out|No route to host|offline'; then
-  log_warn "Pi3 signage-lite/timer" "Pi3 offlineの可能性。運用上スキップ可"
+elif printf "%s" "${PI3_STATUS}" | grep -Eqi 'timed out|No route to host|offline|Connection closed'; then
+  log_warn "Pi3 signage-lite/timer" "Pi3 offline/SSH切断の可能性。運用上スキップ可（数分後に再実行で復帰することがある）"
 else
   log_fail "Pi3 signage-lite/timer" "${PI3_STATUS}"
 fi
