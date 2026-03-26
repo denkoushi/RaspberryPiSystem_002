@@ -84,24 +84,25 @@ export function buildKioskDocumentSearchSnippetModel(
     return { mode: 'no_match' };
   }
 
-  const maxSnippets = options?.maxSnippets ?? DEFAULT_MAX_SNIPPETS;
-  const contextLength = options?.contextLength ?? DEFAULT_CONTEXT;
-
-  const re = new RegExp(escapeRegExp(query), 'gi');
-  const matches = [...text.matchAll(re)];
-  if (matches.length === 0) {
+  const maxSnippets = Math.max(0, options?.maxSnippets ?? DEFAULT_MAX_SNIPPETS);
+  const contextLength = Math.max(0, options?.contextLength ?? DEFAULT_CONTEXT);
+  if (maxSnippets === 0) {
     return { mode: 'no_match' };
   }
 
+  const re = new RegExp(escapeRegExp(query), 'gi');
+
   const items: KioskDocumentSearchSnippet[] = [];
-  for (let i = 0; i < matches.length && items.length < maxSnippets; i++) {
-    const m = matches[i];
+  let m: RegExpExecArray | null = re.exec(text);
+  while (m && items.length < maxSnippets) {
     if (m.index === undefined || m[0].length === 0) {
+      m = re.exec(text);
       continue;
     }
     const start = m.index;
     const end = start + m[0].length;
     items.push(buildExcerptSegments(text, start, end, contextLength));
+    m = re.exec(text);
   }
 
   return items.length > 0 ? { mode: 'snippets', items } : { mode: 'no_match' };
