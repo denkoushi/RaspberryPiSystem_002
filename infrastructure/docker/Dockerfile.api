@@ -29,6 +29,7 @@ RUN apt-get update \
   && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible python3 python3-pip git \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
+  && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" \
   && command -v ndlocr-lite \
   && ndlocr-lite --help >/dev/null \
   && rm -rf /var/lib/apt/lists/*
