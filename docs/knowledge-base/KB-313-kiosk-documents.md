@@ -35,7 +35,16 @@ category: knowledge-base
 | `KIOSK_DOCUMENT_PDF_DPI` | 要領書 PDF→JPEG の解像度（`pdftoppm -r`） | `120` |
 | `KIOSK_DOCUMENT_JPEG_QUALITY` | JPEG 品質（1–100） | `78` |
 | `KIOSK_DOCUMENT_OCR_CRON` | 夜間OCRバッチ時刻（JST cron） | `30 2 * * *` |
-| `KIOSK_DOCUMENT_OCR_COMMAND` | OCRエンジン実行コマンド（NDLOCR-Lite想定） | `ndlocr-lite` |
+| `KIOSK_DOCUMENT_OCR_BATCH_SIZE` | 夜間OCRバッチの1回あたり処理件数 | `100` |
+| `KIOSK_DOCUMENT_PROCESS_TIMEOUT_MS` | 1文書あたりOCR/抽出タイムアウト | `180000` |
+| `KIOSK_DOCUMENT_OCR_LEGACY_STDOUT` | `true` のときのみ、`KIOSK_DOCUMENT_OCR_COMMAND` に PDF を1引数渡し stdout を全文とみなす（独自ラッパー向け） | 未設定（無効） |
+| `KIOSK_DOCUMENT_OCR_COMMAND` | 上記レガシーモード時の実行ファイル名またはパス | `ndlocr-lite` |
+| `KIOSK_DOCUMENT_NDLOCR_CLI` | 既定の NDLOCR-Lite パイプラインで呼ぶコマンド（`--sourceimg` / `--output` 形式） | `ndlocr-lite` |
+| `KIOSK_DOCUMENT_NDLOCR_SCRIPT` | 設定時は `KIOSK_DOCUMENT_NDLOCR_PYTHON` でこの `ocr.py` を実行（git clone 配置向け）。未設定なら `KIOSK_DOCUMENT_NDLOCR_CLI` のみ起動 | 未設定 |
+| `KIOSK_DOCUMENT_NDLOCR_PYTHON` | `KIOSK_DOCUMENT_NDLOCR_SCRIPT` 使用時の Python | `python3` |
+| `KIOSK_DOCUMENT_OCR_RASTER_DPI` | OCR 用 `pdftoppm -r`（API コンテナに poppler 必須） | `150` |
+| `KIOSK_DOCUMENT_OCR_ENGINE_TIMEOUT_MS` | 1ページあたりの NDLOCR / レガシー OCR 子プロセスのタイムアウト（ms） | `180000` |
+| `KIOSK_DOCUMENT_OCR_RASTER_TIMEOUT_MS` | `pdftoppm` のタイムアウト（ms） | `120000` |
 
 サイネージは従来どおり `SIGNAGE_PDF_DPI`（未設定時 150）を `convertPdfToPages` のデフォルトとして利用する。**要領書だけ** Pi4 向けに軽くしたい場合は上記 2 つを API コンテナに設定する。
 
@@ -55,7 +64,8 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **Gmail から取り込まれない**: `storage.provider` が `gmail` でない、トークン欠落、`kioskDocumentGmailIngest` が空/無効、件名が一致しない、添付が PDF でない
 - **一覧に出ない**: 管理画面で `enabled=false`、キオスクは有効なもののみ表示
 - **画像が出ない**: PDF 変換失敗（Pi 上の変換ツール・ストレージパス）、`pageUrls` が空
-- **抽出が失敗し続ける**: OCRコマンド未導入/失敗、`ocrFailureReason` と alert delivery を確認
+- **抽出が失敗し続ける**: API コンテナに同梱された **NDLOCR-Lite** が見えているか（`which ndlocr-lite` / `ndlocr-lite --help`）。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` を使う場合はパスの存在と Python 実行権限を確認。`pdftotext` だけではスキャン PDF は空になり、OCR 分岐に入る。
+- **OCR なのに文字がほぼ空**: 旧実装は `ndlocr-lite <pdf>`（stdout 想定）で **NDLOCR-Lite 実 CLI と不一致**だった。現行は PDF→`pdftoppm`→ページごとに `--sourceimg`/`--output` で `.txt` を収集。独自ラッパーは `KIOSK_DOCUMENT_OCR_LEGACY_STDOUT=true` で従来契約に戻す。
 - **拡大（ズーム）が効かない**: 表示モードが **幅いっぱい** のときは仕様で無効。**標準幅** に戻すと拡大 UI が有効になる
 
 ## Investigation

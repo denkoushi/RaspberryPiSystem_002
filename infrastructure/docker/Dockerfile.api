@@ -23,9 +23,14 @@ RUN pnpm run build
 
 FROM node:20-bookworm-slim AS api
 WORKDIR /app
+ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 
 RUN apt-get update \
-  && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible \
+  && apt-get install -y openssl poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible python3 python3-pip git \
+  && python3 -m pip install --no-cache-dir --break-system-packages \
+  "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
+  && command -v ndlocr-lite \
+  && ndlocr-lite --help >/dev/null \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=base /app/package.json ./package.json

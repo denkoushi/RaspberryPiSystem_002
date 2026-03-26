@@ -48,6 +48,17 @@
 - 夜間バッチ（既定 `KIOSK_DOCUMENT_OCR_CRON="30 2 * * *"`）が FIFO / 1並列 / 1リトライで処理。
 - 管理画面の要領書一覧で `抽出待ち / 処理中 / 完了 / 失敗` を確認できる。
 - 失敗時は Slack 連携（alerts DB dispatcher）へ `kiosk-document-ocr-*` アラートを作成する。
+- **エンジン契約（重要）**: 既定では API が **PDF を `pdftoppm` で画像化**し、**NDLOCR-Lite 公式 CLI**（ページごとに `ndlocr-lite --sourceimg <画像> --output <dir>` または `python3 <path/to/ocr.py> …`）で処理し、出力先の **`.txt` をページ順で結合**する。**API Docker イメージに NDLOCR-Lite を同梱**する運用を標準とし、ホスト手作業導入は前提にしない。stdout に1本で PDF を渡す独自コマンドだけ使う場合は `KIOSK_DOCUMENT_OCR_LEGACY_STDOUT=true` と `KIOSK_DOCUMENT_OCR_COMMAND` をセット。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の環境変数表。
+
+### OCR ヘルスチェック（デプロイ直後）
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api which ndlocr-lite
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api ndlocr-lite --help >/dev/null
+```
+
+上記が失敗する場合、API イメージが古い可能性が高い。最新イメージで再デプロイ後に再確認する。
 
 ### 手動再処理
 
@@ -106,6 +117,7 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 | ツールバーが見えない／極端に薄い | ダーク UI では `ghost` ではなく **`ghostOnDark`** を使う設計。再発時は当該 `Button` variant を確認（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |
 | 画像 broken | `GET /api/storage/pdf-pages/...` が 200 か、JPEG の Content-Type が `image/jpeg` か |
 | Gmail 取り込み 400 | `storage.provider=gmail` かトークンがあるか |
+| OCR 完了しない／本文が空 | API コンテナ内で `which ndlocr-lite` と `ndlocr-lite --help` を確認。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` 運用時はスクリプトパスと Python 実行可否を確認。スキャン PDF は `pdftotext` が空→OCR 必須。 |
 | 重複しない | 同一 `messageId`+ファイル名は意図的にスキップ |
 | Phase12 が Pi3 で FAIL（`Connection closed`） | 一時的な SSH 切断のことがある。**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**。最新スクリプトでは当該文言を **WARN** 扱い（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |
 
