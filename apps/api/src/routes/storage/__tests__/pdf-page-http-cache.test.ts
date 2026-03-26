@@ -35,6 +35,10 @@ describe('ifNoneMatchSatisfied', () => {
   it('returns true for *', () => {
     expect(ifNoneMatchSatisfied('*', etag)).toBe(true);
   });
+
+  it('supports header array values', () => {
+    expect(ifNoneMatchSatisfied(['"other"', etag], etag)).toBe(true);
+  });
 });
 
 describe('resolvePdfPageCacheControl', () => {

@@ -46,7 +46,7 @@ export function registerPdfPageRoutes(app: FastifyInstance): void {
       reply.header('Cache-Control', cacheControl);
 
       const inm = request.headers['if-none-match'];
-      if (ifNoneMatchSatisfied(typeof inm === 'string' ? inm : undefined, etag)) {
+      if (ifNoneMatchSatisfied(inm, etag)) {
         return reply.code(304).send();
       }
 

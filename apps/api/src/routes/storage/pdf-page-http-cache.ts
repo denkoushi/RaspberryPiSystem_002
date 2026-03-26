@@ -14,16 +14,27 @@ export function buildPdfPageEtag(stat: Pick<Stats, 'size' | 'mtimeMs'>): string 
 /**
  * リクエストの If-None-Match がサーバ ETag と一致するか。
  */
-export function ifNoneMatchSatisfied(ifNoneMatchHeader: string | undefined, etag: string): boolean {
+export function ifNoneMatchSatisfied(
+  ifNoneMatchHeader: string | string[] | undefined,
+  etag: string
+): boolean {
   if (!ifNoneMatchHeader || !etag) return false;
-  const parts = ifNoneMatchHeader.split(',').map((p) => p.trim());
-  for (const part of parts) {
-    if (part === '*') return true;
-    if (part === etag) return true;
-    const weak = part.startsWith('W/');
-    const normalized = weak ? part.slice(2).trim() : part;
-    if (normalized === etag) return true;
+
+  const rawValues = Array.isArray(ifNoneMatchHeader)
+    ? ifNoneMatchHeader
+    : [ifNoneMatchHeader];
+
+  for (const raw of rawValues) {
+    const parts = raw.split(',').map((p) => p.trim());
+    for (const part of parts) {
+      if (part === '*') return true;
+      if (part === etag) return true;
+      const weak = part.startsWith('W/');
+      const normalized = weak ? part.slice(2).trim() : part;
+      if (normalized === etag) return true;
+    }
   }
+
   return false;
 }
 
