@@ -42,6 +42,30 @@
 
 各メッセージについて PDF を保存した後、**既読化＋アーカイブ（INBOX から除去）** を試行する。同一メール・同一添付名は `gmailDedupeKey` で再取り込みされない。
 
+## OCR / 自動ラベリング運用
+
+- 新規登録文書は `ocrStatus=PENDING` で登録される（公開は継続）。
+- 夜間バッチ（既定 `KIOSK_DOCUMENT_OCR_CRON="30 2 * * *"`）が FIFO / 1並列 / 1リトライで処理。
+- 管理画面の要領書一覧で `抽出待ち / 処理中 / 完了 / 失敗` を確認できる。
+- 失敗時は Slack 連携（alerts DB dispatcher）へ `kiosk-document-ocr-*` アラートを作成する。
+
+### 手動再処理
+
+1. 管理画面 `/admin/kiosk-documents` で対象行の **再処理** を実行
+2. API 直叩きの場合:
+
+```bash
+curl -X POST "https://<host>/api/kiosk-documents/<document-id>/reprocess" \
+  -H "Authorization: Bearer <admin-or-manager-jwt>"
+```
+
+### Nightly バッチ手動実行
+
+```bash
+curl -X POST "https://<host>/api/kiosk-documents/run-nightly-ocr" \
+  -H "Authorization: Bearer <admin-or-manager-jwt>"
+```
+
 ## キオスク表示確認
 
 - URL: `/kiosk/documents`（沉浸式レイアウト。最上段メニューは上端ホバーで表示、[KB-311](../knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)）
@@ -70,7 +94,7 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 ## デプロイ後確認（本番・実機）
 
 1. **一括自動（推奨）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` を実行する。キオスク要領書向けに **`GET /api/kiosk-documents` が 200** かつ **`documents` 配列** を含むこともここで検証される（[deployment.md](../guides/deployment.md) の実機検証方針に準拠）。
-2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**。要領書初回デプロイおよび **ビューア改修**（コントラスト・スクロール最適化）反映後の再実行でも同サマリを確認済み（2026-03-25、実測ログ）。Pi3 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
+2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**。**OCR・メタデータ**（`feature/kiosk-documents-ocr-metadata-v1`、2026-03-26 デプロイ後）も再実行で同サマリを確認済み。Pi3 の SSH が一時的に `Connection closed` になると、古いスクリプトでは FAIL になりうるが、**再実行**または最新の `verify-phase12-real.sh`（`Connection closed` を WARN 扱い）で切り分け可能。要領書初回・**ビューア改修**反映後（2026-03-25）も同様に **PASS 30** を実測済み。Pi3 長期 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
 3. **UI**: 上記「キオスク表示確認」のとおり、実機/VNC でタブ遷移・一覧・閲覧・表示モードを確認する。**追加**: ツールバー操作が **暗背景でも読める**こと、長文書で **スクロールが極端に重くない**こと（Pi4）。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
 
 ## トラブルシュート
@@ -83,9 +107,11 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 | 画像 broken | `GET /api/storage/pdf-pages/...` が 200 か、JPEG の Content-Type が `image/jpeg` か |
 | Gmail 取り込み 400 | `storage.provider=gmail` かトークンがあるか |
 | 重複しない | 同一 `messageId`+ファイル名は意図的にスキップ |
+| Phase12 が Pi3 で FAIL（`Connection closed`） | 一時的な SSH 切断のことがある。**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**。最新スクリプトでは当該文言を **WARN** 扱い（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |
 
 詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md) を参照。
 
 ## 関連マイグレーション
 
 - `20260325120000_add_kiosk_documents`
+- `20260326100000_add_kiosk_document_ocr_metadata`

@@ -1191,25 +1191,87 @@ enum KioskDocumentSource {
   GMAIL
 }
 
+enum KioskDocumentOcrStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 /// キオスク「要領書」用PDF（手動アップロード / Gmail取り込み）
 model KioskDocument {
   id                   String              @id @default(uuid())
   title                String
+  displayTitle         String?
   filename             String
   filePath             String
+  fileHash             String?
   sourceType           KioskDocumentSource
   gmailMessageId       String?
   sourceAttachmentName String?
   /// Gmail同一添付の再取り込み防止（例: messageId + 元ファイル名のハッシュ）
   gmailDedupeKey       String?             @unique
   pageCount            Int?
+  extractedText        String?
+  ocrStatus            KioskDocumentOcrStatus @default(PENDING)
+  ocrEngine            String?
+  ocrStartedAt         DateTime?
+  ocrFinishedAt        DateTime?
+  ocrRetryCount        Int                 @default(0)
+  ocrFailureReason     String?
+  ocrTargetPages       Int?
+  candidateFhincd      String?
+  candidateDrawingNumber String?
+  candidateProcessName String?
+  candidateResourceCd  String?
+  confidenceFhincd     Float?
+  confidenceDrawingNumber Float?
+  confidenceProcessName Float?
+  confidenceResourceCd Float?
+  confirmedFhincd      String?
+  confirmedDrawingNumber String?
+  confirmedProcessName String?
+  confirmedResourceCd  String?
+  documentCategory     String?
   enabled              Boolean             @default(true)
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
+  metadataHistories    KioskDocumentMetadataHistory[]
 
   @@index([enabled])
   @@index([title])
+  @@index([displayTitle])
   @@index([sourceType])
+  @@index([ocrStatus])
+  @@index([fileHash])
+  @@index([confirmedFhincd])
+  @@index([confirmedDrawingNumber])
+  @@index([confirmedProcessName])
+  @@index([confirmedResourceCd])
+}
+
+model KioskDocumentMetadataHistory {
+  id                   String   @id @default(uuid())
+  kioskDocumentId      String
+  actorUserId          String?
+  changedFields        String[]
+  previousDisplayTitle String?
+  nextDisplayTitle     String?
+  previousFhincd       String?
+  nextFhincd           String?
+  previousDrawingNumber String?
+  nextDrawingNumber    String?
+  previousProcessName  String?
+  nextProcessName      String?
+  previousResourceCd   String?
+  nextResourceCd       String?
+  previousCategory     String?
+  nextCategory         String?
+  createdAt            DateTime @default(now())
+  kioskDocument        KioskDocument @relation(fields: [kioskDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([kioskDocumentId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model AlertDelivery {

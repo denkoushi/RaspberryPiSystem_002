@@ -10,7 +10,10 @@ export type KioskDocumentsListPanelProps = {
   documents: Array<{
     id: string;
     title: string;
+    displayTitle: string | null;
     filename: string;
+    confirmedFhincd: string | null;
+    confirmedDrawingNumber: string | null;
     sourceAttachmentName: string | null;
     sourceType: KioskDocumentSource;
   }>;
@@ -109,10 +112,17 @@ export function KioskDocumentsListPanel({
                       : 'border-transparent bg-white/5 text-white/90 hover:bg-white/10'
                   )}
                 >
-                  <div className="font-semibold leading-snug">{doc.title}</div>
+                  <div className="font-semibold leading-snug">{doc.displayTitle || doc.title}</div>
                   <div className="mt-0.5 text-xs text-white/60">
                     {doc.sourceAttachmentName || doc.filename} · {doc.sourceType === 'GMAIL' ? 'Gmail' : '手動'}
                   </div>
+                  {(doc.confirmedFhincd || doc.confirmedDrawingNumber) ? (
+                    <div className="mt-0.5 text-[11px] text-teal-200/90">
+                      {doc.confirmedFhincd ? `FHINCD: ${doc.confirmedFhincd}` : ''}
+                      {doc.confirmedFhincd && doc.confirmedDrawingNumber ? ' · ' : ''}
+                      {doc.confirmedDrawingNumber ? `図面: ${doc.confirmedDrawingNumber}` : ''}
+                    </div>
+                  ) : null}
                 </button>
               </li>
             ))}

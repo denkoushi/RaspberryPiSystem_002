@@ -144,6 +144,8 @@ import {
   uploadKioskDocument,
   deleteKioskDocument,
   patchKioskDocumentEnabled,
+  patchKioskDocumentMetadata,
+  reprocessKioskDocument,
   triggerKioskDocumentGmailIngest,
   getSignageEmergency,
   setSignageEmergency,
@@ -157,6 +159,7 @@ import {
   type SignageSchedule,
   type SignagePdf,
   type KioskDocumentSource,
+  type KioskDocumentOcrStatus,
   type ClientLogLevel,
   getNetworkModeStatus,
   getMeasuringInstruments,
@@ -1377,6 +1380,8 @@ export function useSignagePdfMutations() {
 export function useKioskDocuments(params?: {
   q?: string;
   sourceType?: KioskDocumentSource;
+  ocrStatus?: KioskDocumentOcrStatus;
+  includeCandidates?: boolean;
   hideDisabled?: boolean;
 }) {
   return useQuery({
@@ -1414,13 +1419,40 @@ export function useKioskDocumentMutations() {
       void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
     },
   });
+  const patchMetadata = useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: {
+        displayTitle?: string | null;
+        confirmedFhincd?: string | null;
+        confirmedDrawingNumber?: string | null;
+        confirmedProcessName?: string | null;
+        confirmedResourceCd?: string | null;
+        documentCategory?: string | null;
+      };
+    }) => patchKioskDocumentMetadata(id, payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-document'] });
+    },
+  });
+  const reprocess = useMutation({
+    mutationFn: (id: string) => reprocessKioskDocument(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-document'] });
+    },
+  });
   const ingestGmail = useMutation({
     mutationFn: (params?: { scheduleId?: string }) => triggerKioskDocumentGmailIngest(params),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['kiosk-documents'] });
     },
   });
-  return { upload, remove, setEnabled, ingestGmail };
+  return { upload, remove, setEnabled, patchMetadata, reprocess, ingestGmail };
 }
 
 export function useSignageEmergency() {
