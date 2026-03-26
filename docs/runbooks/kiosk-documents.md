@@ -104,7 +104,7 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 
 ## デプロイ後確認（本番・実機）
 
-1. **一括自動（推奨）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` を実行する。キオスク要領書向けに **`GET /api/kiosk-documents` が 200** かつ **`documents` 配列** を含むこともここで検証される（[deployment.md](../guides/deployment.md) の実機検証方針に準拠）。
+1. **一括自動（推奨）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` を実行する。キオスク要領書向けに **`GET /api/kiosk-documents` が 200** かつ **`documents` 配列** を含むこともここで検証される（[deployment.md](../guides/deployment.md) の実機検証方針に準拠）。**フリーワード検索**の契約（`q`・部分一致・並び `createdAt` 降順・`%` 除去など）は [KB-313 §フリーワード検索](../knowledge-base/KB-313-kiosk-documents.md#フリーワード検索q) / [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)。
 2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**。**OCR・メタデータ**（`feature/kiosk-documents-ocr-metadata-v1`、2026-03-26 デプロイ後）も再実行で同サマリを確認済み。**`main` 追従**（2026-03-26、Pi5→Pi4×2 のみ順次・Pi3 除外）後も **PASS 30/0/0** を実測。デプロイ直後の OCR 同梱確認は本 Runbook「OCR ヘルスチェック」または Pi5 上の `docker compose ... exec -T api ndlocr-lite --help`（stderr の ONNX WARN は [KB-313](../knowledge-base/KB-313-kiosk-documents.md) 参照）。Pi3 の SSH が一時的に `Connection closed` になると、古いスクリプトでは FAIL になりうるが、**再実行**または最新の `verify-phase12-real.sh`（`Connection closed` を WARN 扱い）で切り分け可能。要領書初回・**ビューア改修**反映後（2026-03-25）も同様に **PASS 30** を実測済み。Pi3 長期 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
 3. **UI**: 上記「キオスク表示確認」のとおり、実機/VNC でタブ遷移・一覧・閲覧・表示モードを確認する。**追加**: ツールバー操作が **暗背景でも読める**こと、長文書で **スクロールが極端に重くない**こと（Pi4）。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
 

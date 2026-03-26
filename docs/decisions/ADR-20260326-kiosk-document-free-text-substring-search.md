@@ -40,3 +40,7 @@ related: [KB-313]
 
 - [KB-313](../knowledge-base/KB-313-kiosk-documents.md)
 - 実装: `apps/api/src/services/kiosk-documents/search/build-kiosk-document-search-or.ts`, `apps/api/src/services/kiosk-documents/adapters/prisma-kiosk-document.repository.ts`
+
+## Verification（2026-03-26）
+
+- 本番: `docs/phase12-verification-2026-03-26` を Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ順次デプロイ後、`./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**。
