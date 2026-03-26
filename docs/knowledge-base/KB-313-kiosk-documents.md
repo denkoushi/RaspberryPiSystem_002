@@ -90,16 +90,19 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ### キオスクビューア UI（`/kiosk/documents`・2026-03）
 
-- 左ペイン（検索・取込元フィルタ・一覧）は **既定で表示**。「**一覧を隠す**」で閉じ、ビューア側の表示幅を広げられる。
-- 右側: **1ページ** / **見開き**、**標準幅** / **幅いっぱい**（ビュー幅にフィット）、縦スクロール。
-- **拡大（ズーム）**は **標準幅** 表示時のみ有効。**幅いっぱい** 時は無効（二重スケールを避ける仕様）。
+- 左ペイン（検索・取込元フィルタ・一覧）は **既定で表示**。**一覧の表示/非表示**はツールバー左の **アイコン**（`aria-label` / `title` あり）で切り替え、ビューア側の表示幅を広げられる。
+- 右側（メイン）: **1ページ** / **見開き**（テキストトグル）、**標準幅** / **幅いっぱい**（**アイコン**＋`aria-label`/`title`）、縦スクロール。
+- **拡大（ズーム）**は **標準幅** 表示時のみ有効。**幅いっぱい** 時は無効（二重スケールを避ける仕様）。無効時は `%` が `—` になり、説明文は出さない（2026-03-26 以降）。
 - **コントラスト（ダーク UI）**: ビューア上部ツールバー等で `Button` の **`ghostOnDark`** variant を使う（従来 `ghost` は `!text-slate-900` 系で **暗背景では文字が見えない**）。ライト専用の `ghost` と分離する。
-- **ツールバー**: `KioskDocumentsViewerToolbar` でタイトル行と操作行を分離し、長い文書名でも **2行目にタイトル**を回して溢れを抑える。
+- **ツールバーとタイトル**: ビューア直下の **重複ファイル名行は廃止**（左一覧と役割が重なるため）。長い文書名は一覧側で確認する。
+- **検索ヒット抜粋（2026-03-26）**: 左の検索語が **空でないときだけ**、ツールバー右に **`extractedText` 由来の抜粋**（最大 **3** 箇所、前後約 **60** 文字、`buildKioskDocumentSearchSnippetModel`）。ヒットは `<mark>` で強調。本文が無い・一致なしのときは **「一致する箇所は見つかりませんでした」**。検索語が空のときは **右パネル非表示**（要領書画像の縦スペースを確保）。
+  - **一覧 API の `q` との差**: 一覧は `normalizeDocumentText`（NFKC 等）後に DB へ **ILIKE 部分一致**。抜粋はクライアントで **原文に対する大文字小文字無視の部分一致**（正規表現メタ文字はエスケープ）。**通常は一致**するが、表記ゆれでは **一覧に出るのに抜粋が空**、またはその逆が稀に起こりうる。
 - **Pi4 スクロール負荷軽減**: `useKioskDocumentNearVisibleRows` がスクロールコンテナを `root` とする `IntersectionObserver` で **近傍のページ行だけ** `<img>` をマウント。`KioskDocumentViewerPageRow` は **プレースホルダ**・`loading="lazy"`・`decoding="async"`。近傍インデックス計算は `kioskDocumentViewerVisibility.ts` の純関数＋ Vitest（`kioskDocumentViewerVisibility.test.ts`）で固定。
-- 実装の主たる分割先: `apps/web/src/features/kiosk/documents/`（ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`）。
+- **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`）。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
 
 ## 実機検証
 
+- **デプロイ（要領書ツールバー改修・検索ヒット抜粋・Web）**: ブランチ `feat/kiosk-documents-toolbar-search-snippets`（コミット例 `931a48f3` の perf 修正含む）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**。Ansible Detach Run ID 例: `20260326-190104-11317`（Pi5）/ `20260326-190608-6864`（raspberrypi4）/ `20260326-191127-3225`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（Pi3 が SSH 未到達のとき Pi3 行 **WARN**・全体 exit 0。全ホスト到達時は **PASS 30 / WARN 0 / FAIL 0** が目安）。
 - **デプロイ（要領書フリーワード検索・部分一致化）**: ブランチ `docs/phase12-verification-2026-03-26`（API: `contains`/ILIKE 部分一致、`buildKioskDocumentSearchOrConditions`、FTS raw SQL 削除。仕様は [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**（要領書対象外のためデプロイ未実施）。Ansible Detach Run ID 例: `20260326-154038-14101`（Pi5）/ `20260326-154739-7415`（raspberrypi4）/ `20260326-155316-6698`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（実行時間の目安 約100〜110s）。**知見**: 検索は `q` 正規化後にタイトル・ファイル名・`extractedText`・確定/候補メタの OR 部分一致。一覧の並びは `createdAt` 降順。`%` は入力から除去（`escapeLikePattern`）。`_` は ILIKE の1文字ワイルドカードになりうるが品番向けに現状は除去しない（KB「フリーワード検索」節・ADR 参照）。
 - **デプロイ（OCR・メタデータ・全文検索）**: ブランチ `feature/kiosk-documents-ocr-metadata-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（2026-03-26）。Prisma `20260326100000_add_kiosk_document_ocr_metadata`。Pi3 は今回のキオスク要領書対象外（リソース制約・専用手順は deployment §Pi3）。
 - **Phase12 自動検証（2026-03-26・feature ブランチ直後）**: `./scripts/deploy/verify-phase12-real.sh` を実行。**1回目**は Pi5 経由の Pi3 SSH が `Connection closed` となり **Pi3 行が FAIL**（全体 exit 1）。**数分後に再実行**し **PASS 30 / WARN 0 / FAIL 0** を確認（Pi3 も `signage-lite` / timer が active）。偶発切断時は再実行を優先。スクリプト側は同一メッセージを **WARN** 扱いに寄せる修正済み（`verify-phase12-real.sh`）。
@@ -119,7 +122,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
   -H "x-client-key: client-key-raspberrypi4-kiosk1" | head -c 500
 ```
 
-- **UI（実機/VNC）**: キオスクで **「要領書」タブ** → `/kiosk/documents` で一覧・検索・「一覧を隠す」・1ページ/見開き・標準幅/幅いっぱい・（標準幅時）拡大が使えること。管理画面 `/admin/kiosk-documents` でアップロードした PDF が一覧に出ること。
+- **UI（実機/VNC）**: キオスクで **「要領書」タブ** → `/kiosk/documents` で一覧・検索・一覧トグル **アイコン**・1ページ/見開き・標準幅/幅いっぱい **アイコン**・（標準幅時）拡大が使えること。検索語入力時はツールバー右に **ヒット抜粋**（または一致なしメッセージ）が出ること。管理画面 `/admin/kiosk-documents` でアップロードした PDF が一覧に出ること。
 
 ## 知見・トラブルシュート（Phase12・SSH・デプロイ）
 
@@ -131,6 +134,8 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **Mac ブラウザでキオスク UI を見たい**: 自己署名 HTTPS で `chrome-error` になりやすい。**実機キオスクまたは VNC** で `/kiosk/documents` を確認する（[KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
 - **ツールバーのアイコン／文字が暗背景で見えない**: 要領書ビューアは `ghostOnDark` を使う。`ghost` のままだと意図せず非表示に近い色になる → 当該 `Button` の variant を見直す（`apps/web/src/components/ui/Button.tsx`）。
 - **開発時 ESLint `import/order`**: `features/kiosk/documents` 配下でコンポーネント分割すると、**型 import と値 import のブロック順・空行**で `import/order` が落ちうる。`pnpm --filter @raspi-system/web lint` で先に確認する。
+- **一覧にヒットするのにツールバー抜粋が空／逆**: 上記 **キオスクビューア UI** 節の「一覧 API の `q` との差」を参照。`extractedText` が未生成（`ocrStatus` が `PENDING` 等）のときも抜粋は出ない。
+- **長大な `extractedText` で抜粋生成が重い**: `buildKioskDocumentSearchSnippetModel` は **先頭から最大3マッチまで** `RegExp#exec` で走査し、全マッチ配列は作らない（2026-03-26）。
 
 ## References
 
