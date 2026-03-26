@@ -9,6 +9,7 @@ import {
   KioskDocumentsViewerPanel,
   type KioskDocumentWidthMode,
 } from '../../features/kiosk/documents/KioskDocumentsViewerPanel';
+import { buildKioskDocumentSearchSnippetModel } from '../../features/kiosk/documents/search/kiosk-document-search-snippets';
 
 type LayoutMode = 'single' | 'spread';
 
@@ -53,6 +54,15 @@ export function KioskDocumentsPage() {
 
   const pagePairs = useMemo(() => buildPagePairs(pageUrls, layoutMode), [layoutMode, pageUrls]);
 
+  const snippetModel = useMemo(
+    () =>
+      buildKioskDocumentSearchSnippetModel(
+        detailQuery.data?.document.extractedText,
+        debouncedSearch
+      ),
+    [debouncedSearch, detailQuery.data?.document.extractedText]
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
       <KioskDocumentsListPanel
@@ -79,7 +89,7 @@ export function KioskDocumentsPage() {
         onZoomIncrease={() => setZoom((z) => Math.min(ZOOM_MAX, z + ZOOM_STEP))}
         onZoomReset={() => setZoom(1)}
         selectedId={selectedId}
-        documentTitle={detailQuery.data?.document.displayTitle || detailQuery.data?.document.title || null}
+        snippetModel={snippetModel}
         detailLoading={detailQuery.isLoading}
         detailError={detailQuery.isError}
         pagePairs={pagePairs}
