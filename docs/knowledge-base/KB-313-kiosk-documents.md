@@ -1,8 +1,8 @@
 ---
 title: KB-313 キオスク要領書（PDF）一覧・Gmail取り込み
-tags: [kiosk, pdf, gmail, api]
+tags: [kiosk, pdf, gmail, api, ocr, metadata]
 audience: [開発者, 運用者]
-last-verified: 2026-03-25
+last-verified: 2026-03-26
 category: knowledge-base
 ---
 
@@ -15,10 +15,15 @@ category: knowledge-base
 ## 主要コンポーネント
 
 - **DB**: `KioskDocument`（`KioskDocumentSource`: `MANUAL` | `GMAIL`）、Gmail 重複防止に `gmailDedupeKey`（SHA-256）
+  - OCR/分類拡張: `ocrStatus`、`extractedText`、候補値（`candidate*`）、確定値（`confirmed*`）、信頼度（`confidence*`）、`displayTitle`
+  - 履歴: `KioskDocumentMetadataHistory`（変更前後値・更新者・更新時刻）
 - **API**（`/api/kiosk-documents`）:
   - `GET` 一覧・`GET :id` 詳細（`pageUrls`）: `x-client-key` または JWT（ADMIN/MANAGER/VIEWER）
   - `POST` 手動アップロード: ADMIN/MANAGER
   - `POST /ingest-gmail`: ADMIN/MANAGER（手動トリガ）
+  - `POST /:id/reprocess`: 文書1件の OCR/抽出再処理（ADMIN/MANAGER）
+  - `POST /run-nightly-ocr`: 夜間OCR処理の手動実行（ADMIN/MANAGER）
+  - `PATCH /:id/metadata`: 確定メタデータ編集（候補は保持）
   - `PATCH` / `DELETE`: ADMIN/MANAGER
 - **ページ画像**: `PdfStorage.convertPdfToPages`（要領書は `PdfStorageRenderAdapter` 経由で **キオスク専用 DPI/品質** を指定可）→ `GET /api/storage/pdf-pages/:pdfId/:filename`（JPEG 時は `image/jpeg` を返却）
 - **Gmail**: `GmailApiClient.listPdfAttachments` で PDF のみ列挙。検索クエリは `buildKioskDocumentGmailSearchQuery`（件名・任意 `from`・`is:unread`）
@@ -29,6 +34,8 @@ category: knowledge-base
 |------|------|------------------|
 | `KIOSK_DOCUMENT_PDF_DPI` | 要領書 PDF→JPEG の解像度（`pdftoppm -r`） | `120` |
 | `KIOSK_DOCUMENT_JPEG_QUALITY` | JPEG 品質（1–100） | `78` |
+| `KIOSK_DOCUMENT_OCR_CRON` | 夜間OCRバッチ時刻（JST cron） | `30 2 * * *` |
+| `KIOSK_DOCUMENT_OCR_COMMAND` | OCRエンジン実行コマンド（NDLOCR-Lite想定） | `ndlocr-lite` |
 
 サイネージは従来どおり `SIGNAGE_PDF_DPI`（未設定時 150）を `convertPdfToPages` のデフォルトとして利用する。**要領書だけ** Pi4 向けに軽くしたい場合は上記 2 つを API コンテナに設定する。
 
@@ -48,6 +55,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **Gmail から取り込まれない**: `storage.provider` が `gmail` でない、トークン欠落、`kioskDocumentGmailIngest` が空/無効、件名が一致しない、添付が PDF でない
 - **一覧に出ない**: 管理画面で `enabled=false`、キオスクは有効なもののみ表示
 - **画像が出ない**: PDF 変換失敗（Pi 上の変換ツール・ストレージパス）、`pageUrls` が空
+- **抽出が失敗し続ける**: OCRコマンド未導入/失敗、`ocrFailureReason` と alert delivery を確認
 - **拡大（ズーム）が効かない**: 表示モードが **幅いっぱい** のときは仕様で無効。**標準幅** に戻すと拡大 UI が有効になる
 
 ## Investigation

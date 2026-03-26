@@ -2337,11 +2337,33 @@ export function resolveKioskDocumentPageImageUrl(apiPath: string): string {
 }
 
 export type KioskDocumentSource = 'MANUAL' | 'GMAIL';
+export type KioskDocumentOcrStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export interface KioskDocumentSummary {
   id: string;
   title: string;
+  displayTitle: string | null;
   filename: string;
+  extractedText: string | null;
+  ocrStatus: KioskDocumentOcrStatus;
+  ocrEngine: string | null;
+  ocrStartedAt: string | null;
+  ocrFinishedAt: string | null;
+  ocrRetryCount: number;
+  ocrFailureReason: string | null;
+  candidateFhincd: string | null;
+  candidateDrawingNumber: string | null;
+  candidateProcessName: string | null;
+  candidateResourceCd: string | null;
+  confidenceFhincd: number | null;
+  confidenceDrawingNumber: number | null;
+  confidenceProcessName: number | null;
+  confidenceResourceCd: number | null;
+  confirmedFhincd: string | null;
+  confirmedDrawingNumber: string | null;
+  confirmedProcessName: string | null;
+  confirmedResourceCd: string | null;
+  documentCategory: string | null;
   sourceType: KioskDocumentSource;
   gmailMessageId: string | null;
   sourceAttachmentName: string | null;
@@ -2359,12 +2381,16 @@ export interface KioskDocumentDetailResponse {
 export async function getKioskDocuments(params?: {
   q?: string;
   sourceType?: KioskDocumentSource;
+  ocrStatus?: KioskDocumentOcrStatus;
+  includeCandidates?: boolean;
   hideDisabled?: boolean;
 }) {
   const { data } = await api.get<{ documents: KioskDocumentSummary[] }>('/kiosk-documents', {
     params: {
       q: params?.q,
       sourceType: params?.sourceType,
+      ocrStatus: params?.ocrStatus,
+      includeCandidates: params?.includeCandidates,
       hideDisabled: params?.hideDisabled,
     },
   });
@@ -2395,9 +2421,29 @@ export async function patchKioskDocumentEnabled(id: string, enabled: boolean) {
   return data.document;
 }
 
+export async function patchKioskDocumentMetadata(
+  id: string,
+  payload: {
+    displayTitle?: string | null;
+    confirmedFhincd?: string | null;
+    confirmedDrawingNumber?: string | null;
+    confirmedProcessName?: string | null;
+    confirmedResourceCd?: string | null;
+    documentCategory?: string | null;
+  }
+) {
+  const { data } = await api.patch<{ document: KioskDocumentSummary }>(`/kiosk-documents/${id}/metadata`, payload);
+  return data.document;
+}
+
 export async function triggerKioskDocumentGmailIngest(params?: { scheduleId?: string }) {
   const { data } = await api.post<{ results: unknown[] }>('/kiosk-documents/ingest-gmail', params ?? {});
   return data.results;
+}
+
+export async function reprocessKioskDocument(id: string) {
+  const { data } = await api.post<KioskDocumentDetailResponse>(`/kiosk-documents/${id}/reprocess`, {});
+  return data;
 }
 
 // CSVダッシュボード関連の型定義

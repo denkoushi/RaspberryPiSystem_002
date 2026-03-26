@@ -79,7 +79,7 @@ export function KioskDocumentsPage() {
         onZoomIncrease={() => setZoom((z) => Math.min(ZOOM_MAX, z + ZOOM_STEP))}
         onZoomReset={() => setZoom(1)}
         selectedId={selectedId}
-        documentTitle={detailQuery.data?.document.title ?? null}
+        documentTitle={detailQuery.data?.document.displayTitle || detailQuery.data?.document.title || null}
         detailLoading={detailQuery.isLoading}
         detailError={detailQuery.isError}
         pagePairs={pagePairs}

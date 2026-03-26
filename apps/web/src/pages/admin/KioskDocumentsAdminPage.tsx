@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 
 import { useKioskDocumentMutations, useKioskDocuments } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
@@ -7,12 +7,33 @@ import { Card } from '../../components/ui/Card';
 import type { KioskDocumentSummary } from '../../api/client';
 
 export function KioskDocumentsAdminPage() {
-  const listQuery = useKioskDocuments({ hideDisabled: false });
-  const { upload, remove, setEnabled, ingestGmail } = useKioskDocumentMutations();
+  const [search, setSearch] = useState('');
+  const [ocrStatus, setOcrStatus] = useState<'' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'>('');
+  const [includeCandidates, setIncludeCandidates] = useState(false);
+  const listQuery = useKioskDocuments({
+    hideDisabled: false,
+    q: search || undefined,
+    ocrStatus: ocrStatus || undefined,
+    includeCandidates,
+  });
+  const { upload, remove, setEnabled, patchMetadata, reprocess, ingestGmail } = useKioskDocumentMutations();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [scheduleId, setScheduleId] = useState('');
   const [ingestMessage, setIngestMessage] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [displayTitle, setDisplayTitle] = useState('');
+  const [confirmedFhincd, setConfirmedFhincd] = useState('');
+  const [confirmedDrawingNumber, setConfirmedDrawingNumber] = useState('');
+  const [confirmedProcessName, setConfirmedProcessName] = useState('');
+  const [confirmedResourceCd, setConfirmedResourceCd] = useState('');
+  const [documentCategory, setDocumentCategory] = useState('');
+
+  const documents = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  const selected = useMemo(
+    () => documents.find((d) => d.id === selectedId) ?? null,
+    [documents, selectedId]
+  );
 
   const handleUpload = async (e: FormEvent) => {
     e.preventDefault();
@@ -39,6 +60,31 @@ export function KioskDocumentsAdminPage() {
     } catch (err) {
       setIngestMessage(err instanceof Error ? err.message : String(err));
     }
+  };
+
+  const selectForEdit = (doc: KioskDocumentSummary) => {
+    setSelectedId(doc.id);
+    setDisplayTitle(doc.displayTitle ?? doc.title);
+    setConfirmedFhincd(doc.confirmedFhincd ?? '');
+    setConfirmedDrawingNumber(doc.confirmedDrawingNumber ?? '');
+    setConfirmedProcessName(doc.confirmedProcessName ?? '');
+    setConfirmedResourceCd(doc.confirmedResourceCd ?? '');
+    setDocumentCategory(doc.documentCategory ?? '');
+  };
+
+  const handleSaveMetadata = async () => {
+    if (!selectedId) return;
+    await patchMetadata.mutateAsync({
+      id: selectedId,
+      payload: {
+        displayTitle: displayTitle.trim() || null,
+        confirmedFhincd: confirmedFhincd.trim() || null,
+        confirmedDrawingNumber: confirmedDrawingNumber.trim() || null,
+        confirmedProcessName: confirmedProcessName.trim() || null,
+        confirmedResourceCd: confirmedResourceCd.trim() || null,
+        documentCategory: documentCategory.trim() || null,
+      },
+    });
   };
 
   return (
@@ -96,30 +142,75 @@ export function KioskDocumentsAdminPage() {
       </Card>
 
       <Card title="登録一覧">
+        <div className="mb-3 flex flex-wrap items-end gap-2">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">検索</label>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="mt-1 w-72 rounded border border-slate-300 px-3 py-2 text-sm"
+              placeholder="タイトル・本文・確定メタで検索"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600">抽出ステータス</label>
+            <select
+              value={ocrStatus}
+              onChange={(e) =>
+                setOcrStatus(e.target.value as '' | 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED')
+              }
+              className="mt-1 rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">すべて</option>
+              <option value="PENDING">抽出待ち</option>
+              <option value="PROCESSING">処理中</option>
+              <option value="COMPLETED">完了</option>
+              <option value="FAILED">失敗</option>
+            </select>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeCandidates}
+              onChange={(e) => setIncludeCandidates(e.target.checked)}
+            />
+            候補値も検索対象に含める（詳細検索）
+          </label>
+        </div>
         {listQuery.isLoading ? (
           <p className="text-sm text-slate-600">読み込み中…</p>
         ) : listQuery.isError ? (
           <p className="text-sm text-red-600">取得に失敗しました</p>
-        ) : !listQuery.data?.length ? (
+        ) : !documents.length ? (
           <p className="text-sm text-slate-600">登録がありません</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
+            <table className="w-full min-w-[980px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left">
                   <th className="px-3 py-2 font-semibold">タイトル</th>
-                  <th className="px-3 py-2 font-semibold">ファイル</th>
-                  <th className="px-3 py-2 font-semibold">取込元</th>
+                  <th className="px-3 py-2 font-semibold">FHINCD</th>
+                  <th className="px-3 py-2 font-semibold">図面番号</th>
+                  <th className="px-3 py-2 font-semibold">カテゴリ</th>
+                  <th className="px-3 py-2 font-semibold">抽出</th>
                   <th className="px-3 py-2 font-semibold">状態</th>
                   <th className="px-3 py-2 font-semibold">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {listQuery.data.map((doc: KioskDocumentSummary) => (
+                {documents.map((doc: KioskDocumentSummary) => (
                   <tr key={doc.id} className="border-b border-slate-100">
-                    <td className="px-3 py-2">{doc.title}</td>
-                    <td className="px-3 py-2 text-xs text-slate-600">{doc.sourceAttachmentName || doc.filename}</td>
-                    <td className="px-3 py-2">{doc.sourceType === 'GMAIL' ? 'Gmail' : '手動'}</td>
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{doc.displayTitle || doc.title}</div>
+                      <div className="text-xs text-slate-500">{doc.sourceAttachmentName || doc.filename}</div>
+                    </td>
+                    <td className="px-3 py-2">{doc.confirmedFhincd || '-'}</td>
+                    <td className="px-3 py-2">{doc.confirmedDrawingNumber || '-'}</td>
+                    <td className="px-3 py-2">{doc.documentCategory || '-'}</td>
+                    <td className="px-3 py-2">
+                      <span className="rounded bg-slate-100 px-2 py-1 text-xs">{doc.ocrStatus}</span>
+                    </td>
                     <td className="px-3 py-2">
                       <button
                         type="button"
@@ -132,19 +223,65 @@ export function KioskDocumentsAdminPage() {
                       </button>
                     </td>
                     <td className="px-3 py-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="text-red-600"
-                        onClick={() => void handleDelete(doc.id)}
-                      >
-                        削除
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="ghost" onClick={() => selectForEdit(doc)}>
+                          編集
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => void reprocess.mutateAsync(doc.id)}
+                          disabled={reprocess.isPending}
+                        >
+                          再処理
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="text-red-600"
+                          onClick={() => void handleDelete(doc.id)}
+                        >
+                          削除
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="メタデータ編集（候補確認 + 確定値）">
+        {!selected ? (
+          <p className="text-sm text-slate-600">一覧の「編集」から対象ドキュメントを選択してください。</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded bg-slate-50 p-3 text-sm">
+              <div className="font-semibold">{selected.displayTitle || selected.title}</div>
+              <div className="text-xs text-slate-500">候補: FHINCD={selected.candidateFhincd || '-'} (信頼度 {selected.confidenceFhincd ?? 0})</div>
+              <div className="text-xs text-slate-500">候補: 図面番号={selected.candidateDrawingNumber || '-'} (信頼度 {selected.confidenceDrawingNumber ?? 0})</div>
+              <div className="text-xs text-slate-500">候補: 工程={selected.candidateProcessName || '-'} (信頼度 {selected.confidenceProcessName ?? 0})</div>
+              <div className="text-xs text-slate-500">候補: 資源CD={selected.candidateResourceCd || '-'} (信頼度 {selected.confidenceResourceCd ?? 0})</div>
+            </div>
+            <details>
+              <summary className="cursor-pointer text-sm font-semibold text-slate-700">OCR本文（折りたたみ）</summary>
+              <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-slate-100">
+                {selected.extractedText || '(抽出本文なし)'}
+              </pre>
+            </details>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <input className="rounded border border-slate-300 px-3 py-2 text-sm" value={displayTitle} onChange={(e) => setDisplayTitle(e.target.value)} placeholder="表示タイトル" />
+              <input className="rounded border border-slate-300 px-3 py-2 text-sm" value={confirmedFhincd} onChange={(e) => setConfirmedFhincd(e.target.value)} placeholder="確定 FHINCD" />
+              <input className="rounded border border-slate-300 px-3 py-2 text-sm" value={confirmedDrawingNumber} onChange={(e) => setConfirmedDrawingNumber(e.target.value)} placeholder="確定 図面番号" />
+              <input className="rounded border border-slate-300 px-3 py-2 text-sm" value={confirmedProcessName} onChange={(e) => setConfirmedProcessName(e.target.value)} placeholder="確定 工程名" />
+              <input className="rounded border border-slate-300 px-3 py-2 text-sm" value={confirmedResourceCd} onChange={(e) => setConfirmedResourceCd(e.target.value)} placeholder="確定 資源CD" />
+              <input className="rounded border border-slate-300 px-3 py-2 text-sm" value={documentCategory} onChange={(e) => setDocumentCategory(e.target.value)} placeholder="カテゴリ" />
+            </div>
+            <Button type="button" onClick={() => void handleSaveMetadata()} disabled={patchMetadata.isPending}>
+              {patchMetadata.isPending ? '保存中…' : '確定値を保存'}
+            </Button>
           </div>
         )}
       </Card>

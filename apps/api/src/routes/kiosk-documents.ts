@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
-import type { KioskDocumentSource } from '@prisma/client';
+import type { KioskDocumentOcrStatus, KioskDocumentSource } from '@prisma/client';
 
 import { authorizeRoles } from '../lib/auth.js';
 import { ApiError } from '../lib/errors.js';
@@ -11,8 +11,15 @@ import { PdfStorageFileStoreAdapter } from '../services/kiosk-documents/adapters
 import { PdfStorageRenderAdapter } from '../services/kiosk-documents/adapters/pdf-storage-render.adapter.js';
 import { PrismaKioskDocumentRepository } from '../services/kiosk-documents/adapters/prisma-kiosk-document.repository.js';
 import { KioskDocumentGmailIngestionService } from '../services/kiosk-documents/kiosk-document-gmail-ingestion.service.js';
+import { KioskDocumentProcessingService } from '../services/kiosk-documents/kiosk-document-processing.service.js';
+import { getKioskDocumentOcrScheduler } from '../services/kiosk-documents/kiosk-document-ocr.scheduler.js';
 import type { KioskDocumentDetail } from '../services/kiosk-documents/kiosk-document.service.js';
 import { KioskDocumentService } from '../services/kiosk-documents/kiosk-document.service.js';
+import { PdfToTextExtractorAdapter } from '../services/kiosk-documents/adapters/pdftotext-extractor.adapter.js';
+import { NdlOcrEngineAdapter } from '../services/kiosk-documents/adapters/ndlocr-engine.adapter.js';
+import { RegexMetadataLabelerAdapter } from '../services/kiosk-documents/adapters/regex-metadata-labeler.adapter.js';
+import { PostgresDocumentSearchIndexerAdapter } from '../services/kiosk-documents/adapters/postgres-document-search-indexer.adapter.js';
+import { normalizeDocumentText } from '../services/kiosk-documents/kiosk-document-text-normalizer.js';
 
 async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -25,6 +32,11 @@ async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
 const listQuerySchema = z.object({
   q: z.string().optional(),
   sourceType: z.enum(['MANUAL', 'GMAIL']).optional(),
+  ocrStatus: z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).optional(),
+  includeCandidates: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((v) => v === true || v === 'true'),
   /** 管理画面: true のとき無効ドキュメントを除外（デフォルトは全件表示） */
   hideDisabled: z
     .union([z.boolean(), z.string()])
@@ -40,10 +52,40 @@ const patchBodySchema = z.object({
   enabled: z.boolean(),
 });
 
+const metadataPatchBodySchema = z.object({
+  displayTitle: z.string().trim().min(1).max(200).nullable().optional(),
+  confirmedFhincd: z.string().trim().min(1).max(100).nullable().optional(),
+  confirmedDrawingNumber: z.string().trim().min(1).max(120).nullable().optional(),
+  confirmedProcessName: z.string().trim().min(1).max(120).nullable().optional(),
+  confirmedResourceCd: z.string().trim().min(1).max(100).nullable().optional(),
+  documentCategory: z.string().trim().min(1).max(120).nullable().optional(),
+});
+
 function toDocumentDto(doc: {
   id: string;
   title: string;
+  displayTitle: string | null;
   filename: string;
+  extractedText: string | null;
+  ocrStatus: KioskDocumentOcrStatus;
+  ocrEngine: string | null;
+  ocrStartedAt: Date | null;
+  ocrFinishedAt: Date | null;
+  ocrRetryCount: number;
+  ocrFailureReason: string | null;
+  candidateFhincd: string | null;
+  candidateDrawingNumber: string | null;
+  candidateProcessName: string | null;
+  candidateResourceCd: string | null;
+  confidenceFhincd: number | null;
+  confidenceDrawingNumber: number | null;
+  confidenceProcessName: number | null;
+  confidenceResourceCd: number | null;
+  confirmedFhincd: string | null;
+  confirmedDrawingNumber: string | null;
+  confirmedProcessName: string | null;
+  confirmedResourceCd: string | null;
+  documentCategory: string | null;
   sourceType: KioskDocumentSource;
   gmailMessageId: string | null;
   sourceAttachmentName: string | null;
@@ -55,7 +97,28 @@ function toDocumentDto(doc: {
   return {
     id: doc.id,
     title: doc.title,
+    displayTitle: doc.displayTitle,
     filename: doc.filename,
+    extractedText: doc.extractedText,
+    ocrStatus: doc.ocrStatus,
+    ocrEngine: doc.ocrEngine,
+    ocrStartedAt: doc.ocrStartedAt?.toISOString() ?? null,
+    ocrFinishedAt: doc.ocrFinishedAt?.toISOString() ?? null,
+    ocrRetryCount: doc.ocrRetryCount,
+    ocrFailureReason: doc.ocrFailureReason,
+    candidateFhincd: doc.candidateFhincd,
+    candidateDrawingNumber: doc.candidateDrawingNumber,
+    candidateProcessName: doc.candidateProcessName,
+    candidateResourceCd: doc.candidateResourceCd,
+    confidenceFhincd: doc.confidenceFhincd,
+    confidenceDrawingNumber: doc.confidenceDrawingNumber,
+    confidenceProcessName: doc.confidenceProcessName,
+    confidenceResourceCd: doc.confidenceResourceCd,
+    confirmedFhincd: doc.confirmedFhincd,
+    confirmedDrawingNumber: doc.confirmedDrawingNumber,
+    confirmedProcessName: doc.confirmedProcessName,
+    confirmedResourceCd: doc.confirmedResourceCd,
+    documentCategory: doc.documentCategory,
     sourceType: doc.sourceType,
     gmailMessageId: doc.gmailMessageId,
     sourceAttachmentName: doc.sourceAttachmentName,
@@ -74,10 +137,18 @@ function toDetailDto(detail: KioskDocumentDetail) {
 }
 
 export function registerKioskDocumentRoutes(app: FastifyInstance): void {
+  const repo = new PrismaKioskDocumentRepository();
   const service = new KioskDocumentService(
-    new PrismaKioskDocumentRepository(),
+    repo,
     new PdfStorageFileStoreAdapter(),
     new PdfStorageRenderAdapter()
+  );
+  const processingService = new KioskDocumentProcessingService(
+    repo,
+    new PdfToTextExtractorAdapter(),
+    new NdlOcrEngineAdapter(),
+    new RegexMetadataLabelerAdapter(),
+    new PostgresDocumentSearchIndexerAdapter()
   );
   const gmailIngestion = new KioskDocumentGmailIngestionService(service);
 
@@ -93,13 +164,17 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
     async (request) => {
       const query = listQuerySchema.parse(request.query ?? {});
       const sourceType = query.sourceType as KioskDocumentSource | undefined;
+      const ocrStatus = query.ocrStatus as KioskDocumentOcrStatus | undefined;
+      const normalizedQuery = query.q ? normalizeDocumentText(query.q) : undefined;
       const hasClientKey = Boolean(request.headers['x-client-key']);
 
       const documents = hasClientKey
-        ? await service.listForKiosk({ query: query.q, sourceType })
+        ? await service.listForKiosk({ query: normalizedQuery, sourceType, ocrStatus })
         : await service.listForAdmin({
-            query: query.q,
+            query: normalizedQuery,
             sourceType,
+            ocrStatus,
+            includeCandidateInSearch: query.includeCandidates === true,
             enabledOnly: query.hideDisabled === true,
           });
 
@@ -179,6 +254,31 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
     const body = patchBodySchema.parse(request.body ?? {});
     const updated = await service.setEnabled(id, body.enabled);
     return { document: toDocumentDto(updated) };
+  });
+
+  app.patch('/kiosk-documents/:id/metadata', { preHandler: [canManage] }, async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = metadataPatchBodySchema.parse(request.body ?? {});
+    const updated = await service.updateMetadata(id, {
+      ...body,
+      actorUserId: request.user?.id,
+    });
+    return { document: toDocumentDto(updated) };
+  });
+
+  app.post('/kiosk-documents/:id/reprocess', { preHandler: [canManage] }, async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    await processingService.processDocumentById(id, { maxRetry: 1 });
+    const detail = await service.getDetailForAdmin(id);
+    if (!detail) {
+      throw new ApiError(404, '要領書が見つかりません', undefined, 'KIOSK_DOC_NOT_FOUND');
+    }
+    return toDetailDto(detail);
+  });
+
+  app.post('/kiosk-documents/run-nightly-ocr', { preHandler: [canManage] }, async () => {
+    await getKioskDocumentOcrScheduler().runOnce();
+    return { success: true };
   });
 
   app.delete('/kiosk-documents/:id', { preHandler: [canManage] }, async (request) => {

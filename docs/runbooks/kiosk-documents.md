@@ -42,6 +42,30 @@
 
 各メッセージについて PDF を保存した後、**既読化＋アーカイブ（INBOX から除去）** を試行する。同一メール・同一添付名は `gmailDedupeKey` で再取り込みされない。
 
+## OCR / 自動ラベリング運用
+
+- 新規登録文書は `ocrStatus=PENDING` で登録される（公開は継続）。
+- 夜間バッチ（既定 `KIOSK_DOCUMENT_OCR_CRON="30 2 * * *"`）が FIFO / 1並列 / 1リトライで処理。
+- 管理画面の要領書一覧で `抽出待ち / 処理中 / 完了 / 失敗` を確認できる。
+- 失敗時は Slack 連携（alerts DB dispatcher）へ `kiosk-document-ocr-*` アラートを作成する。
+
+### 手動再処理
+
+1. 管理画面 `/admin/kiosk-documents` で対象行の **再処理** を実行
+2. API 直叩きの場合:
+
+```bash
+curl -X POST "https://<host>/api/kiosk-documents/<document-id>/reprocess" \
+  -H "Authorization: Bearer <admin-or-manager-jwt>"
+```
+
+### Nightly バッチ手動実行
+
+```bash
+curl -X POST "https://<host>/api/kiosk-documents/run-nightly-ocr" \
+  -H "Authorization: Bearer <admin-or-manager-jwt>"
+```
+
 ## キオスク表示確認
 
 - URL: `/kiosk/documents`（沉浸式レイアウト。最上段メニューは上端ホバーで表示、[KB-311](../knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)）
@@ -89,3 +113,4 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 ## 関連マイグレーション
 
 - `20260325120000_add_kiosk_documents`
+- `20260326100000_add_kiosk_document_ocr_metadata`

@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { getBackupScheduler } from './services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from './services/imports/csv-import-scheduler.js';
 import { getKioskDocumentGmailScheduler } from './services/kiosk-documents/kiosk-document-gmail.scheduler.js';
+import { getKioskDocumentOcrScheduler } from './services/kiosk-documents/kiosk-document-ocr.scheduler.js';
 import { getGmailTrashCleanupScheduler } from './services/gmail/gmail-trash-cleanup.scheduler.js';
 import { getDueManagementTuningOrchestrator } from './services/production-schedule/auto-tuning/tuning-orchestrator.service.js';
 import { getAlertsDispatcher } from './services/alerts/alerts-dispatcher.js';
@@ -40,6 +41,9 @@ if (process.env['NODE_ENV'] !== 'test') {
       const kioskDocGmailScheduler = getKioskDocumentGmailScheduler();
       await kioskDocGmailScheduler.start();
       logger.info('Kiosk document Gmail scheduler started');
+      const kioskDocOcrScheduler = getKioskDocumentOcrScheduler();
+      await kioskDocOcrScheduler.start();
+      logger.info('Kiosk document OCR scheduler started');
 
       const gmailTrashCleanupScheduler = getGmailTrashCleanupScheduler();
       await gmailTrashCleanupScheduler.start();
@@ -75,6 +79,7 @@ if (process.env['NODE_ENV'] !== 'test') {
           await alertsDbDispatcher.stop();
           await alertsDispatcher.stop();
           getKioskDocumentGmailScheduler().stop();
+          kioskDocOcrScheduler.stop();
           gmailTrashCleanupScheduler.stop();
           dueManagementTuningOrchestrator.stop();
           await app.close();
