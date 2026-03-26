@@ -64,4 +64,44 @@ describe('KioskDocumentProcessingService', () => {
       })
     );
   });
+
+  it('does not apply document timeout wrapper to OCR engine execution', async () => {
+    const repo = createRepoStub();
+    const textExtractor: DocumentTextExtractorPort = {
+      extractText: vi.fn(async () => ({ text: '' })),
+    };
+    const ocrEngine: OcrEnginePort = {
+      runOcr: vi.fn(
+        async () =>
+          await new Promise((resolve) =>
+            setTimeout(() => resolve({ text: 'OCR結果', engine: 'NDLOCR-Lite' }), 20),
+          ),
+      ),
+    };
+    const labeler: MetadataLabelerPort = {
+      labelFromText: vi.fn(async () => ({
+        candidates: {},
+        confidence: {},
+        suggestedDisplayTitle: null,
+      })),
+    };
+    const indexer: DocumentSearchIndexerPort = {
+      refreshDocumentIndex: vi.fn(async () => {}),
+    };
+
+    const service = new KioskDocumentProcessingService(repo, textExtractor, ocrEngine, labeler, indexer);
+    await expect(
+      service.processDocumentById('11111111-1111-1111-1111-111111111111', { timeoutMs: 1 }),
+    ).resolves.toBeUndefined();
+
+    expect(ocrEngine.runOcr).toHaveBeenCalledWith('/tmp/test.pdf');
+    expect(repo.update).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      expect.objectContaining({
+        extractedText: 'OCR結果',
+        ocrEngine: 'NDLOCR-Lite',
+        ocrStatus: 'COMPLETED',
+      }),
+    );
+  });
 });

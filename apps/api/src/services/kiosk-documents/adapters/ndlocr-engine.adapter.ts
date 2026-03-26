@@ -95,12 +95,12 @@ function resolveRuntimeConfig(legacyCommand: string): NdlOcrRuntimeConfig {
 function classifyOcrFailure(error: unknown): OcrFailureCategory {
   if (error instanceof OcrOutputEmptyError) return 'EMPTY_OUTPUT';
   if (error instanceof OcrConfigError) return 'INVALID_CONFIG';
-  if (error instanceof Error && /pdftoppm/i.test(error.message)) return 'RASTER_FAILED';
   const e = error as { code?: string; message?: string } | undefined;
   if (e?.code === 'ENOENT') return 'COMMAND_NOT_FOUND';
   if (typeof e?.message === 'string' && /ENOENT|not found|spawn\s+\S+\s+ENOENT/i.test(e.message)) {
     return 'COMMAND_NOT_FOUND';
   }
+  if (error instanceof Error && /pdftoppm/i.test(error.message)) return 'RASTER_FAILED';
   return 'EXECUTION_FAILED';
 }
 

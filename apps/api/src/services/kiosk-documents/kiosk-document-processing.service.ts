@@ -60,7 +60,8 @@ export class KioskDocumentProcessingService {
         let ocrEngine = 'pdftotext';
 
         if (mergedText.trim().length === 0) {
-          const ocr = await withTimeout(this.ocrEngine.runOcr(document.filePath), timeoutMs);
+          // OCR 実装側がページ単位で child process timeout を管理する。
+          const ocr = await this.ocrEngine.runOcr(document.filePath);
           mergedText = ocr.text;
           ocrEngine = ocr.engine;
         }

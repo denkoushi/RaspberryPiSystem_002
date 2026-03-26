@@ -157,4 +157,28 @@ describe('NdlOcrEngineAdapter', () => {
       '[KioskDocument] OCR legacy stdout command failed',
     );
   });
+
+  it('classifies missing pdftoppm as COMMAND_NOT_FOUND', async () => {
+    delete process.env.KIOSK_DOCUMENT_OCR_LEGACY_STDOUT;
+
+    mkdtempMock.mockResolvedValue('/tmp/kiosk-ocr-abc');
+    mkdirMock.mockResolvedValue(undefined);
+    rmMock.mockResolvedValue(undefined);
+    execFileMock.mockImplementation((command, _args, _options, callback) => {
+      if (command === 'pdftoppm') {
+        const err = new Error('spawn pdftoppm ENOENT') as Error & { code?: string };
+        err.code = 'ENOENT';
+        callback(err, '', '');
+        return;
+      }
+      callback(new Error(`unexpected command: ${command}`), '', '');
+    });
+
+    const adapter = new NdlOcrEngineAdapter();
+    await expect(adapter.runOcr('/tmp/doc.pdf')).rejects.toBeInstanceOf(ApiError);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'COMMAND_NOT_FOUND' }),
+      '[KioskDocument] OCR ndlocr-lite pipeline failed',
+    );
+  });
 });
