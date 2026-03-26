@@ -1,4 +1,4 @@
-import { formatClientDeviceLocationLabel } from '@raspi-system/shared-types';
+import { formatClientDeviceLocationLabel, PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 
 import type { Loan } from '../../api/types';
 
@@ -36,7 +36,7 @@ export function presentActiveLoanListLines(loan: Loan): ActiveLoanListLines {
     };
   }
 
-  const itemName = loan.item?.name ?? (loan.photoUrl ? '写真撮影モード' : 'アイテム');
+  const itemName = loan.item?.name ?? (loan.photoUrl ? PHOTO_LOAN_CARD_PRIMARY_LABEL : 'アイテム');
   return {
     kind: 'item',
     primaryLine: itemName,

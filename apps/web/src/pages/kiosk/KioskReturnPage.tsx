@@ -216,7 +216,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                         {loan.employee?.displayName ?? '従業員情報なし'}
                       </p>
                       <p className={`text-sm mt-1 ${isOverdue ? 'text-red-200' : 'text-white/90'}`}>
-                        端末場所: {presentation.clientLocationLine}
+                        {presentation.clientLocationLine}
                       </p>
                       <p className={`text-sm mt-1 ${isOverdue ? 'text-red-200' : 'text-white/90'}`}>
                         {borrowedAt.toLocaleString()}
