@@ -19,6 +19,11 @@ export type KioskDocumentsListPanelProps = {
   }>;
   selectedId: string | null;
   onSelectId: (id: string) => void;
+  /** 行にポインタが入ったとき（詳細プリフェッチ用。未指定なら何もしない） */
+  onRowPointerEnter?: (id: string) => void;
+  onRowPointerLeave?: () => void;
+  /** キーボード操作時の先読み */
+  onRowFocus?: (id: string) => void;
   isLoading: boolean;
   isError: boolean;
   className?: string;
@@ -32,6 +37,9 @@ export function KioskDocumentsListPanel({
   documents,
   selectedId,
   onSelectId,
+  onRowPointerEnter,
+  onRowPointerLeave,
+  onRowFocus,
   isLoading,
   isError,
   className,
@@ -105,6 +113,9 @@ export function KioskDocumentsListPanel({
                 <button
                   type="button"
                   onClick={() => onSelectId(doc.id)}
+                  onPointerEnter={() => onRowPointerEnter?.(doc.id)}
+                  onPointerLeave={() => onRowPointerLeave?.()}
+                  onFocus={() => onRowFocus?.(doc.id)}
                   className={clsx(
                     'w-full rounded-md border px-3 py-2 text-left text-sm transition-colors',
                     selectedId === doc.id

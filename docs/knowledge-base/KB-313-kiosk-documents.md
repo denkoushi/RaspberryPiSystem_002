@@ -45,6 +45,7 @@ category: knowledge-base
 | `KIOSK_DOCUMENT_OCR_RASTER_DPI` | OCR 用 `pdftoppm -r`（API コンテナに poppler 必須） | `150` |
 | `KIOSK_DOCUMENT_OCR_ENGINE_TIMEOUT_MS` | 1ページあたりの NDLOCR / レガシー OCR 子プロセスのタイムアウト（ms） | `180000` |
 | `KIOSK_DOCUMENT_OCR_RASTER_TIMEOUT_MS` | `pdftoppm` のタイムアウト（ms） | `120000` |
+| `PDF_PAGES_CACHE_CONTROL` | `GET /api/storage/pdf-pages/...` の `Cache-Control`（キオスク・サイネージ共通のページ画像）。未設定時は `public, max-age=86400, stale-while-revalidate=604800` | 未設定（コード既定を使用） |
 
 サイネージは従来どおり `SIGNAGE_PDF_DPI`（未設定時 150）を `convertPdfToPages` のデフォルトとして利用する。**要領書だけ** Pi4 向けに軽くしたい場合は上記 2 つを API コンテナに設定する。
 
@@ -98,7 +99,8 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **検索ヒット抜粋（2026-03-26）**: 左の検索語が **空でないときだけ**、ツールバー右に **`extractedText` 由来の抜粋**（最大 **3** 箇所、前後約 **60** 文字、`buildKioskDocumentSearchSnippetModel`）。ヒットは `<mark>` で強調。本文が無い・一致なしのときは **「一致する箇所は見つかりませんでした」**。検索語が空のときは **右パネル非表示**（要領書画像の縦スペースを確保）。
   - **一覧 API の `q` との差**: 一覧は `normalizeDocumentText`（NFKC 等）後に DB へ **ILIKE 部分一致**。抜粋はクライアントで **原文に対する大文字小文字無視の部分一致**（正規表現メタ文字はエスケープ）。**通常は一致**するが、表記ゆれでは **一覧に出るのに抜粋が空**、またはその逆が稀に起こりうる。
 - **Pi4 スクロール負荷軽減**: `useKioskDocumentNearVisibleRows` がスクロールコンテナを `root` とする `IntersectionObserver` で **近傍のページ行だけ** `<img>` をマウント。`KioskDocumentViewerPageRow` は **プレースホルダ**・`loading="lazy"`・`decoding="async"`。近傍インデックス計算は `kioskDocumentViewerVisibility.ts` の純関数＋ Vitest（`kioskDocumentViewerVisibility.test.ts`）で固定。
-- **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`）。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
+- **表示速度・スクロール（2026-03-26 以降）**: 一覧行の **ホバー／フォーカス**で `GET /api/kiosk-documents/:id` を **デバウンス付きでプリフェッチ**（`useKioskDocumentListPrefetch`・React Query `prefetchQuery`）。IO の `activeIndex` 更新は **requestAnimationFrame で 1 フレームに 1 回**に間引き、近傍半径・`rootMargin` は `kioskDocumentViewerScrollPolicy.ts` に集約（Pi で重い場合は定数調整）。ページ画像 `GET /api/storage/pdf-pages/...` は **ETag**（`size-mtimeMs`）と **304**、および **`Cache-Control`**（既定は長めの `public` + `stale-while-revalidate`。上書きは `PDF_PAGES_CACHE_CONTROL`）でブラウザキャッシュを効かせる。
+- **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`・`kioskDocumentQueryKeys.ts`・`useKioskDocumentListPrefetch.ts`・`kioskDocumentViewerScrollPolicy.ts`）。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
 
 ## 実機検証
 

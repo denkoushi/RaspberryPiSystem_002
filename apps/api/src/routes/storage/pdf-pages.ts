@@ -2,6 +2,12 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { promises as fs } from 'fs';
 import path from 'path';
 
+import {
+  buildPdfPageEtag,
+  ifNoneMatchSatisfied,
+  resolvePdfPageCacheControl,
+} from './pdf-page-http-cache.js';
+
 /**
  * PDFページ画像のベースディレクトリ
  */
@@ -33,7 +39,17 @@ export function registerPdfPageRoutes(app: FastifyInstance): void {
     const filePath = path.join(PDF_PAGES_DIR, pdfId, filename);
 
     try {
-      // ファイルを読み込む
+      const stat = await fs.stat(filePath);
+      const etag = buildPdfPageEtag(stat);
+      const cacheControl = resolvePdfPageCacheControl();
+      reply.header('ETag', etag);
+      reply.header('Cache-Control', cacheControl);
+
+      const inm = request.headers['if-none-match'];
+      if (ifNoneMatchSatisfied(typeof inm === 'string' ? inm : undefined, etag)) {
+        return reply.code(304).send();
+      }
+
       const imageBuffer = await fs.readFile(filePath);
 
       const lower = filename.toLowerCase();
@@ -45,7 +61,6 @@ export function registerPdfPageRoutes(app: FastifyInstance): void {
         reply.type('image/png');
       }
 
-      // 画像データを返す
       return reply.send(imageBuffer);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
