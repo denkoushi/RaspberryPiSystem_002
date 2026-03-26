@@ -5,6 +5,7 @@ import { KioskDocumentViewerPageRow } from './KioskDocumentViewerPageRow';
 import { useKioskDocumentNearVisibleRows } from './useKioskDocumentNearVisibleRows';
 
 import type { KioskDocumentLayoutMode, KioskDocumentWidthMode } from './kioskDocumentPageLayout';
+import type { KioskDocumentSearchSnippetModel } from './search/kiosk-document-search-snippets';
 
 export type { KioskDocumentWidthMode } from './kioskDocumentPageLayout';
 
@@ -20,7 +21,7 @@ export type KioskDocumentsViewerPanelProps = {
   onZoomIncrease: () => void;
   onZoomReset: () => void;
   selectedId: string | null;
-  documentTitle: string | null;
+  snippetModel: KioskDocumentSearchSnippetModel;
   detailLoading: boolean;
   detailError: boolean;
   pagePairs: string[][];
@@ -39,7 +40,7 @@ export function KioskDocumentsViewerPanel({
   onZoomIncrease,
   onZoomReset,
   selectedId,
-  documentTitle,
+  snippetModel,
   detailLoading,
   detailError,
   pagePairs,
@@ -68,7 +69,7 @@ export function KioskDocumentsViewerPanel({
         onZoomDecrease={onZoomDecrease}
         onZoomIncrease={onZoomIncrease}
         onZoomReset={onZoomReset}
-        documentTitle={documentTitle}
+        snippetModel={snippetModel}
       />
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto p-3">
