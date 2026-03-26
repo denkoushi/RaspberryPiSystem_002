@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-03-25
+last-verified: 2026-03-26
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -28,6 +28,7 @@ update-frequency: high
 | キオスク沉浸式ヘッダー allowlist | [KB-311-kiosk-immersive-header-allowlist.md](./KB-311-kiosk-immersive-header-allowlist.md) | 1件 | `usesKioskImmersiveLayout`・上端リビール対象 URL の単一情報源（拡張時はポリシー＋Vitest）・デプロイ/実機検証/Troubleshooting（2026-03-21 追記） |
 | キオスク要領書（PDF） | [KB-313-kiosk-documents.md](./KB-313-kiosk-documents.md) | 1件 | `/kiosk/documents`・手動/Gmail 取り込み・OCR・**フリーワードは ILIKE 部分一致**（[ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）/候補+確定メタ編集・`kioskDocumentGmailIngest`・`KIOSK_DOCUMENT_*`・ビューア UI（`ghostOnDark`・ツールバー2行・近傍 lazy）・ページ画像表示・Phase12 実機検証・`main` 追従後の再検証（2026-03-26）・`ndlocr-lite` ONNX WARN の切り分け |
 | 吊具マスタ idNum（旧番号） | [KB-312-rigging-idnum-deploy-verification.md](./KB-312-rigging-idnum-deploy-verification.md) | 1件 | `RiggingGear.idNum`（NULL 可・UNIQUE）・管理UI/キオスク吊具持出/CSV・Pi5+raspberrypi4 デプロイ済・`raspi4-robodrill01` は別日再挑戦（SSH timeout） |
+| 持出一覧・サイネージ表記 | [KB-314-kiosk-loan-card-display-labels.md](./KB-314-kiosk-loan-card-display-labels.md) | 1件 | 写真持出 **撮影mode**・端末場所ラベル削除・`PHOTO_LOAN_CARD_PRIMARY_LABEL`・順次デプロイ（Pi5→Pi4×2→`server:signage`）・実機検証（2026-03-26） |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 58件 | キオスク接続、XState、UI、カメラ連携、サイネージ、NFCスコープ分離、CSVインポートUI統一、スケジュール表示改善（分のリスト形式対応）、WebRTC通話、通話IDの表示統一、バックアップ履歴用途列追加、WebRTCビデオ通話機能のclientKey/clientId未設定問題、サイネージプレビュー機能、CSVインポートスケジュール実行ボタンの競合防止、生産スケジュール画面のパフォーマンス最適化と検索機能改善（フロントエンド側）、生産スケジュールUI改善（チェック配色/OR検索/ソフトキーボード）、生産スケジュールUI改良（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）、生産スケジュール備考のモーダル編集化と処理列追加、キオスク入力フィールド保護ルールの実装と実機検証、キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決（React Portal導入）、モーダル共通化・アクセシビリティ標準化・E2Eテスト安定化、WebRTCビデオ通話の常時接続と着信自動切り替え機能、生産スケジュール登録製番削除ボタンの進捗連動UI改善、Pi4キオスクの備考欄に日本語入力状態インジケーターを追加、生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化、カメラ明るさ閾値チェックの削除（雨天・照明なし環境での撮影対応）、未点検加工機サイネージ設定導線の実装、吊具持出画面に吊具情報表示を追加、Pi4キオスクの日本語入力モード切替問題とIBus設定改善、生産スケジュール登録製番ボタンの3段表示と機種名表示（全角半角大文字化）、生産スケジュール検索条件の端末別localStorage保存、生産スケジュールアイテム一覧からMHアイテムを除外、電源操作の連打防止オーバーレイ実装（React Portalによる表示失敗の解決）、生産スケジュール資源CDボタン優先並び（KB-294）、登録製番ボタン並び替えUI（KB-295）、進捗一覧製番フィルタ（KB-306）、生産スケジュールUI統一（登録製番・資源CDドロップダウン併設、KB-307）、生産スケジュールUIが古いのに戻った事象（ブランチ分岐、KB-308） |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
 | CI/CD関連 | [ci-cd.md](./ci-cd.md) | 14件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される、ユニットテストでPrismaモデル未モック（KB-298）、Prisma JSONカラムへのRecord/null代入でCIビルド失敗（KB-299）、location-scope-resolverブランド型CIビルド失敗・verify-phase12 ping失敗（KB-302）、Caddy依存CVEsでTrivy image web失敗（KB-307）、trivy-action タグ参照解決失敗（KB-310） |
