@@ -82,6 +82,12 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **キオスク一覧**: `enabled=true` の行のみ（無効化した文書は管理画面では見えるがキオスクでは出ない）。
 - **重複**: Gmail は `gmailDedupeKey`（メッセージID＋添付ファイル名などから生成）で一意。手動は Gmail と別系統で複数可。
 
+### フリーワード検索（`q`）
+
+- 一覧 API の `q` は、ルートで `normalizeDocumentText`（NFKC・連続空白の圧縮・小文字化）したあと、**タイトル系・ファイル名・`extractedText`・確定メタ**（管理画面では `includeCandidates=true` のとき **候補メタ**も）に対して **部分一致**でマッチする。実装は Prisma の `contains`（PostgreSQL では `ILIKE '%…%'` 相当、大文字小文字は区別しない）。
+- **PostgreSQL `simple` 辞書の全文検索（`to_tsvector` / `plainto_tsquery`）は使わない**。日本語の文中の連続文字列にもヒットしやすい代わりに、関連度ランキングはなく **並びは `createdAt` 降順**。
+- 検索文字列に含まれる **`%` はリポジトリ側で除去**し、ILIKE のワイルドカードとしての誤動作（意図しない広い一致）を防ぐ。`_` は ILIKE の1文字ワイルドカードとして解釈されうるが、品番などに `_` が含まれるため現状は除去しない（トレードオフは [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）。
+
 ### キオスクビューア UI（`/kiosk/documents`・2026-03）
 
 - 左ペイン（検索・取込元フィルタ・一覧）は **既定で表示**。「**一覧を隠す**」で閉じ、ビューア側の表示幅を広げられる。
@@ -94,8 +100,10 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ## 実機検証
 
+- **デプロイ（要領書フリーワード検索・部分一致化）**: ブランチ `docs/phase12-verification-2026-03-26`（API: `contains`/ILIKE 部分一致、`buildKioskDocumentSearchOrConditions`、FTS raw SQL 削除。仕様は [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**（要領書対象外のためデプロイ未実施）。Ansible Detach Run ID 例: `20260326-154038-14101`（Pi5）/ `20260326-154739-7415`（raspberrypi4）/ `20260326-155316-6698`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（実行時間の目安 約100〜110s）。**知見**: 検索は `q` 正規化後にタイトル・ファイル名・`extractedText`・確定/候補メタの OR 部分一致。一覧の並びは `createdAt` 降順。`%` は入力から除去（`escapeLikePattern`）。`_` は ILIKE の1文字ワイルドカードになりうるが品番向けに現状は除去しない（KB「フリーワード検索」節・ADR 参照）。
 - **デプロイ（OCR・メタデータ・全文検索）**: ブランチ `feature/kiosk-documents-ocr-metadata-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（2026-03-26）。Prisma `20260326100000_add_kiosk_document_ocr_metadata`。Pi3 は今回のキオスク要領書対象外（リソース制約・専用手順は deployment §Pi3）。
-- **Phase12 自動検証（2026-03-26・本セッション）**: `./scripts/deploy/verify-phase12-real.sh` を実行。**1回目**は Pi5 経由の Pi3 SSH が `Connection closed` となり **Pi3 行が FAIL**（全体 exit 1）。**数分後に再実行**し **PASS 30 / WARN 0 / FAIL 0** を確認（Pi3 も `signage-lite` / timer が active）。偶発切断時は再実行を優先。スクリプト側は同一メッセージを **WARN** 扱いに寄せる修正済み（`verify-phase12-real.sh`）。
+- **Phase12 自動検証（2026-03-26・feature ブランチ直後）**: `./scripts/deploy/verify-phase12-real.sh` を実行。**1回目**は Pi5 経由の Pi3 SSH が `Connection closed` となり **Pi3 行が FAIL**（全体 exit 1）。**数分後に再実行**し **PASS 30 / WARN 0 / FAIL 0** を確認（Pi3 も `signage-lite` / timer が active）。偶発切断時は再実行を優先。スクリプト側は同一メッセージを **WARN** 扱いに寄せる修正済み（`verify-phase12-real.sh`）。
+- **`main` 追従デプロイ後の再検証（2026-03-26）**: [deployment.md](../guides/deployment.md) に従い **`main`**（例: HEAD `eb745ee5`）を **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`（Pi3 除外）。Ansible Detach Run ID 例: `20260326-141356-9335` / `20260326-142755-12083` / `20260326-143327-21480`。**Phase12**: 初回実行で **PASS 30 / WARN 0 / FAIL 0**（Pi3 含む全 SSH 成功）。**OCR コンテナ**: Pi5 上で `docker compose ... exec -T api` 経由の `which ndlocr-lite` / `ndlocr-lite --help` が成功。stderr に **ONNX Runtime の GPU device discovery** 警告が出ることがあるが、CPU 推論運用では **無害**。
 - **API 追加確認（RoboDrill 端末キー）**: `GET /api/kiosk-documents` に `x-client-key: client-key-raspi4-robodrill01-kiosk1` を付与し、応答 `documents[]` に `ocrStatus`・`candidate*`・`confirmed*`・`extractedText` 等の拡張フィールドが載ることを確認（本セッション・curl + JSON キー一覧）。
 
 - **デプロイ（要領書・ビューア改修）**: ブランチ `feature/kiosk-documents-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（キオスク要領書の対象は Pi5 + Pi4 キオスク。Pi3 サイネージ本体へのデプロイは [deployment.md §Pi3](../guides/deployment.md) の専用手順のみ別途）。
@@ -118,6 +126,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **`update-all-clients.sh --limit <単一ホスト>`**: プリフライトの `ansible ping` も **同じ `--limit`** が付く。Pi3 を今回の対象に含めなければ、Pi3 offline でも Pi5→Pi4 の順次デプロイを進められる（Pi3 本体の更新は別途、リソース制約向け手順に従う）。
 - **`Pi4 robodrill01 kiosk/status-agent` が FAIL（SSH timeout）**: Mac→Pi5→RoboDrill の **ジャンプ SSH** が一時的にタイムアウトすることがある。Tailscale・現地電源・`tailscale status` を確認し、**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**すると PASS に戻る例がある（2026-03-25 に初回 timeout → 再実行で PASS）。
 - **Phase12 で `Pi3 signage-lite/timer` が FAIL（`Connection closed`）**: Pi5 経由の Pi3 SSH が途中で切断されると、スクリプトが **FAIL** になることがあった（2026-03-26 実測）。**再実行**で Pi3 が応答すれば **PASS 30** に戻る。`verify-phase12-real.sh` は `Connection closed` を **WARN**（未到達想定）に分類するよう更新済み。Pi3 本体の保守は [deployment.md §Pi3](../guides/deployment.md) に従う。
+- **`ndlocr-lite --help` で ONNX GPU discovery WARN**: API コンテナ内実行時、stderr に `GPU device discovery failed` / `/sys/class/drm/...` 参照失敗が出ることがある。**終了コード 0** かつ `which` でパスが取れればヘルスチェックは合格とみなしてよい（CPU 推論前提）。
 - **Pi3 が WARN**: スクリプトは Pi3 未到達時 **WARN** にし、全体は FAIL にしない設計。サイネージの専用手順は [deployment.md §Pi3](../guides/deployment.md) および [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
 - **Mac ブラウザでキオスク UI を見たい**: 自己署名 HTTPS で `chrome-error` になりやすい。**実機キオスクまたは VNC** で `/kiosk/documents` を確認する（[KB-306](./frontend.md#kb-306-キオスク進捗一覧-製番フィルタドロップダウン端末別保存) と同趣旨）。
 - **ツールバーのアイコン／文字が暗背景で見えない**: 要領書ビューアは `ghostOnDark` を使う。`ghost` のままだと意図せず非表示に近い色になる → 当該 `Button` の variant を見直す（`apps/web/src/components/ui/Button.tsx`）。
@@ -125,6 +134,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 
 ## References
 
+- 検索方式の判断: [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
 - 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)
 - 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/features/kiosk/documents/`

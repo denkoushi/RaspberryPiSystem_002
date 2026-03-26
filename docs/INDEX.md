@@ -21,6 +21,7 @@
 ### キオスク要領書（PDF）
 
 - **仕様・トラブルシュート**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md)
+- **フリーワード検索（部分一致）の判断**: [ADR-20260326](./decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - **運用手順**: [kiosk-documents.md](./runbooks/kiosk-documents.md)
 
 ### 調査・分析

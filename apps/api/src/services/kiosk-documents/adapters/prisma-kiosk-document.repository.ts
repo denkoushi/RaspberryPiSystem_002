@@ -5,6 +5,10 @@ import type {
   KioskDocumentListFilters,
   KioskDocumentRepositoryPort,
 } from '../ports/kiosk-document-repository.port.js';
+import {
+  buildKioskDocumentSearchOrConditions,
+  escapeLikePattern,
+} from '../search/build-kiosk-document-search-or.js';
 
 export class PrismaKioskDocumentRepository implements KioskDocumentRepositoryPort {
   async create(data: Prisma.KioskDocumentCreateInput): Promise<KioskDocument> {
@@ -33,90 +37,16 @@ export class PrismaKioskDocumentRepository implements KioskDocumentRepositoryPor
     }
     const searchQuery = query?.trim();
     if (searchQuery && searchQuery.length > 0) {
-      const q = searchQuery;
-      const searchTargets: Prisma.KioskDocumentWhereInput[] = [
-        { displayTitle: { contains: q, mode: 'insensitive' } },
-        { title: { contains: q, mode: 'insensitive' } },
-        { filename: { contains: q, mode: 'insensitive' } },
-        { sourceAttachmentName: { contains: q, mode: 'insensitive' } },
-        { extractedText: { contains: q, mode: 'insensitive' } },
-        { confirmedFhincd: { contains: q, mode: 'insensitive' } },
-        { confirmedDrawingNumber: { contains: q, mode: 'insensitive' } },
-        { confirmedProcessName: { contains: q, mode: 'insensitive' } },
-        { confirmedResourceCd: { contains: q, mode: 'insensitive' } },
-      ];
-      if (includeCandidateInSearch) {
-        searchTargets.push(
-          { candidateFhincd: { contains: q, mode: 'insensitive' } },
-          { candidateDrawingNumber: { contains: q, mode: 'insensitive' } },
-          { candidateProcessName: { contains: q, mode: 'insensitive' } },
-          { candidateResourceCd: { contains: q, mode: 'insensitive' } },
-        );
+      const q = escapeLikePattern(searchQuery);
+      if (q.length === 0) {
+        return prisma.kioskDocument.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+        });
       }
-      where.OR = searchTargets;
-
-      const conditions: Prisma.Sql[] = [];
-      if (enabledOnly) {
-        conditions.push(Prisma.sql`d."enabled" = true`);
-      }
-      if (sourceType) {
-        conditions.push(Prisma.sql`d."sourceType" = ${sourceType}`);
-      }
-      if (ocrStatus) {
-        conditions.push(Prisma.sql`d."ocrStatus" = ${ocrStatus}`);
-      }
-      conditions.push(
-        Prisma.sql`to_tsvector(
-          'simple',
-          coalesce(d."displayTitle",'') || ' ' ||
-          coalesce(d."title",'') || ' ' ||
-          coalesce(d."filename",'') || ' ' ||
-          coalesce(d."sourceAttachmentName",'') || ' ' ||
-          coalesce(d."extractedText",'') || ' ' ||
-          coalesce(d."confirmedFhincd",'') || ' ' ||
-          coalesce(d."confirmedDrawingNumber",'') || ' ' ||
-          coalesce(d."confirmedProcessName",'') || ' ' ||
-          coalesce(d."confirmedResourceCd",'') ${
-            includeCandidateInSearch
-              ? Prisma.sql` || ' ' || coalesce(d."candidateFhincd",'') || ' ' || coalesce(d."candidateDrawingNumber",'') || ' ' || coalesce(d."candidateProcessName",'') || ' ' || coalesce(d."candidateResourceCd",'')`
-              : Prisma.sql``
-          }
-        ) @@ plainto_tsquery('simple', ${searchQuery})`
-      );
-
-      const queryRows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT d."id"
-        FROM "KioskDocument" d
-        WHERE ${Prisma.join(conditions, ' AND ')}
-        ORDER BY ts_rank_cd(
-          to_tsvector(
-            'simple',
-            coalesce(d."displayTitle",'') || ' ' ||
-            coalesce(d."title",'') || ' ' ||
-            coalesce(d."filename",'') || ' ' ||
-            coalesce(d."sourceAttachmentName",'') || ' ' ||
-            coalesce(d."extractedText",'') || ' ' ||
-            coalesce(d."confirmedFhincd",'') || ' ' ||
-            coalesce(d."confirmedDrawingNumber",'') || ' ' ||
-            coalesce(d."confirmedProcessName",'') || ' ' ||
-            coalesce(d."confirmedResourceCd",'') ${
-              includeCandidateInSearch
-                ? Prisma.sql` || ' ' || coalesce(d."candidateFhincd",'') || ' ' || coalesce(d."candidateDrawingNumber",'') || ' ' || coalesce(d."candidateProcessName",'') || ' ' || coalesce(d."candidateResourceCd",'')`
-                : Prisma.sql``
-            }
-          ),
-          plainto_tsquery('simple', ${searchQuery})
-        ) DESC,
-        d."createdAt" DESC
-      `);
-
-      if (queryRows.length === 0) {
-        return [];
-      }
-      const ids = queryRows.map((r) => r.id);
-      const rows = await prisma.kioskDocument.findMany({ where: { id: { in: ids } } });
-      const byId = new Map(rows.map((r) => [r.id, r]));
-      return ids.map((id) => byId.get(id)).filter((r): r is KioskDocument => Boolean(r));
+      where.OR = buildKioskDocumentSearchOrConditions(q, {
+        includeCandidateFields: includeCandidateInSearch,
+      });
     }
     return prisma.kioskDocument.findMany({
       where,

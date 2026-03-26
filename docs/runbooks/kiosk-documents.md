@@ -58,7 +58,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api wh
 docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api ndlocr-lite --help >/dev/null
 ```
 
-上記が失敗する場合、API イメージが古い可能性が高い。最新イメージで再デプロイ後に再確認する。
+上記が失敗する場合、API イメージが古い可能性が高い。最新イメージで再デプロイ後に再確認する。**補足**: `ndlocr-lite --help` 実行時、stderr に ONNX Runtime の GPU device discovery 警告が出ることがある。**終了コード 0** ならコンテナ CPU 推論運用上は問題にしない（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。
 
 ### 手動再処理
 
@@ -104,8 +104,8 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 
 ## デプロイ後確認（本番・実機）
 
-1. **一括自動（推奨）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` を実行する。キオスク要領書向けに **`GET /api/kiosk-documents` が 200** かつ **`documents` 配列** を含むこともここで検証される（[deployment.md](../guides/deployment.md) の実機検証方針に準拠）。
-2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**。**OCR・メタデータ**（`feature/kiosk-documents-ocr-metadata-v1`、2026-03-26 デプロイ後）も再実行で同サマリを確認済み。Pi3 の SSH が一時的に `Connection closed` になると、古いスクリプトでは FAIL になりうるが、**再実行**または最新の `verify-phase12-real.sh`（`Connection closed` を WARN 扱い）で切り分け可能。要領書初回・**ビューア改修**反映後（2026-03-25）も同様に **PASS 30** を実測済み。Pi3 長期 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
+1. **一括自動（推奨）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` を実行する。キオスク要領書向けに **`GET /api/kiosk-documents` が 200** かつ **`documents` 配列** を含むこともここで検証される（[deployment.md](../guides/deployment.md) の実機検証方針に準拠）。**フリーワード検索**の契約（`q`・部分一致・並び `createdAt` 降順・`%` 除去など）は [KB-313 §フリーワード検索](../knowledge-base/KB-313-kiosk-documents.md#フリーワード検索q) / [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)。
+2. **期待サマリ（参考）**: 全ホスト到達時 **PASS 30 / WARN 0 / FAIL 0**。**OCR・メタデータ**（`feature/kiosk-documents-ocr-metadata-v1`、2026-03-26 デプロイ後）も再実行で同サマリを確認済み。**`main` 追従**（2026-03-26、Pi5→Pi4×2 のみ順次・Pi3 除外）後も **PASS 30/0/0** を実測。デプロイ直後の OCR 同梱確認は本 Runbook「OCR ヘルスチェック」または Pi5 上の `docker compose ... exec -T api ndlocr-lite --help`（stderr の ONNX WARN は [KB-313](../knowledge-base/KB-313-kiosk-documents.md) 参照）。Pi3 の SSH が一時的に `Connection closed` になると、古いスクリプトでは FAIL になりうるが、**再実行**または最新の `verify-phase12-real.sh`（`Connection closed` を WARN 扱い）で切り分け可能。要領書初回・**ビューア改修**反映後（2026-03-25）も同様に **PASS 30** を実測済み。Pi3 長期 offline 時は **WARN 1**・PASS は 1 減る想定。`FAIL > 0` のときは [deploy-status-recovery.md](./deploy-status-recovery.md) の Phase12 行と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の「知見・トラブルシュート」を参照。
 3. **UI**: 上記「キオスク表示確認」のとおり、実機/VNC でタブ遷移・一覧・閲覧・表示モードを確認する。**追加**: ツールバー操作が **暗背景でも読める**こと、長文書で **スクロールが極端に重くない**こと（Pi4）。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
 
 ## トラブルシュート
@@ -117,7 +117,7 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 | ツールバーが見えない／極端に薄い | ダーク UI では `ghost` ではなく **`ghostOnDark`** を使う設計。再発時は当該 `Button` variant を確認（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |
 | 画像 broken | `GET /api/storage/pdf-pages/...` が 200 か、JPEG の Content-Type が `image/jpeg` か |
 | Gmail 取り込み 400 | `storage.provider=gmail` かトークンがあるか |
-| OCR 完了しない／本文が空 | API コンテナ内で `which ndlocr-lite` と `ndlocr-lite --help` を確認。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` 運用時はスクリプトパスと Python 実行可否を確認。スキャン PDF は `pdftotext` が空→OCR 必須。 |
+| OCR 完了しない／本文が空 | API コンテナ内で `which ndlocr-lite` と `ndlocr-lite --help` を確認。`ndlocr-lite --help` 時に stderr へ ONNX の GPU discovery WARN が出ても **終了コード 0 なら無視可**（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` 運用時はスクリプトパスと Python 実行可否を確認。スキャン PDF は `pdftotext` が空→OCR 必須。 |
 | 重複しない | 同一 `messageId`+ファイル名は意図的にスキップ |
 | Phase12 が Pi3 で FAIL（`Connection closed`） | 一時的な SSH 切断のことがある。**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**。最新スクリプトでは当該文言を **WARN** 扱い（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |
 

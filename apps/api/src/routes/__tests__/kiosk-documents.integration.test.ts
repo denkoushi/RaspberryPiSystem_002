@@ -63,5 +63,35 @@ describe('Kiosk documents API', () => {
       const body = res.json() as { documents: unknown[] };
       expect(Array.isArray(body.documents)).toBe(true);
     });
+
+    it('GET /api/kiosk-documents?q= matches substring in extractedText (ILIKE partial match)', async () => {
+      if (!dbUp) {
+        return;
+      }
+      const marker = `kiosk_q_extract_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const doc = await prisma.kioskDocument.create({
+        data: {
+          title: 'Search integration title',
+          filename: 'search-test.pdf',
+          filePath: `/tmp/kiosk-search-test-${marker}.pdf`,
+          sourceType: 'MANUAL',
+          enabled: true,
+          ocrStatus: 'COMPLETED',
+          extractedText: `prefix ${marker} suffix`,
+        },
+      });
+      try {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/api/kiosk-documents?q=${encodeURIComponent(marker)}`,
+          headers: { 'x-client-key': clientKey },
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json() as { documents: Array<{ id: string }> };
+        expect(body.documents.some((d) => d.id === doc.id)).toBe(true);
+      } finally {
+        await prisma.kioskDocument.delete({ where: { id: doc.id } }).catch(() => undefined);
+      }
+    });
   });
 });
