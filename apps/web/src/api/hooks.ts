@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { kioskDocumentDetailQueryKey } from '../features/kiosk/documents/kioskDocumentQueryKeys';
+
 import {
   getBackupHistory,
   getBackupHistoryById,
@@ -1392,7 +1394,7 @@ export function useKioskDocuments(params?: {
 
 export function useKioskDocumentDetail(id: string | null) {
   return useQuery({
-    queryKey: ['kiosk-document', id],
+    queryKey: kioskDocumentDetailQueryKey(id),
     queryFn: () => getKioskDocumentDetail(id!),
     enabled: Boolean(id),
   });

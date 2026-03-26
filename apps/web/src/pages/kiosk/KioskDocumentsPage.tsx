@@ -10,6 +10,7 @@ import {
   type KioskDocumentWidthMode,
 } from '../../features/kiosk/documents/KioskDocumentsViewerPanel';
 import { buildKioskDocumentSearchSnippetModel } from '../../features/kiosk/documents/search/kiosk-document-search-snippets';
+import { useKioskDocumentListPrefetch } from '../../features/kiosk/documents/useKioskDocumentListPrefetch';
 
 type LayoutMode = 'single' | 'spread';
 
@@ -50,6 +51,9 @@ export function KioskDocumentsPage() {
   }, [documents, selectedId]);
 
   const detailQuery = useKioskDocumentDetail(selectedId);
+  const { schedulePrefetchDocumentId, cancelScheduledPrefetch } = useKioskDocumentListPrefetch({
+    selectedId,
+  });
   const pageUrls = useMemo(() => detailQuery.data?.pageUrls ?? [], [detailQuery.data?.pageUrls]);
 
   const pagePairs = useMemo(() => buildPagePairs(pageUrls, layoutMode), [layoutMode, pageUrls]);
@@ -74,6 +78,9 @@ export function KioskDocumentsPage() {
         documents={documents}
         selectedId={selectedId}
         onSelectId={setSelectedId}
+        onRowPointerEnter={schedulePrefetchDocumentId}
+        onRowPointerLeave={cancelScheduledPrefetch}
+        onRowFocus={schedulePrefetchDocumentId}
         isLoading={listQuery.isLoading}
         isError={listQuery.isError}
       />

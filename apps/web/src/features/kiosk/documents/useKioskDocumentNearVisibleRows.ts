@@ -1,33 +1,56 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
+import {
+  KIOSK_DOC_IO_ROOT_MARGIN,
+  KIOSK_DOC_IO_THRESHOLDS,
+  KIOSK_DOC_NEAR_VISIBLE_RADIUS,
+} from './kioskDocumentViewerScrollPolicy';
 import { computeNearVisibleIndices } from './kioskDocumentViewerVisibility';
-
-const DEFAULT_RADIUS = 2;
-const DEFAULT_ROOT_MARGIN = '200px 0px';
 
 export type UseKioskDocumentNearVisibleRowsOptions = {
   /** アクティブ行の前後に実画像をマウントする行数 */
   radius?: number;
   rootMargin?: string;
+  /** IntersectionObserver の threshold（既定: 近傍スクロール向けに段数を抑える） */
+  thresholds?: number[];
 };
+
+type BestCandidate = { index: number; ratio: number };
 
 /**
  * スクロールコンテナ内の行を IntersectionObserver で追跡し、
  * アクティブ行近傍だけ画像をマウントするためのインデックス集合を返す。
+ * IO コールバックは rAF でまとめ、フレームあたり最大 1 回だけ state を更新する。
  */
 export function useKioskDocumentNearVisibleRows(
   scrollRef: RefObject<HTMLElement | null>,
   rowCount: number,
   options?: UseKioskDocumentNearVisibleRowsOptions
 ) {
-  const radius = options?.radius ?? DEFAULT_RADIUS;
-  const rootMargin = options?.rootMargin ?? DEFAULT_ROOT_MARGIN;
+  const radius = options?.radius ?? KIOSK_DOC_NEAR_VISIBLE_RADIUS;
+  const rootMargin = options?.rootMargin ?? KIOSK_DOC_IO_ROOT_MARGIN;
+  const thresholds = options?.thresholds ?? KIOSK_DOC_IO_THRESHOLDS;
 
   const [activeIndex, setActiveIndex] = useState(0);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const elementsRef = useRef<Map<number, HTMLElement>>(new Map());
+  const bestCandidateRef = useRef<BestCandidate | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const flushActiveIndexFromRef = useCallback(() => {
+    rafRef.current = null;
+    const cand = bestCandidateRef.current;
+    if (!cand || cand.ratio <= 0) return;
+    setActiveIndex((prev) => (prev === cand.index ? prev : cand.index));
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(flushActiveIndexFromRef);
+  }, [flushActiveIndexFromRef]);
 
   useEffect(() => {
+    bestCandidateRef.current = null;
     setActiveIndex(0);
   }, [rowCount]);
 
@@ -39,30 +62,29 @@ export function useKioskDocumentNearVisibleRows(
 
     const observer = new IntersectionObserver(
       (entries) => {
-        setActiveIndex((prev) => {
-          let bestIdx = prev;
-          let bestRatio = -1;
-          for (const entry of entries) {
-            const raw = entry.target.getAttribute('data-kiosk-doc-row');
-            if (raw === null) continue;
-            const idx = parseInt(raw, 10);
-            if (!Number.isFinite(idx) || idx < 0) continue;
-            const ratio = entry.intersectionRatio;
-            if (ratio > bestRatio) {
-              bestRatio = ratio;
-              bestIdx = idx;
-            }
+        let bestIdx = 0;
+        let bestRatio = -1;
+        for (const entry of entries) {
+          const raw = entry.target.getAttribute('data-kiosk-doc-row');
+          if (raw === null) continue;
+          const idx = parseInt(raw, 10);
+          if (!Number.isFinite(idx) || idx < 0) continue;
+          const ratio = entry.intersectionRatio;
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestIdx = idx;
           }
-          if (bestRatio <= 0) {
-            return prev;
-          }
-          return bestIdx;
-        });
+        }
+        if (bestRatio <= 0) {
+          return;
+        }
+        bestCandidateRef.current = { index: bestIdx, ratio: bestRatio };
+        scheduleFlush();
       },
       {
         root,
         rootMargin,
-        threshold: [0, 0.1, 0.25, 0.5, 0.75, 1],
+        threshold: thresholds,
       }
     );
 
@@ -70,10 +92,15 @@ export function useKioskDocumentNearVisibleRows(
     elementsRef.current.forEach((el) => observer.observe(el));
 
     return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      bestCandidateRef.current = null;
       observer.disconnect();
       observerRef.current = null;
     };
-  }, [scrollRef, rowCount, rootMargin]);
+  }, [scrollRef, rowCount, rootMargin, scheduleFlush, thresholds]);
 
   const setRowElement = useCallback((index: number, node: HTMLElement | null) => {
     const obs = observerRef.current;

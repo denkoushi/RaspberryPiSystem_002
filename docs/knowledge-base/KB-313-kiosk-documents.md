@@ -45,6 +45,7 @@ category: knowledge-base
 | `KIOSK_DOCUMENT_OCR_RASTER_DPI` | OCR 用 `pdftoppm -r`（API コンテナに poppler 必須） | `150` |
 | `KIOSK_DOCUMENT_OCR_ENGINE_TIMEOUT_MS` | 1ページあたりの NDLOCR / レガシー OCR 子プロセスのタイムアウト（ms） | `180000` |
 | `KIOSK_DOCUMENT_OCR_RASTER_TIMEOUT_MS` | `pdftoppm` のタイムアウト（ms） | `120000` |
+| `PDF_PAGES_CACHE_CONTROL` | `GET /api/storage/pdf-pages/...` の `Cache-Control`（キオスク・サイネージ共通のページ画像）。未設定時は `public, max-age=86400, stale-while-revalidate=604800` | 未設定（コード既定を使用） |
 
 サイネージは従来どおり `SIGNAGE_PDF_DPI`（未設定時 150）を `convertPdfToPages` のデフォルトとして利用する。**要領書だけ** Pi4 向けに軽くしたい場合は上記 2 つを API コンテナに設定する。
 
@@ -98,10 +99,12 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **検索ヒット抜粋（2026-03-26）**: 左の検索語が **空でないときだけ**、ツールバー右に **`extractedText` 由来の抜粋**（最大 **3** 箇所、前後約 **60** 文字、`buildKioskDocumentSearchSnippetModel`）。ヒットは `<mark>` で強調。本文が無い・一致なしのときは **「一致する箇所は見つかりませんでした」**。検索語が空のときは **右パネル非表示**（要領書画像の縦スペースを確保）。
   - **一覧 API の `q` との差**: 一覧は `normalizeDocumentText`（NFKC 等）後に DB へ **ILIKE 部分一致**。抜粋はクライアントで **原文に対する大文字小文字無視の部分一致**（正規表現メタ文字はエスケープ）。**通常は一致**するが、表記ゆれでは **一覧に出るのに抜粋が空**、またはその逆が稀に起こりうる。
 - **Pi4 スクロール負荷軽減**: `useKioskDocumentNearVisibleRows` がスクロールコンテナを `root` とする `IntersectionObserver` で **近傍のページ行だけ** `<img>` をマウント。`KioskDocumentViewerPageRow` は **プレースホルダ**・`loading="lazy"`・`decoding="async"`。近傍インデックス計算は `kioskDocumentViewerVisibility.ts` の純関数＋ Vitest（`kioskDocumentViewerVisibility.test.ts`）で固定。
-- **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`）。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
+- **表示速度・スクロール（2026-03-26 以降）**: 一覧行の **ホバー／フォーカス**で `GET /api/kiosk-documents/:id` を **デバウンス付きでプリフェッチ**（`useKioskDocumentListPrefetch`・React Query `prefetchQuery`）。IO の `activeIndex` 更新は **requestAnimationFrame で 1 フレームに 1 回**に間引き、近傍半径・`rootMargin` は `kioskDocumentViewerScrollPolicy.ts` に集約（Pi で重い場合は定数調整）。ページ画像 `GET /api/storage/pdf-pages/...` は **ETag**（`size-mtimeMs`）と **304**、および **`Cache-Control`**（既定は長めの `public` + `stale-while-revalidate`。上書きは `PDF_PAGES_CACHE_CONTROL`）でブラウザキャッシュを効かせる。
+- **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`・`kioskDocumentQueryKeys.ts`・`useKioskDocumentListPrefetch.ts`・`kioskDocumentViewerScrollPolicy.ts`）。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
 
 ## 実機検証
 
+- **デプロイ（要領書ビューア表示速度・スクロール改善・Web+API）**: ブランチ `feat/kiosk-documents-viewer-perf`（実装 `713af8cd`、追従修正 `0dcb631b`）。一覧の **ホバー/フォーカスで詳細プリフェッチ**、ビューア **IO+rAF**・**近傍バッファ**、`GET /api/storage/pdf-pages/...` の **ETag・304・Cache-Control**（`PDF_PAGES_CACHE_CONTROL` で上書き可）、**If-None-Match の配列値**対応。本番反映は [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・Pi3 は要領書対象外。**Phase12（2026-03-26 実測・デプロイ反映後）**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（**約 105s**、Pi3 `signage-lite/timer` が **WARN**・exit 0。全ホスト到達時は **PASS 30/0/0** が目安）。
 - **デプロイ（要領書ツールバー改修・検索ヒット抜粋・Web）**: ブランチ `feat/kiosk-documents-toolbar-search-snippets`（コミット例 `931a48f3` の perf 修正含む）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**。Ansible Detach Run ID 例: `20260326-190104-11317`（Pi5）/ `20260326-190608-6864`（raspberrypi4）/ `20260326-191127-3225`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（Pi3 が SSH 未到達のとき Pi3 行 **WARN**・全体 exit 0。全ホスト到達時は **PASS 30 / WARN 0 / FAIL 0** が目安）。
 - **デプロイ（要領書フリーワード検索・部分一致化）**: ブランチ `docs/phase12-verification-2026-03-26`（API: `contains`/ILIKE 部分一致、`buildKioskDocumentSearchOrConditions`、FTS raw SQL 削除。仕様は [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**（要領書対象外のためデプロイ未実施）。Ansible Detach Run ID 例: `20260326-154038-14101`（Pi5）/ `20260326-154739-7415`（raspberrypi4）/ `20260326-155316-6698`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（実行時間の目安 約100〜110s）。**知見**: 検索は `q` 正規化後にタイトル・ファイル名・`extractedText`・確定/候補メタの OR 部分一致。一覧の並びは `createdAt` 降順。`%` は入力から除去（`escapeLikePattern`）。`_` は ILIKE の1文字ワイルドカードになりうるが品番向けに現状は除去しない（KB「フリーワード検索」節・ADR 参照）。
 - **デプロイ（OCR・メタデータ・全文検索）**: ブランチ `feature/kiosk-documents-ocr-metadata-v1` を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` を `--limit` で1台ずつ**（2026-03-26）。Prisma `20260326100000_add_kiosk_document_ocr_metadata`。Pi3 は今回のキオスク要領書対象外（リソース制約・専用手順は deployment §Pi3）。
@@ -136,12 +139,13 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **開発時 ESLint `import/order`**: `features/kiosk/documents` 配下でコンポーネント分割すると、**型 import と値 import のブロック順・空行**で `import/order` が落ちうる。`pnpm --filter @raspi-system/web lint` で先に確認する。
 - **一覧にヒットするのにツールバー抜粋が空／逆**: 上記 **キオスクビューア UI** 節の「一覧 API の `q` との差」を参照。`extractedText` が未生成（`ocrStatus` が `PENDING` 等）のときも抜粋は出ない。
 - **長大な `extractedText` で抜粋生成が重い**: `buildKioskDocumentSearchSnippetModel` は **先頭から最大3マッチまで** `RegExp#exec` で走査し、全マッチ配列は作らない（2026-03-26）。
+- **ページ画像の 304 が効かない／常に 200**: ブラウザやプロキシが `If-None-Match` を **複数値・配列**で送る場合がある。API 側は `ifNoneMatchSatisfied` で **文字列と配列の両方**を解釈する（`apps/api/src/routes/storage/pdf-page-http-cache.ts`・2026-03-26）。`curl -I` で `ETag` / `Cache-Control` を確認する。
 
 ## References
 
 - 検索方式の判断: [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
 - 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)
-- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/features/kiosk/documents/`
+- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/api/src/routes/storage/pdf-pages.ts`, `apps/api/src/routes/storage/pdf-page-http-cache.ts`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/features/kiosk/documents/`
 - 孤児掃除 CLI: `apps/api/src/scripts/cleanup-pdf-storage-orphans.ts`（`pnpm --filter @raspi-system/api run cleanup:pdf-orphans`）
 - 設定スキーマ: `apps/api/src/services/backup/backup-config.ts`（`kioskDocumentGmailIngest`）
