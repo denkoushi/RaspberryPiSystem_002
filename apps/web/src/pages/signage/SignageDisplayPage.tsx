@@ -74,7 +74,7 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
               {tool.name}
             </p>
             <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
-              端末場所: {clientLocation}
+              {clientLocation}
             </p>
           </>
         ) : isRigging ? (
@@ -89,7 +89,7 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
               旧番号: {tool.idNum?.trim() ? tool.idNum.trim() : '-'}
             </p>
             <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
-              端末場所: {clientLocation}
+              {clientLocation}
             </p>
           </>
         ) : (
@@ -101,7 +101,7 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
               {tool.itemCode}
             </p>
             <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
-              端末場所: {clientLocation}
+              {clientLocation}
             </p>
           </>
         )}

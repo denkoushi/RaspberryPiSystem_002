@@ -1,6 +1,6 @@
 import { Prisma, SignageContentType, SignageDisplayMode } from '@prisma/client';
 import type { SignageSchedule } from '@prisma/client';
-import { formatClientDeviceLocationLabel } from '@raspi-system/shared-types';
+import { formatClientDeviceLocationLabel, PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 
 type ScheduleSummary = Pick<
   SignageSchedule,
@@ -560,7 +560,7 @@ export class SignageService {
           ? (loan.measuringInstrument?.name ?? '計測機器')
           : isRigging
             ? (loan.riggingGear?.name ?? '吊具')
-          : (loan.item?.name ?? (loan.photoUrl ? '写真撮影モード' : '持出中アイテム'));
+          : (loan.item?.name ?? (loan.photoUrl ? PHOTO_LOAN_CARD_PRIMARY_LABEL : '持出中アイテム'));
         
         return {
           id: loan.id,

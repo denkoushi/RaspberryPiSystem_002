@@ -55,7 +55,7 @@ describe('presentActiveLoanListLines', () => {
       item: null
     });
     expect(lines.kind).toBe('item');
-    expect(lines.primaryLine).toBe('写真撮影モード');
+    expect(lines.primaryLine).toBe('撮影mode');
     expect(lines.clientLocationLine).toBe('-');
   });
 

@@ -1,3 +1,4 @@
+import { PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 import sharp from 'sharp';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -934,7 +935,7 @@ export class SignageRenderer {
         const y = config.y + row * (cardHeight + gap);
         const borrowedText = this.formatBorrowedAt(tool.borrowedAt) ?? '';
         const [borrowedDate, borrowedTime] = borrowedText.split(' ');
-        const primaryText = tool.name || '写真撮影モード';
+        const primaryText = tool.name || PHOTO_LOAN_CARD_PRIMARY_LABEL;
         const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
         const clientLocationText = tool.clientLocation?.trim() ? tool.clientLocation.trim() : '-';
         const isInstrument = Boolean(tool.isInstrument);
@@ -1009,7 +1010,7 @@ export class SignageRenderer {
         // すべてのアイテム種別（工具/計測機器/吊具）で同じ順序に統一
         const primaryY = textStartY + Math.round(20 * scale); // 名称の位置（全アイテム共通）
         const nameY = primaryY + Math.round(24 * scale); // primaryText から1段目（従業員）
-        const locationY = nameY + Math.round(20 * scale); // 端末場所
+        const locationY = nameY + Math.round(20 * scale); // clientLocation 行（ラベルなし）
         const dateTimeY = locationY + Math.round(20 * scale); // 日付+時刻
         // 日付と時刻を横並びに配置（同じY座標、X座標をずらす）
         const dateX = textX;
@@ -1031,7 +1032,7 @@ export class SignageRenderer {
             </text>
             <text x="${textX}" y="${locationY}"
               font-size="${Math.max(12, Math.round(13 * scale))}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
-              ${this.escapeXml(`端末場所: ${clientLocationText}`)}
+              ${this.escapeXml(clientLocationText)}
             </text>
             <text x="${dateX}" y="${dateTimeY}"
               font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">

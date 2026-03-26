@@ -4,6 +4,7 @@
 import type { MeasuringInstrument } from '../measuring-instruments/index.js';
 import type { RiggingGear } from '../rigging/index.js';
 export { formatClientDeviceLocationLabel } from './client-device-location.js';
+export { PHOTO_LOAN_CARD_PRIMARY_LABEL } from './loan-card-display.js';
 
 export interface Employee {
   id: string;
