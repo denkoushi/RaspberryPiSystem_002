@@ -29,6 +29,10 @@
 - **生産日程 `FSIGENSHOYORYO`（所要・総分）分析**: [analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md](./analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md) — current snapshot の分布、資源別偏り、外れ値、納期 coverage、帯算出への使い方を整理。再実行 SQL 付き。
 - **手動順番ワークフロー・全体ランキング・所要データの議論まとめ**: [analysis/manual-order-workflow-and-ranking-discussion-summary-20260324.md](./analysis/manual-order-workflow-and-ranking-discussion-summary-20260324.md) — 手動順番画面のUI改善案、帯分けの位置づけ、`FSIGENSHOYORYO` 評価、個数/実績工数突合の意義を横断的に整理。
 
+### 🆕 最新アップデート（2026-03-26）
+
+- **✅ キオスク要領書ビューア表示速度・スクロール改善（一覧プリフェッチ・IO rAF・pdf-pages キャッシュ）・本番デプロイ（Pi5+Pi4×2・Pi3 除外・順次）・Phase12 実機検証・ドキュメント反映・`main` マージ**: Web+API。`useKioskDocumentListPrefetch`・`kioskDocumentViewerScrollPolicy`・`pdf-page-http-cache`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 29 / WARN 1 / FAIL 0**（Pi3 WARN）。**参照**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) / [kiosk-documents.md](./runbooks/kiosk-documents.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-03-25）
 
 - **✅ 工具貸出 active loan の `clientId` 手動補正 API・Pi5+Pi4×2 順次デプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**: `PUT /api/tools/loans/:id/client`（`ADMIN`/`MANAGER`）。旧 borrow で `Loan.clientId` が null のままの active loan を運用補正し、キオスク返却一覧の「端末場所」`-` を解消可能に。**デプロイ（Pi3 除外・1台ずつ）**: [deployment.md](./guides/deployment.md) の `--limit raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01`。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。**参照**: [kb-kiosk-rigging-return-cancel-investigation.md](./knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md)（2026-03-25 追記節）/ [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
