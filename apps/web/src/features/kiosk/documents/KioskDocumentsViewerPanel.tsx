@@ -1,4 +1,8 @@
+import clsx from 'clsx';
 import { useLayoutEffect, useRef } from 'react';
+
+import { HoverRevealCollapsibleToolbar } from '../../../components/kiosk/HoverRevealCollapsibleToolbar';
+import { useTimedHoverReveal } from '../../../hooks/useTimedHoverReveal';
 
 import { KioskDocumentsViewerToolbar } from './KioskDocumentsViewerToolbar';
 import { KioskDocumentViewerPageRow } from './KioskDocumentViewerPageRow';
@@ -26,7 +30,12 @@ export type KioskDocumentsViewerPanelProps = {
   detailError: boolean;
   pagePairs: string[][];
   resolveImageUrl: (apiPath: string) => string;
+  /** false のときツールバーを常時表示（テスト等）。既定 true */
+  toolbarRevealEnabled?: boolean;
 };
+
+const DOCS_VIEWER_TOOLBAR_TRIGGER_TITLE =
+  'マウスを乗せて一覧・見開き・ズーム・検索ヒットなどを表示';
 
 export function KioskDocumentsViewerPanel({
   listOpen,
@@ -45,9 +54,11 @@ export function KioskDocumentsViewerPanel({
   detailError,
   pagePairs,
   resolveImageUrl,
+  toolbarRevealEnabled = true,
 }: KioskDocumentsViewerPanelProps) {
   const zoomActive = widthMode === 'default';
   const scrollRef = useRef<HTMLDivElement>(null);
+  const toolbarReveal = useTimedHoverReveal(toolbarRevealEnabled);
   const rowCount = pagePairs.length;
 
   const { setRowElement, shouldShowImage } = useKioskDocumentNearVisibleRows(scrollRef, rowCount, {
@@ -60,25 +71,52 @@ export function KioskDocumentsViewerPanel({
     el.scrollTop = 0;
   }, [selectedId]);
 
+  const toolbar = (
+    <KioskDocumentsViewerToolbar
+      listOpen={listOpen}
+      onToggleList={onToggleList}
+      layoutMode={layoutMode}
+      onLayoutModeChange={onLayoutModeChange}
+      widthMode={widthMode}
+      onWidthModeChange={onWidthModeChange}
+      zoom={zoom}
+      zoomActive={zoomActive}
+      onZoomDecrease={onZoomDecrease}
+      onZoomIncrease={onZoomIncrease}
+      onZoomReset={onZoomReset}
+      snippetModel={snippetModel}
+    />
+  );
+
   return (
     <section
       className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-white/10 bg-slate-900/40"
       aria-label="要領書ビューア"
     >
-      <KioskDocumentsViewerToolbar
-        listOpen={listOpen}
-        onToggleList={onToggleList}
-        layoutMode={layoutMode}
-        onLayoutModeChange={onLayoutModeChange}
-        widthMode={widthMode}
-        onWidthModeChange={onWidthModeChange}
-        zoom={zoom}
-        zoomActive={zoomActive}
-        onZoomDecrease={onZoomDecrease}
-        onZoomIncrease={onZoomIncrease}
-        onZoomReset={onZoomReset}
-        snippetModel={snippetModel}
-      />
+      {toolbarRevealEnabled ? (
+        <HoverRevealCollapsibleToolbar
+          title="表示オプション"
+          statusMessage={null}
+          expanded={toolbarReveal.isVisible}
+          onTriggerEnter={toolbarReveal.onHotZoneEnter}
+          onPanelMouseEnter={toolbarReveal.onHeaderMouseEnter}
+          onPanelMouseLeave={toolbarReveal.onHeaderMouseLeave}
+          ariaRegionLabel="要領書の表示オプションと検索ヒット"
+          triggerTitle={DOCS_VIEWER_TOOLBAR_TRIGGER_TITLE}
+          className="border-b border-white/10 px-2 pt-2"
+          titleClassName="text-xs font-semibold text-teal-200"
+          statusMessageClassName="text-xs text-teal-200"
+          triggerButtonClassName={clsx(
+            'flex min-h-10 min-w-10 shrink-0 cursor-default items-center justify-center rounded border border-white/15',
+            'text-teal-200/90 hover:border-teal-200/40 hover:bg-white/5'
+          )}
+          expandedMaxHeightClassName="max-h-[min(28rem,85vh)]"
+        >
+          {toolbar}
+        </HoverRevealCollapsibleToolbar>
+      ) : (
+        toolbar
+      )}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto p-3">
         {!selectedId ? (
