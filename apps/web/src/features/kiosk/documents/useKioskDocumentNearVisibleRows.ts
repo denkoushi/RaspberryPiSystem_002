@@ -47,7 +47,10 @@ export function useKioskDocumentNearVisibleRows(
     rafRef.current = null;
     const cand = bestCandidateRef.current;
     if (!cand || cand.ratio <= 0) return;
-    setActiveIndex((prev) => (prev === cand.index ? prev : cand.index));
+    setActiveIndex((prev) => {
+      if (prev === cand.index) return prev;
+      return cand.index;
+    });
   }, []);
 
   const scheduleFlush = useCallback(() => {

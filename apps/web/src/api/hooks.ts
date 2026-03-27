@@ -189,6 +189,10 @@ import {
   deleteRiggingGear,
   createRiggingInspectionRecord
 } from './client';
+import {
+  KIOSK_DOCUMENT_DETAIL_GC_TIME_MS,
+  KIOSK_DOCUMENT_DETAIL_STALE_TIME_MS,
+} from './kioskDocumentDetailQueryOptions';
 
 import type {
   BorrowPayload,
@@ -1397,6 +1401,8 @@ export function useKioskDocumentDetail(id: string | null) {
     queryKey: kioskDocumentDetailQueryKey(id),
     queryFn: () => getKioskDocumentDetail(id!),
     enabled: Boolean(id),
+    staleTime: KIOSK_DOCUMENT_DETAIL_STALE_TIME_MS,
+    gcTime: KIOSK_DOCUMENT_DETAIL_GC_TIME_MS,
   });
 }
 
