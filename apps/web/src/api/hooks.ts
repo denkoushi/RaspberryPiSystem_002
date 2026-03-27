@@ -1439,6 +1439,8 @@ export function useKioskDocumentMutations() {
         confirmedDrawingNumber?: string | null;
         confirmedProcessName?: string | null;
         confirmedResourceCd?: string | null;
+        confirmedDocumentNumber?: string | null;
+        confirmedSummaryText?: string | null;
         documentCategory?: string | null;
       };
     }) => patchKioskDocumentMetadata(id, payload),

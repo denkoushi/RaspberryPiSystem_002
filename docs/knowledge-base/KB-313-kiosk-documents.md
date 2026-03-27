@@ -16,6 +16,7 @@ category: knowledge-base
 
 - **DB**: `KioskDocument`（`KioskDocumentSource`: `MANUAL` | `GMAIL`）、Gmail 重複防止に `gmailDedupeKey`（SHA-256）
   - OCR/分類拡張: `ocrStatus`、`extractedText`、候補値（`candidate*`）、確定値（`confirmed*`）、信頼度（`confidence*`）、`displayTitle`
+  - 文書番号・要約（2026-03-27）: `candidateDocumentNumber`、`confidenceDocumentNumber`、`confirmedDocumentNumber`、`summaryCandidate1`〜`summaryCandidate3`、`confirmedSummaryText`。OCR/メタデータラベラーは **候補と信頼度のみ** 更新し、**確定文書番号・確定要約は自動では書かない**（管理画面で人手確定）。
   - 履歴: `KioskDocumentMetadataHistory`（変更前後値・更新者・更新時刻）
 - **API**（`/api/kiosk-documents`）:
   - `GET` 一覧・`GET :id` 詳細（`pageUrls`）: `x-client-key` または JWT（ADMIN/MANAGER/VIEWER）
@@ -23,8 +24,9 @@ category: knowledge-base
   - `POST /ingest-gmail`: ADMIN/MANAGER（手動トリガ）
   - `POST /:id/reprocess`: 文書1件の OCR/抽出再処理（ADMIN/MANAGER）
   - `POST /run-nightly-ocr`: 夜間OCR処理の手動実行（ADMIN/MANAGER）
-  - `PATCH /:id/metadata`: 確定メタデータ編集（候補は保持）
-  - `PATCH` / `DELETE`: ADMIN/MANAGER
+  - `PATCH /:id/metadata`: 確定メタデータ編集（候補は保持）。`confirmedDocumentNumber` / `confirmedSummaryText` を含む。**確定文書番号**は形式 `^[\u4e00-\u9fff][0-9]+-[A-Z0-9]+$`（先頭1文字が漢字、続けて数字、ハイフン、**大文字英数字のみ**の接尾。小文字不可）。不一致は **400**（`KIOSK_DOC_INVALID_DOCUMENT_NUMBER`）。
+  - `PATCH /:id`: `enabled` の更新のみ（ADMIN/MANAGER）
+  - `DELETE /:id`: ADMIN/MANAGER
 - **ページ画像**: `PdfStorage.convertPdfToPages`（要領書は `PdfStorageRenderAdapter` 経由で **キオスク専用 DPI/品質** を指定可）→ `GET /api/storage/pdf-pages/:pdfId/:filename`（JPEG 時は `image/jpeg` を返却）
 - **Gmail**: `GmailApiClient.listPdfAttachments` で PDF のみ列挙。検索クエリは `buildKioskDocumentGmailSearchQuery`（件名・任意 `from`・`is:unread`）
 
@@ -70,6 +72,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **拡大（ズーム）が効かない**: 表示モードが **幅いっぱい** のときは仕様で無効。**標準幅** に戻すと拡大 UI が有効になる
 - **別文書を選んでもビューアの縦位置が前の文書のまま／ページがずれる**: 文書 ID 切替時に **スクロール位置**と**近傍表示の active インデックス**をリセットしていないと起きうる。`documentKey`（選択 ID）変更で `activeIndex` を 0 に戻す、`selectedId` 変更で `scrollTop = 0`（`useLayoutEffect`）を確認（`useKioskDocumentNearVisibleRows`・`KioskDocumentsViewerPanel`）。
 - **一覧で連続選択すると右ペインが縦にガタつく（チャタリング）**: DevTools で同一 ID の `GET /api/kiosk-documents/:id` が **短間隔で複数本**ないか確認。**別機能として意図的に二重 GET を入れたわけではなく**、`prefetchQuery` と `useQuery` の **キャッシュ方針不一致**（既定 `staleTime` で先読み直後に再フェッチ）や **`pointerenter` + `focus` の二重先読み**が重なると起きうる。対策は [ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)（共有 `kioskDocumentDetailQueryOptions`・キオスク一覧は pointer のみ先読み）。
+- **確定文書番号が保存できない（`PATCH /api/kiosk-documents/:id/metadata` が 400）**: `confirmedDocumentNumber` が **`KIOSK_DOCUMENT_NUMBER_PATTERN`**（`apps/api/src/services/kiosk-documents/kiosk-document-number.ts`）に合わない。接尾の英数字は **大文字のみ**（例: `産1-G025AAK` は可、`産1-g025aak` は不可）。OCR 抽出は本文中のパターンに合致した候補のみ。手入力で正規化して再試行。
 
 ## Investigation
 
@@ -87,7 +90,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ### フリーワード検索（`q`）
 
-- 一覧 API の `q` は、ルートで `normalizeDocumentText`（NFKC・連続空白の圧縮・小文字化）したあと、**タイトル系・ファイル名・`extractedText`・確定メタ**（管理画面では `includeCandidates=true` のとき **候補メタ**も）に対して **部分一致**でマッチする。実装は Prisma の `contains`（PostgreSQL では `ILIKE '%…%'` 相当、大文字小文字は区別しない）。
+- 一覧 API の `q` は、ルートで `normalizeDocumentText`（NFKC・連続空白の圧縮・小文字化）したあと、**タイトル系・ファイル名・`extractedText`・確定メタ**（管理画面では `includeCandidates=true` のとき **候補メタ**も）に対して **部分一致**でマッチする。**2026-03-27 以降**は OR 条件に **`candidateDocumentNumber` / `confirmedDocumentNumber`**、**`summaryCandidate1`〜`3` / `confirmedSummaryText`** も含む（`buildKioskDocumentSearchOrConditions`）。実装は Prisma の `contains`（PostgreSQL では `ILIKE '%…%'` 相当、大文字小文字は区別しない）。
 - **PostgreSQL `simple` 辞書の全文検索（`to_tsvector` / `plainto_tsquery`）は使わない**。日本語の文中の連続文字列にもヒットしやすい代わりに、関連度ランキングはなく **並びは `createdAt` 降順**。
 - 検索文字列に含まれる **`%` はリポジトリ側で除去**し、ILIKE のワイルドカードとしての誤動作（意図しない広い一致）を防ぐ。`_` は ILIKE の1文字ワイルドカードとして解釈されうるが、品番などに `_` が含まれるため現状は除去しない（トレードオフは [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）。
 
@@ -103,10 +106,12 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **Pi4 スクロール負荷軽減**: `useKioskDocumentNearVisibleRows` がスクロールコンテナを `root` とする `IntersectionObserver` で **近傍のページ行だけ** `<img>` をマウント。`KioskDocumentViewerPageRow` は **プレースホルダ**・`loading="lazy"`・`decoding="async"`。近傍インデックス計算は `kioskDocumentViewerVisibility.ts` の純関数＋ Vitest（`kioskDocumentViewerVisibility.test.ts`）で固定。
 - **表示速度・スクロール（2026-03-26 以降）**: 一覧行の **ホバー**で `GET /api/kiosk-documents/:id` を **デバウンス付きでプリフェッチ**（`useKioskDocumentListPrefetch`・React Query `prefetchQuery`）。**2026-03-27 以降**: キオスク一覧は **タッチ時の二重イベント抑止**のため **`onRowFocus` からの先読みは接続しない**（`KioskDocumentsPage`）。`useKioskDocumentDetail` と `prefetchQuery` は **`apps/web/src/api/kioskDocumentDetailQueryOptions.ts`** で **`staleTime`（60s）・`gcTime`（5m）・`queryKey`・`queryFn` を共有**し、先読み直後の不要な再フェッチを抑える（判断は [ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)）。IO の `activeIndex` 更新は **requestAnimationFrame で 1 フレームに 1 回**に間引き、近傍半径・`rootMargin` は `kioskDocumentViewerScrollPolicy.ts` に集約（Pi で重い場合は定数調整）。ページ画像 `GET /api/storage/pdf-pages/...` は **ETag**（`size-mtimeMs`）と **304**、および **`Cache-Control`**（既定は長めの `public` + `stale-while-revalidate`。上書きは `PDF_PAGES_CACHE_CONTROL`）でブラウザキャッシュを効かせる。
 - **文書切替時のリセット（2026-03-27）**: 別文書を選んだときに前文書の **スクロール位置・近傍インデックス**を持ち越さないよう、`useKioskDocumentNearVisibleRows` の `documentKey` で `activeIndex` を 0 に戻し、`KioskDocumentsViewerPanel` で `selectedId` 変更時に `scrollTop = 0`（`useLayoutEffect`）。
+- **左一覧の文書番号・要約（2026-03-27）**: 各行 **上段**は `confirmedDocumentNumber` があればそれを、無ければ従来の表示タイトル系（`displayTitle` / ファイル名など）。**下段**は `confirmedSummaryText`（長い場合は省略）。管理画面 `/admin/kiosk-documents` に **文書番号列・要約列**と、候補から確定へコピーする編集 UI あり。
 - **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`・`kioskDocumentQueryKeys.ts`・`useKioskDocumentListPrefetch.ts`・`kioskDocumentViewerScrollPolicy.ts`）。API 層に **`kioskDocumentDetailQueryOptions.ts`**。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
 
 ## 実機検証
 
+- **デプロイ（要領書: 文書番号・要約候補3・確定要約・API+Web+DB）**: ブランチ `feat/kiosk-documents-doc-number-summary`（実装例: `kiosk-document-number.ts`・`kiosk-document-summary-candidates.ts`・`kiosk-documents` ルート DTO/`PATCH` 検証・`buildKioskDocumentSearchOrConditions`・`KioskDocumentsAdminPage` / `KioskDocumentsListPanel`）。Prisma `20260327120000_add_kiosk_document_number_summary`。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・Pi3 除外（要領書対象外のためキオスク Pi4 と Pi5 API のみ更新）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（約22s・2026-03-27、Pi3 到達時・全ホスト成功）。**知見**: 確定値は運用スナップショット。OCR パイプラインは候補列のみ自動更新。
 - **デプロイ（要領書: 文書切替リセット + 詳細クエリキャッシュ共有・チャタリング抑制・Web）**: ブランチ `feat/kiosk-documents-viewer-reset-on-switch`（実装例: `kioskDocumentDetailQueryOptions.ts`・`useKioskDocumentDetail` の `staleTime`/`gcTime`・一覧 `onRowFocus` 先読み削除・ビューア/近傍フックのリセット）。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1 台ずつ・Pi3 除外。Ansible Detach Run ID 例: `20260327-104657-10125`（Pi5）/ `20260327-105045-23756`（raspberrypi4）/ `20260327-105453-27111`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（約 38s・2026-03-27、Pi3 `signage-lite/timer` WARN）。**現場 Pi4**: チャタリング解消を運用確認（2026-03-27）。
 - **デプロイ（要領書ビューア表示速度・スクロール改善・Web+API）**: ブランチ `feat/kiosk-documents-viewer-perf`（実装 `713af8cd`、追従修正 `0dcb631b`）。一覧の **ホバー/フォーカスで詳細プリフェッチ**、ビューア **IO+rAF**・**近傍バッファ**、`GET /api/storage/pdf-pages/...` の **ETag・304・Cache-Control**（`PDF_PAGES_CACHE_CONTROL` で上書き可）、**If-None-Match の配列値**対応。本番反映は [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・Pi3 は要領書対象外。**`main` マージ**: [PR #46](https://github.com/denkoushi/RaspberryPiSystem_002/pull/46) merge `b5552153`（2026-03-26）。**Phase12（デプロイ反映後・2026-03-26 実測）**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（**約 105s**、Pi3 `signage-lite/timer` が **WARN**・exit 0）。**マージ後再検証（同一スクリプト・2026-03-26）**: **PASS 29 / WARN 1 / FAIL 0**（**約 103s**）。全ホスト到達時は **PASS 30/0/0** が目安。
 - **デプロイ（要領書ツールバー改修・検索ヒット抜粋・Web）**: ブランチ `feat/kiosk-documents-toolbar-search-snippets`（コミット例 `931a48f3` の perf 修正含む）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**。Ansible Detach Run ID 例: `20260326-190104-11317`（Pi5）/ `20260326-190608-6864`（raspberrypi4）/ `20260326-191127-3225`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（Pi3 が SSH 未到達のとき Pi3 行 **WARN**・全体 exit 0。全ホスト到達時は **PASS 30 / WARN 0 / FAIL 0** が目安）。
@@ -145,6 +150,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **長大な `extractedText` で抜粋生成が重い**: `buildKioskDocumentSearchSnippetModel` は **先頭から最大3マッチまで** `RegExp#exec` で走査し、全マッチ配列は作らない（2026-03-26）。
 - **ページ画像の 304 が効かない／常に 200**: ブラウザやプロキシが `If-None-Match` を **複数値・配列**で送る場合がある。API 側は `ifNoneMatchSatisfied` で **文字列と配列の両方**を解釈する（`apps/api/src/routes/storage/pdf-page-http-cache.ts`・2026-03-26）。`curl -I` で `ETag` / `Cache-Control` を確認する。
 - **Network に詳細 GET が2本／チャタリング**: 上記 Symptoms のとおり **意図的な「二重取得機能」ではない**。`kioskDocumentDetailQueryOptions` の共有とキオスク一覧の **pointer のみ先読み**で切り分け（[ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)）。
+- **文書番号の大文字固定**: 確定文書番号は **接尾を大文字英数字に限定**（小文字は API バリデーションで拒否）。OCR テキスト由来の候補抽出も同一パターンに合致したものだけが候補になりうる。運用上、紙面が小文字でも確定時に大文字へ寄せる。
 
 ## References
 
@@ -152,6 +158,6 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - 検索方式の判断: [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
 - 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)
-- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`, `apps/api/src/routes/storage/pdf-pages.ts`, `apps/api/src/routes/storage/pdf-page-http-cache.ts`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/features/kiosk/documents/`
+- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`（`kiosk-document-number.ts`・`kiosk-document-summary-candidates.ts`・検索 `search/build-kiosk-document-search-or.ts`）, `apps/api/src/routes/storage/pdf-pages.ts`, `apps/api/src/routes/storage/pdf-page-http-cache.ts`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/pages/admin/KioskDocumentsAdminPage.tsx`, `apps/web/src/features/kiosk/documents/`
 - 孤児掃除 CLI: `apps/api/src/scripts/cleanup-pdf-storage-orphans.ts`（`pnpm --filter @raspi-system/api run cleanup:pdf-orphans`）
 - 設定スキーマ: `apps/api/src/services/backup/backup-config.ts`（`kioskDocumentGmailIngest`）

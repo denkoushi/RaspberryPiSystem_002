@@ -32,6 +32,8 @@ export function buildKioskDocumentSearchOrConditions(
     { confirmedDrawingNumber: { contains: q, mode: 'insensitive' } },
     { confirmedProcessName: { contains: q, mode: 'insensitive' } },
     { confirmedResourceCd: { contains: q, mode: 'insensitive' } },
+    { confirmedDocumentNumber: { contains: q, mode: 'insensitive' } },
+    { confirmedSummaryText: { contains: q, mode: 'insensitive' } },
   ];
   if (options.includeCandidateFields) {
     searchTargets.push(
@@ -39,6 +41,10 @@ export function buildKioskDocumentSearchOrConditions(
       { candidateDrawingNumber: { contains: q, mode: 'insensitive' } },
       { candidateProcessName: { contains: q, mode: 'insensitive' } },
       { candidateResourceCd: { contains: q, mode: 'insensitive' } },
+      { candidateDocumentNumber: { contains: q, mode: 'insensitive' } },
+      { summaryCandidate1: { contains: q, mode: 'insensitive' } },
+      { summaryCandidate2: { contains: q, mode: 'insensitive' } },
+      { summaryCandidate3: { contains: q, mode: 'insensitive' } },
     );
   }
   return searchTargets;

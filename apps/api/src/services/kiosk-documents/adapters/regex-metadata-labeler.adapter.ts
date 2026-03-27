@@ -1,4 +1,9 @@
 import type { MetadataLabelerPort, LabelingResult } from '../ports/metadata-labeler.port.js';
+import {
+  documentNumberConfidence,
+  extractDocumentNumberCandidate,
+} from '../kiosk-document-number.js';
+import { buildSummaryCandidates } from '../kiosk-document-summary-candidates.js';
 
 const FHINCD_PATTERN = /\b([A-Z0-9]{4,20})\b/g;
 const DRAWING_PATTERN = /\b([A-Z]{1,4}-?\d{2,8}(?:-\d{1,4})?)\b/g;
@@ -37,6 +42,8 @@ export class RegexMetadataLabelerAdapter implements MetadataLabelerPort {
     const drawingNumber = pickDrawingNumber(text);
     const processName = pickFirstMatch(text, PROCESS_PATTERN);
     const resourceCd = text.match(RESOURCE_CD_PATTERN)?.[1];
+    const documentNumber = extractDocumentNumberCandidate(text);
+    const summaryCandidates = buildSummaryCandidates(text);
 
     return {
       candidates: {
@@ -44,6 +51,7 @@ export class RegexMetadataLabelerAdapter implements MetadataLabelerPort {
         drawingNumber,
         processName,
         resourceCd,
+        documentNumber,
         documentCategory: drawingNumber ? '図面' : '要領書',
       },
       confidence: {
@@ -51,8 +59,10 @@ export class RegexMetadataLabelerAdapter implements MetadataLabelerPort {
         drawingNumber: drawingNumber ? 0.9 : 0.1,
         processName: processName ? 0.8 : 0.1,
         resourceCd: resourceCd ? 0.8 : 0.1,
+        documentNumber: documentNumberConfidence(Boolean(documentNumber)),
       },
       suggestedDisplayTitle: buildSuggestedTitle({ drawingNumber, fhincd, processName }),
+      summaryCandidates,
     };
   }
 }

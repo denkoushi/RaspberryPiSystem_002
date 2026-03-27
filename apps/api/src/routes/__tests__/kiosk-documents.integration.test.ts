@@ -93,5 +93,36 @@ describe('Kiosk documents API', () => {
         await prisma.kioskDocument.delete({ where: { id: doc.id } }).catch(() => undefined);
       }
     });
+
+    it('GET /api/kiosk-documents?q= matches confirmed document number and summary text', async () => {
+      if (!dbUp) {
+        return;
+      }
+      const marker = `kiosk_summary_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const doc = await prisma.kioskDocument.create({
+        data: {
+          title: 'Search metadata title',
+          filename: 'search-metadata-test.pdf',
+          filePath: `/tmp/kiosk-search-metadata-${marker}.pdf`,
+          sourceType: 'MANUAL',
+          enabled: true,
+          ocrStatus: 'COMPLETED',
+          confirmedDocumentNumber: '産1-G025AAK',
+          confirmedSummaryText: `この文書は ${marker} の手順を記載しています`,
+        },
+      });
+      try {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/api/kiosk-documents?q=${encodeURIComponent(marker)}`,
+          headers: { 'x-client-key': clientKey },
+        });
+        expect(res.statusCode).toBe(200);
+        const body = res.json() as { documents: Array<{ id: string }> };
+        expect(body.documents.some((d) => d.id === doc.id)).toBe(true);
+      } finally {
+        await prisma.kioskDocument.delete({ where: { id: doc.id } }).catch(() => undefined);
+      }
+    });
   });
 });

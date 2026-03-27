@@ -19,6 +19,7 @@ import { PdfToTextExtractorAdapter } from '../services/kiosk-documents/adapters/
 import { NdlOcrEngineAdapter } from '../services/kiosk-documents/adapters/ndlocr-engine.adapter.js';
 import { RegexMetadataLabelerAdapter } from '../services/kiosk-documents/adapters/regex-metadata-labeler.adapter.js';
 import { PostgresDocumentSearchIndexerAdapter } from '../services/kiosk-documents/adapters/postgres-document-search-indexer.adapter.js';
+import { isValidKioskDocumentNumber } from '../services/kiosk-documents/kiosk-document-number.js';
 import { normalizeDocumentText } from '../services/kiosk-documents/kiosk-document-text-normalizer.js';
 
 async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
@@ -59,6 +60,8 @@ const metadataPatchBodySchema = z.object({
   confirmedProcessName: z.string().trim().min(1).max(120).nullable().optional(),
   confirmedResourceCd: z.string().trim().min(1).max(100).nullable().optional(),
   documentCategory: z.string().trim().min(1).max(120).nullable().optional(),
+  confirmedDocumentNumber: z.string().trim().min(1).max(64).nullable().optional(),
+  confirmedSummaryText: z.string().trim().min(1).max(300).nullable().optional(),
 });
 
 function toDocumentDto(doc: {
@@ -77,14 +80,21 @@ function toDocumentDto(doc: {
   candidateDrawingNumber: string | null;
   candidateProcessName: string | null;
   candidateResourceCd: string | null;
+  candidateDocumentNumber: string | null;
+  summaryCandidate1: string | null;
+  summaryCandidate2: string | null;
+  summaryCandidate3: string | null;
   confidenceFhincd: number | null;
   confidenceDrawingNumber: number | null;
   confidenceProcessName: number | null;
   confidenceResourceCd: number | null;
+  confidenceDocumentNumber: number | null;
   confirmedFhincd: string | null;
   confirmedDrawingNumber: string | null;
   confirmedProcessName: string | null;
   confirmedResourceCd: string | null;
+  confirmedDocumentNumber: string | null;
+  confirmedSummaryText: string | null;
   documentCategory: string | null;
   sourceType: KioskDocumentSource;
   gmailMessageId: string | null;
@@ -110,14 +120,21 @@ function toDocumentDto(doc: {
     candidateDrawingNumber: doc.candidateDrawingNumber,
     candidateProcessName: doc.candidateProcessName,
     candidateResourceCd: doc.candidateResourceCd,
+    candidateDocumentNumber: doc.candidateDocumentNumber,
+    summaryCandidate1: doc.summaryCandidate1,
+    summaryCandidate2: doc.summaryCandidate2,
+    summaryCandidate3: doc.summaryCandidate3,
     confidenceFhincd: doc.confidenceFhincd,
     confidenceDrawingNumber: doc.confidenceDrawingNumber,
     confidenceProcessName: doc.confidenceProcessName,
     confidenceResourceCd: doc.confidenceResourceCd,
+    confidenceDocumentNumber: doc.confidenceDocumentNumber,
     confirmedFhincd: doc.confirmedFhincd,
     confirmedDrawingNumber: doc.confirmedDrawingNumber,
     confirmedProcessName: doc.confirmedProcessName,
     confirmedResourceCd: doc.confirmedResourceCd,
+    confirmedDocumentNumber: doc.confirmedDocumentNumber,
+    confirmedSummaryText: doc.confirmedSummaryText,
     documentCategory: doc.documentCategory,
     sourceType: doc.sourceType,
     gmailMessageId: doc.gmailMessageId,
@@ -259,6 +276,9 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
   app.patch('/kiosk-documents/:id/metadata', { preHandler: [canManage] }, async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
     const body = metadataPatchBodySchema.parse(request.body ?? {});
+    if (body.confirmedDocumentNumber && !isValidKioskDocumentNumber(body.confirmedDocumentNumber)) {
+      throw new ApiError(400, '文書番号の形式が不正です', undefined, 'KIOSK_DOC_INVALID_DOCUMENT_NUMBER');
+    }
     const updated = await service.updateMetadata(id, {
       ...body,
       actorUserId: request.user?.id,

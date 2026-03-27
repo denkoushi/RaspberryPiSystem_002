@@ -14,6 +14,11 @@ export type KioskDocumentsListPanelProps = {
     filename: string;
     confirmedFhincd: string | null;
     confirmedDrawingNumber: string | null;
+    confirmedDocumentNumber: string | null;
+    confirmedSummaryText: string | null;
+    summaryCandidate1: string | null;
+    summaryCandidate2: string | null;
+    summaryCandidate3: string | null;
     sourceAttachmentName: string | null;
     sourceType: KioskDocumentSource;
   }>;
@@ -123,8 +128,17 @@ export function KioskDocumentsListPanel({
                       : 'border-transparent bg-white/5 text-white/90 hover:bg-white/10'
                   )}
                 >
-                  <div className="font-semibold leading-snug">{doc.displayTitle || doc.title}</div>
-                  <div className="mt-0.5 text-xs text-white/60">
+                  <div className="font-semibold leading-snug">
+                    {doc.confirmedDocumentNumber || doc.displayTitle || doc.title}
+                  </div>
+                  <div className="mt-0.5 line-clamp-2 text-xs text-white/70">
+                    {doc.confirmedSummaryText ||
+                      doc.summaryCandidate1 ||
+                      doc.summaryCandidate2 ||
+                      doc.summaryCandidate3 ||
+                      '本文要約なし'}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-white/60">
                     {doc.sourceAttachmentName || doc.filename} · {doc.sourceType === 'GMAIL' ? 'Gmail' : '手動'}
                   </div>
                   {(doc.confirmedFhincd || doc.confirmedDrawingNumber) ? (

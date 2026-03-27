@@ -142,6 +142,8 @@ export class KioskDocumentService {
       confirmedProcessName?: string | null;
       confirmedResourceCd?: string | null;
       documentCategory?: string | null;
+      confirmedDocumentNumber?: string | null;
+      confirmedSummaryText?: string | null;
       actorUserId?: string;
     }
   ): Promise<KioskDocument> {
@@ -157,6 +159,8 @@ export class KioskDocumentService {
       confirmedProcessName: input.confirmedProcessName ?? null,
       confirmedResourceCd: input.confirmedResourceCd ?? null,
       documentCategory: input.documentCategory ?? null,
+      confirmedDocumentNumber: input.confirmedDocumentNumber ?? null,
+      confirmedSummaryText: input.confirmedSummaryText ?? null,
     });
 
     const changedFields: string[] = [];

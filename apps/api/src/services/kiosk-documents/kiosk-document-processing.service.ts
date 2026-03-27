@@ -69,6 +69,7 @@ export class KioskDocumentProcessingService {
         const normalizedText = normalizeDocumentText(mergedText);
         const labels = await this.labeler.labelFromText(normalizedText);
         const canAutoConfirm = (score?: number) => typeof score === 'number' && score >= OCR_HIGH_CONFIDENCE_THRESHOLD;
+        const [summaryCandidate1, summaryCandidate2, summaryCandidate3] = labels.summaryCandidates ?? [];
 
         const previous = await this.repo.findById(documentId);
         await this.repo.update(documentId, {
@@ -86,7 +87,12 @@ export class KioskDocumentProcessingService {
           confidenceDrawingNumber: labels.confidence.drawingNumber ?? null,
           confidenceProcessName: labels.confidence.processName ?? null,
           confidenceResourceCd: labels.confidence.resourceCd ?? null,
+          confidenceDocumentNumber: labels.confidence.documentNumber ?? null,
           documentCategory: labels.candidates.documentCategory ?? null,
+          candidateDocumentNumber: labels.candidates.documentNumber ?? null,
+          summaryCandidate1: summaryCandidate1 ?? null,
+          summaryCandidate2: summaryCandidate2 ?? null,
+          summaryCandidate3: summaryCandidate3 ?? null,
           displayTitle: previous?.displayTitle || labels.suggestedDisplayTitle || previous?.title || null,
           confirmedFhincd: previous?.confirmedFhincd ?? (canAutoConfirm(labels.confidence.fhincd) ? labels.candidates.fhincd ?? null : null),
           confirmedDrawingNumber: previous?.confirmedDrawingNumber ?? (canAutoConfirm(labels.confidence.drawingNumber) ? labels.candidates.drawingNumber ?? null : null),

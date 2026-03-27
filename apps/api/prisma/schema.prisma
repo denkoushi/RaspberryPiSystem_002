@@ -1233,6 +1233,15 @@ model KioskDocument {
   confirmedProcessName String?
   confirmedResourceCd  String?
   documentCategory     String?
+  /// ISO 等の文書番号（OCR 候補・人手確定）
+  candidateDocumentNumber String?
+  confidenceDocumentNumber Float?
+  confirmedDocumentNumber String?
+  /// 本文類推用要約（OCR が最大3候補、人手で確定テキストをスナップショット保存）
+  summaryCandidate1    String?
+  summaryCandidate2    String?
+  summaryCandidate3    String?
+  confirmedSummaryText String?
   enabled              Boolean             @default(true)
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
@@ -1248,6 +1257,7 @@ model KioskDocument {
   @@index([confirmedDrawingNumber])
   @@index([confirmedProcessName])
   @@index([confirmedResourceCd])
+  @@index([confirmedDocumentNumber])
 }
 
 model KioskDocumentMetadataHistory {
