@@ -3,6 +3,7 @@ export type LabelConfidence = {
   drawingNumber?: number;
   processName?: number;
   resourceCd?: number;
+  documentNumber?: number;
 };
 
 export type LabelCandidates = {
@@ -11,12 +12,14 @@ export type LabelCandidates = {
   processName?: string;
   resourceCd?: string;
   documentCategory?: string;
+  documentNumber?: string;
 };
 
 export type LabelingResult = {
   candidates: LabelCandidates;
   confidence: LabelConfidence;
   suggestedDisplayTitle?: string;
+  summaryCandidates?: [string?, string?, string?];
 };
 
 /**

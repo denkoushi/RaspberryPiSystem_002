@@ -22,15 +22,15 @@ describe('escapeLikePattern', () => {
 });
 
 describe('buildKioskDocumentSearchOrConditions', () => {
-  it('returns 9 OR branches without candidates', () => {
+  it('returns 11 OR branches without candidates', () => {
     const or = buildKioskDocumentSearchOrConditions('test', { includeCandidateFields: false });
-    expect(or).toHaveLength(9);
+    expect(or).toHaveLength(11);
     expect(or.some((c) => 'candidateFhincd' in c)).toBe(false);
   });
 
-  it('returns 13 OR branches with candidates', () => {
+  it('returns 19 OR branches with candidates', () => {
     const or = buildKioskDocumentSearchOrConditions('x', { includeCandidateFields: true });
-    expect(or).toHaveLength(13);
+    expect(or).toHaveLength(19);
     expect(or.some((c) => 'candidateFhincd' in c)).toBe(true);
     expect(or.some((c) => 'extractedText' in c)).toBe(true);
   });

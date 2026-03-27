@@ -2355,14 +2355,21 @@ export interface KioskDocumentSummary {
   candidateDrawingNumber: string | null;
   candidateProcessName: string | null;
   candidateResourceCd: string | null;
+  candidateDocumentNumber: string | null;
+  summaryCandidate1: string | null;
+  summaryCandidate2: string | null;
+  summaryCandidate3: string | null;
   confidenceFhincd: number | null;
   confidenceDrawingNumber: number | null;
   confidenceProcessName: number | null;
   confidenceResourceCd: number | null;
+  confidenceDocumentNumber: number | null;
   confirmedFhincd: string | null;
   confirmedDrawingNumber: string | null;
   confirmedProcessName: string | null;
   confirmedResourceCd: string | null;
+  confirmedDocumentNumber: string | null;
+  confirmedSummaryText: string | null;
   documentCategory: string | null;
   sourceType: KioskDocumentSource;
   gmailMessageId: string | null;
@@ -2429,6 +2436,8 @@ export async function patchKioskDocumentMetadata(
     confirmedDrawingNumber?: string | null;
     confirmedProcessName?: string | null;
     confirmedResourceCd?: string | null;
+    confirmedDocumentNumber?: string | null;
+    confirmedSummaryText?: string | null;
     documentCategory?: string | null;
   }
 ) {
