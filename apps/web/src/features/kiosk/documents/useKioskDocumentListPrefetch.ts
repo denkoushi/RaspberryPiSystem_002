@@ -1,9 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { getKioskDocumentDetail } from '../../../api/client';
-
-import { kioskDocumentDetailQueryKey } from './kioskDocumentQueryKeys';
+import { kioskDocumentDetailQueryOptions } from '../../../api/kioskDocumentDetailQueryOptions';
 
 export const KIOSK_DOCUMENT_LIST_PREFETCH_DEBOUNCE_MS = 150;
 
@@ -36,10 +34,7 @@ export function useKioskDocumentListPrefetch(options: UseKioskDocumentListPrefet
       if (!id || id === selectedId) return;
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
-        void queryClient.prefetchQuery({
-          queryKey: kioskDocumentDetailQueryKey(id),
-          queryFn: () => getKioskDocumentDetail(id),
-        });
+        void queryClient.prefetchQuery(kioskDocumentDetailQueryOptions(id));
       }, debounceMs);
     },
     [clearTimer, debounceMs, queryClient, selectedId]

@@ -80,7 +80,6 @@ export function KioskDocumentsPage() {
         onSelectId={setSelectedId}
         onRowPointerEnter={schedulePrefetchDocumentId}
         onRowPointerLeave={cancelScheduledPrefetch}
-        onRowFocus={schedulePrefetchDocumentId}
         isLoading={listQuery.isLoading}
         isError={listQuery.isError}
       />

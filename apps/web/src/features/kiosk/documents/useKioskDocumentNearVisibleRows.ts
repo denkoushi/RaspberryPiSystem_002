@@ -13,6 +13,11 @@ export type UseKioskDocumentNearVisibleRowsOptions = {
   rootMargin?: string;
   /** IntersectionObserver の threshold（既定: 近傍スクロール向けに段数を抑える） */
   thresholds?: number[];
+  /**
+   * 表示中の文書を識別するキー（例: 要領書 ID）。
+   * 文書切替時に近傍マウントの基準インデックスを 0 に戻す。
+   */
+  documentKey?: string | null;
 };
 
 type BestCandidate = { index: number; ratio: number };
@@ -30,6 +35,7 @@ export function useKioskDocumentNearVisibleRows(
   const radius = options?.radius ?? KIOSK_DOC_NEAR_VISIBLE_RADIUS;
   const rootMargin = options?.rootMargin ?? KIOSK_DOC_IO_ROOT_MARGIN;
   const thresholds = options?.thresholds ?? KIOSK_DOC_IO_THRESHOLDS;
+  const documentKey = options?.documentKey ?? null;
 
   const [activeIndex, setActiveIndex] = useState(0);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -41,7 +47,10 @@ export function useKioskDocumentNearVisibleRows(
     rafRef.current = null;
     const cand = bestCandidateRef.current;
     if (!cand || cand.ratio <= 0) return;
-    setActiveIndex((prev) => (prev === cand.index ? prev : cand.index));
+    setActiveIndex((prev) => {
+      if (prev === cand.index) return prev;
+      return cand.index;
+    });
   }, []);
 
   const scheduleFlush = useCallback(() => {
@@ -52,7 +61,7 @@ export function useKioskDocumentNearVisibleRows(
   useEffect(() => {
     bestCandidateRef.current = null;
     setActiveIndex(0);
-  }, [rowCount]);
+  }, [documentKey, rowCount]);
 
   useEffect(() => {
     const root = scrollRef.current;

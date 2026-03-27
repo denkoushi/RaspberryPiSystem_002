@@ -2,7 +2,7 @@
 title: KB-313 キオスク要領書（PDF）一覧・Gmail取り込み
 tags: [kiosk, pdf, gmail, api, ocr, metadata]
 audience: [開発者, 運用者]
-last-verified: 2026-03-26
+last-verified: 2026-03-27
 category: knowledge-base
 ---
 
@@ -68,6 +68,8 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **抽出が失敗し続ける**: API コンテナに同梱された **NDLOCR-Lite** が見えているか（`which ndlocr-lite` / `ndlocr-lite --help`）。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` を使う場合はパスの存在と Python 実行権限を確認。`pdftotext` だけではスキャン PDF は空になり、OCR 分岐に入る。
 - **OCR なのに文字がほぼ空**: 旧実装は `ndlocr-lite <pdf>`（stdout 想定）で **NDLOCR-Lite 実 CLI と不一致**だった。現行は PDF→`pdftoppm`→ページごとに `--sourceimg`/`--output` で `.txt` を収集。独自ラッパーは `KIOSK_DOCUMENT_OCR_LEGACY_STDOUT=true` で従来契約に戻す。
 - **拡大（ズーム）が効かない**: 表示モードが **幅いっぱい** のときは仕様で無効。**標準幅** に戻すと拡大 UI が有効になる
+- **別文書を選んでもビューアの縦位置が前の文書のまま／ページがずれる**: 文書 ID 切替時に **スクロール位置**と**近傍表示の active インデックス**をリセットしていないと起きうる。`documentKey`（選択 ID）変更で `activeIndex` を 0 に戻す、`selectedId` 変更で `scrollTop = 0`（`useLayoutEffect`）を確認（`useKioskDocumentNearVisibleRows`・`KioskDocumentsViewerPanel`）。
+- **一覧で連続選択すると右ペインが縦にガタつく（チャタリング）**: DevTools で同一 ID の `GET /api/kiosk-documents/:id` が **短間隔で複数本**ないか確認。**別機能として意図的に二重 GET を入れたわけではなく**、`prefetchQuery` と `useQuery` の **キャッシュ方針不一致**（既定 `staleTime` で先読み直後に再フェッチ）や **`pointerenter` + `focus` の二重先読み**が重なると起きうる。対策は [ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)（共有 `kioskDocumentDetailQueryOptions`・キオスク一覧は pointer のみ先読み）。
 
 ## Investigation
 
@@ -99,11 +101,13 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **検索ヒット抜粋（2026-03-26）**: 左の検索語が **空でないときだけ**、ツールバー右に **`extractedText` 由来の抜粋**（最大 **3** 箇所、前後約 **60** 文字、`buildKioskDocumentSearchSnippetModel`）。ヒットは `<mark>` で強調。本文が無い・一致なしのときは **「一致する箇所は見つかりませんでした」**。検索語が空のときは **右パネル非表示**（要領書画像の縦スペースを確保）。
   - **一覧 API の `q` との差**: 一覧は `normalizeDocumentText`（NFKC 等）後に DB へ **ILIKE 部分一致**。抜粋はクライアントで **原文に対する大文字小文字無視の部分一致**（正規表現メタ文字はエスケープ）。**通常は一致**するが、表記ゆれでは **一覧に出るのに抜粋が空**、またはその逆が稀に起こりうる。
 - **Pi4 スクロール負荷軽減**: `useKioskDocumentNearVisibleRows` がスクロールコンテナを `root` とする `IntersectionObserver` で **近傍のページ行だけ** `<img>` をマウント。`KioskDocumentViewerPageRow` は **プレースホルダ**・`loading="lazy"`・`decoding="async"`。近傍インデックス計算は `kioskDocumentViewerVisibility.ts` の純関数＋ Vitest（`kioskDocumentViewerVisibility.test.ts`）で固定。
-- **表示速度・スクロール（2026-03-26 以降）**: 一覧行の **ホバー／フォーカス**で `GET /api/kiosk-documents/:id` を **デバウンス付きでプリフェッチ**（`useKioskDocumentListPrefetch`・React Query `prefetchQuery`）。IO の `activeIndex` 更新は **requestAnimationFrame で 1 フレームに 1 回**に間引き、近傍半径・`rootMargin` は `kioskDocumentViewerScrollPolicy.ts` に集約（Pi で重い場合は定数調整）。ページ画像 `GET /api/storage/pdf-pages/...` は **ETag**（`size-mtimeMs`）と **304**、および **`Cache-Control`**（既定は長めの `public` + `stale-while-revalidate`。上書きは `PDF_PAGES_CACHE_CONTROL`）でブラウザキャッシュを効かせる。
-- **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`・`kioskDocumentQueryKeys.ts`・`useKioskDocumentListPrefetch.ts`・`kioskDocumentViewerScrollPolicy.ts`）。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
+- **表示速度・スクロール（2026-03-26 以降）**: 一覧行の **ホバー**で `GET /api/kiosk-documents/:id` を **デバウンス付きでプリフェッチ**（`useKioskDocumentListPrefetch`・React Query `prefetchQuery`）。**2026-03-27 以降**: キオスク一覧は **タッチ時の二重イベント抑止**のため **`onRowFocus` からの先読みは接続しない**（`KioskDocumentsPage`）。`useKioskDocumentDetail` と `prefetchQuery` は **`apps/web/src/api/kioskDocumentDetailQueryOptions.ts`** で **`staleTime`（60s）・`gcTime`（5m）・`queryKey`・`queryFn` を共有**し、先読み直後の不要な再フェッチを抑える（判断は [ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)）。IO の `activeIndex` 更新は **requestAnimationFrame で 1 フレームに 1 回**に間引き、近傍半径・`rootMargin` は `kioskDocumentViewerScrollPolicy.ts` に集約（Pi で重い場合は定数調整）。ページ画像 `GET /api/storage/pdf-pages/...` は **ETag**（`size-mtimeMs`）と **304**、および **`Cache-Control`**（既定は長めの `public` + `stale-while-revalidate`。上書きは `PDF_PAGES_CACHE_CONTROL`）でブラウザキャッシュを効かせる。
+- **文書切替時のリセット（2026-03-27）**: 別文書を選んだときに前文書の **スクロール位置・近傍インデックス**を持ち越さないよう、`useKioskDocumentNearVisibleRows` の `documentKey` で `activeIndex` を 0 に戻し、`KioskDocumentsViewerPanel` で `selectedId` 変更時に `scrollTop = 0`（`useLayoutEffect`）。
+- **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`・`kioskDocumentQueryKeys.ts`・`useKioskDocumentListPrefetch.ts`・`kioskDocumentViewerScrollPolicy.ts`）。API 層に **`kioskDocumentDetailQueryOptions.ts`**。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
 
 ## 実機検証
 
+- **デプロイ（要領書: 文書切替リセット + 詳細クエリキャッシュ共有・チャタリング抑制・Web）**: ブランチ `feat/kiosk-documents-viewer-reset-on-switch`（実装例: `kioskDocumentDetailQueryOptions.ts`・`useKioskDocumentDetail` の `staleTime`/`gcTime`・一覧 `onRowFocus` 先読み削除・ビューア/近傍フックのリセット）。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1 台ずつ・Pi3 除外。Ansible Detach Run ID 例: `20260327-104657-10125`（Pi5）/ `20260327-105045-23756`（raspberrypi4）/ `20260327-105453-27111`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（約 38s・2026-03-27、Pi3 `signage-lite/timer` WARN）。**現場 Pi4**: チャタリング解消を運用確認（2026-03-27）。
 - **デプロイ（要領書ビューア表示速度・スクロール改善・Web+API）**: ブランチ `feat/kiosk-documents-viewer-perf`（実装 `713af8cd`、追従修正 `0dcb631b`）。一覧の **ホバー/フォーカスで詳細プリフェッチ**、ビューア **IO+rAF**・**近傍バッファ**、`GET /api/storage/pdf-pages/...` の **ETag・304・Cache-Control**（`PDF_PAGES_CACHE_CONTROL` で上書き可）、**If-None-Match の配列値**対応。本番反映は [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・Pi3 は要領書対象外。**`main` マージ**: [PR #46](https://github.com/denkoushi/RaspberryPiSystem_002/pull/46) merge `b5552153`（2026-03-26）。**Phase12（デプロイ反映後・2026-03-26 実測）**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（**約 105s**、Pi3 `signage-lite/timer` が **WARN**・exit 0）。**マージ後再検証（同一スクリプト・2026-03-26）**: **PASS 29 / WARN 1 / FAIL 0**（**約 103s**）。全ホスト到達時は **PASS 30/0/0** が目安。
 - **デプロイ（要領書ツールバー改修・検索ヒット抜粋・Web）**: ブランチ `feat/kiosk-documents-toolbar-search-snippets`（コミット例 `931a48f3` の perf 修正含む）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**。Ansible Detach Run ID 例: `20260326-190104-11317`（Pi5）/ `20260326-190608-6864`（raspberrypi4）/ `20260326-191127-3225`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（Pi3 が SSH 未到達のとき Pi3 行 **WARN**・全体 exit 0。全ホスト到達時は **PASS 30 / WARN 0 / FAIL 0** が目安）。
 - **デプロイ（要領書フリーワード検索・部分一致化）**: ブランチ `docs/phase12-verification-2026-03-26`（API: `contains`/ILIKE 部分一致、`buildKioskDocumentSearchOrConditions`、FTS raw SQL 削除。仕様は [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)）を [deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・`--detach --follow`・`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（2026-03-26）。**Pi3 は対象外**（要領書対象外のためデプロイ未実施）。Ansible Detach Run ID 例: `20260326-154038-14101`（Pi5）/ `20260326-154739-7415`（raspberrypi4）/ `20260326-155316-6698`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（実行時間の目安 約100〜110s）。**知見**: 検索は `q` 正規化後にタイトル・ファイル名・`extractedText`・確定/候補メタの OR 部分一致。一覧の並びは `createdAt` 降順。`%` は入力から除去（`escapeLikePattern`）。`_` は ILIKE の1文字ワイルドカードになりうるが品番向けに現状は除去しない（KB「フリーワード検索」節・ADR 参照）。
@@ -140,9 +144,11 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **一覧にヒットするのにツールバー抜粋が空／逆**: 上記 **キオスクビューア UI** 節の「一覧 API の `q` との差」を参照。`extractedText` が未生成（`ocrStatus` が `PENDING` 等）のときも抜粋は出ない。
 - **長大な `extractedText` で抜粋生成が重い**: `buildKioskDocumentSearchSnippetModel` は **先頭から最大3マッチまで** `RegExp#exec` で走査し、全マッチ配列は作らない（2026-03-26）。
 - **ページ画像の 304 が効かない／常に 200**: ブラウザやプロキシが `If-None-Match` を **複数値・配列**で送る場合がある。API 側は `ifNoneMatchSatisfied` で **文字列と配列の両方**を解釈する（`apps/api/src/routes/storage/pdf-page-http-cache.ts`・2026-03-26）。`curl -I` で `ETag` / `Cache-Control` を確認する。
+- **Network に詳細 GET が2本／チャタリング**: 上記 Symptoms のとおり **意図的な「二重取得機能」ではない**。`kioskDocumentDetailQueryOptions` の共有とキオスク一覧の **pointer のみ先読み**で切り分け（[ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)）。
 
 ## References
 
+- 詳細クエリキャッシュ方針: [ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)
 - 検索方式の判断: [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
 - 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)

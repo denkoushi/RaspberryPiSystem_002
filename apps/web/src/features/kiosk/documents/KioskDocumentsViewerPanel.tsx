@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 
 import { KioskDocumentsViewerToolbar } from './KioskDocumentsViewerToolbar';
 import { KioskDocumentViewerPageRow } from './KioskDocumentViewerPageRow';
@@ -50,7 +50,15 @@ export function KioskDocumentsViewerPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowCount = pagePairs.length;
 
-  const { setRowElement, shouldShowImage } = useKioskDocumentNearVisibleRows(scrollRef, rowCount);
+  const { setRowElement, shouldShowImage } = useKioskDocumentNearVisibleRows(scrollRef, rowCount, {
+    documentKey: selectedId,
+  });
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !selectedId) return;
+    el.scrollTop = 0;
+  }, [selectedId]);
 
   return (
     <section
