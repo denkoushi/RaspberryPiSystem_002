@@ -27,7 +27,7 @@
 
 ### 🆕 最新アップデート（2026-03-27）
 
-- **✅ キオスク要領書: 文書切替時のページ位置リセット・詳細 GET チャタリング抑制（`kioskDocumentDetailQueryOptions`・`staleTime` 共有・キオスク一覧は pointer のみ先読み）・Pi5+Pi4×2 順次デプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**: Web のみ（API 契約不変）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 29 / WARN 1 / FAIL 0**（約 38s、Pi3 WARN）。**現場 Pi4**: チャタリング解消を確認。**参照**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) / [ADR-20260327](./decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md) / [kiosk-documents.md](./runbooks/kiosk-documents.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク要領書（[PR #47](https://github.com/denkoushi/RaspberryPiSystem_002/pull/47)）: 文書切替時のページ位置リセット・詳細 GET チャタリング抑制（`kioskDocumentDetailQueryOptions`・`staleTime` 共有・キオスク一覧は pointer のみ先読み）・Pi5+Pi4×2 順次デプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**: Web のみ（API 契約不変）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 29 / WARN 1 / FAIL 0**（約 38s、Pi3 WARN）。**現場 Pi4**: チャタリング解消を確認。**参照**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) / [ADR-20260327](./decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md) / [kiosk-documents.md](./runbooks/kiosk-documents.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 調査・分析
 
