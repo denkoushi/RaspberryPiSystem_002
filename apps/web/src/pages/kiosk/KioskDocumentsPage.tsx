@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { resolveKioskDocumentPageImageUrl, type KioskDocumentSource } from '../../api/client';
 import { useKioskDocumentDetail, useKioskDocuments } from '../../api/hooks';
@@ -11,6 +12,7 @@ import {
 } from '../../features/kiosk/documents/KioskDocumentsViewerPanel';
 import { buildKioskDocumentSearchSnippetModel } from '../../features/kiosk/documents/search/kiosk-document-search-snippets';
 import { useKioskDocumentListPrefetch } from '../../features/kiosk/documents/useKioskDocumentListPrefetch';
+import { usesKioskImmersiveLayout } from '../../features/kiosk/kioskImmersiveLayoutPolicy';
 
 type LayoutMode = 'single' | 'spread';
 
@@ -19,6 +21,8 @@ const ZOOM_MAX = 2.5;
 const ZOOM_STEP = 0.25;
 
 export function KioskDocumentsPage() {
+  const location = useLocation();
+  const toolbarRevealEnabled = usesKioskImmersiveLayout(location.pathname);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'' | KioskDocumentSource>('');
@@ -100,6 +104,7 @@ export function KioskDocumentsPage() {
         detailError={detailQuery.isError}
         pagePairs={pagePairs}
         resolveImageUrl={resolveKioskDocumentPageImageUrl}
+        toolbarRevealEnabled={toolbarRevealEnabled}
       />
     </div>
   );

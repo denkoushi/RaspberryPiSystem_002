@@ -1,6 +1,9 @@
 import clsx from 'clsx';
 
+import { resolveKioskDocumentSummaryText } from './kioskDocumentListSummary';
+
 import type { KioskDocumentSource } from '../../../api/client';
+
 
 export type KioskDocumentsListPanelProps = {
   search: string;
@@ -113,7 +116,9 @@ export function KioskDocumentsListPanel({
           <p className="p-2 text-sm text-white/70">表示する要領書がありません</p>
         ) : (
           <ul className="space-y-1">
-            {documents.map((doc) => (
+            {documents.map((doc) => {
+              const summaryText = resolveKioskDocumentSummaryText(doc);
+              return (
               <li key={doc.id}>
                 <button
                   type="button"
@@ -131,12 +136,11 @@ export function KioskDocumentsListPanel({
                   <div className="font-semibold leading-snug">
                     {doc.confirmedDocumentNumber || doc.displayTitle || doc.title}
                   </div>
-                  <div className="mt-0.5 line-clamp-2 text-xs text-white/70">
-                    {doc.confirmedSummaryText ||
-                      doc.summaryCandidate1 ||
-                      doc.summaryCandidate2 ||
-                      doc.summaryCandidate3 ||
-                      '本文要約なし'}
+                  <div
+                    className="mt-0.5 line-clamp-2 text-xs text-white/70"
+                    title={summaryText}
+                  >
+                    {summaryText}
                   </div>
                   <div className="mt-0.5 text-[11px] text-white/60">
                     {doc.sourceAttachmentName || doc.filename} · {doc.sourceType === 'GMAIL' ? 'Gmail' : '手動'}
@@ -150,7 +154,8 @@ export function KioskDocumentsListPanel({
                   ) : null}
                 </button>
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
       </div>
