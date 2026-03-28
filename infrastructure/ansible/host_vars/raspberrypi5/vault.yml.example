@@ -1,6 +1,12 @@
-vault_api_jwt_access_secret: "change-me-in-production"
-vault_api_jwt_refresh_secret: "change-me-in-production"
+# このファイルは `ansible-vault encrypt` で暗号化した `vault.yml` のサンプルです。
+# 以下の値を実環境のシークレットで上書きし、`mv vault.yml.example vault.yml`
+# したあとに ansible-vault で暗号化してください。
+
+vault_api_jwt_access_secret: "change-me-access"
+vault_api_jwt_refresh_secret: "change-me-refresh"
 vault_status_agent_client_key: "client-key-raspberrypi5-server"
+vault_api_local_llm_shared_token: ""
+
 # Tailscale preauth key (reusable, tagged推奨)
 vault_tailscale_auth_key: ""
 
@@ -18,14 +24,4 @@ vault_dropbox_app_key: ""
 vault_dropbox_app_secret: ""
 vault_dropbox_refresh_token: ""
 vault_dropbox_access_token: ""
-
-# このファイルは `ansible-vault encrypt` で暗号化した `vault.yml` のサンプルです。
-# 以下の値を実環境のシークレットで上書きし、`mv vault.yml.example vault.yml`
-# したあとに ansible-vault で暗号化してください。
-
-vault_api_jwt_access_secret: "change-me-access"
-vault_api_jwt_refresh_secret: "change-me-refresh"
-vault_status_agent_client_key: "client-key-raspberrypi5-server"
-# Tailscale preauth key (reusable, tagged推奨)
-vault_tailscale_auth_key: ""
 

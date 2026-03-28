@@ -32,6 +32,10 @@ all:
           api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
           api_jwt_access_secret: "{{ vault_api_jwt_access_secret | default('change-me-in-production') }}"
           api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret | default('change-me-in-production') }}"
+          api_local_llm_base_url: "http://100.107.223.92:38081"
+          api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"
+          api_local_llm_model: "Qwen_Qwen3.5-9B-Q4_K_M.gguf"
+          api_local_llm_timeout_ms: "60000"
           # Web環境変数
           web_api_base_url: "/api"
           web_ws_base_url: "/ws"

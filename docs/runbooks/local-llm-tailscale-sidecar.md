@@ -108,6 +108,33 @@ sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker 
   - `LOCAL_LLM_MODEL=Qwen_Qwen3.5-9B-Q4_K_M.gguf`
   - `LOCAL_LLM_TIMEOUT_MS=60000`
 
+### Pi5 API への恒久設定
+
+- 本番 Pi5 では `infrastructure/docker/.env` へ手動で直接追記せず、Ansible で維持する
+- 非 secret 値は `infrastructure/ansible/inventory.yml` の `raspberrypi5` ホスト変数で管理する
+  - `api_local_llm_base_url`
+  - `api_local_llm_model`
+  - `api_local_llm_timeout_ms`
+- secret は `infrastructure/ansible/host_vars/raspberrypi5/vault.yml` で管理する
+  - `vault_api_local_llm_shared_token`
+
+設定例:
+
+```bash
+ansible-vault edit infrastructure/ansible/host_vars/raspberrypi5/vault.yml
+```
+
+```yaml
+vault_api_local_llm_shared_token: "<Ubuntu の api-token>"
+```
+
+反映:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
 最小確認:
 
 ```bash
