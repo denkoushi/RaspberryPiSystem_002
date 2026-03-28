@@ -27,13 +27,14 @@
 
 ### LocalLLM（Ubuntu / Tailscale）
 
-- **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)
+- **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（**トークンローテーション**は同 Runbook の「共有トークンのローテーション」節）
 - **判断記録**: [ADR-20260328](./decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)（Ubuntu / Tailscale 側） / [ADR-20260329](./decisions/ADR-20260329-local-llm-pi5-api-operations.md)（Pi5 API 代理・ログ方針）
 - **トラブルシュート**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)（Ubuntu sidecar 側） / [KB-318](./knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（Pi5 API コンテナへの `LOCAL_LLM_*` は `docker.env` 経由）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
 ### 🆕 最新アップデート（2026-03-28）
 
+- **管理コンソール LocalLLM（`/admin/local-llm`）・Runbook トークンローテーション・順次デプロイ・実機検証（2026-03-28）**: `feat/admin-local-llm-ui-and-runbook`（[PR #53](https://github.com/denkoushi/RaspberryPiSystem_002/pull/53) → `main`）。Pi5→Pi4×4 を **`--limit` 1 台ずつ**（Pi3 除外）。**実機**: Tailscale 経由 `health` / 未認証 `local-llm/status` **401** / upstream **`/healthz` 200** / **`/admin/local-llm` 200**。`AdminLayout` の localhost デバッグ `fetch` を除去。**参照**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（実機検証メモ）/ [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **Pi5 LocalLLM: 可観測性ログ + 運用 ADR + 実機スモーク（2026-03-28）**: `LocalLlmObservability`（pino・プロンプト/トークン/本文は出さない）を [ADR-20260329](./decisions/ADR-20260329-local-llm-pi5-api-operations.md) に沿って実装。本番 Pi5 は `feat/local-llm-policy-and-observability` を **`--limit raspberrypi5`** でデプロイ。**実機**: 未認証 `local-llm/status` → **401**、api コンテナから upstream **`/healthz` → 200**、`/api/system/health` はメモリ要因で **degraded でも DB ok** の例を記録。**参照**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（実機スモーク）/ [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **Pi5 本番 API へ `LOCAL_LLM_*` を Ansible 正規経路で配線（[KB-318](./knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）**: `docker-compose.server.yml` の `api` は `apps/api/.env` を `env_file` に含めないため、`docker.env.j2` → `infrastructure/docker/.env` へ出力する必要がある。デプロイ後検証を server ロールに拡張。**参照**: [deployment.md](./guides/deployment.md)（本番セキュリティ設定）/ [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **Pi5 API から Ubuntu LocalLLM への代理疎通を実装・確認**: `GET /api/system/local-llm/status` と `POST /api/system/local-llm/chat/completions` を追加し、Pi5 API が `Authorization: Bearer ...` を受けて Ubuntu 側へ `X-LLM-Token` 付きで代理呼び出しする構成を確認。**設計**: `LocalLlmGateway` を Fastify に注入し、応答は `model` / `content` / `finishReason` / `usage` に正規化。**実疎通**: Pi5 API -> Ubuntu LocalLLM で `configured=true` / `health.ok=true` / `疎通確認 OK です` を確認。**ローカル**: Mac 向け `docker-compose.mac-local.override.yml` で `db` / `api` を `/opt/...` 依存なしに起動可能化。**参照**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md) / [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
