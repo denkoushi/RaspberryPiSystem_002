@@ -11,6 +11,7 @@ import { getAlertsDispatcher } from './services/alerts/alerts-dispatcher.js';
 import { getAlertsDbDispatcher } from './services/alerts/alerts-db-dispatcher.js';
 import { getAlertsIngestor } from './services/alerts/alerts-ingestor.js';
 import { loadAlertsDispatcherConfig } from './services/alerts/alerts-config.js';
+import { getPhotoToolLabelScheduler } from './services/tools/photo-tool-label/photo-tool-label.scheduler.js';
 
 if (process.env['NODE_ENV'] !== 'test') {
   buildServer()
@@ -71,6 +72,10 @@ if (process.env['NODE_ENV'] !== 'test') {
       const alertsIngestor = getAlertsIngestor();
       await alertsIngestor.start();
 
+      const photoToolLabelScheduler = getPhotoToolLabelScheduler();
+      photoToolLabelScheduler.start();
+      logger.info('Photo tool label scheduler started');
+
       // Graceful shutdown (best-effort)
       const shutdown = async (signal: string) => {
         try {
@@ -82,6 +87,7 @@ if (process.env['NODE_ENV'] !== 'test') {
           kioskDocOcrScheduler.stop();
           gmailTrashCleanupScheduler.stop();
           dueManagementTuningOrchestrator.stop();
+          getPhotoToolLabelScheduler().stop();
           await app.close();
         } catch (err) {
           logger.warn({ err, signal }, 'Failed during shutdown');

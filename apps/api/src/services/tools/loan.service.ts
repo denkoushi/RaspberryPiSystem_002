@@ -386,6 +386,7 @@ export class LoanService {
           clientId: resolvedClientId,
           photoUrl: photoPathInfo.relativePath,
           photoTakenAt: new Date(),
+          photoToolLabelRequested: true,
           notes: input.note ?? undefined
         },
         include: { item: true, employee: true, client: true }

@@ -194,5 +194,23 @@ export class PhotoStorage {
 
     return await fs.readFile(fullPath);
   }
+
+  /**
+   * 元画像の photoUrl に対応するサムネイル JPEG を読み込む
+   * （`deletePhoto` と同じパス規則。`signage.service` の buildThumbnailUrl と整合）
+   */
+  static async readThumbnailBuffer(photoUrl: string): Promise<Buffer> {
+    if (!photoUrl.startsWith('/api/storage/photos/')) {
+      throw new Error(`Invalid photoUrl for thumbnail: ${photoUrl}`);
+    }
+    const thumbnailRelativePath = photoUrl
+      .replace('/api/storage/photos/', '/storage/thumbnails/')
+      .replace('.jpg', '_thumb.jpg');
+    const thumbnailFullPath = thumbnailRelativePath.replace(
+      '/storage/thumbnails/',
+      `${getThumbnailsDir()}/`
+    );
+    return await fs.readFile(thumbnailFullPath);
+  }
 }
 
