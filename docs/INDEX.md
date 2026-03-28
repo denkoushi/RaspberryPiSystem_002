@@ -27,7 +27,7 @@
 
 ### LocalLLM（Ubuntu / Tailscale）
 
-- **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)
+- **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（**トークンローテーション**は同 Runbook の「共有トークンのローテーション」節）
 - **判断記録**: [ADR-20260328](./decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)（Ubuntu / Tailscale 側） / [ADR-20260329](./decisions/ADR-20260329-local-llm-pi5-api-operations.md)（Pi5 API 代理・ログ方針）
 - **トラブルシュート**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)（Ubuntu sidecar 側） / [KB-318](./knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（Pi5 API コンテナへの `LOCAL_LLM_*` は `docker.env` 経由）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)

@@ -225,6 +225,61 @@ docker compose -f infrastructure/docker/docker-compose.mac-local.override.yml do
 - **`docker compose config` は live secret 入りで実行しない**
   - 展開後の環境変数が端末へ表示されるため
 
+## 共有トークンのローテーション
+
+Ubuntu 側の `X-LLM-Token`（ファイル `api-token`）と Pi5 API コンテナの `LOCAL_LLM_SHARED_TOKEN`（Ansible の `vault_api_local_llm_shared_token`）は **常に同一値**である必要がある。いずれか一方だけ更新すると **401** や upstream 失敗になる（切り分けは [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）。
+
+### 新しいトークン値の用意
+
+- **十分長いランダム文字列**を生成する（例: `openssl rand -hex 32`）。平文をチャット・Issue・スクリーンショットに貼らない。
+
+### Ubuntu（正本ファイル）
+
+1. `localllm` ユーザーで、次のファイルを **新しい値だけ**に置き換える（改行は入れない想定）。
+
+   ```text
+   /home/localllm/.config/local-llm-system/api-token
+   ```
+
+2. `nginx` がトークンを読み込む構成の場合、反映のため **`nginx` コンテナの再起動**が必要なことがある。通常は `docker compose restart nginx`（`compose` ディレクトリは上記「ディレクトリ」節と同じ）。
+
+3. Ubuntu 上の「認証あり確認」（本 Runbook の「ローカル疎通確認」）で `v1/models` が通ることを確認する。
+
+### Pi5（Ansible vault）
+
+1. リポジトリで vault を編集する。
+
+   ```bash
+   ansible-vault edit infrastructure/ansible/host_vars/raspberrypi5/vault.yml
+   ```
+
+2. `vault_api_local_llm_shared_token` を **Ubuntu の `api-token` と同じ文字列**に更新する。
+
+### 反映デプロイ（Pi5 のみ）
+
+- [deployment.md](../guides/deployment.md) に従い、**全クライアントではなく Pi5 のみ**に限定する。
+
+  ```bash
+  export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+  ```
+
+  （ホストやスクリプトのパスは環境に合わせて読み替える。）
+
+### 検証
+
+- 本 Runbook の「最小確認」（`GET /api/system/local-llm/status` と `POST .../chat/completions` に `Authorization: Bearer` を付与）。
+- 必要に応じて「Pi5 実機スモーク」（API コンテナから upstream `/healthz`）。
+
+### 失敗時（401 や `health.ok=false`）
+
+- **両者の値が一致しているか**を再確認する（Ubuntu ファイルと vault の typo・古い値の残り）。
+- Pi5 側の環境変数が **`infrastructure/docker/.env`（Ansible 生成）** に載っているかは [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) を参照。
+
+## 管理画面からの試用
+
+- 管理コンソールの **`/admin/local-llm`** から、ステータス取得と試用チャットができる（Pi5 API の `ADMIN` / `MANAGER` と同じ権限。**VIEWER** は API も画面も利用不可）。
+
 ## トラブルシュート
 
 ### `tailscale` が再起動ループする
