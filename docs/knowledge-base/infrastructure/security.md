@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - セキュリティ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-03-20
+last-verified: 2026-03-28
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,10 +11,54 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 20件  
+**件数**: 21件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
+
+---
+
+### [KB-317] Ubuntu LocalLLM を Tailscale sidecar + `tag:llm` で分離公開する
+
+**状況**: Ubuntu PC は実験用途でも使い続けつつ、本システム専用の LocalLLM だけを **tailnet に安全に参加**させたい。既存の手動運用 `~/llama.cpp` + `--host 0.0.0.0 --port 8081` は残すが、業務系は完全分離したい。
+
+**事象**:
+- 既存の `llama-server` は **ホストOS直起動**で、`0.0.0.0:8081` のため LAN 到達範囲へそのまま待ち受けていた。
+- Ubuntu ホスト全体を tailnet に載せると、実験用の他プロセスまで tailnet 側へ露出する恐れがある。
+- `docker compose config` や `tailscale` コンテナの起動ログに **`TS_AUTHKEY` が展開表示**され、漏えい時は revoke が必要になる。
+- `tailscale up --advertise-tags=tag:llm` 後に `TS_EXTRA_ARGS` へ同じタグ設定を残さないと、**`requires mentioning all non-default flags`** で再起動ループした。
+
+**有効だった対策**:
+- ✅ **専用ユーザー/専用領域**を分離（`localllm`、`/home/localllm/local-llm-system`）
+- ✅ **モデル実体も専用コピー**へ分離し、既存ユーザーのホームを直接読ませない
+- ✅ **Tailscale sidecar + `network_mode: service:tailscale`** で `llama-server` / `nginx` を 1 ノード化
+- ✅ 推論本体は **`127.0.0.1:38082`**、tailnet 入口は **`38081`** のみへ分離
+- ✅ `nginx` で **`X-LLM-Token`** を検査し、認証なしは **403**
+- ✅ Tailscale ACL を **`tag:server -> tag:llm: tcp:38081` のみ**にし、Pi5 以外からの直接到達を禁止
+
+**実装のポイント**:
+- tailnet ノード名: `ubuntu-local-llm-system`
+- tailnet IP（2026-03-28時点）: `100.107.223.92`
+- タグ: `tag:llm`
+- 入口: `nginx:38081`
+- 内部推論: `llama-server:38082`
+- 既存の実験用 `~/llama.cpp` / `8081` は **別系統として維持**
+
+**学んだこと / 再発防止**:
+- live secret 入りの状態で **`docker compose config` を実行しない**
+- auth key は **参加後に revoke + ローカル削除** し、平常運用では残さない
+- `tailscale up` で追加した **非デフォルト設定は `TS_EXTRA_ARGS` にも永続化**する
+- 実験用ポートと業務用ポートは **分ける**（今回は `8081` と `38081`）
+
+**関連ファイル**:
+- `/home/localllm/local-llm-system/compose/compose.yaml`
+- `/home/localllm/local-llm-system/config/nginx/default.conf.template`
+- `/home/localllm/local-llm-system/config/runtime.env`
+- `/home/localllm/.config/local-llm-system/api-token`
+- `docs/runbooks/local-llm-tailscale-sidecar.md`
+- `docs/security/tailscale-policy.md`
+- `docs/security/system-inventory.md`
+- `docs/decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md`
 
 ---
 

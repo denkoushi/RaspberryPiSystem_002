@@ -25,8 +25,16 @@
 - **詳細 API の React Query キャッシュ（チャタリング抑止）**: [ADR-20260327](./decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)
 - **運用手順**: [kiosk-documents.md](./runbooks/kiosk-documents.md)
 
+### LocalLLM（Ubuntu / Tailscale）
+
+- **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)
+- **判断記録**: [ADR-20260328](./decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)
+- **トラブルシュート**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)
+- **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
+
 ### 🆕 最新アップデート（2026-03-28）
 
+- **Ubuntu LocalLLM 専用ノード（`ubuntu-local-llm-system`）を Tailscale sidecar + `tag:llm` + 認証プロキシで分離構築**: Ubuntu ホスト全体は tailnet へ直接参加させず、`localllm` 専用ディレクトリ・`llama-server` 内部待受 `127.0.0.1:38082`・`nginx` 入口 `38081`・`X-LLM-Token`・ACL `tag:server -> tag:llm: tcp:38081` を採用。**トラブルシュート**: `docker compose config` や `tailscale` 起動ログへ `TS_AUTHKEY` が表示されうるため、漏えい時は即 revoke。`tag:llm` を付けたら `TS_EXTRA_ARGS` に `--advertise-tags=tag:llm` を残さないと再起動ループする。**参照**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する) / [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md) / [ADR-20260328](./decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md) / [tailscale-policy.md](./security/tailscale-policy.md)。
 - **Pi4 3台目（第2工場 FJV60/80・Ansible `raspi4-fjv60-80`）追加・register-clients・初回 `deploy-staged`・`verify-phase12-real.sh` 拡張・実機キオスク/NFC 確認・ナレッジ反映**: `inventory.yml` / `group_vars/all.yml` / 検証スクリプト / [deployment.md](./guides/deployment.md)。**トラブルシュート**: Pi5→新 Pi4 の LAN 直 `No route to host` は **経路不足**（Tailscale 誤認で切り捨てない）。Ansible は **`infrastructure/ansible` + `ansible.cfg`**。**参照**: [KB-315](./knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk) / [client-initial-setup.md](./guides/client-initial-setup.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **Pi4 4台目（第2工場 StoneBase01・Ansible `raspi4-kensaku-stonebase01`）追加・Tailscale `100.101.113.95` 反映・register-clients・`deploy-staged --limit` 成功**: 初回は `nfc-agent には Docker が必要です` で fail-fastし、`curl -fsSL https://get.docker.com | sudo sh` 後に再実行で復旧。最終的に `deploy-status` は `isMaintenance=false`、`kiosk-browser.service` / `status-agent.timer` active、`docker-nfc-agent-1` Up を確認。**参照**: [KB-316](./knowledge-base/infrastructure/ansible-deployment.md#kb-316-pi4-stonebase-fourth-kiosk) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 

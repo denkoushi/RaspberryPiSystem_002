@@ -1,6 +1,6 @@
 # セキュリティ評価向け システム構造台帳
 
-最終更新: 2026-01-28
+最終更新: 2026-03-28
 
 ## 目的
 
@@ -8,7 +8,7 @@
 
 ## 対象範囲
 
-- **評価対象**: Pi5（サーバー）、Pi4（キオスク）、Pi3（サイネージ）
+- **評価対象**: Pi5（サーバー）、Pi4（キオスク）、Pi3（サイネージ）、Ubuntu LocalLLM 専用ノード
 - **評価対象外**: 物理セキュリティ、外部サービス側のセキュリティ設定
 
 ## コンポーネント構成（概要）
@@ -23,6 +23,10 @@
   - NFC Agent（Python、WebSocket）
 - **Pi3（サイネージ）**
   - サイネージ表示（軽量クライアント）
+- **Ubuntu LocalLLM 専用ノード（別ホスト・tailnet専用）**
+  - Tailscale sidecar（`ubuntu-local-llm-system`、`tag:llm`）
+  - 認証入口: `nginx`（`38081`、`X-LLM-Token`）
+  - 推論本体: `llama.cpp` `llama-server`（`127.0.0.1:38082`、CUDA）
 
 参考: [docs/architecture/overview.md](../architecture/overview.md)
 
@@ -35,6 +39,8 @@
    - NFC Agent → WebSocket → Web UI → API（POST）
 3. **サイネージ配信**
    - APIがレンダリング済み画像/構成を配信
+4. **内部推論フロー（準備済み・Pi5到達確認前）**
+   - Pi5 → tailnet 上の `ubuntu-local-llm-system:38081` → `nginx`（`X-LLM-Token` 検査）→ `llama-server:38082`
 
 参考: [docs/architecture/overview.md](../architecture/overview.md)
 
@@ -44,6 +50,7 @@
 - **Gmail**: CSV自動インポート
 - **Slack**: キオスク問い合わせ通知
 - **Tailscale**: 通常運用の安全な接続経路（localは緊急時のみ）
+- **Ubuntu LocalLLM（内部専用）**: tailnet 内のプライベート推論サーバ（Pi5 からのみ利用）
 
 参考: [docs/guides/external-integration-ledger.md](../guides/external-integration-ledger.md)
 
@@ -57,6 +64,7 @@
 - **server**: Pi5（サーバー）
 - **kiosk**: Pi4/将来のキオスク端末群（入力・NFC等）
 - **signage**: Pi3/Zero2W等のサイネージ端末群（表示専用）
+- **llm**: Ubuntu 上の本システム専用 LocalLLM ノード
 
 ### 必須通信（Allowlistの原型）
 
@@ -64,11 +72,13 @@
 - **kiosk → server**: HTTPS 443（`/kiosk`、`/api/*` 等）
 - **signage → server**: HTTPS 443（表示コンテンツ取得）
 - **server → kiosk/signage**: SSH（更新・保守）
+- **server → llm**: TCP 38081（LocalLLM 入口、`X-LLM-Token` 必須）
 - **kiosk内ループバック**: `ws://localhost:7071/stream`、`http://localhost:7071/api/agent/*`（NFC Agent）
 
 ### 原則禁止（横移動面の削減）
 
 - **client ↔ client**（kiosk↔kiosk、signage↔kiosk、signage↔signage など）は原則不要のため禁止に寄せる
+- **admin/kiosk/signage → llm** は原則禁止（Pi5 のみを入口にする）
 
 ### 運用上の割り切り（WebRTC通話）
 
@@ -77,8 +87,9 @@
 
 ## 公開面（Attack Surface）
 
-- **公開ポート**: 22/80/443/5900（詳細はポート監査ドキュメント参照）
-- **内部限定ポート**: 5432/8080（Docker内部のみ）
+- **公開ポート（Pi5）**: 22/80/443/5900（詳細はポート監査ドキュメント参照）
+- **tailnet限定ポート**: 38081（Ubuntu LocalLLM ノード、ACLで `tag:server` のみ）
+- **内部限定ポート**: 5432/8080（Pi5 Docker内部のみ）、38082（Ubuntu LocalLLM 内部のみ）
 - **管理画面**: IP制限あり
 
 参考: [docs/security/port-security-audit.md](./port-security-audit.md), [docs/security/port-security-verification-results.md](./port-security-verification-results.md)
@@ -89,6 +100,7 @@
 - **RBAC**: ADMIN/MANAGER/VIEWER
 - **MFA**: 管理画面の追加強化（TOTP/バックアップコード）
 - **`x-client-key`認証**: キオスク系API
+- **`X-LLM-Token` ヘッダ**: Ubuntu LocalLLM 入口の内部認証
 
 参考: [docs/api/auth.md](../api/auth.md), [docs/security/requirements.md](./requirements.md)
 
@@ -102,6 +114,7 @@
   - Dropbox OAuthトークン
 - **環境変数**: `infrastructure/docker/.env`（Ansibleで生成）
 - **証明書**: `/opt/RaspberryPiSystem_002/certs/`
+- **Ubuntu LocalLLM トークン**: `/home/localllm/.config/local-llm-system/api-token` と `/home/localllm/local-llm-system/config/runtime.env`
 
 参考: [docs/guides/external-integration-ledger.md](../guides/external-integration-ledger.md), [docs/security/requirements.md](./requirements.md)
 
