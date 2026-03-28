@@ -18,12 +18,14 @@ WARNED=0
 CLIENT_KEY_PI4="client-key-raspberrypi4-kiosk1"
 CLIENT_KEY_ROBODRILL="client-key-raspi4-robodrill01-kiosk1"
 CLIENT_KEY_FJV="client-key-raspi4-fjv60-80-kiosk1"
+CLIENT_KEY_STONEBASE="client-key-raspi4-kensaku-stonebase01-kiosk1"
 
 PI5_USER="denkon5sd02"
 PI3_USER="signageras3"
 PI4_USER="tools03"
 PI4_ROBODRILL_USER="tools04"
 PI4_FJV_USER="raspi4-fjv60-80"
+PI4_STONEBASE_USER="raspi4-kensaku-stonebase01"
 
 log_pass() {
   PASSED=$((PASSED + 1))
@@ -125,6 +127,31 @@ else
   exit 1
 fi
 
+# StoneBase01: all.yml の tailscale_network に 100.x が無い間は LAN にフォールバック（Ansible と同じ）
+PI4_STONEBASE_IP="$(
+  ACTUAL_MODE="${ACTUAL_MODE}" python3 - <<'PY'
+import os
+import sys
+from pathlib import Path
+
+try:
+    import yaml  # type: ignore
+except Exception:
+    print("192.168.10.238")
+    sys.exit(0)
+
+actual = os.environ.get("ACTUAL_MODE", "tailscale")
+path = Path("infrastructure/ansible/group_vars/all.yml")
+data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+lan = (data.get("local_network") or {}).get("raspi4_kensaku_stonebase01_ip") or "192.168.10.238"
+if actual == "local":
+    print(lan)
+else:
+    ts = (data.get("tailscale_network") or {}).get("raspi4_kensaku_stonebase01_ip")
+    print(ts or lan)
+PY
+)"
+
 BASE_URL="https://${PI5_IP}"
 
 echo "=== Phase12 実機検証（自動） ==="
@@ -145,6 +172,9 @@ check_contains "deploy-status raspi4-robodrill01" "${DEPLOY_ROBO}" '"isMaintenan
 
 DEPLOY_FJV="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_FJV}" 2>&1 || true)"
 check_contains "deploy-status raspi4-fjv60-80" "${DEPLOY_FJV}" '"isMaintenance":false'
+
+DEPLOY_STONEBASE="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_STONEBASE}" 2>&1 || true)"
+check_contains "deploy-status raspi4-kensaku-stonebase01" "${DEPLOY_STONEBASE}" '"isMaintenance":false'
 
 KIOSK_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/active" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスクAPI /tools/loans/active" "${KIOSK_CODE}" "200"
@@ -259,6 +289,15 @@ check_dual_active_lines "Pi4 robodrill01 kiosk/status-agent" "${PI4_ROBO_STATUS}
 
 PI4_FJV_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_FJV_USER}@${PI4_FJV_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
 check_dual_active_lines "Pi4 fjv60-80 kiosk/status-agent" "${PI4_FJV_STATUS}"
+
+PI4_STONEBASE_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_STONEBASE_USER}@${PI4_STONEBASE_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
+if printf "%s" "${PI4_STONEBASE_STATUS}" | grep -Eqi 'No route to host|timed out|Connection refused'; then
+  log_warn "Pi4 stonebase01 kiosk/status-agent" "Pi5 から ${PI4_STONEBASE_IP} へ SSH 不可（LAN 経路なしの可能性）。新 Pi4 で Tailscale 参加後、all.yml の tailscale_network に 100.x を追記し、本スクリプトの PI4_STONEBASE_IP（tailscale 側）も更新"
+elif printf "%s" "${PI4_STONEBASE_STATUS}" | grep -Ec '^active$' >/dev/null 2>&1 && [ "$(printf "%s\n" "${PI4_STONEBASE_STATUS}" | grep -Ec '^active$' || true)" -ge 2 ]; then
+  log_pass "Pi4 stonebase01 kiosk/status-agent"
+else
+  log_fail "Pi4 stonebase01 kiosk/status-agent" "${PI4_STONEBASE_STATUS}"
+fi
 
 PI3_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI3_USER}@${PI3_IP} 'systemctl is-active signage-lite.service signage-lite-update.timer' 2>&1" || true)"
 if [ "$(printf "%s\n" "${PI3_STATUS}" | grep -Ec '^active$' || true)" -ge 2 ]; then

@@ -661,11 +661,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **サイネージ関連**: Pi5のみ（サーバー側レンダリングのため）
 - **Pi3固有の設定**: Pi3のみ（`--limit raspberrypi3`）
 
-**知見（2026-03-06）**: 事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×3）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×3 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
+**知見（2026-03-06）**: 事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×4）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×4 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
 
 **知見（2026-03-09）**: `--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハングする事象が発生した（[KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。**再発防止（2026-03-09 適用済み）**: Pi4 は常時 1 台ずつ直列実行（`deploy_serial.kiosk: 1`）に変更済み。ハング発生時は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「Pi4デプロイハング時の復旧手順」に従い、ハングプロセスを停止・ロック解除後、Pi4 を単体で `--limit "raspberrypi4"` / `--limit "raspi4-robodrill01"` により再デプロイする。
 
-**1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×3 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 の順で、前のデプロイが成功してから次を実行する。
+**1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×4 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01 の順で、前のデプロイが成功してから次を実行する。
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
@@ -677,6 +677,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-robodrill01" --detach --follow
 # 4台目: Pi4 FJV60/80（3台目成功後）
 ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-fjv60-80" --detach --follow
+# 5台目: Pi4 Kensaku StoneBase01（4台目成功後）
+./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-kensaku-stonebase01" --detach --follow
 ```
 
 詳細は [KB-226](../knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) を参照。
