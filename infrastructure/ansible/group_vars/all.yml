@@ -8,6 +8,7 @@ local_network:
   raspberrypi5_ip: "192.168.10.230"
   raspberrypi4_ip: "192.168.10.224"
   raspi4_robodrill01_ip: "192.168.10.236"
+  raspi4_fjv60_80_ip: "192.168.10.12"
   raspberrypi3_ip: "192.168.128.152"
 
 # 通常運用（Tailscale経由）に使用するIPアドレス
@@ -16,6 +17,7 @@ tailscale_network:
   raspberrypi5_ip: "100.106.158.2"
   raspberrypi4_ip: "100.74.144.79"
   raspi4_robodrill01_ip: "100.123.1.113"
+  raspi4_fjv60_80_ip: "100.100.229.95"
   raspberrypi3_ip: "100.105.224.86"
 
 # 現在有効なネットワーク設定（network_modeに応じて切り替え）

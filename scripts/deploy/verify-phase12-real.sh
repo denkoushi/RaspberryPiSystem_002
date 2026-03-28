@@ -17,11 +17,13 @@ WARNED=0
 
 CLIENT_KEY_PI4="client-key-raspberrypi4-kiosk1"
 CLIENT_KEY_ROBODRILL="client-key-raspi4-robodrill01-kiosk1"
+CLIENT_KEY_FJV="client-key-raspi4-fjv60-80-kiosk1"
 
 PI5_USER="denkon5sd02"
 PI3_USER="signageras3"
 PI4_USER="tools03"
 PI4_ROBODRILL_USER="tools04"
+PI4_FJV_USER="raspi4-fjv60-80"
 
 log_pass() {
   PASSED=$((PASSED + 1))
@@ -109,12 +111,14 @@ if pi5_reachable_tailscale; then
   PI3_IP="100.105.224.86"
   PI4_IP="100.74.144.79"
   PI4_ROBODRILL_IP="100.123.1.113"
+  PI4_FJV_IP="100.100.229.95"
   ACTUAL_MODE="tailscale"
 elif pi5_reachable_local; then
   PI5_IP="192.168.10.230"
   PI3_IP="192.168.10.109"
   PI4_IP="192.168.10.223"
   PI4_ROBODRILL_IP="192.168.10.224"
+  PI4_FJV_IP="192.168.10.12"
   ACTUAL_MODE="local"
 else
   echo "エラー: Pi5に到達できません"
@@ -138,6 +142,9 @@ check_contains "deploy-status raspberrypi4" "${DEPLOY_PI4}" '"isMaintenance":fal
 
 DEPLOY_ROBO="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_ROBODRILL}" 2>&1 || true)"
 check_contains "deploy-status raspi4-robodrill01" "${DEPLOY_ROBO}" '"isMaintenance":false'
+
+DEPLOY_FJV="$(curl -sk "${BASE_URL}/api/system/deploy-status" -H "x-client-key: ${CLIENT_KEY_FJV}" 2>&1 || true)"
+check_contains "deploy-status raspi4-fjv60-80" "${DEPLOY_FJV}" '"isMaintenance":false'
 
 KIOSK_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/active" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスクAPI /tools/loans/active" "${KIOSK_CODE}" "200"
@@ -249,6 +256,9 @@ check_dual_active_lines "Pi4 raspberrypi4 kiosk/status-agent" "${PI4_STATUS}"
 
 PI4_ROBO_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_ROBODRILL_USER}@${PI4_ROBODRILL_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
 check_dual_active_lines "Pi4 robodrill01 kiosk/status-agent" "${PI4_ROBO_STATUS}"
+
+PI4_FJV_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_FJV_USER}@${PI4_FJV_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
+check_dual_active_lines "Pi4 fjv60-80 kiosk/status-agent" "${PI4_FJV_STATUS}"
 
 PI3_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI3_USER}@${PI3_IP} 'systemctl is-active signage-lite.service signage-lite-update.timer' 2>&1" || true)"
 if [ "$(printf "%s\n" "${PI3_STATUS}" | grep -Ec '^active$' || true)" -ge 2 ]; then
