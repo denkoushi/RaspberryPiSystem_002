@@ -28,6 +28,7 @@
 ### 🆕 最新アップデート（2026-03-28）
 
 - **Pi4 3台目（第2工場 FJV60/80・Ansible `raspi4-fjv60-80`）追加・register-clients・初回 `deploy-staged`・`verify-phase12-real.sh` 拡張・実機キオスク/NFC 確認・ナレッジ反映**: `inventory.yml` / `group_vars/all.yml` / 検証スクリプト / [deployment.md](./guides/deployment.md)。**トラブルシュート**: Pi5→新 Pi4 の LAN 直 `No route to host` は **経路不足**（Tailscale 誤認で切り捨てない）。Ansible は **`infrastructure/ansible` + `ansible.cfg`**。**参照**: [KB-315](./knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk) / [client-initial-setup.md](./guides/client-initial-setup.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **Pi4 4台目（第2工場 StoneBase01・Ansible `raspi4-kensaku-stonebase01`）追加・Tailscale `100.101.113.95` 反映・register-clients・`deploy-staged --limit` 成功**: 初回は `nfc-agent には Docker が必要です` で fail-fastし、`curl -fsSL https://get.docker.com | sudo sh` 後に再実行で復旧。最終的に `deploy-status` は `isMaintenance=false`、`kiosk-browser.service` / `status-agent.timer` active、`docker-nfc-agent-1` Up を確認。**参照**: [KB-316](./knowledge-base/infrastructure/ansible-deployment.md#kb-316-pi4-stonebase-fourth-kiosk) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-03-27）
 

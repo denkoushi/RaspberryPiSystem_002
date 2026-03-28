@@ -20,8 +20,7 @@ tailscale_network:
   raspberrypi4_ip: "100.74.144.79"
   raspi4_robodrill01_ip: "100.123.1.113"
   raspi4_fjv60_80_ip: "100.100.229.95"
-  # StoneBase01: Pi5 から LAN 直が無い環境では未設定のまま local_network にフォールバックする。
-  # 新 Pi4 で Tailscale 参加後、ここに 100.x を追加すること（例: raspi4_kensaku_stonebase01_ip: "100.x.x.x"）
+  raspi4_kensaku_stonebase01_ip: "100.101.113.95"
   raspberrypi3_ip: "100.105.224.86"
 
 # 現在有効なネットワーク設定（network_modeに応じて切り替え）
