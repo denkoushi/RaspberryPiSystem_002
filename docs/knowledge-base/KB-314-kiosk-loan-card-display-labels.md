@@ -7,7 +7,7 @@
 
 ## 仕様
 
-- **写真撮影持出**（`item` なし・`photoUrl` あり）の1行目表示名は、**`Loan.photoToolDisplayName` があればその値を優先**し、未付与の間は **`撮影mode`** を表示する。
+- **写真撮影持出**（`item` なし・`photoUrl` あり）の1行目表示名は、**`resolvePhotoLoanToolDisplayLabel` の優先順**に従う:**`photoToolHumanDisplayName`（人レビュー・非空）→ `photoToolDisplayName`（VLM）→ `撮影mode`**。
 - **端末の設置場所**は **`formatClientDeviceLocationLabel` の値のみ**表示し、UI 上の **`端末場所:` / `端末場所：` プレフィックスは付けない**。
 - **単一ソース**: フォールバック文言は `@raspi-system/shared-types` の `PHOTO_LOAN_CARD_PRIMARY_LABEL`（[`loan-card-display.ts`](../../packages/shared-types/src/tools/loan-card-display.ts)）。Web/API 双方が同一定数を参照。
 - VLM 表示名は **表示専用**であり、**Itemマスタには紐づけない**。
@@ -42,7 +42,7 @@
 |------|----------|------|
 | キオスクが旧表記のまま | ブラウザキャッシュ・未デプロイの Pi4 | 対象 Pi4 でデプロイログ確認、`kiosk-browser` 再起動または強制リロード |
 | `/api/signage/content` が旧 `name` | Pi5 API コンテナが旧イメージ | `--limit raspberrypi5` で再デプロイ、Docker 再ビルド確認 |
-| 写真持出が常に `撮影mode` のまま | `photoToolDisplayName` 未付与、または VLM ジョブ未実行 | Pi5 DB で `photoToolLabelRequested` / `photoToolDisplayName` / `photoToolLabelClaimedAt` を確認し、[KB-319](./KB-319-photo-loan-vlm-tool-label.md) の手順で LocalLLM 設定・claim 状態・ジョブログを切り分ける |
+| 写真持出が常に `撮影mode` のまま | 人レビュー・VLM とも表示名なし、または VLM ジョブ未実行 | Pi5 DB で `photoToolHumanDisplayName` / `photoToolDisplayName` / `photoToolLabelRequested` / `photoToolLabelClaimedAt` を確認し、[KB-319](./KB-319-photo-loan-vlm-tool-label.md) の手順で LocalLLM 設定・claim 状態・ジョブログを切り分ける |
 | `current-image` が 401 | 認証要のエンドポイント | **検証は `/api/signage/content` の JSON** または Pi3 上の `current.jpg` で代替 |
 | Pi3 `PLAY RECAP` に `unreachable=1` | post_tasks 直後の一時 SSH 断 | [KB-216](./infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) — `failed=0` なら `systemctl is-active` で実測 |
 

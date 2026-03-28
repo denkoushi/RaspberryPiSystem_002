@@ -538,13 +538,23 @@ cd apps/web && pnpm build && cd ../..
 
 **確認ポイント**（[KB-314](../knowledge-base/KB-314-kiosk-loan-card-display-labels.md), [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）:
 
-- [ ] 写真撮影持出カードの1行目が、`photoToolDisplayName` 付与済みなら**その工具名**、未付与なら **`撮影mode`** となるか（キオスク `/kiosk/tag`）
+- [ ] 写真撮影持出カードの1行目が、**人レビュー表示名 > VLM (`photoToolDisplayName`) > `撮影mode`** になっているか（キオスク `/kiosk/tag`）
 - [ ] カード内の場所行に **`端末場所:` プレフィックスが無く**、場所の値のみか
-- [ ] `curl -sk https://<Pi5>/api/signage/content` の `tools[]` で、写真貸出の `name` が **VLM ラベル優先 / 未付与時は `撮影mode`**、`clientLocation` がプレフィックス無しか
+- [ ] `curl -sk https://<Pi5>/api/signage/content` の `tools[]` で、写真貸出の `name` が **上記と同じ優先順**、`clientLocation` がプレフィックス無しか
 - [ ] サイネージ実機（Pi3）で `signage-lite` が active、`/run/signage/current.jpg` が更新されているか
 
-**検証日時**: 2026-03-26（API・Pi3 SSH 自動確認済み／キオスク目視は現地推奨）
-**検証結果**: ☑ 成功（API・Pi3） ☐ 失敗（エラー内容: _______________）
+**検証日時**: 2026-03-26（API・Pi3 SSH 自動確認済み／キオスク目視は現地推奨）／**2026-03-29**（フェーズ1: Pi5 `health`・DB 人レビュー列・未認証 `photo-label-reviews` **401**・`verify-phase12-real.sh` **PASS 34/0/0**）
+**検証結果**: ☑ 成功（API・Pi3・自動回帰） ☐ 失敗（エラー内容: _______________）
+
+**6.6.6 管理画面・写真持出人レビュー（フェーズ1）**
+
+**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) フェーズ1節）:
+
+- [ ] `/admin/photo-loan-label-reviews` が ADMIN/MANAGER で開け、一覧・サムネ・レビュー操作ができるか
+- [ ] `GET /api/tools/loans/photo-label-reviews` が未認証で **401** になるか
+
+**検証日時**: 2026-03-29（API 401 は Pi5 で確認済み／UI は現地推奨）
+**検証結果**: ☑ 成功（API） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認
 

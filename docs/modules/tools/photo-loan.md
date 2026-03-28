@@ -2,7 +2,7 @@
 title: 写真撮影持出機能 - モジュール仕様
 tags: [工具管理, 写真撮影, カメラ, 持出機能]
 audience: [開発者, アーキテクト]
-last-verified: 2026-03-28
+last-verified: 2026-03-29
 related: [../requirements/system-requirements.md, ../../decisions/003-camera-module.md, ./README.md]
 category: modules
 update-frequency: medium
@@ -19,8 +19,9 @@ update-frequency: medium
 - **写真撮影**: 従業員タグスキャン時にカメラでItemを撮影
 - **持出記録**: 従業員IDと写真を保存（Item情報は保存しない）
 - **写真管理**: 写真の保存・配信・自動削除
-- **表示名付与**: 保存済みサムネイルを非同期 VLM 推論し、短い工具名を表示用に保存
-- **UI表示**: 持出一覧・返却画面で写真サムネイルを表示
+- **表示名付与**: 元画像（既定）またはサムネイルを JPEG 化したうえで非同期 VLM 推論し、短い工具名を `photoToolDisplayName` に保存
+- **人レビュー**: ADMIN/MANAGER が VLM 結果を品質（GOOD/MARGINAL/BAD）と任意の表示名で上書き・記録（`photoToolHuman*` 列）
+- **UI表示**: 持出一覧・返却画面で写真サムネイルを表示。1行目の工具名は **人レビュー > VLM > `撮影mode`**
 
 ## 機能要件（FR-009）
 
@@ -54,13 +55,19 @@ update-frequency: medium
 
 6. **非同期 VLM 表示名**
    - 新規の写真持出のみ `Loan.photoToolLabelRequested=true` としてキュー投入
-   - Pi5 API の定期ジョブが保存済みサムネイルを読み、LocalLLM のマルチモーダル推論で**最も目立つ 1 つ**の工具名を短い日本語で取得
+   - Pi5 API の定期ジョブが **Vision 用画像ソース**（既定: 元画像から長辺リサイズした JPEG）を読み、LocalLLM のマルチモーダル推論で**最も目立つ 1 つ**の工具名を短い日本語で取得
    - 取得した表示名は `Loan.photoToolDisplayName` に保存し、**Itemマスタには紐づけない**
    - 推論失敗時はカード表示を従来どおり **`撮影mode`** のままにし、後続ジョブで再試行できるよう claim を解放する
+
+7. **人レビュー（フェーズ1）**
+   - 管理画面 **`/admin/photo-loan-label-reviews`**（ルート名 `photo-loan-label-reviews`）から、VLM 済みの写真持出を一覧し、品質と任意の人間表示名を送信する
+   - `PATCH /api/tools/loans/:loanId/photo-label-review`（ADMIN/MANAGER）で `photoToolHumanQuality` / `photoToolHumanReviewedAt` / `photoToolHumanReviewedByUserId` / 任意で `photoToolHumanDisplayName` を更新
 
 ## データ構造
 
 ### Loanテーブルの拡張
+
+（`PhotoToolHumanLabelQuality` は enum: `GOOD` \| `MARGINAL` \| `BAD`）
 
 ```prisma
 model Loan {
@@ -70,6 +77,10 @@ model Loan {
   photoToolDisplayName    String?   // VLM が付与した表示用工具名（Item 非紐づけ）
   photoToolLabelRequested Boolean   @default(false)
   photoToolLabelClaimedAt DateTime? // バッチの claim 時刻（重複実行緩和）
+  photoToolHumanDisplayName     String?   // 人レビューで確定した表示名（任意）
+  photoToolHumanQuality         PhotoToolHumanLabelQuality? // GOOD | MARGINAL | BAD
+  photoToolHumanReviewedAt      DateTime?
+  photoToolHumanReviewedByUserId String?
 }
 ```
 
@@ -91,10 +102,14 @@ model ClientDevice {
   - **レスポンス**: `{ loanId: string, employeeId: string, photoUrl: string, photoTakenAt: string }`
   - **エラー**: 撮影失敗時は3回までリトライ、それでも失敗したらエラー
 
-### 内部ジョブ（公開 API なし）
+### 写真ラベル・レビュー API（管理者）
+
+- `GET /api/tools/loans/photo-label-reviews` — レビュー待ち一覧（**ADMIN/MANAGER**）
+- `PATCH /api/tools/loans/:id/photo-label-review` — 人レビュー送信（**ADMIN/MANAGER**、JWT 必須）
+
+### 内部ジョブ（VLM は公開ジョブ API なし）
 
 - 写真持出 VLM ラベル付与は **Pi5 API 内部の定期ジョブ**として実行する
-- 外部公開エンドポイントは追加しない
 - LocalLLM への接続は既存の `LOCAL_LLM_*` 設定を再利用する
 
 ### 写真配信
@@ -183,9 +198,9 @@ apps/web/src/
    - `photoToolLabelClaimedAt IS NULL`
 
 3. **推論**
-   - `photoUrl` から対応するサムネイル JPEG を読み込む
+   - `photoUrl` から Vision 用バイト列を読み込む（`PhotoToolVisionImageSourcePort`。**既定**は元画像を長辺 `PHOTO_TOOL_LABEL_VISION_MAX_LONG_EDGE` 程度に縮小した JPEG。`PHOTO_TOOL_LABEL_VISION_SOURCE=thumbnail` のときのみ従来どおりサムネのみ）
    - LocalLLM の OpenAI 互換 `/v1/chat/completions` に `image_url + text` のマルチモーダル payload を送る
-   - プロンプトは「最も目立つ工具を 1 つだけ、日本語の短い工具名で返す」
+   - プロンプトは環境変数 `PHOTO_TOOL_LABEL_USER_PROMPT` があればそれを使用、なければ既定（最も目立つ工具を 1 つ、日本語の短い工具名）
 
 4. **保存と失敗時の扱い**
    - 応答は前後空白・改行除去、最大48文字に正規化して `photoToolDisplayName` に保存
@@ -194,8 +209,8 @@ apps/web/src/
 
 ### 表示優先順位
 
-- キオスク持出一覧・サイネージの写真持出カードは、`photoToolDisplayName` があればそれを1行目に表示する
-- `photoToolDisplayName` が空の間だけ、従来の **`撮影mode`** をフォールバック表示する
+- キオスク持出一覧・サイネージの写真持出カードの1行目は、共有関数 **`resolvePhotoLoanToolDisplayLabel`**（`@raspi-system/shared-types`）に従う
+- **優先順**: `photoToolHumanDisplayName`（非空） → `photoToolDisplayName`（VLM） → **`撮影mode`**
 
 ### 環境変数
 
@@ -204,6 +219,10 @@ apps/web/src/
   - `PHOTO_TOOL_LABEL_CRON`
   - `PHOTO_TOOL_LABEL_BATCH_SIZE`
   - `PHOTO_TOOL_LABEL_STALE_MINUTES`
+  - `PHOTO_TOOL_LABEL_VISION_SOURCE`（`original` | `thumbnail`、既定 `original`）
+  - `PHOTO_TOOL_LABEL_VISION_MAX_LONG_EDGE`（既定 768）
+  - `PHOTO_TOOL_LABEL_VISION_JPEG_QUALITY`（既定 85）
+  - `PHOTO_TOOL_LABEL_USER_PROMPT`（任意・未設定時はサーバー既定プロンプト）
 
 ### 写真自動削除フロー
 
@@ -257,6 +276,7 @@ apps/web/src/
 - ✅ **実装完了**: 写真撮影持出の基本機能は 2025-11-27 完了、VLM 表示名（初版）は 2026-03-28 に実装完了
 - ✅ **実機検証完了**: Raspberry Pi 5 + Raspberry Pi 4での統合動作確認完了（2025-12-01）
 - ✅ **VLM 実機確認**: Pi5 本番で `Loan.photoToolDisplayName` への保存を確認済み（詳細は KB-319）
+- ✅ **フェーズ1（2026-03-29）**: 人レビュー列・管理 API・Vision 高解像入力・表示統一を本番にデプロイし、DB 列・`health`・未認証 401・Phase12 実機スクリプト **PASS 34/0/0** を確認（KB-319 フェーズ1節）
 - ⏳ **既知の問題**: スキャン重複と黒画像の問題が報告されており、詳細調査・対策計画を作成中
   - 詳細は [キオスク工具スキャン重複＆黒画像対策 ExecPlan](../../plans/tool-management-debug-execplan.md) を参照
 

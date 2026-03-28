@@ -83,9 +83,47 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | サムネイル読み込みで失敗する | `photoUrl` と thumbnail パス規則の不整合 | `PhotoStorage.readThumbnailBuffer()` の規則と実ファイル配置を確認する |
 | マルチモーダル推論だけ失敗する | llama-server の `messages[].content` JSON 形が実機ビルドと異なる | `llama-server-vision-completion.adapter.ts` の `image_url + text` payload を、そのビルドの仕様に合わせて調整する |
 
+## フェーズ1（2026-03-29）: 人レビュー・Vision 入力（高解像 JPEG）・表示統一
+
+### Context
+
+- **ブランチ**: `feat/photo-loan-vlm-human-review-and-vision-input`
+- **内容**: `Loan` に人レビュー列（`photoToolHumanDisplayName` / `PhotoToolHumanLabelQuality` / `photoToolHumanReviewedAt` / `photoToolHumanReviewedByUserId`）、管理 API、管理画面 `/admin/photo-loan-label-reviews`。VLM 入力は既定で元画像から長辺リサイズした JPEG（`PhotoStorageVisionImageSource`）。キオスク・サイネージの1行目は **`packages/shared-types` の `resolvePhotoLoanToolDisplayLabel`** で **人レビュー表示名 > VLM (`photoToolDisplayName`) > `撮影mode`**。
+
+### 実機確認（Pi5 SSH・2026-03-29）
+
+- **CONFIRMED**: `GET https://127.0.0.1/api/system/health` → `status=ok`（メモリ高使用率警告のみの運用パターンあり）
+- **CONFIRMED**: `Loan` に `photoToolHuman*` 列が存在（`information_schema`）
+- **CONFIRMED**: 未認証 `GET /api/tools/loans/photo-label-reviews` → **401**
+- **CONFIRMED**: 本番 checkout `e93cef83`・ブランチ `feat/photo-loan-vlm-human-review-and-vision-input`
+- **CONFIRMED**: 写真付き Loan **154** 件のうち **`photoToolHumanReviewedAt` あり 15** 件（運用で人レビュー済みデータが存在）
+- **CONFIRMED**: `PHOTO_TOOL_LABEL_VISION_SOURCE` / `PHOTO_TOOL_LABEL_USER_PROMPT` は **未設定時はコード既定**（本番では `VISION_SOURCE` 既定 `original`・長辺既定 768 等。帯域節約でサムネのみにしたい場合は `thumbnail` を明示）
+
+### 管理 API（ADMIN / MANAGER）
+
+| 操作 | メソッド・パス |
+|------|----------------|
+| レビュー待ち一覧 | `GET /api/tools/loans/photo-label-reviews?limit=…` |
+| レビュー送信 | `PATCH /api/tools/loans/:id/photo-label-review`（body: `quality`, 任意 `humanDisplayName`） |
+
+### Troubleshooting（追記）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| 管理のレビュー一覧が重い | 一覧は**サムネ URL**を参照（元画像直リンクではない）。それでも遅い場合はネットワーク・同時表示件数を確認 | `PhotoLoanLabelReviewsPage` の `limit`・キャッシュ。VLM 入力解像度は `PHOTO_TOOL_LABEL_VISION_MAX_LONG_EDGE` で調整 |
+| 人レビュー後もキオスクが古い | ブラウザキャッシュ・別 Loan 行 | 該当 Loan の `photoToolHumanDisplayName` を DB で確認し、`active` 一覧を再取得 |
+
+### References（フェーズ1）
+
+- `feat/photo-loan-vlm-human-review-and-vision-input`
+- `apps/api/src/services/tools/photo-tool-label/photo-tool-label-review.service.ts`
+- `apps/api/src/routes/tools/loans/photo-label-reviews.ts`
+- `packages/shared-types/src/tools/loan-card-display.ts`
+
 ## References
 
 - `feat/photo-loan-vlm-tool-label`
+- `feat/photo-loan-vlm-human-review-and-vision-input`（フェーズ1）
 - `apps/api/src/services/tools/photo-tool-label/`
 - `apps/api/src/services/vision/llama-server-vision-completion.adapter.ts`
 - [photo-loan.md](../modules/tools/photo-loan.md)
