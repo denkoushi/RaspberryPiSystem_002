@@ -13,12 +13,50 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 47件  
+**件数**: 48件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
+
+---
+
+<a id="kb-319-docs-placement-policy-by-host-role"></a>
+
+### [KB-319] `docs/` 配置ポリシー整理（Pi5保持 / Pi4・Pi3削除）
+
+**記録日**: 2026-03-28  
+**Status**: ✅ 方針確定・Ansible 反映済み・本番実機検証済み（2026-03-28）
+
+**Context**:
+- 以前は `roles/common/tasks/main.yml` で `{{ repo_path }}/docs` を一律削除していたため、Pi5/ Pi4 / Pi3 すべてで `git status` に `docs/` の大量削除が表示されていた。
+- 実行コードへの影響は小さい一方、運用ドキュメント参照の観点では Pi5 に `docs/` を残す方が実態に合う。
+
+**Decision（運用ルール）**:
+- **Pi5（`server`）**: `docs/` を保持する（運用・調査の正本参照点）。
+- **Pi4（`kiosk`）/Pi3（`signage`）**: `docs/` は削除する（実行専用端末）。
+
+**Implementation**:
+- `infrastructure/ansible/roles/common/tasks/main.yml` の `docs` 削除タスクに `when: "'server' not in group_names"` を追加し、`server` ホストのみ削除対象から除外した。
+
+**Operational notes**:
+- クライアント端末で `docs/...` 参照が必要な場合は、Pi5 上の同パスまたは GitHub リポジトリを参照する。
+- `.dockerignore` の `docs/` 除外は Docker build コンテキスト最適化であり、本ポリシーと独立して継続する。
+
+**Verification（2026-03-28 本番）**:
+- 反映コード: Pi5 `/opt/RaspberryPiSystem_002` で `HEAD` が `fix(ansible): keep docs on Pi5 during deploy` を含むコミット（例: `5e6531c1`、ブランチ `feat/pi5-docs-retention-policy`）。
+- **Pi5（`server`）**: `docs/` が存在し `docs/INDEX.md` を読める。`git status` で `docs/` 配下の削除行が **0**（作業ツリーと索引の整合）。`curl -sk https://localhost/api/system/health` → `status: ok`（メモリ高負荷の警告のみ・既知パターン）。
+- **Pi4 / Pi3（クライアント）**: `docs/` ディレクトリなし。`git status` に **`D docs/...` が大量**（例: 数百行）でも、**追跡ファイルが作業ツリーに存在しないだけの意図した状態**でありデプロイ異常ではない。
+
+**Troubleshooting**:
+- Pi5 で `docs/` が無い、または `git status` が `docs` 大量削除: `inventory` で `raspberrypi5` が `server` グループに入っているか、`roles/common` の `when: "'server' not in group_names"` が効いているかを確認。手で `docs` を消した場合は `git checkout -- docs` 等で復元。
+- クライアントで現場から `less docs/...` したい: **Pi5 上の同パス**または GitHub の `docs/` を参照（[deployment.md](../../guides/deployment.md) の「`docs/` 配置ポリシー」）。
+
+**References**:
+- `infrastructure/ansible/roles/common/tasks/main.yml`
+- `infrastructure/ansible/roles/common/README.md`
+- `docs/guides/deployment.md`
 
 ---
 

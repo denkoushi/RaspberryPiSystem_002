@@ -201,6 +201,8 @@
     state: absent
   register: docs_removal_result
   changed_when: docs_removal_result.path is defined
+  when:
+    - "'server' not in group_names"
 
 - name: Configure Tailscale when enabled
   ansible.builtin.import_tasks: tailscale.yml
