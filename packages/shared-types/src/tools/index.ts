@@ -50,6 +50,8 @@ export interface Loan {
   notes?: string | null;
   photoUrl?: string | null; // 写真のURL（写真撮影持出機能で使用）
   photoTakenAt?: string | null; // 撮影日時（写真撮影持出機能で使用）
+  /** VLM が付与した表示用工具名（マスタ Item 非紐づけ） */
+  photoToolDisplayName?: string | null;
   employee: Employee;
   item: Item | null; // 写真撮影持出機能ではnullになる可能性がある
   measuringInstrumentId?: string | null;

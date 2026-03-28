@@ -153,7 +153,12 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().min(1).optional()
   ),
-  LOCAL_LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000)
+  LOCAL_LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
+
+  /** 写真持出 VLM 工具名ラベル: cron（node-cron 5 フィールド: 分 時 日 月 曜） */
+  PHOTO_TOOL_LABEL_CRON: z.string().default('*/5 * * * *'),
+  PHOTO_TOOL_LABEL_BATCH_SIZE: z.coerce.number().int().min(1).max(20).default(3),
+  PHOTO_TOOL_LABEL_STALE_MINUTES: z.coerce.number().int().min(5).max(240).default(30),
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') {
     return;

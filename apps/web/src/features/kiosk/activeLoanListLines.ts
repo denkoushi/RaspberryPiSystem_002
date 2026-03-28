@@ -36,7 +36,14 @@ export function presentActiveLoanListLines(loan: Loan): ActiveLoanListLines {
     };
   }
 
-  const itemName = loan.item?.name ?? (loan.photoUrl ? PHOTO_LOAN_CARD_PRIMARY_LABEL : 'アイテム');
+  const vlmName = loan.photoToolDisplayName?.trim();
+  const itemName =
+    loan.item?.name ??
+    (vlmName && vlmName.length > 0
+      ? vlmName
+      : loan.photoUrl
+        ? PHOTO_LOAN_CARD_PRIMARY_LABEL
+        : 'アイテム');
   return {
     kind: 'item',
     primaryLine: itemName,

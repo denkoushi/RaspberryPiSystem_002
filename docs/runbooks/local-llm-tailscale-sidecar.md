@@ -204,6 +204,79 @@ fetch(new URL('/healthz', b), { headers: h })
 
 **トラブルシュート**: `401` 以外の失敗は [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（`LOCAL_LLM_*` の compose 経路）と共有トークン不一致を疑う。
 
+## 写真持出 VLM ラベル（内部ジョブ）
+
+- 写真持出 VLM ラベルは **公開 API ではなく、Pi5 API 内部の cron ジョブ**として動作する
+- LocalLLM への到達は **既存の `LOCAL_LLM_*`** を再利用する
+- 追加のジョブ設定:
+  - `PHOTO_TOOL_LABEL_CRON`（既定 `*/5 * * * *`）
+  - `PHOTO_TOOL_LABEL_BATCH_SIZE`（既定 `3`）
+  - `PHOTO_TOOL_LABEL_STALE_MINUTES`（既定 `30`）
+- 保存先は `Loan.photoToolDisplayName` であり、**Item マスタには紐づけない**
+- 表示は `photoToolDisplayName` 優先、未付与の間は `PHOTO_LOAN_CARD_PRIMARY_LABEL`（`撮影mode`）へフォールバックする
+
+### Pi5 実機確認（写真持出 VLM）
+
+1. **API 全体の生存**
+
+```bash
+curl -sk https://localhost/api/system/health
+```
+
+期待: `status=ok`、少なくとも `checks.database.status=ok`
+
+2. **API コンテナに LocalLLM 設定があること**
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+  node -e "const b=process.env.LOCAL_LLM_BASE_URL; const t=process.env.LOCAL_LLM_SHARED_TOKEN; const m=process.env.LOCAL_LLM_MODEL; console.log(JSON.stringify({hasBaseUrl:Boolean(b), hasToken:Boolean(t), model:m||null}, null, 2));"
+```
+
+期待: `hasBaseUrl: true`, `hasToken: true`, `model` が null でない
+
+3. **DB の VLM 進捗を確認**
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -P pager=off -F $'\t' -A -c \
+  "SELECT COUNT(*) FILTER (WHERE \"photoToolLabelRequested\" IS TRUE) AS requested,
+          COUNT(*) FILTER (WHERE \"photoToolDisplayName\" IS NOT NULL) AS labeled,
+          COUNT(*) FILTER (WHERE \"photoToolLabelClaimedAt\" IS NOT NULL) AS claimed
+   FROM \"Loan\";"
+```
+
+期待:
+
+- `requested` が新規写真持出件数に応じて増える
+- 正常時は `labeled` が追随する
+- `claimed` は通常 0、または短時間のみ非 0
+
+4. **付与済みラベルのサンプルを見る**
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -P pager=off -F $'\t' -A -c \
+  "SELECT \"photoToolDisplayName\", COUNT(*)
+   FROM \"Loan\"
+   WHERE \"photoToolDisplayName\" IS NOT NULL
+   GROUP BY 1
+   ORDER BY COUNT(*) DESC, 1 ASC
+   LIMIT 10;"
+```
+
+### 写真持出 VLM のトラブルシュート
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| `requested > 0` なのに `labeled = 0` | LocalLLM 未設定、upstream 不達、scheduler 未起動 | 本 Runbook の `LOCAL_LLM_*` 確認と `/healthz` 到達確認を実施し、API 再起動後に次回 cron を待つ |
+| `claimed > 0` が戻らない | 推論途中で API が落ちた、または claim がスタック | `PHOTO_TOOL_LABEL_STALE_MINUTES` 経過後に解放されるか確認。継続する場合は DB 行の件数と API 再起動ログを確認 |
+| 写真持出カードが常に `撮影mode` | VLM 未付与、または空応答で claim 解放のみ行われている | DB で対象 Loan の `photoToolDisplayName` を確認し、ジョブログの `responseCharLen` / warning を確認 |
+| マルチモーダル推論だけ 4xx/5xx になる | llama-server の `messages[].content` JSON 形が実機ビルド差分と不一致 | `apps/api/src/services/vision/llama-server-vision-completion.adapter.ts` の payload 形を実機に合わせて調整する |
+| ラベルが工具名ではない | 初版仕様が「最も目立つ 1 つ」の短い表示名であり、物品種別の厳密判定ではない | 表示仕様として許容。マスタ照合や候補提示は別機能で検討する |
+
 ## Mac ローカルで Pi5 API を検証する
 
 - 本番用 `docker-compose.server.yml` は `/opt/RaspberryPiSystem_002/...` 前提なので、そのままでは Mac ローカルで起動できない

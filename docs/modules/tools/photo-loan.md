@@ -2,7 +2,7 @@
 title: 写真撮影持出機能 - モジュール仕様
 tags: [工具管理, 写真撮影, カメラ, 持出機能]
 audience: [開発者, アーキテクト]
-last-verified: 2025-11-27
+last-verified: 2026-03-28
 related: [../requirements/system-requirements.md, ../../decisions/003-camera-module.md, ./README.md]
 category: modules
 update-frequency: medium
@@ -19,6 +19,7 @@ update-frequency: medium
 - **写真撮影**: 従業員タグスキャン時にカメラでItemを撮影
 - **持出記録**: 従業員IDと写真を保存（Item情報は保存しない）
 - **写真管理**: 写真の保存・配信・自動削除
+- **表示名付与**: 保存済みサムネイルを非同期 VLM 推論し、短い工具名を表示用に保存
 - **UI表示**: 持出一覧・返却画面で写真サムネイルを表示
 
 ## 機能要件（FR-009）
@@ -51,6 +52,12 @@ update-frequency: medium
    - **閾値チェックは削除**（2026-02-11、KB-248参照）: 雨天・照明なし環境でも撮影可能にするため、フロントエンド・バックエンドの両方で閾値チェックを削除
    - ストリーム保持によるPi4の負荷問題を回避するため、どんな明るさでも撮影可能にした
 
+6. **非同期 VLM 表示名**
+   - 新規の写真持出のみ `Loan.photoToolLabelRequested=true` としてキュー投入
+   - Pi5 API の定期ジョブが保存済みサムネイルを読み、LocalLLM のマルチモーダル推論で**最も目立つ 1 つ**の工具名を短い日本語で取得
+   - 取得した表示名は `Loan.photoToolDisplayName` に保存し、**Itemマスタには紐づけない**
+   - 推論失敗時はカード表示を従来どおり **`撮影mode`** のままにし、後続ジョブで再試行できるよう claim を解放する
+
 ## データ構造
 
 ### Loanテーブルの拡張
@@ -58,8 +65,11 @@ update-frequency: medium
 ```prisma
 model Loan {
   // ... 既存のカラム
-  photoUrl     String?   // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
-  photoTakenAt DateTime? // 撮影日時
+  photoUrl                String?   // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
+  photoTakenAt            DateTime? // 撮影日時
+  photoToolDisplayName    String?   // VLM が付与した表示用工具名（Item 非紐づけ）
+  photoToolLabelRequested Boolean   @default(false)
+  photoToolLabelClaimedAt DateTime? // バッチの claim 時刻（重複実行緩和）
 }
 ```
 
@@ -80,6 +90,12 @@ model ClientDevice {
   - **リクエスト**: `{ employeeTagUid: string }`
   - **レスポンス**: `{ loanId: string, employeeId: string, photoUrl: string, photoTakenAt: string }`
   - **エラー**: 撮影失敗時は3回までリトライ、それでも失敗したらエラー
+
+### 内部ジョブ（公開 API なし）
+
+- 写真持出 VLM ラベル付与は **Pi5 API 内部の定期ジョブ**として実行する
+- 外部公開エンドポイントは追加しない
+- LocalLLM への接続は既存の `LOCAL_LLM_*` 設定を再利用する
 
 ### 写真配信
 
@@ -111,11 +127,14 @@ apps/api/src/
 ├── services/tools/
 │   ├── loans/
 │   │   └── photo-loan.service.ts  # 写真撮影持出のビジネスロジック
+│   ├── photo-tool-label/          # 写真持出 VLM 表示名のジョブ/リポジトリ/正規化
 │   └── clients/
 │       └── client.service.ts    # クライアント端末設定のビジネスロジック
 ├── services/camera/
 │   ├── camera.service.ts        # 共通カメラサービス
 │   └── drivers/                 # カメラドライバー（ADR 003参照）
+├── services/vision/
+│   └── llama-server-vision-completion.adapter.ts  # LocalLLM VLM アダプタ
 └── lib/
     └── photo-storage.ts         # 写真保存・削除のユーティリティ
 
@@ -150,6 +169,41 @@ apps/web/src/
 
 4. **持出記録作成**
    - `Loan`テーブルにレコードを作成（`itemId=NULL`, `employeeId=特定した従業員ID`, `photoUrl=写真URL`）
+   - 新規行は `photoToolLabelRequested=true` とし、非同期 VLM ラベル対象にする
+
+### 非同期 VLM ラベル付与フロー
+
+1. **定期ジョブ**
+   - `PHOTO_TOOL_LABEL_CRON`（既定 `*/5 * * * *`）で起動
+   - 1回あたり `PHOTO_TOOL_LABEL_BATCH_SIZE`（既定 3）件までを**直列**処理
+
+2. **対象の取得**
+   - `photoToolLabelRequested=true`
+   - `photoToolDisplayName IS NULL`
+   - `photoToolLabelClaimedAt IS NULL`
+
+3. **推論**
+   - `photoUrl` から対応するサムネイル JPEG を読み込む
+   - LocalLLM の OpenAI 互換 `/v1/chat/completions` に `image_url + text` のマルチモーダル payload を送る
+   - プロンプトは「最も目立つ工具を 1 つだけ、日本語の短い工具名で返す」
+
+4. **保存と失敗時の扱い**
+   - 応答は前後空白・改行除去、最大48文字に正規化して `photoToolDisplayName` に保存
+   - 空応答や推論失敗時は表示名を保存せず `photoToolLabelClaimedAt` を解除する
+   - 一定時間スタックした claim は `PHOTO_TOOL_LABEL_STALE_MINUTES`（既定 30）超で次回ジョブが解放する
+
+### 表示優先順位
+
+- キオスク持出一覧・サイネージの写真持出カードは、`photoToolDisplayName` があればそれを1行目に表示する
+- `photoToolDisplayName` が空の間だけ、従来の **`撮影mode`** をフォールバック表示する
+
+### 環境変数
+
+- LocalLLM 共有設定: `LOCAL_LLM_BASE_URL` / `LOCAL_LLM_SHARED_TOKEN` / `LOCAL_LLM_MODEL` / `LOCAL_LLM_TIMEOUT_MS`
+- 写真持出 VLM ジョブ設定:
+  - `PHOTO_TOOL_LABEL_CRON`
+  - `PHOTO_TOOL_LABEL_BATCH_SIZE`
+  - `PHOTO_TOOL_LABEL_STALE_MINUTES`
 
 ### 写真自動削除フロー
 
@@ -195,11 +249,14 @@ apps/web/src/
 - [工具管理モジュール](./README.md): モジュール全体の概要
 - [写真撮影持出機能 テスト計画](../../guides/photo-loan-test-plan.md): 詳細なテスト計画
 - [検証チェックリスト](../../guides/verification-checklist.md): Validation 9（写真撮影持出）
+- [KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md): 写真持出 VLM ラベルの運用・実機確認
+- [LocalLLM Runbook](../../runbooks/local-llm-tailscale-sidecar.md): LocalLLM 側の疎通確認・運用
 
 ## 実装ステータス
 
-- ✅ **実装完了**: すべての機能が実装済み（2025-11-27完了）
+- ✅ **実装完了**: 写真撮影持出の基本機能は 2025-11-27 完了、VLM 表示名（初版）は 2026-03-28 に実装完了
 - ✅ **実機検証完了**: Raspberry Pi 5 + Raspberry Pi 4での統合動作確認完了（2025-12-01）
+- ✅ **VLM 実機確認**: Pi5 本番で `Loan.photoToolDisplayName` への保存を確認済み（詳細は KB-319）
 - ⏳ **既知の問題**: スキャン重複と黒画像の問題が報告されており、詳細調査・対策計画を作成中
   - 詳細は [キオスク工具スキャン重複＆黒画像対策 ExecPlan](../../plans/tool-management-debug-execplan.md) を参照
 
