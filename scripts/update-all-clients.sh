@@ -458,7 +458,7 @@ pre_deploy_checks() {
   if [[ "${nodesource_exists}" == "yes" ]]; then
     echo "[ERROR] NodeSource apt repository exists on ${REMOTE_HOST} (/etc/apt/sources.list.d/nodesource.list)." >&2
     echo "[ERROR] This can break apt cache updates due to GPG signature policy (SHA1) and will abort deployments." >&2
-    echo "[ERROR] See KB-220: docs/knowledge-base/infrastructure/ansible-deployment.md" >&2
+    echo "[ERROR] See KB-220 (Pi5 local docs or GitHub): docs/knowledge-base/infrastructure/ansible-deployment.md" >&2
     echo "[ERROR] Fix with: ssh ${REMOTE_HOST} 'sudo rm -f /etc/apt/sources.list.d/nodesource.list && sudo apt-get update'" >&2
     checks_failed=$((checks_failed + 1))
   fi
