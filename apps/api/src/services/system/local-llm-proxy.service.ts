@@ -1,5 +1,7 @@
 import { ApiError } from '../../lib/errors.js';
 
+import type { LocalLlmObservability } from './local-llm-observability.js';
+
 export type LocalLlmChatMessage = {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -54,6 +56,7 @@ export type LocalLlmGateway = {
 type LocalLlmGatewayDeps = {
   getConfig: () => LocalLlmRuntimeConfig;
   fetchImpl: typeof fetch;
+  observability: LocalLlmObservability;
 };
 
 type LocalLlmUpstreamResponse = {
@@ -139,8 +142,16 @@ const normalizeChatCompletionResponse = (
 export function createLocalLlmGateway(deps: LocalLlmGatewayDeps): LocalLlmGateway {
   return {
     async getStatus(): Promise<LocalLlmStatus> {
+      const started = performance.now();
       const config = deps.getConfig();
+
       if (!config.configured || !config.baseUrl) {
+        deps.observability.emitHealthCheckOutcome({
+          durationMs: Math.round(performance.now() - started),
+          configured: false,
+          ok: false,
+          result: 'not_configured',
+        });
         return {
           configured: false,
           baseUrl: config.baseUrl,
@@ -160,18 +171,32 @@ export function createLocalLlmGateway(deps: LocalLlmGatewayDeps): LocalLlmGatewa
           signal,
         });
         const body = await response.text();
+        const ok = response.ok;
+        deps.observability.emitHealthCheckOutcome({
+          durationMs: Math.round(performance.now() - started),
+          configured: true,
+          ok,
+          statusCode: response.status,
+          result: ok ? 'ok' : 'upstream_non_ok',
+        });
         return {
           configured: true,
           baseUrl: config.baseUrl,
           model: config.model,
           timeoutMs: config.timeoutMs,
           health: {
-            ok: response.ok,
+            ok,
             statusCode: response.status,
             body,
           },
         };
       } catch (error) {
+        deps.observability.emitHealthCheckOutcome({
+          durationMs: Math.round(performance.now() - started),
+          configured: true,
+          ok: false,
+          result: 'fetch_error',
+        });
         return {
           configured: true,
           baseUrl: config.baseUrl,
@@ -188,57 +213,81 @@ export function createLocalLlmGateway(deps: LocalLlmGatewayDeps): LocalLlmGatewa
     },
 
     async createChatCompletion(request: LocalLlmChatRequest): Promise<LocalLlmChatCompletionResult> {
-      const config = requireConfiguredLocalLlm(deps.getConfig());
-      const { signal, cleanup } = createTimeoutSignal(config.timeoutMs);
+      const started = performance.now();
+      let ok = false;
+      let errorCode: string | undefined;
+      let usage: LocalLlmUsage | undefined;
 
       try {
-        const response = await deps.fetchImpl(new URL('/v1/chat/completions', config.baseUrl), {
-          method: 'POST',
-          headers: buildLocalLlmHeaders(config.sharedToken),
-          body: JSON.stringify({
-            model: config.model,
-            messages: request.messages,
-            max_tokens: request.maxTokens,
-            temperature: request.temperature,
-            chat_template_kwargs: {
-              enable_thinking: request.enableThinking,
-            },
-          }),
-          signal,
-        });
+        const config = requireConfiguredLocalLlm(deps.getConfig());
+        const { signal, cleanup } = createTimeoutSignal(config.timeoutMs);
+        try {
+          const response = await deps.fetchImpl(new URL('/v1/chat/completions', config.baseUrl), {
+            method: 'POST',
+            headers: buildLocalLlmHeaders(config.sharedToken),
+            body: JSON.stringify({
+              model: config.model,
+              messages: request.messages,
+              max_tokens: request.maxTokens,
+              temperature: request.temperature,
+              chat_template_kwargs: {
+                enable_thinking: request.enableThinking,
+              },
+            }),
+            signal,
+          });
 
-        if (!response.ok) {
-          const errorText = trimErrorBody(await response.text());
+          if (!response.ok) {
+            const errorText = trimErrorBody(await response.text());
+            throw new ApiError(
+              502,
+              'LocalLLM からエラー応答が返されました',
+              {
+                status: response.status,
+                body: errorText,
+              },
+              'LOCAL_LLM_UPSTREAM_ERROR'
+            );
+          }
+
+          const payload = (await response.json()) as LocalLlmUpstreamResponse;
+          const result = normalizeChatCompletionResponse(payload, config.model);
+          ok = true;
+          usage = result.usage;
+          return result;
+        } catch (error) {
+          if (error instanceof ApiError) {
+            throw error;
+          }
+          if (error instanceof Error && error.name === 'AbortError') {
+            throw new ApiError(504, 'LocalLLM の応答がタイムアウトしました', undefined, 'LOCAL_LLM_TIMEOUT');
+          }
           throw new ApiError(
             502,
-            'LocalLLM からエラー応答が返されました',
+            'LocalLLM への接続に失敗しました',
             {
-              status: response.status,
-              body: errorText,
+              message: error instanceof Error ? error.message : 'Unknown error',
             },
-            'LOCAL_LLM_UPSTREAM_ERROR'
+            'LOCAL_LLM_REQUEST_FAILED'
           );
+        } finally {
+          cleanup();
         }
-
-        const payload = (await response.json()) as LocalLlmUpstreamResponse;
-        return normalizeChatCompletionResponse(payload, config.model);
       } catch (error) {
         if (error instanceof ApiError) {
-          throw error;
+          errorCode = error.code;
         }
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw new ApiError(504, 'LocalLLM の応答がタイムアウトしました', undefined, 'LOCAL_LLM_TIMEOUT');
-        }
-        throw new ApiError(
-          502,
-          'LocalLLM への接続に失敗しました',
-          {
-            message: error instanceof Error ? error.message : 'Unknown error',
-          },
-          'LOCAL_LLM_REQUEST_FAILED'
-        );
+        throw error;
       } finally {
-        cleanup();
+        deps.observability.emitChatCompletionOutcome({
+          durationMs: Math.round(performance.now() - started),
+          ok,
+          errorCode,
+          messageCount: request.messages.length,
+          maxTokens: request.maxTokens,
+          temperature: request.temperature,
+          usage: ok ? usage : undefined,
+        });
       }
     },
   };

@@ -986,6 +986,8 @@
 
 ## Decision Log
 
+- 決定（2026-03-29）: Pi5 API の LocalLLM 代理（`/api/system/local-llm/*`）は **`ADMIN` / `MANAGER` のみ**。構造化ログでは **プロンプト／応答本文・共有トークン・upstream 生本文を出さず**、所要時間・成否・エラーコード・`usage` 数値・リクエスト形状（件数・`maxTokens` 等）に限定する。秘密の配線は **docker.env.j2（KB-318）** と Ansible vault を正とする。  
+  参照: [ADR-20260329](./docs/decisions/ADR-20260329-local-llm-pi5-api-operations.md)
 - 決定（2026-03-23）: 手動順番（resource別）と全体ランキング（global-rank/row-rank）の canonical 保存単位は **`siteKey`（工場）** に統一し、API 境界で legacy（`deviceScopeKey` / `shared-global-rank`）互換読み取りを維持する。  
   理由: 端末間で同一工場の結果を一致させる要件を最小差分で満たしつつ、既存データ互換を壊さず段階移行するため。  
   参照: [ADR-20260323](./docs/decisions/ADR-20260323-sitekey-canonical-manual-order-and-global-rank.md), [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-sitekey-canonical-sync-2026-03-23)

@@ -9,6 +9,7 @@ related:
   - ../knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する
   - ../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env
   - ../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
+  - ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
 category: runbooks
 update-frequency: medium
 ---
@@ -32,6 +33,11 @@ update-frequency: medium
 - API 認証: `X-LLM-Token`
 - 専用ユーザー: `localllm`
 - 既存の手動実験用 `~/llama.cpp` + `8081` は別系統として残す
+
+## Pi5 API 側の運用・ログ（本 Runbook の範囲外の判断）
+
+- **正本**: [ADR-20260329](../decisions/ADR-20260329-local-llm-pi5-api-operations.md)（誰が `GET|POST /api/system/local-llm/*` を使えるか、ログに何を載せるか、秘密をどう扱うか）。
+- Ubuntu 上の `api-token` と Pi5 の `LOCAL_LLM_SHARED_TOKEN` は運用上セットでローテーションする。
 
 ## ディレクトリ
 

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { env } from '../config/env.js';
+import { createPinoLocalLlmObservability } from '../services/system/local-llm-observability.js';
 import {
   createLocalLlmGateway,
   type LocalLlmRuntimeConfig,
@@ -15,9 +16,13 @@ const getLocalLlmRuntimeConfig = (): LocalLlmRuntimeConfig => ({
 });
 
 export async function registerLocalLlmGateway(app: FastifyInstance): Promise<void> {
+  const log = app.log.child({ component: 'localLlmGateway' });
+  const observability = createPinoLocalLlmObservability(log);
+
   const gateway = createLocalLlmGateway({
     getConfig: getLocalLlmRuntimeConfig,
     fetchImpl: (input, init) => fetch(input, init),
+    observability,
   });
 
   app.decorate('localLlmGateway', gateway);
