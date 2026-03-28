@@ -34,6 +34,8 @@ export class PrismaPhotoToolLabelRepository implements PendingPhotoLabelReposito
     const result = await prisma.loan.updateMany({
       where: {
         id: loanId,
+        photoToolLabelRequested: true,
+        photoUrl: { not: null },
         photoToolDisplayName: null,
         photoToolLabelClaimedAt: null,
       },

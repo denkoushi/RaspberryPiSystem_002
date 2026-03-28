@@ -106,8 +106,7 @@ export class LlamaServerVisionCompletionAdapter implements VisionCompletionPort 
       });
 
       if (!response.ok) {
-        const snippet = (await response.text()).slice(0, 200);
-        throw new Error(`LocalLLM upstream error: HTTP ${response.status} ${snippet}`);
+        throw new Error(`LocalLLM upstream error: HTTP ${response.status}`);
       }
 
       const payload = (await response.json()) as UpstreamResponse;
