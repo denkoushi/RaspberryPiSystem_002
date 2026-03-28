@@ -19,6 +19,15 @@ function qualityLabel(q: PhotoLabelReviewQuality | null): string {
   return '—';
 }
 
+function toThumbnailUrl(photoUrl: string): string {
+  if (!photoUrl.startsWith('/api/storage/photos/')) {
+    return photoUrl;
+  }
+  return photoUrl
+    .replace('/api/storage/photos/', '/storage/thumbnails/')
+    .replace(/\.jpg$/, '_thumb.jpg');
+}
+
 function ReviewRow({ item }: { item: PhotoLabelReviewItem }) {
   const patch = usePatchPhotoLabelReview();
   const [quality, setQuality] = useState<PhotoLabelReviewQuality>(item.photoToolHumanQuality ?? 'GOOD');
@@ -39,8 +48,8 @@ function ReviewRow({ item }: { item: PhotoLabelReviewItem }) {
     <tr className="border-b border-slate-200 align-top text-slate-900">
       <td className="py-3 pr-2">
         <img
-          src={item.photoUrl}
-          alt=""
+          src={toThumbnailUrl(item.photoUrl)}
+          alt="写真持出サムネイル"
           className="h-20 w-20 rounded object-cover bg-slate-100"
           loading="lazy"
         />
