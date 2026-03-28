@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - 索引
 tags: [トラブルシューティング, ナレッジベース, 索引]
 audience: [開発者, 運用者]
-last-verified: 2026-03-28
+last-verified: 2026-03-29
 related: [api.md, database.md, ci-cd.md, frontend.md, infrastructure.md]
 category: knowledge-base
 update-frequency: high
@@ -595,6 +595,7 @@ update-frequency: high
 - 2026-03-18: KB-306を追加（キオスク進捗一覧 製番フィルタ（ドロップダウン・端末別保存））→ 進捗一覧ヘッダーに製番フィルタを追加。候補は `scheduled` のみ、初期全ON、全OFF時は「フィルタで非表示にしています」を表示。状態は `localStorage`（schemaVersion付き）で端末別保存。`useProgressOverviewSeibanFilter` と `ProgressOverviewSeibanFilterDropdown` を新設し、ページ本体の責務を表示合成に限定。web lint/build 成功。**実機検証完了**: Phase12 全24項目PASS（progress-overview API を verify-phase12-real.sh に追加）、実機UIで製番フィルタ・永続化を確認。deploy-status-recovery.md にチェックリスト追加。知見: Mac から Tailscale 経由でブラウザアクセスすると自己署名証明書で chrome-error になるため、UI検証は実機/VNC での確認が必要。
 - 2026-03-19: KB-308を追加（生産スケジュールUIが古いのに戻った事象（ブランチ分岐によるデプロイ内容ずれ））→ デプロイ後にUIが古いバージョンに戻った事象を調査。原因はデプロイブランチにUI統一が含まれていなかったこと。統合ブランチ `feat/production-schedule-ui-unify-caddy-secfix` を作成し、cherry-pick で Caddy 自前ビルドを統合。Dockerfile.web 衝突時は自前ビルド側を採用。デプロイ・実機検証完了、main マージ予定。
 - 2026-03-20: KB-309を追加（GitHub メンテナ衛生・ForceMemo/GlassWorm 系を背景にしたチェックリスト）→ 2FA 有効化、期限切れ PAT 削除、セッション/SSH 確認、Cursor 拡張最小化、ローカルで `lzcdrtfxyqiplpd` 検索と `git push --dry-run` による認証確認を記録。外部調査（StepSecurity / Truesec / GitHub Blog）へのリンクとトラブルシュート表を `infrastructure/security.md` に集約。
+- 2026-03-28（追記）: LocalLLM 可観測性・ADR-20260329・Pi5 単体デプロイ・**実機スモーク**（401 境界・api コンテナ→upstream `/healthz` 200・health degraded+DB ok）を EXEC_PLAN / Surprises / Next Steps / [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md) / docs/INDEX に反映。`main` は PR マージで統合。
 - 2026-03-28: KB-318を追加（Pi5 LocalLLM: `LOCAL_LLM_*` は `docker.env.j2` / `infrastructure/docker/.env` 経由で API コンテナへ。`apps/api/.env` のみでは compose が読まない）→ Progress / Surprises / Next Steps / docs/INDEX / security KB-317 関連 / runbook / deployment 注記を整合。ansible-deployment 件数 47。
 - 2026-03-28: KB-317を追加（Ubuntu LocalLLM を Tailscale sidecar + `tag:llm` で分離公開）→ Ubuntu ホスト全体ではなく、`localllm` 専用ディレクトリ配下の `tailscale`/`nginx`/`llama-server` スタックのみを tailnet に参加。入口は `38081`、内部推論は `127.0.0.1:38082`、ACL は `tag:server -> tag:llm: tcp:38081` のみ。`docker compose config` や `tailscale` 起動ログに `TS_AUTHKEY` が表示されうるため、参加後に revoke + ローカル削除する運用を記録。
 - 2026-03-18: KB-307を追加（生産スケジュールUI統一（登録製番・資源CDドロップダウン併設））→ 生産スケジュールで登録製番をドロップダウン化（複数選択ON/OFF維持、削除/左右移動は非表示）、資源CDは横スクロールUIを維持しつつドロップダウン併設（通常/割当の両トグル）。資源名はドロップダウン内に併記し、ホバー表示を廃止。`ProductionScheduleResourceFilters` に `rightActions` を追加して右端縦ボタンレイアウトへ変更。`ProductionScheduleHistoryStrip` / `SeibanHistoryButton` / `historyOrder.ts` は未使用化に伴い削除。web lint/build 成功。**デプロイ・実機検証完了を反映**: ブランチ `feat/production-schedule-dropdown-ui-unify`、Pi5→raspberrypi4→raspi4-robodrill01 の順に1台ずつデプロイ。Phase12 24項目PASS、実機検証OK。CI Trivy（web イメージ）で Caddy/Go 由来 CVE 検出時は `.trivyignore` に該当 CVE を追記する運用を KB-307 に記載。
