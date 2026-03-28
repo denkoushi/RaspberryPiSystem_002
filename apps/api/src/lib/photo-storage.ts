@@ -1,6 +1,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
+import sharp from 'sharp';
+
 const getStorageBaseDir = () =>
   process.env.PHOTO_STORAGE_DIR ||
   (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
@@ -211,6 +213,27 @@ export class PhotoStorage {
       `${getThumbnailsDir()}/`
     );
     return await fs.readFile(thumbnailFullPath);
+  }
+
+  /**
+   * VLM 推論用: 本画像を読み、長辺上限でサイズ内に収めて JPEG 化する。
+   * （キオ斯克表示用サムネより解像度を確保する）
+   */
+  static async readVisionInferenceJpeg(
+    photoUrl: string,
+    opts: { maxLongEdge: number; jpegQuality: number }
+  ): Promise<Buffer> {
+    if (!photoUrl.startsWith('/api/storage/photos/')) {
+      throw new Error(`Invalid photoUrl for vision inference: ${photoUrl}`);
+    }
+    const raw = await this.readPhoto(photoUrl);
+    return sharp(raw)
+      .resize(opts.maxLongEdge, opts.maxLongEdge, {
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: opts.jpegQuality })
+      .toBuffer();
   }
 }
 

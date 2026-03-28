@@ -1468,6 +1468,44 @@ export async function getActiveLoans(clientId?: string, clientKey: string = 'cli
   return data.loans;
 }
 
+export type PhotoLabelReviewQuality = 'GOOD' | 'MARGINAL' | 'BAD';
+
+export type PhotoLabelReviewItem = {
+  id: string;
+  borrowedAt: string;
+  photoUrl: string;
+  photoToolDisplayName: string | null;
+  photoToolHumanDisplayName: string | null;
+  photoToolHumanQuality: PhotoLabelReviewQuality | null;
+  photoToolHumanReviewedAt: string | null;
+  employee: { id: string; displayName: string; employeeCode: string };
+  client: { id: string; name: string; location: string | null } | null;
+};
+
+export async function listPhotoLabelReviews(limit = 50): Promise<PhotoLabelReviewItem[]> {
+  const { data } = await api.get<{ items: PhotoLabelReviewItem[] }>('/tools/loans/photo-label-reviews', {
+    params: { limit },
+  });
+  return data.items;
+}
+
+export async function patchPhotoLabelReview(
+  loanId: string,
+  body: { quality: PhotoLabelReviewQuality; humanDisplayName?: string | null }
+): Promise<PhotoLabelReviewItem> {
+  const payload: { quality: PhotoLabelReviewQuality; humanDisplayName?: string | null } = {
+    quality: body.quality,
+  };
+  if (Object.prototype.hasOwnProperty.call(body, 'humanDisplayName')) {
+    payload.humanDisplayName = body.humanDisplayName ?? null;
+  }
+  const { data } = await api.patch<{ item: PhotoLabelReviewItem }>(
+    `/tools/loans/${loanId}/photo-label-review`,
+    payload
+  );
+  return data.item;
+}
+
 export async function borrowItem(payload: BorrowPayload, clientKey?: string) {
   const { data } = await api.post<{ loan: Loan }>('/tools/loans/borrow', payload, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined

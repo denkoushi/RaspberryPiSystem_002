@@ -3,7 +3,7 @@ import cron from 'node-cron';
 import { logger } from '../../../lib/logger.js';
 import { env } from '../../../config/env.js';
 import { LlamaServerVisionCompletionAdapter, isLocalLlmVisionConfigured } from '../../vision/llama-server-vision-completion.adapter.js';
-import { PhotoStorageThumbnailReader } from './photo-storage-thumbnail-reader.adapter.js';
+import { PhotoStorageVisionImageSource } from './photo-storage-vision-image-source.adapter.js';
 import { PrismaPhotoToolLabelRepository } from './prisma-photo-tool-label.repository.js';
 import { PhotoToolLabelingService } from './photo-tool-labeling.service.js';
 
@@ -25,7 +25,7 @@ export class PhotoToolLabelScheduler {
       service ??
       new PhotoToolLabelingService({
         repo: new PrismaPhotoToolLabelRepository(),
-        thumbnailReader: new PhotoStorageThumbnailReader(),
+        visionImageSource: new PhotoStorageVisionImageSource(),
         vision: new LlamaServerVisionCompletionAdapter(),
         isVisionConfigured: isLocalLlmVisionConfigured,
       });

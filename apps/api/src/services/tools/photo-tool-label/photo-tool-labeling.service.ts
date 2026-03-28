@@ -3,22 +3,26 @@ import { performance } from 'node:perf_hooks';
 import { logger } from '../../../lib/logger.js';
 
 import { normalizePhotoToolDisplayName } from './photo-tool-label-normalize.js';
+import { env } from '../../../config/env.js';
+
 import type {
   PendingPhotoLabelRepositoryPort,
-  ThumbnailReaderPort,
+  PhotoToolVisionImageSourcePort,
   VisionCompletionPort,
 } from './photo-tool-label-ports.js';
 
-const USER_PROMPT =
+export const DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT =
   '画像の中で最も目立つ工具を1つだけ選び、日本語の短い工具名だけを答えてください。説明文や句読点は不要です。';
 
 const log = logger.child({ component: 'photoToolLabeling' });
 
 export type PhotoToolLabelingServiceDeps = {
   repo: PendingPhotoLabelRepositoryPort;
-  thumbnailReader: ThumbnailReaderPort;
+  visionImageSource: PhotoToolVisionImageSourcePort;
   vision: VisionCompletionPort;
   isVisionConfigured: () => boolean;
+  /** テスト・差し替え用。未指定時は env + デフォルト文言 */
+  getVisionUserPrompt?: () => string;
 };
 
 export class PhotoToolLabelingService {
@@ -49,14 +53,22 @@ export class PhotoToolLabelingService {
     }
   }
 
+  private visionUserPrompt(): string {
+    return (
+      this.deps.getVisionUserPrompt?.() ??
+      env.PHOTO_TOOL_LABEL_USER_PROMPT?.trim() ??
+      DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT
+    );
+  }
+
   private async processClaimedLoan(loanId: string, photoUrl: string): Promise<void> {
     const started = performance.now();
     let ok = false;
     let responseCharLen = 0;
     try {
-      const imageBytes = await this.deps.thumbnailReader.readThumbnail(photoUrl);
+      const imageBytes = await this.deps.visionImageSource.readImageBytesForVision(photoUrl);
       const { rawText } = await this.deps.vision.complete({
-        userText: USER_PROMPT,
+        userText: this.visionUserPrompt(),
         imageBytes,
         mimeType: 'image/jpeg',
       });

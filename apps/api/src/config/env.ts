@@ -159,6 +159,16 @@ const envSchema = z.object({
   PHOTO_TOOL_LABEL_CRON: z.string().default('*/5 * * * *'),
   PHOTO_TOOL_LABEL_BATCH_SIZE: z.coerce.number().int().min(1).max(20).default(3),
   PHOTO_TOOL_LABEL_STALE_MINUTES: z.coerce.number().int().min(5).max(240).default(30),
+  /** VLM 入力: 元画像を長辺このpx以下に収めて JPEG 再エンコード（thumbnail 時は無視） */
+  PHOTO_TOOL_LABEL_VISION_MAX_LONG_EDGE: z.coerce.number().int().min(256).max(2048).default(768),
+  PHOTO_TOOL_LABEL_VISION_JPEG_QUALITY: z.coerce.number().int().min(50).max(100).default(85),
+  /** 未設定時はコード内デフォルトプロンプト */
+  PHOTO_TOOL_LABEL_USER_PROMPT: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  /** original: 保存済み本画像をリサイズ。thumbnail: 従来どおりサムネのみ（切り戻し用） */
+  PHOTO_TOOL_LABEL_VISION_SOURCE: z.enum(['original', 'thumbnail']).default('original'),
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') {
     return;

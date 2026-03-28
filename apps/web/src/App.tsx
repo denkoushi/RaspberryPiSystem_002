@@ -16,6 +16,7 @@ import { DashboardPage } from './pages/admin/DashboardPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
+import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SignageEmergencyPage } from './pages/admin/SignageEmergencyPage';
@@ -116,6 +117,7 @@ function App() {
           <Route path="config" element={<GmailConfigPage />} />
         </Route>
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
+        <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
         <Route path="signage">
           <Route path="schedules" element={<SignageSchedulesPage />} />

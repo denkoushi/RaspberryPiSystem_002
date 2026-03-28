@@ -57,6 +57,8 @@ import {
   deleteItem,
   deleteLoan,
   getActiveLoans,
+  listPhotoLabelReviews,
+  patchPhotoLabelReview,
   getClients,
   getClientLogs,
   getClientStatuses,
@@ -131,6 +133,7 @@ import {
   getDeployStatus,
   type CancelPayload,
   type PhotoBorrowPayload,
+  type PhotoLabelReviewQuality,
   getSignageSchedules,
   createSignageSchedule,
   updateSignageSchedule,
@@ -998,6 +1001,28 @@ export function useActiveLoans(clientId?: string, clientKey?: string, options?: 
     refetchInterval: 30000, // 30秒ごとに自動更新（12時間経過の状態をリアルタイムで反映）
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled !== false // デフォルトはtrue、明示的にfalseが指定された場合のみ無効化
+  });
+}
+
+export function usePhotoLabelReviews(limit = 50) {
+  return useQuery({
+    queryKey: ['photo-label-reviews', limit],
+    queryFn: () => listPhotoLabelReviews(limit),
+  });
+}
+
+export function usePatchPhotoLabelReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      loanId: string;
+      quality: PhotoLabelReviewQuality;
+      humanDisplayName?: string | null;
+    }) => patchPhotoLabelReview(args.loanId, { quality: args.quality, humanDisplayName: args.humanDisplayName }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['photo-label-reviews'] });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    },
   });
 }
 

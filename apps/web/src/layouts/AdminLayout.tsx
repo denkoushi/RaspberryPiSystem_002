@@ -95,6 +95,9 @@ export function AdminLayout() {
             <NavLink to="/admin/local-llm" className={linkClass}>
               LocalLLM
             </NavLink>
+            <NavLink to="/admin/photo-loan-label-reviews" className={linkClass}>
+              写真持出VLM
+            </NavLink>
             <NavLink to="/admin/backup/targets" className={linkClass}>
               バックアップ
             </NavLink>

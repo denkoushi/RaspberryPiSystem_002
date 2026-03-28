@@ -1,4 +1,8 @@
-import { formatClientDeviceLocationLabel, PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
+import {
+  formatClientDeviceLocationLabel,
+  PHOTO_LOAN_CARD_PRIMARY_LABEL,
+  resolvePhotoLoanToolDisplayLabel,
+} from '@raspi-system/shared-types';
 
 import type { Loan } from '../../api/types';
 
@@ -36,14 +40,15 @@ export function presentActiveLoanListLines(loan: Loan): ActiveLoanListLines {
     };
   }
 
-  const vlmName = loan.photoToolDisplayName?.trim();
   const itemName =
     loan.item?.name ??
-    (vlmName && vlmName.length > 0
-      ? vlmName
-      : loan.photoUrl
-        ? PHOTO_LOAN_CARD_PRIMARY_LABEL
-        : 'アイテム');
+    (loan.photoUrl
+      ? resolvePhotoLoanToolDisplayLabel({
+          humanDisplayName: loan.photoToolHumanDisplayName,
+          vlmDisplayName: loan.photoToolDisplayName,
+          fallbackLabel: PHOTO_LOAN_CARD_PRIMARY_LABEL,
+        })
+      : 'アイテム');
   return {
     kind: 'item',
     primaryLine: itemName,

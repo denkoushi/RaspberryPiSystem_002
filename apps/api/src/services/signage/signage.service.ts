@@ -1,6 +1,10 @@
 import { Prisma, SignageContentType, SignageDisplayMode } from '@prisma/client';
 import type { SignageSchedule } from '@prisma/client';
-import { formatClientDeviceLocationLabel, PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
+import {
+  formatClientDeviceLocationLabel,
+  PHOTO_LOAN_CARD_PRIMARY_LABEL,
+  resolvePhotoLoanToolDisplayLabel,
+} from '@raspi-system/shared-types';
 
 type ScheduleSummary = Pick<
   SignageSchedule,
@@ -556,17 +560,18 @@ export class SignageService {
         const diffHours = diffMs / (1000 * 60 * 60);
         const isOver12Hours = diffHours > 12;
         
-        const vlmName = loan.photoToolDisplayName?.trim();
         const name = isInstrument
           ? (loan.measuringInstrument?.name ?? '計測機器')
           : isRigging
             ? (loan.riggingGear?.name ?? '吊具')
             : (loan.item?.name ??
-              (vlmName && vlmName.length > 0
-                ? vlmName
-                : loan.photoUrl
-                  ? PHOTO_LOAN_CARD_PRIMARY_LABEL
-                  : '持出中アイテム'));
+              (loan.photoUrl
+                ? resolvePhotoLoanToolDisplayLabel({
+                    humanDisplayName: loan.photoToolHumanDisplayName,
+                    vlmDisplayName: loan.photoToolDisplayName,
+                    fallbackLabel: PHOTO_LOAN_CARD_PRIMARY_LABEL,
+                  })
+                : '持出中アイテム'));
         
         return {
           id: loan.id,
