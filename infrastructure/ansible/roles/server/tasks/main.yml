@@ -551,6 +551,18 @@
       missing+=("SLACK_KIOSK_SUPPORT_WEBHOOK_URL")
     fi
 
+    local_llm_base="{{ api_local_llm_base_url | default('') }}"
+    local_llm_token="{{ api_local_llm_shared_token | default('') }}"
+    local_llm_model="{{ api_local_llm_model | default('') }}"
+    if [ -n "${local_llm_base}" ] || [ -n "${local_llm_token}" ] || [ -n "${local_llm_model}" ]; then
+      for key in LOCAL_LLM_BASE_URL LOCAL_LLM_SHARED_TOKEN LOCAL_LLM_MODEL; do
+        value="$(get_env_value "${key}")"
+        if [ -z "${value}" ]; then
+          missing+=("${key}")
+        fi
+      done
+    fi
+
     missing_count=0
     for _ in "${missing[@]}"; do
       missing_count=$((missing_count + 1))
