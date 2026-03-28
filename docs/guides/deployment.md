@@ -55,6 +55,7 @@ update-frequency: medium
   - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` は**32文字以上の強い値**を設定する
   - `NODE_ENV=production` で弱い値（例: `dev-*`, `*change-me*`, `test-*`）はAPI起動時にFail-fastで拒否される
   - **注意（Docker Composeのenv_file）**: `docker-compose.server.yml` の `api` は `apps/api/.env.example` と `infrastructure/docker/.env` を `env_file` で読み込むため、`infrastructure/docker/.env` にJWTが無いと `.env.example` の弱い値（例: `replace-me`）が使われてAPIが再起動ループになる
+  - **LocalLLM 代理（Pi5 API）**: `LOCAL_LLM_BASE_URL` / `LOCAL_LLM_SHARED_TOKEN` / `LOCAL_LLM_MODEL` も **同じく `infrastructure/docker/.env`（Ansible: `infrastructure/ansible/templates/docker.env.j2`）へ出力**する。`api` サービスは **`apps/api/.env` を `env_file` に含めない**ため、ホストの `apps/api/.env` にだけ書いてもコンテナ内に入らない（JWT と同系の切り分け。[KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）
 
   **JWT秘密鍵の用途と仕組み**:
   - **用途**: 管理コンソール（`/admin`）やキオスク（`/kiosk`）のログイン認証で使用される「アクセストークン」と「リフレッシュトークン」の署名に使用されます

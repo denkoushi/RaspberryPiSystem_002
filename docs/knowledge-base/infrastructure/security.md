@@ -54,6 +54,7 @@ update-frequency: medium
 - 実験用ポートと業務用ポートは **分ける**（今回は `8081` と `38081`）
 - Mac から Ubuntu LocalLLM へ直接 `curl` しても、ACL 上 **`tag:server -> tag:llm` のみ許可**なので到達しない。最終確認は **Pi5 API 経由**で行う
 - Mac ローカルの Docker 検証では、本番用 `docker-compose.server.yml` の `/opt/...` bind mount をそのまま使わず、**`docker-compose.mac-local.override.yml`** でワークスペース配下 `.docker/local/` へ逃がす
+- Pi5 **本番 API コンテナ**に `LOCAL_LLM_*` が入らないときは、Ubuntu 側より先に **Docker Compose の `env_file` 経路**を疑う（`apps/api/.env` のみ更新では届かないことがある。詳細は [KB-318](./ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）
 
 **関連ファイル**:
 - `/home/localllm/local-llm-system/compose/compose.yaml`
@@ -64,6 +65,7 @@ update-frequency: medium
 - `apps/api/src/routes/system/local-llm.ts`
 - `apps/api/src/services/system/local-llm-proxy.service.ts`
 - `infrastructure/docker/docker-compose.mac-local.override.yml`
+- `infrastructure/ansible/templates/docker.env.j2`（Pi5 API 向け `LOCAL_LLM_*` の実効出力先。理由は [KB-318](./ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）
 - `docs/runbooks/local-llm-tailscale-sidecar.md`
 - `docs/security/tailscale-policy.md`
 - `docs/security/system-inventory.md`

@@ -7,6 +7,7 @@ related:
   - ../security/tailscale-policy.md
   - ../security/system-inventory.md
   - ../knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する
+  - ../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env
   - ../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
 category: runbooks
 update-frequency: medium
@@ -229,8 +230,15 @@ sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker 
 - 本システム専用のモデルは `localllm` 配下へコピーする
 - 既存の `~/models` をそのまま bind mount しない
 
+### Pi5 API で `/api/system/local-llm/status` が未設定（`configured=false`）
+
+- **切り分け**: Pi5 上で API コンテナ内の `printenv LOCAL_LLM_BASE_URL` 等を確認する。ホストの `apps/api/.env` に値があっても、**本番 `docker-compose.server.yml` の `api` はそのファイルを `env_file` に含めない**ため、コンテナに渡らないことがある。
+- **正規の更新経路**: Ansible が生成する **`infrastructure/docker/.env`**（テンプレート `docker.env.j2`）に `LOCAL_LLM_*` があるか。手作業で `apps/api/.env` だけ直すとデプロイや次回 Ansible で上書き・不一致になりやすい。
+- **詳細**: [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)
+
 ## 参照
 
 - [KB-317](../knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)
+- [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)
 - [ADR-20260328](../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)
 - [Tailscale Policy](../security/tailscale-policy.md)
