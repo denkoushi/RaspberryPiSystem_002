@@ -2,7 +2,7 @@
 title: 新規クライアント端末の初期設定手順
 tags: [初期設定, クライアント, status-agent, SSH]
 audience: [運用者, 開発者]
-last-verified: 2025-12-01
+last-verified: 2026-03-28
 related: [status-agent.md, ssh-setup.md, operation-manual.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # 新規クライアント端末の初期設定手順
 
-最終更新: 2026-03-05（NFCリーダー用のDocker前提条件・インストール手順を追加。標準デプロイでpcscd/nfc-agentが自動設定される旨を明記）
+最終更新: 2026-03-28（Pi5 から新 Pi4 の LAN 直で `No route to host` になる場合の切り分けを追記。FJV60/80 3台目追加時の知見は [KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk)）
 
 ## 概要
 
@@ -177,6 +177,7 @@ ssh <ユーザー名>@<Pi4のTailscale IP>
 **トラブルシューティング**:
 - `tailnet policy does not permit you to SSH to this node`: Tailscale SSHが有効になっている。Pi4で`sudo tailscale set --ssh=false`を実行
 - `Permission denied (publickey,password)`: Pi5の公開鍵がPi4の`authorized_keys`に追加されていない。手動で追加する（下記参照）
+- `No route to host`（Pi5 から新 Pi4 の **LAN IP** へ `ssh` / `ssh-copy-id` 時）: **Tailscale 未参加ではなく、Pi5 と新 Pi4 の間に L3 経路が無い**典型例。同一セグメントにいないと LAN 直は失敗する。**対処**: 届く経路（現場の別端末の VNC/コンソール等）で Pi5 の `~/.ssh/id_ed25519.pub` を Pi4 の `~/.ssh/authorized_keys` に追記し、新 Pi4 を Tailscale 参加・`tag:kiosk`・`sudo tailscale set --ssh=false` まで進めたうえで、**Pi5 からは Tailscale IP（`100.x`）**で接続する。**詳細**: [KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk)
 
 ### 2.4 SSH接続のテスト
 

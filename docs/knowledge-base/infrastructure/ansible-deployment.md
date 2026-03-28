@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-02-08
+last-verified: 2026-03-28
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -13,12 +13,63 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 44件  
+**件数**: 45件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
+
+---
+
+<a id="kb-315-pi4-fjv-third-kiosk"></a>
+
+### [KB-315] Pi4 3台目（FJV60/80・`raspi4-fjv60-80`）追加と Pi5 経路・Ansible 実行の注意
+
+**発生日 / 記録日**: 2026-03-28  
+**Status**: ✅ 手順確定・実機反映済み（当時の検証結果に基づく）
+
+**Context（何をしたか）**:
+- 第2工場キオスク用 Pi4 を **3台目**として追加（現場名: FJV60/80）。
+- `inventory.yml` にホスト `raspi4-fjv60-80` を追加し、`group_vars/all.yml` に `raspi4_fjv60_80_ip`（LAN / Tailscale の両方）を定義。
+- `status_agent_client_id`: `raspi4-fjv60-80-kiosk1`、`status_agent_client_key` / NFC: `client-key-raspi4-fjv60-80-kiosk1`（**固定文字列**。`register-clients.sh` で vault テンプレ端末と同列に扱える）。
+- `status_agent_location`: `第2工場 - FJV60/80`（管理コンソール表示・API の actor location 解決に影響しうるため、命名は運用で統一する）。
+- 実機: Tailscale 参加・`tag:kiosk`・`sudo tailscale set --ssh=false` 後、Pi5 から `100.x` へ SSH / Ansible 疎通。
+- Pi5 上で `SERVER_IP=... ./scripts/register-clients.sh` 実行（vault テンプレの端末は従来どおりスキップ、**固定キー端末のみ登録**）。
+- 新 Pi4 に Docker 導入後、`ansible-playbook ... deploy-staged.yml --limit raspi4-fjv60-80` で初回デプロイ（所要は nfc-agent 初回イメージビルド含め **約15〜20分規模**になりうる）。
+- `./scripts/deploy/verify-phase12-real.sh` に **FJV 向け deploy-status と Pi5 経由サービス確認**を追加済み（当時の結果例: PASS 30 / WARN 2 / FAIL 0。WARN は Pi3 未到達・scheduler ログ未検出等の既知系）。
+
+**Symptoms（つまずきやすい症状）**:
+1. Pi5 から新 Pi4 の **LAN IP** へ `ssh-copy-id` すると `No route to host`。
+2. Mac 等から Pi4 の Tailscale IP へ直接 SSH すると **タイムアウト**（踏み台なしでは到達しない構成がありうる）。
+3. `ansible-playbook` を **リポジトリルート**から `infrastructure/ansible/inventory.yml` だけ指定して実行すると **`role 'common' was not found`**。
+4. ローカル（Mac）に **未コミット変更**がある状態で `update-all-clients.sh` を **リモート Pi5 向け**に実行すると **`[ERROR] ローカルリポジトリに未commit変更があります`** で停止。
+5. 初回デプロイで **`Ensure nfc-agent container is up` が長時間変化なし**に見える（実際は BuildKit 内で `poetry install` 等が動いていることがある）。
+
+**Investigation**:
+- (1)(2): `No route to host` は **Tailscale 未参加ではなく L3 経路なし**が典型。Pi5 と新 Pi4 が **同一 LAN にいない**と LAN 直は失敗する。**CONFIRMED**（運用回避: 同セグメントの端末で `authorized_keys` に Pi5 公開鍵を追記するか、先に Tailscale して Pi5 から `100.x` のみ使う）。
+- (3): `ansible.cfg` の `roles_path = ./roles` は **カレントが `infrastructure/ansible` のとき有効**。ルートから実行すると roles 解決失敗。**CONFIRMED**。
+- (4): `ensure_local_repo_ready_for_deploy()` がリモートデプロイ時にローカルクリーンを要求。**CONFIRMED**（設計どおり）。
+- (5): `docker compose` の初回ビルドで `Dockerfile.nfc-agent` の `poetry install` が長い。**CONFIRMED**（ハングと誤認しやすい）。
+
+**Fix / 運用手順（要約）**:
+- **SSH 鍵**: Pi5 が LAN で届かないときは、[client-initial-setup.md](../../guides/client-initial-setup.md) のとおり **届く経路で `authorized_keys` に Pi5 の `id_ed25519.pub` を追記** → Tailscale → Pi5 から `ssh user@100.x`。
+- **Ansible**: Pi5 上で次のどちらか。
+  - `cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_CONFIG="$PWD/ansible.cfg" ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/deploy-staged.yml --limit raspi4-fjv60-80`
+  - またはリポジトリ整合後に従来の `update-all-clients.sh` + `--limit raspi4-fjv60-80`（**ローカルはコミット済み**で実行）。
+- **Pi5 の作業ツリー**: 運用で一時的に `scp` 等でファイルを直置きした場合は、`main` 取り込み後に **`git checkout main && git pull --ff-only`** で揃えるか、変更を捨ててから pull（詳細は運用者判断）。
+- **NFC**: キオスク Pi4 は **Docker 必須**（未導入だと nfc-agent タスクで失敗）。初回ビルドは待つ。
+
+**Prevention**:
+- 新 Pi4 の IP は **`tailscale_network` / `local_network` の両方**に追記し、`network_mode: tailscale` 運用と緊急時 `local` の両方で迷子にしない。
+- 手順書・Runbook では **Pi5 踏み台**を正とし、Mac 直 SSH を前提にしない。
+
+**関連ファイル**:
+- `infrastructure/ansible/inventory.yml`（`raspi4-fjv60-80`）
+- `infrastructure/ansible/group_vars/all.yml`（`raspi4_fjv60_80_ip`）
+- `scripts/deploy/verify-phase12-real.sh`
+- `docs/guides/deployment.md`（Pi4×3 順番 `--limit` 例）
+- `scripts/update-all-clients.sh`（ローカルクリーンガード）
 
 ---
 

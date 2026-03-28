@@ -25,6 +25,10 @@
 - **詳細 API の React Query キャッシュ（チャタリング抑止）**: [ADR-20260327](./decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)
 - **運用手順**: [kiosk-documents.md](./runbooks/kiosk-documents.md)
 
+### 🆕 最新アップデート（2026-03-28）
+
+- **Pi4 3台目（第2工場 FJV60/80・Ansible `raspi4-fjv60-80`）追加・register-clients・初回 `deploy-staged`・`verify-phase12-real.sh` 拡張・実機キオスク/NFC 確認・ナレッジ反映**: `inventory.yml` / `group_vars/all.yml` / 検証スクリプト / [deployment.md](./guides/deployment.md)。**トラブルシュート**: Pi5→新 Pi4 の LAN 直 `No route to host` は **経路不足**（Tailscale 誤認で切り捨てない）。Ansible は **`infrastructure/ansible` + `ansible.cfg`**。**参照**: [KB-315](./knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk) / [client-initial-setup.md](./guides/client-initial-setup.md) / [deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-03-27）
 
 - **キオスク要領書: イマーシブ時ビューアツールバー折りたたみ（`HoverRevealCollapsibleToolbar`・`useTimedHoverReveal`）・左一覧要約の `title` 全文（`kioskDocumentListSummary.ts`）（`feat/kiosk-documents-hover-toolbar-and-summary-tooltip`・[PR #49](https://github.com/denkoushi/RaspberryPiSystem_002/pull/49)）・本番デプロイ（Pi5→`raspberrypi4`→`raspi4-robodrill01`・Pi3 除外・順次）・Phase12 実機検証・ドキュメント反映・`main` マージ**: Web のみ（API 契約不変）。Mac からは `export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（例）が必要な場合あり。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 29 / WARN 1 / FAIL 0**（約 41s・2026-03-27、Pi3 WARN）。**参照**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) / [kiosk-documents.md](./runbooks/kiosk-documents.md) / [knowledge-base/index.md](./knowledge-base/index.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
