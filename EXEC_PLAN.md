@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-28) **`docs/` 配置ポリシー（Pi5 保持 / Pi4・Pi3 削除）・Ansible 条件分岐・本番実機検証・ナレッジ反映**: `roles/common` の `docs` 削除に `when: "'server' not in group_names"` を付与し、`server`（Pi5）のみ `docs/` を残す。**本番検証（Pi5 経由 SSH）**: Pi5 で `docs/`・`docs/INDEX.md` 存在、`git status` で `docs` 削除行 **0**、`GET https://localhost/api/system/health` → **`status=ok`**（メモリ警告のみ）。Pi4/Pi3 サンプルで `docs/` 無し、`git status` の `D docs/...` 大量は**仕様**。**関連**: [KB-319](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-319-docs-placement-policy-by-host-role) / [deployment.md](./docs/guides/deployment.md) / [common/README.md](./infrastructure/ansible/roles/common/README.md)。**ブランチ**: `feat/pi5-docs-retention-policy`（マージ後に PR リンク・SHA を本項へ追記）。
 - [x] (2026-03-28) **Ubuntu LocalLLM 専用ノード（`ubuntu-local-llm-system`）を Tailscale sidecar + `tag:llm` + 認証プロキシで分離構築し、Pi5 API からの代理疎通まで確認**: 既存の実験用 `~/llama.cpp`（`0.0.0.0:8081` 手動起動）は残しつつ、本システム専用に **`localllm` ユーザー**、**`/home/localllm/local-llm-system`**、**モデル専用コピー**、**Tailscale sidecar**、**`llama-server` 内部待受 `127.0.0.1:38082`**、**`nginx` 認証入口 `38081`** を分離。Tailnet ノードは `ubuntu-local-llm-system`（`100.107.223.92`）、ACL は **`tag:server -> tag:llm: tcp:38081`** のみ許可。**確認**: `38081/healthz`=`ok`、認証なし `/v1/models`=`403`、`X-LLM-Token` 付き `/v1/models` は応答あり。さらに Pi5 API に `GET /api/system/local-llm/status` と `POST /api/system/local-llm/chat/completions` を追加し、**Pi5 API → Ubuntu LocalLLM** の実疎通で `configured=true` / `health.ok=true` / 応答本文 `疎通確認 OK です` を確認。**ローカル検証**: Mac 向け `docker-compose.mac-local.override.yml` で `db` / `api` の起動と `http://localhost:8080/api/system/health`=`ok` を確認。**関連**: [KB-317](./docs/knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する) / [local-llm-tailscale-sidecar.md](./docs/runbooks/local-llm-tailscale-sidecar.md) / [ADR-20260328](./docs/decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md) / [tailscale-policy.md](./docs/security/tailscale-policy.md)。
 - [x] (2026-03-28) **Pi5 本番 API コンテナへ `LOCAL_LLM_*` を Ansible 正規経路で配線（`docker.env.j2`）**: `docker-compose.server.yml` の `api` は **`apps/api/.env` を `env_file` に含めない**ため、`api.env.j2` やホストの `apps/api/.env` のみではコンテナ内が未設定のままだった。`infrastructure/ansible/templates/docker.env.j2` に `LOCAL_LLM_*` を出力し、`roles/server/tasks/main.yml` のデプロイ後検証を拡張。**確認**: `--limit raspberrypi5` デプロイ後、API コンテナで `LOCAL_LLM_*` 検出、`/api/system/local-llm/status` が `configured=true` / `health.ok=true`。CI 例 Run `23680363725` success。**関連**: [KB-318](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) / [KB-317](./docs/knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)。
 - [x] (2026-03-28) **Pi5 LocalLLM 可観測性（`LocalLlmObservability` / pino）・運用方針（ADR-20260329）・本番 Pi5 単体デプロイ・実機スモーク**: 実装ブランチ `feat/local-llm-policy-and-observability` を [deployment.md](./docs/guides/deployment.md) に従い **`update-all-clients.sh` + `--limit raspberrypi5` + `--detach --follow`** で反映（リモートログ basename 例: `ansible-update-20260328-172759-5563`・`PLAY RECAP` `failed=0`）。**実機（Pi5 上で SSH）**: `GET /api/system/health` はメモリ高負荷で **`status=degraded` だが `checks.database.status=ok`**（デプロイ直後など運用上の既知パターン。LocalLLM 切り分けは継続可）。未認証 `GET /api/system/local-llm/status` は **`401` / `errorCode=AUTH_TOKEN_REQUIRED`**（`ADMIN`/`MANAGER` のみが正）。`docker compose ... exec -T api node` で **`LOCAL_LLM_BASE_URL` の `/healthz` へ fetch → HTTP 200**（Pi5 API コンテナから Ubuntu upstream まで到達）。**status/chat の応答本文・共有トークンを伴う完全確認**は Runbook の `Authorization: Bearer` 手順が必要。**`main` マージ**: [PR #52](https://github.com/denkoushi/RaspberryPiSystem_002/pull/52) merge `cac727c3`（2026-03-28）。**関連**: [ADR-20260329](./docs/decisions/ADR-20260329-local-llm-pi5-api-operations.md) / [local-llm-tailscale-sidecar.md](./docs/runbooks/local-llm-tailscale-sidecar.md)（実機スモーク節）。
@@ -739,6 +740,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-03-28）: **`docs/` を Pi4/Pi3 で Ansible 削除したあと、各クライアントの `git status` に `D docs/...` が大量に出る**のは、**追跡済み `docs/` が作業ツリーに存在しない**ためで、**実行専用端末として意図した状態**。Pi5（`server`）では `docs/` を残すため `git status` はクリーンに近い。**関連**: [KB-319](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-319-docs-placement-policy-by-host-role)。
 - 観測（2026-03-28）: **Pi5 本番の `api` コンテナは `docker-compose.server.yml` が `apps/api/.env` を `env_file` に含めない**。Ansible が `apps/api/.env` に `LOCAL_LLM_*` を書いても **コンテナプロセスに渡らず**、`GET /api/system/local-llm/status` が未設定に見える。**対処**: `LOCAL_LLM_*` は **`docker.env.j2` → `infrastructure/docker/.env`**（compose が読む正本）へ出す。**関連**: [KB-318](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（[KB-260](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-260-デプロイ後にapiが再起動ループするjwt秘密鍵が弱い値で上書きされる) と同系の env 経路切り分け）。
 - 観測（2026-03-28）: Ubuntu LocalLLM の **Tailscale sidecar** 構成では、**`docker compose config` や `tailscale` コンテナの起動ログ**に **`TS_AUTHKEY` が展開表示**されうる。**対処**: live secret を入れた状態では **`docker compose config` を実行しない**。表示・貼り付けしてしまった auth key は **即 revoke** し、参加完了後は **auth key ファイルを削除**して **runtime token のみ**残す。あわせて、`tailscale up --advertise-tags=tag:llm` を一度でも適用したら、**`TS_EXTRA_ARGS` に同じ `--advertise-tags=tag:llm` を永続化**しないと、次回再起動時に **`requires mentioning all non-default flags`** で再起動ループする。**関連**: [KB-317](./docs/knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する) / [local-llm-tailscale-sidecar.md](./docs/runbooks/local-llm-tailscale-sidecar.md)。
 - 観測（2026-03-28）: LocalLLM 実機スモーク時、`GET /api/system/health` が **`degraded`（例: メモリ使用率 ~96%）**でも **`checks.database.status=ok`** なら、DB 前提の機能切り分けは継続できる（過去の Phase 検証でも memory 警告付き `degraded` を記録済み）。**完全な** `/api/system/local-llm/status` / `chat/completions` は **Bearer 必須**のため、トークンなしでは **401** までが期待どおりの境界確認。**関連**: [local-llm-tailscale-sidecar.md](./docs/runbooks/local-llm-tailscale-sidecar.md)（実機スモーク）/ [ADR-20260329](./docs/decisions/ADR-20260329-local-llm-pi5-api-operations.md)。
@@ -990,6 +992,8 @@
 
 ## Decision Log
 
+- 決定（2026-03-28）: 本番リポジトリの **`docs/` は Pi5（`server`）のみ保持**し、**Pi4（`kiosk`）/ Pi3（`signage`）ではデプロイ時に削除**する。運用・調査の正本参照は Pi5 または GitHub とし、クライアントのディスクと `git status` のノイズを減らす。  
+  参照: [KB-319](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-319-docs-placement-policy-by-host-role) / [deployment.md](./docs/guides/deployment.md)
 - 決定（2026-03-29）: Pi5 API の LocalLLM 代理（`/api/system/local-llm/*`）は **`ADMIN` / `MANAGER` のみ**。構造化ログでは **プロンプト／応答本文・共有トークン・upstream 生本文を出さず**、所要時間・成否・エラーコード・`usage` 数値・リクエスト形状（件数・`maxTokens` 等）に限定する。秘密の配線は **docker.env.j2（KB-318）** と Ansible vault を正とする。  
   参照: [ADR-20260329](./docs/decisions/ADR-20260329-local-llm-pi5-api-operations.md)
 - 決定（2026-03-23）: 手動順番（resource別）と全体ランキング（global-rank/row-rank）の canonical 保存単位は **`siteKey`（工場）** に統一し、API 境界で legacy（`deviceScopeKey` / `shared-global-rank`）互換読み取りを維持する。  
@@ -1675,6 +1679,15 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 本番 `docs/` 配置・関連ブランチ（2026-03-28）
+
+**概要**: `feat/pi5-docs-retention-policy` で Ansible 条件分岐と KB/Runbook/デプロイ手順を整合。本番で Pi5 の `docs/` 保持とクライアント側 `git status` の見え方を確認済み（[KB-319](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-319-docs-placement-policy-by-host-role)）。
+
+**候補タスク**:
+1. **`feat/pi5-docs-retention-policy` を `main` へマージ**後、Pi5 `/opt` で `main` 追従（`git pull --ff-only`）と必要なら再デプロイで方針を恒久化する。
+2. **任意**: 現場手順で `docs/` 外に置きたい証跡・スクショの置き場所を Runbook に1行だけ明文化する（KB と役割分担）。
+3. **並行**: [キオスク要領書 PDF（2026-03-25）](#キオスク要領書-pdf2026-03-25) の Gmail 本番試験や、未マージの機能ブランチ（例: 写真貸出 VLM ラベル系）の `main` 取り込みを優先度に応じて進める。
 
 ### Pi5 LocalLLM API 基盤（2026-03-28）
 
