@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: borrow_return
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - mac-local-db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      - db
+    env_file:
+      - ../../apps/api/.env.example
+      - ../../apps/api/.env
+      - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/borrow_return
+      PHOTO_STORAGE_DIR: /app/storage
+      PDF_STORAGE_DIR: /app/storage
+      SIGNAGE_RENDER_DIR: /app/storage/signage-rendered
+      SIGNAGE_PDF_DPI: "240"
+      CAMERA_TYPE: mock
+      ALERTS_DIR: /app/alerts
+      POWER_ACTIONS_DIR: /app/power-actions
+      BACKUP_STORAGE_DIR: /opt/backups
+      DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
+      DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
+      DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
+      DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
+      SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
+      WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
+    volumes:
+      - ../../.docker/local/storage/photos:/app/storage/photos
+      - ../../.docker/local/storage/thumbnails:/app/storage/thumbnails
+      - ../../.docker/local/storage/pdfs:/app/storage/pdfs
+      - ../../.docker/local/storage/pdf-pages:/app/storage/pdf-pages
+      - ../../.docker/local/storage/signage-rendered:/app/storage/signage-rendered
+      - ../../.docker/local/alerts:/app/alerts
+      - ../../.docker/local/power-actions:/app/power-actions
+      - ../../.docker/local/config:/app/config
+      - ../../.docker/local/backups:/opt/backups
+      - ../../apps/api:/app/host/apps/api:ro
+      - ../../apps/web:/app/host/apps/web:ro
+      - ../../infrastructure/docker:/app/host/infrastructure/docker:ro
+      - ../../clients/nfc-agent:/app/host/clients/nfc-agent:ro
+      - ../../.docker/local/certs:/app/host/certs:ro
+      - ../../infrastructure/ansible:/app/host/infrastructure/ansible:ro
+      - ../../.docker/local/ssh:/root/.ssh:ro
+    ports:
+      - "8080:8080"
+
+volumes:
+  mac-local-db-data:

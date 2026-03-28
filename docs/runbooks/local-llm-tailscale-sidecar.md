@@ -91,6 +91,71 @@ sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker 
 sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker compose restart tailscale nginx llama-server'
 ```
 
+## Pi5 API から使う入口
+
+- Pi5 API 側には、Ubuntu LocalLLM を直接ブラウザへ見せずに代理呼び出しする管理系エンドポイントを用意する
+- 入口:
+  - `GET /api/system/local-llm/status`
+  - `POST /api/system/local-llm/chat/completions`
+- 認証:
+  - Pi5 API の通常ログイン後の `Authorization: Bearer ...`
+  - ロールは `ADMIN` / `MANAGER`
+- Pi5 API の返り値:
+  - upstream の生JSONをそのまま返さず、`model` / `content` / `finishReason` / `usage` に正規化した DTO を返す
+- Pi5 API 側の環境変数:
+  - `LOCAL_LLM_BASE_URL=http://100.107.223.92:38081`
+  - `LOCAL_LLM_SHARED_TOKEN=<Ubuntu の api-token>`
+  - `LOCAL_LLM_MODEL=Qwen_Qwen3.5-9B-Q4_K_M.gguf`
+  - `LOCAL_LLM_TIMEOUT_MS=60000`
+
+最小確認:
+
+```bash
+curl -k -H "Authorization: Bearer <PI5_API_TOKEN>" \
+  https://<pi5-host>/api/system/local-llm/status
+```
+
+```bash
+curl -k \
+  -H "Authorization: Bearer <PI5_API_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      { "role": "user", "content": "日本語で一文だけ、疎通確認OKですと返答してください。" }
+    ],
+    "maxTokens": 80,
+    "temperature": 0.2,
+    "enableThinking": false
+  }' \
+  https://<pi5-host>/api/system/local-llm/chat/completions
+```
+
+## Mac ローカルで Pi5 API を検証する
+
+- 本番用 `docker-compose.server.yml` は `/opt/RaspberryPiSystem_002/...` 前提なので、そのままでは Mac ローカルで起動できない
+- ローカル検証時は `infrastructure/docker/docker-compose.mac-local.override.yml` を単体で使う
+- 目的:
+  - `db` と `api` をワークスペース配下 `.docker/local/` へ逃がして起動する
+  - `/opt/...` bind mount 不足や Linux 専用 mount で落ちる事象を避ける
+
+起動:
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.mac-local.override.yml up -d db api
+```
+
+停止:
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.mac-local.override.yml down
+```
+
+補足:
+
+- API は `http://localhost:8080`
+- DB は `localhost:5432`
+- LocalLLM 代理検証まで行う場合は、ローカルの API 用 `.env` または実行環境に `LOCAL_LLM_BASE_URL` / `LOCAL_LLM_SHARED_TOKEN` / `LOCAL_LLM_MODEL` を入れる
+
 ## 秘密情報の扱い
 
 - `TS_AUTHKEY` は **新規参加時のみ**使用する

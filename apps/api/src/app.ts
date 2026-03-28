@@ -8,6 +8,7 @@ import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerRateLimit } from './plugins/rate-limit.js';
 import { registerSecurityHeaders } from './plugins/security-headers.js';
 import { registerRequestLogger } from './plugins/request-logger.js';
+import { registerLocalLlmGateway } from './plugins/local-llm-gateway.js';
 import { registerRoutes } from './routes/index.js';
 import { initializeCsvImporters } from './services/imports/index.js';
 import { initializeVisualizationModules } from './services/visualization/index.js';
@@ -86,6 +87,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   
   // アプリケーションコンテキストにスケジューラーを保存
   app.decorate('signageRenderScheduler', scheduler);
+  await registerLocalLlmGateway(app);
   
   // CSVインポータを初期化
   initializeCsvImporters();

@@ -140,7 +140,20 @@ const envSchema = z.object({
   KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('true')
-  ).transform((v) => v === 'true')
+  ).transform((v) => v === 'true'),
+  LOCAL_LLM_BASE_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  LOCAL_LLM_SHARED_TOKEN: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  LOCAL_LLM_MODEL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  LOCAL_LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000)
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') {
     return;

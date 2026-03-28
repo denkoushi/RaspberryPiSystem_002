@@ -43,18 +43,27 @@ update-frequency: medium
 - 入口: `nginx:38081`
 - 内部推論: `llama-server:38082`
 - 既存の実験用 `~/llama.cpp` / `8081` は **別系統として維持**
+- Pi5 API 側の入口: `GET /api/system/local-llm/status` / `POST /api/system/local-llm/chat/completions`
+- Pi5 API は **`Authorization: Bearer ...`** を受け、Ubuntu 側には **`X-LLM-Token`** を付けて代理呼び出しする
+- Pi5 API の返り値は upstream の生JSONではなく、`model` / `content` / `finishReason` / `usage` に正規化する
 
 **学んだこと / 再発防止**:
 - live secret 入りの状態で **`docker compose config` を実行しない**
 - auth key は **参加後に revoke + ローカル削除** し、平常運用では残さない
 - `tailscale up` で追加した **非デフォルト設定は `TS_EXTRA_ARGS` にも永続化**する
 - 実験用ポートと業務用ポートは **分ける**（今回は `8081` と `38081`）
+- Mac から Ubuntu LocalLLM へ直接 `curl` しても、ACL 上 **`tag:server -> tag:llm` のみ許可**なので到達しない。最終確認は **Pi5 API 経由**で行う
+- Mac ローカルの Docker 検証では、本番用 `docker-compose.server.yml` の `/opt/...` bind mount をそのまま使わず、**`docker-compose.mac-local.override.yml`** でワークスペース配下 `.docker/local/` へ逃がす
 
 **関連ファイル**:
 - `/home/localllm/local-llm-system/compose/compose.yaml`
 - `/home/localllm/local-llm-system/config/nginx/default.conf.template`
 - `/home/localllm/local-llm-system/config/runtime.env`
 - `/home/localllm/.config/local-llm-system/api-token`
+- `apps/api/src/plugins/local-llm-gateway.ts`
+- `apps/api/src/routes/system/local-llm.ts`
+- `apps/api/src/services/system/local-llm-proxy.service.ts`
+- `infrastructure/docker/docker-compose.mac-local.override.yml`
 - `docs/runbooks/local-llm-tailscale-sidecar.md`
 - `docs/security/tailscale-policy.md`
 - `docs/security/system-inventory.md`

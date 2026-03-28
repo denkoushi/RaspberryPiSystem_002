@@ -5,6 +5,7 @@ import { registerDebugRoutes } from './debug.js';
 import { registerSystemInfoRoute } from './system-info.js';
 import { registerNetworkModeRoute } from './network-mode.js';
 import { registerDeployStatusRoute } from './deploy-status.js';
+import { registerLocalLlmRoutes } from './local-llm.js';
 
 export async function registerSystemRoutes(app: FastifyInstance): Promise<void> {
   registerSystemHealthRoute(app);
@@ -13,5 +14,6 @@ export async function registerSystemRoutes(app: FastifyInstance): Promise<void> 
   registerSystemInfoRoute(app);
   registerNetworkModeRoute(app);
   registerDeployStatusRoute(app);
+  registerLocalLlmRoutes(app);
 }
 
