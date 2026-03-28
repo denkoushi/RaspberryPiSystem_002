@@ -4,6 +4,8 @@
 
 **想定事象**: デプロイは成功したが、特定のキオスク端末だけメンテナンス画面が消えない
 
+**補足（2026-03-28）**: 本番リポジトリの **`docs/` は Pi5（`server`）のみ保持**し、Pi4/Pi3 では Ansible で削除する。クライアントで `git status` に **`D docs/...` が大量**でも**意図した仕様**（追跡ファイルが作業ツリーに無いだけ）。切り分けは [KB-319](../knowledge-base/infrastructure/ansible-deployment.md#kb-319-docs-placement-policy-by-host-role) を参照。
+
 ---
 
 ## 1. 原因の切り分け
