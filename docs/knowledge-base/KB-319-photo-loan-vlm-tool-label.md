@@ -1,0 +1,93 @@
+# KB-319: 写真持出 VLM 工具名ラベルの運用・実機確認
+
+## Context
+
+- **いつ**: 2026-03-28
+- **どこ**: Pi5 API（写真持出ジョブ）、Ubuntu LocalLLM、キオスク持出一覧、サイネージ
+- **背景**: `feat/photo-loan-vlm-tool-label` で、写真付き持出のサムネイルを LocalLLM の VLM に渡し、短い日本語の表示名を `Loan.photoToolDisplayName` に非同期保存する初版を実装・デプロイした。
+
+## Symptoms
+
+- 写真持出カードが **`撮影mode`** のまま変わらないことがある
+- VLM 機能が本番 checkout / DB / API コンテナへ反映済みか判断しづらい
+- LocalLLM の通常チャット運用と、写真持出の内部ジョブ運用が混同されやすい
+
+## Investigation
+
+- **CONFIRMED**: 実装ブランチ `feat/photo-loan-vlm-tool-label` には以下が含まれる
+  - Prisma `Loan.photoToolDisplayName` / `photoToolLabelRequested` / `photoToolLabelClaimedAt`
+  - `PhotoToolLabelingService` / `PhotoToolLabelScheduler`
+  - `LlamaServerVisionCompletionAdapter`
+  - キオスク持出一覧・サイネージの表示優先順位更新
+- **CONFIRMED**: Pi5 上の checkout `5e6531c1` は、VLM 機能コミット `23a14e3f` / `c7576526` を祖先として含む
+- **CONFIRMED**: 本番 DB に VLM 用 3 カラムが存在する
+- **CONFIRMED**: 本番 API コンテナに `LOCAL_LLM_BASE_URL` / `LOCAL_LLM_SHARED_TOKEN` / `LOCAL_LLM_MODEL` が入っている
+- **CONFIRMED**: 2026-03-28 時点の本番 DB 集計は `requested=8` / `labeled=8` / `claimed=0`
+- **CONFIRMED**: 保存済みラベルの例として `マウス` / `接着剤` / `マーカー` / `リモコン` / `定規` を確認した
+- **CONFIRMED**: `curl -sk https://localhost/api/system/health` は `status=ok`、`checks.database.status=ok`
+
+## Root Cause
+
+- ランタイム不具合ではなく、**デプロイ後のドキュメント反映が未実施**だった
+- そのため、現行仕様（VLM ラベル優先、未付与時は `撮影mode`）と運用確認手順が既存ドキュメントへ反映されていなかった
+
+## Fix
+
+- 写真持出仕様書 `photo-loan.md` に VLM 表示名フローとデータモデルを追記
+- LocalLLM Runbook に写真持出 VLM ジョブの確認手順を追記
+- 既存表示仕様 KB（KB-314）を、**VLM ラベル優先 + `撮影mode` フォールバック**の現行仕様へ更新
+- 本 KB と各索引（`docs/INDEX.md` / `docs/knowledge-base/index.md`）を追加更新
+
+## Prevention
+
+- LocalLLM を使う**内部ジョブ**を本番へ出したら、同日中に
+  - 仕様書
+  - Runbook
+  - KB
+  - 索引
+  を最低限更新する
+- 実機確認は UI 目視だけでなく、DB 集計
+  - `photoToolLabelRequested`
+  - `photoToolDisplayName`
+  - `photoToolLabelClaimedAt`
+  を併用する
+
+## Verification Snippets
+
+### 1. 本番 DB 集計
+
+```bash
+docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T db \
+  psql -U postgres -d borrow_return -v ON_ERROR_STOP=1 -P pager=off -F $'\t' -A -c \
+  "SELECT COUNT(*) FILTER (WHERE \"photoToolLabelRequested\" IS TRUE) AS requested,
+          COUNT(*) FILTER (WHERE \"photoToolDisplayName\" IS NOT NULL) AS labeled,
+          COUNT(*) FILTER (WHERE \"photoToolLabelClaimedAt\" IS NOT NULL) AS claimed
+   FROM \"Loan\";"
+```
+
+### 2. API コンテナの LocalLLM 設定
+
+```bash
+docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api \
+  node -e "const b=process.env.LOCAL_LLM_BASE_URL; const t=process.env.LOCAL_LLM_SHARED_TOKEN; const m=process.env.LOCAL_LLM_MODEL; console.log(JSON.stringify({hasBaseUrl:Boolean(b), hasToken:Boolean(t), model:m||null}, null, 2));"
+```
+
+## Troubleshooting
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| `requested > 0` なのに `labeled = 0` | LocalLLM 未設定、scheduler 未起動、upstream 到達不可 | `LOCAL_LLM_*` を API コンテナ内で確認し、Runbook の `/healthz` 手順で Pi5 → Ubuntu 経路を確認 |
+| `claimed > 0` が長時間戻らない | 推論中断やプロセス停止で claim がスタック | `PHOTO_TOOL_LABEL_STALE_MINUTES` 経過後に自動解放されるか確認。必要なら API 再起動後に次回 cron を待つ |
+| ラベルが空で保存されない | VLM 応答が空、改行だけ、または正規化後に空 | ジョブは `photoToolDisplayName` を保存せず claim を解放する。ジョブログの `responseCharLen` を確認 |
+| ラベルが期待した工具名と違う | 初版仕様が「**最も目立つ 1 つ**」であり、Item マスタ照合もしていない | 仕様どおり。マスタ照合や候補提示は将来拡張として別途設計する |
+| サムネイル読み込みで失敗する | `photoUrl` と thumbnail パス規則の不整合 | `PhotoStorage.readThumbnailBuffer()` の規則と実ファイル配置を確認する |
+| マルチモーダル推論だけ失敗する | llama-server の `messages[].content` JSON 形が実機ビルドと異なる | `llama-server-vision-completion.adapter.ts` の `image_url + text` payload を、そのビルドの仕様に合わせて調整する |
+
+## References
+
+- `feat/photo-loan-vlm-tool-label`
+- `apps/api/src/services/tools/photo-tool-label/`
+- `apps/api/src/services/vision/llama-server-vision-completion.adapter.ts`
+- [photo-loan.md](../modules/tools/photo-loan.md)
+- [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)
+- [KB-314](./KB-314-kiosk-loan-card-display-labels.md)

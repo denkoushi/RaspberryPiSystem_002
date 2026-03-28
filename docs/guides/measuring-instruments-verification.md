@@ -319,6 +319,7 @@
 - ✅ **PHOTOモード誤発火問題: 解決済み**（2025-12-11）- NFC/カメラ入力のスコープ分離を実装。詳細は `docs/plans/nfc-stream-isolation-plan.md` および [KB-091](../knowledge-base/frontend.md#kb-091-nfcカメラ入力のスコープ分離-別ページからのイベント横漏れ防止) を参照
 - ✅ **持出一覧UI改善（2025-12-11）**: 計測機器は「管理番号＋名称」を2行表示し、背景色を藍系に変更して工具と識別。写真持出は「写真撮影モード」を表示し、「アイテム情報なし」は非表示。
 - ✅ **持出一覧・サイネージ表記統一（2026-03-26）**: 写真持出の表示名を **「撮影mode」** に変更（`truncate` 緩和）。端末場所は **ラベルなしで値のみ**。単一ソースは `packages/shared-types` の `PHOTO_LOAN_CARD_PRIMARY_LABEL`。実機検証・デプロイ手順・TS は [KB-314](../knowledge-base/KB-314-kiosk-loan-card-display-labels.md) を参照。
+- ✅ **写真持出 VLM 工具名ラベル（2026-03-28）**: `Loan.photoToolDisplayName` が付与された写真持出は、キオスク持出一覧・サイネージで **その表示名を優先**し、未付与時のみ **`撮影mode`** を使う。LocalLLM・DB・claim 状態の切り分けは [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) を参照。
 
 ### 問題9: エラー時に持出登録ボタンが無限ループ動作する
 
