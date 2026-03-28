@@ -2,13 +2,14 @@
 title: Runbook: Ubuntu LocalLLM を Tailscale sidecar で分離運用する
 tags: [運用, LocalLLM, Tailscale, llama.cpp, Docker, Ubuntu]
 audience: [運用者, 開発者]
-last-verified: 2026-03-28
+last-verified: 2026-03-29
 related:
   - ../security/tailscale-policy.md
   - ../security/system-inventory.md
   - ../knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する
   - ../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env
   - ../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
+  - ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
 category: runbooks
 update-frequency: medium
 ---
@@ -32,6 +33,11 @@ update-frequency: medium
 - API 認証: `X-LLM-Token`
 - 専用ユーザー: `localllm`
 - 既存の手動実験用 `~/llama.cpp` + `8081` は別系統として残す
+
+## Pi5 API 側の運用・ログ（本 Runbook の範囲外の判断）
+
+- **正本**: [ADR-20260329](../decisions/ADR-20260329-local-llm-pi5-api-operations.md)（誰が `GET|POST /api/system/local-llm/*` を使えるか、ログに何を載せるか、秘密をどう扱うか）。
+- Ubuntu 上の `api-token` と Pi5 の `LOCAL_LLM_SHARED_TOKEN` は運用上セットでローテーションする。
 
 ## ディレクトリ
 
@@ -157,6 +163,33 @@ curl -k \
   }' \
   https://<pi5-host>/api/system/local-llm/chat/completions
 ```
+
+### Pi5 実機スモーク（認証トークンなしでできる範囲）
+
+運用者が **管理画面用 JWT を持たない**場合でも、次で **経路と境界**だけを確認できる（**秘密はログに出さない**）。
+
+1. **API 全体の生存**: Pi5 上で `curl -sk https://localhost/api/system/health`。**`status` が `degraded` でも `checks.database.status` が `ok` なら**、DB 前提の切り分けは継続しやすい（メモリ高負荷は Pi5 運用でよくある）。
+2. **LocalLLM ルートが認可で守られていること**: 同じく Pi5 上で  
+   `curl -sk -o /dev/null -w "%{http_code}\n" https://localhost/api/system/local-llm/status`  
+   → **`401` 期待**（`errorCode` は `AUTH_TOKEN_REQUIRED`）。
+3. **API コンテナから Ubuntu upstream まで到達すること**（`LOCAL_LLM_BASE_URL` がコンテナ内にある前提）:
+
+```bash
+cd /opt/RaspberryPiSystem_002
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api node -e "
+const b = process.env.LOCAL_LLM_BASE_URL;
+const t = process.env.LOCAL_LLM_SHARED_TOKEN;
+if (!b) { console.error('LOCAL_LLM_BASE_URL missing'); process.exit(1); }
+const h = t ? { 'X-LLM-Token': t } : {};
+fetch(new URL('/healthz', b), { headers: h })
+  .then(async r => { const x = await r.text(); console.log('status', r.status, 'len', x.length); if (!r.ok) process.exit(1); })
+  .catch(e => { console.error(e); process.exit(1); });
+"
+```
+
+期待: `status 200`（本文は短いプレーンテキスト）。
+
+**注意**: 上記は **`/healthz` の到達確認**であり、`GET /api/system/local-llm/status` の JSON（`configured` / `health`）やチャット本文の確認は、**`Authorization: Bearer` 付きの「最小確認」**が必要。
 
 ## Mac ローカルで Pi5 API を検証する
 

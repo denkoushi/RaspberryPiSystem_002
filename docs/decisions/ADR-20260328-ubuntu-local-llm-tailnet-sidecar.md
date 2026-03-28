@@ -31,3 +31,4 @@ References:
   - `docs/security/tailscale-policy.md`
   - `docs/security/system-inventory.md`
   - `docs/knowledge-base/infrastructure/security.md` (KB-317)
+  - [ADR-20260329](./ADR-20260329-local-llm-pi5-api-operations.md)（Pi5 API 代理の運用境界・ログ方針）
