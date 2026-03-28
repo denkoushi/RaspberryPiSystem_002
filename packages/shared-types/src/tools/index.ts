@@ -1,10 +1,15 @@
 /**
  * ツール管理モジュールの型定義
  */
+import type { PhotoToolHumanLabelQuality } from './loan-card-display.js';
 import type { MeasuringInstrument } from '../measuring-instruments/index.js';
 import type { RiggingGear } from '../rigging/index.js';
 export { formatClientDeviceLocationLabel } from './client-device-location.js';
-export { PHOTO_LOAN_CARD_PRIMARY_LABEL } from './loan-card-display.js';
+export {
+  PHOTO_LOAN_CARD_PRIMARY_LABEL,
+  resolvePhotoLoanToolDisplayLabel,
+  type PhotoToolHumanLabelQuality,
+} from './loan-card-display.js';
 
 export interface Employee {
   id: string;
@@ -52,6 +57,11 @@ export interface Loan {
   photoTakenAt?: string | null; // 撮影日時（写真撮影持出機能で使用）
   /** VLM が付与した表示用工具名（マスタ Item 非紐づけ） */
   photoToolDisplayName?: string | null;
+  /** 人が確定した表示用工具名（ある場合は VLM より優先） */
+  photoToolHumanDisplayName?: string | null;
+  photoToolHumanQuality?: PhotoToolHumanLabelQuality | null;
+  photoToolHumanReviewedAt?: string | null;
+  photoToolHumanReviewedByUserId?: string | null;
   employee: Employee;
   item: Item | null; // 写真撮影持出機能ではnullになる可能性がある
   measuringInstrumentId?: string | null;

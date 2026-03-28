@@ -53,6 +53,13 @@ enum UserStatus {
   DISABLED
 }
 
+/// 写真持出 VLM ラベルに対する人レビュー品質（分析・運用向け）
+enum PhotoToolHumanLabelQuality {
+  GOOD
+  MARGINAL
+  BAD
+}
+
 enum ImportStatus {
   PENDING
   PROCESSING
@@ -309,6 +316,7 @@ model User {
   transactions    Transaction[]
   auditLogsActor  RoleAuditLog[] @relation("RoleAuditActor")
   auditLogsTarget RoleAuditLog[] @relation("RoleAuditTarget")
+  photoToolHumanReviewedLoans Loan[] @relation("PhotoToolHumanReviewer")
 }
 
 model RoleAuditLog {
@@ -346,6 +354,11 @@ model Loan {
   photoToolLabelRequested Boolean                   @default(false)
   /// 推論ジョブが処理中として掴んだ時刻（二重実行緩和・スタック回収用）
   photoToolLabelClaimedAt DateTime?
+  /// 人が確定した表示用工具名（null の場合は VLM 表示を優先）
+  photoToolHumanDisplayName     String?
+  photoToolHumanQuality         PhotoToolHumanLabelQuality?
+  photoToolHumanReviewedAt      DateTime?
+  photoToolHumanReviewedByUserId String?
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   item                    Item?                     @relation(fields: [itemId], references: [id], onDelete: SetNull)
@@ -353,6 +366,7 @@ model Loan {
   riggingGear             RiggingGear?              @relation(fields: [riggingGearId], references: [id], onDelete: SetNull)
   employee                Employee?                 @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   client                  ClientDevice?             @relation(fields: [clientId], references: [id])
+  photoToolHumanReviewedBy User?                    @relation("PhotoToolHumanReviewer", fields: [photoToolHumanReviewedByUserId], references: [id], onDelete: SetNull)
   transactions            Transaction[]
   InspectionRecord        InspectionRecord[]
   RiggingInspectionRecord RiggingInspectionRecord[]
@@ -366,6 +380,7 @@ model Loan {
   @@index([cancelledAt])
   @@index([photoTakenAt])
   @@index([photoToolLabelRequested, photoToolDisplayName, photoToolLabelClaimedAt], map: "Loan_photoToolLabel_job_idx")
+  @@index([photoToolHumanReviewedByUserId])
 }
 
 model Transaction {

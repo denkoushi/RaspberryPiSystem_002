@@ -3,13 +3,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { PhotoToolLabelingService } from '../photo-tool-labeling.service.js';
 import type {
   PendingPhotoLabelRepositoryPort,
-  ThumbnailReaderPort,
+  PhotoToolVisionImageSourcePort,
   VisionCompletionPort,
 } from '../photo-tool-label-ports.js';
 
 describe('PhotoToolLabelingService', () => {
   let repo: PendingPhotoLabelRepositoryPort;
-  let thumbnailReader: ThumbnailReaderPort;
+  let visionImageSource: PhotoToolVisionImageSourcePort;
   let vision: VisionCompletionPort;
 
   beforeEach(() => {
@@ -20,8 +20,8 @@ describe('PhotoToolLabelingService', () => {
       completeWithLabel: vi.fn().mockResolvedValue(undefined),
       releaseClaim: vi.fn().mockResolvedValue(undefined),
     };
-    thumbnailReader = {
-      readThumbnail: vi.fn().mockResolvedValue(Buffer.from([1, 2, 3])),
+    visionImageSource = {
+      readImageBytesForVision: vi.fn().mockResolvedValue(Buffer.from([1, 2, 3])),
     };
     vision = {
       complete: vi.fn().mockResolvedValue({ rawText: ' ペンチ ' }),
@@ -31,7 +31,7 @@ describe('PhotoToolLabelingService', () => {
   it('skips batch when vision not configured', async () => {
     const svc = new PhotoToolLabelingService({
       repo,
-      thumbnailReader,
+      visionImageSource,
       vision,
       isVisionConfigured: () => false,
     });
@@ -42,7 +42,7 @@ describe('PhotoToolLabelingService', () => {
   it('completes with normalized label on success', async () => {
     const svc = new PhotoToolLabelingService({
       repo,
-      thumbnailReader,
+      visionImageSource,
       vision,
       isVisionConfigured: () => true,
     });
@@ -56,7 +56,7 @@ describe('PhotoToolLabelingService', () => {
     vi.mocked(vision.complete).mockResolvedValue({ rawText: '   ' });
     const svc = new PhotoToolLabelingService({
       repo,
-      thumbnailReader,
+      visionImageSource,
       vision,
       isVisionConfigured: () => true,
     });
@@ -69,7 +69,7 @@ describe('PhotoToolLabelingService', () => {
     vi.mocked(vision.complete).mockRejectedValue(new Error('upstream'));
     const svc = new PhotoToolLabelingService({
       repo,
-      thumbnailReader,
+      visionImageSource,
       vision,
       isVisionConfigured: () => true,
     });
@@ -82,7 +82,7 @@ describe('PhotoToolLabelingService', () => {
     vi.mocked(repo.resetStaleClaims).mockResolvedValue(2);
     const svc = new PhotoToolLabelingService({
       repo,
-      thumbnailReader,
+      visionImageSource,
       vision,
       isVisionConfigured: () => true,
     });

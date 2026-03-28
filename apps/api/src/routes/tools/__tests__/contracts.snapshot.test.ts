@@ -4,6 +4,8 @@ import {
   activeLoanQuerySchema,
   borrowSchema,
   cancelSchema,
+  photoLabelReviewListQuerySchema,
+  photoLabelReviewPatchBodySchema,
   returnSchema
 } from '../loans/schemas';
 
@@ -30,6 +32,14 @@ describe('破壊的変更検知: loans系ペイロードのキー構造', () => 
 
   it('cancel schema keys are stable', () => {
     expect(keysOf(cancelSchema)).toEqual(['clientId', 'loanId', 'performedByUserId']);
+  });
+
+  it('photo label review list query schema keys are stable', () => {
+    expect(keysOf(photoLabelReviewListQuerySchema)).toEqual(['limit']);
+  });
+
+  it('photo label review patch body schema keys are stable', () => {
+    expect(keysOf(photoLabelReviewPatchBodySchema)).toEqual(['humanDisplayName', 'quality']);
   });
 });
 

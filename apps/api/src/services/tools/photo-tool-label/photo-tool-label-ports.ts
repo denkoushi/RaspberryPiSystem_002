@@ -22,6 +22,11 @@ export interface ThumbnailReaderPort {
   readThumbnail(photoUrl: string): Promise<Buffer>;
 }
 
+/** VLM へ渡す JPEG バイト列（本画像リサイズ or サムネ。実装が選ぶ） */
+export interface PhotoToolVisionImageSourcePort {
+  readImageBytesForVision(photoUrl: string): Promise<Buffer>;
+}
+
 export type PendingPhotoLoanRow = {
   id: string;
   photoUrl: string;

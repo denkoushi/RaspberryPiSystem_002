@@ -212,8 +212,10 @@ fetch(new URL('/healthz', b), { headers: h })
   - `PHOTO_TOOL_LABEL_CRON`（既定 `*/5 * * * *`）
   - `PHOTO_TOOL_LABEL_BATCH_SIZE`（既定 `3`）
   - `PHOTO_TOOL_LABEL_STALE_MINUTES`（既定 `30`）
+  - `PHOTO_TOOL_LABEL_VISION_SOURCE`（`original` \| `thumbnail`、既定 **`original`** … 元画像を長辺 `PHOTO_TOOL_LABEL_VISION_MAX_LONG_EDGE` 前後に縮小した JPEG を VLM へ渡す）
+  - `PHOTO_TOOL_LABEL_VISION_MAX_LONG_EDGE` / `PHOTO_TOOL_LABEL_VISION_JPEG_QUALITY` / 任意 `PHOTO_TOOL_LABEL_USER_PROMPT`
 - 保存先は `Loan.photoToolDisplayName` であり、**Item マスタには紐づけない**
-- 表示は `photoToolDisplayName` 優先、未付与の間は `PHOTO_LOAN_CARD_PRIMARY_LABEL`（`撮影mode`）へフォールバックする
+- **表示**（2026-03-29 以降）: キオスク・サイネージは `resolvePhotoLoanToolDisplayLabel` により **`photoToolHumanDisplayName`（人レビュー）> `photoToolDisplayName`（VLM）> `撮影mode`**。人レビュー API/UI は [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) フェーズ1節・[photo-loan.md](../modules/tools/photo-loan.md) を参照
 
 ### Pi5 実機確認（写真持出 VLM）
 
@@ -273,7 +275,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
 |------|----------|------|
 | `requested > 0` なのに `labeled = 0` | LocalLLM 未設定、upstream 不達、scheduler 未起動 | 本 Runbook の `LOCAL_LLM_*` 確認と `/healthz` 到達確認を実施し、API 再起動後に次回 cron を待つ |
 | `claimed > 0` が戻らない | 推論途中で API が落ちた、または claim がスタック | `PHOTO_TOOL_LABEL_STALE_MINUTES` 経過後に解放されるか確認。継続する場合は DB 行の件数と API 再起動ログを確認 |
-| 写真持出カードが常に `撮影mode` | VLM 未付与、または空応答で claim 解放のみ行われている | DB で対象 Loan の `photoToolDisplayName` を確認し、ジョブログの `responseCharLen` / warning を確認 |
+| 写真持出カードが常に `撮影mode` | 人レビュー・VLM とも表示名なし、または VLM 空応答で claim 解放のみ | DB で `photoToolHumanDisplayName` / `photoToolDisplayName` を確認。VLM 側はジョブログの `responseCharLen` / warning を確認 |
 | マルチモーダル推論だけ 4xx/5xx になる | llama-server の `messages[].content` JSON 形が実機ビルド差分と不一致 | `apps/api/src/services/vision/llama-server-vision-completion.adapter.ts` の payload 形を実機に合わせて調整する |
 | ラベルが工具名ではない | 初版仕様が「最も目立つ 1 つ」の短い表示名であり、物品種別の厳密判定ではない | 表示仕様として許容。マスタ照合や候補提示は別機能で検討する |
 

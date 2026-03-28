@@ -37,3 +37,13 @@ export const cancelSchema = z.object({
   performedByUserId: z.string().uuid().optional()
 });
 
+export const photoLabelReviewListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export const photoLabelReviewPatchBodySchema = z.object({
+  quality: z.enum(['GOOD', 'MARGINAL', 'BAD']),
+  /** 未送信のとき人による表示名は変更しない。null または空文字でクリア */
+  humanDisplayName: z.union([z.string(), z.null()]).optional(),
+});
+
