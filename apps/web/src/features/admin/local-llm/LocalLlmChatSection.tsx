@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getLocalLlmApiErrorMessage, postLocalLlmChatCompletion } from '../../../api/local-llm';
 import { Button } from '../../../components/ui/Button';
@@ -18,6 +18,7 @@ export function LocalLlmChatSection() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LocalLlmChatCompletionResult | null>(null);
   const [cooldownActive, setCooldownActive] = useState(false);
+  const cooldownTimerRef = useRef<number | null>(null);
 
   const canSubmit =
     !loading &&
@@ -46,9 +47,23 @@ export function LocalLlmChatSection() {
     } finally {
       setLoading(false);
       setCooldownActive(true);
-      window.setTimeout(() => setCooldownActive(false), COOLDOWN_MS);
+      if (cooldownTimerRef.current !== null) {
+        window.clearTimeout(cooldownTimerRef.current);
+      }
+      cooldownTimerRef.current = window.setTimeout(() => {
+        setCooldownActive(false);
+        cooldownTimerRef.current = null;
+      }, COOLDOWN_MS);
     }
   }, [canSubmit, userMessage, maxTokens, temperature, enableThinking]);
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current !== null) {
+        window.clearTimeout(cooldownTimerRef.current);
+      }
+    };
+  }, []);
 
   const userMessageId = 'local-llm-chat-user-message';
   const maxTokensId = 'local-llm-chat-max-tokens';
