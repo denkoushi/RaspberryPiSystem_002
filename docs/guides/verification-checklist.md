@@ -572,6 +572,17 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 **検証日時**: 2026-03-29（401・`verify-phase12-real.sh` **PASS 34/0/0** を Mac / Tailscale で確認／UI・候補中身は埋め込み設定次第）
 **検証結果**: ☑ 成功（認可・Phase12 回帰） ☐ 失敗（エラー内容: _______________）
 
+**6.6.8 写真持出 VLM・GOOD 類似シャドー補助（任意・ログ）**
+
+**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「VLM シャドー補助」節、[ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）:
+
+- [ ] **既定（シャドー OFF）**でも Phase12 回帰・キオスク表示が壊れていない（`verify-phase12-real.sh`）
+- [ ] シャドーを **意図的に ON** した環境で、API ログに `Photo tool label shadow assist inference completed` または `skipped`（debug）が期待どおり出るか
+- [ ] ON 時も `Loan.photoToolDisplayName` が **1 回目 VLM のみ**で更新され、キオスク1行目が従来優先順（人 > VLM > `撮影mode`）のままか
+
+**検証日時**: 2026-03-29（**シャドー OFF** のまま `verify-phase12-real.sh` **PASS 34/0/0**・未認証 candidates **401** を確認。シャドー ON のログ評価は `PHOTO_TOOL_*` 有効化後に実施）
+**検証結果**: ☑ 成功（回帰・認可） ☐ 失敗（エラー内容: _______________）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**

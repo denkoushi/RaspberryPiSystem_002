@@ -3,6 +3,9 @@ import cron from 'node-cron';
 import { logger } from '../../../lib/logger.js';
 import { env } from '../../../config/env.js';
 import { LlamaServerVisionCompletionAdapter, isLocalLlmVisionConfigured } from '../../vision/llama-server-vision-completion.adapter.js';
+import { createHttpPhotoToolImageEmbeddingAdapter } from './http-photo-tool-image-embedding.adapter.js';
+import { PgPhotoToolSimilarityGalleryRepository } from './pg-photo-tool-similarity-gallery.repository.js';
+import { PhotoToolLabelAssistService } from './photo-tool-label-assist.service.js';
 import { PhotoStorageVisionImageSource } from './photo-storage-vision-image-source.adapter.js';
 import { PrismaPhotoToolLabelRepository } from './prisma-photo-tool-label.repository.js';
 import { PhotoToolLabelingService } from './photo-tool-labeling.service.js';
@@ -21,14 +24,22 @@ export class PhotoToolLabelScheduler {
     this.schedule = opts?.schedule ?? env.PHOTO_TOOL_LABEL_CRON;
     this.batchSize = opts?.batchSize ?? env.PHOTO_TOOL_LABEL_BATCH_SIZE;
     this.staleMinutes = opts?.staleMinutes ?? env.PHOTO_TOOL_LABEL_STALE_MINUTES;
-    this.service =
-      service ??
-      new PhotoToolLabelingService({
+    if (service) {
+      this.service = service;
+    } else {
+      const embeddingAdapter = createHttpPhotoToolImageEmbeddingAdapter();
+      const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(env.PHOTO_TOOL_EMBEDDING_DIMENSION);
+      const labelAssist = new PhotoToolLabelAssistService(embeddingAdapter, galleryRepo);
+      this.service = new PhotoToolLabelingService({
         repo: new PrismaPhotoToolLabelRepository(),
         visionImageSource: new PhotoStorageVisionImageSource(),
         vision: new LlamaServerVisionCompletionAdapter(),
         isVisionConfigured: isLocalLlmVisionConfigured,
+        labelAssist,
+        shadowAssistEnabled: () =>
+          env.PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED && env.PHOTO_TOOL_EMBEDDING_ENABLED,
       });
+    }
   }
 
   start(): void {

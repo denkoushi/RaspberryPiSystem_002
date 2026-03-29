@@ -6,8 +6,7 @@ import { logger } from '../../../lib/logger.js';
 import type { PhotoToolImageEmbeddingPort } from './photo-tool-image-embedding.port.js';
 import type { PhotoToolVisionImageSourcePort } from './photo-tool-label-ports.js';
 import type { PhotoToolSimilarityGalleryRepositoryPort } from './photo-tool-similarity-gallery-repository.port.js';
-
-const DEFAULT_CANONICAL_LABEL = '撮影mode';
+import { PHOTO_TOOL_DEFAULT_CANONICAL_LABEL } from './photo-tool-label.constants.js';
 
 export type GalleryIndexLoanSnapshot = {
   id: string;
@@ -63,7 +62,7 @@ export class PhotoToolGalleryIndexService {
     const photoUrl = saved.photoUrl!;
     const human = saved.photoToolHumanDisplayName?.trim();
     const vlm = saved.photoToolDisplayName?.trim();
-    const canonicalLabel = (human && human.length > 0 ? human : vlm) ?? DEFAULT_CANONICAL_LABEL;
+    const canonicalLabel = (human && human.length > 0 ? human : vlm) ?? PHOTO_TOOL_DEFAULT_CANONICAL_LABEL;
     const jpeg = await this.vision.readImageBytesForVision(photoUrl);
     const embedding = await this.embedding!.embedJpeg(jpeg);
     await this.gallery.upsert({

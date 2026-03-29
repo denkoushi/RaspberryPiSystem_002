@@ -24,6 +24,8 @@ update-frequency: medium
 - **類似候補（任意）**: 人レビュー **GOOD** の貸出のみ、pgvector ギャラリーへ埋め込みを非同期インデックス。管理画面で類似候補を参照表示（確定ラベルは自動変更しない）
 - **UI表示**: 持出一覧・返却画面で写真サムネイルを表示。1行目の工具名は **人レビュー > VLM > `撮影mode`**
 
+**実機回帰（2026-03-29）**: デプロイ後に `./scripts/deploy/verify-phase12-real.sh` で **PASS 34/0/0**（シャドー補助は既定 OFF のまま）。シャドー ON 時のログ評価は `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` 等を有効化してから実施する（[ADR-20260331](../../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）。
+
 ## 機能要件（FR-009）
 
 詳細は [システム要件定義](../../requirements/system-requirements.md#fr-009-写真撮影持出機能新規追加) を参照してください。
@@ -114,6 +116,7 @@ model ClientDevice {
 
 - 写真持出 VLM ラベル付与は **Pi5 API 内部の定期ジョブ**として実行する
 - LocalLLM への接続は既存の `LOCAL_LLM_*` 設定を再利用する
+- **任意（シャドー）**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` かつ `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、GOOD ギャラリー類似が厳しめ条件を満たすケースだけ **2 回目の VLM 呼び出し**を行いログ比較する。保存される `photoToolDisplayName` は **従来の 1 回目の結果のまま**（[ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）
 
 ### 写真配信
 

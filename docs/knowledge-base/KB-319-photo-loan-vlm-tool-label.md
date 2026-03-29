@@ -154,9 +154,32 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | レビュー後もギャラリーに載らない | GOOD 以外にした、非同期インデックス失敗 | API ログの `Photo tool similarity gallery index failed`。JPEG 読み込み・埋め込み HTTP の応答次元を確認 |
 | マイグレーションエラー | 既存 DB が vector 拡張なし | pgvector 同梱イメージへ切替えたうえで `prisma migrate deploy` |
 
+### VLM シャドー補助（GOOD 類似・条件付き・2026-03-31）
+
+- **目的**: 工場固有工具向けに、人レビュー **GOOD** の近傍が**厳しめ条件で収束**するときだけ、VLM に参考ラベルを短く渡した**2 回目推論**を走らせ、**ログで `currentLabel`（従来1回目）と `assistedLabel` を比較**する。`Loan.photoToolDisplayName` は **1 回目のまま**（本番ラベルは変えない）。
+- **有効化**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` **かつ** `PHOTO_TOOL_EMBEDDING_ENABLED=true`（どちらか欠けるとシャドーは動かない）。**既定は false**。
+- **調整**: `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（管理 UI 向け `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE` より厳しめ推奨）、`PHOTO_TOOL_LABEL_ASSIST_MIN_NEIGHBORS`、`PHOTO_TOOL_LABEL_ASSIST_CONVERGENCE_TOP_K`、`PHOTO_TOOL_LABEL_ASSIST_QUERY_NEIGHBOR_LIMIT`。
+- **ログ**: `Photo tool label shadow assist inference completed`（`assistTriggered` / `reason` / `candidateLabels` / `currentLabel` / `assistedLabel`）。未発火時は `Photo tool label shadow assist skipped`（debug）。
+- **参照**: [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)
+
+#### 実機確認（デプロイ後・2026-03-29）
+
+- **CONFIRMED**: ブランチ `feat/photo-tool-label-good-assist-shadow` を Pi5→Pi4×4 のみ順次デプロイ（`docs/guides/deployment.md`・各回 `failed=0`）。Pi3 は今回対象外。
+- **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（Tailscale・Pi5 到達時）。
+- **CONFIRMED**: 未認証 `GET …/photo-similar-candidates` → **401**（回帰）。
+
+#### Troubleshooting（シャドー補助）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| ログに shadow が一切出ない | シャドー OFF、埋め込み OFF、または補助条件未満（近傍不足・canonical 不一致・距離超過） | `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` と `PHOTO_TOOL_EMBEDDING_ENABLED` を確認。debug ログで `skipped` の `reason` を見る |
+| VLM 負荷が急増 | シャドー ON で対象ローンが多い | しきい値を厳しくするか、シャドーを限定時間のみ ON。別 ADR で active 化を検討する前にログ評価 |
+| 本番ラベルが変わった | バグまたは別機能 | 本仕様では `photoToolDisplayName` は 1 回目のみ保存。挙動が違う場合はデプロイ版コミットと `PhotoToolLabelingService` を確認 |
+
 ### References
 
 - [ADR-20260330](../decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)
+- [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)
 - `apps/api/src/routes/tools/loans/photo-similar-candidates.ts`
 
 ## References

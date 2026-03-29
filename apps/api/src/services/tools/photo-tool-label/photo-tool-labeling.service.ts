@@ -10,6 +10,8 @@ import type {
   PhotoToolVisionImageSourcePort,
   VisionCompletionPort,
 } from './photo-tool-label-ports.js';
+import type { PhotoToolLabelAssistPort } from './photo-tool-label-assist.port.js';
+import { buildShadowAssistedUserPrompt } from './photo-tool-label-prompt-builder.js';
 
 export const DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT =
   '画像の中で最も目立つ工具を1つだけ選び、日本語の短い工具名だけを答えてください。説明文や句読点は不要です。';
@@ -23,6 +25,10 @@ export type PhotoToolLabelingServiceDeps = {
   isVisionConfigured: () => boolean;
   /** テスト・差し替え用。未指定時は env + デフォルト文言 */
   getVisionUserPrompt?: () => string;
+  /** GOOD 類似によるシャドー補助（本番保存ラベルは変更しない） */
+  labelAssist?: PhotoToolLabelAssistPort | null;
+  /** true のときのみシャドー推論を実行（埋め込み・フラグの論理は呼び出し側で統一してよい） */
+  shadowAssistEnabled?: () => boolean;
 };
 
 export class PhotoToolLabelingService {
@@ -74,6 +80,14 @@ export class PhotoToolLabelingService {
       });
       responseCharLen = rawText.length;
       const label = normalizePhotoToolDisplayName(rawText);
+
+      await this.maybeRunShadowAssistedInference({
+        loanId,
+        photoUrl,
+        imageBytes,
+        currentLabel: label,
+      });
+
       if (label) {
         await this.deps.repo.completeWithLabel(loanId, label);
         ok = true;
@@ -94,6 +108,62 @@ export class PhotoToolLabelingService {
         },
         'Photo tool label job finished'
       );
+    }
+  }
+
+  /**
+   * 本番ラベル確定前に、条件付きで補助プロンプトの 2 回目 VLM を実行しログのみ残す。
+   */
+  private async maybeRunShadowAssistedInference(params: {
+    loanId: string;
+    photoUrl: string;
+    imageBytes: Buffer;
+    currentLabel: string | null;
+  }): Promise<void> {
+    if (!this.deps.shadowAssistEnabled?.() || !this.deps.labelAssist) {
+      return;
+    }
+    const { loanId, photoUrl, imageBytes, currentLabel } = params;
+    try {
+      const decision = await this.deps.labelAssist.evaluateForShadow({
+        loanId,
+        photoUrl,
+        queryJpegBytes: imageBytes,
+      });
+      if (!decision.shouldAssist) {
+        log.debug(
+          {
+            loanId,
+            reason: decision.reason,
+            topDistance: decision.topDistance,
+            neighborCountAfterFilter: decision.neighborCountAfterFilter,
+          },
+          'Photo tool label shadow assist skipped'
+        );
+        return;
+      }
+      const assistedUserText = buildShadowAssistedUserPrompt(this.visionUserPrompt(), decision.candidateLabels);
+      const { rawText: assistedRaw } = await this.deps.vision.complete({
+        userText: assistedUserText,
+        imageBytes,
+        mimeType: 'image/jpeg',
+      });
+      const assistedLabel = normalizePhotoToolDisplayName(assistedRaw);
+      log.info(
+        {
+          loanId,
+          assistTriggered: true,
+          reason: decision.reason,
+          topDistance: decision.topDistance,
+          neighborCountAfterFilter: decision.neighborCountAfterFilter,
+          candidateLabels: decision.candidateLabels,
+          currentLabel,
+          assistedLabel: assistedLabel ?? null,
+        },
+        'Photo tool label shadow assist inference completed'
+      );
+    } catch (err) {
+      log.warn({ err, loanId }, 'Photo tool label shadow assist failed');
     }
   }
 }
