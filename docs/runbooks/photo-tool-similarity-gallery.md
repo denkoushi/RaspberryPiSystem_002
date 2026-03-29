@@ -69,7 +69,10 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 - **デプロイ**: 埋め込み・バックフィル・server 検証は **Pi5 API が正本**のため、[deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5`** のみ（Pi4 複数台・Pi3 は今回の機能反映に必須ではない）。`update-all-clients.sh` に **`RASPI_SERVER_HOST`**（例: `denkon5sd02@100.106.158.2`）が必要。
 - **回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（Tailscale 到達時）。
-- **残タスク（運用）**: vault で `vault_photo_tool_embedding_*` を有効化 → 必要なら `pnpm backfill:photo-tool-gallery:prod` → シャドー ON でログ評価（§3）。
+- **Ubuntu 埋め込み疎通**: LocalLLM ノードで nginx `/healthz` が `ok`、`/embed` が **`status=200 dim=512 modelId=clip-ViT-B-32`** を返すことを確認。
+- **Pi5 反映**: `infrastructure/docker/.env` に `PHOTO_TOOL_EMBEDDING_ENABLED=True` と `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=True` が出力され、API コンテナ再作成まで完了。
+- **バックフィル**: `pnpm backfill:photo-tool-gallery:prod` → **`loansSeen: 42, succeeded: 42, failed: 0`**、`photo_tool_similarity_gallery` は **42 行**。
+- **シャドー実動**: 実機の新規写真持出 1 件で `Photo tool label shadow assist inference completed` を確認。`reason=converged_neighbors`、`candidateLabels=["マウス"]`、`currentLabel="マウス"`、`assistedLabel="マウス"`。保存された `photoToolDisplayName` も `マウス`。
 
 ## 4. 関連ドキュメント
 
@@ -86,3 +89,5 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | 候補 API が常に空 | 埋め込み無効、ギャラリー空、閾値 `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE` が厳しすぎる |
 | バックフィルで失敗続き | 埋め込み HTTP 次元と `PHOTO_TOOL_EMBEDDING_DIMENSION` の一致、画像パス・Vision JPEG 読み込みログ |
 | シャドーが一切出ない | 埋め込み OFF、シャドー OFF、GOOD 近傍不足（バックフィル未実施） |
+| Mac で `vault.yml` を直して再デプロイしたのに Pi5 に反映されない | `infrastructure/ansible/host_vars/**/vault.yml` は Git 管理外。`update-all-clients.sh` のリモート実行は **Pi5 上の checkout** を使うため、ローカル編集だけでは届かない | 正規の secrets 配置を使うか、Pi5 側の `host_vars/raspberrypi5/vault.yml` を更新してから再デプロイする |
+| `/healthz` は通るが `/embed` の単体確認で詰まる | `tailscale` コンテナに `python3` が無い | `embedding` コンテナ側で確認するか、HTTP の簡易確認は `wget` / `curl` に分ける |
