@@ -36,7 +36,7 @@
 
 ## 実機検証（自動・手動）
 
-- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` のスモーク（`candidates` 応答・未認証 **401**）を含む。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節。
+- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` のスモーク（`candidates` 応答・未認証 **401**）を含む。Phase2 全台反映後の実績は **PASS 37 / WARN 0 / FAIL 0**（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節）。
 - **手動**: 対象キオスクで `/kiosk/part-measurement` を開き、実移動票で照会 → 記録表開始 → 入力・自動保存 → 確定まで通す。管理画面でテンプレが有効であることを事前確認する。
 - **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
 

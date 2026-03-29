@@ -41,8 +41,9 @@
 ## 実機・自動検証（Phase12）
 
 - **一括**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh`（Pi5 到達・Tailscale/LAN 自動選択）。
-- **2026-03-29 実績**: **PASS 37 / WARN 0 / FAIL 0**（約 110s）。部品測定は `POST https://<Pi5>/api/part-measurement/resolve-ticket` に `x-client-key: client-key-raspi4-kensaku-stonebase01-kiosk1`（他キオスクキーでも可）と JSON `{"productNo":"__PHASE12_SMOKE__","processGroup":"cutting"}` で応答に `"candidates"` が含まれること、**Authorization / x-client-key なし**の同一 POST が **401** であることをスクリプトが検証する。
-- **知見**: Pi4 単体 `--limit` でも Ansible は Pi5 上で実行される（`RASPI_SERVER_HOST` 設定が前提）。`--foreground` の StoneBase デプロイは IME/ibus 等を含み **15〜25 分**かかることがある（タイムアウトに注意）。
+- **2026-03-29 実績（Phase2 全キオスク反映後・マージ前再確認）**: **PASS 37 / WARN 0 / FAIL 0**（約 138s・Mac / Tailscale）。`deploy-status` は Pi4 キオスク 4 台分を含む。部品測定は `POST https://<Pi5>/api/part-measurement/resolve-ticket` に有効な `x-client-key` と JSON `{"productNo":"__PHASE12_SMOKE__","processGroup":"cutting"}` で応答に `"candidates"` が含まれること、**Authorization / x-client-key なし**の同一 POST が **401** であることをスクリプトが検証する。
+- **知見**: Pi4 単体 `--limit` でも Ansible は Pi5 上で実行される（`RASPI_SERVER_HOST` 設定が前提）。`--foreground` のキオスクデプロイは IME/ibus 等を含み **15〜25 分**/台かかることがある（タイムアウトに注意）。
+- **トラブルシュート（デプロイ）**: **同じ `RASPI_SERVER_HOST` に対し、`update-all-clients.sh` を複数プロセスで同時起動しない**（2 台目が `Removing stale lock` でロックを奪い、Pi5 側と Ansible ログが競合しうる）。複数台へ配るときは **シェルで `&&` 連鎖するか、前コマンド完了後に次の `--limit` を実行**する（[deployment.md](../guides/deployment.md)「1台ずつ順番デプロイ」）。
 - **認可**: `Authorization` 付きで **403（権限不足）** のとき、書き込み系（例: `POST .../sheets`）では `x-client-key` にフォールバックしない（401 のみキー許可）。キオスクは通常キーのみで十分。
 
 ## References

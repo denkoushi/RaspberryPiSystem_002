@@ -600,7 +600,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
   -d '{"productNo":"x","processGroup":"cutting"}'
 ```
 
-**検証日時**: 2026-03-29（`verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で確認／キオスク UI の目視は StoneBase ほか現場で推奨）
+**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認

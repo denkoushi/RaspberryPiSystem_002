@@ -28,6 +28,11 @@ accepted
 - 良い: 設備別テンプレ・記録の整合性、現場フローの完結性。
 - 悪い: Phase1 ADR との文言差分が生じるため、索引・KB・Runbook の更新が必要。既存データは legacy キー扱いが混在しうる。
 
+## Verification（本番）
+
+- **自動**: `./scripts/deploy/verify-phase12-real.sh` — **PASS 37 / WARN 0 / FAIL 0**（2026-03-29、Pi5 + Pi4 キオスク 4 台反映後・Mac / Tailscale）。`POST /api/part-measurement/resolve-ticket` の `candidates` と無キー **401** を含む。
+- **手動**: 各キオスクで実移動票の照会・下書き・自動保存・確定を目視（Runbook）。
+
 ## References
 
 - Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)
