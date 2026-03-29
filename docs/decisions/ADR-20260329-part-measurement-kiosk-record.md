@@ -38,6 +38,12 @@ accepted
 - **悪い**: テンプレとマスタの組み合わせが増えるため、管理画面でのテンプレ登録・有効版切替の運用が必要。
 - **移行**: 新規マイグレーション `PartMeasurement*` テーブル追加。既存データへの影響なし。
 
+## Verification（本番・2026-03-29）
+
+- **デプロイ**: カナリアとして Pi5 → `raspi4-kensaku-stonebase01` のみを [deployment.md](../guides/deployment.md) の `update-all-clients.sh` + `--limit` 順次で反映（Pi3 は別手順のため今回対象外）。
+- **自動**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 37 / WARN 0 / FAIL 0**。`resolve-ticket` がキオスク `x-client-key` で 200・JSON に `candidates`、無キー POST が **401**。
+- **手動（残）**: 現場キオスクでのスキャン・下書き・確定の目視。テンプレ未登録時の画面メッセージは [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) を参照。
+
 ## References
 
 - 実装: `apps/api/src/services/part-measurement/`, `apps/api/src/routes/part-measurement/`, `apps/web/src/pages/kiosk/KioskPartMeasurementPage.tsx`

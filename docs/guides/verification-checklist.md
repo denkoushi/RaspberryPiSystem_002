@@ -585,6 +585,24 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 **検証日時**: 2026-03-29（**シャドー OFF** のまま `verify-phase12-real.sh` **PASS 34/0/0**・未認証 candidates **401** を確認。シャドー ON のログ評価は `PHOTO_TOOL_*` 有効化後に実施）
 **検証結果**: ☑ 成功（回帰・認可） ☐ 失敗（エラー内容: _______________）
 
+**6.6.9 キオスク部品測定（`part-measurement`）**
+
+**確認ポイント**（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)、[kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)、[ADR-20260329](../decisions/ADR-20260329-part-measurement-kiosk-record.md)）:
+
+- [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0** で完走する（スクリプト内: `POST /api/part-measurement/resolve-ticket` + 有効な `x-client-key` で `"candidates"`、無キーで **401**）
+- [ ] （手動）キオスク `/kiosk/part-measurement` で照会・記録表・確定まで問題ないか
+
+**検証コマンド例（resolve-ticket・401）**:
+
+```bash
+curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measurement/resolve-ticket" \
+  -H "Content-Type: application/json" \
+  -d '{"productNo":"x","processGroup":"cutting"}'
+```
+
+**検証日時**: 2026-03-29（`verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で確認／キオスク UI の目視は StoneBase ほか現場で推奨）
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**

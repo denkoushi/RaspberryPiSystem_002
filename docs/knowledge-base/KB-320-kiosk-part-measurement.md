@@ -36,6 +36,13 @@
 - 新規品番投入時は **テンプレ先行登録** を運用ルールに含める。
 - 候補が複数のときは **製番・品名・機種** を画面上で確認してから選択する（誤選択はスナップショットに残る）。
 
+## 実機・自動検証（Phase12）
+
+- **一括**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh`（Pi5 到達・Tailscale/LAN 自動選択）。
+- **2026-03-29 実績**: **PASS 37 / WARN 0 / FAIL 0**（約 110s）。部品測定は `POST https://<Pi5>/api/part-measurement/resolve-ticket` に `x-client-key: client-key-raspi4-kensaku-stonebase01-kiosk1`（他キオスクキーでも可）と JSON `{"productNo":"__PHASE12_SMOKE__","processGroup":"cutting"}` で応答に `"candidates"` が含まれること、**Authorization / x-client-key なし**の同一 POST が **401** であることをスクリプトが検証する。
+- **知見**: Pi4 単体 `--limit` でも Ansible は Pi5 上で実行される（`RASPI_SERVER_HOST` 設定が前提）。`--foreground` の StoneBase デプロイは IME/ibus 等を含み **15〜25 分**かかることがある（タイムアウトに注意）。
+- **認可**: `Authorization` 付きで **403（権限不足）** のとき、書き込み系（例: `POST .../sheets`）では `x-client-key` にフォールバックしない（401 のみキー許可）。キオスクは通常キーのみで十分。
+
 ## References
 
 - Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)

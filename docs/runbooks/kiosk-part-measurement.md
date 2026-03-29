@@ -34,6 +34,12 @@
 - テンプレが無い・工程が合わない: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) を参照。
 - バーコード・カメラ: 要領書のバーコード機能と同様、ブラウザ権限とライト環境を確認（[KB-313](./kiosk-documents.md) のカメラ項も参考）。
 
+## 実機検証（自動・手動）
+
+- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` のスモーク（`candidates` 応答・未認証 **401**）を含む。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節。
+- **手動**: 対象キオスクで `/kiosk/part-measurement` を開き、実移動票で照会 → 記録表開始 → 入力・自動保存 → 確定まで通す。管理画面でテンプレが有効であることを事前確認する。
+- **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
+
 ## 関連
 
 - ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)
