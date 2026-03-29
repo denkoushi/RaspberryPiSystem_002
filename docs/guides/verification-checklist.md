@@ -569,7 +569,7 @@ cd apps/web && pnpm build && cd ../..
 curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/00000000-0000-4000-8000-000000000001/photo-similar-candidates"
 ```
 
-**検証日時**: 2026-03-29（401・`verify-phase12-real.sh` **PASS 34/0/0** を Mac / Tailscale で確認／UI・候補中身は埋め込み設定次第）
+**検証日時**: 2026-03-29（401・`verify-phase12-real.sh` **PASS 34/0/0** を Mac / Tailscale で確認／**埋め込み配線ブランチ**は Pi5 のみ `update-all-clients.sh --limit raspberrypi5` で反映後も同スクリプトで再確認／UI・候補中身は vault で埋め込み ON 後）
 **検証結果**: ☑ 成功（認可・Phase12 回帰） ☐ 失敗（エラー内容: _______________）
 
 **手動（埋め込み ON 時）**: Pi5 デプロイ後、`docker compose ... exec api printenv` で `PHOTO_TOOL_EMBEDDING_*` を確認。既存 GOOD のギャラリー再投入は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) のバックフィル手順。

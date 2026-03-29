@@ -65,6 +65,12 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 **本番表示**: キオスク 1 行目は従来どおり **人 > VLM(`photoToolDisplayName`) > `撮影mode`**。シャドーは保存に使わない。
 
+## 3.1 実機検証メモ（2026-03-29）
+
+- **デプロイ**: 埋め込み・バックフィル・server 検証は **Pi5 API が正本**のため、[deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5`** のみ（Pi4 複数台・Pi3 は今回の機能反映に必須ではない）。`update-all-clients.sh` に **`RASPI_SERVER_HOST`**（例: `denkon5sd02@100.106.158.2`）が必要。
+- **回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（Tailscale 到達時）。
+- **残タスク（運用）**: vault で `vault_photo_tool_embedding_*` を有効化 → 必要なら `pnpm backfill:photo-tool-gallery:prod` → シャドー ON でログ評価（§3）。
+
 ## 4. 関連ドキュメント
 
 - [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)

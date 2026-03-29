@@ -36,6 +36,7 @@
 
 ### 🆕 最新アップデート（2026-03-29）
 
+- **写真持出 埋め込み本番配線（Ansible）・GOOD バックフィル・シャドー観測 Runbook**: ブランチ `feat/photo-tool-embedding-rollout-shadow-eval` を **`main` にマージ**（コード・Ansible・Runbook 一式）。**本番反映の正本は Pi5 API** のため、標準手順どおり **`update-all-clients.sh` + `--limit raspberrypi5`** でデプロイ可能（Pi4 複数台は今回の機能に必須ではない）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**。**参照**: [photo-tool-similarity-gallery.md](./runbooks/photo-tool-similarity-gallery.md) / [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **キオスク要領書: バーコードスキャン検索（`@zxing/library`・`features/barcode-scan`・一次元 preset・30s タイムアウト・Pi4 Firefox）・本番デプロイ（Pi5→Pi4×4・Pi3 除外・順次）・Phase12 実機検証・ドキュメント反映**: ブランチ `feat/kiosk-documents-barcode-scan`（実装コミット例 `043f3228`）。**実機検証（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 47s・2026-03-29）。**手動**: 各 Pi4 Firefox でスキャン・カメラ・実ラベル読取を確認。**参照**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) / [ADR-20260329](./decisions/ADR-20260329-kiosk-document-barcode-scan-zxing.md) / [kiosk-documents.md](./runbooks/kiosk-documents.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-03-28）

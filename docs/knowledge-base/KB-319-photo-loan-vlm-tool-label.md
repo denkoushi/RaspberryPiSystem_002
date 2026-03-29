@@ -152,6 +152,18 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **デプロイ検証**: `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、API コンテナに `PHOTO_TOOL_EMBEDDING_URL` と `PHOTO_TOOL_EMBEDDING_MODEL_ID` が入っていること（未設定ならデプロイ fail-fast）。
 - **既存 GOOD の再投入**: 埋め込みを後から ON にした場合は `pnpm backfill:photo-tool-gallery`（コンテナ内は `backfill:photo-tool-gallery:prod`）。詳細は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)。
 
+### 実機検証（埋め込み配線ブランチ・Pi5 のみ・2026-03-29）
+
+- **CONFIRMED**: 本番反映は **Pi5 のみ**（[deployment.md](../guides/deployment.md) の **API/DB のみ**パターン）。`./scripts/update-all-clients.sh feat/photo-tool-embedding-rollout-shadow-eval infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（事前に `export RASPI_SERVER_HOST=...`）。Ansible の Pi4/Pi3 play は **`--limit` により対象外**（`skipping: no hosts matched`）。
+- **CONFIRMED**: マージ前後の回帰として Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 45s・Pi5 `100.106.158.2`）。
+- **注**: `PHOTO_TOOL_EMBEDDING_ENABLED` は vault 未設定時 **既定 false** のまま。候補 API の中身・ギャラリー件数は **有効化・バックフィル後**に初めて意味を持つ（401 と Phase12 回帰は従来どおり確認可能）。
+
+### ローカルテスト（開発者向け・2026-03-29）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| `run-tests.sh` が **P1001**（`localhost:55432`） | 既に `postgres-test-local` が **5432** で動いており、スクリプトが **55432** を選んだ | **`POSTGRES_PORT=5432 bash scripts/test/run-tests.sh`** または `bash scripts/test/stop-postgres.sh` 後に再実行 |
+
 ### 症状と対処
 
 | 症状 | 想定原因 | 対処 |
