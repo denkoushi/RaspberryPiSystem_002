@@ -179,6 +179,14 @@ check_contains "deploy-status raspi4-kensaku-stonebase01" "${DEPLOY_STONEBASE}" 
 KIOSK_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/active" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスクAPI /tools/loans/active" "${KIOSK_CODE}" "200"
 
+# 写真類似候補は ADMIN/MANAGER のみ。未認証は 401（Loan の有無より先に認可で拒否される経路のスモーク）
+PHOTO_SIMILAR_UNAUTH_CODE="$(
+  curl -sk -o /dev/null -w "%{http_code}" \
+    "${BASE_URL}/api/tools/loans/00000000-0000-4000-8000-000000000001/photo-similar-candidates" \
+    2>&1 || true
+)"
+check_http_code "未認証 GET /tools/loans/.../photo-similar-candidates" "${PHOTO_SIMILAR_UNAUTH_CODE}" "401"
+
 DUE_PATHS=(
   "triage"
   "daily-plan"
