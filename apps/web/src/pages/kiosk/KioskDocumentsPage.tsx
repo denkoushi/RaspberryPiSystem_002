@@ -1,9 +1,14 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { resolveKioskDocumentPageImageUrl, type KioskDocumentSource } from '../../api/client';
 import { useKioskDocumentDetail, useKioskDocuments } from '../../api/hooks';
+import { Button } from '../../components/ui/Button';
+import {
+  BarcodeScanModal,
+  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL,
+} from '../../features/barcode-scan';
 import { buildPagePairs } from '../../features/kiosk/documents/kioskDocumentPageLayout';
 import { KioskDocumentsListPanel } from '../../features/kiosk/documents/KioskDocumentsListPanel';
 import {
@@ -31,11 +36,36 @@ export function KioskDocumentsPage() {
   const [widthMode, setWidthMode] = useState<KioskDocumentWidthMode>('default');
   const [zoom, setZoom] = useState(1);
   const [listPanelOpen, setListPanelOpen] = useState(true);
+  const [scanOpen, setScanOpen] = useState(false);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(t);
   }, [search]);
+
+  const commitSearchFromScan = useCallback((text: string) => {
+    const v = text.trim();
+    setSearch(v);
+    setDebouncedSearch(v);
+  }, []);
+
+  const clearSearchOnScanAbort = useCallback(() => {
+    setSearch('');
+    setDebouncedSearch('');
+  }, []);
+
+  const handleScanSuccess = useCallback(
+    (text: string) => {
+      commitSearchFromScan(text);
+      setScanOpen(false);
+    },
+    [commitSearchFromScan]
+  );
+
+  const handleScanAbort = useCallback(() => {
+    clearSearchOnScanAbort();
+    setScanOpen(false);
+  }, [clearSearchOnScanAbort]);
 
   const listQuery = useKioskDocuments({
     q: debouncedSearch || undefined,
@@ -73,10 +103,28 @@ export function KioskDocumentsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
+      <BarcodeScanModal
+        open={scanOpen}
+        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        idleTimeoutMs={30_000}
+        onSuccess={handleScanSuccess}
+        onAbort={handleScanAbort}
+      />
       <KioskDocumentsListPanel
         className={clsx(!listPanelOpen && 'hidden')}
         search={search}
         onSearchChange={setSearch}
+        searchAccessory={
+          <Button
+            type="button"
+            variant="ghostOnDark"
+            className="shrink-0 px-3 py-2 text-sm"
+            aria-label="バーコードをスキャンして検索"
+            onClick={() => setScanOpen(true)}
+          >
+            スキャン
+          </Button>
+        }
         sourceFilter={sourceFilter}
         onSourceFilterChange={setSourceFilter}
         documents={documents}

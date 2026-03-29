@@ -3,11 +3,14 @@ import clsx from 'clsx';
 import { resolveKioskDocumentSummaryText } from './kioskDocumentListSummary';
 
 import type { KioskDocumentSource } from '../../../api/client';
+import type { ReactNode } from 'react';
 
 
 export type KioskDocumentsListPanelProps = {
   search: string;
   onSearchChange: (value: string) => void;
+  /** 検索入力の右側に任意 UI（例: スキャンボタン） */
+  searchAccessory?: ReactNode;
   sourceFilter: '' | KioskDocumentSource;
   onSourceFilterChange: (value: '' | KioskDocumentSource) => void;
   documents: Array<{
@@ -40,6 +43,7 @@ export type KioskDocumentsListPanelProps = {
 export function KioskDocumentsListPanel({
   search,
   onSearchChange,
+  searchAccessory,
   sourceFilter,
   onSourceFilterChange,
   documents,
@@ -65,14 +69,17 @@ export function KioskDocumentsListPanel({
         <label className="sr-only" htmlFor="kiosk-doc-search">
           ファイル名・タイトルで検索
         </label>
-        <input
-          id="kiosk-doc-search"
-          type="search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="ファイル名・タイトルで検索"
-          className="w-full rounded-md border border-white/20 bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-white/40"
-        />
+        <div className="flex gap-2">
+          <input
+            id="kiosk-doc-search"
+            type="search"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="ファイル名・タイトルで検索"
+            className="min-w-0 flex-1 rounded-md border border-white/20 bg-slate-950/80 px-3 py-2 text-sm text-white placeholder:text-white/40"
+          />
+          {searchAccessory}
+        </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="text-white/60">取込元:</span>
           <button
