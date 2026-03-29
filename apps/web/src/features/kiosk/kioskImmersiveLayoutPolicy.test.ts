@@ -24,7 +24,9 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/production-schedule/progress-overview'],
     ['/kiosk/production-schedule/progress-overview/'],
     ['/kiosk/documents'],
-    ['/kiosk/documents/']
+    ['/kiosk/documents/'],
+    ['/kiosk/part-measurement'],
+    ['/kiosk/part-measurement/']
   ])('true for %s', (path) => {
     expect(usesKioskImmersiveLayout(path)).toBe(true);
   });

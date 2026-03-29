@@ -85,6 +85,7 @@ export function KioskHeader({
   const isProgressOverviewActive = pathname.startsWith('/kiosk/production-schedule/progress-overview');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const isDocumentsActive = pathname.startsWith('/kiosk/documents');
+  const isPartMeasurementActive = pathname.startsWith('/kiosk/part-measurement');
   const formatKey = (value: string) => {
     if (!value) return '未設定';
     if (value.length <= 8) return value;
@@ -295,6 +296,12 @@ export function KioskHeader({
             className={() => navClass(isDocumentsActive, 'bg-teal-600 text-white')}
           >
             要領書
+          </NavLink>
+          <NavLink
+            to="/kiosk/part-measurement"
+            className={() => navClass(isPartMeasurementActive, 'bg-rose-600 text-white')}
+          >
+            部品測定
           </NavLink>
           <button
             type="button"

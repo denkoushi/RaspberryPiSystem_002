@@ -19,6 +19,7 @@ import { registerCsvImportConfigRoutes } from './csv-import-configs.js';
 import { registerVisualizationRoutes } from './visualizations/index.js';
 import { registerProductionScheduleSettingsRoutes } from './production-schedule-settings.js';
 import { registerKioskDocumentRoutes } from './kiosk-documents.js';
+import { registerPartMeasurementRoutes } from './part-measurement/index.js';
 
 /**
  * すべてのルートを登録
@@ -42,6 +43,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerClientRoutes(subApp);
       await registerKioskRoutes(subApp);
       registerKioskDocumentRoutes(subApp);
+      await registerPartMeasurementRoutes(subApp);
       await registerImportRoutes(subApp);
       await registerStorageRoutes(subApp);
       await registerSignageRoutes(subApp);

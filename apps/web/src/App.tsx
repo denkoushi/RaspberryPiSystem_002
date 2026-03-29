@@ -16,6 +16,7 @@ import { DashboardPage } from './pages/admin/DashboardPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
+import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTemplatesPage';
 import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
@@ -28,6 +29,7 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
+import { KioskPartMeasurementPage } from './pages/kiosk/KioskPartMeasurementPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
@@ -67,6 +69,7 @@ function App() {
           <Route path="/kiosk/production-schedule/progress-overview" element={<ProductionScheduleProgressOverviewPage />} />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
+          <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />
         </Route>
       </Route>
       {/* 開発用: UI確認のための一時的なルート */}
@@ -94,6 +97,7 @@ function App() {
           <Route path="instrument-tags" element={<InstrumentTagsPage />} />
           <Route path="inspection-records" element={<InspectionRecordsPage />} />
           <Route path="measuring-instruments" element={<MeasuringInstrumentsPage />} />
+          <Route path="part-measurement-templates" element={<PartMeasurementTemplatesPage />} />
           <Route path="machines" element={<MachinesPage />} />
           <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
           <Route path="history" element={<HistoryPage />} />
