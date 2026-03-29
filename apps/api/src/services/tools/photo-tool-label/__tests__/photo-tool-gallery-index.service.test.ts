@@ -86,4 +86,34 @@ describe('PhotoToolGalleryIndexService', () => {
     expect(readVision).not.toHaveBeenCalled();
     expect(embedJpeg).not.toHaveBeenCalled();
   });
+
+  it('syncFromSnapshot を直接 await しても GOOD なら upsert する', async () => {
+    const embedJpeg = vi.fn().mockResolvedValue([0.1, 0.2]);
+    const upsert = vi.fn().mockResolvedValue(undefined);
+    const deleteByLoanId = vi.fn();
+    const readVision = vi.fn().mockResolvedValue(Buffer.from([1, 2, 3]));
+
+    const svc = new PhotoToolGalleryIndexService(
+      { embedJpeg },
+      { upsert, deleteByLoanId },
+      { readImageBytesForVision: readVision }
+    );
+
+    await svc.syncFromSnapshot({
+      id: 'loan-c',
+      photoUrl: '/api/storage/photos/2025/01/y.jpg',
+      photoToolHumanQuality: 'GOOD',
+      photoToolHumanDisplayName: null,
+      photoToolDisplayName: 'ドライバ',
+      itemId: null,
+      photoTakenAt: new Date(),
+    });
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        loanId: 'loan-c',
+        canonicalLabel: 'ドライバ',
+      })
+    );
+  });
 });

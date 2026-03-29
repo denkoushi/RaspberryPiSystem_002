@@ -563,6 +563,17 @@
       done
     fi
 
+    embedding_on_raw="$(get_env_value 'PHOTO_TOOL_EMBEDDING_ENABLED')"
+    embedding_on="$(printf '%s' "${embedding_on_raw}" | tr '[:upper:]' '[:lower:]')"
+    if [ "${embedding_on}" = "true" ]; then
+      for key in PHOTO_TOOL_EMBEDDING_URL PHOTO_TOOL_EMBEDDING_MODEL_ID; do
+        value="$(get_env_value "${key}")"
+        if [ -z "${value}" ]; then
+          missing+=("${key}")
+        fi
+      done
+    fi
+
     missing_count=0
     for _ in "${missing[@]}"; do
       missing_count=$((missing_count + 1))

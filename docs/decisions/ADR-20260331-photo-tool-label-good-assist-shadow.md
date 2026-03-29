@@ -34,10 +34,11 @@ date: 2026-03-31
 - **CONFIRMED**: 本番向け順次デプロイ（[deployment.md](../guides/deployment.md)）で **Pi5 → Pi4×4** のみ `--limit` 1 台ずつ・`--detach --follow` 実行し、各 PLAY `failed=0`（Pi3 は対象外）。
 - **CONFIRMED**: Mac / Tailscale で `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 55s、`network_mode=tailscale`、Pi5 `100.106.158.2`）。
 - **CONFIRMED**: 未認証 `GET …/photo-similar-candidates` → **401**（類似 API 認可の回帰）。
-- **注**: シャドー補助そのものは **既定 OFF**。有効化後は API ログ（`Photo tool label shadow assist completed` / `skipped`）で評価する。キオスク表示はシャドー ON/OFF に依存しない（`photoToolDisplayName` は 1 回目のまま）。
+- **注**: シャドー補助そのものは **既定 OFF**。有効化後は API ログ（`Photo tool label shadow assist inference completed` / `skipped`）で評価する。観測項目・手順は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)。キオスク表示はシャドー ON/OFF に依存しない（`photoToolDisplayName` は 1 回目のまま）。
 
 ## References
 
+- [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)
 - `apps/api/src/services/tools/photo-tool-label/photo-tool-label-assist.service.ts`
 - `apps/api/src/services/tools/photo-tool-label/photo-tool-labeling.service.ts`
 - `apps/api/src/services/tools/photo-tool-label/photo-tool-label.scheduler.ts`

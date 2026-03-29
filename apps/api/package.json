@@ -13,6 +13,8 @@
     "design:preview": "tsx scripts/design-preview.ts",
     "backfill:actual-hours": "tsx src/scripts/backfill-actual-hours-canonical.ts",
     "backfill:actual-hours:prod": "node dist/scripts/backfill-actual-hours-canonical.js",
+    "backfill:photo-tool-gallery": "tsx src/scripts/backfill-photo-tool-similarity-gallery.ts",
+    "backfill:photo-tool-gallery:prod": "node dist/scripts/backfill-photo-tool-similarity-gallery.js",
     "import:resource-groupcd": "tsx src/scripts/import-resource-groupcd.ts",
     "cleanup:pdf-orphans": "tsx src/scripts/cleanup-pdf-storage-orphans.ts",
     "prisma:migrate": "prisma migrate dev",

@@ -37,7 +37,7 @@ export class PhotoToolGalleryIndexService {
       return;
     }
     queueMicrotask(() => {
-      void this.sync(saved).catch((err: unknown) => {
+      void this.syncFromSnapshot(saved).catch((err: unknown) => {
         logger.error(
           { err, loanId: saved.id },
           'Photo tool similarity gallery index failed (async)'
@@ -46,11 +46,14 @@ export class PhotoToolGalleryIndexService {
     });
   }
 
-  private isPhotoLoan(row: GalleryIndexLoanSnapshot): boolean {
-    return Boolean(row.photoUrl && row.itemId == null && row.photoTakenAt);
-  }
-
-  private async sync(saved: GalleryIndexLoanSnapshot): Promise<void> {
+  /**
+   * レビュー確定・バックフィル共通: スナップショットをギャラリーへ反映する。
+   * 埋め込み無効または adapter 欠落時は no-op。
+   */
+  async syncFromSnapshot(saved: GalleryIndexLoanSnapshot): Promise<void> {
+    if (!env.PHOTO_TOOL_EMBEDDING_ENABLED || !this.embedding) {
+      return;
+    }
     if (!this.isPhotoLoan(saved)) {
       return;
     }
@@ -64,7 +67,7 @@ export class PhotoToolGalleryIndexService {
     const vlm = saved.photoToolDisplayName?.trim();
     const canonicalLabel = (human && human.length > 0 ? human : vlm) ?? PHOTO_TOOL_DEFAULT_CANONICAL_LABEL;
     const jpeg = await this.vision.readImageBytesForVision(photoUrl);
-    const embedding = await this.embedding!.embedJpeg(jpeg);
+    const embedding = await this.embedding.embedJpeg(jpeg);
     await this.gallery.upsert({
       loanId,
       embedding,
@@ -72,5 +75,9 @@ export class PhotoToolGalleryIndexService {
       embeddingModelId: env.PHOTO_TOOL_EMBEDDING_MODEL_ID!,
       imagePipelineVersion: env.PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION,
     });
+  }
+
+  private isPhotoLoan(row: GalleryIndexLoanSnapshot): boolean {
+    return Boolean(row.photoUrl && row.itemId == null && row.photoTakenAt);
   }
 }

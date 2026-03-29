@@ -146,6 +146,12 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE` | pgvector **cosine 距離**（`<=>`）の上限。小さいほど厳しい |
 | `PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION` | JPEG 前処理変更時のメタデータ |
 
+### 本番配線・バックフィル（Ansible / 2026-03-29）
+
+- **配線**: `PHOTO_TOOL_EMBEDDING_*` / 類似閾値 / シャドー補助フラグは [infrastructure/ansible/templates/docker.env.j2](../../infrastructure/ansible/templates/docker.env.j2) から `infrastructure/docker/.env` へ出力する。第2工場は [inventory.yml](../../infrastructure/ansible/inventory.yml) の `raspberrypi5` で `vault_photo_tool_*` を設定（無効時は `enabled=false` のまま）。
+- **デプロイ検証**: `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、API コンテナに `PHOTO_TOOL_EMBEDDING_URL` と `PHOTO_TOOL_EMBEDDING_MODEL_ID` が入っていること（未設定ならデプロイ fail-fast）。
+- **既存 GOOD の再投入**: 埋め込みを後から ON にした場合は `pnpm backfill:photo-tool-gallery`（コンテナ内は `backfill:photo-tool-gallery:prod`）。詳細は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)。
+
 ### 症状と対処
 
 | 症状 | 想定原因 | 対処 |
@@ -180,6 +186,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 - [ADR-20260330](../decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)
 - [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)
+- [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)
 - `apps/api/src/routes/tools/loans/photo-similar-candidates.ts`
 
 ## References

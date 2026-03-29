@@ -117,6 +117,7 @@ model ClientDevice {
 - 写真持出 VLM ラベル付与は **Pi5 API 内部の定期ジョブ**として実行する
 - LocalLLM への接続は既存の `LOCAL_LLM_*` 設定を再利用する
 - **任意（シャドー）**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` かつ `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、GOOD ギャラリー類似が厳しめ条件を満たすケースだけ **2 回目の VLM 呼び出し**を行いログ比較する。保存される `photoToolDisplayName` は **従来の 1 回目の結果のまま**（[ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）
+- **バックフィル**: 埋め込みを後から有効化したとき、既存 GOOD 済み Loan をギャラリーへ再投入する `pnpm backfill:photo-tool-gallery`（本番コンテナは `backfill:photo-tool-gallery:prod`）。手順は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)
 
 ### 写真配信
 

@@ -572,6 +572,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 **検証日時**: 2026-03-29（401・`verify-phase12-real.sh` **PASS 34/0/0** を Mac / Tailscale で確認／UI・候補中身は埋め込み設定次第）
 **検証結果**: ☑ 成功（認可・Phase12 回帰） ☐ 失敗（エラー内容: _______________）
 
+**手動（埋め込み ON 時）**: Pi5 デプロイ後、`docker compose ... exec api printenv` で `PHOTO_TOOL_EMBEDDING_*` を確認。既存 GOOD のギャラリー再投入は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) のバックフィル手順。
+
 **6.6.8 写真持出 VLM・GOOD 類似シャドー補助（任意・ログ）**
 
 **確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「VLM シャドー補助」節、[ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）:
