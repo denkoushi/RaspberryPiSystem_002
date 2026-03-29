@@ -157,6 +157,8 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **CONFIRMED**: 本番反映は **Pi5 のみ**（[deployment.md](../guides/deployment.md) の **API/DB のみ**パターン）。`./scripts/update-all-clients.sh feat/photo-tool-embedding-rollout-shadow-eval infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（事前に `export RASPI_SERVER_HOST=...`）。Ansible の Pi4/Pi3 play は **`--limit` により対象外**（`skipping: no hosts matched`）。
 - **CONFIRMED**: マージ前後の回帰として Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 45s・Pi5 `100.106.158.2`）。
 - **注**: `PHOTO_TOOL_EMBEDDING_ENABLED` は vault 未設定時 **既定 false** のまま。候補 API の中身・ギャラリー件数は **有効化・バックフィル後**に初めて意味を持つ（401 と Phase12 回帰は従来どおり確認可能）。
+- **CONFIRMED**: Ubuntu LocalLLM ノードの nginx `/healthz` は `ok`、`/embed` は **`status=200 dim=512 modelId=clip-ViT-B-32`** を返した。
+- **CONFIRMED**: Pi5 API の `PHOTO_TOOL_EMBEDDING_ENABLED=True`、`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=True`、既存 GOOD のバックフィルは **42 件成功 / 0 件失敗**、`photo_tool_similarity_gallery` は **42 行**。
 
 ### ローカルテスト（開発者向け・2026-03-29）
 
@@ -185,6 +187,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **CONFIRMED**: ブランチ `feat/photo-tool-label-good-assist-shadow` を Pi5→Pi4×4 のみ順次デプロイ（`docs/guides/deployment.md`・各回 `failed=0`）。Pi3 は今回対象外。
 - **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（Tailscale・Pi5 到達時）。
 - **CONFIRMED**: 未認証 `GET …/photo-similar-candidates` → **401**（回帰）。
+- **CONFIRMED**: 実機の新規写真持出 1 件で `Photo tool label shadow assist inference completed` を確認。`reason=converged_neighbors`、`candidateLabels=["マウス"]`、`currentLabel="マウス"`、`assistedLabel="マウス"`。保存された `photoToolDisplayName` も `マウス`。
 
 #### Troubleshooting（シャドー補助）
 
@@ -193,6 +196,8 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | ログに shadow が一切出ない | シャドー OFF、埋め込み OFF、または補助条件未満（近傍不足・canonical 不一致・距離超過） | `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` と `PHOTO_TOOL_EMBEDDING_ENABLED` を確認。debug ログで `skipped` の `reason` を見る |
 | VLM 負荷が急増 | シャドー ON で対象ローンが多い | しきい値を厳しくするか、シャドーを限定時間のみ ON。別 ADR で active 化を検討する前にログ評価 |
 | 本番ラベルが変わった | バグまたは別機能 | 本仕様では `photoToolDisplayName` は 1 回目のみ保存。挙動が違う場合はデプロイ版コミットと `PhotoToolLabelingService` を確認 |
+| ローカルの `host_vars/raspberrypi5/vault.yml` を更新しても Pi5 に反映されない | `infrastructure/ansible/host_vars/**/vault.yml` は Git 管理外で、Pi5 リモート実行時は **Pi5 側 checkout** のファイルが使われる | 正規の secrets 配置を使うか、Pi5 上の `host_vars/raspberrypi5/vault.yml` を更新してから再デプロイ |
+| `/healthz` は通るが `/embed` の Python ワンライナー確認が失敗する | `tailscale` コンテナに `python3` が無い | `embedding` コンテナ側で単体確認するか、`wget` / `curl` で疎通確認と payload 確認を分ける |
 
 ### References
 

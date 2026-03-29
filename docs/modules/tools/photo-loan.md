@@ -24,7 +24,7 @@ update-frequency: medium
 - **類似候補（任意）**: 人レビュー **GOOD** の貸出のみ、pgvector ギャラリーへ埋め込みを非同期インデックス。管理画面で類似候補を参照表示（確定ラベルは自動変更しない）
 - **UI表示**: 持出一覧・返却画面で写真サムネイルを表示。1行目の工具名は **人レビュー > VLM > `撮影mode`**
 
-**実機回帰（2026-03-29）**: デプロイ後に `./scripts/deploy/verify-phase12-real.sh` で **PASS 34/0/0**（シャドー補助は既定 OFF のまま）。シャドー ON 時のログ評価は `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` 等を有効化してから実施する（[ADR-20260331](../../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）。
+**実機回帰（2026-03-29）**: デプロイ後に `./scripts/deploy/verify-phase12-real.sh` で **PASS 34/0/0**。その後、Ubuntu 埋め込み `/embed` の **512 次元応答**、Pi5 での **GOOD バックフィル 42 件**、シャドー ON の実機 1 件で **`Photo tool label shadow assist inference completed`**（`currentLabel=assistedLabel=マウス`）を確認した（[KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
 
 ## 機能要件（FR-009）
 
@@ -284,6 +284,7 @@ apps/web/src/
 - ✅ **実機検証完了**: Raspberry Pi 5 + Raspberry Pi 4での統合動作確認完了（2025-12-01）
 - ✅ **VLM 実機確認**: Pi5 本番で `Loan.photoToolDisplayName` への保存を確認済み（詳細は KB-319）
 - ✅ **フェーズ1（2026-03-29）**: 人レビュー列・管理 API・Vision 高解像入力・表示統一を本番にデプロイし、DB 列・`health`・未認証 401・Phase12 実機スクリプト **PASS 34/0/0** を確認（KB-319 フェーズ1節）
+- ✅ **類似候補ギャラリー / シャドー観測（2026-03-29）**: Ubuntu 埋め込みサービス、Pi5 の `PHOTO_TOOL_EMBEDDING_*` 配線、GOOD バックフィル **42 件**、シャドー補助の実機ログ確認まで完了（KB-319 / Runbook）
 - ⏳ **既知の問題**: スキャン重複と黒画像の問題が報告されており、詳細調査・対策計画を作成中
   - 詳細は [キオスク工具スキャン重複＆黒画像対策 ExecPlan](../../plans/tool-management-debug-execplan.md) を参照
 
