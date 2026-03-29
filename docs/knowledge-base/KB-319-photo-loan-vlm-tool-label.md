@@ -120,12 +120,19 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - `apps/api/src/routes/tools/loans/photo-label-reviews.ts`
 - `packages/shared-types/src/tools/loan-card-display.ts`
 
-## 類似候補ギャラリー（pgvector・2026-03-30 想定）
+## 類似候補ギャラリー（pgvector）
 
 ### Context
 
+- **ブランチ**: `feat/photo-tool-label-similarity-gallery`
 - **目的**: GOOD と判定した写真の埋め込みを DB に保持し、管理画面で **類似貸出候補** を参照する（表示のみ。キオスクの確定ラベルは変えない）。
 - **前提**: Postgres は **pgvector 対応イメージ**（例 `pgvector/pgvector:pg15`）。テーブル `photo_tool_similarity_gallery` はマイグレーション生 SQL。
+
+### 実機確認（Mac・Tailscale・2026-03-29）
+
+- **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（実行時間の目安: 約 47s。Pi5 `100.106.158.2`、Network mode `tailscale`）
+- **CONFIRMED**: 未認証 `GET https://<Pi5>/api/tools/loans/00000000-0000-4000-8000-000000000001/photo-similar-candidates` → **401**（Loan の有無に先立ち認可で拒否される経路であることのスモーク）
+- **注**: 候補配列の中身は `PHOTO_TOOL_EMBEDDING_ENABLED`・埋め込み HTTP・GOOD ギャラリー件数に依存。本番で空配列でも API 契約・認可が正しければフェーズ12の FAIL にはならない
 
 ### 運用フラグ（API `apps/api/src/config/env.ts`）
 

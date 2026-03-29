@@ -107,7 +107,8 @@ model ClientDevice {
 
 - `GET /api/tools/loans/photo-label-reviews` — レビュー待ち一覧（**ADMIN/MANAGER**）
 - `PATCH /api/tools/loans/:id/photo-label-review` — 人レビュー送信（**ADMIN/MANAGER**、JWT 必須）
-- `GET /api/tools/loans/:id/photo-similar-candidates` — **類似候補（参考表示のみ）**（**ADMIN/MANAGER**）。`PHOTO_TOOL_EMBEDDING_ENABLED=true` かつ埋め込みサービス接続時のみ候補を返し、それ以外は空配列。キオスク・確定ラベルは変更しない。
+- `GET /api/tools/loans/:id/photo-similar-candidates` — **類似候補（参考表示のみ）**（**ADMIN/MANAGER**）。`PHOTO_TOOL_EMBEDDING_ENABLED=true` かつ埋め込みサービス接続時のみ候補を返し、それ以外は空配列。キオスク・確定ラベルは変更しない。未認証は **401**。
+  - **実機スモーク（2026-03-29）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 34 / WARN 0 / FAIL 0**、上記 GET をトークンなしで叩くと **401**（[KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
 
 ### 内部ジョブ（VLM は公開ジョブ API なし）
 

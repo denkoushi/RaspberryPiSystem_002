@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-03-24
+最終更新: 2026-03-29
 
 ## 概要
 
@@ -555,6 +555,22 @@ cd apps/web && pnpm build && cd ../..
 
 **検証日時**: 2026-03-29（API 401 は Pi5 で確認済み／UI は現地推奨）
 **検証結果**: ☑ 成功（API） ☐ 失敗（エラー内容: _______________）
+
+**6.6.7 類似候補 API（pgvector・管理画面）**
+
+**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「類似候補ギャラリー」節、[ADR-20260330](../decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)）:
+
+- [ ] 未認証 `GET /api/tools/loans/<uuid>/photo-similar-candidates` が **401** になるか（任意の UUID で可）
+- [ ] `PHOTO_TOOL_EMBEDDING_ENABLED=true` かつ埋め込み到達時、管理画面 `/admin/photo-loan-label-reviews` から類似候補が参照できるか（**埋め込み無効時は空配列が仕様**）
+
+**検証コマンド例（401）**:
+
+```bash
+curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/00000000-0000-4000-8000-000000000001/photo-similar-candidates"
+```
+
+**検証日時**: 2026-03-29（401・`verify-phase12-real.sh` **PASS 34/0/0** を Mac / Tailscale で確認／UI・候補中身は埋め込み設定次第）
+**検証結果**: ☑ 成功（認可・Phase12 回帰） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認
 
