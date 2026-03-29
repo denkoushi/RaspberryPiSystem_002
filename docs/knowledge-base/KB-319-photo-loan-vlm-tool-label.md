@@ -120,6 +120,38 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - `apps/api/src/routes/tools/loans/photo-label-reviews.ts`
 - `packages/shared-types/src/tools/loan-card-display.ts`
 
+## 類似候補ギャラリー（pgvector・2026-03-30 想定）
+
+### Context
+
+- **目的**: GOOD と判定した写真の埋め込みを DB に保持し、管理画面で **類似貸出候補** を参照する（表示のみ。キオスクの確定ラベルは変えない）。
+- **前提**: Postgres は **pgvector 対応イメージ**（例 `pgvector/pgvector:pg15`）。テーブル `photo_tool_similarity_gallery` はマイグレーション生 SQL。
+
+### 運用フラグ（API `apps/api/src/config/env.ts`）
+
+| 変数 | 説明 |
+|------|------|
+| `PHOTO_TOOL_EMBEDDING_ENABLED` | `false`（既定）でギャラリー更新・候補 API は実質 no-op |
+| `PHOTO_TOOL_EMBEDDING_URL` | 埋め込み HTTP の URL（enabled 時必須） |
+| `PHOTO_TOOL_EMBEDDING_MODEL_ID` | DB の `embeddingModelId` と一致させる（enabled 時必須） |
+| `PHOTO_TOOL_EMBEDDING_DIMENSION` | **DB の `vector(d)` と一致**（既定 512） |
+| `PHOTO_TOOL_SIMILARITY_MAX_CANDIDATES` | 返す候補の最大件数 |
+| `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE` | pgvector **cosine 距離**（`<=>`）の上限。小さいほど厳しい |
+| `PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION` | JPEG 前処理変更時のメタデータ |
+
+### 症状と対処
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| 候補が常に空 | 埋め込み無効、URL 未到達、閾値が厳しすぎる、GOOD ギャラリーが空 | `PHOTO_TOOL_EMBEDDING_*` と API ログを確認。閾値は `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE` を段階的に調整 |
+| レビュー後もギャラリーに載らない | GOOD 以外にした、非同期インデックス失敗 | API ログの `Photo tool similarity gallery index failed`。JPEG 読み込み・埋め込み HTTP の応答次元を確認 |
+| マイグレーションエラー | 既存 DB が vector 拡張なし | pgvector 同梱イメージへ切替えたうえで `prisma migrate deploy` |
+
+### References
+
+- [ADR-20260330](../decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)
+- `apps/api/src/routes/tools/loans/photo-similar-candidates.ts`
+
 ## References
 
 - `feat/photo-loan-vlm-tool-label`

@@ -1489,6 +1489,20 @@ export async function listPhotoLabelReviews(limit = 50): Promise<PhotoLabelRevie
   return data.items;
 }
 
+export type PhotoSimilarCandidate = {
+  sourceLoanId: string;
+  canonicalLabel: string;
+  cosineDistance: number;
+  score: number;
+};
+
+export async function getPhotoSimilarCandidates(loanId: string): Promise<PhotoSimilarCandidate[]> {
+  const { data } = await api.get<{ candidates: PhotoSimilarCandidate[] }>(
+    `/tools/loans/${loanId}/photo-similar-candidates`
+  );
+  return data.candidates;
+}
+
 export async function patchPhotoLabelReview(
   loanId: string,
   body: { quality: PhotoLabelReviewQuality; humanDisplayName?: string | null }

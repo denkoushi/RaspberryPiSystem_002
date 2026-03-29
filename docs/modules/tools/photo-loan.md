@@ -21,6 +21,7 @@ update-frequency: medium
 - **写真管理**: 写真の保存・配信・自動削除
 - **表示名付与**: 元画像（既定）またはサムネイルを JPEG 化したうえで非同期 VLM 推論し、短い工具名を `photoToolDisplayName` に保存
 - **人レビュー**: ADMIN/MANAGER が VLM 結果を品質（GOOD/MARGINAL/BAD）と任意の表示名で上書き・記録（`photoToolHuman*` 列）
+- **類似候補（任意）**: 人レビュー **GOOD** の貸出のみ、pgvector ギャラリーへ埋め込みを非同期インデックス。管理画面で類似候補を参照表示（確定ラベルは自動変更しない）
 - **UI表示**: 持出一覧・返却画面で写真サムネイルを表示。1行目の工具名は **人レビュー > VLM > `撮影mode`**
 
 ## 機能要件（FR-009）
@@ -106,6 +107,7 @@ model ClientDevice {
 
 - `GET /api/tools/loans/photo-label-reviews` — レビュー待ち一覧（**ADMIN/MANAGER**）
 - `PATCH /api/tools/loans/:id/photo-label-review` — 人レビュー送信（**ADMIN/MANAGER**、JWT 必須）
+- `GET /api/tools/loans/:id/photo-similar-candidates` — **類似候補（参考表示のみ）**（**ADMIN/MANAGER**）。`PHOTO_TOOL_EMBEDDING_ENABLED=true` かつ埋め込みサービス接続時のみ候補を返し、それ以外は空配列。キオスク・確定ラベルは変更しない。
 
 ### 内部ジョブ（VLM は公開ジョブ API なし）
 

@@ -29,7 +29,8 @@
 
 - **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（**トークンローテーション**は同 Runbook の「共有トークンのローテーション」節）
 - **判断記録**: [ADR-20260328](./decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)（Ubuntu / Tailscale 側） / [ADR-20260329](./decisions/ADR-20260329-local-llm-pi5-api-operations.md)（Pi5 API 代理・ログ方針）
-- **トラブルシュート**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)（Ubuntu sidecar 側） / [KB-318](./knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（Pi5 API コンテナへの `LOCAL_LLM_*` は `docker.env` 経由） / [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（写真持出 VLM ラベル）
+- **トラブルシュート**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)（Ubuntu sidecar 側） / [KB-318](./knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（Pi5 API コンテナへの `LOCAL_LLM_*` は `docker.env` 経由） / [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（写真持出 VLM ラベル・**類似候補ギャラリー**）
+- **判断記録（類似候補）**: [ADR-20260330](./decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)（pgvector + 外部埋め込み HTTP、管理画面のみ候補表示）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
 ### 🆕 最新アップデート（2026-03-28）
