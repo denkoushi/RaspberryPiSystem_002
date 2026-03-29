@@ -137,7 +137,39 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 
 2. **ロックファイルの確認・削除**（cleanup が実行されない場合）
    ```bash
-   ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/logs/.update-all-clients.lock"
+   # まず中身を確認（runId/runPid/state）
+   ssh denkon5sd02@100.106.158.2 "python3 - <<'PY'
+import json
+path = '/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock'
+try:
+    with open(path, encoding='utf-8') as f:
+        print(json.load(f))
+except FileNotFoundError:
+    print({'lock': 'not-found'})
+PY"
+
+   # runPid が生きていないことを確認できた場合のみ削除
+   ssh denkon5sd02@100.106.158.2 "python3 - <<'PY'
+import json, os, signal
+path = '/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock'
+try:
+    with open(path, encoding='utf-8') as f:
+        payload = json.load(f)
+except FileNotFoundError:
+    raise SystemExit(0)
+pid = payload.get('runPid')
+alive = False
+if isinstance(pid, int) and pid > 0:
+    try:
+        os.kill(pid, 0)
+        alive = True
+    except OSError:
+        alive = False
+if alive:
+    raise SystemExit('lock is active; do not remove')
+os.remove(path)
+print('lock removed')
+PY"
    ```
 
 3. **Pi4 を単体で再デプロイ**

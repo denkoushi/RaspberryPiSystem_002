@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-03-01（Pi4キオスク電源操作フローの記述を現行アーキテクチャに更新）
+最終更新: 2026-03-29（`update-all-clients.sh` の多重起動ロック仕様を更新）
 
 ## 概要
 
@@ -674,7 +674,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×4 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01 の順で、前のデプロイが成功してから次を実行する。
 
-**禁止に近い注意（2026-03-29 追記）**: 同一 `RASPI_SERVER_HOST`（Pi5）向けに **`update-all-clients.sh` を複数ターミナルから同時起動しない**。並列実行では Pi5 上のデプロイロックが競合し、片方が `Removing stale lock` となりうる。Ansible の同一ログファイルへの混線も起こりうる（再現事例: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）。**必ず 1 本のシェルで順次**（`cmd1 && cmd2`）とする。
+**重要（2026-03-29 追記）**: 同一 `RASPI_SERVER_HOST`（Pi5）向けに **`update-all-clients.sh` を複数ターミナルから同時起動しない**。2026-03-29 の hardening 後は、Mac 側で `logs/.update-all-clients.local.lock` を使ったローカル排他と、Pi5 側で `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`（JSON）を使った排他が有効。**2重起動はエラーで停止**するため、解除せずに 1 本目の完了を待つこと。複数台へ配るときは **必ず 1 本のシェルで順次**（`cmd1 && cmd2`）とする。
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
@@ -739,9 +739,10 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
    - Pi5からinventory内の全ホストへの接続を`ansible -m ping`で確認
    - 接続不可の場合はデプロイを中断（エラーコード3）
 
-2. **リモートロック（並行実行防止）**:
-   - Pi5上の`/opt/RaspberryPiSystem_002/logs/deploy.lock`で並行実行を防止
-   - 古いロック（デフォルト30分以上経過）は自動的にクリーンアップ
+2. **ロック（並行実行防止）**:
+   - **ローカルロック（Mac）**: `logs/.update-all-clients.local.lock` を `mkdir` で取得し、同一端末での多重起動を防止
+   - **リモートロック（Pi5）**: `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock` に JSON（`runId` / `runPid` / `state` / `runner`）を書き、Pi5 上での多重起動を防止
+   - stale 判定は **`runPid` 生存確認（`kill -0`）+ `ansible-playbook` 実行中確認 + 経過時間（既定 2400 秒）** で実施
    - ロック取得失敗時はデプロイを中断（エラーコード3）
 
 3. **リソースガード**:
