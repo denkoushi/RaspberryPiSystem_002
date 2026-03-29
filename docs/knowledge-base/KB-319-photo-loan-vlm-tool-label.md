@@ -154,9 +154,18 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | レビュー後もギャラリーに載らない | GOOD 以外にした、非同期インデックス失敗 | API ログの `Photo tool similarity gallery index failed`。JPEG 読み込み・埋め込み HTTP の応答次元を確認 |
 | マイグレーションエラー | 既存 DB が vector 拡張なし | pgvector 同梱イメージへ切替えたうえで `prisma migrate deploy` |
 
+### VLM シャドー補助（GOOD 類似・条件付き・2026-03-31）
+
+- **目的**: 工場固有工具向けに、人レビュー **GOOD** の近傍が**厳しめ条件で収束**するときだけ、VLM に参考ラベルを短く渡した**2 回目推論**を走らせ、**ログで `currentLabel`（従来1回目）と `assistedLabel` を比較**する。`Loan.photoToolDisplayName` は **1 回目のまま**（本番ラベルは変えない）。
+- **有効化**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` **かつ** `PHOTO_TOOL_EMBEDDING_ENABLED=true`（どちらか欠けるとシャドーは動かない）。**既定は false**。
+- **調整**: `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（管理 UI 向け `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE` より厳しめ推奨）、`PHOTO_TOOL_LABEL_ASSIST_MIN_NEIGHBORS`、`PHOTO_TOOL_LABEL_ASSIST_CONVERGENCE_TOP_K`、`PHOTO_TOOL_LABEL_ASSIST_QUERY_NEIGHBOR_LIMIT`。
+- **ログ**: `Photo tool label shadow assist inference completed`（`assistTriggered` / `reason` / `candidateLabels` / `currentLabel` / `assistedLabel`）。未発火時は `Photo tool label shadow assist skipped`（debug）。
+- **参照**: [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)
+
 ### References
 
 - [ADR-20260330](../decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)
+- [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)
 - `apps/api/src/routes/tools/loans/photo-similar-candidates.ts`
 
 ## References

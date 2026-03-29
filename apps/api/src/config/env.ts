@@ -194,6 +194,23 @@ const envSchema = z.object({
   PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE: z.coerce.number().min(0).max(2).default(0.22),
   /** 前処理変更時にギャラリー再計算の判断に使う */
   PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION: z.string().default('vision_jpeg_v1'),
+
+  /**
+   * true かつ PHOTO_TOOL_EMBEDDING_ENABLED のとき、VLM 本番ラベルは従来どおり保存しつつ
+   * 条件付きで補助プロンプトの 2 回目推論を実行してログ比較のみ行う（シャドー）
+   */
+  PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  /** 補助発火用: 管理 UI の類似候補より厳しめ（小さいほど類似のみ） */
+  PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE: z.coerce.number().min(0).max(2).default(0.14),
+  PHOTO_TOOL_LABEL_ASSIST_MIN_NEIGHBORS: z.coerce.number().int().min(1).max(20).default(2),
+  /** 先頭 K 件の canonicalLabel がすべて一致するときだけ補助 */
+  PHOTO_TOOL_LABEL_ASSIST_CONVERGENCE_TOP_K: z.coerce.number().int().min(1).max(10).default(2),
+  /** findNearestNeighbors の取得上限 */
+  PHOTO_TOOL_LABEL_ASSIST_QUERY_NEIGHBOR_LIMIT: z.coerce.number().int().min(10).max(100).default(40),
+  /** 補助プロンプトに載せるラベル数の上限（同一ラベルでも参照強調用に複数近傍があれば繰り返し可だが cap） */
+  PHOTO_TOOL_LABEL_ASSIST_PROMPT_MAX_LABELS: z.coerce.number().int().min(1).max(10).default(3),
 }).superRefine((value, ctx) => {
   if (value.PHOTO_TOOL_EMBEDDING_ENABLED) {
     if (!value.PHOTO_TOOL_EMBEDDING_URL) {

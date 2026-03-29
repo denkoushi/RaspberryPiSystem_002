@@ -90,4 +90,70 @@ describe('PhotoToolLabelingService', () => {
     await svc.runBatch({ batchSize: 3, staleBefore });
     expect(repo.resetStaleClaims).toHaveBeenCalledWith(staleBefore);
   });
+
+  it('シャドー補助が有効で assist が承認したとき 2 回目 VLM を呼び本番ラベルは従来どおり', async () => {
+    const labelAssist = {
+      evaluateForShadow: vi.fn().mockResolvedValue({
+        shouldAssist: true,
+        candidateLabels: ['専用工具'],
+        reason: 'converged_neighbors',
+        topDistance: 0.07,
+        neighborCountAfterFilter: 2,
+      }),
+    };
+    vi.mocked(vision.complete)
+      .mockResolvedValueOnce({ rawText: ' ペンチ ' })
+      .mockResolvedValueOnce({ rawText: ' 専用工具 ' });
+
+    const svc = new PhotoToolLabelingService({
+      repo,
+      visionImageSource,
+      vision,
+      isVisionConfigured: () => true,
+      labelAssist: labelAssist as never,
+      shadowAssistEnabled: () => true,
+    });
+    await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
+
+    expect(vision.complete).toHaveBeenCalledTimes(2);
+    expect(vision.complete.mock.calls[1][0].userText).toContain('【参考】');
+    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', 'ペンチ');
+  });
+
+  it('assist が拒否したときは 1 回だけ VLM', async () => {
+    const labelAssist = {
+      evaluateForShadow: vi.fn().mockResolvedValue({
+        shouldAssist: false,
+        candidateLabels: [],
+        reason: 'too_few_neighbors',
+        topDistance: null,
+        neighborCountAfterFilter: 0,
+      }),
+    };
+    const svc = new PhotoToolLabelingService({
+      repo,
+      visionImageSource,
+      vision,
+      isVisionConfigured: () => true,
+      labelAssist: labelAssist as never,
+      shadowAssistEnabled: () => true,
+    });
+    await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
+    expect(vision.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('shadowAssistEnabled が false のときは補助を呼ばない', async () => {
+    const labelAssist = { evaluateForShadow: vi.fn() };
+    const svc = new PhotoToolLabelingService({
+      repo,
+      visionImageSource,
+      vision,
+      isVisionConfigured: () => true,
+      labelAssist: labelAssist as never,
+      shadowAssistEnabled: () => false,
+    });
+    await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
+    expect(labelAssist.evaluateForShadow).not.toHaveBeenCalled();
+    expect(vision.complete).toHaveBeenCalledTimes(1);
+  });
 });
