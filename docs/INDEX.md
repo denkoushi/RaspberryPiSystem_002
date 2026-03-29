@@ -21,6 +21,7 @@
 ### キオスク要領書（PDF）
 
 - **仕様・トラブルシュート**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md)
+- **バーコードスキャン検索（ZXing・Firefox キオスク）**: [ADR-20260329](./decisions/ADR-20260329-kiosk-document-barcode-scan-zxing.md)
 - **フリーワード検索（部分一致）の判断**: [ADR-20260326](./decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - **詳細 API の React Query キャッシュ（チャタリング抑止）**: [ADR-20260327](./decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)
 - **運用手順**: [kiosk-documents.md](./runbooks/kiosk-documents.md)
@@ -32,6 +33,10 @@
 - **トラブルシュート**: [KB-317](./knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する)（Ubuntu sidecar 側） / [KB-318](./knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（Pi5 API コンテナへの `LOCAL_LLM_*` は `docker.env` 経由） / [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（写真持出 VLM ラベル・**類似候補ギャラリー**）
 - **判断記録（類似候補）**: [ADR-20260330](./decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)（pgvector + 外部埋め込み HTTP、管理画面のみ候補表示）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
+
+### 🆕 最新アップデート（2026-03-29）
+
+- **キオスク要領書: バーコードスキャン検索（`@zxing/library`・`features/barcode-scan`・一次元 preset・30s タイムアウト・Pi4 Firefox）・本番デプロイ（Pi5→Pi4×4・Pi3 除外・順次）・Phase12 実機検証・ドキュメント反映**: ブランチ `feat/kiosk-documents-barcode-scan`（実装コミット例 `043f3228`）。**実機検証（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 47s・2026-03-29）。**手動**: 各 Pi4 Firefox でスキャン・カメラ・実ラベル読取を確認。**参照**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md) / [ADR-20260329](./decisions/ADR-20260329-kiosk-document-barcode-scan-zxing.md) / [kiosk-documents.md](./runbooks/kiosk-documents.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-03-28）
 

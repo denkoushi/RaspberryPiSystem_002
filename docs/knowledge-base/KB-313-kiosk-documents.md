@@ -2,7 +2,7 @@
 title: KB-313 キオスク要領書（PDF）一覧・Gmail取り込み
 tags: [kiosk, pdf, gmail, api, ocr, metadata]
 audience: [開発者, 運用者]
-last-verified: 2026-03-27
+last-verified: 2026-03-29
 category: knowledge-base
 ---
 
@@ -111,9 +111,11 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **左一覧 要約の全文表示（2026-03-27 追記）**: 下段は `line-clamp-2` のため 2 行で切れる。**マウスオーバーでブラウザ標準ツールチップ**（`title`）に全文を出す。表示文字列は `resolveKioskDocumentSummaryText`（`kioskDocumentListSummary.ts`）で **候補→確定→「本文要約なし」** を一元化（他画面の `truncate` + `title` と同パターン）。
 - **右ペイン ツールバー折りたたみ（2026-03-27）**: イマーシブ対象ルート（`usesKioskImmersiveLayout`、[KB-311](./KB-311-kiosk-immersive-header-allowlist.md)）では、ビューア上部の **一覧トグル・1ページ/見開き・幅・ズーム・リセット・検索ヒット抜粋まで含む帯**を既定で折りたたみ、**「表示オプション」行右のスライダー型アイコン**へホバーで展開（`useTimedHoverReveal`・遅延クローズは手動順番下ペインと同じ `TIMED_HOVER_REVEAL_CLOSE_DELAY_MS`）。枠は共通コンポーネント **`HoverRevealCollapsibleToolbar`**（`apps/web/src/components/kiosk/HoverRevealCollapsibleToolbar.tsx`）。`ManualOrderLowerPaneCollapsibleToolbar` は同枠への薄いラッパ（amber スタイル・既存 `aria-label` 維持）。**トレードオフ**: 検索語があるときも抜粋は折りたたみ内のため、ヒット確認前にホットゾーンへ触れる必要がある（現場判断で仕様化済み）。
 - **実装分割**: `apps/web/src/features/kiosk/documents/`（`search/kiosk-document-search-snippets.ts`・`KioskDocumentSearchSnippetStrip.tsx`・`kioskDocumentsToolbarIcons.tsx`・`kioskDocumentQueryKeys.ts`・`useKioskDocumentListPrefetch.ts`・`kioskDocumentViewerScrollPolicy.ts`・`kioskDocumentListSummary.ts`）。API 層に **`kioskDocumentDetailQueryOptions.ts`**。ページは `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`。
+- **バーコード／QR スキャン検索（2026-03-29）**: キオスク要領書の検索欄横 **スキャンボタン** でモーダルを開き、**カメラはセッション中のみ ON**（写真持出と同趣旨で Pi 負荷回避）。デコードは **`@zxing/library` を npm バンドル**（Firefox キオスク向けに **`BarcodeDetector` は前提にしない**）。汎用モジュールは `apps/web/src/features/barcode-scan/`（`formatPresets.ts`・`zxingVideoReader.ts`・`useBarcodeScanSession.ts`・`BarcodeScanModal.tsx`）。**要領書画面**では `BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL`（主要な一次元形式。QR・DataMatrix 等は除外）。**成功時**: 読取文字列を **trim** し検索欄へ反映、`search` / `debouncedSearch` を同時更新して **即検索**、直後にモーダルを閉じてカメラ停止。**キャンセル・タイムアウト（30 秒未検出）・起動失敗後の閉じる**: 検索欄は **空にクリア**（スキャン開始前の手入力も含め）。カメラ不可時のユーザー向け表示は **短文のみ**。判断の根拠は [ADR-20260329](../decisions/ADR-20260329-kiosk-document-barcode-scan-zxing.md)。
 
 ## 実機検証
 
+- **デプロイ（要領書: バーコードスキャン検索・Web のみ）**: ブランチ `feat/kiosk-documents-barcode-scan`（コミット例 `043f3228`）。API 契約不変。`@zxing/library` バンドル・`features/barcode-scan`・`KioskDocumentsPage` / `KioskDocumentsListPanel` の `searchAccessory`。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・Pi3 除外・`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（例）・`--detach --follow`。**Phase12（2026-03-29 実測）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 47s）。**残りの実機確認（オペレーター向け）**: Pi4 Firefox で `/kiosk/documents` にてスキャンボタン・カメラ許可・実ラベル読取・一覧絞り込みを目視確認（自動スクリプトではブラウザカメラを使わない）。
 - **デプロイ（要領書: ビューアツールバー折りたたみ・左一覧要約 `title`・Web のみ）**: ブランチ `feat/kiosk-documents-hover-toolbar-and-summary-tooltip`（`HoverRevealCollapsibleToolbar`・`kioskDocumentListSummary.ts`・`KioskDocumentsViewerPanel` の `toolbarRevealEnabled`＋`usesKioskImmersiveLayout`）。API 契約不変。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1 台ずつ・Pi3 除外・`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（例）・`--detach --follow`。リモートログ basename 例: `ansible-update-20260327-162247-*`（Pi5）/ `ansible-update-20260327-162734-14602`（raspberrypi4）/ `ansible-update-20260327-163150-32497`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（約 41s・2026-03-27、Pi3 `signage-lite/timer` が **WARN**・exit 0）。**知見**: Mac に `RASPI_SERVER_HOST` が無いと `update-all-clients.sh` 実行前に `export` が必要。
 - **デプロイ（要領書: 文書番号・要約候補3・確定要約・API+Web+DB）**: ブランチ `feat/kiosk-documents-doc-number-summary`（実装例: `kiosk-document-number.ts`・`kiosk-document-summary-candidates.ts`・`kiosk-documents` ルート DTO/`PATCH` 検証・`buildKioskDocumentSearchOrConditions`・`KioskDocumentsAdminPage` / `KioskDocumentsListPanel`）。Prisma `20260327120000_add_kiosk_document_number_summary`。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・Pi3 除外（要領書対象外のためキオスク Pi4 と Pi5 API のみ更新）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（約22s・2026-03-27、Pi3 到達時・全ホスト成功）。**知見**: 確定値は運用スナップショット。OCR パイプラインは候補列のみ自動更新。
 - **デプロイ（要領書: 文書切替リセット + 詳細クエリキャッシュ共有・チャタリング抑制・Web）**: ブランチ `feat/kiosk-documents-viewer-reset-on-switch`（実装例: `kioskDocumentDetailQueryOptions.ts`・`useKioskDocumentDetail` の `staleTime`/`gcTime`・一覧 `onRowFocus` 先読み削除・ビューア/近傍フックのリセット）。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1 台ずつ・Pi3 除外。Ansible Detach Run ID 例: `20260327-104657-10125`（Pi5）/ `20260327-105045-23756`（raspberrypi4）/ `20260327-105453-27111`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（約 38s・2026-03-27、Pi3 `signage-lite/timer` WARN）。**現場 Pi4**: チャタリング解消を運用確認（2026-03-27）。
@@ -152,16 +154,19 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **開発時 ESLint `import/order`**: `features/kiosk/documents` 配下でコンポーネント分割すると、**型 import と値 import のブロック順・空行**で `import/order` が落ちうる。`pnpm --filter @raspi-system/web lint` で先に確認する。
 - **一覧にヒットするのにツールバー抜粋が空／逆**: 上記 **キオスクビューア UI** 節の「一覧 API の `q` との差」を参照。`extractedText` が未生成（`ocrStatus` が `PENDING` 等）のときも抜粋は出ない。
 - **長大な `extractedText` で抜粋生成が重い**: `buildKioskDocumentSearchSnippetModel` は **先頭から最大3マッチまで** `RegExp#exec` で走査し、全マッチ配列は作らない（2026-03-26）。
+- **バーコードが読めない／遅い（Pi4 Firefox）**: 照明・距離・ピント・ラベル汚れの影響が大きい。**一次元のみ** preset でも ZXing の連続デコードは負荷があるため、実装は **解像度・デコード間引き**を Pi 向けに調整済み（`zxingVideoReader.ts`）。改善の手戻りは **カメラ解像度制約**・**間引き間隔**・必要なら **対象形式の絞り込み**（`formatPresets`）で切り分ける。読取速度の **1 秒以内 SLA** は現場実測で確認すること（ブラウザ・CPU・コード種別で変動）。
+- **スキャンを閉じたら検索欄が空になる**: **仕様**（キャンセル・未検出タイムアウト・失敗後の閉じる）。手入力の途中状態はスキャン開始前に退避しない運用。
 - **ページ画像の 304 が効かない／常に 200**: ブラウザやプロキシが `If-None-Match` を **複数値・配列**で送る場合がある。API 側は `ifNoneMatchSatisfied` で **文字列と配列の両方**を解釈する（`apps/api/src/routes/storage/pdf-page-http-cache.ts`・2026-03-26）。`curl -I` で `ETag` / `Cache-Control` を確認する。
 - **Network に詳細 GET が2本／チャタリング**: 上記 Symptoms のとおり **意図的な「二重取得機能」ではない**。`kioskDocumentDetailQueryOptions` の共有とキオスク一覧の **pointer のみ先読み**で切り分け（[ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)）。
 - **文書番号の大文字固定**: 確定文書番号は **接尾を大文字英数字に限定**（小文字は API バリデーションで拒否）。OCR テキスト由来の候補抽出も同一パターンに合致したものだけが候補になりうる。運用上、紙面が小文字でも確定時に大文字へ寄せる。
 
 ## References
 
+- バーコードスキャン（ZXing・Firefox キオスク）: [ADR-20260329](../decisions/ADR-20260329-kiosk-document-barcode-scan-zxing.md)
 - 詳細クエリキャッシュ方針: [ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)
 - 検索方式の判断: [ADR-20260326](../decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - Runbook: [docs/runbooks/kiosk-documents.md](../runbooks/kiosk-documents.md)
 - 実機一括検証: [scripts/deploy/verify-phase12-real.sh](../../scripts/deploy/verify-phase12-real.sh)
-- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`（`kiosk-document-number.ts`・`kiosk-document-summary-candidates.ts`・検索 `search/build-kiosk-document-search-or.ts`）, `apps/api/src/routes/storage/pdf-pages.ts`, `apps/api/src/routes/storage/pdf-page-http-cache.ts`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/pages/admin/KioskDocumentsAdminPage.tsx`, `apps/web/src/features/kiosk/documents/`
+- 実装: `apps/api/src/routes/kiosk-documents.ts`, `apps/api/src/services/kiosk-documents/`（`kiosk-document-number.ts`・`kiosk-document-summary-candidates.ts`・検索 `search/build-kiosk-document-search-or.ts`）, `apps/api/src/routes/storage/pdf-pages.ts`, `apps/api/src/routes/storage/pdf-page-http-cache.ts`, `apps/web/src/pages/kiosk/KioskDocumentsPage.tsx`, `apps/web/src/pages/admin/KioskDocumentsAdminPage.tsx`, `apps/web/src/features/kiosk/documents/`, `apps/web/src/features/barcode-scan/`
 - 孤児掃除 CLI: `apps/api/src/scripts/cleanup-pdf-storage-orphans.ts`（`pnpm --filter @raspi-system/api run cleanup:pdf-orphans`）
 - 設定スキーマ: `apps/api/src/services/backup/backup-config.ts`（`kioskDocumentGmailIngest`）
