@@ -95,7 +95,9 @@ model Employee {
   inspectionRecords        InspectionRecord[]
   riggingInspectionRecords RiggingInspectionRecord[]
   transactions             Transaction[]             @relation("EmployeeActor")
-  partMeasurementSheets    PartMeasurementSheet[]
+  partMeasurementSheetsWorker   PartMeasurementSheet[] @relation("PartMeasurementSheetWorker")
+  partMeasurementSheetsCreated  PartMeasurementSheet[] @relation("PartMeasurementSheetCreatedBy")
+  partMeasurementSheetsFinalized PartMeasurementSheet[] @relation("PartMeasurementSheetFinalizedBy")
 }
 
 model Item {
@@ -269,7 +271,8 @@ model ClientDevice {
   updatedAt      DateTime      @updatedAt
   loans                   Loan[]
   transactions            Transaction[]
-  partMeasurementSheets   PartMeasurementSheet[]
+  partMeasurementSheets   PartMeasurementSheet[] @relation("PartMeasurementSheetOwningDevice")
+  partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
 
   @@index([statusClientId])
 }
@@ -1338,12 +1341,16 @@ enum PartMeasurementProcessGroup {
 enum PartMeasurementSheetStatus {
   DRAFT
   FINALIZED
+  CANCELLED
+  INVALIDATED
 }
 
 model PartMeasurementTemplate {
   id           String                      @id @default(uuid())
   fhincd       String
   processGroup PartMeasurementProcessGroup
+  /// 資源CD（テンプレート識別キー）。移行前データは __LEGACY__
+  resourceCd   String
   name         String
   version      Int                         @default(1)
   isActive     Boolean                     @default(true)
@@ -1352,8 +1359,8 @@ model PartMeasurementTemplate {
   items        PartMeasurementTemplateItem[]
   sheets       PartMeasurementSheet[]
 
-  @@unique([fhincd, processGroup, version], map: "PartMeasurementTemplate_unique_fhincd_group_version")
-  @@index([fhincd, processGroup, isActive], map: "PartMeasurementTemplate_idx_lookup")
+  @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
+  @@index([fhincd, processGroup, resourceCd, isActive], map: "PartMeasurementTemplate_idx_lookup")
 }
 
 model PartMeasurementTemplateItem {
@@ -1365,6 +1372,8 @@ model PartMeasurementTemplateItem {
   measurementLabel String
   unit             String?
   allowNegative    Boolean                   @default(true)
+  /// 小数桁数（0〜6、DBは Decimal(18,6)）
+  decimalPlaces    Int                       @default(6)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
   template         PartMeasurementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
@@ -1383,22 +1392,41 @@ model PartMeasurementSheet {
   machineName          String?
   resourceCdSnapshot   String?
   processGroupSnapshot PartMeasurementProcessGroup
+  /// 下書き中・確定前の作業者（NFC）
   employeeId           String?
   employeeNameSnapshot String?
+  /// 最初にNFCで紐づけた作業者
+  createdByEmployeeId           String?
+  createdByEmployeeNameSnapshot String?
+  /// 確定時点の作業者
+  finalizedByEmployeeId           String?
+  finalizedByEmployeeNameSnapshot String?
   quantity             Int?
   scannedBarcodeRaw    String?
   templateId           String?
   clientDeviceId       String?
+  /// 編集ロック保持端末
+  editLockClientDeviceId String?
+  editLockExpiresAt      DateTime?
+  cancelledAt          DateTime?
+  cancelReason         String?
+  invalidatedAt        DateTime?
+  invalidatedReason    String?
   createdAt            DateTime                     @default(now())
   updatedAt            DateTime                     @updatedAt
   finalizedAt          DateTime?
   template             PartMeasurementTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  employee             Employee?                    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  clientDevice         ClientDevice?                @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  employee             Employee?                    @relation("PartMeasurementSheetWorker", fields: [employeeId], references: [id], onDelete: SetNull)
+  createdByEmployee    Employee?                    @relation("PartMeasurementSheetCreatedBy", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+  finalizedByEmployee  Employee?                    @relation("PartMeasurementSheetFinalizedBy", fields: [finalizedByEmployeeId], references: [id], onDelete: SetNull)
+  clientDevice         ClientDevice?                @relation("PartMeasurementSheetOwningDevice", fields: [clientDeviceId], references: [id], onDelete: SetNull)
+  editLockClientDevice ClientDevice?                @relation("PartMeasurementSheetEditLock", fields: [editLockClientDeviceId], references: [id], onDelete: SetNull)
   results              PartMeasurementResult[]
 
   @@index([status, updatedAt], map: "PartMeasurementSheet_idx_status_updated")
   @@index([fseiban], map: "PartMeasurementSheet_idx_fseiban")
+  @@index([productNo, processGroupSnapshot, status], map: "PartMeasurementSheet_idx_product_group_status")
+  @@index([finalizedAt], map: "PartMeasurementSheet_idx_finalizedAt")
 }
 
 model PartMeasurementResult {

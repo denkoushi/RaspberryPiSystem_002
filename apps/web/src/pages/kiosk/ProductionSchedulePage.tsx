@@ -41,6 +41,7 @@ import {
 } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditions } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { useSharedSearchHistory } from '../../features/kiosk/productionSchedule/useSharedSearchHistory';
+import { useKioskOpenPartMeasurementFromScheduleRow } from '../../features/part-measurement/useKioskOpenPartMeasurementFromScheduleRow';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useTimedHoverReveal } from '../../hooks/useTimedHoverReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
@@ -101,9 +102,37 @@ function CalendarIcon({ className }: { className?: string }) {
   );
 }
 
+function RulerIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0Z" />
+      <path d="m7.5 10.5 2 2" />
+      <path d="m10.5 7.5 2 2" />
+      <path d="m13.5 4.5 2 2" />
+    </svg>
+  );
+}
 
 export function ProductionSchedulePage() {
   const queryClient = useQueryClient();
+  const {
+    openFromScheduleRow: handleOpenPartMeasurement,
+    busyRowId: partMeasurementBusyRowId,
+    error: partMeasurementError,
+    clearError: clearPartMeasurementError
+  } = useKioskOpenPartMeasurementFromScheduleRow();
   const isMac =
     typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
@@ -309,6 +338,7 @@ export function ProductionSchedulePage() {
     isTwoColumn,
     itemSeparatorWidth,
     checkWidth,
+    partMeasurementColumnWidth,
     itemColumnWidths,
     rowPairs,
     machineNameOptions,
@@ -773,6 +803,18 @@ export function ProductionSchedulePage() {
         </div>
       </ManualOrderLowerPaneCollapsibleToolbar>
 
+      {partMeasurementError ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-400/50 bg-amber-500/15 px-3 py-2 text-xs text-amber-50">
+          <span className="font-semibold">{partMeasurementError}</span>
+          <button
+            type="button"
+            className="rounded border border-amber-200/40 px-2 py-0.5 hover:bg-white/10"
+            onClick={() => clearPartMeasurementError()}
+          >
+            閉じる
+          </button>
+        </div>
+      ) : null}
       {sortMode === 'manual' && !manualSortEnabled ? (
         <p className="text-xs font-semibold text-amber-300">
           手動順番は単一の資源CDで表示しているときのみ有効です。
@@ -799,6 +841,7 @@ export function ProductionSchedulePage() {
           isTwoColumn={isTwoColumn}
           itemSeparatorWidth={itemSeparatorWidth}
           checkWidth={checkWidth}
+          partMeasurementColumnWidth={partMeasurementColumnWidth}
           itemColumnWidths={itemColumnWidths}
           dueDateColumnWidth={DUE_DATE_COLUMN_WIDTH}
           noteColumnWidth={NOTE_COLUMN_WIDTH}
@@ -815,9 +858,12 @@ export function ProductionSchedulePage() {
           handleProcessingChange={handleProcessingChange}
           openDueDatePicker={openDueDatePicker}
           startNoteEdit={startNoteEdit}
+          openPartMeasurement={handleOpenPartMeasurement}
+          partMeasurementBusyRowId={partMeasurementBusyRowId}
           formatDueDate={formatDueDate}
           PencilIcon={PencilIcon}
           CalendarIcon={CalendarIcon}
+          RulerIcon={RulerIcon}
         />
       )}
       <KioskDatePickerModal

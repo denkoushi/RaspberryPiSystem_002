@@ -26,7 +26,10 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/documents'],
     ['/kiosk/documents/'],
     ['/kiosk/part-measurement'],
-    ['/kiosk/part-measurement/']
+    ['/kiosk/part-measurement/'],
+    ['/kiosk/part-measurement/edit/00000000-0000-4000-8000-000000000001'],
+    ['/kiosk/part-measurement/template/new'],
+    ['/kiosk/part-measurement/finalized']
   ])('true for %s', (path) => {
     expect(usesKioskImmersiveLayout(path)).toBe(true);
   });

@@ -8,15 +8,15 @@
 
 - API・DB に `part-measurement` マイグレーションが適用済みであること（デプロイ手順は [deployment.md](../guides/deployment.md)）。
 - キオスク端末に有効な `x-client-key`（ClientDevice）が設定されていること。
-- テンプレートは管理コンソール **「部品測定テンプレ」**（`/admin/tools/part-measurement-templates`）で登録し、**有効版**が1つあること。
+- テンプレートは **品番 × 工程 × 資源CD** ごとに有効版が1つあること（未登録時はキオスクのテンプレ作成、または管理コンソール `/admin/tools/part-measurement-templates` から登録可能）。
 
 ## オペレータ手順（キオスク）
 
-1. ヘッダの **部品測定** から `/kiosk/part-measurement` を開く。
-2. **工程** を切削 / 研削に合わせる（初回のみ、生産スケジュール画面の切削/研削選択があればそこからコピーされる場合がある）。
-3. **バーコードスキャン** で移動票を読み取り、**照会** で `ProductNo` を解決する。
+1. **推奨**: 生産スケジュール（または手動順番の下ペイン一覧）の行の **測定** 列から開く（`find-or-open` で下書き再開・確定閲覧・新規・テンプレ作成へ振り分け）。
+2. またはヘッダの **部品測定** から `/kiosk/part-measurement` を開き、**工程** を切削 / 研削に合わせる（スケジュールから開いた場合は資源CDに応じて自動設定される）。
+3. **バーコードスキャン** で移動票を読み取り、**日程を照会** で `ProductNo` を解決する。
 4. 複数候補がある場合は一覧から行を選ぶ。
-5. **記録表を開始**（または同等の作成操作）で下書きシートを作成する。
+5. 下書きが無ければテンプレが解決できた時点で **記録表（下書き）が作成**される（スケジュール起点・手動照会とも）。
 6. **個数** を入力すると、テンプレ項目 × 個数の入力欄が現れる。
 7. 必要に応じて **NFC で社員タグ** をかざす（作業者として記録）。
 8. 入力は一定間隔で **自動保存** される。離脱しても同じ端末・シート ID が分かれば GET で復元可能（運用上は画面内で継続操作を推奨）。
@@ -26,7 +26,7 @@
 
 1. 管理コンソールに ADMIN / MANAGER でログインする。
 2. **部品測定テンプレ** を開く。
-3. FIHNCD（品番）・工程・測定項目を入力し **登録**する（新規は常に新バージョンとして作成され、直前までの同品番・同工程の有効版は自動で無効化される）。
+3. FIHNCD（品番）・**資源CD**・工程・測定項目（小数桁数を含む）を入力し **登録**する（新規は常に新バージョンとして作成され、同品番・同工程・**同資源CD**の有効版は自動で無効化される）。
 4. 過去版を有効に戻す場合は一覧の **有効化** を使う。
 
 ## 確認・トラブル時
@@ -42,5 +42,5 @@
 
 ## 関連
 
-- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)
-- 沉浸式ヘッダー対象: `usesKioskImmersiveLayout` に `/kiosk/part-measurement` が含まれる（変更時は `kioskImmersiveLayoutPolicy.test.ts` を更新）
+- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2）
+- 沉浸式ヘッダー対象: `usesKioskImmersiveLayout` に `/kiosk/part-measurement` **およびその子パス**が含まれる（変更時は `kioskImmersiveLayoutPolicy.test.ts` を更新）

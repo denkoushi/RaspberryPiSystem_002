@@ -10,6 +10,7 @@ import {
   PartMeasurementTemplateService
 } from '../../services/part-measurement/index.js';
 import { requireClientDevice, resolveDeviceScopeKey } from '../kiosk/shared.js';
+import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from '../../services/part-measurement/part-measurement-constants.js';
 
 const processGroupSchema = z.enum(['cutting', 'grinding']);
 const authOnlyErrorCodes = new Set(['AUTH_TOKEN_REQUIRED', 'AUTH_TOKEN_INVALID', 'AUTH_TOKEN_EXPIRED']);
@@ -18,7 +19,8 @@ const resolveTicketBodySchema = z.object({
   productNo: z.string().min(1).max(120),
   processGroup: processGroupSchema,
   scannedFhincd: z.string().max(120).optional().nullable(),
-  scannedBarcodeRaw: z.string().max(500).optional().nullable()
+  scannedBarcodeRaw: z.string().max(500).optional().nullable(),
+  resourceCd: z.string().max(120).optional().nullable()
 });
 
 const createSheetBodySchema = z.object({
@@ -32,6 +34,18 @@ const createSheetBodySchema = z.object({
   templateId: z.string().uuid(),
   scannedBarcodeRaw: z.string().max(500).optional().nullable(),
   scheduleRowId: z.string().uuid().optional()
+});
+
+const findOrOpenSheetBodySchema = z.object({
+  productNo: z.string().min(1).max(120),
+  processGroup: processGroupSchema,
+  resourceCd: z.string().min(1).max(120),
+  scheduleRowId: z.string().uuid().optional().nullable(),
+  fseiban: z.string().max(120).optional().nullable(),
+  fhincd: z.string().max(120).optional().nullable(),
+  fhinmei: z.string().max(500).optional().nullable(),
+  machineName: z.string().max(500).optional().nullable(),
+  scannedBarcodeRaw: z.string().max(500).optional().nullable()
 });
 
 const patchSheetBodySchema = z.object({
@@ -55,12 +69,14 @@ const templateItemSchema = z.object({
   measurementPoint: z.string().min(1).max(500),
   measurementLabel: z.string().min(1).max(500),
   unit: z.string().max(50).optional().nullable(),
-  allowNegative: z.boolean().optional()
+  allowNegative: z.boolean().optional(),
+  decimalPlaces: z.number().int().min(0).max(6).optional()
 });
 
 const createTemplateBodySchema = z.object({
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
+  resourceCd: z.string().min(1).max(120),
   name: z.string().min(1).max(200),
   items: z.array(templateItemSchema).min(1).max(200)
 });
@@ -68,6 +84,7 @@ const createTemplateBodySchema = z.object({
 const listTemplatesQuerySchema = z.object({
   fhincd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
+  resourceCd: z.string().max(120).optional(),
   includeInactive: z.coerce.boolean().optional()
 });
 
@@ -87,6 +104,7 @@ function serializeTemplateItem(item: {
   measurementLabel: string;
   unit: string | null;
   allowNegative: boolean;
+  decimalPlaces: number;
 }) {
   return {
     id: item.id,
@@ -95,7 +113,8 @@ function serializeTemplateItem(item: {
     measurementPoint: item.measurementPoint,
     measurementLabel: item.measurementLabel,
     unit: item.unit,
-    allowNegative: item.allowNegative
+    allowNegative: item.allowNegative,
+    decimalPlaces: item.decimalPlaces
   };
 }
 
@@ -103,6 +122,7 @@ function serializeTemplate(
   t: {
     id: string;
     fhincd: string;
+    resourceCd: string;
     processGroup: string;
     name: string;
     version: number;
@@ -113,6 +133,7 @@ function serializeTemplate(
   return {
     id: t.id,
     fhincd: t.fhincd,
+    resourceCd: t.resourceCd,
     processGroup: t.processGroup === 'GRINDING' ? 'grinding' : 'cutting',
     name: t.name,
     version: t.version,
@@ -136,15 +157,27 @@ function serializeSheet(
     processGroupSnapshot: sheet.processGroupSnapshot === 'GRINDING' ? 'grinding' : 'cutting',
     employeeId: sheet.employeeId,
     employeeNameSnapshot: sheet.employeeNameSnapshot,
+    createdByEmployeeId: sheet.createdByEmployeeId,
+    createdByEmployeeNameSnapshot: sheet.createdByEmployeeNameSnapshot,
+    finalizedByEmployeeId: sheet.finalizedByEmployeeId,
+    finalizedByEmployeeNameSnapshot: sheet.finalizedByEmployeeNameSnapshot,
     quantity: sheet.quantity,
     scannedBarcodeRaw: sheet.scannedBarcodeRaw,
     templateId: sheet.templateId,
     clientDeviceId: sheet.clientDeviceId,
+    clientDeviceName: sheet.clientDevice?.name ?? null,
+    editLockClientDeviceId: sheet.editLockClientDeviceId,
+    editLockExpiresAt: sheet.editLockExpiresAt?.toISOString() ?? null,
+    editLockClientDeviceName: sheet.editLockClientDevice?.name ?? null,
+    cancelledAt: sheet.cancelledAt?.toISOString() ?? null,
+    cancelReason: sheet.cancelReason,
+    invalidatedAt: sheet.invalidatedAt?.toISOString() ?? null,
+    invalidatedReason: sheet.invalidatedReason,
     createdAt: sheet.createdAt.toISOString(),
     updatedAt: sheet.updatedAt.toISOString(),
     finalizedAt: sheet.finalizedAt?.toISOString() ?? null,
     template: sheet.template ? serializeTemplate({ ...sheet.template, items: sheet.template.items }) : null,
-    results: sheet.results.map((r) => ({
+    results: (sheet.results ?? []).map((r) => ({
       id: r.id,
       pieceIndex: r.pieceIndex,
       templateItemId: r.templateItemId,
@@ -154,6 +187,15 @@ function serializeSheet(
       ? { id: sheet.employee.id, displayName: sheet.employee.displayName, employeeCode: sheet.employee.employeeCode }
       : null
   };
+}
+
+async function tryGetClientDeviceId(headers: FastifyRequest['headers']): Promise<string | undefined> {
+  try {
+    const { clientDevice } = await requireClientDevice(headers['x-client-key']);
+    return clientDevice.id;
+  } catch {
+    return undefined;
+  }
 }
 
 async function verifyScheduleRowOrThrow(scheduleRowId: string, expected: { productNo: string; fseiban: string }) {
@@ -260,6 +302,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         productNo: body.productNo,
         processGroup: body.processGroup,
         scannedFhincd: body.scannedFhincd,
+        resourceCd: body.resourceCd,
         deviceScopeKey
       });
 
@@ -312,11 +355,110 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       } catch {
         clientDeviceId = undefined;
       }
+      const resourceCdSnapshot =
+        body.resourceCdSnapshot?.trim() && body.resourceCdSnapshot.trim().length > 0
+          ? body.resourceCdSnapshot.trim()
+          : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
       const sheet = await sheetService.createDraft({
         ...body,
+        resourceCdSnapshot,
         clientDeviceId
       });
       return { sheet: serializeSheet(sheet) };
+    }
+  );
+
+  app.post(
+    '/part-measurement/sheets/find-or-open',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const body = findOrOpenSheetBodySchema.parse(request.body);
+      if (body.scheduleRowId && body.fseiban) {
+        await verifyScheduleRowOrThrow(body.scheduleRowId, {
+          productNo: body.productNo,
+          fseiban: body.fseiban
+        });
+      }
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const result = await sheetService.findOrOpen({
+        productNo: body.productNo,
+        processGroup: body.processGroup,
+        resourceCd: body.resourceCd,
+        scheduleRowId: body.scheduleRowId,
+        fseiban: body.fseiban,
+        fhincd: body.fhincd,
+        fhinmei: body.fhinmei,
+        machineName: body.machineName,
+        scannedBarcodeRaw: body.scannedBarcodeRaw,
+        clientDeviceId
+      });
+      if (result.mode === 'needs_resolve') {
+        return { mode: result.mode, sheet: null, header: null };
+      }
+      if (result.mode === 'needs_template') {
+        return {
+          mode: result.mode,
+          sheet: null,
+          header: result.header
+        };
+      }
+      return {
+        mode: result.mode,
+        sheet: serializeSheet(result.sheet)
+      };
+    }
+  );
+
+  app.get(
+    '/part-measurement/sheets/drafts',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request) => {
+      const q = z
+        .object({
+          limit: z.coerce.number().int().min(1).max(100).optional().default(30),
+          cursor: z.string().uuid().optional()
+        })
+        .parse(request.query);
+      const { sheets, nextCursor } = await sheetService.listDrafts({ limit: q.limit, cursor: q.cursor });
+      return { sheets: sheets.map(serializeSheet), nextCursor };
+    }
+  );
+
+  app.get(
+    '/part-measurement/sheets/finalized',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request) => {
+      const q = z
+        .object({
+          limit: z.coerce.number().int().min(1).max(100).optional().default(30),
+          cursor: z.string().uuid().optional(),
+          productNo: z.string().max(120).optional(),
+          fseiban: z.string().max(120).optional(),
+          fhincd: z.string().max(120).optional(),
+          processGroup: processGroupSchema.optional(),
+          resourceCd: z.string().max(120).optional(),
+          dateFrom: z.string().optional(),
+          dateTo: z.string().optional(),
+          includeCancelled: z.coerce.boolean().optional(),
+          includeInvalidated: z.coerce.boolean().optional()
+        })
+        .parse(request.query);
+      const processGroup =
+        q.processGroup === 'grinding' ? 'GRINDING' : q.processGroup === 'cutting' ? 'CUTTING' : null;
+      const { sheets, nextCursor } = await sheetService.listFinalized({
+        limit: q.limit,
+        cursor: q.cursor,
+        productNo: q.productNo,
+        fseiban: q.fseiban,
+        fhincd: q.fhincd,
+        processGroup,
+        resourceCd: q.resourceCd,
+        dateFrom: q.dateFrom ? new Date(q.dateFrom) : null,
+        dateTo: q.dateTo ? new Date(q.dateTo) : null,
+        includeCancelled: q.includeCancelled === true,
+        includeInvalidated: q.includeInvalidated === true
+      });
+      return { sheets: sheets.map(serializeSheet), nextCursor };
     }
   );
 
@@ -336,7 +478,20 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = patchSheetBodySchema.parse(request.body);
-      const sheet = await sheetService.patch(params.id, body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const sheet = await sheetService.patch(params.id, body, clientDeviceId);
+      return { sheet: serializeSheet(sheet) };
+    }
+  );
+
+  app.post(
+    '/part-measurement/sheets/:id/transfer-edit-lock',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({ confirm: z.boolean().optional().default(false) }).parse(request.body ?? {});
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const sheet = await sheetService.transferEditLock(params.id, clientDeviceId, body.confirm);
       return { sheet: serializeSheet(sheet) };
     }
   );
@@ -346,36 +501,76 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     { preHandler: allowWriteKiosk, config: { rateLimit: false } },
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
-      const sheet = await sheetService.finalize(params.id);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const sheet = await sheetService.finalize(params.id, clientDeviceId);
       return { sheet: serializeSheet(sheet) };
     }
   );
 
-  app.get('/part-measurement/templates', { preHandler: canView }, async (request) => {
+  app.post(
+    '/part-measurement/sheets/:id/cancel',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const sheet = await sheetService.cancelDraft(params.id, body.reason, clientDeviceId);
+      return { sheet: serializeSheet(sheet) };
+    }
+  );
+
+  app.post(
+    '/part-measurement/sheets/:id/invalidate',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
+      const clientDeviceId = await tryGetClientDeviceId(request.headers);
+      const sheet = await sheetService.invalidateFinalized(params.id, body.reason, clientDeviceId);
+      return { sheet: serializeSheet(sheet) };
+    }
+  );
+
+  app.get(
+    '/part-measurement/sheets/:id/export.csv',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request, reply) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const sheet = await sheetService.getById(params.id);
+      const csv = sheetService.buildSheetCsv(sheet);
+      reply.header('Content-Type', 'text/csv; charset=utf-8');
+      reply.header('Content-Disposition', `attachment; filename="part-measurement-${params.id}.csv"`);
+      return reply.send(csv);
+    }
+  );
+
+  app.get('/part-measurement/templates', { preHandler: allowView }, async (request) => {
     const q = listTemplatesQuerySchema.parse(request.query);
     const processGroup =
       q.processGroup === 'grinding' ? 'GRINDING' : q.processGroup === 'cutting' ? 'CUTTING' : undefined;
     const list = await templateService.listTemplates({
       fhincd: q.fhincd,
       processGroup,
+      resourceCd: q.resourceCd,
       includeInactive: q.includeInactive === true
     });
     return { templates: list.map((t) => serializeTemplate({ ...t, items: t.items })) };
   });
 
-  app.post('/part-measurement/templates', { preHandler: canWrite }, async (request) => {
+  app.post('/part-measurement/templates', { preHandler: allowWriteKiosk }, async (request) => {
     const body = createTemplateBodySchema.parse(request.body);
     const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
     const template = await templateService.createTemplateVersion({
       fhincd: body.fhincd,
       processGroup,
+      resourceCd: body.resourceCd,
       name: body.name,
       items: body.items
     });
     return { template: serializeTemplate({ ...template, items: template.items }) };
   });
 
-  app.post('/part-measurement/templates/:id/activate', { preHandler: canWrite }, async (request) => {
+  app.post('/part-measurement/templates/:id/activate', { preHandler: allowWriteKiosk }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const template = await templateService.setActiveVersion(params.id);
     return { template: serializeTemplate({ ...template, items: template.items }) };

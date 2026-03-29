@@ -14,15 +14,17 @@
 
 | 仮説 | 検証 | 結果の例 |
 |------|------|----------|
-| テンプレ未登録 | 管理 `/admin/tools/part-measurement-templates` で該当 FIHNCD + 工程に **isActive** があるか | 無ければ作成 |
+| テンプレ未登録 | 管理 `/admin/tools/part-measurement-templates` またはキオスクテンプレ作成で、該当 **FIHNCD + 工程 + 資源CD** に **isActive** があるか | 無ければ作成 |
 | 工程グループ不一致 | キオスクの切削/研削トグルとテンプレの `processGroup` | `cutting` テンプレしか無いのに研削で見ている等 |
+| 資源CD不一致 | スケジュール行の `FSIGENCD` とテンプレの `resourceCd` | Phase2 以降はキーに資源CDが含まれる |
 | 生産スケジュールに行がない | CSV ダッシュボード（生産スケジュール用）に `ProductNo` / `FSEIBAN` が存在するか | 取り込み遅延・別ダッシュボードを見ている |
 | バーコード値が期待と違う | スキャン結果の生文字と解釈された `ProductNo` | プレフィックス付きならトリム規則を確認 |
 
 ## Root cause（典型）
 
 - **テンプレート未整備**（品番×工程の有効版がない）。
-- **工程トグルと現場の認識がずれている**（API 契約は `cutting`/`grinding` のみで、資源CDの生値はキーに使わない）。
+- **工程トグルと現場の認識がずれている**（API 契約は `cutting`/`grinding`）。
+- **資源CDとテンプレのキーが一致しない**（Phase2 以降はテンプレ・シートとも `resourceCd` がキーに含まれる。移行データは `__LEGACY__` 等のプレースホルダがありうる）。
 - **スケジュールデータに該当行がない**（ProductNo の typos、未取り込み）。
 
 ## Fix
@@ -46,5 +48,5 @@
 ## References
 
 - Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)
-- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)
+- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)
 - 沉浸式 allowlist: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)

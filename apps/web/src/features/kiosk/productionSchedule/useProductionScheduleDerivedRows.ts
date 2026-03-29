@@ -36,6 +36,9 @@ type Params = {
   containerWidth: number;
 };
 
+/** 生産スケジュール行の「部品測定」列（アイコン）幅 */
+export const KIOSK_SCHEDULE_PART_MEASUREMENT_COL_WIDTH = 40;
+
 type Result = {
   normalizedRows: NormalizedScheduleRow[];
   displayRows: NormalizedScheduleRow[];
@@ -47,6 +50,7 @@ type Result = {
   isTwoColumn: boolean;
   itemSeparatorWidth: number;
   checkWidth: number;
+  partMeasurementColumnWidth: number;
   itemColumnWidths: number[];
   rowPairs: Array<[NormalizedScheduleRow, NormalizedScheduleRow | undefined]>;
   machineNameOptions: string[];
@@ -121,6 +125,7 @@ export const useProductionScheduleDerivedRows = ({
   const isTwoColumn = containerWidth >= 1200;
   const itemSeparatorWidth = isTwoColumn ? 24 : 0;
   const checkWidth = 36;
+  const partMeasurementColumnWidth = KIOSK_SCHEDULE_PART_MEASUREMENT_COL_WIDTH;
   const itemWidth = isTwoColumn
     ? Math.floor((containerWidth - itemSeparatorWidth) / 2)
     : Math.floor(containerWidth);
@@ -134,7 +139,7 @@ export const useProductionScheduleDerivedRows = ({
     return computeColumnWidths({
       columns: tableColumns,
       rows: widthSampleRows,
-      containerWidth: Math.max(0, itemWidth - checkWidth),
+      containerWidth: Math.max(0, itemWidth - checkWidth - partMeasurementColumnWidth),
       fontSizePx: 12,
       scale: 0.5,
       fixedWidths: {
@@ -146,7 +151,7 @@ export const useProductionScheduleDerivedRows = ({
       priorityGrowKeys: ['FHINMEI'],
       shrinkFirstKeys: ['FHINCD', 'FSEIBAN', 'processingType']
     });
-  }, [checkWidth, itemWidth, tableColumns, widthSampleRows]);
+  }, [checkWidth, itemWidth, partMeasurementColumnWidth, tableColumns, widthSampleRows]);
 
   const rowPairs = useMemo(() => buildRowPairs(displayRows, isTwoColumn), [displayRows, isTwoColumn]);
 
@@ -161,6 +166,7 @@ export const useProductionScheduleDerivedRows = ({
     isTwoColumn,
     itemSeparatorWidth,
     checkWidth,
+    partMeasurementColumnWidth,
     itemColumnWidths,
     rowPairs,
     machineNameOptions,

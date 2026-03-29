@@ -50,7 +50,7 @@ describe('part-measurement templates API', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/part-measurement/templates',
-      payload: { fhincd: 'X', processGroup: 'cutting', name: 'n', items: [] }
+      payload: { fhincd: 'X', processGroup: 'cutting', resourceCd: 'RC1', name: 'n', items: [] }
     });
     expect(response.statusCode).toBe(401);
   });
@@ -64,6 +64,7 @@ describe('part-measurement templates API', () => {
       payload: {
         fhincd,
         processGroup: 'cutting',
+        resourceCd: 'RES-1',
         name: 'テストテンプレ',
         items: [
           {
@@ -103,6 +104,7 @@ describe('part-measurement templates API', () => {
       payload: {
         fhincd,
         processGroup: 'grinding',
+        resourceCd: 'RES-G1',
         name: 'v',
         items: [
           {
@@ -131,6 +133,7 @@ describe('part-measurement templates API', () => {
       payload: {
         fhincd: 'NOPE',
         processGroup: 'cutting',
+        resourceCd: 'R',
         name: 'x',
         items: [
           {
@@ -156,6 +159,7 @@ describe('part-measurement templates API', () => {
         fseiban: 'FS-1',
         fhincd: 'FH-1',
         fhinmei: '品名',
+        resourceCdSnapshot: 'RC',
         processGroup: 'cutting',
         templateId: '00000000-0000-0000-0000-000000000001'
       }
@@ -172,6 +176,7 @@ describe('part-measurement templates API', () => {
       payload: {
         fhincd,
         processGroup: 'cutting',
+        resourceCd: 'RES-ACT',
         name: 'v1',
         items: [
           {
@@ -192,6 +197,7 @@ describe('part-measurement templates API', () => {
       payload: {
         fhincd,
         processGroup: 'cutting',
+        resourceCd: 'RES-ACT',
         name: 'v2',
         items: [
           {
