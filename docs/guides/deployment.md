@@ -674,6 +674,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×4 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01 の順で、前のデプロイが成功してから次を実行する。
 
+**禁止に近い注意（2026-03-29 追記）**: 同一 `RASPI_SERVER_HOST`（Pi5）向けに **`update-all-clients.sh` を複数ターミナルから同時起動しない**。並列実行では Pi5 上のデプロイロックが競合し、片方が `Removing stale lock` となりうる。Ansible の同一ログファイルへの混線も起こりうる（再現事例: [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）。**必ず 1 本のシェルで順次**（`cmd1 && cmd2`）とする。
+
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 # 1台目: Pi5

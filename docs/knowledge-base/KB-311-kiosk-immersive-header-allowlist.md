@@ -27,7 +27,7 @@ category: knowledge-base
 | 種別 | パス |
 |------|------|
 | 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)） |
-| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview` |
+| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/part-measurement`（部品測定ハブ・編集・テンプレ・確定一覧。Phase2 以降） |
 
 ### 除外例（false）
 

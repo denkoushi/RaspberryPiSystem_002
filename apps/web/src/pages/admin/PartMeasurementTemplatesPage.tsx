@@ -18,12 +18,14 @@ const emptyItem = () => ({
   measurementPoint: '',
   measurementLabel: '',
   unit: '',
-  allowNegative: true
+  allowNegative: true,
+  decimalPlaces: 3
 });
 
 export function PartMeasurementTemplatesPage() {
   const qc = useQueryClient();
   const [fhincd, setFhincd] = useState('');
+  const [resourceCd, setResourceCd] = useState('');
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>('cutting');
   const [name, setName] = useState('');
   const [items, setItems] = useState([emptyItem()]);
@@ -35,11 +37,12 @@ export function PartMeasurementTemplatesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: createPartMeasurementTemplate,
+    mutationFn: (body: Parameters<typeof createPartMeasurementTemplate>[0]) => createPartMeasurementTemplate(body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
       setMessage('テンプレートを登録しました。');
       setName('');
+      setResourceCd('');
       setItems([emptyItem()]);
     },
     onError: (e: Error & { response?: { data?: { message?: string } } }) => {
@@ -48,7 +51,7 @@ export function PartMeasurementTemplatesPage() {
   });
 
   const activateMutation = useMutation({
-    mutationFn: activatePartMeasurementTemplate,
+    mutationFn: (templateId: string) => activatePartMeasurementTemplate(templateId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
       setMessage('有効版を切り替えました。');
@@ -62,6 +65,11 @@ export function PartMeasurementTemplatesPage() {
     e.preventDefault();
     setMessage(null);
     const trimmedFhincd = fhincd.trim();
+    const trimmedResourceCd = resourceCd.trim();
+    if (!trimmedResourceCd) {
+      setMessage('資源CDを入力してください。');
+      return;
+    }
     const templateName = (name.trim() || `${trimmedFhincd} (${processGroup})`).slice(0, 200);
     const trimmedItems = items
       .map((it, idx) => ({
@@ -70,7 +78,8 @@ export function PartMeasurementTemplatesPage() {
         measurementPoint: it.measurementPoint.trim(),
         measurementLabel: it.measurementLabel.trim(),
         unit: it.unit.trim() || null,
-        allowNegative: it.allowNegative
+        allowNegative: it.allowNegative,
+        decimalPlaces: Math.min(6, Math.max(0, Math.floor(it.decimalPlaces)))
       }))
       .filter((it) => it.datumSurface && it.measurementPoint && it.measurementLabel);
     if (trimmedItems.length === 0) {
@@ -79,6 +88,7 @@ export function PartMeasurementTemplatesPage() {
     }
     createMutation.mutate({
       fhincd: trimmedFhincd,
+      resourceCd: trimmedResourceCd,
       processGroup,
       name: templateName,
       items: trimmedItems
@@ -95,6 +105,10 @@ export function PartMeasurementTemplatesPage() {
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             FIHNCD（品番）
             <Input value={fhincd} onChange={(e) => setFhincd(e.target.value)} required />
+          </label>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            資源CD
+            <Input value={resourceCd} onChange={(e) => setResourceCd(e.target.value)} required placeholder="例: 設備コード" />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             工程
@@ -152,6 +166,21 @@ export function PartMeasurementTemplatesPage() {
                     setItems(next);
                   }}
                 />
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  小数桁数（0〜6）
+                  <Input
+                    type="number"
+                    min={0}
+                    max={6}
+                    className="w-20"
+                    value={it.decimalPlaces}
+                    onChange={(e) => {
+                      const next = [...items];
+                      next[idx] = { ...next[idx], decimalPlaces: parseInt(e.target.value, 10) || 0 };
+                      setItems(next);
+                    }}
+                  />
+                </label>
                 <label className="flex items-center gap-2 text-sm text-slate-700 md:col-span-2">
                   <input
                     type="checkbox"
@@ -195,7 +224,7 @@ export function PartMeasurementTemplatesPage() {
               >
                 <div>
                   <p className="font-semibold text-slate-900">
-                    {t.fhincd} / {t.processGroup} / v{t.version} {t.isActive ? '（有効）' : ''}
+                    {t.fhincd} / {t.resourceCd} / {t.processGroup} / v{t.version} {t.isActive ? '（有効）' : ''}
                   </p>
                   <p className="text-sm text-slate-600">{t.name}</p>
                   <p className="text-xs text-slate-500">項目数: {t.items.length}</p>

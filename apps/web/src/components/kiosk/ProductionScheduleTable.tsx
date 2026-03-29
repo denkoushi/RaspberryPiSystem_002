@@ -15,6 +15,7 @@ type ProductionScheduleTableProps = {
   isTwoColumn: boolean;
   itemSeparatorWidth: number;
   checkWidth: number;
+  partMeasurementColumnWidth: number;
   itemColumnWidths: number[];
   dueDateColumnWidth: number;
   noteColumnWidth: number;
@@ -31,9 +32,12 @@ type ProductionScheduleTableProps = {
   handleProcessingChange: (rowId: string, nextValue: string) => void;
   openDueDatePicker: (rowId: string, currentDueDate: string | null) => void;
   startNoteEdit: (rowId: string, currentNote: string | null) => void;
+  openPartMeasurement?: (row: NormalizedScheduleRow) => void;
+  partMeasurementBusyRowId?: string | null;
   formatDueDate: (value: string | null) => string;
   PencilIcon: IconComponent;
   CalendarIcon: IconComponent;
+  RulerIcon: IconComponent;
 };
 
 type RowCellProps = {
@@ -53,9 +57,12 @@ type RowCellProps = {
   handleProcessingChange: (rowId: string, nextValue: string) => void;
   openDueDatePicker: (rowId: string, currentDueDate: string | null) => void;
   startNoteEdit: (rowId: string, currentNote: string | null) => void;
+  openPartMeasurement?: (row: NormalizedScheduleRow) => void;
+  partMeasurementBusyRowId?: string | null;
   formatDueDate: (value: string | null) => string;
   PencilIcon: IconComponent;
   CalendarIcon: IconComponent;
+  RulerIcon: IconComponent;
 };
 
 function ProductionScheduleTableCells({
@@ -75,10 +82,16 @@ function ProductionScheduleTableCells({
   handleProcessingChange,
   openDueDatePicker,
   startNoteEdit,
+  openPartMeasurement,
+  partMeasurementBusyRowId,
   formatDueDate,
   PencilIcon,
-  CalendarIcon
+  CalendarIcon,
+  RulerIcon
 }: RowCellProps) {
+  const productNo = String(row.data.ProductNo ?? '').trim();
+  const resourceCd = String(row.data.FSIGENCD ?? '').trim();
+  const canOpenMeasurement = Boolean(openPartMeasurement && productNo && resourceCd);
   return (
     <>
       <td className={`px-2 py-1.5 align-middle ${rowClassName}`}>
@@ -92,6 +105,20 @@ function ProductionScheduleTableCells({
         >
           ✓
         </button>
+      </td>
+      <td className={`px-1 py-1.5 align-middle ${rowClassName}`}>
+        {openPartMeasurement ? (
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded border border-white/30 bg-white/10 text-white shadow hover:bg-white/20 disabled:opacity-40"
+            aria-label="部品測定を開く"
+            title="部品測定"
+            disabled={!canOpenMeasurement || partMeasurementBusyRowId === row.id}
+            onClick={() => openPartMeasurement(row)}
+          >
+            <RulerIcon className="h-4 w-4" />
+          </button>
+        ) : null}
       </td>
       {tableColumns.map((column) => (
         <td key={`${row.id}-${column.key}`} className={`px-2 py-1.5 ${rowClassName}`}>
@@ -199,6 +226,7 @@ export function ProductionScheduleTable({
   isTwoColumn,
   itemSeparatorWidth,
   checkWidth,
+  partMeasurementColumnWidth,
   itemColumnWidths,
   dueDateColumnWidth,
   noteColumnWidth,
@@ -215,15 +243,19 @@ export function ProductionScheduleTable({
   handleProcessingChange,
   openDueDatePicker,
   startNoteEdit,
+  openPartMeasurement,
+  partMeasurementBusyRowId,
   formatDueDate,
   PencilIcon,
-  CalendarIcon
+  CalendarIcon,
+  RulerIcon
 }: ProductionScheduleTableProps) {
   return (
     <div className="flex-1 overflow-auto">
       <table className="w-full border-collapse text-left text-xs text-white">
         <colgroup>
           <col style={{ width: checkWidth }} />
+          <col style={{ width: partMeasurementColumnWidth }} />
           {itemColumnWidths.map((width, index) => (
             <col key={`left-${tableColumns[index]?.key ?? index}`} style={{ width }} />
           ))}
@@ -231,7 +263,7 @@ export function ProductionScheduleTable({
           <col style={{ width: noteColumnWidth }} />
           {isTwoColumn ? <col style={{ width: itemSeparatorWidth }} /> : null}
           {isTwoColumn
-            ? [<col key="right-check" style={{ width: checkWidth }} />]
+            ? [<col key="right-check" style={{ width: checkWidth }} />, <col key="right-measure" style={{ width: partMeasurementColumnWidth }} />]
                 .concat(
                   itemColumnWidths.map((width, index) => (
                     <col key={`right-${tableColumns[index]?.key ?? index}`} style={{ width }} />
@@ -246,6 +278,9 @@ export function ProductionScheduleTable({
         <thead className="sticky top-0 bg-slate-900">
           <tr className="border-b border-white/20 text-xs font-semibold text-white/80">
             <th className="px-2 py-3 text-center">完了</th>
+            <th className="px-1 py-3 text-center" title="部品測定">
+              測定
+            </th>
             {tableColumns.map((column) => (
               <th key={`head-left-${column.key}`} className="px-2 py-3">
                 {column.label}
@@ -254,7 +289,14 @@ export function ProductionScheduleTable({
             <th className="px-2 py-3">納期日</th>
             <th className="px-2 py-3">備考</th>
             {isTwoColumn ? <th aria-hidden className="px-2 py-3" /> : null}
-            {isTwoColumn ? <th className="px-2 py-3 text-center">完了</th> : null}
+            {isTwoColumn ? (
+              <>
+                <th className="px-2 py-3 text-center">完了</th>
+                <th className="px-1 py-3 text-center" title="部品測定">
+                  測定
+                </th>
+              </>
+            ) : null}
             {isTwoColumn
               ? tableColumns.map((column) => (
                   <th key={`head-right-${column.key}`} className="px-2 py-3">
@@ -289,9 +331,12 @@ export function ProductionScheduleTable({
                   handleProcessingChange={handleProcessingChange}
                   openDueDatePicker={openDueDatePicker}
                   startNoteEdit={startNoteEdit}
+                  openPartMeasurement={openPartMeasurement}
+                  partMeasurementBusyRowId={partMeasurementBusyRowId}
                   formatDueDate={formatDueDate}
                   PencilIcon={PencilIcon}
                   CalendarIcon={CalendarIcon}
+                  RulerIcon={RulerIcon}
                 />
                 {isTwoColumn ? <td className="px-2 py-1.5" /> : null}
                 {isTwoColumn ? (
@@ -313,13 +358,17 @@ export function ProductionScheduleTable({
                       handleProcessingChange={handleProcessingChange}
                       openDueDatePicker={openDueDatePicker}
                       startNoteEdit={startNoteEdit}
+                      openPartMeasurement={openPartMeasurement}
+                      partMeasurementBusyRowId={partMeasurementBusyRowId}
                       formatDueDate={formatDueDate}
                       PencilIcon={PencilIcon}
                       CalendarIcon={CalendarIcon}
+                      RulerIcon={RulerIcon}
                     />
                   ) : (
                     <>
                       <td className={`px-2 py-1.5 align-middle ${rightClass}`} />
+                      <td className={`px-1 py-1.5 align-middle ${rightClass}`} />
                       {tableColumns.map((column) => (
                         <td key={`right-empty-${column.key}`} className={`px-2 py-1.5 ${rightClass}`} />
                       ))}

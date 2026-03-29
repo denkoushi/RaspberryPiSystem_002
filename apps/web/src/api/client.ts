@@ -36,6 +36,7 @@ import type {
   RiggingStatus
 } from './types';
 import type {
+  FindOrOpenPartMeasurementResponse,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementTemplateDto,
@@ -1825,12 +1826,37 @@ export async function resolvePartMeasurementTicket(
     processGroup: PartMeasurementProcessGroup;
     scannedFhincd?: string | null;
     scannedBarcodeRaw?: string | null;
+    resourceCd?: string | null;
   },
   clientKey?: string
 ): Promise<ResolveTicketResponse> {
   const { data } = await api.post<ResolveTicketResponse>('/part-measurement/resolve-ticket', body, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
+  return data;
+}
+
+export async function findOrOpenPartMeasurementSheet(
+  body: {
+    productNo: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCd: string;
+    scheduleRowId?: string | null;
+    fseiban?: string | null;
+    fhincd?: string | null;
+    fhinmei?: string | null;
+    machineName?: string | null;
+    scannedBarcodeRaw?: string | null;
+  },
+  clientKey?: string
+): Promise<FindOrOpenPartMeasurementResponse> {
+  const { data } = await api.post<FindOrOpenPartMeasurementResponse>(
+    '/part-measurement/sheets/find-or-open',
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
   return data;
 }
 
@@ -1889,38 +1915,142 @@ export async function finalizePartMeasurementSheet(sheetId: string, clientKey?: 
   return data.sheet;
 }
 
-export async function listPartMeasurementTemplates(params?: {
-  fhincd?: string;
-  processGroup?: PartMeasurementProcessGroup;
-  includeInactive?: boolean;
-}): Promise<PartMeasurementTemplateDto[]> {
+export async function listPartMeasurementDrafts(
+  params: { limit?: number; cursor?: string },
+  clientKey?: string
+): Promise<{ sheets: PartMeasurementSheetDto[]; nextCursor: string | null }> {
+  const { data } = await api.get<{ sheets: PartMeasurementSheetDto[]; nextCursor: string | null }>(
+    '/part-measurement/sheets/drafts',
+    {
+      params,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
+export async function listPartMeasurementFinalized(
+  params: {
+    limit?: number;
+    cursor?: string;
+    productNo?: string;
+    fseiban?: string;
+    fhincd?: string;
+    processGroup?: PartMeasurementProcessGroup;
+    resourceCd?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    includeCancelled?: boolean;
+    includeInvalidated?: boolean;
+  },
+  clientKey?: string
+): Promise<{ sheets: PartMeasurementSheetDto[]; nextCursor: string | null }> {
+  const { data } = await api.get<{ sheets: PartMeasurementSheetDto[]; nextCursor: string | null }>(
+    '/part-measurement/sheets/finalized',
+    {
+      params,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data;
+}
+
+export async function transferPartMeasurementEditLock(
+  sheetId: string,
+  body: { confirm?: boolean },
+  clientKey?: string
+): Promise<PartMeasurementSheetDto> {
+  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>(
+    `/part-measurement/sheets/${sheetId}/transfer-edit-lock`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.sheet;
+}
+
+export async function cancelPartMeasurementSheet(
+  sheetId: string,
+  reason: string,
+  clientKey?: string
+): Promise<PartMeasurementSheetDto> {
+  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>(
+    `/part-measurement/sheets/${sheetId}/cancel`,
+    { reason },
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.sheet;
+}
+
+export async function downloadPartMeasurementSheetCsv(sheetId: string, clientKey: string, filename?: string): Promise<void> {
+  const res = await fetch(`${apiBase}/part-measurement/sheets/${sheetId}/export.csv`, {
+    headers: { 'x-client-key': clientKey }
+  });
+  if (!res.ok) {
+    throw new Error(`CSV export failed: ${res.status}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename ?? `part-measurement-${sheetId}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function listPartMeasurementTemplates(
+  params?: {
+    fhincd?: string;
+    processGroup?: PartMeasurementProcessGroup;
+    resourceCd?: string;
+    includeInactive?: boolean;
+  },
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto[]> {
   const { data } = await api.get<{ templates: PartMeasurementTemplateDto[] }>('/part-measurement/templates', {
-    params
+    params,
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
   return data.templates;
 }
 
-export async function createPartMeasurementTemplate(body: {
-  fhincd: string;
-  processGroup: PartMeasurementProcessGroup;
-  name: string;
-  items: Array<{
-    sortOrder: number;
-    datumSurface: string;
-    measurementPoint: string;
-    measurementLabel: string;
-    unit?: string | null;
-    allowNegative?: boolean;
-  }>;
-}): Promise<PartMeasurementTemplateDto> {
-  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>('/part-measurement/templates', body);
+export async function createPartMeasurementTemplate(
+  body: {
+    fhincd: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCd: string;
+    name: string;
+    items: Array<{
+      sortOrder: number;
+      datumSurface: string;
+      measurementPoint: string;
+      measurementLabel: string;
+      unit?: string | null;
+      allowNegative?: boolean;
+      decimalPlaces?: number;
+    }>;
+  },
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>('/part-measurement/templates', body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
   return data.template;
 }
 
-export async function activatePartMeasurementTemplate(templateId: string): Promise<PartMeasurementTemplateDto> {
+export async function activatePartMeasurementTemplate(
+  templateId: string,
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
   const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
     `/part-measurement/templates/${templateId}/activate`,
-    {}
+    {},
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
   );
   return data.template;
 }
@@ -2798,6 +2928,7 @@ export async function getSignageRenderStatus() {
 }
 
 export type {
+  FindOrOpenPartMeasurementResponse,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementTemplateDto,

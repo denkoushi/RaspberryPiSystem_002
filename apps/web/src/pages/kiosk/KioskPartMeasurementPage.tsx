@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMatch } from 'react-router-dom';
+import clsx from 'clsx';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   createPartMeasurementSheet,
-  finalizePartMeasurementSheet,
   getResolvedClientKey,
-  patchPartMeasurementSheet,
+  listPartMeasurementDrafts,
   resolvePartMeasurementTicket
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -19,7 +19,6 @@ import {
   loadPartMeasurementProcessGroup,
   savePartMeasurementProcessGroup
 } from '../../features/part-measurement/processGroupStorage';
-import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type {
   PartMeasurementProcessGroup,
@@ -28,95 +27,59 @@ import type {
   ResolveTicketResponse
 } from '../../features/part-measurement/types';
 
-const AUTOSAVE_MS = 600;
-
-function resultKey(pieceIndex: number, templateItemId: string) {
-  return `${pieceIndex}:${templateItemId}`;
-}
+type HubLocationState = {
+  productNo?: string;
+  resourceCdFilter?: string;
+  templateCreated?: boolean;
+};
 
 export function KioskPartMeasurementPage() {
   const clientKey = getResolvedClientKey();
-  const isActiveRoute = useMatch('/kiosk/part-measurement');
-  const nfcEvent = useNfcStream(Boolean(isActiveRoute));
-  const lastNfcKeyRef = useRef<string | null>(null);
-  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>(() =>
     loadPartMeasurementProcessGroup()
   );
   const [productNoInput, setProductNoInput] = useState('');
+  const [resourceCdFilter, setResourceCdFilter] = useState('');
   const [scanOpen, setScanOpen] = useState(false);
   const [resolveResult, setResolveResult] = useState<ResolveTicketResponse | null>(null);
-  const [sheet, setSheet] = useState<PartMeasurementSheetDto | null>(null);
-  const [quantityInput, setQuantityInput] = useState('');
-  const [cellValues, setCellValues] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<PartMeasurementSheetDto[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const syncCellsFromSheet = useCallback((s: PartMeasurementSheetDto) => {
-    const next: Record<string, string> = {};
-    for (const r of s.results) {
-      if (r.value !== null && r.value !== undefined && String(r.value).length > 0) {
-        next[resultKey(r.pieceIndex, r.templateItemId)] = String(r.value);
-      }
-    }
-    setCellValues(next);
-    setQuantityInput(s.quantity != null ? String(s.quantity) : '');
-  }, []);
 
   useEffect(() => {
     savePartMeasurementProcessGroup(processGroup);
   }, [processGroup]);
 
-  const buildResultsPayload = useCallback(
-    (qty: number, cells: Record<string, string>, items: { id: string }[]) => {
-      const results: Array<{ pieceIndex: number; templateItemId: string; value: string }> = [];
-      for (let p = 0; p < qty; p += 1) {
-        for (const it of items) {
-          const k = resultKey(p, it.id);
-          const raw = cells[k];
-          if (raw !== undefined && raw.trim() !== '') {
-            results.push({ pieceIndex: p, templateItemId: it.id, value: raw.trim() });
-          }
-        }
-      }
-      return results;
-    },
-    []
-  );
+  useEffect(() => {
+    const st = location.state as HubLocationState | null;
+    if (!st) return;
+    if (typeof st.productNo === 'string' && st.productNo.trim()) {
+      setProductNoInput(st.productNo.trim());
+    }
+    if (typeof st.resourceCdFilter === 'string') {
+      setResourceCdFilter(st.resourceCdFilter.trim());
+    }
+    if (st.templateCreated) {
+      setMessage('テンプレートを登録しました。日程を照会して記録表を開始してください。');
+    }
+    void navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
-  const flushPatchSheet = useCallback(
-    async (sheetId: string, qty: number, cells: Record<string, string>, items: { id: string }[]) => {
-      const results = buildResultsPayload(qty, cells, items);
-      const updated = await patchPartMeasurementSheet(
-        sheetId,
-        { quantity: qty, results: results.length > 0 ? results : undefined },
-        clientKey
-      );
-      setSheet(updated);
-    },
-    [buildResultsPayload, clientKey]
-  );
+  const refreshDrafts = useCallback(async () => {
+    try {
+      const { sheets } = await listPartMeasurementDrafts({ limit: 50 }, clientKey);
+      setDrafts(sheets);
+    } catch {
+      setDrafts([]);
+    }
+  }, [clientKey]);
 
   useEffect(() => {
-    if (!sheet || sheet.status !== 'DRAFT') return;
-    const items = sheet.template?.items ?? [];
-    if (items.length === 0) return;
-
-    const n = parseInt(quantityInput, 10);
-    if (!Number.isFinite(n) || n < 0) return;
-
-    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    autosaveTimerRef.current = setTimeout(() => {
-      void flushPatchSheet(sheet.id, n, cellValues, items).catch(() => {
-        /* 自動保存失敗は黙ってよい（次の編集で再試行） */
-      });
-    }, AUTOSAVE_MS);
-
-    return () => {
-      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    };
-  }, [quantityInput, cellValues, sheet, flushPatchSheet]);
+    void refreshDrafts();
+  }, [refreshDrafts]);
 
   const handleScanSuccess = (text: string) => {
     setProductNoInput(text.trim());
@@ -124,37 +87,37 @@ export function KioskPartMeasurementPage() {
     setMessage(null);
   };
 
-  const createSheetFromResolved = useCallback(
-    async (row: PartMeasurementResolvedCandidate, templateId: string, productNo: string) => {
-      setBusy(true);
-      try {
-        const created = await createPartMeasurementSheet(
-          {
-            productNo,
-            fseiban: row.fseiban,
-            fhincd: row.fhincd,
-            fhinmei: row.fhinmei,
-            machineName: row.machineName,
-            resourceCdSnapshot: row.resourceCd,
-            processGroup,
-            templateId,
-            scannedBarcodeRaw: productNo,
-            scheduleRowId: row.scheduleRowId
-          },
-          clientKey
-        );
-        setSheet(created);
-        syncCellsFromSheet(created);
-        setMessage(null);
-      } catch (e: unknown) {
-        const err = e as { response?: { data?: { message?: string } } };
-        setMessage(err.response?.data?.message ?? '記録表の作成に失敗しました。');
-      } finally {
-        setBusy(false);
-      }
-    },
-    [clientKey, processGroup, syncCellsFromSheet]
-  );
+  const createSheetFromResolved = async (
+    row: PartMeasurementResolvedCandidate,
+    templateId: string,
+    productNo: string
+  ) => {
+    setBusy(true);
+    try {
+      const created = await createPartMeasurementSheet(
+        {
+          productNo,
+          fseiban: row.fseiban,
+          fhincd: row.fhincd,
+          fhinmei: row.fhinmei,
+          machineName: row.machineName,
+          resourceCdSnapshot: row.resourceCd,
+          processGroup,
+          templateId,
+          scannedBarcodeRaw: productNo,
+          scheduleRowId: row.scheduleRowId
+        },
+        clientKey
+      );
+      await refreshDrafts();
+      void navigate(`/kiosk/part-measurement/edit/${created.id}`);
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      setMessage(err.response?.data?.message ?? '記録表の作成に失敗しました。');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleResolve = async () => {
     const pn = productNoInput.trim();
@@ -165,10 +128,14 @@ export function KioskPartMeasurementPage() {
     setBusy(true);
     setMessage(null);
     setResolveResult(null);
-    setSheet(null);
     try {
       const res = await resolvePartMeasurementTicket(
-        { productNo: pn, processGroup, scannedBarcodeRaw: pn },
+        {
+          productNo: pn,
+          processGroup,
+          scannedBarcodeRaw: pn,
+          resourceCd: resourceCdFilter.trim() || null
+        },
         clientKey
       );
       setResolveResult(res);
@@ -184,7 +151,13 @@ export function KioskPartMeasurementPage() {
         return;
       }
       if (res.selected && !res.template) {
-        setMessage('この品番・工程の測定テンプレートが未登録です。管理画面で登録してください。');
+        void navigate('/kiosk/part-measurement/template/new', {
+          state: {
+            fhincd: res.selected.fhincd,
+            resourceCd: res.selected.resourceCd,
+            processGroup
+          }
+        });
       }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -196,75 +169,16 @@ export function KioskPartMeasurementPage() {
 
   const handlePickCandidate = async (c: PartMeasurementResolvedCandidate) => {
     if (!resolveResult?.template) {
-      setMessage('テンプレートがありません。管理画面で登録してください。');
+      void navigate('/kiosk/part-measurement/template/new', {
+        state: {
+          fhincd: c.fhincd,
+          resourceCd: c.resourceCd,
+          processGroup
+        }
+      });
       return;
     }
     await createSheetFromResolved(c, resolveResult.template.id, c.productNo);
-  };
-
-  useEffect(() => {
-    if (!nfcEvent || !sheet || sheet.status === 'FINALIZED') return;
-    const key = `${nfcEvent.uid}:${nfcEvent.timestamp}`;
-    if (lastNfcKeyRef.current === key) return;
-    lastNfcKeyRef.current = key;
-    void (async () => {
-      try {
-        const updated = await patchPartMeasurementSheet(
-          sheet.id,
-          { employeeTagUid: nfcEvent.uid },
-          clientKey
-        );
-        setSheet(updated);
-        setMessage(null);
-      } catch (e: unknown) {
-        const err = e as { response?: { data?: { message?: string } } };
-        setMessage(err.response?.data?.message ?? '社員タグの反映に失敗しました。');
-      }
-    })();
-  }, [nfcEvent, sheet, clientKey]);
-
-  const templateItems = sheet?.template?.items ?? [];
-
-  const pieceCount = useMemo(() => {
-    const n = parseInt(quantityInput, 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  }, [quantityInput]);
-
-  const onCellChange = (pieceIndex: number, templateItemId: string, value: string) => {
-    const k = resultKey(pieceIndex, templateItemId);
-    setCellValues((prev) => ({ ...prev, [k]: value }));
-  };
-
-  const handleFinalize = async () => {
-    if (!sheet) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const n = parseInt(quantityInput, 10);
-      const items = sheet.template?.items ?? [];
-      if (Number.isFinite(n) && n >= 1 && items.length > 0) {
-        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-        await flushPatchSheet(sheet.id, n, cellValues, items);
-      }
-      const finalized = await finalizePartMeasurementSheet(sheet.id, clientKey);
-      setSheet(finalized);
-      setMessage('確定しました。新しい記録を始める場合は「新規」へ。');
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { message?: string } } };
-      setMessage(err.response?.data?.message ?? '確定に失敗しました。未入力や作業者を確認してください。');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleNew = () => {
-    setSheet(null);
-    setResolveResult(null);
-    setProductNoInput('');
-    setQuantityInput('');
-    setCellValues({});
-    setMessage(null);
-    lastNfcKeyRef.current = null;
   };
 
   return (
@@ -281,29 +195,71 @@ export function KioskPartMeasurementPage() {
         <span className="text-sm font-semibold text-white/80">工程</span>
         <Button
           type="button"
-          variant={processGroup === 'cutting' ? 'primary' : 'secondary'}
+          variant="primary"
+          className={clsx(processGroup !== 'cutting' && 'opacity-40 grayscale')}
           onClick={() => setProcessGroup('cutting')}
         >
           切削
         </Button>
         <Button
           type="button"
-          variant={processGroup === 'grinding' ? 'primary' : 'secondary'}
+          variant="primary"
+          className={clsx(processGroup !== 'grinding' && 'opacity-40 grayscale')}
           onClick={() => setProcessGroup('grinding')}
         >
           研削
         </Button>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <Link to="/kiosk/part-measurement/finalized">
+          <Button type="button" variant="secondary">
+            確定記録の閲覧
+          </Button>
+        </Link>
+        <Button type="button" variant="secondary" onClick={() => void refreshDrafts()}>
+          下書き一覧を更新
+        </Button>
+      </div>
+
+      <Card title="下書き一覧（新しい順）">
+        {drafts.length === 0 ? (
+          <p className="text-sm text-slate-600">下書きはありません。</p>
+        ) : (
+          <ul className="max-h-48 space-y-2 overflow-auto text-sm">
+            {drafts.map((d) => (
+              <li key={d.id}>
+                <Link
+                  to={`/kiosk/part-measurement/edit/${d.id}`}
+                  className="font-semibold text-blue-700 underline hover:text-blue-900"
+                >
+                  {d.productNo} / {d.fhincd} / {d.resourceCdSnapshot ?? '—'} /{' '}
+                  {d.processGroupSnapshot === 'grinding' ? '研削' : '切削'} / 更新{' '}
+                  {new Date(d.updatedAt).toLocaleString()}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       <Card title="移動票（製造order番号）">
         <div className="flex flex-wrap items-end gap-2">
-          <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm font-semibold text-slate-700">
+          <label className="flex w-[14ch] max-w-full flex-col gap-1 text-sm font-semibold text-slate-700">
             製造order番号
             <Input
               value={productNoInput}
               onChange={(e) => setProductNoInput(e.target.value)}
               placeholder="スキャンまたは手入力"
-              className="text-slate-900"
+              className="w-full text-slate-900"
+            />
+          </label>
+          <label className="flex w-[12ch] max-w-full flex-col gap-1 text-sm font-semibold text-slate-700">
+            資源CD絞込（任意）
+            <Input
+              value={resourceCdFilter}
+              onChange={(e) => setResourceCdFilter(e.target.value)}
+              className="w-full text-slate-900"
             />
           </label>
           <Button type="button" variant="secondary" onClick={() => setScanOpen(true)}>
@@ -315,7 +271,7 @@ export function KioskPartMeasurementPage() {
         </div>
       </Card>
 
-      {resolveResult && resolveResult.ambiguous && !sheet ? (
+      {resolveResult && resolveResult.ambiguous ? (
         <Card title="候補を選択">
           <p className="mb-2 text-sm text-amber-200">複数行が該当しました。1つ選んでください。</p>
           <div className="flex flex-col gap-2">
@@ -333,112 +289,6 @@ export function KioskPartMeasurementPage() {
             ))}
           </div>
         </Card>
-      ) : null}
-
-      {sheet ? (
-        <>
-          <Card title="ヘッダ">
-            <dl className="grid gap-2 text-sm md:grid-cols-2">
-              <div>
-                <dt className="text-slate-600">製番</dt>
-                <dd className="font-semibold text-slate-900">{sheet.fseiban}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">製造order</dt>
-                <dd className="font-semibold text-slate-900">{sheet.productNo}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">品番</dt>
-                <dd className="font-semibold text-slate-900">{sheet.fhincd}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">品名</dt>
-                <dd className="font-semibold text-slate-900">{sheet.fhinmei}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">機種名</dt>
-                <dd className="font-semibold text-slate-900">{sheet.machineName ?? '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">作業者</dt>
-                <dd className="font-semibold text-slate-900">
-                  {sheet.employeeNameSnapshot ?? 'NFCで社員タグをスキャン'}
-                </dd>
-              </div>
-            </dl>
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <label className="flex w-32 flex-col gap-1 text-sm font-semibold text-slate-700">
-                個数
-                <Input
-                  value={quantityInput}
-                  onChange={(e) => setQuantityInput(e.target.value)}
-                  inputMode="numeric"
-                  disabled={sheet.status === 'FINALIZED'}
-                  className="text-slate-900"
-                />
-              </label>
-            </div>
-          </Card>
-
-          <Card title="測定値">
-            {templateItems.length === 0 ? (
-              <p className="text-sm text-amber-700">テンプレート項目がありません。</p>
-            ) : pieceCount < 1 ? (
-              <p className="text-sm text-slate-600">個数を入力すると入力欄が表示されます。</p>
-            ) : (
-              <div className="max-h-[50vh] overflow-auto">
-                <table className="w-full min-w-[640px] border-collapse text-left text-sm text-slate-900">
-                  <thead>
-                    <tr className="border-b border-slate-300">
-                      <th className="p-2">個体</th>
-                      {templateItems.map((it) => (
-                        <th key={it.id} className="p-2">
-                          <div className="font-semibold">{it.measurementLabel}</div>
-                          <div className="text-xs font-normal text-slate-600">
-                            基準 {it.datumSurface} / 部位 {it.measurementPoint}
-                            {it.unit ? ` / ${it.unit}` : ''}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: pieceCount }, (_, p) => (
-                      <tr key={p} className="border-b border-slate-200">
-                        <td className="p-2 font-semibold">{p + 1}</td>
-                        {templateItems.map((it) => (
-                          <td key={it.id} className="p-1">
-                            <Input
-                              value={cellValues[resultKey(p, it.id)] ?? ''}
-                              onChange={(e) => onCellChange(p, it.id, e.target.value)}
-                              disabled={sheet.status === 'FINALIZED'}
-                              className="text-slate-900"
-                              inputMode="decimal"
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => void handleFinalize()}
-              disabled={busy || sheet.status === 'FINALIZED'}
-            >
-              確定
-            </Button>
-            <Button type="button" variant="secondary" onClick={handleNew} disabled={busy}>
-              新規
-            </Button>
-          </div>
-        </>
       ) : null}
 
       {message ? <p className="text-sm font-semibold text-amber-200">{message}</p> : null}

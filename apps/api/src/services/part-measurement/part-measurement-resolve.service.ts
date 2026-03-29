@@ -12,10 +12,14 @@ import {
 } from './part-measurement-schedule-lookup.service.js';
 import { PartMeasurementTemplateService } from './part-measurement-template.service.js';
 
+type ActiveTemplate = Awaited<ReturnType<PartMeasurementTemplateService['findActiveByFhincdGroupAndResource']>>;
+
 export type ResolveTicketInput = {
   productNo: string;
   processGroup: string;
   scannedFhincd?: string | null;
+  /** 指定時はこの資源CDの行に絞り、テンプレートも fhincd+工程+資源CD で解決 */
+  resourceCd?: string | null;
   /** 端末スコープ（資源カテゴリポリシー解決用） */
   deviceScopeKey?: string | null;
 };
@@ -30,7 +34,7 @@ export type ResolveTicketResult = {
   ambiguous: boolean;
   selected: ResolvedTicketCandidate | null;
   fhincdMismatch: boolean;
-  template: Awaited<ReturnType<PartMeasurementTemplateService['findActiveByFhincdAndGroup']>>;
+  template: ActiveTemplate;
 };
 
 export class PartMeasurementResolveService {
@@ -44,9 +48,13 @@ export class PartMeasurementResolveService {
     });
 
     const rawRows = await listScheduleRowsByProductNo(input.productNo);
-    const matched = rawRows.filter((row) =>
+    let matched = rawRows.filter((row) =>
       resourceCdMatchesProcessGroup(row.fsigencd, group, policy)
     );
+    const wantResource = input.resourceCd?.trim() ?? '';
+    if (wantResource.length > 0) {
+      matched = matched.filter((row) => row.fsigencd.trim() === wantResource);
+    }
 
     const scanned = input.scannedFhincd?.trim() ?? '';
     const filteredByFhincd =
@@ -75,9 +83,14 @@ export class PartMeasurementResolveService {
 
     const prismaGroup = apiProcessGroupToPrisma(group);
     const templateFhincd = selected?.fhincd.trim() ?? '';
+    const templateResourceCd = selected?.fsigencd.trim() ?? wantResource;
     const template =
-      templateFhincd.length > 0
-        ? await this.templates.findActiveByFhincdAndGroup(templateFhincd, prismaGroup)
+      templateFhincd.length > 0 && templateResourceCd.length > 0
+        ? await this.templates.findActiveByFhincdGroupAndResource(
+            templateFhincd,
+            prismaGroup,
+            templateResourceCd
+          )
         : null;
 
     return {
