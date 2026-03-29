@@ -3,6 +3,7 @@ import type { PhotoToolHumanLabelQuality } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 
+import type { PhotoToolGalleryIndexService } from './photo-tool-gallery-index.service.js';
 import { normalizePhotoToolDisplayName } from './photo-tool-label-normalize.js';
 
 const PHOTO_LOAN_REVIEW_LIST_LIMIT_MAX = 100;
@@ -20,6 +21,8 @@ export type PhotoLabelReviewListRow = {
 };
 
 export class PhotoToolLabelReviewService {
+  constructor(private readonly deps?: { galleryIndex?: PhotoToolGalleryIndexService }) {}
+
   async listPhotoLabelReviews(limit: number): Promise<PhotoLabelReviewListRow[]> {
     const take = Math.min(Math.max(limit, 1), PHOTO_LOAN_REVIEW_LIST_LIMIT_MAX);
     const loans = await prisma.loan.findMany({
@@ -110,6 +113,16 @@ export class PhotoToolLabelReviewService {
     if (!updated.photoUrl || !updated.employee) {
       throw new ApiError(500, '更新後のデータが不正です');
     }
+
+    this.deps?.galleryIndex?.notifyAfterReview({
+      id: updated.id,
+      photoUrl: updated.photoUrl,
+      photoToolHumanQuality: updated.photoToolHumanQuality,
+      photoToolHumanDisplayName: updated.photoToolHumanDisplayName,
+      photoToolDisplayName: updated.photoToolDisplayName,
+      itemId: updated.itemId,
+      photoTakenAt: updated.photoTakenAt,
+    });
 
     return {
       id: updated.id,

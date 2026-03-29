@@ -59,6 +59,7 @@ import {
   getActiveLoans,
   listPhotoLabelReviews,
   patchPhotoLabelReview,
+  getPhotoSimilarCandidates,
   getClients,
   getClientLogs,
   getClientStatuses,
@@ -1019,10 +1020,19 @@ export function usePatchPhotoLabelReview() {
       quality: PhotoLabelReviewQuality;
       humanDisplayName?: string | null;
     }) => patchPhotoLabelReview(args.loanId, { quality: args.quality, humanDisplayName: args.humanDisplayName }),
-    onSuccess: () => {
+    onSuccess: (_data, args) => {
       queryClient.invalidateQueries({ queryKey: ['photo-label-reviews'] });
       queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['photo-similar-candidates', args.loanId] });
     },
+  });
+}
+
+export function usePhotoSimilarCandidates(loanId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['photo-similar-candidates', loanId],
+    queryFn: () => getPhotoSimilarCandidates(loanId),
+    enabled: options?.enabled !== false && Boolean(loanId),
   });
 }
 

@@ -169,7 +169,49 @@ const envSchema = z.object({
   ),
   /** original: 保存済み本画像をリサイズ。thumbnail: 従来どおりサムネのみ（切り戻し用） */
   PHOTO_TOOL_LABEL_VISION_SOURCE: z.enum(['original', 'thumbnail']).default('original'),
+
+  /** 写真持出 GOOD ギャラリーの類似検索: 埋め込みAPIを有効化 */
+  PHOTO_TOOL_EMBEDDING_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  PHOTO_TOOL_EMBEDDING_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  PHOTO_TOOL_EMBEDDING_API_KEY: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  PHOTO_TOOL_EMBEDDING_MODEL_ID: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  PHOTO_TOOL_EMBEDDING_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
+  /** DB の vector(512) と一致させること */
+  PHOTO_TOOL_EMBEDDING_DIMENSION: z.coerce.number().int().min(1).max(4096).default(512),
+  PHOTO_TOOL_SIMILARITY_MAX_CANDIDATES: z.coerce.number().int().min(1).max(20).default(5),
+  /** pgvector cosine distance（<=>）; 小さいほど類似。厳しめ既定 */
+  PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE: z.coerce.number().min(0).max(2).default(0.22),
+  /** 前処理変更時にギャラリー再計算の判断に使う */
+  PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION: z.string().default('vision_jpeg_v1'),
 }).superRefine((value, ctx) => {
+  if (value.PHOTO_TOOL_EMBEDDING_ENABLED) {
+    if (!value.PHOTO_TOOL_EMBEDDING_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PHOTO_TOOL_EMBEDDING_URL'],
+        message: 'PHOTO_TOOL_EMBEDDING_URL is required when PHOTO_TOOL_EMBEDDING_ENABLED=true',
+      });
+    }
+    if (!value.PHOTO_TOOL_EMBEDDING_MODEL_ID) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PHOTO_TOOL_EMBEDDING_MODEL_ID'],
+        message: 'PHOTO_TOOL_EMBEDDING_MODEL_ID is required when PHOTO_TOOL_EMBEDDING_ENABLED=true',
+      });
+    }
+  }
+
   if (value.NODE_ENV !== 'production') {
     return;
   }

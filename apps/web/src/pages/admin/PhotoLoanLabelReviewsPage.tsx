@@ -2,10 +2,10 @@ import {
   PHOTO_LOAN_CARD_PRIMARY_LABEL,
   resolvePhotoLoanToolDisplayLabel,
 } from '@raspi-system/shared-types';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 
-import { usePatchPhotoLabelReview, usePhotoLabelReviews } from '../../api/hooks';
+import { usePatchPhotoLabelReview, usePhotoLabelReviews, usePhotoSimilarCandidates } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../contexts/AuthContext';
@@ -28,8 +28,38 @@ function toThumbnailUrl(photoUrl: string): string {
     .replace(/\.jpg$/, '_thumb.jpg');
 }
 
+function SimilarCandidatesPanel({ loanId }: { loanId: string }) {
+  const { data, isLoading, isError } = usePhotoSimilarCandidates(loanId);
+  if (isLoading) {
+    return <p className="text-slate-600">類似候補を読み込み中…</p>;
+  }
+  if (isError) {
+    return <p className="text-red-600">類似候補の取得に失敗しました。</p>;
+  }
+  if (!data || data.length === 0) {
+    return (
+      <p className="text-slate-600">
+        類似候補はありません（埋め込み無効・閾値・ギャラリー未登録のいずれかの可能性があります）。
+      </p>
+    );
+  }
+  return (
+    <ul className="list-inside list-disc space-y-1 text-slate-800">
+      {data.map((c) => (
+        <li key={c.sourceLoanId}>
+          <span className="font-medium">{c.canonicalLabel}</span>
+          <span className="ml-2 text-slate-600">
+            （貸出 {c.sourceLoanId.slice(0, 8)}… / score {c.score.toFixed(3)}）
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ReviewRow({ item }: { item: PhotoLabelReviewItem }) {
   const patch = usePatchPhotoLabelReview();
+  const [showSimilar, setShowSimilar] = useState(false);
   const [quality, setQuality] = useState<PhotoLabelReviewQuality>(item.photoToolHumanQuality ?? 'GOOD');
   const [humanName, setHumanName] = useState(item.photoToolHumanDisplayName ?? '');
 
@@ -45,6 +75,7 @@ function ReviewRow({ item }: { item: PhotoLabelReviewItem }) {
   });
 
   return (
+    <Fragment>
     <tr className="border-b border-slate-200 align-top text-slate-900">
       <td className="py-3 pr-2">
         <img
@@ -87,23 +118,41 @@ function ReviewRow({ item }: { item: PhotoLabelReviewItem }) {
         />
       </td>
       <td className="py-3 pr-0">
-        <Button
-          variant="secondary"
-          type="button"
-          disabled={patch.isPending}
-          onClick={() =>
-            patch.mutate({
-              loanId: item.id,
-              quality,
-              humanDisplayName: humanName.trim() === '' ? null : humanName.trim(),
-            })
-          }
-        >
-          {patch.isPending ? '保存中…' : '保存'}
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="secondary"
+            type="button"
+            disabled={patch.isPending}
+            onClick={() =>
+              patch.mutate({
+                loanId: item.id,
+                quality,
+                humanDisplayName: humanName.trim() === '' ? null : humanName.trim(),
+              })
+            }
+          >
+            {patch.isPending ? '保存中…' : '保存'}
+          </Button>
+          <button
+            type="button"
+            className="text-left text-xs text-sky-700 underline decoration-sky-600/60 hover:text-sky-900"
+            onClick={() => setShowSimilar((v) => !v)}
+          >
+            {showSimilar ? '類似候補を隠す' : '類似候補を表示'}
+          </button>
+        </div>
         {patch.isError && <p className="mt-1 text-xs text-red-600">保存に失敗しました</p>}
       </td>
     </tr>
+    {showSimilar && (
+      <tr className="border-b border-slate-200 bg-slate-50 align-top">
+        <td colSpan={6} className="py-3 pr-2 pl-4 text-sm">
+          <p className="mb-2 font-medium text-slate-800">類似候補（GOOD ギャラリー・参考表示のみ）</p>
+          <SimilarCandidatesPanel loanId={item.id} />
+        </td>
+      </tr>
+    )}
+    </Fragment>
   );
 }
 
@@ -126,6 +175,7 @@ export function PhotoLoanLabelReviewsPage() {
         <p className="mt-1 text-sm text-slate-600">
           直近の写真持出について、VLM 表示名の品質を記録し、必要に応じて表示名を上書きできます（管理者・マネージャーのみ）。
           キオスク・サイネージは <strong>人による上書き &gt; VLM &gt; 撮影mode</strong> の順で表示します。
+          行の「類似候補」は管理画面のみの参考表示で、現場の確定ラベルは変わりません。
         </p>
       </div>
 
