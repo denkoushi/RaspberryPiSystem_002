@@ -35,6 +35,12 @@ import type {
   RiggingInspectionResult,
   RiggingStatus
 } from './types';
+import type {
+  PartMeasurementProcessGroup,
+  PartMeasurementSheetDto,
+  PartMeasurementTemplateDto,
+  ResolveTicketResponse
+} from '../features/part-measurement/types';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
@@ -1813,6 +1819,112 @@ export async function returnMeasuringInstrument(payload: MeasuringInstrumentRetu
   return data.loan;
 }
 
+export async function resolvePartMeasurementTicket(
+  body: {
+    productNo: string;
+    processGroup: PartMeasurementProcessGroup;
+    scannedFhincd?: string | null;
+    scannedBarcodeRaw?: string | null;
+  },
+  clientKey?: string
+): Promise<ResolveTicketResponse> {
+  const { data } = await api.post<ResolveTicketResponse>('/part-measurement/resolve-ticket', body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data;
+}
+
+export async function createPartMeasurementSheet(
+  body: {
+    productNo: string;
+    fseiban: string;
+    fhincd: string;
+    fhinmei: string;
+    machineName?: string | null;
+    resourceCdSnapshot?: string | null;
+    processGroup: PartMeasurementProcessGroup;
+    templateId: string;
+    scannedBarcodeRaw?: string | null;
+    scheduleRowId?: string;
+  },
+  clientKey?: string
+): Promise<PartMeasurementSheetDto> {
+  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>('/part-measurement/sheets', body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.sheet;
+}
+
+export async function getPartMeasurementSheet(sheetId: string, clientKey?: string): Promise<PartMeasurementSheetDto> {
+  const { data } = await api.get<{ sheet: PartMeasurementSheetDto }>(`/part-measurement/sheets/${sheetId}`, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.sheet;
+}
+
+export async function patchPartMeasurementSheet(
+  sheetId: string,
+  body: {
+    quantity?: number | null;
+    employeeTagUid?: string | null;
+    clearEmployee?: boolean;
+    results?: Array<{ pieceIndex: number; templateItemId: string; value?: string | number | null }>;
+  },
+  clientKey?: string
+): Promise<PartMeasurementSheetDto> {
+  const { data } = await api.patch<{ sheet: PartMeasurementSheetDto }>(`/part-measurement/sheets/${sheetId}`, body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.sheet;
+}
+
+export async function finalizePartMeasurementSheet(sheetId: string, clientKey?: string): Promise<PartMeasurementSheetDto> {
+  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>(
+    `/part-measurement/sheets/${sheetId}/finalize`,
+    {},
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.sheet;
+}
+
+export async function listPartMeasurementTemplates(params?: {
+  fhincd?: string;
+  processGroup?: PartMeasurementProcessGroup;
+  includeInactive?: boolean;
+}): Promise<PartMeasurementTemplateDto[]> {
+  const { data } = await api.get<{ templates: PartMeasurementTemplateDto[] }>('/part-measurement/templates', {
+    params
+  });
+  return data.templates;
+}
+
+export async function createPartMeasurementTemplate(body: {
+  fhincd: string;
+  processGroup: PartMeasurementProcessGroup;
+  name: string;
+  items: Array<{
+    sortOrder: number;
+    datumSurface: string;
+    measurementPoint: string;
+    measurementLabel: string;
+    unit?: string | null;
+    allowNegative?: boolean;
+  }>;
+}): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>('/part-measurement/templates', body);
+  return data.template;
+}
+
+export async function activatePartMeasurementTemplate(templateId: string): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
+    `/part-measurement/templates/${templateId}/activate`,
+    {}
+  );
+  return data.template;
+}
+
 export interface KioskConfig {
   theme: string;
   greeting: string;
@@ -2684,3 +2796,10 @@ export async function getSignageRenderStatus() {
   const { data } = await api.get<SignageRenderStatus>('/signage/render/status');
   return data;
 }
+
+export type {
+  PartMeasurementProcessGroup,
+  PartMeasurementSheetDto,
+  PartMeasurementTemplateDto,
+  ResolveTicketResponse
+} from '../features/part-measurement/types';

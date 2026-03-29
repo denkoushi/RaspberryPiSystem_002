@@ -223,6 +223,22 @@ check_http_code "キオスク要領書API GET /api/kiosk-documents" "${KIOSK_DOC
 KIOSK_DOCS_JSON="$(curl -sk "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_contains "キオスク要領書API documents配列" "${KIOSK_DOCS_JSON}" '"documents"'
 
+# part-measurement: キオスクは x-client-key で resolve-ticket（カナリア端末キーでも可）
+PM_RESOLVE_JSON="$(
+  curl -sk -X POST "${BASE_URL}/api/part-measurement/resolve-ticket" \
+    -H "x-client-key: ${CLIENT_KEY_STONEBASE}" \
+    -H "Content-Type: application/json" \
+    -d '{"productNo":"__PHASE12_SMOKE__","processGroup":"cutting"}' 2>&1 || true
+)"
+check_contains "部品測定API POST resolve-ticket (x-client-key)" "${PM_RESOLVE_JSON}" '"candidates"'
+
+PM_RESOLVE_UNAUTH_CODE="$(
+  curl -sk -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/part-measurement/resolve-ticket" \
+    -H "Content-Type: application/json" \
+    -d '{"productNo":"x","processGroup":"cutting"}' 2>&1 || true
+)"
+check_http_code "部品測定API resolve-ticket 未認証・無client-key" "${PM_RESOLVE_UNAUTH_CODE}" "401"
+
 # manual-order-overview: v1 は targetLocation+resources、v2（device-scope）は siteKey 必須で devices[]
 MANUAL_ORDER_OVERVIEW_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 if printf "%s" "${MANUAL_ORDER_OVERVIEW_JSON}" | grep -Eq '"resources"'; then

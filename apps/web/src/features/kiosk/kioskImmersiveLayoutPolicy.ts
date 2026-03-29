@@ -18,7 +18,8 @@ const IMMERSIVE_PATH_EXACT = new Set([
   '/kiosk/instruments/borrow',
   '/kiosk/rigging/borrow',
   '/kiosk/production-schedule',
-  '/kiosk/documents'
+  '/kiosk/documents',
+  '/kiosk/part-measurement'
 ]);
 
 /**

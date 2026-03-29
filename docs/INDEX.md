@@ -18,6 +18,13 @@
 - **手動順番 上ペイン端末カード（3行: 製番品番 / 工順部品名 / 機種名・本文は生産スケジュールと同じ text-xs）**: [design-previews/manual-order-device-card-location-machine-preview.html](./design-previews/manual-order-device-card-location-machine-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **手動順番 帯分け → オペレーター確定順位（静的プレビュー）**: [design-previews/manual-order-band-to-operator-rank-preview.html](./design-previews/manual-order-band-to-operator-rank-preview.html) — [design-previews/README.md](./design-previews/README.md)
 
+### キオスク部品測定記録
+
+- **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（テンプレキー `fhincd + processGroup`、記録単位 `FSEIBAN`、下書き→確定）
+- **運用手順**: [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md)
+- **トラブルシュート**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)
+- **実機検証**: [verification-checklist.md](./guides/verification-checklist.md) 6.6.9、`./scripts/deploy/verify-phase12-real.sh`（`resolve-ticket` スモーク含む）
+
 ### キオスク要領書（PDF）
 
 - **仕様・トラブルシュート**: [KB-313](./knowledge-base/KB-313-kiosk-documents.md)
