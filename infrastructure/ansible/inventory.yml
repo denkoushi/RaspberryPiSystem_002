@@ -39,8 +39,8 @@ all:
           # llama-server オンデマンド（Ubuntu: control-server.mjs + nginx 例 scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example）
           # 制御トークンは vault_api_local_llm_runtime_control_token で分離可。未設定なら API は LOCAL_LLM_SHARED_TOKEN を流用
           api_local_llm_runtime_mode: "on_demand"
-          api_local_llm_runtime_control_start_url: "http://{{ ubuntu_local_llm_host }}:{{ api_local_llm_runtime_control_listen_port }}/start"
-          api_local_llm_runtime_control_stop_url: "http://{{ ubuntu_local_llm_host }}:{{ api_local_llm_runtime_control_listen_port }}/stop"
+          api_local_llm_runtime_control_start_url: "http://{{ ubuntu_local_llm_host }}:{{ ubuntu_local_llm_inference_nginx_port }}/start"
+          api_local_llm_runtime_control_stop_url: "http://{{ ubuntu_local_llm_host }}:{{ ubuntu_local_llm_inference_nginx_port }}/stop"
           api_local_llm_runtime_control_token: "{{ vault_api_local_llm_runtime_control_token | default('') }}"
           api_local_llm_runtime_health_base_url: ""
           kiosk_document_summary_inference_enabled: "true"
