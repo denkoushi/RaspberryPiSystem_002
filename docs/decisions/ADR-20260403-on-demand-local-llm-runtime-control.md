@@ -16,6 +16,12 @@ Alternatives:
 Consequences:
   - 良い: VRAM を他用途に明け渡しやすい。業務は推論失敗時も従来どおり劣化運転可能。
   - 悪い: 初回推論まで起動待ちが乗る。Ubuntu に制御 HTTP 層（本リポジトリの補助スクリプト＋nginx 等）の配線が必要。
+## Verification（2026-03-30）
+
+- **デプロイ**: ブランチ `feat/on-demand-llm-runtime-control` を [deployment.md](../guides/deployment.md) に従い Pi5 → Pi4×4 のみ順次（Pi3 除外）。各 PLAY `failed=0`（Pi5 Detach Run ID 例: `20260330-183834-3704`）。
+- **Phase12**: Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（実行時間の目安: 約 100s）。API ヘルス・deploy-status・納期管理 API・要領書・部品測定・Pi4 サービス・Pi3 サイネージまでを含む回帰。
+- **トラブルシューティング**: 本番が既定 **`LOCAL_LLM_RUNTIME_MODE=always_on`** のままなら、制御アダプタは **no-op**（従来と同じ常駐前提）。**`on_demand`** と Ubuntu 側 `control-server.mjs`（＋nginx・ACL）を揃えた後は、推論前後の **`component: localLlmRuntimeControl`** と Ubuntu での **`nvidia-smi`**（`/app/llama-server` の有無）で起停を確認する。ComfyUI OOM は VRAM 専有の切り分けに [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) を参照。
+
 References:
   - [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)
   - [ADR-20260328](./ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)

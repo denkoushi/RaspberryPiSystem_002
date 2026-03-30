@@ -229,6 +229,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **切り分け**: Ubuntu で `nvidia-smi` の **Processes** に `/app/llama-server` が出ていれば、本システム用コンテナが VRAM を保持している（CONFIRMED 例: 約 4162 MiB / 8GB）。
 - **対応方針**: [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)。Pi5 で `LOCAL_LLM_RUNTIME_MODE=on_demand` とし、Ubuntu に [scripts/ubuntu-local-llm-runtime/control-server.mjs](../../scripts/ubuntu-local-llm-runtime/control-server.mjs) 等の **起動・停止 HTTP** を配線する。写真登録後は `PhotoToolLabelScheduler` が **直列化された `runOnce`** で処理し、ジョブごとに ensure/release する（初回は起動待ちが乗る）。
 - **ログ**: 起動待ち・停止は `component: localLlmRuntimeControl`（`action: runtime_ready` / `runtime_stopped` 等）。
+- **本番デプロイ後の回帰（2026-03-30）**: ブランチ `feat/on-demand-llm-runtime-control` を Pi5→Pi4×4 のみ順次反映後、Mac / Tailscale で `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 100s）。**既定 `LOCAL_LLM_RUNTIME_MODE=always_on`** のままなら制御 HTTP は no-op（従来の常駐運用）。
 
 ## References
 

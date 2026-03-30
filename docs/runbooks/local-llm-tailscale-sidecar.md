@@ -2,7 +2,7 @@
 title: Runbook: Ubuntu LocalLLM を Tailscale sidecar で分離運用する
 tags: [運用, LocalLLM, Tailscale, llama.cpp, Docker, Ubuntu]
 audience: [運用者, 開発者]
-last-verified: 2026-03-29
+last-verified: 2026-03-30
 related:
   - ../security/tailscale-policy.md
   - ../security/system-inventory.md
@@ -51,6 +51,11 @@ update-frequency: medium
 - **写真持出**: 登録 API 成功後にラベルバッチを非同期キック。各ローン処理の前後で ensure/release（参照カウントあり）。
 - **要領書**: `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` かつ推論設定が有効なとき、**深夜 OCR バッチ**の前後で ensure/release。
 - **既定**: `LOCAL_LLM_RUNTIME_MODE=always_on` のとき従来どおり（制御 HTTP は使わない）。
+
+### 本番反映後の実機検証（Phase12）
+
+- [deployment.md](../guides/deployment.md) 前提で Mac から Tailscale 経由の到達が取れる状態で、`../../scripts/deploy/verify-phase12-real.sh` を実行する。API・キオスク系・サイネージサービス等の回帰を一括確認できる。**2026-03-30 実測**: **PASS 37 / WARN 0 / FAIL 0**（約 100s）。Pi5+Pi4×4 に本ブランチを順次載せた直後の確認に使用可（Pi3 はスクリプトが別途 SSH する。**Pi3 専用の慎重手順**は deployment ガイドのサイネージ節に従う）。
+- **`on_demand` を本番で有効化した後**は Phase12 に加え、Pi5 ログの **`component: localLlmRuntimeControl`**（`runtime_ready` / `runtime_stopped` 等）と Ubuntu の **`nvidia-smi`**（プロセスに `/app/llama-server` が常時残っていないか）で起停を目視確認する。VRAM 競合の背景は [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) と [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) の Verification を参照。
 
 ## 現在の構成（2026-03-28）
 

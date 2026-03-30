@@ -195,6 +195,9 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec api sh -l
 **Prevention**:
 - 本番 API の追加環境変数は、**compose が実際に読む `env_file`** を必ず更新する。`apps/api/.env` のみ更新して「反映された」と判断しない。
 
+**実機検証メモ（2026-03-30・オンデマンド制御キー追加後）**:
+- `docker.env.j2` に `LOCAL_LLM_RUNTIME_*` を足したうえで Pi5→Pi4×4 を順次デプロイした後、Mac から `./scripts/deploy/verify-phase12-real.sh` を実行し **FAIL 0** を確認（実測 **PASS 37 / WARN 0 / FAIL 0**）。**`on_demand` を本番で使う**場合は値のほか、Ubuntu の `control-server.mjs`＋nginx まで別途配線し、ADR / Runbook の Verification に従う。
+
 **関連ファイル**:
 - `infrastructure/docker/docker-compose.server.yml`
 - `infrastructure/ansible/templates/docker.env.j2`
