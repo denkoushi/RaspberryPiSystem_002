@@ -51,6 +51,12 @@
 - 失敗時は Slack 連携（alerts DB dispatcher）へ `kiosk-document-ocr-*` アラートを作成する。
 - **エンジン契約（重要）**: 既定では API が **PDF を `pdftoppm` で画像化**し、**NDLOCR-Lite 公式 CLI**（ページごとに `ndlocr-lite --sourceimg <画像> --output <dir>` または `python3 <path/to/ocr.py> …`）で処理し、出力先の **`.txt` をページ順で結合**する。**API Docker イメージに NDLOCR-Lite を同梱**する運用を標準とし、ホスト手作業導入は前提にしない。stdout に1本で PDF を渡す独自コマンドだけ使う場合は `KIOSK_DOCUMENT_OCR_LEGACY_STDOUT=true` と `KIOSK_DOCUMENT_OCR_COMMAND` をセット。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の環境変数表。
 
+### 要約候補のテキスト推論（任意・フェーズ1）
+
+- **既定は無効**。`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` かつ推論プロバイダが解決できるとき、OCR 完了後に **OpenAI 互換 `/v1/chat/completions`（テキスト）** で `summaryCandidate1` を生成し、2〜3 は従来の機械スニペットで補完する。
+- 推論失敗・タイムアウト時は **機械スニペットのみ**にフォールバックし、**OCR 完了や DB 更新は継続**する（推論は補助）。
+- 複数推論先・モデルは `INFERENCE_PROVIDERS_JSON` と用途別 env で指定する。詳細は [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md) と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の環境変数表。
+
 ### OCR ヘルスチェック（デプロイ直後）
 
 ```bash

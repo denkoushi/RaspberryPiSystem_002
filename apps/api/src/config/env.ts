@@ -155,6 +155,37 @@ const envSchema = z.object({
   ),
   LOCAL_LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300000).default(60000),
 
+  /**
+   * 推論プロバイダ配列（JSON）。未設定時は LOCAL_LLM_* から id=default を1件合成。
+   * 例: [{"id":"default","baseUrl":"http://host:8080","sharedToken":"...","defaultModel":"qwen","timeoutMs":60000}]
+   */
+  INFERENCE_PROVIDERS_JSON: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional()
+  ),
+  /** 写真持出 VLM の接続先プロバイダ id（INFERENCE_PROVIDERS_JSON または default） */
+  INFERENCE_PHOTO_LABEL_PROVIDER_ID: z.string().min(1).max(64).default('default'),
+  INFERENCE_PHOTO_LABEL_MODEL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS: z.coerce.number().int().min(16).max(4096).default(64),
+  INFERENCE_PHOTO_LABEL_VISION_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
+
+  /** 要領書 OCR テキスト要約（任意）の接続先 */
+  INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: z.string().min(1).max(64).default('default'),
+  INFERENCE_DOCUMENT_SUMMARY_MODEL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  /** true のとき OCR 完了後に document_summary 用途でテキスト要約を試行（失敗時は従来スニペットへフォールバック） */
+  KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  INFERENCE_DOCUMENT_SUMMARY_MAX_TOKENS: z.coerce.number().int().min(32).max(4096).default(512),
+  INFERENCE_DOCUMENT_SUMMARY_INPUT_MAX_CHARS: z.coerce.number().int().min(1000).max(200_000).default(24_000),
+  INFERENCE_DOCUMENT_SUMMARY_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
+
   /** 写真持出 VLM 工具名ラベル: cron（node-cron 5 フィールド: 分 時 日 月 曜） */
   PHOTO_TOOL_LABEL_CRON: z.string().default('*/5 * * * *'),
   PHOTO_TOOL_LABEL_BATCH_SIZE: z.coerce.number().int().min(1).max(20).default(3),

@@ -11,14 +11,10 @@ import { PdfStorageFileStoreAdapter } from '../services/kiosk-documents/adapters
 import { PdfStorageRenderAdapter } from '../services/kiosk-documents/adapters/pdf-storage-render.adapter.js';
 import { PrismaKioskDocumentRepository } from '../services/kiosk-documents/adapters/prisma-kiosk-document.repository.js';
 import { KioskDocumentGmailIngestionService } from '../services/kiosk-documents/kiosk-document-gmail-ingestion.service.js';
-import { KioskDocumentProcessingService } from '../services/kiosk-documents/kiosk-document-processing.service.js';
+import { createDefaultKioskDocumentProcessingService } from '../services/kiosk-documents/kiosk-document-processing.factory.js';
 import { getKioskDocumentOcrScheduler } from '../services/kiosk-documents/kiosk-document-ocr.scheduler.js';
 import type { KioskDocumentDetail } from '../services/kiosk-documents/kiosk-document.service.js';
 import { KioskDocumentService } from '../services/kiosk-documents/kiosk-document.service.js';
-import { PdfToTextExtractorAdapter } from '../services/kiosk-documents/adapters/pdftotext-extractor.adapter.js';
-import { NdlOcrEngineAdapter } from '../services/kiosk-documents/adapters/ndlocr-engine.adapter.js';
-import { RegexMetadataLabelerAdapter } from '../services/kiosk-documents/adapters/regex-metadata-labeler.adapter.js';
-import { PostgresDocumentSearchIndexerAdapter } from '../services/kiosk-documents/adapters/postgres-document-search-indexer.adapter.js';
 import { isValidKioskDocumentNumber } from '../services/kiosk-documents/kiosk-document-number.js';
 import { normalizeDocumentText } from '../services/kiosk-documents/kiosk-document-text-normalizer.js';
 
@@ -160,13 +156,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
     new PdfStorageFileStoreAdapter(),
     new PdfStorageRenderAdapter()
   );
-  const processingService = new KioskDocumentProcessingService(
-    repo,
-    new PdfToTextExtractorAdapter(),
-    new NdlOcrEngineAdapter(),
-    new RegexMetadataLabelerAdapter(),
-    new PostgresDocumentSearchIndexerAdapter()
-  );
+  const processingService = createDefaultKioskDocumentProcessingService(repo);
   const gmailIngestion = new KioskDocumentGmailIngestionService(service);
 
   const canManage = authorizeRoles('ADMIN', 'MANAGER');

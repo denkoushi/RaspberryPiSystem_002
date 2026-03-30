@@ -51,7 +51,7 @@ describe('KioskDocumentProcessingService', () => {
       refreshDocumentIndex: vi.fn(async () => {}),
     };
 
-    const service = new KioskDocumentProcessingService(repo, textExtractor, ocrEngine, labeler, indexer);
+    const service = new KioskDocumentProcessingService(repo, textExtractor, ocrEngine, labeler, indexer, undefined);
     await service.processDocumentById('11111111-1111-1111-1111-111111111111');
 
     expect(labeler.labelFromText).toHaveBeenCalledWith('fhincd zx98 研削');
@@ -89,7 +89,7 @@ describe('KioskDocumentProcessingService', () => {
       refreshDocumentIndex: vi.fn(async () => {}),
     };
 
-    const service = new KioskDocumentProcessingService(repo, textExtractor, ocrEngine, labeler, indexer);
+    const service = new KioskDocumentProcessingService(repo, textExtractor, ocrEngine, labeler, indexer, undefined);
     await expect(
       service.processDocumentById('11111111-1111-1111-1111-111111111111', { timeoutMs: 1 }),
     ).resolves.toBeUndefined();
@@ -103,5 +103,45 @@ describe('KioskDocumentProcessingService', () => {
         ocrStatus: 'COMPLETED',
       }),
     );
+  });
+
+  it('uses LLM summary in candidate1 when inference port returns text', async () => {
+    const repo = createRepoStub();
+    const textExtractor: DocumentTextExtractorPort = {
+      extractText: vi.fn(async () => ({ text: '目的：検査を実施する。詳細は後述。'.repeat(3) })),
+    };
+    const ocrEngine: OcrEnginePort = {
+      runOcr: vi.fn(async () => ({ text: '', engine: 'NDLOCR-Lite' })),
+    };
+    const labeler: MetadataLabelerPort = {
+      labelFromText: vi.fn(async () => ({
+        candidates: {},
+        confidence: {},
+        suggestedDisplayTitle: null,
+      })),
+    };
+    const indexer: DocumentSearchIndexerPort = {
+      refreshDocumentIndex: vi.fn(async () => {}),
+    };
+    const summaryInference = {
+      trySummarize: vi.fn(async () => '推論による短い要約'),
+    };
+
+    const service = new KioskDocumentProcessingService(
+      repo,
+      textExtractor,
+      ocrEngine,
+      labeler,
+      indexer,
+      summaryInference,
+    );
+    await service.processDocumentById('11111111-1111-1111-1111-111111111111');
+
+    expect(summaryInference.trySummarize).toHaveBeenCalled();
+    const updateCall = vi.mocked(repo.update).mock.calls.find((c) => c[1].ocrStatus === 'COMPLETED');
+    expect(updateCall?.[1]).toMatchObject({
+      summaryCandidate1: '推論による短い要約',
+      ocrStatus: 'COMPLETED',
+    });
   });
 });

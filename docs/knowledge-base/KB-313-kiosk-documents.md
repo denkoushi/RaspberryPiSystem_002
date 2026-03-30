@@ -48,6 +48,13 @@ category: knowledge-base
 | `KIOSK_DOCUMENT_OCR_ENGINE_TIMEOUT_MS` | 1ページあたりの NDLOCR / レガシー OCR 子プロセスのタイムアウト（ms） | `180000` |
 | `KIOSK_DOCUMENT_OCR_RASTER_TIMEOUT_MS` | `pdftoppm` のタイムアウト（ms） | `120000` |
 | `PDF_PAGES_CACHE_CONTROL` | `GET /api/storage/pdf-pages/...` の `Cache-Control`（キオスク・サイネージ共通のページ画像）。未設定時は `public, max-age=86400, stale-while-revalidate=604800` | 未設定（コード既定を使用） |
+| `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` | `true` のとき、OCR 後にテキスト要約推論を試行（失敗時は機械スニペットへフォールバック） | `false` |
+| `INFERENCE_PROVIDERS_JSON` | 推論プロバイダ配列（JSON）。未設定時は `LOCAL_LLM_*` から `id=default` を合成 | 未設定 |
+| `INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID` | 要約推論のプロバイダ id | `default` |
+| `INFERENCE_DOCUMENT_SUMMARY_MODEL` | 要約推論のモデル（未指定時はプロバイダの `defaultModel`） | 未設定 |
+| `INFERENCE_DOCUMENT_SUMMARY_MAX_TOKENS` / `INFERENCE_DOCUMENT_SUMMARY_INPUT_MAX_CHARS` / `INFERENCE_DOCUMENT_SUMMARY_TEMPERATURE` | 要約推論の上限・入力切り詰め・温度 | `512` / `24000` / `0.2` |
+
+**推論基盤の全体方針**（写真持出 VLM との共用・複数 PC）: [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)。
 
 サイネージは従来どおり `SIGNAGE_PDF_DPI`（未設定時 150）を `convertPdfToPages` のデフォルトとして利用する。**要領書だけ** Pi4 向けに軽くしたい場合は上記 2 つを API コンテナに設定する。
 

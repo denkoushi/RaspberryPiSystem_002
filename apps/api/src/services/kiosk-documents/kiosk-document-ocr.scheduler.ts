@@ -2,11 +2,8 @@ import cron from 'node-cron';
 
 import { logger } from '../../lib/logger.js';
 import { KioskDocumentAlertService } from './kiosk-document-alert.service.js';
-import { PdfToTextExtractorAdapter } from './adapters/pdftotext-extractor.adapter.js';
-import { NdlOcrEngineAdapter } from './adapters/ndlocr-engine.adapter.js';
-import { PostgresDocumentSearchIndexerAdapter } from './adapters/postgres-document-search-indexer.adapter.js';
 import { PrismaKioskDocumentRepository } from './adapters/prisma-kiosk-document.repository.js';
-import { RegexMetadataLabelerAdapter } from './adapters/regex-metadata-labeler.adapter.js';
+import { createDefaultKioskDocumentProcessingService } from './kiosk-document-processing.factory.js';
 import { KioskDocumentProcessingService } from './kiosk-document-processing.service.js';
 import { KioskDocumentService } from './kiosk-document.service.js';
 import { PdfStorageFileStoreAdapter } from './adapters/pdf-storage-file-store.adapter.js';
@@ -35,14 +32,7 @@ export class KioskDocumentOcrScheduler {
         new PdfStorageRenderAdapter()
       );
     this.processingService =
-      processingService ??
-      new KioskDocumentProcessingService(
-        new PrismaKioskDocumentRepository(),
-        new PdfToTextExtractorAdapter(),
-        new NdlOcrEngineAdapter(),
-        new RegexMetadataLabelerAdapter(),
-        new PostgresDocumentSearchIndexerAdapter()
-      );
+      processingService ?? createDefaultKioskDocumentProcessingService(new PrismaKioskDocumentRepository());
     this.alertService = alertService ?? new KioskDocumentAlertService();
   }
 

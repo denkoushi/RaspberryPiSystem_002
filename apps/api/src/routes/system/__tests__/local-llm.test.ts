@@ -7,6 +7,7 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 import { buildServer } from '../../../app.js';
 import { env } from '../../../config/env.js';
+import { resetInferenceRuntimeForTests } from '../../../services/inference/inference-runtime.js';
 import { expectApiError } from '../../__tests__/helpers.js';
 
 describe('system local llm routes', () => {
@@ -44,6 +45,8 @@ describe('system local llm routes', () => {
     env.LOCAL_LLM_SHARED_TOKEN = 'test-shared-token';
     env.LOCAL_LLM_MODEL = 'Qwen_Qwen3.5-9B-Q4_K_M.gguf';
     env.LOCAL_LLM_TIMEOUT_MS = 1500;
+    env.INFERENCE_PROVIDERS_JSON = undefined;
+    resetInferenceRuntimeForTests();
   });
 
   afterAll(async () => {
@@ -51,6 +54,7 @@ describe('system local llm routes', () => {
     env.LOCAL_LLM_SHARED_TOKEN = originalConfig.sharedToken;
     env.LOCAL_LLM_MODEL = originalConfig.model;
     env.LOCAL_LLM_TIMEOUT_MS = originalConfig.timeoutMs;
+    resetInferenceRuntimeForTests();
 
     if (closeServer) {
       await closeServer();
