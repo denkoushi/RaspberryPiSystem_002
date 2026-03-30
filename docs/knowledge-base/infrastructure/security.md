@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - セキュリティ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-03-28
+last-verified: 2026-03-30
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -55,6 +55,9 @@ update-frequency: medium
 - Mac から Ubuntu LocalLLM へ直接 `curl` しても、ACL 上 **`tag:server -> tag:llm` のみ許可**なので到達しない。最終確認は **Pi5 API 経由**で行う
 - Mac ローカルの Docker 検証では、本番用 `docker-compose.server.yml` の `/opt/...` bind mount をそのまま使わず、**`docker-compose.mac-local.override.yml`** でワークスペース配下 `.docker/local/` へ逃がす
 - Pi5 **本番 API コンテナ**に `LOCAL_LLM_*` が入らないときは、Ubuntu 側より先に **Docker Compose の `env_file` 経路**を疑う（`apps/api/.env` のみ更新では届かないことがある。詳細は [KB-318](./ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）
+- **オンデマンド制御の入口も `38081` に同居**させる。tailnet IP `100.107.223.92` は Ubuntu ホストそのものではなく **`local-llm-system` の sidecar** なので、Pi5 からホスト nginx の `39091` を直接叩く設計は不整合になりやすい
+- `compose-nginx-1` で `${LLM_RUNTIME_CONTROL_TOKEN}` を使うなら、`compose.yaml` の nginx `envsubst` 対象に **`LLM_RUNTIME_CONTROL_TOKEN`** を入れないと **`unknown "llm_runtime_control_token" variable`** で再起動ループする
+- `network_mode: service:tailscale` の nginx からホスト側 `control-server.mjs` を叩くとき、`127.0.0.1` は **コンテナ自身**を指す。`control-server.mjs` は **`0.0.0.0:39090`** で待受し、nginx は **Docker bridge gateway**（例: `172.19.0.1`）へ `proxy_pass` する
 
 **関連ファイル**:
 - `/home/localllm/local-llm-system/compose/compose.yaml`
