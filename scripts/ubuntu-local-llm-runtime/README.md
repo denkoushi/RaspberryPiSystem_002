@@ -17,6 +17,37 @@ node /path/to/repo/scripts/ubuntu-local-llm-runtime/control-server.mjs
 
 `local-llm-system/compose/compose.yaml` の `nginx` が `network_mode: service:tailscale` のとき、`control-server.mjs` は **`0.0.0.0:39090`** で待たせ、同一ホストの Docker bridge gateway（例: `172.19.0.1`）経由で受ける。
 
+## 自動化スクリプト
+
+### 1. control-server の systemd 化
+
+```bash
+sudo LLM_RUNTIME_CONTROL_TOKEN='（長いランダム値）' \
+  ./scripts/ubuntu-local-llm-runtime/install-control-service.sh
+```
+
+既定では以下を行う:
+
+- `control-server.mjs` を `/home/localllm/control-server.mjs` へ配置
+- `/etc/default/llm-runtime-control` を作成
+- `llm-runtime-control.service` を作成して `enable --now`
+
+### 2. `local-llm-system` への `/start` `/stop` 追加
+
+```bash
+sudo -u localllm \
+  LLM_RUNTIME_CONTROL_TOKEN='（長いランダム値）' \
+  ./scripts/ubuntu-local-llm-runtime/patch-local-llm-system.sh
+```
+
+既定では以下を行う:
+
+- `config/runtime.env` に `LLM_RUNTIME_CONTROL_TOKEN` を追加
+- `compose/compose.yaml` の `envsubst` 対象に `LLM_RUNTIME_CONTROL_TOKEN` を追加
+- `config/nginx/default.conf.template` に `/start` `/stop` を追加
+- Docker bridge gateway を検出して `proxy_pass http://<gateway>:39090/...` を設定
+- `compose-nginx-1` を `--force-recreate`
+
 ## `local-llm-system` へ追加すること
 
 1. `config/runtime.env` に `LLM_RUNTIME_CONTROL_TOKEN=...` を追加する

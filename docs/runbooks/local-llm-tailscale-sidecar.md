@@ -37,6 +37,11 @@ update-frequency: medium
 4. `/home/localllm/local-llm-system/config/nginx/default.conf.template` に `POST /start`・`POST /stop` を追加し、Docker bridge gateway（例: `172.19.0.1`）経由で `http://172.19.0.1:39090/start|stop` へプロキシする。**location 例**: [`scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example`](../../scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example)
 5. `sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker compose up -d --force-recreate nginx'` で `compose-nginx-1` を再作成する。制御サーバは `docker compose start|stop llama-server` を実行する。`COMPOSE_DIR` は既定 `/home/localllm/local-llm-system/compose`。
 
+**補助スクリプト**:
+
+- systemd 化: [`scripts/ubuntu-local-llm-runtime/install-control-service.sh`](../../scripts/ubuntu-local-llm-runtime/install-control-service.sh)
+- `local-llm-system` 反映: [`scripts/ubuntu-local-llm-runtime/patch-local-llm-system.sh`](../../scripts/ubuntu-local-llm-runtime/patch-local-llm-system.sh)
+
 ### Pi5 API（`infrastructure/docker/.env` / Ansible `docker.env.j2`）
 
 - `LOCAL_LLM_RUNTIME_MODE=on_demand`
