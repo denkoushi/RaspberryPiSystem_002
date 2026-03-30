@@ -230,6 +230,11 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **対応方針**: [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)。Pi5 で `LOCAL_LLM_RUNTIME_MODE=on_demand` とし、Ubuntu に [scripts/ubuntu-local-llm-runtime/control-server.mjs](../../scripts/ubuntu-local-llm-runtime/control-server.mjs) 等の **起動・停止 HTTP** を配線する。写真登録後は `PhotoToolLabelScheduler` が **直列化された `runOnce`** で処理し、ジョブごとに ensure/release する（初回は起動待ちが乗る）。
 - **ログ**: 起動待ち・停止は `component: localLlmRuntimeControl`（`action: runtime_ready` / `runtime_stopped` 等）。
 - **本番デプロイ後の回帰（2026-03-30）**: ブランチ `feat/on-demand-llm-runtime-control` を Pi5→Pi4×4 のみ順次反映後、Mac / Tailscale で `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 100s）。**既定 `LOCAL_LLM_RUNTIME_MODE=always_on`** のままなら制御 HTTP は no-op（従来の常駐運用）。
+- **本番有効化の確認（2026-03-30）**: `main` で Pi5 を再デプロイし、Pi5 → Ubuntu の **`/start` / `/stop` がともに HTTP 200** を確認。運用者の実機確認では **ComfyUI は従来手順で起動・生成成功、OOM / GPU メモリ不足なし**。さらに Ubuntu でアイドル時 `docker compose ps` を確認し、**`compose-llama-server-1` が不在**であることを確認した。
+- **トラブルシュート（今回の実測）**:
+  - Pi5 の制御 URL を **`100.107.223.92:39091`** に向けても timeout した。**原因**: tailnet IP `100.107.223.92` は Ubuntu ホストではなく `local-llm-system` の `compose-nginx-1` 側。**対処**: 制御 URL を **`http://100.107.223.92:38081/start|stop`** に統一。
+  - `compose-nginx-1` が **`unknown "llm_runtime_control_token" variable`** で再起動ループした。**原因**: `envsubst` の対象に `LLM_RUNTIME_CONTROL_TOKEN` を足していなかった。**対処**: `compose.yaml` の nginx `command` を修正。
+  - `/start` が **502** になった。**原因**: `network_mode: service:tailscale` の nginx から `127.0.0.1:39090` を向くとコンテナ自身を見に行く。**対処**: `control-server.mjs` を **`0.0.0.0:39090`** で待たせ、nginx は Docker bridge gateway（実測 `172.19.0.1`）へ `proxy_pass` する。
 
 ## References
 

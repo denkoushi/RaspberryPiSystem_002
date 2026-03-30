@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-03-29
+最終更新: 2026-03-30
 
 ## 概要
 
@@ -634,9 +634,10 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 - [ ] コード載せ替え後は `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-03-30 実測 **PASS 37 / WARN 0 / FAIL 0**・Pi5+Pi4×4 順次反映後・約 100s）。Pi3 はスクリプトが SSH するが、**Pi3 本体へのデプロイ**は deployment ガイドのサイネージ専用手順に従う。
 - [ ] 既定 **`LOCAL_LLM_RUNTIME_MODE=always_on`** のままなら制御アダプタは **no-op**（従来の常駐前提で動作）
 - [ ] **`on_demand` に切り替える場合**は、Pi5 の `LOCAL_LLM_RUNTIME_CONTROL_*` と Ubuntu の `control-server.mjs`・nginx・ACL を **セットで**確認。推論前後のログ `component: localLlmRuntimeControl`・Ubuntu `nvidia-smi` で起停を確認（Phase12 自動チェックのみではカバーしない）
+- [ ] 実働確認では **Pi5→Ubuntu `/start` `/stop` が 200**、**ComfyUI が従来どおり起動・生成でき OOM が出ない**、かつ **アイドル時 `docker compose ps` に `llama-server` が残っていない**ことを確認する
 
-**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・`feat/on-demand-llm-runtime-control` を Pi5→Pi4×4 順次反映後）
-**検証結果**: ☑ 成功（自動・オンデマンド実働は env 有効化後に別途） ☐ 失敗（エラー内容: _______________）
+**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・`feat/on-demand-llm-runtime-control` を Pi5→Pi4×4 順次反映後。続けて `on_demand` 有効化後に Pi5→Ubuntu `/start` `/stop` **200**、ComfyUI 起動・生成 OK、アイドル時 `llama-server` 不在を確認）
+**検証結果**: ☑ 成功（自動 + 実働） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認
 
