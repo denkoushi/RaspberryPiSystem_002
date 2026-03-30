@@ -39,6 +39,14 @@ date: 2026-04-02
 - `getInferenceRuntime()` のシングルトンは **プロセス内で env を変えるテスト**では `resetInferenceRuntimeForTests()` が必要（local-llm ルートテストで対応）。
 - `INFERENCE_PROVIDERS_JSON` の構文エラー時は警告ログのうえ **LOCAL_LLM_* へフォールバック**する（運用では JSON 検証を推奨）。
 
+## Verification（実機・2026-03-30）
+
+- **ブランチ**: `feat/inference-foundation-phase1`（マージ前コミット例: `08db3f23`）。
+- **デプロイ**: [deployment.md](../guides/deployment.md) に従い **`./scripts/update-all-clients.sh feat/inference-foundation-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`**（Mac からは `RASPI_SERVER_HOST` 必須。SSH config エイリアス `raspi5-tailscale` 利用可）。Pi5 Detach Run ID 例: **`20260330-171021-10204`**（`PLAY RECAP` で `raspberrypi5` が `failed=0`。Pi4/Pi3 は `no hosts matched`）。
+- **Phase12 一括**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 95s、Tailscale 到達時）。要領書 API **200**・`documents` 配列を含むチェックを含む。
+- **仕様上の注意**: 本番では要領書テキスト推論は既定 **OFF**（`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` 未設定または `false`）。Phase12 だけでは LLM 要約の成功／失敗は検証しない（API・DB・キオスク一覧の回帰が主眼）。写真ラベル VLM は **`photo_label` ルート**経由に切替済み；upstream 未到達時は既存ジョブのリトライ・フォールバック方針に従う。
+- **トラブルシュート**: `INFERENCE_PROVIDERS_JSON` 不正時は起動ログに警告のうえ **`LOCAL_LLM_*` 合成**へフォールバック。観測は pino で `component: inference`（本文はログに出さない）。
+
 ## References
 
 - 実装: `apps/api/src/services/inference/`

@@ -217,6 +217,12 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)
 - `apps/api/src/routes/tools/loans/photo-similar-candidates.ts`
 
+### 推論基盤フェーズ1（ルーテッド vision・2026-03-30）
+
+- **変更**: 写真持出ラベルの vision 呼び出しは **`RoutedVisionCompletionAdapter`** 経由で用途 **`photo_label`**（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)）。既定の接続先は従来どおり **`LOCAL_LLM_*`** または **`INFERENCE_PROVIDERS_JSON`** の解決結果。
+- **実機（Pi5 + Phase12）**: ブランチ `feat/inference-foundation-phase1` を **`--limit raspberrypi5` のみ**デプロイ後、`./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（2026-03-30・約 95s）。未認証 `photo-similar-candidates` の **401** 等の既存チェックを含む。
+- **観測**: ラベルジョブまわりの失敗切り分けは API ログの **`component: inference`**・`useCase: photo_label`（本文・画像は出さない）を参照。upstream・モデル・タイムアウトは [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md) と併読。
+
 ## References
 
 - `feat/photo-loan-vlm-tool-label`
