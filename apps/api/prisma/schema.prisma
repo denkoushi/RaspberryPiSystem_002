@@ -1345,22 +1345,39 @@ enum PartMeasurementSheetStatus {
   INVALIDATED
 }
 
+/// 図面など表示用。FIHNCD に紐づけず、業務テンプレから参照して再利用する。
+model PartMeasurementVisualTemplate {
+  id                       String                    @id @default(uuid())
+  name                     String
+  /// 例: /api/storage/part-measurement-drawings/{uuid}.png
+  drawingImageRelativePath String
+  isActive                 Boolean                   @default(true)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  businessTemplates        PartMeasurementTemplate[]
+
+  @@index([isActive, name])
+}
+
 model PartMeasurementTemplate {
-  id           String                      @id @default(uuid())
-  fhincd       String
-  processGroup PartMeasurementProcessGroup
+  id                 String                       @id @default(uuid())
+  fhincd             String
+  processGroup       PartMeasurementProcessGroup
   /// 資源CD（テンプレート識別キー）。移行前データは __LEGACY__
-  resourceCd   String
-  name         String
-  version      Int                         @default(1)
-  isActive     Boolean                     @default(true)
-  createdAt    DateTime                    @default(now())
-  updatedAt    DateTime                    @updatedAt
-  items        PartMeasurementTemplateItem[]
-  sheets       PartMeasurementSheet[]
+  resourceCd         String
+  name               String
+  version            Int                          @default(1)
+  isActive           Boolean                      @default(true)
+  visualTemplateId   String?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  items              PartMeasurementTemplateItem[]
+  sheets             PartMeasurementSheet[]
+  visualTemplate     PartMeasurementVisualTemplate? @relation(fields: [visualTemplateId], references: [id], onDelete: SetNull)
 
   @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
   @@index([fhincd, processGroup, resourceCd, isActive], map: "PartMeasurementTemplate_idx_lookup")
+  @@index([visualTemplateId])
 }
 
 model PartMeasurementTemplateItem {
@@ -1370,6 +1387,8 @@ model PartMeasurementTemplateItem {
   datumSurface     String
   measurementPoint String
   measurementLabel String
+  /// 図面上の番号など表示用（任意）。測定部位の意味は measurementPoint を使用。
+  displayMarker    String?
   unit             String?
   allowNegative    Boolean                   @default(true)
   /// 小数桁数（0〜6、DBは Decimal(18,6)）

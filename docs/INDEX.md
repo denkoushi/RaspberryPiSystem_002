@@ -20,7 +20,7 @@
 
 ### キオスク部品測定記録
 
-- **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点）
+- **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点） / [ADR-20260330-part-measurement-visual-template.md](./decisions/ADR-20260330-part-measurement-visual-template.md)（visual template・図面1枚・`displayMarker`）
 - **運用手順**: [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md)
 - **トラブルシュート**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)
 - **実機検証**: [verification-checklist.md](./guides/verification-checklist.md) 6.6.9・6.6.10、`./scripts/deploy/verify-phase12-real.sh`（`resolve-ticket` スモーク含む）

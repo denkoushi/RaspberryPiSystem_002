@@ -12,6 +12,32 @@ async function cleanPartMeasurementTables() {
   await prisma.partMeasurementResult.deleteMany({});
   await prisma.partMeasurementSheet.deleteMany({});
   await prisma.partMeasurementTemplate.deleteMany({});
+  await prisma.partMeasurementVisualTemplate.deleteMany({});
+}
+
+/** 1x1 PNG */
+const MIN_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+function buildMultipartPng(name: string, png: Buffer): { body: Buffer; contentType: string } {
+  const boundary = `----testPmVt${Date.now()}`;
+  const crlf = '\r\n';
+  const parts: Buffer[] = [];
+  const push = (s: string) => parts.push(Buffer.from(s, 'utf8'));
+  push(`--${boundary}${crlf}`);
+  push(`Content-Disposition: form-data; name="name"${crlf}${crlf}${name}${crlf}`);
+  push(`--${boundary}${crlf}`);
+  push(
+    `Content-Disposition: form-data; name="file"; filename="t.png"${crlf}Content-Type: image/png${crlf}${crlf}`
+  );
+  parts.push(png);
+  push(`${crlf}--${boundary}--${crlf}`);
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`
+  };
 }
 
 describe('part-measurement templates API', () => {
@@ -44,6 +70,53 @@ describe('part-measurement templates API', () => {
   it('returns 401 without auth for GET /api/part-measurement/templates', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/part-measurement/templates' });
     expect(response.statusCode).toBe(401);
+  });
+
+  it('returns 401 without auth for GET /api/part-measurement/visual-templates', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/part-measurement/visual-templates' });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('creates visual template with PNG (ADMIN) and binds business template', async () => {
+    const { body, contentType } = buildMultipartPng('図面A', MIN_PNG);
+    const up = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/visual-templates',
+      headers: { ...createAuthHeader(adminToken), 'content-type': contentType },
+      payload: body
+    });
+    expect(up.statusCode).toBe(200);
+    const vid = up.json().visualTemplate.id as string;
+    expect(vid).toBeTruthy();
+    expect(up.json().visualTemplate.drawingImageRelativePath).toMatch(/part-measurement-drawings/);
+
+    const fhincd = `VT-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-V1',
+        name: 'with visual',
+        visualTemplateId: vid,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'A',
+            measurementPoint: 'B',
+            measurementLabel: 'L1',
+            displayMarker: '5'
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const tpl = createRes.json().template;
+    expect(tpl.visualTemplateId).toBe(vid);
+    expect(tpl.visualTemplate?.id).toBe(vid);
+    expect(tpl.items[0].displayMarker).toBe('5');
   });
 
   it('returns 401 without auth for POST /api/part-measurement/templates', async () => {
@@ -84,6 +157,9 @@ describe('part-measurement templates API', () => {
     expect(created.version).toBe(1);
     expect(created.isActive).toBe(true);
     expect(created.items).toHaveLength(1);
+    expect(created.items[0].displayMarker).toBeNull();
+    expect(created.visualTemplateId).toBeNull();
+    expect(created.visualTemplate).toBeNull();
 
     const listRes = await app.inject({
       method: 'GET',

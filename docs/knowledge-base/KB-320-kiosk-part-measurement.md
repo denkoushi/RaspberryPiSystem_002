@@ -9,6 +9,7 @@
 - 照会後、**テンプレートがありません** / 測定表が作れない。
 - バーコードは読めるが **製造orderが解決しない**、または **候補が複数** でどれを選べばよいか分からない。
 - **工程を切り替えたら** テンプレや候補の整合が取れなくなった。
+- 図面付きテンプレなのに **図面が表示されない** / 「図面の読み込みに失敗」。
 
 ## Investigation
 
@@ -19,6 +20,7 @@
 | 資源CD不一致 | スケジュール行の `FSIGENCD` とテンプレの `resourceCd` | Phase2 以降はキーに資源CDが含まれる |
 | 生産スケジュールに行がない | CSV ダッシュボード（生産スケジュール用）に `ProductNo` / `FSEIBAN` が存在するか | 取り込み遅延・別ダッシュボードを見ている |
 | バーコード値が期待と違う | スキャン結果の生文字と解釈された `ProductNo` | プレフィックス付きならトリム規則を確認 |
+| 図面が出ない | 業務テンプレに `visualTemplate` が付いているか、ストレージにファイルが残っているか、`GET /api/storage/part-measurement-drawings/...` が **JWT または有効な x-client-key** で 200 になるか | キオスクは Blob 取得で `x-client-key` を付与する実装。ファイル欠損は再アップロード |
 
 ## Root cause（典型）
 
@@ -49,5 +51,5 @@
 ## References
 
 - Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)
-- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)
+- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md) / [ADR-20260330-part-measurement-visual-template.md](../decisions/ADR-20260330-part-measurement-visual-template.md)
 - 沉浸式 allowlist: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)
