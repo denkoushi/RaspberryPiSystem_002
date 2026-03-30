@@ -174,6 +174,16 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | レビュー後もギャラリーに載らない | GOOD 以外にした、非同期インデックス失敗 | API ログの `Photo tool similarity gallery index failed`。JPEG 読み込み・埋め込み HTTP の応答次元を確認 |
 | マイグレーションエラー | 既存 DB が vector 拡張なし | pgvector 同梱イメージへ切替えたうえで `prisma migrate deploy` |
 
+### 運用知見・人レビューとギャラリー（2026-03-30）
+
+- **CONFIRMED**: 人レビュー PATCH は **VLM をファインチューニングしない**（`photoToolDisplayName` は VLM ジョブが書き込むのみ。レビューでモデル重みは更新されない）。
+- **CONFIRMED**: GOOD ギャラリーへ載せる **`canonicalLabel` は `photoToolHumanDisplayName` を最優先**し、空なら `photoToolDisplayName`（VLM）、さらに欠落時は `撮影mode`（`PhotoToolGalleryIndexService.syncFromSnapshot`）。
+- **運用（推奨）**: **正解が分かっている**なら `上書き表示名` に正解を入れ、**`品質=GOOD`** で保存すると、キオスク表示（人 > VLM）とギャラリーの教師ラベルが一致し、**類似候補の母集団が健全に育つ**。逆に **VLM が誤りで上書き名が空のまま `GOOD`** にすると、ギャラリーに **誤った VLM ラベルが canonical として入りうる**（避ける）。
+- **意味の割り切り**: 画面の **品質ドロップダウン**は「VLM が正しかった」だけでなく、**「この貸出を GOOD 教師としてギャラリーに載せてよいか」** の判定にも使う。厳密な VLM 単体の成績表にしたい場合は別集計（将来拡張）が必要。
+- **類似候補 API の `score`**: 応答の `score` は **`1 - cosineDistance`**（pgvector のコサイン距離 `<=>`）。管理 UI では距離上限 **`PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE`**（既定 **0.22**）までを表示対象にする。
+- **シャドー補助との差**: シャドーは **`PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`**（既定 **0.14**）などで **より厳しく**近傍を切る。よって **類似候補では正解が上位に来るのに、シャドー ログが増えない**ことは設計上不整合ではない（閾値と件数・収束条件が異なる）。
+- **観測例（管理コンソール）**: VLM が誤るケースでも、上位候補が同一正解ラベルに揃う（例: 「ラジオペンチ」が score ~0.96 で上位 2 件）。これは **GOOD ギャラリー＋埋め込み検索が人手補助に効いている**サインとして扱える。
+
 ### VLM シャドー補助（GOOD 類似・条件付き・2026-03-31）
 
 - **目的**: 工場固有工具向けに、人レビュー **GOOD** の近傍が**厳しめ条件で収束**するときだけ、VLM に参考ラベルを短く渡した**2 回目推論**を走らせ、**ログで `currentLabel`（従来1回目）と `assistedLabel` を比較**する。`Loan.photoToolDisplayName` は **1 回目のまま**（本番ラベルは変えない）。
@@ -193,6 +203,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 | 症状 | 想定原因 | 対処 |
 |------|----------|------|
+| 類似候補は良いのに shadow が増えない | **管理 UI 表示**は `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE`（広め）、シャドーは `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（狭め）等で **別閾値**。近傍数・ラベル収束条件も追加フィルタ | 期待どおりの可能性大。シャドー観測を増やすなら env を段階調整し、別 ADR で根拠を残す |
 | ログに shadow が一切出ない | シャドー OFF、埋め込み OFF、または補助条件未満（近傍不足・canonical 不一致・距離超過） | `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` と `PHOTO_TOOL_EMBEDDING_ENABLED` を確認。debug ログで `skipped` の `reason` を見る |
 | VLM 負荷が急増 | シャドー ON で対象ローンが多い | しきい値を厳しくするか、シャドーを限定時間のみ ON。別 ADR で active 化を検討する前にログ評価 |
 | 本番ラベルが変わった | バグまたは別機能 | 本仕様では `photoToolDisplayName` は 1 回目のみ保存。挙動が違う場合はデプロイ版コミットと `PhotoToolLabelingService` を確認 |

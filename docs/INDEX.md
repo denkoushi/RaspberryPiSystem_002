@@ -41,6 +41,10 @@
 - **判断記録（類似候補）**: [ADR-20260330](./decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)（pgvector + 外部埋め込み HTTP、管理画面のみ候補表示） / [ADR-20260331](./decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)（VLM への条件付き GOOD 類似補助・**シャドーモード**先行）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-03-30）
+
+- **写真持出: 人レビュー・GOOD ギャラリー・類似候補 vs シャドー閾値の運用知見をドキュメント化**（コード変更なし）: レビューは **VLM をファインチューニングしない**こと、`GOOD` 時の **canonicalLabel（人 > VLM）**、**誤 VLM を上書きなし `GOOD` で載せない**推奨、**類似候補 API** と **シャドー補助** の **別 env 閾値**による挙動差。**参照**: [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（運用知見節）/ [photo-loan.md](./modules/tools/photo-loan.md) / [photo-tool-similarity-gallery.md](./runbooks/photo-tool-similarity-gallery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-03-29）
 
 - **写真持出 埋め込み本番配線（Ansible）・GOOD バックフィル・シャドー観測 Runbook**: ブランチ `feat/photo-tool-embedding-rollout-shadow-eval` を **`main` にマージ**（コード・Ansible・Runbook 一式）。**本番反映の正本は Pi5 API** のため、標準手順どおり **`update-all-clients.sh` + `--limit raspberrypi5`** でデプロイ可能（Pi4 複数台は今回の機能に必須ではない）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**。**参照**: [photo-tool-similarity-gallery.md](./runbooks/photo-tool-similarity-gallery.md) / [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。

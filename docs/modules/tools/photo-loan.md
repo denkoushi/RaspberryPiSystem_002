@@ -2,7 +2,7 @@
 title: 写真撮影持出機能 - モジュール仕様
 tags: [工具管理, 写真撮影, カメラ, 持出機能]
 audience: [開発者, アーキテクト]
-last-verified: 2026-03-29
+last-verified: 2026-03-30
 related: [../requirements/system-requirements.md, ../../decisions/003-camera-module.md, ./README.md]
 category: modules
 update-frequency: medium
@@ -25,6 +25,8 @@ update-frequency: medium
 - **UI表示**: 持出一覧・返却画面で写真サムネイルを表示。1行目の工具名は **人レビュー > VLM > `撮影mode`**
 
 **実機回帰（2026-03-29）**: デプロイ後に `./scripts/deploy/verify-phase12-real.sh` で **PASS 34/0/0**。その後、Ubuntu 埋め込み `/embed` の **512 次元応答**、Pi5 での **GOOD バックフィル 42 件**、シャドー ON の実機 1 件で **`Photo tool label shadow assist inference completed`**（`currentLabel=assistedLabel=マウス`）を確認した（[KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
+
+**運用知見（2026-03-30、ドキュメント反映）**: 人レビューは **VLM を再学習させない**。`品質=GOOD` は **ギャラリー登録の許可**でもあり、`canonicalLabel` は **`上書き表示名` > VLM 表示名**（詳細は [KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「運用知見・人レビューとギャラリー」）。類似候補 API の表示閾値とシャドー補助の閾値は **別 env**（前者は広め・後者は厳しめ既定）のため、**候補は正しくてもシャドーが発火しない**ことがある。
 
 ## 機能要件（FR-009）
 
@@ -65,6 +67,8 @@ update-frequency: medium
 7. **人レビュー（フェーズ1）**
    - 管理画面 **`/admin/photo-loan-label-reviews`**（ルート名 `photo-loan-label-reviews`）から、VLM 済みの写真持出を一覧し、品質と任意の人間表示名を送信する
    - `PATCH /api/tools/loans/:loanId/photo-label-review`（ADMIN/MANAGER）で `photoToolHumanQuality` / `photoToolHumanReviewedAt` / `photoToolHumanReviewedByUserId` / 任意で `photoToolHumanDisplayName` を更新
+   - **ギャラリー連携**: `photoToolHumanQuality === GOOD` のときのみ `photo_tool_similarity_gallery` を非同期 upsert。`canonicalLabel` は **人の上書き表示名があればそれ**、なければ **VLM の `photoToolDisplayName`**（いずれも欠けると `撮影mode` 系フォールバック。実装は `PhotoToolGalleryIndexService`）。
+   - **運用上の推奨**: 正解が判明しているなら **上書き表示名を必ず入れてから `GOOD`** とし、誤 VLM を **上書きなし `GOOD`** で載せない（ノイズ教師の混入防止）。迷う場合は `MARGINAL`/`BAD` でギャラリーから外す判断も可（要件は運用側で固定）。
 
 ## データ構造
 
