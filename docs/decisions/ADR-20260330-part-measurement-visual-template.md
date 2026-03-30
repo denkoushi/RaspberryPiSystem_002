@@ -30,6 +30,12 @@ accepted
 - 良い: 責務分離（業務キー vs 見たせ）、図面の再利用、表面/裏面は資源CD別テンプレ＋別 visual で表現可能。
 - 悪い: Prisma マイグレーションと API・画面の追加が必要。`<img src>` では `x-client-key` を付けられないため、**Blob URL 取得**などクライアント側の取り回しが必要。
 
+## Verification
+
+- **本番デプロイ（2026-03-30）**: ブランチ `feat/part-measurement-visual-template`。[deployment.md](../guides/deployment.md) に従い `update-all-clients.sh` + **`--limit` 単台** + `--detach --follow` で **Pi5 → Pi4×4**（Pi3 除外）。Pi5 上 `logs/deploy/*.status.json` で各 run **`state: success`** を確認。
+- **実機自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 117s・Mac / Tailscale）。既存の `resolve-ticket` スモーク（`candidates`・無キー **401**）で API 契約の回帰を確認。
+- **手動（推奨）**: 管理で visual を登録し業務テンプレに紐付けたうえで、キオスクで図面表示・**図番号（表示用）**列見出しを目視確認（[kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)）。
+
 ## References
 
 - Phase1/2 ADR: [ADR-20260329-part-measurement-kiosk-record.md](./ADR-20260329-part-measurement-kiosk-record.md), [ADR-20260401-part-measurement-phase2-resource-cd.md](./ADR-20260401-part-measurement-phase2-resource-cd.md)
