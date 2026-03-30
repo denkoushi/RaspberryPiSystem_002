@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { logger } from '../../../lib/logger.js';
 import { env } from '../../../config/env.js';
 import { getInferenceRuntime } from '../../inference/inference-runtime.js';
+import { getLocalLlmRuntimeController } from '../../inference/runtime/get-local-llm-runtime-controller.js';
 import { createHttpPhotoToolImageEmbeddingAdapter } from './http-photo-tool-image-embedding.adapter.js';
 import { PgPhotoToolSimilarityGalleryRepository } from './pg-photo-tool-similarity-gallery.repository.js';
 import { PhotoToolLabelAssistService } from './photo-tool-label-assist.service.js';
@@ -14,7 +15,8 @@ const log = logger.child({ component: 'photoToolLabelScheduler' });
 
 export class PhotoToolLabelScheduler {
   private task: cron.ScheduledTask | null = null;
-  private running = false;
+  /** 連続する runOnce を直列化し、写真登録直後のキックと cron が競合しても取りこぼさない */
+  private runChain: Promise<void> = Promise.resolve();
   private readonly service: PhotoToolLabelingService;
   private readonly schedule: string;
   private readonly batchSize: number;
@@ -39,6 +41,7 @@ export class PhotoToolLabelScheduler {
         labelAssist,
         shadowAssistEnabled: () =>
           env.PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED && env.PHOTO_TOOL_EMBEDDING_ENABLED,
+        localLlmRuntime: getLocalLlmRuntimeController(),
       });
     }
   }
@@ -69,16 +72,14 @@ export class PhotoToolLabelScheduler {
   }
 
   async runOnce(): Promise<void> {
-    if (this.running) {
-      return;
-    }
-    this.running = true;
-    try {
-      const staleBefore = new Date(Date.now() - this.staleMinutes * 60 * 1000);
+    const staleBefore = new Date(Date.now() - this.staleMinutes * 60 * 1000);
+    const work = this.runChain.then(async () => {
       await this.service.runBatch({ batchSize: this.batchSize, staleBefore });
-    } finally {
-      this.running = false;
-    }
+    });
+    this.runChain = work.catch((error) => {
+      log.error({ err: error }, '[PhotoToolLabelScheduler] run failed');
+    });
+    await work;
   }
 }
 

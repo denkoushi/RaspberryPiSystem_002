@@ -156,4 +156,25 @@ describe('PhotoToolLabelingService', () => {
     expect(labelAssist.evaluateForShadow).not.toHaveBeenCalled();
     expect(vision.complete).toHaveBeenCalledTimes(1);
   });
+
+  it('calls localLlmRuntime ensureReady before vision and release after', async () => {
+    const localLlmRuntime = {
+      ensureReady: vi.fn().mockResolvedValue(undefined),
+      release: vi.fn().mockResolvedValue(undefined),
+      getMode: () => 'on_demand' as const,
+    };
+    const svc = new PhotoToolLabelingService({
+      repo,
+      visionImageSource,
+      vision,
+      isVisionConfigured: () => true,
+      localLlmRuntime,
+    });
+    await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
+    expect(localLlmRuntime.ensureReady).toHaveBeenCalledWith('photo_label');
+    expect(localLlmRuntime.release).toHaveBeenCalledWith('photo_label');
+    expect(localLlmRuntime.ensureReady).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(vision.complete)).toHaveBeenCalledTimes(1);
+    expect(localLlmRuntime.release).toHaveBeenCalledTimes(1);
+  });
 });

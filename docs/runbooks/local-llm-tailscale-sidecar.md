@@ -10,6 +10,7 @@ related:
   - ../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env
   - ../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
   - ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
+  - ../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md
 category: runbooks
 update-frequency: medium
 ---
@@ -21,6 +22,35 @@ update-frequency: medium
 - Ubuntu ホストの実験環境とは分離して、本システム専用 LocalLLM だけを tailnet に参加させる
 - Pi5 だけが LocalLLM に到達できる構成を維持する
 - auth key と共有トークンの露出を防ぎつつ、再起動後も復旧できる形で運用する
+
+## オンデマンド llama-server（VRAM を ComfyUI 等と分ける）
+
+**判断**: [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)
+
+常駐 `llama-server` が GPU メモリを専有すると、同一マシンで ComfyUI が OOM になりやすい。次の構成で **推論が必要なときだけ** `llama-server` を起動し、ジョブ後に停止できる。
+
+### Ubuntu 側
+
+1. リポジトリの [scripts/ubuntu-local-llm-runtime/control-server.mjs](../../scripts/ubuntu-local-llm-runtime/control-server.mjs) を Ubuntu に配置し、`LLM_RUNTIME_CONTROL_TOKEN`（十分長いランダム値）を設定する。
+2. `localllm` ユーザーで `node control-server.mjs` を **127.0.0.1:39090**（既定）で起動する（systemd 推奨）。
+3. **nginx**（または別リバースプロキシ）で、Tailnet から到達可能な URL へ `POST /start`・`POST /stop` をプロキシする。ACL は **Pi5（tag:server）からのみ**等に限定する。
+4. 制御サーバは `docker compose start|stop llama-server` を実行する。`COMPOSE_DIR` は既定 `/home/localllm/local-llm-system/compose`。
+
+### Pi5 API（`infrastructure/docker/.env` / Ansible `docker.env.j2`）
+
+- `LOCAL_LLM_RUNTIME_MODE=on_demand`
+- `LOCAL_LLM_RUNTIME_CONTROL_START_URL` … プロキシ後の **フル URL**（例: `https://ubuntu…/runtime/llm/start`）。本文は JSON、ヘッダ `X-Runtime-Control-Token` 必須。
+- `LOCAL_LLM_RUNTIME_CONTROL_STOP_URL` … 同上（stop）
+- `LOCAL_LLM_RUNTIME_CONTROL_TOKEN` … Ubuntu の `LLM_RUNTIME_CONTROL_TOKEN` と一致（未設定時は `LOCAL_LLM_SHARED_TOKEN` を流用可）
+- `LOCAL_LLM_RUNTIME_HEALTH_BASE_URL` … 省略時は `LOCAL_LLM_BASE_URL`（`/healthz` 待ちに使用）
+
+**補助スクリプトのパス**: `POST /start` と `POST /stop`（ルート直下）。プロキシで別パスにマップする場合は、Pi5 の URL をそのパスに合わせる。
+
+### 挙動（要約）
+
+- **写真持出**: 登録 API 成功後にラベルバッチを非同期キック。各ローン処理の前後で ensure/release（参照カウントあり）。
+- **要領書**: `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` かつ推論設定が有効なとき、**深夜 OCR バッチ**の前後で ensure/release。
+- **既定**: `LOCAL_LLM_RUNTIME_MODE=always_on` のとき従来どおり（制御 HTTP は使わない）。
 
 ## 現在の構成（2026-03-28）
 

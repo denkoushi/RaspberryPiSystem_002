@@ -2,6 +2,7 @@ import cron from 'node-cron';
 
 import { logger } from '../../lib/logger.js';
 import { KioskDocumentAlertService } from './kiosk-document-alert.service.js';
+import { withDocumentSummaryOnDemandRuntime } from './kiosk-document-summary-on-demand-runtime.js';
 import { PrismaKioskDocumentRepository } from './adapters/prisma-kiosk-document.repository.js';
 import { createDefaultKioskDocumentProcessingService } from './kiosk-document-processing.factory.js';
 import { KioskDocumentProcessingService } from './kiosk-document-processing.service.js';
@@ -62,19 +63,22 @@ export class KioskDocumentOcrScheduler {
   async runOnce(): Promise<void> {
     if (this.running) return;
     this.running = true;
+
     try {
-      const pending = await this.service.listPendingProcessing(DEFAULT_BATCH_SIZE);
-      for (const doc of pending) {
-        try {
-          // FIFO / 1並列
-          // eslint-disable-next-line no-await-in-loop
-          await this.processingService.processDocumentById(doc.id, { maxRetry: 1 });
-        } catch (error) {
-          logger.warn({ err: error, documentId: doc.id }, '[KioskDocumentOcrScheduler] document process failed');
-          // eslint-disable-next-line no-await-in-loop
-          await this.alertService.notifyPermanentFailure(doc.id, error instanceof Error ? error.message : String(error));
+      await withDocumentSummaryOnDemandRuntime(async () => {
+        const pending = await this.service.listPendingProcessing(DEFAULT_BATCH_SIZE);
+        for (const doc of pending) {
+          try {
+            // FIFO / 1並列
+            // eslint-disable-next-line no-await-in-loop
+            await this.processingService.processDocumentById(doc.id, { maxRetry: 1 });
+          } catch (error) {
+            logger.warn({ err: error, documentId: doc.id }, '[KioskDocumentOcrScheduler] document process failed');
+            // eslint-disable-next-line no-await-in-loop
+            await this.alertService.notifyPermanentFailure(doc.id, error instanceof Error ? error.message : String(error));
+          }
         }
-      }
+      });
     } finally {
       this.running = false;
     }

@@ -46,6 +46,15 @@ vi.mock('../../../lib/logger.js', () => ({
   },
 }));
 
+const { mockPhotoLabelRunOnce } = vi.hoisted(() => ({
+  mockPhotoLabelRunOnce: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../photo-tool-label/photo-tool-label.scheduler.js', () => ({
+  getPhotoToolLabelScheduler: vi.fn(() => ({
+    runOnce: mockPhotoLabelRunOnce,
+  })),
+}));
+
 describe('LoanService', () => {
   let loanService: LoanService;
   let mockItemService: ItemService;

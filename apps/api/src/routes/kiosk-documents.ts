@@ -13,6 +13,7 @@ import { PrismaKioskDocumentRepository } from '../services/kiosk-documents/adapt
 import { KioskDocumentGmailIngestionService } from '../services/kiosk-documents/kiosk-document-gmail-ingestion.service.js';
 import { createDefaultKioskDocumentProcessingService } from '../services/kiosk-documents/kiosk-document-processing.factory.js';
 import { getKioskDocumentOcrScheduler } from '../services/kiosk-documents/kiosk-document-ocr.scheduler.js';
+import { withDocumentSummaryOnDemandRuntime } from '../services/kiosk-documents/kiosk-document-summary-on-demand-runtime.js';
 import type { KioskDocumentDetail } from '../services/kiosk-documents/kiosk-document.service.js';
 import { KioskDocumentService } from '../services/kiosk-documents/kiosk-document.service.js';
 import { isValidKioskDocumentNumber } from '../services/kiosk-documents/kiosk-document-number.js';
@@ -278,7 +279,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
 
   app.post('/kiosk-documents/:id/reprocess', { preHandler: [canManage] }, async (request) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    await processingService.processDocumentById(id, { maxRetry: 1 });
+    await withDocumentSummaryOnDemandRuntime(() => processingService.processDocumentById(id, { maxRetry: 1 }));
     const detail = await service.getDetailForAdmin(id);
     if (!detail) {
       throw new ApiError(404, '要領書が見つかりません', undefined, 'KIOSK_DOC_NOT_FOUND');

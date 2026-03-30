@@ -12,6 +12,7 @@ import type {
 } from './photo-tool-label-ports.js';
 import type { PhotoToolLabelAssistPort } from './photo-tool-label-assist.port.js';
 import { buildShadowAssistedUserPrompt } from './photo-tool-label-prompt-builder.js';
+import type { LocalLlmRuntimeControllerPort } from '../../inference/runtime/local-llm-runtime-control.port.js';
 
 export const DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT =
   '画像の中で最も目立つ工具を1つだけ選び、日本語の短い工具名だけを答えてください。説明文や句読点は不要です。';
@@ -29,6 +30,8 @@ export type PhotoToolLabelingServiceDeps = {
   labelAssist?: PhotoToolLabelAssistPort | null;
   /** true のときのみシャドー推論を実行（埋め込み・フラグの論理は呼び出し側で統一してよい） */
   shadowAssistEnabled?: () => boolean;
+  /** on_demand 時: 推論前後に llama-server 起動・停止を挟む（未指定は制御なし） */
+  localLlmRuntime?: LocalLlmRuntimeControllerPort | null;
 };
 
 export class PhotoToolLabelingService {
@@ -71,7 +74,12 @@ export class PhotoToolLabelingService {
     const started = performance.now();
     let ok = false;
     let responseCharLen = 0;
+    let runtimeHeld = false;
     try {
+      if (this.deps.localLlmRuntime && this.deps.isVisionConfigured()) {
+        await this.deps.localLlmRuntime.ensureReady('photo_label');
+        runtimeHeld = true;
+      }
       const imageBytes = await this.deps.visionImageSource.readImageBytesForVision(photoUrl);
       const { rawText } = await this.deps.vision.complete({
         userText: this.visionUserPrompt(),
@@ -98,6 +106,11 @@ export class PhotoToolLabelingService {
       log.warn({ err, loanId }, 'Photo tool label inference failed');
       await this.deps.repo.releaseClaim(loanId);
     } finally {
+      if (runtimeHeld && this.deps.localLlmRuntime) {
+        await this.deps.localLlmRuntime.release('photo_label').catch((releaseErr) => {
+          log.warn({ err: releaseErr, loanId }, 'Photo tool label runtime release failed');
+        });
+      }
       const durationMs = Math.round(performance.now() - started);
       log.info(
         {

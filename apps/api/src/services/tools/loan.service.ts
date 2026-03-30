@@ -10,6 +10,7 @@ import { resolveClientDeviceId } from '../clients/client-device-resolution.servi
 import { PhotoStorage } from '../../lib/photo-storage.js';
 import sharp from 'sharp';
 import { cameraConfig } from '../../config/camera.config.js';
+import { getPhotoToolLabelScheduler } from './photo-tool-label/photo-tool-label.scheduler.js';
 
 export interface BorrowInput {
   itemTagUid: string;
@@ -420,6 +421,12 @@ export class LoanService {
       },
       'Photo borrow completed successfully',
     );
+
+    void getPhotoToolLabelScheduler()
+      .runOnce()
+      .catch((err) => {
+        logger.warn({ err, loanId: loan.id }, 'Photo tool label scheduler kick after borrow failed');
+      });
 
     return loan as LoanWithRelations;
   }
