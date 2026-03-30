@@ -79,7 +79,8 @@ export class KioskDocumentProcessingService {
         }
         const [summaryCandidate1, summaryCandidate2, summaryCandidate3] = mergeSummaryCandidatesWithLlmFirst(
           normalizedText,
-          llmSummary
+          llmSummary,
+          labels.summaryCandidates
         );
 
         const previous = await this.repo.findById(documentId);

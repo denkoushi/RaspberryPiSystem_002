@@ -14,9 +14,10 @@ function distinctEnough(a: string, b: string): boolean {
  */
 export function mergeSummaryCandidatesWithLlmFirst(
   normalizedText: string,
-  llmSummary: string | null
+  llmSummary: string | null,
+  mechanicalCandidates?: [string?, string?, string?]
 ): [string | undefined, string | undefined, string | undefined] {
-  const [m1, m2, m3] = buildSummaryCandidates(normalizedText);
+  const [m1, m2, m3] = mechanicalCandidates ?? buildSummaryCandidates(normalizedText);
   if (!llmSummary || llmSummary.trim().length === 0) {
     return [m1, m2, m3];
   }
