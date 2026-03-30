@@ -312,7 +312,13 @@ PI4_ROBO_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_U
 check_dual_active_lines "Pi4 robodrill01 kiosk/status-agent" "${PI4_ROBO_STATUS}"
 
 PI4_FJV_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_FJV_USER}@${PI4_FJV_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
-check_dual_active_lines "Pi4 fjv60-80 kiosk/status-agent" "${PI4_FJV_STATUS}"
+if printf "%s" "${PI4_FJV_STATUS}" | grep -Eqi 'timed out|No route to host|Connection refused|Connection timed out'; then
+  log_warn "Pi4 fjv60-80 kiosk/status-agent" "Pi5 から ${PI4_FJV_USER}@${PI4_FJV_IP} へ SSH 不可。deploy-status（上段）が PASS なら API 経路は生きている可能性あり。電源・Tailscale・LAN（all.yml の raspi4_fjv60_80_ip）を現場確認"
+elif printf "%s" "${PI4_FJV_STATUS}" | grep -Ec '^active$' >/dev/null 2>&1 && [ "$(printf "%s\n" "${PI4_FJV_STATUS}" | grep -Ec '^active$' || true)" -ge 2 ]; then
+  log_pass "Pi4 fjv60-80 kiosk/status-agent"
+else
+  log_fail "Pi4 fjv60-80 kiosk/status-agent" "${PI4_FJV_STATUS}"
+fi
 
 PI4_STONEBASE_STATUS="$(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no "${PI5_USER}@${PI5_IP}" "ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${PI4_STONEBASE_USER}@${PI4_STONEBASE_IP} 'systemctl is-active kiosk-browser.service status-agent.timer' 2>&1" || true)"
 if printf "%s" "${PI4_STONEBASE_STATUS}" | grep -Eqi 'No route to host|timed out|Connection refused'; then

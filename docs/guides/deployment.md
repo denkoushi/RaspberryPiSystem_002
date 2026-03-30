@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-03-29（`update-all-clients.sh` の多重起動ロック仕様を更新）
+最終更新: 2026-03-30（ロック硬質化の実機検証・Phase12 注記を [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) と整合）
 
 ## 概要
 
@@ -744,6 +744,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
    - **リモートロック（Pi5）**: `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock` に JSON（`runId` / `runPid` / `state` / `runner`）を書き、Pi5 上での多重起動を防止
    - stale 判定は **`runPid` 生存確認（`kill -0`）+ `ansible-playbook` 実行中確認 + 経過時間（既定 2400 秒）** で実施
    - ロック取得失敗時はデプロイを中断（エラーコード3）
+   - 手動でロックを消す場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の **`runPid` 非生存を確認してから** の手順に従うこと
 
 3. **リソースガード**:
    - デプロイ前に各ホストのリソースをチェック
@@ -777,7 +778,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - ✅ Pi5でのデプロイ成功を確認（2026-01-18）
 - ✅ Pi4でのデプロイ成功を確認（2026-01-19、[KB-182](../knowledge-base/infrastructure/ansible-deployment.md#kb-182-pi4デプロイ検証結果デプロイ安定化機能の動作確認)参照）
 - ✅ プリフライト・ロック・リソースガードの動作を確認（Pi5、Pi4）
-- ⚠️ リトライ機能、並行実行時のロックは未検証（実運用では問題なく動作する見込み）
+- ✅ 並行実行ロック（2026-03-30）: ローカル + Pi5 JSON ロック・stale 判定強化を Pi5 のみデプロイで踏襲確認。`./scripts/deploy/verify-phase12-real.sh` **PASS 35 / WARN 2 / FAIL 0**（FJV が Pi5 から SSH 不可のとき WARN・[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記）
+- ⚠️ リトライ機能は未検証（実運用では問題なく動作する見込み）
 - ⚠️ Slack通知は「alerts生成」までは確認済みだが、Slack配送（API Dispatcher）設定の有無に依存するため、Slackアプリ着弾は要確認
 
 詳細は [KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) を参照。
