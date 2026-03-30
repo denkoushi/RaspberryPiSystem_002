@@ -32,19 +32,20 @@ update-frequency: medium
 ### Ubuntu 側
 
 1. リポジトリの [scripts/ubuntu-local-llm-runtime/control-server.mjs](../../scripts/ubuntu-local-llm-runtime/control-server.mjs) を Ubuntu に配置し、`LLM_RUNTIME_CONTROL_TOKEN`（十分長いランダム値）を設定する。
-2. `localllm` ユーザーで `node control-server.mjs` を **127.0.0.1:39090**（既定）で起動する（systemd 推奨）。
-3. **nginx**（または別リバースプロキシ）で、Tailnet/LAN 上の待受から `POST /start`・`POST /stop` を `127.0.0.1:39090`（control-server）へプロキシする。**設定例**: [`scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example`](../../scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example)（待受例: `39091`）。Tailscale ACL に **`tag:server -> tag:llm: tcp:39091`**（または選んだポート）を追加し、既存 `38081` の推論用 ACL と別に扱う。
-4. 制御サーバは `docker compose start|stop llama-server` を実行する。`COMPOSE_DIR` は既定 `/home/localllm/local-llm-system/compose`。
+2. `localllm` ユーザーで `node control-server.mjs` を起動する。`local-llm-system` の `nginx` コンテナから受けるため、`LLM_RUNTIME_LISTEN_HOST=0.0.0.0` を指定して **39090/tcp** をホスト上で待たせる（systemd 推奨）。
+3. `/home/localllm/local-llm-system/config/runtime.env` に `LLM_RUNTIME_CONTROL_TOKEN=...` を追加し、`compose/compose.yaml` の `nginx` サービスで `envsubst` 対象に **`LLM_RUNTIME_CONTROL_TOKEN`** を加える。
+4. `/home/localllm/local-llm-system/config/nginx/default.conf.template` に `POST /start`・`POST /stop` を追加し、Docker bridge gateway（例: `172.19.0.1`）経由で `http://172.19.0.1:39090/start|stop` へプロキシする。**location 例**: [`scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example`](../../scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example)
+5. `sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker compose up -d --force-recreate nginx'` で `compose-nginx-1` を再作成する。制御サーバは `docker compose start|stop llama-server` を実行する。`COMPOSE_DIR` は既定 `/home/localllm/local-llm-system/compose`。
 
 ### Pi5 API（`infrastructure/docker/.env` / Ansible `docker.env.j2`）
 
 - `LOCAL_LLM_RUNTIME_MODE=on_demand`
-- `LOCAL_LLM_RUNTIME_CONTROL_START_URL` … プロキシ後の **フル URL**（例: `https://ubuntu…/runtime/llm/start`）。本文は JSON、ヘッダ `X-Runtime-Control-Token` 必須。
+- `LOCAL_LLM_RUNTIME_CONTROL_START_URL` … **`LOCAL_LLM_BASE_URL` と同じ tailnet nginx** に載せた **`/start`** のフル URL（例: `http://100.107.223.92:38081/start`）。本文は JSON、ヘッダ `X-Runtime-Control-Token` 必須。
 - `LOCAL_LLM_RUNTIME_CONTROL_STOP_URL` … 同上（stop）
 - `LOCAL_LLM_RUNTIME_CONTROL_TOKEN` … Ubuntu の `LLM_RUNTIME_CONTROL_TOKEN` と一致（未設定時は `LOCAL_LLM_SHARED_TOKEN` を流用可）
 - `LOCAL_LLM_RUNTIME_HEALTH_BASE_URL` … 省略時は `LOCAL_LLM_BASE_URL`（`/healthz` 待ちに使用）
 
-**補助スクリプトのパス**: `POST /start` と `POST /stop`（ルート直下）。プロキシで別パスにマップする場合は、Pi5 の URL をそのパスに合わせる。
+**補助スクリプトのパス**: `POST /start` と `POST /stop`（ルート直下）。**推論本体と同じ `38081` に共存**させる。
 
 ### 挙動（要約）
 
@@ -62,9 +63,10 @@ update-frequency: medium
 - ノード名: `ubuntu-local-llm-system`
 - Tailscale IP: `100.107.223.92`
 - Tailscale タグ: `tag:llm`
-- ACL: `tag:server -> tag:llm: tcp:38081`（推論）＋オンデマンド制御で別ポートを使う場合は **`tcp:39091`** 等を追加
+- ACL: `tag:server -> tag:llm: tcp:38081`（推論 `/v1/*`・埋め込み `/embed`・オンデマンド `/start` `/stop` を同じ tailnet nginx で受ける）
 - 外部入口: `nginx` が `38081`
 - 内部推論: `llama-server` が `127.0.0.1:38082`
+- 内部制御: `control-server.mjs` が `0.0.0.0:39090`、`compose-nginx-1` から Docker bridge gateway 経由で到達
 - API 認証: `X-LLM-Token`
 - 専用ユーザー: `localllm`
 - 既存の手動実験用 `~/llama.cpp` + `8081` は別系統として残す

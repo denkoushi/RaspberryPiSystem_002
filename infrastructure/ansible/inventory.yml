@@ -36,7 +36,7 @@ all:
           api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"
           api_local_llm_model: "Qwen_Qwen3.5-9B-Q4_K_M.gguf"
           api_local_llm_timeout_ms: "60000"
-          # llama-server オンデマンド（Ubuntu: control-server.mjs + nginx 例 scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example）
+          # llama-server オンデマンド（Ubuntu: control-server.mjs + local-llm-system/nginx の /start /stop）
           # 制御トークンは vault_api_local_llm_runtime_control_token で分離可。未設定なら API は LOCAL_LLM_SHARED_TOKEN を流用
           api_local_llm_runtime_mode: "on_demand"
           api_local_llm_runtime_control_start_url: "http://{{ ubuntu_local_llm_host }}:{{ ubuntu_local_llm_inference_nginx_port }}/start"

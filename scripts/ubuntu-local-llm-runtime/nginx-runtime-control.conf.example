@@ -1,26 +1,31 @@
-# Ubuntu LocalLLM: Pi5 から llama-server 起停だけを受ける待受の例
-# - control-server.mjs は既定で 127.0.0.1:39090（POST /start, /stop）
-# - この server ブロックを tailnet 側に開き、Tailscale ACL で tag:server -> tag:llm: tcp:39091 を追加する
-# - Ansible の api_local_llm_runtime_control_*_url とポートを一致させる
+# `local-llm-system/config/nginx/default.conf.template` に足す location 例
+# - compose-nginx-1 は `network_mode: service:tailscale`
+# - control-server.mjs はホスト側で `LLM_RUNTIME_LISTEN_HOST=0.0.0.0` + `39090` を待受
+# - `172.19.0.1` は Docker bridge gateway の例。tailscale コンテナ内の `ip route` で確認して合わせる
+# - compose.yaml の nginx `envsubst` 対象に `LLM_RUNTIME_CONTROL_TOKEN` を追加すること
 
-server {
-    listen 39091;
-    listen [::]:39091;
-    server_name _;
-
-    location = /start {
-        proxy_pass http://127.0.0.1:39090/start;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
-        proxy_read_timeout 120s;
+location = /start {
+    if ($http_x_runtime_control_token != "${LLM_RUNTIME_CONTROL_TOKEN}") {
+        return 403;
     }
 
-    location = /stop {
-        proxy_pass http://127.0.0.1:39090/stop;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
-        proxy_read_timeout 120s;
+    proxy_pass http://172.19.0.1:39090/start;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location = /stop {
+    if ($http_x_runtime_control_token != "${LLM_RUNTIME_CONTROL_TOKEN}") {
+        return 403;
     }
+
+    proxy_pass http://172.19.0.1:39090/stop;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }

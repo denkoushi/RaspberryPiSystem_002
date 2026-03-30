@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
  * Ubuntu LocalLLM 用: llama-server のみ起動・停止する最小 HTTP 制御サーバ。
- * 127.0.0.1 のみで待ち受け、nginx 等からリバースプロキシして Pi5 から到達させる。
+ * `local-llm-system` の docker nginx からプロキシする場合は
+ * `LLM_RUNTIME_LISTEN_HOST=0.0.0.0` で待ち受ける。
  *
  * 環境変数:
  *   LLM_RUNTIME_CONTROL_TOKEN  必須（Pi5 の LOCAL_LLM_RUNTIME_CONTROL_TOKEN と一致）
  *   LLM_RUNTIME_COMPOSE_DIR    既定: /home/localllm/local-llm-system/compose
- *   LLM_RUNTIME_LISTEN_HOST    既定: 127.0.0.1
+ *   LLM_RUNTIME_LISTEN_HOST    既定: 127.0.0.1（docker nginx 経由時は 0.0.0.0）
  *   LLM_RUNTIME_LISTEN_PORT    既定: 39090
  */
 import http from 'node:http';

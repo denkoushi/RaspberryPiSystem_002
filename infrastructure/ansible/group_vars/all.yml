@@ -53,7 +53,6 @@ docker_server_ip: "{{ server_ip }}"
 # （runbook: docs/runbooks/local-llm-tailscale-sidecar.md）
 ubuntu_local_llm_host: "100.107.223.92"
 ubuntu_local_llm_inference_nginx_port: "38081"
-api_local_llm_runtime_control_listen_port: "39091"
 
 # Tailscale設定（通常運用で有効）
 tailscale_enabled: true
