@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-30) **部品測定 visual template（図面再利用・`displayMarker`）実装・本番順次デプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**: ブランチ `feat/part-measurement-visual-template`。マイグレーション `20260330140000_part_measurement_visual_template`、[ADR-20260330](./docs/decisions/ADR-20260330-part-measurement-visual-template.md)。**デプロイ**: [deployment.md](./docs/guides/deployment.md) に従い Pi5 → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **`--limit` 1 台ずつ**・`--detach --follow`（Pi3 除外）。Pi5 上 `runId` 例: `20260330-144026-13597` … `20260330-150516-1744`（各 `state: success`）。**実機検証（2026-03-30・Mac / Tailscale）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 117s）。**知見**: Mac `logs/ansible-history.jsonl` が当日追記されない場合でも Pi5 `logs/deploy/*.status.json` で完走確認可（[KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md)）。**手動残り**: visual 付きテンプレの図面・列見出し目視。**ドキュメント**: KB-320 / kiosk-part-measurement runbook / verification-checklist 6.6.9 / ADR-20260330 Verification / `docs/INDEX.md`。**`main` マージ**: 本セッションで GitHub 経由で統合（マージ後 GitHub Actions を確認）。
 - [x] (2026-03-30) **写真持出: 人レビュー・GOOD ギャラリー・類似候補／シャドー閾値の運用知見ドキュメント化（コード変更なし）**: 現場での混乱ポイント（**レビューは VLM を再学習しない**、`GOOD` 時の **canonicalLabel は人 > VLM**、**誤 VLM を上書きなし `GOOD` で載せない**推奨、**類似候補 API** と **シャドー** の **別 env 閾値**）を [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [photo-loan.md](./docs/modules/tools/photo-loan.md) / [photo-tool-similarity-gallery.md](./docs/runbooks/photo-tool-similarity-gallery.md) / [docs/INDEX.md](./docs/INDEX.md) に反映。**次**: GOOD 増加に伴うシャドーログ評価・必要なら閾値調整は別 ADR。
 - [x] (2026-03-29) **キオスク部品測定記録 Phase1（`part-measurement`）**: Prisma `PartMeasurementTemplate` / `PartMeasurementSheet` 等、API `/api/part-measurement/*`、キオスク `/kiosk/part-measurement`、管理 `/admin/tools/part-measurement-templates`。工程公開契約は `cutting` | `grinding`、記録ヘッダは製番 `FSEIBAN` スナップショット。統合テスト `part-measurement.integration.test.ts`。**ドキュメント**: [ADR-20260329-part-measurement-kiosk-record.md](./docs/decisions/ADR-20260329-part-measurement-kiosk-record.md) / [kiosk-part-measurement.md](./docs/runbooks/kiosk-part-measurement.md) / [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.9 / [docs/INDEX.md](./docs/INDEX.md)。**カナリアデプロイ（2026-03-29）**: [deployment.md](./docs/guides/deployment.md) に従い Pi5（`--limit raspberrypi5`）→ `raspi4-kensaku-stonebase01` のみを `--foreground` で順次（Pi3 除外）。Ansible ログ例: `ansible-update-20260329-185457`（StoneBase）。**`main` マージ**: `feat/kiosk-part-measurement` を統合済み（Phase1）。
 - [x] (2026-03-29) **部品測定 Phase2（`resourceCd` キー・スケジュール起点・Pi4 全台）**: ブランチ `feat/part-measurement-phase2`、マイグレーション `20260401120000_part_measurement_phase2`、[ADR-20260401](./docs/decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)。**デプロイ**: [deployment.md](./docs/guides/deployment.md) に従い Pi5 → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **`--limit` 1 台ずつ**（Pi3 除外）。**再発防止**: 同一 `RASPI_SERVER_HOST` へ `update-all-clients.sh` を**並列起動しない**（[KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md)・deployment ガイド追記）。**実機検証（2026-03-29・Mac / Tailscale）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（deploy-status 4 キオスク・`resolve-ticket` スモーク含む）。**手動残り**: 各キオスクで実票スキャン・確定の目視。**ドキュメント反映**: KB-320 / runbook / verification-checklist 6.6.9 / deployment.md。**`main` マージ**: GitHub PR 経由で統合（マージ後 GitHub Actions を確認）。
@@ -1692,17 +1693,17 @@
 
 ## Next Steps（将来のタスク）
 
-### キオスク部品測定記録・運用フォロー（2026-03-29 更新）
+### キオスク部品測定記録・運用フォロー（2026-03-30 更新）
 
-**概要**: Phase2（`resourceCd`・スケジュール起点）は Pi5 + Pi4 キオスク 4 台へ反映済み。`./scripts/deploy/verify-phase12-real.sh` は **PASS 37 / WARN 0 / FAIL 0** 基準（deploy-status 4 台・`resolve-ticket` 含む）。
+**概要**: Phase2（`resourceCd`・スケジュール起点）に加え、**visual template**（図面1枚・業務テンプレから参照・項目 `displayMarker`）を Pi5 + Pi4×4 へ反映済み（2026-03-30）。`./scripts/deploy/verify-phase12-real.sh` は **PASS 37 / WARN 0 / FAIL 0** 基準（deploy-status 4 台・`resolve-ticket` 含む）。
 
 **候補タスク**:
 
 1. ~~**残りキオスク Pi4**~~: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` への段階デプロイは完了（**Pi3** は部品測定の必須対象外。Pi3 サイネージは専用手順のみ）。
-2. **運用**: 品番×工程×**資源CD**のテンプレ先行登録、現場で `/kiosk/part-measurement` の実票スキャン・確定まで目視確認（[kiosk-part-measurement.md](./docs/runbooks/kiosk-part-measurement.md)）。
+2. **運用**: 品番×工程×**資源CD**のテンプレ先行登録、現場で `/kiosk/part-measurement` の実票スキャン・確定まで目視確認。**visual 利用時**は図面表示・**図番号（表示用）**列見出しの目視（[kiosk-part-measurement.md](./docs/runbooks/kiosk-part-measurement.md)）。
 3. **任意**: 確定データの帳票化・CSV エクスポート等の要件が出たら別 ADR / ExecPlan で切り出す。
 
-**参照**: [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [ADR-20260329](./docs/decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401](./docs/decisions/ADR-20260401-part-measurement-phase2-resource-cd.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.9
+**参照**: [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [ADR-20260329](./docs/decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401](./docs/decisions/ADR-20260401-part-measurement-phase2-resource-cd.md) / [ADR-20260330](./docs/decisions/ADR-20260330-part-measurement-visual-template.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.9
 
 ### 本番 `docs/` 配置・関連ブランチ（2026-03-28）
 
@@ -2754,6 +2755,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-03-30（部品測定 visual） — `feat/part-measurement-visual-template` の本番順次デプロイ後 `./scripts/deploy/verify-phase12-real.sh` **PASS 37/0/0**（約 117s）、Progress / Next Steps / KB-320 / runbook / verification-checklist 6.6.9 / ADR-20260330 Verification / `docs/INDEX.md` を更新。`main` へマージ（マージ後 CI 確認）。
 変更履歴: 2026-03-29（2回目） — 部品測定 Phase2（`feat/part-measurement-phase2`）の本番反映後 `./scripts/deploy/verify-phase12-real.sh` **PASS 37/0/0**、Progress（Phase1/Phase2 分離）/ Next Steps（Pi4 ロールアウト完了扱い）/ KB-320 / kiosk-part-measurement runbook / verification-checklist 6.6.9 / deployment.md（並列 `update-all-clients` 禁止注記）/ ADR-20260401 Verification を更新。`main` へ PR マージ予定（マージ後 CI 確認）。
 変更履歴: 2026-03-29 — キオスク要領書バーコードスキャン（ZXing・`feat/kiosk-documents-barcode-scan`）の Phase12 実機検証 **PASS 34/0/0**、KB-313 / ADR-20260329 / kiosk-documents runbook / docs/INDEX / knowledge-base index / Progress / Next Steps を更新。`main` へ `feat/kiosk-documents-barcode-scan` をマージ。
 変更履歴: 2026-03-28（2回目） — 管理コンソール `/admin/local-llm`・Runbook トークンローテーション・Pi5→Pi4×4 順次デプロイ（Pi3 除外）・実機検証（health / 401 / upstream healthz / 管理 URL 200）を Progress / Surprises / Next Steps / runbook / INDEX / knowledge-base index に反映。[PR #53](https://github.com/denkoushi/RaspberryPiSystem_002/pull/53) で `main` へ統合。

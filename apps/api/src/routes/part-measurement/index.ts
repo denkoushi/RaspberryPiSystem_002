@@ -1,13 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
+import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 import {
   PartMeasurementResolveService,
   PartMeasurementSheetService,
-  PartMeasurementTemplateService
+  PartMeasurementTemplateService,
+  PartMeasurementVisualTemplateService
 } from '../../services/part-measurement/index.js';
 import { requireClientDevice, resolveDeviceScopeKey } from '../kiosk/shared.js';
 import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from '../../services/part-measurement/part-measurement-constants.js';
@@ -68,6 +71,7 @@ const templateItemSchema = z.object({
   datumSurface: z.string().min(1).max(500),
   measurementPoint: z.string().min(1).max(500),
   measurementLabel: z.string().min(1).max(500),
+  displayMarker: z.string().max(40).optional().nullable(),
   unit: z.string().max(50).optional().nullable(),
   allowNegative: z.boolean().optional(),
   decimalPlaces: z.number().int().min(0).max(6).optional()
@@ -78,7 +82,8 @@ const createTemplateBodySchema = z.object({
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
   name: z.string().min(1).max(200),
-  items: z.array(templateItemSchema).min(1).max(200)
+  items: z.array(templateItemSchema).min(1).max(200),
+  visualTemplateId: z.string().uuid().optional().nullable()
 });
 
 const listTemplatesQuerySchema = z.object({
@@ -102,6 +107,7 @@ function serializeTemplateItem(item: {
   datumSurface: string;
   measurementPoint: string;
   measurementLabel: string;
+  displayMarker?: string | null;
   unit: string | null;
   allowNegative: boolean;
   decimalPlaces: number;
@@ -112,9 +118,28 @@ function serializeTemplateItem(item: {
     datumSurface: item.datumSurface,
     measurementPoint: item.measurementPoint,
     measurementLabel: item.measurementLabel,
+    displayMarker: item.displayMarker ?? null,
     unit: item.unit,
     allowNegative: item.allowNegative,
     decimalPlaces: item.decimalPlaces
+  };
+}
+
+function serializeVisualTemplate(v: {
+  id: string;
+  name: string;
+  drawingImageRelativePath: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: v.id,
+    name: v.name,
+    drawingImageRelativePath: v.drawingImageRelativePath,
+    isActive: v.isActive,
+    createdAt: v.createdAt.toISOString(),
+    updatedAt: v.updatedAt.toISOString()
   };
 }
 
@@ -127,6 +152,8 @@ function serializeTemplate(
     name: string;
     version: number;
     isActive: boolean;
+    visualTemplateId?: string | null;
+    visualTemplate?: Parameters<typeof serializeVisualTemplate>[0] | null;
     items?: Array<Parameters<typeof serializeTemplateItem>[0]>;
   }
 ) {
@@ -138,8 +165,18 @@ function serializeTemplate(
     name: t.name,
     version: t.version,
     isActive: t.isActive,
+    visualTemplateId: t.visualTemplateId ?? null,
+    visualTemplate: t.visualTemplate ? serializeVisualTemplate(t.visualTemplate) : null,
     items: (t.items ?? []).map(serializeTemplateItem)
   };
+}
+
+async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of part.file) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 function serializeSheet(
@@ -284,6 +321,79 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   const resolveService = new PartMeasurementResolveService();
   const sheetService = new PartMeasurementSheetService();
   const templateService = new PartMeasurementTemplateService();
+  const visualTemplateService = new PartMeasurementVisualTemplateService();
+
+  app.get(
+    '/part-measurement/visual-templates',
+    { preHandler: allowView, config: { rateLimit: false } },
+    async (request) => {
+      const q = z
+        .object({
+          includeInactive: z.coerce.boolean().optional()
+        })
+        .parse(request.query);
+      const list = await visualTemplateService.list(q.includeInactive === true);
+      return { visualTemplates: list.map(serializeVisualTemplate) };
+    }
+  );
+
+  app.post(
+    '/part-measurement/visual-templates',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      if (!request.isMultipart()) {
+        throw new ApiError(
+          400,
+          'マルチパートフォームデータが必要です（name, file）',
+          undefined,
+          'MULTIPART_REQUIRED'
+        );
+      }
+      let fileBuffer: Buffer | null = null;
+      let mimetype = '';
+      let filename = '';
+      let name = '';
+
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          if (part.fieldname === 'file') {
+            const mf = part as MultipartFile;
+            fileBuffer = await readMultipartFile(mf);
+            mimetype = mf.mimetype || '';
+            filename = mf.filename || 'drawing';
+          }
+        } else if (part.fieldname === 'name') {
+          name = String(part.value ?? '').trim();
+        }
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        throw new ApiError(400, '図面画像ファイルが必要です');
+      }
+      if (fileBuffer.length > PartMeasurementDrawingStorage.getMaxBytes()) {
+        throw new ApiError(400, '図面画像が大きすぎます');
+      }
+      if (!name) {
+        name = filename.replace(/\.[^.]+$/, '') || '図面テンプレート';
+      }
+
+      let mime = mimetype;
+      if (!mime || mime === 'application/octet-stream') {
+        const lower = filename.toLowerCase();
+        if (lower.endsWith('.png')) mime = 'image/png';
+        else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+        else if (lower.endsWith('.webp')) mime = 'image/webp';
+      }
+
+      const { relativeUrl } = await PartMeasurementDrawingStorage.saveDrawing(fileBuffer, mime);
+      const created = await visualTemplateService.create({
+        name: name.slice(0, 200),
+        drawingImageRelativePath: relativeUrl
+      });
+      return { visualTemplate: serializeVisualTemplate(created) };
+    }
+  );
 
   app.post(
     '/part-measurement/resolve-ticket',
@@ -565,14 +675,29 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       processGroup,
       resourceCd: body.resourceCd,
       name: body.name,
-      items: body.items
+      items: body.items,
+      visualTemplateId: body.visualTemplateId ?? null
     });
-    return { template: serializeTemplate({ ...template, items: template.items }) };
+    return {
+      template: serializeTemplate({
+        ...template,
+        visualTemplateId: template.visualTemplateId,
+        visualTemplate: template.visualTemplate,
+        items: template.items
+      })
+    };
   });
 
   app.post('/part-measurement/templates/:id/activate', { preHandler: allowWriteKiosk }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
     const template = await templateService.setActiveVersion(params.id);
-    return { template: serializeTemplate({ ...template, items: template.items }) };
+    return {
+      template: serializeTemplate({
+        ...template,
+        visualTemplateId: template.visualTemplateId,
+        visualTemplate: template.visualTemplate,
+        items: template.items
+      })
+    };
   });
 }

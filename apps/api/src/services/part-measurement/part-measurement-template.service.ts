@@ -3,12 +3,15 @@ import type { PartMeasurementProcessGroup, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from './part-measurement-constants.js';
+import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 
 export type TemplateItemInput = {
   sortOrder: number;
   datumSurface: string;
   measurementPoint: string;
   measurementLabel: string;
+  /** 図面上の番号など表示用（任意） */
+  displayMarker?: string | null;
   unit?: string | null;
   allowNegative?: boolean;
   decimalPlaces?: number;
@@ -31,7 +34,7 @@ export class PartMeasurementTemplateService {
     return prisma.partMeasurementTemplate.findFirst({
       where: { fhincd: f, processGroup, resourceCd: r, isActive: true },
       orderBy: { version: 'desc' },
-      include: { items: { orderBy: { sortOrder: 'asc' } } }
+      include: partMeasurementTemplateFullInclude
     });
   }
 
@@ -57,7 +60,7 @@ export class PartMeasurementTemplateService {
     return prisma.partMeasurementTemplate.findMany({
       where,
       orderBy: [{ fhincd: 'asc' }, { processGroup: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }],
-      include: { items: { orderBy: { sortOrder: 'asc' } } }
+      include: partMeasurementTemplateFullInclude
     });
   }
 
@@ -70,6 +73,7 @@ export class PartMeasurementTemplateService {
     resourceCd: string;
     name: string;
     items: TemplateItemInput[];
+    visualTemplateId?: string | null;
   }) {
     const fhincd = params.fhincd.trim();
     const resourceCd = normalizeResourceCd(params.resourceCd);
@@ -80,7 +84,18 @@ export class PartMeasurementTemplateService {
       throw new ApiError(400, 'テンプレート項目が空です');
     }
 
+    const visualId = params.visualTemplateId?.trim() || null;
+
     return prisma.$transaction(async (tx) => {
+      if (visualId) {
+        const vt = await tx.partMeasurementVisualTemplate.findFirst({
+          where: { id: visualId, isActive: true }
+        });
+        if (!vt) {
+          throw new ApiError(400, 'visual template が見つからないか無効です');
+        }
+      }
+
       const agg = await tx.partMeasurementTemplate.aggregate({
         where: { fhincd, processGroup: params.processGroup, resourceCd },
         _max: { version: true }
@@ -100,15 +115,18 @@ export class PartMeasurementTemplateService {
           name: params.name.trim(),
           version: nextVersion,
           isActive: true,
+          visualTemplateId: visualId,
           items: {
             create: params.items.map((item) => {
               const dp = item.decimalPlaces ?? 6;
               const clamped = Math.min(6, Math.max(0, Math.floor(dp)));
+              const dm = item.displayMarker?.trim();
               return {
                 sortOrder: item.sortOrder,
                 datumSurface: item.datumSurface.trim(),
                 measurementPoint: item.measurementPoint.trim(),
                 measurementLabel: item.measurementLabel.trim(),
+                displayMarker: dm && dm.length > 0 ? dm.slice(0, 40) : null,
                 unit: item.unit?.trim() || null,
                 allowNegative: item.allowNegative !== false,
                 decimalPlaces: clamped
@@ -116,7 +134,7 @@ export class PartMeasurementTemplateService {
             })
           }
         },
-        include: { items: { orderBy: { sortOrder: 'asc' } } }
+        include: partMeasurementTemplateFullInclude
       });
 
       return template;
@@ -140,7 +158,7 @@ export class PartMeasurementTemplateService {
     ]);
     return prisma.partMeasurementTemplate.findUniqueOrThrow({
       where: { id: templateId },
-      include: { items: { orderBy: { sortOrder: 'asc' } } }
+      include: partMeasurementTemplateFullInclude
     });
   }
 }

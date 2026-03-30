@@ -40,6 +40,7 @@ import type {
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementTemplateDto,
+  PartMeasurementVisualTemplateDto,
   ResolveTicketResponse
 } from '../features/part-measurement/types';
 
@@ -2017,17 +2018,51 @@ export async function listPartMeasurementTemplates(
   return data.templates;
 }
 
+export async function listPartMeasurementVisualTemplates(
+  params?: { includeInactive?: boolean },
+  clientKey?: string
+): Promise<PartMeasurementVisualTemplateDto[]> {
+  const { data } = await api.get<{ visualTemplates: PartMeasurementVisualTemplateDto[] }>(
+    '/part-measurement/visual-templates',
+    {
+      params,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.visualTemplates;
+}
+
+export async function createPartMeasurementVisualTemplate(
+  name: string,
+  file: File,
+  clientKey?: string
+): Promise<PartMeasurementVisualTemplateDto> {
+  const form = new FormData();
+  form.append('name', name.trim() || '図面テンプレート');
+  form.append('file', file);
+  const { data } = await api.post<{ visualTemplate: PartMeasurementVisualTemplateDto }>(
+    '/part-measurement/visual-templates',
+    form,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.visualTemplate;
+}
+
 export async function createPartMeasurementTemplate(
   body: {
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
     name: string;
+    visualTemplateId?: string | null;
     items: Array<{
       sortOrder: number;
       datumSurface: string;
       measurementPoint: string;
       measurementLabel: string;
+      displayMarker?: string | null;
       unit?: string | null;
       allowNegative?: boolean;
       decimalPlaces?: number;
@@ -2932,5 +2967,6 @@ export type {
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementTemplateDto,
+  PartMeasurementVisualTemplateDto,
   ResolveTicketResponse
 } from '../features/part-measurement/types';

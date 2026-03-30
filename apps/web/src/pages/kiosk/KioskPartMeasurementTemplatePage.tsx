@@ -1,12 +1,20 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { createPartMeasurementTemplate, getResolvedClientKey } from '../../api/client';
+import {
+  createPartMeasurementTemplate,
+  createPartMeasurementVisualTemplate,
+  getResolvedClientKey,
+  listPartMeasurementVisualTemplates
+} from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 
-import type { PartMeasurementProcessGroup } from '../../features/part-measurement/types';
+import type {
+  PartMeasurementProcessGroup,
+  PartMeasurementVisualTemplateDto
+} from '../../features/part-measurement/types';
 
 type LocationState = {
   fhincd: string;
@@ -20,6 +28,7 @@ const emptyItem = () => ({
   datumSurface: '',
   measurementPoint: '',
   measurementLabel: '',
+  displayMarker: '',
   unit: '',
   allowNegative: true,
   decimalPlaces: 6
@@ -35,6 +44,22 @@ export function KioskPartMeasurementTemplatePage() {
   const [name, setName] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [visuals, setVisuals] = useState<PartMeasurementVisualTemplateDto[]>([]);
+  const [visualChoice, setVisualChoice] = useState<'none' | 'pick' | 'upload'>('none');
+  const [pickedVisualId, setPickedVisualId] = useState('');
+  const [newVisualName, setNewVisualName] = useState('');
+  const [newVisualFile, setNewVisualFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const list = await listPartMeasurementVisualTemplates(undefined, clientKey);
+        setVisuals(list);
+      } catch {
+        setVisuals([]);
+      }
+    })();
+  }, [clientKey]);
 
   const fhincd = fixed?.fhincd ?? '';
   const resourceCd = fixed?.resourceCd ?? '';
@@ -66,6 +91,7 @@ export function KioskPartMeasurementTemplatePage() {
         datumSurface: it.datumSurface.trim(),
         measurementPoint: it.measurementPoint.trim(),
         measurementLabel: it.measurementLabel.trim(),
+        displayMarker: it.displayMarker.trim() || null,
         unit: it.unit.trim() || null,
         allowNegative: it.allowNegative,
         decimalPlaces: Math.min(6, Math.max(0, Math.floor(it.decimalPlaces)))
@@ -77,12 +103,30 @@ export function KioskPartMeasurementTemplatePage() {
     }
     setBusy(true);
     try {
+      let visualTemplateId: string | null = null;
+      if (visualChoice === 'pick' && pickedVisualId.trim()) {
+        visualTemplateId = pickedVisualId.trim();
+      } else if (visualChoice === 'upload') {
+        if (!newVisualFile) {
+          setMessage('図面画像ファイルを選択してください。');
+          setBusy(false);
+          return;
+        }
+        const createdVt = await createPartMeasurementVisualTemplate(
+          newVisualName.trim() || templateName,
+          newVisualFile,
+          clientKey
+        );
+        visualTemplateId = createdVt.id;
+      }
+
       await createPartMeasurementTemplate(
         {
           fhincd,
           resourceCd,
           processGroup,
           name: templateName,
+          visualTemplateId,
           items: trimmedItems
         },
         clientKey
@@ -111,6 +155,77 @@ export function KioskPartMeasurementTemplatePage() {
             テンプレート名
             <Input value={name} onChange={(e) => setName(e.target.value)} className="text-slate-900" />
           </label>
+
+          <fieldset className="grid gap-2 rounded border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">図面テンプレート（任意）</legend>
+            <p className="text-xs text-slate-600">
+              図面付きで測定する場合、既存の図面を選ぶか、新規に画像（PNG/JPEG/WebP）をアップロードしてください。
+            </p>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="vc"
+                checked={visualChoice === 'none'}
+                onChange={() => setVisualChoice('none')}
+              />
+              図面なし
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="vc"
+                checked={visualChoice === 'pick'}
+                onChange={() => setVisualChoice('pick')}
+              />
+              既存から選択
+            </label>
+            {visualChoice === 'pick' ? (
+              <select
+                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                value={pickedVisualId}
+                onChange={(e) => setPickedVisualId(e.target.value)}
+              >
+                <option value="">選択してください</option>
+                {visuals.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="vc"
+                checked={visualChoice === 'upload'}
+                onChange={() => setVisualChoice('upload')}
+              />
+              新規アップロード
+            </label>
+            {visualChoice === 'upload' ? (
+              <div className="grid gap-2 md:grid-cols-2">
+                <label className="grid gap-1 text-sm text-slate-700">
+                  図面テンプレ名
+                  <Input
+                    value={newVisualName}
+                    onChange={(e) => setNewVisualName(e.target.value)}
+                    className="text-slate-900"
+                    placeholder="省略時は業務テンプレ名を使用"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm text-slate-700">
+                  画像ファイル
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="text-sm text-slate-900"
+                    onChange={(e) => setNewVisualFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+            ) : null}
+          </fieldset>
+
           <div className="space-y-2">
             <p className="text-sm font-semibold text-slate-700">測定項目</p>
             {items.map((it, idx) => (
@@ -141,6 +256,16 @@ export function KioskPartMeasurementTemplatePage() {
                   onChange={(e) => {
                     const next = [...items];
                     next[idx] = { ...next[idx], measurementLabel: e.target.value };
+                    setItems(next);
+                  }}
+                  className="text-slate-900"
+                />
+                <Input
+                  placeholder="図番号（表示用・任意）"
+                  value={it.displayMarker}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[idx] = { ...next[idx], displayMarker: e.target.value };
                     setItems(next);
                   }}
                   className="text-slate-900"

@@ -19,9 +19,22 @@ export type PartMeasurementTemplateItemDto = {
   datumSurface: string;
   measurementPoint: string;
   measurementLabel: string;
+  /** 図面上の番号など（任意） */
+  displayMarker: string | null;
   unit: string | null;
   allowNegative: boolean;
   decimalPlaces: number;
+};
+
+/** 図面1枚。FIHNCD に紐づけない再利用単位。 */
+export type PartMeasurementVisualTemplateDto = {
+  id: string;
+  name: string;
+  /** 例: /api/storage/part-measurement-drawings/{uuid}.png */
+  drawingImageRelativePath: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PartMeasurementTemplateDto = {
@@ -32,6 +45,8 @@ export type PartMeasurementTemplateDto = {
   name: string;
   version: number;
   isActive: boolean;
+  visualTemplateId: string | null;
+  visualTemplate: PartMeasurementVisualTemplateDto | null;
   items: PartMeasurementTemplateItemDto[];
 };
 

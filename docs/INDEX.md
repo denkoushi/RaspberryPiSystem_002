@@ -20,7 +20,7 @@
 
 ### キオスク部品測定記録
 
-- **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点）
+- **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点） / [ADR-20260330-part-measurement-visual-template.md](./decisions/ADR-20260330-part-measurement-visual-template.md)（visual template・図面1枚・`displayMarker`）
 - **運用手順**: [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md)
 - **トラブルシュート**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)
 - **実機検証**: [verification-checklist.md](./guides/verification-checklist.md) 6.6.9・6.6.10、`./scripts/deploy/verify-phase12-real.sh`（`resolve-ticket` スモーク含む）
@@ -43,6 +43,7 @@
 
 ### 🆕 最新アップデート（2026-03-30）
 
+- **キオスク部品測定: visual template（図面再利用・`displayMarker`）本番反映・Phase12 実機検証・ドキュメント反映**: ブランチ `feat/part-measurement-visual-template`。Prisma `PartMeasurementVisualTemplate`・業務テンプレ `visualTemplateId`・項目 `displayMarker`・ストレージ `/api/storage/part-measurement-drawings/...`。**デプロイ**: Pi5 → Pi4×4 を **`--limit` 1 台ずつ**・`--detach --follow`（Pi3 除外）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 117s）。**知見**: `--detach --follow` でも Mac の `ansible-history.jsonl` に当日行が無い場合あり → Pi5 の `logs/deploy/*.status.json` で確認（[KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)）。**参照**: [ADR-20260330](./decisions/ADR-20260330-part-measurement-visual-template.md) / [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md) / [verification-checklist.md](./guides/verification-checklist.md) 6.6.9 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **写真持出: 人レビュー・GOOD ギャラリー・類似候補 vs シャドー閾値の運用知見をドキュメント化**（コード変更なし）: レビューは **VLM をファインチューニングしない**こと、`GOOD` 時の **canonicalLabel（人 > VLM）**、**誤 VLM を上書きなし `GOOD` で載せない**推奨、**類似候補 API** と **シャドー補助** の **別 env 閾値**による挙動差。**参照**: [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（運用知見節）/ [photo-loan.md](./modules/tools/photo-loan.md) / [photo-tool-similarity-gallery.md](./runbooks/photo-tool-similarity-gallery.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-03-29）

@@ -8,6 +8,7 @@ import {
   PART_MEASUREMENT_EDIT_LOCK_TTL_MS,
   PART_MEASUREMENT_LEGACY_RESOURCE_CD
 } from './part-measurement-constants.js';
+import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 
 export type CreateSheetInput = {
   productNo: string;
@@ -161,7 +162,7 @@ export class PartMeasurementSheetService {
         editLockExpiresAt: lockExpiryFromNow()
       },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -182,7 +183,7 @@ export class PartMeasurementSheetService {
         resourceCdSnapshot: r
       },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -207,7 +208,7 @@ export class PartMeasurementSheetService {
         resourceCdSnapshot: r
       },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -249,7 +250,7 @@ export class PartMeasurementSheetService {
         isActive: true
       },
       orderBy: { version: 'desc' },
-      include: { items: { orderBy: { sortOrder: 'asc' } } }
+      include: partMeasurementTemplateFullInclude
     });
     if (!template) {
       return {
@@ -331,7 +332,7 @@ export class PartMeasurementSheetService {
         editLockExpiresAt: input.clientDeviceId ? lockExpiryFromNow() : null
       },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -346,7 +347,7 @@ export class PartMeasurementSheetService {
     const sheet = await prisma.partMeasurementSheet.findUnique({
       where: { id },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -370,7 +371,7 @@ export class PartMeasurementSheetService {
       cursor: params.cursor ? { id: params.cursor } : undefined,
       skip: params.cursor ? 1 : 0,
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -430,7 +431,7 @@ export class PartMeasurementSheetService {
       cursor: params.cursor ? { id: params.cursor } : undefined,
       skip: params.cursor ? 1 : 0,
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -452,7 +453,7 @@ export class PartMeasurementSheetService {
   async patch(id: string, input: PatchSheetInput, clientDeviceId?: string | null) {
     const sheet = await prisma.partMeasurementSheet.findUnique({
       where: { id },
-      include: { template: { include: { items: true } } }
+      include: { template: { include: partMeasurementTemplateFullInclude } }
     });
     if (!sheet) {
       throw new ApiError(404, '記録表が見つかりません');
@@ -527,7 +528,7 @@ export class PartMeasurementSheetService {
       if (input.results && input.results.length > 0) {
         const template = await tx.partMeasurementSheet.findUnique({
           where: { id },
-          include: { template: { include: { items: true } } }
+          include: { template: { include: partMeasurementTemplateFullInclude } }
         });
         const items = template?.template?.items ?? [];
         const itemIds = new Set(items.map((i) => i.id));
@@ -583,7 +584,7 @@ export class PartMeasurementSheetService {
   async finalize(id: string, clientDeviceId?: string | null) {
     const sheet = await prisma.partMeasurementSheet.findUnique({
       where: { id },
-      include: { template: { include: { items: { orderBy: { sortOrder: 'asc' } } } } }
+      include: { template: { include: partMeasurementTemplateFullInclude } }
     });
     if (!sheet) {
       throw new ApiError(404, '記録表が見つかりません');
@@ -630,7 +631,7 @@ export class PartMeasurementSheetService {
         editLockExpiresAt: null
       },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -665,7 +666,7 @@ export class PartMeasurementSheetService {
         editLockExpiresAt: null
       },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -698,7 +699,7 @@ export class PartMeasurementSheetService {
         invalidatedReason: r.slice(0, 2000)
       },
       include: {
-        template: { include: { items: { orderBy: { sortOrder: 'asc' } } } },
+        template: { include: partMeasurementTemplateFullInclude },
         results: true,
         employee: true,
         createdByEmployee: true,
@@ -745,7 +746,7 @@ export class PartMeasurementSheetService {
       return oa - ob;
     });
 
-    lines.push('rowType,pieceIndex,datumSurface,measurementPoint,measurementLabel,unit,value');
+    lines.push('rowType,pieceIndex,displayMarker,datumSurface,measurementPoint,measurementLabel,unit,value');
     for (const r of sortedResults) {
       const it = itemById.get(r.templateItemId);
       const val =
@@ -758,6 +759,7 @@ export class PartMeasurementSheetService {
         [
           'D',
           esc(r.pieceIndex + 1),
+          esc(it?.displayMarker),
           esc(it?.datumSurface),
           esc(it?.measurementPoint),
           esc(it?.measurementLabel),

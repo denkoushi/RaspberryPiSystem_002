@@ -13,6 +13,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { PartMeasurementSheetDto } from '../../features/part-measurement/types';
@@ -157,6 +158,9 @@ export function KioskPartMeasurementEditPage() {
   }, [nfcEvent, sheet, clientKey]);
 
   const templateItems = sheet?.template?.items ?? [];
+  const drawingPath = sheet?.template?.visualTemplate?.drawingImageRelativePath;
+  const { blobUrl: drawingBlobUrl, error: drawingLoadError } = usePartMeasurementDrawingBlobUrl(drawingPath);
+
   const pieceCount = useMemo(() => {
     const n = parseInt(quantityInput, 10);
     return Number.isFinite(n) && n >= 0 ? n : 0;
@@ -430,69 +434,96 @@ export function KioskPartMeasurementEditPage() {
             ) : pieceCount < 1 ? (
               <p className="text-sm text-slate-600">個数を入力すると入力欄が表示されます。</p>
             ) : (
-              <div className="max-h-[50vh] overflow-auto">
-                <table className="w-full min-w-[720px] border-collapse text-left text-sm text-slate-900">
-                  <thead>
-                    <tr className="border-b border-slate-300">
-                      <th className="p-2">個体</th>
-                      <th className="p-2 w-24">行</th>
-                      {templateItems.map((it) => (
-                        <th key={it.id} className="p-2">
-                          <div className="font-semibold">{it.measurementLabel}</div>
-                          <div className="text-xs font-normal text-slate-600">
-                            基準 {it.datumSurface} / 部位 {it.measurementPoint}
-                            {it.unit ? ` / ${it.unit}` : ''}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: pieceCount }, (_, p) => (
-                      <tr key={p} className="border-b border-slate-200">
-                        <td className="p-2 font-semibold">{p + 1}</td>
-                        <td className="p-1">
-                          {!readOnly && isRowComplete(p) ? (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              className="px-2 py-1 text-xs"
-                              title="行コピー"
-                              onClick={() => copyRowFrom(p)}
-                            >
-                              行→
-                            </Button>
-                          ) : null}
-                        </td>
+              <div className="flex min-h-0 flex-col gap-4 lg:flex-row lg:items-start">
+                {drawingPath && drawingLoadError ? (
+                  <div className="lg:max-w-[min(100%,480px)]">
+                    <p className="mb-1 text-sm font-semibold text-slate-700">図面</p>
+                    <p className="text-sm text-amber-700">{drawingLoadError}</p>
+                  </div>
+                ) : null}
+                {drawingBlobUrl ? (
+                  <div className="flex w-full shrink-0 flex-col lg:max-w-[min(100%,480px)] lg:sticky lg:top-2">
+                    <p className="mb-1 text-sm font-semibold text-slate-700">図面</p>
+                    <div className="overflow-hidden rounded border border-slate-200 bg-white">
+                      <img
+                        src={drawingBlobUrl}
+                        alt="部品測定図面"
+                        className="max-h-[min(50vh,520px)] w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                ) : drawingPath && !drawingLoadError ? (
+                  <p className="text-sm text-slate-600">図面を読み込み中…</p>
+                ) : null}
+                <div className="min-h-0 min-w-0 flex-1 overflow-auto lg:max-h-[min(70vh,720px)]">
+                  <table className="w-full min-w-[720px] border-collapse text-left text-sm text-slate-900">
+                    <thead>
+                      <tr className="border-b border-slate-300">
+                        <th className="p-2">個体</th>
+                        <th className="p-2 w-24">行</th>
                         {templateItems.map((it) => (
-                          <td key={it.id} className="p-1 align-top">
-                            <div className="flex items-start gap-1">
-                              <Input
-                                value={cellValues[resultKey(p, it.id)] ?? ''}
-                                onChange={(e) => onCellChange(p, it.id, e.target.value)}
-                                disabled={readOnly}
-                                className="min-w-0 flex-1 text-slate-900"
-                                inputMode="decimal"
-                              />
-                              {!readOnly &&
-                              (cellValues[resultKey(p, it.id)]?.trim() ?? '').length > 0 ? (
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  className="shrink-0 px-1 py-1 text-xs"
-                                  title="セルコピー（同項目の次の空欄へ）"
-                                  onClick={() => copyCellFrom(p, it.id)}
-                                >
-                                  ⧉
-                                </Button>
-                              ) : null}
+                          <th key={it.id} className="p-2">
+                            {it.displayMarker != null && String(it.displayMarker).trim() !== '' ? (
+                              <div className="mb-0.5 text-center text-lg font-bold leading-none text-slate-800">
+                                {it.displayMarker}
+                              </div>
+                            ) : null}
+                            <div className="font-semibold">{it.measurementLabel}</div>
+                            <div className="text-xs font-normal text-slate-600">
+                              基準 {it.datumSurface} / 部位 {it.measurementPoint}
+                              {it.unit ? ` / ${it.unit}` : ''}
                             </div>
-                          </td>
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: pieceCount }, (_, p) => (
+                        <tr key={p} className="border-b border-slate-200">
+                          <td className="p-2 font-semibold">{p + 1}</td>
+                          <td className="p-1">
+                            {!readOnly && isRowComplete(p) ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="px-2 py-1 text-xs"
+                                title="行コピー"
+                                onClick={() => copyRowFrom(p)}
+                              >
+                                行→
+                              </Button>
+                            ) : null}
+                          </td>
+                          {templateItems.map((it) => (
+                            <td key={it.id} className="p-1 align-top">
+                              <div className="flex items-start gap-1">
+                                <Input
+                                  value={cellValues[resultKey(p, it.id)] ?? ''}
+                                  onChange={(e) => onCellChange(p, it.id, e.target.value)}
+                                  disabled={readOnly}
+                                  className="min-w-0 flex-1 text-slate-900"
+                                  inputMode="decimal"
+                                />
+                                {!readOnly &&
+                                (cellValues[resultKey(p, it.id)]?.trim() ?? '').length > 0 ? (
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    className="shrink-0 px-1 py-1 text-xs"
+                                    title="セルコピー（同項目の次の空欄へ）"
+                                    onClick={() => copyCellFrom(p, it.id)}
+                                  >
+                                    ⧉
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </Card>
