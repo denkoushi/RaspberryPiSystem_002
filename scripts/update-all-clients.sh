@@ -75,6 +75,7 @@ REMOTE_LOCK_FILE="${REMOTE_LOCK_FILE:-/opt/RaspberryPiSystem_002/logs/.update-al
 REMOTE_LOCK_TIMEOUT_SECONDS="${REMOTE_LOCK_TIMEOUT_SECONDS:-2400}"
 REMOTE_DEPLOY_STATUS_FILE="${REMOTE_DEPLOY_STATUS_FILE:-/opt/RaspberryPiSystem_002/config/deploy-status.json}"
 REMOTE_LOG_DIR="${REMOTE_LOG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy}"
+LOCAL_LOCK_DIR="${LOCAL_LOCK_DIR:-${LOG_DIR}/.update-all-clients.local.lock}"
 
 # 引数解析
 LIMIT_HOSTS=""
@@ -90,6 +91,7 @@ STATUS_RUN_ID=""
 PRINT_PLAN=0
 RUN_ID=""
 PROFILE_MODE=0
+LOCAL_LOCK_ACQUIRED=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -330,6 +332,56 @@ exit_with_error() {
   echo "[ERROR] ${message}" >&2
   echo "[INFO] Log saved to ${LOG_FILE}"
   exit "${exit_code}"
+}
+
+should_skip_deploy_locking() {
+  if [[ -n "${STATUS_RUN_ID}" || -n "${ATTACH_RUN_ID}" || ${PRINT_PLAN} -eq 1 ]]; then
+    return 0
+  fi
+  return 1
+}
+
+acquire_local_lock() {
+  if should_skip_deploy_locking; then
+    return 0
+  fi
+
+  mkdir -p "${LOG_DIR}"
+  if mkdir "${LOCAL_LOCK_DIR}" >/dev/null 2>&1; then
+    cat > "${LOCAL_LOCK_DIR}/owner" <<EOF
+pid=$$
+host=$(hostname)
+user=${USER:-unknown}
+startedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+inventory=${INVENTORY_PATH}
+limit=${LIMIT_HOSTS}
+remoteHost=${REMOTE_HOST}
+EOF
+    LOCAL_LOCK_ACQUIRED=1
+    return 0
+  fi
+
+  local lock_owner="${LOCAL_LOCK_DIR}/owner"
+  if [[ -f "${lock_owner}" ]]; then
+    echo "[ERROR] Another update-all-clients.sh process is already running on this machine." >&2
+    echo "[ERROR] Local lock: ${LOCAL_LOCK_DIR}" >&2
+    echo "[ERROR] Owner info:" >&2
+    sed 's/^/[ERROR]   /' "${lock_owner}" >&2 || true
+  else
+    echo "[ERROR] Another update-all-clients.sh process is already running on this machine." >&2
+    echo "[ERROR] Local lock: ${LOCAL_LOCK_DIR}" >&2
+  fi
+  exit 3
+}
+
+release_local_lock() {
+  if [[ "${LOCAL_LOCK_ACQUIRED}" != "1" ]]; then
+    return 0
+  fi
+
+  rm -f "${LOCAL_LOCK_DIR}/owner" >/dev/null 2>&1 || true
+  rmdir "${LOCAL_LOCK_DIR}" >/dev/null 2>&1 || true
+  LOCAL_LOCK_ACQUIRED=0
 }
 
 # 実行結果を解析してサマリーを生成
@@ -605,7 +657,102 @@ acquire_remote_lock() {
   echo "[INFO] Acquiring remote lock on ${REMOTE_HOST} (${REMOTE_LOCK_FILE})"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_LOCK_FILE}")\""
 
-  if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_LOCK_FILE}\" ]; then if find \"${REMOTE_LOCK_FILE}\" -mmin +$((REMOTE_LOCK_TIMEOUT_SECONDS/60)) >/dev/null 2>&1; then echo \"[INFO] Removing stale lock\"; rm -f \"${REMOTE_LOCK_FILE}\"; fi; fi; if [ -f \"${REMOTE_LOCK_FILE}\" ]; then echo \"LOCKED\"; exit 2; fi; echo \"\$(hostname) \$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > \"${REMOTE_LOCK_FILE}\""; then
+  if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "LOCK_FILE=\"${REMOTE_LOCK_FILE}\" LOCK_TIMEOUT=\"${REMOTE_LOCK_TIMEOUT_SECONDS}\" RUN_ID=\"${RUN_ID}\" /usr/bin/env python3 - <<'PY'
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+lock_path = os.environ.get('LOCK_FILE', '')
+timeout_seconds = int(os.environ.get('LOCK_TIMEOUT', '2400'))
+run_id = os.environ.get('RUN_ID', '')
+now = int(time.time())
+
+if not lock_path:
+    print('[ERROR] LOCK_FILE is empty', file=sys.stderr)
+    sys.exit(1)
+
+def ansible_playbook_running() -> bool:
+    try:
+        subprocess.check_output(
+            ['pgrep', '-f', r'ansible-playbook.*playbooks/update-clients\\.yml'],
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def pid_alive(pid_value) -> bool:
+    try:
+        pid = int(pid_value)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+if os.path.exists(lock_path):
+    payload = {}
+    try:
+        with open(lock_path, encoding='utf-8') as fh:
+            payload = json.load(fh)
+    except Exception:
+        payload = {}
+
+    existing_pid = payload.get('runPid')
+    created_epoch = payload.get('createdAtEpoch')
+    try:
+        created_epoch = int(created_epoch)
+    except (TypeError, ValueError):
+        created_epoch = int(os.path.getmtime(lock_path))
+
+    age_seconds = now - created_epoch
+    if pid_alive(existing_pid):
+        print('LOCKED: active runPid')
+        sys.exit(2)
+    if ansible_playbook_running():
+        print('LOCKED: ansible-playbook is still running')
+        sys.exit(2)
+    if age_seconds <= timeout_seconds:
+        print(f'LOCKED: age={age_seconds}s timeout={timeout_seconds}s')
+        sys.exit(2)
+
+    print(f'[INFO] Removing stale lock (age={age_seconds}s, timeout={timeout_seconds}s)')
+    try:
+        os.remove(lock_path)
+    except FileNotFoundError:
+        pass
+
+payload = {
+    'version': 2,
+    'runId': run_id,
+    'state': 'acquired',
+    'runner': 'bootstrap',
+    'runPid': None,
+    'host': socket.gethostname(),
+    'createdAtEpoch': now,
+    'createdAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now)),
+}
+
+try:
+    fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+except FileExistsError:
+    print('LOCKED: lock already exists')
+    sys.exit(2)
+except OSError as exc:
+    print(f'[ERROR] Failed to open lock file: {exc}', file=sys.stderr)
+    sys.exit(1)
+
+with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+    json.dump(payload, fh, ensure_ascii=False)
+    fh.write('\n')
+PY"; then
     exit_with_error 3 "Failed to acquire remote lock on ${REMOTE_HOST}."
   fi
 }
@@ -615,7 +762,95 @@ release_remote_lock() {
     return 0
   fi
 
-  ssh ${SSH_OPTS} "${REMOTE_HOST}" "rm -f \"${REMOTE_LOCK_FILE}\"" >/dev/null 2>&1 || true
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "LOCK_FILE=\"${REMOTE_LOCK_FILE}\" RUN_ID=\"${RUN_ID}\" /usr/bin/env python3 - <<'PY'
+import json
+import os
+import sys
+
+lock_path = os.environ.get('LOCK_FILE', '')
+run_id = os.environ.get('RUN_ID', '')
+if not lock_path or not os.path.exists(lock_path):
+    sys.exit(0)
+
+if not run_id:
+    try:
+        os.remove(lock_path)
+    except FileNotFoundError:
+        pass
+    sys.exit(0)
+
+try:
+    with open(lock_path, encoding='utf-8') as fh:
+        payload = json.load(fh)
+except Exception:
+    payload = {}
+
+lock_run_id = payload.get('runId')
+if lock_run_id and lock_run_id != run_id:
+    sys.exit(0)
+
+try:
+    os.remove(lock_path)
+except FileNotFoundError:
+    pass
+PY" >/dev/null 2>&1 || true
+}
+
+update_remote_lock_metadata() {
+  if [[ -z "${REMOTE_HOST}" ]]; then
+    return 0
+  fi
+  local run_id="$1"
+  local state="$2"
+  local runner="$3"
+  local run_pid="${4:-}"
+  ssh ${SSH_OPTS} "${REMOTE_HOST}" "LOCK_FILE=\"${REMOTE_LOCK_FILE}\" RUN_ID=\"${run_id}\" STATE=\"${state}\" RUNNER=\"${runner}\" RUN_PID=\"${run_pid}\" /usr/bin/env python3 - <<'PY'
+import json
+import os
+import sys
+import time
+
+lock_path = os.environ.get('LOCK_FILE', '')
+if not lock_path or not os.path.exists(lock_path):
+    sys.exit(0)
+
+run_id = os.environ.get('RUN_ID', '')
+state = os.environ.get('STATE', '')
+runner = os.environ.get('RUNNER', '')
+run_pid_raw = os.environ.get('RUN_PID', '')
+
+run_pid = None
+if run_pid_raw:
+    try:
+        run_pid = int(run_pid_raw)
+    except ValueError:
+        run_pid = None
+
+try:
+    with open(lock_path, encoding='utf-8') as fh:
+        payload = json.load(fh)
+except Exception:
+    payload = {}
+
+existing_run_id = payload.get('runId')
+if existing_run_id and run_id and existing_run_id != run_id:
+    sys.exit(0)
+
+payload['version'] = 2
+if run_id:
+    payload['runId'] = run_id
+if state:
+    payload['state'] = state
+if runner:
+    payload['runner'] = runner
+payload['runPid'] = run_pid
+payload['updatedAtEpoch'] = int(time.time())
+payload['updatedAt'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(payload['updatedAtEpoch']))
+
+with open(lock_path, 'w', encoding='utf-8') as fh:
+    json.dump(payload, fh, ensure_ascii=False)
+    fh.write('\\n')
+PY" >/dev/null 2>&1 || true
 }
 
 KIOSK_MAINTENANCE_ENABLED=0
@@ -1175,7 +1410,31 @@ cleanup() {
   if ! should_enable_kiosk_maintenance; then
     clear_kiosk_maintenance_flag
   fi
-  rm -f "${REMOTE_LOCK_FILE}" >/dev/null 2>&1 || true
+  LOCK_FILE="${REMOTE_LOCK_FILE}" RUN_ID="${RUN_ID}" /usr/bin/env python3 - <<'PY' >/dev/null 2>&1 || true
+import json
+import os
+import sys
+
+lock_path = os.environ.get('LOCK_FILE', '')
+run_id = os.environ.get('RUN_ID', '')
+if not lock_path or not os.path.exists(lock_path):
+    sys.exit(0)
+
+try:
+    with open(lock_path, encoding='utf-8') as fh:
+        payload = json.load(fh)
+except Exception:
+    payload = {}
+
+lock_run_id = payload.get('runId')
+if lock_run_id and run_id and lock_run_id != run_id:
+    sys.exit(0)
+
+try:
+    os.remove(lock_path)
+except FileNotFoundError:
+    pass
+PY
 }
 trap cleanup EXIT
 
@@ -1257,6 +1516,9 @@ start_remote_detached() {
   write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" PROFILE_MODE=\"${PROFILE_MODE}\" nohup /tmp/ansible-update-${run_id}.sh >> \"${REMOTE_RUN_LOG}\" 2>&1 & echo \$! > \"${REMOTE_RUN_PID}\""
+  local remote_pid=""
+  remote_pid=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat \"${REMOTE_RUN_PID}\" 2>/dev/null || true")
+  update_remote_lock_metadata "${run_id}" "running" "${RUNNER}" "${remote_pid}"
   echo "[INFO] Detach run started: ${run_id}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
   echo "[INFO] Remote status: ${REMOTE_RUN_STATUS}"
@@ -1287,6 +1549,9 @@ start_remote_job() {
   write_remote_runner_script "${run_id}"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "chmod +x /tmp/ansible-update-${run_id}.sh"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "RUN_ID=\"${run_id}\" REMOTE_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_RUN_LOG=\"${REMOTE_RUN_LOG}\" REMOTE_RUN_STATUS=\"${REMOTE_RUN_STATUS}\" REMOTE_RUN_EXIT=\"${REMOTE_RUN_EXIT}\" REMOTE_RUN_PID=\"${REMOTE_RUN_PID}\" REMOTE_LOCK_FILE=\"${REMOTE_LOCK_FILE}\" REMOTE_DEPLOY_STATUS_FILE=\"${REMOTE_DEPLOY_STATUS_FILE}\" REPO_VERSION=\"${REPO_VERSION}\" INVENTORY_BASENAME=\"${INVENTORY_BASENAME}\" PLAYBOOK_RELATIVE=\"${PLAYBOOK_RELATIVE}\" LIMIT_HOSTS=\"${LIMIT_HOSTS}\" UNIT_NAME=\"${UNIT_NAME}\" RUNNER=\"${RUNNER}\" PROFILE_MODE=\"${PROFILE_MODE}\" systemd-run --unit=\"${UNIT_NAME}\" --collect --property=WorkingDirectory=/opt/RaspberryPiSystem_002/infrastructure/ansible --property=StandardOutput=append:${REMOTE_RUN_LOG} --property=StandardError=append:${REMOTE_RUN_LOG} /bin/bash /tmp/ansible-update-${run_id}.sh >/dev/null 2>&1 && systemctl show -p MainPID --value \"${UNIT_NAME}\" > \"${REMOTE_RUN_PID}\""
+  local remote_pid=""
+  remote_pid=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat \"${REMOTE_RUN_PID}\" 2>/dev/null || true")
+  update_remote_lock_metadata "${run_id}" "running" "${RUNNER}" "${remote_pid}"
   echo "[INFO] Job run started: ${run_id}"
   echo "[INFO] Unit: ${UNIT_NAME}"
   echo "[INFO] Remote log: ${REMOTE_RUN_LOG}"
@@ -1464,6 +1729,8 @@ require_remote_host_for_pi5() {
 
 # メイン処理
 require_remote_host_for_pi5
+acquire_local_lock
+trap 'release_local_lock' EXIT
 if [[ -n "${REMOTE_HOST}" ]]; then
   echo "[INFO] Executing update playbook on ${REMOTE_HOST}"
   echo "[INFO] Branch: ${REPO_VERSION}"
@@ -1472,20 +1739,19 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   pre_deploy_checks || exit_with_error 3 "Pre-deploy checks failed. Please fix the issues above."
   notify_start
   check_network_mode
+  RUN_ID="$(build_run_id)"
   acquire_remote_lock
   if [[ ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 ]]; then
-    trap 'release_remote_lock; clear_pi4_maintenance_flag_if_needed' EXIT
+    trap 'release_remote_lock; clear_pi4_maintenance_flag_if_needed; release_local_lock' EXIT
   fi
   run_preflight_remotely "${LIMIT_HOSTS}"
   set_pi4_maintenance_flag
   clear_server_deployment_flag
   if [[ ${JOB_MODE} -eq 1 ]]; then
-    RUN_ID="$(build_run_id)"
     start_remote_job "${RUN_ID}"
     exit 0
   fi
   if [[ ${DETACH_MODE} -eq 1 ]]; then
-    RUN_ID="$(build_run_id)"
     start_remote_detached "${RUN_ID}"
     exit 0
   fi

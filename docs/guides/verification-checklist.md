@@ -603,6 +603,17 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 **検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
+**6.6.10 デプロイスクリプト多重起動ロック（`update-all-clients.sh`）**
+
+**確認ポイント**（[deployment.md](./deployment.md)「ロック」、[KB-172](../knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト)、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）:
+
+- [ ] 同一 Mac で意図的に 2 本起動したとき、2 本目が **ローカルロック**で停止すること（`logs/.update-all-clients.local.lock`）
+- [ ] Pi5 上のロックファイルが JSON 形式で、stale 時のみ除去されること（手動削除は `runPid` 非生存を確認してから Runbook 手順）
+- [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0** で完走すること（FJV が Pi5 から SSH 不可のときは **WARN** になりうる。`deploy-status` が PASS でもジャンプ SSH がタイムアウトする事例あり → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 注記）
+
+**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 35 / WARN 2 / FAIL 0**・Mac / Tailscale。WARN: scheduler ログ件数 0・FJV ジャンプ SSH タイムアウト）
+**検証結果**: ☑ 成功（自動・WARN は Runbook 注記どおり解釈） ☐ 失敗（エラー内容: _______________）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**

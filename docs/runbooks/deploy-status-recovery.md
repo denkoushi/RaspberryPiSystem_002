@@ -99,12 +99,14 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 | 手動順番 Pi4 下ペイン取得失敗（`targetDeviceScopeKey` Web 修正、2026-03-23） | **仕様**: device-scope v2 でキオスクは `targetDeviceScopeKey` を **送ってはならない**（`TARGET_DEVICE_SCOPE_KEY_FORBIDDEN`）。手動順番ページだけ常時付与していた不具合を、`isMacEnvironment` ＋ v2 の **`macManualOrderV2`** で通常の生産スケジュール画面と同型に修正（[`ProductionScheduleManualOrderPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleManualOrderPage.tsx)）。**UI（実機/VNC）**: Pi4 で `/kiosk/production-schedule/manual-order` を開き、上ペイン「編集」後に下ペインが **「取得に失敗しました」にならず**、検索・資源条件が満たせば一覧が出ること。**自動検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28 / WARN 0 / FAIL 0**。**デプロイ（Pi3 除外）**: `fix/phase12-verify-ping-retry`、Run ID `20260323-083523-8980` / `20260323-084021-9264` / `20260323-084439-11342`。**TS**: 400 + `TARGET_DEVICE_SCOPE_KEY_FORBIDDEN` のときは Web 未更新またはキャッシュ。**参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#manual-order-pi4-target-device-scope-key-web-fix-2026-03-23)。 | Phase12 合格・Pi4 で編集→下ペイン表示を実機推奨 |
 | 工具貸出 active loan の `clientId` 手動補正 API（2026-03-25） | **仕様**: `PUT /api/tools/loans/:id/client`（`ADMIN`/`MANAGER`、body `{ "clientId": "<uuid>" }`）。active loan のみ、`Loan.clientId`・BORROW 履歴の `Transaction.clientId` 補完・`ADJUST` 監査。既存別 client は **409**。**デプロイ**: Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ（Pi3 除外）・1台ずつ。**自動検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28/0/0**（本 API 専用項目は無し・全体回帰）。**手動**: 管理 JWT で対象 loan に PUT し 200/409 を確認。**参照**: [kb-kiosk-rigging-return-cancel-investigation.md](../knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md)（追記節・TS 表） |
 | キオスク要領書 PDF（`KioskDocument`、2026-03-25） | **仕様**: `/kiosk/documents`・`/admin/kiosk-documents`・`GET/POST /api/kiosk-documents` 等。マイグレーション `20260325120000_add_kiosk_documents`。**デプロイ**: Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ（Pi3 除外）・1台ずつ。**自動検証**: `./scripts/deploy/verify-phase12-real.sh` に要領書 API 検証を追加後 **PASS 30 / WARN 0 / FAIL 0**（2026-03-25 実機。Pi3 offline 時は WARN 1）。**知見**: Pi5→RoboDrill ジャンプ SSH が一時 timeout する場合は再実行。**参照**: [KB-313](../knowledge-base/KB-313-kiosk-documents.md) / [kiosk-documents.md](./kiosk-documents.md) |
-| Pi4 3台目 FJV60/80（`raspi4-fjv60-80`、2026-03-28） | **インフラ**: `inventory.yml` に `raspi4-fjv60-80`、`group_vars/all.yml` に `raspi4_fjv60_80_ip`（LAN / Tailscale）。OS ユーザー例: `raspi4-fjv60-80@100.100.229.95`（Tailscale は環境で可変）。**登録**: Pi5 で `register-clients.sh`（vault テンプレ端末は Skip、固定 `client-key-raspi4-fjv60-80-kiosk1`）。**初回デプロイ**: `cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_CONFIG="$PWD/ansible.cfg" ansible-playbook playbooks/deploy-staged.yml --limit raspi4-fjv60-80`（ルートから実行すると `role 'common' was not found`）。**検証**: `verify-phase12-real.sh` に FJV 向け項目追加後の例 **PASS 30 / WARN 2 / FAIL 0**（Pi3・scheduler 系 WARN）。**Pi5 作業ツリー**: `main` へ `git pull --ff-only` する前に、一時的な直置き変更があれば stash または破棄して整合。**参照**: [KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk) / [deployment.md](../guides/deployment.md) / [client-initial-setup.md](../guides/client-initial-setup.md) |
+| Pi4 3台目 FJV60/80（`raspi4-fjv60-80`、2026-03-28） | **インフラ**: `inventory.yml` に `raspi4-fjv60-80`、`group_vars/all.yml` に `raspi4_fjv60_80_ip`（LAN / Tailscale）。OS ユーザー例: `raspi4-fjv60-80@100.100.229.95`（Tailscale は環境で可変）。**登録**: Pi5 で `register-clients.sh`（vault テンプレ端末は Skip、固定 `client-key-raspi4-fjv60-80-kiosk1`）。**初回デプロイ**: `cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_CONFIG="$PWD/ansible.cfg" ansible-playbook playbooks/deploy-staged.yml --limit raspi4-fjv60-80`（ルートから実行すると `role 'common' was not found`）。**検証**: `verify-phase12-real.sh` に FJV 向け項目追加後の例 **PASS 30 / WARN 2 / FAIL 0**（Pi3・scheduler 系 WARN）。**2026-03-30**: 検証項目増加後の実測例 **PASS 35 / WARN 2 / FAIL 0**（WARN: auto-tuning スケジューラログ件数 0・Pi5→FJV 踏み台 SSH タイムアウト。`deploy-status` が PASS でもジャンプ SSH が不通のときは **WARN** とし **FAIL 0** で完走。下記「FJV」注記）。**Pi5 作業ツリー**: `main` へ `git pull --ff-only` する前に、一時的な直置き変更があれば stash または破棄して整合。**参照**: [KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk) / [deployment.md](../guides/deployment.md) / [client-initial-setup.md](../guides/client-initial-setup.md) |
 | Pi4 4台目 StoneBase01（`raspi4-kensaku-stonebase01`、2026-03-28） | **インフラ**: `inventory.yml` に `raspi4-kensaku-stonebase01`、`group_vars/all.yml` に `raspi4_kensaku_stonebase01_ip`（LAN `192.168.10.238` / Tailscale `100.101.113.95`）。**登録**: Pi5 で `register-clients.sh`（固定 `client-key-raspi4-kensaku-stonebase01-kiosk1`）。**初回デプロイ失敗**: `nfc-agent には Docker が必要です`。**復旧**: 新 Pi4 で `curl -fsSL https://get.docker.com | sudo sh` → 再デプロイ。**最終結果**: `deploy-staged.yml --limit raspi4-kensaku-stonebase01` 成功、`deploy-status` は `isMaintenance=false`、`kiosk-browser.service` / `status-agent.timer` active、`docker-nfc-agent-1` Up。**参照**: [KB-316](../knowledge-base/infrastructure/ansible-deployment.md#kb-316-pi4-stonebase-fourth-kiosk) / [deployment.md](../guides/deployment.md) |
 | 吊具マスタ `idNum`（旧番号、2026-03-24） | **仕様**: `RiggingGear.idNum`（NULL 可、値ありは UNIQUE）。管理 `/admin/tools/rigging-gears`、キオスク `/kiosk/rigging/borrow` に **旧番号** 表示、一覧検索は名称・管理番号・`idNum` の OR。CSV は [csv-import-export.md](../guides/csv-import-export.md)。**デプロイ**: Pi5 + `raspberrypi4` 成功例あり。`raspi4-robodrill01` は inventory 上の SSH 先が **timeout** の場合、Tailscale/電源/LAN を確認のうえ `--limit raspi4-robodrill01` のみ再実行。**運用**: `update-all-clients.sh` は作業ツリー未コミットで停止する → stash または commit。**参照**: [KB-312](../knowledge-base/KB-312-rigging-idnum-deploy-verification.md)。**UI（実機/VNC）**: 吊具タグスキャン後、右ペインに旧番号行（未設定は `-`）。 | `prisma migrate status` 未適用なし・管理UI/キオスクで旧番号の表示・検索・一意制約を確認。RoboDrill01 は到達復旧後にデプロイ再実行 |
 | キオスク沉浸式 allowlist 拡張 + 手動順番行（品名を工順直後）（2026-03-21） | **仕様**: [`usesKioskImmersiveLayout`](../../apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts) が唯一の判定源。対象は [KB-311](../knowledge-base/KB-311-kiosk-immersive-header-allowlist.md) の表どおり（タグ持出・計測/吊具持出・**生産スケジュール本体（子パス除く完全一致）**・進捗一覧接頭辞・手動順番接頭辞）。**手動順番上ペイン行**: **1行目** 製番·品番·工順·品名、**2行目** 機種名のみ（`presentManualOrderRow`）。**UI（実機/VNC）**: 各対象 URL で上端ホバーで最上段メニューが出ること。`/kiosk/production-schedule/due-management` 等 **除外ルート** では従来どおり常時ヘッダーであること。**自動検証**: `./scripts/deploy/verify-phase12-real.sh` **PASS 28/0/0**。**デプロイ**: `feat/kiosk-immersive-layout-manual-order-row`。Pi5 → raspberrypi4 → raspi4-robodrill01 のみ（Pi3 除外）・1台ずつ。**Run ID**: `20260321-192700-29456` / `20260321-193059-19711` / `20260321-193547-13867`。**知見**: E2E は `revealKioskHeader()` が必要。Web 単体テストは `NODE_ENV=test` 推奨。**参照**: [KB-297 沉浸式拡張節](../knowledge-base/KB-297-kiosk-due-management-workflow.md#kiosk-immersive-allowlist-manual-order-row-2026-03-21) / [KB-311](../knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)。 | Phase12 合格・ヘッダー/行レイアウトは実機目視推奨 |
 
 **注記（Pi3 offline 時）**: `tailscale status` で Pi3（signageras3@100.105.224.86）が offline の場合、SSH がタイムアウトする。実機検証時は Pi3 の signage サービス確認をスキップ可能。Pi4 と API の検証が完了していれば、Pi3 は復帰後に追い確認する運用で可。
+
+**注記（FJV `raspi4-fjv60-80`・Pi5 経由 SSH 未到達・2026-03-30）**: `GET/POST` 系の `deploy-status`（`x-client-key: client-key-raspi4-fjv60-80-kiosk1`）が正常でも、Pi5 から FJV の Tailscale IP へ SSH がタイムアウトすることがある（電源・Tailscale・L3 経路）。`./scripts/deploy/verify-phase12-real.sh` は **「Pi4 fjv60-80 kiosk/status-agent」** を **WARN** とし、サマリは **FAIL 0** で完走する（Pi3 offline 注記と同趣旨）。`kiosk-browser` / `status-agent` を必ず確認する場合は端末復帰後に再実行する。
 
 ---
 
@@ -137,7 +139,39 @@ curl -sk "https://100.106.158.2/api/system/deploy-status" -H "x-client-key: clie
 
 2. **ロックファイルの確認・削除**（cleanup が実行されない場合）
    ```bash
-   ssh denkon5sd02@100.106.158.2 "rm -f /opt/RaspberryPiSystem_002/logs/.update-all-clients.lock"
+   # まず中身を確認（runId/runPid/state）
+   ssh denkon5sd02@100.106.158.2 "python3 - <<'PY'
+import json
+path = '/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock'
+try:
+    with open(path, encoding='utf-8') as f:
+        print(json.load(f))
+except FileNotFoundError:
+    print({'lock': 'not-found'})
+PY"
+
+   # runPid が生きていないことを確認できた場合のみ削除
+   ssh denkon5sd02@100.106.158.2 "python3 - <<'PY'
+import json, os, signal
+path = '/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock'
+try:
+    with open(path, encoding='utf-8') as f:
+        payload = json.load(f)
+except FileNotFoundError:
+    raise SystemExit(0)
+pid = payload.get('runPid')
+alive = False
+if isinstance(pid, int) and pid > 0:
+    try:
+        os.kill(pid, 0)
+        alive = True
+    except OSError:
+        alive = False
+if alive:
+    raise SystemExit('lock is active; do not remove')
+os.remove(path)
+print('lock removed')
+PY"
    ```
 
 3. **Pi4 を単体で再デプロイ**
