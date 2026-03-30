@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-03-30) **推論基盤フェーズ1（複数プロバイダ・text/vision・要領書要約オプション）実装・Pi5 のみデプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**: ブランチ `feat/inference-foundation-phase1`。[ADR-20260402](./docs/decisions/ADR-20260402-inference-foundation-phase1.md)。**実装**: `apps/api/src/services/inference/`（`InferenceRouter`・`RoutedVisionCompletionAdapter`・観測ログ `component: inference`）、要領書は `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` オプトイン、未設定時は `LOCAL_LLM_*` から `id=default` 合成。**デプロイ**: [deployment.md](./docs/guides/deployment.md) に従い **`--limit raspberrypi5` のみ**・`RASPI_SERVER_HOST`（例: SSH config の `raspi5-tailscale`）・`--detach --follow`。Detach Run ID 例: `20260330-171021-10204`（`PLAY RECAP` `failed=0`、Pi4/Pi3 PLAY は `no hosts matched`）。**実機検証（2026-03-30・Mac / Tailscale）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 95s）。**知見**: 要領書テキスト推論は既定 **無効**。`INFERENCE_PROVIDERS_JSON` 構文エラー時は警告のうえ **`LOCAL_LLM_*` へフォールバック**（ADR どおり）。**ドキュメント**: ADR-20260402 Verification / KB-313 / KB-319（ルーテッド vision）/ [kiosk-documents.md](./docs/runbooks/kiosk-documents.md) / verification-checklist 6.6.11。**`main` マージ**: 本セッションで GitHub 経由で統合（マージ後 GitHub Actions を確認）。
 - [x] (2026-03-30) **部品測定 visual template（図面再利用・`displayMarker`）実装・本番順次デプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**: ブランチ `feat/part-measurement-visual-template`。マイグレーション `20260330140000_part_measurement_visual_template`、[ADR-20260330](./docs/decisions/ADR-20260330-part-measurement-visual-template.md)。**デプロイ**: [deployment.md](./docs/guides/deployment.md) に従い Pi5 → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **`--limit` 1 台ずつ**・`--detach --follow`（Pi3 除外）。Pi5 上 `runId` 例: `20260330-144026-13597` … `20260330-150516-1744`（各 `state: success`）。**実機検証（2026-03-30・Mac / Tailscale）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 117s）。**知見**: Mac `logs/ansible-history.jsonl` が当日追記されない場合でも Pi5 `logs/deploy/*.status.json` で完走確認可（[KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md)）。**手動残り**: visual 付きテンプレの図面・列見出し目視。**ドキュメント**: KB-320 / kiosk-part-measurement runbook / verification-checklist 6.6.9 / ADR-20260330 Verification / `docs/INDEX.md`。**`main` マージ**: 本セッションで GitHub 経由で統合（マージ後 GitHub Actions を確認）。
 - [x] (2026-03-30) **写真持出: 人レビュー・GOOD ギャラリー・類似候補／シャドー閾値の運用知見ドキュメント化（コード変更なし）**: 現場での混乱ポイント（**レビューは VLM を再学習しない**、`GOOD` 時の **canonicalLabel は人 > VLM**、**誤 VLM を上書きなし `GOOD` で載せない**推奨、**類似候補 API** と **シャドー** の **別 env 閾値**）を [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [photo-loan.md](./docs/modules/tools/photo-loan.md) / [photo-tool-similarity-gallery.md](./docs/runbooks/photo-tool-similarity-gallery.md) / [docs/INDEX.md](./docs/INDEX.md) に反映。**次**: GOOD 増加に伴うシャドーログ評価・必要なら閾値調整は別 ADR。
 - [x] (2026-03-29) **キオスク部品測定記録 Phase1（`part-measurement`）**: Prisma `PartMeasurementTemplate` / `PartMeasurementSheet` 等、API `/api/part-measurement/*`、キオスク `/kiosk/part-measurement`、管理 `/admin/tools/part-measurement-templates`。工程公開契約は `cutting` | `grinding`、記録ヘッダは製番 `FSEIBAN` スナップショット。統合テスト `part-measurement.integration.test.ts`。**ドキュメント**: [ADR-20260329-part-measurement-kiosk-record.md](./docs/decisions/ADR-20260329-part-measurement-kiosk-record.md) / [kiosk-part-measurement.md](./docs/runbooks/kiosk-part-measurement.md) / [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.9 / [docs/INDEX.md](./docs/INDEX.md)。**カナリアデプロイ（2026-03-29）**: [deployment.md](./docs/guides/deployment.md) に従い Pi5（`--limit raspberrypi5`）→ `raspi4-kensaku-stonebase01` のみを `--foreground` で順次（Pi3 除外）。Ansible ログ例: `ansible-update-20260329-185457`（StoneBase）。**`main` マージ**: `feat/kiosk-part-measurement` を統合済み（Phase1）。
@@ -1692,6 +1693,18 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 推論基盤フェーズ1・運用フォロー（2026-03-30）
+
+**概要**: `feat/inference-foundation-phase1` を Pi5 のみ反映済み（`--limit raspberrypi5`）。`./scripts/deploy/verify-phase12-real.sh` は **PASS 37 / WARN 0 / FAIL 0**（2026-03-30 実測・約 95s）。
+
+**候補タスク**:
+
+1. **要領書 LLM 要約（任意）**: 本番で使う場合のみ `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` と、`INFERENCE_PROVIDERS_JSON` または既存 **`LOCAL_LLM_*`**（Ansible `docker.env.j2` / vault）で API に配線。OCR 完了後、API ログで `component: inference`・`useCase: document_summary` を確認（失敗時は機械スニペットのみ・基幹処理は継続）。
+2. **設定運用**: `INFERENCE_PROVIDERS_JSON` はデプロイ前に JSON 検証（構文エラー時はフォールバック＋警告ログ。事象と切り分けは [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md)）。
+3. **拡張**: 用途追加・動的ルート・メトリクス本格化は別 ADR / ExecPlan。
+
+**参照**: [ADR-20260402](./docs/decisions/ADR-20260402-inference-foundation-phase1.md) / [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md) / [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [local-llm-tailscale-sidecar.md](./docs/runbooks/local-llm-tailscale-sidecar.md)
 
 ### キオスク部品測定記録・運用フォロー（2026-03-30 更新）
 

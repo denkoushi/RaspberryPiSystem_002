@@ -2,7 +2,7 @@
 title: KB-313 キオスク要領書（PDF）一覧・Gmail取り込み
 tags: [kiosk, pdf, gmail, api, ocr, metadata]
 audience: [開発者, 運用者]
-last-verified: 2026-03-29
+last-verified: 2026-03-30
 category: knowledge-base
 ---
 
@@ -48,6 +48,13 @@ category: knowledge-base
 | `KIOSK_DOCUMENT_OCR_ENGINE_TIMEOUT_MS` | 1ページあたりの NDLOCR / レガシー OCR 子プロセスのタイムアウト（ms） | `180000` |
 | `KIOSK_DOCUMENT_OCR_RASTER_TIMEOUT_MS` | `pdftoppm` のタイムアウト（ms） | `120000` |
 | `PDF_PAGES_CACHE_CONTROL` | `GET /api/storage/pdf-pages/...` の `Cache-Control`（キオスク・サイネージ共通のページ画像）。未設定時は `public, max-age=86400, stale-while-revalidate=604800` | 未設定（コード既定を使用） |
+| `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` | `true` のとき、OCR 後にテキスト要約推論を試行（失敗時は機械スニペットへフォールバック） | `false` |
+| `INFERENCE_PROVIDERS_JSON` | 推論プロバイダ配列（JSON）。未設定時は `LOCAL_LLM_*` から `id=default` を合成 | 未設定 |
+| `INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID` | 要約推論のプロバイダ id | `default` |
+| `INFERENCE_DOCUMENT_SUMMARY_MODEL` | 要約推論のモデル（未指定時はプロバイダの `defaultModel`） | 未設定 |
+| `INFERENCE_DOCUMENT_SUMMARY_MAX_TOKENS` / `INFERENCE_DOCUMENT_SUMMARY_INPUT_MAX_CHARS` / `INFERENCE_DOCUMENT_SUMMARY_TEMPERATURE` | 要約推論の上限・入力切り詰め・温度 | `512` / `24000` / `0.2` |
+
+**推論基盤の全体方針**（写真持出 VLM との共用・複数 PC）: [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)。
 
 サイネージは従来どおり `SIGNAGE_PDF_DPI`（未設定時 150）を `convertPdfToPages` のデフォルトとして利用する。**要領書だけ** Pi4 向けに軽くしたい場合は上記 2 つを API コンテナに設定する。
 
@@ -67,6 +74,8 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **Gmail から取り込まれない**: `storage.provider` が `gmail` でない、トークン欠落、`kioskDocumentGmailIngest` が空/無効、件名が一致しない、添付が PDF でない
 - **一覧に出ない**: 管理画面で `enabled=false`、キオスクは有効なもののみ表示
 - **画像が出ない**: PDF 変換失敗（Pi 上の変換ツール・ストレージパス）、`pageUrls` が空
+- **要領書の LLM 要約が載らない／常に機械スニペットのまま**: **既定は推論 OFF**（`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` が `true` でない）。ON にしても **`document_summary` ルート**が解決できない（`INFERENCE_PROVIDERS_JSON` 不整合・`LOCAL_LLM_*` 未配線・upstream down）は推論をスキップし機械候補のみ。**意図どおり ON なのに推論しない**ときは API ログの `component: inference`・`useCase: document_summary`・`errorReason` を確認（本文は出ない）。
+- **`INFERENCE_PROVIDERS_JSON` を入れたら警告だけで従来どおり動く**: JSON 構文エラー時は **警告ログのうえ `LOCAL_LLM_*` から合成**（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)）。デプロイ前に `python3 -m json.tool` 等で検証する。
 - **抽出が失敗し続ける**: API コンテナに同梱された **NDLOCR-Lite** が見えているか（`which ndlocr-lite` / `ndlocr-lite --help`）。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` を使う場合はパスの存在と Python 実行権限を確認。`pdftotext` だけではスキャン PDF は空になり、OCR 分岐に入る。
 - **OCR なのに文字がほぼ空**: 旧実装は `ndlocr-lite <pdf>`（stdout 想定）で **NDLOCR-Lite 実 CLI と不一致**だった。現行は PDF→`pdftoppm`→ページごとに `--sourceimg`/`--output` で `.txt` を収集。独自ラッパーは `KIOSK_DOCUMENT_OCR_LEGACY_STDOUT=true` で従来契約に戻す。
 - **拡大（ズーム）が効かない**: 表示モードが **幅いっぱい** のときは仕様で無効。**標準幅** に戻すと拡大 UI が有効になる
@@ -115,6 +124,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ## 実機検証
 
+- **デプロイ（推論基盤フェーズ1・API・Pi5 のみ）**: ブランチ `feat/inference-foundation-phase1`（`services/inference`・要領書オプトイン推論・写真ラベル `photo_label` ルート）。[deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5` のみ**・`RASPI_SERVER_HOST`・`--detach --follow`。Detach Run ID 例: `20260330-171021-10204`。**Phase12（2026-03-30）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 95s）。要領書 LLM 要約は既定 OFF のため、本スクリプトは **要領書 API 200 + `documents`** の回帰まで（詳細は [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md) Verification）。
 - **デプロイ（要領書: バーコードスキャン検索・Web のみ）**: ブランチ `feat/kiosk-documents-barcode-scan`（コミット例 `043f3228`）。API 契約不変。`@zxing/library` バンドル・`features/barcode-scan`・`KioskDocumentsPage` / `KioskDocumentsListPanel` の `searchAccessory`。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・Pi3 除外・`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（例）・`--detach --follow`。**Phase12（2026-03-29 実測）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 47s）。**残りの実機確認（オペレーター向け）**: Pi4 Firefox で `/kiosk/documents` にてスキャンボタン・カメラ許可・実ラベル読取・一覧絞り込みを目視確認（自動スクリプトではブラウザカメラを使わない）。
 - **デプロイ（要領書: ビューアツールバー折りたたみ・左一覧要約 `title`・Web のみ）**: ブランチ `feat/kiosk-documents-hover-toolbar-and-summary-tooltip`（`HoverRevealCollapsibleToolbar`・`kioskDocumentListSummary.ts`・`KioskDocumentsViewerPanel` の `toolbarRevealEnabled`＋`usesKioskImmersiveLayout`）。API 契約不変。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1 台ずつ・Pi3 除外・`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（例）・`--detach --follow`。リモートログ basename 例: `ansible-update-20260327-162247-*`（Pi5）/ `ansible-update-20260327-162734-14602`（raspberrypi4）/ `ansible-update-20260327-163150-32497`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（約 41s・2026-03-27、Pi3 `signage-lite/timer` が **WARN**・exit 0）。**知見**: Mac に `RASPI_SERVER_HOST` が無いと `update-all-clients.sh` 実行前に `export` が必要。
 - **デプロイ（要領書: 文書番号・要約候補3・確定要約・API+Web+DB）**: ブランチ `feat/kiosk-documents-doc-number-summary`（実装例: `kiosk-document-number.ts`・`kiosk-document-summary-candidates.ts`・`kiosk-documents` ルート DTO/`PATCH` 検証・`buildKioskDocumentSearchOrConditions`・`KioskDocumentsAdminPage` / `KioskDocumentsListPanel`）。Prisma `20260327120000_add_kiosk_document_number_summary`。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1台ずつ・Pi3 除外（要領書対象外のためキオスク Pi4 と Pi5 API のみ更新）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 30 / WARN 0 / FAIL 0**（約22s・2026-03-27、Pi3 到達時・全ホスト成功）。**知見**: 確定値は運用スナップショット。OCR パイプラインは候補列のみ自動更新。
@@ -144,6 +154,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 
 ## 知見・トラブルシュート（Phase12・SSH・デプロイ）
 
+- **推論まわりのログ確認**: 業務経路は pino で **`component: inference`**（`useCase`・`providerId`・`model`・`latencyMs`・`result` 等。**本文はログに出さない**）。`GET/POST /api/system/local-llm/*` は管理用の既定プロバイダ疎通（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)）。
 - **`update-all-clients.sh --limit <単一ホスト>`**: プリフライトの `ansible ping` も **同じ `--limit`** が付く。Pi3 を今回の対象に含めなければ、Pi3 offline でも Pi5→Pi4 の順次デプロイを進められる（Pi3 本体の更新は別途、リソース制約向け手順に従う）。
 - **`Pi4 robodrill01 kiosk/status-agent` が FAIL（SSH timeout）**: Mac→Pi5→RoboDrill の **ジャンプ SSH** が一時的にタイムアウトすることがある。Tailscale・現地電源・`tailscale status` を確認し、**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**すると PASS に戻る例がある（2026-03-25 に初回 timeout → 再実行で PASS）。
 - **Phase12 で `Pi3 signage-lite/timer` が FAIL（`Connection closed`）**: Pi5 経由の Pi3 SSH が途中で切断されると、スクリプトが **FAIL** になることがあった（2026-03-26 実測）。**再実行**で Pi3 が応答すれば **PASS 30** に戻る。`verify-phase12-real.sh` は `Connection closed` を **WARN**（未到達想定）に分類するよう更新済み。Pi3 本体の保守は [deployment.md §Pi3](../guides/deployment.md) に従う。

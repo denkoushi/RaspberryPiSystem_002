@@ -6,6 +6,8 @@ import type { DocumentTextExtractorPort } from './ports/document-text-extractor.
 import type { MetadataLabelerPort } from './ports/metadata-labeler.port.js';
 import type { OcrEnginePort } from './ports/ocr-engine.port.js';
 import type { DocumentSearchIndexerPort } from './ports/document-search-indexer.port.js';
+import type { DocumentSummaryInferencePort } from './ports/document-summary-inference.port.js';
+import { mergeSummaryCandidatesWithLlmFirst } from './kiosk-document-summary-merge.js';
 
 const OCR_HIGH_CONFIDENCE_THRESHOLD = 0.95;
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.KIOSK_DOCUMENT_PROCESS_TIMEOUT_MS || '180000', 10);
@@ -28,7 +30,8 @@ export class KioskDocumentProcessingService {
     private readonly textExtractor: DocumentTextExtractorPort,
     private readonly ocrEngine: OcrEnginePort,
     private readonly labeler: MetadataLabelerPort,
-    private readonly indexer: DocumentSearchIndexerPort
+    private readonly indexer: DocumentSearchIndexerPort,
+    private readonly documentSummaryInference?: DocumentSummaryInferencePort | null
   ) {}
 
   async processDocumentById(
@@ -69,7 +72,16 @@ export class KioskDocumentProcessingService {
         const normalizedText = normalizeDocumentText(mergedText);
         const labels = await this.labeler.labelFromText(normalizedText);
         const canAutoConfirm = (score?: number) => typeof score === 'number' && score >= OCR_HIGH_CONFIDENCE_THRESHOLD;
-        const [summaryCandidate1, summaryCandidate2, summaryCandidate3] = labels.summaryCandidates ?? [];
+        let llmSummary: string | null = null;
+        if (this.documentSummaryInference) {
+          // eslint-disable-next-line no-await-in-loop
+          llmSummary = await this.documentSummaryInference.trySummarize(normalizedText);
+        }
+        const [summaryCandidate1, summaryCandidate2, summaryCandidate3] = mergeSummaryCandidatesWithLlmFirst(
+          normalizedText,
+          llmSummary,
+          labels.summaryCandidates
+        );
 
         const previous = await this.repo.findById(documentId);
         await this.repo.update(documentId, {

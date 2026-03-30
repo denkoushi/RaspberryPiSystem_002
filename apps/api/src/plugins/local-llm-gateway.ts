@@ -1,19 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 
-import { env } from '../config/env.js';
 import { createPinoLocalLlmObservability } from '../services/system/local-llm-observability.js';
 import {
   createLocalLlmGateway,
   type LocalLlmRuntimeConfig,
 } from '../services/system/local-llm-proxy.service.js';
+import { getInferenceRuntime } from '../services/inference/inference-runtime.js';
 
-const getLocalLlmRuntimeConfig = (): LocalLlmRuntimeConfig => ({
-  configured: Boolean(env.LOCAL_LLM_BASE_URL && env.LOCAL_LLM_SHARED_TOKEN && env.LOCAL_LLM_MODEL),
-  baseUrl: env.LOCAL_LLM_BASE_URL,
-  sharedToken: env.LOCAL_LLM_SHARED_TOKEN,
-  model: env.LOCAL_LLM_MODEL,
-  timeoutMs: env.LOCAL_LLM_TIMEOUT_MS,
-});
+/** 管理用疎通: 既定プロバイダ（id=default または先頭）。業務推論ルートとは別経路。 */
+const getLocalLlmRuntimeConfig = (): LocalLlmRuntimeConfig => getInferenceRuntime().getAdminLocalLlmRuntimeConfig();
 
 export async function registerLocalLlmGateway(app: FastifyInstance): Promise<void> {
   const log = app.log.child({ component: 'localLlmGateway' });

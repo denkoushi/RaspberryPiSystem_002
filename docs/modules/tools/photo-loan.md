@@ -26,6 +26,8 @@ update-frequency: medium
 
 **実機回帰（2026-03-29）**: デプロイ後に `./scripts/deploy/verify-phase12-real.sh` で **PASS 34/0/0**。その後、Ubuntu 埋め込み `/embed` の **512 次元応答**、Pi5 での **GOOD バックフィル 42 件**、シャドー ON の実機 1 件で **`Photo tool label shadow assist inference completed`**（`currentLabel=assistedLabel=マウス`）を確認した（[KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
 
+**推論基盤フェーズ1（2026-03-30）**: VLM 呼び出しは共通モジュールの **`photo_label` ルート**（`RoutedVisionCompletionAdapter`）経由。設定は **`INFERENCE_PROVIDERS_JSON`** または従来 **`LOCAL_LLM_*`**（[ADR-20260402](../../decisions/ADR-20260402-inference-foundation-phase1.md)）。Pi5 のみ反映後の Phase12 は **PASS 37/0/0**（約 95s）。
+
 **運用知見（2026-03-30、ドキュメント反映）**: 人レビューは **VLM を再学習させない**。`品質=GOOD` は **ギャラリー登録の許可**でもあり、`canonicalLabel` は **`上書き表示名` > VLM 表示名**（詳細は [KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「運用知見・人レビューとギャラリー」）。類似候補 API の表示閾値とシャドー補助の閾値は **別 env**（前者は広め・後者は厳しめ既定）のため、**候補は正しくてもシャドーが発火しない**ことがある。
 
 ## 機能要件（FR-009）
