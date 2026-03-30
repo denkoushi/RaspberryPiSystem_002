@@ -33,7 +33,7 @@ update-frequency: medium
 
 1. リポジトリの [scripts/ubuntu-local-llm-runtime/control-server.mjs](../../scripts/ubuntu-local-llm-runtime/control-server.mjs) を Ubuntu に配置し、`LLM_RUNTIME_CONTROL_TOKEN`（十分長いランダム値）を設定する。
 2. `localllm` ユーザーで `node control-server.mjs` を **127.0.0.1:39090**（既定）で起動する（systemd 推奨）。
-3. **nginx**（または別リバースプロキシ）で、Tailnet から到達可能な URL へ `POST /start`・`POST /stop` をプロキシする。ACL は **Pi5（tag:server）からのみ**等に限定する。
+3. **nginx**（または別リバースプロキシ）で、Tailnet/LAN 上の待受から `POST /start`・`POST /stop` を `127.0.0.1:39090`（control-server）へプロキシする。**設定例**: [`scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example`](../../scripts/ubuntu-local-llm-runtime/nginx-runtime-control.conf.example)（待受例: `39091`）。Tailscale ACL に **`tag:server -> tag:llm: tcp:39091`**（または選んだポート）を追加し、既存 `38081` の推論用 ACL と別に扱う。
 4. 制御サーバは `docker compose start|stop llama-server` を実行する。`COMPOSE_DIR` は既定 `/home/localllm/local-llm-system/compose`。
 
 ### Pi5 API（`infrastructure/docker/.env` / Ansible `docker.env.j2`）
@@ -62,7 +62,7 @@ update-frequency: medium
 - ノード名: `ubuntu-local-llm-system`
 - Tailscale IP: `100.107.223.92`
 - Tailscale タグ: `tag:llm`
-- ACL: `tag:server -> tag:llm: tcp:38081`
+- ACL: `tag:server -> tag:llm: tcp:38081`（推論）＋オンデマンド制御で別ポートを使う場合は **`tcp:39091`** 等を追加
 - 外部入口: `nginx` が `38081`
 - 内部推論: `llama-server` が `127.0.0.1:38082`
 - API 認証: `X-LLM-Token`

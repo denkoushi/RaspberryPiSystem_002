@@ -14,7 +14,7 @@ export LLM_RUNTIME_CONTROL_TOKEN='（Pi5 の LOCAL_LLM_RUNTIME_CONTROL_TOKEN と
 node /path/to/repo/scripts/ubuntu-local-llm-runtime/control-server.mjs
 ```
 
-既定では **127.0.0.1:39090** のみ。Tailnet から Pi5 が叩くには **nginx 等でリバースプロキシ**し、別パスまたは別ポートを ACL で Pi5 のみに開ける。
+既定では **127.0.0.1:39090** のみ。Tailnet から Pi5 が叩くには **nginx 等でリバースプロキシ**し、別パスまたは別ポートを ACL で Pi5 のみに開ける。**例**: 同ディレクトリの `nginx-runtime-control.conf.example`（待受 `39091` → `39090` へ中継）。
 
 ## Pi5 側の環境変数（例）
 

@@ -6,6 +6,8 @@ vault_api_jwt_access_secret: "change-me-access"
 vault_api_jwt_refresh_secret: "change-me-refresh"
 vault_status_agent_client_key: "client-key-raspberrypi5-server"
 vault_api_local_llm_shared_token: ""
+# オンデマンド起停（Ubuntu control-server）。空なら API は shared トークンを制御ヘッダにも流用
+vault_api_local_llm_runtime_control_token: ""
 
 # Tailscale preauth key (reusable, tagged推奨)
 vault_tailscale_auth_key: ""

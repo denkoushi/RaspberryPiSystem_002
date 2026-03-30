@@ -1,0 +1,26 @@
+# Ubuntu LocalLLM: Pi5 から llama-server 起停だけを受ける待受の例
+# - control-server.mjs は既定で 127.0.0.1:39090（POST /start, /stop）
+# - この server ブロックを tailnet 側に開き、Tailscale ACL で tag:server -> tag:llm: tcp:39091 を追加する
+# - Ansible の api_local_llm_runtime_control_*_url とポートを一致させる
+
+server {
+    listen 39091;
+    listen [::]:39091;
+    server_name _;
+
+    location = /start {
+        proxy_pass http://127.0.0.1:39090/start;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
+        proxy_read_timeout 120s;
+    }
+
+    location = /stop {
+        proxy_pass http://127.0.0.1:39090/stop;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
+        proxy_read_timeout 120s;
+    }
+}
