@@ -14,6 +14,7 @@ export type HttpOnDemandLocalLlmRuntimeControllerDeps = {
   /** llama-server の health 確認先（通常は LOCAL_LLM_BASE_URL と同じ） */
   healthCheckBaseUrl: string;
   llmToken: string;
+  readyProbeModels?: Partial<Record<LocalLlmRuntimeUseCase, string>>;
   readyTimeoutMs: number;
   startRequestTimeoutMs: number;
   stopRequestTimeoutMs: number;
@@ -107,21 +108,66 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
 
   private async pollHealthUntilReady(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<void> {
     const deadline = batchStarted + this.deps.readyTimeoutMs;
-    const healthUrl = new URL('/healthz', this.deps.healthCheckBaseUrl);
-    const headers: Record<string, string> = {};
-    if (this.deps.llmToken) {
-      headers['X-LLM-Token'] = this.deps.llmToken;
-    }
+    const readyProbeModel = this.deps.readyProbeModels?.[useCase]?.trim() || '';
+    const readyProbeUrl =
+      this.deps.llmToken && readyProbeModel
+        ? new URL('/v1/chat/completions', this.deps.healthCheckBaseUrl)
+        : this.deps.llmToken
+          ? new URL('/v1/models', this.deps.healthCheckBaseUrl)
+          : new URL('/healthz', this.deps.healthCheckBaseUrl);
+    const requestInit: RequestInit = this.deps.llmToken
+      ? readyProbeModel
+        ? {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-LLM-Token': this.deps.llmToken,
+            },
+            body: JSON.stringify({
+              model: readyProbeModel,
+              messages: [{ role: 'user', content: 'ready' }],
+              max_tokens: 1,
+              temperature: 0,
+              chat_template_kwargs: {
+                enable_thinking: false,
+              },
+            }),
+          }
+        : {
+            method: 'GET',
+            headers: {
+              'X-LLM-Token': this.deps.llmToken,
+            },
+          }
+      : { method: 'GET' };
 
     while (performance.now() < deadline) {
       try {
         const perReqMs = Math.min(10_000, Math.max(1000, this.deps.readyTimeoutMs));
         const signal = AbortSignal.timeout(perReqMs);
-        const r = await this.deps.fetchImpl(healthUrl, { method: 'GET', headers, signal });
+        const r = await this.deps.fetchImpl(readyProbeUrl, { ...requestInit, signal });
         if (r.ok) {
           return;
         }
-      } catch {
+        if (this.deps.llmToken && (r.status === 401 || r.status === 403)) {
+          log.warn(
+            {
+              useCase,
+              action: 'runtime_ready_auth_failed',
+              httpStatus: r.status,
+              latencyMs: Math.round(performance.now() - batchStarted),
+            },
+            '[LocalLlmRuntimeControl] ready probe auth failed'
+          );
+          throw new Error(`LocalLlmRuntimeControl: ready probe auth failed HTTP ${r.status}`);
+        }
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          err.message.startsWith('LocalLlmRuntimeControl: ready probe auth failed HTTP ')
+        ) {
+          throw err;
+        }
         // retry
       }
       await new Promise((r) => setTimeout(r, this.deps.healthPollIntervalMs));

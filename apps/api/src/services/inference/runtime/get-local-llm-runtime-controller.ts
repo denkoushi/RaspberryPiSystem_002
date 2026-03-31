@@ -43,6 +43,10 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
     controlToken,
     healthCheckBaseUrl: healthBase,
     llmToken,
+    readyProbeModels: {
+      photo_label: env.INFERENCE_PHOTO_LABEL_MODEL?.trim() || env.LOCAL_LLM_MODEL?.trim() || '',
+      document_summary: env.INFERENCE_DOCUMENT_SUMMARY_MODEL?.trim() || env.LOCAL_LLM_MODEL?.trim() || '',
+    },
     readyTimeoutMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
     startRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS,
     stopRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS,

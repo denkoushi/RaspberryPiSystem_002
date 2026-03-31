@@ -56,6 +56,7 @@
 - **既定は無効**。`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` かつ推論プロバイダが解決できるとき、OCR 完了後に **OpenAI 互換 `/v1/chat/completions`（テキスト）** で `summaryCandidate1` を生成し、2〜3 は従来の機械スニペットで補完する。
 - 推論失敗・タイムアウト時は **機械スニペットのみ**にフォールバックし、**OCR 完了や DB 更新は継続**する（推論は補助）。
 - 複数推論先・モデルは `INFERENCE_PROVIDERS_JSON` と用途別 env で指定する。詳細は [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md) と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の環境変数表。
+- **`LOCAL_LLM_RUNTIME_MODE=on_demand` 時**: 推論前に Pi5 が Ubuntu 側で `llama-server` を起動する。**ログ**に `upstream_http_403` が出たら **推論トークンと Ubuntu `api-token` の整合**、[local-llm-tailscale-sidecar.md](./local-llm-tailscale-sidecar.md) の **on_demand / 503** 節を参照。
 
 ### OCR ヘルスチェック（デプロイ直後）
 

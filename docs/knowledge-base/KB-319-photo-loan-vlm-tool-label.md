@@ -76,7 +76,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 | 症状 | 想定原因 | 対処 |
 |------|----------|------|
-| `requested > 0` なのに `labeled = 0` | LocalLLM 未設定、scheduler 未起動、upstream 到達不可 | `LOCAL_LLM_*` を API コンテナ内で確認し、Runbook の `/healthz` 手順で Pi5 → Ubuntu 経路を確認 |
+| `requested > 0` なのに `labeled = 0` | LocalLLM 未設定、scheduler 未起動、upstream 到達不可、`X-LLM-Token` 不一致（403）、`on_demand` 起動直後の chat 未 ready（503） | `LOCAL_LLM_*` を API コンテナ内で確認し、Runbook の `/healthz` 手順で Pi5 → Ubuntu 経路を確認。ログに **`upstream_http_403`** が出たら **Ubuntu `api-token` と Pi5 の `LOCAL_LLM_SHARED_TOKEN` を同一に**（[KB-318](./infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）。**`on_demand`** 時は `component: localLlmRuntimeControl` の `runtime_ready` 後でも推論が 503 になる事例があり、API は chat ベースの readiness を行う（2026-03-31・[local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)） |
 | `claimed > 0` が長時間戻らない | 推論中断やプロセス停止で claim がスタック | `PHOTO_TOOL_LABEL_STALE_MINUTES` 経過後に自動解放されるか確認。必要なら API 再起動後に次回 cron を待つ |
 | ラベルが空で保存されない | VLM 応答が空、改行だけ、または正規化後に空 | ジョブは `photoToolDisplayName` を保存せず claim を解放する。ジョブログの `responseCharLen` を確認 |
 | ラベルが期待した工具名と違う | 初版仕様が「**最も目立つ 1 つ**」であり、Item マスタ照合もしていない | 仕様どおり。マスタ照合や候補提示は将来拡張として別途設計する |
