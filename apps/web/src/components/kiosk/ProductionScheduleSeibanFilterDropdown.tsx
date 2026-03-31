@@ -89,7 +89,7 @@ export function ProductionScheduleSeibanFilterDropdown({
             </div>
           </div>
 
-          <div className="grid max-h-80 grid-cols-2 gap-2 overflow-y-auto pr-1 lg:grid-cols-3">
+          <div className="grid max-h-[min(70vh,32rem)] grid-cols-2 gap-2 overflow-y-auto pr-1 lg:grid-cols-3">
             {items.map((item) => (
               <button
                 key={item.fseiban}

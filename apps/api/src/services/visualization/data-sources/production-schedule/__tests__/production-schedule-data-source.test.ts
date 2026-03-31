@@ -1,3 +1,4 @@
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { ProductionScheduleDataSource } from '../production-schedule-data-source.js';
 import { prisma } from '../../../../../lib/prisma.js';
@@ -17,14 +18,14 @@ describe('ProductionScheduleDataSource', () => {
     vi.clearAllMocks();
   });
 
-  it('should limit history to 20 items', async () => {
+  it('should limit history to registered seiban max items', async () => {
     const dataSource = new ProductionScheduleDataSource();
 
-    // 25件の登録製番を用意（上限20件を超える）
-    const history25 = Array.from({ length: 25 }, (_, i) => `FSEIBAN${String(i + 1).padStart(3, '0')}`);
+    const overLimit = KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX + 1;
+    const historyOver = Array.from({ length: overLimit }, (_, i) => `FSEIBAN${String(i + 1).padStart(3, '0')}`);
 
     vi.mocked(prisma.kioskProductionScheduleSearchState.findUnique).mockResolvedValue({
-      state: { history: history25 },
+      state: { history: historyOver },
       updatedAt: new Date(),
     } as any);
 
@@ -34,8 +35,7 @@ describe('ProductionScheduleDataSource', () => {
 
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
-      // 20件に制限されていることを確認
-      expect(result.rows.length).toBeLessThanOrEqual(20);
+      expect(result.rows.length).toBeLessThanOrEqual(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
     }
   });
 
@@ -56,18 +56,20 @@ describe('ProductionScheduleDataSource', () => {
     }
   });
 
-  it('should handle exactly 20 items', async () => {
+  it('should handle exactly max registered seiban items', async () => {
     const dataSource = new ProductionScheduleDataSource();
 
-    const history20 = Array.from({ length: 20 }, (_, i) => `FSEIBAN${String(i + 1).padStart(3, '0')}`);
+    const historyMax = Array.from({ length: KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX }, (_, i) =>
+      `FSEIBAN${String(i + 1).padStart(3, '0')}`
+    );
 
     vi.mocked(prisma.kioskProductionScheduleSearchState.findUnique).mockResolvedValue({
-      state: { history: history20 },
+      state: { history: historyMax },
       updatedAt: new Date(),
     } as any);
 
     vi.mocked(prisma.$queryRaw).mockResolvedValue(
-      history20.map((fseiban) => ({
+      historyMax.map((fseiban) => ({
         fseiban,
         total: 5,
         completed: 3,
@@ -79,7 +81,7 @@ describe('ProductionScheduleDataSource', () => {
 
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
-      expect(result.rows.length).toBe(20);
+      expect(result.rows.length).toBe(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
     }
   });
 });

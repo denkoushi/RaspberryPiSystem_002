@@ -1,3 +1,4 @@
+import { normalizeKioskProductionScheduleSearchHistory } from '@raspi-system/shared-types';
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { prisma } from '../../../../lib/prisma.js';
@@ -14,20 +15,6 @@ type ProgressRow = {
   completed: number;
   incompleteProductNames: string[] | null;
 };
-
-function normalizeHistory(values: string[]): string[] {
-  const unique = new Set<string>();
-  const next: string[] = [];
-  values
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0)
-    .forEach((value) => {
-      if (unique.has(value)) return;
-      unique.add(value);
-      next.push(value);
-    });
-  return next.slice(0, 20);
-}
 
 function toRowMap(rows: ProgressRow[]): Map<string, ProgressRow> {
   return new Map(rows.map((row) => [row.fseiban, row]));
@@ -62,7 +49,9 @@ export class ProductionScheduleDataSource implements DataSource {
       },
     });
 
-    const history = normalizeHistory(((sharedState?.state as { history?: string[] } | null)?.history ?? []) as string[]);
+    const history = normalizeKioskProductionScheduleSearchHistory(
+      ((sharedState?.state as { history?: string[] } | null)?.history ?? []) as string[]
+    );
     const cacheKey = history.join('|');
     const now = Date.now();
 
