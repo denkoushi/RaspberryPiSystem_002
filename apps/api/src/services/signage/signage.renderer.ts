@@ -25,7 +25,9 @@ import { getRotatingSlideIndex, type SignageSlideRotationState } from './signage
 import { buildKioskProgressOverviewSvg } from './kiosk-progress-overview/kiosk-progress-overview-svg.js';
 import {
   DEFAULT_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE,
+  MAX_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE,
   progressOverviewPageCount,
+  sanitizeSeibanPerPage,
   sliceProgressOverviewItems,
 } from './kiosk-progress-overview/pagination.js';
 
@@ -202,11 +204,18 @@ export class SignageRenderer {
           return await this.renderMessage('キオスク進捗: deviceScopeKey が未設定です');
         }
         const slideSec = kioskCfg.slideIntervalSeconds ?? 30;
-        const perPage = kioskCfg.seibanPerPage ?? DEFAULT_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE;
-        if (!Number.isFinite(perPage) || perPage < 1) {
+        const perPageRaw = kioskCfg.seibanPerPage ?? DEFAULT_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE;
+        if (!Number.isFinite(perPageRaw) || perPageRaw < 1) {
           return await this.renderMessage('キオスク進捗: seibanPerPage が無効です');
         }
-        return await this.renderKioskProgressOverviewFull(scopeKey, slideSec, Math.floor(perPage));
+        const perPage = sanitizeSeibanPerPage(perPageRaw);
+        if (perPageRaw > MAX_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE) {
+          logger.warn(
+            { deviceScopeKey: scopeKey, requested: perPageRaw, capped: perPage },
+            'kiosk_progress_overview seibanPerPage was capped'
+          );
+        }
+        return await this.renderKioskProgressOverviewFull(scopeKey, slideSec, perPage);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // SignagePaneResolver でペイン解決（loans=0件も有効）

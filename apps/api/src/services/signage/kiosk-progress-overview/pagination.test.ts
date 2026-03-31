@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { progressOverviewPageCount, sliceProgressOverviewItems } from './pagination.js';
+import {
+  progressOverviewPageCount,
+  sanitizeSeibanPerPage,
+  sliceProgressOverviewItems,
+} from './pagination.js';
 
 describe('kiosk-progress-overview pagination', () => {
   it('computes page count', () => {
@@ -17,5 +21,13 @@ describe('kiosk-progress-overview pagination', () => {
     expect(sliceProgressOverviewItems(items, 0, 5)).toEqual([1, 2, 3, 4, 5]);
     expect(sliceProgressOverviewItems(items, 1, 5)).toEqual([6, 7]);
     expect(sliceProgressOverviewItems(items, 2, 5)).toEqual([]);
+  });
+
+  it('sanitizes seibanPerPage into 1..5', () => {
+    expect(sanitizeSeibanPerPage(0)).toBe(1);
+    expect(sanitizeSeibanPerPage(1)).toBe(1);
+    expect(sanitizeSeibanPerPage(4.8)).toBe(4);
+    expect(sanitizeSeibanPerPage(5)).toBe(5);
+    expect(sanitizeSeibanPerPage(9)).toBe(5);
   });
 });

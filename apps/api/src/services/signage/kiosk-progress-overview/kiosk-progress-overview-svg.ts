@@ -54,7 +54,7 @@ function chipColors(isCompleted: boolean): { border: string; fill: string; text:
 }
 
 /**
- * キオスクの ProgressOverviewSeibanCard + ProgressOverviewPartRow に視覚的に揃えたフサイズネージ用 SVG（ヘッダー類なし）。
+ * キオスクの ProgressOverviewSeibanCard + ProgressOverviewPartRow に視覚的に揃えたサイネージ用 SVG（ヘッダー類なし）。
  */
 export function buildKioskProgressOverviewSvg(
   items: ProductionScheduleProgressOverviewSeibanItem[],

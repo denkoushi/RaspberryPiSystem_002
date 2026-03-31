@@ -330,7 +330,7 @@ export function SignageSchedulesPage() {
         if (fullKioskSeibanPerPageStr.trim() !== '') {
           const n = Number(fullKioskSeibanPerPageStr);
           if (Number.isFinite(n) && n >= 1) {
-            config.seibanPerPage = Math.floor(n);
+            config.seibanPerPage = Math.min(5, Math.floor(n));
           }
         }
         return {
@@ -781,7 +781,7 @@ export function SignageSchedulesPage() {
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-slate-700">
-                            1ページの製番数（任意・既定5）
+                            1ページの製番数（任意・既定5、最大5）
                           </label>
                           <input
                             type="text"
