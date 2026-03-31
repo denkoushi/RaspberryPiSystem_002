@@ -643,7 +643,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 
 **確認ポイント**（[KB-321](../knowledge-base/infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証)、[deployment.md](./deployment.md)）:
 
-- [ ] 管理画面でスケジュールに **`kiosk_progress_overview`** を追加する場合、**`deviceScopeKey` がキオスク表示と一致**していること（必須）。**`seibanPerPage` は 1〜5**（6 以上は cap・固定列 SVG の都合）。
+- [ ] 管理画面でスケジュールに **`kiosk_progress_overview`** を追加する場合、**`deviceScopeKey` がキオスク表示と一致**していること（必須）。**`seibanPerPage` は 1〜8**（9 以上は cap・4列×2段 JPEG の都合）。
 - [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-04-01 基準 **PASS 38 / WARN 0 / FAIL 0**。**`GET /api/signage/current-image` + `x-client-key: client-key-raspberrypi3-signage1` → 200** を含む）。
 - [ ] Pi3 へ載せる変更は [deployment.md](./deployment.md) の **ラズパイ3（サイネージ）** に従い **`--limit raspberrypi3`**・**`--detach --follow`**・**単一起動**（多重 `update-all-clients.sh` 禁止）。
 - [ ] （任意・現場）FULL スロット表示時に **ページ送り**・**製番が scheduled のみ**であることの目視。

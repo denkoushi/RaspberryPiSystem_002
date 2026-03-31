@@ -1710,7 +1710,7 @@
 **候補タスク**:
 
 1. **現場目視（推奨）**: 管理画面で **`kiosk_progress_overview`** を指すスケジュールが **有効な時間帯**、Pi3 で **FULL 進捗一覧**・**ページ送り**が意図どおりか確認（`deviceScopeKey` 誤りは空/ズレの原因）。
-2. **件数・視認性**: `seibanPerPage` は **最大 5**（固定列レイアウトの上限）。より多い件数が必要なら別スロット・別 ADR でレイアウト拡張を検討。
+2. **件数・視認性**: `seibanPerPage` は **最大 8**（4列×2段 JPEG のスロット数）。列・段の設定化やそれ以上の件数が必要なら別 ADR で検討。
 3. **回帰**: サイネージ改修の PR では Phase12 実行時、**PASS 数が 38 基準**であること（`current-image` スモーク落下時は Pi3 キー・TLS・スケジュールを先に切り分け）。
 
 **参照**: [KB-321](./docs/knowledge-base/infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) / [verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.13 / [deployment.md](./docs/guides/deployment.md)

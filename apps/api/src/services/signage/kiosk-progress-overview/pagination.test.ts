@@ -23,11 +23,11 @@ describe('kiosk-progress-overview pagination', () => {
     expect(sliceProgressOverviewItems(items, 2, 5)).toEqual([]);
   });
 
-  it('sanitizes seibanPerPage into 1..5', () => {
+  it('sanitizes seibanPerPage into 1..8', () => {
     expect(sanitizeSeibanPerPage(0)).toBe(1);
     expect(sanitizeSeibanPerPage(1)).toBe(1);
     expect(sanitizeSeibanPerPage(4.8)).toBe(4);
-    expect(sanitizeSeibanPerPage(5)).toBe(5);
-    expect(sanitizeSeibanPerPage(9)).toBe(5);
+    expect(sanitizeSeibanPerPage(8)).toBe(8);
+    expect(sanitizeSeibanPerPage(9)).toBe(8);
   });
 });

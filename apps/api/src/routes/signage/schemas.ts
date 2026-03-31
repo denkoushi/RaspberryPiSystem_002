@@ -28,7 +28,7 @@ const kioskProgressOverviewSlotConfigSchema = z
   .object({
     deviceScopeKey: z.string().min(1).max(200),
     slideIntervalSeconds: z.number().int().positive().optional(),
-    seibanPerPage: z.number().int().min(1).max(5).optional(),
+    seibanPerPage: z.number().int().min(1).max(8).optional(),
   })
   .strict();
 

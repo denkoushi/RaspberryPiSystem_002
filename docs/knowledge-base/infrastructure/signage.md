@@ -24,7 +24,7 @@ update-frequency: medium
 
 **概要（仕様）**:
 - サイネージでキオスク進捗一覧相当を **FULL ペイン**として表示するスロット種別 **`kiosk_progress_overview`** を追加。
-- **`deviceScopeKey` は必須**（キオスク側スコープと整合する装置スコープ）。既定のページ送り間隔例: **30 秒**、1 画面あたり製番件数 **`seibanPerPage` は 1〜5**（Zod・レンダラー・管理画面入力で **上限 5** に統一。固定 5 列 SVG のため 6 件以上は画面外描画になり得る件の防止）。
+- **`deviceScopeKey` は必須**（キオスク側スコープと整合する装置スコープ）。既定のページ送り間隔例: **30 秒**、1 画面あたり製番件数 **`seibanPerPage` は 1〜8**（Zod・レンダラー・管理画面入力で **上限 8** に統一。サイネージ JPEG は **4 列×2 段**グリッドのため、9 件以上は cap でページ分割）。
 - データは API **`getProductionScheduleProgressOverview`** 系から取得し、**scheduled のみ**ページング。描画は **SVG → JPEG**（`SignageRenderer`）。PDF スロットと同様のページ送りロジックは **`signage-slide-rotation.ts`** に集約。
 - 契約（共有型・Zod）: `packages/shared-types` の `KioskProgressOverviewSlotConfig`、API `apps/api/src/routes/signage/schemas.ts`。Web: `SignageDisplayPage`（FULL 分岐で `current-image` 全画面）、`SignageSchedulesPage`（スロット種別・`deviceScopeKey` 設定）。
 
@@ -40,12 +40,12 @@ update-frequency: medium
 
 **知見・トラブルシューティング**:
 - **Pi3 デプロイ直後**: プレフライトで lightdm/signage を止めるため、ヘルスログ上 **一時的に `signage-lite` が `activating (auto-restart)` / `exit-code`** になり得る。Playbook 後段の **lightdm 復旧・サービス再開**まで待つと **`signage-lite.service is active`** で完走するのが通常。
-- **`seibanPerPage` > 5**: 設定・API・レンダラーで **5 に cap**（ログ警告）。管理画面でも最大 5。
+- **`seibanPerPage` > 8**: 設定・API・レンダラーで **8 に cap**（ログ警告）。管理画面でも最大 8。
 - **表示が古い**: Pi3 は **`signage-lite-update`** と **`/api/signage/current-image`** の生成経路。サーバは **`SignageRenderer`** 由来の JPEG が正本（React 管理画面のみでは Pi3 に届かない）。
 
 **関連ファイル（代表）**:
 - `apps/api/src/services/signage/signage.renderer.ts`
-- `apps/api/src/services/signage/kiosk-progress-overview-svg.ts`
+- `apps/api/src/services/signage/kiosk-progress-overview/kiosk-progress-overview-svg.ts`
 - `apps/api/src/services/signage/signage-slide-rotation.ts`
 - `apps/api/src/routes/signage/schemas.ts`
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`

@@ -1,6 +1,8 @@
-/** 1ページあたりの製番カード数（キオスク xl:grid-cols-5 に合わせる既定） */
-export const DEFAULT_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE = 5;
-export const MAX_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE = 5;
+import { KIOSK_PROGRESS_GRID_CAPACITY } from './kiosk-progress-overview-layout.js';
+
+/** 1ページあたりの製番カード数（サイネージ JPEG は 4列×2段＝8スロットに合わせる） */
+export const DEFAULT_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE = KIOSK_PROGRESS_GRID_CAPACITY;
+export const MAX_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE = KIOSK_PROGRESS_GRID_CAPACITY;
 
 export function sanitizeSeibanPerPage(value: number): number {
   if (!Number.isFinite(value)) {
