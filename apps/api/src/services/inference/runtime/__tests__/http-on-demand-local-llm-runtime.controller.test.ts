@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { HttpOnDemandLocalLlmRuntimeController } from '../http-on-demand-local-llm-runtime.controller.js';
 
 describe('HttpOnDemandLocalLlmRuntimeController', () => {
-  it('starts once and polls chat completions until ready', async () => {
+  it('starts once and polls chat completions until ready for admin console chat', async () => {
     let chatN = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -28,7 +28,7 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       healthCheckBaseUrl: 'http://llm:38081',
       llmToken: 'llm',
       readyProbeModels: {
-        photo_label: 'qwen-ready',
+        admin_console_chat: 'qwen-ready',
       },
       readyTimeoutMs: 30_000,
       startRequestTimeoutMs: 10_000,
@@ -36,9 +36,9 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       healthPollIntervalMs: 1,
     });
 
-    await c.ensureReady('photo_label');
+    await c.ensureReady('admin_console_chat');
     expect(chatN).toBeGreaterThanOrEqual(2);
-    await c.release('photo_label');
+    await c.release('admin_console_chat');
     const posts = fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST');
     expect(posts.length).toBe(4);
   });
@@ -68,6 +68,7 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       readyProbeModels: {
         photo_label: 'photo-model',
         document_summary: 'summary-model',
+        admin_console_chat: 'admin-model',
       },
       readyTimeoutMs: 30_000,
       startRequestTimeoutMs: 10_000,
@@ -75,7 +76,11 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       healthPollIntervalMs: 1,
     });
 
-    await Promise.all([c.ensureReady('photo_label'), c.ensureReady('document_summary')]);
+    await Promise.all([
+      c.ensureReady('photo_label'),
+      c.ensureReady('document_summary'),
+      c.ensureReady('admin_console_chat'),
+    ]);
     const startPosts = fetchImpl.mock.calls.filter(
       ([u, init]) => String(u).includes('/start') && init?.method === 'POST'
     );
@@ -85,6 +90,10 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       fetchImpl.mock.calls.filter(([u, init]) => String(u).includes('/stop') && init?.method === 'POST').length
     ).toBe(0);
     await c.release('document_summary');
+    expect(
+      fetchImpl.mock.calls.filter(([u, init]) => String(u).includes('/stop') && init?.method === 'POST').length
+    ).toBe(0);
+    await c.release('admin_console_chat');
     expect(
       fetchImpl.mock.calls.filter(([u, init]) => String(u).includes('/stop') && init?.method === 'POST').length
     ).toBe(1);

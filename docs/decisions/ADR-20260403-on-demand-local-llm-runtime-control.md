@@ -7,7 +7,7 @@ Context:
 Decision:
   - 既定は従来どおり `LOCAL_LLM_RUNTIME_MODE=always_on`（制御 API は no-op）。
   - `on_demand` 時は Pi5 API が HTTP で Ubuntu 側の起動・停止エンドポイントを呼び、**実推論可能になるまで**待ってから推論する（**2026-03-31 更新**: トークンとモデルが揃う場合は **`POST /v1/chat/completions` の軽量プローブ**で待つ。従来の **`/healthz` のみ**では起動直後に chat が 503 になりうる）。401/403 はポーリングで即失敗し認証切り分けを早める。
-  - 参照カウントで `photo_label` と `document_summary` が重なっても、最後の `release` まで `llama-server` を落とさない。
+  - 参照カウントで `photo_label`・`document_summary`・`admin_console_chat` が重なっても、最後の `release` まで `llama-server` を落とさない。
   - 写真登録完了後に `PhotoToolLabelScheduler.runOnce()` を非同期キックし、cron は保険として残す。`runOnce` は連続呼び出しを直列化する。
   - 要領書 OCR 深夜バッチは、`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` かつ推論設定が有効なときだけバッチ前後で ensure/release する。
 Alternatives:

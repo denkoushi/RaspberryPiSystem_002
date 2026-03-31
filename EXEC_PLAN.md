@@ -1728,6 +1728,7 @@
 4. **運用監視**: 写真持出と要領書要約の実ジョブで、Pi5 の `component: localLlmRuntimeControl` / `component: inference` と Ubuntu `journalctl -u llm-runtime-control` を 1 日分 spot check し、不要な再起動や stop 漏れがないかを確認する。
 5. **IaC 化の仕上げ**: Ubuntu 側で手動投入した systemd/nginx/runtime.env の差分が残っていれば、[scripts/ubuntu-local-llm-runtime/](./scripts/ubuntu-local-llm-runtime/) の補助スクリプト適用結果と Runbook の手順を再照合し、再構築手順を 1 回通す。
 6. ~~**要領書要約の実運用確認**~~: **2026-03-31** 実機で LLM 要約・VLM ラベル復帰を確認済み。403/503 切り分けは [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md)・runbook に追記。
+7. **管理コンソール Chat（`/admin/local-llm`）整合**: `LOCAL_LLM_RUNTIME_MODE=on_demand` でも、管理 Chat が `photo_label` / `document_summary` と同じ runtime 境界（`ensureReady/release`）で動くことを確認し、停止中ランタイムでの `LOCAL_LLM_UPSTREAM_ERROR` を再発させない。
 
 **参照**: [ADR-20260403](./docs/decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.12
 
