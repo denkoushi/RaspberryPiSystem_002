@@ -167,6 +167,9 @@ function buildPane(
       return { kind: 'csv_dashboard', csvDashboard };
     case 'visualization':
       return { kind: 'visualization', visualizationDashboardId };
+    case 'kiosk_progress_overview':
+      // FULL のみ対応。SPLIT で選ばれた場合は空ペイン（運用で避ける想定）。
+      return { kind: 'loans', tools: [] };
     default:
       return { kind: 'loans', tools: [] };
   }

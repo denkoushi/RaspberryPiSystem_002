@@ -434,6 +434,51 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     expect(response.headers['content-type']).toContain('image/jpeg');
     expect(response.rawPayload).toBeInstanceOf(Buffer);
   });
+
+  it('should return image for schedule with layoutConfig FULL kiosk_progress_overview', async () => {
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule Kiosk Progress',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'kiosk_progress_overview',
+              config: {
+                deviceScopeKey: 'integration-test-device-scope',
+                slideIntervalSeconds: 30,
+                seibanPerPage: 5,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/signage/current-image',
+      headers: {
+        'x-client-key': clientDevice.apiKey,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/jpeg');
+    expect(response.rawPayload).toBeInstanceOf(Buffer);
+  });
 });
 
 describe('GET /api/signage/content with SPLIT layout (left: pdf, right: pdf)', () => {

@@ -18,6 +18,7 @@ import type {
   SignagePdf,
   SignageLayoutConfig,
   SignageSlot,
+  SignageSlotConfig,
   CsvDashboard,
   VisualizationDashboard
 } from '../../api/client';
@@ -74,10 +75,15 @@ export function SignageSchedulesPage() {
   const [rightCsvDashboardId, setRightCsvDashboardId] = useState<string | null>(null); // 右スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
   const [leftVisualizationDashboardId, setLeftVisualizationDashboardId] = useState<string | null>(null); // 左スロットの可視化（kind='visualization'の場合）
   const [rightVisualizationDashboardId, setRightVisualizationDashboardId] = useState<string | null>(null); // 右スロットの可視化（kind='visualization'の場合）
-  const [fullSlotKind, setFullSlotKind] = useState<'loans' | 'pdf' | 'csv_dashboard' | 'visualization'>('loans'); // 全体スロットの種類
+  const [fullSlotKind, setFullSlotKind] = useState<
+    'loans' | 'pdf' | 'csv_dashboard' | 'visualization' | 'kiosk_progress_overview'
+  >('loans'); // 全体スロットの種類
   const [fullPdfId, setFullPdfId] = useState<string | null>(null); // 全体スロットのPDF（kind='pdf'の場合）
   const [fullCsvDashboardId, setFullCsvDashboardId] = useState<string | null>(null); // 全体スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
   const [fullVisualizationDashboardId, setFullVisualizationDashboardId] = useState<string | null>(null); // 全体スロットの可視化（kind='visualization'の場合）
+  const [fullKioskDeviceScopeKey, setFullKioskDeviceScopeKey] = useState('');
+  const [fullKioskSlideIntervalStr, setFullKioskSlideIntervalStr] = useState('');
+  const [fullKioskSeibanPerPageStr, setFullKioskSeibanPerPageStr] = useState('');
 
   const handleCreate = () => {
     setIsCreating(true);
@@ -95,6 +101,9 @@ export function SignageSchedulesPage() {
     setFullVisualizationDashboardId(null);
     setLeftVisualizationDashboardId(null);
     setRightVisualizationDashboardId(null);
+    setFullKioskDeviceScopeKey('');
+    setFullKioskSlideIntervalStr('');
+    setFullKioskSeibanPerPageStr('');
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -124,11 +133,18 @@ export function SignageSchedulesPage() {
             setFullSlotKind('pdf');
             setFullPdfId('pdfId' in slot.config ? slot.config.pdfId ?? null : null);
             setFullCsvDashboardId(null);
+            setFullVisualizationDashboardId(null);
+            setFullKioskDeviceScopeKey('');
+            setFullKioskSlideIntervalStr('');
+            setFullKioskSeibanPerPageStr('');
           } else if (slot.kind === 'csv_dashboard') {
             setFullSlotKind('csv_dashboard');
             setFullCsvDashboardId('csvDashboardId' in slot.config ? slot.config.csvDashboardId ?? null : null);
             setFullPdfId(null);
             setFullVisualizationDashboardId(null);
+            setFullKioskDeviceScopeKey('');
+            setFullKioskSlideIntervalStr('');
+            setFullKioskSeibanPerPageStr('');
           } else if (slot.kind === 'visualization') {
             setFullSlotKind('visualization');
             setFullVisualizationDashboardId(
@@ -136,11 +152,35 @@ export function SignageSchedulesPage() {
             );
             setFullPdfId(null);
             setFullCsvDashboardId(null);
+            setFullKioskDeviceScopeKey('');
+            setFullKioskSlideIntervalStr('');
+            setFullKioskSeibanPerPageStr('');
+          } else if (slot.kind === 'kiosk_progress_overview') {
+            setFullSlotKind('kiosk_progress_overview');
+            setFullKioskDeviceScopeKey(
+              'deviceScopeKey' in slot.config ? String(slot.config.deviceScopeKey ?? '').trim() : ''
+            );
+            setFullKioskSlideIntervalStr(
+              'slideIntervalSeconds' in slot.config && slot.config.slideIntervalSeconds != null
+                ? String(slot.config.slideIntervalSeconds)
+                : ''
+            );
+            setFullKioskSeibanPerPageStr(
+              'seibanPerPage' in slot.config && slot.config.seibanPerPage != null
+                ? String(slot.config.seibanPerPage)
+                : ''
+            );
+            setFullPdfId(null);
+            setFullCsvDashboardId(null);
+            setFullVisualizationDashboardId(null);
           } else {
             setFullSlotKind('loans');
             setFullPdfId(null);
             setFullCsvDashboardId(null);
             setFullVisualizationDashboardId(null);
+            setFullKioskDeviceScopeKey('');
+            setFullKioskSlideIntervalStr('');
+            setFullKioskSeibanPerPageStr('');
           }
         }
       } else {
@@ -274,6 +314,32 @@ export function SignageSchedulesPage() {
               config: {
                 visualizationDashboardId: fullVisualizationDashboardId,
               },
+            },
+          ],
+        };
+      } else if (fullSlotKind === 'kiosk_progress_overview' && fullKioskDeviceScopeKey.trim()) {
+        const config: SignageSlotConfig = {
+          deviceScopeKey: fullKioskDeviceScopeKey.trim(),
+        };
+        if (fullKioskSlideIntervalStr.trim() !== '') {
+          const n = Number(fullKioskSlideIntervalStr);
+          if (Number.isFinite(n) && n > 0) {
+            config.slideIntervalSeconds = n;
+          }
+        }
+        if (fullKioskSeibanPerPageStr.trim() !== '') {
+          const n = Number(fullKioskSeibanPerPageStr);
+          if (Number.isFinite(n) && n >= 1) {
+            config.seibanPerPage = Math.floor(n);
+          }
+        }
+        return {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'kiosk_progress_overview',
+              config,
             },
           ],
         };
@@ -436,6 +502,12 @@ export function SignageSchedulesPage() {
       setFullVisualizationDashboardId(null);
       setLeftVisualizationDashboardId(null);
       setRightVisualizationDashboardId(null);
+      setFullCsvDashboardId(null);
+      setLeftCsvDashboardId(null);
+      setRightCsvDashboardId(null);
+      setFullKioskDeviceScopeKey('');
+      setFullKioskSlideIntervalStr('');
+      setFullKioskSeibanPerPageStr('');
       setFormData({
         name: '',
         contentType: 'TOOLS',
@@ -466,6 +538,12 @@ export function SignageSchedulesPage() {
     setFullVisualizationDashboardId(null);
     setLeftVisualizationDashboardId(null);
     setRightVisualizationDashboardId(null);
+    setFullCsvDashboardId(null);
+    setLeftCsvDashboardId(null);
+    setRightCsvDashboardId(null);
+    setFullKioskDeviceScopeKey('');
+    setFullKioskSlideIntervalStr('');
+    setFullKioskSeibanPerPageStr('');
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -572,20 +650,43 @@ export function SignageSchedulesPage() {
                       <select
                         value={fullSlotKind}
                         onChange={(e) => {
-                          setFullSlotKind(e.target.value as 'loans' | 'pdf' | 'csv_dashboard' | 'visualization');
+                          setFullSlotKind(
+                            e.target.value as
+                              | 'loans'
+                              | 'pdf'
+                              | 'csv_dashboard'
+                              | 'visualization'
+                              | 'kiosk_progress_overview'
+                          );
                           if (e.target.value === 'loans') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
                             setFullVisualizationDashboardId(null);
+                            setFullKioskDeviceScopeKey('');
+                            setFullKioskSlideIntervalStr('');
+                            setFullKioskSeibanPerPageStr('');
                           } else if (e.target.value === 'pdf') {
                             setFullCsvDashboardId(null);
                             setFullVisualizationDashboardId(null);
+                            setFullKioskDeviceScopeKey('');
+                            setFullKioskSlideIntervalStr('');
+                            setFullKioskSeibanPerPageStr('');
                           } else if (e.target.value === 'csv_dashboard') {
                             setFullPdfId(null);
                             setFullVisualizationDashboardId(null);
+                            setFullKioskDeviceScopeKey('');
+                            setFullKioskSlideIntervalStr('');
+                            setFullKioskSeibanPerPageStr('');
                           } else if (e.target.value === 'visualization') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
+                            setFullKioskDeviceScopeKey('');
+                            setFullKioskSlideIntervalStr('');
+                            setFullKioskSeibanPerPageStr('');
+                          } else if (e.target.value === 'kiosk_progress_overview') {
+                            setFullPdfId(null);
+                            setFullCsvDashboardId(null);
+                            setFullVisualizationDashboardId(null);
                           }
                         }}
                         className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
@@ -594,6 +695,7 @@ export function SignageSchedulesPage() {
                         <option value="pdf">PDF</option>
                         <option value="csv_dashboard">CSVダッシュボード</option>
                         <option value="visualization">可視化</option>
+                        <option value="kiosk_progress_overview">キオスク進捗一覧（JPEG）</option>
                       </select>
                     </div>
                     {fullSlotKind === 'pdf' && (
@@ -645,6 +747,51 @@ export function SignageSchedulesPage() {
                             </option>
                           ))}
                         </select>
+                      </div>
+                    )}
+                    {fullSlotKind === 'kiosk_progress_overview' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            deviceScopeKey（キオスク端末と同じスコープ文字列・必須）
+                          </label>
+                          <input
+                            type="text"
+                            value={fullKioskDeviceScopeKey}
+                            onChange={(e) => setFullKioskDeviceScopeKey(e.target.value)}
+                            placeholder="例: 端末設定のスコープキー"
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                          />
+                          <p className="mt-1 text-xs text-slate-600">
+                            空にすると保存時は持出一覧にフォールバックします。未入力では保存できません（必須）。
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            ページ表示秒（任意・既定30）
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fullKioskSlideIntervalStr}
+                            onChange={(e) => setFullKioskSlideIntervalStr(e.target.value)}
+                            placeholder="30"
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            1ページの製番数（任意・既定5）
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fullKioskSeibanPerPageStr}
+                            onChange={(e) => setFullKioskSeibanPerPageStr(e.target.value)}
+                            placeholder="5"
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                          />
+                        </div>
                       </div>
                     )}
                   </>

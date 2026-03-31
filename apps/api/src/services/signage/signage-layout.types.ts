@@ -6,7 +6,12 @@ export type SignageLayoutType = 'FULL' | 'SPLIT';
 
 export type SignageSlotPosition = 'FULL' | 'LEFT' | 'RIGHT';
 
-export type SignageSlotKind = 'pdf' | 'loans' | 'csv_dashboard' | 'visualization';
+export type SignageSlotKind =
+  | 'pdf'
+  | 'loans'
+  | 'csv_dashboard'
+  | 'visualization'
+  | 'kiosk_progress_overview';
 
 /**
  * PDFスロットの設定
@@ -39,12 +44,27 @@ export interface VisualizationSlotConfig {
 }
 
 /**
+ * キオスク生産スケジュール進捗一覧（サイネージ JPEG）
+ * deviceScopeKey はキオスク端末のスコープと同一の文字列を指定する。
+ */
+export interface KioskProgressOverviewSlotConfig {
+  deviceScopeKey: string;
+  slideIntervalSeconds?: number;
+  seibanPerPage?: number;
+}
+
+/**
  * スロット設定（kindに応じてconfigの型が変わる）
  */
 export interface SignageSlot {
   position: SignageSlotPosition;
   kind: SignageSlotKind;
-  config: PdfSlotConfig | LoansSlotConfig | CsvDashboardSlotConfig | VisualizationSlotConfig;
+  config:
+    | PdfSlotConfig
+    | LoansSlotConfig
+    | CsvDashboardSlotConfig
+    | VisualizationSlotConfig
+    | KioskProgressOverviewSlotConfig;
 }
 
 /**

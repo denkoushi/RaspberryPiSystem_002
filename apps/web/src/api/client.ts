@@ -2451,11 +2451,21 @@ export interface SignageSlotConfig {
   visualizationDashboardId?: string;
   displayMode?: 'SLIDESHOW' | 'SINGLE';
   slideInterval?: number | null;
+  /** kiosk_progress_overview: キオスクと同じ deviceScopeKey */
+  deviceScopeKey?: string;
+  slideIntervalSeconds?: number;
+  seibanPerPage?: number;
 }
 
 export interface SignageSlot {
   position: 'FULL' | 'LEFT' | 'RIGHT';
-  kind: 'pdf' | 'loans' | 'csv_dashboard' | 'visualization' | 'message';
+  kind:
+    | 'pdf'
+    | 'loans'
+    | 'csv_dashboard'
+    | 'visualization'
+    | 'kiosk_progress_overview'
+    | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }
 
@@ -2655,6 +2665,14 @@ export function getSignageVisualizationImageUrl(dashboardId: string): string {
   const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
   const normalized = base.replace(/\/$/, '');
   return `${normalized}/signage/visualization-image/${dashboardId}`;
+}
+
+/** Pi3 / ブラウザ共通の latest JPEG（キャッシュバスタ付き可） */
+export function getSignageCurrentImageUrl(cacheBust?: string | number): string {
+  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
+  const normalized = base.replace(/\/$/, '');
+  const q = cacheBust !== undefined ? `?t=${encodeURIComponent(String(cacheBust))}` : '';
+  return `${normalized}/signage/current-image${q}`;
 }
 
 /** 要領書PDFページ画像URL（/api/storage/pdf-pages/... をフルURL化） */
