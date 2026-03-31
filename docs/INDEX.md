@@ -41,6 +41,10 @@
 - **判断記録（類似候補）**: [ADR-20260330](./decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)（pgvector + 外部埋め込み HTTP、管理画面のみ候補表示） / [ADR-20260331](./decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)（VLM への条件付き GOOD 類似補助・**シャドーモード**先行）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-04-01）
+
+- **サイネージ: キオスク進捗一覧フルスロット（`kiosk_progress_overview`）・`deviceScopeKey` 必須・`seibanPerPage` 上限 5・本番順次デプロイ・Phase12 実機検証・`main` マージ（2026-04-01）**: ブランチ `feature/signage-kiosk-progress-overview`。API `SignageRenderer`（`getProductionScheduleProgressOverview` → SVG→JPEG）、`signage-slide-rotation.ts` で PDF と共有ページ送り、Web `SignageDisplayPage` / `SignageSchedulesPage`、Zod `schemas.ts`。**デプロイ**: [deployment.md](./guides/deployment.md) どおり **Pi5 → Pi4×4 → Pi3** を **`--limit` 1 台ずつ**・**`--detach --follow`**（Pi3 は `raspberrypi3` のみ・専用プレフライト）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 38 / WARN 0 / FAIL 0**（**`GET /api/signage/current-image` + Pi3 `x-client-key`** を追加）。**参照**: [KB-321](./knowledge-base/infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) / [verification-checklist.md](./guides/verification-checklist.md) 6.6.13 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-03-30）
 
 - **生産スケジュール 登録製番（共有履歴・複数検索）上限 20→50・ドロップダウン縦拡大・デプロイ・Phase12 実機検証・`main` マージ（2026-03-31）**: `packages/shared-types` の `KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX` と正規化関数で API / Web / 可視化データソースを統一。キオスク **Pi5 → Pi4×4 を 1 台ずつ**（Pi3 除外）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**。CI: web イメージ Trivy が **CVE-2026-30836**（Caddy 由来）を検出したため **`.trivyignore` 追記**（既存運用。恒久はベースイメージ／Caddy 更新で追従）。**参照**: [KB-231](./knowledge-base/api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化)（追記節）/ [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md) / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。

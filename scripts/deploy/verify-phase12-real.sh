@@ -214,6 +214,13 @@ check_contains "actual-hours/stats fields" "${ACTUAL_STATS_JSON}" '"totalRawRows
 SIGNAGE_JSON="$(curl -sk "${BASE_URL}/api/signage/content" 2>&1 || true)"
 check_contains "サイネージAPI layoutConfig" "${SIGNAGE_JSON}" '"layoutConfig"'
 
+# Pi3 サイネージ端末キーで JPEG パイプライン（ active スケジュールの種別に依存）
+SIGNAGE_CURRENT_IMAGE_CODE="$(
+  curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/signage/current-image" \
+    -H "x-client-key: client-key-raspberrypi3-signage1" 2>&1 || true
+)"
+check_http_code "サイネージ GET /api/signage/current-image (Pi3 x-client-key)" "${SIGNAGE_CURRENT_IMAGE_CODE}" "200"
+
 PROGRESS_OVERVIEW_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "進捗一覧API progress-overview" "${PROGRESS_OVERVIEW_CODE}" "200"
 
