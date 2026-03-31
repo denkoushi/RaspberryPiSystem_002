@@ -2,7 +2,7 @@
 title: KB-313 キオスク要領書（PDF）一覧・Gmail取り込み
 tags: [kiosk, pdf, gmail, api, ocr, metadata]
 audience: [開発者, 運用者]
-last-verified: 2026-03-30
+last-verified: 2026-03-31
 category: knowledge-base
 ---
 
@@ -74,7 +74,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **Gmail から取り込まれない**: `storage.provider` が `gmail` でない、トークン欠落、`kioskDocumentGmailIngest` が空/無効、件名が一致しない、添付が PDF でない
 - **一覧に出ない**: 管理画面で `enabled=false`、キオスクは有効なもののみ表示
 - **画像が出ない**: PDF 変換失敗（Pi 上の変換ツール・ストレージパス）、`pageUrls` が空
-- **要領書の LLM 要約が載らない／常に機械スニペットのまま**: **既定は推論 OFF**（`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` が `true` でない）。ON にしても **`document_summary` ルート**が解決できない（`INFERENCE_PROVIDERS_JSON` 不整合・`LOCAL_LLM_*` 未配線・upstream down）は推論をスキップし機械候補のみ。**意図どおり ON なのに推論しない**ときは API ログの `component: inference`・`useCase: document_summary`・`errorReason` を確認（本文は出ない）。
+- **要領書の LLM 要約が載らない／常に機械スニペットのまま**: **既定は推論 OFF**（`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` が `true` でない）。ON にしても **`document_summary` ルート**が解決できない（`INFERENCE_PROVIDERS_JSON` 不整合・`LOCAL_LLM_*` 未配線・upstream down）は推論をスキップし機械候補のみ。**意図どおり ON なのに推論しない**ときは API ログの `component: inference`・`useCase: document_summary`・`errorReason` を確認（本文は出ない）。**2026-03-31 追記（本番切り分け）**: `errorReason: upstream_http_403` は **Pi5 の `LOCAL_LLM_SHARED_TOKEN`（`X-LLM-Token`）が Ubuntu 側 `api-token` と不一致**なことが多い（vault / `infrastructure/docker/.env` / コンテナ内 `printenv` で両者を揃える。[KB-318](./infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）。`LOCAL_LLM_RUNTIME_MODE=on_demand` 時、起動直後は **`/healthz` や `/v1/models` が 200 でも `/v1/chat/completions` が 503** になりうる。API 側は **用途ごとのモデルで chat をポーリング**してから推論に入る実装へ更新済み（[ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)・[local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)）。
 - **`INFERENCE_PROVIDERS_JSON` を入れたら警告だけで従来どおり動く**: JSON 構文エラー時は **警告ログのうえ `LOCAL_LLM_*` から合成**（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)）。デプロイ前に `python3 -m json.tool` 等で検証する。
 - **抽出が失敗し続ける**: API コンテナに同梱された **NDLOCR-Lite** が見えているか（`which ndlocr-lite` / `ndlocr-lite --help`）。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` を使う場合はパスの存在と Python 実行権限を確認。`pdftotext` だけではスキャン PDF は空になり、OCR 分岐に入る。
 - **OCR なのに文字がほぼ空**: 旧実装は `ndlocr-lite <pdf>`（stdout 想定）で **NDLOCR-Lite 実 CLI と不一致**だった。現行は PDF→`pdftoppm`→ページごとに `--sourceimg`/`--output` で `.txt` を収集。独自ラッパーは `KIOSK_DOCUMENT_OCR_LEGACY_STDOUT=true` で従来契約に戻す。

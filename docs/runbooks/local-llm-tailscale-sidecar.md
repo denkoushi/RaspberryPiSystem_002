@@ -450,6 +450,13 @@ sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker 
 - 本システム専用のモデルは `localllm` 配下へコピーする
 - 既存の `~/models` をそのまま bind mount しない
 
+### `on_demand` で `runtime_ready` 直後に推論が `503` / `upstream_http_503` になる
+
+- **症状**: Pi5 ログで `component: localLlmRuntimeControl` の `runtime_ready` のあと、続く `component: inference`（`document_summary` / `photo_label` 等）が **503** や **`upstream_http_503`** で失敗することがある。
+- **原因**: `llama-server` 起動直後は **`/healthz` や `/v1/models` が応答しても、モデル読み込み完了前で `/v1/chat/completions` が未準備**なことがある。
+- **対処（コード）**: Pi5 API の `HttpOnDemandLocalLlmRuntimeController` は、トークンと用途別モデルが分かるとき **最小 `POST /v1/chat/completions` で readiness をポーリング**する。401/403 は即失敗にしてトークン切り分けを早める。
+- **対処（運用）**: 事象が続く場合は Ubuntu 側 `llama-server` ログと `nvidia-smi`、Pi5 の `component: inference` の `errorReason` を併用。トークン不一致は **`upstream_http_403`**（[KB-313](../knowledge-base/KB-313-kiosk-documents.md) の要領書節・[KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)）。
+
 ### Pi5 API で `/api/system/local-llm/status` が未設定（`configured=false`）
 
 - **切り分け**: Pi5 上で API コンテナ内の `printenv LOCAL_LLM_BASE_URL` 等を確認する。ホストの `apps/api/.env` に値があっても、**本番 `docker-compose.server.yml` の `api` はそのファイルを `env_file` に含めない**ため、コンテナに渡らないことがある。
