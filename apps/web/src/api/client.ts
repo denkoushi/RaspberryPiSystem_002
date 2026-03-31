@@ -1528,6 +1528,23 @@ export async function patchPhotoLabelReview(
   return data.item;
 }
 
+export type PhotoGallerySeedResult = {
+  loanId: string;
+  photoUrl: string;
+  canonicalLabel: string;
+};
+
+export async function postPhotoGallerySeed(payload: {
+  image: File;
+  canonicalLabel: string;
+}): Promise<PhotoGallerySeedResult> {
+  const form = new FormData();
+  form.append('image', payload.image);
+  form.append('canonicalLabel', payload.canonicalLabel);
+  const { data } = await api.post<PhotoGallerySeedResult>('/tools/loans/photo-gallery-seed', form);
+  return data;
+}
+
 export async function borrowItem(payload: BorrowPayload, clientKey?: string) {
   const { data } = await api.post<{ loan: Loan }>('/tools/loans/borrow', payload, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined

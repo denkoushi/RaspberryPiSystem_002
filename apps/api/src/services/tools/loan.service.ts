@@ -8,8 +8,7 @@ import { EmployeeService } from './employee.service.js';
 import { CameraService } from '../camera/index.js';
 import { resolveClientDeviceId } from '../clients/client-device-resolution.service.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
-import sharp from 'sharp';
-import { cameraConfig } from '../../config/camera.config.js';
+import { preparePhotoAndThumbnailForStorage } from '../../lib/photo-loan-storage-image.js';
 import { getPhotoToolLabelScheduler } from './photo-tool-label/photo-tool-label.scheduler.js';
 
 export interface BorrowInput {
@@ -311,54 +310,18 @@ export class LoanService {
       // Base64エンコードされた画像データをBufferに変換
       const imageBuffer = Buffer.from(input.photoData, 'base64');
       
-      // 画像をリサイズ・圧縮（800x600px、JPEG品質80%、100KB程度に圧縮）
-      let originalImage = await sharp(imageBuffer)
-        .resize(cameraConfig.resolution.width, cameraConfig.resolution.height, {
-          fit: 'inside',
-          withoutEnlargement: true,
-        })
-        .jpeg({ quality: cameraConfig.quality })
-        .toBuffer();
+      const { originalJpeg, thumbnailJpeg } = await preparePhotoAndThumbnailForStorage(imageBuffer);
 
-      // 100KB程度になるまで品質を下げる（最大5回試行）
-      let quality = cameraConfig.quality;
-      for (let i = 0; i < 5 && originalImage.length > 100 * 1024; i++) {
-        quality = Math.max(50, quality - 10); // 最低50%まで
-        originalImage = await sharp(imageBuffer)
-          .resize(cameraConfig.resolution.width, cameraConfig.resolution.height, {
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .jpeg({ quality })
-          .toBuffer();
-      }
-
-      // 閾値チェックを削除（どんな明るさでも撮影可能）
-      // 過去の実装では閾値チェックがあったが、ストリーム保持による負荷問題のため削除
-      // フロントエンドとバックエンドの両方で閾値チェックを削除し、どんな明るさでも撮影可能にした
-
-      // サムネイルを生成（150x150px、JPEG品質70%）
-      const thumbnailImage = await sharp(originalImage)
-        .resize(cameraConfig.thumbnail.width, cameraConfig.thumbnail.height, {
-          fit: 'cover',
-        })
-        .jpeg({ quality: cameraConfig.thumbnail.quality })
-        .toBuffer();
-      
       // 写真を保存
-      photoPathInfo = await PhotoStorage.savePhoto(
-        employee.id,
-        originalImage,
-        thumbnailImage
-      );
+      photoPathInfo = await PhotoStorage.savePhoto(employee.id, originalJpeg, thumbnailJpeg);
 
       logger.info(
         {
           employeeId: employee.id,
           photoUrl: photoPathInfo.relativePath,
           thumbnailUrl: photoPathInfo.thumbnailRelativePath,
-          photoSize: originalImage.length,
-          thumbnailSize: thumbnailImage.length,
+          photoSize: originalJpeg.length,
+          thumbnailSize: thumbnailJpeg.length,
         },
         'Photo processed and saved successfully',
       );

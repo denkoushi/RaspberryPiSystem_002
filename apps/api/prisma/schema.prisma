@@ -364,6 +364,8 @@ model Loan {
   photoToolHumanQuality         PhotoToolHumanLabelQuality?
   photoToolHumanReviewedAt      DateTime?
   photoToolHumanReviewedByUserId String?
+  /// 管理画面から登録した類似ギャラリー教師行（実貸出ではない）
+  photoToolGallerySeed    Boolean                   @default(false)
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   item                    Item?                     @relation(fields: [itemId], references: [id], onDelete: SetNull)

@@ -101,6 +101,9 @@ export function AdminLayout() {
             <NavLink to="/admin/photo-loan-label-reviews" className={linkClass}>
               写真持出VLM
             </NavLink>
+            <NavLink to="/admin/photo-gallery-seed" className={linkClass}>
+              ギャラリー教師登録
+            </NavLink>
             <NavLink to="/admin/backup/targets" className={linkClass}>
               バックアップ
             </NavLink>
