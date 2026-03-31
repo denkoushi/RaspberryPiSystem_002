@@ -53,8 +53,14 @@ function chipColors(isCompleted: boolean): { border: string; fill: string; text:
       };
 }
 
+function estimateChipOuterWidth(resourceCd: string, chipFs: number): number {
+  const len = resourceCd.length;
+  return Math.max(chipFs * len * 0.62 + 8, chipFs * 1.8) + 4;
+}
+
 /**
  * キオスクの ProgressOverviewSeibanCard + ProgressOverviewPartRow に視覚的に揃えたサイネージ用 SVG（ヘッダー類なし）。
+ * 製番カードは横5列で狭いため、部品名・納期の右に「資源チップ列」を幅として確保し、はみ出しは clipPath で隣カラムへ出さない。
  */
 export function buildKioskProgressOverviewSvg(
   items: ProductionScheduleProgressOverviewSeibanItem[],
@@ -75,6 +81,7 @@ export function buildKioskProgressOverviewSvg(
   const tableFs = Math.max(9, Math.round(11 * scale));
   const chipFs = Math.max(8, Math.round(10 * scale));
   const radius = Math.round(4 * scale);
+  const zoneGap = Math.round(6 * scale) + Math.round(4 * scale);
 
   const maxPartRows = Math.max(1, ...items.map((it) => Math.max(1, it.parts.length)));
   const bodyTop = outerPad + cardPad + headerH;
@@ -84,16 +91,34 @@ export function buildKioskProgressOverviewSvg(
     Math.max(Math.round(12 * scale), Math.floor(bodyHeightAvailable / maxPartRows))
   );
 
+  const clipDefs: string[] = [];
+
   const cardsSvg = items
     .map((item, col) => {
       const x0 = outerPad + col * (cardW + colGap);
       const y0 = outerPad;
       const innerW = cardW - 2 * cardPad;
-      const prodW = Math.max(
-        40,
-        innerW - dueColW - Math.round(6 * scale) - Math.round(4 * scale)
-      );
+
+      let maxChipsRowOuterW = 0;
+      for (const part of item.parts) {
+        if (!part.processes.length) continue;
+        let rowOuter = 0;
+        for (const proc of part.processes) {
+          rowOuter += estimateChipOuterWidth(proc.resourceCd, chipFs);
+        }
+        maxChipsRowOuterW = Math.max(maxChipsRowOuterW, rowOuter);
+      }
+
+      const minProdW = 40;
+      const maxChipCol = Math.max(0, innerW - dueColW - minProdW - zoneGap);
+      const chipColW =
+        maxChipsRowOuterW <= 0
+          ? 0
+          : Math.min(Math.max(maxChipsRowOuterW, Math.round(36 * scale)), maxChipCol);
+      const prodW = Math.max(minProdW, innerW - dueColW - chipColW - zoneGap);
       const productMaxChars = Math.max(8, Math.floor(prodW / (tableFs * 0.55)));
+
+      const chipColumnX = x0 + cardPad + prodW + dueColW + Math.round(6 * scale);
 
       const seiban = escapeXml(item.fseiban);
       const machine = escapeXml(normalizeMachineNameForSignage(item.machineName) || '-');
@@ -109,6 +134,7 @@ export function buildKioskProgressOverviewSvg(
       `;
 
       let rowY = bodyTop;
+      let partRowIdx = 0;
       const rowsSvg = item.parts
         .map((part) => {
           const productLabel = escapeXml(truncateChars(part.fhinmei?.trim() || '-', productMaxChars));
@@ -119,13 +145,17 @@ export function buildKioskProgressOverviewSvg(
             : PO_SIGNAGE_TEXT_PRIMARY;
           const fontWeight = isProgressDueOverdueForSignage(part.dueDate) ? '600' : '400';
 
-          let chipX = x0 + cardPad + prodW + dueColW + Math.round(6 * scale);
+          let chipX = chipColumnX;
           const chipYBase = rowY + rowH / 2;
+          const clipId = `kpo-clip-c${col}-r${partRowIdx}`;
+          partRowIdx += 1;
+
           const chipsSvg = part.processes
             .map((proc) => {
               const c = chipColors(proc.isCompleted);
               const label = escapeXml(proc.resourceCd);
-              const cw = Math.max(chipFs * label.length * 0.62 + 8, chipFs * 1.8);
+              const innerCw = Math.max(chipFs * proc.resourceCd.length * 0.62 + 8, chipFs * 1.8);
+              const cw = innerCw;
               const ch = chipFs + 6;
               const cx = chipX;
               const cy = chipYBase - ch / 2;
@@ -137,13 +167,24 @@ export function buildKioskProgressOverviewSvg(
             })
             .join('');
 
+          const clipH = Math.max(rowH, chipFs + 8);
+          const clipY = rowY + (rowH - clipH) / 2;
+          clipDefs.push(
+            `<clipPath id="${clipId}"><rect x="${chipColumnX}" y="${clipY}" width="${chipColW}" height="${clipH}" /></clipPath>`
+          );
+
           const lineY = rowY + rowH;
+          const chipsWrapped =
+            part.processes.length > 0
+              ? `<g clip-path="url(#${clipId})">${chipsSvg}</g>`
+              : '';
+
           const rowBlock = `
             <text x="${x0 + cardPad}" y="${rowY + rowH * 0.72}" font-size="${tableFs}" font-family="sans-serif"
               fill="${PO_SIGNAGE_TEXT_PRIMARY}">${productLabel}</text>
             <text x="${x0 + cardPad + prodW}" y="${rowY + rowH * 0.72}" font-size="${metaFs}" font-family="Consolas, monospace"
               fill="${dueFill}" font-weight="${fontWeight}">${dueLabel}</text>
-            ${chipsSvg}
+            ${chipsWrapped}
             <line x1="${x0 + cardPad}" y1="${lineY}" x2="${x0 + cardW - cardPad}" y2="${lineY}"
               stroke="${PO_SIGNAGE_ROW_BORDER}" stroke-width="1" />
           `;
@@ -165,6 +206,7 @@ export function buildKioskProgressOverviewSvg(
 
   return `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <defs>${clipDefs.join('')}</defs>
       <rect width="100%" height="100%" fill="#020617" />
       ${cardsSvg}
     </svg>
