@@ -648,7 +648,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 - [ ] Pi3 へ載せる変更は [deployment.md](./deployment.md) の **ラズパイ3（サイネージ）** に従い **`--limit raspberrypi3`**・**`--detach --follow`**・**単一起動**（多重 `update-all-clients.sh` 禁止）。
 - [ ] （任意・現場）FULL スロット表示時に **ページ送り**・**製番が scheduled のみ**であることの目視。
 
-**検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 38 / WARN 0 / FAIL 0**・Mac / Tailscale・`feature/signage-kiosk-progress-overview` 本番反映後）
+**検証日時**: 2026-03-31（`verify-phase12-real.sh` **PASS 38 / WARN 0 / FAIL 0**・Mac / Tailscale・`feature/kiosk-progress-overview-two-row-grid` を Pi5→Pi4×4→Pi3 順次反映後）。初回スロット導入時: 2026-04-01（`feature/signage-kiosk-progress-overview`）。
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認
