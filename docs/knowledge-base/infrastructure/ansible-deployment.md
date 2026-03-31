@@ -195,6 +195,11 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec api sh -l
 **Prevention**:
 - 本番 API の追加環境変数は、**compose が実際に読む `env_file`** を必ず更新する。`apps/api/.env` のみ更新して「反映された」と判断しない。
 
+**トラブルシュート（2026-04-01・管理コンソール LocalLLM Chat）**:
+- **事象**: `LOCAL_LLM_RUNTIME_MODE=on_demand` かつ管理画面から Chat を叩くと **HTTP 503**・**`errorCode=LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED`**。
+- **意味**: env 上は on_demand だが **`LOCAL_LLM_RUNTIME_CONTROL_*`** が実効値として揃っておらず、ランタイム制御アダプタが **noop** のまま。API は **曖昧な upstream エラーにせず**設定不備として fail-fast する（[ADR-20260403](../../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) Verification 2026-04-01）。
+- **対処**: Runbook「Pi5 API（`docker.env.j2`）」どおり **`LOCAL_LLM_RUNTIME_CONTROL_START_URL` / `LOCAL_LLM_RUNTIME_CONTROL_STOP_URL` / `LOCAL_LLM_RUNTIME_CONTROL_TOKEN`** を `docker.env` 経由で配り、`api` を再作成。`always_on` に戻す場合は `LOCAL_LLM_RUNTIME_MODE` を変更。
+
 **実機検証メモ（2026-03-30・オンデマンド制御キー追加後）**:
 - `docker.env.j2` に `LOCAL_LLM_RUNTIME_*` を足したうえで Pi5→Pi4×4 を順次デプロイした後、Mac から `./scripts/deploy/verify-phase12-real.sh` を実行し **FAIL 0** を確認（実測 **PASS 37 / WARN 0 / FAIL 0**）。**`on_demand` を本番で使う**場合は値のほか、Ubuntu の `control-server.mjs`＋nginx まで別途配線し、ADR / Runbook の Verification に従う。
 

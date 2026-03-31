@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-03-30
+最終更新: 2026-04-01
 
 ## 概要
 
@@ -631,12 +631,13 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 
 **確認ポイント**（[ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)、[local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)、[KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)、[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）:
 
-- [ ] コード載せ替え後は `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-03-30 実測 **PASS 37 / WARN 0 / FAIL 0**・Pi5+Pi4×4 順次反映後・約 100s）。Pi3 はスクリプトが SSH するが、**Pi3 本体へのデプロイ**は deployment ガイドのサイネージ専用手順に従う。
+- [ ] コード載せ替え後は `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-04-01 基準 **PASS 38 / WARN 0 / FAIL 0**・管理 Chat 制御ガードを含む `main` 反映後の目安・約 24〜100s。キオスク群のデプロイ世代により所要時間は変動）。Pi3 はスクリプトが SSH するが、**Pi3 本体へのデプロイ**は deployment ガイドのサイネージ専用手順に従う。
 - [ ] 既定 **`LOCAL_LLM_RUNTIME_MODE=always_on`** のままなら制御アダプタは **no-op**（従来の常駐前提で動作）
 - [ ] **`on_demand` に切り替える場合**は、Pi5 の `LOCAL_LLM_RUNTIME_CONTROL_*` と Ubuntu の `control-server.mjs`・nginx・ACL を **セットで**確認。推論前後のログ `component: localLlmRuntimeControl`・Ubuntu `nvidia-smi` で起停を確認（Phase12 自動チェックのみではカバーしない）
+- [ ] **管理コンソール Chat**: 制御 env 欠落時は **503** / **`LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED`**（意図的な設定不備エラー）。正しい env は [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)・Runbook「Pi5 API」節。
 - [ ] 実働確認では **Pi5→Ubuntu `/start` `/stop` が 200**、**ComfyUI が従来どおり起動・生成でき OOM が出ない**、かつ **アイドル時 `docker compose ps` に `llama-server` が残っていない**ことを確認する
 
-**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・`feat/on-demand-llm-runtime-control` を Pi5→Pi4×4 順次反映後。続けて `on_demand` 有効化後に Pi5→Ubuntu `/start` `/stop` **200**、ComfyUI 起動・生成 OK、アイドル時 `llama-server` 不在を確認）
+**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・`feat/on-demand-llm-runtime-control` を Pi5→Pi4×4 順次反映後。続けて `on_demand` 有効化後に Pi5→Ubuntu `/start` `/stop` **200**、ComfyUI 起動・生成 OK、アイドル時 `llama-server` 不在を確認）。**2026-04-01**: `fix/admin-local-llm-chat-on-demand` を `main` マージ後に **PASS 38 / WARN 0 / FAIL 0**。
 **検証結果**: ☑ 成功（自動 + 実働） ☐ 失敗（エラー内容: _______________）
 
 **6.6.13 サイネージ: キオスク進捗一覧スロット（`kiosk_progress_overview`）**

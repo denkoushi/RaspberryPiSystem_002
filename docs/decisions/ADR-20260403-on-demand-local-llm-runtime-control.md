@@ -29,6 +29,12 @@ Consequences:
 - **原因（503）**: 起動直後 **`/healthz` 系は通るが chat 未準備**。readiness を **chat completions プローブ**へ強化し、`document_summary` は用途別モデル（要約用）で待つ。
 - **確認**: API コンテナから `ensureReady('document_summary')` → `POST .../v1/chat/completions` → `release` が **200** となること（Runbook「`on_demand` で …」節）。
 
+## Verification（2026-04-01 追記・管理コンソール Chat・制御設定ガード）
+
+- **ブランチ**: `fix/admin-local-llm-chat-on-demand` を [deployment.md](../guides/deployment.md) に従い Pi5 のみ反映（`--limit raspberrypi5`）。Detach Run ID 例: `20260401-074010-22398`（`failed=0`、Pi4/Pi3 PLAY は対象外）。
+- **仕様**: 管理コンソール **`POST /api/system/local-llm/chat/completions`** も `admin_console_chat` 用途で **on-demand ラッパ**（`ensureReady` / `release`）対象。ただし **`LOCAL_LLM_RUNTIME_MODE=on_demand` を満たす一方で制御 URL/トークンが実効値として揃わず**、`getLocalLlmRuntimeController()` が **noop（`getMode()` が `always_on` 相当）**になる場合は、**upstream へ接続せず** **HTTP 503**・**`errorCode=LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED`** とする（`LOCAL_LLM_UPSTREAM_ERROR` に紛れない）。正本 env は [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)・Runbook「Pi5 API」節。
+- **Phase12**: Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 38 / WARN 0 / FAIL 0**（2026-04-01）。
+
 References:
   - [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)
   - [ADR-20260328](./ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)
