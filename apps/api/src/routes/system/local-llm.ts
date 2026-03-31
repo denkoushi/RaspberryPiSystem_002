@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
+import { withAdminConsoleChatOnDemandRuntime } from '../../services/system/local-llm-on-demand-runtime.js';
 
 const localLlmChatBodySchema = z.object({
   messages: z
@@ -29,6 +30,6 @@ export function registerLocalLlmRoutes(app: FastifyInstance): void {
 
   app.post('/system/local-llm/chat/completions', { preHandler: canManage }, async (request) => {
     const body = localLlmChatBodySchema.parse(request.body);
-    return app.localLlmGateway.createChatCompletion(body);
+    return withAdminConsoleChatOnDemandRuntime(() => app.localLlmGateway.createChatCompletion(body));
   });
 }
