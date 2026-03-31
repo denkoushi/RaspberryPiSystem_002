@@ -1,7 +1,13 @@
 import { formatClientDeviceLocationLabel } from '@raspi-system/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 
-import { getSignageVisualizationImageUrl, type SignageContentResponse, type SignageSlot, type SignageSlotConfig } from '../../api/client';
+import {
+  getSignageCurrentImageUrl,
+  getSignageVisualizationImageUrl,
+  type SignageContentResponse,
+  type SignageSlot,
+  type SignageSlotConfig
+} from '../../api/client';
 import { useSignageContent } from '../../api/hooks';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
@@ -140,6 +146,21 @@ export function SignageDisplayPage() {
   const { data: content, error, isLoading } = useSignageContent();
   const [currentPdfPage, setCurrentPdfPage] = useState(0);
   const [pdfPages, setPdfPages] = useState<string[]>([]);
+  const [kioskProgressImageTick, setKioskProgressImageTick] = useState(0);
+
+  const fullLayoutSlot = content?.layoutConfig?.layout === 'FULL' ? content.layoutConfig.slots[0] : undefined;
+  const isKioskProgressSignage =
+    content?.contentType === 'TOOLS' && fullLayoutSlot?.kind === 'kiosk_progress_overview';
+
+  useEffect(() => {
+    if (!isKioskProgressSignage) {
+      return undefined;
+    }
+    const id = window.setInterval(() => {
+      setKioskProgressImageTick((t) => t + 1);
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, [isKioskProgressSignage]);
 
   const pdfIntervalMs = useMemo(() => {
     if (!content?.pdf || content.displayMode !== 'SLIDESHOW') {
@@ -240,6 +261,23 @@ export function SignageDisplayPage() {
                 )}
               </div>
             </div>
+          </div>
+        );
+      }
+
+      if (slot?.kind === 'kiosk_progress_overview') {
+        const kioskCfg = slot.config as SignageSlotConfig;
+        if (!kioskCfg.deviceScopeKey?.trim()) {
+          return renderStateScreen('キオスク進捗一覧', 'deviceScopeKey がスケジュールに設定されていません');
+        }
+
+        return (
+          <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
+            <img
+              src={getSignageCurrentImageUrl(kioskProgressImageTick)}
+              alt="キオスク製番進捗一覧"
+              className="h-full w-full object-contain"
+            />
           </div>
         );
       }

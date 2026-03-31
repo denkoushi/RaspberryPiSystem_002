@@ -551,6 +551,8 @@ curl http://localhost:7071/api/agent/status
 - Pi3の`status-agent`は`https://<Pi5>/api`経由でAPIにアクセスします（Caddy経由）
 - ポート8080は外部公開されていません（Docker内部ネットワークでのみアクセス可能）
 
+**知見（2026-04-01）**: キオスク進捗一覧を Pi3 で FULL 表示する **`kiosk_progress_overview`** スロットは、JPEG 生成が Pi5（API）側のため **Pi5 デプロイで契約・レンダラーが更新**されます。スケジュール定義や `signage-lite` クライアント側の更新が必要な場合は **Pi3 も `--limit raspberrypi3`** で順次デプロイしてください。運用手順・実機検証・一時的な `signage-lite` exit-code は [KB-321](../knowledge-base/infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) を参照。
+
 **重要（2026-01-16更新）**: 
 - デバイスタイプ汎用化により、Pi3以外のサイネージ端末（Pi Zero 2Wなど）にも対応可能になりました
 - デバイスタイプごとの設定は`group_vars/all.yml`の`device_type_defaults`で管理されています

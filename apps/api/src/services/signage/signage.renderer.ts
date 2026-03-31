@@ -12,13 +12,24 @@ import type {
   PdfSlotConfig,
   CsvDashboardSlotConfig,
   VisualizationSlotConfig,
+  KioskProgressOverviewSlotConfig,
 } from './signage-layout.types.js';
 import type { RenderablePane } from './signage-pane-resolver.js';
 import { resolveSplitPanes } from './signage-pane-resolver.js';
 import { CsvDashboardTemplateRenderer } from '../csv-dashboard/csv-dashboard-template-renderer.js';
 import { CsvDashboardService } from '../csv-dashboard/index.js';
 import { VisualizationService } from '../visualization/index.js';
+import { getProductionScheduleProgressOverview } from '../production-schedule/progress-overview-query.service.js';
 import { computeSplitPaneGeometry } from './signage-layout-math.js';
+import { getRotatingSlideIndex, type SignageSlideRotationState } from './signage-slide-rotation.js';
+import { buildKioskProgressOverviewSvg } from './kiosk-progress-overview/kiosk-progress-overview-svg.js';
+import {
+  DEFAULT_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE,
+  MAX_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE,
+  progressOverviewPageCount,
+  sanitizeSeibanPerPage,
+  sliceProgressOverviewItems,
+} from './kiosk-progress-overview/pagination.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -54,7 +65,8 @@ interface SplitPdfOptions extends PdfRenderOptions {
 }
 
 export class SignageRenderer {
-  private readonly pdfSlideState = new Map<string, { lastIndex: number; lastRenderedAt: number }>();
+  private readonly pdfSlideState = new Map<string, SignageSlideRotationState>();
+  private readonly kioskProgressOverviewSlideState = new Map<string, SignageSlideRotationState>();
   private readonly csvDashboardPageState = new Map<string, { lastPageNumber: number; lastRenderedAt: number }>();
   private lastCpuSample: { idle: number; total: number } | null = null;
   private readonly csvDashboardTemplateRenderer = new CsvDashboardTemplateRenderer();
@@ -185,6 +197,25 @@ export class SignageRenderer {
       } else if (slot.kind === 'visualization') {
         const visualizationConfig = slot.config as VisualizationSlotConfig;
         return await this.renderVisualizationDashboard(visualizationConfig.visualizationDashboardId);
+      } else if (slot.kind === 'kiosk_progress_overview') {
+        const kioskCfg = slot.config as KioskProgressOverviewSlotConfig;
+        const scopeKey = kioskCfg.deviceScopeKey?.trim();
+        if (!scopeKey) {
+          return await this.renderMessage('キオスク進捗: deviceScopeKey が未設定です');
+        }
+        const slideSec = kioskCfg.slideIntervalSeconds ?? 30;
+        const perPageRaw = kioskCfg.seibanPerPage ?? DEFAULT_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE;
+        if (!Number.isFinite(perPageRaw) || perPageRaw < 1) {
+          return await this.renderMessage('キオスク進捗: seibanPerPage が無効です');
+        }
+        const perPage = sanitizeSeibanPerPage(perPageRaw);
+        if (perPageRaw > MAX_KIOSK_PROGRESS_OVERVIEW_SEIBAN_PER_PAGE) {
+          logger.warn(
+            { deviceScopeKey: scopeKey, requested: perPageRaw, capped: perPage },
+            'kiosk_progress_overview seibanPerPage was capped'
+          );
+        }
+        return await this.renderKioskProgressOverviewFull(scopeKey, slideSec, perPage);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // SignagePaneResolver でペイン解決（loans=0件も有効）
@@ -564,6 +595,40 @@ export class SignageRenderer {
     return await sharp(normalized)
       .resize(targetWidth, targetHeight, { fit: 'contain', background: BACKGROUND })
       .jpeg({ quality: 90 })
+      .toBuffer();
+  }
+
+  private async renderKioskProgressOverviewFull(
+    deviceScopeKey: string,
+    slideIntervalSeconds: number,
+    seibanPerPage: number
+  ): Promise<Buffer> {
+    const overview = await getProductionScheduleProgressOverview(deviceScopeKey);
+    const scheduled = overview.scheduled;
+    if (scheduled.length === 0) {
+      return await this.renderMessage('登録製番がありません');
+    }
+
+    const totalPages = progressOverviewPageCount(scheduled.length, seibanPerPage);
+    if (totalPages < 1) {
+      return await this.renderMessage('登録製番がありません');
+    }
+
+    const stateKey = `kiosk-progress-overview:${deviceScopeKey}`;
+    const pageIndex = getRotatingSlideIndex(this.kioskProgressOverviewSlideState, {
+      stateKey,
+      totalPages,
+      displayMode: 'SLIDESHOW',
+      slideIntervalSeconds,
+      logContext: { kind: 'kiosk_progress_overview', deviceScopeKey },
+    });
+
+    const pageItems = sliceProgressOverviewItems(scheduled, pageIndex, seibanPerPage);
+    const svg = buildKioskProgressOverviewSvg(pageItems, WIDTH, HEIGHT);
+
+    return await sharp(Buffer.from(svg), { density: 220 })
+      .resize(WIDTH, HEIGHT, { fit: 'fill' })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
   }
 
@@ -1141,60 +1206,13 @@ export class SignageRenderer {
     slideInterval: number | null,
     pdfId?: string
   ): number {
-    if (totalPages === 0) {
-      if (pdfId) {
-        this.pdfSlideState.delete(pdfId);
-      }
-      return 0;
-    }
-
-    if (displayMode === 'SLIDESHOW' && slideInterval && slideInterval > 0 && pdfId) {
-      const now = Date.now();
-      const slideIntervalMs = slideInterval * 1000;
-      const state = this.pdfSlideState.get(pdfId);
-
-      if (!state) {
-        this.pdfSlideState.set(pdfId, { lastIndex: 0, lastRenderedAt: now });
-        logger.info({
-          pdfId,
-          totalPages,
-          slideInterval,
-          lastIndex: 0,
-          reason: 'initialized state',
-        }, 'PDF slide show page index calculated');
-        return 0;
-      }
-
-      const elapsed = now - state.lastRenderedAt;
-      const steps = Math.floor(elapsed / slideIntervalMs);
-      
-      // 修正: slideInterval未満の場合はページを進めない（同じページを維持）
-      // slideInterval以上経過した場合は1ページ進める（飛ばさない）
-      if (steps <= 0) {
-        return state.lastIndex;
-      }
-      
-      // 複数ページ分経過した場合でも1ページずつ進める（飛ばさない）
-      const nextIndex = (state.lastIndex + 1) % totalPages;
-      this.pdfSlideState.set(pdfId, { lastIndex: nextIndex, lastRenderedAt: now });
-
-      logger.info({
-        pdfId,
-        totalPages,
-        slideInterval,
-        elapsed,
-        steps,
-        nextIndex,
-      }, 'PDF slide show page index calculated');
-
-      return nextIndex;
-    }
-
-    if (pdfId) {
-      this.pdfSlideState.delete(pdfId);
-    }
-
-    return 0;
+    return getRotatingSlideIndex(this.pdfSlideState, {
+      stateKey: pdfId,
+      totalPages,
+      displayMode,
+      slideIntervalSeconds: slideInterval,
+      logContext: { pdfId, kind: 'pdf' },
+    });
   }
 
   private escapeXml(value: string): string {

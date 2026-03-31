@@ -24,16 +24,25 @@ const visualizationSlotConfigSchema = z
   })
   .strict();
 
+const kioskProgressOverviewSlotConfigSchema = z
+  .object({
+    deviceScopeKey: z.string().min(1).max(200),
+    slideIntervalSeconds: z.number().int().positive().optional(),
+    seibanPerPage: z.number().int().min(1).max(5).optional(),
+  })
+  .strict();
+
 const slotConfigSchema = z.union([
   pdfSlotConfigSchema,
   loansSlotConfigSchema,
   csvDashboardSlotConfigSchema,
   visualizationSlotConfigSchema,
+  kioskProgressOverviewSlotConfigSchema,
 ]);
 
 const slotSchema = z.object({
   position: z.enum(['FULL', 'LEFT', 'RIGHT']),
-  kind: z.enum(['pdf', 'loans', 'csv_dashboard', 'visualization']),
+  kind: z.enum(['pdf', 'loans', 'csv_dashboard', 'visualization', 'kiosk_progress_overview']),
   config: slotConfigSchema,
 });
 
