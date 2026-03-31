@@ -1,3 +1,4 @@
+import { normalizeKioskProductionScheduleSearchHistory as normalizeHistoryList } from '@raspi-system/shared-types';
 import { isAxiosError } from 'axios';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -74,20 +75,6 @@ const DUE_MANAGEMENT_LAYOUT_V2_ENABLED = import.meta.env.VITE_KIOSK_DUE_MGMT_LAY
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
   import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
 const DUE_MANAGEMENT_OVERVIEW_DEVICE_KEY = 'due-management-manual-order-overview-device';
-
-const normalizeHistoryList = (items: string[]) => {
-  const unique = new Set<string>();
-  const next: string[] = [];
-  items
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-    .forEach((item) => {
-      if (unique.has(item)) return;
-      unique.add(item);
-      next.push(item);
-    });
-  return next.slice(0, 20);
-};
 
 export function ProductionScheduleDueManagementPage() {
   const isMac =

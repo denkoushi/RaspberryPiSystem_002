@@ -1,3 +1,4 @@
+import { normalizeKioskProductionScheduleSearchHistory } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
@@ -7,20 +8,6 @@ import { fetchSeibanProgressRows } from './seiban-progress.service.js';
 
 const SHARED_SEARCH_STATE_LOCATION = 'shared';
 const SEARCH_STATE_MISSING_ETAG = 'missing';
-
-const normalizeSearchHistory = (history: string[]): string[] => {
-  const unique = new Set<string>();
-  const next: string[] = [];
-  history
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-    .forEach((item) => {
-      if (unique.has(item)) return;
-      unique.add(item);
-      next.push(item);
-    });
-  return next.slice(0, 20);
-};
 
 const buildSearchStateEtag = (value: string): string => `W/"${value}"`;
 
@@ -44,7 +31,7 @@ const parseIfMatch = (header: unknown): string | null => {
 };
 
 const extractSearchHistory = (state: Prisma.JsonValue | null | undefined): string[] => {
-  return normalizeSearchHistory(((state as { history?: string[] } | null)?.history ?? []) as string[]);
+  return normalizeKioskProductionScheduleSearchHistory(((state as { history?: string[] } | null)?.history ?? []) as string[]);
 };
 
 export async function getProductionScheduleSearchState(locationKey: string): Promise<{
@@ -164,7 +151,7 @@ export async function updateProductionScheduleSearchState(params: {
     );
   }
 
-  const mergedHistory = normalizeSearchHistory(incomingHistory);
+  const mergedHistory = normalizeKioskProductionScheduleSearchHistory(incomingHistory);
 
   const sharedState = await prisma.kioskProductionScheduleSearchState.findUnique({
     where: {
@@ -278,7 +265,7 @@ export async function updateProductionScheduleSearchHistory(params: {
   history: string[];
 }): Promise<{ history: string[]; updatedAt: Date | null }> {
   const { locationKey, history } = params;
-  const normalizedHistory = normalizeSearchHistory(history);
+  const normalizedHistory = normalizeKioskProductionScheduleSearchHistory(history);
 
   const state = await prisma.kioskProductionScheduleSearchState.upsert({
     where: {

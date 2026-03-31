@@ -1,3 +1,4 @@
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../shared.js';
@@ -110,15 +111,15 @@ export const productionScheduleProcessingBodySchema = z.object({
 export const productionScheduleSearchStateBodySchema = z.object({
   state: z.object({
     inputQuery: z.string().max(200).optional(),
-    activeQueries: z.array(z.string().max(200)).max(20).optional(),
+    activeQueries: z.array(z.string().max(200)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX).optional(),
     activeResourceCds: z.array(z.string().max(100)).max(100).optional(),
     activeResourceAssignedOnlyCds: z.array(z.string().max(100)).max(100).optional(),
-    history: z.array(z.string().max(200)).max(20).optional()
+    history: z.array(z.string().max(200)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX).optional()
   })
 });
 
 export const productionScheduleSearchHistoryBodySchema = z.object({
-  history: z.array(z.string().max(200)).max(20)
+  history: z.array(z.string().max(200)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
 });
 
 export const productionScheduleDueManagementSeibanParamsSchema = z.object({

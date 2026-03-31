@@ -1,3 +1,4 @@
+import { normalizeKioskProductionScheduleSearchHistory as normalizeHistoryList } from '@raspi-system/shared-types';
 import { useMemo } from 'react';
 
 import { toHalfWidthAscii } from './machineName';
@@ -15,19 +16,7 @@ type Params = {
   history: string[];
 };
 
-export const normalizeHistoryList = (items: string[]) => {
-  const unique = new Set<string>();
-  const next: string[] = [];
-  items
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-    .forEach((item) => {
-      if (unique.has(item)) return;
-      unique.add(item);
-      next.push(item);
-    });
-  return next.slice(0, 20);
-};
+export { normalizeHistoryList };
 
 const normalizeUniqueStrings = (items: string[]) => {
   const unique = new Set<string>();
