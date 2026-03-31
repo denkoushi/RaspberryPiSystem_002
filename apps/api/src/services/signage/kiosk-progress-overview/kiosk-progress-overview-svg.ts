@@ -5,6 +5,11 @@ import {
   normalizeMachineNameForSignage,
 } from './progress-overview-signage-format.js';
 import {
+  KIOSK_PROGRESS_GRID_COLUMNS,
+  KIOSK_PROGRESS_GRID_ROWS,
+  computeKioskProgressOverviewGridSlots,
+} from './kiosk-progress-overview-layout.js';
+import {
   PO_SIGNAGE_CARD_BG,
   PO_SIGNAGE_CARD_BORDER,
   PO_SIGNAGE_CHIP_DONE_BORDER,
@@ -60,7 +65,7 @@ function estimateChipOuterWidth(resourceCd: string, chipFs: number): number {
 
 /**
  * キオスクの ProgressOverviewSeibanCard + ProgressOverviewPartRow に視覚的に揃えたサイネージ用 SVG（ヘッダー類なし）。
- * 製番カードは横5列で狭いため、部品名・納期の右に「資源チップ列」を幅として確保し、はみ出しは clipPath で隣カラムへ出さない。
+ * 製番カードは 4列×2段グリッド。部品名・納期の右に「資源チップ列」を幅として確保し、はみ出しは clipPath で隣へ出さない。
  */
 export function buildKioskProgressOverviewSvg(
   items: ProductionScheduleProgressOverviewSeibanItem[],
@@ -70,9 +75,18 @@ export function buildKioskProgressOverviewSvg(
   const scale = width / 1920;
   const outerPad = Math.round(12 * scale);
   const colGap = Math.round(8 * scale);
-  const cols = 5;
-  const cardW = (width - 2 * outerPad - (cols - 1) * colGap) / cols;
-  const cardH = height - 2 * outerPad;
+  const rowGap = Math.round(8 * scale);
+
+  const gridSlots = computeKioskProgressOverviewGridSlots({
+    width,
+    height,
+    columns: KIOSK_PROGRESS_GRID_COLUMNS,
+    rows: KIOSK_PROGRESS_GRID_ROWS,
+    outerPad,
+    colGap,
+    rowGap,
+  });
+
   const cardPad = Math.round(8 * scale);
   const headerH = Math.round(40 * scale);
   const dueColW = Math.round(78 * scale);
@@ -83,21 +97,25 @@ export function buildKioskProgressOverviewSvg(
   const radius = Math.round(4 * scale);
   const zoneGap = Math.round(6 * scale) + Math.round(4 * scale);
 
-  const maxPartRows = Math.max(1, ...items.map((it) => Math.max(1, it.parts.length)));
-  const bodyTop = outerPad + cardPad + headerH;
-  const bodyHeightAvailable = cardH - 2 * cardPad - headerH;
-  const rowH = Math.min(
-    Math.round(18 * scale),
-    Math.max(Math.round(12 * scale), Math.floor(bodyHeightAvailable / maxPartRows))
-  );
-
   const clipDefs: string[] = [];
 
   const cardsSvg = items
-    .map((item, col) => {
-      const x0 = outerPad + col * (cardW + colGap);
-      const y0 = outerPad;
+    .map((item, slotIndex) => {
+      const slot = gridSlots[slotIndex];
+      if (!slot) {
+        return '';
+      }
+
+      const { x0, y0, cardW, cardH } = slot;
       const innerW = cardW - 2 * cardPad;
+
+      const maxPartRows = Math.max(1, item.parts.length);
+      const bodyTop = y0 + cardPad + headerH;
+      const bodyHeightAvailable = cardH - 2 * cardPad - headerH;
+      const rowH = Math.min(
+        Math.round(18 * scale),
+        Math.max(Math.round(12 * scale), Math.floor(bodyHeightAvailable / maxPartRows))
+      );
 
       let maxChipsRowOuterW = 0;
       for (const part of item.parts) {
@@ -147,7 +165,7 @@ export function buildKioskProgressOverviewSvg(
 
           let chipX = chipColumnX;
           const chipYBase = rowY + rowH / 2;
-          const clipId = `kpo-clip-c${col}-r${partRowIdx}`;
+          const clipId = `kpo-clip-s${slotIndex}-p${partRowIdx}`;
           partRowIdx += 1;
 
           const chipsSvg = part.processes

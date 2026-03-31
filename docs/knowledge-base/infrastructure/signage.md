@@ -20,38 +20,41 @@ update-frequency: medium
 
 ### [KB-321] キオスク進捗一覧スロット（`kiosk_progress_overview`）のサイネージ表示・デプロイ・実機検証
 
-**実施日**: 2026-03-31〜2026-04-01
+**実施日**: 2026-03-31〜2026-04-01（**レイアウト刷新**: 2026-03-31 本番反映・`main` マージ）
 
 **概要（仕様）**:
 - サイネージでキオスク進捗一覧相当を **FULL ペイン**として表示するスロット種別 **`kiosk_progress_overview`** を追加。
-- **`deviceScopeKey` は必須**（キオスク側スコープと整合する装置スコープ）。既定のページ送り間隔例: **30 秒**、1 画面あたり製番件数 **`seibanPerPage` は 1〜5**（Zod・レンダラー・管理画面入力で **上限 5** に統一。固定 5 列 SVG のため 6 件以上は画面外描画になり得る件の防止）。
+- **`deviceScopeKey` は必須**（キオスク側スコープと整合する装置スコープ）。既定のページ送り間隔例: **30 秒**、1 画面あたり製番件数 **`seibanPerPage` は 1〜8**（Zod・レンダラー・管理画面入力で **上限 8** に統一。サイネージ JPEG は **4 列×2 段**グリッドのため、9 件以上は cap でページ分割）。
+- **グリッド幾何**は `kiosk-progress-overview-layout.ts` の **`computeKioskProgressOverviewGridSlots`** に分離（純関数）。`kiosk-progress-overview-svg.ts` はスロット矩形に従いカードを配置し、チップ列は **clipPath**、部品名は **truncate** でカード外にはみ出しを抑止。
 - データは API **`getProductionScheduleProgressOverview`** 系から取得し、**scheduled のみ**ページング。描画は **SVG → JPEG**（`SignageRenderer`）。PDF スロットと同様のページ送りロジックは **`signage-slide-rotation.ts`** に集約。
 - 契約（共有型・Zod）: `packages/shared-types` の `KioskProgressOverviewSlotConfig`、API `apps/api/src/routes/signage/schemas.ts`。Web: `SignageDisplayPage`（FULL 分岐で `current-image` 全画面）、`SignageSchedulesPage`（スロット種別・`deviceScopeKey` 設定）。
 
 **デプロイ（本番）**:
 - [deployment.md](../../guides/deployment.md) に従い **Pi5 → 各 Pi4 → Pi3** を **`--limit` 1 台ずつ**・同一 `RASPI_SERVER_HOST` へ **`update-all-clients.sh` を並列起動しない**。
-- 実行例（ブランチ `feature/signage-kiosk-progress-overview`）:  
-  `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → **`raspberrypi3`**（Pi3 は **`--limit raspberrypi3`**・**`--detach --follow`** でサイネージ専用プレフライト・lightdm 復旧フローを適用）。
-- Detach Run ID 例（当日実績）: Pi5 `20260331-202225-13127`、Pi3 `20260331-205239-1804`（いずれも `failed=0`）。
+- **初回スロット導入**（ブランチ `feature/signage-kiosk-progress-overview`）例: `raspberrypi5` → … → `raspberrypi3`。Detach Run ID 例: Pi5 `20260331-202225-13127`、Pi3 `20260331-205239-1804`（各 `failed=0`）。
+- **4列×2段レイアウト**（ブランチ `feature/kiosk-progress-overview-two-row-grid`、2026-03-31）: 同順序で順次デプロイ。Detach Run ID 例: Pi5 `20260331-215024-197`、`raspberrypi4` `20260331-215637-15684`、`raspi4-robodrill01` `20260331-220159-3872`、`raspi4-fjv60-80` `20260331-220531-2062`、`raspi4-kensaku-stonebase01` `20260331-220939-29921`、`raspberrypi3` `20260331-221317-30052`（各 `failed=0`）。
 
 **実機検証（自動）**:
-- `./scripts/deploy/verify-phase12-real.sh` → **PASS 38 / WARN 0 / FAIL 0**（2026-04-01 実測・**`GET /api/signage/current-image` + Pi3 `x-client-key`** を含む）。
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 38 / WARN 0 / FAIL 0**（**2026-03-31** 実測・4列×2段反映直後。**2026-04-01** 初回導入時も同基準）。**`GET /api/signage/current-image` + Pi3 `x-client-key`** を含む。
 - 既存チェック: **`/api/signage/content`** の `layoutConfig`、**`/api/kiosk/production-schedule/progress-overview` 200**、Pi3 **`signage-lite.service` / `signage-lite-update.timer` active** ほか。
 
 **知見・トラブルシューティング**:
 - **Pi3 デプロイ直後**: プレフライトで lightdm/signage を止めるため、ヘルスログ上 **一時的に `signage-lite` が `activating (auto-restart)` / `exit-code`** になり得る。Playbook 後段の **lightdm 復旧・サービス再開**まで待つと **`signage-lite.service is active`** で完走するのが通常。
-- **`seibanPerPage` > 5**: 設定・API・レンダラーで **5 に cap**（ログ警告）。管理画面でも最大 5。
+- **ローカルで Prisma マイグレーション検証時**: `20260330120000_photo_tool_similarity_gallery_pgvector` 等で **`CREATE EXTENSION vector`** が必要。Docker の **`postgres:16` 単体イメージ**では拡張が入らず **`extension "vector" is not available`** になり得る。CI/本番相当では **`pgvector/pgvector:pg16`** 等のイメージを使う。
+- **`seibanPerPage` > 8**: 設定・API・レンダラーで **8 に cap**（ログ警告）。管理画面でも最大 8。
+- **2段化の視認性**: カード高が約半分になり文字・部品行が詰まる。運用上問題なら **4K レンダラ解像度**や将来の **列・段の設定化**（別 ADR）を検討。
 - **表示が古い**: Pi3 は **`signage-lite-update`** と **`/api/signage/current-image`** の生成経路。サーバは **`SignageRenderer`** 由来の JPEG が正本（React 管理画面のみでは Pi3 に届かない）。
 
 **関連ファイル（代表）**:
 - `apps/api/src/services/signage/signage.renderer.ts`
-- `apps/api/src/services/signage/kiosk-progress-overview-svg.ts`
+- `apps/api/src/services/signage/kiosk-progress-overview/kiosk-progress-overview-layout.ts`
+- `apps/api/src/services/signage/kiosk-progress-overview/kiosk-progress-overview-svg.ts`
 - `apps/api/src/services/signage/signage-slide-rotation.ts`
 - `apps/api/src/routes/signage/schemas.ts`
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
 
-**解決状況**: ✅ **実装・本番デプロイ・実機検証（Phase12）完了**（2026-04-01）
+**解決状況**: ✅ **実装・本番デプロイ・実機検証（Phase12）完了**（初回 2026-04-01・4列×2段反映 2026-03-31）
 
 ---
 

@@ -479,6 +479,39 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     expect(response.headers['content-type']).toContain('image/jpeg');
     expect(response.rawPayload).toBeInstanceOf(Buffer);
   });
+
+  it('should accept kiosk_progress_overview seibanPerPage 8 in layoutConfig', async () => {
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule Kiosk Progress 8',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'kiosk_progress_overview',
+              config: {
+                deviceScopeKey: 'integration-test-device-scope',
+                slideIntervalSeconds: 30,
+                seibanPerPage: 8,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 99,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(200);
+  });
 });
 
 describe('GET /api/signage/content with SPLIT layout (left: pdf, right: pdf)', () => {
