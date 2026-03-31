@@ -16,6 +16,14 @@ update-frequency: high
 
 **対処**: ワークフローで **タグではなく commit SHA に pin** する。背景・手順・再発防止はナレッジ **[KB-310](../knowledge-base/ci-cd.md#kb-310-trivy-action-の-github-actions-参照解決失敗unable-to-resolve-action)** を参照（本リポジトリでは `.github/workflows/ci.yml` を SHA 固定で運用）。
 
+## Trivy が web イメージの Caddy バイナリで CVE を検出してジョブが失敗する
+
+**症状**: `Security scan (Trivy image web)` で `usr/bin/caddy` 由来の CRITICAL 等（例: **CVE-2026-30836** / `github.com/smallstep/certificates`）が報告され、CI が `failure` になる。
+
+**対処（運用上の暫定）**: 上流で修正版 Caddy／ベースイメージへ追従できるまでの間、**`.trivyignore` に該当 CVE を追記**する（既存の KB-307 系 Trivy 運用と同様）。**恒久対策の代替にしない**こと——ベースイメージまたは Caddy の更新で解消できないかを別途追跡する。
+
+**参照**: [KB-231 追記節（2026-03-31）](../knowledge-base/api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化)（本事例の記録） / [ci-cd.md §セキュリティ例外](../knowledge-base/ci-cd.md)。
+
 ## 概要
 
 GitHub ActionsのCIテストが失敗した場合、このガイドに従って問題を特定し、必要な情報をAIアシスタントに共有してください。

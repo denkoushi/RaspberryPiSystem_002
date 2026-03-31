@@ -105,7 +105,7 @@ update-frequency: high
 | [KB-221](./frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) | 生産スケジュール納期日機能のUI改善（カスタムカレンダーUI実装） | ✅ 解決済み |
 | [KB-229](./api.md#kb-229-gmail認証切れ時のslack通知機能追加) | Gmail認証切れ時のSlack通知機能追加 | ✅ 解決済み |
 | [KB-230](./api.md#kb-230-gmail認証切れの実機調査と回復) | Gmail認証切れの実機調査と回復 | ✅ 解決済み |
-| [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) | 生産スケジュール登録製番上限の拡張（8件→20件）とサイネージアイテム高さの最適化 | ✅ 解決済み |
+| [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) | 生産スケジュール登録製番上限（8→20→**50**件・2026-03-31）とサイネージアイテム高さの最適化 | ✅ 解決済み |
 | [KB-246](./api.md#kb-246-gmailゴミ箱自動削除機能深夜バッチ) | Gmailゴミ箱自動削除機能（深夜バッチ） | ✅ 解決済み |
 | [KB-248](./api.md#kb-248-生産スケジュール資源cdボタン表示の遅延問題式インデックス追加による高速化) | 生産スケジュール資源CDボタン表示の遅延問題（式インデックス追加による高速化） | ✅ 解決済み |
 | [KB-249](./api.md#kb-249-csvダッシュボードの日付パースでタイムゾーン変換の二重適用問題) | CSVダッシュボードの日付パースでタイムゾーン変換の二重適用問題 | ✅ 解決済み |
@@ -316,7 +316,7 @@ update-frequency: high
 | [KB-156](./infrastructure/signage.md#kb-156-複数スケジュールの順番切り替え機能実装) | 複数スケジュールの順番切り替え機能実装 | ✅ 解決済み |
 | [KB-193](./infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) | CSVダッシュボードの列幅計算改善（フォントサイズ反映・全行考慮・列名考慮） | ✅ 解決済み |
 | [KB-228](./infrastructure/signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一) | 生産スケジュールサイネージデザイン修正（タイトル・KPI配置・パディング統一） | ✅ 解決済み |
-| [KB-231](./infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) | 生産スケジュールサイネージアイテム高さの最適化（20件表示対応） | ✅ 解決済み |
+| [KB-231](./infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) | 生産スケジュールサイネージアイテム高さの最適化（20件表示対応・履歴上限50件は2026-03-31追記） | ✅ 解決済み |
 | [KB-232](./infrastructure/signage.md#kb-232-サイネージ未完部品表示ロジック改善表示制御正規化動的レイアウト) | サイネージ未完部品表示ロジック改善（表示制御・正規化・動的レイアウト） | ✅ 解決済み |
 | [KB-269](./infrastructure/signage.md#kb-269-サイネージ自動レンダリングをworker化してapiイベントループ詰まりを隔離) | サイネージ自動レンダリングをworker化してAPIイベントループ詰まりを隔離 | 🔄 継続観察 |
 | [KB-233](./infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) | デプロイ時のsudoパスワード問題（ansible_connection: localでもMac側から実行される場合） | ✅ 解決済み |
@@ -599,6 +599,7 @@ update-frequency: high
 - 2026-03-19: KB-308を追加（生産スケジュールUIが古いのに戻った事象（ブランチ分岐によるデプロイ内容ずれ））→ デプロイ後にUIが古いバージョンに戻った事象を調査。原因はデプロイブランチにUI統一が含まれていなかったこと。統合ブランチ `feat/production-schedule-ui-unify-caddy-secfix` を作成し、cherry-pick で Caddy 自前ビルドを統合。Dockerfile.web 衝突時は自前ビルド側を採用。デプロイ・実機検証完了、main マージ予定。
 - 2026-03-20: KB-309を追加（GitHub メンテナ衛生・ForceMemo/GlassWorm 系を背景にしたチェックリスト）→ 2FA 有効化、期限切れ PAT 削除、セッション/SSH 確認、Cursor 拡張最小化、ローカルで `lzcdrtfxyqiplpd` 検索と `git push --dry-run` による認証確認を記録。外部調査（StepSecurity / Truesec / GitHub Blog）へのリンクとトラブルシュート表を `infrastructure/security.md` に集約。
 - 2026-03-28（2回目）: 管理コンソール **`/admin/local-llm`**（`feat/admin-local-llm-ui-and-runbook`）・Runbook 実機検証メモ・Pi5→Pi4×4 順次デプロイ（Pi3 除外）・Tailscale 経由の health/401/upstream/admin URL 確認を EXEC_PLAN / Surprises / Next Steps / runbook / INDEX / ansible-deployment 索引説明に反映。[PR #53](https://github.com/denkoushi/RaspberryPiSystem_002/pull/53) で `main` へ統合。
+- 2026-03-31（2回目）: [KB-231](./api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化) に **登録製番上限 20→50**（`@raspi-system/shared-types` 集約）・製番ドロップダウン縦拡大・Trivy **CVE-2026-30836** の `.trivyignore` 対応・Pi5+Pi4×4 順次デプロイ（Pi3 除外）・`verify-phase12-real.sh` **PASS 37/0/0** を追記。[KB-297](./KB-297-kiosk-due-management-workflow.md)・[signage.md](./infrastructure/signage.md)・`docs/INDEX.md`・EXEC_PLAN を整合。**ブランチ** `feat/kiosk-production-schedule-registered-seiban-50` を **`main` へマージ**（2026-03-31）。
 - 2026-03-31: **LocalLLM on_demand** の本番切り分け（**`upstream_http_403`**＝`LOCAL_LLM_SHARED_TOKEN` 不一致、**`runtime_ready` 直後の chat 503**）を [KB-313](./KB-313-kiosk-documents.md) / [KB-319](./KB-319-photo-loan-vlm-tool-label.md) / [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md) / [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) / [kiosk-documents.md](../runbooks/kiosk-documents.md) / EXEC_PLAN（Progress・Surprises・Next Steps）/ `docs/INDEX.md` に反映。API: **chat completions ベース readiness**（`http-on-demand-local-llm-runtime.controller.ts` ほか）。
 - 2026-03-30: KB-319 に **運用知見（人レビューと GOOD ギャラリー・類似候補 vs シャドー閾値・VLM は再学習しない）**、`photo-loan.md` / [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) §3.0 / `docs/INDEX.md` / EXEC_PLAN（Progress・Surprises・Next Steps）を整合（コード変更なし）。
 - 2026-03-29: KB-319 に **写真持出 埋め込み Ansible 配線・GOOD バックフィル・Pi5 のみデプロイ・Phase12 実機検証（PASS 34/0/0）・ローカル `run-tests.sh` の POSTGRES ポート切り分け**を追記。[photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) に実機検証メモを追加。EXEC_PLAN Progress / Surprises / Next Steps を整合（`feat/photo-tool-embedding-rollout-shadow-eval` → `main` マージ後の運用タスクへ更新）。

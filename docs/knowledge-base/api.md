@@ -3352,6 +3352,28 @@ const saveNote = (rowId: string) => {
 
 **解決状況**: ✅ **実装完了・CI成功・デプロイ完了・動作確認完了**（2026-02-06）
 
+#### 追記（2026-03-31）登録製番（共有 `history` / `activeQueries`）上限 20→50
+
+**Context**: 現場で登録製番の枠が 20 件では不足。
+
+**仕様（契約の単一情報源）**:
+- `@raspi-system/shared-types` の `KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX`（**50**）と `normalizeKioskProductionScheduleSearchHistory` を API（Zod `productionScheduleSearchStateBodySchema` の `activeQueries` / `history`）、`production-schedule-search-state` サービス、可視化データソース、Web（`useProductionScheduleQueryParams`・各ページの `activeQueries` 上限）で共有。
+- 検索状態 JSON 内の各要素は従来どおり **文字列最大 200 文字**。`fseiban` 系フィールドの **`max(20)` は製番文字列長**であり、履歴件数上限とは別（変更しない）。
+
+**UI**: `ProductionScheduleSeibanFilterDropdown` の一覧スクロール枠を **`max-h-[min(70vh,32rem)]`** に拡大（件数増に追随）。
+
+**CI / セキュリティ**: Trivy（web イメージ）が Caddy バイナリ由来 **CVE-2026-30836**（`github.com/smallstep/certificates`）を CRITICAL 検出した場合、**上流修正版へ追従するまでの間**は既存運用どおり **`.trivyignore` に該当 CVE を追記**してパイプラインを通す（恒久対策の代替にしない）。
+
+**デプロイ・実機検証（2026-03-31）**: ブランチ `feat/kiosk-production-schedule-registered-seiban-50`。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**（**Pi3 除外**・キオスク／サーバ寄りの変更のため Pi3 専用手順は不要）。Mac から `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 55s・Tailscale）。
+
+**サイネージ**: 今回は **カード高さ（KB-231 2026-02 の半分調整）は変更せず**。50 件で JPEG 生成テストは通過済み。実機で進捗リストが詰まりすぎる場合は [signage.md KB-231](./infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) と同趣旨の係数再検討を別タスクとする。
+
+**トラブルシュート**:
+- **片側だけ 50 にした**: API が 422、Web が 20 で切る、など **値の不整合** → 共有定数と import 経路を確認。
+- **CI Trivy 再失敗**: 新 CVE は `.trivyignore` か Caddy/ベースイメージ更新で対処（[ci-cd.md §KB-310](./ci-cd.md#kb-310-trivy-action-の-github-actions-参照解決失敗unable-to-resolve-action) と索引の Trivy 運用を参照）。
+
+**解決状況（本追記）**: ✅ **実装・デプロイ・Phase12 実機検証・ドキュメント反映・`main` マージ**（2026-03-31）
+
 ---
 
 ### [KB-242] history-progressエンドポイント追加と製番進捗集計サービス
