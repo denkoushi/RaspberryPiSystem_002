@@ -118,6 +118,73 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - Gmailに該当する未読メールがない場合でも、エラーにならず正常に完了します（該当ダッシュボードはスキップされる）
 - 管理コンソールのスケジュール設定は **「時刻指定」または「間隔（N分ごと）」** を選択できます（**最小5分**）。間隔指定の場合は `*/N * * * *` のcronに変換されます。
 
+### Production runbook: Gmail CSV dashboard import via SSH and API
+
+**目的**: 管理コンソール（ブラウザ）と同等の **CsvDashboard 定義** と **Gmail 向け CSV インポートスケジュール** を、本番 Pi5 上で **SSH + 管理 API +（必要なら）Prisma** から登録する。今後、別件名・別ダッシュボードで Gmail CSV を増やす場合も、手順の骨格は同じ（**ダッシュボード先行 → スケジュールで `targets[].type = csvDashboards` → 手動実行で疎通**）。
+
+#### いつこの手順を使うか
+
+- ブラウザからの運用が難しいとき（例: 埋め込みブラウザの証明書警告、**Safari** の **JavaScript from Apple Events** / **アクセシビリティ** まわりで UI 操作やファイル選択が止まる、など）。
+- **コード上の定数と同一 UUID** の `CsvDashboard` が必要で、管理 UI の「新規作成」だけでは ID が一致しないとき（例: 生産日程の部品納期個数補助は `PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID` = `8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31`。実体は `apps/api/src/services/production-schedule/constants.ts` と `apps/api/prisma/seed.ts` を正とする）。
+
+#### 前提（安全・秘密）
+
+- **実行者**: Pi5 に SSH できる管理者のみ。**JWT を発行したり `Authorization` ヘッダを扱うコマンドをログに残さない**（手順書にトークンを貼り付けない）。
+- **作業ディレクトリ（本番例）**: `/opt/RaspberryPiSystem_002`（デプロイ手順の標準）。[deployment.md](./deployment.md) の **`docker compose -f infrastructure/docker/docker-compose.server.yml`** と整合させる。
+- **DB / JWT**: ホストの Node やローカル Prisma から `DATABASE_URL` のホスト名 **`db`** に届かないことがある。**JWT 発行・Prisma・API への `curl` は原則 `api` コンテナ内**（または同等に DB に到達できる環境）で行う。
+
+#### A. 通常ルート（ブラウザで足りる場合）
+
+1. [設定手順](#設定手順)どおり **`/admin/csv-dashboards`** で CsvDashboard（件名 `gmailSubjectPattern`・列定義など）を作成または確認。
+2. **`/admin/csv-imports`**（または本リポジトリの管理画面ラベルに従う）で **プロバイダー `gmail`**・ターゲット **CSVダッシュボード** を選びスケジュール登録。
+3. **手動実行**で疎通。**既存の Gmail スケジュールと同じ「分」に複数本を重ねない**（登録時に衝突警告が返る。`config/backup.json` の `csvImports` で既存 cron の分を確認し、空き分を取る）。
+
+#### B. 固定 ID の CsvDashboard を本番 DB に合わせる（Prisma upsert）
+
+本番 DB に該当行が無い／UI で UUID を指定できない場合、`apps/api/prisma/seed.ts` の **`csvDashboard.upsert` ブロックと同じ内容**を正として、**api コンテナ内**で一度だけ反映する。
+
+1. Pi5 でリポジトリ直下に移動し、コンテナが起動していることを確認する。
+2. **api コンテナ内**で `pnpm prisma` または短い `node` スクリプトで `prisma.csvDashboard.upsert` を実行する（`create` / `update` のフィールドは seed の該当ダッシュボードと揃える。列定義・`gmailSubjectPattern`・`dedupKeyColumns` などを省略しない）。
+3. 誤った UUID で別名のダッシュボードを増やすと、後続の **同期処理（コードが参照する定数 ID）** と不一致になるので、**必ずコード／seed と同一 ID かどうか**を確認してから進める。
+
+（参照実装: `apps/api/prisma/seed.ts` の `ProductionSchedule_OrderSupplement` ブロック、`apps/api/src/services/production-schedule/constants.ts`。）
+
+#### C. CSV インポートスケジュールを管理 API で登録する
+
+- **一覧**: `GET /api/imports/schedule`（要 ADMIN）
+- **新規**: `POST /api/imports/schedule`（要 ADMIN）。同一 `id` が既にあると **409** → **`PUT /api/imports/schedule/:id`** で更新する。
+- **新形式ボディ（例・部品納期個数補助の実績）**:
+  - `id`: 運用で固定しやすい識別子（例: `csv-import-productionschedule_ordersupplement`）
+  - `provider`: `gmail`
+  - `targets`: `[{ "type": "csvDashboards", "source": "<CsvDashboard の UUID>" }]`  
+    ※ 件名はスケジュール側ではなく **`CsvDashboard.gmailSubjectPattern`** から取得される。
+  - `schedule`: cron（例: **`24,39,54 * * * *`** — 既存 Gmail 取り込みと **分刻みが被らない**ようにする）
+  - `enabled`: `true`
+- **認証**: `Authorization: Bearer <ADMIN JWT>`。JWT は **api コンテナ内**で `jsonwebtoken` と **`JWT_ACCESS_SECRET`（コンテナ環境変数）** を用いて発行する。payload には管理 API が要求する **`role: ADMIN`** を含める（実装は `apps/api/src/lib/auth.js` 系を参照）。
+
+保存先は **`config/backup.json` の `csvImports`**（`ImportScheduleAdminService` が `BackupConfigLoader` 経由で更新）。登録後、スケジューラが **reload** される。
+
+#### D. 手動 1 回実行
+
+- `POST /api/imports/schedule/<scheduleId>/run`
+- **注意**: `Content-Type: application/json` を付けず body 空にすると **400** になり得る。`curl` 例: `-H 'Content-Type: application/json' -d '{}'`
+
+#### E. 期待挙動・検証
+
+- Gmail 側は **未読**メールが対象。処理成功後、実装どおり **既読化・ゴミ箱移動** 等の後処理が走る（詳細は Gmail 取込サービス実装を参照）。
+- **ログ**: `docker compose -f infrastructure/docker/docker-compose.server.yml logs api` で該当スケジュール・取込エラーを確認。
+- **DB**: 対象 `CsvDashboard` の行が増えたか、関連テーブル（例: `ProductionScheduleOrderSupplement`）に照合が入ったかを Prisma / SQL で確認。
+- **キオスク API**: `GET /api/kiosk/production-schedule` の **`x-client-key` は `ClientDevice.apiKey` の実値**（キオスク端末に割り当てられたキー）。ダミー文字列では 401 になる。
+
+#### F. トラブルシュート（よくあるもの）
+
+| 症状 | 想定原因 | 手がかり |
+|------|-----------|-----------|
+| ホストで Prisma / JWT を実行すると DB 接続エラー | `db` ホスト名は compose ネットワーク内のみ有効 | **api コンテナ内**で実行 |
+| `POST .../run` が 400 | JSON body 未送信 | **`Content-Type: application/json`** と **`{}`** |
+| スケジュールは動くがメールが拾えない | `gmailSubjectPattern` 未設定／件名不一致／該当メールが既読 | ダッシュボード設定と Gmail 状態を確認 |
+| 補助が付かない（部品納期個数） | CsvDashboard ID がコード定数と不一致 | `constants.ts` の UUID と DB の `CsvDashboard.id` を突き合わせ |
+
 #### レシピ: Gmail自動取得 → CSVダッシュボード → 可視化ダッシュボード → サイネージ
 
 今後、別データでも同様に「GmailのCSV自動取得」から「サイネージの新コンテンツ」まで作る場合は、以下の順序が安全です（最小の動作確認ポイント込み）。

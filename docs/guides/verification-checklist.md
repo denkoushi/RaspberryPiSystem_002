@@ -693,6 +693,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 - [ ] **API契約**: `GET /api/kiosk/production-schedule?pageSize=5`（`x-client-key` 必須）のJSONに **`"plannedQuantity"`** が含まれる（`plannedStartDate` / `plannedEndDate` も同系。補助未照合時は `null` 想定）。
 - [ ] **実機回帰基準**: `./scripts/deploy/verify-phase12-real.sh` は **`plannedQuantity` grep** を含み、**PASS 40 / WARN 0 / FAIL 0** が完了ライン（2026-04-01・ブランチ `feat/production-schedule-planned-supplement` 本番5台反映後）。
+- [ ] **補助CSVの Gmail 取込（本番・任意）**: `CsvDashboard`（件名パターン・列定義）と `config/backup.json` の `csvImports`（`provider: gmail`, `targets[].type: csvDashboards`）が整合していること。ブラウザで無理な場合は [csv-import-export.md の production runbook](./csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) を参照（**手動 run は JSON `{}`**、**Prisma/JWT は api コンテナ内**）。
 
 **検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
