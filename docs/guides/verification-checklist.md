@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-01
+最終更新: 2026-04-01（effectiveDueDate 実機スモーク追記）
 
 ## 概要
 
@@ -693,6 +693,12 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 - [ ] **API契約**: `GET /api/kiosk/production-schedule?pageSize=5`（`x-client-key` 必須）のJSONに **`"plannedQuantity"`** が含まれる（`plannedStartDate` / `plannedEndDate` も同系。補助未照合時は `null` 想定）。
 - [ ] **実機回帰基準**: `./scripts/deploy/verify-phase12-real.sh` は **`plannedQuantity` grep** を含み、**PASS 40 / WARN 0 / FAIL 0** が完了ライン（2026-04-01・ブランチ `feat/production-schedule-planned-supplement` 本番5台反映後）。
+
+**6.6.17 納期詳細 API effectiveDueDate（部品納期個数フォールバック表示）**
+
+- [ ] **API契約**: `GET /api/kiosk/production-schedule/due-management/triage` で **製番が1件以上**ある前提で、先頭 `fseiban` を取り、`GET /api/kiosk/production-schedule/due-management/seiban/<fseiban>`（**`x-client-key` 必須**）の JSON に **`effectiveDueDate`** と **`effectiveDueDateSource`**（`manual` | `csv` | `null` いずれか）が含まれる。
+- [ ] **運用メモ**: Phase12 自動化は **40 項目基準のまま**（本項は手動スモーク。`triage` が空の工場では製番をデータで用意してから実施）。**参照**: [KB-297 の当該節](../knowledge-base/KB-297-kiosk-due-management-workflow.md#表示用納期-effectiveduedate計画列-ui2026-04-01)。
+- [ ] **現場目視（任意）**: キオスク生産スケジュール／手動順番で **指示数・着手日**列が出ること、**手動納期のみ**強調されること（CSV フォールバック日付だけのときは強調されない想定）。
 - [ ] **補助CSVの Gmail 取込（本番・任意）**: `CsvDashboard`（件名パターン・列定義）と `config/backup.json` の `csvImports`（`provider: gmail`, `targets[].type: csvDashboards`）が整合していること。ブラウザで無理な場合は [csv-import-export.md の production runbook](./csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) を参照（**手動 run は JSON `{}`**、**Prisma/JWT は api コンテナ内**）。
 
 **検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**）

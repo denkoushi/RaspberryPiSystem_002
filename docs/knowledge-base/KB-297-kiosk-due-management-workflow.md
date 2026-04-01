@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-03-23
+last-verified: 2026-04-01
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -84,6 +84,26 @@ category: knowledge-base
   - **背景**: 管理コンソールのブラウザからは、埋め込みブラウザの証明書問題や Safari まわりの制約で UI 設定が困難な場合がある。**Pi5 に SSH できる管理者**は、[csv-import-export.md の production runbook 節](../guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) に従い、`docker compose … exec api` と **管理 API** で **CsvDashboard の整合**と **`csvImports` 登録**を行える（Prisma は **api コンテナ内**が安定）。
   - **実績（部品納期個数）**: 本番の `backup.json` に補助用スケジュールが無い状態に加え、固定 ID `8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31` の `CsvDashboard` が DB に存在しなかった。seed 同等の **`csvDashboard.upsert`** を本番で実施後、`POST /api/imports/schedule` で `csv-import-productionschedule_ordersupplement`（`provider: gmail`, `targets: [{ type: csvDashboards, source: 上記UUID }]`, cron `24,39,54 * * * *` ― 既存 Gmail 取り込みと分刻み衝突回避）を追加。**手動 1 回実行**は `POST .../run` に **`Content-Type: application/json` と body `{}`** が必要。取込 **76** 行・`ProductionScheduleOrderSupplement` 照合 **38** 行、Gmail 後処理（既読・ゴミ箱）まで確認済み。
   - **落とし穴**: ホストの `node` で `JWT_ACCESS_SECRET` を読めても、Prisma の `db:5432` に届かず失敗することがある。**JWT・Prisma・curl は api コンテナ内**で揃えて実行する。キオスク API 確認時の **`x-client-key` は実デバイス紐付けの `ClientDevice.apiKey`**（ダミーでは 401）。
+
+## 表示用納期 effectiveDueDate・計画列 UI（2026-04-01）
+
+- **Context**: 部品納期個数 CSV の **`plannedEndDate`** を、行の **`dueDate`（手動・writeback 含む）が無いときの表示用納期**として扱いたい。一覧・納期詳細で意味を混在させず、API で「実効日付」とソースを明示したい。
+- **Spec（API）**:
+  - `GET /api/kiosk/production-schedule/due-management/seiban/:fseiban` の応答に **`effectiveDueDate`**（UTC 日付文字列・手動優先、無ければ補助の `plannedEndDate`）、**`effectiveDueDateSource`**（`manual` | `csv` | `null`）を付与。
+  - 部品行は `ProductionScheduleOrderSupplement` を **FKOJUN + FSIGENCD + ProductNo** で集約し、詳細パネルへ反映（既存 `plannedQuantity` / `plannedStartDate` / `plannedEndDate` と整合）。
+- **Spec（Web）**:
+  - 生産スケジュール／手動順番: **指示数**・**着手日**列を表示。表示用納期は **`dueDate ?? plannedEndDate`**。**手動 `dueDate` のときのみ**納期セルを強調。
+  - 手動順番モードのソート: **資源順番（`processingOrder`）→ 表示用納期**の二段。
+- **ブランチ**: `feat/kiosk-planned-fields-due-fallback-ui`（コミット例: `875fe284`）。
+- **本番デプロイ**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh` のみ。**対象 5 台**（`raspberrypi5` → Pi4×4）を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 対象外**）。Mac からは `RASPI_SERVER_HOST=denkon5sd02@100.106.158.2` 前提。同一 Pi5 へスクリプトを並列起動しない。
+  - **Detach Run ID（実績・2026-04-01）**: `20260401-201019-17368`（Pi5）/ `20260401-201641-20955`（`raspberrypi4`）/ `20260401-202120-2571`（`raspi4-robodrill01`）/ `20260401-202509-5371`（`raspi4-fjv60-80`）/ `20260401-202901-20217`（`raspi4-kensaku-stonebase01`）。いずれも `PLAY RECAP` **`failed=0`**。
+- **実機検証**:
+  - `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-01・Tailscale。既存の `plannedQuantity` 検査を含む）。
+  - **追加スモーク**: `GET .../due-management/triage` で得た `fseiban`（例: `BA1S3318`）に対し `GET .../due-management/seiban/<fseiban>`（`x-client-key` 必須）で **`effectiveDueDate`** と **`effectiveDueDateSource`** が JSON に含まれることを確認済。
+- **Troubleshooting（ローカル統合テスト）**:
+  - Vitest が **`localhost:5432` 接続不可**のときは Postgres 未起動。**`docker-compose.server.yml` + `docker-compose.mac-local.override.yml`** で DB を `5432:5432` 公開してから `pnpm --filter @raspi-system/api exec prisma migrate deploy` を実行し、続けて対象 integration を実行。
+  - **マイグレ未適用**（`P2021` 等）時は上記 `migrate deploy` が必要。
+- **CI**: `feat/kiosk-planned-fields-due-fallback-ui` push 後の GitHub Actions **CI** は **success**（Run 例: `23845117543`）。
 
 ## 生産順序モード拡張（手動順番/自動順番 + targetLocation、2026-03-19）
 
