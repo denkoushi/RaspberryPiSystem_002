@@ -2146,3 +2146,31 @@ category: knowledge-base
 - **デプロイ・実機検証（2026-03-14）**:
   - **デプロイ**: ブランチ `feat/global-rank-auto-tuning-v1`、Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行、約12分。
   - **実機検証結果**: リモート自動チェック全項目合格（APIヘルス、deploy-status両Pi4、キオスクAPI、納期管理API、global-rank/proposal、PUT auto-generate、actual-hours/stats、サイネージAPI、backup.json、マイグレーション、Pi4×2・Pi3サービス）。Pi5 APIコンテナログで `Due management auto-tuning scheduler started` を確認。チェックリストは [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
+
+## リーダー順位ボード（納期ベース整列・手動順 API 反映、2026-04-01）
+
+### 仕様（要約）
+
+- **URL**: `/kiosk/production-schedule/leader-order-board`（キオスクヘッダー「順位ボード」から遷移）。
+- **目的**: リーダーが **表示用納期**（`plannedDueDisplay` 系・納期管理ページと同趣旨）で資源グループ内の順を把握し、確定時に既存の **手動順番 API**（`ProductionScheduleOrderAssignment`・`PUT .../order`）へ **clear→assign の 2 段**で反映する。
+- **境界**: ドメインロジックは `apps/web/src/features/kiosk/leaderOrderBoard/`（正規化・安定ソート・`applyResourceOrderReorder`・Vitest）。API 契約は新設せず既存 order 系を利用。
+- **沉浸式**: `usesKioskImmersiveLayout` に `KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX` を含む（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md) と併読）。
+
+### デプロイ・実機検証（2026-04-01）
+
+- **ブランチ**: `feat/kiosk-leader-order-board`（コミット例: `d887af88`）。
+- **手順**: [deployment.md](../guides/deployment.md) の `scripts/update-all-clients.sh` **のみ**。**対象 5 台**を **1 台ずつ**・**`RASPI_SERVER_HOST`**・**`--detach --follow`**（**Pi3 は対象外**。Pi3 単体が必要な変更では [deployment.md の Pi3 節](../guides/deployment.md) に従う）。
+- **Detach Run ID（実績）**:
+  - `20260401-222838-29421`（`raspberrypi5`）
+  - `20260401-223309-3294`（`raspberrypi4`）
+  - `20260401-223736-22496`（`raspi4-robodrill01`）
+  - `20260401-224101-487`（`raspi4-fjv60-80`）
+  - `20260401-224506-23932`（`raspi4-kensaku-stonebase01`）  
+  いずれも `PLAY RECAP` **`failed=0`**。
+- **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-01・Mac / Tailscale）。
+- **本番バンドル確認（任意）**: SPA の `index-*.js` は HTML 上 **`/assets/...`**（`/kiosk/assets/...` ではない）。`curl -sk https://<Pi5>/kiosk/` で `src` を確認のうえ、`curl -sk https://<Pi5>/assets/<hash>.js | grep -c leader-order-board` で新ルートが含まれることを確認できる。
+
+### トラブルシューティング
+
+- **デプロイが Pi5 で止まる / ローカルだけ未 push エラー**: `update-all-clients.sh` の fail-fast（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）、リモートロック二重起動（deployment.md 2026-03-29 追記）を参照。
+- **キオスクに新画面が出ない**: Pi5 のみ更新して Pi4 を更新していない、またはブラウザキャッシュ。**5 台すべて**順次更新後、kiosk-browser 再起動済みか Ansible ログの `kiosk-browser.service` を確認。

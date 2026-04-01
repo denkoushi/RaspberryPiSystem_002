@@ -11,6 +11,7 @@
 | [manual-order-overview-pane-row-detail-preview.html](./manual-order-overview-pane-row-detail-preview.html) | **上ペイン（全体把握）カード内の行明細（高密度）** — 製番·品番·工順を1行、機種名·品名を2行目。**項目ラベルなし**。手動vs自動順の差分等は**算出式改善用に保存する想定だがキオスクには出さない**方針を注記。実装ターゲット用静的モック（API は現状資源 CD 集計のみ） |
 | [manual-order-device-card-location-machine-preview.html](./manual-order-device-card-location-machine-preview.html) | **上ペイン端末カード** — Location **1行**。行ブロックは **1行目 製番·品番**、**2行目 工順·部品名**（`partName`）、**3行目 機種名**（`machineName`）。**フォントは生産スケジュール一覧（`ProductionScheduleTable` の `text-xs`）と同サイズ**。`ManualOrderDeviceCard` 実装と同趣旨の静的モック |
 | [manual-order-band-to-operator-rank-preview.html](./manual-order-band-to-operator-rank-preview.html) | **帯分け → 帯内調整 → 資源CDごとの連番確定 → オペレーター提示** を1画面で表した静的モック。上ペインで編集対象選択、中央で帯編集、右で最終順位の受け渡しイメージを表示 |
+| [leader-due-rank-board-preview.html](./leader-due-rank-board-preview.html) | **リーダー順位ボード**（納期ベース・カードグリッド・本番ルート `/kiosk/production-schedule/leader-order-board` の UI 参考） |
 
 プレビュー HTML は **外部 CDN やネットワークに依存しません**（macOS のシステムフォントのみ）。`file://` のまま Safari で表示できる想定です。
 
