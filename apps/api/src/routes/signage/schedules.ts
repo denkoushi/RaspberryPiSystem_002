@@ -12,6 +12,12 @@ export function registerScheduleRoutes(app: FastifyInstance, signageService: Sig
     return { schedules };
   });
 
+  // GET /api/signage/schedules/management - 管理画面用（有効/無効を含む全件）
+  app.get('/schedules/management', { preHandler: canManage }, async () => {
+    const schedules = await signageService.listSchedulesForManagement();
+    return { schedules };
+  });
+
   // POST /api/signage/schedules - スケジュール作成（管理画面用）
   app.post('/schedules', { preHandler: canManage }, async (request) => {
     const body = scheduleSchema.parse(request.body);

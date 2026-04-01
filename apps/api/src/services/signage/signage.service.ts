@@ -130,27 +130,41 @@ export class SignageService {
     return layoutConfig as unknown as Prisma.InputJsonValue;
   }
 
+  private readonly scheduleSummarySelect = {
+    id: true,
+    name: true,
+    contentType: true,
+    pdfId: true,
+    layoutConfig: true,
+    dayOfWeek: true,
+    startTime: true,
+    endTime: true,
+    priority: true,
+    enabled: true,
+  } as const;
+
+  private readonly scheduleSummaryOrderBy = [{ priority: 'desc' as const }, { id: 'asc' as const }];
+
+  private async findScheduleSummaries(where: Prisma.SignageScheduleWhereInput): Promise<ScheduleSummary[]> {
+    return prisma.signageSchedule.findMany({
+      where,
+      orderBy: this.scheduleSummaryOrderBy,
+      select: this.scheduleSummarySelect,
+    });
+  }
+
   /**
    * 有効なスケジュール一覧を取得（優先順位順）
    */
   async getSchedules(): Promise<ScheduleSummary[]> {
-    const schedules = await prisma.signageSchedule.findMany({
-      where: { enabled: true },
-      orderBy: { priority: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        contentType: true,
-        pdfId: true,
-        layoutConfig: true,
-        dayOfWeek: true,
-        startTime: true,
-        endTime: true,
-        priority: true,
-        enabled: true,
-      },
-    });
-    return schedules;
+    return this.findScheduleSummaries({ enabled: true });
+  }
+
+  /**
+   * 管理画面用：有効/無効を含む全スケジュール一覧（優先順位順）
+   */
+  async listSchedulesForManagement(): Promise<ScheduleSummary[]> {
+    return this.findScheduleSummaries({});
   }
 
   /**

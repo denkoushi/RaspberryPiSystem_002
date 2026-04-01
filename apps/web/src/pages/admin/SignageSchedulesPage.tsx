@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  useSignageSchedules,
+  useSignageSchedulesForManagement,
   useSignageScheduleMutations,
   useSignagePdfs,
   useSignageRenderMutation,
@@ -45,7 +45,7 @@ function formatVisualizationOptionLabel(dashboard: VisualizationDashboard): stri
 }
 
 export function SignageSchedulesPage() {
-  const schedulesQuery = useSignageSchedules();
+  const schedulesQuery = useSignageSchedulesForManagement();
   const pdfsQuery = useSignagePdfs();
   const csvDashboardsQuery = useCsvDashboards({ enabled: true });
   const visualizationDashboardsQuery = useVisualizationDashboards({ enabled: true });

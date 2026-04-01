@@ -137,6 +137,7 @@ import {
   type PhotoBorrowPayload,
   type PhotoLabelReviewQuality,
   getSignageSchedules,
+  getSignageSchedulesForManagement,
   createSignageSchedule,
   updateSignageSchedule,
   deleteSignageSchedule,
@@ -1390,19 +1391,29 @@ export function useSignageSchedules() {
   });
 }
 
+export function useSignageSchedulesForManagement() {
+  return useQuery({
+    queryKey: ['signage-schedules', 'management'],
+    queryFn: getSignageSchedulesForManagement
+  });
+}
+
 export function useSignageScheduleMutations() {
   const queryClient = useQueryClient();
+  const invalidateSchedules = () => {
+    void queryClient.invalidateQueries({ queryKey: ['signage-schedules'] });
+  };
   const create = useMutation({
     mutationFn: createSignageSchedule,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-schedules'] })
+    onSuccess: invalidateSchedules
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<SignageSchedule> }) => updateSignageSchedule(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-schedules'] })
+    onSuccess: invalidateSchedules
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteSignageSchedule(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['signage-schedules'] })
+    onSuccess: invalidateSchedules
   });
   return { create, update, remove };
 }
