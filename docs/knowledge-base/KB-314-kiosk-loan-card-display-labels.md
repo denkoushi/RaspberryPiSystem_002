@@ -48,6 +48,7 @@
 
 ## References
 
+- 同一画面のレイアウト（返却・取消の下段配置）: [KB-323](./KB-323-kiosk-return-card-button-layout.md)
 - 実装ブランチ: `feat/loan-card-display-labels`
 - VLM 表示名: [KB-319](./KB-319-photo-loan-vlm-tool-label.md)
 - [modules/measuring-instruments/ui.md](../modules/measuring-instruments/ui.md)

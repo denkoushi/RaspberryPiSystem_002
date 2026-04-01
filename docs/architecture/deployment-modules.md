@@ -77,7 +77,7 @@ update-frequency: high
 |---------|--------|---------|--------------|---------|
 | **APIサービス変更** | `SignageService.getContent()` | `/api/signage/content`を使用する全コンポーネント（Pi3サイネージ、管理コンソール） | ✅ サーバー側 | APIレスポンス確認、フロントエンド動作確認 |
 | **APIルート変更** | `routes/tools/loans/borrow.ts` | `POST /api/tools/borrow`を使用する全コンポーネント（Pi4キオスク、管理コンソール） | ✅ サーバー側 | APIエンドポイント確認、フロントエンド動作確認 |
-| **フロントエンドコンポーネント変更** | `KioskReturnPage.tsx` | Pi4キオスク（返却一覧表示） | ✅ Pi4 Ansible | ブラウザ動作確認 |
+| **フロントエンドコンポーネント変更** | `KioskReturnPage.tsx`・`KioskActiveLoanCard.tsx` | Pi4キオスク（持出一覧・返却・取消） | ✅ Pi4 Ansible | ブラウザ動作確認 |
 | **モジュール追加** | `documents`モジュール追加 | 新規APIエンドポイント、新規フロントエンドページ | ✅ サーバー側 + クライアント側（必要に応じて） | 新機能の動作確認、既存機能の回帰確認 |
 | **共有型定義変更** | `packages/shared-types` | 該当型を使用する全コンポーネント（API + Web UI） | ✅ サーバー側 + Web UI | 型整合性確認、ビルドエラー確認 |
 

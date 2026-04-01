@@ -291,6 +291,7 @@ ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
 
 #### Phase 2: キオスク
 - ✅ **返却画面** (`KioskReturnPage.tsx`): アイテム種別に応じた背景色適用、アイコン追加
+- ✅ **持出一覧カード** (`KioskActiveLoanCard.tsx`・`KioskReturnPage.tsx` から利用, 2026-04-01): 返却・取消をカード**下段**に配置し、長いアイテム名とボタン列の横方向の競合を緩和（[KB-323](../knowledge-base/KB-323-kiosk-return-card-button-layout.md)）
 - ✅ **持出画面** (`KioskBorrowPage.tsx`): 成功メッセージとステップカードのスタイル改善
 
 #### Phase 3: サイネージ
