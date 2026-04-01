@@ -37,6 +37,91 @@ describe('GET /api/signage/schedules', () => {
   });
 });
 
+describe('GET /api/signage/schedules/management', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('should return 401 without authentication', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/signage/schedules/management',
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('should return enabled and disabled schedules for ADMIN', async () => {
+    const admin = await createTestUser('ADMIN');
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const enabledRes = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(admin.token), 'Content-Type': 'application/json' },
+      payload: {
+        name: `mgmt-test-enabled-${suffix}`,
+        contentType: 'TOOLS',
+        dayOfWeek: [1],
+        startTime: '09:00',
+        endTime: '18:00',
+        priority: 1,
+        enabled: true,
+      },
+    });
+    expect(enabledRes.statusCode).toBe(200);
+    const enabledId = enabledRes.json().schedule.id as string;
+
+    const disabledRes = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(admin.token), 'Content-Type': 'application/json' },
+      payload: {
+        name: `mgmt-test-disabled-${suffix}`,
+        contentType: 'TOOLS',
+        dayOfWeek: [1],
+        startTime: '09:00',
+        endTime: '18:00',
+        priority: 0,
+        enabled: false,
+      },
+    });
+    expect(disabledRes.statusCode).toBe(200);
+    const disabledId = disabledRes.json().schedule.id as string;
+
+    const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    expect(publicList.statusCode).toBe(200);
+    const publicIds = (publicList.json().schedules as Array<{ id: string }>).map((s) => s.id);
+    expect(publicIds).toContain(enabledId);
+    expect(publicIds).not.toContain(disabledId);
+
+    const mgmt = await app.inject({
+      method: 'GET',
+      url: '/api/signage/schedules/management',
+      headers: createAuthHeader(admin.token),
+    });
+    expect(mgmt.statusCode).toBe(200);
+    const mgmtIds = (mgmt.json().schedules as Array<{ id: string; enabled: boolean }>).map((s) => s.id);
+    expect(mgmtIds).toContain(enabledId);
+    expect(mgmtIds).toContain(disabledId);
+    const disabledRow = (mgmt.json().schedules as Array<{ id: string; enabled: boolean }>).find(
+      (s) => s.id === disabledId,
+    );
+    expect(disabledRow?.enabled).toBe(false);
+  });
+});
+
 describe('GET /api/signage/content', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;

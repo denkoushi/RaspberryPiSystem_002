@@ -2583,6 +2583,12 @@ export async function getSignageSchedules() {
   return data.schedules;
 }
 
+/** 管理画面用：有効/無効を含む全スケジュール */
+export async function getSignageSchedulesForManagement() {
+  const { data } = await api.get<{ schedules: SignageSchedule[] }>('/signage/schedules/management');
+  return data.schedules;
+}
+
 export async function createSignageSchedule(payload: {
   name: string;
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
