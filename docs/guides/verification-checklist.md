@@ -669,6 +669,11 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 39 / WARN 0 / FAIL 0**・Mac / Tailscale・`feat/admin-photo-gallery-seed` 本番順次デプロイ後）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
+**手動（本番・運用者）**:
+
+- [x] `/admin/photo-gallery-seed` で JPEG 送信・成功時 **貸出ID** 表示（2026-04-01・教師ラベル例「ロックナット締付工具」）
+- [x] **類似候補なし**表示は、埋め込み無効等で **登録不成功と誤認しない**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「実機確認（運用者）」節）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**

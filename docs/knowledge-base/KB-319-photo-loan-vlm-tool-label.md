@@ -231,10 +231,16 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 39 / WARN 0 / FAIL 0**（未認証 **`POST …/photo-gallery-seed` → 401** のスモークをスクリプトに追加）。
 - **手動（推奨）**: `https://<Pi5>/admin/photo-gallery-seed` で画像アップロード・成功メッセージ・返却 `loanId` を確認。埋め込み OFF の環境ではギャラリー行が増えないことは仕様（API・DB・写真保存は成功しうる）。
 
+#### 実機確認（運用者・本番管理 UI・2026-04-01）
+
+- **CONFIRMED**: `https://<Pi5>/admin` の **ADMIN/MANAGER** で `/admin/photo-gallery-seed` を開き、**JPEG 1 件**と教師ラベル（例: 「ロックナット締付工具」）を送信。**直近の登録結果**に **貸出ID（UUID）** が表示され、登録フローは成功。
+- **CONFIRMED**: 同一画面の **類似候補** が「ありません」と出ても、**登録失敗とは限らない**。`PHOTO_TOOL_EMBEDDING_ENABLED=false`（既定）・閾値・ギャラリー件数不足のいずれかで **候補配列が空**になりうる（画面説明文どおり。Phase12 の **401** は認可の回帰として別途担保）。
+
 #### Troubleshooting
 
 | 症状 | 想定原因 | 対処 |
 |------|----------|------|
+| 登録できたのに **類似候補はありません** だけが表示される | 埋め込み無効、近傍が閾値外、教師が 1 件のみで自己類似が返らない設計 | **貸出IDが出ていれば API・DB・写真保存は成功**のことが多い。候補を見たい環境では `PHOTO_TOOL_EMBEDDING_*` と [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) を確認 |
 | **400** `JPEG 画像をアップロード` | PNG 等 | JPEG に変換して再送 |
 | **400** 教師ラベルが空 | `canonicalLabel` 未送信・空白のみ | 正規化後に空にならない文字列を送る |
 | **401** | 未ログイン・VIEWER | ADMIN/MANAGER でログイン（または Bearer） |
