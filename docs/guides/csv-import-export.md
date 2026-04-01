@@ -135,7 +135,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 
 #### A. 通常ルート（ブラウザで足りる場合）
 
-1. [設定手順](#設定手順)どおり **`/admin/csv-dashboards`** で CsvDashboard（件名 `gmailSubjectPattern`・列定義など）を作成または確認。
+1. 本書冒頭の **設定手順** セクションどおり **`/admin/csv-dashboards`** で CsvDashboard（件名 `gmailSubjectPattern`・列定義など）を作成または確認。
 2. **`/admin/csv-imports`**（または本リポジトリの管理画面ラベルに従う）で **プロバイダー `gmail`**・ターゲット **CSVダッシュボード** を選びスケジュール登録。
 3. **手動実行**で疎通。**既存の Gmail スケジュールと同じ「分」に複数本を重ねない**（登録時に衝突警告が返る。`config/backup.json` の `csvImports` で既存 cron の分を確認し、空き分を取る）。
 
