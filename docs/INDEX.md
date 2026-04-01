@@ -44,6 +44,7 @@
 ### 🆕 最新アップデート（2026-04-01）
 
 - **写真持出: 管理コンソール「ギャラリー教師登録」（`POST /api/tools/loans/photo-gallery-seed`・`/admin/photo-gallery-seed`）・Prisma `Loan.photoToolGallerySeed`・本番順次デプロイ・Phase12・`main` マージ**: ブランチ `feat/admin-photo-gallery-seed`。JPEG + `canonicalLabel` で **教師用 `Loan`** を1件作成（`returnedAt` 済みで active 除外・`GOOD` としてギャラリー index 通知）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 39 / WARN 0 / FAIL 0**（未認証 **POST …/photo-gallery-seed → 401** を追加）。**運用者手動（2026-04-01）**: 本番管理 UI で JPEG 1 件登録・**貸出ID** 表示を確認。**類似候補なし**は埋め込み無効等でありうる（KB-319）。**参照**: [KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（`photo-gallery-seed` 節）/ [photo-loan.md](./modules/tools/photo-loan.md) / [verification-checklist.md](./guides/verification-checklist.md) 6.6.14 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **サイネージ: 管理コンソール スケジュール一覧で無効レコードを再編集可能化（`GET /api/signage/schedules/management`・ADMIN/MANAGER）・Pi5 のみデプロイ・Phase12**: 公開 `GET /api/signage/schedules`（キオスク）は **有効のみ** 維持。ブランチ `feat/signage-schedules-admin-list`。**デプロイ（実績）**: `scripts/update-all-clients.sh --limit raspberrypi5`、Detach Run **`20260401-134910-13950`**（`PLAY RECAP failed=0`）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 39 / WARN 0 / FAIL 0**。**参照**: [KB-322](./knowledge-base/infrastructure/signage.md#kb-322-管理コンソールサイネージスケジュール一覧無効レコードの再編集api分離) / [verification-checklist.md](./guides/verification-checklist.md) 6.6.15 / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-03-31）
 

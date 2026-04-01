@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 21件  
+**件数**: 22件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -55,6 +55,41 @@ update-frequency: medium
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
 
 **解決状況**: ✅ **実装・本番デプロイ・実機検証（Phase12）完了**（初回 2026-04-01・4列×2段反映 2026-03-31）
+
+---
+
+### [KB-322] 管理コンソール サイネージスケジュール一覧（無効レコードの再編集・API分離）
+
+**実施日**: 2026-04-01
+
+**概要（仕様・背景）**:
+- **課題**: `GET /api/signage/schedules` が **`enabled: true` のみ**を返していたため、管理画面（`/admin/signage/schedules`）も同じ一覧を使う実装だと、**スケジュールを無効にすると一覧から消え、再有効化や設定修正ができない**。
+- **方針**: **公開（匿名）** と **管理（認証）** の契約を分離する（ISP）。
+  - **`GET /api/signage/schedules`**: 従来どおり **有効スケジュールのみ**（サイネージ補助・外部が期待する契約を維持）。
+  - **`GET /api/signage/schedules/management`**: **`ADMIN` / `MANAGER` のみ**。**有効・無効を含む全件**を同一 `select` で返し、運用上の「今週だけオフ・来週またオン」を可能にする。
+- **実装**: `SignageService` に `findScheduleSummaries(where)`（private）と `listSchedulesForManagement()` を追加。`getSchedules()` は `{ enabled: true }` のまま。Web は `getSignageSchedulesForManagement` / `useSignageSchedulesForManagement`。変更のmutation成功時は React Query で `queryKey: ['signage-schedules']` プレフィックス無効化（management 含む）。
+
+**デプロイ（本番）**:
+- API / 管理 Web を載せる場合は **Pi5** が正本。[deployment.md](../../guides/deployment.md) に従い **`update-all-clients.sh` + `--limit raspberrypi5`** でよい例（Pi4/Pi3 は今回の差分に必須ではない）。**2026-04-01 実績**: `feat/signage-schedules-admin-list` を Pi5 のみデプロイ、Detach Run ID `20260401-134910-13950`・`PLAY RECAP` `raspberrypi5` **`failed=0`**、`exit=0`。
+
+**実機検証（自動）**:
+- **`./scripts/deploy/verify-phase12-real.sh`** → **PASS 39 / WARN 0 / FAIL 0**（2026-04-01・Mac / Tailscale・上記 Pi5 反映直後。既存のサイネージ `layoutConfig` / `current-image` スモークを含む）。
+- **統合テスト**: `signage.integration.test.ts` に **未認証 management → 401**、**有効+無効の2件作成後、公開一覧に無効 ID が含まれない・management に含まれる** を追加済み。
+
+**知見・トラブルシューティング**:
+- **単一エンドポイント + クエリで認証時のみ全件**も考えられるが、URL で用途が分かる **専用パス**のほうが誤公開・レビュー漏れを減らしやすい。
+- **公開一覧に無効行を出したくない**運用は変わらない。管理だけ全件を見えるようにした。
+- **401 で management が取れない**: 管理画面ログインセッション・`Authorization` ヘッダが axios クライアントに載っているかを先に切り分ける。
+
+**関連ファイル（代表）**:
+- `apps/api/src/services/signage/signage.service.ts`
+- `apps/api/src/routes/signage/schedules.ts`
+- `apps/api/src/routes/__tests__/signage.integration.test.ts`
+- `apps/web/src/api/client.ts`
+- `apps/web/src/api/hooks.ts`
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
+
+**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・Detach `20260401-134910-13950`）・Phase12 実機検証（PASS 39/0/0）完了**（2026-04-01）。**`main` 反映**は GitHub PR のマージで完了する（マージコミットを追跡したら本 KB が正本）。
 
 ---
 
