@@ -58,6 +58,8 @@ async function main() {
   // 生産日程（研削工程）: ダッシュボードIDを固定（CI/E2Eで安定させる）
   const productionScheduleDashboardId = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
   const productionScheduleGmailSubjectPattern = '生産日程_三島_研削工程';
+  const productionScheduleOrderSupplementDashboardId = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
+  const productionScheduleOrderSupplementSubjectPattern = '部品納期個数';
 
   const passwordHash = await bcrypt.hash('admin1234', 10);
   await prisma.user.upsert({
@@ -241,6 +243,64 @@ async function main() {
         rowsPerPage: 50,
         fontSize: 14,
         displayColumns: ['FHINCD', 'ProductNo', 'FHINMEI', 'FSIGENCD', 'FSIGENSHOYORYO', 'FKOJUN', 'FSEIBAN'],
+        headerFixed: true
+      }
+    }
+  });
+
+  // 生産日程補助（個数・予定着手日・予定完了日）CSVダッシュボード
+  await prisma.csvDashboard.upsert({
+    where: { id: productionScheduleOrderSupplementDashboardId },
+    update: {
+      name: 'ProductionSchedule_OrderSupplement',
+      description: '生産日程補助（個数・予定着手日・予定完了日）',
+      gmailSubjectPattern: productionScheduleOrderSupplementSubjectPattern,
+      enabled: true,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo', 'FSIGENCD', 'FKOJUN'],
+      dateColumnName: null,
+      displayPeriodDays: 365,
+      emptyMessage: '補助データはありません',
+      columnDefinitions: [
+        { internalName: 'FKOJUN', displayName: '工順', csvHeaderCandidates: ['工順', 'FKOJUN'], dataType: 'string', order: 0 },
+        { internalName: 'ProductNo', displayName: '製造オーダー番号', csvHeaderCandidates: ['製造オーダー番号', 'ProductNo'], dataType: 'string', order: 1 },
+        { internalName: 'FSIGENCD', displayName: '資源CD', csvHeaderCandidates: ['資源CD', 'FSIGENCD'], dataType: 'string', order: 2 },
+        { internalName: 'plannedQuantity', displayName: '指示数', csvHeaderCandidates: ['指示数'], dataType: 'number', order: 3, required: false },
+        { internalName: 'plannedStartDate', displayName: '着手日', csvHeaderCandidates: ['着手日'], dataType: 'string', order: 4, required: false },
+        { internalName: 'plannedEndDate', displayName: '完了日', csvHeaderCandidates: ['完了日'], dataType: 'string', order: 5, required: false },
+      ],
+      templateType: 'TABLE',
+      templateConfig: {
+        rowsPerPage: 50,
+        fontSize: 14,
+        displayColumns: ['FKOJUN', 'ProductNo', 'FSIGENCD', 'plannedQuantity', 'plannedStartDate', 'plannedEndDate'],
+        headerFixed: true
+      }
+    },
+    create: {
+      id: productionScheduleOrderSupplementDashboardId,
+      name: 'ProductionSchedule_OrderSupplement',
+      description: '生産日程補助（個数・予定着手日・予定完了日）',
+      gmailSubjectPattern: productionScheduleOrderSupplementSubjectPattern,
+      enabled: true,
+      ingestMode: 'DEDUP',
+      dedupKeyColumns: ['ProductNo', 'FSIGENCD', 'FKOJUN'],
+      dateColumnName: null,
+      displayPeriodDays: 365,
+      emptyMessage: '補助データはありません',
+      columnDefinitions: [
+        { internalName: 'FKOJUN', displayName: '工順', csvHeaderCandidates: ['工順', 'FKOJUN'], dataType: 'string', order: 0 },
+        { internalName: 'ProductNo', displayName: '製造オーダー番号', csvHeaderCandidates: ['製造オーダー番号', 'ProductNo'], dataType: 'string', order: 1 },
+        { internalName: 'FSIGENCD', displayName: '資源CD', csvHeaderCandidates: ['資源CD', 'FSIGENCD'], dataType: 'string', order: 2 },
+        { internalName: 'plannedQuantity', displayName: '指示数', csvHeaderCandidates: ['指示数'], dataType: 'number', order: 3, required: false },
+        { internalName: 'plannedStartDate', displayName: '着手日', csvHeaderCandidates: ['着手日'], dataType: 'string', order: 4, required: false },
+        { internalName: 'plannedEndDate', displayName: '完了日', csvHeaderCandidates: ['完了日'], dataType: 'string', order: 5, required: false },
+      ],
+      templateType: 'TABLE',
+      templateConfig: {
+        rowsPerPage: 50,
+        fontSize: 14,
+        displayColumns: ['FKOJUN', 'ProductNo', 'FSIGENCD', 'plannedQuantity', 'plannedStartDate', 'plannedEndDate'],
         headerFixed: true
       }
     }

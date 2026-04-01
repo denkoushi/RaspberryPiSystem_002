@@ -41,6 +41,9 @@ type ProductionScheduleRow = {
   note: string | null;
   processingType: string | null;
   dueDate: Date | null;
+  plannedQuantity: number | null;
+  plannedStartDate: Date | null;
+  plannedEndDate: Date | null;
 };
 
 export type ProductionScheduleListParams = {
@@ -395,7 +398,10 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       ) AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
-      "n"."dueDate" AS "dueDate"
+      "n"."dueDate" AS "dueDate",
+      "supplement"."plannedQuantity" AS "plannedQuantity",
+      "supplement"."plannedStartDate" AS "plannedStartDate",
+      "supplement"."plannedEndDate" AS "plannedEndDate"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -406,6 +412,9 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
       ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
+    LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
+      ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE ${baseWhere} ${queryWhere}
     ORDER BY
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,

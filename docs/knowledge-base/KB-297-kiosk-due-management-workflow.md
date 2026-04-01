@@ -61,6 +61,20 @@ category: knowledge-base
 - 切削除外リストはロケーション別設定で変更可能にし、コード修正なしで運用調整可能
 - 回帰防止として、ポリシーユニットテストとキオスク統合テスト（due-management系）を追加
 
+## 部品納期個数CSVの補助反映（2026-04-01）
+
+- **Context**:
+  - 全体ランキングの算出式改善を先に進める前に、`指示数`・`着手日`・`完了日` を既存生産日程へ安全に取り込みたい要件が発生。
+  - 既存の winner 判定（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN` で `ProductNo` 最大採用）は多数APIで共有されており、変更すると影響範囲が大きい。
+- **Fix（境界分離）**:
+  - 件名 `部品納期個数` は **別 `CsvDashboard`** で取り込み、既存生産日程本体CSVとは分離。
+  - 補助情報は `ProductionScheduleOrderSupplement` テーブルで保持し、`rowData` へ直書きしない。
+  - 照合キーは `FKOJUN + FSIGENCD + ProductNo`。サンプル検証で `FSIGENCD + ProductNo` のみだと衝突があるため不採用。
+  - 一覧APIは `plannedQuantity` / `plannedStartDate` / `plannedEndDate` をトップレベルで返却し、`dueDate` と意味を混在させない。
+- **Prevention**:
+  - winner 判定ロジックは据え置き、補助反映ロジックは専用サービスへ閉じ込める。
+  - 補助CSVの未照合行は unmatched として集計し、照合品質を継続監視できるようにする。
+
 ## 生産順序モード拡張（手動順番/自動順番 + targetLocation、2026-03-19）
 
 - **Context**:

@@ -682,10 +682,33 @@ model CsvDashboardRow {
   rowNotes                   ProductionScheduleRowNote[]
   productionScheduleProgress ProductionScheduleProgress?
   globalRowRanks             ProductionScheduleGlobalRowRank[]
+  orderSupplements           ProductionScheduleOrderSupplement[]
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
   @@index([csvDashboardId, dataHash]) // 重複除去用の複合インデックス（dedup時のみ使用）
+}
+
+model ProductionScheduleOrderSupplement {
+  id                 String    @id @default(uuid())
+  csvDashboardId     String
+  csvDashboardRowId  String
+  sourceCsvDashboardId String
+  productNo          String    @db.VarChar(20)
+  resourceCd         String    @db.VarChar(20)
+  processOrder       String    @db.VarChar(20)
+  plannedQuantity    Int?
+  plannedStartDate   DateTime? @db.Date
+  plannedEndDate     DateTime? @db.Date
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardRowId], map: "ProductionScheduleOrderSupplement_unique_row")
+  @@unique([csvDashboardId, sourceCsvDashboardId, productNo, resourceCd, processOrder], map: "ProductionScheduleOrderSupplement_unique_source_key")
+  @@index([csvDashboardId], map: "ProductionScheduleOrderSupplement_idx_dashboard")
+  @@index([sourceCsvDashboardId], map: "ProductionScheduleOrderSupplement_idx_source_dashboard")
 }
 
 model ProductionScheduleRowNote {

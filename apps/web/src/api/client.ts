@@ -417,6 +417,9 @@ export interface ProductionScheduleRow {
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
+  plannedQuantity?: number | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
 }
 
 export interface ProductionScheduleListResponse {

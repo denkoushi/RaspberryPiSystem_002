@@ -238,6 +238,56 @@ describe('Kiosk Production Schedule API', () => {
     expect(completedRow?.rowData.progress).toBe('完了');
   });
 
+  it('returns planned supplement fields when linked row exists', async () => {
+    const rows = await prisma.csvDashboardRow.findMany({
+      where: { csvDashboardId: DASHBOARD_ID },
+      orderBy: { id: 'asc' },
+      select: { id: true, rowData: true },
+    });
+    const targetRow = rows.find((row) => (row.rowData as any).ProductNo === '0000');
+    expect(targetRow).toBeDefined();
+    if (!targetRow) return;
+
+    await prisma.productionScheduleOrderSupplement.upsert({
+      where: { csvDashboardRowId: targetRow.id },
+      update: {
+        plannedQuantity: 12,
+        plannedStartDate: new Date('2026-04-21T00:00:00.000Z'),
+        plannedEndDate: new Date('2026-04-23T00:00:00.000Z'),
+      },
+      create: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: targetRow.id,
+        sourceCsvDashboardId: '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31',
+        productNo: '0000',
+        resourceCd: '1',
+        processOrder: '10',
+        plannedQuantity: 12,
+        plannedStartDate: new Date('2026-04-21T00:00:00.000Z'),
+        plannedEndDate: new Date('2026-04-23T00:00:00.000Z'),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      rows: Array<{
+        id: string;
+        plannedQuantity?: number | null;
+        plannedStartDate?: string | null;
+        plannedEndDate?: string | null;
+      }>;
+    };
+    const target = body.rows.find((row) => row.id === targetRow.id);
+    expect(target?.plannedQuantity).toBe(12);
+    expect(target?.plannedStartDate).toContain('2026-04-21');
+    expect(target?.plannedEndDate).toContain('2026-04-23');
+  });
+
   it('keeps only the larger ProductNo for the same seiban+process key', async () => {
     await prisma.csvDashboardRow.createMany({
       data: [
