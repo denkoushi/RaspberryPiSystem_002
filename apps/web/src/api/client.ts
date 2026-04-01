@@ -639,6 +639,8 @@ export interface ProductionScheduleDueManagementPartProcessItem {
   isCompleted: boolean;
 }
 
+export type ProductionScheduleDueManagementEffectiveDueSource = 'manual' | 'csv' | null;
+
 export interface ProductionScheduleDueManagementPartItem {
   productNo: string;
   fhincd: string;
@@ -656,7 +658,12 @@ export interface ProductionScheduleDueManagementPartItem {
   processes: ProductionScheduleDueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
+  /** Aggregated from order supplement CSV */
+  plannedQuantity?: number | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
   effectiveDueDate?: string | null;
+  effectiveDueDateSource?: ProductionScheduleDueManagementEffectiveDueSource;
 }
 
 export interface ProductionScheduleDueManagementProcessingTypeDueDateItem {

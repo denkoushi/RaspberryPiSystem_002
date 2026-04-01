@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-04-01) **生産スケジュール／納期: `effectiveDueDate` フォールバック・計画列 UI・本番5台順次デプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/kiosk-planned-fields-due-fallback-ui`。API は `GET .../due-management/seiban/:fseiban` に **`effectiveDueDate`**（手動優先・無ければ CSV `plannedEndDate`）と **`effectiveDueDateSource`**（`manual`|`csv`|null）。Web は **指示数・着手日**列、納期 **`dueDate ?? plannedEndDate`**、**手動 `dueDate` のみ**強調、手動モードは **資源順番→表示納期**ソート。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh` のみ、**Pi5 → Pi4×4** を **`--limit` 1台ずつ**・**`--detach --follow`**（Pi3 除外）。Detach Run ID: `20260401-201019-17368` / `20260401-201641-20955` / `20260401-202120-2571` / `20260401-202509-5371` / `20260401-202901-20217`（各 `failed=0`）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**；`GET .../due-management/seiban/<fseiban>`（`x-client-key` 必須）で `effectiveDueDate` 系をスモーク。**CI**: Run `23845117543` success。**ドキュメント**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#表示用納期-effectiveduedate計画列-ui2026-04-01)・[verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.17・[docs/INDEX.md](./docs/INDEX.md)・[knowledge-base/index.md](./docs/knowledge-base/index.md)。**`main` マージ**: GitHub PR 経由（マージ後 `main` CI を確認）。
 - [x] (2026-04-01) **ドキュメント: Gmail→CsvDashboard 本番登録の SSH/API/Prisma Runbook（管理コンソール代替・エージェント/運用者向け）**: [csv-import-export.md](./docs/guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) に手順・検証・トラブルシュートを追記。部品納期個数補助の **本番実績**（固定 ID ダッシュボード欠落→Prisma upsert、`POST /api/imports/schedule`・cron 分刻み調整、手動 run に `{}`、取込76行・照合38行）を [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md)・[docs/INDEX.md](./docs/INDEX.md)・[knowledge-base/index.md](./docs/knowledge-base/index.md)・[verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.16 に反映。
 - [x] (2026-04-01) **生産日程 部品納期個数補助（`ProductionScheduleOrderSupplement`・API `plannedQuantity` / `plannedStartDate` / `plannedEndDate`）・本番5台順次デプロイ・Phase12・ドキュメント・`main` マージ**: ブランチ `feat/production-schedule-planned-supplement`。Prisma マイグレーション・補助同期サービス・CsvDashboard 取り込み後の同期・生産日程一覧API拡張。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh` のみ、**5台を `--limit` 1台ずつ**順次（Pi3 除外）。GitHub Actions Detach Run ID: `20421618819` / `20421640357` / `20421660164` / `20421674891` / `20421685489`（各 `PLAY RECAP` `failed=0`）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` に生産日程一覧APIの **`plannedQuantity` 含有**チェックを追加し、**PASS 40 / WARN 0 / FAIL 0**（2026-04-01）。**ドキュメント**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#部品納期個数csvの補助反映2026-04-01) / [csv-import-export.md](./docs/guides/csv-import-export.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.16 / [docs/INDEX.md](./docs/INDEX.md)。**`main` マージ**: 本セッション（マージ後 GitHub Actions を確認）。
 - [x] (2026-04-01) **写真持出: `photo-gallery-seed` 運用者手動登録（本番管理 UI）**: `/admin/photo-gallery-seed` で **JPEG 1 件**・教師ラベル例「ロックナット締付工具」を登録。**直近の登録結果**に **貸出ID（UUID）** を確認（登録成功）。**類似候補なし**表示は **埋め込み無効 / 閾値 / 件数**で起きうるため **登録失敗と誤認しない**（[KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) 追記・[verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.14）。
@@ -1019,6 +1020,8 @@
 
 ## Decision Log
 
+- 決定（2026-04-01）: キオスクの **表示用納期**は、**手動（行 `dueDate`・writeback 含む）を最優先**し、無い場合のみ **部品納期個数補助 CSV の `plannedEndDate`** にフォールバックする。API は **`effectiveDueDate`** と **`effectiveDueDateSource`**（`manual`|`csv`|null）で契約を明示し、一覧 API の **`dueDate` と補助フィールドの意味混在を避ける**。UI は **手動設定時のみ**納期強調し、手動順番モードのソートは **資源順番→表示用納期**の二段とする。  
+  参照: [KB-297（2026-04-01 節）](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#表示用納期-effectiveduedate計画列-ui2026-04-01)
 - 決定（2026-03-30）: LocalLLM オンデマンド制御の tailnet 入口は **既存 `local-llm-system` nginx の `38081` に統一**し、`/v1/*` / `/embed` / `/start` / `/stop` を同居させる。host 側に別 nginx `39091` を増やさず、`control-server.mjs` は **`0.0.0.0:39090`**、`compose-nginx-1` は **Docker bridge gateway** 経由で proxy する。  
   理由: tailnet IP が host ではなく sidecar に属しており、Pi5 からの到達・ACL・既存 LocalLLM 入口との整合を最小変更で満たせるため。  
   参照: [ADR-20260403](./docs/decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) / [local-llm-tailscale-sidecar.md](./docs/runbooks/local-llm-tailscale-sidecar.md)
@@ -1709,6 +1712,18 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 生産スケジュール／納期: `effectiveDueDate` と計画列 UI の運用フォロー（2026-04-01）
+
+**概要**: `feat/kiosk-planned-fields-due-fallback-ui` を **`main` にマージ**後、Phase12 自動基準は **PASS 40 / WARN 0 / FAIL 0** のまま（`plannedQuantity` grep 継続）。**手動スモーク**は [verification-checklist.md](./docs/guides/verification-checklist.md) **§6.6.17**（`triage` から `fseiban` を取り `seiban` API で `effectiveDueDate` 系を確認）。
+
+**候補タスク**:
+
+1. **現場目視（推奨）**: Pi4 各台で生産スケジュール／手動順番を開き、**指示数・着手日**列・**手動納期だけ**強調される見え方（CSV フォールバックのみの日付は非強調）を確認。
+2. **データなし工場**: `triage` が空のとき §6.6.17 の手動項目はスキップ可。製番が載ったら再実施。
+3. **回帰**: 納期管理・補助 CSV まわりの PR では **`kiosk-production-schedule.integration.test.ts`**（effectiveDueDate フォールバック）と Web ソート／表示ユニットを維持し、Phase12 **40 基準**を落とさない。
+
+**参照**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#表示用納期-effectiveduedate計画列-ui2026-04-01) / [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.17
 
 ### 写真持出: `photo-gallery-seed` 運用フォロー（2026-04-01）
 

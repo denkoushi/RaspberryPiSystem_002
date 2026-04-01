@@ -10,6 +10,8 @@ const row = (params: {
   fkojun: string;
   processingOrder: number | null;
   globalRank: number | null;
+  dueDate?: string | null;
+  plannedEndDate?: string | null;
 }): NormalizedScheduleRow => ({
   id: params.id,
   isCompleted: false,
@@ -30,14 +32,19 @@ const row = (params: {
     processingOrder: params.processingOrder === null ? '' : String(params.processingOrder),
     processingType: '',
     actualPerPieceMinutes: '',
-    FSIGENSHOYORYO: ''
+    FSIGENSHOYORYO: '',
+    plannedQuantity: '-',
+    plannedStartDate: '-'
   },
   processingOrder: params.processingOrder,
   globalRank: params.globalRank,
   actualPerPieceMinutes: null,
   processingType: null,
   note: null,
-  dueDate: null
+  dueDate: params.dueDate ?? null,
+  plannedQuantity: null,
+  plannedStartDate: null,
+  plannedEndDate: params.plannedEndDate ?? null
 });
 
 describe('deriveDisplayRows sort mode', () => {
@@ -71,5 +78,48 @@ describe('deriveDisplayRows sort mode', () => {
     });
 
     expect(result.map((item) => item.id)).toEqual(['row-1', 'row-2', 'row-3']);
+  });
+
+  it('manualモードでprocessingOrder同位のときは表示用納期（dueDate ?? plannedEndDate）昇順', () => {
+    const input = [
+      row({
+        id: 'row-late',
+        resourceCd: '502',
+        fseiban: 'B',
+        productNo: '20',
+        fkojun: '20',
+        processingOrder: 1,
+        globalRank: 1,
+        plannedEndDate: '2026-04-20T00:00:00.000Z'
+      }),
+      row({
+        id: 'row-early',
+        resourceCd: '502',
+        fseiban: 'A',
+        productNo: '10',
+        fkojun: '10',
+        processingOrder: 1,
+        globalRank: 2,
+        plannedEndDate: '2026-04-10T00:00:00.000Z'
+      }),
+      row({
+        id: 'row-manual',
+        resourceCd: '502',
+        fseiban: 'C',
+        productNo: '30',
+        fkojun: '30',
+        processingOrder: 1,
+        globalRank: 3,
+        dueDate: '2026-04-05'
+      })
+    ];
+
+    const result = deriveDisplayRows(input, {
+      isDisplayRankContext: true,
+      sortMode: 'manual',
+      manualSortEnabled: true
+    });
+
+    expect(result.map((item) => item.id)).toEqual(['row-manual', 'row-early', 'row-late']);
   });
 });

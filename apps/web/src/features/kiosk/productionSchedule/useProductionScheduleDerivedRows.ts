@@ -145,11 +145,13 @@ export const useProductionScheduleDerivedRows = ({
       fixedWidths: {
         FSEIBAN: 72,
         processingType: 84,
-        actualPerPieceMinutes: 95
+        actualPerPieceMinutes: 95,
+        plannedQuantity: 56,
+        plannedStartDate: 88
       },
       formatCellValue: (_column, value) => String(value ?? ''),
       priorityGrowKeys: ['FHINMEI'],
-      shrinkFirstKeys: ['FHINCD', 'FSEIBAN', 'processingType']
+      shrinkFirstKeys: ['FHINCD', 'FSEIBAN', 'processingType', 'plannedQuantity', 'plannedStartDate']
     });
   }, [checkWidth, itemWidth, partMeasurementColumnWidth, tableColumns, widthSampleRows]);
 

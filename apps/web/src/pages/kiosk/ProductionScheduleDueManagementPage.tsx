@@ -59,6 +59,7 @@ import {
 } from '../../features/kiosk/productionSchedule/dueManagementViewModel';
 import { formatDueDate } from '../../features/kiosk/productionSchedule/formatDueDate';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
+import { formatPlannedDateLabel, formatPlannedQuantityLabel } from '../../features/kiosk/productionSchedule/plannedDueDisplay';
 import { getGrindingAndCuttingResourceCds } from '../../features/kiosk/productionSchedule/resourceCategory';
 import { useDueManagementSelectionActions } from '../../features/kiosk/productionSchedule/useDueManagementSelectionActions';
 import { useCollapsibleSectionPersistence } from '../../hooks/useCollapsibleSectionPersistence';
@@ -1105,6 +1106,9 @@ export function ProductionScheduleDueManagementPage() {
                   <th className="px-2 py-2">工程進捗</th>
                   <th className="px-2 py-2">所要(min)</th>
                   <th className="px-2 py-2">実績基準時間(分/個)</th>
+                  <th className="px-2 py-2">指示数</th>
+                  <th className="px-2 py-2">着手日</th>
+                  <th className="px-2 py-2">納期</th>
                   <th className="px-2 py-2">備考</th>
                   <th className="px-2 py-2">提案順位</th>
                   <th className="px-2 py-2">操作</th>
@@ -1169,6 +1173,15 @@ export function ProductionScheduleDueManagementPage() {
                     <td className="px-2 py-2">{Math.round(part?.totalRequiredMinutes ?? 0)}</td>
                     <td className="px-2 py-2">
                       {typeof part?.actualPerPieceMinutes === 'number' ? part.actualPerPieceMinutes.toFixed(2) : '-'}
+                    </td>
+                    <td className="px-2 py-2">{formatPlannedQuantityLabel(part?.plannedQuantity ?? null)}</td>
+                    <td className="px-2 py-2">{formatPlannedDateLabel(part?.plannedStartDate ?? null)}</td>
+                    <td
+                      className={`px-2 py-2 ${
+                        part?.effectiveDueDateSource === 'manual' ? 'font-semibold text-amber-200' : 'text-white/90'
+                      }`}
+                    >
+                      {formatDueDate(part?.effectiveDueDate ?? null)}
                     </td>
                     <td className="px-2 py-2">
                       <button

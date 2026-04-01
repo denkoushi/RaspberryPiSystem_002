@@ -7,6 +7,7 @@ process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 const DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
+const ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
 const CLIENT_KEY = 'client-demo-key';
 const CLIENT_KEY_2 = 'client-demo-key-2';
 
@@ -873,6 +874,52 @@ describe('Kiosk Production Schedule API', () => {
     expect(detailBody.detail.parts.map((part) => part.fhincd).sort()).toEqual(['X', 'Z']);
     const partX = detailBody.detail.parts.find((part) => part.fhincd === 'X');
     expect(partX?.processes[0]?.resourceNames).toEqual(['1号機', '1号機-予備']);
+  });
+
+  it('due-management seiban detail falls back to CSV plannedEndDate and exposes supplement fields', async () => {
+    const rowX = await prisma.csvDashboardRow.findFirst({
+      where: { csvDashboardId: DASHBOARD_ID, rowData: { path: ['FHINCD'], equals: 'X' } },
+      select: { id: true }
+    });
+    expect(rowX).toBeTruthy();
+    await prisma.productionScheduleOrderSupplement.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: rowX!.id,
+        sourceCsvDashboardId: ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID,
+        productNo: '0001',
+        resourceCd: '1',
+        processOrder: '210',
+        plannedQuantity: 7,
+        plannedStartDate: new Date('2026-05-01T00:00:00.000Z'),
+        plannedEndDate: new Date('2026-05-10T00:00:00.000Z')
+      }
+    });
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/due-management/seiban/A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(detailRes.statusCode).toBe(200);
+    const detailBody = detailRes.json() as {
+      detail: {
+        parts: Array<{
+          fhincd: string;
+          effectiveDueDate?: string | null;
+          effectiveDueDateSource?: string | null;
+          plannedQuantity?: number | null;
+          plannedStartDate?: string | null;
+          plannedEndDate?: string | null;
+        }>;
+      };
+    };
+    const partX = detailBody.detail.parts.find((part) => part.fhincd === 'X');
+    expect(partX?.effectiveDueDate).toContain('2026-05-10');
+    expect(partX?.effectiveDueDateSource).toBe('csv');
+    expect(partX?.plannedQuantity).toBe(7);
+    expect(partX?.plannedStartDate).toContain('2026-05-01');
+    expect(partX?.plannedEndDate).toContain('2026-05-10');
   });
 
   it('filters out MH/SH parts and excluded resourceCds in due-management detail', async () => {
