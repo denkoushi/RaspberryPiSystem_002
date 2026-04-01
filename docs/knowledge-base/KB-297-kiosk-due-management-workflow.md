@@ -80,6 +80,10 @@ category: knowledge-base
 - **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` を全対象キオスクで実行し、**PASS 40 / WARN 0 / FAIL 0**（本リリースで `GET /api/kiosk/production-schedule` 応答に `"plannedQuantity"` を含むことの grep を追加したため、スクリプト合計 PASS が 39→40）。
 - **本番デプロイ**: `docs/guides/deployment.md` の `update-all-clients.sh` 標準のみ。**5台**を**1台ずつ**順次（Pi3 は従来どおり対象外）。GitHub Actions Detach Run ID: **20421618819**, **20421640357**, **20421660164**, **20421674891**, **20421685489** — いずれも Ansible `PLAY RECAP` **failed=0**。
 - **トラブルシュート**: ローカルで統合テストが `localhost:5432` 接続失敗になる場合は Postgres 未起動の可能性が高い（`docker compose up -d postgres` 等）。実機スクリプト失敗時は `./tmp/phase12-real-<clientId>-<ts>.log` と `docs/guides/verification-checklist.md` §6.6 / §6.6.16 を参照。
+- **本番 Gmail 取込・管理設定（2026-04-01・SSH/API/Prisma 経路）**:
+  - **背景**: 管理コンソールのブラウザからは、埋め込みブラウザの証明書問題や Safari まわりの制約で UI 設定が困難な場合がある。**Pi5 に SSH できる管理者**は、[csv-import-export.md の production runbook 節](../guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) に従い、`docker compose … exec api` と **管理 API** で **CsvDashboard の整合**と **`csvImports` 登録**を行える（Prisma は **api コンテナ内**が安定）。
+  - **実績（部品納期個数）**: 本番の `backup.json` に補助用スケジュールが無い状態に加え、固定 ID `8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31` の `CsvDashboard` が DB に存在しなかった。seed 同等の **`csvDashboard.upsert`** を本番で実施後、`POST /api/imports/schedule` で `csv-import-productionschedule_ordersupplement`（`provider: gmail`, `targets: [{ type: csvDashboards, source: 上記UUID }]`, cron `24,39,54 * * * *` ― 既存 Gmail 取り込みと分刻み衝突回避）を追加。**手動 1 回実行**は `POST .../run` に **`Content-Type: application/json` と body `{}`** が必要。取込 **76** 行・`ProductionScheduleOrderSupplement` 照合 **38** 行、Gmail 後処理（既読・ゴミ箱）まで確認済み。
+  - **落とし穴**: ホストの `node` で `JWT_ACCESS_SECRET` を読めても、Prisma の `db:5432` に届かず失敗することがある。**JWT・Prisma・curl は api コンテナ内**で揃えて実行する。キオスク API 確認時の **`x-client-key` は実デバイス紐付けの `ClientDevice.apiKey`**（ダミーでは 401）。
 
 ## 生産順序モード拡張（手動順番/自動順番 + targetLocation、2026-03-19）
 
