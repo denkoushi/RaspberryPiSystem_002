@@ -40,6 +40,7 @@
 
 ## References
 
+- マージ: [PR #72](https://github.com/denkoushi/RaspberryPiSystem_002/pull/72)
 - 実装コミット例: `22a24626`（ブランチ `fix/kiosk-return-card-button-layout`）
 - `apps/web/src/pages/kiosk/KioskReturnPage.tsx`
 - `apps/web/src/components/kiosk/KioskActiveLoanCard.tsx`
