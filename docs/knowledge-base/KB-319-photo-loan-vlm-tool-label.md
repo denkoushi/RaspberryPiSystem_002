@@ -210,6 +210,44 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | ローカルの `host_vars/raspberrypi5/vault.yml` を更新しても Pi5 に反映されない | `infrastructure/ansible/host_vars/**/vault.yml` は Git 管理外で、Pi5 リモート実行時は **Pi5 側 checkout** のファイルが使われる | 正規の secrets 配置を使うか、Pi5 上の `host_vars/raspberrypi5/vault.yml` を更新してから再デプロイ |
 | `/healthz` は通るが `/embed` の Python ワンライナー確認が失敗する | `tailscale` コンテナに `python3` が無い | `embedding` コンテナ側で単体確認するか、`wget` / `curl` で疎通確認と payload 確認を分ける |
 
+### 管理コンソール ギャラリー教師登録（`photo-gallery-seed`・2026-04-01）
+
+#### Context
+
+- **ブランチ**: `feat/admin-photo-gallery-seed`
+- **目的**: キオスクからの実貸出なしに、**JPEG + 教師ラベル（正規化後の表示名）** だけで `Loan` を1件作り、**類似ギャラリー**の母集団を増やす（`PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき `PhotoToolGalleryIndexService` が非同期で反映）。
+- **実貸出ではない**: `Loan.photoToolGallerySeed = true`。同日時刻で **`returnedAt` を立て**キオスク `active` 一覧から除外。`photoToolHumanQuality = GOOD`・`photoToolHumanDisplayName` に教師ラベルを入れたうえでレビュー通知経路を再利用。
+
+#### API・管理 UI
+
+| 操作 | 内容 |
+|------|------|
+| 登録 | `POST /api/tools/loans/photo-gallery-seed`（**ADMIN / MANAGER**・`multipart/form-data`・フィールド **`image`**（JPEG）・**`canonicalLabel`**（テキスト）） |
+| 応答 | `{ loanId, photoUrl, canonicalLabel }`（正規化後ラベル） |
+
+#### 実機確認（Mac・Tailscale・2026-04-01）
+
+- **CONFIRMED**: 本番は **Pi5 → Pi4×4 → Pi3** を [deployment.md](../guides/deployment.md) に従い **`--limit` 1 台ずつ**・**`--detach --follow`**（Pi3 はサイネージ専用手順）。各 PLAY **`failed=0`**。
+- **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 39 / WARN 0 / FAIL 0**（未認証 **`POST …/photo-gallery-seed` → 401** のスモークをスクリプトに追加）。
+- **手動（推奨）**: `https://<Pi5>/admin/photo-gallery-seed` で画像アップロード・成功メッセージ・返却 `loanId` を確認。埋め込み OFF の環境ではギャラリー行が増えないことは仕様（API・DB・写真保存は成功しうる）。
+
+#### Troubleshooting
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| **400** `JPEG 画像をアップロード` | PNG 等 | JPEG に変換して再送 |
+| **400** 教師ラベルが空 | `canonicalLabel` 未送信・空白のみ | 正規化後に空にならない文字列を送る |
+| **401** | 未ログイン・VIEWER | ADMIN/MANAGER でログイン（または Bearer） |
+| DB エラー後にストレージにだけ画像 | 稀な不整合 | 実装は `prisma.loan.create` 失敗時に **`PhotoStorage.deletePhoto`** でロールバック。ログとストレージを照合 |
+| 登録したが類似候補に出ない | 埋め込み無効・閾値・バックフィル未実施 | `PHOTO_TOOL_EMBEDDING_*`・[photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) |
+
+#### References（実装）
+
+- `apps/api/src/routes/tools/loans/photo-gallery-seed.ts`
+- `apps/api/src/services/tools/photo-tool-label/photo-gallery-seed.service.ts`
+- `apps/web/src/pages/admin/PhotoGallerySeedPage.tsx`
+- Prisma: `Loan.photoToolGallerySeed`（マイグレーション `20260401140000_add_loan_photo_tool_gallery_seed`）
+
 ### References
 
 - [ADR-20260330](../decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)

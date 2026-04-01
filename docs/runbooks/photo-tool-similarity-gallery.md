@@ -4,6 +4,7 @@
 
 - 人レビュー **GOOD** の写真持出を **ベクトル化**して `photo_tool_similarity_gallery` に載せ、管理画面の類似候補 API と（任意で）VLM **シャドー補助**の入力とする。
 - **本番ラベル（`photoToolDisplayName`）をシャドーで上書きしない**（現行仕様）。改善はログ評価 → 将来別 ADR で active 化を検討。
+- **手動で教師行を増やす（2026-04-01）**: キオスクからの実貸出なしに **JPEG + 教師ラベル** だけを載せる場合は、管理コンソール **`/admin/photo-gallery-seed`**（`POST /api/tools/loans/photo-gallery-seed`・ADMIN/MANAGER）。`Loan.photoToolGallerySeed=true` で active 一覧から除外し、埋め込み有効時は既存と同じ index 経路でギャラリーへ。TS・API 契約は [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「`photo-gallery-seed`」節。
 
 ## 前提
 

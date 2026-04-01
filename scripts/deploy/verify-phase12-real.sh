@@ -187,6 +187,12 @@ PHOTO_SIMILAR_UNAUTH_CODE="$(
 )"
 check_http_code "未認証 GET /tools/loans/.../photo-similar-candidates" "${PHOTO_SIMILAR_UNAUTH_CODE}" "401"
 
+# ギャラリー教師登録は ADMIN/MANAGER のみ（multipart 未指定でも認可が先）
+PHOTO_GALLERY_SEED_UNAUTH_CODE="$(
+  curl -sk -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/tools/loans/photo-gallery-seed" 2>&1 || true
+)"
+check_http_code "未認証 POST /tools/loans/photo-gallery-seed" "${PHOTO_GALLERY_SEED_UNAUTH_CODE}" "401"
+
 DUE_PATHS=(
   "triage"
   "daily-plan"

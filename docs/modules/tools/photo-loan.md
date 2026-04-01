@@ -22,6 +22,7 @@ update-frequency: medium
 - **表示名付与**: 元画像（既定）またはサムネイルを JPEG 化したうえで非同期 VLM 推論し、短い工具名を `photoToolDisplayName` に保存
 - **人レビュー**: ADMIN/MANAGER が VLM 結果を品質（GOOD/MARGINAL/BAD）と任意の表示名で上書き・記録（`photoToolHuman*` 列）
 - **類似候補（任意）**: 人レビュー **GOOD** の貸出のみ、pgvector ギャラリーへ埋め込みを非同期インデックス。管理画面で類似候補を参照表示（確定ラベルは自動変更しない）
+- **ギャラリー教師の手動登録（任意）**: 管理画面 **`/admin/photo-gallery-seed`** から **JPEG + 教師ラベル** で `Loan` を1件作成（`photoToolGallerySeed=true`・同日 **`returnedAt`** でキオスク active から除外）。`POST /api/tools/loans/photo-gallery-seed`（ADMIN/MANAGER・multipart）。`PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき `PhotoToolGalleryIndexService` 経由でギャラリーへ通知（詳細は [KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「`photo-gallery-seed`」節）
 - **UI表示**: 持出一覧・返却画面で写真サムネイルを表示。1行目の工具名は **人レビュー > VLM > `撮影mode`**
 
 **実機回帰（2026-03-29）**: デプロイ後に `./scripts/deploy/verify-phase12-real.sh` で **PASS 34/0/0**。その後、Ubuntu 埋め込み `/embed` の **512 次元応答**、Pi5 での **GOOD バックフィル 42 件**、シャドー ON の実機 1 件で **`Photo tool label shadow assist inference completed`**（`currentLabel=assistedLabel=マウス`）を確認した（[KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
