@@ -1,5 +1,11 @@
 import { buildResourceLocalRankMap } from './displayRank';
 import { toHalfWidthAscii } from './machineName';
+import {
+  compareDisplayDueDateForSort,
+  formatPlannedDateLabel,
+  formatPlannedQuantityLabel,
+  resolveDisplayDueDate
+} from './plannedDueDisplay';
 
 export type ScheduleRowData = {
   ProductNo?: string;
@@ -23,6 +29,9 @@ export type NormalizedScheduleRow = {
   processingType: string | null;
   note: string | null;
   dueDate: string | null;
+  plannedQuantity: number | null;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
 };
 
 export type RawScheduleRow = {
@@ -34,6 +43,9 @@ export type RawScheduleRow = {
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
+  plannedQuantity?: number | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
 };
 
 export type ProductionScheduleSortMode = 'auto' | 'manual';
@@ -60,6 +72,18 @@ export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedS
     const note = typeof row.note === 'string' && row.note.trim().length > 0 ? row.note.trim() : null;
     const dueDate =
       typeof row.dueDate === 'string' && row.dueDate.trim().length > 0 ? row.dueDate.trim() : null;
+    const plannedQuantity =
+      typeof row.plannedQuantity === 'number' && Number.isFinite(row.plannedQuantity)
+        ? row.plannedQuantity
+        : null;
+    const plannedStartDate =
+      typeof row.plannedStartDate === 'string' && row.plannedStartDate.trim().length > 0
+        ? row.plannedStartDate.trim()
+        : null;
+    const plannedEndDate =
+      typeof row.plannedEndDate === 'string' && row.plannedEndDate.trim().length > 0
+        ? row.plannedEndDate.trim()
+        : null;
     const values = {
       FHINCD: String(d.FHINCD ?? ''),
       ProductNo: String(d.ProductNo ?? ''),
@@ -71,7 +95,9 @@ export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedS
       processingType: processingType ?? '',
       FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
       FKOJUN: String(d.FKOJUN ?? ''),
-      FSEIBAN: String(d.FSEIBAN ?? '')
+      FSEIBAN: String(d.FSEIBAN ?? ''),
+      plannedQuantity: formatPlannedQuantityLabel(plannedQuantity),
+      plannedStartDate: formatPlannedDateLabel(plannedStartDate)
     };
     return {
       id: row.id,
@@ -83,7 +109,10 @@ export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedS
       actualPerPieceMinutes,
       processingType,
       note,
-      dueDate
+      dueDate,
+      plannedQuantity,
+      plannedStartDate,
+      plannedEndDate
     };
   });
 
@@ -210,6 +239,12 @@ export const deriveDisplayRows = (
       const leftOrder = left.processingOrder ?? Number.MAX_SAFE_INTEGER;
       const rightOrder = right.processingOrder ?? Number.MAX_SAFE_INTEGER;
       if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+
+      const dueDiff = compareDisplayDueDateForSort(
+        resolveDisplayDueDate(left.dueDate, left.plannedEndDate),
+        resolveDisplayDueDate(right.dueDate, right.plannedEndDate)
+      );
+      if (dueDiff !== 0) return dueDiff;
 
       const leftFseiban = String(left.data.FSEIBAN ?? '');
       const rightFseiban = String(right.data.FSEIBAN ?? '');

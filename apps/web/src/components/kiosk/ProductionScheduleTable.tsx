@@ -1,3 +1,5 @@
+import { isManualDueDateSet, resolveDisplayDueDate } from '../../features/kiosk/productionSchedule/plannedDueDisplay';
+
 import type { TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import type { NormalizedScheduleRow } from '../../features/kiosk/productionSchedule/displayRowDerivation';
 
@@ -184,10 +186,14 @@ function ProductionScheduleTableCells({
       <td className={`px-2 py-1.5 align-middle ${rowClassName}`}>
         <span className="flex items-center gap-1">
           <span
-            className="min-w-0 truncate text-white/90"
-            title={row.dueDate ? formatDueDate(row.dueDate) : undefined}
+            className={`min-w-0 truncate ${
+              isManualDueDateSet(row.dueDate) ? 'font-semibold text-amber-200' : 'text-white/90'
+            }`}
+            title={
+              formatDueDate(resolveDisplayDueDate(row.dueDate, row.plannedEndDate)) || undefined
+            }
           >
-            {formatDueDate(row.dueDate)}
+            {formatDueDate(resolveDisplayDueDate(row.dueDate, row.plannedEndDate))}
           </span>
           <button
             type="button"

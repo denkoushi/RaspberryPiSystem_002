@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
 import { listSeibanProcessingDueDates } from '../../../services/production-schedule/due-date-resolution.service.js';
+import { resolveEffectiveDueDisplay } from '../../../services/production-schedule/due-management-effective-due-display.js';
 import {
   getDueManagementSeibanDetailWithScope,
   toDueManagementScopeFromContext
@@ -44,13 +45,21 @@ export async function registerProductionScheduleDueManagementSeibanRoute(
       detail: {
         ...detail,
         processingTypeDueDates,
-        parts: detail.parts.map((part) => ({
-          ...part,
-          effectiveDueDate:
+        parts: detail.parts.map((part) => {
+          const manualDue =
             part.processingType && processingDueDateMap.get(part.processingType)
-              ? processingDueDateMap.get(part.processingType)
-              : detail.dueDate
-        }))
+              ? processingDueDateMap.get(part.processingType) ?? null
+              : detail.dueDate;
+          const { displayDueDate, source } = resolveEffectiveDueDisplay({
+            manualDue,
+            plannedEndDate: part.plannedEndDate
+          });
+          return {
+            ...part,
+            effectiveDueDate: displayDueDate,
+            effectiveDueDateSource: source
+          };
+        })
       }
     };
   });

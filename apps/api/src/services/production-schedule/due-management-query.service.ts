@@ -12,6 +12,11 @@ import {
   getResourceNameMapByResourceCds
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import {
+  createPartSupplementAggregate,
+  finalizePartSupplementAggregate,
+  mergeRowIntoPartSupplementAggregate
+} from './due-management-part-supplement-aggregate.js';
 
 type SeibanSummaryRaw = {
   fseiban: string;
@@ -33,6 +38,9 @@ type SeibanRowRaw = {
   processingType: string | null;
   note: string | null;
   isCompleted: boolean;
+  plannedQuantity: number | null;
+  plannedStartDate: Date | null;
+  plannedEndDate: Date | null;
 };
 
 export type DueManagementSummaryItem = {
@@ -71,6 +79,10 @@ export type DueManagementPartItem = {
   processes: DueManagementPartProcessItem[];
   currentPriorityRank: number | null;
   suggestedPriorityRank: number;
+  /** Aggregated from ProductionScheduleOrderSupplement rows for this FHINCD */
+  plannedQuantity: number | null;
+  plannedStartDate: Date | null;
+  plannedEndDate: Date | null;
 };
 
 export type DueManagementSeibanDetail = {
@@ -206,7 +218,10 @@ export async function getDueManagementSeibanDetail(params: {
       ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') AS "requiredMinutes",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."note" AS "note",
-      COALESCE("p"."isCompleted", FALSE) AS "isCompleted"
+      COALESCE("p"."isCompleted", FALSE) AS "isCompleted",
+      "sup"."plannedQuantity" AS "plannedQuantity",
+      "sup"."plannedStartDate" AS "plannedStartDate",
+      "sup"."plannedEndDate" AS "plannedEndDate"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -214,6 +229,8 @@ export async function getDueManagementSeibanDetail(params: {
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleOrderSupplement" AS "sup"
+      ON "sup"."csvDashboardRowId" = "CsvDashboardRow"."id"
     LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
       ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
@@ -281,6 +298,7 @@ export async function getDueManagementSeibanDetail(params: {
       actualPerPieceMinutesSum: number;
       actualPerPieceSampleCount: number;
       processes: DueManagementPartProcessItem[];
+      supplementAgg: ReturnType<typeof createPartSupplementAggregate>;
     }
   >();
   for (const row of rows) {
@@ -301,6 +319,12 @@ export async function getDueManagementSeibanDetail(params: {
     const perPieceMinutes = detailActualHoursReadContext.resolver.resolve({ fhincd, resourceCd }).perPieceMinutes;
     const isActualMatched = perPieceMinutes !== null;
     if (!current) {
+      const supplementAgg = createPartSupplementAggregate();
+      mergeRowIntoPartSupplementAggregate(supplementAgg, {
+        plannedQuantity: row.plannedQuantity,
+        plannedStartDate: row.plannedStartDate,
+        plannedEndDate: row.plannedEndDate
+      });
       grouped.set(fhincd, {
         productNo: row.productNo?.trim() ?? '',
         fhincd,
@@ -323,7 +347,8 @@ export async function getDueManagementSeibanDetail(params: {
             processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
             isCompleted: row.isCompleted
           }
-        ]
+        ],
+        supplementAgg
       });
       continue;
     }
@@ -352,6 +377,11 @@ export async function getDueManagementSeibanDetail(params: {
       processOrder: /^\d+$/.test(row.fkojun ?? '') ? Number(row.fkojun) : null,
       isCompleted: row.isCompleted
     });
+    mergeRowIntoPartSupplementAggregate(current.supplementAgg, {
+      plannedQuantity: row.plannedQuantity,
+      plannedStartDate: row.plannedStartDate,
+      plannedEndDate: row.plannedEndDate
+    });
     if (processingPriority < current.processingPriority) {
       current.processingPriority = processingPriority;
       current.processingType = row.processingType;
@@ -371,23 +401,30 @@ export async function getDueManagementSeibanDetail(params: {
       }
       return a.fhincd.localeCompare(b.fhincd);
     })
-    .map((part, index) => ({
-      ...part,
-      processes: [...part.processes].sort((a, b) => {
-        if (a.processOrder !== null && b.processOrder !== null) {
-          return a.processOrder - b.processOrder;
-        }
-        if (a.processOrder !== null) return -1;
-        if (b.processOrder !== null) return 1;
-        return a.resourceCd.localeCompare(b.resourceCd);
-      }),
-      actualPerPieceMinutes:
-        part.actualPerPieceSampleCount > 0 ? part.actualPerPieceMinutesSum / part.actualPerPieceSampleCount : null,
-      actualEstimatedMinutes: 0,
-      actualCoverageRatio: part.totalProcessCount > 0 ? part.actualMatchedProcessCount / part.totalProcessCount : 0,
-      currentPriorityRank: currentPriorityMap.get(part.fhincd) ?? null,
-      suggestedPriorityRank: index + 1
-    }));
+    .map((part, index) => {
+      const { supplementAgg, ...partWithoutAgg } = part;
+      const planned = finalizePartSupplementAggregate(supplementAgg);
+      return {
+        ...partWithoutAgg,
+        plannedQuantity: planned.plannedQuantity,
+        plannedStartDate: planned.plannedStartDate,
+        plannedEndDate: planned.plannedEndDate,
+        processes: [...part.processes].sort((a, b) => {
+          if (a.processOrder !== null && b.processOrder !== null) {
+            return a.processOrder - b.processOrder;
+          }
+          if (a.processOrder !== null) return -1;
+          if (b.processOrder !== null) return 1;
+          return a.resourceCd.localeCompare(b.resourceCd);
+        }),
+        actualPerPieceMinutes:
+          part.actualPerPieceSampleCount > 0 ? part.actualPerPieceMinutesSum / part.actualPerPieceSampleCount : null,
+        actualEstimatedMinutes: 0,
+        actualCoverageRatio: part.totalProcessCount > 0 ? part.actualMatchedProcessCount / part.totalProcessCount : 0,
+        currentPriorityRank: currentPriorityMap.get(part.fhincd) ?? null,
+        suggestedPriorityRank: index + 1
+      };
+    });
   const detailMatchedParts = parts.filter((part) => part.actualPerPieceMinutes !== null).length;
   // #region agent log
   void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H5',location:'due-management-query.service.ts:getDueManagementSeibanDetail:491',message:'actual-hours resolved result for seiban detail',data:{locationKey,fseiban,totalParts:parts.length,matchedParts:detailMatchedParts,unmatchedParts:parts.length-detailMatchedParts},timestamp:Date.now()})}).catch(()=>{});
