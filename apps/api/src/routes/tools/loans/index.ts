@@ -17,6 +17,8 @@ import { PgPhotoToolSimilarityGalleryRepository } from '../../../services/tools/
 import { PhotoToolGalleryIndexService } from '../../../services/tools/photo-tool-label/photo-tool-gallery-index.service.js';
 import { PhotoToolSimilarCandidateService } from '../../../services/tools/photo-tool-label/photo-tool-similar-candidate.service.js';
 import { PhotoToolLabelReviewService } from '../../../services/tools/photo-tool-label/photo-tool-label-review.service.js';
+import { PhotoGallerySeedService } from '../../../services/tools/photo-tool-label/photo-gallery-seed.service.js';
+import { registerPhotoGallerySeedRoute } from './photo-gallery-seed.js';
 
 export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
   const loanService = new LoanService();
@@ -32,6 +34,7 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
     visionSource
   );
   const photoLabelReviewService = new PhotoToolLabelReviewService({ galleryIndex });
+  const photoGallerySeedService = new PhotoGallerySeedService({ galleryIndex });
 
   await app.register(
     async (subApp) => {
@@ -43,6 +46,7 @@ export async function registerLoanRoutes(app: FastifyInstance): Promise<void> {
       registerLoanCancelRoute(subApp, loanService);
       registerLoanAssignClientRoute(subApp, assignmentService);
       registerPhotoLabelReviewsRoutes(subApp, photoLabelReviewService);
+      registerPhotoGallerySeedRoute(subApp, photoGallerySeedService);
       registerPhotoSimilarCandidatesRoutes(subApp, similarCandidateService);
     },
     { prefix: '/loans' },

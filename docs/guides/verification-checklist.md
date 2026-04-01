@@ -645,11 +645,28 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 **確認ポイント**（[KB-321](../knowledge-base/infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証)、[deployment.md](./deployment.md)）:
 
 - [ ] 管理画面でスケジュールに **`kiosk_progress_overview`** を追加する場合、**`deviceScopeKey` がキオスク表示と一致**していること（必須）。**`seibanPerPage` は 1〜8**（9 以上は cap・4列×2段 JPEG の都合）。
-- [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-04-01 基準 **PASS 38 / WARN 0 / FAIL 0**。**`GET /api/signage/current-image` + `x-client-key: client-key-raspberrypi3-signage1` → 200** を含む）。
+- [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-04-01 基準 **PASS 39 / WARN 0 / FAIL 0**。**`GET /api/signage/current-image` + `x-client-key: client-key-raspberrypi3-signage1` → 200** と **未認証 `POST …/photo-gallery-seed` → 401** を含む）。
 - [ ] Pi3 へ載せる変更は [deployment.md](./deployment.md) の **ラズパイ3（サイネージ）** に従い **`--limit raspberrypi3`**・**`--detach --follow`**・**単一起動**（多重 `update-all-clients.sh` 禁止）。
 - [ ] （任意・現場）FULL スロット表示時に **ページ送り**・**製番が scheduled のみ**であることの目視。
 
-**検証日時**: 2026-03-31（`verify-phase12-real.sh` **PASS 38 / WARN 0 / FAIL 0**・Mac / Tailscale・`feature/kiosk-progress-overview-two-row-grid` を Pi5→Pi4×4→Pi3 順次反映後）。初回スロット導入時: 2026-04-01（`feature/signage-kiosk-progress-overview`）。
+**検証日時**: 2026-03-31（`verify-phase12-real.sh` **PASS 38 / WARN 0 / FAIL 0**・Mac / Tailscale・`feature/kiosk-progress-overview-two-row-grid` を Pi5→Pi4×4→Pi3 順次反映後）。初回スロット導入時: 2026-04-01（`feature/signage-kiosk-progress-overview`）。**2026-04-01**: スクリプトに `photo-gallery-seed` **401** を追加後の基準は **PASS 39 / WARN 0 / FAIL 0**。
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
+**6.6.14 写真持出: 管理コンソール ギャラリー教師登録（`photo-gallery-seed`）**
+
+**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「`photo-gallery-seed`」節）:
+
+- [ ] 未認証 `POST /api/tools/loans/photo-gallery-seed` が **401** になるか（body 不要・`verify-phase12-real.sh` に含む）
+- [ ] （手動）`/admin/photo-gallery-seed` で ADMIN/MANAGER が JPEG を送信し、成功時に **貸出ID** が表示されるか
+- [ ] （任意・埋め込み ON 時）API ログまたは DB でギャラリー反映を確認（OFF なら母集団は増えないが **401 回帰**は Phase12 で担保）
+
+**検証コマンド例（401）**:
+
+```bash
+curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans/photo-gallery-seed"
+```
+
+**検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 39 / WARN 0 / FAIL 0**・Mac / Tailscale・`feat/admin-photo-gallery-seed` 本番順次デプロイ後）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認

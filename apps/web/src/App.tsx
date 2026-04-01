@@ -17,6 +17,7 @@ import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
 import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTemplatesPage';
+import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
 import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
@@ -128,6 +129,7 @@ function App() {
         </Route>
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
+        <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
         <Route path="signage">
           <Route path="schedules" element={<SignageSchedulesPage />} />
