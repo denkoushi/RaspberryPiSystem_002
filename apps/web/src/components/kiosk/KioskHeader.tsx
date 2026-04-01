@@ -82,6 +82,7 @@ export function KioskHeader({
   const [showSignagePreview, setShowSignagePreview] = useState(false);
   const isBorrowActive = pathname === '/kiosk' || pathname === '/kiosk/tag' || pathname === '/kiosk/photo';
   const isManualOrderActive = pathname.startsWith('/kiosk/production-schedule/manual-order');
+  const isLeaderOrderBoardActive = pathname.startsWith('/kiosk/production-schedule/leader-order-board');
   const isProgressOverviewActive = pathname.startsWith('/kiosk/production-schedule/progress-overview');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const isDocumentsActive = pathname.startsWith('/kiosk/documents');
@@ -284,6 +285,12 @@ export function KioskHeader({
             className={() => navClass(isManualOrderActive, 'bg-indigo-500 text-white')}
           >
             手動順番
+          </NavLink>
+          <NavLink
+            to="/kiosk/production-schedule/leader-order-board"
+            className={() => navClass(isLeaderOrderBoardActive, 'bg-violet-600 text-white')}
+          >
+            順位ボード
           </NavLink>
           <NavLink
             to="/kiosk/production-schedule/progress-overview"

@@ -21,6 +21,8 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/production-schedule/'],
     ['/kiosk/production-schedule/manual-order'],
     ['/kiosk/production-schedule/manual-order/extra'],
+    ['/kiosk/production-schedule/leader-order-board'],
+    ['/kiosk/production-schedule/leader-order-board/'],
     ['/kiosk/production-schedule/progress-overview'],
     ['/kiosk/production-schedule/progress-overview/'],
     ['/kiosk/documents'],

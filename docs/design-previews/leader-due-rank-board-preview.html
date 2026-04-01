@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>リーダー順位ボード — デザインプレビュー</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c1222;
+      --panel: rgba(15, 23, 42, 0.72);
+      --card: rgba(15, 23, 42, 0.65);
+      --card-inner: rgba(30, 41, 59, 0.82);
+      --border: rgba(255, 255, 255, 0.1);
+      --border-active: rgba(34, 211, 238, 0.55);
+      --text: rgba(255, 255, 255, 0.92);
+      --muted: rgba(255, 255, 255, 0.55);
+      --accent: #22d3ee;
+      --accent-dim: rgba(34, 211, 238, 0.18);
+      --danger: #fb7185;
+      --warn: #fbbf24;
+      --edge-w: 14px;
+      --drawer-w: 240px;
+      --shadow-active: 0 0 0 1px rgba(34, 211, 238, 0.28), 0 0 24px rgba(34, 211, 238, 0.08);
+      /* 1行ブロック＋ギャップのおおよその高さ × 5 件分 */
+      --card-body-visible: 268px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans JP", system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+      overflow: hidden;
+    }
+
+    /* 薄い放射グラデ（手動順番ページの雰囲気に近い） */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 120% 80% at 20% 0%, rgba(34, 211, 238, 0.07), transparent 50%),
+        radial-gradient(ellipse 100% 60% at 100% 100%, rgba(99, 102, 241, 0.06), transparent 45%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    /* 左エッジ：ホバーでドロワー */
+    .edge-left {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: var(--edge-w);
+      z-index: 30;
+    }
+
+    .drawer {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: var(--drawer-w);
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transform: translateX(calc(-1 * var(--drawer-w)));
+      transition: transform 0.22s ease-out, box-shadow 0.22s;
+      z-index: 29;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 14px;
+      gap: 10px;
+      box-shadow: none;
+    }
+
+    .edge-left:hover ~ .drawer,
+    .drawer:hover {
+      transform: translateX(0);
+      box-shadow: 8px 0 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .drawer-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .drawer-group label {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .drawer select,
+    .drawer button {
+      font-family: inherit;
+      font-size: 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--text);
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    .drawer button.primary {
+      background: linear-gradient(180deg, rgba(34, 211, 238, 0.22), rgba(34, 211, 238, 0.08));
+      border-color: var(--border-active);
+      margin-top: auto;
+      font-weight: 600;
+    }
+
+    .drawer button.primary:hover {
+      background: linear-gradient(180deg, rgba(34, 211, 238, 0.32), rgba(34, 211, 238, 0.12));
+    }
+
+    /* 上エッジ：補助（モック） */
+    .edge-top {
+      position: fixed;
+      left: var(--edge-w);
+      right: 0;
+      top: 0;
+      height: var(--edge-w);
+      z-index: 28;
+    }
+
+    .top-strip {
+      position: fixed;
+      left: var(--edge-w);
+      right: 0;
+      top: 0;
+      height: 0;
+      overflow: hidden;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      transition: height 0.2s ease-out;
+      z-index: 27;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+    }
+
+    .edge-top:hover ~ .top-strip,
+    .top-strip:hover {
+      height: 40px;
+    }
+
+    .chip {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(34, 211, 238, 0.25);
+    }
+
+    /* メイン：カードグリッド */
+    .main {
+      flex: 1;
+      min-height: 0;
+      margin-left: var(--edge-w);
+      margin-top: 0;
+      padding: 10px 12px 12px 10px;
+      overflow: auto;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px;
+      align-content: start;
+    }
+
+    @media (min-width: 1400px) {
+      .grid {
+        grid-template-columns: repeat(6, 1fr);
+      }
+    }
+
+    @media (min-width: 1100px) and (max-width: 1399px) {
+      .grid {
+        grid-template-columns: repeat(5, 1fr);
+      }
+    }
+
+    .card {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 10px 8px 8px;
+      transition: border-color 0.15s, opacity 0.15s, box-shadow 0.15s;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .card.active {
+      border-color: var(--border-active);
+      box-shadow: var(--shadow-active);
+    }
+
+    .card.dim {
+      opacity: 0.52;
+    }
+
+    .card-head {
+      flex-shrink: 0;
+      margin-bottom: 6px;
+      padding: 0 2px;
+    }
+
+    .resource-cd {
+      font-family: "JetBrains Mono", monospace;
+      font-weight: 500;
+      font-size: 15px;
+      letter-spacing: -0.02em;
+    }
+
+    .card-body {
+      max-height: var(--card-body-visible);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0 2px 2px 0;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .card-body::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .card-body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 3px;
+    }
+
+    .card-body::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 3px;
+    }
+
+    .row-block {
+      border-radius: 6px;
+      background: var(--card-inner);
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+
+    .row-block:last-child {
+      margin-bottom: 0;
+    }
+
+    .row-line1 {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+
+    .fseiban {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.88);
+    }
+
+    .due {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+    }
+
+    .due.manual {
+      color: var(--warn);
+      font-weight: 500;
+    }
+
+    .due.csv {
+      color: rgba(34, 211, 238, 0.9);
+    }
+
+    .part-line {
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .badge {
+      font-size: 9px;
+      padding: 2px 5px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.25);
+      color: var(--muted);
+    }
+
+    .badge.late {
+      color: var(--danger);
+      border: 1px solid rgba(251, 113, 133, 0.35);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="edge-left" aria-hidden="true"></div>
+    <aside class="drawer" aria-label="操作（左端ホバーで表示）">
+      <div class="drawer-group">
+        <label>工場</label>
+        <select disabled><option>第2工場（モック）</option></select>
+      </div>
+      <div class="drawer-group">
+        <label>対象端末</label>
+        <select disabled><option>raspi4-robodrill01-kiosk1</option></select>
+      </div>
+      <div class="drawer-group">
+        <label>初期整列</label>
+        <select disabled><option>表示用納期 昇順（due → CSV補助）</option></select>
+      </div>
+      <button type="button" class="primary" disabled>順位を反映（モック）</button>
+    </aside>
+
+    <div class="edge-top" aria-hidden="true"></div>
+    <div class="top-strip" aria-label="補助（上端ホバー）">
+      <span class="chip">PREVIEW</span>
+      <span style="color:var(--muted);font-size:11px;">カードのみ常時表示 · 操作は画面端ホバー</span>
+    </div>
+
+    <main class="main">
+      <div class="grid" id="grid"></div>
+    </main>
+  </div>
+
+  <script>
+    const resources = [
+      {
+        cd: "305",
+        active: true,
+        rows: [
+          { fseiban: "BA1S3318", part: "ハウジングA", due: "04-08", dueSrc: "manual", kojun: "10" },
+          { fseiban: "BA1S3318", part: "カバーB", due: "04-12", dueSrc: "csv", kojun: "20" },
+          { fseiban: "CX2M1001", part: "軸C", due: "04-15", dueSrc: "csv", kojun: "5" },
+          { fseiban: "CX2M1001", part: "スリーブD", due: "04-16", dueSrc: "csv", kojun: "6" },
+          { fseiban: "CX2M1001", part: "端板E", due: "04-17", dueSrc: "csv", kojun: "7" },
+          { fseiban: "DD4N8820", part: "カラーF", due: "04-19", dueSrc: "manual", kojun: "11" },
+          { fseiban: "DD4N8820", part: "スペーサG", due: "04-21", dueSrc: "csv", kojun: "13" }
+        ]
+      },
+      {
+        cd: "502",
+        active: false,
+        rows: [
+          { fseiban: "ZZ9K7721", part: "フランジD", due: "04-05", dueSrc: "manual", kojun: "30", late: true },
+          { fseiban: "ZZ9K7721", part: "ボスE", due: "04-06", dueSrc: "csv", kojun: "40" },
+          { fseiban: "ZZ9K7721", part: "カラーF", due: "04-08", dueSrc: "csv", kojun: "50" },
+          { fseiban: "ZZ9K7721", part: "ブッシュG", due: "04-09", dueSrc: "csv", kojun: "55" },
+          { fseiban: "ZZ9K7721", part: "ナットH", due: "04-10", dueSrc: "csv", kojun: "60" },
+          { fseiban: "ZZ9K7721", part: "ワッシャI", due: "04-11", dueSrc: "manual", kojun: "65" }
+        ]
+      },
+      {
+        cd: "518",
+        active: false,
+        rows: [
+          { fseiban: "LM3P4402", part: "ベースF", due: "04-20", dueSrc: "csv", kojun: "12" }
+        ]
+      },
+      {
+        cd: "581",
+        active: false,
+        rows: [
+          { fseiban: "PP1Q2210", part: "プレートG", due: "04-09", dueSrc: "manual", kojun: "8" },
+          { fseiban: "PP1Q2210", part: "リングH", due: "04-11", dueSrc: "csv", kojun: "15" }
+        ]
+      },
+      {
+        cd: "100",
+        active: false,
+        rows: [
+          { fseiban: "QQ8R0099", part: "シャフトI", due: "04-18", dueSrc: "csv", kojun: "3" }
+        ]
+      },
+      {
+        cd: "412",
+        active: false,
+        rows: [
+          { fseiban: "RR2S5566", part: "ブロックJ", due: "04-07", dueSrc: "csv", kojun: "22" },
+          { fseiban: "RR2S5566", part: "袖K", due: "04-07", dueSrc: "csv", kojun: "24" }
+        ]
+      }
+    ];
+
+    function rowHtml(r) {
+      const dueClass = r.dueSrc === "manual" ? "manual" : "csv";
+      const late = r.late ? '<span class="badge late">着手遅れ（例）</span>' : "";
+      return `
+        <div class="row-block">
+          <div class="row-line1">
+            <span class="fseiban">${r.fseiban}</span>
+            <span class="due ${dueClass}" title="${r.dueSrc === "manual" ? "手動納期" : "CSV補助"}">${r.due}</span>
+          </div>
+          <div class="part-line">${r.part} · 工順 ${r.kojun}</div>
+          <div class="badge-row">${late}</div>
+        </div>`;
+    }
+
+    function cardHtml(res) {
+      const dim = !res.active ? " dim" : "";
+      return `
+        <article class="card${res.active ? " active" : ""}${dim}" data-cd="${res.cd}">
+          <div class="card-head">
+            <span class="resource-cd">${res.cd}</span>
+          </div>
+          <div class="card-body">${res.rows.map(rowHtml).join("")}</div>
+        </article>`;
+    }
+
+    document.getElementById("grid").innerHTML = resources.map(cardHtml).join("");
+
+    document.querySelectorAll(".card").forEach((el) => {
+      el.addEventListener("click", () => {
+        document.querySelectorAll(".card").forEach((c) => {
+          c.classList.remove("active");
+          c.classList.add("dim");
+        });
+        el.classList.add("active");
+        el.classList.remove("dim");
+      });
+    });
+  </script>
+</body>
+</html>

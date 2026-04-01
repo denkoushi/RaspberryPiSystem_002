@@ -1,0 +1,345 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import {
+  getKioskProductionSchedule,
+  updateKioskProductionScheduleOrder,
+  type ProductionScheduleRow
+} from '../../api/client';
+import { useKioskProductionSchedule } from '../../api/hooks';
+import { applyResourceOrderReorder } from '../../features/kiosk/leaderOrderBoard/applyResourceOrderReorder';
+import { LEADER_ORDER_BOARD_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
+import { groupRowsByResourceCd } from '../../features/kiosk/leaderOrderBoard/groupRowsByResourceCd';
+import { LeaderBoardApplyError } from '../../features/kiosk/leaderOrderBoard/leaderBoardApplyErrors';
+import { LeaderOrderResourceCard } from '../../features/kiosk/leaderOrderBoard/LeaderOrderResourceCard';
+import { normalizeLeaderBoardRows } from '../../features/kiosk/leaderOrderBoard/normalizeLeaderBoardRow';
+import { sortRowsByDisplayDue } from '../../features/kiosk/leaderOrderBoard/sortRowsByDisplayDue';
+import { assertCompletePage } from '../../features/kiosk/leaderOrderBoard/validateApplyPreconditions';
+import { useManualOrderCardState } from '../../features/kiosk/productionSchedule/useManualOrderCardState';
+import { useManualOrderPageController } from '../../features/kiosk/productionSchedule/useManualOrderPageController';
+import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
+import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
+import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
+import { isMacEnvironment } from '../../lib/client-key/resolver';
+
+const LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY = 'leader-order-board-search-conditions';
+
+const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
+  import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
+
+export function ProductionScheduleLeaderOrderBoardPage() {
+  const queryClient = useQueryClient();
+  const isMac = typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
+  const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
+
+  const { siteKey, defaultSites, deviceCards, handleSiteChange } = useManualOrderPageController();
+  const {
+    activeDeviceScopeKey,
+    setActiveDeviceScopeKey,
+    statusMap,
+    setDeviceStatus,
+    clearDeviceStatus
+  } = useManualOrderCardState(deviceCards.map((d) => d.deviceScopeKey));
+
+  const [searchConditions, setSearchConditions] = useProductionScheduleSearchConditionsWithStorageKey(
+    LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY
+  );
+
+  useEffect(() => {
+    if (!searchConditions.showGrindingResources && !searchConditions.showCuttingResources) {
+      setSearchConditions({ showGrindingResources: true, showCuttingResources: true });
+    }
+  }, [searchConditions.showGrindingResources, searchConditions.showCuttingResources, setSearchConditions]);
+
+  useEffect(() => {
+    if (activeDeviceScopeKey.trim().length > 0) return;
+    const first = deviceCards[0]?.deviceScopeKey;
+    if (first) setActiveDeviceScopeKey(first);
+  }, [activeDeviceScopeKey, deviceCards, setActiveDeviceScopeKey]);
+
+  const assignedResourceCds = useMemo(() => {
+    const device = deviceCards.find((d) => d.deviceScopeKey === activeDeviceScopeKey);
+    if (!device) return [];
+    const cds: string[] = [];
+    for (const r of device.resources) {
+      const cd = r.resourceCd?.trim();
+      if (cd) cds.push(cd);
+    }
+    return cds;
+  }, [deviceCards, activeDeviceScopeKey]);
+
+  const { selectedResourceCategory, queryParams: baseQueryParams, hasResourceCategoryResourceSelection } =
+    useProductionScheduleQueryParams({
+      activeQueries: searchConditions.activeQueries,
+      activeResourceCds: assignedResourceCds,
+      activeResourceAssignedOnlyCds: searchConditions.activeResourceAssignedOnlyCds,
+      hasNoteOnlyFilter: searchConditions.hasNoteOnlyFilter,
+      hasDueDateOnlyFilter: searchConditions.hasDueDateOnlyFilter,
+      showGrindingResources: searchConditions.showGrindingResources,
+      showCuttingResources: searchConditions.showCuttingResources,
+      selectedMachineName: searchConditions.selectedMachineName,
+      selectedOrderNumbers: [],
+      history: []
+    });
+
+  const scheduleListParams = useMemo(
+    () => ({
+      ...baseQueryParams,
+      allowResourceOnly: true,
+      ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
+        ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
+        : {})
+    }),
+    [activeDeviceScopeKey, baseQueryParams, macManualOrderV2]
+  );
+
+  const targetDeviceScopeKey =
+    macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
+
+  const searchStateMutation = { isPending: false };
+  const { pauseRefetch: mutationPauseRefetch, orderPending } = useProductionScheduleMutations({
+    isSearchStateWriting: searchStateMutation.isPending,
+    noteMaxLength: 100,
+    productionScheduleTargetDeviceScopeKey: targetDeviceScopeKey
+  });
+
+  const scheduleEnabled =
+    activeDeviceScopeKey.trim().length > 0 &&
+    hasResourceCategoryResourceSelection &&
+    assignedResourceCds.length > 0;
+
+  const applyMutation = useMutation({
+    mutationFn: async (resourceCd: string) => {
+      const data = await getKioskProductionSchedule({
+        resourceCds: resourceCd,
+        allowResourceOnly: true,
+        page: 1,
+        pageSize: LEADER_ORDER_BOARD_PAGE_SIZE,
+        ...(targetDeviceScopeKey ? { targetDeviceScopeKey } : {})
+      });
+      assertCompletePage(data.total, data.rows.length);
+      const normalized = normalizeLeaderBoardRows(data.rows as ProductionScheduleRow[]);
+      const forR = normalized.filter((r) => r.resourceCd === resourceCd);
+      const sorted = sortRowsByDisplayDue(forR);
+      await applyResourceOrderReorder(sorted, resourceCd, async ({ rowId, resourceCd: rc, orderNumber }) => {
+        await updateKioskProductionScheduleOrder(rowId, {
+          resourceCd: rc,
+          orderNumber,
+          ...(targetDeviceScopeKey ? { targetDeviceScopeKey } : {})
+        });
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
+        queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] }),
+        queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-due-management-manual-order-overview'] })
+      ]);
+    }
+  });
+
+  const scheduleQuery = useKioskProductionSchedule(scheduleListParams, {
+    enabled: scheduleEnabled,
+    pauseRefetch: mutationPauseRefetch || applyMutation.isPending
+  });
+
+  const grouped = useMemo(() => {
+    const rows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
+    const normalized = normalizeLeaderBoardRows(rows);
+    return groupRowsByResourceCd(normalized);
+  }, [scheduleQuery.data?.rows]);
+
+  const sortedGrouped = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof sortRowsByDisplayDue>>();
+    grouped.forEach((list, cd) => {
+      m.set(cd, sortRowsByDisplayDue(list));
+    });
+    return m;
+  }, [grouped]);
+
+  const displayCards = assignedResourceCds;
+
+  const listIncomplete =
+    scheduleQuery.data != null && scheduleQuery.data.total > scheduleQuery.data.rows.length;
+
+  const [selectedResourceCd, setSelectedResourceCd] = useState<string | null>(null);
+  const [drawerError, setDrawerError] = useState<string | null>(null);
+
+  const handleApplySelected = useCallback(async () => {
+    if (!selectedResourceCd || listIncomplete || applyMutation.isPending) return;
+    setDrawerError(null);
+    clearDeviceStatus(activeDeviceScopeKey);
+    setDeviceStatus(activeDeviceScopeKey, 'saving');
+    try {
+      await applyMutation.mutateAsync(selectedResourceCd);
+    } catch (e) {
+      const msg =
+        e instanceof LeaderBoardApplyError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : '反映に失敗しました。';
+      setDrawerError(msg);
+      setDeviceStatus(activeDeviceScopeKey, 'error');
+      return;
+    }
+    setDeviceStatus(activeDeviceScopeKey, 'idle');
+  }, [
+    activeDeviceScopeKey,
+    applyMutation,
+    clearDeviceStatus,
+    listIncomplete,
+    selectedResourceCd,
+    setDeviceStatus
+  ]);
+
+  const toggleGrinding = () =>
+    setSearchConditions((prev) => ({ ...prev, showGrindingResources: !prev.showGrindingResources }));
+  const toggleCutting = () =>
+    setSearchConditions((prev) => ({ ...prev, showCuttingResources: !prev.showCuttingResources }));
+
+  return (
+    <div className="relative flex h-full min-h-0 flex-1 flex-col bg-[#0c1222] text-white">
+      <div
+        className="pointer-events-none fixed inset-0 z-0 opacity-100"
+        style={{
+          background:
+            'radial-gradient(ellipse 120% 80% at 20% 0%, rgba(34, 211, 238, 0.07), transparent 50%), radial-gradient(ellipse 100% 60% at 100% 100%, rgba(99, 102, 241, 0.06), transparent 45%)'
+        }}
+      />
+
+      <div className="group/drawer fixed inset-y-0 left-0 z-50 flex">
+        <div className="w-3.5 shrink-0 bg-transparent" aria-hidden />
+        <aside
+          className={clsx(
+            'flex h-full w-64 max-w-[85vw] -translate-x-full flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md transition-transform duration-200 ease-out',
+            'group-hover/drawer:translate-x-0',
+            'hover:translate-x-0',
+            'focus-within:translate-x-0'
+          )}
+          aria-label="操作パネル"
+        >
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
+            工場
+            <select
+              value={siteKey}
+              onChange={(event) => handleSiteChange(event.target.value)}
+              className="rounded border border-white/20 bg-slate-900 px-2 py-2 text-xs text-white"
+              aria-label="工場を選択"
+            >
+              {defaultSites.map((site) => (
+                <option key={site} value={site}>
+                  {site}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
+            対象端末
+            <select
+              value={activeDeviceScopeKey}
+              onChange={(ev) => {
+                setActiveDeviceScopeKey(ev.target.value);
+                setSelectedResourceCd(null);
+              }}
+              className="rounded border border-white/20 bg-slate-900 px-2 py-2 text-xs text-white"
+            >
+              {deviceCards.length === 0 ? (
+                <option value="">端末なし</option>
+              ) : (
+                deviceCards.map((d) => (
+                  <option key={d.deviceScopeKey} value={d.deviceScopeKey}>
+                    {d.label?.trim() || d.deviceScopeKey}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <button
+              type="button"
+              onClick={toggleGrinding}
+              className={clsx(
+                'rounded border px-2 py-1',
+                searchConditions.showGrindingResources
+                  ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-100'
+                  : 'border-white/20 text-white/70'
+              )}
+            >
+              研削
+            </button>
+            <button
+              type="button"
+              onClick={toggleCutting}
+              className={clsx(
+                'rounded border px-2 py-1',
+                searchConditions.showCuttingResources
+                  ? 'border-amber-400/50 bg-amber-500/20 text-amber-100'
+                  : 'border-white/20 text-white/70'
+              )}
+            >
+              切削
+            </button>
+          </div>
+          {selectedResourceCategory ? (
+            <p className="text-[10px] text-white/45">検索: {selectedResourceCategory}</p>
+          ) : null}
+          <p className="text-[10px] text-white/55">選択資源: {selectedResourceCd ?? '—'}</p>
+          {listIncomplete ? (
+            <p className="text-xs text-rose-200">
+              一覧が1ページに収まっていません。反映はできません。
+            </p>
+          ) : null}
+          {drawerError ? <p className="text-xs text-rose-200">{drawerError}</p> : null}
+          {statusMap[activeDeviceScopeKey] === 'error' ? (
+            <p className="text-xs text-rose-200">反映に失敗しました。</p>
+          ) : null}
+          <button
+            type="button"
+            disabled={
+              !selectedResourceCd ||
+              listIncomplete ||
+              applyMutation.isPending ||
+              orderPending ||
+              !scheduleEnabled
+            }
+            onClick={() => void handleApplySelected()}
+            className="mt-auto rounded border border-cyan-400/50 bg-gradient-to-b from-cyan-500/25 to-cyan-500/10 py-2 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            {applyMutation.isPending || orderPending ? '反映中…' : '納期順で反映'}
+          </button>
+        </aside>
+      </div>
+
+      <main className="relative z-10 min-h-0 flex-1 overflow-auto pl-3.5 pr-2 pb-2 pt-2">
+        {!scheduleEnabled ? (
+          <p className="text-sm text-white/60">端末・資源・研削/切削の条件を満たすと一覧が表示されます。</p>
+        ) : scheduleQuery.isLoading ? (
+          <p className="text-sm text-white/60">読み込み中…</p>
+        ) : scheduleQuery.isError ? (
+          <p className="text-sm text-rose-200">一覧の取得に失敗しました。</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-4 xl:grid-cols-6">
+            {displayCards.map((cd) => {
+              const rows = sortedGrouped.get(cd) ?? [];
+              const selected = selectedResourceCd === cd;
+              const dimmed = selectedResourceCd != null && !selected;
+              return (
+                <LeaderOrderResourceCard
+                  key={cd}
+                  resourceCd={cd}
+                  rows={rows}
+                  selected={selected}
+                  dimmed={dimmed}
+                  onSelect={() => {
+                    setSelectedResourceCd(cd);
+                    setDrawerError(null);
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

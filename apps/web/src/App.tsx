@@ -37,6 +37,7 @@ import { KioskPartMeasurementTemplatePage } from './pages/kiosk/KioskPartMeasure
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
+import { ProductionScheduleLeaderOrderBoardPage } from './pages/kiosk/ProductionScheduleLeaderOrderBoardPage';
 import { ProductionScheduleManualOrderPage } from './pages/kiosk/ProductionScheduleManualOrderPage';
 import { ProductionSchedulePage } from './pages/kiosk/ProductionSchedulePage';
 import { ProductionScheduleProgressOverviewPage } from './pages/kiosk/ProductionScheduleProgressOverviewPage';
@@ -70,6 +71,10 @@ function App() {
           <Route path="/kiosk/call" element={<KioskCallPage />} />
           <Route path="/kiosk/production-schedule" element={<ProductionSchedulePage />} />
           <Route path="/kiosk/production-schedule/manual-order" element={<ProductionScheduleManualOrderPage />} />
+          <Route
+            path="/kiosk/production-schedule/leader-order-board"
+            element={<ProductionScheduleLeaderOrderBoardPage />}
+          />
           <Route path="/kiosk/production-schedule/progress-overview" element={<ProductionScheduleProgressOverviewPage />} />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />

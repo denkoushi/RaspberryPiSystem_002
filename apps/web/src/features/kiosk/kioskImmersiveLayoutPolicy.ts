@@ -1,3 +1,4 @@
+import { KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX } from './leaderOrderBoard/kioskLeaderOrderBoardRoutes';
 import { KIOSK_MANUAL_ORDER_PATH_PREFIX } from './manualOrder/kioskManualOrderRoutes';
 
 /** 進捗一覧（および将来の子パス）を沉浸式に含める接頭辞 */
@@ -35,6 +36,7 @@ const IMMERSIVE_PATH_EXACT = new Set([
 export function usesKioskImmersiveLayout(pathname: string): boolean {
   const p = normalizeKioskPathname(pathname);
   if (p.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX)) return true;
+  if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
   return IMMERSIVE_PATH_EXACT.has(p);
