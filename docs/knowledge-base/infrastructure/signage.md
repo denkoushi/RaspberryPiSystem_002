@@ -89,7 +89,7 @@ update-frequency: medium
 - `apps/web/src/api/hooks.ts`
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
 
-**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・Detach `20260401-134910-13950`）・Phase12 実機検証（PASS 39/0/0）完了**（2026-04-01）。**`main` 反映**は GitHub PR のマージで完了する（マージコミットを追跡したら本 KB が正本）。
+**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・Detach `20260401-134910-13950`）・Phase12 実機検証（PASS 39/0/0）完了**（2026-04-01）。**`main` 反映**: [PR #70](https://github.com/denkoushi/RaspberryPiSystem_002/pull/70) でマージ済み（`main` 上 GitHub Actions **success**）。
 
 ---
 
