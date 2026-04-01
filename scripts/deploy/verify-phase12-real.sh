@@ -230,6 +230,10 @@ check_http_code "サイネージ GET /api/signage/current-image (Pi3 x-client-ke
 PROGRESS_OVERVIEW_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk/production-schedule/progress-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "進捗一覧API progress-overview" "${PROGRESS_OVERVIEW_CODE}" "200"
 
+# 部品納期個数CSV連携: 一覧レスポンスに補助予定フィールド（NULL 可）が含まれること（winner 行が1件以上ある本番でキーが出る）
+PROD_SCHED_PLANNED_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule?pageSize=5" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
+check_contains "生産日程一覧API 補助予定フィールド(plannedQuantity等)" "${PROD_SCHED_PLANNED_JSON}" '"plannedQuantity"'
+
 KIOSK_DOCS_CODE="$(curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/kiosk-documents" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 check_http_code "キオスク要領書API GET /api/kiosk-documents" "${KIOSK_DOCS_CODE}" "200"
 

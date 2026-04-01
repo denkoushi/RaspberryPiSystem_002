@@ -75,6 +75,12 @@ category: knowledge-base
   - winner 判定ロジックは据え置き、補助反映ロジックは専用サービスへ閉じ込める。
   - 補助CSVの未照合行は unmatched として集計し、照合品質を継続監視できるようにする。
 
+**検証・本番反映（2026-04-01）**
+
+- **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` を全対象キオスクで実行し、**PASS 40 / WARN 0 / FAIL 0**（本リリースで `GET /api/kiosk/production-schedule` 応答に `"plannedQuantity"` を含むことの grep を追加したため、スクリプト合計 PASS が 39→40）。
+- **本番デプロイ**: `docs/guides/deployment.md` の `update-all-clients.sh` 標準のみ。**5台**を**1台ずつ**順次（Pi3 は従来どおり対象外）。GitHub Actions Detach Run ID: **20421618819**, **20421640357**, **20421660164**, **20421674891**, **20421685489** — いずれも Ansible `PLAY RECAP` **failed=0**。
+- **トラブルシュート**: ローカルで統合テストが `localhost:5432` 接続失敗になる場合は Postgres 未起動の可能性が高い（`docker compose up -d postgres` 等）。実機スクリプト失敗時は `./tmp/phase12-real-<clientId>-<ts>.log` と `docs/guides/verification-checklist.md` §6.6 / §6.6.16 を参照。
+
 ## 生産順序モード拡張（手動順番/自動順番 + targetLocation、2026-03-19）
 
 - **Context**:

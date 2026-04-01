@@ -687,6 +687,16 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 39 / WARN 0 / FAIL 0**・Mac / Tailscale・`feat/signage-schedules-admin-list` 本番反映後）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
+**6.6.16 生産日程API 補助予定フィールド（部品納期個数連携）**
+
+**確認ポイント**（[KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#部品納期個数csvの補助反映2026-04-01)）:
+
+- [ ] **API契約**: `GET /api/kiosk/production-schedule?pageSize=5`（`x-client-key` 必須）のJSONに **`"plannedQuantity"`** が含まれる（`plannedStartDate` / `plannedEndDate` も同系。補助未照合時は `null` 想定）。
+- [ ] **実機回帰基準**: `./scripts/deploy/verify-phase12-real.sh` は **`plannedQuantity` grep** を含み、**PASS 40 / WARN 0 / FAIL 0** が完了ライン（2026-04-01・ブランチ `feat/production-schedule-planned-supplement` 本番5台反映後）。
+
+**検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**）
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**
