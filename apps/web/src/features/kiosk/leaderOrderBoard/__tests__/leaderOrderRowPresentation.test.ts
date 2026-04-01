@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest';
+
+import { presentLeaderOrderRow } from '../leaderOrderRowPresentation';
+
+import type { LeaderBoardRow } from '../types';
+
+const base = (): LeaderBoardRow => ({
+  id: '1',
+  resourceCd: '305',
+  dueDate: null,
+  plannedEndDate: null,
+  displayDue: null,
+  fseiban: 'S1',
+  productNo: 'P99',
+  fkojun: '10',
+  fhincd: 'MH001',
+  fhinmei: '部品A',
+  machineName: '立マシンA',
+  plannedQuantity: 3,
+  processingOrder: 1
+});
+
+describe('presentLeaderOrderRow', () => {
+  it('joins machine name, product no, fhincd with middle dots', () => {
+    const p = presentLeaderOrderRow(base());
+    expect(p.machinePartLine).toBe('立マシンA · P99 · MH001');
+  });
+
+  it('omits empty machine name', () => {
+    const row = { ...base(), machineName: '', fhincd: '' };
+    const p = presentLeaderOrderRow(row);
+    expect(p.machinePartLine).toBe('P99');
+  });
+
+  it('process line uses kojun dot part name without labels', () => {
+    const p = presentLeaderOrderRow(base());
+    expect(p.processPartNameLine).toBe('10 · 部品A');
+  });
+
+  it('formats quantity', () => {
+    expect(presentLeaderOrderRow(base()).quantityLabel).toBe('3');
+    expect(presentLeaderOrderRow({ ...base(), plannedQuantity: null }).quantityLabel).toBe('-');
+  });
+});

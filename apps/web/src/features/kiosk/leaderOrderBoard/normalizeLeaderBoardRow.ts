@@ -1,5 +1,7 @@
 import { resolveDisplayDueDate } from '../productionSchedule/plannedDueDisplay';
 
+import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
+
 import type { LeaderBoardRow } from './types';
 import type { ProductionScheduleRow } from '../../../api/client';
 
@@ -28,6 +30,11 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
       : null;
   const displayDue = resolveDisplayDueDate(dueDate, plannedEnd);
 
+  const plannedQuantity =
+    typeof row.plannedQuantity === 'number' && Number.isFinite(row.plannedQuantity)
+      ? row.plannedQuantity
+      : null;
+
   return {
     id: row.id,
     resourceCd,
@@ -39,15 +46,21 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     fkojun: strField(data, 'FKOJUN'),
     fhincd: strField(data, 'FHINCD'),
     fhinmei: strField(data, 'FHINMEI'),
+    machineName: '',
+    plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder)
   };
 }
 
 export function normalizeLeaderBoardRows(rows: ProductionScheduleRow[]): LeaderBoardRow[] {
+  const seibanMachine = buildFseibanToMachineDisplayName(rows);
   const out: LeaderBoardRow[] = [];
   for (const row of rows) {
     const n = normalizeLeaderBoardRow(row);
-    if (n) out.push(n);
+    if (n) {
+      const machineName = seibanMachine.get(n.fseiban) ?? '';
+      out.push({ ...n, machineName });
+    }
   }
   return out;
 }

@@ -12,6 +12,8 @@ const toStableNumber = (value: string): number => {
 /**
  * 表示用納期の昇順。同日は製番・製造order・工順・id で安定ソート。
  * 納期なしは末尾（`compareDisplayDueDateForSort` と整合）。
+ *
+ * 順位ボードで行納期を変更したあとの並びは、サーバ再取得後の `displayDue` に依存する（ローカルで再ソートしない）。
  */
 export function sortRowsByDisplayDue(rows: readonly LeaderBoardRow[]): LeaderBoardRow[] {
   return [...rows].sort((left, right) => {

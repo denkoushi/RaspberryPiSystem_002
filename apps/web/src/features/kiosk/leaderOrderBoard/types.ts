@@ -10,5 +10,8 @@ export type LeaderBoardRow = {
   fkojun: string;
   fhincd: string;
   fhinmei: string;
+  /** MH/SH 行由来の機種表示名（部品行は同一製番から解決） */
+  machineName: string;
+  plannedQuantity: number | null;
   processingOrder: number | null;
 };

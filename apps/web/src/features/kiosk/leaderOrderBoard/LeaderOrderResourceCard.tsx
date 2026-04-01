@@ -4,6 +4,8 @@ import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manu
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
+import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
+
 import type { LeaderBoardRow } from './types';
 
 type Props = {
@@ -12,15 +14,26 @@ type Props = {
   selected: boolean;
   dimmed: boolean;
   onSelect: () => void;
+  /** 行納期編集（生産スケジュールと同契約の API へ） */
+  onOpenDueDatePicker?: (row: LeaderBoardRow) => void;
+  dueDatePending?: boolean;
 };
 
 /**
  * 資源CD単位カード。本文は約5件ぶんの高さでスクロール。
  */
-export function LeaderOrderResourceCard({ resourceCd, rows, selected, dimmed, onSelect }: Props) {
+export function LeaderOrderResourceCard({
+  resourceCd,
+  rows,
+  selected,
+  dimmed,
+  onSelect,
+  onOpenDueDatePicker,
+  dueDatePending
+}: Props) {
   return (
-    <article
-      role="button"
+    <div
+      role="group"
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -35,8 +48,9 @@ export function LeaderOrderResourceCard({ resourceCd, rows, selected, dimmed, on
         selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
       )}
-      aria-pressed={selected}
-      aria-label={`資源 ${resourceCd}`}
+      aria-label={
+        selected ? `資源 ${resourceCd}（選択中）` : `資源 ${resourceCd}。Enter か Space で選択`
+      }
     >
       <div className="mb-1.5 shrink-0 px-0.5 font-mono text-[15px] font-medium tracking-tight text-white/95">
         {resourceCd}
@@ -51,28 +65,40 @@ export function LeaderOrderResourceCard({ resourceCd, rows, selected, dimmed, on
           rows.map((row) => {
             const manual = isManualDueDateSet(row.dueDate);
             const dueLabel = formatDueDate(row.displayDue) || '—';
+            const pres = presentLeaderOrderRow(row);
             return (
               <div key={row.id} className="rounded bg-slate-800/80 px-2 py-1.5 text-[11px]">
                 <div className="mb-0.5 flex justify-between gap-1.5">
                   <span className="font-mono text-[11px] text-white/88">{row.fseiban || '—'}</span>
-                  <span
+                  <button
+                    type="button"
+                    disabled={!onOpenDueDatePicker || dueDatePending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenDueDatePicker?.(row);
+                    }}
                     className={clsx(
-                      'shrink-0 font-mono text-[10px]',
-                      manual ? 'font-medium text-amber-200' : 'text-cyan-300/90'
+                      'shrink-0 rounded px-1 py-0 font-mono text-[10px] transition-colors',
+                      manual ? 'font-medium text-amber-200' : 'text-cyan-300/90',
+                      onOpenDueDatePicker && !dueDatePending ? 'hover:bg-white/10' : 'cursor-default opacity-70'
                     )}
-                    title={manual ? '手動納期' : 'CSV補助など'}
+                    title={manual ? '手動納期（タップで変更）' : '表示納期（タップで変更）'}
                   >
                     {dueLabel}
-                  </span>
+                  </button>
                 </div>
-                <div className="truncate text-white/55">
-                  {(row.fhinmei || '—') + (row.fkojun ? ` · 工順 ${row.fkojun}` : '')}
-                </div>
+                {pres.machinePartLine.length > 0 ? (
+                  <div className="text-white/80">{pres.machinePartLine}</div>
+                ) : null}
+                {pres.processPartNameLine.length > 0 ? (
+                  <div className="text-white/60">{pres.processPartNameLine}</div>
+                ) : null}
+                <div className="mt-0.5 text-white/50">個数 {pres.quantityLabel}</div>
               </div>
             );
           })
         )}
       </div>
-    </article>
+    </div>
   );
 }
