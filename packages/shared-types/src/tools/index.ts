@@ -10,6 +10,11 @@ export {
   resolvePhotoLoanToolDisplayLabel,
   type PhotoToolHumanLabelQuality,
 } from './loan-card-display.js';
+export {
+  PHOTO_TOOL_VLM_LABEL_PROVENANCE,
+  PHOTO_TOOL_VLM_LABEL_PROVENANCE_LIST,
+  type PhotoToolVlmLabelProvenance,
+} from './photo-tool-vlm-label-provenance.js';
 
 export interface Employee {
   id: string;

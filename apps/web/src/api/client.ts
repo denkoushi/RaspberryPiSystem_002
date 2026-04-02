@@ -43,6 +43,7 @@ import type {
   PartMeasurementVisualTemplateDto,
   ResolveTicketResponse
 } from '../features/part-measurement/types';
+import type { PhotoToolVlmLabelProvenance } from '@raspi-system/shared-types';
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
@@ -1505,6 +1506,7 @@ export type PhotoLabelReviewItem = {
   borrowedAt: string;
   photoUrl: string;
   photoToolDisplayName: string | null;
+  photoToolVlmLabelProvenance: PhotoToolVlmLabelProvenance;
   photoToolHumanDisplayName: string | null;
   photoToolHumanQuality: PhotoLabelReviewQuality | null;
   photoToolHumanReviewedAt: string | null;

@@ -1,0 +1,18 @@
+/**
+ * `Loan.photoToolDisplayName` の最終ジョブ由来（DB と管理 API 契約・Prisma と同値）
+ */
+
+export const PHOTO_TOOL_VLM_LABEL_PROVENANCE = {
+  UNKNOWN: 'UNKNOWN',
+  FIRST_PASS_VLM: 'FIRST_PASS_VLM',
+  ASSIST_ACTIVE_VLM: 'ASSIST_ACTIVE_VLM',
+} as const;
+
+export type PhotoToolVlmLabelProvenance =
+  (typeof PHOTO_TOOL_VLM_LABEL_PROVENANCE)[keyof typeof PHOTO_TOOL_VLM_LABEL_PROVENANCE];
+
+export const PHOTO_TOOL_VLM_LABEL_PROVENANCE_LIST: readonly PhotoToolVlmLabelProvenance[] = [
+  PHOTO_TOOL_VLM_LABEL_PROVENANCE.UNKNOWN,
+  PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM,
+  PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_VLM,
+];

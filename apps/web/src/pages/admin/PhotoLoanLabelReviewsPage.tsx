@@ -1,6 +1,8 @@
 import {
   PHOTO_LOAN_CARD_PRIMARY_LABEL,
+  PHOTO_TOOL_VLM_LABEL_PROVENANCE,
   resolvePhotoLoanToolDisplayLabel,
+  type PhotoToolVlmLabelProvenance,
 } from '@raspi-system/shared-types';
 import { Fragment, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
@@ -11,6 +13,12 @@ import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../contexts/AuthContext';
 
 import type { PhotoLabelReviewItem, PhotoLabelReviewQuality } from '../../api/client';
+
+function vlmProvenanceLabel(p: PhotoToolVlmLabelProvenance): string {
+  if (p === PHOTO_TOOL_VLM_LABEL_PROVENANCE.UNKNOWN) return '記録なし(旧)';
+  if (p === PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM) return '初回VLM';
+  return '補助採用';
+}
 
 function qualityLabel(q: PhotoLabelReviewQuality | null): string {
   if (q === 'GOOD') return '良い';
@@ -94,6 +102,14 @@ function ReviewRow({ item }: { item: PhotoLabelReviewItem }) {
       </td>
       <td className="py-3 pr-2 text-sm">
         <div>VLM: {item.photoToolDisplayName ?? '—'}</div>
+        <div className="mt-1">
+          <span
+            className="inline-block rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700"
+            title="DB に保存された VLM 列の出自（人による上書きとは別）"
+          >
+            VLM出自: {vlmProvenanceLabel(item.photoToolVlmLabelProvenance)}
+          </span>
+        </div>
         <div className="text-slate-600">表示: {resolved}</div>
       </td>
       <td className="py-3 pr-2 text-sm">
@@ -175,6 +191,7 @@ export function PhotoLoanLabelReviewsPage() {
         <p className="mt-1 text-sm text-slate-600">
           直近の写真持出について、VLM 表示名の品質を記録し、必要に応じて表示名を上書きできます（管理者・マネージャーのみ）。
           キオスク・サイネージは <strong>人による上書き &gt; VLM &gt; 撮影mode</strong> の順で表示します。
+          行の「VLM出自」バッジは、DB に保存された <strong>VLM 列が最後のジョブでどう確定したか</strong>のみを示し、人による上書きとは別です。
           行の「類似候補」は管理画面のみの参考表示で、現場の確定ラベルは変わりません。
         </p>
       </div>

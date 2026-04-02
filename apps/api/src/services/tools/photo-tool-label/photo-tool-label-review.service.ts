@@ -1,4 +1,5 @@
 import type { PhotoToolHumanLabelQuality } from '@prisma/client';
+import type { PhotoToolVlmLabelProvenance } from '@raspi-system/shared-types';
 
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -13,6 +14,7 @@ export type PhotoLabelReviewListRow = {
   borrowedAt: Date;
   photoUrl: string;
   photoToolDisplayName: string | null;
+  photoToolVlmLabelProvenance: PhotoToolVlmLabelProvenance;
   photoToolHumanDisplayName: string | null;
   photoToolHumanQuality: PhotoToolHumanLabelQuality | null;
   photoToolHumanReviewedAt: Date | null;
@@ -48,6 +50,7 @@ export class PhotoToolLabelReviewService {
         borrowedAt: row.borrowedAt,
         photoUrl: row.photoUrl!,
         photoToolDisplayName: row.photoToolDisplayName,
+        photoToolVlmLabelProvenance: row.photoToolVlmLabelProvenance,
         photoToolHumanDisplayName: row.photoToolHumanDisplayName,
         photoToolHumanQuality: row.photoToolHumanQuality,
         photoToolHumanReviewedAt: row.photoToolHumanReviewedAt,
@@ -129,6 +132,7 @@ export class PhotoToolLabelReviewService {
       borrowedAt: updated.borrowedAt,
       photoUrl: updated.photoUrl,
       photoToolDisplayName: updated.photoToolDisplayName,
+      photoToolVlmLabelProvenance: updated.photoToolVlmLabelProvenance,
       photoToolHumanDisplayName: updated.photoToolHumanDisplayName,
       photoToolHumanQuality: updated.photoToolHumanQuality,
       photoToolHumanReviewedAt: updated.photoToolHumanReviewedAt,
