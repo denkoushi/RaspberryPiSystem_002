@@ -694,6 +694,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 - [ ] **API契約**: `GET /api/kiosk/production-schedule?pageSize=5`（`x-client-key` 必須）のJSONに **`"plannedQuantity"`** が含まれる（`plannedStartDate` / `plannedEndDate` も同系。補助未照合時は `null` 想定）。
 - [ ] **実機回帰基準**: `./scripts/deploy/verify-phase12-real.sh` は **`plannedQuantity` grep** を含み、**PASS 40 / WARN 0 / FAIL 0** が完了ライン（2026-04-01・ブランチ `feat/production-schedule-planned-supplement` 本番5台反映後）。
+- [ ] **Gmail 補助同期の Prisma エラー（運用・開発）**: `Transaction not found` 等の場合は原因切り分け・修正後の反映手順の正本を [KB-324](../knowledge-base/KB-324-gmail-order-supplement-prisma-transaction.md) で確認（2026-04-02 本番5台反映: ブランチ `fix/order-supplement-sync-transaction`）。
 
 **6.6.17 納期詳細 API effectiveDueDate（部品納期個数フォールバック表示）**
 

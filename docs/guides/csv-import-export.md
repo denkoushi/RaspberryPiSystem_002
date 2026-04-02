@@ -184,6 +184,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 | `POST .../run` が 400 | JSON body 未送信 | **`Content-Type: application/json`** と **`{}`** |
 | スケジュールは動くがメールが拾えない | `gmailSubjectPattern` 未設定／件名不一致／該当メールが既読 | ダッシュボード設定と Gmail 状態を確認 |
 | 補助が付かない（部品納期個数） | CsvDashboard ID がコード定数と不一致 | `constants.ts` の UUID と DB の `CsvDashboard.id` を突き合わせ |
+| 補助同期で `Transaction not found` / 取込は成功するがメールが未読のまま | 旧実装の長いインタラクティブ tx・`upsert` 列と一意制約の衝突（修正後は deleteMany+createMany 系）。同期失敗時は Gmail 後処理に進まない | [KB-324](../knowledge-base/KB-324-gmail-order-supplement-prisma-transaction.md)（原因・対策・本番反映実績） |
 
 #### レシピ: Gmail自動取得 → CSVダッシュボード → 可視化ダッシュボード → サイネージ
 
