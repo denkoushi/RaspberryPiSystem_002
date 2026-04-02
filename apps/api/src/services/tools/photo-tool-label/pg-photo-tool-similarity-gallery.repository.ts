@@ -78,4 +78,19 @@ export class PgPhotoToolSimilarityGalleryRepository implements PhotoToolSimilari
       distance: Number(r.distance),
     }));
   }
+
+  async countRowsByCanonicalLabel(trimmedCanonicalLabel: string): Promise<number> {
+    if (!trimmedCanonicalLabel) {
+      return 0;
+    }
+    const rows = await prisma.$queryRawUnsafe<{ count: bigint | number | string }[]>(
+      `SELECT COUNT(*)::bigint AS count
+       FROM "photo_tool_similarity_gallery" g
+       WHERE BTRIM(g."canonicalLabel") = $1`,
+      trimmedCanonicalLabel
+    );
+    const n = rows[0]?.count;
+    const parsed = typeof n === 'bigint' ? Number(n) : Number(n ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
 }

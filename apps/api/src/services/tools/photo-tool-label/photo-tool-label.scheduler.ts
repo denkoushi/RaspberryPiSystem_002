@@ -7,6 +7,7 @@ import { getLocalLlmRuntimeController } from '../../inference/runtime/get-local-
 import { createHttpPhotoToolImageEmbeddingAdapter } from './http-photo-tool-image-embedding.adapter.js';
 import { PgPhotoToolSimilarityGalleryRepository } from './pg-photo-tool-similarity-gallery.repository.js';
 import { PhotoToolLabelAssistService } from './photo-tool-label-assist.service.js';
+import { GalleryRowCountActiveAssistGate } from './gallery-row-count-active-assist-gate.js';
 import { PhotoStorageVisionImageSource } from './photo-storage-vision-image-source.adapter.js';
 import { PrismaPhotoToolLabelRepository } from './prisma-photo-tool-label.repository.js';
 import { PhotoToolLabelingService } from './photo-tool-labeling.service.js';
@@ -32,6 +33,10 @@ export class PhotoToolLabelScheduler {
       const embeddingAdapter = createHttpPhotoToolImageEmbeddingAdapter();
       const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(env.PHOTO_TOOL_EMBEDDING_DIMENSION);
       const labelAssist = new PhotoToolLabelAssistService(embeddingAdapter, galleryRepo);
+      const activeAssistGate = new GalleryRowCountActiveAssistGate(galleryRepo, {
+        activeEnabled: env.PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED,
+        minGalleryRows: env.PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS,
+      });
       const inferenceRt = getInferenceRuntime();
       this.service = new PhotoToolLabelingService({
         repo: new PrismaPhotoToolLabelRepository(),
@@ -41,6 +46,9 @@ export class PhotoToolLabelScheduler {
         labelAssist,
         shadowAssistEnabled: () =>
           env.PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED && env.PHOTO_TOOL_EMBEDDING_ENABLED,
+        activeAssistEnabled: () =>
+          env.PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED && env.PHOTO_TOOL_EMBEDDING_ENABLED,
+        activeAssistGate,
         localLlmRuntime: getLocalLlmRuntimeController(),
       });
     }

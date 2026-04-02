@@ -21,4 +21,7 @@ export type PhotoToolSimilarityGalleryRepositoryPort = {
     excludeLoanId: string;
     limit: number;
   }): Promise<SimilarityGalleryNeighbor[]>;
+
+  /** BTRIM("canonicalLabel") との一致。label は呼び出し側で trim 済みを渡すこと。空は 0 件 */
+  countRowsByCanonicalLabel(trimmedCanonicalLabel: string): Promise<number>;
 };

@@ -11,6 +11,7 @@ import type {
   VisionCompletionPort,
 } from './photo-tool-label-ports.js';
 import type { PhotoToolLabelAssistPort } from './photo-tool-label-assist.port.js';
+import type { PhotoToolLabelActiveAssistGatePort } from './photo-tool-label-active-assist-gate.port.js';
 import { buildShadowAssistedUserPrompt } from './photo-tool-label-prompt-builder.js';
 import type { LocalLlmRuntimeControllerPort } from '../../inference/runtime/local-llm-runtime-control.port.js';
 
@@ -26,10 +27,14 @@ export type PhotoToolLabelingServiceDeps = {
   isVisionConfigured: () => boolean;
   /** テスト・差し替え用。未指定時は env + デフォルト文言 */
   getVisionUserPrompt?: () => string;
-  /** GOOD 類似によるシャドー補助（本番保存ラベルは変更しない） */
+  /** GOOD 類似によるシャドー補助・アクティブ保存ゲートの評価 */
   labelAssist?: PhotoToolLabelAssistPort | null;
   /** true のときのみシャドー推論を実行（埋め込み・フラグの論理は呼び出し側で統一してよい） */
   shadowAssistEnabled?: () => boolean;
+  /** true のときギャラリー件数ゲート通過後に 2 回目結果を本番保存しうる */
+  activeAssistEnabled?: () => boolean;
+  /** 収束 canonical のギャラリー行数によるアクティブ保存可否 */
+  activeAssistGate?: PhotoToolLabelActiveAssistGatePort | null;
   /** on_demand 時: 推論前後に llama-server 起動・停止を挟む（未指定は制御なし） */
   localLlmRuntime?: LocalLlmRuntimeControllerPort | null;
 };
@@ -87,17 +92,23 @@ export class PhotoToolLabelingService {
         mimeType: 'image/jpeg',
       });
       responseCharLen = rawText.length;
-      const label = normalizePhotoToolDisplayName(rawText);
+      const firstPassLabel = normalizePhotoToolDisplayName(rawText);
 
-      await this.maybeRunShadowAssistedInference({
-        loanId,
-        photoUrl,
-        imageBytes,
-        currentLabel: label,
-      });
+      let persistLabel = firstPassLabel;
+      if (this.assistPipelineWanted()) {
+        const assist = await this.runLabelAssistPipeline({
+          loanId,
+          photoUrl,
+          imageBytes,
+          firstPassLabel,
+        });
+        if (firstPassLabel && assist.activePersistEligible && assist.assistedLabel) {
+          persistLabel = assist.assistedLabel;
+        }
+      }
 
-      if (label) {
-        await this.deps.repo.completeWithLabel(loanId, label);
+      if (persistLabel) {
+        await this.deps.repo.completeWithLabel(loanId, persistLabel);
         ok = true;
       } else {
         await this.deps.repo.releaseClaim(loanId);
@@ -124,19 +135,35 @@ export class PhotoToolLabelingService {
     }
   }
 
+  private assistPipelineWanted(): boolean {
+    return Boolean(
+      this.deps.labelAssist &&
+        (this.deps.shadowAssistEnabled?.() || this.deps.activeAssistEnabled?.())
+    );
+  }
+
   /**
-   * 本番ラベル確定前に、条件付きで補助プロンプトの 2 回目 VLM を実行しログのみ残す。
+   * GOOD 類似が成立するとき、シャドー・アクティブに応じて 2 回目 VLM を実行しログする。
+   * アクティブかつギャラリー件数ゲート通過時のみ assisted を本番保存候補として返す。
    */
-  private async maybeRunShadowAssistedInference(params: {
+  private async runLabelAssistPipeline(params: {
     loanId: string;
     photoUrl: string;
     imageBytes: Buffer;
-    currentLabel: string | null;
-  }): Promise<void> {
-    if (!this.deps.shadowAssistEnabled?.() || !this.deps.labelAssist) {
-      return;
+    firstPassLabel: string | null;
+  }): Promise<{
+    assistedLabel: string | null;
+    activePersistEligible: boolean;
+  }> {
+    const empty = {
+      assistedLabel: null as string | null,
+      activePersistEligible: false,
+    };
+    if (!this.deps.labelAssist) {
+      return empty;
     }
-    const { loanId, photoUrl, imageBytes, currentLabel } = params;
+
+    const { loanId, photoUrl, imageBytes, firstPassLabel } = params;
     try {
       const decision = await this.deps.labelAssist.evaluateForShadow({
         loanId,
@@ -153,8 +180,37 @@ export class PhotoToolLabelingService {
           },
           'Photo tool label shadow assist skipped'
         );
-        return;
+        return empty;
       }
+
+      const convergedLabel = decision.convergedCanonicalLabel?.trim() ?? '';
+      const shadowOn = this.deps.shadowAssistEnabled?.() ?? false;
+      const activeOn = this.deps.activeAssistEnabled?.() ?? false;
+
+      let gateResult = { allowed: false, rowCount: 0 };
+      if (convergedLabel && this.deps.activeAssistGate && activeOn) {
+        gateResult = await this.deps.activeAssistGate.evaluate(convergedLabel);
+      }
+      const runSecondVision = shadowOn || (activeOn && gateResult.allowed);
+
+      if (!runSecondVision) {
+        log.debug(
+          {
+            loanId,
+            reason: 'second_vision_suppressed',
+            shadowOn,
+            activeOn,
+            gateAllowed: gateResult.allowed,
+            galleryRowCount: gateResult.rowCount,
+          },
+          'Photo tool label assist second vision skipped'
+        );
+        return {
+          assistedLabel: null,
+          activePersistEligible: activeOn && gateResult.allowed,
+        };
+      }
+
       const assistedUserText = buildShadowAssistedUserPrompt(this.visionUserPrompt(), decision.candidateLabels);
       const { rawText: assistedRaw } = await this.deps.vision.complete({
         userText: assistedUserText,
@@ -162,6 +218,9 @@ export class PhotoToolLabelingService {
         mimeType: 'image/jpeg',
       });
       const assistedLabel = normalizePhotoToolDisplayName(assistedRaw);
+      const activePersistEligible = activeOn && gateResult.allowed;
+      const activePersistApplied = Boolean(activePersistEligible && assistedLabel && firstPassLabel);
+
       log.info(
         {
           loanId,
@@ -170,13 +229,19 @@ export class PhotoToolLabelingService {
           topDistance: decision.topDistance,
           neighborCountAfterFilter: decision.neighborCountAfterFilter,
           candidateLabels: decision.candidateLabels,
-          currentLabel,
+          currentLabel: firstPassLabel,
           assistedLabel: assistedLabel ?? null,
+          galleryRowCount: gateResult.rowCount,
+          activePersistEligible,
+          activePersistApplied,
         },
         'Photo tool label shadow assist inference completed'
       );
+
+      return { assistedLabel, activePersistEligible };
     } catch (err) {
       log.warn({ err, loanId }, 'Photo tool label shadow assist failed');
+      return empty;
     }
   }
 }

@@ -4,6 +4,8 @@
  */
 export type PhotoToolLabelAssistDecision = {
   shouldAssist: boolean;
+  /** 先頭K件で収束した canonicalLabel。補助不成立時は null */
+  convergedCanonicalLabel: string | null;
   /** プロンプトに載せる候補ラベル（重複除去済み・空のときは補助しない） */
   candidateLabels: string[];
   /** ログ用: 補助しない理由コード */

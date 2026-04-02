@@ -26,6 +26,7 @@ describe('PhotoToolLabelAssistService', () => {
     const svc = new PhotoToolLabelAssistService(null, gallery as never);
     const out = await svc.evaluateForShadow({ loanId: 'l1', photoUrl: '/x', queryJpegBytes: jpeg });
     expect(out.shouldAssist).toBe(false);
+    expect(out.convergedCanonicalLabel).toBeNull();
     expect(out.reason).toBe('embedding_disabled');
     expect(embedding.embedJpeg).not.toHaveBeenCalled();
     expect(gallery.findNearestNeighbors).not.toHaveBeenCalled();
@@ -37,6 +38,7 @@ describe('PhotoToolLabelAssistService', () => {
     const svc = new PhotoToolLabelAssistService(embedding as never, gallery as never);
     const out = await svc.evaluateForShadow({ loanId: 'l1', photoUrl: '/x', queryJpegBytes: jpeg });
     expect(out.shouldAssist).toBe(false);
+    expect(out.convergedCanonicalLabel).toBeNull();
     expect(out.reason).toBe('embed_failed');
   });
 
@@ -47,6 +49,7 @@ describe('PhotoToolLabelAssistService', () => {
     const svc = new PhotoToolLabelAssistService(embedding as never, gallery as never);
     const out = await svc.evaluateForShadow({ loanId: 'target', photoUrl: '/x', queryJpegBytes: jpeg });
     expect(out.shouldAssist).toBe(false);
+    expect(out.convergedCanonicalLabel).toBeNull();
     expect(out.reason).toBe('too_few_neighbors');
   });
 
@@ -60,6 +63,7 @@ describe('PhotoToolLabelAssistService', () => {
     const svc = new PhotoToolLabelAssistService(embedding as never, gallery as never);
     const out = await svc.evaluateForShadow({ loanId: 'target', photoUrl: '/x', queryJpegBytes: jpeg });
     expect(out.shouldAssist).toBe(false);
+    expect(out.convergedCanonicalLabel).toBeNull();
     expect(out.reason).toBe('labels_not_converged');
   });
 
@@ -73,6 +77,7 @@ describe('PhotoToolLabelAssistService', () => {
     const svc = new PhotoToolLabelAssistService(embedding as never, gallery as never);
     const out = await svc.evaluateForShadow({ loanId: 'target', photoUrl: '/x', queryJpegBytes: jpeg });
     expect(out.shouldAssist).toBe(false);
+    expect(out.convergedCanonicalLabel).toBeNull();
     expect(out.neighborCountAfterFilter).toBe(0);
     expect(out.reason).toBe('too_few_neighbors');
   });
@@ -89,6 +94,7 @@ describe('PhotoToolLabelAssistService', () => {
     const out = await svc.evaluateForShadow({ loanId: 'target', photoUrl: '/x', queryJpegBytes: jpeg });
     expect(out.shouldAssist).toBe(true);
     expect(out.reason).toBe('converged_neighbors');
+    expect(out.convergedCanonicalLabel).toBe('専用ゲージ');
     expect(out.candidateLabels).toEqual(['専用ゲージ']);
     expect(out.topDistance).toBe(0.08);
     expect(out.neighborCountAfterFilter).toBe(3);

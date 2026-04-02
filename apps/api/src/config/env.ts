@@ -271,6 +271,16 @@ const envSchema = z.object({
   PHOTO_TOOL_LABEL_ASSIST_QUERY_NEIGHBOR_LIMIT: z.coerce.number().int().min(10).max(100).default(40),
   /** 補助プロンプトに載せるラベル数の上限（同一ラベルでも参照強調用に複数近傍があれば繰り返し可だが cap） */
   PHOTO_TOOL_LABEL_ASSIST_PROMPT_MAX_LABELS: z.coerce.number().int().min(1).max(10).default(3),
+
+  /**
+   * true かつ PHOTO_TOOL_EMBEDDING_ENABLED のとき、収束 canonical のギャラリー行数が
+   * PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS 以上なら 2 回目推論結果を photoToolDisplayName に保存しうる
+   */
+  PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  /** 収束ラベルと BTRIM 一致する photo_tool_similarity_gallery 行数の下限（マイルド既定 5） */
+  PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS: z.coerce.number().int().min(1).max(100).default(5),
 }).superRefine((value, ctx) => {
   if (value.PHOTO_TOOL_EMBEDDING_ENABLED) {
     if (!value.PHOTO_TOOL_EMBEDDING_URL) {

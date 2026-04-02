@@ -186,11 +186,18 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 ### VLM シャドー補助（GOOD 類似・条件付き・2026-03-31）
 
-- **目的**: 工場固有工具向けに、人レビュー **GOOD** の近傍が**厳しめ条件で収束**するときだけ、VLM に参考ラベルを短く渡した**2 回目推論**を走らせ、**ログで `currentLabel`（従来1回目）と `assistedLabel` を比較**する。`Loan.photoToolDisplayName` は **1 回目のまま**（本番ラベルは変えない）。
-- **有効化**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` **かつ** `PHOTO_TOOL_EMBEDDING_ENABLED=true`（どちらか欠けるとシャドーは動かない）。**既定は false**。
+- **目的**: 工場固有工具向けに、人レビュー **GOOD** の近傍が**厳しめ条件で収束**するときだけ、VLM に参考ラベルを短く渡した**2 回目推論**を走らせる。**シャドーのみ**のときは **ログで `currentLabel`（1 回目）と `assistedLabel` を比較**し、`Loan.photoToolDisplayName` は **1 回目を保存**（従来どおり）。
+- **有効化（シャドー）**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` **かつ** `PHOTO_TOOL_EMBEDDING_ENABLED=true`（どちらか欠けるとシャドー相当の 2 回目は動かない）。**既定は false**。
 - **調整**: `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（管理 UI 向け `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE` より厳しめ推奨）、`PHOTO_TOOL_LABEL_ASSIST_MIN_NEIGHBORS`、`PHOTO_TOOL_LABEL_ASSIST_CONVERGENCE_TOP_K`、`PHOTO_TOOL_LABEL_ASSIST_QUERY_NEIGHBOR_LIMIT`。
-- **ログ**: `Photo tool label shadow assist inference completed`（`assistTriggered` / `reason` / `candidateLabels` / `currentLabel` / `assistedLabel`）。未発火時は `Photo tool label shadow assist skipped`（debug）。
-- **参照**: [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)
+- **ログ**: `Photo tool label shadow assist inference completed`（`assistTriggered` / `reason` / `candidateLabels` / `currentLabel` / `assistedLabel` / **`galleryRowCount`** / **`activePersistEligible`** / **`activePersistApplied`**）。未発火時は `Photo tool label shadow assist skipped`（debug）。2 回目を抑止した場合は `Photo tool label assist second vision skipped`（debug）。
+- **参照**: [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md) / [ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)
+
+#### VLM アクティブ補助（本番保存・ギャラリー行数ゲート）
+
+- **目的**: 収束した **`canonicalLabel` ごと**に `photo_tool_similarity_gallery` の行数が一定以上のラベルから、**2 回目推論の結果を `photoToolDisplayName` に保存**できるようにする（ラベルごとの段階導入）。
+- **有効化**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true` **かつ** `PHOTO_TOOL_EMBEDDING_ENABLED=true`。**既定は false**。
+- **ゲート**: 収束ラベル `L` について `BTRIM("canonicalLabel") = L` の行数が **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`（既定 5）** 以上のときのみ、**2 回目を実行し**かつ assisted を保存候補にする。未満のとき **アクティブのみ ON なら 2 回目を呼ばず** 1 回目のみ（負荷抑制）。`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` のときはゲート不通過でも **従来どおり 2 回目をログ用に実行**し、保存は 1 回目のまま。
+- **参照**: [ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)
 
 #### 実機確認（デプロイ後・2026-03-29）
 
@@ -206,7 +213,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | 類似候補は良いのに shadow が増えない | **管理 UI 表示**は `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE`（広め）、シャドーは `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（狭め）等で **別閾値**。近傍数・ラベル収束条件も追加フィルタ | 期待どおりの可能性大。シャドー観測を増やすなら env を段階調整し、別 ADR で根拠を残す |
 | ログに shadow が一切出ない | シャドー OFF、埋め込み OFF、または補助条件未満（近傍不足・canonical 不一致・距離超過） | `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` と `PHOTO_TOOL_EMBEDDING_ENABLED` を確認。debug ログで `skipped` の `reason` を見る |
 | VLM 負荷が急増 | シャドー ON で対象ローンが多い | しきい値を厳しくするか、シャドーを限定時間のみ ON。別 ADR で active 化を検討する前にログ評価 |
-| 本番ラベルが変わった | バグまたは別機能 | 本仕様では `photoToolDisplayName` は 1 回目のみ保存。挙動が違う場合はデプロイ版コミットと `PhotoToolLabelingService` を確認 |
+| 本番ラベルが変わった | **アクティブ補助**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED`・ゲート通過）で 2 回目が採用された | 意図どおりならログの `activePersistApplied: true` を確認。意図しないならフラグ・閾値・[ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md) を参照 |
 | ローカルの `host_vars/raspberrypi5/vault.yml` を更新しても Pi5 に反映されない | `infrastructure/ansible/host_vars/**/vault.yml` は Git 管理外で、Pi5 リモート実行時は **Pi5 側 checkout** のファイルが使われる | 正規の secrets 配置を使うか、Pi5 上の `host_vars/raspberrypi5/vault.yml` を更新してから再デプロイ |
 | `/healthz` は通るが `/embed` の Python ワンライナー確認が失敗する | `tailscale` コンテナに `python3` が無い | `embedding` コンテナ側で単体確認するか、`wget` / `curl` で疎通確認と payload 確認を分ける |
 
@@ -258,6 +265,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 - [ADR-20260330](../decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)
 - [ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)
+- [ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)
 - [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)
 - `apps/api/src/routes/tools/loans/photo-similar-candidates.ts`
 

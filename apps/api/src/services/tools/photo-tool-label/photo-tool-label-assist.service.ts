@@ -21,6 +21,7 @@ export class PhotoToolLabelAssistService implements PhotoToolLabelAssistPort {
   }): Promise<PhotoToolLabelAssistDecision> {
     const empty = (reason: string): PhotoToolLabelAssistDecision => ({
       shouldAssist: false,
+      convergedCanonicalLabel: null,
       candidateLabels: [],
       reason,
       topDistance: null,
@@ -66,6 +67,7 @@ export class PhotoToolLabelAssistService implements PhotoToolLabelAssistPort {
     if (filtered.length < env.PHOTO_TOOL_LABEL_ASSIST_MIN_NEIGHBORS) {
       return {
         shouldAssist: false,
+        convergedCanonicalLabel: null,
         candidateLabels: [],
         reason: 'too_few_neighbors',
         topDistance: filtered[0]?.distance ?? null,
@@ -81,6 +83,7 @@ export class PhotoToolLabelAssistService implements PhotoToolLabelAssistPort {
     if (!converged) {
       return {
         shouldAssist: false,
+        convergedCanonicalLabel: null,
         candidateLabels: [],
         reason: 'labels_not_converged',
         topDistance: filtered[0].distance,
@@ -95,6 +98,7 @@ export class PhotoToolLabelAssistService implements PhotoToolLabelAssistPort {
 
     return {
       shouldAssist: true,
+      convergedCanonicalLabel: first,
       candidateLabels,
       reason: 'converged_neighbors',
       topDistance: filtered[0].distance,
