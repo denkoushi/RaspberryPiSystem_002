@@ -19,7 +19,8 @@ const base = (): LeaderBoardRow => ({
   machineTypeCode: '',
   plannedQuantity: 3,
   processingOrder: 1,
-  isCompleted: false
+  isCompleted: false,
+  note: null
 });
 
 describe('presentLeaderOrderRow', () => {

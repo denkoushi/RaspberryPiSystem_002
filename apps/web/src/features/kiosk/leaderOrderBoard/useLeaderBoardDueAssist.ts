@@ -1,20 +1,22 @@
-import { normalizeKioskProductionScheduleSearchHistory as normalizeHistoryList } from '@raspi-system/shared-types';
-import { useCallback, useMemo, useState } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 
 import {
   useKioskProductionScheduleDueManagementSeibanDetail,
-  useKioskProductionScheduleSearchHistory,
   useUpdateKioskProductionScheduleDueManagementSeibanDueDate,
-  useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate,
-  useUpdateKioskProductionScheduleSearchHistory
+  useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate
 } from '../../../api/hooks';
 import { normalizeDueDateInput } from '../productionSchedule/dueManagement';
+import { useKioskSharedSearchHistoryActions } from '../productionSchedule/useKioskSharedSearchHistoryActions';
 
 type DueDateTarget = { scope: 'seiban' } | { scope: 'processing'; processingType: string };
 
-export function useLeaderBoardDueAssist() {
-  const historyQuery = useKioskProductionScheduleSearchHistory();
-  const updateHistoryMutation = useUpdateKioskProductionScheduleSearchHistory();
+export function useLeaderBoardDueAssist(options?: { pauseRefetch?: boolean }) {
+  const {
+    sharedHistory,
+    historyWriting,
+    addSeibanToHistory,
+    removeSeibanFromHistory
+  } = useKioskSharedSearchHistoryActions({ pauseRefetch: options?.pauseRefetch });
   const updateSeibanDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanDueDate();
   const updateProcessingDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate();
 
@@ -29,15 +31,20 @@ export function useLeaderBoardDueAssist() {
   const openDetail = useCallback(() => setIsDetailOpen(true), []);
   const closeDetail = useCallback(() => setIsDetailOpen(false), []);
 
-  const sharedHistory = useMemo(() => normalizeHistoryList(historyQuery.data?.history ?? []), [historyQuery.data?.history]);
   const detailQuery = useKioskProductionScheduleDueManagementSeibanDetail(selectedFseiban);
+
+  useEffect(() => {
+    if (selectedFseiban == null) return;
+    if (!sharedHistory.includes(selectedFseiban)) {
+      setSelectedFseiban(sharedHistory[0] ?? null);
+    }
+  }, [sharedHistory, selectedFseiban]);
 
   const applySearch = async () => {
     const trimmed = searchInput.trim();
     if (trimmed.length === 0) return;
-    const nextHistory = normalizeHistoryList([trimmed, ...sharedHistory]);
     try {
-      await updateHistoryMutation.mutateAsync(nextHistory);
+      await addSeibanToHistory(trimmed);
       setSelectedFseiban(trimmed);
       setSearchInput('');
       setIsDetailOpen(true);
@@ -52,11 +59,11 @@ export function useLeaderBoardDueAssist() {
   };
 
   const removeFromHistory = async (fseiban: string) => {
-    const nextHistory = sharedHistory.filter((item) => item !== fseiban);
+    const nextAfterRemove = sharedHistory.filter((item) => item !== fseiban);
     try {
-      await updateHistoryMutation.mutateAsync(nextHistory);
+      await removeSeibanFromHistory(fseiban);
       if (selectedFseiban === fseiban) {
-        setSelectedFseiban(nextHistory[0] ?? null);
+        setSelectedFseiban(nextAfterRemove[0] ?? null);
       }
     } catch {
       /* 同上 */
@@ -116,6 +123,6 @@ export function useLeaderBoardDueAssist() {
     closeDatePicker: () => setIsDatePickerOpen(false),
     commitDueDate,
     dueUpdatePending: updateSeibanDueDateMutation.isPending || updateProcessingDueDateMutation.isPending,
-    historyWriting: updateHistoryMutation.isPending
+    historyWriting
   };
 }

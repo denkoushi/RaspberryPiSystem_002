@@ -122,6 +122,17 @@ export const productionScheduleSearchHistoryBodySchema = z.object({
   history: z.array(z.string().max(200)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
 });
 
+/** 素の入力を多めに受け、trim・重複除去後に 100 件まで保持する。 */
+export const productionScheduleSeibanMachineNamesBodySchema = z
+  .object({
+    fseibans: z.array(z.string().max(200)).max(100)
+  })
+  .transform((body) => ({
+    fseibans: Array.from(
+      new Set(body.fseibans.map((value) => value.trim()).filter((value) => value.length > 0))
+    ).slice(0, 100)
+  }));
+
 export const productionScheduleDueManagementSeibanParamsSchema = z.object({
   fseiban: z.string().min(1).max(20).transform((value) => value.trim())
 });

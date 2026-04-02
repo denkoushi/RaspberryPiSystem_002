@@ -2247,6 +2247,12 @@ category: knowledge-base
   - **詳細シートが閉じているのにクリックできない**: 実装は閉じ時 `pointer-events-none`（幅 0・`opacity-0`）。古いビルドや CSS 競合を疑う。
   - **部品表が空**: 当該製番に納期管理の部品行が無い。**データ側**の triage / seiban 同期を確認。
 
+### 順位ボード 共有登録製番・子行備考・機種名一括解決（2026-04-02 開発）
+
+- **登録製番**: 左ペインの履歴を **`PUT /kiosk/production-schedule/search-state`**（If-Match / 409 収束）に統一し、生産スケジュール本体と **同一の共有 `history`** を読み書きする（端末別 `search-history` からの移行）。実装: [`useKioskSharedSearchHistoryActions.ts`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)、[`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)。
+- **機種名**: **`POST /kiosk/production-schedule/seiban-machine-names`** がサーバ側で **`fetchSeibanProgressRows`** を呼び、手動順番 overview と同系の MH/SH 機種表示名を返す。一覧レスポンスに MH/SH 行が無い場合でも子行の機種名を安定させる。Web: `useKioskProductionScheduleSeibanMachineNames`、`mergeLeaderBoardRowsWithResolvedMachineNames` → 既存 `mergeMachineNameFallback`（history-progress）で最終補完。
+- **備考**: 子行は常に **鉛筆アイコン**（空＝グレーで追加、有り＝アンバーで編集）。`title` でホバー時全文（有りのみ）、タップで `KioskNoteModal`（`LeaderOrderResourceCard` / `ProductionScheduleLeaderOrderBoardPage`）。共有 SVG: `KioskPencilGlyph`。
+
 ### 順位ボード 納期アシスト UI（左2段スタック・モーダル z-index、2026-04-02 追補）
 
 - **目的（追補）**: 詳細が **右固定・高 z** のとき、日付 **`Dialog`（既定 `z-50`）** が詳細・全画面ディムより **下** に来て **カレンダー操作が不安定**／**第1 `aside` から第2シートへマウスが移る `mouseLeave`** で左ドロワーが **遅延閉じ** する問題を解消する。
