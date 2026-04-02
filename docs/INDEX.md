@@ -44,6 +44,7 @@
 
 ### 🆕 最新アップデート（2026-04-02）
 
+- **キオスク リーダー順位ボード: 順位変更の React Query fast path（`leaderBoardFastPath`）・楽観パッチ／失敗時ロールバック・成功後は full invalidate 省略・本番5台順次デプロイ・Phase12 PASS 40・`main` マージ**: ブランチ `feat/kiosk-leader-order-board-order-cache-fast-path`。Web（`useUpdateKioskProductionScheduleOrder`・`features/kiosk/productionSchedule/cache/*`・順位ボードのみ policy 指定）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02）。**参照**: [KB-297 §順位変更キャッシュ高速化](./knowledge-base/KB-297-kiosk-due-management-workflow.md#順位変更キャッシュ高速化leaderboardfastpath2026-04-02) / [verification-checklist.md](./guides/verification-checklist.md) §6.6.18 / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **キオスク リーダー順位ボード: 行完了（✓）・資源内順位ドロップダウン即時保存・左ペイン完了フィルタ（クライアントのみ）・`history-progress` からの機種名フォールバック・一括納期反映ボタン廃止・本番5台順次デプロイ済み・Phase12 PASS 40・`main` マージ**: ブランチ `feat/kiosk-leader-order-board-row-actions`。Web（`leaderOrderBoard/*`・`useCompleteKioskProductionScheduleRow` の overview invalidate 追従）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・deploy 反映後）。**参照**: [KB-297 §行アクション](./knowledge-base/KB-297-kiosk-due-management-workflow.md#行アクション機種名フォールバック2026-04-02) / [verification-checklist.md](./guides/verification-checklist.md) §6.6.18 / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)（PR 番号はマージ後に追記）。
 
 ### 🆕 最新アップデート（2026-04-01）

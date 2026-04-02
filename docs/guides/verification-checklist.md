@@ -707,12 +707,13 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.18 キオスク リーダー順位ボード（行完了・順位ドロップダウン・完了フィルタ・機種名フォールバック）**
 
-**確認ポイント**（[KB-297 §行アクション](../knowledge-base/KB-297-kiosk-due-management-workflow.md#行アクション機種名フォールバック2026-04-02)）:
+**確認ポイント**（[KB-297 §行アクション](../knowledge-base/KB-297-kiosk-due-management-workflow.md#行アクション機種名フォールバック2026-04-02)・[§順位変更キャッシュ高速化](../knowledge-base/KB-297-kiosk-due-management-workflow.md#順位変更キャッシュ高速化leaderboardfastpath2026-04-02)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0**（2026-04-02 時点の項目数基準・Tailscale 到達前提）。
 - [ ] **手動（任意・実機/VNC）**: `/kiosk/production-schedule/leader-order-board` で **左ペイン「両方/未完/完了」**、子行の **✓ 完了切替**、**順位 `-`〜10**（`-` で納期ベース自動並びへ）、**機種名**（MH/SH で空だった行が進捗履歴で補完されうること）を目視。
+- [ ] **手動（任意・Pi4 推奨）**: **資源内順位**変更直後、**数秒待たずに** UI の並び・ドロップダウンが追従すること（**`leaderBoardFastPath`**・大規模一覧の full refetch 省略）。別台キオスクとの占有表示差は **最大ポーリング間隔**まで起こりうる（KB-297 トラブルシュート）。
 
-**検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・ブランチ `feat/kiosk-leader-order-board-row-actions` 本番反映後）
+**検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/kiosk-leader-order-board-order-cache-fast-path` 本番反映後・自動回帰再実行済み）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認

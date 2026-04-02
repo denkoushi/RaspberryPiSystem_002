@@ -2162,8 +2162,25 @@ category: knowledge-base
 - **完了フィルタ**: 左端ドロワーに **両方 / 未完 / 完了**。**クライアント側のみ**で行一覧を絞り込み（API 変更なし）。
 - **資源内順位**: 各行のドロップダウンで `processingOrder`（1〜10、空き番のみ）を **変更したら即 PUT**。**`-`（空選択）** で手動順を解除し、**納期＋安定タイブレーク**の自動並びに戻す。表示ソートは **`processingOrder` ありを常に先**（同一資源内で手動番号昇順、未設定どうしは納期順）。
 - **機種名（MH/SH）**: スケジュール行だけでは `machineName` が空になりうるため、`GET .../history-progress` の `progressBySeiban` から **製番キー**で `machineName` を補完（`buildSeibanMachineNameMapFromProgressBySeiban` + `mergeMachineNameFallback`）。履歴側にも無い製番は空のまま。
-- **React Query**: 完了成功時は `kiosk-production-schedule-order-usage` に加え **`kiosk-production-schedule-due-management-manual-order-overview`** も invalidate（手動順番俯瞰と整合）。
+- **React Query**: **完了**成功時は `kiosk-production-schedule-order-usage` に加え **`kiosk-production-schedule-due-management-manual-order-overview`** も invalidate（手動順番俯瞰と整合）。**資源内順位（PUT order）**については順位ボードのみ後述の **fast path** で一覧・usage の full invalidate を省略（生産スケジュール／手動順番画面は従来どおり full invalidate）。
 - **参照実装**: `ProductionScheduleLeaderOrderBoardPage.tsx`・`LeaderOrderResourceCard.tsx`・`LeaderOrderRowOrderSelect.tsx`・`useKioskProductionScheduleHistoryProgress`・`useKioskProductionScheduleOrderUsage`。
+
+### 順位変更キャッシュ高速化（leaderBoardFastPath、2026-04-02）
+
+- **目的**: Pi4 等で順位ドロップダウン変更後の **大きい生産スケジュール一覧の再 GET** と **`manual-order-overview` の無効化**を避け、体感遅延を抑える（Web のみ・API 契約不変）。
+- **仕様**:
+  - `useUpdateKioskProductionScheduleOrder` の mutation 変数に `cachePolicy?: 'default' | 'leaderBoardFastPath'`。**省略時は `default`**（従来: `kiosk-production-schedule` / `order-usage` / `manual-order-overview` を invalidate）。
+  - **`leaderBoardFastPath`**（`ProductionScheduleLeaderOrderBoardPage` が `useProductionScheduleMutations` に `productionScheduleOrderCachePolicy: 'leaderBoardFastPath'` を渡す）:
+    - **onMutate**: 一覧キャッシュ・`order-usage` を楽観パッチ（純粋関数は `apps/web/src/features/kiosk/productionSchedule/cache/kioskProductionScheduleOrderCachePatch.ts`）。**一覧キャッシュ上で対象 `rowId` が特定できないときは `order-usage` を楽観パッチしない**（誤った占有表示を避ける）。
+    - **onSuccess**: PUT 応答の `orderNumber` で一覧を再整合。**成功後はいずれのクエリも invalidate しない**（他端末との厳密同期は既存の schedule / usage **ポーリング**に委ねる）。
+    - **onError**: onMutate 前スナップショットでロールバック。
+- **デプロイ・実機検証（2026-04-02）**:
+  - **ブランチ**: `feat/kiosk-leader-order-board-order-cache-fast-path`。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`。**対象**: `raspberrypi5` → Pi4 キオスク 4 台（**Pi3 除外**・1 台ずつ `--limit`）。**本番反映後**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（Mac / Tailscale・本セッション実測）。
+- **知見**: 遅延の主因は **順位 PUT 後のフル一覧 refetch** になりやすい。表示件数だけ UI で絞っても **pageSize が大きい限り**転送・パース負荷は残るため、キャッシュ戦略の方が効きやすい。
+- **トラブルシューティング**:
+  - **別のキオスクで順位占有表示が数秒〜数十秒古い**: fast path は意図的に invalidate しない。最大でも **ポーリング間隔**（schedule 30s / usage 15s 等）までの差は起こりうる。即時全体整合が必要なら **生産スケジュール本体**で同操作すると `default` policy で再取得される。
+  - **順位 PUT が失敗したのに一覧だけ楽観更新された**: onError でロールバックする設計。継続する場合はネットワークログと API 応答を確認。
 
 ### デプロイ・実機検証（2026-04-01）
 
