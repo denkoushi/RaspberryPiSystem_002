@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-02（順位ボード UX polish 手動項目追記）
+最終更新: 2026-04-02（順位ボード 納期アシスト §6.6.19 追記）
 
 ## 概要
 
@@ -717,6 +717,17 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - [ ] **手動（任意・UX polish）**: 子行で **FSEIBAN 右横に「◯個」**・**機種名が他画面同様の半角大文字**に見えること。**上端ヘッダー・左ドロワー**および（比較対象あれば）**手動順番下ペイン等のホバー開閉**が従来より素早いこと。[KB-297 §UX polish（leader order board）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02)。
 
 **検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/kiosk-leader-order-board-ux-polish` 本番反映後・自動回帰済み）
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
+**6.6.19 キオスク リーダー順位ボード（製番検索・右ペイン納期アシスト）**
+
+**確認ポイント**（[KB-297（リーダー順位ボード節・納期アシスト）](../knowledge-base/KB-297-kiosk-due-management-workflow.md)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0**（本変更は項目数を増やさない）。
+- [ ] **手動（任意・Pi4 / VNC）**: `/kiosk/production-schedule/leader-order-board` で左ドロワー **製番検索**→確定後に **右スライド**で部品表・**製番全体納期**・**処理区分別納期**が見え、日付モーダルで更新できること。**Escape** で詳細のみ閉じること。**履歴**チップの追加・選択・削除が既存生産スケジュールと同趣旨で動くこと。
+- [ ] **トラブルシュート**: 検索確定しても動かない → 検索履歴 API / `x-client-key` / コンソールを確認（mutation 失敗時は選択を変えない仕様）。上記 KB-297 節の TS 参照。
+
+**検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/leaderboard-due-assist` 本番5台反映後・Mac / Tailscale）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認

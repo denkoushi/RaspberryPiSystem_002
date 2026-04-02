@@ -2224,6 +2224,29 @@ category: knowledge-base
 - **自動実機検証（本セッション）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・Mac / Tailscale・デプロイ反映後の回帰）。
 - **手動（任意・UI）**: 実機/VNC で順位ボードを開き、**未完/完了フィルタ**・**✓ 完了切替**・**順位ドロップダウン（`-` で自動並び復帰）**・**MH/SH 機種名表示**を確認（Mac ブラウザのみだと自己署名でエラーになりうる → [KB-306](./frontend.md) と同趣旨）。
 
+### 順位ボード 納期アシスト（製番検索・右スライドイン詳細、2026-04-02）
+
+- **目的**: 順位ボード上で **製番（`fseiban`）を検索**し、**共有検索履歴**（既存 `kiosk-production-schedule-search-history`）を更新しつつ、**右ペイン**で **部品一覧（最小列）** と **製番全体納期 / 処理区分別納期** を確認・更新する（案 A: 左検索・右詳細）。
+- **境界**: Web のみ。`useLeaderBoardDueAssist`（[`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)）が **履歴 mutation・詳細 query・納期 mutation・日付モーダル**を束ね、`LeaderBoardDueAssistPanel`（[`LeaderBoardDueAssistPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel.tsx)）が UI。既存 API（`GET .../due-management/seiban/:fseiban`、`PUT` 納期系、検索履歴更新）を利用。**新設 HTTP 契約なし**。
+- **操作**: 左ドロワーで製番入力→確定で履歴先頭に追加し詳細オープン。履歴チップで再選択。詳細閉じ時は **`pointer-events-none` + `aria-hidden`** で背面操作を遮断。`Escape` で詳細のみ閉じる。日付は既存 `KioskDatePickerModal` を **製番全体 / 処理行** の2経路で再利用。
+- **React Query**: `useUpdateKioskProductionScheduleSearchHistory` の `onSuccess` で **`kiosk-production-schedule-search-history`** を invalidate（履歴即時反映）。履歴・納期更新は try/catch で **未処理拒否**を避ける。
+- **デプロイ・実機（2026-04-02）**:
+  - **ブランチ**: `feat/leaderboard-due-assist`（コミット例: `382ad85e`）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh` **のみ**。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**。サイネージ専用変更ではない）。
+  - **Detach Run ID（実績）**:
+    - `20260402-193759-29957`（`raspberrypi5`）
+    - `20260402-194158-24725`（`raspberrypi4`）
+    - `20260402-194636-6723`（`raspi4-robodrill01`）
+    - `20260402-195000-30215`（`raspi4-fjv60-80`）
+    - `20260402-195451-6422`（`raspi4-kensaku-stonebase01`）  
+    いずれも `PLAY RECAP` **`failed=0`**。
+  - **自動実機検証（マージ前・Mac / Tailscale）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（約 55s・本セッション）。
+- **知見**: 順位ボードの **納期編集**は納期管理ページと同系の **seiban 詳細 + 日付モーダル** に寄せ、API を増やさずにリーダー導線を短縮できる。履歴 invalidate を hooks 側に寄せると左リストとサーバ状態のズレが減る。
+- **トラブルシューティング**:
+  - **検索確定しても履歴が変わらない / 詳細が開かない**: ネットワーク・`x-client-key`・検索履歴 API のエラーを確認。mutation 失敗時は **選択状態を変えない**設計のため、UI が動かないのは仕様。
+  - **右ペインが閉じているのにクリックできない**: 実装は閉じ時 `pointer-events-none`。古いビルドや CSS 競合を疑う。
+  - **部品表が空**: 当該製番に納期管理の部品行が無い。**データ側**の triage / seiban 同期を確認。
+
 ### トラブルシューティング
 
 - **デプロイが Pi5 で止まる / ローカルだけ未 push エラー**: `update-all-clients.sh` の fail-fast（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）、リモートロック二重起動（deployment.md 2026-03-29 追記）を参照。

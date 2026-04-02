@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-04-02) **キオスク リーダー順位ボード: 納期アシスト（製番検索・右ペイン部品／納期・共有履歴）・本番5台順次デプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/leaderboard-due-assist`。Web のみ（`useLeaderBoardDueAssist`・`LeaderBoardDueAssistPanel`・`ProductionScheduleLeaderOrderBoardPage`・`useUpdateKioskProductionScheduleSearchHistory` の履歴 invalidate）。**API 新設なし**（既存 seiban 詳細・納期 mutation・検索履歴）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`、**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。Detach Run ID: `20260402-193759-29957` / `20260402-194158-24725` / `20260402-194636-6723` / `20260402-195000-30215` / `20260402-195451-6422`（各 `failed=0`）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・約 55s・Mac / Tailscale）。**ドキュメント**: [KB-297（納期アシスト節）](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.19 / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md)。**`main` マージ**: 本セッション（`merge` + `push`、マージ後 GitHub Actions 確認）。
 - [x] (2026-04-02) **写真持出 VLM 補助のアクティブ保存（ギャラリー行数ゲート・`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*`）・Pi5 のみデプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/photo-tool-label-assist-active-gate`。API（`PhotoToolLabelingService`・`GalleryRowCountActiveAssistGate`・`PhotoToolSimilarityGalleryRepositoryPort.countRowsByCanonicalLabel`・`PhotoToolLabelAssistDecision.convergedCanonicalLabel`・env 連携・scheduler 注入）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`、**`--limit raspberrypi5` のみ**・**`--detach --follow`**（Pi4/Pi3 は対象外）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・約 51s・Mac / Tailscale・Pi5 `100.106.158.2`）。**ドキュメント**: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [ADR-20260404](./docs/decisions/ADR-20260404-photo-tool-label-assist-active-gate.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.8 / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md)。**`main` マージ**: 本セッション（`merge` + `push`、マージ後 GitHub Actions 確認）。
 - [x] (2026-04-02) **Gmail 部品納期個数 CSV → `ProductionScheduleOrderSupplement` 補助同期の Prisma `Transaction not found` 対策（パイプライン化・短い tx）・本番5台順次デプロイ・ドキュメント・`main` マージ**: ブランチ `fix/order-supplement-sync-transaction`。API のみ（[`order-supplement-sync.pipeline.ts`](./apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts) ＋サービスオーケストレーション・回帰テスト）。**原因**: 長いインタラクティブ tx 内の逐次 `upsert` と winner 付け替え×複合一意の組み合わせ。**対策**: 読取・照合は tx 外、反映は **ソース単位 `deleteMany` → チャンク `createMany`**、`timeout` / `maxWait` 明示。**Gmail**: 同期**成功後**のみ既読化（失敗時は未読のまま再試行）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。各 PLAY **`failed=0`**。**ナレッジ**: [KB-324](./docs/knowledge-base/KB-324-gmail-order-supplement-prisma-transaction.md)・[KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md) 整合・[csv-import-export.md](./docs/guides/csv-import-export.md) TS 表・[verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.16。**`main` マージ**: 本セッションで `merge` + `push`（マージ後 GitHub Actions 確認）。
 - [x] (2026-04-02) **キオスク リーダー順位ボード: UX polish（子行「n個」・機種名正規化・沉浸式／ホバー開閉の transition／閉じ遅延集約）・本番5台順次デプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/kiosk-leader-order-board-ux-polish`。Web のみ（`plannedDueDisplay`・`LeaderOrderResourceCard`・`presentLeaderOrderRow`・`kioskRevealUi`・`useTimedHoverReveal`）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02）。**仕様・知見・TS**: [KB-297 §UX polish](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02)。**ドキュメント**: [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.18 / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md)。**`main` マージ**: 本セッションで `merge` + `push`（マージ後 GitHub Actions 確認）。
@@ -1719,6 +1720,18 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク リーダー順位ボード: 納期アシスト運用フォロー（2026-04-02）
+
+**概要**: `feat/leaderboard-due-assist` を **`main` 反映**後も Phase12 基準は **PASS 40 / WARN 0 / FAIL 0**。[KB-297・納期アシスト節](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md) を正とする。自動検証は項目数増なし。**手動**は製番検索→右ペイン→日付更新の一連と、履歴・Escape・閉じたパネルの操作感を Pi4 目視で確認。
+
+**候補タスク**:
+
+1. **現場目視（推奨・Pi4）**: 順位ボードで **検索確定後に右ペインが開く**こと、**部品行**と **製番／処理別納期** が期待どおりであること、**履歴**が他画面と共有キーで整合すること。
+2. **トラブルシュート**: 検索が反応しない → `x-client-key`・検索履歴 API・mutation エラー（失敗時は選択状態を変えない仕様）。
+3. **回帰**: 順位ボード／納期 hooks まわりの PR では Phase12 **40 基準**と KB-297 の TS を維持。
+
+**参照**: [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.19
 
 ### キオスク リーダー順位ボード: UX polish / `kioskRevealUi` 運用フォロー（2026-04-02）
 
