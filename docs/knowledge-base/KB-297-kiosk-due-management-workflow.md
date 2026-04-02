@@ -2191,7 +2191,7 @@ category: knowledge-base
 - **仕様**:
   - **個数**: `formatPlannedQuantityInlineJa`（[`plannedDueDisplay.ts`](../../apps/web/src/features/kiosk/productionSchedule/plannedDueDisplay.ts)）で **`n個`**。欠損・NaN は **非表示**（FSEIBAN 横に出さない）。納期管理テーブル等の **`formatPlannedQuantityLabel`（数値のみ）は変更しない**。
   - **配置**: [`LeaderOrderResourceCard.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx) で FSEIBAN 右横に個数、子行の縦余白を軽く詰め、資源カード `min-h` を一段下げ（`12rem`）。
-  - **機種名**: [`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts) で **`machineName` のみ** [`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts)（他キオスク画面と同趣旨の半角大文字化）。`machineTypeCode` / `productNo` / `fhincd` は従来どおり。
+  - **機種名**: [`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts) で **`machineName` のみ** [`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts)（他キオスク画面と同趣旨の半角大文字化）。`machineTypeCode` / `fhincd` は従来どおり。**追記（2026-04-02）**: 子行の **製番優先レイアウト**により `productNo` は **表示しない**。詳細は後続の **Leader order board: child row layout** 節。
   - **開閉スピード**: [`kioskRevealUi.ts`](../../apps/web/src/hooks/kioskRevealUi.ts) に **`KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS`**（`duration-100`）と **`KIOSK_REVEAL_CLOSE_DELAY_MS`（200）** を集約。[`KioskLayout.tsx`](../../apps/web/src/layouts/KioskLayout.tsx) の沉浸式ヘッダー・[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の左ドロワーが同一 transition を参照。[`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の遅延閉じも同一定数。**トレードオフ**: `useTimedHoverReveal` を使う **手動順番下ペイン・要領書ツールバー・生産スケジュール検索帯** 等も **同じ閉じ待ち**になり、全体的に速く感じる／誤閉じが増えたら `kioskRevealUi.ts` の定数だけ調整する。
 - **デプロイ・実機検証（2026-04-02）**:
   - **ブランチ**: `feat/kiosk-leader-order-board-ux-polish`。
@@ -2201,6 +2201,21 @@ category: knowledge-base
 - **トラブルシューティング**:
   - **個数が出ない**: `plannedQuantity` が null の行では仕様どおり非表示。CSV 補助・API の `plannedQuantity` を疑う。
   - **バーが閉じすぎる**: `KIOSK_REVEAL_CLOSE_DELAY_MS` を 200→280ms 程度へ、`duration-100` を `duration-150` へ、など **単一定数**で緩める。
+
+### Leader order board: child row layout + registered seiban panel (2026-04-02)
+
+- **目的**: 順位ボード子行で **製番（`fseiban`）の視認性**を上げ、左端ホーバー内の **登録済み製番チップ**が **パネル下方の余白**まで使えるようにして、早すぎる内部スクロールを減らす。**Web のみ**・保存 API・順位 UI（ドロップダウン）は **不変**。
+- **子行レイアウト**:
+  - **上段**: 完了・**資源内順位**（`LeaderOrderRowOrderSelect`）・**工順（`fkojun`）**（truncate・`title` に全文）・納期・備考。
+  - **中段**: [`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts) の **`machinePartLine`** — **機種記号 · 正規化機種名 · 製番 · 品目コード**。**`productNo`（製造 order 相当の部品行キー）は表示しない**（製番を優先するため）。
+  - **下段**: **`partNameLine`** — **品名（`fhinmei`）のみ**（工順は上段へ移したため、`fkojun · fhinmei` 連結表示は廃止）。
+  - **個数**: 従来どおり `quantityInlineJa`。配置は **中段の補助**（`fseiban` を含む `machinePartLine` の横）へ寄せ、上段の幅競合を減らす。
+- **左ホーバー（製番検索カード）**: [`ProductionScheduleLeaderOrderBoardPage`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の `aside` に **`min-h-0`**、製番検索ブロックを **`flex-1 flex-col`**、登録済み一覧を **`min-h-0 flex-1 overflow-y-auto`** にし、旧 `max-h-28` 固定上限を撤去。下方の説明文・操作ボタンは **`shrink-0`**。
+- **実装ブランチ（ローカル作業）**: `feat/leaderboard-card-and-hover-layout`。
+- **検証（開発者ローカル）**: `pnpm --filter @raspi-system/web lint` / `pnpm --filter @raspi-system/web test -- leaderOrderRowPresentation` / `pnpm --filter @raspi-system/web build`。実機は長い製番・登録チップ多数で左パネル縦伸びと子行可読性を目視。
+- **トラブルシューティング**:
+  - **ProductNo が見えなくなった**: 順位ボード子行では仕様どおり非表示。必要なら生産スケジュール本体一覧で確認する。
+  - **工順が見切れる**: 上段は幅競合のため `truncate` 許容。ホバーで `title` 全文。
 
 ### デプロイ・実機検証（2026-04-01）
 

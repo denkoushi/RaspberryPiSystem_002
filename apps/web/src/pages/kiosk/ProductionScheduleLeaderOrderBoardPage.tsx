@@ -371,10 +371,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             aria-hidden
           />
           <aside
-            className="flex h-full w-64 max-w-[85vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md"
+            className="flex h-full min-h-0 w-64 max-w-[85vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md"
             aria-label="操作パネル"
           >
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
+          <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
             工場
             <select
               value={siteKey}
@@ -389,7 +389,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
+          <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
             対象端末
             <select
               value={activeDeviceScopeKey}
@@ -410,8 +410,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               )}
             </select>
           </label>
-          <div className="rounded border border-white/15 bg-white/5 p-2">
-            <div className="mb-2 flex items-center justify-between">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-white/5 p-2">
+            <div className="mb-2 flex shrink-0 items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-white/70">製番検索</span>
               <button
                 type="button"
@@ -422,7 +422,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
                 詳細
               </button>
             </div>
-            <div className="flex gap-1.5">
+            <div className="flex shrink-0 gap-1.5">
               <input
                 value={dueAssist.searchInput}
                 onChange={(event) => dueAssist.setSearchInput(event.target.value)}
@@ -452,7 +452,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
                 登録
               </button>
             </div>
-            <div className="mt-2 flex max-h-28 flex-wrap gap-1 overflow-auto pr-1">
+            <div
+              className="mt-2 flex min-h-0 flex-1 flex-wrap content-start gap-1 overflow-y-auto overflow-x-hidden pr-1"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+              aria-label="登録済み製番"
+            >
               {dueAssist.sharedHistory.map((fseiban) => {
                 const active = dueAssist.selectedFseiban === fseiban;
                 return (
@@ -490,11 +494,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
                 );
               })}
             </div>
-            <div className="mt-2 text-[10px] text-white/60">
+            <div className="mt-2 shrink-0 text-[10px] text-white/60">
               選択中: <span className="font-mono text-white/90">{dueAssist.selectedFseiban ?? 'なし'}</span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs">
+          <div className="flex shrink-0 flex-wrap gap-2 text-xs">
             <button
               type="button"
               onClick={toggleGrinding}
@@ -520,7 +524,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               切削
             </button>
           </div>
-          <div className="flex flex-wrap gap-2 text-[10px] text-white/70">
+          <div className="flex shrink-0 flex-wrap gap-2 text-[10px] text-white/70">
             <span className="w-full text-[9px] uppercase tracking-wide text-white/45">表示</span>
             {(
               [
@@ -545,22 +549,22 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             ))}
           </div>
           {selectedResourceCategory ? (
-            <p className="text-[10px] text-white/45">検索: {selectedResourceCategory}</p>
+            <p className="shrink-0 text-[10px] text-white/45">検索: {selectedResourceCategory}</p>
           ) : null}
           <button
             type="button"
             onClick={() => setSlotModalOpen(true)}
-            className="rounded border border-white/25 bg-slate-800/80 px-2 py-1.5 text-left text-[11px] text-cyan-100 hover:bg-slate-800"
+            className="shrink-0 rounded border border-white/25 bg-slate-800/80 px-2 py-1.5 text-left text-[11px] text-cyan-100 hover:bg-slate-800"
           >
             資源スロット（{activeResourceCds.length}/{slotCount}）
           </button>
-          <p className="text-[10px] text-white/55">選択資源: {selectedResourceCd ?? '—'}</p>
+          <p className="shrink-0 text-[10px] text-white/55">選択資源: {selectedResourceCd ?? '—'}</p>
           {listIncomplete ? (
-            <p className="text-xs text-amber-200/90">
+            <p className="shrink-0 text-xs text-amber-200/90">
               一覧が1ページに収まっていません。一部の行が表示されないことがあります。
             </p>
           ) : null}
-          <div className="mt-auto text-[10px] text-white/40">
+          <div className="mt-auto shrink-0 text-[10px] text-white/40">
             順位は各行のドロップダウンで保存。「-」で納期順の自動並びへ。
           </div>
         </aside>

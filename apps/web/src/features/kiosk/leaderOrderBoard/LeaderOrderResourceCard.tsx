@@ -130,14 +130,9 @@ export function LeaderOrderResourceCard({
                     onChange={(nextValue) => onOrderChange(row, nextValue)}
                   />
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="min-w-0 truncate font-mono text-[11px] text-white/88">
-                      {row.fseiban || '—'}
+                    <span className="min-w-0 truncate font-mono text-[11px] text-white/88" title={row.fkojun.trim() || undefined}>
+                      {row.fkojun.trim() || '—'}
                     </span>
-                    {pres.quantityInlineJa ? (
-                      <span className="shrink-0 font-mono text-[11px] text-white/50 tabular-nums">
-                        {pres.quantityInlineJa}
-                      </span>
-                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -176,11 +171,20 @@ export function LeaderOrderResourceCard({
                     </button>
                   ) : null}
                 </div>
-                {pres.machinePartLine.length > 0 ? (
-                  <div className="text-white/80">{pres.machinePartLine}</div>
+                {pres.machinePartLine.length > 0 || pres.quantityInlineJa ? (
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-white/80">
+                    {pres.machinePartLine.length > 0 ? (
+                      <span className="min-w-0 break-words text-white/80">{pres.machinePartLine}</span>
+                    ) : null}
+                    {pres.quantityInlineJa ? (
+                      <span className="shrink-0 font-mono text-[11px] text-white/50 tabular-nums">
+                        {pres.quantityInlineJa}
+                      </span>
+                    ) : null}
+                  </div>
                 ) : null}
-                {pres.processPartNameLine.length > 0 ? (
-                  <div className="text-white/60">{pres.processPartNameLine}</div>
+                {pres.partNameLine.length > 0 ? (
+                  <div className="text-white/60">{pres.partNameLine}</div>
                 ) : null}
               </div>
             );
