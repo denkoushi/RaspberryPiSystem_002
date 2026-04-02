@@ -1,5 +1,8 @@
 import { resolveDisplayDueDate } from '../productionSchedule/plannedDueDisplay';
 
+import { resolveMachineTypeCodeFromRowData } from './resolveMachineTypeCodeFromRowData';
+import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
+
 import type { LeaderBoardRow } from './types';
 import type { ProductionScheduleRow } from '../../../api/client';
 
@@ -8,9 +11,16 @@ const strField = (data: Record<string, unknown>, key: string): string => {
   return typeof v === 'string' ? v.trim() : '';
 };
 
+const COMPLETED_PROGRESS = '完了';
+
 const parseProcessingOrder = (value: number | null | undefined): number | null => {
   if (value == null || Number.isNaN(value)) return null;
   return value;
+};
+
+const isRowCompleted = (data: Record<string, unknown>): boolean => {
+  const p = data.progress;
+  return typeof p === 'string' && p.trim() === COMPLETED_PROGRESS;
 };
 
 /**
@@ -28,6 +38,11 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
       : null;
   const displayDue = resolveDisplayDueDate(dueDate, plannedEnd);
 
+  const plannedQuantity =
+    typeof row.plannedQuantity === 'number' && Number.isFinite(row.plannedQuantity)
+      ? row.plannedQuantity
+      : null;
+
   return {
     id: row.id,
     resourceCd,
@@ -39,15 +54,23 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     fkojun: strField(data, 'FKOJUN'),
     fhincd: strField(data, 'FHINCD'),
     fhinmei: strField(data, 'FHINMEI'),
-    processingOrder: parseProcessingOrder(row.processingOrder)
+    machineName: '',
+    machineTypeCode: resolveMachineTypeCodeFromRowData(data),
+    plannedQuantity,
+    processingOrder: parseProcessingOrder(row.processingOrder),
+    isCompleted: isRowCompleted(data)
   };
 }
 
 export function normalizeLeaderBoardRows(rows: ProductionScheduleRow[]): LeaderBoardRow[] {
+  const seibanMachine = buildFseibanToMachineDisplayName(rows);
   const out: LeaderBoardRow[] = [];
   for (const row of rows) {
     const n = normalizeLeaderBoardRow(row);
-    if (n) out.push(n);
+    if (n) {
+      const machineName = seibanMachine.get(n.fseiban) ?? '';
+      out.push({ ...n, machineName });
+    }
   }
   return out;
 }

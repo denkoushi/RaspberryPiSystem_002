@@ -2152,9 +2152,18 @@ category: knowledge-base
 ### 仕様（要約）
 
 - **URL**: `/kiosk/production-schedule/leader-order-board`（キオスクヘッダー「順位ボード」から遷移）。
-- **目的**: リーダーが **表示用納期**（`plannedDueDisplay` 系・納期管理ページと同趣旨）で資源グループ内の順を把握し、確定時に既存の **手動順番 API**（`ProductionScheduleOrderAssignment`・`PUT .../order`）へ **clear→assign の 2 段**で反映する。
-- **境界**: ドメインロジックは `apps/web/src/features/kiosk/leaderOrderBoard/`（正規化・安定ソート・`applyResourceOrderReorder`・Vitest）。API 契約は新設せず既存 order 系を利用。
+- **目的**: リーダーが **表示用納期**（`plannedDueDisplay` 系・納期管理ページと同趣旨）で資源グループ内の順を把握し、**行単位**で既存の **手動順番 API**（`ProductionScheduleOrderAssignment`・`PUT .../order`）および **完了 API**（`PUT .../complete`）へ即時反映する（2026-04-02 拡張。**一括「納期順で反映」ボタンは廃止**）。
+- **境界**: ドメインロジックは `apps/web/src/features/kiosk/leaderOrderBoard/`（正規化・`sortLeaderBoardRowsForDisplay`・`filterLeaderBoardRowsByCompletion`・`mergeMachineNameFallback`・Vitest）。API 契約は新設せず既存 order / complete 系を利用。
 - **沉浸式**: `usesKioskImmersiveLayout` に `KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX` を含む（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md) と併読）。
+
+### 行アクション・機種名フォールバック（2026-04-02）
+
+- **完了**: 各行の ✓ ボタンで生産スケジュール画面と同様に完了／未完了を切替。表示上の完了は `rowData.progress === '完了'` と同期（`LeaderBoardRow.isCompleted`）。
+- **完了フィルタ**: 左端ドロワーに **両方 / 未完 / 完了**。**クライアント側のみ**で行一覧を絞り込み（API 変更なし）。
+- **資源内順位**: 各行のドロップダウンで `processingOrder`（1〜10、空き番のみ）を **変更したら即 PUT**。**`-`（空選択）** で手動順を解除し、**納期＋安定タイブレーク**の自動並びに戻す。表示ソートは **`processingOrder` ありを常に先**（同一資源内で手動番号昇順、未設定どうしは納期順）。
+- **機種名（MH/SH）**: スケジュール行だけでは `machineName` が空になりうるため、`GET .../history-progress` の `progressBySeiban` から **製番キー**で `machineName` を補完（`buildSeibanMachineNameMapFromProgressBySeiban` + `mergeMachineNameFallback`）。履歴側にも無い製番は空のまま。
+- **React Query**: 完了成功時は `kiosk-production-schedule-order-usage` に加え **`kiosk-production-schedule-due-management-manual-order-overview`** も invalidate（手動順番俯瞰と整合）。
+- **参照実装**: `ProductionScheduleLeaderOrderBoardPage.tsx`・`LeaderOrderResourceCard.tsx`・`LeaderOrderRowOrderSelect.tsx`・`useKioskProductionScheduleHistoryProgress`・`useKioskProductionScheduleOrderUsage`。
 
 ### デプロイ・実機検証（2026-04-01）
 
@@ -2170,7 +2179,17 @@ category: knowledge-base
 - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-01・Mac / Tailscale）。
 - **本番バンドル確認（任意）**: SPA の `index-*.js` は HTML 上 **`/assets/...`**（`/kiosk/assets/...` ではない）。`curl -sk https://<Pi5>/kiosk/` で `src` を確認のうえ、`curl -sk https://<Pi5>/assets/<hash>.js | grep -c leader-order-board` で新ルートが含まれることを確認できる。
 
+### デプロイ・実機検証（2026-04-02・行アクション）
+
+- **ブランチ**: `feat/kiosk-leader-order-board-row-actions`（機能コミット後、**ドキュメント＋`main` マージは本記録に続く PR**）。
+- **手順**: [deployment.md](../guides/deployment.md) の `scripts/update-all-clients.sh` **のみ**。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**。既定どおり）。
+- **先行デプロイ実績**: 会話セッション上、5 台順次デプロイ **`PLAY RECAP failed=0`** まで完走。**Detach Run ID** は GitHub Actions の Ansible ログ、または Pi5 の `logs/deploy/*.status.json` で確認（本 KB では固定 ID を省略）。
+- **自動実機検証（本セッション）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・Mac / Tailscale・デプロイ反映後の回帰）。
+- **手動（任意・UI）**: 実機/VNC で順位ボードを開き、**未完/完了フィルタ**・**✓ 完了切替**・**順位ドロップダウン（`-` で自動並び復帰）**・**MH/SH 機種名表示**を確認（Mac ブラウザのみだと自己署名でエラーになりうる → [KB-306](./frontend.md) と同趣旨）。
+
 ### トラブルシューティング
 
 - **デプロイが Pi5 で止まる / ローカルだけ未 push エラー**: `update-all-clients.sh` の fail-fast（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）、リモートロック二重起動（deployment.md 2026-03-29 追記）を参照。
 - **キオスクに新画面が出ない**: Pi5 のみ更新して Pi4 を更新していない、またはブラウザキャッシュ。**5 台すべて**順次更新後、kiosk-browser 再起動済みか Ansible ログの `kiosk-browser.service` を確認。
+- **順位ドロップダウンが選べない / 空**: 当該資源で **既に他行が 1〜10 を占有**していると、空き番＋現行値以外は選べない（生産スケジュールと同じ `order-usage` ルール）。**完了行**は順位変更を無効化。
+- **機種名がまだ空**: スケジュールと `history-progress` の両方に製番が無い、またはどちらも機種名フィールドが空。**データ側**の MH/SH 行・進捗同期を疑う（本 UI は補完のみ）。

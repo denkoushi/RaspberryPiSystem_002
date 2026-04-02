@@ -4,23 +4,52 @@ import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manu
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
+import { LeaderOrderRowOrderSelect } from './LeaderOrderRowOrderSelect';
+import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
+
 import type { LeaderBoardRow } from './types';
 
 type Props = {
   resourceCd: string;
+  /** resourceNameMap の names 部分のみ（横並び表示）。空なら非表示 */
+  resourceJapaneseNames?: string;
   rows: LeaderBoardRow[];
   selected: boolean;
   dimmed: boolean;
   onSelect: () => void;
+  /** 行納期編集（生産スケジュールと同契約の API へ） */
+  onOpenDueDatePicker?: (row: LeaderBoardRow) => void;
+  dueDatePending?: boolean;
+  orderUsageByResourceCd: Record<string, number[]> | undefined;
+  onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
+  onCompleteRow: (rowId: string) => void;
+  completePending: boolean;
+  orderPending: boolean;
 };
 
 /**
- * 資源CD単位カード。本文は約5件ぶんの高さでスクロール。
+ * 資源CD単位カード。グリッド行の高さに合わせて本文を伸ばし、一覧は縦スクロール。
  */
-export function LeaderOrderResourceCard({ resourceCd, rows, selected, dimmed, onSelect }: Props) {
+export function LeaderOrderResourceCard({
+  resourceCd,
+  resourceJapaneseNames,
+  rows,
+  selected,
+  dimmed,
+  onSelect,
+  onOpenDueDatePicker,
+  dueDatePending,
+  orderUsageByResourceCd,
+  onOrderChange,
+  onCompleteRow,
+  completePending,
+  orderPending
+}: Props) {
+  const jp = resourceJapaneseNames?.trim() ?? '';
+
   return (
-    <article
-      role="button"
+    <div
+      role="group"
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={(e) => {
@@ -30,19 +59,25 @@ export function LeaderOrderResourceCard({ resourceCd, rows, selected, dimmed, on
         }
       }}
       className={clsx(
-        'flex cursor-pointer flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60',
+        'flex h-full min-h-[14rem] cursor-pointer flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
         selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
       )}
-      aria-pressed={selected}
-      aria-label={`資源 ${resourceCd}`}
+      aria-label={
+        selected
+          ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（選択中）`
+          : `資源 ${resourceCd}${jp ? ` ${jp}` : ''}。Enter か Space で選択`
+      }
     >
-      <div className="mb-1.5 shrink-0 px-0.5 font-mono text-[15px] font-medium tracking-tight text-white/95">
-        {resourceCd}
+      <div className="mb-1.5 flex shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
+        <span className="font-mono text-[15px] font-medium tracking-tight text-white/95">{resourceCd}</span>
+        {jp.length > 0 ? (
+          <span className="min-w-0 break-words text-[12px] leading-snug text-white/78">{jp}</span>
+        ) : null}
       </div>
       <div
-        className="max-h-[268px] min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5"
+        className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {rows.length === 0 ? (
@@ -51,28 +86,74 @@ export function LeaderOrderResourceCard({ resourceCd, rows, selected, dimmed, on
           rows.map((row) => {
             const manual = isManualDueDateSet(row.dueDate);
             const dueLabel = formatDueDate(row.displayDue) || '—';
+            const pres = presentLeaderOrderRow(row);
             return (
-              <div key={row.id} className="rounded bg-slate-800/80 px-2 py-1.5 text-[11px]">
-                <div className="mb-0.5 flex justify-between gap-1.5">
-                  <span className="font-mono text-[11px] text-white/88">{row.fseiban || '—'}</span>
-                  <span
+              <div
+                key={row.id}
+                className={clsx(
+                  'rounded bg-slate-800/80 px-2 py-1.5 text-[11px]',
+                  row.isCompleted && 'opacity-50 grayscale'
+                )}
+              >
+                <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
                     className={clsx(
-                      'shrink-0 font-mono text-[10px]',
-                      manual ? 'font-medium text-amber-200' : 'text-cyan-300/90'
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] shadow hover:bg-white/5 disabled:opacity-60',
+                      row.isCompleted
+                        ? 'border-slate-400 bg-slate-800 text-white/80'
+                        : 'border-rose-400/90 bg-slate-900 text-rose-200'
                     )}
-                    title={manual ? '手動納期' : 'CSV補助など'}
+                    aria-label={row.isCompleted ? '未完了に戻す' : '完了にする'}
+                    disabled={completePending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCompleteRow(row.id);
+                    }}
+                  >
+                    ✓
+                  </button>
+                  <LeaderOrderRowOrderSelect
+                    resourceCd={resourceCd}
+                    currentOrder={row.processingOrder}
+                    usageByResourceCd={orderUsageByResourceCd}
+                    disabled={
+                      completePending || row.isCompleted || orderPending || Boolean(dueDatePending)
+                    }
+                    onChange={(nextValue) => onOrderChange(row, nextValue)}
+                  />
+                  <span className="min-w-0 flex-1 font-mono text-[11px] text-white/88">
+                    {row.fseiban || '—'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={!onOpenDueDatePicker || dueDatePending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenDueDatePicker?.(row);
+                    }}
+                    className={clsx(
+                      'shrink-0 rounded px-1 py-0 font-mono text-[10px] transition-colors',
+                      manual ? 'font-medium text-amber-200' : 'text-cyan-300/90',
+                      onOpenDueDatePicker && !dueDatePending ? 'hover:bg-white/10' : 'cursor-default opacity-70'
+                    )}
+                    title={manual ? '手動納期（タップで変更）' : '表示納期（タップで変更）'}
                   >
                     {dueLabel}
-                  </span>
+                  </button>
                 </div>
-                <div className="truncate text-white/55">
-                  {(row.fhinmei || '—') + (row.fkojun ? ` · 工順 ${row.fkojun}` : '')}
-                </div>
+                {pres.machinePartLine.length > 0 ? (
+                  <div className="text-white/80">{pres.machinePartLine}</div>
+                ) : null}
+                {pres.processPartNameLine.length > 0 ? (
+                  <div className="text-white/60">{pres.processPartNameLine}</div>
+                ) : null}
+                <div className="mt-0.5 text-white/50">個数 {pres.quantityLabel}</div>
               </div>
             );
           })
         )}
       </div>
-    </article>
+    </div>
   );
 }

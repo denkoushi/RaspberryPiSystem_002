@@ -10,5 +10,12 @@ export type LeaderBoardRow = {
   fkojun: string;
   fhincd: string;
   fhinmei: string;
+  /** MH/SH 行由来の機種表示名（部品行は同一製番から解決） */
+  machineName: string;
+  /** rowData の機種記号列（例: DAD3350）。`resolveMachineTypeCodeFromRowData` 参照 */
+  machineTypeCode: string;
+  plannedQuantity: number | null;
   processingOrder: number | null;
+  /** `rowData.progress === '完了'` と API 完了フラグの同期表示 */
+  isCompleted: boolean;
 };

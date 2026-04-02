@@ -42,6 +42,10 @@
 - **判断記録（類似候補）**: [ADR-20260330](./decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)（pgvector + 外部埋め込み HTTP、管理画面のみ候補表示） / [ADR-20260331](./decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)（VLM への条件付き GOOD 類似補助・**シャドーモード**先行）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-04-02）
+
+- **キオスク リーダー順位ボード: 行完了（✓）・資源内順位ドロップダウン即時保存・左ペイン完了フィルタ（クライアントのみ）・`history-progress` からの機種名フォールバック・一括納期反映ボタン廃止・本番5台順次デプロイ済み・Phase12 PASS 40・`main` マージ**: ブランチ `feat/kiosk-leader-order-board-row-actions`。Web（`leaderOrderBoard/*`・`useCompleteKioskProductionScheduleRow` の overview invalidate 追従）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・deploy 反映後）。**参照**: [KB-297 §行アクション](./knowledge-base/KB-297-kiosk-due-management-workflow.md#行アクション機種名フォールバック2026-04-02) / [verification-checklist.md](./guides/verification-checklist.md) §6.6.18 / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)（PR 番号はマージ後に追記）。
+
 ### 🆕 最新アップデート（2026-04-01）
 
 - **生産スケジュール／納期: 表示用納期フォールバック（`effectiveDueDate`・`effectiveDueDateSource`）・計画列 UI（指示数・着手日・手動納期強調）・本番5台順次デプロイ・Phase12 PASS 40・`main` マージ**: ブランチ `feat/kiosk-planned-fields-due-fallback-ui`。[PR #71](https://github.com/denkoushi/RaspberryPiSystem_002/pull/71)（merge `abb425b5`・2026-04-01）。API は `GET .../due-management/seiban/:fseiban` で実効日付とソースを返却。Web は `dueDate ?? plannedEndDate` 表示と手動モード二段ソート。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**；`seiban` 応答に `effectiveDueDate` 系が含まれることをスモーク。**Detach Run ID（実績）**: `20260401-201019-17368` / `20260401-201641-20955` / `20260401-202120-2571` / `20260401-202509-5371` / `20260401-202901-20217`。**参照**: [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#表示用納期-effectiveduedate計画列-ui2026-04-01) / [verification-checklist.md](./guides/verification-checklist.md) §6.6.17 / [deployment.md](./guides/deployment.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
