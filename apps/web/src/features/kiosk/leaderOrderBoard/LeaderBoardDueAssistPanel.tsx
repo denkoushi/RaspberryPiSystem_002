@@ -47,8 +47,10 @@ export function LeaderBoardDueAssistPanel({
   return (
     <aside
       className={clsx(
-        'fixed top-0 right-0 z-[70] flex h-full w-[min(52rem,92vw)] flex-col border-l border-white/15 bg-slate-900/95 shadow-2xl backdrop-blur-md transition-transform duration-200 ease-out',
-        isOpen ? 'translate-x-0' : 'pointer-events-none translate-x-full'
+        'flex h-full min-h-0 flex-col overflow-hidden bg-slate-900/95 shadow-2xl backdrop-blur-md transition-[max-width,width,opacity] duration-200 ease-out',
+        isOpen
+          ? 'w-[min(52rem,min(92vw,calc(100vw-5rem)))] shrink-0 border-l border-white/15 opacity-100'
+          : 'pointer-events-none w-0 max-w-0 shrink-0 border-0 opacity-0'
       )}
       aria-hidden={!isOpen}
       aria-label="製番納期アシスト"

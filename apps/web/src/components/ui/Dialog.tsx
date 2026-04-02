@@ -20,6 +20,8 @@ type DialogProps = PropsWithChildren<{
   initialFocusRef?: RefObject<HTMLElement>;
   size?: DialogSize;
   className?: string;
+  /** 未指定時は Tailwind `z-50`。キオスク左シートより手前に出す場合に数値指定（例: 80） */
+  overlayZIndex?: number;
 }>;
 
 const focusableSelector =
@@ -52,6 +54,7 @@ export function Dialog({
   initialFocusRef,
   size = 'md',
   className,
+  overlayZIndex,
   children
 }: DialogProps) {
   const titleId = useId();
@@ -150,7 +153,11 @@ export function Dialog({
   return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4"
+      className={clsx(
+        'fixed inset-0 flex items-start justify-center overflow-y-auto bg-black/60 p-4',
+        overlayZIndex == null ? 'z-50' : null
+      )}
+      style={overlayZIndex != null ? { zIndex: overlayZIndex } : undefined}
       onMouseDown={handleBackdropMouseDown}
       role="dialog"
       aria-modal="true"

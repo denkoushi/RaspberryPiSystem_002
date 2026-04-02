@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useKioskProductionSchedule,
@@ -32,8 +32,14 @@ import { useMutationFeedback } from '../../features/kiosk/productionSchedule/use
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
-import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../../hooks/kioskRevealUi';
-import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
+import {
+  KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK,
+  KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS
+} from '../../hooks/kioskRevealUi';
+import {
+  KIOSK_LEFT_EDGE_HOT_ZONE_PX,
+  useKioskLeftEdgeDrawerReveal
+} from '../../hooks/useKioskLeftEdgeDrawerReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 import type { ProductionScheduleRow } from '../../api/client';
@@ -203,8 +209,21 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [resourcesQuery.data]
   );
 
-  const drawerReveal = useKioskLeftEdgeDrawerReveal(true);
   const dueAssist = useLeaderBoardDueAssist();
+  const drawerReveal = useKioskLeftEdgeDrawerReveal(true, { keepOpen: dueAssist.isDetailOpen });
+  const leftToolStackOuterRef = useRef<HTMLDivElement | null>(null);
+  const [leftStackWidthPx, setLeftStackWidthPx] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = leftToolStackOuterRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setLeftStackWidthPx(Math.round(el.getBoundingClientRect().width));
+    });
+    ro.observe(el);
+    setLeftStackWidthPx(Math.round(el.getBoundingClientRect().width));
+    return () => ro.disconnect();
+  }, [dueAssist.isDetailOpen]);
   const [isSearchKeyboardOpen, setIsSearchKeyboardOpen] = useState(false);
   const [searchKeyboardValue, setSearchKeyboardValue] = useState('');
 
@@ -282,20 +301,25 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
       <div className="pointer-events-none fixed inset-y-0 left-0 z-50 flex">
         <div
-          className="pointer-events-auto w-[14px] shrink-0"
-          onMouseEnter={drawerReveal.onHotZoneEnter}
-          aria-hidden
-        />
-        <aside
+          ref={leftToolStackOuterRef}
           className={clsx(
-            'pointer-events-auto flex h-full w-64 max-w-[85vw] flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md',
+            'pointer-events-auto flex h-full max-h-full',
             KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS,
             drawerReveal.isVisible ? 'translate-x-0' : '-translate-x-full'
           )}
           onMouseEnter={drawerReveal.onDrawerMouseEnter}
           onMouseLeave={drawerReveal.onDrawerMouseLeave}
-          aria-label="操作パネル"
         >
+          <div
+            className="shrink-0"
+            style={{ width: KIOSK_LEFT_EDGE_HOT_ZONE_PX }}
+            onMouseEnter={drawerReveal.onHotZoneEnter}
+            aria-hidden
+          />
+          <aside
+            className="flex h-full w-64 max-w-[85vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md"
+            aria-label="操作パネル"
+          >
           <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
             工場
             <select
@@ -486,6 +510,18 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             順位は各行のドロップダウンで保存。「-」で納期順の自動並びへ。
           </div>
         </aside>
+        <LeaderBoardDueAssistPanel
+          isOpen={dueAssist.isDetailOpen}
+          selectedFseiban={dueAssist.selectedFseiban}
+          detail={dueAssist.detailQuery.data}
+          loading={dueAssist.detailQuery.isLoading}
+          error={dueAssist.detailQuery.isError}
+          dueUpdatePending={dueAssist.dueUpdatePending}
+          onClose={dueAssist.closeDetail}
+          onOpenSeibanDueDatePicker={dueAssist.openSeibanDueDatePicker}
+          onOpenProcessingDueDatePicker={dueAssist.openProcessingDueDatePicker}
+        />
+        </div>
       </div>
 
       <main
@@ -563,27 +599,18 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       />
       {dueAssist.isDetailOpen ? (
         <div
-          className="fixed inset-0 z-[65] bg-slate-950/45"
+          className="fixed top-0 right-0 bottom-0 z-40 bg-slate-950/45"
+          style={{ left: leftStackWidthPx }}
           onClick={dueAssist.closeDetail}
           aria-hidden
         />
       ) : null}
-      <LeaderBoardDueAssistPanel
-        isOpen={dueAssist.isDetailOpen}
-        selectedFseiban={dueAssist.selectedFseiban}
-        detail={dueAssist.detailQuery.data}
-        loading={dueAssist.detailQuery.isLoading}
-        error={dueAssist.detailQuery.isError}
-        dueUpdatePending={dueAssist.dueUpdatePending}
-        onClose={dueAssist.closeDetail}
-        onOpenSeibanDueDatePicker={dueAssist.openSeibanDueDatePicker}
-        onOpenProcessingDueDatePicker={dueAssist.openProcessingDueDatePicker}
-      />
       <KioskDatePickerModal
         isOpen={dueAssist.isDatePickerOpen}
         value={dueAssist.editingDueDate}
         onCancel={dueAssist.closeDatePicker}
         onCommit={(next) => void dueAssist.commitDueDate(next)}
+        overlayZIndex={KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK}
       />
       <KioskKeyboardModal
         isOpen={isSearchKeyboardOpen}

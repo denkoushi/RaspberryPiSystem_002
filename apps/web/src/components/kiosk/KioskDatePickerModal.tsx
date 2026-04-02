@@ -8,6 +8,8 @@ type KioskDatePickerModalProps = {
   value: string;
   onCancel: () => void;
   onCommit: (next: string) => void;
+  /** 親シートより前面に出すとき指定（例: 左2段スタック上の納期アシスト） */
+  overlayZIndex?: number;
 };
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
@@ -37,7 +39,8 @@ export function KioskDatePickerModal({
   isOpen,
   value,
   onCancel,
-  onCommit
+  onCommit,
+  overlayZIndex
 }: KioskDatePickerModalProps) {
   const today = useMemo(() => new Date(), []);
   const todayKey = toYmd(today);
@@ -92,6 +95,7 @@ export function KioskDatePickerModal({
       ariaLabel="納期日"
       size="md"
       initialFocusRef={closeButtonRef}
+      overlayZIndex={overlayZIndex}
     >
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-bold text-slate-900">納期日</h2>
