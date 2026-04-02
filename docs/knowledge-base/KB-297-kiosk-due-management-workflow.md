@@ -2211,11 +2211,21 @@ category: knowledge-base
   - **下段**: **`partNameLine`** — **品名（`fhinmei`）のみ**（工順は上段へ移したため、`fkojun · fhinmei` 連結表示は廃止）。
   - **個数**: 従来どおり `quantityInlineJa`。配置は **中段の補助**（`fseiban` を含む `machinePartLine` の横）へ寄せ、上段の幅競合を減らす。
 - **左ホーバー（製番検索カード）**: [`ProductionScheduleLeaderOrderBoardPage`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の `aside` に **`min-h-0`**、製番検索ブロックを **`flex-1 flex-col`**、登録済み一覧を **`min-h-0 flex-1 overflow-y-auto`** にし、旧 `max-h-28` 固定上限を撤去。下方の説明文・操作ボタンは **`shrink-0`**。
-- **実装ブランチ（ローカル作業）**: `feat/leaderboard-card-and-hover-layout`。
-- **検証（開発者ローカル）**: `pnpm --filter @raspi-system/web lint` / `pnpm --filter @raspi-system/web test -- leaderOrderRowPresentation` / `pnpm --filter @raspi-system/web build`。実機は長い製番・登録チップ多数で左パネル縦伸びと子行可読性を目視。
+- **実装ブランチ**: `feat/leaderboard-card-and-hover-layout`。
+- **本番デプロイ・実機検証（2026-04-03）**:
+  - **手順**: [deployment.md](../guides/deployment.md) の `scripts/update-all-clients.sh` **のみ**。**`RASPI_SERVER_HOST`**（例: `100.106.158.2`）・**`--detach --follow`**。**対象**: **`raspberrypi5` → Pi4 キオスク 4 台**（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）を **`--limit` 1 台ずつ**・**前段のリモート実行が成功してから次**。**Pi3 は対象外**（キオスク Web のみの変更。Pi3 が必要な変更では [deployment.md の Pi3 節](../guides/deployment.md) に従う）。
+  - **Detach Run ID（実績）**: `20260403-073232-5264`（`raspberrypi5`）/ `20260403-073742-21502`（`raspberrypi4`）/ `20260403-074155-24422`（`raspi4-robodrill01`）/ `20260403-074502-2900`（`raspi4-fjv60-80`）/ `20260403-074901-19118`（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0`**。Pi4 各ラウンドの後段プレイは **Pi3 signage で `no hosts matched`**（意図どおり）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-03・Mac / Tailscale・実測 **約 25s**。チェック項目数は従来どおり）。
+- **検証（開発者ローカル）**: `pnpm --filter @raspi-system/web lint` / `pnpm --filter @raspi-system/web test -- leaderOrderRowPresentation` / `pnpm --filter @raspi-system/web build`。
+- **知見**:
+  - **対象ホストを限定**し **1 本のシェルで順次** `&&` 連結すると、[deployment.md](../guides/deployment.md) の **Mac 側・Pi5 側の `update-all-clients` 排他ロック**と整合しやすい（**同一 Pi5 への並列起動はエラー**）。
+  - **Pi5 を先に**載せ替えると、ブラウザが取りに行く **SPA/API** が先に更新される。続く Pi4 デプロイでは **`Git: changed`** と **kiosk-browser 再起動**が中心で、Pi4 側 **`Docker restart summary: []`** になりうる（サーバ側に Docker が無いため）。
 - **トラブルシューティング**:
   - **ProductNo が見えなくなった**: 順位ボード子行では仕様どおり非表示。必要なら生産スケジュール本体一覧で確認する。
   - **工順が見切れる**: 上段は幅競合のため `truncate` 許容。ホバーで `title` 全文。
+  - **左の登録チップがまだ低い窓のまま／子行が旧レイアウト**: **未反映 Pi4**・Pi5 **web イメージ**・ブランチ取り違えを疑う。`deploy-status`（各 `x-client-key`）と **`verify-phase12-real.sh`** で全体が健康なことを確認したうえ、[デプロイ・実機検証（2026-04-01）](#デプロイ実機検証2026-04-01) の **バンドル `curl` 手順**で `leader-order-board` が新バンドルに含まれるかを見る。
+  - **Phase12 のみ失敗・Pi5 ping 失敗**: [KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)（Tailscale 遅延時の ICMP）。`verify-phase12-real.sh` の **再試行**後に再実行。
+- **手動（任意・Pi4 / VNC）**: 長い製番・登録チップが多い状態で、左パネルが **下方まで伸びる**こと、子行が **上段＝工順・中段＝製番行・下段＝品名**になっていることを目視。
 
 ### デプロイ・実機検証（2026-04-01）
 

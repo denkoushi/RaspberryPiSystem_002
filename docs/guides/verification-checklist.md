@@ -741,6 +741,17 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/kiosk-leader-board-shared-history-notes-machine-names` 本番5台反映後・Mac / Tailscale・約 **54s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
+**6.6.21 キオスク リーダー順位ボード（子行レイアウト・製番優先・左ホーバー登録製番パネル）**
+
+**確認ポイント**（[KB-297 §child row layout](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-child-row-layout--registered-seiban-panel-2026-04-02)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0**（**項目数は増えない**。API 契約変更なし）。
+- [ ] **手動（任意・Pi4 / VNC）**: `/kiosk/production-schedule/leader-order-board` で子行が **上段＝完了・順位・工順（`fkojun`）・納期・備考**、**中段＝製番を含む機種・品目行**、**下段＝品名のみ**になっていること。**製造 order 相当の `productNo` は子行に出ない**こと。左ホーバーで **登録済み製番チップ一覧**が **パネル下方の余白まで使え**、極端に早い内部スクロールだけが主因でないこと。
+- [ ] **トラブルシュート**: 表示が旧仕様のまま → **Pi5 Web** 未更新・**対象 Pi4 未デプロイ**・キャッシュ。`deploy-status` と Phase12、`KB-297` の **バンドル確認**を参照。
+
+**検証日時**: 2026-04-03（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/leaderboard-card-and-hover-layout` を **Pi5 → Pi4×4** のみ順次反映後・Mac / Tailscale・約 **25s**）
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**
