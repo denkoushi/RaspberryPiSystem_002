@@ -38,13 +38,19 @@ describe('presentLeaderOrderRow', () => {
     expect(p.machinePartLine).toBe('P99');
   });
 
+  it('normalizes machine name to half-width uppercase like other kiosk pages', () => {
+    const p = presentLeaderOrderRow({ ...base(), machineName: '  abcｘｙｚ  ' });
+    expect(p.machinePartLine).toBe('ABCXYZ · P99 · MH001');
+  });
+
   it('process line uses kojun dot part name without labels', () => {
     const p = presentLeaderOrderRow(base());
     expect(p.processPartNameLine).toBe('10 · 部品A');
   });
 
-  it('formats quantity', () => {
-    expect(presentLeaderOrderRow(base()).quantityLabel).toBe('3');
-    expect(presentLeaderOrderRow({ ...base(), plannedQuantity: null }).quantityLabel).toBe('-');
+  it('formats quantity inline Japanese suffix', () => {
+    expect(presentLeaderOrderRow(base()).quantityInlineJa).toBe('3個');
+    expect(presentLeaderOrderRow({ ...base(), plannedQuantity: null }).quantityInlineJa).toBeNull();
+    expect(presentLeaderOrderRow({ ...base(), plannedQuantity: -1 }).quantityInlineJa).toBe('-1個');
   });
 });

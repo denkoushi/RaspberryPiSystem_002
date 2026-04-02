@@ -59,7 +59,7 @@ export function LeaderOrderResourceCard({
         }
       }}
       className={clsx(
-        'flex h-full min-h-[14rem] cursor-pointer flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60',
+        'flex h-full min-h-[12rem] cursor-pointer flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
         selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
@@ -77,7 +77,7 @@ export function LeaderOrderResourceCard({
         ) : null}
       </div>
       <div
-        className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5"
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden pr-0.5"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {rows.length === 0 ? (
@@ -91,7 +91,7 @@ export function LeaderOrderResourceCard({
               <div
                 key={row.id}
                 className={clsx(
-                  'rounded bg-slate-800/80 px-2 py-1.5 text-[11px]',
+                  'rounded bg-slate-800/80 px-2 py-1 text-[11px]',
                   row.isCompleted && 'opacity-50 grayscale'
                 )}
               >
@@ -122,9 +122,16 @@ export function LeaderOrderResourceCard({
                     }
                     onChange={(nextValue) => onOrderChange(row, nextValue)}
                   />
-                  <span className="min-w-0 flex-1 font-mono text-[11px] text-white/88">
-                    {row.fseiban || '—'}
-                  </span>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="min-w-0 truncate font-mono text-[11px] text-white/88">
+                      {row.fseiban || '—'}
+                    </span>
+                    {pres.quantityInlineJa ? (
+                      <span className="shrink-0 font-mono text-[11px] text-white/50 tabular-nums">
+                        {pres.quantityInlineJa}
+                      </span>
+                    ) : null}
+                  </div>
                   <button
                     type="button"
                     disabled={!onOpenDueDatePicker || dueDatePending}
@@ -148,7 +155,6 @@ export function LeaderOrderResourceCard({
                 {pres.processPartNameLine.length > 0 ? (
                   <div className="text-white/60">{pres.processPartNameLine}</div>
                 ) : null}
-                <div className="mt-0.5 text-white/50">個数 {pres.quantityLabel}</div>
               </div>
             );
           })

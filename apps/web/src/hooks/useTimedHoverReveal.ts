@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export const TIMED_HOVER_REVEAL_CLOSE_DELAY_MS = 320;
+import { KIOSK_REVEAL_CLOSE_DELAY_MS } from './kioskRevealUi';
+
+/** 既存インポート向け。`KIOSK_REVEAL_CLOSE_DELAY_MS` と常に同一。 */
+export const TIMED_HOVER_REVEAL_CLOSE_DELAY_MS = KIOSK_REVEAL_CLOSE_DELAY_MS;
 
 export type TimedHoverRevealHandlers = {
   isVisible: boolean;
@@ -38,7 +41,7 @@ export function useTimedHoverReveal(enabled: boolean): TimedHoverRevealInternal 
     closeTimerRef.current = setTimeout(() => {
       closeTimerRef.current = null;
       setIsVisible(false);
-    }, TIMED_HOVER_REVEAL_CLOSE_DELAY_MS);
+    }, KIOSK_REVEAL_CLOSE_DELAY_MS);
   }, [clearCloseTimer]);
 
   useEffect(() => {

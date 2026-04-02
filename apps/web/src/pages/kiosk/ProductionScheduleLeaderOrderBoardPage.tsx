@@ -29,6 +29,7 @@ import { useMutationFeedback } from '../../features/kiosk/productionSchedule/use
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
+import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../../hooks/kioskRevealUi';
 import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
@@ -259,7 +260,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         />
         <aside
           className={clsx(
-            'pointer-events-auto flex h-full w-64 max-w-[85vw] flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md transition-transform duration-200 ease-out',
+            'pointer-events-auto flex h-full w-64 max-w-[85vw] flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md',
+            KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS,
             drawerReveal.isVisible ? 'translate-x-0' : '-translate-x-full'
           )}
           onMouseEnter={drawerReveal.onDrawerMouseEnter}

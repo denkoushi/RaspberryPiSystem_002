@@ -1,4 +1,5 @@
-import { formatPlannedQuantityLabel } from '../productionSchedule/plannedDueDisplay';
+import { normalizeMachineName } from '../productionSchedule/machineName';
+import { formatPlannedQuantityInlineJa } from '../productionSchedule/plannedDueDisplay';
 
 import type { LeaderBoardRow } from './types';
 
@@ -7,7 +8,8 @@ export type LeaderOrderRowPresentation = {
   machinePartLine: string;
   /** 工順ラベルなし: `fkojun · fhinmei`（空は省略して中点だけにならないよう結合） */
   processPartNameLine: string;
-  quantityLabel: string;
+  /** FSEIBAN 横インライン用（例 `3個`）。無ければ null */
+  quantityInlineJa: string | null;
 };
 
 const joinMiddleDot = (parts: string[]): string =>
@@ -20,9 +22,10 @@ const joinMiddleDot = (parts: string[]): string =>
  * 子カード1行ぶんの表示用テキスト（ラベル語なし）。
  */
 export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresentation {
+  const machineNameNormalized = normalizeMachineName(row.machineName);
   const machinePartLine = joinMiddleDot([
     row.machineTypeCode,
-    row.machineName,
+    machineNameNormalized,
     row.productNo,
     row.fhincd.length > 0 ? row.fhincd : ''
   ]);
@@ -39,6 +42,6 @@ export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresen
   return {
     machinePartLine,
     processPartNameLine,
-    quantityLabel: formatPlannedQuantityLabel(row.plannedQuantity)
+    quantityInlineJa: formatPlannedQuantityInlineJa(row.plannedQuantity)
   };
 }

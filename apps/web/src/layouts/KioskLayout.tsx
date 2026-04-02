@@ -9,6 +9,7 @@ import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScre
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
 import { usesKioskImmersiveLayout } from '../features/kiosk/kioskImmersiveLayoutPolicy';
+import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../hooks/kioskRevealUi';
 import { useKioskTopEdgeHeaderReveal } from '../hooks/useKioskTopEdgeHeaderReveal';
 
 export function KioskLayout() {
@@ -60,7 +61,7 @@ export function KioskLayout() {
         className={clsx(
           'border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur',
           immersiveKioskLayout &&
-            'fixed top-0 right-0 left-0 z-50 shadow-lg transition-transform duration-200 ease-out',
+            clsx('fixed top-0 right-0 left-0 z-50 shadow-lg', KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS),
           immersiveKioskLayout && !headerReveal.isVisible && '-translate-y-full',
           immersiveKioskLayout && headerReveal.isVisible && 'translate-y-0'
         )}

@@ -4,6 +4,14 @@ export function formatPlannedQuantityLabel(value: number | null | undefined): st
   return String(value);
 }
 
+/**
+ * 順位ボード子行インライン用（例: `3個`）。欠損・NaN は非表示にするため null。
+ */
+export function formatPlannedQuantityInlineJa(value: number | null | undefined): string | null {
+  if (value == null || Number.isNaN(value)) return null;
+  return `${value}個`;
+}
+
 /** CSV着手日 / 完了日の表示（API は ISO 文字列想定） */
 export function formatPlannedDateLabel(value: string | null | undefined): string {
   if (value == null || String(value).trim().length === 0) return '-';
