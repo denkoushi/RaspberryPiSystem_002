@@ -2182,6 +2182,23 @@ category: knowledge-base
   - **別のキオスクで順位占有表示が数秒〜数十秒古い**: fast path は意図的に invalidate しない。最大でも **ポーリング間隔**（schedule 30s / usage 15s 等）までの差は起こりうる。即時全体整合が必要なら **生産スケジュール本体**で同操作すると `default` policy で再取得される。
   - **順位 PUT が失敗したのに一覧だけ楽観更新された**: onError でロールバックする設計。継続する場合はネットワークログと API 応答を確認。
 
+### UX polish: leader order board (2026-04-02)
+
+- **目的**: 順位ボード子行の **読みやすさ**（個数表記・機種名整合）と **沉浸式 UI の操作性**（ヘッダー／左ドロワー／ホバー開閉系の反応速度）。**Web のみ**・API 契約不変。
+- **仕様**:
+  - **個数**: `formatPlannedQuantityInlineJa`（[`plannedDueDisplay.ts`](../../apps/web/src/features/kiosk/productionSchedule/plannedDueDisplay.ts)）で **`n個`**。欠損・NaN は **非表示**（FSEIBAN 横に出さない）。納期管理テーブル等の **`formatPlannedQuantityLabel`（数値のみ）は変更しない**。
+  - **配置**: [`LeaderOrderResourceCard.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx) で FSEIBAN 右横に個数、子行の縦余白を軽く詰め、資源カード `min-h` を一段下げ（`12rem`）。
+  - **機種名**: [`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts) で **`machineName` のみ** [`normalizeMachineName`](../../apps/web/src/features/kiosk/productionSchedule/machineName.ts)（他キオスク画面と同趣旨の半角大文字化）。`machineTypeCode` / `productNo` / `fhincd` は従来どおり。
+  - **開閉スピード**: [`kioskRevealUi.ts`](../../apps/web/src/hooks/kioskRevealUi.ts) に **`KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS`**（`duration-100`）と **`KIOSK_REVEAL_CLOSE_DELAY_MS`（200）** を集約。[`KioskLayout.tsx`](../../apps/web/src/layouts/KioskLayout.tsx) の沉浸式ヘッダー・[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の左ドロワーが同一 transition を参照。[`useTimedHoverReveal`](../../apps/web/src/hooks/useTimedHoverReveal.ts) の遅延閉じも同一定数。**トレードオフ**: `useTimedHoverReveal` を使う **手動順番下ペイン・要領書ツールバー・生産スケジュール検索帯** 等も **同じ閉じ待ち**になり、全体的に速く感じる／誤閉じが増えたら `kioskRevealUi.ts` の定数だけ調整する。
+- **デプロイ・実機検証（2026-04-02）**:
+  - **ブランチ**: `feat/kiosk-leader-order-board-ux-polish`。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（Mac / Tailscale・本セッション）。
+- **知見**: 表示の一貫性は **`normalizeMachineName` の適用範囲**（今回は機種名フィールドのみ）で調整。開閉は **1 モジュールの定数**に寄せると沉浸式とホバーツールバーが同期し運用判断がしやすい。
+- **トラブルシューティング**:
+  - **個数が出ない**: `plannedQuantity` が null の行では仕様どおり非表示。CSV 補助・API の `plannedQuantity` を疑う。
+  - **バーが閉じすぎる**: `KIOSK_REVEAL_CLOSE_DELAY_MS` を 200→280ms 程度へ、`duration-100` を `duration-150` へ、など **単一定数**で緩める。
+
 ### デプロイ・実機検証（2026-04-01）
 
 - **ブランチ**: `feat/kiosk-leader-order-board`（コミット例: `d887af88`）。

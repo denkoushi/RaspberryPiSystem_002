@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-04-02) **キオスク リーダー順位ボード: UX polish（子行「n個」・機種名正規化・沉浸式／ホバー開閉の transition／閉じ遅延集約）・本番5台順次デプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/kiosk-leader-order-board-ux-polish`。Web のみ（`plannedDueDisplay`・`LeaderOrderResourceCard`・`presentLeaderOrderRow`・`kioskRevealUi`・`useTimedHoverReveal`）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02）。**仕様・知見・TS**: [KB-297 §UX polish](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02)。**ドキュメント**: [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.18 / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md)。**`main` マージ**: 本セッションで `merge` + `push`（マージ後 GitHub Actions 確認）。
 - [x] (2026-04-02) **キオスク リーダー順位ボード: 順位変更 React Query fast path（`leaderBoardFastPath`）・本番5台順次デプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/kiosk-leader-order-board-order-cache-fast-path`。Web のみ（`useUpdateKioskProductionScheduleOrder` の `cachePolicy`・`features/kiosk/productionSchedule/cache/*`・`ProductionScheduleLeaderOrderBoardPage` で fast path 指定）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02）。**仕様・知見・TS**: [KB-297 §順位変更キャッシュ高速化](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#順位変更キャッシュ高速化leaderboardfastpath2026-04-02)。**ドキュメント**: [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.18 / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md)。**`main` マージ**: 本セッションで `main` へ統合（`merge` + `push` 後 GitHub Actions 確認）。
 - [x] (2026-04-02) **キオスク リーダー順位ボード（行完了・順位ドロップダウン・完了フィルタ・機種名フォールバック）・本番5台順次デプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/kiosk-leader-order-board-row-actions`。Web（`leaderOrderBoard/*`・`ProductionScheduleLeaderOrderBoardPage`・完了時 `manual-order-overview` query invalidate）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh` のみ。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・deploy 反映後）。**仕様**: 一括「納期順で反映」削除、`-` で手動順解除、`history-progress` による `machineName` 補完。**ドキュメント**: [KB-297 §行アクション](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#行アクション機種名フォールバック2026-04-02) / [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.18 / [docs/INDEX.md](./docs/INDEX.md) / [knowledge-base/index.md](./docs/knowledge-base/index.md)。**`main` マージ**: GitHub PR 経由（マージ後 CI 確認・PR URL を本項へ追記）。
 - [x] (2026-04-01) **キオスク リーダー順位ボード（納期ベース整列・手動順 order API）・本番5台順次デプロイ・Phase12 実機検証・ドキュメント・`main` マージ**: ブランチ `feat/kiosk-leader-order-board`。Web のみ（`ProductionScheduleLeaderOrderBoardPage`・`features/kiosk/leaderOrderBoard`・ヘッダー「順位ボード」・沉浸式 allowlist）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh` のみ。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**・**`RASPI_SERVER_HOST`**・**`--detach --follow`**（**Pi3 除外**）。Detach Run ID: `20260401-222838-29421` / `20260401-223309-3294` / `20260401-223736-22496` / `20260401-224101-487` / `20260401-224506-23932`（各 `failed=0`）。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-01）。本番 JS は **`/assets/index-*.js`**（`/kiosk/assets/` ではない）で配信。**ドキュメント**: [KB-297](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md)（リーダー順位ボード節）/ [docs/INDEX.md](./docs/INDEX.md) / [design-previews/README.md](./docs/design-previews/README.md)。**`main` マージ**: 本セッションでローカル `merge` + `push`（マージ後 CI を確認）。
@@ -1717,6 +1718,18 @@
 
 ## Next Steps（将来のタスク）
 
+### キオスク リーダー順位ボード: UX polish / `kioskRevealUi` 運用フォロー（2026-04-02）
+
+**概要**: `feat/kiosk-leader-order-board-ux-polish` を **`main` 反映**後も Phase12 基準は **PASS 40 / WARN 0 / FAIL 0**。[KB-297 §UX polish](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02) を正とする。`useTimedHoverReveal` を共有する画面では **閉じ待ちが一律**—誤閉じや速さの不満は **`kioskRevealUi.ts` の定数**（`KIOSK_REVEAL_CLOSE_DELAY_MS`・`KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS`）だけで調整するのが運用原則。
+
+**候補タスク**:
+
+1. **現場目視（推奨・Pi4）**: `/kiosk/production-schedule/leader-order-board` で子行 **FSEIBAN 横の「◯個」**・機種名の **半角大文字**。沉浸式 **上端／左ドロワー**と（比較あれば）**手動順番下ペイン・要領書ツールバー等**のホバー開閉速度。
+2. **トラブルシュート**: バーが閉じすぎる → 遅延 ms や `duration-*` を **単一モジュール**で緩める（KB-297 記載）。
+3. **回帰**: `kioskRevealUi` / `useTimedHoverReveal` まわりの PR では **他キオスク画面の体感**もセットで確認し、Phase12 **40 基準**を維持。
+
+**参照**: [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.18
+
 ### キオスク リーダー順位ボード: `leaderBoardFastPath` 運用フォロー（2026-04-02）
 
 **概要**: `feat/kiosk-leader-order-board-order-cache-fast-path` を **`main` 反映**後も Phase12 基準は **PASS 40 / WARN 0 / FAIL 0**。[KB-297 §順位変更キャッシュ高速化](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#順位変更キャッシュ高速化leaderboardfastpath2026-04-02) を正とする。
@@ -2879,6 +2892,7 @@
 **詳細**: [docs/knowledge-base/frontend.md#kb-267](./docs/knowledge-base/frontend.md#kb-267-吊具持出画面に吊具情報表示を追加) / [docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
 
 ---
+変更履歴: 2026-04-02（2回目） — リーダー順位ボード **UX polish**（子行「n個」・`machineName` のみ `normalizeMachineName`・`kioskRevealUi`・`useTimedHoverReveal`、実機 Phase12 **40/0/0**・本番5台デプロイ済）を [KB-297 §UX polish](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02) / verification-checklist §6.6.18 / INDEX / knowledge-base index / Progress / Next Steps に反映。`feat/kiosk-leader-order-board-ux-polish` を `main` へ統合（push 後 CI 確認）。
 変更履歴: 2026-04-02 — リーダー順位ボード **順位変更 `leaderBoardFastPath`**（実機 Phase12 **40/0/0**・本番5台デプロイ済）を KB-297 / verification-checklist §6.6.18 / INDEX / knowledge-base index / Progress / Next Steps に反映。`feat/kiosk-leader-order-board-order-cache-fast-path` を `main` へ統合（push 後 CI 確認）。
 変更履歴: 2026-03-30（LocalLLM オンデマンド本番有効化） — Pi5 `on_demand` + Ubuntu `control-server.mjs` / sidecar nginx `38081` 統合後、`/start` `/stop` **200**・ComfyUI 生成 OK・アイドル時 `llama-server` 不在を確認。Progress / Surprises / Decision Log / Next Steps / LocalLLM runbook / KB-317 / KB-319 / verification-checklist 6.6.12 / `docs/INDEX.md` / knowledge-base index を更新。`main` へ統合（push 後 GitHub Actions 確認）。
 変更履歴: 2026-03-30（部品測定 visual） — `feat/part-measurement-visual-template` の本番順次デプロイ後 `./scripts/deploy/verify-phase12-real.sh` **PASS 37/0/0**（約 117s）、Progress / Next Steps / KB-320 / runbook / verification-checklist 6.6.9 / ADR-20260330 Verification / `docs/INDEX.md` を更新。`main` へマージ（マージ後 CI 確認）。
