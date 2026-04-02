@@ -199,6 +199,18 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **ゲート**: 収束ラベル `L` について `BTRIM("canonicalLabel") = L` の行数が **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`（既定 5）** 以上のときのみ、**2 回目を実行し**かつ assisted を保存候補にする。未満のとき **アクティブのみ ON なら 2 回目を呼ばず** 1 回目のみ（負荷抑制）。`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` のときはゲート不通過でも **従来どおり 2 回目をログ用に実行**し、保存は 1 回目のまま。
 - **参照**: [ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)
 
+#### 実機確認（アクティブ補助ゲート・Pi5 のみ・2026-04-02）
+
+- **CONFIRMED**: ブランチ `feat/photo-tool-label-assist-active-gate`。本番反映は **Pi5 のみ**（[deployment.md](../guides/deployment.md) の `update-all-clients.sh` + **`--limit raspberrypi5`** + **`--detach --follow`**）。Pi4/Pi3 は **`no hosts matched`**。対象 PLAY は **`failed=0`**。
+- **CONFIRMED**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*` は **既定 false**。有効化しない限り、本番の表示・1 回目 VLM 保存は従来と整合（アクティブ保存は **オプトイン**）。
+- **CONFIRMED**: Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（約 51s・Pi5 `100.106.158.2`）。未認証 `photo-similar-candidates`・`photo-gallery-seed` 等の既存スモークを含む。
+
+##### Troubleshooting（開発・型）
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| `PhotoToolLabelAssistDecision` 追加直後に tsc / Vitest が落ちる | `convergedCanonicalLabel` を足したが、`too_few_neighbors` 等の早期 return で **フィールド欠落** | 各分岐で `convergedCanonicalLabel: null`（または収束時は文字列）を **必ず**返す |
+
 #### 実機確認（デプロイ後・2026-03-29）
 
 - **CONFIRMED**: ブランチ `feat/photo-tool-label-good-assist-shadow` を Pi5→Pi4×4 のみ順次デプロイ（`docs/guides/deployment.md`・各回 `failed=0`）。Pi3 は今回対象外。

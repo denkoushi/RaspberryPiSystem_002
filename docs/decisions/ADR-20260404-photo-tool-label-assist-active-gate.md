@@ -28,6 +28,11 @@ date: 2026-04-02
 - **良い**: ラベルごとに教師が育つにつれ、アクティブ保存が自然に広がる。既定 OFF で既存挙動を壊さない。
 - **悪い / 注意**: 教師汚染（誤 GOOD）は従来どおりリスク。ログに `galleryRowCount` / `activePersistEligible` / `activePersistApplied` を出し観測する。
 
+## Verification
+
+- **2026-04-02（Mac / Tailscale）**: ブランチ `feat/photo-tool-label-assist-active-gate` を Pi5 のみ（`update-all-clients.sh` + `--limit raspberrypi5` + `--detach --follow`）反映後、`./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（約 51s）。
+- **既定**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED` は **false** のため、上記回帰は **アクティブ保存を有効化していない**状態での総合確認。アクティブ ON 後はログ（`activePersistApplied` 等）で採用有無を追う。
+
 ## References
 
 - [ADR-20260331](./ADR-20260331-photo-tool-label-good-assist-shadow.md)

@@ -577,13 +577,14 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 
 **6.6.8 写真持出 VLM・GOOD 類似シャドー補助（任意・ログ）**
 
-**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「VLM シャドー補助」節、[ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）:
+**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「VLM シャドー補助」節、[ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)、**アクティブ保存ゲート** [ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)）:
 
-- [ ] **既定（シャドー OFF）**でも Phase12 回帰・キオスク表示が壊れていない（`verify-phase12-real.sh`）
+- [ ] **既定（シャドー OFF・アクティブ OFF）**でも Phase12 回帰・キオスク表示が壊れていない（`verify-phase12-real.sh`）
 - [ ] シャドーを **意図的に ON** した環境で、API ログに `Photo tool label shadow assist inference completed` または `skipped`（debug）が期待どおり出るか
 - [ ] ON 時も `Loan.photoToolDisplayName` が **1 回目 VLM のみ**で更新され、キオスク1行目が従来優先順（人 > VLM > `撮影mode`）のままか
+- [ ] （任意）`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true` を入れた環境では、ログの `galleryRowCount` / `activePersistEligible` / `activePersistApplied` とゲート通過時のみ本番保存が期待どおりか（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「アクティブ補助」節）
 
-**検証日時**: 2026-03-29（**シャドー OFF** のまま `verify-phase12-real.sh` **PASS 34/0/0**・未認証 candidates **401** を確認。シャドー ON のログ評価は `PHOTO_TOOL_*` 有効化後に実施）
+**検証日時**: 2026-04-02（**シャドー／アクティブとも既定 OFF** の本番相当で `verify-phase12-real.sh` **PASS 40/0/0**・未認証 candidates **401** 等を確認。ブランチ `feat/photo-tool-label-assist-active-gate`・Pi5 のみデプロイ後・Mac / Tailscale）。2026-03-29 追記: **シャドー OFF** のみ **PASS 34/0/0**
 **検証結果**: ☑ 成功（回帰・認可） ☐ 失敗（エラー内容: _______________）
 
 **6.6.9 キオスク部品測定（`part-measurement`）**
