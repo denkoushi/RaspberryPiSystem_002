@@ -2224,9 +2224,9 @@ category: knowledge-base
 - **自動実機検証（本セッション）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・Mac / Tailscale・デプロイ反映後の回帰）。
 - **手動（任意・UI）**: 実機/VNC で順位ボードを開き、**未完/完了フィルタ**・**✓ 完了切替**・**順位ドロップダウン（`-` で自動並び復帰）**・**MH/SH 機種名表示**を確認（Mac ブラウザのみだと自己署名でエラーになりうる → [KB-306](./frontend.md) と同趣旨）。
 
-### 順位ボード 納期アシスト（製番検索・右スライドイン詳細、2026-04-02）
+### 順位ボード 納期アシスト（製番検索・詳細シート、2026-04-02）
 
-- **目的**: 順位ボード上で **製番（`fseiban`）を検索**し、**共有検索履歴**（既存 `kiosk-production-schedule-search-history`）を更新しつつ、**右ペイン**で **部品一覧（最小列）** と **製番全体納期 / 処理区分別納期** を確認・更新する（案 A: 左検索・右詳細）。
+- **目的**: 順位ボード上で **製番（`fseiban`）を検索**し、**共有検索履歴**（既存 `kiosk-production-schedule-search-history`）を更新しつつ、**詳細シート**で **部品一覧（最小列）** と **製番全体納期 / 処理区分別納期** を確認・更新する。**初期実装**は **右 `fixed` ペイン**だったが、**カレンダー（Dialog）の z-index** と **第1列↔第2列の `mouseLeave`** による誤閉じを避けるため、**左2段スタック**へ **追補**（下節）。
 - **境界**: Web のみ。`useLeaderBoardDueAssist`（[`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)）が **履歴 mutation・詳細 query・納期 mutation・日付モーダル**を束ね、`LeaderBoardDueAssistPanel`（[`LeaderBoardDueAssistPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel.tsx)）が UI。既存 API（`GET .../due-management/seiban/:fseiban`、`PUT` 納期系、検索履歴更新）を利用。**新設 HTTP 契約なし**。
 - **操作**: 左ドロワーで製番入力→確定で履歴先頭に追加し詳細オープン。履歴チップで再選択。詳細閉じ時は **`pointer-events-none` + `aria-hidden`** で背面操作を遮断。`Escape` で詳細のみ閉じる。日付は既存 `KioskDatePickerModal` を **製番全体 / 処理行** の2経路で再利用。
 - **React Query**: `useUpdateKioskProductionScheduleSearchHistory` の `onSuccess` で **`kiosk-production-schedule-search-history`** を invalidate（履歴即時反映）。履歴・納期更新は try/catch で **未処理拒否**を避ける。
@@ -2244,8 +2244,25 @@ category: knowledge-base
 - **知見**: 順位ボードの **納期編集**は納期管理ページと同系の **seiban 詳細 + 日付モーダル** に寄せ、API を増やさずにリーダー導線を短縮できる。履歴 invalidate を hooks 側に寄せると左リストとサーバ状態のズレが減る。
 - **トラブルシューティング**:
   - **検索確定しても履歴が変わらない / 詳細が開かない**: ネットワーク・`x-client-key`・検索履歴 API のエラーを確認。mutation 失敗時は **選択状態を変えない**設計のため、UI が動かないのは仕様。
-  - **右ペインが閉じているのにクリックできない**: 実装は閉じ時 `pointer-events-none`。古いビルドや CSS 競合を疑う。
+  - **詳細シートが閉じているのにクリックできない**: 実装は閉じ時 `pointer-events-none`（幅 0・`opacity-0`）。古いビルドや CSS 競合を疑う。
   - **部品表が空**: 当該製番に納期管理の部品行が無い。**データ側**の triage / seiban 同期を確認。
+
+### 順位ボード 納期アシスト UI（左2段スタック・モーダル z-index、2026-04-02 追補）
+
+- **目的（追補）**: 詳細が **右固定・高 z** のとき、日付 **`Dialog`（既定 `z-50`）** が詳細・全画面ディムより **下** に来て **カレンダー操作が不安定**／**第1 `aside` から第2シートへマウスが移る `mouseLeave`** で左ドロワーが **遅延閉じ** する問題を解消する。
+- **配置**: **14px ホットゾーン＋第1 `aside`（操作パネル）＋第2 `aside`（`LeaderBoardDueAssistPanel`）** を **同一 flex 行**で囲み、`onMouseEnter` / `onMouseLeave` は **外枠のみ**。`useKioskLeftEdgeDrawerReveal(true, { keepOpen: dueAssist.isDetailOpen })` で **詳細中はホバーに依存せず左スタックを展開維持**（タッチ／カレンダー操作中の誤閉じ防止）。
+- **ディム**: 詳細オープン時のみ **メイン（ボード）** を覆う（`fixed` で `left` を左スタック総幅に同期、`ResizeObserver`、`z-40`。左スタックは `z-50`）。クリックで `closeDetail`。
+- **日付モーダル**: `Dialog` / `KioskDatePickerModal` に任意 **`overlayZIndex`**。納期アシスト用 **`KioskDatePickerModal` だけ** `KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK`（**80**・[`kioskRevealUi.ts`](../../apps/web/src/hooks/kioskRevealUi.ts)）。順位ボード **行の納期**用モーダルは **未指定**（既定 `z-50` のまま）。
+- **参照実装**: [`useKioskLeftEdgeDrawerReveal.ts`](../../apps/web/src/hooks/useKioskLeftEdgeDrawerReveal.ts)、[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)、[`LeaderBoardDueAssistPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel.tsx)、[`Dialog.tsx`](../../apps/web/src/components/ui/Dialog.tsx)。
+- **デプロイ・実機（2026-04-02 追補）**:
+  - **ブランチ**: `feat/leaderboard-due-assist-left-stack`（コミット例: `cd25bae5`。ドキュメント追記後は `main` マージコミットを正とする）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**（**Pi3 除外**）。
+  - **実績**: 各回 `PLAY RECAP` **`failed=0`**（Mac / Tailscale・順次5回完走）。Pi5 デプロイログ例: `ansible-update-20260402-204715-25095.summary.json`（最終台処理に付随する命名）。
+- **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・Mac / Tailscale・約 60s・**項目数は従来どおり**）。
+- **知見**: キオスク **固定シート**と **Portal モーダル**の z-index 不整合は、見た目だけでなく **操作完了後の状態**（詳細が開いたままか）まで崩す。**重ね順だけオプションで上げる**と既存呼び出しへの影響が最小。
+- **トラブルシューティング**:
+  - **カレンダーがシートの下に隠れる・タップしても反応が不安定**: `overlayZIndex` 未配線・Pi5 未デプロイ・ブラウザが古いバンドルを表示を疑う。
+  - **詳細中に左第1列だけ勝手に閉じる**: 外枠 hover 統合・`keepOpen`・ビルド世代を疑う。
 
 ### トラブルシューティング
 

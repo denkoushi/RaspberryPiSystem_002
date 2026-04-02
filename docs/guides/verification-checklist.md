@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-02（順位ボード 納期アシスト §6.6.19 追記）
+最終更新: 2026-04-02（順位ボード 納期アシスト 左2段スタック追補 §6.6.19）
 
 ## 概要
 
@@ -719,15 +719,15 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/kiosk-leader-order-board-ux-polish` 本番反映後・自動回帰済み）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
-**6.6.19 キオスク リーダー順位ボード（製番検索・右ペイン納期アシスト）**
+**6.6.19 キオスク リーダー順位ボード（製番検索・納期アシスト詳細・左2段スタック）**
 
-**確認ポイント**（[KB-297（リーダー順位ボード節・納期アシスト）](../knowledge-base/KB-297-kiosk-due-management-workflow.md)）:
+**確認ポイント**（[KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md)・「順位ボード 納期アシスト UI（左2段スタック…）」追補節）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0**（本変更は項目数を増やさない）。
-- [ ] **手動（任意・Pi4 / VNC）**: `/kiosk/production-schedule/leader-order-board` で左ドロワー **製番検索**→確定後に **右スライド**で部品表・**製番全体納期**・**処理区分別納期**が見え、日付モーダルで更新できること。**Escape** で詳細のみ閉じること。**履歴**チップの追加・選択・削除が既存生産スケジュールと同趣旨で動くこと。
-- [ ] **トラブルシュート**: 検索確定しても動かない → 検索履歴 API / `x-client-key` / コンソールを確認（mutation 失敗時は選択を変えない仕様）。上記 KB-297 節の TS 参照。
+- [ ] **手動（任意・Pi4 / VNC）**: `/kiosk/production-schedule/leader-order-board` で左ドロワー **製番検索**→確定後、**操作パネルの右隣（第2シート）**に部品表・**製番全体納期**・**処理区分別納期**が現れ、**日付モーダルで選んだあとも第2シートが開いたまま**であること（カレンダーがシートの下に隠れないこと）。**Escape** で詳細のみ閉じること。**履歴**チップの追加・選択・削除が既存生産スケジュールと同趣旨で動くこと。
+- [ ] **トラブルシュート**: 検索確定しても動かない → 検索履歴 API / `x-client-key` / コンソールを確認（mutation 失敗時は選択を変えない仕様）。カレンダーがシート下／詳細が勝手に閉じる → **`overlayZIndex`**・左 **外枠 hover + `keepOpen`**・Pi5 Web 再ビルド未反映を疑う。[KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md) 納期アシスト各節の TS 参照。
 
-**検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/leaderboard-due-assist` 本番5台反映後・Mac / Tailscale）
+**検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/leaderboard-due-assist-left-stack` 本番5台反映後・Mac / Tailscale・自動回帰 **約 60s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認
