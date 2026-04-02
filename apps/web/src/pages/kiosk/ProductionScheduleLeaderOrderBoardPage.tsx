@@ -136,7 +136,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   } = useProductionScheduleMutations({
     isSearchStateWriting: searchStateMutation.isPending,
     noteMaxLength: 100,
-    productionScheduleTargetDeviceScopeKey: targetDeviceScopeKey
+    productionScheduleTargetDeviceScopeKey: targetDeviceScopeKey,
+    productionScheduleOrderCachePolicy: 'leaderBoardFastPath'
   });
 
   const { editingDueDateValue, isDueDatePickerOpen, openDueDatePicker, commitDueDate, closeDueDatePicker } =

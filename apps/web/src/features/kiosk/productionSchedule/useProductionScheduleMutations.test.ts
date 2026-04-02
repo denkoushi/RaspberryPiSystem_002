@@ -125,7 +125,8 @@ describe('useProductionScheduleMutations', () => {
       payload: {
         resourceCd: 'R01',
         orderNumber: null
-      }
+      },
+      cachePolicy: 'default'
     });
   });
 });

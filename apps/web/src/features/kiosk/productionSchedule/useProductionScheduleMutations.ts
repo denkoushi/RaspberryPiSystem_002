@@ -5,7 +5,8 @@ import {
   useUpdateKioskProductionScheduleDueDate,
   useUpdateKioskProductionScheduleNote,
   useUpdateKioskProductionScheduleOrder,
-  useUpdateKioskProductionScheduleProcessing
+  useUpdateKioskProductionScheduleProcessing,
+  type KioskProductionScheduleOrderCachePolicy
 } from '../../../api/hooks';
 
 const WRITE_REFETCH_COOLDOWN_MS = 2500;
@@ -15,6 +16,8 @@ type Params = {
   noteMaxLength: number;
   /** Mac + manual-order v2: 手動順番の書き込み先端末 */
   productionScheduleTargetDeviceScopeKey?: string;
+  /** 順位ボード等: 一覧の full invalidate を避ける fast path */
+  productionScheduleOrderCachePolicy?: KioskProductionScheduleOrderCachePolicy;
 };
 
 type SaveNoteParams = {
@@ -42,7 +45,8 @@ const sanitizeNote = (value: string, noteMaxLength: number) => {
 export const useProductionScheduleMutations = ({
   isSearchStateWriting,
   noteMaxLength,
-  productionScheduleTargetDeviceScopeKey
+  productionScheduleTargetDeviceScopeKey,
+  productionScheduleOrderCachePolicy
 }: Params) => {
   const completeMutation = useCompleteKioskProductionScheduleRow();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
@@ -124,7 +128,8 @@ export const useProductionScheduleMutations = ({
         ...(productionScheduleTargetDeviceScopeKey
           ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
           : {})
-      }
+      },
+      cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
     });
   };
 
