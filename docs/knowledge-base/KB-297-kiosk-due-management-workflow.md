@@ -8,6 +8,7 @@ related:
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
   - ../decisions/ADR-20260319-manual-order-device-scope-v2.md
   - ../guides/csv-import-export.md
+  - ./KB-324-gmail-order-supplement-prisma-transaction.md
 category: knowledge-base
 ---
 
@@ -74,6 +75,8 @@ category: knowledge-base
 - **Prevention**:
   - winner 判定ロジックは据え置き、補助反映ロジックは専用サービスへ閉じ込める。
   - 補助CSVの未照合行は unmatched として集計し、照合品質を継続監視できるようにする。
+- **補助同期の Prisma トランザクション失敗（2026-04-02）**:
+  - 長いインタラクティブトランザクション内の逐次 `upsert` や、winner 付け替えと複合一意制約の組み合わせで失敗しうる。**対策・手順の正本**: [KB-324](./KB-324-gmail-order-supplement-prisma-transaction.md)。
 
 **検証・本番反映（2026-04-01）**
 
