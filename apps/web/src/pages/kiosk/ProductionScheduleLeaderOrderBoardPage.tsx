@@ -9,12 +9,14 @@ import {
   useKioskProductionScheduleResources
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
+import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
 import {
   filterLeaderBoardRowsByCompletion,
   type LeaderOrderCompletionFilter
 } from '../../features/kiosk/leaderOrderBoard/filterLeaderBoardRowsByCompletion';
 import { groupRowsByResourceCd } from '../../features/kiosk/leaderOrderBoard/groupRowsByResourceCd';
+import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
 import { LeaderOrderResourceCard } from '../../features/kiosk/leaderOrderBoard/LeaderOrderResourceCard';
 import {
@@ -23,6 +25,7 @@ import {
 } from '../../features/kiosk/leaderOrderBoard/mergeMachineNameFallback';
 import { normalizeLeaderBoardRows } from '../../features/kiosk/leaderOrderBoard/normalizeLeaderBoardRow';
 import { sortLeaderBoardRowsForDisplay } from '../../features/kiosk/leaderOrderBoard/sortLeaderBoardRowsForDisplay';
+import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist';
 import { useLeaderBoardResourceSlots } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlots';
 import { useManualOrderPageController } from '../../features/kiosk/productionSchedule/useManualOrderPageController';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
@@ -201,6 +204,31 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   );
 
   const drawerReveal = useKioskLeftEdgeDrawerReveal(true);
+  const dueAssist = useLeaderBoardDueAssist();
+  const [isSearchKeyboardOpen, setIsSearchKeyboardOpen] = useState(false);
+  const [searchKeyboardValue, setSearchKeyboardValue] = useState('');
+
+  const openSearchKeyboard = () => {
+    setSearchKeyboardValue(dueAssist.searchInput);
+    setIsSearchKeyboardOpen(true);
+  };
+  const confirmSearchKeyboard = () => {
+    dueAssist.setSearchInput(searchKeyboardValue);
+    setIsSearchKeyboardOpen(false);
+  };
+
+  const isDueAssistDetailOpen = dueAssist.isDetailOpen;
+  const closeDueAssistDetail = dueAssist.closeDetail;
+  useEffect(() => {
+    if (!isDueAssistDetailOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeDueAssistDetail();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isDueAssistDetailOpen, closeDueAssistDetail]);
 
   const grouped = useMemo(() => {
     const rows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
@@ -304,6 +332,90 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               )}
             </select>
           </label>
+          <div className="rounded border border-white/15 bg-white/5 p-2">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-white/70">製番検索</span>
+              <button
+                type="button"
+                onClick={() => dueAssist.openDetail()}
+                disabled={!dueAssist.selectedFseiban}
+                className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"
+              >
+                詳細
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              <input
+                value={dueAssist.searchInput}
+                onChange={(event) => dueAssist.setSearchInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void dueAssist.applySearch();
+                  }
+                }}
+                placeholder="製番を検索"
+                className="h-8 min-w-0 flex-1 rounded border border-white/20 bg-white px-2 text-xs text-slate-900"
+              />
+              <button
+                type="button"
+                onClick={openSearchKeyboard}
+                className="rounded border border-white/20 bg-slate-800 px-2 text-xs text-white hover:bg-slate-700"
+                aria-label="キーボードを開く"
+              >
+                ⌨
+              </button>
+              <button
+                type="button"
+                onClick={() => void dueAssist.applySearch()}
+                disabled={dueAssist.historyWriting}
+                className="rounded bg-blue-600 px-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
+              >
+                登録
+              </button>
+            </div>
+            <div className="mt-2 flex max-h-28 flex-wrap gap-1 overflow-auto pr-1">
+              {dueAssist.sharedHistory.map((fseiban) => {
+                const active = dueAssist.selectedFseiban === fseiban;
+                return (
+                  <div
+                    key={fseiban}
+                    className={clsx(
+                      'relative flex items-center rounded-full border pl-2 pr-5 text-[10px] font-semibold',
+                      active
+                        ? 'border-emerald-300 bg-emerald-400 text-slate-900'
+                        : 'border-white/25 bg-white/10 text-white hover:bg-white/20'
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => dueAssist.selectFseiban(fseiban)}
+                      className="py-1 font-mono"
+                    >
+                      {fseiban}
+                    </button>
+                    <button
+                      type="button"
+                      className={clsx(
+                        'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
+                        active ? 'bg-slate-200 text-slate-900' : 'bg-white text-slate-900'
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void dueAssist.removeFromHistory(fseiban);
+                      }}
+                      aria-label={`履歴から削除: ${fseiban}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-2 text-[10px] text-white/60">
+              選択中: <span className="font-mono text-white/90">{dueAssist.selectedFseiban ?? 'なし'}</span>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2 text-xs">
             <button
               type="button"
@@ -448,6 +560,37 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         value={editingDueDateValue}
         onCancel={closeDueDatePicker}
         onCommit={commitDueDate}
+      />
+      {dueAssist.isDetailOpen ? (
+        <div
+          className="fixed inset-0 z-[65] bg-slate-950/45"
+          onClick={dueAssist.closeDetail}
+          aria-hidden
+        />
+      ) : null}
+      <LeaderBoardDueAssistPanel
+        isOpen={dueAssist.isDetailOpen}
+        selectedFseiban={dueAssist.selectedFseiban}
+        detail={dueAssist.detailQuery.data}
+        loading={dueAssist.detailQuery.isLoading}
+        error={dueAssist.detailQuery.isError}
+        dueUpdatePending={dueAssist.dueUpdatePending}
+        onClose={dueAssist.closeDetail}
+        onOpenSeibanDueDatePicker={dueAssist.openSeibanDueDatePicker}
+        onOpenProcessingDueDatePicker={dueAssist.openProcessingDueDatePicker}
+      />
+      <KioskDatePickerModal
+        isOpen={dueAssist.isDatePickerOpen}
+        value={dueAssist.editingDueDate}
+        onCancel={dueAssist.closeDatePicker}
+        onCommit={(next) => void dueAssist.commitDueDate(next)}
+      />
+      <KioskKeyboardModal
+        isOpen={isSearchKeyboardOpen}
+        value={searchKeyboardValue}
+        onChange={setSearchKeyboardValue}
+        onCancel={() => setIsSearchKeyboardOpen(false)}
+        onConfirm={confirmSearchKeyboard}
       />
     </div>
   );

@@ -776,10 +776,14 @@ export function useUpdateKioskProductionScheduleSearchState() {
 }
 
 export function useUpdateKioskProductionScheduleSearchHistory() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ['kiosk-production-schedule', 'write', 'search-history'],
     mutationFn: (history: Parameters<typeof setKioskProductionScheduleSearchHistory>[0]) =>
       setKioskProductionScheduleSearchHistory(history),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-search-history'] });
+    }
   });
 }
 
