@@ -14,6 +14,9 @@ const row = (partial: Partial<LeaderBoardRow> & Pick<LeaderBoardRow, 'id'>): Lea
   fkojun: '',
   fhincd: '',
   fhinmei: '',
+  machineName: '',
+  machineTypeCode: '',
+  plannedQuantity: null,
   processingOrder: null,
   ...partial
 });

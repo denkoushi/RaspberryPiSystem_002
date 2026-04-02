@@ -10,6 +10,8 @@ import type { LeaderBoardRow } from './types';
 
 type Props = {
   resourceCd: string;
+  /** resourceNameMap の names 部分のみ（横並び表示）。空なら非表示 */
+  resourceJapaneseNames?: string;
   rows: LeaderBoardRow[];
   selected: boolean;
   dimmed: boolean;
@@ -20,10 +22,11 @@ type Props = {
 };
 
 /**
- * 資源CD単位カード。本文は約5件ぶんの高さでスクロール。
+ * 資源CD単位カード。グリッド行の高さに合わせて本文を伸ばし、一覧は縦スクロール。
  */
 export function LeaderOrderResourceCard({
   resourceCd,
+  resourceJapaneseNames,
   rows,
   selected,
   dimmed,
@@ -31,6 +34,8 @@ export function LeaderOrderResourceCard({
   onOpenDueDatePicker,
   dueDatePending
 }: Props) {
+  const jp = resourceJapaneseNames?.trim() ?? '';
+
   return (
     <div
       role="group"
@@ -43,20 +48,25 @@ export function LeaderOrderResourceCard({
         }
       }}
       className={clsx(
-        'flex cursor-pointer flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60',
+        'flex h-full min-h-[14rem] cursor-pointer flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
         selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
       )}
       aria-label={
-        selected ? `資源 ${resourceCd}（選択中）` : `資源 ${resourceCd}。Enter か Space で選択`
+        selected
+          ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（選択中）`
+          : `資源 ${resourceCd}${jp ? ` ${jp}` : ''}。Enter か Space で選択`
       }
     >
-      <div className="mb-1.5 shrink-0 px-0.5 font-mono text-[15px] font-medium tracking-tight text-white/95">
-        {resourceCd}
+      <div className="mb-1.5 flex shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
+        <span className="font-mono text-[15px] font-medium tracking-tight text-white/95">{resourceCd}</span>
+        {jp.length > 0 ? (
+          <span className="min-w-0 break-words text-[12px] leading-snug text-white/78">{jp}</span>
+        ) : null}
       </div>
       <div
-        className="max-h-[268px] min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5"
+        className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {rows.length === 0 ? (

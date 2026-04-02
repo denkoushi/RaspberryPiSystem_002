@@ -25,6 +25,7 @@ import { useMutationFeedback } from '../../features/kiosk/productionSchedule/use
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
+import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 const LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY = 'leader-order-board-search-conditions';
@@ -206,6 +207,13 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: mutationPauseRefetch || applyMutation.isPending || dueDatePending
   });
 
+  const resourceNameMap = useMemo(
+    () => resourcesQuery.data?.resourceNameMap ?? {},
+    [resourcesQuery.data]
+  );
+
+  const drawerReveal = useKioskLeftEdgeDrawerReveal(true);
+
   const grouped = useMemo(() => {
     const rows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
     const normalized = normalizeLeaderBoardRows(rows);
@@ -261,6 +269,9 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const toggleCutting = () =>
     setSearchConditions((prev) => ({ ...prev, showCuttingResources: !prev.showCuttingResources }));
 
+  const gridReady =
+    scheduleEnabled && !scheduleQuery.isLoading && !scheduleQuery.isError;
+
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-[#0c1222] text-white">
       <div
@@ -271,15 +282,19 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         }}
       />
 
-      <div className="group/drawer fixed inset-y-0 left-0 z-50 flex">
-        <div className="w-3.5 shrink-0 bg-transparent" aria-hidden />
+      <div className="pointer-events-none fixed inset-y-0 left-0 z-50 flex">
+        <div
+          className="pointer-events-auto w-[14px] shrink-0"
+          onMouseEnter={drawerReveal.onHotZoneEnter}
+          aria-hidden
+        />
         <aside
           className={clsx(
-            'flex h-full w-64 max-w-[85vw] -translate-x-full flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md transition-transform duration-200 ease-out',
-            'group-hover/drawer:translate-x-0',
-            'hover:translate-x-0',
-            'focus-within:translate-x-0'
+            'pointer-events-auto flex h-full w-64 max-w-[85vw] flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md transition-transform duration-200 ease-out',
+            drawerReveal.isVisible ? 'translate-x-0' : '-translate-x-full'
           )}
+          onMouseEnter={drawerReveal.onDrawerMouseEnter}
+          onMouseLeave={drawerReveal.onDrawerMouseLeave}
           aria-label="操作パネル"
         >
           <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
@@ -382,7 +397,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         </aside>
       </div>
 
-      <main className="relative z-10 min-h-0 flex-1 overflow-auto pl-3.5 pr-2 pb-2 pt-2">
+      <main
+        className={clsx(
+          'relative z-10 flex min-h-0 flex-1 flex-col pl-[14px] pr-2 pb-2 pt-2',
+          gridReady ? 'overflow-hidden' : 'overflow-auto'
+        )}
+      >
         {!scheduleEnabled ? (
           <p className="text-sm text-white/60">
             端末を選び、操作パネルで資源スロットに1件以上割り当て、研削/切削の条件を満たすと一覧が表示されます。
@@ -392,14 +412,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         ) : scheduleQuery.isError ? (
           <p className="text-sm text-rose-200">一覧の取得に失敗しました。</p>
         ) : (
-          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-4 xl:grid-cols-6">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto [grid-auto-rows:minmax(14rem,1fr)] md:grid-cols-4 xl:grid-cols-6">
             {resourceCdBySlotIndex.map((cdRaw, slotIndex) => {
               const cd = cdRaw?.trim() ?? '';
               if (cd.length === 0) {
                 return (
                   <div
                     key={`slot-empty-${slotIndex}`}
-                    className="flex min-h-[120px] flex-col rounded-lg border border-dashed border-white/20 bg-slate-900/35 p-2.5"
+                    className="flex h-full min-h-[14rem] flex-col rounded-lg border border-dashed border-white/20 bg-slate-900/35 p-2.5"
                   >
                     <div className="text-[11px] font-medium text-white/50">スロット {slotIndex + 1}</div>
                     <p className="mt-2 text-xs text-white/40">未設定（操作パネル→資源スロット）</p>
@@ -409,10 +429,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               const rows = sortedGrouped.get(cd) ?? [];
               const selected = selectedResourceCd === cd;
               const dimmed = selectedResourceCd != null && !selected;
+              const jpNames = (resourceNameMap[cd] ?? []).join(' / ');
               return (
                 <LeaderOrderResourceCard
                   key={`slot-${slotIndex}-${cd}`}
                   resourceCd={cd}
+                  resourceJapaneseNames={jpNames}
                   rows={rows}
                   selected={selected}
                   dimmed={dimmed}
@@ -432,7 +454,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         isOpen={slotModalOpen}
         onClose={() => setSlotModalOpen(false)}
         candidateResourceCds={resourcesQuery.data?.resources ?? []}
-        resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
+        resourceNameMap={resourceNameMap}
         slotCount={slotCount}
         onSlotCountChange={setSlotCount}
         resourceCdBySlotIndex={resourceCdBySlotIndex}

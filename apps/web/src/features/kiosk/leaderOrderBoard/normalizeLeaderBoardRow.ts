@@ -1,5 +1,6 @@
 import { resolveDisplayDueDate } from '../productionSchedule/plannedDueDisplay';
 
+import { resolveMachineTypeCodeFromRowData } from './resolveMachineTypeCodeFromRowData';
 import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
 
 import type { LeaderBoardRow } from './types';
@@ -47,6 +48,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     fhincd: strField(data, 'FHINCD'),
     fhinmei: strField(data, 'FHINMEI'),
     machineName: '',
+    machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder)
   };

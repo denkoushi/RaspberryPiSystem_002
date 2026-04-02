@@ -6,6 +6,7 @@ import {
   LEADER_BOARD_MAX_RESOURCE_SLOTS,
   LEADER_BOARD_MIN_RESOURCE_SLOTS
 } from './constants';
+import { formatResourceCdWithJapaneseNames } from './formatResourceCdWithJapaneseNames';
 
 type Props = {
   isOpen: boolean;
@@ -18,11 +19,6 @@ type Props = {
   resourceCdBySlotIndex: Array<string | null>;
   assignSlotCd: (slotIndex: number, cd: string | null) => void;
 };
-
-function formatResourceLine(cd: string, resourceNameMap: Record<string, string[]>): string {
-  const names = resourceNameMap[cd] ?? [];
-  return names.length > 0 ? `${cd}（${names.join(' / ')}）` : cd;
-}
 
 /**
  * 順位ボード用の薄い資源 CD スロット設定（手動順番モーダルのサブセット）。
@@ -104,7 +100,7 @@ export function LeaderBoardResourceSlotPickerModal({
                     <option value="">（未設定）</option>
                     {candidateResourceCds.map((cd) => (
                       <option key={cd} value={cd}>
-                        {formatResourceLine(cd, resourceNameMap)}
+                        {formatResourceCdWithJapaneseNames(cd, resourceNameMap)}
                       </option>
                     ))}
                   </select>

@@ -15,6 +15,9 @@ const base = (id: string, po: number | null): LeaderBoardRow => ({
   fkojun: '',
   fhincd: '',
   fhinmei: '',
+  machineName: '',
+  machineTypeCode: '',
+  plannedQuantity: null,
   processingOrder: po
 });
 
