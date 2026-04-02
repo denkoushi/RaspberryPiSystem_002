@@ -19,6 +19,7 @@ const row = (partial: Partial<LeaderBoardRow> & Pick<LeaderBoardRow, 'id'>): Lea
   plannedQuantity: null,
   processingOrder: null,
   isCompleted: false,
+  note: null,
   ...partial
 });
 

@@ -19,7 +19,8 @@ const base = (id: string, po: number | null): LeaderBoardRow => ({
   machineTypeCode: '',
   plannedQuantity: null,
   processingOrder: po,
-  isCompleted: false
+  isCompleted: false,
+  note: null
 });
 
 describe('buildReorderPlan', () => {

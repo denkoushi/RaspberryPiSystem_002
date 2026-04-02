@@ -6,10 +6,12 @@ import {
   useKioskProductionSchedule,
   useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleOrderUsage,
-  useKioskProductionScheduleResources
+  useKioskProductionScheduleResources,
+  useKioskProductionScheduleSeibanMachineNames
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
+import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
 import {
   filterLeaderBoardRowsByCompletion,
@@ -19,6 +21,7 @@ import { groupRowsByResourceCd } from '../../features/kiosk/leaderOrderBoard/gro
 import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
 import { LeaderOrderResourceCard } from '../../features/kiosk/leaderOrderBoard/LeaderOrderResourceCard';
+import { mergeLeaderBoardRowsWithResolvedMachineNames } from '../../features/kiosk/leaderOrderBoard/mergeLeaderBoardRowsWithResolvedMachineNames';
 import {
   buildSeibanMachineNameMapFromProgressBySeiban,
   mergeMachineNameFallback
@@ -140,9 +143,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     orderPending,
     dueDatePending,
     completePending,
+    notePending,
     commitDueDate: commitDueDateMutation,
     updateOrder,
-    completeRow
+    completeRow,
+    saveNote
   } = useProductionScheduleMutations({
     isSearchStateWriting: searchStateMutation.isPending,
     noteMaxLength: 100,
@@ -150,27 +155,45 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     productionScheduleOrderCachePolicy: 'leaderBoardFastPath'
   });
 
-  const { editingDueDateValue, isDueDatePickerOpen, openDueDatePicker, commitDueDate, closeDueDatePicker } =
-    useMutationFeedback({
-      onCommitNote: () => {
-        /* 順位ボードでは未使用 */
-      },
-      onCommitDueDate: ({ rowId, dueDate, onSettled }) => {
-        commitDueDateMutation({
-          rowId,
-          dueDate,
-          onSettled: () => {
-            void Promise.all([
-              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
-              queryClient.invalidateQueries({
-                queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
-              })
-            ]);
-            onSettled();
-          }
-        });
-      }
-    });
+  const invalidateScheduleQueries = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
+      })
+    ]);
+
+  const {
+    editingNoteValue,
+    isNoteModalOpen,
+    startNoteEdit,
+    commitNote,
+    closeNoteModal,
+    editingDueDateValue,
+    isDueDatePickerOpen,
+    openDueDatePicker,
+    commitDueDate,
+    closeDueDatePicker
+  } = useMutationFeedback({
+    onCommitNote: ({ rowId, note, onSettled }) => {
+      saveNote({
+        rowId,
+        note,
+        onSettled: () => {
+          void invalidateScheduleQueries().finally(onSettled);
+        }
+      });
+    },
+    onCommitDueDate: ({ rowId, dueDate, onSettled }) => {
+      commitDueDateMutation({
+        rowId,
+        dueDate,
+        onSettled: () => {
+          void invalidateScheduleQueries().finally(onSettled);
+        }
+      });
+    }
+  });
 
   const scheduleEnabled =
     activeDeviceScopeKey.trim().length > 0 &&
@@ -178,7 +201,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     activeResourceCds.length > 0;
 
   const writePause =
-    mutationPauseRefetch || orderPending || dueDatePending || completePending;
+    mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
 
   const resourcesQuery = useKioskProductionScheduleResources({
     pauseRefetch: writePause
@@ -204,12 +227,30 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause
   });
 
+  const uniqueFseibansForMachineNames = useMemo(() => {
+    const scheduleRows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
+    const set = new Set<string>();
+    for (const row of scheduleRows) {
+      const data = (row.rowData ?? {}) as Record<string, unknown>;
+      const s = String(data.FSEIBAN ?? '').trim();
+      if (s.length > 0) {
+        set.add(s);
+      }
+    }
+    return [...set];
+  }, [scheduleQuery.data?.rows]);
+
+  const seibanMachineNamesQuery = useKioskProductionScheduleSeibanMachineNames(uniqueFseibansForMachineNames, {
+    pauseRefetch: writePause,
+    enabled: scheduleEnabled && uniqueFseibansForMachineNames.length > 0
+  });
+
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data]
   );
 
-  const dueAssist = useLeaderBoardDueAssist();
+  const dueAssist = useLeaderBoardDueAssist({ pauseRefetch: writePause });
   const drawerReveal = useKioskLeftEdgeDrawerReveal(true, { keepOpen: dueAssist.isDetailOpen });
   const leftToolStackOuterRef = useRef<HTMLDivElement | null>(null);
   const [leftStackWidthPx, setLeftStackWidthPx] = useState(0);
@@ -252,10 +293,23 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const grouped = useMemo(() => {
     const rows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
     const normalized = normalizeLeaderBoardRows(rows);
+    const resolvedMap = new Map<string, string>();
+    for (const [k, v] of Object.entries(seibanMachineNamesQuery.data?.machineNames ?? {})) {
+      const key = k.trim();
+      const val = (v ?? '').trim();
+      if (key.length > 0 && val.length > 0) {
+        resolvedMap.set(key, val);
+      }
+    }
+    const withResolved = mergeLeaderBoardRowsWithResolvedMachineNames(normalized, resolvedMap);
     const fb = buildSeibanMachineNameMapFromProgressBySeiban(historyProgressQuery.data?.progressBySeiban);
-    const merged = mergeMachineNameFallback(normalized, fb);
+    const merged = mergeMachineNameFallback(withResolved, fb);
     return groupRowsByResourceCd(merged);
-  }, [scheduleQuery.data?.rows, historyProgressQuery.data?.progressBySeiban]);
+  }, [
+    scheduleQuery.data?.rows,
+    historyProgressQuery.data?.progressBySeiban,
+    seibanMachineNamesQuery.data?.machineNames
+  ]);
 
   const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('all');
 
@@ -575,6 +629,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
                   onCompleteRow={(rowId) => void completeRow(rowId)}
                   completePending={completePending}
                   orderPending={orderPending}
+                  onOpenNote={(row) => startNoteEdit(row.id, row.note)}
+                  notePending={notePending}
                 />
               );
             })}
@@ -590,6 +646,13 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onSlotCountChange={setSlotCount}
         resourceCdBySlotIndex={resourceCdBySlotIndex}
         assignSlotCd={assignSlotCd}
+      />
+      <KioskNoteModal
+        isOpen={isNoteModalOpen}
+        value={editingNoteValue}
+        maxLength={100}
+        onCancel={closeNoteModal}
+        onCommit={commitNote}
       />
       <KioskDatePickerModal
         isOpen={isDueDatePickerOpen}

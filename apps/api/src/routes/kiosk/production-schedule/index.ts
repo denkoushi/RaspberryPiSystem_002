@@ -11,6 +11,7 @@ import { registerProductionScheduleProcessingRoute } from './processing.js';
 import { registerProductionScheduleOrderRoute } from './order.js';
 import { registerProductionScheduleSearchStateRoute } from './search-state.js';
 import { registerProductionScheduleHistoryProgressRoute } from './history-progress.js';
+import { registerProductionScheduleSeibanMachineNamesRoute } from './seiban-machine-names.js';
 import { registerProductionScheduleSearchHistoryRoute } from './search-history.js';
 import { registerProductionScheduleDueManagementSummaryRoute } from './due-management-summary.js';
 import { registerProductionScheduleDueManagementSeibanRoute } from './due-management-seiban.js';
@@ -45,6 +46,7 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleOrderRoute(app, deps);
   await registerProductionScheduleSearchStateRoute(app, deps);
   await registerProductionScheduleHistoryProgressRoute(app, deps);
+  await registerProductionScheduleSeibanMachineNamesRoute(app, deps);
   await registerProductionScheduleSearchHistoryRoute(app, deps);
   await registerProductionScheduleDueManagementSummaryRoute(app, deps);
   await registerProductionScheduleDueManagementSeibanRoute(app, deps);

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useMemo } from 'react';
 
 import { kioskDocumentDetailQueryKey } from '../features/kiosk/documents/kioskDocumentQueryKeys';
 import {
@@ -103,6 +104,7 @@ import {
   getKioskProductionScheduleSearchState,
   getKioskProductionScheduleSearchHistory,
   getKioskProductionScheduleHistoryProgress,
+  postKioskProductionScheduleSeibanMachineNames,
   getProductionScheduleResourceCategorySettings,
   getProductionScheduleResourceCodeMappings,
   importProductionScheduleResourceCodeMappingsFromCsv,
@@ -380,6 +382,31 @@ export function useKioskProductionScheduleHistoryProgress(options?: { pauseRefet
     queryKey: ['kiosk-production-schedule-history-progress'],
     queryFn: getKioskProductionScheduleHistoryProgress,
     refetchInterval: options?.pauseRefetch ? false : 30000,
+  });
+}
+
+export function useKioskProductionScheduleSeibanMachineNames(
+  fseibans: readonly string[],
+  options?: { pauseRefetch?: boolean; enabled?: boolean }
+) {
+  const sortedUnique = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of fseibans) {
+      const t = s.trim();
+      if (t.length > 0) {
+        set.add(t);
+      }
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'ja'));
+  }, [fseibans]);
+
+  const keyFingerprint = sortedUnique.length === 0 ? '' : sortedUnique.join('\u0001');
+
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-seiban-machine-names', keyFingerprint],
+    queryFn: () => postKioskProductionScheduleSeibanMachineNames({ fseibans: sortedUnique }),
+    enabled: (options?.enabled ?? true) && sortedUnique.length > 0,
+    refetchInterval: options?.pauseRefetch ? false : 30000
   });
 }
 

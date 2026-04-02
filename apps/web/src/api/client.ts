@@ -1441,6 +1441,18 @@ export async function setKioskProductionScheduleSearchHistory(history: string[])
   return data;
 }
 
+export type KioskProductionScheduleSeibanMachineNamesResponse = {
+  machineNames: Record<string, string | null>;
+};
+
+export async function postKioskProductionScheduleSeibanMachineNames(payload: { fseibans: string[] }) {
+  const { data } = await api.post<KioskProductionScheduleSeibanMachineNamesResponse>(
+    '/kiosk/production-schedule/seiban-machine-names',
+    payload
+  );
+  return data;
+}
+
 export async function createEmployee(input: Partial<Employee>) {
   const { data } = await api.post<{ employee: Employee }>('/tools/employees', input);
   return data.employee;

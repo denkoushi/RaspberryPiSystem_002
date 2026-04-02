@@ -19,7 +19,8 @@ const r = (id: string, isCompleted: boolean): LeaderBoardRow => ({
   machineTypeCode: '',
   plannedQuantity: null,
   processingOrder: null,
-  isCompleted
+  isCompleted,
+  note: null
 });
 
 describe('filterLeaderBoardRowsByCompletion', () => {

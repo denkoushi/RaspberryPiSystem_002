@@ -18,4 +18,6 @@ export type LeaderBoardRow = {
   processingOrder: number | null;
   /** `rowData.progress === '完了'` と API 完了フラグの同期表示 */
   isCompleted: boolean;
+  /** 行単位の備考（生産スケジュール API の note と同一） */
+  note: string | null;
 };

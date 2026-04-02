@@ -730,6 +730,17 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/leaderboard-due-assist-left-stack` 本番5台反映後・Mac / Tailscale・自動回帰 **約 60s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
+**6.6.20 キオスク リーダー順位ボード（共有 search-state・子行備考・機種名一括 POST）**
+
+**確認ポイント**（[KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md)・「順位ボード 共有登録製番・子行備考・機種名一括解決（2026-04-02）」節）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0**（**項目数は従来どおり**。新 API はスクリプトの個別 grep 対象外だが Pi5 反映後の総合チェックに含まれる）。
+- [ ] **手動（任意・Pi4 / VNC）**: 順位ボード左の **登録製番チップ**が、生産スケジュール本体の **共有履歴**と一致すること。**子行鉛筆**（空＝グレー・有り＝アンバー）で備考の編集・保存ができること。
+- [ ] **手動（任意・curl）**: `POST …/kiosk/production-schedule/seiban-machine-names` に **`x-client-key`** と `{"fseibans":["…"]}` で **200**・`machineNames` オブジェクト（**最大 100 製番**・重複除去・trim）。
+
+**検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/kiosk-leader-board-shared-history-notes-machine-names` 本番5台反映後・Mac / Tailscale・約 **54s**）
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**

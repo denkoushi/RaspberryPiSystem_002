@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-04-01
+last-verified: 2026-04-02
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -2246,6 +2246,31 @@ category: knowledge-base
   - **検索確定しても履歴が変わらない / 詳細が開かない**: ネットワーク・`x-client-key`・検索履歴 API のエラーを確認。mutation 失敗時は **選択状態を変えない**設計のため、UI が動かないのは仕様。
   - **詳細シートが閉じているのにクリックできない**: 実装は閉じ時 `pointer-events-none`（幅 0・`opacity-0`）。古いビルドや CSS 競合を疑う。
   - **部品表が空**: 当該製番に納期管理の部品行が無い。**データ側**の triage / seiban 同期を確認。
+
+### 順位ボード 共有登録製番・子行備考・機種名一括解決（2026-04-02）
+
+- **登録製番**: 左ペインの履歴を **`PUT /kiosk/production-schedule/search-state`**（If-Match / 409 収束）に統一し、生産スケジュール本体と **同一の共有 `history`** を読み書きする（端末別 `search-history` からの移行）。実装: [`useKioskSharedSearchHistoryActions.ts`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)、[`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)。
+- **機種名**: **`POST /kiosk/production-schedule/seiban-machine-names`** がサーバ側で **`fetchSeibanProgressRows`** を呼び、手動順番 overview と同系の MH/SH 機種表示名を返す。一覧レスポンスに MH/SH 行が無い場合でも子行の機種名を安定させる。リクエストは **重複除去・trim 後最大 100 製番**（Zod + サービス側で整合）。Web: `useKioskProductionScheduleSeibanMachineNames`、`mergeLeaderBoardRowsWithResolvedMachineNames` → 既存 `mergeMachineNameFallback`（history-progress）で最終補完。
+- **備考**: 子行は常に **鉛筆アイコン**（空＝グレーで追加、有り＝アンバーで編集）。`title` でホバー時全文（有りのみ）、タップで `KioskNoteModal`（`LeaderOrderResourceCard` / `ProductionScheduleLeaderOrderBoardPage`）。共有 SVG: `KioskPencilGlyph`。
+
+- **本番デプロイ・実機検証（2026-04-02）**:
+  - **ブランチ**: `feat/kiosk-leader-board-shared-history-notes-machine-names`（機能コミット例: `66b7ff9e`。**ドキュメント反映後**は `main` マージコミットを正とする）。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`scripts/update-all-clients.sh`** のみ。**Pi5 → Pi4×4** を **`--limit` 1 台ずつ**・**`--detach --follow`**・**`RASPI_SERVER_HOST`**（例: `denkon5sd02@100.106.158.2`）。**Pi3 は対象外**（本変更はキオスク/API。Pi3 専用手順は不要）。
+  - **実績（デプロイ）**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を順次実行し、各 **`PLAY RECAP` `failed=0`**（同一セッションで完走。**項目数は Phase12 と同じ 40**）。
+  - **実機回帰（自動）**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（2026-04-02・Mac / Tailscale・約 **54s**）。本 API はスクリプトに専用 grep が無いが、Pi5 `api` 更新込みの **全体回帰**で異常が無いことを確認。
+  - **手動スモーク（任意・Pi4 / VNC）**: `/kiosk/production-schedule/leader-order-board` で **左の登録製番チップ**が生産スケジュール画面と **同じ履歴**に見えること。**子行の鉛筆**で備考モーダルが開き、保存後に **グレー↔アンバー**が切り替わること。**機種名**が一覧に MH/SH 行が無い製番でも埋まる場合があること（進捗基盤依存）。
+  - **手動スモーク（任意・curl）**: `POST https://<Pi5>/kiosk/production-schedule/seiban-machine-names`・`Content-Type: application/json`・**`x-client-key`**（実キオスクの `ClientDevice.apiKey`）・body `{"fseibans":["<既知のFSEIBAN>"]}` → **200**・JSON **`machineNames`** がオブジェクトであること（空製番は **400** 想定）。
+
+- **知見**:
+  - 共有履歴は **search-state 一本化**により、順位ボード左ペインと本流スケジュールの「登録製番」**ドリフト**を防ぐ。競合は **If-Match + 409 リトライ**で収束（hook に閉じ込める）。
+  - 機種名の **一覧外補完**は **BFF 集約 POST** にすると、キオスクが MH/SH 行の有無に依存せず表示を揃えられる（クライアントは **空の `machineName` だけ**サーバ解決値で上書き）。
+
+- **トラブルシューティング**:
+  - **履歴が端末ごとに違う（移行前のまま）**: Web が古い **`search-history`** を読んでいないか、Pi4 だけ未デプロイでないか確認。[`useKioskSharedSearchHistoryActions`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts) が載ったバンドルか。
+  - **備考を保存しても戻る / 428**: `search-state` の **ETag** 不整合。**他端末の同時更新**またはタブ多重を疑い、再フェッチ後に再試行。
+  - **`seiban-machine-names` が 401**: **`x-client-key`** が実デバイスに紐づいていない（ダミー不可）。
+  - **機種名が相変わらず空**: `fetchSeibanProgressRows` 側に当該製番の MH/SH が無い、または ERP データ空。**データ・同期**を先に確認（UI は補完のみ）。
+  - **Phase12 のみ失敗・「Pi5に到達できません」**: [KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)（ICMP 偶発）。最新 `verify-phase12-real.sh` の **ping 再試行**、`curl`/SSH が通るなら再実行。
 
 ### 順位ボード 納期アシスト UI（左2段スタック・モーダル z-index、2026-04-02 追補）
 

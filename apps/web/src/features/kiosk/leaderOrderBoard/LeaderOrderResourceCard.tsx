@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 
+import { KioskPencilGlyph } from '../../../components/kiosk/KioskPencilGlyph';
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manualOrderOverviewTypography';
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
@@ -25,6 +26,9 @@ type Props = {
   onCompleteRow: (rowId: string) => void;
   completePending: boolean;
   orderPending: boolean;
+  /** 備考の追加・編集。空行はグレー鉛筆、内容ありは色付き鉛筆（親がモーダルを開く） */
+  onOpenNote?: (row: LeaderBoardRow) => void;
+  notePending?: boolean;
 };
 
 /**
@@ -43,7 +47,9 @@ export function LeaderOrderResourceCard({
   onOrderChange,
   onCompleteRow,
   completePending,
-  orderPending
+  orderPending,
+  onOpenNote,
+  notePending
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
 
@@ -87,6 +93,7 @@ export function LeaderOrderResourceCard({
             const manual = isManualDueDateSet(row.dueDate);
             const dueLabel = formatDueDate(row.displayDue) || '—';
             const pres = presentLeaderOrderRow(row);
+            const hasNote = Boolean(row.note && row.note.trim().length > 0);
             return (
               <div
                 key={row.id}
@@ -148,6 +155,26 @@ export function LeaderOrderResourceCard({
                   >
                     {dueLabel}
                   </button>
+                  {onOpenNote ? (
+                    <button
+                      type="button"
+                      disabled={notePending}
+                      title={hasNote ? row.note ?? undefined : '備考を追加（タップで編集）'}
+                      aria-label={hasNote ? '備考を編集。ホバーで全文を表示' : '備考を追加'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenNote(row);
+                      }}
+                      className={clsx(
+                        'flex h-7 w-7 shrink-0 items-center justify-center rounded border transition-colors disabled:opacity-50',
+                        hasNote
+                          ? 'border-amber-400/55 bg-amber-500/20 text-amber-100 hover:bg-amber-500/30'
+                          : 'border-white/20 bg-white/[0.07] text-white/40 hover:bg-white/15 hover:text-white/55'
+                      )}
+                    >
+                      <KioskPencilGlyph />
+                    </button>
+                  ) : null}
                 </div>
                 {pres.machinePartLine.length > 0 ? (
                   <div className="text-white/80">{pres.machinePartLine}</div>

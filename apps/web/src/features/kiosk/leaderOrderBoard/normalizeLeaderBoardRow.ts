@@ -43,6 +43,10 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
       ? row.plannedQuantity
       : null;
 
+  const noteRaw = row.note;
+  const note =
+    typeof noteRaw === 'string' && noteRaw.trim().length > 0 ? noteRaw.trim() : null;
+
   return {
     id: row.id,
     resourceCd,
@@ -58,7 +62,8 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder),
-    isCompleted: isRowCompleted(data)
+    isCompleted: isRowCompleted(data),
+    note
   };
 }
 

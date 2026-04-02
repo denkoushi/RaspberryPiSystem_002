@@ -22,7 +22,8 @@ const row = (fseiban: string, machineName: string): LeaderBoardRow => ({
   machineTypeCode: '',
   plannedQuantity: null,
   processingOrder: null,
-  isCompleted: false
+  isCompleted: false,
+  note: null
 });
 
 describe('mergeMachineNameFallback', () => {
