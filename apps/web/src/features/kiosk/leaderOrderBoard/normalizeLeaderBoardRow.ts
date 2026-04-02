@@ -11,9 +11,16 @@ const strField = (data: Record<string, unknown>, key: string): string => {
   return typeof v === 'string' ? v.trim() : '';
 };
 
+const COMPLETED_PROGRESS = '完了';
+
 const parseProcessingOrder = (value: number | null | undefined): number | null => {
   if (value == null || Number.isNaN(value)) return null;
   return value;
+};
+
+const isRowCompleted = (data: Record<string, unknown>): boolean => {
+  const p = data.progress;
+  return typeof p === 'string' && p.trim() === COMPLETED_PROGRESS;
 };
 
 /**
@@ -50,7 +57,8 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     machineName: '',
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
-    processingOrder: parseProcessingOrder(row.processingOrder)
+    processingOrder: parseProcessingOrder(row.processingOrder),
+    isCompleted: isRowCompleted(data)
   };
 }
 

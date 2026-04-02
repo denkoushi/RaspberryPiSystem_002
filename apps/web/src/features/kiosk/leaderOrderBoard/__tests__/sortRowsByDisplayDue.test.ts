@@ -18,6 +18,7 @@ const row = (partial: Partial<LeaderBoardRow> & Pick<LeaderBoardRow, 'id'>): Lea
   machineTypeCode: '',
   plannedQuantity: null,
   processingOrder: null,
+  isCompleted: false,
   ...partial
 });
 

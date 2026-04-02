@@ -16,4 +16,6 @@ export type LeaderBoardRow = {
   machineTypeCode: string;
   plannedQuantity: number | null;
   processingOrder: number | null;
+  /** `rowData.progress === '完了'` と API 完了フラグの同期表示 */
+  isCompleted: boolean;
 };

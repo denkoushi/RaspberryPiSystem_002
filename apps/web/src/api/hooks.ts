@@ -952,6 +952,9 @@ export function useCompleteKioskProductionScheduleRow() {
       // バックグラウンドで再取得（エラー時の整合性確保）
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
+      });
     }
   });
 }

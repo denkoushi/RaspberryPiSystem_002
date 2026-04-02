@@ -4,6 +4,7 @@ import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manu
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
+import { LeaderOrderRowOrderSelect } from './LeaderOrderRowOrderSelect';
 import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
 
 import type { LeaderBoardRow } from './types';
@@ -19,6 +20,11 @@ type Props = {
   /** 行納期編集（生産スケジュールと同契約の API へ） */
   onOpenDueDatePicker?: (row: LeaderBoardRow) => void;
   dueDatePending?: boolean;
+  orderUsageByResourceCd: Record<string, number[]> | undefined;
+  onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
+  onCompleteRow: (rowId: string) => void;
+  completePending: boolean;
+  orderPending: boolean;
 };
 
 /**
@@ -32,7 +38,12 @@ export function LeaderOrderResourceCard({
   dimmed,
   onSelect,
   onOpenDueDatePicker,
-  dueDatePending
+  dueDatePending,
+  orderUsageByResourceCd,
+  onOrderChange,
+  onCompleteRow,
+  completePending,
+  orderPending
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
 
@@ -77,9 +88,43 @@ export function LeaderOrderResourceCard({
             const dueLabel = formatDueDate(row.displayDue) || '—';
             const pres = presentLeaderOrderRow(row);
             return (
-              <div key={row.id} className="rounded bg-slate-800/80 px-2 py-1.5 text-[11px]">
-                <div className="mb-0.5 flex justify-between gap-1.5">
-                  <span className="font-mono text-[11px] text-white/88">{row.fseiban || '—'}</span>
+              <div
+                key={row.id}
+                className={clsx(
+                  'rounded bg-slate-800/80 px-2 py-1.5 text-[11px]',
+                  row.isCompleted && 'opacity-50 grayscale'
+                )}
+              >
+                <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    className={clsx(
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] shadow hover:bg-white/5 disabled:opacity-60',
+                      row.isCompleted
+                        ? 'border-slate-400 bg-slate-800 text-white/80'
+                        : 'border-rose-400/90 bg-slate-900 text-rose-200'
+                    )}
+                    aria-label={row.isCompleted ? '未完了に戻す' : '完了にする'}
+                    disabled={completePending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCompleteRow(row.id);
+                    }}
+                  >
+                    ✓
+                  </button>
+                  <LeaderOrderRowOrderSelect
+                    resourceCd={resourceCd}
+                    currentOrder={row.processingOrder}
+                    usageByResourceCd={orderUsageByResourceCd}
+                    disabled={
+                      completePending || row.isCompleted || orderPending || Boolean(dueDatePending)
+                    }
+                    onChange={(nextValue) => onOrderChange(row, nextValue)}
+                  />
+                  <span className="min-w-0 flex-1 font-mono text-[11px] text-white/88">
+                    {row.fseiban || '—'}
+                  </span>
                   <button
                     type="button"
                     disabled={!onOpenDueDatePicker || dueDatePending}

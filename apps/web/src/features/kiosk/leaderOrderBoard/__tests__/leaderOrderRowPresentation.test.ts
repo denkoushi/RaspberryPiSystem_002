@@ -18,7 +18,8 @@ const base = (): LeaderBoardRow => ({
   machineName: '立マシンA',
   machineTypeCode: '',
   plannedQuantity: 3,
-  processingOrder: 1
+  processingOrder: 1,
+  isCompleted: false
 });
 
 describe('presentLeaderOrderRow', () => {
