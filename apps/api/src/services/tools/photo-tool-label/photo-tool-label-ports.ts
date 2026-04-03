@@ -2,6 +2,13 @@
  * 写真持出 VLM 工具名ラベル — 境界ポート（推論・ストレージ・永続化を差し替え可能にする）
  */
 
+import type { PhotoToolVlmLabelProvenance } from '@raspi-system/shared-types';
+
+export type CompletePhotoToolLabelInput = {
+  displayName: string;
+  vlmProvenance: PhotoToolVlmLabelProvenance;
+};
+
 export type VisionCompletionInput = {
   userText: string;
   /** JPEG 等の raw bytes（base64 はアダプタ内で付与） */
@@ -37,6 +44,6 @@ export interface PendingPhotoLabelRepositoryPort {
   listPendingLoans(limit: number): Promise<PendingPhotoLoanRow[]>;
   /** displayName が null かつ claimedAt が null の行のみ更新。成功時 true */
   tryClaim(loanId: string): Promise<boolean>;
-  completeWithLabel(loanId: string, displayName: string): Promise<void>;
+  completeWithLabel(loanId: string, input: CompletePhotoToolLabelInput): Promise<void>;
   releaseClaim(loanId: string): Promise<void>;
 }

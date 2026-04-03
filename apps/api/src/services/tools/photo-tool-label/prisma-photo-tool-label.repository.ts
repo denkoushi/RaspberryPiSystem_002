@@ -1,6 +1,18 @@
+import { PhotoToolVlmLabelProvenance as PrismaPhotoToolVlmLabelProvenance } from '@prisma/client';
+
 import { prisma } from '../../../lib/prisma.js';
 
-import type { PendingPhotoLabelRepositoryPort, PendingPhotoLoanRow } from './photo-tool-label-ports.js';
+import type {
+  CompletePhotoToolLabelInput,
+  PendingPhotoLabelRepositoryPort,
+  PendingPhotoLoanRow,
+} from './photo-tool-label-ports.js';
+
+function toPrismaProvenance(
+  v: CompletePhotoToolLabelInput['vlmProvenance']
+): PrismaPhotoToolVlmLabelProvenance {
+  return v as PrismaPhotoToolVlmLabelProvenance;
+}
 
 export class PrismaPhotoToolLabelRepository implements PendingPhotoLabelRepositoryPort {
   async resetStaleClaims(staleBefore: Date): Promise<number> {
@@ -44,11 +56,12 @@ export class PrismaPhotoToolLabelRepository implements PendingPhotoLabelReposito
     return result.count === 1;
   }
 
-  async completeWithLabel(loanId: string, displayName: string): Promise<void> {
+  async completeWithLabel(loanId: string, input: CompletePhotoToolLabelInput): Promise<void> {
     await prisma.loan.update({
       where: { id: loanId },
       data: {
-        photoToolDisplayName: displayName,
+        photoToolDisplayName: input.displayName,
+        photoToolVlmLabelProvenance: toPrismaProvenance(input.vlmProvenance),
         photoToolLabelClaimedAt: null,
       },
     });

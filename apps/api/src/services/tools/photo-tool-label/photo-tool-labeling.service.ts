@@ -1,5 +1,7 @@
 import { performance } from 'node:perf_hooks';
 
+import type { PhotoToolVlmLabelProvenance } from '@raspi-system/shared-types';
+
 import { logger } from '../../../lib/logger.js';
 
 import { normalizePhotoToolDisplayName } from './photo-tool-label-normalize.js';
@@ -19,6 +21,10 @@ export const DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT =
   '画像の中で最も目立つ工具を1つだけ選び、日本語の短い工具名だけを答えてください。説明文や句読点は不要です。';
 
 const log = logger.child({ component: 'photoToolLabeling' });
+const PHOTO_TOOL_VLM_LABEL_PROVENANCE = {
+  FIRST_PASS_VLM: 'FIRST_PASS_VLM',
+  ASSIST_ACTIVE_VLM: 'ASSIST_ACTIVE_VLM',
+} as const;
 
 export type PhotoToolLabelingServiceDeps = {
   repo: PendingPhotoLabelRepositoryPort;
@@ -95,6 +101,7 @@ export class PhotoToolLabelingService {
       const firstPassLabel = normalizePhotoToolDisplayName(rawText);
 
       let persistLabel = firstPassLabel;
+      let vlmProvenance: PhotoToolVlmLabelProvenance = PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM;
       if (this.assistPipelineWanted()) {
         const assist = await this.runLabelAssistPipeline({
           loanId,
@@ -104,11 +111,15 @@ export class PhotoToolLabelingService {
         });
         if (firstPassLabel && assist.activePersistEligible && assist.assistedLabel) {
           persistLabel = assist.assistedLabel;
+          vlmProvenance = PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_VLM;
         }
       }
 
       if (persistLabel) {
-        await this.deps.repo.completeWithLabel(loanId, persistLabel);
+        await this.deps.repo.completeWithLabel(loanId, {
+          displayName: persistLabel,
+          vlmProvenance,
+        });
         ok = true;
       } else {
         await this.deps.repo.releaseClaim(loanId);

@@ -4,6 +4,10 @@ import { prisma } from '../../../../lib/prisma.js';
 
 import { PhotoToolLabelReviewService } from '../photo-tool-label-review.service.js';
 
+const PHOTO_TOOL_VLM_LABEL_PROVENANCE = {
+  FIRST_PASS_VLM: 'FIRST_PASS_VLM',
+} as const;
+
 vi.mock('../../../../lib/prisma.js', () => ({
   prisma: {
     loan: {
@@ -25,6 +29,7 @@ describe('PhotoToolLabelReviewService', () => {
     borrowedAt: new Date('2025-01-01T00:00:00Z'),
     photoUrl: '/api/storage/photos/2025/01/x.jpg',
     photoToolDisplayName: 'ペンチ',
+    photoToolVlmLabelProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM,
     photoToolHumanDisplayName: null as string | null,
     photoToolHumanQuality: null as 'GOOD' | 'MARGINAL' | 'BAD' | null,
     photoToolHumanReviewedAt: null as Date | null,

@@ -60,6 +60,13 @@ enum PhotoToolHumanLabelQuality {
   BAD
 }
 
+/// `Loan.photoToolDisplayName` が最後のラベルジョブでどう確定したか（管理UIのみ・既存行は UNKNOWN）
+enum PhotoToolVlmLabelProvenance {
+  UNKNOWN
+  FIRST_PASS_VLM
+  ASSIST_ACTIVE_VLM
+}
+
 enum ImportStatus {
   PENDING
   PROCESSING
@@ -355,6 +362,8 @@ model Loan {
   photoTakenAt            DateTime? // 撮影日時
   /// VLM が付与した表示用工具名（写真持出・マスタ Item 非紐づけ）
   photoToolDisplayName    String?
+  /// 上記表示名を最後のジョブがどの経路で保存したか（人レビュー列とは独立）
+  photoToolVlmLabelProvenance PhotoToolVlmLabelProvenance @default(UNKNOWN)
   /// true の Loan のみバッチがサムネイル推論の対象（リリース後の写真持出で true）
   photoToolLabelRequested Boolean                   @default(false)
   /// 推論ジョブが処理中として掴んだ時刻（二重実行緩和・スタック回収用）

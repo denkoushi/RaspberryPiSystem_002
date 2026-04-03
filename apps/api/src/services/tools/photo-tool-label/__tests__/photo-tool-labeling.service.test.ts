@@ -7,6 +7,11 @@ import type {
   VisionCompletionPort,
 } from '../photo-tool-label-ports.js';
 
+const PHOTO_TOOL_VLM_LABEL_PROVENANCE = {
+  FIRST_PASS_VLM: 'FIRST_PASS_VLM',
+  ASSIST_ACTIVE_VLM: 'ASSIST_ACTIVE_VLM',
+} as const;
+
 describe('PhotoToolLabelingService', () => {
   let repo: PendingPhotoLabelRepositoryPort;
   let visionImageSource: PhotoToolVisionImageSourcePort;
@@ -48,7 +53,10 @@ describe('PhotoToolLabelingService', () => {
     });
     await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
     expect(vision.complete).toHaveBeenCalledTimes(1);
-    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', 'ペンチ');
+    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
+      displayName: 'ペンチ',
+      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM,
+    });
     expect(repo.releaseClaim).not.toHaveBeenCalled();
   });
 
@@ -118,7 +126,10 @@ describe('PhotoToolLabelingService', () => {
 
     expect(vision.complete).toHaveBeenCalledTimes(2);
     expect(vision.complete.mock.calls[1][0].userText).toContain('【参考】');
-    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', 'ペンチ');
+    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
+      displayName: 'ペンチ',
+      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM,
+    });
   });
 
   it('assist が拒否したときは 1 回だけ VLM', async () => {
@@ -187,7 +198,10 @@ describe('PhotoToolLabelingService', () => {
     await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
     expect(vision.complete).toHaveBeenCalledTimes(1);
     expect(activeAssistGate.evaluate).toHaveBeenCalledWith('マウス');
-    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', 'ペンチ');
+    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
+      displayName: 'ペンチ',
+      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM,
+    });
   });
 
   it('アクティブのみ・ゲート通過なら 2 回目を本番ラベルに保存', async () => {
@@ -219,7 +233,10 @@ describe('PhotoToolLabelingService', () => {
     });
     await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
     expect(vision.complete).toHaveBeenCalledTimes(2);
-    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', '専用工具');
+    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
+      displayName: '専用工具',
+      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_VLM,
+    });
   });
 
   it('シャドーとアクティブが ON でゲート不通過でも 2 回目は呼び本番は 1 回目', async () => {
@@ -251,7 +268,10 @@ describe('PhotoToolLabelingService', () => {
     });
     await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
     expect(vision.complete).toHaveBeenCalledTimes(2);
-    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', 'ペンチ');
+    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
+      displayName: 'ペンチ',
+      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM,
+    });
   });
 
   it('calls localLlmRuntime ensureReady before vision and release after', async () => {
