@@ -184,6 +184,9 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 | `POST .../run` が 400 | JSON body 未送信 | **`Content-Type: application/json`** と **`{}`** |
 | スケジュールは動くがメールが拾えない | `gmailSubjectPattern` 未設定／件名不一致／該当メールが既読 | ダッシュボード設定と Gmail 状態を確認 |
 | 補助が付かない（部品納期個数） | CsvDashboard ID がコード定数と不一致 | `constants.ts` の UUID と DB の `CsvDashboard.id` を突き合わせ |
+| 補助は取り込まれるが **特定行だけ** 納期・個数が空（`unmatched` が多い） | 補助3キー（`ProductNo+FSIGENCD+FKOJUN`）と **本体 winner 行**が一致しない。典型: 本体の該当論理キーが古い `ProductNo` のまま／補助と資源CDが違う／上流で工順・工程が変わった | [KB-328](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md) |
+| 本体生産日程CSVが **FHINCD 等で FAILED**、補助だけ新しい | 本体ヘッダとダッシュボード列定義の不一致。失敗メールは NON_RETRIABLE ならゴミ箱行きで **同時刻に成功・失敗が混在**しうる | 本体 `CsvDashboardIngestRun` の `errorMessage`・KB-328 |
+| 手動取込したつもりだが API に届いていない | 管理画面で **プレビュー用**ファイル入力だけ選び、**アップロード（取り込み）用**のファイルが未選択（エラー文言が汎用） | `CsvDashboardsPage.tsx`（二重 `input`）・[KB-328](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md) |
 | 補助同期で `Transaction not found` / 取込は成功するがメールが未読のまま | 旧実装の長いインタラクティブ tx・`upsert` 列と一意制約の衝突（修正後は deleteMany+createMany 系）。同期失敗時は Gmail 後処理に進まない | [KB-324](../knowledge-base/KB-324-gmail-order-supplement-prisma-transaction.md)（原因・対策・本番反映実績） |
 
 #### レシピ: Gmail自動取得 → CSVダッシュボード → 可視化ダッシュボード → サイネージ

@@ -80,6 +80,8 @@ category: knowledge-base
   - 長いインタラクティブトランザクション内の逐次 `upsert` や、winner 付け替えと複合一意制約の組み合わせで失敗しうる。**対策・手順の正本**: [KB-324](./KB-324-gmail-order-supplement-prisma-transaction.md)。
 - **手動CSVアップロード経路の取り残し（2026-04-03 修正）**:
   - 補助ダッシュボードへの **`POST /api/csv-dashboards/:id/upload`** では、行取込後に **Gmail 経路と同じ** `syncFromSupplementDashboard` が走るよう統一した。**症状・原因・運用**: [KB-326](./KB-326-manual-upload-order-supplement-sync.md)。
+- **補助は付くが特定行だけ納期・個数が空／上流の工程変更とのギャップ（2026-04 調査）**:
+  - 本体の winner 論理キー（`FSEIBAN+FHINCD+FSIGENCD+FKOJUN`）と、補助照合3キー（`ProductNo+FSIGENCD+FKOJUN`）の関係、本体取込失敗・unmatched・管理UIの二重ファイル入力、上流クエリ（資源CD欠落）の知見を **[KB-328](./KB-328-production-schedule-supplement-key-mismatch-investigation.md)** に集約した（判断候補・トラブルシュート含む）。
 
 **検証・本番反映（2026-04-01）**
 
