@@ -4,6 +4,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { CsvDashboardService } from '../../services/csv-dashboard/index.js';
 import { CsvDashboardIngestor } from '../../services/csv-dashboard/csv-dashboard-ingestor.js';
+import { CsvDashboardPostIngestService } from '../../services/csv-dashboard/csv-dashboard-post-ingest.service.js';
 import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import {
   csvDashboardCreateSchema,
@@ -13,6 +14,7 @@ import {
 
 export function registerCsvDashboardRoutes(app: FastifyInstance): void {
   const csvDashboardService = new CsvDashboardService();
+  const postIngestService = new CsvDashboardPostIngestService();
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
 
   // 注意: multipartプラグインはapp.tsで既に登録済み
@@ -85,11 +87,17 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       csvFilePath
     );
 
+    const { orderSupplementSync } = await postIngestService.runAfterSuccessfulIngest({
+      dashboardId: params.id,
+      ingestSource: 'manual',
+    });
+
     return {
       success: true,
       rowsProcessed: result.rowsProcessed,
       rowsAdded: result.rowsAdded,
       rowsSkipped: result.rowsSkipped,
+      ...(orderSupplementSync != null ? { orderSupplementSync } : {}),
     };
   });
 

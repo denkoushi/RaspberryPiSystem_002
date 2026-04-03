@@ -10,8 +10,7 @@ import { MeasuringInstrumentLoanEventService } from '../measuring-instruments/me
 import { PrismaCsvImportSubjectPatternProvider } from '../imports/csv-import-subject-pattern.provider.js';
 import { GmailUnifiedMailboxFetcher } from '../backup/gmail-unified-mailbox-fetcher.js';
 import { CsvErrorDispositionPolicy } from './csv-error-disposition-policy.js';
-import { PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID } from '../production-schedule/constants.js';
-import { ProductionScheduleOrderSupplementSyncService } from '../production-schedule/order-supplement-sync.service.js';
+import { CsvDashboardPostIngestService } from './csv-dashboard-post-ingest.service.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -42,7 +41,7 @@ export class CsvDashboardImportService {
   private subjectPatternProvider = new PrismaCsvImportSubjectPatternProvider();
   private unifiedMailboxFetcher = new GmailUnifiedMailboxFetcher();
   private errorDispositionPolicy = new CsvErrorDispositionPolicy();
-  private orderSupplementSyncService = new ProductionScheduleOrderSupplementSyncService();
+  private postIngestService = new CsvDashboardPostIngestService();
 
   private static readonly MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   private static readonly INGEST_AUDIT_PREFIX = '[ingest-audit]';
@@ -295,13 +294,10 @@ export class CsvDashboardImportService {
             csvFilePath
           );
 
-          if (dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
-            const syncResult = await this.orderSupplementSyncService.syncFromSupplementDashboard();
-            logger?.info(
-              { dashboardId, syncResult },
-              '[CsvDashboardImportService] Production schedule order supplement sync completed'
-            );
-          }
+          await this.postIngestService.runAfterSuccessfulIngest({
+            dashboardId,
+            ingestSource: 'gmail',
+          });
           // #region agent debug
           stepLogs.push(`${safeMessageId}:after-ingestFromGmail:${result.rowsProcessed}`);
           // #endregion
