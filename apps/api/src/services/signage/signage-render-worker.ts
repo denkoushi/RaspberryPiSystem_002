@@ -4,6 +4,7 @@ import { initializeVisualizationModules } from '../visualization/initialize.js';
 import { SignageService } from './index.js';
 import { SignageRenderScheduler } from './signage-render-scheduler.js';
 import { SignageRenderer } from './signage.renderer.js';
+import { closeSharedChromium } from './loan-grid/playwright/playwright-browser-pool.js';
 
 // NOTE:
 // - This file is executed as a standalone Node process (forked from the API process).
@@ -27,17 +28,25 @@ logger.info(
 
 scheduler.start();
 
-const shutdown = (signal: string) => {
+const shutdown = async (signal: string) => {
   try {
     logger.info({ signal }, 'Signage render worker shutting down');
     scheduler.stop();
   } catch (err) {
     logger.warn({ err, signal }, 'Signage render worker shutdown failed');
-  } finally {
-    process.exit(0);
   }
+  try {
+    await closeSharedChromium();
+  } catch {
+    // ignore
+  }
+  process.exit(0);
 };
 
-process.once('SIGINT', () => shutdown('SIGINT'));
-process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => {
+  void shutdown('SIGINT');
+});
+process.once('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
 
