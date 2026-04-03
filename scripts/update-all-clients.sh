@@ -394,9 +394,9 @@ generate_summary() {
   local total_hosts
 
   # PLAY RECAP行からホスト名を抽出（拠点追加でraspberrypi固定にしない）
-  failed_hosts=$(grep -E "failed=[1-9]" "${log_file}" | awk '{print $1}' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
-  unreachable_hosts=$(grep -E "unreachable=[1-9]" "${log_file}" | awk '{print $1}' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
-  total_hosts=$(grep -E "PLAY RECAP" -A 50 "${log_file}" | awk '/: ok=/{print $1}' | tr -d ':' | sort -u | wc -l | tr -d ' ' || echo "0")
+  failed_hosts=$(grep -E "^[[:alnum:]_.-]+[[:space:]]*:[[:space:]]+ok=.*failed=[1-9]" "${log_file}" | awk '{print $1}' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
+  unreachable_hosts=$(grep -E "^[[:alnum:]_.-]+[[:space:]]*:[[:space:]]+ok=.*unreachable=[1-9]" "${log_file}" | awk '{print $1}' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//' || echo "")
+  total_hosts=$(grep -E "PLAY RECAP" -A 50 "${log_file}" | awk '/^[[:alnum:]_.-]+[[:space:]]*:[[:space:]]+ok=/{print $1}' | tr -d ':' | sort -u | wc -l | tr -d ' ' || echo "0")
   
   local failed_hosts_json="[]"
   local unreachable_hosts_json="[]"
@@ -1026,6 +1026,37 @@ remote_run_paths() {
   REMOTE_RUN_PID="${REMOTE_LOG_DIR}/ansible-update-${REMOTE_RUN_ID}.pid"
 }
 
+emit_local_debug_log() {
+  local run_id="$1"
+  local hypothesis_id="$2"
+  local message="$3"
+  local data_json="${4:-{}}"
+  # #region agent log
+  python3 - <<'PY' "/Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug-2f9950.log" "${run_id}" "${hypothesis_id}" "${message}" "${data_json}"
+import json
+import sys
+import time
+
+log_path, run_id, hypothesis_id, message, data_json = sys.argv[1:]
+try:
+    data = json.loads(data_json)
+except Exception:
+    data = {"raw": data_json}
+payload = {
+    "sessionId": "2f9950",
+    "runId": run_id,
+    "hypothesisId": hypothesis_id,
+    "location": "scripts/update-all-clients.sh",
+    "message": message,
+    "data": data,
+    "timestamp": int(time.time() * 1000),
+}
+with open(log_path, "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+PY
+  # #endregion
+}
+
 remote_status() {
   local run_id="$1"
   remote_run_paths "${run_id}"
@@ -1049,6 +1080,7 @@ remote_status() {
 remote_attach() {
   local run_id="$1"
   remote_run_paths "${run_id}"
+  local remote_summary="${REMOTE_LOG_DIR}/ansible-update-${REMOTE_RUN_ID}.summary.json"
   echo "[INFO] Attaching to ${run_id} on ${REMOTE_HOST}"
   if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "test -f \"${REMOTE_RUN_LOG}\""; then
     echo "[ERROR] Remote log not found: ${REMOTE_RUN_LOG}"
@@ -1068,6 +1100,54 @@ remote_attach() {
   kill "${tail_pid}" >/dev/null 2>&1 || true
   local exit_code
   exit_code=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cat \"${REMOTE_RUN_EXIT}\"" || echo "unknown")
+  local remote_status_json
+  local remote_summary_json
+  local remote_recap_line
+  local remote_api_ps
+  local remote_drawing_dir
+  remote_status_json=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${REMOTE_RUN_STATUS}\" ]; then cat \"${REMOTE_RUN_STATUS}\"; else echo '{}' ; fi" || echo "{}")
+  remote_summary_json=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -f \"${remote_summary}\" ]; then cat \"${remote_summary}\"; else echo '{}' ; fi" || echo "{}")
+  remote_recap_line=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "python3 - <<'PY' \"${REMOTE_RUN_LOG}\"
+import re
+import sys
+path = sys.argv[1]
+line = ''
+with open(path, encoding='utf-8', errors='ignore') as fh:
+    for raw in fh:
+        if re.match(r'^[\\w.-]+\\s+: ok=\\d+', raw):
+            line = raw.strip()
+print(line)
+PY" || echo "")
+  remote_api_ps=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml ps api 2>/dev/null | tail -n +1" || echo "")
+  remote_drawing_dir=$(ssh ${SSH_OPTS} "${REMOTE_HOST}" "if [ -d \"/opt/RaspberryPiSystem_002/storage/part-measurement-drawings\" ]; then echo present; else echo missing; fi" || echo "unknown")
+  local attach_debug_json
+  attach_debug_json=$(python3 - <<'PY' "${run_id}" "${exit_code}" "${remote_status_json}" "${remote_summary_json}" "${remote_recap_line}" "${remote_api_ps}" "${remote_drawing_dir}"
+import json
+import sys
+
+run_id, exit_code, status_json, summary_json, recap_line, api_ps, drawing_dir = sys.argv[1:]
+def parse_json(raw):
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {"raw": raw}
+status = parse_json(status_json)
+summary = parse_json(summary_json)
+print(json.dumps({
+    "runId": run_id,
+    "exitCodeFile": exit_code,
+    "statusState": status.get("state"),
+    "statusExitCode": status.get("exitCode"),
+    "summarySuccess": summary.get("success"),
+    "summaryFailedHosts": summary.get("failedHosts"),
+    "summaryUnreachableHosts": summary.get("unreachableHosts"),
+    "playRecapLine": recap_line,
+    "apiPs": api_ps,
+    "drawingDir": drawing_dir,
+}, ensure_ascii=False))
+PY
+)
+  emit_local_debug_log "${run_id}" "H1" "remote attach finished" "${attach_debug_json}"
   echo "[INFO] Remote run finished with exit code: ${exit_code}"
 }
 
@@ -1372,9 +1452,9 @@ import json, re, sys
 log_path, summary_path = sys.argv[1:]
 with open(log_path, encoding="utf-8", errors="ignore") as fh:
     text = fh.read()
-failed_hosts = set(re.findall(r"^([\\w\\-]+): ok=\\d+ .* failed=[1-9]", text, re.M))
-unreachable_hosts = set(re.findall(r"^([\\w\\-]+): ok=\\d+ .* unreachable=[1-9]", text, re.M))
-all_hosts = set(re.findall(r"^([\\w\\-]+): ok=\\d+", text, re.M))
+failed_hosts = set(re.findall(r"^([\\w.-]+)\\s+:\\s+ok=\\d+.*failed=[1-9]", text, re.M))
+unreachable_hosts = set(re.findall(r"^([\\w.-]+)\\s+:\\s+ok=\\d+.*unreachable=[1-9]", text, re.M))
+all_hosts = set(re.findall(r"^([\\w.-]+)\\s+:\\s+ok=\\d+", text, re.M))
 summary = {
     "timestamp": "${TIMESTAMP}",
     "logFile": log_path,
@@ -1386,6 +1466,29 @@ summary = {
 with open(summary_path, "w", encoding="utf-8") as fh:
     json.dump(summary, fh, ensure_ascii=False)
 PY
+  # #region agent log
+  if [[ "${RUN_ID:-}" != "" && "${REMOTE_HOST:-}" != "" ]]; then
+    local summary_debug_json
+    summary_debug_json=$(python3 - <<'PY' "${summary_file}" "${log_file}"
+import json
+import re
+import sys
+
+summary_path, log_path = sys.argv[1:]
+with open(summary_path, encoding="utf-8") as fh:
+    summary = json.load(fh)
+with open(log_path, encoding="utf-8", errors="ignore") as fh:
+    text = fh.read()
+recap = re.findall(r'^[\w.-]+\s+: ok=\d+.*$', text, re.M)
+print(json.dumps({
+    "summary": summary,
+    "recapLines": recap[-5:],
+}, ensure_ascii=False))
+PY
+)
+    echo "[DEBUG] summary-check ${summary_debug_json}"
+  fi
+  # #endregion
 }
 
 get_retry_hosts_if_unreachable_only() {
