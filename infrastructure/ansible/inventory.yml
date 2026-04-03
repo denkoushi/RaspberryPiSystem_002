@@ -44,6 +44,9 @@ all:
           api_local_llm_runtime_control_token: "{{ vault_api_local_llm_runtime_control_token | default('') }}"
           api_local_llm_runtime_health_base_url: ""
           kiosk_document_summary_inference_enabled: "true"
+          # 持出カードグリッドは Pi5 API 側で HTML/CSS → Playwright 描画を有効化する
+          api_signage_loan_grid_engine: "playwright_html"
+          api_signage_playwright_device_scale_factor: "1"
           # 写真持出 GOOD 類似ギャラリー（埋め込み）。vault で true + URL/model を設定して有効化
           photo_tool_embedding_enabled: "{{ vault_photo_tool_embedding_enabled | default('false') }}"
           photo_tool_embedding_url: "{{ vault_photo_tool_embedding_url | default('') }}"
