@@ -677,6 +677,12 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **サイネージ関連**: Pi5のみ（サーバー側レンダリングのため）
 - **Pi3固有の設定**: Pi3のみ（`--limit raspberrypi3`）
 
+**サイネージ持出カードグリッド（HTML/CSS + Playwright）反映条件**:
+- コード反映だけでは不十分です。Pi5 API コンテナへ **`SIGNAGE_LOAN_GRID_ENGINE=playwright_html`** が入って初めて新描画になります。
+- 標準手順では `infrastructure/ansible/templates/docker.env.j2` と inventory/host_vars の **`api_signage_loan_grid_engine`** で管理してください。
+- 反映確認は Pi5 上で `docker compose ... exec -T api /bin/sh -lc 'echo $SIGNAGE_LOAN_GRID_ENGINE'` を実行し、`playwright_html` を確認します。
+- ロールバックは `api_signage_loan_grid_engine: "svg_legacy"` に戻して **Pi5 のみ再デプロイ**します。
+
 **知見（2026-03-06）**: 事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×4）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×4 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
 
 **知見（2026-03-09）**: `--limit "server:kiosk"` で Pi5 + Pi4 を並列デプロイ中、Pi5 フェーズ完了後に Pi4 キオスクフェーズでハングする事象が発生した（[KB-300](../knowledge-base/infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時)）。**再発防止（2026-03-09 適用済み）**: Pi4 は常時 1 台ずつ直列実行（`deploy_serial.kiosk: 1`）に変更済み。ハング発生時は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) の「Pi4デプロイハング時の復旧手順」に従い、ハングプロセスを停止・ロック解除後、Pi4 を単体で `--limit "raspberrypi4"` / `--limit "raspi4-robodrill01"` により再デプロイする。

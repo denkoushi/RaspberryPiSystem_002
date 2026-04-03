@@ -1,4 +1,3 @@
-import { PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 import sharp from 'sharp';
 import path from 'path';
 import { promises as fs } from 'fs';
@@ -31,20 +30,16 @@ import {
   sliceProgressOverviewItems,
 } from './kiosk-progress-overview/pagination.js';
 import {
-  formatBorrowedCompactLine,
-  splitLocationTwoLines,
-  splitPrimaryTwoLines,
-  trimEmployeeNameOneLine,
-} from './loan-card/loan-card-text.js';
-import {
-  computeSplitCompact24Layout,
-  idealCardWidthForColumnCount,
-} from './loan-card/loan-card-layout.js';
-import {
   COMPACT24_MAX_COLUMNS,
   COMPACT24_MAX_ROWS,
   COMPACT24_CARD_HEIGHT_PX,
 } from './loan-card/loan-card-contracts.js';
+import { computeLoanGridLayout } from './loan-grid/compute-loan-grid-layout.js';
+import { buildLoanCardViewModels } from './loan-grid/build-loan-card-view-models.js';
+import { createLoanGridRasterizer } from './loan-grid/create-loan-grid-rasterizer.js';
+import type { ToolGridConfig } from './loan-grid/tool-grid-config.js';
+import type { LoanGridRasterizerPort } from './loan-grid/loan-grid-rasterizer.port.js';
+import type { SvgLoanGridDependencies } from './loan-grid/svg-loan-grid-dependencies.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -56,24 +51,6 @@ type ToolItem = NonNullable<SignageContentResponse['tools']>[number] & {
   isOver12Hours?: boolean;
   isOverdue?: boolean;
 };
-
-type ToolCardLayoutProfile = 'default' | 'splitCompact24';
-
-interface ToolGridConfig {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  mode: 'FULL' | 'SPLIT';
-  showThumbnails: boolean;
-  maxRows?: number;
-  maxColumns?: number;
-  /** When set, overrides default 300/360 SPLIT/FULL ideal width (1920-relative px before scale). */
-  idealCardWidthPx?: number;
-  /** When set, overrides default 140 (1920-relative px before scale). */
-  cardHeightPx?: number;
-  cardLayout?: ToolCardLayoutProfile;
-}
 
 /** 左右ペイン共通: SPLIT 持出カード（compact 24）。契約定数は `loan-card-contracts.ts`。 */
 const SPLIT_COMPACT24_LOAN_GRID_BASE: Pick<
@@ -107,8 +84,21 @@ export class SignageRenderer {
   private readonly csvDashboardTemplateRenderer = new CsvDashboardTemplateRenderer();
   private readonly csvDashboardService = new CsvDashboardService();
   private readonly visualizationService = new VisualizationService();
+  private readonly loanGridRasterizer: LoanGridRasterizerPort;
 
-  constructor(private readonly signageService: SignageService) {}
+  constructor(private readonly signageService: SignageService) {
+    this.loanGridRasterizer = createLoanGridRasterizer(this.makeSvgLoanGridDependencies());
+  }
+
+  private makeSvgLoanGridDependencies(): SvgLoanGridDependencies {
+    return {
+      escapeXml: (value) => this.escapeXml(value),
+      generateId: (prefix) => this.generateId(prefix),
+      encodeLocalImageAsBase64: (localPath, width, height, fit) =>
+        this.encodeLocalImageAsBase64(localPath, width, height, fit),
+      resolveThumbnailLocalPath: (thumbnailUrl) => this.resolveThumbnailLocalPath(thumbnailUrl),
+    };
+  }
 
   async renderCurrentContent(): Promise<{
     renderedAt: Date;
@@ -1000,288 +990,28 @@ export class SignageRenderer {
   }
 
   private async buildToolCardGrid(tools: ToolItem[], config: ToolGridConfig): Promise<{ cardsSvg: string; overflowCount: number }> {
-    const scale = WIDTH / 1920;
-    const gap = Math.round(14 * scale);
-    const desiredColumns = config.maxColumns ?? 2;
-    let idealCardWidth: number;
-    if (config.idealCardWidthPx != null) {
-      idealCardWidth = Math.round(config.idealCardWidthPx * scale);
-    } else if (config.cardLayout === 'splitCompact24' && config.maxColumns != null) {
-      idealCardWidth = idealCardWidthForColumnCount(config.width, gap, config.maxColumns);
-    } else {
-      idealCardWidth = Math.round((config.mode === 'FULL' ? 360 : 300) * scale);
-    }
-    let columns = Math.max(1, Math.floor((config.width + gap) / (idealCardWidth + gap)));
-    columns = Math.min(columns, desiredColumns);
-    const cardWidth = Math.max(
-      1,
-      Math.floor((config.width - gap * (columns - 1)) / columns)
+    const allViews = await buildLoanCardViewModels(
+      tools,
+      config,
+      WIDTH,
+      (d) => this.formatBorrowedAt(d),
+      this.makeSvgLoanGridDependencies()
     );
-    const cardHeight =
-      config.cardHeightPx != null ? Math.round(config.cardHeightPx * scale) : Math.round(140 * scale);
-    const maxRows =
-      config.maxRows ??
-      Math.max(1, Math.floor((config.height + gap) / (cardHeight + gap)));
-    const maxItems = columns * maxRows;
-    const displayTools = tools.slice(0, maxItems);
-    const overflowCount = Math.max(0, tools.length - displayTools.length);
-    const cardRadius = Math.round(12 * scale);
-    const cardPadding = Math.round(12 * scale);
-    const thumbnailSize = Math.round(96 * scale);
-    const thumbnailWidth = thumbnailSize;
-    const thumbnailHeight = thumbnailSize;
-    const thumbnailGap = Math.round(12 * scale);
+    const layout = computeLoanGridLayout(WIDTH, config, allViews);
+    const layer = await this.loanGridRasterizer.render({
+      canvasWidth: WIDTH,
+      config,
+      layout,
+    });
 
-    const cards = await Promise.all(
-      displayTools.map(async (tool, index) => {
-        const column = index % columns;
-        const row = Math.floor(index / columns);
-        const x = config.x + column * (cardWidth + gap);
-        const y = config.y + row * (cardHeight + gap);
-        const primaryText = tool.name || PHOTO_LOAN_CARD_PRIMARY_LABEL;
-        const clientLocationText = tool.clientLocation?.trim() ? tool.clientLocation.trim() : '-';
-        const isInstrument = Boolean(tool.isInstrument);
-        const isRigging = Boolean(tool.isRigging);
-        const managementText = isInstrument || isRigging
-          ? (tool.managementNumber || tool.itemCode || '')
-          : (tool.itemCode || '');
-        const riggingIdNumText = isRigging && tool.idNum && tool.idNum.trim().length > 0
-          ? `旧:${tool.idNum.trim()}`
-          : '';
-        // 提案3カラーパレット: 工場現場特化・高視認性テーマ
-        // 工具: bg-blue-500 (RGB: 59,130,246), ボーダー: border-blue-700 (RGB: 29,78,216)
-        // 計測機器: bg-purple-600 (RGB: 147,51,234), ボーダー: border-purple-800 (RGB: 107,33,168)
-        // 吊具: bg-orange-500 (RGB: 249,115,22), ボーダー: border-orange-700 (RGB: 194,65,12)
-        const cardFill = isInstrument
-          ? 'rgba(147,51,234,1.0)' // purple-600
-          : isRigging
-            ? 'rgba(249,115,22,1.0)' // orange-500
-            : 'rgba(59,130,246,1.0)'; // blue-500
-        // 超過アイテムの判定（isOver12Hours または isOverdue）
-        const isExceeded = tool.isOver12Hours || Boolean(tool.isOverdue);
-        
-        // 超過アイテムは赤い太枠、それ以外は通常のボーダー
-        const cardStroke = isExceeded
-          ? 'rgba(220,38,38,1.0)' // red-600 赤い太枠
-          : isInstrument
-            ? 'rgba(107,33,168,1.0)' // purple-800
-            : isRigging
-              ? 'rgba(194,65,12,1.0)' // orange-700
-              : 'rgba(29,78,216,1.0)'; // blue-700
-        const strokeWidth = isExceeded
-          ? Math.max(4, Math.round(4 * scale)) // 超過アイテムは4px以上の太枠
-          : Math.max(2, Math.round(2 * scale)); // 通常は2px以上
-        const clipId = this.generateId(`thumb-${index}`);
-        let thumbnailElement = '';
-        let hasThumbnail = false;
-        let thumbBase64: string | null = null;
-
-        if (config.showThumbnails && tool.thumbnailUrl) {
-          const thumbnailPath = this.resolveThumbnailLocalPath(tool.thumbnailUrl);
-          if (thumbnailPath) {
-            const base64 = await this.encodeLocalImageAsBase64(
-              thumbnailPath,
-              thumbnailWidth,
-              thumbnailHeight,
-              'cover'
-            );
-            if (base64) {
-              hasThumbnail = true;
-              thumbBase64 = base64;
-            }
-          }
-        }
-
-        if (config.cardLayout === 'splitCompact24') {
-          const layout = computeSplitCompact24Layout({
-            x,
-            y,
-            cardWidth,
-            cardHeight,
-            scale,
-            cardPadding,
-            thumbnailWidth,
-            thumbnailHeight,
-            thumbnailGap,
-            hasThumbnail,
-            hasWarning: isExceeded,
-          });
-          if (thumbBase64) {
-            const tx = layout.thumbnailX;
-            const ty = layout.thumbnailY;
-            thumbnailElement = `
-                <clipPath id="${clipId}">
-                  <rect x="${tx}" y="${ty}"
-                    width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
-                </clipPath>
-                <image x="${tx}" y="${ty}"
-                  width="${thumbnailWidth}" height="${thumbnailHeight}"
-                  href="${thumbBase64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
-              `;
-          }
-          const borrowedCompact = formatBorrowedCompactLine(this.formatBorrowedAt(tool.borrowedAt));
-          const employeeLine = trimEmployeeNameOneLine(tool.employeeName, layout.maxEmployeeUnitsPerLine);
-          const pLines = splitPrimaryTwoLines(primaryText, layout.maxPrimaryUnitsPerLine);
-          const { line1: loc1, line2: loc2 } = splitLocationTwoLines(
-            clientLocationText,
-            layout.maxLocationUnitsPerLine
-          );
-          const primary2Svg =
-            pLines.line2.length > 0
-              ? `<text x="${layout.textX}" y="${layout.primary2Y}"
-              font-size="${layout.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-              ${this.escapeXml(pLines.line2)}
-            </text>`
-              : '';
-          const loc2Svg =
-            loc2.length > 0
-              ? `<text x="${layout.textX}" y="${layout.loc2Y}"
-              font-size="${layout.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
-              ${this.escapeXml(loc2)}
-            </text>`
-              : '';
-          const warnSvg =
-            layout.warningX != null && layout.warningY != null
-              ? `<text x="${layout.warningX}" y="${layout.warningY}"
-              font-size="${layout.fontWarning}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-                ⚠ 期限超過
-              </text>`
-              : '';
-          return `
-          <g>
-            <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
-              rx="${cardRadius}" ry="${cardRadius}"
-              fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
-            <text x="${layout.nameX}" y="${layout.nameY}"
-              font-size="${layout.fontName}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${this.escapeXml(employeeLine)}
-            </text>
-            ${thumbnailElement}
-            <text x="${layout.textX}" y="${layout.primary1Y}"
-              font-size="${layout.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-              ${this.escapeXml(pLines.line1)}
-            </text>
-            ${primary2Svg}
-            <text x="${layout.textX}" y="${layout.loc1Y}"
-              font-size="${layout.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
-              ${this.escapeXml(loc1)}
-            </text>
-            ${loc2Svg}
-            <text x="${layout.dateX}" y="${layout.dateY}"
-              font-size="${layout.fontDate}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${borrowedCompact ? this.escapeXml(borrowedCompact) : ''}
-            </text>
-            ${warnSvg}
-            ${riggingIdNumText
-              ? `<text x="${layout.textMaxX}" y="${y + cardHeight - cardPadding - Math.round(18 * scale)}"
-                  text-anchor="end" font-size="${Math.max(12, Math.round(12 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-                  ${this.escapeXml(riggingIdNumText)}
-                </text>`
-              : ''
-            }
-            <text x="${layout.textMaxX}" y="${y + cardHeight - cardPadding}"
-              text-anchor="end" font-size="${Math.max(12, Math.round(13 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
-              ${this.escapeXml(managementText || tool.itemCode || '')}
-            </text>
-          </g>
-        `;
-        }
-
-        if (thumbBase64) {
-          const thumbX = x + cardPadding;
-          const thumbY = y + Math.round((cardHeight - thumbnailHeight) / 2);
-          thumbnailElement = `
-                <clipPath id="${clipId}">
-                  <rect x="${thumbX}" y="${thumbY}"
-                    width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
-                </clipPath>
-                <image x="${thumbX}" y="${thumbY}"
-                  width="${thumbnailWidth}" height="${thumbnailHeight}"
-                  href="${thumbBase64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
-              `;
-        }
-
-        const borrowedText = this.formatBorrowedAt(tool.borrowedAt) ?? '';
-        const [borrowedDate, borrowedTime] = borrowedText.split(' ');
-        const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
-        // テキストエリアのX座標: サムネイルがある場合は右側、ない場合は左側から開始
-        const textAreaX = hasThumbnail
-          ? cardPadding + thumbnailSize + thumbnailGap
-          : cardPadding;
-
-        const textStartY = y + cardPadding;
-        const textX = x + textAreaX;
-        // 統一された情報の並び順: 名称、従業員名、日付+時刻（横並び）、警告
-        // すべてのアイテム種別（工具/計測機器/吊具）で同じ順序に統一
-        const primaryY = textStartY + Math.round(20 * scale); // 名称の位置（全アイテム共通）
-        const nameY = primaryY + Math.round(24 * scale); // primaryText から1段目（従業員）
-        const locationY = nameY + Math.round(20 * scale); // clientLocation 行（ラベルなし）
-        const dateTimeY = locationY + Math.round(20 * scale); // 日付+時刻
-        // 日付と時刻を横並びに配置（同じY座標、X座標をずらす）
-        const dateX = textX;
-        const timeX = textX + (borrowedDate ? Math.round(80 * scale) : 0); // 日付の右側に時刻を配置（日付がない場合は左端から）
-        const warningY = dateTimeY + Math.round(18 * scale); // date/time の直下に警告表示
-        return `
-          <g>
-            <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
-              rx="${cardRadius}" ry="${cardRadius}"
-              fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
-            ${thumbnailElement}
-            <text x="${textX}" y="${primaryY}"
-              font-size="${Math.max(16, Math.round(18 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-              ${this.escapeXml(primaryText)}
-            </text>
-            <text x="${textX}" y="${nameY}"
-              font-size="${Math.max(14, Math.round(16 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${this.escapeXml(secondary)}
-            </text>
-            <text x="${textX}" y="${locationY}"
-              font-size="${Math.max(12, Math.round(13 * scale))}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
-              ${this.escapeXml(clientLocationText)}
-            </text>
-            <text x="${dateX}" y="${dateTimeY}"
-              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${borrowedDate ? this.escapeXml(borrowedDate) : ''}
-            </text>
-            <text x="${timeX}" y="${dateTimeY}"
-              font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${borrowedTime ? this.escapeXml(borrowedTime) : ''}
-            </text>
-            ${isExceeded
-              ? `<text x="${textX}" y="${warningY}"
-                  font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-                  ⚠ 期限超過
-                </text>`
-              : ''
-            }
-            ${riggingIdNumText
-              ? `<text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding - Math.round(18 * scale)}"
-                  text-anchor="end" font-size="${Math.max(12, Math.round(12 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-                  ${this.escapeXml(riggingIdNumText)}
-                </text>`
-              : ''
-            }
-            <text x="${x + cardWidth - cardPadding}" y="${y + cardHeight - cardPadding}"
-              text-anchor="end" font-size="${Math.max(14, Math.round(14 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
-              ${this.escapeXml(managementText || tool.itemCode || '')}
-            </text>
-          </g>
-        `;
-      })
-    );
-
-    if (cards.length === 0) {
-      cards.push(`
-        <text x="${config.x}" y="${config.y + Math.round(40 * scale)}"
-          font-size="${Math.round(28 * scale)}" fill="#ffffff" font-family="sans-serif">
-          表示するアイテムがありません
-        </text>
-      `);
+    if (layer.kind === 'svg_fragment') {
+      return { cardsSvg: layer.fragment, overflowCount: layer.overflowCount };
     }
 
+    const href = `data:image/png;base64,${layer.pngBuffer.toString('base64')}`;
     return {
-      cardsSvg: cards.join('\n'),
-      overflowCount,
+      cardsSvg: `<image x="${config.x}" y="${config.y}" width="${config.width}" height="${config.height}" href="${href}" preserveAspectRatio="none" />`,
+      overflowCount: layer.overflowCount,
     };
   }
 
