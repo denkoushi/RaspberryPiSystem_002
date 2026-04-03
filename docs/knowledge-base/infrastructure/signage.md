@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 23件  
+**件数**: 24件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -134,6 +134,51 @@ update-frequency: medium
 - `apps/api/scripts/html-previews/signage-split-compact24-preview.html`
 
 **解決状況**: ✅ **実装・ナレッジ記録**（2026-04-03）。**`main` 反映**後は [GitHub Actions](https://github.com/denkoushi/RaspberryPiSystem_002/actions) で CI を確認する。
+
+**関連**: HTML/CSS を headless でラスタ化する経路は **`SIGNAGE_LOAN_GRID_ENGINE`** 依存（未設定・欠落時は常に従来 SVG）。切り分けは [KB-327](#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ)。
+
+---
+
+<a id="kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ"></a>
+
+### [KB-327] 貸出グリッド Playwright / `SIGNAGE_LOAN_GRID_ENGINE` とデプロイ環境のずれ
+
+**実施日**: 2026-04-03
+
+**概要（仕様）**:
+- **`layoutConfig: SPLIT`** × **`kind: 'loans'`** のグリッドは、環境変数 **`SIGNAGE_LOAN_GRID_ENGINE`** で描画エンジンを切り替える。
+  - **`svg_legacy`**（既定）: 従来どおり SVG パスでカードグリッドを生成（[KB-325](#kb-325-split-compact24-loan-cards-pi5-git) の幾何・契約と整合）。
+  - **`playwright_html`**: 同じ契約（件数・2 行など）で **HTML 文書を生成し Playwright（Chromium）で PNG 化**し、親 SVG の `<image>` として合成する（`PlaywrightLoanGridRasterizer`）。
+- **API コンテナ**に値が入っていない、変数名が誤っている、未再作成のまま compose を読んだだけ、などだと **常に既定 `svg_legacy` が選ばれる**。コードとイメージが新しくても **見た目は旧経路のまま**になり得る。
+- **設計判断の要約**: [ADR-20260405](../../decisions/ADR-20260405-signage-loan-grid-render-engine.md)。
+
+**恒久配線（本番）**:
+- 正本は **`infrastructure/docker/.env`**（Ansible の `docker.env.j2` から生成）。`apps/api/.env` だけでは **compose が読まない**パターンは [KB-318](../ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) と同型。
+- リポジトリ側: `infrastructure/ansible/templates/docker.env.j2` に `SIGNAGE_LOAN_GRID_ENGINE` / `SIGNAGE_PLAYWRIGHT_DEVICE_SCALE_FACTOR` 等、`inventory.yml` の Pi5 例で `api_signage_loan_grid_engine: "playwright_html"`。
+- [deployment.md](../../guides/deployment.md) に「コードのみでは不十分・env 必須」の注記あり。
+
+**切り分け手順**:
+1. Pi5 上で API コンテナ内: `echo "$SIGNAGE_LOAN_GRID_ENGINE"` または `docker compose ... exec -T api /bin/sh -lc 'echo "$SIGNAGE_LOAN_GRID_ENGINE"'`。期待: 本番で HTML 経路なら **`playwright_html`**。
+2. 空・未設定・別名なら、ホストの `infrastructure/docker/.env` と **`docker.env.j2` の展開結果**を確認。応急でホスト `.env` に追記した場合は **`docker compose up -d --force-recreate api`** 等でコンテナに取り込む。
+3. ログ（API）で `createLoanGridRasterizer` 付近を確認。**`PlaywrightLoanGridRasterizer`** が選ばれているか（Pi5 に `rg` が無い場合は `grep` / `tail` で代替）。
+4. **`GET /api/signage/current-image`** で取得 JPEG が新レイアウトか目視（管理プレビューと Pi3 `current.jpg` は同じ生成経路を正とする）。
+
+**トラブルシューティング表**:
+
+| 症状 | 原因（典型） | 対処 |
+|------|----------------|------|
+| デプロイ成功表示だが Pi3/プレビューが旧グリッドのまま | API コンテナに **`SIGNAGE_LOAN_GRID_ENGINE=playwright_html` が無い**（未配線・再作成漏れ） | Ansible 恒久化 + Pi5 で `.env` 反映後 **`api` 再作成**。上記切り分けで確認 |
+| Playwright 起動失敗・タイムアウト | Chromium/ブラウザパス・メモリ | `Dockerfile.api` の Playwright 依存・`PLAYWRIGHT_BROWSERS_PATH`、API ログ。切り戻しは **`svg_legacy`** |
+| 一時的に旧経路へ戻したい | 運用上の切り戻し | `SIGNAGE_LOAN_GRID_ENGINE=svg_legacy` にし `api` 再作成（[KB-325](#kb-325-split-compact24-loan-cards-pi5-git) の SVG レイアウトに戻る） |
+
+**関連ファイル（代表）**:
+- `apps/api/src/config/env.ts`（`SIGNAGE_LOAN_GRID_ENGINE` 既定）
+- `apps/api/src/services/signage/loan-grid/create-loan-grid-rasterizer.ts`
+- `infrastructure/ansible/templates/docker.env.j2`
+- `infrastructure/ansible/inventory.yml`
+- `infrastructure/docker/Dockerfile.api`
+
+**解決状況**: ✅ **実装・Ansible 恒久化・実機確認・ナレッジ記録**（2026-04-03）。**`main`**: `feat/signage-loan-grid-html` 系マージ後、`update-all-clients.sh --limit raspberrypi5` で `.env` とコンテナの両方に `playwright_html` が維持されることを確認。
 
 ---
 
