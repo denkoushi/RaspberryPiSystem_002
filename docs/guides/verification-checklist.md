@@ -695,13 +695,17 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **確認ポイント**（[KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#部品納期個数csvの補助反映2026-04-01)）:
 
 - [ ] **API契約**: `GET /api/kiosk/production-schedule?pageSize=5`（`x-client-key` 必須）のJSONに **`"plannedQuantity"`** が含まれる（`plannedStartDate` / `plannedEndDate` も同系。補助未照合時は `null` 想定）。
-- [ ] **実機回帰基準**: `./scripts/deploy/verify-phase12-real.sh` は **`plannedQuantity` grep** を含み、**PASS 40 / WARN 0 / FAIL 0** が完了ライン（2026-04-01・ブランチ `feat/production-schedule-planned-supplement` 本番5台反映後）。
+- [ ] **実機回帰基準**: `./scripts/deploy/verify-phase12-real.sh` は **`plannedQuantity` grep** を含み、**PASS 41 / WARN 0 / FAIL 0** が完了ライン（2026-04-03 時点の項目数基準。40 項目は 2026-04-01 当初、`photo-label-reviews` スモーク追加で 41 へ増加）。
+- [ ] **手動アップロードと Gmail の整合**: 補助用 `CsvDashboard` へ **`POST /api/csv-dashboards/:id/upload`** した直後も `ProductionScheduleOrderSupplement` 同期が走ること（旧: Gmail のみ）。正本: [KB-326](../knowledge-base/KB-326-manual-upload-order-supplement-sync.md)。
 - [ ] **Gmail 補助同期の Prisma エラー（運用・開発）**: `Transaction not found` 等の場合は原因切り分け・修正後の反映手順の正本を [KB-324](../knowledge-base/KB-324-gmail-order-supplement-prisma-transaction.md) で確認（2026-04-02 本番5台反映: ブランチ `fix/order-supplement-sync-transaction`）。
+
+**検証日時**: 2026-04-01（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・補助 `plannedQuantity` grep 追加後）／**2026-04-03**（`fix/manual-upload-order-supplement-post-ingest`・Pi5 のみ反映後、同スクリプト **PASS 41 / WARN 0 / FAIL 0**）
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.17 納期詳細 API effectiveDueDate（部品納期個数フォールバック表示）**
 
 - [ ] **API契約**: `GET /api/kiosk/production-schedule/due-management/triage` で **製番が1件以上**ある前提で、先頭 `fseiban` を取り、`GET /api/kiosk/production-schedule/due-management/seiban/<fseiban>`（**`x-client-key` 必須**）の JSON に **`effectiveDueDate`** と **`effectiveDueDateSource`**（`manual` | `csv` | `null` いずれか）が含まれる。
-- [ ] **運用メモ**: Phase12 自動化は **40 項目基準のまま**（本項は手動スモーク。`triage` が空の工場では製番をデータで用意してから実施）。**参照**: [KB-297 の当該節](../knowledge-base/KB-297-kiosk-due-management-workflow.md#表示用納期-effectiveduedate計画列-ui2026-04-01)。
+- [ ] **運用メモ**: Phase12 自動化は **41 項目基準**（2026-04-03 時点。旧 40 は `photo-label-reviews` スモーク追加前）。本項は手動スモーク中心。**参照**: [KB-297 の当該節](../knowledge-base/KB-297-kiosk-due-management-workflow.md#表示用納期-effectiveduedate計画列-ui2026-04-01)。
 - [ ] **現場目視（任意）**: キオスク生産スケジュール／手動順番で **指示数・着手日**列が出ること、**手動納期のみ**強調されること（CSV フォールバック日付だけのときは強調されない想定）。
 - [ ] **補助CSVの Gmail 取込（本番・任意）**: `CsvDashboard`（件名パターン・列定義）と `config/backup.json` の `csvImports`（`provider: gmail`, `targets[].type: csvDashboards`）が整合していること。ブラウザで無理な場合は [csv-import-export.md の production runbook](./csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) を参照（**手動 run は JSON `{}`**、**Prisma/JWT は api コンテナ内**）。
 
