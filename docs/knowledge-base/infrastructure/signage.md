@@ -174,9 +174,18 @@ update-frequency: medium
 **関連ファイル（代表）**:
 - `apps/api/src/config/env.ts`（`SIGNAGE_LOAN_GRID_ENGINE` 既定）
 - `apps/api/src/services/signage/loan-grid/create-loan-grid-rasterizer.ts`
+- `apps/api/src/services/signage/loan-grid/html/loan-grid-document.ts`（HTML 組み立て）
+- `apps/api/src/services/signage/loan-grid/html/loan-card-chrome.ts`（枠色・枠線）
+- `apps/api/src/services/signage/loan-grid/html/grid-card-html-tokens.ts`（余白・フォント px）
 - `infrastructure/ansible/templates/docker.env.j2`
 - `infrastructure/ansible/inventory.yml`
 - `infrastructure/docker/Dockerfile.api`
+
+**追記（2026-04-03・`main` コミット `11d6f400` 付近）**:
+- **仕様**: Playwright/HTML 貸出グリッドについて **`SIGNAGE_LOAN_GRID_ENGINE` や JPEG の外部契約は変更せず**、枠・間隔・フォント計算を **モジュール分割**（上記 `loan-card-chrome` / `grid-card-html-tokens`）。単体テスト `grid-card-html-tokens.test.ts`、手動用プレビュー [`signage-playwright-compact24-live-preview.html`](../../../apps/api/scripts/html-previews/signage-playwright-compact24-live-preview.html)。
+- **本番デプロイ**: [deployment.md](../../guides/deployment.md) の `scripts/update-all-clients.sh`。inventory 6 台を **`--limit` 1 台ずつ**・**`--foreground`**（`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`）。Pi3 は同ガイドの**サイネージ前提（メモリ確保のプレフライト自動）**に従う。
+- **トラブルシュート（Mac 側）**: 作業ディレクトリに **未追跡ファイル**だけがあると `ensure_local_repo_ready_for_deploy` で止まる。必要なら [deployment.md の stash 注記](../../guides/deployment.md) のとおり **`git stash push -u`** で退避してから実行（例: 一時 JPEG）。
+- **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 0 / FAIL 0**（2026-04-03・本番反映直後・Mac / Tailscale・約 **59s**）。
 
 **解決状況**: ✅ **実装・Ansible 恒久化・実機確認・ナレッジ記録**（2026-04-03）。**`main`**: `feat/signage-loan-grid-html` 系マージ後、`update-all-clients.sh --limit raspberrypi5` で `.env` とコンテナの両方に `playwright_html` が維持されることを確認。
 

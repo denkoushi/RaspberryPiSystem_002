@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-02（順位ボード 納期アシスト 左2段スタック追補 §6.6.19）
+最終更新: 2026-04-03（サイネージ 貸出グリッド HTML トークン分離の Phase12 追補 §6.6.22）
 
 ## 概要
 
@@ -755,6 +755,17 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 - [ ] **トラブルシュート**: 表示が旧仕様のまま → **Pi5 Web** 未更新・**対象 Pi4 未デプロイ**・キャッシュ。`deploy-status` と Phase12、`KB-297` の **バンドル確認**を参照。
 
 **検証日時**: 2026-04-03（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/leaderboard-card-and-hover-layout` を **Pi5 → Pi4×4** のみ順次反映後・Mac / Tailscale・約 **25s**）
+**検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
+**6.6.22 サイネージ: 貸出グリッド HTML（Playwright 経路の内部リファクタ・トークン分離）**
+
+**確認ポイント**（[KB-327](../knowledge-base/infrastructure/signage.md#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ) 追記・[KB-325](../knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 41 / WARN 0 / FAIL 0**（**項目数は増えない**。`GET /api/signage/current-image` + Pi3 `x-client-key` 等の既存スモークで HTML 経路の回帰を含む）。
+- [ ] **仕様**: **`SIGNAGE_LOAN_GRID_ENGINE`・splitCompact24 契約は不変**。変更は `loan-grid-document` の組み立てと `loan-card-chrome` / `grid-card-html-tokens` への整理のみ。
+- [ ] **トラブルシュート**: JPEG が意図と違う → まず **KB-327**（コンテナ env・`playwright_html`）。デプロイが Mac 側で止まる → **未追跡ファイル**と `ensure_local_repo_ready_for_deploy`（[deployment.md](./deployment.md)・stash）。
+
+**検証日時**: 2026-04-03（上記スクリプト **PASS 41 / WARN 0 / FAIL 0**・`main` に `refactor(api): extract loan grid HTML chrome and layout tokens` 反映後、inventory 6 台を `--limit` 順次・`--foreground` でデプロイ済み・Mac / Tailscale・約 **59s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認
