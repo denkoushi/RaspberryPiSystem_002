@@ -190,6 +190,13 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # 修正が必要な場合（root所有の場合）
   ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/.git"
   ```
+- [ ] **ワークツリー権限の確認（Git 同期失敗対策）**: デプロイ対象リポジトリで **`git reset --hard` が `unable to create file … 許可がありません`** となる場合、**一部ディレクトリだけ `root` 所有**になっていることがある。代表例: `apps/api/src/services/signage/loan-card/`（[KB-325](../knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git)）。
+  ```bash
+  # Pi5上で実行（root所有のソースファイルを検出・先頭のみ）
+  ssh denkon5sd02@raspberrypi.local "find /opt/RaspberryPiSystem_002/apps/api/src -user root -type f 2>/dev/null | head"
+  # 対象パスが判明したら chown（例）
+  ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src/services/signage/loan-card"
+  ```
 - [ ] **SSH接続の確認**: MacからPi5へのSSH接続が正常に動作することを確認（fail2ban Banの確認、[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行)参照）
   ```bash
   # Macから実行（接続テスト）

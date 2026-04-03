@@ -3198,6 +3198,7 @@ whoami  # denkon5sd02
 - Ansibleタスクで`.git`ディレクトリ配下のファイルを操作する場合は、`become: false`を使用するか、操作後に所有権を修正する
 - デプロイ前チェックリストに「`.git`ディレクトリの所有権確認」を追加する
 - 定期的に`.git`ディレクトリの所有権を確認し、root所有のファイルがあれば修正する
+- **ワークツリー上の一部パス**（例: `apps/api/src/services/signage/loan-card/`）が`root`所有になり、`git reset --hard` が **`unable to create file … 許可がありません`** で止まる場合がある。**`.git` だけでなく作業ツリーの所有権**もデプロイユーザーに揃える（詳細・再発原因の整理は [KB-325](./signage.md#kb-325-split-compact24-loan-cards-pi5-git)）。
 
 **関連ファイル**:
 - `scripts/update-all-clients.sh`: デタッチ実行スクリプト

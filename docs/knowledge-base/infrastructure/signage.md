@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-04-01
+last-verified: 2026-04-03
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 22件  
+**件数**: 23件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -90,6 +90,50 @@ update-frequency: medium
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
 
 **解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・Detach `20260401-134910-13950`）・Phase12 実機検証（PASS 39/0/0）完了**（2026-04-01）。**`main` 反映**: [PR #70](https://github.com/denkoushi/RaspberryPiSystem_002/pull/70) でマージ済み（`main` 上 GitHub Actions **success**）。
+
+---
+
+<a id="kb-325-split-compact24-loan-cards-pi5-git"></a>
+
+### [KB-325] SPLITレイアウトの貸出カード `splitCompact24`（4×6・仕様・デプロイ・Pi5 Git 権限）
+
+**実施日**: 2026-04-03
+
+**概要（仕様）**:
+- **`layoutConfig.layout === 'SPLIT'`** かつペイン **`kind: 'loans'`** のとき、`SignageRenderer` のツール／貸出カードグリッドに **`splitCompact24`** を適用する（旧来の **`contentType: 'SPLIT'`** だけの経路とは別。表示確認は **`GET /api/signage/content`** の `layoutConfig` を正とする）。
+- **グリッド**: 最大 **4 列 × 6 行（24 件）**、25 件目以降はオーバーフロー集計。カード高さ **`cardHeightPx: 154`**、外枠 **220×154px** 想定。
+- **テキスト**: 日付 **`MM/DD・HH:mm`**（1 行）。拠点／主要表示名は **最大 2 行**（はみ出しは省略・API 側の論理分割は `loan-card-text.ts` 等）。敬称は付けない。
+- **モジュール**: 契約定数は **`apps/api/src/services/signage/loan-card/loan-card-contracts.ts`**（列・行・カード高・行数上限など）。幾何・テキストは同ディレクトリの純関数＋ `signage.renderer.ts` の `SPLIT_COMPACT24_LOAN_GRID_BASE` で **DRY**。
+
+**ローカルデザイン確認**:
+- 静的 HTML: **`apps/api/scripts/html-previews/signage-split-compact24-preview.html`**（例: リポジトリルートで `python3 -m http.server 8765 --directory apps/api/scripts/html-previews` し `http://127.0.0.1:8765/signage-split-compact24-preview.html`）。**ブラウザの折り返しと API の 2 行論理は一致しない**ため、最終確認は API 生成 JPEG またはコンテナ内 `dist` のレンダラ経路で行う。
+
+**デプロイ（本番）**:
+- **JPEG を生成する API（Pi5）** が正本。Pi3 サイネージは **`/api/signage/current-image`** の取得・表示のみのため、**本レイアウト変更のデプロイ対象は原則 Pi5**（[deployment.md](../../guides/deployment.md) の `update-all-clients.sh`、**`--limit raspberrypi5`** 等）。Pi3 のみ更新してもレンダラが古い Pi5 のままなら見た目は変わらない。
+
+**実装反映の判定**:
+- 「スクリプト完走」のみを成功とみなさない。**Pi5 上で** `git rev-parse HEAD` と **`origin` の対象ブランチ**が一致すること、`docker exec` で API コンテナの `signage.renderer.js` に **`splitCompact24`** が含まれること、をセットで確認する。
+
+**トラブルシューティング（2026-04-03 実績）**:
+
+| 症状 | 原因（特定） | 対処 |
+|------|----------------|------|
+| `Failed to acquire remote lock on …` | 前回デプロイ中断等で Pi5 上 **`/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`** が残存 | Pi5 で当該 lock を削除（運用上問題なければ）後、デプロイ再実行 |
+| `git reset --hard` で **`unable to create file … 許可がありません`**（`apps/api/.../loan-card/*.ts`） | 当該パスが **`root:root` 所有**のため、デプロイユーザー（例: `denkon5sd02`）がワークツリーを更新できない | `sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src/services/signage/loan-card`（環境に合わせユーザー名を置換）後、再デプロイ |
+| Pi3 でレイアウトが変わらない | Pi5 の **API／コンテナが未更新**、またはスケジュールが **`layoutConfig: SPLIT` の loans ペイン**でない | Pi5 を先に更新。`/api/signage/content` で `layoutConfig` とペイン種別を確認 |
+
+**根本原因（ワークツリー `root` 所有・サブセット）**:
+- 標準の Ansible **`git checkout` / `git reset`（`become: false` 想定）**や、Dockerfile の **`COPY`**・コンテナ内ビルド、**読み取り専用 bind** だけでは、ホストの該当ソースツリーが **`root` 所有になることは通常ない**。
+- 一方で、**手元での `sudo` 付きファイル操作**（例: コンテナからホストへの **`docker cp`**、ホスト上の **`sudo git`** や **`sudo` エディタ**）は **`root` でワークツリーに書き込む**ため、同様の **`git reset` 失敗**を再現する。**いつ誰がどのコマンドか**はホストの shell 履歴・運用ログが無いと断定不能な場合がある（再発時は監査・手順周知で抑止）。
+
+**関連ファイル（代表）**:
+- `apps/api/src/services/signage/signage.renderer.ts`
+- `apps/api/src/services/signage/loan-card/loan-card-contracts.ts`
+- `apps/api/src/services/signage/loan-card/loan-card-layout.ts`
+- `apps/api/src/services/signage/loan-card/loan-card-text.ts`
+- `apps/api/scripts/html-previews/signage-split-compact24-preview.html`
+
+**解決状況**: ✅ **実装・ナレッジ記録**（2026-04-03）。**`main` 反映**後は [GitHub Actions](https://github.com/denkoushi/RaspberryPiSystem_002/actions) で CI を確認する。
 
 ---
 
