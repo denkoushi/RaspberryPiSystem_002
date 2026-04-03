@@ -57,3 +57,4 @@ category: knowledge-base
 - 手動upload: `apps/api/src/routes/csv-dashboards/index.ts`
 - Gmail取込: `apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts`
 - 関連: [KB-324](./KB-324-gmail-order-supplement-prisma-transaction.md)
+- 補助は取り込めるのに行によって納期・個数が空になる理由（本体キー・上流・UI）: [KB-328](./KB-328-production-schedule-supplement-key-mismatch-investigation.md)
