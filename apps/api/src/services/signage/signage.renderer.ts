@@ -30,6 +30,15 @@ import {
   sanitizeSeibanPerPage,
   sliceProgressOverviewItems,
 } from './kiosk-progress-overview/pagination.js';
+import {
+  formatBorrowedCompactLine,
+  formatEmployeeCompact,
+  splitLocationTwoLines,
+} from './loan-card/loan-card-text.js';
+import {
+  computeSplitCompact24Layout,
+  idealCardWidthForColumnCount,
+} from './loan-card/loan-card-layout.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -42,6 +51,8 @@ type ToolItem = NonNullable<SignageContentResponse['tools']>[number] & {
   isOverdue?: boolean;
 };
 
+type ToolCardLayoutProfile = 'default' | 'splitCompact24';
+
 interface ToolGridConfig {
   x: number;
   y: number;
@@ -51,6 +62,11 @@ interface ToolGridConfig {
   showThumbnails: boolean;
   maxRows?: number;
   maxColumns?: number;
+  /** When set, overrides default 300/360 SPLIT/FULL ideal width (1920-relative px before scale). */
+  idealCardWidthPx?: number;
+  /** When set, overrides default 140 (1920-relative px before scale). */
+  cardHeightPx?: number;
+  cardLayout?: ToolCardLayoutProfile;
 }
 
 interface PdfRenderOptions {
@@ -804,8 +820,10 @@ export class SignageRenderer {
         height: panelHeight - innerPadding * 2 - headerHeight,
         mode: 'SPLIT',
         showThumbnails: true,
-        maxRows: 3,
-        maxColumns: 3,
+        maxRows: 6,
+        maxColumns: 4,
+        cardLayout: 'splitCompact24',
+        cardHeightPx: 154,
       });
       leftContent = cardsSvg;
       if (overflowCount > 0) {
@@ -856,8 +874,10 @@ export class SignageRenderer {
         height: panelHeight - innerPadding * 2 - headerHeight,
         mode: 'SPLIT',
         showThumbnails: true,
-        maxRows: 3,
-        maxColumns: 3,
+        maxRows: 6,
+        maxColumns: 4,
+        cardLayout: 'splitCompact24',
+        cardHeightPx: 154,
       });
       rightContent = cardsSvg;
       if (overflowCount > 0) {
@@ -974,23 +994,34 @@ export class SignageRenderer {
     const scale = WIDTH / 1920;
     const gap = Math.round(14 * scale);
     const desiredColumns = config.maxColumns ?? 2;
-    const idealCardWidth = Math.round((config.mode === 'FULL' ? 360 : 300) * scale);
+    let idealCardWidth: number;
+    if (config.idealCardWidthPx != null) {
+      idealCardWidth = Math.round(config.idealCardWidthPx * scale);
+    } else if (config.cardLayout === 'splitCompact24' && config.maxColumns != null) {
+      idealCardWidth = idealCardWidthForColumnCount(config.width, gap, config.maxColumns);
+    } else {
+      idealCardWidth = Math.round((config.mode === 'FULL' ? 360 : 300) * scale);
+    }
     let columns = Math.max(1, Math.floor((config.width + gap) / (idealCardWidth + gap)));
     columns = Math.min(columns, desiredColumns);
-    const cardWidth = Math.floor((config.width - gap * (columns - 1)) / columns);
-    const cardHeight = Math.round(140 * scale);
+    const cardWidth = Math.max(
+      1,
+      Math.floor((config.width - gap * (columns - 1)) / columns)
+    );
+    const cardHeight =
+      config.cardHeightPx != null ? Math.round(config.cardHeightPx * scale) : Math.round(140 * scale);
     const maxRows =
       config.maxRows ??
       Math.max(1, Math.floor((config.height + gap) / (cardHeight + gap)));
     const maxItems = columns * maxRows;
     const displayTools = tools.slice(0, maxItems);
     const overflowCount = Math.max(0, tools.length - displayTools.length);
-        const cardRadius = Math.round(12 * scale);
-        const cardPadding = Math.round(12 * scale);
-        const thumbnailSize = Math.round(96 * scale);
-        const thumbnailWidth = thumbnailSize;
-        const thumbnailHeight = thumbnailSize;
-        const thumbnailGap = Math.round(12 * scale);
+    const cardRadius = Math.round(12 * scale);
+    const cardPadding = Math.round(12 * scale);
+    const thumbnailSize = Math.round(96 * scale);
+    const thumbnailWidth = thumbnailSize;
+    const thumbnailHeight = thumbnailSize;
+    const thumbnailGap = Math.round(12 * scale);
 
     const cards = await Promise.all(
       displayTools.map(async (tool, index) => {
@@ -998,10 +1029,7 @@ export class SignageRenderer {
         const row = Math.floor(index / columns);
         const x = config.x + column * (cardWidth + gap);
         const y = config.y + row * (cardHeight + gap);
-        const borrowedText = this.formatBorrowedAt(tool.borrowedAt) ?? '';
-        const [borrowedDate, borrowedTime] = borrowedText.split(' ');
         const primaryText = tool.name || PHOTO_LOAN_CARD_PRIMARY_LABEL;
-        const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
         const clientLocationText = tool.clientLocation?.trim() ? tool.clientLocation.trim() : '-';
         const isInstrument = Boolean(tool.isInstrument);
         const isRigging = Boolean(tool.isRigging);
@@ -1049,14 +1077,17 @@ export class SignageRenderer {
             );
             if (base64) {
               hasThumbnail = true;
-              const thumbnailX = x + cardPadding;
-              const thumbnailY = y + Math.round((cardHeight - thumbnailHeight) / 2);
+              const thumbX = x + cardPadding;
+              const thumbY =
+                config.cardLayout === 'splitCompact24'
+                  ? y + cardPadding
+                  : y + Math.round((cardHeight - thumbnailHeight) / 2);
               thumbnailElement = `
                 <clipPath id="${clipId}">
-                  <rect x="${thumbnailX}" y="${thumbnailY}"
+                  <rect x="${thumbX}" y="${thumbY}"
                     width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
                 </clipPath>
-                <image x="${thumbnailX}" y="${thumbnailY}"
+                <image x="${thumbX}" y="${thumbY}"
                   width="${thumbnailWidth}" height="${thumbnailHeight}"
                   href="${base64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
               `;
@@ -1064,6 +1095,82 @@ export class SignageRenderer {
           }
         }
 
+        if (config.cardLayout === 'splitCompact24') {
+          const layout = computeSplitCompact24Layout({
+            x,
+            y,
+            cardWidth,
+            cardHeight,
+            scale,
+            cardPadding,
+            thumbnailWidth,
+            thumbnailHeight,
+            thumbnailGap,
+            hasThumbnail,
+            hasWarning: isExceeded,
+          });
+          const borrowedCompact = formatBorrowedCompactLine(this.formatBorrowedAt(tool.borrowedAt));
+          const employeeCompact = formatEmployeeCompact(tool.employeeName);
+          const { line1, line2 } = splitLocationTwoLines(
+            clientLocationText,
+            layout.maxLocationUnitsPerLine
+          );
+          const loc2Svg =
+            line2.length > 0
+              ? `<text x="${layout.textX}" y="${layout.loc2Y}"
+              font-size="${layout.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
+              ${this.escapeXml(line2)}
+            </text>`
+              : '';
+          const warnSvg =
+            layout.warningY != null
+              ? `<text x="${layout.textX}" y="${layout.warningY}"
+              font-size="${layout.fontWarning}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+                ⚠ 期限超過
+              </text>`
+              : '';
+          return `
+          <g>
+            <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
+              rx="${cardRadius}" ry="${cardRadius}"
+              fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
+            ${thumbnailElement}
+            <text x="${layout.textX}" y="${layout.primaryY}"
+              font-size="${layout.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+              ${this.escapeXml(primaryText)}
+            </text>
+            <text x="${layout.textX}" y="${layout.nameY}"
+              font-size="${layout.fontName}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+              ${this.escapeXml(employeeCompact)}
+            </text>
+            <text x="${layout.textX}" y="${layout.loc1Y}"
+              font-size="${layout.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
+              ${this.escapeXml(line1)}
+            </text>
+            ${loc2Svg}
+            ${warnSvg}
+            <text x="${layout.textX}" y="${layout.dateY}"
+              font-size="${layout.fontDate}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+              ${borrowedCompact ? this.escapeXml(borrowedCompact) : ''}
+            </text>
+            ${riggingIdNumText
+              ? `<text x="${layout.textMaxX}" y="${y + cardHeight - cardPadding - Math.round(18 * scale)}"
+                  text-anchor="end" font-size="${Math.max(12, Math.round(12 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+                  ${this.escapeXml(riggingIdNumText)}
+                </text>`
+              : ''
+            }
+            <text x="${layout.textMaxX}" y="${y + cardHeight - cardPadding}"
+              text-anchor="end" font-size="${Math.max(12, Math.round(13 * scale))}" font-weight="600" fill="#ffffff" font-family="monospace">
+              ${this.escapeXml(managementText || tool.itemCode || '')}
+            </text>
+          </g>
+        `;
+        }
+
+        const borrowedText = this.formatBorrowedAt(tool.borrowedAt) ?? '';
+        const [borrowedDate, borrowedTime] = borrowedText.split(' ');
+        const secondary = tool.employeeName ? `${tool.employeeName} さん` : '未割当';
         // テキストエリアのX座標: サムネイルがある場合は右側、ない場合は左側から開始
         const textAreaX = hasThumbnail
           ? cardPadding + thumbnailSize + thumbnailGap
