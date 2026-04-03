@@ -1,6 +1,9 @@
 /**
  * Public contracts for signage SPLIT `splitCompact24` loan cards (SVG raster).
  * Keeps magic numbers and semantics in one place (Open/Closed: extend layout without scattering literals).
+ *
+ * Playwright / HTML ラスタの寸法・フォント係数は `loan-grid/html/grid-card-html-tokens.ts`
+ *（描画経路は異なるが、列数・行数・最大行などの意味論は本ファイルを正とする）。
  */
 
 /** 4×6 = 24 件までをカードグリッドに載せる（それ以上は overflow 表示）。 */
