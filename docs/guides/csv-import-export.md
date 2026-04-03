@@ -40,7 +40,7 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 - **加工順序割当**: 各アイテムに資源CDごとに独立して加工順序番号（1-10）を割当可能。完了時に自動で詰め替え（例: 1,2,3,4 → 3完了で 4→3）
 - **検索状態同期**: 同一location（`ClientDevice.location`）の複数端末間で検索条件を同期（poll + debounce）
 - **製造order番号の繰り上がりルール**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）で`ProductNo`が複数ある場合、**数字が大きい方のみ有効**として扱う（インポート時・表示時の両方で適用）✅ **実機検証完了（2026-02-10）**
-- **部品納期個数（補助CSV）連携**: 件名 `部品納期個数` のCSVを別ダッシュボードで取得し、`FKOJUN + FSIGENCD + ProductNo` で既存 winner 行に照合して、`plannedQuantity` / `plannedStartDate` / `plannedEndDate` を補助テーブルで管理（`dueDate` とは別意味）。**実機回帰**: `scripts/deploy/verify-phase12-real.sh` が **PASS 40** となること（API応答に `plannedQuantity` を含むことを確認；詳細は `docs/guides/verification-checklist.md` §6.6.16）
+- **部品納期個数（補助CSV）連携**: 件名 `部品納期個数` のCSVを別ダッシュボードで取得し、`FKOJUN + FSIGENCD + ProductNo` で既存 winner 行に照合して、`plannedQuantity` / `plannedStartDate` / `plannedEndDate` を補助テーブルで管理（`dueDate` とは別意味）。**Gmail 取込と管理画面の手動 `POST .../csv-dashboards/:id/upload`** はともに取込直後に補助同期が走る（経路差の是正: [KB-326](../knowledge-base/KB-326-manual-upload-order-supplement-sync.md)）。**実機回帰**: `scripts/deploy/verify-phase12-real.sh` が **PASS 41 / WARN 0 / FAIL 0** であること（2026-04-03 時点の項目数基準・API応答に `plannedQuantity` を含む grep あり；詳細は `docs/guides/verification-checklist.md` §6.6.16）
 - **削除ルール（生産スケジュールのみ）**:
   - **重複loserの削除**: 同一キー（`FSEIBAN + FHINCD + FSIGENCD + FKOJUN`）の複数行がDBに残っている場合、`ProductNo`が最大の行をwinnerとして残し、それ以外（loser）を削除
   - **1年超過は保存しない**: `max(rowData.updatedAt, occurredAt)` を基準日として、1年を超えた行は取り込み時点で保存しない（UIにも出ない）

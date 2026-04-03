@@ -2,13 +2,14 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-04-02
+last-verified: 2026-04-03
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
   - ../decisions/ADR-20260319-manual-order-device-scope-v2.md
   - ../guides/csv-import-export.md
   - ./KB-324-gmail-order-supplement-prisma-transaction.md
+  - ./KB-326-manual-upload-order-supplement-sync.md
 category: knowledge-base
 ---
 
@@ -77,10 +78,12 @@ category: knowledge-base
   - 補助CSVの未照合行は unmatched として集計し、照合品質を継続監視できるようにする。
 - **補助同期の Prisma トランザクション失敗（2026-04-02）**:
   - 長いインタラクティブトランザクション内の逐次 `upsert` や、winner 付け替えと複合一意制約の組み合わせで失敗しうる。**対策・手順の正本**: [KB-324](./KB-324-gmail-order-supplement-prisma-transaction.md)。
+- **手動CSVアップロード経路の取り残し（2026-04-03 修正）**:
+  - 補助ダッシュボードへの **`POST /api/csv-dashboards/:id/upload`** では、行取込後に **Gmail 経路と同じ** `syncFromSupplementDashboard` が走るよう統一した。**症状・原因・運用**: [KB-326](./KB-326-manual-upload-order-supplement-sync.md)。
 
 **検証・本番反映（2026-04-01）**
 
-- **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` を全対象キオスクで実行し、**PASS 40 / WARN 0 / FAIL 0**（本リリースで `GET /api/kiosk/production-schedule` 応答に `"plannedQuantity"` を含むことの grep を追加したため、スクリプト合計 PASS が 39→40）。
+- **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` を全対象キオスクで実行し、**PASS 40 / WARN 0 / FAIL 0**（本リリースで `GET /api/kiosk/production-schedule` 応答に `"plannedQuantity"` を含むことの grep を追加したため、スクリプト合計 PASS が 39→40）。**2026-04-03**: 別機能のスモーク追加によりスクリプト基準は **PASS 41**（手動 upload 補助同期の Pi5 反映後も同基準で **PASS 41 / WARN 0 / FAIL 0** を確認）。
 - **本番デプロイ**: `docs/guides/deployment.md` の `update-all-clients.sh` 標準のみ。**5台**を**1台ずつ**順次（Pi3 は従来どおり対象外）。GitHub Actions Detach Run ID: **20421618819**, **20421640357**, **20421660164**, **20421674891**, **20421685489** — いずれも Ansible `PLAY RECAP` **failed=0**。
 - **トラブルシュート**: ローカルで統合テストが `localhost:5432` 接続失敗になる場合は Postgres 未起動の可能性が高い（`docker compose up -d postgres` 等）。実機スクリプト失敗時は `./tmp/phase12-real-<clientId>-<ts>.log` と `docs/guides/verification-checklist.md` §6.6 / §6.6.16 を参照。
 - **本番 Gmail 取込・管理設定（2026-04-01・SSH/API/Prisma 経路）**:

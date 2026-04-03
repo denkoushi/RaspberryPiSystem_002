@@ -39,6 +39,18 @@ category: knowledge-base
 
 - 取込後フックを増やす場合は `CsvDashboardPostIngestService` に集約し、**経路別にロジックを複製しない**。
 
+## Production verification（2026-04-03）
+
+- **デプロイ**: Pi5 のみ `scripts/update-all-clients.sh`（`--limit raspberrypi5 --detach --follow`）。`PLAY RECAP` で **failed=0**。
+- **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 0 / FAIL 0**（補助予定 `plannedQuantity` 系の grep 含む。スクリプト項目数は他機能追加に伴い 40→41 へ増加済み）。
+- **ブランチ**: `fix/manual-upload-order-supplement-post-ingest`（本番反映後に上記を実行）。
+
+## Troubleshooting
+
+- **手動アップロード後も `-` のまま**: 補助ダッシュボード ID かどうか（`PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID`）を確認。本体ダッシュボードへアップロードした場合は post-ingest の対象外。
+- **応答の `orderSupplementSync`**: 補助ダッシュボードかつ同期結果があるときのみ JSON に含まれる。401/権限は管理コンソールのセッションとルートを確認。
+- **Gmail は動くが手動だけダメだった旧症状**: 本 KB の Root cause（経路非対称）を修正済み。Prisma `Transaction not found` 系は [KB-324](./KB-324-gmail-order-supplement-prisma-transaction.md) を参照。
+
 ## References
 
 - 実装: `apps/api/src/services/csv-dashboard/csv-dashboard-post-ingest.service.ts`
