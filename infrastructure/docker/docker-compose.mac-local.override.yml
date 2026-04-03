@@ -46,6 +46,7 @@ services:
       - ../../.docker/local/storage/pdfs:/app/storage/pdfs
       - ../../.docker/local/storage/pdf-pages:/app/storage/pdf-pages
       - ../../.docker/local/storage/signage-rendered:/app/storage/signage-rendered
+      - ../../.docker/local/storage/part-measurement-drawings:/app/storage/part-measurement-drawings
       - ../../.docker/local/alerts:/app/alerts
       - ../../.docker/local/power-actions:/app/power-actions
       - ../../.docker/local/config:/app/config

@@ -13,6 +13,8 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { KioskPartMeasurementSheetHeaderSection } from '../../features/part-measurement/KioskPartMeasurementSheetHeaderSection';
+import { KIOSK_PART_MEASUREMENT_VALUE_INPUT_CLASSNAME } from '../../features/part-measurement/kioskPartMeasurementTableUi';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -375,58 +377,12 @@ export function KioskPartMeasurementEditPage() {
 
       {sheet ? (
         <>
-          <Card title="ヘッダ">
-            <dl className="grid gap-2 text-sm md:grid-cols-2">
-              <div>
-                <dt className="text-slate-600">製番</dt>
-                <dd className="font-semibold text-slate-900">{sheet.fseiban}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">製造order</dt>
-                <dd className="font-semibold text-slate-900">{sheet.productNo}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">品番</dt>
-                <dd className="font-semibold text-slate-900">{sheet.fhincd}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">資源CD</dt>
-                <dd className="font-semibold text-slate-900">{sheet.resourceCdSnapshot ?? '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">工程</dt>
-                <dd className="font-semibold text-slate-900">
-                  {sheet.processGroupSnapshot === 'grinding' ? '研削' : '切削'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">作業者（確定前NFC）</dt>
-                <dd className="font-semibold text-slate-900">
-                  {sheet.employeeNameSnapshot ?? 'NFCで社員タグをスキャン'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">作成者</dt>
-                <dd className="font-semibold text-slate-900">{sheet.createdByEmployeeNameSnapshot ?? '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-slate-600">確定者</dt>
-                <dd className="font-semibold text-slate-900">{sheet.finalizedByEmployeeNameSnapshot ?? '—'}</dd>
-              </div>
-            </dl>
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <label className="flex w-[14ch] max-w-full flex-col gap-1 text-sm font-semibold text-slate-700">
-                個数
-                <Input
-                  value={quantityInput}
-                  onChange={(e) => setQuantityInput(e.target.value)}
-                  inputMode="numeric"
-                  disabled={readOnly}
-                  className="text-slate-900"
-                />
-              </label>
-            </div>
-          </Card>
+          <KioskPartMeasurementSheetHeaderSection
+            sheet={sheet}
+            quantityInput={quantityInput}
+            onQuantityChange={setQuantityInput}
+            readOnly={readOnly}
+          />
 
           <Card title="測定値">
             {templateItems.length === 0 ? (
@@ -434,7 +390,7 @@ export function KioskPartMeasurementEditPage() {
             ) : pieceCount < 1 ? (
               <p className="text-sm text-slate-600">個数を入力すると入力欄が表示されます。</p>
             ) : (
-              <div className="flex min-h-0 flex-col gap-4 lg:flex-row lg:items-start">
+              <div className="flex min-h-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-start">
                 {drawingPath && drawingLoadError ? (
                   <div className="lg:max-w-[min(100%,480px)]">
                     <p className="mb-1 text-sm font-semibold text-slate-700">図面</p>
@@ -455,14 +411,14 @@ export function KioskPartMeasurementEditPage() {
                 ) : drawingPath && !drawingLoadError ? (
                   <p className="text-sm text-slate-600">図面を読み込み中…</p>
                 ) : null}
-                <div className="min-h-0 min-w-0 flex-1 overflow-auto lg:max-h-[min(70vh,720px)]">
-                  <table className="w-full min-w-[720px] border-collapse text-left text-sm text-slate-900">
+                <div className="min-h-0 w-full max-w-full min-w-0 overflow-auto lg:max-h-[min(70vh,720px)] lg:w-auto">
+                  <table className="w-max max-w-none border-collapse text-left text-sm text-slate-900">
                     <thead>
                       <tr className="border-b border-slate-300">
-                        <th className="p-2">個体</th>
-                        <th className="p-2 w-24">行</th>
+                        <th className="whitespace-nowrap p-2">個体</th>
+                        <th className="w-24 whitespace-nowrap p-2">行</th>
                         {templateItems.map((it) => (
-                          <th key={it.id} className="p-2">
+                          <th key={it.id} className="min-w-[8rem] max-w-[14rem] p-2 align-bottom">
                             {it.displayMarker != null && String(it.displayMarker).trim() !== '' ? (
                               <div className="mb-0.5 text-center text-lg font-bold leading-none text-slate-800">
                                 {it.displayMarker}
@@ -501,7 +457,7 @@ export function KioskPartMeasurementEditPage() {
                                   value={cellValues[resultKey(p, it.id)] ?? ''}
                                   onChange={(e) => onCellChange(p, it.id, e.target.value)}
                                   disabled={readOnly}
-                                  className="min-w-0 flex-1 text-slate-900"
+                                  className={KIOSK_PART_MEASUREMENT_VALUE_INPUT_CLASSNAME}
                                   inputMode="decimal"
                                 />
                                 {!readOnly &&
