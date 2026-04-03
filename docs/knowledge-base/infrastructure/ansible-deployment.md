@@ -4163,4 +4163,70 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 ---
 
+### [KB-329] 部品測定図面ストレージ修正後の Pi5 rerun で `api` が `Created` のまま残り、summary が失敗を success 扱いした
+
+**発生日**: 2026-04-03  
+**Status**: ✅ 解決済み（2026-04-03）
+
+**Context**:
+- キオスク部品測定の図面永続化とレイアウト調整を含むブランチ `fix/kiosk-part-measurement-drawing-persistence-and-layout` を、標準手順どおり `scripts/update-all-clients.sh ... --limit raspberrypi5 --detach --follow` で Pi5 へ反映した。
+- 事前に `docker-compose.server.yml` へ `part-measurement-drawings` bind mount を追加し、Ansible に host 側ディレクトリ作成タスクも入れていた。
+
+**Symptoms**:
+- Ansible の `Run prisma migrate deploy` が以下で失敗:
+  - `service "api" is not running`
+- 失敗 run の `PLAY RECAP` は `failed=1` なのに、Pi5 の `*.summary.json` は以下のように success 扱い:
+  - `{"totalHosts": 0, "failedHosts": [], "unreachableHosts": [], "success": true}`
+- Pi5 の `docker compose ps -a` では `docker-api-1` / `docker-web-1` が **`Created`** のまま残っていた。
+
+**Investigation**:
+- **CONFIRMED**: Pi5 の `docker inspect docker-api-1` で以下の mount error を確認。
+  - `failed to mount local volume ... /opt/RaspberryPiSystem_002/storage/part-measurement-drawings ... no such file or directory`
+- **CONFIRMED**: host 側に `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings` を作成した後、手動 `docker compose ... up -d api web` では `api` / `web` が正常起動した。
+- **CONFIRMED**: rerun 時点の server ロールは、`prisma migrate deploy` の前に **既存の `Created` コンテナを起こし直す処理**を持っていなかった。
+- **CONFIRMED**: `scripts/update-all-clients.sh` の remote summary 生成で使っていた Python 正規表現が `PLAY RECAP` 行の空白を正しく解釈できず、`all_hosts=[]` / `failed_hosts=[]` になっていた。
+- **CONFIRMED**: ローカル debug 記録でも `playRecapLine` に `failed=1` が残っている一方、`summaryFailedHosts=[]` / `summarySuccess=true` を確認した。
+
+**Root cause**:
+- **第1原因**: 新規 bind mount の host 側ディレクトリが初回デプロイ時に欠けていたため、Docker が `api` / `web` を **`Created` のまま**残した。
+- **第2原因**: rerun で `api` / `web` を `up -d` し直さず、そのまま `prisma migrate deploy` に進んだ。
+- **第3原因**: `update-all-clients.sh` の `PLAY RECAP` 解析不備により、**実際の failed を success と誤判定**する経路が残っていた。
+
+**Fix**:
+- ✅ `infrastructure/ansible/roles/server/tasks/main.yml`
+  - host 側の `part-measurement-drawings` ディレクトリ作成を保証
+  - `prisma migrate deploy` の直前に `docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web` を追加し、**`Created` に残ったコンテナを自動復旧**
+- ✅ `scripts/update-all-clients.sh`
+  - `PLAY RECAP` 解析の Python 正規表現を修正し、`failedHosts` / `unreachableHosts` / `totalHosts` を正しく集計
+  - `remote_recap_line` 抽出も同じ空白許容パターンへ統一
+
+**実機検証結果（2026-04-03）**:
+- ✅ Pi5 再デプロイ成功:
+  - `PLAY RECAP`: `raspberrypi5 : ... failed=0`
+  - `docker compose ps`: `api` / `db` / `web` がすべて `Up`
+- ✅ Pi4 対象 4 台も 1 台ずつ順次デプロイ成功:
+  - `raspberrypi4`
+  - `raspi4-robodrill01`
+  - `raspi4-fjv60-80`
+  - `raspi4-kensaku-stonebase01`
+- ✅ CI 成功:
+  - `fix(deploy): detect failed recap and create drawing mount dir`
+  - `fix(deploy): recover created containers before migrate`
+
+**Prevention**:
+- 新しい bind mount を追加したら、**host 側ディレクトリ作成**を server ロールに同時反映する。
+- `service "api" is not running` は migration 起因と決め打ちせず、まず **`docker compose ps -a` と `docker inspect`** で `Created` / mount error を確認する。
+- `--detach --follow` の成功判定は **`PLAY RECAP` 正本** + `summary.json` 整合で見る。`failed=1` と summary が食い違う場合は summary 側の不具合を疑う。
+
+**関連ファイル**:
+- `scripts/update-all-clients.sh`
+- `infrastructure/ansible/roles/server/tasks/main.yml`
+- `infrastructure/docker/docker-compose.server.yml`
+- `docs/guides/deployment.md`
+- `docs/knowledge-base/KB-320-kiosk-part-measurement.md`
+
+**解決状況**: ✅ **解決済み**（2026-04-03）
+
+---
+
 {% endraw %}

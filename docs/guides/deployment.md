@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-03-01
+last-verified: 2026-04-03
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-03-30（ロック硬質化の実機検証・Phase12 注記を [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) と整合）
+最終更新: 2026-04-03（部品測定図面ストレージ復旧・rerun 自動復旧・summary 判定修正を反映）
 
 ## 概要
 
@@ -690,6 +690,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **1台ずつ順番デプロイ（推奨運用）**: Pi5 + Pi4×4 を確実に更新したい場合は、`--limit` で 1 台ずつ順番に実行する運用を推奨。Pi5 → raspberrypi4 → raspi4-robodrill01 → raspi4-fjv60-80 → raspi4-kensaku-stonebase01 の順で、前のデプロイが成功してから次を実行する。
 
+**重要（2026-04-03 追記）**:
+- **成功判定は `PLAY RECAP` を正本**とし、`failed=0` かつ `unreachable=0` を確認する。Pi5 の `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-*.summary.json` も **`totalHosts > 0` / `failedHosts=[]` / `unreachableHosts=[]`** で一致していること。
+- `prisma migrate deploy` が **`service "api" is not running`** で失敗した場合、すぐに「migration 問題」と決めつけない。まず Pi5 で `docker compose -f infrastructure/docker/docker-compose.server.yml ps -a` を見て、`api` / `web` が **`Created`** で止まっていないか、bind mount error がないかを確認する。
+- `part-measurement-drawings` のような **新しい bind mount** を追加した直後は、host 側ディレクトリ未作成で初回起動に失敗し得る。標準手順では server ロールがディレクトリ作成と `docker compose ... up -d api web` を migrate 前に実行して **rerun を自動復旧**する。
+
 **重要（2026-03-29 追記）**: 同一 `RASPI_SERVER_HOST`（Pi5）向けに **`update-all-clients.sh` を複数ターミナルから同時起動しない**。2026-03-29 の hardening 後は、Mac 側で `logs/.update-all-clients.local.lock` を使ったローカル排他と、Pi5 側で `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`（JSON）を使った排他が有効。**2重起動はエラーで停止**するため、解除せずに 1 本目の完了を待つこと。複数台へ配るときは **必ず 1 本のシェルで順次**（`cmd1 && cmd2`）とする。
 
 ```bash
@@ -1154,6 +1159,17 @@ git checkout <前のコミットハッシュ>
    docker compose -f infrastructure/docker/docker-compose.server.yml exec api \
      pnpm prisma migrate deploy
    ```
+
+3. **`service "api" is not running` の場合はコンテナ状態を先に確認**:
+  ```bash
+  docker compose -f infrastructure/docker/docker-compose.server.yml ps -a
+  docker inspect docker-api-1 --format 'status={{.State.Status}} error={{json .State.Error}} exit={{.State.ExitCode}}'
+  ```
+  - `Created` + mount error の場合は、host 側ディレクトリや bind mount を修正してから以下で復旧する。
+  ```bash
+  docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web
+  docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm prisma migrate deploy
+  ```
 
 ## 統合デプロイモジュール（deploy-all.sh）
 
