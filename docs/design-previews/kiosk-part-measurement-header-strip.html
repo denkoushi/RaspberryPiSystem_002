@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>部品測定 ヘッダ帯 — デザインプレビュー（静的）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg-elevated: #1e293b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --strip-border: rgba(148, 163, 184, 0.35);
+      --card: #ffffff;
+      --card-text: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    .note {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin: 0 auto 0.75rem;
+      max-width: 72ch;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .top-strip {
+      display: flex;
+      justify-content: center;
+      padding: 0.65rem 0.85rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--strip-border);
+      border-radius: 12px;
+      flex-shrink: 0;
+      width: 100%;
+    }
+    .top-strip-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem 1.25rem;
+      max-width: 100%;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+    .btn {
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.45rem 0.9rem;
+      border: none;
+      border-radius: 8px;
+      cursor: default;
+      background: var(--accent);
+      color: white;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 0.65rem 1.25rem;
+      min-width: 0;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      min-width: 0;
+    }
+    .field dt {
+      margin: 0;
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+    .field dd {
+      margin: 0;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .field dd.mono {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.85rem;
+    }
+    .qty input {
+      width: 4.5rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid var(--strip-border);
+      background: var(--bg);
+      color: var(--text);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.9rem;
+    }
+    .below {
+      flex: 1 1 0;
+      min-height: 0;
+      width: 100%;
+      margin-top: 1rem;
+      background: var(--card);
+      color: var(--card-text);
+      border-radius: 12px;
+      border: 2px solid #64748b;
+      padding: 1rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      display: flex;
+      flex-direction: column;
+    }
+    .below h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+    .placeholder {
+      font-size: 0.85rem;
+      color: #64748b;
+      flex: 1 1 auto;
+      min-height: 0;
+      margin: 0;
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px dashed #94a3b8;
+      background: #f8fafc;
+    }
+    @media (max-width: 900px) {
+      .top-strip-inner { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <p class="note">
+    静的プレビュー（本番 React とは別）。意図: 青ボタン＋メタを<strong>センタリング</strong>（折り返し可）、「ヘッダ」見出しなし・帯のみで縦余白削減。白い<strong>測定値</strong>ブロックはビューポート残りを縦いっぱいに占有。
+  </p>
+
+  <div class="top-strip" aria-label="操作とシート概要">
+    <div class="top-strip-inner">
+    <div class="actions">
+      <button type="button" class="btn">一覧へ</button>
+      <button type="button" class="btn">手動保存</button>
+      <button type="button" class="btn">下書き取消</button>
+    </div>
+    <dl class="meta">
+      <div class="field">
+        <dt>製番</dt>
+        <dd class="mono">BA1S3319</dd>
+      </div>
+      <div class="field">
+        <dt>製造order</dt>
+        <dd class="mono">0003661250</dd>
+      </div>
+      <div class="field">
+        <dt>品番</dt>
+        <dd class="mono">MD004809542</dd>
+      </div>
+      <div class="field">
+        <dt>資源CD</dt>
+        <dd class="mono">587</dd>
+      </div>
+      <div class="field">
+        <dt>工程</dt>
+        <dd>研削</dd>
+      </div>
+      <div class="field" style="min-width: 12rem; max-width: 22rem;">
+        <dt>作業者（確定前NFC）</dt>
+        <dd style="font-size: 0.82rem;">NFCで社員タグをスキャン</dd>
+      </div>
+      <div class="field">
+        <dt>作成者</dt>
+        <dd>—</dd>
+      </div>
+      <div class="field">
+        <dt>確定者</dt>
+        <dd>—</dd>
+      </div>
+      <div class="field qty">
+        <dt>個数</dt>
+        <dd style="margin: 0;"><input type="text" value="3" inputmode="numeric" readonly /></dd>
+      </div>
+    </dl>
+    </div>
+  </div>
+
+  <section class="below" aria-label="プレビュー続き">
+    <h2>測定値（ダミー）</h2>
+    <p class="placeholder">図面 + 表はこの下に続く想定。本ファイルではレイアウト検証のみ。</p>
+  </section>
+</body>
+</html>
