@@ -6,9 +6,11 @@
  * - Photo: fixed size (caller), top-left below name
  * - Item name: 2 lines, right of photo (same vertical band as photo)
  * - Location: 2 lines, below item name, right column
- * - Date (・): below photo, left column
+ * - Date (・): same bottom baseline as management id (left); ink stays below photo
  * - Optional warning: same baseline as date, to the right of date (saves vertical space)
  */
+
+import { gapFromPhotoBottomToDateBaseline, maxWidthUnitsForFont } from './loan-card-metrics.js';
 
 /** Ideal card width (px at current scale) so floor((W+g)/(I+g)) >= desiredColumns. */
 export function idealCardWidthForColumnCount(contentWidth: number, gap: number, columnCount: number): number {
@@ -63,6 +65,7 @@ export function computeSplitCompact24Layout(params: {
     x,
     y,
     cardWidth,
+    cardHeight,
     scale,
     cardPadding,
     thumbnailWidth,
@@ -80,21 +83,40 @@ export function computeSplitCompact24Layout(params: {
 
   const nameX = x + cardPadding;
   const innerW = cardWidth - cardPadding * 2;
-  const maxEmployeeUnitsPerLine = Math.max(4, Math.min(32, Math.floor(innerW / 7)));
+  const maxEmployeeUnitsPerLine = maxWidthUnitsForFont(innerW, fontName);
 
   /** First text baseline below top padding (employee name). */
   const nameY = y + cardPadding + Math.round(13 * scale);
-  const gapBelowName = Math.round(8 * scale);
+  /** Space below name baseline before photo (baseline is not the visible bottom of glyphs). */
+  const minGapNameBaselineToThumbTop = Math.round(Math.max(10 * scale, fontName * 0.32 + 6 * scale));
 
   const thumbnailX = x + cardPadding;
-  const thumbnailY = nameY + gapBelowName;
 
   const textX = hasThumbnail ? thumbnailX + thumbnailWidth + thumbnailGap : x + cardPadding;
   const textMaxX = x + cardWidth - cardPadding;
-  const textColumnPx = textMaxX - textX;
-  const maxForCol = Math.max(4, Math.min(24, Math.floor(textColumnPx / 7)));
-  const maxLocationUnitsPerLine = maxForCol;
-  const maxPrimaryUnitsPerLine = maxForCol;
+  const textColumnPx = Math.max(0, textMaxX - textX);
+  const maxPrimaryUnitsPerLine = maxWidthUnitsForFont(textColumnPx, fontPrimary);
+  const maxLocationUnitsPerLine = maxWidthUnitsForFont(textColumnPx, fontLoc);
+
+  /** Bottom inner edge: same baseline as management id in renderer (right-aligned). */
+  const bottomRowBaseline = y + cardHeight - cardPadding;
+  /** Keep date/warn ascenders above photo bottom (SVG alphabetic baseline). */
+  const dateInkClearancePx = gapFromPhotoBottomToDateBaseline(fontDate, scale);
+  const maxPhotoBottom = bottomRowBaseline - dateInkClearancePx;
+  const idealThumbTop = maxPhotoBottom - thumbnailHeight;
+  const minThumbTop = nameY + minGapNameBaselineToThumbTop;
+  let thumbnailY: number;
+  if (idealThumbTop >= minThumbTop) {
+    thumbnailY = idealThumbTop;
+  } else if (minThumbTop + thumbnailHeight <= maxPhotoBottom) {
+    thumbnailY = minThumbTop;
+  } else {
+    thumbnailY = maxPhotoBottom - thumbnailHeight;
+  }
+
+  /** Avoid negative or clipped Y if cardHeight/thumbnailHeight are misconfigured at call sites. */
+  const innerTop = y + cardPadding;
+  thumbnailY = Math.max(innerTop, thumbnailY);
 
   const lhPrimaryStep = Math.round(15 * scale);
   const lhLocStep = Math.round(13 * scale);
@@ -106,7 +128,7 @@ export function computeSplitCompact24Layout(params: {
   const loc2Y = loc1Y + lhLocStep;
 
   const dateX = x + cardPadding;
-  const dateY = thumbnailY + thumbnailHeight + Math.round(4 * scale);
+  const dateY = bottomRowBaseline;
 
   let warningX: number | null = null;
   let warningY: number | null = null;

@@ -35,6 +35,11 @@ describe('loan-card-layout', () => {
     expect(L.loc2Y).toBeLessThan(L.thumbnailY + 96);
     expect(L.maxPrimaryUnitsPerLine).toBeGreaterThan(0);
     expect(L.maxEmployeeUnitsPerLine).toBeGreaterThan(0);
+    expect(L.maxPrimaryUnitsPerLine).toBeLessThanOrEqual(7);
+    expect(L.dateY).toBe(0 + 154 - 12);
+    const thumbBottom = L.thumbnailY + 96;
+    const inkReserve = L.dateY - thumbBottom;
+    expect(inkReserve).toBeGreaterThanOrEqual(16);
   });
 
   it('computeSplitCompact24Layout aligns warning with date on same baseline', () => {
