@@ -300,10 +300,49 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
   - `compose-nginx-1` が **`unknown "llm_runtime_control_token" variable`** で再起動ループした。**原因**: `envsubst` の対象に `LLM_RUNTIME_CONTROL_TOKEN` を足していなかった。**対処**: `compose.yaml` の nginx `command` を修正。
   - `/start` が **502** になった。**原因**: `network_mode: service:tailscale` の nginx から `127.0.0.1:39090` を向くとコンテナ自身を見に行く。**対処**: `control-server.mjs` を **`0.0.0.0:39090`** で待たせ、nginx は Docker bridge gateway（実測 `172.19.0.1`）へ `proxy_pass` する。
 
+## VLM ラベル出自（provenance・管理レビュー・2026-04-03）
+
+### Context
+
+- **ブランチ**: `feat/photo-tool-vlm-label-provenance-admin`
+- **目的**: `Loan.photoToolDisplayName` が**どの VLM 経路で最後に確定したか**を DB に保持し、管理画面の人レビュー一覧で運用者が判断できるようにする（キオスクの1行目表示優先順位は変更しない）。
+- **契約**: `packages/shared-types` の `PHOTO_TOOL_VLM_LABEL_PROVENANCE`（`UNKNOWN` / `FIRST_PASS_VLM` / `ASSIST_ACTIVE_VLM`）と Prisma enum を同値にそろえる。
+
+### 仕様（要点）
+
+- **DB**: `Loan.photoToolVlmLabelProvenance`。マイグレーション追加時の既存行は **`UNKNOWN`**。
+- **保存**: `PhotoToolLabelingService` が VLM 結果を `completeWithLabel` へ渡す際、1 回目確定 → `FIRST_PASS_VLM`、アクティブ補助で assisted を本番保存した場合 → `ASSIST_ACTIVE_VLM`（実装詳細は `prisma-photo-tool-label.repository.ts` / labeling サービス）。
+- **API**: `GET /api/tools/loans/photo-label-reviews`・`PATCH …/photo-label-review` の応答に `photoToolVlmLabelProvenance` を含む。
+- **Web**: `/admin/photo-loan-label-reviews` でバッジと説明文を表示。
+
+### 実機確認（Mac・Tailscale・2026-04-03）
+
+- **CONFIRMED**: 本番は [deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → Pi4×4** を **`--limit` 1 台ずつ**・**`--foreground`** で反映（Pi3 は今回の変更対象外）。Pi5 checkout **`c02f7b14`**・ブランチ `feat/photo-tool-vlm-label-provenance-admin`。
+- **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 0 / FAIL 0**（`未認証 GET …/photo-label-reviews` → **401** をスクリプトに追加済み）。
+- **CONFIRMED**: 未認証 `GET https://<Pi5>/api/tools/loans/photo-label-reviews?limit=1` → **401**。
+- **CONFIRMED**: `information_schema` で `Loan.photoToolVlmLabelProvenance` 列が **`PhotoToolVlmLabelProvenance`** 型で存在。
+- **CONFIRMED**: 本番集計例（デプロイ直後）: `UNKNOWN=390`、`FIRST_PASS_VLM=2`（`ASSIST_ACTIVE_VLM` は環境・運用次第）。マイグレーション直後は `UNKNOWN` が大半になるのが通常。
+
+### Troubleshooting
+
+| 症状 | 想定原因 | 対処 |
+|------|----------|------|
+| 一覧の出自がすべて `UNKNOWN` | マイグレーション直後でまだ VLM 保存ジョブが走っていない、または既存行が既定のまま | 新規ラベル付与後に `FIRST_PASS_VLM` 等へ更新されることを確認。集計は `GROUP BY "photoToolVlmLabelProvenance"` |
+| 管理 UI に項目が出ない | Web デプロイ未反映・ブランチ不一致 | Pi5＋キオスク対象の Pi4 まで [deployment.md](../guides/deployment.md) どおり配布。Pi5 だけでは API のみ更新され admin バンドルが古いことがある |
+| API は新しいが DB に列がない | `prisma migrate deploy` 未適用・別 DB を見ている | Pi5 の `docker compose` 経由で `migrate status` / マイグレーションログを確認 |
+
+### References（実装）
+
+- `apps/api/prisma/migrations/20260403120000_add_loan_photo_tool_vlm_label_provenance/`
+- `packages/shared-types/src/tools/photo-tool-vlm-label-provenance.ts`
+- `apps/api/src/services/tools/photo-tool-label/photo-tool-label-review.service.ts`
+- `apps/web/src/pages/admin/PhotoLoanLabelReviewsPage.tsx`
+
 ## References
 
 - `feat/photo-loan-vlm-tool-label`
 - `feat/photo-loan-vlm-human-review-and-vision-input`（フェーズ1）
+- `feat/photo-tool-vlm-label-provenance-admin`
 - `apps/api/src/services/tools/photo-tool-label/`
 - `apps/api/src/services/vision/llama-server-vision-completion.adapter.ts`
 - [photo-loan.md](../modules/tools/photo-loan.md)

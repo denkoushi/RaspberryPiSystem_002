@@ -193,6 +193,12 @@ PHOTO_GALLERY_SEED_UNAUTH_CODE="$(
 )"
 check_http_code "未認証 POST /tools/loans/photo-gallery-seed" "${PHOTO_GALLERY_SEED_UNAUTH_CODE}" "401"
 
+# 人レビュー一覧は ADMIN/MANAGER のみ（クエリのみでも認可が先）
+PHOTO_LABEL_REVIEWS_UNAUTH_CODE="$(
+  curl -sk -o /dev/null -w "%{http_code}" "${BASE_URL}/api/tools/loans/photo-label-reviews?limit=1" 2>&1 || true
+)"
+check_http_code "未認証 GET /tools/loans/photo-label-reviews" "${PHOTO_LABEL_REVIEWS_UNAUTH_CODE}" "401"
+
 DUE_PATHS=(
   "triage"
   "daily-plan"

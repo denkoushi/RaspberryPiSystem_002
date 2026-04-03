@@ -549,13 +549,14 @@ cd apps/web && pnpm build && cd ../..
 
 **6.6.6 管理画面・写真持出人レビュー（フェーズ1）**
 
-**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) フェーズ1節）:
+**確認ポイント**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) フェーズ1節・**provenance 節**）:
 
 - [ ] `/admin/photo-loan-label-reviews` が ADMIN/MANAGER で開け、一覧・サムネ・レビュー操作ができるか
-- [ ] `GET /api/tools/loans/photo-label-reviews` が未認証で **401** になるか
+- [ ] 一覧に **VLM ラベル出自**（`photoToolVlmLabelProvenance`：バッジ）が表示され、PATCH 後も応答と整合するか
+- [ ] `GET /api/tools/loans/photo-label-reviews` が未認証で **401** になるか（`./scripts/deploy/verify-phase12-real.sh` に同スモークあり・2026-04-03 時点 **PASS 41/0/0**）
 
-**検証日時**: 2026-03-29（API 401 は Pi5 で確認済み／UI は現地推奨）
-**検証結果**: ☑ 成功（API） ☐ 失敗（エラー内容: _______________）
+**検証日時**: 2026-03-29（API 401 は Pi5 で確認済み／UI は現地推奨）／**2026-04-03**（provenance・401 を Phase12 へ組み込み・本番 DB 列確認は [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) provenance 節）
+**検証結果**: ☑ 成功（API・回帰） ☐ 失敗（エラー内容: _______________）
 
 **6.6.7 類似候補 API（pgvector・管理画面）**
 
@@ -584,7 +585,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 - [ ] ON 時も `Loan.photoToolDisplayName` が **1 回目 VLM のみ**で更新され、キオスク1行目が従来優先順（人 > VLM > `撮影mode`）のままか
 - [ ] （任意）`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true` を入れた環境では、ログの `galleryRowCount` / `activePersistEligible` / `activePersistApplied` とゲート通過時のみ本番保存が期待どおりか（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「アクティブ補助」節）
 
-**検証日時**: 2026-04-02（**シャドー／アクティブとも既定 OFF** の本番相当で `verify-phase12-real.sh` **PASS 40/0/0**・未認証 candidates **401** 等を確認。ブランチ `feat/photo-tool-label-assist-active-gate`・Pi5 のみデプロイ後・Mac / Tailscale）。2026-03-29 追記: **シャドー OFF** のみ **PASS 34/0/0**
+**検証日時**: 2026-04-02（**シャドー／アクティブとも既定 OFF** の本番相当で `verify-phase12-real.sh` **PASS 40/0/0**・未認証 candidates **401** 等を確認。ブランチ `feat/photo-tool-label-assist-active-gate`・Pi5 のみデプロイ後・Mac / Tailscale）。2026-03-29 追記: **シャドー OFF** のみ **PASS 34/0/0**／**2026-04-03**: 未認証 `photo-label-reviews` スモーク追加後 **PASS 41/0/0**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) provenance）
 **検証結果**: ☑ 成功（回帰・認可） ☐ 失敗（エラー内容: _______________）
 
 **6.6.9 キオスク部品測定（`part-measurement`）**

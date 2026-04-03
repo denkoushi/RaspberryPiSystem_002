@@ -2,7 +2,7 @@
 title: 写真撮影持出機能 - モジュール仕様
 tags: [工具管理, 写真撮影, カメラ, 持出機能]
 audience: [開発者, アーキテクト]
-last-verified: 2026-03-30
+last-verified: 2026-04-03
 related: [../requirements/system-requirements.md, ../../decisions/003-camera-module.md, ./README.md]
 category: modules
 update-frequency: medium
@@ -69,6 +69,7 @@ update-frequency: medium
 
 7. **人レビュー（フェーズ1）**
    - 管理画面 **`/admin/photo-loan-label-reviews`**（ルート名 `photo-loan-label-reviews`）から、VLM 済みの写真持出を一覧し、品質と任意の人間表示名を送信する
+   - 一覧・送信後の応答には **`photoToolVlmLabelProvenance`**（VLM 表示名が最後に確定した経路）を含める。値は `UNKNOWN`（未確定・マイグレーション既定）/ `FIRST_PASS_VLM`（1 回目 VLM のみ）/ `ASSIST_ACTIVE_VLM`（アクティブ補助ゲート通過後に 2 回目 VLM を本番保存した場合）。管理 UI ではバッジ＋短文で出自を示す（キオスク1行目の優先順位は従来どおり **人 > VLM > `撮影mode`**）
    - `PATCH /api/tools/loans/:loanId/photo-label-review`（ADMIN/MANAGER）で `photoToolHumanQuality` / `photoToolHumanReviewedAt` / `photoToolHumanReviewedByUserId` / 任意で `photoToolHumanDisplayName` を更新
    - **ギャラリー連携**: `photoToolHumanQuality === GOOD` のときのみ `photo_tool_similarity_gallery` を非同期 upsert。`canonicalLabel` は **人の上書き表示名があればそれ**、なければ **VLM の `photoToolDisplayName`**（いずれも欠けると `撮影mode` 系フォールバック。実装は `PhotoToolGalleryIndexService`）。
    - **運用上の推奨**: 正解が判明しているなら **上書き表示名を必ず入れてから `GOOD`** とし、誤 VLM を **上書きなし `GOOD`** で載せない（ノイズ教師の混入防止）。迷う場合は `MARGINAL`/`BAD` でギャラリーから外す判断も可（要件は運用側で固定）。
@@ -77,7 +78,7 @@ update-frequency: medium
 
 ### Loanテーブルの拡張
 
-（`PhotoToolHumanLabelQuality` は enum: `GOOD` \| `MARGINAL` \| `BAD`）
+（`PhotoToolHumanLabelQuality` は enum: `GOOD` \| `MARGINAL` \| `BAD`。`PhotoToolVlmLabelProvenance` は enum: `UNKNOWN` \| `FIRST_PASS_VLM` \| `ASSIST_ACTIVE_VLM`）
 
 ```prisma
 model Loan {
@@ -85,6 +86,7 @@ model Loan {
   photoUrl                String?   // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
   photoTakenAt            DateTime? // 撮影日時
   photoToolDisplayName    String?   // VLM が付与した表示用工具名（Item 非紐づけ）
+  photoToolVlmLabelProvenance PhotoToolVlmLabelProvenance @default(UNKNOWN) // VLM ラベル確定経路（管理レビュー画面の出自表示用）
   photoToolLabelRequested Boolean   @default(false)
   photoToolLabelClaimedAt DateTime? // バッチの claim 時刻（重複実行緩和）
   photoToolHumanDisplayName     String?   // 人レビューで確定した表示名（任意）
@@ -114,8 +116,8 @@ model ClientDevice {
 
 ### 写真ラベル・レビュー API（管理者）
 
-- `GET /api/tools/loans/photo-label-reviews` — レビュー待ち一覧（**ADMIN/MANAGER**）
-- `PATCH /api/tools/loans/:id/photo-label-review` — 人レビュー送信（**ADMIN/MANAGER**、JWT 必須）
+- `GET /api/tools/loans/photo-label-reviews` — レビュー待ち一覧（**ADMIN/MANAGER**）。各項目に `photoToolVlmLabelProvenance` を含む。未認証は **401**（`./scripts/deploy/verify-phase12-real.sh` で返却コードをスモーク）
+- `PATCH /api/tools/loans/:id/photo-label-review` — 人レビュー送信（**ADMIN/MANAGER**、JWT 必須）。応答に更新後の `photoToolVlmLabelProvenance` を含む
 - `GET /api/tools/loans/:id/photo-similar-candidates` — **類似候補（参考表示のみ）**（**ADMIN/MANAGER**）。`PHOTO_TOOL_EMBEDDING_ENABLED=true` かつ埋め込みサービス接続時のみ候補を返し、それ以外は空配列。キオスク・確定ラベルは変更しない。未認証は **401**。
   - **実機スモーク（2026-03-29）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 34 / WARN 0 / FAIL 0**、上記 GET をトークンなしで叩くと **401**（[KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
 
