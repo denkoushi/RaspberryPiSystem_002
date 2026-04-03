@@ -682,6 +682,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - 標準手順では `infrastructure/ansible/templates/docker.env.j2` と inventory/host_vars の **`api_signage_loan_grid_engine`** で管理してください。
 - 反映確認は Pi5 上で `docker compose ... exec -T api /bin/sh -lc 'echo $SIGNAGE_LOAN_GRID_ENGINE'` を実行し、`playwright_html` を確認します。
 - ロールバックは `api_signage_loan_grid_engine: "svg_legacy"` に戻して **Pi5 のみ再デプロイ**します。
+- 「デプロイは成功したが JPEG が旧レイアウトのまま」は **API コンテナへ env が入っていない**典型です。切り分けは [KB-327](../knowledge-base/infrastructure/signage.md#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ)。
 
 **知見（2026-03-06）**: 事前に「今回の実装が影響する端末」（例: Pi5 + Pi4×4）を挙げても、標準手順は inventory 全デバイス（Pi5 + Pi4×4 + Pi3）を対象とする。効率化したい場合は「対象デバイスだけデプロイせよ」と指示し、`--limit "server:kiosk"` で実行する運用が有効。
 
