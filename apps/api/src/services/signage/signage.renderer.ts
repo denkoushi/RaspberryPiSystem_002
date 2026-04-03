@@ -40,6 +40,11 @@ import {
   computeSplitCompact24Layout,
   idealCardWidthForColumnCount,
 } from './loan-card/loan-card-layout.js';
+import {
+  COMPACT24_MAX_COLUMNS,
+  COMPACT24_MAX_ROWS,
+  COMPACT24_CARD_HEIGHT_PX,
+} from './loan-card/loan-card-contracts.js';
 
 // 環境変数で解像度を設定可能（デフォルト: 1920x1080、4K: 3840x2160）
 // 50インチモニタで近くから見る場合は4K推奨
@@ -69,6 +74,19 @@ interface ToolGridConfig {
   cardHeightPx?: number;
   cardLayout?: ToolCardLayoutProfile;
 }
+
+/** 左右ペイン共通: SPLIT 持出カード（compact 24）。契約定数は `loan-card-contracts.ts`。 */
+const SPLIT_COMPACT24_LOAN_GRID_BASE: Pick<
+  ToolGridConfig,
+  'mode' | 'showThumbnails' | 'maxRows' | 'maxColumns' | 'cardLayout' | 'cardHeightPx'
+> = {
+  mode: 'SPLIT',
+  showThumbnails: true,
+  maxRows: COMPACT24_MAX_ROWS,
+  maxColumns: COMPACT24_MAX_COLUMNS,
+  cardLayout: 'splitCompact24',
+  cardHeightPx: COMPACT24_CARD_HEIGHT_PX,
+};
 
 interface PdfRenderOptions {
   title?: string | null;
@@ -819,12 +837,7 @@ export class SignageRenderer {
         y: outerPadding + innerPadding + headerHeight,
         width: leftWidth - innerPadding * 2,
         height: panelHeight - innerPadding * 2 - headerHeight,
-        mode: 'SPLIT',
-        showThumbnails: true,
-        maxRows: 6,
-        maxColumns: 4,
-        cardLayout: 'splitCompact24',
-        cardHeightPx: 154,
+        ...SPLIT_COMPACT24_LOAN_GRID_BASE,
       });
       leftContent = cardsSvg;
       if (overflowCount > 0) {
@@ -873,12 +886,7 @@ export class SignageRenderer {
         y: outerPadding + innerPadding + headerHeight,
         width: rightWidth - innerPadding * 2,
         height: panelHeight - innerPadding * 2 - headerHeight,
-        mode: 'SPLIT',
-        showThumbnails: true,
-        maxRows: 6,
-        maxColumns: 4,
-        cardLayout: 'splitCompact24',
-        cardHeightPx: 154,
+        ...SPLIT_COMPACT24_LOAN_GRID_BASE,
       });
       rightContent = cardsSvg;
       if (overflowCount > 0) {

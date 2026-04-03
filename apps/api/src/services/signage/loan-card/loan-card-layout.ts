@@ -100,23 +100,34 @@ export function computeSplitCompact24Layout(params: {
 
   /** Bottom inner edge: same baseline as management id in renderer (right-aligned). */
   const bottomRowBaseline = y + cardHeight - cardPadding;
-  /** Keep date/warn ascenders above photo bottom (SVG alphabetic baseline). */
-  const dateInkClearancePx = gapFromPhotoBottomToDateBaseline(fontDate, scale);
-  const maxPhotoBottom = bottomRowBaseline - dateInkClearancePx;
-  const idealThumbTop = maxPhotoBottom - thumbnailHeight;
   const minThumbTop = nameY + minGapNameBaselineToThumbTop;
-  let thumbnailY: number;
-  if (idealThumbTop >= minThumbTop) {
-    thumbnailY = idealThumbTop;
-  } else if (minThumbTop + thumbnailHeight <= maxPhotoBottom) {
-    thumbnailY = minThumbTop;
-  } else {
-    thumbnailY = maxPhotoBottom - thumbnailHeight;
+  const innerTop = y + cardPadding;
+
+  /**
+   * Vertical budget: photo top >= `minThumbTop` (clear of name baseline / descenders).
+   * Photo bottom <= `bottomRowBaseline - dateInk` (room for date ascenders; date is painted after image).
+   * When the preferred `dateInk` is too large, shrink it toward the minimum needed to fit the name row.
+   */
+  const dateInkPreferred = gapFromPhotoBottomToDateBaseline(fontDate, scale);
+  const dateInkAbsoluteFloor = 6;
+
+  let dateInkClearancePx = dateInkPreferred;
+  let maxPhotoBottom = bottomRowBaseline - dateInkClearancePx;
+  let thumbTopMax = maxPhotoBottom - thumbnailHeight;
+
+  if (thumbTopMax < minThumbTop) {
+    const inkNeededForName = bottomRowBaseline - minThumbTop - thumbnailHeight;
+    dateInkClearancePx = Math.max(dateInkAbsoluteFloor, Math.min(dateInkPreferred, inkNeededForName));
+    maxPhotoBottom = bottomRowBaseline - dateInkClearancePx;
+    thumbTopMax = maxPhotoBottom - thumbnailHeight;
   }
 
-  /** Avoid negative or clipped Y if cardHeight/thumbnailHeight are misconfigured at call sites. */
-  const innerTop = y + cardPadding;
-  thumbnailY = Math.max(innerTop, thumbnailY);
+  /** As low as layout allows: maximizes clearance under the name; uses slack between photo and date. */
+  let thumbnailY = Math.max(innerTop, minThumbTop, thumbTopMax);
+  if (thumbnailY + thumbnailHeight > maxPhotoBottom) {
+    thumbnailY = Math.max(innerTop, thumbTopMax);
+  }
+
 
   const lhPrimaryStep = Math.round(15 * scale);
   const lhLocStep = Math.round(13 * scale);

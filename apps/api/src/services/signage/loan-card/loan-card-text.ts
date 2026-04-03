@@ -1,6 +1,8 @@
 /**
  * Pure text helpers for SPLIT compact loan cards (signage SVG).
  * Kept separate from SignageRenderer for testability (SRP).
+ *
+ * 行数上限は `loan-card-contracts.ts` の `COMPACT24_MAX_LINES_PRIMARY_OR_LOCATION` と一致させること。
  */
 
 function isAsciiChar(ch: string): boolean {
@@ -41,8 +43,8 @@ export function trimToUnitsWithEllipsis(s: string, maxUnits: number): string {
 }
 
 /**
- * Greedy wrap into two lines by width units (for SVG without auto-wrap).
- * Shared by primary name and location (OCP: one algorithm).
+ * Greedy wrap into **最大 2 行**（`COMPACT24_MAX_LINES_PRIMARY_OR_LOCATION`） by width units —
+ * SVG の `<text>` に自動折り返しがないため。primary / location で共有（OCP: 同一アルゴリズム）。
  */
 export function splitIntoTwoLines(
   raw: string,

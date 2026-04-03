@@ -15,5 +15,6 @@ export function maxWidthUnitsForFont(columnWidthPx: number, fontSizePx: number):
 
 /** Reserve for bottom row (date + optional warning); keeps date baseline clear of photo bottom. */
 export function gapFromPhotoBottomToDateBaseline(fontDatePx: number, scale: number): number {
-  return Math.round(Math.max(10, fontDatePx * 0.95 + 5 * scale));
+  /** Extra margin helps SVG→raster (sharp) where ascenders read larger than nominal font-size. */
+  return Math.round(Math.max(12, fontDatePx + 6 * scale));
 }

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPLIT 持出カード compact24 — デザインプレビュー</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: rgba(15, 23, 42, 0.55);
+      --card-tool: rgba(59, 130, 246, 1);
+      --card-tool-stroke: rgba(29, 78, 216, 1);
+      --card-instr: rgba(147, 51, 234, 1);
+      --card-instr-stroke: rgba(107, 33, 168, 1);
+      --card-rig: rgba(249, 115, 22, 1);
+      --card-rig-stroke: rgba(194, 65, 12, 1);
+      --muted: #e2e8f0;
+      --radius-card: 12px;
+      --radius-thumb: 8px;
+      /* scale=1 相当（1920×1080 基準の signage と同じ寸法感） */
+      --card-w: 220px;
+      --card-h: 154px;
+      --pad: 12px;
+      --thumb: 96px;
+      --gap: 12px;
+      --font-name: 14px;
+      --font-primary: 16px;
+      --font-loc: 12px;
+      --font-date: 13px;
+      --font-mgmt: 13px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(145deg, #020617 0%, #0d162c 50%, #020617 100%);
+      color: #fff;
+      font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin: 0 0 8px;
+    }
+    .note {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-bottom: 20px;
+      max-width: 720px;
+      line-height: 1.6;
+    }
+    .note code {
+      font-size: 0.85em;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      color: #e2e8f0;
+    }
+    .note a { color: #93c5fd; }
+    .pane {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 24px;
+    }
+    .pane-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    /*
+     * 外寸は実装と同じ **220×154px 厳密固定**（border・padding はこの内側に収める）。
+     * 中央行はサムネ 96px に合わせ 96px。右カラムはこの帯内に収めるため行間・フォントを SVG 近似で詰める。
+     */
+    .loan-card {
+      box-sizing: border-box;
+      width: var(--card-w);
+      height: var(--card-h);
+      border-radius: var(--radius-card);
+      padding: 10px 12px 5px 12px;
+      display: grid;
+      grid-template-rows: auto 96px minmax(0, 1fr);
+      row-gap: 0;
+      align-content: start;
+      border: 2px solid var(--stroke, var(--card-tool-stroke));
+      background: var(--fill, var(--card-tool));
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    }
+    .loan-card.exceeded {
+      border-color: rgba(220, 38, 38, 1);
+      border-width: 4px;
+    }
+    .loan-card.instrument { --fill: var(--card-instr); --stroke: var(--card-instr-stroke); }
+    .loan-card.rigging { --fill: var(--card-rig); --stroke: var(--card-rig-stroke); }
+    .loan-name {
+      font-size: var(--font-name);
+      font-weight: 600;
+      color: #fff;
+      line-height: 1.2;
+      margin: 0 0 10px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      /* 欧文ベースラインのみの行高だと日本語グリフ下端がサムネにかぶるため下側に余白を確保 */
+      padding-bottom: 1px;
+    }
+    .loan-mid {
+      display: grid;
+      grid-template-columns: var(--thumb) 1fr;
+      gap: var(--gap);
+      align-items: start;
+      height: 96px;
+      min-height: 96px;
+      max-height: 96px;
+      overflow: hidden;
+    }
+    .loan-thumb {
+      width: var(--thumb);
+      height: var(--thumb);
+      border-radius: var(--radius-thumb);
+      background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .loan-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    /* 本番は SVG で最大2行（幅ユニットでの分割）。プレビューはブラウザ折り返し OK（Location/アイテム名とも）。 */
+    .loan-copy .primary,
+    .loan-copy .primary-sub,
+    .loan-copy .loc {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: normal;
+    }
+    .loan-copy .primary {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.08;
+      margin: 0;
+    }
+    .loan-copy .primary-sub {
+      margin-top: 1px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.08;
+    }
+    .loan-copy .primary-sub:empty {
+      display: none;
+    }
+    .loan-copy .loc {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      line-height: 1.1;
+      margin: 0;
+    }
+    .loan-copy .loc + .loc { margin-top: 1px; }
+    .loan-copy .block-gap { height: 4px; flex-shrink: 0; }
+    .loan-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      align-self: end;
+      padding-top: 4px;
+      gap: 8px;
+      min-height: 1.15em;
+      line-height: 1.15;
+    }
+    .loan-foot .date {
+      font-size: var(--font-date);
+      font-weight: 600;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .loan-foot .mgmt {
+      font-size: var(--font-mgmt);
+      font-weight: 600;
+      font-family: ui-monospace, monospace;
+      color: #fff;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .badge {
+      display: inline-block;
+      margin-top: 12px;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <h1>持出中アイテム — compact24（HTML プレビュー）</h1>
+  <p class="note">
+    <strong>ファイル:</strong> リポジトリ内 <code>apps/api/scripts/html-previews/signage-split-compact24-preview.html</code><br />
+    <strong>表示:</strong> Cursor ブラウザは <code>file://</code> を開けないため、同ディレクトリで
+    <code>python3 -m http.server 8765</code> を実行し、
+    <a href="http://127.0.0.1:8765/signage-split-compact24-preview.html">http://127.0.0.1:8765/signage-split-compact24-preview.html</a> を開いてください。<br />
+    <strong>寸法:</strong> カード外寸 <strong>220×154px 固定</strong>（実装の cardHeightPx:154）。<br />
+    <strong>折り返し:</strong> この HTML は右列で <strong>ブラウザの自然折り返し</strong>（Location・アイテム名とも可）。本番 API は SVG のため <strong>論理分割で最大2行</strong>（<code>splitPrimaryTwoLines</code> / <code>splitLocationTwoLines</code>・契約は <code>loan-card-contracts.ts</code>）。<br />
+    フォントはブラウザ依存で実機 JPEG と完全一致しません。96px 帯に収まらないほど折り返すと右列が切れることがあります。
+  </p>
+
+  <div class="pane">
+    <div class="pane-title">持出中アイテム</div>
+    <div class="grid">
+      <article class="loan-card">
+        <div class="loan-name">齊藤 雅弥</div>
+        <div class="loan-mid">
+          <div class="loan-thumb" aria-hidden="true"></div>
+          <div class="loan-copy">
+            <p class="primary">電動ドリル</p>
+            <div class="block-gap"></div>
+            <p class="loc">第2工場 - RoboDrill01</p>
+            <p class="loc">産機ライン</p>
+          </div>
+        </div>
+        <div class="loan-foot">
+          <span class="date">04/03・12:02</span>
+          <span class="mgmt">T-8842</span>
+        </div>
+      </article>
+
+      <article class="loan-card instrument">
+        <div class="loan-name">寺田 健太</div>
+        <div class="loan-mid">
+          <div class="loan-thumb" aria-hidden="true"></div>
+          <div class="loan-copy">
+            <p class="primary">デジタルデプス</p>
+            <p class="primary-sub">ノギス</p>
+            <div class="block-gap"></div>
+            <p class="loc">東京都千代田区</p>
+            <p class="loc">サンプル工場テスト棟 A-1F</p>
+          </div>
+        </div>
+        <div class="loan-foot">
+          <span class="date">04/03・09:41</span>
+          <span class="mgmt">MI-10394</span>
+        </div>
+      </article>
+
+      <article class="loan-card rigging">
+        <div class="loan-name">非常に長い名前の従業員氏名表示テスト</div>
+        <div class="loan-mid">
+          <div class="loan-thumb" aria-hidden="true"></div>
+          <div class="loan-copy">
+            <p class="primary">てこ式ダイヤル</p>
+            <p class="primary-sub">ゲージロング名称</p>
+            <div class="block-gap"></div>
+            <p class="loc">第2工場 - 研削メイン</p>
+            <p class="loc">ライン B</p>
+          </div>
+        </div>
+        <div class="loan-foot">
+          <span class="date">04/02・18:55</span>
+          <span class="mgmt">RG-22</span>
+        </div>
+      </article>
+
+      <article class="loan-card">
+        <div class="loan-name">長文・折り返し確認</div>
+        <div class="loan-mid">
+          <div class="loan-thumb" aria-hidden="true"></div>
+          <div class="loan-copy">
+            <p class="primary">てこ式ダイヤルゲージロング名称サンプル第2行までブラウザ折り返し</p>
+            <div class="block-gap"></div>
+            <p class="loc">東京都千代田区千代田1-1-1 サンプル工場テスト棟ライン名まで含めた長い拠点文字列の折り返し確認用</p>
+          </div>
+        </div>
+        <div class="loan-foot">
+          <span class="date">04/03・12:02</span>
+          <span class="mgmt">WRAP-DEMO</span>
+        </div>
+      </article>
+
+      <article class="loan-card exceeded">
+        <div class="loan-name">期限超過サンプル</div>
+        <div class="loan-mid">
+          <div class="loan-thumb" aria-hidden="true"></div>
+          <div class="loan-copy">
+            <p class="primary">マイクロメータ</p>
+            <p class="primary-sub">0-25mm</p>
+            <div class="block-gap"></div>
+            <p class="loc">検査室</p>
+            <p class="loc">-</p>
+          </div>
+        </div>
+        <div class="loan-foot">
+          <span class="date">03/28・08:00</span>
+          <span class="mgmt">M-001</span>
+        </div>
+      </article>
+    </div>
+    <span class="badge">カード外寸 220×154px 固定（実装の cardHeightPx:154 相当）。ブラウザフォント差で右列が1行詰まることがあります</span>
+  </div>
+</body>
+</html>
