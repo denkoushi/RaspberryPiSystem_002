@@ -476,6 +476,14 @@
   when:
     - docker_env_result.changed | default(false)
 
+- name: Ensure api and web containers are running before Prisma migrate
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd {{ repo_path }}
+    docker compose -f infrastructure/docker/docker-compose.server.yml up -d api web
+  args:
+    executable: /bin/bash
+
 - name: Run Prisma migrations on server (fail-fast)
   block:
     - name: Run prisma migrate deploy

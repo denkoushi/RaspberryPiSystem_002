@@ -1114,7 +1114,7 @@ path = sys.argv[1]
 line = ''
 with open(path, encoding='utf-8', errors='ignore') as fh:
     for raw in fh:
-        if re.match(r'^[\\w.-]+\\s+: ok=\\d+', raw):
+        if re.match(r'^[\w.-]+\s+:\s+ok=\d+', raw):
             line = raw.strip()
 print(line)
 PY" || echo "")
@@ -1452,11 +1452,11 @@ import json, re, sys
 log_path, summary_path = sys.argv[1:]
 with open(log_path, encoding="utf-8", errors="ignore") as fh:
     text = fh.read()
-failed_hosts = set(re.findall(r"^([\\w.-]+)\\s+:\\s+ok=\\d+.*failed=[1-9]", text, re.M))
-unreachable_hosts = set(re.findall(r"^([\\w.-]+)\\s+:\\s+ok=\\d+.*unreachable=[1-9]", text, re.M))
-all_hosts = set(re.findall(r"^([\\w.-]+)\\s+:\\s+ok=\\d+", text, re.M))
+failed_hosts = set(re.findall(r"^([\w.-]+)\s+:\s+ok=\d+.*failed=[1-9]", text, re.M))
+unreachable_hosts = set(re.findall(r"^([\w.-]+)\s+:\s+ok=\d+.*unreachable=[1-9]", text, re.M))
+all_hosts = set(re.findall(r"^([\w.-]+)\s+:\s+ok=\d+", text, re.M))
 summary = {
-    "timestamp": "${TIMESTAMP}",
+    "timestamp": "${RUN_ID}",
     "logFile": log_path,
     "totalHosts": len(all_hosts),
     "failedHosts": sorted(failed_hosts),
@@ -1479,7 +1479,7 @@ with open(summary_path, encoding="utf-8") as fh:
     summary = json.load(fh)
 with open(log_path, encoding="utf-8", errors="ignore") as fh:
     text = fh.read()
-recap = re.findall(r'^[\w.-]+\s+: ok=\d+.*$', text, re.M)
+recap = re.findall(r'^[\w.-]+\s+:\s+ok=\d+.*$', text, re.M)
 print(json.dumps({
     "summary": summary,
     "recapLines": recap[-5:],
