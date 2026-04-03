@@ -1,5 +1,13 @@
 /**
  * Geometry for SPLIT compact (4×6) loan cards. Pure functions for signage SVG.
+ *
+ * Card content (hasThumbnail):
+ * - Employee name: full card width, above photo
+ * - Photo: fixed size (caller), top-left below name
+ * - Item name: 2 lines, right of photo (same vertical band as photo)
+ * - Location: 2 lines, below item name, right column
+ * - Date (・): below photo, left column
+ * - Optional warning: same baseline as date, to the right of date (saves vertical space)
  */
 
 /** Ideal card width (px at current scale) so floor((W+g)/(I+g)) >= desiredColumns. */
@@ -14,22 +22,28 @@ export function idealCardWidthForColumnCount(contentWidth: number, gap: number, 
 export type SplitCompact24Layout = {
   thumbnailX: number;
   thumbnailY: number;
-  textX: number;
-  /** Right padding boundary for monospace management text (from card left). */
-  textMaxX: number;
-  primaryY: number;
+  /** Employee name — full width, above thumbnail */
+  nameX: number;
   nameY: number;
-  warningY: number | null;
+  textX: number;
+  textMaxX: number;
+  primary1Y: number;
+  primary2Y: number;
   loc1Y: number;
   loc2Y: number;
+  dateX: number;
   dateY: number;
+  /** Warning shares baseline with date; X is start of warning segment */
+  warningX: number | null;
+  warningY: number | null;
   fontPrimary: number;
   fontName: number;
   fontLoc: number;
   fontDate: number;
   fontWarning: number;
-  /** Max width units (loan-card-text) per location line. */
   maxLocationUnitsPerLine: number;
+  maxPrimaryUnitsPerLine: number;
+  maxEmployeeUnitsPerLine: number;
 };
 
 export function computeSplitCompact24Layout(params: {
@@ -49,7 +63,6 @@ export function computeSplitCompact24Layout(params: {
     x,
     y,
     cardWidth,
-    cardHeight,
     scale,
     cardPadding,
     thumbnailWidth,
@@ -63,69 +76,68 @@ export function computeSplitCompact24Layout(params: {
   const fontName = Math.max(12, Math.round(14 * scale));
   const fontLoc = Math.max(11, Math.round(12 * scale));
   const fontDate = Math.max(11, Math.round(13 * scale));
-  const fontWarning = Math.max(11, Math.round(12 * scale));
+  const fontWarning = Math.max(10, Math.round(11 * scale));
+
+  const nameX = x + cardPadding;
+  const innerW = cardWidth - cardPadding * 2;
+  const maxEmployeeUnitsPerLine = Math.max(4, Math.min(32, Math.floor(innerW / 7)));
+
+  /** First text baseline below top padding (employee name). */
+  const nameY = y + cardPadding + Math.round(13 * scale);
+  const gapBelowName = Math.round(8 * scale);
 
   const thumbnailX = x + cardPadding;
-  const thumbnailY = y + cardPadding;
+  const thumbnailY = nameY + gapBelowName;
 
-  const textX = x + cardPadding + (hasThumbnail ? thumbnailWidth + thumbnailGap : 0);
+  const textX = hasThumbnail ? thumbnailX + thumbnailWidth + thumbnailGap : x + cardPadding;
   const textMaxX = x + cardWidth - cardPadding;
-
   const textColumnPx = textMaxX - textX;
-  const maxLocationUnitsPerLine = Math.max(4, Math.min(24, Math.floor(textColumnPx / 7)));
+  const maxForCol = Math.max(4, Math.min(24, Math.floor(textColumnPx / 7)));
+  const maxLocationUnitsPerLine = maxForCol;
+  const maxPrimaryUnitsPerLine = maxForCol;
 
-  const thumbBottomBaseline = hasThumbnail
-    ? thumbnailY + thumbnailHeight - Math.round(3 * scale)
-    : y + cardHeight - cardPadding - Math.round(20 * scale);
+  const lhPrimaryStep = Math.round(15 * scale);
+  const lhLocStep = Math.round(13 * scale);
+  const blockGap = Math.round(6 * scale);
 
-  const dateY = thumbBottomBaseline;
+  const primary1Y = thumbnailY + Math.round(14 * scale);
+  const primary2Y = primary1Y + lhPrimaryStep;
+  const loc1Y = primary2Y + blockGap;
+  const loc2Y = loc1Y + lhLocStep;
 
-  const gap = Math.round(4 * scale);
-  const lhLoc = Math.round(13 * scale);
-  const lhWarn = Math.round(13 * scale);
-  const lhName = Math.round(15 * scale);
-  const lhPrimary = Math.round(17 * scale);
+  const dateX = x + cardPadding;
+  const dateY = thumbnailY + thumbnailHeight + Math.round(4 * scale);
 
-  /**
-   * Top-to-bottom on screen: primary → name → loc1 → loc2 → (warning if any) → date.
-   * Build baselines upward from date (smaller Y = higher on screen).
-   */
-  let yLine = dateY - Math.round(8 * scale);
+  let warningX: number | null = null;
   let warningY: number | null = null;
   if (hasWarning) {
-    warningY = yLine;
-    yLine -= lhWarn + gap;
-  }
-  const loc2Y = yLine;
-  yLine -= lhLoc + gap;
-  const loc1Y = yLine;
-  yLine -= lhLoc + gap;
-
-  const nameY = yLine;
-  yLine -= lhName + gap;
-  let primaryY = yLine;
-
-  const topMin = y + cardPadding + lhPrimary;
-  if (primaryY < topMin) {
-    primaryY = topMin;
+    warningY = dateY;
+    /** Avoid drawing past card inner edge when column is very narrow. */
+    warningX = Math.min(dateX + Math.round(92 * scale), textMaxX - Math.round(52 * scale));
   }
 
   return {
     thumbnailX,
     thumbnailY,
+    nameX,
+    nameY,
     textX,
     textMaxX,
-    primaryY,
-    nameY,
-    warningY,
+    primary1Y,
+    primary2Y,
     loc1Y,
     loc2Y,
+    dateX,
     dateY,
+    warningX,
+    warningY,
     fontPrimary,
     fontName,
     fontLoc,
     fontDate,
     fontWarning,
     maxLocationUnitsPerLine,
+    maxPrimaryUnitsPerLine,
+    maxEmployeeUnitsPerLine,
   };
 }

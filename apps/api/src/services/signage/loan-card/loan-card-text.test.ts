@@ -3,7 +3,9 @@ import {
   formatBorrowedCompactLine,
   formatEmployeeCompact,
   splitLocationTwoLines,
+  splitPrimaryTwoLines,
   textWidthUnits,
+  trimEmployeeNameOneLine,
   trimToUnitsWithEllipsis,
 } from './loan-card-text.js';
 
@@ -43,4 +45,16 @@ describe('loan-card-text', () => {
     expect(r.line1).toBe('A棟');
     expect(r.line2).toBe('');
   });
+
+  it('splitPrimaryTwoLines wraps long primary', () => {
+    const r = splitPrimaryTwoLines('てこ式ダイヤルゲージロング名称サンプル', 8);
+    expect(r.line1.length).toBeGreaterThan(0);
+    expect(textWidthUnits(r.line1)).toBeLessThanOrEqual(8);
+  });
+
+  it('trimEmployeeNameOneLine ellipsizes long names', () => {
+    const s = trimEmployeeNameOneLine('非常に長い名前の従業員表示テスト', 10);
+    expect(s).toContain('…');
+  });
 });
+

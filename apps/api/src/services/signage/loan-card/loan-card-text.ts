@@ -40,10 +40,22 @@ export function trimToUnitsWithEllipsis(s: string, maxUnits: number): string {
   return `${acc}${ell}`;
 }
 
-export function splitLocationTwoLines(raw: string, maxUnitsPerLine: number): { line1: string; line2: string } {
-  const text = raw.trim() || '-';
+/**
+ * Greedy wrap into two lines by width units (for SVG without auto-wrap).
+ * Shared by primary name and location (OCP: one algorithm).
+ */
+export function splitIntoTwoLines(
+  raw: string,
+  maxUnitsPerLine: number,
+  options?: { emptyFallback?: string }
+): { line1: string; line2: string } {
+  const fallback = options?.emptyFallback;
+  const text =
+    fallback !== undefined ? (raw.trim() || fallback) : raw.trim() === '' ? '' : raw.trim();
+
   if (maxUnitsPerLine <= 0) {
-    return { line1: trimToUnitsWithEllipsis(text, 8), line2: '' };
+    const t = text || fallback || '';
+    return { line1: trimToUnitsWithEllipsis(t || '-', 8), line2: '' };
   }
   if (textWidthUnits(text) <= maxUnitsPerLine) {
     return { line1: text, line2: '' };
@@ -68,6 +80,26 @@ export function splitLocationTwoLines(raw: string, maxUnitsPerLine: number): { l
     rest = trimToUnitsWithEllipsis(rest, maxUnitsPerLine);
   }
   return { line1: first, line2: rest };
+}
+
+export function splitLocationTwoLines(raw: string, maxUnitsPerLine: number): { line1: string; line2: string } {
+  return splitIntoTwoLines(raw, maxUnitsPerLine, { emptyFallback: '-' });
+}
+
+export function splitPrimaryTwoLines(raw: string, maxUnitsPerLine: number): { line1: string; line2: string } {
+  return splitIntoTwoLines(raw, maxUnitsPerLine);
+}
+
+/** Single-line employee name; trim with ellipsis if card full width is exceeded. */
+export function trimEmployeeNameOneLine(raw: string | null | undefined, maxUnits: number): string {
+  const name = raw?.trim() ? raw.trim() : '未割当';
+  if (maxUnits <= 0) {
+    return name;
+  }
+  if (textWidthUnits(name) <= maxUnits) {
+    return name;
+  }
+  return trimToUnitsWithEllipsis(name, maxUnits);
 }
 
 /** `formatBorrowedAt` 相当の `MM/DD HH:mm` を `MM/DD・HH:mm` にする。 */

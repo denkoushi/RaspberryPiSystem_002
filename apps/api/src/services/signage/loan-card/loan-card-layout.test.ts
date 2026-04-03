@@ -12,7 +12,7 @@ describe('loan-card-layout', () => {
     expect(Math.min(computedCols, cols)).toBe(cols);
   });
 
-  it('computeSplitCompact24Layout returns ordered baselines with thumbnail', () => {
+  it('computeSplitCompact24Layout places name above thumbnail and date below thumbnail', () => {
     const scale = 1;
     const L = computeSplitCompact24Layout({
       x: 0,
@@ -27,15 +27,17 @@ describe('loan-card-layout', () => {
       hasThumbnail: true,
       hasWarning: false,
     });
-    expect(L.primaryY).toBeLessThan(L.nameY);
-    expect(L.nameY).toBeLessThan(L.loc1Y);
+    expect(L.nameY).toBeLessThan(L.thumbnailY);
+    expect(L.primary1Y).toBeGreaterThan(L.thumbnailY);
+    expect(L.dateY).toBeGreaterThan(L.thumbnailY + 96);
+    expect(L.primary1Y).toBeLessThan(L.primary2Y);
     expect(L.loc1Y).toBeLessThan(L.loc2Y);
-    expect(L.loc2Y).toBeLessThan(L.dateY);
-    expect(L.dateY).toBe(L.thumbnailY + 96 - Math.round(3 * scale));
-    expect(L.maxLocationUnitsPerLine).toBeGreaterThan(0);
+    expect(L.loc2Y).toBeLessThan(L.thumbnailY + 96);
+    expect(L.maxPrimaryUnitsPerLine).toBeGreaterThan(0);
+    expect(L.maxEmployeeUnitsPerLine).toBeGreaterThan(0);
   });
 
-  it('computeSplitCompact24Layout inserts warning between loc2 and date', () => {
+  it('computeSplitCompact24Layout aligns warning with date on same baseline', () => {
     const L = computeSplitCompact24Layout({
       x: 0,
       y: 0,
@@ -49,8 +51,8 @@ describe('loan-card-layout', () => {
       hasThumbnail: true,
       hasWarning: true,
     });
-    expect(L.warningY).not.toBeNull();
-    expect(L.warningY!).toBeGreaterThan(L.loc2Y);
-    expect(L.warningY!).toBeLessThan(L.dateY);
+    expect(L.warningY).toBe(L.dateY);
+    expect(L.warningX).not.toBeNull();
+    expect(L.warningX!).toBeGreaterThan(L.dateX);
   });
 });

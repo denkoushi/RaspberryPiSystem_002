@@ -32,8 +32,9 @@ import {
 } from './kiosk-progress-overview/pagination.js';
 import {
   formatBorrowedCompactLine,
-  formatEmployeeCompact,
   splitLocationTwoLines,
+  splitPrimaryTwoLines,
+  trimEmployeeNameOneLine,
 } from './loan-card/loan-card-text.js';
 import {
   computeSplitCompact24Layout,
@@ -1065,6 +1066,7 @@ export class SignageRenderer {
         const clipId = this.generateId(`thumb-${index}`);
         let thumbnailElement = '';
         let hasThumbnail = false;
+        let thumbBase64: string | null = null;
 
         if (config.showThumbnails && tool.thumbnailUrl) {
           const thumbnailPath = this.resolveThumbnailLocalPath(tool.thumbnailUrl);
@@ -1077,20 +1079,7 @@ export class SignageRenderer {
             );
             if (base64) {
               hasThumbnail = true;
-              const thumbX = x + cardPadding;
-              const thumbY =
-                config.cardLayout === 'splitCompact24'
-                  ? y + cardPadding
-                  : y + Math.round((cardHeight - thumbnailHeight) / 2);
-              thumbnailElement = `
-                <clipPath id="${clipId}">
-                  <rect x="${thumbX}" y="${thumbY}"
-                    width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
-                </clipPath>
-                <image x="${thumbX}" y="${thumbY}"
-                  width="${thumbnailWidth}" height="${thumbnailHeight}"
-                  href="${base64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
-              `;
+              thumbBase64 = base64;
             }
           }
         }
@@ -1109,22 +1098,43 @@ export class SignageRenderer {
             hasThumbnail,
             hasWarning: isExceeded,
           });
+          if (thumbBase64) {
+            const tx = layout.thumbnailX;
+            const ty = layout.thumbnailY;
+            thumbnailElement = `
+                <clipPath id="${clipId}">
+                  <rect x="${tx}" y="${ty}"
+                    width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
+                </clipPath>
+                <image x="${tx}" y="${ty}"
+                  width="${thumbnailWidth}" height="${thumbnailHeight}"
+                  href="${thumbBase64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
+              `;
+          }
           const borrowedCompact = formatBorrowedCompactLine(this.formatBorrowedAt(tool.borrowedAt));
-          const employeeCompact = formatEmployeeCompact(tool.employeeName);
-          const { line1, line2 } = splitLocationTwoLines(
+          const employeeLine = trimEmployeeNameOneLine(tool.employeeName, layout.maxEmployeeUnitsPerLine);
+          const pLines = splitPrimaryTwoLines(primaryText, layout.maxPrimaryUnitsPerLine);
+          const { line1: loc1, line2: loc2 } = splitLocationTwoLines(
             clientLocationText,
             layout.maxLocationUnitsPerLine
           );
+          const primary2Svg =
+            pLines.line2.length > 0
+              ? `<text x="${layout.textX}" y="${layout.primary2Y}"
+              font-size="${layout.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+              ${this.escapeXml(pLines.line2)}
+            </text>`
+              : '';
           const loc2Svg =
-            line2.length > 0
+            loc2.length > 0
               ? `<text x="${layout.textX}" y="${layout.loc2Y}"
               font-size="${layout.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
-              ${this.escapeXml(line2)}
+              ${this.escapeXml(loc2)}
             </text>`
               : '';
           const warnSvg =
-            layout.warningY != null
-              ? `<text x="${layout.textX}" y="${layout.warningY}"
+            layout.warningX != null && layout.warningY != null
+              ? `<text x="${layout.warningX}" y="${layout.warningY}"
               font-size="${layout.fontWarning}" font-weight="700" fill="#ffffff" font-family="sans-serif">
                 ⚠ 期限超過
               </text>`
@@ -1134,25 +1144,26 @@ export class SignageRenderer {
             <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
               rx="${cardRadius}" ry="${cardRadius}"
               fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
-            ${thumbnailElement}
-            <text x="${layout.textX}" y="${layout.primaryY}"
-              font-size="${layout.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-              ${this.escapeXml(primaryText)}
-            </text>
-            <text x="${layout.textX}" y="${layout.nameY}"
+            <text x="${layout.nameX}" y="${layout.nameY}"
               font-size="${layout.fontName}" font-weight="600" fill="#ffffff" font-family="sans-serif">
-              ${this.escapeXml(employeeCompact)}
+              ${this.escapeXml(employeeLine)}
             </text>
+            ${thumbnailElement}
+            <text x="${layout.textX}" y="${layout.primary1Y}"
+              font-size="${layout.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+              ${this.escapeXml(pLines.line1)}
+            </text>
+            ${primary2Svg}
             <text x="${layout.textX}" y="${layout.loc1Y}"
               font-size="${layout.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
-              ${this.escapeXml(line1)}
+              ${this.escapeXml(loc1)}
             </text>
             ${loc2Svg}
-            ${warnSvg}
-            <text x="${layout.textX}" y="${layout.dateY}"
+            <text x="${layout.dateX}" y="${layout.dateY}"
               font-size="${layout.fontDate}" font-weight="600" fill="#ffffff" font-family="sans-serif">
               ${borrowedCompact ? this.escapeXml(borrowedCompact) : ''}
             </text>
+            ${warnSvg}
             ${riggingIdNumText
               ? `<text x="${layout.textMaxX}" y="${y + cardHeight - cardPadding - Math.round(18 * scale)}"
                   text-anchor="end" font-size="${Math.max(12, Math.round(12 * scale))}" font-weight="600" fill="#ffffff" font-family="sans-serif">
@@ -1166,6 +1177,20 @@ export class SignageRenderer {
             </text>
           </g>
         `;
+        }
+
+        if (thumbBase64) {
+          const thumbX = x + cardPadding;
+          const thumbY = y + Math.round((cardHeight - thumbnailHeight) / 2);
+          thumbnailElement = `
+                <clipPath id="${clipId}">
+                  <rect x="${thumbX}" y="${thumbY}"
+                    width="${thumbnailWidth}" height="${thumbnailHeight}" rx="${Math.round(8 * scale)}" ry="${Math.round(8 * scale)}" />
+                </clipPath>
+                <image x="${thumbX}" y="${thumbY}"
+                  width="${thumbnailWidth}" height="${thumbnailHeight}"
+                  href="${thumbBase64}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})" />
+              `;
         }
 
         const borrowedText = this.formatBorrowedAt(tool.borrowedAt) ?? '';
