@@ -12,6 +12,7 @@
 | [manual-order-device-card-location-machine-preview.html](./manual-order-device-card-location-machine-preview.html) | **上ペイン端末カード** — Location **1行**。行ブロックは **1行目 製番·品番**、**2行目 工順·部品名**（`partName`）、**3行目 機種名**（`machineName`）。**フォントは生産スケジュール一覧（`ProductionScheduleTable` の `text-xs`）と同サイズ**。`ManualOrderDeviceCard` 実装と同趣旨の静的モック |
 | [manual-order-band-to-operator-rank-preview.html](./manual-order-band-to-operator-rank-preview.html) | **帯分け → 帯内調整 → 資源CDごとの連番確定 → オペレーター提示** を1画面で表した静的モック。上ペインで編集対象選択、中央で帯編集、右で最終順位の受け渡しイメージを表示 |
 | [leader-due-rank-board-preview.html](./leader-due-rank-board-preview.html) | **リーダー順位ボード**（納期ベース・カードグリッド・本番ルート `/kiosk/production-schedule/leader-order-board` の UI 参考） |
+| [kiosk-part-measurement-header-strip.html](./kiosk-part-measurement-header-strip.html) | **部品測定・編集画面上部帯**（メタ `<dl>` + 中央寄せ折返しスロット・本番 `KioskPartMeasurementEditTopStrip` のレイアウト参考） |
 
 プレビュー HTML は **外部 CDN やネットワークに依存しません**（macOS のシステムフォントのみ）。`file://` のまま Safari で表示できる想定です。
 

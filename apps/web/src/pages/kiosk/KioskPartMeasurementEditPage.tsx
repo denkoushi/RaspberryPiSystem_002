@@ -13,7 +13,8 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
-import { KioskPartMeasurementSheetHeaderSection } from '../../features/part-measurement/KioskPartMeasurementSheetHeaderSection';
+import { KioskPartMeasurementEditTopStrip } from '../../features/part-measurement/KioskPartMeasurementEditTopStrip';
+import { KioskPartMeasurementSheetMetaBlock } from '../../features/part-measurement/KioskPartMeasurementSheetMetaBlock';
 import { KIOSK_PART_MEASUREMENT_VALUE_INPUT_CLASSNAME } from '../../features/part-measurement/kioskPartMeasurementTableUi';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useNfcStream } from '../../hooks/useNfcStream';
@@ -350,47 +351,54 @@ export function KioskPartMeasurementEditPage() {
         </Card>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" onClick={() => void navigate('/kiosk/part-measurement')}>
-          一覧へ
-        </Button>
-        {sheet?.status === 'DRAFT' ? (
+      <KioskPartMeasurementEditTopStrip
+        actions={
           <>
-            <Button type="button" variant="secondary" onClick={() => void handleManualSave()} disabled={busy}>
-              手動保存
+            <Button type="button" variant="secondary" onClick={() => void navigate('/kiosk/part-measurement')}>
+              一覧へ
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setCancelOpen(true)} disabled={busy}>
-              下書き取消
-            </Button>
+            {sheet?.status === 'DRAFT' ? (
+              <>
+                <Button type="button" variant="secondary" onClick={() => void handleManualSave()} disabled={busy}>
+                  手動保存
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setCancelOpen(true)} disabled={busy}>
+                  下書き取消
+                </Button>
+              </>
+            ) : null}
+            {sheet?.status === 'FINALIZED' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void downloadPartMeasurementSheetCsv(sheet.id, clientKey)}
+              >
+                CSVダウンロード
+              </Button>
+            ) : null}
           </>
-        ) : null}
-        {sheet?.status === 'FINALIZED' ? (
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void downloadPartMeasurementSheetCsv(sheet.id, clientKey)}
-          >
-            CSVダウンロード
-          </Button>
-        ) : null}
-      </div>
+        }
+        meta={
+          sheet ? (
+            <KioskPartMeasurementSheetMetaBlock
+              sheet={sheet}
+              quantityInput={quantityInput}
+              onQuantityChange={setQuantityInput}
+              readOnly={readOnly}
+            />
+          ) : null
+        }
+      />
 
       {sheet ? (
-        <>
-          <KioskPartMeasurementSheetHeaderSection
-            sheet={sheet}
-            quantityInput={quantityInput}
-            onQuantityChange={setQuantityInput}
-            readOnly={readOnly}
-          />
-
-          <Card title="測定値">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+          <Card title="測定値" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {templateItems.length === 0 ? (
               <p className="text-sm text-amber-700">テンプレート項目がありません。</p>
             ) : pieceCount < 1 ? (
               <p className="text-sm text-slate-600">個数を入力すると入力欄が表示されます。</p>
             ) : (
-              <div className="flex min-h-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-start">
+              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:items-stretch">
                 {drawingPath && drawingLoadError ? (
                   <div className="lg:max-w-[min(100%,480px)]">
                     <p className="mb-1 text-sm font-semibold text-slate-700">図面</p>
@@ -398,20 +406,20 @@ export function KioskPartMeasurementEditPage() {
                   </div>
                 ) : null}
                 {drawingBlobUrl ? (
-                  <div className="flex w-full shrink-0 flex-col lg:max-w-[min(100%,480px)] lg:sticky lg:top-2">
-                    <p className="mb-1 text-sm font-semibold text-slate-700">図面</p>
-                    <div className="overflow-hidden rounded border border-slate-200 bg-white">
+                  <div className="flex min-h-0 w-full shrink-0 flex-col self-stretch lg:max-w-[min(100%,480px)] lg:sticky lg:top-2">
+                    <p className="mb-1 shrink-0 text-sm font-semibold text-slate-700">図面</p>
+                    <div className="flex min-h-0 flex-1 overflow-auto rounded border border-slate-200 bg-white">
                       <img
                         src={drawingBlobUrl}
                         alt="部品測定図面"
-                        className="max-h-[min(50vh,520px)] w-full object-contain"
+                        className="max-h-full min-h-0 w-full object-contain"
                       />
                     </div>
                   </div>
                 ) : drawingPath && !drawingLoadError ? (
                   <p className="text-sm text-slate-600">図面を読み込み中…</p>
                 ) : null}
-                <div className="min-h-0 w-full max-w-full min-w-0 overflow-auto lg:max-h-[min(70vh,720px)] lg:w-auto">
+                <div className="min-h-0 w-full min-w-0 flex-1 overflow-auto lg:w-auto">
                   <table className="w-max max-w-none border-collapse text-left text-sm text-slate-900">
                     <thead>
                       <tr className="border-b border-slate-300">
@@ -485,13 +493,13 @@ export function KioskPartMeasurementEditPage() {
           </Card>
 
           {sheet.status === 'DRAFT' ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap gap-2">
               <Button type="button" variant="primary" onClick={() => void handleFinalize()} disabled={busy}>
                 確定
               </Button>
             </div>
           ) : null}
-        </>
+        </div>
       ) : (
         <p className="text-sm text-white/80">{busy ? '読み込み中…' : '記録表がありません。'}</p>
       )}

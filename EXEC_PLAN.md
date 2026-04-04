@@ -1873,16 +1873,17 @@
 
 **参照**: [ADR-20260402](./docs/decisions/ADR-20260402-inference-foundation-phase1.md) / [KB-313](./docs/knowledge-base/KB-313-kiosk-documents.md) / [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [local-llm-tailscale-sidecar.md](./docs/runbooks/local-llm-tailscale-sidecar.md)
 
-### キオスク部品測定記録・運用フォロー（2026-03-30 更新）
+### キオスク部品測定記録・運用フォロー（2026-04-04 更新）
 
-**概要**: Phase2（`resourceCd`・スケジュール起点）に加え、**visual template**（図面1枚・業務テンプレから参照・項目 `displayMarker`）と **図面永続化 + 高密度 UI** を Pi5 + Pi4×4 へ反映済み。2026-04-03 の rerun では **host dir 未作成で `api/web` が `Created` のまま**残る事象と **summary の recap 誤判定**を潰し込み、現在のデプロイ正本は [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [KB-329](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-329-部品測定図面ストレージ修正後の-pi5-rerun-で-api-が-created-のまま残りsummary-が失敗を-success-扱いした)。
+**概要**: Phase2（`resourceCd`・スケジュール起点）に加え、**visual template**（図面1枚・業務テンプレから参照・項目 `displayMarker`）と **図面永続化 + 高密度 UI** を Pi5 + Pi4×4 へ反映済み。2026-04-03 の rerun では **host dir 未作成で `api/web` が `Created` のまま**残る事象と **summary の recap 誤判定**を潰し込み、現在のデプロイ正本は [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [KB-329](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-329-部品測定図面ストレージ修正後の-pi5-rerun-で-api-が-created-のまま残りsummary-が失敗を-success-扱いした)。**2026-04-04**: 編集画面の **上部帯統合**（`feat/kiosk-part-measurement-edit-top-strip`）を Pi5→Pi4×4 へ反映し、`verify-phase12-real.sh` は **PASS 41 / WARN 0 / FAIL 0**（知見・runId は KB-320）。
 
 **候補タスク**:
 
 1. ~~**残りキオスク Pi4**~~: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` への段階デプロイは完了（**Pi3** は部品測定の必須対象外。Pi3 サイネージは専用手順のみ）。
-2. **次タスク（推奨）**: Pi4 現場で `/kiosk/part-measurement` を開き、**visual 付きテンプレの図面表示**、**ヘッダが 1 行優先で詰まりすぎないこと**、**測定値入力欄が 5 桁幅で操作しやすいこと**を 1 台ずつ目視確認する。
-3. **運用**: 品番×工程×**資源CD**のテンプレ先行登録。既に消えていた図面があれば **再アップロード**して正本を戻す。
-4. **任意**: 確定データの帳票化・CSV エクスポート等の要件が出たら別 ADR / ExecPlan で切り出す。
+2. ~~**編集画面上部帯（Web）**~~: `KioskPartMeasurementEditTopStrip` / `KioskPartMeasurementSheetMetaBlock` へ統合・旧ヘッダセクション撤去・Pi5→Pi4×4 デプロイ・Phase12 実機検証（2026-04-04）。
+3. **次タスク（推奨）**: Pi4 現場で `/kiosk/part-measurement` および **編集画面** `/kiosk/part-measurement/edit/...` を開き、**visual 付きテンプレの図面表示**、**一覧・編集ともヘッダ／上部帯が 1 行優先で詰まりすぎないこと**、**測定値入力欄が 5 桁幅で操作しやすいこと**を 1 台ずつ目視確認する。
+4. **運用**: 品番×工程×**資源CD**のテンプレ先行登録。既に消えていた図面があれば **再アップロード**して正本を戻す。
+5. **任意**: 確定データの帳票化・CSV エクスポート等の要件が出たら別 ADR / ExecPlan で切り出す。
 
 **参照**: [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [ADR-20260329](./docs/decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401](./docs/decisions/ADR-20260401-part-measurement-phase2-resource-cd.md) / [ADR-20260330](./docs/decisions/ADR-20260330-part-measurement-visual-template.md) / [verification-checklist.md](./docs/guides/verification-checklist.md) 6.6.9
 
