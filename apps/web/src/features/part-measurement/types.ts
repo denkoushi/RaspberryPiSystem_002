@@ -1,5 +1,8 @@
 export type PartMeasurementProcessGroup = 'cutting' | 'grinding';
 
+/** POST /part-measurement/templates の templateScope（API と同期） */
+export type PartMeasurementTemplateScope = 'three_key' | 'fhincd_resource' | 'fhinmei_only';
+
 export type PartMeasurementSheetStatus = 'DRAFT' | 'FINALIZED' | 'CANCELLED' | 'INVALIDATED';
 
 export type PartMeasurementResolvedCandidate = {
@@ -40,14 +43,17 @@ export type PartMeasurementVisualTemplateDto = {
 /** GET /part-measurement/templates/candidates の matchKind（API と同期） */
 export type PartMeasurementTemplateMatchKind =
   | 'exact_resource'
-  | 'same_fhincd_other_resource'
-  | 'fhinmei_similar';
+  | 'two_key_fhincd_resource'
+  | 'one_key_fhinmei';
 
 export type PartMeasurementTemplateDto = {
   id: string;
   fhincd: string;
   resourceCd: string;
-  processGroup: PartMeasurementProcessGroup;
+  /** 正本（切削/研削）のみ。候補テンプレでは null */
+  processGroup: PartMeasurementProcessGroup | null;
+  templateScope: PartMeasurementTemplateScope;
+  candidateFhinmei: string | null;
   name: string;
   version: number;
   isActive: boolean;

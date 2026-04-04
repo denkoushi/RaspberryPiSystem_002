@@ -13,6 +13,7 @@ import { Input } from '../../components/ui/Input';
 
 import type {
   PartMeasurementProcessGroup,
+  PartMeasurementTemplateScope,
   PartMeasurementVisualTemplateDto
 } from '../../features/part-measurement/types';
 
@@ -20,6 +21,8 @@ type LocationState = {
   fhincd: string;
   resourceCd: string;
   processGroup: PartMeasurementProcessGroup;
+  /** 候補1要素登録時の初期値 */
+  fhinmei?: string;
   templateName?: string;
 };
 
@@ -42,6 +45,8 @@ export function KioskPartMeasurementTemplatePage() {
 
   const [items, setItems] = useState([emptyItem()]);
   const [name, setName] = useState('');
+  const [templateScope, setTemplateScope] = useState<PartMeasurementTemplateScope>('three_key');
+  const [candidateFhinmei, setCandidateFhinmei] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [visuals, setVisuals] = useState<PartMeasurementVisualTemplateDto[]>([]);
@@ -60,6 +65,11 @@ export function KioskPartMeasurementTemplatePage() {
       }
     })();
   }, [clientKey]);
+
+  useEffect(() => {
+    const m = fixed?.fhinmei?.trim();
+    if (m) setCandidateFhinmei(m);
+  }, [fixed?.fhinmei]);
 
   const fhincd = fixed?.fhincd ?? '';
   const resourceCd = fixed?.resourceCd ?? '';
@@ -84,7 +94,16 @@ export function KioskPartMeasurementTemplatePage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
-    const templateName = (name.trim() || `${fhincd} (${processGroup})`).slice(0, 200);
+    if (templateScope === 'fhinmei_only' && candidateFhinmei.trim().length === 0) {
+      setMessage('FHINMEI（候補キー）を入力してください。');
+      return;
+    }
+    const templateName = (
+      name.trim() ||
+      (templateScope === 'fhinmei_only'
+        ? `FHINMEI:${candidateFhinmei.trim().slice(0, 40)}`
+        : `${fhincd} (${processGroup})`)
+    ).slice(0, 200);
     const trimmedItems = items
       .map((it, idx) => ({
         sortOrder: idx,
@@ -122,11 +141,13 @@ export function KioskPartMeasurementTemplatePage() {
 
       await createPartMeasurementTemplate(
         {
-          fhincd,
-          resourceCd,
+          templateScope,
+          fhincd: templateScope === 'fhinmei_only' ? '' : fhincd,
+          resourceCd: templateScope === 'fhinmei_only' ? '' : resourceCd,
           processGroup,
           name: templateName,
           visualTemplateId,
+          candidateFhinmei: templateScope === 'fhinmei_only' ? candidateFhinmei.trim() : null,
           items: trimmedItems
         },
         clientKey
@@ -149,8 +170,35 @@ export function KioskPartMeasurementTemplatePage() {
         {message ? <p className="mb-2 text-sm font-semibold text-amber-800">{message}</p> : null}
         <form onSubmit={(e) => void handleSubmit(e)} className="grid max-w-3xl gap-4">
           <p className="text-sm text-slate-600">
-            品番・資源CD・工程はこの画面では変更できません（日程行から固定されています）。
+            {templateScope === 'three_key'
+              ? '品番・資源CD・工程は日程行から固定されています（正本3要素）。'
+              : templateScope === 'fhincd_resource'
+                ? '品番・資源CDは日程どおり。工程は登録時は内部用で、記録開始時に日程工程へ複製されます。'
+                : 'FHINMEI 候補として登録します。品番・資源は内部キーが自動付与され、キオスクでは日程品名と照合されます。'}
           </p>
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            登録スコープ
+            <select
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              value={templateScope}
+              onChange={(e) => setTemplateScope(e.target.value as PartMeasurementTemplateScope)}
+            >
+              <option value="three_key">正本（3要素）</option>
+              <option value="fhincd_resource">候補（FIHNCD+資源CD）</option>
+              <option value="fhinmei_only">候補（FHINMEI）</option>
+            </select>
+          </label>
+          {templateScope === 'fhinmei_only' ? (
+            <label className="grid gap-1 text-sm font-semibold text-slate-700">
+              FHINMEI（候補キー）
+              <Input
+                value={candidateFhinmei}
+                onChange={(e) => setCandidateFhinmei(e.target.value)}
+                className="text-slate-900"
+                placeholder="日程品名と一致させる文字列"
+              />
+            </label>
+          ) : null}
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             テンプレート名
             <Input value={name} onChange={(e) => setName(e.target.value)} className="text-slate-900" />

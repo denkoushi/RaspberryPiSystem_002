@@ -65,7 +65,8 @@ export function KioskPartMeasurementTemplatePickPage() {
       state: {
         fhincd: ctx.fhincd,
         resourceCd: ctx.resourceCd,
-        processGroup: ctx.processGroup
+        processGroup: ctx.processGroup,
+        fhinmei: ctx.fhinmei
       }
     });
   };
@@ -163,7 +164,7 @@ export function KioskPartMeasurementTemplatePickPage() {
         <div className="mx-4 flex flex-col gap-2">
           <h2 className="text-lg font-bold text-slate-800">候補テンプレート</h2>
           <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-            絞り込み（品名・テンプレ名）
+            絞り込み（品番・テンプレ名・FHINMEI候補）
             <Input
               value={filterQ}
               onChange={(e) => setFilterQ(e.target.value)}

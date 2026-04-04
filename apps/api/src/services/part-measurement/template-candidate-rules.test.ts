@@ -1,73 +1,136 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  classifyTemplateMatch,
+  classifyCandidateMatch,
   compareCandidates,
   isSelectableForSheetCreation,
   matchesSearchFilter,
-  tokenForFhinmeiSimilarSearch
+  scheduleFhinmeiMatchesCandidate
 } from './template-candidate-rules.js';
 
+const CUTTING = 'CUTTING' as const;
+const GRINDING = 'GRINDING' as const;
+
 describe('templateCandidateRules', () => {
-  it('classifies exact_resource when fhincd and resource match', () => {
+  it('THREE_KEY: exact_resource when 3 keys match', () => {
     expect(
-      classifyTemplateMatch({
+      classifyCandidateMatch({
         scheduleFhincdNorm: 'ABC',
+        scheduleProcessGroup: CUTTING,
         scheduleResourceCdNorm: '587',
+        scheduleFhinmei: '品X',
+        templateScope: 'THREE_KEY',
         templateFhincdNorm: 'ABC',
-        templateResourceCdNorm: '587'
+        templateProcessGroup: CUTTING,
+        templateResourceCdNorm: '587',
+        candidateFhinmei: null
       })
     ).toBe('exact_resource');
   });
 
-  it('classifies same_fhincd_other_resource when resource differs', () => {
+  it('THREE_KEY: two_key when fhincd+resource match but process differs', () => {
     expect(
-      classifyTemplateMatch({
+      classifyCandidateMatch({
         scheduleFhincdNorm: 'ABC',
+        scheduleProcessGroup: GRINDING,
         scheduleResourceCdNorm: '587',
+        templateScope: 'THREE_KEY',
         templateFhincdNorm: 'ABC',
-        templateResourceCdNorm: '305'
+        templateProcessGroup: CUTTING,
+        templateResourceCdNorm: '587',
+        candidateFhinmei: null
       })
-    ).toBe('same_fhincd_other_resource');
+    ).toBe('two_key_fhincd_resource');
   });
 
-  it('classifies fhinmei_similar when fhincd differs', () => {
+  it('THREE_KEY: null when resource differs', () => {
     expect(
-      classifyTemplateMatch({
-        scheduleFhincdNorm: 'AAA',
+      classifyCandidateMatch({
+        scheduleFhincdNorm: 'ABC',
+        scheduleProcessGroup: CUTTING,
         scheduleResourceCdNorm: '587',
-        templateFhincdNorm: 'BBB',
-        templateResourceCdNorm: '587'
+        templateScope: 'THREE_KEY',
+        templateFhincdNorm: 'ABC',
+        templateProcessGroup: CUTTING,
+        templateResourceCdNorm: '305',
+        candidateFhinmei: null
       })
-    ).toBe('fhinmei_similar');
+    ).toBeNull();
   });
 
-  it('all match kinds are selectable (clone-to-schedule-key lands on 3-element template)', () => {
+  it('THREE_KEY: null when fhincd differs', () => {
+    expect(
+      classifyCandidateMatch({
+        scheduleFhincdNorm: 'AAA',
+        scheduleProcessGroup: CUTTING,
+        scheduleResourceCdNorm: '587',
+        templateScope: 'THREE_KEY',
+        templateFhincdNorm: 'BBB',
+        templateProcessGroup: CUTTING,
+        templateResourceCdNorm: '587',
+        candidateFhinmei: null
+      })
+    ).toBeNull();
+  });
+
+  it('FHINCD_RESOURCE: two_key when fhincd+resource match', () => {
+    expect(
+      classifyCandidateMatch({
+        scheduleFhincdNorm: 'ABC',
+        scheduleProcessGroup: GRINDING,
+        scheduleResourceCdNorm: '587',
+        templateScope: 'FHINCD_RESOURCE',
+        templateFhincdNorm: 'ABC',
+        templateProcessGroup: 'CANDIDATE_FHINCD_RESOURCE',
+        templateResourceCdNorm: '587',
+        candidateFhinmei: null
+      })
+    ).toBe('two_key_fhincd_resource');
+  });
+
+  it('FHINMEI_ONLY: one_key when candidate FHINMEI equals schedule', () => {
+    expect(
+      classifyCandidateMatch({
+        scheduleFhincdNorm: 'ABC',
+        scheduleProcessGroup: CUTTING,
+        scheduleResourceCdNorm: '587',
+        scheduleFhinmei: '  シャフト本体 ',
+        templateScope: 'FHINMEI_ONLY',
+        templateFhincdNorm: '__X__',
+        templateProcessGroup: 'CANDIDATE_FHINMEI_ONLY',
+        templateResourceCdNorm: 'uuid',
+        candidateFhinmei: 'シャフト本体'
+      })
+    ).toBe('one_key_fhinmei');
+  });
+
+  it('scheduleFhinmeiMatchesCandidate', () => {
+    expect(scheduleFhinmeiMatchesCandidate(' A ', 'a')).toBe(true);
+    expect(scheduleFhinmeiMatchesCandidate('x', 'y')).toBe(false);
+    expect(scheduleFhinmeiMatchesCandidate('', 'y')).toBe(false);
+  });
+
+  it('all match kinds are selectable', () => {
     expect(isSelectableForSheetCreation('exact_resource')).toBe(true);
-    expect(isSelectableForSheetCreation('same_fhincd_other_resource')).toBe(true);
-    expect(isSelectableForSheetCreation('fhinmei_similar')).toBe(true);
+    expect(isSelectableForSheetCreation('two_key_fhincd_resource')).toBe(true);
+    expect(isSelectableForSheetCreation('one_key_fhinmei')).toBe(true);
   });
 
-  it('compareCandidates orders by kind then version', () => {
-    const a = { matchKind: 'same_fhincd_other_resource' as const, version: 99 };
-    const b = { matchKind: 'exact_resource' as const, version: 1 };
-    const c = { matchKind: 'exact_resource' as const, version: 2 };
+  it('compareCandidates orders by kind then version then updatedAt', () => {
+    const t0 = { updatedAtMs: 0 };
+    const a = { matchKind: 'two_key_fhincd_resource' as const, version: 99, ...t0 };
+    const b = { matchKind: 'exact_resource' as const, version: 1, ...t0 };
+    const c = { matchKind: 'exact_resource' as const, version: 2, ...t0 };
+    const d = { matchKind: 'exact_resource' as const, version: 2, updatedAtMs: 100 };
+    const e = { matchKind: 'exact_resource' as const, version: 2, updatedAtMs: 50 };
     expect(compareCandidates(b, a)).toBeLessThan(0);
     expect(compareCandidates(c, b)).toBeLessThan(0);
+    expect(compareCandidates(d, e)).toBeLessThan(0);
   });
 
-  it('tokenForFhinmeiSimilarSearch requires min length', () => {
-    expect(tokenForFhinmeiSimilarSearch('')).toBeNull();
-    expect(tokenForFhinmeiSimilarSearch('x')).toBeNull();
-    expect(tokenForFhinmeiSimilarSearch('シャフト')).toBe('シャフト');
-  });
-
-  it('matchesSearchFilter', () => {
-    const t = { fhincd: 'MD001', name: '表測定' };
-    expect(matchesSearchFilter(undefined, t)).toBe(true);
-    expect(matchesSearchFilter('', t)).toBe(true);
-    expect(matchesSearchFilter('md001', t)).toBe(true);
-    expect(matchesSearchFilter('測定', t)).toBe(true);
+  it('matchesSearchFilter includes candidateFhinmei', () => {
+    const t = { fhincd: 'MD001', name: '表測定', candidateFhinmei: 'シャフトA型' };
+    expect(matchesSearchFilter('シャフト', t)).toBe(true);
     expect(matchesSearchFilter('zzz', t)).toBe(false);
   });
 });

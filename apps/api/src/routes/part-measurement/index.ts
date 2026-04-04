@@ -79,14 +79,35 @@ const templateItemSchema = z.object({
   decimalPlaces: z.number().int().min(0).max(6).optional()
 });
 
-const createTemplateBodySchema = z.object({
-  fhincd: z.string().min(1).max(120),
-  processGroup: processGroupSchema,
-  resourceCd: z.string().min(1).max(120),
-  name: z.string().min(1).max(200),
-  items: z.array(templateItemSchema).min(1).max(200),
-  visualTemplateId: z.string().uuid().optional().nullable()
-});
+const templateScopeSchema = z.enum(['three_key', 'fhincd_resource', 'fhinmei_only']);
+
+const createTemplateBodySchema = z
+  .object({
+    templateScope: templateScopeSchema.optional().default('three_key'),
+    fhincd: z.string().max(120),
+    processGroup: processGroupSchema,
+    resourceCd: z.string().max(120),
+    name: z.string().min(1).max(200),
+    items: z.array(templateItemSchema).min(1).max(200),
+    visualTemplateId: z.string().uuid().optional().nullable(),
+    candidateFhinmei: z.string().max(500).optional().nullable()
+  })
+  .superRefine((val, ctx) => {
+    if (val.templateScope === 'fhinmei_only') {
+      const c = (val.candidateFhinmei ?? '').trim();
+      if (c.length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FHINMEI_ONLY では candidateFhinmei が必須です', path: ['candidateFhinmei'] });
+      }
+      return;
+    }
+    if (val.fhincd.trim().length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FIHNCD が空です', path: ['fhincd'] });
+    }
+    const r = val.resourceCd.trim();
+    if (r.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '資源CDが空です', path: ['resourceCd'] });
+    }
+  });
 
 /** 候補テンプレを日程の FIHNCD+工程+資源CD 用テンプレへ複製（既存 active があれば再利用） */
 const cloneTemplateForScheduleBodySchema = z.object({
@@ -161,12 +182,28 @@ function serializeVisualTemplate(v: {
   };
 }
 
+function serializeTemplateScope(scope: string): 'three_key' | 'fhincd_resource' | 'fhinmei_only' {
+  if (scope === 'FHINCD_RESOURCE') return 'fhincd_resource';
+  if (scope === 'FHINMEI_ONLY') return 'fhinmei_only';
+  return 'three_key';
+}
+
+function serializeTemplateProcessGroup(
+  processGroup: string
+): 'cutting' | 'grinding' | null {
+  if (processGroup === 'GRINDING') return 'grinding';
+  if (processGroup === 'CUTTING') return 'cutting';
+  return null;
+}
+
 function serializeTemplate(
   t: {
     id: string;
     fhincd: string;
     resourceCd: string;
     processGroup: string;
+    templateScope?: string;
+    candidateFhinmei?: string | null;
     name: string;
     version: number;
     isActive: boolean;
@@ -179,7 +216,9 @@ function serializeTemplate(
     id: t.id,
     fhincd: t.fhincd,
     resourceCd: t.resourceCd,
-    processGroup: t.processGroup === 'GRINDING' ? 'grinding' : 'cutting',
+    processGroup: serializeTemplateProcessGroup(t.processGroup),
+    templateScope: serializeTemplateScope(t.templateScope ?? 'THREE_KEY'),
+    candidateFhinmei: t.candidateFhinmei ?? null,
     name: t.name,
     version: t.version,
     isActive: t.isActive,
@@ -710,13 +749,21 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   app.post('/part-measurement/templates', { preHandler: allowWriteKiosk }, async (request) => {
     const body = createTemplateBodySchema.parse(request.body);
     const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+    const templateScope =
+      body.templateScope === 'fhincd_resource'
+        ? 'FHINCD_RESOURCE'
+        : body.templateScope === 'fhinmei_only'
+          ? 'FHINMEI_ONLY'
+          : 'THREE_KEY';
     const template = await templateService.createTemplateVersion({
       fhincd: body.fhincd,
       processGroup,
       resourceCd: body.resourceCd,
       name: body.name,
       items: body.items,
-      visualTemplateId: body.visualTemplateId ?? null
+      visualTemplateId: body.visualTemplateId ?? null,
+      templateScope,
+      candidateFhinmei: body.candidateFhinmei
     });
     return {
       template: serializeTemplate({

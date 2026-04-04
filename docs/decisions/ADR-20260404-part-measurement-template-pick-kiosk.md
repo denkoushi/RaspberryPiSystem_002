@@ -13,11 +13,12 @@ accepted
 ## Decision
 
 1. **`GET /api/part-measurement/templates/candidates`**  
-   キオスク用に、同一品番・別資源・（任意）品名ヒントによる類似テンプレを返す。`matchKind` で並び替え、**`selectable` は常に true**（非 exact は複製APIで日程3要素へ着地してから記録する）。
+   キオスク用に **登録スコープ別**に候補を束ねる。正本は `templateScope=THREE_KEY`（`FHINCD`×`processGroup`×`resourceCd`）。2要素候補は `FHINCD_RESOURCE`（照合: `FHINCD`+`resourceCd`、工程は日程側）。1要素候補は `FHINMEI_ONLY` でテンプレ側の **`candidateFhinmei`** と日程 **`fhinmei`** を照合する（品名の部分一致・別品番からの `name` 検索は廃止）。  
+   `matchKind` は表示・並び用（`exact_resource` → `two_key_fhincd_resource` → `one_key_fhinmei`）。**`selectable` は常に true**（非 exact は複製APIで日程3要素へ着地してから記録する）。
 2. **`POST /api/part-measurement/sheets` に `allowAlternateResourceTemplate`（任意）**  
    - 省略または `false`: 従来どおり **テンプレ資源 = スナップショット資源** が必須。  
    - `true`: **`FHINCD` と `processGroup` のみ**テンプレと一致すればよく、**資源CD不一致を許容**する。`resourceCdSnapshot` はリクエストの日程資源のまま保存する。
-3. **`matchKind === fhinmei_similar`（品番相違）** も **選択可能**（v2）。選択後は下記 **複製API** で日程の `FHINCD + 工程 + 資源CD` にテンプレを自動作成してから記録する（正本は常に日程側の品番）。
+3. **`matchKind === one_key_fhinmei`（`FHINMEI_ONLY` 候補）** も **選択可能**。選択後は下記 **複製API** で日程の `FHINCD + 工程 + 資源CD` にテンプレを自動作成してから記録する（正本は常に日程側の3要素）。
 4. **`POST /api/part-measurement/templates/clone-for-schedule-key`（キオスク書込可）**  
    参照テンプレ（active）の **項目・図面（visual 参照）** をコピーし、リクエストの **日程3要素** で新しい active テンプレを `createTemplateVersion` 相当で作る。同一キーに既に active がある場合は **新規作成せず既存を返す**。
 5. **キオスク `/template/pick` の記録開始**は `exact_resource` のみ **そのまま** `POST …/sheets`。それ以外の候補は **先に clone** し、得た `templateId` で **`allowAlternateResourceTemplate` なし**に `POST …/sheets` する。
@@ -32,7 +33,7 @@ accepted
 
 - **良い**: 記録表に載る業務テンプレは **常に日程の資源CDと一致**し、借用のまま残らない。品名類似からの流用も **日程品番へ着地**する。
 - **良い（継続）**: 既存の `POST …/sheets` 厳格一致はデフォルト維持（OCP）。
-- **悪い**: `fhinmei_similar` 選択は **類似品への誤コピー**リスクがある。現場は図面・候補説明で確認する。複製でテンプレが増えるため、管理画面での整理が必要になりうる。
+- **悪い**: 1要素候補は **同一FHINMEI表記の部品混同**リスクがありうる。登録時は `candidateFhinmei` を明確にし、現場は図面・候補説明で確認する。複製で正本テンプレが増えるため、管理画面での整理が必要になりうる。
 - **悪い（レガシー）**: `allowAlternateResourceTemplate: true` を使う経路は引き続き監査対象。
 
 ## Verification

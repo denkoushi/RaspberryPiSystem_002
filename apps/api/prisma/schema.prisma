@@ -1370,6 +1370,17 @@ model AlertDelivery {
 enum PartMeasurementProcessGroup {
   CUTTING
   GRINDING
+  /// 候補テンプレ（2要素: FIHNCD+資源CD）。正本・シートでは使わない。
+  CANDIDATE_FHINCD_RESOURCE
+  /// 候補テンプレ（1要素: FHINMEI）。正本・シートでは使わない。
+  CANDIDATE_FHINMEI_ONLY
+}
+
+/// 部品測定テンプレの登録スコープ（候補抽出・キオスク表示の基準）
+enum PartMeasurementTemplateScope {
+  THREE_KEY
+  FHINCD_RESOURCE
+  FHINMEI_ONLY
 }
 
 enum PartMeasurementSheetStatus {
@@ -1395,10 +1406,14 @@ model PartMeasurementVisualTemplate {
 
 model PartMeasurementTemplate {
   id                 String                       @id @default(uuid())
+  /// 登録スコープ。既存データは THREE_KEY。
+  templateScope      PartMeasurementTemplateScope  @default(THREE_KEY)
   fhincd             String
   processGroup       PartMeasurementProcessGroup
   /// 資源CD（テンプレート識別キー）。移行前データは __LEGACY__
   resourceCd         String
+  /// FHINMEI_ONLY 候補の照合キー（正規化はAPI側）。THREE_KEY / FHINCD_RESOURCE では null。
+  candidateFhinmei   String?
   name               String
   version            Int                          @default(1)
   isActive           Boolean                      @default(true)
@@ -1411,6 +1426,7 @@ model PartMeasurementTemplate {
 
   @@unique([fhincd, processGroup, resourceCd, version], map: "PartMeasurementTemplate_unique_fhincd_group_resource_version")
   @@index([fhincd, processGroup, resourceCd, isActive], map: "PartMeasurementTemplate_idx_lookup")
+  @@index([templateScope, fhincd, resourceCd, isActive])
   @@index([visualTemplateId])
 }
 

@@ -41,6 +41,7 @@ import type {
   PartMeasurementSheetDto,
   PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
+  PartMeasurementTemplateScope,
   PartMeasurementVisualTemplateDto,
   ResolveTicketResponse
 } from '../features/part-measurement/types';
@@ -2135,11 +2136,13 @@ export async function createPartMeasurementVisualTemplate(
 
 export async function createPartMeasurementTemplate(
   body: {
+    templateScope?: PartMeasurementTemplateScope;
     fhincd: string;
     processGroup: PartMeasurementProcessGroup;
     resourceCd: string;
     name: string;
     visualTemplateId?: string | null;
+    candidateFhinmei?: string | null;
     items: Array<{
       sortOrder: number;
       datumSurface: string;
@@ -3074,6 +3077,7 @@ export type {
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementTemplateDto,
+  PartMeasurementTemplateScope,
   PartMeasurementVisualTemplateDto,
   ResolveTicketResponse
 } from '../features/part-measurement/types';

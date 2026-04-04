@@ -12,7 +12,24 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 
-import type { PartMeasurementProcessGroup, PartMeasurementTemplateDto } from '../../features/part-measurement/types';
+import type {
+  PartMeasurementProcessGroup,
+  PartMeasurementTemplateDto,
+  PartMeasurementTemplateScope
+} from '../../features/part-measurement/types';
+
+function templateScopeLabel(s: PartMeasurementTemplateScope): string {
+  switch (s) {
+    case 'three_key':
+      return '正本（3要素）';
+    case 'fhincd_resource':
+      return '候補（2要素）';
+    case 'fhinmei_only':
+      return '候補（1要素・FHINMEI）';
+    default:
+      return s;
+  }
+}
 
 const emptyItem = () => ({
   sortOrder: 0,
@@ -30,6 +47,8 @@ export function PartMeasurementTemplatesPage() {
   const [fhincd, setFhincd] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>('cutting');
+  const [templateScope, setTemplateScope] = useState<PartMeasurementTemplateScope>('three_key');
+  const [candidateFhinmei, setCandidateFhinmei] = useState('');
   const [name, setName] = useState('');
   const [items, setItems] = useState([emptyItem()]);
   const [message, setMessage] = useState<string | null>(null);
@@ -56,6 +75,8 @@ export function PartMeasurementTemplatesPage() {
       setMessage('テンプレートを登録しました。');
       setName('');
       setResourceCd('');
+      setTemplateScope('three_key');
+      setCandidateFhinmei('');
       setItems([emptyItem()]);
       setVisualChoice('none');
       setPickedVisualId('');
@@ -84,11 +105,28 @@ export function PartMeasurementTemplatesPage() {
       setMessage(null);
       const trimmedFhincd = fhincd.trim();
       const trimmedResourceCd = resourceCd.trim();
-      if (!trimmedResourceCd) {
-        setMessage('資源CDを入力してください。');
-        return;
+      if (templateScope === 'fhinmei_only') {
+        const mei = candidateFhinmei.trim();
+        if (mei.length === 0) {
+          setMessage('FHINMEI（候補キー）を入力してください。');
+          return;
+        }
+      } else {
+        if (!trimmedFhincd) {
+          setMessage('FIHNCD を入力してください。');
+          return;
+        }
+        if (!trimmedResourceCd) {
+          setMessage('資源CDを入力してください。');
+          return;
+        }
       }
-      const templateName = (name.trim() || `${trimmedFhincd} (${processGroup})`).slice(0, 200);
+      const templateName = (
+        name.trim() ||
+        (templateScope === 'fhinmei_only'
+          ? `FHINMEI:${candidateFhinmei.trim().slice(0, 40)}`
+          : `${trimmedFhincd} (${processGroup})`)
+      ).slice(0, 200);
       const trimmedItems = items
         .map((it, idx) => ({
           sortOrder: idx,
@@ -128,11 +166,13 @@ export function PartMeasurementTemplatesPage() {
       }
 
       createMutation.mutate({
-        fhincd: trimmedFhincd,
-        resourceCd: trimmedResourceCd,
+        templateScope,
+        fhincd: templateScope === 'fhinmei_only' ? '' : trimmedFhincd,
+        resourceCd: templateScope === 'fhinmei_only' ? '' : trimmedResourceCd,
         processGroup,
         name: templateName,
         visualTemplateId,
+        candidateFhinmei: templateScope === 'fhinmei_only' ? candidateFhinmei.trim() : null,
         items: trimmedItems
       });
     })();
@@ -146,19 +186,61 @@ export function PartMeasurementTemplatesPage() {
       <Card title="新規テンプレート（新バージョンとして登録）">
         <form onSubmit={handleSubmit} className="grid max-w-3xl gap-4">
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
+            登録スコープ
+            <select
+              className="rounded border border-slate-300 px-3 py-2 text-sm"
+              value={templateScope}
+              onChange={(e) => setTemplateScope(e.target.value as PartMeasurementTemplateScope)}
+            >
+              <option value="three_key">正本 — FIHNCD + 工程 + 資源CD（標準）</option>
+              <option value="fhincd_resource">候補 — FIHNCD + 資源CD（工程は日程側で複製時に確定）</option>
+              <option value="fhinmei_only">候補 — FHINMEI のみ（キオスクは日程品名と照合）</option>
+            </select>
+            <span className="text-xs font-normal text-slate-500">
+              {templateScope === 'three_key'
+                ? '日程の3要素と一致する正本テンプレとして登録します。'
+                : templateScope === 'fhincd_resource'
+                  ? '品番・資源で候補抽出されます。記録開始時に日程の工程を含む3要素テンプレへ自動複製されます。'
+                  : '登録した FHINMEI 文字列と日程品名が一致すると候補に出ます。記録開始時に3要素テンプレへ自動複製されます。'}
+            </span>
+          </label>
+          {templateScope === 'fhinmei_only' ? (
+            <label className="grid gap-1 text-sm font-semibold text-slate-700">
+              FHINMEI（候補キー・必須）
+              <Input
+                value={candidateFhinmei}
+                onChange={(e) => setCandidateFhinmei(e.target.value)}
+                placeholder="日程の品名と完全一致（大文字小文字は区別しません）"
+                required
+              />
+            </label>
+          ) : null}
+          <label className="grid gap-1 text-sm font-semibold text-slate-700">
             FIHNCD（品番）
-            <Input value={fhincd} onChange={(e) => setFhincd(e.target.value)} required />
+            <Input
+              value={fhincd}
+              onChange={(e) => setFhincd(e.target.value)}
+              required={templateScope !== 'fhinmei_only'}
+              disabled={templateScope === 'fhinmei_only'}
+            />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             資源CD
-            <Input value={resourceCd} onChange={(e) => setResourceCd(e.target.value)} required placeholder="例: 設備コード" />
+            <Input
+              value={resourceCd}
+              onChange={(e) => setResourceCd(e.target.value)}
+              required={templateScope !== 'fhinmei_only'}
+              disabled={templateScope === 'fhinmei_only'}
+              placeholder="例: 設備コード"
+            />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
-            工程
+            工程（正本のみ使用。候補2要素ではDB内部用のため選択は参考表示）
             <select
               className="rounded border border-slate-300 px-3 py-2 text-sm"
               value={processGroup}
               onChange={(e) => setProcessGroup(e.target.value as PartMeasurementProcessGroup)}
+              disabled={templateScope !== 'three_key'}
             >
               <option value="cutting">切削</option>
               <option value="grinding">研削</option>
@@ -345,9 +427,13 @@ export function PartMeasurementTemplatesPage() {
               >
                 <div>
                   <p className="font-semibold text-slate-900">
-                    {t.fhincd} / {t.resourceCd} / {t.processGroup} / v{t.version} {t.isActive ? '（有効）' : ''}
+                    {templateScopeLabel(t.templateScope)} · {t.fhincd} / {t.resourceCd} /{' '}
+                    {t.processGroup ?? '—'} / v{t.version} {t.isActive ? '（有効）' : ''}
                   </p>
                   <p className="text-sm text-slate-600">{t.name}</p>
+                  {t.candidateFhinmei ? (
+                    <p className="text-xs text-slate-600">FHINMEI候補: {t.candidateFhinmei}</p>
+                  ) : null}
                   <p className="text-xs text-slate-500">項目数: {t.items.length}</p>
                   {t.visualTemplate ? (
                     <p className="text-xs text-slate-500">図面: {t.visualTemplate.name}</p>

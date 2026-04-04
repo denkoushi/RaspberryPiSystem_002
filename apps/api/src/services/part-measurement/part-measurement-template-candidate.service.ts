@@ -4,20 +4,20 @@ import { prisma } from '../../lib/prisma.js';
 import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from './part-measurement-constants.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import {
-  classifyTemplateMatch,
+  classifyCandidateMatch,
   compareCandidates,
   isSelectableForSheetCreation,
   matchesSearchFilter,
   normalizeFhincd,
-  type PartMeasurementTemplateMatchKind,
-  tokenForFhinmeiSimilarSearch
+  normalizeFhinmeiKey,
+  type PartMeasurementTemplateMatchKind
 } from './template-candidate-rules.js';
 
 export type ListTemplateCandidatesInput = {
   fhincd: string;
   processGroup: PartMeasurementProcessGroup;
   resourceCd: string;
-  /** 日程の品名（類似候補検索のヒント） */
+  /** 日程の品名（FHINMEI_ONLY 照合） */
   fhinmei?: string | null;
   /** 一覧のテキスト絞り込み */
   q?: string | null;
@@ -46,37 +46,49 @@ export class PartMeasurementTemplateCandidateService {
     }
     const scheduleResourceNorm = normalizeResourceCd(input.resourceCd);
     const fhincdDb = input.fhincd.trim();
+    const scheduleProcessGroup = input.processGroup;
+    const scheduleFhinmeiKey = normalizeFhinmeiKey(input.fhinmei);
 
-    const bySameFhincd = await prisma.partMeasurementTemplate.findMany({
-      where: {
-        isActive: true,
-        processGroup: input.processGroup,
-        fhincd: { equals: fhincdDb, mode: 'insensitive' }
-      },
-      include: partMeasurementTemplateFullInclude
-    });
-
-    const token = tokenForFhinmeiSimilarSearch(input.fhinmei ?? undefined);
-    let byNameAcrossFhincd: typeof bySameFhincd = [];
-    if (token) {
-      byNameAcrossFhincd = await prisma.partMeasurementTemplate.findMany({
+    const [threeKeyRows, twoKeyScopeRows, fhinmeiRows] = await Promise.all([
+      prisma.partMeasurementTemplate.findMany({
         where: {
           isActive: true,
-          processGroup: input.processGroup,
-          NOT: { fhincd: { equals: fhincdDb, mode: 'insensitive' } },
-          name: { contains: token, mode: 'insensitive' }
+          templateScope: 'THREE_KEY',
+          fhincd: { equals: fhincdDb, mode: 'insensitive' }
         },
-        include: partMeasurementTemplateFullInclude,
-        take: 40,
-        orderBy: [{ fhincd: 'asc' }, { resourceCd: 'asc' }, { version: 'desc' }]
-      });
-    }
+        include: partMeasurementTemplateFullInclude
+      }),
+      prisma.partMeasurementTemplate.findMany({
+        where: {
+          isActive: true,
+          templateScope: 'FHINCD_RESOURCE',
+          fhincd: { equals: fhincdDb, mode: 'insensitive' },
+          resourceCd: scheduleResourceNorm
+        },
+        include: partMeasurementTemplateFullInclude
+      }),
+      scheduleFhinmeiKey.length > 0
+        ? prisma.partMeasurementTemplate.findMany({
+            where: {
+              isActive: true,
+              templateScope: 'FHINMEI_ONLY',
+              candidateFhinmei: { equals: scheduleFhinmeiKey, mode: 'insensitive' }
+            },
+            include: partMeasurementTemplateFullInclude
+          })
+        : Promise.resolve([])
+    ]);
 
-    const byId = new Map<string, (typeof bySameFhincd)[0]>();
-    for (const t of bySameFhincd) {
+    const byId = new Map<string, (typeof threeKeyRows)[0]>();
+    for (const t of threeKeyRows) {
       byId.set(t.id, t);
     }
-    for (const t of byNameAcrossFhincd) {
+    for (const t of twoKeyScopeRows) {
+      if (!byId.has(t.id)) {
+        byId.set(t.id, t);
+      }
+    }
+    for (const t of fhinmeiRows) {
       if (!byId.has(t.id)) {
         byId.set(t.id, t);
       }
@@ -91,12 +103,20 @@ export class PartMeasurementTemplateCandidateService {
       }
       const templateFhincdNorm = normalizeFhincd(template.fhincd);
       const templateResourceNorm = normalizeResourceCd(template.resourceCd);
-      const matchKind = classifyTemplateMatch({
+      const matchKind = classifyCandidateMatch({
         scheduleFhincdNorm: fhincdNorm,
+        scheduleProcessGroup,
         scheduleResourceCdNorm: scheduleResourceNorm,
+        scheduleFhinmei: input.fhinmei,
+        templateScope: template.templateScope,
         templateFhincdNorm,
-        templateResourceCdNorm: templateResourceNorm
+        templateProcessGroup: template.processGroup,
+        templateResourceCdNorm: templateResourceNorm,
+        candidateFhinmei: template.candidateFhinmei
       });
+      if (!matchKind) {
+        continue;
+      }
       const selectable = isSelectableForSheetCreation(matchKind);
       rows.push({
         matchKind,
@@ -108,8 +128,16 @@ export class PartMeasurementTemplateCandidateService {
 
     rows.sort((a, b) =>
       compareCandidates(
-        { matchKind: a.matchKind, version: a.template.version },
-        { matchKind: b.matchKind, version: b.template.version }
+        {
+          matchKind: a.matchKind,
+          version: a.template.version,
+          updatedAtMs: a.template.updatedAt.getTime()
+        },
+        {
+          matchKind: b.matchKind,
+          version: b.template.version,
+          updatedAtMs: b.template.updatedAt.getTime()
+        }
       )
     );
 

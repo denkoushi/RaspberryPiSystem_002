@@ -9,11 +9,11 @@ import type { PartMeasurementTemplateCandidateDto } from '../types';
 function matchKindLabel(kind: PartMeasurementTemplateCandidateDto['matchKind']): string {
   switch (kind) {
     case 'exact_resource':
-      return '一致（3要素）';
-    case 'same_fhincd_other_resource':
-      return '類似（2要素・別資源）';
-    case 'fhinmei_similar':
-      return '類似（1要素・品名）';
+      return '一致（3要素：FIHNCD+工程+資源CD）';
+    case 'two_key_fhincd_resource':
+      return '候補（2要素：FIHNCD+資源CD）';
+    case 'one_key_fhinmei':
+      return '候補（1要素：FHINMEI）';
     default:
       return kind;
   }
@@ -82,9 +82,10 @@ export function PartMeasurementTemplateCandidateCard({ candidate, scheduleResour
           </span>
         </p>
         <p className="text-sm text-slate-600">
-          品番 {template.fhincd} · 項目 {itemCount} 件
-          {matchKind === 'fhinmei_similar'
-            ? ' · 選択すると日程の品番・資源・工程用テンプレを自動作成してから記録を開始します'
+          品番 {template.fhincd}
+          {template.candidateFhinmei ? ` · FHINMEI候補 ${template.candidateFhinmei}` : ''} · 項目 {itemCount} 件
+          {matchKind !== 'exact_resource'
+            ? ' · 選択すると日程の3要素（FIHNCD+工程+資源CD）用テンプレを自動複製してから記録を開始します'
             : null}
         </p>
       </div>

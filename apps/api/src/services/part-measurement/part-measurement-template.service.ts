@@ -1,8 +1,13 @@
-import type { PartMeasurementProcessGroup, Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+
+import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope, Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
-import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from './part-measurement-constants.js';
+import {
+  PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD,
+  PART_MEASUREMENT_LEGACY_RESOURCE_CD
+} from './part-measurement-constants.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
 import { normalizeFhincd } from './template-candidate-rules.js';
 
@@ -33,7 +38,7 @@ export class PartMeasurementTemplateService {
     const r = normalizeResourceCd(resourceCd);
     if (f.length === 0) return null;
     return prisma.partMeasurementTemplate.findFirst({
-      where: { fhincd: f, processGroup, resourceCd: r, isActive: true },
+      where: { fhincd: f, processGroup, resourceCd: r, isActive: true, templateScope: 'THREE_KEY' },
       orderBy: { version: 'desc' },
       include: partMeasurementTemplateFullInclude
     });
@@ -75,12 +80,39 @@ export class PartMeasurementTemplateService {
     name: string;
     items: TemplateItemInput[];
     visualTemplateId?: string | null;
+    /** 既定 THREE_KEY（clone / 正本登録）。候補登録では FHINCD_RESOURCE / FHINMEI_ONLY */
+    templateScope?: PartMeasurementTemplateScope;
+    candidateFhinmei?: string | null;
   }) {
-    const fhincd = params.fhincd.trim();
-    const resourceCd = normalizeResourceCd(params.resourceCd);
-    if (fhincd.length === 0) {
-      throw new ApiError(400, 'FIHNCD が空です');
+    const templateScope: PartMeasurementTemplateScope = params.templateScope ?? 'THREE_KEY';
+    let fhincd = params.fhincd.trim();
+    let processGroup: PartMeasurementProcessGroup = params.processGroup;
+    let resourceCd = normalizeResourceCd(params.resourceCd);
+    let candidateFhinmei: string | null =
+      params.candidateFhinmei != null && String(params.candidateFhinmei).trim().length > 0
+        ? String(params.candidateFhinmei).trim()
+        : null;
+
+    if (templateScope === 'FHINCD_RESOURCE') {
+      processGroup = 'CANDIDATE_FHINCD_RESOURCE';
+      candidateFhinmei = null;
+      if (fhincd.length === 0) {
+        throw new ApiError(400, 'FIHNCD が空です');
+      }
+    } else if (templateScope === 'FHINMEI_ONLY') {
+      processGroup = 'CANDIDATE_FHINMEI_ONLY';
+      fhincd = PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD;
+      resourceCd = randomUUID().replace(/-/g, '').slice(0, 32);
+      if (!candidateFhinmei || candidateFhinmei.length === 0) {
+        throw new ApiError(400, 'FHINMEI（候補キー）が空です');
+      }
+    } else {
+      candidateFhinmei = null;
+      if (fhincd.length === 0) {
+        throw new ApiError(400, 'FIHNCD が空です');
+      }
     }
+
     if (params.items.length === 0) {
       throw new ApiError(400, 'テンプレート項目が空です');
     }
@@ -98,21 +130,23 @@ export class PartMeasurementTemplateService {
       }
 
       const agg = await tx.partMeasurementTemplate.aggregate({
-        where: { fhincd, processGroup: params.processGroup, resourceCd },
+        where: { fhincd, processGroup, resourceCd },
         _max: { version: true }
       });
       const nextVersion = (agg._max.version ?? 0) + 1;
 
       await tx.partMeasurementTemplate.updateMany({
-        where: { fhincd, processGroup: params.processGroup, resourceCd },
+        where: { fhincd, processGroup, resourceCd },
         data: { isActive: false }
       });
 
       const template = await tx.partMeasurementTemplate.create({
         data: {
+          templateScope,
           fhincd,
-          processGroup: params.processGroup,
+          processGroup,
           resourceCd,
+          candidateFhinmei,
           name: params.name.trim(),
           version: nextVersion,
           isActive: true,
@@ -178,19 +212,17 @@ export class PartMeasurementTemplateService {
     if (!source) {
       throw new ApiError(404, 'テンプレートが見つからないか無効です');
     }
-    if (source.processGroup !== params.targetProcessGroup) {
-      throw new ApiError(400, 'テンプレートと工程区分が一致しません');
-    }
 
     const targetFhincdNorm = normalizeFhincd(fhincd);
     const sourceFhincdNorm = normalizeFhincd(source.fhincd);
     const sourceResNorm = normalizeResourceCd(source.resourceCd);
-    const sameKey =
+    const sameThreeKey =
+      source.templateScope === 'THREE_KEY' &&
       sourceFhincdNorm === targetFhincdNorm &&
       sourceResNorm === resourceCd &&
       source.processGroup === params.targetProcessGroup;
 
-    if (sameKey) {
+    if (sameThreeKey) {
       return {
         template: source,
         reusedExistingActive: false,
@@ -227,7 +259,9 @@ export class PartMeasurementTemplateService {
       resourceCd,
       name,
       items,
-      visualTemplateId: source.visualTemplateId
+      visualTemplateId: source.visualTemplateId,
+      templateScope: 'THREE_KEY',
+      candidateFhinmei: null
     });
 
     return {

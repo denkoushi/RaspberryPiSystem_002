@@ -307,14 +307,14 @@ describe('part-measurement templates API', () => {
 
   it('lists template candidates with matchKind and selectable (ADMIN)', async () => {
     const fhincd = `CAND-${Date.now()}`;
-    const create = async (resourceCd: string, name: string) => {
+    const create = async (resourceCd: string, name: string, processGroup: 'cutting' | 'grinding' = 'cutting') => {
       const r = await app.inject({
         method: 'POST',
         url: '/api/part-measurement/templates',
         headers: createAuthHeader(adminToken),
         payload: {
           fhincd,
-          processGroup: 'cutting',
+          processGroup,
           resourceCd,
           name,
           items: [
@@ -332,17 +332,19 @@ describe('part-measurement templates API', () => {
     };
     await create('RES-CAND-A', 'テンプレA');
     await create('RES-CAND-B', 'テンプレB');
+    await create('RES-CAND-A', '研削側・同一資源', 'grinding');
 
-    const otherFhinc = `OTHER-${Date.now()}`;
     await app.inject({
       method: 'POST',
       url: '/api/part-measurement/templates',
       headers: createAuthHeader(adminToken),
       payload: {
-        fhincd: otherFhinc,
+        templateScope: 'fhinmei_only',
+        fhincd: '',
+        resourceCd: '',
         processGroup: 'cutting',
-        resourceCd: 'RES-OTHER',
-        name: 'シャフト特殊品 参考',
+        candidateFhinmei: 'シャフト特殊品',
+        name: 'FHINMEI 候補',
         items: [
           {
             sortOrder: 0,
@@ -356,7 +358,7 @@ describe('part-measurement templates API', () => {
 
     const listRes = await app.inject({
       method: 'GET',
-      url: `/api/part-measurement/templates/candidates?fhincd=${encodeURIComponent(fhincd)}&processGroup=cutting&resourceCd=RES-CAND-A&fhinmei=${encodeURIComponent('シャフト特殊')}`,
+      url: `/api/part-measurement/templates/candidates?fhincd=${encodeURIComponent(fhincd)}&processGroup=cutting&resourceCd=RES-CAND-A&fhinmei=${encodeURIComponent('シャフト特殊品')}`,
       headers: createAuthHeader(adminToken)
     });
     expect(listRes.statusCode).toBe(200);
@@ -368,13 +370,13 @@ describe('part-measurement templates API', () => {
     }>;
     const kinds = candidates.map((c) => c.matchKind);
     expect(kinds).toContain('exact_resource');
-    expect(kinds).toContain('same_fhincd_other_resource');
-    expect(kinds).toContain('fhinmei_similar');
+    expect(kinds).toContain('two_key_fhincd_resource');
+    expect(kinds).toContain('one_key_fhinmei');
     const exact = candidates.find((c) => c.matchKind === 'exact_resource');
     expect(exact?.selectable).toBe(true);
     expect(exact?.template.items).toHaveLength(0);
     expect(exact?.itemCount).toBe(1);
-    const refOnly = candidates.filter((c) => c.matchKind === 'fhinmei_similar');
+    const refOnly = candidates.filter((c) => c.matchKind === 'one_key_fhinmei');
     expect(refOnly.length).toBeGreaterThan(0);
     expect(refOnly.every((c) => c.selectable === true)).toBe(true);
 
@@ -494,6 +496,7 @@ describe('part-measurement templates API', () => {
     };
     expect(body.template.resourceCd).toBe('RES-TARGET');
     expect(body.template.fhincd).toBe(fhincd);
+    expect(body.template.templateScope).toBe('three_key');
     expect(body.template.items).toHaveLength(1);
     expect(body.template.items[0].measurementLabel).toBe('l1');
     expect(body.didClone).toBe(true);
