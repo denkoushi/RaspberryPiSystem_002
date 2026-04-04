@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-04（部品測定 `clone-for-schedule-key` 運用反映・`templates/candidates` Phase12・`verify-services-real.sh` ICMP フォールバック §6.6.9・Pi5 Web `go-jose` 再確認）
+最終更新: 2026-04-04（部品測定 `templateScope` / `candidateFhinmei` 本番反映後の Phase12 追記・§6.6.9）
 
 ## 概要
 
@@ -606,7 +606,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
   -d '{"productNo":"x","processGroup":"cutting"}'
 ```
 
-**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）／**2026-04-04**（編集画面上部帯反映後・同スクリプト **PASS 41/0/0**・約 106s）／**2026-04-04**（テンプレ候補選択キオスク・`templates/candidates` スモーク追加後 **PASS 43/0/0**・約 311s・Mac / Tailscale・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-04-04**（Pi5 のみ `Dockerfile.web`・Caddy **`go-jose`（CVE-2026-34986）** 反映後の再確認・同スクリプト **PASS 43/0/0**・約 100s・Mac / Tailscale・[ci-cd（Caddy / Trivy 追記）](../knowledge-base/ci-cd.md)）
+**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）／**2026-04-04**（編集画面上部帯反映後・同スクリプト **PASS 41/0/0**・約 106s）／**2026-04-04**（テンプレ候補選択キオスク・`templates/candidates` スモーク追加後 **PASS 43/0/0**・約 311s・Mac / Tailscale・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）／**2026-04-04**（Pi5 のみ `Dockerfile.web`・Caddy **`go-jose`（CVE-2026-34986）** 反映後の再確認・同スクリプト **PASS 43/0/0**・約 100s・Mac / Tailscale・[ci-cd（Caddy / Trivy 追記）](../knowledge-base/ci-cd.md)）／**2026-04-04**（`feat/part-measurement-template-scope`・Pi5→Pi4×4 順次デプロイ後・同スクリプト **PASS 43/0/0**・約 94s・Mac / Tailscale・Detach Run ID は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) Phase12 節）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.10 デプロイスクリプト多重起動ロック（`update-all-clients.sh`）**
