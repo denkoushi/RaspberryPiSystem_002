@@ -45,6 +45,17 @@ elif pi5_reachable_local; then
   PI3_IP="192.168.10.109"
   PI4_IP="192.168.10.223"
   ACTUAL_MODE="local"
+# ICMP が落ちるが API は生きているケース（verify-phase12-real.sh 終盤など）のフォールバック
+elif curl -sk --connect-timeout 5 "https://100.106.158.2/api/system/health" | grep -q '"status"'; then
+  PI5_IP="100.106.158.2"
+  PI3_IP="100.105.224.86"
+  PI4_IP="100.74.144.79"
+  ACTUAL_MODE="tailscale"
+elif curl -sk --connect-timeout 5 "https://192.168.10.230/api/system/health" | grep -q '"status"'; then
+  PI5_IP="192.168.10.230"
+  PI3_IP="192.168.10.109"
+  PI4_IP="192.168.10.223"
+  ACTUAL_MODE="local"
 else
   echo "エラー: Pi5に到達できません"
   exit 1

@@ -262,6 +262,18 @@ PM_RESOLVE_UNAUTH_CODE="$(
 )"
 check_http_code "部品測定API resolve-ticket 未認証・無client-key" "${PM_RESOLVE_UNAUTH_CODE}" "401"
 
+PM_CAND_UNAUTH_CODE="$(
+  curl -sk -o /dev/null -w "%{http_code}" \
+    "${BASE_URL}/api/part-measurement/templates/candidates?fhincd=X&processGroup=cutting&resourceCd=1" 2>&1 || true
+)"
+check_http_code "部品測定API GET templates/candidates 未認証・無client-key" "${PM_CAND_UNAUTH_CODE}" "401"
+
+PM_CAND_JSON="$(
+  curl -sk "${BASE_URL}/api/part-measurement/templates/candidates?fhincd=__PHASE12_SMOKE__&processGroup=cutting&resourceCd=1" \
+    -H "x-client-key: ${CLIENT_KEY_STONEBASE}" 2>&1 || true
+)"
+check_contains "部品測定API GET templates/candidates (x-client-key)" "${PM_CAND_JSON}" '"candidates"'
+
 # manual-order-overview: v1 は targetLocation+resources、v2（device-scope）は siteKey 必須で devices[]
 MANUAL_ORDER_OVERVIEW_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-management/manual-order-overview" -H "x-client-key: ${CLIENT_KEY_PI4}" 2>&1 || true)"
 if printf "%s" "${MANUAL_ORDER_OVERVIEW_JSON}" | grep -Eq '"resources"'; then

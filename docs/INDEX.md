@@ -25,7 +25,7 @@
 - **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点） / [ADR-20260330-part-measurement-visual-template.md](./decisions/ADR-20260330-part-measurement-visual-template.md)（visual template・図面1枚・`displayMarker`） / [ADR-20260404-part-measurement-template-pick-kiosk.md](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（キオスク・候補一覧・`allowAlternateResourceTemplate`）
 - **運用手順**: [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md)
 - **トラブルシュート**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)（図面ストレージは Docker 本番 compose で `part-measurement-drawings` をホストバインドし、rerun 時は `api/web` の `Created` 残留と summary 判定も確認。現行 UI はヘッダ 1 行優先・入力欄 5 桁幅・**編集画面上部帯**は [design-previews/kiosk-part-measurement-header-strip.html](./design-previews/kiosk-part-measurement-header-strip.html) 相当のレイアウト）
-- **実機検証**: [verification-checklist.md](./guides/verification-checklist.md) 6.6.9・6.6.10、`./scripts/deploy/verify-phase12-real.sh`（`resolve-ticket` スモーク含む）
+- **実機検証**: [verification-checklist.md](./guides/verification-checklist.md) 6.6.9・6.6.10、`./scripts/deploy/verify-phase12-real.sh`（`resolve-ticket`・**`templates/candidates`** スモーク含む）
 
 ### キオスク要領書（PDF）
 
@@ -46,6 +46,7 @@
 
 ### 🆕 最新アップデート（2026-04-04）
 
+- **キオスク部品測定: テンプレ候補選択（`/kiosk/part-measurement/template/pick`）・`GET …/templates/candidates`・`allowAlternateResourceTemplate`・Pi5→Pi4×4 順次デプロイ・Phase12 実機検証・検証スクリプト追補・`main` マージ**: ブランチ `feat/kiosk-part-measurement-template-picker`。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 311s・Mac / Tailscale・`templates/candidates` 401/キー付きスモークを追加）。**知見**: `deploy-status` の一時メンテ表示・終盤 `verify-services-real.sh` の ICMP 偶発失敗は [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) の Phase12 節／Investigation 表を参照。**設計**: [ADR-20260404](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)。**静的プレビュー**: [kiosk-part-measurement-template-picker.html](./design-previews/kiosk-part-measurement-template-picker.html)。**参照**: [verification-checklist.md](./guides/verification-checklist.md) §6.6.9 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **キオスク部品測定: 編集画面上部帯統合（`KioskPartMeasurementEditTopStrip`・メタ `<dl>` ブロック・旧 `SheetHeaderSection` 撤去）・Pi5→Pi4×4 順次デプロイ・Phase12 実機検証・`main` 統合**: ブランチ `feat/kiosk-part-measurement-edit-top-strip`。Web のみ。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 0 / FAIL 0**（約 106s・2026-04-04・Mac / Tailscale）。**Detach Run ID（Pi5 代表）**: `20260404-082321-9627`（Pi4 各台も `failed=0`）。**静的プレビュー**: [design-previews/kiosk-part-measurement-header-strip.html](./design-previews/kiosk-part-measurement-header-strip.html)。**参照**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) / [verification-checklist.md](./guides/verification-checklist.md) §6.6.9 / [design-previews/README.md](./design-previews/README.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-03）

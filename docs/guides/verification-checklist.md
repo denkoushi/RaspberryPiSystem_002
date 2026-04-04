@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-03（サイネージ 貸出グリッド HTML トークン分離の Phase12 追補 §6.6.22）
+最終更新: 2026-04-04（部品測定 `templates/candidates` の Phase12 追補・`verify-services-real.sh` ICMP フォールバック §6.6.9）
 
 ## 概要
 
@@ -592,10 +592,11 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 
 **確認ポイント**（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)、[kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)、[ADR-20260329](../decisions/ADR-20260329-part-measurement-kiosk-record.md)、[ADR-20260330](../decisions/ADR-20260330-part-measurement-visual-template.md)（visual・`displayMarker`））:
 
-- [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0** で完走する（スクリプト内: `POST /api/part-measurement/resolve-ticket` + 有効な `x-client-key` で `"candidates"`、無キーで **401**）
+- [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0** で完走する（スクリプト内: `POST /api/part-measurement/resolve-ticket` + 有効な `x-client-key` で `"candidates"`、無キーで **401**；**`GET /api/part-measurement/templates/candidates`** も **401**（無キー）・キー付きで **`"candidates"`**）
 - [ ] （手動）キオスク `/kiosk/part-measurement` で照会・記録表・確定まで問題ないか
 - [ ] （手動・visual 利用時）図面 Blob 表示・項目の **図番号（表示用）** が列見出しに出るか（[kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)）
 - [ ] （手動）[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「Current UI spec」どおり、**編集画面** `/kiosk/part-measurement/edit/...` の **上部帯**（メタ + アクション・中央寄せ折返し）が窮屈すぎないか
+- [ ] （手動）テンプレ未整備時に **`/kiosk/part-measurement/template/pick`** で候補一覧・図面サムネ・別資源テンプレ選択（`allowAlternateResourceTemplate`）が期待どおりか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)・[ADR-20260404](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)）
 
 **検証コマンド例（resolve-ticket・401）**:
 
@@ -605,7 +606,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
   -d '{"productNo":"x","processGroup":"cutting"}'
 ```
 
-**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）／**2026-04-04**（編集画面上部帯反映後・同スクリプト **PASS 41/0/0**・約 106s／編集画面上部帯・visual は現場目視推奨・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）
+**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）／**2026-04-04**（編集画面上部帯反映後・同スクリプト **PASS 41/0/0**・約 106s）／**2026-04-04**（テンプレ候補選択キオスク・`templates/candidates` スモーク追加後 **PASS 43/0/0**・約 311s・Mac / Tailscale・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.10 デプロイスクリプト多重起動ロック（`update-all-clients.sh`）**
