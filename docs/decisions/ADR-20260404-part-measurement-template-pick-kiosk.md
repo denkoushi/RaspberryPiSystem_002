@@ -35,6 +35,10 @@ accepted
 - **悪い**: `fhinmei_similar` 選択は **類似品への誤コピー**リスクがある。現場は図面・候補説明で確認する。複製でテンプレが増えるため、管理画面での整理が必要になりうる。
 - **悪い（レガシー）**: `allowAlternateResourceTemplate: true` を使う経路は引き続き監査対象。
 
+## Verification
+
+- **2026-04-04（`feat/kiosk-part-measurement-template-auto-clone` 本番反映後）**: Pi5 → Pi4×4 を順次デプロイ（Detach Run ID は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) Phase12 節）。Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 91s）。部品測定 API スモーク（`resolve-ticket`・`templates/candidates` 認可）に加え、キオスクは checklist §6.6.9 の手動で複製→記録を推奨。
+
 ## References
 
 - [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)

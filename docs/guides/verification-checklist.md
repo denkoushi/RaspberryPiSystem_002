@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-04（部品測定 `templates/candidates` の Phase12 追補・`verify-services-real.sh` ICMP フォールバック §6.6.9・Pi5 Web `go-jose` 反映後の Phase12 再確認）
+最終更新: 2026-04-04（部品測定 `clone-for-schedule-key` 運用反映・`templates/candidates` Phase12・`verify-services-real.sh` ICMP フォールバック §6.6.9・Pi5 Web `go-jose` 再確認）
 
 ## 概要
 
