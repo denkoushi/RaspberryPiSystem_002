@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-03
+last-verified: 2026-04-04
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-03（部品測定図面ストレージ復旧・rerun 自動復旧・summary 判定修正を反映）
+最終更新: 2026-04-04（Pi5 のみ `web` 反映時の `--limit` 判断・`go-jose` 修正後の Phase12 実測を反映）
 
 ## 概要
 
@@ -672,7 +672,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **全デバイス**: `--detach --follow`必須（30分以上かかるためタイムアウトする）
 
 **デプロイ対象の判断基準（2026-02-01更新）**:
-- **Webアプリのみ**: Pi5 + Pi4（`--limit "raspberrypi5:raspberrypi4"`）
+- **Webアプリのみ**: 通常は Pi5 + Pi4（`--limit "raspberrypi5:raspberrypi4"`）。**`Dockerfile.web` / server `web` のみ**の変更で Pi4 に `web` を載せていない／更新不要なら **Pi5 のみ**（`--limit raspberrypi5`）で足りる（2026-04-04・`go-jose` 対応後に `./scripts/deploy/verify-phase12-real.sh` **PASS 43/0/0**・約 100s を確認。[ci-cd の Caddy 追記](../knowledge-base/ci-cd.md)）。
 - **API/DBのみ**: Pi5のみ（`--limit raspberrypi5`）
 - **サイネージ関連**: Pi5のみ（サーバー側レンダリングのため）
 - **Pi3固有の設定**: Pi3のみ（`--limit raspberrypi3`）
