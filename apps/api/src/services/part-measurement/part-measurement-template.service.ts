@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { PART_MEASUREMENT_LEGACY_RESOURCE_CD } from './part-measurement-constants.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
+import { normalizeFhincd } from './template-candidate-rules.js';
 
 export type TemplateItemInput = {
   sortOrder: number;
@@ -139,6 +140,101 @@ export class PartMeasurementTemplateService {
 
       return template;
     });
+  }
+
+  /**
+   * キオスク候補選択: 参照テンプレの項目・図面を、日程の **FIHNCD + 工程 + 資源CD** に複製する。
+   * 同一キーで既に active がある場合は新規作成せずそれを返す。
+   */
+  async cloneActiveTemplateToScheduleKey(params: {
+    sourceTemplateId: string;
+    targetFhincd: string;
+    targetProcessGroup: PartMeasurementProcessGroup;
+    targetResourceCd: string;
+  }) {
+    const fhincd = params.targetFhincd.trim();
+    const resourceCd = normalizeResourceCd(params.targetResourceCd);
+    if (fhincd.length === 0) {
+      throw new ApiError(400, 'FIHNCD が空です');
+    }
+
+    const existingActive = await this.findActiveByFhincdGroupAndResource(
+      fhincd,
+      params.targetProcessGroup,
+      resourceCd
+    );
+    if (existingActive) {
+      return {
+        template: existingActive,
+        reusedExistingActive: true,
+        didClone: false
+      };
+    }
+
+    const source = await prisma.partMeasurementTemplate.findFirst({
+      where: { id: params.sourceTemplateId, isActive: true },
+      include: partMeasurementTemplateFullInclude
+    });
+    if (!source) {
+      throw new ApiError(404, 'テンプレートが見つからないか無効です');
+    }
+    if (source.processGroup !== params.targetProcessGroup) {
+      throw new ApiError(400, 'テンプレートと工程区分が一致しません');
+    }
+
+    const targetFhincdNorm = normalizeFhincd(fhincd);
+    const sourceFhincdNorm = normalizeFhincd(source.fhincd);
+    const sourceResNorm = normalizeResourceCd(source.resourceCd);
+    const sameKey =
+      sourceFhincdNorm === targetFhincdNorm &&
+      sourceResNorm === resourceCd &&
+      source.processGroup === params.targetProcessGroup;
+
+    if (sameKey) {
+      return {
+        template: source,
+        reusedExistingActive: false,
+        didClone: false
+      };
+    }
+
+    if (!source.items?.length) {
+      throw new ApiError(400, '参照テンプレートに項目がありません');
+    }
+
+    const items: TemplateItemInput[] = source.items.map((item) => ({
+      sortOrder: item.sortOrder,
+      datumSurface: item.datumSurface,
+      measurementPoint: item.measurementPoint,
+      measurementLabel: item.measurementLabel,
+      displayMarker: item.displayMarker,
+      unit: item.unit,
+      allowNegative: item.allowNegative,
+      decimalPlaces: item.decimalPlaces
+    }));
+
+    const baseName = source.name.trim().slice(0, 120);
+    const crossPart = sourceFhincdNorm !== targetFhincdNorm;
+    const name = (
+      crossPart
+        ? `${fhincd} ${baseName}（類似流用）`
+        : `${baseName}（資源${resourceCd}へ流用）`
+    ).slice(0, 200);
+
+    const template = await this.createTemplateVersion({
+      fhincd,
+      processGroup: params.targetProcessGroup,
+      resourceCd,
+      name,
+      items,
+      visualTemplateId: source.visualTemplateId
+    });
+
+    return {
+      template,
+      reusedExistingActive: false,
+      didClone: true
+    };
   }
 
   async setActiveVersion(templateId: string) {

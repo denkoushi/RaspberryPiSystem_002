@@ -2081,6 +2081,26 @@ export async function listPartMeasurementTemplateCandidates(
   return data.candidates;
 }
 
+/** 候補テンプレを日程の FIHNCD+工程+資源CD 用に複製（既存 active があればその ID を返す） */
+export async function clonePartMeasurementTemplateForScheduleKey(
+  body: {
+    sourceTemplateId: string;
+    fhincd: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCd: string;
+  },
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{
+    template: PartMeasurementTemplateDto;
+    reusedExistingActive: boolean;
+    didClone: boolean;
+  }>('/part-measurement/templates/clone-for-schedule-key', body, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
+  return data.template;
+}
+
 export async function listPartMeasurementVisualTemplates(
   params?: { includeInactive?: boolean },
   clientKey?: string

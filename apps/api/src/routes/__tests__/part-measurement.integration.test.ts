@@ -375,7 +375,8 @@ describe('part-measurement templates API', () => {
     expect(exact?.template.items).toHaveLength(0);
     expect(exact?.itemCount).toBe(1);
     const refOnly = candidates.filter((c) => c.matchKind === 'fhinmei_similar');
-    expect(refOnly.every((c) => c.selectable === false)).toBe(true);
+    expect(refOnly.length).toBeGreaterThan(0);
+    expect(refOnly.every((c) => c.selectable === true)).toBe(true);
 
     const lowerCaseRes = await app.inject({
       method: 'GET',
@@ -442,5 +443,128 @@ describe('part-measurement templates API', () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json().sheet.resourceCdSnapshot).toBe('RES-SCHEDULE');
     expect(ok.json().sheet.template?.resourceCd).toBe('RES-T1');
+  });
+
+  it('returns 401 without auth for POST /api/part-measurement/templates/clone-for-schedule-key', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates/clone-for-schedule-key',
+      payload: {
+        sourceTemplateId: '00000000-0000-4000-8000-000000000001',
+        fhincd: 'X',
+        processGroup: 'cutting',
+        resourceCd: '1'
+      }
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('clone-for-schedule-key creates template for target resource so sheets need no allowAlternateResourceTemplate', async () => {
+    const fhincd = `CLONE-${Date.now()}`;
+    const tOther = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SOURCE',
+        name: 'source',
+        items: [{ sortOrder: 0, datumSurface: 'd1', measurementPoint: 'p1', measurementLabel: 'l1' }]
+      }
+    });
+    expect(tOther.statusCode).toBe(200);
+    const sourceId = tOther.json().template.id as string;
+
+    const cloneRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates/clone-for-schedule-key',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        sourceTemplateId: sourceId,
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-TARGET'
+      }
+    });
+    expect(cloneRes.statusCode).toBe(200);
+    const body = cloneRes.json() as {
+      template: { id: string; resourceCd: string; fhincd: string; items: Array<{ measurementLabel: string }> };
+      didClone: boolean;
+    };
+    expect(body.template.resourceCd).toBe('RES-TARGET');
+    expect(body.template.fhincd).toBe(fhincd);
+    expect(body.template.items).toHaveLength(1);
+    expect(body.template.items[0].measurementLabel).toBe('l1');
+    expect(body.didClone).toBe(true);
+
+    const pn = `PN-CLONE-${Date.now()}`;
+    const sheetRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: pn,
+        fseiban: 'FS-CLONE',
+        fhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-TARGET',
+        processGroup: 'cutting',
+        templateId: body.template.id
+      }
+    });
+    expect(sheetRes.statusCode).toBe(200);
+    expect(sheetRes.json().sheet.resourceCdSnapshot).toBe('RES-TARGET');
+    expect(sheetRes.json().sheet.template?.resourceCd).toBe('RES-TARGET');
+  });
+
+  it('clone-for-schedule-key reuses existing active template for target key', async () => {
+    const fhincd = `CLONE2-${Date.now()}`;
+    const existingRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-T',
+        name: 'already',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    expect(existingRes.statusCode).toBe(200);
+    const existingId = existingRes.json().template.id as string;
+
+    const sourceRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SRC',
+        name: 'source',
+        items: [{ sortOrder: 0, datumSurface: 'x', measurementPoint: 'y', measurementLabel: 'z' }]
+      }
+    });
+    expect(sourceRes.statusCode).toBe(200);
+    const sourceId = sourceRes.json().template.id as string;
+
+    const cloneRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates/clone-for-schedule-key',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        sourceTemplateId: sourceId,
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-T'
+      }
+    });
+    expect(cloneRes.statusCode).toBe(200);
+    const body = cloneRes.json() as { template: { id: string }; reusedExistingActive: boolean; didClone: boolean };
+    expect(body.template.id).toBe(existingId);
+    expect(body.reusedExistingActive).toBe(true);
+    expect(body.didClone).toBe(false);
   });
 });

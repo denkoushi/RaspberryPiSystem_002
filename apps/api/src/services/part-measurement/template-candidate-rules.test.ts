@@ -42,10 +42,10 @@ describe('templateCandidateRules', () => {
     ).toBe('fhinmei_similar');
   });
 
-  it('selectable only when not fhinmei_similar', () => {
+  it('all match kinds are selectable (clone-to-schedule-key lands on 3-element template)', () => {
     expect(isSelectableForSheetCreation('exact_resource')).toBe(true);
     expect(isSelectableForSheetCreation('same_fhincd_other_resource')).toBe(true);
-    expect(isSelectableForSheetCreation('fhinmei_similar')).toBe(false);
+    expect(isSelectableForSheetCreation('fhinmei_similar')).toBe(true);
   });
 
   it('compareCandidates orders by kind then version', () => {

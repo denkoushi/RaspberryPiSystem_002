@@ -88,6 +88,14 @@ const createTemplateBodySchema = z.object({
   visualTemplateId: z.string().uuid().optional().nullable()
 });
 
+/** 候補テンプレを日程の FIHNCD+工程+資源CD 用テンプレへ複製（既存 active があれば再利用） */
+const cloneTemplateForScheduleBodySchema = z.object({
+  sourceTemplateId: z.string().uuid(),
+  fhincd: z.string().min(1).max(120),
+  processGroup: processGroupSchema,
+  resourceCd: z.string().min(1).max(120)
+});
+
 const listTemplatesQuerySchema = z.object({
   fhincd: z.string().max(120).optional(),
   processGroup: processGroupSchema.optional(),
@@ -719,6 +727,31 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       })
     };
   });
+
+  app.post(
+    '/part-measurement/templates/clone-for-schedule-key',
+    { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+    async (request) => {
+      const body = cloneTemplateForScheduleBodySchema.parse(request.body);
+      const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+      const result = await templateService.cloneActiveTemplateToScheduleKey({
+        sourceTemplateId: body.sourceTemplateId,
+        targetFhincd: body.fhincd,
+        targetProcessGroup: processGroup,
+        targetResourceCd: body.resourceCd
+      });
+      return {
+        template: serializeTemplate({
+          ...result.template,
+          visualTemplateId: result.template.visualTemplateId,
+          visualTemplate: result.template.visualTemplate,
+          items: result.template.items
+        }),
+        reusedExistingActive: result.reusedExistingActive,
+        didClone: result.didClone
+      };
+    }
+  );
 
   app.post('/part-measurement/templates/:id/activate', { preHandler: allowWriteKiosk }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);

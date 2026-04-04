@@ -3,14 +3,15 @@ import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
+  clonePartMeasurementTemplateForScheduleKey,
   createPartMeasurementSheet,
   getResolvedClientKey,
   listPartMeasurementTemplateCandidates
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { allowAlternateResourceForMatchKind } from '../../features/part-measurement/template-pick/alternateResourcePolicy';
 import { PartMeasurementTemplateCandidateCard } from '../../features/part-measurement/template-pick/PartMeasurementTemplateCandidateCard';
+import { shouldCloneTemplateBeforeSheet } from '../../features/part-measurement/template-pick/sheetClonePolicy';
 
 import type {
   KioskPartMeasurementTemplatePickLocationState,
@@ -74,6 +75,19 @@ export function KioskPartMeasurementTemplatePickPage() {
     setMessage(null);
     setBusyId(c.template.id);
     try {
+      let templateId = c.template.id;
+      if (shouldCloneTemplateBeforeSheet(c.matchKind)) {
+        const cloned = await clonePartMeasurementTemplateForScheduleKey(
+          {
+            sourceTemplateId: c.template.id,
+            fhincd: ctx.fhincd,
+            processGroup: ctx.processGroup,
+            resourceCd: ctx.resourceCd
+          },
+          clientKey
+        );
+        templateId = cloned.id;
+      }
       const sheet = await createPartMeasurementSheet(
         {
           productNo: ctx.productNo,
@@ -83,10 +97,9 @@ export function KioskPartMeasurementTemplatePickPage() {
           machineName: ctx.machineName,
           resourceCdSnapshot: ctx.resourceCd,
           processGroup: ctx.processGroup,
-          templateId: c.template.id,
+          templateId,
           scannedBarcodeRaw: ctx.scannedBarcodeRaw ?? null,
-          scheduleRowId: ctx.scheduleRowId ?? undefined,
-          allowAlternateResourceTemplate: allowAlternateResourceForMatchKind(c.matchKind)
+          scheduleRowId: ctx.scheduleRowId ?? undefined
         },
         clientKey
       );

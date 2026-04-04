@@ -596,7 +596,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 - [ ] （手動）キオスク `/kiosk/part-measurement` で照会・記録表・確定まで問題ないか
 - [ ] （手動・visual 利用時）図面 Blob 表示・項目の **図番号（表示用）** が列見出しに出るか（[kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)）
 - [ ] （手動）[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「Current UI spec」どおり、**編集画面** `/kiosk/part-measurement/edit/...` の **上部帯**（メタ + アクション・中央寄せ折返し）が窮屈すぎないか
-- [ ] （手動）テンプレ未整備時に **`/kiosk/part-measurement/template/pick`** で候補一覧・図面サムネ・別資源テンプレ選択（`allowAlternateResourceTemplate`）が期待どおりか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)・[ADR-20260404](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)）
+- [ ] （手動）テンプレ未整備時に **`/kiosk/part-measurement/template/pick`** で候補一覧・図面サムネ・**`clone-for-schedule-key` 経由の記録開始**（3要素は直リンク、2要素/1要素は複製後に記録）が期待どおりか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)・[ADR-20260404](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)）
 
 **検証コマンド例（resolve-ticket・401）**:
 

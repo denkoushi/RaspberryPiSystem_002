@@ -9,11 +9,11 @@ import type { PartMeasurementTemplateCandidateDto } from '../types';
 function matchKindLabel(kind: PartMeasurementTemplateCandidateDto['matchKind']): string {
   switch (kind) {
     case 'exact_resource':
-      return '一致';
+      return '一致（3要素）';
     case 'same_fhincd_other_resource':
-      return '別資源テンプレ';
+      return '類似（2要素・別資源）';
     case 'fhinmei_similar':
-      return '参考（品番相違）';
+      return '類似（1要素・品名）';
     default:
       return kind;
   }
@@ -83,7 +83,9 @@ export function PartMeasurementTemplateCandidateCard({ candidate, scheduleResour
         </p>
         <p className="text-sm text-slate-600">
           品番 {template.fhincd} · 項目 {itemCount} 件
-          {!selectable ? ' · この日程の品番では記録表を作成できません（参考表示）' : null}
+          {matchKind === 'fhinmei_similar'
+            ? ' · 選択すると日程の品番・資源・工程用テンプレを自動作成してから記録を開始します'
+            : null}
         </p>
       </div>
 

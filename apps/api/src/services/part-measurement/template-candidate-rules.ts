@@ -44,9 +44,12 @@ export function matchKindSortOrder(kind: PartMeasurementTemplateMatchKind): numb
   }
 }
 
-/** 記録作成に使えるのは同一品番のテンプレのみ（品番相違は参考表示） */
+/**
+ * 候補はいずれも選択可能。品番相違（品名ヒント）も、選択後に日程の3要素キーへ複製して記録開始する。
+ */
 export function isSelectableForSheetCreation(matchKind: PartMeasurementTemplateMatchKind): boolean {
-  return matchKind !== 'fhinmei_similar';
+  void matchKind;
+  return true;
 }
 
 export function compareCandidates(
