@@ -58,6 +58,13 @@
 - 測定値入力欄は **5桁程度が自然に収まる幅**を標準とする（`6ch`〜`10ch` 相当、等幅数字前提）。
 - **編集画面（`/kiosk/part-measurement/edit/...`）上部帯**: `KioskPartMeasurementEditTopStrip` で **中央寄せ・`flex-wrap`**。メタ情報は `KioskPartMeasurementSheetMetaBlock`（`<dl>` + 個数・暗帯スタイル）に集約。旧 `KioskPartMeasurementSheetHeaderSection` は撤去。**静的モック**: [kiosk-part-measurement-header-strip.html](../design-previews/kiosk-part-measurement-header-strip.html)。
 
+## キオスク・テンプレ候補選択と別資源テンプレ借用（2026-04-04）
+
+- **画面**: `/kiosk/part-measurement/template/pick`（日程・照会からテンプレ未整備時は **先に候補選択**。新規作成は同画面から `template/new` へ）。
+- **API**: `GET /api/part-measurement/templates/candidates`（`fhincd`・`processGroup`・`resourceCd` 必須・任意 `fhinmei` / `q`）。`matchKind`: `exact_resource` / `same_fhincd_other_resource` / `fhinmei_similar`。品番相違の `fhinmei_similar` は **selectable: false**（記録表作成不可）。
+- **記録作成**: `POST /api/part-measurement/sheets` に **`allowAlternateResourceTemplate: true`** を付けると、**テンプレの資源CDと `resourceCdSnapshot` が不一致でも**同一 `fhincd`・同一工程なら下書き作成可（スナップショット資源は日程のまま）。通常時は省略（厳格一致）。
+- **根拠**: [ADR-20260404-part-measurement-template-pick-kiosk.md](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)。UI モック: [kiosk-part-measurement-template-picker.html](../design-previews/kiosk-part-measurement-template-picker.html)。
+
 ## 実機・自動検証（Phase12）
 
 - **一括**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh`（Pi5 到達・Tailscale/LAN 自動選択）。
@@ -72,5 +79,5 @@
 ## References
 
 - Runbook: [kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)
-- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md) / [ADR-20260330-part-measurement-visual-template.md](../decisions/ADR-20260330-part-measurement-visual-template.md)
+- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md) / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md) / [ADR-20260330-part-measurement-visual-template.md](../decisions/ADR-20260330-part-measurement-visual-template.md) / [ADR-20260404-part-measurement-template-pick-kiosk.md](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)
 - 沉浸式 allowlist: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)

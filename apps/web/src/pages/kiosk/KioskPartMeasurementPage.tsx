@@ -119,6 +119,22 @@ export function KioskPartMeasurementPage() {
     }
   };
 
+  const goTemplatePick = (c: PartMeasurementResolvedCandidate, scannedPn: string) => {
+    void navigate('/kiosk/part-measurement/template/pick', {
+      state: {
+        productNo: c.productNo,
+        fseiban: c.fseiban,
+        fhincd: c.fhincd,
+        fhinmei: c.fhinmei,
+        resourceCd: c.resourceCd,
+        processGroup,
+        machineName: c.machineName,
+        scheduleRowId: c.scheduleRowId,
+        scannedBarcodeRaw: scannedPn
+      }
+    });
+  };
+
   const handleResolve = async () => {
     const pn = productNoInput.trim();
     if (!pn) {
@@ -151,13 +167,7 @@ export function KioskPartMeasurementPage() {
         return;
       }
       if (res.selected && !res.template) {
-        void navigate('/kiosk/part-measurement/template/new', {
-          state: {
-            fhincd: res.selected.fhincd,
-            resourceCd: res.selected.resourceCd,
-            processGroup
-          }
-        });
+        goTemplatePick(res.selected, pn);
       }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -169,13 +179,7 @@ export function KioskPartMeasurementPage() {
 
   const handlePickCandidate = async (c: PartMeasurementResolvedCandidate) => {
     if (!resolveResult?.template) {
-      void navigate('/kiosk/part-measurement/template/new', {
-        state: {
-          fhincd: c.fhincd,
-          resourceCd: c.resourceCd,
-          processGroup
-        }
-      });
+      goTemplatePick(c, productNoInput.trim());
       return;
     }
     await createSheetFromResolved(c, resolveResult.template.id, c.productNo);

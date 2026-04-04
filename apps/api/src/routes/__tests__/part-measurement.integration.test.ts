@@ -296,4 +296,151 @@ describe('part-measurement templates API', () => {
     expect(body.id).toBe(id1);
     expect(body.isActive).toBe(true);
   });
+
+  it('returns 401 without auth for GET /api/part-measurement/templates/candidates', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/templates/candidates?fhincd=X&processGroup=cutting&resourceCd=1'
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('lists template candidates with matchKind and selectable (ADMIN)', async () => {
+    const fhincd = `CAND-${Date.now()}`;
+    const create = async (resourceCd: string, name: string) => {
+      const r = await app.inject({
+        method: 'POST',
+        url: '/api/part-measurement/templates',
+        headers: createAuthHeader(adminToken),
+        payload: {
+          fhincd,
+          processGroup: 'cutting',
+          resourceCd,
+          name,
+          items: [
+            {
+              sortOrder: 0,
+              datumSurface: 'a',
+              measurementPoint: 'b',
+              measurementLabel: 'c'
+            }
+          ]
+        }
+      });
+      expect(r.statusCode).toBe(200);
+      return r.json().template.id as string;
+    };
+    await create('RES-CAND-A', 'テンプレA');
+    await create('RES-CAND-B', 'テンプレB');
+
+    const otherFhinc = `OTHER-${Date.now()}`;
+    await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd: otherFhinc,
+        processGroup: 'cutting',
+        resourceCd: 'RES-OTHER',
+        name: 'シャフト特殊品 参考',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'a',
+            measurementPoint: 'b',
+            measurementLabel: 'c'
+          }
+        ]
+      }
+    });
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/templates/candidates?fhincd=${encodeURIComponent(fhincd)}&processGroup=cutting&resourceCd=RES-CAND-A&fhinmei=${encodeURIComponent('シャフト特殊')}`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(listRes.statusCode).toBe(200);
+    const candidates = listRes.json().candidates as Array<{
+      matchKind: string;
+      selectable: boolean;
+      itemCount: number;
+      template: { resourceCd: string; fhincd: string; items: unknown[] };
+    }>;
+    const kinds = candidates.map((c) => c.matchKind);
+    expect(kinds).toContain('exact_resource');
+    expect(kinds).toContain('same_fhincd_other_resource');
+    expect(kinds).toContain('fhinmei_similar');
+    const exact = candidates.find((c) => c.matchKind === 'exact_resource');
+    expect(exact?.selectable).toBe(true);
+    expect(exact?.template.items).toHaveLength(0);
+    expect(exact?.itemCount).toBe(1);
+    const refOnly = candidates.filter((c) => c.matchKind === 'fhinmei_similar');
+    expect(refOnly.every((c) => c.selectable === false)).toBe(true);
+
+    const lowerCaseRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/templates/candidates?fhincd=${encodeURIComponent(fhincd.toLowerCase())}&processGroup=cutting&resourceCd=RES-CAND-A`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(lowerCaseRes.statusCode).toBe(200);
+    const lowerCaseKinds = (lowerCaseRes.json().candidates as Array<{ matchKind: string }>).map(
+      (candidate) => candidate.matchKind
+    );
+    expect(lowerCaseKinds).toContain('exact_resource');
+  });
+
+  it('POST sheets rejects resource mismatch without allowAlternateResourceTemplate', async () => {
+    const fhincd = `ALT-${Date.now()}`;
+    const t1 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-T1',
+        name: 't1',
+        items: [
+          { sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }
+        ]
+      }
+    });
+    const templateId = t1.json().template.id as string;
+    const pn = `PN-ALT-${Date.now()}`;
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: pn,
+        fseiban: 'FS-ALT',
+        fhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-SCHEDULE',
+        processGroup: 'cutting',
+        templateId
+      }
+    });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json().message).toMatch(/資源CD/);
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: `PN-ALT2-${Date.now()}`,
+        fseiban: 'FS-ALT2',
+        fhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-SCHEDULE',
+        processGroup: 'cutting',
+        templateId,
+        allowAlternateResourceTemplate: true
+      }
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().sheet.resourceCdSnapshot).toBe('RES-SCHEDULE');
+    expect(ok.json().sheet.template?.resourceCd).toBe('RES-T1');
+  });
 });

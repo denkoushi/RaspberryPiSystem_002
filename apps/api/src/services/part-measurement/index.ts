@@ -4,6 +4,7 @@ export {
   resolveMachineNameForSeiban
 } from './part-measurement-schedule-lookup.service.js';
 export { PartMeasurementSheetService } from './part-measurement-sheet.service.js';
+export { PartMeasurementTemplateCandidateService } from './part-measurement-template-candidate.service.js';
 export { PartMeasurementTemplateService } from './part-measurement-template.service.js';
 export { PartMeasurementVisualTemplateService } from './part-measurement-visual-template.service.js';
 export { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';

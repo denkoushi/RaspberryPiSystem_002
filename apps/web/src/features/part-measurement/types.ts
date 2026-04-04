@@ -37,6 +37,12 @@ export type PartMeasurementVisualTemplateDto = {
   updatedAt: string;
 };
 
+/** GET /part-measurement/templates/candidates の matchKind（API と同期） */
+export type PartMeasurementTemplateMatchKind =
+  | 'exact_resource'
+  | 'same_fhincd_other_resource'
+  | 'fhinmei_similar';
+
 export type PartMeasurementTemplateDto = {
   id: string;
   fhincd: string;
@@ -48,6 +54,26 @@ export type PartMeasurementTemplateDto = {
   visualTemplateId: string | null;
   visualTemplate: PartMeasurementVisualTemplateDto | null;
   items: PartMeasurementTemplateItemDto[];
+};
+
+export type PartMeasurementTemplateCandidateDto = {
+  matchKind: PartMeasurementTemplateMatchKind;
+  selectable: boolean;
+  itemCount: number;
+  template: PartMeasurementTemplateDto;
+};
+
+/** `/kiosk/part-measurement/template/pick` へ渡す location state */
+export type KioskPartMeasurementTemplatePickLocationState = {
+  productNo: string;
+  fseiban: string;
+  fhincd: string;
+  fhinmei: string;
+  resourceCd: string;
+  processGroup: PartMeasurementProcessGroup;
+  machineName: string | null;
+  scheduleRowId?: string | null;
+  scannedBarcodeRaw?: string | null;
 };
 
 export type PartMeasurementSheetDto = {

@@ -39,6 +39,7 @@ import type {
   FindOrOpenPartMeasurementResponse,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
+  PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
   PartMeasurementVisualTemplateDto,
   ResolveTicketResponse
@@ -1914,6 +1915,7 @@ export async function createPartMeasurementSheet(
     templateId: string;
     scannedBarcodeRaw?: string | null;
     scheduleRowId?: string;
+    allowAlternateResourceTemplate?: boolean;
   },
   clientKey?: string
 ): Promise<PartMeasurementSheetDto> {
@@ -2057,6 +2059,26 @@ export async function listPartMeasurementTemplates(
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
   return data.templates;
+}
+
+export async function listPartMeasurementTemplateCandidates(
+  params: {
+    fhincd: string;
+    processGroup: PartMeasurementProcessGroup;
+    resourceCd: string;
+    fhinmei?: string;
+    q?: string;
+  },
+  clientKey?: string
+): Promise<PartMeasurementTemplateCandidateDto[]> {
+  const { data } = await api.get<{ candidates: PartMeasurementTemplateCandidateDto[] }>(
+    '/part-measurement/templates/candidates',
+    {
+      params,
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.candidates;
 }
 
 export async function listPartMeasurementVisualTemplates(

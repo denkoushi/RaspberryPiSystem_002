@@ -21,6 +21,11 @@ export type CreateSheetInput = {
   templateId: string;
   scannedBarcodeRaw?: string | null;
   clientDeviceId?: string | null;
+  /**
+   * true のとき、テンプレートの資源CDとスナップショットが不一致でも可（キオスクで別資源登録テンプレを借用）。
+   * fhincd・工程は現行どおり一致必須。
+   */
+  allowAlternateResourceTemplate?: boolean;
 };
 
 export type PatchSheetInput = {
@@ -301,7 +306,9 @@ export class PartMeasurementSheetService {
     if (template.processGroup !== prismaGroup) {
       throw new ApiError(400, 'テンプレートと工程区分が一致しません');
     }
-    if (normalizeResourceCd(template.resourceCd) !== resourceCd) {
+    const templateResourceNorm = normalizeResourceCd(template.resourceCd);
+    const allowAlternate = input.allowAlternateResourceTemplate === true;
+    if (!allowAlternate && templateResourceNorm !== resourceCd) {
       throw new ApiError(400, 'テンプレートと資源CDが一致しません');
     }
 

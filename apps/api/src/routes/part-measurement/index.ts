@@ -9,6 +9,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-sche
 import {
   PartMeasurementResolveService,
   PartMeasurementSheetService,
+  PartMeasurementTemplateCandidateService,
   PartMeasurementTemplateService,
   PartMeasurementVisualTemplateService
 } from '../../services/part-measurement/index.js';
@@ -36,7 +37,8 @@ const createSheetBodySchema = z.object({
   processGroup: processGroupSchema,
   templateId: z.string().uuid(),
   scannedBarcodeRaw: z.string().max(500).optional().nullable(),
-  scheduleRowId: z.string().uuid().optional()
+  scheduleRowId: z.string().uuid().optional(),
+  allowAlternateResourceTemplate: z.boolean().optional()
 });
 
 const findOrOpenSheetBodySchema = z.object({
@@ -91,6 +93,14 @@ const listTemplatesQuerySchema = z.object({
   processGroup: processGroupSchema.optional(),
   resourceCd: z.string().max(120).optional(),
   includeInactive: z.coerce.boolean().optional()
+});
+
+const listTemplateCandidatesQuerySchema = z.object({
+  fhincd: z.string().min(1).max(120),
+  processGroup: processGroupSchema,
+  resourceCd: z.string().min(1).max(120),
+  fhinmei: z.string().max(500).optional(),
+  q: z.string().max(200).optional()
 });
 
 function decimalToString(value: unknown): string | null {
@@ -321,6 +331,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   const resolveService = new PartMeasurementResolveService();
   const sheetService = new PartMeasurementSheetService();
   const templateService = new PartMeasurementTemplateService();
+  const templateCandidateService = new PartMeasurementTemplateCandidateService();
   const visualTemplateService = new PartMeasurementVisualTemplateService();
 
   app.get(
@@ -472,7 +483,8 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const sheet = await sheetService.createDraft({
         ...body,
         resourceCdSnapshot,
-        clientDeviceId
+        clientDeviceId,
+        allowAlternateResourceTemplate: body.allowAlternateResourceTemplate
       });
       return { sheet: serializeSheet(sheet) };
     }
@@ -653,6 +665,26 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       return reply.send(csv);
     }
   );
+
+  app.get('/part-measurement/templates/candidates', { preHandler: allowView }, async (request) => {
+    const q = listTemplateCandidatesQuerySchema.parse(request.query);
+    const processGroup = q.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
+    const rows = await templateCandidateService.listCandidates({
+      fhincd: q.fhincd,
+      processGroup,
+      resourceCd: q.resourceCd,
+      fhinmei: q.fhinmei,
+      q: q.q
+    });
+    return {
+      candidates: rows.map((row) => ({
+        matchKind: row.matchKind,
+        selectable: row.selectable,
+        itemCount: row.itemCount,
+        template: serializeTemplate({ ...row.template, items: [] })
+      }))
+    };
+  });
 
   app.get('/part-measurement/templates', { preHandler: allowView }, async (request) => {
     const q = listTemplatesQuerySchema.parse(request.query);

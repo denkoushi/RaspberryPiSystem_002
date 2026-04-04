@@ -52,11 +52,18 @@ export function useKioskOpenPartMeasurementFromScheduleRow() {
           return;
         }
         if (res.mode === 'needs_template' && res.header) {
-          void navigate('/kiosk/part-measurement/template/new', {
+          const h = res.header;
+          void navigate('/kiosk/part-measurement/template/pick', {
             state: {
-              fhincd: res.header.fhincd,
-              resourceCd: res.header.resourceCd,
-              processGroup: res.header.processGroup
+              productNo: h.productNo,
+              fseiban: h.fseiban,
+              fhincd: h.fhincd,
+              fhinmei: h.fhinmei,
+              resourceCd: h.resourceCd,
+              processGroup: h.processGroup,
+              machineName: h.machineName,
+              scheduleRowId: row.id,
+              scannedBarcodeRaw: productNo
             }
           });
           return;
