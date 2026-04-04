@@ -632,6 +632,7 @@ update-frequency: high
 **追記（2026-04-04）**:
 - `Trivy image web` が **`usr/bin/caddy`（gobinary）** の `github.com/go-jose/go-jose/v3` / `v4` に対する **CVE-2026-34986**（HIGH、JWE 復号でパニック）を検出し、CI が失敗し得る。
 - **対策**: `infrastructure/docker/Dockerfile.web` の Caddy 用 `go.mod` に `replace` を追加し、**`v3.0.5` / `v4.1.4` 以上**へピン留めする（例: `main` の `358bd498` 付近）。ローカルでは `docker build -t raspisys-web:ci -f infrastructure/docker/Dockerfile.web .` の後 `trivy image`（CI と同条件）で 0 件を確認。
+- **本番反映のスコープ**: `Dockerfile.web` 変更は [docker-compose.server.yml](../../infrastructure/docker/docker-compose.server.yml) の **`web` サービス**に直結する。[deployment.md](../guides/deployment.md) に従い、Pi4 サイドに `web` が無い／更新不要なら **`update-all-clients.sh` は `--limit raspberrypi5` のみ**で足りる。反映後は `./scripts/deploy/verify-phase12-real.sh` が **PASS 43 / WARN 0 / FAIL 0** であることを確認した（2026-04-04・約 100s・Mac / Tailscale）。
 
 **統合ブランチ（2026-03-19）**:
 - `feat/production-schedule-ui-unify-caddy-secfix` で本 Caddy 自前ビルドと生産スケジュールUI統一（[frontend.md KB-307](./frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設)）を統合。
