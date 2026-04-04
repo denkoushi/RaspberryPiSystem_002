@@ -595,6 +595,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 - [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0** で完走する（スクリプト内: `POST /api/part-measurement/resolve-ticket` + 有効な `x-client-key` で `"candidates"`、無キーで **401**）
 - [ ] （手動）キオスク `/kiosk/part-measurement` で照会・記録表・確定まで問題ないか
 - [ ] （手動・visual 利用時）図面 Blob 表示・項目の **図番号（表示用）** が列見出しに出るか（[kiosk-part-measurement.md](../runbooks/kiosk-part-measurement.md)）
+- [ ] （手動）[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「Current UI spec」どおり、**編集画面** `/kiosk/part-measurement/edit/...` の **上部帯**（メタ + アクション・中央寄せ折返し）が窮屈すぎないか
 
 **検証コマンド例（resolve-ticket・401）**:
 
@@ -604,7 +605,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
   -d '{"productNo":"x","processGroup":"cutting"}'
 ```
 
-**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）
+**検証日時**: 2026-03-29（Phase2 全 Pi4 反映後・`main` マージ前に `verify-phase12-real.sh` **PASS 37/0/0** を Mac / Tailscale で再確認／キオスク UI の目視は各現場で推奨）／**2026-03-30**（visual template 本番反映後に同スクリプト **PASS 37/0/0**・約 117s／図面 UI は現場目視推奨）／**2026-04-04**（編集画面上部帯反映後・同スクリプト **PASS 41/0/0**・約 106s／編集画面上部帯・visual は現場目視推奨・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.10 デプロイスクリプト多重起動ロック（`update-all-clients.sh`）**

@@ -23,7 +23,7 @@
 
 - **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点） / [ADR-20260330-part-measurement-visual-template.md](./decisions/ADR-20260330-part-measurement-visual-template.md)（visual template・図面1枚・`displayMarker`）
 - **運用手順**: [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md)
-- **トラブルシュート**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)（図面ストレージは Docker 本番 compose で `part-measurement-drawings` をホストバインドし、rerun 時は `api/web` の `Created` 残留と summary 判定も確認。現行 UI はヘッダ 1 行優先・入力欄 5 桁幅）
+- **トラブルシュート**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)（図面ストレージは Docker 本番 compose で `part-measurement-drawings` をホストバインドし、rerun 時は `api/web` の `Created` 残留と summary 判定も確認。現行 UI はヘッダ 1 行優先・入力欄 5 桁幅・**編集画面上部帯**は [design-previews/kiosk-part-measurement-header-strip.html](./design-previews/kiosk-part-measurement-header-strip.html) 相当のレイアウト）
 - **実機検証**: [verification-checklist.md](./guides/verification-checklist.md) 6.6.9・6.6.10、`./scripts/deploy/verify-phase12-real.sh`（`resolve-ticket` スモーク含む）
 
 ### キオスク要領書（PDF）
@@ -42,6 +42,10 @@
 - **判断記録（類似候補）**: [ADR-20260330](./decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)（pgvector + 外部埋め込み HTTP、管理画面のみ候補表示） / [ADR-20260331](./decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)（VLM への条件付き GOOD 類似補助・**シャドーモード**先行） / [ADR-20260404](./decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)（本番保存・アクティブ＋**ギャラリー行数ゲート**、既定 OFF）
 - **サイネージ（貸出グリッド描画エンジン）**: [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md)（`SIGNAGE_LOAN_GRID_ENGINE`: `svg_legacy` 既定・`playwright_html` オプトイン・Docker/Ansible 配線）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
+
+### 🆕 最新アップデート（2026-04-04）
+
+- **キオスク部品測定: 編集画面上部帯統合（`KioskPartMeasurementEditTopStrip`・メタ `<dl>` ブロック・旧 `SheetHeaderSection` 撤去）・Pi5→Pi4×4 順次デプロイ・Phase12 実機検証・`main` 統合**: ブランチ `feat/kiosk-part-measurement-edit-top-strip`。Web のみ。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 0 / FAIL 0**（約 106s・2026-04-04・Mac / Tailscale）。**Detach Run ID（Pi5 代表）**: `20260404-082321-9627`（Pi4 各台も `failed=0`）。**静的プレビュー**: [design-previews/kiosk-part-measurement-header-strip.html](./design-previews/kiosk-part-measurement-header-strip.html)。**参照**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) / [verification-checklist.md](./guides/verification-checklist.md) §6.6.9 / [design-previews/README.md](./design-previews/README.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-03）
 
