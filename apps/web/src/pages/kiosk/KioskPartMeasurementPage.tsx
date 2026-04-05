@@ -16,6 +16,12 @@ import {
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL
 } from '../../features/barcode-scan';
 import {
+  KIOSK_PART_MEASUREMENT_IN_PROGRESS_CARD_TITLE,
+  KIOSK_PART_MEASUREMENT_IN_PROGRESS_EMPTY,
+  KIOSK_PART_MEASUREMENT_IN_PROGRESS_REFRESH_LABEL
+} from '../../features/part-measurement/kioskPartMeasurementInProgressCopy';
+import { KioskPartMeasurementInProgressDraftList } from '../../features/part-measurement/KioskPartMeasurementInProgressDraftList';
+import {
   loadPartMeasurementProcessGroup,
   savePartMeasurementProcessGroup
 } from '../../features/part-measurement/processGroupStorage';
@@ -222,28 +228,15 @@ export function KioskPartMeasurementPage() {
           </Button>
         </Link>
         <Button type="button" variant="secondary" onClick={() => void refreshDrafts()}>
-          下書き一覧を更新
+          {KIOSK_PART_MEASUREMENT_IN_PROGRESS_REFRESH_LABEL}
         </Button>
       </div>
 
-      <Card title="下書き一覧（新しい順）">
+      <Card title={KIOSK_PART_MEASUREMENT_IN_PROGRESS_CARD_TITLE}>
         {drafts.length === 0 ? (
-          <p className="text-sm text-slate-600">下書きはありません。</p>
+          <p className="text-sm text-slate-600">{KIOSK_PART_MEASUREMENT_IN_PROGRESS_EMPTY}</p>
         ) : (
-          <ul className="max-h-48 space-y-2 overflow-auto text-sm">
-            {drafts.map((d) => (
-              <li key={d.id}>
-                <Link
-                  to={`/kiosk/part-measurement/edit/${d.id}`}
-                  className="font-semibold text-blue-700 underline hover:text-blue-900"
-                >
-                  {d.productNo} / {d.fhincd} / {d.resourceCdSnapshot ?? '—'} /{' '}
-                  {d.processGroupSnapshot === 'grinding' ? '研削' : '切削'} / 更新{' '}
-                  {new Date(d.updatedAt).toLocaleString()}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <KioskPartMeasurementInProgressDraftList drafts={drafts} />
         )}
       </Card>
 
