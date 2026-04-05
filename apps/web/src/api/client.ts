@@ -2162,12 +2162,13 @@ export async function createPartMeasurementTemplate(
   return data.template;
 }
 
-/** 有効テンプレの系譜固定で次版を作成（名称・測定項目・図面のみ変更可） */
+/** 有効テンプレの系譜固定で次版を作成（FHINMEI_ONLY のとき候補キーも変更可） */
 export async function revisePartMeasurementTemplate(
   templateId: string,
   body: {
     name: string;
     visualTemplateId?: string | null;
+    candidateFhinmei?: string | null;
     items: Array<{
       sortOrder: number;
       datumSurface: string;
@@ -2184,6 +2185,21 @@ export async function revisePartMeasurementTemplate(
   const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
     `/part-measurement/templates/${templateId}/revise`,
     body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.template;
+}
+
+/** 最新の有効版のみ論理削除（isActive を false。旧版は自動で有効化しない） */
+export async function retirePartMeasurementTemplate(
+  templateId: string,
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
+    `/part-measurement/templates/${templateId}/retire`,
+    {},
     {
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }

@@ -359,6 +359,71 @@ describe('part-measurement templates API', () => {
     expect(row2?.isActive).toBe(true);
   });
 
+  it('revises FHINMEI_ONLY candidate key on same lineage (ADMIN)', async () => {
+    const key1 = `キーA-${Date.now()}`;
+    const key2 = `キーB-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateScope: 'fhinmei_only',
+        fhincd: '',
+        processGroup: 'cutting',
+        resourceCd: '',
+        candidateFhinmei: key1,
+        name: 'fhinmei key edit',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'd1',
+            measurementPoint: 'p1',
+            measurementLabel: 'l1'
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const id1 = createRes.json().template.id as string;
+    const resourceCd = createRes.json().template.resourceCd as string;
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id1}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'fhinmei key edit v2',
+        candidateFhinmei: key2,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'd2',
+            measurementPoint: 'p2',
+            measurementLabel: 'l2'
+          }
+        ]
+      }
+    });
+    expect(reviseRes.statusCode).toBe(200);
+    const id2 = reviseRes.json().template.id as string;
+    expect(reviseRes.json().template.candidateFhinmei).toBe(key2);
+    expect(reviseRes.json().template.resourceCd).toBe(resourceCd);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/templates?includeInactive=true',
+      headers: createAuthHeader(adminToken)
+    });
+    const templates = listRes.json().templates as Array<{
+      id: string;
+      candidateFhinmei: string | null;
+      isActive: boolean;
+    }>;
+    const active = templates.find((t) => t.id === id2);
+    expect(active?.isActive).toBe(true);
+    expect(active?.candidateFhinmei).toBe(key2);
+  });
+
   it('revises FHINMEI_ONLY template on same lineage (single active) (ADMIN)', async () => {
     const createRes = await app.inject({
       method: 'POST',
@@ -419,6 +484,132 @@ describe('part-measurement templates API', () => {
     const lineage = templates.filter((t) => t.resourceCd === resourceCd);
     expect(lineage.filter((t) => t.isActive)).toHaveLength(1);
     expect(lineage.find((t) => t.isActive)?.id).toBe(id2);
+  });
+
+  it('returns 400 when revising THREE_KEY with candidateFhinmei (ADMIN)', async () => {
+    const fhincd = `NOCAND-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-NOCAND',
+        name: 't',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const id = createRes.json().template.id as string;
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 't2',
+        candidateFhinmei: 'だめ',
+        items: [{ sortOrder: 0, datumSurface: 'a2', measurementPoint: 'b2', measurementLabel: 'c2' }]
+      }
+    });
+    expect(reviseRes.statusCode).toBe(400);
+  });
+
+  it('retires active template without reactivating old version (ADMIN)', async () => {
+    const fhincd = `RET-${Date.now()}`;
+    const v1 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-RET',
+        name: 'ret v1',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    expect(v1.statusCode).toBe(200);
+    const id1 = v1.json().template.id as string;
+
+    const v2 = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id1}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'ret v2',
+        items: [{ sortOrder: 0, datumSurface: 'a2', measurementPoint: 'b2', measurementLabel: 'c2' }]
+      }
+    });
+    expect(v2.statusCode).toBe(200);
+    const id2 = v2.json().template.id as string;
+
+    const retireRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id2}/retire`,
+      headers: createAuthHeader(adminToken),
+      payload: {}
+    });
+    expect(retireRes.statusCode).toBe(200);
+    expect(retireRes.json().template.isActive).toBe(false);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/templates?includeInactive=true',
+      headers: createAuthHeader(adminToken)
+    });
+    const templates = listRes.json().templates as Array<{ id: string; isActive: boolean }>;
+    const t1 = templates.find((t) => t.id === id1);
+    const t2 = templates.find((t) => t.id === id2);
+    expect(t1?.isActive).toBe(false);
+    expect(t2?.isActive).toBe(false);
+  });
+
+  it('returns 409 when retiring inactive template (ADMIN)', async () => {
+    const fhincd = `RET409-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-RET409',
+        name: 'x',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const id1 = createRes.json().template.id as string;
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id1}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'x2',
+        items: [{ sortOrder: 0, datumSurface: 'a2', measurementPoint: 'b2', measurementLabel: 'c2' }]
+      }
+    });
+    expect(reviseRes.statusCode).toBe(200);
+    const id2 = reviseRes.json().template.id as string;
+
+    const retireRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id2}/retire`,
+      headers: createAuthHeader(adminToken),
+      payload: {}
+    });
+    expect(retireRes.statusCode).toBe(200);
+
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id2}/retire`,
+      headers: createAuthHeader(adminToken),
+      payload: {}
+    });
+    expect(again.statusCode).toBe(409);
   });
 
   it('returns 409 when revising inactive template (ADMIN)', async () => {
