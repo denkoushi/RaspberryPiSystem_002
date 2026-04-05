@@ -14,7 +14,7 @@
 ## オペレータ手順（キオスク）
 
 1. **推奨**: 生産スケジュール（または手動順番の下ペイン一覧）の行の **測定** 列から開く（`find-or-open` で下書き再開・確定閲覧・新規・テンプレ作成へ振り分け）。
-2. またはヘッダの **部品測定** から `/kiosk/part-measurement` を開き、**工程** を切削 / 研削に合わせる（スケジュールから開いた場合は資源CDに応じて自動設定される）。
+2. またはヘッダの **部品測定** から `/kiosk/part-measurement` を開き、**工程** を切削 / 研削に合わせる（スケジュールから開いた場合は資源CDに応じて自動設定される）。画面上部の **「測定値入力中（新しい順）」** で、入力中の下書きを **品名・機種名付き**で選べる（**測定値入力中を更新** で再取得）。
 3. **バーコードスキャン** で移動票を読み取り、**日程を照会** で `ProductNo` を解決する。
 4. 複数候補がある場合は一覧から行を選ぶ。
 5. 下書きが無ければテンプレが解決できた時点で **記録表（下書き）が作成**される（スケジュール起点・手動照会とも）。
@@ -38,8 +38,8 @@
 
 ## 実機検証（自動・手動）
 
-- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` と **`GET /api/part-measurement/templates/candidates`** のスモーク（`candidates`・未認証 **401**）を含む。**実績**: 2026-04-05 時点で **`FHINMEI_ONLY` 部分一致**反映後も **FAIL 0**（例: **PASS 42 / WARN 1 / FAIL 0**・Pi3 オフライン WARN はスクリプト注記どおり。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節）。
-- **手動**: 対象キオスクで `/kiosk/part-measurement` を開き、実移動票で照会 → 記録表開始 → 入力・自動保存 → 確定まで通す。管理画面でテンプレが有効であることを事前確認する。
+- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` と **`GET /api/part-measurement/templates/candidates`** のスモーク（`candidates`・未認証 **401**）を含む。**実績**: 2026-04-05 時点で **ハブ「測定値入力中」UI 反映後**も **FAIL 0**（例: **PASS 42 / WARN 1 / FAIL 0**・約 99s・Pi3 オフライン WARN はスクリプト注記どおり。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節）。
+- **手動**: 対象キオスクで `/kiosk/part-measurement` を開き、**測定値入力中** 一覧が **3列レイアウト・品名/機種名・更新日時（曜日・秒なし）** になっていることを確認。続けて実移動票で照会 → 記録表開始 → 入力・自動保存 → 確定まで通す。管理画面でテンプレが有効であることを事前確認する。
 - **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
 
 ## 関連
