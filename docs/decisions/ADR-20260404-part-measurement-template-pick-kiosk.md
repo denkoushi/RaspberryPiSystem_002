@@ -13,7 +13,7 @@ accepted
 ## Decision
 
 1. **`GET /api/part-measurement/templates/candidates`**  
-   キオスク用に **登録スコープ別**に候補を束ねる。正本は `templateScope=THREE_KEY`（`FHINCD`×`processGroup`×`resourceCd`）。2要素候補は `FHINCD_RESOURCE`（照合: `FHINCD`+`resourceCd`、工程は日程側）。1要素候補は `FHINMEI_ONLY` でテンプレ側の **`candidateFhinmei`** と日程 **`fhinmei`** を照合する（品名の部分一致・別品番からの `name` 検索は廃止）。  
+   キオスク用に **登録スコープ別**に候補を束ねる。正本は `templateScope=THREE_KEY`（`FHINCD`×`processGroup`×`resourceCd`）。2要素候補は `FHINCD_RESOURCE`（照合: `FHINCD`+`resourceCd`、工程は日程側）。1要素候補は `FHINMEI_ONLY` でテンプレ側の **`candidateFhinmei`** と日程 **`fhinmei`** を照合する（**2026-04-05**: 双方を NFKC+lower+空白正規化したうえで、**日程文字列が候補キーを `includes` する部分一致**。候補キーは **正規化後 2 文字以上**（誤ヒット抑制）。同 `matchKind` 内の並びは **正規化後キー長の降順**でタイブレーク。別品番からの `name` 検索は廃止のまま）。  
    `matchKind` は表示・並び用（`exact_resource` → `two_key_fhincd_resource` → `one_key_fhinmei`）。**`selectable` は常に true**（非 exact は複製APIで日程3要素へ着地してから記録する）。
 2. **`POST /api/part-measurement/sheets` に `allowAlternateResourceTemplate`（任意）**  
    - 省略または `false`: 従来どおり **テンプレ資源 = スナップショット資源** が必須。  
@@ -39,6 +39,7 @@ accepted
 ## Verification
 
 - **2026-04-04（`feat/kiosk-part-measurement-template-auto-clone` 本番反映後）**: Pi5 → Pi4×4 を順次デプロイ（Detach Run ID は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) Phase12 節）。Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 91s）。部品測定 API スモーク（`resolve-ticket`・`templates/candidates` 認可）に加え、キオスクは checklist §6.6.9 の手動で複製→記録を推奨。
+- **2026-04-05（`feat/part-measurement-fhinmei-partial-match` 本番反映後）**: 同上デプロイ方針（Pi3 除外）。`verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 132s・Pi3 サイネージ WARN は運用上スキップ可）。`FHINMEI_ONLY` の **部分一致・最短長・タイブレーク**の手動確認は checklist §6.6.9・[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) を参照。
 
 ## References
 

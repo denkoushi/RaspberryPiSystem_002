@@ -22,7 +22,7 @@
 
 ### キオスク部品測定記録
 
-- **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点） / [ADR-20260330-part-measurement-visual-template.md](./decisions/ADR-20260330-part-measurement-visual-template.md)（visual template・図面1枚・`displayMarker`） / [ADR-20260404-part-measurement-template-pick-kiosk.md](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（キオスク・候補一覧・`clone-for-schedule-key`・**`templateScope` / `candidateFhinmei`**・matchKind `two_key_fhincd_resource` / `one_key_fhinmei`・レガシー `allowAlternateResourceTemplate`）
+- **設計判断**: [ADR-20260329-part-measurement-kiosk-record.md](./decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](./decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2: `resourceCd` キー・状態拡張・スケジュール起点） / [ADR-20260330-part-measurement-visual-template.md](./decisions/ADR-20260330-part-measurement-visual-template.md)（visual template・図面1枚・`displayMarker`） / [ADR-20260404-part-measurement-template-pick-kiosk.md](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（キオスク・候補一覧・`clone-for-schedule-key`・**`templateScope` / `candidateFhinmei`**・matchKind `two_key_fhincd_resource` / `one_key_fhinmei`・**`FHINMEI_ONLY` 照合は 2026-04-05 以降 正規化後 `includes` 部分一致**・レガシー `allowAlternateResourceTemplate`）
 - **運用手順**: [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md)
 - **トラブルシュート**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)（図面ストレージは Docker 本番 compose で `part-measurement-drawings` をホストバインドし、rerun 時は `api/web` の `Created` 残留と summary 判定も確認。現行 UI はヘッダ 1 行優先・入力欄 5 桁幅・**編集画面上部帯**は [design-previews/kiosk-part-measurement-header-strip.html](./design-previews/kiosk-part-measurement-header-strip.html) 相当のレイアウト）
 - **実機検証**: [verification-checklist.md](./guides/verification-checklist.md) 6.6.9・6.6.10、`./scripts/deploy/verify-phase12-real.sh`（`resolve-ticket`・**`templates/candidates`** スモーク含む）
@@ -43,6 +43,10 @@
 - **判断記録（類似候補）**: [ADR-20260330](./decisions/ADR-20260330-photo-tool-similarity-gallery-pgvector.md)（pgvector + 外部埋め込み HTTP、管理画面のみ候補表示） / [ADR-20260331](./decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)（VLM への条件付き GOOD 類似補助・**シャドーモード**先行） / [ADR-20260404](./decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)（本番保存・アクティブ＋**ギャラリー行数ゲート**、既定 OFF）
 - **サイネージ（貸出グリッド描画エンジン）**: [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md)（`SIGNAGE_LOAN_GRID_ENGINE`: `svg_legacy` 既定・`playwright_html` オプトイン・Docker/Ansible 配線）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
+
+### 🆕 最新アップデート（2026-04-05）
+
+- **キオスク部品測定: `FHINMEI_ONLY` 候補の部分一致（NFKC+lower+空白正規化・日程 `fhinmei` が候補キーを `includes`・最短2文字・並びタイブレーク）・`feat/part-measurement-fhinmei-partial-match`・Pi5→Pi4×4 順次デプロイ（Pi3 除外）・Phase12 PASS 42/1/0（Pi3 WARN は運用上スキップ可）**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) / [ADR-20260404](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（Decision・Verification 追補）/ [verification-checklist.md](./guides/verification-checklist.md) §6.6.9 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-04）
 

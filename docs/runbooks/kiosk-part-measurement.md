@@ -38,11 +38,11 @@
 
 ## 実機検証（自動・手動）
 
-- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` のスモーク（`candidates` 応答・未認証 **401**）を含む。**実績**: Phase2 反映後（2026-03-29）および **visual template 反映後（2026-03-30）** とも **PASS 37 / WARN 0 / FAIL 0**（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節）。
+- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` と **`GET /api/part-measurement/templates/candidates`** のスモーク（`candidates`・未認証 **401**）を含む。**実績**: 2026-04-05 時点で **`FHINMEI_ONLY` 部分一致**反映後も **FAIL 0**（例: **PASS 42 / WARN 1 / FAIL 0**・Pi3 オフライン WARN はスクリプト注記どおり。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節）。
 - **手動**: 対象キオスクで `/kiosk/part-measurement` を開き、実移動票で照会 → 記録表開始 → 入力・自動保存 → 確定まで通す。管理画面でテンプレが有効であることを事前確認する。
 - **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
 
 ## 関連
 
-- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2） / [ADR-20260330-part-measurement-visual-template.md](../decisions/ADR-20260330-part-measurement-visual-template.md)（visual template）
+- ADR: [ADR-20260329-part-measurement-kiosk-record.md](../decisions/ADR-20260329-part-measurement-kiosk-record.md)（Phase1） / [ADR-20260401-part-measurement-phase2-resource-cd.md](../decisions/ADR-20260401-part-measurement-phase2-resource-cd.md)（Phase2） / [ADR-20260330-part-measurement-visual-template.md](../decisions/ADR-20260330-part-measurement-visual-template.md)（visual template） / [ADR-20260404-part-measurement-template-pick-kiosk.md](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（候補選択・`FHINMEI_ONLY` 照合の経時追補含む）
 - 沉浸式ヘッダー対象: `usesKioskImmersiveLayout` に `/kiosk/part-measurement` **およびその子パス**が含まれる（変更時は `kioskImmersiveLayoutPolicy.test.ts` を更新）
