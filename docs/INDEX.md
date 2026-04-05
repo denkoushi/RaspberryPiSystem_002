@@ -46,6 +46,7 @@
 
 ### 🆕 最新アップデート（2026-04-05）
 
+- **キオスク部品測定: 複数記録表（`PartMeasurementSession`・編集画面上部カード・別テンプレ追加・API `{ sheet, session }`・`feat/part-measurement-multi-sheet-parent`）・Pi5→Pi4×4 順次（Pi3 除外）・Phase12 PASS 42/1/0（約 135s）**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)（Detach Run ID・`--follow` 長時間と Pi5 デタッチ完走の TS）/ [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **キオスク部品測定: ハブ「測定値入力中」一覧（3列・FHINMEI/機種名・曜日付き更新・`feat/kiosk-part-measurement-in-progress-pane`）・Pi5→Pi4×4 順次・Phase12 PASS 42/1/0**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)（UI spec・デプロイ Run ID・Mac 並列ロックの TS）/ [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **キオスク部品測定: `FHINMEI_ONLY` 候補の部分一致（NFKC+lower+空白正規化・日程 `fhinmei` が候補キーを `includes`・最短2文字・並びタイブレーク）・`feat/part-measurement-fhinmei-partial-match`・Pi5→Pi4×4 順次デプロイ（Pi3 除外）・Phase12 PASS 42/1/0（Pi3 WARN は運用上スキップ可）**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md) / [ADR-20260404](./decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)（Decision・Verification 追補）/ [verification-checklist.md](./guides/verification-checklist.md) §6.6.9 / [EXEC_PLAN.md](../EXEC_PLAN.md)。
 

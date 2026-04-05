@@ -41,7 +41,7 @@
 
 ## 実機検証（自動・手動）
 
-- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` と **`GET /api/part-measurement/templates/candidates`** のスモーク（`candidates`・未認証 **401**）を含む（**`revise` は専用 curl 無し**・統合テストで担保）。**実績**: 2026-04-05 **管理テンプレ編集反映後（Pi5 のみ）** も **FAIL 0**（例: **PASS 42 / WARN 1 / FAIL 0**・約 129s・Pi3 WARN は運用上スキップ可。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節）。
+- **自動（推奨）**: `./scripts/deploy/verify-phase12-real.sh` — API ヘルス・deploy-status（Pi4 キオスク 4 台）・既存キオスク API に加え、`POST /api/part-measurement/resolve-ticket` と **`GET /api/part-measurement/templates/candidates`** のスモーク（`candidates`・未認証 **401**）を含む（**`revise` は専用 curl 無し**・統合テストで担保）。**実績**: 2026-04-05 **複数記録表（セッション親子・Pi5→Pi4×4）** 反映後も **FAIL 0**（**PASS 42 / WARN 1 / FAIL 0**・約 **135s**・Pi3 WARN は運用上スキップ可）。2026-04-05 **管理テンプレ編集反映後（Pi5 のみ）** も **FAIL 0**（例: 約 129s・同上 WARN 解釈）。詳細は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)「実機・自動検証」節。
 - **手動**: 対象キオスクで `/kiosk/part-measurement` を開き、**測定値入力中** 一覧が **3列レイアウト・品名/機種名・更新日時（曜日・秒なし）** になっていることを確認。続けて実移動票で照会 → 記録表開始 → 入力・自動保存 → 確定まで通す。管理で **部品測定テンプレ** を開き、有効行の **編集→保存**（**1要素なら候補キー変更可**）・**削除**で論理削除されること（任意）。
 - **チェックリスト**: [verification-checklist.md](../guides/verification-checklist.md) **6.6.9**。
 
