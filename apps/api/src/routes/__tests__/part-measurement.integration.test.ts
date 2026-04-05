@@ -297,6 +297,192 @@ describe('part-measurement templates API', () => {
     expect(body.isActive).toBe(true);
   });
 
+  it('revises active template into next version and deactivates prior (ADMIN)', async () => {
+    const fhincd = `REV-${Date.now()}`;
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-REV',
+        name: 'before',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'a',
+            measurementPoint: 'b',
+            measurementLabel: 'c'
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const id1 = createRes.json().template.id as string;
+    expect(createRes.json().template.version).toBe(1);
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id1}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'after',
+        visualTemplateId: null,
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'a2',
+            measurementPoint: 'b2',
+            measurementLabel: 'c2'
+          }
+        ]
+      }
+    });
+    expect(reviseRes.statusCode).toBe(200);
+    const id2 = reviseRes.json().template.id as string;
+    expect(id2).not.toBe(id1);
+    expect(reviseRes.json().template.version).toBe(2);
+    expect(reviseRes.json().template.name).toBe('after');
+    expect(reviseRes.json().template.isActive).toBe(true);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/templates?includeInactive=true',
+      headers: createAuthHeader(adminToken)
+    });
+    expect(listRes.statusCode).toBe(200);
+    const templates = listRes.json().templates as Array<{ id: string; isActive: boolean; fhincd: string }>;
+    const row1 = templates.find((t) => t.id === id1);
+    const row2 = templates.find((t) => t.id === id2);
+    expect(row1?.isActive).toBe(false);
+    expect(row2?.isActive).toBe(true);
+  });
+
+  it('revises FHINMEI_ONLY template on same lineage (single active) (ADMIN)', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateScope: 'fhinmei_only',
+        fhincd: '',
+        processGroup: 'cutting',
+        resourceCd: '',
+        candidateFhinmei: `候補キー${Date.now()}`,
+        name: 'fhinmei v1',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'd1',
+            measurementPoint: 'p1',
+            measurementLabel: 'l1'
+          }
+        ]
+      }
+    });
+    expect(createRes.statusCode).toBe(200);
+    const id1 = createRes.json().template.id as string;
+    const resourceCd = createRes.json().template.resourceCd as string;
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id1}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'fhinmei v2',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'd2',
+            measurementPoint: 'p2',
+            measurementLabel: 'l2'
+          }
+        ]
+      }
+    });
+    expect(reviseRes.statusCode).toBe(200);
+    const id2 = reviseRes.json().template.id as string;
+    expect(reviseRes.json().template.resourceCd).toBe(resourceCd);
+    expect(reviseRes.json().template.version).toBe(2);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/api/part-measurement/templates?includeInactive=true',
+      headers: createAuthHeader(adminToken)
+    });
+    const templates = listRes.json().templates as Array<{
+      id: string;
+      resourceCd: string;
+      isActive: boolean;
+    }>;
+    const lineage = templates.filter((t) => t.resourceCd === resourceCd);
+    expect(lineage.filter((t) => t.isActive)).toHaveLength(1);
+    expect(lineage.find((t) => t.isActive)?.id).toBe(id2);
+  });
+
+  it('returns 409 when revising inactive template (ADMIN)', async () => {
+    const fhincd = `REV409-${Date.now()}`;
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-409',
+        name: 'v1',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'a',
+            measurementPoint: 'b',
+            measurementLabel: 'c'
+          }
+        ]
+      }
+    });
+    const id1 = first.json().template.id as string;
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-409',
+        name: 'v2',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'a2',
+            measurementPoint: 'b2',
+            measurementLabel: 'c2'
+          }
+        ]
+      }
+    });
+
+    const reviseRes = await app.inject({
+      method: 'POST',
+      url: `/api/part-measurement/templates/${id1}/revise`,
+      headers: createAuthHeader(adminToken),
+      payload: {
+        name: 'nope',
+        items: [
+          {
+            sortOrder: 0,
+            datumSurface: 'x',
+            measurementPoint: 'y',
+            measurementLabel: 'z'
+          }
+        ]
+      }
+    });
+    expect(reviseRes.statusCode).toBe(409);
+  });
+
   it('returns 401 without auth for GET /api/part-measurement/templates/candidates', async () => {
     const res = await app.inject({
       method: 'GET',
