@@ -57,6 +57,13 @@ export function KioskPartMeasurementTemplatePickPage() {
     queryFn: async () => listPartMeasurementTemplateCandidates(queryParams!, clientKey)
   });
 
+  const usedTemplateIdSet = useMemo(
+    () => new Set((ctx?.usedTemplateIds ?? []).filter((id): id is string => Boolean(id && id.trim()))),
+    [ctx?.usedTemplateIds]
+  );
+
+  const isAppendMode = Boolean(ctx?.sessionId);
+
   const invalid = !hasRequiredContext(ctx);
 
   const goNewTemplate = () => {
@@ -89,7 +96,7 @@ export function KioskPartMeasurementTemplatePickPage() {
         );
         templateId = cloned.id;
       }
-      const sheet = await createPartMeasurementSheet(
+      const { sheet } = await createPartMeasurementSheet(
         {
           productNo: ctx.productNo,
           fseiban: ctx.fseiban,
@@ -100,7 +107,8 @@ export function KioskPartMeasurementTemplatePickPage() {
           processGroup: ctx.processGroup,
           templateId,
           scannedBarcodeRaw: ctx.scannedBarcodeRaw ?? null,
-          scheduleRowId: ctx.scheduleRowId ?? undefined
+          scheduleRowId: ctx.scheduleRowId ?? undefined,
+          sessionId: ctx.sessionId ?? undefined
         },
         clientKey
       );
@@ -124,12 +132,14 @@ export function KioskPartMeasurementTemplatePickPage() {
     );
   }
 
-  const candidates = candidatesQuery.data ?? [];
+  const candidates = (candidatesQuery.data ?? []).filter((c) => !usedTemplateIdSet.has(c.template.id));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 text-white">
       <p className="mx-4 shrink-0 text-xs text-slate-400">
-        テンプレートを選んで記録表を開始します。図面がある行はホバーで拡大表示されます（タッチ端末は今後の改善対象）。
+        {isAppendMode
+          ? '別のテンプレートを選び、同じ測定対象に記録表を追加します。既に使っているテンプレは候補から外しています。'
+          : 'テンプレートを選んで記録表を開始します。図面がある行はホバーで拡大表示されます（タッチ端末は今後の改善対象）。'}
       </p>
 
       <div className="mx-4 flex flex-wrap items-center gap-2">
@@ -141,7 +151,9 @@ export function KioskPartMeasurementTemplatePickPage() {
         </Button>
       </div>
 
-      <h1 className="mx-4 shrink-0 text-xl font-bold">測定テンプレートを選択</h1>
+      <h1 className="mx-4 shrink-0 text-xl font-bold">
+        {isAppendMode ? '追加する測定テンプレートを選択' : '測定テンプレートを選択'}
+      </h1>
       <div className="mx-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-400">
         <span>
           <span className="font-semibold text-slate-200">品番</span> {ctx.fhincd}

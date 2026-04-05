@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { createAuthHeader, createTestClientDevice, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -11,6 +11,7 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 async function cleanPartMeasurementTables() {
   await prisma.partMeasurementResult.deleteMany({});
   await prisma.partMeasurementSheet.deleteMany({});
+  await prisma.partMeasurementSession.deleteMany({});
   await prisma.partMeasurementTemplate.deleteMany({});
   await prisma.partMeasurementVisualTemplate.deleteMany({});
 }
@@ -986,5 +987,255 @@ describe('part-measurement templates API', () => {
     expect(body.template.id).toBe(existingId);
     expect(body.reusedExistingActive).toBe(true);
     expect(body.didClone).toBe(false);
+  });
+
+  it('allows a second sheet in the same session with a different template (allowAlternate) and rejects duplicate template', async () => {
+    const fhincd = `MS-${Date.now()}`;
+    const scheduleRes = 'RES-SCHEDULE';
+    const t1 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-MS-A',
+        name: 'テンプレA',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    const t2 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-MS-B',
+        name: 'テンプレB',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'd' }]
+      }
+    });
+    expect(t1.statusCode).toBe(200);
+    expect(t2.statusCode).toBe(200);
+    const id1 = t1.json().template.id as string;
+    const id2 = t2.json().template.id as string;
+
+    const pn = `PN-MS-${Date.now()}`;
+    const basePayload = {
+      productNo: pn,
+      fseiban: 'FS-MS',
+      fhincd,
+      fhinmei: '品',
+      resourceCdSnapshot: scheduleRes,
+      processGroup: 'cutting' as const,
+      allowAlternateResourceTemplate: true
+    };
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: { ...basePayload, templateId: id1 }
+    });
+    expect(first.statusCode).toBe(200);
+    const body1 = first.json() as { sheet: { id: string; sessionId: string }; session: { id: string; sheets: { id: string }[] } };
+    expect(body1.session).toBeTruthy();
+    expect(body1.session.sheets).toHaveLength(1);
+    const sessionId = body1.session.id;
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: { ...basePayload, templateId: id2, sessionId }
+    });
+    expect(second.statusCode).toBe(200);
+    const body2 = second.json() as { session: { sheets: unknown[] } };
+    expect(body2.session.sheets).toHaveLength(2);
+
+    const dup = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: { ...basePayload, templateId: id1, sessionId }
+    });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().errorCode).toBe('PART_MEASUREMENT_TEMPLATE_ALREADY_IN_SESSION');
+  });
+
+  it('sets session completedAt when all child sheets are finalized', async () => {
+    const emp = await createTestEmployee();
+    const fhincd = `MS-DONE-${Date.now()}`;
+    const scheduleRes = 'RES-SCHEDULE-DONE';
+    const t1 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-DONE-A',
+        name: 'テンプレA',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    const t2 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-DONE-B',
+        name: 'テンプレB',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'd' }]
+      }
+    });
+    const t3 = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-DONE-C',
+        name: 'テンプレC',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'e' }]
+      }
+    });
+    expect(t1.statusCode).toBe(200);
+    expect(t2.statusCode).toBe(200);
+    expect(t3.statusCode).toBe(200);
+    const id1 = t1.json().template.id as string;
+    const id2 = t2.json().template.id as string;
+    const id3 = t3.json().template.id as string;
+
+    const pn = `PN-DONE-${Date.now()}`;
+    const basePayload = {
+      productNo: pn,
+      fseiban: 'FS-DONE',
+      fhincd,
+      fhinmei: '品',
+      resourceCdSnapshot: scheduleRes,
+      processGroup: 'cutting' as const,
+      allowAlternateResourceTemplate: true
+    };
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: { ...basePayload, templateId: id1 }
+    });
+    expect(first.statusCode).toBe(200);
+    const sessionId = first.json().session.id as string;
+    const sheet1Id = first.json().sheet.id as string;
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: { ...basePayload, templateId: id2, sessionId }
+    });
+    expect(second.statusCode).toBe(200);
+    const sheet2Id = second.json().sheet.id as string;
+
+    const g1 = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/sheets/${sheet1Id}`,
+      headers: createAuthHeader(adminToken)
+    });
+    const g2 = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/sheets/${sheet2Id}`,
+      headers: createAuthHeader(adminToken)
+    });
+    const item1 = g1.json().sheet.template.items[0].id as string;
+    const item2 = g2.json().sheet.template.items[0].id as string;
+
+    const tag = emp.nfcTagUid ?? '';
+    expect(tag.length).toBeGreaterThan(0);
+
+    for (const [sid, itemId] of [
+      [sheet1Id, item1],
+      [sheet2Id, item2]
+    ] as const) {
+      const p = await app.inject({
+        method: 'PATCH',
+        url: `/api/part-measurement/sheets/${sid}`,
+        headers: createAuthHeader(adminToken),
+        payload: {
+          quantity: 1,
+          employeeTagUid: tag,
+          results: [{ pieceIndex: 0, templateItemId: itemId, value: '1.0' }]
+        }
+      });
+      expect(p.statusCode).toBe(200);
+      const fin = await app.inject({
+        method: 'POST',
+        url: `/api/part-measurement/sheets/${sid}/finalize`,
+        headers: createAuthHeader(adminToken),
+        payload: {}
+      });
+      expect(fin.statusCode).toBe(200);
+    }
+
+    const after = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/sheets/${sheet1Id}`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(after.statusCode).toBe(200);
+    const sess = after.json().session as { completedAt: string | null };
+    expect(sess.completedAt).toBeTruthy();
+
+    const third = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: { ...basePayload, templateId: id3, sessionId }
+    });
+    expect(third.statusCode).toBe(200);
+    expect(third.json().session.completedAt).toBeNull();
+  });
+
+  it('exports CSV with sessionId header', async () => {
+    const fhincd = `CSV-${Date.now()}`;
+    const t = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-CSV',
+        name: 'csv',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    const templateId = t.json().template.id as string;
+    const sheetRes = await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/sheets',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        productNo: `PN-CSV-${Date.now()}`,
+        fseiban: 'FS-CSV',
+        fhincd,
+        fhinmei: '品',
+        resourceCdSnapshot: 'RES-CSV',
+        processGroup: 'cutting',
+        templateId
+      }
+    });
+    const sheetId = sheetRes.json().sheet.id as string;
+    const csvRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/sheets/${sheetId}/export.csv`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(csvRes.statusCode).toBe(200);
+    expect(csvRes.payload).toContain('H,sessionId,');
   });
 });

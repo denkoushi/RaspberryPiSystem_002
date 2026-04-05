@@ -77,6 +77,14 @@
 - **レガシー**: `POST /api/part-measurement/sheets` の **`allowAlternateResourceTemplate: true`** は **互換のため維持**（キオスク候補の主経路では不使用）。
 - **根拠**: [ADR-20260404-part-measurement-template-pick-kiosk.md](../decisions/ADR-20260404-part-measurement-template-pick-kiosk.md)。UI モック: [kiosk-part-measurement-template-picker.html](../design-previews/kiosk-part-measurement-template-picker.html)。
 
+## 複数記録表（セッション・子シート）（2026-04-06）
+
+- **モデル**: `PartMeasurementSession` が親キー（**`productNo` + `processGroup` + `resourceCd`**）。`PartMeasurementSheet` は **`sessionId`** で子にぶら下がる。既存行はマイグレーションで **親1・子1** にバックフィル。
+- **API**: `GET` / `POST` / `PATCH` など記録表の応答は **`{ sheet, session }`**（`session.sheets` に兄弟一覧・**`completedAt`**）。同一測定へ追加するとき `POST …/sheets` に **`sessionId`**。同一セッション内で **同一 `templateId` を二重に付けようとすると 409**（`PART_MEASUREMENT_TEMPLATE_ALREADY_IN_SESSION`）。
+- **キオスク編集画面**: 上部に **`KioskPartMeasurementSessionSheetCards`**（テンプレ名・状態・更新時刻）。**別テンプレを追加**は `session.completedAt` が **null** のときのみ有効 → `/template/pick`（**`usedTemplateIds`** で候補を除外、**`sessionId`** で追加作成）。
+- **親の完了**: 取消・無効以外の子が **すべて確定**すると **`session.completedAt`** がセットされる。
+- **CSV**: 各子シートの export に **`H,sessionId,`…** を含め、セッションとひも付け可能にする（**子1枚あたり従来どおり1本の CSV**）。
+
 ## 実機・自動検証（Phase12）
 
 - **一括**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh`（Pi5 到達・Tailscale/LAN 自動選択）。

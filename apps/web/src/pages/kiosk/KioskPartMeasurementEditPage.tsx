@@ -14,12 +14,13 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { KioskPartMeasurementEditTopStrip } from '../../features/part-measurement/KioskPartMeasurementEditTopStrip';
+import { KioskPartMeasurementSessionSheetCards } from '../../features/part-measurement/KioskPartMeasurementSessionSheetCards';
 import { KioskPartMeasurementSheetMetaBlock } from '../../features/part-measurement/KioskPartMeasurementSheetMetaBlock';
 import { KIOSK_PART_MEASUREMENT_VALUE_INPUT_CLASSNAME } from '../../features/part-measurement/kioskPartMeasurementTableUi';
 import { usePartMeasurementDrawingBlobUrl } from '../../features/part-measurement/usePartMeasurementDrawingBlobUrl';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
-import type { PartMeasurementSheetDto } from '../../features/part-measurement/types';
+import type { PartMeasurementSessionSummaryDto, PartMeasurementSheetDto } from '../../features/part-measurement/types';
 
 const AUTOSAVE_MS = 600;
 
@@ -37,6 +38,7 @@ export function KioskPartMeasurementEditPage() {
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [sheet, setSheet] = useState<PartMeasurementSheetDto | null>(null);
+  const [session, setSession] = useState<PartMeasurementSessionSummaryDto | null>(null);
   const [quantityInput, setQuantityInput] = useState('');
   const [cellValues, setCellValues] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -61,8 +63,9 @@ export function KioskPartMeasurementEditPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const s = await getPartMeasurementSheet(sheetId, clientKey);
+      const { sheet: s, session: sess } = await getPartMeasurementSheet(sheetId, clientKey);
       setSheet(s);
+      setSession(sess);
       syncCellsFromSheet(s);
       if (s.status === 'FINALIZED' || s.status === 'CANCELLED' || s.status === 'INVALIDATED') {
         /* 閲覧モード */
@@ -100,12 +103,13 @@ export function KioskPartMeasurementEditPage() {
     async (id: string, qty: number, cells: Record<string, string>, items: { id: string }[]) => {
       const results = buildResultsPayload(qty, cells, items);
       try {
-        const updated = await patchPartMeasurementSheet(
+        const { sheet: updated, session: nextSession } = await patchPartMeasurementSheet(
           id,
           { quantity: qty, results: results.length > 0 ? results : undefined },
           clientKey
         );
         setSheet(updated);
+        if (nextSession) setSession(nextSession);
       } catch (e: unknown) {
         const err = e as { response?: { status?: number; data?: { errorCode?: string } } };
         if (err.response?.status === 409 && err.response?.data?.errorCode === 'PART_MEASUREMENT_EDIT_LOCKED') {
@@ -145,12 +149,13 @@ export function KioskPartMeasurementEditPage() {
     lastNfcKeyRef.current = key;
     void (async () => {
       try {
-        const updated = await patchPartMeasurementSheet(
+        const { sheet: updated, session: nextSession } = await patchPartMeasurementSheet(
           sheet.id,
           { employeeTagUid: nfcEvent.uid },
           clientKey
         );
         setSheet(updated);
+        if (nextSession) setSession(nextSession);
         setMessage(null);
       } catch (e: unknown) {
         const err = e as { response?: { data?: { message?: string }; status?: number; errorCode?: string } };
@@ -260,8 +265,9 @@ export function KioskPartMeasurementEditPage() {
         if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
         await flushPatchSheet(sheet.id, n, cellValues, items);
       }
-      const finalized = await finalizePartMeasurementSheet(sheet.id, clientKey);
+      const { sheet: finalized, session: nextSession } = await finalizePartMeasurementSheet(sheet.id, clientKey);
       setSheet(finalized);
+      if (nextSession) setSession(nextSession);
       setMessage('確定しました。');
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -275,8 +281,13 @@ export function KioskPartMeasurementEditPage() {
     if (!sheetId) return;
     setBusy(true);
     try {
-      const updated = await transferPartMeasurementEditLock(sheetId, { confirm: true }, clientKey);
+      const { sheet: updated, session: nextSession } = await transferPartMeasurementEditLock(
+        sheetId,
+        { confirm: true },
+        clientKey
+      );
       setSheet(updated);
+      if (nextSession) setSession(nextSession);
       setLockPrompt(false);
       setMessage('編集ロックを引き継ぎました。');
     } catch (e: unknown) {
@@ -309,6 +320,32 @@ export function KioskPartMeasurementEditPage() {
 
   const readOnly =
     sheet?.status === 'FINALIZED' || sheet?.status === 'CANCELLED' || sheet?.status === 'INVALIDATED';
+
+  const canAppendAnotherTemplate = Boolean(session && !session.completedAt);
+
+  const goAppendTemplatePick = () => {
+    if (!sheet || !session) return;
+    const rc = sheet.resourceCdSnapshot?.trim() ?? '';
+    if (!rc) {
+      setMessage('資源CDのスナップショットがありません。一覧から開き直してください。');
+      return;
+    }
+    void navigate('/kiosk/part-measurement/template/pick', {
+      state: {
+        productNo: sheet.productNo,
+        fseiban: sheet.fseiban,
+        fhincd: sheet.fhincd,
+        fhinmei: sheet.fhinmei,
+        resourceCd: rc,
+        processGroup: sheet.processGroupSnapshot,
+        machineName: sheet.machineName,
+        scheduleRowId: null,
+        scannedBarcodeRaw: sheet.scannedBarcodeRaw,
+        sessionId: session.id,
+        usedTemplateIds: session.sheets.map((sh) => sh.templateId).filter((id): id is string => Boolean(id))
+      }
+    });
+  };
 
   if (!sheetId) {
     return <p className="p-4 text-amber-200">記録表IDがありません。</p>;
@@ -351,12 +388,32 @@ export function KioskPartMeasurementEditPage() {
         </Card>
       ) : null}
 
+      {sheet && session ? (
+        <KioskPartMeasurementSessionSheetCards
+          session={session}
+          activeSheetId={sheet.id}
+          onSelectSheet={(id) => {
+            if (id !== sheetId) void navigate(`/kiosk/part-measurement/edit/${id}`);
+          }}
+        />
+      ) : null}
+
       <KioskPartMeasurementEditTopStrip
         actions={
           <>
             <Button type="button" variant="secondary" onClick={() => void navigate('/kiosk/part-measurement')}>
               一覧へ
             </Button>
+            {canAppendAnotherTemplate ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => goAppendTemplatePick()}
+                disabled={busy || !sheet}
+              >
+                別テンプレを追加
+              </Button>
+            ) : null}
             {sheet?.status === 'DRAFT' ? (
               <>
                 <Button type="button" variant="secondary" onClick={() => void handleManualSave()} disabled={busy}>

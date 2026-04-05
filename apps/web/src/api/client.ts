@@ -39,6 +39,7 @@ import type {
   FindOrOpenPartMeasurementResponse,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
+  PartMeasurementSheetWithSession,
   PartMeasurementTemplateCandidateDto,
   PartMeasurementTemplateDto,
   PartMeasurementTemplateScope,
@@ -1917,20 +1918,24 @@ export async function createPartMeasurementSheet(
     scannedBarcodeRaw?: string | null;
     scheduleRowId?: string;
     allowAlternateResourceTemplate?: boolean;
+    sessionId?: string | null;
   },
   clientKey?: string
-): Promise<PartMeasurementSheetDto> {
-  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>('/part-measurement/sheets', body, {
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.post<PartMeasurementSheetWithSession>('/part-measurement/sheets', body, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
-  return data.sheet;
+  return data;
 }
 
-export async function getPartMeasurementSheet(sheetId: string, clientKey?: string): Promise<PartMeasurementSheetDto> {
-  const { data } = await api.get<{ sheet: PartMeasurementSheetDto }>(`/part-measurement/sheets/${sheetId}`, {
+export async function getPartMeasurementSheet(
+  sheetId: string,
+  clientKey?: string
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.get<PartMeasurementSheetWithSession>(`/part-measurement/sheets/${sheetId}`, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
-  return data.sheet;
+  return data;
 }
 
 export async function patchPartMeasurementSheet(
@@ -1942,22 +1947,25 @@ export async function patchPartMeasurementSheet(
     results?: Array<{ pieceIndex: number; templateItemId: string; value?: string | number | null }>;
   },
   clientKey?: string
-): Promise<PartMeasurementSheetDto> {
-  const { data } = await api.patch<{ sheet: PartMeasurementSheetDto }>(`/part-measurement/sheets/${sheetId}`, body, {
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.patch<PartMeasurementSheetWithSession>(`/part-measurement/sheets/${sheetId}`, body, {
     headers: clientKey ? { 'x-client-key': clientKey } : undefined
   });
-  return data.sheet;
+  return data;
 }
 
-export async function finalizePartMeasurementSheet(sheetId: string, clientKey?: string): Promise<PartMeasurementSheetDto> {
-  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>(
+export async function finalizePartMeasurementSheet(
+  sheetId: string,
+  clientKey?: string
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.post<PartMeasurementSheetWithSession>(
     `/part-measurement/sheets/${sheetId}/finalize`,
     {},
     {
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
   );
-  return data.sheet;
+  return data;
 }
 
 export async function listPartMeasurementDrafts(
@@ -2004,30 +2012,30 @@ export async function transferPartMeasurementEditLock(
   sheetId: string,
   body: { confirm?: boolean },
   clientKey?: string
-): Promise<PartMeasurementSheetDto> {
-  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>(
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.post<PartMeasurementSheetWithSession>(
     `/part-measurement/sheets/${sheetId}/transfer-edit-lock`,
     body,
     {
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
   );
-  return data.sheet;
+  return data;
 }
 
 export async function cancelPartMeasurementSheet(
   sheetId: string,
   reason: string,
   clientKey?: string
-): Promise<PartMeasurementSheetDto> {
-  const { data } = await api.post<{ sheet: PartMeasurementSheetDto }>(
+): Promise<PartMeasurementSheetWithSession> {
+  const { data } = await api.post<PartMeasurementSheetWithSession>(
     `/part-measurement/sheets/${sheetId}/cancel`,
     { reason },
     {
       headers: clientKey ? { 'x-client-key': clientKey } : undefined
     }
   );
-  return data.sheet;
+  return data;
 }
 
 export async function downloadPartMeasurementSheetCsv(sheetId: string, clientKey: string, filename?: string): Promise<void> {
@@ -3121,6 +3129,7 @@ export type {
   FindOrOpenPartMeasurementResponse,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
+  PartMeasurementSheetWithSession,
   PartMeasurementTemplateDto,
   PartMeasurementTemplateScope,
   PartMeasurementVisualTemplateDto,

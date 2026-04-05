@@ -1,4 +1,4 @@
-import { PartMeasurementProcessGroup, PartMeasurementSheetStatus, Prisma } from '@prisma/client';
+import { PartMeasurementSheetStatus, Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
@@ -9,6 +9,31 @@ import {
   PART_MEASUREMENT_LEGACY_RESOURCE_CD
 } from './part-measurement-constants.js';
 import { partMeasurementTemplateFullInclude } from './part-measurement-template-include.js';
+import { PartMeasurementSessionService } from './part-measurement-session.service.js';
+
+const sheetListInclude = {
+  template: { include: partMeasurementTemplateFullInclude },
+  results: true,
+  employee: true,
+  createdByEmployee: true,
+  finalizedByEmployee: true,
+  clientDevice: true,
+  editLockClientDevice: true
+} satisfies Prisma.PartMeasurementSheetInclude;
+
+const sheetFullIncludeWithSession = {
+  ...sheetListInclude,
+  session: {
+    include: {
+      sheets: {
+        orderBy: { updatedAt: 'desc' as const },
+        include: {
+          template: { select: { id: true, name: true, version: true } }
+        }
+      }
+    }
+  }
+} satisfies Prisma.PartMeasurementSheetInclude;
 
 export type CreateSheetInput = {
   productNo: string;
@@ -19,6 +44,8 @@ export type CreateSheetInput = {
   resourceCdSnapshot: string;
   processGroup: string;
   templateId: string;
+  /** キオスクで別テンプレ追加するときの整合チェック用（省略可） */
+  sessionId?: string | null;
   scannedBarcodeRaw?: string | null;
   clientDeviceId?: string | null;
   /**
@@ -98,6 +125,7 @@ function countDecimalPlacesString(raw: string): number {
 
 export class PartMeasurementSheetService {
   private readonly employees = new EmployeeService();
+  private readonly sessions = new PartMeasurementSessionService();
 
   private async assertDraftEditLock(
     sheet: {
@@ -166,61 +194,7 @@ export class PartMeasurementSheetService {
         editLockClientDeviceId: clientDeviceId,
         editLockExpiresAt: lockExpiryFromNow()
       },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
-      }
-    });
-  }
-
-  async findDraftByBusinessKey(productNo: string, processGroup: PartMeasurementProcessGroup, resourceCd: string) {
-    const r = normalizeResourceCd(resourceCd);
-    return prisma.partMeasurementSheet.findFirst({
-      where: {
-        status: 'DRAFT',
-        productNo: productNo.trim(),
-        processGroupSnapshot: processGroup,
-        resourceCdSnapshot: r
-      },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
-      }
-    });
-  }
-
-  async findFinalizedByBusinessKey(
-    productNo: string,
-    processGroup: PartMeasurementProcessGroup,
-    resourceCd: string
-  ) {
-    const r = normalizeResourceCd(resourceCd);
-    return prisma.partMeasurementSheet.findFirst({
-      where: {
-        status: 'FINALIZED',
-        productNo: productNo.trim(),
-        processGroupSnapshot: processGroup,
-        resourceCdSnapshot: r
-      },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
-      }
+      include: sheetFullIncludeWithSession
     });
   }
 
@@ -230,14 +204,22 @@ export class PartMeasurementSheetService {
     const resourceCd = normalizeResourceCd(input.resourceCd);
     const pn = input.productNo.trim();
 
-    const draft = await this.findDraftByBusinessKey(pn, prismaGroup, resourceCd);
-    if (draft) {
-      return { mode: 'resume_draft' as const, sheet: draft };
-    }
-
-    const finalized = await this.findFinalizedByBusinessKey(pn, prismaGroup, resourceCd);
-    if (finalized) {
-      return { mode: 'view_finalized' as const, sheet: finalized };
+    const session = await this.sessions.findByBusinessKey(pn, prismaGroup, resourceCd);
+    if (session) {
+      const sheets = await prisma.partMeasurementSheet.findMany({
+        where: { sessionId: session.id },
+        orderBy: { updatedAt: 'desc' },
+        include: sheetListInclude
+      });
+      const drafts = sheets.filter((s) => s.status === 'DRAFT');
+      if (drafts.length > 0) {
+        return { mode: 'resume_draft' as const, sheet: drafts[0] };
+      }
+      const finalizedSheets = sheets.filter((s) => s.status === 'FINALIZED');
+      if (finalizedSheets.length > 0) {
+        return { mode: 'view_finalized' as const, sheet: finalizedSheets[0] };
+      }
+      // 取消・無効のみなど → 新規テンプレ作成へ
     }
 
     const fseiban = input.fseiban?.trim() ?? '';
@@ -283,7 +265,8 @@ export class PartMeasurementSheetService {
       processGroup: input.processGroup,
       templateId: template.id,
       scannedBarcodeRaw: input.scannedBarcodeRaw ?? null,
-      clientDeviceId: input.clientDeviceId ?? null
+      clientDeviceId: input.clientDeviceId ?? null,
+      sessionId: session?.id ?? null
     });
     return { mode: 'created_draft' as const, sheet: created };
   }
@@ -292,6 +275,11 @@ export class PartMeasurementSheetService {
     const group = parseApiProcessGroup(input.processGroup);
     const prismaGroup = apiProcessGroupToPrisma(group);
     const resourceCd = normalizeResourceCd(input.resourceCdSnapshot);
+
+    const session = await this.sessions.ensureSession(input.productNo, prismaGroup, resourceCd);
+    if (input.sessionId && input.sessionId !== session.id) {
+      throw new ApiError(400, 'セッションIDが製造order・工程・資源CDと一致しません');
+    }
 
     const template = await prisma.partMeasurementTemplate.findFirst({
       where: { id: input.templateId, isActive: true },
@@ -312,56 +300,43 @@ export class PartMeasurementSheetService {
       throw new ApiError(400, 'テンプレートと資源CDが一致しません');
     }
 
-    const existingFinal = await this.findFinalizedByBusinessKey(input.productNo, prismaGroup, resourceCd);
-    if (existingFinal) {
-      throw new ApiError(400, 'この製造order・工程・資源CDは既に確定済みの記録があります');
-    }
+    await this.sessions.assertTemplateUniqueInSession(session.id, template.id);
 
-    const existingDraft = await this.findDraftByBusinessKey(input.productNo, prismaGroup, resourceCd);
-    if (existingDraft) {
-      throw new ApiError(409, '同じキーの下書きが既に存在します', undefined, 'PART_MEASUREMENT_DRAFT_EXISTS');
-    }
-
-    return prisma.partMeasurementSheet.create({
-      data: {
-        status: 'DRAFT',
-        productNo: input.productNo.trim(),
-        fseiban: input.fseiban.trim(),
-        fhincd: input.fhincd.trim(),
-        fhinmei: input.fhinmei.trim(),
-        machineName: input.machineName?.trim() || null,
-        resourceCdSnapshot: resourceCd,
-        processGroupSnapshot: prismaGroup,
-        templateId: template.id,
-        scannedBarcodeRaw: input.scannedBarcodeRaw?.trim() || null,
-        clientDeviceId: input.clientDeviceId ?? undefined,
-        editLockClientDeviceId: input.clientDeviceId ?? undefined,
-        editLockExpiresAt: input.clientDeviceId ? lockExpiryFromNow() : null
-      },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
+    return prisma.$transaction(async (tx) => {
+      // 完了済み親に新しい下書きが追加された時点で、親完了は解除する。
+      if (session.completedAt) {
+        await tx.partMeasurementSession.update({
+          where: { id: session.id },
+          data: { completedAt: null }
+        });
       }
+
+      return tx.partMeasurementSheet.create({
+        data: {
+          status: 'DRAFT',
+          productNo: input.productNo.trim(),
+          fseiban: input.fseiban.trim(),
+          fhincd: input.fhincd.trim(),
+          fhinmei: input.fhinmei.trim(),
+          machineName: input.machineName?.trim() || null,
+          resourceCdSnapshot: resourceCd,
+          processGroupSnapshot: prismaGroup,
+          sessionId: session.id,
+          templateId: template.id,
+          scannedBarcodeRaw: input.scannedBarcodeRaw?.trim() || null,
+          clientDeviceId: input.clientDeviceId ?? undefined,
+          editLockClientDeviceId: input.clientDeviceId ?? undefined,
+          editLockExpiresAt: input.clientDeviceId ? lockExpiryFromNow() : null
+        },
+        include: sheetFullIncludeWithSession
+      });
     });
   }
 
   async getById(id: string) {
     const sheet = await prisma.partMeasurementSheet.findUnique({
       where: { id },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
-      }
+      include: sheetFullIncludeWithSession
     });
     if (!sheet) {
       throw new ApiError(404, '記録表が見つかりません');
@@ -627,7 +602,8 @@ export class PartMeasurementSheetService {
       throw new ApiError(400, '未入力の測定値があります');
     }
 
-    return prisma.partMeasurementSheet.update({
+    const sessionId = sheet.sessionId;
+    await prisma.partMeasurementSheet.update({
       where: { id },
       data: {
         status: 'FINALIZED',
@@ -636,17 +612,10 @@ export class PartMeasurementSheetService {
         finalizedByEmployeeNameSnapshot: sheet.employeeNameSnapshot,
         editLockClientDeviceId: null,
         editLockExpiresAt: null
-      },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
       }
     });
+    await this.sessions.refreshCompletedAt(sessionId);
+    return this.getById(id);
   }
 
   async cancelDraft(id: string, reason: string, clientDeviceId?: string | null) {
@@ -663,7 +632,8 @@ export class PartMeasurementSheetService {
       throw new ApiError(400, '取消理由を入力してください');
     }
 
-    return prisma.partMeasurementSheet.update({
+    const sessionId = sheet.sessionId;
+    await prisma.partMeasurementSheet.update({
       where: { id },
       data: {
         status: 'CANCELLED',
@@ -671,17 +641,10 @@ export class PartMeasurementSheetService {
         cancelReason: r.slice(0, 2000),
         editLockClientDeviceId: null,
         editLockExpiresAt: null
-      },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
       }
     });
+    await this.sessions.refreshCompletedAt(sessionId);
+    return this.getById(id);
   }
 
   async invalidateFinalized(id: string, reason: string, clientDeviceId?: string | null) {
@@ -698,23 +661,17 @@ export class PartMeasurementSheetService {
     }
     void clientDeviceId;
 
-    return prisma.partMeasurementSheet.update({
+    const sessionId = sheet.sessionId;
+    await prisma.partMeasurementSheet.update({
       where: { id },
       data: {
         status: 'INVALIDATED',
         invalidatedAt: new Date(),
         invalidatedReason: r.slice(0, 2000)
-      },
-      include: {
-        template: { include: partMeasurementTemplateFullInclude },
-        results: true,
-        employee: true,
-        createdByEmployee: true,
-        finalizedByEmployee: true,
-        clientDevice: true,
-        editLockClientDevice: true
       }
     });
+    await this.sessions.refreshCompletedAt(sessionId);
+    return this.getById(id);
   }
 
   buildSheetCsv(sheet: Awaited<ReturnType<PartMeasurementSheetService['getById']>>): string {
@@ -727,6 +684,7 @@ export class PartMeasurementSheetService {
 
     lines.push('rowType,key,value');
     lines.push(`H,id,${esc(sheet.id)}`);
+    lines.push(`H,sessionId,${esc(sheet.sessionId)}`);
     lines.push(`H,status,${esc(sheet.status)}`);
     lines.push(`H,productNo,${esc(sheet.productNo)}`);
     lines.push(`H,fseiban,${esc(sheet.fseiban)}`);

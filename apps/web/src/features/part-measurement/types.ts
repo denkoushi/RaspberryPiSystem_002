@@ -80,10 +80,31 @@ export type KioskPartMeasurementTemplatePickLocationState = {
   machineName: string | null;
   scheduleRowId?: string | null;
   scannedBarcodeRaw?: string | null;
+  /** 既存セッションへ子シート追加するとき */
+  sessionId?: string | null;
+  /** 既に使っているテンプレID（再選択不可） */
+  usedTemplateIds?: string[];
+};
+
+/** GET /part-measurement/sheets/:id の session ブロック */
+export type PartMeasurementSessionSummaryDto = {
+  id: string;
+  productNo: string;
+  processGroup: PartMeasurementProcessGroup;
+  resourceCd: string;
+  completedAt: string | null;
+  sheets: Array<{
+    id: string;
+    status: PartMeasurementSheetStatus;
+    templateId: string | null;
+    templateName: string | null;
+    updatedAt: string;
+  }>;
 };
 
 export type PartMeasurementSheetDto = {
   id: string;
+  sessionId: string;
   status: PartMeasurementSheetStatus;
   productNo: string;
   fseiban: string;
@@ -118,6 +139,12 @@ export type PartMeasurementSheetDto = {
   employee: { id: string; displayName: string; employeeCode: string } | null;
 };
 
+/** POST/PATCH/GET 記録表系で共通の `{ sheet, session }` 戻り */
+export type PartMeasurementSheetWithSession = {
+  sheet: PartMeasurementSheetDto;
+  session: PartMeasurementSessionSummaryDto | null;
+};
+
 export type ResolveTicketResponse = {
   processGroup: PartMeasurementProcessGroup;
   ambiguous: boolean;
@@ -138,8 +165,8 @@ export type PartMeasurementFindOrOpenHeader = {
 };
 
 export type FindOrOpenPartMeasurementResponse =
-  | { mode: 'resume_draft'; sheet: PartMeasurementSheetDto }
-  | { mode: 'created_draft'; sheet: PartMeasurementSheetDto }
-  | { mode: 'view_finalized'; sheet: PartMeasurementSheetDto }
-  | { mode: 'needs_resolve'; sheet: null; header: null }
-  | { mode: 'needs_template'; sheet: null; header: PartMeasurementFindOrOpenHeader };
+  | { mode: 'resume_draft'; sheet: PartMeasurementSheetDto; session: PartMeasurementSessionSummaryDto | null }
+  | { mode: 'created_draft'; sheet: PartMeasurementSheetDto; session: PartMeasurementSessionSummaryDto | null }
+  | { mode: 'view_finalized'; sheet: PartMeasurementSheetDto; session: PartMeasurementSessionSummaryDto | null }
+  | { mode: 'needs_resolve'; sheet: null; session: null; header: null }
+  | { mode: 'needs_template'; sheet: null; session: null; header: PartMeasurementFindOrOpenHeader };

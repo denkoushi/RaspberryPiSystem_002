@@ -1390,6 +1390,22 @@ enum PartMeasurementSheetStatus {
   INVALIDATED
 }
 
+/// 同一測定対象（製造order・工程・資源CD）に複数の記録表をぶら下げる親集約。
+model PartMeasurementSession {
+  id           String                      @id @default(uuid())
+  productNo    String
+  processGroup PartMeasurementProcessGroup
+  resourceCd   String 
+  /// 親としての可算完了（関連記録表が運用ルール上そろった）時刻
+  completedAt  DateTime?
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+  sheets       PartMeasurementSheet[]
+
+  @@unique([productNo, processGroup, resourceCd], map: "PartMeasurementSession_unique_business_key")
+  @@index([productNo, processGroup])
+}
+
 /// 図面など表示用。FIHNCD に紐づけず、業務テンプレから参照して再利用する。
 model PartMeasurementVisualTemplate {
   id                       String                    @id @default(uuid())
@@ -1461,6 +1477,8 @@ model PartMeasurementSheet {
   machineName          String?
   resourceCdSnapshot   String?
   processGroupSnapshot PartMeasurementProcessGroup
+  sessionId            String
+  session              PartMeasurementSession       @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   /// 下書き中・確定前の作業者（NFC）
   employeeId           String?
   employeeNameSnapshot String?
@@ -1496,6 +1514,7 @@ model PartMeasurementSheet {
   @@index([fseiban], map: "PartMeasurementSheet_idx_fseiban")
   @@index([productNo, processGroupSnapshot, status], map: "PartMeasurementSheet_idx_product_group_status")
   @@index([finalizedAt], map: "PartMeasurementSheet_idx_finalizedAt")
+  @@index([sessionId], map: "PartMeasurementSheet_idx_session")
 }
 
 model PartMeasurementResult {

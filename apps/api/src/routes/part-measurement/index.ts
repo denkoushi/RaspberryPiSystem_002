@@ -38,7 +38,9 @@ const createSheetBodySchema = z.object({
   templateId: z.string().uuid(),
   scannedBarcodeRaw: z.string().max(500).optional().nullable(),
   scheduleRowId: z.string().uuid().optional(),
-  allowAlternateResourceTemplate: z.boolean().optional()
+  allowAlternateResourceTemplate: z.boolean().optional(),
+  /** 同一測定対象への追加作成時の整合チェック用 */
+  sessionId: z.string().uuid().optional()
 });
 
 const findOrOpenSheetBodySchema = z.object({
@@ -264,11 +266,47 @@ async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+type SerializedPartMeasurementSession = {
+  id: string;
+  productNo: string;
+  processGroup: 'cutting' | 'grinding';
+  resourceCd: string;
+  completedAt: string | null;
+  sheets: Array<{
+    id: string;
+    status: string;
+    templateId: string | null;
+    templateName: string | null;
+    updatedAt: string;
+  }>;
+};
+
+function serializePartMeasurementSession(
+  session: NonNullable<Awaited<ReturnType<PartMeasurementSheetService['getById']>>['session']>
+): SerializedPartMeasurementSession {
+  return {
+    id: session.id,
+    productNo: session.productNo,
+    processGroup: session.processGroup === 'GRINDING' ? 'grinding' : 'cutting',
+    resourceCd: session.resourceCd,
+    completedAt: session.completedAt?.toISOString() ?? null,
+    sheets: session.sheets.map((sh) => ({
+      id: sh.id,
+      status: sh.status,
+      templateId: sh.templateId,
+      templateName: sh.template?.name ?? null,
+      updatedAt: sh.updatedAt.toISOString()
+    }))
+  };
+}
+
+type SheetSerializeSource = Awaited<ReturnType<PartMeasurementSheetService['getById']>>;
 function serializeSheet(
-  sheet: Awaited<ReturnType<PartMeasurementSheetService['getById']>>
+  sheet: Omit<SheetSerializeSource, 'session'> & { session?: SheetSerializeSource['session'] }
 ) {
   return {
     id: sheet.id,
+    sessionId: sheet.sessionId,
     status: sheet.status,
     productNo: sheet.productNo,
     fseiban: sheet.fseiban,
@@ -308,6 +346,13 @@ function serializeSheet(
     employee: sheet.employee
       ? { id: sheet.employee.id, displayName: sheet.employee.displayName, employeeCode: sheet.employee.employeeCode }
       : null
+  };
+}
+
+function sheetResponsePair(sheet: SheetSerializeSource) {
+  return {
+    sheet: serializeSheet(sheet),
+    session: sheet.session ? serializePartMeasurementSession(sheet.session) : null
   };
 }
 
@@ -559,9 +604,10 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         ...body,
         resourceCdSnapshot,
         clientDeviceId,
-        allowAlternateResourceTemplate: body.allowAlternateResourceTemplate
+        allowAlternateResourceTemplate: body.allowAlternateResourceTemplate,
+        sessionId: body.sessionId
       });
-      return { sheet: serializeSheet(sheet) };
+      return sheetResponsePair(sheet);
     }
   );
 
@@ -590,18 +636,20 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
         clientDeviceId
       });
       if (result.mode === 'needs_resolve') {
-        return { mode: result.mode, sheet: null, header: null };
+        return { mode: result.mode, sheet: null, session: null, header: null };
       }
       if (result.mode === 'needs_template') {
         return {
           mode: result.mode,
           sheet: null,
+          session: null,
           header: result.header
         };
       }
+      const full = await sheetService.getById(result.sheet.id);
       return {
         mode: result.mode,
-        sheet: serializeSheet(result.sheet)
+        ...sheetResponsePair(full)
       };
     }
   );
@@ -665,7 +713,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const sheet = await sheetService.getById(params.id);
-      return { sheet: serializeSheet(sheet) };
+      return sheetResponsePair(sheet);
     }
   );
 
@@ -677,7 +725,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const body = patchSheetBodySchema.parse(request.body);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const sheet = await sheetService.patch(params.id, body, clientDeviceId);
-      return { sheet: serializeSheet(sheet) };
+      return sheetResponsePair(sheet);
     }
   );
 
@@ -689,7 +737,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const body = z.object({ confirm: z.boolean().optional().default(false) }).parse(request.body ?? {});
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const sheet = await sheetService.transferEditLock(params.id, clientDeviceId, body.confirm);
-      return { sheet: serializeSheet(sheet) };
+      return sheetResponsePair(sheet);
     }
   );
 
@@ -700,7 +748,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const sheet = await sheetService.finalize(params.id, clientDeviceId);
-      return { sheet: serializeSheet(sheet) };
+      return sheetResponsePair(sheet);
     }
   );
 
@@ -712,7 +760,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const sheet = await sheetService.cancelDraft(params.id, body.reason, clientDeviceId);
-      return { sheet: serializeSheet(sheet) };
+      return sheetResponsePair(sheet);
     }
   );
 
@@ -724,7 +772,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
       const clientDeviceId = await tryGetClientDeviceId(request.headers);
       const sheet = await sheetService.invalidateFinalized(params.id, body.reason, clientDeviceId);
-      return { sheet: serializeSheet(sheet) };
+      return sheetResponsePair(sheet);
     }
   );
 

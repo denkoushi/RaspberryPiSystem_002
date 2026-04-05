@@ -100,7 +100,7 @@ export function KioskPartMeasurementPage() {
   ) => {
     setBusy(true);
     try {
-      const created = await createPartMeasurementSheet(
+      const { sheet: created } = await createPartMeasurementSheet(
         {
           productNo,
           fseiban: row.fseiban,
