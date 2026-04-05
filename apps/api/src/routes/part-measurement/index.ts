@@ -115,6 +115,13 @@ const createTemplateBodySchema = z
     }
   });
 
+/** 有効テンプレの系譜固定での改版（名称・項目・図面のみ） */
+const reviseTemplateBodySchema = z.object({
+  name: z.string().min(1).max(200),
+  items: z.array(templateItemSchema).min(1).max(200),
+  visualTemplateId: z.string().uuid().optional().nullable()
+});
+
 /** 候補テンプレを日程の FIHNCD+工程+資源CD 用テンプレへ複製（既存 active があれば再利用） */
 const cloneTemplateForScheduleBodySchema = z.object({
   sourceTemplateId: z.string().uuid(),
@@ -805,6 +812,24 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
       };
     }
   );
+
+  app.post('/part-measurement/templates/:id/revise', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const body = reviseTemplateBodySchema.parse(request.body);
+    const template = await templateService.reviseActiveTemplate(params.id, {
+      name: body.name,
+      items: body.items,
+      visualTemplateId: body.visualTemplateId
+    });
+    return {
+      template: serializeTemplate({
+        ...template,
+        visualTemplateId: template.visualTemplateId,
+        visualTemplate: template.visualTemplate,
+        items: template.items
+      })
+    };
+  });
 
   app.post('/part-measurement/templates/:id/activate', { preHandler: allowWriteKiosk }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);

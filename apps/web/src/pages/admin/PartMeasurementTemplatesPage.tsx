@@ -6,11 +6,16 @@ import {
   createPartMeasurementTemplate,
   createPartMeasurementVisualTemplate,
   listPartMeasurementTemplates,
-  listPartMeasurementVisualTemplates
+  listPartMeasurementVisualTemplates,
+  revisePartMeasurementTemplate
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import {
+  buildTemplateItemsPayload,
+  mapTemplateDtoToAdminFormFields
+} from '../../features/part-measurement/admin/partMeasurementTemplateAdminFormModel';
 
 import type {
   PartMeasurementProcessGroup,
@@ -56,10 +61,12 @@ export function PartMeasurementTemplatesPage() {
   const [pickedVisualId, setPickedVisualId] = useState('');
   const [newVisualName, setNewVisualName] = useState('');
   const [newVisualFile, setNewVisualFile] = useState<File | null>(null);
+  const [showInactiveTemplates, setShowInactiveTemplates] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   const listQuery = useQuery({
-    queryKey: ['part-measurement-templates', { includeInactive: true }],
-    queryFn: () => listPartMeasurementTemplates({ includeInactive: true })
+    queryKey: ['part-measurement-templates', { includeInactive: showInactiveTemplates }],
+    queryFn: () => listPartMeasurementTemplates({ includeInactive: showInactiveTemplates })
   });
 
   const visualsQuery = useQuery({
@@ -67,21 +74,28 @@ export function PartMeasurementTemplatesPage() {
     queryFn: () => listPartMeasurementVisualTemplates({ includeInactive: true })
   });
 
+  const resetNewForm = () => {
+    setName('');
+    setFhincd('');
+    setResourceCd('');
+    setProcessGroup('cutting');
+    setTemplateScope('three_key');
+    setCandidateFhinmei('');
+    setItems([emptyItem()]);
+    setVisualChoice('none');
+    setPickedVisualId('');
+    setNewVisualName('');
+    setNewVisualFile(null);
+    setEditingTemplateId(null);
+  };
+
   const createMutation = useMutation({
     mutationFn: (body: Parameters<typeof createPartMeasurementTemplate>[0]) => createPartMeasurementTemplate(body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
       void qc.invalidateQueries({ queryKey: ['part-measurement-visual-templates'] });
       setMessage('テンプレートを登録しました。');
-      setName('');
-      setResourceCd('');
-      setTemplateScope('three_key');
-      setCandidateFhinmei('');
-      setItems([emptyItem()]);
-      setVisualChoice('none');
-      setPickedVisualId('');
-      setNewVisualName('');
-      setNewVisualFile(null);
+      resetNewForm();
     },
     onError: (e: Error & { response?: { data?: { message?: string } } }) => {
       setMessage(e.response?.data?.message ?? e.message ?? '登録に失敗しました。');
@@ -99,10 +113,101 @@ export function PartMeasurementTemplatesPage() {
     }
   });
 
+  const reviseMutation = useMutation({
+    mutationFn: (args: { templateId: string; body: Parameters<typeof revisePartMeasurementTemplate>[1] }) =>
+      revisePartMeasurementTemplate(args.templateId, args.body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
+      void qc.invalidateQueries({ queryKey: ['part-measurement-visual-templates'] });
+      setMessage('保存しました。');
+      resetNewForm();
+    },
+    onError: (e: Error & { response?: { data?: { message?: string } } }) => {
+      setMessage(e.response?.data?.message ?? e.message ?? '保存に失敗しました。');
+    }
+  });
+
+  const startEditFromDto = (t: PartMeasurementTemplateDto) => {
+    setMessage(null);
+    const fields = mapTemplateDtoToAdminFormFields(t);
+    setTemplateScope(fields.templateScope);
+    setFhincd(fields.fhincd);
+    setResourceCd(fields.resourceCd);
+    setProcessGroup(fields.processGroup);
+    setCandidateFhinmei(fields.candidateFhinmei);
+    setName(fields.name);
+    setItems(fields.items);
+    setVisualChoice(fields.visualChoice);
+    setPickedVisualId(fields.pickedVisualId);
+    setNewVisualName('');
+    setNewVisualFile(null);
+    setEditingTemplateId(t.id);
+  };
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     void (async () => {
       setMessage(null);
+
+      const templateName = (
+        name.trim() ||
+        (templateScope === 'fhinmei_only'
+          ? `FHINMEI:${candidateFhinmei.trim().slice(0, 40)}`
+          : `${fhincd.trim()} (${processGroup})`)
+      ).slice(0, 200);
+
+      const itemsPayload = buildTemplateItemsPayload(items);
+      if ('error' in itemsPayload) {
+        setMessage(itemsPayload.error);
+        return;
+      }
+      const trimmedItems = itemsPayload;
+
+      if (editingTemplateId) {
+        if (
+          !window.confirm(
+            '保存すると、これまでの有効版は新しい版に置き換わります（過去に記録済みのデータは変わりません）。続けますか？'
+          )
+        ) {
+          return;
+        }
+
+        let visualTemplateId: string | null | undefined;
+        if (visualChoice === 'none') {
+          visualTemplateId = null;
+        } else if (visualChoice === 'pick') {
+          const id = pickedVisualId.trim();
+          if (!id) {
+            setMessage('図面テンプレを選択するか、「図面なし」にしてください。');
+            return;
+          }
+          visualTemplateId = id;
+        } else {
+          if (!newVisualFile) {
+            setMessage('図面画像ファイルを選択してください。');
+            return;
+          }
+          try {
+            const v = await createPartMeasurementVisualTemplate(newVisualName.trim() || templateName, newVisualFile);
+            visualTemplateId = v.id;
+          } catch (err: unknown) {
+            const er = err as { response?: { data?: { message?: string } }; message?: string };
+            setMessage(er.response?.data?.message ?? er.message ?? '図面のアップロードに失敗しました。');
+            return;
+          }
+        }
+
+        reviseMutation.mutate({
+          templateId: editingTemplateId,
+          body: {
+            name: templateName,
+            items: trimmedItems,
+            visualTemplateId
+          }
+        });
+        return;
+      }
+
       const trimmedFhincd = fhincd.trim();
       const trimmedResourceCd = resourceCd.trim();
       if (templateScope === 'fhinmei_only') {
@@ -124,28 +229,6 @@ export function PartMeasurementTemplatesPage() {
           setMessage('資源CDを入力してください。');
           return;
         }
-      }
-      const templateName = (
-        name.trim() ||
-        (templateScope === 'fhinmei_only'
-          ? `FHINMEI:${candidateFhinmei.trim().slice(0, 40)}`
-          : `${trimmedFhincd} (${processGroup})`)
-      ).slice(0, 200);
-      const trimmedItems = items
-        .map((it, idx) => ({
-          sortOrder: idx,
-          datumSurface: it.datumSurface.trim(),
-          measurementPoint: it.measurementPoint.trim(),
-          measurementLabel: it.measurementLabel.trim(),
-          displayMarker: it.displayMarker.trim() || null,
-          unit: it.unit.trim() || null,
-          allowNegative: it.allowNegative,
-          decimalPlaces: Math.min(6, Math.max(0, Math.floor(it.decimalPlaces)))
-        }))
-        .filter((it) => it.datumSurface && it.measurementPoint && it.measurementLabel);
-      if (trimmedItems.length === 0) {
-        setMessage('測定項目を1行以上入力してください。');
-        return;
       }
 
       let visualTemplateId: string | null = null;
@@ -187,13 +270,19 @@ export function PartMeasurementTemplatesPage() {
       <h1 className="text-2xl font-bold text-slate-900">部品測定テンプレート</h1>
       {message ? <p className="text-sm font-semibold text-amber-800">{message}</p> : null}
 
-      <Card title="新規テンプレート（新バージョンとして登録）">
+      <Card title={editingTemplateId ? 'テンプレートを編集' : '新規テンプレート（新バージョンとして登録）'}>
         <form onSubmit={handleSubmit} className="grid max-w-3xl gap-4">
+          {editingTemplateId ? (
+            <p className="text-xs text-slate-600">
+              登録スコープ・FIHNCD・資源CD・工程・FHINMEI候補キーは変更できません（保存すると新しい版として登録されます）。
+            </p>
+          ) : null}
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             登録スコープ
             <select
               className="rounded border border-slate-300 px-3 py-2 text-sm"
               value={templateScope}
+              disabled={Boolean(editingTemplateId)}
               onChange={(e) => setTemplateScope(e.target.value as PartMeasurementTemplateScope)}
             >
               <option value="three_key">正本 — FIHNCD + 工程 + 資源CD（標準）</option>
@@ -216,6 +305,7 @@ export function PartMeasurementTemplatesPage() {
                 onChange={(e) => setCandidateFhinmei(e.target.value)}
                 placeholder="日程品名に含めたいキーワード（2文字以上。例: シャフト → シャフト特殊品 にも候補表示）"
                 required
+                disabled={Boolean(editingTemplateId)}
               />
             </label>
           ) : null}
@@ -225,7 +315,7 @@ export function PartMeasurementTemplatesPage() {
               value={fhincd}
               onChange={(e) => setFhincd(e.target.value)}
               required={templateScope !== 'fhinmei_only'}
-              disabled={templateScope === 'fhinmei_only'}
+              disabled={templateScope === 'fhinmei_only' || Boolean(editingTemplateId)}
             />
           </label>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
@@ -234,7 +324,7 @@ export function PartMeasurementTemplatesPage() {
               value={resourceCd}
               onChange={(e) => setResourceCd(e.target.value)}
               required={templateScope !== 'fhinmei_only'}
-              disabled={templateScope === 'fhinmei_only'}
+              disabled={templateScope === 'fhinmei_only' || Boolean(editingTemplateId)}
               placeholder="例: 設備コード"
             />
           </label>
@@ -244,7 +334,7 @@ export function PartMeasurementTemplatesPage() {
               className="rounded border border-slate-300 px-3 py-2 text-sm"
               value={processGroup}
               onChange={(e) => setProcessGroup(e.target.value as PartMeasurementProcessGroup)}
-              disabled={templateScope !== 'three_key'}
+              disabled={templateScope !== 'three_key' || Boolean(editingTemplateId)}
             >
               <option value="cutting">切削</option>
               <option value="grinding">研削</option>
@@ -408,9 +498,33 @@ export function PartMeasurementTemplatesPage() {
             </Button>
           </div>
 
-          <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? '登録中…' : '登録'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              disabled={createMutation.isPending || reviseMutation.isPending}
+            >
+              {editingTemplateId
+                ? reviseMutation.isPending
+                  ? '保存中…'
+                  : '保存'
+                : createMutation.isPending
+                  ? '登録中…'
+                  : '登録'}
+            </Button>
+            {editingTemplateId ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={reviseMutation.isPending}
+                onClick={() => {
+                  resetNewForm();
+                  setMessage(null);
+                }}
+              >
+                編集をキャンセル
+              </Button>
+            ) : null}
+          </div>
           {visualsQuery.isError ? (
             <p className="text-xs text-amber-700">図面テンプレ一覧の取得に失敗しました（図面選択のみ影響）。</p>
           ) : null}
@@ -418,6 +532,14 @@ export function PartMeasurementTemplatesPage() {
       </Card>
 
       <Card title="登録済みテンプレート">
+        <label className="mb-4 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={showInactiveTemplates}
+            onChange={(e) => setShowInactiveTemplates(e.target.checked)}
+          />
+          無効版も表示（有効版の切り替え用）
+        </label>
         {listQuery.isLoading ? (
           <p className="text-sm text-slate-600">読み込み中…</p>
         ) : listQuery.isError ? (
@@ -443,16 +565,28 @@ export function PartMeasurementTemplatesPage() {
                     <p className="text-xs text-slate-500">図面: {t.visualTemplate.name}</p>
                   ) : null}
                 </div>
-                {!t.isActive ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={activateMutation.isPending}
-                    onClick={() => activateMutation.mutate(t.id)}
-                  >
-                    有効化
-                  </Button>
-                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  {t.isActive ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={reviseMutation.isPending}
+                      onClick={() => startEditFromDto(t)}
+                    >
+                      編集
+                    </Button>
+                  ) : null}
+                  {!t.isActive ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={activateMutation.isPending}
+                      onClick={() => activateMutation.mutate(t.id)}
+                    >
+                      有効化
+                    </Button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

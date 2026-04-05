@@ -29,6 +29,75 @@ function normalizeResourceCd(raw: string): string {
   return t.length > 0 ? t : PART_MEASUREMENT_LEGACY_RESOURCE_CD;
 }
 
+type ResolvedLineage = {
+  templateScope: PartMeasurementTemplateScope;
+  fhincd: string;
+  processGroup: PartMeasurementProcessGroup;
+  resourceCd: string;
+  candidateFhinmei: string | null;
+};
+
+async function insertNextTemplateVersionInTransaction(
+  tx: Prisma.TransactionClient,
+  lineage: ResolvedLineage,
+  content: { name: string; items: TemplateItemInput[]; visualTemplateId: string | null }
+) {
+  const visualId = content.visualTemplateId?.trim() || null;
+  if (visualId) {
+    const vt = await tx.partMeasurementVisualTemplate.findFirst({
+      where: { id: visualId, isActive: true }
+    });
+    if (!vt) {
+      throw new ApiError(400, 'visual template が見つからないか無効です');
+    }
+  }
+
+  const { fhincd, processGroup, resourceCd, templateScope, candidateFhinmei } = lineage;
+
+  const agg = await tx.partMeasurementTemplate.aggregate({
+    where: { fhincd, processGroup, resourceCd },
+    _max: { version: true }
+  });
+  const nextVersion = (agg._max.version ?? 0) + 1;
+
+  await tx.partMeasurementTemplate.updateMany({
+    where: { fhincd, processGroup, resourceCd },
+    data: { isActive: false }
+  });
+
+  return tx.partMeasurementTemplate.create({
+    data: {
+      templateScope,
+      fhincd,
+      processGroup,
+      resourceCd,
+      candidateFhinmei,
+      name: content.name.trim(),
+      version: nextVersion,
+      isActive: true,
+      visualTemplateId: visualId,
+      items: {
+        create: content.items.map((item) => {
+          const dp = item.decimalPlaces ?? 6;
+          const clamped = Math.min(6, Math.max(0, Math.floor(dp)));
+          const dm = item.displayMarker?.trim();
+          return {
+            sortOrder: item.sortOrder,
+            datumSurface: item.datumSurface.trim(),
+            measurementPoint: item.measurementPoint.trim(),
+            measurementLabel: item.measurementLabel.trim(),
+            displayMarker: dm && dm.length > 0 ? dm.slice(0, 40) : null,
+            unit: item.unit?.trim() || null,
+            allowNegative: item.allowNegative !== false,
+            decimalPlaces: clamped
+          };
+        })
+      }
+    },
+    include: partMeasurementTemplateFullInclude
+  });
+}
+
 export class PartMeasurementTemplateService {
   async findActiveByFhincdGroupAndResource(
     fhincd: string,
@@ -123,61 +192,55 @@ export class PartMeasurementTemplateService {
 
     const visualId = params.visualTemplateId?.trim() || null;
 
-    return prisma.$transaction(async (tx) => {
-      if (visualId) {
-        const vt = await tx.partMeasurementVisualTemplate.findFirst({
-          where: { id: visualId, isActive: true }
-        });
-        if (!vt) {
-          throw new ApiError(400, 'visual template が見つからないか無効です');
-        }
-      }
+    return prisma.$transaction((tx) =>
+      insertNextTemplateVersionInTransaction(
+        tx,
+        { templateScope, fhincd, processGroup, resourceCd, candidateFhinmei },
+        { name: params.name, items: params.items, visualTemplateId: visualId }
+      )
+    );
+  }
 
-      const agg = await tx.partMeasurementTemplate.aggregate({
-        where: { fhincd, processGroup, resourceCd },
-        _max: { version: true }
-      });
-      const nextVersion = (agg._max.version ?? 0) + 1;
+  /**
+   * 有効版テンプレの系譜を固定したまま次バージョンを作成する（管理コンソール「編集」用）。
+   * FHINMEI_ONLY でも DB 上の resourceCd を変えず版だけ上げる。
+   */
+  async reviseActiveTemplate(
+    sourceTemplateId: string,
+    body: { name: string; items: TemplateItemInput[]; visualTemplateId?: string | null }
+  ) {
+    if (body.items.length === 0) {
+      throw new ApiError(400, 'テンプレート項目が空です');
+    }
 
-      await tx.partMeasurementTemplate.updateMany({
-        where: { fhincd, processGroup, resourceCd },
-        data: { isActive: false }
-      });
-
-      const template = await tx.partMeasurementTemplate.create({
-        data: {
-          templateScope,
-          fhincd,
-          processGroup,
-          resourceCd,
-          candidateFhinmei,
-          name: params.name.trim(),
-          version: nextVersion,
-          isActive: true,
-          visualTemplateId: visualId,
-          items: {
-            create: params.items.map((item) => {
-              const dp = item.decimalPlaces ?? 6;
-              const clamped = Math.min(6, Math.max(0, Math.floor(dp)));
-              const dm = item.displayMarker?.trim();
-              return {
-                sortOrder: item.sortOrder,
-                datumSurface: item.datumSurface.trim(),
-                measurementPoint: item.measurementPoint.trim(),
-                measurementLabel: item.measurementLabel.trim(),
-                displayMarker: dm && dm.length > 0 ? dm.slice(0, 40) : null,
-                unit: item.unit?.trim() || null,
-                allowNegative: item.allowNegative !== false,
-                decimalPlaces: clamped
-              };
-            })
-          }
-        },
-        include: partMeasurementTemplateFullInclude
-      });
-
-      return template;
+    const source = await prisma.partMeasurementTemplate.findUnique({
+      where: { id: sourceTemplateId }
     });
+    if (!source) {
+      throw new ApiError(404, 'テンプレートが見つかりません');
+    }
+    if (!source.isActive) {
+      throw new ApiError(409, '無効なテンプレートは編集できません。有効版を選び直してください。');
+    }
+
+    const lineage: ResolvedLineage = {
+      templateScope: source.templateScope,
+      fhincd: source.fhincd,
+      processGroup: source.processGroup,
+      resourceCd: source.resourceCd,
+      candidateFhinmei: source.candidateFhinmei
+    };
+
+    const visualId = body.visualTemplateId !== undefined ? body.visualTemplateId : source.visualTemplateId;
+    const normalizedVisual = visualId?.trim() ? visualId.trim() : null;
+
+    return prisma.$transaction((tx) =>
+      insertNextTemplateVersionInTransaction(tx, lineage, {
+        name: body.name,
+        items: body.items,
+        visualTemplateId: normalizedVisual
+      })
+    );
   }
 
   /**

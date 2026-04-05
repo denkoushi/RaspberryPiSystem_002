@@ -2162,6 +2162,35 @@ export async function createPartMeasurementTemplate(
   return data.template;
 }
 
+/** 有効テンプレの系譜固定で次版を作成（名称・測定項目・図面のみ変更可） */
+export async function revisePartMeasurementTemplate(
+  templateId: string,
+  body: {
+    name: string;
+    visualTemplateId?: string | null;
+    items: Array<{
+      sortOrder: number;
+      datumSurface: string;
+      measurementPoint: string;
+      measurementLabel: string;
+      displayMarker?: string | null;
+      unit?: string | null;
+      allowNegative?: boolean;
+      decimalPlaces?: number;
+    }>;
+  },
+  clientKey?: string
+): Promise<PartMeasurementTemplateDto> {
+  const { data } = await api.post<{ template: PartMeasurementTemplateDto }>(
+    `/part-measurement/templates/${templateId}/revise`,
+    body,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined
+    }
+  );
+  return data.template;
+}
+
 export async function activatePartMeasurementTemplate(
   templateId: string,
   clientKey?: string
