@@ -7,6 +7,7 @@ import {
   createPartMeasurementVisualTemplate,
   listPartMeasurementTemplates,
   listPartMeasurementVisualTemplates,
+  retirePartMeasurementTemplate,
   revisePartMeasurementTemplate
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
@@ -127,6 +128,18 @@ export function PartMeasurementTemplatesPage() {
     }
   });
 
+  const retireMutation = useMutation({
+    mutationFn: (templateId: string) => retirePartMeasurementTemplate(templateId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['part-measurement-templates'] });
+      setMessage('有効版を削除しました（無効版も表示で確認できます）。');
+      resetNewForm();
+    },
+    onError: (e: Error & { response?: { data?: { message?: string } } }) => {
+      setMessage(e.response?.data?.message ?? e.message ?? '削除に失敗しました。');
+    }
+  });
+
   const startEditFromDto = (t: PartMeasurementTemplateDto) => {
     setMessage(null);
     const fields = mapTemplateDtoToAdminFormFields(t);
@@ -172,6 +185,18 @@ export function PartMeasurementTemplatesPage() {
           return;
         }
 
+        if (templateScope === 'fhinmei_only') {
+          const mei = candidateFhinmei.trim();
+          if (mei.length === 0) {
+            setMessage('FHINMEI（候補キー）を入力してください。');
+            return;
+          }
+          if (mei.length < 2) {
+            setMessage('FHINMEI（候補キー）は 2 文字以上にしてください。');
+            return;
+          }
+        }
+
         let visualTemplateId: string | null | undefined;
         if (visualChoice === 'none') {
           visualTemplateId = null;
@@ -202,7 +227,8 @@ export function PartMeasurementTemplatesPage() {
           body: {
             name: templateName,
             items: trimmedItems,
-            visualTemplateId
+            visualTemplateId,
+            ...(templateScope === 'fhinmei_only' ? { candidateFhinmei: candidateFhinmei.trim() } : {})
           }
         });
         return;
@@ -274,7 +300,8 @@ export function PartMeasurementTemplatesPage() {
         <form onSubmit={handleSubmit} className="grid max-w-3xl gap-4">
           {editingTemplateId ? (
             <p className="text-xs text-slate-600">
-              登録スコープ・FIHNCD・資源CD・工程・FHINMEI候補キーは変更できません（保存すると新しい版として登録されます）。
+              登録スコープ・FIHNCD・資源CD・工程は変更できません。保存すると新しい版として登録されます。
+              候補（1要素・FHINMEI）のみ、FHINMEI（候補キー）を変更できます。
             </p>
           ) : null}
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
@@ -305,7 +332,7 @@ export function PartMeasurementTemplatesPage() {
                 onChange={(e) => setCandidateFhinmei(e.target.value)}
                 placeholder="日程品名に含めたいキーワード（2文字以上。例: シャフト → シャフト特殊品 にも候補表示）"
                 required
-                disabled={Boolean(editingTemplateId)}
+                disabled={Boolean(editingTemplateId) && templateScope !== 'fhinmei_only'}
               />
             </label>
           ) : null}
@@ -501,7 +528,7 @@ export function PartMeasurementTemplatesPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               type="submit"
-              disabled={createMutation.isPending || reviseMutation.isPending}
+              disabled={createMutation.isPending || reviseMutation.isPending || retireMutation.isPending}
             >
               {editingTemplateId
                 ? reviseMutation.isPending
@@ -515,7 +542,7 @@ export function PartMeasurementTemplatesPage() {
               <Button
                 type="button"
                 variant="secondary"
-                disabled={reviseMutation.isPending}
+                disabled={reviseMutation.isPending || retireMutation.isPending}
                 onClick={() => {
                   resetNewForm();
                   setMessage(null);
@@ -567,20 +594,39 @@ export function PartMeasurementTemplatesPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {t.isActive ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      disabled={reviseMutation.isPending}
-                      onClick={() => startEditFromDto(t)}
-                    >
-                      編集
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={reviseMutation.isPending || retireMutation.isPending}
+                        onClick={() => startEditFromDto(t)}
+                      >
+                        編集
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={reviseMutation.isPending || retireMutation.isPending}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              '最新の有効版を削除します（論理削除）。旧版は自動では有効になりません。よろしいですか？'
+                            )
+                          ) {
+                            return;
+                          }
+                          retireMutation.mutate(t.id);
+                        }}
+                      >
+                        削除
+                      </Button>
+                    </>
                   ) : null}
                   {!t.isActive ? (
                     <Button
                       type="button"
                       variant="secondary"
-                      disabled={activateMutation.isPending}
+                      disabled={activateMutation.isPending || retireMutation.isPending}
                       onClick={() => activateMutation.mutate(t.id)}
                     >
                       有効化

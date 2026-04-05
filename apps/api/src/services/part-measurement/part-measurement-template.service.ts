@@ -207,7 +207,13 @@ export class PartMeasurementTemplateService {
    */
   async reviseActiveTemplate(
     sourceTemplateId: string,
-    body: { name: string; items: TemplateItemInput[]; visualTemplateId?: string | null }
+    body: {
+      name: string;
+      items: TemplateItemInput[];
+      visualTemplateId?: string | null;
+      /** FHINMEI_ONLY の改版でのみ指定可 */
+      candidateFhinmei?: string | null;
+    }
   ) {
     if (body.items.length === 0) {
       throw new ApiError(400, 'テンプレート項目が空です');
@@ -223,12 +229,25 @@ export class PartMeasurementTemplateService {
       throw new ApiError(409, '無効なテンプレートは編集できません。有効版を選び直してください。');
     }
 
+    if (body.candidateFhinmei !== undefined && body.candidateFhinmei !== null && source.templateScope !== 'FHINMEI_ONLY') {
+      throw new ApiError(400, 'FHINMEI_ONLY 以外では FHINMEI 候補キーを変更できません');
+    }
+
+    let nextCandidate = source.candidateFhinmei;
+    if (body.candidateFhinmei !== undefined && source.templateScope === 'FHINMEI_ONLY') {
+      const c = String(body.candidateFhinmei ?? '').trim();
+      if (c.length < PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN) {
+        throw new ApiError(400, 'FHINMEI（候補キー）は 2 文字以上にしてください');
+      }
+      nextCandidate = c;
+    }
+
     const lineage: ResolvedLineage = {
       templateScope: source.templateScope,
       fhincd: source.fhincd,
       processGroup: source.processGroup,
       resourceCd: source.resourceCd,
-      candidateFhinmei: source.candidateFhinmei
+      candidateFhinmei: nextCandidate
     };
 
     const visualId = body.visualTemplateId !== undefined ? body.visualTemplateId : source.visualTemplateId;
@@ -241,6 +260,26 @@ export class PartMeasurementTemplateService {
         visualTemplateId: normalizedVisual
       })
     );
+  }
+
+  /**
+   * 最新の有効版を論理削除する（行の isActive のみ false。旧版は自動で有効化しない）。
+   */
+  async retireActiveTemplate(templateId: string) {
+    const t = await prisma.partMeasurementTemplate.findUnique({
+      where: { id: templateId }
+    });
+    if (!t) {
+      throw new ApiError(404, 'テンプレートが見つかりません');
+    }
+    if (!t.isActive) {
+      throw new ApiError(409, '無効なテンプレートは削除できません。有効版を選び直してください。');
+    }
+    return prisma.partMeasurementTemplate.update({
+      where: { id: templateId },
+      data: { isActive: false },
+      include: partMeasurementTemplateFullInclude
+    });
   }
 
   /**

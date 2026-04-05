@@ -115,12 +115,27 @@ const createTemplateBodySchema = z
     }
   });
 
-/** 有効テンプレの系譜固定での改版（名称・項目・図面のみ） */
-const reviseTemplateBodySchema = z.object({
-  name: z.string().min(1).max(200),
-  items: z.array(templateItemSchema).min(1).max(200),
-  visualTemplateId: z.string().uuid().optional().nullable()
-});
+/** 有効テンプレの系譜固定での改版。FHINMEI_ONLY のときのみ candidateFhinmei を変更可 */
+const reviseTemplateBodySchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    items: z.array(templateItemSchema).min(1).max(200),
+    visualTemplateId: z.string().uuid().optional().nullable(),
+    candidateFhinmei: z.string().max(500).optional().nullable()
+  })
+  .superRefine((val, ctx) => {
+    if (val.candidateFhinmei === undefined || val.candidateFhinmei === null) {
+      return;
+    }
+    const c = String(val.candidateFhinmei).trim();
+    if (c.length > 0 && c.length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'FHINMEI 候補キーは 2 文字以上にしてください',
+        path: ['candidateFhinmei']
+      });
+    }
+  });
 
 /** 候補テンプレを日程の FIHNCD+工程+資源CD 用テンプレへ複製（既存 active があれば再利用） */
 const cloneTemplateForScheduleBodySchema = z.object({
@@ -819,8 +834,22 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const template = await templateService.reviseActiveTemplate(params.id, {
       name: body.name,
       items: body.items,
-      visualTemplateId: body.visualTemplateId
+      visualTemplateId: body.visualTemplateId,
+      candidateFhinmei: body.candidateFhinmei
     });
+    return {
+      template: serializeTemplate({
+        ...template,
+        visualTemplateId: template.visualTemplateId,
+        visualTemplate: template.visualTemplate,
+        items: template.items
+      })
+    };
+  });
+
+  app.post('/part-measurement/templates/:id/retire', { preHandler: allowWriteKiosk }, async (request) => {
+    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const template = await templateService.retireActiveTemplate(params.id);
     return {
       template: serializeTemplate({
         ...template,
