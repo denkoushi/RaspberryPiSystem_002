@@ -4,6 +4,8 @@
 
 import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope } from '@prisma/client';
 
+import { PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN } from './part-measurement-constants.js';
+
 export type PartMeasurementTemplateMatchKind =
   | 'exact_resource'
   | 'two_key_fhincd_resource'
@@ -13,19 +15,37 @@ export function normalizeFhincd(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
+/** 一覧の雑な表示・互換用（照合は {@link normalizeFhinmeiForMatch}） */
 export function normalizeFhinmeiKey(raw: string | null | undefined): string {
   return (raw ?? '').trim().replace(/\s+/g, ' ');
 }
 
-/** 日程品名と候補 FHINMEI キーが一致するか（大文字小文字無視・前後空白除去） */
+/**
+ * FHINMEI_ONLY 照合・並び用。空白圧縮、NFKC、英字 lower。
+ */
+export function normalizeFhinmeiForMatch(raw: string | null | undefined): string {
+  const collapsed = (raw ?? '').trim().replace(/\s+/g, ' ');
+  if (collapsed.length === 0) {
+    return '';
+  }
+  try {
+    return collapsed.normalize('NFKC').toLowerCase();
+  } catch {
+    return collapsed.toLowerCase();
+  }
+}
+
+/** 日程品名が候補キーを含むか（FHINMEI_ONLY）。正規化後、`候補キー長 >= MIN_LEN`。 */
 export function scheduleFhinmeiMatchesCandidate(
   candidateFhinmei: string | null | undefined,
   scheduleFhinmei: string | null | undefined
 ): boolean {
-  const c = normalizeFhinmeiKey(candidateFhinmei);
-  const s = normalizeFhinmeiKey(scheduleFhinmei);
-  if (c.length === 0 || s.length === 0) return false;
-  return c.localeCompare(s, undefined, { sensitivity: 'accent' }) === 0;
+  const c = normalizeFhinmeiForMatch(candidateFhinmei);
+  const s = normalizeFhinmeiForMatch(scheduleFhinmei);
+  if (c.length < PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN || s.length === 0) {
+    return false;
+  }
+  return s.includes(c);
 }
 
 export function classifyCandidateMatch(params: {
@@ -100,16 +120,30 @@ export function compareCandidates(
     matchKind: PartMeasurementTemplateMatchKind;
     version: number;
     updatedAtMs: number;
+    /** one_key_fhinmei 同士のタイブレーク: 正規化後の候補キー長（降順で先） */
+    fhinmeiNormalizedLen?: number;
   },
   b: {
     matchKind: PartMeasurementTemplateMatchKind;
     version: number;
     updatedAtMs: number;
+    fhinmeiNormalizedLen?: number;
   }
 ): number {
   const da = matchKindSortOrder(a.matchKind);
   const db = matchKindSortOrder(b.matchKind);
   if (da !== db) return da - db;
+
+  if (
+    a.matchKind === 'one_key_fhinmei' &&
+    b.matchKind === 'one_key_fhinmei' &&
+    a.fhinmeiNormalizedLen != null &&
+    b.fhinmeiNormalizedLen != null &&
+    a.fhinmeiNormalizedLen !== b.fhinmeiNormalizedLen
+  ) {
+    return b.fhinmeiNormalizedLen - a.fhinmeiNormalizedLen;
+  }
+
   if (a.version !== b.version) return b.version - a.version;
   return b.updatedAtMs - a.updatedAtMs;
 }
@@ -119,12 +153,10 @@ export function matchesSearchFilter(
   q: string | undefined,
   template: { fhincd: string; name: string; candidateFhinmei?: string | null }
 ): boolean {
-  const s = (q ?? '').trim().toLowerCase();
+  const s = normalizeFhinmeiForMatch(q);
   if (s.length === 0) return true;
-  const fhinmei = (template.candidateFhinmei ?? '').trim().toLowerCase();
-  return (
-    template.fhincd.toLowerCase().includes(s) ||
-    template.name.toLowerCase().includes(s) ||
-    (fhinmei.length > 0 && fhinmei.includes(s))
-  );
+  const fhinmei = normalizeFhinmeiForMatch(template.candidateFhinmei);
+  const fhincd = normalizeFhinmeiForMatch(template.fhincd);
+  const name = normalizeFhinmeiForMatch(template.name);
+  return fhincd.includes(s) || name.includes(s) || (fhinmei.length > 0 && fhinmei.includes(s));
 }

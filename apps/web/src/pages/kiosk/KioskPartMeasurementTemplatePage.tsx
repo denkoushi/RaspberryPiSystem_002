@@ -94,9 +94,16 @@ export function KioskPartMeasurementTemplatePage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
-    if (templateScope === 'fhinmei_only' && candidateFhinmei.trim().length === 0) {
-      setMessage('FHINMEI（候補キー）を入力してください。');
-      return;
+    if (templateScope === 'fhinmei_only') {
+      const mei = candidateFhinmei.trim();
+      if (mei.length === 0) {
+        setMessage('FHINMEI（候補キー）を入力してください。');
+        return;
+      }
+      if (mei.length < 2) {
+        setMessage('FHINMEI（候補キー）は 2 文字以上にしてください。');
+        return;
+      }
     }
     const templateName = (
       name.trim() ||
@@ -174,7 +181,7 @@ export function KioskPartMeasurementTemplatePage() {
               ? '品番・資源CD・工程は日程行から固定されています（正本3要素）。'
               : templateScope === 'fhincd_resource'
                 ? '品番・資源CDは日程どおり。工程は登録時は内部用で、記録開始時に日程工程へ複製されます。'
-                : 'FHINMEI 候補として登録します。品番・資源は内部キーが自動付与され、キオスクでは日程品名と照合されます。'}
+                : 'FHINMEI 候補として登録します。日程の品名（正規化後）にキーワードが含まれると候補に出ます（2文字以上）。品番・資源は内部キーが自動付与されます。'}
           </p>
           <label className="grid gap-1 text-sm font-semibold text-slate-700">
             登録スコープ
@@ -195,7 +202,7 @@ export function KioskPartMeasurementTemplatePage() {
                 value={candidateFhinmei}
                 onChange={(e) => setCandidateFhinmei(e.target.value)}
                 className="text-slate-900"
-                placeholder="日程品名と一致させる文字列"
+                placeholder="日程品名に含めたいキーワード（2文字以上）"
               />
             </label>
           ) : null}

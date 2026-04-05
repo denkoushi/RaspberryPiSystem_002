@@ -9,7 +9,7 @@ import {
   isSelectableForSheetCreation,
   matchesSearchFilter,
   normalizeFhincd,
-  normalizeFhinmeiKey,
+  normalizeFhinmeiForMatch,
   type PartMeasurementTemplateMatchKind
 } from './template-candidate-rules.js';
 
@@ -47,7 +47,7 @@ export class PartMeasurementTemplateCandidateService {
     const scheduleResourceNorm = normalizeResourceCd(input.resourceCd);
     const fhincdDb = input.fhincd.trim();
     const scheduleProcessGroup = input.processGroup;
-    const scheduleFhinmeiKey = normalizeFhinmeiKey(input.fhinmei);
+    const scheduleFhinmeiNorm = normalizeFhinmeiForMatch(input.fhinmei);
 
     const [threeKeyRows, twoKeyScopeRows, fhinmeiRows] = await Promise.all([
       prisma.partMeasurementTemplate.findMany({
@@ -67,12 +67,11 @@ export class PartMeasurementTemplateCandidateService {
         },
         include: partMeasurementTemplateFullInclude
       }),
-      scheduleFhinmeiKey.length > 0
+      scheduleFhinmeiNorm.length > 0
         ? prisma.partMeasurementTemplate.findMany({
             where: {
               isActive: true,
-              templateScope: 'FHINMEI_ONLY',
-              candidateFhinmei: { equals: scheduleFhinmeiKey, mode: 'insensitive' }
+              templateScope: 'FHINMEI_ONLY'
             },
             include: partMeasurementTemplateFullInclude
           })
@@ -131,12 +130,20 @@ export class PartMeasurementTemplateCandidateService {
         {
           matchKind: a.matchKind,
           version: a.template.version,
-          updatedAtMs: a.template.updatedAt.getTime()
+          updatedAtMs: a.template.updatedAt.getTime(),
+          fhinmeiNormalizedLen:
+            a.matchKind === 'one_key_fhinmei'
+              ? normalizeFhinmeiForMatch(a.template.candidateFhinmei).length
+              : undefined
         },
         {
           matchKind: b.matchKind,
           version: b.template.version,
-          updatedAtMs: b.template.updatedAt.getTime()
+          updatedAtMs: b.template.updatedAt.getTime(),
+          fhinmeiNormalizedLen:
+            b.matchKind === 'one_key_fhinmei'
+              ? normalizeFhinmeiForMatch(b.template.candidateFhinmei).length
+              : undefined
         }
       )
     );

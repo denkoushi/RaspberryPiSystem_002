@@ -392,6 +392,46 @@ describe('part-measurement templates API', () => {
     expect(lowerCaseKinds).toContain('exact_resource');
   });
 
+  it('lists FHINMEI_ONLY candidate when schedule fhinmei contains candidate key (substring)', async () => {
+    const fhincd = `SUB-${Date.now()}`;
+    await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        fhincd,
+        processGroup: 'cutting',
+        resourceCd: 'RES-SUB',
+        name: 'base',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/part-measurement/templates',
+      headers: createAuthHeader(adminToken),
+      payload: {
+        templateScope: 'fhinmei_only',
+        fhincd: '',
+        resourceCd: '',
+        processGroup: 'cutting',
+        candidateFhinmei: 'シャフト',
+        name: 'FHINMEI 部分一致候補',
+        items: [{ sortOrder: 0, datumSurface: 'a', measurementPoint: 'b', measurementLabel: 'c' }]
+      }
+    });
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: `/api/part-measurement/templates/candidates?fhincd=${encodeURIComponent(fhincd)}&processGroup=cutting&resourceCd=RES-SUB&fhinmei=${encodeURIComponent('シャフト特殊品')}`,
+      headers: createAuthHeader(adminToken)
+    });
+    expect(listRes.statusCode).toBe(200);
+    const candidates = listRes.json().candidates as Array<{ matchKind: string; template: { name: string } }>;
+    const fhinmeiHits = candidates.filter((c) => c.matchKind === 'one_key_fhinmei');
+    expect(fhinmeiHits.some((c) => c.template.name === 'FHINMEI 部分一致候補')).toBe(true);
+  });
+
   it('POST sheets rejects resource mismatch without allowAlternateResourceTemplate', async () => {
     const fhincd = `ALT-${Date.now()}`;
     const t1 = await app.inject({

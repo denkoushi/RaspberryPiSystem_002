@@ -13,7 +13,7 @@ function matchKindLabel(kind: PartMeasurementTemplateCandidateDto['matchKind']):
     case 'two_key_fhincd_resource':
       return '候補（2要素：FIHNCD+資源CD）';
     case 'one_key_fhinmei':
-      return '候補（1要素：FHINMEI）';
+      return '候補（1要素：日程品名にキーワード含有）';
     default:
       return kind;
   }

@@ -88,7 +88,7 @@ describe('templateCandidateRules', () => {
     ).toBe('two_key_fhincd_resource');
   });
 
-  it('FHINMEI_ONLY: one_key when candidate FHINMEI equals schedule', () => {
+  it('FHINMEI_ONLY: one_key when schedule contains candidate key', () => {
     expect(
       classifyCandidateMatch({
         scheduleFhincdNorm: 'ABC',
@@ -102,10 +102,30 @@ describe('templateCandidateRules', () => {
         candidateFhinmei: 'シャフト本体'
       })
     ).toBe('one_key_fhinmei');
+    expect(
+      classifyCandidateMatch({
+        scheduleFhincdNorm: 'ABC',
+        scheduleProcessGroup: CUTTING,
+        scheduleResourceCdNorm: '587',
+        scheduleFhinmei: 'シャフト特殊品 早川',
+        templateScope: 'FHINMEI_ONLY',
+        templateFhincdNorm: '__X__',
+        templateProcessGroup: 'CANDIDATE_FHINMEI_ONLY',
+        templateResourceCdNorm: 'uuid',
+        candidateFhinmei: 'シャフト'
+      })
+    ).toBe('one_key_fhinmei');
   });
 
-  it('scheduleFhinmeiMatchesCandidate', () => {
-    expect(scheduleFhinmeiMatchesCandidate(' A ', 'a')).toBe(true);
+  it('scheduleFhinmeiMatchesCandidate: substring after normalize, min length 2', () => {
+    expect(scheduleFhinmeiMatchesCandidate('シャフト', 'シャフト特殊品')).toBe(true);
+    expect(scheduleFhinmeiMatchesCandidate('  シャフト  ', '早川 シャフト特殊品')).toBe(true);
+    expect(scheduleFhinmeiMatchesCandidate('AB', 'xxabYY')).toBe(true);
+    expect(scheduleFhinmeiMatchesCandidate('シャフト本体', '  シャフト本体 ')).toBe(true);
+    expect(scheduleFhinmeiMatchesCandidate('別物', 'シャフト特殊品')).toBe(false);
+    expect(scheduleFhinmeiMatchesCandidate('板', 'シャフト特殊品')).toBe(false);
+    expect(scheduleFhinmeiMatchesCandidate(' A ', 'a')).toBe(false);
+    expect(scheduleFhinmeiMatchesCandidate('ab', 'a')).toBe(false);
     expect(scheduleFhinmeiMatchesCandidate('x', 'y')).toBe(false);
     expect(scheduleFhinmeiMatchesCandidate('', 'y')).toBe(false);
   });
@@ -126,6 +146,22 @@ describe('templateCandidateRules', () => {
     expect(compareCandidates(b, a)).toBeLessThan(0);
     expect(compareCandidates(c, b)).toBeLessThan(0);
     expect(compareCandidates(d, e)).toBeLessThan(0);
+  });
+
+  it('compareCandidates: one_key_fhinmei tiebreak by longer normalized candidate key', () => {
+    const t0 = { updatedAtMs: 0, version: 1 };
+    const longer = {
+      matchKind: 'one_key_fhinmei' as const,
+      fhinmeiNormalizedLen: 10,
+      ...t0
+    };
+    const shorter = {
+      matchKind: 'one_key_fhinmei' as const,
+      fhinmeiNormalizedLen: 3,
+      ...t0
+    };
+    expect(compareCandidates(longer, shorter)).toBeLessThan(0);
+    expect(compareCandidates(shorter, longer)).toBeGreaterThan(0);
   });
 
   it('matchesSearchFilter includes candidateFhinmei', () => {

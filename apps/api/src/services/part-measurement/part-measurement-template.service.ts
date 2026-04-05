@@ -5,6 +5,7 @@ import type { PartMeasurementProcessGroup, PartMeasurementTemplateScope, Prisma 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import {
+  PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN,
   PART_MEASUREMENT_FHINMEI_ONLY_BUCKET_FHINCD,
   PART_MEASUREMENT_LEGACY_RESOURCE_CD
 } from './part-measurement-constants.js';
@@ -105,6 +106,9 @@ export class PartMeasurementTemplateService {
       resourceCd = randomUUID().replace(/-/g, '').slice(0, 32);
       if (!candidateFhinmei || candidateFhinmei.length === 0) {
         throw new ApiError(400, 'FHINMEI（候補キー）が空です');
+      }
+      if (candidateFhinmei.length < PART_MEASUREMENT_FHINMEI_CANDIDATE_MIN_LEN) {
+        throw new ApiError(400, 'FHINMEI（候補キー）は 2 文字以上にしてください');
       }
     } else {
       candidateFhinmei = null;

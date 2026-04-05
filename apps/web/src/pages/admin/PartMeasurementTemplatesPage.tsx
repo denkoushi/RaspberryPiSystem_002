@@ -111,6 +111,10 @@ export function PartMeasurementTemplatesPage() {
           setMessage('FHINMEI（候補キー）を入力してください。');
           return;
         }
+        if (mei.length < 2) {
+          setMessage('FHINMEI（候補キー）は 2 文字以上にしてください。');
+          return;
+        }
       } else {
         if (!trimmedFhincd) {
           setMessage('FIHNCD を入力してください。');
@@ -201,7 +205,7 @@ export function PartMeasurementTemplatesPage() {
                 ? '日程の3要素と一致する正本テンプレとして登録します。'
                 : templateScope === 'fhincd_resource'
                   ? '品番・資源で候補抽出されます。記録開始時に日程の工程を含む3要素テンプレへ自動複製されます。'
-                  : '登録した FHINMEI 文字列と日程品名が一致すると候補に出ます。記録開始時に3要素テンプレへ自動複製されます。'}
+                  : '登録したキーワードが正規化後の日程品名に「含まれる」と候補に出ます（英字の大小・空白・全半角の揺れを吸収。2文字以上）。記録開始時に3要素テンプレへ自動複製されます。'}
             </span>
           </label>
           {templateScope === 'fhinmei_only' ? (
@@ -210,7 +214,7 @@ export function PartMeasurementTemplatesPage() {
               <Input
                 value={candidateFhinmei}
                 onChange={(e) => setCandidateFhinmei(e.target.value)}
-                placeholder="日程の品名と完全一致（大文字小文字は区別しません）"
+                placeholder="日程品名に含めたいキーワード（2文字以上。例: シャフト → シャフト特殊品 にも候補表示）"
                 required
               />
             </label>

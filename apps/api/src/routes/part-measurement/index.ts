@@ -97,6 +97,12 @@ const createTemplateBodySchema = z
       const c = (val.candidateFhinmei ?? '').trim();
       if (c.length === 0) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'FHINMEI_ONLY では candidateFhinmei が必須です', path: ['candidateFhinmei'] });
+      } else if (c.length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'FHINMEI 候補キーは 2 文字以上にしてください',
+          path: ['candidateFhinmei']
+        });
       }
       return;
     }
