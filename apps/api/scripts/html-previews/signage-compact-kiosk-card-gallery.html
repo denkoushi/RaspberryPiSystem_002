@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>持出カード デザインギャラリー — compact kiosk × signage</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap');
+
+    :root {
+      --bg-deep: #050a14;
+      --text-primary: #f0f4f8;
+      --text-secondary: #a0aec0;
+      --text-muted: #5a6a7e;
+      --glass: rgba(255, 255, 255, 0.03);
+      --glass-border: rgba(255, 255, 255, 0.06);
+
+      /* New palette — muted tones with gradient accents */
+      --tool-from: #1a6bff;
+      --tool-to: #0a3d8f;
+      --instr-from: #8b5cf6;
+      --instr-to: #5b21b6;
+      --rig-from: #f97316;
+      --rig-to: #b45309;
+      --alert-ring: #ef4444;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      font-family: 'Inter', 'Noto Sans JP', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ambient glow */
+    .bg-mesh {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 55% at 15% -5%, rgba(26,107,255,0.10) 0%, transparent 65%),
+        radial-gradient(ellipse 50% 45% at 85% 15%, rgba(139,92,246,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 55% 50% at 55% 105%, rgba(249,115,22,0.06) 0%, transparent 55%);
+    }
+
+    .wrapper { position: relative; z-index: 1; max-width: 1440px; margin: 0 auto; padding: 48px 36px 96px; }
+
+    /* ---------- HEADER ---------- */
+    header { margin-bottom: 56px; }
+    header h1 {
+      font-size: 2.15rem; font-weight: 900; letter-spacing: -0.04em; line-height: 1.15;
+      background: linear-gradient(135deg, #7dd3fc 0%, #a78bfa 45%, #fb923c 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    header .sub { margin-top: 10px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.7; max-width: 640px; }
+    header .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 5px 14px; border-radius: 100px;
+      background: var(--glass); border: 1px solid var(--glass-border); color: var(--text-secondary);
+      backdrop-filter: blur(8px);
+    }
+    .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .chip .dot.tool   { background: var(--tool-from); box-shadow: 0 0 10px rgba(26,107,255,0.6); }
+    .chip .dot.instr  { background: var(--instr-from); box-shadow: 0 0 10px rgba(139,92,246,0.55); }
+    .chip .dot.rig    { background: var(--rig-from); box-shadow: 0 0 10px rgba(249,115,22,0.55); }
+    .chip .dot.alert  { background: var(--alert-ring); box-shadow: 0 0 10px rgba(239,68,68,0.55); }
+
+    /* ---------- SECTION ---------- */
+    section { margin-bottom: 60px; }
+    .section-head { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+    .section-head .icon {
+      width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
+      font-size: 18px; border: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      backdrop-filter: blur(6px);
+    }
+    .section-head .label h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+    .section-head .label p  { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+
+    .card-row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+
+    /* ================================================================
+       SIGNAGE COMPACT CARD  — 220×154  (Section 1: redesigned)
+       ================================================================ */
+    .sig-card {
+      width: 220px; height: 154px; border-radius: 16px;
+      padding: 10px 12px 7px; display: flex; flex-direction: column;
+      color: #fff; position: relative; overflow: hidden;
+      font-family: inherit;
+      transition: transform 0.35s cubic-bezier(.22,1,.36,1), box-shadow 0.4s ease;
+      /* default: tool */
+      background: linear-gradient(145deg, var(--tool-from), var(--tool-to));
+      border: 1.5px solid rgba(255,255,255,0.18);
+      box-shadow:
+        0 2px 6px rgba(0,0,0,0.25),
+        0 12px 40px rgba(26,107,255,0.18),
+        inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .sig-card:hover {
+      transform: translateY(-5px) scale(1.025);
+      box-shadow:
+        0 4px 12px rgba(0,0,0,0.3),
+        0 24px 64px rgba(26,107,255,0.28),
+        inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    /* highlight sheen */
+    .sig-card::before {
+      content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+      border-radius: 50%; pointer-events: none;
+      background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.14), transparent 55%);
+    }
+    /* subtle noise texture */
+    .sig-card::after {
+      content: ''; position: absolute; inset: 0; border-radius: 16px; pointer-events: none;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .sig-card.instrument {
+      background: linear-gradient(145deg, var(--instr-from), var(--instr-to));
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25), 0 12px 40px rgba(139,92,246,0.18), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .sig-card.instrument:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 24px 64px rgba(139,92,246,0.28), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .sig-card.rigging {
+      background: linear-gradient(145deg, var(--rig-from), var(--rig-to));
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25), 0 12px 40px rgba(249,115,22,0.18), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .sig-card.rigging:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 24px 64px rgba(249,115,22,0.28), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .sig-card.exceeded {
+      border: 2.5px solid var(--alert-ring);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25), 0 12px 40px rgba(239,68,68,0.22), inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+    .sig-card.exceeded:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 24px 64px rgba(239,68,68,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+    }
+    /* exceeded pulsing ring */
+    .sig-card.exceeded::before {
+      animation: pulse-ring 2.2s ease-in-out infinite;
+    }
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.6; }
+    }
+
+    /* -- inner elements -- */
+    .sig-card .emp {
+      position: relative; z-index: 1;
+      font-size: 13px; font-weight: 800; line-height: 1.15;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      margin-bottom: 5px; letter-spacing: 0.01em;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .sig-card .mid {
+      position: relative; z-index: 1;
+      display: flex; gap: 10px; flex: 1 1 0; min-height: 0; overflow: hidden;
+    }
+    .sig-card .thumb {
+      width: 76px; height: 76px; border-radius: 12px; flex-shrink: 0;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255,255,255,0.15);
+      display: grid; place-items: center; font-size: 30px;
+      transition: transform 0.3s ease;
+    }
+    .sig-card:hover .thumb { transform: scale(1.06); }
+    .sig-card .copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
+
+    .sig-card .copy .head-row { display: flex; align-items: baseline; gap: 5px; }
+    .sig-card .copy .head-row .code {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      opacity: 0.92; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sig-card .copy .head-row .id-num {
+      font-size: 10px; font-weight: 600; opacity: 0.75; flex-shrink: 0;
+      background: rgba(255,255,255,0.12); padding: 1px 6px; border-radius: 4px;
+    }
+    .sig-card .copy .name {
+      font-size: 14px; font-weight: 800; line-height: 1.18; letter-spacing: -0.01em;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; word-break: break-word;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    }
+    .sig-card .copy .loc {
+      font-size: 9.5px; font-weight: 600; line-height: 1.25; margin-top: auto;
+      color: rgba(255,255,255,0.72);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    .sig-card .foot {
+      position: relative; z-index: 1;
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: auto; padding-top: 5px; flex-shrink: 0;
+    }
+    .sig-card .foot .date {
+      font-size: 10.5px; font-weight: 600; opacity: 0.85;
+      background: rgba(0,0,0,0.15); padding: 2px 8px; border-radius: 6px;
+    }
+    .sig-card .foot .mgmt {
+      font-size: 10.5px; font-weight: 700;
+      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      letter-spacing: 0.04em; opacity: 0.9;
+    }
+
+    /* ================================================================
+       WEB KIOSK CARD  (Section 2 & 3 — kept, minor polish)
+       ================================================================ */
+    .web-card {
+      width: 280px; border-radius: 18px; overflow: hidden;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+      transition: all 0.35s cubic-bezier(.22,1,.36,1);
+      position: relative;
+    }
+    .web-card:hover { transform: translateY(-6px); box-shadow: 0 20px 60px rgba(0,0,0,0.45); border-color: rgba(255,255,255,0.12); }
+    .web-card.instrument { border-color: rgba(139,92,246,0.25); background: rgba(91,33,182,0.06); }
+    .web-card.instrument:hover { border-color: rgba(139,92,246,0.45); }
+    .web-card.rigging { border-color: rgba(251,146,60,0.25); background: rgba(180,83,9,0.06); }
+    .web-card.rigging:hover { border-color: rgba(251,146,60,0.45); }
+
+    .web-card .hero {
+      position: relative; aspect-ratio: 4 / 3;
+      background: linear-gradient(145deg, #141c2e, #0b1120);
+      display: grid; place-items: center; overflow: hidden;
+    }
+    .web-card .hero .emoji { font-size: 56px; transition: transform 0.5s ease; }
+    .web-card:hover .hero .emoji { transform: scale(1.12) rotate(-3deg); }
+    .web-card .hero .overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(to top, rgba(5,10,20,0.85) 0%, transparent 55%);
+      opacity: 0; transition: opacity 0.35s;
+    }
+    .web-card:hover .hero .overlay { opacity: 1; }
+
+    .web-card .body { padding: 16px; }
+    .web-card .body .tool-name { font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.92); margin-bottom: 2px; }
+    .web-card .body .tool-code { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.25em; color: rgba(255,255,255,0.35); }
+    .web-card .body .tool-loc { font-size: 0.72rem; color: rgba(255,255,255,0.5); margin-top: 6px; }
+
+    .web-card.compact .body-compact { padding: 16px; display: flex; gap: 12px; }
+    .web-card.compact .body-compact .thumb-sm {
+      width: 64px; height: 64px; border-radius: 12px; flex-shrink: 0;
+      background: linear-gradient(145deg, #141c2e, #0b1120); display: grid; place-items: center; font-size: 28px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .web-card.compact .body-compact .info { min-width: 0; flex: 1; }
+    .web-card.compact .body-compact .head-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+    .web-card.compact .body-compact .head-row .code { font-size: 0.8rem; font-weight: 700; color: rgba(255,255,255,0.9); }
+    .web-card.compact .body-compact .head-row .id-tag { font-size: 0.7rem; font-weight: 600; color: rgba(255,255,255,0.65); }
+    .web-card.compact .body-compact .name { font-size: 0.95rem; font-weight: 700; color: rgba(255,255,255,0.92); }
+    .web-card.compact .body-compact .loc { font-size: 0.68rem; color: rgba(255,255,255,0.45); margin-top: 4px; }
+
+    /* ---------- misc ---------- */
+    .sep { width: 100%; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent); margin: 16px 0; }
+    .anno {
+      display: inline-block; font-size: 0.68rem; font-weight: 500; color: var(--text-muted);
+      padding: 6px 14px; border-radius: 8px; background: var(--glass); border: 1px solid var(--glass-border);
+      margin-top: 12px; line-height: 1.6;
+    }
+    .anno code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; color: var(--text-secondary); }
+
+    .swatches { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .swatch {
+      display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 10px;
+      background: var(--glass); border: 1px solid var(--glass-border); font-size: 0.72rem; color: var(--text-secondary);
+    }
+    .swatch .sample { width: 28px; height: 18px; border-radius: 5px; }
+  </style>
+</head>
+<body>
+
+<div class="bg-mesh"></div>
+
+<div class="wrapper">
+  <header>
+    <h1>持出カード デザインギャラリー</h1>
+    <p class="sub">キオスク持出一覧と SPLIT サイネージ貸出グリッドで使用するカードの全バリエーション。compact 表記（計測・吊具）と工具フルカードの比較。</p>
+    <div class="chips">
+      <span class="chip"><span class="dot tool"></span>工具 Tool</span>
+      <span class="chip"><span class="dot instr"></span>計測機器 Instrument</span>
+      <span class="chip"><span class="dot rig"></span>吊具 Rigging</span>
+      <span class="chip"><span class="dot alert"></span>期限超過 Exceeded</span>
+    </div>
+  </header>
+
+  <!-- =============== SECTION 1: SIGNAGE JPEG (redesigned) =============== -->
+  <section>
+    <div class="section-head">
+      <div class="icon">📺</div>
+      <div class="label">
+        <h2>Signage JPEG — compact24（220×154px）</h2>
+        <p>Pi5 API が生成する SPLIT 貸出グリッド。Playwright → PNG → SVG 合成 → JPEG。</p>
+      </div>
+    </div>
+
+    <div class="card-row">
+      <!-- 工具（サムネあり） -->
+      <div class="sig-card">
+        <div class="emp">齊藤 雅弥</div>
+        <div class="mid">
+          <div class="thumb">🔧</div>
+          <div class="copy">
+            <div class="name">電動ドリル</div>
+            <div class="loc">第2工場 - RoboDrill01<br/>産機ライン</div>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="date">04/06・12:02</span>
+          <span class="mgmt">T-8842</span>
+        </div>
+      </div>
+
+      <!-- 計測機器 compact -->
+      <div class="sig-card instrument">
+        <div class="emp">寺田 健太</div>
+        <div class="mid">
+          <div class="copy">
+            <div class="head-row">
+              <span class="code">MI-10394</span>
+            </div>
+            <div class="name">デジタルデプスノギス</div>
+            <div class="loc">第2工場 - 研削メイン</div>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="date">04/06・09:41</span>
+        </div>
+      </div>
+
+      <!-- 吊具 compact / idNum あり -->
+      <div class="sig-card rigging">
+        <div class="emp">佐藤 太郎</div>
+        <div class="mid">
+          <div class="copy">
+            <div class="head-row">
+              <span class="code">RG-0045</span>
+              <span class="id-num">旧-127</span>
+            </div>
+            <div class="name">ワイヤーロープスリング 2t</div>
+            <div class="loc">第2工場 - 組立</div>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="date">04/05・14:30</span>
+        </div>
+      </div>
+
+      <!-- 吊具 compact / idNum なし -->
+      <div class="sig-card rigging">
+        <div class="emp">田中 花子</div>
+        <div class="mid">
+          <div class="copy">
+            <div class="head-row">
+              <span class="code">RG-0112</span>
+              <span class="id-num">-</span>
+            </div>
+            <div class="name">シャックル SC16</div>
+            <div class="loc">第2工場 - FJV60/80</div>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="date">04/06・08:15</span>
+        </div>
+      </div>
+
+      <!-- 期限超過 -->
+      <div class="sig-card instrument exceeded">
+        <div class="emp">期限超過サンプル</div>
+        <div class="mid">
+          <div class="copy">
+            <div class="head-row">
+              <span class="code">M-001</span>
+            </div>
+            <div class="name">マイクロメータ 0-25mm</div>
+            <div class="loc">検査室</div>
+          </div>
+        </div>
+        <div class="foot">
+          <span class="date">03/28・08:00</span>
+        </div>
+      </div>
+    </div>
+
+    <span class="anno">外寸 <code>220×154px</code> 固定。グラデーション背景 + フロストサムネ + 微ノイズテクスチャ。期限超過は赤リング + パルスアニメーション。</span>
+  </section>
+
+  <!-- =============== SECTION 2: WEB KIOSK (tool full) =============== -->
+  <section>
+    <div class="section-head">
+      <div class="icon">🖥️</div>
+      <div class="label">
+        <h2>Web Kiosk — 工具カード（フル）</h2>
+        <p>SignageDisplayPage の ToolCard。サムネ・アスペクト 4:3・ホバーエフェクト。</p>
+      </div>
+    </div>
+
+    <div class="card-row">
+      <div class="web-card">
+        <div class="hero">
+          <span class="emoji">🔧</span>
+          <div class="overlay"></div>
+        </div>
+        <div class="body">
+          <div class="tool-name">電動ドリル DX-550</div>
+          <div class="tool-code">T-8842</div>
+          <div class="tool-loc">第2工場 - RoboDrill01</div>
+        </div>
+      </div>
+
+      <div class="web-card">
+        <div class="hero">
+          <span class="emoji">🪛</span>
+          <div class="overlay"></div>
+        </div>
+        <div class="body">
+          <div class="tool-name">トルクレンチ 40N·m</div>
+          <div class="tool-code">T-2201</div>
+          <div class="tool-loc">第2工場 - 組立ライン</div>
+        </div>
+      </div>
+
+      <div class="web-card">
+        <div class="hero">
+          <span class="emoji">⚙️</span>
+          <div class="overlay"></div>
+        </div>
+        <div class="body">
+          <div class="tool-name">ボールエンドミル φ6</div>
+          <div class="tool-code">T-0453</div>
+          <div class="tool-loc">第2工場 - 研削メイン</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============== SECTION 3: WEB KIOSK (compact) =============== -->
+  <section>
+    <div class="section-head">
+      <div class="icon">📋</div>
+      <div class="label">
+        <h2>Web Kiosk — compact カード（計測・吊具）</h2>
+        <p>SignageDisplayPage の ToolCard compact=true。サムネ列省略・管理番号→名称→拠点の行順。</p>
+      </div>
+    </div>
+
+    <div class="card-row">
+      <div class="web-card compact instrument" style="width: 320px;">
+        <div class="body-compact">
+          <div class="thumb-sm">📐</div>
+          <div class="info">
+            <div class="head-row"><span class="code">MI-10394</span></div>
+            <div class="name">デジタルデプスノギス</div>
+            <div class="loc">第2工場 - 研削メイン</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="web-card compact instrument" style="width: 320px;">
+        <div class="body-compact">
+          <div class="info">
+            <div class="head-row"><span class="code">MI-20581</span></div>
+            <div class="name">てこ式ダイヤルゲージ</div>
+            <div class="loc">検査室</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="web-card compact rigging" style="width: 320px;">
+        <div class="body-compact">
+          <div class="info">
+            <div class="head-row">
+              <span class="code">RG-0045</span>
+              <span class="id-tag">旧-127</span>
+            </div>
+            <div class="name">ワイヤーロープスリング 2t</div>
+            <div class="loc">第2工場 - 組立</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="web-card compact rigging" style="width: 320px;">
+        <div class="body-compact">
+          <div class="info">
+            <div class="head-row">
+              <span class="code">RG-0112</span>
+              <span class="id-tag">-</span>
+            </div>
+            <div class="name">シャックル SC16</div>
+            <div class="loc">第2工場 - FJV60/80</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="sep"></div>
+
+  <!-- =============== SECTION 4: COLOR SYSTEM =============== -->
+  <section>
+    <div class="section-head">
+      <div class="icon">🎨</div>
+      <div class="label">
+        <h2>カラーシステム</h2>
+        <p>loan-card-chrome.ts の resolveLoanCardChrome + 新グラデーションパレット。</p>
+      </div>
+    </div>
+    <div class="swatches">
+      <div class="swatch">
+        <div class="sample" style="background: linear-gradient(135deg, #1a6bff, #0a3d8f); border: 1.5px solid rgba(255,255,255,0.18);"></div>
+        工具 gradient
+      </div>
+      <div class="swatch">
+        <div class="sample" style="background: linear-gradient(135deg, #8b5cf6, #5b21b6); border: 1.5px solid rgba(255,255,255,0.18);"></div>
+        計測機器 gradient
+      </div>
+      <div class="swatch">
+        <div class="sample" style="background: linear-gradient(135deg, #f97316, #b45309); border: 1.5px solid rgba(255,255,255,0.18);"></div>
+        吊具 gradient
+      </div>
+      <div class="swatch">
+        <div class="sample" style="background: linear-gradient(135deg, #8b5cf6, #5b21b6); border: 2.5px solid #ef4444;"></div>
+        期限超過 ring
+      </div>
+    </div>
+  </section>
+
+  <span class="anno">
+    <strong>ファイル:</strong> <code>apps/api/scripts/html-previews/signage-compact-kiosk-card-gallery.html</code><br/>
+    <strong>関連実装:</strong> <code>loan-card-chrome.ts</code>（枠色）/ <code>compact-loan-card-kiosk-html.ts</code>（Playwright body）/ <code>SignageDisplayPage.tsx</code>（Web ToolCard）<br/>
+    <strong>KB:</strong> <a href="#" style="color:#7dd3fc;">KB-330</a>（compact kiosk deploy）/ <a href="#" style="color:#7dd3fc;">KB-325</a>（splitCompact24）/ <a href="#" style="color:#7dd3fc;">KB-327</a>（SIGNAGE_LOAN_GRID_ENGINE）
+  </span>
+</div>
+
+</body>
+</html>

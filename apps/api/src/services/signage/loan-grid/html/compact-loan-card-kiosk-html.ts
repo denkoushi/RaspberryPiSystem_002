@@ -16,7 +16,7 @@ export function buildCompactKioskMiddleHtml(
   const idPx = Math.max(11, t.locationPx);
   const idPart =
     kiosk.idNumValue != null
-      ? `<span style="flex-shrink:0;font-size:${idPx}px;font-weight:600;color:rgba(255,255,255,0.88);">${escapeHtml(
+      ? `<span style="flex-shrink:0;font-size:${idPx}px;font-weight:600;color:rgba(255,255,255,0.88);padding:${t.idNumBadgePadYPx}px ${t.idNumBadgePadXPx}px;border-radius:${t.idNumBadgeRadiusPx}px;background:rgba(255,255,255,0.12);">${escapeHtml(
           kiosk.idNumValue
         )}</span>`
       : '';

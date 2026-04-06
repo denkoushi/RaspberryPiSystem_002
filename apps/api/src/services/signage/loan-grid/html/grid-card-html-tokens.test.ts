@@ -10,7 +10,9 @@ describe('grid-card-html-tokens', () => {
     const s = computeGridCardSpacingTokens(1);
     expect(s.padPx).toBe(12);
     expect(s.thumbPx).toBe(96);
+    expect(s.thumbBorderPx).toBe(1);
     expect(s.innerGapPx).toBe(12);
+    expect(s.cardRadiusPx).toBe(16);
   });
 
   it('compact: name and primary share font size at scale 1', () => {
