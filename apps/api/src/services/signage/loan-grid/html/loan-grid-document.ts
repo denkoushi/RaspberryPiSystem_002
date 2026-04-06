@@ -2,20 +2,32 @@ import type { LoanCardViewModel } from '../loan-card-grid.dto.js';
 import { resolveCompactThumbPlan } from '../compact-thumb-plan.js';
 import type { LoanGridRenderRequest } from '../loan-grid-rasterizer.port.js';
 import { buildCompactKioskMiddleHtml } from './compact-loan-card-kiosk-html.js';
+import { buildLoanCardHtmlSurfaceOverlays } from './compact-loan-card-html-decor.js';
 import { computeCompactCardHtmlTokens, computeDefaultCardHtmlTokens } from './grid-card-html-tokens.js';
 import { escapeHtml } from './html-escape.js';
-import { resolveLoanCardChrome } from './loan-card-chrome.js';
+import { resolveLoanCardHtmlAppearance } from './loan-card-palette.js';
+
+const LOAN_CARD_HTML_DOCUMENT_STYLES = `
+  @keyframes loanCardHtmlExceededPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.06); }
+  }
+  .loan-card-html--exceeded {
+    animation: loanCardHtmlExceededPulse 2.2s ease-in-out infinite;
+  }
+`.trim();
 
 function buildCompactCard(placed: { view: LoanCardViewModel; width: number; height: number }, scale: number): string {
   const { view, width: w, height: h } = placed;
-  const chrome = resolveLoanCardChrome(view);
+  const appearance = resolveLoanCardHtmlAppearance(view);
   const t = computeCompactCardHtmlTokens(scale);
   const emp = view.employeeName?.trim() ? escapeHtml(view.employeeName.trim()) : escapeHtml('未割当');
   const plan = resolveCompactThumbPlan(view);
+  const thumbFrame = `width:${t.thumbPx}px;height:${t.thumbPx}px;border-radius:${t.thumbCornerPx}px;object-fit:cover;flex-shrink:0;border:${t.thumbBorderPx}px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.1);`;
 
   const thumbBlock =
     plan.kind === 'image'
-      ? `<img class="thumb" src="${escapeHtml(plan.dataUrl)}" alt="" width="${t.thumbPx}" height="${t.thumbPx}" style="width:${t.thumbPx}px;height:${t.thumbPx}px;border-radius:${t.thumbCornerPx}px;object-fit:cover;flex-shrink:0;" />`
+      ? `<img class="thumb" src="${escapeHtml(plan.dataUrl)}" alt="" width="${t.thumbPx}" height="${t.thumbPx}" style="${thumbFrame}" />`
       : plan.kind === 'itemEmptySlot'
         ? `<div style="width:${t.thumbPx}px;height:${t.thumbPx}px;flex-shrink:0;"></div>`
         : '';
@@ -42,7 +54,10 @@ function buildCompactCard(placed: { view: LoanCardViewModel; width: number; heig
       : '';
 
   const mgmt = escapeHtml(view.managementText || '');
-  const borrowed = view.borrowedCompact ? escapeHtml(view.borrowedCompact) : '';
+  const borrowedRaw = view.borrowedCompact ? escapeHtml(view.borrowedCompact) : '';
+  const borrowedPill = borrowedRaw
+    ? `<span style="font-weight:600;font-size:${t.borrowedPx}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:rgba(0,0,0,0.15);padding:${t.datePillPadYPx}px ${t.datePillPadXPx}px;border-radius:${t.datePillRadiusPx}px;">${borrowedRaw}</span>`
+    : '';
   const showFooterCodeColumn = !useKioskBody;
 
   const footerRight = showFooterCodeColumn
@@ -52,25 +67,31 @@ function buildCompactCard(placed: { view: LoanCardViewModel; width: number; heig
         </div>`
     : '';
 
+  const exceededClass = view.isExceeded ? ' loan-card-html--exceeded' : '';
+  const overlays = buildLoanCardHtmlSurfaceOverlays(appearance, t.cardRadiusPx);
+
   /**
    * 工具: 従来どおり空サムネ列＋ primary＋右下コード。
    * 計測・吊具（キオスク行）: 写真が無いときサムネ列なし、本文は管理番号→名称（吊具は同一行右に id）、フッタ右の重複コードは出さない。
    */
   return `
-    <div class="loan-card compact" style="width:${w}px;height:${h}px;box-sizing:border-box;padding:${t.padPx}px;border-radius:${t.cardRadiusPx}px;background:${chrome.background};border:${chrome.borderWidth} solid ${chrome.borderColor};overflow:hidden;display:flex;flex-direction:column;color:#fff;font-family:sans-serif;">
-      <div style="font-weight:600;font-size:${t.nameAndPrimaryPx}px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:${t.nameMarginBottomPx}px;flex-shrink:0;">${emp}</div>
-      <div style="${middleRowStyle}">
-        ${thumbBlock}
-        <div style="flex:1;min-width:0;height:100%;display:flex;flex-direction:column;gap:${t.stackGapPx}px;overflow:hidden;">
-          ${middleInner}
+    <div class="loan-card compact${exceededClass}" style="position:relative;box-sizing:border-box;width:${w}px;height:${h}px;padding:${t.padPx}px;border-radius:${t.cardRadiusPx}px;background:${appearance.background};border:${appearance.borderWidth} solid ${appearance.borderColor};box-shadow:${appearance.boxShadow};overflow:hidden;display:flex;flex-direction:column;color:#fff;font-family:sans-serif;">
+      ${overlays}
+      <div style="position:relative;z-index:1;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="font-weight:600;font-size:${t.nameAndPrimaryPx}px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:${t.nameMarginBottomPx}px;flex-shrink:0;text-shadow:${t.empTextShadow};">${emp}</div>
+        <div style="${middleRowStyle}">
+          ${thumbBlock}
+          <div style="flex:1;min-width:0;height:100%;display:flex;flex-direction:column;gap:${t.stackGapPx}px;overflow:hidden;">
+            ${middleInner}
+          </div>
         </div>
-      </div>
-      <div style="margin-top:auto;flex-shrink:0;display:flex;flex-direction:row;align-items:flex-end;justify-content:space-between;gap:${t.footerRowGapPx}px;padding-top:${t.footerPadTopPx}px;">
-        <div style="display:flex;flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:${t.footerRowGapPx}px;min-width:0;">
-          <span style="font-weight:600;font-size:${t.borrowedPx}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${borrowed}</span>
-          ${warn}
+        <div style="margin-top:auto;flex-shrink:0;display:flex;flex-direction:row;align-items:flex-end;justify-content:space-between;gap:${t.footerRowGapPx}px;padding-top:${t.footerPadTopPx}px;">
+          <div style="display:flex;flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:${t.footerRowGapPx}px;min-width:0;">
+            ${borrowedPill}
+            ${warn}
+          </div>
+          ${footerRight}
         </div>
-        ${footerRight}
       </div>
     </div>
   `;
@@ -97,37 +118,43 @@ function buildDefaultCard(
   scale: number
 ): string {
   const { view, width: w, height: h } = placed;
-  const chrome = resolveLoanCardChrome(view);
+  const appearance = resolveLoanCardHtmlAppearance(view);
   const t = computeDefaultCardHtmlTokens(scale);
   const hasThumb = Boolean(view.thumbnailDataUrl);
   const secondary = view.employeeName ? `${view.employeeName} さん` : '未割当';
 
   const thumbBlock = hasThumb
-    ? `<img src="${escapeHtml(view.thumbnailDataUrl!)}" alt="" width="${t.thumbPx}" height="${t.thumbPx}" style="width:${t.thumbPx}px;height:${t.thumbPx}px;border-radius:${t.thumbCornerPx}px;object-fit:cover;flex-shrink:0;" />`
+    ? `<img src="${escapeHtml(view.thumbnailDataUrl!)}" alt="" width="${t.thumbPx}" height="${t.thumbPx}" style="width:${t.thumbPx}px;height:${t.thumbPx}px;border-radius:${t.thumbCornerPx}px;object-fit:cover;flex-shrink:0;border:${t.thumbBorderPx}px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.1);" />`
     : '';
 
   const layoutRow = hasThumb
     ? `display:flex;flex-direction:row;gap:${t.innerGapPx}px;flex:1;min-height:0;`
     : 'display:flex;flex-direction:column;flex:1;min-height:0;';
 
+  const exceededClass = view.isExceeded ? ' loan-card-html--exceeded' : '';
+  const overlays = buildLoanCardHtmlSurfaceOverlays(appearance, t.cardRadiusPx);
+
   return `
-    <div class="loan-card default" style="width:${w}px;height:${h}px;box-sizing:border-box;padding:${t.padPx}px;border-radius:${t.cardRadiusPx}px;background:${chrome.background};border:${chrome.borderWidth} solid ${chrome.borderColor};overflow:hidden;display:flex;flex-direction:column;color:#fff;font-family:sans-serif;">
-      <div style="${layoutRow}">
-        ${thumbBlock}
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:${t.stackGapPx}px;overflow:hidden;">
-          <div style="font-weight:700;font-size:${t.primaryPx}px;line-height:1.2;word-break:break-word;">${escapeHtml(view.primaryText)}</div>
-          <div style="font-weight:600;font-size:${t.secondaryPx}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(secondary)}</div>
-          <div style="font-weight:600;font-size:${t.locationPx}px;color:#e2e8f0;word-break:break-word;">${escapeHtml(view.clientLocation)}</div>
-          <div style="display:flex;flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:${t.footerRowGapPx}px;font-weight:600;font-size:${t.borrowPx}px;">
-            ${view.borrowedDatePart ? `<span>${escapeHtml(view.borrowedDatePart)}</span>` : ''}
-            ${view.borrowedTimePart ? `<span>${escapeHtml(view.borrowedTimePart)}</span>` : ''}
+    <div class="loan-card default${exceededClass}" style="position:relative;box-sizing:border-box;width:${w}px;height:${h}px;padding:${t.padPx}px;border-radius:${t.cardRadiusPx}px;background:${appearance.background};border:${appearance.borderWidth} solid ${appearance.borderColor};box-shadow:${appearance.boxShadow};overflow:hidden;display:flex;flex-direction:column;color:#fff;font-family:sans-serif;">
+      ${overlays}
+      <div style="position:relative;z-index:1;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="${layoutRow}">
+          ${thumbBlock}
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:${t.stackGapPx}px;overflow:hidden;">
+            <div style="font-weight:700;font-size:${t.primaryPx}px;line-height:1.2;word-break:break-word;">${escapeHtml(view.primaryText)}</div>
+            <div style="font-weight:600;font-size:${t.secondaryPx}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(secondary)}</div>
+            <div style="font-weight:600;font-size:${t.locationPx}px;color:#e2e8f0;word-break:break-word;">${escapeHtml(view.clientLocation)}</div>
+            <div style="display:flex;flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:${t.footerRowGapPx}px;font-weight:600;font-size:${t.borrowPx}px;">
+              ${view.borrowedDatePart ? `<span>${escapeHtml(view.borrowedDatePart)}</span>` : ''}
+              ${view.borrowedTimePart ? `<span>${escapeHtml(view.borrowedTimePart)}</span>` : ''}
+            </div>
+            ${view.isExceeded ? `<div style="font-weight:700;font-size:${t.exceededPx}px;">⚠ 期限超過</div>` : ''}
           </div>
-          ${view.isExceeded ? `<div style="font-weight:700;font-size:${t.exceededPx}px;">⚠ 期限超過</div>` : ''}
         </div>
-      </div>
-      <div style="margin-top:auto;padding-top:${t.footerPadTopPx}px;display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-        ${view.riggingIdNumText ? `<div style="font-weight:600;font-size:${t.riggingPx}px;">${escapeHtml(view.riggingIdNumText)}</div>` : ''}
-        <div style="font-family:monospace;font-weight:600;font-size:${t.mgmtPx}px;">${escapeHtml(view.managementText || '')}</div>
+        <div style="margin-top:auto;padding-top:${t.footerPadTopPx}px;display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+          ${view.riggingIdNumText ? `<div style="font-weight:600;font-size:${t.riggingPx}px;">${escapeHtml(view.riggingIdNumText)}</div>` : ''}
+          <div style="font-family:monospace;font-weight:600;font-size:${t.mgmtPx}px;">${escapeHtml(view.managementText || '')}</div>
+        </div>
       </div>
     </div>
   `;
@@ -162,5 +189,6 @@ export function buildLoanGridHtmlDocument(request: LoanGridRenderRequest): strin
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
     html,body{margin:0;padding:0;background:transparent;}
     .grid{width:${w}px;height:${h}px;box-sizing:border-box;display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));gap:${gap}px;align-content:start;}
+    ${LOAN_CARD_HTML_DOCUMENT_STYLES}
   </style></head><body><div class="grid">${cells}</div></body></html>`;
 }

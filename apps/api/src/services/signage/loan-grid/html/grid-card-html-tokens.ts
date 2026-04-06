@@ -8,6 +8,8 @@ export type GridCardSpacingTokens = {
   padPx: number;
   thumbPx: number;
   thumbCornerPx: number;
+  /** サムネ画像の枠線（compact / default HTML 共通） */
+  thumbBorderPx: number;
   innerGapPx: number;
   cardRadiusPx: number;
   /** カード内テキストブロック縦の詰め */
@@ -20,9 +22,11 @@ export function computeGridCardSpacingTokens(scale: number): GridCardSpacingToke
   return {
     padPx: Math.round(12 * scale),
     thumbPx: Math.round(96 * scale),
-    thumbCornerPx: Math.round(8 * scale),
+    thumbCornerPx: Math.round(10 * scale),
+    thumbBorderPx: Math.max(1, Math.round(1 * scale)),
     innerGapPx: Math.round(12 * scale),
-    cardRadiusPx: Math.round(12 * scale),
+    /** デザインギャラリー compact24 に合わせた角丸（HTML カードのみで使用） */
+    cardRadiusPx: Math.round(16 * scale),
     stackGapPx: Math.round(4 * scale),
     footerPadTopPx: Math.round(4 * scale),
     footerRowGapPx: Math.round(8 * scale),
@@ -40,6 +44,17 @@ export type CompactCardFontTokens = {
   nameMarginBottomPx: number;
 };
 
+/** compact カードのピル・バッジ（サムネ枠は GridCardSpacingTokens.thumbBorderPx） */
+export type CompactCardDecorTokens = {
+  datePillPadXPx: number;
+  datePillPadYPx: number;
+  datePillRadiusPx: number;
+  idNumBadgePadXPx: number;
+  idNumBadgePadYPx: number;
+  idNumBadgeRadiusPx: number;
+  empTextShadow: string;
+};
+
 export function computeCompactCardFontTokens(scale: number): CompactCardFontTokens {
   return {
     nameAndPrimaryPx: Math.max(12, Math.round(14 * scale)),
@@ -52,12 +67,25 @@ export function computeCompactCardFontTokens(scale: number): CompactCardFontToke
   };
 }
 
-export type CompactCardHtmlTokens = GridCardSpacingTokens & CompactCardFontTokens;
+export function computeCompactCardDecorTokens(scale: number): CompactCardDecorTokens {
+  return {
+    datePillPadXPx: Math.max(6, Math.round(8 * scale)),
+    datePillPadYPx: Math.max(2, Math.round(2 * scale)),
+    datePillRadiusPx: Math.max(5, Math.round(6 * scale)),
+    idNumBadgePadXPx: Math.max(4, Math.round(6 * scale)),
+    idNumBadgePadYPx: Math.max(1, Math.round(1 * scale)),
+    idNumBadgeRadiusPx: Math.max(3, Math.round(4 * scale)),
+    empTextShadow: `0 ${Math.max(1, Math.round(scale))}px ${Math.max(2, Math.round(2 * scale))}px rgba(0,0,0,0.2)`,
+  };
+}
+
+export type CompactCardHtmlTokens = GridCardSpacingTokens & CompactCardFontTokens & CompactCardDecorTokens;
 
 export function computeCompactCardHtmlTokens(scale: number): CompactCardHtmlTokens {
   return {
     ...computeGridCardSpacingTokens(scale),
     ...computeCompactCardFontTokens(scale),
+    ...computeCompactCardDecorTokens(scale),
   };
 }
 
