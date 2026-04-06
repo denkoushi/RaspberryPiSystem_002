@@ -209,11 +209,15 @@
 </head>
 <body>
   <h1>持出中アイテム — compact24（HTML プレビュー）</h1>
+  <p class="note" style="border-left: 3px solid #f97316; padding-left: 12px;">
+    <strong style="color:#fdba74">Cursor / Simple Browser で表示されないとき:</strong>
+    <code>file://</code> 直開きは不可です。リポジトリ<strong>ルート</strong>で
+    <code>pnpm run preview:signage-compact24</code>（または
+    <code>python3 -m http.server 8765 --directory apps/api/scripts/html-previews</code>）を実行し、
+    <a href="http://127.0.0.1:8765/signage-split-compact24-preview.html">http://127.0.0.1:8765/signage-split-compact24-preview.html</a> を開いてください。<br />
+  </p>
   <p class="note">
     <strong>ファイル:</strong> リポジトリ内 <code>apps/api/scripts/html-previews/signage-split-compact24-preview.html</code><br />
-    <strong>表示:</strong> Cursor ブラウザは <code>file://</code> を開けないため、同ディレクトリで
-    <code>python3 -m http.server 8765</code> を実行し、
-    <a href="http://127.0.0.1:8765/signage-split-compact24-preview.html">http://127.0.0.1:8765/signage-split-compact24-preview.html</a> を開いてください。<br />
     <strong>寸法:</strong> カード外寸 <strong>220×154px 固定</strong>（実装の cardHeightPx:154）。<br />
     <strong>折り返し:</strong> この HTML は右列で <strong>ブラウザの自然折り返し</strong>（Location・アイテム名とも可）。本番 API は SVG のため <strong>論理分割で最大2行</strong>（<code>splitPrimaryTwoLines</code> / <code>splitLocationTwoLines</code>・契約は <code>loan-card-contracts.ts</code>）。<br />
     フォントはブラウザ依存で実機 JPEG と完全一致しません。96px 帯に収まらないほど折り返すと右列が切れることがあります。

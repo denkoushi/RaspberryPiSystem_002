@@ -4,6 +4,8 @@ import {
   splitPrimaryTwoLines,
   trimEmployeeNameOneLine,
 } from '../loan-card/loan-card-text.js';
+import { buildCompact24KioskSvgBody } from '../loan-card/compact24-kiosk-svg-text.js';
+import { compactLayoutHasThumbnail, resolveCompactThumbPlan } from './compact-thumb-plan.js';
 import { computeSplitCompact24Layout } from '../loan-card/loan-card-layout.js';
 import type { LoanGridRenderRequest, LoanGridLayerResult, LoanGridRasterizerPort } from './loan-grid-rasterizer.port.js';
 import type { SvgLoanGridDependencies } from './svg-loan-grid-dependencies.js';
@@ -50,8 +52,10 @@ export class SvgLegacyLoanGridRasterizer implements LoanGridRasterizerPort {
           : Math.max(2, Math.round(2 * scale));
         const clipId = this.deps.generateId(`thumb-${index}`);
         let thumbnailElement = '';
-        const hasThumbnail = Boolean(tool.thumbnailDataUrl);
         const thumbBase64 = tool.thumbnailDataUrl;
+        const thumbPlanForCompact = resolveCompactThumbPlan(tool);
+        const hasThumbnailCompact = compactLayoutHasThumbnail(thumbPlanForCompact);
+        const hasThumbnail = Boolean(thumbBase64);
 
         if (config.cardLayout === 'splitCompact24') {
           const layoutGeom = computeSplitCompact24Layout({
@@ -64,7 +68,7 @@ export class SvgLegacyLoanGridRasterizer implements LoanGridRasterizerPort {
             thumbnailWidth,
             thumbnailHeight,
             thumbnailGap,
-            hasThumbnail,
+            hasThumbnail: hasThumbnailCompact,
             hasWarning: isExceeded,
           });
           if (thumbBase64) {
@@ -82,6 +86,72 @@ export class SvgLegacyLoanGridRasterizer implements LoanGridRasterizerPort {
           }
           const borrowedCompact = formatBorrowedCompactLine(tool.borrowedCompact || null);
           const employeeLine = trimEmployeeNameOneLine(tool.employeeName, layoutGeom.maxEmployeeUnitsPerLine);
+          const warnSvg =
+            layoutGeom.warningX != null && layoutGeom.warningY != null
+              ? `<text x="${layoutGeom.warningX}" y="${layoutGeom.warningY}"
+              font-size="${layoutGeom.fontWarning}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+                ⚠ 期限超過
+              </text>`
+              : '';
+
+          if (tool.compactKioskLines) {
+            const body = buildCompact24KioskSvgBody(
+              tool.compactKioskLines,
+              clientLocationText,
+              layoutGeom.maxPrimaryUnitsPerLine,
+              layoutGeom.maxLocationUnitsPerLine,
+              10
+            );
+            const fontId = Math.max(11, Math.round(12 * scale));
+            const idSvg =
+              body.headRight != null
+                ? `<text x="${layoutGeom.textMaxX}" y="${layoutGeom.primary1Y}"
+                  text-anchor="end" font-size="${fontId}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+                  ${this.deps.escapeXml(body.headRight)}
+                </text>`
+                : '';
+            const loc1Content = body.nameLine2.length > 0 ? body.nameLine2 : body.locLine1;
+            const loc2Content = body.nameLine2.length > 0 ? body.locLine1 : body.locLine2;
+            const loc2Svg =
+              loc2Content.length > 0
+                ? `<text x="${layoutGeom.textX}" y="${layoutGeom.loc2Y}"
+              font-size="${layoutGeom.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
+              ${this.deps.escapeXml(loc2Content)}
+            </text>`
+                : '';
+            return `
+          <g>
+            <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
+              rx="${cardRadius}" ry="${cardRadius}"
+              fill="${cardFill}" stroke="${cardStroke}" stroke-width="${strokeWidth}" />
+            <text x="${layoutGeom.nameX}" y="${layoutGeom.nameY}"
+              font-size="${layoutGeom.fontName}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+              ${this.deps.escapeXml(employeeLine)}
+            </text>
+            ${thumbnailElement}
+            <text x="${layoutGeom.textX}" y="${layoutGeom.primary1Y}"
+              font-size="${layoutGeom.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+              ${this.deps.escapeXml(body.headLeft)}
+            </text>
+            ${idSvg}
+            <text x="${layoutGeom.textX}" y="${layoutGeom.primary2Y}"
+              font-size="${layoutGeom.fontPrimary}" font-weight="700" fill="#ffffff" font-family="sans-serif">
+              ${this.deps.escapeXml(body.nameLine1)}
+            </text>
+            <text x="${layoutGeom.textX}" y="${layoutGeom.loc1Y}"
+              font-size="${layoutGeom.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
+              ${this.deps.escapeXml(loc1Content)}
+            </text>
+            ${loc2Svg}
+            <text x="${layoutGeom.dateX}" y="${layoutGeom.dateY}"
+              font-size="${layoutGeom.fontDate}" font-weight="600" fill="#ffffff" font-family="sans-serif">
+              ${borrowedCompact ? this.deps.escapeXml(borrowedCompact) : ''}
+            </text>
+            ${warnSvg}
+          </g>
+        `;
+          }
+
           const pLines = splitPrimaryTwoLines(primaryText, layoutGeom.maxPrimaryUnitsPerLine);
           const { line1: loc1, line2: loc2 } = splitLocationTwoLines(
             clientLocationText,
@@ -100,13 +170,6 @@ export class SvgLegacyLoanGridRasterizer implements LoanGridRasterizerPort {
               font-size="${layoutGeom.fontLoc}" font-weight="600" fill="#e2e8f0" font-family="sans-serif">
               ${this.deps.escapeXml(loc2)}
             </text>`
-              : '';
-          const warnSvg =
-            layoutGeom.warningX != null && layoutGeom.warningY != null
-              ? `<text x="${layoutGeom.warningX}" y="${layoutGeom.warningY}"
-              font-size="${layoutGeom.fontWarning}" font-weight="700" fill="#ffffff" font-family="sans-serif">
-                ⚠ 期限超過
-              </text>`
               : '';
           return `
           <g>

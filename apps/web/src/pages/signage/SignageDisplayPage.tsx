@@ -38,22 +38,83 @@ const renderPdfImage = (src?: string, alt?: string) => {
 function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean }) {
   const isInstrument = Boolean(tool.isInstrument);
   const isRigging = Boolean(tool.isRigging);
+  const isPlainItem = !isInstrument && !isRigging;
   const clientLocation = formatClientDeviceLocationLabel(tool.clientLocation);
-  
-  // 計測機器は藍系背景、工具は従来の背景
+
   const borderClass = isInstrument
     ? 'border-indigo-400/40 hover:border-indigo-300/60'
-    : 'border-white/5 hover:border-emerald-400/40';
-  const bgClass = isInstrument ? 'bg-indigo-900/30' : 'bg-white/5';
-  
+    : isRigging
+      ? 'border-orange-500/50 hover:border-orange-400/65'
+      : 'border-white/5 hover:border-emerald-400/40';
+  const bgClass = isInstrument ? 'bg-indigo-900/30' : isRigging ? 'bg-orange-950/35' : 'bg-white/5';
+
+  const thumbSm = compact ? 'h-[72px] w-[72px]' : 'h-20 w-20';
+  const thumbImgClass = `${thumbSm} shrink-0 rounded-xl border border-white/10 object-cover transition-transform duration-500 group-hover:scale-105`;
+
+  if (!isPlainItem) {
+    const headLine = tool.managementNumber?.trim() || tool.itemCode?.trim() || '管理番号なし';
+    const nameLine = tool.name?.trim() || (isInstrument ? '計測機器' : '吊具');
+    const idNumDisplay: string | undefined = isRigging
+      ? tool.idNum?.trim()
+        ? tool.idNum.trim()
+        : '-'
+      : undefined;
+    return (
+      <div
+        className={`group flex flex-col ${compact ? 'gap-2' : 'gap-3'} rounded-2xl border ${borderClass} ${bgClass} p-4 shadow-[0_15px_45px_rgba(3,10,24,0.35)] transition-all duration-300 hover:-translate-y-1`}
+      >
+        <div className={`flex min-w-0 flex-1 ${tool.thumbnailUrl ? 'gap-3' : ''}`}>
+          {tool.thumbnailUrl ? (
+            <img
+              src={tool.thumbnailUrl}
+              alt={nameLine}
+              className={thumbImgClass}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : null}
+          <div className="min-w-0 flex-1">
+            {isInstrument ? (
+              <>
+                <div className="mb-1">
+                  <p
+                    className={`truncate ${compact ? 'text-sm' : 'text-base'} font-bold tracking-normal text-indigo-100`}
+                  >
+                    {headLine}
+                  </p>
+                </div>
+                <p className={`truncate ${compact ? 'text-base' : 'text-lg'} font-bold text-white/90`}>{nameLine}</p>
+              </>
+            ) : (
+              <>
+                <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <p className={`min-w-0 flex-1 truncate ${compact ? 'text-sm' : 'text-base'} font-bold text-white/95`}>
+                    {headLine}
+                  </p>
+                  {idNumDisplay != null ? (
+                    <span
+                      className={`shrink-0 ${compact ? 'text-xs' : 'text-sm'} font-semibold text-white/85`}
+                    >
+                      {idNumDisplay}
+                    </span>
+                  ) : null}
+                </div>
+                <p className={`truncate ${compact ? 'text-base' : 'text-lg'} font-bold text-white/90`}>{nameLine}</p>
+              </>
+            )}
+            <p className={`${compact ? 'mt-1 text-[0.65rem]' : 'mt-2 text-sm'} text-white/70`}>{clientLocation}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`group flex flex-col ${compact ? 'gap-2' : 'gap-3'} rounded-2xl border ${borderClass} ${bgClass} p-4 shadow-[0_15px_45px_rgba(3,10,24,0.35)] transition-all duration-300 hover:-translate-y-1`}
     >
-      <div
-        className="relative overflow-hidden rounded-2xl bg-slate-900/40"
-        style={{ aspectRatio: '4 / 3' }}
-      >
+      <div className="relative overflow-hidden rounded-2xl bg-slate-900/40" style={{ aspectRatio: '4 / 3' }}>
         {tool.thumbnailUrl ? (
           <img
             src={tool.thumbnailUrl}
@@ -64,53 +125,16 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
             }}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-white/30">
-            {isInstrument ? '計測機器' : '画像なし'}
-          </div>
+          <div className="flex h-full w-full items-center justify-center text-white/30">画像なし</div>
         )}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       </div>
       <div>
-        {isInstrument ? (
-          <>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} font-semibold uppercase tracking-[0.2em] text-indigo-200/80`}>
-              {tool.managementNumber ?? tool.itemCode}
-            </p>
-            <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
-              {tool.name}
-            </p>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
-              {clientLocation}
-            </p>
-          </>
-        ) : isRigging ? (
-          <>
-            <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
-              {tool.name}
-            </p>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} uppercase tracking-[0.3em] text-white/50`}>
-              {tool.itemCode}
-            </p>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
-              旧番号: {tool.idNum?.trim() ? tool.idNum.trim() : '-'}
-            </p>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
-              {clientLocation}
-            </p>
-          </>
-        ) : (
-          <>
-            <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>
-              {tool.name}
-            </p>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} uppercase tracking-[0.3em] text-white/50`}>
-              {tool.itemCode}
-            </p>
-            <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>
-              {clientLocation}
-            </p>
-          </>
-        )}
+        <p className={`${compact ? 'text-sm' : 'text-base'} font-semibold text-white/90`}>{tool.name}</p>
+        <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} uppercase tracking-[0.3em] text-white/50`}>
+          {tool.itemCode}
+        </p>
+        <p className={`${compact ? 'text-[0.6rem]' : 'text-xs'} text-white/70`}>{clientLocation}</p>
       </div>
     </div>
   );

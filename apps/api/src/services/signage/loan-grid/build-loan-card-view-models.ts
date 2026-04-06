@@ -1,7 +1,7 @@
 import { PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 import type { SignageContentResponse } from '../signage.service.js';
 import { formatBorrowedCompactLine } from '../loan-card/loan-card-text.js';
-import type { LoanCardViewModel } from './loan-card-grid.dto.js';
+import type { LoanCardCompactKioskLines, LoanCardViewModel } from './loan-card-grid.dto.js';
 import type { ToolGridConfig } from './tool-grid-config.js';
 import type { SvgLoanGridDependencies } from './svg-loan-grid-dependencies.js';
 
@@ -54,6 +54,21 @@ export async function buildLoanCardViewModels(
     const [borrowedDatePart, borrowedTimePart = ''] = borrowedText.split(' ');
     const borrowedCompact = formatBorrowedCompactLine(borrowedFormatted);
 
+    let compactKioskLines: LoanCardCompactKioskLines | undefined;
+    if (isInstrument) {
+      compactKioskLines = {
+        headLine: tool.managementNumber?.trim() || tool.itemCode?.trim() || '管理番号なし',
+        nameLine: tool.name?.trim() || '計測機器',
+      };
+    } else if (isRigging) {
+      const idRaw = tool.idNum?.trim();
+      compactKioskLines = {
+        headLine: tool.managementNumber?.trim() || tool.itemCode?.trim() || '管理番号なし',
+        nameLine: tool.name?.trim() || '吊具',
+        idNumValue: idRaw && idRaw.length > 0 ? idRaw : '-',
+      };
+    }
+
     models.push({
       primaryText,
       employeeName: tool.employeeName ?? null,
@@ -67,6 +82,7 @@ export async function buildLoanCardViewModels(
       riggingIdNumText,
       isExceeded,
       thumbnailDataUrl,
+      compactKioskLines,
     });
   }
 

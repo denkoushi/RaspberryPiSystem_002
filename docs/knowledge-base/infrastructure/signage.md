@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-04-03
+last-verified: 2026-04-06
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 24件  
+**件数**: 25件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -188,6 +188,41 @@ update-frequency: medium
 - **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 0 / FAIL 0**（2026-04-03・本番反映直後・Mac / Tailscale・約 **59s**）。
 
 **解決状況**: ✅ **実装・Ansible 恒久化・実機確認・ナレッジ記録**（2026-04-03）。**`main`**: `feat/signage-loan-grid-html` 系マージ後、`update-all-clients.sh --limit raspberrypi5` で `.env` とコンテナの両方に `playwright_html` が維持されることを確認。
+
+---
+
+<a id="kb-330-compact-kiosk-instrument-rigging-deploy"></a>
+
+### [KB-330] キオスク持出一覧の compact 表記（計測・吊具・`compactKioskLines`）と本番順次デプロイ（2026-04-06）
+
+**実施日**: 2026-04-06
+
+**概要（仕様）**:
+- **キオスク**の持出一覧で、**工具カードは据え置き**、**計測機器・吊具**のみ **SPLIT 貸出グリッド（`splitCompact24`）に寄せた compact 行**へ揃える（サムネ無し時は左列省略、本文順・吊具 `id` 同行、フッタのコード重複省略など）。
+- **サイネージ JPEG** は引き続き **Pi5 API（`SignageRenderer` + 貸出グリッド rasterizer）** が正本。`/signage` **Web プレビュー**は Pi5/Pi4 の **web** 更新が対象。[KB-325](#kb-325-split-compact24-loan-cards-pi5-git)・[KB-327](#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ) の幾何・`SIGNAGE_LOAN_GRID_ENGINE` 契約と整合。
+
+**デプロイ（本番・対象端末のみ・1 台ずつ）**:
+- ブランチ **`feat/signage-compact-kiosk-instrument-rigging`**、[deployment.md](../../guides/deployment.md) の **`update-all-clients.sh`**、`export RASPI_SERVER_HOST`（Pi5 ターゲット時・**`--status` でも同様に必須**）。
+- **順序**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → **`raspberrypi3`（常時単独・プレフライトのメモリ確保に従う）**。
+- **Detach Run ID（実績・各 `state: success`）**: Pi5 `20260406-113158-19566`、`raspberrypi4` `20260406-114338-17259`、`raspi4-robodrill01` `20260406-114810-18878`、`raspi4-fjv60-80` `20260406-115121-29224`、`raspi4-kensaku-stonebase01` `20260406-115524-3145`、`raspberrypi3` `20260406-115910-3174`。
+
+**実機検証（本番反映直後）**:
+- `curl -k https://100.106.158.2/api/system/health` → **200**
+- `curl -k https://100.106.158.2/api/signage/content` → **200**
+- Pi3（`signageras3@100.105.224.86`）: `systemctl is-active signage-lite.service` → **active**、`ls -lh /run/signage/current.jpg` → **更新時刻確認**
+- Pi4 例（`tools03@100.74.144.79`）: `systemctl is-active kiosk-browser.service status-agent.timer` → **active**
+- （**自動回帰の完全体**は `./scripts/deploy/verify-phase12-real.sh`。本セッションでは上記スモークを実施。）
+
+**知見・トラブルシューティング**:
+- **`RASPI_SERVER_HOST is required`**: デタッチ起動に限らず、**`--status <run_id>`** でも同じ。`export RASPI_SERVER_HOST=100.106.158.2` または `denkon5sd02@100.106.158.2`（[KB-238](../ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+- Pi3 は **単独デプロイ**・完了まで **数分〜十数分**あり得る。`--status` で `success` / `exitCode: 0` を確認してから次へ。
+
+**関連ファイル（代表）**:
+- `apps/api/src/services/signage/loan-grid/loan-card-grid.dto.ts`（`compactKioskLines`）
+- `apps/api/src/services/signage/loan-grid/html/loan-grid-document.ts`、`html/compact-loan-card-kiosk-html.ts`
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`
+
+**解決状況**: ✅ **本番デプロイ・上記スモーク・ナレッジ記録**（2026-04-06）。**`main` マージ**後は GitHub Actions を確認。
 
 ---
 

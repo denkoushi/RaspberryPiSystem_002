@@ -355,7 +355,7 @@ ls -lt /opt/RaspberryPiSystem_002/logs/deploy/deploy-detached-*.status.json | he
   ```bash
   ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --job --follow
   ```
-- **`--status <run_id>`**: ジョブの状態とunitステータスを確認
+- **`--status <run_id>`**: ジョブの状態とunitステータスを確認（**Pi5 ターゲット時はデタッチ起動と同様に `RASPI_SERVER_HOST` が必須**。未設定だと `RASPI_SERVER_HOST is required` で停止する）
   ```bash
   ./scripts/update-all-clients.sh --status 20260125-135737-15664
   ```
