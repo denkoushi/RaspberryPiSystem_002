@@ -21,5 +21,8 @@ export * from './common/index.js';
 // API契約型（段階導入）
 export * from './contracts/index.js';
 
+// 貸出カード視覚トークン（サイネージ HTML / キオスク共有）
+export * from './loan-card-visual-palette.js';
+
 
 

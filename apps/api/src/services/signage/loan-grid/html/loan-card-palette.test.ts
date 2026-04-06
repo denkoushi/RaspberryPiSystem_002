@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   loanCardKindFromFlags,
+  resolveKioskLoanCardSurfaceTokens,
   resolveLoanCardChrome,
   resolveLoanCardHtmlAppearance,
 } from './loan-card-palette.js';
@@ -29,5 +30,21 @@ describe('loan-card-palette', () => {
     const a = resolveLoanCardHtmlAppearance({ isInstrument: false, isRigging: false, isExceeded: true });
     expect(a.borderColor).toBe('#ef4444');
     expect(a.borderWidth).toBe('2.5px');
+  });
+
+  it('resolveKioskLoanCardSurfaceTokens stays aligned with HTML appearance', () => {
+    const kindCases = [
+      { kiosk: 'instrument' as const, chrome: { isInstrument: true, isRigging: false, isExceeded: false } },
+      { kiosk: 'rigging' as const, chrome: { isInstrument: false, isRigging: true, isExceeded: false } },
+      { kiosk: 'item' as const, chrome: { isInstrument: false, isRigging: false, isExceeded: false } },
+    ];
+    for (const { kiosk, chrome } of kindCases) {
+      const k = resolveKioskLoanCardSurfaceTokens(kiosk, false);
+      const a = resolveLoanCardHtmlAppearance(chrome);
+      expect(k.root.background).toBe(a.background);
+      expect(k.root.boxShadow).toBe(a.boxShadow);
+      expect(k.root.borderColor).toBe(a.borderColor);
+      expect(k.sheen.background).toBe(a.sheenBackground);
+    }
   });
 });
