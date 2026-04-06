@@ -27,3 +27,15 @@ vault_dropbox_app_secret: ""
 vault_dropbox_refresh_token: ""
 vault_dropbox_access_token: ""
 
+# 写真持出: GOOD 類似ギャラリー + VLM 補助（Pi5 API のみ参照。未使用なら false/空でよい）
+# vault_photo_tool_embedding_enabled: "false"
+# vault_photo_tool_embedding_url: ""
+# vault_photo_tool_embedding_api_key: ""
+# vault_photo_tool_embedding_model_id: ""
+# vault_photo_tool_embedding_dimension: "512"
+# シャドー: 2回目VLMはログのみ（本番列は1回目のまま）
+# vault_photo_tool_label_assist_shadow_enabled: "false"
+# アクティブ: 埋め込みONかつゲート通過時のみ2回目を photoToolDisplayName に採用しうる（docs/decisions/ADR-20260404）
+# vault_photo_tool_label_assist_active_enabled: "false"
+# vault_photo_tool_label_assist_active_min_gallery_rows: "5"
+
