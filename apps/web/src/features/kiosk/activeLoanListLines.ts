@@ -2,11 +2,12 @@ import {
   formatClientDeviceLocationLabel,
   PHOTO_LOAN_CARD_PRIMARY_LABEL,
   resolvePhotoLoanToolDisplayLabel,
+  type KioskActiveLoanCardKind,
 } from '@raspi-system/shared-types';
 
 import type { Loan } from '../../api/types';
 
-export type ActiveLoanCardKind = 'instrument' | 'rigging' | 'item';
+export type ActiveLoanCardKind = KioskActiveLoanCardKind;
 
 export type ActiveLoanListLines = {
   kind: ActiveLoanCardKind;
