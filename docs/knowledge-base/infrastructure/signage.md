@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 25件  
+**件数**: 26件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -223,6 +223,35 @@ update-frequency: medium
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`
 
 **解決状況**: ✅ **本番デプロイ・上記スモーク・ナレッジ記録**（2026-04-06）。**`main` マージ**後は GitHub Actions を確認。
+
+---
+
+<a id="kb-331-signage-loan-grid-html-modern-chrome-stonebase-only"></a>
+
+### [KB-331] 貸出グリッド HTML「モダン外皮」（compact / default・`feat/signage-loan-grid-html-modern-chrome`）と StoneBase01 のみ本番デプロイ（2026-04-06）
+
+**実施日**: 2026-04-06
+
+**概要（仕様）**:
+- Playwright/HTML 貸出グリッドの **見た目のみ**（グラデーション・影・オーバーレイ・期限超過のパルス等）。**`SIGNAGE_LOAN_GRID_ENGINE`・JPEG 外部契約・スロット契約は不変**。[KB-327](#kb-327-貸出グリッド-playwright--signage_loan_grid_engine-とデプロイ環境のずれ)・[ADR-20260405](../../decisions/ADR-20260405-signage-loan-grid-render-engine.md) と整合。
+- 実装の中心: `apps/api/src/services/signage/loan-grid/html/`（`loan-card-palette.ts`・`loan-grid-document.ts`・`compact-loan-card-html-decor.ts`・`grid-card-html-tokens.ts` 等）。手動プレビュー: [`signage-compact-kiosk-card-gallery.html`](../../../apps/api/scripts/html-previews/signage-compact-kiosk-card-gallery.html)。
+
+**デプロイ（本番・対象 1 台のみ）**:
+- 指示どおり **`raspi4-kensaku-stonebase01`（StoneBase01）のみ**。[deployment.md](../../guides/deployment.md) の `update-all-clients.sh`、**`export RASPI_SERVER_HOST`**（`--status` でも必須）、**`--limit raspi4-kensaku-stonebase01`**（複数台時は **1 台ずつ順番**）。**Detach Run ID**: **`20260406-194743-26315`**（`state: success`・`exitCode: 0`）。
+- **Pi3 は今回対象外**（別回は [deployment.md](../../guides/deployment.md) の **Pi3 サイネージ専用手順**に従う）。
+
+**知見（デプロイ正本の切り分け）**:
+- **Pi4 キオスク**更新は、当該端末の **`kiosk-browser` 用 Web バンドル**が主目的。
+- **サイネージ JPEG**（`playwright_html` 経路含む）は **Pi5 API コンテナ**が正本。**StoneBase のみ**更新しても、**Pi5 に同ブランチが未反映なら** `GET /api/signage/current-image` の見た目は旧のままになり得る。全工場へ見た目を揃える場合は **Pi5 を含む順次 `--limit`** が必要（[KB-325](#kb-325-split-compact24-loan-cards-pi5-git) と同型の判断）。
+
+**実機検証（反映直後）**:
+- Pi5 経由 SSH（[deployment.md](../../guides/deployment.md) の Pi5 hop 例に準拠）: `raspi4-kensaku-stonebase01@100.101.113.95` に対し `systemctl is-active kiosk-browser.service status-agent.timer` → **`active` / `active`**（2026-04-06 実測）。
+- **自動回帰の完全体**: `./scripts/deploy/verify-phase12-real.sh`（本件は StoneBase のみ先行のため未実行。`main` 反映後のフルデプロイ時に合わせて推奨）。
+
+**トラブルシューティング**:
+- **`RASPI_SERVER_HOST is required`**: `--status` でも同様（[KB-330](#kb-330-compact-kiosk-instrument-rigging-deploy)・[KB-238](../ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+
+**解決状況**: ✅ **StoneBase01 のみ本番デプロイ・実機 systemd スモーク・ナレッジ記録**（2026-04-06）。**`main` マージ**後は GitHub Actions を確認。
 
 ---
 
