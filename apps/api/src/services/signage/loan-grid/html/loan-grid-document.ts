@@ -1,61 +1,68 @@
+import type { LoanCardViewModel } from '../loan-card-grid.dto.js';
+import { resolveCompactThumbPlan } from '../compact-thumb-plan.js';
 import type { LoanGridRenderRequest } from '../loan-grid-rasterizer.port.js';
+import { buildCompactKioskMiddleHtml } from './compact-loan-card-kiosk-html.js';
 import { computeCompactCardHtmlTokens, computeDefaultCardHtmlTokens } from './grid-card-html-tokens.js';
 import { escapeHtml } from './html-escape.js';
 import { resolveLoanCardChrome } from './loan-card-chrome.js';
 
-function buildCompactCard(
-  placed: {
-    view: {
-      primaryText: string;
-      employeeName: string | null;
-      clientLocation: string;
-      borrowedCompact: string;
-      managementText: string;
-      riggingIdNumText: string;
-      isExceeded: boolean;
-      isInstrument: boolean;
-      isRigging: boolean;
-      thumbnailDataUrl: string | null;
-    };
-    width: number;
-    height: number;
-  },
-  scale: number
-): string {
+function buildCompactCard(placed: { view: LoanCardViewModel; width: number; height: number }, scale: number): string {
   const { view, width: w, height: h } = placed;
   const chrome = resolveLoanCardChrome(view);
   const t = computeCompactCardHtmlTokens(scale);
   const emp = view.employeeName?.trim() ? escapeHtml(view.employeeName.trim()) : escapeHtml('未割当');
+  const plan = resolveCompactThumbPlan(view);
 
-  const thumbBlock = view.thumbnailDataUrl
-    ? `<img class="thumb" src="${escapeHtml(view.thumbnailDataUrl)}" alt="" width="${t.thumbPx}" height="${t.thumbPx}" style="width:${t.thumbPx}px;height:${t.thumbPx}px;border-radius:${t.thumbCornerPx}px;object-fit:cover;flex-shrink:0;" />`
-    : `<div style="width:${t.thumbPx}px;height:${t.thumbPx}px;flex-shrink:0;"></div>`;
+  const thumbBlock =
+    plan.kind === 'image'
+      ? `<img class="thumb" src="${escapeHtml(plan.dataUrl)}" alt="" width="${t.thumbPx}" height="${t.thumbPx}" style="width:${t.thumbPx}px;height:${t.thumbPx}px;border-radius:${t.thumbCornerPx}px;object-fit:cover;flex-shrink:0;" />`
+      : plan.kind === 'itemEmptySlot'
+        ? `<div style="width:${t.thumbPx}px;height:${t.thumbPx}px;flex-shrink:0;"></div>`
+        : '';
+
+  const kioskLines = view.compactKioskLines;
+  const useKioskBody = kioskLines != null;
+  const middleInner = kioskLines
+    ? buildCompactKioskMiddleHtml(kioskLines, view.clientLocation, t)
+    : `<div style="font-weight:700;font-size:${t.nameAndPrimaryPx}px;line-height:1.25;flex:0 1 auto;min-height:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">${escapeHtml(view.primaryText)}</div>
+          <div style="font-weight:600;font-size:${t.locationPx}px;color:#e2e8f0;line-height:1.2;flex:1 1 0;min-height:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">${escapeHtml(view.clientLocation)}</div>`;
+
+  const middleRowStyle =
+    plan.kind === 'hidden'
+      ? `display:flex;flex-direction:row;gap:${t.innerGapPx}px;flex:1 1 0;min-height:0;align-items:flex-start;overflow:hidden;`
+      : `display:flex;flex-direction:row;gap:${t.innerGapPx}px;height:${t.thumbPx}px;flex-shrink:0;align-items:flex-start;overflow:hidden;`;
 
   const warn = view.isExceeded
     ? `<span style="font-weight:700;font-size:${t.warnPx}px;white-space:nowrap;">⚠ 期限超過</span>`
     : '';
 
-  const riggingLine = view.riggingIdNumText
-    ? `<div style="text-align:right;font-size:${t.riggingPx}px;font-weight:600;">${escapeHtml(view.riggingIdNumText)}</div>`
-    : '';
+  const riggingLine =
+    !useKioskBody && view.riggingIdNumText
+      ? `<div style="text-align:right;font-size:${t.riggingPx}px;font-weight:600;">${escapeHtml(view.riggingIdNumText)}</div>`
+      : '';
 
   const mgmt = escapeHtml(view.managementText || '');
   const borrowed = view.borrowedCompact ? escapeHtml(view.borrowedCompact) : '';
+  const showFooterCodeColumn = !useKioskBody;
+
+  const footerRight = showFooterCodeColumn
+    ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;text-align:right;">
+          ${riggingLine}
+          <div style="font-family:monospace;font-weight:600;font-size:${t.mgmtPx}px;line-height:1;">${mgmt}</div>
+        </div>`
+    : '';
 
   /**
-   * SVG `splitCompact24` に合わせる:
-   * - サムネ列の高さは thumb 固定帯（`height:${thumbPx}` で縦の食い合いを防ぐ）
-   * - アイテム名と Location はその帯内のみ（各最大2行・clip）
-   * - 日付・警告は左、旧番/管理番号は右で同段
+   * 工具: 従来どおり空サムネ列＋ primary＋右下コード。
+   * 計測・吊具（キオスク行）: 写真が無いときサムネ列なし、本文は管理番号→名称（吊具は同一行右に id）、フッタ右の重複コードは出さない。
    */
   return `
     <div class="loan-card compact" style="width:${w}px;height:${h}px;box-sizing:border-box;padding:${t.padPx}px;border-radius:${t.cardRadiusPx}px;background:${chrome.background};border:${chrome.borderWidth} solid ${chrome.borderColor};overflow:hidden;display:flex;flex-direction:column;color:#fff;font-family:sans-serif;">
       <div style="font-weight:600;font-size:${t.nameAndPrimaryPx}px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:${t.nameMarginBottomPx}px;flex-shrink:0;">${emp}</div>
-      <div style="display:flex;flex-direction:row;gap:${t.innerGapPx}px;height:${t.thumbPx}px;flex-shrink:0;align-items:flex-start;overflow:hidden;">
+      <div style="${middleRowStyle}">
         ${thumbBlock}
         <div style="flex:1;min-width:0;height:100%;display:flex;flex-direction:column;gap:${t.stackGapPx}px;overflow:hidden;">
-          <div style="font-weight:700;font-size:${t.nameAndPrimaryPx}px;line-height:1.25;flex:0 1 auto;min-height:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">${escapeHtml(view.primaryText)}</div>
-          <div style="font-weight:600;font-size:${t.locationPx}px;color:#e2e8f0;line-height:1.2;flex:1 1 0;min-height:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;">${escapeHtml(view.clientLocation)}</div>
+          ${middleInner}
         </div>
       </div>
       <div style="margin-top:auto;flex-shrink:0;display:flex;flex-direction:row;align-items:flex-end;justify-content:space-between;gap:${t.footerRowGapPx}px;padding-top:${t.footerPadTopPx}px;">
@@ -63,10 +70,7 @@ function buildCompactCard(
           <span style="font-weight:600;font-size:${t.borrowedPx}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${borrowed}</span>
           ${warn}
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;text-align:right;">
-          ${riggingLine}
-          <div style="font-family:monospace;font-weight:600;font-size:${t.mgmtPx}px;line-height:1;">${mgmt}</div>
-        </div>
+        ${footerRight}
       </div>
     </div>
   `;

@@ -82,4 +82,60 @@ describe('buildLoanGridHtmlDocument', () => {
     expect(html).toContain('class="grid"');
     expect(html).toContain('Tool A');
   });
+
+  it('compact24 kiosk rigging omits footer monospace code and empty thumb column', () => {
+    const request: LoanGridRenderRequest = {
+      canvasWidth: 1920,
+      config: {
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 200,
+        mode: 'SPLIT',
+        showThumbnails: true,
+        cardLayout: 'splitCompact24',
+      },
+      layout: {
+        gap: 14,
+        columns: 1,
+        cardWidth: 220,
+        cardHeight: 154,
+        overflowCount: 0,
+        scale: 1,
+        placed: [
+          {
+            x: 0,
+            y: 0,
+            width: 220,
+            height: 154,
+            view: {
+              primaryText: 'てこ式',
+              employeeName: '山田',
+              clientLocation: '第2工場',
+              borrowedDatePart: '',
+              borrowedTimePart: '',
+              borrowedCompact: '04/03・12:02',
+              isInstrument: false,
+              isRigging: true,
+              managementText: 'RG-22',
+              riggingIdNumText: '旧:101',
+              isExceeded: false,
+              thumbnailDataUrl: null,
+              compactKioskLines: {
+                headLine: 'RG-22',
+                nameLine: 'てこ式',
+                idNumValue: '101',
+              },
+            },
+          },
+        ],
+        isEmpty: false,
+      },
+    };
+    const html = buildLoanGridHtmlDocument(request);
+    expect(html).toContain('RG-22');
+    expect(html).toContain('101');
+    expect(html).not.toContain('font-family:monospace');
+    expect(html).not.toContain('旧:');
+  });
 });

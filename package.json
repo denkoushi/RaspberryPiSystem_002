@@ -20,7 +20,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:postgres:start": "bash scripts/test/start-postgres.sh",
-    "test:postgres:stop": "bash scripts/test/stop-postgres.sh"
+    "test:postgres:stop": "bash scripts/test/stop-postgres.sh",
+    "preview:signage-compact24": "python3 -m http.server 8765 --directory apps/api/scripts/html-previews",
+    "preview:html-previews": "python3 -m http.server 8765 --directory apps/api/scripts/html-previews"
   },
   "engines": {
     "node": ">=18.18.0",
