@@ -44,6 +44,10 @@
 - **サイネージ（貸出グリッド描画エンジン）**: [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md)（`SIGNAGE_LOAN_GRID_ENGINE`: `svg_legacy` 既定・`playwright_html` オプトイン・Docker/Ansible 配線）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-04-06）
+
+- **キオスク持出一覧: 計測・吊具を compact 表記に揃える（工具カード据え置き・`compactKioskLines`）・`feat/signage-compact-kiosk-instrument-rigging`・本番 Pi5→Pi4×4→Pi3（単独）順次・スモーク実機検証・`main` マージ**: Detach Run ID は [KB-330](./knowledge-base/infrastructure/signage.md#kb-330-compact-kiosk-instrument-rigging-deploy)。**運用**: [deployment.md](./guides/deployment.md)（`update-all-clients.sh`・**`--status` でも `RASPI_SERVER_HOST` 必須**）。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-05）
 
 - **キオスク部品測定: 複数記録表（`PartMeasurementSession`・編集画面上部カード・別テンプレ追加・API `{ sheet, session }`・`feat/part-measurement-multi-sheet-parent`）・Pi5→Pi4×4 順次（Pi3 除外）・Phase12 PASS 42/1/0（約 135s）**: [KB-320](./knowledge-base/KB-320-kiosk-part-measurement.md)（Detach Run ID・`--follow` 長時間と Pi5 デタッチ完走の TS）/ [kiosk-part-measurement.md](./runbooks/kiosk-part-measurement.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
