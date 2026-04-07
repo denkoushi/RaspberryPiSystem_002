@@ -40,6 +40,18 @@ INV=infrastructure/ansible/inventory.yml
 
 期待: **FAIL 0**（環境により WARN はあり得る）。
 
+## 本番実績（2026-04-07）
+
+- **ブランチ**: `feat/kiosk-rigging-loan-analytics`
+- **順次デプロイ Run ID**:
+  - `raspberrypi5`: `20260407-202545-7931`
+  - `raspberrypi4`: `20260407-203843-1129`
+  - `raspi4-robodrill01`: `20260407-204403-16863`
+  - `raspi4-fjv60-80`: `20260407-204812-6662`
+  - `raspi4-kensaku-stonebase01`: `20260407-205532-26037`
+- **各 run 共通結果**: `PLAY RECAP failed=0` / `unreachable=0` / remote exit `0`
+- **Phase12 実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 101s）
+
 ## 追加スモーク（任意）
 
 各キオスクの `clientKey` で:
@@ -55,6 +67,7 @@ JSON に `summary` / `byGear` / `byEmployee` が含まれること。
 | 事象 | 切り分け |
 |------|----------|
 | `[ERROR] RASPI_SERVER_HOST is required` | Mac シェルで `RASPI_SERVER_HOST` を export してから再実行。[`ansible-deployment.md`](./infrastructure/ansible-deployment.md) の Pi5 デプロイ条項参照。 |
+| Pi5 run が `Rebuild/Restart docker compose services` で長く見える | 初回相当では Playwright の **`chromium` ダウンロード**が走り、Pi5 デプロイが通常より長くなる。Pi5 上で `playwright install chromium` / `docker-buildx` が動作していれば継続待ちでよい。 |
 | キオスクでデータ取得失敗 | API 未更新・`x-client-key` 不一致・ネットワーク。Pi5 の `GET /api/system/health` を先に確認。 |
 | 月次が期待とずれる | `timeZone` クエリ（`Asia/Tokyo` / `UTC`）と DB 保存時刻（UTC）の組み合わせを確認。 |
 
