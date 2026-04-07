@@ -46,6 +46,7 @@
 
 ### 🆕 最新アップデート（2026-04-07）
 
+- **サイネージ FULL: キオスク順位ボード資源CDカード（`kiosk_leader_order_cards`・JPEG・管理画面で資源CD複数指定）**: 仕様・ファイル一覧は [KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。
 - **型落ち Android タブレット向け軽量サイネージ `/signage-lite`・JPEG ポーリング・`current-image` の `key` クエリと端末キー整合**: セットアップと URL 例は [signage-client-setup.md](./guides/signage-client-setup.md#android-signage-lite)（`clientKey` 登録・`targetClientKeys`）。
 - **サイネージ 管理UI: スケジュールの対象端末（`targetClientKeys`）選択・一覧要約・`feat/signage-target-client-keys-ui`・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260407-154339-26008`・Phase12 PASS 43/0/0・`main` マージ**: [PR #89](https://github.com/denkoushi/RaspberryPiSystem_002/pull/89)。仕様は [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md)、デプロイ・端末候補（`apiKey` に `signage` を含む慣習）・代表ファイルは [signage.md](./knowledge-base/infrastructure/signage.md)（管理UI節）。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **サイネージ 端末別スケジュール（`targetClientKeys`・空=全端末）とレンダキャッシュの client 分離・`feat/signage-target-client-keys`・本番 Pi5→Pi4×4→Pi3 単独順次・Phase12 PASS 43/0/0・`main` マージ**: 設計は [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md)、デプロイ実績・Pi3 一時 exit-code の扱い・開発時 `SIGNAGE_RENDER_DIR` 注意は [signage.md](./knowledge-base/infrastructure/signage.md) 冒頭。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。

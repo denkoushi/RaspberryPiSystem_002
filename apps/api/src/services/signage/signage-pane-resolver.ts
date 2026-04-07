@@ -170,6 +170,8 @@ function buildPane(
     case 'kiosk_progress_overview':
       // FULL のみ対応。SPLIT で選ばれた場合は空ペイン（運用で避ける想定）。
       return { kind: 'loans', tools: [] };
+    case 'kiosk_leader_order_cards':
+      return { kind: 'loans', tools: [] };
     default:
       return { kind: 'loans', tools: [] };
   }

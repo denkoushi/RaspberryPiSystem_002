@@ -11,6 +11,8 @@ import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
 import type { LeaderBoardRow } from './types';
 
 type Props = {
+  /** interactive: キオスク順位ボード（既定）。signage: 操作系UIなしの閲覧専用 */
+  variant?: 'interactive' | 'signage';
   resourceCd: string;
   /** resourceNameMap の names 部分のみ（横並び表示）。空なら非表示 */
   resourceJapaneseNames?: string;
@@ -35,6 +37,7 @@ type Props = {
  * 資源CD単位カード。グリッド行の高さに合わせて本文を伸ばし、一覧は縦スクロール。
  */
 export function LeaderOrderResourceCard({
+  variant = 'interactive',
   resourceCd,
   resourceJapaneseNames,
   rows,
@@ -52,28 +55,37 @@ export function LeaderOrderResourceCard({
   notePending
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
+  const isSignage = variant === 'signage';
 
   return (
     <div
-      role="group"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
+      role={isSignage ? undefined : 'group'}
+      tabIndex={isSignage ? undefined : 0}
+      onClick={isSignage ? undefined : onSelect}
+      onKeyDown={
+        isSignage
+          ? undefined
+          : (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelect();
+              }
+            }
+      }
       className={clsx(
-        'flex h-full min-h-[12rem] cursor-pointer flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60',
+        'flex h-full min-h-[12rem] flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none',
+        !isSignage && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400/60',
+        isSignage && 'cursor-default',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
         selected ? 'border-cyan-300/70 shadow-[0_0_0_1px_rgba(34,211,238,0.3)]' : 'border-white/10',
         dimmed ? 'opacity-[0.52]' : 'opacity-100'
       )}
       aria-label={
-        selected
-          ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（選択中）`
-          : `資源 ${resourceCd}${jp ? ` ${jp}` : ''}。Enter か Space で選択`
+        isSignage
+          ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（閲覧）`
+          : selected
+            ? `資源 ${resourceCd}${jp ? ` ${jp}` : ''}（選択中）`
+            : `資源 ${resourceCd}${jp ? ` ${jp}` : ''}。Enter か Space で選択`
       }
     >
       <div className="mb-1.5 flex shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
@@ -103,54 +115,69 @@ export function LeaderOrderResourceCard({
                 )}
               >
                 <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    className={clsx(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] shadow hover:bg-white/5 disabled:opacity-60',
-                      row.isCompleted
-                        ? 'border-slate-400 bg-slate-800 text-white/80'
-                        : 'border-rose-400/90 bg-slate-900 text-rose-200'
-                    )}
-                    aria-label={row.isCompleted ? '未完了に戻す' : '完了にする'}
-                    disabled={completePending}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCompleteRow(row.id);
-                    }}
-                  >
-                    ✓
-                  </button>
-                  <LeaderOrderRowOrderSelect
-                    resourceCd={resourceCd}
-                    currentOrder={row.processingOrder}
-                    usageByResourceCd={orderUsageByResourceCd}
-                    disabled={
-                      completePending || row.isCompleted || orderPending || Boolean(dueDatePending)
-                    }
-                    onChange={(nextValue) => onOrderChange(row, nextValue)}
-                  />
+                  {isSignage ? null : (
+                    <button
+                      type="button"
+                      className={clsx(
+                        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] shadow hover:bg-white/5 disabled:opacity-60',
+                        row.isCompleted
+                          ? 'border-slate-400 bg-slate-800 text-white/80'
+                          : 'border-rose-400/90 bg-slate-900 text-rose-200'
+                      )}
+                      aria-label={row.isCompleted ? '未完了に戻す' : '完了にする'}
+                      disabled={completePending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCompleteRow(row.id);
+                      }}
+                    >
+                      ✓
+                    </button>
+                  )}
+                  {isSignage ? null : (
+                    <LeaderOrderRowOrderSelect
+                      resourceCd={resourceCd}
+                      currentOrder={row.processingOrder}
+                      usageByResourceCd={orderUsageByResourceCd}
+                      disabled={
+                        completePending || row.isCompleted || orderPending || Boolean(dueDatePending)
+                      }
+                      onChange={(nextValue) => onOrderChange(row, nextValue)}
+                    />
+                  )}
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <span className="min-w-0 truncate font-mono text-[11px] text-white/88" title={row.fkojun.trim() || undefined}>
                       {row.fkojun.trim() || '—'}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!onOpenDueDatePicker || dueDatePending}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenDueDatePicker?.(row);
-                    }}
-                    className={clsx(
-                      'shrink-0 rounded px-1 py-0 font-mono text-[10px] transition-colors',
-                      manual ? 'font-medium text-amber-200' : 'text-cyan-300/90',
-                      onOpenDueDatePicker && !dueDatePending ? 'hover:bg-white/10' : 'cursor-default opacity-70'
-                    )}
-                    title={manual ? '手動納期（タップで変更）' : '表示納期（タップで変更）'}
-                  >
-                    {dueLabel}
-                  </button>
-                  {onOpenNote ? (
+                  {isSignage ? (
+                    <span
+                      className={clsx(
+                        'shrink-0 font-mono text-[10px]',
+                        manual ? 'font-medium text-amber-200' : 'text-cyan-300/90'
+                      )}
+                    >
+                      {dueLabel}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!onOpenDueDatePicker || dueDatePending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenDueDatePicker?.(row);
+                      }}
+                      className={clsx(
+                        'shrink-0 rounded px-1 py-0 font-mono text-[10px] transition-colors',
+                        manual ? 'font-medium text-amber-200' : 'text-cyan-300/90',
+                        onOpenDueDatePicker && !dueDatePending ? 'hover:bg-white/10' : 'cursor-default opacity-70'
+                      )}
+                      title={manual ? '手動納期（タップで変更）' : '表示納期（タップで変更）'}
+                    >
+                      {dueLabel}
+                    </button>
+                  )}
+                  {isSignage || !onOpenNote ? null : (
                     <button
                       type="button"
                       disabled={notePending}
@@ -169,7 +196,7 @@ export function LeaderOrderResourceCard({
                     >
                       <KioskPencilGlyph />
                     </button>
-                  ) : null}
+                  )}
                 </div>
                 {pres.machinePartLine.length > 0 || pres.quantityInlineJa ? (
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-white/80">

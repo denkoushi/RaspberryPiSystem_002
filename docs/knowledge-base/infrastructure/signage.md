@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 26件  
+**件数**: 27件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -63,6 +63,25 @@ update-frequency: medium
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
 
 **解決状況**: ✅ **実装・本番デプロイ・実機検証（Phase12）完了**（初回 2026-04-01・4列×2段反映 2026-03-31）
+
+---
+
+### [KB-335] キオスク順位ボード・資源CDカード（`kiosk_leader_order_cards`）サイネージ JPEG
+
+**概要**:
+- FULL スロット種別 **`kiosk_leader_order_cards`**。`/admin/signage/schedules` で **`deviceScopeKey`**（キオスクと同じスコープ）と **`resourceCds`**（1〜32件・表示順）を設定。
+- データは生産スケジュール一覧 API と同契約の **`listProductionScheduleRows`**（`allowResourceOnly: true`・資源CDフィルタ）から取得。行の並び・表示整形はキオスク **`LeaderOrderResourceCard`** に寄せた純関数（`leader-board-pure.ts`）。**チェック・手動順位・備考アイコンは JPEG には含めない**（閲覧専用）。
+- **2列×2段**（最大 **4** 資源カード/ページ）。超過分は **`slideIntervalSeconds`**（既定 30s）でページ送り（`signage-slide-rotation.ts`）。
+- 契約: `apps/api/src/services/signage/signage-layout.types.ts`、`apps/api/src/routes/signage/schemas.ts`。描画: `apps/api/src/services/signage/leader-order-cards/`。Web `/signage` は **`getSignageCurrentImageUrl` 全画面**（`kiosk_progress_overview` と同型）。Pi3 `/signage-lite` も同一 JPEG 経路。
+
+**代表ファイル**:
+- `apps/api/src/services/signage/signage.renderer.ts`（分岐 `kiosk_leader_order_cards`）
+- `apps/api/src/services/signage/leader-order-cards/build-leader-order-cards-svg.ts`
+- `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
+- `apps/web/src/pages/signage/SignageDisplayPage.tsx`
+- `apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx`（`variant="signage"` で React 側閲覧専用にも利用可）
+
+**デプロイ注意**: JPEG 生成は **Pi5 API（SignageRenderer）** が正本。**Pi3 のみ**更新しても見た目が変わらない場合は API 未更新を疑う（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型）。
 
 ---
 
