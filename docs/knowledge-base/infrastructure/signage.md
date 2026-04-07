@@ -81,7 +81,15 @@ update-frequency: medium
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`
 - `apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx`（`variant="signage"` で React 側閲覧専用にも利用可）
 
-**デプロイ注意**: JPEG 生成は **Pi5 API（SignageRenderer）** が正本。**Pi3 のみ**更新しても見た目が変わらない場合は API 未更新を疑う（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型）。
+**本番デプロイ（2026-04-07・ブランチ `feat/signage-leader-order-resource-cards`）**: [deployment.md](../../guides/deployment.md) どおり **`RASPI_SERVER_HOST`**・**`--limit raspberrypi5`**・**`--detach --follow`**（JPEG / 管理 Web / API の正本は Pi5 のため **1 台のみ**で可。Pi4/Pi3 の PLAY は `no hosts matched`）。**Detach Run ID**: `20260407-213958-2534`。**`PLAY RECAP`**: `raspberrypi5` **`failed=0`**・リモート **`exit=0`**。**Pi3 専用手順**: 本機能の必須デプロイ対象外（リソース僅少・差分が Pi5 に集約）。Pi3 表示は従来どおり **`signage-lite-update`** が Pi5 の **`/api/signage/current-image`** を取得。
+
+**実機検証（自動）**: `./scripts/deploy/verify-phase12-real.sh`（Mac / Tailscale）→ **PASS 43 / WARN 0 / FAIL 0**（2026-04-07・上記 Pi5 反映直後・約 **55s**）。
+
+**知見・トラブルシューティング**:
+- **JPEG 正本は Pi5**: **Pi3 のみ**更新しても見た目が変わらない場合は **Pi5 API 未更新**を疑う（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型）。
+- **管理画面で資源CDを保存したが JPEG が古い**: **`GET /api/signage/content`** でスケジュールの `layoutConfig` に `kiosk_leader_order_cards` と `resourceCds` が載っているか確認。`slideIntervalSeconds` 待ちのあと、Pi5 上の **`SIGNAGE_RENDER_DIR`** と **`signage-lite`** のポーリングを確認。
+
+**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ）・Phase12 実機検証（PASS 43/0/0）記録済み**（2026-04-07）
 
 ---
 
