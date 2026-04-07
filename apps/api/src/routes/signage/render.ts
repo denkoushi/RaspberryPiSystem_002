@@ -15,7 +15,11 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
   app.post('/render', { preHandler: canManage }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const result = await renderer.renderCurrentContent();
-      return reply.status(200).send({ renderedAt: result.renderedAt, filename: result.filename });
+      return reply.status(200).send({
+        renderedAt: result.renderedAt,
+        filename: result.filename,
+        clientKeysRendered: result.clientKeysRendered,
+      });
     } catch (error) {
       request.log.error({ err: error }, 'Failed to render signage content');
       throw new ApiError(500, 'Failed to render signage content');
@@ -48,24 +52,26 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
   app.get('/current-image', async (request: FastifyRequest, reply: FastifyReply) => {
     // クライアントキーをヘッダーまたはクエリパラメータから取得（ブラウザ直接アクセス対応）
     const headerKey = request.headers['x-client-key'];
+    const headerKeyStr =
+      typeof headerKey === 'string' ? headerKey : headerKey?.[0] != null ? String(headerKey[0]) : null;
     const queryKey = typeof request.query === 'object' && request.query !== null && 'key' in request.query
       ? String(request.query.key)
       : null;
-    const clientKey = headerKey || queryKey;
+    const keyValue = queryKey || headerKeyStr;
 
-    if (!clientKey) {
+    if (!keyValue) {
       await canView(request, reply);
     } else {
-      const keyValue = typeof clientKey === 'string' ? clientKey : clientKey[0];
       const client = await prisma.clientDevice.findUnique({
-        where: { apiKey: keyValue }
+        where: { apiKey: keyValue },
       });
       if (!client) {
         throw new ApiError(401, 'クライアント API キーが不正です');
       }
     }
-
-    let imageBuffer = await SignageRenderStorage.readCurrentImage();
+    let imageBuffer: Buffer | null = keyValue
+      ? await SignageRenderStorage.readCurrentImage(keyValue)
+      : await SignageRenderStorage.readCurrentImage(null);
     if (!imageBuffer) {
       // 画像が存在しない場合はデフォルトメッセージを生成
       imageBuffer = await renderer.renderMessage('表示するコンテンツがありません');

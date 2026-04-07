@@ -1,11 +1,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../../lib/prisma.js';
 import { buildServer } from '../../app.js';
-import { createAuthHeader, createTestUser, getOrCreateTestClientDevice } from './helpers.js';
+import {
+  createAuthHeader,
+  createTestClientDevice,
+  createTestUser,
+  getOrCreateTestClientDevice,
+} from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
+process.env.SIGNAGE_RENDER_DIR ??= `/tmp/raspi-signage-render-test-${process.pid}`;
 
 describe('GET /api/signage/schedules', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -892,5 +898,225 @@ describe('GET /api/signage/content with SPLIT layout (left: loans, right: visual
     expect(content.tools).toBeDefined();
     expect(Array.isArray(content.tools)).toBe(true);
     expect(content.tools).toHaveLength(0);
+  });
+});
+
+describe('GET /api/signage/content and current-image with targetClientKeys', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+  let adminToken: string;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  beforeEach(async () => {
+    const admin = await createTestUser('ADMIN');
+    adminToken = admin.token;
+
+    const listResponse = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    const { schedules } = listResponse.json();
+    for (const schedule of schedules as Array<{ id: string }>) {
+      await app.inject({
+        method: 'DELETE',
+        url: `/api/signage/schedules/${schedule.id}`,
+        headers: createAuthHeader(adminToken),
+      });
+    }
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  it('without targetClientKeys, anonymous /content still matches schedule (all-clients)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'global-no-target-keys',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [{ position: 'FULL', kind: 'loans', config: {} }],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 10,
+        enabled: true,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const anon = await app.inject({ method: 'GET', url: '/api/signage/content' });
+    expect(anon.statusCode).toBe(200);
+    expect(anon.json().layoutConfig?.slots?.[0]?.kind).toBe('loans');
+  });
+
+  it('targetClientKeys limits schedule to listed apiKeys; others and anonymous use global', async () => {
+    const clientA = await createTestClientDevice(`signage-tck-a-${Date.now()}`);
+    const clientB = await createTestClientDevice(`signage-tck-b-${Date.now()}`);
+
+    const globalRes = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'global-loans-tck',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [{ position: 'FULL', kind: 'loans', config: {} }],
+        },
+        // 常時マッチはさせず、非対象端末での fallback 用に使う
+        dayOfWeek: [],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 1,
+        enabled: true,
+      },
+    });
+    expect(globalRes.statusCode).toBe(200);
+
+    const targetedRes = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'kiosk-only-client-a',
+        contentType: 'TOOLS',
+        targetClientKeys: [clientA.apiKey],
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'kiosk_progress_overview',
+              config: {
+                deviceScopeKey: 'integration-tck-device-scope',
+                slideIntervalSeconds: 30,
+                seibanPerPage: 5,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+    expect(targetedRes.statusCode).toBe(200);
+    expect(targetedRes.json().schedule.targetClientKeys).toEqual([clientA.apiKey]);
+
+    const forA = await app.inject({
+      method: 'GET',
+      url: '/api/signage/content',
+      headers: { 'x-client-key': clientA.apiKey },
+    });
+    expect(forA.statusCode).toBe(200);
+    expect(forA.json().layoutConfig?.slots?.[0]?.kind).toBe('kiosk_progress_overview');
+
+    const forB = await app.inject({
+      method: 'GET',
+      url: '/api/signage/content',
+      headers: { 'x-client-key': clientB.apiKey },
+    });
+    expect(forB.statusCode).toBe(200);
+    expect(forB.json().layoutConfig?.slots?.[0]?.kind).toBe('loans');
+
+    const anon = await app.inject({ method: 'GET', url: '/api/signage/content' });
+    expect(anon.statusCode).toBe(200);
+    expect(anon.json().layoutConfig?.slots?.[0]?.kind).toBe('loans');
+  });
+
+  it('current-image returns different JPEGs per client after POST /render when schedules differ', async () => {
+    const clientA = await createTestClientDevice(`signage-img-a-${Date.now()}`);
+    const clientB = await createTestClientDevice(`signage-img-b-${Date.now()}`);
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'img-global-loans',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [{ position: 'FULL', kind: 'loans', config: {} }],
+        },
+        // 常時マッチはさせず、非対象端末での fallback 用に使う
+        dayOfWeek: [],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 1,
+        enabled: true,
+      },
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'img-kiosk-a',
+        contentType: 'TOOLS',
+        targetClientKeys: [clientA.apiKey],
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'kiosk_progress_overview',
+              config: {
+                deviceScopeKey: 'integration-img-device-scope',
+                slideIntervalSeconds: 30,
+                seibanPerPage: 5,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 100,
+        enabled: true,
+      },
+    });
+
+    const renderRes = await app.inject({
+      method: 'POST',
+      url: '/api/signage/render',
+      headers: createAuthHeader(adminToken),
+    });
+    expect(renderRes.statusCode).toBe(200);
+    expect(renderRes.json().clientKeysRendered).toBeGreaterThanOrEqual(2);
+
+    const imgA = await app.inject({
+      method: 'GET',
+      url: '/api/signage/current-image',
+      headers: { 'x-client-key': clientA.apiKey },
+    });
+    const imgB = await app.inject({
+      method: 'GET',
+      url: '/api/signage/current-image',
+      headers: { 'x-client-key': clientB.apiKey },
+    });
+
+    expect(imgA.statusCode).toBe(200);
+    expect(imgB.statusCode).toBe(200);
+    const bufA = imgA.rawPayload as Buffer;
+    const bufB = imgB.rawPayload as Buffer;
+    expect(bufA.length).toBeGreaterThan(1000);
+    expect(bufB.length).toBeGreaterThan(1000);
+    expect(Buffer.compare(bufA, bufB)).not.toBe(0);
   });
 });

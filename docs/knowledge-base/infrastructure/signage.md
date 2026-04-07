@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-04-06
+last-verified: 2026-04-07
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -15,6 +15,10 @@ update-frequency: medium
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
+
+**設計（端末別スケジュール）**: [ADR-20260407](../../decisions/ADR-20260407-signage-target-client-keys.md) — `SignageSchedule.targetClientKeys`（空=全端末）、`GET /api/signage/content` の `x-client-key` / `clientKey`、レンダ JPEG は `apiKey` 毎に `SIGNAGE_RENDER_DIR` 下へ保存。
+
+**本番デプロイ（2026-04-07・ブランチ `feat/signage-target-client-keys`）**: [deployment.md](../../guides/deployment.md) どおり **Pi5 → Pi4×4 → Pi3 単独**・`RASPI_SERVER_HOST`・**`--detach --follow`**・**各 `--limit` は 1 台ずつ**（`update-all-clients.sh` の並列起動禁止）。**Detach Run ID**: `20260407-141922-13387`（`raspberrypi5`）→ `20260407-142729-31574`（`raspberrypi4`）→ `20260407-143132-2359`（`raspi4-robodrill01`）→ `20260407-143438-18999`（`raspi4-fjv60-80`）→ `20260407-144334-4685`（`raspi4-kensaku-stonebase01`）→ `20260407-144650-13245`（`raspberrypi3`）、各 **`PLAY RECAP failed=0`**。**Pi3**: メモリ確保で lightdm 停止→復旧のため、プレフライト直後は **`signage-lite` が一時 `exit-code`** になり得る；playbook 後段で **lightdm 復旧後に active** で完走するのが通常（下記 [KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型）。**CI**: ブランチ push の GitHub Actions **success**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見（開発）**: `SIGNAGE_RENDER_DIR` は実行時解決に寄せないと、開発機が本番固定パスへ `mkdir` しようとして **EACCES** になり得る（ADR・統合テスト修正と同趣旨）。
 
 ---
 

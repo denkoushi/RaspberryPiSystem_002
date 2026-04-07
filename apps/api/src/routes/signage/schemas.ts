@@ -56,6 +56,8 @@ export const scheduleSchema = z.object({
   contentType: z.enum(['TOOLS', 'PDF', 'SPLIT']),
   pdfId: z.string().uuid().optional().nullable(),
   layoutConfig: layoutConfigSchema,
+  /** 空または未指定=全端末向け。値ありのときは ClientDevice.apiKey と一致する端末のみ */
+  targetClientKeys: z.array(z.string().min(1).max(512)).max(500).optional(),
   dayOfWeek: z.array(z.number().int().min(0).max(6)),
   startTime: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
   endTime: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
