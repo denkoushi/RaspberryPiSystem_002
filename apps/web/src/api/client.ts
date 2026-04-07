@@ -34,6 +34,7 @@ import type {
   RiggingReturnPayload,
   RiggingInspectionRecord,
   RiggingInspectionResult,
+  RiggingLoanAnalyticsResponse,
   RiggingStatus
 } from './types';
 import type {
@@ -1698,6 +1699,16 @@ export async function getMeasuringInstrumentByTagUid(tagUid: string) {
 }
 
 // 吊具 API
+export async function getRiggingLoanAnalytics(params?: {
+  periodFrom?: string;
+  periodTo?: string;
+  monthlyMonths?: number;
+  timeZone?: 'Asia/Tokyo' | 'UTC';
+}) {
+  const { data } = await api.get<RiggingLoanAnalyticsResponse>('/rigging-gears/loan-analytics', { params });
+  return data;
+}
+
 export async function getRiggingGears(params?: { search?: string; status?: RiggingStatus }) {
   const { data } = await api.get<{ riggingGears: RiggingGear[] }>('/rigging-gears', { params });
   return data.riggingGears;

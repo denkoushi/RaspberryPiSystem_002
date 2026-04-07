@@ -36,6 +36,7 @@ import { KioskPartMeasurementPage } from './pages/kiosk/KioskPartMeasurementPage
 import { KioskPartMeasurementTemplatePage } from './pages/kiosk/KioskPartMeasurementTemplatePage';
 import { KioskPartMeasurementTemplatePickPage } from './pages/kiosk/KioskPartMeasurementTemplatePickPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
+import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
 import { ProductionScheduleLeaderOrderBoardPage } from './pages/kiosk/ProductionScheduleLeaderOrderBoardPage';
@@ -86,6 +87,7 @@ function App() {
           <Route path="/kiosk/part-measurement/template/pick" element={<KioskPartMeasurementTemplatePickPage />} />
           <Route path="/kiosk/part-measurement/template/new" element={<KioskPartMeasurementTemplatePage />} />
           <Route path="/kiosk/part-measurement/finalized" element={<KioskPartMeasurementFinalizedPage />} />
+          <Route path="/kiosk/rigging-analytics" element={<KioskRiggingAnalyticsPage />} />
         </Route>
       </Route>
       {/* 開発用: UI確認のための一時的なルート */}

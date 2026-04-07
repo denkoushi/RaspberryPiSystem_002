@@ -1,3 +1,12 @@
+export type {
+  RiggingLoanAnalyticsByEmployeeRow,
+  RiggingLoanAnalyticsByGearRow,
+  RiggingLoanAnalyticsMeta,
+  RiggingLoanAnalyticsMonthlyPoint,
+  RiggingLoanAnalyticsResponse,
+  RiggingLoanAnalyticsSummary
+} from './loan-analytics.js';
+
 export type RiggingStatus = 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
 export type RiggingInspectionResult = 'PASS' | 'FAIL';
 
