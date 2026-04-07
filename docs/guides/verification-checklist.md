@@ -583,9 +583,9 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 - [ ] **既定（シャドー OFF・アクティブ OFF）**でも Phase12 回帰・キオスク表示が壊れていない（`verify-phase12-real.sh`）
 - [ ] シャドーを **意図的に ON** した環境で、API ログに `Photo tool label shadow assist inference completed` または `skipped`（debug）が期待どおり出るか
 - [ ] ON 時も `Loan.photoToolDisplayName` が **1 回目 VLM のみ**で更新され、キオスク1行目が従来優先順（人 > VLM > `撮影mode`）のままか
-- [ ] （任意）`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true` を入れた環境では、ログの `galleryRowCount` / `activePersistEligible` / `activePersistApplied` とゲート通過時のみ本番保存が期待どおりか（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「アクティブ補助」節）
+- [ ] （任意）`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true` を入れた環境では、ログの `galleryRowCount` / `activePersistEligible` / `activePersistApplied` / `convergedPersistLabel` と、ゲート通過時のみ **収束 canonical 直採用**（`ASSIST_ACTIVE_CONVERGED`）が期待どおりか（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「アクティブ補助」節・「実機確認（アクティブ補助・収束直採用…）」）
 
-**検証日時**: 2026-04-02（**シャドー／アクティブとも既定 OFF** の本番相当で `verify-phase12-real.sh` **PASS 40/0/0**・未認証 candidates **401** 等を確認。ブランチ `feat/photo-tool-label-assist-active-gate`・Pi5 のみデプロイ後・Mac / Tailscale）。2026-03-29 追記: **シャドー OFF** のみ **PASS 34/0/0**／**2026-04-03**: 未認証 `photo-label-reviews` スモーク追加後 **PASS 41/0/0**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) provenance）
+**検証日時**: **2026-04-07**: `feat/photo-tool-active-assist-converged-label` を Pi5→Pi4×4 順次デプロイ後 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43/0/0**（[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) 同節）。2026-04-02（**シャドー／アクティブとも既定 OFF** の本番相当で **PASS 40/0/0**・ブランチ `feat/photo-tool-label-assist-active-gate`・Pi5 のみ）。2026-03-29 追記: **シャドー OFF** のみ **PASS 34/0/0**／**2026-04-03**: 未認証 `photo-label-reviews` スモーク追加後 **PASS 41/0/0**（provenance）
 **検証結果**: ☑ 成功（回帰・認可） ☐ 失敗（エラー内容: _______________）
 
 **6.6.9 キオスク部品測定（`part-measurement`）**

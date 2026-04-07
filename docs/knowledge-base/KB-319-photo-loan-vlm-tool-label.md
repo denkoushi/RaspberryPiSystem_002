@@ -199,6 +199,15 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **ゲート**: 収束ラベル `L` について `BTRIM("canonicalLabel") = L` の行数が **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`（既定 5）** 以上のときのみ、**本番へ収束ラベル直採用**（`photoToolVlmLabelProvenance = ASSIST_ACTIVE_CONVERGED`）。未満のとき **アクティブのみ ON なら** 1 回目のみ（負荷抑制）。`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` のときはゲート不通過でも **2 回目をログ用に実行**しうるが、**アクティブ保存はゲート通過時のみ**。
 - **参照**: [ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)
 
+#### 実機確認（アクティブ補助・収束直採用・Prisma enum 拡張・2026-04-07）
+
+- **ブランチ**: `feat/photo-tool-active-assist-converged-label`（コミット例: `94d71f57` 付近）。
+- **仕様差分**: ゲート通過時の本番表示名は **2 回目 VLM ではなく** 正規化済み **収束 canonical**。`photoToolVlmLabelProvenance = ASSIST_ACTIVE_CONVERGED`。シャドー ON 時のみ 2 回目 VLM（ログ用）。DB はマイグレーション `20260407120000_add_photo_tool_vlm_provenance_assist_active_converged`。
+- **デプロイ**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・`RASPI_SERVER_HOST`・**`--detach --follow`**。対象は **Pi5 → Pi4 キオスク 4 台を `--limit` 1 台ずつ順番**（`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。**Pi3（サイネージ）は今回の写真レビュー UI / 本変更の対象外のためデプロイしない**（前回答の対象デバイスどおり）。
+- **知見**: キオスク PLAY は `server` を含まないため `Deploy ... to Raspberry Pi server` が **`skipping: no hosts matched`** になるのは正常。各 Pi4 で `PLAY RECAP` **`failed=0`** を確認。
+- **トラブルシュート**: マイグレーション未適用で API が Enum エラーになる場合は Pi5 で `pnpm prisma migrate deploy`（運用標準は Ansible 経由。切り分けは [deployment.md](../guides/deployment.md) の DB 整合性）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Mac / Tailscale・Pi5 `100.106.158.2`・約 26s）。
+
 #### 実機確認（アクティブ補助ゲート・Pi5 のみ・2026-04-02）
 
 - **CONFIRMED**: ブランチ `feat/photo-tool-label-assist-active-gate`。本番反映は **Pi5 のみ**（[deployment.md](../guides/deployment.md) の `update-all-clients.sh` + **`--limit raspberrypi5`** + **`--detach --follow`**）。Pi4/Pi3 は **`no hosts matched`**。対象 PLAY は **`failed=0`**。
