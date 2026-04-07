@@ -32,7 +32,13 @@ export type {
   RiggingReturnPayload,
   RiggingStatus,
   RiggingInspectionRecord,
-  RiggingInspectionResult
+  RiggingInspectionResult,
+  RiggingLoanAnalyticsResponse,
+  RiggingLoanAnalyticsMeta,
+  RiggingLoanAnalyticsSummary,
+  RiggingLoanAnalyticsMonthlyPoint,
+  RiggingLoanAnalyticsByGearRow,
+  RiggingLoanAnalyticsByEmployeeRow
 } from '@raspi-system/shared-types';
 
 export type { UnifiedItem, UnifiedListParams } from './client';

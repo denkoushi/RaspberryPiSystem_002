@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import {
   RiggingGearService,
   RiggingInspectionRecordService,
+  RiggingLoanAnalyticsService,
   RiggingLoanService
 } from '../../services/rigging/index.js';
 import { resolveClientDeviceId } from '../../services/clients/client-device-resolution.service.js';
@@ -16,6 +17,7 @@ import {
   riggingGearUpdateSchema,
   riggingInspectionRecordCreateSchema,
   riggingInspectionRecordQuerySchema,
+  riggingLoanAnalyticsQuerySchema,
   riggingReturnSchema,
   riggingTagCreateSchema,
   riggingTagParamsSchema
@@ -29,6 +31,7 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
   const gearService = new RiggingGearService();
   const inspectionService = new RiggingInspectionRecordService();
   const loanService = new RiggingLoanService();
+  const riggingLoanAnalyticsService = RiggingLoanAnalyticsService.createDefault();
 
   const allowClientKey = async (request: FastifyRequest) => {
     const rawClientKey = request.headers['x-client-key'];
@@ -89,6 +92,16 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
     const query = riggingGearQuerySchema.parse(request.query);
     const riggingGears = await gearService.findAll(query);
     return { riggingGears };
+  });
+
+  /**
+   * 吊具の持出・返却集計（キオスク含む）。cancelledAt 非 null の Loan は除く。
+   * 月次は timeZone（既定 Asia/Tokyo）基準の暦月。
+   */
+  app.get('/rigging-gears/loan-analytics', { preHandler: allowView }, async (request) => {
+    const query = riggingLoanAnalyticsQuerySchema.parse(request.query);
+    const analytics = await riggingLoanAnalyticsService.getDashboard(query);
+    return analytics;
   });
 
   // 吊具詳細

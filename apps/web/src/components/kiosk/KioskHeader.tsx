@@ -87,6 +87,7 @@ export function KioskHeader({
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const isDocumentsActive = pathname.startsWith('/kiosk/documents');
   const isPartMeasurementActive = pathname.startsWith('/kiosk/part-measurement');
+  const isRiggingAnalyticsActive = pathname.startsWith('/kiosk/rigging-analytics');
   const formatKey = (value: string) => {
     if (!value) return '未設定';
     if (value.length <= 8) return value;
@@ -309,6 +310,12 @@ export function KioskHeader({
             className={() => navClass(isPartMeasurementActive, 'bg-rose-600 text-white')}
           >
             部品測定
+          </NavLink>
+          <NavLink
+            to="/kiosk/rigging-analytics"
+            className={() => navClass(isRiggingAnalyticsActive, 'bg-fuchsia-700 text-white')}
+          >
+            吊具 状況
           </NavLink>
           <button
             type="button"
