@@ -69,7 +69,7 @@ update-frequency: medium
 
 7. **人レビュー（フェーズ1）**
    - 管理画面 **`/admin/photo-loan-label-reviews`**（ルート名 `photo-loan-label-reviews`）から、VLM 済みの写真持出を一覧し、品質と任意の人間表示名を送信する
-   - 一覧・送信後の応答には **`photoToolVlmLabelProvenance`**（VLM 表示名が最後に確定した経路）を含める。値は `UNKNOWN`（未確定・マイグレーション既定）/ `FIRST_PASS_VLM`（1 回目 VLM のみ）/ `ASSIST_ACTIVE_VLM`（アクティブ補助ゲート通過後に 2 回目 VLM を本番保存した場合）。管理 UI ではバッジ＋短文で出自を示す（キオスク1行目の優先順位は従来どおり **人 > VLM > `撮影mode`**）
+   - 一覧・送信後の応答には **`photoToolVlmLabelProvenance`**（VLM 表示名が最後に確定した経路）を含める。値は `UNKNOWN`（未確定・マイグレーション既定）/ `FIRST_PASS_VLM`（1 回目 VLM のみ）/ `ASSIST_ACTIVE_CONVERGED`（アクティブ補助でギャラリー収束 `canonical` を本番表示名に直採用した場合）/ `ASSIST_ACTIVE_VLM`（過去互換・2 回目 VLM を本番保存した経路）。管理 UI ではバッジ＋短文で出自を示す（キオスク1行目の優先順位は従来どおり **人 > VLM > `撮影mode`**）
    - `PATCH /api/tools/loans/:loanId/photo-label-review`（ADMIN/MANAGER）で `photoToolHumanQuality` / `photoToolHumanReviewedAt` / `photoToolHumanReviewedByUserId` / 任意で `photoToolHumanDisplayName` を更新
    - **ギャラリー連携**: `photoToolHumanQuality === GOOD` のときのみ `photo_tool_similarity_gallery` を非同期 upsert。`canonicalLabel` は **人の上書き表示名があればそれ**、なければ **VLM の `photoToolDisplayName`**（いずれも欠けると `撮影mode` 系フォールバック。実装は `PhotoToolGalleryIndexService`）。
    - **運用上の推奨**: 正解が判明しているなら **上書き表示名を必ず入れてから `GOOD`** とし、誤 VLM を **上書きなし `GOOD`** で載せない（ノイズ教師の混入防止）。迷う場合は `MARGINAL`/`BAD` でギャラリーから外す判断も可（要件は運用側で固定）。
@@ -78,7 +78,7 @@ update-frequency: medium
 
 ### Loanテーブルの拡張
 
-（`PhotoToolHumanLabelQuality` は enum: `GOOD` \| `MARGINAL` \| `BAD`。`PhotoToolVlmLabelProvenance` は enum: `UNKNOWN` \| `FIRST_PASS_VLM` \| `ASSIST_ACTIVE_VLM`）
+（`PhotoToolHumanLabelQuality` は enum: `GOOD` \| `MARGINAL` \| `BAD`。`PhotoToolVlmLabelProvenance` は enum: `UNKNOWN` \| `FIRST_PASS_VLM` \| `ASSIST_ACTIVE_VLM` \| `ASSIST_ACTIVE_CONVERGED`）
 
 ```prisma
 model Loan {

@@ -282,7 +282,7 @@ const envSchema = z.object({
 
   /**
    * true かつ PHOTO_TOOL_EMBEDDING_ENABLED のとき、収束 canonical のギャラリー行数が
-   * PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS 以上なら 2 回目推論結果を photoToolDisplayName に保存しうる
+   * PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS 以上なら収束 canonical（正規化後）を photoToolDisplayName に保存しうる
    */
   PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))

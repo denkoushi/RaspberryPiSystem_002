@@ -1,6 +1,9 @@
 import { performance } from 'node:perf_hooks';
 
-import type { PhotoToolVlmLabelProvenance } from '@raspi-system/shared-types';
+import {
+  PHOTO_TOOL_VLM_LABEL_PROVENANCE,
+  type PhotoToolVlmLabelProvenance,
+} from '@raspi-system/shared-types';
 
 import { logger } from '../../../lib/logger.js';
 
@@ -21,10 +24,6 @@ export const DEFAULT_PHOTO_TOOL_VISION_USER_PROMPT =
   '画像の中で最も目立つ工具を1つだけ選び、日本語の短い工具名だけを答えてください。説明文や句読点は不要です。';
 
 const log = logger.child({ component: 'photoToolLabeling' });
-const PHOTO_TOOL_VLM_LABEL_PROVENANCE = {
-  FIRST_PASS_VLM: 'FIRST_PASS_VLM',
-  ASSIST_ACTIVE_VLM: 'ASSIST_ACTIVE_VLM',
-} as const;
 
 export type PhotoToolLabelingServiceDeps = {
   repo: PendingPhotoLabelRepositoryPort;
@@ -37,7 +36,7 @@ export type PhotoToolLabelingServiceDeps = {
   labelAssist?: PhotoToolLabelAssistPort | null;
   /** true のときのみシャドー推論を実行（埋め込み・フラグの論理は呼び出し側で統一してよい） */
   shadowAssistEnabled?: () => boolean;
-  /** true のときギャラリー件数ゲート通過後に 2 回目結果を本番保存しうる */
+  /** true のときギャラリー件数ゲート通過後に収束 canonical を本番表示名に保存しうる */
   activeAssistEnabled?: () => boolean;
   /** 収束 canonical のギャラリー行数によるアクティブ保存可否 */
   activeAssistGate?: PhotoToolLabelActiveAssistGatePort | null;
@@ -109,9 +108,9 @@ export class PhotoToolLabelingService {
           imageBytes,
           firstPassLabel,
         });
-        if (firstPassLabel && assist.activePersistEligible && assist.assistedLabel) {
-          persistLabel = assist.assistedLabel;
-          vlmProvenance = PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_VLM;
+        if (firstPassLabel && assist.activePersistEligible && assist.convergedPersistLabel) {
+          persistLabel = assist.convergedPersistLabel;
+          vlmProvenance = PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_CONVERGED;
         }
       }
 
@@ -154,8 +153,8 @@ export class PhotoToolLabelingService {
   }
 
   /**
-   * GOOD 類似が成立するとき、シャドー・アクティブに応じて 2 回目 VLM を実行しログする。
-   * アクティブかつギャラリー件数ゲート通過時のみ assisted を本番保存候補として返す。
+   * GOOD 類似が成立するとき、アクティブ＋ゲート通過なら収束 canonical を本番採用候補とする。
+   * シャドー有効時のみ 2 回目 VLM を実行しログ用 assisted を残す（本番採用は収束ラベル）。
    */
   private async runLabelAssistPipeline(params: {
     loanId: string;
@@ -163,11 +162,13 @@ export class PhotoToolLabelingService {
     imageBytes: Buffer;
     firstPassLabel: string | null;
   }): Promise<{
-    assistedLabel: string | null;
+    convergedPersistLabel: string | null;
+    assistedLabelForLog: string | null;
     activePersistEligible: boolean;
   }> {
     const empty = {
-      assistedLabel: null as string | null,
+      convergedPersistLabel: null as string | null,
+      assistedLabelForLog: null as string | null,
       activePersistEligible: false,
     };
     if (!this.deps.labelAssist) {
@@ -202,7 +203,19 @@ export class PhotoToolLabelingService {
       if (convergedLabel && this.deps.activeAssistGate && activeOn) {
         gateResult = await this.deps.activeAssistGate.evaluate(convergedLabel);
       }
-      const runSecondVision = shadowOn || (activeOn && gateResult.allowed);
+      const activePersistEligible = activeOn && gateResult.allowed;
+      const runSecondVision = shadowOn;
+
+      let convergedPersistLabel: string | null = null;
+      if (activePersistEligible && convergedLabel) {
+        convergedPersistLabel = normalizePhotoToolDisplayName(convergedLabel);
+        if (!convergedPersistLabel) {
+          log.warn(
+            { loanId, convergedLabel },
+            'Photo tool label assist converged canonical normalized to empty'
+          );
+        }
+      }
 
       if (!runSecondVision) {
         log.debug(
@@ -217,8 +230,9 @@ export class PhotoToolLabelingService {
           'Photo tool label assist second vision skipped'
         );
         return {
-          assistedLabel: null,
-          activePersistEligible: activeOn && gateResult.allowed,
+          convergedPersistLabel,
+          assistedLabelForLog: null,
+          activePersistEligible,
         };
       }
 
@@ -228,9 +242,8 @@ export class PhotoToolLabelingService {
         imageBytes,
         mimeType: 'image/jpeg',
       });
-      const assistedLabel = normalizePhotoToolDisplayName(assistedRaw);
-      const activePersistEligible = activeOn && gateResult.allowed;
-      const activePersistApplied = Boolean(activePersistEligible && assistedLabel && firstPassLabel);
+      const assistedLabelForLog = normalizePhotoToolDisplayName(assistedRaw);
+      const activePersistApplied = Boolean(activePersistEligible && convergedPersistLabel && firstPassLabel);
 
       log.info(
         {
@@ -241,15 +254,16 @@ export class PhotoToolLabelingService {
           neighborCountAfterFilter: decision.neighborCountAfterFilter,
           candidateLabels: decision.candidateLabels,
           currentLabel: firstPassLabel,
-          assistedLabel: assistedLabel ?? null,
+          assistedLabel: assistedLabelForLog,
           galleryRowCount: gateResult.rowCount,
           activePersistEligible,
           activePersistApplied,
+          convergedPersistLabel,
         },
         'Photo tool label shadow assist inference completed'
       );
 
-      return { assistedLabel, activePersistEligible };
+      return { convergedPersistLabel, assistedLabelForLog, activePersistEligible };
     } catch (err) {
       log.warn({ err, loanId }, 'Photo tool label shadow assist failed');
       return empty;

@@ -65,6 +65,7 @@ enum PhotoToolVlmLabelProvenance {
   UNKNOWN
   FIRST_PASS_VLM
   ASSIST_ACTIVE_VLM
+  ASSIST_ACTIVE_CONVERGED
 }
 
 enum ImportStatus {

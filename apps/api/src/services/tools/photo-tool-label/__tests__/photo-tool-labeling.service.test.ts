@@ -1,16 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+import { PHOTO_TOOL_VLM_LABEL_PROVENANCE } from '@raspi-system/shared-types';
+
 import { PhotoToolLabelingService } from '../photo-tool-labeling.service.js';
 import type {
   PendingPhotoLabelRepositoryPort,
   PhotoToolVisionImageSourcePort,
   VisionCompletionPort,
 } from '../photo-tool-label-ports.js';
-
-const PHOTO_TOOL_VLM_LABEL_PROVENANCE = {
-  FIRST_PASS_VLM: 'FIRST_PASS_VLM',
-  ASSIST_ACTIVE_VLM: 'ASSIST_ACTIVE_VLM',
-} as const;
 
 describe('PhotoToolLabelingService', () => {
   let repo: PendingPhotoLabelRepositoryPort;
@@ -204,7 +201,7 @@ describe('PhotoToolLabelingService', () => {
     });
   });
 
-  it('アクティブのみ・ゲート通過なら 2 回目を本番ラベルに保存', async () => {
+  it('アクティブのみ・ゲート通過なら 2 回目なしで収束ラベルを本番に保存', async () => {
     const labelAssist = {
       evaluateForShadow: vi.fn().mockResolvedValue({
         shouldAssist: true,
@@ -218,9 +215,7 @@ describe('PhotoToolLabelingService', () => {
     const activeAssistGate = {
       evaluate: vi.fn().mockResolvedValue({ allowed: true, rowCount: 5 }),
     };
-    vi.mocked(vision.complete)
-      .mockResolvedValueOnce({ rawText: ' ペンチ ' })
-      .mockResolvedValueOnce({ rawText: ' 専用工具 ' });
+    vi.mocked(vision.complete).mockResolvedValueOnce({ rawText: ' ペンチ ' });
     const svc = new PhotoToolLabelingService({
       repo,
       visionImageSource,
@@ -232,10 +227,10 @@ describe('PhotoToolLabelingService', () => {
       activeAssistGate: activeAssistGate as never,
     });
     await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
-    expect(vision.complete).toHaveBeenCalledTimes(2);
+    expect(vision.complete).toHaveBeenCalledTimes(1);
     expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
       displayName: '専用工具',
-      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_VLM,
+      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_CONVERGED,
     });
   });
 
@@ -271,6 +266,41 @@ describe('PhotoToolLabelingService', () => {
     expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
       displayName: 'ペンチ',
       vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM,
+    });
+  });
+
+  it('シャドーとアクティブが ON でゲート通過なら 2 回目はログ用のみ本番は収束ラベル', async () => {
+    const labelAssist = {
+      evaluateForShadow: vi.fn().mockResolvedValue({
+        shouldAssist: true,
+        convergedCanonicalLabel: '専用工具',
+        candidateLabels: ['専用工具'],
+        reason: 'converged_neighbors',
+        topDistance: 0.07,
+        neighborCountAfterFilter: 2,
+      }),
+    };
+    const activeAssistGate = {
+      evaluate: vi.fn().mockResolvedValue({ allowed: true, rowCount: 5 }),
+    };
+    vi.mocked(vision.complete)
+      .mockResolvedValueOnce({ rawText: ' ペンチ ' })
+      .mockResolvedValueOnce({ rawText: ' サイズ違い ' });
+    const svc = new PhotoToolLabelingService({
+      repo,
+      visionImageSource,
+      vision,
+      isVisionConfigured: () => true,
+      labelAssist: labelAssist as never,
+      shadowAssistEnabled: () => true,
+      activeAssistEnabled: () => true,
+      activeAssistGate: activeAssistGate as never,
+    });
+    await svc.runBatch({ batchSize: 3, staleBefore: new Date(0) });
+    expect(vision.complete).toHaveBeenCalledTimes(2);
+    expect(repo.completeWithLabel).toHaveBeenCalledWith('loan-1', {
+      displayName: '専用工具',
+      vlmProvenance: PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_CONVERGED,
     });
   });
 
