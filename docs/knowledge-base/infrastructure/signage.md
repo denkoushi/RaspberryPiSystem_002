@@ -71,7 +71,7 @@ update-frequency: medium
 **概要**:
 - FULL スロット種別 **`kiosk_leader_order_cards`**。`/admin/signage/schedules` で **`deviceScopeKey`**（キオスクと同じスコープ）と **`resourceCds`**（1〜32件・表示順）を設定。
 - データは生産スケジュール一覧 API と同契約の **`listProductionScheduleRows`**（`allowResourceOnly: true`・資源CDフィルタ）から取得。行の並び・表示整形はキオスク **`LeaderOrderResourceCard`** に寄せた純関数（`leader-board-pure.ts`）。**チェック・手動順位・備考アイコンは JPEG には含めない**（閲覧専用）。
-- **2列×2段**（最大 **4** 資源カード/ページ）。超過分は **`slideIntervalSeconds`**（既定 30s）でページ送り（`signage-slide-rotation.ts`）。
+- **4列×2段**（最大 **8** 資源カード/ページ）。超過分は **`slideIntervalSeconds`**（既定 30s）でページ送り（`signage-slide-rotation.ts`）。グリッドの外周・カード間ギャップは横幅を活かすよう詰めている（`layout-contracts`・`build-leader-order-cards-svg`）。
 - 契約: `apps/api/src/services/signage/signage-layout.types.ts`、`apps/api/src/routes/signage/schemas.ts`。描画: `apps/api/src/services/signage/leader-order-cards/`。Web `/signage` は **`getSignageCurrentImageUrl` 全画面**（`kiosk_progress_overview` と同型）。Pi3 `/signage-lite` も同一 JPEG 経路。
 
 **代表ファイル**:

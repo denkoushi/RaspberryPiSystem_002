@@ -2608,6 +2608,7 @@ export interface SignageSlotConfig {
   seibanPerPage?: number;
   /** kiosk_leader_order_cards: 表示する資源CD（先頭から順） */
   resourceCds?: string[];
+  /** kiosk_leader_order_cards: 1ページの資源カード数（1〜8・既定はグリッド満杯＝8） */
   cardsPerPage?: number;
 }
 

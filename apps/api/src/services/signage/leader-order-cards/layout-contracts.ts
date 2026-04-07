@@ -1,8 +1,8 @@
 /**
  * 順位ボード資源カード（サイネージ JPEG）のグリッド定数。
- * カードが縦に長いため進捗一覧より列数を減らす。
+ * 進捗一覧（4列×2段）と同型で、1ページ最大8資源カード。
  */
-export const LEADER_ORDER_SIGNAGE_GRID_COLUMNS = 2;
+export const LEADER_ORDER_SIGNAGE_GRID_COLUMNS = 4;
 export const LEADER_ORDER_SIGNAGE_GRID_ROWS = 2;
 
 export const LEADER_ORDER_SIGNAGE_GRID_CAPACITY =
