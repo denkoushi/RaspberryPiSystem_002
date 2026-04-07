@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-04-08) **サイネージ `kiosk_leader_order_cards`: 4×2 グリッド契約の `cardsPerPage` max 8 統一・SVG モジュール分割・`feat/signage-leader-order-4x8-grid-solid`・Pi5 のみデプロイ・Phase12・ドキュメント・`main` マージ**: API `leader-order-cards/`（`build-leader-order-cards-svg` + `leader-order-cards-svg-{theme,metrics,text,card,empty-slot}`）・Zod・`signage.renderer` warn・Web `SignageSchedulesPage` / `client`。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**。**Detach Run ID**: `20260408-073202-31994`（**`failed=0`** / **`exit=0`**・所要約 **10 分**強）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **32s**・Mac / Tailscale）。**ナレッジ**: [KB-335](./docs/knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**Pi3**: 必須デプロイ対象外。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
 - [x] (2026-04-07) **サイネージ FULL: キオスク順位ボード資源CDカード（`kiosk_leader_order_cards`）・`feat/signage-leader-order-resource-cards`・Pi5 のみデプロイ・Phase12・ドキュメント・`main` マージ**: API `SignageRenderer` + `leader-order-cards/`・Zod・Web `/admin/signage/schedules`（`resourceCds` 複数）・`/signage` 全画面・`LeaderOrderResourceCard` の `variant="signage"`（チェック・順位・備考アイコン非表示）。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**（JPEG 正本は Pi5 のため **1 台**で可・Pi4/Pi3 PLAY は `no hosts matched`）。**Detach Run ID**: `20260407-213958-2534`（**`failed=0`** / **`exit=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **55s**・Mac / Tailscale）。**ナレッジ**: [KB-335](./docs/knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**Pi3**: 本変更の必須デプロイ対象外（専用手順は従来どおり）。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
 - [x] (2026-04-07) **吊具 持出・返却 可視化（キオスク）・`feat/kiosk-rigging-loan-analytics`・本番5台順次デプロイ・Phase12・`main` マージ**: API `GET /rigging-gears/loan-analytics`・キオスク `/kiosk/rigging-analytics`（マイグレーションなし）。**対象（Pi3 除外）**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`。**手順**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`・**`RASPI_SERVER_HOST` 必須**・`--limit` 1 台ずつ・`--detach --follow`。**Detach Run ID**: `20260407-202545-7931`（Pi5）→ `20260407-203843-1129`（`raspberrypi4`）→ `20260407-204403-16863`（`raspi4-robodrill01`）→ `20260407-204812-6662`（`raspi4-fjv60-80`）→ `20260407-205532-26037`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0` / exit `0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 101s）。**ナレッジ**: [KB-334](./docs/knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**CI/コード**: ブランチ最新 push 済み・CI success。
 - [x] (2026-04-07) **Android 向け軽量サイネージ `/signage-lite`・`feat/android-signage-lite-page`・Pi5 のみデプロイ・Phase12・ドキュメント・`main` マージ**: `SignageLiteDisplayPage`・`getSignageCurrentImageUrl` / `buildSignageCurrentImageUrl` の **`key=`** 整合・未設定時案内・`allowDefaultFallback: false`。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**（対象 1 台のみのため **順次は 1 回**）。**Detach Run ID**: `20260407-174723-18058`（**`failed=0`**・Pi4/Pi3 は `no hosts matched`）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 53s）。**ナレッジ**: [signage KB](./docs/knowledge-base/infrastructure/signage.md)・[signage-client-setup.md](./docs/guides/signage-client-setup.md#android-signage-lite)。**`main` マージ**: [PR #91](https://github.com/denkoushi/RaspberryPiSystem_002/pull/91)（マージ済み・マージ後 GitHub Actions を確認）。
@@ -1757,6 +1758,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### サイネージ `kiosk_leader_order_cards` 運用フォロー（2026-04-08 反映後）
+
+**概要**: [KB-335](./docs/knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg) を正とする。自動回帰は **`verify-phase12-real.sh` FAIL 0**。
+
+**候補タスク**:
+
+1. **現場目視（Pi3 / Web `/signage`）**: 資源カードが **最大 8 件／ページ**で途切れず、ページ送り後に次ページが期待どおりか（`slideIntervalSeconds`）。
+2. **管理画面**: `/admin/signage/schedules` で **`cardsPerPage` 1〜8** の保存・再読込が整合するか。
+3. **ログ**: 旧スケジュールに契約外 `cardsPerPage` が残っていないか（API **warn**・[KB-335](./docs/knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg) TS）。
 
 ### 吊具 持出・返却 可視化 運用フォロー（2026-04-07）
 
