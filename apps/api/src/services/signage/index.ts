@@ -1,4 +1,4 @@
-export { SignageService } from './signage.service.js';
+export { SignageService, signageScheduleMatchesClientKey } from './signage.service.js';
 export type {
   SignageScheduleInput,
   SignagePdfInput,

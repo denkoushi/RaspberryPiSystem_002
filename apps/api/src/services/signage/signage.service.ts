@@ -8,8 +8,37 @@ import {
 
 type ScheduleSummary = Pick<
   SignageSchedule,
-  'id' | 'name' | 'contentType' | 'pdfId' | 'layoutConfig' | 'dayOfWeek' | 'startTime' | 'endTime' | 'priority' | 'enabled'
+  | 'id'
+  | 'name'
+  | 'contentType'
+  | 'pdfId'
+  | 'layoutConfig'
+  | 'targetClientKeys'
+  | 'dayOfWeek'
+  | 'startTime'
+  | 'endTime'
+  | 'priority'
+  | 'enabled'
 >;
+
+/**
+ * スケジュールが要求側 clientKey（ClientDevice.apiKey）に対して適用されるか。
+ * - targetClientKeys が空: 全端末向け
+ * - 値あり: requestClientKey が一致する端末のみ（未指定・空文字のリクエストでは対象外）
+ */
+export function signageScheduleMatchesClientKey(
+  targetClientKeys: string[] | null | undefined,
+  requestClientKey?: string | null,
+): boolean {
+  const keys = targetClientKeys ?? [];
+  if (keys.length === 0) {
+    return true;
+  }
+  if (requestClientKey == null || requestClientKey === '') {
+    return false;
+  }
+  return keys.includes(requestClientKey);
+}
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
@@ -30,6 +59,8 @@ export interface SignageScheduleInput {
   contentType: SignageContentType;
   pdfId?: string | null;
   layoutConfig?: SignageLayoutConfigJson;
+  /** 省略または空=全端末。値ありのときは列挙 apiKey の端末のみ */
+  targetClientKeys?: string[];
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -136,6 +167,7 @@ export class SignageService {
     contentType: true,
     pdfId: true,
     layoutConfig: true,
+    targetClientKeys: true,
     dayOfWeek: true,
     startTime: true,
     endTime: true,
@@ -158,6 +190,17 @@ export class SignageService {
    */
   async getSchedules(): Promise<ScheduleSummary[]> {
     return this.findScheduleSummaries({ enabled: true });
+  }
+
+  /**
+   * レンダラ用：キャッシュ生成対象の ClientDevice.apiKey 一覧（安定した順序）
+   */
+  async listSignageRenderClientApiKeys(): Promise<string[]> {
+    const rows = await prisma.clientDevice.findMany({
+      select: { apiKey: true },
+      orderBy: { apiKey: 'asc' },
+    });
+    return rows.map((r) => r.apiKey);
   }
 
   /**
@@ -247,8 +290,10 @@ export class SignageService {
 
   /**
    * 現在時刻に基づいて表示すべきコンテンツを取得
+   * @param options.clientKey ClientDevice.apiKey（x-client-key）。省略時は端末限定スケジュールを除外し、空targetのみ評価
    */
-  async getContent(): Promise<SignageContentResponse> {
+  async getContent(options?: { clientKey?: string | null }): Promise<SignageContentResponse> {
+    const requestClientKey = options?.clientKey ?? null;
     const now = new Date();
     const { currentDayOfWeek, currentTime } = this.getCurrentTimeInfo(now);
 
@@ -385,15 +430,37 @@ export class SignageService {
       };
     }
 
-    // スケジュールから適切なコンテンツを取得
+    // スケジュールから適切なコンテンツを取得（端末キーで事前に絞り込み → 時刻窓・優先度・ローテーションは従来どおり）
     const schedules = await this.getSchedules();
-    
+    const schedulesForClient = schedules.filter((s) =>
+      signageScheduleMatchesClientKey(s.targetClientKeys, requestClientKey),
+    );
+
     // #region agent log
-    logger.info({ location: 'signage.service.ts:303', hypothesisId: 'A', scheduleCount: schedules.length, schedules: schedules.map(s => ({ id: s.id, name: s.name, priority: s.priority, enabled: s.enabled, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, hasLayoutConfig: s.layoutConfig != null })) }, 'Checking schedules');
+    logger.info(
+      {
+        location: 'signage.service.ts:303',
+        hypothesisId: 'A',
+        scheduleCount: schedules.length,
+        schedulesForClientCount: schedulesForClient.length,
+        requestClientKeyPresent: Boolean(requestClientKey),
+        schedules: schedules.map((s) => ({
+          id: s.id,
+          name: s.name,
+          priority: s.priority,
+          enabled: s.enabled,
+          dayOfWeek: s.dayOfWeek,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          hasLayoutConfig: s.layoutConfig != null,
+        })),
+      },
+      'Checking schedules',
+    );
     // #endregion
-    
+
     const matchedSchedules: Array<{ schedule: ScheduleSummary; priority: number }> = [];
-    for (const schedule of schedules) {
+    for (const schedule of schedulesForClient) {
       const matches = this.matchesScheduleWindow(schedule, currentDayOfWeek, currentTime);
       // #region agent log
       logger.info({ location: 'signage.service.ts:306', hypothesisId: 'A', scheduleId: schedule.id, scheduleName: schedule.name, matches, priority: schedule.priority, currentDayOfWeek, currentTime, dayOfWeek: schedule.dayOfWeek, startTime: schedule.startTime, endTime: schedule.endTime }, 'Schedule window check');
@@ -453,7 +520,8 @@ export class SignageService {
     }
 
     const fallbackSchedule =
-      schedules.find((schedule) => schedule.contentType === SignageContentType.SPLIT) ?? schedules[0];
+      schedulesForClient.find((schedule) => schedule.contentType === SignageContentType.SPLIT) ??
+      schedulesForClient[0];
     if (fallbackSchedule) {
       const fallbackResponse = await this.buildScheduleResponse(fallbackSchedule);
       if (fallbackResponse) {
@@ -856,6 +924,7 @@ export class SignageService {
     contentType: SignageContentType;
     pdfId: string | null;
     layoutConfig: SignageLayoutConfigJson;
+    targetClientKeys: string[];
     dayOfWeek: number[];
     startTime: string;
     endTime: string;
@@ -868,6 +937,7 @@ export class SignageService {
         contentType: input.contentType,
         pdfId: input.pdfId ?? null,
         layoutConfig: this.toPrismaLayoutConfig(input.layoutConfig ?? null),
+        targetClientKeys: input.targetClientKeys ?? [],
         dayOfWeek: input.dayOfWeek,
         startTime: input.startTime,
         endTime: input.endTime,
@@ -890,6 +960,7 @@ export class SignageService {
     contentType: SignageContentType;
     pdfId: string | null;
     layoutConfig: SignageLayoutConfigJson;
+    targetClientKeys: string[];
     dayOfWeek: number[];
     startTime: string;
     endTime: string;
@@ -905,6 +976,7 @@ export class SignageService {
         ...(input.layoutConfig !== undefined && {
           layoutConfig: this.toPrismaLayoutConfig(input.layoutConfig),
         }),
+        ...(input.targetClientKeys !== undefined && { targetClientKeys: input.targetClientKeys }),
         ...(input.dayOfWeek !== undefined && { dayOfWeek: input.dayOfWeek }),
         ...(input.startTime !== undefined && { startTime: input.startTime }),
         ...(input.endTime !== undefined && { endTime: input.endTime }),

@@ -16,6 +16,8 @@ update-frequency: medium
 
 デジタルサイネージ機能に関するトラブルシューティング情報
 
+**設計（端末別スケジュール）**: [ADR-20260407](../../decisions/ADR-20260407-signage-target-client-keys.md) — `SignageSchedule.targetClientKeys`（空=全端末）、`GET /api/signage/content` の `x-client-key` / `clientKey`、レンダ JPEG は `apiKey` 毎に `SIGNAGE_RENDER_DIR` 下へ保存。
+
 ---
 
 ### [KB-321] キオスク進捗一覧スロット（`kiosk_progress_overview`）のサイネージ表示・デプロイ・実機検証

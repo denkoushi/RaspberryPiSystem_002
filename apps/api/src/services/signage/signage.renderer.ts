@@ -100,17 +100,41 @@ export class SignageRenderer {
     };
   }
 
+  /**
+   * 登録済み ClientDevice ごとにコンテンツを選び、端末別 JPEG を保存する。
+   * 端末が0件のときのみレガシー current.jpg を1枚更新する。
+   */
   async renderCurrentContent(): Promise<{
     renderedAt: Date;
     filename: string;
+    clientKeysRendered: number;
   }> {
-    const content = await this.signageService.getContent();
-    const buffer = await this.renderContent(content);
-    const result = await SignageRenderStorage.saveRenderedImage(buffer);
-    logger.info({ location: 'signage.renderer.ts:59', filename: result.filename }, 'Image saved');
+    const clientKeys = await this.signageService.listSignageRenderClientApiKeys();
+    let lastFilename = '';
+
+    if (clientKeys.length === 0) {
+      const content = await this.signageService.getContent();
+      const buffer = await this.renderContent(content);
+      const result = await SignageRenderStorage.saveLegacyGlobalImage(buffer);
+      lastFilename = result.filename;
+      logger.info({ location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename }, 'Legacy global signage image saved');
+    } else {
+      for (const clientKey of clientKeys) {
+        const content = await this.signageService.getContent({ clientKey });
+        const buffer = await this.renderContent(content);
+        const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientKey);
+        lastFilename = result.filename;
+        logger.info(
+          { location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename, clientKeyLen: clientKey.length },
+          'Client signage image saved',
+        );
+      }
+    }
+
     return {
       renderedAt: new Date(),
-      filename: result.filename
+      filename: lastFilename,
+      clientKeysRendered: clientKeys.length,
     };
   }
 

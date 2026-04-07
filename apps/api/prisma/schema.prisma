@@ -521,19 +521,20 @@ model BackupConfigChange {
 }
 
 model SignageSchedule {
-  id           String             @id @default(uuid())
-  name         String
-  contentType  SignageContentType
-  pdfId        String?
-  pdf          SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
-  layoutConfig Json? // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
-  dayOfWeek    Int[]
-  startTime    String
-  endTime      String
-  priority     Int
-  enabled      Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id                 String             @id @default(uuid())
+  name               String
+  contentType        SignageContentType
+  pdfId              String?
+  pdf                SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
+  layoutConfig       Json? // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
+  targetClientKeys   String[]           @default([]) // 空=全端末向け。値ありのときは列挙された apiKey（x-client-key）のみ
+  dayOfWeek          Int[]
+  startTime          String
+  endTime            String
+  priority           Int
+  enabled            Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   @@index([enabled])
   @@index([priority])
