@@ -37,6 +37,7 @@ import {
   sanitizeLeaderOrderCardsPerPage,
   sliceLeaderOrderCardPage,
 } from './leader-order-cards/pagination.js';
+import { MAX_LEADER_ORDER_CARDS_PER_PAGE } from './leader-order-cards/layout-contracts.js';
 import {
   COMPACT24_MAX_COLUMNS,
   COMPACT24_MAX_ROWS,
@@ -287,6 +288,12 @@ export class SignageRenderer {
         const slideSec = locCfg.slideIntervalSeconds ?? 30;
         const perPageRaw = locCfg.cardsPerPage ?? sanitizeLeaderOrderCardsPerPage(Number.NaN);
         const perPage = sanitizeLeaderOrderCardsPerPage(perPageRaw);
+        if (perPageRaw > MAX_LEADER_ORDER_CARDS_PER_PAGE) {
+          logger.warn(
+            { deviceScopeKey: scopeKey, requested: perPageRaw, capped: perPage },
+            'kiosk_leader_order_cards cardsPerPage was capped'
+          );
+        }
         return await this.renderKioskLeaderOrderCardsFull(scopeKey, cds, slideSec, perPage);
       }
     } else if (layoutConfig.layout === 'SPLIT') {

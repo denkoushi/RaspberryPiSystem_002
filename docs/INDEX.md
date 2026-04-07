@@ -44,6 +44,10 @@
 - **サイネージ（貸出グリッド描画エンジン）**: [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md)（`SIGNAGE_LOAN_GRID_ENGINE`: `svg_legacy` 既定・`playwright_html` オプトイン・Docker/Ansible 配線）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-04-08）
+
+- **サイネージ `kiosk_leader_order_cards`: `cardsPerPage` 1〜8 統一・SVG 生成モジュール分割・`feat/signage-leader-order-4x8-grid-solid`・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260408-073202-31994`・Phase12 PASS 43/0/0・ドキュメント反映後 `main` マージ想定**: [KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-07）
 
 - **サイネージ FULL: キオスク順位ボード資源CDカード（`kiosk_leader_order_cards`・JPEG・管理画面で資源CD複数指定）・`feat/signage-leader-order-resource-cards`・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260407-213958-2534`・Phase12 PASS 43/0/0・`main` マージ**: 仕様・デプロイ実績・TS は [KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)（マージ後 PR リンクを追記可）。

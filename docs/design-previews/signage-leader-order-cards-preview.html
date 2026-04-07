@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Signage Leader Order Cards Preview</title>
+  <style>
+    :root {
+      --bg-0: #020617;
+      --bg-1: #0f172a;
+      --card: #0f172a;
+      --card-border: rgba(148, 163, 184, 0.32);
+      --header: rgba(15, 23, 42, 0.88);
+      --row: rgba(15, 23, 42, 0.94);
+      --row-border: rgba(148, 163, 184, 0.26);
+      --text: rgba(248, 250, 252, 0.95);
+      --muted: rgba(203, 213, 225, 0.78);
+      --due-auto: #7dd3fc;
+      --due-manual: #fcd34d;
+      --accent-auto: #38bdf8;
+      --accent-manual: #f59e0b;
+      --accent-done: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      color: var(--text);
+      font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      background: radial-gradient(120% 120% at 0% 0%, #0b1225 0%, var(--bg-0) 55%, var(--bg-1) 100%);
+    }
+
+    .stage {
+      width: 100vw;
+      height: 100vh;
+      padding: 10px;
+    }
+
+    .grid {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 6px;
+    }
+
+    .card {
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--card);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .card-header {
+      padding: 6px 8px;
+      background: var(--header);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .resource {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
+      letter-spacing: 0.02em;
+    }
+
+    .name {
+      margin: 2px 0 0;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rows {
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-height: 0;
+    }
+
+    .row {
+      position: relative;
+      border: 1px solid var(--row-border);
+      border-radius: 6px;
+      background: var(--row);
+      padding: 5px 8px 5px 10px;
+      min-height: 40px;
+    }
+
+    .row::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      border-radius: 8px 0 0 8px;
+      background: var(--accent-auto);
+    }
+
+    .row.manual::before { background: var(--accent-manual); }
+    .row.done::before { background: var(--accent-done); }
+    .row.done { opacity: 0.55; }
+
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .fkojun {
+      font-size: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .due {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      color: var(--due-auto);
+      flex-shrink: 0;
+    }
+
+    .row.manual .due { color: var(--due-manual); }
+    .row.done .due { color: #94a3b8; }
+
+    .line {
+      font-size: 10px;
+      color: rgba(241, 245, 249, 0.9);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.25;
+    }
+
+    .line.muted {
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="grid">
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R21</p>
+          <p class="name">旋盤 1号機</p>
+        </header>
+        <div class="rows">
+          <section class="row manual">
+            <div class="top"><div class="fkojun">010 / 切削</div><div class="due">04/08 水</div></div>
+            <div class="line">ABC1234-01 シャフト外径 | 10個</div>
+            <div class="line muted">シャフトA 外径仕上げ</div>
+          </section>
+          <section class="row">
+            <div class="top"><div class="fkojun">020 / 研削</div><div class="due">04/09 木</div></div>
+            <div class="line">ABC1234-03 研削仕上げ | 8個</div>
+            <div class="line muted">シャフトA</div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R22</p>
+          <p class="name">複合加工機 2号機</p>
+        </header>
+        <div class="rows">
+          <section class="row">
+            <div class="top"><div class="fkojun">010 / 切削</div><div class="due">04/08 水</div></div>
+            <div class="line">QWE8877-02 ブロック加工 | 4個</div>
+            <div class="line muted">ブラケットB</div>
+          </section>
+          <section class="row manual">
+            <div class="top"><div class="fkojun">020 / ボーリング</div><div class="due">04/10 金</div></div>
+            <div class="line">QWE8877-05 穴仕上げ | 4個</div>
+            <div class="line muted">ブラケットB φ寸法</div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R23</p>
+          <p class="name">汎用フライス 3号機</p>
+        </header>
+        <div class="rows">
+          <section class="row">
+            <div class="top"><div class="fkojun">015 / フライス</div><div class="due">04/09 木</div></div>
+            <div class="line">ZXC5501-11 上面加工 | 12個</div>
+            <div class="line muted">プレートC</div>
+          </section>
+          <section class="row done">
+            <div class="top"><div class="fkojun">035 / 面取り</div><div class="due">04/07 火</div></div>
+            <div class="line">ZXC5501-17 面取り | 12個</div>
+            <div class="line muted">プレートC</div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R24</p>
+          <p class="name">NC旋盤 4号機</p>
+        </header>
+        <div class="rows">
+          <section class="row manual">
+            <div class="top"><div class="fkojun">010 / 切削</div><div class="due">04/08 水</div></div>
+            <div class="line">MNO3002-01 外径 | 6個</div>
+            <div class="line muted">ハウジングD</div>
+          </section>
+          <section class="row">
+            <div class="top"><div class="fkojun">020 / ねじ切り</div><div class="due">04/09 木</div></div>
+            <div class="line">MNO3002-03 M24×1.5 | 6個</div>
+            <div class="line muted">ハウジングD</div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R25</p>
+          <p class="name">加工センタ 5号機</p>
+        </header>
+        <div class="rows">
+          <section class="row">
+            <div class="top"><div class="fkojun">010 / 粗加工</div><div class="due">04/08 水</div></div>
+            <div class="line">PLT900-01 外形 | 20個</div>
+            <div class="line muted">薄板パック</div>
+          </section>
+          <section class="row manual">
+            <div class="top"><div class="fkojun">020 / 仕上げ</div><div class="due">04/11 土</div></div>
+            <div class="line">PLT900-05 仕上寸法 | 20個</div>
+            <div class="line muted">薄板パック</div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R26</p>
+          <p class="name">5軸 6号機</p>
+        </header>
+        <div class="rows">
+          <section class="row manual">
+            <div class="top"><div class="fkojun">005 / 5軸</div><div class="due">04/09 木</div></div>
+            <div class="line">IMP-12 複合穴 | 3個</div>
+            <div class="line muted">インペラ仮組</div>
+          </section>
+          <section class="row">
+            <div class="top"><div class="fkojun">015 / 検査</div><div class="due">04/10 金</div></div>
+            <div class="line">IMP-12 三次元 | 3個</div>
+            <div class="line muted">インペラ</div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R27</p>
+          <p class="name">ワイヤーカット 7号機</p>
+        </header>
+        <div class="rows">
+          <section class="row">
+            <div class="top"><div class="fkojun">010 / 加工</div><div class="due">04/08 水</div></div>
+            <div class="line">DIE-88 パンチ外形 | 1個</div>
+            <div class="line muted">金型セットA</div>
+          </section>
+          <section class="row done">
+            <div class="top"><div class="fkojun">020 / 仕上</div><div class="due">04/06 日</div></div>
+            <div class="line">DIE-88 R面 | 1個</div>
+            <div class="line muted">金型セットA</div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <header class="card-header">
+          <p class="resource">R28</p>
+          <p class="name">平面研削 8号機</p>
+        </header>
+        <div class="rows">
+          <section class="row">
+            <div class="top"><div class="fkojun">010 / 研削</div><div class="due">04/09 木</div></div>
+            <div class="line">BASE-40 平行度 | 2個</div>
+            <div class="line muted">ベースプレート</div>
+          </section>
+          <section class="row">
+            <div class="top"><div class="fkojun">020 / 検査</div><div class="due">04/10 金</div></div>
+            <div class="line">BASE-40 厚み | 2個</div>
+            <div class="line muted">ベースプレート</div>
+          </section>
+        </div>
+      </article>
+    </div>
+  </div>
+</body>
+</html>

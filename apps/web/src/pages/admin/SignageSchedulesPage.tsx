@@ -445,7 +445,7 @@ export function SignageSchedulesPage() {
         if (fullLeaderOrderCardsPerPageStr.trim() !== '') {
           const n = Number(fullLeaderOrderCardsPerPageStr);
           if (Number.isFinite(n) && n >= 1) {
-            locConfig.cardsPerPage = Math.min(4, Math.floor(n));
+            locConfig.cardsPerPage = Math.min(8, Math.floor(n));
           }
         }
         return {
@@ -1000,14 +1000,14 @@ export function SignageSchedulesPage() {
                         </div>
                         <div>
                           <label className="block text-sm font-semibold text-slate-700">
-                            1ページの資源カード数（任意・既定4・最大4・2列×2段）
+                            1ページの資源カード数（任意・既定8・最大8・4列×2段）
                           </label>
                           <input
                             type="text"
                             inputMode="numeric"
                             value={fullLeaderOrderCardsPerPageStr}
                             onChange={(e) => setFullLeaderOrderCardsPerPageStr(e.target.value)}
-                            placeholder="4"
+                            placeholder="8"
                             className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                           />
                         </div>

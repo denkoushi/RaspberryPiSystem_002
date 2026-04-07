@@ -37,7 +37,7 @@ const kioskLeaderOrderCardsSlotConfigSchema = z
     deviceScopeKey: z.string().min(1).max(200),
     resourceCds: z.array(z.string().min(1).max(100)).min(1).max(32),
     slideIntervalSeconds: z.number().int().positive().optional(),
-    cardsPerPage: z.number().int().min(1).max(4).optional(),
+    cardsPerPage: z.number().int().min(1).max(8).optional(),
   })
   .strict();
 
