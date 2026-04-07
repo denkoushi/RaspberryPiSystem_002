@@ -2619,6 +2619,8 @@ export interface SignageSchedule {
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId: string | null;
   layoutConfig: SignageLayoutConfig | null;
+  /** 空=全端末。値がある場合は列挙された client の apiKey（x-client-key）のみ */
+  targetClientKeys?: string[];
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -2716,6 +2718,8 @@ export async function createSignageSchedule(payload: {
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId?: string | null;
   layoutConfig?: SignageLayoutConfig | null;
+  /** 省略または空=全端末 */
+  targetClientKeys?: string[];
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -2731,6 +2735,7 @@ export async function updateSignageSchedule(id: string, payload: Partial<{
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId?: string | null;
   layoutConfig?: SignageLayoutConfig | null;
+  targetClientKeys?: string[];
   dayOfWeek: number[];
   startTime: string;
   endTime: string;

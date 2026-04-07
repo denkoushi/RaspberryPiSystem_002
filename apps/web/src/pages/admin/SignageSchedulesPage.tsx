@@ -7,11 +7,14 @@ import {
   useSignageRenderMutation,
   useSignageRenderStatus,
   useCsvDashboards,
-  useVisualizationDashboards
+  useVisualizationDashboards,
+  useSignageScheduleEditorClients,
 } from '../../api/hooks';
 import { SignagePdfManager } from '../../components/signage/SignagePdfManager';
+import { SignageTargetClientsField } from '../../components/signage/SignageTargetClientsField';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { formatSignageTargetSummary } from '../../lib/signageTargetClientDevices';
 
 import type {
   SignageSchedule,
@@ -46,6 +49,7 @@ function formatVisualizationOptionLabel(dashboard: VisualizationDashboard): stri
 
 export function SignageSchedulesPage() {
   const schedulesQuery = useSignageSchedulesForManagement();
+  const clientsForSignageQuery = useSignageScheduleEditorClients();
   const pdfsQuery = useSignagePdfs();
   const csvDashboardsQuery = useCsvDashboards({ enabled: true });
   const visualizationDashboardsQuery = useVisualizationDashboards({ enabled: true });
@@ -59,6 +63,7 @@ export function SignageSchedulesPage() {
     contentType: 'TOOLS',
     pdfId: null,
     layoutConfig: null,
+    targetClientKeys: [],
     dayOfWeek: [],
     startTime: '09:00',
     endTime: '18:00',
@@ -109,6 +114,7 @@ export function SignageSchedulesPage() {
       contentType: 'TOOLS',
       pdfId: null,
       layoutConfig: null,
+      targetClientKeys: [],
       dayOfWeek: [],
       startTime: '09:00',
       endTime: '18:00',
@@ -261,6 +267,7 @@ export function SignageSchedulesPage() {
       contentType: schedule.contentType,
       pdfId: schedule.pdfId,
       layoutConfig: schedule.layoutConfig,
+      targetClientKeys: [...(schedule.targetClientKeys ?? [])],
       dayOfWeek: schedule.dayOfWeek,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
@@ -470,6 +477,7 @@ export function SignageSchedulesPage() {
           contentType,
           pdfId,
           layoutConfig,
+          targetClientKeys: formData.targetClientKeys?.length ? formData.targetClientKeys : [],
           dayOfWeek: formData.dayOfWeek!,
           startTime: formData.startTime!,
           endTime: formData.endTime!,
@@ -478,13 +486,20 @@ export function SignageSchedulesPage() {
         });
         setIsCreating(false);
       } else if (editingId) {
+        const targetClientKeys = formData.targetClientKeys?.length ? formData.targetClientKeys : [];
         await update.mutateAsync({
           id: editingId,
           payload: {
-            ...formData,
+            name: formData.name,
             contentType,
             pdfId,
             layoutConfig,
+            dayOfWeek: formData.dayOfWeek,
+            startTime: formData.startTime,
+            endTime: formData.endTime,
+            priority: formData.priority,
+            enabled: formData.enabled,
+            targetClientKeys,
           },
         });
         setEditingId(null);
@@ -513,6 +528,7 @@ export function SignageSchedulesPage() {
         contentType: 'TOOLS',
         pdfId: null,
         layoutConfig: null,
+        targetClientKeys: [],
         dayOfWeek: [],
         startTime: '09:00',
         endTime: '18:00',
@@ -549,6 +565,7 @@ export function SignageSchedulesPage() {
       contentType: 'TOOLS',
       pdfId: null,
       layoutConfig: null,
+      targetClientKeys: [],
       dayOfWeek: [],
       startTime: '09:00',
       endTime: '18:00',
@@ -1041,6 +1058,12 @@ export function SignageSchedulesPage() {
                 className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
               />
             </div>
+            <SignageTargetClientsField
+              allClients={clientsForSignageQuery.data ?? []}
+              value={formData.targetClientKeys ?? []}
+              onChange={(keys) => setFormData({ ...formData, targetClientKeys: keys })}
+              disabled={create.isPending || update.isPending}
+            />
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -1071,6 +1094,7 @@ export function SignageSchedulesPage() {
               <thead>
                 <tr className="border-b-2 border-slate-500 bg-slate-100">
                   <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">名前</th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">対象端末</th>
                   <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">コンテンツタイプ</th>
                   <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">曜日</th>
                   <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">時間帯</th>
@@ -1083,6 +1107,9 @@ export function SignageSchedulesPage() {
                 {schedulesQuery.data.map((schedule: SignageSchedule) => (
                   <tr key={schedule.id} className="border-b border-slate-500">
                     <td className="px-4 py-2 text-sm text-slate-700">{schedule.name}</td>
+                    <td className="px-4 py-2 text-sm text-slate-700">
+                      {formatSignageTargetSummary(schedule.targetClientKeys, clientsForSignageQuery.clientsByApiKey)}
+                    </td>
                     <td className="px-4 py-2 text-sm text-slate-700">
                       {schedule.contentType === 'TOOLS' && '工具管理データ'}
                       {schedule.contentType === 'PDF' && 'PDF'}

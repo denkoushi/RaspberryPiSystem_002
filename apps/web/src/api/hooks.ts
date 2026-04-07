@@ -7,6 +7,7 @@ import {
   patchOrderUsageForProcessingOrderChange,
   patchScheduleListProcessingOrder
 } from '../features/kiosk/productionSchedule/cache/kioskProductionScheduleOrderCachePatch';
+import { buildClientDevicesByApiKey } from '../lib/signageTargetClientDevices';
 
 import {
   getBackupHistory,
@@ -1382,6 +1383,16 @@ export function useClients() {
   });
 }
 
+/** サイネージスケジュール編集: 端末一覧 + apiKey インデックス（一覧要約用） */
+export function useSignageScheduleEditorClients() {
+  const query = useClients();
+  const clientsByApiKey = useMemo(
+    () => buildClientDevicesByApiKey(query.data ?? []),
+    [query.data]
+  );
+  return { ...query, clientsByApiKey };
+}
+
 export function useClientMutations() {
   const queryClient = useQueryClient();
   const update = useMutation({
@@ -1523,6 +1534,7 @@ export function useSignageScheduleMutations() {
   const queryClient = useQueryClient();
   const invalidateSchedules = () => {
     void queryClient.invalidateQueries({ queryKey: ['signage-schedules'] });
+    void queryClient.invalidateQueries({ queryKey: ['signage-schedules', 'management'] });
   };
   const create = useMutation({
     mutationFn: createSignageSchedule,
