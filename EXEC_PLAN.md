@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-04-07) **Android 向け軽量サイネージ `/signage-lite`・`feat/android-signage-lite-page`・Pi5 のみデプロイ・Phase12・ドキュメント・`main` マージ**: `SignageLiteDisplayPage`・`getSignageCurrentImageUrl` / `buildSignageCurrentImageUrl` の **`key=`** 整合・未設定時案内・`allowDefaultFallback: false`。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**（対象 1 台のみのため **順次は 1 回**）。**Detach Run ID**: `20260407-174723-18058`（**`failed=0`**・Pi4/Pi3 は `no hosts matched`）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 53s）。**ナレッジ**: [signage KB](./docs/knowledge-base/infrastructure/signage.md)・[signage-client-setup.md](./docs/guides/signage-client-setup.md#android-signage-lite)。**`main` マージ**: GitHub PR 経由（マージ後 GitHub Actions 確認・PR 番号は本項へ追記）。
 - [x] (2026-04-07) **管理コンソール サイネージスケジュールの対象端末（`targetClientKeys`）編集UI・`feat/signage-target-client-keys-ui`・Pi5 のみデプロイ・Phase12・ドキュメント・`main` マージ**: Web `SignageTargetClientsField`・`signageTargetClientDevices`（Vitest）・`SignageSchedulesPage` の新規/編集フォーム・一覧要約；`apps/web` の API 型・hooks（create/update の明示 payload・mutation 時 `signage-schedules` / management 無効化）。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5` のみ**（**1 台ずつ**方針に従い対象が Pi5 のみのため Pi4/Pi3 は playbook 上 `no hosts matched`）・**`--detach --follow`**。**Detach Run ID**: `20260407-154339-26008`（**`failed=0`**・ログ `ansible-update-20260407-154339-26008`）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ナレッジ**: [ADR-20260407](./docs/decisions/ADR-20260407-signage-target-client-keys.md)・[signage KB](./docs/knowledge-base/infrastructure/signage.md)。**`main` マージ**: [PR #89](https://github.com/denkoushi/RaspberryPiSystem_002/pull/89)（マージ済み・CI は main push で確認）。
 - [x] (2026-04-07) **サイネージ 端末別スケジュール（`targetClientKeys`）とレンダキャッシュ分離・`feat/signage-target-client-keys`・Pi5→Pi4×4→Pi3 順次デプロイ・Phase12・ドキュメント・`main` マージ**: Prisma `SignageSchedule.targetClientKeys`・`signage.service` の clientKey 絞り込み・`current-image` / `POST /render` の端末別保存。`SIGNAGE_RENDER_DIR` 実行時解決（開発時 EACCES 回避）。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit` 1 台ずつ**・**`--detach --follow`**（Pi3 は**単独**・プレフライト/復旧はガイド準拠）。**Detach Run ID**: `20260407-141922-13387`（`raspberrypi5`）→ `20260407-142729-31574`（`raspberrypi4`）→ `20260407-143132-2359`（`raspi4-robodrill01`）→ `20260407-143438-18999`（`raspi4-fjv60-80`）→ `20260407-144334-4685`（`raspi4-kensaku-stonebase01`）→ `20260407-144650-13245`（`raspberrypi3`）、各 **`failed=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ナレッジ**: [ADR-20260407](./docs/decisions/ADR-20260407-signage-target-client-keys.md)・[signage KB](./docs/knowledge-base/infrastructure/signage.md)（本番デプロイ追記）。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
 - [x] (2026-04-07) **サイネージ compact フッタ欠落（Playwright HTML）とキオスク取消ボタン視認性・`fix/signage-compact24-footer-kiosk-readability`・Pi5→Pi4×4→Pi3 順次デプロイ・Phase12・ドキュメント・`main` マージ**: API `loan-card-contracts` / `grid-card-html-tokens` / SVG pad 定数、Web `KioskActiveLoanCard` の `ghostOnDark`。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit` 1 台ずつ**・**`--detach --follow`**（Pi3 は専用手順・単独）。**Detach Run ID**: `20260407-123124-27600`（`raspberrypi5`）→ `20260407-124039-8718` / `20260407-124454-30820` / `20260407-124800-7012` / `20260407-125236-13960`（Pi4×4）→ `20260407-125547-7409`（`raspberrypi3`）、各 **`failed=0`**。**知見**: ローカル **未追跡ファイル**は `update-all-clients.sh` が拒否するため **`git stash push -u`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ナレッジ**: [KB-333](./docs/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md)・[KB-325](./docs/knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git)（カード高さ追記）・[KB-332](./docs/knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md)。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
@@ -1753,6 +1754,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### Android `/signage-lite` 運用フォロー（2026-04-07）
+
+**概要**: `feat/android-signage-lite-page` を **`main` に取り込んだ後**、[signage-client-setup.md](./docs/guides/signage-client-setup.md#android-signage-lite) と [signage KB](./docs/knowledge-base/infrastructure/signage.md) の **Android 軽量ページ**項を正とする。自動回帰は **`verify-phase12-real.sh` FAIL 0**。
+
+**候補タスク**:
+
+1. **現場目視（Android）**: スケジュールの **`targetClientKeys`** と端末 `apiKey` が一致するとき、軽量ページが **期待 JPEG** を表示するか（`/api/signage/current-image?...key=` の整合）。
+2. **端末登録**: 未登録端末は **`POST /api/clients/heartbeat`** で先に `apiKey` を登録してから URL 検証する。
+3. **本番 HEAD**: Pi5 で **`git rev-parse HEAD`** と **`origin/main`**（または運用ブランチ）の一致を必要に応じて確認（Web のみ変更時は **Pi5 のみ `--limit`** で足りる判断は [deployment.md](./docs/guides/deployment.md)）。
 
 ### サイネージ compact フッタ／取消ボタン（2026-04-07 反映後）
 

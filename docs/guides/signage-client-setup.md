@@ -36,6 +36,12 @@ https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-androi
 
 初回アクセスで `clientKey` はブラウザの `localStorage` に保存される。長期運用ではブックマークまたはキオスク常駐ブラウザのスタートURLを上記に固定する。
 
+### 本番反映・検証（2026-04-07）
+
+- **Web 正本は Pi5**。[deployment.md](./deployment.md) の `update-all-clients.sh` で **`--limit raspberrypi5`**・`RASPI_SERVER_HOST`・**`--detach --follow`**（実測 Detach Run ID: `20260407-174723-18058`・`failed=0`）。
+- **自動回帰**（リポジトリ直下）: `./scripts/deploy/verify-phase12-real.sh` → 2026-04-07 実測 **PASS 43 / WARN 0 / FAIL 0**。
+- **手動（Android）**: 上記 URL を実機で開き、JPEG が **約30秒周期**で更新することを目視。端末が未登録なら先に **`POST /api/clients/heartbeat`** で `apiKey` を登録する。
+
 ### スケジュールの割当
 
 管理画面 **`/admin/signage/schedules`** で、対象スケジュールの **`targetClientKeys`** に当該 `apiKey` を含める（空は全端末向け）。詳細は [ADR-20260407](../decisions/ADR-20260407-signage-target-client-keys.md)。
