@@ -63,6 +63,9 @@ all:
           photo_tool_label_assist_convergence_top_k: "{{ vault_photo_tool_label_assist_convergence_top_k | default('2') }}"
           photo_tool_label_assist_query_neighbor_limit: "{{ vault_photo_tool_label_assist_query_neighbor_limit | default('40') }}"
           photo_tool_label_assist_prompt_max_labels: "{{ vault_photo_tool_label_assist_prompt_max_labels | default('3') }}"
+          # VLM アクティブ補助（2回目推論の本番保存。vault で true にし server ロールで docker .env 再生成後、api に反映）
+          photo_tool_label_assist_active_enabled: "{{ vault_photo_tool_label_assist_active_enabled | default('false') }}"
+          photo_tool_label_assist_active_min_gallery_rows: "{{ vault_photo_tool_label_assist_active_min_gallery_rows | default('5') }}"
           # Web環境変数
           web_api_base_url: "/api"
           web_ws_base_url: "/ws"

@@ -205,6 +205,14 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **CONFIRMED**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*` は **既定 false**。有効化しない限り、本番の表示・1 回目 VLM 保存は従来と整合（アクティブ保存は **オプトイン**）。
 - **CONFIRMED**: Mac / Tailscale から `./scripts/deploy/verify-phase12-real.sh` → **PASS 40 / WARN 0 / FAIL 0**（約 51s・Pi5 `100.106.158.2`）。未認証 `photo-similar-candidates`・`photo-gallery-seed` 等の既存スモークを含む。
 
+#### Ansible 配線（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*`・vault→inventory→docker `.env`・2026-04-07）
+
+- **症状**: アプリ側は `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED` を解釈するが、Pi5 の生成 `infrastructure/docker/.env` が **常に `false`（テンプレ default）**のまま。vault に `vault_photo_tool_label_assist_active_*` を置いても反映されない。
+- **根本原因（CONFIRMED）**: `infrastructure/ansible/templates/docker.env.j2` は既に `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*` を出力している一方、**`infrastructure/ansible/inventory.yml` の Pi5 ホスト変数に `photo_tool_label_assist_active_*` が無かった**。shadow 系と同型の **`vault_* | default(...)` 行が欠落**していた。
+- **修正**: `inventory.yml` に `photo_tool_label_assist_active_enabled` / `photo_tool_label_assist_active_min_gallery_rows` を追加（`vault_photo_tool_label_assist_active_*`・既定は従来どおり OFF）。`host_vars/raspberrypi5/vault.yml.example` にキー例をコメント追記。
+- **デプロイ**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**・**`--limit raspberrypi5`**・**`RASPI_SERVER_HOST`**・**`--detach --follow`**。ブランチ例: `feat/ansible-photo-tool-assist-active-env`（`main` 取込後は `main`）。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-04-07・Mac / Tailscale・Pi5 `100.106.158.2`）。`PLAY RECAP` **`raspberrypi5` `failed=0`**。
+
 ##### Troubleshooting（開発・型）
 
 | 症状 | 想定原因 | 対処 |
@@ -226,6 +234,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | ログに shadow が一切出ない | シャドー OFF、埋め込み OFF、または補助条件未満（近傍不足・canonical 不一致・距離超過） | `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` と `PHOTO_TOOL_EMBEDDING_ENABLED` を確認。debug ログで `skipped` の `reason` を見る |
 | VLM 負荷が急増 | シャドー ON で対象ローンが多い | しきい値を厳しくするか、シャドーを限定時間のみ ON。別 ADR で active 化を検討する前にログ評価 |
 | 本番ラベルが変わった | **アクティブ補助**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED`・ゲート通過）で 2 回目が採用された | 意図どおりならログの `activePersistApplied: true` を確認。意図しないならフラグ・閾値・[ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md) を参照 |
+| vault に `vault_photo_tool_label_assist_active_enabled=true` があるのに `.env` が `false` | **2026-04-07 以前**: inventory に `photo_tool_label_assist_active_*` が無くテンプレ default のみ。**現在**: 配線済み。再デプロイ後も `false` なら Pi5 側 **`host_vars/raspberrypi5/vault.yml`** の実体・ansible-vault 復号・`docker/.env` 再生成を確認（[deployment.md](../guides/deployment.md)） |
 | ローカルの `host_vars/raspberrypi5/vault.yml` を更新しても Pi5 に反映されない | `infrastructure/ansible/host_vars/**/vault.yml` は Git 管理外で、Pi5 リモート実行時は **Pi5 側 checkout** のファイルが使われる | 正規の secrets 配置を使うか、Pi5 上の `host_vars/raspberrypi5/vault.yml` を更新してから再デプロイ |
 | `/healthz` は通るが `/embed` の Python ワンライナー確認が失敗する | `tailscale` コンテナに `python3` が無い | `embedding` コンテナ側で単体確認するか、`wget` / `curl` で疎通確認と payload 確認を分ける |
 
