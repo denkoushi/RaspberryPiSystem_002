@@ -17,6 +17,8 @@ import type { PhotoLabelReviewItem, PhotoLabelReviewQuality } from '../../api/cl
 function vlmProvenanceLabel(p: PhotoToolVlmLabelProvenance): string {
   if (p === PHOTO_TOOL_VLM_LABEL_PROVENANCE.UNKNOWN) return '記録なし(旧)';
   if (p === PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM) return '初回VLM';
+  if (p === PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_VLM) return '補助・2回目VLM';
+  if (p === PHOTO_TOOL_VLM_LABEL_PROVENANCE.ASSIST_ACTIVE_CONVERGED) return '補助・収束採用';
   return '補助採用';
 }
 

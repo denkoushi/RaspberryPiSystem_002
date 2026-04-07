@@ -14,9 +14,10 @@ date: 2026-04-02
 ## Decision
 
 1. **環境フラグ**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED`（既定 `false`）かつ `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、アクティブ保存ロジックを有効にする。
-2. **ラベル別ゲート**: 補助の収束 `canonicalLabel` `L` について、`photo_tool_similarity_gallery` の **`BTRIM("canonicalLabel") = L`** 行数が `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`（既定 **5**、1–100）以上のときだけ、2 回目推論の正規化結果を `Loan.photoToolDisplayName` に保存しうる。
-3. **2 回目 VLM の実行条件**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` によるシャドー従来動作を維持しつつ、**シャドー ON または（アクティブ ON かつゲート通過）**のとき 2 回目を実行する。アクティブのみ・ゲート不通過のときは **2 回目を呼ばず** 1 回目のみ保存（コスト抑制）。
-4. **境界**: 件数取得は `PhotoToolSimilarityGalleryRepositoryPort`。ゲート判定は `PhotoToolLabelActiveAssistGatePort`（実装 `GalleryRowCountActiveAssistGate`）。オーケストレーションは `PhotoToolLabelingService`。
+2. **ラベル別ゲート**: 補助の収束 `canonicalLabel` `L` について、`photo_tool_similarity_gallery` の **`BTRIM("canonicalLabel") = L`** 行数が `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`（既定 **5**、1–100）以上のときだけ、**収束 `L` を正規化した値**を `Loan.photoToolDisplayName` に保存しうる（**2 回目 VLM 結果は本番に使わない**）。
+3. **2 回目 VLM の実行条件**: **`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` のときのみ** 2 回目 VLM を実行する（ログ比較・観測）。アクティブのみ・ゲート通過でも **2 回目は呼ばない**。シャドー ON かつアクティブ ON かつゲート通過のときも **本番は収束ラベル**（2 回目は参照用）。
+4. **Provenance**: アクティブ直採用時は `photoToolVlmLabelProvenance = ASSIST_ACTIVE_CONVERGED`（`ASSIST_ACTIVE_VLM` は過去互換用に enum 上は残す）。
+5. **境界**: 件数取得は `PhotoToolSimilarityGalleryRepositoryPort`。ゲート判定は `PhotoToolLabelActiveAssistGatePort`（実装 `GalleryRowCountActiveAssistGate`）。オーケストレーションは `PhotoToolLabelingService`。
 
 ## Alternatives
 
@@ -26,7 +27,7 @@ date: 2026-04-02
 ## Consequences
 
 - **良い**: ラベルごとに教師が育つにつれ、アクティブ保存が自然に広がる。既定 OFF で既存挙動を壊さない。
-- **悪い / 注意**: 教師汚染（誤 GOOD）は従来どおりリスク。ログに `galleryRowCount` / `activePersistEligible` / `activePersistApplied` を出し観測する。
+- **悪い / 注意**: 教師汚染（誤 GOOD）は従来どおりリスク。ログに `galleryRowCount` / `activePersistEligible` / `activePersistApplied` / `convergedPersistLabel` を出し観測する。
 
 ## Verification
 

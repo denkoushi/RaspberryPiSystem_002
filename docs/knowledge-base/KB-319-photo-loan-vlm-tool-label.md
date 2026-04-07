@@ -194,9 +194,9 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 #### VLM アクティブ補助（本番保存・ギャラリー行数ゲート）
 
-- **目的**: 収束した **`canonicalLabel` ごと**に `photo_tool_similarity_gallery` の行数が一定以上のラベルから、**2 回目推論の結果を `photoToolDisplayName` に保存**できるようにする（ラベルごとの段階導入）。
+- **目的**: 収束した **`canonicalLabel` ごと**に `photo_tool_similarity_gallery` の行数が一定以上のラベルから、**収束した `canonical` を正規化した値を `photoToolDisplayName` に保存**できるようにする（ラベルごとの段階導入）。**2 回目 VLM は呼ばない**（コスト抑制）。シャドー ON のときは **2 回目をログ用に実行**しうるが、**本番表示名は収束ラベル採用**。
 - **有効化**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true` **かつ** `PHOTO_TOOL_EMBEDDING_ENABLED=true`。**既定は false**。
-- **ゲート**: 収束ラベル `L` について `BTRIM("canonicalLabel") = L` の行数が **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`（既定 5）** 以上のときのみ、**2 回目を実行し**かつ assisted を保存候補にする。未満のとき **アクティブのみ ON なら 2 回目を呼ばず** 1 回目のみ（負荷抑制）。`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` のときはゲート不通過でも **従来どおり 2 回目をログ用に実行**し、保存は 1 回目のまま。
+- **ゲート**: 収束ラベル `L` について `BTRIM("canonicalLabel") = L` の行数が **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`（既定 5）** 以上のときのみ、**本番へ収束ラベル直採用**（`photoToolVlmLabelProvenance = ASSIST_ACTIVE_CONVERGED`）。未満のとき **アクティブのみ ON なら** 1 回目のみ（負荷抑制）。`PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` のときはゲート不通過でも **2 回目をログ用に実行**しうるが、**アクティブ保存はゲート通過時のみ**。
 - **参照**: [ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)
 
 #### 実機確認（アクティブ補助ゲート・Pi5 のみ・2026-04-02）
@@ -233,7 +233,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 | 類似候補は良いのに shadow が増えない | **管理 UI 表示**は `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE`（広め）、シャドーは `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（狭め）等で **別閾値**。近傍数・ラベル収束条件も追加フィルタ | 期待どおりの可能性大。シャドー観測を増やすなら env を段階調整し、別 ADR で根拠を残す |
 | ログに shadow が一切出ない | シャドー OFF、埋め込み OFF、または補助条件未満（近傍不足・canonical 不一致・距離超過） | `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` と `PHOTO_TOOL_EMBEDDING_ENABLED` を確認。debug ログで `skipped` の `reason` を見る |
 | VLM 負荷が急増 | シャドー ON で対象ローンが多い | しきい値を厳しくするか、シャドーを限定時間のみ ON。別 ADR で active 化を検討する前にログ評価 |
-| 本番ラベルが変わった | **アクティブ補助**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED`・ゲート通過）で 2 回目が採用された | 意図どおりならログの `activePersistApplied: true` を確認。意図しないならフラグ・閾値・[ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md) を参照 |
+| 本番ラベルが変わった | **アクティブ補助**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED`・ゲート通過）で **収束 canonical が直採用**された | 意図どおりならログの `activePersistApplied: true`・`convergedPersistLabel` を確認。意図しないならフラグ・閾値・[ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md) を参照 |
 | vault に `vault_photo_tool_label_assist_active_enabled=true` があるのに `.env` が `false` | **2026-04-07 以前**: inventory に `photo_tool_label_assist_active_*` が無くテンプレ default のみ。**現在**: 配線済み。再デプロイ後も `false` なら Pi5 側 **`host_vars/raspberrypi5/vault.yml`** の実体・ansible-vault 復号・`docker/.env` 再生成を確認（[deployment.md](../guides/deployment.md)） |
 | ローカルの `host_vars/raspberrypi5/vault.yml` を更新しても Pi5 に反映されない | `infrastructure/ansible/host_vars/**/vault.yml` は Git 管理外で、Pi5 リモート実行時は **Pi5 側 checkout** のファイルが使われる | 正規の secrets 配置を使うか、Pi5 上の `host_vars/raspberrypi5/vault.yml` を更新してから再デプロイ |
 | `/healthz` は通るが `/embed` の Python ワンライナー確認が失敗する | `tailscale` コンテナに `python3` が無い | `embedding` コンテナ側で単体確認するか、`wget` / `curl` で疎通確認と payload 確認を分ける |
@@ -315,12 +315,12 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 - **ブランチ**: `feat/photo-tool-vlm-label-provenance-admin`
 - **目的**: `Loan.photoToolDisplayName` が**どの VLM 経路で最後に確定したか**を DB に保持し、管理画面の人レビュー一覧で運用者が判断できるようにする（キオスクの1行目表示優先順位は変更しない）。
-- **契約**: `packages/shared-types` の `PHOTO_TOOL_VLM_LABEL_PROVENANCE`（`UNKNOWN` / `FIRST_PASS_VLM` / `ASSIST_ACTIVE_VLM`）と Prisma enum を同値にそろえる。
+- **契約**: `packages/shared-types` の `PHOTO_TOOL_VLM_LABEL_PROVENANCE`（`UNKNOWN` / `FIRST_PASS_VLM` / `ASSIST_ACTIVE_VLM` / `ASSIST_ACTIVE_CONVERGED`）と Prisma enum を同値にそろえる。
 
 ### 仕様（要点）
 
 - **DB**: `Loan.photoToolVlmLabelProvenance`。マイグレーション追加時の既存行は **`UNKNOWN`**。
-- **保存**: `PhotoToolLabelingService` が VLM 結果を `completeWithLabel` へ渡す際、1 回目確定 → `FIRST_PASS_VLM`、アクティブ補助で assisted を本番保存した場合 → `ASSIST_ACTIVE_VLM`（実装詳細は `prisma-photo-tool-label.repository.ts` / labeling サービス）。
+- **保存**: `PhotoToolLabelingService` が VLM 結果を `completeWithLabel` へ渡す際、1 回目確定 → `FIRST_PASS_VLM`、アクティブ補助で **収束 canonical を本番表示名に直採用**した場合 → `ASSIST_ACTIVE_CONVERGED`。**`ASSIST_ACTIVE_VLM`** は過去行・将来の互換用に DB 上は残す（実装詳細は `prisma-photo-tool-label.repository.ts` / labeling サービス）。
 - **API**: `GET /api/tools/loans/photo-label-reviews`・`PATCH …/photo-label-review` の応答に `photoToolVlmLabelProvenance` を含む。
 - **Web**: `/admin/photo-loan-label-reviews` でバッジと説明文を表示。
 
@@ -330,7 +330,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **CONFIRMED**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 41 / WARN 0 / FAIL 0**（`未認証 GET …/photo-label-reviews` → **401** をスクリプトに追加済み）。
 - **CONFIRMED**: 未認証 `GET https://<Pi5>/api/tools/loans/photo-label-reviews?limit=1` → **401**。
 - **CONFIRMED**: `information_schema` で `Loan.photoToolVlmLabelProvenance` 列が **`PhotoToolVlmLabelProvenance`** 型で存在。
-- **CONFIRMED**: 本番集計例（デプロイ直後）: `UNKNOWN=390`、`FIRST_PASS_VLM=2`（`ASSIST_ACTIVE_VLM` は環境・運用次第）。マイグレーション直後は `UNKNOWN` が大半になるのが通常。
+- **CONFIRMED**: 本番集計例（デプロイ直後）: `UNKNOWN=390`、`FIRST_PASS_VLM=2`（`ASSIST_ACTIVE_VLM` / `ASSIST_ACTIVE_CONVERGED` は環境・運用次第）。マイグレーション直後は `UNKNOWN` が大半になるのが通常。
 
 ### Troubleshooting
 
@@ -343,6 +343,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 ### References（実装）
 
 - `apps/api/prisma/migrations/20260403120000_add_loan_photo_tool_vlm_label_provenance/`
+- `apps/api/prisma/migrations/20260407120000_add_photo_tool_vlm_provenance_assist_active_converged/`
 - `packages/shared-types/src/tools/photo-tool-vlm-label-provenance.ts`
 - `apps/api/src/services/tools/photo-tool-label/photo-tool-label-review.service.ts`
 - `apps/web/src/pages/admin/PhotoLoanLabelReviewsPage.tsx`
