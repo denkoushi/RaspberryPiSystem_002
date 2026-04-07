@@ -1,3 +1,4 @@
+import { COMPACT24_SVG_CARD_PAD_PX } from '../loan-card/loan-card-contracts.js';
 import {
   formatBorrowedCompactLine,
   splitLocationTwoLines,
@@ -19,7 +20,7 @@ export class SvgLegacyLoanGridRasterizer implements LoanGridRasterizerPort {
     const { layout, config } = request;
     const scale = layout.scale;
     const cardRadius = Math.round(12 * scale);
-    const cardPadding = Math.round(12 * scale);
+    const cardPadding = Math.round(COMPACT24_SVG_CARD_PAD_PX * scale);
     const thumbnailSize = Math.round(96 * scale);
     const thumbnailWidth = thumbnailSize;
     const thumbnailHeight = thumbnailSize;

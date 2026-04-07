@@ -18,7 +18,7 @@ describe('loan-card-layout', () => {
       x: 0,
       y: 0,
       cardWidth: 220,
-      cardHeight: 154,
+      cardHeight: 164,
       scale,
       cardPadding: 12,
       thumbnailWidth: 96,
@@ -36,7 +36,7 @@ describe('loan-card-layout', () => {
     expect(L.maxPrimaryUnitsPerLine).toBeGreaterThan(0);
     expect(L.maxEmployeeUnitsPerLine).toBeGreaterThan(0);
     expect(L.maxPrimaryUnitsPerLine).toBeLessThanOrEqual(7);
-    expect(L.dateY).toBe(0 + 154 - 12);
+    expect(L.dateY).toBe(0 + 164 - 12);
     const thumbBottom = L.thumbnailY + 96;
     const inkReserve = L.dateY - thumbBottom;
     expect(inkReserve).toBeGreaterThanOrEqual(6);
@@ -48,7 +48,7 @@ describe('loan-card-layout', () => {
       x: 0,
       y: 0,
       cardWidth: 220,
-      cardHeight: 154,
+      cardHeight: 164,
       scale: 1,
       cardPadding: 12,
       thumbnailWidth: 96,

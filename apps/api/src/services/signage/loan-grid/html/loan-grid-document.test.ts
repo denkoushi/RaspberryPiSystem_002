@@ -99,7 +99,7 @@ describe('buildLoanGridHtmlDocument', () => {
         gap: 14,
         columns: 1,
         cardWidth: 220,
-        cardHeight: 154,
+        cardHeight: 164,
         overflowCount: 0,
         scale: 1,
         placed: [
@@ -107,7 +107,7 @@ describe('buildLoanGridHtmlDocument', () => {
             x: 0,
             y: 0,
             width: 220,
-            height: 154,
+            height: 164,
             view: {
               primaryText: 'てこ式',
               employeeName: '山田',

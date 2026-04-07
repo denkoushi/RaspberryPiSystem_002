@@ -19,12 +19,16 @@ describe('grid-card-html-tokens', () => {
     const c = computeCompactCardHtmlTokens(1);
     expect(c.nameAndPrimaryPx).toBe(14);
     expect(c.locationPx).toBe(12);
+    expect(c.padPx).toBe(10);
+    expect(c.nameMarginBottomPx).toBe(3);
   });
 
   it('compact: scales fonts at scale 2', () => {
     const c = computeCompactCardHtmlTokens(2);
     expect(c.nameAndPrimaryPx).toBe(28);
     expect(c.thumbPx).toBe(192);
+    expect(c.padPx).toBe(20);
+    expect(c.nameMarginBottomPx).toBe(6);
   });
 
   it('default card tokens compose spacing + fonts', () => {

@@ -32,7 +32,7 @@ describe('computeLoanGridLayout', () => {
       maxRows: 2,
       maxColumns: 4,
       cardLayout: 'splitCompact24',
-      cardHeightPx: 154,
+      cardHeightPx: 164,
     };
     const items = Array.from({ length: 10 }, (_, i) => card(String(i)));
     const layout = computeLoanGridLayout(1920, config, items);
