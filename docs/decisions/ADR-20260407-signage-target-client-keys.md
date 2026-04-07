@@ -11,6 +11,6 @@
 - HTTP: `GET /api/signage/content` は `x-client-key` またはクエリ `clientKey` を受け取る。`GET /api/signage/current-image` は既存の `x-client-key` / `key` で端末別キャッシュを読む。
 **Alternatives**: アプリ側のみ出し分け（サーバは単一コンテンツ）→ レンダJPEGが共有できないため却下。スケジュール複製で端末毎にレコードを分ける → 運用負荷が高いため却下。  
 **Consequences**:
-- マイグレーション必須。管理UIは後続で `targetClientKeys` 編集を載せるまで API/直SQLで設定する運用になり得る。
+- マイグレーション必須。管理UI（`/admin/signage/schedules`・`feat/signage-target-client-keys-ui`）で `targetClientKeys` を編集可能（2026-04-07 本番 Pi5 反映・Phase12 確認済み）。それ以前は API/直SQL のみ。
 - `POST /api/signage/render` の応答に `clientKeysRendered` が追加される（後方互換で追加フィールドのみ）。
 **References**: `apps/api/prisma/schema.prisma`, `apps/api/src/services/signage/signage.service.ts`, `apps/api/src/lib/signage-render-storage.ts`, `apps/api/src/routes/signage/content.ts`, `apps/api/src/routes/signage/render.ts`
