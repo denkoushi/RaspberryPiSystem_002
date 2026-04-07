@@ -107,8 +107,8 @@ export function KioskActiveLoanCard({
         <Button
           onClick={onCancel}
           disabled={actionsDisabled}
-          variant="ghost"
-          className="h-auto px-3 py-1 text-sm font-semibold text-white/90 hover:bg-white/20 hover:text-white"
+          variant="ghostOnDark"
+          className="h-auto px-3 py-1 text-sm font-semibold hover:bg-white/20"
         >
           {cancelButtonLabel}
         </Button>

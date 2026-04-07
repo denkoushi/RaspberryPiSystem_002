@@ -3,6 +3,11 @@
  * マジックナンバーを一箇所に閉じ、レンダラ（loan-grid-document）は組み立てに専念する。
  */
 
+import {
+  COMPACT24_HTML_CARD_PAD_PX,
+  COMPACT24_HTML_NAME_MARGIN_BOTTOM_PX,
+} from '../../loan-card/loan-card-contracts.js';
+
 /** spacing: compact / default で共通（SVG レガシの thumb/pad/gap 比率と整合） */
 export type GridCardSpacingTokens = {
   padPx: number;
@@ -63,7 +68,7 @@ export function computeCompactCardFontTokens(scale: number): CompactCardFontToke
     warnPx: Math.max(10, Math.round(11 * scale)),
     riggingPx: Math.max(12, Math.round(12 * scale)),
     mgmtPx: Math.max(12, Math.round(13 * scale)),
-    nameMarginBottomPx: Math.round(4 * scale),
+    nameMarginBottomPx: Math.round(COMPACT24_HTML_NAME_MARGIN_BOTTOM_PX * scale),
   };
 }
 
@@ -86,6 +91,7 @@ export function computeCompactCardHtmlTokens(scale: number): CompactCardHtmlToke
     ...computeGridCardSpacingTokens(scale),
     ...computeCompactCardFontTokens(scale),
     ...computeCompactCardDecorTokens(scale),
+    padPx: Math.round(COMPACT24_HTML_CARD_PAD_PX * scale),
   };
 }
 

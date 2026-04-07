@@ -44,6 +44,10 @@
 - **サイネージ（貸出グリッド描画エンジン）**: [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md)（`SIGNAGE_LOAN_GRID_ENGINE`: `svg_legacy` 既定・`playwright_html` オプトイン・Docker/Ansible 配線）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-04-07）
+
+- **サイネージ `splitCompact24` フッタ欠落修正（高さ164・HTML pad10 等）とキオスク取消ボタン視認性（`ghostOnDark`）・`fix/signage-compact24-footer-kiosk-readability`・本番 Pi5→Pi4×4→Pi3 順次・Phase12 PASS 43/0/0・`main` マージ**: 実績・Detach Run ID・deploy 前 `git stash push -u` は [KB-333](./knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-06）
 
 - **キオスク持出一覧カード: サイネージ loan chrome 系の面トークンに揃える（`resolveKioskLoanCardSurfaceTokens`・sheen 層）・`feat/kiosk-loan-card-modern-surface`・本番 Pi5→Pi4×4（Pi3 除外）・Pi5 hop で systemd 確認・`main` マージ**: Detach Run ID・多段 `ssh` の注意は [KB-332](./knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
