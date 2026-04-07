@@ -44,6 +44,7 @@ import { ProductionSchedulePage } from './pages/kiosk/ProductionSchedulePage';
 import { ProductionScheduleProgressOverviewPage } from './pages/kiosk/ProductionScheduleProgressOverviewPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
+import { SignageLiteDisplayPage } from './pages/signage/SignageLiteDisplayPage';
 import { EmployeesPage } from './pages/tools/EmployeesPage';
 import { HistoryPage } from './pages/tools/HistoryPage';
 import { InspectionItemsPage } from './pages/tools/InspectionItemsPage';
@@ -63,6 +64,7 @@ function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<CallAutoSwitchLayout />}>
         <Route path="/signage" element={<SignageDisplayPage />} />
+        <Route path="/signage-lite" element={<SignageLiteDisplayPage />} />
         <Route element={<KioskLayout />}>
           <Route path="/kiosk" element={<KioskRedirect />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />

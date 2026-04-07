@@ -6,6 +6,7 @@ import {
   resolveClientKey,
   setClientKeyToStorage
 } from '../lib/client-key';
+import { buildSignageCurrentImageUrl } from '../lib/signage/buildSignageCurrentImageUrl';
 
 import type {
   AuthResponse,
@@ -2817,12 +2818,21 @@ export function getSignageVisualizationImageUrl(dashboardId: string): string {
   return `${normalized}/signage/visualization-image/${dashboardId}`;
 }
 
-/** Pi3 / ブラウザ共通の latest JPEG（キャッシュバスタ付き可） */
-export function getSignageCurrentImageUrl(cacheBust?: string | number): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? '/api';
-  const normalized = base.replace(/\/$/, '');
-  const q = cacheBust !== undefined ? `?t=${encodeURIComponent(String(cacheBust))}` : '';
-  return `${normalized}/signage/current-image${q}`;
+/**
+ * Pi3 / ブラウザ共通の latest JPEG（キャッシュバスタ付き可）。
+ * `<img src>` 用: 解決済み `clientKey` を必ずクエリ `key` に載せ、端末別レンダキャッシュと一致させる。
+ */
+export function getSignageCurrentImageUrl(
+  cacheBust?: string | number,
+  options?: {
+    clientKey?: string;
+    allowDefaultFallback?: boolean;
+  }
+): string {
+  const key =
+    options?.clientKey?.trim() ??
+    resolveClientKey({ allowDefaultFallback: options?.allowDefaultFallback ?? true }).key;
+  return buildSignageCurrentImageUrl({ clientKey: key, cacheBust });
 }
 
 /** 要領書PDFページ画像URL（/api/storage/pdf-pages/... をフルURL化） */

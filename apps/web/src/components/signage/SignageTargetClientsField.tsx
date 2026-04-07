@@ -53,7 +53,7 @@ export function SignageTargetClientsField({
       </p>
       {candidates.length === 0 ? (
         <p className="text-sm font-semibold text-amber-800">
-          サイネージ用の端末が見つかりません（apiKey に &quot;signage&quot; を含む端末を登録してください）。
+          サイネージ用の端末が見つかりません（apiKey に &quot;signage&quot; を含む端末を登録してください。Android 例: …-android-signage-…）。
         </p>
       ) : (
         <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
