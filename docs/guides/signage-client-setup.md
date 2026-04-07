@@ -1,8 +1,8 @@
 ---
 title: デジタルサイネージクライアント端末セットアップガイド
-tags: [デジタルサイネージ, セットアップ, ラズパイ3, ラズパイZero2W]
+tags: [デジタルサイネージ, セットアップ, ラズパイ3, ラズパイZero2W, Android]
 audience: [運用者, 開発者]
-last-verified: 2025-11-28
+last-verified: 2026-04-07
 related: [../modules/signage/README.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -14,7 +14,35 @@ update-frequency: medium
 
 ## 概要
 
-本ドキュメントでは、Raspberry Pi 3またはRaspberry Pi Zero 2Wをデジタルサイネージ表示端末としてセットアップする手順を説明します。
+本ドキュメントでは、Raspberry Pi 3またはRaspberry Pi Zero 2Wをデジタルサイネージ表示端末としてセットアップする手順を説明します。型落ち **Android タブレット**向けの **軽量URL（`/signage-lite`）** は [Android タブレット（軽量表示）](#android-signage-lite) を参照してください。
+
+<a id="android-signage-lite"></a>
+
+## Android タブレット（軽量表示）
+
+低スペックな Android タブレットでは、React ベースの `/signage` より **`/signage-lite`** の利用を推奨する。サーバ側が生成した JPEG（`GET /api/signage/current-image`）を **約30秒間隔**で表示するだけのページであり、端末側の描画負荷が小さい。
+
+### 端末キー（`clientKey` / `apiKey`）
+
+- 端末は **`ClientDevice.apiKey`** で識別する（IP アドレスではない）。
+- 推奨例: `client-key-factory-android-signage-161`（`signage` または `android-signage` を含むと、管理画面のスケジュール対象端末候補に出やすい）。
+- DB にレコードを作る: 既存運用どおり **`POST /api/clients/heartbeat`**（`apiKey`, `name`, `location`）で upsert 可能。
+
+### 表示URL
+
+```text
+https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-android-signage-161
+```
+
+初回アクセスで `clientKey` はブラウザの `localStorage` に保存される。長期運用ではブックマークまたはキオスク常駐ブラウザのスタートURLを上記に固定する。
+
+### スケジュールの割当
+
+管理画面 **`/admin/signage/schedules`** で、対象スケジュールの **`targetClientKeys`** に当該 `apiKey` を含める（空は全端末向け）。詳細は [ADR-20260407](../decisions/ADR-20260407-signage-target-client-keys.md)。
+
+### TLS
+
+HTTPS／自己署名証明書の扱いは Pi 向け Chromium と同様。端末に信頼させるか、運用ポリシーに応じて証明書警告の扱いを決める。
 
 ## 前提条件
 

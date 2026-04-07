@@ -25,6 +25,11 @@ describe('signageTargetClientDevices', () => {
     expect(
       isSignageDisplayClientDevice(mockDevice({ id: '1', name: 'Pi3', apiKey: 'client-key-raspberrypi3-signage1' }))
     ).toBe(true);
+    expect(
+      isSignageDisplayClientDevice(
+        mockDevice({ id: 'a', name: 'Tablet', apiKey: 'client-key-factory-android-signage-161' })
+      )
+    ).toBe(true);
     expect(isSignageDisplayClientDevice(mockDevice({ id: '2', name: 'Kiosk', apiKey: 'client-key-raspberrypi4-kiosk1' }))).toBe(
       false
     );
