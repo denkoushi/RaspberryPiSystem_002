@@ -2602,10 +2602,13 @@ export interface SignageSlotConfig {
   visualizationDashboardId?: string;
   displayMode?: 'SLIDESHOW' | 'SINGLE';
   slideInterval?: number | null;
-  /** kiosk_progress_overview: キオスクと同じ deviceScopeKey */
+  /** kiosk_progress_overview / kiosk_leader_order_cards: キオスクと同じ deviceScopeKey */
   deviceScopeKey?: string;
   slideIntervalSeconds?: number;
   seibanPerPage?: number;
+  /** kiosk_leader_order_cards: 表示する資源CD（先頭から順） */
+  resourceCds?: string[];
+  cardsPerPage?: number;
 }
 
 export interface SignageSlot {
@@ -2616,6 +2619,7 @@ export interface SignageSlot {
     | 'csv_dashboard'
     | 'visualization'
     | 'kiosk_progress_overview'
+    | 'kiosk_leader_order_cards'
     | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }

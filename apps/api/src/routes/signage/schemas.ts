@@ -32,17 +32,34 @@ const kioskProgressOverviewSlotConfigSchema = z
   })
   .strict();
 
+const kioskLeaderOrderCardsSlotConfigSchema = z
+  .object({
+    deviceScopeKey: z.string().min(1).max(200),
+    resourceCds: z.array(z.string().min(1).max(100)).min(1).max(32),
+    slideIntervalSeconds: z.number().int().positive().optional(),
+    cardsPerPage: z.number().int().min(1).max(4).optional(),
+  })
+  .strict();
+
 const slotConfigSchema = z.union([
   pdfSlotConfigSchema,
   loansSlotConfigSchema,
   csvDashboardSlotConfigSchema,
   visualizationSlotConfigSchema,
   kioskProgressOverviewSlotConfigSchema,
+  kioskLeaderOrderCardsSlotConfigSchema,
 ]);
 
 const slotSchema = z.object({
   position: z.enum(['FULL', 'LEFT', 'RIGHT']),
-  kind: z.enum(['pdf', 'loans', 'csv_dashboard', 'visualization', 'kiosk_progress_overview']),
+  kind: z.enum([
+    'pdf',
+    'loans',
+    'csv_dashboard',
+    'visualization',
+    'kiosk_progress_overview',
+    'kiosk_leader_order_cards',
+  ]),
   config: slotConfigSchema,
 });
 

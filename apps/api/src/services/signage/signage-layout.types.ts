@@ -11,7 +11,8 @@ export type SignageSlotKind =
   | 'loans'
   | 'csv_dashboard'
   | 'visualization'
-  | 'kiosk_progress_overview';
+  | 'kiosk_progress_overview'
+  | 'kiosk_leader_order_cards';
 
 /**
  * PDFスロットの設定
@@ -54,6 +55,18 @@ export interface KioskProgressOverviewSlotConfig {
 }
 
 /**
+ * キオスク順位ボードの資源CDカード（サイネージ JPEG・閲覧専用）
+ * deviceScopeKey はキオスク端末のスコープと同一。resourceCds は表示順。
+ */
+export interface KioskLeaderOrderCardsSlotConfig {
+  deviceScopeKey: string;
+  resourceCds: string[];
+  slideIntervalSeconds?: number;
+  /** 1ページに並べる資源カード数（2列×2段＝最大4） */
+  cardsPerPage?: number;
+}
+
+/**
  * スロット設定（kindに応じてconfigの型が変わる）
  */
 export interface SignageSlot {
@@ -64,7 +77,8 @@ export interface SignageSlot {
     | LoansSlotConfig
     | CsvDashboardSlotConfig
     | VisualizationSlotConfig
-    | KioskProgressOverviewSlotConfig;
+    | KioskProgressOverviewSlotConfig
+    | KioskLeaderOrderCardsSlotConfig;
 }
 
 /**

@@ -36,6 +36,17 @@ const DAYS_OF_WEEK = [
   { value: 6, label: '土' },
 ];
 
+function parseResourceCdListInput(text: string): string[] {
+  return Array.from(
+    new Set(
+      text
+        .split(/[\n,，]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    )
+  );
+}
+
 function formatVisualizationOptionLabel(dashboard: VisualizationDashboard): string {
   const tags: string[] = [];
   if (dashboard.dataSourceType === 'uninspected_machines') {
@@ -81,7 +92,12 @@ export function SignageSchedulesPage() {
   const [leftVisualizationDashboardId, setLeftVisualizationDashboardId] = useState<string | null>(null); // 左スロットの可視化（kind='visualization'の場合）
   const [rightVisualizationDashboardId, setRightVisualizationDashboardId] = useState<string | null>(null); // 右スロットの可視化（kind='visualization'の場合）
   const [fullSlotKind, setFullSlotKind] = useState<
-    'loans' | 'pdf' | 'csv_dashboard' | 'visualization' | 'kiosk_progress_overview'
+    | 'loans'
+    | 'pdf'
+    | 'csv_dashboard'
+    | 'visualization'
+    | 'kiosk_progress_overview'
+    | 'kiosk_leader_order_cards'
   >('loans'); // 全体スロットの種類
   const [fullPdfId, setFullPdfId] = useState<string | null>(null); // 全体スロットのPDF（kind='pdf'の場合）
   const [fullCsvDashboardId, setFullCsvDashboardId] = useState<string | null>(null); // 全体スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
@@ -89,6 +105,10 @@ export function SignageSchedulesPage() {
   const [fullKioskDeviceScopeKey, setFullKioskDeviceScopeKey] = useState('');
   const [fullKioskSlideIntervalStr, setFullKioskSlideIntervalStr] = useState('');
   const [fullKioskSeibanPerPageStr, setFullKioskSeibanPerPageStr] = useState('');
+  const [fullLeaderOrderDeviceScopeKey, setFullLeaderOrderDeviceScopeKey] = useState('');
+  const [fullLeaderOrderResourceCdsText, setFullLeaderOrderResourceCdsText] = useState('');
+  const [fullLeaderOrderSlideIntervalStr, setFullLeaderOrderSlideIntervalStr] = useState('');
+  const [fullLeaderOrderCardsPerPageStr, setFullLeaderOrderCardsPerPageStr] = useState('');
 
   const handleCreate = () => {
     setIsCreating(true);
@@ -109,6 +129,10 @@ export function SignageSchedulesPage() {
     setFullKioskDeviceScopeKey('');
     setFullKioskSlideIntervalStr('');
     setFullKioskSeibanPerPageStr('');
+    setFullLeaderOrderDeviceScopeKey('');
+    setFullLeaderOrderResourceCdsText('');
+    setFullLeaderOrderSlideIntervalStr('');
+    setFullLeaderOrderCardsPerPageStr('');
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -143,6 +167,10 @@ export function SignageSchedulesPage() {
             setFullKioskDeviceScopeKey('');
             setFullKioskSlideIntervalStr('');
             setFullKioskSeibanPerPageStr('');
+            setFullLeaderOrderDeviceScopeKey('');
+            setFullLeaderOrderResourceCdsText('');
+            setFullLeaderOrderSlideIntervalStr('');
+            setFullLeaderOrderCardsPerPageStr('');
           } else if (slot.kind === 'csv_dashboard') {
             setFullSlotKind('csv_dashboard');
             setFullCsvDashboardId('csvDashboardId' in slot.config ? slot.config.csvDashboardId ?? null : null);
@@ -151,6 +179,10 @@ export function SignageSchedulesPage() {
             setFullKioskDeviceScopeKey('');
             setFullKioskSlideIntervalStr('');
             setFullKioskSeibanPerPageStr('');
+            setFullLeaderOrderDeviceScopeKey('');
+            setFullLeaderOrderResourceCdsText('');
+            setFullLeaderOrderSlideIntervalStr('');
+            setFullLeaderOrderCardsPerPageStr('');
           } else if (slot.kind === 'visualization') {
             setFullSlotKind('visualization');
             setFullVisualizationDashboardId(
@@ -161,6 +193,10 @@ export function SignageSchedulesPage() {
             setFullKioskDeviceScopeKey('');
             setFullKioskSlideIntervalStr('');
             setFullKioskSeibanPerPageStr('');
+            setFullLeaderOrderDeviceScopeKey('');
+            setFullLeaderOrderResourceCdsText('');
+            setFullLeaderOrderSlideIntervalStr('');
+            setFullLeaderOrderCardsPerPageStr('');
           } else if (slot.kind === 'kiosk_progress_overview') {
             setFullSlotKind('kiosk_progress_overview');
             setFullKioskDeviceScopeKey(
@@ -179,6 +215,36 @@ export function SignageSchedulesPage() {
             setFullPdfId(null);
             setFullCsvDashboardId(null);
             setFullVisualizationDashboardId(null);
+            setFullLeaderOrderDeviceScopeKey('');
+            setFullLeaderOrderResourceCdsText('');
+            setFullLeaderOrderSlideIntervalStr('');
+            setFullLeaderOrderCardsPerPageStr('');
+          } else if (slot.kind === 'kiosk_leader_order_cards') {
+            setFullSlotKind('kiosk_leader_order_cards');
+            setFullLeaderOrderDeviceScopeKey(
+              'deviceScopeKey' in slot.config ? String(slot.config.deviceScopeKey ?? '').trim() : ''
+            );
+            const cds =
+              'resourceCds' in slot.config && Array.isArray(slot.config.resourceCds)
+                ? (slot.config.resourceCds as string[])
+                : [];
+            setFullLeaderOrderResourceCdsText(cds.map((c) => String(c).trim()).filter(Boolean).join('\n'));
+            setFullLeaderOrderSlideIntervalStr(
+              'slideIntervalSeconds' in slot.config && slot.config.slideIntervalSeconds != null
+                ? String(slot.config.slideIntervalSeconds)
+                : ''
+            );
+            setFullLeaderOrderCardsPerPageStr(
+              'cardsPerPage' in slot.config && slot.config.cardsPerPage != null
+                ? String(slot.config.cardsPerPage)
+                : ''
+            );
+            setFullPdfId(null);
+            setFullCsvDashboardId(null);
+            setFullVisualizationDashboardId(null);
+            setFullKioskDeviceScopeKey('');
+            setFullKioskSlideIntervalStr('');
+            setFullKioskSeibanPerPageStr('');
           } else {
             setFullSlotKind('loans');
             setFullPdfId(null);
@@ -187,9 +253,20 @@ export function SignageSchedulesPage() {
             setFullKioskDeviceScopeKey('');
             setFullKioskSlideIntervalStr('');
             setFullKioskSeibanPerPageStr('');
+            setFullLeaderOrderDeviceScopeKey('');
+            setFullLeaderOrderResourceCdsText('');
+            setFullLeaderOrderSlideIntervalStr('');
+            setFullLeaderOrderCardsPerPageStr('');
           }
         }
       } else {
+        setFullKioskDeviceScopeKey('');
+        setFullKioskSlideIntervalStr('');
+        setFullKioskSeibanPerPageStr('');
+        setFullLeaderOrderDeviceScopeKey('');
+        setFullLeaderOrderResourceCdsText('');
+        setFullLeaderOrderSlideIntervalStr('');
+        setFullLeaderOrderCardsPerPageStr('');
         const leftSlot = config.slots.find((s) => s.position === 'LEFT');
         const rightSlot = config.slots.find((s) => s.position === 'RIGHT');
         if (leftSlot) {
@@ -347,6 +424,37 @@ export function SignageSchedulesPage() {
               position: 'FULL',
               kind: 'kiosk_progress_overview',
               config,
+            },
+          ],
+        };
+      } else if (
+        fullSlotKind === 'kiosk_leader_order_cards' &&
+        fullLeaderOrderDeviceScopeKey.trim() &&
+        parseResourceCdListInput(fullLeaderOrderResourceCdsText).length > 0
+      ) {
+        const locConfig: SignageSlotConfig = {
+          deviceScopeKey: fullLeaderOrderDeviceScopeKey.trim(),
+          resourceCds: parseResourceCdListInput(fullLeaderOrderResourceCdsText),
+        };
+        if (fullLeaderOrderSlideIntervalStr.trim() !== '') {
+          const n = Number(fullLeaderOrderSlideIntervalStr);
+          if (Number.isFinite(n) && n > 0) {
+            locConfig.slideIntervalSeconds = n;
+          }
+        }
+        if (fullLeaderOrderCardsPerPageStr.trim() !== '') {
+          const n = Number(fullLeaderOrderCardsPerPageStr);
+          if (Number.isFinite(n) && n >= 1) {
+            locConfig.cardsPerPage = Math.min(4, Math.floor(n));
+          }
+        }
+        return {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'kiosk_leader_order_cards',
+              config: locConfig,
             },
           ],
         };
@@ -523,6 +631,10 @@ export function SignageSchedulesPage() {
       setFullKioskDeviceScopeKey('');
       setFullKioskSlideIntervalStr('');
       setFullKioskSeibanPerPageStr('');
+      setFullLeaderOrderDeviceScopeKey('');
+      setFullLeaderOrderResourceCdsText('');
+      setFullLeaderOrderSlideIntervalStr('');
+      setFullLeaderOrderCardsPerPageStr('');
       setFormData({
         name: '',
         contentType: 'TOOLS',
@@ -560,6 +672,10 @@ export function SignageSchedulesPage() {
     setFullKioskDeviceScopeKey('');
     setFullKioskSlideIntervalStr('');
     setFullKioskSeibanPerPageStr('');
+    setFullLeaderOrderDeviceScopeKey('');
+    setFullLeaderOrderResourceCdsText('');
+    setFullLeaderOrderSlideIntervalStr('');
+    setFullLeaderOrderCardsPerPageStr('');
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -674,6 +790,7 @@ export function SignageSchedulesPage() {
                               | 'csv_dashboard'
                               | 'visualization'
                               | 'kiosk_progress_overview'
+                              | 'kiosk_leader_order_cards'
                           );
                           if (e.target.value === 'loans') {
                             setFullPdfId(null);
@@ -682,28 +799,55 @@ export function SignageSchedulesPage() {
                             setFullKioskDeviceScopeKey('');
                             setFullKioskSlideIntervalStr('');
                             setFullKioskSeibanPerPageStr('');
+                            setFullLeaderOrderDeviceScopeKey('');
+                            setFullLeaderOrderResourceCdsText('');
+                            setFullLeaderOrderSlideIntervalStr('');
+                            setFullLeaderOrderCardsPerPageStr('');
                           } else if (e.target.value === 'pdf') {
                             setFullCsvDashboardId(null);
                             setFullVisualizationDashboardId(null);
                             setFullKioskDeviceScopeKey('');
                             setFullKioskSlideIntervalStr('');
                             setFullKioskSeibanPerPageStr('');
+                            setFullLeaderOrderDeviceScopeKey('');
+                            setFullLeaderOrderResourceCdsText('');
+                            setFullLeaderOrderSlideIntervalStr('');
+                            setFullLeaderOrderCardsPerPageStr('');
                           } else if (e.target.value === 'csv_dashboard') {
                             setFullPdfId(null);
                             setFullVisualizationDashboardId(null);
                             setFullKioskDeviceScopeKey('');
                             setFullKioskSlideIntervalStr('');
                             setFullKioskSeibanPerPageStr('');
+                            setFullLeaderOrderDeviceScopeKey('');
+                            setFullLeaderOrderResourceCdsText('');
+                            setFullLeaderOrderSlideIntervalStr('');
+                            setFullLeaderOrderCardsPerPageStr('');
                           } else if (e.target.value === 'visualization') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
                             setFullKioskDeviceScopeKey('');
                             setFullKioskSlideIntervalStr('');
                             setFullKioskSeibanPerPageStr('');
+                            setFullLeaderOrderDeviceScopeKey('');
+                            setFullLeaderOrderResourceCdsText('');
+                            setFullLeaderOrderSlideIntervalStr('');
+                            setFullLeaderOrderCardsPerPageStr('');
                           } else if (e.target.value === 'kiosk_progress_overview') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
                             setFullVisualizationDashboardId(null);
+                            setFullLeaderOrderDeviceScopeKey('');
+                            setFullLeaderOrderResourceCdsText('');
+                            setFullLeaderOrderSlideIntervalStr('');
+                            setFullLeaderOrderCardsPerPageStr('');
+                          } else if (e.target.value === 'kiosk_leader_order_cards') {
+                            setFullPdfId(null);
+                            setFullCsvDashboardId(null);
+                            setFullVisualizationDashboardId(null);
+                            setFullKioskDeviceScopeKey('');
+                            setFullKioskSlideIntervalStr('');
+                            setFullKioskSeibanPerPageStr('');
                           }
                         }}
                         className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
@@ -713,6 +857,7 @@ export function SignageSchedulesPage() {
                         <option value="csv_dashboard">CSVダッシュボード</option>
                         <option value="visualization">可視化</option>
                         <option value="kiosk_progress_overview">キオスク進捗一覧（JPEG）</option>
+                        <option value="kiosk_leader_order_cards">キオスク順位ボード・資源CDカード（JPEG）</option>
                       </select>
                     </div>
                     {fullSlotKind === 'pdf' && (
@@ -806,6 +951,63 @@ export function SignageSchedulesPage() {
                             value={fullKioskSeibanPerPageStr}
                             onChange={(e) => setFullKioskSeibanPerPageStr(e.target.value)}
                             placeholder="8"
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {fullSlotKind === 'kiosk_leader_order_cards' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            deviceScopeKey（キオスク端末と同じスコープ文字列・必須）
+                          </label>
+                          <input
+                            type="text"
+                            value={fullLeaderOrderDeviceScopeKey}
+                            onChange={(e) => setFullLeaderOrderDeviceScopeKey(e.target.value)}
+                            placeholder="例: 端末設定のスコープキー"
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            資源CD（1行1件、またはカンマ区切り・最大32件・順序どおり表示）
+                          </label>
+                          <textarea
+                            value={fullLeaderOrderResourceCdsText}
+                            onChange={(e) => setFullLeaderOrderResourceCdsText(e.target.value)}
+                            rows={5}
+                            placeholder={'例:\nR001\nR002'}
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 font-mono text-sm font-semibold text-slate-900"
+                          />
+                          <p className="mt-1 text-xs text-slate-600">
+                            現在の入力: {parseResourceCdListInput(fullLeaderOrderResourceCdsText).length} 件
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            ページ切替え秒（任意・既定30・複数資源で1画面に収まらないとき）
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fullLeaderOrderSlideIntervalStr}
+                            onChange={(e) => setFullLeaderOrderSlideIntervalStr(e.target.value)}
+                            placeholder="30"
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            1ページの資源カード数（任意・既定4・最大4・2列×2段）
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fullLeaderOrderCardsPerPageStr}
+                            onChange={(e) => setFullLeaderOrderCardsPerPageStr(e.target.value)}
+                            placeholder="4"
                             className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                           />
                         </div>

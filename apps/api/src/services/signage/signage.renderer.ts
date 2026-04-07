@@ -12,6 +12,7 @@ import type {
   CsvDashboardSlotConfig,
   VisualizationSlotConfig,
   KioskProgressOverviewSlotConfig,
+  KioskLeaderOrderCardsSlotConfig,
 } from './signage-layout.types.js';
 import type { RenderablePane } from './signage-pane-resolver.js';
 import { resolveSplitPanes } from './signage-pane-resolver.js';
@@ -29,6 +30,13 @@ import {
   sanitizeSeibanPerPage,
   sliceProgressOverviewItems,
 } from './kiosk-progress-overview/pagination.js';
+import { buildLeaderOrderCardsSvg } from './leader-order-cards/build-leader-order-cards-svg.js';
+import { buildLeaderOrderCardViewModels } from './leader-order-cards/leader-order-cards-data.service.js';
+import {
+  leaderOrderCardsPageCount,
+  sanitizeLeaderOrderCardsPerPage,
+  sliceLeaderOrderCardPage,
+} from './leader-order-cards/pagination.js';
 import {
   COMPACT24_MAX_COLUMNS,
   COMPACT24_MAX_ROWS,
@@ -79,6 +87,7 @@ interface SplitPdfOptions extends PdfRenderOptions {
 export class SignageRenderer {
   private readonly pdfSlideState = new Map<string, SignageSlideRotationState>();
   private readonly kioskProgressOverviewSlideState = new Map<string, SignageSlideRotationState>();
+  private readonly kioskLeaderOrderCardsSlideState = new Map<string, SignageSlideRotationState>();
   private readonly csvDashboardPageState = new Map<string, { lastPageNumber: number; lastRenderedAt: number }>();
   private lastCpuSample: { idle: number; total: number } | null = null;
   private readonly csvDashboardTemplateRenderer = new CsvDashboardTemplateRenderer();
@@ -265,6 +274,20 @@ export class SignageRenderer {
           );
         }
         return await this.renderKioskProgressOverviewFull(scopeKey, slideSec, perPage);
+      } else if (slot.kind === 'kiosk_leader_order_cards') {
+        const locCfg = slot.config as KioskLeaderOrderCardsSlotConfig;
+        const scopeKey = locCfg.deviceScopeKey?.trim();
+        if (!scopeKey) {
+          return await this.renderMessage('順位ボード: deviceScopeKey が未設定です');
+        }
+        const cds = locCfg.resourceCds ?? [];
+        if (cds.length === 0) {
+          return await this.renderMessage('順位ボード: resourceCds が空です');
+        }
+        const slideSec = locCfg.slideIntervalSeconds ?? 30;
+        const perPageRaw = locCfg.cardsPerPage ?? sanitizeLeaderOrderCardsPerPage(Number.NaN);
+        const perPage = sanitizeLeaderOrderCardsPerPage(perPageRaw);
+        return await this.renderKioskLeaderOrderCardsFull(scopeKey, cds, slideSec, perPage);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // SignagePaneResolver でペイン解決（loans=0件も有効）
@@ -674,6 +697,44 @@ export class SignageRenderer {
 
     const pageItems = sliceProgressOverviewItems(scheduled, pageIndex, seibanPerPage);
     const svg = buildKioskProgressOverviewSvg(pageItems, WIDTH, HEIGHT);
+
+    return await sharp(Buffer.from(svg), { density: 220 })
+      .resize(WIDTH, HEIGHT, { fit: 'fill' })
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  }
+
+  private async renderKioskLeaderOrderCardsFull(
+    deviceScopeKey: string,
+    resourceCds: string[],
+    slideIntervalSeconds: number,
+    cardsPerPage: number
+  ): Promise<Buffer> {
+    const cards = await buildLeaderOrderCardViewModels({
+      deviceScopeKey,
+      resourceCds,
+    });
+    if (cards.length === 0) {
+      return await this.renderMessage('順位ボード: 資源CDが解決できません');
+    }
+
+    const totalPages = leaderOrderCardsPageCount(cards.length, cardsPerPage);
+    if (totalPages < 1) {
+      return await this.renderMessage('順位ボード: ページ計算エラー');
+    }
+
+    const cdsKey = resourceCds.map((c) => c.trim().toUpperCase()).join(',');
+    const stateKey = `kiosk-leader-order-cards:${deviceScopeKey}:${cdsKey}`;
+    const pageIndex = getRotatingSlideIndex(this.kioskLeaderOrderCardsSlideState, {
+      stateKey,
+      totalPages,
+      displayMode: 'SLIDESHOW',
+      slideIntervalSeconds,
+      logContext: { kind: 'kiosk_leader_order_cards', deviceScopeKey },
+    });
+
+    const pageCards = sliceLeaderOrderCardPage(cards, pageIndex, cardsPerPage);
+    const svg = buildLeaderOrderCardsSvg(pageCards, WIDTH, HEIGHT);
 
     return await sharp(Buffer.from(svg), { density: 220 })
       .resize(WIDTH, HEIGHT, { fit: 'fill' })

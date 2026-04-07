@@ -173,18 +173,20 @@ export function SignageDisplayPage() {
   const [kioskProgressImageTick, setKioskProgressImageTick] = useState(0);
 
   const fullLayoutSlot = content?.layoutConfig?.layout === 'FULL' ? content.layoutConfig.slots[0] : undefined;
-  const isKioskProgressSignage =
-    content?.contentType === 'TOOLS' && fullLayoutSlot?.kind === 'kiosk_progress_overview';
+  const isKioskJpegFullSignage =
+    content?.contentType === 'TOOLS' &&
+    (fullLayoutSlot?.kind === 'kiosk_progress_overview' ||
+      fullLayoutSlot?.kind === 'kiosk_leader_order_cards');
 
   useEffect(() => {
-    if (!isKioskProgressSignage) {
+    if (!isKioskJpegFullSignage) {
       return undefined;
     }
     const id = window.setInterval(() => {
       setKioskProgressImageTick((t) => t + 1);
     }, 5000);
     return () => window.clearInterval(id);
-  }, [isKioskProgressSignage]);
+  }, [isKioskJpegFullSignage]);
 
   const pdfIntervalMs = useMemo(() => {
     if (!content?.pdf || content.displayMode !== 'SLIDESHOW') {
@@ -289,17 +291,30 @@ export function SignageDisplayPage() {
         );
       }
 
-      if (slot?.kind === 'kiosk_progress_overview') {
+      if (slot?.kind === 'kiosk_progress_overview' || slot?.kind === 'kiosk_leader_order_cards') {
         const kioskCfg = slot.config as SignageSlotConfig;
         if (!kioskCfg.deviceScopeKey?.trim()) {
-          return renderStateScreen('キオスク進捗一覧', 'deviceScopeKey がスケジュールに設定されていません');
+          return renderStateScreen(
+            slot.kind === 'kiosk_leader_order_cards' ? 'キオスク順位ボード' : 'キオスク進捗一覧',
+            'deviceScopeKey がスケジュールに設定されていません'
+          );
+        }
+        if (slot.kind === 'kiosk_leader_order_cards') {
+          const cds = kioskCfg.resourceCds;
+          if (!Array.isArray(cds) || cds.length === 0) {
+            return renderStateScreen('キオスク順位ボード', 'resourceCds がスケジュールに設定されていません');
+          }
         }
 
         return (
           <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
             <img
               src={getSignageCurrentImageUrl(kioskProgressImageTick)}
-              alt="キオスク製番進捗一覧"
+              alt={
+                slot.kind === 'kiosk_leader_order_cards'
+                  ? 'キオスク順位ボード資源カード'
+                  : 'キオスク製番進捗一覧'
+              }
               className="h-full w-full object-contain"
             />
           </div>
