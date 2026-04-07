@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-04-07) **サイネージ compact フッタ欠落（Playwright HTML）とキオスク取消ボタン視認性・`fix/signage-compact24-footer-kiosk-readability`・Pi5→Pi4×4→Pi3 順次デプロイ・Phase12・ドキュメント・`main` マージ**: API `loan-card-contracts` / `grid-card-html-tokens` / SVG pad 定数、Web `KioskActiveLoanCard` の `ghostOnDark`。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit` 1 台ずつ**・**`--detach --follow`**（Pi3 は専用手順・単独）。**Detach Run ID**: `20260407-123124-27600`（`raspberrypi5`）→ `20260407-124039-8718` / `20260407-124454-30820` / `20260407-124800-7012` / `20260407-125236-13960`（Pi4×4）→ `20260407-125547-7409`（`raspberrypi3`）、各 **`failed=0`**。**知見**: ローカル **未追跡ファイル**は `update-all-clients.sh` が拒否するため **`git stash push -u`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ナレッジ**: [KB-333](./docs/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md)・[KB-325](./docs/knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git)（カード高さ追記）・[KB-332](./docs/knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md)。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
 - [x] (2026-04-07) **写真持出 VLM アクティブ補助: 収束 canonical 直採用・`ASSIST_ACTIVE_CONVERGED`・`feat/photo-tool-active-assist-converged-label`・Pi5→Pi4×4 順次デプロイ・Phase12・ドキュメント・`main` マージ**: Prisma マイグレーション `20260407120000_add_photo_tool_vlm_provenance_assist_active_converged`・`PhotoToolLabelingService`（シャドー時のみ 2 回目 VLM）・管理 UI provenance 文言・KB-319 / ADR-20260404 / photo-loan。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`、`RASPI_SERVER_HOST`、**`--limit` 1 台ずつ**（**Pi3 除外**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ナレッジ**: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「実機確認（アクティブ補助・収束直採用…）」。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
 - [x] (2026-04-07) **Ansible: 写真持出 VLM アクティブ補助 env を vault→Pi5 inventory へ配線・`feat/ansible-photo-tool-assist-active-env`・Pi5 のみデプロイ・Phase12・ドキュメント・`main` マージ**: `inventory.yml` に `photo_tool_label_assist_active_*`（`vault_photo_tool_label_assist_active_*`）を追加。欠落時は `docker/.env` がテンプレ default のみとなり **アクティブ補助が意図せず常時 OFF** になる。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`、`RASPI_SERVER_HOST`、**`--limit raspberrypi5`**、**`--detach --follow`**。**実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ナレッジ**: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「Ansible 配線（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*`…）」。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
 - [x] (2026-04-06) **貸出グリッド HTML モダン外皮（Playwright 経路・契約不変）・`feat/signage-loan-grid-html-modern-chrome`・StoneBase01（`raspi4-kensaku-stonebase01`）のみ本番デプロイ・実機 systemd スモーク・ドキュメント・`main` マージ**: API `loan-grid/html/*`（palette・document・decor・tokens）。**デプロイ**: [deployment.md](./docs/guides/deployment.md) の `update-all-clients.sh`、`RASPI_SERVER_HOST`、**`--limit raspi4-kensaku-stonebase01` のみ**（複数台指示時は 1 台ずつ）。**Detach Run ID**: `20260406-194743-26315`（**`state: success`**）。**実機**: Pi5 hop → StoneBase で `kiosk-browser.service` / `status-agent.timer` **active**。**ナレッジ**: [KB-331](./docs/knowledge-base/infrastructure/signage.md#kb-331-signage-loan-grid-html-modern-chrome-stonebase-only)（**Pi5 未更新時はサイネージ JPEG の見た目が変わらない**旨の切り分け）。**`main` マージ**: PR 経由・マージ後 GitHub Actions 確認。
@@ -1750,6 +1751,15 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### サイネージ compact フッタ／取消ボタン（2026-04-07 反映後）
+
+**概要**: [KB-333](./docs/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md) を正とする。自動回帰は **`verify-phase12-real.sh` FAIL 0**。
+
+**候補タスク**:
+
+1. **現場目視（Pi3）**: loans グリッド JPEG で **日時・管理番号（フッタ）** が欠けず読めるか（`playwright_html` 想定）。
+2. **現場目視（Pi4）**: 持出一覧の **取消** が暗背景で読めるか（`ghostOnDark`）。
 
 ### キオスク compact（計測・吊具）運用フォロー（2026-04-06）
 

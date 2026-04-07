@@ -101,7 +101,7 @@ update-frequency: medium
 
 **概要（仕様）**:
 - **`layoutConfig.layout === 'SPLIT'`** かつペイン **`kind: 'loans'`** のとき、`SignageRenderer` のツール／貸出カードグリッドに **`splitCompact24`** を適用する（旧来の **`contentType: 'SPLIT'`** だけの経路とは別。表示確認は **`GET /api/signage/content`** の `layoutConfig` を正とする）。
-- **グリッド**: 最大 **4 列 × 6 行（24 件）**、25 件目以降はオーバーフロー集計。カード高さ **`cardHeightPx: 154`**、外枠 **220×154px** 想定。
+- **グリッド**: 最大 **4 列 × 6 行（24 件）**、25 件目以降はオーバーフロー集計。カード高さ（`COMPACT24_CARD_HEIGHT_PX`）は **2026-04-07 以降 164**（Playwright HTML のフッタクリップ対策。経緯・デプロイ実績は [KB-333](../KB-333-signage-compact24-footer-kiosk-cancel-readability.md)）。外枠寸法はコード上の `cardHeightPx` に追随。
 - **テキスト**: 日付 **`MM/DD・HH:mm`**（1 行）。拠点／主要表示名は **最大 2 行**（はみ出しは省略・API 側の論理分割は `loan-card-text.ts` 等）。敬称は付けない。
 - **モジュール**: 契約定数は **`apps/api/src/services/signage/loan-card/loan-card-contracts.ts`**（列・行・カード高・行数上限など）。幾何・テキストは同ディレクトリの純関数＋ `signage.renderer.ts` の `SPLIT_COMPACT24_LOAN_GRID_BASE` で **DRY**。
 
