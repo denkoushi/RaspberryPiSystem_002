@@ -9,17 +9,17 @@
       --bg-0: #020617;
       --bg-1: #0f172a;
       --card: #0f172a;
-      --card-border: rgba(148, 163, 184, 0.32);
-      --header: rgba(15, 23, 42, 0.88);
-      --row: rgba(15, 23, 42, 0.94);
-      --row-border: rgba(148, 163, 184, 0.26);
-      --text: rgba(248, 250, 252, 0.95);
-      --muted: rgba(203, 213, 225, 0.78);
-      --due-auto: #7dd3fc;
-      --due-manual: #fcd34d;
-      --accent-auto: #38bdf8;
-      --accent-manual: #f59e0b;
-      --accent-done: #64748b;
+      --card-border: rgba(255, 255, 255, 0.35);
+      --header: rgba(30, 41, 59, 0.94);
+      --row: rgba(51, 65, 85, 0.96);
+      --row-border: rgba(255, 255, 255, 0.42);
+      --text: #ffffff;
+      --muted: rgba(248, 250, 252, 0.92);
+      --due-auto: #e0f2fe;
+      --due-manual: #fef08a;
+      --accent-auto: #22d3ee;
+      --accent-manual: #fbbf24;
+      --accent-done: #94a3b8;
     }
 
     * {
@@ -52,7 +52,7 @@
 
     .card {
       border-radius: 8px;
-      border: 1px solid var(--card-border);
+      border: 2px solid var(--card-border);
       background: var(--card);
       overflow: hidden;
       display: flex;
@@ -61,43 +61,55 @@
     }
 
     .card-header {
-      padding: 6px 8px;
+      padding: 8px 10px;
       background: var(--header);
-      border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     }
 
-    .resource {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 14px;
-      font-weight: 700;
+    /** 資源CD + 日本語名を1行（本番 SVG と同型） */
+    .header-line {
       margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.15;
       letter-spacing: 0.02em;
-    }
-
-    .name {
-      margin: 2px 0 0;
-      font-size: 11px;
-      color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
+    .header-line .cd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .header-line .sep {
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.55);
+      margin: 0 0.12em;
+    }
+
+    .header-line .jp {
+      font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
     .rows {
-      padding: 6px 8px;
+      padding: 8px 8px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
       min-height: 0;
     }
 
     .row {
       position: relative;
-      border: 1px solid var(--row-border);
+      border: 1.5px solid var(--row-border);
       border-radius: 6px;
       background: var(--row);
-      padding: 5px 8px 5px 10px;
-      min-height: 40px;
+      padding: 8px 10px 8px 12px;
+      min-height: 72px;
     }
 
     .row::before {
@@ -106,7 +118,7 @@
       left: 0;
       top: 0;
       bottom: 0;
-      width: 4px;
+      width: 5px;
       border-radius: 8px 0 0 8px;
       background: var(--accent-auto);
     }
@@ -124,7 +136,8 @@
     }
 
     .fkojun {
-      font-size: 10px;
+      font-size: 20px;
+      font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -132,9 +145,9 @@
 
     .due {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 9px;
+      font-size: 18px;
       font-weight: 700;
-      padding: 1px 6px;
+      padding: 4px 10px;
       border-radius: 999px;
       border: 1px solid currentColor;
       color: var(--due-auto);
@@ -145,16 +158,17 @@
     .row.done .due { color: #94a3b8; }
 
     .line {
-      font-size: 10px;
-      color: rgba(241, 245, 249, 0.9);
+      font-size: 18px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.96);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      line-height: 1.25;
+      line-height: 1.3;
     }
 
     .line.muted {
-      color: var(--muted);
+      color: rgba(255, 255, 255, 0.82);
     }
   </style>
 </head>
@@ -163,8 +177,7 @@
     <div class="grid">
       <article class="card">
         <header class="card-header">
-          <p class="resource">R21</p>
-          <p class="name">旋盤 1号機</p>
+          <p class="header-line"><span class="cd">R21</span><span class="sep">·</span><span class="jp">旋盤 1号機</span></p>
         </header>
         <div class="rows">
           <section class="row manual">
@@ -182,8 +195,7 @@
 
       <article class="card">
         <header class="card-header">
-          <p class="resource">R22</p>
-          <p class="name">複合加工機 2号機</p>
+          <p class="header-line"><span class="cd">R22</span><span class="sep">·</span><span class="jp">複合加工機 2号機</span></p>
         </header>
         <div class="rows">
           <section class="row">
@@ -201,8 +213,7 @@
 
       <article class="card">
         <header class="card-header">
-          <p class="resource">R23</p>
-          <p class="name">汎用フライス 3号機</p>
+          <p class="header-line"><span class="cd">R23</span><span class="sep">·</span><span class="jp">汎用フライス 3号機</span></p>
         </header>
         <div class="rows">
           <section class="row">
@@ -220,8 +231,7 @@
 
       <article class="card">
         <header class="card-header">
-          <p class="resource">R24</p>
-          <p class="name">NC旋盤 4号機</p>
+          <p class="header-line"><span class="cd">R24</span><span class="sep">·</span><span class="jp">NC旋盤 4号機</span></p>
         </header>
         <div class="rows">
           <section class="row manual">
@@ -239,8 +249,7 @@
 
       <article class="card">
         <header class="card-header">
-          <p class="resource">R25</p>
-          <p class="name">加工センタ 5号機</p>
+          <p class="header-line"><span class="cd">R25</span><span class="sep">·</span><span class="jp">加工センタ 5号機</span></p>
         </header>
         <div class="rows">
           <section class="row">
@@ -258,8 +267,7 @@
 
       <article class="card">
         <header class="card-header">
-          <p class="resource">R26</p>
-          <p class="name">5軸 6号機</p>
+          <p class="header-line"><span class="cd">R26</span><span class="sep">·</span><span class="jp">5軸 6号機</span></p>
         </header>
         <div class="rows">
           <section class="row manual">
@@ -277,8 +285,7 @@
 
       <article class="card">
         <header class="card-header">
-          <p class="resource">R27</p>
-          <p class="name">ワイヤーカット 7号機</p>
+          <p class="header-line"><span class="cd">R27</span><span class="sep">·</span><span class="jp">ワイヤーカット 7号機</span></p>
         </header>
         <div class="rows">
           <section class="row">
@@ -296,8 +303,7 @@
 
       <article class="card">
         <header class="card-header">
-          <p class="resource">R28</p>
-          <p class="name">平面研削 8号機</p>
+          <p class="header-line"><span class="cd">R28</span><span class="sep">·</span><span class="jp">平面研削 8号機</span></p>
         </header>
         <div class="rows">
           <section class="row">

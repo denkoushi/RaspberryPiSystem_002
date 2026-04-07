@@ -46,16 +46,23 @@ export function computeLeaderOrderSignageSvgMetrics(width: number, height: numbe
     rowGap,
   });
 
+  const cardPad = Math.round(8 * scale);
+  const titleFs = Math.max(22, Math.round(28 * scale));
+  const subFs = Math.max(16, Math.round(20 * scale));
+  const bodyFs = Math.max(16, Math.round(20 * scale));
+  const smallFs = Math.max(14, Math.round(18 * scale));
+  const headerH = Math.max(Math.round(46 * scale), cardPad * 2 + titleFs + Math.round(8 * scale));
+
   return {
     scale,
-    cardPad: Math.round(8 * scale),
-    headerH: Math.round(48 * scale),
-    titleFs: Math.max(11, Math.round(14 * scale)),
-    subFs: Math.max(8, Math.round(11 * scale)),
-    bodyFs: Math.max(8, Math.round(10 * scale)),
-    smallFs: Math.max(7, Math.round(9 * scale)),
+    cardPad,
+    headerH,
+    titleFs,
+    subFs,
+    bodyFs,
+    smallFs,
     radius: Math.round(8 * scale),
-    rowGapInside: Math.max(2, Math.round(5 * scale)),
+    rowGapInside: Math.max(3, Math.round(6 * scale)),
     gridSlots,
     slotCount: Math.min(gridSlots.length, LEADER_ORDER_SIGNAGE_GRID_CAPACITY),
   };
