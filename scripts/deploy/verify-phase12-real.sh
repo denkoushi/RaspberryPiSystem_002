@@ -224,7 +224,12 @@ ACTUAL_STATS_JSON="$(curl -sk "${BASE_URL}/api/kiosk/production-schedule/due-man
 check_contains "actual-hours/stats fields" "${ACTUAL_STATS_JSON}" '"totalRawRows".*"totalCanonicalRows".*"totalFeatureKeys".*"topFeatures"'
 
 SIGNAGE_JSON="$(curl -sk "${BASE_URL}/api/signage/content" 2>&1 || true)"
-check_contains "サイネージAPI layoutConfig" "${SIGNAGE_JSON}" '"layoutConfig"'
+# 匿名 /content はアクティブスケジュール依存。TOOLS 系（持出一覧等）では layoutConfig が無いのが正常。
+if printf '%s' "${SIGNAGE_JSON}" | grep -q '"contentType":"TOOLS"'; then
+  log_pass "サイネージAPI layoutConfig（TOOLS表示中はキーなしで正常）"
+else
+  check_contains "サイネージAPI layoutConfig" "${SIGNAGE_JSON}" '"layoutConfig"'
+fi
 
 # Pi3 サイネージ端末キーで JPEG パイプライン（ active スケジュールの種別に依存）
 SIGNAGE_CURRENT_IMAGE_CODE="$(

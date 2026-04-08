@@ -4,6 +4,19 @@
 
 要領書 PDF の手動登録、Gmail からの取り込み、キオスク表示の確認と復旧手順を記録する。
 
+## 本番デプロイ（HTML 取り込みを含む API 変更時）
+
+- **影響ホスト**: API コンテナは **Pi5（`raspberrypi5`）のみ**更新すればよい（キオスク UI は既存の PDF 表示経路のまま。[deployment.md](../guides/deployment.md) の **「API/DBのみ: Pi5のみ」**）。
+- **標準コマンド例**（1 台のみ・デタッチ＋フォロー）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+- **デプロイ失敗（Pi5 で `git` が `unable to unlink` / `pull` 中止）**: 一部パスが **root 所有**になっている典型。 [deployment.md](../guides/deployment.md) の **「ワークツリー権限」**・[KB-325](../knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git) を参照し **`chown`** のうえ、運用で許容できる場合は **`git reset --hard origin/<branch>`** と **`git clean -fd`** でリポジトリをリモートと一致させてから **再デプロイ**（**`git clean` は未追跡ファイルを削除**する。ホスト専用の未バックアップ作業物がある場合は事前に退避）。
+- **実機スモーク**: `./scripts/deploy/verify-phase12-real.sh`（**キオスク要領書 API** を含む）。**2026-04-08**: 匿名 **サイネージ**が **`contentType: TOOLS`** の時間帯は **`layoutConfig` 無しで正常**（スクリプトで分岐済み）。
+
 ## 手動アップロード
 
 1. 管理コンソール → **要領書（キオスク）**（`/admin/kiosk-documents`）
