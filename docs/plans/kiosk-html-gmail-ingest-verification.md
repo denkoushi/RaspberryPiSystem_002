@@ -45,3 +45,9 @@ pnpm --filter @raspi-system/api exec vitest run \
 
 - 従来の **PDF のみ** 添付メールは従来どおり `pdfsImported` で取り込まれること。
 - 同一メッセージに PDF と HTML がある場合、**両方**処理されうる（添付ごとに重複キーが異なる）。
+
+## 本番デプロイ後（Phase12 自動検証）
+
+- **API 変更の反映先**: [deployment.md](../guides/deployment.md) に従い **Pi5（`raspberrypi5`）のみ**で可（**API/DBのみ**の判断）。
+- **コマンド**: `./scripts/deploy/verify-phase12-real.sh`（**`GET /api/kiosk-documents`** を含む）。
+- **知見（2026-04-08）**: 匿名 **`GET /api/signage/content`** が **`contentType: TOOLS`**（工場表示の持出一覧等）のとき、レスポンスに **`layoutConfig` が無いのは正常**。`verify-phase12-real.sh` は当該ケースを **PASS** とみなすよう更新済み。
