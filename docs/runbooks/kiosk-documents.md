@@ -18,6 +18,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 - **影響ホスト**: 管理コンソールの Web バンドルは **Pi5（`raspberrypi5`）** に載るため、通常は **Pi5 のみ**で足りる（[deployment.md](../guides/deployment.md) の **「Webアプリのみ: … Pi5 のみ」** の判断と同型）。
 - **運用確認（2026-04-08）**: 要領書 **PDF→JPEG 既定**を **180 DPI / 品質 88** に引き上げ（ブランチ `feat/kiosk-document-pdf-render-defaults-180dpi`・**Pi5 のみ** `--limit raspberrypi5`）。Detach Run ID: `20260408-201253-19203`（`failed=0`）。Phase12: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。既存 JPEG キャッシュは自動では張り替わらない（要領書再登録 or `pdf-pages` 削除が必要な場合あり・[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。
+- **運用確認（2026-04-08）**: 要領書 **ページ画像配信ルート**を、変換側と同じ保存先に統一（ブランチ `fix/kiosk-pdf-pages-route-storage-path`・**Pi5 のみ** `--limit raspberrypi5`）。Detach Run ID: `20260408-204640-13669`（`failed=0`）。Phase12: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。対象 HTML 要領書 `SD000032603_研削_OP-01` は、配信 URL が **HTTP 200** に復帰し、再生成 JPEG は **`1490 x 2108`** を確認。
 - **運用確認（2026-04-08）**: `feat/kiosk-doc-gmail-schedules-list` を **`--limit raspberrypi5`** で反映。Ansible サマリ例: `ansible-update-20260408-185957-2678`（`failed=0`）。Phase12: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
 - **ブラウザ確認**: `/admin/kiosk-documents` の **要領書Gmailスケジュール一覧**と **手動取り込み**の **ID 反映**ボタン。
 
@@ -144,6 +145,7 @@ curl -X POST "https://<host>/api/kiosk-documents/run-nightly-ocr" \
 
 - `KIOSK_DOCUMENT_PDF_DPI`（既定 **180**）、`KIOSK_DOCUMENT_JPEG_QUALITY`（既定 **88**）で Pi4 閲覧の細部と負荷のバランスを取る（未設定時のコード既定。現場では env で上書き可）。サイネージの `SIGNAGE_PDF_DPI` とは独立。
 - 設定変更後も `pdf-pages/{id}` に古い JPEG が残っていると **見た目は変わらない**。必要なら該当フォルダ削除または文書の再登録。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
+- `GET /api/kiosk-documents/:id` で `pageUrls` が返るのに、実際の画像 URL が **404** のときは、**配信ルートの保存先と変換先の不一致**を疑う。2026-04-08 の Pi5 では `routes/storage/pdf-pages.ts` の個別既定値が原因で、変換済み JPEG が見えなかった。まず対象 URL の `curl -I`、次に API コンテナ内の `pdf-pages/{id}` 実在を確認する。
 
 ## 孤児 PDF / ページ画像の掃除（任意）
 
