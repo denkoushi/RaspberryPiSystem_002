@@ -283,6 +283,17 @@ export async function upsertCsvImportConfig(importType: CsvImportConfigType, pay
 }
 
 // バックアップ設定の型定義
+/** backup.json の kioskDocumentGmailIngest エントリ（API の BackupConfig と整合） */
+export interface KioskDocumentGmailIngestSchedule {
+  id: string;
+  name?: string;
+  subjectPattern: string;
+  fromEmail?: string;
+  schedule: string;
+  /** 省略時は API 側デフォルト（true）と同様に有効扱い */
+  enabled?: boolean;
+}
+
 export interface BackupTarget {
   kind: 'database' | 'file' | 'directory' | 'csv' | 'image' | 'client-file' | 'client-directory';
   source: string;
@@ -356,6 +367,8 @@ export interface BackupConfig {
     verifyIntegrity?: boolean;
     defaultTargetKind?: 'database' | 'csv';
   };
+  /** キオスク要領書: Gmail から PDF/HTML 添付を取り込む cron スケジュール */
+  kioskDocumentGmailIngest?: KioskDocumentGmailIngestSchedule[];
 }
 
 // バックアップ設定API
