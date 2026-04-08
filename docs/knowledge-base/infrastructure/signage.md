@@ -85,7 +85,7 @@ update-frequency: medium
 
 **本番デプロイ（2026-04-08・ブランチ `feat/signage-leader-order-4x8-grid-solid`）**: 初回スロット導入後の追補。**仕様**: `cardsPerPage` / 管理 UI / Zod の **`max 8`** 統一、JPEG SVG 生成の **モジュール分割**（挙動は 4 列×2 段・ページ送りのまま）。**手順**: [deployment.md](../../guides/deployment.md) どおり **`RASPI_SERVER_HOST`**・**`--limit raspberrypi5`**・**`--detach --follow`**（対象 **1 台のみ**・Pi4/Pi3 は `no hosts matched`）。**Detach Run ID**: `20260408-073202-31994`。**`PLAY RECAP`**: `raspberrypi5` **`failed=0`**・リモート **`exit=0`**。**トラブル無し**（本記録時点）。
 
-**本番デプロイ（2026-04-08・ブランチ `feat/signage-leader-order-readability-solid`）**: **工場視認性**（タイポ拡大・1行ヘッダ・高コントラスト）と **SOLID 分割**（`header` / `schedule-row` / `layout-tokens`・`leader-order-cards-svg-header.test.ts`）。**手順**: [deployment.md](../../guides/deployment.md) どおり **`RASPI_SERVER_HOST`**・**`--limit raspberrypi5`**・**`--detach --follow`**（**1 台のみ**・Pi4/Pi3 は `no hosts matched`）。**Detach Run ID**: `20260408-083856-28270`。**`PLAY RECAP`**: `raspberrypi5` **`failed=0`**・リモート **`exit=0`**。**トラブル無し**（本記録時点）。
+**本番デプロイ（2026-04-08・ブランチ `feat/signage-leader-order-readability-solid`）**: **工場視認性**（タイポ拡大・1行ヘッダ・高コントラスト）と **SOLID 分割**（`header` / `schedule-row` / `layout-tokens`・`leader-order-cards-svg-header.test.ts`）。**手順**: [deployment.md](../../guides/deployment.md) どおり **`RASPI_SERVER_HOST`**・**`--limit raspberrypi5`**・**`--detach --follow`**（**1 台のみ**・Pi4/Pi3 は `no hosts matched`）。**Detach Run ID**: `20260408-083856-28270`。**`PLAY RECAP`**: `raspberrypi5` **`failed=0`**・リモート **`exit=0`**。**トラブル無し**（本記録時点）。**`main` マージ**: [PR #98](https://github.com/denkoushi/RaspberryPiSystem_002/pull/98)。
 
 **実機検証（自動）**: `./scripts/deploy/verify-phase12-real.sh`（Mac / Tailscale）→ **PASS 43 / WARN 0 / FAIL 0**（2026-04-08・**readability** Pi5 反映直後・約 **29s**）。
 

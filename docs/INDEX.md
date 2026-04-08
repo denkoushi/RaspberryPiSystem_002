@@ -46,7 +46,7 @@
 
 ### 🆕 最新アップデート（2026-04-08）
 
-- **サイネージ `kiosk_leader_order_cards`: 工場視認性（タイポ・1行ヘッダ）・SOLID 分割（`header` / `schedule-row` / `layout-tokens`）・`feat/signage-leader-order-readability-solid`・本番 Pi5 のみ・Detach `20260408-083856-28270`・Phase12 PASS 43/0/0・静的プレビュー [signage-leader-order-cards-preview.html](./design-previews/signage-leader-order-cards-preview.html)**: [KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)（PR マージ後リンク追記可）。
+- **サイネージ `kiosk_leader_order_cards`: 工場視認性（タイポ・1行ヘッダ）・SOLID 分割（`header` / `schedule-row` / `layout-tokens`）・`feat/signage-leader-order-readability-solid`・本番 Pi5 のみ・Detach `20260408-083856-28270`・Phase12 PASS 43/0/0・`main` マージ・静的プレビュー [signage-leader-order-cards-preview.html](./design-previews/signage-leader-order-cards-preview.html)**: [KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**マージ**: [PR #98](https://github.com/denkoushi/RaspberryPiSystem_002/pull/98)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **サイネージ `kiosk_leader_order_cards`: `cardsPerPage` 1〜8 統一・SVG 生成モジュール分割・`feat/signage-leader-order-4x8-grid-solid`・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260408-073202-31994`・Phase12 PASS 43/0/0・`main` マージ**: [PR #95](https://github.com/denkoushi/RaspberryPiSystem_002/pull/95)。仕様・TS・[KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-07）
