@@ -2,7 +2,7 @@
 title: デジタルサイネージクライアント端末セットアップガイド
 tags: [デジタルサイネージ, セットアップ, ラズパイ3, ラズパイZero2W, Android]
 audience: [運用者, 開発者]
-last-verified: 2026-04-07
+last-verified: 2026-04-08
 related: [../modules/signage/README.md, deployment.md]
 category: guides
 update-frequency: medium
@@ -41,6 +41,20 @@ https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-androi
 - **Web 正本は Pi5**。[deployment.md](./deployment.md) の `update-all-clients.sh` で **`--limit raspberrypi5`**・`RASPI_SERVER_HOST`・**`--detach --follow`**（実測 Detach Run ID: `20260407-174723-18058`・`failed=0`）。
 - **自動回帰**（リポジトリ直下）: `./scripts/deploy/verify-phase12-real.sh` → 2026-04-07 実測 **PASS 43 / WARN 0 / FAIL 0**。
 - **手動（Android）**: 上記 URL を実機で開き、JPEG が **約30秒周期**で更新することを目視。端末が未登録なら先に **`POST /api/clients/heartbeat`** で `apiKey` を登録する。
+
+### トラブルシュート（Android・Chrome・2026-04-08）
+
+1. **ページ上「画像を取得できません」／`GET /api/signage/current-image?key=…` が 401**  
+   - **原因**: 当該 `apiKey` の **`ClientDevice` が未登録**。API は登録済みキーのみ 200 を返す（`apps/api/src/routes/signage/render.ts`）。  
+   - **対処**: **`POST /api/clients/heartbeat`**（JSON に `apiKey`, `name`, `location`・認証不要）で upsert 後、再度 URL または `current-image` を確認する。  
+   - **参照**: [KB-337](../knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome)
+
+2. **単体で `current-image` の URL を開くと画像が出るのに、`/signage-lite` だけ古い／エラー表示のまま**  
+   - **原因**: Android Chrome で **サイトのデータ・キャッシュ**が SPA や `localStorage`（`kiosk-client-key`）と不整合になり、古いバンドルや誤ったキーが残っていることがある。  
+   - **対処**: Chrome の **閲覧データの削除**（対象サイト）で **Cookie・サイトデータ・キャッシュ** を消し、**推奨 URL（`?clientKey=…` 付き）**から開き直す。  
+   - **参照**: 同上 [KB-337](../knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome)
+
+3. **到達性**: 同一 LAN 上の Pi5（例: **`192.168.10.230`**・[`group_vars/all.yml`](../../infrastructure/ansible/group_vars/all.yml) の `local_network.raspberrypi5_ip` と整合）へ HTTPS で到達できること、TLS 信頼済みであることを前提とする（Tailscale 利用時も LAN 直指定は可）。
 
 ### スケジュールの割当
 
