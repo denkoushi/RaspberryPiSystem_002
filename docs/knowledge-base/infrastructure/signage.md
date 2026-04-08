@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-04-07
+last-verified: 2026-04-08
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 27件  
+**件数**: 28件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -22,9 +22,44 @@ update-frequency: medium
 
 **管理UI（2026-04-07・ブランチ `feat/signage-target-client-keys-ui`）**: `/admin/signage/schedules` で **`targetMultiClientDevice`** の端末（`apiKey`）をチェックボックス選択し、**空＝全端末**で保存できる。一覧は対象端末の**要約表示**。API 契約は [ADR-20260407](../../decisions/ADR-20260407-signage-target-client-keys.md) のまま。**本番は Pi5 のみ**で可（管理 Web は Pi5 ホスト）。**Detach Run ID**: `20260407-154339-26008`（**`--limit raspberrypi5`**・Pi4/Pi3 は `no hosts matched`・**`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見**: 端末候補は現状 **`apiKey`（小文字化後）に `signage` を含む**慣習で `ClientDevice` を絞り込み（Android 例: `…-android-signage-161`）、既存割当キーは一覧外でもマージ表示（`signageTargetClientDevices.ts`。将来 `deviceRole` が入れば差し替え想定）。型落ち **Android** の表示用 URL は Web の **`/signage-lite`**（セットアップは [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite)）。**代表ファイル**: `apps/web/src/components/signage/SignageTargetClientsField.tsx`、`apps/web/src/lib/signageTargetClientDevices.ts`、`apps/web/src/pages/signage/SignageLiteDisplayPage.tsx`。
 
-**Android 軽量ページ（2026-04-07・ブランチ `feat/android-signage-lite-page`）**: Web の **`/signage-lite`**（`clientKey` クエリ／`localStorage`・`GET /api/signage/current-image` の **`key=`** 整合・未設定時は案内表示）。**本番は Pi5 のみ**で可（`web` バンドル正本）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**（対象が Pi5 のみのため **1 台・1 回**）。**Detach Run ID**: `20260407-174723-18058`（**`PLAY RECAP failed=0`**・Pi4/Pi3 は `no hosts matched`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 53s・Mac / Tailscale）。**TS**: `clientKey` 未設定で **誤デフォルト画像**へ寄せない（`allowDefaultFallback: false`）。Pi3 は本変更の必須デプロイ対象外（専用手順は従来どおり・リソース僅少）。セットアップは [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite)。
+**Android 軽量ページ（2026-04-07・ブランチ `feat/android-signage-lite-page`）**: Web の **`/signage-lite`**（`clientKey` クエリ／`localStorage`・`GET /api/signage/current-image` の **`key=`** 整合・未設定時は案内表示）。**本番は Pi5 のみ**で可（`web` バンドル正本）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**（対象が Pi5 のみのため **1 台・1 回**）。**Detach Run ID**: `20260407-174723-18058`（**`PLAY RECAP failed=0`**・Pi4/Pi3 は `no hosts matched`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 53s・Mac / Tailscale）。**TS**: `clientKey` 未設定で **誤デフォルト画像**へ寄せない（`allowDefaultFallback: false`）。Pi3 は本変更の必須デプロイ対象外（専用手順は従来どおり・リソース僅少）。セットアップは [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite)。**実機（2026-04-08）**: 未登録 `apiKey` では `current-image` が **401** → **`heartbeat` 登録後に 200**。`/signage-lite` のみ不調時は **Chrome のサイトデータ／キャッシュ削除**で復旧した例あり → [KB-337](#kb-337-android-signage-lite-401-chrome)。
 
 ---
+
+<a id="kb-337-android-signage-lite-401-chrome"></a>
+
+### [KB-337] Android `/signage-lite` の画像取得失敗（401）とページのみ表示異常（Chrome サイトデータ・キャッシュ）
+
+**実施日**: 2026-04-08（実機・型落ち Android タブレット・LAN 上 Pi5）
+
+**Context**: 軽量 URL は [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite) の **`/signage-lite?clientKey=…`**。代表例の端末キーは **`client-key-factory-android-signage-161`**。
+
+**Symptoms**:
+
+1. ページ上で **画像が取れない**／`GET https://<host>/api/signage/current-image?key=<apiKey>` が **401 Unauthorized**。  
+2. ブラウザで **`current-image` 直リンクだけ**は 200 で JPEG が見えるのに、**`/signage-lite` だけ**古いエラー表示のまま・または期待と違う挙動。
+
+**Investigation**:
+
+- `current-image` の **`key=`** / **`x-client-key`** は **登録済み `ClientDevice.apiKey`** と照合され、未登録は 401（実装: `apps/api/src/routes/signage/render.ts`）。  
+- 症状 (2) は **Chrome のキャッシュ／サイトデータ**と SPA・`localStorage`（`kiosk-client-key`）の不整合が疑われる（`direct URL` はキャッシュ経路が異なるため片方だけ成功し得る）。
+
+**Root cause**:
+
+1. **401**: 当該 **`apiKey` が DB に未登録**（`heartbeat` 未実施または別キー）。  
+2. **ページのみ異常**: **古いサイトデータ／キャッシュ**。
+
+**Fix**:
+
+1. **`POST /api/clients/heartbeat`**（`apiKey`, `name`, `location`・認証不要）で `ClientDevice` を upsert し、`current-image?key=…` が **200** になることを確認する。  
+2. Chrome で **当該オリジンの閲覧データ削除**（Cookie・サイトデータ・キャッシュ）を行い、**推奨の `?clientKey=…` 付き URL**から開き直す。
+
+**Prevention**:
+
+- 新規 Android 端末は **表示確認前に `heartbeat` を一度必ず実行**する運用にする。  
+- フロント更新後も **キオスク／常駐ブラウザはスタート URL を正とし、不整合時はサイトデータ削除**を Runbook 化する。
+
+**References**: [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite)・`apps/web/src/lib/client-key/`・`SignageLiteDisplayPage.tsx`・[ADR-20260407](../../decisions/ADR-20260407-signage-target-client-keys.md)（`targetClientKeys`）
 
 ### [KB-321] キオスク進捗一覧スロット（`kiosk_progress_overview`）のサイネージ表示・デプロイ・実機検証
 
