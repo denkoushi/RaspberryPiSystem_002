@@ -2,17 +2,12 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { promises as fs } from 'fs';
 import path from 'path';
 
+import { PDF_PAGES_DIR } from '../../lib/pdf-storage.js';
 import {
   buildPdfPageEtag,
   ifNoneMatchSatisfied,
   resolvePdfPageCacheControl,
 } from './pdf-page-http-cache.js';
-
-/**
- * PDFページ画像のベースディレクトリ
- */
-const STORAGE_BASE_DIR = process.env.PDF_STORAGE_DIR || '/opt/RaspberryPiSystem_002/storage';
-const PDF_PAGES_DIR = path.join(STORAGE_BASE_DIR, 'pdf-pages');
 
 /**
  * PDFページ画像配信ルート
