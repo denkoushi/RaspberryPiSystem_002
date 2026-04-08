@@ -51,3 +51,11 @@ pnpm --filter @raspi-system/api exec vitest run \
 - **API 変更の反映先**: [deployment.md](../guides/deployment.md) に従い **Pi5（`raspberrypi5`）のみ**で可（**API/DBのみ**の判断）。
 - **コマンド**: `./scripts/deploy/verify-phase12-real.sh`（**`GET /api/kiosk-documents`** を含む）。
 - **知見（2026-04-08）**: 匿名 **`GET /api/signage/content`** が **`contentType: TOOLS`**（工場表示の持出一覧等）のとき、レスポンスに **`layoutConfig` が無いのは正常**。`verify-phase12-real.sh` は当該ケースを **PASS** とみなすよう更新済み。
+
+### 本番記録（2026-04-08・運用指示）
+
+- **デプロイスコープ**: **`raspberrypi5` のみ**（API/DB。キオスク Pi4・サイネージ Pi3 は今回の変更不要。**Pi3 のリソース制約向け専用手順は未実施**）。
+- **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・`RASPI_SERVER_HOST`・`--limit raspberrypi5`・`--detach --follow`。
+- **結果**: Pi5 上 `logs/deploy/ansible-update-20260408-154206-25754.summary.json`（**`PLAY RECAP` `failed=0` / `unreachable=0`**）。
+- **Phase12（Mac / Tailscale）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: auto-tuning スケジューラのログ件数 0。スクリプトは **PUT auto-generate=200** を代替合格とする）。
+- **手動（推奨）**: 未読・件名一致・HTML 添付の Gmail を1通送り、管理画面または cron 経由で `htmlImported` と `pageUrls` を確認（上表「手動（運用）」）。

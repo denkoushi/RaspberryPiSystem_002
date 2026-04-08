@@ -15,7 +15,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ```
 
 - **デプロイ失敗（Pi5 で `git` が `unable to unlink` / `pull` 中止）**: 一部パスが **root 所有**になっている典型。 [deployment.md](../guides/deployment.md) の **「ワークツリー権限」**・[KB-325](../knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git) を参照し **`chown`** のうえ、運用で許容できる場合は **`git reset --hard origin/<branch>`** と **`git clean -fd`** でリポジトリをリモートと一致させてから **再デプロイ**（**`git clean` は未追跡ファイルを削除**する。ホスト専用の未バックアップ作業物がある場合は事前に退避）。
-- **実機スモーク**: `./scripts/deploy/verify-phase12-real.sh`（**キオスク要領書 API** を含む）。**2026-04-08**: 匿名 **サイネージ**が **`contentType: TOOLS`** の時間帯は **`layoutConfig` 無しで正常**（スクリプトで分岐済み）。
+- **実機スモーク**: `./scripts/deploy/verify-phase12-real.sh`（**キオスク要領書 API** を含む）。**2026-04-08**: 匿名 **サイネージ**が **`contentType: TOOLS`** の時間帯は **`layoutConfig` 無しで正常**（スクリプトで分岐済み）。**同日（Pi5 のみ・運用指示）**: サマリ `ansible-update-20260408-154206-25754`・Phase12 **PASS 42 / WARN 1 / FAIL 0**。
 
 ## 手動アップロード
 

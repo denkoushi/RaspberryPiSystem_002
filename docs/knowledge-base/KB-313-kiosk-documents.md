@@ -2,7 +2,7 @@
 title: KB-313 キオスク要領書（PDF）一覧・Gmail取り込み
 tags: [kiosk, pdf, gmail, api, ocr, metadata]
 audience: [開発者, 運用者]
-last-verified: 2026-03-31
+last-verified: 2026-04-08
 category: knowledge-base
 ---
 
@@ -127,6 +127,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ## 実機検証
 
+- **デプロイ（要領書 HTML Gmail 取り込み・API・Pi5 のみ・2026-04-08）**: 運用指示により **HTML 添付を Playwright で PDF 化する API** を **Pi5 だけ**反映（[deployment.md](../guides/deployment.md)・**`--limit raspberrypi5`**・`RASPI_SERVER_HOST`・`--detach --follow`）。**Pi3 / Pi4 への Ansible デプロイは不要**（Pi3 のメモリ制約向け **単独・プレフライト手順**も今回は未使用）。**Ansible サマリ**: `ansible-update-20260408-154206-25754`（**`failed=0` / `unreachable=0`**）。**追従 `main` 例**: `895a1060`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: auto-tuning ログ件数 0）。**手動（残）**: 件名「要領書HTML研削」・**未読**・HTML 添付の E2E（`kioskDocumentGmailIngest`・`POST /ingest-gmail` の `htmlImported`・`GET :id` の `pageUrls`）。詳細は [kiosk-html-gmail-ingest-verification.md](../plans/kiosk-html-gmail-ingest-verification.md)。
 - **デプロイ（推論基盤フェーズ1・API・Pi5 のみ）**: ブランチ `feat/inference-foundation-phase1`（`services/inference`・要領書オプトイン推論・写真ラベル `photo_label` ルート）。[deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5` のみ**・`RASPI_SERVER_HOST`・`--detach --follow`。Detach Run ID 例: `20260330-171021-10204`。**Phase12（2026-03-30）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 95s）。要領書 LLM 要約は既定 OFF のため、本スクリプトは **要領書 API 200 + `documents`** の回帰まで（詳細は [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md) Verification）。
 - **デプロイ（要領書: バーコードスキャン検索・Web のみ）**: ブランチ `feat/kiosk-documents-barcode-scan`（コミット例 `043f3228`）。API 契約不変。`@zxing/library` バンドル・`features/barcode-scan`・`KioskDocumentsPage` / `KioskDocumentsListPanel` の `searchAccessory`。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・Pi3 除外・`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（例）・`--detach --follow`。**Phase12（2026-03-29 実測）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 34 / WARN 0 / FAIL 0**（約 47s）。**残りの実機確認（オペレーター向け）**: Pi4 Firefox で `/kiosk/documents` にてスキャンボタン・カメラ許可・実ラベル読取・一覧絞り込みを目視確認（自動スクリプトではブラウザカメラを使わない）。
 - **デプロイ（要領書: ビューアツールバー折りたたみ・左一覧要約 `title`・Web のみ）**: ブランチ `feat/kiosk-documents-hover-toolbar-and-summary-tooltip`（`HoverRevealCollapsibleToolbar`・`kioskDocumentListSummary.ts`・`KioskDocumentsViewerPanel` の `toolbarRevealEnabled`＋`usesKioskImmersiveLayout`）。API 契約不変。[deployment.md](../guides/deployment.md) に従い **Pi5 → `raspberrypi4` → `raspi4-robodrill01` のみ** `--limit` 1 台ずつ・Pi3 除外・`export RASPI_SERVER_HOST=denkon5sd02@100.106.158.2`（例）・`--detach --follow`。リモートログ basename 例: `ansible-update-20260327-162247-*`（Pi5）/ `ansible-update-20260327-162734-14602`（raspberrypi4）/ `ansible-update-20260327-163150-32497`（raspi4-robodrill01）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` で **PASS 29 / WARN 1 / FAIL 0**（約 41s・2026-03-27、Pi3 `signage-lite/timer` が **WARN**・exit 0）。**知見**: Mac に `RASPI_SERVER_HOST` が無いと `update-all-clients.sh` 実行前に `export` が必要。
