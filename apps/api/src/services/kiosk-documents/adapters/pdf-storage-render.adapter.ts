@@ -1,9 +1,9 @@
 import { PdfStorage } from '../../../lib/pdf-storage.js';
 import type { PdfRenderPort } from '../ports/pdf-render.port.js';
 
-/** 未設定時の既定（サイネージより軽め。Pi4 キオスク閲覧向け） */
-const DEFAULT_KIOSK_DOCUMENT_PDF_DPI = 120;
-const DEFAULT_KIOSK_DOCUMENT_JPEG_QUALITY = 78;
+/** 未設定時の既定（Pi4 負荷と細部のバランス。環境変数で上書き可） */
+const DEFAULT_KIOSK_DOCUMENT_PDF_DPI = 180;
+const DEFAULT_KIOSK_DOCUMENT_JPEG_QUALITY = 88;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw.trim() === '') return fallback;

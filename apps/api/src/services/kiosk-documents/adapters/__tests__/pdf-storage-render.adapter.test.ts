@@ -16,7 +16,7 @@ describe('resolveKioskDocumentPdfRenderOptions', () => {
   it('uses defaults when env unset', () => {
     delete process.env.KIOSK_DOCUMENT_PDF_DPI;
     delete process.env.KIOSK_DOCUMENT_JPEG_QUALITY;
-    expect(resolveKioskDocumentPdfRenderOptions()).toEqual({ dpi: 120, quality: 78 });
+    expect(resolveKioskDocumentPdfRenderOptions()).toEqual({ dpi: 180, quality: 88 });
   });
 
   it('respects valid env', () => {
@@ -28,6 +28,6 @@ describe('resolveKioskDocumentPdfRenderOptions', () => {
   it('falls back on invalid env', () => {
     process.env.KIOSK_DOCUMENT_PDF_DPI = 'not-a-number';
     process.env.KIOSK_DOCUMENT_JPEG_QUALITY = '0';
-    expect(resolveKioskDocumentPdfRenderOptions()).toEqual({ dpi: 120, quality: 78 });
+    expect(resolveKioskDocumentPdfRenderOptions()).toEqual({ dpi: 180, quality: 88 });
   });
 });
