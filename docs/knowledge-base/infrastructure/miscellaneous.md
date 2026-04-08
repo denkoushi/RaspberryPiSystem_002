@@ -973,7 +973,19 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 **リスク**:
 - Firefox ESR のメジャー更新で `userChrome` のセレクタが変わる可能性がある。その場合は `firefox-userChrome.css.j2` の調整で対応。
 
-**解決状況**: ✅ **実装完了（リポジトリ）**・マージ前に Ansible 構文チェックと `kiosk-launch.sh` の `bash -n` を実施済み・**実機デプロイ検証は別途**
+**本番デプロイ（2026-04-08）**:
+- **手順**: [デプロイメントガイド](../../guides/deployment.md) の `scripts/update-all-clients.sh`・`--limit` 1 台ずつ直列（Pi3 は対象外）。
+- **ブランチ**: `feat/firefox-kiosk-ui-minimize`（先行反映後 `main` へマージ）。
+- **対象ホスト（Firefox キオスク 4 台のみ）**: `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`。
+- **リモート Run ID（Pi5 側ログ）**: `20260408-102954-11932`（初回 `raspberrypi4`）、`20260408-103533-8646`（`raspberrypi4` 再適用・`kiosk-launch` 修正含む）、`20260408-104015-24322`（robodrill）、`20260408-104347-19605`（fjv60-80）、`20260408-105621-27929`（stonebase）。
+- **実機検証（リモート自動）**: 各ホストで `PLAY RECAP` は `failed=0` / `unreachable=0`。`/usr/local/bin/kiosk-launch.sh` に `KIOSK_FF_MINIMIZE="1"` と文字列比較 `== "1"`、`~/.mozilla/firefox/kiosk-system/chrome/userChrome.css` と `user.js` の存在、`kiosk-browser.service` が `active` を確認。**UI目視**（上端ホバーでツールバー、Ctrl+L / F6、Super+Shift+P）は運用側の最終確認として推奨。
+
+**トラブルシューティング**:
+- **症状**: `journalctl -u kiosk-browser` に `/usr/local/bin/kiosk-launch.sh: 行 64: [[: 1FF_PROFILE: 基底の値が大きすぎます` のような行が出る。
+- **原因**: `KIOSK_FF_MINIMIZE=1` と次行 `FF_PROFILE=...` が展開・解釈上つながり、`[[ "${KIOSK_FF_MINIMIZE}" -eq 1 ]]` に非整数が渡るケース。
+- **対応**: `kiosk-launch.sh.j2` で `KIOSK_FF_MINIMIZE="1"`（または `"0"`）を**クォート**し、条件を **`[[ "${KIOSK_FF_MINIMIZE}" == "1" ]]`**（算術 `-eq` は使わない）に変更して再デプロイ。
+
+**解決状況**: ✅ **実装完了・第2工場 Pi4 キオスク 4 台へデプロイ済み（2026-04-08）**・リモート自動検証済み（UI目視は運用推奨）
 
 ---
 

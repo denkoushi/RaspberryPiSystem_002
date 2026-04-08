@@ -228,7 +228,7 @@ update-frequency: high
 | [KB-287](./frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) | キオスク備考欄の日本語入力不具合（ibus-ui ウィンドウ出現で入力不安定） | ✅ 解決済み |
 | [KB-288](./KB-288-power-actions-bind-mount-deleted-inode.md) | 電源操作・連打防止オーバーレイ不具合（power-actions バインドマウントの削除済み inode 参照） | ✅ 恒久対策実装済み |
 | [KB-289](./infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) | Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット（上辺メニューバー表示） | ✅ 実装完了 |
-| [KB-336](./infrastructure/miscellaneous.md) | Pi4 キオスク Firefox ブラウザ枠最小化（専用プロファイル・userChrome・Ansible） | ✅ 実装完了（リポジトリ） |
+| [KB-336](./infrastructure/miscellaneous.md) | Pi4 キオスク Firefox ブラウザ枠最小化（専用プロファイル・userChrome・Ansible） | ✅ 第2工場 Pi4×4 デプロイ・リモート検証済（2026-04-08） |
 | [KB-290](./infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) | Dropbox容量不足の恒久対策（チャンクアップロード・自動削除・再試行） | ✅ 解決済み |
 | [KB-291](./infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) | ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査・恒久対策 | ✅ 解決済み（2026-03-05） |
 | [KB-294](./frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) | 生産スケジュール資源CDボタン優先並び | ✅ 解決済み（2026-03-06） |
