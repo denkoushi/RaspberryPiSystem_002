@@ -280,6 +280,7 @@ ping -c 1 raspberrypi.tail7312a3.ts.net
 CSV インポートとは別に、`backup.json` の **`kioskDocumentGmailIngest`** で **未読メール**から要領書を取り込める。件名は各エントリの `subjectPattern`（例: `要領書HTML研削`）。**PDF 添付**に加え、**HTML 添付**（`text/html` や `.html` / `.htm`）は API 内で PDF 化してから既存の要領書パイプラインへ載せる。
 
 - **OAuth・`storage.provider=gmail`・トークン**は CSV と共有（手順「2. Pi5側の設定」「2.2 OAuth認証」）。
+- **管理画面での可視化（2026-04-08）**: `/admin/kiosk-documents` に **`kioskDocumentGmailIngest` の一覧**（件名パターン・cron・有効/無効・手動実行用 ID 反映）を表示。**CSV インポートのスケジュール画面とは別**（`csvImports` ではない）。
 - 設定例・cron・手動取り込み・トラブルシュートは [Runbook: キオスク要領書](../runbooks/kiosk-documents.md) の「Gmail 取り込み」「HTML 添付」を参照。
 
 ### 4. ゴミ箱自動削除（深夜1回）

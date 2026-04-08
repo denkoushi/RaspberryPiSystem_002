@@ -14,8 +14,14 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
+## 本番デプロイ（要領書**管理画面**のみ・`apps/web` のみの変更時）
+
+- **影響ホスト**: 管理コンソールの Web バンドルは **Pi5（`raspberrypi5`）** に載るため、通常は **Pi5 のみ**で足りる（[deployment.md](../guides/deployment.md) の **「Webアプリのみ: … Pi5 のみ」** の判断と同型）。
+- **運用確認（2026-04-08）**: `feat/kiosk-doc-gmail-schedules-list` を **`--limit raspberrypi5`** で反映。Ansible サマリ例: `ansible-update-20260408-185957-2678`（`failed=0`）。Phase12: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **ブラウザ確認**: `/admin/kiosk-documents` の **要領書Gmailスケジュール一覧**と **手動取り込み**の **ID 反映**ボタン。
+
 - **デプロイ失敗（Pi5 で `git` が `unable to unlink` / `pull` 中止）**: 一部パスが **root 所有**になっている典型。 [deployment.md](../guides/deployment.md) の **「ワークツリー権限」**・[KB-325](../knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git) を参照し **`chown`** のうえ、運用で許容できる場合は **`git reset --hard origin/<branch>`** と **`git clean -fd`** でリポジトリをリモートと一致させてから **再デプロイ**（**`git clean` は未追跡ファイルを削除**する。ホスト専用の未バックアップ作業物がある場合は事前に退避）。
-- **実機スモーク**: `./scripts/deploy/verify-phase12-real.sh`（**キオスク要領書 API** を含む）。**2026-04-08**: 匿名 **サイネージ**が **`contentType: TOOLS`** の時間帯は **`layoutConfig` 無しで正常**（スクリプトで分岐済み）。**同日（Pi5 のみ・運用指示）**: サマリ `ansible-update-20260408-154206-25754`・Phase12 **PASS 42 / WARN 1 / FAIL 0**。
+- **実機スモーク**: `./scripts/deploy/verify-phase12-real.sh`（**キオスク要領書 API** を含む）。**2026-04-08**: 匿名 **サイネージ**が **`contentType: TOOLS`** の時間帯は **`layoutConfig` 無しで正常**（スクリプトで分岐済み）。**同日（Pi5 のみ・運用指示）**: サマリ `ansible-update-20260408-154206-25754`・Phase12 **PASS 42 / WARN 1 / FAIL 0**。**同日（Web のみ・Gmail スケジュール一覧 UI）**: サマリ `ansible-update-20260408-185957-2678`・Phase12 **PASS 43 / WARN 0 / FAIL 0**。
 
 ## 手動アップロード
 
