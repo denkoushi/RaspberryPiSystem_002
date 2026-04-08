@@ -9,6 +9,7 @@ import { KioskDocumentService } from './kiosk-document.service.js';
 import { PrismaKioskDocumentRepository } from './adapters/prisma-kiosk-document.repository.js';
 import { PdfStorageFileStoreAdapter } from './adapters/pdf-storage-file-store.adapter.js';
 import { PdfStorageRenderAdapter } from './adapters/pdf-storage-render.adapter.js';
+import { PlaywrightHtmlToPdfAdapter } from './adapters/playwright-html-to-pdf.adapter.js';
 
 /** @internal 単体テスト用に公開 */
 export function buildKioskDocumentGmailSearchQuery(subjectPattern: string, fromEmail?: string): string {
@@ -27,6 +28,9 @@ export type KioskDocumentGmailIngestSummary = {
   messagesScanned: number;
   pdfsImported: number;
   pdfsSkippedDuplicate: number;
+  /** HTML 添付を PDF 化して登録した件数 */
+  htmlImported: number;
+  htmlSkippedDuplicate: number;
   errors: string[];
 };
 
@@ -85,7 +89,8 @@ export class KioskDocumentGmailIngestionService {
       new KioskDocumentService(
         new PrismaKioskDocumentRepository(),
         new PdfStorageFileStoreAdapter(),
-        new PdfStorageRenderAdapter()
+        new PdfStorageRenderAdapter(),
+        new PlaywrightHtmlToPdfAdapter()
       );
   }
 
@@ -99,6 +104,8 @@ export class KioskDocumentGmailIngestionService {
       messagesScanned: 0,
       pdfsImported: 0,
       pdfsSkippedDuplicate: 0,
+      htmlImported: 0,
+      htmlSkippedDuplicate: 0,
       errors: [],
     };
 
@@ -143,6 +150,30 @@ export class KioskDocumentGmailIngestionService {
             logger?.error(
               { err: partErr, messageId, filename: pdf.filename },
               '[KioskDocumentGmailIngestion] attachment import failed'
+            );
+          }
+        }
+
+        const htmls = await gmailClient.listHtmlAttachments(messageId);
+        for (const htmlPart of htmls) {
+          try {
+            const buffer = await gmailClient.getAttachment(messageId, htmlPart.attachmentId);
+            const created = await this.kioskDocumentService.createFromGmailHtmlAttachment({
+              htmlBuffer: buffer,
+              attachmentFilename: htmlPart.filename,
+              gmailMessageId: messageId,
+            });
+            if (created) {
+              summary.htmlImported += 1;
+            } else {
+              summary.htmlSkippedDuplicate += 1;
+            }
+          } catch (partErr) {
+            const msg = partErr instanceof Error ? partErr.message : String(partErr);
+            summary.errors.push(`message ${messageId.slice(-8)} file ${htmlPart.filename}: ${msg}`);
+            logger?.error(
+              { err: partErr, messageId, filename: htmlPart.filename },
+              '[KioskDocumentGmailIngestion] HTML attachment import failed'
             );
           }
         }

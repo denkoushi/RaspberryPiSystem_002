@@ -16,7 +16,7 @@
 ### 前提
 
 - `backup.json`（または管理画面から保存されるバックアップ設定）で `storage.provider` が **`gmail`**
-- Gmail OAuth トークンが有効
+- Gmail OAuth トークンが有効（[Gmail セットアップガイド](../guides/gmail-setup-guide.md) の Client ID/Secret・コールバック URL・OAuth 実行）
 - `kioskDocumentGmailIngest` にエントリを追加する:
 
 ```json
@@ -32,6 +32,33 @@
 ]
 ```
 
+### HTML 添付（要領書）— 研削用件名例
+
+- **未読**メールで、件名がスケジュールの `subjectPattern` に一致し、**PDF** または **HTML**（`text/html` / `.html` / `.htm`）が添付されていれば取り込む。
+- HTML は API 内で **Playwright（Chromium）により PDF 化**したうえで、既存の要領書 PDF パイプライン（保存・ページ画像化・OCR）へ載せる。Docker API イメージには Chromium が同梱済み（`Dockerfile.api` の `playwright install chromium`）。
+- 重複は従来どおり `gmailMessageId` + **元の添付ファイル名**（HTML なら `.html` 名）で判定する。
+- 件名例（運用で合わせる）:
+
+```json
+"kioskDocumentGmailIngest": [
+  {
+    "id": "kiosk-doc-html-grinding",
+    "name": "要領書HTML研削",
+    "subjectPattern": "要領書HTML研削",
+    "schedule": "*/10 * * * *",
+    "enabled": true
+  }
+]
+```
+
+手動取り込み結果の JSON に `htmlImported` / `htmlSkippedDuplicate` が含まれる（PDF 取り込みは従来どおり `pdfsImported` / `pdfsSkippedDuplicate`）。
+
+**環境変数（任意）**
+
+- `KIOSK_DOCUMENT_HTML_TO_PDF_TIMEOUT_MS` — `setContent` のタイムアウト（ミリ秒、既定 120000）
+
+**検証項目**（Vitest・API・手動の一覧）: [kiosk-html-gmail-ingest-verification.md](../plans/kiosk-html-gmail-ingest-verification.md)
+
 - API 再起動後、内部スケジューラが cron を登録する。設定保存時はバックアップ関連スケジューラが再読み込みされる。
 
 ### 手動実行
@@ -41,7 +68,7 @@
 
 ### 処理後のメール
 
-各メッセージについて PDF を保存した後、**既読化＋アーカイブ（INBOX から除去）** を試行する。同一メール・同一添付名は `gmailDedupeKey` で再取り込みされない。
+各メッセージについて **PDF および HTML 添付**を順に処理した後、**既読化＋アーカイブ（INBOX から除去）** を試行する。同一メール・同一添付名は `gmailDedupeKey` で再取り込みされない。
 
 ## OCR / 自動ラベリング運用
 
@@ -127,6 +154,7 @@ pnpm --filter @raspi-system/api exec tsx src/scripts/cleanup-pdf-storage-orphans
 | イマーシブ時、見開き・ズームが出てこない | **「表示オプション」右のスライダー型アイコン**へホバーして帯を展開（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |
 | 画像 broken | `GET /api/storage/pdf-pages/...` が 200 か、JPEG の Content-Type が `image/jpeg` か |
 | Gmail 取り込み 400 | `storage.provider=gmail` かトークンがあるか |
+| HTML が取り込めない・PDF 化で失敗 | API ログ `[PlaywrightHtmlToPdf]`。コンテナに Chromium があるか（本番 `Dockerfile.api`）。`KIOSK_DOCUMENT_HTML_TO_PDF_TIMEOUT_MS` を延ばす。HTML が外部 URL 依存のみの場合はオフラインで描画できない |
 | OCR 完了しない／本文が空 | API コンテナ内で `which ndlocr-lite` と `ndlocr-lite --help` を確認。`ndlocr-lite --help` 時に stderr へ ONNX の GPU discovery WARN が出ても **終了コード 0 なら無視可**（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。`KIOSK_DOCUMENT_NDLOCR_SCRIPT` 運用時はスクリプトパスと Python 実行可否を確認。スキャン PDF は `pdftotext` が空→OCR 必須。 |
 | 重複しない | 同一 `messageId`+ファイル名は意図的にスキップ |
 | Phase12 が Pi3 で FAIL（`Connection closed`） | 一時的な SSH 切断のことがある。**数分後に `./scripts/deploy/verify-phase12-real.sh` を再実行**。最新スクリプトでは当該文言を **WARN** 扱い（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)） |

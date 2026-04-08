@@ -34,6 +34,7 @@
 - **フリーワード検索（部分一致）の判断**: [ADR-20260326](./decisions/ADR-20260326-kiosk-document-free-text-substring-search.md)
 - **詳細 API の React Query キャッシュ（チャタリング抑止）**: [ADR-20260327](./decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)
 - **運用手順**: [kiosk-documents.md](./runbooks/kiosk-documents.md)
+- **HTML Gmail 取り込み 検証計画**（単体・統合・手動）: [kiosk-html-gmail-ingest-verification.md](./plans/kiosk-html-gmail-ingest-verification.md)
 
 ### LocalLLM（Ubuntu / Tailscale）
 

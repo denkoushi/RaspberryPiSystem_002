@@ -9,6 +9,7 @@ import { authorizeKioskClientKeyOrJwtRoles } from '../lib/kiosk-document-auth.js
 import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { PdfStorageFileStoreAdapter } from '../services/kiosk-documents/adapters/pdf-storage-file-store.adapter.js';
 import { PdfStorageRenderAdapter } from '../services/kiosk-documents/adapters/pdf-storage-render.adapter.js';
+import { PlaywrightHtmlToPdfAdapter } from '../services/kiosk-documents/adapters/playwright-html-to-pdf.adapter.js';
 import { PrismaKioskDocumentRepository } from '../services/kiosk-documents/adapters/prisma-kiosk-document.repository.js';
 import { KioskDocumentGmailIngestionService } from '../services/kiosk-documents/kiosk-document-gmail-ingestion.service.js';
 import { createDefaultKioskDocumentProcessingService } from '../services/kiosk-documents/kiosk-document-processing.factory.js';
@@ -155,7 +156,8 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
   const service = new KioskDocumentService(
     repo,
     new PdfStorageFileStoreAdapter(),
-    new PdfStorageRenderAdapter()
+    new PdfStorageRenderAdapter(),
+    new PlaywrightHtmlToPdfAdapter()
   );
   const processingService = createDefaultKioskDocumentProcessingService(repo);
   const gmailIngestion = new KioskDocumentGmailIngestionService(service);

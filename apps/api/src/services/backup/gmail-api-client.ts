@@ -56,6 +56,8 @@ export class GmailApiClient {
   private gmail: ReturnType<typeof google.gmail>;
   private readonly gate: GmailRequestGateService;
   private readonly allowWait: boolean;
+  private static readonly DEFAULT_PDF_FILENAME = 'document.pdf';
+  private static readonly DEFAULT_HTML_FILENAME = 'document.html';
 
   constructor(
     oauth2Client: OAuth2Client,
@@ -457,27 +459,37 @@ export class GmailApiClient {
     }
   }
 
-  /**
-   * メールから最初の添付ファイルを取得
-   * @param messageId メッセージID
-   * @returns 添付ファイルのBufferとファイル名
-   */
-  /**
-   * メール内のPDF添付を列挙（application/pdf または .pdf 拡張子）
-   */
-  async listPdfAttachments(messageId: string): Promise<
-    Array<{ attachmentId: string; filename: string; mimeType: string }>
-  > {
+  private async listAttachmentsByPredicate(params: {
+    messageId: string;
+    defaultFilename: string;
+    defaultMimeType: string;
+    matches: (mimeType: string | undefined, filename: string | undefined) => boolean;
+  }): Promise<Array<{ attachmentId: string; filename: string; mimeType: string }>> {
+    const { messageId, defaultFilename, defaultMimeType, matches } = params;
     const message = await this.getMessage(messageId);
     const results: Array<{ attachmentId: string; filename: string; mimeType: string }> = [];
+    const seen = new Set<string>();
 
-    const isPdfPart = (mimeType: string | undefined, filename: string | undefined): boolean => {
-      const mt = (mimeType ?? '').toLowerCase();
-      if (mt === 'application/pdf') {
-        return true;
+    const pushIfMatch = (
+      attachmentId: string | undefined,
+      mimeType: string | undefined,
+      filename: string | undefined
+    ): void => {
+      if (!attachmentId || !matches(mimeType, filename)) {
+        return;
       }
-      const fn = (filename ?? '').toLowerCase();
-      return fn.endsWith('.pdf');
+      const normalizedFilename = filename || defaultFilename;
+      const normalizedMimeType = mimeType || defaultMimeType;
+      const key = `${attachmentId}|${normalizedFilename}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      results.push({
+        attachmentId,
+        filename: normalizedFilename,
+        mimeType: normalizedMimeType,
+      });
     };
 
     type PartsType = NonNullable<GmailMessage['payload']>['parts'];
@@ -486,15 +498,7 @@ export class GmailApiClient {
         return;
       }
       for (const part of parts) {
-        const fn = part.filename || '';
-        const mt = part.mimeType || '';
-        if (part.body?.attachmentId && isPdfPart(mt, fn)) {
-          results.push({
-            attachmentId: part.body.attachmentId,
-            filename: fn || 'document.pdf',
-            mimeType: mt || 'application/pdf',
-          });
-        }
+        pushIfMatch(part.body?.attachmentId, part.mimeType, part.filename);
         if (part.parts) {
           walk(part.parts);
         }
@@ -505,20 +509,53 @@ export class GmailApiClient {
       return results;
     }
 
-    if (message.payload.body?.attachmentId) {
-      const rootMime = message.payload.mimeType;
-      const rootName = message.payload.filename;
-      if (isPdfPart(rootMime, rootName)) {
-        results.push({
-          attachmentId: message.payload.body.attachmentId,
-          filename: rootName || 'document.pdf',
-          mimeType: rootMime || 'application/pdf',
-        });
-      }
-    }
-
+    pushIfMatch(message.payload.body?.attachmentId, message.payload.mimeType, message.payload.filename);
     walk(message.payload.parts);
     return results;
+  }
+
+  /**
+   * メール内のPDF添付を列挙（application/pdf または .pdf 拡張子）
+   */
+  async listPdfAttachments(messageId: string): Promise<
+    Array<{ attachmentId: string; filename: string; mimeType: string }>
+  > {
+    const isPdfPart = (mimeType: string | undefined, filename: string | undefined): boolean => {
+      const mt = (mimeType ?? '').toLowerCase();
+      if (mt === 'application/pdf') {
+        return true;
+      }
+      const fn = (filename ?? '').toLowerCase();
+      return fn.endsWith('.pdf');
+    };
+    return await this.listAttachmentsByPredicate({
+      messageId,
+      defaultFilename: GmailApiClient.DEFAULT_PDF_FILENAME,
+      defaultMimeType: 'application/pdf',
+      matches: isPdfPart,
+    });
+  }
+
+  /**
+   * メール内の HTML 添付を列挙（text/html / application/xhtml+xml または .html / .htm）
+   */
+  async listHtmlAttachments(messageId: string): Promise<
+    Array<{ attachmentId: string; filename: string; mimeType: string }>
+  > {
+    const isHtmlPart = (mimeType: string | undefined, filename: string | undefined): boolean => {
+      const mt = (mimeType ?? '').toLowerCase();
+      if (mt === 'text/html' || mt === 'application/xhtml+xml') {
+        return true;
+      }
+      const fn = (filename ?? '').toLowerCase();
+      return fn.endsWith('.html') || fn.endsWith('.htm');
+    };
+    return await this.listAttachmentsByPredicate({
+      messageId,
+      defaultFilename: GmailApiClient.DEFAULT_HTML_FILENAME,
+      defaultMimeType: 'text/html',
+      matches: isHtmlPart,
+    });
   }
 
   async getFirstAttachment(messageId: string): Promise<{ buffer: Buffer; filename: string } | null> {

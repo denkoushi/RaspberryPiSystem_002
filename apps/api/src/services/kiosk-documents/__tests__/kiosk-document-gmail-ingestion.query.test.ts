@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildKioskDocumentGmailSearchQuery } from '../kiosk-document-gmail-ingestion.service.js';
-import { buildGmailDedupeKey } from '../kiosk-document.service.js';
+import { buildGmailDedupeKey, deriveStoragePdfFilenameFromHtmlAttachment } from '../kiosk-document.service.js';
 
 describe('buildKioskDocumentGmailSearchQuery', () => {
   it('builds subject + unread query', () => {
@@ -29,5 +29,21 @@ describe('buildGmailDedupeKey', () => {
 
   it('differs when filename changes', () => {
     expect(buildGmailDedupeKey('msg1', 'a.pdf')).not.toBe(buildGmailDedupeKey('msg1', 'b.pdf'));
+  });
+});
+
+describe('deriveStoragePdfFilenameFromHtmlAttachment', () => {
+  it('replaces .html with .pdf', () => {
+    expect(deriveStoragePdfFilenameFromHtmlAttachment('SD000032603_研削_OP-01.html')).toBe(
+      'SD000032603_研削_OP-01.pdf'
+    );
+  });
+
+  it('replaces .htm with .pdf', () => {
+    expect(deriveStoragePdfFilenameFromHtmlAttachment('doc.htm')).toBe('doc.pdf');
+  });
+
+  it('appends .pdf when no html extension', () => {
+    expect(deriveStoragePdfFilenameFromHtmlAttachment('unnamed')).toBe('unnamed.pdf');
   });
 });

@@ -7,6 +7,7 @@ import { ApiError } from '../../lib/errors.js';
 import type { KioskDocumentListFilters, KioskDocumentRepositoryPort } from './ports/kiosk-document-repository.port.js';
 import type { PdfFileStorePort } from './ports/pdf-file-store.port.js';
 import type { PdfRenderPort } from './ports/pdf-render.port.js';
+import type { HtmlToPdfPort } from './ports/html-to-pdf.port.js';
 
 export type KioskDocumentDetail = {
   document: KioskDocument;
@@ -17,6 +18,15 @@ export function buildGmailDedupeKey(messageId: string, attachmentFilename: strin
   return createHash('sha256').update(`${messageId}|${attachmentFilename}`, 'utf8').digest('hex');
 }
 
+/** Gmail HTML 添付を PDF 保存用ファイル名へ（storage は .pdf のみ） */
+export function deriveStoragePdfFilenameFromHtmlAttachment(htmlFilename: string): string {
+  const trimmed = htmlFilename.trim() || 'document.html';
+  if (/\.html?$/i.test(trimmed)) {
+    return trimmed.replace(/\.html?$/i, '.pdf');
+  }
+  return `${trimmed}.pdf`;
+}
+
 /**
  * キオスク要領書のユースケース（保存・一覧・表示用メタデータ）
  */
@@ -24,7 +34,8 @@ export class KioskDocumentService {
   constructor(
     private readonly repo: KioskDocumentRepositoryPort,
     private readonly fileStore: PdfFileStorePort,
-    private readonly render: PdfRenderPort
+    private readonly render: PdfRenderPort,
+    private readonly htmlToPdf?: HtmlToPdfPort
   ) {}
 
   async createManualUpload(params: {
@@ -71,6 +82,52 @@ export class KioskDocumentService {
     const fileHash = createHash('sha256').update(params.buffer).digest('hex');
     const pathInfo = await this.fileStore.savePdf(attachmentFilename, params.buffer);
     const title = attachmentFilename.replace(/\.pdf$/i, '') || 'document';
+    const doc = await this.repo.create({
+      title,
+      displayTitle: title,
+      filename: pathInfo.filename,
+      filePath: pathInfo.filePath,
+      fileHash,
+      sourceType: 'GMAIL',
+      gmailMessageId: params.gmailMessageId,
+      sourceAttachmentName: attachmentFilename,
+      gmailDedupeKey,
+      ocrStatus: 'PENDING',
+    });
+    const pageUrls = await this.render.convertPdfToPageUrls(doc.id, pathInfo.filePath);
+    const updated = await this.repo.update(doc.id, { pageCount: pageUrls.length });
+    return { document: updated, pageUrls };
+  }
+
+  /**
+   * Gmail の HTML 添付を PDF 化して要領書として登録する。
+   * `sourceAttachmentName` は元の .html 名、`filePath` は生成 PDF。
+   */
+  async createFromGmailHtmlAttachment(params: {
+    htmlBuffer: Buffer;
+    attachmentFilename: string;
+    gmailMessageId: string;
+  }): Promise<KioskDocumentDetail | null> {
+    if (!this.htmlToPdf) {
+      throw new ApiError(
+        500,
+        'HTML要領書の取り込みに必要な変換器が未設定です',
+        undefined,
+        'KIOSK_DOC_HTML_TO_PDF_NOT_CONFIGURED'
+      );
+    }
+    const attachmentFilename = params.attachmentFilename.trim() || 'document.html';
+    const gmailDedupeKey = buildGmailDedupeKey(params.gmailMessageId, attachmentFilename);
+    const existing = await this.repo.findByGmailDedupeKey(gmailDedupeKey);
+    if (existing) {
+      return null;
+    }
+    const html = params.htmlBuffer.toString('utf8');
+    const pdfBuffer = await this.htmlToPdf.convert(html);
+    const storageFilename = deriveStoragePdfFilenameFromHtmlAttachment(attachmentFilename);
+    const fileHash = createHash('sha256').update(pdfBuffer).digest('hex');
+    const pathInfo = await this.fileStore.savePdf(storageFilename, pdfBuffer);
+    const title = storageFilename.replace(/\.pdf$/i, '') || 'document';
     const doc = await this.repo.create({
       title,
       displayTitle: title,

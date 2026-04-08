@@ -458,6 +458,78 @@ describe('GmailApiClient', () => {
     });
   });
 
+  describe('listHtmlAttachments', () => {
+    it('collects HTML parts by mime type or .html/.htm extension', async () => {
+      const mockMessageId = 'msg-html';
+      const mockMessageResponse = {
+        data: {
+          id: mockMessageId,
+          payload: {
+            parts: [
+              {
+                partId: '0',
+                mimeType: 'application/pdf',
+                filename: 'a.pdf',
+                body: { attachmentId: 'att-pdf', size: 10 },
+              },
+              {
+                partId: '1',
+                mimeType: 'text/html',
+                filename: 'page.html',
+                body: { attachmentId: 'att-h1', size: 10 },
+              },
+              {
+                partId: '2',
+                mimeType: 'application/octet-stream',
+                filename: 'legacy.HTM',
+                body: { attachmentId: 'att-h2', size: 10 },
+              },
+            ],
+          },
+        },
+      };
+
+      mockGmail.users.messages.get.mockResolvedValueOnce(mockMessageResponse);
+
+      const result = await gmailClient.listHtmlAttachments(mockMessageId);
+
+      expect(result).toHaveLength(2);
+      expect(result.map((r) => r.filename).sort()).toEqual(['legacy.HTM', 'page.html']);
+    });
+
+    it('does not duplicate same attachment across root and parts', async () => {
+      const mockMessageId = 'msg-html-root-and-part';
+      const mockMessageResponse = {
+        data: {
+          id: mockMessageId,
+          payload: {
+            mimeType: 'text/html',
+            filename: 'dup.html',
+            body: { attachmentId: 'att-dup', size: 10 },
+            parts: [
+              {
+                partId: '1',
+                mimeType: 'text/html',
+                filename: 'dup.html',
+                body: { attachmentId: 'att-dup', size: 10 },
+              },
+            ],
+          },
+        },
+      };
+
+      mockGmail.users.messages.get.mockResolvedValueOnce(mockMessageResponse);
+
+      const result = await gmailClient.listHtmlAttachments(mockMessageId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        attachmentId: 'att-dup',
+        filename: 'dup.html',
+      });
+    });
+  });
+
   describe('trashMessage', () => {
     it('should add processed label then trash message', async () => {
       const messageId = 'msg-trash-1';
