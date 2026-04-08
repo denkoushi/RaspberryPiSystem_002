@@ -62,4 +62,14 @@ pnpm --filter @raspi-system/api exec vitest run \
 - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・`RASPI_SERVER_HOST`・`--limit raspberrypi5`・`--detach --follow`。
 - **結果**: Pi5 上 `logs/deploy/ansible-update-20260408-154206-25754.summary.json`（**`PLAY RECAP` `failed=0` / `unreachable=0`**）。
 - **Phase12（Mac / Tailscale）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: auto-tuning スケジューラのログ件数 0。スクリプトは **PUT auto-generate=200** を代替合格とする）。
-- **手動（推奨）**: 未読・件名一致・HTML 添付の Gmail を1通送り、管理画面または cron 経由で `htmlImported` と `pageUrls` を確認（上表「手動（運用）」）。
+- **手動 E2E（2026-04-08/09 反映済）**: 未読・件名一致・HTML 添付の初回取り込みに加え、**同一 HTML を別メールで再送**するケースを本番で確認。根拠データ・SQL/ストレージ手順は [KB-313 §実機検証（本番データ）](../knowledge-base/KB-313-kiosk-documents.md#実機検証)・[kiosk-documents Runbook](../runbooks/kiosk-documents.md)。
+
+### 本番記録（2026-04-08/09・同名 HTML・別メール上書き）
+
+- **事象**: 運用で **同一内容の HTML 添付**を **別メール**から送信（前夜〜翌朝のスケジュール取り込み）。
+- **確認先**: Pi5 **`KioskDocument`** テーブル（PostgreSQL `borrow_return`）・API コンテナ **`/app/storage/pdf-pages/{文書UUID}/`**。
+- **観測（代表・タイトル `SD000032603_研削_OP-01`）**:
+  - **有効**1 行: `gmailLogicalKey`=`sd000032603_研削_op-01.html`（正規化済み）・`gmailInternalDateMs` が **新メール側**・`gmailMessageId` が **新メールの ID** に更新・`updatedAt` が取り込み実行時刻付近。
+  - **旧行**: `enabled=false`・論理キーなし（一覧・キオスクは有効行のみ）。
+  - **ページ JPEG**: 同一文書 UUID 配下で **再生成**（mtime 取り込み直後・**1490×2108** = 180dpi 既定と一致）。
+- **結論**: **`gmailLogicalKey` + `internalDate` による upsert**が本番で意図どおり動作。**参照**: [KB-313](../knowledge-base/KB-313-kiosk-documents.md)・[kiosk-documents.md](../runbooks/kiosk-documents.md)。
