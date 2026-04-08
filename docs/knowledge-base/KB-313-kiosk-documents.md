@@ -78,6 +78,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **Gmail から取り込まれない**: `storage.provider` が `gmail` でない、トークン欠落、`kioskDocumentGmailIngest` が空/無効、件名が一致しない、添付が **PDF / HTML** のいずれでもない、または既読
 - **HTML は取り込めないが PDF は取り込める**: API ログ `[PlaywrightHtmlToPdf]`。Chromium 同梱・`KIOSK_DOCUMENT_HTML_TO_PDF_TIMEOUT_MS`。HTML が外部リソースのみの場合オフラインで描画失敗しうる（[kiosk-documents Runbook](../runbooks/kiosk-documents.md)）
 - **Pi5 デプロイで git 同期失敗（`unable to unlink` / `pull` 中止）**: `apps/api/src/services/signage/**` 等が **root 所有**だと `git reset`/`pull` が壊れる（[deployment.md](../guides/deployment.md) の「ワークツリー権限」、[KB-325](./infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git)）。**`git clean -fd`** は **未追跡を削除**する。ホスト専用の作業ディレクトリがある場合は事前に退避してから同期・再デプロイ。
+- **Gmail 同名添付の更新が入らない / `*SkippedOlderMail` ばかり**: **`messages.get` の `internalDate` が取得できない／0**のメールでは **既存 `gmailLogicalKey` 行を上書きしない**（誤上書き防止）。新メール側の取得失敗を疑い、Gmail API ログ・レート制限を確認。**2026-04-08 本番確認**: Pi5 のみ `--limit raspberrypi5`・**Detach Run ID** `20260408-215226-25074`（`failed=0`）・`./scripts/deploy/verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**（[kiosk-documents Runbook](../runbooks/kiosk-documents.md)）。
 - **一覧に出ない**: 管理画面で `enabled=false`、キオスクは有効なもののみ表示
 - **要領書画面で Gmail スケジュール一覧が取得失敗（赤字メッセージ）**: JWT 権限（ADMIN/MANAGER）・`GET /api/backup/config` のネットワーク/502。CSV インポートのスケジュール画面とは別 API ではなく **同一バックアップ設定**を参照しているため、`backup.json` 自体は Pi5 上で存在するか [Phase12 の backup.json 確認](../../scripts/deploy/verify-phase12-real.sh) も併用。
 - **画像が出ない**: PDF 変換失敗（Pi 上の変換ツール・ストレージパス）、`pageUrls` が空
