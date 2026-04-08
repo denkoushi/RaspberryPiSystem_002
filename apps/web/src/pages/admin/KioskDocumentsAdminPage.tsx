@@ -1,8 +1,9 @@
 import { FormEvent, useMemo, useState } from 'react';
 
-import { useKioskDocumentMutations, useKioskDocuments } from '../../api/hooks';
+import { useBackupConfig, useKioskDocumentMutations, useKioskDocuments } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { KioskGmailIngestScheduleListSection } from '../../features/admin/kiosk-gmail-ingest-schedules/KioskGmailIngestScheduleListSection';
 
 import type { KioskDocumentSummary } from '../../api/client';
 
@@ -16,6 +17,7 @@ export function KioskDocumentsAdminPage() {
     ocrStatus: ocrStatus || undefined,
     includeCandidates,
   });
+  const backupConfigQuery = useBackupConfig();
   const { upload, remove, setEnabled, patchMetadata, reprocess, ingestGmail } = useKioskDocumentMutations();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -123,6 +125,13 @@ export function KioskDocumentsAdminPage() {
           </Button>
         </form>
       </Card>
+
+      <KioskGmailIngestScheduleListSection
+        schedulesRaw={backupConfigQuery.data?.kioskDocumentGmailIngest}
+        isLoading={backupConfigQuery.isLoading}
+        isError={backupConfigQuery.isError}
+        onUseScheduleId={(id) => setScheduleId(id)}
+      />
 
       <Card title="Gmailから取り込み（手動実行）">
         <p className="mb-3 text-sm text-slate-600">
