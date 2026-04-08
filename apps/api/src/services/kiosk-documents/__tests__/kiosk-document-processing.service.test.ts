@@ -23,6 +23,7 @@ function createRepoStub(): KioskDocumentRepositoryPort {
     create: vi.fn(),
     findById: vi.fn(async () => doc),
     findByGmailDedupeKey: vi.fn(),
+    findByGmailLogicalKey: vi.fn(),
     list: vi.fn(),
     listPendingProcessing: vi.fn(),
     delete: vi.fn(),

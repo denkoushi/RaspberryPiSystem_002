@@ -14,7 +14,10 @@ category: knowledge-base
 
 ## 主要コンポーネント
 
-- **DB**: `KioskDocument`（`KioskDocumentSource`: `MANUAL` | `GMAIL`）、Gmail 重複防止に `gmailDedupeKey`（SHA-256）
+- **DB**: `KioskDocument`（`KioskDocumentSource`: `MANUAL` | `GMAIL`）
+  - **同一メール内の二重取り込み防止**: `gmailDedupeKey`（`messageId|元添付名` の SHA-256）
+  - **添付名ベースの論理文書**: `gmailLogicalKey`（正規化した元添付名、**一意**）。**別メールで同名添付**のとき、Gmail `internalDate` が **より新しい**ものだけが既存行を **上書き**（`id` 維持・PDF/ページ画像差し替え・OCR 候補リセット）。古いメールは `pdfsSkippedOlderMail` / `htmlSkippedOlderMail` 相当でスキップ。
+  - **上書き判定用**: `gmailInternalDateMs`（`messages.get` `format=minimal` の `internalDate`）
   - OCR/分類拡張: `ocrStatus`、`extractedText`、候補値（`candidate*`）、確定値（`confirmed*`）、信頼度（`confidence*`）、`displayTitle`
   - 文書番号・要約（2026-03-27）: `candidateDocumentNumber`、`confidenceDocumentNumber`、`confirmedDocumentNumber`、`summaryCandidate1`〜`summaryCandidate3`、`confirmedSummaryText`。OCR/メタデータラベラーは **候補と信頼度のみ** 更新し、**確定文書番号・確定要約は自動では書かない**（管理画面で人手確定）。
   - 履歴: `KioskDocumentMetadataHistory`（変更前後値・更新者・更新時刻）
@@ -28,7 +31,7 @@ category: knowledge-base
   - `PATCH /:id`: `enabled` の更新のみ（ADMIN/MANAGER）
   - `DELETE /:id`: ADMIN/MANAGER
 - **ページ画像**: `PdfStorage.convertPdfToPages`（要領書は `PdfStorageRenderAdapter` 経由で **キオスク専用 DPI/品質** を指定可）→ `GET /api/storage/pdf-pages/:pdfId/:filename`（JPEG 時は `image/jpeg` を返却）
-- **Gmail**: `GmailApiClient.listPdfAttachments` で PDF 列挙、`listHtmlAttachments` で HTML 列挙。HTML は `PlaywrightHtmlToPdfAdapter`（共有 Chromium）で PDF 化のうえ `createFromGmailHtmlAttachment` へ。検索クエリは `buildKioskDocumentGmailSearchQuery`（件名・任意 `from`・`is:unread`）。手動取り込み結果に `htmlImported` / `htmlSkippedDuplicate` が含まれる。
+- **Gmail**: `GmailApiClient.listPdfAttachments` で PDF 列挙、`listHtmlAttachments` で HTML 列挙。HTML は `PlaywrightHtmlToPdfAdapter`（共有 Chromium）で PDF 化のうえ `createFromGmailHtmlAttachment` へ。検索クエリは `buildKioskDocumentGmailSearchQuery`（件名・任意 `from`・`is:unread`）。手動取り込み結果のサマリに **`pdfsImported` / `pdfsUpdated` / `pdfsSkippedDuplicate` / `pdfsSkippedOlderMail`**、**`htmlImported` / `htmlUpdated` / `htmlSkippedDuplicate` / `htmlSkippedOlderMail`** が含まれる（`KioskDocumentGmailIngestionService`）。
 
 ### 環境変数（要領書の軽量化・サイネージとの分離）
 
@@ -75,6 +78,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **Gmail から取り込まれない**: `storage.provider` が `gmail` でない、トークン欠落、`kioskDocumentGmailIngest` が空/無効、件名が一致しない、添付が **PDF / HTML** のいずれでもない、または既読
 - **HTML は取り込めないが PDF は取り込める**: API ログ `[PlaywrightHtmlToPdf]`。Chromium 同梱・`KIOSK_DOCUMENT_HTML_TO_PDF_TIMEOUT_MS`。HTML が外部リソースのみの場合オフラインで描画失敗しうる（[kiosk-documents Runbook](../runbooks/kiosk-documents.md)）
 - **Pi5 デプロイで git 同期失敗（`unable to unlink` / `pull` 中止）**: `apps/api/src/services/signage/**` 等が **root 所有**だと `git reset`/`pull` が壊れる（[deployment.md](../guides/deployment.md) の「ワークツリー権限」、[KB-325](./infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git)）。**`git clean -fd`** は **未追跡を削除**する。ホスト専用の作業ディレクトリがある場合は事前に退避してから同期・再デプロイ。
+- **Gmail 同名添付の更新が入らない / `*SkippedOlderMail` ばかり**: **`messages.get` の `internalDate` が取得できない／0**のメールでは **既存 `gmailLogicalKey` 行を上書きしない**（誤上書き防止）。新メール側の取得失敗を疑い、Gmail API ログ・レート制限を確認。**2026-04-08 本番確認**: Pi5 のみ `--limit raspberrypi5`・**Detach Run ID** `20260408-215226-25074`（`failed=0`）・`./scripts/deploy/verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**（[kiosk-documents Runbook](../runbooks/kiosk-documents.md)）。
 - **一覧に出ない**: 管理画面で `enabled=false`、キオスクは有効なもののみ表示
 - **要領書画面で Gmail スケジュール一覧が取得失敗（赤字メッセージ）**: JWT 権限（ADMIN/MANAGER）・`GET /api/backup/config` のネットワーク/502。CSV インポートのスケジュール画面とは別 API ではなく **同一バックアップ設定**を参照しているため、`backup.json` 自体は Pi5 上で存在するか [Phase12 の backup.json 確認](../../scripts/deploy/verify-phase12-real.sh) も併用。
 - **画像が出ない**: PDF 変換失敗（Pi 上の変換ツール・ストレージパス）、`pageUrls` が空
@@ -101,7 +105,11 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 - **認可**: 一覧・詳細は **登録端末の `x-client-key`** または **JWT（ADMIN / MANAGER / VIEWER）**。アップロード・Gmail 取り込み・PATCH/DELETE は **ADMIN / MANAGER**。
 - **管理画面（2026-04-08）**: `/admin/kiosk-documents` に **`kioskDocumentGmailIngest` の読み取り専用一覧**（`GET /api/backup/config`）を表示。CSV インポート画面の `csvImports` とは別設定。行の **「IDを手動実行欄に反映」** で既存の Gmail 手動取り込み（`POST /ingest-gmail`）のスケジュール ID 入力を補助。編集は引き続きバックアップ設定経由。
 - **キオスク一覧**: `enabled=true` の行のみ（無効化した文書は管理画面では見えるがキオスクでは出ない）。
-- **重複**: Gmail は `gmailDedupeKey`（メッセージID＋添付ファイル名などから生成）で一意。手動は Gmail と別系統で複数可。
+- **重複・上書き（Gmail）**:
+  - **同一メール・同一添付**（同一 `gmailDedupeKey`）の再処理は **スキップ**（`pdfsSkippedDuplicate` / `htmlSkippedDuplicate`）。
+  - **別メール・同一添付名**（同一 `gmailLogicalKey`）は **より新しい `internalDate` のメールが勝ち**、既存レコードを更新（`pdfsUpdated` / `htmlUpdated`）。古い方は **スキップ**（`pdfsSkippedOlderMail` / `htmlSkippedOlderMail`）。
+  - 添付名の正規化は `normalizeKioskGmailLogicalKey`（NFC・小文字・`\`→`/`）。
+  - **手動アップロード**は `gmailLogicalKey` を持たないため、Gmail 論理キーとは別系統。
 
 ### フリーワード検索（`q`）
 

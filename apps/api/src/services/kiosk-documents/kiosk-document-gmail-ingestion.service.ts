@@ -27,10 +27,17 @@ export type KioskDocumentGmailIngestSummary = {
   scheduleId: string;
   messagesScanned: number;
   pdfsImported: number;
+  /** 既存論理キーへ PDF を上書きした件数 */
+  pdfsUpdated: number;
   pdfsSkippedDuplicate: number;
-  /** HTML 添付を PDF 化して登録した件数 */
+  /** 保存済みより古い（同じ）メールのためスキップした PDF 件数 */
+  pdfsSkippedOlderMail: number;
+  /** HTML 添付を PDF 化して新規登録した件数 */
   htmlImported: number;
+  /** 既存論理キーへ HTML→PDF 変換結果で上書きした件数 */
+  htmlUpdated: number;
   htmlSkippedDuplicate: number;
+  htmlSkippedOlderMail: number;
   errors: string[];
 };
 
@@ -103,9 +110,13 @@ export class KioskDocumentGmailIngestionService {
       scheduleId: schedule.id,
       messagesScanned: 0,
       pdfsImported: 0,
+      pdfsUpdated: 0,
       pdfsSkippedDuplicate: 0,
+      pdfsSkippedOlderMail: 0,
       htmlImported: 0,
+      htmlUpdated: 0,
       htmlSkippedDuplicate: 0,
+      htmlSkippedOlderMail: 0,
       errors: [],
     };
 
@@ -130,19 +141,33 @@ export class KioskDocumentGmailIngestionService {
 
     for (const messageId of messageIds) {
       try {
+        let gmailInternalDateMs = Date.now();
+        try {
+          gmailInternalDateMs = await gmailClient.getMessageInternalDateMs(messageId);
+        } catch {
+          gmailInternalDateMs = Date.now();
+        }
+
         const pdfs = await gmailClient.listPdfAttachments(messageId);
         for (const pdf of pdfs) {
           try {
             const buffer = await gmailClient.getAttachment(messageId, pdf.attachmentId);
-            const created = await this.kioskDocumentService.createFromGmailAttachment({
+            const outcome = await this.kioskDocumentService.createFromGmailAttachment({
               buffer,
               attachmentFilename: pdf.filename,
               gmailMessageId: messageId,
+              gmailInternalDateMs,
             });
-            if (created) {
-              summary.pdfsImported += 1;
-            } else {
+            if (outcome.status === 'imported') {
+              if (outcome.mode === 'created') {
+                summary.pdfsImported += 1;
+              } else {
+                summary.pdfsUpdated += 1;
+              }
+            } else if (outcome.reason === 'duplicate_same_mail') {
               summary.pdfsSkippedDuplicate += 1;
+            } else {
+              summary.pdfsSkippedOlderMail += 1;
             }
           } catch (partErr) {
             const msg = partErr instanceof Error ? partErr.message : String(partErr);
@@ -158,15 +183,22 @@ export class KioskDocumentGmailIngestionService {
         for (const htmlPart of htmls) {
           try {
             const buffer = await gmailClient.getAttachment(messageId, htmlPart.attachmentId);
-            const created = await this.kioskDocumentService.createFromGmailHtmlAttachment({
+            const outcome = await this.kioskDocumentService.createFromGmailHtmlAttachment({
               htmlBuffer: buffer,
               attachmentFilename: htmlPart.filename,
               gmailMessageId: messageId,
+              gmailInternalDateMs,
             });
-            if (created) {
-              summary.htmlImported += 1;
-            } else {
+            if (outcome.status === 'imported') {
+              if (outcome.mode === 'created') {
+                summary.htmlImported += 1;
+              } else {
+                summary.htmlUpdated += 1;
+              }
+            } else if (outcome.reason === 'duplicate_same_mail') {
               summary.htmlSkippedDuplicate += 1;
+            } else {
+              summary.htmlSkippedOlderMail += 1;
             }
           } catch (partErr) {
             const msg = partErr instanceof Error ? partErr.message : String(partErr);

@@ -1272,6 +1272,10 @@ model KioskDocument {
   sourceType           KioskDocumentSource
   gmailMessageId       String?
   sourceAttachmentName String?
+  /// Gmail: 正規化済み添付名。同一キーはより新しいメール（gmailInternalDateMs）で上書き
+  gmailLogicalKey      String?             @unique
+  /// Gmail API messages.get internalDate（ミリ秒）。上書き判定用
+  gmailInternalDateMs  BigInt?
   /// Gmail同一添付の再取り込み防止（例: messageId + 元ファイル名のハッシュ）
   gmailDedupeKey       String?             @unique
   pageCount            Int?

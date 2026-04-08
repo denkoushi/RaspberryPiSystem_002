@@ -23,6 +23,10 @@ export class PrismaKioskDocumentRepository implements KioskDocumentRepositoryPor
     return prisma.kioskDocument.findUnique({ where: { gmailDedupeKey: key } });
   }
 
+  async findByGmailLogicalKey(key: string): Promise<KioskDocument | null> {
+    return prisma.kioskDocument.findUnique({ where: { gmailLogicalKey: key } });
+  }
+
   async list(filters: KioskDocumentListFilters): Promise<KioskDocument[]> {
     const { query, sourceType, ocrStatus, includeCandidateInSearch = false, enabledOnly = true } = filters;
     const where: Prisma.KioskDocumentWhereInput = {};

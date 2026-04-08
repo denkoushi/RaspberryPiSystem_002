@@ -6,6 +6,9 @@
 
 ## 本番デプロイ（HTML 取り込みを含む API 変更時）
 
+- **DB マイグレーション**: `gmailLogicalKey` / `gmailInternalDateMs` を追加するマイグレーション（例: `20260408100000_kiosk_document_gmail_logical_key`）を **本番 DB に適用**してから API を起動する（既存 Gmail 行は移行 SQL で論理キー付与・重複時は古い行を `enabled=false` でキー解除）。
+- **運用確認（2026-04-08）**: Gmail 要領書 **同名添付の上書き**（`gmailLogicalKey`・`messages.get` `internalDate` 比較）・Prisma `20260408100000_kiosk_document_gmail_logical_key`・ブランチ `feat/kiosk-gmail-logical-key-upsert`・**Pi5 のみ** `--limit raspberrypi5`。**Detach Run ID**: `20260408-215226-25074`（**`PLAY RECAP` `failed=0` / `unreachable=0`**・リモートログ basename: `ansible-update-20260408-215226-25074`・Mac 側フォロー完走まで **約 22 分**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh`（`RASPI_SERVER_HOST` 設定済み）→ **PASS 43 / WARN 0 / FAIL 0**（約 **114s**）。**手順**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（本記録時点の検証ブランチは feature。`main` マージ後はブランチを `main` に読み替え）。
+- **トラブルシュート（上書きが動かないように見える）**: API は **`internalDate` が取得できない／0 のメール**では **既存行を上書きしない**（誤上書き防止）。運用では `getMessageInternalDateMs` が **0 を返していないか**（Gmail API 応答・レート制限）をログで確認する。**ローカル DB で全マイグレーションを試す**ときは **pgvector 同梱 Postgres**が必要（素の `postgres:16` だと `extension "vector" is not available`）。例: `pgvector/pgvector:pg16`（本リポジトリの検証知見と同型）。
 - **影響ホスト**: API コンテナは **Pi5（`raspberrypi5`）のみ**更新すればよい（キオスク UI は既存の PDF 表示経路のまま。[deployment.md](../guides/deployment.md) の **「API/DBのみ: Pi5のみ」**）。
 - **標準コマンド例**（1 台のみ・デタッチ＋フォロー）:
 
@@ -57,7 +60,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 - **未読**メールで、件名がスケジュールの `subjectPattern` に一致し、**PDF** または **HTML**（`text/html` / `.html` / `.htm`）が添付されていれば取り込む。
 - HTML は API 内で **Playwright（Chromium）により PDF 化**したうえで、既存の要領書 PDF パイプライン（保存・ページ画像化・OCR）へ載せる。Docker API イメージには Chromium が同梱済み（`Dockerfile.api` の `playwright install chromium`）。
-- 重複は従来どおり `gmailMessageId` + **元の添付ファイル名**（HTML なら `.html` 名）で判定する。
+- **同一メール内**の二重取り込みは `gmailMessageId` + **元の添付ファイル名**（`gmailDedupeKey`）でスキップする。
+- **別メール**で **同名添付**（例: Power Automate で固定命名）のときは **`gmailLogicalKey`** で既存行を **新しいメール**（Gmail `internalDate`）で上書きする。運用結果 JSON に **`pdfsUpdated` / `htmlUpdated`**（上書き）および **`pdfsSkippedOlderMail` / `htmlSkippedOlderMail`**（古いメールを捨てた件数）が含まれる。
 - 件名例（運用で合わせる）:
 
 ```json
@@ -72,7 +76,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ]
 ```
 
-手動取り込み結果の JSON に `htmlImported` / `htmlSkippedDuplicate` が含まれる（PDF 取り込みは従来どおり `pdfsImported` / `pdfsSkippedDuplicate`）。
+手動取り込み結果の JSON に、**PDF**: `pdfsImported` / `pdfsUpdated` / `pdfsSkippedDuplicate` / `pdfsSkippedOlderMail`、**HTML**: `htmlImported` / `htmlUpdated` / `htmlSkippedDuplicate` / `htmlSkippedOlderMail` が含まれる。
 
 **環境変数（任意）**
 
@@ -89,7 +93,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ### 処理後のメール
 
-各メッセージについて **PDF および HTML 添付**を順に処理した後、**既読化＋アーカイブ（INBOX から除去）** を試行する。同一メール・同一添付名は `gmailDedupeKey` で再取り込みされない。
+各メッセージについて **PDF および HTML 添付**を順に処理した後、**既読化＋アーカイブ（INBOX から除去）** を試行する。同一メール・同一添付名は `gmailDedupeKey` で再取り込みされない。別メールの **同名添付**は `gmailLogicalKey` の **上書きルール**（上記）に従う。
 
 ## OCR / 自動ラベリング運用
 
