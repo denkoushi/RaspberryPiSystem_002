@@ -223,10 +223,41 @@ export class GmailApiClient {
   }
 
   /**
-   * メール詳細を取得
-   * @param messageId メッセージID
-   * @returns メッセージ情報
+   * メッセージの internalDate（ミリ秒エポック）を取得（format=minimal で軽量）
    */
+  async getMessageInternalDateMs(messageId: string): Promise<number> {
+    try {
+      const response = await this.gateExecute('gmail.users.messages.get(minimal)', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.get as any)(
+          {
+            userId: 'me',
+            id: messageId,
+            format: 'minimal',
+          },
+          { retry: false }
+        )
+      );
+      const raw = (response.data as { internalDate?: string })?.internalDate;
+      if (raw != null && raw !== '') {
+        const n = parseInt(String(raw), 10);
+        if (Number.isFinite(n)) {
+          return n;
+        }
+      }
+      return 0;
+    } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
+      logger?.error(
+        { err: error, messageId },
+        '[GmailApiClient] Failed to get message internalDate'
+      );
+      return 0;
+    }
+  }
+
   async getMessage(messageId: string): Promise<GmailMessage> {
     try {
       const response = await this.gateExecute('gmail.users.messages.get', async () =>

@@ -113,6 +113,24 @@ describe('GmailApiClient', () => {
     });
   });
 
+  describe('getMessageInternalDateMs', () => {
+    it('returns parsed internalDate from minimal get', async () => {
+      mockGmailMessages.get.mockResolvedValueOnce({ data: { internalDate: '1700000001000' } });
+      const ms = await gmailClient.getMessageInternalDateMs('msg-x');
+      expect(ms).toBe(1700000001000);
+      expect(mockGmailMessages.get).toHaveBeenCalledWith(
+        { userId: 'me', id: 'msg-x', format: 'minimal' },
+        expect.objectContaining({ retry: false })
+      );
+    });
+
+    it('falls back to 0 when internalDate missing', async () => {
+      mockGmailMessages.get.mockResolvedValueOnce({ data: {} });
+      const ms = await gmailClient.getMessageInternalDateMs('msg-y');
+      expect(ms).toBe(0);
+    });
+  });
+
   describe('searchMessagesLimited', () => {
     it('should search messages with specified maxResults', async () => {
       const mockQuery = 'subject:CSV Import';

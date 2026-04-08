@@ -15,6 +15,7 @@ export interface KioskDocumentRepositoryPort {
   create(data: Prisma.KioskDocumentCreateInput): Promise<KioskDocument>;
   findById(id: string): Promise<KioskDocument | null>;
   findByGmailDedupeKey(key: string): Promise<KioskDocument | null>;
+  findByGmailLogicalKey(key: string): Promise<KioskDocument | null>;
   list(filters: KioskDocumentListFilters): Promise<KioskDocument[]>;
   listPendingProcessing(limit: number): Promise<KioskDocument[]>;
   delete(id: string): Promise<void>;

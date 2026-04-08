@@ -2,7 +2,7 @@
 
 **目的**: HTML 添付の Gmail 取り込み（PDF 化→既存パイプライン）の品質を、自動テストと手動確認で担保する。
 
-**関連実装**: `GmailApiClient.listHtmlAttachments`、`PlaywrightHtmlToPdfAdapter`、`KioskDocumentService.createFromGmailHtmlAttachment`、`KioskDocumentGmailIngestionService`（`htmlImported` / `htmlSkippedDuplicate`）。
+**関連実装**: `GmailApiClient.listHtmlAttachments`・`getMessageInternalDateMs`、`PlaywrightHtmlToPdfAdapter`、`KioskDocumentService.createFromGmailHtmlAttachment`、`kiosk-document-gmail-logical-key`（`normalizeKioskGmailLogicalKey`）、`KioskDocumentGmailIngestionService`（`htmlImported` / `htmlUpdated` / `htmlSkippedDuplicate` / `htmlSkippedOlderMail` 等）。
 
 ## 単体テスト（Vitest）
 
@@ -11,6 +11,8 @@
 | HTML 添付の MIME / 拡張子で列挙 | `apps/api/src/services/backup/__tests__/gmail-api-client.test.ts` | `listHtmlAttachments` が `text/html` / `application/xhtml+xml` / `.html` / `.htm` を拾う |
 | 保存 PDF ファイル名の派生 | `apps/api/src/services/kiosk-documents/__tests__/kiosk-document-gmail-ingestion.query.test.ts` | `deriveStoragePdfFilenameFromHtmlAttachment` |
 | サービス: HtmlToPdf 未設定・モック経路 | `apps/api/src/services/kiosk-documents/__tests__/kiosk-document-html-gmail.service.test.ts` | アダプタ無しでエラー、モックで登録フロー |
+| 論理キー正規化 | `apps/api/src/services/kiosk-documents/__tests__/kiosk-document-gmail-logical-key.test.ts` | `normalizeKioskGmailLogicalKey` |
+| Gmail 上書き（PDF） | `apps/api/src/services/kiosk-documents/__tests__/kiosk-document-gmail-upsert.service.test.ts` | 同一メールスキップ・日付古いスキップ・更新時 `deletePageImages` |
 
 **実行例**:
 
@@ -18,16 +20,18 @@
 pnpm --filter @raspi-system/api exec vitest run \
   src/services/backup/__tests__/gmail-api-client.test.ts \
   src/services/kiosk-documents/__tests__/kiosk-document-gmail-ingestion.query.test.ts \
-  src/services/kiosk-documents/__tests__/kiosk-document-html-gmail.service.test.ts
+  src/services/kiosk-documents/__tests__/kiosk-document-html-gmail.service.test.ts \
+  src/services/kiosk-documents/__tests__/kiosk-document-gmail-logical-key.test.ts \
+  src/services/kiosk-documents/__tests__/kiosk-document-gmail-upsert.service.test.ts
 ```
 
 ## 統合・API（推奨）
 
 | 項目 | 手順 | 期待結果 |
 |------|------|----------|
-| 手動 ingest | `POST /api/kiosk-documents/ingest-gmail`（ADMIN/MANAGER JWT）、対象 `scheduleId` を指定可 | レスポンスに `htmlImported` ≥ 0 または対象メールなし。重複時 `htmlSkippedDuplicate` |
+| 手動 ingest | `POST /api/kiosk-documents/ingest-gmail`（ADMIN/MANAGER JWT）、対象 `scheduleId` を指定可 | レスポンスに各カウンタ ≥ 0 または対象メールなし。**同一メール再実行**は `htmlSkippedDuplicate`。**同名・別メールの更新**は `htmlUpdated` |
 | DB・ページ URL | 取り込み直後 `GET /api/kiosk-documents/:id` | `pageUrls` が非空（PDF ページ画像化成功） |
-| 重複 | 同一未読メールを再度処理しない設計のため、初回後は `htmlSkippedDuplicate` またはメール既読でスキップ | 同一 `gmailDedupeKey` で二重登録されない |
+| 重複・上書き | 同一未読メールの再処理は `htmlSkippedDuplicate`。**別メール・同一添付名**は `gmailLogicalKey` で **新しい** `internalDate` のみが既存行を更新（`htmlUpdated`）。古いメールは `htmlSkippedOlderMail` | 同一 `gmailDedupeKey` で二重登録されない。論理キーは DB 一意 |
 
 **注意**: 実 Gmail・実 Chromium が必要。CI で常時実行しない場合はステージングまたはデプロイ後の手動で実施。
 
