@@ -34,8 +34,8 @@ category: knowledge-base
 
 | 変数 | 役割 | 既定（未設定時） |
 |------|------|------------------|
-| `KIOSK_DOCUMENT_PDF_DPI` | 要領書 PDF→JPEG の解像度（`pdftoppm -r`） | `120` |
-| `KIOSK_DOCUMENT_JPEG_QUALITY` | JPEG 品質（1–100） | `78` |
+| `KIOSK_DOCUMENT_PDF_DPI` | 要領書 PDF→JPEG の解像度（`pdftoppm -r`） | `180` |
+| `KIOSK_DOCUMENT_JPEG_QUALITY` | JPEG 品質（1–100） | `88` |
 | `KIOSK_DOCUMENT_OCR_CRON` | 夜間OCRバッチ時刻（JST cron） | `30 2 * * *` |
 | `KIOSK_DOCUMENT_OCR_BATCH_SIZE` | 夜間OCRバッチの1回あたり処理件数 | `100` |
 | `KIOSK_DOCUMENT_PROCESS_TIMEOUT_MS` | 1文書あたりOCR/抽出タイムアウト | `180000` |
@@ -129,6 +129,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ## 実機検証
 
+- **デプロイ（要領書 PDF→JPEG 既定画質引き上げ・API のみ・Pi5 のみ・2026-04-08）**: ブランチ `feat/kiosk-document-pdf-render-defaults-180dpi`（`resolveKioskDocumentPdfRenderOptions` のコード既定を **180 DPI / JPEG 品質 88**。環境変数未設定時のみ。詳細負荷調整は引き続き `KIOSK_DOCUMENT_*` で上書き可）。**手順**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-document-pdf-render-defaults-180dpi infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: `20260408-201253-19203`（**`PLAY RECAP` `failed=0` / `unreachable=0`**・所要約 **約 9.5 分**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **55s**）。**運用注意**: 既存文書の `pdf-pages/{id}/` に JPEG が残ると **再変換されない**。画質を上げた効果を既存行に反映するには **該当フォルダ削除**または **文書削除→再登録**（本 KB「キャッシュ注意」・Runbook 参照）。Pi4 キオスクへの Ansible デプロイは **不要**（表示は Pi5 API の画像 URL に依存）。
 - **デプロイ（要領書 Gmail スケジュール一覧 UI・Web のみ・Pi5 のみ・2026-04-08）**: ブランチ `feat/kiosk-doc-gmail-schedules-list`（コミット例 `35aa97bf`）。`KioskGmailIngestScheduleListSection`・`BackupConfig.kioskDocumentGmailIngest` 型・表示ユーティリティ＋Vitest。API 契約不変。**手順**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-doc-gmail-schedules-list infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Ansible ログ**: `ansible-update-20260408-185957-2678`（**`PLAY RECAP` `failed=0` / `unreachable=0`**・所要約 **15 分**強）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **55s**）。**手動（推奨）**: 管理 `/admin/kiosk-documents` で **「要領書Gmailスケジュール一覧（読み取り）」** が `backup.json` の `kioskDocumentGmailIngest` と一致すること・**ID反映**で手動取り込み欄に入ること。
 - **デプロイ（要領書 HTML Gmail 取り込み・API・Pi5 のみ・2026-04-08）**: 運用指示により **HTML 添付を Playwright で PDF 化する API** を **Pi5 だけ**反映（[deployment.md](../guides/deployment.md)・**`--limit raspberrypi5`**・`RASPI_SERVER_HOST`・`--detach --follow`）。**Pi3 / Pi4 への Ansible デプロイは不要**（Pi3 のメモリ制約向け **単独・プレフライト手順**も今回は未使用）。**Ansible サマリ**: `ansible-update-20260408-154206-25754`（**`failed=0` / `unreachable=0`**）。**追従 `main` 例**: `895a1060`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: auto-tuning ログ件数 0）。**手動（残）**: 件名「要領書HTML研削」・**未読**・HTML 添付の E2E（`kioskDocumentGmailIngest`・`POST /ingest-gmail` の `htmlImported`・`GET :id` の `pageUrls`）。詳細は [kiosk-html-gmail-ingest-verification.md](../plans/kiosk-html-gmail-ingest-verification.md)。
 - **デプロイ（推論基盤フェーズ1・API・Pi5 のみ）**: ブランチ `feat/inference-foundation-phase1`（`services/inference`・要領書オプトイン推論・写真ラベル `photo_label` ルート）。[deployment.md](../guides/deployment.md) に従い **`--limit raspberrypi5` のみ**・`RASPI_SERVER_HOST`・`--detach --follow`。Detach Run ID 例: `20260330-171021-10204`。**Phase12（2026-03-30）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 37 / WARN 0 / FAIL 0**（約 95s）。要領書 LLM 要約は既定 OFF のため、本スクリプトは **要領書 API 200 + `documents`** の回帰まで（詳細は [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md) Verification）。
@@ -175,6 +176,7 @@ curl -sk "https://100.106.158.2/api/kiosk-documents" \
 - **バーコードが読めない／遅い（Pi4 Firefox）**: 照明・距離・ピント・ラベル汚れの影響が大きい。**一次元のみ** preset でも ZXing の連続デコードは負荷があるため、実装は **解像度・デコード間引き**を Pi 向けに調整済み（`zxingVideoReader.ts`）。改善の手戻りは **カメラ解像度制約**・**間引き間隔**・必要なら **対象形式の絞り込み**（`formatPresets`）で切り分ける。読取速度の **1 秒以内 SLA** は現場実測で確認すること（ブラウザ・CPU・コード種別で変動）。
 - **スキャンを閉じたら検索欄が空になる**: **仕様**（キャンセル・未検出タイムアウト・失敗後の閉じる）。手入力の途中状態はスキャン開始前に退避しない運用。
 - **ページ画像の 304 が効かない／常に 200**: ブラウザやプロキシが `If-None-Match` を **複数値・配列**で送る場合がある。API 側は `ifNoneMatchSatisfied` で **文字列と配列の両方**を解釈する（`apps/api/src/routes/storage/pdf-page-http-cache.ts`・2026-03-26）。`curl -I` で `ETag` / `Cache-Control` を確認する。
+- **DPI/品質を変えたのに既存要領書の見た目が変わらない**: `PdfStorage.convertPdfToPages` は **`pdf-pages/{文書UUID}/` に `.jpg` が1枚でもあると変換をスキップ**する。**新しい DPI/品質**は **新規変換パス**でのみ効く。既存行へ適用するには **管理 `DELETE` で文書＋画像を消して再登録**、または運用者が **当該 `pdf-pages` サブディレクトリのみ**削除（孤児掃除 CLI・Runbook 参照。誤削除防止のため dry-run 推奨）。
 - **Network に詳細 GET が2本／チャタリング**: 上記 Symptoms のとおり **意図的な「二重取得機能」ではない**。`kioskDocumentDetailQueryOptions` の共有とキオスク一覧の **pointer のみ先読み**で切り分け（[ADR-20260327](../decisions/ADR-20260327-kiosk-document-detail-react-query-cache.md)）。
 - **文書番号の大文字固定**: 確定文書番号は **接尾を大文字英数字に限定**（小文字は API バリデーションで拒否）。OCR テキスト由来の候補抽出も同一パターンに合致したものだけが候補になりうる。運用上、紙面が小文字でも確定時に大文字へ寄せる。
 
