@@ -11,11 +11,23 @@ related:
 
 キオスクモードでは上辺メニューバー（wf-panel-pi）が非表示のため、Wi-FiアイコンからGUIで設定変更できない。**Super+Shift+P** で一時的にメニューバーを表示し、Wi-Fiアイコンから設定変更可能にする。
 
+Firefox キオスクでは、Ansible 配布の専用プロファイルで **タブバー・アドレスバーを折りたたみ表示**にしている。ブラウザ枠を一時的に出す操作は OS パネルとは別（下記「Firefox（ブラウザ枠）」）。
+
 ## ショートカット
 
 | キー | 動作 |
 |------|------|
 | **Super+Shift+P** | 上辺メニューバー（wf-panel-pi）を表示 |
+
+### Firefox（ブラウザ枠）
+
+| 操作 | 動作 |
+|------|------|
+| 画面上端へマウスを移動 | 折りたたんでいたナビゲータ（タブ・URL バー）が下がって見える |
+| **Ctrl+L** または **F6** | アドレスバーへフォーカス（ツールバーが表示されやすい） |
+| **Alt** または **F10** | メニューバー操作（Firefox 標準） |
+
+実装の詳細は [KB-336](../knowledge-base/infrastructure/miscellaneous.md)（同ファイル内「KB-336」見出し）を参照。
 
 - **Super**: キーボードの Windows キー（四角形のロゴキー）のこと
 - 表示後、Wi-FiアイコンをクリックしてGUIで設定変更可能
@@ -51,3 +63,4 @@ ssh <USER>@<PI4_IP> "grep -A5 'W-S-p' ~/.config/labwc/rc.xml"
 
 - `infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2`
 - `infrastructure/ansible/roles/kiosk/tasks/main.yml`（labwc keybind タスク）
+- `infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml`（Firefox userChrome 配布）

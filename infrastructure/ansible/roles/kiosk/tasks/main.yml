@@ -98,6 +98,12 @@
     - not (firefox_esr_binary_stat.stat.exists | default(false))
     - not (firefox_binary_stat.stat.exists | default(false))
 
+- name: Apply Firefox kiosk chrome minimization (dedicated profile + userChrome)
+  ansible.builtin.import_tasks: firefox-chrome.yml
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'firefox'
+
 - name: Deploy kiosk-launch script
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/kiosk-launch.sh.j2"
@@ -133,7 +139,7 @@
     state: restarted
   when:
     - manage_kiosk_browser | default(false) | bool
-    - (kiosk_launch_script_result is changed) or (kiosk_browser_result is changed)
+    - (kiosk_launch_script_result is changed) or (kiosk_browser_result is changed) or (kiosk_ff_chrome_userchrome is defined and ((kiosk_ff_chrome_userchrome['changed'] | default(false)) | bool)) or (kiosk_ff_chrome_userjs is defined and ((kiosk_ff_chrome_userjs['changed'] | default(false)) | bool))
 
 - name: Verify kiosk UI is reachable
   ansible.builtin.uri:

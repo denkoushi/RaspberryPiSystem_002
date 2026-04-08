@@ -26,6 +26,8 @@ pkill -x wf-panel-pi || true
 BROWSER_ENGINE="{{ kiosk_browser_engine | default('chromium') | lower }}"
 BROWSER_MODE="{{ kiosk_browser_mode | default('app-like') | lower }}"
 BROWSER_BIN="{{ kiosk_browser_exec_path | default(kiosk_browser_chromium_binary | default('/usr/bin/chromium-browser')) }}"
+KIOSK_FF_MINIMIZE={% if kiosk_firefox_minimize_chrome_enabled | default(true) | bool %}1{% else %}0{% endif %}
+FF_PROFILE="/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
 
 COMMON_FLAGS=(
 {% for flag in kiosk_browser_flags_common | default([]) %}
@@ -57,7 +59,11 @@ elif [[ "${BROWSER_ENGINE}" == "firefox" ]]; then
 {% endif %}
     "${COMMON_FLAGS[@]}"
   )
-  exec "${BROWSER_BIN}" "${FIREFOX_FLAGS[@]}" "{{ kiosk_url }}"
+  PROFILE_ARGS=()
+  if [[ "${KIOSK_FF_MINIMIZE}" -eq 1 ]] && [[ -d "${FF_PROFILE}" ]]; then
+    PROFILE_ARGS=(--profile "${FF_PROFILE}")
+  fi
+  exec "${BROWSER_BIN}" "${PROFILE_ARGS[@]}" "${FIREFOX_FLAGS[@]}" "{{ kiosk_url }}"
 else
   echo "Unsupported kiosk browser engine: ${BROWSER_ENGINE}" >&2
   exit 1

@@ -47,7 +47,7 @@ update-frequency: high
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 21件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入）、Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）、Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む）、**GitHub メンテナ衛生（ForceMemo/GlassWorm 対策手順・KB-309）**、**Ubuntu LocalLLM の Tailscale sidecar 分離公開（KB-317）** |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 28件 | デジタルサイネージ機能、温度表示、デザイン変更、CSVダッシュボード可視化、複数スケジュール順番切り替え、生産スケジュールサイネージデザイン修正、生産スケジュールサイネージアイテム高さの最適化（20件表示対応）、計測機器持出状況サイネージコンテンツの実装とCSVイベント連携、加工機点検状況サイネージのレイアウト調整、**SPLITレイアウトloans=0件時のvisualization崩れ修正（KB-292）**、**キオスク進捗一覧フルスロット `kiosk_progress_overview`・JPEG 4列×2段・`seibanPerPage` 1〜8（KB-321・初回 2026-04-01・レイアウト刷新 2026-03-31）**、**管理コンソール スケジュール一覧の無効レコード再編集（`GET …/schedules/management`・KB-322・2026-04-01）**、**SPLIT・貸出カード `splitCompact24`（4×6・Pi5 デプロイ・ワークツリー root 権限・KB-325・2026-04-03）**、**貸出グリッド Playwright / `SIGNAGE_LOAN_GRID_ENGINE` とデプロイ env ずれ（KB-327・2026-04-03）**、**キオスク compact 表記（計測・吊具）本番順次デプロイ（KB-330・2026-04-06）**、**貸出グリッド HTML モダン外皮・StoneBase のみ先行デプロイ（KB-331・2026-04-06）**、**compact フッタ欠落（Playwright）／キオスク取消視認性（KB-333・2026-04-07）**、**順位ボード資源CDカード `kiosk_leader_order_cards`（KB-335）** |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md), [KB-291](./infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) | 4件 | NFCリーダーとハードウェア、RoboDrill01 NFC恒久対策 |
-| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 22件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除、**Pi4 Firefox移行・Super+Shift+Pキーボードショートカット**、**labwc rc.xml 再読み込み（SIGHUP）**含む） |
+| └─ その他 | [infrastructure/miscellaneous.md](./infrastructure/miscellaneous.md) | 23件 | その他のインフラ関連（ストレージ管理、macOS対応、Wi-Fi認証ダイアログ抑制、Chromium警告メッセージ抑制、Cursorチャットログ削除、**Pi4 Firefox移行・Super+Shift+Pキーボードショートカット**、**Firefox userChrome 最小化（KB-336）**、**labwc rc.xml 再読み込み（SIGHUP）**含む） |
 
 ---
 
@@ -228,6 +228,7 @@ update-frequency: high
 | [KB-287](./frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) | キオスク備考欄の日本語入力不具合（ibus-ui ウィンドウ出現で入力不安定） | ✅ 解決済み |
 | [KB-288](./KB-288-power-actions-bind-mount-deleted-inode.md) | 電源操作・連打防止オーバーレイ不具合（power-actions バインドマウントの削除済み inode 参照） | ✅ 恒久対策実装済み |
 | [KB-289](./infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) | Pi4 kensakuMain Firefox移行・Super+Shift+Pキーボードショートカット（上辺メニューバー表示） | ✅ 実装完了 |
+| [KB-336](./infrastructure/miscellaneous.md) | Pi4 キオスク Firefox ブラウザ枠最小化（専用プロファイル・userChrome・Ansible） | ✅ 実装完了（リポジトリ） |
 | [KB-290](./infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) | Dropbox容量不足の恒久対策（チャンクアップロード・自動削除・再試行） | ✅ 解決済み |
 | [KB-291](./infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) | ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査・恒久対策 | ✅ 解決済み（2026-03-05） |
 | [KB-294](./frontend.md#kb-294-生産スケジュール資源cdボタン優先並び) | 生産スケジュール資源CDボタン優先並び | ✅ 解決済み（2026-03-06） |

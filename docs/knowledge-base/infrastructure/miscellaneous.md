@@ -941,6 +941,42 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 ---
 
+### [KB-336] Pi4 キオスク Firefox のブラウザ枠（タブ・URL バー）最小化（専用プロファイル + userChrome）
+
+**発生日**: 2026-04-08（実装・ドキュメント）
+
+**Context**: Pi4 キオスクは日本語入力の都合で Firefox（`app-like`、`--kiosk` は使わない）を維持したまま、アドレスバー・タブバーを目立たせたくない。OS 上部パネル（`wf-panel-pi`）の表示は既存の **Super+Shift+P** を継続利用する。
+
+**方針**:
+- **`--kiosk` は使わない**（公式キオスクは UI 復帰が限定的で、要件「必要時に操作で戻す」と相性が悪い）。
+- **専用 Firefox プロファイル**（既定: `~/.mozilla/firefox/kiosk-system`）に **`userChrome.css`** と **`user.js`**（`toolkit.legacyUserProfileCustomizations.stylesheets=true`）を Ansible で配布する。
+- **`kiosk-launch.sh`** は当該プロファイルが存在し、`kiosk_firefox_minimize_chrome_enabled` が真のときだけ **`--profile`** を付与する（Chromium や無効時は従来どおり）。
+- IBus 設定・labwc キーバインドは **別タスクファイル**（`firefox-chrome.yml`）に分離し、責務を混在させない。
+
+**運用（オペレータ向け）**:
+- **ブラウザのタブ／URL バーを一時的に見せる**: 画面上端にマウスを寄せる、または **Ctrl+L** / **F6** でアドレスバーにフォーカス（`:focus-within` でツールバーが下がって見える）。
+- **OS の Wi‑Fi パネル**: 従来どおり **Super+Shift+P**（[Runbook](../../runbooks/kiosk-wifi-panel-shortcut.md)）。
+- **`kiosk-browser.service` 再起動後**は `kiosk-launch.sh` が再び `wf-panel-pi` を止める（既存挙動）。
+
+**実装ファイル**:
+- `infrastructure/ansible/roles/kiosk/tasks/firefox-chrome.yml`
+- `infrastructure/ansible/roles/kiosk/templates/firefox-userChrome.css.j2`
+- `infrastructure/ansible/roles/kiosk/templates/firefox-user.js.j2`
+- `infrastructure/ansible/roles/kiosk/tasks/main.yml`（import・再起動条件）
+- `infrastructure/ansible/roles/kiosk/defaults/main.yml`（`kiosk_firefox_minimize_chrome_enabled`, `kiosk_firefox_profile_dirname`）
+- `infrastructure/ansible/templates/kiosk-launch.sh.j2`（`--profile` 条件付与）
+
+**変数**（ホスト／グループで上書き可）:
+- `kiosk_firefox_minimize_chrome_enabled`（既定: `true`）
+- `kiosk_firefox_profile_dirname`（既定: `kiosk-system` → パスは `~/.mozilla/firefox/<名前>`）
+
+**リスク**:
+- Firefox ESR のメジャー更新で `userChrome` のセレクタが変わる可能性がある。その場合は `firefox-userChrome.css.j2` の調整で対応。
+
+**解決状況**: ✅ **実装完了（リポジトリ）**・マージ前に Ansible 構文チェックと `kiosk-launch.sh` の `bash -n` を実施済み・**実機デプロイ検証は別途**
+
+---
+
 ## KB-210: Pi3/Pi4でWi-Fi認証ダイアログが時々表示される問題
 
 **発生日**: 2026-01-28

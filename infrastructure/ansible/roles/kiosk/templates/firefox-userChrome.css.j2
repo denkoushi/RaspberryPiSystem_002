@@ -1,0 +1,24 @@
+/*
+ * Ansible-managed kiosk Firefox chrome minimization.
+ * - Default: navigator toolbox (tabs + address bar) collapsed upward.
+ * - Reveal: mouse hover at top edge, or keyboard focus (Ctrl+L / F6) via :focus-within.
+ * Avoid display:none so focus-based recovery stays reliable across versions.
+ */
+@-moz-document url("chrome://browser/content/browser.xhtml") {
+  #navigator-toolbox:not(:hover):not(:focus-within) {
+    margin-top: calc(-1 * var(--urlbar-toolbar-height, 40px) - var(--tab-min-height, 36px) - 4px) !important;
+    transition: margin-top 0.18s ease-out !important;
+  }
+
+  #navigator-toolbox:hover,
+  #navigator-toolbox:focus-within {
+    margin-top: 0 !important;
+    transition: margin-top 0.18s ease-out !important;
+  }
+
+  /* Reduce visual weight when peeking; titlebar merges with toolbox on many Linux builds */
+  #navigator-toolbox {
+    border-bottom: none !important;
+    box-shadow: none !important;
+  }
+}

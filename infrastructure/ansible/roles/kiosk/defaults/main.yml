@@ -37,6 +37,11 @@ kiosk_browser_flags_firefox_app_like:
 kiosk_browser_flags_firefox_kiosk:
   - "--kiosk"
 
+# Firefox kiosk: dedicated profile + userChrome to minimize tabs/URL bar (keep app-like; do not use --kiosk).
+# Separate from IBus tasks and labwc panel shortcuts for maintainability.
+kiosk_firefox_minimize_chrome_enabled: true
+kiosk_firefox_profile_dirname: "kiosk-system"
+
 # IBus kiosk defaults (KB-276 follow-up)
 ibus_engines_order: "['mozc-jp', 'xkb:jp::jpn']"
 ibus_hotkey_triggers: "['<Control>space', 'Zenkaku_Hankaku']"

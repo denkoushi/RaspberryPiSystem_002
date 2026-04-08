@@ -1,0 +1,50 @@
+---
+# Minimize Firefox navigator chrome (tabs + URL bar) for kiosk while keeping app-like mode
+# and IBus/IME intact. OS panel / labwc shortcuts live elsewhere (show-kiosk-panel).
+
+- name: Compute absolute path for kiosk Firefox profile directory
+  ansible.builtin.set_fact:
+    kiosk_firefox_profile_abs: "/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
+
+- name: Deploy Firefox kiosk profile and chrome minimization assets
+  when: kiosk_firefox_minimize_chrome_enabled | default(true) | bool
+  block:
+    - name: Ensure Firefox kiosk profile root exists
+      ansible.builtin.file:
+        path: "{{ kiosk_firefox_profile_abs }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0700'
+
+    - name: Ensure Firefox kiosk profile chrome directory exists
+      ansible.builtin.file:
+        path: "{{ kiosk_firefox_profile_abs }}/chrome"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0700'
+
+    - name: Deploy Firefox userChrome.css (kiosk minimize chrome)
+      ansible.builtin.template:
+        src: firefox-userChrome.css.j2
+        dest: "{{ kiosk_firefox_profile_abs }}/chrome/userChrome.css"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      register: kiosk_ff_chrome_userchrome
+
+    - name: Deploy Firefox user.js (enable userChrome.css loading)
+      ansible.builtin.template:
+        src: firefox-user.js.j2
+        dest: "{{ kiosk_firefox_profile_abs }}/user.js"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      register: kiosk_ff_chrome_userjs
+
+- name: Mark Firefox chrome customization unchanged when minimization disabled
+  ansible.builtin.set_fact:
+    kiosk_ff_chrome_userchrome: { changed: false }
+    kiosk_ff_chrome_userjs: { changed: false }
+  when: not (kiosk_firefox_minimize_chrome_enabled | default(true) | bool)
