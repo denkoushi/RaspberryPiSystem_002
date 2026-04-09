@@ -1,4 +1,9 @@
-/** GET /tools/items/loan-analytics の応答（タグアイテムの持出・返却。吊具・計測機器ローンは含めない） */
+/**
+ * GET /tools/items/loan-analytics の応答
+ *
+ * 写真持出（`photoUrl` あり・`itemId` なし）の集計。工具のキーは **人レビュー表示名 > VLM 表示名 > 「撮影mode」**
+ * （キオスク持出一覧の `resolvePhotoLoanToolDisplayLabel` と同順位）。NFC Item マスタ・吊具・計測・ギャラリー教師行は含めない。
+ */
 export interface ItemLoanAnalyticsSummary {
   openLoanCount: number;
   overdueOpenCount: number;

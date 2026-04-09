@@ -157,8 +157,8 @@ function mapItems(data: ItemLoanAnalyticsResponse): ViewModel {
     totalMasterCount: data.summary.totalItemsActive,
     periodBorrowCount: data.summary.periodBorrowCount,
     periodReturnCount: data.summary.periodReturnCount,
-    assetTabLabel: 'アイテムごと',
-    emptyAssetMessage: 'アイテムデータがありません。',
+    assetTabLabel: '表示名ごと（写真持出）',
+    emptyAssetMessage: '写真持出の集計データがありません。',
     monthlyTrend: data.monthlyTrend,
     assets: data.byItem.map((row) => ({
       id: row.itemId,

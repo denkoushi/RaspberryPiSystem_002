@@ -1,4 +1,6 @@
-import { ItemStatus, Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import { PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 import { prisma } from '../../lib/prisma.js';
 import type {
   IItemLoanAnalyticsRepository,
@@ -14,15 +16,39 @@ function timeZoneSql(tz: ItemLoanAnalyticsTimeZone): Prisma.Sql {
   return tz === 'UTC' ? Prisma.raw(`'UTC'`) : Prisma.raw(`'Asia/Tokyo'`);
 }
 
-/** タグアイテム Loan のみ（SQL フラグメント） */
-const ITEM_LOAN_WHERE = Prisma.raw(`
-  l."itemId" IS NOT NULL
+/** 写真持出のみ（VLM/人レビュー表示名で集約）。ギャラリー教師行・NFC Item・吊具・計測は除外 */
+const PHOTO_LOAN_WHERE = Prisma.raw(`
+  l."photoUrl" IS NOT NULL
+  AND l."itemId" IS NULL
   AND l."riggingGearId" IS NULL
   AND l."measuringInstrumentId" IS NULL
-  AND l."cancelledAt" IS NULL`);
+  AND l."cancelledAt" IS NULL
+  AND l."photoToolGallerySeed" = false`);
+
+const TOOL_LABEL_SQL = Prisma.raw(`
+  COALESCE(
+    NULLIF(TRIM(COALESCE(l."photoToolHumanDisplayName", '')), ''),
+    NULLIF(TRIM(COALESCE(l."photoToolDisplayName", '')), ''),
+    '${PHOTO_LOAN_CARD_PRIMARY_LABEL}'
+  )`);
+
+function stablePhotoToolRowId(toolLabel: string): string {
+  const h = createHash('sha256').update(toolLabel, 'utf8').digest('hex').slice(0, 24);
+  return `pt-${h}`;
+}
+
+const photoLoanPrismaWhere = {
+  photoUrl: { not: null },
+  itemId: null,
+  riggingGearId: null,
+  measuringInstrumentId: null,
+  cancelledAt: null,
+  photoToolGallerySeed: false
+} as const;
 
 /**
- * itemId あり・吊具・計測機器でない Loan のみ。cancelledAt 非 null は除外。
+ * 写真持出 Loan のみ。表示名はキオスク一覧と同順位（人 > VLM > 撮影mode）。
+ * Prisma の Item マスタは参照しない。
  */
 export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository {
   constructor(private readonly db: typeof prisma = prisma) {}
@@ -50,14 +76,14 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
         SELECT date_trunc('month', (l."borrowedAt" AT TIME ZONE ${tzSql}))::date AS m,
                COUNT(*)::bigint AS c
         FROM "Loan" l
-        WHERE ${ITEM_LOAN_WHERE}
+        WHERE ${PHOTO_LOAN_WHERE}
         GROUP BY 1
       ),
       returns AS (
         SELECT date_trunc('month', (l."returnedAt" AT TIME ZONE ${tzSql}))::date AS m,
                COUNT(*)::bigint AS c
         FROM "Loan" l
-        WHERE ${ITEM_LOAN_WHERE}
+        WHERE ${PHOTO_LOAN_WHERE}
           AND l."returnedAt" IS NOT NULL
         GROUP BY 1
       )
@@ -70,84 +96,112 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       ORDER BY m.month_start ASC;
     `;
 
-    const baseWhere = {
-      itemId: { not: null },
-      riggingGearId: null,
-      measuringInstrumentId: null,
-      cancelledAt: null
-    } as const;
-
     const [
       periodBorrowCount,
       periodReturnCount,
       openLoanCount,
       overdueOpenCount,
-      totalItemsActive,
-      items,
-      borrowByItem,
-      returnByItem,
-      openLoans,
+      labelAggRows,
+      openByLabelRows,
       borrowByEmployee,
       returnByEmployee,
       openByEmployee
     ] = await Promise.all([
       this.db.loan.count({
         where: {
-          ...baseWhere,
+          ...photoLoanPrismaWhere,
           borrowedAt: { gte: input.periodFrom, lte: input.periodTo }
         }
       }),
       this.db.loan.count({
         where: {
-          ...baseWhere,
+          ...photoLoanPrismaWhere,
           returnedAt: { not: null, gte: input.periodFrom, lte: input.periodTo }
         }
       }),
       this.db.loan.count({
-        where: { ...baseWhere, returnedAt: null }
+        where: { ...photoLoanPrismaWhere, returnedAt: null }
       }),
       this.db.loan.count({
         where: {
-          ...baseWhere,
+          ...photoLoanPrismaWhere,
           returnedAt: null,
           dueAt: { not: null, lt: input.now }
         }
       }),
-      this.db.item.count({
-        where: { status: { not: ItemStatus.RETIRED } }
-      }),
-      this.db.item.findMany({
-        where: { status: { not: ItemStatus.RETIRED } },
-        orderBy: [{ itemCode: 'asc' }, { name: 'asc' }]
-      }),
-      this.db.loan.groupBy({
-        by: ['itemId'],
-        where: {
-          ...baseWhere,
-          borrowedAt: { gte: input.periodFrom, lte: input.periodTo }
-        },
-        _count: { _all: true }
-      }),
-      this.db.loan.groupBy({
-        by: ['itemId'],
-        where: {
-          ...baseWhere,
-          returnedAt: { not: null, gte: input.periodFrom, lte: input.periodTo }
-        },
-        _count: { _all: true }
-      }),
-      this.db.loan.findMany({
-        where: { ...baseWhere, returnedAt: null },
-        select: {
-          itemId: true,
-          dueAt: true,
-          employee: { select: { displayName: true, employeeCode: true } }
-        }
-      }),
+      this.db.$queryRaw<
+        Array<{
+          tool_label: string;
+          period_borrow_count: bigint;
+          period_return_count: bigint;
+        }>
+      >`
+        WITH labeled AS (
+          SELECT ${TOOL_LABEL_SQL} AS tool_label,
+                 l."borrowedAt",
+                 l."returnedAt"
+          FROM "Loan" l
+          WHERE ${PHOTO_LOAN_WHERE}
+        )
+        SELECT d.tool_label,
+               COALESCE(
+                 SUM(
+                   CASE
+                     WHEN lb."borrowedAt" >= ${input.periodFrom} AND lb."borrowedAt" <= ${input.periodTo}
+                     THEN 1 ELSE 0
+                   END
+                 ),
+                 0
+               )::bigint AS period_borrow_count,
+               COALESCE(
+                 SUM(
+                   CASE
+                     WHEN lb."returnedAt" IS NOT NULL
+                       AND lb."returnedAt" >= ${input.periodFrom}
+                       AND lb."returnedAt" <= ${input.periodTo}
+                     THEN 1 ELSE 0
+                   END
+                 ),
+                 0
+               )::bigint AS period_return_count
+        FROM (SELECT DISTINCT tool_label FROM labeled) d
+        LEFT JOIN labeled lb ON lb.tool_label = d.tool_label
+        GROUP BY d.tool_label
+        ORDER BY d.tool_label ASC;
+      `,
+      this.db.$queryRaw<
+        Array<{
+          tool_label: string;
+          dueAt: Date | null;
+          displayName: string | null;
+          employeeCode: string | null;
+        }>
+      >`
+        WITH labeled AS (
+          SELECT 
+            ${TOOL_LABEL_SQL} AS tool_label,
+            l."dueAt",
+            l."borrowedAt",
+            l."employeeId",
+            l."returnedAt"
+          FROM "Loan" l
+          WHERE ${PHOTO_LOAN_WHERE}
+        )
+        SELECT DISTINCT ON (v.tool_label)
+          v.tool_label,
+          v."dueAt" AS "dueAt",
+          e."displayName" AS "displayName",
+          e."employeeCode" AS "employeeCode"
+        FROM labeled v
+        LEFT JOIN "Employee" e ON e."id" = v."employeeId"
+        WHERE v."returnedAt" IS NULL
+          AND v."employeeId" IS NOT NULL
+        ORDER BY v.tool_label, v."borrowedAt" ASC;
+      `,
       this.db.loan.groupBy({
         by: ['employeeId'],
         where: {
-          ...baseWhere,
+          ...photoLoanPrismaWhere,
           borrowedAt: { gte: input.periodFrom, lte: input.periodTo },
           employeeId: { not: null }
         },
@@ -156,7 +210,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       this.db.loan.groupBy({
         by: ['employeeId'],
         where: {
-          ...baseWhere,
+          ...photoLoanPrismaWhere,
           returnedAt: { not: null, gte: input.periodFrom, lte: input.periodTo },
           employeeId: { not: null }
         },
@@ -165,7 +219,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       this.db.loan.groupBy({
         by: ['employeeId'],
         where: {
-          ...baseWhere,
+          ...photoLoanPrismaWhere,
           returnedAt: null,
           employeeId: { not: null }
         },
@@ -173,34 +227,34 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       })
     ]);
 
-    const borrowItemMap = new Map(
-      borrowByItem.filter((r) => r.itemId).map((r) => [r.itemId!, r._count._all])
-    );
-    const returnItemMap = new Map(
-      returnByItem.filter((r) => r.itemId).map((r) => [r.itemId!, r._count._all])
-    );
+    /** `labelAggRows` は `labeled` 内の全 tool_label を1行ずつ返すため、件数がユニーク表示名数 */
+    const totalItemsActive = labelAggRows.length;
 
-    const openByItemId = new Map<string, ItemLoanAnalyticsOpenLoanInfo>();
-    for (const loan of openLoans) {
-      if (!loan.itemId || !loan.employee) continue;
-      const dueAt = loan.dueAt;
-      openByItemId.set(loan.itemId, {
+    const openByLabel = new Map<string, ItemLoanAnalyticsOpenLoanInfo>();
+    for (const row of openByLabelRows) {
+      if (!row.displayName || !row.employeeCode) continue;
+      const dueAt = row.dueAt;
+      openByLabel.set(row.tool_label, {
         dueAt,
-        employeeDisplayName: loan.employee.displayName,
-        employeeCode: loan.employee.employeeCode,
+        employeeDisplayName: row.displayName,
+        employeeCode: row.employeeCode,
         isOverdue: dueAt != null && dueAt < input.now
       });
     }
 
-    const itemRows: ItemLoanAnalyticsItemAggregateRow[] = items.map((it) => {
-      const open = openByItemId.get(it.id) ?? null;
+    const itemRows: ItemLoanAnalyticsItemAggregateRow[] = labelAggRows.map((row) => {
+      const toolLabel = row.tool_label;
+      const open = openByLabel.get(toolLabel) ?? null;
+      const isOutNow = open !== null;
+      const periodBorrowCount = Number(row.period_borrow_count);
+      const periodReturnCount = Number(row.period_return_count);
       return {
-        itemId: it.id,
-        itemCode: it.itemCode,
-        name: it.name,
-        status: it.status,
-        periodBorrowCount: borrowItemMap.get(it.id) ?? 0,
-        periodReturnCount: returnItemMap.get(it.id) ?? 0,
+        itemId: stablePhotoToolRowId(toolLabel),
+        itemCode: '',
+        name: toolLabel,
+        status: isOutNow ? 'IN_USE' : 'AVAILABLE',
+        periodBorrowCount,
+        periodReturnCount,
         open
       };
     });
@@ -216,7 +270,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       if (row.employeeId) empIds.add(row.employeeId);
     }
 
-      const borrowEmpMap = new Map(
+    const borrowEmpMap = new Map(
       borrowByEmployee.filter((r) => r.employeeId).map((r) => [r.employeeId!, r._count._all])
     );
     const returnEmpMap = new Map(
