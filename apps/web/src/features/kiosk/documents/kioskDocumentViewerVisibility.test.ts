@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeNearVisibleIndices } from './kioskDocumentViewerVisibility';
+import { computeNearVisibleIndices, pickBestVisibleRowIndex } from './kioskDocumentViewerVisibility';
 
 describe('computeNearVisibleIndices', () => {
   it('returns empty set when totalRows is 0', () => {
@@ -30,5 +30,44 @@ describe('computeNearVisibleIndices', () => {
   it('does not exceed last index at end', () => {
     const s = computeNearVisibleIndices(9, 10, 2);
     expect([...s].sort((a, b) => a - b)).toEqual([7, 8, 9]);
+  });
+});
+
+describe('pickBestVisibleRowIndex', () => {
+  it('returns 0 when totalRows is 0', () => {
+    expect(pickBestVisibleRowIndex(new Map(), 3, 0)).toBe(0);
+  });
+
+  it('returns clamped fallback when there are no visible rows', () => {
+    expect(pickBestVisibleRowIndex(new Map(), 3, 10)).toBe(3);
+  });
+
+  it('picks the highest visible ratio from all tracked rows', () => {
+    const ratios = new Map([
+      [2, 0.25],
+      [3, 0.8],
+      [4, 0.5],
+    ]);
+    expect(pickBestVisibleRowIndex(ratios, 2, 10)).toBe(3);
+  });
+
+  it('keeps the fallback row when ratios are tied', () => {
+    const ratios = new Map([
+      [3, 0.5],
+      [4, 0.5],
+    ]);
+    expect(pickBestVisibleRowIndex(ratios, 4, 10)).toBe(4);
+  });
+
+  it('ignores indices outside row range (stale map entries)', () => {
+    const ratios = new Map([
+      [99, 0.99],
+      [2, 0.3],
+    ]);
+    expect(pickBestVisibleRowIndex(ratios, 0, 5)).toBe(2);
+  });
+
+  it('clamps fallback to valid range', () => {
+    expect(pickBestVisibleRowIndex(new Map(), 99, 5)).toBe(4);
   });
 });

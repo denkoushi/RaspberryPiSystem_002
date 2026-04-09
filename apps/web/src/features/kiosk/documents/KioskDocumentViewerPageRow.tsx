@@ -2,6 +2,8 @@ import clsx from 'clsx';
 
 import type { KioskDocumentLayoutMode, KioskDocumentWidthMode } from './kioskDocumentPageLayout';
 
+const KIOSK_DOCUMENT_PAGE_ASPECT_RATIO = '1490 / 2108';
+
 export type KioskDocumentViewerPageRowProps = {
   rowIndex: number;
   pair: string[];
@@ -21,6 +23,15 @@ export function KioskDocumentViewerPageRow({
   resolveImageUrl,
   setRowElement,
 }: KioskDocumentViewerPageRowProps) {
+  const defaultPageWrapperClass = clsx(
+    'flex justify-center',
+    layoutMode === 'spread' ? 'w-[min(100%,48%)] min-w-[280px]' : 'w-full max-w-4xl'
+  );
+  const fitPageWrapperClass = clsx(
+    'flex min-w-0 justify-center',
+    layoutMode === 'spread' && pair.length > 1 ? 'flex-1 basis-0' : 'w-full'
+  );
+
   return (
     <div
       ref={(node) => setRowElement(rowIndex, node)}
@@ -38,19 +49,21 @@ export function KioskDocumentViewerPageRow({
       )}
     >
       {!showImage ? (
-        <div
-          className="min-h-[40vh] w-full rounded border border-white/5 bg-slate-950/40"
-          aria-hidden
-        />
-      ) : widthMode === 'default' ? (
         pair.map((url) => (
           <div
             key={url}
-            className={clsx(
-              'flex justify-center',
-              layoutMode === 'spread' ? 'w-[min(100%,48%)] min-w-[280px]' : 'w-full max-w-4xl'
-            )}
+            className={widthMode === 'default' ? defaultPageWrapperClass : fitPageWrapperClass}
           >
+            <div
+              className="w-full rounded border border-white/5 bg-slate-950/40"
+              style={{ aspectRatio: KIOSK_DOCUMENT_PAGE_ASPECT_RATIO }}
+              aria-hidden
+            />
+          </div>
+        ))
+      ) : widthMode === 'default' ? (
+        pair.map((url) => (
+          <div key={url} className={defaultPageWrapperClass}>
             <img
               src={resolveImageUrl(url)}
               alt=""
@@ -62,13 +75,7 @@ export function KioskDocumentViewerPageRow({
         ))
       ) : (
         pair.map((url) => (
-          <div
-            key={url}
-            className={clsx(
-              'flex min-w-0 justify-center',
-              layoutMode === 'spread' && pair.length > 1 ? 'flex-1 basis-0' : 'w-full'
-            )}
-          >
+          <div key={url} className={fitPageWrapperClass}>
             <img
               src={resolveImageUrl(url)}
               alt=""

@@ -18,3 +18,33 @@ export function computeNearVisibleIndices(
   }
   return set;
 }
+
+/**
+ * IntersectionObserver の現在値から、もっとも見えている行を選ぶ。
+ * ratio が同値のときは fallbackIndex を優先して不要な揺れを避ける。
+ */
+export function pickBestVisibleRowIndex(
+  visibilityRatios: ReadonlyMap<number, number>,
+  fallbackIndex: number,
+  totalRows: number
+): number {
+  if (totalRows <= 0) {
+    return 0;
+  }
+  const maxIdx = totalRows - 1;
+  const clampedFallback = Math.max(0, Math.min(fallbackIndex, maxIdx));
+  let bestIndex = clampedFallback;
+  let bestRatio = visibilityRatios.get(clampedFallback) ?? -1;
+
+  for (const [index, ratio] of visibilityRatios.entries()) {
+    if (index < 0 || index > maxIdx || ratio <= 0) {
+      continue;
+    }
+    if (ratio > bestRatio) {
+      bestIndex = index;
+      bestRatio = ratio;
+    }
+  }
+
+  return bestRatio > 0 ? bestIndex : clampedFallback;
+}
