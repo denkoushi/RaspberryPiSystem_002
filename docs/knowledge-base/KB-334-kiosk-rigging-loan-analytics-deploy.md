@@ -13,8 +13,8 @@ category: knowledge-base
 - **ルート**: `/kiosk/rigging-analytics`（URL は据え置き）。ヘッダナビ表記は **「集計」**。
 - **UI**: デジタル庁デザインシステム（DADS）トークン（`@digital-go-jp/design-tokens`）＋ Noto Sans JP / Mono。画面内で **吊具** と **持出返却アイテム** をタブ切替（同一 ViewModel で表・グラフを共通化）。
 - **API（吊具）**: `GET /api/rigging-gears/loan-analytics`（`x-client-key` または JWT の `allowView`）。`cancelledAt` 非 null の Loan は集計から除外。
-- **API（アイテム）**: `GET /api/tools/items/loan-analytics`（認可は吊具 analytics と同系）。**対象 Loan**: `itemId IS NOT NULL` かつ `riggingGearId` / `measuringInstrumentId` が NULL、`cancelledAt` NULL。**計測器・吊具貸出はここに含めない**（アイテム専用集計のため）。
-- **月次集計**: 既定タイムゾーン `Asia/Tokyo` 暦月（クエリで上書き可）。**2026-04-09 時点**: 当該機能追加に伴う **新規 Prisma マイグレーションなし**（既存 `Loan` / `Item` を参照）。
+- **API（写真持出・表示名タブ）**: `GET /api/tools/items/loan-analytics`（認可は吊具 analytics と同系）。**対象 Loan**: **`photoUrl` あり**・`itemId` / `riggingGearId` / `measuringInstrumentId` がすべて NULL・`cancelledAt` NULL・**`photoToolGallerySeed = false`**（教師シード除外）。**表示名キー**: `NULLIF(TRIM(人レビュー名))` が無ければ `NULLIF(TRIM(VLM名))`、どちらも無ければ **「撮影mode」**（キオスク持出一覧の `resolvePhotoLoanToolDisplayLabel` と同順位）。**NFC Item マスタ連携の貸出は含めない**（別タブ用のため別契約が必要）。
+- **月次集計**: 既定タイムゾーン `Asia/Tokyo` 暦月（クエリで上書き可）。**マイグレーション**: 本集計は **既存 `Loan` 列のみ**（追加マイグレなし）。
 
 ## デプロイ（標準手順）
 
@@ -58,7 +58,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/deploy/verify-phase12-real.sh
 ```
 
-期待: **FAIL 0**（環境により WARN はあり得る）。本スクリプトは **汎用キオスク API** を網羅するが、**アイテム loan-analytics は必須項目に未収録**のため、追加スモークを推奨。
+期待: **FAIL 0**（環境により WARN はあり得る）。`items/loan-analytics` は Phase12 未収録のため **追加スモーク推奨**（下記）。
 
 ## 追加スモーク（推奨）
 
@@ -68,11 +68,20 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 ```
 
 - **期待（吊具）**: `summary` / `byGear`（または相当）/ `byEmployee`
-- **期待（アイテム）**: `summary` / `byItem` / `byEmployee`、`meta.periodFrom` 等
+- **期待（写真持出タブ）**: `summary` / `byItem`（`itemCode` は空文字・`name` が表示名・`itemId` は `pt-` 接頭辞の安定ハッシュ）/ `byEmployee`
 
 ## 本番実績
 
-### 2026-04-09（DADS・持出返却アイテムタブ・ViewModel 反映・Pi5 のみ）
+### 2026-04-09（写真持出 VLM/人レビュー表示名集計・`main` `3a722c8d`・Pi5 のみ）
+
+- **差分**: `fix(analytics): aggregate kiosk item tab from photo VLM/human labels`（API リポジトリ集計ロジック差し替え・共有型コメント・キオスク表タブ文言）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）
+- **Detach Run ID**: `20260409-222053-14442`
+- **結果**: `PLAY RECAP` **`failed=0` / `unreachable=0`**、リモート **exit `0`**（所要約 **16 分**）
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **110s**・Mac / Tailscale）
+- **API スモーク**: `GET /api/tools/items/loan-analytics` + kiosk `x-client-key` → **HTTP 200**
+
+### 2026-04-09（DADS・持出返却アイテムタブ・ViewModel 反映・Pi5 のみ・NFC Item 集計時代）
 
 - **ブランチ**: `main`
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4/Pi3 playbook は `no hosts matched`
@@ -101,10 +110,11 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 | Pi5 run が `Rebuild/Restart docker compose services` で長く見える | 初回相当では Playwright の **`chromium` ダウンロード**が走り、Pi5 デプロイが通常より長くなる。`playwright install chromium` / `docker-buildx` が動作していれば継続待ちでよい。 |
 | キオスクでデータ取得失敗 | API 未更新・`x-client-key` 不一致・ネットワーク。Pi5 の `GET /api/system/health` を先に確認。 |
 | 月次が期待とずれる | `timeZone` クエリ（`Asia/Tokyo` / `UTC`）と DB 保存時刻（UTC）の組み合わせを確認。 |
-| アイテムタブが 0 件・想定と違う | **集計対象は「一般 Item の Loan」のみ**。`riggingGearId` / `measuringInstrumentId` 付き Loan は **アイテム analytics から除外**。 |
+| アイテム（写真）タブが 0 件・想定と違う | **対象は写真持出 Loan のみ**。NFC `itemId` 付き貸出・`photoToolGallerySeed`・取消済みは **含まない**。VLM 未推論・人レビュー無しは **表示名「撮影mode」** にまとまる。 |
+| 表示名の粒度が細かすぎる | VLM が類似工具で別文字列を返すと **別行になる**。運用では人レビュー確定や [KB-319](./KB-319-photo-loan-vlm-tool-label.md) の正規化方針を参照。 |
 | UI が古い（ナビが「吊具 状況」のまま等） | Pi5 の `web` 未更新、またはブラウザキャッシュ。Pi5 デプロイ後に **強制再読み込み**。 |
 
 ## References
 
 - [deployment.md](../guides/deployment.md)（`--limit`・`--detach --follow`・Pi5 のみ判断）
-- 実装（参考）: `apps/web/src/pages/kiosk/KioskRiggingAnalyticsPage.tsx`、`apps/web/src/components/kiosk/KioskHeader.tsx`、`apps/api/src/routes/tools/items/loan-analytics.ts`、`packages/shared-types/src/tools/item-loan-analytics.ts`
+- 実装（参考）: `apps/web/src/pages/kiosk/KioskRiggingAnalyticsPage.tsx`、`apps/web/src/components/kiosk/KioskHeader.tsx`、`apps/api/src/routes/tools/items/loan-analytics.ts`、`apps/api/src/services/tools/item-loan-analytics.repository.ts`、`packages/shared-types/src/tools/item-loan-analytics.ts`

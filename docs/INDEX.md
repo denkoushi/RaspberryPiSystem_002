@@ -47,6 +47,7 @@
 
 ### 🆕 最新アップデート（2026-04-09）
 
+- **キオスク「集計」写真タブ: `items/loan-analytics` を VLM/人レビュー表示名集計に変更・`main` `3a722c8d`・本番 Pi5 のみ Detach `20260409-222053-14442`・Phase12 43/0/0**: 仕様・TS・スモークは [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **キオスク要領書ビューア: 縦スクロール安定化（Pi5 のみデプロイ・Phase12 PASS 43/0/0・手動は Pi4 スクロール目視）**: ブランチ `fix/kiosk-documents-viewer-scroll-stability`・Detach `20260409-185355-5342`・CI は **CVE-2026-39883** を `.trivyignore` 暫定。[KB-313](./knowledge-base/KB-313-kiosk-documents.md)・[kiosk-documents.md](./runbooks/kiosk-documents.md)・[knowledge-base/index.md](./knowledge-base/index.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **写真持出 VLM: 本番 Pi5 でアクティブ補助を有効化（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`）・vault / `infrastructure/docker/.env`・`docker compose … --force-recreate api`・実測ではギャラリー行数（例: canonical 8 行）ではなく **active OFF** が未採用の主因だった例**: 仕様差（類似候補 0.22 vs 補助 0.14）、切り分け、バックアップ命名、恒久は Ansible 再適用。[KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「本番オペレーション: アクティブ補助の有効化（Pi5・2026-04-09）」・[deployment.md](./guides/deployment.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)（Next Steps「アクティブ補助 運用フォロー」）。
 
@@ -57,10 +58,6 @@
 - **サイネージ `kiosk_leader_order_cards`: 工場視認性（タイポ・1行ヘッダ）・SOLID 分割（`header` / `schedule-row` / `layout-tokens`）・`feat/signage-leader-order-readability-solid`・本番 Pi5 のみ・Detach `20260408-083856-28270`・Phase12 PASS 43/0/0・`main` マージ・静的プレビュー [signage-leader-order-cards-preview.html](./design-previews/signage-leader-order-cards-preview.html)**: [KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**マージ**: [PR #98](https://github.com/denkoushi/RaspberryPiSystem_002/pull/98)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **サイネージ `kiosk_leader_order_cards`: `cardsPerPage` 1〜8 統一・SVG 生成モジュール分割・`feat/signage-leader-order-4x8-grid-solid`・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260408-073202-31994`・Phase12 PASS 43/0/0・`main` マージ**: [PR #95](https://github.com/denkoushi/RaspberryPiSystem_002/pull/95)。仕様・TS・[KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
-### 🆕 最新アップデート（2026-04-09）
-
-- **キオスク「集計」: DADS 準拠 UI・ヘッダ「集計」・持出返却アイテムタブ（`GET /api/tools/items/loan-analytics`）・ViewModel 化・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260409-213409-15007`・Phase12 PASS 43/0/0**: 仕様・デプロイスコープ（アイテム Loan の WHERE）・スモーク・TS は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
-
 ### 🆕 最新アップデート（2026-04-07）
 
 - **サイネージ FULL: キオスク順位ボード資源CDカード（`kiosk_leader_order_cards`・JPEG・管理画面で資源CD複数指定）・`feat/signage-leader-order-resource-cards`・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260407-213958-2534`・Phase12 PASS 43/0/0・`main` マージ**: 仕様・デプロイ実績・TS は [KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)（マージ後 PR リンクを追記可）。
@@ -68,7 +65,7 @@
 - **サイネージ 管理UI: スケジュールの対象端末（`targetClientKeys`）選択・一覧要約・`feat/signage-target-client-keys-ui`・本番 Pi5 のみ `--limit raspberrypi5`・Detach `20260407-154339-26008`・Phase12 PASS 43/0/0・`main` マージ**: [PR #89](https://github.com/denkoushi/RaspberryPiSystem_002/pull/89)。仕様は [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md)、デプロイ・端末候補（`apiKey` に `signage` を含む慣習）・代表ファイルは [signage.md](./knowledge-base/infrastructure/signage.md)（管理UI節）。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **サイネージ 端末別スケジュール（`targetClientKeys`・空=全端末）とレンダキャッシュの client 分離・`feat/signage-target-client-keys`・本番 Pi5→Pi4×4→Pi3 単独順次・Phase12 PASS 43/0/0・`main` マージ**: 設計は [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md)、デプロイ実績・Pi3 一時 exit-code の扱い・開発時 `SIGNAGE_RENDER_DIR` 注意は [signage.md](./knowledge-base/infrastructure/signage.md) 冒頭。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **サイネージ `splitCompact24` フッタ欠落修正（高さ164・HTML pad10 等）とキオスク取消ボタン視認性（`ghostOnDark`）・`fix/signage-compact24-footer-kiosk-readability`・本番 Pi5→Pi4×4→Pi3 順次・Phase12 PASS 43/0/0・`main` マージ**: 実績・Detach Run ID・deploy 前 `git stash push -u` は [KB-333](./knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
-- **キオスク「集計」（DADS・吊具 + 持出返却アイテム・`/api/tools/items/loan-analytics`）・本番 Pi5 のみ可・Phase12**: 最新は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。初回吊具のみ Pi5→Pi4×4 順次の記録あり。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク「集計」**: 吊具 + 写真持出（**VLM/人レビュー名**・`/api/tools/items/loan-analytics`）・DADS。**詳細**: [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-06）
 
