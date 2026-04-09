@@ -313,9 +313,16 @@ export function KioskHeader({
           </NavLink>
           <NavLink
             to="/kiosk/rigging-analytics"
-            className={() => navClass(isRiggingAnalyticsActive, 'bg-fuchsia-700 text-white')}
+            className={() =>
+              navClass(isRiggingAnalyticsActive, 'text-white')
+            }
+            style={
+              isRiggingAnalyticsActive
+                ? { backgroundColor: 'var(--color-primitive-blue-900)' }
+                : undefined
+            }
           >
-            吊具 状況
+            集計
           </NavLink>
           <button
             type="button"

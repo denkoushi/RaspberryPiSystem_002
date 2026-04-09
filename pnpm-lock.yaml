@@ -180,6 +180,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@digital-go-jp/design-tokens':
+        specifier: 1.1.9
+        version: 1.1.9
       '@raspi-system/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -442,6 +445,9 @@ packages:
   '@csstools/css-tokenizer@3.0.4':
     resolution: {integrity: sha512-Vd/9EVDiu6PPJt9yAh6roZP6El1xHrdvIVGjyBsHR0RYwNHgL7FJPyIIW4fANJNG6FtyZfvlRPpFI4ZM/lubvw==}
     engines: {node: '>=18'}
+
+  '@digital-go-jp/design-tokens@1.1.9':
+    resolution: {integrity: sha512-93zW/Gb4/pwb63W7r8RHWQdbLGap4heHt5unQQjaqP1OlPqRif146tvqtyJ2xPcot3pnndFY3ph1DC0Crwp6bg==}
 
   '@emnapi/runtime@1.7.1':
     resolution: {integrity: sha512-PVtJr5CmLwYAU9PZDMITZoR5iAOShYREoR45EyyLrbntV50mdePTgUn4AmOw90Ifcj+x2kRjdzr1HP3RrNiHGA==}
@@ -4065,6 +4071,8 @@ snapshots:
     optional: true
 
   '@csstools/css-tokenizer@3.0.4': {}
+
+  '@digital-go-jp/design-tokens@1.1.9': {}
 
   '@emnapi/runtime@1.7.1':
     dependencies:

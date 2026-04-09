@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>集計 レイアウトプレビュー（DADS / 吊具・アイテム切替）</title>
+<link rel="stylesheet" href="https://unpkg.com/@digital-go-jp/design-tokens@1.1.9/dist/tokens.css" crossorigin="anonymous" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--color-neutral-solid-gray-900);
+    font-family: var(--font-family-sans);
+    color: var(--color-neutral-white);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* --- キオスクヘッダー --- */
+  .kiosk-header {
+    background: color-mix(in srgb, var(--color-neutral-solid-gray-900) 88%, transparent);
+    border-bottom: 1px solid var(--color-neutral-solid-gray-700);
+      padding: 6px 12px;
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    height: 40px;
+  }
+  .nav-btn {
+    padding: 3px 8px;
+    border-radius: var(--border-radius-6);
+    font-size: 12px;
+    color: var(--color-neutral-solid-gray-300);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .nav-btn.active {
+    background: var(--color-primitive-blue-900);
+    color: var(--color-neutral-white);
+  }
+  .nav-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--color-neutral-solid-gray-600);
+    margin: 0 2px;
+  }
+
+  /* --- メインエリア --- */
+  .kiosk-main {
+    padding: 6px 12px 8px;
+    height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* --- 1段目: サマリーバー --- */
+  .summary-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-radius: var(--border-radius-8);
+    border: 1px solid var(--color-neutral-solid-gray-600);
+    background: var(--color-neutral-solid-gray-800);
+    padding: 5px 12px;
+  }
+  .summary-bar h2 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-neutral-white);
+    flex-shrink: 0;
+    line-height: var(--line-height-130);
+  }
+  .summary-bar .period {
+    font-size: 10px;
+    color: var(--color-neutral-solid-gray-400);
+  }
+  .summary-stats { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+  .stat { display: flex; align-items: center; gap: 5px; }
+  .stat-label { font-size: 11px; color: var(--color-neutral-solid-gray-400); }
+  .stat-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: var(--line-height-130); }
+  .stat-warn { color: var(--color-primitive-yellow-300); }
+  .stat-error { color: var(--color-semantic-error-1); }
+  .stat-white { color: var(--color-neutral-white); }
+  .stat-borrow { color: var(--color-primitive-blue-500); }
+  .stat-return { color: var(--color-primitive-cyan-600); }
+
+  /* --- 2段目: 2カラムグリッド --- */
+  .content-grid {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .left-col {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-self: start;
+    width: 100%;
+  }
+  .chart-panel {
+    border-radius: var(--border-radius-8);
+    border: 1px solid var(--color-neutral-solid-gray-600);
+    background: color-mix(in srgb, var(--color-neutral-solid-gray-900) 55%, transparent);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+  }
+  .chart-panel h3 {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-neutral-solid-gray-300);
+    margin-bottom: 6px;
+    line-height: var(--line-height-130);
+  }
+  .chart-area { height: 168px; width: 100%; position: relative; }
+
+  .right-col { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+  .tab-row { display: flex; gap: 6px; }
+  .tab-btn {
+    border-radius: var(--border-radius-6);
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: var(--line-height-130);
+  }
+  .tab-btn.active {
+    background: var(--color-primitive-blue-900);
+    color: var(--color-neutral-white);
+  }
+  .tab-btn.inactive {
+    background: var(--color-neutral-solid-gray-700);
+    color: var(--color-neutral-solid-gray-300);
+  }
+  .table-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: auto; }
+
+  .data-table {
+    width: 100%;
+    min-width: 740px;
+    text-align: left;
+    font-size: var(--font-size-14);
+    line-height: var(--line-height-130);
+    border-collapse: collapse;
+    border-radius: var(--border-radius-8);
+    border: 1px solid var(--color-neutral-solid-gray-600);
+  }
+  .data-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--color-neutral-solid-gray-800) 94%, transparent);
+    backdrop-filter: blur(4px);
+  }
+  .data-table th {
+    padding: 8px;
+    font-weight: 700;
+    color: var(--color-neutral-solid-gray-300);
+    border-bottom: 1px solid var(--color-neutral-solid-gray-600);
+    white-space: nowrap;
+  }
+  .data-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--color-neutral-opacity-gray-100);
+  }
+  .data-table tr.overdue {
+    background: color-mix(in srgb, var(--color-semantic-error-1) 20%, transparent);
+  }
+  .data-table tr.out {
+    background: color-mix(in srgb, var(--color-semantic-warning-yellow-1) 14%, transparent);
+  }
+  .data-table tr.emp-open {
+    background: color-mix(in srgb, var(--color-primitive-light-blue-900) 18%, transparent);
+  }
+  .mono { font-family: var(--font-family-mono); }
+  .badge {
+    border-radius: var(--border-radius-4);
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .badge-loan {
+    color: var(--color-primitive-yellow-200);
+    background: color-mix(in srgb, var(--color-semantic-warning-yellow-2) 38%, transparent);
+  }
+  .badge-od {
+    margin-left: 4px;
+    color: var(--color-primitive-red-200);
+    background: color-mix(in srgb, var(--color-semantic-error-1) 35%, transparent);
+  }
+  .badge-open {
+    color: var(--color-primitive-light-blue-200);
+    background: color-mix(in srgb, var(--color-primitive-light-blue-900) 32%, transparent);
+  }
+  .text-muted { color: var(--color-neutral-solid-gray-400); }
+  .text-borrow {
+    color: var(--color-primitive-blue-500);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .text-return {
+    color: var(--color-primitive-cyan-600);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mix-bar {
+    display: flex;
+    height: 10px;
+    min-width: 72px;
+    max-width: 120px;
+    overflow: hidden;
+    border-radius: var(--border-radius-4);
+    background: var(--color-neutral-solid-gray-900);
+    border: 1px solid var(--color-neutral-solid-gray-600);
+  }
+  .mix-bar .b {
+    height: 100%;
+    background: var(--color-primitive-blue-500);
+    flex-shrink: 0;
+  }
+  .mix-bar .r {
+    height: 100%;
+    background: var(--color-primitive-cyan-600);
+    flex-shrink: 0;
+    border-left: 1px solid var(--color-neutral-solid-gray-900);
+  }
+  .mix-empty {
+    font-size: 11px;
+    color: var(--color-neutral-solid-gray-400);
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+
+<header class="kiosk-header">
+  <button class="nav-btn" type="button">⏻</button>
+  <div class="nav-sep"></div>
+  <button class="nav-btn" type="button">持出</button>
+  <button class="nav-btn" type="button">計測機器</button>
+  <button class="nav-btn" type="button">吊具 持出</button>
+  <button class="nav-btn" type="button">スケジュール</button>
+  <button class="nav-btn" type="button">進捗一覧</button>
+  <button class="nav-btn" type="button">要領書</button>
+  <button class="nav-btn" type="button">部品測定</button>
+  <button class="nav-btn active" type="button">集計</button>
+  <button class="nav-btn" type="button">納期管理</button>
+  <button class="nav-btn" type="button">📞 通話</button>
+  <div style="flex:1"></div>
+  <button class="nav-btn" type="button" style="background:color-mix(in srgb,var(--color-neutral-white) 8%,transparent)">管理コンソール</button>
+  <button class="nav-btn" type="button" style="background:color-mix(in srgb,var(--color-neutral-white) 8%,transparent)">お問い合わせ</button>
+</header>
+
+<main class="kiosk-main">
+  <div class="summary-bar">
+    <h2>集計</h2>
+    <span class="period">2025/07/01 — 2026/04/09</span>
+    <div class="summary-stats" id="summary-stats">
+      <span class="stat"><span class="stat-label">貸出中</span><span class="stat-value stat-warn" id="sum-open">3</span></span>
+      <span class="stat"><span class="stat-label">超過</span><span class="stat-value stat-error" id="sum-od">1</span></span>
+      <span class="stat"><span class="stat-label">台数</span><span class="stat-value stat-white" id="sum-m">12</span></span>
+      <span class="stat"><span class="stat-label">持出</span><span class="stat-value stat-borrow" id="sum-b">47</span></span>
+      <span class="stat"><span class="stat-label">返却</span><span class="stat-value stat-return" id="sum-r">44</span></span>
+    </div>
+  </div>
+
+  <div class="tab-row" style="flex-shrink:0">
+    <button class="tab-btn active" id="ds-rigging" type="button" onclick="switchDataset('rigging')">吊具</button>
+    <button class="tab-btn inactive" id="ds-items" type="button" onclick="switchDataset('items')">持出返却アイテム</button>
+  </div>
+
+  <div class="content-grid">
+    <div class="left-col">
+      <div class="chart-panel">
+        <h3>月別（9か月）</h3>
+        <div class="chart-area" id="chart-area"></div>
+      </div>
+    </div>
+
+    <div class="right-col">
+      <div id="panel-rigging">
+        <div class="tab-row">
+          <button class="tab-btn active" id="tab-gear" type="button" onclick="switchTab('gear')">吊具ごと</button>
+          <button class="tab-btn inactive" id="tab-emp" type="button" onclick="switchTab('emp')">人ごと</button>
+        </div>
+        <div class="table-scroll">
+          <div id="gear-table"></div>
+          <div id="emp-table" style="display:none"></div>
+        </div>
+      </div>
+      <div id="panel-items" style="display:none">
+        <div class="tab-row">
+          <button class="tab-btn active" id="tab-i-asset" type="button" onclick="switchItemTab('asset')">アイテムごと</button>
+          <button class="tab-btn inactive" id="tab-i-emp" type="button" onclick="switchItemTab('emp')">人ごと</button>
+        </div>
+        <div class="table-scroll">
+          <div id="item-asset-table"></div>
+          <div id="item-emp-table" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+function token(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+const gears = [
+  { mgmt:'RG-001', name:'チェーンブロック 1t', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:8, r:8 },
+  { mgmt:'RG-002', name:'チェーンブロック 2t', status:'貸出中', out:true, od:false, who:'田中 一郎', due:'04/10 17:00', b:6, r:5 },
+  { mgmt:'RG-003', name:'ワイヤーロープ 8m', status:'貸出中', out:true, od:true, who:'鈴木 次郎', due:'04/07 17:00', b:12, r:11 },
+  { mgmt:'RG-004', name:'ベルトスリング 3t', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:5, r:5 },
+  { mgmt:'RG-005', name:'シャックル 2t', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:9, r:9 },
+  { mgmt:'RG-006', name:'ラチェットストラップ', status:'貸出中', out:true, od:false, who:'佐藤 三郎', due:'04/11 12:00', b:7, r:6 },
+  { mgmt:'RG-007', name:'アイボルト M20', status:'整備', out:false, od:false, who:'\u2014', due:'\u2014', b:0, r:0 },
+  { mgmt:'RG-008', name:'ナイロンスリング 5t', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:3, r:3 },
+  { mgmt:'RG-009', name:'クランプ 1t', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:4, r:4 },
+  { mgmt:'RG-010', name:'ホイスト 0.5t', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:6, r:6 },
+  { mgmt:'RG-011', name:'ベルトスリング 5t', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:2, r:2 },
+  { mgmt:'RG-012', name:'ワイヤークリップ', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:1, r:1 },
+];
+const emps = [
+  { name:'田中 一郎', code:'E001', open:1, b:14, r:13 },
+  { name:'鈴木 次郎', code:'E002', open:1, b:18, r:17 },
+  { name:'佐藤 三郎', code:'E003', open:1, b:10, r:9 },
+  { name:'高橋 四郎', code:'E004', open:0, b:5, r:5 },
+  { name:'渡辺 五郎', code:'E005', open:0, b:3, r:3 },
+];
+
+function borrowReturnMixCell(b, r) {
+  const s = b + r;
+  if (s <= 0) {
+    return '<span class=\"mix-empty\" title=\"記録なし\">\u2014</span>';
+  }
+  const bp = Math.round((b / s) * 100);
+  const rp = Math.max(0, Math.min(100, 100 - bp));
+  const title = '\u6301\u51fa ' + b + ' \u4ef6\uff08' + bp + '%\uff09 / \u8fd4\u5374 ' + r + ' \u4ef6\uff08' + rp + '%\uff09';
+  return (
+    '<div class="mix-bar" title="' +
+    title +
+    '" role="img" aria-label="' +
+    title +
+    '"><div class="b" style="width:' +
+    (b / s) * 100 +
+    '%"></div><div class="r" style="width:' +
+    (r / s) * 100 +
+    '%"></div></div>'
+  );
+}
+
+const thMixTitle = '\u6301\u51fa=\u9752\u30fb\u8fd4\u5374=\u30b7\u30a2\u30f3\u306e\u6bd4\u3002\u8a73\u7d30\u306f\u30bb\u30eb\u306b\u30ab\u30fc\u30bd\u30eb\u3092\u5408\u308f\u305b\u3066\u304f\u3060\u3055\u3044\u3002';
+
+let gHTML = '<table class="data-table"><thead><tr><th>管理番号</th><th>名称</th><th>状態</th><th>貸出</th><th>借用者</th><th>期限</th><th>期間内 持出</th><th>期間内 返却</th><th title="' + thMixTitle + '">内訳</th></tr></thead><tbody>';
+gears.forEach(g => {
+  const cls = g.od ? ' overdue' : g.out ? ' out' : '';
+  let loan = g.out ? `<span class="badge badge-loan">貸出中</span>` : `<span class="text-muted">在庫</span>`;
+  if (g.od) loan += `<span class="badge badge-od">期限超過</span>`;
+  const noDue = !g.due || g.due === '\u2014' || g.due === '-';
+  const dueCell = noDue
+    ? '<span title="期限なし" class="text-muted" style="font-variant-numeric:tabular-nums">\u2014</span>'
+    : `<span style="font-variant-numeric:tabular-nums;color:var(--color-neutral-solid-gray-300)">${g.due}</span>`;
+  gHTML += `<tr class="${cls.trim()}"><td class="mono" style="color:var(--color-neutral-white)">${g.mgmt}</td><td style="font-weight:500;color:var(--color-neutral-white)">${g.name}</td><td style="color:var(--color-neutral-solid-gray-300)">${g.status}</td><td>${loan}</td><td style="color:var(--color-neutral-white)">${g.who}</td><td>${dueCell}</td><td class="text-borrow">${g.b}</td><td class="text-return">${g.r}</td><td>${borrowReturnMixCell(g.b, g.r)}</td></tr>`;
+});
+gHTML += '</tbody></table>';
+document.getElementById('gear-table').innerHTML = gHTML;
+
+let eHTML = '<table class="data-table"><thead><tr><th>氏名</th><th>コード</th><th>現在 未返却</th><th>期間内 持出</th><th>期間内 返却</th><th title="' + thMixTitle + '">内訳</th></tr></thead><tbody>';
+emps.forEach(e => {
+  const cls = e.open > 0 ? ' emp-open' : '';
+  const openC = e.open > 0 ? `<span class="badge badge-open">${e.open}</span>` : '<span class="text-muted">0</span>';
+  eHTML += `<tr class="${cls.trim()}"><td style="font-weight:500;color:var(--color-neutral-white)">${e.name}</td><td class="mono" style="color:var(--color-neutral-solid-gray-300)">${e.code}</td><td>${openC}</td><td class="text-borrow">${e.b}</td><td class="text-return">${e.r}</td><td>${borrowReturnMixCell(e.b, e.r)}</td></tr>`;
+});
+eHTML += '</tbody></table>';
+document.getElementById('emp-table').innerHTML = eHTML;
+
+function switchTab(t) {
+  document.getElementById('gear-table').style.display = t === 'gear' ? '' : 'none';
+  document.getElementById('emp-table').style.display = t === 'emp' ? '' : 'none';
+  document.getElementById('tab-gear').className = 'tab-btn ' + (t === 'gear' ? 'active' : 'inactive');
+  document.getElementById('tab-emp').className = 'tab-btn ' + (t === 'emp' ? 'active' : 'inactive');
+}
+
+function switchItemTab(t) {
+  document.getElementById('item-asset-table').style.display = t === 'asset' ? '' : 'none';
+  document.getElementById('item-emp-table').style.display = t === 'emp' ? '' : 'none';
+  document.getElementById('tab-i-asset').className = 'tab-btn ' + (t === 'asset' ? 'active' : 'inactive');
+  document.getElementById('tab-i-emp').className = 'tab-btn ' + (t === 'emp' ? 'active' : 'inactive');
+}
+
+const itemsMock = [
+  { code:'TO0001', name:'めねじ切り M8', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:22, r:21 },
+  { code:'TO0002', name:'ドリル \u03a66', status:'貸出中', out:true, od:false, who:'田中 一郎', due:'04/10 14:00', b:18, r:17 },
+  { code:'TO0003', name:'タップ M6', status:'貸出中', out:true, od:true, who:'鈴木 次郎', due:'04/05 17:00', b:9, r:8 },
+  { code:'TO0004', name:'リーマ 10H7', status:'在庫', out:false, od:false, who:'\u2014', due:'\u2014', b:5, r:5 },
+  { code:'TO0005', name:'カーバイドバー', status:'整備', out:false, od:false, who:'\u2014', due:'\u2014', b:0, r:0 },
+];
+const itemEmpsMock = [
+  { name:'田中 一郎', code:'E001', open:2, b:40, r:38 },
+  { name:'鈴木 次郎', code:'E002', open:1, b:28, r:27 },
+  { name:'佐藤 三郎', code:'E003', open:0, b:15, r:15 },
+];
+
+let iaHTML = '<table class="data-table"><thead><tr><th>管理番号</th><th>名称</th><th>状態</th><th>貸出</th><th>借用者</th><th>期限</th><th>期間内 持出</th><th>期間内 返却</th><th title="' + thMixTitle + '">内訳</th></tr></thead><tbody>';
+itemsMock.forEach(g => {
+  const cls = g.od ? ' overdue' : g.out ? ' out' : '';
+  let loan = g.out ? `<span class="badge badge-loan">貸出中</span>` : `<span class="text-muted">在庫</span>`;
+  if (g.od) loan += `<span class="badge badge-od">期限超過</span>`;
+  const noDue = !g.due || g.due === '\u2014';
+  const dueCell = noDue
+    ? '<span class="text-muted" style="font-variant-numeric:tabular-nums">\u2014</span>'
+    : `<span style="font-variant-numeric:tabular-nums;color:var(--color-neutral-solid-gray-300)">${g.due}</span>`;
+  iaHTML += `<tr class="${cls.trim()}"><td class="mono" style="color:var(--color-neutral-white)">${g.code}</td><td style="font-weight:500;color:var(--color-neutral-white)">${g.name}</td><td style="color:var(--color-neutral-solid-gray-300)">${g.status}</td><td>${loan}</td><td style="color:var(--color-neutral-white)">${g.who}</td><td>${dueCell}</td><td class="text-borrow">${g.b}</td><td class="text-return">${g.r}</td><td>${borrowReturnMixCell(g.b, g.r)}</td></tr>`;
+});
+iaHTML += '</tbody></table>';
+document.getElementById('item-asset-table').innerHTML = iaHTML;
+
+let ieHTML = '<table class="data-table"><thead><tr><th>氏名</th><th>コード</th><th>現在 未返却</th><th>期間内 持出</th><th>期間内 返却</th><th title="' + thMixTitle + '">内訳</th></tr></thead><tbody>';
+itemEmpsMock.forEach(e => {
+  const cls = e.open > 0 ? ' emp-open' : '';
+  const openC = e.open > 0 ? `<span class="badge badge-open">${e.open}</span>` : '<span class="text-muted">0</span>';
+  ieHTML += `<tr class="${cls.trim()}"><td style="font-weight:500;color:var(--color-neutral-white)">${e.name}</td><td class="mono" style="color:var(--color-neutral-solid-gray-300)">${e.code}</td><td>${openC}</td><td class="text-borrow">${e.b}</td><td class="text-return">${e.r}</td><td>${borrowReturnMixCell(e.b, e.r)}</td></tr>`;
+});
+ieHTML += '</tbody></table>';
+document.getElementById('item-emp-table').innerHTML = ieHTML;
+
+const chartDataRigging = [
+  { m:'8月', b:4, r:4 }, { m:'9月', b:6, r:6 }, { m:'10月', b:5, r:5 }, { m:'11月', b:7, r:6 }, { m:'12月', b:4, r:4 },
+  { m:'1月', b:5, r:5 }, { m:'2月', b:6, r:6 }, { m:'3月', b:7, r:7 }, { m:'4月', b:3, r:1 }
+];
+const chartDataItems = [
+  { m:'8月', b:12, r:11 }, { m:'9月', b:15, r:15 }, { m:'10月', b:14, r:13 }, { m:'11月', b:18, r:17 }, { m:'12月', b:11, r:11 },
+  { m:'1月', b:16, r:16 }, { m:'2月', b:20, r:19 }, { m:'3月', b:22, r:22 }, { m:'4月', b:9, r:8 }
+];
+
+function switchDataset(ds) {
+  document.getElementById('ds-rigging').className = 'tab-btn ' + (ds === 'rigging' ? 'active' : 'inactive');
+  document.getElementById('ds-items').className = 'tab-btn ' + (ds === 'items' ? 'active' : 'inactive');
+  document.getElementById('panel-rigging').style.display = ds === 'rigging' ? '' : 'none';
+  document.getElementById('panel-items').style.display = ds === 'items' ? '' : 'none';
+  if (ds === 'rigging') {
+    document.getElementById('sum-open').textContent = '3';
+    document.getElementById('sum-od').textContent = '1';
+    document.getElementById('sum-m').textContent = '12';
+    document.getElementById('sum-b').textContent = '47';
+    document.getElementById('sum-r').textContent = '44';
+    renderChart(chartDataRigging);
+  } else {
+    document.getElementById('sum-open').textContent = '5';
+    document.getElementById('sum-od').textContent = '2';
+    document.getElementById('sum-m').textContent = '48';
+    document.getElementById('sum-b').textContent = '156';
+    document.getElementById('sum-r').textContent = '151';
+    renderChart(chartDataItems);
+  }
+}
+
+function renderChart(chartData) {
+  const el = document.getElementById('chart-area');
+  const BORROW_HEX = token('--color-primitive-blue-500', '#4979f5');
+  const RETURN_HEX = token('--color-primitive-cyan-600', '#00a3bf');
+  const STROKE = token('--color-neutral-solid-gray-900', '#1a1a1a');
+  const GRID = token('--color-neutral-solid-gray-700', '#4d4d4d');
+  const TICK = token('--color-neutral-solid-gray-300', '#b3b3b3');
+  const YLAB = token('--color-neutral-solid-gray-400', '#999999');
+  const W = el.offsetWidth;
+  const H = el.offsetHeight;
+  const p = { t: 18, r: 8, b: 30, l: 36 };
+  const iW = W - p.l - p.r;
+  const iH = H - p.t - p.b;
+  const mx = Math.max(...chartData.flatMap((d) => [d.b, d.r]), 1);
+  const gW = iW / chartData.length;
+  const bW = Math.min(gW * 0.28, 14);
+  const gap = bW * 0.2;
+  let svg = '';
+  svg += `<text transform="translate(12,${p.t + iH / 2}) rotate(-90)" text-anchor="middle" fill="${YLAB}" font-size="10" font-family="var(--font-family-sans)">件数</text>`;
+  for (let v = 0; v <= mx; v += Math.max(1, Math.ceil(mx / 4))) {
+    const y = p.t + iH - (v / mx) * iH;
+    svg += `<line x1="${p.l}" x2="${p.l + iW}" y1="${y}" y2="${y}" stroke="${GRID}" stroke-opacity="0.65" stroke-dasharray="2 2"/>`;
+    svg += `<text x="${p.l - 4}" y="${y + 3}" text-anchor="end" fill="${TICK}" font-size="9" font-family="var(--font-family-sans)">${v}</text>`;
+  }
+  chartData.forEach((d, i) => {
+    const x = p.l + i * gW + gW / 2;
+    const bH = (d.b / mx) * iH;
+    const rH = (d.r / mx) * iH;
+    const rx = 4;
+    svg += `<rect x="${x - bW - gap / 2}" y="${p.t + iH - bH}" width="${bW}" height="${bH}" fill="${BORROW_HEX}" stroke="${STROKE}" stroke-width="1" rx="${rx}"/>`;
+    svg += `<rect x="${x + gap / 2}" y="${p.t + iH - rH}" width="${bW}" height="${rH}" fill="${RETURN_HEX}" stroke="${STROKE}" stroke-width="1" rx="${rx}"/>`;
+    svg += `<text x="${x}" y="${p.t + iH + 14}" text-anchor="middle" fill="${TICK}" font-size="9" font-family="var(--font-family-sans)">${d.m}</text>`;
+  });
+  const ly = p.t + iH + 24;
+  svg += `<rect x="${p.l}" y="${ly - 6}" width="8" height="8" fill="${BORROW_HEX}" stroke="${STROKE}" stroke-width="0.5" rx="1.5"/><text x="${p.l + 11}" y="${ly + 1}" fill="${TICK}" font-size="9" font-family="var(--font-family-sans)">\u6301\u51fa</text>`;
+  svg += `<rect x="${p.l + 44}" y="${ly - 6}" width="8" height="8" fill="${RETURN_HEX}" stroke="${STROKE}" stroke-width="0.5" rx="1.5"/><text x="${p.l + 55}" y="${ly + 1}" fill="${TICK}" font-size="9" font-family="var(--font-family-mono)">\u8fd4\u5374</text>`;
+  el.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${W} ${H}">${svg}</svg>`;
+}
+
+setTimeout(() => renderChart(chartDataRigging), 50);
+</script>
+</body>
+</html>

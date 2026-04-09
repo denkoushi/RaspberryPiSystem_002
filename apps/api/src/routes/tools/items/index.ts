@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ItemService } from '../../../services/tools/item.service.js';
 import { registerItemListRoute } from './list.js';
+import { registerItemLoanAnalyticsRoute } from './loan-analytics.js';
 import { registerItemGetRoute } from './get.js';
 import { registerItemCreateRoute } from './create.js';
 import { registerItemUpdateRoute } from './update.js';
@@ -10,6 +11,7 @@ export async function registerItemRoutes(app: FastifyInstance): Promise<void> {
   const itemService = new ItemService();
 
   registerItemListRoute(app, itemService);
+  registerItemLoanAnalyticsRoute(app);
   registerItemGetRoute(app, itemService);
   registerItemCreateRoute(app, itemService);
   registerItemUpdateRoute(app, itemService);

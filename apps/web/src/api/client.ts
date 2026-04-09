@@ -35,7 +35,8 @@ import type {
   RiggingInspectionRecord,
   RiggingInspectionResult,
   RiggingLoanAnalyticsResponse,
-  RiggingStatus
+  RiggingStatus,
+  ItemLoanAnalyticsResponse
 } from './types';
 import type {
   FindOrOpenPartMeasurementResponse,
@@ -1706,6 +1707,17 @@ export async function getRiggingLoanAnalytics(params?: {
   timeZone?: 'Asia/Tokyo' | 'UTC';
 }) {
   const { data } = await api.get<RiggingLoanAnalyticsResponse>('/rigging-gears/loan-analytics', { params });
+  return data;
+}
+
+/** タグアイテム（itemId）の持出・返却集計。吊具・計測機器ローンは含まない */
+export async function getItemLoanAnalytics(params?: {
+  periodFrom?: string;
+  periodTo?: string;
+  monthlyMonths?: number;
+  timeZone?: 'Asia/Tokyo' | 'UTC';
+}) {
+  const { data } = await api.get<ItemLoanAnalyticsResponse>('/tools/items/loan-analytics', { params });
   return data;
 }
 

@@ -1,6 +1,14 @@
 /**
  * ツール管理モジュールの型定義
  */
+export type {
+  ItemLoanAnalyticsByEmployeeRow,
+  ItemLoanAnalyticsByItemRow,
+  ItemLoanAnalyticsMeta,
+  ItemLoanAnalyticsMonthlyPoint,
+  ItemLoanAnalyticsResponse,
+  ItemLoanAnalyticsSummary
+} from './item-loan-analytics.js';
 import type { PhotoToolHumanLabelQuality } from './loan-card-display.js';
 import type { MeasuringInstrument } from '../measuring-instruments/index.js';
 import type { RiggingGear } from '../rigging/index.js';

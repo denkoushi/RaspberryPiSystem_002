@@ -38,7 +38,13 @@ export type {
   RiggingLoanAnalyticsSummary,
   RiggingLoanAnalyticsMonthlyPoint,
   RiggingLoanAnalyticsByGearRow,
-  RiggingLoanAnalyticsByEmployeeRow
+  RiggingLoanAnalyticsByEmployeeRow,
+  ItemLoanAnalyticsResponse,
+  ItemLoanAnalyticsMeta,
+  ItemLoanAnalyticsSummary,
+  ItemLoanAnalyticsMonthlyPoint,
+  ItemLoanAnalyticsByItemRow,
+  ItemLoanAnalyticsByEmployeeRow
 } from '@raspi-system/shared-types';
 
 export type { UnifiedItem, UnifiedListParams } from './client';

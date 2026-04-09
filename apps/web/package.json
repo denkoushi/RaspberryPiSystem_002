@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@digital-go-jp/design-tokens": "1.1.9",
     "@raspi-system/shared-types": "workspace:*",
     "@tanstack/react-query": "^5.35.2",
     "@xstate/react": "^6.0.0",

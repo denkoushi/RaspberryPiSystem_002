@@ -1,0 +1,50 @@
+export type ItemLoanAnalyticsTimeZone = 'Asia/Tokyo' | 'UTC';
+
+export interface ItemLoanAnalyticsOpenLoanInfo {
+  dueAt: Date | null;
+  employeeDisplayName: string;
+  employeeCode: string;
+  isOverdue: boolean;
+}
+
+export interface ItemLoanAnalyticsItemAggregateRow {
+  itemId: string;
+  itemCode: string;
+  name: string;
+  status: string;
+  periodBorrowCount: number;
+  periodReturnCount: number;
+  open: ItemLoanAnalyticsOpenLoanInfo | null;
+}
+
+export interface ItemLoanAnalyticsEmployeeAggregateRow {
+  employeeId: string;
+  displayName: string;
+  employeeCode: string;
+  openItemCount: number;
+  periodBorrowCount: number;
+  periodReturnCount: number;
+}
+
+export interface ItemLoanAnalyticsQueryInput {
+  periodFrom: Date;
+  periodTo: Date;
+  monthlyMonths: number;
+  timeZone: ItemLoanAnalyticsTimeZone;
+  now: Date;
+}
+
+export interface ItemLoanAnalyticsAggregate {
+  monthlyTrend: Array<{ yearMonth: string; borrowCount: number; returnCount: number }>;
+  periodBorrowCount: number;
+  periodReturnCount: number;
+  openLoanCount: number;
+  overdueOpenCount: number;
+  totalItemsActive: number;
+  itemRows: ItemLoanAnalyticsItemAggregateRow[];
+  employeeRows: ItemLoanAnalyticsEmployeeAggregateRow[];
+}
+
+export interface IItemLoanAnalyticsRepository {
+  loadAggregate(input: ItemLoanAnalyticsQueryInput): Promise<ItemLoanAnalyticsAggregate>;
+}
