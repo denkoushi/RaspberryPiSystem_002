@@ -675,6 +675,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **Webアプリのみ**: 通常は Pi5 + Pi4（`--limit "raspberrypi5:raspberrypi4"`）。**`Dockerfile.web` / server `web` のみ**の変更で Pi4 に `web` を載せていない／更新不要なら **Pi5 のみ**（`--limit raspberrypi5`）で足りる（2026-04-04・`go-jose` 対応後に `./scripts/deploy/verify-phase12-real.sh` **PASS 43/0/0**・約 100s を確認。[ci-cd の Caddy 追記](../knowledge-base/ci-cd.md)）。
 - **API/DBのみ**: Pi5のみ（`--limit raspberrypi5`）
 - **Ansible のみ（例: `docker.env.j2` + Pi5 `inventory` の env 配線）**: コード変更が Pi5 のみのときも **Pi5 のみ**（`--limit raspberrypi5`）。**写真持出**: `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*` はテンプレに存在しても **inventory で `photo_tool_label_assist_active_*` を vault から渡す**必要がある（欠落時は常に既定 OFF。[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「Ansible 配線（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_*`…）」）。
+- **写真持出・env の緊急反映（Pi5 のみ・非推奨の例外）**: `infrastructure/docker/.env` を Pi5 上で直接更新した場合は **`docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api`** で API に読み直させる。**vault / Ansible 生成物とドリフト**しうるため、恒久は上記 **`--limit raspberrypi5`** デプロイで揃える。手順・検証・実測は [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「本番オペレーション: アクティブ補助の有効化（Pi5・2026-04-09）」。
 - **サイネージ関連**: Pi5のみ（サーバー側レンダリングのため）
 - **Pi3固有の設定**: Pi3のみ（`--limit raspberrypi3`）
 

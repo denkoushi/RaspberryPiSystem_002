@@ -222,6 +222,20 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **デプロイ**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**・**`--limit raspberrypi5`**・**`RASPI_SERVER_HOST`**・**`--detach --follow`**。ブランチ例: `feat/ansible-photo-tool-assist-active-env`（`main` 取込後は `main`）。
 - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-04-07・Mac / Tailscale・Pi5 `100.106.158.2`）。`PLAY RECAP` **`raspberrypi5` `failed=0`**。
 
+#### 本番オペレーション: アクティブ補助の有効化（Pi5・2026-04-09）
+
+- **Context**: 管理 UI の**類似候補**は参考表示。**本番の `Loan.photoToolDisplayName` を収束 canonical で上書き**するのは **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`** かつ埋め込み ON・補助条件・**ギャラリー行数ゲート**を満たす場合のみ（[ADR-20260404](../decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)）。
+- **症状**: 候補が強いのに、キオスク／DB 上の表示ラベルが **1 回目 VLM のまま**・`photoToolVlmLabelProvenance` が **`ASSIST_ACTIVE_CONVERGED` にならない**。
+- **Investigation（実測例・CONFIRMED）**:
+  - **類似候補**は `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE`（既定 **0.22** 前後）で切る一方、**ラベル補助／アクティブ採用**は `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（既定 **0.14** 前後）＋近傍数・ラベル収束・active フラグ・ゲートで絞るため、**「候補が当たる」ことと「本番採用」は別**（本 KB 冒頭の「シャドー補助との差」と同型）。
+  - canonical ラベル例 **`リングゲージ`** について `photo_tool_similarity_gallery` の **`BTRIM("canonicalLabel")` 一致行数** を数えると **8**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS` 既定 **5** を満たす）。**にもかかわらず**当環境では **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=false`** のみが残っており、**ボトルネックはギャラリー件数不足ではなく active OFF** だった。
+- **Fix（Pi5・手動反映／Ansible 再デプロイと同じ環境変数になるよう揃える）**:
+  1. 変更前に Pi5 上で **`host_vars/raspberrypi5/vault.yml`** および **`infrastructure/docker/.env`** のバックアップ（例: `*.backup-YYYYMMDD-HHMMSS`）。
+  2. vault に `vault_photo_tool_label_assist_active_enabled: "true"`（既存配線どおり）を追加し、`infrastructure/docker/.env` に **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`** を記載。
+  3. API 再作成: `docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api`（compose ログに **db 等の再作成**が出ることがある。運用者は出力を確認する）。
+- **Verification**: Pi5 上で `curl -sk https://localhost/api/system/health` → **status ok** 相当。`docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api /bin/sh -lc 'printenv | grep PHOTO_TOOL_LABEL_ASSIST'` で **ACTIVE=true**・**EMBEDDING**・**SHADOW**・**MIN_GALLERY_ROWS** が期待どおりか確認。
+- **恒久**: 手編集と Ansible 生成物の**ドリフト**を避けるため、正規手順は [deployment.md](../guides/deployment.md) の **Pi5 のみ `--limit raspberrypi5`** デプロイで vault→`docker.env.j2`→`.env` を再生成すること。
+
 ##### Troubleshooting（開発・型）
 
 | 症状 | 想定原因 | 対処 |
@@ -239,6 +253,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 | 症状 | 想定原因 | 対処 |
 |------|----------|------|
+| 類似候補は良いのに本番ラベルが収束しない（active 期待時） | **アクティブ補助 OFF**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=false`）なら、候補が良くても **1 回目 VLM のまま**。ギャラリー行数は足りていても **active=false では直採用されない** | API コンテナ `printenv` で **ACTIVE**。canonical ごとの行数切り分け・手動有効化は「本番オペレーション: アクティブ補助の有効化（2026-04-09）」節 |
 | 類似候補は良いのに shadow が増えない | **管理 UI 表示**は `PHOTO_TOOL_SIMILARITY_MAX_COSINE_DISTANCE`（広め）、シャドーは `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE`（狭め）等で **別閾値**。近傍数・ラベル収束条件も追加フィルタ | 期待どおりの可能性大。シャドー観測を増やすなら env を段階調整し、別 ADR で根拠を残す |
 | ログに shadow が一切出ない | シャドー OFF、埋め込み OFF、または補助条件未満（近傍不足・canonical 不一致・距離超過） | `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED` と `PHOTO_TOOL_EMBEDDING_ENABLED` を確認。debug ログで `skipped` の `reason` を見る |
 | VLM 負荷が急増 | シャドー ON で対象ローンが多い | しきい値を厳しくするか、シャドーを限定時間のみ ON。別 ADR で active 化を検討する前にログ評価 |
