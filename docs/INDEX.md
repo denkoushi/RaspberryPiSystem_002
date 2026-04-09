@@ -47,6 +47,7 @@
 
 ### 🆕 最新アップデート（2026-04-09）
 
+- **キオスク要領書ビューア: 縦スクロール安定化（Pi5 のみデプロイ・Phase12 PASS 43/0/0・手動は Pi4 スクロール目視）**: ブランチ `fix/kiosk-documents-viewer-scroll-stability`・Detach `20260409-185355-5342`・CI は **CVE-2026-39883** を `.trivyignore` 暫定。[KB-313](./knowledge-base/KB-313-kiosk-documents.md)・[kiosk-documents.md](./runbooks/kiosk-documents.md)・[knowledge-base/index.md](./knowledge-base/index.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **写真持出 VLM: 本番 Pi5 でアクティブ補助を有効化（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`）・vault / `infrastructure/docker/.env`・`docker compose … --force-recreate api`・実測ではギャラリー行数（例: canonical 8 行）ではなく **active OFF** が未採用の主因だった例**: 仕様差（類似候補 0.22 vs 補助 0.14）、切り分け、バックアップ命名、恒久は Ansible 再適用。[KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「本番オペレーション: アクティブ補助の有効化（Pi5・2026-04-09）」・[deployment.md](./guides/deployment.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)（Next Steps「アクティブ補助 運用フォロー」）。
 
 ### 🆕 最新アップデート（2026-04-08）
