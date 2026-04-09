@@ -812,6 +812,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-04-09）: **写真持出 VLM の類似候補**は管理 UI 上良好でも、**本番 `Loan.photoToolDisplayName` の収束 canonical 直採用**は **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`** 等の別条件が必要。実測では canonical **`リングゲージ`** の `photo_tool_similarity_gallery` 行数が **8**（active ゲート既定 **5** 以上）なのに **`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=false`** のみが効いており、**ギャラリー件数不足ではなく active OFF がボトルネック**だった。**記録**: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md)（本番オペレーション 2026-04-09）/ [deployment.md](./docs/guides/deployment.md)。
 - 観測（2026-04-08）: **型落ち Android + `/signage-lite`** で、**`current-image` 直 URL は 200 なのに SPA ページだけ古い／エラー表示**が残ることがある。**切り分け**: 端末登録は済んでいるか（401 は **`heartbeat` 未実施**が典型）。ページのみ異常なら **Chrome のサイトデータ／キャッシュ削除**を試す（`localStorage` とキャッシュの不整合）。**記録**: [KB-337](./docs/knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome) / [signage-client-setup.md](./docs/guides/signage-client-setup.md#android-signage-lite)。
 - 観測（2026-04-07）: **Pi5 を含む初回相当のデプロイ**では、`server : Rebuild/Restart docker compose services` の裏で **Playwright Chromium ダウンロード**が走り、`update-all-clients.sh --detach --follow` の表向きログがしばらく止まって見えることがある。Pi5 上で **`playwright install chromium`** / **`docker-buildx`** が動いていれば異常停止ではなく、完了まで待つのが正しい。**関連**: [KB-334](./docs/knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md) / [deployment.md](./docs/guides/deployment.md)。
 - 観測（2026-04-03）: **新しい bind mount を足した直後の rerun** では、host 側ディレクトリが無いと Docker が **`api/web` を `Created` のまま**残し、Ansible の `prisma migrate deploy` が **`service "api" is not running`** で落ちる。さらに当時の `update-all-clients.sh` remote summary は `PLAY RECAP` 行の空白解析不備で **`failed=1` を success 扱い**し得た。**対処**: server ロールで host dir 作成 + migrate 前 `docker compose ... up -d api web`、成功判定は **`PLAY RECAP` 正本** + summary JSON 整合で見る。**記録**: [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md) / [KB-329](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-329-部品測定図面ストレージ修正後の-pi5-rerun-で-api-が-created-のまま残りsummary-が失敗を-success-扱いした) / [deployment.md](./docs/guides/deployment.md)。
@@ -1073,6 +1074,8 @@
 
 ## Decision Log
 
+- 決定（2026-04-09・運用）: **本番 Pi5** で写真持出 **VLM アクティブ補助**を **有効化**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`）。**手順**は vault + `infrastructure/docker/.env` + API `force-recreate`（当日実施）とし、**恒久**は Ansible **`--limit raspberrypi5`** で生成物と揃え、手編集ドリフトを避ける。  
+  参照: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [deployment.md](./docs/guides/deployment.md)
 - 決定（2026-04-03）: **新しい host bind mount を本番へ入れる変更**では、Ansible 側で **host ディレクトリ作成**と **`prisma migrate deploy` 前の `docker compose ... up -d api web`** を同一変更として扱う。デプロイ成否の正本は **`PLAY RECAP failed=0/unreachable=0`** とし、summary JSON は補助証跡に留める。  
   理由: `Created` に残ったコンテナと recap 解析不備が重なると、「デプロイ失敗なのに success に見える」運用事故が起こるため。  
   参照: [KB-329](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-329-部品測定図面ストレージ修正後の-pi5-rerun-で-api-が-created-のまま残りsummary-が失敗を-success-扱いした) / [deployment.md](./docs/guides/deployment.md) / [KB-320](./docs/knowledge-base/KB-320-kiosk-part-measurement.md)
@@ -1768,6 +1771,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 写真持出 VLM アクティブ補助 運用フォロー（2026-04-09 本番有効化後）
+
+参照: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md)・[verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.8（active 環境のログ確認）・[ADR-20260404](./docs/decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)。
+
+**候補タスク**:
+
+1. **実負荷スモーク**: 新規写真持出で API ログに **`ASSIST_ACTIVE_CONVERGED`** 相当（`activePersistApplied: true`・`convergedPersistLabel` 等）が期待どおり出るか観測する。
+2. **誤採用監視**: 収束ラベルが意図とずれた場合は **閾値**（`PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE` 等）・**`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS`**・active フラグの段階運用を検討し、判断は ADR/KB に残す。
+3. **構成の正**: Pi5 の **`host_vars/.../vault.yml` と `docker/.env` が Ansible 再デプロイ後も一致しているか**を次回 `--limit raspberrypi5` 時に確認し、手編集ドリフトを解消する。
 
 ### サイネージ `kiosk_leader_order_cards` 運用フォロー（2026-04-08 反映後）
 

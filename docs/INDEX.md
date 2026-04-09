@@ -45,6 +45,10 @@
 - **サイネージ（貸出グリッド描画エンジン）**: [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md)（`SIGNAGE_LOAN_GRID_ENGINE`: `svg_legacy` 既定・`playwright_html` オプトイン・Docker/Ansible 配線）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-04-09）
+
+- **写真持出 VLM: 本番 Pi5 でアクティブ補助を有効化（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`）・vault / `infrastructure/docker/.env`・`docker compose … --force-recreate api`・実測ではギャラリー行数（例: canonical 8 行）ではなく **active OFF** が未採用の主因だった例**: 仕様差（類似候補 0.22 vs 補助 0.14）、切り分け、バックアップ命名、恒久は Ansible 再適用。[KB-319](./knowledge-base/KB-319-photo-loan-vlm-tool-label.md)「本番オペレーション: アクティブ補助の有効化（Pi5・2026-04-09）」・[deployment.md](./guides/deployment.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)（Next Steps「アクティブ補助 運用フォロー」）。
+
 ### 🆕 最新アップデート（2026-04-08）
 
 - **Android 軽量 `/signage-lite` 実機トラブルシュート（401・`heartbeat`・Chrome サイトデータ／キャッシュ）**: 手順は [signage-client-setup.md](./guides/signage-client-setup.md#android-signage-lite) の「トラブルシュート」節・[KB-337](./knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome)。
