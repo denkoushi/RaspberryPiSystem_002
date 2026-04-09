@@ -18,6 +18,10 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
 ```
 
+## 本番デプロイ（キオスク **要領書ビューア**・`apps/web` のみ・Pi5 配信）
+
+- **運用確認（2026-04-09）**: キオスク `/kiosk/documents` の **縦スクロール安定化**（`useKioskDocumentNearVisibleRows`・`KioskDocumentViewerPageRow`・`kioskDocumentViewerVisibility.ts`）。ブランチ **`fix/kiosk-documents-viewer-scroll-stability`**。**Pi5 のみ** `--limit raspberrypi5`・Detach **`20260409-185355-5342`**（**`PLAY RECAP` `failed=0`**・所要 **約 7 分**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **120s**）。**Pi4 Ansible は不要**（SPA は Pi5 の `web` コンテナから配信。[deployment.md](../guides/deployment.md) の **Web のみ・Pi5 のみ**判断と同型）。CI は web イメージ Trivy 向け **`.trivyignore`（CVE-2026-39883）** を含む。**手動（推奨）**: 各 Pi4 Firefox で長文書をスクロールし、**ガタつき・行高の跳ね**が改善しているか目視。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
+
 ## 本番デプロイ（要領書**管理画面**のみ・`apps/web` のみの変更時）
 
 - **影響ホスト**: 管理コンソールの Web バンドルは **Pi5（`raspberrypi5`）** に載るため、通常は **Pi5 のみ**で足りる（[deployment.md](../guides/deployment.md) の **「Webアプリのみ: … Pi5 のみ」** の判断と同型）。
