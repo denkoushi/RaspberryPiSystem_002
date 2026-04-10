@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { BackupConfigSchema, type BackupConfig, defaultBackupConfig, type CsvImportTarget } from './backup-config.js';
+import { findMissingRecommendedBackupTargets } from './backup-recommended-targets.catalog.js';
 import { logger } from '../../lib/logger.js';
 import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { writeDebugLog } from '../../lib/debug-log.js';
@@ -412,7 +413,7 @@ export class BackupConfigLoader {
   static async checkHealth(): Promise<{
     status: 'healthy' | 'warning' | 'error';
     issues: Array<{
-      type: 'collision' | 'drift' | 'missing';
+      type: 'collision' | 'drift' | 'missing' | 'coverage_gap';
       severity: 'warning' | 'error';
       message: string;
       details?: Record<string, unknown>;
@@ -420,12 +421,13 @@ export class BackupConfigLoader {
   }> {
     const configPath = process.env.BACKUP_CONFIG_PATH || this.configPath || '/app/config/backup.json';
     this.configPath = configPath;
-    const issues: Array<{
-      type: 'collision' | 'drift' | 'missing';
+    type HealthIssue = {
+      type: 'collision' | 'drift' | 'missing' | 'coverage_gap';
       severity: 'warning' | 'error';
       message: string;
       details?: Record<string, unknown>;
-    }> = [];
+    };
+    const issues: HealthIssue[] = [];
 
     try {
       // 設定ファイルを読み込む（環境変数解決前の生データも必要）
@@ -433,9 +435,24 @@ export class BackupConfigLoader {
       const configJson = JSON.parse(configContent);
       const config = await this.load();
 
+      for (const gap of findMissingRecommendedBackupTargets(config)) {
+        issues.push({
+          type: 'coverage_gap',
+          severity: 'warning',
+          message: `推奨バックアップ対象が未登録です: ${gap.message}`,
+          details: {
+            recommendationId: gap.id,
+            suggestedTarget: gap.target,
+          },
+        });
+      }
+
       const opts = config.storage.options;
       if (!opts) {
-        return { status: 'healthy', issues: [] };
+        const hasError = issues.some((issue) => issue.severity === 'error');
+        const hasWarning = issues.some((issue) => issue.severity === 'warning');
+        const status = hasError ? 'error' : hasWarning ? 'warning' : 'healthy';
+        return { status, issues };
       }
 
       // 1. 衝突検出: 旧キーと新構造の両方に値がある場合

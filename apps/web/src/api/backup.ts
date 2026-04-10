@@ -517,7 +517,7 @@ export async function refreshGmailToken(): Promise<GmailOAuthRefreshResponse> {
 
 // バックアップ設定の健全性チェックAPI
 export interface BackupConfigHealthIssue {
-  type: 'collision' | 'drift' | 'missing';
+  type: 'collision' | 'drift' | 'missing' | 'coverage_gap';
   severity: 'warning' | 'error';
   message: string;
   details?: Record<string, unknown>;

@@ -45,6 +45,10 @@
 - **サイネージ（貸出グリッド描画エンジン）**: [ADR-20260405](./decisions/ADR-20260405-signage-loan-grid-render-engine.md)（`SIGNAGE_LOAN_GRID_ENGINE`: `svg_legacy` 既定・`playwright_html` オプトイン・Docker/Ansible 配線）
 - **Tailnet ポリシー台帳**: [tailscale-policy.md](./security/tailscale-policy.md)
 
+### 🆕 最新アップデート（2026-04-10）
+
+- **Dropbox バックアップ: 推奨永続対象カタログと `GET /api/backup/config/health` の `coverage_gap`（warning）、管理UIで未登録候補表示**: `backup.json` 互換維持・派生キャッシュ除外・既存 disabled の enabled 変更なし。詳細は [KB-338](./knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap) / [api/backup.md](./api/backup.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)（Decision Log 2026-04-10）。
+
 ### 🆕 最新アップデート（2026-04-09）
 
 - **キオスク「集計」写真タブ: `items/loan-analytics` を VLM/人レビュー表示名集計に変更・`main` `3a722c8d`・本番 Pi5 のみ Detach `20260409-222053-14442`・Phase12 43/0/0**: 仕様・TS・スモークは [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。

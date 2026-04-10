@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { BackupConfigLoader } from '../backup-config.loader';
+import { getRecommendedBackupTargetCatalog } from '../backup-recommended-targets.catalog';
 
 const tmpDir = () => path.join(os.tmpdir(), `backup-config-loader-test-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
@@ -143,6 +144,79 @@ describe('BackupConfigLoader.save legacy keys cleanup', () => {
 
     // legacy dropbox key remains (gmail cleanup should not remove it)
     expect(saved.storage.options.accessToken).toBe('LEGACY_DROPBOX_ACCESS_SHOULD_REMAIN');
+  });
+});
+
+describe('BackupConfigLoader.checkHealth recommended targets', () => {
+  let workDir: string;
+  let configPath: string;
+
+  afterEach(async () => {
+    delete process.env.BACKUP_CONFIG_PATH;
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  });
+
+  it('emits coverage_gap warnings when recommended targets are missing', async () => {
+    workDir = tmpDir();
+    configPath = path.join(workDir, 'backup.json');
+    await fs.mkdir(workDir, { recursive: true });
+    process.env.BACKUP_CONFIG_PATH = configPath;
+    BackupConfigLoader.setConfigPath(configPath);
+
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({
+        storage: {
+          provider: 'dropbox',
+          options: {
+            basePath: '/unit-test',
+            dropbox: {
+              appKey: 'KEY',
+              appSecret: 'SEC',
+            },
+          },
+        },
+        targets: [{ kind: 'file', source: '/tmp/x', enabled: true }],
+      }),
+      'utf-8'
+    );
+
+    const health = await BackupConfigLoader.checkHealth();
+    const gaps = health.issues.filter((i) => i.type === 'coverage_gap');
+    expect(gaps.length).toBeGreaterThan(0);
+    expect(health.status === 'warning' || health.status === 'error').toBe(true);
+    expect(gaps[0]?.details?.recommendationId).toBeDefined();
+    expect(gaps[0]?.details?.suggestedTarget).toBeDefined();
+  });
+
+  it('does not emit coverage_gap when all recommended targets exist', async () => {
+    workDir = tmpDir();
+    configPath = path.join(workDir, 'backup.json');
+    await fs.mkdir(workDir, { recursive: true });
+    process.env.BACKUP_CONFIG_PATH = configPath;
+    BackupConfigLoader.setConfigPath(configPath);
+
+    const targets = getRecommendedBackupTargetCatalog().map((c) => c.target);
+    await fs.writeFile(
+      configPath,
+      JSON.stringify({
+        storage: {
+          provider: 'dropbox',
+          options: {
+            basePath: '/unit-test',
+            dropbox: {
+              appKey: 'KEY',
+              appSecret: 'SEC',
+            },
+          },
+        },
+        targets,
+      }),
+      'utf-8'
+    );
+
+    const health = await BackupConfigLoader.checkHealth();
+    expect(health.issues.filter((i) => i.type === 'coverage_gap')).toHaveLength(0);
   });
 });
 

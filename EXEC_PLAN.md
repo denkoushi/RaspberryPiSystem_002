@@ -1077,6 +1077,7 @@
 
 ## Decision Log
 
+- 決定（2026-04-10）: **Dropbox バックアップ**で、永続・一次資産の取りこぼしを運用上検知するため、コード側に**推奨バックアップ対象カタログ**（`backup-recommended-targets.catalog.ts`）を置き、`GET /api/backup/config/health` に **`coverage_gap`（warning）** を追加した。`backup.json` スキーマは変更しない。再生成可能キャッシュ（例: `pdf-pages`, `signage-rendered`）は対象外。既存で意図的に無効なターゲット（`photo-storage`, `/app/storage/pdfs` 等）は **enabled をカタログで変更せず**、同一 `kind`+`source` が存在すれば推奨未充足扱いにしない。管理UIで未登録候補と追加導線を表示。詳細は [KB-338](./docs/knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap) / [api/backup.md](./docs/api/backup.md)（`GET /api/backup/config/health`） 。
 - 決定（2026-04-09・運用）: **本番 Pi5** で写真持出 **VLM アクティブ補助**を **有効化**（`PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=true`）。**手順**は vault + `infrastructure/docker/.env` + API `force-recreate`（当日実施）とし、**恒久**は Ansible **`--limit raspberrypi5`** で生成物と揃え、手編集ドリフトを避ける。  
   参照: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md) / [deployment.md](./docs/guides/deployment.md)
 - 決定（2026-04-03）: **新しい host bind mount を本番へ入れる変更**では、Ansible 側で **host ディレクトリ作成**と **`prisma migrate deploy` 前の `docker compose ... up -d api web`** を同一変更として扱う。デプロイ成否の正本は **`PLAY RECAP failed=0/unreachable=0`** とし、summary JSON は補助証跡に留める。  

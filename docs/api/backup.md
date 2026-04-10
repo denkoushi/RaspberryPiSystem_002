@@ -1,6 +1,6 @@
 # バックアップAPI
 
-最終更新: 2026-02-08（設定履歴/テンプレ/ドライラン/事前バックアップ/自動検証を反映）
+最終更新: 2026-04-10（健全性 `coverage_gap`・推奨バックアップ対象カタログを反映）
 
 ## 概要
 
@@ -424,7 +424,42 @@ DELETE /api/backup/%2Fbackups%2Fdatabase%2F2025-12-29T00-00-01-695Z%2Fborrow_ret
 
 #### GET /api/backup/config/health
 
-設定の衝突/欠落などの健全性チェック結果を返します（管理コンソールの健全性表示で使用）。
+設定の衝突/欠落/推奨対象との差分などの健全性チェック結果を返します（管理コンソールの健全性表示で使用）。
+
+**レスポンス**（`status` が `error` のとき HTTP `500`、それ以外は `200`）
+
+```json
+{
+  "status": "healthy" | "warning" | "error",
+  "issues": [
+    {
+      "type": "collision" | "drift" | "missing" | "coverage_gap",
+      "severity": "warning" | "error",
+      "message": "人が読む説明",
+      "details": {}
+    }
+  ]
+}
+```
+
+**`issues[].type` の意味**
+
+| type | severity（典型） | 概要 |
+|------|------------------|------|
+| `collision` | warning | 旧フラットキーと `storage.options.dropbox.*` / `gmail.*` 等の新構造に両方値があり不整合 |
+| `drift` | warning | 環境変数参照と実ファイルの値の食い違い |
+| `missing` | warning / error | 必須 OAuth 設定などの欠落 |
+| `coverage_gap` | **warning** | **推奨バックアップ対象カタログ**に含まれる **永続・一次資産** 相当の `kind`+`source` が `targets` に無い（`enabled: false` であっても **同一 kind+source があれば未登録扱いしない**） |
+
+**`coverage_gap` の `details`（運用・UI連携用）**
+
+- `recommendationId`（string）: カタログ上の推奨ID
+- `suggestedTarget`（object）: 追加提案用のターゲット断片（`kind`, `source`, `schedule`, `enabled`, `storage`, `retention`, `metadata` 等。管理UIの「追加」でそのままマージ可能な形）
+
+**除外方針（カタログ）**
+
+- 再生成可能な派生物（例: `pdf-pages`, `signage-rendered`）は推奨対象に含めず、警告のノイズを避ける。
+- 意図的に無効化しているターゲット（例: `photo-storage`, `/app/storage/pdfs`）の **enabled 変更はカタログの責務外**（既存 `kind`+`source` があれば `coverage_gap` にならない）。
 
 ---
 
