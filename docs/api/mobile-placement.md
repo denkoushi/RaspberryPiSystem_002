@@ -30,7 +30,7 @@ JSON:
 }
 ```
 
-`csvDashboardRowId` 指定時は、スキャン値が当該行の `ProductNo` / `FSEIBAN` / `FHINCD` のいずれか、または解決済み `itemCode` と一致すること。
+`csvDashboardRowId` 指定時は、(1) スキャン値が当該行の `ProductNo` / `FSEIBAN` / `FHINCD` のいずれかと一致する、または (2) マスタへ解決した **`Item.itemCode` が、上記3フィールドのいずれかと一致**すること（**行と無関係な `itemCode` のみの一致では `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**）。
 
 ## 関連
 
