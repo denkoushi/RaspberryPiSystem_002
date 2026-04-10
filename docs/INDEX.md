@@ -47,6 +47,7 @@
 
 ### 🆕 最新アップデート（2026-04-10）
 
+- **Dropbox バックアップ（推奨カタログ・`coverage_gap`）本番反映: Pi5 のみデプロイ・Phase12 43/0/0**: ブランチ `feat/backup-recommended-target-audit` を **`--limit raspberrypi5`** で適用。**Detach Run ID**: `20260410-191940-18752`。実機スモーク: `/api/backup/config/health/internal` で `coverage_gap` 確認。詳細は [KB-338](./knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap) / [deployment.md](./guides/deployment.md)。
 - **Dropbox バックアップ: 推奨永続対象カタログと `GET /api/backup/config/health` の `coverage_gap`（warning）、管理UIで未登録候補表示**: `backup.json` 互換維持・派生キャッシュ除外・既存 disabled の enabled 変更なし。詳細は [KB-338](./knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap) / [api/backup.md](./api/backup.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)（Decision Log 2026-04-10）。
 
 ### 🆕 最新アップデート（2026-04-09）

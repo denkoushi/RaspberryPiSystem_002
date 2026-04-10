@@ -1068,6 +1068,14 @@ update-frequency: medium
 
 **Verification**: API 単体テスト（`backup-recommended-targets.catalog.test.ts`, `backup-config.loader.test.ts` の coverage 系）。実機は `GET /api/backup/config/health` で `coverage_gap` の有無を確認。
 
+**本番デプロイ・実機検証（2026-04-10・Pi5 のみ）**:
+- **対象**: **`raspberrypi5` のみ**（API + 管理 Web。Pi4/Pi3 はコード未配布・**Pi3 専用手順は不要**）。
+- **手順**: [deployment.md](../../guides/deployment.md) 標準。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/backup-recommended-target-audit infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**1 台のみ**のため順次は 1 回）。
+- **Detach Run ID**: `20260410-191940-18752`（**`PLAY RECAP` `failed=0` / `unreachable=0`**・exit **`0`**）。
+- **Phase12**: Mac / Tailscale で `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**）。
+- **スモーク（本機能）**: Pi5 上で `curl -sk https://localhost/api/backup/config/health/internal` → JSON に **`issues[].type":"coverage_gap"`** と **`details.suggestedTarget`** が含まれる（未登録候補がある限り **`status":"warning"`**。候補を `backup.json` に足すと当該 `kind`+`source` は **`coverage_gap` から消える**）。
+- **トラブルシュート**: `coverage_gap` は **障害ではなく警告**（`collision` / `drift` 等と分離して管理 UI 表示）。派生キャッシュはカタログ対象外のため **意図的に警告にならない**。
+
 **References**:
 - [api/backup.md](../../api/backup.md#get-apibackupconfighealth)
 - `apps/api/src/services/backup/backup-recommended-targets.catalog.ts`
