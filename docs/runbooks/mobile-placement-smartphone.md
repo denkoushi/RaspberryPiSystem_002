@@ -2,6 +2,14 @@
 
 最終更新: 2026-04-10
 
+## 0. 本番デプロイ後の確認（運用）
+
+**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。**2026-04-10**: `main` **`8e1d0e3f`** を上記順で反映済み。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`（**PASS 43 / WARN 0 / FAIL 0** 相当を確認）。API の spot check（`x-client-key` は端末の `apiKey`）:
+
+```bash
+curl -sk "https://<Pi5>/api/mobile-placement/resolve-item?barcode=<itemCode>" -H "x-client-key: <key>"
+```
+
 ## 前提
 
 - Pi5 が稼働し、通常どおり **HTTPS** で API/Web が応答すること
@@ -31,6 +39,7 @@
 - **401 / 無効なクライアントキー**: `heartbeat` 未登録、または `x-client-key` と URL の `clientKey` がずれている
 - **ネットワーク不可**: Tailscale 未接続、ACL で 443 が拒否、Pi5 停止
 - **登録 404（工具マスタに無い）**: `itemCode` とラベルを揃える（KB-339）
+- **400 `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**: 一覧で選んだ行と **別の工具**をスキャンした。スキャン値が当該行の **`ProductNo` / `FSEIBAN` / `FHINCD`** のいずれかと一致するか、`Item.itemCode` がそれらのいずれかと一致する必要がある（**行と無関係な `itemCode` だけ一致**では弾く）
 
 ## 5. API 契約
 
