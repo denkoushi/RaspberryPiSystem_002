@@ -18,3 +18,5 @@ CVE-2026-25679
 CVE-2026-27137
 CVE-2026-30836
 CVE-2026-39883
+# Alpine openssl (libcrypto3/libssl3) in web image; fixed upstream 3.5.6-r0 — refresh base when CI image rebases
+CVE-2026-28390

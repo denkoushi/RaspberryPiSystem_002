@@ -45,6 +45,19 @@ const templates: BackupTargetTemplate[] = [
       enabled: true,
       storage: { provider: 'local' }
     }
+  },
+  {
+    id: 'part-measurement-drawings-dir',
+    label: '部品測定図面ストレージ',
+    description: '/app/storage/part-measurement-drawings を日次バックアップ（永続ボリューム）',
+    target: {
+      kind: 'directory',
+      source: '/app/storage/part-measurement-drawings',
+      schedule: '0 2 * * *',
+      enabled: true,
+      storage: { provider: 'dropbox' },
+      retention: { days: 14, maxBackups: 4 }
+    }
   }
 ];
 

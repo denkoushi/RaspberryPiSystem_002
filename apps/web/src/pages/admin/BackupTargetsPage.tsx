@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useBackupConfig, useBackupConfigMutations, useBackupConfigHealth, useBackupTargetTemplates } from '../../api/hooks';
@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useConfirm } from '../../contexts/ConfirmContext';
 
-import type { BackupTarget } from '../../api/backup';
+import type { BackupConfigHealthIssue, BackupTarget } from '../../api/backup';
 
 export function BackupTargetsPage() {
   const { data: config, isLoading } = useBackupConfig();
@@ -24,32 +24,8 @@ export function BackupTargetsPage() {
   const targets = config?.targets ?? [];
   const templates = templatesData?.templates ?? [];
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
-
-  // #region agent log
-  useEffect(() => {
-    const currentTargets = config?.targets ?? [];
-    const enabledWithSchedule = currentTargets.filter((t) => t.enabled && !!t.schedule).length;
-    const enabledTotal = currentTargets.filter((t) => t.enabled).length;
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'A',
-        location: 'BackupTargetsPage.tsx:targets-summary',
-        message: 'BackupTargetsPage loaded targets summary',
-        data: {
-          targetsTotal: currentTargets.length,
-          enabledTotal,
-          enabledWithSchedule,
-          storageProvider: config?.storage?.provider ?? null
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-  }, [config]);
-  // #endregion
+  const coverageGapIssues = health?.issues.filter((i) => i.type === 'coverage_gap') ?? [];
+  const otherHealthIssues = health?.issues.filter((i) => i.type !== 'coverage_gap') ?? [];
 
   const handleToggleEnabled = async (index: number) => {
     const target = targets[index];
@@ -111,6 +87,41 @@ export function BackupTargetsPage() {
   const handleEdit = async (index: number, target: Partial<BackupTarget>) => {
     await updateTarget.mutateAsync({ index, target });
     setEditingIndex(null);
+  };
+
+  const parseSuggestedTargetFromHealthIssue = (issue: BackupConfigHealthIssue): BackupTarget | null => {
+    const raw = issue.details?.suggestedTarget;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return null;
+    }
+    const o = raw as Record<string, unknown>;
+    if (typeof o.kind !== 'string' || typeof o.source !== 'string') {
+      return null;
+    }
+    return {
+      kind: o.kind as BackupTarget['kind'],
+      source: o.source,
+      schedule: typeof o.schedule === 'string' ? o.schedule : undefined,
+      enabled: typeof o.enabled === 'boolean' ? o.enabled : true,
+      storage: o.storage as BackupTarget['storage'],
+      retention: o.retention as BackupTarget['retention'],
+      metadata: o.metadata as BackupTarget['metadata'],
+    };
+  };
+
+  const handleAddSuggestedTarget = async (issue: BackupConfigHealthIssue) => {
+    const payload = parseSuggestedTargetFromHealthIssue(issue);
+    if (!payload) {
+      alert('追加用ターゲットが不正です。APIを確認してください。');
+      return;
+    }
+    try {
+      await addTarget.mutateAsync(payload);
+      alert('バックアップ対象を追加しました');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '追加に失敗しました';
+      alert(`エラー: ${errorMessage}`);
+    }
   };
 
   const getKindLabel = (kind: BackupTarget['kind']) => {
@@ -303,15 +314,55 @@ export function BackupTargetsPage() {
         </div>
       }
     >
-      {/* ヘルスチェック結果の表示 */}
-      {!isHealthLoading && health && health.issues.length > 0 && (
+      {/* 推奨ターゲットの取りこぼし（API health の coverage_gap） */}
+      {!isHealthLoading && coverageGapIssues.length > 0 && (
+        <div className="mb-4 rounded-md border-2 border-sky-200 bg-sky-50 p-4">
+          <div className="mb-1 font-semibold text-slate-900">推奨だが未登録のバックアップ対象</div>
+          <p className="mb-3 text-xs text-slate-600">
+            永続ストレージや増設キオスク向けの推奨セットです。追加は API 経由で{' '}
+            <code className="rounded bg-white px-1 text-slate-800">backup.json</code> に1件反映されます（同一 kind+
+            source は 409）。
+          </p>
+          <ul className="space-y-2">
+            {coverageGapIssues.map((issue, index) => {
+              const st = parseSuggestedTargetFromHealthIssue(issue);
+              return (
+                <li
+                  key={`${issue.details?.recommendationId ?? index}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 bg-white p-2 text-sm"
+                >
+                  <div>
+                    <div className="font-medium text-slate-800">{issue.message}</div>
+                    {st && (
+                      <div className="mt-1 font-mono text-xs text-slate-600">
+                        {st.kind} — {st.source}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void handleAddSuggestedTarget(issue)}
+                    disabled={addTarget.isPending || !st}
+                    className="px-2 py-1 text-sm"
+                  >
+                    追加
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* ヘルスチェック結果の表示（coverage_gap 以外） */}
+      {!isHealthLoading && health && otherHealthIssues.length > 0 && (
         <div className={`mb-4 rounded-md border-2 p-4 ${getStatusColor(health.status)}`}>
           <div className="flex items-center gap-2 mb-2">
             <span className="font-semibold">設定の健全性: {getStatusLabel(health.status)}</span>
-            <span className="text-xs">({health.issues.length}件の問題を検出)</span>
+            <span className="text-xs">({otherHealthIssues.length}件の問題を検出)</span>
           </div>
           <div className="space-y-2">
-            {health.issues.map((issue, index) => (
+            {otherHealthIssues.map((issue, index) => (
               <div key={index} className="text-sm">
                 <div className="font-semibold">{issue.severity === 'error' ? '❌' : '⚠️'} {issue.message}</div>
                 {issue.details && (
