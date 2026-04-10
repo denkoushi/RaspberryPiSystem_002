@@ -20,6 +20,7 @@ import { registerVisualizationRoutes } from './visualizations/index.js';
 import { registerProductionScheduleSettingsRoutes } from './production-schedule-settings.js';
 import { registerKioskDocumentRoutes } from './kiosk-documents.js';
 import { registerPartMeasurementRoutes } from './part-measurement/index.js';
+import { registerMobilePlacementRoutes } from './mobile-placement/index.js';
 
 /**
  * すべてのルートを登録
@@ -44,6 +45,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerKioskRoutes(subApp);
       registerKioskDocumentRoutes(subApp);
       await registerPartMeasurementRoutes(subApp);
+      await registerMobilePlacementRoutes(subApp);
       await registerImportRoutes(subApp);
       await registerStorageRoutes(subApp);
       await registerSignageRoutes(subApp);

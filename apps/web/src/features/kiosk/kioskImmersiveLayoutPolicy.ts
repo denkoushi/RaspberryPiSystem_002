@@ -17,6 +17,8 @@ export function normalizeKioskPathname(pathname: string): string {
 /** 子パスを含めて沉浸式にする接頭辞 */
 const KIOSK_PART_MEASUREMENT_PREFIX = '/kiosk/part-measurement';
 
+const KIOSK_MOBILE_PLACEMENT_PREFIX = '/kiosk/mobile-placement';
+
 const IMMERSIVE_PATH_EXACT = new Set([
   '/kiosk/tag',
   '/kiosk/instruments/borrow',
@@ -39,5 +41,6 @@ export function usesKioskImmersiveLayout(pathname: string): boolean {
   if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
+  if (p === KIOSK_MOBILE_PLACEMENT_PREFIX || p.startsWith(`${KIOSK_MOBILE_PLACEMENT_PREFIX}/`)) return true;
   return IMMERSIVE_PATH_EXACT.has(p);
 }

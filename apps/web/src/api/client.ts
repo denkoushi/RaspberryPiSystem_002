@@ -770,6 +770,54 @@ export async function getKioskProductionSchedule(params?: {
   return data;
 }
 
+/** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
+export async function getMobilePlacementSchedule(params?: {
+  productNo?: string;
+  q?: string;
+  productNos?: string;
+  resourceCds?: string;
+  resourceAssignedOnlyCds?: string;
+  resourceCategory?: 'grinding' | 'cutting';
+  machineName?: string;
+  hasNoteOnly?: boolean;
+  hasDueDateOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+  allowResourceOnly?: boolean;
+  targetDeviceScopeKey?: string;
+}) {
+  const { data } = await api.get<ProductionScheduleListResponse>('/mobile-placement/schedule', { params });
+  return data;
+}
+
+export async function resolveMobilePlacementItem(barcode: string) {
+  const { data } = await api.get<{
+    item: { id: string; itemCode: string; name: string; storageLocation: string | null } | null;
+    matchKind: 'itemCode' | 'none';
+  }>('/mobile-placement/resolve-item', { params: { barcode } });
+  return data;
+}
+
+export async function registerMobilePlacement(payload: {
+  shelfCodeRaw: string;
+  itemBarcodeRaw: string;
+  csvDashboardRowId?: string;
+}) {
+  const { data } = await api.post<{
+    event: {
+      id: string;
+      newStorageLocation: string;
+      previousStorageLocation: string | null;
+      itemId: string | null;
+      shelfCodeRaw: string;
+      itemBarcodeRaw: string;
+    };
+    item: { id: string; itemCode: string; name: string; storageLocation: string | null };
+    resolveMatchKind: string;
+  }>('/mobile-placement/register', payload);
+  return data;
+}
+
 export interface KioskProductionScheduleOrderSearchResponse {
   partNameOptions: string[];
   orders: string[];

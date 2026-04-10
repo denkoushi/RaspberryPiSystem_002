@@ -38,6 +38,8 @@ import { KioskPartMeasurementTemplatePickPage } from './pages/kiosk/KioskPartMea
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
+import { MobilePlacementPage } from './pages/kiosk/MobilePlacementPage';
+import { MobilePlacementRegisterPage } from './pages/kiosk/MobilePlacementRegisterPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
 import { ProductionScheduleLeaderOrderBoardPage } from './pages/kiosk/ProductionScheduleLeaderOrderBoardPage';
 import { ProductionScheduleManualOrderPage } from './pages/kiosk/ProductionScheduleManualOrderPage';
@@ -81,6 +83,8 @@ function App() {
           />
           <Route path="/kiosk/production-schedule/progress-overview" element={<ProductionScheduleProgressOverviewPage />} />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
+          <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
+          <Route path="/kiosk/mobile-placement/register" element={<MobilePlacementRegisterPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />
           <Route path="/kiosk/part-measurement/edit/:sheetId" element={<KioskPartMeasurementEditPage />} />

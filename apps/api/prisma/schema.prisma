@@ -121,6 +121,7 @@ model Item {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   loans           Loan[]
+  mobilePlacementEvents MobilePlacementEvent[]
 }
 
 model MeasuringInstrument {
@@ -281,8 +282,30 @@ model ClientDevice {
   transactions            Transaction[]
   partMeasurementSheets   PartMeasurementSheet[] @relation("PartMeasurementSheetOwningDevice")
   partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
+  mobilePlacementEvents   MobilePlacementEvent[]
 
   @@index([statusClientId])
+}
+
+/// 配膳スマホなどによる棚番・現物バーコード配置の履歴（現在値は Item.storageLocation）
+model MobilePlacementEvent {
+  id                      String   @id @default(uuid())
+  clientDeviceId          String
+  shelfCodeRaw            String
+  itemBarcodeRaw          String
+  itemId                  String?
+  csvDashboardRowId       String?
+  scheduleSnapshot        Json?
+  previousStorageLocation String?
+  newStorageLocation      String
+  placedAt                DateTime @default(now())
+  createdAt               DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  item         Item?        @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([clientDeviceId, placedAt])
+  @@index([itemId])
 }
 
 model ClientStatus {

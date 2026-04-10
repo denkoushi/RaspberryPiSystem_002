@@ -36,6 +36,11 @@
 - **運用手順**: [kiosk-documents.md](./runbooks/kiosk-documents.md)
 - **HTML Gmail 取り込み 検証計画**（単体・統合・手動・**2026-04-09 本番: 同名 HTML 別メール上書き実測**）: [kiosk-html-gmail-ingest-verification.md](./plans/kiosk-html-gmail-ingest-verification.md)
 
+### 配膳スマホ（Android・Tailscale）
+
+- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)
+- **バーコード調査ゲート**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)
+
 ### LocalLLM（Ubuntu / Tailscale）
 
 - **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（**トークンローテーション**は同 Runbook の「共有トークンのローテーション」節）

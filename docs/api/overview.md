@@ -94,6 +94,14 @@ APIの大部分のエンドポイントは認証が必要です。JWT（JSON Web
 - `GET /api/backup/oauth/callback` - Dropbox OAuthコールバック
 - `POST /api/backup/oauth/refresh` - Dropbox OAuthトークンリフレッシュ
 
+### 配膳スマホ（mobile-placement）
+
+- `GET /api/mobile-placement/schedule` - 生産スケジュール一覧（キオスク一覧と同等クエリ・要 clientKey）
+- `GET /api/mobile-placement/resolve-item` - バーコードから `Item` を解決（調査: KB-339）
+- `POST /api/mobile-placement/register` - 棚番・アイテムスキャンで `Item.storageLocation` 更新＋履歴
+
+詳細: [api/mobile-placement.md](./mobile-placement.md)
+
 ### クライアント
 
 - `POST /api/clients/heartbeat` - クライアントデバイスのハートビート（既存端末では `name` は上書きせず、`location`/`lastSeenAt` を更新）
