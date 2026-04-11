@@ -1,4 +1,7 @@
-import { listScheduleRowsByProductNo } from '../part-measurement/part-measurement-schedule-lookup.service.js';
+import {
+  listScheduleRowsByFseiban,
+  listScheduleRowsByProductNo
+} from '../part-measurement/part-measurement-schedule-lookup.service.js';
 import { pickPrimaryScheduleRowForOrder } from './mobile-placement-slip-match.js';
 
 /**
@@ -10,5 +13,17 @@ export async function resolveScheduleRowByProductNo(productNoBarcodeRaw: string)
     return null;
   }
   const rows = await listScheduleRowsByProductNo(productNo);
+  return pickPrimaryScheduleRowForOrder(rows);
+}
+
+/**
+ * 製番（FSEIBAN）から日程行を1件解決する。
+ */
+export async function resolveScheduleRowByFseiban(fseibanRaw: string) {
+  const fseiban = fseibanRaw.trim();
+  if (fseiban.length === 0) {
+    return null;
+  }
+  const rows = await listScheduleRowsByFseiban(fseiban);
   return pickPrimaryScheduleRowForOrder(rows);
 }

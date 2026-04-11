@@ -6,6 +6,7 @@ import {
   expectApiError
 } from './helpers.js';
 import { prisma } from '../../lib/prisma.js';
+import { resetImageOcrPortForTests } from '../../services/ocr/image-ocr-runtime.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -13,6 +14,34 @@ process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 process.env.PHOTO_STORAGE_DIR ??= '/tmp/test-mobile-placement';
 process.env.SIGNAGE_RENDER_DIR ??= '/tmp/test-mobile-placement/signage';
+
+/** 1x1 PNG（multipart 用） */
+const MIN_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+function buildMultipartImageField(
+  fieldName: string,
+  filename: string,
+  buf: Buffer,
+  mime: string
+): { body: Buffer; contentType: string } {
+  const boundary = `----testMpImg${Date.now()}`;
+  const crlf = '\r\n';
+  const parts: Buffer[] = [];
+  const push = (s: string) => parts.push(Buffer.from(s, 'utf8'));
+  push(`--${boundary}${crlf}`);
+  push(
+    `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"${crlf}Content-Type: ${mime}${crlf}${crlf}`
+  );
+  parts.push(buf);
+  push(`${crlf}--${boundary}--${crlf}`);
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`
+  };
+}
 
 describe('mobile-placement API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -186,16 +215,17 @@ describe('mobile-placement API', () => {
       },
       payload: {
         transferOrderBarcodeRaw: '999777',
-        transferFhinmeiBarcodeRaw: '部品名一致',
+        transferPartBarcodeRaw: 'H-1',
         actualOrderBarcodeRaw: '999777',
-        actualFhinmeiBarcodeRaw: '部品名一致'
+        actualFseibanRaw: '',
+        actualPartBarcodeRaw: 'H-1'
       }
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true });
   });
 
-  it('POST /api/mobile-placement/verify-slip-match returns FHINMEI mismatch when order exists', async () => {
+  it('POST /api/mobile-placement/verify-slip-match returns part mismatch when order exists', async () => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     await prisma.csvDashboard.upsert({
       where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
@@ -231,13 +261,95 @@ describe('mobile-placement API', () => {
       },
       payload: {
         transferOrderBarcodeRaw: '999778',
-        transferFhinmeiBarcodeRaw: '誤った部品名',
+        transferPartBarcodeRaw: 'WRONG-H-2',
         actualOrderBarcodeRaw: '999778',
-        actualFhinmeiBarcodeRaw: '正しい部品名'
+        actualFseibanRaw: '',
+        actualPartBarcodeRaw: 'H-2'
       }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: false, reason: 'TRANSFER_FHINMEI_MISMATCH' });
+    expect(res.json()).toEqual({ ok: false, reason: 'TRANSFER_PART_MISMATCH' });
+  });
+
+  it('POST /api/mobile-placement/verify-slip-match returns ok when actual slip resolves by FSEIBAN only', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999800',
+          FSEIBAN: 'SEI-FB-ONLY',
+          FHINCD: 'H-80',
+          FHINMEI: '部品A',
+          FSIGENCD: 'G1',
+          FKOJUN: '1'
+        }
+      }
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/verify-slip-match',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        transferOrderBarcodeRaw: '999800',
+        transferPartBarcodeRaw: 'H-80',
+        actualOrderBarcodeRaw: '',
+        actualFseibanRaw: 'SEI-FB-ONLY',
+        actualPartBarcodeRaw: 'H-80'
+      }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+  });
+
+  it('POST /api/mobile-placement/parse-actual-slip-image returns parsed fields with stub OCR', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const prev = process.env.IMAGE_OCR_STUB_TEXT;
+    process.env.IMAGE_OCR_STUB_TEXT = '製造オーダNo 0002178005\n製番 BE1N9321';
+    resetImageOcrPortForTests();
+    try {
+      const { body, contentType } = buildMultipartImageField('image', 't.png', MIN_PNG, 'image/png');
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/mobile-placement/parse-actual-slip-image',
+        headers: {
+          'Content-Type': contentType,
+          'x-client-key': clientApiKey
+        },
+        payload: body
+      });
+      expect(res.statusCode).toBe(200);
+      const j = res.json() as {
+        engine: string;
+        manufacturingOrder10: string | null;
+        fseiban: string | null;
+      };
+      expect(j.engine).toBe('stub');
+      expect(j.manufacturingOrder10).toBe('0002178005');
+      expect(j.fseiban).toBe('BE1N9321');
+    } finally {
+      if (prev === undefined) {
+        delete process.env.IMAGE_OCR_STUB_TEXT;
+      } else {
+        process.env.IMAGE_OCR_STUB_TEXT = prev;
+      }
+      resetImageOcrPortForTests();
+    }
   });
 
   it('POST /api/mobile-placement/register-order-placement creates event without updating Item', async () => {

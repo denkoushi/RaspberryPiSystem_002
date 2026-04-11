@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
 import { useCallback, useMemo, useState } from 'react';
 
-import { registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../api/client';
+import { parseActualSlipImage, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../api/client';
 import {
   BARCODE_FORMAT_PRESET_ALL_COMMON,
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL
@@ -15,11 +15,13 @@ import type { MobilePlacementScanField, MobilePlacementSlipResult } from './type
  */
 export function useMobilePlacementPageState() {
   const [transferOrder, setTransferOrder] = useState('');
-  const [transferFhinmei, setTransferFhinmei] = useState('');
+  const [transferPart, setTransferPart] = useState('');
   const [actualOrder, setActualOrder] = useState('');
-  const [actualFhinmei, setActualFhinmei] = useState('');
+  const [actualFseiban, setActualFseiban] = useState('');
+  const [actualPart, setActualPart] = useState('');
   const [slipResult, setSlipResult] = useState<MobilePlacementSlipResult>('idle');
   const [slipVerifying, setSlipVerifying] = useState(false);
+  const [actualSlipImageOcrBusy, setActualSlipImageOcrBusy] = useState(false);
 
   const [shelfCode, setShelfCode] = useState('');
   const [orderBarcode, setOrderBarcode] = useState('');
@@ -49,14 +51,14 @@ export function useMobilePlacementPageState() {
         case 'transferOrder':
           setTransferOrder(v);
           break;
-        case 'transferFhinmei':
-          setTransferFhinmei(v);
+        case 'transferPart':
+          setTransferPart(v);
           break;
         case 'actualOrder':
           setActualOrder(v);
           break;
-        case 'actualFhinmei':
-          setActualFhinmei(v);
+        case 'actualPart':
+          setActualPart(v);
           break;
         default:
           break;
@@ -67,15 +69,34 @@ export function useMobilePlacementPageState() {
     [scanField]
   );
 
+  const parseActualSlipImageFile = useCallback(async (file: File) => {
+    setActualSlipImageOcrBusy(true);
+    setSlipResult('idle');
+    try {
+      const res = await parseActualSlipImage(file);
+      if (res.manufacturingOrder10) {
+        setActualOrder(res.manufacturingOrder10);
+      }
+      if (res.fseiban) {
+        setActualFseiban(res.fseiban);
+      }
+    } catch {
+      setSlipResult('idle');
+    } finally {
+      setActualSlipImageOcrBusy(false);
+    }
+  }, []);
+
   const runSlipVerify = useCallback(async () => {
     setSlipVerifying(true);
     setSlipResult('idle');
     try {
       const res = await verifyMobilePlacementSlipMatch({
         transferOrderBarcodeRaw: transferOrder,
-        transferFhinmeiBarcodeRaw: transferFhinmei,
+        transferPartBarcodeRaw: transferPart,
         actualOrderBarcodeRaw: actualOrder,
-        actualFhinmeiBarcodeRaw: actualFhinmei
+        actualFseibanRaw: actualFseiban,
+        actualPartBarcodeRaw: actualPart
       });
       setSlipResult(res.ok ? 'ok' : 'ng');
     } catch {
@@ -83,7 +104,7 @@ export function useMobilePlacementPageState() {
     } finally {
       setSlipVerifying(false);
     }
-  }, [transferOrder, transferFhinmei, actualOrder, actualFhinmei]);
+  }, [transferOrder, transferPart, actualOrder, actualFseiban, actualPart]);
 
   const runRegister = useCallback(async () => {
     setRegisterError(null);
@@ -123,21 +144,23 @@ export function useMobilePlacementPageState() {
   const buildShelfRegisterRouteState = useCallback(
     (): MobilePlacementShelfRegisterRouteState => ({
       transferOrder,
-      transferFhinmei,
+      transferPart,
       actualOrder,
-      actualFhinmei,
+      actualFseiban,
+      actualPart,
       slipResult,
       shelfCode,
       orderBarcode
     }),
-    [transferOrder, transferFhinmei, actualOrder, actualFhinmei, slipResult, shelfCode, orderBarcode]
+    [transferOrder, transferPart, actualOrder, actualFseiban, actualPart, slipResult, shelfCode, orderBarcode]
   );
 
   const restoreShelfRegisterRouteState = useCallback((state: MobilePlacementShelfRegisterRouteState) => {
     setTransferOrder(state.transferOrder);
-    setTransferFhinmei(state.transferFhinmei);
+    setTransferPart(state.transferPart);
     setActualOrder(state.actualOrder);
-    setActualFhinmei(state.actualFhinmei);
+    setActualFseiban(state.actualFseiban);
+    setActualPart(state.actualPart);
     setSlipResult(state.slipResult);
     setShelfCode(state.shelfCode);
     setOrderBarcode(state.orderBarcode);
@@ -149,12 +172,14 @@ export function useMobilePlacementPageState() {
   return {
     transferOrder,
     setTransferOrder,
-    transferFhinmei,
-    setTransferFhinmei,
+    transferPart,
+    setTransferPart,
     actualOrder,
     setActualOrder,
-    actualFhinmei,
-    setActualFhinmei,
+    actualFseiban,
+    setActualFseiban,
+    actualPart,
+    setActualPart,
     slipResult,
     resetSlipResult,
     buildShelfRegisterRouteState,
@@ -173,6 +198,8 @@ export function useMobilePlacementPageState() {
     scanField,
     setScanField,
     scanFormats,
-    onScanSuccess
+    onScanSuccess,
+    parseActualSlipImageFile,
+    actualSlipImageOcrBusy
   };
 }

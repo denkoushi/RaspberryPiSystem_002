@@ -24,9 +24,10 @@ export function KioskMobileShelfRegisterPage() {
     ? location.state
     : {
         transferOrder: '',
-        transferFhinmei: '',
+        transferPart: '',
         actualOrder: '',
-        actualFhinmei: '',
+        actualFseiban: '',
+        actualPart: '',
         slipResult: 'idle' as const,
         shelfCode: '',
         orderBarcode: ''

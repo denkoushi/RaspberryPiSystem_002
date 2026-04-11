@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-11
+最終更新: 2026-04-11（現品票画像 OCR・FSEIBAN 照合）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -9,7 +9,7 @@
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
   -H "Content-Type: application/json" -H "x-client-key: <key>" \
-  -d '{"transferOrderBarcodeRaw":"…","transferFhinmeiBarcodeRaw":"…","actualOrderBarcodeRaw":"…","actualFhinmeiBarcodeRaw":"…"}'
+  -d '{"transferOrderBarcodeRaw":"…","transferPartBarcodeRaw":"…","actualOrderBarcodeRaw":"…","actualFseibanRaw":"","actualPartBarcodeRaw":"…"}'
 
 # 登録済み棚（OrderPlacementEvent 由来の distinct。履歴が無いと { "shelves": [] }）
 curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-key: <key>"
@@ -36,9 +36,11 @@ curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-ke
 
 **上半分（照合）**
 
-1. 移動票: 製造order番号・FHINMEI を **1次元バーコード**でスキャン（または手入力）
-2. 現品票: 同様に2本
-3. 「照合」で **OK / NG** を表示（サーバが `FSEIBAN` + `FHINMEI` ペアを突合）
+1. 移動票: 製造order番号・**部品番号（FHINBAN/FHINCD）** を **1次元バーコード**でスキャン（または手入力）
+2. 現品票: **部品番号（FHINBAN 等）** を **1次元バーコード**でスキャン（または手入力）
+3. 現品票の **製造order番号** は印字または **「画像OCR」**で候補取得（**注文番号（9桁）と取り違えないよう**サーバ側パーサで抑制。候補は必ず目視確認）
+4. 製造orderが読めない場合は **製番（FSEIBAN）** を手入力 or OCR 候補で埋める（**`actualOrderBarcodeRaw` 空 + `actualFseibanRaw` で日程解決**）
+5. 「照合」で **OK / NG** を表示（サーバが `FSEIBAN` + `FHINCD` ペアを突合）
 
 **下半分（配膳登録）**
 
@@ -59,7 +61,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-ke
 
 - **401 / 無効なクライアントキー**: `heartbeat` 未登録、または `x-client-key` と URL の `clientKey` がずれている
 - **ネットワーク不可**: Tailscale 未接続、ACL で 443 が拒否、Pi5 停止
-- **照合 NG / reason**: 製造order番号がスケジュールに無い、FHINMEI が行と一致しない、両票の `FSEIBAN` が一致しない等。API 応答の `reason` を参照
+- **照合 NG / reason**: 製造order番号がスケジュールに無い、**部品番号（FHINBAN/FHINCD）** が行と一致しない、両票の `FSEIBAN` が一致しない等。API 応答の `reason` を参照
 - **部品配膳 404 `ORDER_PLACEMENT_SCHEDULE_NOT_FOUND`**: 製造order番号に紐づく `CsvDashboardRow` が見つからない（生産スケジュール CSV 側を確認）
 - **工具登録 404（工具マスタに無い）**: `itemCode` とラベルを揃える（KB-339）
 - **400 `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**: （V1 register）一覧行と工具スキャンが一致しない

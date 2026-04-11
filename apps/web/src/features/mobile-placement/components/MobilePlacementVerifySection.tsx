@@ -1,20 +1,25 @@
 import { Button } from '../../../components/ui/Button';
 
+import { ActualSlipVerifyColumn } from './ActualSlipVerifyColumn';
 import { SlipBlockColumn } from './SlipBlockColumn';
 
 export type MobilePlacementVerifySectionProps = {
   transferOrder: string;
-  transferFhinmei: string;
+  transferPart: string;
   actualOrder: string;
-  actualFhinmei: string;
+  actualFseiban: string;
+  actualPart: string;
   onChangeTransferOrder: (v: string) => void;
-  onChangeTransferFhinmei: (v: string) => void;
+  onChangeTransferPart: (v: string) => void;
   onChangeActualOrder: (v: string) => void;
-  onChangeActualFhinmei: (v: string) => void;
+  onChangeActualFseiban: (v: string) => void;
+  onChangeActualPart: (v: string) => void;
   onScanTransferOrder: () => void;
-  onScanTransferFhinmei: () => void;
+  onScanTransferPart: () => void;
   onScanActualOrder: () => void;
-  onScanActualFhinmei: () => void;
+  onScanActualPart: () => void;
+  onPickActualSlipImage: () => void;
+  actualSlipImageOcrBusy: boolean;
   slipVerifying: boolean;
   slipResult: 'idle' | 'ok' | 'ng';
   onVerify: () => void;
@@ -36,26 +41,32 @@ export function MobilePlacementVerifySection(props: MobilePlacementVerifySection
             onScan: props.onScanTransferOrder
           }}
           partNumberField={{
-            id: 'mp-slip-transfer-fhinmei',
-            value: props.transferFhinmei,
-            onChange: props.onChangeTransferFhinmei,
-            onScan: props.onScanTransferFhinmei
+            id: 'mp-slip-transfer-part',
+            value: props.transferPart,
+            onChange: props.onChangeTransferPart,
+            onScan: props.onScanTransferPart
           }}
         />
-        <SlipBlockColumn
-          variant="actual"
+        <ActualSlipVerifyColumn
           manufacturingOrderField={{
             id: 'mp-slip-actual-order',
             value: props.actualOrder,
             onChange: props.onChangeActualOrder,
             onScan: props.onScanActualOrder
           }}
-          partNumberField={{
-            id: 'mp-slip-actual-fhinmei',
-            value: props.actualFhinmei,
-            onChange: props.onChangeActualFhinmei,
-            onScan: props.onScanActualFhinmei
+          fseibanField={{
+            id: 'mp-slip-actual-fseiban',
+            value: props.actualFseiban,
+            onChange: props.onChangeActualFseiban
           }}
+          partNumberField={{
+            id: 'mp-slip-actual-part',
+            value: props.actualPart,
+            onChange: props.onChangeActualPart,
+            onScan: props.onScanActualPart
+          }}
+          onImageOcr={props.onPickActualSlipImage}
+          imageOcrBusy={props.actualSlipImageOcrBusy}
         />
       </div>
       <div className="mt-2 flex flex-col items-center gap-2">
