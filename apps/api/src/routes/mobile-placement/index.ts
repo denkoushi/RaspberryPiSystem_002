@@ -6,6 +6,7 @@ import { resolveCredentialIdentity } from '../../lib/location-scope-resolver.js'
 import { registerMobilePlacementScheduleRoute } from './schedule-list.js';
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
 import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
+import { listRegisteredShelvesFromOrderPlacements } from '../../services/mobile-placement/mobile-placement-registered-shelves.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 
 const registerBodySchema = z.object({
@@ -32,6 +33,15 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   };
 
   await registerMobilePlacementScheduleRoute(app, kioskDeps);
+
+  /**
+   * 登録済み棚番候補（`OrderPlacementEvent.shelfCodeRaw` の distinct + 構造化メタ）
+   */
+  app.get('/mobile-placement/registered-shelves', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const shelves = await listRegisteredShelvesFromOrderPlacements();
+    return { shelves };
+  });
 
   app.get('/mobile-placement/resolve-item', { config: { rateLimit: false } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);

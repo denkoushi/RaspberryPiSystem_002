@@ -288,6 +288,61 @@ describe('mobile-placement API', () => {
     expect(count).toBe(1);
   });
 
+  it('GET /api/mobile-placement/registered-shelves returns distinct shelf codes with structure metadata', async () => {
+    const client = await createTestClientDevice();
+    await prisma.orderPlacementEvent.create({
+      data: {
+        clientDeviceId: client.id,
+        shelfCodeRaw: 'TEMP-A',
+        manufacturingOrderBarcodeRaw: 'ORD-1',
+        csvDashboardRowId: null
+      }
+    });
+    await prisma.orderPlacementEvent.create({
+      data: {
+        clientDeviceId: client.id,
+        shelfCodeRaw: '西-北-01',
+        manufacturingOrderBarcodeRaw: 'ORD-2',
+        csvDashboardRowId: null
+      }
+    });
+    await prisma.orderPlacementEvent.create({
+      data: {
+        clientDeviceId: client.id,
+        shelfCodeRaw: '西-北-01',
+        manufacturingOrderBarcodeRaw: 'ORD-3',
+        csvDashboardRowId: null
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/mobile-placement/registered-shelves',
+      headers: { 'x-client-key': client.apiKey }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      shelves: Array<{
+        shelfCodeRaw: string;
+        isStructured: boolean;
+        areaId?: string;
+        lineId?: string;
+        slot?: number;
+      }>;
+    };
+    expect(body.shelves).toHaveLength(2);
+    const temp = body.shelves.find((s) => s.shelfCodeRaw === 'TEMP-A');
+    expect(temp).toMatchObject({ shelfCodeRaw: 'TEMP-A', isStructured: false });
+    const west = body.shelves.find((s) => s.shelfCodeRaw === '西-北-01');
+    expect(west).toMatchObject({
+      shelfCodeRaw: '西-北-01',
+      isStructured: true,
+      areaId: 'west',
+      lineId: 'north',
+      slot: 1
+    });
+  });
+
   it('returns 401 without client key for resolve-item', async () => {
     const res = await app.inject({
       method: 'GET',
