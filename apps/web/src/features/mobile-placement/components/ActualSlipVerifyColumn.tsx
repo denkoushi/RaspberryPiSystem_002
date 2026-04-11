@@ -60,7 +60,7 @@ function OcrFeedbackBanner(props: { feedback: ActualSlipOcrFeedback }) {
           {feedback.fseiban ? <li>FSEIBAN: {feedback.fseiban}</li> : null}
         </ul>
       ) : null}
-      {feedback.ocrPreview ? (
+      {feedback.status !== 'success' && feedback.ocrPreview ? (
         <p className="mt-1 break-all font-mono text-[10px] text-white/70" title="OCRプレビュー（数字・英数字中心）">
           OCR: {feedback.ocrPreview}
         </p>
