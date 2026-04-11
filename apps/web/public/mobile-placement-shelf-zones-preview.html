@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>配膳スマホ — 棚ゾーン選択プレビュー（モック）</title>
+  <style>
+    :root {
+      --bg: #0c1222;
+      --surface: #243146;
+      --border: rgba(255, 255, 255, 0.28);
+      --text: #ffffff;
+      --muted: #94a3b8;
+      --amber: #fbbf24;
+      --teal: #2dd4bf;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      font-family: system-ui, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .shell {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+    .banner {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      padding: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .stub-top {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+    /* 棚ブロック（アンバー帯） */
+    .shelf-block {
+      margin: 12px 10px;
+      padding: 12px 10px;
+      border-radius: var(--radius);
+      border-left: 3px solid var(--amber);
+      background: rgba(251, 191, 36, 0.06);
+    }
+    .zone-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+    .zone-btn {
+      width: 100%;
+      min-width: 0;
+      min-height: 52px;
+      padding: 10px 8px;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: #fef9c3;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .zone-btn:active {
+      background: rgba(251, 191, 36, 0.2);
+    }
+    .chip-qr {
+      width: 100%;
+      min-width: 0;
+      min-height: 52px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: var(--radius);
+      background: transparent;
+      color: #cbd5e1;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      align-self: center;
+    }
+    .chip-qr:active {
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .selected-pill {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .selected-pill strong {
+      color: #fef9c3;
+    }
+
+    /* 全画面オーバーレイ */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(12, 18, 34, 0.97);
+      flex-direction: column;
+      padding: env(safe-area-inset-top, 12px) 12px env(safe-area-inset-bottom, 12px);
+    }
+    .overlay.is-open {
+      display: flex;
+    }
+    .overlay__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-shrink: 0;
+    }
+    .overlay__title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fcd34d;
+    }
+    .overlay__close {
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .overlay__grid {
+      flex: 1;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      align-content: start;
+      padding-bottom: 8px;
+      min-width: 0;
+    }
+    .shelf-cell {
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      min-height: 56px;
+      padding: 10px 8px;
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 26px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .shelf-cell:active {
+      background: rgba(251, 191, 36, 0.2);
+      border-color: #fbbf24;
+    }
+    .note {
+      margin: 8px 10px 16px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="banner">
+      棚ゾーンUI モック · 中央/東/西 → 全画面で棚一覧 · 本番実装前のレイアウト確認用
+    </div>
+    <div class="stub-top">（上半分の照合は省略）</div>
+
+    <section class="shelf-block" aria-label="棚の選択">
+      <div class="zone-row">
+        <button type="button" class="zone-btn" data-zone="central" data-label="中央エリア">中央</button>
+        <button type="button" class="zone-btn" data-zone="east" data-label="東エリア">東</button>
+        <button type="button" class="zone-btn" data-zone="west" data-label="西エリア">西</button>
+        <button type="button" class="chip-qr" title="棚QRスキャン" aria-label="棚をQRスキャン">
+          <span style="font-size: 18px; color: #7dd3fc" aria-hidden>⌗</span>
+          <span>QR</span>
+        </button>
+      </div>
+      <p class="selected-pill" id="selectedLine">
+        選択中: <strong id="selectedText">—</strong>
+      </p>
+    </section>
+
+    <p class="note">
+      各ゾーンはダミーで約 18 棚を表示（50 棚想定時は同じグリッドでスクロール）。本番は API またはマスタからゾーン別棚番を取得します。
+    </p>
+  </div>
+
+  <!-- 全画面: 棚一覧 -->
+  <div id="overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="overlayTitle" hidden>
+    <div class="overlay__head">
+      <h2 id="overlayTitle" class="overlay__title">東エリア</h2>
+      <button type="button" class="overlay__close" id="closeOverlay">閉じる</button>
+    </div>
+    <div class="overlay__grid" id="shelfGrid"></div>
+  </div>
+
+  <script>
+    (function () {
+      /** ダミー棚番（例: ゾーンごとにプレフィックスを変える） */
+      var SHELVES = {
+        central: function () {
+          var a = [];
+          for (var i = 1; i <= 18; i++) {
+            a.push('C-' + String(i).padStart(2, '0'));
+          }
+          return a;
+        },
+        east: function () {
+          var a = [];
+          for (var i = 1; i <= 18; i++) {
+            a.push('E-' + String(i).padStart(2, '0'));
+          }
+          return a;
+        },
+        west: function () {
+          var a = [];
+          for (var i = 1; i <= 18; i++) {
+            a.push('W-' + String(i).padStart(2, '0'));
+          }
+          return a;
+        }
+      };
+
+      var overlay = document.getElementById('overlay');
+      var grid = document.getElementById('shelfGrid');
+      var titleEl = document.getElementById('overlayTitle');
+      var closeBtn = document.getElementById('closeOverlay');
+      var selectedText = document.getElementById('selectedText');
+
+      function openZone(zoneKey, label) {
+        titleEl.textContent = label;
+        grid.innerHTML = '';
+        var list = SHELVES[zoneKey]();
+        list.forEach(function (code) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'shelf-cell';
+          b.textContent = code;
+          b.addEventListener('click', function () {
+            selectedText.textContent = code;
+            closeOverlay();
+          });
+          grid.appendChild(b);
+        });
+
+        overlay.hidden = false;
+        overlay.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
+      }
+
+      function closeOverlay() {
+        overlay.classList.remove('is-open');
+        overlay.hidden = true;
+        document.body.style.overflow = '';
+      }
+
+      document.querySelectorAll('.zone-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          openZone(btn.getAttribute('data-zone'), btn.getAttribute('data-label'));
+        });
+      });
+
+      closeBtn.addEventListener('click', closeOverlay);
+    })();
+  </script>
+</body>
+</html>
