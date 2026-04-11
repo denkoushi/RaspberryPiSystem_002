@@ -63,14 +63,17 @@ export function MobilePlacementPage() {
         onChangeActualOrder={(v) => {
           mp.setActualOrder(v);
           mp.resetSlipResult();
+          mp.resetActualSlipOcrFeedback();
         }}
         onChangeActualFseiban={(v) => {
           mp.setActualFseiban(v);
           mp.resetSlipResult();
+          mp.resetActualSlipOcrFeedback();
         }}
         onChangeActualPart={(v) => {
           mp.setActualPart(v);
           mp.resetSlipResult();
+          mp.resetActualSlipOcrFeedback();
         }}
         onScanTransferOrder={() => mp.setScanField('transferOrder')}
         onScanTransferPart={() => mp.setScanField('transferPart')}
@@ -78,6 +81,7 @@ export function MobilePlacementPage() {
         onScanActualPart={() => mp.setScanField('actualPart')}
         onPickActualSlipImage={() => actualSlipFileInputRef.current?.click()}
         actualSlipImageOcrBusy={mp.actualSlipImageOcrBusy}
+        actualSlipOcrFeedback={mp.actualSlipOcrFeedback}
         slipVerifying={mp.slipVerifying}
         slipResult={mp.slipResult}
         onVerify={() => void mp.runSlipVerify()}

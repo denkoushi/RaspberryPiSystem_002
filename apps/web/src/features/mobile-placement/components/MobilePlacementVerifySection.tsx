@@ -3,6 +3,8 @@ import { Button } from '../../../components/ui/Button';
 import { ActualSlipVerifyColumn } from './ActualSlipVerifyColumn';
 import { SlipBlockColumn } from './SlipBlockColumn';
 
+import type { ActualSlipOcrFeedback } from '../actual-slip-ocr-feedback';
+
 export type MobilePlacementVerifySectionProps = {
   transferOrder: string;
   transferPart: string;
@@ -20,6 +22,7 @@ export type MobilePlacementVerifySectionProps = {
   onScanActualPart: () => void;
   onPickActualSlipImage: () => void;
   actualSlipImageOcrBusy: boolean;
+  actualSlipOcrFeedback: ActualSlipOcrFeedback;
   slipVerifying: boolean;
   slipResult: 'idle' | 'ok' | 'ng';
   onVerify: () => void;
@@ -67,6 +70,7 @@ export function MobilePlacementVerifySection(props: MobilePlacementVerifySection
           }}
           onImageOcr={props.onPickActualSlipImage}
           imageOcrBusy={props.actualSlipImageOcrBusy}
+          ocrFeedback={props.actualSlipOcrFeedback}
         />
       </div>
       <div className="mt-2 flex flex-col items-center gap-2">
