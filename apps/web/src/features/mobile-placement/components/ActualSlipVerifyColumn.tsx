@@ -3,6 +3,8 @@ import { MP_PLACEHOLDER_ORDER, MP_PLACEHOLDER_PART } from '../constants';
 
 import { SlipFieldRow } from './SlipFieldRow';
 
+import type { ActualSlipOcrFeedback } from '../actual-slip-ocr-feedback';
+
 const blockClass = 'border-l-purple-400 bg-purple-500/[0.06]';
 
 /**
@@ -28,7 +30,47 @@ export type ActualSlipVerifyColumnProps = {
   };
   onImageOcr: () => void;
   imageOcrBusy: boolean;
+  ocrFeedback: ActualSlipOcrFeedback;
 };
+
+function OcrFeedbackBanner(props: { feedback: ActualSlipOcrFeedback }) {
+  const { feedback } = props;
+  if (feedback.status === 'idle') {
+    return null;
+  }
+  const tone =
+    feedback.status === 'success'
+      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+      : feedback.status === 'no_candidate'
+        ? 'border-amber-500/40 bg-amber-500/10 text-amber-100'
+        : 'border-red-500/40 bg-red-500/10 text-red-100';
+
+  return (
+    <div
+      className={`rounded-md border px-2 py-1.5 text-[11px] leading-snug ${tone}`}
+      role="status"
+      aria-live="polite"
+    >
+      {feedback.message ? <p className="font-medium">{feedback.message}</p> : null}
+      {feedback.status === 'success' && (feedback.manufacturingOrder10 || feedback.fseiban) ? (
+        <ul className="mt-1 list-inside list-disc text-[10px] text-white/90">
+          {feedback.manufacturingOrder10 ? (
+            <li>製造order番号: {feedback.manufacturingOrder10}</li>
+          ) : null}
+          {feedback.fseiban ? <li>FSEIBAN: {feedback.fseiban}</li> : null}
+        </ul>
+      ) : null}
+      {feedback.ocrPreview ? (
+        <p className="mt-1 break-all font-mono text-[10px] text-white/70" title="OCR本文先頭">
+          OCR: {feedback.ocrPreview}
+        </p>
+      ) : null}
+      {feedback.status === 'error' && feedback.errorDetail ? (
+        <p className="mt-1 break-words text-[10px] text-red-200/90">{feedback.errorDetail}</p>
+      ) : null}
+    </div>
+  );
+}
 
 export function ActualSlipVerifyColumn(props: ActualSlipVerifyColumnProps) {
   return (
@@ -77,6 +119,7 @@ export function ActualSlipVerifyColumn(props: ActualSlipVerifyColumnProps) {
           placeholder={MP_PLACEHOLDER_PART}
           ariaLabel={`現品票 ${MP_PLACEHOLDER_PART}`}
         />
+        <OcrFeedbackBanner feedback={props.ocrFeedback} />
       </div>
     </div>
   );

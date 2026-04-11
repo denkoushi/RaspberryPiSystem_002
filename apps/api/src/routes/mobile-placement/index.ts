@@ -155,7 +155,21 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
         throw new ApiError(400, '画像ファイルが必要です', undefined, 'MOBILE_PLACEMENT_IMAGE_REQUIRED');
       }
       const imageMime = inferImageMimeFromMimeAndFilename(mime, filename);
-      const result = await parseActualSlipImageFromUpload({ imageBytes: fileBuffer, mimeType: imageMime });
+      const result = await parseActualSlipImageFromUpload({
+        imageBytes: fileBuffer,
+        mimeType: imageMime,
+        requestId: request.id
+      });
+      request.log.info(
+        {
+          route: 'parse-actual-slip-image',
+          ocrTextChars: result.ocrText.length,
+          hasManufacturingOrder10: result.manufacturingOrder10 != null,
+          hasFseiban: result.fseiban != null,
+          engine: result.engine
+        },
+        'parse-actual-slip-image completed'
+      );
       return {
         engine: result.engine,
         ocrText: result.ocrText,

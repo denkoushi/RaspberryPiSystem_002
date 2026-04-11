@@ -70,6 +70,8 @@ JSON:
 
 `manufacturingOrder10` / `fseiban` は OCR 品質により **null** になり得る。
 
+- **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等）。OCR 全文はログに出さない（後追いは文字数・候補有無で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。
+
 ### `POST /api/mobile-placement/register-order-placement`
 
 **部品配膳**（`Item` は更新しない）。`manufacturingOrderBarcodeRaw` を **ProductNo** として `listScheduleRowsByProductNo` と同系の検索で日程行を1件特定し、`OrderPlacementEvent` を保存する。

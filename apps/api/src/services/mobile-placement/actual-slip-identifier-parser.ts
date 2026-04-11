@@ -14,15 +14,48 @@ export function normalizeDigitsFullWidthToHalfWidth(s: string): string {
 }
 
 /**
+ * OCR で桁の途中に空白・改行が混入した場合に連結する（注文番号ブロック判定の前処理）
+ */
+export function collapseInterDigitWhitespace(s: string): string {
+  return s.replace(/(?<=\d)[\s\u3000]+(?=\d)/g, '');
+}
+
+/**
+ * 連続する数字列内で出やすい OCR 誤認のみ補正（英字ラベルは触らない）
+ * `0002178OO5` のように O が連続する場合も、数回適用で `0002178005` へ寄せる。
+ */
+export function fixAdjacentOcrDigitConfusion(s: string): string {
+  let out = s;
+  for (let i = 0; i < 14; i++) {
+    const next = out
+      .replace(/(?<=\d)[Oo](?=[0-9Oo])/g, '0')
+      .replace(/(?<=\d)[Il|](?=[0-9Il|])/g, '1');
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+/**
+ * 製造order抽出用に OCR テキストを正規化する（純関数・parser 内に閉じる）
+ */
+export function prepareOcrTextForManufacturingOrderExtraction(text: string): string {
+  let n = normalizeDigitsFullWidthToHalfWidth(text);
+  n = collapseInterDigitWhitespace(n);
+  n = fixAdjacentOcrDigitConfusion(n);
+  return n;
+}
+
+/**
  * 製造order番号（ProductNo）相当の10桁を抽出する。
  * - 「製造オーダ」「製造order」等のラベル直後を最優先
  * - 「注文番号」行上の数字列は製造orderとして採用しない（9桁主だが10桁誤認にも強くする）
  */
 export function extractManufacturingOrder10(text: string): string | null {
-  const n = normalizeDigitsFullWidthToHalfWidth(text);
+  const n = prepareOcrTextForManufacturingOrderExtraction(text);
 
   const afterLabel = n.match(
-    /(?:製造オーダ|製造\s*オーダ|製造order|製造\s*order)[^\d]{0,32}(\d{10})/iu
+    /(?:製造オーダ|製造\s*オーダ|製造order|製造\s*order)[^\d]{0,120}(\d{10})/iu
   );
   if (afterLabel) {
     return afterLabel[1];
@@ -40,11 +73,8 @@ export function extractManufacturingOrder10(text: string): string | null {
   if (all10.length === 0) {
     return null;
   }
-  if (all10.length === 1) {
-    return all10[0];
-  }
 
-  /** 注文番号ブロック付近の10桁は除外 */
+  /** 注文番号ブロック付近の10桁は除外（候補が1件だけのときも誤採用しない） */
   const filtered = all10.filter((digits) => {
     const idx = n.indexOf(digits);
     if (idx < 0) return true;
@@ -54,7 +84,7 @@ export function extractManufacturingOrder10(text: string): string | null {
     }
     return true;
   });
-  return filtered[0] ?? all10[0];
+  return filtered[0] ?? null;
 }
 
 /**

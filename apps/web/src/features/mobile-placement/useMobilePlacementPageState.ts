@@ -7,6 +7,12 @@ import {
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL
 } from '../barcode-scan/formatPresets';
 
+import {
+  buildOcrPreview,
+  initialActualSlipOcrFeedback,
+  type ActualSlipOcrFeedback
+} from './actual-slip-ocr-feedback';
+
 import type { MobilePlacementShelfRegisterRouteState } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 
@@ -22,6 +28,7 @@ export function useMobilePlacementPageState() {
   const [slipResult, setSlipResult] = useState<MobilePlacementSlipResult>('idle');
   const [slipVerifying, setSlipVerifying] = useState(false);
   const [actualSlipImageOcrBusy, setActualSlipImageOcrBusy] = useState(false);
+  const [actualSlipOcrFeedback, setActualSlipOcrFeedback] = useState<ActualSlipOcrFeedback>(initialActualSlipOcrFeedback);
 
   const [shelfCode, setShelfCode] = useState('');
   const [orderBarcode, setOrderBarcode] = useState('');
@@ -56,9 +63,11 @@ export function useMobilePlacementPageState() {
           break;
         case 'actualOrder':
           setActualOrder(v);
+          setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
           break;
         case 'actualPart':
           setActualPart(v);
+          setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
           break;
         default:
           break;
@@ -72,15 +81,53 @@ export function useMobilePlacementPageState() {
   const parseActualSlipImageFile = useCallback(async (file: File) => {
     setActualSlipImageOcrBusy(true);
     setSlipResult('idle');
+    setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
     try {
       const res = await parseActualSlipImage(file);
-      if (res.manufacturingOrder10) {
-        setActualOrder(res.manufacturingOrder10);
+      const preview = buildOcrPreview(res.ocrText);
+      const mo = res.manufacturingOrder10 ?? null;
+      const fs = res.fseiban ?? null;
+      if (mo) {
+        setActualOrder(mo);
       }
-      if (res.fseiban) {
-        setActualFseiban(res.fseiban);
+      if (fs) {
+        setActualFseiban(fs);
       }
-    } catch {
+      if (mo || fs) {
+        setActualSlipOcrFeedback({
+          status: 'success',
+          manufacturingOrder10: mo,
+          fseiban: fs,
+          ocrPreview: preview,
+          message: '読取結果を欄に反映しました。必要に応じて修正してください。',
+          errorDetail: null
+        });
+      } else {
+        setActualSlipOcrFeedback({
+          status: 'no_candidate',
+          manufacturingOrder10: null,
+          fseiban: null,
+          ocrPreview: preview,
+          message: '読取候補がありません。再撮影するか、手入力してください。',
+          errorDetail: null
+        });
+      }
+    } catch (e: unknown) {
+      const msg = isAxiosError(e)
+        ? typeof e.response?.data?.message === 'string'
+          ? e.response.data.message
+          : e.message
+        : e instanceof Error
+          ? e.message
+          : '読取に失敗しました';
+      setActualSlipOcrFeedback({
+        status: 'error',
+        manufacturingOrder10: null,
+        fseiban: null,
+        ocrPreview: null,
+        message: '読取に失敗しました。通信または権限を確認してください。',
+        errorDetail: msg
+      });
       setSlipResult('idle');
     } finally {
       setActualSlipImageOcrBusy(false);
@@ -141,6 +188,11 @@ export function useMobilePlacementPageState() {
 
   const resetSlipResult = useCallback(() => setSlipResult('idle'), []);
 
+  const resetActualSlipOcrFeedback = useCallback(
+    () => setActualSlipOcrFeedback(initialActualSlipOcrFeedback),
+    []
+  );
+
   const buildShelfRegisterRouteState = useCallback(
     (): MobilePlacementShelfRegisterRouteState => ({
       transferOrder,
@@ -200,6 +252,8 @@ export function useMobilePlacementPageState() {
     scanFormats,
     onScanSuccess,
     parseActualSlipImageFile,
-    actualSlipImageOcrBusy
+    actualSlipImageOcrBusy,
+    actualSlipOcrFeedback,
+    resetActualSlipOcrFeedback
   };
 }
