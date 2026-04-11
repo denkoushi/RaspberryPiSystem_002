@@ -5,7 +5,10 @@ import { getImageOcrPort } from '../ocr/image-ocr-runtime.js';
 import type { ImageOcrMimeType } from '../ocr/ports/image-ocr.port.js';
 
 import { buildActualSlipOcrPreviewSafe } from './actual-slip-ocr-preview.js';
-import { parseActualSlipIdentifiersFromOcrText } from './actual-slip-identifier-parser.js';
+import {
+  extractFseiban,
+  parseManufacturingOrder10Extraction
+} from './actual-slip-identifier-parser.js';
 
 const log = logger.child({ component: 'actualSlipImageOcr' });
 
@@ -58,7 +61,8 @@ export async function parseActualSlipImageFromUpload(params: {
 
   const merged = [labels.text, digits.text, aux.text].filter((s) => s.length > 0).join('\n');
   const ocrPreviewSafe = buildActualSlipOcrPreviewSafe(digits.text, aux.text);
-  const parsed = parseActualSlipIdentifiersFromOcrText(merged);
+  const mo = parseManufacturingOrder10Extraction(merged);
+  const fseiban = extractFseiban(merged);
   const durationMs = Date.now() - startedMs;
 
   log.info(
@@ -71,8 +75,11 @@ export async function parseActualSlipImageFromUpload(params: {
       preprocessBytesBinary,
       engine: labels.engine,
       ocrTextChars: merged.length,
-      hasManufacturingOrder10: parsed.manufacturingOrder10 != null,
-      hasFseiban: parsed.fseiban != null,
+      hasManufacturingOrder10: mo.value != null,
+      hasFseiban: fseiban != null,
+      mo10Candidate10Count: mo.diagnostics.candidate10Count,
+      mo10AfterOrderBlockFilterCount: mo.diagnostics.afterOrderBlockFilterCount,
+      mo10ParseSource: mo.diagnostics.source,
       durationMs
     },
     'parse-actual-slip-image ocr completed'
@@ -82,8 +89,8 @@ export async function parseActualSlipImageFromUpload(params: {
     engine: labels.engine,
     ocrText: merged,
     ocrPreviewSafe,
-    manufacturingOrder10: parsed.manufacturingOrder10,
-    fseiban: parsed.fseiban
+    manufacturingOrder10: mo.value,
+    fseiban
   };
 }
 
