@@ -73,7 +73,7 @@ JSON:
 - **`ocrPreviewSafe`**: **数字・英数字 OCR のみ**を結合した短いプレビュー用文字列（ひらがな誤認が多いラベルパスは含めない）。クライアントは表示にこれを優先し、無い場合は `ocrText` にフォールバック可能。
 - **`manufacturingOrder10` / `fseiban`**: OCR 品質により **null** になり得る。
 
-- **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等）。OCR 全文はログに出さない（後追いは文字数・候補有無で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。
+- **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等。**V8 以降**: `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`）。OCR 全文はログに出さない（後追いは文字数・候補有無・パーサ経路で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。
 
 ### `POST /api/mobile-placement/register-order-placement`
 

@@ -82,6 +82,14 @@
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**）。
 - **知見**: **3 パス直列**のため **単一 OCR 時より遅くなり得る**（初回ワーカ起動も重畳）。UI は **`ocrPreviewSafe`** でプレビューのノイズを抑制。構造化ログに **`preprocessBytesBinary`**（二値化後バイト長）あり。
 
+### 本番反映・検証（2026-04-11・V8 製造order抽出パーサ・診断ログ）
+
+- **デプロイ**: [deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → Pi4 キオスク 4 台**を **`--limit` 1 台ずつ**・ブランチ **`fix/mobile-placement-ocr-manufacturing-order-parser`**・**`--detach --follow`**（**Pi3 は対象外**）。実装ベースコミット **`a9e75cd8`**（**`main` へ PR マージ**）。
+- **Detach Run ID（ログ接頭辞 `ansible-update-`）**: `20260411-223115-29480`（`raspberrypi5`）→ `20260411-224346-24116`（`raspberrypi4`）→ `20260411-224823-19592`（`raspi4-robodrill01`）→ `20260411-225152-29858`（`raspi4-fjv60-80`）→ `20260411-225741-29730`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。
+- **仕様**: `actual-slip-identifier-parser` が **製造オーダラベルの空白分断**（例: `製造 オー ダ`）を許容し、**注文番号ブロック近傍の誤除外**で製造orderが null になるケースを減らす。`parse-actual-slip-image` 完了ログに **`mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`** を追加（OCR 全文はログに出さない）。
+- **知見・トラブルシュート**: 旧パーサでは **「製造オーダ」連続表記と一致しないラベル行**が注文番号行と同時に読めたとき、**製造ラベル未検出**となり **global-filter 経路で注文番号の10桁を除外**して **製造orderが null** になることがあった。**切り分け**: Pi5 API の `parse-actual-slip-image ocr completed` で **`mo10ParseSource`** を確認（`none` かつ候補ありは要再撮影・パーサ追従検討）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`

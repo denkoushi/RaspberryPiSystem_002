@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-11（現品票画像 OCR・FSEIBAN 照合）
+最終更新: 2026-04-11（現品票画像 OCR・V8 製造orderパーサ・FSEIBAN 照合）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -9,6 +9,8 @@
 **2026-04-11（V6・現品票 OCR 可観測性・UI 案内・パーサ強化）**: ブランチ **`feat/mobile-placement-ocr-debug-fix`**（コミット **`e6806d28`**）。**仕様**: 撮影 OCR 後に **成功／候補なし／エラー**を現品票列下に表示（無言失敗を解消）。API は **`parse-actual-slip-image` 完了時の構造化ログ**（入力・前処理バイト・OCR 文字数・候補有無・所要時間・`requestId` 相関。OCR 全文はログに出さない）。サーバは **桁間空白・O/0 等の限定補正**と **注文番号ブロックの単一候補でも誤採用しない**ガード。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-200637-30031` → `20260411-201900-24559` → `20260411-202426-10094` → `20260411-202844-23208` → `20260411-203518-31439`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **85s**・Mac / Tailscale）。
 
 **2026-04-11（V7・現品票 OCR 用途別パイプライン・`ocrPreviewSafe`）**: ブランチ **`feat/mobile-placement-ocr-pipeline-hardening`**（コミット **`8c1cc13d`**）。**仕様**: `jpn+eng` ラベルパス + `eng` 数字／英数字 whitelist の **3 パス直列**、前処理（グレースケール・正規化・余白・数字パスは二値化）、応答 **`ocrPreviewSafe`**（UI はひらがなノイズを抑えたプレビュー）。構造化ログに **`preprocessBytesBinary`**（二値化後 JPEG サイズ）を追加。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-211922-10561` → `20260411-212830-9591` → `20260411-213306-11155` → `20260411-213638-10529` → `20260411-214942-8793`（各 **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**）。**トラブルシュート**: OCR が遅い／初回のみ長い → 下記 **「5. トラブルシュート」**（`tesseract.js` ワーカ初回・**3 パスで処理時間増**の可能性）。**Pi3** は本機能の必須対象外。
+
+**2026-04-11（V8・製造order抽出パーサ強化・OCR診断ログ）**: ブランチ **`fix/mobile-placement-ocr-manufacturing-order-parser`**（コミット **`a9e75cd8`**）。**仕様**: 製造オーダラベルが OCR で **`製造 オー ダ` のように分断**しても **10桁を抽出**しやすい。**`parse-actual-slip-image` 完了ログ**に **`mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`** を追加（OCR 全文は出さない）。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-223115-29480` → `20260411-224346-24116` → `20260411-224823-19592` → `20260411-225152-29858` → `20260411-225741-29730`（各 **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。**トラブルシュート**: 製造orderが空のとき Pi5 API ログで **`mo10ParseSource`**（`label-regex` / `line-scan` / `global-filter` / `none`）を確認。
 
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
@@ -77,7 +79,7 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
 - **登録済み棚が常に空**: `OrderPlacementEvent` にまだ行が無いと **`registered-shelves` は `{ "shelves": [] }`**（不具合ではない）。部品配膳を1件でも登録すると `shelfCodeRaw` が候補に現れる
 - **デプロイが `未commit変更` で止まる**: Mac 側に **未追跡ファイル**もブロック対象。`git stash push -u` またはコミットしてから [deployment.md](../guides/deployment.md) の `update-all-clients.sh` を再実行
 - **画像OCRが遅い／初回だけ長い**: Pi5 API コンテナで **tesseract.js ワーカ初回起動**で数十秒かかることがある。連続利用ではキャッシュされやすい。現品票 OCR は **用途別に複数パス**（`jpn+eng` + `eng`×2）を **直列**で回すため、初回以外も **単一パス時より時間がかかる**場合がある。極端に大きい画像はサーバ側で縮小されるが、**ピント・コントラスト**を確保すると精度が上がる
-- **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間）が出るので、Pi5 の API ログで後追い可能
+- **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
 
 ## 6. API 契約
 
