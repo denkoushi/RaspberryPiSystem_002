@@ -26,6 +26,9 @@ export const initialActualSlipOcrFeedback: ActualSlipOcrFeedback = {
 
 const OCR_PREVIEW_MAX = 120;
 
+/**
+ * @param ocrText API の `ocrPreviewSafe`（推奨）または結合 `ocrText`
+ */
 export function buildOcrPreview(ocrText: string | undefined | null): string | null {
   if (ocrText == null || ocrText.trim().length === 0) return null;
   const t = ocrText.replace(/\s+/g, ' ').trim();

@@ -61,7 +61,7 @@ function OcrFeedbackBanner(props: { feedback: ActualSlipOcrFeedback }) {
         </ul>
       ) : null}
       {feedback.ocrPreview ? (
-        <p className="mt-1 break-all font-mono text-[10px] text-white/70" title="OCR本文先頭">
+        <p className="mt-1 break-all font-mono text-[10px] text-white/70" title="OCRプレビュー（数字・英数字中心）">
           OCR: {feedback.ocrPreview}
         </p>
       ) : null}

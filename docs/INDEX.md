@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-04-11）
 
+- **配膳スマホ 現品票 OCR パイプライン専用化（用途別 tesseract・結合パース・`ocrPreviewSafe`）実装ブランチ `feat/mobile-placement-ocr-pipeline-hardening`（未デプロイ）**: [api/mobile-placement.md](./api/mobile-placement.md)・[KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **配膳スマホ V6（現品票 OCR 可観測性・UI 案内・パーサ強化）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ `feat/mobile-placement-ocr-debug-fix`・コミット **`e6806d28`**。Detach Run ID は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **API OCR/VLM 境界整理リファクタ（挙動互換・コードのみ）本番反映: Pi5→Pi4×4→Pi3 順次・Phase12 43/0/0**: ブランチ `feat/ocr-vlm-boundary-refactor`・コミット **`b0f4a180`**。`services/ocr`・`VisionCompletionPort` 中立化・`photo_label` の `useCase` 注入。デプロイは [deployment.md](./guides/deployment.md) 標準（`--limit` 1 台ずつ・`--detach --follow`・Pi3 は最後に単独）。実機: `./scripts/deploy/verify-phase12-real.sh`。**ナレッジ**: [KB-340](./knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)・[ADR-20260402](./decisions/ADR-20260402-inference-foundation-phase1.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 
@@ -43,7 +44,7 @@
 
 ### 配膳スマホ（Android・Tailscale）
 
-- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
+- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V7（実装・未デプロイ）**: 現品票 OCR 用途別パイプライン・`ocrPreviewSafe`／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
 - **バーコード調査ゲート**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)
 
 ### LocalLLM（Ubuntu / Tailscale）

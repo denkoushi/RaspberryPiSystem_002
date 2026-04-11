@@ -53,7 +53,7 @@
 - **UI**: `/kiosk/mobile-placement` 単一画面。上半分は移動票の **製造order + FHINBAN/FHINCD（1次元）**、現品票は **製造order（印字／画像OCR／手入力）+ 任意の製番 FSEIBAN + 部品（FHINBAN 等・1次元）** と **OK/NG**。下半分は仮棚（TEMP-A〜D または QR）+ 製造orderスキャン + **登録**（`OrderPlacementEvent`。**`Item` は更新しない**）。
 - **API**: `POST /api/mobile-placement/verify-slip-match`・`POST /api/mobile-placement/register-order-placement`・`POST /api/mobile-placement/parse-actual-slip-image`（[api/mobile-placement.md](../api/mobile-placement.md)）。
 - **照合**: 移動票は **ProductNo** で行解決。現品票は **ProductNo が空でなければ ProductNo**、**空なら FSEIBAN** で行解決。スキャンした **FHINBAN/FHINCD** が行の **`FHINCD`** と一致したうえで、両票の **`FSEIBAN` + `FHINCD`** ペアが一致するか判定。
-- **現品票画像 OCR**: `tesseract.js`（`services/ocr` の `ImageOcrPort`）。テストは `IMAGE_OCR_STUB_TEXT` でスタブ可能。印字から **製造order（10桁）** を第一候補、**FSEIBAN** を第二候補としてパース（**注文番号（9桁）行の誤採用を抑制**）。
+- **現品票画像 OCR**: `tesseract.js`（`services/ocr` の `ImageOcrPort`）。**2026-04-11 以降（ブランチ `feat/mobile-placement-ocr-pipeline-hardening`）**: 汎用 `jpn+eng` 一発ではなく、**ラベル文脈（`jpn+eng`）・数字専用（`eng`+whitelist）・英数字補助（`eng`+whitelist）**の **3 パス**を順に実行し結合してパース。前処理（グレースケール・正規化・余白・二値化など）は **mobile-placement** サービス内。API 応答の **`ocrPreviewSafe`** は数字・英数字パスのみ（UI のノイズ表示抑制）。テストは `IMAGE_OCR_STUB_TEXT` でスタブ可能。印字から **製造order（10桁）** を第一候補、**FSEIBAN** を第二候補としてパース（**注文番号（9桁）行の誤採用を抑制**）。
 
 ### 本番反映・検証（2026-04-11）
 
