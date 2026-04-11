@@ -622,14 +622,15 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 
 **6.6.11 推論基盤フェーズ1（複数プロバイダ・text/vision・要領書オプトイン）**
 
-**確認ポイント**（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)、[KB-313](../knowledge-base/KB-313-kiosk-documents.md)、[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）:
+**確認ポイント**（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)、[KB-313](../knowledge-base/KB-313-kiosk-documents.md)、[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)、[KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)）:
 
 - [ ] Pi5 のみ変更を載せる場合は [deployment.md](./deployment.md) に従い `update-all-clients.sh` + **`--limit raspberrypi5`**（Pi3 はリソース専用手順のみ別途）
 - [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-03-30 実測 **PASS 37 / WARN 0 / FAIL 0**・約 95s）
 - [ ] 要領書 LLM 要約を本番で **ON** にする場合のみ `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` と推論プロバイダ設定を確認（OFF のままなら推論ログは出ないことが仕様）
 - [ ] （任意）API ログで写真ラベル経路の `component: inference`・`useCase: photo_label` を確認（本文は出ない）
+- [ ] （2026-04-11 追記）OCR/VLM **境界整理のみ**（挙動互換）を全台に載せる場合は [KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) の順序（Pi5→Pi4×4→Pi3）と Detach Run ID 例を参照
 
-**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・Pi5 に `feat/inference-foundation-phase1` 反映後）
+**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・Pi5 に `feat/inference-foundation-phase1` 反映後）／**2026-04-11**（`feat/ocr-vlm-boundary-refactor`・**PASS 43 / WARN 0 / FAIL 0**・Pi5→Pi4×4→Pi3 順次・[KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.12 LocalLLM オンデマンド起停（Pi5→Ubuntu HTTP・任意運用）**
