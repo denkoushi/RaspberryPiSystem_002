@@ -2,7 +2,7 @@ import { env } from '../../config/env.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 
 import { OpenAiCompatibleDocumentSummaryInferenceAdapter } from './adapters/openai-document-summary-inference.adapter.js';
-import { NdlOcrEngineAdapter } from './adapters/ndlocr-engine.adapter.js';
+import { NdlOcrEngineAdapter } from '../ocr/adapters/ndlocr-engine.adapter.js';
 import { PdfToTextExtractorAdapter } from './adapters/pdftotext-extractor.adapter.js';
 import { PostgresDocumentSearchIndexerAdapter } from './adapters/postgres-document-search-indexer.adapter.js';
 import { PrismaKioskDocumentRepository } from './adapters/prisma-kiosk-document.repository.js';

@@ -1,12 +1,4 @@
-export type OcrResult = {
-  text: string;
-  pageCount?: number;
-  engine: string;
-};
-
 /**
- * OCR 実行ポート（将来のエンジン差し替えの境界）
+ * @deprecated 互換のための再エクスポート。新規コードは `services/ocr` を参照すること。
  */
-export interface OcrEnginePort {
-  runOcr(pdfPath: string): Promise<OcrResult>;
-}
+export type { OcrEnginePort, OcrResult } from '../../ocr/ports/ocr-engine.port.js';
