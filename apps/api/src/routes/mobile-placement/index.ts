@@ -173,6 +173,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       return {
         engine: result.engine,
         ocrText: result.ocrText,
+        ocrPreviewSafe: result.ocrPreviewSafe,
         manufacturingOrder10: result.manufacturingOrder10,
         fseiban: result.fseiban
       };

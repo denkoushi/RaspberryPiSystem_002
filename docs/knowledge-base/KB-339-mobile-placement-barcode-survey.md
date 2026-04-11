@@ -53,7 +53,7 @@
 - **UI**: `/kiosk/mobile-placement` 単一画面。上半分は移動票の **製造order + FHINBAN/FHINCD（1次元）**、現品票は **製造order（印字／画像OCR／手入力）+ 任意の製番 FSEIBAN + 部品（FHINBAN 等・1次元）** と **OK/NG**。下半分は仮棚（TEMP-A〜D または QR）+ 製造orderスキャン + **登録**（`OrderPlacementEvent`。**`Item` は更新しない**）。
 - **API**: `POST /api/mobile-placement/verify-slip-match`・`POST /api/mobile-placement/register-order-placement`・`POST /api/mobile-placement/parse-actual-slip-image`（[api/mobile-placement.md](../api/mobile-placement.md)）。
 - **照合**: 移動票は **ProductNo** で行解決。現品票は **ProductNo が空でなければ ProductNo**、**空なら FSEIBAN** で行解決。スキャンした **FHINBAN/FHINCD** が行の **`FHINCD`** と一致したうえで、両票の **`FSEIBAN` + `FHINCD`** ペアが一致するか判定。
-- **現品票画像 OCR**: `tesseract.js`（`services/ocr` の `ImageOcrPort`）。テストは `IMAGE_OCR_STUB_TEXT` でスタブ可能。印字から **製造order（10桁）** を第一候補、**FSEIBAN** を第二候補としてパース（**注文番号（9桁）行の誤採用を抑制**）。
+- **現品票画像 OCR**: `tesseract.js`（`services/ocr` の `ImageOcrPort`）。**2026-04-11 以降（ブランチ `feat/mobile-placement-ocr-pipeline-hardening`）**: 汎用 `jpn+eng` 一発ではなく、**ラベル文脈（`jpn+eng`）・数字専用（`eng`+whitelist）・英数字補助（`eng`+whitelist）**の **3 パス**を順に実行し結合してパース。前処理（グレースケール・正規化・余白・二値化など）は **mobile-placement** サービス内。API 応答の **`ocrPreviewSafe`** は数字・英数字パスのみ（UI のノイズ表示抑制）。テストは `IMAGE_OCR_STUB_TEXT` でスタブ可能。印字から **製造order（10桁）** を第一候補、**FSEIBAN** を第二候補としてパース（**注文番号（9桁）行の誤採用を抑制**）。
 
 ### 本番反映・検証（2026-04-11）
 
@@ -74,6 +74,13 @@
 - **Detach Run ID（ログ接頭辞 `ansible-update-`）**: `20260411-200637-30031`（`raspberrypi5`）→ `20260411-201900-24559`（`raspberrypi4`）→ `20260411-202426-10094`（`raspi4-robodrill01`）→ `20260411-202844-23208`（`raspi4-fjv60-80`）→ `20260411-203518-31439`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0`**。
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **85s**）。
 - **仕様**: 撮影 OCR 後に **成功／候補なし／エラー**を UI 表示。API は **`parse-actual-slip-image` 完了ログ**で後追い（OCR 全文は出さない）。パーサは **桁間空白・O/0 等の限定補正**と **注文番号ブロックのみの 10 桁は採用しない**ガード。
+
+### 本番反映・検証（2026-04-11・V7 現品票 OCR 用途別パイプライン）
+
+- **デプロイ**: [deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → Pi4 キオスク 4 台**を **`--limit` 1 台ずつ**・ブランチ **`feat/mobile-placement-ocr-pipeline-hardening`**・**`--detach --follow`**（**Pi3 は対象外**）。実装ベースコミット **`8c1cc13d`**（**`main` へ PR マージ**）。
+- **Detach Run ID（ログ接頭辞 `ansible-update-`）**: `20260411-211922-10561`（`raspberrypi5`）→ `20260411-212830-9591`（`raspberrypi4`）→ `20260411-213306-11155`（`raspi4-robodrill01`）→ `20260411-213638-10529`（`raspi4-fjv60-80`）→ `20260411-214942-8793`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**）。
+- **知見**: **3 パス直列**のため **単一 OCR 時より遅くなり得る**（初回ワーカ起動も重畳）。UI は **`ocrPreviewSafe`** でプレビューのノイズを抑制。構造化ログに **`preprocessBytesBinary`**（二値化後バイト長）あり。
 
 ## References
 

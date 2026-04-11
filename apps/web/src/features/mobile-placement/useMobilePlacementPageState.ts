@@ -84,7 +84,7 @@ export function useMobilePlacementPageState() {
     setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
     try {
       const res = await parseActualSlipImage(file);
-      const preview = buildOcrPreview(res.ocrText);
+      const preview = buildOcrPreview(res.ocrPreviewSafe ?? res.ocrText);
       const mo = res.manufacturingOrder10 ?? null;
       const fs = res.fseiban ?? null;
       if (mo) {

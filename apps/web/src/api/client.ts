@@ -852,6 +852,8 @@ export async function parseActualSlipImage(imageFile: File) {
   const { data } = await api.post<{
     engine: string;
     ocrText: string;
+    /** 数字・英数字 OCR のみ（プレビュー用。無い場合は `ocrText` を表示に使う） */
+    ocrPreviewSafe: string | null;
     manufacturingOrder10: string | null;
     fseiban: string | null;
   }>('/mobile-placement/parse-actual-slip-image', form);
