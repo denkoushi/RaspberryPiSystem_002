@@ -6,9 +6,11 @@ import { MobilePlacementRegisterSection } from '../../features/mobile-placement/
 import { MobilePlacementVerifySection } from '../../features/mobile-placement/components/MobilePlacementVerifySection';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
 import { useMobilePlacementPageState } from '../../features/mobile-placement/useMobilePlacementPageState';
+import { useRegisteredShelves } from '../../features/mobile-placement/useRegisteredShelves';
 
 export function MobilePlacementPage() {
   const mp = useMobilePlacementPageState();
+  const registeredShelvesQuery = useRegisteredShelves();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -62,12 +64,17 @@ export function MobilePlacementPage() {
 
       <MobilePlacementRegisterSection
         shelfCode={mp.shelfCode}
+        onSelectShelf={mp.selectShelf}
         onOpenShelfRegister={() =>
           navigate('/kiosk/mobile-placement/shelf-register', {
             state: mp.buildShelfRegisterRouteState()
           })
         }
         onShelfQrScan={() => mp.setScanField('shelf')}
+        registeredShelves={registeredShelvesQuery.data?.shelves ?? []}
+        registeredShelvesLoading={registeredShelvesQuery.isLoading}
+        registeredShelvesError={registeredShelvesQuery.isError}
+        onRetryRegisteredShelves={() => void registeredShelvesQuery.refetch()}
         orderBarcode={mp.orderBarcode}
         onOrderBarcodeChange={mp.setOrderBarcode}
         onOrderScan={() => mp.setScanField('order')}

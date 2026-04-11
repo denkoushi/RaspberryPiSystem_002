@@ -38,6 +38,7 @@ import type {
   RiggingStatus,
   ItemLoanAnalyticsResponse
 } from './types';
+import type { RegisteredShelfEntryDto } from '../features/mobile-placement/registeredShelves/types';
 import type {
   FindOrOpenPartMeasurementResponse,
   PartMeasurementProcessGroup,
@@ -50,6 +51,7 @@ import type {
   ResolveTicketResponse
 } from '../features/part-measurement/types';
 import type { PhotoToolVlmLabelProvenance } from '@raspi-system/shared-types';
+
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const wsBase = import.meta.env.VITE_WS_BASE_URL ?? '/ws';
@@ -771,6 +773,14 @@ export async function getKioskProductionSchedule(params?: {
 }
 
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
+/** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
+export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
+
+export async function getMobilePlacementRegisteredShelves() {
+  const { data } = await api.get<{ shelves: RegisteredShelfEntryDto[] }>('/mobile-placement/registered-shelves');
+  return data;
+}
+
 export async function getMobilePlacementSchedule(params?: {
   productNo?: string;
   q?: string;
