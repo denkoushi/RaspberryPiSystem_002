@@ -4,7 +4,7 @@
 
 ## 0. 本番デプロイ後の確認（運用）
 
-**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。**2026-04-11（V2）**: ブランチ **`feat/mobile-placement-order-based-flow`** を上記順で反映済み（Mac 側サマリ例: `logs/ansible-update-20260411-093207.summary.json` ほか5本・各 `success: true`）。**2026-04-11（V3・棚番登録専用ページ）**: ブランチ **`feat/mobile-placement-shelf-register-page`**（コミット例 **`d18d3688`**）を同順で反映済み（Mac 側サマリ: `logs/ansible-update-20260411-122754.summary.json`（`raspberrypi5`）・`…-123258.summary.json`（`raspberrypi4`）・`…-123740.summary.json`（`raspi4-robodrill01`）・`…-124208.summary.json`（`raspi4-fjv60-80`）・`…-125020.summary.json`（`raspi4-kensaku-stonebase01`）、各 **`success: true`**）。**2026-04-11（V4・登録済み棚番一覧・フィルタ）**: ブランチ **`feat/mobile-placement-registered-shelves-ui`**（コミット例 **`43bc3fa7`**）を同順で反映済み（Mac 側サマリ: `logs/ansible-update-20260411-140348.summary.json`（`raspberrypi5`）・`…-141237.summary.json`（`raspberrypi4`）・`…-141659.summary.json`（`raspi4-robodrill01`）・`…-142020.summary.json`（`raspi4-fjv60-80`）・`…-142547.summary.json`（`raspi4-kensaku-stonebase01`）、各 **`success: true`**）。**Pi3** は本機能の必須対象外（リソース僅少のため Pi3 専用手順は未使用）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **47s**）。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`。API の spot check（`x-client-key` は端末の `apiKey`）例:
+**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--detach --follow` または `--foreground`）。**2026-04-11（V2）**: ブランチ **`feat/mobile-placement-order-based-flow`** を上記順で反映済み（Mac 側サマリ例: `logs/ansible-update-20260411-093207.summary.json` ほか5本・各 `success: true`）。**2026-04-11（V3・棚番登録専用ページ）**: ブランチ **`feat/mobile-placement-shelf-register-page`**（コミット例 **`d18d3688`**）を同順で反映済み（Mac 側サマリ: `logs/ansible-update-20260411-122754.summary.json`（`raspberrypi5`）・`…-123258.summary.json`（`raspberrypi4`）・`…-123740.summary.json`（`raspi4-robodrill01`）・`…-124208.summary.json`（`raspi4-fjv60-80`）・`…-125020.summary.json`（`raspi4-kensaku-stonebase01`）、各 **`success: true`**）。**2026-04-11（V4・登録済み棚番一覧・フィルタ）**: ブランチ **`feat/mobile-placement-registered-shelves-ui`**（コミット例 **`43bc3fa7`**）を同順で反映済み（Mac 側サマリ: `logs/ansible-update-20260411-140348.summary.json`（`raspberrypi5`）・`…-141237.summary.json`（`raspberrypi4`）・`…-141659.summary.json`（`raspi4-robodrill01`）・`…-142020.summary.json`（`raspi4-fjv60-80`）・`…-142547.summary.json`（`raspi4-kensaku-stonebase01`）、各 **`success: true`**）。**2026-04-11（V5・現品票画像 OCR + FHINCD 照合）**: ブランチ **`feat/mobile-placement-actual-slip-image-ocr`**（コミット **`f7342dd3`**）。**Detach Run ID（Pi5→Pi4×4・順）**: `20260411-183841-16996` → `20260411-184924-28557` → `20260411-185416-11344` → `20260411-185819-3299` → `20260411-190608-28569`（各 Pi5 リモートログ **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-placement-actual-slip-image-ocr infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Pi3** は本機能の必須対象外。**Phase12（本番反映後）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **55s**）。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`。API の spot check（`x-client-key` は端末の `apiKey`）例:
 
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
@@ -13,6 +13,10 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
 
 # 登録済み棚（OrderPlacementEvent 由来の distinct。履歴が無いと { "shelves": [] }）
 curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-key: <key>"
+
+# 現品票画像 OCR（multipart・JPEG/PNG/WebP）
+curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
+  -H "x-client-key: <key>" -F "image=@/path/to/slip.jpg"
 ```
 
 ## 前提
@@ -68,6 +72,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-ke
 - **棚番登録ページで戻ったあと値が空**: router state の復元失敗時は親 URL の `clientKey` とクエリを維持して `/kiosk/mobile-placement` を再読み込みする。Chrome で不整合が続く場合はサイトデータ削除（V1 節の heartbeat 系と同型の切り分け）
 - **登録済み棚が常に空**: `OrderPlacementEvent` にまだ行が無いと **`registered-shelves` は `{ "shelves": [] }`**（不具合ではない）。部品配膳を1件でも登録すると `shelfCodeRaw` が候補に現れる
 - **デプロイが `未commit変更` で止まる**: Mac 側に **未追跡ファイル**もブロック対象。`git stash push -u` またはコミットしてから [deployment.md](../guides/deployment.md) の `update-all-clients.sh` を再実行
+- **画像OCRが遅い／初回だけ長い**: Pi5 API コンテナで **tesseract.js ワーカ初回起動**で数十秒かかることがある。連続利用ではキャッシュされやすい。極端に大きい画像はサーバ側で縮小されるが、**ピント・コントラスト**を確保すると精度が上がる
 
 ## 6. API 契約
 
