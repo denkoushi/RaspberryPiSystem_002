@@ -7,7 +7,8 @@ import {
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL
 } from '../barcode-scan/formatPresets';
 
-import type { MobilePlacementScanField } from './types';
+import type { MobilePlacementShelfRegisterRouteState } from './shelfSelection';
+import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 
 /**
  * 配膳ページの状態と API 呼び出し（UI から分離してテスト・再利用しやすくする）
@@ -17,7 +18,7 @@ export function useMobilePlacementPageState() {
   const [transferFhinmei, setTransferFhinmei] = useState('');
   const [actualOrder, setActualOrder] = useState('');
   const [actualFhinmei, setActualFhinmei] = useState('');
-  const [slipResult, setSlipResult] = useState<'idle' | 'ok' | 'ng'>('idle');
+  const [slipResult, setSlipResult] = useState<MobilePlacementSlipResult>('idle');
   const [slipVerifying, setSlipVerifying] = useState(false);
 
   const [shelfCode, setShelfCode] = useState('');
@@ -119,6 +120,32 @@ export function useMobilePlacementPageState() {
 
   const resetSlipResult = useCallback(() => setSlipResult('idle'), []);
 
+  const buildShelfRegisterRouteState = useCallback(
+    (): MobilePlacementShelfRegisterRouteState => ({
+      transferOrder,
+      transferFhinmei,
+      actualOrder,
+      actualFhinmei,
+      slipResult,
+      shelfCode,
+      orderBarcode
+    }),
+    [transferOrder, transferFhinmei, actualOrder, actualFhinmei, slipResult, shelfCode, orderBarcode]
+  );
+
+  const restoreShelfRegisterRouteState = useCallback((state: MobilePlacementShelfRegisterRouteState) => {
+    setTransferOrder(state.transferOrder);
+    setTransferFhinmei(state.transferFhinmei);
+    setActualOrder(state.actualOrder);
+    setActualFhinmei(state.actualFhinmei);
+    setSlipResult(state.slipResult);
+    setShelfCode(state.shelfCode);
+    setOrderBarcode(state.orderBarcode);
+    setRegisterMessage(null);
+    setRegisterError(null);
+    setScanField(null);
+  }, []);
+
   return {
     transferOrder,
     setTransferOrder,
@@ -130,6 +157,8 @@ export function useMobilePlacementPageState() {
     setActualFhinmei,
     slipResult,
     resetSlipResult,
+    buildShelfRegisterRouteState,
+    restoreShelfRegisterRouteState,
     slipVerifying,
     runSlipVerify,
     shelfCode,

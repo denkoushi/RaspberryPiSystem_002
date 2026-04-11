@@ -1,19 +1,12 @@
 import { MP_PLACEHOLDER_ORDER } from '../constants';
-import { useShelfZoneOverlay } from '../hooks/useShelfZoneOverlay';
-import { DEFAULT_SHELF_ZONE_CATALOG } from '../shelfZones/defaultShelfZoneCatalog';
+import { ViewfinderIcon } from '../icons/ViewfinderIcon';
 
 import { IconScanButton } from './IconScanButton';
-import { ShelfZoneOverlay } from './ShelfZoneOverlay';
-import { ShelfZonePickerRow } from './ShelfZonePickerRow';
-
-import type { ShelfZoneCatalog } from '../shelfZones/shelfZoneTypes';
 
 export type MobilePlacementRegisterSectionProps = {
   shelfCode: string;
-  onSelectShelf: (code: string) => void;
+  onOpenShelfRegister: () => void;
   onShelfQrScan: () => void;
-  /** 省略時はダミー catalog。将来 API 結果を渡して差し替え可能 */
-  shelfZoneCatalog?: ShelfZoneCatalog;
   orderBarcode: string;
   onOrderBarcodeChange: (v: string) => void;
   onOrderScan: () => void;
@@ -26,27 +19,31 @@ export type MobilePlacementRegisterSectionProps = {
 
 /**
  * 下半: 仮棚（アンバーブロック）+ 製造order・登録（ティールブロック）
+ * 棚番は専用ページで選択（/kiosk/mobile-placement/shelf-register）、QR は従来どおり。
  */
 export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSectionProps) {
-  const catalog = props.shelfZoneCatalog ?? DEFAULT_SHELF_ZONE_CATALOG;
-  const zoneUi = useShelfZoneOverlay(catalog);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-3">
-      <ShelfZoneOverlay
-        open={zoneUi.activeZone !== null}
-        zone={zoneUi.activeZone}
-        selectedShelfCode={props.shelfCode}
-        onClose={zoneUi.closeZone}
-        onSelectShelf={props.onSelectShelf}
-      />
-
       <div className="rounded-[10px] border-l-[3px] border-l-amber-400 bg-amber-500/[0.06] px-2.5 py-2.5">
-        <ShelfZonePickerRow
-          zones={catalog.zones}
-          onOpenZone={zoneUi.openZone}
-          onQrScan={props.onShelfQrScan}
-        />
+        <div className="grid grid-cols-2 gap-2 [grid-template-columns:repeat(2,minmax(0,1fr))]">
+          <button
+            type="button"
+            className="min-h-[52px] min-w-0 rounded-[10px] border border-amber-400/35 bg-slate-800 px-2 py-2 text-sm font-bold text-amber-100 active:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
+            onClick={props.onOpenShelfRegister}
+          >
+            棚番を選ぶ
+          </button>
+          <button
+            type="button"
+            className="flex min-h-[52px] min-w-0 flex-col items-center justify-center gap-1 border-0 bg-transparent py-2 text-xs font-semibold text-slate-300 active:bg-white/[0.22] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40"
+            title="棚のQRコードをスキャン"
+            aria-label="棚をQRスキャン"
+            onClick={props.onShelfQrScan}
+          >
+            <ViewfinderIcon className="h-[18px] w-[18px] text-sky-300" />
+            <span>QR</span>
+          </button>
+        </div>
         <p className="mt-2 text-xs text-slate-300">
           選択中の棚: <strong className="font-semibold text-amber-100">{props.shelfCode || '—'}</strong>
         </p>

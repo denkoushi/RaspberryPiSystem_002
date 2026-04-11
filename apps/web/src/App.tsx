@@ -30,6 +30,7 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
+import { KioskMobileShelfRegisterPage } from './pages/kiosk/KioskMobileShelfRegisterPage';
 import { KioskPartMeasurementEditPage } from './pages/kiosk/KioskPartMeasurementEditPage';
 import { KioskPartMeasurementFinalizedPage } from './pages/kiosk/KioskPartMeasurementFinalizedPage';
 import { KioskPartMeasurementPage } from './pages/kiosk/KioskPartMeasurementPage';
@@ -83,6 +84,7 @@ function App() {
           <Route path="/kiosk/production-schedule/progress-overview" element={<ProductionScheduleProgressOverviewPage />} />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
           <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
+          <Route path="/kiosk/mobile-placement/shelf-register" element={<KioskMobileShelfRegisterPage />} />
           <Route path="/kiosk/mobile-placement/register" element={<Navigate to="/kiosk/mobile-placement" replace />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />

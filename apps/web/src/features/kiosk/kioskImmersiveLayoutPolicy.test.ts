@@ -34,7 +34,8 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/part-measurement/template/new'],
     ['/kiosk/part-measurement/finalized'],
     ['/kiosk/mobile-placement'],
-    ['/kiosk/mobile-placement/register']
+    ['/kiosk/mobile-placement/register'],
+    ['/kiosk/mobile-placement/shelf-register']
   ])('true for %s', (path) => {
     expect(usesKioskImmersiveLayout(path)).toBe(true);
   });

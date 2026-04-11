@@ -10,4 +10,6 @@ export type MobilePlacementScanField =
   | 'actualFhinmei'
   | null;
 
+export type MobilePlacementSlipResult = 'idle' | 'ok' | 'ng';
+
 export type SlipColumnVariant = 'transfer' | 'actual';
