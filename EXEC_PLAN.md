@@ -10,6 +10,7 @@
 ## Progress
 
 - [x] (2026-04-10) **配膳スマホ V1（mobile-placement）本番反映・Pi5→Pi4×4 順次（Pi3 除外）・Phase12・ドキュメント追記**: 実装コミット **`8e1d0e3f`**（`main`）。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --foreground` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Mac 側サマリ**: `logs/ansible-update-20260410-224910.summary.json`（Pi5）・`…-230047.summary.json`（`raspberrypi4`）・`…-230530.summary.json`（`raspi4-robodrill01`）・`…-230901.summary.json`（`raspi4-fjv60-80`）・`…-231350.summary.json`（`raspi4-kensaku-stonebase01`）、各 **`success: true`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **51s**）。**仕様（突合）**: `csvDashboardRowId` 指定時、スキャン値は **`ProductNo` / `FSEIBAN` / `FHINCD`** のいずれかに一致するか、**または** マスタ解決後の **`Item.itemCode` が上記いずれかのフィールドと一致**すること（行と無関係な `itemCode` のみ一致では **400 `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**）。**手動（Android）**: [mobile-placement-smartphone.md](./docs/runbooks/mobile-placement-smartphone.md)。**ナレッジ**: [KB-339](./docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[api/mobile-placement.md](./docs/api/mobile-placement.md)。
+- [x] (2026-04-11) **配膳スマホ V2（部品配膳・移動票/現品票照合）本番・Pi5→Pi4×4 順次（Pi3 除外）・Phase12・ドキュメント・`main` マージ（PR）**: 実装コミット **`da613487`**（ブランチ `feat/mobile-placement-order-based-flow` → PR で `main`）。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-placement-order-based-flow infrastructure/ansible/inventory.yml --limit <host> --foreground` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Mac 側サマリ**: `logs/ansible-update-20260411-093207.summary.json`（Pi5）・`…-094037.summary.json`（`raspberrypi4`）・`…-094510.summary.json`（`raspi4-robodrill01`）・`…-094844.summary.json`（`raspi4-fjv60-80`）・`…-095813.summary.json`（`raspi4-kensaku-stonebase01`）、各 **`success: true`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **48s**）。**DB**: Prisma `OrderPlacementEvent`（マイグレーション `20260411120000_add_order_placement_event`）。**ナレッジ**: [KB-339](./docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[api/mobile-placement.md](./docs/api/mobile-placement.md)・[mobile-placement-smartphone.md](./docs/runbooks/mobile-placement-smartphone.md)。
 - [x] (2026-04-10) **Dropbox バックアップ: 推奨永続対象カタログ・`coverage_gap` 健全性・管理UI追加・本番 Pi5 のみデプロイ・Phase12・ドキュメント・`main` マージ**: ブランチ `feat/backup-recommended-target-audit`（API `backup-recommended-targets.catalog.ts`・`checkHealth` 拡張・Web `BackupTargetsPage`・axios 1.15.0・Trivy `.trivyignore` CVE-2026-28390）。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`** のみ・**`--detach --follow`**（**Pi4/Pi3 不在・Pi3 専用手順不要**）。**Detach Run ID**: `20260410-191940-18752`（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**）。**スモーク**: Pi5 `GET https://localhost/api/backup/config/health/internal`（localhost）で **`coverage_gap`** + **`suggestedTarget`**。**ナレッジ**: [KB-338](./docs/knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap)。**`main` マージ**: PR 経由・ローカル `main` を `git pull --ff-only origin main` で同期。
 - [x] (2026-04-09) **キオスク「集計」写真タブ: `items/loan-analytics` を写真持出（VLM/人レビュー表示名）集計へ変更・本番 Pi5 のみ再デプロイ・Phase12・ドキュメント**: 実装コミット **`3a722c8d`**（`main`）。**デプロイ**: [deployment.md](./docs/guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: `20260409-222053-14442`（**`failed=0` / `unreachable=0`**・exit **`0`**・所要約 **16 分**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **110s**）。**スモーク**: `GET /api/tools/items/loan-analytics` **200**。**ナレッジ**: [KB-334](./docs/knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**ドキュメント**: KB-334 / `docs/INDEX.md` / `knowledge-base/index.md` / 本ファイルを更新し **`main` push**・GitHub Actions 確認。
 - [x] (2026-04-09) **キオスク「集計」: DADS・ヘッダ「集計」・タブ UI・ViewModel・初回本番 Pi5 のみ**（当時 `items/loan-analytics` は NFC Item ベース。後続で **`3a722c8d`** で写真 VLM 集計へ変更）。**Detach Run ID**: `20260409-213409-15007`・Phase12 **43/0/0**。
@@ -1778,19 +1779,20 @@
 
 ## Next Steps（将来のタスク）
 
-### 配膳スマホ V1 運用フォロー（2026-04-10 本番反映後）
+### 配膳スマホ運用フォロー（V2 既定・2026-04-11 本番反映後）
 
 **概要**: [mobile-placement-smartphone.md](./docs/runbooks/mobile-placement-smartphone.md)・[KB-339](./docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[api/mobile-placement.md](./docs/api/mobile-placement.md)。自動回帰は **`verify-phase12-real.sh` FAIL 0**（既存項目のみで mobile-placement 専用チェックは未追加）。
 
 **候補タスク**:
 
-1. **Android 実機**: Tailscale・`clientKey` 付き URL で一覧→棚スキャン→工具スキャン→登録（**`MOBILE_PLACEMENT_SCHEDULE_MISMATCH`** を意図的に出す逆テストを含む）。
-2. **バーコード**: KB-339 どおり現場サンプルで `itemCode` / 日程キーの **CONFIRMED** を維持し、マスタの `Item.itemCode` を運用と揃える。
-3. **監視**: 運用で問題が増えたら `MobilePlacementEvent` 集計や管理画面の要否を検討し、判断は ADR/KB に残す。
+1. **Android 実機（V2）**: Tailscale・`clientKey` 付きで `/kiosk/mobile-placement` を開き、**照合 OK/NG**・**仮棚 + 製造order登録**（**404 `ORDER_PLACEMENT_SCHEDULE_NOT_FOUND`** の逆テストを含む）。
+2. **Android 実機（V1 工具 API・レガシー）**: 必要な場合のみ `POST /api/mobile-placement/register` で **`MOBILE_PLACEMENT_SCHEDULE_MISMATCH`** を意図的に出す逆テスト。
+3. **バーコード**: KB-339 どおり現場サンプルで `itemCode` / 日程キーの **CONFIRMED** を維持し、マスタの `Item.itemCode` を運用と揃える。
+4. **監視**: 運用で問題が増えたら `MobilePlacementEvent` / `OrderPlacementEvent` 集計や管理画面の要否を検討し、判断は ADR/KB に残す。
 
 ### 配膳スマホ V2（部品配膳・移動票/現品票照合）
 
-**ブランチ**: `feat/mobile-placement-order-based-flow`（**未マージ・未デプロイ想定**）。**概要**: 単一画面で **照合（OK/NG）** + **仮棚 + 製造order登録（`OrderPlacementEvent`）**。工具 `POST /api/mobile-placement/register` は互換維持。**ドキュメント**: 上記 Runbook / API / KB-339。**残作業**: DB マイグレーション適用・本番デプロイ・Android 実機で照合・登録の確認。
+**ブランチ**: `feat/mobile-placement-order-based-flow` → **`main`（PR マージ後）**。**概要**: 単一画面で **照合（OK/NG）** + **仮棚 + 製造order登録（`OrderPlacementEvent`）**。工具 `POST /api/mobile-placement/register` は互換維持。**本番デプロイ・Phase12**: Progress（2026-04-11）を参照。**残作業（手動）**: Android 実機で照合・登録の現場確認（[mobile-placement-smartphone.md](./docs/runbooks/mobile-placement-smartphone.md)）。
 
 ### 写真持出 VLM アクティブ補助 運用フォロー（2026-04-09 本番有効化後）
 

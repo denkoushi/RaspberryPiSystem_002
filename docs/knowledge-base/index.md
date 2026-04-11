@@ -327,7 +327,7 @@ update-frequency: high
 | [KB-321](./infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) | キオスク進捗一覧フルスロット（`kiosk_progress_overview`）のサイネージ表示・デプロイ・Phase12 実機検証・4列×2段レイアウト | ✅ 解決済み（2026-04-01 初回・2026-03-31 2段化本番反映） |
 | [KB-335](./infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg) | キオスク順位ボード・資源CDカード（`kiosk_leader_order_cards`）JPEG・工場視認性（タイポ/1行ヘッダ/トークン分割）・`cardsPerPage` 1〜8 | ✅ 解決済み（2026-04-08・Pi5 のみ・readability 本番・Phase12 PASS 43/0/0） |
 | [KB-337](./infrastructure/signage.md#kb-337-android-signage-lite-401-chrome) | Android 軽量 `/signage-lite`・`current-image` **401**（未登録 `apiKey`・`heartbeat`）と **Chrome サイトデータ／キャッシュ** によるページのみ不整合 | ✅ 解決手順確定（2026-04-08・実機） |
-| [KB-339](./KB-339-mobile-placement-barcode-survey.md) | 配膳スマホ V1 — 現場バーコードの意味確定（`Item.itemCode` / スケジュール突合・実装前ゲート） | ✅ KB・API・Web・Runbook 整合（2026-04-10・**AQUOS 実機は Runbook 手順で確認**） |
+| [KB-339](./KB-339-mobile-placement-barcode-survey.md) | 配膳スマホ V1/V2 — 現場バーコードの意味確定・V2 照合/部品配膳（`OrderPlacementEvent`） | ✅ KB・API・Web・Runbook 整合（2026-04-11 本番 V2・2026-04-10 V1・**AQUOS 実機は Runbook 手順で確認**） |
 | [KB-322](./infrastructure/signage.md#kb-322-管理コンソールサイネージスケジュール一覧無効レコードの再編集api分離) | 管理コンソール サイネージスケジュール一覧（無効レコードの再編集・`GET /api/signage/schedules/management`） | ✅ 解決済み（2026-04-01） |
 | [KB-325](./infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git) | SPLIT・貸出カード `splitCompact24`（4×6・layoutConfig・Pi5 正本・デプロイ検証・ワークツリー `root` 権限） | ✅ 解決済み（2026-04-03・`main` マージ後 CI 確認） |
 | [KB-331](./infrastructure/signage.md#kb-331-signage-loan-grid-html-modern-chrome-stonebase-only) | 貸出グリッド HTML モダン外皮（契約不変）・StoneBase01 のみ本番デプロイ・Pi5 正本との切り分け | ✅ 解決済み（2026-04-06） |

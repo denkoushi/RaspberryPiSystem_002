@@ -4,7 +4,7 @@
 
 ## 0. 本番デプロイ後の確認（運用）
 
-**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`。API の spot check（`x-client-key` は端末の `apiKey`）例:
+**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。**2026-04-11（V2）**: ブランチ **`feat/mobile-placement-order-based-flow`** を上記順で反映済み（Mac 側サマリ例: `logs/ansible-update-20260411-093207.summary.json` ほか5本・各 `success: true`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`。API の spot check（`x-client-key` は端末の `apiKey`）例:
 
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \

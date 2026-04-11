@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-10
+最終更新: 2026-04-11
 
 ## Context
 
@@ -52,7 +52,13 @@
 
 - **UI**: `/kiosk/mobile-placement` 単一画面。上半分は移動票・現品票の **ProductNo + FHINMEI** スキャンと **OK/NG**、下半分は仮棚（TEMP-A〜D または QR）+ 製造orderスキャン + **登録**（`OrderPlacementEvent`。**`Item` は更新しない**）。
 - **API**: `POST /api/mobile-placement/verify-slip-match`・`POST /api/mobile-placement/register-order-placement`（[api/mobile-placement.md](../api/mobile-placement.md)）。
-- **照合**: `listScheduleRowsByProductNo` 系で行を解決し、**`FSEIBAN` + `FHINMEI`** ペア一致を判定。
+- **照合**: 各票の **製造order番号**でスケジュール行を解決し、スキャンした **FHINMEI** が行と一致したうえで、両票の **`FSEIBAN` + `FHINMEI`** ペアが一致するか判定。
+
+### 本番反映・検証（2026-04-11）
+
+- **デプロイ**: [deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → Pi4 キオスク 4 台**を **`--limit` 1 台ずつ**・ブランチ **`feat/mobile-placement-order-based-flow`**・`--foreground`（**Pi3 は対象外**）。実装ベースコミット **`da613487`**（**`main` へ PR マージ**）。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **DB**: `OrderPlacementEvent`（マイグレーション `20260411120000_add_order_placement_event`）。
 
 ## References
 
