@@ -283,6 +283,7 @@ model ClientDevice {
   partMeasurementSheets   PartMeasurementSheet[] @relation("PartMeasurementSheetOwningDevice")
   partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
   mobilePlacementEvents   MobilePlacementEvent[]
+  orderPlacementEvents    OrderPlacementEvent[]
 
   @@index([statusClientId])
 }
@@ -306,6 +307,22 @@ model MobilePlacementEvent {
 
   @@index([clientDeviceId, placedAt])
   @@index([itemId])
+}
+
+/// 部品配膳（製造order番号起点・Item は更新しない）
+model OrderPlacementEvent {
+  id                             String   @id @default(uuid())
+  clientDeviceId                 String
+  shelfCodeRaw                   String
+  manufacturingOrderBarcodeRaw   String
+  csvDashboardRowId              String?
+  scheduleSnapshot               Json?
+  placedAt                       DateTime @default(now())
+  createdAt                      DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([clientDeviceId, placedAt])
 }
 
 model ClientStatus {

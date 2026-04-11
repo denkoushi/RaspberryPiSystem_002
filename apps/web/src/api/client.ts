@@ -818,6 +818,39 @@ export async function registerMobilePlacement(payload: {
   return data;
 }
 
+/** 移動票・現品票の (FSEIBAN, FHINMEI) ペア照合 */
+export async function verifyMobilePlacementSlipMatch(payload: {
+  transferOrderBarcodeRaw: string;
+  transferFhinmeiBarcodeRaw: string;
+  actualOrderBarcodeRaw: string;
+  actualFhinmeiBarcodeRaw: string;
+}) {
+  const { data } = await api.post<{ ok: true } | { ok: false; reason: string }>(
+    '/mobile-placement/verify-slip-match',
+    payload
+  );
+  return data;
+}
+
+/** 部品配膳（製造order番号・棚のみ。Item は更新しない） */
+export async function registerOrderPlacement(payload: {
+  shelfCodeRaw: string;
+  manufacturingOrderBarcodeRaw: string;
+}) {
+  const { data } = await api.post<{
+    event: {
+      id: string;
+      clientDeviceId: string;
+      shelfCodeRaw: string;
+      manufacturingOrderBarcodeRaw: string;
+      csvDashboardRowId: string | null;
+      placedAt: string;
+    };
+    resolvedRowId: string;
+  }>('/mobile-placement/register-order-placement', payload);
+  return data;
+}
+
 export interface KioskProductionScheduleOrderSearchResponse {
   partNameOptions: string[];
   orders: string[];
