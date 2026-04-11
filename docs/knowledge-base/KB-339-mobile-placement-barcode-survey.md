@@ -75,6 +75,13 @@
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **85s**）。
 - **仕様**: 撮影 OCR 後に **成功／候補なし／エラー**を UI 表示。API は **`parse-actual-slip-image` 完了ログ**で後追い（OCR 全文は出さない）。パーサは **桁間空白・O/0 等の限定補正**と **注文番号ブロックのみの 10 桁は採用しない**ガード。
 
+### 本番反映・検証（2026-04-11・V7 現品票 OCR 用途別パイプライン）
+
+- **デプロイ**: [deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → Pi4 キオスク 4 台**を **`--limit` 1 台ずつ**・ブランチ **`feat/mobile-placement-ocr-pipeline-hardening`**・**`--detach --follow`**（**Pi3 は対象外**）。実装ベースコミット **`8c1cc13d`**（**`main` へ PR マージ**）。
+- **Detach Run ID（ログ接頭辞 `ansible-update-`）**: `20260411-211922-10561`（`raspberrypi5`）→ `20260411-212830-9591`（`raspberrypi4`）→ `20260411-213306-11155`（`raspi4-robodrill01`）→ `20260411-213638-10529`（`raspi4-fjv60-80`）→ `20260411-214942-8793`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**）。
+- **知見**: **3 パス直列**のため **単一 OCR 時より遅くなり得る**（初回ワーカ起動も重畳）。UI は **`ocrPreviewSafe`** でプレビューのノイズを抑制。構造化ログに **`preprocessBytesBinary`**（二値化後バイト長）あり。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`

@@ -8,6 +8,8 @@
 
 **2026-04-11（V6・現品票 OCR 可観測性・UI 案内・パーサ強化）**: ブランチ **`feat/mobile-placement-ocr-debug-fix`**（コミット **`e6806d28`**）。**仕様**: 撮影 OCR 後に **成功／候補なし／エラー**を現品票列下に表示（無言失敗を解消）。API は **`parse-actual-slip-image` 完了時の構造化ログ**（入力・前処理バイト・OCR 文字数・候補有無・所要時間・`requestId` 相関。OCR 全文はログに出さない）。サーバは **桁間空白・O/0 等の限定補正**と **注文番号ブロックの単一候補でも誤採用しない**ガード。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-200637-30031` → `20260411-201900-24559` → `20260411-202426-10094` → `20260411-202844-23208` → `20260411-203518-31439`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **85s**・Mac / Tailscale）。
 
+**2026-04-11（V7・現品票 OCR 用途別パイプライン・`ocrPreviewSafe`）**: ブランチ **`feat/mobile-placement-ocr-pipeline-hardening`**（コミット **`8c1cc13d`**）。**仕様**: `jpn+eng` ラベルパス + `eng` 数字／英数字 whitelist の **3 パス直列**、前処理（グレースケール・正規化・余白・数字パスは二値化）、応答 **`ocrPreviewSafe`**（UI はひらがなノイズを抑えたプレビュー）。構造化ログに **`preprocessBytesBinary`**（二値化後 JPEG サイズ）を追加。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-211922-10561` → `20260411-212830-9591` → `20260411-213306-11155` → `20260411-213638-10529` → `20260411-214942-8793`（各 **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**）。**トラブルシュート**: OCR が遅い／初回のみ長い → 下記 **「5. トラブルシュート」**（`tesseract.js` ワーカ初回・**3 パスで処理時間増**の可能性）。**Pi3** は本機能の必須対象外。
+
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
   -H "Content-Type: application/json" -H "x-client-key: <key>" \
