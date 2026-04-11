@@ -6,7 +6,7 @@ import { synthesizeProvidersFromLegacyLlm, tryParseInferenceProvidersJson } from
 import type { InferenceProviderDefinition } from './config/inference-provider.types.js';
 import { InferenceRouter, type InferenceRouterConfig } from './routing/inference-router.js';
 import type { TextCompletionPort } from './ports/text-completion.port.js';
-import type { VisionCompletionPort } from '../tools/photo-tool-label/photo-tool-label-ports.js';
+import type { VisionCompletionPort } from './ports/vision-completion.port.js';
 
 export type AdminLocalLlmRuntimeConfigShape = {
   configured: boolean;
@@ -80,6 +80,7 @@ export function buildInferenceRuntime(fetchImpl: typeof fetch = fetch): Inferenc
       new RoutedVisionCompletionAdapter({
         router,
         fetchImpl,
+        useCase: 'photo_label',
         getMaxTokens: () => env.INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS,
         getTemperature: () => env.INFERENCE_PHOTO_LABEL_VISION_TEMPERATURE,
       }),

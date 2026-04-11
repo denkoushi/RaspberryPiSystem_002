@@ -5,7 +5,7 @@
 
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 
-import type { VisionCompletionPort, VisionCompletionInput, VisionCompletionResult } from '../tools/photo-tool-label/photo-tool-label-ports.js';
+import type { VisionCompletionPort, VisionCompletionInput, VisionCompletionResult } from '../inference/ports/vision-completion.port.js';
 
 export class LlamaServerVisionCompletionAdapter implements VisionCompletionPort {
   private readonly inner: VisionCompletionPort;

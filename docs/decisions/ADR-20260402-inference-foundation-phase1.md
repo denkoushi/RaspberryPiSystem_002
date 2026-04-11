@@ -47,9 +47,15 @@ date: 2026-04-02
 - **仕様上の注意**: 本番では要領書テキスト推論は既定 **OFF**（`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED` 未設定または `false`）。Phase12 だけでは LLM 要約の成功／失敗は検証しない（API・DB・キオスク一覧の回帰が主眼）。写真ラベル VLM は **`photo_label` ルート**経由に切替済み；upstream 未到達時は既存ジョブのリトライ・フォールバック方針に従う。
 - **トラブルシュート**: `INFERENCE_PROVIDERS_JSON` 不正時は起動ログに警告のうえ **`LOCAL_LLM_*` 合成**へフォールバック。観測は pino で `component: inference`（本文はログに出さない）。
 
+## Verification（境界整理・実機・2026-04-11）
+
+- **ブランチ**: `feat/ocr-vlm-boundary-refactor`（コミット `b0f4a180`）。**変更**: `VisionCompletionPort` を `inference/ports` へ集約、`RoutedVisionCompletionAdapter` に **`useCase` 注入**、OCR を `services/ocr` へ移動（挙動互換・`KIOSK_DOCUMENT_*` 維持）。
+- **デプロイ・検証**: [KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) のとおり Pi5→Pi4×4→Pi3 順次、`verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**。
+
 ## References
 
-- 実装: `apps/api/src/services/inference/`
+- 実装: `apps/api/src/services/inference/`（OCR 契約は `apps/api/src/services/ocr/`・Vision 契約は `inference/ports/vision-completion.port.ts`）
+- 境界整理の本番記録: [KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)
 - 要領書: [kiosk-documents.md](../runbooks/kiosk-documents.md)
 - LocalLLM 運用: [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)
 - 既存: [ADR-20260329](./ADR-20260329-local-llm-pi5-api-operations.md)

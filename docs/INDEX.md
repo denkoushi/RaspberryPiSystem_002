@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-11）
+
+- **API OCR/VLM 境界整理リファクタ（挙動互換・コードのみ）本番反映: Pi5→Pi4×4→Pi3 順次・Phase12 43/0/0**: ブランチ `feat/ocr-vlm-boundary-refactor`・コミット **`b0f4a180`**。`services/ocr`・`VisionCompletionPort` 中立化・`photo_label` の `useCase` 注入。デプロイは [deployment.md](./guides/deployment.md) 標準（`--limit` 1 台ずつ・`--detach --follow`・Pi3 は最後に単独）。実機: `./scripts/deploy/verify-phase12-real.sh`。**ナレッジ**: [KB-340](./knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)・[ADR-20260402](./decisions/ADR-20260402-inference-foundation-phase1.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### デザインプレビュー（静的 HTML）
 
 - **手動順番リーダー俯瞰（静的プレビュー）**: [design-previews/manual-order-leader-overview-preview.html](./design-previews/manual-order-leader-overview-preview.html) — [design-previews/README.md](./design-previews/README.md) 参照。

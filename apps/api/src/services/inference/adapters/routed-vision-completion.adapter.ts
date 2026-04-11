@@ -1,6 +1,7 @@
-import type { VisionCompletionPort, VisionCompletionInput, VisionCompletionResult } from '../../tools/photo-tool-label/photo-tool-label-ports.js';
+import type { VisionCompletionPort, VisionCompletionInput, VisionCompletionResult } from '../ports/vision-completion.port.js';
 import { emitInferenceCallOutcome } from '../observability/inference-observability.js';
 import { InferenceRouter } from '../routing/inference-router.js';
+import type { InferenceUseCase } from '../types/inference-usecase.js';
 
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from './openai-chat-response.util.js';
 
@@ -16,19 +17,22 @@ const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup:
 export type RoutedVisionCompletionAdapterDeps = {
   router: InferenceRouter;
   fetchImpl: typeof fetch;
+  /** ルータが解決する推論用途（例: photo_label）。テキスト completion と同様に用途を注入する。 */
+  useCase: InferenceUseCase;
   getMaxTokens: () => number;
   getTemperature: () => number;
 };
 
 /**
- * 写真持出ラベル等: 用途 photo_label へルーティングし OpenAI 互換 VLM を呼ぶ。
+ * OpenAI 互換 VLM: 指定 useCase へルーティングし `/v1/chat/completions` を呼ぶ。
  */
 export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
   constructor(private readonly deps: RoutedVisionCompletionAdapterDeps) {}
 
   async complete(input: VisionCompletionInput): Promise<VisionCompletionResult> {
     const started = performance.now();
-    const { provider, model } = this.deps.router.resolve('photo_label');
+    const useCase = this.deps.useCase;
+    const { provider, model } = this.deps.router.resolve(useCase);
     const inputSize = input.imageBytes.length + Buffer.byteLength(input.userText, 'utf8');
     let result: 'ok' | 'failure' = 'failure';
     let errorReason: string | undefined;
@@ -75,7 +79,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
       result = 'ok';
       outputSize = Buffer.byteLength(rawText, 'utf8');
       emitInferenceCallOutcome({
-        useCase: 'photo_label',
+        useCase,
         providerId: provider.id,
         model,
         latencyMs: Math.round(performance.now() - started),
@@ -91,7 +95,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
         errorReason = e instanceof Error ? e.message.slice(0, 200) : 'unknown';
       }
       emitInferenceCallOutcome({
-        useCase: 'photo_label',
+        useCase,
         providerId: provider.id,
         model,
         latencyMs: Math.round(performance.now() - started),

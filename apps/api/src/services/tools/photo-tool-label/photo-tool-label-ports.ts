@@ -4,26 +4,17 @@
 
 import type { PhotoToolVlmLabelProvenance } from '@raspi-system/shared-types';
 
+/** 推論層の汎用 Vision ポートを再エクスポート（写真ツール以外からも import 可能にする） */
+export type {
+  VisionCompletionInput,
+  VisionCompletionResult,
+  VisionCompletionPort,
+} from '../../inference/ports/vision-completion.port.js';
+
 export type CompletePhotoToolLabelInput = {
   displayName: string;
   vlmProvenance: PhotoToolVlmLabelProvenance;
 };
-
-export type VisionCompletionInput = {
-  userText: string;
-  /** JPEG 等の raw bytes（base64 はアダプタ内で付与） */
-  imageBytes: Buffer;
-  mimeType: 'image/jpeg';
-};
-
-export type VisionCompletionResult = {
-  /** モデルが返したプレーンテキスト（正規化前） */
-  rawText: string;
-};
-
-export interface VisionCompletionPort {
-  complete(input: VisionCompletionInput): Promise<VisionCompletionResult>;
-}
 
 export interface ThumbnailReaderPort {
   readThumbnail(photoUrl: string): Promise<Buffer>;
