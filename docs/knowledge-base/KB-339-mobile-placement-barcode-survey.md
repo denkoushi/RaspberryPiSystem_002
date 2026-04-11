@@ -48,7 +48,14 @@
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
 - **突合の正本（コード）**: `csvDashboardRowId` 付き `register` は、スキャン値が行の **`ProductNo` / `FSEIBAN` / `FHINCD`** のいずれかと一致するか、**解決された `Item.itemCode` がそのいずれかと一致**すること。**欠陥対策**: 以前は「スキャンで解決した `itemCode` が行のどのフィールドとも違っても、別工具の `itemCode` とスキャンが一致すれば通過」し得たため、`Item.itemCode` 側の一致は **行キーとの一致**に限定した（`MOBILE_PLACEMENT_SCHEDULE_MISMATCH`）。
 
+## V2（部品配膳・移動票/現品票照合）
+
+- **UI**: `/kiosk/mobile-placement` 単一画面。上半分は移動票・現品票の **ProductNo + FHINMEI** スキャンと **OK/NG**、下半分は仮棚（TEMP-A〜D または QR）+ 製造orderスキャン + **登録**（`OrderPlacementEvent`。**`Item` は更新しない**）。
+- **API**: `POST /api/mobile-placement/verify-slip-match`・`POST /api/mobile-placement/register-order-placement`（[api/mobile-placement.md](../api/mobile-placement.md)）。
+- **照合**: `listScheduleRowsByProductNo` 系で行を解決し、**`FSEIBAN` + `FHINMEI`** ペア一致を判定。
+
 ## References
 
-- 実装: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
+- 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
+- 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

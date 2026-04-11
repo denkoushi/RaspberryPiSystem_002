@@ -30,6 +30,7 @@ describe('mobile-placement API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.orderPlacementEvent.deleteMany();
     await prisma.mobilePlacementEvent.deleteMany();
     await prisma.csvDashboardRow.deleteMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }
@@ -147,6 +148,144 @@ describe('mobile-placement API', () => {
     expectApiError(mismatch, 400);
 
     await prisma.csvDashboardRow.deleteMany({ where: { id: row.id } });
+  });
+
+  it('POST /api/mobile-placement/verify-slip-match returns ok when slips match', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999777',
+          FSEIBAN: 'SEI-001',
+          FHINCD: 'H-1',
+          FHINMEI: '部品名一致',
+          FSIGENCD: 'G1',
+          FKOJUN: '1'
+        }
+      }
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/verify-slip-match',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        transferOrderBarcodeRaw: '999777',
+        transferFhinmeiBarcodeRaw: '部品名一致',
+        actualOrderBarcodeRaw: '999777',
+        actualFhinmeiBarcodeRaw: '部品名一致'
+      }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+  });
+
+  it('POST /api/mobile-placement/verify-slip-match returns FHINMEI mismatch when order exists', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999778',
+          FSEIBAN: 'SEI-002',
+          FHINCD: 'H-2',
+          FHINMEI: '正しい部品名',
+          FSIGENCD: 'G1',
+          FKOJUN: '1'
+        }
+      }
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/verify-slip-match',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        transferOrderBarcodeRaw: '999778',
+        transferFhinmeiBarcodeRaw: '誤った部品名',
+        actualOrderBarcodeRaw: '999778',
+        actualFhinmeiBarcodeRaw: '正しい部品名'
+      }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: false, reason: 'TRANSFER_FHINMEI_MISMATCH' });
+  });
+
+  it('POST /api/mobile-placement/register-order-placement creates event without updating Item', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999888',
+          FSEIBAN: 'SEI-888',
+          FHINCD: 'H-8',
+          FHINMEI: 'x',
+          FSIGENCD: 'G1',
+          FKOJUN: '1'
+        }
+      }
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/register-order-placement',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        shelfCodeRaw: 'TEMP-A',
+        manufacturingOrderBarcodeRaw: '999888'
+      }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.event.shelfCodeRaw).toBe('TEMP-A');
+    expect(body.event.manufacturingOrderBarcodeRaw).toBe('999888');
+
+    const count = await prisma.orderPlacementEvent.count();
+    expect(count).toBe(1);
   });
 
   it('returns 401 without client key for resolve-item', async () => {

@@ -1788,6 +1788,10 @@
 2. **バーコード**: KB-339 どおり現場サンプルで `itemCode` / 日程キーの **CONFIRMED** を維持し、マスタの `Item.itemCode` を運用と揃える。
 3. **監視**: 運用で問題が増えたら `MobilePlacementEvent` 集計や管理画面の要否を検討し、判断は ADR/KB に残す。
 
+### 配膳スマホ V2（部品配膳・移動票/現品票照合）
+
+**ブランチ**: `feat/mobile-placement-order-based-flow`（**未マージ・未デプロイ想定**）。**概要**: 単一画面で **照合（OK/NG）** + **仮棚 + 製造order登録（`OrderPlacementEvent`）**。工具 `POST /api/mobile-placement/register` は互換維持。**ドキュメント**: 上記 Runbook / API / KB-339。**残作業**: DB マイグレーション適用・本番デプロイ・Android 実機で照合・登録の確認。
+
 ### 写真持出 VLM アクティブ補助 運用フォロー（2026-04-09 本番有効化後）
 
 参照: [KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md)・[verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.8（active 環境のログ確認）・[ADR-20260404](./docs/decisions/ADR-20260404-photo-tool-label-assist-active-gate.md)。

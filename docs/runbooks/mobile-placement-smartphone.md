@@ -1,13 +1,15 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-10
+最終更新: 2026-04-11
 
 ## 0. 本番デプロイ後の確認（運用）
 
-**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。**2026-04-10**: `main` **`8e1d0e3f`** を上記順で反映済み。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`（**PASS 43 / WARN 0 / FAIL 0** 相当を確認）。API の spot check（`x-client-key` は端末の `apiKey`）:
+**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`。API の spot check（`x-client-key` は端末の `apiKey`）例:
 
 ```bash
-curl -sk "https://<Pi5>/api/mobile-placement/resolve-item?barcode=<itemCode>" -H "x-client-key: <key>"
+curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
+  -H "Content-Type: application/json" -H "x-client-key: <key>" \
+  -d '{"transferOrderBarcodeRaw":"…","transferFhinmeiBarcodeRaw":"…","actualOrderBarcodeRaw":"…","actualFhinmeiBarcodeRaw":"…"}'
 ```
 
 ## 前提
@@ -25,22 +27,40 @@ curl -sk "https://<Pi5>/api/mobile-placement/resolve-item?barcode=<itemCode>" -H
 1. `https://<Pi5-Tailscale-IP>/api/system/health` が JSON `status: ok` を返すこと
 2. ブラウザで `https://<Pi5-Tailscale-IP>/kiosk/mobile-placement?clientKey=<apiKey>` を開くこと
 
-## 3. 業務フロー（V1）
+## 3. 業務フロー（V2・既定）
 
-1. 一覧で対象行を選ぶ（または「スケジュールなしで配置」）
-2. **棚番**をスキャンまたは手入力
-3. **アイテム**をスキャン（`Item.itemCode` と一致するラベルであること）
-4. 「配置を登録」
+**単一画面 `/kiosk/mobile-placement`**
 
-バーコードの意味が不明な場合は [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) に従って現場サンプルを取る。
+**上半分（照合）**
 
-## 4. トラブルシュート
+1. 移動票: 製造order番号・FHINMEI を **1次元バーコード**でスキャン（または手入力）
+2. 現品票: 同様に2本
+3. 「照合」で **OK / NG** を表示（サーバが `FSEIBAN` + `FHINMEI` ペアを突合）
+
+**下半分（配膳登録）**
+
+1. 棚番: **TEMP-A〜D** のいずれかをタップ、または **QR** で棚コードをスキャン（QR は棚のみ）
+2. 移動票の **製造order番号**を **1次元**でスキャン
+3. 「登録」→ `OrderPlacementEvent` 保存（**工具 `Item` は更新しない**）
+
+旧 `/kiosk/mobile-placement/register` は `/kiosk/mobile-placement` へリダイレクトする。
+
+## 4. 業務フロー（V1・工具配置・レガシー API）
+
+一覧で行を選ぶ UI は廃止。API `POST /api/mobile-placement/register` は **互換のため維持**（工具 `Item.itemCode` と棚）。
+
+1. **棚番**・**工具バーコード**・任意で **`csvDashboardRowId`**
+2. `Item.storageLocation` と `MobilePlacementEvent`
+
+## 5. トラブルシュート
 
 - **401 / 無効なクライアントキー**: `heartbeat` 未登録、または `x-client-key` と URL の `clientKey` がずれている
 - **ネットワーク不可**: Tailscale 未接続、ACL で 443 が拒否、Pi5 停止
-- **登録 404（工具マスタに無い）**: `itemCode` とラベルを揃える（KB-339）
-- **400 `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**: 一覧で選んだ行と **別の工具**をスキャンした。スキャン値が当該行の **`ProductNo` / `FSEIBAN` / `FHINCD`** のいずれかと一致するか、`Item.itemCode` がそれらのいずれかと一致する必要がある（**行と無関係な `itemCode` だけ一致**では弾く）
+- **照合 NG / reason**: 製造order番号がスケジュールに無い、FHINMEI が行と一致しない、両票の `FSEIBAN` が一致しない等。API 応答の `reason` を参照
+- **部品配膳 404 `ORDER_PLACEMENT_SCHEDULE_NOT_FOUND`**: 製造order番号に紐づく `CsvDashboardRow` が見つからない（生産スケジュール CSV 側を確認）
+- **工具登録 404（工具マスタに無い）**: `itemCode` とラベルを揃える（KB-339）
+- **400 `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**: （V1 register）一覧行と工具スキャンが一致しない
 
-## 5. API 契約
+## 6. API 契約
 
 [api/mobile-placement.md](../api/mobile-placement.md)
