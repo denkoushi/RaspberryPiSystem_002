@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>棚番登録 — 段階選択プレビュー（モック）</title>
+  <style>
+    :root {
+      --bg: #0c1222;
+      --surface: #243146;
+      --border: rgba(255, 255, 255, 0.28);
+      --text: #ffffff;
+      --muted: #94a3b8;
+      --amber: #fbbf24;
+      --teal: #2dd4bf;
+      --radius: 10px;
+      --selected: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100dvh;
+      font-family: system-ui, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .shell {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ヘッダー */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header__back {
+      width: 36px; height: 36px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .header__back:active { background: rgba(255,255,255,0.15); }
+    .header__title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    /* 選択中の棚番（常時表示） */
+    .shelf-preview {
+      margin: 12px 14px 0;
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      border: 2px solid var(--amber);
+      background: rgba(251, 191, 36, 0.08);
+      text-align: center;
+    }
+    .shelf-preview__label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .shelf-preview__code {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--amber);
+      letter-spacing: 0.08em;
+      font-variant-numeric: tabular-nums;
+      min-height: 42px;
+    }
+
+    /* ステップ共通 */
+    .step {
+      margin: 14px 14px 0;
+      padding: 14px;
+      border-radius: var(--radius);
+      border-left: 3px solid var(--amber);
+      background: rgba(251, 191, 36, 0.04);
+    }
+    .step--disabled {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    .step__heading {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fcd34d;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .step__num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(251, 191, 36, 0.25);
+      font-size: 12px;
+      font-weight: 800;
+      color: #fef9c3;
+    }
+    .step__grid {
+      display: grid;
+      gap: 8px;
+    }
+    .step__grid--3col { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .step__grid--5col { grid-template-columns: repeat(5, minmax(0,1fr)); }
+
+    /* ゾーンボタン */
+    .zone-btn {
+      min-height: 52px;
+      min-width: 0;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: #fef9c3;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .zone-btn:active { background: rgba(251, 191, 36, 0.2); }
+    .zone-btn.is-selected {
+      background: var(--selected);
+      border-color: var(--selected);
+      color: #fff;
+    }
+
+    /* 番号ボタン */
+    .num-btn {
+      min-height: 48px;
+      min-width: 0;
+      border: 1px solid rgba(251, 191, 36, 0.2);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      font-variant-numeric: tabular-nums;
+      transition: background 0.12s;
+    }
+    .num-btn:active { background: rgba(251, 191, 36, 0.2); }
+    .num-btn.is-selected {
+      background: var(--selected);
+      border-color: var(--selected);
+      color: #fff;
+    }
+    .num-btn.is-occupied {
+      opacity: 0.25;
+      pointer-events: none;
+      text-decoration: line-through;
+    }
+
+    /* 登録ボタン */
+    .register-area {
+      margin: 18px 14px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .register-btn {
+      width: 100%;
+      min-height: 52px;
+      border: none;
+      border-radius: var(--radius);
+      background: linear-gradient(to bottom, rgba(45,212,191,0.5), rgba(20,184,166,0.35));
+      color: #d1fae5;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: opacity 0.12s;
+    }
+    .register-btn:active { opacity: 0.8; }
+    .register-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .note {
+      margin: 10px 14px 16px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* 完了トースト */
+    .toast {
+      display: none;
+      position: fixed;
+      bottom: 40px;
+      left: 50%; transform: translateX(-50%);
+      background: var(--selected);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 200;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .toast.is-show { display: block; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="header">
+      <button type="button" class="header__back" title="戻る" aria-label="戻る">←</button>
+      <h1 class="header__title">棚番を登録</h1>
+    </div>
+
+    <div class="shelf-preview">
+      <p class="shelf-preview__label">選択中の棚番</p>
+      <p class="shelf-preview__code" id="previewCode">—</p>
+    </div>
+
+    <!-- STEP 1: エリア -->
+    <section class="step" id="step1">
+      <p class="step__heading"><span class="step__num">1</span> エリアを選ぶ</p>
+      <div class="step__grid step__grid--3col" id="areaGrid"></div>
+    </section>
+
+    <!-- STEP 2: 列 -->
+    <section class="step step--disabled" id="step2">
+      <p class="step__heading"><span class="step__num">2</span> 列を選ぶ</p>
+      <div class="step__grid step__grid--3col" id="lineGrid"></div>
+    </section>
+
+    <!-- STEP 3: 番号 -->
+    <section class="step step--disabled" id="step3">
+      <p class="step__heading"><span class="step__num">3</span> 空き番号を選ぶ</p>
+      <div class="step__grid step__grid--5col" id="numGrid"></div>
+    </section>
+
+    <!-- 登録 -->
+    <div class="register-area">
+      <button type="button" class="register-btn" id="registerBtn" disabled>この棚番で登録</button>
+    </div>
+
+    <p class="note">
+      棚番登録プレビュー（モック）。段階選択で棚番を組み立て、登録する流れの確認用です。<br>
+      使用済み番号は取り消し線で表示（ダミー）。本番では API から空き状況を取得します。
+    </p>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  (function () {
+    var AREAS = [
+      { id: 'west',    label: '西',  code: '西' },
+      { id: 'central', label: '中央', code: '中央' },
+      { id: 'east',    label: '東',  code: '東' }
+    ];
+    var LINES = [
+      { id: 'north',   label: '北',  code: '北' },
+      { id: 'central', label: '中央', code: '中央' },
+      { id: 'south',   label: '南',  code: '南' }
+    ];
+    var MAX_SLOT = 20;
+    var OCCUPIED = [3, 7, 11, 14];
+
+    var selectedArea = null;
+    var selectedLine = null;
+    var selectedNum  = null;
+
+    var previewCode = document.getElementById('previewCode');
+    var step1 = document.getElementById('step1');
+    var step2 = document.getElementById('step2');
+    var step3 = document.getElementById('step3');
+    var areaGrid = document.getElementById('areaGrid');
+    var lineGrid = document.getElementById('lineGrid');
+    var numGrid  = document.getElementById('numGrid');
+    var registerBtn = document.getElementById('registerBtn');
+    var toast = document.getElementById('toast');
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function updatePreview() {
+      var parts = [];
+      if (selectedArea) parts.push(selectedArea.code);
+      if (selectedLine) parts.push(selectedLine.code);
+      if (selectedNum)  parts.push(pad2(selectedNum));
+      previewCode.textContent = parts.length > 0 ? parts.join('-') : '—';
+      registerBtn.disabled = !(selectedArea && selectedLine && selectedNum);
+    }
+
+    function setSelected(container, btnEl) {
+      container.querySelectorAll('.zone-btn, .num-btn').forEach(function (b) {
+        b.classList.remove('is-selected');
+      });
+      btnEl.classList.add('is-selected');
+    }
+
+    function renderAreas() {
+      AREAS.forEach(function (a) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'zone-btn';
+        btn.textContent = a.label;
+        btn.addEventListener('click', function () {
+          selectedArea = a;
+          selectedLine = null;
+          selectedNum = null;
+          setSelected(areaGrid, btn);
+          step2.classList.remove('step--disabled');
+          step3.classList.add('step--disabled');
+          renderLines();
+          numGrid.innerHTML = '';
+          updatePreview();
+        });
+        areaGrid.appendChild(btn);
+      });
+    }
+
+    function renderLines() {
+      lineGrid.innerHTML = '';
+      lineGrid.querySelectorAll('.zone-btn').forEach(function (b) { b.classList.remove('is-selected'); });
+      LINES.forEach(function (l) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'zone-btn';
+        btn.textContent = l.label;
+        btn.addEventListener('click', function () {
+          selectedLine = l;
+          selectedNum = null;
+          setSelected(lineGrid, btn);
+          step3.classList.remove('step--disabled');
+          renderNums();
+          updatePreview();
+        });
+        lineGrid.appendChild(btn);
+      });
+    }
+
+    function renderNums() {
+      numGrid.innerHTML = '';
+      for (var i = 1; i <= MAX_SLOT; i++) {
+        (function (n) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'num-btn';
+          btn.textContent = pad2(n);
+          if (OCCUPIED.indexOf(n) >= 0) {
+            btn.classList.add('is-occupied');
+          } else {
+            btn.addEventListener('click', function () {
+              selectedNum = n;
+              setSelected(numGrid, btn);
+              updatePreview();
+            });
+          }
+          numGrid.appendChild(btn);
+        })(i);
+      }
+    }
+
+    registerBtn.addEventListener('click', function () {
+      if (!selectedArea || !selectedLine || !selectedNum) return;
+      var code = selectedArea.code + '-' + selectedLine.code + '-' + pad2(selectedNum);
+      toast.textContent = '✓ 登録完了: ' + code;
+      toast.classList.add('is-show');
+      setTimeout(function () { toast.classList.remove('is-show'); }, 2000);
+    });
+
+    renderAreas();
+  })();
+  </script>
+</body>
+</html>

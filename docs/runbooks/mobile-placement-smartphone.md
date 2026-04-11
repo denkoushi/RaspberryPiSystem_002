@@ -4,7 +4,7 @@
 
 ## 0. 本番デプロイ後の確認（運用）
 
-**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。**2026-04-11（V2）**: ブランチ **`feat/mobile-placement-order-based-flow`** を上記順で反映済み（Mac 側サマリ例: `logs/ansible-update-20260411-093207.summary.json` ほか5本・各 `success: true`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`。API の spot check（`x-client-key` は端末の `apiKey`）例:
+**対象ホスト（配膳 API/SPA を反映する最小セット）**: `raspberrypi5` → 各 Pi4 キオスク（`raspberrypi4`・`raspi4-robodrill01`・`raspi4-fjv60-80`・`raspi4-kensaku-stonebase01`）。**Pi3 サイネージは必須ではない**（本機能は `/kiosk/...`）。手順は [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。複数台のときは **inventory のホストを `--limit` で 1 台ずつ**（例: `--foreground`）。**2026-04-11（V2）**: ブランチ **`feat/mobile-placement-order-based-flow`** を上記順で反映済み（Mac 側サマリ例: `logs/ansible-update-20260411-093207.summary.json` ほか5本・各 `success: true`）。**2026-04-11（V3・棚番登録専用ページ）**: ブランチ **`feat/mobile-placement-shelf-register-page`**（コミット例 **`d18d3688`**）を同順で反映済み（Mac 側サマリ: `logs/ansible-update-20260411-122754.summary.json`（`raspberrypi5`）・`…-123258.summary.json`（`raspberrypi4`）・`…-123740.summary.json`（`raspi4-robodrill01`）・`…-124208.summary.json`（`raspi4-fjv60-80`）・`…-125020.summary.json`（`raspi4-kensaku-stonebase01`）、各 **`success: true`**）。**Pi3** は本機能の必須対象外（リソース僅少のため Pi3 専用手順は未使用）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **91s**）。自動回帰はリポジトリ直下で `./scripts/deploy/verify-phase12-real.sh`。API の spot check（`x-client-key` は端末の `apiKey`）例:
 
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
@@ -39,7 +39,7 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
 
 **下半分（配膳登録）**
 
-1. 棚番: **TEMP-A〜D** のいずれかをタップ、または **QR** で棚コードをスキャン（QR は棚のみ）
+1. 棚番: **「棚番を選ぶ」**で **`/kiosk/mobile-placement/shelf-register`** に遷移し、**エリア → 列 → 番号**の3段階で確定（表示は `formatShelfCodeRaw` 由来の **`西-北-02`** 形式）。戻ると親画面の棚欄に反映される。従来どおり **TEMP-A〜D** の直接タップ、または **QR** で棚コードをスキャン（QR は棚のみ）も可
 2. 移動票の **製造order番号**を **1次元**でスキャン
 3. 「登録」→ `OrderPlacementEvent` 保存（**工具 `Item` は更新しない**）
 
@@ -60,6 +60,7 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
 - **部品配膳 404 `ORDER_PLACEMENT_SCHEDULE_NOT_FOUND`**: 製造order番号に紐づく `CsvDashboardRow` が見つからない（生産スケジュール CSV 側を確認）
 - **工具登録 404（工具マスタに無い）**: `itemCode` とラベルを揃える（KB-339）
 - **400 `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**: （V1 register）一覧行と工具スキャンが一致しない
+- **棚番登録ページで戻ったあと値が空**: router state の復元失敗時は親 URL の `clientKey` とクエリを維持して `/kiosk/mobile-placement` を再読み込みする。Chrome で不整合が続く場合はサイトデータ削除（V1 節の heartbeat 系と同型の切り分け）
 
 ## 6. API 契約
 
