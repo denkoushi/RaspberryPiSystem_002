@@ -5,9 +5,9 @@ export type MobilePlacementScanField =
   | 'shelf'
   | 'order'
   | 'transferOrder'
-  | 'transferFhinmei'
+  | 'transferPart'
   | 'actualOrder'
-  | 'actualFhinmei'
+  | 'actualPart'
   | null;
 
 export type MobilePlacementSlipResult = 'idle' | 'ok' | 'ng';

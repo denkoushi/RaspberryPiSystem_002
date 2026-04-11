@@ -21,14 +21,14 @@ describe('pickPrimaryScheduleRowForOrder', () => {
 });
 
 describe('evaluateSlipPairMatch', () => {
-  it('returns ok when both sides match same FSEIBAN and FHINMEI', () => {
-    const r = row({ fseiban: 'SAME', fhinmei: 'X' });
+  it('returns ok when both sides match same FSEIBAN and FHINCD', () => {
+    const r = row({ fseiban: 'SAME', fhincd: 'X-1', fhinmei: 'dummy' });
     expect(
       evaluateSlipPairMatch({
         transferRow: r,
         actualRow: r,
-        transferFhinmeiBarcodeRaw: 'x',
-        actualFhinmeiBarcodeRaw: 'X'
+        transferPartBarcodeRaw: 'x-1',
+        actualPartBarcodeRaw: 'X-1'
       })
     ).toEqual({ ok: true });
   });
@@ -36,22 +36,22 @@ describe('evaluateSlipPairMatch', () => {
   it('returns ng when FSEIBAN differs', () => {
     expect(
       evaluateSlipPairMatch({
-        transferRow: row({ fseiban: 'A', fhinmei: 'X' }),
-        actualRow: row({ fseiban: 'B', fhinmei: 'X' }),
-        transferFhinmeiBarcodeRaw: 'X',
-        actualFhinmeiBarcodeRaw: 'X'
+        transferRow: row({ fseiban: 'A', fhincd: 'X-1', fhinmei: 'x' }),
+        actualRow: row({ fseiban: 'B', fhincd: 'X-1', fhinmei: 'x' }),
+        transferPartBarcodeRaw: 'X-1',
+        actualPartBarcodeRaw: 'X-1'
       }).ok
     ).toBe(false);
   });
 
-  it('returns transfer FHINMEI mismatch when order resolves but slip name differs', () => {
+  it('returns transfer part mismatch when order resolves but slip part differs', () => {
     expect(
       evaluateSlipPairMatch({
-        transferRow: row({ fseiban: 'A', fhinmei: 'NAME-A' }),
-        actualRow: row({ fseiban: 'A', fhinmei: 'NAME-A' }),
-        transferFhinmeiBarcodeRaw: 'NAME-B',
-        actualFhinmeiBarcodeRaw: 'NAME-A'
+        transferRow: row({ fseiban: 'A', fhincd: 'H-1', fhinmei: 'NAME-A' }),
+        actualRow: row({ fseiban: 'A', fhincd: 'H-1', fhinmei: 'NAME-A' }),
+        transferPartBarcodeRaw: 'H-2',
+        actualPartBarcodeRaw: 'H-1'
       })
-    ).toEqual({ ok: false, reason: 'TRANSFER_FHINMEI_MISMATCH' });
+    ).toEqual({ ok: false, reason: 'TRANSFER_PART_MISMATCH' });
   });
 });

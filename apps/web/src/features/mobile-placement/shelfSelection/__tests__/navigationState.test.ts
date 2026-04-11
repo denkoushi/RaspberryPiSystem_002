@@ -7,9 +7,10 @@ describe('isMobilePlacementShelfRegisterRouteState', () => {
     expect(
       isMobilePlacementShelfRegisterRouteState({
         transferOrder: 'A',
-        transferFhinmei: 'B',
+        transferPart: 'B',
         actualOrder: 'C',
-        actualFhinmei: 'D',
+        actualFseiban: '',
+        actualPart: 'D',
         slipResult: 'ok',
         shelfCode: '西-北-02',
         orderBarcode: '123'

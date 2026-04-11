@@ -42,7 +42,7 @@
 
 ### 配膳スマホ（Android・Tailscale）
 
-- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階・2026-04-11 ドキュメント更新／**本番反映・検証手順は Runbook §0**）
+- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合・2026-04-11 本番 Detach Run ID は Runbook §0／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
 - **バーコード調査ゲート**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)
 
 ### LocalLLM（Ubuntu / Tailscale）

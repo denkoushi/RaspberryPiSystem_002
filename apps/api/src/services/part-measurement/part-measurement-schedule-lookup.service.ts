@@ -60,6 +60,42 @@ export async function listScheduleRowsByProductNo(productNo: string): Promise<Pa
 }
 
 /**
+ * 製番（FSEIBAN）で日程行を列挙する。max ProductNo 勝者条件は製造order検索と同一。
+ */
+export async function listScheduleRowsByFseiban(fseiban: string): Promise<PartMeasurementScheduleRowCandidate[]> {
+  const normalized = fseiban.trim();
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const rows = await prisma.$queryRaw<RawRow[]>`
+    SELECT
+      "CsvDashboardRow"."id" AS "rowId",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) AS "fseiban",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'ProductNo', '')) AS "productNo",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) AS "fhincd",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FHINMEI', '')) AS "fhinmei",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSIGENCD', '')) AS "fsigencd",
+      (
+        CASE
+          WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^[0-9]+$'
+          THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
+          ELSE NULL
+        END
+      ) AS "fkojun"
+    FROM "CsvDashboardRow"
+    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+      AND TRIM("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${normalized}
+    ORDER BY
+      "fkojun" ASC NULLS LAST,
+      "fhincd" ASC
+  `;
+
+  return rows.filter((r) => r.fseiban.length > 0 && r.fhincd.length > 0 && r.fsigencd.length > 0);
+}
+
+/**
  * 製番単位の機種名（MH/SH 行の FHINMEI 等、seiban-progress と同系の集約）。
  */
 export async function resolveMachineNameForSeiban(fseiban: string): Promise<string | null> {

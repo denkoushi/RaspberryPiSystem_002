@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
@@ -13,6 +13,7 @@ export function MobilePlacementPage() {
   const registeredShelvesQuery = useRegisteredShelves();
   const location = useLocation();
   const navigate = useNavigate();
+  const actualSlipFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isMobilePlacementShelfRegisterRouteState(location.state)) return;
@@ -24,6 +25,19 @@ export function MobilePlacementPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <input
+        ref={actualSlipFileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
+        className="sr-only"
+        aria-hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void mp.parseActualSlipImageFile(f);
+          e.target.value = '';
+        }}
+      />
       <BarcodeScanModal
         open={mp.scanField !== null}
         formats={mp.scanFormats}
@@ -34,29 +48,36 @@ export function MobilePlacementPage() {
 
       <MobilePlacementVerifySection
         transferOrder={mp.transferOrder}
-        transferFhinmei={mp.transferFhinmei}
+        transferPart={mp.transferPart}
         actualOrder={mp.actualOrder}
-        actualFhinmei={mp.actualFhinmei}
+        actualFseiban={mp.actualFseiban}
+        actualPart={mp.actualPart}
         onChangeTransferOrder={(v) => {
           mp.setTransferOrder(v);
           mp.resetSlipResult();
         }}
-        onChangeTransferFhinmei={(v) => {
-          mp.setTransferFhinmei(v);
+        onChangeTransferPart={(v) => {
+          mp.setTransferPart(v);
           mp.resetSlipResult();
         }}
         onChangeActualOrder={(v) => {
           mp.setActualOrder(v);
           mp.resetSlipResult();
         }}
-        onChangeActualFhinmei={(v) => {
-          mp.setActualFhinmei(v);
+        onChangeActualFseiban={(v) => {
+          mp.setActualFseiban(v);
+          mp.resetSlipResult();
+        }}
+        onChangeActualPart={(v) => {
+          mp.setActualPart(v);
           mp.resetSlipResult();
         }}
         onScanTransferOrder={() => mp.setScanField('transferOrder')}
-        onScanTransferFhinmei={() => mp.setScanField('transferFhinmei')}
+        onScanTransferPart={() => mp.setScanField('transferPart')}
         onScanActualOrder={() => mp.setScanField('actualOrder')}
-        onScanActualFhinmei={() => mp.setScanField('actualFhinmei')}
+        onScanActualPart={() => mp.setScanField('actualPart')}
+        onPickActualSlipImage={() => actualSlipFileInputRef.current?.click()}
+        actualSlipImageOcrBusy={mp.actualSlipImageOcrBusy}
         slipVerifying={mp.slipVerifying}
         slipResult={mp.slipResult}
         onVerify={() => void mp.runSlipVerify()}

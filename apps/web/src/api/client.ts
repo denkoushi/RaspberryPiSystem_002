@@ -828,17 +828,33 @@ export async function registerMobilePlacement(payload: {
   return data;
 }
 
-/** 移動票・現品票の (FSEIBAN, FHINMEI) ペア照合 */
+/** 移動票・現品票の (FSEIBAN, FHINCD) ペア照合 */
 export async function verifyMobilePlacementSlipMatch(payload: {
   transferOrderBarcodeRaw: string;
-  transferFhinmeiBarcodeRaw: string;
+  transferPartBarcodeRaw: string;
+  /** 印字のみの場合は空でもよい（`actualFseibanRaw` とどちらか必須） */
   actualOrderBarcodeRaw: string;
-  actualFhinmeiBarcodeRaw: string;
+  /** 製番。製造orderが空のときに日程解決に使う */
+  actualFseibanRaw: string;
+  actualPartBarcodeRaw: string;
 }) {
   const { data } = await api.post<{ ok: true } | { ok: false; reason: string }>(
     '/mobile-placement/verify-slip-match',
     payload
   );
+  return data;
+}
+
+/** 現品票画像を OCR し、製造order（10桁）と製番候補を返す */
+export async function parseActualSlipImage(imageFile: File) {
+  const form = new FormData();
+  form.append('image', imageFile);
+  const { data } = await api.post<{
+    engine: string;
+    ocrText: string;
+    manufacturingOrder10: string | null;
+    fseiban: string | null;
+  }>('/mobile-placement/parse-actual-slip-image', form);
   return data;
 }
 

@@ -6,9 +6,10 @@ import type { MobilePlacementSlipResult } from '../types';
  */
 export type MobilePlacementShelfRegisterRouteState = {
   transferOrder: string;
-  transferFhinmei: string;
+  transferPart: string;
   actualOrder: string;
-  actualFhinmei: string;
+  actualFseiban: string;
+  actualPart: string;
   slipResult: MobilePlacementSlipResult;
   shelfCode: string;
   orderBarcode: string;
@@ -21,9 +22,10 @@ export function isMobilePlacementShelfRegisterRouteState(
   const v = value as Record<string, unknown>;
   return (
     typeof v.transferOrder === 'string' &&
-    typeof v.transferFhinmei === 'string' &&
+    typeof v.transferPart === 'string' &&
     typeof v.actualOrder === 'string' &&
-    typeof v.actualFhinmei === 'string' &&
+    typeof v.actualFseiban === 'string' &&
+    typeof v.actualPart === 'string' &&
     typeof v.shelfCode === 'string' &&
     typeof v.orderBarcode === 'string' &&
     (v.slipResult === 'idle' || v.slipResult === 'ok' || v.slipResult === 'ng')
