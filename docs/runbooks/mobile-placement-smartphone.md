@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-12（**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+最終更新: 2026-04-12（**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -24,6 +24,8 @@
 
 **2026-04-12（V15・照合の折りたたみ・登録ティール枠のレイアウト・API 変更なし）**: ブランチ **`feat/mobile-placement-verify-collapsible-register-layout`**（コミット **`ba49160d`**）。**仕様（Web のみ）**: 上半 **照合は既定で閉じ**、**「展開」**で従来の2列入力・照合・OK/NG・**「閉じる」**。型は `mobile-placement-verify-section.types.ts` に分離し展開パネルと共有（循環参照回避）。下半 **製造order行**は **`flex-1 min-w-0`**、**新規分配／既存移動／登録（または移動を確定）**を **同一行**に配置（見出し「分配の操作」・製造order空時の説明文は撤去。[デザインプレビュー](../design-previews/mobile-placement-verify-collapsible-preview.html) 準拠）。**API / DB 変更なし**。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-193820-22310`（`raspberrypi5`）→ `20260412-194534-25173`（`raspberrypi4`）→ `20260412-195118-15218`（`raspi4-robodrill01`）→ `20260412-195555-16494`（`raspi4-fjv60-80`）→ `20260412-200127-28015`（`raspi4-kensaku-stonebase01`）、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-placement-verify-collapsible-register-layout infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **102s**・Mac / Tailscale）。**知見**: 折りたたみ時も **`id="mp-verify-expanded-panel"`** を DOM に残し **`hidden`**（`aria-controls` と整合）。**Pi3** は対象外（`/kiosk` は Pi5 の SPA 配信）。**残作業（手動）**: Android で **折りたたみ既定**・**展開後の照合**・**3ボタン行の登録**を目視。
 
+**2026-04-12（V16・部品名検索 API + キオスク `/kiosk/mobile-placement/part-search`）**: ブランチ **`feat/mobile-placement-part-name-search`**（コミット **`62721227`**）。**仕様**: **`GET /api/mobile-placement/part-search/suggest`** — **現在棚**（`OrderPlacementBranchState.scheduleSnapshot`）を最優先、**生産スケジュール**（`CsvDashboardRow` の winner 行）を補助。**同義語**は API 内辞書（`apps/api/src/services/mobile-placement/part-search/part-search-aliases.ts`）で展開。Web: **`/kiosk/mobile-placement/part-search`**（五十音・A–Z・プリセット入力）。**DB マイグレーション追加なし**（V14 前提）。**デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-placement-part-name-search infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** の順に **1 台ずつ**（**Pi3 除外**）。**Detach Run ID**: 本リポジトリの Mac 側 `logs/ansible-update-*.summary.json` は未コミット。**各ホストとも** `Summary success check: true`・`PLAY RECAP` **`failed=0`** で完了。Run ID をナレッジに固定する場合は Pi5 の `/opt/RaspberryPiSystem_002/logs/ansible-update-*` のタイムスタンプをホスト順に照合。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **110s**・Mac / Tailscale）。**スポット（API）**: `curl -sk "https://<Pi5>/api/mobile-placement/part-search/suggest?q=脚" -H "x-client-key: <端末の apiKey>"` → `currentPlacements` / `scheduleCandidates`・`aliasMatchedBy` 等。**知見**: Pi5 初回は **Docker 再ビルドで時間がかかり**、`--follow` が長く見えることがあるが、**ログ上 `failed=0` なら成功**。**トラブルシュート**: 401 → `heartbeat` と `x-client-key` の整合。候補が薄い → クエリ短さ・現場データ・同義語辞書を確認（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) V16）。
+
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
   -H "Content-Type: application/json" -H "x-client-key: <key>" \
@@ -43,6 +45,9 @@ curl -sk -X PATCH "https://<Pi5>/api/mobile-placement/order-placement-branches/<
 # 現品票画像 OCR（multipart・JPEG/PNG/WebP）
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
   -H "x-client-key: <key>" -F "image=@/path/to/slip.jpg"
+
+# 部品名検索（V16・現在棚優先 + スケジュール補助 + 同義語）
+curl -sk "https://<Pi5>/api/mobile-placement/part-search/suggest?q=%E8%84%9A" -H "x-client-key: <key>"
 ```
 
 ## 前提

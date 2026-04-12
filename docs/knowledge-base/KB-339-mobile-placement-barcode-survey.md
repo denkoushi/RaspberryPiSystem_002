@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-12（**V15 照合折りたたみ・登録レイアウト**追記）
+最終更新: 2026-04-12（**V16 部品名検索**追記）
 
 ## Context
 
@@ -150,6 +150,16 @@
 - **知見**: **Web のみ**のため Pi3 デプロイは不要（`/kiosk` のバンドルは Pi5 `web`）。**a11y**: 折りたたみ中も **`id="mp-verify-expanded-panel"`** を **`hidden`** で保持し **`aria-controls`** と参照整合。
 - **トラブルシュート**: デプロイ拒否は **未 push / 未コミット**（[deployment.md](../guides/deployment.md)）。**並列 `update-all-clients.sh` 禁止**（同一 Pi5 ロック）。
 
+### V16（2026-04-12・部品名検索・現在棚優先 + スケジュール補助 + 同義語）
+
+- **目的**: 口頭照会で **部品名（FHINMEI 等）から**、**いまどの棚にいるか**／**スケジュール上の候補**を素早く辿る。
+- **API**: `GET /api/mobile-placement/part-search/suggest`（`q`・`x-client-key` 必須）。**現在棚**は `OrderPlacementBranchState` + `scheduleSnapshot` を優先。**補助**に `CsvDashboardRow`（当該ダッシュボード winner）。**既に現在棚に紐づく行 ID** はスケジュール候補から除外。表記ゆれは **`part-search-aliases.ts`** で OR 展開。
+- **Web**: `/kiosk/mobile-placement/part-search`（五十音・A–Z・プリセット。親画面からの導線あり）。
+- **本番デプロイ（2026-04-12）**: ブランチ **`feat/mobile-placement-part-name-search`**・コミット **`62721227`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**: Mac 側 `logs/` 未コミット。**各ホスト** `Summary success check: true`・`failed=0` で完了。必要なら Pi5 `/opt/RaspberryPiSystem_002/logs/ansible-update-*` から接頭辞を抽出。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **110s**）。**スポット**: `curl` で `part-search/suggest` が JSON（`aliasMatchedBy` 等）を返すこと。
+- **知見**: Pi5 初回デプロイは **イメージ再ビルドで長時間**になり、`--follow` が待ちに見えることがある。**`failed=0` が最終判定**。
+- **トラブルシュート**: **401** → `heartbeat` と `x-client-key`。**候補が常に空** → データが無い・クエリが短すぎる。**同義語追加** → `part-search-aliases.ts` とテスト（`part-search-aliases.test.ts`）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
@@ -157,4 +167,5 @@
 - 実装（棚番登録 UI・V13）: `apps/web/src/features/mobile-placement/components/shelf-register/`
 - 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
 - 実装（分配枝・V14）: `apps/api/src/services/mobile-placement/order-placement-branch.service.ts`・`apps/api/src/services/mobile-placement/mobile-placement-order-placement.service.ts`・マイグレーション `20260412120000_order_placement_branch_state`
+- 実装（部品名検索・V16）: `apps/api/src/services/mobile-placement/part-search/`（`part-search.service.ts`・`part-search-aliases.ts`）
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

@@ -1,8 +1,8 @@
 # 配膳スマホ API（mobile-placement）
 
-最終更新: 2026-04-12（**V14 製造order配下の分配枝・現在棚**・`OrderPlacementBranchState`／履歴は `OrderPlacementEvent` + `branchNo` / `actionType`／**部品名検索** `GET …/part-search/suggest`）
+最終更新: 2026-04-12（**V16 部品名検索**本番反映・**V14 製造order配下の分配枝・現在棚**・`OrderPlacementBranchState`／履歴は `OrderPlacementEvent` + `branchNo` / `actionType`）
 
-**本番（2026-04-12）**: ブランチ **`feat/mobile-placement-order-branches`**（コミット **`72255bc7`**）を Pi5→Pi4×4 順次反映・Phase12 **43/0/0**。手順・Detach Run ID は [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §0。
+**本番（2026-04-12・V16）**: ブランチ **`feat/mobile-placement-part-name-search`**（コミット **`62721227`**）を Pi5→Pi4×4 順次反映（**Pi3 除外**）・Phase12 **43/0/0**・部品名検索 API の spot check 済み。手順・知見・Detach Run ID の扱いは [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §0（V16）。
 
 ## 概要
 
