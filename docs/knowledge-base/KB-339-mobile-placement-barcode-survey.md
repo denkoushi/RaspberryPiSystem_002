@@ -123,9 +123,18 @@
 - **自動回帰（本番反映後）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**）。
 - **実機検証**: 自動回帰は完了。**Android 手動確認**は [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) で **ROI ズレ時の撮影角度**（正面・全体が枠内）を継続確認。
 
+### 本番反映・検証（2026-04-12・V13 棚番登録 UI レイアウト）
+
+- **実装**: `apps/web/src/pages/kiosk/KioskMobileShelfRegisterPage.tsx`・`apps/web/src/features/mobile-placement/components/shelf-register/*`（ヘッダ・エリア/列 3 択・番号グリッド）。**API 変更なし**。
+- **仕様（要点）**: ルート **`/kiosk/mobile-placement/shelf-register`** は従来どおり。**プレビュー文字列**は `formatShelfCodeRaw`（例 **`西-北-02`**）。**静的プレビュー**: [mobile-placement-shelf-register-layout-preview.html](../design-previews/mobile-placement-shelf-register-layout-preview.html)。
+- **本番デプロイ（2026-04-12）**: ブランチ **`feat/kiosk-shelf-register-layout`**・コミット **`fbcca8ada3d93fb489dcdcd7b3ac6f497166ee51`**（短縮 **`fbcca8ad`**）。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260412-162015-11134` → `20260412-162729-5630` → `20260412-163310-3759` → `20260412-163742-9462` → `20260412-164944-23223`、各 **`failed=0`**。**Pi3 は対象外**（本機能は `/kiosk` SPA・Pi5 配信が正）。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**）。
+- **トラブルシュート**: デプロイは **未コミット/未プッシュ**を `update-all-clients.sh` が拒否する（[deployment.md](../guides/deployment.md)）。**並列起動禁止**（同一 `RASPI_SERVER_HOST`）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
 - 実装（現品票画像 OCR・V12）: `apps/api/src/services/mobile-placement/actual-slip-image-ocr.service.ts`・`apps/api/src/services/mobile-placement/genpyo-slip/`
+- 実装（棚番登録 UI・V13）: `apps/web/src/features/mobile-placement/components/shelf-register/`
 - 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)
