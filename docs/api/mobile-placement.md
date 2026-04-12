@@ -1,6 +1,6 @@
 # 配膳スマホ API（mobile-placement）
 
-最終更新: 2026-04-11（現品票画像 OCR・FSEIBAN 照合）
+最終更新: 2026-04-12（製造order10桁・OCR 誤認補正 V10）
 
 ## 概要
 
@@ -55,7 +55,7 @@ JSON:
 
 - **Content-Type**: `multipart/form-data`
 - **フィールド名**: `image`（JPEG / PNG / WebP）
-- **OCR 実装**: `tesseract.js`（`ImageOcrPort`）。現品票は **用途別に 3 パス**（ラベル文脈: `jpn+eng`・製造 order 向け数字: `eng` + whitelist・FSEIBAN 向け英数字: `eng` + whitelist）を **順に実行**し、結合テキストを `actual-slip-identifier-parser` に渡す。前処理（グレースケール・正規化・余白・リサイズ、数字パスは二値化）は **mobile-placement サービス層**。**V9（2026-04-12）**: **labels パス（`jpn+eng`）の結合テキストのみ**で **製造order（10桁）と FSEIBAN の両方がパースできた場合**は **以降のパスと二値化前処理をスキップ**（早期終了）。このとき完了ログに **`preprocessBytesBinary` は付かない**（後段パス未実行のため）。`profile` 省略時の単一 `jpn+eng` は adapter の後方互換用。テスト用に `IMAGE_OCR_STUB_TEXT` を設定すると固定テキストを返すスタブに切り替え可能。
+- **OCR 実装**: `tesseract.js`（`ImageOcrPort`）。現品票は **用途別に 3 パス**（ラベル文脈: `jpn+eng`・製造 order 向け数字: `eng` + whitelist・FSEIBAN 向け英数字: `eng` + whitelist）を **順に実行**し、結合テキストを `actual-slip-identifier-parser` に渡す。前処理（グレースケール・正規化・余白・リサイズ、数字パスは二値化）は **mobile-placement サービス層**。**V9（2026-04-12）**: **labels パス（`jpn+eng`）の結合テキストのみ**で **製造order（10桁）と FSEIBAN の両方がパースできた場合**は **以降のパスと二値化前処理をスキップ**（早期終了）。このとき完了ログに **`preprocessBytesBinary` は付かない**（後段パス未実行のため）。**V10（2026-04-12）**: 製造ラベル近傍の **10文字トークン**で **`O`/`I`/`l`/`|` と数字の誤認**を限定補正してから 10 桁判定（**注文番号ブロックの誤採用抑制**は従来どおり）。`profile` 省略時の単一 `jpn+eng` は adapter の後方互換用。テスト用に `IMAGE_OCR_STUB_TEXT` を設定すると固定テキストを返すスタブに切り替え可能。
 
 応答例:
 

@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-12（現品票 OCR・V9 labels 早期終了・成功時プレビュー抑制）
+最終更新: 2026-04-12（V10 製造order誤認補正・Pi5 git マージ失敗のトラブルシュート追記）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -80,6 +80,7 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
 - **棚番登録ページで戻ったあと値が空**: router state の復元失敗時は親 URL の `clientKey` とクエリを維持して `/kiosk/mobile-placement` を再読み込みする。Chrome で不整合が続く場合はサイトデータ削除（V1 節の heartbeat 系と同型の切り分け）
 - **登録済み棚が常に空**: `OrderPlacementEvent` にまだ行が無いと **`registered-shelves` は `{ "shelves": [] }`**（不具合ではない）。部品配膳を1件でも登録すると `shelfCodeRaw` が候補に現れる
 - **デプロイが `未commit変更` で止まる**: Mac 側に **未追跡ファイル**もブロック対象。`git stash push -u` またはコミットしてから [deployment.md](../guides/deployment.md) の `update-all-clients.sh` を再実行
+- **Pi5 で `Please move or remove them before you merge. Aborting`（`git pull`/`merge` 中止）**: Pi5 `/opt/RaspberryPiSystem_002` の作業ツリーに **未追跡・ローカル変更**があり、取り込みと衝突している典型。[deployment.md](../guides/deployment.md) の **ワークツリー**、[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V10**、必要に応じ [kiosk-documents.md](./kiosk-documents.md)（Pi5 `git` 復旧パターン）を参照してから **再デプロイ**
 - **画像OCRが遅い／初回だけ長い**: Pi5 API コンテナで **tesseract.js ワーカ初回起動**で数十秒かかることがある。連続利用ではキャッシュされやすい。現品票 OCR は **用途別に複数パス**（`jpn+eng` + `eng`×2）を **直列**で回すため、初回以外も **単一パス時より時間がかかる**場合がある。極端に大きい画像はサーバ側で縮小されるが、**ピント・コントラスト**を確保すると精度が上がる
 - **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
 

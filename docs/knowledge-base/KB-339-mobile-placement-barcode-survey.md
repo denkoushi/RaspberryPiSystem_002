@@ -98,6 +98,15 @@
 - **仕様**: **`jpn+eng`（labels）パス**のテキストだけで **製造order10 + FSEIBAN** が揃えば **早期 return**（追加パス・二値化前処理をスキップ）。ログは従来どおり（早期終了時は **`preprocessBytesBinary` なし**）。キオスク UI は **成功時**に **`OCR:`** の raw プレビュー行を出さない。
 - **知見**: 読みやすいラベルでは **後段 OCR を省略**でき、Pi5 CPU 負荷と待ち時間を抑えられる。切り分けで **`preprocessBytesBinary` が無い完了ログ**が出たら早期終了経路を疑う。
 
+### 本番反映・検証（2026-04-12・V10 製造order 先頭 `O`/`0` 誤認のラベル近傍補正）
+
+- **実装**: `apps/api/src/services/mobile-placement/actual-slip-identifier-parser.ts` — 製造ラベル直後・行スキャンで **10文字トークン**を `[0-9OoIl|]` まで許容し、`normalizeLooseDigitToken`（`O→0` / `I|l|→1`）後に **10桁数字**か判定。正規化で確定できない場合は **line-scan / global-filter** にフォールバック。コミット **`c09ebc8a`**（`main`）。
+- **仕様（要点）**: OCR が **`0002178005` を `OOO2178OO5` のように読んだ**場合でも、**製造orderラベル付近**なら **製造order（10桁）**として復元しやすくする（**注文番号行の誤採用抑制**は V8 以降のまま）。
+- **デプロイ試行（2026-04-12）**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**結果**: **失敗** — Pi5 上の `git` が **`Please move or remove them before you merge. Aborting`** で **`Updating 8e1d0e3f..c09ebc8a`** を中止。ログに **`apps/web/src/features/mobile-placement/...`** 等のパスが列挙された（**未整理の作業ツリー／未追跡**がマージと衝突）。
+- **Detach Run ID（試行）**: **`20260412-102516-4172`**（Pi5 リモートログ: `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260412-102516-4172.log`）。
+- **トラブルシュート（再デプロイ前）**: Pi5 で **`cd /opt/RaspberryPiSystem_002 && git status`**。Mac 側と同様、**未追跡ファイル**は `update-all-clients.sh` 経路の `git` 同期を阻害し得る。許容できる場合は [deployment.md](../guides/deployment.md) の **ワークツリー権限**、[KB-313](./KB-313-kiosk-documents.md) / [kiosk-documents.md](../runbooks/kiosk-documents.md) と同型の **`git fetch` + `git reset --hard origin/main`**、必要なら **`git stash push -u`**（完了後 `pop`）。**`git clean -fd`** は **未追跡削除**（ホスト専用作業物は事前退避）。復旧後、**`raspberrypi5` → 各 Pi4** を **`--limit` 1 台ずつ**で再実行（**Pi3 は本機能の必須対象外**）。
+- **実機検証**: デプロイ成功後 — [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) の手順で Android から `/kiosk/mobile-placement` の現品票撮影 OCR を確認。自動回帰は `./scripts/deploy/verify-phase12-real.sh`。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
