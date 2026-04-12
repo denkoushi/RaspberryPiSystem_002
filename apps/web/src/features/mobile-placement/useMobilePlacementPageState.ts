@@ -1,7 +1,13 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { parseActualSlipImage, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../api/client';
+import {
+  moveOrderPlacementBranch,
+  parseActualSlipImage,
+  registerOrderPlacement,
+  verifyMobilePlacementSlipMatch
+} from '../../api/client';
 import {
   BARCODE_FORMAT_PRESET_ALL_COMMON,
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL
@@ -13,13 +19,14 @@ import {
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
 
-import type { MobilePlacementShelfRegisterRouteState } from './shelfSelection';
+import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
 
 /**
  * 配膳ページの状態と API 呼び出し（UI から分離してテスト・再利用しやすくする）
  */
 export function useMobilePlacementPageState() {
+  const queryClient = useQueryClient();
   const [transferOrder, setTransferOrder] = useState('');
   const [transferPart, setTransferPart] = useState('');
   const [actualOrder, setActualOrder] = useState('');
@@ -36,7 +43,14 @@ export function useMobilePlacementPageState() {
   const [registerMessage, setRegisterMessage] = useState<string | null>(null);
   const [registerError, setRegisterError] = useState<string | null>(null);
 
+  const [orderPlacementIntent, setOrderPlacementIntent] = useState<OrderPlacementPageIntent>('create_new_branch');
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+
   const [scanField, setScanField] = useState<MobilePlacementScanField>(null);
+
+  useEffect(() => {
+    setSelectedBranchId(null);
+  }, [orderBarcode]);
 
   const scanFormats = useMemo(() => {
     if (scanField === 'shelf') {
@@ -158,12 +172,31 @@ export function useMobilePlacementPageState() {
     setRegisterMessage(null);
     setRegisterSubmitting(true);
     try {
-      const res = await registerOrderPlacement({
-        shelfCodeRaw: shelfCode,
-        manufacturingOrderBarcodeRaw: orderBarcode
-      });
-      setRegisterMessage(`登録済み ${res.event.id.slice(0, 8)}…`);
-      setOrderBarcode('');
+      if (orderPlacementIntent === 'move_existing') {
+        if (selectedBranchId == null || selectedBranchId.length === 0) {
+          setRegisterError('移動する分配枝を一覧から選んでください');
+          return;
+        }
+        const res = await moveOrderPlacementBranch({
+          branchStateId: selectedBranchId,
+          shelfCodeRaw: shelfCode
+        });
+        setRegisterMessage(
+          `分配${res.branchState.branchNo}を ${res.branchState.shelfCodeRaw} へ移動しました`
+        );
+        setSelectedBranchId(null);
+      } else {
+        const res = await registerOrderPlacement({
+          shelfCodeRaw: shelfCode,
+          manufacturingOrderBarcodeRaw: orderBarcode
+        });
+        setRegisterMessage(
+          `分配${res.branchState.branchNo}を登録 ${res.event.id.slice(0, 8)}…`
+        );
+        setOrderBarcode('');
+      }
+      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'registered-shelves'] });
+      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'order-placement-branches'] });
     } catch (e: unknown) {
       const msg = isAxiosError(e)
         ? typeof e.response?.data?.message === 'string'
@@ -176,10 +209,14 @@ export function useMobilePlacementPageState() {
     } finally {
       setRegisterSubmitting(false);
     }
-  }, [shelfCode, orderBarcode]);
+  }, [orderPlacementIntent, orderBarcode, queryClient, selectedBranchId, shelfCode]);
 
   const registerDisabled =
-    registerSubmitting || shelfCode.trim().length === 0 || orderBarcode.trim().length === 0;
+    registerSubmitting ||
+    shelfCode.trim().length === 0 ||
+    orderBarcode.trim().length === 0 ||
+    (orderPlacementIntent === 'move_existing' &&
+      (selectedBranchId == null || selectedBranchId.length === 0));
 
   const selectShelf = useCallback((code: string) => {
     setShelfCode(code);
@@ -202,9 +239,22 @@ export function useMobilePlacementPageState() {
       actualPart,
       slipResult,
       shelfCode,
-      orderBarcode
+      orderBarcode,
+      orderPlacementIntent,
+      selectedBranchId
     }),
-    [transferOrder, transferPart, actualOrder, actualFseiban, actualPart, slipResult, shelfCode, orderBarcode]
+    [
+      transferOrder,
+      transferPart,
+      actualOrder,
+      actualFseiban,
+      actualPart,
+      slipResult,
+      shelfCode,
+      orderBarcode,
+      orderPlacementIntent,
+      selectedBranchId
+    ]
   );
 
   const restoreShelfRegisterRouteState = useCallback((state: MobilePlacementShelfRegisterRouteState) => {
@@ -216,6 +266,8 @@ export function useMobilePlacementPageState() {
     setSlipResult(state.slipResult);
     setShelfCode(state.shelfCode);
     setOrderBarcode(state.orderBarcode);
+    setOrderPlacementIntent(state.orderPlacementIntent ?? 'create_new_branch');
+    setSelectedBranchId(state.selectedBranchId ?? null);
     setRegisterMessage(null);
     setRegisterError(null);
     setScanField(null);
@@ -246,6 +298,10 @@ export function useMobilePlacementPageState() {
     registerMessage,
     registerError,
     registerDisabled,
+    orderPlacementIntent,
+    setOrderPlacementIntent,
+    selectedBranchId,
+    setSelectedBranchId,
     runRegister,
     scanField,
     setScanField,

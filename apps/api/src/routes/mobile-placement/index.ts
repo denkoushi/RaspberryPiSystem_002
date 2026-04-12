@@ -9,6 +9,10 @@ import { registerMobilePlacementScheduleRoute } from './schedule-list.js';
 import { parseActualSlipImageFromUpload } from '../../services/mobile-placement/actual-slip-image-ocr.service.js';
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
 import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
+import {
+  listOrderPlacementBranches,
+  moveOrderPlacementBranch
+} from '../../services/mobile-placement/order-placement-branch.service.js';
 import { listRegisteredShelvesFromOrderPlacements } from '../../services/mobile-placement/mobile-placement-registered-shelves.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
@@ -84,6 +88,14 @@ const registerOrderPlacementBodySchema = z.object({
   manufacturingOrderBarcodeRaw: z.string().min(1)
 });
 
+const moveOrderPlacementBranchBodySchema = z.object({
+  shelfCodeRaw: z.string().min(1)
+});
+
+const orderPlacementBranchesQuerySchema = z.object({
+  manufacturingOrder: z.string().min(1)
+});
+
 export async function registerMobilePlacementRoutes(app: FastifyInstance): Promise<void> {
   const kioskDeps = {
     requireClientDevice
@@ -98,6 +110,25 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     await requireClientDevice(request.headers['x-client-key']);
     const shelves = await listRegisteredShelvesFromOrderPlacements();
     return { shelves };
+  });
+
+  /**
+   * 製造orderに紐づく分配枝の現在棚一覧（`OrderPlacementBranchState`）
+   */
+  app.get('/mobile-placement/order-placement-branches', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const q = orderPlacementBranchesQuerySchema.parse(request.query);
+    const branches = await listOrderPlacementBranches(q.manufacturingOrder);
+    return {
+      branches: branches.map((b) => ({
+        id: b.id,
+        manufacturingOrderBarcodeRaw: b.manufacturingOrderBarcodeRaw,
+        branchNo: b.branchNo,
+        shelfCodeRaw: b.shelfCodeRaw,
+        csvDashboardRowId: b.csvDashboardRowId,
+        updatedAt: b.updatedAt.toISOString()
+      }))
+    };
   });
 
   app.get('/mobile-placement/resolve-item', { config: { rateLimit: false } }, async (request) => {
@@ -196,11 +227,59 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
         shelfCodeRaw: result.event.shelfCodeRaw,
         manufacturingOrderBarcodeRaw: result.event.manufacturingOrderBarcodeRaw,
         csvDashboardRowId: result.event.csvDashboardRowId,
+        branchNo: result.event.branchNo,
+        actionType: result.event.actionType,
         placedAt: result.event.placedAt
+      },
+      branchState: {
+        id: result.branchState.id,
+        branchNo: result.branchState.branchNo,
+        shelfCodeRaw: result.branchState.shelfCodeRaw
       },
       resolvedRowId: result.resolvedRowId
     };
   });
+
+  /**
+   * 既存分配枝の棚更新（移動）
+   */
+  app.patch(
+    '/mobile-placement/order-placement-branches/:id/move',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+      const params = request.params as { id?: string };
+      const branchStateId = typeof params.id === 'string' ? params.id : '';
+      if (branchStateId.length === 0) {
+        throw new ApiError(400, '分配枝IDが必要です');
+      }
+      const body = moveOrderPlacementBranchBodySchema.parse(request.body);
+      const identity = resolveCredentialIdentity(clientDevice);
+      const result = await moveOrderPlacementBranch({
+        clientDeviceId: identity.clientDeviceId,
+        branchStateId,
+        shelfCodeRaw: body.shelfCodeRaw
+      });
+      return {
+        event: {
+          id: result.event.id,
+          clientDeviceId: result.event.clientDeviceId,
+          shelfCodeRaw: result.event.shelfCodeRaw,
+          manufacturingOrderBarcodeRaw: result.event.manufacturingOrderBarcodeRaw,
+          csvDashboardRowId: result.event.csvDashboardRowId,
+          branchNo: result.event.branchNo,
+          actionType: result.event.actionType,
+          placedAt: result.event.placedAt
+        },
+        branchState: {
+          id: result.branchState.id,
+          branchNo: result.branchState.branchNo,
+          shelfCodeRaw: result.branchState.shelfCodeRaw,
+          updatedAt: result.branchState.updatedAt.toISOString()
+        }
+      };
+    }
+  );
 
   app.post('/mobile-placement/register', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);

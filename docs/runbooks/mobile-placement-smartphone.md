@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-12（V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+最終更新: 2026-04-12（**V14 分配枝**・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -18,6 +18,10 @@
 
 **2026-04-12（V12・現品票 ROI・Schema 集約 `genpyo-slip` 本番反映）**: ブランチ **`feat/genpyo-slip-schema-roi`**（コミット **`1e034057`**）。**仕様**: `actual-slip-image-ocr.service` を **既定 ROI（`DEFAULT_GENPYO_SLIP_ROIS`）で `sharp` 切り出し** → 領域別 OCR → **`genpyo-slip-resolver`** で製造order（ヘッダ優先・欠落時はフッタ）と FSEIBAN を集約。V10/V11 の桁補正・注文行除外は **ROI 内テキスト**に適用。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-142159-22500` → `20260412-143647-5719` → `20260412-144237-23679` → `20260412-144730-23697` → `20260412-145643-23971`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/genpyo-slip-schema-roi infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**・Mac / Tailscale）。
 
+**2026-04-12（V13・棚番登録 UI レイアウト・コンポーネント分割）**: ブランチ **`feat/kiosk-shelf-register-layout`**（コミット **`fbcca8ad`**）。**仕様**: `/kiosk/mobile-placement/shelf-register` を **`ShelfRegisterHeader` / `ShelfRegisterChoiceGrid` / `ShelfRegisterSlotGrid`** に分割し、[デザインプレビュー](../design-previews/mobile-placement-shelf-register-layout-preview.html) に沿ってヘッダ・3 択グリッド・番号グリッドの密度を調整。**API 契約変更なし**（従来どおり `formatShelfCodeRaw`・router state 往復）。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-162015-11134` → `20260412-162729-5630` → `20260412-163310-3759` → `20260412-163742-9462` → `20260412-164944-23223`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-shelf-register-layout infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**・Mac / Tailscale）。**知見**: 本変更は **Web のみ**のため Pi3 デプロイは不要（`/kiosk/...` は Pi5 の SPA 配信が正）。
+
+**2026-04-12（V14・製造order配下の分配枝・`OrderPlacementBranchState`・新規/移動 API）**: ブランチ **`feat/mobile-placement-order-branches`**（コミット **`72255bc7`**）。**仕様**: `GET …/order-placement-branches`・`POST …/register-order-placement`（**新規分配枝のみ**）・`PATCH …/order-placement-branches/:id/move`（**既存枝の棚更新**）。DB マイグレーション **`20260412120000_order_placement_branch_state`**。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-181344-4740` → `20260412-182622-13897` → `20260412-183213-6611` → `20260412-183659-23626` → `20260412-184407-12516`（各 **`failed=0`**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-placement-order-branches infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **104s**・Mac / Tailscale）。**Pi3** は本機能の必須対象外（`/kiosk` SPA は Pi5 配信）。
+
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
   -H "Content-Type: application/json" -H "x-client-key: <key>" \
@@ -25,6 +29,14 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
 
 # 登録済み棚（OrderPlacementEvent 由来の distinct。履歴が無いと { "shelves": [] }）
 curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-key: <key>"
+
+# 製造orderに紐づく分配枝の現在棚（V14）
+curl -sk "https://<Pi5>/api/mobile-placement/order-placement-branches?manufacturingOrder=0002178005" -H "x-client-key: <key>"
+
+# 既存分配枝の棚移動（V14・:id は OrderPlacementBranchState.id）
+curl -sk -X PATCH "https://<Pi5>/api/mobile-placement/order-placement-branches/<id>/move" \
+  -H "Content-Type: application/json" -H "x-client-key: <key>" \
+  -d '{"shelfCodeRaw":"西-北-03"}'
 
 # 現品票画像 OCR（multipart・JPEG/PNG/WebP）
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
@@ -62,7 +74,8 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
 
 1. 棚番: **`GET /api/mobile-placement/registered-shelves`** に基づく **エリア／列フィルタ**と候補一覧から選ぶか、**「棚番を選ぶ」**で **`/kiosk/mobile-placement/shelf-register`** に遷移し、**エリア → 列 → 番号**の3段階で確定（表示は `formatShelfCodeRaw` 由来の **`西-北-02`** 形式）。履歴に一度も出ていない棚は一覧に出ない（**`shelves` が空**は正常）。戻ると親画面の棚欄に反映される。従来どおり **TEMP-A〜D** の直接タップ、または **QR** で棚コードをスキャン（QR は棚のみ）も可
 2. 移動票の **製造order番号**を **1次元**でスキャン
-3. 「登録」→ `OrderPlacementEvent` 保存（**工具 `Item` は更新しない**）
+3. **V14**: **「新規分配を追加」** か **「既存分配を移動」** を選ぶ。新規は **次の `branchNo`** で `POST …/register-order-placement`。移動は **`GET …/order-placement-branches`** で一覧を出し、枝を選んで **`PATCH …/order-placement-branches/:id/move`**（UI は「移動を確定」）。
+4. 「登録」または「移動を確定」→ `OrderPlacementEvent` に履歴追記（**工具 `Item` は更新しない**）。現在棚は `OrderPlacementBranchState`（詳細は [api/mobile-placement.md](../api/mobile-placement.md)）
 
 旧 `/kiosk/mobile-placement/register` は `/kiosk/mobile-placement` へリダイレクトする。
 

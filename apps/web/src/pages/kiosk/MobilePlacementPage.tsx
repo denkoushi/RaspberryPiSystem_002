@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
@@ -6,11 +6,18 @@ import { MobilePlacementRegisterSection } from '../../features/mobile-placement/
 import { MobilePlacementVerifySection } from '../../features/mobile-placement/components/MobilePlacementVerifySection';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
 import { useMobilePlacementPageState } from '../../features/mobile-placement/useMobilePlacementPageState';
+import { useOrderPlacementBranches } from '../../features/mobile-placement/useOrderPlacementBranches';
 import { useRegisteredShelves } from '../../features/mobile-placement/useRegisteredShelves';
 
 export function MobilePlacementPage() {
   const mp = useMobilePlacementPageState();
   const registeredShelvesQuery = useRegisteredShelves();
+  const orderBranchesQuery = useOrderPlacementBranches(mp.orderBarcode);
+  const suggestedNextBranchNo = useMemo(() => {
+    const list = orderBranchesQuery.data?.branches ?? [];
+    if (list.length === 0) return 1;
+    return Math.max(...list.map((b) => b.branchNo)) + 1;
+  }, [orderBranchesQuery.data?.branches]);
   const location = useLocation();
   const navigate = useNavigate();
   const actualSlipFileInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +110,15 @@ export function MobilePlacementPage() {
         orderBarcode={mp.orderBarcode}
         onOrderBarcodeChange={mp.setOrderBarcode}
         onOrderScan={() => mp.setScanField('order')}
+        orderPlacementIntent={mp.orderPlacementIntent}
+        onOrderPlacementIntentChange={mp.setOrderPlacementIntent}
+        branches={orderBranchesQuery.data?.branches ?? []}
+        branchesLoading={orderBranchesQuery.isLoading}
+        branchesError={orderBranchesQuery.isError}
+        onRetryBranches={() => void orderBranchesQuery.refetch()}
+        selectedBranchId={mp.selectedBranchId}
+        onSelectBranchId={mp.setSelectedBranchId}
+        suggestedNextBranchNo={suggestedNextBranchNo}
         registerSubmitting={mp.registerSubmitting}
         registerDisabled={mp.registerDisabled}
         onRegister={() => void mp.runRegister()}

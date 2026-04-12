@@ -872,10 +872,63 @@ export async function registerOrderPlacement(payload: {
       shelfCodeRaw: string;
       manufacturingOrderBarcodeRaw: string;
       csvDashboardRowId: string | null;
+      branchNo: number;
+      actionType: string;
       placedAt: string;
+    };
+    branchState: {
+      id: string;
+      branchNo: number;
+      shelfCodeRaw: string;
     };
     resolvedRowId: string;
   }>('/mobile-placement/register-order-placement', payload);
+  return data;
+}
+
+export type OrderPlacementBranchDto = {
+  id: string;
+  manufacturingOrderBarcodeRaw: string;
+  branchNo: number;
+  shelfCodeRaw: string;
+  csvDashboardRowId: string | null;
+  updatedAt: string;
+};
+
+/** 製造orderに紐づく分配枝の現在棚一覧 */
+export async function getOrderPlacementBranches(manufacturingOrder: string) {
+  const { data } = await api.get<{ branches: OrderPlacementBranchDto[] }>(
+    '/mobile-placement/order-placement-branches',
+    { params: { manufacturingOrder } }
+  );
+  return data;
+}
+
+/** 既存分配枝の棚を更新（移動） */
+export async function moveOrderPlacementBranch(payload: {
+  branchStateId: string;
+  shelfCodeRaw: string;
+}) {
+  const { data } = await api.patch<{
+    event: {
+      id: string;
+      clientDeviceId: string;
+      shelfCodeRaw: string;
+      manufacturingOrderBarcodeRaw: string;
+      csvDashboardRowId: string | null;
+      branchNo: number;
+      actionType: string;
+      placedAt: string;
+    };
+    branchState: {
+      id: string;
+      branchNo: number;
+      shelfCodeRaw: string;
+      updatedAt: string;
+    };
+  }>(`/mobile-placement/order-placement-branches/${payload.branchStateId}/move`, {
+    shelfCodeRaw: payload.shelfCodeRaw
+  });
   return data;
 }
 

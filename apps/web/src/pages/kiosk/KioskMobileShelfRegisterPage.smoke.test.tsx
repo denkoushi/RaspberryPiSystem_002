@@ -13,8 +13,8 @@ describe('KioskMobileShelfRegisterPage', () => {
         </Routes>
       </MemoryRouter>
     );
-    expect(screen.getByRole('heading', { name: '棚番を登録' })).toBeInTheDocument();
-    expect(screen.getByText('選択中の棚番')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'この棚番で登録' })).toBeDisabled();
+    expect(screen.getByText('選択中')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '戻る' })).toBeInTheDocument();
   });
 });
