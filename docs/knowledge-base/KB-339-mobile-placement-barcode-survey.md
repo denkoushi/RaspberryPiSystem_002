@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-12（**V14 分配枝・現在棚**追記）
+最終更新: 2026-04-12（**V15 照合折りたたみ・登録レイアウト**追記）
 
 ## Context
 
@@ -140,6 +140,15 @@
 - **本番デプロイ（2026-04-12）**: ブランチ **`feat/mobile-placement-order-branches`**・コミット **`72255bc7`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260412-181344-4740` → `20260412-182622-13897` → `20260412-183213-6611` → `20260412-183659-23626` → `20260412-184407-12516`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**。Pi5 デプロイで **Prisma `migrate deploy`** が実行され `OrderPlacementBranchState` が適用される。
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **104s**・Mac / Tailscale）。
 - **トラブルシュート**: Pi5 で **`git merge` 中止**（未コミット/権限）→ [deployment.md](../guides/deployment.md)・V10 節の **ワークツリー復旧**と同型。**並列起動禁止**（同一 `RASPI_SERVER_HOST`）。
+
+### V15（2026-04-12・照合折りたたみ・登録レイアウト・API 変更なし）
+
+- **目的**: 上半の照合 UI を **既定で閉じ**て下半（棚・製造order・分配）を広く使いやすくする。登録エリアは **製造order＋スキャン**の下に **新規／既存／登録**を **1 行**にまとめ、**重なり・余白**を [静的プレビュー](../design-previews/mobile-placement-verify-collapsible-preview.html) に沿って整理する。
+- **実装**: `MobilePlacementVerifySection`・`MobilePlacementVerifyExpandedPanel`・`mobile-placement-verify-section.types.ts`・`MobilePlacementRegisterSection`（[Runbook](../runbooks/mobile-placement-smartphone.md) §0 の V15 節に詳細）。
+- **本番デプロイ（2026-04-12）**: ブランチ **`feat/mobile-placement-verify-collapsible-register-layout`**・コミット **`ba49160d`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260412-193820-22310` → `20260412-194534-25173` → `20260412-195118-15218` → `20260412-195555-16494` → `20260412-200127-28015`、各 **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **102s**・Mac / Tailscale）。
+- **知見**: **Web のみ**のため Pi3 デプロイは不要（`/kiosk` のバンドルは Pi5 `web`）。**a11y**: 折りたたみ中も **`id="mp-verify-expanded-panel"`** を **`hidden`** で保持し **`aria-controls`** と参照整合。
+- **トラブルシュート**: デプロイ拒否は **未 push / 未コミット**（[deployment.md](../guides/deployment.md)）。**並列 `update-all-clients.sh` 禁止**（同一 Pi5 ロック）。
 
 ## References
 
