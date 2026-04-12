@@ -1,6 +1,6 @@
 # 配膳スマホ API（mobile-placement）
 
-最終更新: 2026-04-12（製造order10桁・OCR 誤認補正 V10）
+最終更新: 2026-04-12（**V12 現品票 ROI・Schema 集約パイプライン**・製造order V10/V11 パーサは `genpyo-slip` へ集約）
 
 ## 概要
 
@@ -55,7 +55,7 @@ JSON:
 
 - **Content-Type**: `multipart/form-data`
 - **フィールド名**: `image`（JPEG / PNG / WebP）
-- **OCR 実装**: `tesseract.js`（`ImageOcrPort`）。現品票は **用途別に 3 パス**（ラベル文脈: `jpn+eng`・製造 order 向け数字: `eng` + whitelist・FSEIBAN 向け英数字: `eng` + whitelist）を **順に実行**し、結合テキストを `actual-slip-identifier-parser` に渡す。前処理（グレースケール・正規化・余白・リサイズ、数字パスは二値化）は **mobile-placement サービス層**。**V9（2026-04-12）**: **labels パス（`jpn+eng`）の結合テキストのみ**で **製造order（10桁）と FSEIBAN の両方がパースできた場合**は **以降のパスと二値化前処理をスキップ**（早期終了）。このとき完了ログに **`preprocessBytesBinary` は付かない**（後段パス未実行のため）。**V10（2026-04-12）**: 製造ラベル近傍の **10文字トークン**で **`O`/`I`/`l`/`|` と数字の誤認**を限定補正してから 10 桁判定（**注文番号ブロックの誤採用抑制**は従来どおり）。`profile` 省略時の単一 `jpn+eng` は adapter の後方互換用。テスト用に `IMAGE_OCR_STUB_TEXT` を設定すると固定テキストを返すスタブに切り替え可能。
+- **OCR 実装（V12・2026-04-12）**: `tesseract.js`（`ImageOcrPort`）。**紙現品票の固定レイアウト前提**で、前処理後画像を **正規化座標 ROI**（`genpyo-slip/genpyo-slip-template.ts` の `DEFAULT_GENPYO_SLIP_ROIS`）で切り出し、**領域ごとに** `actualSlipLabels` プロファイルで OCR する。**製造order**は **右上ヘッダ ROI（`moHeader`）を優先**し、欠落時のみ **下段 ROI（`moFooter`）** を参照。**製番（FSEIBAN）**は **左中盤 ROI（`fseibanMain`）** のみから抽出。フィールド確定は `genpyo-slip-resolver.ts` が `parseManufacturingOrder10Extraction` / `extractFseiban`（実装は `genpyo-slip/*`・`actual-slip-identifier-parser` は再エクスポートで互換）を呼ぶ。**V10**: 製造ラベル近傍の **10文字トークン**で **`O`/`I`/`l`/`|` と数字の誤認**を限定補正。**V11**: 同一行に **注文番号**と**枝番**がある行の 10 桁除外・**global-filter** 選別は **ROI 内テキスト**に対して従来どおり適用。**旧パイプライン（labels 早期終了・3 パス直列・二値化 `preprocessBytesBinary`）は V12 で置換**（履歴として V7〜V11 の説明は KB-339 を参照）。テスト用に `IMAGE_OCR_STUB_TEXT` を設定すると **各 ROI で同一固定テキスト**を返すスタブに切り替え可能。
 
 応答例:
 
@@ -69,11 +69,11 @@ JSON:
 }
 ```
 
-- **`ocrText`**: 全パス結合（パーサ入力・ログは文字数のみ）。
-- **`ocrPreviewSafe`**: **数字・英数字 OCR のみ**を結合した短いプレビュー用文字列（ひらがな誤認が多いラベルパスは含めない）。クライアントは表示にこれを優先し、無い場合は `ocrText` にフォールバック可能。
+- **`ocrText`**: **ROI ごとの OCR 結果**を `[moHeader]` / `[fseibanMain]` / `[moFooter]` 見出しで連結（デバッグ・後追い用。ログは文字数のみ）。
+- **`ocrPreviewSafe`**: **確定した** `manufacturingOrder10` と `fseiban` を短く結合したプレビュー（いずれか欠ける場合は片方のみ）。クライアントは表示にこれを優先し、無い場合は `ocrText` にフォールバック可能。
 - **`manufacturingOrder10` / `fseiban`**: OCR 品質により **null** になり得る。
 
-- **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等。**V8 以降**: `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`。**V9**: 早期終了時は **`preprocessBytesBinary` を付けない**（後段パス未実行）。OCR 全文はログに出さない（後追いは文字数・候補有無・パーサ経路で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。
+- **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等。**V8 以降**: `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`。**V12**: `mo10ResolvedFromRoi`（`moHeader` | `moFooter` | 欠落時は付かない）で製造order採用元を識別。**V12 では `preprocessBytesBinary` は出力しない**（二値化パス廃止）。OCR 全文はログに出さない（後追いは文字数・候補有無・パーサ経路で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。
 
 ### `POST /api/mobile-placement/register-order-placement`
 

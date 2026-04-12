@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-12（V10 本番反映・Pi5 worktree/root ownership・stale lock のトラブルシュート追記）
+最終更新: 2026-04-12（V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -15,6 +15,8 @@
 **2026-04-12（V9・labels パス早期終了・成功時 OCR プレビュー非表示）**: ブランチ **`feat/mobile-placement-ocr-preview-and-early-exit`**（コミット **`c6aa2ee5`**）。**仕様**: **最初の `jpn+eng`（labels）パス**の結合テキストだけで **製造order（10桁）と FSEIBAN の両方が取れた場合**は **以降の OCR パスと二値化前処理をスキップ**（負荷低減）。構造化ログは従来どおり（早期終了時は **`preprocessBytesBinary`** を付けない）。**Web**: OCR **成功時**は **`OCR:`** 行の raw プレビューを出さない（候補なし／エラー時は従来どおり案内）。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-085956-22755` → `20260412-091508-16092` → `20260412-092057-26505` → `20260412-092542-10876` → `20260412-093134-32374`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**・Mac / Tailscale）。**知見**: ラベルが読めれば **後段パスを省略**でき、初回以外の体感待ち時間を短くし得る。
 
 **2026-04-12（V10・製造order `O/0` 誤認補正）**: コミット **`c09ebc8a`**（`main`）。**初回試行** `20260412-102516-4172` は Pi5 `/opt/RaspberryPiSystem_002` の **未追跡/ローカル変更**と **`root:root` 所有の mobile-placement 関連ディレクトリ**により `git merge` 中止。**復旧**: `git status` で確認後、対象パスを `chown -R denkon5sd02:denkon5sd02` → `git stash push -u`。さらに **Mac 側の local lock** と **Pi5 側の stale remote lock** を死活確認後に解放して再実行。**Detach Run ID（成功・Pi5→Pi4×4・順・Pi3 除外）**: `20260412-104606-29623` → `20260412-105905-22423` → `20260412-110542-32610` → `20260412-111033-18779` → `20260412-111904-8812`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。
+
+**2026-04-12（V12・現品票 ROI・Schema 集約 `genpyo-slip` 本番反映）**: ブランチ **`feat/genpyo-slip-schema-roi`**（コミット **`1e034057`**）。**仕様**: `actual-slip-image-ocr.service` を **既定 ROI（`DEFAULT_GENPYO_SLIP_ROIS`）で `sharp` 切り出し** → 領域別 OCR → **`genpyo-slip-resolver`** で製造order（ヘッダ優先・欠落時はフッタ）と FSEIBAN を集約。V10/V11 の桁補正・注文行除外は **ROI 内テキスト**に適用。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-142159-22500` → `20260412-143647-5719` → `20260412-144237-23679` → `20260412-144730-23697` → `20260412-145643-23971`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/genpyo-slip-schema-roi infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**・Mac / Tailscale）。
 
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
@@ -87,6 +89,8 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
 - **`Another update-all-clients.sh process is already running` / `Failed to acquire remote lock`**: 前回の `--follow` や remote detach が **途中失敗で lock だけ残存**した可能性。**local lock** は Mac 側の残存 `update-all-clients.sh` を終了して解放。**remote lock** は Pi5 の `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock` の **`runPid` が実在するか確認**し、**本体不在で `tail -f` だけ残っている場合のみ**削除する（[deploy-status-recovery.md](./deploy-status-recovery.md) と同型）
 - **画像OCRが遅い／初回だけ長い**: Pi5 API コンテナで **tesseract.js ワーカ初回起動**で数十秒かかることがある。連続利用ではキャッシュされやすい。現品票 OCR は **用途別に複数パス**（`jpn+eng` + `eng`×2）を **直列**で回すため、初回以外も **単一パス時より時間がかかる**場合がある。極端に大きい画像はサーバ側で縮小されるが、**ピント・コントラスト**を確保すると精度が上がる
 - **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
+- **`mo10ParseSource` が `global-filter` だが製造orderが空／誤り**: **V11** 以降、同一行に **注文番号＋枝番**があるとその行の 10 桁は除外され、残り候補から文脈スコアで選ぶ。ログの `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` と [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V11** を参照
+- **V12 以降の現品票 OCR で欄が空になりやすい**: **ROI 切り出し**が帳票レイアウトとズレると、その領域の OCR が空になり製造order／製番が取れない。Pi5 ログの **`mo10ResolvedFromRoi`**（`moHeader` / `moFooter`）と [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V12** を参照。撮影は **正面・全体が枠内**になるよう寄せる
 
 ## 6. API 契約
 

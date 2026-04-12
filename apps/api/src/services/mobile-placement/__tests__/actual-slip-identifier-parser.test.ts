@@ -61,6 +61,20 @@ describe('extractManufacturingOrder10', () => {
 注文番号 0003507502`;
     expect(extractManufacturingOrder10(text)).toBe('0002178005');
   });
+
+  it('excludes 10 digits on 注文番号 line when same line ends with 枝番 (OCR split)', () => {
+    const text = `注文 番号 :0003507502 枝 番 :
+製造オーダNo : 0002178005`;
+    expect(extractManufacturingOrder10(text)).toBe('0002178005');
+  });
+
+  it('global-filter prefers manufacturing order after 注文番号+枝番 line when labels are noisy', () => {
+    const text = `注文 番号 :0003507502 枝 番 :
+ii ノイズ
+53000217800510003507502
+H5A4No:0002178005`;
+    expect(extractManufacturingOrder10(text)).toBe('0002178005');
+  });
 });
 
 describe('collapseInterDigitWhitespace', () => {
@@ -109,5 +123,14 @@ describe('parseManufacturingOrder10Extraction', () => {
     const r = parseManufacturingOrder10Extraction(text);
     expect(r.value).toBeNull();
     expect(r.diagnostics.source).toBe('none');
+  });
+
+  it('reports global-filter with afterOrderBlockFilterCount when order+枝番 line excludes order digits', () => {
+    const text = `注文番号:0003507502 枝番:
+0002178005`;
+    const r = parseManufacturingOrder10Extraction(text);
+    expect(r.value).toBe('0002178005');
+    expect(r.diagnostics.source).toBe('global-filter');
+    expect(r.diagnostics.afterOrderBlockFilterCount).toBeGreaterThan(0);
   });
 });

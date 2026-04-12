@@ -5,21 +5,19 @@ import { getImageOcrPort } from '../ocr/image-ocr-runtime.js';
 import type { ImageOcrMimeType } from '../ocr/ports/image-ocr.port.js';
 
 import { buildActualSlipOcrPreviewSafe } from './actual-slip-ocr-preview.js';
-import {
-  extractFseiban,
-  parseManufacturingOrder10Extraction
-} from './actual-slip-identifier-parser.js';
+import { DEFAULT_GENPYO_SLIP_ROIS } from './genpyo-slip/genpyo-slip-template.js';
+import { cropNormalizedRegion } from './genpyo-slip/genpyo-slip-roi-crop.js';
+import { resolveGenpyoSlipFromRegionTexts } from './genpyo-slip/genpyo-slip-resolver.js';
 
 const log = logger.child({ component: 'actualSlipImageOcr' });
 
 export type ParseActualSlipImageResult = {
   engine: string;
-  /** OCR 結合テキスト（ログ・パーサ用。必要時はラベル単独で早期終了する） */
+  /** ROI ごとの OCR 結合テキスト（ログ・デバッグ用） */
   ocrText: string;
   /**
    * UI 向けプレビュー。
-   * 通常は数字・英数字パスのみを使うが、ラベル単独で十分な場合は確定値だけを返す。
-   * クライアントはこれを優先して表示し、無ければ `ocrText` にフォールバック可能。
+   * 確定した製造order・製番を優先して短く表示する。
    */
   ocrPreviewSafe: string | null;
   manufacturingOrder10: string | null;
@@ -28,6 +26,7 @@ export type ParseActualSlipImageResult = {
 
 /**
  * 現品票画像を OCR し、製造order / FSEIBAN 候補を抽出する。
+ * 固定レイアウト前提で ROI 単位に切り出してから OCR し、Schema 集約で確定する。
  */
 export async function parseActualSlipImageFromUpload(params: {
   imageBytes: Buffer;
@@ -40,64 +39,49 @@ export async function parseActualSlipImageFromUpload(params: {
   const jpegShared = await preprocessForOcrShared(params.imageBytes);
   const preprocessBytes = jpegShared.length;
   const port = getImageOcrPort();
-
-  // 同一 worker 内の setParameters を並列に走らせない（adapter 内の worker 共有のため）
-  const labels = await port.runOcrOnImage({
-    imageBytes: jpegShared,
-    mimeType: 'image/jpeg',
-    profile: 'actualSlipLabels'
-  });
-
-  const labelsOnlyMo = parseManufacturingOrder10Extraction(labels.text);
-  const labelsOnlyFseiban = extractFseiban(labels.text);
-  if (labelsOnlyMo.value && labelsOnlyFseiban) {
-    const durationMs = Date.now() - startedMs;
-    const ocrPreviewSafe = buildActualSlipOcrPreviewSafe(labelsOnlyMo.value, labelsOnlyFseiban);
-    log.info(
-      {
-        event: 'parse-actual-slip-image',
-        requestId: params.requestId,
-        mimeType: params.mimeType,
-        inputBytes,
-        preprocessBytes,
-        engine: labels.engine,
-        ocrTextChars: labels.text.length,
-        hasManufacturingOrder10: true,
-        hasFseiban: true,
-        mo10Candidate10Count: labelsOnlyMo.diagnostics.candidate10Count,
-        mo10AfterOrderBlockFilterCount: labelsOnlyMo.diagnostics.afterOrderBlockFilterCount,
-        mo10ParseSource: labelsOnlyMo.diagnostics.source,
-        durationMs
-      },
-      'parse-actual-slip-image ocr completed'
-    );
-    return {
-      engine: labels.engine,
-      ocrText: labels.text,
-      ocrPreviewSafe,
-      manufacturingOrder10: labelsOnlyMo.value,
-      fseiban: labelsOnlyFseiban
-    };
+  const sharedMeta = await sharp(jpegShared).metadata();
+  const sharedWidth = sharedMeta.width ?? 0;
+  const sharedHeight = sharedMeta.height ?? 0;
+  if (sharedWidth <= 0 || sharedHeight <= 0) {
+    throw new Error('Invalid preprocessed image dimensions');
   }
 
-  const jpegBinary = await preprocessForOcrDigitBinary(params.imageBytes);
-  const preprocessBytesBinary = jpegBinary.length;
+  const regionTexts: { moHeader: string; fseibanMain: string; moFooter: string } = {
+    moHeader: '',
+    fseibanMain: '',
+    moFooter: ''
+  };
+  let engine = 'unknown';
 
-  const digits = await port.runOcrOnImage({
-    imageBytes: jpegBinary,
-    mimeType: 'image/jpeg',
-    profile: 'actualSlipManufacturingDigits'
-  });
-  const aux = await port.runOcrOnImage({
-    imageBytes: jpegShared,
-    mimeType: 'image/jpeg',
-    profile: 'actualSlipAuxiliaryAlnum'
+  for (const roi of DEFAULT_GENPYO_SLIP_ROIS) {
+    const cropBuffer = await cropNormalizedRegion(jpegShared, roi.rect, {
+      width: sharedWidth,
+      height: sharedHeight
+    });
+    const ocr = await port.runOcrOnImage({
+      imageBytes: cropBuffer,
+      mimeType: 'image/jpeg',
+      profile: roi.profile
+    });
+    regionTexts[roi.id] = ocr.text;
+    engine = ocr.engine;
+  }
+
+  const resolved = resolveGenpyoSlipFromRegionTexts({
+    moHeader: regionTexts.moHeader,
+    fseibanMain: regionTexts.fseibanMain,
+    moFooter: regionTexts.moFooter
   });
 
-  const merged = [labels.text, digits.text, aux.text].filter((s) => s.length > 0).join('\n');
-  const ocrPreviewSafe = buildActualSlipOcrPreviewSafe(digits.text, aux.text);
-  const mo = parseManufacturingOrder10Extraction(merged);
-  const fseiban = extractFseiban(merged);
+  const ocrText = DEFAULT_GENPYO_SLIP_ROIS.map((roi) => `[${roi.id}]\n${regionTexts[roi.id] ?? ''}`).join(
+    '\n\n'
+  );
+
+  const ocrPreviewSafe = buildActualSlipOcrPreviewSafe(
+    resolved.manufacturingOrder10 ?? '',
+    resolved.fseiban ?? ''
+  );
+
   const durationMs = Date.now() - startedMs;
 
   log.info(
@@ -107,25 +91,25 @@ export async function parseActualSlipImageFromUpload(params: {
       mimeType: params.mimeType,
       inputBytes,
       preprocessBytes,
-      preprocessBytesBinary,
-      engine: labels.engine,
-      ocrTextChars: merged.length,
-      hasManufacturingOrder10: mo.value != null,
-      hasFseiban: fseiban != null,
-      mo10Candidate10Count: mo.diagnostics.candidate10Count,
-      mo10AfterOrderBlockFilterCount: mo.diagnostics.afterOrderBlockFilterCount,
-      mo10ParseSource: mo.diagnostics.source,
+      engine,
+      ocrTextChars: ocrText.length,
+      hasManufacturingOrder10: resolved.manufacturingOrder10 != null,
+      hasFseiban: resolved.fseiban != null,
+      mo10Candidate10Count: resolved.moDiagnostics.candidate10Count,
+      mo10AfterOrderBlockFilterCount: resolved.moDiagnostics.afterOrderBlockFilterCount,
+      mo10ParseSource: resolved.moDiagnostics.source,
+      mo10ResolvedFromRoi: resolved.moResolvedFromRoi,
       durationMs
     },
     'parse-actual-slip-image ocr completed'
   );
 
   return {
-    engine: labels.engine,
-    ocrText: merged,
+    engine,
+    ocrText,
     ocrPreviewSafe,
-    manufacturingOrder10: mo.value,
-    fseiban
+    manufacturingOrder10: resolved.manufacturingOrder10,
+    fseiban: resolved.fseiban
   };
 }
 
@@ -139,30 +123,6 @@ async function preprocessForOcrShared(buffer: Buffer): Promise<Buffer> {
   return pipeline
     .greyscale()
     .normalize()
-    .extend({
-      top: 32,
-      bottom: 32,
-      left: 32,
-      right: 32,
-      background: { r: 255, g: 255, b: 255, alpha: 1 }
-    })
-    .jpeg({ quality: 92 })
-    .toBuffer();
-}
-
-/**
- * 数字パス用: 二値化してコントラストを強め、桁の切れ目を読みやすくする。
- */
-async function preprocessForOcrDigitBinary(buffer: Buffer): Promise<Buffer> {
-  let pipeline = sharp(buffer);
-  const meta = await pipeline.metadata();
-  if (meta.width && meta.width > 2200) {
-    pipeline = sharp(buffer).resize({ width: 2200 });
-  }
-  return pipeline
-    .greyscale()
-    .normalize()
-    .threshold(160)
     .extend({
       top: 32,
       bottom: 32,
