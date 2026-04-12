@@ -597,4 +597,123 @@ describe('mobile-placement API', () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it('returns 401 without client key for part-search suggest', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/mobile-placement/part-search/suggest?q=test'
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('GET /api/mobile-placement/part-search/suggest returns empty for empty q', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/mobile-placement/part-search/suggest?q=',
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { currentPlacements: unknown[]; scheduleCandidates: unknown[] };
+    expect(body.currentPlacements).toEqual([]);
+    expect(body.scheduleCandidates).toEqual([]);
+  });
+
+  it('GET /api/mobile-placement/part-search/suggest finds current placement and アシ alias', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    const row = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999880',
+          FSEIBAN: 'PSTEST01',
+          FHINCD: 'FH-PST',
+          FHINMEI: 'テーブル脚',
+          FSIGENCD: '',
+          FKOJUN: ''
+        }
+      }
+    });
+    await prisma.orderPlacementBranchState.create({
+      data: {
+        manufacturingOrderBarcodeRaw: '0000999880',
+        branchNo: 1,
+        shelfCodeRaw: '東-南-01',
+        csvDashboardRowId: row.id,
+        scheduleSnapshot: {
+          ProductNo: '999880',
+          FSEIBAN: 'PSTEST01',
+          FHINCD: 'FH-PST',
+          FHINMEI: 'テーブル脚'
+        }
+      }
+    });
+
+    const resAlias = await app.inject({
+      method: 'GET',
+      url: `/api/mobile-placement/part-search/suggest?q=${encodeURIComponent('アシ')}`,
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(resAlias.statusCode).toBe(200);
+    const bodyAlias = resAlias.json() as {
+      currentPlacements: Array<{ displayName: string; shelfCodeRaw: string | null; aliasMatchedBy: string | null }>;
+    };
+    expect(bodyAlias.currentPlacements.length).toBeGreaterThan(0);
+    expect(bodyAlias.currentPlacements[0].displayName).toContain('脚');
+    expect(bodyAlias.currentPlacements[0].shelfCodeRaw).toBe('東-南-01');
+    expect(bodyAlias.currentPlacements[0].aliasMatchedBy).toBe('アシ/脚/足');
+  });
+
+  it('GET /api/mobile-placement/part-search/suggest returns schedule candidates when no current shelf', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999881',
+          FSEIBAN: 'PSTEST02',
+          FHINCD: 'FH-SCH',
+          FHINMEI: 'スケジュール専用部品',
+          FSIGENCD: '',
+          FKOJUN: ''
+        }
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/mobile-placement/part-search/suggest?q=${encodeURIComponent('スケジュール')}`,
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      currentPlacements: unknown[];
+      scheduleCandidates: Array<{ matchSource: string; displayName: string }>;
+    };
+    expect(body.currentPlacements).toHaveLength(0);
+    expect(body.scheduleCandidates.length).toBeGreaterThan(0);
+    expect(body.scheduleCandidates[0].matchSource).toBe('schedule');
+  });
 });

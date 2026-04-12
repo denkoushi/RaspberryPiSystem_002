@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>配膳スマホ — 部品名の段階的絞り込み（口頭照会・複数ソース想定・静的プレビュー）</title>
+  <style>
+    :root {
+      --slate-950: #020617;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --emerald: #6ee7b7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--slate-950);
+      color: #f8fafc;
+      padding: 0.75rem 1rem 2rem;
+      line-height: 1.45;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+    .subtitle {
+      margin: 0 0 1rem;
+      font-size: 0.76rem;
+      color: var(--muted);
+      max-width: 100ch;
+    }
+    .subtitle code { font-size: 0.85em; background: var(--slate-800); padding: 0.08em 0.3em; border-radius: 4px; }
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 0.5rem 0;
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(2, 6, 23, 0.9));
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .nav a {
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-decoration: none;
+      color: #7dd3fc;
+      padding: 0.3rem 0.5rem;
+      border-radius: 0.45rem;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    section {
+      margin-bottom: 2rem;
+      scroll-margin-top: 3rem;
+    }
+    .case-title {
+      font-size: 0.88rem;
+      font-weight: 800;
+      margin: 0 0 0.35rem;
+      color: #e2e8f0;
+    }
+    .case-desc {
+      margin: 0 0 0.75rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+      max-width: 92ch;
+    }
+    .phone {
+      max-width: 400px;
+      margin: 0 auto;
+      background: var(--slate-900);
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+    }
+    .bar {
+      padding: 0.5rem 0.65rem;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #e2e8f0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .bar .back { color: var(--sky); font-weight: 800; font-size: 0.62rem; }
+    .p-body { padding: 0.65rem; }
+    .label-row {
+      font-size: 0.62rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      margin-bottom: 0.35rem;
+    }
+    .search-row {
+      display: flex;
+      gap: 0.35rem;
+    }
+    .search-row input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.55rem 0.6rem;
+      border-radius: 10px;
+      border: 1px solid rgba(251, 191, 0, 0.35);
+      background: var(--slate-950);
+      color: #fef3c7;
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+    .search-row input::placeholder { color: #78716c; font-weight: 600; }
+    .hint {
+      margin-top: 0.45rem;
+      font-size: 0.62rem;
+      color: #64748b;
+    }
+    .list {
+      margin-top: 0.5rem;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      overflow: hidden;
+      max-height: min(42vh, 280px);
+      overflow-y: auto;
+    }
+    .row {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.55rem 0.6rem;
+      border: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(15, 23, 42, 0.95);
+      color: #e2e8f0;
+      cursor: default;
+      font-size: 0.74rem;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row:hover { background: rgba(56, 189, 248, 0.1); }
+    .row .name { font-weight: 800; color: #fff; }
+    .row .sub { margin-top: 0.2rem; font-size: 0.65rem; color: var(--muted); }
+    .src {
+      display: inline-block;
+      margin-left: 0.35rem;
+      font-size: 0.55rem;
+      font-weight: 800;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+    .src-x { background: rgba(99, 102, 241, 0.25); color: #c4b5fd; border: 1px solid rgba(99, 102, 241, 0.4); }
+    .src-y { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.35); }
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      max-width: 840px;
+      margin: 0 auto;
+    }
+    @media (max-width: 720px) {
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+    .step-tag {
+      font-size: 0.58rem;
+      font-weight: 800;
+      color: #fde68a;
+      margin-bottom: 0.35rem;
+    }
+    .footnote {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px dashed rgba(148, 163, 184, 0.25);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <h1>配膳スマホ — 部品名の段階的絞り込み（口頭照会）</h1>
+  <p class="subtitle">
+    静的モックのみ。API・DB 接続なし。複数テーブル（例: <strong style="color:#c4b5fd;">ソースX</strong> / <strong style="color:#6ee7b7;">ソースY</strong>）から同一検索欄で候補を統合するイメージ。
+    想定ルート例: <code>/kiosk/mobile-placement/find-by-name</code>
+  </p>
+
+  <nav class="nav" aria-label="セクション">
+    <a href="#s1">入力の段階（モック）</a>
+    <a href="#s2">ソース併記</a>
+    <a href="#s3">候補過多のとき</a>
+  </nav>
+
+  <section id="s1">
+    <p class="case-title">「テ」→「テー」→「テーブル」に近づくにつれ候補が減る</p>
+    <p class="case-desc">
+      配膳係が口頭で聞いた部品名を、その場で打ち始める。入力が増えるほどサーバ側で絞り込み（デバウンス想定）。下は<strong>同一画面の状態遷移を3枚</strong>に分割した例。
+    </p>
+    <div class="compare-grid">
+      <div>
+        <p class="step-tag">状態 A · 1文字「テ」</p>
+        <div class="phone">
+          <div class="bar"><span class="back">←</span> 部品名で探す</div>
+          <div class="p-body">
+            <div class="label-row">部品名（口頭・打鍵）</div>
+            <div class="search-row">
+              <input type="text" readonly value="テ" />
+            </div>
+            <p class="hint">候補 24 件 · もう1〜2文字で絞り込み推奨</p>
+            <div class="list">
+              <button type="button" class="row"><span class="name">テーブル脚 A<span class="src src-x">X</span></span><span class="sub">FHINCD 10001111</span></button>
+              <button type="button" class="row"><span class="name">テーブル天板<span class="src src-y">Y</span></span><span class="sub">FHINCD 10002222 · 日程行</span></button>
+              <button type="button" class="row"><span class="name">テスト治具<span class="src src-x">X</span></span><span class="sub">FHINCD 10003333</span></button>
+              <button type="button" class="row" style="color:#64748b;font-size:0.65rem;">… 省略</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="step-tag">状態 B · 「テー」まで</p>
+        <div class="phone">
+          <div class="bar"><span class="back">←</span> 部品名で探す</div>
+          <div class="p-body">
+            <div class="label-row">部品名</div>
+            <div class="search-row">
+              <input type="text" readonly value="テー" />
+            </div>
+            <p class="hint">候補 6 件</p>
+            <div class="list">
+              <button type="button" class="row"><span class="name">テーブル脚 A<span class="src src-x">X</span></span><span class="sub">FHINCD 10001111</span></button>
+              <button type="button" class="row"><span class="name">テーブル天板<span class="src src-y">Y</span></span><span class="sub">FHINCD 10002222</span></button>
+              <button type="button" class="row"><span class="name">テーブル連結金具<span class="src src-y">Y</span></span><span class="sub">FHINCD 10004444</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="max-width:400px;margin:0.75rem auto 0;">
+      <p class="step-tag">状態 C · 候補をタップ → 棚へ（次画面イメージは別プレビュー可）</p>
+      <div class="phone">
+        <div class="bar"><span class="back">←</span> 部品名で探す</div>
+        <div class="p-body">
+          <div class="label-row">部品名</div>
+          <div class="search-row">
+            <input type="text" readonly value="テーブル天板" />
+          </div>
+          <p class="hint">候補 1 件 · タップで確定</p>
+          <div class="list">
+            <button type="button" class="row" style="outline:2px solid rgba(52,211,153,0.5);">
+              <span class="name">テーブル天板<span class="src src-y">Y</span></span>
+              <span class="sub">FHINCD 10002222 · 製番 BE1N9321</span>
+            </button>
+          </div>
+          <p class="hint" style="margin-top:0.65rem;color:#99f6e4;">確定後: 現在棚「西-北-02」などを大きく表示（<code>find-part</code> 系プレビューと接続）</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s2">
+    <p class="case-title">ソース X / Y を同一リストに混在表示</p>
+    <p class="case-desc">
+      ユーザーは「どのテーブルか」を選ばない。バッジで出所だけ分かれば取り違えを防げる。実装では API が X・Y をマージして返す想定。
+    </p>
+    <div class="phone">
+      <div class="bar"><span class="back">←</span> 部品名で探す</div>
+      <div class="p-body">
+        <div class="search-row">
+          <input type="text" readonly value="テ" placeholder="部品名の一部" />
+        </div>
+        <p class="hint">同一部品名が X と Y に両方ある例</p>
+        <div class="list">
+          <button type="button" class="row">
+            <span class="name">テーブル天板<span class="src src-x">マスタX</span></span>
+            <span class="sub">FHINCD 20001111 · 旧コードあり</span>
+          </button>
+          <button type="button" class="row">
+            <span class="name">テーブル天板<span class="src src-y">日程Y</span></span>
+            <span class="sub">FHINCD 10002222 · 本日生産行</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="s3">
+    <p class="case-title">候補が多いときの UX（ガード案）</p>
+    <p class="case-desc">
+      1文字目だけでは件数が多すぎる場合の例。文言は実装で調整。
+    </p>
+    <div class="phone">
+      <div class="bar"><span class="back">←</span> 部品名で探す</div>
+      <div class="p-body">
+        <div class="search-row">
+          <input type="text" readonly value="ア" />
+        </div>
+        <p class="hint" style="color:#fbbf24;">候補が 80 件あります。絞り込むか、FHINCD をスキャンしてください。</p>
+        <div class="list">
+          <button type="button" class="row" style="font-size:0.68rem;color:#94a3b8;">（一覧は先頭 15 件のみ表示 …）</button>
+        </div>
+        <p class="hint" style="margin-top:0.5rem;">別案: 2文字以上で検索開始 / サーバ側上限 + 「続きを読む」</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="footnote">
+    ファイル: <code>docs/design-previews/mobile-placement-part-name-incremental-search-preview.html</code><br />
+    表示: <code>python3 -m http.server</code> または file:// · 外部 CDN なし
+  </p>
+</body>
+</html>

@@ -15,6 +15,7 @@ import {
 } from '../../services/mobile-placement/order-placement-branch.service.js';
 import { listRegisteredShelvesFromOrderPlacements } from '../../services/mobile-placement/mobile-placement-registered-shelves.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
+import { suggestPartPlacementSearch } from '../../services/mobile-placement/part-search/part-search.service.js';
 import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
 
 const registerBodySchema = z.object({
@@ -96,6 +97,10 @@ const orderPlacementBranchesQuerySchema = z.object({
   manufacturingOrder: z.string().min(1)
 });
 
+const partSearchSuggestQuerySchema = z.object({
+  q: z.string().max(100).optional().default('')
+});
+
 export async function registerMobilePlacementRoutes(app: FastifyInstance): Promise<void> {
   const kioskDeps = {
     requireClientDevice
@@ -110,6 +115,15 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     await requireClientDevice(request.headers['x-client-key']);
     const shelves = await listRegisteredShelvesFromOrderPlacements();
     return { shelves };
+  });
+
+  /**
+   * 部品名検索（現在棚優先・生産スケジュール補助・同義語辞書）
+   */
+  app.get('/mobile-placement/part-search/suggest', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const q = partSearchSuggestQuerySchema.parse(request.query);
+    return suggestPartPlacementSearch({ q: q.q });
   });
 
   /**
