@@ -55,7 +55,7 @@ JSON:
 
 - **Content-Type**: `multipart/form-data`
 - **フィールド名**: `image`（JPEG / PNG / WebP）
-- **OCR 実装**: `tesseract.js`（`ImageOcrPort`）。現品票は **用途別に 3 パス**（ラベル文脈: `jpn+eng`・製造 order 向け数字: `eng` + whitelist・FSEIBAN 向け英数字: `eng` + whitelist）を **順に実行**し、結合テキストを `actual-slip-identifier-parser` に渡す。前処理（グレースケール・正規化・余白・リサイズ、数字パスは二値化）は **mobile-placement サービス層**。`profile` 省略時の単一 `jpn+eng` は adapter の後方互換用。テスト用に `IMAGE_OCR_STUB_TEXT` を設定すると固定テキストを返すスタブに切り替え可能。
+- **OCR 実装**: `tesseract.js`（`ImageOcrPort`）。現品票は **用途別に 3 パス**（ラベル文脈: `jpn+eng`・製造 order 向け数字: `eng` + whitelist・FSEIBAN 向け英数字: `eng` + whitelist）を **順に実行**し、結合テキストを `actual-slip-identifier-parser` に渡す。前処理（グレースケール・正規化・余白・リサイズ、数字パスは二値化）は **mobile-placement サービス層**。**V9（2026-04-12）**: **labels パス（`jpn+eng`）の結合テキストのみ**で **製造order（10桁）と FSEIBAN の両方がパースできた場合**は **以降のパスと二値化前処理をスキップ**（早期終了）。このとき完了ログに **`preprocessBytesBinary` は付かない**（後段パス未実行のため）。`profile` 省略時の単一 `jpn+eng` は adapter の後方互換用。テスト用に `IMAGE_OCR_STUB_TEXT` を設定すると固定テキストを返すスタブに切り替え可能。
 
 応答例:
 
@@ -73,7 +73,7 @@ JSON:
 - **`ocrPreviewSafe`**: **数字・英数字 OCR のみ**を結合した短いプレビュー用文字列（ひらがな誤認が多いラベルパスは含めない）。クライアントは表示にこれを優先し、無い場合は `ocrText` にフォールバック可能。
 - **`manufacturingOrder10` / `fseiban`**: OCR 品質により **null** になり得る。
 
-- **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等。**V8 以降**: `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`）。OCR 全文はログに出さない（後追いは文字数・候補有無・パーサ経路で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。
+- **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等。**V8 以降**: `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`。**V9**: 早期終了時は **`preprocessBytesBinary` を付けない**（後段パス未実行）。OCR 全文はログに出さない（後追いは文字数・候補有無・パーサ経路で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。
 
 ### `POST /api/mobile-placement/register-order-placement`
 

@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-04-11）
 
+- **配膳スマホ V9（labels 早期終了・成功時 OCR プレビュー抑制）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ `feat/mobile-placement-ocr-preview-and-early-exit`・コミット **`c6aa2ee5`**。Detach Run ID は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **配膳スマホ V8（製造order抽出パーサ・分断ラベル・OCR診断ログ）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ `fix/mobile-placement-ocr-manufacturing-order-parser`・コミット **`a9e75cd8`**。Detach Run ID は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **配膳スマホ V7（現品票 OCR 用途別パイプライン・`ocrPreviewSafe`）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ `feat/mobile-placement-ocr-pipeline-hardening`・コミット **`8c1cc13d`**。Detach Run ID は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **配膳スマホ V6（現品票 OCR 可観測性・UI 案内・パーサ強化）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ `feat/mobile-placement-ocr-debug-fix`・コミット **`e6806d28`**。Detach Run ID は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
@@ -45,7 +46,7 @@
 
 ### 配膳スマホ（Android・Tailscale）
 
-- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V7**: 現品票 OCR 用途別パイプライン・`ocrPreviewSafe`／**V8**: 製造order抽出パーサ（分断ラベル）・`mo10*` 診断ログ／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
+- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V7**: 現品票 OCR 用途別パイプライン・`ocrPreviewSafe`／**V8**: 製造order抽出パーサ（分断ラベル）・`mo10*` 診断ログ／**V9**: labels パス早期終了・成功時 `OCR:` 非表示／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
 - **バーコード調査ゲート**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)
 
 ### LocalLLM（Ubuntu / Tailscale）

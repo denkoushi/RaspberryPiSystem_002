@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-11
+最終更新: 2026-04-12
 
 ## Context
 
@@ -89,6 +89,14 @@
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。
 - **仕様**: `actual-slip-identifier-parser` が **製造オーダラベルの空白分断**（例: `製造 オー ダ`）を許容し、**注文番号ブロック近傍の誤除外**で製造orderが null になるケースを減らす。`parse-actual-slip-image` 完了ログに **`mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`** を追加（OCR 全文はログに出さない）。
 - **知見・トラブルシュート**: 旧パーサでは **「製造オーダ」連続表記と一致しないラベル行**が注文番号行と同時に読めたとき、**製造ラベル未検出**となり **global-filter 経路で注文番号の10桁を除外**して **製造orderが null** になることがあった。**切り分け**: Pi5 API の `parse-actual-slip-image ocr completed` で **`mo10ParseSource`** を確認（`none` かつ候補ありは要再撮影・パーサ追従検討）。
+
+### 本番反映・検証（2026-04-12・V9 labels 早期終了・成功時プレビュー抑制）
+
+- **デプロイ**: [deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → Pi4 キオスク 4 台**を **`--limit` 1 台ずつ**・ブランチ **`feat/mobile-placement-ocr-preview-and-early-exit`**・**`--detach --follow`**（**Pi3 は対象外**）。実装ベースコミット **`c6aa2ee5`**。
+- **Detach Run ID（ログ接頭辞 `ansible-update-`）**: `20260412-085956-22755`（`raspberrypi5`）→ `20260412-091508-16092`（`raspberrypi4`）→ `20260412-092057-26505`（`raspi4-robodrill01`）→ `20260412-092542-10876`（`raspi4-fjv60-80`）→ `20260412-093134-32374`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。
+- **仕様**: **`jpn+eng`（labels）パス**のテキストだけで **製造order10 + FSEIBAN** が揃えば **早期 return**（追加パス・二値化前処理をスキップ）。ログは従来どおり（早期終了時は **`preprocessBytesBinary` なし**）。キオスク UI は **成功時**に **`OCR:`** の raw プレビュー行を出さない。
+- **知見**: 読みやすいラベルでは **後段 OCR を省略**でき、Pi5 CPU 負荷と待ち時間を抑えられる。切り分けで **`preprocessBytesBinary` が無い完了ログ**が出たら早期終了経路を疑う。
 
 ## References
 
