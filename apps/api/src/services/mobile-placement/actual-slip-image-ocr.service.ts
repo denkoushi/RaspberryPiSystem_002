@@ -14,10 +14,11 @@ const log = logger.child({ component: 'actualSlipImageOcr' });
 
 export type ParseActualSlipImageResult = {
   engine: string;
-  /** OCR 結合テキスト（ログ・パーサ用。ラベル＋数字＋英数字パス） */
+  /** OCR 結合テキスト（ログ・パーサ用。必要時はラベル単独で早期終了する） */
   ocrText: string;
   /**
-   * UI 向けプレビュー（数字・英数字パスのみ。ひらがな誤認が多いラベルパスは含めない）。
+   * UI 向けプレビュー。
+   * 通常は数字・英数字パスのみを使うが、ラベル単独で十分な場合は確定値だけを返す。
    * クライアントはこれを優先して表示し、無ければ `ocrText` にフォールバック可能。
    */
   ocrPreviewSafe: string | null;
@@ -37,9 +38,7 @@ export async function parseActualSlipImageFromUpload(params: {
   const startedMs = Date.now();
   const inputBytes = params.imageBytes.length;
   const jpegShared = await preprocessForOcrShared(params.imageBytes);
-  const jpegBinary = await preprocessForOcrDigitBinary(params.imageBytes);
   const preprocessBytes = jpegShared.length;
-  const preprocessBytesBinary = jpegBinary.length;
   const port = getImageOcrPort();
 
   // 同一 worker 内の setParameters を並列に走らせない（adapter 内の worker 共有のため）
@@ -48,6 +47,42 @@ export async function parseActualSlipImageFromUpload(params: {
     mimeType: 'image/jpeg',
     profile: 'actualSlipLabels'
   });
+
+  const labelsOnlyMo = parseManufacturingOrder10Extraction(labels.text);
+  const labelsOnlyFseiban = extractFseiban(labels.text);
+  if (labelsOnlyMo.value && labelsOnlyFseiban) {
+    const durationMs = Date.now() - startedMs;
+    const ocrPreviewSafe = buildActualSlipOcrPreviewSafe(labelsOnlyMo.value, labelsOnlyFseiban);
+    log.info(
+      {
+        event: 'parse-actual-slip-image',
+        requestId: params.requestId,
+        mimeType: params.mimeType,
+        inputBytes,
+        preprocessBytes,
+        engine: labels.engine,
+        ocrTextChars: labels.text.length,
+        hasManufacturingOrder10: true,
+        hasFseiban: true,
+        mo10Candidate10Count: labelsOnlyMo.diagnostics.candidate10Count,
+        mo10AfterOrderBlockFilterCount: labelsOnlyMo.diagnostics.afterOrderBlockFilterCount,
+        mo10ParseSource: labelsOnlyMo.diagnostics.source,
+        durationMs
+      },
+      'parse-actual-slip-image ocr completed'
+    );
+    return {
+      engine: labels.engine,
+      ocrText: labels.text,
+      ocrPreviewSafe,
+      manufacturingOrder10: labelsOnlyMo.value,
+      fseiban: labelsOnlyFseiban
+    };
+  }
+
+  const jpegBinary = await preprocessForOcrDigitBinary(params.imageBytes);
+  const preprocessBytesBinary = jpegBinary.length;
+
   const digits = await port.runOcrOnImage({
     imageBytes: jpegBinary,
     mimeType: 'image/jpeg',

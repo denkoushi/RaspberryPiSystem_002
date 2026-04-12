@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-11（現品票画像 OCR・V8 製造orderパーサ・FSEIBAN 照合）
+最終更新: 2026-04-12（現品票 OCR・V9 labels 早期終了・成功時プレビュー抑制）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -11,6 +11,8 @@
 **2026-04-11（V7・現品票 OCR 用途別パイプライン・`ocrPreviewSafe`）**: ブランチ **`feat/mobile-placement-ocr-pipeline-hardening`**（コミット **`8c1cc13d`**）。**仕様**: `jpn+eng` ラベルパス + `eng` 数字／英数字 whitelist の **3 パス直列**、前処理（グレースケール・正規化・余白・数字パスは二値化）、応答 **`ocrPreviewSafe`**（UI はひらがなノイズを抑えたプレビュー）。構造化ログに **`preprocessBytesBinary`**（二値化後 JPEG サイズ）を追加。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-211922-10561` → `20260411-212830-9591` → `20260411-213306-11155` → `20260411-213638-10529` → `20260411-214942-8793`（各 **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**）。**トラブルシュート**: OCR が遅い／初回のみ長い → 下記 **「5. トラブルシュート」**（`tesseract.js` ワーカ初回・**3 パスで処理時間増**の可能性）。**Pi3** は本機能の必須対象外。
 
 **2026-04-11（V8・製造order抽出パーサ強化・OCR診断ログ）**: ブランチ **`fix/mobile-placement-ocr-manufacturing-order-parser`**（コミット **`a9e75cd8`**）。**仕様**: 製造オーダラベルが OCR で **`製造 オー ダ` のように分断**しても **10桁を抽出**しやすい。**`parse-actual-slip-image` 完了ログ**に **`mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`** を追加（OCR 全文は出さない）。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-223115-29480` → `20260411-224346-24116` → `20260411-224823-19592` → `20260411-225152-29858` → `20260411-225741-29730`（各 **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。**トラブルシュート**: 製造orderが空のとき Pi5 API ログで **`mo10ParseSource`**（`label-regex` / `line-scan` / `global-filter` / `none`）を確認。
+
+**2026-04-12（V9・labels パス早期終了・成功時 OCR プレビュー非表示）**: ブランチ **`feat/mobile-placement-ocr-preview-and-early-exit`**（コミット **`c6aa2ee5`**）。**仕様**: **最初の `jpn+eng`（labels）パス**の結合テキストだけで **製造order（10桁）と FSEIBAN の両方が取れた場合**は **以降の OCR パスと二値化前処理をスキップ**（負荷低減）。構造化ログは従来どおり（早期終了時は **`preprocessBytesBinary`** を付けない）。**Web**: OCR **成功時**は **`OCR:`** 行の raw プレビューを出さない（候補なし／エラー時は従来どおり案内）。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-085956-22755` → `20260412-091508-16092` → `20260412-092057-26505` → `20260412-092542-10876` → `20260412-093134-32374`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**・Mac / Tailscale）。**知見**: ラベルが読めれば **後段パスを省略**でき、初回以外の体感待ち時間を短くし得る。
 
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
