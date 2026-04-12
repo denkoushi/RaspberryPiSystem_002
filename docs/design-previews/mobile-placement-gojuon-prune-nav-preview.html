@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>配膳スマホ — 五十音＋アルファベット絞り込み（カーナビ風・静的プレビュー）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.25);
+      --muted: #94a3b8;
+      --on: #f8fafc;
+      --dim: #334155;
+      --gone: rgba(51, 65, 85, 0.35);
+      --accent: #38bdf8;
+      --ok: #34d399;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--on);
+      padding: 0.75rem 1rem 2rem;
+      line-height: 1.45;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+    .lead {
+      margin: 0 0 1rem;
+      font-size: 0.76rem;
+      color: var(--muted);
+      max-width: 100ch;
+    }
+    .lead code { font-size: 0.85em; background: #1e293b; padding: 0.08em 0.3em; border-radius: 4px; }
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 0.5rem 0;
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(2, 6, 23, 0.92));
+      border-bottom: 1px solid var(--border);
+    }
+    .nav a {
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-decoration: none;
+      color: #7dd3fc;
+      padding: 0.3rem 0.5rem;
+      border-radius: 0.45rem;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    section { margin-bottom: 2rem; scroll-margin-top: 2.75rem; }
+    .case-title { font-size: 0.88rem; font-weight: 800; margin: 0 0 0.35rem; }
+    .case-desc { margin: 0 0 0.75rem; font-size: 0.72rem; color: var(--muted); max-width: 96ch; }
+    .phone {
+      max-width: 400px;
+      margin: 0 auto;
+      background: var(--panel);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .bar {
+      padding: 0.45rem 0.6rem;
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #e2e8f0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .bar .path {
+      font-weight: 800;
+      color: #fde68a;
+      letter-spacing: 0.04em;
+    }
+    .bar .clear {
+      font-size: 0.58rem;
+      color: var(--accent);
+      font-weight: 800;
+    }
+    .p-body { padding: 0.5rem 0.6rem 0.65rem; }
+    .hint {
+      font-size: 0.62rem;
+      color: var(--muted);
+      margin-bottom: 0.45rem;
+    }
+    /* 五十音グリッド（カーナビ風: 行ラベル + 5文字） */
+    .gojuon-wrap { margin-top: 0.25rem; }
+    .gojuon-title {
+      font-size: 0.58rem;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.35rem;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.25rem;
+      margin-bottom: 0.3rem;
+      align-items: stretch;
+    }
+    .kbtn {
+      min-height: 2.35rem;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: linear-gradient(180deg, #1e293b, #0f172a);
+      color: #f1f5f9;
+      font-size: 0.78rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+      user-select: none;
+    }
+    /* まだ候補に使われうる */
+    .kbtn.active {
+      border-color: rgba(52, 211, 153, 0.45);
+      box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.2);
+    }
+    /* この先の部品名が存在しない → ボタンを「消す」 */
+    .kbtn.pruned {
+      display: none;
+    }
+    /* 代替: 薄く残す案（注釈用セクションで使用） */
+    .kbtn.dim {
+      opacity: 0.22;
+      border-color: rgba(148, 163, 184, 0.15);
+      color: var(--dim);
+    }
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    @media (max-width: 780px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+    .tag {
+      font-size: 0.58rem;
+      font-weight: 800;
+      color: #fde68a;
+      margin-bottom: 0.35rem;
+    }
+    .footnote {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px dashed var(--border);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    /* よく使う語プリセット（1タップで検索文字列に追加する想定） */
+    .preset-scroll {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.55rem;
+    }
+    .preset-chip {
+      font-size: 0.66rem;
+      font-weight: 800;
+      padding: 0.38rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid rgba(251, 191, 0, 0.38);
+      background: rgba(251, 191, 0, 0.1);
+      color: #fde68a;
+      cursor: default;
+      white-space: nowrap;
+    }
+    .preset-chip.axis {
+      border-color: rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.12);
+      color: #7dd3fc;
+      font-family: ui-monospace, monospace;
+      letter-spacing: 0.06em;
+    }
+    /* アルファベット A–Z（五十音と並列。剪定時は同様に display:none） */
+    .alpha-wrap { margin-top: 0.65rem; }
+    .alpha-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.25rem;
+    }
+    .kbtn-alpha {
+      min-height: 2.1rem;
+      border-radius: 8px;
+      border: 1px solid rgba(167, 139, 250, 0.42);
+      background: linear-gradient(180deg, rgba(46, 16, 101, 0.35), #0f172a);
+      color: #f5e8ff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+      user-select: none;
+    }
+    .kbtn-alpha.active {
+      border-color: rgba(167, 139, 250, 0.65);
+      box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.25);
+    }
+    .kbtn-alpha.pruned { display: none; }
+    .kbtn-alpha.dim { opacity: 0.22; }
+  </style>
+</head>
+<body>
+  <h1>配膳スマホ — 五十音＋A–Z で絞る（カーナビ風・ボタン消去）</h1>
+  <p class="lead">
+    静的モックのみ。操作はデモ用（クリックで遷移しない）。<strong>「次の1文字として続きうるか」</strong>で五十音・<strong>アルファベット（A–Z）</strong>のボタンを残し、
+    <strong>絶対に出てこない文字を非表示（または極薄）</strong>にして視線を誘導する UI 案。
+    想定ルート例: <code>/kiosk/mobile-placement/find-by-name/gojuon</code>
+  </p>
+
+  <nav class="nav" aria-label="セクション">
+    <a href="#presets">よく使う語</a>
+    <a href="#full">初期（全表示）</a>
+    <a href="#pruned">「テ」入力後（絞り）</a>
+    <a href="#chips">次の1文字だけ大きく</a>
+    <a href="#dim">別案・薄表示</a>
+    <a href="#alpha-pruned">ABC 絞り例</a>
+  </nav>
+
+  <section id="presets">
+    <p class="case-title">プリセット: 現場で頻出する語を並べる（設定・マスタで差し替え想定）</p>
+    <p class="case-desc">
+      五十音の前に <strong>横スクロール／折返しのチップ</strong>を置き、口頭で出やすい語を1タップで入力欄に足すイメージ。
+      <strong>X / Y / Z</strong> は軸・治具区分などの記号として色分け（モック）。
+    </p>
+    <div class="phone">
+      <div class="bar"><span>部品名</span><span class="path">（未入力）</span><span class="clear">クリア</span></div>
+      <div class="p-body">
+        <div class="gojuon-title">よく使う語</div>
+        <div class="preset-scroll" aria-label="よく使う語プリセット">
+          <span class="preset-chip">テーブル</span>
+          <span class="preset-chip">ベース</span>
+          <span class="preset-chip">モータ</span>
+          <span class="preset-chip">サドル</span>
+          <span class="preset-chip">アシ</span>
+          <span class="preset-chip">ベアリング</span>
+          <span class="preset-chip">ナット</span>
+          <span class="preset-chip">カラー</span>
+          <span class="preset-chip axis">X</span>
+          <span class="preset-chip axis">Y</span>
+          <span class="preset-chip axis">Z</span>
+        </div>
+        <p class="hint">実装では JSON / DB のプリセット一覧を読み、現場ごとに編集可能にする想定。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="full">
+    <p class="case-title">初期: 五十音に加え A–Z を並べる</p>
+    <p class="case-desc">タッチしやすい最低限の行数に省略（清音のみモック）。実装では濁音・小文字・長音を別行や長押しで扱う想定。<strong>部品名に英字が混じる場合</strong>は A–Z を同じ剪定ルールで消す。</p>
+    <p class="tag">状態 0 · 入力なし（候補に使われるかはサーバ／クライアントの辞書次第でボタンを消す）</p>
+    <div class="phone">
+      <div class="bar"><span>部品名（五十音・ABC）</span><span class="path">（未入力）</span><span class="clear">クリア</span></div>
+      <div class="p-body">
+        <div class="preset-scroll">
+          <span class="preset-chip">テーブル</span>
+          <span class="preset-chip">ベース</span>
+          <span class="preset-chip">モータ</span>
+          <span class="preset-chip">サドル</span>
+          <span class="preset-chip">アシ</span>
+          <span class="preset-chip">ベアリング</span>
+          <span class="preset-chip">ナット</span>
+          <span class="preset-chip">カラー</span>
+          <span class="preset-chip axis">X</span>
+          <span class="preset-chip axis">Y</span>
+          <span class="preset-chip axis">Z</span>
+        </div>
+        <div class="gojuon-wrap">
+          <!-- あ行〜た行のみ抜粋。全ボタン active -->
+          <div class="row">
+            <span class="kbtn active">あ</span><span class="kbtn active">い</span><span class="kbtn active">う</span><span class="kbtn active">え</span><span class="kbtn active">お</span>
+          </div>
+          <div class="row">
+            <span class="kbtn active">か</span><span class="kbtn active">き</span><span class="kbtn active">く</span><span class="kbtn active">け</span><span class="kbtn active">こ</span>
+          </div>
+          <div class="row">
+            <span class="kbtn active">さ</span><span class="kbtn active">し</span><span class="kbtn active">す</span><span class="kbtn active">せ</span><span class="kbtn active">そ</span>
+          </div>
+          <div class="row">
+            <span class="kbtn active">た</span><span class="kbtn active">ち</span><span class="kbtn active">つ</span><span class="kbtn active">て</span><span class="kbtn active">と</span>
+          </div>
+          <div class="row">
+            <span class="kbtn active">…</span><span class="kbtn active">…</span><span class="kbtn active">…</span><span class="kbtn active">…</span><span class="kbtn active">…</span>
+          </div>
+        </div>
+        <div class="gojuon-wrap alpha-wrap">
+          <div class="alpha-grid" aria-label="アルファベット A から Z">
+            <span class="kbtn-alpha active">A</span><span class="kbtn-alpha active">B</span><span class="kbtn-alpha active">C</span><span class="kbtn-alpha active">D</span><span class="kbtn-alpha active">E</span><span class="kbtn-alpha active">F</span><span class="kbtn-alpha active">G</span>
+            <span class="kbtn-alpha active">H</span><span class="kbtn-alpha active">I</span><span class="kbtn-alpha active">J</span><span class="kbtn-alpha active">K</span><span class="kbtn-alpha active">L</span><span class="kbtn-alpha active">M</span><span class="kbtn-alpha active">N</span>
+            <span class="kbtn-alpha active">O</span><span class="kbtn-alpha active">P</span><span class="kbtn-alpha active">Q</span><span class="kbtn-alpha active">R</span><span class="kbtn-alpha active">S</span><span class="kbtn-alpha active">T</span><span class="kbtn-alpha active">U</span>
+            <span class="kbtn-alpha active">V</span><span class="kbtn-alpha active">W</span><span class="kbtn-alpha active">X</span><span class="kbtn-alpha active">Y</span><span class="kbtn-alpha active">Z</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="alpha-pruned">
+    <p class="case-title">英字プレフィックス例: 「TA」まで入力後の A–Z（モック）</p>
+    <p class="case-desc">次に続く部品名が <code>TA…</code> しかない場合、<strong>3文字目としてありうるのは B L R …</strong> などに限定される想定。五十音と<strong>同じ剪定</strong>をアルファベットにも適用。</p>
+    <p class="tag">状態 · 入力 <strong>TA</strong>（英大文字）</p>
+    <div class="phone">
+      <div class="bar"><span>部品名（五十音・ABC）</span><span class="path">TA</span><span class="clear">戻る</span></div>
+      <div class="p-body">
+        <div class="gojuon-title">A–Z（絞り後）</div>
+        <div class="alpha-grid">
+          <span class="kbtn-alpha pruned">A</span><span class="kbtn-alpha active">B</span><span class="kbtn-alpha pruned">C</span><span class="kbtn-alpha pruned">D</span><span class="kbtn-alpha pruned">E</span><span class="kbtn-alpha pruned">F</span><span class="kbtn-alpha pruned">G</span>
+          <span class="kbtn-alpha pruned">H</span><span class="kbtn-alpha pruned">I</span><span class="kbtn-alpha pruned">J</span><span class="kbtn-alpha pruned">K</span><span class="kbtn-alpha active">L</span><span class="kbtn-alpha pruned">M</span><span class="kbtn-alpha pruned">N</span>
+          <span class="kbtn-alpha pruned">O</span><span class="kbtn-alpha pruned">P</span><span class="kbtn-alpha pruned">Q</span><span class="kbtn-alpha active">R</span><span class="kbtn-alpha pruned">S</span><span class="kbtn-alpha pruned">T</span><span class="kbtn-alpha pruned">U</span>
+          <span class="kbtn-alpha pruned">V</span><span class="kbtn-alpha pruned">W</span><span class="kbtn-alpha pruned">X</span><span class="kbtn-alpha pruned">Y</span><span class="kbtn-alpha pruned">Z</span>
+        </div>
+        <p class="hint">モックでは B・L・R のみ残した例（実際の候補は辞書依存）。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="pruned">
+    <p class="case-title">「テ」確定後: 続かないボタンを消す（カーナビ的）</p>
+    <p class="case-desc">
+      例: 残りの部品名が「ーブル天板」しかないとき、<strong>次の1文字としてありうるのは「ー」「ブ」…</strong> だけ、という想定で
+      <strong>他の五十音ボタンを非表示</strong>にする。グリッドの穴は詰めず「空いたスペース」で視認性を上げるか、レイアウト詰めは実装で調整。
+    </p>
+    <p class="tag">状態 1 · 入力 <strong>テ</strong>（モックでは「て」をタップ済みとみなす）</p>
+    <div class="phone">
+      <div class="bar"><span>部品名（五十音・ABC）</span><span class="path">テ</span><span class="clear">戻る</span></div>
+      <div class="p-body">
+        <p class="hint">残り候補が「テーブル…」系のみのときのイメージ。使用不可の音は <code>display:none</code> で「消した」表現。</p>
+        <div class="gojuon-wrap">
+          <div class="gojuon-title">次の1文字（絞り後）</div>
+          <div class="row">
+            <span class="kbtn pruned">あ</span><span class="kbtn pruned">い</span><span class="kbtn pruned">う</span><span class="kbtn pruned">え</span><span class="kbtn pruned">お</span>
+          </div>
+          <div class="row">
+            <span class="kbtn pruned">か</span><span class="kbtn pruned">き</span><span class="kbtn pruned">く</span><span class="kbtn pruned">け</span><span class="kbtn pruned">こ</span>
+          </div>
+          <div class="row">
+            <span class="kbtn pruned">た</span><span class="kbtn pruned">ち</span><span class="kbtn pruned">つ</span>
+            <span class="kbtn active">ー</span>
+            <span class="kbtn pruned">と</span>
+          </div>
+          <div class="row">
+            <span class="kbtn pruned">は</span><span class="kbtn pruned">ひ</span><span class="kbtn pruned">ふ</span><span class="kbtn pruned">へ</span><span class="kbtn pruned">ほ</span>
+          </div>
+          <div class="row">
+            <span class="kbtn active">ブ</span><span class="kbtn pruned">…</span><span class="kbtn pruned">…</span><span class="kbtn pruned">…</span><span class="kbtn pruned">…</span>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:0.5rem;">※ 「ー」「ブ」はモック用。実装では <strong>次に続く文字集合</strong> を API が返し、UI がボタンを剪定。行は <code>display:none</code> で行ごと消すことも可。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="chips">
+    <p class="case-title">補助案: 絞り込み後は「次に押せる文字」だけ大きく並べる</p>
+    <p class="case-desc">五十音グリッドを維持しない場合、カーナビの「候補が少ないときの一覧」と同様に、<strong>タッチターゲットだけ残す</strong>と誤押しが減る。</p>
+    <p class="tag">状態 1 · 同じ「テ」入力直後（別レイアウト）</p>
+    <div class="phone">
+      <div class="bar"><span>次の1文字</span><span class="path">テ</span><span class="clear">戻る</span></div>
+      <div class="p-body">
+        <p class="hint">残り候補に続く先頭文字が 2 個だけの例</p>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center;padding:0.5rem 0;">
+          <span class="kbtn active" style="min-width:4.5rem;min-height:3rem;font-size:1.1rem;">ー</span>
+          <span class="kbtn active" style="min-width:4.5rem;min-height:3rem;font-size:1.1rem;">ブ</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="dim">
+    <p class="case-title">別案: 消さず「薄くする」</p>
+    <p class="case-desc">ボタン位置を固定したい場合は、無効音を <strong>dim</strong> のみにしてタッチ不可にする案。視線誘導は「消去」より弱いが、レイアウトジャンプがない。</p>
+    <div class="compare">
+      <div>
+        <p class="tag">消去（上記と同趣旨）</p>
+        <div class="phone">
+          <div class="bar"><span>五十音</span><span class="path">テ</span></div>
+          <div class="p-body" style="padding-top:0.35rem;">
+            <div class="row">
+              <span class="kbtn dim">た</span><span class="kbtn dim">ち</span><span class="kbtn dim">つ</span>
+              <span class="kbtn active">ー</span>
+              <span class="kbtn dim">と</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="tag">薄表示（位置固定）</p>
+        <div class="phone">
+          <div class="bar"><span>五十音</span><span class="path">テ</span></div>
+          <div class="p-body" style="padding-top:0.35rem;">
+            <div class="row">
+              <span class="kbtn dim">た</span><span class="kbtn dim">ち</span><span class="kbtn dim">つ</span>
+              <span class="kbtn active">ー</span>
+              <span class="kbtn dim">と</span>
+            </div>
+            <p class="hint">見た目は同じクラス。実装では <code>pointer-events: none</code> を dim に付与。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="footnote">
+    <strong>実装メモ（プレビュー外）:</strong> 各入力プレフィックスごとに、辞書（部品名集合）から <strong>次にありうる文字の集合</strong> を計算し、
+    五十音グリッドと <strong>A–Z グリッド</strong>の両方に突き合わせて <code>active</code> / <code>pruned</code> / <code>dim</code> を切り替える（Unicode 正規化で英大文字・小文字を揃えるとよい）。
+    データが大きいときはサーバでプレフィックス trie やインデックスを検討。<br />
+    ファイル: <code>docs/design-previews/mobile-placement-gojuon-prune-nav-preview.html</code>
+  </p>
+</body>
+</html>

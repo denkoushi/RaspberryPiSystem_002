@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>配膳スマホ — 棚一覧・俯瞰（全案 静的プレビュー）</title>
+  <style>
+    :root {
+      --slate-950: #020617;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --muted: #94a3b8;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --teal: #2dd4bf;
+      --rose: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--slate-950);
+      color: #f8fafc;
+      padding: 0.75rem 1rem 2.5rem;
+      line-height: 1.5;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+    .subtitle {
+      margin: 0 0 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      max-width: 100ch;
+    }
+    .subtitle code {
+      font-size: 0.78em;
+      background: var(--slate-800);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    /* 案ジャンプ */
+    .nav-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      padding: 0.5rem 0 0.75rem;
+      margin: 0 0 1rem;
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(2, 6, 23, 0.92));
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .nav-sticky a {
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-decoration: none;
+      color: #7dd3fc;
+      padding: 0.35rem 0.65rem;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .nav-sticky a:hover { background: rgba(56, 189, 248, 0.18); }
+    section {
+      margin-bottom: 2.25rem;
+      scroll-margin-top: 3.5rem;
+    }
+    .case-title {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin: 0 0 0.5rem;
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #e2e8f0;
+    }
+    .case-title span.badge {
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--emerald);
+      border: 1px solid rgba(52, 211, 153, 0.4);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+    }
+    .case-desc {
+      margin: 0 0 1rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      max-width: 96ch;
+    }
+    .frame-phone {
+      max-width: 420px;
+      margin: 0 auto;
+      background: var(--slate-900);
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+      min-height: 320px;
+    }
+    .frame-wide {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--slate-900);
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+      padding: 0.75rem;
+    }
+    .bar-top {
+      padding: 0.5rem 0.65rem;
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: #cbd5e1;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(15, 23, 42, 0.9);
+    }
+    /* 案A: 棚カード */
+    .shelf-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+      padding: 0.65rem;
+      max-height: min(70vh, 520px);
+      overflow-y: auto;
+    }
+    .shelf-card {
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(15, 23, 42, 0.85);
+      overflow: hidden;
+    }
+    .shelf-card-h {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.55rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+      border-left: 4px solid var(--accent, #64748b);
+      background: rgba(2, 6, 23, 0.35);
+    }
+    .shelf-card-h .code { flex: 1; min-width: 0; color: #fef3c7; }
+    .shelf-card-h .cnt {
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: var(--slate-950);
+      background: var(--amber);
+      padding: 0.15rem 0.4rem;
+      border-radius: 999px;
+    }
+    .branch-row {
+      padding: 0.45rem 0.55rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.68rem;
+    }
+    .branch-row .line1 { font-weight: 800; color: #e2e8f0; }
+    .branch-row .line2 { color: var(--muted); margin-top: 0.15rem; }
+    .branch-row .pill {
+      display: inline-block;
+      margin-top: 0.25rem;
+      font-size: 0.6rem;
+      font-weight: 800;
+      color: #99f6e4;
+      border: 1px solid rgba(45, 212, 191, 0.35);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }
+    /* 9ゾーン色（ユーザー案に準拠） */
+    .z-nw { --accent: #f59e0b; } .z-nc { --accent: #9333ea; } .z-ne { --accent: #ef4444; }
+    .z-cw { --accent: #22c55e; } .z-cc { --accent: #64748b; } .z-ce { --accent: #a16207; }
+    .z-sw { --accent: #ea580c; } .z-sc { --accent: #2563eb; } .z-se { --accent: #ec4899; }
+    /* 案B: マップ */
+    .zone-map {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.4rem;
+      padding: 0.5rem;
+    }
+    .zone-cell {
+      aspect-ratio: 1;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0.35rem;
+      cursor: default;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+    }
+    .zone-cell strong { font-size: 0.72rem; font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+    .zone-cell small { font-size: 0.58rem; font-weight: 700; color: rgba(255, 255, 255, 0.88); margin-top: 0.15rem; }
+    .zone-cell .stat { font-size: 0.55rem; margin-top: 0.35rem; opacity: 0.95; }
+    .zone-detail {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .zone-detail b { color: #fde68a; }
+    /* 案C: タブ */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+      padding: 0 0.5rem;
+      background: rgba(15, 23, 42, 0.95);
+    }
+    .tabs label {
+      flex: 1;
+      text-align: center;
+      padding: 0.55rem 0.25rem;
+      font-size: 0.72rem;
+      font-weight: 800;
+      cursor: pointer;
+      color: var(--muted);
+      border-bottom: 3px solid transparent;
+      margin-bottom: -1px;
+    }
+    /* 案C: ラジオは bar-top の外側（兄弟）に置くためここで非表示 */
+    input[name="mp-tab"] {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #tab-shelf:checked ~ .tabs label[for="tab-shelf"],
+    #tab-part:checked ~ .tabs label[for="tab-part"] {
+      color: #7dd3fc;
+      border-bottom-color: #38bdf8;
+    }
+    .panel-shelf, .panel-part { display: none; padding: 0.65rem; }
+    #tab-shelf:checked ~ .panel-wrap .panel-shelf { display: block; }
+    #tab-part:checked ~ .panel-wrap .panel-part { display: block; }
+    .search-box {
+      display: flex;
+      gap: 0.35rem;
+      margin-bottom: 0.65rem;
+    }
+    .search-box input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.45rem 0.5rem;
+      border-radius: 8px;
+      border: 1px solid rgba(45, 212, 191, 0.35);
+      background: var(--slate-950);
+      color: #f8fafc;
+      font-size: 0.78rem;
+    }
+    .search-box button {
+      padding: 0.45rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.15);
+      color: #7dd3fc;
+      font-size: 0.7rem;
+      font-weight: 800;
+      cursor: default;
+    }
+    .hit-card {
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      padding: 0.5rem;
+      margin-bottom: 0.45rem;
+      font-size: 0.72rem;
+      background: rgba(2, 6, 23, 0.5);
+    }
+    .hit-card .where { font-weight: 800; color: #fde68a; }
+    /* 案D: バッジ */
+    .badge-warn {
+      font-size: 0.55rem;
+      font-weight: 800;
+      padding: 0.12rem 0.35rem;
+      border-radius: 4px;
+      margin-left: 0.35rem;
+      vertical-align: middle;
+    }
+    .bw-yellow { background: rgba(234, 179, 8, 0.25); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.45); }
+    .bw-red { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.45); }
+    .bw-gray { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.35); }
+    .note-footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px dashed rgba(148, 163, 184, 0.25);
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <h1>配膳スマホ — 棚一覧・俯瞰（全案）</h1>
+  <p class="subtitle">
+    静的モックのみ。API 接続なし。本番のキオスク配色（スレート地・amber / teal 帯）に近づけたレイアウト案。
+    ルート想定例: <code>/kiosk/mobile-placement/board</code>（未実装）
+  </p>
+
+  <nav class="nav-sticky" aria-label="案へのジャンプ">
+    <a href="#case-a">案A 棚俯瞰ボード</a>
+    <a href="#case-b">案B 9ゾーン俯瞰</a>
+    <a href="#case-c">案C 棚／部品タブ</a>
+    <a href="#case-d">案D 注意バッジ</a>
+  </nav>
+
+  <!-- 案A -->
+  <section id="case-a">
+    <h2 class="case-title"><span class="badge">案A</span> 棚俯瞰ボード</h2>
+    <p class="case-desc">
+      棚ごとにカード化し、中に分配枝（製造order・FHINCD・部品名・製番）を縦に並べる。件数はバッジ、更新時刻は小さく（モックでは省略可）。
+    </p>
+    <div class="frame-phone">
+      <div class="bar-top">棚一覧（現在棚）</div>
+      <div class="shelf-grid">
+        <article class="shelf-card z-nw">
+          <div class="shelf-card-h"><span class="code">西-北-02</span><span class="cnt">2</span></div>
+          <div class="branch-row">
+            <div class="line1">分配1 · MO 0002178005</div>
+            <div class="line2">FHINCD 12345678 · ブッシュA</div>
+            <div class="line2">製番 BE1N9321</div>
+            <span class="pill">現在棚</span>
+          </div>
+          <div class="branch-row">
+            <div class="line1">分配2 · MO 0002178005</div>
+            <div class="line2">FHINCD 87654321 · シャフトB</div>
+            <div class="line2">製番 BE1N9321</div>
+            <span class="pill">現在棚</span>
+          </div>
+        </article>
+        <article class="shelf-card z-sc">
+          <div class="shelf-card-h"><span class="code">南-中央-05</span><span class="cnt">1</span></div>
+          <div class="branch-row">
+            <div class="line1">分配1 · MO 0003001122</div>
+            <div class="line2">FHINCD 11110000 · カバーC</div>
+            <div class="line2">製番 XY2Z1001</div>
+            <span class="pill">現在棚</span>
+          </div>
+        </article>
+        <article class="shelf-card">
+          <div class="shelf-card-h" style="--accent: #94a3b8;"><span class="code">TEMP-A</span><span class="cnt">1</span></div>
+          <div class="branch-row">
+            <div class="line1">分配1 · MO 0004005566</div>
+            <div class="line2">FHINCD 99990000 · 仮置き部品</div>
+            <span class="pill">現在棚</span>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 案B -->
+  <section id="case-b">
+    <h2 class="case-title"><span class="badge">案B</span> 9ゾーン俯瞰 + ゾーン内棚</h2>
+    <p class="case-desc">
+      エリア×列を色で識別（ラベル併記）。タップで下半にそのゾーンの棚カードを出す想定。下は「南・中央」を選択した状態のモック。
+    </p>
+    <div class="frame-phone">
+      <div class="bar-top">倉庫マップ</div>
+      <div class="zone-map">
+        <div class="zone-cell z-nw" style="background: linear-gradient(145deg, #f59e0b, #d97706);"><strong>北・西</strong><small>黄</small><span class="stat">棚3 · 部品5</span></div>
+        <div class="zone-cell z-nc" style="background: linear-gradient(145deg, #9333ea, #7c3aed);"><strong>北・中央</strong><small>紫</small><span class="stat">棚1 · 部品2</span></div>
+        <div class="zone-cell z-ne" style="background: linear-gradient(145deg, #ef4444, #dc2626);"><strong>北・東</strong><small>赤</small><span class="stat">棚0 · 0</span></div>
+        <div class="zone-cell z-cw" style="background: linear-gradient(145deg, #22c55e, #16a34a);"><strong>中央・西</strong><small>緑</small><span class="stat">棚2 · 部品4</span></div>
+        <div class="zone-cell z-cc" style="background: linear-gradient(145deg, #64748b, #475569);"><strong>中央・中央</strong><small>グレー</small><span class="stat">棚4 · 部品6</span></div>
+        <div class="zone-cell z-ce" style="background: linear-gradient(145deg, #a16207, #854d0e);"><strong>中央・東</strong><small>茶</small><span class="stat">棚1 · 部品1</span></div>
+        <div class="zone-cell z-sw" style="background: linear-gradient(145deg, #ea580c, #c2410c);"><strong>南・西</strong><small>オレンジ</small><span class="stat">棚2 · 部品3</span></div>
+        <div class="zone-cell z-sc" style="background: linear-gradient(145deg, #2563eb, #1d4ed8); box-shadow: inset 0 0 0 3px rgba(250, 204, 21, 0.85);"><strong>南・中央</strong><small>青</small><span class="stat">棚2 · 部品3</span></div>
+        <div class="zone-cell z-se" style="background: linear-gradient(145deg, #ec4899, #db2777);"><strong>南・東</strong><small>ピンク</small><span class="stat">棚0 · 0</span></div>
+      </div>
+      <div class="zone-detail">
+        選択中: <b>南・中央（青）</b> — 棚 <b>2</b> 件 · 部品 <b>3</b> 件（分配枝合計）
+        <div class="shelf-grid" style="max-height: none; padding: 0.5rem 0 0;">
+          <article class="shelf-card z-sc">
+            <div class="shelf-card-h"><span class="code">南-中央-05</span><span class="cnt">2</span></div>
+            <div class="branch-row"><div class="line1">分配1 …</div><div class="line2">FHINCD …</div></div>
+            <div class="branch-row"><div class="line1">分配2 …</div><div class="line2">FHINCD …</div></div>
+          </article>
+          <article class="shelf-card z-sc">
+            <div class="shelf-card-h"><span class="code">南-中央-12</span><span class="cnt">1</span></div>
+            <div class="branch-row"><div class="line1">分配1 …</div></div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 案C -->
+  <section id="case-c">
+    <h2 class="case-title"><span class="badge">案C</span> 「棚で見る」／「部品で探す」タブ</h2>
+    <p class="case-desc">
+      件数増加時用。同一画面でタブ切替（純 CSS のデモ: ラジオで表示切替）。
+    </p>
+    <div class="frame-phone">
+      <!-- ラジオは bar-top より前に置く（~ セレクタでタブ・パネルと兄弟にする） -->
+      <input type="radio" name="mp-tab" id="tab-shelf" checked />
+      <input type="radio" name="mp-tab" id="tab-part" />
+      <div class="bar-top">一覧 · 検索</div>
+      <div class="tabs">
+        <label for="tab-shelf">棚で見る</label>
+        <label for="tab-part">部品で探す</label>
+      </div>
+      <div class="panel-wrap">
+        <div class="panel-shelf">
+          <p style="margin:0 0 0.5rem;font-size:0.65rem;color:#94a3b8;">案A と同様の棚カードを縦スクロール（省略）</p>
+          <article class="shelf-card z-nw">
+            <div class="shelf-card-h"><span class="code">西-北-02</span><span class="cnt">2</span></div>
+            <div class="branch-row"><div class="line1">分配1 · MO …</div></div>
+          </article>
+        </div>
+        <div class="panel-part">
+          <div class="search-box">
+            <input type="text" placeholder="FHINCD / 部品名 / MO / 製番" value="12345678" readonly />
+            <button type="button">検索</button>
+          </div>
+          <div class="hit-card">
+            <div class="where">棚: 西-北-02</div>
+            <div style="margin-top:0.35rem;color:#cbd5e1;">分配1 · MO 0002178005 · FHINCD 12345678</div>
+          </div>
+          <div class="hit-card">
+            <div class="where">棚: 東-南-01（別例）</div>
+            <div style="margin-top:0.35rem;color:#cbd5e1;">分配1 · 同一部品が複数棚に…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 案D -->
+  <section id="case-d">
+    <h2 class="case-title"><span class="badge">案D</span> 注意バッジ（異常・要確認）</h2>
+    <p class="case-desc">
+      一覧にそのまま混ぜる。色はヘッダ帯・左ボーダーと整合。ルール例: 黄=要確認、赤=異常候補、灰=仮棚。
+    </p>
+    <div class="frame-phone">
+      <div class="bar-top">棚一覧（注意付き）</div>
+      <div class="shelf-grid">
+        <article class="shelf-card z-nw">
+          <div class="shelf-card-h">
+            <span class="code">西-北-02</span>
+            <span class="cnt">2</span>
+            <span class="badge-warn bw-yellow">要確認</span>
+          </div>
+          <div class="branch-row">
+            <div class="line1">同一製番が別棚にも…（モック）</div>
+          </div>
+        </article>
+        <article class="shelf-card z-ne">
+          <div class="shelf-card-h">
+            <span class="code">北-東-01</span>
+            <span class="cnt">1</span>
+            <span class="badge-warn bw-red">更新古</span>
+          </div>
+          <div class="branch-row"><div class="line1">最終更新 48h 超（例）</div></div>
+        </article>
+        <article class="shelf-card">
+          <div class="shelf-card-h" style="--accent: #94a3b8;">
+            <span class="code">TEMP-B</span>
+            <span class="cnt">1</span>
+            <span class="badge-warn bw-gray">仮棚</span>
+          </div>
+          <div class="branch-row"><div class="line1">仮置きのまま（例）</div></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <p class="note-footer">
+    本ファイルは <code>docs/design-previews/mobile-placement-placement-board-all-cases-preview.html</code>。
+    ブラウザで開くには README の <code>python3 -m http.server</code> 手順、または file:// 直開きでも可（外部 CDN なし）。
+  </p>
+</body>
+</html>

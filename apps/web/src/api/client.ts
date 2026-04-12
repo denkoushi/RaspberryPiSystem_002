@@ -38,6 +38,7 @@ import type {
   RiggingStatus,
   ItemLoanAnalyticsResponse
 } from './types';
+import type { PartPlacementSearchSuggestResponse } from '../features/mobile-placement/part-search/types';
 import type { RegisteredShelfEntryDto } from '../features/mobile-placement/registeredShelves/types';
 import type {
   FindOrOpenPartMeasurementResponse,
@@ -778,6 +779,14 @@ export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;
 
 export async function getMobilePlacementRegisteredShelves() {
   const { data } = await api.get<{ shelves: RegisteredShelfEntryDto[] }>('/mobile-placement/registered-shelves');
+  return data;
+}
+
+/** 部品名検索（現在棚優先・スケジュール補助） */
+export async function getMobilePlacementPartSearchSuggest(q: string) {
+  const { data } = await api.get<PartPlacementSearchSuggestResponse>('/mobile-placement/part-search/suggest', {
+    params: { q }
+  });
   return data;
 }
 

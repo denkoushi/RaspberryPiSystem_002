@@ -32,6 +32,15 @@ export function MobilePlacementPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex justify-end px-3 pt-2">
+        <button
+          type="button"
+          className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-semibold text-sky-200 active:bg-sky-500/20"
+          onClick={() => navigate('/kiosk/mobile-placement/part-search')}
+        >
+          部品名で棚を探す
+        </button>
+      </div>
       <input
         ref={actualSlipFileInputRef}
         type="file"
