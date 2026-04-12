@@ -1800,9 +1800,9 @@
 2. **写真持出 VLM**: 新規写真持出で **1 件**スモークし、ラベル推論が従来どおり完了するか確認（[KB-319](./docs/knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
 3. **新規コード**: 新しい Vision 用途を追加する場合は **`InferenceUseCase` と `InferenceRouter` のルート**を拡張し、境界は **inference 層**に閉じる（[ADR-20260402](./docs/decisions/ADR-20260402-inference-foundation-phase1.md)）。
 
-### 配膳スマホ運用フォロー（V2 既定・V4 登録済み棚・**V5 現品票画像 OCR**・**V9 labels 早期終了**・**V10 製造order 誤認補正**・2026-04-12）
+### 配膳スマホ運用フォロー（V2 既定・V4 登録済み棚・**V5 現品票画像 OCR**・**V9 labels 早期終了**・**V10 製造order 誤認補正**・**V11 注文番号+枝番行除外・global-filter 選別**・2026-04-12）
 
-**概要**: [mobile-placement-smartphone.md](./docs/runbooks/mobile-placement-smartphone.md)・[KB-339](./docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[api/mobile-placement.md](./docs/api/mobile-placement.md)。自動回帰は **`verify-phase12-real.sh` FAIL 0**（既存項目のみで mobile-placement 専用チェックは未追加）。**登録済み棚**: `GET /api/mobile-placement/registered-shelves` は履歴が無いと **`shelves: []`**（[Runbook](./docs/runbooks/mobile-placement-smartphone.md) の spot check 参照）。**V9**: labels だけで両キーが取れた場合は **後段 OCR を省略**（Pi5 ログで **`preprocessBytesBinary` なし**の完了が出ることがある）。成功時 UI は **`OCR:`** raw を出さない。**V10（コード `main`・コミット `c09ebc8a`）**: 製造ラベル近傍で **`O`/`0` 等の誤認**から **製造order10桁**を復元。**本番デプロイ済み**（Pi5→Pi4×4・2026-04-12）。
+**概要**: [mobile-placement-smartphone.md](./docs/runbooks/mobile-placement-smartphone.md)・[KB-339](./docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md)・[api/mobile-placement.md](./docs/api/mobile-placement.md)。自動回帰は **`verify-phase12-real.sh` FAIL 0**（既存項目のみで mobile-placement 専用チェックは未追加）。**登録済み棚**: `GET /api/mobile-placement/registered-shelves` は履歴が無いと **`shelves: []`**（[Runbook](./docs/runbooks/mobile-placement-smartphone.md) の spot check 参照）。**V9**: labels だけで両キーが取れた場合は **後段 OCR を省略**（Pi5 ログで **`preprocessBytesBinary` なし**の完了が出ることがある）。成功時 UI は **`OCR:`** raw を出さない。**V10（コード `main`・コミット `c09ebc8a`）**: 製造ラベル近傍で **`O`/`0` 等の誤認**から **製造order10桁**を復元。**本番デプロイ済み**（Pi5→Pi4×4・2026-04-12）。**V11**: ローカル実装済み（`actual-slip-identifier-parser`）。**本番反映**はマージ後 `update-all-clients.sh` で追従。
 
 **候補タスク**:
 

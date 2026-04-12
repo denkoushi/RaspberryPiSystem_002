@@ -108,6 +108,12 @@
 - **自動回帰（本番反映後）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。
 - **実機検証**: 自動回帰は完了。**Android 手動確認**は [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) の手順で継続（V10 の **`O`→`0` 補正** と、V9 の **成功時 `OCR:` 非表示** を目視）。
 
+### 本番反映・検証（2026-04-12・V11 注文番号+枝番行除外・global-filter 選別）
+
+- **実装**: `apps/api/src/services/mobile-placement/actual-slip-identifier-parser.ts` — 同一行に **注文番号**（`注\s*文\s*番\s*号`）と **枝番**（`枝\s*番`）がある行に含まれる 10 桁は製造order候補から除外。**注文番号のみ**の行の誤採用抑制は **同一行判定**（前行の注文番号で次行の製造orderを除外しない）。**global-filter** は先頭 `\d{10}` ではなく、注文行直後・製造ラベル近傍スコアで候補を選ぶ。
+- **仕様（要点）**: 現品票の **注文番号行末尾に枝番**がある運用に合わせ、注文番号の 10 桁（誤認含む）を製造orderにしない。診断キー `mo10ParseSource` / `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` は従来どおり。
+- **本番デプロイ**: 未反映の場合は [deployment.md](../guides/deployment.md) の `update-all-clients.sh` で追従（コミットは実装ブランチ／`main` マージ後を参照）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
