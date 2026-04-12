@@ -1089,6 +1089,8 @@
 
 ## Decision Log
 
+- 決定（2026-04-12）: **現品票画像 OCR** は **紙帳票の固定レイアウト**を前提に、`actual-slip-image-ocr.service` で **ROI 切り出し（正規化座標）→ 領域別 `ImageOcrPort` → `genpyo-slip-resolver` で集約**とする。製造order・製番の文字列ルール（V10/V11 相当）は **`genpyo-slip/` に集約**し、`ImageOcrPort` は引き続き **ドメイン非依存**のままとする。HTTP 応答キー（`manufacturingOrder10` / `fseiban` / `ocrText` / `ocrPreviewSafe`）は維持する。  
+  参照: [KB-339](./docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md)（V12 節）・[api/mobile-placement.md](./docs/api/mobile-placement.md)
 - 決定（2026-04-11）: **OCR と VLM（vision completion）の契約**を **ドメイン横断で再利用可能**にするため、`apps/api/src/services/ocr` に **OCR ポート** を、`apps/api/src/services/inference/ports/vision-completion.port.ts` に **Vision ポート** を置き、`kiosk-documents` / `photo-tool-label` は **互換の再エクスポート**に留める。`RoutedVisionCompletionAdapter` は **用途（`InferenceUseCase`）を注入**し、観測の `useCase` をハードコードしない。挙動・環境変数（`KIOSK_DOCUMENT_*`・`photo_label` ルート）は **リファクタ前と互換**とする。  
   参照: [ADR-20260402](./docs/decisions/ADR-20260402-inference-foundation-phase1.md)・[KB-340](./docs/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)
 - 決定（2026-04-10）: **Dropbox バックアップ**で、永続・一次資産の取りこぼしを運用上検知するため、コード側に**推奨バックアップ対象カタログ**（`backup-recommended-targets.catalog.ts`）を置き、`GET /api/backup/config/health` に **`coverage_gap`（warning）** を追加した。`backup.json` スキーマは変更しない。再生成可能キャッシュ（例: `pdf-pages`, `signage-rendered`）は対象外。既存で意図的に無効なターゲット（`photo-storage`, `/app/storage/pdfs` 等）は **enabled をカタログで変更せず**、同一 `kind`+`source` が存在すれば推奨未充足扱いにしない。管理UIで未登録候補と追加導線を表示。詳細は [KB-338](./docs/knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap) / [api/backup.md](./docs/api/backup.md)（`GET /api/backup/config/health`） 。

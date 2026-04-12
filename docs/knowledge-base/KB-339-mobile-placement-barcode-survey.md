@@ -53,7 +53,7 @@
 - **UI**: `/kiosk/mobile-placement` 単一画面。上半分は移動票の **製造order + FHINBAN/FHINCD（1次元）**、現品票は **製造order（印字／画像OCR／手入力）+ 任意の製番 FSEIBAN + 部品（FHINBAN 等・1次元）** と **OK/NG**。下半分は仮棚（TEMP-A〜D または QR）+ 製造orderスキャン + **登録**（`OrderPlacementEvent`。**`Item` は更新しない**）。
 - **API**: `POST /api/mobile-placement/verify-slip-match`・`POST /api/mobile-placement/register-order-placement`・`POST /api/mobile-placement/parse-actual-slip-image`（[api/mobile-placement.md](../api/mobile-placement.md)）。
 - **照合**: 移動票は **ProductNo** で行解決。現品票は **ProductNo が空でなければ ProductNo**、**空なら FSEIBAN** で行解決。スキャンした **FHINBAN/FHINCD** が行の **`FHINCD`** と一致したうえで、両票の **`FSEIBAN` + `FHINCD`** ペアが一致するか判定。
-- **現品票画像 OCR**: `tesseract.js`（`services/ocr` の `ImageOcrPort`）。**2026-04-11 以降（ブランチ `feat/mobile-placement-ocr-pipeline-hardening`）**: 汎用 `jpn+eng` 一発ではなく、**ラベル文脈（`jpn+eng`）・数字専用（`eng`+whitelist）・英数字補助（`eng`+whitelist）**の **3 パス**を順に実行し結合してパース。前処理（グレースケール・正規化・余白・二値化など）は **mobile-placement** サービス内。API 応答の **`ocrPreviewSafe`** は数字・英数字パスのみ（UI のノイズ表示抑制）。テストは `IMAGE_OCR_STUB_TEXT` でスタブ可能。印字から **製造order（10桁）** を第一候補、**FSEIBAN** を第二候補としてパース（**注文番号（9桁）行の誤採用を抑制**）。
+- **現品票画像 OCR**: `tesseract.js`（`services/ocr` の `ImageOcrPort`）。**V12（2026-04-12・実装 `genpyo-slip/`）**: 前処理後画像を **ROI（正規化座標）で切り出し**、領域ごとに OCR → **`genpyo-slip-resolver`** で製造order（ヘッダ優先・欠落時は下段）と製番を集約。**V7〜V11 時代**は **3 パス直列・labels 早期終了**だったが、V12 で **Schema/ROI パイプラインに全面置換**（履歴は下記各節）。API 応答の **`ocrPreviewSafe`** は確定フィールド由来。テストは `IMAGE_OCR_STUB_TEXT` でスタブ可能（各 ROI に同一テキストが返る）。印字から **製造order（10桁）** / **FSEIBAN** を抽出する際、**V10/V11** の桁補正・注文行除外・global-filter は **ROI 内テキスト**に対して従来どおり適用。
 
 ### 本番反映・検証（2026-04-11）
 
@@ -114,8 +114,16 @@
 - **仕様（要点）**: 現品票の **注文番号行末尾に枝番**がある運用に合わせ、注文番号の 10 桁（誤認含む）を製造orderにしない。診断キー `mo10ParseSource` / `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` は従来どおり。
 - **本番デプロイ**: 未反映の場合は [deployment.md](../guides/deployment.md) の `update-all-clients.sh` で追従（コミットは実装ブランチ／`main` マージ後を参照）。
 
+### 実装メモ（2026-04-12・V12 現品票 ROI・Schema 集約）
+
+- **実装**: `apps/api/src/services/mobile-placement/actual-slip-image-ocr.service.ts` — 共通前処理後、`genpyo-slip/genpyo-slip-template.ts` の **既定 ROI** で `sharp` 切り出し → 各領域 `ImageOcrPort`（`actualSlipLabels`）。集約は `genpyo-slip/genpyo-slip-resolver.ts`。製造order・製番の文字列ルールは `genpyo-slip/genpyo-mo-extract.ts` / `genpyo-fseiban-extract.ts`（公開 API 互換のため `actual-slip-identifier-parser.ts` は再エクスポート）。
+- **仕様（要点）**: **紙帳票の一般的レイアウト**を前提に、**撮影全体を1本の全文パースに載せない**。ログに **`mo10ResolvedFromRoi`**（`moHeader` / `moFooter`）を追加。**二値化パス**と **`preprocessBytesBinary`** は本パイプラインでは廃止。
+- **運用**: レイアウトが異なる帳票では ROI ズレで欠損し得る → 将来 **テンプレート差し替え**または幾何補正の拡張が必要になり得る。
+- **本番デプロイ**: ブランチマージ後に追従（未マージの場合はローカル/作業ブランチのみ）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
+- 実装（現品票画像 OCR・V12）: `apps/api/src/services/mobile-placement/actual-slip-image-ocr.service.ts`・`apps/api/src/services/mobile-placement/genpyo-slip/`
 - 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

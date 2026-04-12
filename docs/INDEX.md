@@ -47,7 +47,7 @@
 
 ### 配膳スマホ（Android・Tailscale）
 
-- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V7**: 現品票 OCR 用途別パイプライン・`ocrPreviewSafe`／**V8**: 製造order抽出パーサ（分断ラベル）・`mo10*` 診断ログ／**V9**: labels パス早期終了・成功時 `OCR:` 非表示／**V11**: 注文番号+枝番行除外・global-filter 選別／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
+- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V7**: 現品票 OCR 用途別パイプライン・`ocrPreviewSafe`／**V8**: 製造order抽出パーサ（分断ラベル）・`mo10*` 診断ログ／**V9**: labels パス早期終了・成功時 `OCR:` 非表示／**V11**: 注文番号+枝番行除外・global-filter 選別／**V12**: 現品票 ROI・Schema 集約（`genpyo-slip`）／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
 - **バーコード調査ゲート**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)
 
 ### LocalLLM（Ubuntu / Tailscale）
