@@ -95,13 +95,9 @@ export async function parseActualSlipImageFromUpload(params: {
   });
 
   const merged = [labels.text, digits.text, aux.text].filter((s) => s.length > 0).join('\n');
+  const ocrPreviewSafe = buildActualSlipOcrPreviewSafe(digits.text, aux.text);
   const mo = parseManufacturingOrder10Extraction(merged);
   const fseiban = extractFseiban(merged);
-  // 確定した製造order・FSEIBAN の両方があるときは、数字/英数字パスの生テキストではなく確定値でプレビューする（Tesseract の誤認識が UI に乗らない）
-  const ocrPreviewSafe =
-    mo.value != null && fseiban != null
-      ? buildActualSlipOcrPreviewSafe(mo.value, fseiban)
-      : buildActualSlipOcrPreviewSafe(digits.text, aux.text);
   const durationMs = Date.now() - startedMs;
 
   log.info(
