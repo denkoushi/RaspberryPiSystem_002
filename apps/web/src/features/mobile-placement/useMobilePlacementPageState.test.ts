@@ -1,19 +1,25 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
+import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api/client', () => ({
   parseActualSlipImage: vi.fn(),
   registerOrderPlacement: vi.fn(),
+  moveOrderPlacementBranch: vi.fn(),
   verifyMobilePlacementSlipMatch: vi.fn()
 }));
 
 import {
   parseActualSlipImage,
+  moveOrderPlacementBranch,
   registerOrderPlacement,
   verifyMobilePlacementSlipMatch
 } from '../../api/client';
 
 import { useMobilePlacementPageState } from './useMobilePlacementPageState';
+
+import type { ReactNode } from 'react';
 
 describe('useMobilePlacementPageState', () => {
   it('parseActualSlipImage の製造orderと製番を状態に反映する', async () => {
@@ -31,13 +37,33 @@ describe('useMobilePlacementPageState', () => {
         shelfCodeRaw: 'A-01',
         manufacturingOrderBarcodeRaw: '0002178005',
         csvDashboardRowId: 'row-1',
+        branchNo: 1,
+        actionType: 'CREATE_BRANCH',
         placedAt: '2026-04-11T00:00:00.000Z'
       },
+      branchState: { id: 'bs-1', branchNo: 1, shelfCodeRaw: 'A-01' },
       resolvedRowId: 'row-1'
     });
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true });
+    vi.mocked(moveOrderPlacementBranch).mockResolvedValue({
+      event: {
+        id: 'evt-2',
+        clientDeviceId: 'dev-1',
+        shelfCodeRaw: 'B-02',
+        manufacturingOrderBarcodeRaw: '0002178005',
+        csvDashboardRowId: 'row-1',
+        branchNo: 1,
+        actionType: 'MOVE_BRANCH',
+        placedAt: '2026-04-11T00:00:00.000Z'
+      },
+      branchState: { id: 'bs-1', branchNo: 1, shelfCodeRaw: 'B-02', updatedAt: '2026-04-11T00:00:00.000Z' }
+    });
 
-    const { result } = renderHook(() => useMobilePlacementPageState());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+
+    const { result } = renderHook(() => useMobilePlacementPageState(), { wrapper });
 
     await act(async () => {
       await result.current.parseActualSlipImageFile(new File(['dummy'], 'slip.jpg', { type: 'image/jpeg' }));

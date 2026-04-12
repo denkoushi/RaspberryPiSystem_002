@@ -59,6 +59,7 @@ describe('mobile-placement API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.orderPlacementBranchState.deleteMany();
     await prisma.orderPlacementEvent.deleteMany();
     await prisma.mobilePlacementEvent.deleteMany();
     await prisma.csvDashboardRow.deleteMany({
@@ -395,9 +396,143 @@ describe('mobile-placement API', () => {
     const body = res.json();
     expect(body.event.shelfCodeRaw).toBe('TEMP-A');
     expect(body.event.manufacturingOrderBarcodeRaw).toBe('999888');
+    expect(body.event.branchNo).toBe(1);
+    expect(body.event.actionType).toBe('CREATE_BRANCH');
+    expect(body.branchState.branchNo).toBe(1);
 
     const count = await prisma.orderPlacementEvent.count();
     expect(count).toBe(1);
+    const stateCount = await prisma.orderPlacementBranchState.count();
+    expect(stateCount).toBe(1);
+  });
+
+  it('GET /api/mobile-placement/order-placement-branches lists current shelves per branch', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999901',
+          FSEIBAN: 'SEI-901',
+          FHINCD: 'H-9',
+          FHINMEI: 'x',
+          FSIGENCD: 'G1',
+          FKOJUN: '1'
+        }
+      }
+    });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/register-order-placement',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        shelfCodeRaw: 'TEMP-A',
+        manufacturingOrderBarcodeRaw: '999901'
+      }
+    });
+    expect(first.statusCode).toBe(200);
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/register-order-placement',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        shelfCodeRaw: 'TEMP-B',
+        manufacturingOrderBarcodeRaw: '999901'
+      }
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().event.branchNo).toBe(2);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/mobile-placement/order-placement-branches?manufacturingOrder=999901',
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(list.statusCode).toBe(200);
+    const branches = list.json().branches as Array<{ branchNo: number; shelfCodeRaw: string }>;
+    expect(branches).toHaveLength(2);
+    expect(branches[0]).toMatchObject({ branchNo: 1, shelfCodeRaw: 'TEMP-A' });
+    expect(branches[1]).toMatchObject({ branchNo: 2, shelfCodeRaw: 'TEMP-B' });
+  });
+
+  it('PATCH /api/mobile-placement/order-placement-branches/:id/move updates shelf and history', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999902',
+          FSEIBAN: 'SEI-902',
+          FHINCD: 'H-9',
+          FHINMEI: 'x',
+          FSIGENCD: 'G1',
+          FKOJUN: '1'
+        }
+      }
+    });
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/register-order-placement',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: {
+        shelfCodeRaw: '西-北-01',
+        manufacturingOrderBarcodeRaw: '999902'
+      }
+    });
+    expect(created.statusCode).toBe(200);
+    const branchStateId = (created.json() as { branchState: { id: string } }).branchState.id;
+
+    const moved = await app.inject({
+      method: 'PATCH',
+      url: `/api/mobile-placement/order-placement-branches/${branchStateId}/move`,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientApiKey
+      },
+      payload: { shelfCodeRaw: '西-北-02' }
+    });
+    expect(moved.statusCode).toBe(200);
+    const mj = moved.json() as { event: { actionType: string }; branchState: { shelfCodeRaw: string } };
+    expect(mj.event.actionType).toBe('MOVE_BRANCH');
+    expect(mj.branchState.shelfCodeRaw).toBe('西-北-02');
+
+    const fromDb = await prisma.orderPlacementBranchState.findUnique({ where: { id: branchStateId } });
+    expect(fromDb?.shelfCodeRaw).toBe('西-北-02');
+    const evCount = await prisma.orderPlacementEvent.count();
+    expect(evCount).toBe(2);
   });
 
   it('GET /api/mobile-placement/registered-shelves returns distinct shelf codes with structure metadata', async () => {

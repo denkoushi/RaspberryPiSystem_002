@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-12
+最終更新: 2026-04-12（**V14 分配枝・現在棚**追記）
 
 ## Context
 
@@ -131,10 +131,19 @@
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**）。
 - **トラブルシュート**: デプロイは **未コミット/未プッシュ**を `update-all-clients.sh` が拒否する（[deployment.md](../guides/deployment.md)）。**並列起動禁止**（同一 `RASPI_SERVER_HOST`）。
 
+### V14（2026-04-12・製造order配下の分配枝・現在棚）
+
+- **目的**: 同一製造orderに **複数の分配**（画面上は **分配1・分配2…**／DB は `branchNo` 1 始まり）があり、**棚の移動**と **新たな分配の追加**を UI で明示分岐する。
+- **データ**: **履歴**は従来どおり `OrderPlacementEvent` に追記。列 **`branchNo`**・**`actionType`**（`CREATE_BRANCH` / `MOVE_BRANCH` / 導入前は `LEGACY`）を追加。**現在棚**は `OrderPlacementBranchState`（キー: `manufacturingOrderBarcodeRaw` + `branchNo`）。マイグレーション `20260412120000_order_placement_branch_state` で、既存履歴は **LEGACY・branch 1** とし、各製造orderの **最新イベント**から `OrderPlacementBranchState` を 1 件投影。
+- **API**: `GET /api/mobile-placement/order-placement-branches?manufacturingOrder=…`・`POST /api/mobile-placement/register-order-placement`（**新規分配枝のみ**）・`PATCH /api/mobile-placement/order-placement-branches/:id/move`（**既存枝の棚更新**）。契約は [api/mobile-placement.md](../api/mobile-placement.md)。
+- **Web**: `/kiosk/mobile-placement` 下半で **「新規分配を追加」／「既存分配を移動」** を選択。製造order入力後に **分配一覧**または **次に作成される分配番号**を表示。
+- **本番デプロイ**: ブランチ **`feat/mobile-placement-order-branches`** にマージ後、Prisma `migrate deploy` と SPA 反映が必要（本 KB 記録時点では **ローカル実装のみ**の場合あり）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
 - 実装（現品票画像 OCR・V12）: `apps/api/src/services/mobile-placement/actual-slip-image-ocr.service.ts`・`apps/api/src/services/mobile-placement/genpyo-slip/`
 - 実装（棚番登録 UI・V13）: `apps/web/src/features/mobile-placement/components/shelf-register/`
 - 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
+- 実装（分配枝・V14）: `apps/api/src/services/mobile-placement/order-placement-branch.service.ts`・`apps/api/src/services/mobile-placement/mobile-placement-order-placement.service.ts`・マイグレーション `20260412120000_order_placement_branch_state`
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

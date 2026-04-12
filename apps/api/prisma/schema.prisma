@@ -86,6 +86,14 @@ enum SignageDisplayMode {
   SINGLE
 }
 
+/// 部品配膳イベントの種別（履歴・監査用）
+enum OrderPlacementActionType {
+  /// 分配枝導入前のデータ（branchNo は 1 として扱う）
+  LEGACY
+  CREATE_BRANCH
+  MOVE_BRANCH
+}
+
 model Employee {
   id                       String                    @id @default(uuid())
   employeeCode             String                    @unique
@@ -311,18 +319,38 @@ model MobilePlacementEvent {
 
 /// 部品配膳（製造order番号起点・Item は更新しない）
 model OrderPlacementEvent {
-  id                             String   @id @default(uuid())
+  id                             String                   @id @default(uuid())
   clientDeviceId                 String
   shelfCodeRaw                   String
   manufacturingOrderBarcodeRaw   String
   csvDashboardRowId              String?
   scheduleSnapshot               Json?
-  placedAt                       DateTime @default(now())
-  createdAt                      DateTime @default(now())
+  /// 製造order配下の分配枝番号（1 始まり。履歴上は LEGACY も 1）
+  branchNo                       Int                      @default(1)
+  actionType                     OrderPlacementActionType @default(LEGACY)
+  placedAt                       DateTime                 @default(now())
+  createdAt                      DateTime                 @default(now())
 
   clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
 
   @@index([clientDeviceId, placedAt])
+  @@index([manufacturingOrderBarcodeRaw, branchNo])
+}
+
+/// 製造orderごとの分配枝の現在棚（履歴は OrderPlacementEvent 側）
+model OrderPlacementBranchState {
+  id                           String   @id @default(uuid())
+  manufacturingOrderBarcodeRaw String
+  branchNo                     Int
+  shelfCodeRaw                 String
+  csvDashboardRowId            String?
+  scheduleSnapshot             Json?
+  lastEventId                  String?  @unique
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  @@unique([manufacturingOrderBarcodeRaw, branchNo])
+  @@index([manufacturingOrderBarcodeRaw])
 }
 
 model ClientStatus {

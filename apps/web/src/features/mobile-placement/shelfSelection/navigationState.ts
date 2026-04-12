@@ -1,5 +1,7 @@
 import type { MobilePlacementSlipResult } from '../types';
 
+export type OrderPlacementPageIntent = 'create_new_branch' | 'move_existing';
+
 /**
  * 専用ページ遷移中も保持したい配膳ページ入力のスナップショット。
  * 専用ページへ進む前と、戻る/確定で戻すときに同じ契約を使う。
@@ -13,6 +15,9 @@ export type MobilePlacementShelfRegisterRouteState = {
   slipResult: MobilePlacementSlipResult;
   shelfCode: string;
   orderBarcode: string;
+  /** 省略時は `create_new_branch` として扱う */
+  orderPlacementIntent?: OrderPlacementPageIntent;
+  selectedBranchId?: string | null;
 };
 
 export function isMobilePlacementShelfRegisterRouteState(

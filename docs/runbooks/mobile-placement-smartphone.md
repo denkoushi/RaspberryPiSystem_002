@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-12（V13 棚番登録 UI レイアウト・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+最終更新: 2026-04-12（**V14 分配枝**・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -27,6 +27,14 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
 
 # 登録済み棚（OrderPlacementEvent 由来の distinct。履歴が無いと { "shelves": [] }）
 curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-key: <key>"
+
+# 製造orderに紐づく分配枝の現在棚（V14）
+curl -sk "https://<Pi5>/api/mobile-placement/order-placement-branches?manufacturingOrder=0002178005" -H "x-client-key: <key>"
+
+# 既存分配枝の棚移動（V14・:id は OrderPlacementBranchState.id）
+curl -sk -X PATCH "https://<Pi5>/api/mobile-placement/order-placement-branches/<id>/move" \
+  -H "Content-Type: application/json" -H "x-client-key: <key>" \
+  -d '{"shelfCodeRaw":"西-北-03"}'
 
 # 現品票画像 OCR（multipart・JPEG/PNG/WebP）
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
@@ -64,7 +72,8 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
 
 1. 棚番: **`GET /api/mobile-placement/registered-shelves`** に基づく **エリア／列フィルタ**と候補一覧から選ぶか、**「棚番を選ぶ」**で **`/kiosk/mobile-placement/shelf-register`** に遷移し、**エリア → 列 → 番号**の3段階で確定（表示は `formatShelfCodeRaw` 由来の **`西-北-02`** 形式）。履歴に一度も出ていない棚は一覧に出ない（**`shelves` が空**は正常）。戻ると親画面の棚欄に反映される。従来どおり **TEMP-A〜D** の直接タップ、または **QR** で棚コードをスキャン（QR は棚のみ）も可
 2. 移動票の **製造order番号**を **1次元**でスキャン
-3. 「登録」→ `OrderPlacementEvent` 保存（**工具 `Item` は更新しない**）
+3. **V14**: **「新規分配を追加」** か **「既存分配を移動」** を選ぶ。新規は **次の `branchNo`** で `POST …/register-order-placement`。移動は **`GET …/order-placement-branches`** で一覧を出し、枝を選んで **`PATCH …/order-placement-branches/:id/move`**（UI は「移動を確定」）。
+4. 「登録」または「移動を確定」→ `OrderPlacementEvent` に履歴追記（**工具 `Item` は更新しない**）。現在棚は `OrderPlacementBranchState`（詳細は [api/mobile-placement.md](../api/mobile-placement.md)）
 
 旧 `/kiosk/mobile-placement/register` は `/kiosk/mobile-placement` へリダイレクトする。
 

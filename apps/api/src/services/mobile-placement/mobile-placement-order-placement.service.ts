@@ -11,11 +11,14 @@ export type RegisterOrderPlacementInput = {
 };
 
 /**
- * 製造order番号で生産スケジュール行を特定し、部品配膳イベントのみ保存する（Item は更新しない）。
+ * 製造order番号で生産スケジュール行を特定し、**新しい分配枝**を追加する（Item は更新しない）。
+ * 既存枝の棚変更は `moveOrderPlacementBranch` を使う。
  */
 export async function registerOrderPlacement(input: RegisterOrderPlacementInput) {
   const shelf = normalizeSlipToken(input.shelfCodeRaw);
   const orderScan = normalizeSlipToken(input.manufacturingOrderBarcodeRaw);
+  /** DB 上の製造orderキー（従来イベントと同一の trim のみ） */
+  const manufacturingOrderStored = input.manufacturingOrderBarcodeRaw.trim();
 
   if (shelf.length === 0) {
     throw new ApiError(400, '棚番が空です');
@@ -72,18 +75,45 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
     FHINMEI: rd.FHINMEI ?? null
   };
 
-  const ev = await prisma.orderPlacementEvent.create({
-    data: {
-      clientDeviceId: input.clientDeviceId,
-      shelfCodeRaw: input.shelfCodeRaw.trim(),
-      manufacturingOrderBarcodeRaw: input.manufacturingOrderBarcodeRaw.trim(),
-      csvDashboardRowId: row.id,
-      scheduleSnapshot: scheduleSnapshot as Prisma.InputJsonValue
-    }
+  const scheduleJson = scheduleSnapshot as Prisma.InputJsonValue;
+  const shelfStored = input.shelfCodeRaw.trim();
+
+  const { event: ev, branchState } = await prisma.$transaction(async (tx) => {
+    const maxBranch = await tx.orderPlacementBranchState.aggregate({
+      where: { manufacturingOrderBarcodeRaw: manufacturingOrderStored },
+      _max: { branchNo: true }
+    });
+    const nextBranch = (maxBranch._max.branchNo ?? 0) + 1;
+
+    const createdEv = await tx.orderPlacementEvent.create({
+      data: {
+        clientDeviceId: input.clientDeviceId,
+        shelfCodeRaw: shelfStored,
+        manufacturingOrderBarcodeRaw: manufacturingOrderStored,
+        csvDashboardRowId: row.id,
+        scheduleSnapshot: scheduleJson,
+        branchNo: nextBranch,
+        actionType: 'CREATE_BRANCH'
+      }
+    });
+
+    const createdState = await tx.orderPlacementBranchState.create({
+      data: {
+        manufacturingOrderBarcodeRaw: manufacturingOrderStored,
+        branchNo: nextBranch,
+        shelfCodeRaw: shelfStored,
+        csvDashboardRowId: row.id,
+        scheduleSnapshot: scheduleJson,
+        lastEventId: createdEv.id
+      }
+    });
+
+    return { event: createdEv, branchState: createdState };
   });
 
   return {
     event: ev,
-    resolvedRowId: row.id
+    resolvedRowId: row.id,
+    branchState
   };
 }
