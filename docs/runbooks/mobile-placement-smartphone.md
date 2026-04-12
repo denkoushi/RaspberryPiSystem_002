@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-12（V10 製造order誤認補正・Pi5 git マージ失敗のトラブルシュート追記）
+最終更新: 2026-04-12（V10 本番反映・Pi5 worktree/root ownership・stale lock のトラブルシュート追記）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -13,6 +13,8 @@
 **2026-04-11（V8・製造order抽出パーサ強化・OCR診断ログ）**: ブランチ **`fix/mobile-placement-ocr-manufacturing-order-parser`**（コミット **`a9e75cd8`**）。**仕様**: 製造オーダラベルが OCR で **`製造 オー ダ` のように分断**しても **10桁を抽出**しやすい。**`parse-actual-slip-image` 完了ログ**に **`mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`** を追加（OCR 全文は出さない）。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260411-223115-29480` → `20260411-224346-24116` → `20260411-224823-19592` → `20260411-225152-29858` → `20260411-225741-29730`（各 **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。**トラブルシュート**: 製造orderが空のとき Pi5 API ログで **`mo10ParseSource`**（`label-regex` / `line-scan` / `global-filter` / `none`）を確認。
 
 **2026-04-12（V9・labels パス早期終了・成功時 OCR プレビュー非表示）**: ブランチ **`feat/mobile-placement-ocr-preview-and-early-exit`**（コミット **`c6aa2ee5`**）。**仕様**: **最初の `jpn+eng`（labels）パス**の結合テキストだけで **製造order（10桁）と FSEIBAN の両方が取れた場合**は **以降の OCR パスと二値化前処理をスキップ**（負荷低減）。構造化ログは従来どおり（早期終了時は **`preprocessBytesBinary`** を付けない）。**Web**: OCR **成功時**は **`OCR:`** 行の raw プレビューを出さない（候補なし／エラー時は従来どおり案内）。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-085956-22755` → `20260412-091508-16092` → `20260412-092057-26505` → `20260412-092542-10876` → `20260412-093134-32374`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**・Mac / Tailscale）。**知見**: ラベルが読めれば **後段パスを省略**でき、初回以外の体感待ち時間を短くし得る。
+
+**2026-04-12（V10・製造order `O/0` 誤認補正）**: コミット **`c09ebc8a`**（`main`）。**初回試行** `20260412-102516-4172` は Pi5 `/opt/RaspberryPiSystem_002` の **未追跡/ローカル変更**と **`root:root` 所有の mobile-placement 関連ディレクトリ**により `git merge` 中止。**復旧**: `git status` で確認後、対象パスを `chown -R denkon5sd02:denkon5sd02` → `git stash push -u`。さらに **Mac 側の local lock** と **Pi5 側の stale remote lock** を死活確認後に解放して再実行。**Detach Run ID（成功・Pi5→Pi4×4・順・Pi3 除外）**: `20260412-104606-29623` → `20260412-105905-22423` → `20260412-110542-32610` → `20260412-111033-18779` → `20260412-111904-8812`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。
 
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
@@ -81,6 +83,8 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
 - **登録済み棚が常に空**: `OrderPlacementEvent` にまだ行が無いと **`registered-shelves` は `{ "shelves": [] }`**（不具合ではない）。部品配膳を1件でも登録すると `shelfCodeRaw` が候補に現れる
 - **デプロイが `未commit変更` で止まる**: Mac 側に **未追跡ファイル**もブロック対象。`git stash push -u` またはコミットしてから [deployment.md](../guides/deployment.md) の `update-all-clients.sh` を再実行
 - **Pi5 で `Please move or remove them before you merge. Aborting`（`git pull`/`merge` 中止）**: Pi5 `/opt/RaspberryPiSystem_002` の作業ツリーに **未追跡・ローカル変更**があり、取り込みと衝突している典型。[deployment.md](../guides/deployment.md) の **ワークツリー**、[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V10**、必要に応じ [kiosk-documents.md](./kiosk-documents.md)（Pi5 `git` 復旧パターン）を参照してから **再デプロイ**
+- **Pi5 で `git stash push -u` しても `failed to remove ... 許可がありません`**: 変更ファイルが **`root:root` 所有**の典型。`apps/api/src/services/mobile-placement`、`apps/web/src/features/mobile-placement`、migration などの対象パスを **`sudo chown -R denkon5sd02:denkon5sd02 ...`** してから再度 `git stash push -u`
+- **`Another update-all-clients.sh process is already running` / `Failed to acquire remote lock`**: 前回の `--follow` や remote detach が **途中失敗で lock だけ残存**した可能性。**local lock** は Mac 側の残存 `update-all-clients.sh` を終了して解放。**remote lock** は Pi5 の `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock` の **`runPid` が実在するか確認**し、**本体不在で `tail -f` だけ残っている場合のみ**削除する（[deploy-status-recovery.md](./deploy-status-recovery.md) と同型）
 - **画像OCRが遅い／初回だけ長い**: Pi5 API コンテナで **tesseract.js ワーカ初回起動**で数十秒かかることがある。連続利用ではキャッシュされやすい。現品票 OCR は **用途別に複数パス**（`jpn+eng` + `eng`×2）を **直列**で回すため、初回以外も **単一パス時より時間がかかる**場合がある。極端に大きい画像はサーバ側で縮小されるが、**ピント・コントラスト**を確保すると精度が上がる
 - **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
 
