@@ -2,6 +2,8 @@
 
 最終更新: 2026-04-12（**V14 製造order配下の分配枝・現在棚**・`OrderPlacementBranchState`／履歴は `OrderPlacementEvent` + `branchNo` / `actionType`）
 
+**本番（2026-04-12）**: ブランチ **`feat/mobile-placement-order-branches`**（コミット **`72255bc7`**）を Pi5→Pi4×4 順次反映・Phase12 **43/0/0**。手順・Detach Run ID は [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §0。
+
 ## 概要
 
 Android スマホ等から、**移動票・現品票の照合**および **製造order番号起点の部品配膳履歴（`OrderPlacementEvent`）** を行う。従来の **工具 `Item.storageLocation` 更新**（`MobilePlacementEvent`）API も併存する。

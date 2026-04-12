@@ -137,7 +137,9 @@
 - **データ**: **履歴**は従来どおり `OrderPlacementEvent` に追記。列 **`branchNo`**・**`actionType`**（`CREATE_BRANCH` / `MOVE_BRANCH` / 導入前は `LEGACY`）を追加。**現在棚**は `OrderPlacementBranchState`（キー: `manufacturingOrderBarcodeRaw` + `branchNo`）。マイグレーション `20260412120000_order_placement_branch_state` で、既存履歴は **LEGACY・branch 1** とし、各製造orderの **最新イベント**から `OrderPlacementBranchState` を 1 件投影。
 - **API**: `GET /api/mobile-placement/order-placement-branches?manufacturingOrder=…`・`POST /api/mobile-placement/register-order-placement`（**新規分配枝のみ**）・`PATCH /api/mobile-placement/order-placement-branches/:id/move`（**既存枝の棚更新**）。契約は [api/mobile-placement.md](../api/mobile-placement.md)。
 - **Web**: `/kiosk/mobile-placement` 下半で **「新規分配を追加」／「既存分配を移動」** を選択。製造order入力後に **分配一覧**または **次に作成される分配番号**を表示。
-- **本番デプロイ**: ブランチ **`feat/mobile-placement-order-branches`** にマージ後、Prisma `migrate deploy` と SPA 反映が必要（本 KB 記録時点では **ローカル実装のみ**の場合あり）。
+- **本番デプロイ（2026-04-12）**: ブランチ **`feat/mobile-placement-order-branches`**・コミット **`72255bc7`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260412-181344-4740` → `20260412-182622-13897` → `20260412-183213-6611` → `20260412-183659-23626` → `20260412-184407-12516`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**。Pi5 デプロイで **Prisma `migrate deploy`** が実行され `OrderPlacementBranchState` が適用される。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **104s**・Mac / Tailscale）。
+- **トラブルシュート**: Pi5 で **`git merge` 中止**（未コミット/権限）→ [deployment.md](../guides/deployment.md)・V10 節の **ワークツリー復旧**と同型。**並列起動禁止**（同一 `RASPI_SERVER_HOST`）。
 
 ## References
 
