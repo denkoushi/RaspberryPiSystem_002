@@ -29,6 +29,8 @@
 - **手動順番 上ペイン行明細（高密度・ラベルなし）**: [design-previews/manual-order-overview-pane-row-detail-preview.html](./design-previews/manual-order-overview-pane-row-detail-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **手動順番 上ペイン端末カード（3行: 製番品番 / 工順部品名 / 機種名・本文は生産スケジュールと同じ text-xs）**: [design-previews/manual-order-device-card-location-machine-preview.html](./design-previews/manual-order-device-card-location-machine-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **手動順番 帯分け → オペレーター確定順位（静的プレビュー）**: [design-previews/manual-order-band-to-operator-rank-preview.html](./design-previews/manual-order-band-to-operator-rank-preview.html) — [design-previews/README.md](./design-previews/README.md)
+- **配膳スマホ 登録セクション重なり修正案（静的プレビュー）**: [design-previews/mobile-placement-register-section-stack-preview.html](./design-previews/mobile-placement-register-section-stack-preview.html) — [design-previews/README.md](./design-previews/README.md)
+- **配膳スマホ 照合の折りたたみ（既定は閉じる・下半を広く）（静的プレビュー）**: [design-previews/mobile-placement-verify-collapsible-preview.html](./design-previews/mobile-placement-verify-collapsible-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **リーダー順位ボード（納期ベース・本番 `/kiosk/production-schedule/leader-order-board` の静的プレビュー）**: [design-previews/leader-due-rank-board-preview.html](./design-previews/leader-due-rank-board-preview.html) — 運用・デプロイ記録は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md)（「リーダー順位ボード」節）
 - **部品測定・テンプレート選択（提案UI・静的）**: [design-previews/kiosk-part-measurement-template-picker.html](./design-previews/kiosk-part-measurement-template-picker.html) — [design-previews/README.md](./design-previews/README.md)
 
