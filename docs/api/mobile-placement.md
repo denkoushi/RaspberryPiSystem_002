@@ -70,7 +70,7 @@ JSON:
 ```
 
 - **`ocrText`**: 全パス結合（パーサ入力・ログは文字数のみ）。
-- **`ocrPreviewSafe`**: **数字・英数字 OCR のみ**を結合した短いプレビュー用文字列（ひらがな誤認が多いラベルパスは含めない）。クライアントは表示にこれを優先し、無い場合は `ocrText` にフォールバック可能。
+- **`ocrPreviewSafe`**: 通常は **数字・英数字パス**の短いプレビュー（ひらがな誤認が多いラベルパスは含めない）。**3 パス走査後**に製造order10 と FSEIBAN が**両方**パースできた場合は、誤認ノイズを避けるため **確定した 2 値から組み立て**る。クライアントは表示にこれを優先し、無い場合は `ocrText` にフォールバック可能。
 - **`manufacturingOrder10` / `fseiban`**: OCR 品質により **null** になり得る。
 
 - **観測性**: 処理完了時に API ログへ構造化出力（`inputBytes` / `preprocessBytes` / `ocrTextChars` / `hasManufacturingOrder10` / `hasFseiban` / `durationMs` / `engine` 等。**V8 以降**: `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` / `mo10ParseSource`。**V9**: 早期終了時は **`preprocessBytesBinary` を付けない**（後段パス未実行）。OCR 全文はログに出さない（後追いは文字数・候補有無・パーサ経路で切り分け）。ルート層でも `parse-actual-slip-image completed` を記録する。

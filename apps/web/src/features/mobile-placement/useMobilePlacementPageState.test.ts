@@ -20,7 +20,8 @@ describe('useMobilePlacementPageState', () => {
     vi.mocked(parseActualSlipImage).mockResolvedValue({
       engine: 'stub',
       ocrText: '製造 オー ダ No 0002178005\n製 番 BE1N9321\n注文 番号 0003507502',
-      ocrPreviewSafe: '8440002178005 9321 0003507502 85E4-4No0002178005 8BETNO9321 EXES0003507502',
+      // API は確定値ベースのプレビュー（実装と整合）
+      ocrPreviewSafe: '0002178005 BE1N9321',
       manufacturingOrder10: '0002178005',
       fseiban: 'BE1N9321'
     });
@@ -47,6 +48,7 @@ describe('useMobilePlacementPageState', () => {
     expect(result.current.actualFseiban).toBe('BE1N9321');
     expect(result.current.actualSlipOcrFeedback.status).toBe('success');
     expect(result.current.actualSlipOcrFeedback.manufacturingOrder10).toBe('0002178005');
-    expect(result.current.actualSlipOcrFeedback.ocrPreview).toContain('8440002178005');
+    expect(result.current.actualSlipOcrFeedback.ocrPreview).toContain('0002178005');
+    expect(result.current.actualSlipOcrFeedback.ocrPreview).toContain('BE1N9321');
   });
 });
