@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>棚番登録 — レイアウトバランス改善案（静的プレビュー）</title>
+  <style>
+    :root {
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --amber-300: #fcd34d;
+      --amber-400: #fbbf24;
+      --amber-200: #fde68a;
+      --white: #f8fafc;
+      --muted: #94a3b8;
+      --border: rgba(251, 191, 36, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #020617;
+      color: var(--white);
+      padding: 0.75rem 1rem 1.5rem;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+    .lead {
+      margin: 0 0 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      max-width: 85ch;
+      line-height: 1.5;
+    }
+    .lead code {
+      font-size: 0.78em;
+      background: var(--slate-800);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      align-items: stretch;
+    }
+    @media (max-width: 900px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+    .col-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--amber-200);
+      margin: 0 0 0.5rem;
+    }
+    .col-title.bad::before { content: "▸ "; color: #f87171; }
+    .col-title.good::before { content: "▸ "; color: #34d399; }
+    /* 端末フレーム（キオスク想定 9:16 近傍） */
+    .frame {
+      background: var(--slate-900);
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: min(720px, 78vh);
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    .hdr {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem 0.6rem;
+      flex-wrap: wrap;
+      padding: 0.55rem 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .back {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--white);
+      display: grid;
+      place-items: center;
+      font-size: 1.1rem;
+    }
+    .hdr h2 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      line-height: 1.2;
+      display: flex;
+      align-items: center;
+      min-height: 36px;
+    }
+    /* ヘッダー右: タイトル横に「選択中」（改善案）。内側センタリングは後段 .preview-compact.preview-compact--hdr */
+    .preview-compact--hdr {
+      margin-left: auto;
+      margin-top: 0;
+      min-width: 0;
+      flex: 1 1 8rem;
+      max-width: 14rem;
+      padding: 0.3rem 0.55rem;
+    }
+    .preview-compact--hdr .val {
+      font-size: 0.95rem;
+      line-height: 1.2;
+    }
+    .frame--improved .hdr {
+      align-items: center;
+    }
+    /* 改善案: フッター CTA を廃止し、タイトル位置を「この棚番で登録」と同等の操作に */
+    .frame--improved .hdr-title-btn {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 800;
+      flex-shrink: 0;
+      line-height: 1.2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 0.35rem 0.85rem;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      color: #ccfbf1;
+      background: linear-gradient(180deg, rgba(45, 212, 191, 0.55), rgba(13, 148, 136, 0.45));
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+    }
+    .frame--improved .hdr-title-btn:focus-visible {
+      outline: 2px solid rgba(56, 189, 248, 0.6);
+      outline-offset: 2px;
+    }
+    .frame--improved .hdr-title-btn:active {
+      filter: brightness(1.05);
+    }
+    .improved-footnote {
+      flex-shrink: 0;
+      margin: 0.5rem 0 0;
+      padding-bottom: 0.35rem;
+    }
+    .step--dense {
+      padding-top: 0.5rem;
+    }
+    .step--dense:first-of-type {
+      margin-top: 0.45rem;
+    }
+    .scroll {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 0 0.85rem 0.65rem;
+      overflow: hidden;
+    }
+    /* ── 現状: 選択中が大きい ── */
+    .preview-big {
+      flex-shrink: 0;
+      margin-top: 0.65rem;
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      border: 2px solid rgba(251, 191, 36, 0.75);
+      background: rgba(245, 158, 11, 0.08);
+      text-align: center;
+    }
+    .preview-big .lbl {
+      margin: 0 0 0.25rem;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .preview-big .val {
+      margin: 0;
+      font-size: clamp(1.5rem, 8vw, 2rem);
+      font-weight: 800;
+      color: var(--amber-300);
+      font-variant-numeric: tabular-nums;
+    }
+    /* ── 改善案: 選択中をコンパクト（1行バー） ── */
+    .preview-compact {
+      flex-shrink: 0;
+      margin-top: 0.65rem;
+      padding: 0.45rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid rgba(251, 191, 36, 0.5);
+      background: rgba(245, 158, 11, 0.06);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .preview-compact .lbl {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .preview-compact .val {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--amber-300);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      text-align: right;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* ヘッダー用: 後続の .preview-compact より詳細度を上げてセンタリングを固定 */
+    .preview-compact.preview-compact--hdr {
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      margin-top: 0;
+    }
+    .preview-compact.preview-compact--hdr .val {
+      text-align: center;
+    }
+    .step {
+      flex-shrink: 0;
+      margin-top: 0.65rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 10px;
+      border-left: 3px solid var(--amber-400);
+      background: rgba(245, 158, 11, 0.04);
+    }
+    .step h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--amber-200);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .badge {
+      display: inline-flex;
+      width: 22px;
+      height: 22px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: rgba(251, 191, 36, 0.25);
+      font-size: 0.7rem;
+      font-weight: 800;
+    }
+    .grid3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.4rem;
+    }
+    .btn {
+      min-height: 44px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--slate-800);
+      color: #fef3c7;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: default;
+    }
+    .btn.on {
+      background: linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);
+      border-color: transparent;
+      color: white;
+    }
+    /* 改善案のみ: エリア／列グリッドの文字を大きく（外寸 min-height / 枠は据え置き） */
+    .frame--improved .step--dense .grid3 .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0;
+      min-height: 44px;
+    }
+    /* ステップ3: 現状 = グリッドが max-height で潰れる */
+    .step3 {
+      flex: 1;
+      min-height: 0;
+      margin-top: 0.65rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 10px;
+      border-left: 3px solid var(--amber-400);
+      background: rgba(245, 158, 11, 0.04);
+      display: flex;
+      flex-direction: column;
+    }
+    .step3 h3 {
+      margin: 0 0 0.45rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--amber-200);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-shrink: 0;
+    }
+    .nums-bad {
+      /* 本番に近い: max-h min(50vh, 22rem) 相当 → フレーム内では狭い */
+      max-height: min(28vh, 11rem);
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.35rem;
+      padding: 2px;
+    }
+    .nums-good {
+      /* 改善案: ヘッダー詰め＋1/2見出し省略後、残りを番号へ */
+      flex: 1;
+      min-height: 48%;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.45rem;
+      padding: 2px;
+      align-content: start;
+    }
+    .num {
+      min-height: 40px;
+      border-radius: 8px;
+      border: 1px solid rgba(251, 191, 36, 0.2);
+      background: var(--slate-800);
+      color: white;
+      font-size: 1rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .num.sel {
+      background: linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);
+      border-color: transparent;
+    }
+    .num.occ {
+      opacity: 0.22;
+      text-decoration: line-through;
+    }
+    .cta {
+      flex-shrink: 0;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+    }
+    .cta button {
+      width: 100%;
+      height: 48px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: #ccfbf1;
+      background: linear-gradient(180deg, rgba(45, 212, 191, 0.55), rgba(13, 148, 136, 0.45));
+      cursor: default;
+    }
+    .footnote {
+      margin: 0.35rem 0 0;
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.4;
+    }
+    ul.points {
+      margin: 0.75rem 0 0;
+      padding-left: 1.2rem;
+      font-size: 0.78rem;
+      color: #cbd5e1;
+      max-width: 85ch;
+      line-height: 1.55;
+    }
+    ul.points li { margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+  <h1>棚番登録 — レイアウトバランス（デザインプレビュー）</h1>
+  <p class="lead">
+    本番 <code>KioskMobileShelfRegisterPage.tsx</code> は、<strong>「選択中の棚番」</strong>が太枠＋大文字で視覚面積が大きく、
+    一方 <strong>「3 空き番号を選ぶ」</strong>のグリッドが <code>max-h-[min(50vh,22rem)]</code> で高さが頭打ちになり、
+    数字ペインが小さく感じやすい構造です（実装変更はこの HTML では行いません）。<strong>改善案</strong>では
+    「選択中」を<strong>ヘッダー内タイトル右</strong>へ移し、エリア／列の<strong>番号付き見出しを省いて</strong>3のペインを拡大する想定です。
+  </p>
+
+  <div class="compare">
+    <div>
+      <p class="col-title bad">現状イメージ（バランスの問題）</p>
+      <div class="frame" aria-label="現状プレビュー">
+        <div class="hdr">
+          <div class="back" aria-hidden="true">←</div>
+          <h2>棚番を登録</h2>
+        </div>
+        <div class="scroll">
+          <div class="preview-big">
+            <p class="lbl">選択中の棚番</p>
+            <p class="val">西-北-02</p>
+          </div>
+          <div class="step">
+            <h3><span class="badge">1</span> エリアを選ぶ</h3>
+            <div class="grid3">
+              <div class="btn on">西</div>
+              <div class="btn">東</div>
+              <div class="btn">南</div>
+            </div>
+          </div>
+          <div class="step">
+            <h3><span class="badge">2</span> 列を選ぶ</h3>
+            <div class="grid3">
+              <div class="btn on">北</div>
+              <div class="btn">南</div>
+              <div class="btn">中</div>
+            </div>
+          </div>
+          <div class="step3">
+            <h3><span class="badge">3</span> 空き番号を選ぶ</h3>
+            <div class="nums-bad" aria-label="番号グリッド（高さ制限で小さく見える）">
+              <div class="num">01</div><div class="num">02</div><div class="num sel">03</div><div class="num">04</div><div class="num">05</div>
+              <div class="num">06</div><div class="num occ">07</div><div class="num">08</div><div class="num">09</div><div class="num">10</div>
+              <div class="num">11</div><div class="num">12</div><div class="num">13</div><div class="num">14</div><div class="num">15</div>
+              <div class="num">16</div><div class="num">17</div><div class="num">18</div><div class="num">19</div><div class="num">20</div>
+            </div>
+          </div>
+          <div class="cta">
+            <button type="button">この棚番で登録</button>
+            <p class="footnote">※ グリッドはスクロール前提だが、見える行数が少ない</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="col-title good">改善案（レイアウトのみ・実装は未着手）</p>
+      <div class="frame frame--improved" aria-label="改善案プレビュー">
+        <div class="hdr">
+          <div class="back" aria-hidden="true">←</div>
+          <button
+            type="button"
+            class="hdr-title-btn"
+            aria-label="この棚番で登録"
+            onclick="window.alert('この棚番で登録（デザインプレビュー・デモ）');"
+          >
+            棚番を登録
+          </button>
+          <div class="preview-compact preview-compact--hdr" aria-label="選択中の棚番">
+            <span class="lbl">選択中</span>
+            <span class="val">西-北-02</span>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="step step--dense">
+            <div class="grid3">
+              <div class="btn on">西</div>
+              <div class="btn">東</div>
+              <div class="btn">南</div>
+            </div>
+          </div>
+          <div class="step step--dense">
+            <div class="grid3">
+              <div class="btn on">北</div>
+              <div class="btn">南</div>
+              <div class="btn">中</div>
+            </div>
+          </div>
+          <div class="step3 step3--improved">
+            <div class="nums-good" aria-label="空き番号（残り高さを多く割り当て）">
+              <div class="num">01</div><div class="num">02</div><div class="num sel">03</div><div class="num">04</div><div class="num">05</div>
+              <div class="num">06</div><div class="num occ">07</div><div class="num">08</div><div class="num">09</div><div class="num">10</div>
+              <div class="num">11</div><div class="num">12</div><div class="num">13</div><div class="num">14</div><div class="num">15</div>
+              <div class="num">16</div><div class="num">17</div><div class="num">18</div><div class="num">19</div><div class="num">20</div>
+              <div class="num">21</div><div class="num">22</div><div class="num">23</div><div class="num">24</div><div class="num">25</div>
+              <div class="num">26</div><div class="num">27</div><div class="num">28</div><div class="num">29</div><div class="num">30</div>
+            </div>
+          </div>
+          <p class="footnote improved-footnote">
+            ※ 選択中はヘッダー右・1〜3見出し省略で上に詰め、番号グリッドを flex:1 で拡大。確定は「棚番を登録」ボタン（デモは
+            alert）。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ul class="points">
+    <li><strong>選択中</strong>: 本文からヘッダーへ移し<strong>タイトル右</strong>にコンパクト表示（スクロール領域の縦を節約）。</li>
+    <li><strong>エリア／列／番号</strong>: 「1」「2」「3」見出しを省き、グリッドのみ（改善案）。ラベル案は仕様・ユーザビリティで要検討。</li>
+    <li><strong>番号ペイン</strong>: <code>max-h-[min(50vh,22rem)]</code> をやめ、<strong>flex-1 min-h-0</strong> で残り高さを番号グリッドへ。</li>
+    <li><strong>確定操作</strong>: 改善案ではフッター CTA をやめ、<strong>ヘッダーの「棚番を登録」</strong>に相当する操作へ集約する想定（本番は <code>navigate</code> 等）。</li>
+    <li>実装時は <code>KioskMobileShelfRegisterPage.tsx</code> の <code>header</code> 構成・プレビュー位置・ステップ3の <code>section</code> / 内側 <code>grid</code> を調整する想定。</li>
+  </ul>
+</body>
+</html>

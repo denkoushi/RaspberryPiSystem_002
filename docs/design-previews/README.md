@@ -15,6 +15,7 @@
 | [signage-leader-order-cards-preview.html](./signage-leader-order-cards-preview.html) | **サイネージ FULL: 順位ボード資源CDカード**（`kiosk_leader_order_cards` の見た目改善プレビュー。4列×2段・最大8カード相当・余白詰め） |
 | [kiosk-part-measurement-header-strip.html](./kiosk-part-measurement-header-strip.html) | **部品測定・編集画面上部帯**（メタ `<dl>` + 中央寄せ折返しスロット・本番 `KioskPartMeasurementEditTopStrip` のレイアウト参考） |
 | [kiosk-part-measurement-template-picker.html](./kiosk-part-measurement-template-picker.html) | **部品測定・テンプレート選択（提案）**（日程固定コンテキスト・候補一覧・図面アイコン＋ホバープレビュー・新規作成導線） |
+| [mobile-placement-shelf-register-layout-preview.html](./mobile-placement-shelf-register-layout-preview.html) | **配膳スマホ・棚番登録** — 現状 vs 改善案（**確定をヘッダー「棚番を登録」**・選択中を右・見出し省略・番号拡大）。**実装は未反映** |
 
 プレビュー HTML は **外部 CDN やネットワークに依存しません**（macOS のシステムフォントのみ）。`file://` のまま Safari で表示できる想定です。
 
