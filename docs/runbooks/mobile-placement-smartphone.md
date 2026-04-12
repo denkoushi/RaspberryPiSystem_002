@@ -16,6 +16,8 @@
 
 **2026-04-12（V10・製造order `O/0` 誤認補正）**: コミット **`c09ebc8a`**（`main`）。**初回試行** `20260412-102516-4172` は Pi5 `/opt/RaspberryPiSystem_002` の **未追跡/ローカル変更**と **`root:root` 所有の mobile-placement 関連ディレクトリ**により `git merge` 中止。**復旧**: `git status` で確認後、対象パスを `chown -R denkon5sd02:denkon5sd02` → `git stash push -u`。さらに **Mac 側の local lock** と **Pi5 側の stale remote lock** を死活確認後に解放して再実行。**Detach Run ID（成功・Pi5→Pi4×4・順・Pi3 除外）**: `20260412-104606-29623` → `20260412-105905-22423` → `20260412-110542-32610` → `20260412-111033-18779` → `20260412-111904-8812`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **98s**）。
 
+**2026-04-12（V12・現品票 ROI・Schema 集約 `genpyo-slip` 本番反映）**: ブランチ **`feat/genpyo-slip-schema-roi`**（コミット **`1e034057`**）。**仕様**: `actual-slip-image-ocr.service` を **既定 ROI（`DEFAULT_GENPYO_SLIP_ROIS`）で `sharp` 切り出し** → 領域別 OCR → **`genpyo-slip-resolver`** で製造order（ヘッダ優先・欠落時はフッタ）と FSEIBAN を集約。V10/V11 の桁補正・注文行除外は **ROI 内テキスト**に適用。**Detach Run ID（Pi5→Pi4×4・順・Pi3 除外）**: `20260412-142159-22500` → `20260412-143647-5719` → `20260412-144237-23679` → `20260412-144730-23697` → `20260412-145643-23971`（各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/genpyo-slip-schema-roi infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**・Mac / Tailscale）。
+
 ```bash
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
   -H "Content-Type: application/json" -H "x-client-key: <key>" \

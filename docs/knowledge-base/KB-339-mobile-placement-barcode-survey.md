@@ -112,14 +112,16 @@
 
 - **実装**: `apps/api/src/services/mobile-placement/actual-slip-identifier-parser.ts` — 同一行に **注文番号**（`注\s*文\s*番\s*号`）と **枝番**（`枝\s*番`）がある行に含まれる 10 桁は製造order候補から除外。**注文番号のみ**の行の誤採用抑制は **同一行判定**（前行の注文番号で次行の製造orderを除外しない）。**global-filter** は先頭 `\d{10}` ではなく、注文行直後・製造ラベル近傍スコアで候補を選ぶ。
 - **仕様（要点）**: 現品票の **注文番号行末尾に枝番**がある運用に合わせ、注文番号の 10 桁（誤認含む）を製造orderにしない。診断キー `mo10ParseSource` / `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` は従来どおり。
-- **本番デプロイ**: 未反映の場合は [deployment.md](../guides/deployment.md) の `update-all-clients.sh` で追従（コミットは実装ブランチ／`main` マージ後を参照）。
+- **本番**: V12 の **ROI 内テキスト**に対しても同じルールが適用される（`genpyo-slip` 集約後の文字列へ）。
 
-### 実装メモ（2026-04-12・V12 現品票 ROI・Schema 集約）
+### 本番反映・検証（2026-04-12・V12 現品票 ROI・Schema 集約 `genpyo-slip`）
 
 - **実装**: `apps/api/src/services/mobile-placement/actual-slip-image-ocr.service.ts` — 共通前処理後、`genpyo-slip/genpyo-slip-template.ts` の **既定 ROI** で `sharp` 切り出し → 各領域 `ImageOcrPort`（`actualSlipLabels`）。集約は `genpyo-slip/genpyo-slip-resolver.ts`。製造order・製番の文字列ルールは `genpyo-slip/genpyo-mo-extract.ts` / `genpyo-fseiban-extract.ts`（公開 API 互換のため `actual-slip-identifier-parser.ts` は再エクスポート）。
 - **仕様（要点）**: **紙帳票の一般的レイアウト**を前提に、**撮影全体を1本の全文パースに載せない**。ログに **`mo10ResolvedFromRoi`**（`moHeader` / `moFooter`）を追加。**二値化パス**と **`preprocessBytesBinary`** は本パイプラインでは廃止。
 - **運用**: レイアウトが異なる帳票では ROI ズレで欠損し得る → 将来 **テンプレート差し替え**または幾何補正の拡張が必要になり得る。
-- **本番デプロイ**: ブランチマージ後に追従（未マージの場合はローカル/作業ブランチのみ）。
+- **本番デプロイ（2026-04-12）**: ブランチ **`feat/genpyo-slip-schema-roi`**・コミット **`1e034057`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260412-142159-22500` → `20260412-143647-5719` → `20260412-144237-23679` → `20260412-144730-23697` → `20260412-145643-23971`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**。**Pi3 は本機能の必須対象外**。
+- **自動回帰（本番反映後）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **103s**）。
+- **実機検証**: 自動回帰は完了。**Android 手動確認**は [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) で **ROI ズレ時の撮影角度**（正面・全体が枠内）を継続確認。
 
 ## References
 
