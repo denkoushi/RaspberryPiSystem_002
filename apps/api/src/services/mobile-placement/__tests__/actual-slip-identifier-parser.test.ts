@@ -38,6 +38,11 @@ describe('extractManufacturingOrder10', () => {
     expect(extractManufacturingOrder10(text)).toBe('0002178005');
   });
 
+  it('normalizes leading O confusion in labeled 10-char token', () => {
+    const text = '製造orderNo: OOO2178OO5';
+    expect(extractManufacturingOrder10(text)).toBe('0002178005');
+  });
+
   it('does not pick 10 digits from 注文番号 block when 製造オーダ line is absent', () => {
     const text = `
 注文番号 00035075021

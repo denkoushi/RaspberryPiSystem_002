@@ -14,7 +14,7 @@ const MANUFACTURING_ORDER_LABEL =
 
 /** ラベル直後〜120非数字以内の10桁（製造order本体） */
 const TEN_DIGITS_AFTER_MANUFACTURING_ORDER_LABEL =
-  /(?:製\s*造\s*(?:オ\s*ー\s*ダ|オーダ)|製\s*造\s*order)[^\d]{0,120}(\d{10})/iu;
+  /(?:製\s*造\s*(?:オ\s*ー\s*ダ|オーダ)|製\s*造\s*order)[^\d]{0,120}([0-9OoIl|]{10})/iu;
 
 /** 全角数字を半角へ */
 export function normalizeDigitsFullWidthToHalfWidth(s: string): string {
@@ -42,6 +42,11 @@ export function fixAdjacentOcrDigitConfusion(s: string): string {
     out = next;
   }
   return out;
+}
+
+/** 10桁候補トークン内の OCR 誤認（O/I/l/|）を数字へ補正 */
+function normalizeLooseDigitToken(token: string): string {
+  return token.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1');
 }
 
 /**
@@ -79,29 +84,36 @@ export function parseManufacturingOrder10Extraction(text: string): {
 
   const afterLabel = n.match(TEN_DIGITS_AFTER_MANUFACTURING_ORDER_LABEL);
   if (afterLabel) {
-    return {
-      value: afterLabel[1],
-      diagnostics: {
-        candidate10Count,
-        afterOrderBlockFilterCount: 0,
-        source: 'label-regex'
-      }
-    };
+    const normalizedAfterLabel = normalizeLooseDigitToken(afterLabel[1]);
+    if (/^\d{10}$/.test(normalizedAfterLabel)) {
+      return {
+        value: normalizedAfterLabel,
+        diagnostics: {
+          candidate10Count,
+          afterOrderBlockFilterCount: 0,
+          source: 'label-regex'
+        }
+      };
+    }
+    // ラベル直後の10文字が想定外の場合は line-scan / global-filter へ
   }
 
   const lines = n.split(/\r?\n/).map((l) => l.trim());
   for (const line of lines) {
     if (MANUFACTURING_ORDER_LABEL.test(line)) {
-      const m = line.match(/(\d{10})/);
+      const m = line.match(/([0-9OoIl|]{10})/);
       if (m) {
-        return {
-          value: m[1],
-          diagnostics: {
-            candidate10Count,
-            afterOrderBlockFilterCount: 0,
-            source: 'line-scan'
-          }
-        };
+        const normalizedLineToken = normalizeLooseDigitToken(m[1]);
+        if (/^\d{10}$/.test(normalizedLineToken)) {
+          return {
+            value: normalizedLineToken,
+            diagnostics: {
+              candidate10Count,
+              afterOrderBlockFilterCount: 0,
+              source: 'line-scan'
+            }
+          };
+        }
       }
     }
   }
