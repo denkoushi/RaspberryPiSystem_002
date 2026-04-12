@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>配膳スマホ — 照合の折りたたみ（静的プレビュー）</title>
+  <style>
+    :root {
+      --slate-950: #020617;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --sky-400: #38bdf8;
+      --violet-400: #a78bfa;
+      --amber-400: #fbbf24;
+      --teal-400: #2dd4bf;
+      --muted: #94a3b8;
+      --emerald: #34d399;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--slate-950);
+      color: #f8fafc;
+      padding: 0.75rem 1rem 1.5rem;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+    .lead {
+      margin: 0 0 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      max-width: 96ch;
+      line-height: 1.55;
+    }
+    .lead code {
+      font-size: 0.78em;
+      background: var(--slate-800);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+    .col-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.5rem;
+      color: var(--emerald);
+    }
+    .col-title.open { color: #fbbf24; }
+    .col-title::before { content: "▸ "; }
+    .frame {
+      background: var(--slate-900);
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: min(680px, 82vh);
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    /* 共通: ページ縦フレックス（照合上 + 登録下） */
+    .page {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* 折りたたみバー（閉じたとき） */
+    .verify-collapsed {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.65rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.85));
+    }
+    .verify-collapsed .label {
+      font-size: 12px;
+      font-weight: 800;
+      color: #e2e8f0;
+      flex: 1;
+      min-width: 0;
+    }
+    .verify-collapsed .hint {
+      font-size: 10px;
+      color: var(--muted);
+      display: none;
+    }
+    @media (min-width: 360px) {
+      .verify-collapsed .hint { display: inline; }
+    }
+    .btn-expand {
+      flex-shrink: 0;
+      padding: 0.4rem 0.75rem;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.12);
+      color: #7dd3fc;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: default;
+    }
+    /* 展開時の照合ブロック */
+    .verify-expanded {
+      flex-shrink: 0;
+      padding: 0.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    .slip-col {
+      border-radius: 8px;
+      border: 2px solid;
+      padding: 0.45rem;
+      min-height: 120px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .slip-col.transfer {
+      border-color: rgba(56, 189, 248, 0.55);
+      background: rgba(56, 189, 248, 0.06);
+      color: #7dd3fc;
+    }
+    .slip-col.actual {
+      border-color: rgba(167, 139, 250, 0.55);
+      background: rgba(167, 139, 250, 0.06);
+      color: #c4b5fd;
+    }
+    .slip-col .title { margin: 0 0 0.35rem; font-size: 11px; }
+    .fake-input {
+      height: 1.75rem;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(2, 6, 23, 0.5);
+      margin-bottom: 0.25rem;
+    }
+    .verify-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .btn-verify {
+      padding: 0.25rem 1rem;
+      font-size: 12px;
+      color: #fff;
+      background: transparent;
+      border: none;
+      text-decoration: underline;
+      cursor: default;
+    }
+    .btn-collapse {
+      margin-top: 0.15rem;
+      padding: 0.3rem 0.65rem;
+      border-radius: 0.4rem;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: rgba(30, 41, 59, 0.8);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      cursor: default;
+    }
+    /* 下半: 登録（flex で伸ばす） */
+    .register {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0.65rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .reg-card {
+      border-radius: 10px;
+      border-left: 3px solid var(--amber-400);
+      background: rgba(245, 158, 11, 0.06);
+      padding: 0.5rem 0.55rem;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .reg-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem 0.45rem;
+    }
+    .reg-header h3 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 800;
+      color: #fde68a;
+    }
+    .btn-ghost {
+      font-size: 10px;
+      font-weight: 700;
+      color: #38bdf8;
+      background: none;
+      border: none;
+      padding: 0.15rem 0.35rem;
+      cursor: default;
+    }
+    .sel-hint {
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .sel-hint strong {
+      display: block;
+      font-size: 12px;
+      color: #fde68a;
+    }
+    .btn-plus {
+      margin-left: auto;
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(251, 191, 36, 0.3);
+      background: rgba(2, 6, 23, 0.8);
+      color: #fde68a;
+      font-size: 1.2rem;
+      line-height: 1;
+      flex-shrink: 0;
+      cursor: default;
+    }
+    .grid6 {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0.2rem;
+    }
+    .pill {
+      min-height: 2.65rem;
+      border-radius: 0.45rem;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      background: var(--slate-800);
+      color: #fde68a;
+      font-size: 10px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+    }
+    .pill.on {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.2);
+      color: #d1fae5;
+      box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.35);
+    }
+    .count-row {
+      text-align: right;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .list-box {
+      border-radius: 0.45rem;
+      border: 1px solid rgba(251, 191, 36, 0.15);
+      background: rgba(2, 6, 23, 0.45);
+      padding: 0.5rem;
+      min-height: 3.25rem;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .teal-card {
+      border-radius: 10px;
+      border-left: 3px solid var(--teal-400);
+      background: rgba(20, 184, 166, 0.06);
+      padding: 0.55rem;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+    .order-row {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0.35rem;
+      min-width: 0;
+    }
+    .order-row input {
+      flex: 1;
+      min-width: 0;
+      height: 2.5rem;
+      border-radius: 0.35rem;
+      border: 1px solid rgba(45, 212, 191, 0.3);
+      background: var(--slate-950);
+      color: #fff;
+      padding: 0 0.5rem;
+      font-size: 0.85rem;
+    }
+    .scan-btn {
+      flex: 0 0 2.5rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 0.35rem;
+      border: 1px solid rgba(45, 212, 191, 0.3);
+      background: rgba(20, 184, 166, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #99f6e4;
+      cursor: default;
+    }
+    /* 分配ボタン行: 新規・既存は伸縮、登録は右隣に固定幅（本プレビューでは3つを1行想定） */
+    .dist-btns {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem;
+      padding-top: 0.35rem;
+      border-top: 1px solid rgba(20, 184, 166, 0.2);
+    }
+    .dist-btns .dist-action {
+      flex: 1 1 5rem;
+      min-height: 2.4rem;
+      border-radius: 0.45rem;
+      border: 1px solid rgba(45, 212, 191, 0.35);
+      background: rgba(15, 23, 42, 0.9);
+      color: #ccfbf1;
+      font-size: 10px;
+      font-weight: 800;
+      cursor: default;
+    }
+    .dist-btns .dist-action.primary {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.2);
+      color: #d1fae5;
+    }
+    .dist-btns .btn-register {
+      flex: 0 0 auto;
+      min-width: 4.75rem;
+      height: 2.4rem;
+      padding: 0 0.85rem;
+      border-radius: 0.45rem;
+      border: 1px solid rgba(45, 212, 191, 0.55);
+      background: linear-gradient(180deg, rgba(45, 212, 191, 0.35), rgba(13, 148, 136, 0.25));
+      color: #ccfbf1;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: default;
+      opacity: 0.5;
+    }
+    .note {
+      margin-top: 1rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.55;
+      max-width: 96ch;
+    }
+    .note strong { color: #e2e8f0; }
+    .badge-ok {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.25);
+      color: #a7f3d0;
+      font-size: 10px;
+      font-weight: 800;
+    }
+  </style>
+</head>
+<body>
+  <h1>配膳スマホ — 照合の折りたたみ（既定は閉じる・下半を広く）</h1>
+  <p class="lead">
+    <strong>要件:</strong> 上半の照合は<strong>基本閉じた状態</strong>。ユーザーがボタンで<strong>展開</strong>すると従来どおり移動票・現品票の入力と「照合」が使える。<strong>閉じているとき</strong>は縦方向の余白を<strong>下半（登録済み棚番・製造order・分配）</strong>に回す。
+    実装イメージ: <code>MobilePlacementPage</code> または <code>MobilePlacementVerifySection</code> に <code>useState(false)</code> の展開フラグ。
+    閉じ時は照合ラッパーを <code>shrink-0</code> の1行バーにし、<code>MobilePlacementRegisterSection</code> を <code>flex-1 min-h-0</code> で占有。
+    下半ティール枠: <strong>「分配の操作」見出しなし</strong>・説明文なし・<strong>登録</strong>は <strong>既存分配を移動の右</strong>（同一行）。本番 <code>MobilePlacementRegisterSection.tsx</code> とは別レイアウト案のプレビューです。
+  </p>
+
+  <div class="compare">
+    <div>
+      <p class="col-title">閉じたとき（既定）— 下半が広い</p>
+      <div class="frame">
+        <div class="page">
+          <div class="verify-collapsed">
+            <span class="label">照合（移動票・現品票）</span>
+            <span class="hint">タップで入力・照合</span>
+            <span class="btn-expand" role="button" aria-disabled="true">展開</span>
+          </div>
+          <div class="register">
+            <div class="reg-card">
+              <div class="reg-header">
+                <h3>登録済みの棚番</h3>
+                <button type="button" class="btn-ghost" aria-disabled="true">QR</button>
+                <span class="sel-hint">選択中 <strong>—</strong></span>
+                <button type="button" class="btn-plus" title="棚番を新規登録" aria-label="棚番を新規登録">+</button>
+              </div>
+              <div class="grid6" aria-hidden="true">
+                <span class="pill on">西</span><span class="pill">中央</span><span class="pill">東</span>
+                <span class="pill">北</span><span class="pill">中央</span><span class="pill">南</span>
+              </div>
+              <div class="count-row">表示 0件</div>
+              <div class="list-box">この組み合わせの登録棚はありません</div>
+            </div>
+            <div class="teal-card">
+              <div class="order-row">
+                <input type="text" readonly placeholder="製造order" value="" aria-label="製造order" />
+                <span class="scan-btn" title="スキャン">▦</span>
+              </div>
+              <div class="dist-btns">
+                <button type="button" class="dist-action primary">新規分配を追加</button>
+                <button type="button" class="dist-action">既存分配を移動</button>
+                <button type="button" class="btn-register" disabled>登録</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="col-title open">展開したとき — 従来の照合＋下半</p>
+      <div class="frame">
+        <div class="page">
+          <div class="verify-expanded">
+            <div class="grid2">
+              <div class="slip-col transfer">
+                <p class="title">移動票</p>
+                <div class="fake-input"></div>
+                <div class="fake-input"></div>
+              </div>
+              <div class="slip-col actual">
+                <p class="title">現品票</p>
+                <div class="fake-input"></div>
+                <div class="fake-input"></div>
+              </div>
+            </div>
+            <div class="verify-actions">
+              <button type="button" class="btn-verify">照合</button>
+              <button type="button" class="btn-collapse">閉じる</button>
+            </div>
+          </div>
+          <div class="register">
+            <div class="reg-card">
+              <div class="reg-header">
+                <h3>登録済みの棚番</h3>
+                <button type="button" class="btn-ghost" aria-disabled="true">QR</button>
+                <span class="sel-hint">選択中 <strong>—</strong></span>
+                <button type="button" class="btn-plus" title="棚番を新規登録" aria-label="棚番を新規登録">+</button>
+              </div>
+              <div class="grid6" aria-hidden="true">
+                <span class="pill on">西</span><span class="pill">中央</span><span class="pill">東</span>
+                <span class="pill">北</span><span class="pill">中央</span><span class="pill">南</span>
+              </div>
+              <div class="count-row">表示 0件</div>
+              <div class="list-box" style="min-height:2.5rem;">展開時は上半が高いため、<br />ここはスクロールしやすい</div>
+            </div>
+            <div class="teal-card">
+              <div class="order-row">
+                <input type="text" readonly placeholder="製造order" value="" />
+                <span class="scan-btn">▦</span>
+              </div>
+              <div class="dist-btns">
+                <button type="button" class="dist-action primary">新規分配を追加</button>
+                <button type="button" class="dist-action">既存分配を移動</button>
+                <button type="button" class="btn-register" disabled>登録</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    <strong>実装メモ:</strong> 折りたたみ中に照合結果（OK/NG）だけ常時表示したい場合は、閉じたバーに <span class="badge-ok">OK</span> バッジを載せる拡張が可能（本プレビューは未表示）。<br />
+    <strong>アクセシビリティ:</strong> 展開ボタンは <code>aria-expanded</code>、折りたたみ領域は <code>hidden</code> または <code>inert</code> でスクリーンリーダーと整合させる。
+  </p>
+</body>
+</html>
