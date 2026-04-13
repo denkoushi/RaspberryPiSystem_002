@@ -119,8 +119,6 @@ export function MobilePlacementPage() {
         orderBarcode={mp.orderBarcode}
         onOrderBarcodeChange={mp.setOrderBarcode}
         onOrderScan={() => mp.setScanField('order')}
-        orderPlacementIntent={mp.orderPlacementIntent}
-        onOrderPlacementIntentChange={mp.setOrderPlacementIntent}
         branches={orderBranchesQuery.data?.branches ?? []}
         branchesLoading={orderBranchesQuery.isLoading}
         branchesError={orderBranchesQuery.isError}
@@ -129,8 +127,11 @@ export function MobilePlacementPage() {
         onSelectBranchId={mp.setSelectedBranchId}
         suggestedNextBranchNo={suggestedNextBranchNo}
         registerSubmitting={mp.registerSubmitting}
-        registerDisabled={mp.registerDisabled}
-        onRegister={() => void mp.runRegister()}
+        registerSubmittingAction={mp.registerSubmittingAction}
+        createNewDisabled={mp.createNewDisabled}
+        moveDisabled={mp.moveDisabled}
+        onCreateNewPlacement={() => void mp.runCreateNewPlacement()}
+        onMovePlacement={() => void mp.runMovePlacement()}
         registerMessage={mp.registerMessage}
         registerError={mp.registerError}
       />

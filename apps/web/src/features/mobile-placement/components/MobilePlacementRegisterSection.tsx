@@ -13,9 +13,8 @@ import { SHELF_AREA_OPTIONS, SHELF_LINE_OPTIONS } from '../shelfSelection/defaul
 import { IconScanButton } from './IconScanButton';
 
 import type { OrderPlacementBranchDto } from '../../../api/client';
-import type { OrderPlacementPageIntent } from '../shelfSelection';
 import type { ShelfAreaId, ShelfLineId } from '../shelfSelection/shelfSelectionTypes';
-
+import type { MobilePlacementRegisterSubmittingAction } from '../types';
 
 export type MobilePlacementRegisterSectionProps = {
   shelfCode: string;
@@ -29,8 +28,6 @@ export type MobilePlacementRegisterSectionProps = {
   orderBarcode: string;
   onOrderBarcodeChange: (v: string) => void;
   onOrderScan: () => void;
-  orderPlacementIntent: OrderPlacementPageIntent;
-  onOrderPlacementIntentChange: (v: OrderPlacementPageIntent) => void;
   branches: OrderPlacementBranchDto[];
   branchesLoading: boolean;
   branchesError: boolean;
@@ -39,14 +36,17 @@ export type MobilePlacementRegisterSectionProps = {
   onSelectBranchId: (id: string) => void;
   suggestedNextBranchNo: number | null;
   registerSubmitting: boolean;
-  registerDisabled: boolean;
-  onRegister: () => void;
+  registerSubmittingAction: MobilePlacementRegisterSubmittingAction;
+  createNewDisabled: boolean;
+  moveDisabled: boolean;
+  onCreateNewPlacement: () => void;
+  onMovePlacement: () => void;
   registerMessage: string | null;
   registerError: string | null;
 };
 
 /**
- * 下半: 登録済み棚番（絞り込み）+ QR + 新規登録 + 製造order・登録
+ * 下半: 登録済み棚番（絞り込み）+ QR + 新規棚番登録（+）+ 製造order + 新規登録 / 棚移動の確定
  */
 export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSectionProps) {
   const [areaId, setAreaId] = useState<ShelfAreaId | null>(null);
@@ -89,8 +89,8 @@ export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSec
           <button
             type="button"
             className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-amber-400/30 bg-slate-950/80 text-xl font-light leading-none text-amber-200 active:bg-amber-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40"
-            title="棚番を新規登録（エリア→列→番号）"
-            aria-label="棚番を新規登録"
+            title="新規棚番登録のみ（エリア→列→番号）。この画面で確定すると配膳トップに棚番が戻ります。"
+            aria-label="新規棚番登録のみ（エリア→列→番号）"
             onClick={props.onOpenShelfRegister}
           >
             +
@@ -226,42 +226,22 @@ export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSec
           <IconScanButton variant="order" title="スキャン" aria-label="製造orderをスキャン" onClick={props.onOrderScan} />
         </div>
 
-        <div className="flex flex-wrap items-stretch gap-1.5 border-t border-teal-500/20 pt-2.5">
+        <div className="flex flex-wrap items-stretch gap-2 border-t border-teal-500/20 pt-2.5">
           <button
             type="button"
-            className={clsx(
-              'min-h-10 min-w-[5rem] flex-1 rounded-lg border px-2 text-[11px] font-extrabold active:bg-teal-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/40',
-              props.orderPlacementIntent === 'create_new_branch'
-                ? 'border-emerald-500 bg-emerald-500/20 text-emerald-100'
-                : 'border-teal-400/35 bg-slate-900 text-teal-100'
-            )}
-            onClick={() => props.onOrderPlacementIntentChange('create_new_branch')}
+            className="min-h-10 min-w-0 flex-1 rounded-lg border border-teal-400/55 bg-gradient-to-b from-teal-400/40 to-teal-600/25 px-3 text-sm font-bold text-teal-100 disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={props.createNewDisabled}
+            onClick={props.onCreateNewPlacement}
           >
-            新規分配を追加
+            {props.registerSubmittingAction === 'create' ? '処理中…' : '新規登録'}
           </button>
           <button
             type="button"
-            className={clsx(
-              'min-h-10 min-w-[5rem] flex-1 rounded-lg border px-2 text-[11px] font-extrabold active:bg-teal-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/40',
-              props.orderPlacementIntent === 'move_existing'
-                ? 'border-emerald-500 bg-emerald-500/20 text-emerald-100'
-                : 'border-teal-400/35 bg-slate-900 text-teal-100'
-            )}
-            onClick={() => props.onOrderPlacementIntentChange('move_existing')}
+            className="min-h-10 min-w-0 flex-1 rounded-lg border border-teal-400/55 bg-gradient-to-b from-teal-400/40 to-teal-600/25 px-3 text-sm font-bold text-teal-100 disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={props.moveDisabled}
+            onClick={props.onMovePlacement}
           >
-            既存分配を移動
-          </button>
-          <button
-            type="button"
-            className="h-10 min-w-[4.75rem] shrink-0 rounded-md border border-teal-400/55 bg-gradient-to-b from-teal-400/40 to-teal-600/25 px-3 text-sm font-bold text-teal-100 disabled:cursor-not-allowed disabled:opacity-45"
-            disabled={props.registerDisabled}
-            onClick={props.onRegister}
-          >
-            {props.registerSubmitting
-              ? '処理中…'
-              : props.orderPlacementIntent === 'move_existing'
-                ? '移動を確定'
-                : '登録'}
+            {props.registerSubmittingAction === 'move' ? '処理中…' : '棚移動'}
           </button>
         </div>
 
@@ -280,39 +260,42 @@ export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSec
                   再試行
                 </button>
               </div>
-            ) : props.orderPlacementIntent === 'create_new_branch' ? (
-              <p className="text-[11px] text-slate-300">
-                次に作成される分配:{' '}
-                <strong className="text-teal-100">
-                  分配{props.suggestedNextBranchNo != null ? props.suggestedNextBranchNo : '—'}
-                </strong>
-              </p>
-            ) : props.branches.length === 0 ? (
-              <p className="text-[11px] text-amber-200/90">
-                この製造orderにはまだ分配がありません。先に「新規分配を追加」で登録してください。
-              </p>
             ) : (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">移動する分配を選択</p>
-                <div className="flex max-h-[min(28vh,200px)] flex-wrap gap-1.5 overflow-y-auto">
-                  {props.branches.map((b) => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      className={clsx(
-                        'min-h-10 min-w-[7rem] rounded-lg border px-2 py-1 text-left text-[11px] font-extrabold active:bg-teal-500/15',
-                        props.selectedBranchId === b.id
-                          ? 'border-emerald-500 bg-emerald-500/15 text-emerald-100'
-                          : 'border-teal-400/35 bg-slate-900 text-teal-50'
-                      )}
-                      onClick={() => props.onSelectBranchId(b.id)}
-                    >
-                      <span className="block text-[10px] font-bold text-slate-400">分配{b.branchNo}</span>
-                      <span className="block break-all tabular-nums">{b.shelfCodeRaw}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <>
+                <p className="text-[11px] text-slate-300">
+                  次に作成される分配:{' '}
+                  <strong className="text-teal-100">
+                    分配{props.suggestedNextBranchNo != null ? props.suggestedNextBranchNo : '—'}
+                  </strong>
+                </p>
+                {props.branches.length === 0 ? (
+                  <p className="text-[11px] text-amber-200/90">
+                    この製造orderにはまだ分配がありません。先に「新規登録」で分配を追加してください。
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">棚移動する分配を選択</p>
+                    <div className="flex max-h-[min(28vh,200px)] flex-wrap gap-1.5 overflow-y-auto">
+                      {props.branches.map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          className={clsx(
+                            'min-h-10 min-w-[7rem] rounded-lg border px-2 py-1 text-left text-[11px] font-extrabold active:bg-teal-500/15',
+                            props.selectedBranchId === b.id
+                              ? 'border-emerald-500 bg-emerald-500/15 text-emerald-100'
+                              : 'border-teal-400/35 bg-slate-900 text-teal-50'
+                          )}
+                          onClick={() => props.onSelectBranchId(b.id)}
+                        >
+                          <span className="block text-[10px] font-bold text-slate-400">分配{b.branchNo}</span>
+                          <span className="block break-all tabular-nums">{b.shelfCodeRaw}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         ) : null}
@@ -329,7 +312,9 @@ export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSec
         </p>
       ) : null}
 
-      <p className="text-center text-[11px] text-slate-400">照合OK → 棚 → 製造order → 分配の選択 → 登録/移動</p>
+      <p className="text-center text-[11px] text-slate-400">
+        棚を選ぶ → 製造order → 「新規登録」または「棚移動」で確定（+ は新規棚番登録のみ）
+      </p>
     </div>
   );
 }

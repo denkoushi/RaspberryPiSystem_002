@@ -13,5 +13,5 @@ export {
 export { formatShelfCodeRaw } from './formatShelfCodeRaw';
 export { isValidShelfSlot } from './isValidShelfSlot';
 export { isCompleteShelfSelection } from './isCompleteShelfSelection';
-export type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './navigationState';
+export type { MobilePlacementShelfRegisterRouteState } from './navigationState';
 export { isMobilePlacementShelfRegisterRouteState } from './navigationState';

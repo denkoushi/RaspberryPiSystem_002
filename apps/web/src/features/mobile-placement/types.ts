@@ -13,3 +13,6 @@ export type MobilePlacementScanField =
 export type MobilePlacementSlipResult = 'idle' | 'ok' | 'ng';
 
 export type SlipColumnVariant = 'transfer' | 'actual';
+
+/** 配膳トップ: 新規登録 / 棚移動 のどちらを実行中か（ボタン表示用） */
+export type MobilePlacementRegisterSubmittingAction = 'create' | 'move' | null;
