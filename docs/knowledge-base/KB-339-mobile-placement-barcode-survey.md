@@ -188,7 +188,10 @@
 - **API**: `GET /api/mobile-placement/part-search/suggest` に任意クエリ **`machineName`**（後方互換）。機種名は `seiban-progress` と同系の **MH/SH 行 `FHINMEI` 集約**から `FSEIBAN` 集合を作り、**`q` と AND**。`matchedQuery` は部品名正規化後の `q` と機種名入力を連結した表示用文字列。
 - **共有**: `packages/part-search-core` — `normalizePartSearchQuery` 拡張、`partSearchTermVariantsForIlike`（DB のひら/カタ混在向け ILIKE）、`normalizeMachineNameForPartSearch`（機種表示との比較）。実装: `part-search-machine-name-fseibans.service.ts`。
 - **Web**: 機種名欄フォーカス時は **パレット剪定を行わない**（ヒット DTO に機種表示名が無いため誤剪定を避ける）。
-- **本番デプロイ**: **未実施**（ブランチ **`feat/mobile-placement-part-search-machine-filter`**）。デプロイ後は Runbook §0 に Detach Run ID を追記すること。
+- **本番デプロイ（2026-04-13）**: ブランチ **`feat/mobile-placement-part-search-machine-filter`**・コミット **`5bfab6c8`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（Pi5 リモート `logs/deploy/` の `ansible-update-*` 接尾辞）: `20260413-143256-27604` → `20260413-144431-6108` → `20260413-144847-8016` → `20260413-145200-25161` → `20260413-145658-5761`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **24s**・Mac / Tailscale・2026-04-13 実測）。
+- **知見**: Pi5 は **`part-search-core` 変更により Docker 再ビルド**（`api` / `web`）が走る。**`failed=0` が最終判定**。
+- **トラブルシュート**: **401** → `heartbeat` と `x-client-key`。**`machineName` を付けても常に空** → 日程に **MH/SH 行の `FHINMEI`** が無い・クエリが集約後の機種表示と合わない可能性。**長音**（例: モーター）は正規化で **`モータ` と同一視しない**（仕様どおり）。
 
 ## References
 
