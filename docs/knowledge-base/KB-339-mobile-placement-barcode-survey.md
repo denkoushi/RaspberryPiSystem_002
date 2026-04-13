@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-13（**V18 棚マスタ `MobilePlacementShelf`** 追記）
+最終更新: 2026-04-13（**V20 部品検索（促音比較・機種名のみ suggest）**・V18 棚マスタ追記）
 
 ## V18（2026-04-13）棚マスタ
 
@@ -193,6 +193,16 @@
 - **知見**: Pi5 は **`part-search-core` 変更により Docker 再ビルド**（`api` / `web`）が走る。**`failed=0` が最終判定**。
 - **トラブルシュート**: **401** → `heartbeat` と `x-client-key`。**`machineName` を付けても常に空** → 日程に **MH/SH 行の `FHINMEI`** が無い・クエリが集約後の機種表示と合わない可能性。**長音**（例: モーター）は正規化で **`モータ` と同一視しない**（仕様どおり）。
 
+### V20（2026-04-13・部品検索: 促音の比較用写像・機種名のみで suggest）
+
+- **目的**: 促音 **`っ` / `ッ`** を **単に除去すると** `ナット` と `ナットホルダー` が **同一トークン化**されてしまうため、**比較用**には **`ツ` へ写像**しつつ、表示・入力の意図を保つ。あわせて **`q` が空でも `machineName` があれば** API/キオスクが **`suggest` を継続**する（V19 では `q` 空で即空配列だった経路を拡張）。
+- **共有**: `packages/part-search-core` — **`PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS`**（export）。`normalizePartSearchQuery` は従来どおり促音を吸収しつつ、SQL 側は **`part-search-field-comparable-sql.ts`** で **`REPLACE(...)` 連鎖**し **ILIKE** 比較。
+- **API**: `part-search.service.ts` — 部品名・型番・機種表示に **comparable 式**。`suggestPartPlacementSearch` — **`q` 空かつ `machineName` あり**の分岐・`matchedQuery` 表示。
+- **本番デプロイ（2026-04-13）**: ブランチ **`feat/part-search-sokuon-comparable-and-optional-sides`**・コミット **`8a4c8ffe`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-154338-19890` → `20260413-155401-995` → `20260413-155851-30629` → `20260413-160214-659` → `20260413-160637-3548`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**・Mac / Tailscale・2026-04-13 実測）。
+- **知見**: 促音は **正規化（検索意図）** と **comparable（DB 比較）** を **別レイヤー**で持つ（削除一択をやめる）。統合テストに **`ナット` → `ナットホルダー`** 相当を追加済み。
+- **トラブルシュート**: 促音まわりで **ヒットが増えすぎる** → comparable が **`ッ`→`ツ`** のため **同一カナ列上の別単語**とぶつかる可能性を疑い、`q` を足して AND を絞る。**`q` 空・機種名のみで候補が薄い** → `machineName` の **MH/SH 集約**と現場データを確認（V19 と同じ）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
@@ -203,4 +213,5 @@
 - 実装（部品名検索・V16）: `apps/api/src/services/mobile-placement/part-search/`（`part-search.service.ts`）＋共有 **`packages/part-search-core`**
 - 実装（部品検索最終・V17）: 同上 + `part-search-normalize.ts`（SQL 用 `escapeForIlike` のみ）・キオスク `part-search/*`（`partSearchPalettePruner.ts` 等）・**CI/Docker**（`part-search-core` ビルド）
 - 実装（部品検索 V19・機種名 AND）: `part-search-machine-name-fseibans.service.ts`・`part-search.service.ts`（`machineName`）・`part-search-core`（正規化・ILIKE バリアント）
+- 実装（部品検索 V20・促音 comparable・機種名のみ suggest）: `part-search-field-comparable-sql.ts`・`part-search.service.ts`・`part-search-core`（`PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS`）・`useMobilePlacementPartSearch.ts` / `apps/web/src/api/client.ts`
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

@@ -1,5 +1,6 @@
 /**
- * 小書き・促音を通常サイズへ（濁点・半濁点・長音は変更しない）。
+ * 小書きかなを通常サイズへ（濁点・半濁点・長音は変更しない）。
+ * 促音は {@link mapSokuonToTsuForComparable} で「ツ」へ写像する（削除しない）。
  * ひらがな/カタカナは {@link hiraganaToKatakana} でカタカナへ統一する。
  */
 /** ひらがなの小書きのみ（カタカナ小書きは拗音・外来語表記を壊すため含めない）。 */
@@ -73,10 +74,22 @@ function replaceHiraganaYoonWithKatakana(s: string): string {
   return out;
 }
 
-/** 促音（っ/ッ）を除去し、表記ゆれとして吸収する（語義は検索用途に限定）。 */
-function removeSokuon(s: string): string {
-  return s.replace(/っ/g, '').replace(/ッ/g, '');
+/**
+ * 促音（ひらがな `っ` / カタカナ `ッ`）を比較用の通常サイズへ写像する。
+ * {@link hiraganaToKatakana} の後に呼ぶので、クエリ側は `ツ` に統一する。
+ * DB 側の `REPLACE` チェーンは {@link PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS} と同期すること。
+ */
+export function mapSokuonToTsuForComparable(s: string): string {
+  return s.replace(/っ/g, 'ツ').replace(/ッ/g, 'ツ');
 }
+
+/**
+ * PostgreSQL `REPLACE` 用。API の SQL と必ず同じ順序・文字で保つこと。
+ */
+export const PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS: readonly Readonly<{ from: string; to: string }>[] = [
+  { from: 'ッ', to: 'ツ' },
+  { from: 'っ', to: 'つ' }
+] as const;
 
 /**
  * ひらがな（U+3041–U+3096）を対応するカタカナへ。
@@ -114,15 +127,16 @@ export function katakanaToHiragana(s: string): string {
  *
  * - Unicode NFKC
  * - trim
- * - 小書き・促音を通常文字へ
+ * - 小書きかなを通常文字へ
  * - ひらがなをカタカナへ統一（濁点・半濁点・長音は NFKC のまま区別）
+ * - 促音を `ツ` へ写像（DB `REPLACE` と対）
  */
 export function normalizePartSearchQuery(input: string): string {
   let s = input.normalize('NFKC').trim();
   s = replaceHiraganaYoonWithKatakana(s);
   s = mapSmallKanaToOrdinary(s);
-  s = removeSokuon(s);
   s = hiraganaToKatakana(s);
+  s = mapSokuonToTsuForComparable(s);
   return s;
 }
 

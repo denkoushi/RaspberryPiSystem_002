@@ -12,9 +12,16 @@ describe('normalizePartSearchQuery', () => {
     expect(normalizePartSearchQuery('テスト')).toBe('テスト');
   });
 
-  it('removes sokuon for fuzzy match', () => {
-    expect(normalizePartSearchQuery('がっこう')).toBe('ガコウ');
+  it('maps sokuon to ツ for comparable match (does not delete)', () => {
+    expect(normalizePartSearchQuery('がっこう')).toBe('ガツコウ');
     expect(normalizePartSearchQuery('がこう')).toBe('ガコウ');
+    expect(normalizePartSearchQuery('がっこう')).not.toBe(normalizePartSearchQuery('がこう'));
+  });
+
+  it('maps ナット so it can substring-match ナットホルダー under comparable rules', () => {
+    expect(normalizePartSearchQuery('ナット')).toBe('ナツト');
+    const hay = normalizePartSearchQuery('ナットホルダー');
+    expect(hay.includes(normalizePartSearchQuery('ナット'))).toBe(true);
   });
 
   it('maps small ya to ya', () => {

@@ -788,11 +788,11 @@ export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: 
   return data;
 }
 
-/** 部品名検索（現在棚優先・スケジュール補助）。機種名は登録製番ボタン下段と同系の MH/SH 由来。 */
+/** 部品名検索（現在棚優先・スケジュール補助）。機種名は登録製番ボタン下段と同系の MH/SH 由来。機種名のみでも可。 */
 export async function getMobilePlacementPartSearchSuggest(q: string, machineName?: string) {
   const { data } = await api.get<PartPlacementSearchSuggestResponse>('/mobile-placement/part-search/suggest', {
     params: {
-      q,
+      q: q ?? '',
       ...(machineName != null && machineName.length > 0 ? { machineName } : {})
     }
   });
