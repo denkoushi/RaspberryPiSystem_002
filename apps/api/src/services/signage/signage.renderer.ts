@@ -13,6 +13,7 @@ import type {
   VisualizationSlotConfig,
   KioskProgressOverviewSlotConfig,
   KioskLeaderOrderCardsSlotConfig,
+  MobilePlacementPartsShelfGridSlotConfig,
 } from './signage-layout.types.js';
 import type { RenderablePane } from './signage-pane-resolver.js';
 import { resolveSplitPanes } from './signage-pane-resolver.js';
@@ -38,6 +39,10 @@ import {
   sliceLeaderOrderCardPage,
 } from './leader-order-cards/pagination.js';
 import { MAX_LEADER_ORDER_CARDS_PER_PAGE } from './leader-order-cards/layout-contracts.js';
+import {
+  buildMobilePlacementPartsShelfGridSvg,
+  buildMobilePlacementPartsShelfGridViewModel,
+} from './mobile-placement-parts-shelf/index.js';
 import {
   COMPACT24_MAX_COLUMNS,
   COMPACT24_MAX_ROWS,
@@ -295,6 +300,10 @@ export class SignageRenderer {
           );
         }
         return await this.renderKioskLeaderOrderCardsFull(scopeKey, cds, slideSec, perPage);
+      } else if (slot.kind === 'mobile_placement_parts_shelf_grid') {
+        const mpCfg = slot.config as MobilePlacementPartsShelfGridSlotConfig;
+        const maxPer = mpCfg.maxItemsPerZone ?? 12;
+        return await this.renderMobilePlacementPartsShelfGridFull(maxPer);
       }
     } else if (layoutConfig.layout === 'SPLIT') {
       // SignagePaneResolver でペイン解決（loans=0件も有効）
@@ -705,6 +714,15 @@ export class SignageRenderer {
     const pageItems = sliceProgressOverviewItems(scheduled, pageIndex, seibanPerPage);
     const svg = buildKioskProgressOverviewSvg(pageItems, WIDTH, HEIGHT);
 
+    return await sharp(Buffer.from(svg), { density: 220 })
+      .resize(WIDTH, HEIGHT, { fit: 'fill' })
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  }
+
+  private async renderMobilePlacementPartsShelfGridFull(maxItemsPerZone: number): Promise<Buffer> {
+    const vm = await buildMobilePlacementPartsShelfGridViewModel(maxItemsPerZone);
+    const svg = buildMobilePlacementPartsShelfGridSvg(vm, WIDTH, HEIGHT);
     return await sharp(Buffer.from(svg), { density: 220 })
       .resize(WIDTH, HEIGHT, { fit: 'fill' })
       .jpeg({ quality: 90, mozjpeg: true })

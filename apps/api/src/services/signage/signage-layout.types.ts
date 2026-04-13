@@ -12,7 +12,9 @@ export type SignageSlotKind =
   | 'csv_dashboard'
   | 'visualization'
   | 'kiosk_progress_overview'
-  | 'kiosk_leader_order_cards';
+  | 'kiosk_leader_order_cards'
+  /** 配膳 Android 部品棚 9枠（JPEG・OrderPlacementBranchState 集約） */
+  | 'mobile_placement_parts_shelf_grid';
 
 /**
  * PDFスロットの設定
@@ -67,6 +69,14 @@ export interface KioskLeaderOrderCardsSlotConfig {
 }
 
 /**
+ * 配膳部品棚 9枠グリッド（サイネージ JPEG）
+ * 各ゾーンの表示行数上限。超過分は省略（ヘッダに件数表示）。
+ */
+export interface MobilePlacementPartsShelfGridSlotConfig {
+  maxItemsPerZone?: number;
+}
+
+/**
  * スロット設定（kindに応じてconfigの型が変わる）
  */
 export interface SignageSlot {
@@ -78,7 +88,8 @@ export interface SignageSlot {
     | CsvDashboardSlotConfig
     | VisualizationSlotConfig
     | KioskProgressOverviewSlotConfig
-    | KioskLeaderOrderCardsSlotConfig;
+    | KioskLeaderOrderCardsSlotConfig
+    | MobilePlacementPartsShelfGridSlotConfig;
 }
 
 /**

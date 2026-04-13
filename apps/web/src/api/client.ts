@@ -2802,6 +2802,8 @@ export interface SignageSlotConfig {
   resourceCds?: string[];
   /** kiosk_leader_order_cards: 1ページの資源カード数（1〜8・既定はグリッド満杯＝8） */
   cardsPerPage?: number;
+  /** mobile_placement_parts_shelf_grid: ゾーンあたりの最大表示行数（省略時はサーバ既定） */
+  maxItemsPerZone?: number;
 }
 
 export interface SignageSlot {
@@ -2813,6 +2815,7 @@ export interface SignageSlot {
     | 'visualization'
     | 'kiosk_progress_overview'
     | 'kiosk_leader_order_cards'
+    | 'mobile_placement_parts_shelf_grid'
     | 'message';
   config: SignageSlotConfig | Record<string, never>;
 }

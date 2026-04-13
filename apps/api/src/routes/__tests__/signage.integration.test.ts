@@ -571,6 +571,49 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     expect(response.rawPayload).toBeInstanceOf(Buffer);
   });
 
+  it('should return image for schedule with layoutConfig FULL mobile_placement_parts_shelf_grid', async () => {
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule Mobile Placement Parts Shelf',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'mobile_placement_parts_shelf_grid',
+              config: {
+                maxItemsPerZone: 12,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 97,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/signage/current-image',
+      headers: {
+        'x-client-key': clientDevice.apiKey,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/jpeg');
+    expect(response.rawPayload).toBeInstanceOf(Buffer);
+  });
+
   it('should return image for schedule with layoutConfig FULL kiosk_leader_order_cards', async () => {
     const scheduleResponse = await app.inject({
       method: 'POST',

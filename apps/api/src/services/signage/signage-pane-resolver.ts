@@ -172,6 +172,8 @@ function buildPane(
       return { kind: 'loans', tools: [] };
     case 'kiosk_leader_order_cards':
       return { kind: 'loans', tools: [] };
+    case 'mobile_placement_parts_shelf_grid':
+      return { kind: 'loans', tools: [] };
     default:
       return { kind: 'loans', tools: [] };
   }
