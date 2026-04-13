@@ -1,6 +1,6 @@
 ---
 # Common resource guard for deployment
-# - Memory must be >= 120MB
+# - Memory: default >= 120MB; signage preflight sets memory_required_mb (see device_type_defaults)
 # - Disk usage on /opt must be < 90%
 
 - name: Check available memory (MB)
@@ -26,9 +26,9 @@
   ansible.builtin.fail:
     msg: >
       CRITICAL: Insufficient memory available on {{ inventory_hostname }}.
-      Available: {{ available_memory_mb }}MB (required: >= 120MB)
+      Available: {{ available_memory_mb }}MB (required: >= {{ memory_required_mb | default(120) }}MB)
       Please free memory and retry deployment.
-  when: available_memory_mb | default(0) < 120
+  when: available_memory_mb | default(0) < (memory_required_mb | default(120) | int)
 
 - name: Fail if disk usage is too high
   ansible.builtin.fail:
