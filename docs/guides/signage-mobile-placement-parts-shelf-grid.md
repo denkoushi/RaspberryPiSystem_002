@@ -6,6 +6,7 @@
 - **出力**: 既存どおり API が **JPEG** を生成し、`/api/signage/current-image` で配信（Pi3 等のクライアントは変更なし）
 - **データ源**: `OrderPlacementBranchState`（現在棚）。`csvDashboardRowId` があれば `CsvDashboardRow.rowData`、なければ `scheduleSnapshot` の JSON から `FHINMEI` / `FHINCD` / `FSEIBAN` / `ProductNo` を参照
 - **棚ゾーン**: `西-北-02` 形式（3 セグメント）のみ集約。それ以外の `shelfCodeRaw` は **スキップ**
+- **ゾーン色（9 枠）**: 黄 `#F59E0B` / 紫 `#7C3AED` / 赤 `#DC2626` / 緑 `#16A34A` / グレー `#6B7280` / 茶 `#78350F` / オレンジ `#EA580C` / 青 `#2563EB` / ピンク `#EC4899`（`parts-shelf-svg.ts` の `ZONE_FILL` と [静的プレビュー](../design-previews/pi3-signage-android-parts-shelf-preview.html) の `:root` で一致）
 
 ## 設定（管理コンソール）
 
