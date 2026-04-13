@@ -176,7 +176,8 @@ export function SignageDisplayPage() {
   const isKioskJpegFullSignage =
     content?.contentType === 'TOOLS' &&
     (fullLayoutSlot?.kind === 'kiosk_progress_overview' ||
-      fullLayoutSlot?.kind === 'kiosk_leader_order_cards');
+      fullLayoutSlot?.kind === 'kiosk_leader_order_cards' ||
+      fullLayoutSlot?.kind === 'mobile_placement_parts_shelf_grid');
 
   useEffect(() => {
     if (!isKioskJpegFullSignage) {
@@ -287,6 +288,18 @@ export function SignageDisplayPage() {
                 )}
               </div>
             </div>
+          </div>
+        );
+      }
+
+      if (slot?.kind === 'mobile_placement_parts_shelf_grid') {
+        return (
+          <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
+            <img
+              src={getSignageCurrentImageUrl(kioskProgressImageTick)}
+              alt="配膳 Android 部品棚 9枠"
+              className="h-full w-full object-contain"
+            />
           </div>
         );
       }

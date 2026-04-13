@@ -98,6 +98,7 @@ export function SignageSchedulesPage() {
     | 'visualization'
     | 'kiosk_progress_overview'
     | 'kiosk_leader_order_cards'
+    | 'mobile_placement_parts_shelf_grid'
   >('loans'); // 全体スロットの種類
   const [fullPdfId, setFullPdfId] = useState<string | null>(null); // 全体スロットのPDF（kind='pdf'の場合）
   const [fullCsvDashboardId, setFullCsvDashboardId] = useState<string | null>(null); // 全体スロットのCSVダッシュボード（kind='csv_dashboard'の場合）
@@ -109,6 +110,7 @@ export function SignageSchedulesPage() {
   const [fullLeaderOrderResourceCdsText, setFullLeaderOrderResourceCdsText] = useState('');
   const [fullLeaderOrderSlideIntervalStr, setFullLeaderOrderSlideIntervalStr] = useState('');
   const [fullLeaderOrderCardsPerPageStr, setFullLeaderOrderCardsPerPageStr] = useState('');
+  const [fullPartsShelfMaxItemsStr, setFullPartsShelfMaxItemsStr] = useState('');
 
   const handleCreate = () => {
     setIsCreating(true);
@@ -133,6 +135,7 @@ export function SignageSchedulesPage() {
     setFullLeaderOrderResourceCdsText('');
     setFullLeaderOrderSlideIntervalStr('');
     setFullLeaderOrderCardsPerPageStr('');
+    setFullPartsShelfMaxItemsStr('');
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -171,6 +174,7 @@ export function SignageSchedulesPage() {
             setFullLeaderOrderResourceCdsText('');
             setFullLeaderOrderSlideIntervalStr('');
             setFullLeaderOrderCardsPerPageStr('');
+            setFullPartsShelfMaxItemsStr('');
           } else if (slot.kind === 'csv_dashboard') {
             setFullSlotKind('csv_dashboard');
             setFullCsvDashboardId('csvDashboardId' in slot.config ? slot.config.csvDashboardId ?? null : null);
@@ -183,6 +187,7 @@ export function SignageSchedulesPage() {
             setFullLeaderOrderResourceCdsText('');
             setFullLeaderOrderSlideIntervalStr('');
             setFullLeaderOrderCardsPerPageStr('');
+            setFullPartsShelfMaxItemsStr('');
           } else if (slot.kind === 'visualization') {
             setFullSlotKind('visualization');
             setFullVisualizationDashboardId(
@@ -197,6 +202,7 @@ export function SignageSchedulesPage() {
             setFullLeaderOrderResourceCdsText('');
             setFullLeaderOrderSlideIntervalStr('');
             setFullLeaderOrderCardsPerPageStr('');
+            setFullPartsShelfMaxItemsStr('');
           } else if (slot.kind === 'kiosk_progress_overview') {
             setFullSlotKind('kiosk_progress_overview');
             setFullKioskDeviceScopeKey(
@@ -219,6 +225,7 @@ export function SignageSchedulesPage() {
             setFullLeaderOrderResourceCdsText('');
             setFullLeaderOrderSlideIntervalStr('');
             setFullLeaderOrderCardsPerPageStr('');
+            setFullPartsShelfMaxItemsStr('');
           } else if (slot.kind === 'kiosk_leader_order_cards') {
             setFullSlotKind('kiosk_leader_order_cards');
             setFullLeaderOrderDeviceScopeKey(
@@ -245,6 +252,24 @@ export function SignageSchedulesPage() {
             setFullKioskDeviceScopeKey('');
             setFullKioskSlideIntervalStr('');
             setFullKioskSeibanPerPageStr('');
+            setFullPartsShelfMaxItemsStr('');
+          } else if (slot.kind === 'mobile_placement_parts_shelf_grid') {
+            setFullSlotKind('mobile_placement_parts_shelf_grid');
+            setFullPartsShelfMaxItemsStr(
+              'maxItemsPerZone' in slot.config && slot.config.maxItemsPerZone != null
+                ? String(slot.config.maxItemsPerZone)
+                : ''
+            );
+            setFullPdfId(null);
+            setFullCsvDashboardId(null);
+            setFullVisualizationDashboardId(null);
+            setFullKioskDeviceScopeKey('');
+            setFullKioskSlideIntervalStr('');
+            setFullKioskSeibanPerPageStr('');
+            setFullLeaderOrderDeviceScopeKey('');
+            setFullLeaderOrderResourceCdsText('');
+            setFullLeaderOrderSlideIntervalStr('');
+            setFullLeaderOrderCardsPerPageStr('');
           } else {
             setFullSlotKind('loans');
             setFullPdfId(null);
@@ -257,6 +282,7 @@ export function SignageSchedulesPage() {
             setFullLeaderOrderResourceCdsText('');
             setFullLeaderOrderSlideIntervalStr('');
             setFullLeaderOrderCardsPerPageStr('');
+            setFullPartsShelfMaxItemsStr('');
           }
         }
       } else {
@@ -267,6 +293,7 @@ export function SignageSchedulesPage() {
         setFullLeaderOrderResourceCdsText('');
         setFullLeaderOrderSlideIntervalStr('');
         setFullLeaderOrderCardsPerPageStr('');
+        setFullPartsShelfMaxItemsStr('');
         const leftSlot = config.slots.find((s) => s.position === 'LEFT');
         const rightSlot = config.slots.find((s) => s.position === 'RIGHT');
         if (leftSlot) {
@@ -458,6 +485,24 @@ export function SignageSchedulesPage() {
             },
           ],
         };
+      } else if (fullSlotKind === 'mobile_placement_parts_shelf_grid') {
+        const mpConfig: SignageSlotConfig = {};
+        if (fullPartsShelfMaxItemsStr.trim() !== '') {
+          const n = Number(fullPartsShelfMaxItemsStr);
+          if (Number.isFinite(n) && n >= 1) {
+            mpConfig.maxItemsPerZone = Math.min(200, Math.floor(n));
+          }
+        }
+        return {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'mobile_placement_parts_shelf_grid',
+              config: mpConfig,
+            },
+          ],
+        };
       } else {
         return {
           layout: 'FULL',
@@ -635,6 +680,7 @@ export function SignageSchedulesPage() {
       setFullLeaderOrderResourceCdsText('');
       setFullLeaderOrderSlideIntervalStr('');
       setFullLeaderOrderCardsPerPageStr('');
+      setFullPartsShelfMaxItemsStr('');
       setFormData({
         name: '',
         contentType: 'TOOLS',
@@ -676,6 +722,7 @@ export function SignageSchedulesPage() {
     setFullLeaderOrderResourceCdsText('');
     setFullLeaderOrderSlideIntervalStr('');
     setFullLeaderOrderCardsPerPageStr('');
+    setFullPartsShelfMaxItemsStr('');
     setFormData({
       name: '',
       contentType: 'TOOLS',
@@ -791,6 +838,7 @@ export function SignageSchedulesPage() {
                               | 'visualization'
                               | 'kiosk_progress_overview'
                               | 'kiosk_leader_order_cards'
+                              | 'mobile_placement_parts_shelf_grid'
                           );
                           if (e.target.value === 'loans') {
                             setFullPdfId(null);
@@ -803,6 +851,7 @@ export function SignageSchedulesPage() {
                             setFullLeaderOrderResourceCdsText('');
                             setFullLeaderOrderSlideIntervalStr('');
                             setFullLeaderOrderCardsPerPageStr('');
+                            setFullPartsShelfMaxItemsStr('');
                           } else if (e.target.value === 'pdf') {
                             setFullCsvDashboardId(null);
                             setFullVisualizationDashboardId(null);
@@ -813,6 +862,7 @@ export function SignageSchedulesPage() {
                             setFullLeaderOrderResourceCdsText('');
                             setFullLeaderOrderSlideIntervalStr('');
                             setFullLeaderOrderCardsPerPageStr('');
+                            setFullPartsShelfMaxItemsStr('');
                           } else if (e.target.value === 'csv_dashboard') {
                             setFullPdfId(null);
                             setFullVisualizationDashboardId(null);
@@ -823,6 +873,7 @@ export function SignageSchedulesPage() {
                             setFullLeaderOrderResourceCdsText('');
                             setFullLeaderOrderSlideIntervalStr('');
                             setFullLeaderOrderCardsPerPageStr('');
+                            setFullPartsShelfMaxItemsStr('');
                           } else if (e.target.value === 'visualization') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
@@ -833,6 +884,7 @@ export function SignageSchedulesPage() {
                             setFullLeaderOrderResourceCdsText('');
                             setFullLeaderOrderSlideIntervalStr('');
                             setFullLeaderOrderCardsPerPageStr('');
+                            setFullPartsShelfMaxItemsStr('');
                           } else if (e.target.value === 'kiosk_progress_overview') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
@@ -841,6 +893,7 @@ export function SignageSchedulesPage() {
                             setFullLeaderOrderResourceCdsText('');
                             setFullLeaderOrderSlideIntervalStr('');
                             setFullLeaderOrderCardsPerPageStr('');
+                            setFullPartsShelfMaxItemsStr('');
                           } else if (e.target.value === 'kiosk_leader_order_cards') {
                             setFullPdfId(null);
                             setFullCsvDashboardId(null);
@@ -848,6 +901,18 @@ export function SignageSchedulesPage() {
                             setFullKioskDeviceScopeKey('');
                             setFullKioskSlideIntervalStr('');
                             setFullKioskSeibanPerPageStr('');
+                            setFullPartsShelfMaxItemsStr('');
+                          } else if (e.target.value === 'mobile_placement_parts_shelf_grid') {
+                            setFullPdfId(null);
+                            setFullCsvDashboardId(null);
+                            setFullVisualizationDashboardId(null);
+                            setFullKioskDeviceScopeKey('');
+                            setFullKioskSlideIntervalStr('');
+                            setFullKioskSeibanPerPageStr('');
+                            setFullLeaderOrderDeviceScopeKey('');
+                            setFullLeaderOrderResourceCdsText('');
+                            setFullLeaderOrderSlideIntervalStr('');
+                            setFullLeaderOrderCardsPerPageStr('');
                           }
                         }}
                         className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
@@ -858,6 +923,7 @@ export function SignageSchedulesPage() {
                         <option value="visualization">可視化</option>
                         <option value="kiosk_progress_overview">キオスク進捗一覧（JPEG）</option>
                         <option value="kiosk_leader_order_cards">キオスク順位ボード・資源CDカード（JPEG）</option>
+                        <option value="mobile_placement_parts_shelf_grid">配膳 Android 部品棚 9枠（JPEG）</option>
                       </select>
                     </div>
                     {fullSlotKind === 'pdf' && (
@@ -1008,6 +1074,26 @@ export function SignageSchedulesPage() {
                             value={fullLeaderOrderCardsPerPageStr}
                             onChange={(e) => setFullLeaderOrderCardsPerPageStr(e.target.value)}
                             placeholder="8"
+                            className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {fullSlotKind === 'mobile_placement_parts_shelf_grid' && (
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-600">
+                          配膳の現在棚（OrderPlacementBranchState）を 9 ゾーンに集約して表示します。棚コードは「西-北-02」形式のみ対象です。超過分は省略表示されます。
+                        </p>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700">
+                            ゾーンあたりの最大表示行数（任意・空欄で既定12・最大200）
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fullPartsShelfMaxItemsStr}
+                            onChange={(e) => setFullPartsShelfMaxItemsStr(e.target.value)}
+                            placeholder="12"
                             className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
                           />
                         </div>

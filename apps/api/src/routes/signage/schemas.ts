@@ -41,27 +41,50 @@ const kioskLeaderOrderCardsSlotConfigSchema = z
   })
   .strict();
 
-const slotConfigSchema = z.union([
-  pdfSlotConfigSchema,
-  loansSlotConfigSchema,
-  csvDashboardSlotConfigSchema,
-  visualizationSlotConfigSchema,
-  kioskProgressOverviewSlotConfigSchema,
-  kioskLeaderOrderCardsSlotConfigSchema,
-]);
+const mobilePlacementPartsShelfGridSlotConfigSchema = z
+  .object({
+    maxItemsPerZone: z.number().int().min(1).max(200).optional(),
+  })
+  .strict();
 
-const slotSchema = z.object({
-  position: z.enum(['FULL', 'LEFT', 'RIGHT']),
-  kind: z.enum([
-    'pdf',
-    'loans',
-    'csv_dashboard',
-    'visualization',
-    'kiosk_progress_overview',
-    'kiosk_leader_order_cards',
-  ]),
-  config: slotConfigSchema,
-});
+/** kind と config を一致させる（`{}` が loans に誤マッチしないよう discriminated union） */
+const slotSchema = z.discriminatedUnion('kind', [
+  z.object({
+    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    kind: z.literal('pdf'),
+    config: pdfSlotConfigSchema,
+  }),
+  z.object({
+    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    kind: z.literal('loans'),
+    config: loansSlotConfigSchema,
+  }),
+  z.object({
+    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    kind: z.literal('csv_dashboard'),
+    config: csvDashboardSlotConfigSchema,
+  }),
+  z.object({
+    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    kind: z.literal('visualization'),
+    config: visualizationSlotConfigSchema,
+  }),
+  z.object({
+    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    kind: z.literal('kiosk_progress_overview'),
+    config: kioskProgressOverviewSlotConfigSchema,
+  }),
+  z.object({
+    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    kind: z.literal('kiosk_leader_order_cards'),
+    config: kioskLeaderOrderCardsSlotConfigSchema,
+  }),
+  z.object({
+    position: z.enum(['FULL', 'LEFT', 'RIGHT']),
+    kind: z.literal('mobile_placement_parts_shelf_grid'),
+    config: mobilePlacementPartsShelfGridSlotConfigSchema,
+  }),
+]);
 
 const layoutConfigSchema = z.object({
   layout: z.enum(['FULL', 'SPLIT']),

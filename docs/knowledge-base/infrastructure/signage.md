@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - サイネージ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-04-08
+last-verified: 2026-04-13
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 28件  
+**件数**: 29件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
@@ -24,7 +24,42 @@ update-frequency: medium
 
 **Android 軽量ページ（2026-04-07・ブランチ `feat/android-signage-lite-page`）**: Web の **`/signage-lite`**（`clientKey` クエリ／`localStorage`・`GET /api/signage/current-image` の **`key=`** 整合・未設定時は案内表示）。**本番は Pi5 のみ**で可（`web` バンドル正本）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`RASPI_SERVER_HOST`・**`--limit raspberrypi5`**・**`--detach --follow`**（対象が Pi5 のみのため **1 台・1 回**）。**Detach Run ID**: `20260407-174723-18058`（**`PLAY RECAP failed=0`**・Pi4/Pi3 は `no hosts matched`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 53s・Mac / Tailscale）。**TS**: `clientKey` 未設定で **誤デフォルト画像**へ寄せない（`allowDefaultFallback: false`）。Pi3 は本変更の必須デプロイ対象外（専用手順は従来どおり・リソース僅少）。セットアップは [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite)。**実機（2026-04-08）**: 未登録 `apiKey` では `current-image` が **401** → **`heartbeat` 登録後に 200**。`/signage-lite` のみ不調時は **Chrome のサイトデータ／キャッシュ削除**で復旧した例あり → [KB-337](#kb-337-android-signage-lite-401-chrome)。
 
+**配膳 Android 部品棚 9 枠（2026-04-13・ブランチ `feat/pi3-android-parts-signage`）**: FULL スロット **`mobile_placement_parts_shelf_grid`**（`OrderPlacementBranchState` を 3×3 ゾーンに集約・**SVG→JPEG**・任意 **`maxItemsPerZone`**）。**本番**: API/Web 正本は **Pi5**、表示の `/signage` 用 Web 更新と **`signage-lite-update`** 経路を取り込むなら **Pi3 も順次**（[KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型の **Pi3 専用プレフライト**）。**デプロイ**: [deployment.md](../../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` の **成功後**に `./scripts/update-all-clients.sh … --limit "raspberrypi3" --detach --follow`（**1 台ずつ・同一ホストへ並列起動しない**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-190750-1020`（`raspberrypi5`）→ `20260413-192539-10430`（`raspberrypi3`）、各 **`PLAY RECAP failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **54s**・Mac / Tailscale）。**ナレッジ**: [KB-341](#kb-341-mobile-placement-parts-shelf-grid-deploy)・[signage-mobile-placement-parts-shelf-grid.md](../../guides/signage-mobile-placement-parts-shelf-grid.md)。
+
 ---
+
+<a id="kb-341-mobile-placement-parts-shelf-grid-deploy"></a>
+
+### [KB-341] 配膳 Android 部品棚 9 枠（`mobile_placement_parts_shelf_grid`）本番デプロイ・実機検証
+
+**実施日**: 2026-04-13（本番・第2工場・Tailscale）
+
+**概要（仕様）**:
+- サイネージ FULL スロット種別 **`mobile_placement_parts_shelf_grid`**。配膳の現在棚（**`OrderPlacementBranchState`**）を **`parseStructuredShelfCode` 相当（`西-北-02` 形式）**で 3×3 に振り分け、**製番（先頭5）・品名・機種表示キー（最大10）**を **SVG→JPEG** で `GET /api/signage/current-image` へ。ゾーンあたり行数は **`maxItemsPerZone`（任意・1〜200・省略時サーバ既定）**で cap、超過はヘッダに **`+N省略`**。
+- **契約**: `apps/api/src/services/signage/signage-layout.types.ts`、`apps/api/src/routes/signage/schemas.ts`（**`kind` ごとの `discriminatedUnion`** で空 `{}` が loans に誤マッチしない）。集約・描画: `apps/api/src/services/signage/mobile-placement-parts-shelf/`。
+- **Web**: `/admin/signage/schedules` で種別選択・管理；`/signage` の FULL 分岐で **5 秒周期の `current-image` 更新**（`SignageDisplayPage`）。
+
+**デプロイ（本番）**:
+- [deployment.md](../../guides/deployment.md) に従い、**`raspberrypi5`（server）成功後**に **`raspberrypi3`（signage）を単独**（Pi3 はメモリ僅少のため **常に単独・順序厳守**）。
+- `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+- `./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow`
+- `./scripts/update-all-clients.sh feat/pi3-android-parts-signage infrastructure/ansible/inventory.yml --limit "raspberrypi3" --detach --follow`
+
+**Detach Run ID**（Pi5 ホスト上ログ接頭辞 `ansible-update-`）:
+- `20260413-190750-1020`（`raspberrypi5`・**`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **exit `0`**）
+- `20260413-192539-10430`（`raspberrypi3`・同上）
+
+**実機検証（自動）**:
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 54s・Mac / Tailscale）。**内訳**: `GET /api/signage/current-image`（Pi3 **`x-client-key`**）ほか既存ゲート。
+
+**知見・トラブルシューティング**:
+- **Pi3**: プレフライトで **lightdm / signage を停止**するため、ヘルス収集時点で **`signage-lite` が一時 `activating (auto-restart)` / `exit-code`** になり得る。Playbook 後段の **lightdm 復旧・サービス再開**後に **`signage-lite.service is active`** で完走するのは [KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型。post_tasks で **`unreachable=1`** が出る場合の切り分けは [deployment.md](../../guides/deployment.md)・[KB-086](#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題) 参照。
+- **JPEG が更新されない**: 正本は **Pi5 API の `SignageRenderer`**。スケジュール保存のみでは **コンテナ内レンダラ**が古い場合は `POST /api/signage/render` 経路と **`SIGNAGE_RENDER_DIR`** を確認（既存サイネージと同様）。
+- **静的プレビュー HTML**（`docs/design-previews/pi3-signage-android-parts-shelf-preview.html`）はレイアウト目安のみで **本番 JPEG と同一ロジックではない**。
+
+**関連ドキュメント**: [signage-mobile-placement-parts-shelf-grid.md](../../guides/signage-mobile-placement-parts-shelf-grid.md)・[INDEX.md](../../INDEX.md)（当該行）
+
+**解決状況**: ✅ **本番デプロイ・Phase12 実機検証（自動）完了**（2026-04-13）
 
 <a id="kb-337-android-signage-lite-401-chrome"></a>
 

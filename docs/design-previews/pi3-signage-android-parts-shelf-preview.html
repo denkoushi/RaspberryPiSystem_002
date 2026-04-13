@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pi3 サイネージ — Android配膳部品 棚位置（9枠）</title>
+  <style>
+    :root {
+      --bg: #333;
+      --nw: #e8a33e; /* 北・西 黄 */
+      --n:  #7b42e8; /* 北・中央 紫 */
+      --ne: #c93e37; /* 北・東 赤 */
+      --w:  #4ea357; /* 中央・西 緑 */
+      --c:  #6e7480; /* 中央・中央 グレー */
+      --e:  #733d1e; /* 中央・東 茶 */
+      --sw: #d9692d; /* 南・西 オレンジ */
+      --s:  #3e6ee8; /* 南・中央 青 */
+      --se: #d9599b; /* 南・東 ピンク */
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg);
+      font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+      color: #fff;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 6px;
+      padding: 6px;
+      height: 100vh;
+      height: 100dvh;
+    }
+
+    .zone {
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .zone[data-z="nw"] { background: var(--nw); }
+    .zone[data-z="n"]  { background: var(--n); }
+    .zone[data-z="ne"] { background: var(--ne); }
+    .zone[data-z="w"]  { background: var(--w); }
+    .zone[data-z="c"]  { background: var(--c); }
+    .zone[data-z="e"]  { background: var(--e); }
+    .zone[data-z="sw"] { background: var(--sw); }
+    .zone[data-z="s"]  { background: var(--s); }
+    .zone[data-z="se"] { background: var(--se); }
+
+    /* ── ゾーンヘッダ（方位＋件数） ── */
+    .zone-head {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0.6rem 0.3rem;
+      background: rgba(0, 0, 0, 0.18);
+    }
+    .zone-title {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4em;
+    }
+    .zone-dir {
+      font-size: clamp(0.65rem, 1.5vw, 0.95rem);
+      font-weight: 800;
+      opacity: 0.92;
+      letter-spacing: 0.02em;
+    }
+    .zone-count {
+      font-size: clamp(0.55rem, 1.2vw, 0.72rem);
+      font-weight: 700;
+      opacity: 0.7;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── アイテムリスト ── */
+    .zone-items {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0.15rem 0.35rem 0.25rem;
+    }
+    .zone-items::-webkit-scrollbar { width: 3px; }
+    .zone-items::-webkit-scrollbar-track { background: transparent; }
+    .zone-items::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.3);
+      border-radius: 3px;
+    }
+
+    /* 左→右: 製番 / 品名 / 機種名（機種は文字数がばらつく想定で右列に収める） */
+    .row {
+      display: grid;
+      grid-template-columns: minmax(4.8ch, 5.5ch) minmax(0, 1fr) minmax(7ch, 1.1fr);
+      gap: 0.35em 0.45em;
+      align-items: baseline;
+      padding: 0.2rem 0.25rem;
+      font-size: clamp(0.52rem, 1.3vw, 0.72rem);
+      line-height: 1.3;
+    }
+
+    .r-serial {
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-weight: 700;
+      font-size: 0.92em;
+      color: rgba(255, 255, 255, 0.72);
+      letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+      text-align: left;
+    }
+    .r-part {
+      min-width: 0;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.92);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .r-model {
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-weight: 900;
+      font-size: 1.02em;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+      text-align: right;
+      word-break: break-all;
+      line-height: 1.2;
+    }
+  </style>
+</head>
+<body>
+  <div class="grid" id="grid"></div>
+
+  <script>
+    /** 機種名: 先頭10文字（日本語・記号はコードポイント単位で切り詰め） */
+    function modelHead10(s) {
+      const str = String(s);
+      return [...str].slice(0, 10).join("");
+    }
+
+    const ZONES = [
+      {
+        z: "nw", dir: "北・西",
+        items: [
+          { m: "SMG998B",      p: "液晶パネル ASSY",          s: "20241" },
+          { m: "SMG998B2",     p: "タッチセンサー フィルム",    s: "20242" },
+          { m: "SO51GA01",     p: "フロントパネル ブラケット",  s: "30102" },
+          { m: "SC42A2020",    p: "ディスプレイ FPC 左",       s: "41001" },
+          { m: "SC42A2021",    p: "ディスプレイ FPC 右",       s: "41002" },
+          { m: "KYV46U1",      p: "防水シート 内側",           s: "55001" },
+          { m: "AQUOSR5GN",    p: "ガラス 両面テープ",         s: "66090" },
+          { m: "PIXEL7PRO",    p: "開口部 ゴムパッキン",       s: "77011" },
+          { m: "F01L2000",     p: "ビス M1.4 セット",          s: "88001" },
+          { m: "RMX3311A",     p: "スペーサー 0.2mm",          s: "99022" },
+          { m: "MOTOROLAEDGE", p: "テープ 導電性 細",          s: "10103" },
+          { m: "SO51G99",      p: "保護シート 出荷用",         s: "30199" },
+        ],
+      },
+      {
+        z: "n", dir: "北・中央",
+        items: [
+          { m: "SO51GBAT",     p: "バッテリーパック",           s: "01987" },
+          { m: "SO51GFPC",     p: "バッテリー FPC",             s: "01988" },
+          { m: "SMG998WLC",    p: "ワイヤレス充電コイル",       s: "20250" },
+          { m: "PIXEL8TEMP",   p: "温度センサー 粘着",         s: "24002" },
+          { m: "SCG842NFC",    p: "NFC アンテナ 小型",         s: "45010" },
+          { m: "AQUOSR8INS",   p: "絶縁シート 電池周り",       s: "88100" },
+          { m: "KYV4747TAPE",  p: "両面テープ 厚手",           s: "55112" },
+          { m: "F52ABATT",     p: "コネクタ バッテリー側",     s: "88020" },
+          { m: "RMX220SPG",    p: "スポンジ 緩衝",             s: "99101" },
+          { m: "MOTORAZLAB",   p: "ラベル 危険表示",           s: "10200" },
+          { m: "SO51GDUM",     p: "梱包用 ダミー端子",         s: "30155" },
+        ],
+      },
+      {
+        z: "ne", dir: "北・東",
+        items: [
+          { m: "SCG842CAM",    p: "リアカメラ モジュール",     s: "45001" },
+          { m: "SCG842SUB",    p: "サブカメラ 固定金具",       s: "45002" },
+          { m: "PIXEL8FLASH",  p: "フラッシュ LED 基板",       s: "24010" },
+          { m: "SMG998OIS",    p: "OIS ユニット 予備",         s: "20260" },
+          { m: "AQUOSR8LENS",  p: "レンズ カバー ガラス",       s: "66100" },
+          { m: "SO51GCFPC",    p: "カメラ FPC 中継",           s: "30200" },
+          { m: "KYV46SHIM",    p: "シム レンズ 固定",          s: "55200" },
+          { m: "F52ATORQ",     p: "ビス トルク限定",           s: "88030" },
+          { m: "RMX220BLK",    p: "遮光シート 円形",           s: "99200" },
+          { m: "MOTORAQR01",   p: "QR 検査ラベル",             s: "10300" },
+          { m: "SCG842BRU",    p: "ダスト除去 ブラシ",         s: "45099" },
+          { m: "PIXEL8CALB",   p: "キャリブ用 シート",         s: "24099" },
+        ],
+      },
+      {
+        z: "w", dir: "中央・西",
+        items: [
+          { m: "AQUOSR8SUBF",  p: "サブ基板 FPC",               s: "88123" },
+          { m: "AQUOSR8EAR",   p: "イヤホン孔 リテーナ",       s: "88124" },
+          { m: "SMG998SIDE",   p: "側面キー シリコン",         s: "20270" },
+          { m: "SO51GVOL",     p: "ボリューム 可変抵抗",       s: "30210" },
+          { m: "SCG842MIC2",   p: "マイク デュアル MEMS",       s: "45100" },
+          { m: "PIXEL8SIMB",   p: "SIM トレイ 青",             s: "24100" },
+          { m: "KYV46SIMG",    p: "SIM トレイ 灰",             s: "55300" },
+          { m: "F52AUSBCPL",   p: "防水プラグ USB-C",           s: "88040" },
+          { m: "RMX220SPKM",   p: "スピーカー メッシュ",       s: "99300" },
+          { m: "MOTORALBLCK",  p: "ラベル 検査済",             s: "10400" },
+          { m: "AQUOSR8COP",   p: "テープ 導電 幅広",          s: "88130" },
+        ],
+      },
+      {
+        z: "c", dir: "中央・中央",
+        items: [
+          { m: "PIXEL8MAIN",   p: "メイン基板",                 s: "24001" },
+          { m: "PIXEL8SHLDU",  p: "メインシールド 上",         s: "24002" },
+          { m: "PIXEL8SHLDD",  p: "メインシールド 下",         s: "24003" },
+          { m: "SMG998SOC",    p: "SoC シールド",               s: "20280" },
+          { m: "SCG842PWR",    p: "電源IC 周辺 コンデンサ",     s: "45110" },
+          { m: "SO51GTORX",    p: "基板 固定トルクス",         s: "30220" },
+          { m: "AQUOSR8EMI",   p: "EMI ガスケット",             s: "88140" },
+          { m: "KYV46HEATCU",  p: "放熱シート 銅箔",           s: "55400" },
+          { m: "F52ABTBCON",   p: "コネクタ BTB メス",         s: "88050" },
+          { m: "RMX220INSUL",  p: "絶縁シート 汎用",           s: "99400" },
+          { m: "MOTORASHORT",  p: "検査用 ショートキャップ",   s: "10500" },
+          { m: "PIXEL8FLUX",   p: "リワーク用 フラックス",     s: "24088" },
+        ],
+      },
+      {
+        z: "e", dir: "中央・東",
+        items: [
+          { m: "F52ASPUNIT",   p: "スピーカー ユニット",       s: "77300" },
+          { m: "F52ASPBOXL",   p: "スピーカー 筐体 左",         s: "77301" },
+          { m: "F52ASPBOXR",   p: "スピーカー 筐体 右",         s: "77302" },
+          { m: "SMG998RECV",   p: "受話スピーカー 薄型",       s: "20290" },
+          { m: "SO51GACUBE",   p: "音響チューブ 曲",           s: "30230" },
+          { m: "SCG842VIBM",   p: "振動モーター 縦型",         s: "45120" },
+          { m: "PIXEL8SPGLD",  p: "スピーカー グリル 金",       s: "24110" },
+          { m: "AQUOSR8MESH",  p: "防水メッシュ 極小孔",       s: "88150" },
+          { m: "KYV46ABSORB",  p: "吸音材 薄型",               s: "55500" },
+          { m: "RMX220SNDT",   p: "テープ 固定 音響",          s: "99500" },
+          { m: "MOTORASPLUG",  p: "音圧検査 治具",             s: "10600" },
+        ],
+      },
+      {
+        z: "sw", dir: "南・西",
+        items: [
+          { m: "KYV46USBC",    p: "コネクタ USB-C",             s: "11209" },
+          { m: "KYV46USBSH",   p: "USB-C シールド カバー",     s: "11210" },
+          { m: "SMG998BUCK",   p: "充電IC 周辺 インダクタ",     s: "20300" },
+          { m: "SO51GPDCTL",   p: "PD コントローラ 副基板",     s: "30240" },
+          { m: "SCG842REGS",   p: "レギュレータ 小型",         s: "45130" },
+          { m: "PIXEL8WLCIR",  p: "ワイヤレス充電 リング",     s: "24120" },
+          { m: "AQUOSR8TAPEY", p: "絶縁テープ 黄",             s: "88160" },
+          { m: "F52ATPOINT",   p: "テストポイント カバー",     s: "88060" },
+          { m: "RMX220FUSE",   p: "ヒューズ 表面実装",         s: "99600" },
+          { m: "MOTORARATE",   p: "ラベル 定格",               s: "10700" },
+          { m: "KYV46USBSU",   p: "コネクタ 汎用 予備",         s: "11299" },
+        ],
+      },
+      {
+        z: "s", dir: "南・中央",
+        items: [
+          { m: "MOTORANFC01",  p: "アンテナ NFC",               s: "55678" },
+          { m: "MOTORANLTE2",  p: "アンテナ サブ LTE",         s: "55679" },
+          { m: "SMG998MMW",    p: "ミリ波 モジュール 予備",     s: "20310" },
+          { m: "SO51GCOAX",    p: "同軸ケーブル U.FL",         s: "30250" },
+          { m: "SCG842ANTB",   p: "アンテナ ブラケット",       s: "45140" },
+          { m: "PIXEL8CERAM",  p: "セラミック アンテナ",       s: "24130" },
+          { m: "AQUOSR8CFOIL", p: "銅箔 テープ 長尺",          s: "88170" },
+          { m: "KYV46GNDSP",   p: "グランド スプリング",       s: "55600" },
+          { m: "F52ANFBEAD",   p: "ノイズフィルタ ビーズ",     s: "88070" },
+          { m: "RMX220SHCASE", p: "シールド ケース 小",         s: "99700" },
+          { m: "MOTORADUMMY",  p: "検査用 ダミー負荷",         s: "10800" },
+          { m: "SMG998RADIO",  p: "ラベル 電波法",             s: "20320" },
+        ],
+      },
+      {
+        z: "se", dir: "南・東",
+        items: [
+          { m: "RMX220FRMID",  p: "フレーム ミドル",           s: "99012" },
+          { m: "RMX220FRBTN",  p: "フレーム ボタン孔",         s: "99013" },
+          { m: "SMG998RAILL",  p: "サイドレール 左",           s: "20330" },
+          { m: "SO51GRAILR",   p: "サイドレール 右",           s: "30260" },
+          { m: "SCG842CAMR",   p: "カメラ穴 リング",           s: "45150" },
+          { m: "PIXEL8ALBK",   p: "アルミ バックプレート",     s: "24140" },
+          { m: "AQUOSR8RIB",   p: "樹脂 補強リブ",             s: "88180" },
+          { m: "KYV46THOLE",   p: "ネジ穴 シール",             s: "55700" },
+          { m: "F52ABODYTP",   p: "テープ 固定 筐体",          s: "88080" },
+          { m: "MOTORAINSPC",  p: "外観検査 治具",             s: "10900" },
+          { m: "RMX220BAGPK",  p: "梱包用 袋",                 s: "99099" },
+        ],
+      },
+    ];
+
+    const grid = document.getElementById("grid");
+    for (const z of ZONES) {
+      const sec = document.createElement("section");
+      sec.className = "zone";
+      sec.dataset.z = z.z;
+
+      const head = document.createElement("div");
+      head.className = "zone-head";
+
+      const title = document.createElement("div");
+      title.className = "zone-title";
+      const dirEl = document.createElement("span");
+      dirEl.className = "zone-dir";
+      dirEl.textContent = z.dir;
+      title.appendChild(dirEl);
+
+      const cnt = document.createElement("span");
+      cnt.className = "zone-count";
+      cnt.textContent = z.items.length + " 件";
+
+      head.appendChild(title);
+      head.appendChild(cnt);
+
+      const list = document.createElement("div");
+      list.className = "zone-items";
+      for (const it of z.items) {
+        const row = document.createElement("div");
+        row.className = "row";
+        const rs = document.createElement("span");
+        rs.className = "r-serial";
+        rs.textContent = it.s;
+        const rp = document.createElement("span");
+        rp.className = "r-part";
+        rp.textContent = it.p;
+        const rm = document.createElement("span");
+        rm.className = "r-model";
+        const fullModel = String(it.m);
+        rm.textContent = modelHead10(fullModel);
+        if ([...fullModel].length > 10) rm.title = fullModel;
+        row.appendChild(rs);
+        row.appendChild(rp);
+        row.appendChild(rm);
+        list.appendChild(row);
+      }
+
+      sec.appendChild(head);
+      sec.appendChild(list);
+      grid.appendChild(sec);
+    }
+  </script>
+</body>
+</html>
