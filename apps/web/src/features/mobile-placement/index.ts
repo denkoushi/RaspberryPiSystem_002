@@ -5,7 +5,11 @@
 export { useMobilePlacementPageState } from './useMobilePlacementPageState';
 export { useRegisteredShelves } from './useRegisteredShelves';
 export type { RegisteredShelfEntryDto } from './registeredShelves';
-export type { MobilePlacementScanField, SlipColumnVariant } from './types';
+export type {
+  MobilePlacementRegisterSubmittingAction,
+  MobilePlacementScanField,
+  SlipColumnVariant
+} from './types';
 export { MP_PLACEHOLDER_ORDER, MP_PLACEHOLDER_PART } from './constants';
 export type { ShelfZoneCatalog, ShelfZoneDefinition, ShelfZoneId } from './shelfZones';
 export { DEFAULT_SHELF_ZONE_CATALOG, buildPrefixedShelfCodes, flattenShelfCodes } from './shelfZones';

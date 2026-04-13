@@ -19,8 +19,12 @@ import {
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
 
-import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
-import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
+import type { MobilePlacementShelfRegisterRouteState } from './shelfSelection';
+import type {
+  MobilePlacementRegisterSubmittingAction,
+  MobilePlacementScanField,
+  MobilePlacementSlipResult
+} from './types';
 
 /**
  * 配膳ページの状態と API 呼び出し（UI から分離してテスト・再利用しやすくする）
@@ -39,11 +43,11 @@ export function useMobilePlacementPageState() {
 
   const [shelfCode, setShelfCode] = useState('');
   const [orderBarcode, setOrderBarcode] = useState('');
-  const [registerSubmitting, setRegisterSubmitting] = useState(false);
+  const [registerSubmittingAction, setRegisterSubmittingAction] =
+    useState<MobilePlacementRegisterSubmittingAction>(null);
   const [registerMessage, setRegisterMessage] = useState<string | null>(null);
   const [registerError, setRegisterError] = useState<string | null>(null);
 
-  const [orderPlacementIntent, setOrderPlacementIntent] = useState<OrderPlacementPageIntent>('create_new_branch');
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
 
   const [scanField, setScanField] = useState<MobilePlacementScanField>(null);
@@ -167,36 +171,23 @@ export function useMobilePlacementPageState() {
     }
   }, [transferOrder, transferPart, actualOrder, actualFseiban, actualPart]);
 
-  const runRegister = useCallback(async () => {
+  const invalidatePlacementQueries = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'registered-shelves'] });
+    void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'order-placement-branches'] });
+  }, [queryClient]);
+
+  const runCreateNewPlacement = useCallback(async () => {
     setRegisterError(null);
     setRegisterMessage(null);
-    setRegisterSubmitting(true);
+    setRegisterSubmittingAction('create');
     try {
-      if (orderPlacementIntent === 'move_existing') {
-        if (selectedBranchId == null || selectedBranchId.length === 0) {
-          setRegisterError('移動する分配枝を一覧から選んでください');
-          return;
-        }
-        const res = await moveOrderPlacementBranch({
-          branchStateId: selectedBranchId,
-          shelfCodeRaw: shelfCode
-        });
-        setRegisterMessage(
-          `分配${res.branchState.branchNo}を ${res.branchState.shelfCodeRaw} へ移動しました`
-        );
-        setSelectedBranchId(null);
-      } else {
-        const res = await registerOrderPlacement({
-          shelfCodeRaw: shelfCode,
-          manufacturingOrderBarcodeRaw: orderBarcode
-        });
-        setRegisterMessage(
-          `分配${res.branchState.branchNo}を登録 ${res.event.id.slice(0, 8)}…`
-        );
-        setOrderBarcode('');
-      }
-      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'registered-shelves'] });
-      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'order-placement-branches'] });
+      const res = await registerOrderPlacement({
+        shelfCodeRaw: shelfCode,
+        manufacturingOrderBarcodeRaw: orderBarcode
+      });
+      setRegisterMessage(`分配${res.branchState.branchNo}を登録 ${res.event.id.slice(0, 8)}…`);
+      setOrderBarcode('');
+      invalidatePlacementQueries();
     } catch (e: unknown) {
       const msg = isAxiosError(e)
         ? typeof e.response?.data?.message === 'string'
@@ -207,16 +198,51 @@ export function useMobilePlacementPageState() {
           : '登録に失敗しました';
       setRegisterError(msg);
     } finally {
-      setRegisterSubmitting(false);
+      setRegisterSubmittingAction(null);
     }
-  }, [orderPlacementIntent, orderBarcode, queryClient, selectedBranchId, shelfCode]);
+  }, [invalidatePlacementQueries, orderBarcode, shelfCode]);
 
-  const registerDisabled =
+  const runMovePlacement = useCallback(async () => {
+    setRegisterError(null);
+    setRegisterMessage(null);
+    if (selectedBranchId == null || selectedBranchId.length === 0) {
+      setRegisterError('移動する分配枝を一覧から選んでください');
+      return;
+    }
+    setRegisterSubmittingAction('move');
+    try {
+      const res = await moveOrderPlacementBranch({
+        branchStateId: selectedBranchId,
+        shelfCodeRaw: shelfCode
+      });
+      setRegisterMessage(`分配${res.branchState.branchNo}を ${res.branchState.shelfCodeRaw} へ移動しました`);
+      setSelectedBranchId(null);
+      invalidatePlacementQueries();
+    } catch (e: unknown) {
+      const msg = isAxiosError(e)
+        ? typeof e.response?.data?.message === 'string'
+          ? e.response.data.message
+          : e.message
+        : e instanceof Error
+          ? e.message
+          : '棚移動に失敗しました';
+      setRegisterError(msg);
+    } finally {
+      setRegisterSubmittingAction(null);
+    }
+  }, [invalidatePlacementQueries, selectedBranchId, shelfCode]);
+
+  const registerSubmitting = registerSubmittingAction !== null;
+
+  const createNewDisabled =
+    registerSubmitting || shelfCode.trim().length === 0 || orderBarcode.trim().length === 0;
+
+  const moveDisabled =
     registerSubmitting ||
     shelfCode.trim().length === 0 ||
     orderBarcode.trim().length === 0 ||
-    (orderPlacementIntent === 'move_existing' &&
-      (selectedBranchId == null || selectedBranchId.length === 0));
+    selectedBranchId == null ||
+    selectedBranchId.length === 0;
 
   const selectShelf = useCallback((code: string) => {
     setShelfCode(code);
@@ -240,7 +266,6 @@ export function useMobilePlacementPageState() {
       slipResult,
       shelfCode,
       orderBarcode,
-      orderPlacementIntent,
       selectedBranchId
     }),
     [
@@ -252,7 +277,6 @@ export function useMobilePlacementPageState() {
       slipResult,
       shelfCode,
       orderBarcode,
-      orderPlacementIntent,
       selectedBranchId
     ]
   );
@@ -266,7 +290,6 @@ export function useMobilePlacementPageState() {
     setSlipResult(state.slipResult);
     setShelfCode(state.shelfCode);
     setOrderBarcode(state.orderBarcode);
-    setOrderPlacementIntent(state.orderPlacementIntent ?? 'create_new_branch');
     setSelectedBranchId(state.selectedBranchId ?? null);
     setRegisterMessage(null);
     setRegisterError(null);
@@ -295,14 +318,15 @@ export function useMobilePlacementPageState() {
     orderBarcode,
     setOrderBarcode,
     registerSubmitting,
+    registerSubmittingAction,
     registerMessage,
     registerError,
-    registerDisabled,
-    orderPlacementIntent,
-    setOrderPlacementIntent,
+    createNewDisabled,
+    moveDisabled,
     selectedBranchId,
     setSelectedBranchId,
-    runRegister,
+    runCreateNewPlacement,
+    runMovePlacement,
     scanField,
     setScanField,
     scanFormats,

@@ -75,4 +75,99 @@ describe('useMobilePlacementPageState', () => {
     expect(result.current.actualSlipOcrFeedback.manufacturingOrder10).toBe('0002178005');
     expect(result.current.actualSlipOcrFeedback.ocrPreview).toContain('8440002178005');
   });
+
+  it('棚・製造orderが無いときは新規登録・棚移動とも無効', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+
+    const { result } = renderHook(() => useMobilePlacementPageState(), { wrapper });
+
+    expect(result.current.createNewDisabled).toBe(true);
+    expect(result.current.moveDisabled).toBe(true);
+  });
+
+  it('runCreateNewPlacement が registerOrderPlacement を呼ぶ', async () => {
+    vi.mocked(registerOrderPlacement).mockResolvedValue({
+      event: {
+        id: 'evt-1',
+        clientDeviceId: 'dev-1',
+        shelfCodeRaw: '西-北-01',
+        manufacturingOrderBarcodeRaw: '0002178005',
+        csvDashboardRowId: 'row-1',
+        branchNo: 1,
+        actionType: 'CREATE_BRANCH',
+        placedAt: '2026-04-11T00:00:00.000Z'
+      },
+      branchState: { id: 'bs-1', branchNo: 1, shelfCodeRaw: '西-北-01' },
+      resolvedRowId: 'row-1'
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+
+    const { result } = renderHook(() => useMobilePlacementPageState(), { wrapper });
+
+    act(() => {
+      result.current.selectShelf('西-北-01');
+      result.current.setOrderBarcode('0002178005');
+    });
+
+    await act(async () => {
+      await result.current.runCreateNewPlacement();
+    });
+
+    expect(registerOrderPlacement).toHaveBeenCalledWith({
+      shelfCodeRaw: '西-北-01',
+      manufacturingOrderBarcodeRaw: '0002178005'
+    });
+  });
+
+  it('runMovePlacement が moveOrderPlacementBranch を呼ぶ', async () => {
+    vi.mocked(moveOrderPlacementBranch).mockResolvedValue({
+      event: {
+        id: 'evt-2',
+        clientDeviceId: 'dev-1',
+        shelfCodeRaw: '西-北-02',
+        manufacturingOrderBarcodeRaw: '0002178005',
+        csvDashboardRowId: 'row-1',
+        branchNo: 1,
+        actionType: 'MOVE_BRANCH',
+        placedAt: '2026-04-11T00:00:00.000Z'
+      },
+      branchState: {
+        id: 'bs-1',
+        branchNo: 1,
+        shelfCodeRaw: '西-北-02',
+        updatedAt: '2026-04-11T00:00:00.000Z'
+      }
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+
+    const { result } = renderHook(() => useMobilePlacementPageState(), { wrapper });
+
+    act(() => {
+      result.current.selectShelf('西-北-02');
+      result.current.setOrderBarcode('0002178005');
+    });
+    // orderBarcode 更新時に selectedBranchId がリセットされるため、製造order確定後に枝を選ぶ
+    act(() => {
+      result.current.setSelectedBranchId('bs-1');
+    });
+
+    expect(result.current.moveDisabled).toBe(false);
+
+    await act(async () => {
+      await result.current.runMovePlacement();
+    });
+
+    expect(moveOrderPlacementBranch).toHaveBeenCalledWith({
+      branchStateId: 'bs-1',
+      shelfCodeRaw: '西-北-02'
+    });
+  });
 });
