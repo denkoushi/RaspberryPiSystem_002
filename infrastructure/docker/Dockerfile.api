@@ -17,6 +17,9 @@ RUN corepack enable && pnpm install
 WORKDIR /app/packages/shared-types
 RUN pnpm build
 
+WORKDIR /app/packages/part-search-core
+RUN pnpm build
+
 WORKDIR /app/apps/api
 RUN pnpm prisma generate
 RUN pnpm run build
@@ -40,6 +43,7 @@ COPY --from=base /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=base /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=base /app/apps/api ./apps/api
 COPY --from=base /app/packages/shared-types ./packages/shared-types
+COPY --from=base /app/packages/part-search-core ./packages/part-search-core
 COPY --from=base /app/scripts ./scripts
 
 WORKDIR /app

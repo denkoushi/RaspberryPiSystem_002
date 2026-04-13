@@ -53,9 +53,11 @@ jobs:
             exit 1
           }
 
-      - name: Build shared-types
+      - name: Build shared packages
         run: |
           cd packages/shared-types
+          pnpm build
+          cd ../part-search-core
           pnpm build
 
       - name: Generate Prisma Client
@@ -601,11 +603,16 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
-      - name: Build shared-types (smoke)
+      - name: Build shared packages (smoke)
         run: |
           cd packages/shared-types
           pnpm build || {
             echo "Build shared-types (smoke) failed!"
+            exit 1
+          }
+          cd ../part-search-core
+          pnpm build || {
+            echo "Build part-search-core (smoke) failed!"
             exit 1
           }
 
@@ -649,11 +656,16 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Build shared-types
+      - name: Build shared packages
         run: |
           cd packages/shared-types
           pnpm build || {
             echo "Build shared-types failed!"
+            exit 1
+          }
+          cd ../part-search-core
+          pnpm build || {
+            echo "Build part-search-core failed!"
             exit 1
           }
 
