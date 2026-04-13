@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-12（**V16 部品名検索**追記）
+最終更新: 2026-04-13（**V18 トップ登録アクション分離（新規登録／棚移動）**追記）
 
 ## Context
 
@@ -168,6 +168,16 @@
 - **知見**: Pi5 初回は **Docker 再ビルド**（`part-search-core` 取り込み）で **約 14 分**程度かかる場合がある。**`failed=0` が最終判定**。
 - **トラブルシュート**: **CI で API が `@raspi-system/part-search-core` を解決できない** → `.github/workflows/ci.yml` で **`packages/part-search-core` を `pnpm build`**、Docker は **`COPY packages/part-search-core`** と **ビルドステージでのビルド順**を確認（本変更で対応済み）。
 
+### V18（2026-04-13・トップ登録アクション分離: 「新規登録」／「棚移動」・右端単一「登録」廃止）
+
+- **目的**: 分配の確定操作を **意図ごとに明示**し、単一の「登録」に依存しない。**新規分配枝の登録**と **既存枝の棚移動**を **別ボタン**で実行。`+` は **新規棚番の3段階登録**（`/shelf-register`）専用の説明に限定。
+- **Web（のみ）**: `useMobilePlacementPageState` に **`runCreateNewPlacement` / `runMovePlacement`**、**`createNewDisabled` / `moveDisabled`**、送信中 **`registerSubmittingAction: 'create' | 'move' | null`**。棚番登録ルート state から **`orderPlacementIntent`** を除去（`selectedBranchId` は維持）。型 **`MobilePlacementRegisterSubmittingAction`** は **`types.ts`** に集約（UI がフック実装詳細に依存しないよう整理）。
+- **API / DB**: **変更なし**（従来どおり `POST …/register-order-placement`・`PATCH …/order-placement-branches/:id/move`）。
+- **本番デプロイ（2026-04-13）**: ブランチ **`feat/mobile-placement-top-action-buttons`**・コミット **`91e485da`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-112046-12716` → `20260413-112510-648` → `20260413-112925-12155` → `20260413-113234-2579` → `20260413-113642-29855`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **29s**・Mac / Tailscale）。
+- **知見**: **Web のみ**のため Pi3 デプロイは不要。**実機（手動・推奨）**: `/kiosk/mobile-placement` で **新規登録**／**棚移動**の有効条件・送信中の二重送信抑止・棚番登録 `+` の導線を目視。
+- **トラブルシュート**: デプロイ拒否は **未 push / 未コミット**（[deployment.md](../guides/deployment.md)）。**同一 Pi5 へ `update-all-clients.sh` 並列起動禁止**（ロック）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
@@ -177,4 +187,5 @@
 - 実装（分配枝・V14）: `apps/api/src/services/mobile-placement/order-placement-branch.service.ts`・`apps/api/src/services/mobile-placement/mobile-placement-order-placement.service.ts`・マイグレーション `20260412120000_order_placement_branch_state`
 - 実装（部品名検索・V16）: `apps/api/src/services/mobile-placement/part-search/`（`part-search.service.ts`）＋共有 **`packages/part-search-core`**
 - 実装（部品検索最終・V17）: 同上 + `part-search-normalize.ts`（SQL 用 `escapeForIlike` のみ）・キオスク `part-search/*`（`partSearchPalettePruner.ts` 等）・**CI/Docker**（`part-search-core` ビルド）
+- 実装（トップ登録アクション分離・V18）: `apps/web/src/features/mobile-placement/useMobilePlacementPageState.ts`・`MobilePlacementRegisterSection.tsx`・`types.ts`（`MobilePlacementRegisterSubmittingAction`）・`shelfSelection/navigationState.ts`
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)
