@@ -576,7 +576,7 @@ curl http://localhost:7071/api/agent/status
    - サービスmask（`signage-lite.service`の自動再起動防止）
    - **lightdm停止**（デバイスタイプに応じて。Pi3/Pi Zero 2WではGUIを停止して約100MBのメモリを確保）（[KB-169](../knowledge-base/infrastructure/signage.md#kb-169-pi3デプロイ時のlightdm停止によるメモリ確保と自動再起動)参照）
    - 残存AnsiballZプロセスの掃除（120秒以上経過したもの）
-   - メモリ閾値チェック（デバイスタイプごとの設定値、デフォルト: >= 120MB）
+   - メモリ閾値チェック（`group_vars` / `device_type_defaults` の **`memory_required_mb`**。機種により異なり、Pi3 / Pi Zero 2W は **100MB** 等の設定あり。旧「>= 120MB」は汎用デフォルトの一例。詳細は [KB-341](../knowledge-base/infrastructure/signage.md#kb-341-mobile-placement-parts-shelf-grid-deploy) 追記）
 
 **デプロイ完了後の自動処理（post_tasks）**:
 - **GUI/サイネージ自動復旧**: lightdmを停止した場合、デプロイ完了後に`lightdm`と`signage-lite.service`を再開して復旧します（reboot不要）
@@ -594,8 +594,15 @@ curl http://localhost:7071/api/agent/status
   ```
 - 詳細は [KB-216](../knowledge-base/infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) を参照してください
 
+### 知見（2026-04-13）: Pi3 Ansible 安定化（`main`・resource-guard / lightdm・become）
+
+- **preflight と resource-guard**: `resource-guard` が **`memory_required_mb`** を参照するよう整理（[PR #131](https://github.com/denkoushi/RaspberryPiSystem_002/pull/131)）。Pi3 / Pi Zero 2W の閾値は **100MB**（[PR #132](https://github.com/denkoushi/RaspberryPiSystem_002/pull/132)）。
+- **`lightdm` 停止と `signage-lite` 再起動順**: `stop_lightdm` 判定の堅牢化と、**`client` が `lightdm` 停止中に `signage-lite` を再起動しない**（[PR #133](https://github.com/denkoushi/RaspberryPiSystem_002/pull/133)）。
+- **become タイムアウト**: [KB-087](../knowledge-base/infrastructure/signage.md#kb-087-pi3-status-agenttimer-再起動時のsudoタイムアウト) に加え、inventory の **`ansible_become_timeout: 120`**（[PR #134](https://github.com/denkoushi/RaspberryPiSystem_002/pull/134)）。
+- **記録・実績**: [KB-341](../knowledge-base/infrastructure/signage.md#kb-341-mobile-placement-parts-shelf-grid-deploy) 第3回追記。**Detach Run ID** 例: `20260413-222626-2374`（`raspberrypi3`・`failed=0` / `unreachable=0`）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+
 **プレフライトチェックが失敗した場合**:
-- メモリ不足（< 120MB）: デプロイは自動的に中断され、エラーメッセージに手動停止手順が表示されます
+- メモリ不足（`memory_required_mb` 未満）: デプロイは自動的に中断され、エラーメッセージに手動停止手順が表示されます
 - テンプレートファイル不足: デプロイ開始前にfail-fastし、エラーメッセージにファイル配置場所が表示されます
 
 **手動実行が必要な場合（プレフライトチェック失敗時）**:
@@ -612,7 +619,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sudo systemctl st
 # 数秒待ってからメモリを確認
 ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -m'"
 
-# メモリが120MB以上になったら、再度デプロイを実行
+# メモリが閾値（Pi3 等は 100MB 設定の例あり）以上になったら、再度デプロイを実行
 ```
 
 **重要**: 

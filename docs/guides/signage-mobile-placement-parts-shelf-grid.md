@@ -44,6 +44,13 @@
 - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi3 `signage-lite`/timer を含む）。
 - **ナレッジ**: [KB-341](../knowledge-base/infrastructure/signage.md#kb-341-mobile-placement-parts-shelf-grid-deploy) 追記
 
+### 第3回（Ansible 安定化・`main`・本番検証）
+
+- **コード**: `main` に [PR #131](https://github.com/denkoushi/RaspberryPiSystem_002/pull/131)〜[#134](https://github.com/denkoushi/RaspberryPiSystem_002/pull/134) をマージ済み（Pi3 デプロイ全般の安定化。スロット実装そのものの変更は含まない）。
+- **Detach Run ID**（`ansible-update-`）: `20260413-222626-2374`（Pi3・**`failed=0` / `unreachable=0`**）。
+- **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **ナレッジ**: [KB-341](../knowledge-base/infrastructure/signage.md#kb-341-mobile-placement-parts-shelf-grid-deploy) 第3回・[deployment.md](./deployment.md)（知見 2026-04-13）。
+
 ## 静的プレビュー（レイアウト検討用）
 
 - [pi3-signage-android-parts-shelf-preview.html](../design-previews/pi3-signage-android-parts-shelf-preview.html)（HTML のみ・本番 JPEG と同一ロジックではない）
