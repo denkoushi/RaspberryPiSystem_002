@@ -1,16 +1,17 @@
 import type { PartsShelfGridViewModel } from './parts-shelf-view-model.js';
 import type { PartsShelfZoneId } from './shelf-zone-map.js';
 
+/** 9ゾーン色（参照パレット: 黄・紫・赤・緑・グレー・茶・オレンジ・青・ピンク） */
 const ZONE_FILL: Record<PartsShelfZoneId, string> = {
-  nw: '#e8a33e',
-  n: '#7b42e8',
-  ne: '#c93e37',
-  w: '#4ea357',
-  c: '#6e7480',
-  e: '#733d1e',
-  sw: '#d9692d',
-  s: '#3e6ee8',
-  se: '#d9599b',
+  nw: '#F59E0B',
+  n: '#7C3AED',
+  ne: '#DC2626',
+  w: '#16A34A',
+  c: '#6B7280',
+  e: '#78350F',
+  sw: '#EA580C',
+  s: '#2563EB',
+  se: '#EC4899',
 };
 
 /** キャンバス外周・プレビュー HTML の body と同系（真っ黒にしない） */
