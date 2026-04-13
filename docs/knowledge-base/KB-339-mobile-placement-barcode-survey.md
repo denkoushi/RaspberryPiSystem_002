@@ -1,6 +1,6 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-13（**V20 部品検索（促音比較・機種名のみ suggest）**・V18 棚マスタ追記）
+最終更新: 2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク修正）**・V20・V18 追記）
 
 ## V18（2026-04-13）棚マスタ
 
@@ -203,6 +203,15 @@
 - **知見**: 促音は **正規化（検索意図）** と **comparable（DB 比較）** を **別レイヤー**で持つ（削除一択をやめる）。統合テストに **`ナット` → `ナットホルダー`** 相当を追加済み。
 - **トラブルシュート**: 促音まわりで **ヒットが増えすぎる** → comparable が **`ッ`→`ツ`** のため **同一カナ列上の別単語**とぶつかる可能性を疑い、`q` を足して AND を絞る。**`q` 空・機種名のみで候補が薄い** → `machineName` の **MH/SH 集約**と現場データを確認（V19 と同じ）。
 
+### V21（2026-04-13・部品検索 UI: SOLID 寄りモジュール化・スモークテスト修正）
+
+- **目的**: `/kiosk/mobile-placement/part-search` を **ヘッダツールバー・クエリ入力・結果・UI トークン**に分割し、`useMobilePlacementPartSearch` に **パレット操作（空白・削除・戻る）**を集約。**API/DB 契約は不変**（V20 までの検索・促音・機種名 AND はそのまま）。
+- **Web**: `PartSearchHeaderToolbar`・`PartSearchQueryInputs`・`PartSearchResultsSection`・`partSearchUiTokens.ts`・`PartSearchCharPalette`（レイアウト整理）。Vitest: `KioskMobileShelfRegisterPage.smoke.test.tsx` を **`QueryClientProvider`** でラップ（`useQueryClient()` 必須化への追随）。
+- **本番デプロイ（2026-04-13）**: ブランチ **`refactor/part-search-solid-modular`**・コミット **`d4467b1a`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**・本変更は `/kiosk` SPA のため Pi3 専用手順は不要）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-175621-27099` → `20260413-180137-22828` → `20260413-180628-4330` → `20260413-181025-11891` → `20260413-181724-25138`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**・Mac / Tailscale・2026-04-13 実測）。
+- **知見**: **同一 Pi5 へ `update-all-clients.sh` を並列起動しない**（[deployment.md](../guides/deployment.md)）。複数台は **1 本のシェルで前段成功後に次段**。
+- **トラブルシュート**: Vitest で **`No QueryClient set`** → キオスクページのスモークは **`QueryClientProvider` + `QueryClient({ defaultOptions: { queries: { retry: false } } })`** で包む。**UI が古い** → Pi5 の `web` イメージ更新確認のうえ **キオスクでハードリロード**（Tailscale URLの SPA は Pi5 配信）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
@@ -214,4 +223,5 @@
 - 実装（部品検索最終・V17）: 同上 + `part-search-normalize.ts`（SQL 用 `escapeForIlike` のみ）・キオスク `part-search/*`（`partSearchPalettePruner.ts` 等）・**CI/Docker**（`part-search-core` ビルド）
 - 実装（部品検索 V19・機種名 AND）: `part-search-machine-name-fseibans.service.ts`・`part-search.service.ts`（`machineName`）・`part-search-core`（正規化・ILIKE バリアント）
 - 実装（部品検索 V20・促音 comparable・機種名のみ suggest）: `part-search-field-comparable-sql.ts`・`part-search.service.ts`・`part-search-core`（`PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS`）・`useMobilePlacementPartSearch.ts` / `apps/web/src/api/client.ts`
+- 実装（部品検索 V21・UI モジュール化）: `apps/web/src/features/mobile-placement/part-search/PartSearchHeaderToolbar.tsx`・`PartSearchQueryInputs.tsx`・`PartSearchResultsSection.tsx`・`partSearchUiTokens.ts`・`useMobilePlacementPartSearch.ts`・`KioskMobileShelfRegisterPage.smoke.test.tsx`
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

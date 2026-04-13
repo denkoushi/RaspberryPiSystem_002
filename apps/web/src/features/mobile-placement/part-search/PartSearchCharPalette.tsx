@@ -4,8 +4,7 @@ import {
   PART_SEARCH_ABC,
   PART_SEARCH_DIGITS,
   PART_SEARCH_GOJUON_ROWS,
-  PART_SEARCH_PRESETS,
-  PART_SEARCH_SPACE_KEY
+  PART_SEARCH_PRESETS
 } from './partSearchPaletteDefinition';
 
 const keyClass =
@@ -13,8 +12,7 @@ const keyClass =
 
 type Props = {
   onAppend: (s: string) => void;
-  onBackspace: () => void;
-  /** 非表示にする文字キー（剪定）。削除ボタンは常に表示。 */
+  /** 非表示にする文字キー（剪定）。空白ボタンはページヘッダー側で同条件を参照。 */
   hiddenKeys?: ReadonlySet<string>;
   className?: string;
 };
@@ -27,7 +25,7 @@ function isHidden(hiddenKeys: ReadonlySet<string> | undefined, ch: string): bool
  * 五十音・ABC・プリセットから検索クエリへ追記する（表示と剪定を分離）。
  */
 export function PartSearchCharPalette(props: Props) {
-  const { onAppend, onBackspace, hiddenKeys, className } = props;
+  const { onAppend, hiddenKeys, className } = props;
   return (
     <div className={clsx('flex flex-col gap-2', className)}>
       <div className="flex flex-wrap gap-1.5">
@@ -65,28 +63,6 @@ export function PartSearchCharPalette(props: Props) {
             </button>
           )
         )}
-      </div>
-      <div className="flex gap-2">
-        {isHidden(hiddenKeys, PART_SEARCH_SPACE_KEY) ? null : (
-          <button
-            type="button"
-            className={clsx(keyClass, 'flex-1 text-slate-300')}
-            onClick={() => onAppend(PART_SEARCH_SPACE_KEY)}
-          >
-            空白
-          </button>
-        )}
-        <button
-          type="button"
-          className={clsx(
-            keyClass,
-            'border-rose-400/40 text-rose-200',
-            isHidden(hiddenKeys, PART_SEARCH_SPACE_KEY) ? 'w-full' : 'flex-1'
-          )}
-          onClick={onBackspace}
-        >
-          削除
-        </button>
       </div>
     </div>
   );
