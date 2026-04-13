@@ -238,6 +238,8 @@ all:
             raspberrypi3:
               ansible_host: "{{ signage_ip }}"
               ansible_user: signageras3
+              # Pi3 は負荷時に sudo 応答が遅れ、既定の become 待ちで UNREACHABLE になり得る
+              ansible_become_timeout: 120
               tailscale_enabled: true
               ansible_command_timeout: 1800
               # デバイスタイプ: Pi3（メモリ416MB、lightdm停止が必要）
