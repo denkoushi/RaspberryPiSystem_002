@@ -9,6 +9,13 @@
 - **API**: `GET /api/mobile-placement/registered-shelves` は棚マスタ一覧。`POST /api/mobile-placement/shelves` は **`西-北-01` 形式のみ**・重複は **409**（`MOBILE_PLACEMENT_SHELF_DUPLICATE`）。
 - **Web**: `GET registered-shelves` で空き／使用済みスロットを導出し、登録済み番号は選択不可。
 
+### 本番反映・検証（2026-04-13・V18 棚マスタ）
+
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/mobile-placement-shelf-master infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** の順に **1 台ずつ**（**Pi3 は対象外**）。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-124042-32510`（`raspberrypi5`）→ `20260413-125217-7318`（`raspberrypi4`）→ `20260413-125648-60`（`raspi4-robodrill01`）→ `20260413-130037-12380`（`raspi4-fjv60-80`）→ `20260413-130456-12201`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0`**・**`Summary success check: true`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**・Mac / Tailscale）。
+- **知見**: Pi5 初回は **Docker 再ビルド**（API のマイグレーション・`MobilePlacementShelf`）で **所要が長め**（`--follow` が長く見えることがある）。**トラブルシュート**: `registered-shelves` が **`{ "shelves": [] }`** → マスタ 0 件は仕様上あり得る（マイグレーションで履歴からの取り込み後も、新規は **`+` → `POST …/shelves`**）。重複登録は **409**（`MOBILE_PLACEMENT_SHELF_DUPLICATE`）。
+
 ## Context
 
 配膳スマホで **アイテム／現物のバーコード**を読み取り、既存の `Item` または生産スケジュール行と突き合わせる前に、**ラベル上のコードが何を表すか**を固定する必要がある。
