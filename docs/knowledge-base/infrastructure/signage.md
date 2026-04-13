@@ -69,6 +69,17 @@ update-frequency: medium
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi3 **`signage-lite`/timer** 含む）。
 - **トラブルシューティング（Pi3・上記 failed=1）**: 当該 Pi3 に **`signage-daily-reboot.timer` が未配置**のとき、ステージド playbook の **timer 起動**が失敗し得る。**Phase12 は通過**（`signage-lite` 系は active）。恒久対応は **Ansible で timer ユニットを配布**するか、inventory の **デバイス既定**を確認（別チケット可）。
 
+**追記（2026-04-13・第3回・Ansible 安定化・`main` に反映済み）**:
+- **背景**: Pi3 向けデプロイで **preflight（空きメモリ）と resource-guard の閾値のずれ**、**`lightdm` 停止中に `client` が `signage-lite` を再起動して `feh` が `:0` に繋がらない**、**負荷時の `sudo` 昇格待ちで `UNREACHABLE`** などがあった。
+- **`main` の変更（PR）**:
+  - [PR #131](https://github.com/denkoushi/RaspberryPiSystem_002/pull/131): `resource-guard` が **`memory_required_mb`** を参照（ハードコード 120 と preflight の二重定義を整理）。
+  - [PR #132](https://github.com/denkoushi/RaspberryPiSystem_002/pull/132): Pi3 / Pi Zero 2W の **`memory_required_mb` を 100MB**（実機で 105MB 前後になり 110/120 閾値で落ちるのを回避）。
+  - [PR #133](https://github.com/denkoushi/RaspberryPiSystem_002/pull/133): **`stop_lightdm` で判定**し、`lightdm` が既に停止していると `changed=false` になりフィルタが効かない問題を回避。**`client` ロールが `lightdm` 停止中に `signage-lite` を再起動しない**。
+  - [PR #134](https://github.com/denkoushi/RaspberryPiSystem_002/pull/134): `inventory.yml` の **`raspberrypi3` に `ansible_become_timeout: 120`**（負荷時の `sudo` 昇格待ちで `UNREACHABLE` になるのを緩和）。
+- **本番デプロイ（成功）**: [deployment.md](../../guides/deployment.md) どおり **Pi5 → Pi3** を `update-all-clients.sh` **`--detach --follow`** + **`--limit`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-222626-2374`（`raspberrypi3`・**`PLAY RECAP` `failed=0` / `unreachable=0`**・post_tasks で `signage-lite` / タイマー起動、`signage-lite.service is active`）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi3 `signage-lite`/timer を含む）。
+- **運用**: Pi5 上で **Ansible を二重起動しない**（ロック・ロールバック大量バックアップのループを避ける）。詳細は [deployment.md](../../guides/deployment.md)・[KB-087](#kb-087-pi3-status-agenttimer-再起動時のsudoタイムアウト)。
+
 <a id="kb-337-android-signage-lite-401-chrome"></a>
 
 ### [KB-337] Android `/signage-lite` の画像取得失敗（401）とページのみ表示異常（Chrome サイトデータ・キャッシュ）
@@ -836,6 +847,9 @@ const textX = x + textAreaX;
 - `restart-client-service.yml` の **参照系（`systemctl is-enabled/is-active/show`）は root 権限が不要**。ここでbecomeが走ると、同様にsudoプロンプト待ちになり得る。
   - 対策: 参照系チェックは **`become: false` を明示**して堅牢化。
 - なお、Pi3で **SSHが `banner exchange timeout`** になる場合（Tailscale pingは通るがSSHだけ不応答）は、Pi3側で `sshd` が応答不能になっている可能性が高く、**再起動で復旧**するケースがある（デプロイを続行する前に接続テストを通す）。
+
+**追加知見（2026-04-13）**:
+- `sudo_nopasswd` 整備後も、**負荷時の `sudo` 応答遅延**で Ansible の **`become` が既定 12 秒を超え** `UNREACHABLE` になることがある。`inventory.yml` の **`ansible_become_timeout: 120`**（対象: `raspberrypi3` 等）で緩和した（[PR #134](https://github.com/denkoushi/RaspberryPiSystem_002/pull/134)）。詳細は [KB-341](#kb-341-mobile-placement-parts-shelf-grid-deploy) 第3回追記・[deployment.md](../../guides/deployment.md)。
 
 **関連ファイル**:
 - `infrastructure/ansible/inventory.yml`（`sudo_nopasswd_commands`）
