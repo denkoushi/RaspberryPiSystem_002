@@ -22,6 +22,7 @@
 | [mobile-placement-part-find-min-steps-preview.html](./mobile-placement-part-find-min-steps-preview.html) | **配膳スマホ・目的部品の棚を最少手数で探す** — 1画面検索 / スキャン主導 / 履歴1タップ / 候補リストタップ / ミニマル1CTA / 手数比較表。**実装前の静的モック** |
 | [mobile-placement-part-name-incremental-search-preview.html](./mobile-placement-part-name-incremental-search-preview.html) | **配膳スマホ・部品名の段階的絞り込み（口頭照会）** — 「テ」→「テー」→確定の状態例、**ソースX/Y 混在リスト**、候補過多ガード。**実装前の静的モック** |
 | [mobile-placement-gojuon-prune-nav-preview.html](./mobile-placement-gojuon-prune-nav-preview.html) | **配膳スマホ・五十音＋A–Z カーナビ風** — **よく使う語プリセット**／**アルファベットグリッド**（剪定例あり）／プレフィックスで<strong>使えない文字を消す／薄くする</strong>。**実装前の静的モック** |
+| [mobile-placement-part-keyword-and-search-preview.html](./mobile-placement-part-keyword-and-search-preview.html) | **配膳スマホ・登録済み部品を探す最終案** — **五十音・ABC・プリセットの文字ボタンを押した瞬間に条件採用**／**空白区切り AND**（API と同じ前提）／**登録済み候補をリアルタイム絞り込み**／**不要ボタンは非表示**。補助候補なしの静的モック |
 
 プレビュー HTML は **外部 CDN やネットワークに依存しません**（macOS のシステムフォントのみ）。`file://` のまま Safari で表示できる想定です。
 

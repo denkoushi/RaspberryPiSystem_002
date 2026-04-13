@@ -8,8 +8,9 @@
 
 ## 🎯 目的別インデックス
 
-### 🆕 最新アップデート（2026-04-12）
+### 🆕 最新アップデート（2026-04-13）
 
+- **配膳スマホ V17（部品検索最終: AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feature/mobile-placement-part-search-final`**・コミット **`4d34f5fa`**。Detach Run ID・仕様は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0（V17）。**API**: [api/mobile-placement.md](./api/mobile-placement.md)。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) V17 節・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **配膳スマホ V16（部品名検索 API + キオスク `/kiosk/mobile-placement/part-search`）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feat/mobile-placement-part-name-search`**・コミット **`62721227`**。現在棚優先・スケジュール補助・同義語辞書。Detach Run ID・スポット check は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0（V16）。**API**: [api/mobile-placement.md](./api/mobile-placement.md)。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) V16 節・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **配膳スマホ V15（照合の折りたたみ・登録ティール枠レイアウト・API 変更なし）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feat/mobile-placement-verify-collapsible-register-layout`**・コミット **`ba49160d`**。Web のみ。Detach Run ID は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0。静的プレビュー: [design-previews/mobile-placement-verify-collapsible-preview.html](./design-previews/mobile-placement-verify-collapsible-preview.html)。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) V15 節・[EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **配膳スマホ V14（製造order配下の分配枝・`OrderPlacementBranchState`・新規/移動 API）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feat/mobile-placement-order-branches`**・コミット **`72255bc7`**（**DB マイグレーション必須**）。Detach Run ID は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) V14 節・[api/mobile-placement.md](./api/mobile-placement.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。
@@ -37,6 +38,7 @@
 - **配膳スマホ 部品→棚を最少手数で探す（複数案・静的プレビュー）**: [design-previews/mobile-placement-part-find-min-steps-preview.html](./design-previews/mobile-placement-part-find-min-steps-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **配膳スマホ 部品名の段階的絞り込み・口頭照会・ソースX/Y（静的プレビュー）**: [design-previews/mobile-placement-part-name-incremental-search-preview.html](./design-previews/mobile-placement-part-name-incremental-search-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **配膳スマホ 五十音＋A–Z カーナビ風（よく使う語プリセット・ボタン消去・薄表示・次の1文字のみ）（静的プレビュー）**: [design-previews/mobile-placement-gojuon-prune-nav-preview.html](./design-previews/mobile-placement-gojuon-prune-nav-preview.html) — [design-previews/README.md](./design-previews/README.md)
+- **配膳スマホ 登録済み部品を探す最終案（空白区切り AND・押下で即検索・登録済みのみ表示・不要ボタンは非表示）（静的プレビュー／実装は `@raspi-system/part-search-core` とキオスク UI で対応）**: [design-previews/mobile-placement-part-keyword-and-search-preview.html](./design-previews/mobile-placement-part-keyword-and-search-preview.html) — [design-previews/README.md](./design-previews/README.md)
 - **リーダー順位ボード（納期ベース・本番 `/kiosk/production-schedule/leader-order-board` の静的プレビュー）**: [design-previews/leader-due-rank-board-preview.html](./design-previews/leader-due-rank-board-preview.html) — 運用・デプロイ記録は [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md)（「リーダー順位ボード」節）
 - **部品測定・テンプレート選択（提案UI・静的）**: [design-previews/kiosk-part-measurement-template-picker.html](./design-previews/kiosk-part-measurement-template-picker.html) — [design-previews/README.md](./design-previews/README.md)
 
@@ -58,7 +60,7 @@
 
 ### 配膳スマホ（Android・Tailscale）
 
-- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V7**: 現品票 OCR 用途別パイプライン・`ocrPreviewSafe`／**V8**: 製造order抽出パーサ（分断ラベル）・`mo10*` 診断ログ／**V9**: labels パス早期終了・成功時 `OCR:` 非表示／**V11**: 注文番号+枝番行除外・global-filter 選別／**V12**: 現品票 ROI・Schema 集約（`genpyo-slip`）／**V13**: 棚番登録 UI レイアウト（`/shelf-register`）／**V14**: 分配枝 `OrderPlacementBranchState`・新規/移動 API／**V15**: 照合折りたたみ・登録レイアウト（Web のみ・API 変更なし）／**V16 部品名検索**: `GET /api/mobile-placement/part-search/suggest`・キオスク `/kiosk/mobile-placement/part-search`（本番 Runbook §0）／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
+- **API・運用**: [api/mobile-placement.md](./api/mobile-placement.md) / [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)（**V2**: 照合 + 部品配膳 `OrderPlacementEvent`／**V5**: 現品票画像 OCR・`FHINCD` 突合／**V6**: OCR 結果の UI 案内・API 観測ログ・パーサ強化・2026-04-11 本番は Runbook §0／**V7**: 現品票 OCR 用途別パイプライン・`ocrPreviewSafe`／**V8**: 製造order抽出パーサ（分断ラベル）・`mo10*` 診断ログ／**V9**: labels パス早期終了・成功時 `OCR:` 非表示／**V11**: 注文番号+枝番行除外・global-filter 選別／**V12**: 現品票 ROI・Schema 集約（`genpyo-slip`）／**V13**: 棚番登録 UI レイアウト（`/shelf-register`）／**V14**: 分配枝 `OrderPlacementBranchState`・新規/移動 API／**V15**: 照合折りたたみ・登録レイアウト（Web のみ・API 変更なし）／**V16 部品名検索**: `GET /api/mobile-placement/part-search/suggest`・キオスク `/kiosk/mobile-placement/part-search`（本番 Runbook §0）／**V17 部品検索最終**: AND・登録済みのみ・剪定・`part-search-core` + CI/Docker（KB-339 V17・Runbook §0）／**V3**: `/kiosk/mobile-placement/shelf-register` 棚番3段階／**本番反映・検証手順は Runbook §0**）
 - **バーコード調査ゲート**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)
 
 ### LocalLLM（Ubuntu / Tailscale）

@@ -1,10 +1,10 @@
 import { Prisma } from '@prisma/client';
+import { buildTokenGroupsForSearch, normalizePartSearchQuery } from '@raspi-system/part-search-core';
 
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { buildMaxProductNoWinnerCondition } from '../../production-schedule/row-resolver/index.js';
-import { expandSearchTerms } from './part-search-aliases.js';
-import { escapeForIlike, normalizePartSearchQuery } from './part-search-normalize.js';
+import { escapeForIlike } from './part-search-normalize.js';
 import type { PartPlacementSearchHitDto, PartPlacementSearchSuggestResult } from './part-search.types.js';
 
 const CURRENT_LIMIT = 30;
@@ -44,7 +44,8 @@ function buildDisplayName(row: {
   return '（名称不明）';
 }
 
-function buildBranchStateWhereClause(terms: string[]): Prisma.Sql {
+/** 1 トークン分の OR 条件（FHINMEI / FHINCD のいずれかに部分一致） */
+function buildBranchStateWhereClauseForTokenGroup(terms: string[]): Prisma.Sql {
   const parts = terms.map((t) => {
     const pattern = `%${escapeForIlike(t)}%`;
     return Prisma.sql`(COALESCE("scheduleSnapshot"->>'FHINMEI','') ILIKE ${pattern} ESCAPE '\\' OR COALESCE("scheduleSnapshot"->>'FHINCD','') ILIKE ${pattern} ESCAPE '\\')`;
@@ -52,12 +53,22 @@ function buildBranchStateWhereClause(terms: string[]): Prisma.Sql {
   return Prisma.sql`(${Prisma.join(parts, ' OR ')})`;
 }
 
-function buildRowDataWhereClause(terms: string[]): Prisma.Sql {
+function buildBranchStateWhereClause(tokenGroups: string[][]): Prisma.Sql {
+  const groups = tokenGroups.map((g) => buildBranchStateWhereClauseForTokenGroup(g));
+  return Prisma.sql`(${Prisma.join(groups, ' AND ')})`;
+}
+
+function buildRowDataWhereClauseForTokenGroup(terms: string[]): Prisma.Sql {
   const parts = terms.map((t) => {
     const pattern = `%${escapeForIlike(t)}%`;
     return Prisma.sql`(COALESCE(r."rowData"->>'FHINMEI','') ILIKE ${pattern} ESCAPE '\\' OR COALESCE(r."rowData"->>'FHINCD','') ILIKE ${pattern} ESCAPE '\\')`;
   });
   return Prisma.sql`(${Prisma.join(parts, ' OR ')})`;
+}
+
+function buildRowDataWhereClause(tokenGroups: string[][]): Prisma.Sql {
+  const groups = tokenGroups.map((g) => buildRowDataWhereClauseForTokenGroup(g));
+  return Prisma.sql`(${Prisma.join(groups, ' AND ')})`;
 }
 
 function buildExcludedRowIdsClause(excludedIds: string[]): Prisma.Sql {
@@ -77,12 +88,12 @@ export async function suggestPartPlacementSearch(params: {
     return { currentPlacements: [], scheduleCandidates: [] };
   }
 
-  const { terms, aliasMatchedBy } = expandSearchTerms(rawQuery);
-  if (terms.length === 0) {
+  const { tokenGroups, aliasMatchedBy } = buildTokenGroupsForSearch(rawQuery);
+  if (tokenGroups.length === 0) {
     return { currentPlacements: [], scheduleCandidates: [] };
   }
 
-  const branchWhere = buildBranchStateWhereClause(terms);
+  const branchWhere = buildBranchStateWhereClause(tokenGroups);
 
   const currentRows = await prisma.$queryRaw<BranchStateSqlRow[]>`
     SELECT
@@ -105,7 +116,7 @@ export async function suggestPartPlacementSearch(params: {
     .map((r) => r.csvDashboardRowId)
     .filter((id): id is string => typeof id === 'string' && id.length > 0);
 
-  const rowWhere = buildRowDataWhereClause(terms);
+  const rowWhere = buildRowDataWhereClause(tokenGroups);
   const excludedClause = buildExcludedRowIdsClause(excludedScheduleRowIds);
   const winner = buildMaxProductNoWinnerCondition('r');
 

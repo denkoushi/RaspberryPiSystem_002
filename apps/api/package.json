@@ -33,6 +33,7 @@
     "@fastify/swagger": "^9.6.1",
     "@fastify/websocket": "^11.2.0",
     "@prisma/client": "^5.14.0",
+    "@raspi-system/part-search-core": "workspace:*",
     "@raspi-system/shared-types": "workspace:*",
     "bcryptjs": "^2.4.3",
     "csv-parse": "^5.5.6",

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>配膳スマホ — 登録済み部品名を探す（特徴語 AND・ボタン剪定・静的プレビュー）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --line: rgba(148, 163, 184, 0.22);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --amber: #fbbf24;
+      --green: #34d399;
+      --violet: #a78bfa;
+      --danger: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.45;
+      padding: 0.75rem 1rem 2rem;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+    .lead {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.76rem;
+      max-width: 110ch;
+    }
+    .lead code {
+      background: #1e293b;
+      padding: 0.08em 0.32em;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 0.45rem 0;
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(2, 6, 23, 0.9));
+      border-bottom: 1px solid var(--line);
+    }
+    .nav a {
+      color: #7dd3fc;
+      text-decoration: none;
+      font-size: 0.65rem;
+      font-weight: 800;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+      border-radius: 0.45rem;
+      padding: 0.28rem 0.48rem;
+    }
+    section {
+      margin-bottom: 2rem;
+      scroll-margin-top: 3rem;
+    }
+    .case-title {
+      margin: 0 0 0.35rem;
+      font-size: 0.9rem;
+      font-weight: 800;
+    }
+    .case-desc {
+      margin: 0 0 0.75rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      max-width: 96ch;
+    }
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.8rem;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    @media (max-width: 760px) {
+      .compare { grid-template-columns: 1fr; }
+    }
+    .tag {
+      margin-bottom: 0.35rem;
+      font-size: 0.58rem;
+      font-weight: 800;
+      color: #fde68a;
+    }
+    .phone {
+      max-width: 400px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .bar {
+      padding: 0.5rem 0.65rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: #e2e8f0;
+    }
+    .back { color: var(--accent); }
+    .body { padding: 0.65rem; }
+    .label {
+      margin-bottom: 0.35rem;
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .search {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-height: 42px;
+      padding: 0.45rem 0.55rem;
+      border-radius: 10px;
+      border: 1px solid rgba(251, 191, 36, 0.38);
+      background: var(--bg);
+      color: #fef3c7;
+      font-size: 0.84rem;
+      font-weight: 700;
+      flex-wrap: wrap;
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.55rem;
+    }
+    .chip, .plus-chip {
+      border-radius: 999px;
+      padding: 0.34rem 0.56rem;
+      font-size: 0.67rem;
+      font-weight: 800;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: rgba(30, 41, 59, 0.9);
+      color: #e2e8f0;
+    }
+    .chip.active {
+      border-color: rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.12);
+      color: #fde68a;
+    }
+    .plus-chip {
+      color: #7dd3fc;
+      border-color: rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .helper {
+      margin-top: 0.45rem;
+      font-size: 0.62rem;
+      color: var(--muted);
+    }
+    .panel {
+      margin-top: 0.65rem;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.88);
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      font-size: 0.66rem;
+      font-weight: 800;
+    }
+    .panel-head.current { color: #bbf7d0; }
+    .panel-head.helper-head { color: #c4b5fd; }
+    .badge {
+      display: inline-block;
+      padding: 0.08rem 0.38rem;
+      border-radius: 999px;
+      font-size: 0.55rem;
+      font-weight: 800;
+      vertical-align: middle;
+      margin-left: 0.3rem;
+    }
+    .badge.current { background: rgba(52, 211, 153, 0.16); color: #86efac; border: 1px solid rgba(52, 211, 153, 0.28); }
+    .badge.helper { background: rgba(167, 139, 250, 0.14); color: #d8b4fe; border: 1px solid rgba(167, 139, 250, 0.28); }
+    .rows { display: flex; flex-direction: column; }
+    .row {
+      padding: 0.55rem 0.6rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .row:last-child { border-bottom: 0; }
+    .name { font-size: 0.75rem; font-weight: 800; color: #fff; }
+    .sub { margin-top: 0.2rem; font-size: 0.64rem; color: var(--muted); }
+    .warning {
+      margin-top: 0.55rem;
+      padding: 0.5rem 0.55rem;
+      border-radius: 10px;
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      background: rgba(251, 191, 36, 0.08);
+      color: #fde68a;
+      font-size: 0.66rem;
+      font-weight: 700;
+    }
+    .danger {
+      border-color: rgba(251, 113, 133, 0.3);
+      background: rgba(251, 113, 133, 0.08);
+      color: #fecdd3;
+    }
+    .collapsed {
+      padding: 0.58rem 0.6rem;
+      font-size: 0.67rem;
+      color: #c4b5fd;
+      background: rgba(76, 29, 149, 0.14);
+    }
+    .footnote {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px dashed var(--line);
+      color: var(--muted);
+      font-size: 0.7rem;
+    }
+    /* 文字パレット（本番 PartSearchCharPalette と同系統の見た目） */
+    .draft-box {
+      margin-top: 0.35rem;
+      padding: 0.45rem 0.55rem;
+      border-radius: 10px;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      background: var(--bg);
+      color: #fef3c7;
+      font-size: 0.82rem;
+      font-weight: 700;
+      min-height: 2.4rem;
+    }
+    .kbd-wrap {
+      margin-top: 0.45rem;
+      max-height: min(38vh, 220px);
+      overflow-y: auto;
+      padding: 0.35rem;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(2, 6, 23, 0.45);
+    }
+    .kbd-title {
+      font-size: 0.55rem;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.35rem;
+    }
+    .kbd-presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.45rem;
+    }
+    .kbd-btn {
+      min-height: 36px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      background: linear-gradient(180deg, #1e293b, #0f172a);
+      color: #f1f5f9;
+      font-size: 0.78rem;
+      font-weight: 800;
+      padding: 0.25rem 0.35rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+      user-select: none;
+    }
+    .kbd-btn.preset {
+      color: #fde68a;
+      border-color: rgba(251, 191, 0, 0.38);
+      background: rgba(251, 191, 0, 0.1);
+    }
+    .kbd-btn.abc {
+      font-size: 0.7rem;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    .kbd-grid-5 {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.25rem;
+      margin-bottom: 0.3rem;
+    }
+    .kbd-grid-7 {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.22rem;
+      margin-bottom: 0.3rem;
+    }
+    .kbd-row-2 {
+      display: flex;
+      gap: 0.35rem;
+    }
+    .kbd-row-2 .kbd-btn { flex: 1; }
+    .kbd-btn.danger {
+      border-color: rgba(251, 113, 133, 0.45);
+      color: #fecdd3;
+    }
+    .kbd-btn.muted {
+      color: #94a3b8;
+      font-size: 0.65rem;
+      font-weight: 800;
+    }
+    .kbd-btn.pruned {
+      display: none;
+    }
+    .promote {
+      margin-top: 0.45rem;
+      width: 100%;
+      padding: 0.5rem 0.6rem;
+      border-radius: 10px;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.12);
+      color: #7dd3fc;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>配膳スマホ — 登録済み部品名を探す</h1>
+  <p class="lead">
+    静的モックのみ。実装なし。<strong>文字ボタンで下書き</strong>し、
+    <strong>「特徴語に確定」</strong>してから AND で積み上げる前提です。
+    正しい部品名を一発で打てなくても、断片を文字キーから作れる。
+    検索イメージは <code>テーブル AND 脚 AND 金具</code>。対象は <strong>登録済みの現在棚だけ</strong>です。
+    さらに、<strong>残り候補に関係ない文字ボタンは消す</strong>前提です。
+  </p>
+
+  <nav class="nav" aria-label="セクション">
+    <a href="#palette">文字キーと特徴語</a>
+    <a href="#prune">ボタン剪定</a>
+    <a href="#flow">基本フロー</a>
+    <a href="#refine">語を足して絞る</a>
+    <a href="#fallback">該当なし</a>
+  </nav>
+
+  <section id="palette">
+    <p class="case-title">文字ボタンは「入口」、特徴語チップが「絞り込みの本体」</p>
+    <p class="case-desc">
+      五十音・英字・プリセットで入力中の文字列を作り、確定すると特徴語チップになる。
+      チップ同士は AND。文字キーは常時表示し、スクロールは結果より下に閉じ込める。
+    </p>
+    <div class="phone">
+      <div class="bar"><span class="back">←</span><span>部品名で棚を探す</span><span></span></div>
+      <div class="body">
+        <div class="search">
+          <span class="chip active">テーブル</span>
+          <span class="chip active">脚</span>
+        </div>
+        <div class="kbd-wrap" aria-label="文字キー（モック）">
+          <div class="kbd-presets">
+            <span class="kbd-btn preset">脚</span>
+            <span class="kbd-btn preset">足</span>
+            <span class="kbd-btn preset">テーブル</span>
+            <span class="kbd-btn preset">ボルト</span>
+            <span class="kbd-btn preset">アシ</span>
+          </div>
+          <div class="kbd-grid-5">
+            <span class="kbd-btn">あ</span><span class="kbd-btn">い</span><span class="kbd-btn">う</span><span class="kbd-btn">え</span><span class="kbd-btn">お</span>
+            <span class="kbd-btn">か</span><span class="kbd-btn">き</span><span class="kbd-btn">く</span><span class="kbd-btn">け</span><span class="kbd-btn">こ</span>
+            <span class="kbd-btn">さ</span><span class="kbd-btn">し</span><span class="kbd-btn">す</span><span class="kbd-btn">せ</span><span class="kbd-btn">そ</span>
+            <span class="kbd-btn">た</span><span class="kbd-btn">ち</span><span class="kbd-btn">つ</span><span class="kbd-btn">て</span><span class="kbd-btn">と</span>
+            <span class="kbd-btn">な</span><span class="kbd-btn">に</span><span class="kbd-btn">ぬ</span><span class="kbd-btn">ね</span><span class="kbd-btn">の</span>
+          </div>
+          <div class="kbd-grid-7">
+            <span class="kbd-btn abc">A</span><span class="kbd-btn abc">B</span><span class="kbd-btn abc">C</span><span class="kbd-btn abc">D</span><span class="kbd-btn abc">E</span><span class="kbd-btn abc">F</span><span class="kbd-btn abc">G</span>
+            <span class="kbd-btn abc">H</span><span class="kbd-btn abc">I</span><span class="kbd-btn abc">J</span><span class="kbd-btn abc">K</span><span class="kbd-btn abc">L</span><span class="kbd-btn abc">M</span><span class="kbd-btn abc">N</span>
+          </div>
+          <div class="kbd-row-2">
+            <span class="kbd-btn muted">空白</span>
+            <span class="kbd-btn danger">削除</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="prune">
+    <p class="case-title">ボタンが減る: 次に意味があるキーだけを残す</p>
+    <p class="case-desc">
+      ここが要件の中心。結果件数が減るだけでなく、<strong>押しても意味のない文字ボタン自体を減らす</strong>。
+      残っている候補に関係あるものだけを表示し、不要なものは非表示にする。
+    </p>
+    <div class="compare">
+      <div>
+        <p class="tag">状態 A · 候補 6件でも不要ボタンは消す</p>
+        <div class="phone">
+          <div class="bar"><span class="back">←</span><span>部品名で棚を探す</span><span></span></div>
+          <div class="body">
+            <div class="search">
+              <span class="chip active">テーブル</span>
+              <span class="chip active">脚</span>
+            </div>
+            <div class="kbd-wrap" style="max-height:160px;">
+              <div class="kbd-presets">
+                <span class="kbd-btn preset">金具</span>
+                <span class="kbd-btn preset">白</span>
+                <span class="kbd-btn preset">左</span>
+                <span class="kbd-btn pruned">ボルト</span>
+              </div>
+              <div class="kbd-grid-5">
+                <span class="kbd-btn">か</span><span class="kbd-btn">き</span><span class="kbd-btn pruned">く</span><span class="kbd-btn pruned">け</span><span class="kbd-btn pruned">こ</span>
+                <span class="kbd-btn pruned">さ</span><span class="kbd-btn pruned">し</span><span class="kbd-btn pruned">す</span><span class="kbd-btn pruned">せ</span><span class="kbd-btn pruned">そ</span>
+                <span class="kbd-btn pruned">た</span><span class="kbd-btn pruned">ち</span><span class="kbd-btn pruned">つ</span><span class="kbd-btn pruned">て</span><span class="kbd-btn pruned">と</span>
+                <span class="kbd-btn pruned">な</span><span class="kbd-btn pruned">に</span><span class="kbd-btn pruned">ぬ</span><span class="kbd-btn pruned">ね</span><span class="kbd-btn pruned">の</span>
+                <span class="kbd-btn pruned">は</span><span class="kbd-btn pruned">ひ</span><span class="kbd-btn pruned">ふ</span><span class="kbd-btn pruned">へ</span><span class="kbd-btn pruned">ほ</span>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="rows">
+                <div class="row"><div class="name">テーブル脚 A 金具付き</div><div class="sub">西-北-02</div></div>
+                <div class="row"><div class="name">テーブル脚 B 金具付き</div><div class="sub">西-北-04</div></div>
+                <div class="row"><div class="name">テーブル脚 補強なし</div><div class="sub">中央-南-03</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="tag">状態 B · さらに減って消す</p>
+        <div class="phone">
+          <div class="bar"><span class="back">←</span><span>部品名で棚を探す</span><span></span></div>
+          <div class="body">
+            <div class="search">
+              <span class="chip active">テーブル</span>
+              <span class="chip active">脚</span>
+              <span class="chip active">金具</span>
+            </div>
+            <div class="kbd-wrap" style="max-height:160px;">
+              <div class="kbd-presets">
+                <span class="kbd-btn preset">白</span>
+                <span class="kbd-btn preset">黒</span>
+                <span class="kbd-btn pruned">左</span>
+                <span class="kbd-btn pruned">右</span>
+              </div>
+              <div class="kbd-grid-5">
+                <span class="kbd-btn pruned">あ</span><span class="kbd-btn pruned">い</span><span class="kbd-btn pruned">う</span><span class="kbd-btn pruned">え</span><span class="kbd-btn pruned">お</span>
+                <span class="kbd-btn pruned">か</span><span class="kbd-btn pruned">き</span><span class="kbd-btn pruned">く</span><span class="kbd-btn pruned">け</span><span class="kbd-btn pruned">こ</span>
+                <span class="kbd-btn pruned">さ</span><span class="kbd-btn pruned">し</span><span class="kbd-btn pruned">す</span><span class="kbd-btn pruned">せ</span><span class="kbd-btn pruned">そ</span>
+                <span class="kbd-btn pruned">た</span><span class="kbd-btn pruned">ち</span><span class="kbd-btn pruned">つ</span><span class="kbd-btn pruned">て</span><span class="kbd-btn pruned">と</span>
+                <span class="kbd-btn pruned">な</span><span class="kbd-btn pruned">に</span><span class="kbd-btn pruned">ぬ</span><span class="kbd-btn pruned">ね</span><span class="kbd-btn pruned">の</span>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="rows">
+                <div class="row"><div class="name">白テーブル脚 金具付き</div><div class="sub">西-北-02</div></div>
+                <div class="row"><div class="name">黒テーブル脚 金具付き</div><div class="sub">西-北-04</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <p class="case-title">基本の考え方: 文字キーで語を作り、語を AND で足す</p>
+    <p class="case-desc">
+      文字ボタンで下書きを作り、確定して特徴語チップにする。チップは部品名のどこに含まれていても対象。
+      複数語は AND。候補は登録済みの現在棚だけを出す。
+    </p>
+    <div class="phone">
+      <div class="bar"><span class="back">←</span><span>部品名で棚を探す</span><span></span></div>
+      <div class="body">
+        <div class="search">
+          <span class="chip active">テーブル</span>
+          <span class="chip active">脚</span>
+          <span class="chip active">金</span>
+        </div>
+        <div class="kbd-wrap" style="max-height:140px;">
+          <div class="kbd-presets" style="margin-bottom:0;">
+            <span class="kbd-btn preset">脚</span>
+            <span class="kbd-btn preset">金具</span>
+            <span class="kbd-btn preset">ボルト</span>
+          </div>
+          <div class="kbd-grid-5" style="margin-top:0.35rem;">
+            <span class="kbd-btn">か</span><span class="kbd-btn">き</span><span class="kbd-btn">く</span><span class="kbd-btn">け</span><span class="kbd-btn">こ</span>
+            <span class="kbd-btn">さ</span><span class="kbd-btn">し</span><span class="kbd-btn">す</span><span class="kbd-btn">せ</span><span class="kbd-btn">そ</span>
+          </div>
+          <div class="kbd-row-2" style="margin-top:0.35rem;">
+            <span class="kbd-btn muted">空白</span>
+            <span class="kbd-btn danger">削除</span>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="rows">
+            <div class="row"><div class="name">テーブル脚 A 金具付き</div><div class="sub">西-北-02</div></div>
+            <div class="row"><div class="name">テーブル脚 B 金具付き</div><div class="sub">西-北-04</div></div>
+            <div class="row"><div class="name">テーブル脚 補強なし</div><div class="sub">中央-南-03</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="refine">
+    <p class="case-title">語を足すほど、登録済み部品の候補だけが減っていく</p>
+    <p class="case-desc">
+      候補が多い段階では、登録済みの候補だけを見てさらに特徴語を足す。
+      「スクロールして探す」より「語を1つ足して減らす」を優先する。
+    </p>
+    <div class="compare">
+      <div>
+        <p class="tag">状態 A · 「テーブル」「脚」</p>
+        <div class="phone">
+          <div class="bar"><span class="back">←</span><span>部品名で棚を探す</span><span></span></div>
+          <div class="body">
+            <div class="search">
+              <span class="chip active">テーブル</span>
+              <span class="chip active">脚</span>
+            </div>
+            <div class="kbd-wrap" style="max-height:120px;padding:0.3rem;">
+              <div class="kbd-presets" style="margin-bottom:0;">
+                <span class="kbd-btn preset" style="min-height:30px;font-size:0.62rem;">脚</span>
+                <span class="kbd-btn preset" style="min-height:30px;font-size:0.62rem;">金具</span>
+                <span class="kbd-btn preset" style="min-height:30px;font-size:0.62rem;">白</span>
+              </div>
+              <div class="kbd-grid-5" style="margin-top:0.25rem;">
+                <span class="kbd-btn" style="min-height:30px;font-size:0.68rem;">あ</span><span class="kbd-btn" style="min-height:30px;font-size:0.68rem;">い</span><span class="kbd-btn" style="min-height:30px;font-size:0.68rem;">…</span><span class="kbd-btn" style="min-height:30px;font-size:0.68rem;">A</span><span class="kbd-btn" style="min-height:30px;font-size:0.68rem;">B</span>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="rows">
+                <div class="row"><div class="name">テーブル脚 A 金具付き</div><div class="sub">西-北-02</div></div>
+                <div class="row"><div class="name">テーブル脚 B 金具付き</div><div class="sub">西-北-04</div></div>
+                <div class="row"><div class="name">テーブル脚 補強なし</div><div class="sub">中央-南-03</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="tag">状態 B · 「金具」を追加</p>
+        <div class="phone">
+          <div class="bar"><span class="back">←</span><span>部品名で棚を探す</span><span></span></div>
+          <div class="body">
+            <div class="search">
+              <span class="chip active">テーブル</span>
+              <span class="chip active">脚</span>
+              <span class="chip active">金具</span>
+            </div>
+
+            <div class="panel">
+              <div class="rows">
+                <div class="row"><div class="name">テーブル脚 A 金具付き</div><div class="sub">西-北-02</div></div>
+                <div class="row"><div class="name">テーブル脚 B 金具付き</div><div class="sub">西-北-04</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="fallback">
+    <p class="case-title">登録済みで見つからなければ、その場で「該当なし」を返す</p>
+    <p class="case-desc">
+      このページは「探す」機能なので、未登録候補を別ソースから混ぜない。
+      見つからない場合は、名称違い・語の足し方不足・そもそも未登録、のいずれかとして扱う。
+    </p>
+    <div class="phone">
+      <div class="bar"><span class="back">←</span><span>部品名で棚を探す</span><span></span></div>
+      <div class="body">
+        <div class="search">
+          <span class="chip active">テーブル</span>
+          <span class="chip active">脚</span>
+          <span class="chip active">白</span>
+        </div>
+        <div class="panel">
+          <div class="rows">
+            <div class="row"><div class="name">該当なし</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>
