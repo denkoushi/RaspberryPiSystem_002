@@ -91,16 +91,18 @@
   when: services_to_restart is not defined
 
 # lightdm停止時（Pi3デプロイ時）はsignage関連サービスの再起動をスキップ
-# これらはpost_tasksでの再起動後に自動起動する
+# これらは signage ロール + post_tasks（lightdm 復帰後）で起動する
+# NOTE: lightdm が既に停止していると systemd の changed が false になり得るため、
+# stop_lightdm（device_type_defaults）で判定する
 - name: Filter out signage services when lightdm is stopped
   ansible.builtin.set_fact:
     services_to_restart_filtered: "{{ services_to_restart | reject('match', 'signage-lite.*') | list }}"
-  when: lightdm_stopped is defined and lightdm_stopped is changed
+  when: stop_lightdm | default(false) | bool
 
 - name: Use original services list when lightdm is not stopped
   ansible.builtin.set_fact:
     services_to_restart_filtered: "{{ services_to_restart }}"
-  when: lightdm_stopped is not defined or lightdm_stopped is not changed
+  when: not (stop_lightdm | default(false) | bool)
 
 - name: Restart required services (clients) with retry
   ansible.builtin.include_tasks: "{{ playbook_dir }}/../tasks/restart-client-service.yml"
