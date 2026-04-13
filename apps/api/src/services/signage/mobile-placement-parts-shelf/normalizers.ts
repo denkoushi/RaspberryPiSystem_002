@@ -36,9 +36,3 @@ export function buildPartDisplayName(fields: {
   return '（名称不明）';
 }
 
-/** 機種名の素: ProductNo を優先（ハイフン区切り機種コード想定）、なければ FHINMEI */
-export function rawMachineNameForTypeKey(fields: { productNo: string; fhinmei: string }): string {
-  const pn = fields.productNo.trim();
-  if (pn.length > 0) return pn;
-  return fields.fhinmei.trim();
-}

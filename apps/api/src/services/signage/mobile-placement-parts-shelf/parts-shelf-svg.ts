@@ -13,8 +13,10 @@ const ZONE_FILL: Record<PartsShelfZoneId, string> = {
   se: '#d9599b',
 };
 
+/** キャンバス外周・プレビュー HTML の body と同系（真っ黒にしない） */
 const BG = '#333333';
-const INNER = 'rgba(15,23,42,0.94)';
+/** ゾーンヘッダ帯のみやや暗くする（HTML `.zone-head` の rgba(0,0,0,0.18) に相当） */
+const ZONE_HEAD_TINT = 'rgba(0,0,0,0.18)';
 
 function escapeXml(value: string): string {
   return value
@@ -49,13 +51,13 @@ export function buildMobilePlacementPartsShelfGridSvg(vm: PartsShelfGridViewMode
   const cellH = (innerH - gap * 2) / 3;
   const scale = width / 1920;
   const fsHead = Math.round(13 * scale);
-  const fsRow = Math.round(10 * scale);
+  /** アイテム行（製番・品名・機種名）。可読性のため基準の約2倍 */
+  const fsRow = Math.round(20 * scale);
   const fsCount = Math.round(11 * scale);
   const rCell = Math.round(10 * scale);
   const rInner = Math.round(8 * scale);
   const frame = 3;
   const innerPad = Math.round(5 * scale);
-  const headerBarH = Math.round(30 * scale);
 
   const zoneById = new Map(vm.zones.map((z) => [z.zoneId, z]));
 
@@ -71,6 +73,7 @@ export function buildMobilePlacementPartsShelfGridSvg(vm: PartsShelfGridViewMode
     const innerY = y + frame;
     const innerWc = cellW - frame * 2;
     const innerHc = cellH - frame * 2;
+    const headerBgH = innerPad + fsHead + Math.round(10 * scale) + innerPad;
 
     const countLabel =
       z == null
@@ -80,8 +83,8 @@ export function buildMobilePlacementPartsShelfGridSvg(vm: PartsShelfGridViewMode
           : `${z.totalCount} 件`;
 
     const rows = z?.rows ?? [];
-    const bodyTop = innerY + innerPad + headerBarH;
-    const bodyH = Math.max(0, innerHc - innerPad * 2 - headerBarH);
+    const bodyTop = innerY + headerBgH + Math.round(2 * scale);
+    const bodyH = Math.max(0, innerY + innerHc - innerPad - bodyTop);
     const n = Math.max(rows.length, 1);
     const rowStep = Math.min(Math.max(fsRow + 4, 12 * scale), bodyH / n);
 
@@ -89,8 +92,7 @@ export function buildMobilePlacementPartsShelfGridSvg(vm: PartsShelfGridViewMode
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]!;
       const textY = bodyTop + (i + 1) * rowStep - Math.round(2 * scale);
-      const x0 = innerX + innerPad;
-      const xSerial = x0;
+      const xSerial = innerX + innerPad;
       const xPart = innerX + innerWc * 0.11;
       const xMachine = innerX + innerWc - innerPad;
       rowEls.push(`
@@ -102,10 +104,10 @@ export function buildMobilePlacementPartsShelfGridSvg(vm: PartsShelfGridViewMode
 
     cells.push(`
       <g>
-        <rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="${rCell}" fill="${fill}" />
-        <rect x="${innerX}" y="${innerY}" width="${innerWc}" height="${innerHc}" rx="${rInner}" fill="${INNER}" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-        <text x="${innerX + innerPad}" y="${innerY + innerPad + fsHead}" fill="rgba(248,250,252,0.9)" font-size="${fsHead}" font-family="system-ui,sans-serif" font-weight="800">${escapeXml(z?.dirLabel ?? '')}</text>
-        <text x="${innerX + innerWc - innerPad}" y="${innerY + innerPad + fsHead}" text-anchor="end" fill="rgba(148,163,184,0.95)" font-size="${fsCount}" font-family="system-ui,sans-serif" font-weight="700">${escapeXml(countLabel)}</text>
+        <rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="${rCell}" fill="${fill}" stroke="rgba(255,255,255,0.14)" stroke-width="1" />
+        <rect x="${innerX}" y="${innerY}" width="${innerWc}" height="${headerBgH}" rx="${rInner}" fill="${ZONE_HEAD_TINT}" />
+        <text x="${innerX + innerPad}" y="${innerY + innerPad + fsHead}" fill="rgba(255,255,255,0.95)" font-size="${fsHead}" font-family="system-ui,sans-serif" font-weight="800">${escapeXml(z?.dirLabel ?? '')}</text>
+        <text x="${innerX + innerWc - innerPad}" y="${innerY + innerPad + fsHead}" text-anchor="end" fill="rgba(255,255,255,0.88)" font-size="${fsCount}" font-family="system-ui,sans-serif" font-weight="700">${escapeXml(countLabel)}</text>
         ${rowEls.join('\n')}
       </g>
     `);

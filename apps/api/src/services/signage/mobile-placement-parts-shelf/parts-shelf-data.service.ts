@@ -1,11 +1,7 @@
 import { prisma } from '../../../lib/prisma.js';
 import { parseStructuredShelfCode } from '../../mobile-placement/mobile-placement-registered-shelves.service.js';
-import {
-  buildPartDisplayName,
-  machineTypeDisplayKey,
-  rawMachineNameForTypeKey,
-  seibanHead5,
-} from './normalizers.js';
+import { fetchSeibanProgressRows } from '../../production-schedule/seiban-progress.service.js';
+import { buildPartDisplayName, machineTypeDisplayKey, seibanHead5 } from './normalizers.js';
 import {
   PARTS_SHELF_ZONE_DIR_LABEL,
   shelfEntryToZoneId,
@@ -60,6 +56,10 @@ export async function buildMobilePlacementPartsShelfGridViewModel(
     buckets.set(z, []);
   }
 
+  type PendingPlacement = { zoneId: PartsShelfZoneId; fields: ReturnType<typeof readRowData> };
+  const pending: PendingPlacement[] = [];
+  const fseibanKeys = new Set<string>();
+
   for (const st of states) {
     const parsed = parseStructuredShelfCode(st.shelfCodeRaw);
     const zoneId = shelfEntryToZoneId(parsed);
@@ -71,10 +71,23 @@ export async function buildMobilePlacementPartsShelfGridViewModel(
     const rd = csvRow?.rowData as Record<string, unknown> | undefined;
     const snap = st.scheduleSnapshot as Record<string, unknown> | undefined;
     const fields = readRowData(rd, snap);
+    const fs = fields.fseiban.trim();
+    if (fs.length > 0) {
+      fseibanKeys.add(fs);
+    }
+    pending.push({ zoneId, fields });
+  }
 
+  /** 機種名: ProductNo は製造order用途のため使わない。MH/SH 行 FHINMEI 集約（部品検索・進捗一覧と同系） */
+  const progressRows = await fetchSeibanProgressRows([...fseibanKeys]);
+  const machineBySeiban = new Map(
+    progressRows.map((r) => [r.fseiban.trim(), (r.machineName ?? '').trim()])
+  );
+
+  for (const { zoneId, fields } of pending) {
     const partName = buildPartDisplayName(fields);
-    const machineRaw = rawMachineNameForTypeKey({ productNo: fields.productNo, fhinmei: fields.fhinmei });
-    const machine10 = machineTypeDisplayKey(machineRaw);
+    const machineSchedule = machineBySeiban.get(fields.fseiban.trim()) ?? '';
+    const machine10 = machineTypeDisplayKey(machineSchedule);
     const serial5 = seibanHead5(fields.fseiban);
 
     const row: PartsShelfRowVm = {
