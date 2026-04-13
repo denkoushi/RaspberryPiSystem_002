@@ -33,7 +33,7 @@ export function useMobilePlacementPartSearch() {
         normalizedPartQuery,
         machineQueryTrimmed.length > 0 ? machineQueryTrimmed : undefined
       ),
-    enabled: normalizedPartQuery.length > 0
+    enabled: normalizedPartQuery.length > 0 || machineQueryTrimmed.length > 0
   });
 
   const visibleHits = useMemo(

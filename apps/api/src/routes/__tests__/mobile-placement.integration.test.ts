@@ -791,6 +791,126 @@ describe('mobile-placement API', () => {
     expect(bodyMiss.currentPlacements).toHaveLength(0);
   });
 
+  it('GET /api/mobile-placement/part-search/suggest finds ナットホルダー when q is ナット (sokuon comparable)', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    const row = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999882',
+          FSEIBAN: 'PSTESTNUT',
+          FHINCD: 'FH-NUT',
+          FHINMEI: 'ナットホルダー',
+          FSIGENCD: '',
+          FKOJUN: ''
+        }
+      }
+    });
+    await prisma.orderPlacementBranchState.create({
+      data: {
+        manufacturingOrderBarcodeRaw: '0000999882',
+        branchNo: 1,
+        shelfCodeRaw: '東-南-99',
+        csvDashboardRowId: row.id,
+        scheduleSnapshot: {
+          ProductNo: '999882',
+          FSEIBAN: 'PSTESTNUT',
+          FHINCD: 'FH-NUT',
+          FHINMEI: 'ナットホルダー'
+        }
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/mobile-placement/part-search/suggest?q=${encodeURIComponent('ナット')}`,
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { currentPlacements: Array<{ displayName: string; shelfCodeRaw: string | null }> };
+    expect(body.currentPlacements.length).toBeGreaterThan(0);
+    expect(body.currentPlacements[0].displayName).toContain('ナット');
+    expect(body.currentPlacements[0].shelfCodeRaw).toBe('東-南-99');
+  });
+
+  it('GET /api/mobile-placement/part-search/suggest filters by machineName only when q is empty', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999880',
+          FSEIBAN: 'PSTEST01',
+          FHINCD: 'MH001',
+          FHINMEI: 'DAD3350MACHINE',
+          FSIGENCD: '',
+          FKOJUN: ''
+        }
+      }
+    });
+    const partRow = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999881',
+          FSEIBAN: 'PSTEST01',
+          FHINCD: 'FH-PST',
+          FHINMEI: 'テーブル脚',
+          FSIGENCD: '',
+          FKOJUN: ''
+        }
+      }
+    });
+    await prisma.orderPlacementBranchState.create({
+      data: {
+        manufacturingOrderBarcodeRaw: '0000999881',
+        branchNo: 1,
+        shelfCodeRaw: '東-南-01',
+        csvDashboardRowId: partRow.id,
+        scheduleSnapshot: {
+          ProductNo: '999881',
+          FSEIBAN: 'PSTEST01',
+          FHINCD: 'FH-PST',
+          FHINMEI: 'テーブル脚'
+        }
+      }
+    });
+
+    const ok = await app.inject({
+      method: 'GET',
+      url: `/api/mobile-placement/part-search/suggest?q=&machineName=${encodeURIComponent('DAD3350')}`,
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(ok.statusCode).toBe(200);
+    const bodyOk = ok.json() as { currentPlacements: Array<{ matchedQuery: string; displayName: string }> };
+    expect(bodyOk.currentPlacements.length).toBeGreaterThan(0);
+    expect(bodyOk.currentPlacements[0].matchedQuery).toContain('DAD3350');
+    expect(bodyOk.currentPlacements[0].displayName).toContain('脚');
+  });
+
   it('GET /api/mobile-placement/part-search/suggest returns schedule candidates when no current shelf', async () => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     await prisma.csvDashboard.upsert({
