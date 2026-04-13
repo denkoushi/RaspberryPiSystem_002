@@ -160,6 +160,14 @@
 - **知見**: Pi5 初回デプロイは **イメージ再ビルドで長時間**になり、`--follow` が待ちに見えることがある。**`failed=0` が最終判定**。
 - **トラブルシュート**: **401** → `heartbeat` と `x-client-key`。**候補が常に空** → データが無い・クエリが短すぎる。**同義語追加** → `packages/part-search-core` の `aliases.ts` と `packages/part-search-core/src/__tests__/aliases.test.ts`。
 
+### V17（2026-04-13・部品検索最終: AND トークングループ・登録済みのみ・剪定 UI・`part-search-core` 集約 + CI/Docker）
+
+- **目的**: キーワードを **空白区切りで AND**（グループ内は OR・同義語は **`@raspi-system/part-search-core`**）。キオスクは **登録済みヒットのみ**表示・**文字パレットはヒットが無くなったら非表示**・剪定ロジックを **`partSearchPalettePruner`** に分離。API の別名ファイルは廃止し **共有パッケージ**へ。**CI / `Dockerfile.api` / `Dockerfile.web`** で **`part-search-core` を先に `pnpm build`**（`Cannot find module '@raspi-system/part-search-core'` 回避）。
+- **本番デプロイ（2026-04-13）**: ブランチ **`feature/mobile-placement-part-search-final`**・先端コミット **`4d34f5fa`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-100158-12333` → `20260413-101643-3896` → `20260413-102109-32432` → `20260413-102432-4099` → `20260413-102904-13288`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0` / `unreachable=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**・Mac / Tailscale）。
+- **知見**: Pi5 初回は **Docker 再ビルド**（`part-search-core` 取り込み）で **約 14 分**程度かかる場合がある。**`failed=0` が最終判定**。
+- **トラブルシュート**: **CI で API が `@raspi-system/part-search-core` を解決できない** → `.github/workflows/ci.yml` で **`packages/part-search-core` を `pnpm build`**、Docker は **`COPY packages/part-search-core`** と **ビルドステージでのビルド順**を確認（本変更で対応済み）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
@@ -168,4 +176,5 @@
 - 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
 - 実装（分配枝・V14）: `apps/api/src/services/mobile-placement/order-placement-branch.service.ts`・`apps/api/src/services/mobile-placement/mobile-placement-order-placement.service.ts`・マイグレーション `20260412120000_order_placement_branch_state`
 - 実装（部品名検索・V16）: `apps/api/src/services/mobile-placement/part-search/`（`part-search.service.ts`）＋共有 **`packages/part-search-core`**
+- 実装（部品検索最終・V17）: 同上 + `part-search-normalize.ts`（SQL 用 `escapeForIlike` のみ）・キオスク `part-search/*`（`partSearchPalettePruner.ts` 等）・**CI/Docker**（`part-search-core` ビルド）
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)
