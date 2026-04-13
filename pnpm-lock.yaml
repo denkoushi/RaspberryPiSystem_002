@@ -53,6 +53,9 @@ importers:
       '@prisma/client':
         specifier: ^5.14.0
         version: 5.22.0(prisma@5.22.0)
+      '@raspi-system/part-search-core':
+        specifier: workspace:*
+        version: link:../../packages/part-search-core
       '@raspi-system/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -186,6 +189,9 @@ importers:
       '@digital-go-jp/design-tokens':
         specifier: 1.1.9
         version: 1.1.9
+      '@raspi-system/part-search-core':
+        specifier: workspace:*
+        version: link:../../packages/part-search-core
       '@raspi-system/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -280,6 +286,30 @@ importers:
       vitest:
         specifier: ^1.5.0
         version: 1.6.1(@types/node@25.0.1)(@vitest/ui@1.6.1)(jsdom@24.0.0)
+
+  packages/part-search-core:
+    devDependencies:
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^7.8.0
+        version: 7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^7.8.0
+        version: 7.18.0(eslint@8.57.1)(typescript@5.9.3)
+      eslint:
+        specifier: ^8.57.0
+        version: 8.57.1
+      eslint-config-prettier:
+        specifier: ^9.1.0
+        version: 9.1.2(eslint@8.57.1)
+      eslint-plugin-import:
+        specifier: ^2.29.1
+        version: 2.32.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
+      vitest:
+        specifier: ^1.5.0
+        version: 1.6.1(@types/node@25.0.1)(@vitest/ui@1.6.1)(jsdom@27.4.0)
 
   packages/shared-types:
     devDependencies:
@@ -7811,6 +7841,42 @@ snapshots:
       '@types/node': 25.0.1
       '@vitest/ui': 1.6.1(vitest@1.6.1)
       jsdom: 24.0.0
+    transitivePeerDependencies:
+      - less
+      - lightningcss
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+
+  vitest@1.6.1(@types/node@25.0.1)(@vitest/ui@1.6.1)(jsdom@27.4.0):
+    dependencies:
+      '@vitest/expect': 1.6.1
+      '@vitest/runner': 1.6.1
+      '@vitest/snapshot': 1.6.1
+      '@vitest/spy': 1.6.1
+      '@vitest/utils': 1.6.1
+      acorn-walk: 8.3.4
+      chai: 4.5.0
+      debug: 4.4.3
+      execa: 8.0.1
+      local-pkg: 0.5.1
+      magic-string: 0.30.21
+      pathe: 1.1.2
+      picocolors: 1.1.1
+      std-env: 3.10.0
+      strip-literal: 2.1.1
+      tinybench: 2.9.0
+      tinypool: 0.8.4
+      vite: 5.4.21(@types/node@25.0.1)
+      vite-node: 1.6.1(@types/node@25.0.1)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 25.0.1
+      '@vitest/ui': 1.6.1(vitest@1.6.1)
+      jsdom: 27.4.0
     transitivePeerDependencies:
       - less
       - lightningcss

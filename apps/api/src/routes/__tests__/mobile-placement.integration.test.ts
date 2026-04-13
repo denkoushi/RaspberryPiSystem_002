@@ -673,6 +673,25 @@ describe('mobile-placement API', () => {
     expect(bodyAlias.currentPlacements[0].displayName).toContain('脚');
     expect(bodyAlias.currentPlacements[0].shelfCodeRaw).toBe('東-南-01');
     expect(bodyAlias.currentPlacements[0].aliasMatchedBy).toBe('アシ/脚/足');
+
+    const resAnd = await app.inject({
+      method: 'GET',
+      url: `/api/mobile-placement/part-search/suggest?q=${encodeURIComponent('テーブル 脚')}`,
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(resAnd.statusCode).toBe(200);
+    const bodyAnd = resAnd.json() as { currentPlacements: Array<{ displayName: string }> };
+    expect(bodyAnd.currentPlacements.length).toBeGreaterThan(0);
+    expect(bodyAnd.currentPlacements[0].displayName).toContain('脚');
+
+    const resAndMiss = await app.inject({
+      method: 'GET',
+      url: `/api/mobile-placement/part-search/suggest?q=${encodeURIComponent('テーブル ボルト')}`,
+      headers: { 'x-client-key': clientApiKey }
+    });
+    expect(resAndMiss.statusCode).toBe(200);
+    const bodyMiss = resAndMiss.json() as { currentPlacements: unknown[] };
+    expect(bodyMiss.currentPlacements).toHaveLength(0);
   });
 
   it('GET /api/mobile-placement/part-search/suggest returns schedule candidates when no current shelf', async () => {

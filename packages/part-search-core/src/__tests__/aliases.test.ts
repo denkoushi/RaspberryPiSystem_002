@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { expandSearchTerms } from '../part-search-aliases.js';
+import { expandSearchTerms } from '../aliases.js';
 
 describe('expandSearchTerms', () => {
   it('empty query returns empty terms', () => {
