@@ -101,7 +101,9 @@ const orderPlacementBranchesQuerySchema = z.object({
 });
 
 const partSearchSuggestQuerySchema = z.object({
-  q: z.string().max(100).optional().default('')
+  q: z.string().max(100).optional().default(''),
+  /** 登録製番ボタン下段の機種名（MH/SH 行 FHINMEI 由来）で AND 絞り込み。空なら無視。 */
+  machineName: z.string().max(200).optional().default('')
 });
 
 const registerMobilePlacementShelfBodySchema = z.object({
@@ -144,7 +146,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   app.get('/mobile-placement/part-search/suggest', { config: { rateLimit: false } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     const q = partSearchSuggestQuerySchema.parse(request.query);
-    return suggestPartPlacementSearch({ q: q.q });
+    return suggestPartPlacementSearch({ q: q.q, machineName: q.machineName });
   });
 
   /**

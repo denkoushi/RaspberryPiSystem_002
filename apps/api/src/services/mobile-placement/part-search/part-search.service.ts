@@ -1,10 +1,15 @@
 import { Prisma } from '@prisma/client';
-import { buildTokenGroupsForSearch, normalizePartSearchQuery } from '@raspi-system/part-search-core';
+import {
+  buildTokenGroupsForSearch,
+  normalizePartSearchQuery,
+  partSearchTermVariantsForIlike
+} from '@raspi-system/part-search-core';
 
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { buildMaxProductNoWinnerCondition } from '../../production-schedule/row-resolver/index.js';
 import { escapeForIlike } from './part-search-normalize.js';
+import { resolveFseibansMatchingMachineNameQuery } from './part-search-machine-name-fseibans.service.js';
 import type { PartPlacementSearchHitDto, PartPlacementSearchSuggestResult } from './part-search.types.js';
 
 const CURRENT_LIMIT = 30;
@@ -46,9 +51,12 @@ function buildDisplayName(row: {
 
 /** 1 トークン分の OR 条件（FHINMEI / FHINCD のいずれかに部分一致） */
 function buildBranchStateWhereClauseForTokenGroup(terms: string[]): Prisma.Sql {
-  const parts = terms.map((t) => {
-    const pattern = `%${escapeForIlike(t)}%`;
-    return Prisma.sql`(COALESCE("scheduleSnapshot"->>'FHINMEI','') ILIKE ${pattern} ESCAPE '\\' OR COALESCE("scheduleSnapshot"->>'FHINCD','') ILIKE ${pattern} ESCAPE '\\')`;
+  const parts = terms.flatMap((t) => {
+    const variants = partSearchTermVariantsForIlike(t);
+    return variants.map((v) => {
+      const pattern = `%${escapeForIlike(v)}%`;
+      return Prisma.sql`(COALESCE("scheduleSnapshot"->>'FHINMEI','') ILIKE ${pattern} ESCAPE '\\' OR COALESCE("scheduleSnapshot"->>'FHINCD','') ILIKE ${pattern} ESCAPE '\\')`;
+    });
   });
   return Prisma.sql`(${Prisma.join(parts, ' OR ')})`;
 }
@@ -59,9 +67,12 @@ function buildBranchStateWhereClause(tokenGroups: string[][]): Prisma.Sql {
 }
 
 function buildRowDataWhereClauseForTokenGroup(terms: string[]): Prisma.Sql {
-  const parts = terms.map((t) => {
-    const pattern = `%${escapeForIlike(t)}%`;
-    return Prisma.sql`(COALESCE(r."rowData"->>'FHINMEI','') ILIKE ${pattern} ESCAPE '\\' OR COALESCE(r."rowData"->>'FHINCD','') ILIKE ${pattern} ESCAPE '\\')`;
+  const parts = terms.flatMap((t) => {
+    const variants = partSearchTermVariantsForIlike(t);
+    return variants.map((v) => {
+      const pattern = `%${escapeForIlike(v)}%`;
+      return Prisma.sql`(COALESCE(r."rowData"->>'FHINMEI','') ILIKE ${pattern} ESCAPE '\\' OR COALESCE(r."rowData"->>'FHINCD','') ILIKE ${pattern} ESCAPE '\\')`;
+    });
   });
   return Prisma.sql`(${Prisma.join(parts, ' OR ')})`;
 }
@@ -80,8 +91,31 @@ function buildExcludedRowIdsClause(excludedIds: string[]): Prisma.Sql {
   )})`;
 }
 
+function buildFseibanInClauseForBranchState(fseibans: Set<string>): Prisma.Sql {
+  const list = [...fseibans];
+  if (list.length === 0) {
+    return Prisma.empty;
+  }
+  return Prisma.sql` AND COALESCE("scheduleSnapshot"->>'FSEIBAN','') IN (${Prisma.join(
+    list.map((v) => Prisma.sql`${v}`),
+    ','
+  )})`;
+}
+
+function buildFseibanInClauseForRowAlias(fseibans: Set<string>): Prisma.Sql {
+  const list = [...fseibans];
+  if (list.length === 0) {
+    return Prisma.empty;
+  }
+  return Prisma.sql` AND COALESCE(r."rowData"->>'FSEIBAN','') IN (${Prisma.join(
+    list.map((v) => Prisma.sql`${v}`),
+    ','
+  )})`;
+}
+
 export async function suggestPartPlacementSearch(params: {
   q: string;
+  machineName?: string | null;
 }): Promise<PartPlacementSearchSuggestResult> {
   const rawQuery = normalizePartSearchQuery(params.q);
   if (rawQuery.length === 0) {
@@ -93,7 +127,17 @@ export async function suggestPartPlacementSearch(params: {
     return { currentPlacements: [], scheduleCandidates: [] };
   }
 
+  const machinePartRaw = (params.machineName ?? '').trim();
+  let machineFseibanFilter: Set<string> | null = null;
+  if (machinePartRaw.length > 0) {
+    machineFseibanFilter = await resolveFseibansMatchingMachineNameQuery(machinePartRaw);
+    if (machineFseibanFilter.size === 0) {
+      return { currentPlacements: [], scheduleCandidates: [] };
+    }
+  }
+
   const branchWhere = buildBranchStateWhereClause(tokenGroups);
+  const machineBranchClause = machineFseibanFilter ? buildFseibanInClauseForBranchState(machineFseibanFilter) : Prisma.empty;
 
   const currentRows = await prisma.$queryRaw<BranchStateSqlRow[]>`
     SELECT
@@ -107,7 +151,7 @@ export async function suggestPartPlacementSearch(params: {
       COALESCE("scheduleSnapshot"->>'FSEIBAN','') AS fseiban,
       COALESCE("scheduleSnapshot"->>'ProductNo','') AS product_no
     FROM "OrderPlacementBranchState"
-    WHERE ${branchWhere}
+    WHERE ${branchWhere}${machineBranchClause}
     ORDER BY "updatedAt" DESC
     LIMIT ${CURRENT_LIMIT}
   `;
@@ -119,6 +163,7 @@ export async function suggestPartPlacementSearch(params: {
   const rowWhere = buildRowDataWhereClause(tokenGroups);
   const excludedClause = buildExcludedRowIdsClause(excludedScheduleRowIds);
   const winner = buildMaxProductNoWinnerCondition('r');
+  const machineRowClause = machineFseibanFilter ? buildFseibanInClauseForRowAlias(machineFseibanFilter) : Prisma.empty;
 
   const scheduleRows = await prisma.$queryRaw<ScheduleSqlRow[]>`
     SELECT
@@ -131,12 +176,14 @@ export async function suggestPartPlacementSearch(params: {
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${winner}
       AND (${rowWhere})
-      ${excludedClause}
+      ${excludedClause}${machineRowClause}
     ORDER BY r."occurredAt" DESC
     LIMIT ${SCHEDULE_LIMIT}
   `;
 
   const aliasLabel = aliasMatchedBy;
+  const matchedQueryLabel =
+    machinePartRaw.length > 0 ? `${rawQuery} ${machinePartRaw}` : rawQuery;
 
   const currentPlacements: PartPlacementSearchHitDto[] = currentRows.map((row) => {
     const productNo = row.product_no;
@@ -147,7 +194,7 @@ export async function suggestPartPlacementSearch(params: {
         fhincd: row.fhincd,
         productNo
       }),
-      matchedQuery: rawQuery,
+      matchedQuery: matchedQueryLabel,
       aliasMatchedBy: aliasLabel,
       shelfCodeRaw: row.shelfCodeRaw,
       manufacturingOrderBarcodeRaw: row.manufacturingOrderBarcodeRaw,
@@ -171,7 +218,7 @@ export async function suggestPartPlacementSearch(params: {
         fhincd: row.fhincd,
         productNo
       }),
-      matchedQuery: rawQuery,
+      matchedQuery: matchedQueryLabel,
       aliasMatchedBy: aliasLabel,
       shelfCodeRaw: null,
       manufacturingOrderBarcodeRaw: mo.length > 0 ? mo : null,

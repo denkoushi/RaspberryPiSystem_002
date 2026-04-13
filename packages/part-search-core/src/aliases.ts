@@ -1,3 +1,5 @@
+import { normalizePartSearchQuery } from './normalize.js';
+
 /**
  * 管理された同義語グループ。広げすぎると誤ヒットが増えるため、少数から開始する。
  */
@@ -31,8 +33,9 @@ export function expandSearchTerms(normalizedToken: string): {
       terms = nextTerms;
     }
   }
+  const normalizedTerms = [...terms].map((t) => normalizePartSearchQuery(t));
   return {
-    terms: [...terms],
+    terms: normalizedTerms,
     aliasMatchedBy: matchedGroups.length > 0 ? matchedGroups.join(', ') : null
   };
 }

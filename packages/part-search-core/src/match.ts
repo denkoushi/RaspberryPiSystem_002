@@ -1,9 +1,13 @@
 import { normalizePartSearchQuery } from './normalize.js';
 import { buildTokenGroupsForSearch } from './token-groups.js';
 
-function ilikeIncludes(haystack: string, needle: string): boolean {
-  if (needle.length === 0) return true;
-  return haystack.toLowerCase().includes(needle.toLowerCase());
+function includesNormalized(haystack: string, needle: string): boolean {
+  if (needle.length === 0) {
+    return true;
+  }
+  const h = normalizePartSearchQuery(haystack);
+  const n = normalizePartSearchQuery(needle);
+  return h.toLowerCase().includes(n.toLowerCase());
 }
 
 /**
@@ -15,17 +19,17 @@ export function matchesPartSearchFields(
   rawQuery: string
 ): boolean {
   const { tokenGroups } = buildTokenGroupsForSearch(rawQuery);
-  if (tokenGroups.length === 0) return false;
-
-  const mei = normalizePartSearchQuery(fields.fhinmei ?? '');
-  const cd = normalizePartSearchQuery(fields.fhincd ?? '');
+  if (tokenGroups.length === 0) {
+    return false;
+  }
 
   for (const group of tokenGroups) {
     const groupOk = group.some((term) => {
-      const t = normalizePartSearchQuery(term);
-      return ilikeIncludes(mei, t) || ilikeIncludes(cd, t);
+      return includesNormalized(fields.fhinmei ?? '', term) || includesNormalized(fields.fhincd ?? '', term);
     });
-    if (!groupOk) return false;
+    if (!groupOk) {
+      return false;
+    }
   }
   return true;
 }

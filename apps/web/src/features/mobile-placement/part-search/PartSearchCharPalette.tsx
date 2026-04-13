@@ -2,6 +2,7 @@ import clsx from 'clsx';
 
 import {
   PART_SEARCH_ABC,
+  PART_SEARCH_DIGITS,
   PART_SEARCH_GOJUON_ROWS,
   PART_SEARCH_PRESETS,
   PART_SEARCH_SPACE_KEY
@@ -51,6 +52,15 @@ export function PartSearchCharPalette(props: Props) {
         {PART_SEARCH_ABC.map((ch) =>
           isHidden(hiddenKeys, ch) ? null : (
             <button key={ch} type="button" className={clsx(keyClass, 'text-xs')} onClick={() => onAppend(ch)}>
+              {ch}
+            </button>
+          )
+        )}
+      </div>
+      <div className="grid grid-cols-5 gap-1 sm:grid-cols-10">
+        {PART_SEARCH_DIGITS.map((ch) =>
+          isHidden(hiddenKeys, ch) ? null : (
+            <button key={ch} type="button" className={clsx(keyClass, 'text-sm')} onClick={() => onAppend(ch)}>
               {ch}
             </button>
           )
