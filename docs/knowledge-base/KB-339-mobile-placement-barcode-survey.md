@@ -182,6 +182,17 @@
 - **知見**: Pi5 初回は **Docker 再ビルド**（`part-search-core` 取り込み）で **約 14 分**程度かかる場合がある。**`failed=0` が最終判定**。
 - **トラブルシュート**: **CI で API が `@raspi-system/part-search-core` を解決できない** → `.github/workflows/ci.yml` で **`packages/part-search-core` を `pnpm build`**、Docker は **`COPY packages/part-search-core`** と **ビルドステージでのビルド順**を確認（本変更で対応済み）。
 
+### V19（2026-04-13・部品検索: 機種名 AND・かな正規化拡張・数字パレット・プリセット追加）
+
+- **目的**: 部品名に加え **登録製番ボタン下段の機種名**で AND 絞り込みし、**ひらがな/カタカナ・拗音・促音**の表記ゆれを吸収する。キオスクは **部品名・機種名の2入力**、**0–9 数字行**、プリセット語（ナット／サドル／ベース／カラー／ベアリング／モータ 等）を追加。
+- **API**: `GET /api/mobile-placement/part-search/suggest` に任意クエリ **`machineName`**（後方互換）。機種名は `seiban-progress` と同系の **MH/SH 行 `FHINMEI` 集約**から `FSEIBAN` 集合を作り、**`q` と AND**。`matchedQuery` は部品名正規化後の `q` と機種名入力を連結した表示用文字列。
+- **共有**: `packages/part-search-core` — `normalizePartSearchQuery` 拡張、`partSearchTermVariantsForIlike`（DB のひら/カタ混在向け ILIKE）、`normalizeMachineNameForPartSearch`（機種表示との比較）。実装: `part-search-machine-name-fseibans.service.ts`。
+- **Web**: 機種名欄フォーカス時は **パレット剪定を行わない**（ヒット DTO に機種表示名が無いため誤剪定を避ける）。
+- **本番デプロイ（2026-04-13）**: ブランチ **`feat/mobile-placement-part-search-machine-filter`**・コミット **`5bfab6c8`**。[deployment.md](../guides/deployment.md) に従い **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**・**`--detach --follow`**（**Pi3 は対象外**）。**Detach Run ID**（Pi5 リモート `logs/deploy/` の `ansible-update-*` 接尾辞）: `20260413-143256-27604` → `20260413-144431-6108` → `20260413-144847-8016` → `20260413-145200-25161` → `20260413-145658-5761`、各 **`Summary success check: true`**・`PLAY RECAP` **`failed=0`**。
+- **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **24s**・Mac / Tailscale・2026-04-13 実測）。
+- **知見**: Pi5 は **`part-search-core` 変更により Docker 再ビルド**（`api` / `web`）が走る。**`failed=0` が最終判定**。
+- **トラブルシュート**: **401** → `heartbeat` と `x-client-key`。**`machineName` を付けても常に空** → 日程に **MH/SH 行の `FHINMEI`** が無い・クエリが集約後の機種表示と合わない可能性。**長音**（例: モーター）は正規化で **`モータ` と同一視しない**（仕様どおり）。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
@@ -191,4 +202,5 @@
 - 実装（分配枝・V14）: `apps/api/src/services/mobile-placement/order-placement-branch.service.ts`・`apps/api/src/services/mobile-placement/mobile-placement-order-placement.service.ts`・マイグレーション `20260412120000_order_placement_branch_state`
 - 実装（部品名検索・V16）: `apps/api/src/services/mobile-placement/part-search/`（`part-search.service.ts`）＋共有 **`packages/part-search-core`**
 - 実装（部品検索最終・V17）: 同上 + `part-search-normalize.ts`（SQL 用 `escapeForIlike` のみ）・キオスク `part-search/*`（`partSearchPalettePruner.ts` 等）・**CI/Docker**（`part-search-core` ビルド）
+- 実装（部品検索 V19・機種名 AND）: `part-search-machine-name-fseibans.service.ts`・`part-search.service.ts`（`machineName`）・`part-search-core`（正規化・ILIKE バリアント）
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

@@ -8,9 +8,13 @@ import { useMobilePlacementPartSearch } from '../../features/mobile-placement/pa
 export function MobilePlacementPartSearchPage() {
   const navigate = useNavigate();
   const {
-    query,
-    setQuery,
-    normalizedQuery,
+    partQuery,
+    setPartQuery,
+    machineQuery,
+    setMachineQuery,
+    paletteTarget,
+    setPaletteTarget,
+    normalizedPartQuery,
     suggestQuery,
     visibleHits,
     hiddenPaletteKeys,
@@ -20,7 +24,10 @@ export function MobilePlacementPartSearchPage() {
   } = useMobilePlacementPartSearch();
 
   const showEmpty =
-    normalizedQuery.length > 0 && !suggestQuery.isLoading && !suggestQuery.isError && visibleHits.length === 0;
+    normalizedPartQuery.length > 0 && !suggestQuery.isLoading && !suggestQuery.isError && visibleHits.length === 0;
+
+  const inputClass =
+    'mt-1 w-full rounded-lg border border-white/10 bg-slate-900/80 px-3 py-3 text-base text-white placeholder:text-slate-500';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-4 pt-2">
@@ -38,36 +45,65 @@ export function MobilePlacementPartSearchPage() {
       </div>
 
       <label className="block text-xs font-medium text-slate-300">
-        検索
+        部品名（FHINMEI / FHINCD）
         <input
-          value={query}
+          value={partQuery}
           onChange={(e) => {
-            setQuery(e.target.value);
+            setPartQuery(e.target.value);
             clearSelection();
           }}
+          onFocus={() => setPaletteTarget('part')}
           placeholder="例: 脚 / アシ / FHINCD"
-          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-900/80 px-3 py-3 text-base text-white placeholder:text-slate-500"
+          className={inputClass}
           inputMode="search"
           autoComplete="off"
         />
       </label>
 
+      <label className="block text-xs font-medium text-slate-300">
+        機種名（登録製番ボタン下段・任意）
+        <input
+          value={machineQuery}
+          onChange={(e) => {
+            setMachineQuery(e.target.value);
+            clearSelection();
+          }}
+          onFocus={() => setPaletteTarget('machine')}
+          placeholder="例: DAD3350…"
+          className={inputClass}
+          inputMode="search"
+          autoComplete="off"
+        />
+      </label>
+
+      <p className="text-[11px] text-slate-500">
+        文字パレットは「{paletteTarget === 'part' ? '部品名' : '機種名'}」に追記します（フォーカスで切替）。
+      </p>
+
       <div className="max-h-[min(52vh,420px)] overflow-y-auto rounded-xl border border-white/10 bg-slate-900/30 p-2">
         <PartSearchCharPalette
           hiddenKeys={hiddenPaletteKeys}
           onAppend={(s) => {
-            setQuery((prev) => prev + s);
+            if (paletteTarget === 'part') {
+              setPartQuery((prev) => prev + s);
+            } else {
+              setMachineQuery((prev) => prev + s);
+            }
             clearSelection();
           }}
           onBackspace={() => {
-            setQuery((prev) => prev.slice(0, -1));
+            if (paletteTarget === 'part') {
+              setPartQuery((prev) => prev.slice(0, -1));
+            } else {
+              setMachineQuery((prev) => prev.slice(0, -1));
+            }
             clearSelection();
           }}
         />
       </div>
 
       <section aria-live="polite" className="space-y-2">
-        {normalizedQuery.length > 0 ? (
+        {normalizedPartQuery.length > 0 ? (
           <div className="text-xs text-slate-400">
             {suggestQuery.isLoading ? '検索中…' : suggestQuery.isError ? '検索に失敗しました。通信を確認してください。' : null}
           </div>

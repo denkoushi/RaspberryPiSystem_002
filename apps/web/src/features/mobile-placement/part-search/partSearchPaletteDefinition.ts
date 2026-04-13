@@ -1,7 +1,19 @@
 /**
  * 文字パレットの定義（表示コンポーネントと剪定で同一の集合を参照する）。
  */
-export const PART_SEARCH_PRESETS = ['脚', '足', 'テーブル', 'ボルト', 'アシ'] as const;
+export const PART_SEARCH_PRESETS = [
+  '脚',
+  '足',
+  'テーブル',
+  'ボルト',
+  'アシ',
+  'ナット',
+  'サドル',
+  'ベース',
+  'カラー',
+  'ベアリング',
+  'モータ'
+] as const;
 
 export const PART_SEARCH_GOJUON_ROWS: readonly (readonly string[])[] = [
   ['あ', 'い', 'う', 'え', 'お'],
@@ -18,6 +30,9 @@ export const PART_SEARCH_GOJUON_ROWS: readonly (readonly string[])[] = [
 
 export const PART_SEARCH_ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
+/** 機種名（例: DAD3350…）入力用 */
+export const PART_SEARCH_DIGITS = '0123456789'.split('');
+
 /** 空白ボタンが挿入する文字（剪定のキーとしても使用） */
 export const PART_SEARCH_SPACE_KEY = ' ';
 
@@ -25,5 +40,6 @@ export const PART_SEARCH_PALETTE_KEYS: readonly string[] = [
   ...PART_SEARCH_PRESETS,
   ...PART_SEARCH_GOJUON_ROWS.flat(),
   ...PART_SEARCH_ABC,
+  ...PART_SEARCH_DIGITS,
   PART_SEARCH_SPACE_KEY
 ];

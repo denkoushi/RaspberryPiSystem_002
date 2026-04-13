@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { PART_SEARCH_PALETTE_KEYS } from '../partSearchPaletteDefinition';
+import { PART_SEARCH_DIGITS, PART_SEARCH_PALETTE_KEYS, PART_SEARCH_PRESETS } from '../partSearchPaletteDefinition';
 import { computeHiddenPaletteKeys } from '../partSearchPalettePruner';
 
 import type { PartPlacementSearchHitDto } from '../types';
+
+describe('PART_SEARCH_PALETTE_KEYS', () => {
+  it('includes digit keys and V19 preset tokens for pruner and palette', () => {
+    expect(PART_SEARCH_DIGITS).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+    expect(PART_SEARCH_PRESETS).toContain('ナット');
+    expect(PART_SEARCH_PRESETS).toContain('モータ');
+    expect(PART_SEARCH_PALETTE_KEYS).toContain('0');
+    expect(PART_SEARCH_PALETTE_KEYS).toContain('9');
+  });
+});
 
 describe('computeHiddenPaletteKeys', () => {
   it('does not hide any key when there are no hits', () => {

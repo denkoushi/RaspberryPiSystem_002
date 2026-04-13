@@ -11,19 +11,29 @@ import { selectRegisteredPlacementHits } from './partSearchViewModel';
 
 import type { PartPlacementSearchHitDto } from './types';
 
+export type PartSearchPaletteTarget = 'part' | 'machine';
+
 /**
  * 入力・API・登録済み候補・剪定・選択を分離した検索画面用フック。
+ * 部品名（FHINMEI/FHINCD）と機種名（MH/SH の機種表示）を AND で API に渡す。
  */
 export function useMobilePlacementPartSearch() {
-  const [query, setQuery] = useState('');
+  const [partQuery, setPartQuery] = useState('');
+  const [machineQuery, setMachineQuery] = useState('');
+  const [paletteTarget, setPaletteTarget] = useState<PartSearchPaletteTarget>('part');
   const [selected, setSelected] = useState<PartPlacementSearchHitDto | null>(null);
 
-  const normalizedQuery = useMemo(() => normalizePartSearchQuery(query), [query]);
+  const normalizedPartQuery = useMemo(() => normalizePartSearchQuery(partQuery), [partQuery]);
+  const machineQueryTrimmed = useMemo(() => machineQuery.trim(), [machineQuery]);
 
   const suggestQuery = useQuery({
-    queryKey: ['mobile-placement-part-search', normalizedQuery],
-    queryFn: () => getMobilePlacementPartSearchSuggest(normalizedQuery),
-    enabled: normalizedQuery.length > 0
+    queryKey: ['mobile-placement-part-search', normalizedPartQuery, machineQueryTrimmed],
+    queryFn: () =>
+      getMobilePlacementPartSearchSuggest(
+        normalizedPartQuery,
+        machineQueryTrimmed.length > 0 ? machineQueryTrimmed : undefined
+      ),
+    enabled: normalizedPartQuery.length > 0
   });
 
   const visibleHits = useMemo(
@@ -35,8 +45,12 @@ export function useMobilePlacementPartSearch() {
     if (suggestQuery.isFetching) {
       return new Set<string>();
     }
-    return computeHiddenPaletteKeys(normalizedQuery, visibleHits, PART_SEARCH_PALETTE_KEYS);
-  }, [normalizedQuery, visibleHits, suggestQuery.isFetching]);
+    /** 機種名欄ではヒットに機種表示名が無いため剪定しない（誤ってボタンを消さない） */
+    if (paletteTarget === 'machine') {
+      return new Set<string>();
+    }
+    return computeHiddenPaletteKeys(normalizedPartQuery, visibleHits, PART_SEARCH_PALETTE_KEYS);
+  }, [normalizedPartQuery, visibleHits, suggestQuery.isFetching, paletteTarget]);
 
   useEffect(() => {
     if (!selected) {
@@ -52,9 +66,13 @@ export function useMobilePlacementPartSearch() {
   const clearSelection = () => setSelected(null);
 
   return {
-    query,
-    setQuery,
-    normalizedQuery,
+    partQuery,
+    setPartQuery,
+    machineQuery,
+    setMachineQuery,
+    paletteTarget,
+    setPaletteTarget,
+    normalizedPartQuery,
     suggestQuery,
     visibleHits,
     hiddenPaletteKeys,
