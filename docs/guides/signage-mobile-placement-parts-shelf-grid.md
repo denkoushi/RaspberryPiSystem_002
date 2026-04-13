@@ -17,7 +17,7 @@
 左から **製番（先頭 5 文字）** / **品名** / **機種名（表示用キー・最大 10 文字）**
 
 - **品名**: `FHINMEI` → `FHINCD` → `ProductNo` の順で最初に得られたもの
-- **機種名キー**: `ProductNo` を優先し、空なら `FHINMEI`。先頭の `-` より前を半角化・大文字化し、先頭 10 文字まで
+- **機種名（3 列目）**: **`ProductNo` は使わない**（本システムでは製造order番号）。生産スケジュールの **MH/SH 行 `FHINMEI` を製番（`FSEIBAN`）単位で集約**した値（`fetchSeibanProgressRows`・部品検索の機種名と同系）。表示は先頭の `-` より前を半角化・大文字化し、先頭 10 文字まで
 
 ## 関連コード（実装の入口）
 
@@ -28,12 +28,20 @@
 
 ## 本番デプロイ・検証（2026-04-13）
 
+### 初回（スロット導入）
+
 - **手順の正本**: [deployment.md](./deployment.md)（`RASPI_SERVER_HOST`・**`--detach --follow`**・**`--limit` は 1 台ずつ**。Pi3 は **リソース僅少のため単独・Pi5 成功後**）。
-- **対象ホスト（本ロールアウト）**: `raspberrypi5` → `raspberrypi3`（**順序固定**。他ホストは対象外）。
+- **対象ホスト**: `raspberrypi5` → `raspberrypi3`（**順序固定**）。
 - **ブランチ**: `feat/pi3-android-parts-signage`（マージ後は `main` でも可）。
 - **Detach Run ID**（ログ名接頭辞 `ansible-update-`）: `20260413-190750-1020`（Pi5）→ `20260413-192539-10430`（Pi3）。各 **`PLAY RECAP` `failed=0` / `unreachable=0`**。
-- **自動実機検証**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-04-13 実測）。
-- **ナレッジ**: [KB-341](../knowledge-base/infrastructure/signage.md#kb-341-mobile-placement-parts-shelf-grid-deploy)
+- **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+
+### 第2回（表示修正：機種名・フォント・背景）
+
+- **ブランチ**: `fix/mobile-placement-parts-shelf-display-and-machine`。
+- **Detach Run ID**: `20260413-203007-401`（Pi5・**`failed=0`**）→ `20260413-204818-30318`（Pi3・**`PLAY RECAP failed=1`**：`signage-daily-reboot.timer` 未導入端末で **timer 起動タスク**が失敗。スクリプトは **`Summary success check: true`**・リモート **exit `0`**）。
+- **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi3 `signage-lite`/timer を含む）。
+- **ナレッジ**: [KB-341](../knowledge-base/infrastructure/signage.md#kb-341-mobile-placement-parts-shelf-grid-deploy) 追記
 
 ## 静的プレビュー（レイアウト検討用）
 

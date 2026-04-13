@@ -294,7 +294,7 @@ export function SignageDisplayPage() {
 
       if (slot?.kind === 'mobile_placement_parts_shelf_grid') {
         return (
-          <div className={`${screenClass} flex items-center justify-center bg-slate-950 p-0`}>
+          <div className={`${screenClass} flex items-center justify-center bg-[#333333] p-0`}>
             <img
               src={getSignageCurrentImageUrl(kioskProgressImageTick)}
               alt="配膳 Android 部品棚 9枠"

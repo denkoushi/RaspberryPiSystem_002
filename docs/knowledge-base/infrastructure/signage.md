@@ -61,6 +61,14 @@ update-frequency: medium
 
 **解決状況**: ✅ **本番デプロイ・Phase12 実機検証（自動）完了**（2026-04-13）
 
+**追記（2026-04-13・第2回ロールアウト・表示・機種名・本番）**:
+- **変更**: 3列目の機種名を **`ProductNo`（製造order）ではなく** 生産スケジュールの **MH/SH 行 `FHINMEI` 集約**（`fetchSeibanProgressRows`・[seiban-progress.service.ts](../../../apps/api/src/services/production-schedule/seiban-progress.service.ts) と同系）に変更。アイテム行フォントを約 **2 倍**。JPEG は **全面スレートパネル廃止**・ゾーン色＋ヘッダ帯 `rgba(0,0,0,0.18)`。`/signage` のレターボックスを **`#333333`** に合わせる。
+- **ブランチ**: `fix/mobile-placement-parts-shelf-display-and-machine`（コミット **`9e135252`**）。
+- **デプロイ**: [deployment.md](../../guides/deployment.md) どおり **`raspberrypi5` 成功後に `raspberrypi3` 単独**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/mobile-placement-parts-shelf-display-and-machine infrastructure/ansible/inventory.yml --limit "<host>" --detach --follow`。
+- **Detach Run ID**: `20260413-203007-401`（Pi5・**`failed=0`**）→ `20260413-204818-30318`（Pi3・**`failed=1`**：`deploy-staged.yml` の **`signage-daily-reboot.timer` 起動**が **ユニット未導入**で失敗。スクリプトは **`Summary success check: true`**・リモート **exit `0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi3 **`signage-lite`/timer** 含む）。
+- **トラブルシューティング（Pi3・上記 failed=1）**: 当該 Pi3 に **`signage-daily-reboot.timer` が未配置**のとき、ステージド playbook の **timer 起動**が失敗し得る。**Phase12 は通過**（`signage-lite` 系は active）。恒久対応は **Ansible で timer ユニットを配布**するか、inventory の **デバイス既定**を確認（別チケット可）。
+
 <a id="kb-337-android-signage-lite-401-chrome"></a>
 
 ### [KB-337] Android `/signage-lite` の画像取得失敗（401）とページのみ表示異常（Chrome サイトデータ・キャッシュ）
