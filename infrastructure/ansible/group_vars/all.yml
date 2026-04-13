@@ -245,9 +245,9 @@ backup_verify_max_download_mb: 50
 # 新しいデバイスタイプを追加する場合は、この設定に追加してください
 device_type_defaults:
   # Pi3: メモリ416MB、lightdm停止が必要
-  # 110MB: preflight と resource-guard の間で数MB揺らぐため、二重チェックで誤失敗しない余裕
+  # 100MB: 実測で preflight 時点が 105MB 前後になることがあり、110 では不足扱いになるため
   pi3:
-    memory_required_mb: 110
+    memory_required_mb: 100
     stop_lightdm: true
     services_to_stop:
       - signage-lite.service
@@ -257,7 +257,7 @@ device_type_defaults:
       - status-agent.timer
   # Pi Zero 2W: メモリ512MB、lightdm停止が必要（Pi3と同様の設定）
   pi_zero_2w:
-    memory_required_mb: 110
+    memory_required_mb: 100
     stop_lightdm: true
     services_to_stop:
       - signage-lite.service
