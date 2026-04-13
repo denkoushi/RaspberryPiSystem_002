@@ -26,6 +26,15 @@
 - 集約・SVG: `apps/api/src/services/signage/mobile-placement-parts-shelf/`
 - レンダラ: `apps/api/src/services/signage/signage.renderer.ts`
 
+## 本番デプロイ・検証（2026-04-13）
+
+- **手順の正本**: [deployment.md](./deployment.md)（`RASPI_SERVER_HOST`・**`--detach --follow`**・**`--limit` は 1 台ずつ**。Pi3 は **リソース僅少のため単独・Pi5 成功後**）。
+- **対象ホスト（本ロールアウト）**: `raspberrypi5` → `raspberrypi3`（**順序固定**。他ホストは対象外）。
+- **ブランチ**: `feat/pi3-android-parts-signage`（マージ後は `main` でも可）。
+- **Detach Run ID**（ログ名接頭辞 `ansible-update-`）: `20260413-190750-1020`（Pi5）→ `20260413-192539-10430`（Pi3）。各 **`PLAY RECAP` `failed=0` / `unreachable=0`**。
+- **自動実機検証**: リポジトリルートで `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-04-13 実測）。
+- **ナレッジ**: [KB-341](../knowledge-base/infrastructure/signage.md#kb-341-mobile-placement-parts-shelf-grid-deploy)
+
 ## 静的プレビュー（レイアウト検討用）
 
 - [pi3-signage-android-parts-shelf-preview.html](../design-previews/pi3-signage-android-parts-shelf-preview.html)（HTML のみ・本番 JPEG と同一ロジックではない）
