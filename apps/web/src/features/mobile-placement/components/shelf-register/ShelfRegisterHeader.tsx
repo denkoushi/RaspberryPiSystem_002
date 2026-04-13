@@ -6,17 +6,20 @@ export type ShelfRegisterHeaderProps = {
   previewText: string;
   canConfirm: boolean;
   onBack: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
+  submitting?: boolean;
 };
 
-export function ShelfRegisterHeader({ previewText, canConfirm, onBack, onConfirm }: ShelfRegisterHeaderProps) {
+export function ShelfRegisterHeader({ previewText, canConfirm, onBack, onConfirm, submitting }: ShelfRegisterHeaderProps) {
+  const busy = submitting === true;
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/20 px-3.5 py-2">
       <button
         type="button"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-white/30 bg-white/10 text-lg text-white active:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-white/30 bg-white/10 text-lg text-white active:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40 disabled:cursor-not-allowed disabled:opacity-40"
         title="戻る"
         aria-label="戻る"
+        disabled={busy}
         onClick={onBack}
       >
         ←
@@ -24,11 +27,11 @@ export function ShelfRegisterHeader({ previewText, canConfirm, onBack, onConfirm
       <button
         type="button"
         className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-[10px] border-0 bg-gradient-to-b from-teal-400/50 to-teal-600/35 px-3 py-2 text-sm font-extrabold text-teal-50 disabled:cursor-not-allowed disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40"
-        disabled={!canConfirm}
+        disabled={!canConfirm || busy}
         aria-label="この棚番で登録"
-        onClick={onConfirm}
+        onClick={() => void onConfirm()}
       >
-        棚番を登録
+        {busy ? '登録中…' : '棚番を登録'}
       </button>
       <div
         className="ml-auto flex min-h-9 min-w-0 max-w-[14rem] flex-1 basis-[8rem] items-center justify-center gap-2 rounded-lg border border-amber-400/50 bg-amber-500/[0.06] px-2 py-1.5"

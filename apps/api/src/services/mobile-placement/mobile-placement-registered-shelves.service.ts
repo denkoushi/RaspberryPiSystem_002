@@ -1,5 +1,3 @@
-import { prisma } from '../../lib/prisma.js';
-
 /** 棚番登録UIのエリア・列ラベル（`formatShelfCodeRaw` と同一） */
 const AREA_LABEL_TO_ID: Record<string, 'west' | 'central' | 'east'> = {
   西: 'west',
@@ -52,22 +50,4 @@ export function parseStructuredShelfCode(shelfCodeRaw: string): Omit<RegisteredS
   };
 }
 
-/**
- * 部品配膳の `OrderPlacementEvent` に現れた棚番の distinct 一覧。
- * 読み取り専用。認可はルート側の `requireClientDevice` に委ねる。
- */
-export async function listRegisteredShelvesFromOrderPlacements(): Promise<RegisteredShelfEntry[]> {
-  const rows = await prisma.orderPlacementEvent.findMany({
-    select: { shelfCodeRaw: true },
-    distinct: ['shelfCodeRaw'],
-    orderBy: { shelfCodeRaw: 'asc' }
-  });
-
-  return rows.map((r) => {
-    const parsed = parseStructuredShelfCode(r.shelfCodeRaw);
-    return {
-      shelfCodeRaw: r.shelfCodeRaw,
-      ...parsed
-    };
-  });
-}
+// 一覧 API は `mobile-placement-shelf-master.service.ts` の `listRegisteredShelvesFromShelfMaster` を使用する。

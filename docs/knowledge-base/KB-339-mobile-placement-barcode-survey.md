@@ -1,6 +1,20 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-12（**V16 部品名検索**追記）
+最終更新: 2026-04-13（**V18 棚マスタ `MobilePlacementShelf`** 追記）
+
+## V18（2026-04-13）棚マスタ
+
+- **目的**: トップの「登録済み棚番」候補を **`OrderPlacementEvent` 履歴依存**から **`MobilePlacementShelf` 正本**へ切り替える。`+` の棚番登録画面は **`POST /api/mobile-placement/shelves`** で永続化する。
+- **DB**: `MobilePlacementShelf`（`shelfCodeRaw` unique・`createdByClientDeviceId` 任意）。マイグレーションで既存 **`OrderPlacementEvent` の distinct `shelfCodeRaw`** を棚マスタへ **1 回だけ**取り込み（衝突は無視）。
+- **API**: `GET /api/mobile-placement/registered-shelves` は棚マスタ一覧。`POST /api/mobile-placement/shelves` は **`西-北-01` 形式のみ**・重複は **409**（`MOBILE_PLACEMENT_SHELF_DUPLICATE`）。
+- **Web**: `GET registered-shelves` で空き／使用済みスロットを導出し、登録済み番号は選択不可。
+
+### 本番反映・検証（2026-04-13・V18 棚マスタ）
+
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/mobile-placement-shelf-master infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** の順に **1 台ずつ**（**Pi3 は対象外**）。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260413-124042-32510`（`raspberrypi5`）→ `20260413-125217-7318`（`raspberrypi4`）→ `20260413-125648-60`（`raspi4-robodrill01`）→ `20260413-130037-12380`（`raspi4-fjv60-80`）→ `20260413-130456-12201`（`raspi4-kensaku-stonebase01`）、各 **`failed=0` / `unreachable=0`**・**`Summary success check: true`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**・Mac / Tailscale）。
+- **知見**: Pi5 初回は **Docker 再ビルド**（API のマイグレーション・`MobilePlacementShelf`）で **所要が長め**（`--follow` が長く見えることがある）。**トラブルシュート**: `registered-shelves` が **`{ "shelves": [] }`** → マスタ 0 件は仕様上あり得る（マイグレーションで履歴からの取り込み後も、新規は **`+` → `POST …/shelves`**）。重複登録は **409**（`MOBILE_PLACEMENT_SHELF_DUPLICATE`）。
 
 ## Context
 

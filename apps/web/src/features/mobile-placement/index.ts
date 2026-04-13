@@ -20,7 +20,7 @@ export {
   SHELF_LINE_OPTIONS,
   SHELF_SLOT_MAX,
   formatShelfCodeRaw,
-  getOccupiedSlotsForCell,
+  getOccupiedSlotsForRegisteredShelves,
   isMobilePlacementShelfRegisterRouteState,
   isValidShelfSlot
 } from './shelfSelection';

@@ -292,6 +292,7 @@ model ClientDevice {
   partMeasurementEditLocks PartMeasurementSheet[] @relation("PartMeasurementSheetEditLock")
   mobilePlacementEvents   MobilePlacementEvent[]
   orderPlacementEvents    OrderPlacementEvent[]
+  mobilePlacementShelvesCreated MobilePlacementShelf[]
 
   @@index([statusClientId])
 }
@@ -351,6 +352,15 @@ model OrderPlacementBranchState {
 
   @@unique([manufacturingOrderBarcodeRaw, branchNo])
   @@index([manufacturingOrderBarcodeRaw])
+}
+
+/// 配膳スマホの棚番マスタ（`+` で登録。トップの「登録済み棚番」候補の正本）
+model MobilePlacementShelf {
+  id                      String        @id @default(uuid())
+  shelfCodeRaw            String        @unique
+  createdAt               DateTime      @default(now())
+  createdByClientDeviceId String?
+  createdBy               ClientDevice? @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
 }
 
 model ClientStatus {
