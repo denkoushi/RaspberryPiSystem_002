@@ -1,6 +1,6 @@
 import { normalizePartSearchQuery } from '@raspi-system/part-search-core';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getMobilePlacementPartSearchSuggest } from '../../../api/client';
 
@@ -65,6 +65,38 @@ export function useMobilePlacementPartSearch() {
 
   const clearSelection = () => setSelected(null);
 
+  /** 文字パレットからの追記（フォーカス中フィールドへ）。UI 層はコールバックのみ渡す。 */
+  const appendFromPalette = useCallback(
+    (s: string) => {
+      if (paletteTarget === 'part') {
+        setPartQuery((prev) => prev + s);
+      } else {
+        setMachineQuery((prev) => prev + s);
+      }
+      setSelected(null);
+    },
+    [paletteTarget]
+  );
+
+  /** 文字パレットの1文字削除（フォーカス中フィールド）。 */
+  const backspaceFromPalette = useCallback(() => {
+    if (paletteTarget === 'part') {
+      setPartQuery((prev) => prev.slice(0, -1));
+    } else {
+      setMachineQuery((prev) => prev.slice(0, -1));
+    }
+    setSelected(null);
+  }, [paletteTarget]);
+
+  const showEmpty = useMemo(
+    () =>
+      normalizedPartQuery.length > 0 &&
+      !suggestQuery.isLoading &&
+      !suggestQuery.isError &&
+      visibleHits.length === 0,
+    [normalizedPartQuery, suggestQuery.isLoading, suggestQuery.isError, visibleHits]
+  );
+
   return {
     partQuery,
     setPartQuery,
@@ -78,6 +110,9 @@ export function useMobilePlacementPartSearch() {
     hiddenPaletteKeys,
     selected,
     setSelected,
-    clearSelection
+    clearSelection,
+    appendFromPalette,
+    backspaceFromPalette,
+    showEmpty
   };
 }
