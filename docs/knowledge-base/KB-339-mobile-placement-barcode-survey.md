@@ -1,6 +1,13 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-12（**V16 部品名検索**追記）
+最終更新: 2026-04-13（**V18 棚マスタ `MobilePlacementShelf`** 追記）
+
+## V18（2026-04-13）棚マスタ
+
+- **目的**: トップの「登録済み棚番」候補を **`OrderPlacementEvent` 履歴依存**から **`MobilePlacementShelf` 正本**へ切り替える。`+` の棚番登録画面は **`POST /api/mobile-placement/shelves`** で永続化する。
+- **DB**: `MobilePlacementShelf`（`shelfCodeRaw` unique・`createdByClientDeviceId` 任意）。マイグレーションで既存 **`OrderPlacementEvent` の distinct `shelfCodeRaw`** を棚マスタへ **1 回だけ**取り込み（衝突は無視）。
+- **API**: `GET /api/mobile-placement/registered-shelves` は棚マスタ一覧。`POST /api/mobile-placement/shelves` は **`西-北-01` 形式のみ**・重複は **409**（`MOBILE_PLACEMENT_SHELF_DUPLICATE`）。
+- **Web**: `GET registered-shelves` で空き／使用済みスロットを導出し、登録済み番号は選択不可。
 
 ## Context
 

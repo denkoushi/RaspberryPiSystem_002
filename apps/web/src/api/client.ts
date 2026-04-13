@@ -782,6 +782,12 @@ export async function getMobilePlacementRegisteredShelves() {
   return data;
 }
 
+/** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`西-北-01` 形式） */
+export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: string }) {
+  const { data } = await api.post<{ shelf: RegisteredShelfEntryDto }>('/mobile-placement/shelves', payload);
+  return data;
+}
+
 /** 部品名検索（現在棚優先・スケジュール補助） */
 export async function getMobilePlacementPartSearchSuggest(q: string) {
   const { data } = await api.get<PartPlacementSearchSuggestResponse>('/mobile-placement/part-search/suggest', {

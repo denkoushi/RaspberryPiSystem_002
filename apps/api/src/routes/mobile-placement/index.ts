@@ -13,7 +13,10 @@ import {
   listOrderPlacementBranches,
   moveOrderPlacementBranch
 } from '../../services/mobile-placement/order-placement-branch.service.js';
-import { listRegisteredShelvesFromOrderPlacements } from '../../services/mobile-placement/mobile-placement-registered-shelves.service.js';
+import {
+  listRegisteredShelvesFromShelfMaster,
+  registerMobilePlacementShelf
+} from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 import { suggestPartPlacementSearch } from '../../services/mobile-placement/part-search/part-search.service.js';
 import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
@@ -101,6 +104,10 @@ const partSearchSuggestQuerySchema = z.object({
   q: z.string().max(100).optional().default('')
 });
 
+const registerMobilePlacementShelfBodySchema = z.object({
+  shelfCodeRaw: z.string().min(1).max(200)
+});
+
 export async function registerMobilePlacementRoutes(app: FastifyInstance): Promise<void> {
   const kioskDeps = {
     requireClientDevice
@@ -109,12 +116,26 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   await registerMobilePlacementScheduleRoute(app, kioskDeps);
 
   /**
-   * 登録済み棚番候補（`OrderPlacementEvent.shelfCodeRaw` の distinct + 構造化メタ）
+   * 登録済み棚番候補（`MobilePlacementShelf` + 構造化メタ）
    */
   app.get('/mobile-placement/registered-shelves', { config: { rateLimit: false } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
-    const shelves = await listRegisteredShelvesFromOrderPlacements();
+    const shelves = await listRegisteredShelvesFromShelfMaster();
     return { shelves };
+  });
+
+  /**
+   * 棚マスタへ棚番を新規登録（配膳トップの `+`）。`西-北-01` 形式のみ。
+   */
+  app.post('/mobile-placement/shelves', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const body = registerMobilePlacementShelfBodySchema.parse(request.body);
+    const identity = resolveCredentialIdentity(clientDevice);
+    const result = await registerMobilePlacementShelf({
+      clientDeviceId: identity.clientDeviceId,
+      shelfCodeRaw: body.shelfCodeRaw
+    });
+    return { shelf: result.shelf };
   });
 
   /**

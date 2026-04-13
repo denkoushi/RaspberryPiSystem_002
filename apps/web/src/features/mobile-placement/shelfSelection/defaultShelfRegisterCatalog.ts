@@ -14,25 +14,5 @@ export const SHELF_LINE_OPTIONS: readonly ShelfAxisOption<ShelfLineId>[] = [
   { id: 'south', label: '南' }
 ];
 
-/** 番号の上限（本番はマスタ/API に置き換え） */
+/** 番号の上限 */
 export const SHELF_SLOT_MAX = 99;
-
-/**
- * 使用済み番号（ダミー）。本番は API から取得。
- * キー: `${areaId}:${lineId}`
- */
-export function getOccupiedSlotsForCell(areaId: ShelfAreaId, lineId: ShelfLineId): readonly number[] {
-  const key = `${areaId}:${lineId}`;
-  const mock: Record<string, number[]> = {
-    'west:north': [3, 7, 11, 14],
-    'west:central': [5],
-    'west:south': [],
-    'central:north': [1],
-    'central:central': [2, 4],
-    'central:south': [],
-    'east:north': [],
-    'east:central': [8],
-    'east:south': [9, 10]
-  };
-  return mock[key] ?? [];
-}

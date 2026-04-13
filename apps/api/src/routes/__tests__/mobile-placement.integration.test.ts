@@ -62,6 +62,7 @@ describe('mobile-placement API', () => {
     await prisma.orderPlacementBranchState.deleteMany();
     await prisma.orderPlacementEvent.deleteMany();
     await prisma.mobilePlacementEvent.deleteMany();
+    await prisma.mobilePlacementShelf.deleteMany();
     await prisma.csvDashboardRow.deleteMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }
     });
@@ -535,31 +536,13 @@ describe('mobile-placement API', () => {
     expect(evCount).toBe(2);
   });
 
-  it('GET /api/mobile-placement/registered-shelves returns distinct shelf codes with structure metadata', async () => {
+  it('GET /api/mobile-placement/registered-shelves returns shelf master rows with structure metadata', async () => {
     const client = await createTestClientDevice();
-    await prisma.orderPlacementEvent.create({
-      data: {
-        clientDeviceId: client.id,
-        shelfCodeRaw: 'TEMP-A',
-        manufacturingOrderBarcodeRaw: 'ORD-1',
-        csvDashboardRowId: null
-      }
+    await prisma.mobilePlacementShelf.create({
+      data: { shelfCodeRaw: 'TEMP-A' }
     });
-    await prisma.orderPlacementEvent.create({
-      data: {
-        clientDeviceId: client.id,
-        shelfCodeRaw: '西-北-01',
-        manufacturingOrderBarcodeRaw: 'ORD-2',
-        csvDashboardRowId: null
-      }
-    });
-    await prisma.orderPlacementEvent.create({
-      data: {
-        clientDeviceId: client.id,
-        shelfCodeRaw: '西-北-01',
-        manufacturingOrderBarcodeRaw: 'ORD-3',
-        csvDashboardRowId: null
-      }
+    await prisma.mobilePlacementShelf.create({
+      data: { shelfCodeRaw: '西-北-01', createdByClientDeviceId: client.id }
     });
 
     const res = await app.inject({
@@ -590,6 +573,34 @@ describe('mobile-placement API', () => {
     });
   });
 
+  it('POST /api/mobile-placement/shelves registers structured shelf and rejects duplicate', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/shelves',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': apiKey
+      },
+      payload: { shelfCodeRaw: '東-南-05' }
+    });
+    expect(created.statusCode).toBe(200);
+    const cj = created.json() as { shelf: { shelfCodeRaw: string; isStructured: boolean } };
+    expect(cj.shelf.shelfCodeRaw).toBe('東-南-05');
+    expect(cj.shelf.isStructured).toBe(true);
+
+    const dup = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/shelves',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': apiKey
+      },
+      payload: { shelfCodeRaw: '東-南-05' }
+    });
+    expect(dup.statusCode).toBe(409);
+  });
+
   it('returns 401 without client key for resolve-item', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -602,6 +613,16 @@ describe('mobile-placement API', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/mobile-placement/part-search/suggest?q=test'
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 401 without client key for POST shelves', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/shelves',
+      headers: { 'Content-Type': 'application/json' },
+      payload: { shelfCodeRaw: '西-北-01' }
     });
     expect(res.statusCode).toBe(401);
   });

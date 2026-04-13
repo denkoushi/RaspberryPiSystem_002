@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-13（**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+最終更新: 2026-04-13（**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
 ## 0. 本番デプロイ後の確認（運用）
 
@@ -33,8 +33,13 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/verify-slip-match" \
   -H "Content-Type: application/json" -H "x-client-key: <key>" \
   -d '{"transferOrderBarcodeRaw":"…","transferPartBarcodeRaw":"…","actualOrderBarcodeRaw":"…","actualFseibanRaw":"","actualPartBarcodeRaw":"…"}'
 
-# 登録済み棚（OrderPlacementEvent 由来の distinct。履歴が無いと { "shelves": [] }）
+# 登録済み棚（MobilePlacementShelf 棚マスタ。マイグレーションで履歴からの取り込みあり。未登録なら { "shelves": [] }）
 curl -sk "https://<Pi5>/api/mobile-placement/registered-shelves" -H "x-client-key: <key>"
+
+# 棚マスタへ新規登録（西-北-01 形式のみ・重複は 409）
+curl -sk -X POST "https://<Pi5>/api/mobile-placement/shelves" \
+  -H "Content-Type: application/json" -H "x-client-key: <key>" \
+  -d '{"shelfCodeRaw":"西-北-01"}'
 
 # 製造orderに紐づく分配枝の現在棚（V14）
 curl -sk "https://<Pi5>/api/mobile-placement/order-placement-branches?manufacturingOrder=0002178005" -H "x-client-key: <key>"
@@ -81,7 +86,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/part-search/suggest?q=%E8%84%9A" -H
 
 **下半分（配膳登録）**
 
-1. 棚番: **`GET /api/mobile-placement/registered-shelves`** に基づく **エリア／列フィルタ**と候補一覧から選ぶか、**「棚番を選ぶ」**で **`/kiosk/mobile-placement/shelf-register`** に遷移し、**エリア → 列 → 番号**の3段階で確定（表示は `formatShelfCodeRaw` 由来の **`西-北-02`** 形式）。履歴に一度も出ていない棚は一覧に出ない（**`shelves` が空**は正常）。戻ると親画面の棚欄に反映される。従来どおり **TEMP-A〜D** の直接タップ、または **QR** で棚コードをスキャン（QR は棚のみ）も可
+1. 棚番: **`GET /api/mobile-placement/registered-shelves`**（**`MobilePlacementShelf` 棚マスタ**）に基づく **エリア／列フィルタ**と候補一覧から選ぶか、**`+`** で **`/kiosk/mobile-placement/shelf-register`** に遷移し、**エリア → 列 → 番号**を選んで **「棚番を登録」**（**`POST /api/mobile-placement/shelves`** でマスタ登録・既登録番号はグレーアウト）。表示は `formatShelfCodeRaw` 由来の **`西-北-02`** 形式。マスタに無い棚は一覧に出ない（**`shelves` が空**は、マスタ未登録かつ履歴からの取り込みも無い場合に正常）。戻ると親画面の棚欄に反映される。従来どおり **TEMP-A〜D** の直接タップ（マスタにあれば）、または **QR** で棚コードをスキャン（QR は棚のみ）も可
 2. 移動票の **製造order番号**を **1次元**でスキャン
 3. **V14**: **「新規分配を追加」** か **「既存分配を移動」** を選ぶ。新規は **次の `branchNo`** で `POST …/register-order-placement`。移動は **`GET …/order-placement-branches`** で一覧を出し、枝を選んで **`PATCH …/order-placement-branches/:id/move`**（UI は「移動を確定」）。
 4. 「登録」または「移動を確定」→ `OrderPlacementEvent` に履歴追記（**工具 `Item` は更新しない**）。現在棚は `OrderPlacementBranchState`（詳細は [api/mobile-placement.md](../api/mobile-placement.md)）
@@ -104,7 +109,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/part-search/suggest?q=%E8%84%9A" -H
 - **工具登録 404（工具マスタに無い）**: `itemCode` とラベルを揃える（KB-339）
 - **400 `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**: （V1 register）一覧行と工具スキャンが一致しない
 - **棚番登録ページで戻ったあと値が空**: router state の復元失敗時は親 URL の `clientKey` とクエリを維持して `/kiosk/mobile-placement` を再読み込みする。Chrome で不整合が続く場合はサイトデータ削除（V1 節の heartbeat 系と同型の切り分け）
-- **登録済み棚が常に空**: `OrderPlacementEvent` にまだ行が無いと **`registered-shelves` は `{ "shelves": [] }`**（不具合ではない）。部品配膳を1件でも登録すると `shelfCodeRaw` が候補に現れる
+- **登録済み棚が常に空**: **`MobilePlacementShelf` に1件も無い**と **`registered-shelves` は `{ "shelves": [] }`**（不具合ではない）。**マイグレーション**で過去の `OrderPlacementEvent` 由来棚は取り込まれる。新規は **`+` → 棚番登録画面**で **`POST /api/mobile-placement/shelves`** する
 - **デプロイが `未commit変更` で止まる**: Mac 側に **未追跡ファイル**もブロック対象。`git stash push -u` またはコミットしてから [deployment.md](../guides/deployment.md) の `update-all-clients.sh` を再実行
 - **Pi5 で `Please move or remove them before you merge. Aborting`（`git pull`/`merge` 中止）**: Pi5 `/opt/RaspberryPiSystem_002` の作業ツリーに **未追跡・ローカル変更**があり、取り込みと衝突している典型。[deployment.md](../guides/deployment.md) の **ワークツリー**、[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V10**、必要に応じ [kiosk-documents.md](./kiosk-documents.md)（Pi5 `git` 復旧パターン）を参照してから **再デプロイ**
 - **Pi5 で `git stash push -u` しても `failed to remove ... 許可がありません`**: 変更ファイルが **`root:root` 所有**の典型。`apps/api/src/services/mobile-placement`、`apps/web/src/features/mobile-placement`、migration などの対象パスを **`sudo chown -R denkon5sd02:denkon5sd02 ...`** してから再度 `git stash push -u`
