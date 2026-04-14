@@ -83,6 +83,16 @@
   - 各アイテムに**返却・取消**を配置（2026-04-01: カード**下段**に配置し、長い名称とボタン列の横方向の競合を緩和。`KioskActiveLoanCard`。詳細は [KB-323](../../knowledge-base/KB-323-kiosk-return-card-button-layout.md)）
   - 以前の `/kiosk/return` と `/kiosk/instruments/return` は機能重複のため削除
 
+- **キオスク「集計」タブ（2026-04-14）**:
+  - 対象: 吊具 / 持出返却アイテム / 計測機器 の3データセット
+  - 計測機器は **CSVイベント + NFC持出返却イベント** を統合して集計
+  - 重複統合ルール: **同じ管理番号 + 同じ動作 + 5分以内** は同一イベント扱い（競合時は NFC 優先）
+  - 取消は集計対象外（`cancelledAt` を除外）
+  - 期間は `対象月` フィルタ（1か月単位）で統一
+  - 可視化: 月次持出/返却、資産別（管理番号・名称・持出返却件数）、人別（誰が何回持出/返却）
+  - API: `GET /api/measuring-instruments/loan-analytics`（`periodFrom` / `periodTo` / `monthlyMonths` / `timeZone`）
+  - 詳細: [KB-344](../../knowledge-base/KB-344-unified-loan-analytics.md)
+
 ## アクセシビリティ/エラーハンドリング
 
 - ✅ **エラー時の無限ループ防止**: エラー発生時に氏名タグをクリアし、自動再送を防止（2025-12-11実装）

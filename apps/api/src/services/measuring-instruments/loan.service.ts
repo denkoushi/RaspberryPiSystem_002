@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { MeasuringInstrumentService } from './measuring-instrument.service.js';
 import { EmployeeService } from '../tools/employee.service.js';
+import { MeasuringInstrumentLoanEventService } from './measuring-instrument-loan-event.service.js';
 
 export interface InstrumentBorrowInput {
   instrumentTagUid?: string;
@@ -39,10 +40,12 @@ interface LoanWithRelations extends Loan {
 export class MeasuringInstrumentLoanService {
   private instrumentService: MeasuringInstrumentService;
   private employeeService: EmployeeService;
+  private loanEventService: MeasuringInstrumentLoanEventService;
 
   constructor() {
     this.instrumentService = new MeasuringInstrumentService();
     this.employeeService = new EmployeeService();
+    this.loanEventService = new MeasuringInstrumentLoanEventService();
   }
 
   async borrow(input: InstrumentBorrowInput): Promise<LoanWithRelations> {
@@ -128,6 +131,21 @@ export class MeasuringInstrumentLoanService {
     });
 
     logger.info({ loanId: loan.id, instrumentId: instrument.id, employeeId: employee.id }, 'Instrument borrow completed');
+    try {
+      await this.loanEventService.recordNfcEvent({
+        managementNumber: instrument.managementNumber,
+        action: '持ち出し',
+        eventAt: loan.borrowedAt,
+        borrowerName: employee.displayName,
+        employeeCode: employee.employeeCode,
+        instrumentName: instrument.name,
+        expectedReturnAt: loan.dueAt ?? null,
+        loanId: loan.id,
+        clientId: input.clientId ?? null,
+      });
+    } catch (error) {
+      logger.warn({ err: error, loanId: loan.id }, 'Failed to mirror NFC borrow event for analytics');
+    }
     return loan as LoanWithRelations;
   }
 
@@ -172,6 +190,20 @@ export class MeasuringInstrumentLoanService {
     });
 
     logger.info({ loanId: updatedLoan.id }, 'Instrument return completed');
+    try {
+      await this.loanEventService.recordNfcEvent({
+        managementNumber: updatedLoan.measuringInstrument?.managementNumber ?? '',
+        action: '返却',
+        eventAt: updatedLoan.returnedAt ?? new Date(),
+        borrowerName: updatedLoan.employee?.displayName ?? null,
+        employeeCode: updatedLoan.employee?.employeeCode ?? null,
+        instrumentName: updatedLoan.measuringInstrument?.name ?? null,
+        loanId: updatedLoan.id,
+        clientId: input.clientId ?? updatedLoan.clientId ?? null,
+      });
+    } catch (error) {
+      logger.warn({ err: error, loanId: updatedLoan.id }, 'Failed to mirror NFC return event for analytics');
+    }
     return updatedLoan as LoanWithRelations;
   }
 }

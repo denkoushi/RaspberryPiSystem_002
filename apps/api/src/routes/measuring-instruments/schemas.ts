@@ -110,3 +110,11 @@ export const instrumentReturnSchema = z.object({
   performedByUserId: z.string().uuid().optional(),
   note: z.string().optional().nullable()
 });
+
+/** GET /measuring-instruments/loan-analytics */
+export const instrumentLoanAnalyticsQuerySchema = z.object({
+  periodFrom: z.coerce.date().optional(),
+  periodTo: z.coerce.date().optional(),
+  monthlyMonths: z.coerce.number().int().min(1).max(24).optional(),
+  timeZone: z.enum(['Asia/Tokyo', 'UTC']).optional()
+});

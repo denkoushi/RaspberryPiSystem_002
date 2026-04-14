@@ -2,10 +2,17 @@ import { useQuery } from '@tanstack/react-query';
 
 import { getItemLoanAnalytics } from '../../api/client';
 
-export function useItemLoanAnalytics() {
+type LoanAnalyticsQueryParams = {
+  periodFrom?: string;
+  periodTo?: string;
+  monthlyMonths?: number;
+  timeZone?: 'Asia/Tokyo' | 'UTC';
+};
+
+export function useItemLoanAnalytics(params?: LoanAnalyticsQueryParams) {
   return useQuery({
-    queryKey: ['item-loan-analytics'],
-    queryFn: () => getItemLoanAnalytics(),
+    queryKey: ['item-loan-analytics', params ?? {}],
+    queryFn: () => getItemLoanAnalytics(params),
     staleTime: 60_000
   });
 }

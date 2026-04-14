@@ -1,5 +1,13 @@
 export type MeasuringInstrumentStatus = 'AVAILABLE' | 'IN_USE' | 'MAINTENANCE' | 'RETIRED';
 export type InspectionResult = 'PASS' | 'FAIL';
+export type {
+  MeasuringInstrumentLoanAnalyticsByEmployeeRow,
+  MeasuringInstrumentLoanAnalyticsByInstrumentRow,
+  MeasuringInstrumentLoanAnalyticsMeta,
+  MeasuringInstrumentLoanAnalyticsMonthlyPoint,
+  MeasuringInstrumentLoanAnalyticsResponse,
+  MeasuringInstrumentLoanAnalyticsSummary,
+} from './loan-analytics.js';
 
 export interface MeasuringInstrument {
   id: string;

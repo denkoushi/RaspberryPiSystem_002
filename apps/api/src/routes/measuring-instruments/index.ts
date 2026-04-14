@@ -8,7 +8,8 @@ import {
   MeasuringInstrumentGenreService,
   InspectionItemService,
   MeasuringInstrumentTagService,
-  InspectionRecordService
+  InspectionRecordService,
+  MeasuringInstrumentLoanAnalyticsService,
 } from '../../services/measuring-instruments/index.js';
 import { resolveClientDeviceId } from '../../services/clients/client-device-resolution.service.js';
 import { MeasuringInstrumentGenreImageStorage } from '../../lib/measuring-instrument-genre-image-storage.js';
@@ -29,7 +30,8 @@ import {
   inspectionRecordCreateSchema,
   inspectionRecordQuerySchema,
   instrumentBorrowSchema,
-  instrumentReturnSchema
+  instrumentReturnSchema,
+  instrumentLoanAnalyticsQuerySchema,
 } from './schemas.js';
 import { MeasuringInstrumentLoanService } from '../../services/measuring-instruments/loan.service.js';
 import { prisma } from '../../lib/prisma.js';
@@ -44,6 +46,7 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   const tagService = new MeasuringInstrumentTagService();
   const inspectionRecordService = new InspectionRecordService();
   const instrumentLoanService = new MeasuringInstrumentLoanService();
+  const instrumentLoanAnalyticsService = MeasuringInstrumentLoanAnalyticsService.createDefault();
 
   const readSingleImageFile = async (request: FastifyRequest): Promise<MultipartFile> => {
     if (!request.isMultipart()) {
@@ -128,6 +131,12 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     const query = instrumentQuerySchema.parse(request.query);
     const instruments = await instrumentService.findAll(query);
     return { instruments };
+  });
+
+  // 計測機器の持出・返却集計（CSV+NFC統合）
+  app.get('/measuring-instruments/loan-analytics', { preHandler: allowView }, async (request) => {
+    const query = instrumentLoanAnalyticsQuerySchema.parse(request.query);
+    return instrumentLoanAnalyticsService.getDashboard(query);
   });
 
   // 計測機器詳細
@@ -339,4 +348,5 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     const loan = await instrumentLoanService.return(body);
     return { loan };
   });
+
 }
