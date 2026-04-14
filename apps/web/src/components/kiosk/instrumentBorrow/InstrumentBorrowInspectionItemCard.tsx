@@ -15,9 +15,7 @@ export function InstrumentBorrowInspectionItemCard({ item, isNg }: InstrumentBor
       <p className="text-sm text-slate-700">内容: {item.content}</p>
       <p className="text-sm text-slate-700">基準: {item.criteria}</p>
       <p className="text-sm text-slate-700">方法: {item.method}</p>
-      <p className="mt-1.5 text-xs font-semibold text-slate-700">
-        {isNg ? '❌ NG' : '✅ OK（氏名タグスキャンで自動送信）'}
-      </p>
+      {isNg ? <p className="mt-1.5 text-xs font-semibold text-slate-700">❌ NG</p> : null}
     </div>
   );
 }
