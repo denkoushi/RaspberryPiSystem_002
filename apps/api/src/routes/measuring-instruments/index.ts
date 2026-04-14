@@ -1,19 +1,26 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   MeasuringInstrumentService,
+  MeasuringInstrumentGenreService,
   InspectionItemService,
   MeasuringInstrumentTagService,
   InspectionRecordService
 } from '../../services/measuring-instruments/index.js';
 import { resolveClientDeviceId } from '../../services/clients/client-device-resolution.service.js';
+import { MeasuringInstrumentGenreImageStorage } from '../../lib/measuring-instrument-genre-image-storage.js';
 import {
   instrumentQuerySchema,
   instrumentCreateSchema,
   instrumentUpdateSchema,
   instrumentParamsSchema,
+  genreParamsSchema,
+  genreCreateSchema,
+  genreUpdateSchema,
+  genreImageSlotParamsSchema,
   inspectionItemCreateSchema,
   inspectionItemUpdateSchema,
   inspectionItemParamsSchema,
@@ -32,10 +39,25 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   const canWrite = authorizeRoles('ADMIN', 'MANAGER');
 
   const instrumentService = new MeasuringInstrumentService();
+  const genreService = new MeasuringInstrumentGenreService();
   const inspectionItemService = new InspectionItemService();
   const tagService = new MeasuringInstrumentTagService();
   const inspectionRecordService = new InspectionRecordService();
   const instrumentLoanService = new MeasuringInstrumentLoanService();
+
+  const readSingleImageFile = async (request: FastifyRequest): Promise<MultipartFile> => {
+    if (!request.isMultipart()) {
+      throw new ApiError(400, 'multipart/form-data が必要です');
+    }
+    const file = await request.file();
+    if (!file) {
+      throw new ApiError(400, '画像ファイルが必要です');
+    }
+    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+      throw new ApiError(400, '画像ファイル（png/jpeg/webp）を指定してください');
+    }
+    return file;
+  };
 
   // Kiosk向け: x-client-key でも閲覧を許可する簡易認証
   const allowClientKey = async (request: FastifyRequest) => {
@@ -148,6 +170,66 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     return { instrument };
   });
 
+  // 計測機器ジャンル一覧
+  app.get('/measuring-instrument-genres', { preHandler: allowView }, async () => {
+    const genres = await genreService.findAll();
+    return { genres };
+  });
+
+  // 計測機器ジャンル作成
+  app.post('/measuring-instrument-genres', { preHandler: canWrite }, async (request) => {
+    const body = genreCreateSchema.parse(request.body);
+    const genre = await genreService.create(body);
+    return { genre };
+  });
+
+  // 計測機器ジャンル更新
+  app.put('/measuring-instrument-genres/:genreId', { preHandler: canWrite }, async (request) => {
+    const params = genreParamsSchema.parse(request.params);
+    const body = genreUpdateSchema.parse(request.body);
+    const genre = await genreService.update(params.genreId, body);
+    return { genre };
+  });
+
+  // 計測機器ジャンル削除
+  app.delete('/measuring-instrument-genres/:genreId', { preHandler: canWrite }, async (request) => {
+    const params = genreParamsSchema.parse(request.params);
+    const genre = await genreService.delete(params.genreId);
+    return { genre };
+  });
+
+  // 計測機器ジャンル画像アップロード（slot: 1 or 2）
+  app.post('/measuring-instrument-genres/:genreId/images/:slot', { preHandler: canWrite }, async (request) => {
+    const params = genreImageSlotParamsSchema.parse(request.params);
+    const image = await readSingleImageFile(request);
+    const buffer = await image.toBuffer();
+    const saved = await MeasuringInstrumentGenreImageStorage.save(buffer, image.mimetype);
+    const genre = await genreService.setImage(params.genreId, Number(params.slot) as 1 | 2, saved.relativeUrl);
+    return { genre };
+  });
+
+  // 計測機器ジャンル画像クリア（slot: 1 or 2）
+  app.delete('/measuring-instrument-genres/:genreId/images/:slot', { preHandler: canWrite }, async (request) => {
+    const params = genreImageSlotParamsSchema.parse(request.params);
+    const genre = await genreService.clearImage(params.genreId, Number(params.slot) as 1 | 2);
+    return { genre };
+  });
+
+  // ジャンル単位の点検項目一覧
+  app.get('/measuring-instrument-genres/:genreId/inspection-items', { preHandler: allowView }, async (request) => {
+    const params = genreParamsSchema.parse(request.params);
+    const items = await inspectionItemService.findByGenre(params.genreId);
+    return { inspectionItems: items };
+  });
+
+  // ジャンル単位の点検項目作成
+  app.post('/measuring-instrument-genres/:genreId/inspection-items', { preHandler: canWrite }, async (request) => {
+    const params = genreParamsSchema.parse(request.params);
+    const body = inspectionItemCreateSchema.parse(request.body);
+    const item = await inspectionItemService.create({ ...body, genreId: params.genreId });
+    return { inspectionItem: item };
+  });
+
   // 点検項目一覧（計測機器単位）
   app.get('/measuring-instruments/:id/inspection-items', { preHandler: allowView }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
@@ -158,10 +240,25 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   // 点検項目作成
   app.post('/measuring-instruments/:id/inspection-items', { preHandler: canWrite }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
-    const rawBody = typeof request.body === 'object' && request.body !== null ? request.body : {};
-    const body = inspectionItemCreateSchema.parse({ ...rawBody, measuringInstrumentId: params.id });
-    const item = await inspectionItemService.create(body);
+    const body = inspectionItemCreateSchema.parse(request.body);
+    const instrument = await instrumentService.findById(params.id);
+    if (!instrument.genreId) {
+      throw new ApiError(409, '計測機器ジャンルが未設定のため点検項目を登録できません');
+    }
+    const item = await inspectionItemService.create({ ...body, genreId: instrument.genreId });
     return { inspectionItem: item };
+  });
+
+  // キオスク向け: 点検表示プロフィール（ジャンル・点検項目・画像）
+  app.get('/measuring-instruments/:id/inspection-profile', { preHandler: allowView }, async (request) => {
+    const params = instrumentParamsSchema.parse(request.params);
+    const instrument = await instrumentService.findById(params.id);
+    if (!instrument.genreId) {
+      return { genre: null, inspectionItems: [] };
+    }
+    const genre = await genreService.findById(instrument.genreId);
+    const inspectionItems = await inspectionItemService.findByGenre(instrument.genreId);
+    return { genre, inspectionItems };
   });
 
   // 点検項目更新

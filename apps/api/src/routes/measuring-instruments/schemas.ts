@@ -6,6 +6,7 @@ const { MeasuringInstrumentStatus, InspectionResult } = pkg;
 export const instrumentBaseSchema = z.object({
   name: z.string().min(1, '名称は必須です'),
   managementNumber: z.string().min(1, '管理番号は必須です'),
+  genreId: z.string().uuid().optional().nullable(),
   storageLocation: z.string().optional().nullable(),
   department: z.string().optional().nullable(),
   measurementRange: z.string().optional().nullable(),
@@ -29,8 +30,28 @@ export const instrumentParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+export const genreParamsSchema = z.object({
+  genreId: z.string().uuid()
+});
+
+export const genreCreateSchema = z.object({
+  name: z.string().trim().min(1, 'ジャンル名は必須です')
+});
+
+export const genreUpdateSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  imageUrlPrimary: z.string().trim().min(1).nullable().optional(),
+  imageUrlSecondary: z.string().trim().min(1).nullable().optional()
+}).refine((data) => Object.keys(data).length > 0, {
+  message: '更新項目がありません'
+});
+
+export const genreImageSlotParamsSchema = z.object({
+  genreId: z.string().uuid(),
+  slot: z.enum(['1', '2'])
+});
+
 export const inspectionItemCreateSchema = z.object({
-  measuringInstrumentId: z.string().uuid(),
   name: z.string().min(1),
   content: z.string().min(1),
   criteria: z.string().min(1),

@@ -1,9 +1,9 @@
 import { FormEvent, useState } from 'react';
 
 import {
-  useInspectionItems,
-  useInspectionItemMutations,
-  useMeasuringInstrument
+  useGenreInspectionItems,
+  useGenreInspectionItemMutations,
+  useMeasuringInstrumentGenres
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -13,7 +13,7 @@ import { useConfirm } from '../../contexts/ConfirmContext';
 import type { InspectionItem } from '../../api/types';
 
 export function InspectionItemsPage() {
-  const [instrumentId, setInstrumentId] = useState('');
+  const [genreId, setGenreId] = useState('');
   const [editingItem, setEditingItem] = useState<InspectionItem | null>(null);
   const confirm = useConfirm();
   const [form, setForm] = useState({
@@ -24,9 +24,9 @@ export function InspectionItemsPage() {
     order: 0
   });
 
-  const { data: instrument } = useMeasuringInstrument(instrumentId || undefined);
-  const { data: items } = useInspectionItems(instrumentId || undefined);
-  const mutations = useInspectionItemMutations(instrumentId || '');
+  const { data: genres } = useMeasuringInstrumentGenres();
+  const { data: items } = useGenreInspectionItems(genreId || undefined);
+  const mutations = useGenreInspectionItemMutations(genreId || '');
 
   const startEdit = (item: InspectionItem) => {
     setEditingItem(item);
@@ -46,7 +46,7 @@ export function InspectionItemsPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!instrumentId) return;
+    if (!genreId) return;
 
     if (editingItem) {
       await mutations.update.mutateAsync({
@@ -88,26 +88,33 @@ export function InspectionItemsPage() {
 
   return (
     <div className="space-y-6">
-      <Card title="計測機器選択">
+      <Card title="計測機器ジャンル選択">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm font-semibold text-slate-700">
-            計測機器ID
-            <Input
-              value={instrumentId}
+            計測機器ジャンル
+            <select
+              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
+              value={genreId}
               onChange={(e) => {
-                setInstrumentId(e.target.value);
+                setGenreId(e.target.value);
                 resetForm();
               }}
-              placeholder="UUIDを入力"
-            />
+            >
+              <option value="">選択してください</option>
+              {genres?.map((genre) => (
+                <option key={genre.id} value={genre.id}>
+                  {genre.name}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="flex items-end">
-            {instrument ? (
+            {genreId ? (
               <p className="text-sm font-semibold text-slate-700">
-                {instrument.name} ({instrument.managementNumber})
+                {genres?.find((genre) => genre.id === genreId)?.name ?? 'ジャンル未取得'}
               </p>
             ) : (
-              <p className="text-sm text-slate-600">計測機器を選択してください</p>
+              <p className="text-sm text-slate-600">ジャンルを選択してください</p>
             )}
           </div>
         </div>
@@ -141,7 +148,7 @@ export function InspectionItemsPage() {
             <Input value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })} required />
           </label>
           <div className="md:col-span-2">
-            <Button type="submit" disabled={!instrumentId || !mutations || mutations.create.isPending || mutations.update.isPending}>
+            <Button type="submit" disabled={!genreId || !mutations || mutations.create.isPending || mutations.update.isPending}>
               {editingItem ? (mutations?.update.isPending ? '更新中…' : '上書き保存') : mutations?.create.isPending ? '送信中…' : '登録'}
             </Button>
             {editingItem ? (
@@ -154,8 +161,8 @@ export function InspectionItemsPage() {
       </Card>
 
       <Card title="点検項目一覧">
-        {!instrumentId ? (
-          <p className="text-sm text-slate-600">計測機器IDを入力してください。</p>
+        {!genreId ? (
+          <p className="text-sm text-slate-600">ジャンルを選択してください。</p>
         ) : !items ? (
           <p className="text-sm font-semibold text-slate-700">読み込み中…</p>
         ) : (

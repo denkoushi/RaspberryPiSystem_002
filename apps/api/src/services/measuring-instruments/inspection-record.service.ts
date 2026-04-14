@@ -43,8 +43,28 @@ export class InspectionRecordService {
 
   async create(data: InspectionRecordCreateInput): Promise<InspectionRecord> {
     try {
+      const instrument = await prisma.measuringInstrument.findUnique({
+        where: { id: data.measuringInstrumentId },
+        select: { genreId: true }
+      });
+      if (!instrument) {
+        throw new ApiError(404, '計測機器が見つかりません');
+      }
+      if (!instrument.genreId) {
+        throw new ApiError(409, '計測機器ジャンルが未設定のため点検記録を登録できません');
+      }
+      const inspectionItem = await prisma.inspectionItem.findUnique({
+        where: { id: data.inspectionItemId },
+        select: { genreId: true }
+      });
+      if (!inspectionItem || inspectionItem.genreId !== instrument.genreId) {
+        throw new ApiError(400, '点検項目と計測機器ジャンルの整合が取れていません');
+      }
       return await prisma.inspectionRecord.create({ data });
     } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
       throw new ApiError(400, '点検記録の登録に失敗しました');
     }
   }

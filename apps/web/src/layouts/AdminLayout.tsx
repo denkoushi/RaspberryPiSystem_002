@@ -50,6 +50,9 @@ export function AdminLayout() {
             <NavLink to="/admin/tools/measuring-instruments" className={linkClass}>
               計測機器
             </NavLink>
+            <NavLink to="/admin/tools/measuring-instrument-genres" className={linkClass}>
+              計測機器ジャンル
+            </NavLink>
             <NavLink to="/admin/tools/part-measurement-templates" className={linkClass}>
               部品測定テンプレ
             </NavLink>

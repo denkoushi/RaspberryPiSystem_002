@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   useMeasuringInstruments,
   useMeasuringInstrumentMutations,
+  useMeasuringInstrumentGenres,
   useInstrumentTags,
   useDepartments
 } from '../../api/hooks';
@@ -20,6 +21,7 @@ const statusOptions: MeasuringInstrumentStatus[] = ['AVAILABLE', 'IN_USE', 'MAIN
 const initialForm = {
   name: '',
   managementNumber: '',
+  genreId: '',
   storageLocation: '',
   department: '',
   measurementRange: '',
@@ -30,6 +32,7 @@ const initialForm = {
 
 export function MeasuringInstrumentsPage() {
   const { data, isLoading } = useMeasuringInstruments();
+  const { data: genres } = useMeasuringInstrumentGenres();
   const { create, update, remove } = useMeasuringInstrumentMutations();
   const confirm = useConfirm();
   const { data: departmentsData } = useDepartments();
@@ -72,6 +75,7 @@ export function MeasuringInstrumentsPage() {
     const payload = {
       name: form.name,
       managementNumber: form.managementNumber,
+      genreId: form.genreId || null,
       storageLocation: form.storageLocation || undefined,
       department: form.department || undefined,
       measurementRange: form.measurementRange || undefined,
@@ -96,6 +100,7 @@ export function MeasuringInstrumentsPage() {
     setForm({
       name: instrument.name,
       managementNumber: instrument.managementNumber,
+      genreId: instrument.genreId ?? '',
       storageLocation: instrument.storageLocation ?? '',
       department: instrument.department ?? '',
       measurementRange: instrument.measurementRange ?? '',
@@ -149,6 +154,21 @@ export function MeasuringInstrumentsPage() {
               onChange={(e) => setForm({ ...form, managementNumber: e.target.value })}
               required
             />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            計測機器ジャンル
+            <select
+              className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
+              value={form.genreId}
+              onChange={(e) => setForm({ ...form, genreId: e.target.value })}
+            >
+              <option value="">未設定</option>
+              {genres?.map((genre) => (
+                <option key={genre.id} value={genre.id}>
+                  {genre.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-sm font-semibold text-slate-700">
             保管場所
@@ -235,6 +255,7 @@ export function MeasuringInstrumentsPage() {
                 <tr>
                   <th className="px-2 py-1 text-sm font-semibold">名称</th>
                   <th className="px-2 py-1 text-sm font-semibold">管理番号</th>
+                  <th className="px-2 py-1 text-sm font-semibold">ジャンル</th>
                   <th className="px-2 py-1 text-sm font-semibold">保管場所</th>
                   <th className="px-2 py-1 text-sm font-semibold">部署</th>
                   <th className="px-2 py-1 text-sm font-semibold">測定範囲</th>
@@ -248,6 +269,9 @@ export function MeasuringInstrumentsPage() {
                   <tr key={instrument.id} className="border-t border-slate-500">
                     <td className="px-2 py-1 font-bold text-base text-slate-900">{instrument.name}</td>
                     <td className="px-2 py-1 font-mono text-sm font-semibold text-slate-900">{instrument.managementNumber}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">
+                      {genres?.find((genre) => genre.id === instrument.genreId)?.name ?? '-'}
+                    </td>
                     <td className="px-2 py-1 text-sm text-slate-700">{instrument.storageLocation ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{instrument.department ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{instrument.measurementRange ?? '-'}</td>

@@ -6,6 +6,7 @@ import { ApiError } from '../../lib/errors.js';
 export interface MeasuringInstrumentCreateInput {
   name: string;
   managementNumber: string;
+  genreId?: string | null;
   storageLocation?: string | null;
   department?: string | null;
   measurementRange?: string | null;
@@ -17,6 +18,7 @@ export interface MeasuringInstrumentCreateInput {
 export interface MeasuringInstrumentUpdateInput {
   name?: string;
   managementNumber?: string;
+  genreId?: string | null;
   storageLocation?: string | null;
   department?: string | null;
   measurementRange?: string | null;
@@ -73,6 +75,7 @@ export class MeasuringInstrumentService {
           data: {
             name: data.name,
             managementNumber: data.managementNumber,
+            genreId: data.genreId ?? undefined,
             storageLocation: data.storageLocation ?? undefined,
             department: data.department ?? undefined,
             measurementRange: data.measurementRange ?? undefined,

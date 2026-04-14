@@ -6,6 +6,9 @@ import { InspectionItemService } from '../inspection-item.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    measuringInstrument: {
+      findUnique: vi.fn(),
+    },
     inspectionItem: {
       findMany: vi.fn(),
       create: vi.fn(),
@@ -24,12 +27,17 @@ describe('InspectionItemService', () => {
   });
 
   it('findByInstrument は order 昇順で取得する', async () => {
+    vi.mocked(prisma.measuringInstrument.findUnique).mockResolvedValue({ genreId: 'genre-1' } as never);
     vi.mocked(prisma.inspectionItem.findMany).mockResolvedValue([] as never);
 
     await service.findByInstrument('inst-1');
 
+    expect(prisma.measuringInstrument.findUnique).toHaveBeenCalledWith({
+      where: { id: 'inst-1' },
+      select: { genreId: true }
+    });
     expect(prisma.inspectionItem.findMany).toHaveBeenCalledWith({
-      where: { measuringInstrumentId: 'inst-1' },
+      where: { genreId: 'genre-1' },
       orderBy: { order: 'asc' },
     });
   });

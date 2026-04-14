@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-07
+last-verified: 2026-04-14
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-04（Pi5 のみ `web` 反映時の `--limit` 判断・`go-jose` 修正後の Phase12 実測を反映）
+最終更新: 2026-04-14（計測機器ジャンル化ロールアウト: Pi5→Pi4×4 順次 Detach Run・`451074e3`・Phase12 43/0/0 を反映）
 
 ## 概要
 

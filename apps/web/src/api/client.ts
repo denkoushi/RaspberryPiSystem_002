@@ -23,6 +23,7 @@ import type {
   MeasuringInstrument,
   MeasuringInstrumentBorrowPayload,
   MeasuringInstrumentReturnPayload,
+  MeasuringInstrumentGenre,
   MeasuringInstrumentStatus,
   InspectionItem,
   MeasuringInstrumentTag,
@@ -1859,6 +1860,10 @@ export type MeasuringInstrumentInput = Partial<MeasuringInstrument> & {
   rfidTagUid?: string | null;
 };
 
+export type MeasuringInstrumentGenreInput = {
+  name: string;
+};
+
 export async function getUnifiedItems(params?: UnifiedListParams) {
   const { data } = await api.get<{ items: UnifiedItem[] }>('/tools/unified', {
     params: {
@@ -1872,6 +1877,49 @@ export async function getUnifiedItems(params?: UnifiedListParams) {
 export async function getMeasuringInstrument(id: string) {
   const { data } = await api.get<{ instrument: MeasuringInstrument }>(`/measuring-instruments/${id}`);
   return data.instrument;
+}
+
+export async function getMeasuringInstrumentGenres() {
+  const { data } = await api.get<{ genres: MeasuringInstrumentGenre[] }>('/measuring-instrument-genres');
+  return data.genres;
+}
+
+export async function createMeasuringInstrumentGenre(input: MeasuringInstrumentGenreInput) {
+  const { data } = await api.post<{ genre: MeasuringInstrumentGenre }>('/measuring-instrument-genres', input);
+  return data.genre;
+}
+
+export async function updateMeasuringInstrumentGenre(
+  genreId: string,
+  input: Partial<Pick<MeasuringInstrumentGenre, 'name' | 'imageUrlPrimary' | 'imageUrlSecondary'>>
+) {
+  const { data } = await api.put<{ genre: MeasuringInstrumentGenre }>(`/measuring-instrument-genres/${genreId}`, input);
+  return data.genre;
+}
+
+export async function deleteMeasuringInstrumentGenre(genreId: string) {
+  const { data } = await api.delete<{ genre: MeasuringInstrumentGenre }>(`/measuring-instrument-genres/${genreId}`);
+  return data.genre;
+}
+
+export async function uploadMeasuringInstrumentGenreImage(genreId: string, slot: 1 | 2, image: File) {
+  const form = new FormData();
+  form.append('image', image);
+  const { data } = await api.post<{ genre: MeasuringInstrumentGenre }>(
+    `/measuring-instrument-genres/${genreId}/images/${slot}`,
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }
+  );
+  return data.genre;
+}
+
+export async function deleteMeasuringInstrumentGenreImage(genreId: string, slot: 1 | 2) {
+  const { data } = await api.delete<{ genre: MeasuringInstrumentGenre }>(
+    `/measuring-instrument-genres/${genreId}/images/${slot}`
+  );
+  return data.genre;
 }
 
 export async function getMeasuringInstrumentByTagUid(tagUid: string) {
@@ -1993,11 +2041,33 @@ export async function getInspectionItems(measuringInstrumentId: string) {
   return data.inspectionItems;
 }
 
+export async function getGenreInspectionItems(genreId: string) {
+  const { data } = await api.get<{ inspectionItems: InspectionItem[] }>(
+    `/measuring-instrument-genres/${genreId}/inspection-items`
+  );
+  return data.inspectionItems;
+}
+
+export async function createGenreInspectionItem(genreId: string, input: Partial<InspectionItem>) {
+  const { data } = await api.post<{ inspectionItem: InspectionItem }>(
+    `/measuring-instrument-genres/${genreId}/inspection-items`,
+    input
+  );
+  return data.inspectionItem;
+}
+
+export async function getMeasuringInstrumentInspectionProfile(measuringInstrumentId: string) {
+  const { data } = await api.get<{
+    genre: MeasuringInstrumentGenre | null;
+    inspectionItems: InspectionItem[];
+  }>(`/measuring-instruments/${measuringInstrumentId}/inspection-profile`);
+  return data;
+}
+
 export async function createInspectionItem(measuringInstrumentId: string, input: Partial<InspectionItem>) {
-  const body = { ...input, measuringInstrumentId };
   const { data } = await api.post<{ inspectionItem: InspectionItem }>(
     `/measuring-instruments/${measuringInstrumentId}/inspection-items`,
-    body
+    input
   );
   return data.inspectionItem;
 }

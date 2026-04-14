@@ -180,10 +180,19 @@ import {
   getNetworkModeStatus,
   getMeasuringInstruments,
   getMeasuringInstrument,
+  getMeasuringInstrumentGenres,
+  createMeasuringInstrumentGenre,
+  updateMeasuringInstrumentGenre,
+  deleteMeasuringInstrumentGenre,
+  uploadMeasuringInstrumentGenreImage,
+  deleteMeasuringInstrumentGenreImage,
   createMeasuringInstrument,
   updateMeasuringInstrument,
   deleteMeasuringInstrument,
   getInspectionItems,
+  getGenreInspectionItems,
+  createGenreInspectionItem,
+  getMeasuringInstrumentInspectionProfile,
   createInspectionItem,
   updateInspectionItem,
   deleteInspectionItem,
@@ -215,6 +224,7 @@ import type {
   ReturnPayload,
   MeasuringInstrumentStatus,
   InspectionItem,
+  MeasuringInstrumentGenre,
   MeasuringInstrumentBorrowPayload,
   MeasuringInstrumentReturnPayload,
   InspectionRecordCreatePayload,
@@ -1255,6 +1265,50 @@ export function useMeasuringInstrument(id?: string) {
   });
 }
 
+export function useMeasuringInstrumentGenres() {
+  return useQuery({
+    queryKey: ['measuring-instrument-genres'],
+    queryFn: () => getMeasuringInstrumentGenres()
+  });
+}
+
+export function useMeasuringInstrumentGenreMutations() {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['measuring-instrument-genres'] });
+    queryClient.invalidateQueries({ queryKey: ['measuring-instruments'] });
+  };
+  const create = useMutation({
+    mutationFn: (payload: { name: string }) => createMeasuringInstrumentGenre(payload),
+    onSuccess: invalidate
+  });
+  const update = useMutation({
+    mutationFn: ({
+      genreId,
+      payload
+    }: {
+      genreId: string;
+      payload: Partial<Pick<MeasuringInstrumentGenre, 'name' | 'imageUrlPrimary' | 'imageUrlSecondary'>>;
+    }) => updateMeasuringInstrumentGenre(genreId, payload),
+    onSuccess: invalidate
+  });
+  const remove = useMutation({
+    mutationFn: (genreId: string) => deleteMeasuringInstrumentGenre(genreId),
+    onSuccess: invalidate
+  });
+  const uploadImage = useMutation({
+    mutationFn: ({ genreId, slot, image }: { genreId: string; slot: 1 | 2; image: File }) =>
+      uploadMeasuringInstrumentGenreImage(genreId, slot, image),
+    onSuccess: invalidate
+  });
+  const deleteImage = useMutation({
+    mutationFn: ({ genreId, slot }: { genreId: string; slot: 1 | 2 }) =>
+      deleteMeasuringInstrumentGenreImage(genreId, slot),
+    onSuccess: invalidate
+  });
+  return { create, update, remove, uploadImage, deleteImage };
+}
+
 export function useMeasuringInstrumentMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
@@ -1303,6 +1357,40 @@ export function useInspectionItemMutations(measuringInstrumentId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inspection-items', measuringInstrumentId] })
   });
   return { create, update, remove };
+}
+
+export function useGenreInspectionItems(genreId?: string) {
+  return useQuery({
+    queryKey: ['genre-inspection-items', genreId],
+    queryFn: () => getGenreInspectionItems(genreId!),
+    enabled: !!genreId
+  });
+}
+
+export function useGenreInspectionItemMutations(genreId: string) {
+  const queryClient = useQueryClient();
+  const create = useMutation({
+    mutationFn: (payload: Partial<InspectionItem>) => createGenreInspectionItem(genreId, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['genre-inspection-items', genreId] })
+  });
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<InspectionItem> }) =>
+      updateInspectionItem(id, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['genre-inspection-items', genreId] })
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteInspectionItem(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['genre-inspection-items', genreId] })
+  });
+  return { create, update, remove };
+}
+
+export function useMeasuringInstrumentInspectionProfile(measuringInstrumentId?: string) {
+  return useQuery({
+    queryKey: ['measuring-instrument-inspection-profile', measuringInstrumentId],
+    queryFn: () => getMeasuringInstrumentInspectionProfile(measuringInstrumentId!),
+    enabled: !!measuringInstrumentId
+  });
 }
 
 // RFIDタグ

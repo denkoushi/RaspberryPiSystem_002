@@ -136,6 +136,7 @@ model MeasuringInstrument {
   id                    String                    @id @default(uuid())
   name                  String
   managementNumber      String                    @unique
+  genreId               String?
   storageLocation       String?
   department            String? // 管理部署（CSVインポート用）
   measurementRange      String?
@@ -143,27 +144,40 @@ model MeasuringInstrument {
   status                MeasuringInstrumentStatus @default(AVAILABLE)
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
-  inspectionItems       InspectionItem[]
+  genre                 MeasuringInstrumentGenre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
   inspectionRecords     InspectionRecord[]
   tags                  MeasuringInstrumentTag[]
   loans                 Loan[]
+
+  @@index([genreId])
+}
+
+model MeasuringInstrumentGenre {
+  id                 String               @id @default(uuid())
+  name               String               @unique
+  imageUrlPrimary    String?
+  imageUrlSecondary  String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  instruments        MeasuringInstrument[]
+  inspectionItems    InspectionItem[]
 }
 
 model InspectionItem {
-  id                    String              @id @default(uuid())
-  measuringInstrumentId String
+  id                    String                   @id @default(uuid())
+  genreId               String
   name                  String
   content               String
   criteria              String
   method                String
   order                 Int
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
-  measuringInstrument   MeasuringInstrument @relation(fields: [measuringInstrumentId], references: [id], onDelete: Cascade)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  genre                 MeasuringInstrumentGenre @relation(fields: [genreId], references: [id], onDelete: Cascade)
   inspectionRecords     InspectionRecord[]
 
-  @@unique([measuringInstrumentId, name])
-  @@index([measuringInstrumentId])
+  @@unique([genreId, name])
+  @@index([genreId])
   @@index([order])
 }
 

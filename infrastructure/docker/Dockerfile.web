@@ -23,7 +23,7 @@ ARG VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=false
 ENV VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED}
 RUN cd apps/web && pnpm run build
 
-FROM golang:1.26.1-alpine AS caddy-build
+FROM golang:1.26.2-alpine AS caddy-build
 WORKDIR /src
 ARG TARGETOS=linux
 ARG TARGETARCH
