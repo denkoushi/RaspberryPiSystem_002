@@ -34,6 +34,16 @@
 - 画面側のデータセット切替は共通 ViewModel へ寄せ、データ源追加時の変更範囲を局所化する。
 - 統合ルール（NFC 優先・5分窓・取消除外）は回帰テストで固定する。
 
+## 本番デプロイ（2026-04-14）
+
+- **ブランチ**: `feat/unified-loan-analytics`（先端コミット **`35f5ed4b`**）
+- **対象**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`（**Pi3 は対象外**。サイネージ専用 Pi3 の **単独・軽量手順**は不要）
+- **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・**ホストごとに** `--limit "<host>" --detach --follow`（同一シェルで **順番に** `&&` 連結可）
+- **Detach Run ID**（Pi5 上ログ接頭辞 `ansible-update-`）: `20260414-194212-7916` → `20260414-195311-19926` → `20260414-195803-9001` → `20260414-200152-17153` → `20260414-200700-5820`（各 **`failed=0` / `unreachable=0`**）
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **63s**）
+- **トラブルシュート**: `update-all-clients.sh` が未コミット・未 push で止まる場合は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。同一 `RASPI_SERVER_HOST` へ **複数ターミナルから同時起動しない**（[deployment.md](../guides/deployment.md) 2026-03-29 追記）
+- **手動スモーク（推奨）**: キオスク **`/kiosk/rigging-analytics`** で `計測機器` タブ・`対象月`・月次フィルタが期待どおり読み込まれること。API: `GET /api/measuring-instruments/loan-analytics` + `x-client-key`
+
 ## References
 
 - `apps/api/src/services/measuring-instruments/analytics/measuring-instrument-loan-analytics.repository.ts`
