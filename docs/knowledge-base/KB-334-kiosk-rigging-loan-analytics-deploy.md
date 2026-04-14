@@ -2,7 +2,7 @@
 title: KB-334 キオスク「集計」（吊具・持出返却アイテム）デプロイ・実機確認
 tags: [キオスク, 吊具, 工具, デプロイ, API, DADS]
 audience: [運用者, 開発者]
-last-verified: 2026-04-09
+last-verified: 2026-04-14
 category: knowledge-base
 ---
 
@@ -14,6 +14,7 @@ category: knowledge-base
 - **UI**: デジタル庁デザインシステム（DADS）トークン（`@digital-go-jp/design-tokens`）＋ Noto Sans JP / Mono。画面内で **吊具** と **持出返却アイテム** をタブ切替（同一 ViewModel で表・グラフを共通化）。
 - **API（吊具）**: `GET /api/rigging-gears/loan-analytics`（`x-client-key` または JWT の `allowView`）。`cancelledAt` 非 null の Loan は集計から除外。
 - **API（写真持出・表示名タブ）**: `GET /api/tools/items/loan-analytics`（認可は吊具 analytics と同系）。**対象 Loan**: **`photoUrl` あり**・`itemId` / `riggingGearId` / `measuringInstrumentId` がすべて NULL・`cancelledAt` NULL・**`photoToolGallerySeed = false`**（教師シード除外）。**表示名キー**: `NULLIF(TRIM(人レビュー名))` が無ければ `NULLIF(TRIM(VLM名))`、どちらも無ければ **「撮影mode」**（キオスク持出一覧の `resolvePhotoLoanToolDisplayLabel` と同順位）。**NFC Item マスタ連携の貸出は含めない**（別タブ用のため別契約が必要）。
+- **UI（2026-04-14）**: **対象月**は `input type="month"` ではなく **`KioskMonthPickerModal`**（年ドロップダウン＋前年/翌年＋1〜12月・`variant="analytics"`）。**資産フィルタ**はタブごとに **単一選択**（未選択=全件）。クエリ: 吊具 `riggingGearId`（uuid）・写真持出 `itemId`（`pt-` + 24hex）・計測機器 `measuringInstrumentId`（uuid）。**API**: `GET /api/rigging-gears/loan-analytics`、`GET /api/tools/items/loan-analytics`、`GET /api/measuring-instruments/loan-analytics` の各クエリに optional 追加（Zod）。月変更時はフロントで資産選択をリセットし、404 時は選択解除にフォールバック。
 - **月次集計**: 既定タイムゾーン `Asia/Tokyo` 暦月（クエリで上書き可）。**マイグレーション**: 本集計は **既存 `Loan` 列のみ**（追加マイグレなし）。
 
 ## デプロイ（標準手順）
@@ -72,6 +73,14 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 
 ## 本番実績
 
+### 2026-04-14（月選択モーダル・タブ別資産フィルタ・`feat/kiosk-analytics-month-and-asset-filters`・`8ce1a9da`・Pi5→Pi4×4 順次・Pi3 除外）
+
+- **差分**: Web `KioskMonthPickerModal`・`KioskRiggingAnalyticsPage` の月/資産 UI・hooks；API は 3 系統 loan-analytics に対象 ID クエリと repository/service 絞り込み；CI: `KioskMonthPickerModal` の `aria-pressed` / 月ラベルを **string 子**にして Docker ビルド時 **tsc** 通過（`fix(web): satisfy KioskMonthPickerModal button types for CI`）。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-month-and-asset-filters infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3**: 本変更はキオスク/API のため **対象外**（Pi3 専用の単独・軽量手順は不要）。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260414-211347-29532` → `20260414-212701-15420` → `20260414-213153-7546` → `20260414-213547-9533` → `20260414-214120-20816`、各 **`failed=0` / `unreachable=0` / exit `0`**。
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **57s**・Mac / Tailscale）。
+- **残作業（手動）**: 各 Pi4 で **`/kiosk/rigging-analytics`** を開き、**対象月**ボタン・**吊具/表示名/計測機器**ドロップダウン・タブ切替で状態が期待どおりか目視。
+
 ### 2026-04-09（写真持出 VLM/人レビュー表示名集計・`main` `3a722c8d`・Pi5 のみ）
 
 - **差分**: `fix(analytics): aggregate kiosk item tab from photo VLM/human labels`（API リポジトリ集計ロジック差し替え・共有型コメント・キオスク表タブ文言）。
@@ -113,6 +122,7 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 | アイテム（写真）タブが 0 件・想定と違う | **対象は写真持出 Loan のみ**。NFC `itemId` 付き貸出・`photoToolGallerySeed`・取消済みは **含まない**。VLM 未推論・人レビュー無しは **表示名「撮影mode」** にまとまる。 |
 | 表示名の粒度が細かすぎる | VLM が類似工具で別文字列を返すと **別行になる**。運用では人レビュー確定や [KB-319](./KB-319-photo-loan-vlm-tool-label.md) の正規化方針を参照。 |
 | UI が古い（ナビが「吊具 状況」のまま等） | Pi5 の `web` 未更新、またはブラウザキャッシュ。Pi5 デプロイ後に **強制再読み込み**。 |
+| CI で `Build web image for Trivy image scan` が落ちる（`KioskMonthPickerModal` の `children` / `aria-pressed`） | 月グリッドの表示を **`{`${m}月`}`** のように **単一文字列**にし、`aria-pressed` は **`Boolean(...)`** で `null` を排除（2026-04-14 修正）。 |
 
 ## References
 

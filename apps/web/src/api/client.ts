@@ -1934,6 +1934,7 @@ export async function getRiggingLoanAnalytics(params?: {
   periodTo?: string;
   monthlyMonths?: number;
   timeZone?: 'Asia/Tokyo' | 'UTC';
+  riggingGearId?: string;
 }) {
   const { data } = await api.get<RiggingLoanAnalyticsResponse>('/rigging-gears/loan-analytics', { params });
   return data;
@@ -1945,6 +1946,7 @@ export async function getItemLoanAnalytics(params?: {
   periodTo?: string;
   monthlyMonths?: number;
   timeZone?: 'Asia/Tokyo' | 'UTC';
+  itemId?: string;
 }) {
   const { data } = await api.get<ItemLoanAnalyticsResponse>('/tools/items/loan-analytics', { params });
   return data;
@@ -1955,6 +1957,7 @@ export async function getMeasuringInstrumentLoanAnalytics(params?: {
   periodTo?: string;
   monthlyMonths?: number;
   timeZone?: 'Asia/Tokyo' | 'UTC';
+  measuringInstrumentId?: string;
 }) {
   const { data } = await api.get<MeasuringInstrumentLoanAnalyticsResponse>('/measuring-instruments/loan-analytics', {
     params,

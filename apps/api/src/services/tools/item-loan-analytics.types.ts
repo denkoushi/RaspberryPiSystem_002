@@ -32,6 +32,8 @@ export interface ItemLoanAnalyticsQueryInput {
   monthlyMonths: number;
   timeZone: ItemLoanAnalyticsTimeZone;
   now: Date;
+  /** 写真持出の表示名キー（`itemId` 解決後に設定） */
+  toolLabelFilter?: string;
 }
 
 export interface ItemLoanAnalyticsAggregate {
@@ -47,4 +49,6 @@ export interface ItemLoanAnalyticsAggregate {
 
 export interface IItemLoanAnalyticsRepository {
   loadAggregate(input: ItemLoanAnalyticsQueryInput): Promise<ItemLoanAnalyticsAggregate>;
+  /** 写真持出の仮想 `itemId`（`pt-`…）から表示名キーを解決 */
+  resolveSyntheticItemIdToToolLabel(syntheticId: string): Promise<string | null>;
 }

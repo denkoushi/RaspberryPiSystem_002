@@ -1,6 +1,7 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
+import { KioskMonthPickerModal } from '../../components/kiosk/KioskMonthPickerModal';
 import { useItemLoanAnalytics } from '../../features/item-analytics/useItemLoanAnalytics';
 import { useMeasuringInstrumentLoanAnalytics } from '../../features/measuring-instrument-analytics/useMeasuringInstrumentLoanAnalytics';
 import { useRiggingLoanAnalytics } from '../../features/rigging-analytics/useRiggingLoanAnalytics';
@@ -93,6 +94,12 @@ type ViewModel = {
   assets: AssetRow[];
   employees: EmployeeRow[];
 };
+
+function isNotFoundQueryError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const response = (error as { response?: { status?: number } }).response;
+  return response?.status === 404;
+}
 
 function formatYearMonthJa(ym: string): string {
   const [y, m] = ym.split('-').map((s) => Number(s));
@@ -527,10 +534,13 @@ function LoanAnalyticsMonthlyChart({
   );
 }
 
+type AssetOption = { value: string; label: string };
+
 export function KioskRiggingAnalyticsPage() {
   const [targetMonth, setTargetMonth] = useState(() => toMonthInputValue());
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const period = useMemo(() => monthRangeToIso(targetMonth), [targetMonth]);
-  const queryParams = useMemo(
+  const baseQueryParams = useMemo(
     () =>
       period
         ? {
@@ -542,12 +552,112 @@ export function KioskRiggingAnalyticsPage() {
         : undefined,
     [period]
   );
-  const riggingQ = useRiggingLoanAnalytics(queryParams);
-  const itemQ = useItemLoanAnalytics(queryParams);
-  const instrumentQ = useMeasuringInstrumentLoanAnalytics(queryParams);
+
+  const [selectedRiggingGearId, setSelectedRiggingGearId] = useState<string>('');
+  const [selectedItemId, setSelectedItemId] = useState<string>('');
+  const [selectedInstrumentId, setSelectedInstrumentId] = useState<string>('');
+
+  const [riggingOptions, setRiggingOptions] = useState<AssetOption[]>([]);
+  const [itemOptions, setItemOptions] = useState<AssetOption[]>([]);
+  const [instrumentOptions, setInstrumentOptions] = useState<AssetOption[]>([]);
+
+  const riggingParams = useMemo(
+    () =>
+      baseQueryParams
+        ? {
+            ...baseQueryParams,
+            ...(selectedRiggingGearId ? { riggingGearId: selectedRiggingGearId } : {}),
+          }
+        : undefined,
+    [baseQueryParams, selectedRiggingGearId]
+  );
+  const itemParams = useMemo(
+    () =>
+      baseQueryParams
+        ? {
+            ...baseQueryParams,
+            ...(selectedItemId ? { itemId: selectedItemId } : {}),
+          }
+        : undefined,
+    [baseQueryParams, selectedItemId]
+  );
+  const instrumentParams = useMemo(
+    () =>
+      baseQueryParams
+        ? {
+            ...baseQueryParams,
+            ...(selectedInstrumentId ? { measuringInstrumentId: selectedInstrumentId } : {}),
+          }
+        : undefined,
+    [baseQueryParams, selectedInstrumentId]
+  );
+
+  const riggingQ = useRiggingLoanAnalytics(riggingParams);
+  const itemQ = useItemLoanAnalytics(itemParams);
+  const instrumentQ = useMeasuringInstrumentLoanAnalytics(instrumentParams);
   const [datasetTab, setDatasetTab] = useState<DatasetTab>('rigging');
   const [detailTab, setDetailTab] = useState<DetailTab>('asset');
   const [keyword, setKeyword] = useState('');
+
+  useEffect(() => {
+    if (!selectedRiggingGearId) {
+      setRiggingOptions(
+        (riggingQ.data?.byGear ?? []).map((g) => ({
+          value: g.gearId,
+          label: `${g.managementNumber} ${g.name}`,
+        }))
+      );
+    }
+  }, [riggingQ.data, selectedRiggingGearId]);
+
+  useEffect(() => {
+    if (!selectedItemId) {
+      setItemOptions(
+        (itemQ.data?.byItem ?? []).map((it) => ({
+          value: it.itemId,
+          label: it.name || it.itemCode || it.itemId,
+        }))
+      );
+    }
+  }, [itemQ.data, selectedItemId]);
+
+  useEffect(() => {
+    if (!selectedInstrumentId) {
+      setInstrumentOptions(
+        (instrumentQ.data?.byInstrument ?? []).map((row) => ({
+          value: row.instrumentId,
+          label: `${row.managementNumber} ${row.name}`,
+        }))
+      );
+    }
+  }, [instrumentQ.data, selectedInstrumentId]);
+
+  useEffect(() => {
+    setSelectedRiggingGearId('');
+    setSelectedItemId('');
+    setSelectedInstrumentId('');
+    setRiggingOptions([]);
+    setItemOptions([]);
+    setInstrumentOptions([]);
+  }, [targetMonth]);
+
+  useEffect(() => {
+    if (selectedRiggingGearId && riggingQ.isError && isNotFoundQueryError(riggingQ.error)) {
+      setSelectedRiggingGearId('');
+    }
+  }, [selectedRiggingGearId, riggingQ.isError, riggingQ.error]);
+
+  useEffect(() => {
+    if (selectedItemId && itemQ.isError && isNotFoundQueryError(itemQ.error)) {
+      setSelectedItemId('');
+    }
+  }, [selectedItemId, itemQ.isError, itemQ.error]);
+
+  useEffect(() => {
+    if (selectedInstrumentId && instrumentQ.isError && isNotFoundQueryError(instrumentQ.error)) {
+      setSelectedInstrumentId('');
+    }
+  }, [selectedInstrumentId, instrumentQ.isError, instrumentQ.error]);
 
   const activeState = datasetTab === 'rigging' ? riggingQ : datasetTab === 'items' ? itemQ : instrumentQ;
   const view = useMemo(() => {
@@ -623,20 +733,107 @@ export function KioskRiggingAnalyticsPage() {
         <span className="text-[11px]" style={{ color: DADS.textSub }}>
           {new Date(view.periodFrom).toLocaleDateString('ja-JP')} — {new Date(view.periodTo).toLocaleDateString('ja-JP')}
         </span>
-        <label className="ml-2 flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
-          対象月
-          <input
-            type="month"
-            value={targetMonth}
-            onChange={(event) => setTargetMonth(event.target.value)}
-            className="rounded px-1.5 py-0.5 text-xs"
+        <div className="ml-2 flex flex-wrap items-center gap-2">
+          <span className="text-xs" style={{ color: DADS.textMuted }}>
+            対象月
+          </span>
+          <button
+            type="button"
+            className="rounded px-2 py-0.5 text-xs font-semibold transition-opacity hover:opacity-90"
             style={{
               border: `1px solid ${DADS.borderSubtle}`,
               backgroundColor: 'var(--color-neutral-solid-gray-900)',
               color: DADS.text,
+              borderRadius: DADS.radius6,
+            }}
+            aria-label="対象月"
+            onClick={() => setMonthPickerOpen(true)}
+          >
+            {formatYearMonthJa(targetMonth)}
+          </button>
+          <KioskMonthPickerModal
+            isOpen={monthPickerOpen}
+            value={targetMonth}
+            variant="analytics"
+            onCancel={() => setMonthPickerOpen(false)}
+            onCommit={(ym) => {
+              setTargetMonth(ym);
+              setMonthPickerOpen(false);
             }}
           />
-        </label>
+          {datasetTab === 'rigging' ? (
+            <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
+              吊具
+              <select
+                value={selectedRiggingGearId}
+                onChange={(e) => setSelectedRiggingGearId(e.target.value)}
+                className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
+                style={{
+                  border: `1px solid ${DADS.borderSubtle}`,
+                  backgroundColor: 'var(--color-neutral-solid-gray-900)',
+                  color: DADS.text,
+                  borderRadius: DADS.radius6,
+                }}
+                aria-label="吊具で絞り込み"
+              >
+                <option value="">全件</option>
+                {riggingOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {datasetTab === 'items' ? (
+            <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
+              表示名
+              <select
+                value={selectedItemId}
+                onChange={(e) => setSelectedItemId(e.target.value)}
+                className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
+                style={{
+                  border: `1px solid ${DADS.borderSubtle}`,
+                  backgroundColor: 'var(--color-neutral-solid-gray-900)',
+                  color: DADS.text,
+                  borderRadius: DADS.radius6,
+                }}
+                aria-label="持出返却アイテムで絞り込み"
+              >
+                <option value="">全件</option>
+                {itemOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {datasetTab === 'instruments' ? (
+            <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
+              計測機器
+              <select
+                value={selectedInstrumentId}
+                onChange={(e) => setSelectedInstrumentId(e.target.value)}
+                className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
+                style={{
+                  border: `1px solid ${DADS.borderSubtle}`,
+                  backgroundColor: 'var(--color-neutral-solid-gray-900)',
+                  color: DADS.text,
+                  borderRadius: DADS.radius6,
+                }}
+                aria-label="計測機器で絞り込み"
+              >
+                <option value="">全件</option>
+                {instrumentOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
         <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-0.5">
           <span className="flex items-center gap-1.5 text-xs"><span style={{ color: DADS.textSub }}>貸出中</span><span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-primitive-yellow-300)' }}>{view.openLoanCount}</span></span>
           <span className="flex items-center gap-1.5 text-xs"><span style={{ color: DADS.textSub }}>超過</span><span className="text-base font-bold tabular-nums" style={{ color: DADS.error }}>{view.overdueOpenCount}</span></span>
