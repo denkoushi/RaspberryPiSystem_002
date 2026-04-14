@@ -16,10 +16,11 @@ import { INSTRUMENT_BORROW_FIELD_WIDTH_CLASS } from '../../components/kiosk/inst
 import { InstrumentBorrowGenreImagesPanel } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowGenreImagesPanel';
 import { InstrumentBorrowHeaderRow } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowHeaderRow';
 import { InstrumentBorrowInspectionItemCard } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowInspectionItemCard';
+import { InstrumentBorrowInspectionItemsGrid } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowInspectionItemsGrid';
 import { InstrumentBorrowPageLayout } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowPageLayout';
+import { InstrumentBorrowTagUidFields } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowTagUidFields';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { InspectionItem, MeasuringInstrumentBorrowPayload } from '../../api/types';
@@ -520,46 +521,30 @@ export function KioskInstrumentBorrowPage() {
                 </div>
               </label>
 
-              <div className="flex flex-col items-stretch gap-2.5">
-                <label className={clsx('block text-sm font-semibold text-slate-700', INSTRUMENT_BORROW_FIELD_WIDTH_CLASS)}>
-                  計測機器タグUID
-                  <Input
-                    className="mt-1"
-                    value={instrumentTagUid}
-                    onChange={(e) => {
-                      if (instrumentSource && instrumentSource !== 'tag' && resolvedInstrumentTagUid) return;
-                      setInstrumentTagUid(e.target.value);
-                      if (!instrumentSource || instrumentSource === 'select') {
-                        setInstrumentSource('tag');
-                      }
-                    }}
-                    required={selectedInstrumentId.trim().length === 0}
-                    placeholder="スキャンまたは手入力"
-                    disabled={instrumentSource === 'select' && Boolean(resolvedInstrumentTagUid)}
-                  />
-                </label>
+              <InstrumentBorrowTagUidFields
+                instrumentTagUid={instrumentTagUid}
+                onInstrumentTagUidChange={(value) => {
+                  if (instrumentSource && instrumentSource !== 'tag' && resolvedInstrumentTagUid) return;
+                  setInstrumentTagUid(value);
+                  if (!instrumentSource || instrumentSource === 'select') {
+                    setInstrumentSource('tag');
+                  }
+                }}
+                instrumentInputDisabled={instrumentSource === 'select' && Boolean(resolvedInstrumentTagUid)}
+                instrumentRequired={selectedInstrumentId.trim().length === 0}
+                employeeTagUid={employeeTagUid}
+                onEmployeeTagUidChange={setEmployeeTagUid}
+                onEmployeeKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && hasInstrument) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+                }}
+                employeeInputRef={employeeTagInputRef}
+                employeeInputDisabled={isSubmitting || isNg}
+              />
 
-                <div className="w-full max-w-full">
-                  <label className="block text-sm font-semibold text-slate-700">氏名タグUID</label>
-                  <div className={clsx('mt-1', INSTRUMENT_BORROW_FIELD_WIDTH_CLASS)}>
-                    <Input
-                      ref={employeeTagInputRef}
-                      value={employeeTagUid}
-                      onChange={(e) => setEmployeeTagUid(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && hasInstrument) {
-                          e.preventDefault();
-                          handleSubmit();
-                        }
-                      }}
-                      required
-                      placeholder="スキャンまたは手入力（OKの場合は自動送信）"
-                      disabled={isSubmitting || isNg}
-                    />
-                  </div>
-                  <p className="mt-2 text-sm font-semibold text-slate-700">点検項目</p>
-                </div>
-              </div>
+              <p className="mt-2 w-full text-sm font-semibold text-slate-700">点検項目</p>
 
               <div className="mt-1 flex w-full flex-col gap-2">
                 {inspectionLoading ? (
@@ -567,11 +552,11 @@ export function KioskInstrumentBorrowPage() {
                 ) : inspectionItems.length === 0 ? (
                   <p className="text-sm text-slate-700">計測機器を選択すると点検項目が表示されます。</p>
                 ) : (
-                  <div className="flex w-full flex-col gap-2">
+                  <InstrumentBorrowInspectionItemsGrid>
                     {inspectionItems.map((item) => (
                       <InstrumentBorrowInspectionItemCard key={item.id} item={item} isNg={isNg} />
                     ))}
-                  </div>
+                  </InstrumentBorrowInspectionItemsGrid>
                 )}
               </div>
 
