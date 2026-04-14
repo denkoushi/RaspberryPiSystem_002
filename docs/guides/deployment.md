@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-14（計測機器ジャンル画像ストレージ永続化: compose bind + Ansible 退避・手順追記。直前の白背景/レイアウト記録は継続参照）
+最終更新: 2026-04-14（計測機器ジャンル画像ストレージ永続化: **Pi5 のみ**本番反映・Detach `ansible-update-20260414-163839-30558`・Phase12 **43/0/0**。compose bind + Ansible 退避・[KB-343](../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。直前の白背景/レイアウト記録は継続参照）
 
 ## 概要
 
