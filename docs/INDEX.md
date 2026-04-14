@@ -89,6 +89,10 @@
 - **Dropbox バックアップ（推奨カタログ・`coverage_gap`）本番反映: Pi5 のみデプロイ・Phase12 43/0/0**: ブランチ `feat/backup-recommended-target-audit` を **`--limit raspberrypi5`** で適用。**Detach Run ID**: `20260410-191940-18752`。実機スモーク: `/api/backup/config/health/internal` で `coverage_gap` 確認。詳細は [KB-338](./knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap) / [deployment.md](./guides/deployment.md)。
 - **Dropbox バックアップ: 推奨永続対象カタログと `GET /api/backup/config/health` の `coverage_gap`（warning）、管理UIで未登録候補表示**: `backup.json` 互換維持・派生キャッシュ除外・既存 disabled の enabled 変更なし。詳細は [KB-338](./knowledge-base/infrastructure/backup-restore.md#kb-338-backup-recommended-catalog-coverage-gap) / [api/backup.md](./api/backup.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)（Decision Log 2026-04-10）。
 
+### 🆕 最新アップデート（2026-04-14）
+
+- **キオスク「集計」月選択モーダル・タブ別資産フィルタ（`feat/kiosk-analytics-month-and-asset-filters`・`8ce1a9da`・Pi5→Pi4×4 順次・Pi3 除外）・Detach `20260414-211347-29532` ほか・Phase12 43/0/0**: [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-14」節。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)（マージ後 PR リンクを追記可）。
+
 ### 🆕 最新アップデート（2026-04-09）
 
 - **キオスク「集計」写真タブ: `items/loan-analytics` を VLM/人レビュー表示名集計に変更・`main` `3a722c8d`・本番 Pi5 のみ Detach `20260409-222053-14442`・Phase12 43/0/0**: 仕様・TS・スモークは [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
