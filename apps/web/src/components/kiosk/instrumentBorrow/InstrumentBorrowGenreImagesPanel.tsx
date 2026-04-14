@@ -17,7 +17,7 @@ export function InstrumentBorrowGenreImagesPanel({ imageUrls }: InstrumentBorrow
       {imageUrls.map((url, index) => (
         <div
           key={`${url}-${index}`}
-          className="flex min-h-0 flex-1 basis-0 flex-col rounded-md border-2 border-slate-300 bg-slate-100 p-2"
+          className="flex min-h-0 flex-1 basis-0 flex-col rounded-md border-2 border-slate-300 bg-white p-2"
         >
           <ProtectedImage
             imagePath={url}
