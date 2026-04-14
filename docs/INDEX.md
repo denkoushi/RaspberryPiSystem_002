@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-04-14）
 
-- **計測機器ジャンル化（点検項目/画像をジャンル単位へ移行・管理コンソール新設・キオスク表示更新）**: Prisma `20260414170000_add_measuring_instrument_genres`、API のジャンル CRUD / 点検プロフィール、Web の **`/admin/tools/measuring-instrument-genres`**、キオスクのジャンル画像表示を追加。実装計画と検証結果は [measuring-instrument-genres-execplan.md](./plans/measuring-instrument-genres-execplan.md)、仕様は [modules/measuring-instruments/README.md](./modules/measuring-instruments/README.md) / [api.md](./modules/measuring-instruments/api.md) / [ui.md](./modules/measuring-instruments/ui.md)、全体進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **計測機器ジャンル化（点検項目/画像をジャンル単位へ移行・管理コンソール新設・キオスク表示更新）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feat/measuring-instrument-genres`**・コミット **`451074e3`**。Prisma `20260414170000_add_measuring_instrument_genres`、API のジャンル CRUD / 点検プロフィール、Web の **`/admin/tools/measuring-instrument-genres`**、キオスクのジャンル画像表示（`ProtectedImage`）。**Detach Run ID** 例: `20260414-102948-25918`（Pi5）〜 `20260414-110248-303`（StoneBase）。実装計画・本番記録は [measuring-instrument-genres-execplan.md](./plans/measuring-instrument-genres-execplan.md)、仕様は [modules/measuring-instruments/README.md](./modules/measuring-instruments/README.md) / [api.md](./modules/measuring-instruments/api.md) / [ui.md](./modules/measuring-instruments/ui.md)、全体進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-13）
 

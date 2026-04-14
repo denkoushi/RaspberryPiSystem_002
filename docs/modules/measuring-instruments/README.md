@@ -182,6 +182,8 @@ apps/api/src/
 
 **状態**: TS100を除き、本番運用可能な完成度に達している
 
+**2026-04-14 ジャンル化ロールアウト**: Pi5→Pi4×4 を [deployment.md](../../guides/deployment.md) の **1 台ずつ `--limit`** で反映（Pi3 は本機能の必須対象外）。`./scripts/deploy/verify-phase12-real.sh` は **PASS 43/0/0**。手動では管理 **`/admin/tools/measuring-instrument-genres`** とキオスク計測機器持出画面でジャンル画像・点検項目を確認すること。
+
 **実機検証**: TS100以外の機能は実機検証済み
 
 **ナレッジベース**: 

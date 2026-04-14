@@ -31,3 +31,11 @@
 ## Status
 
 - 完了。レビューで見つかった保護画像表示の認証欠落も、共通コンポーネント化で対処済み。
+
+## 本番反映（2026-04-14）
+
+- **ブランチ**: `feat/measuring-instrument-genres`（先端 `451074e3` 時点）
+- **手順**: [deployment.md](../guides/deployment.md) の **1 台ずつ順番デプロイ**。`RASPI_SERVER_HOST=denkon5sd02@100.106.158.2` のうえ、`update-all-clients.sh` + `--limit` を **Pi5 → Pi4 研削メイン → RoboDrill01 → FJV60/80 → Kensaku StoneBase01** の順で実行（**Pi3 は本機能の必須対象外**）。
+- **Detach Run ID**（`ansible-update-` 接頭辞）: `20260414-102948-25918`（Pi5）→ `20260414-105004-26771` → `20260414-105444-18459` → `20260414-105835-24001` → `20260414-110248-303`（各 `failed=0`）。
+- **実機（自動）**: リポジトリ直下で `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **手動スポット**: 管理 **`/admin/tools/measuring-instrument-genres`** とキオスク計測機器持出で、ジャンル画像（Blob URL 経由）と点検項目の同時表示を確認。
