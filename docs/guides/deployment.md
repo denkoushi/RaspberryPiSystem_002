@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-14（計測機器ジャンル画像ストレージ永続化: **Pi5 のみ**本番反映・Detach `ansible-update-20260414-163839-30558`・Phase12 **43/0/0**。compose bind + Ansible 退避・[KB-343](../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。直前の白背景/レイアウト記録は継続参照）
+最終更新: 2026-04-14（**キオスク計測機器持出レイアウト align**（`feat/kiosk-instrument-borrow-layout-align`・コミット **`702f7b83`**）: **Pi5→Pi4×4 順次**（Pi3 除外）・Detach `20260414-180107-30581`（`raspberrypi5`）→ `20260414-180552-4363`（`raspberrypi4`）→ `20260414-181042-26220`（`raspi4-robodrill01`）→ `20260414-181427-11297`（`raspi4-fjv60-80`）→ `20260414-182050-19017`（`raspi4-kensaku-stonebase01`）・Phase12 **`./scripts/deploy/verify-phase12-real.sh` → PASS 43/0/0**（約 **53s**）。**トラブルシュート**: デプロイ前にローカルで `docs/design-previews/*.html` 等が未コミットだと `update-all-clients.sh` が停止するため **`git stash`** で退避。仕様は [ui.md](../modules/measuring-instruments/ui.md)。**前項** 計測機器ジャンル画像永続化: **Pi5 のみ**・Detach `ansible-update-20260414-163839-30558`・[KB-343](../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。白背景/先行レイアウト記録は継続参照）
 
 ## 概要
 
