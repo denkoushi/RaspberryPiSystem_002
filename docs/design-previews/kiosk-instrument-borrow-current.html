@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>計測機器 持出 — 現在のレイアウト（16:9）</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  /* ── ビューポート全体を暗い背景で塗る ── */
+  html, body {
+    margin: 0; padding: 0;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: #0f172a;
+  }
+
+  /* ── 1920×1080 で設計 → JS で scale 縮小 ── */
+  #design-canvas {
+    width: 1920px;
+    height: 1080px;
+    transform-origin: top left;
+    position: absolute;
+    top: 0; left: 0;
+    background: #f1f5f9;
+    overflow: hidden;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ 1920×1080 キャンバス（実機 = 1920×1080 または 1280×720 想定） ═══ -->
+<div id="design-canvas">
+
+  <!-- 実機と同じ外側構造: flex flex-col items-center gap-6 p-6 -->
+  <div style="display:flex; flex-direction:column; align-items:stretch; gap:24px; padding:32px; height:100%; box-sizing:border-box;">
+
+    <!-- Card: rounded-xl border-2 border-slate-500 bg-white p-4 shadow-lg w-full -->
+    <div style="border-radius:12px; border:2px solid #64748b; background:#fff; padding:20px; box-shadow:0 10px 25px rgba(0,0,0,.15); width:100%; box-sizing:border-box; flex:1; overflow:hidden; display:flex; flex-direction:column; min-height:0;">
+
+      <!-- 2×2 グリッド: 左=ヘッダ→フォーム / 右=画像のみを上端〜下端まで（ヘッダ右の余白を画像で使用） -->
+      <div style="display:grid; grid-template-columns:minmax(0,5fr) minmax(0,8fr); grid-template-rows:auto minmax(0,1fr); gap:16px; flex:1; min-height:0; align-items:stretch;">
+
+        <!-- 左上: Card ヘッダ -->
+        <div style="grid-column:1; grid-row:1; display:flex; align-items:center; flex-wrap:wrap; gap:12px 16px; min-width:0; flex-shrink:0; align-self:start;">
+          <h2 style="font-size:20px; font-weight:700; color:#0f172a; margin:0; flex-shrink:0;">計測機器 持出</h2>
+          <p style="margin:0; font-size:13px; font-weight:600; color:#334155; flex:1 1 200px; min-width:0;">
+            計測機器タグを読み取りました。氏名タグをスキャンしてください。
+          </p>
+          <button type="button"
+            style="border-radius:8px; padding:8px 18px; font-weight:600; background:#3b82f6; color:#fff; border:none; font-size:14px; cursor:pointer; flex-shrink:0; white-space:nowrap;">
+            NGにする
+          </button>
+        </div>
+
+        <!-- ═══ 左下: フォーム + 点検カード ═══ -->
+        <div style="grid-column:1; grid-row:2; display:flex; flex-direction:column; gap:12px; min-width:0; min-height:0; overflow-y:auto;">
+          <!-- ① 1行目: 計測機器を選択のみ -->
+          <label style="font-size:14px; font-weight:600; color:#334155; display:block; width:100%; max-width:270px;">
+            計測機器を選択
+            <div style="margin-top:4px;">
+              <select style="width:100%; border-radius:6px; border:2px solid #cbd5e1; background:#fff; padding:8px 12px; font-size:14px; font-weight:600; color:#0f172a; box-sizing:border-box;">
+                <option>選択してください</option>
+                <option>マイクロメータ 25mm（MI-001）</option>
+                <option selected>ノギス 150mm（MI-002）</option>
+                <option>ダイヤルゲージ（MI-003）</option>
+              </select>
+            </div>
+          </label>
+          <!-- ②③ 計測機器タグUID の下に 氏名タグUID（縦並び） -->
+          <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-start;">
+            <label style="font-size:14px; font-weight:600; color:#334155; display:block; width:100%; max-width:270px;">
+              計測機器タグUID
+              <input style="display:block; margin-top:4px; width:100%; border-radius:8px; border:2px solid #64748b; background:#fff; padding:8px 12px; font-size:14px; color:#0f172a; box-sizing:border-box;"
+                type="text" value="04:AB:CD:EF:12" />
+            </label>
+            <div style="width:100%; max-width:100%;">
+              <label style="font-size:14px; font-weight:600; color:#334155; display:block; width:100%;">
+                氏名タグUID
+              </label>
+              <div style="margin-top:4px; width:100%; max-width:270px;">
+                <input style="display:block; width:100%; border-radius:8px; border:2px solid #64748b; background:#fff; padding:8px 12px; font-size:14px; color:#0f172a; box-sizing:border-box;"
+                  type="text" placeholder="スキャンまたは手入力（OKの場合は自動送信）" />
+              </div>
+              <span style="display:block; margin-top:8px; font-size:14px; font-weight:600; color:#334155;">点検項目</span>
+            </div>
+          </div>
+
+          <!-- ④ 点検カード（Card 寸法は各カード単体で維持・左カラム内 1 列・全幅） -->
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px; width:100%; align-items:stretch;">
+            <div style="width:100%; box-sizing:border-box; border-radius:6px; border:2px solid #cbd5e1; background:#f1f5f9; padding:10px; box-shadow:0 4px 8px rgba(0,0,0,.08);">
+              <p style="font-weight:700; font-size:14px; color:#0f172a; margin:0 0 4px 0;">外観確認</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">内容: スライダー・本体に割れ・欠け・著しい傷がないか確認する</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">基準: 割れ・欠け・使用不能な傷がないこと</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">方法: 目視</p>
+              <p style="margin-top:6px; font-size:12px; font-weight:600; color:#334155;">✅ OK（氏名タグスキャンで自動送信）</p>
+            </div>
+            <div style="width:100%; box-sizing:border-box; border-radius:6px; border:2px solid #cbd5e1; background:#f1f5f9; padding:10px; box-shadow:0 4px 8px rgba(0,0,0,.08);">
+              <p style="font-weight:700; font-size:14px; color:#0f172a; margin:0 0 4px 0;">ゼロ点確認</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">内容: 閉じた状態でメインスケールとバーニヤスケールの0が一致しているか確認する</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">基準: 主尺・副尺の0が一致していること</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">方法: 目視</p>
+              <p style="margin-top:6px; font-size:12px; font-weight:600; color:#334155;">✅ OK（氏名タグスキャンで自動送信）</p>
+            </div>
+            <div style="width:100%; box-sizing:border-box; border-radius:6px; border:2px solid #cbd5e1; background:#f1f5f9; padding:10px; box-shadow:0 4px 8px rgba(0,0,0,.08);">
+              <p style="font-weight:700; font-size:14px; color:#0f172a; margin:0 0 4px 0;">スライダー動作確認</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">内容: スライダーが滑らかに動作し、測定面が閉じるか確認する</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">基準: 引っかかりなくスムーズに動作すること</p>
+              <p style="font-size:12px; color:#475569; margin:2px 0;">方法: 手動操作・触診</p>
+              <p style="margin-top:6px; font-size:12px; font-weight:600; color:#334155;">✅ OK（氏名タグスキャンで自動送信）</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ 右カラム: 点検画像（1行目上端〜カード下端まで縦いっぱい） ═══ -->
+        <div style="grid-column:2; grid-row:1 / -1; display:flex; flex-direction:column; min-width:0; min-height:0; align-self:stretch; height:100%;">
+          <div style="flex:1 1 0; min-height:0; display:flex; flex-direction:column; gap:12px; width:100%;">
+            <div style="flex:1 1 0; min-height:0; width:100%; border-radius:6px; border:2px solid #cbd5e1; background:#f1f5f9; display:flex; align-items:center; justify-content:center; padding:8px; box-sizing:border-box;">
+              <span style="color:#94a3b8; font-size:14px; text-align:center;">点検画像 1（ノギス全体図）</span>
+            </div>
+            <div style="flex:1 1 0; min-height:0; width:100%; border-radius:6px; border:2px solid #cbd5e1; background:#f1f5f9; display:flex; align-items:center; justify-content:center; padding:8px; box-sizing:border-box;">
+              <span style="color:#94a3b8; font-size:14px; text-align:center;">点検画像 2（目盛拡大）</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /2-col grid -->
+
+    </div><!-- /Card -->
+  </div><!-- /flex col -->
+</div><!-- /#design-canvas -->
+
+<script>
+  function applyScale() {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const scaleX = vw / 1920;
+    const scaleY = vh / 1080;
+    const scale  = Math.min(scaleX, scaleY);
+    const scaledW = 1920 * scale;
+    const scaledH = 1080 * scale;
+    const canvas = document.getElementById('design-canvas');
+    canvas.style.transform = `scale(${scale})`;
+    canvas.style.left = ((vw - scaledW) / 2) + 'px';
+    canvas.style.top  = ((vh - scaledH) / 2) + 'px';
+  }
+  applyScale();
+  window.addEventListener('resize', applyScale);
+</script>
+
+</body>
+</html>

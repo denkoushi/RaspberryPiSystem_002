@@ -10,6 +10,7 @@
 
 ### 🆕 最新アップデート（2026-04-14）
 
+- **キオスク計測機器持出レイアウト（プレビュー準拠・API イメージ Pillow ピンで Trivy 回避）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feat/kiosk-instrument-borrow-layout`**・コミット **`176fcc2a`**。Web `instrumentBorrow/*`、静的プレビュー [kiosk-instrument-borrow-current.html](./design-previews/kiosk-instrument-borrow-current.html)。**Detach Run ID** 例: `20260414-133528-20661`（Pi5）〜 `20260414-140948-26295`（StoneBase）。**CI ナレッジ**: [KB-342](./knowledge-base/ci-cd.md)（§KB-342）。仕様追記は [modules/measuring-instruments/ui.md](./modules/measuring-instruments/ui.md)、運用は [deployment.md](./guides/deployment.md)、全体進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
 - **計測機器ジャンル化（点検項目/画像をジャンル単位へ移行・管理コンソール新設・キオスク表示更新）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feat/measuring-instrument-genres`**・コミット **`451074e3`**。Prisma `20260414170000_add_measuring_instrument_genres`、API のジャンル CRUD / 点検プロフィール、Web の **`/admin/tools/measuring-instrument-genres`**、キオスクのジャンル画像表示（`ProtectedImage`）。**Detach Run ID** 例: `20260414-102948-25918`（Pi5）〜 `20260414-110248-303`（StoneBase）。実装計画・本番記録は [measuring-instrument-genres-execplan.md](./plans/measuring-instrument-genres-execplan.md)、仕様は [modules/measuring-instruments/README.md](./modules/measuring-instruments/README.md) / [api.md](./modules/measuring-instruments/api.md) / [ui.md](./modules/measuring-instruments/ui.md)、全体進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-13）

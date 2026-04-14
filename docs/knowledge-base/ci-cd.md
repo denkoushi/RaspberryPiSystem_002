@@ -646,3 +646,23 @@ update-frequency: high
 - `.trivyignore`
 - `.github/workflows/ci.yml`
 
+---
+
+### [KB-342] Trivy image api が Python `Pillow` の CVE-2026-40192 を検出して CI が失敗する
+
+**発生日**: 2026-04-14
+
+**事象**:
+- `Security scan (Trivy image api)` が **`Pillow`**（Python パッケージ）由来の **CVE-2026-40192** を報告しジョブが `failure` になる
+- `infrastructure/docker/Dockerfile.api` で `ndlocr-lite` を `pip install` した後、間接依存の Pillow が古いまま残ると再発し得る
+
+**有効だった対策**:
+- ✅ `ndlocr-lite` インストール後に **`pip install --no-cache-dir "pillow>=12.2.0,<13"`** を明示（`176fcc2a` 付近）
+- ✅ ローカルまたは CI 相当で `trivy image`（api イメージ）を再実行し HIGH/CRITICAL が解消したことを確認
+
+**再発防止**:
+- OCR 系の `pip` ブロックを変更したら **Trivy image api** を必ず確認する
+- `pip` の競合警告が出てもビルドが通る場合は、**実際に入った Pillow バージョン**（`pip show pillow`）と Trivy 結果をセットで見る
+
+**関連**: [deployment.md](../guides/deployment.md)、[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress（キオスク計測機器持出レイアウト・2026-04-14）
+
