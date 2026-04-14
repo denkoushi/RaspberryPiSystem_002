@@ -190,9 +190,9 @@ export function KioskMonthPickerModal({
                 }
                 onClick={() => handleMonthClick(m)}
                 aria-label={`${year}年${m}月`}
-                aria-pressed={isSelected}
+                aria-pressed={Boolean(isSelected)}
               >
-                {m}月
+                {`${m}月`}
               </button>
             );
           })}
