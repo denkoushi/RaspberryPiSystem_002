@@ -149,6 +149,14 @@
     group: "{{ ansible_user }}"
     mode: '0755'
 
+- name: Ensure measuring instrument genre image storage directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/storage/measuring-instrument-genres"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
 - name: Stat existing Docker Compose .env
   ansible.builtin.stat:
     path: "{{ repo_path }}/infrastructure/docker/.env"
@@ -411,6 +419,47 @@
 
 - name: Configure security monitoring
   ansible.builtin.import_tasks: monitoring.yml
+
+# 計測機器ジャンル画像は compose 永続化前はコンテナ書き込み層にのみ存在し得る。api 再作成で失われるため、
+# 再作成直前にホストの bind 先へ best-effort で退避する（既存ホストファイルは上書きしない）。
+- name: Best-effort rescue measuring instrument genre images from api container before recreate
+  ansible.builtin.shell: |
+    set -u
+    cd "{{ repo_path }}"
+    mkdir -p "{{ repo_path }}/storage/measuring-instrument-genres"
+    API_CID="$(docker compose -f infrastructure/docker/docker-compose.server.yml ps -q api 2>/dev/null || true)"
+    if [ -z "${API_CID}" ]; then
+      echo "[INFO] api container not running; skip genre image rescue"
+      exit 0
+    fi
+    if ! docker exec "${API_CID}" test -d /app/storage/measuring-instrument-genres 2>/dev/null; then
+      echo "[INFO] no measuring-instrument-genres dir in container; skip"
+      exit 0
+    fi
+    count="$(docker exec "${API_CID}" sh -c 'ls -1 /app/storage/measuring-instrument-genres 2>/dev/null | wc -l' | tr -d ' ')"
+    if [ "${count:-0}" -eq 0 ]; then
+      echo "[INFO] genre image dir empty; skip"
+      exit 0
+    fi
+    echo "[INFO] rescuing genre images from api container (${count} file(s))"
+    docker exec "${API_CID}" sh -c 'ls -1 /app/storage/measuring-instrument-genres' | while read -r f; do
+      [ -z "${f}" ] && continue
+      if [ -f "{{ repo_path }}/storage/measuring-instrument-genres/${f}" ]; then
+        echo "[SKIP] host already has ${f}"
+        continue
+      fi
+      docker cp "${API_CID}:/app/storage/measuring-instrument-genres/${f}" "{{ repo_path }}/storage/measuring-instrument-genres/" \
+        && echo "[OK] rescued ${f}" || echo "[WARN] failed to copy ${f}"
+    done
+    exit 0
+  args:
+    executable: /bin/bash
+  when: >
+    (force_docker_rebuild | default(false) | bool)
+    or (server_docker_build_needed | default(repo_changed) | bool)
+    or (docker_env_result.changed | default(false))
+  changed_when: false
+  failed_when: false
 
 - name: Rebuild and restart Docker services on server when repo changed
   block:

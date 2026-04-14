@@ -58,6 +58,8 @@ services:
       - signage-rendered-storage:/app/storage/signage-rendered
       # 部品測定 visual template 図面（未マウントだとコンテナ再作成でファイル消失）
       - part-measurement-drawings-storage:/app/storage/part-measurement-drawings
+      # 計測機器ジャンル点検画像（未マウントだとコンテナ再作成でファイル消失）
+      - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - /opt/RaspberryPiSystem_002/alerts:/app/alerts
       - /opt/RaspberryPiSystem_002/power-actions:/app/power-actions
       - /opt/RaspberryPiSystem_002/config:/app/config
@@ -171,3 +173,9 @@ volumes:
       type: none
       o: bind
       device: /opt/RaspberryPiSystem_002/storage/part-measurement-drawings
+  measuring-instrument-genres-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/measuring-instrument-genres

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - Ansible/デプロイ関連
 tags: [トラブルシューティング, インフラ]
 audience: [開発者, 運用者]
-last-verified: 2026-03-28
+last-verified: 2026-04-14
 related: [../index.md, ../../guides/deployment.md]
 category: knowledge-base
 update-frequency: medium
@@ -13,12 +13,48 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 48件  
+**件数**: 49件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
+
+---
+
+<a id="kb-343-measuring-instrument-genre-image-persistence"></a>
+
+### [KB-343] 計測機器ジャンル画像ストレージの永続化（compose と api 再作成前救出）
+
+**記録日**: 2026-04-14  
+**Status**: ✅ 恒久対策反映済み・Pi5 本番デプロイ・実機検証済み
+
+**Context / Symptoms**:
+- ジャンル画像は `PHOTO_STORAGE_DIR` 配下の `measuring-instrument-genres/` に保存されるが、`docker-compose.server.yml` に **当該パスの永続マウントが無い**と、`api` コンテナ再作成で **実ファイルのみ消失**し、DB の URL だけ残る。
+
+**Root cause**:
+- ストレージ境界（Docker volume / bind）が **ジャンル画像サブディレクトリまで**届いていなかった。
+
+**Fix（最小変更）**:
+- `measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres` を追加し、named volume を **`/opt/RaspberryPiSystem_002/storage/measuring-instrument-genres` に bind**（既存の `photos` / `part-measurement-drawings` と同パターン）。
+- server ロールで **ホストディレクトリ作成**。
+- **api 再作成直前**に、稼働中コンテナ内のファイルをホストへ **best-effort で `docker cp` 退避**（**ホストに同名があれば上書きしない**）。デプロイ全体を壊さないよう `failed_when: false`。
+
+**運用**:
+- **API/ストレージのみ**のため **Pi5 のみ**（`--limit raspberrypi5`）で足りる。キオスク Pi4 はサーバー経由で画像取得。
+- 標準手順: [deployment.md](../../guides/deployment.md) の `export RASPI_SERVER_HOST=...` と `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+
+**Verification（2026-04-14 本番）**:
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260414-163839-30558`（`raspberrypi5`・`PLAY RECAP` **`failed=0` / `unreachable=0`**・`Summary success check: true`）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 25s）。
+
+**Troubleshooting**:
+- `prisma migrate deploy` が **`service "api" is not running`** のときは、まず Pi5 で `docker compose -f infrastructure/docker/docker-compose.server.yml ps -a` を確認し、**bind mount 先ディレクトリ未作成**や **`Created` で止まったコンテナ**を疑う（[deployment.md](../../guides/deployment.md)「新しい bind mount」知見）。
+- コンテナ内だけに残っていたファイルが **既に失われている**場合、救出は効かない。必要なら **再アップロード**。
+
+**References**:
+- 実装: `infrastructure/docker/docker-compose.server.yml`、`infrastructure/ansible/roles/server/tasks/main.yml`
+- 仕様: [modules/measuring-instruments/ui.md](../../modules/measuring-instruments/ui.md)
 
 ---
 

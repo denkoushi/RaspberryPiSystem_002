@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-14（計測機器持出 ジャンル点検画像枠の白背景: Pi5→Pi4×4 順次 Detach Run・`46efc534`・Phase12 43/0/0。直前のレイアウト/Pillow ロールアウト記録は継続参照）
+最終更新: 2026-04-14（計測機器ジャンル画像ストレージ永続化: **Pi5 のみ**本番反映・Detach `ansible-update-20260414-163839-30558`・Phase12 **43/0/0**。compose bind + Ansible 退避・[KB-343](../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。直前の白背景/レイアウト記録は継続参照）
 
 ## 概要
 
@@ -703,6 +703,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **成功判定は `PLAY RECAP` を正本**とし、`failed=0` かつ `unreachable=0` を確認する。Pi5 の `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-*.summary.json` も **`totalHosts > 0` / `failedHosts=[]` / `unreachableHosts=[]`** で一致していること。
 - `prisma migrate deploy` が **`service "api" is not running`** で失敗した場合、すぐに「migration 問題」と決めつけない。まず Pi5 で `docker compose -f infrastructure/docker/docker-compose.server.yml ps -a` を見て、`api` / `web` が **`Created`** で止まっていないか、bind mount error がないかを確認する。
 - `part-measurement-drawings` のような **新しい bind mount** を追加した直後は、host 側ディレクトリ未作成で初回起動に失敗し得る。標準手順では server ロールがディレクトリ作成と `docker compose ... up -d api web` を migrate 前に実行して **rerun を自動復旧**する。
+- **計測機器ジャンル点検画像**（`storage/measuring-instrument-genres`）も同様に **`docker-compose.server.yml` でホストへ bind** し、server ロールで **`/opt/RaspberryPiSystem_002/storage/measuring-instrument-genres` を事前作成**する。恒久化前にコンテナ内だけへ保存されていたファイルは、**api 再作成前**の Ansible タスクでホストへ **best-effort 退避**する（既存ホストファイルは上書きしない）。
 
 **重要（2026-03-29 追記）**: 同一 `RASPI_SERVER_HOST`（Pi5）向けに **`update-all-clients.sh` を複数ターミナルから同時起動しない**。2026-03-29 の hardening 後は、Mac 側で `logs/.update-all-clients.local.lock` を使ったローカル排他と、Pi5 側で `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock`（JSON）を使った排他が有効。**2重起動はエラーで停止**するため、解除せずに 1 本目の完了を待つこと。複数台へ配るときは **必ず 1 本のシェルで順次**（`cmd1 && cmd2`）とする。
 
