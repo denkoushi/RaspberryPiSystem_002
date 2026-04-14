@@ -81,6 +81,51 @@ export class MeasuringInstrumentLoanEventService {
     return result.count;
   }
 
+  async recordNfcEvent(params: {
+    managementNumber: string;
+    action: '持ち出し' | '返却';
+    eventAt?: Date;
+    borrowerName?: string | null;
+    employeeCode?: string | null;
+    instrumentName?: string | null;
+    expectedReturnAt?: Date | null;
+    loanId?: string | null;
+    clientId?: string | null;
+  }): Promise<void> {
+    const managementNumber = params.managementNumber.trim();
+    if (!managementNumber) {
+      return;
+    }
+
+    const eventAt = params.eventAt ?? new Date();
+    await prisma.measuringInstrumentLoanEvent.createMany({
+      data: [
+        {
+          managementNumber,
+          eventAt,
+          action: params.action,
+          raw: {
+            managementNumber,
+            status: params.action,
+            borrowedAt: eventAt.toISOString(),
+            borrower: params.borrowerName ?? '',
+            employeeName: params.borrowerName ?? '',
+            employeeCode: params.employeeCode ?? '',
+            name: params.instrumentName ?? '',
+            expectedReturnAt: params.expectedReturnAt?.toISOString() ?? '',
+            loanId: params.loanId ?? null,
+            clientId: params.clientId ?? null,
+            source: 'nfc',
+          } as Prisma.InputJsonValue,
+          sourceMessageId: null,
+          sourceMessageSubject: 'NFC',
+          sourceCsvDashboardId: null,
+        },
+      ],
+      skipDuplicates: true,
+    });
+  }
+
   async getTodayBorrowedRowsJst(): Promise<Array<Record<string, unknown>>> {
     const nowUtc = new Date();
     const jstOffset = 9 * 60 * 60 * 1000;

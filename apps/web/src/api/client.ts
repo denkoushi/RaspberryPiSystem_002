@@ -37,7 +37,8 @@ import type {
   RiggingInspectionResult,
   RiggingLoanAnalyticsResponse,
   RiggingStatus,
-  ItemLoanAnalyticsResponse
+  ItemLoanAnalyticsResponse,
+  MeasuringInstrumentLoanAnalyticsResponse,
 } from './types';
 import type { PartPlacementSearchSuggestResponse } from '../features/mobile-placement/part-search/types';
 import type { RegisteredShelfEntryDto } from '../features/mobile-placement/registeredShelves/types';
@@ -1946,6 +1947,18 @@ export async function getItemLoanAnalytics(params?: {
   timeZone?: 'Asia/Tokyo' | 'UTC';
 }) {
   const { data } = await api.get<ItemLoanAnalyticsResponse>('/tools/items/loan-analytics', { params });
+  return data;
+}
+
+export async function getMeasuringInstrumentLoanAnalytics(params?: {
+  periodFrom?: string;
+  periodTo?: string;
+  monthlyMonths?: number;
+  timeZone?: 'Asia/Tokyo' | 'UTC';
+}) {
+  const { data } = await api.get<MeasuringInstrumentLoanAnalyticsResponse>('/measuring-instruments/loan-analytics', {
+    params,
+  });
   return data;
 }
 

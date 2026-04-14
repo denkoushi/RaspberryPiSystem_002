@@ -2,9 +2,14 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { useItemLoanAnalytics } from '../../features/item-analytics/useItemLoanAnalytics';
+import { useMeasuringInstrumentLoanAnalytics } from '../../features/measuring-instrument-analytics/useMeasuringInstrumentLoanAnalytics';
 import { useRiggingLoanAnalytics } from '../../features/rigging-analytics/useRiggingLoanAnalytics';
 
-import type { ItemLoanAnalyticsResponse, RiggingLoanAnalyticsResponse } from '../../api/types';
+import type {
+  ItemLoanAnalyticsResponse,
+  MeasuringInstrumentLoanAnalyticsResponse,
+  RiggingLoanAnalyticsResponse,
+} from '../../api/types';
 
 const DADS = {
   chartBorrow: 'var(--color-primitive-blue-500)',
@@ -48,7 +53,7 @@ const tableDense: CSSProperties = {
 };
 const monoCell: CSSProperties = { fontFamily: 'var(--font-family-mono)' };
 
-type DatasetTab = 'rigging' | 'items';
+type DatasetTab = 'rigging' | 'items' | 'instruments';
 type DetailTab = 'asset' | 'employee';
 
 type AssetRow = {
@@ -109,6 +114,32 @@ function formatDt(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+function toMonthInputValue(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function monthRangeToIso(monthValue: string): { periodFrom: string; periodTo: string } | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthValue);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+    return null;
+  }
+  const start = new Date(`${match[1]}-${match[2]}-01T00:00:00+09:00`);
+  const nextMonth = monthIndex === 11 ? `${year + 1}-01` : `${match[1]}-${String(monthIndex + 2).padStart(2, '0')}`;
+  const end = new Date(`${nextMonth}-01T00:00:00+09:00`);
+  end.setMilliseconds(end.getMilliseconds() - 1);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+  return { periodFrom: start.toISOString(), periodTo: end.toISOString() };
 }
 
 function mapRigging(data: RiggingLoanAnalyticsResponse): ViewModel {
@@ -180,6 +211,42 @@ function mapItems(data: ItemLoanAnalyticsResponse): ViewModel {
       periodBorrowCount: row.periodBorrowCount,
       periodReturnCount: row.periodReturnCount
     }))
+  };
+}
+
+function mapInstruments(data: MeasuringInstrumentLoanAnalyticsResponse): ViewModel {
+  return {
+    periodFrom: data.meta.periodFrom,
+    periodTo: data.meta.periodTo,
+    monthlyMonths: data.meta.monthlyMonths,
+    openLoanCount: data.summary.openLoanCount,
+    overdueOpenCount: data.summary.overdueOpenCount,
+    totalMasterCount: data.summary.totalInstrumentsActive,
+    periodBorrowCount: data.summary.periodBorrowCount,
+    periodReturnCount: data.summary.periodReturnCount,
+    assetTabLabel: '計測機器ごと',
+    emptyAssetMessage: '計測機器の集計データがありません。',
+    monthlyTrend: data.monthlyTrend,
+    assets: data.byInstrument.map((row) => ({
+      id: row.instrumentId,
+      code: row.managementNumber,
+      name: row.name,
+      status: row.status,
+      isOutNow: row.isOutNow,
+      currentBorrowerDisplayName: row.currentBorrowerDisplayName,
+      dueAt: row.dueAt,
+      periodBorrowCount: row.periodBorrowCount,
+      periodReturnCount: row.periodReturnCount,
+      openIsOverdue: row.openIsOverdue,
+    })),
+    employees: data.byEmployee.map((row) => ({
+      employeeId: row.employeeId,
+      displayName: row.displayName,
+      employeeCode: row.employeeCode,
+      openCount: row.openInstrumentCount,
+      periodBorrowCount: row.periodBorrowCount,
+      periodReturnCount: row.periodReturnCount,
+    })),
   };
 }
 
@@ -461,22 +528,42 @@ function LoanAnalyticsMonthlyChart({
 }
 
 export function KioskRiggingAnalyticsPage() {
-  const riggingQ = useRiggingLoanAnalytics();
-  const itemQ = useItemLoanAnalytics();
+  const [targetMonth, setTargetMonth] = useState(() => toMonthInputValue());
+  const period = useMemo(() => monthRangeToIso(targetMonth), [targetMonth]);
+  const queryParams = useMemo(
+    () =>
+      period
+        ? {
+            periodFrom: period.periodFrom,
+            periodTo: period.periodTo,
+            monthlyMonths: 6,
+            timeZone: 'Asia/Tokyo' as const,
+          }
+        : undefined,
+    [period]
+  );
+  const riggingQ = useRiggingLoanAnalytics(queryParams);
+  const itemQ = useItemLoanAnalytics(queryParams);
+  const instrumentQ = useMeasuringInstrumentLoanAnalytics(queryParams);
   const [datasetTab, setDatasetTab] = useState<DatasetTab>('rigging');
   const [detailTab, setDetailTab] = useState<DetailTab>('asset');
+  const [keyword, setKeyword] = useState('');
 
-  const activeState = datasetTab === 'rigging' ? riggingQ : itemQ;
+  const activeState = datasetTab === 'rigging' ? riggingQ : datasetTab === 'items' ? itemQ : instrumentQ;
   const view = useMemo(() => {
     if (datasetTab === 'rigging') {
       return riggingQ.data ? mapRigging(riggingQ.data) : null;
     }
-    return itemQ.data ? mapItems(itemQ.data) : null;
-  }, [datasetTab, riggingQ.data, itemQ.data]);
+    if (datasetTab === 'items') {
+      return itemQ.data ? mapItems(itemQ.data) : null;
+    }
+    return instrumentQ.data ? mapInstruments(instrumentQ.data) : null;
+  }, [datasetTab, riggingQ.data, itemQ.data, instrumentQ.data]);
 
   const refetchAll = () => {
     void riggingQ.refetch();
     void itemQ.refetch();
+    void instrumentQ.refetch();
   };
 
   if (activeState.isPending) {
@@ -516,6 +603,15 @@ export function KioskRiggingAnalyticsPage() {
     borrow: t.borrowCount,
     returned: t.returnCount
   }));
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  const filteredAssets = normalizedKeyword
+    ? view.assets.filter((row) =>
+        `${row.code} ${row.name} ${row.currentBorrowerDisplayName ?? ''}`.toLowerCase().includes(normalizedKeyword)
+      )
+    : view.assets;
+  const filteredEmployees = normalizedKeyword
+    ? view.employees.filter((row) => `${row.displayName} ${row.employeeCode}`.toLowerCase().includes(normalizedKeyword))
+    : view.employees;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5" style={{ color: DADS.text, fontFamily: 'var(--font-family-sans)' }}>
@@ -527,6 +623,20 @@ export function KioskRiggingAnalyticsPage() {
         <span className="text-[11px]" style={{ color: DADS.textSub }}>
           {new Date(view.periodFrom).toLocaleDateString('ja-JP')} — {new Date(view.periodTo).toLocaleDateString('ja-JP')}
         </span>
+        <label className="ml-2 flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
+          対象月
+          <input
+            type="month"
+            value={targetMonth}
+            onChange={(event) => setTargetMonth(event.target.value)}
+            className="rounded px-1.5 py-0.5 text-xs"
+            style={{
+              border: `1px solid ${DADS.borderSubtle}`,
+              backgroundColor: 'var(--color-neutral-solid-gray-900)',
+              color: DADS.text,
+            }}
+          />
+        </label>
         <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-0.5">
           <span className="flex items-center gap-1.5 text-xs"><span style={{ color: DADS.textSub }}>貸出中</span><span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-primitive-yellow-300)' }}>{view.openLoanCount}</span></span>
           <span className="flex items-center gap-1.5 text-xs"><span style={{ color: DADS.textSub }}>超過</span><span className="text-base font-bold tabular-nums" style={{ color: DADS.error }}>{view.overdueOpenCount}</span></span>
@@ -569,6 +679,22 @@ export function KioskRiggingAnalyticsPage() {
         >
           持出返却アイテム
         </button>
+        <button
+          type="button"
+          className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
+          style={{
+            borderRadius: DADS.radius6,
+            ...(datasetTab === 'instruments'
+              ? { backgroundColor: DADS.primaryUi, color: DADS.text }
+              : { backgroundColor: DADS.tabInactive, color: DADS.textMuted })
+          }}
+          onClick={() => {
+            setDatasetTab('instruments');
+            setDetailTab('asset');
+          }}
+        >
+          計測機器
+        </button>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[340px_1fr] gap-1.5">
@@ -604,19 +730,31 @@ export function KioskRiggingAnalyticsPage() {
             >
               人ごと
             </button>
+            <input
+              type="search"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder={detailTab === 'asset' ? '管理番号・名称・借用者で絞り込み' : '氏名・コードで絞り込み'}
+              className="ml-auto min-w-[240px] rounded px-2 py-1 text-xs"
+              style={{
+                border: `1px solid ${DADS.borderSubtle}`,
+                backgroundColor: 'var(--color-neutral-solid-gray-900)',
+                color: DADS.text,
+              }}
+            />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {detailTab === 'asset' ? (
-              view.assets.length === 0 ? (
+              filteredAssets.length === 0 ? (
                 <p className="py-8 text-center" style={{ color: DADS.textSub }}>{view.emptyAssetMessage}</p>
               ) : (
-                <AssetTable rows={view.assets} />
+                <AssetTable rows={filteredAssets} />
               )
-            ) : view.employees.length === 0 ? (
+            ) : filteredEmployees.length === 0 ? (
               <p className="py-8 text-center" style={{ color: DADS.textSub }}>該当する従業員の記録がありません。</p>
             ) : (
-              <EmployeeTable rows={view.employees} />
+              <EmployeeTable rows={filteredEmployees} />
             )}
           </div>
         </div>
