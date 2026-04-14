@@ -59,6 +59,7 @@
   - **ナレッジベース**: [KB-095](../../knowledge-base/frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能)
 - **持ち出し画面**: `/kiosk/instruments/borrow`
   - **レイアウト（2026-04-14）**: `docs/design-previews/kiosk-instrument-borrow-current.html` に沿ってヘッダ行・ジャンル画像パネル・点検カードを再配置（備考欄削除、タグ解決失敗時は選択クリア等）。コンポーネントは `InstrumentBorrowPageLayout` / `InstrumentBorrowHeaderRow` / `InstrumentBorrowGenreImagesPanel` / `InstrumentBorrowInspectionItemCard` に分割。**ジャンル点検画像の枠**は **白背景**（`InstrumentBorrowGenreImagesPanel`・`border-slate-300` は維持）。プレビュー HTML のプレースホルダーも同様。
+  - **画像ファイルの永続化（2026-04-14）**: ジャンル画像の実体は API ホストの `storage/measuring-instrument-genres/`（Docker では volume バインド）に保存される。デプロイで `api` を再作成しても消えないよう **`infrastructure/docker/docker-compose.server.yml` で永続マウント**し、初回移行時は Ansible がコンテナ内残存ファイルを **best-effort でホストへ退避**する。運用の詳細は [deployment.md](../guides/deployment.md) の「新しい bind mount」知見。
   - 計測機器タグUID・氏名タグUIDの手入力フォーム（実装済み）
   - NFCエージェント連携実装済み（計測機器タグ→氏名タグの順で自動送信）
   - 計測機器選択→ジャンル解決→点検項目自動表示を実装

@@ -6,6 +6,7 @@ const getStorageBaseDir = () =>
   process.env.PHOTO_STORAGE_DIR ||
   (process.env.NODE_ENV === 'test' ? '/tmp/test-photo-storage' : '/opt/RaspberryPiSystem_002/storage');
 
+/** 本番では `docker-compose.server.yml` で `measuring-instrument-genres-storage` をホストにバインドすること（未マウントだとコンテナ再作成で消失） */
 const getGenreImageDir = () => path.join(getStorageBaseDir(), 'measuring-instrument-genres');
 
 const MIME_TO_EXT: Record<string, string> = {
