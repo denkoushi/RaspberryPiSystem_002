@@ -128,13 +128,22 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
   constructor(private readonly db: typeof prisma = prisma) {}
 
   async loadAggregate(input: MeasuringInstrumentLoanAnalyticsQueryInput): Promise<MeasuringInstrumentLoanAnalyticsAggregate> {
-    const [eventRecords, activeInstruments, employees, cancelledLoans] = await Promise.all([
+    const activeInstruments = await this.db.measuringInstrument.findMany({
+      where: input.measuringInstrumentId
+        ? { id: input.measuringInstrumentId }
+        : { status: { not: 'RETIRED' } },
+      orderBy: [{ managementNumber: 'asc' }, { name: 'asc' }],
+    });
+    const managementNumberFilter = input.measuringInstrumentId ? activeInstruments[0]?.managementNumber : undefined;
+
+    const [eventRecords, employees, cancelledLoans] = await Promise.all([
       this.db.measuringInstrumentLoanEvent.findMany({
         where: {
           eventAt: {
             lte: input.now,
           },
           action: { in: ['持ち出し', '返却'] },
+          ...(managementNumberFilter ? { managementNumber: managementNumberFilter } : {}),
         },
         select: {
           managementNumber: true,
@@ -144,10 +153,6 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
           sourceCsvDashboardId: true,
         },
         orderBy: { eventAt: 'asc' },
-      }),
-      this.db.measuringInstrument.findMany({
-        where: { status: { not: 'RETIRED' } },
-        orderBy: [{ managementNumber: 'asc' }, { name: 'asc' }],
       }),
       this.db.employee.findMany({
         where: { status: { not: 'INACTIVE' } },
@@ -252,6 +257,7 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
     }
 
     const knownManagement = new Set(activeInstruments.map((instrument) => instrument.managementNumber));
+    const unknownAllowed = !input.measuringInstrumentId;
     const instrumentRows: MeasuringInstrumentLoanAnalyticsInstrumentAggregateRow[] = activeInstruments.map(
       (instrument) => {
         const open = statusByManagement.get(instrument.managementNumber);
@@ -275,9 +281,10 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
       }
     );
 
-    const unknownManagementRows = Array.from(statusByManagement.entries())
-      .filter(([managementNumber]) => !knownManagement.has(managementNumber))
-      .map(([managementNumber, open]) => ({
+    const unknownManagementRows = unknownAllowed
+      ? Array.from(statusByManagement.entries())
+          .filter(([managementNumber]) => !knownManagement.has(managementNumber))
+          .map(([managementNumber, open]) => ({
         instrumentId: `unknown:${managementNumber}`,
         managementNumber,
         name: '（マスタ未登録）',
@@ -289,7 +296,8 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
           expectedReturnAt: open.expectedReturnAt,
           isOverdue: Boolean(open.expectedReturnAt && open.expectedReturnAt < input.now),
         },
-      }));
+      }))
+      : [];
 
     const allInstrumentRows = [...instrumentRows, ...unknownManagementRows].sort((a, b) =>
       a.managementNumber.localeCompare(b.managementNumber)
@@ -321,7 +329,7 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
       periodReturnCount: periodEvents.filter((event) => event.action === '返却').length,
       openLoanCount: allInstrumentRows.filter((row) => row.open !== null).length,
       overdueOpenCount: allInstrumentRows.filter((row) => row.open?.isOverdue).length,
-      totalInstrumentsActive: activeInstruments.length,
+      totalInstrumentsActive: input.measuringInstrumentId ? Math.min(1, activeInstruments.length) : activeInstruments.length,
       instrumentRows: allInstrumentRows,
       employeeRows,
       monthlyTrend: monthStarts.map((yearMonth) => ({

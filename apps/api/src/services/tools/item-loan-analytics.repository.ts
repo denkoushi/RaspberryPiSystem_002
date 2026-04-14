@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, type Prisma as PrismaTypes } from '@prisma/client';
 import { PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 import { prisma } from '../../lib/prisma.js';
 import type {
@@ -46,6 +46,13 @@ const photoLoanPrismaWhere = {
   photoToolGallerySeed: false
 } as const;
 
+function toolLabelMatchSql(toolLabelFilter?: string): Prisma.Sql {
+  if (!toolLabelFilter) {
+    return Prisma.empty;
+  }
+  return Prisma.sql`AND (${TOOL_LABEL_SQL}) = ${toolLabelFilter}`;
+}
+
 /**
  * 写真持出 Loan のみ。表示名はキオスク一覧と同順位（人 > VLM > 撮影mode）。
  * Prisma の Item マスタは参照しない。
@@ -53,9 +60,43 @@ const photoLoanPrismaWhere = {
 export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository {
   constructor(private readonly db: typeof prisma = prisma) {}
 
+  async resolveSyntheticItemIdToToolLabel(syntheticId: string): Promise<string | null> {
+    if (!/^pt-[a-f0-9]{24}$/.test(syntheticId)) {
+      return null;
+    }
+    const rows = await this.db.$queryRaw<Array<{ tl: string }>>`
+      SELECT DISTINCT (${TOOL_LABEL_SQL}) AS tl
+      FROM "Loan" l
+      WHERE ${PHOTO_LOAN_WHERE}
+    `;
+    for (const row of rows) {
+      if (stablePhotoToolRowId(row.tl) === syntheticId) {
+        return row.tl;
+      }
+    }
+    return null;
+  }
+
   async loadAggregate(input: ItemLoanAnalyticsQueryInput): Promise<ItemLoanAnalyticsAggregate> {
     const tzSql = timeZoneSql(input.timeZone);
     const monthOffset = input.monthlyMonths - 1;
+    const labelSql = toolLabelMatchSql(input.toolLabelFilter);
+
+    const loanIdsForPrisma =
+      input.toolLabelFilter === undefined
+        ? undefined
+        : (
+            await this.db.$queryRaw<Array<{ id: string }>>`
+              SELECT l.id FROM "Loan" l
+              WHERE ${PHOTO_LOAN_WHERE}
+              ${labelSql}
+            `
+          ).map((r) => r.id);
+
+    const withLoanScope = (extra: PrismaTypes.LoanWhereInput): PrismaTypes.LoanWhereInput =>
+      loanIdsForPrisma === undefined
+        ? { AND: [photoLoanPrismaWhere, extra] }
+        : { AND: [photoLoanPrismaWhere, { id: { in: loanIdsForPrisma } }, extra] };
 
     const monthlyRows = await this.db.$queryRaw<
       Array<{ year_month: string; borrow_count: bigint; return_count: bigint }>
@@ -77,6 +118,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
                COUNT(*)::bigint AS c
         FROM "Loan" l
         WHERE ${PHOTO_LOAN_WHERE}
+        ${labelSql}
         GROUP BY 1
       ),
       returns AS (
@@ -85,6 +127,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
         FROM "Loan" l
         WHERE ${PHOTO_LOAN_WHERE}
           AND l."returnedAt" IS NOT NULL
+        ${labelSql}
         GROUP BY 1
       )
       SELECT to_char(m.month_start, 'YYYY-MM') AS year_month,
@@ -108,26 +151,23 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       openByEmployee
     ] = await Promise.all([
       this.db.loan.count({
-        where: {
-          ...photoLoanPrismaWhere,
+        where: withLoanScope({
           borrowedAt: { gte: input.periodFrom, lte: input.periodTo }
-        }
+        })
       }),
       this.db.loan.count({
-        where: {
-          ...photoLoanPrismaWhere,
+        where: withLoanScope({
           returnedAt: { not: null, gte: input.periodFrom, lte: input.periodTo }
-        }
+        })
       }),
       this.db.loan.count({
-        where: { ...photoLoanPrismaWhere, returnedAt: null }
+        where: withLoanScope({ returnedAt: null })
       }),
       this.db.loan.count({
-        where: {
-          ...photoLoanPrismaWhere,
+        where: withLoanScope({
           returnedAt: null,
           dueAt: { not: null, lt: input.now }
-        }
+        })
       }),
       this.db.$queryRaw<
         Array<{
@@ -142,6 +182,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
                  l."returnedAt"
           FROM "Loan" l
           WHERE ${PHOTO_LOAN_WHERE}
+          ${labelSql}
         )
         SELECT d.tool_label,
                COALESCE(
@@ -186,6 +227,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
             l."returnedAt"
           FROM "Loan" l
           WHERE ${PHOTO_LOAN_WHERE}
+          ${labelSql}
         )
         SELECT DISTINCT ON (v.tool_label)
           v.tool_label,
@@ -200,29 +242,26 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       `,
       this.db.loan.groupBy({
         by: ['employeeId'],
-        where: {
-          ...photoLoanPrismaWhere,
+        where: withLoanScope({
           borrowedAt: { gte: input.periodFrom, lte: input.periodTo },
           employeeId: { not: null }
-        },
+        }),
         _count: { _all: true }
       }),
       this.db.loan.groupBy({
         by: ['employeeId'],
-        where: {
-          ...photoLoanPrismaWhere,
+        where: withLoanScope({
           returnedAt: { not: null, gte: input.periodFrom, lte: input.periodTo },
           employeeId: { not: null }
-        },
+        }),
         _count: { _all: true }
       }),
       this.db.loan.groupBy({
         by: ['employeeId'],
-        where: {
-          ...photoLoanPrismaWhere,
+        where: withLoanScope({
           returnedAt: null,
           employeeId: { not: null }
-        },
+        }),
         _count: { _all: true }
       })
     ]);

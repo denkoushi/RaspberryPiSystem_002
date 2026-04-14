@@ -7,6 +7,7 @@ type LoanAnalyticsQueryParams = {
   periodTo?: string;
   monthlyMonths?: number;
   timeZone?: 'Asia/Tokyo' | 'UTC';
+  measuringInstrumentId?: string;
 };
 
 export function useMeasuringInstrumentLoanAnalytics(params?: LoanAnalyticsQueryParams) {

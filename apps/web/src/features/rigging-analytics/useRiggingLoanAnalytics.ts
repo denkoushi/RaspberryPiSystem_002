@@ -7,6 +7,7 @@ type LoanAnalyticsQueryParams = {
   periodTo?: string;
   monthlyMonths?: number;
   timeZone?: 'Asia/Tokyo' | 'UTC';
+  riggingGearId?: string;
 };
 
 export function useRiggingLoanAnalytics(params?: LoanAnalyticsQueryParams) {

@@ -15,6 +15,8 @@ export type ItemLoanAnalyticsPublicQuery = {
   periodTo?: Date;
   monthlyMonths?: number;
   timeZone?: ItemLoanAnalyticsTimeZone;
+  /** 写真持出集計の仮想行 ID（`pt-` + sha256 先頭24hex） */
+  itemId?: string;
 };
 
 export class ItemLoanAnalyticsService {
@@ -35,12 +37,22 @@ export class ItemLoanAnalyticsService {
     const monthlyMonths = Math.min(24, Math.max(1, query.monthlyMonths ?? DEFAULT_MONTHS));
     const timeZone: ItemLoanAnalyticsTimeZone = query.timeZone ?? 'Asia/Tokyo';
 
+    let toolLabelFilter: string | undefined;
+    if (query.itemId) {
+      const label = await this.repository.resolveSyntheticItemIdToToolLabel(query.itemId);
+      if (label === null) {
+        throw new ApiError(404, '指定の持出返却アイテムが見つかりません');
+      }
+      toolLabelFilter = label;
+    }
+
     const input: ItemLoanAnalyticsQueryInput = {
       periodFrom,
       periodTo,
       monthlyMonths,
       timeZone,
-      now
+      now,
+      toolLabelFilter,
     };
 
     const agg = await this.repository.loadAggregate(input);

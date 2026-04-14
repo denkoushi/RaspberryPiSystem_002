@@ -1,5 +1,6 @@
 import type { MeasuringInstrumentLoanAnalyticsResponse } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
+import { prisma } from '../../../lib/prisma.js';
 import { MeasuringInstrumentLoanAnalyticsRepository } from './measuring-instrument-loan-analytics.repository.js';
 import type {
   IMeasuringInstrumentLoanAnalyticsRepository,
@@ -15,6 +16,7 @@ export type MeasuringInstrumentLoanAnalyticsPublicQuery = {
   periodTo?: Date;
   monthlyMonths?: number;
   timeZone?: MeasuringInstrumentLoanAnalyticsTimeZone;
+  measuringInstrumentId?: string;
 };
 
 export class MeasuringInstrumentLoanAnalyticsService {
@@ -35,12 +37,22 @@ export class MeasuringInstrumentLoanAnalyticsService {
     const monthlyMonths = Math.min(24, Math.max(1, query.monthlyMonths ?? DEFAULT_MONTHS));
     const timeZone: MeasuringInstrumentLoanAnalyticsTimeZone = query.timeZone ?? 'Asia/Tokyo';
 
+    if (query.measuringInstrumentId) {
+      const inst = await prisma.measuringInstrument.findUnique({
+        where: { id: query.measuringInstrumentId },
+      });
+      if (!inst) {
+        throw new ApiError(404, '計測機器が見つかりません');
+      }
+    }
+
     const input: MeasuringInstrumentLoanAnalyticsQueryInput = {
       periodFrom,
       periodTo,
       monthlyMonths,
       timeZone,
       now,
+      measuringInstrumentId: query.measuringInstrumentId,
     };
     const agg = await this.repository.loadAggregate(input);
 

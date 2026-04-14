@@ -23,6 +23,9 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
   async loadAggregate(input: RiggingLoanAnalyticsQueryInput): Promise<RiggingLoanAnalyticsAggregate> {
     const tzSql = timeZoneSql(input.timeZone);
     const monthOffset = input.monthlyMonths - 1;
+    const gearMonthlyFilter = input.riggingGearId
+      ? Prisma.sql`AND l."riggingGearId" = ${input.riggingGearId}::uuid`
+      : Prisma.sql`AND l."riggingGearId" IS NOT NULL`;
 
     const monthlyRows = await this.db.$queryRaw<
       Array<{ year_month: string; borrow_count: bigint; return_count: bigint }>
@@ -43,17 +46,17 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
         SELECT date_trunc('month', (l."borrowedAt" AT TIME ZONE ${tzSql}))::date AS m,
                COUNT(*)::bigint AS c
         FROM "Loan" l
-        WHERE l."riggingGearId" IS NOT NULL
-          AND l."cancelledAt" IS NULL
+        WHERE l."cancelledAt" IS NULL
+          ${gearMonthlyFilter}
         GROUP BY 1
       ),
       returns AS (
         SELECT date_trunc('month', (l."returnedAt" AT TIME ZONE ${tzSql}))::date AS m,
                COUNT(*)::bigint AS c
         FROM "Loan" l
-        WHERE l."riggingGearId" IS NOT NULL
-          AND l."cancelledAt" IS NULL
+        WHERE l."cancelledAt" IS NULL
           AND l."returnedAt" IS NOT NULL
+          ${gearMonthlyFilter}
         GROUP BY 1
       )
       SELECT to_char(m.month_start, 'YYYY-MM') AS year_month,
@@ -65,10 +68,15 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
       ORDER BY m.month_start ASC;
     `;
 
-    const riggingLoanBase = {
-      riggingGearId: { not: null },
-      cancelledAt: null
-    } as const;
+    const riggingLoanBase = input.riggingGearId
+      ? ({
+          riggingGearId: input.riggingGearId,
+          cancelledAt: null
+        } as const)
+      : ({
+          riggingGearId: { not: null },
+          cancelledAt: null
+        } as const);
 
     const [
       periodBorrowCount,
@@ -110,10 +118,14 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
         }
       }),
       this.db.riggingGear.count({
-        where: { status: { not: RiggingStatus.RETIRED } }
+        where: input.riggingGearId
+          ? { id: input.riggingGearId }
+          : { status: { not: RiggingStatus.RETIRED } }
       }),
       this.db.riggingGear.findMany({
-        where: { status: { not: RiggingStatus.RETIRED } },
+        where: input.riggingGearId
+          ? { id: input.riggingGearId }
+          : { status: { not: RiggingStatus.RETIRED } },
         orderBy: [{ managementNumber: 'asc' }, { name: 'asc' }]
       }),
       this.db.loan.groupBy({

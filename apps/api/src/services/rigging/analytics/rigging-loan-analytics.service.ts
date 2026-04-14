@@ -1,5 +1,6 @@
 import type { RiggingLoanAnalyticsResponse } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
+import { prisma } from '../../../lib/prisma.js';
 import { RiggingLoanAnalyticsRepository } from './rigging-loan-analytics.repository.js';
 import type {
   IRiggingLoanAnalyticsRepository,
@@ -15,6 +16,7 @@ export type RiggingLoanAnalyticsPublicQuery = {
   periodTo?: Date;
   monthlyMonths?: number;
   timeZone?: RiggingLoanAnalyticsTimeZone;
+  riggingGearId?: string;
 };
 
 /**
@@ -38,12 +40,20 @@ export class RiggingLoanAnalyticsService {
     const monthlyMonths = Math.min(24, Math.max(1, query.monthlyMonths ?? DEFAULT_MONTHS));
     const timeZone: RiggingLoanAnalyticsTimeZone = query.timeZone ?? 'Asia/Tokyo';
 
+    if (query.riggingGearId) {
+      const gear = await prisma.riggingGear.findUnique({ where: { id: query.riggingGearId } });
+      if (!gear) {
+        throw new ApiError(404, '吊具が見つかりません');
+      }
+    }
+
     const input: RiggingLoanAnalyticsQueryInput = {
       periodFrom,
       periodTo,
       monthlyMonths,
       timeZone,
-      now
+      now,
+      riggingGearId: query.riggingGearId,
     };
 
     const agg = await this.repository.loadAggregate(input);

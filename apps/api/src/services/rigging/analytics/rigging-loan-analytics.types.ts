@@ -46,6 +46,8 @@ export interface RiggingLoanAnalyticsQueryInput {
   timeZone: RiggingLoanAnalyticsTimeZone;
   /** 期限超過判定・open 件数の基準時刻（テスト用に注入可能） */
   now: Date;
+  /** 指定時は当該吊具のみで集計 */
+  riggingGearId?: string;
 }
 
 /** Repository の契約（Service は具象 Prisma に依存しない） */

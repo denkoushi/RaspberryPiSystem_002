@@ -56,6 +56,8 @@ export interface MeasuringInstrumentLoanAnalyticsQueryInput {
   monthlyMonths: number;
   timeZone: MeasuringInstrumentLoanAnalyticsTimeZone;
   now: Date;
+  /** 指定時は当該計測機器（マスタ）のみで集計 */
+  measuringInstrumentId?: string;
 }
 
 export interface IMeasuringInstrumentLoanAnalyticsRepository {

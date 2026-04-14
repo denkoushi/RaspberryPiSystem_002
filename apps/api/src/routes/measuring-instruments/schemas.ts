@@ -116,5 +116,6 @@ export const instrumentLoanAnalyticsQuerySchema = z.object({
   periodFrom: z.coerce.date().optional(),
   periodTo: z.coerce.date().optional(),
   monthlyMonths: z.coerce.number().int().min(1).max(24).optional(),
-  timeZone: z.enum(['Asia/Tokyo', 'UTC']).optional()
+  timeZone: z.enum(['Asia/Tokyo', 'UTC']).optional(),
+  measuringInstrumentId: z.string().uuid().optional(),
 });

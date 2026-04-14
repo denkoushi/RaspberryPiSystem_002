@@ -6,7 +6,8 @@ import type { IItemLoanAnalyticsRepository } from '../item-loan-analytics.types.
 describe('ItemLoanAnalyticsService', () => {
   it('periodFrom が periodTo より後なら 400', async () => {
     const repo: IItemLoanAnalyticsRepository = {
-      loadAggregate: vi.fn()
+      loadAggregate: vi.fn(),
+      resolveSyntheticItemIdToToolLabel: vi.fn()
     };
     const service = new ItemLoanAnalyticsService(repo);
 
@@ -22,6 +23,7 @@ describe('ItemLoanAnalyticsService', () => {
   it('集計結果を ItemLoanAnalyticsResponse にマッピングする', async () => {
     const due = new Date('2026-01-20T09:00:00.000Z');
     const repo: IItemLoanAnalyticsRepository = {
+      resolveSyntheticItemIdToToolLabel: vi.fn(),
       loadAggregate: vi.fn().mockResolvedValue({
         monthlyTrend: [{ yearMonth: '2026-01', borrowCount: 7, returnCount: 6 }],
         periodBorrowCount: 40,
