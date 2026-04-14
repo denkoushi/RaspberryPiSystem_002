@@ -58,6 +58,7 @@
   - 計測機器持出完了後の戻り先は管理コンソールの`defaultMode`設定に従う（PHOTO/TAG）
   - **ナレッジベース**: [KB-095](../../knowledge-base/frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能)
 - **持ち出し画面**: `/kiosk/instruments/borrow`
+  - **レイアウト（2026-04-14）**: `docs/design-previews/kiosk-instrument-borrow-current.html` に沿ってヘッダ行・ジャンル画像パネル・点検カードを再配置（備考欄削除、タグ解決失敗時は選択クリア等）。コンポーネントは `InstrumentBorrowPageLayout` / `InstrumentBorrowHeaderRow` / `InstrumentBorrowGenreImagesPanel` / `InstrumentBorrowInspectionItemCard` に分割。
   - 計測機器タグUID・氏名タグUIDの手入力フォーム（実装済み）
   - NFCエージェント連携実装済み（計測機器タグ→氏名タグの順で自動送信）
   - 計測機器選択→ジャンル解決→点検項目自動表示を実装

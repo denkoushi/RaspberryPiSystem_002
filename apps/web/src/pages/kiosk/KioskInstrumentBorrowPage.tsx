@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -11,7 +12,11 @@ import {
   postClientLogs
 } from '../../api/client';
 import { useKioskConfig, useMeasuringInstruments } from '../../api/hooks';
-import { ProtectedImage } from '../../components/ProtectedImage';
+import { INSTRUMENT_BORROW_FIELD_WIDTH_CLASS } from '../../components/kiosk/instrumentBorrow/formFieldClass';
+import { InstrumentBorrowGenreImagesPanel } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowGenreImagesPanel';
+import { InstrumentBorrowHeaderRow } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowHeaderRow';
+import { InstrumentBorrowInspectionItemCard } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowInspectionItemCard';
+import { InstrumentBorrowPageLayout } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowPageLayout';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -37,14 +42,12 @@ export function KioskInstrumentBorrowPage() {
   const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
   const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([]);
   const [inspectionLoading, setInspectionLoading] = useState(false);
-  const [genreName, setGenreName] = useState<string | null>(null);
   const [genreImageUrls, setGenreImageUrls] = useState<string[]>([]);
   const [genreReady, setGenreReady] = useState(false);
 
   const [instrumentTagUid, setInstrumentTagUid] = useState('');
   const [resolvedInstrumentTagUid, setResolvedInstrumentTagUid] = useState('');
   const [employeeTagUid, setEmployeeTagUid] = useState('');
-  const [note, setNote] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNg, setIsNg] = useState(false);
@@ -99,6 +102,9 @@ export function KioskInstrumentBorrowPage() {
     const searchInstrumentByTag = async () => {
       if (!instrumentTagUid || instrumentTagUid.trim().length === 0) {
         setResolvedInstrumentTagUid('');
+        if (instrumentSource !== 'select') {
+          setSelectedInstrumentId('');
+        }
         return;
       }
       try {
@@ -113,6 +119,9 @@ export function KioskInstrumentBorrowPage() {
       } catch (error) {
         // タグUIDが見つからない場合はエラーを表示しない（手動選択も可能なため）
         console.debug('Tag UID not found:', instrumentTagUid);
+        if (instrumentSource !== 'select') {
+          setSelectedInstrumentId('');
+        }
       }
     };
 
@@ -152,13 +161,16 @@ export function KioskInstrumentBorrowPage() {
     const fetchInspectionItems = async () => {
       if (!selectedInstrumentId) {
         setInspectionItems([]);
-        setGenreName(null);
         setGenreImageUrls([]);
         setGenreReady(false);
         setIsNg(false);
         return;
       }
       setInspectionLoading(true);
+      setInspectionItems([]);
+      setGenreImageUrls([]);
+      setGenreReady(false);
+      setIsNg(false);
       try {
         const profile = await getMeasuringInstrumentInspectionProfile(selectedInstrumentId);
         setInspectionItems(profile.inspectionItems);
@@ -166,7 +178,6 @@ export function KioskInstrumentBorrowPage() {
           (image): image is string => typeof image === 'string' && image.length > 0
         );
         setGenreImageUrls(images);
-        setGenreName(profile.genre?.name ?? null);
         setGenreReady(Boolean(profile.genre) && images.length > 0);
         if (!profile.genre) {
           setMessage('計測機器ジャンルが未設定のため、持出できません。管理コンソールで設定してください。');
@@ -219,8 +230,7 @@ export function KioskInstrumentBorrowPage() {
     try {
       const loan = await borrowMeasuringInstrument({
         instrumentTagUid: resolvedInstrumentTagUid.trim(),
-        employeeTagUid,
-        note: note || undefined
+        employeeTagUid
       });
       // NGの場合は点検記録を作成しない（個別項目の記録は不要）
       setMessage(`持出登録完了（NG）: Loan ID = ${loan.id}`);
@@ -292,12 +302,10 @@ export function KioskInstrumentBorrowPage() {
       // undefinedを明示的に渡さず、存在するものだけを送る
       const payload: {
         employeeTagUid: string;
-        note?: string;
         instrumentTagUid?: string;
         instrumentId?: string;
       } = {
-        employeeTagUid,
-        note: note || undefined
+        employeeTagUid
       };
       const tagUid = resolvedInstrumentTagUid.trim();
       if (tagUid) {
@@ -375,7 +383,6 @@ export function KioskInstrumentBorrowPage() {
     selectedInstrumentId,
     employeeTagUid,
     isNg,
-    note,
     inspectionItems,
     genreReady,
     instruments,
@@ -443,7 +450,6 @@ export function KioskInstrumentBorrowPage() {
     setInstrumentTagUid('');
     setResolvedInstrumentTagUid('');
     setEmployeeTagUid('');
-    setNote('');
     setInspectionItems([]);
     setIsNg(false);
   };
@@ -466,132 +472,120 @@ export function KioskInstrumentBorrowPage() {
   }, [employeeTagUid, hasInstrument, isNg, isSubmitting, handleSubmit, resolvedInstrumentTagUid]);
 
   return (
-    <div className="flex flex-col items-center gap-6 p-6">
-      <Card title="計測機器 持出">
-        <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
-            計測機器を選択
-            <div className="mt-1">
-              <select
-                className="w-full rounded border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                value={selectedInstrumentId}
-                onChange={(e) => {
-                  // 最初に操作したソースを優先する
-                  if (instrumentSource && instrumentSource !== 'select') return;
-                  setSelectedInstrumentId(e.target.value);
-                  setInstrumentSource('select');
-                }}
-                required={instrumentTagUid.trim().length === 0}
-                disabled={isLoadingInstruments || instrumentSource === 'tag'}
-              >
-                <option value="">選択してください</option>
-                {instruments?.map((instrument) => (
-                  <option key={instrument.id} value={instrument.id}>
-                    {instrument.name}（{instrument.managementNumber}）
-                  </option>
-                ))}
-              </select>
-            </div>
-          </label>
-          <label className="text-sm font-semibold text-slate-700">
-            計測機器タグUID
-            <Input
-              value={instrumentTagUid}
-              onChange={(e) => {
-                // ドロップダウンでタグ未解決の場合は手入力を許可する
-                if (instrumentSource && instrumentSource !== 'tag' && resolvedInstrumentTagUid) return;
-                setInstrumentTagUid(e.target.value);
-                if (!instrumentSource || instrumentSource === 'select') {
-                  setInstrumentSource('tag');
-                }
-              }}
-              required={selectedInstrumentId.trim().length === 0}
-              placeholder="スキャンまたは手入力"
-              disabled={instrumentSource === 'select' && Boolean(resolvedInstrumentTagUid)}
+    <div className="flex h-dvh min-h-0 flex-col gap-6 p-6">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <InstrumentBorrowPageLayout
+          header={
+            <InstrumentBorrowHeaderRow
+              title="計測機器 持出"
+              statusMessage={message}
+              trailing={
+                inspectionItems.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={clsx('rounded-lg px-[18px] py-2 text-sm', isNg && 'bg-red-500 text-white hover:bg-red-600')}
+                    onClick={handleNg}
+                    disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || !genreReady}
+                  >
+                    NGにする
+                  </Button>
+                ) : undefined
+              }
             />
-          </label>
-          <label className="text-sm font-semibold text-slate-700">
-            氏名タグUID
-            <Input
-              ref={employeeTagInputRef}
-              value={employeeTagUid}
-              onChange={(e) => setEmployeeTagUid(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && hasInstrument) {
-                  e.preventDefault();
-                  handleSubmit();
-                }
-              }}
-              required
-              placeholder="スキャンまたは手入力（OKの場合は自動送信）"
-              disabled={isSubmitting || isNg}
-            />
-          </label>
-          <label className="text-sm font-semibold text-slate-700 md:col-span-2">
-            備考
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="任意" />
-          </label>
+          }
+          leftColumn={
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <label className={clsx('block text-sm font-semibold text-slate-700', INSTRUMENT_BORROW_FIELD_WIDTH_CLASS)}>
+                計測機器を選択
+                <div className="mt-1">
+                  <select
+                    className="w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+                    value={selectedInstrumentId}
+                    onChange={(e) => {
+                      if (instrumentSource && instrumentSource !== 'select') return;
+                      setSelectedInstrumentId(e.target.value);
+                      setInstrumentSource('select');
+                    }}
+                    required={instrumentTagUid.trim().length === 0}
+                    disabled={isLoadingInstruments || instrumentSource === 'tag'}
+                  >
+                    <option value="">選択してください</option>
+                    {instruments?.map((instrument) => (
+                      <option key={instrument.id} value={instrument.id}>
+                        {instrument.name}（{instrument.managementNumber}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </label>
 
-          <div className="md:col-span-2">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-700">点検項目</p>
-              {inspectionItems.length > 0 && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className={isNg ? 'bg-red-500 text-white hover:bg-red-600' : undefined}
-                  onClick={handleNg}
-                  disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || !genreReady}
-                >
-                  NGにする
-                </Button>
-              )}
-            </div>
-            {genreName ? (
-              <p className="mb-2 text-sm font-semibold text-slate-700">ジャンル: {genreName}</p>
-            ) : null}
-            {genreImageUrls.length > 0 ? (
-              <div className="mb-3 grid gap-3 md:grid-cols-2">
-                {genreImageUrls.map((url, index) => (
-                  <ProtectedImage
-                    key={`${url}-${index}`}
-                    imagePath={url}
-                    alt={`計測機器ジャンル点検画像 ${index + 1}`}
-                    className="w-full rounded border-2 border-slate-300 bg-white object-contain"
+              <div className="flex flex-col items-stretch gap-2.5">
+                <label className={clsx('block text-sm font-semibold text-slate-700', INSTRUMENT_BORROW_FIELD_WIDTH_CLASS)}>
+                  計測機器タグUID
+                  <Input
+                    className="mt-1"
+                    value={instrumentTagUid}
+                    onChange={(e) => {
+                      if (instrumentSource && instrumentSource !== 'tag' && resolvedInstrumentTagUid) return;
+                      setInstrumentTagUid(e.target.value);
+                      if (!instrumentSource || instrumentSource === 'select') {
+                        setInstrumentSource('tag');
+                      }
+                    }}
+                    required={selectedInstrumentId.trim().length === 0}
+                    placeholder="スキャンまたは手入力"
+                    disabled={instrumentSource === 'select' && Boolean(resolvedInstrumentTagUid)}
                   />
-                ))}
-              </div>
-            ) : null}
-            {inspectionLoading ? (
-              <p className="text-sm text-slate-700">点検項目を読み込み中…</p>
-            ) : inspectionItems.length === 0 ? (
-              <p className="text-sm text-slate-700">計測機器を選択すると点検項目が表示されます。</p>
-            ) : (
-              <div className="grid gap-3">
-                {inspectionItems.map((item) => (
-                  <div key={item.id} className="rounded border-2 border-slate-300 bg-slate-100 p-3 shadow-lg">
-                    <p className="font-bold text-base text-slate-900">{item.name}</p>
-                    <p className="text-sm text-slate-700">内容: {item.content}</p>
-                    <p className="text-sm text-slate-700">基準: {item.criteria}</p>
-                    <p className="text-sm text-slate-700">方法: {item.method}</p>
-                    <p className="mt-2 text-sm font-semibold text-slate-700">
-                      {isNg ? '❌ NG' : '✅ OK（氏名タグスキャンで自動送信）'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </label>
 
-          {inspectionItems.length === 0 && (
-            <div className="md:col-span-2">
-              <Button type="submit" disabled={isSubmitting || !genreReady} onClick={handleSubmit}>
-                {isSubmitting ? '送信中…' : '持出登録'}
-              </Button>
-            </div>
-          )}
-        </form>
-        {message ? <p className="mt-4 text-sm font-semibold text-slate-700">{message}</p> : null}
+                <div className="w-full max-w-full">
+                  <label className="block text-sm font-semibold text-slate-700">氏名タグUID</label>
+                  <div className={clsx('mt-1', INSTRUMENT_BORROW_FIELD_WIDTH_CLASS)}>
+                    <Input
+                      ref={employeeTagInputRef}
+                      value={employeeTagUid}
+                      onChange={(e) => setEmployeeTagUid(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isNg && !isSubmitting && employeeTagUid.trim() && hasInstrument) {
+                          e.preventDefault();
+                          handleSubmit();
+                        }
+                      }}
+                      required
+                      placeholder="スキャンまたは手入力（OKの場合は自動送信）"
+                      disabled={isSubmitting || isNg}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-slate-700">点検項目</p>
+                </div>
+              </div>
+
+              <div className="mt-1 flex w-full flex-col gap-2">
+                {inspectionLoading ? (
+                  <p className="text-sm text-slate-700">点検項目を読み込み中…</p>
+                ) : inspectionItems.length === 0 ? (
+                  <p className="text-sm text-slate-700">計測機器を選択すると点検項目が表示されます。</p>
+                ) : (
+                  <div className="flex w-full flex-col gap-2">
+                    {inspectionItems.map((item) => (
+                      <InstrumentBorrowInspectionItemCard key={item.id} item={item} isNg={isNg} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {inspectionItems.length === 0 && (
+                <div>
+                  <Button type="submit" disabled={isSubmitting || !genreReady} onClick={handleSubmit}>
+                    {isSubmitting ? '送信中…' : '持出登録'}
+                  </Button>
+                </div>
+              )}
+            </form>
+          }
+          rightColumn={<InstrumentBorrowGenreImagesPanel imageUrls={genreImageUrls} />}
+        />
       </Card>
     </div>
   );
