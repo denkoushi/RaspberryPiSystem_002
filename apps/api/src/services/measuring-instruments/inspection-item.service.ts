@@ -3,7 +3,7 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 
 export interface InspectionItemCreateInput {
-  measuringInstrumentId: string;
+  genreId: string;
   name: string;
   content: string;
   criteria: string;
@@ -21,8 +21,25 @@ export interface InspectionItemUpdateInput {
 
 export class InspectionItemService {
   async findByInstrument(measuringInstrumentId: string): Promise<InspectionItem[]> {
+    const instrument = await prisma.measuringInstrument.findUnique({
+      where: { id: measuringInstrumentId },
+      select: { genreId: true }
+    });
+    if (!instrument) {
+      throw new ApiError(404, '計測機器が見つかりません');
+    }
+    if (!instrument.genreId) {
+      return [];
+    }
     return await prisma.inspectionItem.findMany({
-      where: { measuringInstrumentId },
+      where: { genreId: instrument.genreId },
+      orderBy: { order: 'asc' }
+    });
+  }
+
+  async findByGenre(genreId: string): Promise<InspectionItem[]> {
+    return await prisma.inspectionItem.findMany({
+      where: { genreId },
       orderBy: { order: 'asc' }
     });
   }

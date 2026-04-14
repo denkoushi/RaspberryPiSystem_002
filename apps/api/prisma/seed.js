@@ -278,15 +278,22 @@ async function main() {
         }
     ];
     for (const inst of measuringInstruments) {
+        const genre = await prisma.measuringInstrumentGenre.upsert({
+            where: { name: `${inst.name} 用標準ジャンル` },
+            update: {},
+            create: {
+                name: `${inst.name} 用標準ジャンル`
+            }
+        });
         const created = await prisma.measuringInstrument.upsert({
             where: { managementNumber: inst.managementNumber },
-            update: inst,
-            create: inst
+            update: { ...inst, genreId: genre.id },
+            create: { ...inst, genreId: genre.id }
         });
         // 点検項目を追加
         const inspectionItems = [
             {
-                measuringInstrumentId: created.id,
+                genreId: genre.id,
                 name: '外観点検',
                 content: '本体に損傷や汚れがないか確認',
                 criteria: '損傷・汚れなし',
@@ -294,7 +301,7 @@ async function main() {
                 order: 1
             },
             {
-                measuringInstrumentId: created.id,
+                genreId: genre.id,
                 name: '表示確認',
                 content: 'ディスプレイが正常に表示されるか確認',
                 criteria: '正常表示',
@@ -302,7 +309,7 @@ async function main() {
                 order: 2
             },
             {
-                measuringInstrumentId: created.id,
+                genreId: genre.id,
                 name: '校正期限確認',
                 content: '校正期限が有効期限内か確認',
                 criteria: '有効期限内',
@@ -313,8 +320,8 @@ async function main() {
         for (const item of inspectionItems) {
             await prisma.inspectionItem.upsert({
                 where: {
-                    measuringInstrumentId_name: {
-                        measuringInstrumentId: item.measuringInstrumentId,
+                    genreId_name: {
+                        genreId: item.genreId,
                         name: item.name
                     }
                 },

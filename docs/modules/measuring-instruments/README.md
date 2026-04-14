@@ -7,7 +7,8 @@
 ## 責務
 
 - **計測機器マスター管理**: 計測機器の基本情報（名称、管理番号、保管場所、測定範囲、校正期限）のCRUD操作
-- **点検項目マスター管理**: 計測機器ごとの点検項目の定義・管理
+- **計測機器ジャンル管理**: ジャンル（名称・画像1〜2枚）の定義・管理
+- **点検項目マスター管理**: 計測機器ジャンルごとの点検項目の定義・管理
 - **RFIDタグ管理**: RFIDタグと計測機器の紐付け管理
 - **持ち出し・返却処理**: RFIDタグスキャンによる計測機器識別、持ち出し時の点検記録、持ち出し・返却の登録
 - **点検記録管理**: 持ち出し時の点検結果（点検項目ごとの合格/不合格）の記録・管理
@@ -18,7 +19,8 @@
 ### 主要エンティティ
 
 - **MeasuringInstrument**: 計測機器情報（name, managementNumber, storageLocation, measurementRange, calibrationExpiryDate, status）
-- **InspectionItem**: 点検項目情報（measuringInstrumentId, name, content, criteria, method, order）
+- **MeasuringInstrumentGenre**: 計測機器ジャンル（name, imageUrlPrimary, imageUrlSecondary）
+- **InspectionItem**: 点検項目情報（genreId, name, content, criteria, method, order）
 - **InspectionRecord**: 点検記録（measuringInstrumentId, loanId, employeeId, inspectionItemId, result, inspectedAt）
 - **MeasuringInstrumentTag**: RFIDタグ紐付け（measuringInstrumentId, rfidTagUid）
 - **Loan**: 貸出情報（工具管理モジュールと共通、measuringInstrumentIdを追加）
@@ -32,7 +34,9 @@
    - 計測機器を識別
 
 2. **点検項目表示**
-   - 該当する計測機器の点検項目を自動表示
+   - 該当する計測機器の所属ジャンルを解決
+   - ジャンルに紐づく点検項目を自動表示
+   - ジャンル画像（1〜2枚）を同時表示
    - 点検内容、点検基準、点検方法を表示
 
 3. **点検実施**

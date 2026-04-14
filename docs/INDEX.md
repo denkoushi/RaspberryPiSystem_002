@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-14）
+
+- **計測機器ジャンル化（点検項目/画像をジャンル単位へ移行・管理コンソール新設・キオスク表示更新）**: Prisma `20260414170000_add_measuring_instrument_genres`、API のジャンル CRUD / 点検プロフィール、Web の **`/admin/tools/measuring-instrument-genres`**、キオスクのジャンル画像表示を追加。実装計画と検証結果は [measuring-instrument-genres-execplan.md](./plans/measuring-instrument-genres-execplan.md)、仕様は [modules/measuring-instruments/README.md](./modules/measuring-instruments/README.md) / [api.md](./modules/measuring-instruments/api.md) / [ui.md](./modules/measuring-instruments/ui.md)、全体進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-13）
 
 - **配膳スマホ V21（部品検索 UI: SOLID 寄りモジュール化・`QueryClientProvider` スモーク）本番: Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`refactor/part-search-solid-modular`**・コミット **`d4467b1a`**。Detach Run ID・仕様は [mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md) §0（V21）。**ナレッジ**: [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) V21 節・[EXEC_PLAN.md](../EXEC_PLAN.md)。

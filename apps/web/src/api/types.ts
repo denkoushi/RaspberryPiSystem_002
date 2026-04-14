@@ -20,6 +20,7 @@ export type {
   MeasuringInstrument,
   MeasuringInstrumentStatus,
   InspectionItem,
+  MeasuringInstrumentGenre,
   InspectionRecord,
   MeasuringInstrumentTag,
   MeasuringInstrumentBorrowPayload,

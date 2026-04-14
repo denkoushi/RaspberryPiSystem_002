@@ -12,6 +12,7 @@ import { registerLocalLlmGateway } from './plugins/local-llm-gateway.js';
 import { registerRoutes } from './routes/index.js';
 import { initializeCsvImporters } from './services/imports/index.js';
 import { initializeVisualizationModules } from './services/visualization/index.js';
+import { MeasuringInstrumentGenreImageStorage } from './lib/measuring-instrument-genre-image-storage.js';
 import { PartMeasurementDrawingStorage } from './lib/part-measurement-drawing-storage.js';
 import { PhotoStorage } from './lib/photo-storage.js';
 import { PdfStorage } from './lib/pdf-storage.js';
@@ -58,6 +59,13 @@ export async function buildServer(): Promise<FastifyInstance> {
     app.log.info('Photo storage directories initialized');
   } catch (error) {
     app.log.warn({ err: error }, 'Failed to initialize photo storage directories (may not be critical)');
+  }
+
+  try {
+    await MeasuringInstrumentGenreImageStorage.initialize();
+    app.log.info('Measuring instrument genre image storage initialized');
+  } catch (error) {
+    app.log.warn({ err: error }, 'Failed to initialize measuring instrument genre image storage (may not be critical)');
   }
 
   try {

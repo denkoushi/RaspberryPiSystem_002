@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerMeasuringInstrumentGenreStorageRoutes } from './measuring-instrument-genres.js';
 import { registerPartMeasurementDrawingStorageRoutes } from './part-measurement-drawings.js';
 import { registerPhotoStorageRoutes } from './photos.js';
 import { registerPdfStorageRoutes } from './pdfs.js';
@@ -12,5 +13,6 @@ export function registerStorageRoutes(app: FastifyInstance): void {
   registerPdfStorageRoutes(app);
   registerPdfPageRoutes(app);
   registerPartMeasurementDrawingStorageRoutes(app);
+  registerMeasuringInstrumentGenreStorageRoutes(app);
 }
 

@@ -5,12 +5,13 @@ import {
   borrowMeasuringInstrument,
   createInspectionRecord,
   getResolvedClientKey,
-  getInspectionItems,
+  getMeasuringInstrumentInspectionProfile,
   getMeasuringInstrumentByTagUid,
   getMeasuringInstrumentTags,
   postClientLogs
 } from '../../api/client';
 import { useKioskConfig, useMeasuringInstruments } from '../../api/hooks';
+import { ProtectedImage } from '../../components/ProtectedImage';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -36,6 +37,9 @@ export function KioskInstrumentBorrowPage() {
   const [instrumentSource, setInstrumentSource] = useState<InstrumentSource>(null);
   const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([]);
   const [inspectionLoading, setInspectionLoading] = useState(false);
+  const [genreName, setGenreName] = useState<string | null>(null);
+  const [genreImageUrls, setGenreImageUrls] = useState<string[]>([]);
+  const [genreReady, setGenreReady] = useState(false);
 
   const [instrumentTagUid, setInstrumentTagUid] = useState('');
   const [resolvedInstrumentTagUid, setResolvedInstrumentTagUid] = useState('');
@@ -148,17 +152,34 @@ export function KioskInstrumentBorrowPage() {
     const fetchInspectionItems = async () => {
       if (!selectedInstrumentId) {
         setInspectionItems([]);
+        setGenreName(null);
+        setGenreImageUrls([]);
+        setGenreReady(false);
         setIsNg(false);
         return;
       }
       setInspectionLoading(true);
       try {
-        const items = await getInspectionItems(selectedInstrumentId);
-        setInspectionItems(items);
+        const profile = await getMeasuringInstrumentInspectionProfile(selectedInstrumentId);
+        setInspectionItems(profile.inspectionItems);
+        const images = [profile.genre?.imageUrlPrimary, profile.genre?.imageUrlSecondary].filter(
+          (image): image is string => typeof image === 'string' && image.length > 0
+        );
+        setGenreImageUrls(images);
+        setGenreName(profile.genre?.name ?? null);
+        setGenreReady(Boolean(profile.genre) && images.length > 0);
+        if (!profile.genre) {
+          setMessage('計測機器ジャンルが未設定のため、持出できません。管理コンソールで設定してください。');
+        } else if (images.length === 0) {
+          setMessage('計測機器ジャンル画像が未設定のため、持出できません。管理コンソールで設定してください。');
+        } else {
+          setMessage(null);
+        }
         setIsNg(false); // 計測機器変更時にNGフラグをリセット
       } catch (error) {
         console.error(error);
-        setMessage('点検項目の取得に失敗しました。計測機器を確認してください。');
+        setGenreReady(false);
+        setMessage('点検項目/ジャンル設定の取得に失敗しました。計測機器を確認してください。');
       } finally {
         setInspectionLoading(false);
       }
@@ -186,6 +207,10 @@ export function KioskInstrumentBorrowPage() {
     }
     if (!employeeTagUid.trim()) {
       setMessage('氏名タグUIDを入力してください。');
+      return;
+    }
+    if (!genreReady) {
+      setMessage('計測機器ジャンルまたは点検画像が未設定のため、持出できません。管理コンソールで設定してください。');
       return;
     }
     setIsNg(true);
@@ -250,6 +275,10 @@ export function KioskInstrumentBorrowPage() {
     }
     if (!employeeTagUid.trim()) {
       setMessage('氏名タグUIDを入力してください。');
+      return;
+    }
+    if (!genreReady) {
+      setMessage('計測機器ジャンルまたは点検画像が未設定のため、持出できません。管理コンソールで設定してください。');
       return;
     }
     if (isNg) {
@@ -348,6 +377,7 @@ export function KioskInstrumentBorrowPage() {
     isNg,
     note,
     inspectionItems,
+    genreReady,
     instruments,
     hasInstrument,
     resolvedInstrumentTagUid,
@@ -511,12 +541,27 @@ export function KioskInstrumentBorrowPage() {
                   variant="secondary"
                   className={isNg ? 'bg-red-500 text-white hover:bg-red-600' : undefined}
                   onClick={handleNg}
-                  disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim()}
+                  disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || !genreReady}
                 >
                   NGにする
                 </Button>
               )}
             </div>
+            {genreName ? (
+              <p className="mb-2 text-sm font-semibold text-slate-700">ジャンル: {genreName}</p>
+            ) : null}
+            {genreImageUrls.length > 0 ? (
+              <div className="mb-3 grid gap-3 md:grid-cols-2">
+                {genreImageUrls.map((url, index) => (
+                  <ProtectedImage
+                    key={`${url}-${index}`}
+                    imagePath={url}
+                    alt={`計測機器ジャンル点検画像 ${index + 1}`}
+                    className="w-full rounded border-2 border-slate-300 bg-white object-contain"
+                  />
+                ))}
+              </div>
+            ) : null}
             {inspectionLoading ? (
               <p className="text-sm text-slate-700">点検項目を読み込み中…</p>
             ) : inspectionItems.length === 0 ? (
@@ -540,7 +585,7 @@ export function KioskInstrumentBorrowPage() {
 
           {inspectionItems.length === 0 && (
             <div className="md:col-span-2">
-              <Button type="submit" disabled={isSubmitting} onClick={handleSubmit}>
+              <Button type="submit" disabled={isSubmitting || !genreReady} onClick={handleSubmit}>
                 {isSubmitting ? '送信中…' : '持出登録'}
               </Button>
             </div>

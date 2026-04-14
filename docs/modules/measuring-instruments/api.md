@@ -16,7 +16,7 @@
 
 ### POST /api/measuring-instruments
 - 計測機器を作成
-- ボディ: `name`, `managementNumber`, `storageLocation?`, `measurementRange?`, `calibrationExpiryDate?`, `status?`
+- ボディ: `name`, `managementNumber`, `genreId?`, `storageLocation?`, `measurementRange?`, `calibrationExpiryDate?`, `status?`
 
 ### PUT /api/measuring-instruments/:id
 - 計測機器を更新
@@ -27,10 +27,10 @@
 ## 点検項目マスター API
 
 ### GET /api/measuring-instruments/:id/inspection-items
-- 計測機器に紐づく点検項目一覧を取得（order順）
+- 計測機器の所属ジャンルに紐づく点検項目一覧を取得（order順）
 
 ### POST /api/measuring-instruments/:id/inspection-items
-- 点検項目を作成
+- 計測機器の所属ジャンルに点検項目を作成
 - ボディ: `name`, `content`, `criteria`, `method`, `order`
 
 ### PUT /api/inspection-items/:itemId
@@ -38,6 +38,41 @@
 
 ### DELETE /api/inspection-items/:itemId
 - 点検項目を削除
+
+### GET /api/measuring-instruments/:id/inspection-profile
+- キオスク表示用プロフィールを取得（ジャンル + 点検項目）
+- レスポンス: `genre`（null可）, `inspectionItems`
+
+## 計測機器ジャンル API
+
+### GET /api/measuring-instrument-genres
+- 計測機器ジャンル一覧を取得
+
+### POST /api/measuring-instrument-genres
+- 計測機器ジャンルを作成
+- ボディ: `name`
+
+### PUT /api/measuring-instrument-genres/:genreId
+- 計測機器ジャンルを更新
+- ボディ: `name?`, `imageUrlPrimary?`, `imageUrlSecondary?`
+
+### DELETE /api/measuring-instrument-genres/:genreId
+- 計測機器ジャンルを削除
+- 注意: 計測機器に割り当て済みジャンルは削除不可（409）
+
+### GET /api/measuring-instrument-genres/:genreId/inspection-items
+- ジャンル単位の点検項目一覧を取得（order順）
+
+### POST /api/measuring-instrument-genres/:genreId/inspection-items
+- ジャンル単位の点検項目を作成
+- ボディ: `name`, `content`, `criteria`, `method`, `order`
+
+### POST /api/measuring-instrument-genres/:genreId/images/:slot
+- ジャンル画像をアップロード（`slot` は `1` or `2`）
+- `multipart/form-data` の `image` を受け付け
+
+### DELETE /api/measuring-instrument-genres/:genreId/images/:slot
+- ジャンル画像をクリア（参照のみ削除、旧ファイルは保持）
 
 ## RFIDタグ紐付け API
 

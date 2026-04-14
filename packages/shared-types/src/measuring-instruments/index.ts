@@ -5,6 +5,7 @@ export interface MeasuringInstrument {
   id: string;
   name: string;
   managementNumber: string;
+  genreId?: string | null;
   storageLocation?: string | null;
   department?: string | null;
   measurementRange?: string | null;
@@ -16,7 +17,7 @@ export interface MeasuringInstrument {
 
 export interface InspectionItem {
   id: string;
-  measuringInstrumentId: string;
+  genreId: string;
   name: string;
   content: string;
   criteria: string;
@@ -30,6 +31,15 @@ export interface MeasuringInstrumentTag {
   id: string;
   measuringInstrumentId: string;
   rfidTagUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MeasuringInstrumentGenre {
+  id: string;
+  name: string;
+  imageUrlPrimary?: string | null;
+  imageUrlSecondary?: string | null;
   createdAt: string;
   updatedAt: string;
 }
