@@ -91,7 +91,7 @@
 
 ### 🆕 最新アップデート（2026-04-14）
 
-- **キオスク「集計」月選択モーダル・タブ別資産フィルタ（`feat/kiosk-analytics-month-and-asset-filters`・`8ce1a9da`・Pi5→Pi4×4 順次・Pi3 除外）・Detach `20260414-211347-29532` ほか・Phase12 43/0/0**: [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-14」節。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)（マージ後 PR リンクを追記可）。
+- **キオスク「集計」月選択モーダル・タブ別資産フィルタ（`feat/kiosk-analytics-month-and-asset-filters`・`8ce1a9da`・Pi5→Pi4×4 順次・Pi3 除外）・Detach `20260414-211347-29532` ほか・Phase12 43/0/0**: [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-14」節。**運用**: [deployment.md](./guides/deployment.md)。**参照**: [EXEC_PLAN.md](../EXEC_PLAN.md)・[PR #143](https://github.com/denkoushi/RaspberryPiSystem_002/pull/143)。
 
 ### 🆕 最新アップデート（2026-04-09）
 
