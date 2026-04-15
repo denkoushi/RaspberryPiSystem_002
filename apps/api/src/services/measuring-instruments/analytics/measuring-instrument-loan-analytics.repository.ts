@@ -335,7 +335,7 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
         const employee = norm ? employeeByNormalizedName.get(norm) : undefined;
         const assetLabel = `${event.managementNumber} ${event.instrumentName ?? instrument?.name ?? '（名称未設定）'}`.trim();
         return {
-          kind: event.action === '持ち出し' ? 'BORROW' : 'RETURN',
+          kind: (event.action === '持ち出し' ? 'BORROW' : 'RETURN') as MeasuringInstrumentLoanAnalyticsPeriodEventRow['kind'],
           eventAt: event.eventAt,
           assetId: instrument?.id ?? `unknown:${event.managementNumber}`,
           assetLabel,

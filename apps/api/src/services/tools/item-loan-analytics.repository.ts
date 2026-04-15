@@ -146,8 +146,8 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       openLoanCount,
       overdueOpenCount,
       labelAggRows,
-      openByLabelRows,
       periodEventRowsRaw,
+      openByLabelRows,
       borrowByEmployee,
       returnByEmployee,
       openByEmployee
