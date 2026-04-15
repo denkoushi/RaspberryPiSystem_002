@@ -44,7 +44,17 @@ export interface ItemLoanAnalyticsAggregate {
   overdueOpenCount: number;
   totalItemsActive: number;
   itemRows: ItemLoanAnalyticsItemAggregateRow[];
+  periodEventRows: ItemLoanAnalyticsPeriodEventRow[];
   employeeRows: ItemLoanAnalyticsEmployeeAggregateRow[];
+}
+
+export interface ItemLoanAnalyticsPeriodEventRow {
+  kind: 'BORROW' | 'RETURN';
+  eventAt: Date;
+  assetId: string;
+  assetLabel: string;
+  actorDisplayName: string | null;
+  actorEmployeeId: string | null;
 }
 
 export interface IItemLoanAnalyticsRepository {

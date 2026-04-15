@@ -1,3 +1,5 @@
+import type { LoanAnalyticsPeriodEventRow } from '../common/index.js';
+
 /**
  * GET /tools/items/loan-analytics の応答
  *
@@ -53,5 +55,6 @@ export interface ItemLoanAnalyticsResponse {
   summary: ItemLoanAnalyticsSummary;
   monthlyTrend: ItemLoanAnalyticsMonthlyPoint[];
   byItem: ItemLoanAnalyticsByItemRow[];
+  periodEvents: LoanAnalyticsPeriodEventRow[];
   byEmployee: ItemLoanAnalyticsByEmployeeRow[];
 }

@@ -43,6 +43,16 @@ describe('MeasuringInstrumentLoanAnalyticsService', () => {
             },
           },
         ],
+        periodEventRows: [
+          {
+            kind: 'BORROW',
+            eventAt: new Date('2026-01-10T08:00:00.000Z'),
+            assetId: 'a1',
+            assetLabel: 'asset',
+            actorDisplayName: '山田',
+            actorEmployeeId: 'e1'
+          }
+        ],
         employeeRows: [
           {
             employeeId: 'e1',
@@ -68,6 +78,7 @@ describe('MeasuringInstrumentLoanAnalyticsService', () => {
     expect(result.byInstrument[0].openIsOverdue).toBe(true);
     expect(result.byInstrument[0].dueAt).toBe(due.toISOString());
     expect(result.byEmployee[0].openInstrumentCount).toBe(1);
+    expect(result.periodEvents).toHaveLength(1);
     expect(repo.loadAggregate).toHaveBeenCalledWith(
       expect.objectContaining({
         monthlyMonths: 6,

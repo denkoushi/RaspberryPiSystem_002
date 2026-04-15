@@ -8,6 +8,7 @@ import type {
   ItemLoanAnalyticsEmployeeAggregateRow,
   ItemLoanAnalyticsItemAggregateRow,
   ItemLoanAnalyticsOpenLoanInfo,
+  ItemLoanAnalyticsPeriodEventRow,
   ItemLoanAnalyticsQueryInput,
   ItemLoanAnalyticsTimeZone
 } from './item-loan-analytics.types.js';
@@ -146,6 +147,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       overdueOpenCount,
       labelAggRows,
       openByLabelRows,
+      periodEventRowsRaw,
       borrowByEmployee,
       returnByEmployee,
       openByEmployee
@@ -209,6 +211,31 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
         LEFT JOIN labeled lb ON lb.tool_label = d.tool_label
         GROUP BY d.tool_label
         ORDER BY d.tool_label ASC;
+      `,
+      this.db.$queryRaw<
+        Array<{
+          tool_label: string;
+          borrowedAt: Date;
+          returnedAt: Date | null;
+          employeeId: string | null;
+          displayName: string | null;
+        }>
+      >`
+        SELECT
+          ${TOOL_LABEL_SQL} AS tool_label,
+          l."borrowedAt" AS "borrowedAt",
+          l."returnedAt" AS "returnedAt",
+          l."employeeId" AS "employeeId",
+          e."displayName" AS "displayName"
+        FROM "Loan" l
+        LEFT JOIN "Employee" e ON e."id" = l."employeeId"
+        WHERE ${PHOTO_LOAN_WHERE}
+        ${labelSql}
+          AND (
+            (l."borrowedAt" >= ${input.periodFrom} AND l."borrowedAt" <= ${input.periodTo})
+            OR
+            (l."returnedAt" IS NOT NULL AND l."returnedAt" >= ${input.periodFrom} AND l."returnedAt" <= ${input.periodTo})
+          )
       `,
       this.db.$queryRaw<
         Array<{
@@ -298,6 +325,32 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       };
     });
 
+    const periodEventRows: ItemLoanAnalyticsPeriodEventRow[] = [];
+    for (const row of periodEventRowsRaw) {
+      const assetId = stablePhotoToolRowId(row.tool_label);
+      if (row.borrowedAt >= input.periodFrom && row.borrowedAt <= input.periodTo) {
+        periodEventRows.push({
+          kind: 'BORROW',
+          eventAt: row.borrowedAt,
+          assetId,
+          assetLabel: row.tool_label,
+          actorDisplayName: row.displayName ?? null,
+          actorEmployeeId: row.employeeId ?? null
+        });
+      }
+      if (row.returnedAt && row.returnedAt >= input.periodFrom && row.returnedAt <= input.periodTo) {
+        periodEventRows.push({
+          kind: 'RETURN',
+          eventAt: row.returnedAt,
+          assetId,
+          assetLabel: row.tool_label,
+          actorDisplayName: row.displayName ?? null,
+          actorEmployeeId: row.employeeId ?? null
+        });
+      }
+    }
+    periodEventRows.sort((a, b) => b.eventAt.getTime() - a.eventAt.getTime());
+
     const empIds = new Set<string>();
     for (const row of openByEmployee) {
       if (row.employeeId) empIds.add(row.employeeId);
@@ -348,6 +401,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       overdueOpenCount,
       totalItemsActive,
       itemRows,
+      periodEventRows,
       employeeRows
     };
   }

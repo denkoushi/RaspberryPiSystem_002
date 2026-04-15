@@ -1,3 +1,5 @@
+import type { LoanAnalyticsPeriodEventRow } from '../common/index.js';
+
 /** GET /rigging-gears/loan-analytics の応答（キオスク・管理画面共通契約） */
 export interface RiggingLoanAnalyticsSummary {
   /** 未返却かつ未取消の吊具貸出ローン件数 */
@@ -63,5 +65,6 @@ export interface RiggingLoanAnalyticsResponse {
   summary: RiggingLoanAnalyticsSummary;
   monthlyTrend: RiggingLoanAnalyticsMonthlyPoint[];
   byGear: RiggingLoanAnalyticsByGearRow[];
+  periodEvents: LoanAnalyticsPeriodEventRow[];
   byEmployee: RiggingLoanAnalyticsByEmployeeRow[];
 }

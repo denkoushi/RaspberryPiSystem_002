@@ -36,6 +36,7 @@ const riggingData = {
   },
   monthlyTrend: [{ yearMonth: '2026-04', borrowCount: 4, returnCount: 2 }],
   byGear: [],
+  periodEvents: [],
   byEmployee: [],
 };
 
@@ -50,7 +51,7 @@ function buildQueryResult(data: unknown) {
 }
 
 describe('KioskRiggingAnalyticsPage', () => {
-  it('計測機器タブと対象月フィルタを表示する', () => {
+  it('計測機器タブと対象期間フィルタを表示する', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-14T12:00:00+09:00'));
     mockUseRiggingLoanAnalytics.mockReturnValue(buildQueryResult(riggingData));
@@ -61,6 +62,7 @@ describe('KioskRiggingAnalyticsPage', () => {
         totalItemsActive: 0,
       },
       byItem: [],
+      periodEvents: [],
     }));
     mockUseMeasuringInstrumentLoanAnalytics.mockReturnValue(buildQueryResult({
       ...riggingData,
@@ -72,6 +74,7 @@ describe('KioskRiggingAnalyticsPage', () => {
         periodReturnCount: 0,
       },
       byInstrument: [],
+      periodEvents: [],
       byEmployee: [],
     }));
 
@@ -80,11 +83,17 @@ describe('KioskRiggingAnalyticsPage', () => {
     expect(screen.getByRole('button', { name: '吊具' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '持出返却アイテム' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '計測機器' })).toBeInTheDocument();
-    expect(screen.getByLabelText('対象月')).toBeInTheDocument();
-    expect(mockUseRiggingLoanAnalytics).toHaveBeenCalledWith({
+    expect(screen.getByLabelText('対象期間')).toBeInTheDocument();
+    expect(mockUseRiggingLoanAnalytics).toHaveBeenNthCalledWith(1, {
       periodFrom: '2026-03-31T15:00:00.000Z',
       periodTo: '2026-04-30T14:59:59.999Z',
       monthlyMonths: 6,
+      timeZone: 'Asia/Tokyo',
+    });
+    expect(mockUseRiggingLoanAnalytics).toHaveBeenNthCalledWith(2, {
+      periodFrom: '2026-04-13T15:00:00.000Z',
+      periodTo: '2026-04-14T14:59:59.999Z',
+      monthlyMonths: 1,
       timeZone: 'Asia/Tokyo',
     });
     vi.useRealTimers();

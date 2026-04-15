@@ -56,6 +56,16 @@ describe('ItemLoanAnalyticsService', () => {
             open: null
           }
         ],
+        periodEventRows: [
+          {
+            kind: 'BORROW',
+            eventAt: new Date('2026-01-10T08:00:00.000Z'),
+            assetId: 'a1',
+            assetLabel: 'asset',
+            actorDisplayName: '山田',
+            actorEmployeeId: 'e1'
+          }
+        ],
         employeeRows: [
           {
             employeeId: 'e1',
@@ -84,6 +94,7 @@ describe('ItemLoanAnalyticsService', () => {
     expect(result.byItem[1].isOutNow).toBe(false);
     expect(result.byItem[1].openIsOverdue).toBe(false);
     expect(result.byEmployee[0].openItemCount).toBe(2);
+    expect(result.periodEvents).toHaveLength(1);
     expect(repo.loadAggregate).toHaveBeenCalledWith(
       expect.objectContaining({
         monthlyMonths: 6,
