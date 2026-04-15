@@ -93,6 +93,14 @@ export class ItemLoanAnalyticsService {
           openIsOverdue: isOutNow && (row.open?.isOverdue ?? false)
         };
       }),
+      periodEvents: agg.periodEventRows.map((event) => ({
+        kind: event.kind,
+        eventAt: event.eventAt.toISOString(),
+        assetId: event.assetId,
+        assetLabel: event.assetLabel,
+        actorDisplayName: event.actorDisplayName,
+        actorEmployeeId: event.actorEmployeeId
+      })),
       byEmployee: agg.employeeRows.map((row) => ({
         employeeId: row.employeeId,
         displayName: row.displayName,

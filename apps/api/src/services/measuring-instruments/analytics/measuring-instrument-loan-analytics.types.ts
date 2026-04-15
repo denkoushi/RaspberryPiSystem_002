@@ -47,7 +47,17 @@ export interface MeasuringInstrumentLoanAnalyticsAggregate {
   overdueOpenCount: number;
   totalInstrumentsActive: number;
   instrumentRows: MeasuringInstrumentLoanAnalyticsInstrumentAggregateRow[];
+  periodEventRows: MeasuringInstrumentLoanAnalyticsPeriodEventRow[];
   employeeRows: MeasuringInstrumentLoanAnalyticsEmployeeAggregateRow[];
+}
+
+export interface MeasuringInstrumentLoanAnalyticsPeriodEventRow {
+  kind: 'BORROW' | 'RETURN';
+  eventAt: Date;
+  assetId: string;
+  assetLabel: string;
+  actorDisplayName: string | null;
+  actorEmployeeId: string | null;
 }
 
 export interface MeasuringInstrumentLoanAnalyticsQueryInput {

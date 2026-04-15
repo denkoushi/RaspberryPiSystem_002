@@ -6,6 +6,7 @@ import type {
   RiggingLoanAnalyticsEmployeeAggregateRow,
   RiggingLoanAnalyticsGearAggregateRow,
   RiggingLoanAnalyticsOpenLoanInfo,
+  RiggingLoanAnalyticsPeriodEventRow,
   RiggingLoanAnalyticsQueryInput,
   RiggingLoanAnalyticsTimeZone
 } from './rigging-loan-analytics.types.js';
@@ -88,6 +89,7 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
       borrowByGear,
       returnByGear,
       openLoans,
+      periodLoans,
       borrowByEmployee,
       returnByEmployee,
       openByEmployee
@@ -150,6 +152,23 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
           riggingGearId: true,
           dueAt: true,
           employee: { select: { displayName: true, employeeCode: true } }
+        }
+      }),
+      this.db.loan.findMany({
+        where: {
+          ...riggingLoanBase,
+          OR: [
+            { borrowedAt: { gte: input.periodFrom, lte: input.periodTo } },
+            { returnedAt: { not: null, gte: input.periodFrom, lte: input.periodTo } }
+          ]
+        },
+        select: {
+          riggingGearId: true,
+          borrowedAt: true,
+          returnedAt: true,
+          employeeId: true,
+          employee: { select: { displayName: true } },
+          riggingGear: { select: { managementNumber: true, name: true } }
         }
       }),
       this.db.loan.groupBy({
@@ -252,6 +271,33 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
       periodReturnCount: returnEmpMap.get(e.id) ?? 0
     }));
 
+    const periodEventRows: RiggingLoanAnalyticsPeriodEventRow[] = [];
+    for (const loan of periodLoans) {
+      if (!loan.riggingGearId || !loan.riggingGear) continue;
+      const assetLabel = `${loan.riggingGear.managementNumber} ${loan.riggingGear.name}`.trim();
+      if (loan.borrowedAt >= input.periodFrom && loan.borrowedAt <= input.periodTo) {
+        periodEventRows.push({
+          kind: 'BORROW',
+          eventAt: loan.borrowedAt,
+          assetId: loan.riggingGearId,
+          assetLabel,
+          actorDisplayName: loan.employee?.displayName ?? null,
+          actorEmployeeId: loan.employeeId ?? null
+        });
+      }
+      if (loan.returnedAt && loan.returnedAt >= input.periodFrom && loan.returnedAt <= input.periodTo) {
+        periodEventRows.push({
+          kind: 'RETURN',
+          eventAt: loan.returnedAt,
+          assetId: loan.riggingGearId,
+          assetLabel,
+          actorDisplayName: loan.employee?.displayName ?? null,
+          actorEmployeeId: loan.employeeId ?? null
+        });
+      }
+    }
+    periodEventRows.sort((a, b) => b.eventAt.getTime() - a.eventAt.getTime());
+
     return {
       monthlyTrend: monthlyRows.map((r) => ({
         yearMonth: r.year_month,
@@ -264,6 +310,7 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
       overdueOpenCount,
       totalRiggingGearsActive,
       gearRows,
+      periodEventRows,
       employeeRows
     };
   }

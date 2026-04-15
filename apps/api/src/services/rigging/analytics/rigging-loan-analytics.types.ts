@@ -10,7 +10,17 @@ export interface RiggingLoanAnalyticsAggregate {
   overdueOpenCount: number;
   totalRiggingGearsActive: number;
   gearRows: RiggingLoanAnalyticsGearAggregateRow[];
+  periodEventRows: RiggingLoanAnalyticsPeriodEventRow[];
   employeeRows: RiggingLoanAnalyticsEmployeeAggregateRow[];
+}
+
+export interface RiggingLoanAnalyticsPeriodEventRow {
+  kind: 'BORROW' | 'RETURN';
+  eventAt: Date;
+  assetId: string;
+  assetLabel: string;
+  actorDisplayName: string | null;
+  actorEmployeeId: string | null;
 }
 
 export interface RiggingLoanAnalyticsOpenLoanInfo {

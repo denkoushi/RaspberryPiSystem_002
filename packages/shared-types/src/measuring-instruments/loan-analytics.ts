@@ -1,3 +1,5 @@
+import type { LoanAnalyticsPeriodEventRow } from '../common/index.js';
+
 /** GET /measuring-instruments/loan-analytics の応答 */
 export interface MeasuringInstrumentLoanAnalyticsSummary {
   openLoanCount: number;
@@ -48,5 +50,6 @@ export interface MeasuringInstrumentLoanAnalyticsResponse {
   summary: MeasuringInstrumentLoanAnalyticsSummary;
   monthlyTrend: MeasuringInstrumentLoanAnalyticsMonthlyPoint[];
   byInstrument: MeasuringInstrumentLoanAnalyticsByInstrumentRow[];
+  periodEvents: LoanAnalyticsPeriodEventRow[];
   byEmployee: MeasuringInstrumentLoanAnalyticsByEmployeeRow[];
 }

@@ -53,6 +53,16 @@ describe('RiggingLoanAnalyticsService', () => {
             open: null
           }
         ],
+        periodEventRows: [
+          {
+            kind: 'BORROW',
+            eventAt: new Date('2026-01-10T08:00:00.000Z'),
+            assetId: 'a1',
+            assetLabel: 'asset',
+            actorDisplayName: '山田',
+            actorEmployeeId: 'e1'
+          }
+        ],
         employeeRows: [
           {
             employeeId: 'e1',
@@ -80,6 +90,7 @@ describe('RiggingLoanAnalyticsService', () => {
     expect(result.byGear[1].isOutNow).toBe(false);
     expect(result.byGear[1].openIsOverdue).toBe(false);
     expect(result.monthlyTrend).toHaveLength(1);
+    expect(result.periodEvents).toHaveLength(1);
     expect(repo.loadAggregate).toHaveBeenCalledWith(
       expect.objectContaining({
         monthlyMonths: 6,

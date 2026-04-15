@@ -2,7 +2,7 @@
 title: KB-334 キオスク「集計」（吊具・持出返却アイテム）デプロイ・実機確認
 tags: [キオスク, 吊具, 工具, デプロイ, API, DADS]
 audience: [運用者, 開発者]
-last-verified: 2026-04-14
+last-verified: 2026-04-15
 category: knowledge-base
 ---
 
@@ -16,6 +16,7 @@ category: knowledge-base
 - **API（写真持出・表示名タブ）**: `GET /api/tools/items/loan-analytics`（認可は吊具 analytics と同系）。**対象 Loan**: **`photoUrl` あり**・`itemId` / `riggingGearId` / `measuringInstrumentId` がすべて NULL・`cancelledAt` NULL・**`photoToolGallerySeed = false`**（教師シード除外）。**表示名キー**: `NULLIF(TRIM(人レビュー名))` が無ければ `NULLIF(TRIM(VLM名))`、どちらも無ければ **「撮影mode」**（キオスク持出一覧の `resolvePhotoLoanToolDisplayLabel` と同順位）。**NFC Item マスタ連携の貸出は含めない**（別タブ用のため別契約が必要）。
 - **UI（2026-04-14）**: **対象月**は `input type="month"` ではなく **`KioskMonthPickerModal`**（年ドロップダウン＋前年/翌年＋1〜12月・`variant="analytics"`）。**資産フィルタ**はタブごとに **単一選択**（未選択=全件）。クエリ: 吊具 `riggingGearId`（uuid）・写真持出 `itemId`（`pt-` + 24hex）・計測機器 `measuringInstrumentId`（uuid）。**API**: `GET /api/rigging-gears/loan-analytics`、`GET /api/tools/items/loan-analytics`、`GET /api/measuring-instruments/loan-analytics` の各クエリに optional 追加（Zod）。月変更時はフロントで資産選択をリセットし、404 時は選択解除にフォールバック。
 - **月次集計**: 既定タイムゾーン `Asia/Tokyo` 暦月（クエリで上書き可）。**マイグレーション**: 本集計は **既存 `Loan` 列のみ**（追加マイグレなし）。
+- **（2026-04-15）4パネル UI・当日イベント**: キオスク `/kiosk/rigging-analytics` は **4パネル**（社員別バー・資産別持出頻度・返却率・利用表）＋ **「当日の持出返却状況」** ペイン。集計期間は **`KioskMonthPickerModal` の `月` / `1日`**（`variant="analytics"`）。**当日ペイン**は選択期間とは別に **当日（Asia/Tokyo）の 0:00〜24:00** を別クエリで取得（右下のみ当日）。**API**: 3系統 `loan-analytics` 応答に **`periodEvents`**（`LoanAnalyticsPeriodEventRow`・持出/返却・`eventAt`・`assetId` / `assetLabel`・actor）を追加。**CI**: Web イメージの Alpine で `musl` / OpenSSL 等を `apk upgrade`（Trivy 対策・`infrastructure/docker/Dockerfile.web`）。
 
 ## デプロイ（標準手順）
 
@@ -72,6 +73,15 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 - **期待（写真持出タブ）**: `summary` / `byItem`（`itemCode` は空文字・`name` が表示名・`itemId` は `pt-` 接頭辞の安定ハッシュ）/ `byEmployee`
 
 ## 本番実績
+
+### 2026-04-15（4パネル・当日イベント・`periodEvents`・`feat/kiosk-analytics-four-panel-today-events`・`323dd9f0`・Pi5→Pi4×4 順次・Pi3 除外）
+
+- **差分**: Web `KioskAnalyticsPanels` / `kiosk-loan-analytics/{period,view-model}`・`KioskRiggingAnalyticsPage` 再構成；API 3系統に `periodEvents`；`Dockerfile.web` で `musl` / `openssl` / `libcrypto3` / `libssl3` / `zlib` 等を更新（Trivy）。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-four-panel-today-events infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**事前**: 未追跡プレビュー HTML 等で fail-fast → **`git stash push -u`**。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260415-162422-11542` → `20260415-163600-7918` → `20260415-164041-17295` → `20260415-164408-5423` → `20260415-164824-29880`、各 **`failed=0` / `unreachable=0` / exit `0`**。
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**・Mac / Tailscale）。
+- **Pi3**: 対象外（キオスク/API 変更のため Pi3 専用手順は未実施）。
+- **残作業（手動）**: 各 Pi4 で **`/kiosk/rigging-analytics`** を開き、**4パネル**・**対象期間（月/1日）**・**当日ペイン**・タブ別資産フィルタを目視。
 
 ### 2026-04-14（月選択モーダル・タブ別資産フィルタ・`feat/kiosk-analytics-month-and-asset-filters`・`8ce1a9da`・Pi5→Pi4×4 順次・Pi3 除外）
 

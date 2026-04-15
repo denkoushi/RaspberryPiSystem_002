@@ -5,6 +5,7 @@ import type {
   MeasuringInstrumentLoanAnalyticsEmployeeAggregateRow,
   MeasuringInstrumentLoanAnalyticsInstrumentAggregateRow,
   MeasuringInstrumentLoanAnalyticsOpenInfo,
+  MeasuringInstrumentLoanAnalyticsPeriodEventRow,
   MeasuringInstrumentLoanAnalyticsQueryInput,
   MeasuringInstrumentUnifiedEvent,
   MeasuringInstrumentUnifiedEventSource,
@@ -324,6 +325,26 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
       })
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
 
+    const managementToInstrument = new Map(
+      activeInstruments.map((instrument) => [instrument.managementNumber, instrument] as const)
+    );
+    const periodEventRows: MeasuringInstrumentLoanAnalyticsPeriodEventRow[] = periodEvents
+      .map((event) => {
+        const instrument = managementToInstrument.get(event.managementNumber);
+        const norm = normalizeEmployeeName(event.borrowerName);
+        const employee = norm ? employeeByNormalizedName.get(norm) : undefined;
+        const assetLabel = `${event.managementNumber} ${event.instrumentName ?? instrument?.name ?? '（名称未設定）'}`.trim();
+        return {
+          kind: (event.action === '持ち出し' ? 'BORROW' : 'RETURN') as MeasuringInstrumentLoanAnalyticsPeriodEventRow['kind'],
+          eventAt: event.eventAt,
+          assetId: instrument?.id ?? `unknown:${event.managementNumber}`,
+          assetLabel,
+          actorDisplayName: event.borrowerName,
+          actorEmployeeId: employee?.id ?? null
+        };
+      })
+      .sort((a, b) => b.eventAt.getTime() - a.eventAt.getTime());
+
     return {
       periodBorrowCount: periodEvents.filter((event) => event.action === '持ち出し').length,
       periodReturnCount: periodEvents.filter((event) => event.action === '返却').length,
@@ -331,6 +352,7 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
       overdueOpenCount: allInstrumentRows.filter((row) => row.open?.isOverdue).length,
       totalInstrumentsActive: input.measuringInstrumentId ? Math.min(1, activeInstruments.length) : activeInstruments.length,
       instrumentRows: allInstrumentRows,
+      periodEventRows,
       employeeRows,
       monthlyTrend: monthStarts.map((yearMonth) => ({
         yearMonth,

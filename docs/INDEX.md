@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-15）
+
+- **キオスク「集計」4パネルダッシュボード・当日の持出返却・loan-analytics `periodEvents`・Web イメージ Alpine 更新**: ブランチ **`feat/kiosk-analytics-four-panel-today-events`**・コミット **`323dd9f0`**。本番 Pi5→Pi4×4 順次（Pi3 除外）・Phase12 **43/0/0**・Detach Run ID は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-15」・[deployment.md](./guides/deployment.md)。デプロイ前 **汚いツリー**は **`git stash push -u`**。進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-14）
 
 - **キオスク「集計」統合ローン分析（計測機器タブ追加・月次フィルタ統一・計測機器は CSV+NFC を統合）**: API `GET /api/measuring-instruments/loan-analytics`、NFCミラーイベント、重複統合（同一管理番号+同一動作+5分窓・NFC優先）、取消除外。UI は `KioskRiggingAnalyticsPage` に `計測機器` タブと `対象月` フィルタを追加。**本番**: 2026-04-14・`feat/unified-loan-analytics`・`35f5ed4b`・Pi5→Pi4×4 順次（Pi3 除外）・Phase12 **43/0/0**（[deployment.md](./guides/deployment.md)・[KB-344](./knowledge-base/KB-344-unified-loan-analytics.md)）。詳細は [modules/measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) / [EXEC_PLAN.md](../EXEC_PLAN.md)。
