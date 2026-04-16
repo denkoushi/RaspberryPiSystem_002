@@ -443,8 +443,14 @@
 **検証**:
 - `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
 
-**解決状況**: ✅ **実装済み**（コード）
-- 本番反映はデプロイ手順に従う。
+**本番反映（2026-04-16）**:
+- ブランチ **`feat/signage-business-day-cutover-9am`**・実装コミット **`08d32806`**（以降 `main` マージで追随）。
+- **デプロイ**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **`--limit` 1 台ずつ**・**`--detach --follow`**・**Pi3 は対象外**（Pi5 API で可視化データを生成するためサーバー側反映が必須）。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260416-184654-21455` → `20260416-185919-27958` → `20260416-190415-11118` → `20260416-190813-13486` → `20260416-191625-26120`、各 **`failed=0` / `unreachable=0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **59s**）。
+- **トラブルシュート**: 直列実行でも、**前ホストのデプロイが Mac 側で完全終了する前**に次を起動すると **`logs/.update-all-clients.local.lock`** で `Another update-all-clients.sh process is already running`（exit 3）→ **前ジョブの終了を待つ**か、シェルで **`cmd1 && cmd2 && …`** と連鎖する。運用記録は [deployment.md](../guides/deployment.md) 冒頭（2026-04-16）。
+
+**解決状況**: ✅ **実装済み**（コード）・✅ **本番反映済み**（2026-04-16・上記）
 
 ---
 
