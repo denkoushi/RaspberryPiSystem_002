@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2026-03-06（visualization-image API追加・Web /signage visualization対応）
+最終更新: 2026-04-16（可視化データの業務日切替: JST 9:00・自動表示のみ／[KB-347](../../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)）
 
 ## 概要
 
@@ -43,9 +43,11 @@
 - **可視化タイプ**: KPIカード、棒グラフ、テーブル
 - **設定方式**: 管理コンソールでデータソース/レンダラー/設定JSONを編集
 - **用途**: 現場での状況把握・課題可視化の拡張枠
+- **業務日（2026-04-16・共通）**: 加工機点検（`uninspected_machines`・`date` 未指定時）と計測機器持出（`measuring_instrument_loan_inspection`・`period: today_jst`）は、いずれも **JST 9:00 を境にした業務日**で集計する。固定 `date` 指定時の加工機は暦日0:00のまま。詳細は [KB-347](../../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)。
 
 #### 未点検加工機コンテンツ（2026-02-11追加）
 
+- **業務日（2026-04-16）**: データソースで **`date` を指定しない自動表示**のとき、集計の「当日」は **JST 9:00** を境界とする業務日（詳細は [KB-347](../../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)）。`date` を固定指定する場合は従来どおり暦日0:00基準。
 - **実装方式**: 既存 `visualization` スロットを再利用（専用スロットは追加しない）
 - **データソース**: `uninspected_machines`（`MachineService.findUninspected` を再利用）
 - **レンダラー**: `uninspected_machines`（KPI: 稼働中/点検済み/未点検 + 一覧表示）

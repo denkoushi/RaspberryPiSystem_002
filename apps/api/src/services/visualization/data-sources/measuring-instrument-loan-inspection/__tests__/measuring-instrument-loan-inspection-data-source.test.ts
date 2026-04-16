@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmployeeStatus } from '@prisma/client';
 import { MeasuringInstrumentLoanInspectionDataSource } from '../measuring-instrument-loan-inspection-data-source.js';
 import { prisma } from '../../../../../lib/prisma.js';
@@ -20,6 +20,10 @@ vi.mock('../../../../../lib/prisma.js', () => ({
 describe('MeasuringInstrumentLoanInspectionDataSource', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('returns error metadata when sectionEquals is missing', async () => {
@@ -49,6 +53,9 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
   });
 
   it('returns empty rows when target section has no active employees', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-25T10:00:00+09:00'));
+
     vi.mocked(prisma.employee.findMany).mockResolvedValue([]);
 
     const source = new MeasuringInstrumentLoanInspectionDataSource();
@@ -70,10 +77,14 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
       expect(result.rows).toEqual([]);
       expect(result.metadata?.totalUsers).toBe(0);
       expect(result.metadata?.inspectedUsers).toBe(0);
+      expect(result.metadata?.targetDate).toBe('2026-02-25');
     }
   });
 
   it('aggregates inspection status and active loan count by employee', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-25T10:00:00+09:00'));
+
     vi.mocked(prisma.employee.findMany).mockResolvedValue([
       { id: 'emp-1', displayName: '山田 太郎' },
       { id: 'emp-2', displayName: '佐藤 花子' },
@@ -126,7 +137,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
       expect(result.metadata?.sectionEquals).toBe('加工担当部署');
       expect(result.metadata?.totalUsers).toBe(2);
       expect(result.metadata?.inspectedUsers).toBe(1);
-      expect(result.metadata?.targetDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(result.metadata?.targetDate).toBe('2026-02-25');
     }
   });
 });

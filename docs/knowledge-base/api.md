@@ -420,6 +420,34 @@
 
 ---
 
+### [KB-347] サイネージ可視化の業務日切替（JST 翌9:00・自動表示のみ）
+
+**日付**: 2026-04-16
+
+**背景**:
+- 「その日」の集計を **JST 0:00** で切り替えると、早朝に表示すべきは前日分のまま、という現場運用と齟齬が出ることがある。
+
+**仕様（確定）**:
+- **自動表示**（可視化データソースで `date` を指定しない／加工機で `findDailyInspectionSummaries` に `date` なし）のときのみ:
+  - **JST 0:00〜8:59** の間は、表示ラベルおよび集計窓は **暦日の前日** を業務日とする。
+  - **JST 9:00〜** は **暦の当日** を業務日とする。
+  - 集計窓は半開区間 **`[業務日 JST 09:00, 翌業務日 JST 09:00)`**（`occurredAt` / 点検・貸出イベントの時刻はこの範囲で判定）。
+- **明示的な `date`（YYYY-MM-DD）指定**がある場合は従来どおり **暦日 0:00〜24:00（JST）** の窓（互換維持）。
+- 画像 API の `Cache-Control` や Web のポーリング間隔は **変更しない**（切替直後は最大数十秒遅れ得る）。
+
+**実装の置き場**:
+- 共通: `apps/api/src/services/visualization/data-sources/_shared/data-source-utils.ts`（`resolveJstSignageBusinessDate`, `resolveJstBusinessDayRange9am`）
+- 加工機: `apps/api/src/services/tools/machine.service.ts`（`findDailyInspectionSummaries`）
+- 計測機器持出可視化: `apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`
+
+**検証**:
+- `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
+
+**解決状況**: ✅ **実装済み**（コード）
+- 本番反映はデプロイ手順に従う。
+
+---
+
 ### [KB-257] backup/importsルート分割と実行ロジックのサービス層移設
 
 **日付**: 2026-02-12
