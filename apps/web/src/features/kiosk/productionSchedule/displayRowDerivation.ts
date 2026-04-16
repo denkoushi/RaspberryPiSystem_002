@@ -15,6 +15,8 @@ export type ScheduleRowData = {
   FSIGENCD?: string;
   FSIGENSHOYORYO?: string | number;
   FKOJUN?: string | number;
+  /** Gmail FKOJUNST CSV 由来の工順ステータス（C/P/S/R/X） */
+  FKOJUNST?: string;
   progress?: string;
 };
 
@@ -95,6 +97,7 @@ export const normalizeScheduleRows = (sourceRows: RawScheduleRow[]): NormalizedS
       processingType: processingType ?? '',
       FSIGENSHOYORYO: String(d.FSIGENSHOYORYO ?? ''),
       FKOJUN: String(d.FKOJUN ?? ''),
+      FKOJUNST: String(d.FKOJUNST ?? ''),
       FSEIBAN: String(d.FSEIBAN ?? ''),
       plannedQuantity: formatPlannedQuantityLabel(plannedQuantity),
       plannedStartDate: formatPlannedDateLabel(plannedStartDate)
