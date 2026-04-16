@@ -789,6 +789,7 @@ try {
 **Context**:
 - `/kiosk/instruments/borrow` で計測機器タグを読み取り、ジャンル/点検項目表示後に氏名タグをスキャンしても、持出登録後の戻り遷移が発火しないことがあった
 - 手入力で氏名タグUIDを入れて送信する経路は通る一方、**2枚目のNFCスキャン経路だけ**不安定だった
+- **切り分け**: 借用 API は成功するが続く **点検記録 API だけ 401** となる症状は、UI の race ではなく **[KB-346](#kb-346-計測機器点検記録作成apiがキオスクのx-client-keyのみで401)**（`canWrite` / `allowWrite` の食い違い）を疑う
 
 **Symptoms**:
 - 計測機器タグスキャン後の「計測機器 持出」画面で、氏名タグをかざしても自動送信されない
@@ -828,6 +829,40 @@ try {
 - `docs/guides/deployment.md`
 
 **解決状況**: ✅ **修正・CI・順次デプロイ・実機相当確認完了**（2026-04-16）
+
+---
+
+### [KB-346] 計測機器点検記録作成APIがキオスクのx-client-keyのみで401
+
+**発生日**: 2026-04-16 〜 2026-04-17（切り分け・修正）
+
+**Context**:
+- [KB-345](#kb-345-計測機器持出で氏名nfcスキャン後に自動送信されない) の race 修正後も、本番で氏名 NFC 後に **「認証トークンが必要です」** と出て **`defaultMode` への自動遷移が止まる**報告があった
+- `POST /api/measuring-instruments/borrow` は **`allowWrite`**（JWT または `x-client-key`）だが、続く **`POST /api/measuring-instruments/:id/inspection-records`** が **`canWrite`（JWT 必須）** のままだった
+
+**Symptoms**:
+- キオスクで借用は成功するが、点検記録一括作成で **`401`** / **`AUTH_TOKEN_REQUIRED`** / 「認証トークンが必要です」
+- 計測機器カード表示・プロフィール取得は **`allowView`** で通るため、画面だけ見ると「前半は通っている」ように見える
+
+**Root cause**:
+- 点検記録作成ルートのみ **管理者 JWT 前提**の `canWrite` が適用され、キオスクが送る **`x-client-key` のみ**では認証段階で落ちていた
+
+**Fix**:
+- ✅ `apps/api/src/routes/measuring-instruments/index.ts` で `POST …/inspection-records` の `preHandler` を **`allowWrite`** に変更（**`borrow` / `return` と同様に JWT または `x-client-key`**）
+- ✅ `measuring-instruments.integration.test.ts` に **`x-client-key` のみ**で点検記録が作成できるケースを追加
+- ✅ `KioskInstrumentBorrowPage.nfc.test.tsx` で点検記録作成が 401 になるパスの回帰を保持
+
+**Verification**:
+- ローカル: 上記統合テスト + NFC テスト通過
+- 実機相当: `borrow` → `inspection-records` が **`x-client-key` で連続 200**（修正前は後者が 401）
+
+**Troubleshooting**:
+- 本番でまだ 401 が出る場合は **API コンテナが古いイメージ**（`canWrite` 残存）の可能性。**`main` 取り込み後の `docker compose … up -d --build api`** で差分を消す（一時ホットパッチと正式コミット SHA の整合も確認）
+
+**References**:
+- PR [#147](https://github.com/denkoushi/RaspberryPiSystem_002/pull/147)・マージコミット `2484d069`
+
+**解決状況**: ✅ **コード修正・`main` マージ済み**（2026-04-17）
 
 ---
 

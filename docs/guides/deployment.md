@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-16
+last-verified: 2026-04-17
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -11,6 +11,13 @@ update-frequency: medium
 # デプロイメントガイド
 
 最終更新: 2026-04-15（**キオスク「集計」4パネルダッシュボード・当日イベント・loan-analytics `periodEvents`・Web イメージ Alpine セキュリティ更新**（`feat/kiosk-analytics-four-panel-today-events`・コミット **`323dd9f0`**）: **Pi5→Pi4×4 順次**（Pi3 除外）・Detach `20260415-162422-11542`（`raspberrypi5`）→ `20260415-163600-7918`（`raspberrypi4`）→ `20260415-164041-17295`（`raspi4-robodrill01`）→ `20260415-164408-5423`（`raspi4-fjv60-80`）→ `20260415-164824-29880`（`raspi4-kensaku-stonebase01`）・Phase12 **`./scripts/deploy/verify-phase12-real.sh` → PASS 43/0/0**（約 **27s**）。**Pi3**: 対象外。**トラブルシュート**: 未コミット／未追跡があると `update-all-clients.sh` が fail-fast → **`git stash push -u`**。仕様・知見は [KB-334](../knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-15」節。**前項** 2026-04-14（**キオスク「集計」月選択・タブ別資産フィルタ**（`feat/kiosk-analytics-month-and-asset-filters`・コミット **`8ce1a9da`**）: **Pi5→Pi4×4 順次**（Pi3 除外）・Detach `20260414-211347-29532`（`raspberrypi5`）→ `20260414-212701-15420`（`raspberrypi4`）→ `20260414-213153-7546`（`raspi4-robodrill01`）→ `20260414-213547-9533`（`raspi4-fjv60-80`）→ `20260414-214120-20816`（`raspi4-kensaku-stonebase01`）・Phase12 **`./scripts/deploy/verify-phase12-real.sh` → PASS 43/0/0**（約 **57s**）。**Pi3**: 対象外（キオスク/API 変更のため Pi3 専用手順は未実施）。仕様・知見は [KB-334](../knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-14」節。**前項** **キオスク統合ローン分析（計測機器 CSV+NFC）**（`feat/unified-loan-analytics`・コミット **`35f5ed4b`**）: **Pi5→Pi4×4 順次**（Pi3 除外）・Detach `20260414-194212-7916`（`raspberrypi5`）→ `20260414-195311-19926`（`raspberrypi4`）→ `20260414-195803-9001`（`raspi4-robodrill01`）→ `20260414-200152-17153`（`raspi4-fjv60-80`）→ `20260414-200700-5820`（`raspi4-kensaku-stonebase01`）・Phase12 **43/0/0**（約 **63s**）。**トラブルシュート**: fail-fast（未 push / 汚いツリー）は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。仕様は [KB-344](../knowledge-base/KB-344-unified-loan-analytics.md) / [ui.md](../modules/measuring-instruments/ui.md)。**さらに前** キオスク計測機器持出レイアウト align（`702f7b83`）: Detach `20260414-180107-30581` → …・Phase12 約 **53s**。**さらに前** 計測機器ジャンル画像永続化: **Pi5 のみ**・[KB-343](../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。）
+
+### 補足（2026-04-17: 計測機器 点検記録作成 API のキオスク認可・PR #147）
+
+- **事象・根因**: `POST …/inspection-records` のみ **`canWrite`（JWT 必須）**のままだったため、キオスクの **`x-client-key` のみ**では **`401` / `AUTH_TOKEN_REQUIRED`** となり、OK 持出フローが点検記録作成で止まり得た（画面は「認証トークンが必要」）。
+- **修正**: `preHandler` を **`allowWrite`** に変更（借用・返却と同じく JWT または `x-client-key`）。**`main` マージ**: PR [#147](https://github.com/denkoushi/RaspberryPiSystem_002/pull/147)・マージコミット **`2484d069`**（実装コミット **`9e2011ff`**）。
+- **ナレッジ**: [frontend.md の KB-346](../knowledge-base/frontend.md#kb-346-計測機器点検記録作成apiがキオスクのx-client-keyのみで401)・[ui.md](../modules/measuring-instruments/ui.md) 持ち出し登録。
+- **本番追随**: 各ホストで **`main` 取得後** `api` 再ビルド反映（例: `docker compose … up -d --build api`）。ホットパッチのみの端末は **正式コミット SHA と整合**させる。
 
 ### 補足（2026-04-16: 計測機器持出の氏名NFC自動送信修正）
 
