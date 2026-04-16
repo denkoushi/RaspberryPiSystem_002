@@ -1,6 +1,10 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import {
+  resolveJstBusinessDayRange9am,
+  resolveJstSignageBusinessDate,
+} from '../../lib/signage-business-day.js';
 
 export interface MachineQuery {
   search?: string;
@@ -323,7 +327,9 @@ export class MachineService {
 
   async findDailyInspectionSummaries(params: UninspectedMachineQuery) {
     const { csvDashboardId } = params;
-    const { date, start, end } = resolveTokyoDayRange(params.date);
+    const { date, start, end } = params.date
+      ? resolveTokyoDayRange(params.date)
+      : resolveJstBusinessDayRange9am(resolveJstSignageBusinessDate(new Date()));
 
     const runningMachines = await prisma.machine.findMany({
       where: { operatingStatus: '稼働中' },
@@ -366,13 +372,13 @@ export class MachineService {
       if (!inspectionAt) {
         continue;
       }
-      const jstInspectionDate = formatTokyoDate(inspectionAt);
-      if (jstInspectionDate !== date) {
+      const t = inspectionAt.getTime();
+      if (t < start.getTime() || t >= end.getTime()) {
         continue;
       }
 
       const inspectionItem = extractInspectionItem(row.rowData) ?? '';
-      const dedupKey = `${equipmentNumber}__${inspectionItem}__${jstInspectionDate}`;
+      const dedupKey = `${equipmentNumber}__${inspectionItem}__${date}`;
       const currentAt = inspectionAt.getTime();
       const existing = deduplicatedRows.get(dedupKey);
 

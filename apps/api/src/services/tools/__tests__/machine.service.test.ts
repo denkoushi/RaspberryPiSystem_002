@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MachineService } from '../machine.service.js';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
@@ -26,6 +26,10 @@ describe('MachineService', () => {
     vi.clearAllMocks();
     service = new MachineService();
     vi.mocked(prisma.csvDashboardRow.deleteMany).mockResolvedValue({ count: 0 } as any);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('稼働中マスター - 当日点検済みの差分で未点検を返す', async () => {
@@ -335,5 +339,61 @@ describe('MachineService', () => {
       statusCode: 400,
       message: 'dateはYYYY-MM-DD形式で指定してください',
     });
+  });
+
+  it('findDailyInspectionSummaries は date 未指定時、JST 8:59 なら前日業務日の 9:00〜翌9:00 窓で取得する', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-11T08:59:00+09:00'));
+
+    vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([] as any);
+
+    const result = await service.findDailyInspectionSummaries({
+      csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+    });
+
+    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith({
+      where: {
+        csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+        occurredAt: {
+          gte: new Date('2026-02-10T00:00:00.000Z'),
+          lt: new Date('2026-02-11T00:00:00.000Z'),
+        },
+      },
+      select: {
+        id: true,
+        occurredAt: true,
+        rowData: true,
+      },
+    });
+    expect(result.date).toBe('2026-02-10');
+  });
+
+  it('findDailyInspectionSummaries は date 未指定時、JST 9:00 から当日業務日ラベルで取得する', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-11T09:00:00+09:00'));
+
+    vi.mocked(prisma.machine.findMany).mockResolvedValue([] as any);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([] as any);
+
+    const result = await service.findDailyInspectionSummaries({
+      csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+    });
+
+    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith({
+      where: {
+        csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
+        occurredAt: {
+          gte: new Date('2026-02-11T00:00:00.000Z'),
+          lt: new Date('2026-02-12T00:00:00.000Z'),
+        },
+      },
+      select: {
+        id: true,
+        occurredAt: true,
+        rowData: true,
+      },
+    });
+    expect(result.date).toBe('2026-02-11');
   });
 });

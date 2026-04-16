@@ -68,6 +68,28 @@ describe('UninspectedMachinesDataSource', () => {
     }
   });
 
+  it('passes through explicit date unchanged for backward compatibility', async () => {
+    findDailyInspectionSummariesMock.mockResolvedValue({
+      date: '2026-02-11',
+      csvDashboardId: '11111111-1111-1111-1111-111111111111',
+      totalRunningMachines: 0,
+      inspectedRunningCount: 0,
+      uninspectedCount: 0,
+      machines: [],
+    });
+
+    const source = new UninspectedMachinesDataSource();
+    await source.fetchData({
+      csvDashboardId: '11111111-1111-1111-1111-111111111111',
+      date: '2026-02-11',
+    });
+
+    expect(findDailyInspectionSummariesMock).toHaveBeenCalledWith({
+      csvDashboardId: '11111111-1111-1111-1111-111111111111',
+      date: '2026-02-11',
+    });
+  });
+
   it('limits rows by maxRows', async () => {
     findDailyInspectionSummariesMock.mockResolvedValue({
       date: '2026-02-11',

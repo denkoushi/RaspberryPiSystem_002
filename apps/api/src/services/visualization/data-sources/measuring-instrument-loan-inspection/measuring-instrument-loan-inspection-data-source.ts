@@ -1,5 +1,9 @@
 import { EmployeeStatus } from '@prisma/client';
 import { prisma } from '../../../../lib/prisma.js';
+import {
+  resolveJstBusinessDayRange9am,
+  resolveJstSignageBusinessDate,
+} from '../../../../lib/signage-business-day.js';
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 
@@ -24,22 +28,6 @@ function asString(value: unknown): string {
 
 function normalizeEmployeeName(value: string): string {
   return value.replace(/[\s\u3000]/g, '');
-}
-
-function resolveTodayJstRange(nowUtc = new Date()): { startDateUtc: Date; endDateUtc: Date; dateLabel: string } {
-  const jstOffsetMs = 9 * 60 * 60 * 1000;
-  const nowJst = new Date(nowUtc.getTime() + jstOffsetMs);
-  const startOfTodayJst = new Date(nowJst);
-  startOfTodayJst.setHours(0, 0, 0, 0);
-  const endOfTodayJst = new Date(nowJst);
-  endOfTodayJst.setHours(23, 59, 59, 999);
-
-  const startDateUtc = new Date(startOfTodayJst.getTime() - jstOffsetMs);
-  const endDateUtc = new Date(endOfTodayJst.getTime() - jstOffsetMs);
-  const yyyy = startOfTodayJst.getFullYear();
-  const mm = String(startOfTodayJst.getMonth() + 1).padStart(2, '0');
-  const dd = String(startOfTodayJst.getDate()).padStart(2, '0');
-  return { startDateUtc, endDateUtc, dateLabel: `${yyyy}-${mm}-${dd}` };
 }
 
 function buildEmptyTable(metadata: LoanInspectionMetadata): TableVisualizationData {
@@ -67,7 +55,8 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
     }
 
     const nowUtc = new Date();
-    const { startDateUtc, endDateUtc, dateLabel } = resolveTodayJstRange(nowUtc);
+    const dateLabel = resolveJstSignageBusinessDate(nowUtc);
+    const { start: startDateUtc, end: endDateUtcExclusive } = resolveJstBusinessDayRange9am(dateLabel);
 
     const employees = await prisma.employee.findMany({
       where: {
@@ -100,7 +89,7 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
           employeeId: { in: employeeIds },
           inspectedAt: {
             gte: startDateUtc,
-            lte: endDateUtc,
+            lt: endDateUtcExclusive,
           },
         },
         _count: {
@@ -112,7 +101,7 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
           action: '持ち出し',
           eventAt: {
             gte: startDateUtc,
-            lte: endDateUtc,
+            lt: endDateUtcExclusive,
           },
         },
         select: {

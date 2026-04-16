@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-16）
+
+- **サイネージ可視化の業務日切替 JST 9:00（加工機点検・計測機器持出 `today_jst`）本番・Pi5→Pi4×4 順次（Pi3 除外）・Phase12・ドキュメント・`main` マージ**: ブランチ **`feat/signage-business-day-cutover-9am`**・コミット **`08d32806`**（`resolveJstSignageBusinessDate` / `findDailyInspectionSummaries` / `measuring-instrument-loan-inspection-data-source`）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/signage-business-day-cutover-9am infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260416-184654-21455` → `20260416-185919-27958` → `20260416-190415-11118` → `20260416-190813-13486` → `20260416-191625-26120`、各 **`failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **59s**）。**Pi3**: 対象外。**トラブルシュート**: 前ジョブの Mac ロック解放前に次を起動すると **exit 3**（[deployment.md](./guides/deployment.md) 冒頭）。**ナレッジ**: [KB-347](./knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)・[modules/signage/README.md](./modules/signage/README.md)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-17）
 
 - **計測機器 OK 持出: 点検記録一括作成 `POST /api/measuring-instruments/:id/inspection-records` をキオスク `x-client-key` で許可（`allowWrite` へ統一）**: ブランチ **`fix/measuring-instrument-inspection-client-key`**・実装コミット **`9e2011ff`**・**`main` マージコミット `2484d069`**（[PR #147](https://github.com/denkoushi/RaspberryPiSystem_002/pull/147)）。借用 API は元から `allowWrite` だったが、点検記録作成のみ **`canWrite`（JWT 必須）**のままだったため **`401` / `AUTH_TOKEN_REQUIRED`** でフローが止まり得た。**ドキュメント**: [KB-346](./knowledge-base/frontend.md#kb-346-計測機器点検記録作成apiがキオスクのx-client-keyのみで401)・[ui.md](./modules/measuring-instruments/ui.md)・[deployment.md](./guides/deployment.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。**本番追随**: 各ホストで `main` 取り込み後に **`api` 再ビルド**（ホットパッチのみの台は SHA 整合を確認）。
