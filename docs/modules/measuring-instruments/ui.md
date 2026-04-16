@@ -18,6 +18,7 @@
    - NGの場合: 「NGにする」ボタン押下で即送信
    - OKの場合は送信時に Loan + InspectionRecord（全項目PASS）を一括作成
    - NGの場合は Loan のみ作成（点検記録は作成しない）
+   - **API 認可（2026-04-17）**: `POST /api/measuring-instruments/borrow` に続く **`POST /api/measuring-instruments/:id/inspection-records`** も **`allowWrite`**（JWT または **`x-client-key`**）。キオスクは JWT を持たないため、借用と同一のクライアントキー前提。詳細は [frontend.md の KB-346](../../knowledge-base/frontend.md#kb-346-計測機器点検記録作成apiがキオスクのx-client-keyのみで401)。
 
 4. **完了画面**
    - 持ち出し成功メッセージ
