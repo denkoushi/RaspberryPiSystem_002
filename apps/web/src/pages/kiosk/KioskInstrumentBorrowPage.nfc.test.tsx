@@ -91,7 +91,13 @@ describe('KioskInstrumentBorrowPage NFC', () => {
       },
       { timeout: 5000 }
     );
-    expect(screen.getByRole('button', { name: '持出登録' })).not.toBeDisabled();
+    // ジャンル/点検プロファイル取得後に genreReady となりボタンが有効になる
+    await waitFor(
+      () => {
+        expect(screen.getByRole('button', { name: '持出登録' })).not.toBeDisabled();
+      },
+      { timeout: 5000 }
+    );
 
     rerender(<Harness nfc={{ uid: 'employee-nfc-uid-99', timestamp: new Date().toISOString() }} />);
 
