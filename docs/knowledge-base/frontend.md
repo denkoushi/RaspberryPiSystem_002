@@ -782,6 +782,55 @@ try {
 
 ---
 
+### [KB-345] 計測機器持出で氏名NFCスキャン後に自動送信されない
+
+**発生日**: 2026-04-16
+
+**Context**:
+- `/kiosk/instruments/borrow` で計測機器タグを読み取り、ジャンル/点検項目表示後に氏名タグをスキャンしても、持出登録後の戻り遷移が発火しないことがあった
+- 手入力で氏名タグUIDを入れて送信する経路は通る一方、**2枚目のNFCスキャン経路だけ**不安定だった
+
+**Symptoms**:
+- 計測機器タグスキャン後の「計測機器 持出」画面で、氏名タグをかざしても自動送信されない
+- `持出登録` ボタン有効化後でも、2枚目のNFCスキャンだけ反応しないように見える
+- 再スキャンや手入力では通るため、画面遷移やAPIではなく **NFCイベント受信直後の送信経路**に症状が寄っていた
+
+**Root cause**:
+- `KioskInstrumentBorrowPage.tsx` の 2枚目NFC経路で `setEmployeeTagUid(nfcEvent.uid)` の直後に `handleSubmit()` を呼んでいた
+- React state 更新は非同期のため、`handleSubmit()` 実行時点では `employeeTagUid` がまだ空文字のことがあり、検証/送信が空UID扱いになっていた
+- つまり不具合は **NFC受信直後の state 読み出し race condition** だった
+
+**Fix**:
+- ✅ `handleSubmit` に `employeeTagUidOverride` を追加し、NFC直後は state ではなく **今読み取った `nfcEvent.uid`** を直接使うように修正
+- ✅ API payload / エラーログも `effectiveEmployeeUid` を使うように統一
+- ✅ 2枚目NFC経路では `void handleSubmit(undefined, nfcEvent.uid)` を呼び、state 反映待ちに依存しないようにした
+- ✅ `KioskInstrumentBorrowPage.nfc.test.tsx` を追加/更新し、計測機器タグ→氏名タグの自動送信フローを回帰確認
+
+**Verification**:
+- ローカル: `KioskInstrumentBorrowPage.nfc.test.tsx` を含む関連テストを通過
+- CI: GitHub Actions 成功（Run `24491079191`）
+- 本番デプロイ: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **1台ずつ** 実行
+- 実機相当確認:
+  - Pi5 `GET /api/system/health` → `status: ok`
+  - 4台の `deploy-status` → すべて `{"isMaintenance":false}`
+  - 4台の `kiosk-browser.service` / `status-agent.timer` → すべて `active`
+  - 4台の `http://localhost:7071/api/agent/status` → すべて `readerConnected: true`, `queueSize: 0`
+
+**Troubleshooting**:
+- 初回 Pi5 デプロイは `Rebuild/Restart docker compose services` で進捗停止に見え、runbook 判定どおりハングと判断
+- [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) に従いハングしたプロセスを停止し、Pi5 を `--foreground` で再実行して復旧
+- Pi5 の detached status が更新されず、リモートログ更新も 10 分以上止まる場合は runbook の復旧手順を優先する
+
+**関連ファイル**:
+- `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`
+- `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.nfc.test.tsx`
+- `docs/modules/measuring-instruments/ui.md`
+- `docs/guides/deployment.md`
+
+**解決状況**: ✅ **修正・CI・順次デプロイ・実機相当確認完了**（2026-04-16）
+
+---
+
 ### [KB-096] クライアントログ取得のベストプラクティス（postClientLogsへの統一）
 
 **EXEC_PLAN.md参照**: 計測機器管理システム実装（2025-12-12）

@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-15
+last-verified: 2026-04-16
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -11,6 +11,23 @@ update-frequency: medium
 # デプロイメントガイド
 
 最終更新: 2026-04-15（**キオスク「集計」4パネルダッシュボード・当日イベント・loan-analytics `periodEvents`・Web イメージ Alpine セキュリティ更新**（`feat/kiosk-analytics-four-panel-today-events`・コミット **`323dd9f0`**）: **Pi5→Pi4×4 順次**（Pi3 除外）・Detach `20260415-162422-11542`（`raspberrypi5`）→ `20260415-163600-7918`（`raspberrypi4`）→ `20260415-164041-17295`（`raspi4-robodrill01`）→ `20260415-164408-5423`（`raspi4-fjv60-80`）→ `20260415-164824-29880`（`raspi4-kensaku-stonebase01`）・Phase12 **`./scripts/deploy/verify-phase12-real.sh` → PASS 43/0/0**（約 **27s**）。**Pi3**: 対象外。**トラブルシュート**: 未コミット／未追跡があると `update-all-clients.sh` が fail-fast → **`git stash push -u`**。仕様・知見は [KB-334](../knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-15」節。**前項** 2026-04-14（**キオスク「集計」月選択・タブ別資産フィルタ**（`feat/kiosk-analytics-month-and-asset-filters`・コミット **`8ce1a9da`**）: **Pi5→Pi4×4 順次**（Pi3 除外）・Detach `20260414-211347-29532`（`raspberrypi5`）→ `20260414-212701-15420`（`raspberrypi4`）→ `20260414-213153-7546`（`raspi4-robodrill01`）→ `20260414-213547-9533`（`raspi4-fjv60-80`）→ `20260414-214120-20816`（`raspi4-kensaku-stonebase01`）・Phase12 **`./scripts/deploy/verify-phase12-real.sh` → PASS 43/0/0**（約 **57s**）。**Pi3**: 対象外（キオスク/API 変更のため Pi3 専用手順は未実施）。仕様・知見は [KB-334](../knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-14」節。**前項** **キオスク統合ローン分析（計測機器 CSV+NFC）**（`feat/unified-loan-analytics`・コミット **`35f5ed4b`**）: **Pi5→Pi4×4 順次**（Pi3 除外）・Detach `20260414-194212-7916`（`raspberrypi5`）→ `20260414-195311-19926`（`raspberrypi4`）→ `20260414-195803-9001`（`raspi4-robodrill01`）→ `20260414-200152-17153`（`raspi4-fjv60-80`）→ `20260414-200700-5820`（`raspi4-kensaku-stonebase01`）・Phase12 **43/0/0**（約 **63s**）。**トラブルシュート**: fail-fast（未 push / 汚いツリー）は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。仕様は [KB-344](../knowledge-base/KB-344-unified-loan-analytics.md) / [ui.md](../modules/measuring-instruments/ui.md)。**さらに前** キオスク計測機器持出レイアウト align（`702f7b83`）: Detach `20260414-180107-30581` → …・Phase12 約 **53s**。**さらに前** 計測機器ジャンル画像永続化: **Pi5 のみ**・[KB-343](../knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。）
+
+### 補足（2026-04-16: 計測機器持出の氏名NFC自動送信修正）
+
+- 本番反映は **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**、`scripts/update-all-clients.sh` で順次実行した。
+- Pi5 は初回の detached 実行（runId `20260416-133007-2231`）が `TASK [server : Rebuild/Restart docker compose services]` で停止したように見えた。**リモートログ 10 分以上停止 + `state: running` + exit file なし** を確認したら、[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) に従ってハングプロセスを停止し、**`--foreground`** で再実行して復旧した。
+- 成功実績:
+  - Pi5: `ansible-update-20260416-153847.log` / health `ansible-health-20260416-153847.log`
+  - `raspberrypi4`: `ansible-update-20260416-154544.log`
+  - `raspi4-robodrill01`: `ansible-update-20260416-155014.log`
+  - `raspi4-fjv60-80`: `ansible-update-20260416-155343.log`
+  - `raspi4-kensaku-stonebase01`: `ansible-update-20260416-160026.log`
+- 実機相当確認:
+  - Pi5 `GET /api/system/health` → `status: ok`
+  - 4台の `deploy-status` → すべて `{"isMaintenance":false}`
+  - 4台の `kiosk-browser.service` / `status-agent.timer` → すべて `active`
+  - 4台の `http://localhost:7071/api/agent/status` → すべて `readerConnected: true`, `queueSize: 0`
+- 機能の詳細は [KB-345](../knowledge-base/frontend.md#kb-345-計測機器持出で氏名nfcスキャン後に自動送信されない) と [ui.md](../modules/measuring-instruments/ui.md) を参照。
 
 ## 概要
 

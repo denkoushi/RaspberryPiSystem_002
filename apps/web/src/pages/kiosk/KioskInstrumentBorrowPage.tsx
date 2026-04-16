@@ -276,15 +276,16 @@ export function KioskInstrumentBorrowPage() {
     }
   };
 
-  const handleSubmit = useCallback(async (e?: FormEvent) => {
+  const handleSubmit = useCallback(async (e?: FormEvent, employeeTagUidOverride?: string) => {
     if (e) {
       e.preventDefault();
     }
+    const effectiveEmployeeUid = (employeeTagUidOverride ?? employeeTagUid).trim();
     if (!hasInstrument) {
       setMessage('計測機器を選択するかタグUIDを入力してください。');
       return;
     }
-    if (!employeeTagUid.trim()) {
+    if (!effectiveEmployeeUid) {
       setMessage('氏名タグUIDを入力してください。');
       return;
     }
@@ -306,7 +307,7 @@ export function KioskInstrumentBorrowPage() {
         instrumentTagUid?: string;
         instrumentId?: string;
       } = {
-        employeeTagUid
+        employeeTagUid: effectiveEmployeeUid
       };
       const tagUid = resolvedInstrumentTagUid.trim();
       if (tagUid) {
@@ -353,10 +354,10 @@ export function KioskInstrumentBorrowPage() {
               message: `instrument-borrow failed: ${rawMessage || 'Unknown error'}`,
               context: {
                 selectedInstrumentId,
-                employeeTagUid,
+                employeeTagUid: effectiveEmployeeUid,
                 resolvedInstrumentTagUid,
                 payload: {
-                  employeeTagUid,
+                  employeeTagUid: effectiveEmployeeUid,
                   instrumentTagUid: resolvedInstrumentTagUid.trim() || undefined,
                   instrumentId: selectedInstrumentId || undefined
                 },
@@ -430,7 +431,7 @@ export function KioskInstrumentBorrowPage() {
       return;
     }
 
-    // 2枚目のスキャンは氏名タグとみなす
+    // 2枚目のスキャンは氏名タグとみなす（setStateは次描画まで反映されないため、APIは nfcEvent.uid を明示渡しする）
     if (!employeeTagUid) {
       setEmployeeTagUid(nfcEvent.uid);
       if (isNg || isSubmitting) {
@@ -440,8 +441,7 @@ export function KioskInstrumentBorrowPage() {
         setMessage('計測機器を選択中です。少し待ってから再スキャンしてください。');
         return;
       }
-      // OKフローは自動送信
-      handleSubmit();
+      void handleSubmit(undefined, nfcEvent.uid);
     }
   }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit, instrumentSource, resolvedClientId, resolvedClientKey]);
 

@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-16）
+
+- **計測機器持出: 2枚目の氏名NFC直後に自動送信されない race condition を修正し、本番5台へ順次デプロイ**: ブランチ **`fix/kiosk-instrument-borrow-nfc-employee-uid`**。`KioskInstrumentBorrowPage` の 2枚目NFC経路で、state 更新待ちではなく **読み取った `nfcEvent.uid` をそのまま送信**するよう修正し、`KioskInstrumentBorrowPage.nfc.test.tsx` で回帰確認。**CI**: GitHub Actions Run **`24491079191`** 成功。**本番**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **1台ずつ**。Pi5 初回 detached run `20260416-133007-2231` は `Rebuild/Restart docker compose services` で停止したように見えたため、[deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) に従って復旧し `--foreground` で再実行。**実機相当確認**: Pi5 `health=ok`、4台の `deploy-status=false`、`kiosk-browser.service` / `status-agent.timer` active、`nfc-agent` `readerConnected=true`。参照: [frontend.md の KB-345](./knowledge-base/frontend.md#kb-345-計測機器持出で氏名nfcスキャン後に自動送信されない) / [modules/measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) / [deployment.md](./guides/deployment.md)。
+
 ### 🆕 最新アップデート（2026-04-15）
 
 - **キオスク「集計」4パネルダッシュボード・当日の持出返却・loan-analytics `periodEvents`・Web イメージ Alpine 更新**: ブランチ **`feat/kiosk-analytics-four-panel-today-events`**・コミット **`323dd9f0`**。本番 Pi5→Pi4×4 順次（Pi3 除外）・Phase12 **43/0/0**・Detach Run ID は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-15」・[deployment.md](./guides/deployment.md)。デプロイ前 **汚いツリー**は **`git stash push -u`**。進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
