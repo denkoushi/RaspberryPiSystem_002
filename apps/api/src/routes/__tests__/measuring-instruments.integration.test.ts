@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { createAuthHeader, createTestEmployee, createTestUser } from './helpers.js';
+import { createAuthHeader, createTestClientDevice, createTestEmployee, createTestUser } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -167,6 +167,54 @@ describe('measuring instrument genres integration', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json().message).toContain('整合');
+  });
+
+  it('allows inspection record creation with x-client-key (without JWT)', async () => {
+    const client = await createTestClientDevice();
+    const genre = await prisma.measuringInstrumentGenre.create({
+      data: { name: `ジャンル-${randomUUID()}` }
+    });
+    const instrument = await prisma.measuringInstrument.create({
+      data: {
+        name: `キオスク計測機器-${randomUUID()}`,
+        managementNumber: `MI-KIOSK-${Date.now()}`,
+        genreId: genre.id
+      }
+    });
+    const inspectionItem = await prisma.inspectionItem.create({
+      data: {
+        genreId: genre.id,
+        name: `点検項目-${randomUUID()}`,
+        content: '点検',
+        criteria: 'OK',
+        method: '目視',
+        order: 1
+      }
+    });
+    const employee = await createTestEmployee();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/measuring-instruments/${instrument.id}/inspection-records`,
+      headers: {
+        'x-client-key': client.apiKey,
+        'Content-Type': 'application/json'
+      },
+      payload: {
+        employeeId: employee.id,
+        inspectionItemId: inspectionItem.id,
+        result: 'PASS',
+        inspectedAt: new Date().toISOString()
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().inspectionRecord).toMatchObject({
+      measuringInstrumentId: instrument.id,
+      inspectionItemId: inspectionItem.id,
+      employeeId: employee.id,
+      result: 'PASS'
+    });
   });
 
   it('stores uploaded genre images under PHOTO_STORAGE_DIR and serves them back', async () => {

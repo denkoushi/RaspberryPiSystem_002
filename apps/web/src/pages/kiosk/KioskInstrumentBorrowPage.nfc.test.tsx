@@ -3,6 +3,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const borrowMeasuringInstrumentMock = vi.fn();
+const createInspectionRecordMock = vi.fn();
+const getMeasuringInstrumentInspectionProfileMock = vi.fn();
 
 /** useNfcStream のモックが参照する可変状態（factory より前に hoisted） */
 const nfcStreamState = vi.hoisted(() => ({
@@ -38,16 +40,8 @@ vi.mock('../../api/client', async (importOriginal) => {
       updatedAt: ''
     }),
     getMeasuringInstrumentTags: vi.fn().mockResolvedValue({ tags: [{ rfidTagUid: 'inst-rfid-1' }] }),
-    getMeasuringInstrumentInspectionProfile: vi.fn().mockResolvedValue({
-      genre: {
-        id: 'g1',
-        name: '長さ',
-        imageUrlPrimary: 'https://example.com/a.png',
-        imageUrlSecondary: null
-      },
-      inspectionItems: []
-    }),
-    createInspectionRecord: vi.fn().mockResolvedValue({}),
+    getMeasuringInstrumentInspectionProfile: (...args: unknown[]) => getMeasuringInstrumentInspectionProfileMock(...args),
+    createInspectionRecord: (...args: unknown[]) => createInspectionRecordMock(...args),
     postClientLogs: vi.fn().mockResolvedValue(undefined)
   };
 });
@@ -69,17 +63,27 @@ function Harness({ nfc }: { nfc: { uid: string; timestamp: string } | null }) {
 describe('KioskInstrumentBorrowPage NFC', () => {
   beforeEach(() => {
     borrowMeasuringInstrumentMock.mockReset();
+    createInspectionRecordMock.mockReset();
+    getMeasuringInstrumentInspectionProfileMock.mockReset();
     borrowMeasuringInstrumentMock.mockResolvedValue({
       id: 'loan-1',
       employee: { id: 'emp-db-1', displayName: '試験' }
     });
+    getMeasuringInstrumentInspectionProfileMock.mockResolvedValue({
+      genre: {
+        id: 'g1',
+        name: '長さ',
+        imageUrlPrimary: 'https://example.com/a.png',
+        imageUrlSecondary: null
+      },
+      inspectionItems: []
+    });
+    createInspectionRecordMock.mockResolvedValue({});
     nfcStreamState.event = null;
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response));
   });
 
   afterEach(() => {
     vi.clearAllMocks();
-    vi.unstubAllGlobals();
   });
 
   it('2枚目の氏名NFCで borrow にイベントUIDが渡る（setState直後の handleSubmit で空UIDにならない）', async () => {
@@ -108,6 +112,42 @@ describe('KioskInstrumentBorrowPage NFC', () => {
           instrumentTagUid: 'inst-rfid-1'
         })
       );
+    });
+  });
+
+  it('点検記録作成が401で失敗すると持出完了遷移しない（認証トークン要求の再現）', async () => {
+    getMeasuringInstrumentInspectionProfileMock.mockResolvedValueOnce({
+      genre: {
+        id: 'g1',
+        name: '長さ',
+        imageUrlPrimary: 'https://example.com/a.png',
+        imageUrlSecondary: null
+      },
+      inspectionItems: [
+        { id: 'insp-1', name: '外観確認', order: 1, createdAt: '', updatedAt: '', genreId: 'g1' }
+      ]
+    });
+    createInspectionRecordMock.mockRejectedValueOnce({
+      response: { status: 401, data: { message: '認証トークンが必要です' } },
+      message: 'Request failed with status code 401'
+    });
+
+    const { rerender } = render(<Harness nfc={null} />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByRole('combobox')).toHaveValue('inst-1');
+      },
+      { timeout: 5000 }
+    );
+
+    rerender(<Harness nfc={{ uid: 'employee-nfc-uid-401', timestamp: new Date().toISOString() }} />);
+
+    await waitFor(() => {
+      expect(createInspectionRecordMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('kiosk-tag')).not.toBeInTheDocument();
     });
   });
 });
