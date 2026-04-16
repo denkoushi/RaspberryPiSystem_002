@@ -1,5 +1,4 @@
 import cron, { validate } from 'node-cron';
-import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import { BackupHistoryService } from '../backup/backup-history.service.js';
 import { logger } from '../../lib/logger.js';
@@ -13,6 +12,7 @@ import { CsvImportExecutionService } from './csv-import-execution.service.js';
 import { ApiError } from '../../lib/errors.js';
 import { MeasuringInstrumentLoanRetentionService } from '../measuring-instruments/measuring-instrument-loan-retention.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { loadBackupConfigWithFkojunstImportScheduleEnsured } from './fkojunst-import-schedule.ensure.js';
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { GmailReauthRequiredError, isInvalidGrantMessage } from '../backup/gmail-oauth.service.js';
 import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
@@ -285,7 +285,7 @@ export class CsvImportScheduler {
     }
 
     this.isRunning = true;
-    const config = await BackupConfigLoader.load();
+    const { config } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
     try {
       await this.historyService.failStaleProcessingHistory?.({ staleMinutes: 60 });
     } catch (error) {
@@ -811,7 +811,7 @@ export class CsvImportScheduler {
    * 手動でインポートを実行
    */
   async runImport(importId: string): Promise<Awaited<ReturnType<CsvImportScheduler['executeSingleRun']>>> {
-    const config = await BackupConfigLoader.load();
+    const { config } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
     const importSchedule = config.csvImports?.find(imp => imp.id === importId);
     
     if (!importSchedule) {

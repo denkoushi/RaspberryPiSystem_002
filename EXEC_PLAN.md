@@ -1822,14 +1822,14 @@
 
 ## Next Steps（将来のタスク）
 
-### 生産日程 FKOJUNST: Gmail スケジュール登録と取り込みスモーク（2026-04-16 本番デプロイ後）
+### 生産日程 FKOJUNST: 本番反映後の取り込みスモーク（スケジュールはコード保証）
 
-**概要**: コード・seed・DB マイグレーションは **`main` マージ後**に本番へ反映される。**運用側**で Gmail 取り込みの **`targets`** に **専用 `CsvDashboard` ID**（`9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c`・件名 **`FKOJUNST`**）を追加しないと CSV が取り込まれない（[KB-297 §FKOJUNST](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-from-gmail-csv-2026-04-16)・[csv-import-export.md](./docs/guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api)）。
+**概要**: 専用 `CsvDashboard` と **`ProductionScheduleFkojunstStatus`** 同期・キオスク **`工順ST`** は既存実装済み。Gmail 自動取得は `backup.json` の **`csv-import-productionschedule-fkojunst`**（固定ID・`0 0 * * *`）を **読み込み時に自動補完**するため、**手動で `POST /api/imports/schedule` して `targets` を足す作業は原則不要**（[KB-297 §FKOJUNST](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-from-gmail-csv-2026-04-16)）。
 
 **候補タスク**:
 
-1. **スケジュール登録**: `POST /api/imports/schedule` で `csvDashboards` ターゲットを追加（既存ジョブと **分刻み衝突**しない cron を選ぶ）。
-2. **スモーク**: テスト CSV を **手動 upload** し、API 応答の **`fkojunstSync`**（または DB の `ProductionScheduleFkojunstStatus`）とキオスク **`工順ST`** 列を確認。
+1. **デプロイ**: 当該変更を含む API を本番へ反映後、**`GET /api/imports/schedule`** で固定スケジュールの存在を確認（一覧に **`csv-import-productionschedule-fkojunst`**）。
+2. **スモーク**: テスト CSV を **手動 upload** または **`POST /api/imports/schedule/:id/run`** で、`fkojunstSync`（または DB の `ProductionScheduleFkojunstStatus`）とキオスク **`工順ST`** を確認。
 3. **監視**: 同期結果の **`unmatched` / `skippedInvalidStatus`** が継続的に多い場合は上流 CSV・winner 照合キーを確認。
 
 ### 計測機器: 点検記録 API 修正（PR #147）の本番追随・回帰確認（2026-04-17 以降）
