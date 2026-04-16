@@ -6,6 +6,11 @@ import type { BackupConfig } from '../backup/backup-config.js';
 import { getCsvImportScheduler } from './csv-import-scheduler.js';
 import { mapManualImportRunError } from './import-schedule-error-mapper.js';
 import { detectGmailScheduleMinuteCollisions } from './import-schedule-policy.js';
+import {
+  applyFkojunstImportScheduleInvariants,
+  ensureFkojunstCsvImportSchedule,
+  FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
+} from './fkojunst-import-schedule.policy.js';
 
 type CsvImportSchedule = NonNullable<BackupConfig['csvImports']>[number];
 
@@ -57,13 +62,28 @@ export class ImportScheduleAdminService {
     private readonly getScheduler: () => CsvImportSchedulerPort = () => getCsvImportScheduler()
   ) {}
 
-  async listSchedules(): Promise<CsvImportSchedule[]> {
+  private async loadConfigEnsured(): Promise<{ config: BackupConfig; repaired: boolean }> {
     const config = await this.store.load();
+    const ensured = ensureFkojunstCsvImportSchedule(config);
+    if (ensured.repaired) {
+      await this.store.save(ensured.config);
+    }
+    return ensured;
+  }
+
+  async listSchedules(): Promise<CsvImportSchedule[]> {
+    const { config, repaired } = await this.loadConfigEnsured();
+    if (repaired) {
+      await this.getScheduler().reload();
+    }
     return config.csvImports ?? [];
   }
 
   async createSchedule(input: CsvImportScheduleCreateInput): Promise<{ schedule: CsvImportSchedule; warnings: string[] }> {
-    const config = await this.store.load();
+    const { config, repaired } = await this.loadConfigEnsured();
+    if (repaired) {
+      await this.getScheduler().reload();
+    }
 
     if (config.csvImports?.some((schedule) => schedule.id === input.id)) {
       throw new ApiError(409, `スケジュールIDが既に存在します: ${input.id}`);
@@ -95,7 +115,10 @@ export class ImportScheduleAdminService {
     scheduleId: string,
     input: CsvImportScheduleUpdateInput
   ): Promise<{ schedule: CsvImportSchedule; warnings: string[] }> {
-    const config = await this.store.load();
+    const { config, repaired } = await this.loadConfigEnsured();
+    if (repaired) {
+      await this.getScheduler().reload();
+    }
     const scheduleIndex = config.csvImports?.findIndex((schedule) => schedule.id === scheduleId);
 
     if (scheduleIndex === undefined || scheduleIndex === -1) {
@@ -111,15 +134,19 @@ export class ImportScheduleAdminService {
         input.autoBackupAfterImport ?? existingSchedule.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
     };
 
-    config.csvImports![scheduleIndex] = updatedSchedule;
+    const canonicalSchedule = applyFkojunstImportScheduleInvariants(updatedSchedule);
+    config.csvImports![scheduleIndex] = canonicalSchedule;
     const warnings = detectGmailScheduleMinuteCollisions(config);
     await this.store.save(config);
     await this.getScheduler().reload();
 
-    return { schedule: updatedSchedule, warnings };
+    return { schedule: canonicalSchedule, warnings };
   }
 
   async deleteSchedule(scheduleId: string): Promise<void> {
+    if (scheduleId === FKOJUNST_CSV_IMPORT_SCHEDULE_ID) {
+      throw new ApiError(400, 'このスケジュールはシステムで固定されており削除できません');
+    }
     const config = await this.store.load();
     const scheduleIndex = config.csvImports?.findIndex((schedule) => schedule.id === scheduleId);
 
@@ -151,7 +178,10 @@ export class ImportScheduleAdminService {
       timestamp: Date.now(),
     });
 
-    const config = await this.store.load();
+    const { config, repaired } = await this.loadConfigEnsured();
+    if (repaired) {
+      await this.getScheduler().reload();
+    }
     const schedule = config.csvImports?.find((item) => item.id === scheduleId);
     void emitDebugEvent({
       location: 'imports.ts:1252',

@@ -248,6 +248,16 @@ export const defaultBackupConfig: BackupConfig = {
       enabled: false,
       replaceExisting: false,
       autoBackupAfterImport: { enabled: false, targets: ['csv'] }
+    },
+    {
+      id: 'csv-import-productionschedule-fkojunst',
+      name: 'ProductionSchedule_FKOJUNST (Gmail)',
+      provider: 'gmail',
+      targets: [{ type: 'csvDashboards', source: '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c' }],
+      schedule: '0 0 * * *',
+      enabled: true,
+      replaceExisting: false,
+      autoBackupAfterImport: { enabled: false, targets: ['csv'] }
     }
   ],
   csvImportSubjectPatterns: {

@@ -84,7 +84,7 @@ describe('CSV Import Schedule API', () => {
   });
 
   describe('GET /api/imports/schedule', () => {
-    it('should return empty array when no schedules', async () => {
+    it('should ensure fixed FKOJUNST Gmail schedule when csvImports was cleared', async () => {
       const response = await app.inject({
         method: 'GET',
         url: '/api/imports/schedule',
@@ -94,8 +94,11 @@ describe('CSV Import Schedule API', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      const json = response.json() as { schedules: unknown[] };
-      expect(json.schedules).toEqual([]);
+      const json = response.json() as { schedules: Array<{ id: string; schedule: string; provider?: string }> };
+      const fk = json.schedules.find((s) => s.id === 'csv-import-productionschedule-fkojunst');
+      expect(fk).toBeDefined();
+      expect(fk?.schedule).toBe('0 0 * * *');
+      expect(fk?.provider).toBe('gmail');
     });
 
     it('should return 401 without authentication', async () => {
@@ -366,6 +369,32 @@ describe('CSV Import Schedule API', () => {
 
       expect(response.statusCode).toBe(404);
     });
+
+    it('should keep fixed FKOJUNST invariants in update response', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/imports/schedule/csv-import-productionschedule-fkojunst',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          provider: 'dropbox',
+          schedule: '0 4 * * *',
+          targets: [{ type: 'csvDashboards', source: 'wrong-id' }]
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as {
+        schedule: { id: string; provider?: string; schedule: string; targets?: Array<{ source: string }> }
+      };
+      expect(json.schedule.id).toBe('csv-import-productionschedule-fkojunst');
+      expect(json.schedule.provider).toBe('gmail');
+      expect(json.schedule.schedule).toBe('0 0 * * *');
+      expect(json.schedule.targets).toEqual([
+        { type: 'csvDashboards', source: '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c' }
+      ]);
+    });
   });
 
   describe('DELETE /api/imports/schedule/:id', () => {
@@ -419,6 +448,18 @@ describe('CSV Import Schedule API', () => {
       });
 
       expect(response.statusCode).toBe(404);
+    });
+
+    it('should return 400 when deleting fixed FKOJUNST schedule', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/api/imports/schedule/csv-import-productionschedule-fkojunst',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
     });
   });
 
