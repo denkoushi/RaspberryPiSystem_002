@@ -11,7 +11,7 @@ export async function loadBackupConfigWithFkojunstImportScheduleEnsured(): Promi
 }> {
   const config = await BackupConfigLoader.load();
   const { config: next, repaired } = ensureFkojunstCsvImportSchedule(config);
-  if (repaired) {
+  if (repaired && typeof (BackupConfigLoader as { save?: (config: BackupConfig) => Promise<void> }).save === 'function') {
     await BackupConfigLoader.save(next);
   }
   return { config: next, repaired };

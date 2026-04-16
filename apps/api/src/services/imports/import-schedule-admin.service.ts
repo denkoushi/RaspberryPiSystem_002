@@ -8,9 +8,9 @@ import { mapManualImportRunError } from './import-schedule-error-mapper.js';
 import { detectGmailScheduleMinuteCollisions } from './import-schedule-policy.js';
 import {
   applyFkojunstImportScheduleInvariants,
+  ensureFkojunstCsvImportSchedule,
   FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
 } from './fkojunst-import-schedule.policy.js';
-import { loadBackupConfigWithFkojunstImportScheduleEnsured } from './fkojunst-import-schedule.ensure.js';
 
 type CsvImportSchedule = NonNullable<BackupConfig['csvImports']>[number];
 
@@ -62,8 +62,17 @@ export class ImportScheduleAdminService {
     private readonly getScheduler: () => CsvImportSchedulerPort = () => getCsvImportScheduler()
   ) {}
 
+  private async loadConfigEnsured(): Promise<{ config: BackupConfig; repaired: boolean }> {
+    const config = await this.store.load();
+    const ensured = ensureFkojunstCsvImportSchedule(config);
+    if (ensured.repaired) {
+      await this.store.save(ensured.config);
+    }
+    return ensured;
+  }
+
   async listSchedules(): Promise<CsvImportSchedule[]> {
-    const { config, repaired } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
+    const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
     }
@@ -71,7 +80,7 @@ export class ImportScheduleAdminService {
   }
 
   async createSchedule(input: CsvImportScheduleCreateInput): Promise<{ schedule: CsvImportSchedule; warnings: string[] }> {
-    const { config, repaired } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
+    const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
     }
@@ -106,7 +115,7 @@ export class ImportScheduleAdminService {
     scheduleId: string,
     input: CsvImportScheduleUpdateInput
   ): Promise<{ schedule: CsvImportSchedule; warnings: string[] }> {
-    const { config, repaired } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
+    const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
     }
@@ -169,7 +178,7 @@ export class ImportScheduleAdminService {
       timestamp: Date.now(),
     });
 
-    const { config, repaired } = await loadBackupConfigWithFkojunstImportScheduleEnsured();
+    const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
     }
