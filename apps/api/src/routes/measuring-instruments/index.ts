@@ -321,8 +321,8 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
     return { inspectionRecords: records };
   });
 
-  // 点検記録作成
-  app.post('/measuring-instruments/:id/inspection-records', { preHandler: canWrite }, async (request) => {
+  // 点検記録作成（キオスク運用のため x-client-key でも作成を許可）
+  app.post('/measuring-instruments/:id/inspection-records', { preHandler: allowWrite }, async (request) => {
     const params = instrumentParamsSchema.parse(request.params);
     const rawBody = typeof request.body === 'object' && request.body !== null ? request.body : {};
     const body = inspectionRecordCreateSchema.parse({ ...rawBody, measuringInstrumentId: params.id });
