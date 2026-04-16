@@ -281,6 +281,7 @@ export function ProductionScheduleManualOrderPage() {
       { key: 'processingType', label: '処理' },
       { key: 'FSIGENSHOYORYO', label: '所要', dataType: 'number' },
       { key: 'FKOJUN', label: '工順', dataType: 'number' },
+      { key: 'FKOJUNST', label: '工順ST' },
       { key: 'FSEIBAN', label: '製番' },
       { key: 'plannedQuantity', label: '指示数', dataType: 'number' },
       { key: 'plannedStartDate', label: '着手日', dataType: 'date' }

@@ -60,6 +60,45 @@ async function main() {
   const productionScheduleGmailSubjectPattern = '生産日程_三島_研削工程';
   const productionScheduleOrderSupplementDashboardId = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
   const productionScheduleOrderSupplementSubjectPattern = '部品納期個数';
+  const productionScheduleFkojunstDashboardId = '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c';
+  const productionScheduleFkojunstSubjectPattern = 'FKOJUNST';
+  const productionScheduleFkojunstDashboardDefinition = {
+    name: 'ProductionSchedule_FKOJUNST',
+    description: '生産日程 工順ステータス（Gmail件名: FKOJUNST）',
+    gmailSubjectPattern: productionScheduleFkojunstSubjectPattern,
+    enabled: true,
+    ingestMode: 'DEDUP' as const,
+    dedupKeyColumns: ['ProductNo', 'FSIGENCD', 'FKOJUN'],
+    dateColumnName: null,
+    displayPeriodDays: 365,
+    emptyMessage: 'FKOJUNST データはありません',
+    columnDefinitions: [
+      { internalName: 'FKOJUN', displayName: '工順', csvHeaderCandidates: ['工順', 'FKOJUN'], dataType: 'string', order: 0 },
+      {
+        internalName: 'ProductNo',
+        displayName: '製造オーダー番号',
+        csvHeaderCandidates: ['製造オーダー番号', 'ProductNo', 'FSESONO'],
+        dataType: 'string',
+        order: 1,
+      },
+      { internalName: 'FSIGENCD', displayName: '資源CD', csvHeaderCandidates: ['資源CD', 'FSIGENCD'], dataType: 'string', order: 2 },
+      {
+        internalName: 'FKOJUNST',
+        displayName: '工順ステータス',
+        csvHeaderCandidates: ['FKOJUNST', '工順Status', '工順ステータス'],
+        dataType: 'string',
+        order: 3,
+        required: true,
+      },
+    ],
+    templateType: 'TABLE' as const,
+    templateConfig: {
+      rowsPerPage: 50,
+      fontSize: 14,
+      displayColumns: ['FKOJUN', 'ProductNo', 'FSIGENCD', 'FKOJUNST'],
+      headerFixed: true,
+    },
+  };
 
   const passwordHash = await bcrypt.hash('admin1234', 10);
   await prisma.user.upsert({
@@ -304,6 +343,16 @@ async function main() {
         headerFixed: true
       }
     }
+  });
+
+  // 生産日程 FKOJUNST（工順ステータス）CSVダッシュボード
+  await prisma.csvDashboard.upsert({
+    where: { id: productionScheduleFkojunstDashboardId },
+    update: productionScheduleFkojunstDashboardDefinition,
+    create: {
+      id: productionScheduleFkojunstDashboardId,
+      ...productionScheduleFkojunstDashboardDefinition,
+    },
   });
 
   // 計測機器の持出状況用のCSVダッシュボードを作成（サイネージ表示のデータソース）

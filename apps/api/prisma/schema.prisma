@@ -786,6 +786,7 @@ model CsvDashboardRow {
   productionScheduleProgress ProductionScheduleProgress?
   globalRowRanks             ProductionScheduleGlobalRowRank[]
   orderSupplements           ProductionScheduleOrderSupplement[]
+  fkojunstStatus             ProductionScheduleFkojunstStatus?
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
@@ -812,6 +813,28 @@ model ProductionScheduleOrderSupplement {
   @@unique([csvDashboardId, sourceCsvDashboardId, productNo, resourceCd, processOrder], map: "ProductionScheduleOrderSupplement_unique_source_key")
   @@index([csvDashboardId], map: "ProductionScheduleOrderSupplement_idx_dashboard")
   @@index([sourceCsvDashboardId], map: "ProductionScheduleOrderSupplement_idx_source_dashboard")
+}
+
+/// Gmail FKOJUNST CSV 由来の工順ステータス（最新CSVが正。source 単位で全置換）
+model ProductionScheduleFkojunstStatus {
+  id                   String   @id @default(uuid())
+  csvDashboardId       String
+  csvDashboardRowId    String
+  sourceCsvDashboardId String
+  productNo            String   @db.VarChar(20)
+  resourceCd           String   @db.VarChar(20)
+  processOrder         String   @db.VarChar(20)
+  /// C=加工完了 P=未確定 S=現場着手 R=移動票発行のみ X=場外
+  statusCode           String   @db.VarChar(1)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardRowId], map: "ProductionScheduleFkojunstStatus_unique_row")
+  @@unique([csvDashboardId, sourceCsvDashboardId, productNo, resourceCd, processOrder], map: "ProductionScheduleFkojunstStatus_unique_source_key")
+  @@index([csvDashboardId], map: "ProductionScheduleFkojunstStatus_idx_dashboard")
+  @@index([sourceCsvDashboardId], map: "ProductionScheduleFkojunstStatus_idx_source_dashboard")
 }
 
 model ProductionScheduleRowNote {

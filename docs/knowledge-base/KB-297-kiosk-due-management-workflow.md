@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-04-03
+last-verified: 2026-04-16
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -92,6 +92,18 @@ category: knowledge-base
   - **背景**: 管理コンソールのブラウザからは、埋め込みブラウザの証明書問題や Safari まわりの制約で UI 設定が困難な場合がある。**Pi5 に SSH できる管理者**は、[csv-import-export.md の production runbook 節](../guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) に従い、`docker compose … exec api` と **管理 API** で **CsvDashboard の整合**と **`csvImports` 登録**を行える（Prisma は **api コンテナ内**が安定）。
   - **実績（部品納期個数）**: 本番の `backup.json` に補助用スケジュールが無い状態に加え、固定 ID `8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31` の `CsvDashboard` が DB に存在しなかった。seed 同等の **`csvDashboard.upsert`** を本番で実施後、`POST /api/imports/schedule` で `csv-import-productionschedule_ordersupplement`（`provider: gmail`, `targets: [{ type: csvDashboards, source: 上記UUID }]`, cron `24,39,54 * * * *` ― 既存 Gmail 取り込みと分刻み衝突回避）を追加。**手動 1 回実行**は `POST .../run` に **`Content-Type: application/json` と body `{}`** が必要。取込 **76** 行・`ProductionScheduleOrderSupplement` 照合 **38** 行、Gmail 後処理（既読・ゴミ箱）まで確認済み。
   - **落とし穴**: ホストの `node` で `JWT_ACCESS_SECRET` を読めても、Prisma の `db:5432` に届かず失敗することがある。**JWT・Prisma・curl は api コンテナ内**で揃えて実行する。キオスク API 確認時の **`x-client-key` は実デバイス紐付けの `ClientDevice.apiKey`**（ダミーでは 401）。
+
+## FKOJUNST status from Gmail CSV (2026-04-16)
+
+- **Context**: Gmail 件名 **`FKOJUNST`** の CSV で工順ステータス（**C/P/S/R/X**）を取り込み、生産日程 **winner 行**へ反映してキオスク一覧・手動順に **「工順ST」** 列として出したい。既存の部品納期補助（`ProductionScheduleOrderSupplement`）とは意味が異なるため**混在させない**。
+- **Fix（境界分離）**:
+  - 専用 `CsvDashboard`（固定 ID **`9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c`**・seed 名 `ProductionSchedule_FKOJUNST`）・`ingestMode: DEDUP`・`dedupKeyColumns: ['ProductNo','FSIGENCD','FKOJUN']`・`ProductNo` ヘッダ候補に **`FSESONO`**。
+  - 保持テーブル **`ProductionScheduleFkojunstStatus`**（`sourceCsvDashboardId` 単位の **全削除→再作成**・winner 行 `csvDashboardRowId` へ紐付け）。一覧 API は **`LEFT JOIN`** で `rowData.FKOJUNST` に反映。
+  - キオスク: `ProductionSchedulePage` / `ProductionScheduleManualOrderPage` に列追加（`displayRowDerivation` の `values.FKOJUNST`）。
+- **運用（Gmail スケジュール）**: [csv-import-export.md の production runbook 節](../guides/csv-import-export.md#production-runbook-gmail-csv-dashboard-import-via-ssh-and-api) と同型に、**`POST /api/imports/schedule`** で `targets` に **`{ type: csvDashboards, source: 9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c }`** を追加する（件名 `FKOJUNST` は **他用途と重複させない**）。
+- **本番デプロイ（2026-04-16）**: [deployment.md](../guides/deployment.md) 標準（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/fkojunst-gmail-status-import infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow` **成功後**に同コマンドで `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260416-200358-17426` → `20260416-201513-2763` → `20260416-202019-27635` → `20260416-202436-9992` → `20260416-202952-27613`（各 **`failed=0` / `unreachable=0`**）。**Pi3**: 対象外。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **89s**・既存の「生産日程一覧API 補助予定フィールド」チェックを含む）。
+- **トラブルシュート**: 無効ステータス・winner 未照合は同期結果の **`skippedInvalidStatus` / `unmatched`** と API ログの **`[ProductionScheduleFkojunstSyncService] FKOJUNST rows skipped during sync`** を確認。`update-all-clients.sh` の **Mac 側ロック**（exit 3）は前ジョブ完了待ち。
 
 ## 表示用納期 effectiveDueDate・計画列 UI（2026-04-01）
 

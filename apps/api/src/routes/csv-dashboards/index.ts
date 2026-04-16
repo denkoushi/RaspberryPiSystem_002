@@ -87,7 +87,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       csvFilePath
     );
 
-    const { orderSupplementSync } = await postIngestService.runAfterSuccessfulIngest({
+    const { orderSupplementSync, fkojunstSync } = await postIngestService.runAfterSuccessfulIngest({
       dashboardId: params.id,
       ingestSource: 'manual',
     });
@@ -98,6 +98,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       rowsAdded: result.rowsAdded,
       rowsSkipped: result.rowsSkipped,
       ...(orderSupplementSync != null ? { orderSupplementSync } : {}),
+      ...(fkojunstSync != null ? { fkojunstSync } : {}),
     };
   });
 

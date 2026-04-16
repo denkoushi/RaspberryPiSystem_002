@@ -368,6 +368,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
         'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
         'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
+        'FKOJUNST', COALESCE("fkst"."statusCode", ''),
         'progress', (CASE WHEN COALESCE("p"."isCompleted", FALSE) THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
       (
@@ -415,6 +416,9 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
+      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE ${baseWhere} ${queryWhere}
     ORDER BY
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
