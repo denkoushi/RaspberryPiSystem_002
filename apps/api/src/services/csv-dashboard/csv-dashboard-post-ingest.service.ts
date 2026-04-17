@@ -2,17 +2,21 @@ import { logger } from '../../lib/logger.js';
 import {
   PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from '../production-schedule/constants.js';
 import { ProductionScheduleFkojunstSyncService } from '../production-schedule/fkojunst-sync.service.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../production-schedule/order-supplement-sync.service.js';
+import { ProductionScheduleSeibanMachineNameSupplementSyncService } from '../production-schedule/seiban-machine-name-supplement-sync.service.js';
 import type { OrderSupplementSyncResult } from '../production-schedule/order-supplement-sync.pipeline.js';
 import type { FkojunstSyncResult } from '../production-schedule/fkojunst-sync.pipeline.js';
+import type { SeibanMachineNameSupplementSyncResult } from '../production-schedule/seiban-machine-name-supplement-sync.pipeline.js';
 
 export type CsvDashboardIngestSource = 'gmail' | 'manual';
 
 export type CsvDashboardPostIngestResult = {
   orderSupplementSync: OrderSupplementSyncResult | null;
   fkojunstSync: FkojunstSyncResult | null;
+  seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null;
 };
 
 /**
@@ -22,15 +26,18 @@ export type CsvDashboardPostIngestResult = {
 export class CsvDashboardPostIngestService {
   constructor(
     private readonly orderSupplementSyncService: ProductionScheduleOrderSupplementSyncService = new ProductionScheduleOrderSupplementSyncService(),
-    private readonly fkojunstSyncService: ProductionScheduleFkojunstSyncService = new ProductionScheduleFkojunstSyncService()
+    private readonly fkojunstSyncService: ProductionScheduleFkojunstSyncService = new ProductionScheduleFkojunstSyncService(),
+    private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService()
   ) {}
 
   async runAfterSuccessfulIngest(params: {
     dashboardId: string;
     ingestSource: CsvDashboardIngestSource;
+    ingestRunId?: string;
   }): Promise<CsvDashboardPostIngestResult> {
     let orderSupplementSync: OrderSupplementSyncResult | null = null;
     let fkojunstSync: FkojunstSyncResult | null = null;
+    let seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null = null;
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
       orderSupplementSync = await this.orderSupplementSyncService.syncFromSupplementDashboard();
@@ -48,10 +55,28 @@ export class CsvDashboardPostIngestService {
       );
     }
 
-    if (orderSupplementSync === null && fkojunstSync === null) {
-      return { orderSupplementSync: null, fkojunstSync: null };
+    if (params.dashboardId === PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID) {
+      if (!params.ingestRunId) {
+        throw new Error('[CsvDashboardPostIngestService] ingestRunId is required for seiban machine name supplement sync');
+      }
+      seibanMachineNameSupplementSync = await this.seibanMachineNameSupplementSyncService.syncFromSupplementDashboard({
+        ingestRunId: params.ingestRunId,
+      });
+      logger.info(
+        {
+          dashboardId: params.dashboardId,
+          ingestSource: params.ingestSource,
+          ingestRunId: params.ingestRunId,
+          syncResult: seibanMachineNameSupplementSync,
+        },
+        '[CsvDashboardPostIngestService] Seiban machine name supplement sync completed'
+      );
     }
 
-    return { orderSupplementSync, fkojunstSync };
+    if (orderSupplementSync === null && fkojunstSync === null && seibanMachineNameSupplementSync === null) {
+      return { orderSupplementSync: null, fkojunstSync: null, seibanMachineNameSupplementSync: null };
+    }
+
+    return { orderSupplementSync, fkojunstSync, seibanMachineNameSupplementSync };
   }
 }

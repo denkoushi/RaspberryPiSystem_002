@@ -297,6 +297,7 @@ export class CsvDashboardImportService {
           await this.postIngestService.runAfterSuccessfulIngest({
             dashboardId,
             ingestSource: 'gmail',
+            ingestRunId: result.ingestRunId,
           });
           // #region agent debug
           stepLogs.push(`${safeMessageId}:after-ingestFromGmail:${result.rowsProcessed}`);

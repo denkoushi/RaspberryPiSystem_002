@@ -35,7 +35,7 @@ export async function fetchSeibanProgressRows(
     return [];
   }
 
-  return prisma.$queryRaw<SeibanProgressRow[]>`
+  const rows = await prisma.$queryRaw<SeibanProgressRow[]>`
     SELECT
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
       COUNT(*)::int AS "total",
@@ -73,4 +73,6 @@ export async function fetchSeibanProgressRows(
     GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN')
     ORDER BY ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC
   `;
+
+  return rows;
 }
