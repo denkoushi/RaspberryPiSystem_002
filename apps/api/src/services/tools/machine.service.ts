@@ -1,10 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
-import {
-  resolveJstBusinessDayRange9am,
-  resolveJstSignageBusinessDate,
-} from '../../lib/signage-business-day.js';
+import { resolveJstSignageBusinessDate } from '../../lib/signage-business-day.js';
 
 export interface MachineQuery {
   search?: string;
@@ -216,6 +213,9 @@ function classifyInspectionResult(result: string | null): 'normal' | 'abnormal' 
   if (!result) {
     return null;
   }
+  if (result.includes('未使用')) {
+    return null;
+  }
   if (result.includes('異常')) {
     return 'abnormal';
   }
@@ -327,9 +327,10 @@ export class MachineService {
 
   async findDailyInspectionSummaries(params: UninspectedMachineQuery) {
     const { csvDashboardId } = params;
+    const nowForAutoDate = new Date();
     const { date, start, end } = params.date
       ? resolveTokyoDayRange(params.date)
-      : resolveJstBusinessDayRange9am(resolveJstSignageBusinessDate(new Date()));
+      : resolveTokyoDayRange(resolveJstSignageBusinessDate(nowForAutoDate));
 
     const runningMachines = await prisma.machine.findMany({
       where: { operatingStatus: '稼働中' },

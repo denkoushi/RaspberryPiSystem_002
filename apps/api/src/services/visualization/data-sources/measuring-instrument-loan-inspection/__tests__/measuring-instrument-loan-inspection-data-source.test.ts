@@ -140,4 +140,63 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
       expect(result.metadata?.targetDate).toBe('2026-02-25');
     }
   });
+
+  it('JST 7:41 では targetDate は前日で固定され、当日 9:00 前の新規持出は前日スナップショットに混ざらない', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-17T07:41:00+09:00'));
+
+    vi.mocked(prisma.employee.findMany).mockResolvedValue([
+      { id: 'emp-1', displayName: '山田 太郎' },
+    ] as never);
+    vi.mocked(prisma.inspectionRecord.groupBy).mockResolvedValue([] as never);
+    vi.mocked(prisma.measuringInstrumentLoanEvent.findMany)
+      .mockImplementationOnce(async (args: any) => {
+        const start = args.where.eventAt.gte as Date;
+        const end = args.where.eventAt.lt as Date;
+        return [
+          {
+            managementNumber: 'AG1001',
+            eventAt: new Date('2026-04-16T08:30:00.000Z'),
+            raw: { borrower: '山田太郎', name: 'デジタルノギス' },
+          },
+          {
+            managementNumber: 'AG1002',
+            eventAt: new Date('2026-04-16T22:30:00.000Z'),
+            raw: { borrower: '山田太郎', name: 'マイクロメータ' },
+          },
+        ].filter((event) => event.eventAt >= start && event.eventAt < end) as never;
+      })
+      .mockResolvedValueOnce([] as never);
+
+    const source = new MeasuringInstrumentLoanInspectionDataSource();
+    const result = await source.fetchData({
+      sectionEquals: '加工担当部署',
+      period: 'today_jst',
+    });
+
+    expect(result.kind).toBe('table');
+    if (result.kind === 'table') {
+      expect(result.metadata?.targetDate).toBe('2026-04-16');
+      expect(result.rows).toEqual([
+        {
+          従業員名: '山田 太郎',
+          点検件数: 0,
+          貸出中計測機器数: 1,
+          計測機器名称一覧: 'デジタルノギス',
+        },
+      ]);
+    }
+
+    expect(prisma.measuringInstrumentLoanEvent.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventAt: {
+            gte: new Date('2026-04-15T15:00:00.000Z'),
+            lt: new Date('2026-04-16T15:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+  });
 });

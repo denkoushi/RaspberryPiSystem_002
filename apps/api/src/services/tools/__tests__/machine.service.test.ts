@@ -341,7 +341,7 @@ describe('MachineService', () => {
     });
   });
 
-  it('findDailyInspectionSummaries は date 未指定時、JST 8:59 なら前日業務日の 9:00〜翌9:00 窓で取得する', async () => {
+  it('findDailyInspectionSummaries は date 未指定時、JST 8:59 なら前日ラベルの暦日 0:00〜24:00 窓で取得する', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-02-11T08:59:00+09:00'));
 
@@ -356,8 +356,8 @@ describe('MachineService', () => {
       where: {
         csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
         occurredAt: {
-          gte: new Date('2026-02-10T00:00:00.000Z'),
-          lt: new Date('2026-02-11T00:00:00.000Z'),
+          gte: new Date('2026-02-09T15:00:00.000Z'),
+          lt: new Date('2026-02-10T15:00:00.000Z'),
         },
       },
       select: {
@@ -369,7 +369,7 @@ describe('MachineService', () => {
     expect(result.date).toBe('2026-02-10');
   });
 
-  it('findDailyInspectionSummaries は date 未指定時、JST 9:00 から当日業務日ラベルで取得する', async () => {
+  it('findDailyInspectionSummaries は date 未指定時、JST 9:00 から当日ラベルの暦日 0:00〜24:00 窓で取得する', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-02-11T09:00:00+09:00'));
 
@@ -384,8 +384,8 @@ describe('MachineService', () => {
       where: {
         csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01',
         occurredAt: {
-          gte: new Date('2026-02-11T00:00:00.000Z'),
-          lt: new Date('2026-02-12T00:00:00.000Z'),
+          gte: new Date('2026-02-10T15:00:00.000Z'),
+          lt: new Date('2026-02-11T15:00:00.000Z'),
         },
       },
       select: {
@@ -395,5 +395,50 @@ describe('MachineService', () => {
       },
     });
     expect(result.date).toBe('2026-02-11');
+  });
+
+  it('findDailyInspectionSummaries は 点検結果が未使用なら異常件数へ加算しない', async () => {
+    vi.mocked(prisma.machine.findMany).mockResolvedValue([
+      {
+        id: 'm1',
+        equipmentManagementNumber: '60011',
+        name: 'AZ-610G',
+        shortName: null,
+        classification: 'マシニングセンター',
+        operatingStatus: '稼働中',
+        ncManual: null,
+        maker: '日立',
+        processClassification: '切削',
+        coolant: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as any);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'r1',
+        occurredAt: new Date('2026-04-16T12:00:00Z'),
+        rowData: {
+          equipmentManagementNumber: '60011',
+          inspectionAt: '2026-04-16T12:00:00Z',
+          inspectionItem: '主軸',
+          inspectionResult: '未使用',
+        },
+      },
+    ] as any);
+
+    const result = await service.findDailyInspectionSummaries({
+      csvDashboardId: 'dashboard-unused',
+      date: '2026-04-16',
+    });
+
+    expect(result.machines).toEqual([
+      expect.objectContaining({
+        equipmentManagementNumber: '60011',
+        used: true,
+        normalCount: 0,
+        abnormalCount: 0,
+      }),
+    ]);
   });
 });

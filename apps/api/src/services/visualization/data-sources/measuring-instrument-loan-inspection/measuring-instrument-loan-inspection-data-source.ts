@@ -1,11 +1,11 @@
 import { EmployeeStatus } from '@prisma/client';
 import { prisma } from '../../../../lib/prisma.js';
 import {
-  resolveJstBusinessDayRange9am,
   resolveJstSignageBusinessDate,
 } from '../../../../lib/signage-business-day.js';
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
+import { resolveJstDayRange } from '../_shared/data-source-utils.js';
 
 type LoanInspectionMetadata = {
   sectionEquals?: string;
@@ -56,7 +56,10 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
 
     const nowUtc = new Date();
     const dateLabel = resolveJstSignageBusinessDate(nowUtc);
-    const { start: startDateUtc, end: endDateUtcExclusive } = resolveJstBusinessDayRange9am(dateLabel);
+    const { start: startDateUtc, end: endDateUtcExclusive } = resolveJstDayRange(dateLabel);
+    const currentCalendarDate = resolveJstDayRange().date;
+    const snapshotUpperBoundUtc =
+      dateLabel === currentCalendarDate ? nowUtc : endDateUtcExclusive;
 
     const employees = await prisma.employee.findMany({
       where: {
@@ -101,7 +104,7 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
           action: '持ち出し',
           eventAt: {
             gte: startDateUtc,
-            lt: endDateUtcExclusive,
+            lt: snapshotUpperBoundUtc,
           },
         },
         select: {
@@ -126,7 +129,7 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
           where: {
             action: '返却',
             managementNumber: { in: managementNumbers },
-            eventAt: { lte: nowUtc },
+            eventAt: { lt: snapshotUpperBoundUtc },
           },
           select: {
             managementNumber: true,
