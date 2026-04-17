@@ -5,13 +5,21 @@ import type { LeaderBoardRow } from './types';
 
 export type LeaderOrderRowPresentation = {
   /**
-   * 子カード2行目: 機種記号 · 機種名 · 製番 · 品目コード（補助）。
-   * ProductNo（製造order）は表示しない（順位ボード子行では製番優先のため）。
+   * 従来の1行連結（互換・テスト用）。機種記号 · 機種名 · 製番 · 品目コード（補助）。
+   * ProductNo（製造order）は表示しない。
    */
   machinePartLine: string;
-  /** 子カード3行目: 品名のみ（工順は上段インライン表示） */
+  /**
+   * 順位ボード1行目クラスタ用: 製番・品目コード（空は含めない）。
+   */
+  clusterSegments: string[];
+  /**
+   * 品名の下: 機種記号 · 機種名（いずれも空なら空文字）。
+   */
+  machineTypeNameLine: string;
+  /** 品名のみ（工順は上段インライン表示） */
   partNameLine: string;
-  /** 子行2行目付近の数量サフィックス（例 `3個`）。無ければ null */
+  /** 数量サフィックス（例 `3個`）。無ければ null */
   quantityInlineJa: string | null;
 };
 
@@ -27,6 +35,7 @@ const joinMiddleDot = (parts: string[]): string =>
 export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresentation {
   const machineNameNormalized = normalizeMachineName(row.machineName);
   const fseiban = String(row.fseiban ?? '').trim();
+
   const machinePartLine = joinMiddleDot([
     row.machineTypeCode,
     machineNameNormalized,
@@ -34,10 +43,22 @@ export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresen
     row.fhincd.length > 0 ? row.fhincd : ''
   ]);
 
+  const clusterSegments: string[] = [];
+  if (fseiban.length > 0) {
+    clusterSegments.push(fseiban);
+  }
+  if (row.fhincd.length > 0) {
+    clusterSegments.push(row.fhincd.trim());
+  }
+
+  const machineTypeNameLine = joinMiddleDot([row.machineTypeCode, machineNameNormalized]);
+
   const partNameLine = row.fhinmei.trim();
 
   return {
     machinePartLine,
+    clusterSegments,
+    machineTypeNameLine,
     partNameLine,
     quantityInlineJa: formatPlannedQuantityInlineJa(row.plannedQuantity)
   };

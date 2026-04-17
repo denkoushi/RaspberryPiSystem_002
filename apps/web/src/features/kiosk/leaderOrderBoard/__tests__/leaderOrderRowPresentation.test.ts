@@ -27,16 +27,23 @@ describe('presentLeaderOrderRow', () => {
   it('joins machine type code, machine name, fseiban, fhincd with middle dots (no productNo)', () => {
     const p = presentLeaderOrderRow({ ...base(), machineTypeCode: 'DAD3350' });
     expect(p.machinePartLine).toBe('DAD3350 · 立マシンA · S1 · MH001');
+    expect(p.clusterSegments).toEqual(['S1', 'MH001']);
+    expect(p.machineTypeNameLine).toBe('DAD3350 · 立マシンA');
   });
 
   it('omits empty machine type code only', () => {
-    expect(presentLeaderOrderRow(base()).machinePartLine).toBe('立マシンA · S1 · MH001');
+    const p = presentLeaderOrderRow(base());
+    expect(p.machinePartLine).toBe('立マシンA · S1 · MH001');
+    expect(p.clusterSegments).toEqual(['S1', 'MH001']);
+    expect(p.machineTypeNameLine).toBe('立マシンA');
   });
 
   it('omits empty machine type and machine name; uses fseiban not productNo', () => {
     const row = { ...base(), machineName: '', machineTypeCode: '', fhincd: '' };
     const p = presentLeaderOrderRow(row);
     expect(p.machinePartLine).toBe('S1');
+    expect(p.clusterSegments).toEqual(['S1']);
+    expect(p.machineTypeNameLine).toBe('');
   });
 
   it('does not surface productNo in machine line when other fields are empty', () => {
@@ -44,11 +51,14 @@ describe('presentLeaderOrderRow', () => {
     const p = presentLeaderOrderRow(row);
     expect(p.machinePartLine).toBe('');
     expect(p.machinePartLine).not.toContain('P99');
+    expect(p.clusterSegments).toEqual([]);
+    expect(p.machineTypeNameLine).toBe('');
   });
 
   it('normalizes machine name to half-width uppercase like other kiosk pages', () => {
     const p = presentLeaderOrderRow({ ...base(), machineName: '  abcｘｙｚ  ' });
     expect(p.machinePartLine).toBe('ABCXYZ · S1 · MH001');
+    expect(p.machineTypeNameLine).toBe('ABCXYZ');
   });
 
   it('part name line is fhinmei only (kojun shown in card top row)', () => {

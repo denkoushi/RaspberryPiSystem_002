@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キオスク順位ボード カード単体プレビュー（本番相当）</title>
+  <style>
+    /**
+     * 参照: apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx
+     *       apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderRowOrderSelect.tsx
+     * Tailwind のクラスを静的 CSS に焼き込み（CDN なし）。
+     */
+    :root {
+      --slate-950: rgb(2 6 23);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--slate-950);
+      color: rgba(255 255 255 / 0.92);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    }
+
+    .page {
+      min-height: 100vh;
+      padding: 12px 8px 12px 14px;
+    }
+
+    .note {
+      max-width: 56rem;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255  255 255 / 0.12);
+      background: rgba(15 23 42 / 0.55);
+      font-size: 12px;
+      line-height: 1.45;
+      color: rgba(255 255 255 / 0.72);
+    }
+
+    .note code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: rgba(255 255 255 / 0.88);
+    }
+
+    /* ProductionScheduleLeaderOrderBoardPage のグリッド1セル相当 */
+    .grid-mock {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-auto-rows: minmax(14rem, auto);
+      gap: 10px;
+      max-width: 22rem;
+    }
+
+    /* LeaderOrderResourceCard ルート */
+    .loc-card {
+      display: flex;
+      height: 100%;
+      min-height: 12rem;
+      flex-direction: column;
+      border-radius: 8px;
+      border: 1px solid rgba(103 232 249 / 0.7);
+      background: rgba(15 23 42 / 0.6);
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1rem;
+      box-shadow: 0 0 0 1px rgba(34 211 238 / 0.3);
+    }
+
+    .loc-head {
+      margin-bottom: 6px;
+      flex-shrink: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: 8px;
+      row-gap: 2px;
+      padding-left: 2px;
+      padding-right: 2px;
+    }
+
+    .loc-resource-cd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      color: rgba(255 255 255 / 0.95);
+    }
+
+    .loc-resource-jp {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+      line-height: 1.375;
+      color: rgba(255 255 255 / 0.78);
+    }
+
+    .loc-body {
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow: auto hidden;
+      padding-right: 2px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* 子行ブロック */
+    .loc-row {
+      border-radius: 4px;
+      background: rgba(30 41 59 / 0.8);
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    .loc-row-top {
+      margin-bottom: 2px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-complete {
+      display: flex;
+      height: 28px;
+      width: 28px;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      border: 2px solid rgba(255 255 255 / 0.82);
+      background: rgb(15 23 42);
+      color: #fff;
+      font-size: 11px;
+      line-height: 1;
+      box-shadow: 0 1px 2px rgba(0 0 0 / 0.2);
+      cursor: default;
+      padding: 0;
+    }
+
+    .order-select {
+      height: 28px;
+      width: 56px;
+      flex-shrink: 0;
+      border-radius: 4px;
+      border: 1px solid rgba(255 255 255 / 0.25);
+      background: rgba(15 23 42 / 0.9);
+      color: #fff;
+      padding: 0 6px;
+      font-size: 11px;
+      font-family: inherit;
+    }
+
+    .fkojun {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: rgba(255 255 255 / 0.88);
+    }
+
+    .due-btn {
+      flex-shrink: 0;
+      border-radius: 4px;
+      border: 0;
+      padding: 0 4px;
+      background: transparent;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 10px;
+      color: rgba(103 232 249 / 0.9);
+      cursor: default;
+    }
+
+    .btn-note {
+      display: flex;
+      height: 28px;
+      width: 28px;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      cursor: default;
+      padding: 0;
+    }
+
+    /* 本番 hasNote よりコントラスト強め（プレビュー用） */
+    .btn-note--has-note {
+      border: 2px solid rgb(250 204 21);
+      background: linear-gradient(
+        160deg,
+        rgba(234 179 8 / 0.55) 0%,
+        rgba(202 138 4 / 0.42) 45%,
+        rgba(161 98 7 / 0.38) 100%
+      );
+      color: rgb(254 252 232);
+      box-shadow:
+        0 0 0 1px rgba(253 224 71 / 0.65),
+        0 0 18px rgba(250 204 21 / 0.45),
+        inset 0 1px 0 rgba(255 255 255 / 0.22);
+    }
+
+    .btn-note svg {
+      display: block;
+    }
+
+    .btn-note--has-note svg {
+      filter: drop-shadow(0 0 3px rgba(254 252 232 / 0.55));
+    }
+
+    /* 本番は join 済み1文字列。プレビューでは語を分割し、機種記号は品名の下に置く */
+    .loc-line-mpq {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: 8px;
+      row-gap: 2px;
+      color: rgba(255 255 255 / 0.8);
+    }
+
+    .machine-part-cluster {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.2em 0.35em;
+      min-width: 0;
+    }
+
+    .machine-seg {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      color: rgba(255 255 255 / 0.8);
+    }
+
+    .machine-sep {
+      color: rgba(255 255 255 / 0.42);
+      user-select: none;
+    }
+
+    /* 個数は本番では font-mono text-white/50 だが、プレビューでは machine-seg と同じサイズ・色に揃える */
+    .qty-inline {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: rgba(255 255 255 / 0.8);
+    }
+
+    .part-name {
+      color: rgba(255 255 255 / 0.6);
+    }
+
+    /* プレビュー専用: 機種記号を品名の下へ（本番の行順とは異なる） */
+    .machine-seg-follow {
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <p class="note">
+      静的モックは本番の <code>LeaderOrderResourceCard</code>（順位ボード資源カード）のレイアウト・タイポに合わせています。
+      下のカードは「選択中」相当（<code>border-cyan-300/70</code> + リング影）です。
+    </p>
+
+    <div class="grid-mock">
+      <div
+        class="loc-card"
+        role="group"
+        aria-label="資源 200（選択中）"
+      >
+        <div class="loc-head">
+          <span class="loc-resource-cd">200</span>
+          <span class="loc-resource-jp">旋盤 1号機</span>
+        </div>
+        <div class="loc-body">
+          <div class="loc-row">
+            <div class="loc-row-top">
+              <button type="button" class="btn-complete" aria-label="完了にする">✓</button>
+              <select id="demo-order" class="order-select" aria-label="資源内の順位">
+                <option value="" selected>-</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+              </select>
+              <span class="fkojun" title="010 / 切削">010 / 切削</span>
+              <button type="button" class="due-btn">1/6(火)</button>
+              <button type="button" class="btn-note btn-note--has-note" aria-label="備考を編集。ホバーで全文を表示" title="備考あり（プレビュー）">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                </svg>
+              </button>
+            </div>
+            <div class="loc-line-mpq">
+              <div class="machine-part-cluster">
+                <span class="machine-seg">BA1S1319</span>
+                <span class="machine-sep" aria-hidden="true">·</span>
+                <span class="machine-seg">MD004433830</span>
+                <span class="machine-sep" aria-hidden="true">·</span>
+                <span class="qty-inline">8個</span>
+              </div>
+            </div>
+            <div class="part-name">ストッパー台 (1)</div>
+            <div class="machine-seg-follow">
+              <span class="machine-seg">L300KP-XY-2885274</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
