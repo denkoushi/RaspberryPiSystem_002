@@ -1,6 +1,6 @@
 # デジタルサイネージモジュール
 
-最終更新: 2026-04-16（可視化データの業務日切替: JST 9:00・自動表示のみ／[KB-347](../../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)）
+最終更新: 2026-04-17（管理コンソール サイネージプレビュー 端末選択・`key=` 付き取得／[KB-348](../../knowledge-base/frontend.md#kb-348-管理コンソールサイネージプレビューが端末別レンダ結果とずれるjwtのみでレガシーglobalキャッシュを参照)）／2026-04-16（可視化データの業務日切替: JST 9:00・自動表示のみ／[KB-347](../../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)）
 
 ## 概要
 
@@ -161,7 +161,8 @@
   - **手動更新**: 「更新」ボタンで手動更新可能
   - **認証**: JWT認証を使用し、認証済みユーザーのみがアクセス可能
   - **実装詳細**: `axios(api)`クライアントを使用してJWT認証ヘッダーを自動付与し、Blob取得と`URL.createObjectURL`による画像表示を実装
-  - **トラブルシューティング**: 最初は`fetch`で実装していたが、JWT認証ヘッダーが付与されず401エラーが発生。`axios(api)`クライアントに変更することで解決。詳細は [docs/knowledge-base/frontend.md#kb-192](./docs/knowledge-base/frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) を参照
+  - **トラブルシューティング**: 最初は`fetch`で実装していたが、JWT認証ヘッダーが付与されず401エラーが発生。`axios(api)`クライアントに変更することで解決。詳細は [frontend.md の KB-192](../../knowledge-base/frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) を参照
+  - **端末別整合（2026-04-17）**: プレビューは `GET /signage/current-image` に **`key=<ClientDevice.apiKey>`** を付け、サイネージ用端末だけをセレクトする（JWT のみ・`key` なしだとレガシー経路を読み得て現場とずれる）。詳細は [KB-348](../../knowledge-base/frontend.md#kb-348-管理コンソールサイネージプレビューが端末別レンダ結果とずれるjwtのみでレガシーglobalキャッシュを参照)
 - **タイムゾーン**:
   - サーバー側で `SIGNAGE_TIMEZONE` 環境変数を設定（デフォルト: `Asia/Tokyo`）
   - 例: `SIGNAGE_TIMEZONE=Asia/Tokyo`（`docker-compose.server.yml` の `api` サービスに設定）
