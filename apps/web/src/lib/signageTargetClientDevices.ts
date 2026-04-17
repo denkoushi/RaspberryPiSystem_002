@@ -12,6 +12,16 @@ export function isSignageDisplayClientDevice(client: ClientDevice): boolean {
 }
 
 /**
+ * プレビュー・単一端末選択UI用: サイネージ用端末のみ、表示名順。
+ * （スケジュール編集の `resolveSignageTargetClientCandidates` とは「既存割当の extras」が不要な場合に使う）
+ */
+export function listSignageDisplayClientDevicesSorted(clients: ClientDevice[]): ClientDevice[] {
+  const signage = clients.filter(isSignageDisplayClientDevice);
+  signage.sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  return signage;
+}
+
+/**
  * チェックボックス候補: サイネージ用端末 + 既に保存済みで別種別のキー（一覧外の既存割当を見失わない）
  */
 export function resolveSignageTargetClientCandidates(

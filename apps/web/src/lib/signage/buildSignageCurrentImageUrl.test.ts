@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildSignageCurrentImageUrl } from './buildSignageCurrentImageUrl';
+import { buildSignageCurrentImageUrl, buildSignageCurrentImageUrlSearchParams } from './buildSignageCurrentImageUrl';
+
+describe('buildSignageCurrentImageUrlSearchParams', () => {
+  it('matches URL query rules used by buildSignageCurrentImageUrl', () => {
+    const sp = buildSignageCurrentImageUrlSearchParams({
+      clientKey: 'client-key-android-signage-01',
+      cacheBust: 42,
+    });
+    expect(sp.get('key')).toBe('client-key-android-signage-01');
+    expect(sp.get('t')).toBe('42');
+  });
+
+  it('omits key when clientKey is whitespace only', () => {
+    const sp = buildSignageCurrentImageUrlSearchParams({ clientKey: '   ', cacheBust: 1 });
+    expect(sp.has('key')).toBe(false);
+    expect(sp.get('t')).toBe('1');
+  });
+});
 
 describe('buildSignageCurrentImageUrl', () => {
   it('builds URL with key and cache bust', () => {

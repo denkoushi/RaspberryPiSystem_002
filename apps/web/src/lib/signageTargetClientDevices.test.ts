@@ -4,6 +4,7 @@ import {
   buildClientDevicesByApiKey,
   formatSignageTargetSummary,
   isSignageDisplayClientDevice,
+  listSignageDisplayClientDevicesSorted,
   resolveSignageTargetClientCandidates,
 } from './signageTargetClientDevices';
 
@@ -33,6 +34,13 @@ describe('signageTargetClientDevices', () => {
     expect(isSignageDisplayClientDevice(mockDevice({ id: '2', name: 'Kiosk', apiKey: 'client-key-raspberrypi4-kiosk1' }))).toBe(
       false
     );
+  });
+
+  it('listSignageDisplayClientDevicesSorted returns only signage clients sorted by name', () => {
+    const kiosk = mockDevice({ id: 'k', name: 'Kiosk', apiKey: 'client-key-kiosk' });
+    const sigB = mockDevice({ id: 'b', name: 'B端末', apiKey: 'client-key-signage-b' });
+    const sigA = mockDevice({ id: 'a', name: 'A端末', apiKey: 'client-key-signage-a' });
+    expect(listSignageDisplayClientDevicesSorted([kiosk, sigB, sigA])).toEqual([sigA, sigB]);
   });
 
   it('resolveSignageTargetClientCandidates includes extras for selected non-signage keys', () => {

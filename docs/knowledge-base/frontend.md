@@ -866,6 +866,47 @@ try {
 
 ---
 
+### [KB-348] 管理コンソールサイネージプレビューが端末別レンダ結果とずれる（JWTのみでレガシーglobalキャッシュを参照）
+
+**発生日**: 2026-04-17
+
+**Context**:
+- 管理コンソール `/admin/signage/preview` で、サイネージの設定や現場表示と **プレビュー画像が一致しない**という相談があった
+- 現場のサイネージクライアントは `ClientDevice.apiKey` 単位で JPEG をキャッシュし、`GET /api/signage/current-image` に **`key=<apiKey>`** を付けて取得する運用
+- [KB-192](#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) で **JWT 付き axios** に切り替えた後も、**クエリに `key` が無い**と API は **レガシー互換の単一路径（事実上グローバル相当の `current.jpg` 系）**を返し得る
+
+**Symptoms**:
+- 管理画面のプレビューが「どの端末の表示とも違う」ように見える（複数サイネージ端末がある環境で顕著）
+- 端末を切り替えた直後に、**古いレスポンスの Blob が画面 state を上書き**してちらつく
+
+**Root cause**:
+- **現場**: 端末キー付きの **per-client キャッシュ**を参照
+- **旧プレビュー経路（`key` なし）**: **グローバル／単一路径**を参照し得る
+- 上記の参照先の不一致により「設定とずれる」ように見えていた
+
+**Fix**:
+- ✅ プレビューは **サイネージ表示用端末**のみを候補に出す（`listSignageDisplayClientDevicesSorted`・`apiKey` に `signage` を含む端末）
+- ✅ `buildSignageCurrentImageUrlSearchParams` で **`key=<ClientDevice.apiKey>`** を付け、`api.get('/signage/current-image', { params: … })` に統一
+- ✅ 端末切替時は **`latestFetchIdRef`** で直前の fetch を破棄し、不要な Blob は `URL.revokeObjectURL`
+
+**Verification**:
+- Vitest: `SignagePreviewPage.test.tsx` ほか
+- 本番: ブランチ **`feat/admin-signage-preview-client-select`**・実装コミット **`4dd1165a`**・**`raspberrypi5` のみ**デプロイ・Detach（ログ接頭辞 `ansible-update-`）**`20260417-111616-21586`**（**`failed=0` / `unreachable=0`**）・`./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**）
+- **Pi4/Pi3**: 本変更は管理 Web（Pi5 の `web`）のみのため **未デプロイ**でよい
+
+**Troubleshooting**:
+- ずれの再発時はブラウザ開発者ツールで **`/signage/current-image` に `key=` が付いているか**を確認
+- **401** は [KB-192](#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題)（JWT ヘッダ未付与）を疑う
+
+**References**:
+- `apps/web/src/pages/admin/SignagePreviewPage.tsx`
+- `apps/web/src/lib/signage/buildSignageCurrentImageUrl.ts`
+- `apps/web/src/lib/signageTargetClientDevices.ts`
+
+**解決状況**: ✅ **本番反映・Phase12 完了**（2026-04-17）
+
+---
+
 ### [KB-096] クライアントログ取得のベストプラクティス（postClientLogsへの統一）
 
 **EXEC_PLAN.md参照**: 計測機器管理システム実装（2025-12-12）
@@ -2233,6 +2274,8 @@ app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (reques
 - メモリリークを防ぐため、`useEffect`のクリーンアップで`URL.revokeObjectURL`を実行する
 
 **解決状況**: ✅ **実装完了・実機検証完了**（2026-01-23）
+
+**追補（2026-04-17）**: 端末別のレンダ結果との整合（`key=` 付き取得・端末セレクト・fetch 競合防止）については **[KB-348](#kb-348-管理コンソールサイネージプレビューが端末別レンダ結果とずれるjwtのみでレガシーglobalキャッシュを参照)** を参照。
 
 **関連ファイル**:
 - `apps/web/src/pages/admin/SignagePreviewPage.tsx`（UI実装）
