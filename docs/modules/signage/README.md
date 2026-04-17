@@ -163,6 +163,7 @@
   - **実装詳細**: `axios(api)`クライアントを使用してJWT認証ヘッダーを自動付与し、Blob取得と`URL.createObjectURL`による画像表示を実装
   - **トラブルシューティング**: 最初は`fetch`で実装していたが、JWT認証ヘッダーが付与されず401エラーが発生。`axios(api)`クライアントに変更することで解決。詳細は [frontend.md の KB-192](../../knowledge-base/frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) を参照
   - **端末別整合（2026-04-17）**: プレビューは `GET /signage/current-image` に **`key=<ClientDevice.apiKey>`** を付け、サイネージ用端末だけをセレクトする（JWT のみ・`key` なしだとレガシー経路を読み得て現場とずれる）。詳細は [KB-348](../../knowledge-base/frontend.md#kb-348-管理コンソールサイネージプレビューが端末別レンダ結果とずれるjwtのみでレガシーglobalキャッシュを参照)
+  - **キオスク（Pi4）のプレビュー対象選択（2026-04-17）**: 管理コンソールの `GET /clients` は認可の都合でキオスクから呼べないため、`GET /api/kiosk/signage-preview/options`（候補: `apiKey` に `signage` を含む端末）と `PUT /api/kiosk/signage-preview/selection`（当該キオスク端末の `ClientDevice.signagePreviewTargetApiKey` を更新）で、オペレーターが現場でプレビュー対象端末を選べる。未設定時の実画像取得キーはキオスク自身の `apiKey`。フロントは `KioskSignagePreviewModal`。詳細は [KB-349](../../knowledge-base/frontend.md#kb-349-キオスクサイネージプレビューで端末を選択して画像を取得する)
 - **タイムゾーン**:
   - サーバー側で `SIGNAGE_TIMEZONE` 環境変数を設定（デフォルト: `Asia/Tokyo`）
   - 例: `SIGNAGE_TIMEZONE=Asia/Tokyo`（`docker-compose.server.yml` の `api` サービスに設定）

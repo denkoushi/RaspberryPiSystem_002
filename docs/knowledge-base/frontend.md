@@ -907,6 +907,30 @@ try {
 
 ---
 
+### [KB-349] キオスクサイネージプレビューで端末を選択して画像を取得する
+
+**発生日**: 2026-04-17
+
+**Context**:
+- 現場 Pi4 キオスクでも、管理コンソールと同様に **どのサイネージ端末のレンダ結果を見るか**を選びたいが、`GET /clients` は **ADMIN/MANAGER 専用**でキオスクから一覧取得できない
+- **閲覧のみ**なら、サーバが「選べる候補」と「このキオスクの保存先」を返し、画像は既存の `GET /signage/current-image?key=…` で足りる
+
+**Fix（実装）**:
+- DB: `ClientDevice.signagePreviewTargetApiKey`（nullable）— **このキオスク端末**がプレビューで参照するサイネージ端末の `apiKey`
+- API（`x-client-key` のみ）:
+  - `GET /api/kiosk/signage-preview/options` … 候補（`apiKey` に `signage` を含む端末）、現在の選択、効いているプレビューキー（無効時はキオスク自身の `apiKey`）
+  - `PUT /api/kiosk/signage-preview/selection` … `{ signagePreviewTargetApiKey: string | null }`
+- Web: `apps/web/src/components/kiosk/KioskSignagePreviewModal.tsx` — セレクトで保存し、`buildSignageCurrentImageUrlSearchParams` で `key` + キャッシュバスタ付き取得
+
+**解決状況**: ✅ **実装済み（ブランチ `feat/kiosk-signage-preview-target-selector`）**
+
+**References**:
+- `apps/api/src/routes/kiosk/signage-preview.ts`
+- `apps/api/src/lib/signage/kiosk-signage-preview-target.ts`
+- [サイネージモジュール README](../modules/signage/README.md)
+
+---
+
 ### [KB-096] クライアントログ取得のベストプラクティス（postClientLogsへの統一）
 
 **EXEC_PLAN.md参照**: 計測機器管理システム実装（2025-12-12）

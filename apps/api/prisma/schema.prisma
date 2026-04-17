@@ -297,6 +297,8 @@ model ClientDevice {
   apiKey         String        @unique
   statusClientId String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
   defaultMode    String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
+  /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
+  signagePreviewTargetApiKey String?
   lastSeenAt     DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

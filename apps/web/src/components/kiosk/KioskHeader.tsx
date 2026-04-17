@@ -368,6 +368,7 @@ export function KioskHeader({
       <KioskSignagePreviewModal
         isOpen={showSignagePreview}
         onClose={() => setShowSignagePreview(false)}
+        kioskClientKey={clientKey}
       />
       <KioskPowerConfirmModal
         isOpen={pendingAction !== null}

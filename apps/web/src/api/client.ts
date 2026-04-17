@@ -2539,12 +2539,47 @@ export async function getKioskConfig(): Promise<KioskConfig> {
   return data;
 }
 
+export type KioskSignagePreviewCandidate = {
+  id: string;
+  name: string;
+  location: string | null;
+  apiKey: string;
+};
+
+export type KioskSignagePreviewOptionsResponse = {
+  candidates: KioskSignagePreviewCandidate[];
+  selectedApiKey: string | null;
+  effectivePreviewApiKey: string;
+};
+
+export async function getKioskSignagePreviewOptions(): Promise<KioskSignagePreviewOptionsResponse> {
+  const key = resolveClientKey({ allowDefaultFallback: true }).key;
+  const { data } = await api.get<KioskSignagePreviewOptionsResponse>('/kiosk/signage-preview/options', {
+    headers: { 'x-client-key': key },
+  });
+  return data;
+}
+
+export async function putKioskSignagePreviewSelection(payload: {
+  signagePreviewTargetApiKey: string | null;
+}): Promise<{ ok: true; signagePreviewTargetApiKey: string | null }> {
+  const key = resolveClientKey({ allowDefaultFallback: true }).key;
+  const { data } = await api.put<{ ok: true; signagePreviewTargetApiKey: string | null }>(
+    '/kiosk/signage-preview/selection',
+    payload,
+    { headers: { 'x-client-key': key } }
+  );
+  return data;
+}
+
 export interface ClientDevice {
   id: string;
   name: string;
   location?: string | null;
   apiKey: string;
   defaultMode?: 'PHOTO' | 'TAG' | null;
+  /** キオスクのサイネージプレビュー参照先（API が返す場合のみ） */
+  signagePreviewTargetApiKey?: string | null;
   lastSeenAt?: string | null;
   createdAt: string;
   updatedAt: string;

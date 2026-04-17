@@ -5,6 +5,7 @@ import { registerKioskConfigRoute } from './kiosk/config.js';
 import { registerKioskCallTargetsRoute } from './kiosk/call-targets.js';
 import { registerKioskSupportRoute } from './kiosk/support.js';
 import { registerKioskPowerRoute } from './kiosk/power.js';
+import { registerKioskSignagePreviewRoutes } from './kiosk/signage-preview.js';
 import {
   checkPowerRateLimit,
   checkRateLimit,
@@ -47,5 +48,9 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     requireClientDevice,
     checkPowerRateLimit,
     powerActionsDir: POWER_ACTIONS_DIR
+  });
+
+  await registerKioskSignagePreviewRoutes(app, {
+    requireClientDevice
   });
 }
