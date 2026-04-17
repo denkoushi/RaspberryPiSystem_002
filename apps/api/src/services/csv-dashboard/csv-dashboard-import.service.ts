@@ -11,6 +11,10 @@ import { PrismaCsvImportSubjectPatternProvider } from '../imports/csv-import-sub
 import { GmailUnifiedMailboxFetcher } from '../backup/gmail-unified-mailbox-fetcher.js';
 import { CsvErrorDispositionPolicy } from './csv-error-disposition-policy.js';
 import { CsvDashboardPostIngestService } from './csv-dashboard-post-ingest.service.js';
+import {
+  ensureProductionScheduleSeibanMachineNameSupplementDashboard,
+} from '../production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
+import { PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } from '../production-schedule/constants.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -107,6 +111,14 @@ export class CsvDashboardImportService {
     });
   }
 
+  private async ensureFixedDashboardIfNeeded(dashboardId: string): Promise<void> {
+    if (dashboardId !== PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID) {
+      return;
+    }
+
+    await ensureProductionScheduleSeibanMachineNameSupplementDashboard(prisma);
+  }
+
   private static mergeAuditMessage(params: {
     currentErrorMessage: string | null;
     postProcessState: 'completed' | 'disposed_non_retriable' | 'failed';
@@ -172,6 +184,8 @@ export class CsvDashboardImportService {
     }
 
     for (const dashboardId of dashboardIds) {
+      await this.ensureFixedDashboardIfNeeded(dashboardId);
+
       // #region agent log
       void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:dashboard-loop', message: 'Start dashboard ingest loop', data: { dashboardId, provider } });
       // #endregion

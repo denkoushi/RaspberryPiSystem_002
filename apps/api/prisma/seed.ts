@@ -10,6 +10,9 @@ import bcrypt from 'bcryptjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  buildProductionScheduleSeibanMachineNameSupplementDashboardDefinition,
+} from '../src/services/production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
 
 const prisma = new PrismaClient();
 const seedDir = dirname(fileURLToPath(import.meta.url));
@@ -63,7 +66,6 @@ async function main() {
   const productionScheduleFkojunstDashboardId = '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c';
   const productionScheduleFkojunstSubjectPattern = 'FKOJUNST';
   const productionScheduleSeibanMachineNameSupplementDashboardId = 'e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b';
-  const productionScheduleSeibanMachineNameSupplementSubjectPattern = 'FHINMEI_MH_SH';
   const productionScheduleFkojunstDashboardDefinition = {
     name: 'ProductionSchedule_FKOJUNST',
     description: '生産日程 工順ステータス（Gmail件名: FKOJUNST）',
@@ -358,42 +360,8 @@ async function main() {
   });
 
   // 生産日程 製番→機種名補完（Gmail件名: FHINMEI_MH_SH）
-  const productionScheduleSeibanMachineNameSupplementDefinition = {
-    name: 'ProductionSchedule_SeibanMachineNameSupplement',
-    description: '生産日程 製番→機種名補完（Gmail件名: FHINMEI_MH_SH）',
-    gmailSubjectPattern: productionScheduleSeibanMachineNameSupplementSubjectPattern,
-    enabled: true,
-    ingestMode: 'APPEND' as const,
-    dedupKeyColumns: [] as string[],
-    dateColumnName: null,
-    displayPeriodDays: 365,
-    emptyMessage: '機種名補完データはありません',
-    columnDefinitions: [
-      {
-        internalName: 'FSEIBAN',
-        displayName: '製番',
-        csvHeaderCandidates: ['FSEIBAN', '製番'],
-        dataType: 'string',
-        order: 0,
-        required: true,
-      },
-      {
-        internalName: 'FHINMEI_MH_SH',
-        displayName: '機種名（MH/SH補完）',
-        csvHeaderCandidates: ['FHINMEI_MH_SH', '機種名'],
-        dataType: 'string',
-        order: 1,
-        required: true,
-      },
-    ],
-    templateType: 'TABLE' as const,
-    templateConfig: {
-      rowsPerPage: 50,
-      fontSize: 14,
-      displayColumns: ['FSEIBAN', 'FHINMEI_MH_SH'],
-      headerFixed: true,
-    },
-  };
+  const productionScheduleSeibanMachineNameSupplementDefinition =
+    buildProductionScheduleSeibanMachineNameSupplementDashboardDefinition();
   await prisma.csvDashboard.upsert({
     where: { id: productionScheduleSeibanMachineNameSupplementDashboardId },
     update: productionScheduleSeibanMachineNameSupplementDefinition,
