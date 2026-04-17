@@ -57,6 +57,7 @@ category: knowledge-base
 - **本番デプロイ（対象 Pi5 のみ → 続けて Pi4 のみ・Pi3 除外）**: [deployment.md](../guides/deployment.md) 標準。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/production-schedule-machine-name-common-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` **成功後**に `./scripts/update-all-clients.sh feat/production-schedule-machine-name-common-api infrastructure/ansible/inventory.yml --limit raspberrypi4 --detach --follow`。
 - **Detach Run ID**（Pi5 上ログ接頭辞 `ansible-update-`）: **`20260417-175707-4538`**（`raspberrypi5`）→ **`20260417-180747-13902`**（`raspberrypi4`）、各 **`PLAY RECAP` `failed=0` / `unreachable=0`**。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**トラブルシュート**: 同一 Mac から `update-all-clients.sh` を並列起動しない（exit 3・[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。**知見**: 旧 **`POST …/seiban-machine-names`** はリクエストに **最大 100 製番**（Zod）があり、ユニーク製番が 100 を超えると **400** となり順位ボードに機種名が出なかった。一覧側で解決する方式に寄せて回避。
+- **PR**: [#158](https://github.com/denkoushi/RaspberryPiSystem_002/pull/158)（**`main` マージ**・merge **`09bce17c`**）
 
 ## References
 
