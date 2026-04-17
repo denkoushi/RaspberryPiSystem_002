@@ -2220,6 +2220,22 @@ category: knowledge-base
   - **個数が出ない**: `plannedQuantity` が null の行では仕様どおり非表示。CSV 補助・API の `plannedQuantity` を疑う。
   - **バーが閉じすぎる**: `KIOSK_REVEAL_CLOSE_DELAY_MS` を 200→280ms 程度へ、`duration-100` を `duration-150` へ、など **単一定数**で緩める。
 
+### Leader order resource card: preview alignment (2026-04-17)
+
+- **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。
+- **仕様（要約）**:
+  - **クラスタ行**: `clusterSegments`（製番・品目コード・個数）を中黒区切りで 1 行（`LeaderOrderRowClusterLine`）。
+  - **表示順**: クラスタブロック → 品名 → `machineTypeNameLine`（機種記号·機種名）。従来の **`machinePartLine`** は後方互換のため維持。
+  - **備考**: 空はグレー鉛筆、有りは強調色（`KioskPencilGlyph`）。
+- **デプロイ・実機検証（2026-04-17）**:
+  - **ブランチ**: `feat/kiosk-leader-order-card-layout`（コミット **`d1a06409`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 は対象外**（リソース僅少・専用手順のため）。
+  - **Detach Run ID**: `20260417-191501-20151` → `20260417-192029-29544` → `20260417-192519-8157` → `20260417-192909-2265` → `20260417-193514-20516`（各 **`failed=0` / `unreachable=0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **75s**）。
+- **トラブルシューティング**:
+  - **`RASPI_SERVER_HOST` 未設定**でスクリプトが接続に失敗: [deployment.md](../guides/deployment.md) 冒頭の例どおり **`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`** を実行してから **`update-all-clients.sh`** を再実行。
+  - **カードが旧レイアウト**: Pi4 の **`kiosk-browser` 再起動後**のバンドル／`deploy-status` を確認し、意図したブランチが各ホスト **`/opt/RaspberryPiSystem_002`** に取り込まれているかを見る。
+
 ### Leader order board: child row layout + registered seiban panel (2026-04-02)
 
 - **目的**: 順位ボード子行で **製番（`fseiban`）の視認性**を上げ、左端ホーバー内の **登録済み製番チップ**が **パネル下方の余白**まで使えるようにして、早すぎる内部スクロールを減らす。**Web のみ**・保存 API・順位 UI（ドロップダウン）は **不変**。

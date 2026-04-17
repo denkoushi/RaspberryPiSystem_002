@@ -5,6 +5,7 @@ import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manu
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
+import { LeaderOrderRowClusterLine } from './LeaderOrderRowClusterLine';
 import { LeaderOrderRowOrderSelect } from './LeaderOrderRowOrderSelect';
 import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
 
@@ -122,7 +123,7 @@ export function LeaderOrderResourceCard({
                         'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[11px] shadow hover:bg-white/5 disabled:opacity-60',
                         row.isCompleted
                           ? 'border-slate-400 bg-slate-800 text-white/80'
-                          : 'border-rose-400/90 bg-slate-900 text-rose-200'
+                          : 'border-white/80 bg-slate-900 text-white'
                       )}
                       aria-label={row.isCompleted ? '未完了に戻す' : '完了にする'}
                       disabled={completePending}
@@ -190,7 +191,7 @@ export function LeaderOrderResourceCard({
                       className={clsx(
                         'flex h-7 w-7 shrink-0 items-center justify-center rounded border transition-colors disabled:opacity-50',
                         hasNote
-                          ? 'border-amber-400/55 bg-amber-500/20 text-amber-100 hover:bg-amber-500/30'
+                          ? 'border-2 border-yellow-400 bg-gradient-to-br from-yellow-500/55 via-amber-600/45 to-amber-800/40 text-amber-50 shadow-[0_0_0_1px_rgba(253,224,71,0.5),0_0_14px_rgba(250,204,21,0.35),inset_0_1px_0_rgba(255,255,255,0.15)] hover:from-yellow-500/65 hover:to-amber-800/50 [&_svg]:drop-shadow-[0_0_3px_rgba(254,252,232,0.5)]'
                           : 'border-white/20 bg-white/[0.07] text-white/40 hover:bg-white/15 hover:text-white/55'
                       )}
                     >
@@ -198,20 +199,17 @@ export function LeaderOrderResourceCard({
                     </button>
                   )}
                 </div>
-                {pres.machinePartLine.length > 0 || pres.quantityInlineJa ? (
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-white/80">
-                    {pres.machinePartLine.length > 0 ? (
-                      <span className="min-w-0 break-words text-white/80">{pres.machinePartLine}</span>
-                    ) : null}
-                    {pres.quantityInlineJa ? (
-                      <span className="shrink-0 font-mono text-[11px] text-white/50 tabular-nums">
-                        {pres.quantityInlineJa}
-                      </span>
-                    ) : null}
-                  </div>
+                {pres.clusterSegments.length > 0 || pres.quantityInlineJa ? (
+                  <LeaderOrderRowClusterLine
+                    segments={pres.clusterSegments}
+                    quantityInlineJa={pres.quantityInlineJa}
+                  />
                 ) : null}
                 {pres.partNameLine.length > 0 ? (
                   <div className="text-white/60">{pres.partNameLine}</div>
+                ) : null}
+                {pres.machineTypeNameLine.length > 0 ? (
+                  <div className="min-w-0 break-words text-[11px] text-white/80">{pres.machineTypeNameLine}</div>
                 ) : null}
               </div>
             );
