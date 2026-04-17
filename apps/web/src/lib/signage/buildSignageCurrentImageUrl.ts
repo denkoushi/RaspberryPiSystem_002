@@ -15,8 +15,13 @@ export type BuildSignageCurrentImageUrlOptions = {
   cacheBust?: string | number;
 };
 
-export function buildSignageCurrentImageUrl(options: BuildSignageCurrentImageUrlOptions = {}): string {
-  const normalized = normalizeSignageApiBase();
+/**
+ * `GET .../signage/current-image` と同一のクエリ規則。
+ * axios の `params` にそのまま渡せる（`<img src>` 用のフルURLは `buildSignageCurrentImageUrl`）。
+ */
+export function buildSignageCurrentImageUrlSearchParams(
+  options: BuildSignageCurrentImageUrlOptions = {}
+): URLSearchParams {
   const params = new URLSearchParams();
   const key = options.clientKey?.trim();
   if (key) {
@@ -25,6 +30,11 @@ export function buildSignageCurrentImageUrl(options: BuildSignageCurrentImageUrl
   if (options.cacheBust !== undefined) {
     params.set('t', String(options.cacheBust));
   }
-  const qs = params.toString();
+  return params;
+}
+
+export function buildSignageCurrentImageUrl(options: BuildSignageCurrentImageUrlOptions = {}): string {
+  const normalized = normalizeSignageApiBase();
+  const qs = buildSignageCurrentImageUrlSearchParams(options).toString();
   return `${normalized}/signage/current-image${qs ? `?${qs}` : ''}`;
 }
