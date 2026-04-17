@@ -839,6 +839,19 @@ model ProductionScheduleFkojunstStatus {
   @@index([sourceCsvDashboardId], map: "ProductionScheduleFkojunstStatus_idx_source_dashboard")
 }
 
+/// Gmail 件名 `FHINMEI_MH_SH` の補完CSV由来。同一取り込み実行内の重複 FSEIBAN は末尾行が正（同期処理で解決）。
+model ProductionScheduleSeibanMachineNameSupplement {
+  id                   String   @id @default(uuid())
+  sourceCsvDashboardId String
+  fseiban              String   @db.VarChar(64)
+  machineName          String   @db.VarChar(500)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([sourceCsvDashboardId, fseiban], map: "PSSeibanMachNmSup_unique_src_fsb")
+  @@index([fseiban], map: "PSSeibanMachNmSup_idx_fseiban")
+}
+
 model ProductionScheduleRowNote {
   id                String    @id @default(uuid())
   csvDashboardId    String

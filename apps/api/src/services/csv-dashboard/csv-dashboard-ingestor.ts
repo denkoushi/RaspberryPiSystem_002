@@ -39,6 +39,7 @@ export class CsvDashboardIngestor {
     messageSubject?: string,
     csvFilePath?: string
   ): Promise<{
+    ingestRunId: string;
     rowsProcessed: number;
     rowsAdded: number;
     rowsSkipped: number;
@@ -324,6 +325,7 @@ export class CsvDashboardIngestor {
       );
 
       return {
+        ingestRunId: ingestRun.id,
         rowsProcessed,
         rowsAdded,
         rowsSkipped,

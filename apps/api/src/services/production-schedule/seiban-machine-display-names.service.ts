@@ -1,4 +1,6 @@
+import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from './constants.js';
 import { fetchSeibanProgressRows } from './seiban-progress.service.js';
+import { SeibanMachineNameSupplementRepository } from './seiban-machine-name-supplement.repository.js';
 
 const SEIBAN_MACHINE_DISPLAY_NAMES_MAX = 100;
 
@@ -16,9 +18,13 @@ const normalizeSeibanMachineDisplayNameInputs = (items: string[]): string[] => {
   return next.slice(0, SEIBAN_MACHINE_DISPLAY_NAMES_MAX);
 };
 
+const isBlankMachineName = (value: string | null | undefined): boolean =>
+  value == null || String(value).trim().length === 0;
+
 /**
  * 製番リストから機種表示名（MH/SH 行の FHINMEI）を解決する。
- * 手動順番 overview / history-progress と同一の {@link fetchSeibanProgressRows} を利用する。
+ * 手動順番 overview / history-progress と同一の {@link fetchSeibanProgressRows} を優先し、
+ * 不足分は Gmail 補完CSV同期テーブル、最終的に {@link SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL} を返す。
  */
 export async function resolveSeibanMachineDisplayNames(rawFseibans: string[]): Promise<{
   machineNames: Record<string, string | null>;
@@ -37,6 +43,24 @@ export async function resolveSeibanMachineDisplayNames(rawFseibans: string[]): P
     const key = row.fseiban?.trim() ?? '';
     if (key.length === 0) continue;
     machineNames[key] = row.machineName ?? null;
+  }
+
+  const needSupplement = fseibans.filter((f) => isBlankMachineName(machineNames[f]));
+  if (needSupplement.length > 0) {
+    const supplementRepo = new SeibanMachineNameSupplementRepository();
+    const supplementMap = await supplementRepo.findByFseibans(needSupplement);
+    for (const f of needSupplement) {
+      const s = supplementMap.get(f);
+      if (s != null && !isBlankMachineName(s)) {
+        machineNames[f] = s;
+      }
+    }
+  }
+
+  for (const f of fseibans) {
+    if (isBlankMachineName(machineNames[f])) {
+      machineNames[f] = SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL;
+    }
   }
 
   return { machineNames };

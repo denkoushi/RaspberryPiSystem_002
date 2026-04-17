@@ -258,6 +258,16 @@ export const defaultBackupConfig: BackupConfig = {
       enabled: true,
       replaceExisting: false,
       autoBackupAfterImport: { enabled: false, targets: ['csv'] }
+    },
+    {
+      id: 'csv-import-seiban-machine-name-supplement',
+      name: 'ProductionSchedule_SeibanMachineNameSupplement (Gmail, FHINMEI_MH_SH)',
+      provider: 'gmail',
+      targets: [{ type: 'csvDashboards', source: 'e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b' }],
+      schedule: '15 6 * * 0',
+      enabled: false,
+      replaceExisting: false,
+      autoBackupAfterImport: { enabled: false, targets: ['csv'] }
     }
   ],
   csvImportSubjectPatterns: {
