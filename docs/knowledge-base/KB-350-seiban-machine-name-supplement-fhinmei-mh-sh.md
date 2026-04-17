@@ -30,6 +30,14 @@ category: knowledge-base
 - **スケジュール**: `defaultBackupConfig.csvImports` に `csv-import-seiban-machine-name-supplement`（`15 6 * * 0`・**既定 disabled**）を追加済み。有効化するときは Gmail トークンと `targets` のダッシュボードIDを確認。
 - **応答**: `machineNames` は従来どおり `Record<string, string \| null>` だが、**未解決は null ではなく `機種名未登録` 文字列**で埋める（空欄表示を廃止）。
 
+## 本番デプロイ実績（2026-04-17）
+
+- **ブランチ**: `feat/seiban-machine-name-supplement-gmail`（代表コミット **`c770cb9d`**）。
+- **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh` 標準。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/seiban-machine-name-supplement-gmail infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **対象ホストごとに 1 台ずつ**（**Pi3 除外**）。
+- **Detach Run ID**（Pi5 上ログ接頭辞 `ansible-update-`）: `20260417-135407-32471`（`raspberrypi5`）→ `20260417-140318-6669`（`raspberrypi4`）→ `20260417-140736-11875`（`raspi4-robodrill01`）→ `20260417-141050-21814`（`raspi4-fjv60-80`）→ `20260417-141730-23351`（`raspi4-kensaku-stonebase01`）。各 **`PLAY RECAP` `failed=0` / `unreachable=0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **29s**・Mac / Tailscale）。
+- **トラブルシュート（ローカル DB）**: 一時 PostgreSQL で `prisma migrate deploy` する場合、**`vector` 拡張**が必要なマイグレーションがあるため、素の `postgres:16` では失敗しうる。**`pgvector/pgvector:pg16`** 等を使う（既知は [EXEC_PLAN.md](../../EXEC_PLAN.md) Surprises・[deployment.md](../guides/deployment.md) 2026-03-31 知見）。
+
 ## References
 
 - 実装: `apps/api/src/services/production-schedule/seiban-machine-name-supplement-sync.service.ts`
