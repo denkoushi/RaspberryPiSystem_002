@@ -28,6 +28,7 @@ category: knowledge-base
 
 - **マイグレーション**: `20260417150000_add_production_schedule_seiban_machine_name_supplement` を適用してから API 起動。
 - **スケジュール**: `defaultBackupConfig.csvImports` に `csv-import-seiban-machine-name-supplement`（`15 6 * * 0`・**既定 disabled**）を追加済み。有効化するときは Gmail トークンと `targets` のダッシュボードIDを確認。
+- **既存 `backup.json` への反映**: `defaultBackupConfig` に定義しただけでは、**既に本番にある `config/backup.json` へは増えない**。2026-04-17 の追補で、**`ImportScheduleAdminService` / `CsvImportScheduler` 起動時に固定スケジュールを保証して保存**するようにした（FKOJUNST と同系）。一覧 API で見えない場合は **`/api/imports/schedule`** がこの ensure 経路を通っているか確認する。
 - **応答**: `machineNames` は従来どおり `Record<string, string \| null>` だが、**未解決は null ではなく `機種名未登録` 文字列**で埋める（空欄表示を廃止）。
 
 ## 本番デプロイ実績（2026-04-17）
@@ -36,6 +37,7 @@ category: knowledge-base
 - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh` 標準。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/seiban-machine-name-supplement-gmail infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **対象ホストごとに 1 台ずつ**（**Pi3 除外**）。
 - **Detach Run ID**（Pi5 上ログ接頭辞 `ansible-update-`）: `20260417-135407-32471`（`raspberrypi5`）→ `20260417-140318-6669`（`raspberrypi4`）→ `20260417-140736-11875`（`raspi4-robodrill01`）→ `20260417-141050-21814`（`raspi4-fjv60-80`）→ `20260417-141730-23351`（`raspi4-kensaku-stonebase01`）。各 **`PLAY RECAP` `failed=0` / `unreachable=0`**。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **29s**・Mac / Tailscale）。
+- **追補（2026-04-17・Pi5 のみ）**: ブランチ `feat/seiban-machine-name-supplement-schedule-ensure`・コミット **`cb88b67b`**。**事象**: 実装・5台デプロイ済みでも、既存 **`config/backup.json`** に `csv-import-seiban-machine-name-supplement` が無く、管理画面一覧に出なかった。**対策**: 固定スケジュール ensure を追加し、Pi5 のみ `./scripts/update-all-clients.sh feat/seiban-machine-name-supplement-schedule-ensure infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` で反映。**Detach Run ID**: `20260417-145842-8036`（`failed=0` / `unreachable=0`）。**確認**: Pi5 `backup.json` と `GET /api/imports/schedule` の双方で `csv-import-seiban-machine-name-supplement` が出現、`enabled=false`・cron `15 6 * * 0`・target `e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b` を確認。Phase12 は **PASS 43 / WARN 0 / FAIL 0**。
 - **トラブルシュート（ローカル DB）**: 一時 PostgreSQL で `prisma migrate deploy` する場合、**`vector` 拡張**が必要なマイグレーションがあるため、素の `postgres:16` では失敗しうる。**`pgvector/pgvector:pg16`** 等を使う（既知は [EXEC_PLAN.md](../../EXEC_PLAN.md) Surprises・[deployment.md](../guides/deployment.md) 2026-03-31 知見）。
 
 ## References
