@@ -11,12 +11,15 @@ import { KioskMonthPickerModal } from '../../components/kiosk/KioskMonthPickerMo
 import { useItemLoanAnalytics } from '../../features/item-analytics/useItemLoanAnalytics';
 import {
   ANALYTICS_KIOSK_DISPLAY_LIMITS,
+  ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS,
+  type AnalyticsListMode,
   countPeriodEventKinds,
+  isFullListTruncated,
   periodReturnCompletionRatePercent,
+  selectAssetsForDisplay,
+  selectEmployeesForDisplay,
   summarizeAssetInventory,
-  takeTodayEventsForDisplay,
-  topRankedAssetsByBorrow,
-  topRankedEmployees
+  takeTodayEventsForDisplay
 } from '../../features/kiosk-loan-analytics/analyticsDisplayPolicy';
 import { formatPeriodLabelJa, periodRangeToIso, toDayInputValue, toMonthInputValue } from '../../features/kiosk-loan-analytics/period';
 import { type DatasetTab, mapResponseToViewModel } from '../../features/kiosk-loan-analytics/view-model';
@@ -85,6 +88,7 @@ export function KioskRiggingAnalyticsPage() {
   const [itemOptions, setItemOptions] = useState<AssetOption[]>([]);
   const [instrumentOptions, setInstrumentOptions] = useState<AssetOption[]>([]);
   const [datasetTab, setDatasetTab] = useState<DatasetTab>('rigging');
+  const [listMode, setListMode] = useState<AnalyticsListMode>('top');
 
   const riggingParams = useMemo(
     () => (baseQueryParams ? { ...baseQueryParams, ...(selectedRiggingGearId ? { riggingGearId: selectedRiggingGearId } : {}) } : undefined),
@@ -165,12 +169,12 @@ export function KioskRiggingAnalyticsPage() {
   const todayView = useMemo(() => (todayRaw ? mapResponseToViewModel(datasetTab, todayRaw) : null), [datasetTab, todayRaw]);
 
   const rankedEmployees = useMemo(
-    () => topRankedEmployees(view?.employees ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees),
-    [view]
+    () => selectEmployeesForDisplay(view?.employees ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees, listMode),
+    [view, listMode]
   );
   const rankedAssets = useMemo(
-    () => topRankedAssetsByBorrow(view?.assets ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets),
-    [view]
+    () => selectAssetsForDisplay(view?.assets ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets, listMode),
+    [view, listMode]
   );
   const assetInventory = useMemo(() => (view?.assets.length ? summarizeAssetInventory(view.assets) : null), [view]);
   const returnCompletionPct = useMemo(
@@ -179,8 +183,8 @@ export function KioskRiggingAnalyticsPage() {
   );
 
   const todayEventRows = useMemo(
-    () => takeTodayEventsForDisplay(todayView?.periodEvents ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax),
-    [todayView]
+    () => takeTodayEventsForDisplay(todayView?.periodEvents ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax, listMode),
+    [todayView, listMode]
   );
   const todayKinds = useMemo(() => countPeriodEventKinds(todayView?.periodEvents ?? []), [todayView]);
   const todayReturnCompletion = useMemo(
@@ -226,147 +230,214 @@ export function KioskRiggingAnalyticsPage() {
     );
   }
 
-  const rankBadge = (n: number) => `Top ${n}`;
+  const employeeRankBadge =
+    listMode === 'top'
+      ? `Top ${ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees}`
+      : isFullListTruncated(view.employees.length, listMode)
+        ? `全件（最大${ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS}件）`
+        : '全件';
+
+  const assetRankBadge =
+    listMode === 'top'
+      ? `Top ${ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets}`
+      : isFullListTruncated(view.assets.length, listMode)
+        ? `全件（最大${ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS}件）`
+        : '全件';
+
+  const todayCaptionBadge =
+    listMode === 'top'
+      ? `直近 ${ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax} 件`
+      : isFullListTruncated(todayView.periodEvents.length, listMode)
+        ? `全件（最大${ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS}件）`
+        : '全件';
+
+  const listModeToggleButtonClass = (active: boolean) =>
+    `rounded px-2 py-0.5 text-[11px] font-bold transition-opacity hover:opacity-90 ${
+      active ? 'ring-1 ring-white/25' : 'opacity-80'
+    }`;
 
   return (
     <div
-      className="flex h-full min-h-0 flex-1 flex-col gap-1.5 overflow-hidden"
+      className="flex h-full min-h-0 flex-1 flex-col gap-2 overflow-hidden"
       style={{ color: DADS.text, fontFamily: 'var(--font-family-sans)' }}
     >
       <div
-        className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5"
+        className="flex shrink-0 flex-col gap-2 px-3 py-2"
         style={{ borderRadius: DADS.radius8, border: `1px solid ${DADS.border}`, backgroundColor: DADS.surface }}
       >
-        <h2 className="shrink-0 text-sm font-bold">集計</h2>
-        <span className="text-[11px]" style={{ color: DADS.textSub }}>
-          {new Date(view.periodFrom).toLocaleDateString('ja-JP')} — {new Date(view.periodTo).toLocaleDateString('ja-JP')}
-        </span>
-        <div className="ml-2 flex flex-wrap items-center gap-2">
-          <span className="text-xs" style={{ color: DADS.textMuted }}>
-            対象期間
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 className="shrink-0 text-sm font-bold">集計</h2>
+          <span className="text-[11px]" style={{ color: DADS.textSub }}>
+            {new Date(view.periodFrom).toLocaleDateString('ja-JP')} — {new Date(view.periodTo).toLocaleDateString('ja-JP')}
           </span>
-          <button
-            type="button"
-            className="rounded px-2 py-0.5 text-xs font-semibold transition-opacity hover:opacity-90"
-            style={{
-              border: `1px solid ${DADS.borderSubtle}`,
-              backgroundColor: 'var(--color-neutral-solid-gray-900)',
-              color: DADS.text,
-              borderRadius: DADS.radius6
-            }}
-            aria-label="対象期間"
-            onClick={() => setMonthPickerOpen(true)}
-          >
-            {formatPeriodLabelJa(targetPeriod)}
-          </button>
-          <KioskMonthPickerModal
-            isOpen={monthPickerOpen}
-            value={targetPeriod}
-            variant="analytics"
-            onCancel={() => setMonthPickerOpen(false)}
-            onCommit={(next) => {
-              setTargetPeriod(next);
-              setMonthPickerOpen(false);
-            }}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs" style={{ color: DADS.textMuted }}>
+              対象期間
+            </span>
+            <button
+              type="button"
+              className="rounded px-2 py-0.5 text-xs font-semibold transition-opacity hover:opacity-90"
+              style={{
+                border: `1px solid ${DADS.borderSubtle}`,
+                backgroundColor: 'var(--color-neutral-solid-gray-900)',
+                color: DADS.text,
+                borderRadius: DADS.radius6
+              }}
+              aria-label="対象期間"
+              onClick={() => setMonthPickerOpen(true)}
+            >
+              {formatPeriodLabelJa(targetPeriod)}
+            </button>
+            <KioskMonthPickerModal
+              isOpen={monthPickerOpen}
+              value={targetPeriod}
+              variant="analytics"
+              onCancel={() => setMonthPickerOpen(false)}
+              onCommit={(next) => {
+                setTargetPeriod(next);
+                setMonthPickerOpen(false);
+              }}
+            />
 
-          {datasetTab === 'rigging' && (
-            <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
-              吊具
-              <select
-                value={selectedRiggingGearId}
-                onChange={(e) => setSelectedRiggingGearId(e.target.value)}
-                className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
-                style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)', color: DADS.text }}
-                aria-label="吊具で絞り込み"
-              >
-                <option value="">全件</option>
-                {riggingOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {datasetTab === 'items' && (
-            <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
-              表示名
-              <select
-                value={selectedItemId}
-                onChange={(e) => setSelectedItemId(e.target.value)}
-                className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
-                style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)', color: DADS.text }}
-                aria-label="持出返却アイテムで絞り込み"
-              >
-                <option value="">全件</option>
-                {itemOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {datasetTab === 'instruments' && (
-            <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
-              計測機器
-              <select
-                value={selectedInstrumentId}
-                onChange={(e) => setSelectedInstrumentId(e.target.value)}
-                className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
-                style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)', color: DADS.text }}
-                aria-label="計測機器で絞り込み"
-              >
-                <option value="">全件</option>
-                {instrumentOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+            {datasetTab === 'rigging' && (
+              <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
+                吊具
+                <select
+                  value={selectedRiggingGearId}
+                  onChange={(e) => setSelectedRiggingGearId(e.target.value)}
+                  className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
+                  style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)', color: DADS.text }}
+                  aria-label="吊具で絞り込み"
+                >
+                  <option value="">全件</option>
+                  {riggingOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {datasetTab === 'items' && (
+              <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
+                表示名
+                <select
+                  value={selectedItemId}
+                  onChange={(e) => setSelectedItemId(e.target.value)}
+                  className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
+                  style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)', color: DADS.text }}
+                  aria-label="持出返却アイテムで絞り込み"
+                >
+                  <option value="">全件</option>
+                  {itemOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {datasetTab === 'instruments' && (
+              <label className="flex items-center gap-1 text-xs" style={{ color: DADS.textMuted }}>
+                計測機器
+                <select
+                  value={selectedInstrumentId}
+                  onChange={(e) => setSelectedInstrumentId(e.target.value)}
+                  className="max-w-[min(220px,40vw)] min-w-0 rounded px-1.5 py-0.5 text-xs"
+                  style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)', color: DADS.text }}
+                  aria-label="計測機器で絞り込み"
+                >
+                  <option value="">全件</option>
+                  {instrumentOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-          style={{
-            borderRadius: DADS.radius6,
-            backgroundColor: datasetTab === 'rigging' ? DADS.primaryUi : DADS.tabInactive,
-            color: datasetTab === 'rigging' ? DADS.text : DADS.textMuted
-          }}
-          onClick={() => setDatasetTab('rigging')}
-        >
-          吊具
-        </button>
-        <button
-          type="button"
-          className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-          style={{
-            borderRadius: DADS.radius6,
-            backgroundColor: datasetTab === 'items' ? DADS.primaryUi : DADS.tabInactive,
-            color: datasetTab === 'items' ? DADS.text : DADS.textMuted
-          }}
-          onClick={() => setDatasetTab('items')}
-        >
-          持出返却アイテム
-        </button>
-        <button
-          type="button"
-          className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-          style={{
-            borderRadius: DADS.radius6,
-            backgroundColor: datasetTab === 'instruments' ? DADS.primaryUi : DADS.tabInactive,
-            color: datasetTab === 'instruments' ? DADS.text : DADS.textMuted
-          }}
-          onClick={() => setDatasetTab('instruments')}
-        >
-          計測機器
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
+              style={{
+                borderRadius: DADS.radius6,
+                backgroundColor: datasetTab === 'rigging' ? DADS.primaryUi : DADS.tabInactive,
+                color: datasetTab === 'rigging' ? DADS.text : DADS.textMuted
+              }}
+              onClick={() => setDatasetTab('rigging')}
+            >
+              吊具
+            </button>
+            <button
+              type="button"
+              className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
+              style={{
+                borderRadius: DADS.radius6,
+                backgroundColor: datasetTab === 'items' ? DADS.primaryUi : DADS.tabInactive,
+                color: datasetTab === 'items' ? DADS.text : DADS.textMuted
+              }}
+              onClick={() => setDatasetTab('items')}
+            >
+              持出返却アイテム
+            </button>
+            <button
+              type="button"
+              className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
+              style={{
+                borderRadius: DADS.radius6,
+                backgroundColor: datasetTab === 'instruments' ? DADS.primaryUi : DADS.tabInactive,
+                color: datasetTab === 'instruments' ? DADS.text : DADS.textMuted
+              }}
+              onClick={() => setDatasetTab('instruments')}
+            >
+              計測機器
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-semibold" style={{ color: DADS.textSub }}>
+              一覧表示
+            </span>
+            <div
+              className="inline-flex rounded-md p-0.5"
+              role="group"
+              aria-label="一覧表示モード"
+              style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)' }}
+            >
+              <button
+                type="button"
+                className={listModeToggleButtonClass(listMode === 'top')}
+                style={{
+                  borderRadius: DADS.radius6,
+                  backgroundColor: listMode === 'top' ? DADS.primaryUi : 'transparent',
+                  color: listMode === 'top' ? DADS.text : DADS.textMuted
+                }}
+                aria-pressed={listMode === 'top'}
+                onClick={() => setListMode('top')}
+              >
+                Top
+              </button>
+              <button
+                type="button"
+                className={listModeToggleButtonClass(listMode === 'all')}
+                style={{
+                  borderRadius: DADS.radius6,
+                  backgroundColor: listMode === 'all' ? DADS.primaryUi : 'transparent',
+                  color: listMode === 'all' ? DADS.text : DADS.textMuted
+                }}
+                aria-pressed={listMode === 'all'}
+                onClick={() => setListMode('all')}
+              >
+                全件
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <KioskAnalyticsKpiStrip
@@ -379,20 +450,16 @@ export function KioskRiggingAnalyticsPage() {
         returnCompletionPercent={returnCompletionPct}
       />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-4 gap-1.5 overflow-hidden md:grid-cols-2 md:grid-rows-2">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-4 gap-2 overflow-hidden md:grid-cols-2 md:grid-rows-2">
         <div className="min-h-0 overflow-hidden">
-          <EmployeeBarsPanel
-            rows={rankedEmployees}
-            theme={DADS}
-            rankBadge={rankBadge(ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees)}
-          />
+          <EmployeeBarsPanel rows={rankedEmployees} theme={DADS} rankBadge={employeeRankBadge} />
         </div>
         <div className="min-h-0 overflow-hidden">
           <AssetBorrowFrequencyPanel
             rows={rankedAssets}
             theme={DADS}
             title={`持出回数（${view.assetFilterLabel}）`}
-            rankBadge={rankBadge(ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets)}
+            rankBadge={assetRankBadge}
             inventory={assetInventory}
           />
         </div>
@@ -410,7 +477,7 @@ export function KioskRiggingAnalyticsPage() {
             rows={todayEventRows}
             theme={DADS}
             title="当日の持出返却状況"
-            captionBadge={`直近 ${ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax} 件`}
+            captionBadge={todayCaptionBadge}
             todaySummary={{
               borrowCount: todayKinds.borrowCount,
               returnCount: todayKinds.returnCount,

@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 
 import { formatDateTimeJa } from '../../../features/kiosk-loan-analytics/period';
 
@@ -13,6 +13,18 @@ const tableDense: CSSProperties = {
   lineHeight: 'var(--line-height-130)',
   fontFamily: 'var(--font-family-sans)'
 };
+
+/** ランキング行のバー高さ・行間（パネル間で統一） */
+const RANK_BAR_HEIGHT_CLASS = 'h-3.5';
+
+function formatAssetRowLabel(row: AssetRow): string {
+  const code = row.code?.trim();
+  const name = row.name?.trim() ?? '';
+  if (code && name && code !== name) {
+    return `${code} ${name}`;
+  }
+  return name || code || row.id;
+}
 
 function PanelBadge({ theme, children }: { theme: KioskAnalyticsTheme; children: string }) {
   return (
@@ -29,6 +41,58 @@ function PanelBadge({ theme, children }: { theme: KioskAnalyticsTheme; children:
   );
 }
 
+/**
+ * パネル共通: 余白・タイトル・バッジ・スクロール領域を揃え、カード外寸のばらつきを抑える。
+ */
+function PanelFrame({
+  theme,
+  title,
+  badge,
+  toolbar,
+  legend,
+  children,
+  footer,
+  bodyScrollable = true
+}: {
+  theme: KioskAnalyticsTheme;
+  title: string;
+  badge?: string;
+  toolbar?: ReactNode;
+  legend?: ReactNode;
+  children: ReactNode;
+  footer?: ReactNode;
+  /** false のとき本文はスクロールせず中央配置向けに伸長（事象比パネル等） */
+  bodyScrollable?: boolean;
+}) {
+  const body = bodyScrollable ? (
+    <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">{children}</div>
+  ) : (
+    <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+  );
+
+  return (
+    <section
+      className="flex h-full min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 py-2.5"
+      style={{
+        borderRadius: theme.radius8,
+        border: `1px solid ${theme.border}`,
+        backgroundColor: theme.surface
+      }}
+    >
+      <div className="flex shrink-0 items-start justify-between gap-2">
+        <h3 className="min-w-0 text-xs font-bold leading-snug" style={{ color: theme.textMuted }}>
+          {title}
+        </h3>
+        {badge ? <PanelBadge theme={theme}>{badge}</PanelBadge> : null}
+      </div>
+      {toolbar ? <div className="shrink-0">{toolbar}</div> : null}
+      {legend ? <div className="shrink-0">{legend}</div> : null}
+      {body}
+      {footer ? <div className="shrink-0">{footer}</div> : null}
+    </section>
+  );
+}
+
 export function EmployeeBarsPanel({
   rows,
   theme,
@@ -38,70 +102,83 @@ export function EmployeeBarsPanel({
   theme: KioskAnalyticsTheme;
   rankBadge?: string;
 }) {
-  const maxValue = useMemo(() => Math.max(1, ...rows.map((r) => Math.max(r.periodBorrowCount, r.periodReturnCount))), [rows]);
+  const maxActivity = useMemo(() => Math.max(1, ...rows.map((r) => r.periodBorrowCount + r.periodReturnCount)), [rows]);
+
+  const legend = (
+    <div className="flex flex-wrap items-center gap-3 text-[10px]" style={{ color: theme.textSub }}>
+      <span className="flex items-center gap-1">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: theme.chartBorrow }} />
+        持出
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: theme.chartReturn }} />
+        返却
+      </span>
+    </div>
+  );
+
   return (
-    <section
-      className="flex min-h-0 flex-1 flex-col gap-1 p-2"
-      style={{ borderRadius: theme.radius8, border: `1px solid ${theme.border}`, backgroundColor: theme.surface }}
-    >
-      <div className="flex min-h-0 items-center justify-between gap-2">
-        <h3 className="shrink-0 text-xs font-bold" style={{ color: theme.textMuted }}>
-          社員別 持出・返却
-        </h3>
-        {rankBadge ? <PanelBadge theme={theme}>{rankBadge}</PanelBadge> : null}
-      </div>
-      <div className="flex items-center gap-3 text-[10px]" style={{ color: theme.textSub }}>
-        <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: theme.chartBorrow }} />
-          持出
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: theme.chartReturn }} />
-          返却
-        </span>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col justify-between gap-0.5">
-        {rows.length === 0 ? (
-          <p className="py-4 text-center text-xs" style={{ color: theme.textSub }}>
-            データがありません。
-          </p>
-        ) : (
-          rows.map((row) => (
-            <div key={row.employeeId} className="grid grid-cols-[minmax(0,94px)_1fr] items-center gap-1 py-0.5">
-              <span className="truncate text-[11px] font-medium" style={{ color: theme.textSub }}>
-                {row.displayName}
-              </span>
-              <div className="space-y-0.5">
-                <div className="flex min-w-0 items-center gap-1">
-                  <div
-                    className="h-1.5 min-w-0 rounded-sm"
-                    style={{
-                      width: `${(row.periodBorrowCount / maxValue) * 100}%`,
-                      backgroundColor: theme.chartBorrow
-                    }}
-                  />
-                  <span className="shrink-0 text-[10px] tabular-nums" style={{ color: theme.textMuted }}>
-                    {row.periodBorrowCount}
+    <PanelFrame theme={theme} title="社員別 持出・返却" badge={rankBadge} legend={legend}>
+      {rows.length === 0 ? (
+        <p className="py-6 text-center text-xs" style={{ color: theme.textSub }}>
+          データがありません。
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1.5 pr-0.5">
+          {rows.map((row, idx) => {
+            const br = row.periodBorrowCount;
+            const rt = row.periodReturnCount;
+            const sum = br + rt;
+            const magnitudeWidth = `${Math.max(4, Math.round((sum / maxActivity) * 100))}%`;
+            return (
+              <li key={row.employeeId}>
+                <div className="grid grid-cols-[22px_minmax(0,7rem)_1fr_auto] items-center gap-1.5">
+                  <span
+                    className="text-center text-[11px] font-bold tabular-nums"
+                    style={{ color: idx < 3 ? 'var(--color-primitive-amber-400, #fbbf24)' : theme.textSub }}
+                  >
+                    {idx + 1}
                   </span>
-                </div>
-                <div className="flex min-w-0 items-center gap-1">
-                  <div
-                    className="h-1.5 min-w-0 rounded-sm"
-                    style={{
-                      width: `${(row.periodReturnCount / maxValue) * 100}%`,
-                      backgroundColor: theme.chartReturn
-                    }}
-                  />
-                  <span className="shrink-0 text-[10px] tabular-nums" style={{ color: theme.textMuted }}>
-                    {row.periodReturnCount}
+                  <span className="truncate text-[11px] font-medium" style={{ color: theme.textSub }} title={row.displayName}>
+                    {row.displayName}
                   </span>
+                  <div
+                    className={`${RANK_BAR_HEIGHT_CLASS} flex w-full min-w-0 overflow-hidden rounded-sm`}
+                    style={{ background: 'rgba(255,255,255,0.06)' }}
+                    aria-hidden
+                  >
+                    {sum === 0 ? null : (
+                      <div className="flex min-w-0 overflow-hidden rounded-sm" style={{ width: magnitudeWidth }}>
+                        <div
+                          className="min-h-0 min-w-[2px] shrink"
+                          style={{
+                            flexGrow: br,
+                            flexBasis: 0,
+                            backgroundColor: theme.chartBorrow
+                          }}
+                        />
+                        <div
+                          className="min-h-0 min-w-[2px] shrink"
+                          style={{
+                            flexGrow: rt,
+                            flexBasis: 0,
+                            backgroundColor: theme.chartReturn
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-0 text-[10px] tabular-nums leading-none">
+                    <span style={{ color: theme.chartBorrow }}>{br}</span>
+                    <span style={{ color: theme.chartReturn }}>{rt}</span>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </section>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </PanelFrame>
   );
 }
 
@@ -114,30 +191,30 @@ export function AssetInventoryChips({ summary, theme }: { summary: AssetInventor
         style={{ border: `1px solid ${theme.borderSubtle}`, background: 'rgba(255,255,255,0.04)' }}
       >
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-semantic-success-1, #34d399)' }} />
-        <span style={{ color: theme.textSub }}>利用可</span>
         <strong className="tabular-nums" style={{ color: theme.text }}>
           {summary.availableCount}
         </strong>
+        <span style={{ color: theme.textSub }}>利用可</span>
       </span>
       <span
         className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
         style={{ border: `1px solid ${theme.borderSubtle}`, background: 'rgba(255,255,255,0.04)' }}
       >
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-primitive-yellow-300)' }} />
-        <span style={{ color: theme.textSub }}>貸出中</span>
         <strong className="tabular-nums" style={{ color: theme.text }}>
           {summary.inUseCount}
         </strong>
+        <span style={{ color: theme.textSub }}>貸出中</span>
       </span>
       <span
         className="inline-flex items-center gap-1 rounded px-1.5 py-0.5"
         style={{ border: `1px solid ${theme.borderSubtle}`, background: 'rgba(255,255,255,0.04)' }}
       >
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: theme.error }} />
-        <span style={{ color: theme.textSub }}>超過</span>
         <strong className="tabular-nums" style={{ color: theme.text }}>
           {summary.overdueCount}
         </strong>
+        <span style={{ color: theme.textSub }}>超過</span>
       </span>
     </div>
   );
@@ -158,44 +235,55 @@ export function AssetBorrowFrequencyPanel({
 }) {
   const sorted = useMemo(() => [...rows].sort((a, b) => b.periodBorrowCount - a.periodBorrowCount), [rows]);
   const maxValue = Math.max(1, ...sorted.map((r) => r.periodBorrowCount));
+
   return (
-    <section
-      className="flex min-h-0 flex-1 flex-col gap-1 p-2"
-      style={{ borderRadius: theme.radius8, border: `1px solid ${theme.border}`, backgroundColor: theme.surface }}
+    <PanelFrame
+      theme={theme}
+      title={title}
+      badge={rankBadge}
+      legend={inventory ? <AssetInventoryChips summary={inventory} theme={theme} /> : undefined}
     >
-      <div className="flex min-h-0 items-center justify-between gap-2">
-        <h3 className="min-w-0 truncate text-xs font-bold" style={{ color: theme.textMuted }}>
-          {title}
-        </h3>
-        {rankBadge ? <PanelBadge theme={theme}>{rankBadge}</PanelBadge> : null}
-      </div>
-      {inventory ? <AssetInventoryChips summary={inventory} theme={theme} /> : null}
-      <div className="flex min-h-0 flex-1 flex-col justify-between gap-0.5">
-        {sorted.length === 0 ? (
-          <p className="py-4 text-center text-xs" style={{ color: theme.textSub }}>
-            データがありません。
-          </p>
-        ) : (
-          sorted.map((row) => (
-            <div key={row.id} className="grid grid-cols-[minmax(0,120px)_1fr_auto] items-center gap-1 py-0.5">
-              <span className="truncate text-[11px]" style={{ color: theme.textSub }}>
-                {row.name}
-              </span>
-              <div
-                className="h-2 min-w-0 rounded-sm"
-                style={{
-                  width: `${(row.periodBorrowCount / maxValue) * 100}%`,
-                  backgroundColor: theme.chartBorrow
-                }}
-              />
-              <span className="shrink-0 text-[10px] tabular-nums" style={{ color: theme.textMuted }}>
-                {row.periodBorrowCount}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    </section>
+      {sorted.length === 0 ? (
+        <p className="py-6 text-center text-xs" style={{ color: theme.textSub }}>
+          データがありません。
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1.5 pr-0.5">
+          {sorted.map((row, idx) => (
+            <li key={row.id}>
+              <div className="grid grid-cols-[22px_minmax(0,7.5rem)_1fr_auto] items-center gap-1.5">
+                <span
+                  className="text-center text-[11px] font-bold tabular-nums"
+                  style={{ color: idx < 3 ? 'var(--color-primitive-amber-400, #fbbf24)' : theme.textSub }}
+                >
+                  {idx + 1}
+                </span>
+                <span className="truncate text-[11px]" style={{ color: theme.textSub }} title={formatAssetRowLabel(row)}>
+                  {formatAssetRowLabel(row)}
+                </span>
+                <div
+                  className={`${RANK_BAR_HEIGHT_CLASS} w-full min-w-0 rounded-sm`}
+                  style={{
+                    background: 'rgba(255,255,255,0.06)'
+                  }}
+                >
+                  <div
+                    className={`${RANK_BAR_HEIGHT_CLASS} min-w-0 rounded-sm`}
+                    style={{
+                      width: `${(row.periodBorrowCount / maxValue) * 100}%`,
+                      backgroundColor: theme.chartBorrow
+                    }}
+                  />
+                </div>
+                <span className="shrink-0 text-[11px] font-bold tabular-nums" style={{ color: theme.chartBorrow }}>
+                  {row.periodBorrowCount}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </PanelFrame>
   );
 }
 
@@ -228,14 +316,9 @@ export function ReturnRatePanel({
   const p3 = toPt(360);
   const largeBorrow = angle > 180 ? 1 : 0;
   const largeRet = 360 - angle > 180 ? 1 : 0;
+
   return (
-    <section
-      className="flex min-h-0 flex-1 flex-col gap-1 p-2"
-      style={{ borderRadius: theme.radius8, border: `1px solid ${theme.border}`, backgroundColor: theme.surface }}
-    >
-      <h3 className="text-xs font-bold" style={{ color: theme.textMuted }}>
-        {title}
-      </h3>
+    <PanelFrame theme={theme} title={title} bodyScrollable={false}>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
         <div className="flex flex-1 flex-wrap items-center justify-center gap-4">
           <svg viewBox="0 0 80 80" className="h-24 w-24 shrink-0" aria-label="持出と返却の件数比の円グラフ">
@@ -272,7 +355,7 @@ export function ReturnRatePanel({
           </p>
         ) : null}
       </div>
-    </section>
+    </PanelFrame>
   );
 }
 
@@ -293,79 +376,72 @@ export function TodayEventsPane({
   rows: PeriodEventRow[];
   theme: KioskAnalyticsTheme;
   title: string;
-  /** 例: 「直近 5 件」（呼び出し側で表示上限に合わせたラベル） */
   captionBadge?: string;
   todaySummary?: TodayEventsSummary | null;
 }) {
-  const visible = rows;
   const badge = captionBadge;
 
-  return (
-    <section
-      className="flex min-h-0 flex-1 flex-col gap-1"
-      style={{ borderRadius: theme.radius8, border: `1px solid ${theme.border}`, backgroundColor: theme.surface, padding: '8px' }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-bold" style={{ color: theme.textMuted }}>
-          {title}
-        </h3>
-        {badge ? <PanelBadge theme={theme}>{badge}</PanelBadge> : null}
+  const toolbar =
+    todaySummary === undefined || todaySummary === null ? null : (
+      <div className="grid grid-cols-3 gap-1.5">
+        <MiniTodayKpi label="今日の持出" value={todaySummary.borrowCount} accent={theme.chartBorrow} theme={theme} />
+        <MiniTodayKpi label="今日の返却" value={todaySummary.returnCount} accent={theme.chartReturn} theme={theme} />
+        <MiniTodayKpi
+          label="当日返却率"
+          value={todaySummary.returnCompletionPercent === null ? '—' : `${todaySummary.returnCompletionPercent}%`}
+          accent="var(--color-semantic-success-1, #34d399)"
+          theme={theme}
+        />
       </div>
+    );
 
-      {todaySummary ? (
-        <div className="grid grid-cols-3 gap-1">
-          <MiniTodayKpi label="今日の持出" value={todaySummary.borrowCount} accent={theme.chartBorrow} theme={theme} />
-          <MiniTodayKpi label="今日の返却" value={todaySummary.returnCount} accent={theme.chartReturn} theme={theme} />
-          <MiniTodayKpi
-            label="当日返却率"
-            value={todaySummary.returnCompletionPercent === null ? '—' : `${todaySummary.returnCompletionPercent}%`}
-            accent="var(--color-semantic-success-1, #34d399)"
-            theme={theme}
-          />
-        </div>
-      ) : null}
-
-      <div className="min-h-0 flex-1 overflow-hidden rounded" style={{ border: `1px solid ${theme.border}` }}>
+  return (
+    <PanelFrame theme={theme} title={title} badge={badge} toolbar={toolbar}>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-md" style={{ border: `1px solid ${theme.border}` }}>
         <table className="w-full min-w-0 table-fixed text-left" style={tableDense}>
           <thead
-            className="sticky top-0 z-10 backdrop-blur"
-            style={{ backgroundColor: 'color-mix(in srgb, var(--color-neutral-solid-gray-800) 94%, transparent)' }}
+            className="sticky top-0 z-10"
+            style={{ backgroundColor: 'color-mix(in srgb, var(--color-neutral-solid-gray-800) 96%, transparent)' }}
           >
             <tr style={{ borderBottom: `1px solid ${theme.border}` }}>
-              <th className="px-2 py-1.5" style={{ color: theme.textMuted, fontWeight: 700 }}>
+              <th className="px-2 py-1 text-[11px]" style={{ color: theme.textMuted, fontWeight: 700 }}>
                 時刻
               </th>
-              <th className="px-2 py-1.5" style={{ color: theme.textMuted, fontWeight: 700 }}>
+              <th className="px-2 py-1 text-[11px]" style={{ color: theme.textMuted, fontWeight: 700 }}>
                 種別
               </th>
-              <th className="px-2 py-1.5" style={{ color: theme.textMuted, fontWeight: 700 }}>
+              <th className="px-2 py-1 text-[11px]" style={{ color: theme.textMuted, fontWeight: 700 }}>
                 資産
               </th>
-              <th className="px-2 py-1.5" style={{ color: theme.textMuted, fontWeight: 700 }}>
+              <th className="px-2 py-1 text-[11px]" style={{ color: theme.textMuted, fontWeight: 700 }}>
                 社員
               </th>
             </tr>
           </thead>
           <tbody>
-            {visible.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-2 py-4 text-center text-xs" style={{ color: theme.textSub }}>
                   当日のイベントはありません。
                 </td>
               </tr>
             ) : (
-              visible.map((row) => (
-                <tr key={`${row.kind}-${row.assetId}-${row.eventAt}`} className="border-b" style={{ borderColor: 'var(--color-neutral-opacity-gray-100)' }}>
-                  <td className="w-[68px] px-2 py-1 tabular-nums" style={{ color: theme.textSub }}>
+              rows.map((row) => (
+                <tr
+                  key={`${row.kind}-${row.assetId}-${row.eventAt}`}
+                  className="border-b"
+                  style={{ borderColor: 'var(--color-neutral-opacity-gray-100)' }}
+                >
+                  <td className="w-[68px] px-2 py-1 text-[13px] tabular-nums" style={{ color: theme.textSub }}>
                     {formatDateTimeJa(row.eventAt)}
                   </td>
-                  <td className="w-[44px] px-2 py-1 font-bold" style={{ color: row.kind === 'BORROW' ? theme.chartBorrow : theme.chartReturn }}>
+                  <td className="w-[44px] px-2 py-1 text-[13px] font-bold" style={{ color: row.kind === 'BORROW' ? theme.chartBorrow : theme.chartReturn }}>
                     {row.kind === 'BORROW' ? '持出' : '返却'}
                   </td>
-                  <td className="truncate px-2 py-1" style={{ color: theme.text }}>
+                  <td className="truncate px-2 py-1 text-[13px]" style={{ color: theme.text }}>
                     {row.assetLabel}
                   </td>
-                  <td className="w-[88px] truncate px-2 py-1" style={{ color: theme.textSub }}>
+                  <td className="w-[88px] truncate px-2 py-1 text-[13px]" style={{ color: theme.textSub }}>
                     {row.actorDisplayName ?? '—'}
                   </td>
                 </tr>
@@ -374,7 +450,7 @@ export function TodayEventsPane({
           </tbody>
         </table>
       </div>
-    </section>
+    </PanelFrame>
   );
 }
 
@@ -391,7 +467,7 @@ function MiniTodayKpi({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center rounded px-1 py-1.5"
+      className="flex min-h-[52px] flex-col items-center justify-center rounded px-1 py-1.5"
       style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${theme.borderSubtle}` }}
     >
       <span className="text-[9px]" style={{ color: theme.textSub }}>
@@ -403,4 +479,3 @@ function MiniTodayKpi({
     </div>
   );
 }
-
