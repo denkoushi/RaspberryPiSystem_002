@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キオスク集計 BIダッシュボード改善案プレビュー</title>
+  <style>
+    :root {
+      --blue-500: #3b82f6;
+      --cyan-600: #0891b2;
+      --gray-900: #111827;
+      --gray-800: #1f2937;
+      --gray-700: #374151;
+      --gray-600: #4b5563;
+      --gray-400: #9ca3af;
+      --gray-300: #d1d5db;
+      --white: #fff;
+      --yellow-300: #fde047;
+      --red-400: #f87171;
+      --blue-900: #1e3a5f;
+      --emerald-400: #34d399;
+      --amber-400: #fbbf24;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--gray-900);
+      color: var(--white);
+      font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+    }
+
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      padding: 6px 10px;
+      gap: 6px;
+    }
+
+    /* ─── ヘッダーバー ─── */
+    .header-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--gray-600);
+      background: var(--gray-800);
+      flex-shrink: 0;
+    }
+    .header-bar h2 { font-size: 14px; font-weight: 700; }
+    .header-period {
+      font-size: 11px;
+      color: var(--gray-400);
+    }
+    .period-btn {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--gray-700);
+      background: var(--gray-900);
+      color: var(--white);
+      cursor: pointer;
+    }
+    .tab-group { display: flex; gap: 4px; margin-left: 8px; }
+    .tab-btn {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      color: var(--gray-400);
+      background: var(--gray-700);
+    }
+    .tab-btn.active {
+      background: var(--blue-900);
+      color: var(--white);
+    }
+
+    /* ─── KPIスコアカード帯 ─── */
+    .kpi-strip {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .kpi-card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--gray-600);
+      background: var(--gray-800);
+      gap: 2px;
+    }
+    .kpi-label {
+      font-size: 10px;
+      color: var(--gray-400);
+      letter-spacing: 0.04em;
+    }
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .kpi-sub {
+      font-size: 9px;
+      color: var(--gray-400);
+    }
+
+    /* ─── メインエリア 2×2グリッド ─── */
+    .main-grid {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .panel {
+      border-radius: 8px;
+      border: 1px solid var(--gray-600);
+      background: var(--gray-800);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--gray-300);
+      margin-bottom: 6px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-title .badge {
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(59,130,246,0.15);
+      color: var(--blue-500);
+    }
+
+    /* ─── 横棒ランキング ─── */
+    .rank-list {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      min-height: 0;
+    }
+    .rank-row {
+      display: grid;
+      grid-template-columns: 18px 90px 1fr 32px;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+    }
+    .rank-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--gray-400);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .rank-num.top3 { color: var(--amber-400); }
+    .rank-name {
+      font-size: 11px;
+      color: rgba(255,255,255,0.85);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rank-bar-track {
+      height: 14px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+      display: flex;
+    }
+    .rank-bar-fill {
+      height: 100%;
+      border-radius: 3px 0 0 3px;
+    }
+    .rank-bar-fill.borrow { background: var(--blue-500); }
+    .rank-bar-fill.return { background: var(--cyan-600); border-radius: 0; }
+    .rank-count {
+      font-size: 11px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--blue-500);
+      text-align: right;
+    }
+
+    /* ─── ドーナツ + サマリ ─── */
+    .donut-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      min-height: 0;
+    }
+    .donut-svg { width: 120px; height: 120px; }
+    .donut-legend { display: flex; flex-direction: column; gap: 8px; }
+    .donut-legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .legend-label { color: var(--gray-400); }
+    .legend-pct {
+      font-weight: 800;
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+    .legend-count {
+      font-size: 10px;
+      color: var(--gray-400);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ─── ステータスグリッド（今日のサマリ） ─── */
+    .today-summary {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+    }
+    .today-kpi-row {
+      display: flex;
+      gap: 6px;
+    }
+    .today-kpi {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 4px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .today-kpi-val {
+      font-size: 22px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    .today-kpi-label {
+      font-size: 9px;
+      color: var(--gray-400);
+      margin-top: 2px;
+    }
+
+    .today-events-compact {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-evenly;
+      min-height: 0;
+    }
+    .event-row {
+      display: grid;
+      grid-template-columns: 52px 36px 1fr auto;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 4px;
+      border-radius: 4px;
+    }
+    .event-row:nth-child(odd) {
+      background: rgba(255,255,255,0.02);
+    }
+    .event-time {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--gray-400);
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .event-kind {
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .event-kind.borrow {
+      background: rgba(59,130,246,0.15);
+      color: var(--blue-500);
+    }
+    .event-kind.return {
+      background: rgba(8,145,178,0.15);
+      color: #22d3ee;
+    }
+    .event-asset {
+      font-size: 11px;
+      color: rgba(255,255,255,0.85);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .event-actor {
+      font-size: 10px;
+      color: var(--gray-400);
+      white-space: nowrap;
+    }
+
+    /* ─── 資産ステータス帯 ─── */
+    .status-strip {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+      margin-top: 4px;
+    }
+    .status-chip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .status-dot.available { background: var(--emerald-400); }
+    .status-dot.in-use { background: var(--amber-400); }
+    .status-dot.overdue { background: var(--red-400); }
+    .status-count {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,0.9);
+    }
+    .status-label { color: var(--gray-400); }
+
+    /* ─── 凡例 ─── */
+    .bar-legend {
+      display: flex;
+      gap: 10px;
+      font-size: 9px;
+      color: var(--gray-400);
+      flex-shrink: 0;
+      margin-bottom: 4px;
+    }
+    .bar-legend span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .bar-legend .dot {
+      width: 7px; height: 7px; border-radius: 2px;
+    }
+
+    /* ─── 注記 ─── */
+    .design-note {
+      flex-shrink: 0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px dashed rgba(255,255,255,0.15);
+      font-size: 10px;
+      line-height: 1.5;
+      color: rgba(255,255,255,0.5);
+    }
+    .design-note strong { color: rgba(255,255,255,0.7); }
+    .design-note code {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 9.5px;
+      color: rgba(255,255,255,0.65);
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+
+    <!-- ─── デザインノート ─── -->
+    <div class="design-note">
+      <strong>改善案プレビュー</strong> — 現行 <code>KioskRiggingAnalyticsPage</code> の問題（テーブルの縦はみ出し・スクロール前提）を解消する BI ダッシュボード案。
+      <strong>原則:</strong> 1画面完結（スクロール不要）/ Top N ランキング（全件表は管理画面へ）/ KPI は 5 枚のスコアカードに集約 / 当日は直近 5 件のみ表示。
+    </div>
+
+    <!-- ─── ヘッダーバー ─── -->
+    <div class="header-bar">
+      <h2>集計</h2>
+      <span class="header-period">2026/04/01 — 2026/04/30</span>
+      <span class="header-period">対象期間</span>
+      <button class="period-btn" type="button">2026年4月</button>
+      <div class="tab-group">
+        <button class="tab-btn active" type="button">吊具</button>
+        <button class="tab-btn" type="button">持出返却アイテム</button>
+        <button class="tab-btn" type="button">計測機器</button>
+      </div>
+      <select style="margin-left:auto; font-size:11px; padding:2px 8px; border-radius:6px; border:1px solid var(--gray-700); background:var(--gray-900); color:var(--white);">
+        <option>吊具: 全件</option>
+      </select>
+    </div>
+
+    <!-- ─── KPI スコアカード 5枚 ─── -->
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <span class="kpi-label">貸出中</span>
+        <span class="kpi-value" style="color:var(--yellow-300)">3</span>
+        <span class="kpi-sub">/ 全12台</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">超過</span>
+        <span class="kpi-value" style="color:var(--red-400)">1</span>
+        <span class="kpi-sub">要対応</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">今月 持出</span>
+        <span class="kpi-value" style="color:var(--blue-500)">24</span>
+        <span class="kpi-sub">件</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">今月 返却</span>
+        <span class="kpi-value" style="color:#22d3ee">21</span>
+        <span class="kpi-sub">件</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">返却率</span>
+        <span class="kpi-value" style="color:var(--emerald-400)">88<span style="font-size:16px">%</span></span>
+        <span class="kpi-sub">良好</span>
+      </div>
+    </div>
+
+    <!-- ─── メイン 2×2 グリッド ─── -->
+    <div class="main-grid">
+
+      <!-- ■ 左上: 社員別ランキング Top 8 -->
+      <div class="panel">
+        <div class="panel-title">
+          社員別 持出回数
+          <span class="badge">Top 8</span>
+        </div>
+        <div class="bar-legend">
+          <span><span class="dot" style="background:var(--blue-500)"></span>持出</span>
+          <span><span class="dot" style="background:var(--cyan-600)"></span>返却</span>
+        </div>
+        <div class="rank-list">
+          <div class="rank-row"><span class="rank-num top3">1</span><span class="rank-name">田中 太郎</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:100%"></div><div class="rank-bar-fill return" style="width:83%"></div></div><span class="rank-count">6</span></div>
+          <div class="rank-row"><span class="rank-num top3">2</span><span class="rank-name">鈴木 一郎</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:83%"></div><div class="rank-bar-fill return" style="width:67%"></div></div><span class="rank-count">5</span></div>
+          <div class="rank-row"><span class="rank-num top3">3</span><span class="rank-name">佐藤 花子</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:67%"></div><div class="rank-bar-fill return" style="width:67%"></div></div><span class="rank-count">4</span></div>
+          <div class="rank-row"><span class="rank-num">4</span><span class="rank-name">山田 次郎</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:50%"></div><div class="rank-bar-fill return" style="width:33%"></div></div><span class="rank-count">3</span></div>
+          <div class="rank-row"><span class="rank-num">5</span><span class="rank-name">高橋 三郎</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:33%"></div><div class="rank-bar-fill return" style="width:33%"></div></div><span class="rank-count">2</span></div>
+          <div class="rank-row"><span class="rank-num">6</span><span class="rank-name">中村 美咲</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:33%"></div><div class="rank-bar-fill return" style="width:17%"></div></div><span class="rank-count">2</span></div>
+          <div class="rank-row"><span class="rank-num">7</span><span class="rank-name">小林 誠</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:17%"></div><div class="rank-bar-fill return" style="width:17%"></div></div><span class="rank-count">1</span></div>
+          <div class="rank-row"><span class="rank-num">8</span><span class="rank-name">渡辺 健一</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:17%"></div><div class="rank-bar-fill return" style="width:0%"></div></div><span class="rank-count">1</span></div>
+        </div>
+      </div>
+
+      <!-- ■ 右上: 資産別ランキング Top 8 -->
+      <div class="panel">
+        <div class="panel-title">
+          資産別 持出回数（吊具）
+          <span class="badge">Top 8</span>
+        </div>
+        <div class="status-strip">
+          <div class="status-chip"><span class="status-dot available"></span><span class="status-count">9</span><span class="status-label">利用可</span></div>
+          <div class="status-chip"><span class="status-dot in-use"></span><span class="status-count">3</span><span class="status-label">貸出中</span></div>
+          <div class="status-chip"><span class="status-dot overdue"></span><span class="status-count">1</span><span class="status-label">超過</span></div>
+        </div>
+        <div class="rank-list" style="margin-top:4px">
+          <div class="rank-row"><span class="rank-num top3">1</span><span class="rank-name">定規</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:100%"></div></div><span class="rank-count">5</span></div>
+          <div class="rank-row"><span class="rank-num top3">2</span><span class="rank-name">Tレンチ</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:80%"></div></div><span class="rank-count">4</span></div>
+          <div class="rank-row"><span class="rank-num top3">3</span><span class="rank-name">グラインダー</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:60%"></div></div><span class="rank-count">3</span></div>
+          <div class="rank-row"><span class="rank-num">4</span><span class="rank-name">キーボード</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:40%"></div></div><span class="rank-count">2</span></div>
+          <div class="rank-row"><span class="rank-num">5</span><span class="rank-name">デジタルノギス</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:40%"></div></div><span class="rank-count">2</span></div>
+          <div class="rank-row"><span class="rank-num">6</span><span class="rank-name">ナット</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:40%"></div></div><span class="rank-count">2</span></div>
+          <div class="rank-row"><span class="rank-num">7</span><span class="rank-name">はさみ</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:20%"></div></div><span class="rank-count">1</span></div>
+          <div class="rank-row"><span class="rank-num">8</span><span class="rank-name">ピンゲージset</span><div class="rank-bar-track"><div class="rank-bar-fill borrow" style="width:20%"></div></div><span class="rank-count">1</span></div>
+        </div>
+      </div>
+
+      <!-- ■ 左下: 返却率ドーナツ -->
+      <div class="panel">
+        <div class="panel-title">持出 / 返却 バランス</div>
+        <div class="donut-area">
+          <!-- SVG ドーナツ (持出 53%, 返却 47%) -->
+          <svg class="donut-svg" viewBox="0 0 120 120" aria-label="持出返却バランス">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="18" />
+            <!-- 返却: 47% = 0.47 * 289 ≈ 136 -->
+            <circle cx="60" cy="60" r="46" fill="none"
+              stroke="#0891b2" stroke-width="18"
+              stroke-dasharray="289" stroke-dashoffset="0"
+              transform="rotate(-90 60 60)" />
+            <!-- 持出: 53% = 0.53 * 289 ≈ 153 -->
+            <circle cx="60" cy="60" r="46" fill="none"
+              stroke="#3b82f6" stroke-width="18"
+              stroke-dasharray="153 289"
+              transform="rotate(-90 60 60)" />
+            <circle cx="60" cy="60" r="30" fill="var(--gray-800)" />
+            <text x="60" y="56" text-anchor="middle" fill="var(--white)" font-size="16" font-weight="800" font-family="inherit">88%</text>
+            <text x="60" y="70" text-anchor="middle" fill="var(--gray-400)" font-size="8" font-family="inherit">返却率</text>
+          </svg>
+          <div class="donut-legend">
+            <div class="donut-legend-row">
+              <span class="legend-dot" style="background:var(--blue-500)"></span>
+              <span class="legend-label">持出</span>
+              <span class="legend-pct" style="color:var(--blue-500)">53%</span>
+              <span class="legend-count">24件</span>
+            </div>
+            <div class="donut-legend-row">
+              <span class="legend-dot" style="background:var(--cyan-600)"></span>
+              <span class="legend-label">返却</span>
+              <span class="legend-pct" style="color:#22d3ee">47%</span>
+              <span class="legend-count">21件</span>
+            </div>
+            <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);">
+              <div class="donut-legend-row">
+                <span class="legend-dot" style="background:var(--red-400)"></span>
+                <span class="legend-label">未返却</span>
+                <span class="legend-pct" style="color:var(--red-400)">3</span>
+                <span class="legend-count">件（うち超過 1）</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ■ 右下: 当日アクティビティ -->
+      <div class="panel">
+        <div class="panel-title">
+          当日の持出返却
+          <span class="badge">直近 5件</span>
+        </div>
+        <div class="today-kpi-row" style="flex-shrink:0;">
+          <div class="today-kpi">
+            <span class="today-kpi-val" style="color:var(--blue-500)">3</span>
+            <span class="today-kpi-label">今日の持出</span>
+          </div>
+          <div class="today-kpi">
+            <span class="today-kpi-val" style="color:#22d3ee">2</span>
+            <span class="today-kpi-label">今日の返却</span>
+          </div>
+          <div class="today-kpi">
+            <span class="today-kpi-val" style="color:var(--emerald-400)">67%</span>
+            <span class="today-kpi-label">当日返却率</span>
+          </div>
+        </div>
+        <div class="today-events-compact" style="margin-top:6px;">
+          <div class="event-row">
+            <span class="event-time">16:42</span>
+            <span class="event-kind return">返却</span>
+            <span class="event-asset">Tレンチ</span>
+            <span class="event-actor">鈴木 一郎</span>
+          </div>
+          <div class="event-row">
+            <span class="event-time">15:18</span>
+            <span class="event-kind borrow">持出</span>
+            <span class="event-asset">グラインダー</span>
+            <span class="event-actor">田中 太郎</span>
+          </div>
+          <div class="event-row">
+            <span class="event-time">14:05</span>
+            <span class="event-kind return">返却</span>
+            <span class="event-asset">定規</span>
+            <span class="event-actor">佐藤 花子</span>
+          </div>
+          <div class="event-row">
+            <span class="event-time">11:30</span>
+            <span class="event-kind borrow">持出</span>
+            <span class="event-asset">キーボード</span>
+            <span class="event-actor">山田 次郎</span>
+          </div>
+          <div class="event-row">
+            <span class="event-time">09:15</span>
+            <span class="event-kind borrow">持出</span>
+            <span class="event-asset">デジタルノギス</span>
+            <span class="event-actor">高橋 三郎</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-grid -->
+
+  </div><!-- /dashboard -->
+</body>
+</html>

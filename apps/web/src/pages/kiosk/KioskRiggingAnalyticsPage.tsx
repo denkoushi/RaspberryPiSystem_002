@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { KioskAnalyticsKpiStrip } from '../../components/kiosk/analytics/KioskAnalyticsKpiStrip';
 import {
   AssetBorrowFrequencyPanel,
   EmployeeBarsPanel,
   ReturnRatePanel,
-  TodayEventsPane,
-  UsageTablePanel
+  TodayEventsPane
 } from '../../components/kiosk/analytics/KioskAnalyticsPanels';
 import { KioskMonthPickerModal } from '../../components/kiosk/KioskMonthPickerModal';
 import { useItemLoanAnalytics } from '../../features/item-analytics/useItemLoanAnalytics';
+import {
+  ANALYTICS_KIOSK_DISPLAY_LIMITS,
+  countPeriodEventKinds,
+  periodReturnCompletionRatePercent,
+  summarizeAssetInventory,
+  takeTodayEventsForDisplay,
+  topRankedAssetsByBorrow,
+  topRankedEmployees
+} from '../../features/kiosk-loan-analytics/analyticsDisplayPolicy';
 import { formatPeriodLabelJa, periodRangeToIso, toDayInputValue, toMonthInputValue } from '../../features/kiosk-loan-analytics/period';
 import { type DatasetTab, mapResponseToViewModel } from '../../features/kiosk-loan-analytics/view-model';
 import { useMeasuringInstrumentLoanAnalytics } from '../../features/measuring-instrument-analytics/useMeasuringInstrumentLoanAnalytics';
@@ -155,6 +164,30 @@ export function KioskRiggingAnalyticsPage() {
   const view = useMemo(() => (raw ? mapResponseToViewModel(datasetTab, raw) : null), [datasetTab, raw]);
   const todayView = useMemo(() => (todayRaw ? mapResponseToViewModel(datasetTab, todayRaw) : null), [datasetTab, todayRaw]);
 
+  const rankedEmployees = useMemo(
+    () => topRankedEmployees(view?.employees ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees),
+    [view]
+  );
+  const rankedAssets = useMemo(
+    () => topRankedAssetsByBorrow(view?.assets ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets),
+    [view]
+  );
+  const assetInventory = useMemo(() => (view?.assets.length ? summarizeAssetInventory(view.assets) : null), [view]);
+  const returnCompletionPct = useMemo(
+    () => (view ? periodReturnCompletionRatePercent(view.periodBorrowCount, view.periodReturnCount) : null),
+    [view]
+  );
+
+  const todayEventRows = useMemo(
+    () => takeTodayEventsForDisplay(todayView?.periodEvents ?? [], ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax),
+    [todayView]
+  );
+  const todayKinds = useMemo(() => countPeriodEventKinds(todayView?.periodEvents ?? []), [todayView]);
+  const todayReturnCompletion = useMemo(
+    () => periodReturnCompletionRatePercent(todayKinds.borrowCount, todayKinds.returnCount),
+    [todayKinds]
+  );
+
   const refetchAll = () => {
     void riggingQ.refetch();
     void itemQ.refetch();
@@ -193,10 +226,13 @@ export function KioskRiggingAnalyticsPage() {
     );
   }
 
-  const borrowSortedAssets = [...view.assets].sort((a, b) => b.periodBorrowCount - a.periodBorrowCount);
+  const rankBadge = (n: number) => `Top ${n}`;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-1.5" style={{ color: DADS.text, fontFamily: 'var(--font-family-sans)' }}>
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col gap-1.5 overflow-hidden"
+      style={{ color: DADS.text, fontFamily: 'var(--font-family-sans)' }}
+    >
       <div
         className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5"
         style={{ borderRadius: DADS.radius8, border: `1px solid ${DADS.border}`, backgroundColor: DADS.surface }}
@@ -212,7 +248,12 @@ export function KioskRiggingAnalyticsPage() {
           <button
             type="button"
             className="rounded px-2 py-0.5 text-xs font-semibold transition-opacity hover:opacity-90"
-            style={{ border: `1px solid ${DADS.borderSubtle}`, backgroundColor: 'var(--color-neutral-solid-gray-900)', color: DADS.text, borderRadius: DADS.radius6 }}
+            style={{
+              border: `1px solid ${DADS.borderSubtle}`,
+              backgroundColor: 'var(--color-neutral-solid-gray-900)',
+              color: DADS.text,
+              borderRadius: DADS.radius6
+            }}
             aria-label="対象期間"
             onClick={() => setMonthPickerOpen(true)}
           >
@@ -287,35 +328,17 @@ export function KioskRiggingAnalyticsPage() {
             </label>
           )}
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-x-5 gap-y-0.5">
-          <span className="flex items-center gap-1.5 text-xs">
-            <span style={{ color: DADS.textSub }}>貸出中</span>
-            <span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-primitive-yellow-300)' }}>{view.openLoanCount}</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-xs">
-            <span style={{ color: DADS.textSub }}>超過</span>
-            <span className="text-base font-bold tabular-nums" style={{ color: DADS.error }}>{view.overdueOpenCount}</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-xs">
-            <span style={{ color: DADS.textSub }}>台数</span>
-            <span className="text-base font-bold tabular-nums">{view.totalMasterCount}</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-xs">
-            <span style={{ color: DADS.textSub }}>持出</span>
-            <span className="text-base font-bold tabular-nums" style={{ color: DADS.chartBorrow }}>{view.periodBorrowCount}</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-xs">
-            <span style={{ color: DADS.textSub }}>返却</span>
-            <span className="text-base font-bold tabular-nums" style={{ color: DADS.chartReturn }}>{view.periodReturnCount}</span>
-          </span>
-        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
           className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-          style={{ borderRadius: DADS.radius6, backgroundColor: datasetTab === 'rigging' ? DADS.primaryUi : DADS.tabInactive, color: datasetTab === 'rigging' ? DADS.text : DADS.textMuted }}
+          style={{
+            borderRadius: DADS.radius6,
+            backgroundColor: datasetTab === 'rigging' ? DADS.primaryUi : DADS.tabInactive,
+            color: datasetTab === 'rigging' ? DADS.text : DADS.textMuted
+          }}
           onClick={() => setDatasetTab('rigging')}
         >
           吊具
@@ -323,7 +346,11 @@ export function KioskRiggingAnalyticsPage() {
         <button
           type="button"
           className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-          style={{ borderRadius: DADS.radius6, backgroundColor: datasetTab === 'items' ? DADS.primaryUi : DADS.tabInactive, color: datasetTab === 'items' ? DADS.text : DADS.textMuted }}
+          style={{
+            borderRadius: DADS.radius6,
+            backgroundColor: datasetTab === 'items' ? DADS.primaryUi : DADS.tabInactive,
+            color: datasetTab === 'items' ? DADS.text : DADS.textMuted
+          }}
           onClick={() => setDatasetTab('items')}
         >
           持出返却アイテム
@@ -331,26 +358,65 @@ export function KioskRiggingAnalyticsPage() {
         <button
           type="button"
           className="px-2.5 py-0.5 text-xs font-bold transition-opacity hover:opacity-90"
-          style={{ borderRadius: DADS.radius6, backgroundColor: datasetTab === 'instruments' ? DADS.primaryUi : DADS.tabInactive, color: datasetTab === 'instruments' ? DADS.text : DADS.textMuted }}
+          style={{
+            borderRadius: DADS.radius6,
+            backgroundColor: datasetTab === 'instruments' ? DADS.primaryUi : DADS.tabInactive,
+            color: datasetTab === 'instruments' ? DADS.text : DADS.textMuted
+          }}
           onClick={() => setDatasetTab('instruments')}
         >
           計測機器
         </button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[340px_1fr_1fr] grid-rows-[1fr_auto] gap-1.5">
-        <div className="min-h-0 row-span-2">
-          <EmployeeBarsPanel rows={view.employees} theme={DADS} />
+      <KioskAnalyticsKpiStrip
+        theme={DADS}
+        openLoanCount={view.openLoanCount}
+        overdueOpenCount={view.overdueOpenCount}
+        totalMasterCount={view.totalMasterCount}
+        periodBorrowCount={view.periodBorrowCount}
+        periodReturnCount={view.periodReturnCount}
+        returnCompletionPercent={returnCompletionPct}
+      />
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-4 gap-1.5 overflow-hidden md:grid-cols-2 md:grid-rows-2">
+        <div className="min-h-0 overflow-hidden">
+          <EmployeeBarsPanel
+            rows={rankedEmployees}
+            theme={DADS}
+            rankBadge={rankBadge(ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedEmployees)}
+          />
         </div>
-        <div className="min-h-0">
-          <AssetBorrowFrequencyPanel rows={borrowSortedAssets} theme={DADS} title={`点検回数（${view.assetFilterLabel}）`} />
+        <div className="min-h-0 overflow-hidden">
+          <AssetBorrowFrequencyPanel
+            rows={rankedAssets}
+            theme={DADS}
+            title={`持出回数（${view.assetFilterLabel}）`}
+            rankBadge={rankBadge(ANALYTICS_KIOSK_DISPLAY_LIMITS.topRankedAssets)}
+            inventory={assetInventory}
+          />
         </div>
-        <div className="row-span-2 min-h-0 rounded p-2" style={{ borderRadius: DADS.radius8, border: `1px solid ${DADS.border}`, backgroundColor: DADS.surface }}>
-          <UsageTablePanel rows={view.assets} theme={DADS} title="使用頻度（持出回数）" />
-          <TodayEventsPane rows={todayView.periodEvents} theme={DADS} title="当日の持出返却状況" />
+        <div className="min-h-0 overflow-hidden">
+          <ReturnRatePanel
+            borrow={view.periodBorrowCount}
+            ret={view.periodReturnCount}
+            theme={DADS}
+            title={`${view.assetFilterLabel}の事象比（持出/返却）`}
+            footerNote={`未返却 ${view.openLoanCount} 件（うち期限超過 ${view.overdueOpenCount} 件）`}
+          />
         </div>
-        <div>
-          <ReturnRatePanel borrow={view.periodBorrowCount} ret={view.periodReturnCount} theme={DADS} title={`${view.assetFilterLabel}の返却率`} />
+        <div className="min-h-0 overflow-hidden">
+          <TodayEventsPane
+            rows={todayEventRows}
+            theme={DADS}
+            title="当日の持出返却状況"
+            captionBadge={`直近 ${ANALYTICS_KIOSK_DISPLAY_LIMITS.todayEventsMax} 件`}
+            todaySummary={{
+              borrowCount: todayKinds.borrowCount,
+              returnCount: todayKinds.returnCount,
+              returnCompletionPercent: todayReturnCompletion
+            }}
+          />
         </div>
       </div>
     </div>
