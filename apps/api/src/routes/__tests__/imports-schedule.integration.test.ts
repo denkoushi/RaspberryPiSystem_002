@@ -84,7 +84,7 @@ describe('CSV Import Schedule API', () => {
   });
 
   describe('GET /api/imports/schedule', () => {
-    it('should ensure fixed FKOJUNST Gmail schedule when csvImports was cleared', async () => {
+    it('should ensure fixed production schedule Gmail schedules when csvImports was cleared', async () => {
       const response = await app.inject({
         method: 'GET',
         url: '/api/imports/schedule',
@@ -96,9 +96,13 @@ describe('CSV Import Schedule API', () => {
       expect(response.statusCode).toBe(200);
       const json = response.json() as { schedules: Array<{ id: string; schedule: string; provider?: string }> };
       const fk = json.schedules.find((s) => s.id === 'csv-import-productionschedule-fkojunst');
+      const seiban = json.schedules.find((s) => s.id === 'csv-import-seiban-machine-name-supplement');
       expect(fk).toBeDefined();
       expect(fk?.schedule).toBe('0 0 * * *');
       expect(fk?.provider).toBe('gmail');
+      expect(seiban).toBeDefined();
+      expect(seiban?.schedule).toBe('15 6 * * 0');
+      expect(seiban?.provider).toBe('gmail');
     });
 
     it('should return 401 without authentication', async () => {
@@ -395,6 +399,34 @@ describe('CSV Import Schedule API', () => {
         { type: 'csvDashboards', source: '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c' }
       ]);
     });
+
+    it('should keep fixed seiban machine name supplement invariants in update response', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/imports/schedule/csv-import-seiban-machine-name-supplement',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          provider: 'dropbox',
+          schedule: '0 4 * * *',
+          targets: [{ type: 'csvDashboards', source: 'wrong-id' }],
+          enabled: true
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as {
+        schedule: { id: string; provider?: string; schedule: string; enabled: boolean; targets?: Array<{ source: string }> }
+      };
+      expect(json.schedule.id).toBe('csv-import-seiban-machine-name-supplement');
+      expect(json.schedule.provider).toBe('gmail');
+      expect(json.schedule.schedule).toBe('15 6 * * 0');
+      expect(json.schedule.enabled).toBe(true);
+      expect(json.schedule.targets).toEqual([
+        { type: 'csvDashboards', source: 'e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b' }
+      ]);
+    });
   });
 
   describe('DELETE /api/imports/schedule/:id', () => {
@@ -454,6 +486,18 @@ describe('CSV Import Schedule API', () => {
       const response = await app.inject({
         method: 'DELETE',
         url: '/api/imports/schedule/csv-import-productionschedule-fkojunst',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should return 400 when deleting fixed seiban machine name supplement schedule', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/api/imports/schedule/csv-import-seiban-machine-name-supplement',
         headers: {
           authorization: `Bearer ${adminToken}`
         }

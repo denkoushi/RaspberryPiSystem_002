@@ -1,16 +1,29 @@
 import type { BackupConfig } from '../backup/backup-config.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import { ensureFkojunstCsvImportSchedule } from './fkojunst-import-schedule.policy.js';
+import { ensureSeibanMachineNameSupplementCsvImportSchedule } from './seiban-machine-name-supplement-import-schedule.policy.js';
+
+export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig): {
+  config: BackupConfig;
+  repaired: boolean;
+} {
+  const fkojunstEnsured = ensureFkojunstCsvImportSchedule(config);
+  const seibanEnsured = ensureSeibanMachineNameSupplementCsvImportSchedule(fkojunstEnsured.config);
+  return {
+    config: seibanEnsured.config,
+    repaired: fkojunstEnsured.repaired || seibanEnsured.repaired,
+  };
+}
 
 /**
- * backup.json 読み込み後に FKOJUNST 用 Gmail スケジュールを保証し、必要ならディスクへ保存する。
+ * backup.json 読み込み後に生産日程系の固定 Gmail スケジュールを保証し、必要ならディスクへ保存する。
  */
 export async function loadBackupConfigWithFkojunstImportScheduleEnsured(): Promise<{
   config: BackupConfig;
   repaired: boolean;
 }> {
   const config = await BackupConfigLoader.load();
-  const { config: next, repaired } = ensureFkojunstCsvImportSchedule(config);
+  const { config: next, repaired } = ensureProductionScheduleCsvImportSchedules(config);
   if (repaired && typeof (BackupConfigLoader as { save?: (config: BackupConfig) => Promise<void> }).save === 'function') {
     await BackupConfigLoader.save(next);
   }

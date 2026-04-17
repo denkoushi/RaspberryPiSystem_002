@@ -6,11 +6,15 @@ import type { BackupConfig } from '../backup/backup-config.js';
 import { getCsvImportScheduler } from './csv-import-scheduler.js';
 import { mapManualImportRunError } from './import-schedule-error-mapper.js';
 import { detectGmailScheduleMinuteCollisions } from './import-schedule-policy.js';
+import { ensureProductionScheduleCsvImportSchedules } from './fkojunst-import-schedule.ensure.js';
 import {
   applyFkojunstImportScheduleInvariants,
-  ensureFkojunstCsvImportSchedule,
   FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
 } from './fkojunst-import-schedule.policy.js';
+import {
+  applySeibanMachineNameSupplementImportScheduleInvariants,
+  SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID,
+} from './seiban-machine-name-supplement-import-schedule.policy.js';
 
 type CsvImportSchedule = NonNullable<BackupConfig['csvImports']>[number];
 
@@ -64,7 +68,7 @@ export class ImportScheduleAdminService {
 
   private async loadConfigEnsured(): Promise<{ config: BackupConfig; repaired: boolean }> {
     const config = await this.store.load();
-    const ensured = ensureFkojunstCsvImportSchedule(config);
+    const ensured = ensureProductionScheduleCsvImportSchedules(config);
     if (ensured.repaired) {
       await this.store.save(ensured.config);
     }
@@ -134,7 +138,9 @@ export class ImportScheduleAdminService {
         input.autoBackupAfterImport ?? existingSchedule.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
     };
 
-    const canonicalSchedule = applyFkojunstImportScheduleInvariants(updatedSchedule);
+    const canonicalSchedule = applySeibanMachineNameSupplementImportScheduleInvariants(
+      applyFkojunstImportScheduleInvariants(updatedSchedule)
+    );
     config.csvImports![scheduleIndex] = canonicalSchedule;
     const warnings = detectGmailScheduleMinuteCollisions(config);
     await this.store.save(config);
@@ -144,7 +150,10 @@ export class ImportScheduleAdminService {
   }
 
   async deleteSchedule(scheduleId: string): Promise<void> {
-    if (scheduleId === FKOJUNST_CSV_IMPORT_SCHEDULE_ID) {
+    if (
+      scheduleId === FKOJUNST_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID
+    ) {
       throw new ApiError(400, 'このスケジュールはシステムで固定されており削除できません');
     }
     const config = await this.store.load();
