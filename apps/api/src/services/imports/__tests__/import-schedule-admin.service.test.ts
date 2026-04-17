@@ -4,6 +4,7 @@ import { ApiError } from '../../../lib/errors.js';
 import type { BackupConfig } from '../../backup/backup-config.js';
 import { GmailReauthRequiredError } from '../../backup/gmail-oauth.service.js';
 import { ImportScheduleAdminService } from '../import-schedule-admin.service.js';
+import { SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID } from '../seiban-machine-name-supplement-import-schedule.policy.js';
 
 function createBaseConfig(): BackupConfig {
   return {
@@ -31,6 +32,22 @@ function createBaseConfig(): BackupConfig {
 }
 
 describe('ImportScheduleAdminService', () => {
+  it('listSchedules: 固定の製番→機種名補完スケジュールを自動補完して保存する', async () => {
+    const config = createBaseConfig();
+    const store = {
+      load: vi.fn(async () => config),
+      save: vi.fn(async () => {}),
+    };
+    const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    const schedules = await service.listSchedules();
+
+    expect(schedules.some((row) => row.id === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID)).toBe(true);
+    expect(store.save).toHaveBeenCalledOnce();
+    expect(scheduler.reload).toHaveBeenCalledOnce();
+  });
+
   it('createSchedule: 重複IDは409を返す', async () => {
     const config = createBaseConfig();
     config.csvImports = [
@@ -180,5 +197,18 @@ describe('ImportScheduleAdminService', () => {
     const service = new ImportScheduleAdminService(store, () => scheduler);
 
     await expect(service.runSchedule('run-id', { requestId: 'req-4' })).rejects.toBe(original);
+  });
+
+  it('deleteSchedule: 固定の製番→機種名補完スケジュールは400を返す', async () => {
+    const store = {
+      load: vi.fn(async () => createBaseConfig()),
+      save: vi.fn(async () => {}),
+    };
+    const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    await expect(service.deleteSchedule(SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID)).rejects.toMatchObject({
+      statusCode: 400,
+    });
   });
 });
