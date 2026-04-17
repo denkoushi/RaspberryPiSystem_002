@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { KioskRiggingAnalyticsPage } from './KioskRiggingAnalyticsPage';
@@ -163,5 +163,44 @@ describe('KioskRiggingAnalyticsPage', () => {
     expect(screen.queryByText('使用頻度（持出回数）')).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '管理番号' })).not.toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it('一覧表示モード（Top / 全件）を切り替えられる', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-14T12:00:00+09:00'));
+    mockUseRiggingLoanAnalytics.mockReturnValue(buildQueryResult(riggingData));
+    mockUseItemLoanAnalytics.mockReturnValue(buildQueryResult({
+      ...riggingData,
+      summary: {
+        ...riggingData.summary,
+        totalItemsActive: 1,
+      },
+      byItem: [],
+    }));
+    mockUseMeasuringInstrumentLoanAnalytics.mockReturnValue(buildQueryResult({
+      ...riggingData,
+      summary: {
+        openLoanCount: 0,
+        overdueOpenCount: 0,
+        totalInstrumentsActive: 1,
+        periodBorrowCount: 0,
+        periodReturnCount: 0,
+      },
+      byInstrument: [],
+    }));
+
+    render(<KioskRiggingAnalyticsPage />);
+
+    const modeGroup = screen.getByRole('group', { name: '一覧表示モード' });
+    const topBtn = within(modeGroup).getByRole('button', { name: 'Top' });
+    const allBtn = within(modeGroup).getByRole('button', { name: '全件' });
+
+    expect(topBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(allBtn).toHaveAttribute('aria-pressed', 'false');
+
+    vi.useRealTimers();
+    fireEvent.click(allBtn);
+    expect(allBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(topBtn).toHaveAttribute('aria-pressed', 'false');
   });
 });

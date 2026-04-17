@@ -2,7 +2,7 @@
 title: KB-334 キオスク「集計」（吊具・持出返却アイテム）デプロイ・実機確認
 tags: [キオスク, 吊具, 工具, デプロイ, API, DADS]
 audience: [運用者, 開発者]
-last-verified: 2026-04-15
+last-verified: 2026-04-17
 category: knowledge-base
 ---
 
@@ -18,6 +18,7 @@ category: knowledge-base
 - **月次集計**: 既定タイムゾーン `Asia/Tokyo` 暦月（クエリで上書き可）。**マイグレーション**: 本集計は **既存 `Loan` 列のみ**（追加マイグレなし）。
 - **（2026-04-15）4パネル UI・当日イベント**: キオスク `/kiosk/rigging-analytics` は **4パネル**（社員別バー・資産別持出頻度・返却率・利用表）＋ **「当日の持出返却状況」** ペイン。集計期間は **`KioskMonthPickerModal` の `月` / `1日`**（`variant="analytics"`）。**当日ペイン**は選択期間とは別に **当日（Asia/Tokyo）の 0:00〜24:00** を別クエリで取得（右下のみ当日）。**API**: 3系統 `loan-analytics` 応答に **`periodEvents`**（`LoanAnalyticsPeriodEventRow`・持出/返却・`eventAt`・`assetId` / `assetLabel`・actor）を追加。**CI**: Web イメージの Alpine で `musl` / OpenSSL 等を `apk upgrade`（Trivy 対策・`infrastructure/docker/Dockerfile.web`）。
 - **（2026-04-17）BI ダッシュボード再設計**: `UsageTablePanel` を廃止し、**KPI ストリップ + Top N 2枚 + 返却率 + 当日イベント** の **2x2 固定ビュー**へ再構成。表示用ロジックは `analyticsDisplayPolicy.ts` に分離し、**「画面からはみ出さない」「スクロール不要」「ひと目で把握」**を優先。1440x900 基準で縦横ともノンスクロールを確認。
+- **（2026-04-17）UI バランス調整（`feat/kiosk-analytics-ui-balance-refine`）**: ページ側のレイアウト責務整理、パネル共通フレームでカード外寸・余白統一、ランキングの **Top N / 全件** トグルとカード内スクロール、KPI 帯のブレークポイント別列数・タイポ調整。表示モードは `analyticsDisplayPolicy` の **`uiDisplayMode`** で分離。
 
 ## デプロイ（標準手順）
 
@@ -74,6 +75,15 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 - **期待（写真持出タブ）**: `summary` / `byItem`（`itemCode` は空文字・`name` が表示名・`itemId` は `pt-` 接頭辞の安定ハッシュ）/ `byEmployee`
 
 ## 本番実績
+
+### 2026-04-17（UI バランス調整・`feat/kiosk-analytics-ui-balance-refine`・`f5e58e2e`・Pi5→Pi4×4 順次・Pi3 除外）
+
+- **差分**: `KioskRiggingAnalyticsPage` のシェル整理、`KioskAnalyticsPanels` / `KioskAnalyticsKpiStrip` のレスポンシブ行・枠線統一、ランキング密度トグル、`analyticsDisplayPolicy` の `uiDisplayMode` 拡張とテスト。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-ui-balance-refine infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3**: 対象外。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260417-220620-25346` → `20260417-221119-9068` → `20260417-221607-22959` → `20260417-221948-32509` → `20260417-222428-19933`、各 **`failed=0` / `unreachable=0` / exit `0`**。
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **53s**）。
+- **CI**: GitHub Actions Run **`24564671757`** success（デプロイ前確認）。
+- **トラブルシュート**: 複数 `--detach` を **別ターミナルで重ねない**（Mac 側 `logs/.update-all-clients.local.lock`）。直列は **`&&`** で連結。
 
 ### 2026-04-17（BI ダッシュボード再設計・`feat/kiosk-analytics-bi-dashboard`・`9eda66b4`・Pi5 のみ）
 

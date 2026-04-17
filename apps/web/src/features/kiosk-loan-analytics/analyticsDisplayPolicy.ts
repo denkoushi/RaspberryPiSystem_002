@@ -11,6 +11,12 @@ export const ANALYTICS_KIOSK_DISPLAY_LIMITS = {
 
 export type AnalyticsKioskDisplayLimits = typeof ANALYTICS_KIOSK_DISPLAY_LIMITS;
 
+/** 一覧表示モード: Top N サマリー / 全件（カード内スクロール。DOM 肥大化防止で上限あり） */
+export type AnalyticsListMode = 'top' | 'all';
+
+/** 全件モード時の最大行数（ブラウザ負荷対策） */
+export const ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS = 500;
+
 /** 社員の並び: 期間内 持出+返却 の合計が大きい順（同率は表示名）。 */
 export function compareEmployeesByPeriodActivity(a: EmployeeRow, b: EmployeeRow): number {
   const score = (r: EmployeeRow) => r.periodBorrowCount + r.periodReturnCount;
@@ -36,13 +42,44 @@ export function topRankedAssetsByBorrow(rows: AssetRow[], limit: number): AssetR
   return [...rows].sort(compareAssetsByPeriodBorrowDesc).slice(0, limit);
 }
 
+/** 社員ランキング: Top N または全件（上限付き） */
+export function selectEmployeesForDisplay(rows: EmployeeRow[], topLimit: number, mode: AnalyticsListMode): EmployeeRow[] {
+  if (mode === 'top') {
+    return topRankedEmployees(rows, topLimit);
+  }
+  const sorted = [...rows].sort(compareEmployeesByPeriodActivity);
+  return sorted.slice(0, Math.min(sorted.length, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS));
+}
+
+/** 資産ランキング: Top N または全件（上限付き） */
+export function selectAssetsForDisplay(rows: AssetRow[], topLimit: number, mode: AnalyticsListMode): AssetRow[] {
+  if (mode === 'top') {
+    return topRankedAssetsByBorrow(rows, topLimit);
+  }
+  const sorted = [...rows].sort(compareAssetsByPeriodBorrowDesc);
+  return sorted.slice(0, Math.min(sorted.length, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS));
+}
+
+/** 全件モードで切り詰めたか（UI でバッジ文言に利用） */
+export function isFullListTruncated(totalRows: number, mode: AnalyticsListMode): boolean {
+  return mode === 'all' && totalRows > ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS;
+}
+
 export function sortPeriodEventsNewestFirst(rows: PeriodEventRow[]): PeriodEventRow[] {
   return [...rows].sort((a, b) => new Date(b.eventAt).getTime() - new Date(a.eventAt).getTime());
 }
 
-export function takeTodayEventsForDisplay(rows: PeriodEventRow[], limit: number): PeriodEventRow[] {
+export function takeTodayEventsForDisplay(
+  rows: PeriodEventRow[],
+  limit: number,
+  mode: AnalyticsListMode = 'top'
+): PeriodEventRow[] {
+  const sorted = sortPeriodEventsNewestFirst(rows);
+  if (mode === 'all') {
+    return sorted.slice(0, Math.min(sorted.length, ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS));
+  }
   if (limit <= 0) return [];
-  return sortPeriodEventsNewestFirst(rows).slice(0, limit);
+  return sorted.slice(0, limit);
 }
 
 export function countPeriodEventKinds(rows: PeriodEventRow[]): { borrowCount: number; returnCount: number } {

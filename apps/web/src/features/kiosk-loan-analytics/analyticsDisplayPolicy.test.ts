@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ANALYTICS_KIOSK_DISPLAY_LIMITS,
+  ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS,
   compareEmployeesByPeriodActivity,
   countPeriodEventKinds,
+  isFullListTruncated,
   periodReturnCompletionRatePercent,
+  selectAssetsForDisplay,
+  selectEmployeesForDisplay,
   sortPeriodEventsNewestFirst,
   summarizeAssetInventory,
   takeTodayEventsForDisplay,
@@ -118,5 +122,35 @@ describe('analyticsDisplayPolicy', () => {
 
   it('compareEmployeesByPeriodActivity is stable', () => {
     expect(compareEmployeesByPeriodActivity(e('1', 'A', 0, 0), e('2', 'B', 1, 0))).toBeGreaterThan(0);
+  });
+
+  it('selectEmployeesForDisplay returns top N in top mode', () => {
+    const rows = [e('1', 'A', 1, 1), e('2', 'B', 5, 0), e('3', 'C', 2, 3)];
+    const out = selectEmployeesForDisplay(rows, 2, 'top');
+    expect(out.map((r) => r.displayName)).toEqual(['B', 'C']);
+  });
+
+  it('selectEmployeesForDisplay returns capped sorted list in all mode', () => {
+    const rows = Array.from({ length: ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS + 10 }, (_, i) =>
+      e(String(i), `U${String(i).padStart(4, '0')}`, 1, 0)
+    );
+    const out = selectEmployeesForDisplay(rows, 8, 'all');
+    expect(out).toHaveLength(ANALYTICS_KIOSK_FULL_LIST_MAX_ROWS);
+    expect(isFullListTruncated(rows.length, 'all')).toBe(true);
+  });
+
+  it('selectAssetsForDisplay matches top mode slice', () => {
+    const rows = [a('a', 'x', 1, 0), a('b', 'y', 9, 1)];
+    expect(selectAssetsForDisplay(rows, 1, 'top').map((r) => r.name)).toEqual(['y']);
+  });
+
+  it('takeTodayEventsForDisplay respects mode all', () => {
+    const rows: PeriodEventRow[] = [
+      { kind: 'BORROW', eventAt: '2026-04-01T01:00:00.000Z', assetId: '1', assetLabel: 'A', actorDisplayName: null, actorEmployeeId: null },
+      { kind: 'BORROW', eventAt: '2026-04-01T03:00:00.000Z', assetId: '2', assetLabel: 'B', actorDisplayName: null, actorEmployeeId: null },
+      { kind: 'RETURN', eventAt: '2026-04-01T02:00:00.000Z', assetId: '3', assetLabel: 'C', actorDisplayName: null, actorEmployeeId: null }
+    ];
+    expect(takeTodayEventsForDisplay(rows, 2, 'top').map((r) => r.assetLabel)).toEqual(['B', 'C']);
+    expect(takeTodayEventsForDisplay(rows, 2, 'all').map((r) => r.assetLabel)).toEqual(['B', 'C', 'A']);
   });
 });

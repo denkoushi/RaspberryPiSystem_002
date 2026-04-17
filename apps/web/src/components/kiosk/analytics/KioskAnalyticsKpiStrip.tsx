@@ -25,7 +25,7 @@ export function KioskAnalyticsKpiStrip({
 }: KioskAnalyticsKpiStripProps) {
   return (
     <div
-      className="grid shrink-0 grid-cols-2 gap-1.5 min-[920px]:grid-cols-5"
+      className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5"
       role="region"
       aria-label="期間サマリー指標"
       style={{ fontFamily: 'var(--font-family-sans)' }}
@@ -69,7 +69,7 @@ function KpiCard({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-0.5 py-2.5 px-2"
+      className="flex min-h-[76px] flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:min-h-[80px]"
       style={{
         borderRadius: theme.radius8,
         border: `1px solid ${theme.border}`,

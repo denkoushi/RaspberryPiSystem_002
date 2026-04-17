@@ -34,6 +34,10 @@
 
 - **計測機器 OK 持出: 点検記録一括作成 `POST /api/measuring-instruments/:id/inspection-records` をキオスク `x-client-key` で許可（`allowWrite` へ統一）**: ブランチ **`fix/measuring-instrument-inspection-client-key`**・実装コミット **`9e2011ff`**・**`main` マージコミット `2484d069`**（[PR #147](https://github.com/denkoushi/RaspberryPiSystem_002/pull/147)）。借用 API は元から `allowWrite` だったが、点検記録作成のみ **`canWrite`（JWT 必須）**のままだったため **`401` / `AUTH_TOKEN_REQUIRED`** でフローが止まり得た。**ドキュメント**: [KB-346](./knowledge-base/frontend.md#kb-346-計測機器点検記録作成apiがキオスクのx-client-keyのみで401)・[ui.md](./modules/measuring-instruments/ui.md)・[deployment.md](./guides/deployment.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)。**本番追随**: 各ホストで `main` 取り込み後に **`api` 再ビルド**（ホットパッチのみの台は SHA 整合を確認）。
 
+### 🆕 最新アップデート（2026-04-17）
+
+- **キオスク「集計」UI バランス調整（レイアウトシェル・パネル枠・TopN トグル・KPI 帯ブレークポイント）**: ブランチ **`feat/kiosk-analytics-ui-balance-refine`**・コミット **`f5e58e2e`**。本番 Pi5→Pi4×4 順次（Pi3 除外）・Phase12 **43/0/0**・Detach Run ID は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-17（UI バランス調整）」・[deployment.md](./guides/deployment.md)。CI Run **`24564671757`** success。進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-16）
 
 - **計測機器持出: 2枚目の氏名NFC直後に自動送信されない race condition を修正し、本番5台へ順次デプロイ**: ブランチ **`fix/kiosk-instrument-borrow-nfc-employee-uid`**。`KioskInstrumentBorrowPage` の 2枚目NFC経路で、state 更新待ちではなく **読み取った `nfcEvent.uid` をそのまま送信**するよう修正し、`KioskInstrumentBorrowPage.nfc.test.tsx` で回帰確認。**CI**: GitHub Actions Run **`24491079191`** 成功。**本番**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` を **1台ずつ**。Pi5 初回 detached run `20260416-133007-2231` は `Rebuild/Restart docker compose services` で停止したように見えたため、[deploy-status-recovery.md](./runbooks/deploy-status-recovery.md) に従って復旧し `--foreground` で再実行。**実機相当確認**: Pi5 `health=ok`、4台の `deploy-status=false`、`kiosk-browser.service` / `status-agent.timer` active、`nfc-agent` `readerConnected=true`。参照: [frontend.md の KB-345](./knowledge-base/frontend.md#kb-345-計測機器持出で氏名nfcスキャン後に自動送信されない) / [modules/measuring-instruments/ui.md](./modules/measuring-instruments/ui.md) / [deployment.md](./guides/deployment.md)。
