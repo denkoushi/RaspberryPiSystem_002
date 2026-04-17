@@ -22,6 +22,7 @@ category: knowledge-base
 | 取り込みモード | **APPEND**（履歴行が蓄積される想定） |
 | 重複 `FSEIBAN` | **今回の ingest run で追加された `CsvDashboardRow` のみ**を対象に、**`createdAt` / `id` 昇順**で走査し、**同一製番は末尾行の `FHINMEI_MH_SH` が正**。空の機種名で終わる場合はその製番は補完テーブルに行を作らない（= 未登録扱いへ） |
 | 解決順（API） | 既存 **`fetchSeibanProgressRows`（MH/SH の FHINMEI）** → 補完テーブル → どちらも無い／空は **`機種名未登録`**（定数 `SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL`） |
+| 一覧 API（2026-04-17 追補） | 生産日程 **`listProductionScheduleRows`** の各行に **`resolvedMachineName`** を付与（`resolveSeibanMachineDisplayNamesBatched`・100件超はサーバ内バッチ）。キオスク順位ボードは **`POST …/seiban-machine-names` に依存しない**。機種名検索（`machineName` クエリ）は **MH/SH の FHINMEI** に加え **補完テーブル由来の表示名**と整合するよう `FSEIBAN` 集合で絞り込み |
 | 取込後同期 | Gmail / 手動 `POST .../csv-dashboards/:id/upload` の **成功後**、`CsvDashboardPostIngestService` が補完同期を実行 |
 
 ## 運用メモ
@@ -49,8 +50,17 @@ category: knowledge-base
 - **成功**: Detach **`20260417-160328-2759`**（**`failed=0` / `unreachable=0`**）・**Phase12** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **24s**）。
 - **PR**: [#157](https://github.com/denkoushi/RaspberryPiSystem_002/pull/157)（**`main` マージ**・merge **`ea76da7e`**）。
 
+## 追補（2026-04-17）: 一覧API `resolvedMachineName` 共通化 + Pi5→Pi4 順次デプロイ
+
+- **実装**: 生産日程一覧（`listProductionScheduleRows`）の各行に **`resolvedMachineName`** を付与（`production-schedule-machine-name-enrichment.service.ts`・`resolveSeibanMachineDisplayNamesBatched`）。**100件超**のユニーク製番は **サーバ内で 100 件単位に分割**して既存解決ロジックを再利用。キオスク **`ProductionScheduleLeaderOrderBoardPage`** は `POST .../seiban-machine-names` を呼ばず**一覧レスポンスのみ**表示に利用。サイネージ用 **`leader-board-pure`** も `resolvedMachineName` を優先。**機種名フィルタ**（`machineName`）は **補完テーブル由来の表示名**と表示がずれないよう、`CsvDashboardRow` の MH/SH と **`ProductionScheduleSeibanMachineNameSupplement`** の両方から一致する `FSEIBAN` を集約して条件化。
+- **ブランチ**: `feat/production-schedule-machine-name-common-api`・代表コミット **`6ed72f83`**。
+- **本番デプロイ（対象 Pi5 のみ → 続けて Pi4 のみ・Pi3 除外）**: [deployment.md](../guides/deployment.md) 標準。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/production-schedule-machine-name-common-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` **成功後**に `./scripts/update-all-clients.sh feat/production-schedule-machine-name-common-api infrastructure/ansible/inventory.yml --limit raspberrypi4 --detach --follow`。
+- **Detach Run ID**（Pi5 上ログ接頭辞 `ansible-update-`）: **`20260417-175707-4538`**（`raspberrypi5`）→ **`20260417-180747-13902`**（`raspberrypi4`）、各 **`PLAY RECAP` `failed=0` / `unreachable=0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**トラブルシュート**: 同一 Mac から `update-all-clients.sh` を並列起動しない（exit 3・[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。**知見**: 旧 **`POST …/seiban-machine-names`** はリクエストに **最大 100 製番**（Zod）があり、ユニーク製番が 100 を超えると **400** となり順位ボードに機種名が出なかった。一覧側で解決する方式に寄せて回避。
+
 ## References
 
+- 一覧付与: `apps/api/src/services/production-schedule/production-schedule-machine-name-enrichment.service.ts`
 - 実装: `apps/api/src/services/production-schedule/seiban-machine-name-supplement-sync.service.ts`
 - 解決: `apps/api/src/services/production-schedule/seiban-machine-display-names.service.ts`
 - ガイド: [csv-import-export.md](../guides/csv-import-export.md)

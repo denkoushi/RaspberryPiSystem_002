@@ -6,8 +6,7 @@ import {
   useKioskProductionSchedule,
   useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleOrderUsage,
-  useKioskProductionScheduleResources,
-  useKioskProductionScheduleSeibanMachineNames
+  useKioskProductionScheduleResources
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
@@ -21,7 +20,6 @@ import { groupRowsByResourceCd } from '../../features/kiosk/leaderOrderBoard/gro
 import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
 import { LeaderOrderResourceCard } from '../../features/kiosk/leaderOrderBoard/LeaderOrderResourceCard';
-import { mergeLeaderBoardRowsWithResolvedMachineNames } from '../../features/kiosk/leaderOrderBoard/mergeLeaderBoardRowsWithResolvedMachineNames';
 import {
   buildSeibanMachineNameMapFromProgressBySeiban,
   mergeMachineNameFallback
@@ -227,24 +225,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause
   });
 
-  const uniqueFseibansForMachineNames = useMemo(() => {
-    const scheduleRows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
-    const set = new Set<string>();
-    for (const row of scheduleRows) {
-      const data = (row.rowData ?? {}) as Record<string, unknown>;
-      const s = String(data.FSEIBAN ?? '').trim();
-      if (s.length > 0) {
-        set.add(s);
-      }
-    }
-    return [...set];
-  }, [scheduleQuery.data?.rows]);
-
-  const seibanMachineNamesQuery = useKioskProductionScheduleSeibanMachineNames(uniqueFseibansForMachineNames, {
-    pauseRefetch: writePause,
-    enabled: scheduleEnabled && uniqueFseibansForMachineNames.length > 0
-  });
-
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data]
@@ -293,22 +273,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const grouped = useMemo(() => {
     const rows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
     const normalized = normalizeLeaderBoardRows(rows);
-    const resolvedMap = new Map<string, string>();
-    for (const [k, v] of Object.entries(seibanMachineNamesQuery.data?.machineNames ?? {})) {
-      const key = k.trim();
-      const val = (v ?? '').trim();
-      if (key.length > 0 && val.length > 0) {
-        resolvedMap.set(key, val);
-      }
-    }
-    const withResolved = mergeLeaderBoardRowsWithResolvedMachineNames(normalized, resolvedMap);
     const fb = buildSeibanMachineNameMapFromProgressBySeiban(historyProgressQuery.data?.progressBySeiban);
-    const merged = mergeMachineNameFallback(withResolved, fb);
+    const merged = mergeMachineNameFallback(normalized, fb);
     return groupRowsByResourceCd(merged);
   }, [
     scheduleQuery.data?.rows,
-    historyProgressQuery.data?.progressBySeiban,
-    seibanMachineNamesQuery.data?.machineNames
+    historyProgressQuery.data?.progressBySeiban
   ]);
 
   const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('all');

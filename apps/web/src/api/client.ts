@@ -426,6 +426,7 @@ export interface ProductionScheduleRow {
   processingOrder?: number | null;
   globalRank?: number | null;
   actualPerPieceMinutes?: number | null;
+  resolvedMachineName?: string | null;
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;

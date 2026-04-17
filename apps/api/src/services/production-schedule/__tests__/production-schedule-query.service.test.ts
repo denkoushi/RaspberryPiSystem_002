@@ -6,10 +6,14 @@ import {
 } from '../production-schedule-query.service.js';
 import { resolveActualHoursLocationCandidates } from '../actual-hours-location-scope.service.js';
 import { prisma } from '../../../lib/prisma.js';
+import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     $queryRaw: vi.fn(),
+    productionScheduleSeibanMachineNameSupplement: {
+      findMany: vi.fn(),
+    },
     productionScheduleResourceCategoryConfig: {
       findUnique: vi.fn(),
     },
@@ -36,14 +40,29 @@ vi.mock('../actual-hours-location-scope.service.js', async () => {
   };
 });
 
+vi.mock('../production-schedule-machine-name-enrichment.service.js', () => ({
+  enrichProductionScheduleRowsWithResolvedMachineName: vi.fn(async (rows: Array<{ rowData: unknown }>) =>
+    rows.map((row) => {
+      const rowData = (row.rowData ?? {}) as Record<string, unknown>;
+      const fseiban = typeof rowData.FSEIBAN === 'string' ? rowData.FSEIBAN.trim() : '';
+      return {
+        ...row,
+        resolvedMachineName: fseiban.length > 0 ? `機種-${fseiban}` : null,
+      };
+    })
+  ),
+}));
+
 describe('production-schedule-query.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(resolveActualHoursLocationCandidates).mockImplementation((locationKey: string) => [locationKey]);
+    vi.mocked(prisma.productionScheduleSeibanMachineNameSupplement.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleResourceCategoryConfig.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleResourceCodeMapping.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([]);
+    vi.mocked(enrichProductionScheduleRowsWithResolvedMachineName).mockClear();
   });
 
   it('資源CD単独指定時（assignedOnlyなし）は空結果を返しDBクエリしない', async () => {
@@ -106,7 +125,57 @@ describe('production-schedule-query.service', () => {
 
     expect(result.total).toBe(1);
     expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.resolvedMachineName).toBe('機種-A');
     expect(prisma.$queryRaw).toHaveBeenCalled();
+  });
+
+  it('機種名フィルタは補完テーブル由来の表示用機種名も対象に含める', async () => {
+    vi.mocked(prisma.productionScheduleSeibanMachineNameSupplement.findMany).mockResolvedValue([
+      {
+        fseiban: 'A',
+        machineName: '補完機種A',
+      },
+    ]);
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-1',
+          occurredAt: new Date('2026-03-23T00:00:00.000Z'),
+          rowData: {
+            ProductNo: '0001',
+            FSEIBAN: 'A',
+            FHINCD: 'X',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: '',
+          },
+          processingOrder: 2,
+          globalRank: 5,
+          note: null,
+          processingType: null,
+          dueDate: null,
+        },
+      ] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: '',
+      productNos: [],
+      resourceCds: [],
+      assignedOnlyCds: [],
+      machineName: '補完機種A',
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+    });
+
+    expect(prisma.productionScheduleSeibanMachineNameSupplement.findMany).toHaveBeenCalledTimes(1);
+    expect(result.total).toBe(1);
+    expect(result.rows[0]?.resolvedMachineName).toBe('機種-A');
   });
 
   it('資源CD一覧をresourceCd配列へ整形して返す', async () => {

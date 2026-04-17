@@ -5,7 +5,11 @@ import {
 
 import { prisma } from '../../lib/prisma.js';
 import { loadActualHoursReadContext } from './actual-hours/actual-hours-read-context.service.js';
-import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import {
+  COMPLETED_PROGRESS_VALUE,
+  PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+} from './constants.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
@@ -19,6 +23,7 @@ import {
   type ProductionScheduleResourceNameMap
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import { enrichProductionScheduleRowsWithResolvedMachineName } from './production-schedule-machine-name-enrichment.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
@@ -44,6 +49,7 @@ type ProductionScheduleRow = {
   plannedQuantity: number | null;
   plannedStartDate: Date | null;
   plannedEndDate: Date | null;
+  resolvedMachineName?: string | null;
 };
 
 export type ProductionScheduleListParams = {
@@ -227,12 +233,7 @@ const buildProductNoCondition = (productNos: string[]): Prisma.Sql => {
   )})`;
 };
 
-const buildMachineNameCondition = async (machineName: string | undefined): Promise<Prisma.Sql> => {
-  const normalizedMachineName = normalizeMachineNameForCompare(machineName);
-  if (normalizedMachineName.length === 0) {
-    return Prisma.empty;
-  }
-
+const listMatchingFseibansByMachineName = async (normalizedMachineName: string): Promise<string[]> => {
   type MachineRow = { fseiban: string | null; fhinmei: string | null };
   const machineRows = await prisma.$queryRaw<MachineRow[]>`
     SELECT
@@ -246,18 +247,39 @@ const buildMachineNameCondition = async (machineName: string | undefined): Promi
         OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
       )
   `;
-  const matchingFseibans = Array.from(
-    new Set(
-      machineRows
+  const supplementRows = await prisma.productionScheduleSeibanMachineNameSupplement.findMany({
+    where: {
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+    },
+    select: {
+      fseiban: true,
+      machineName: true,
+    },
+  });
+
+  return Array.from(
+    new Set([
+      ...machineRows
         .filter(
           (row) =>
             row.fseiban != null &&
             row.fhinmei != null &&
             normalizeMachineNameForCompare(row.fhinmei) === normalizedMachineName
         )
-        .map((row) => row.fseiban as string)
-    )
+        .map((row) => row.fseiban as string),
+      ...supplementRows
+        .filter((row) => normalizeMachineNameForCompare(row.machineName) === normalizedMachineName)
+        .map((row) => row.fseiban),
+    ])
   );
+};
+
+const buildMachineNameCondition = async (machineName: string | undefined): Promise<Prisma.Sql> => {
+  const normalizedMachineName = normalizeMachineNameForCompare(machineName);
+  if (normalizedMachineName.length === 0) {
+    return Prisma.empty;
+  }
+  const matchingFseibans = await listMatchingFseibansByMachineName(normalizedMachineName);
   if (matchingFseibans.length === 0) {
     return Prisma.sql`AND 1 = 0`;
   }
@@ -452,12 +474,13 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       actualPerPieceMinutes: perPieceMinutes
     };
   });
+  const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(rowsWithActualHours);
 
   return {
     page,
     pageSize,
     total,
-    rows: rowsWithActualHours
+    rows: rowsWithResolvedMachineName
   };
 }
 

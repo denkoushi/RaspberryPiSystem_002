@@ -46,6 +46,8 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
   const noteRaw = row.note;
   const note =
     typeof noteRaw === 'string' && noteRaw.trim().length > 0 ? noteRaw.trim() : null;
+  const resolvedMachineName =
+    typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : '';
 
   return {
     id: row.id,
@@ -58,7 +60,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     fkojun: strField(data, 'FKOJUN'),
     fhincd: strField(data, 'FHINCD'),
     fhinmei: strField(data, 'FHINMEI'),
-    machineName: '',
+    machineName: resolvedMachineName,
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder),
@@ -73,7 +75,7 @@ export function normalizeLeaderBoardRows(rows: ProductionScheduleRow[]): LeaderB
   for (const row of rows) {
     const n = normalizeLeaderBoardRow(row);
     if (n) {
-      const machineName = seibanMachine.get(n.fseiban) ?? '';
+      const machineName = n.machineName.trim().length > 0 ? n.machineName : (seibanMachine.get(n.fseiban) ?? '');
       out.push({ ...n, machineName });
     }
   }

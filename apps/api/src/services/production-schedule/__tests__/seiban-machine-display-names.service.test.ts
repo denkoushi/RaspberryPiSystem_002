@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../constants.js';
-import { resolveSeibanMachineDisplayNames } from '../seiban-machine-display-names.service.js';
+import {
+  resolveSeibanMachineDisplayNames,
+  resolveSeibanMachineDisplayNamesBatched,
+} from '../seiban-machine-display-names.service.js';
 import { fetchSeibanProgressRows } from '../seiban-progress.service.js';
 
 const findByFseibans = vi.fn();
@@ -79,5 +82,35 @@ describe('resolveSeibanMachineDisplayNames', () => {
       'A-1',
       ...Array.from({ length: 60 }, (_, i) => `S-${i + 1}`)
     ]);
+  });
+});
+
+describe('resolveSeibanMachineDisplayNamesBatched', () => {
+  beforeEach(() => {
+    vi.mocked(fetchSeibanProgressRows).mockReset();
+    findByFseibans.mockReset();
+    findByFseibans.mockResolvedValue(new Map());
+  });
+
+  it('100件超の入力を分割して解決し、全件を返す', async () => {
+    vi.mocked(fetchSeibanProgressRows).mockImplementation(async (fseibans) =>
+      fseibans.map((fseiban) => ({
+        fseiban,
+        total: 1,
+        completed: 0,
+        incompleteProductNames: [],
+        machineName: `機種-${fseiban}`,
+      }))
+    );
+
+    const inputs = Array.from({ length: 130 }, (_, i) => `S-${i + 1}`);
+    const result = await resolveSeibanMachineDisplayNamesBatched(inputs);
+
+    expect(vi.mocked(fetchSeibanProgressRows)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(fetchSeibanProgressRows).mock.calls[0]?.[0]).toHaveLength(100);
+    expect(vi.mocked(fetchSeibanProgressRows).mock.calls[1]?.[0]).toHaveLength(30);
+    expect(Object.keys(result.machineNames)).toHaveLength(130);
+    expect(result.machineNames['S-1']).toBe('機種-S-1');
+    expect(result.machineNames['S-130']).toBe('機種-S-130');
   });
 });

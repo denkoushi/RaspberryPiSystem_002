@@ -10,6 +10,7 @@ export type SignageScheduleRowInput = {
   dueDate: Date | null;
   plannedQuantity: number | null;
   plannedEndDate: Date | null;
+  resolvedMachineName?: string | null;
 };
 
 export type SignageLeaderBoardRow = {
@@ -218,6 +219,8 @@ export function normalizeLeaderBoardRowFromScheduleRow(row: SignageScheduleRowIn
     typeof row.plannedQuantity === 'number' && Number.isFinite(row.plannedQuantity)
       ? row.plannedQuantity
       : null;
+  const resolvedMachineName =
+    typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : '';
 
   return {
     id: row.id,
@@ -230,7 +233,7 @@ export function normalizeLeaderBoardRowFromScheduleRow(row: SignageScheduleRowIn
     fkojun: strField(data, 'FKOJUN'),
     fhincd: strField(data, 'FHINCD'),
     fhinmei: strField(data, 'FHINMEI'),
-    machineName: '',
+    machineName: resolvedMachineName,
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
     processingOrder: parseProcessingOrder(row.processingOrder),
@@ -244,7 +247,7 @@ export function normalizeLeaderBoardRowsForSignage(rows: SignageScheduleRowInput
   for (const row of rows) {
     const n = normalizeLeaderBoardRowFromScheduleRow(row);
     if (n) {
-      const machineName = seibanMachine.get(n.fseiban) ?? '';
+      const machineName = n.machineName.trim().length > 0 ? n.machineName : (seibanMachine.get(n.fseiban) ?? '');
       out.push({ ...n, machineName });
     }
   }
