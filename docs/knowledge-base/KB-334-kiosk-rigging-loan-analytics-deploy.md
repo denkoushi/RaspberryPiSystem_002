@@ -17,6 +17,7 @@ category: knowledge-base
 - **UI（2026-04-14）**: **対象月**は `input type="month"` ではなく **`KioskMonthPickerModal`**（年ドロップダウン＋前年/翌年＋1〜12月・`variant="analytics"`）。**資産フィルタ**はタブごとに **単一選択**（未選択=全件）。クエリ: 吊具 `riggingGearId`（uuid）・写真持出 `itemId`（`pt-` + 24hex）・計測機器 `measuringInstrumentId`（uuid）。**API**: `GET /api/rigging-gears/loan-analytics`、`GET /api/tools/items/loan-analytics`、`GET /api/measuring-instruments/loan-analytics` の各クエリに optional 追加（Zod）。月変更時はフロントで資産選択をリセットし、404 時は選択解除にフォールバック。
 - **月次集計**: 既定タイムゾーン `Asia/Tokyo` 暦月（クエリで上書き可）。**マイグレーション**: 本集計は **既存 `Loan` 列のみ**（追加マイグレなし）。
 - **（2026-04-15）4パネル UI・当日イベント**: キオスク `/kiosk/rigging-analytics` は **4パネル**（社員別バー・資産別持出頻度・返却率・利用表）＋ **「当日の持出返却状況」** ペイン。集計期間は **`KioskMonthPickerModal` の `月` / `1日`**（`variant="analytics"`）。**当日ペイン**は選択期間とは別に **当日（Asia/Tokyo）の 0:00〜24:00** を別クエリで取得（右下のみ当日）。**API**: 3系統 `loan-analytics` 応答に **`periodEvents`**（`LoanAnalyticsPeriodEventRow`・持出/返却・`eventAt`・`assetId` / `assetLabel`・actor）を追加。**CI**: Web イメージの Alpine で `musl` / OpenSSL 等を `apk upgrade`（Trivy 対策・`infrastructure/docker/Dockerfile.web`）。
+- **（2026-04-17）BI ダッシュボード再設計**: `UsageTablePanel` を廃止し、**KPI ストリップ + Top N 2枚 + 返却率 + 当日イベント** の **2x2 固定ビュー**へ再構成。表示用ロジックは `analyticsDisplayPolicy.ts` に分離し、**「画面からはみ出さない」「スクロール不要」「ひと目で把握」**を優先。1440x900 基準で縦横ともノンスクロールを確認。
 
 ## デプロイ（標準手順）
 
@@ -73,6 +74,16 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 - **期待（写真持出タブ）**: `summary` / `byItem`（`itemCode` は空文字・`name` が表示名・`itemId` は `pt-` 接頭辞の安定ハッシュ）/ `byEmployee`
 
 ## 本番実績
+
+### 2026-04-17（BI ダッシュボード再設計・`feat/kiosk-analytics-bi-dashboard`・`9eda66b4`・Pi5 のみ）
+
+- **差分**: `KioskAnalyticsKpiStrip` 新設、`KioskAnalyticsPanels` を BI 向けに再編、`KioskRiggingAnalyticsPage` を **2x2 グリッド + overflow-hidden** 化、`analyticsDisplayPolicy.ts` / `analyticsDisplayPolicy.test.ts` で表示専用ポリシーを分離。静的プレビューは `docs/design-previews/kiosk-analytics-bi-dashboard-preview.html`。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-analytics-bi-dashboard infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Pi3**: 対象外（本変更は Pi5 Web / API のみ）。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260417-203348-20065`、**`failed=0` / `unreachable=0` / exit `0`**。
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **101s**）。
+- **API スモーク**: `GET /api/rigging-gears/loan-analytics`、`GET /api/tools/items/loan-analytics`、`GET /api/measuring-instruments/loan-analytics` はいずれも **200**。
+- **Health**: `GET /api/system/health` はデプロイ直後に memory **96.4%** で一時 **`degraded`** を返したが、短時間の warm-up 後に **`ok`** へ復帰。
+- **画面確認**: IDE 内蔵ブラウザは Pi5 Tailscale URL に到達できなかったため、Mac 側 Playwright で `https://100.106.158.2/kiosk/rigging-analytics` を 1440x900 で表示。**`scrollHeight == clientHeight == 900`**、**`scrollWidth == clientWidth == 1440`**、KPI / Top 8 / 当日イベント文言を確認し、スクリーンショットを取得してレイアウト崩れがないことを確認。
 
 ### 2026-04-15（4パネル・当日イベント・`periodEvents`・`feat/kiosk-analytics-four-panel-today-events`・`323dd9f0`・Pi5→Pi4×4 順次・Pi3 除外）
 
@@ -133,6 +144,7 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 | 表示名の粒度が細かすぎる | VLM が類似工具で別文字列を返すと **別行になる**。運用では人レビュー確定や [KB-319](./KB-319-photo-loan-vlm-tool-label.md) の正規化方針を参照。 |
 | UI が古い（ナビが「吊具 状況」のまま等） | Pi5 の `web` 未更新、またはブラウザキャッシュ。Pi5 デプロイ後に **強制再読み込み**。 |
 | CI で `Build web image for Trivy image scan` が落ちる（`KioskMonthPickerModal` の `children` / `aria-pressed`） | 月グリッドの表示を **`{`${m}月`}`** のように **単一文字列**にし、`aria-pressed` は **`Boolean(...)`** で `null` を排除（2026-04-14 修正）。 |
+| IDE 内蔵ブラウザで Pi5 キオスク URL を開けない | IDE と Mac でネットワーク到達性が異なることがある。**Mac 側から Tailscale URL に到達できるなら Playwright で本番 URL を開き、スクリーンショットと `scrollHeight/clientHeight` を採る**と画面崩れ・スクロール有無の確認を代替できる（2026-04-17）。 |
 
 ## References
 
