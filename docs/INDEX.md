@@ -36,7 +36,7 @@
 
 ### 🆕 最新アップデート（2026-04-17）
 
-- **キオスク「集計」UI バランス調整（レイアウトシェル・パネル枠・TopN トグル・KPI 帯ブレークポイント）**: ブランチ **`feat/kiosk-analytics-ui-balance-refine`**・コミット **`f5e58e2e`**。本番 Pi5→Pi4×4 順次（Pi3 除外）・Phase12 **43/0/0**・Detach Run ID は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-17（UI バランス調整）」・[deployment.md](./guides/deployment.md)。CI Run **`24564671757`** success。進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **キオスク「集計」UI バランス調整（レイアウトシェル・パネル枠・TopN トグル・KPI 帯ブレークポイント）**: ブランチ **`feat/kiosk-analytics-ui-balance-refine`**・コミット **`f5e58e2e`**。本番 Pi5→Pi4×4 順次（Pi3 除外）・Phase12 **43/0/0**・Detach Run ID は [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md)「2026-04-17（UI バランス調整）」・[deployment.md](./guides/deployment.md)。CI Run **`24564671757`** success。**`main` マージ**: [PR #161](https://github.com/denkoushi/RaspberryPiSystem_002/pull/161)。進捗は [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-16）
 

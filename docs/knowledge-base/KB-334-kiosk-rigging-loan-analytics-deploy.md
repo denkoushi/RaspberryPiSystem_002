@@ -84,6 +84,7 @@ curl -sk "https://<server>/api/tools/items/loan-analytics" -H "x-client-key: <cl
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **53s**）。
 - **CI**: GitHub Actions Run **`24564671757`** success（デプロイ前確認）。
 - **トラブルシュート**: 複数 `--detach` を **別ターミナルで重ねない**（Mac 側 `logs/.update-all-clients.local.lock`）。直列は **`&&`** で連結。
+- **`main` マージ**: [PR #161](https://github.com/denkoushi/RaspberryPiSystem_002/pull/161)。
 
 ### 2026-04-17（BI ダッシュボード再設計・`feat/kiosk-analytics-bi-dashboard`・`9eda66b4`・Pi5 のみ）
 
