@@ -395,3 +395,123 @@ describe('GET /api/kiosk/call/targets', () => {
   });
 });
 
+describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-preview/selection', () => {
+  let app: Awaited<ReturnType<typeof buildServer>>;
+  let closeServer: (() => Promise<void>) | null = null;
+
+  beforeAll(async () => {
+    app = await buildServer();
+    closeServer = async () => {
+      await app.close();
+    };
+  });
+
+  afterAll(async () => {
+    if (closeServer) {
+      await closeServer();
+    }
+  });
+
+  beforeEach(async () => {
+    await prisma.clientDevice.deleteMany();
+  });
+
+  it('401 without x-client-key for options', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/signage-preview/options'
+    });
+    expect(response.statusCode).toBe(401);
+    const body = response.json();
+    expect(body.errorCode).toBe('CLIENT_KEY_REQUIRED');
+  });
+
+  it('returns candidates and effectivePreviewApiKey defaults to kiosk key when no selection', async () => {
+    const kiosk = await createTestClientDevice('client-key-raspberrypi4-kiosk-sp');
+    const signage = await createTestClientDevice('client-key-pi3-signage-sp-001');
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/signage-preview/options',
+      headers: { 'x-client-key': kiosk.apiKey }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      candidates: Array<{ apiKey: string }>;
+      selectedApiKey: string | null;
+      effectivePreviewApiKey: string;
+    };
+    expect(body.candidates).toHaveLength(1);
+    expect(body.candidates[0].apiKey).toBe(signage.apiKey);
+    expect(body.selectedApiKey).toBeNull();
+    expect(body.effectivePreviewApiKey).toBe(kiosk.apiKey);
+  });
+
+  it('PUT stores signage target and GET reflects effectivePreviewApiKey', async () => {
+    const kiosk = await createTestClientDevice('client-key-kiosk-sp-save');
+    const signage = await createTestClientDevice('client-key-signage-sp-save');
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/signage-preview/selection',
+      headers: { 'x-client-key': kiosk.apiKey, 'Content-Type': 'application/json' },
+      payload: { signagePreviewTargetApiKey: signage.apiKey }
+    });
+    expect(put.statusCode).toBe(200);
+
+    const get = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/signage-preview/options',
+      headers: { 'x-client-key': kiosk.apiKey }
+    });
+    expect(get.statusCode).toBe(200);
+    const body = get.json() as { selectedApiKey: string | null; effectivePreviewApiKey: string };
+    expect(body.selectedApiKey).toBe(signage.apiKey);
+    expect(body.effectivePreviewApiKey).toBe(signage.apiKey);
+  });
+
+  it('PUT rejects apiKey that is not a signage display key', async () => {
+    const kiosk = await createTestClientDevice('client-key-kiosk-sp-reject');
+    await createTestClientDevice('client-key-kiosk-plain');
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/signage-preview/selection',
+      headers: { 'x-client-key': kiosk.apiKey, 'Content-Type': 'application/json' },
+      payload: { signagePreviewTargetApiKey: 'client-key-kiosk-plain' }
+    });
+    expect(put.statusCode).toBe(400);
+    const body = put.json();
+    expect(body.errorCode).toBe('INVALID_SIGNAGE_PREVIEW_TARGET');
+  });
+
+  it('PUT null clears selection', async () => {
+    const kiosk = await createTestClientDevice('client-key-kiosk-sp-null');
+    const signage = await createTestClientDevice('client-key-signage-sp-null');
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/signage-preview/selection',
+      headers: { 'x-client-key': kiosk.apiKey, 'Content-Type': 'application/json' },
+      payload: { signagePreviewTargetApiKey: signage.apiKey }
+    });
+
+    const put2 = await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/signage-preview/selection',
+      headers: { 'x-client-key': kiosk.apiKey, 'Content-Type': 'application/json' },
+      payload: { signagePreviewTargetApiKey: null }
+    });
+    expect(put2.statusCode).toBe(200);
+
+    const get = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/signage-preview/options',
+      headers: { 'x-client-key': kiosk.apiKey }
+    });
+    const body = get.json() as { selectedApiKey: string | null };
+    expect(body.selectedApiKey).toBeNull();
+  });
+});
+

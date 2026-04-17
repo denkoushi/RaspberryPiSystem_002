@@ -907,6 +907,38 @@ try {
 
 ---
 
+### [KB-349] キオスクサイネージプレビューで端末を選択して画像を取得する
+
+**発生日**: 2026-04-17
+
+**Context**:
+- 現場 Pi4 キオスクでも、管理コンソールと同様に **どのサイネージ端末のレンダ結果を見るか**を選びたいが、`GET /clients` は **ADMIN/MANAGER 専用**でキオスクから一覧取得できない
+- **閲覧のみ**なら、サーバが「選べる候補」と「このキオスクの保存先」を返し、画像は既存の `GET /signage/current-image?key=…` で足りる
+
+**Fix（実装）**:
+- DB: `ClientDevice.signagePreviewTargetApiKey`（nullable）— **このキオスク端末**がプレビューで参照するサイネージ端末の `apiKey`
+- API（`x-client-key` のみ）:
+  - `GET /api/kiosk/signage-preview/options` … 候補（`apiKey` に `signage` を含む端末）、現在の選択、効いているプレビューキー（無効時はキオスク自身の `apiKey`）
+  - `PUT /api/kiosk/signage-preview/selection` … `{ signagePreviewTargetApiKey: string | null }`
+- Web: `apps/web/src/components/kiosk/KioskSignagePreviewModal.tsx` — セレクトで保存し、`buildSignageCurrentImageUrlSearchParams` で `key` + キャッシュバスタ付き取得
+
+**Verification**:
+- CI: GitHub Actions（lint / e2e / docker-build）成功（例: run **`24545194935`**）
+- 本番: ブランチ **`feat/kiosk-signage-preview-target-selector`**・実装コミット **`2b3871a8`**・**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**（Pi3 除外）・Detach（ログ接頭辞 `ansible-update-`）`20260417-121016-12243` → `20260417-122130-4794` → `20260417-122551-22196` → `20260417-122916-30733` → `20260417-123315-12115`（各 **`failed=0` / `unreachable=0`**）・`./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）
+
+**Troubleshooting**:
+- 候補が空: `apiKey` に **`signage`** を含む `ClientDevice` が存在するか（候補フィルタは insensitive `contains`）
+- 統合テストの fixture で `apiKey` に誤って `signage` を含めると期待とずれる（例: `client-key-kiosk-plain` のように命名する）
+
+**解決状況**: ✅ **本番反映・Phase12 完了**（2026-04-17）
+
+**References**:
+- `apps/api/src/routes/kiosk/signage-preview.ts`
+- `apps/api/src/lib/signage/kiosk-signage-preview-target.ts`
+- [サイネージモジュール README](../modules/signage/README.md)
+
+---
+
 ### [KB-096] クライアントログ取得のベストプラクティス（postClientLogsへの統一）
 
 **EXEC_PLAN.md参照**: 計測機器管理システム実装（2025-12-12）
