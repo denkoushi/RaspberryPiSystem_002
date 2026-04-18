@@ -129,4 +129,95 @@ describe('loan report domain', () => {
     expect(html).toContain('計測機器');
     expect(html).toContain('<!DOCTYPE html>');
   });
+
+  it('calculates safety cover days with same-day range as one day window', async () => {
+    const svc = new LoanReportEvaluationService();
+    const response = baseMeasuringResponse();
+    response.meta.periodFrom = '2026-04-18T00:00:00.000Z';
+    response.meta.periodTo = '2026-04-18T00:00:00.000Z';
+    response.summary.totalInstrumentsActive = 10;
+    response.summary.openLoanCount = 2;
+    response.summary.periodBorrowCount = 2;
+    response.byInstrument = [
+      {
+        instrumentId: 'i1',
+        managementNumber: 'M-001',
+        name: 'ノギス',
+        status: 'AVAILABLE',
+        isOutNow: false,
+        currentBorrowerDisplayName: null,
+        dueAt: null,
+        periodBorrowCount: 1,
+        periodReturnCount: 1,
+        openIsOverdue: false,
+      },
+      {
+        instrumentId: 'i2',
+        managementNumber: 'M-002',
+        name: 'マイクロメータ',
+        status: 'AVAILABLE',
+        isOutNow: false,
+        currentBorrowerDisplayName: null,
+        dueAt: null,
+        periodBorrowCount: 1,
+        periodReturnCount: 1,
+        openIsOverdue: false,
+      },
+    ];
+    const vm = svc.buildViewModel({
+      category: 'measuring',
+      normalized: { kind: 'measuring', response },
+      site: '本社',
+      author: 'admin',
+    });
+    const safetyCoverChip = vm.supply.chips.find((c) => c.k === '安全在庫カバー');
+    expect(safetyCoverChip?.v).toBe('4.0日');
+    expect(vm.metrics.out).toBe(2);
+    expect(vm.metrics.returned).toBe(2);
+    expect(vm.metrics.returnRate).toBe(50);
+    expect(vm.compliance.score).toBe(50);
+    expect(vm.compliance.state).toBe('要改善');
+    expect(vm.compliance.chips.find((c) => c.k === '返却/持出')?.v).toBe('2/2');
+    expect(vm.findings.body).toContain('返却完了率は 50%');
+  });
+
+  it('sets return/compliance score to 0 when there is no borrow in period', async () => {
+    const svc = new LoanReportEvaluationService();
+    const response = baseMeasuringResponse();
+    response.summary.periodBorrowCount = 0;
+    response.summary.periodReturnCount = 7;
+    response.summary.openLoanCount = 0;
+    response.summary.overdueOpenCount = 0;
+    response.byEmployee = [];
+    response.byInstrument = [];
+    const vm = svc.buildViewModel({
+      category: 'measuring',
+      normalized: { kind: 'measuring', response },
+      site: '本社',
+      author: 'admin',
+    });
+    expect(vm.metrics.returnRate).toBe(0);
+    expect(vm.compliance.score).toBe(0);
+    expect(vm.compliance.state).toBe('データなし');
+    expect(vm.compliance.chips.find((c) => c.k === '期限遵守率')?.v).toBe('N/A');
+    expect(vm.findings.overall).toEqual({ text: '判定保留', cls: 'warn' });
+    expect(vm.findings.trend).toEqual({ text: 'データなし', cls: 'warn' });
+  });
+
+  it('sets monthly compliance to 0 on zero-borrow month', async () => {
+    const svc = new LoanReportEvaluationService();
+    const response = baseMeasuringResponse();
+    response.monthlyTrend = [
+      { yearMonth: '2026-02', borrowCount: 0, returnCount: 5 },
+      { yearMonth: '2026-03', borrowCount: 10, returnCount: 9 },
+    ];
+    const vm = svc.buildViewModel({
+      category: 'measuring',
+      normalized: { kind: 'measuring', response },
+      site: '本社',
+      author: 'admin',
+    });
+    expect(vm.trend.compliance[0]).toBe(0);
+    expect(vm.trend.compliance[1]).toBe(90);
+  });
 });

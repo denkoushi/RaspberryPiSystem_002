@@ -28,6 +28,57 @@ const loanReportGmailSendBodySchema = loanReportPreviewQuerySchema.extend({
   to: z.string().trim().min(1),
 });
 
+function isUtcMidnight(d: Date): boolean {
+  return (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  );
+}
+
+function asIsoDateFromUtcDate(d: Date): string {
+  const y = String(d.getUTCFullYear());
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function asStartOfDay(d: Date, timeZone: 'UTC' | 'Asia/Tokyo'): Date {
+  const isoDate = asIsoDateFromUtcDate(d);
+  if (timeZone === 'UTC') {
+    return new Date(`${isoDate}T00:00:00.000Z`);
+  }
+  return new Date(`${isoDate}T00:00:00.000+09:00`);
+}
+
+function asEndOfDay(d: Date, timeZone: 'UTC' | 'Asia/Tokyo'): Date {
+  const isoDate = asIsoDateFromUtcDate(d);
+  if (timeZone === 'UTC') {
+    return new Date(`${isoDate}T23:59:59.999Z`);
+  }
+  return new Date(`${isoDate}T23:59:59.999+09:00`);
+}
+
+export function resolveLoanReportPeriod(params: {
+  periodFrom?: Date;
+  periodTo?: Date;
+  timeZone?: string;
+  now?: Date;
+}): { periodFrom: Date; periodTo: Date } {
+  const now = params.now ?? new Date();
+  const timeZone: 'UTC' | 'Asia/Tokyo' = params.timeZone === 'UTC' ? 'UTC' : 'Asia/Tokyo';
+  let periodTo = params.periodTo ?? now;
+  let periodFrom = params.periodFrom ?? new Date(periodTo.getTime() - 90 * 24 * 60 * 60 * 1000);
+  if (params.periodFrom && isUtcMidnight(params.periodFrom)) {
+    periodFrom = asStartOfDay(params.periodFrom, timeZone);
+  }
+  if (params.periodTo && isUtcMidnight(params.periodTo)) {
+    periodTo = asEndOfDay(params.periodTo, timeZone);
+  }
+  return { periodFrom, periodTo };
+}
+
 export function registerLoanReportRoutes(app: FastifyInstance): void {
   const canPreview = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const canDraft = authorizeRoles('ADMIN', 'MANAGER');
@@ -39,9 +90,11 @@ export function registerLoanReportRoutes(app: FastifyInstance): void {
     { preHandler: [canPreview], config: { rateLimit: false } },
     async (request) => {
       const q = loanReportPreviewQuerySchema.parse(request.query);
-      const now = new Date();
-      const periodTo = q.periodTo ?? now;
-      const periodFrom = q.periodFrom ?? new Date(periodTo.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const { periodFrom, periodTo } = resolveLoanReportPeriod({
+        periodFrom: q.periodFrom,
+        periodTo: q.periodTo,
+        timeZone: q.timeZone,
+      });
       return service.buildPreview({
         category: q.category,
         periodFrom,
@@ -62,9 +115,11 @@ export function registerLoanReportRoutes(app: FastifyInstance): void {
     { preHandler: [canDraft], config: { rateLimit: false } },
     async (request) => {
       const body = loanReportGmailDraftBodySchema.parse(request.body);
-      const now = new Date();
-      const periodTo = body.periodTo ?? now;
-      const periodFrom = body.periodFrom ?? new Date(periodTo.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const { periodFrom, periodTo } = resolveLoanReportPeriod({
+        periodFrom: body.periodFrom,
+        periodTo: body.periodTo,
+        timeZone: body.timeZone,
+      });
       return service.createGmailDraft({
         category: body.category,
         periodFrom,
@@ -87,9 +142,11 @@ export function registerLoanReportRoutes(app: FastifyInstance): void {
     { preHandler: [canSendGmail], config: { rateLimit: false } },
     async (request) => {
       const body = loanReportGmailSendBodySchema.parse(request.body);
-      const now = new Date();
-      const periodTo = body.periodTo ?? now;
-      const periodFrom = body.periodFrom ?? new Date(periodTo.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const { periodFrom, periodTo } = resolveLoanReportPeriod({
+        periodFrom: body.periodFrom,
+        periodTo: body.periodTo,
+        timeZone: body.timeZone,
+      });
       return service.sendGmailMessage({
         category: body.category,
         periodFrom,
