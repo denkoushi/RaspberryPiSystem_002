@@ -61,7 +61,7 @@ category: knowledge-base
 ## References
 
 - **PR（下書き）**: [#166](https://github.com/denkoushi/RaspberryPiSystem_002/pull/166)
-- **PR（送信・レイアウト）**: [deployment.md](../guides/deployment.md) 冒頭の「最終更新」行を正とする（マージ時に番号を追記）
+- **PR（送信・レイアウト）**: [#167](https://github.com/denkoushi/RaspberryPiSystem_002/pull/167)
 - 実装: `apps/api/src/routes/reports/loan-report.ts`、`apps/api/src/services/reports/loan-report/*`
 - 管理 UI: `apps/web/src/pages/admin/LoanReportPage.tsx`、`apps/web/src/features/admin/loan-report/*`
 - デプロイ標準: [deployment.md](../guides/deployment.md)
