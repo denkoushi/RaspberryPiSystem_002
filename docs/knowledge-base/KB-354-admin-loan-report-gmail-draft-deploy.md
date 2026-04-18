@@ -59,6 +59,7 @@ category: knowledge-base
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **62s**・fjv60-80 SSH WARN はベースライン同型）。
 - **デプロイ前（Mac）**: **未追跡のプレビュー HTML** 等があると `update-all-clients.sh` が fail-fast → **`git stash push -u`**（本記録では実施済み）。
 - **CI**: Run **`24603756892`** success（コード変更 push 時。docs 追記コミットでは再実行確認を推奨）。
+- **PR**: [#168](https://github.com/denkoushi/RaspberryPiSystem_002/pull/168)
 
 ## Troubleshooting
 
