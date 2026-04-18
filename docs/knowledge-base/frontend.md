@@ -955,7 +955,7 @@ try {
 - その他: `Dialog`・`SignageDisplayPage`・`KioskCallPage`・管理系シェルで **`dvh` / `w-full min-w-0`**
 
 **Verification**:
-- 本番: ブランチ **`feat/web-mobile-viewport-dvh`**・**`b8650b37`**・**Pi5→Pi4×4** を **`--limit` 1 台ずつ**・Detach 上記 Run ID（各 exit **0**）
+- 本番: ブランチ **`feat/web-mobile-viewport-dvh`**・**`b8650b37`**・**Pi5→Pi4×4** を **`--limit` 1 台ずつ**・Detach 上記 Run ID（各 exit **0**）・**PR**: [#164](https://github.com/denkoushi/RaspberryPiSystem_002/pull/164)
 - Phase12: **`./scripts/deploy/verify-phase12-real.sh` → PASS 42 / WARN 1 / FAIL 0**（**WARN** は Pi5→`raspi4-fjv60-80` SSH 不可の既定分岐。`deploy-status` が PASS なら API 経路は有効な可能性あり）
 
 **Troubleshooting**:
