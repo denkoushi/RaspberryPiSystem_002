@@ -1,5 +1,12 @@
 name: CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, develop, 'feature/**', 'feat/**', 'fix/**', 'refactor/**', 'chore/**']
@@ -8,23 +15,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint-and-test:
+  # Fast feedback: lint, workspace builds, package-level tests (no Docker DB)
+  lint-build-unit:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
 
       - name: Validate deployment scripts
         run: |
@@ -33,52 +32,75 @@ jobs:
           bash -n scripts/server/deploy-detached.sh
           bash scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Security scan (pnpm audit, high+)
+      - name: Security scan (pnpm audit)
         run: |
-          # Temporarily skip security scan due to npm registry 500 errors
-          # TODO: Re-enable when npm registry is stable
-          echo "Skipping security scan due to npm registry issues"
-          # pnpm audit --audit-level=high || {
-          #   echo "Security scan failed!"
-          #   exit 1
-          # }
+          set -euo pipefail
+          echo "=== pnpm audit: critical+ (required gate) ==="
+          for attempt in 1 2 3; do
+            if pnpm audit --audit-level=critical; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "pnpm audit (critical+) failed after retries"
+              exit 1
+            fi
+            echo "pnpm audit (critical+) failed (attempt ${attempt}/3); retrying..."
+            sleep 20
+          done
+          echo "=== pnpm audit: high+ (informational; fix tracked separately) ==="
+          pnpm audit --audit-level=high || {
+            echo "::warning::pnpm audit reported high severity issues; see log above"
+            exit 0
+          }
 
       - name: Run lint
-        run: |
-          pnpm lint --max-warnings=0 || {
-            echo "Lint failed!"
-            exit 1
-          }
+        run: pnpm lint --max-warnings=0
 
       - name: Build shared packages
         run: |
-          cd packages/shared-types
-          pnpm build
-          cd ../part-search-core
-          pnpm build
+          pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/part-search-core build
+
+      - name: Run part-search-core tests
+        run: pnpm --filter @raspi-system/part-search-core test
 
       - name: Generate Prisma Client
-        run: |
-          cd apps/api
-          echo "Generating Prisma Client..."
-          pnpm prisma generate || {
-            echo "Prisma generate failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Build API
+        run: pnpm --filter @raspi-system/api build
+
+      - name: Run web tests
+        run: pnpm --filter @raspi-system/web test
+
+      - name: Build Web
+        run: pnpm --filter @raspi-system/web build
+
+  # API + PostgreSQL + 統合テスト + 運用スクリプト（インフラ寄り）
+  api-db-and-infra:
+    runs-on: ubuntu-latest
+    needs: lint-build-unit
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Build shared packages
         run: |
-          cd apps/api
-          echo "Building API..."
-          pnpm build || {
-            echo "Build failed!"
-            exit 1
-          }
+          pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/part-search-core build
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @raspi-system/api exec prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Build API
+        run: pnpm --filter @raspi-system/api build
 
       - name: Start PostgreSQL
         run: |
@@ -95,52 +117,21 @@ jobs:
 
       - name: Wait for PostgreSQL
         run: |
-          timeout=60
-          elapsed=0
-          until docker exec postgres-test pg_isready -U postgres 2>/dev/null; do
-            if [ $elapsed -ge $timeout ]; then
-              echo "PostgreSQL failed to start within $timeout seconds"
-              docker logs postgres-test
-              exit 1
-            fi
-            echo "Waiting for PostgreSQL... ($elapsed/$timeout seconds)"
-            sleep 2
-            elapsed=$((elapsed + 2))
-          done
-          echo "PostgreSQL is ready!"
-          # データベース接続の最終確認
-          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT version();" || {
-            echo "PostgreSQL connection test failed!"
-            exit 1
-          }
+          chmod +x scripts/ci/wait-for-postgres.sh
+          scripts/ci/wait-for-postgres.sh postgres-test 60
+          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT version();"
 
       - name: Run Prisma migrations
-        run: |
-          cd apps/api
-          echo "Running Prisma migrations..."
-          pnpm prisma migrate deploy || {
-            echo "Migration failed, checking database connection..."
-            docker exec postgres-test psql -U postgres -c "SELECT version();"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
-      - name: Run API tests
+      - name: Run API tests (coverage, single pass)
         run: |
           cd apps/api
-          echo "Running API tests..."
-          echo "DATABASE_URL: $DATABASE_URL"
-          echo "PostgreSQL connection test..."
-          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;" || {
-            echo "PostgreSQL connection failed!"
-            exit 1
-          }
-          # imports-scheduleは専用ステップで実行するため除外
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test:coverage -- --reporter=verbose --exclude "**/imports-schedule.integration.test.ts" || {
-            echo "Tests failed, showing test output..."
-            exit 1
-          }
+          docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
+          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
+            pnpm test:coverage -- --reporter=verbose
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
@@ -149,6 +140,7 @@ jobs:
           PHOTO_STORAGE_DIR: /tmp/test-photo-storage
           BACKUP_STORAGE_DIR: /tmp/test-backups
           NODE_ENV: test
+          PERF_RESPONSE_TIME_THRESHOLD_MS: '1800'
 
       - name: Upload API coverage artifact
         if: always()
@@ -158,149 +150,21 @@ jobs:
           path: apps/api/coverage/
           retention-days: 7
 
-      - name: Run API performance tests
-        run: |
-          cd apps/api
-          echo "Running API performance tests..."
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- performance --reporter=verbose || {
-            echo "Performance tests failed, showing test output..."
-            exit 1
-          }
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-          PERF_RESPONSE_TIME_THRESHOLD_MS: 1800
-
-      - name: Run backup service tests
-        run: |
-          cd apps/api
-          echo "Running backup service tests..."
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- backup --reporter=verbose || {
-            echo "Backup tests failed, showing test output..."
-            exit 1
-          }
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-
-      - name: Run imports-dropbox tests
-        run: |
-          cd apps/api
-          echo "Running imports-dropbox tests..."
-          pnpm test -- imports-dropbox --reporter=verbose || {
-            echo "Imports-dropbox tests failed, showing test output..."
-            exit 1
-          }
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-
-      - name: Run imports-gmail tests
-        run: |
-          cd apps/api
-          echo "Running imports-gmail tests..."
-          pnpm test -- imports-gmail --reporter=verbose || {
-            echo "Imports-gmail tests failed, showing test output..."
-            exit 1
-          }
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-
-      - name: Run csv-import-scheduler tests
-        run: |
-          cd apps/api
-          echo "Running csv-import-scheduler tests..."
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- csv-import-scheduler --reporter=verbose || {
-            echo "Csv-import-scheduler tests failed, showing test output..."
-            exit 1
-          }
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-
-      - name: Run imports-schedule integration tests
-        run: |
-          cd apps/api
-          echo "Running imports-schedule integration tests..."
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- imports-schedule --reporter=verbose || {
-            echo "Imports-schedule integration tests failed, showing test output..."
-            exit 1
-          }
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-
-      - name: Run import-alert service tests
-        run: |
-          cd apps/api
-          echo "Running import-alert service tests..."
-          BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) pnpm test -- import-alert --reporter=verbose || {
-            echo "Import-alert service tests failed, showing test output..."
-            exit 1
-          }
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          JWT_ACCESS_SECRET: test-access-secret-1234567890
-          JWT_REFRESH_SECRET: test-refresh-secret-1234567890
-          CAMERA_TYPE: mock
-          PHOTO_STORAGE_DIR: /tmp/test-photo-storage
-          BACKUP_STORAGE_DIR: /tmp/test-backups
-          NODE_ENV: test
-
       - name: Start API server for monitoring tests
         run: |
           cd apps/api
-          # バックグラウンドでAPIサーバーを起動
-          # NODE_ENVをproductionに設定してAPIサーバーを起動（testだとmain.tsで起動しない）
           NODE_ENV=production pnpm start > /tmp/api-server.log 2>&1 &
           API_PID=$!
-          echo "API_PID=$API_PID" >> $GITHUB_ENV
+          echo "API_PID=$API_PID" >> "$GITHUB_ENV"
           echo "API server started with PID: $API_PID"
-          
-          # 少し待ってからログを確認
           sleep 2
-          echo "API server log (first 50 lines):"
           head -50 /tmp/api-server.log || echo "No log file yet"
-          
-          # APIサーバーが起動するまで待機
           timeout=30
           elapsed=0
           until curl -s http://localhost:8080/api/system/health > /dev/null 2>&1; do
             if [ $elapsed -ge $timeout ]; then
               echo "API server failed to start within $timeout seconds"
-              echo "API server log (full):"
               cat /tmp/api-server.log || true
-              echo "Checking if process is still running:"
-              ps aux | grep -E "node|pnpm" | grep -v grep || true
-              echo "Checking port 8080:"
-              netstat -tuln | grep 8080 || ss -tuln | grep 8080 || true
               exit 1
             fi
             echo "Waiting for API server... ($elapsed/$timeout seconds)"
@@ -310,8 +174,6 @@ jobs:
           echo "API server is ready!"
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
-          # NOTE:
-          # NODE_ENV=production でAPIを起動するため、Fail-fastシークレットポリシーを満たす強い値を使用する。
           JWT_ACCESS_SECRET: ci-prod-access-secret-0123456789-abcdefghijklmnopqrstuvwxyz
           JWT_REFRESH_SECRET: ci-prod-refresh-secret-0123456789-abcdefghijklmnopqrstuvwxyz
           PORT: 8080
@@ -319,54 +181,31 @@ jobs:
 
       - name: Test backup/restore scripts
         run: |
-          echo "Testing backup/restore scripts..."
-          # CI環境ではpostgres-testコンテナを使用
-          export COMPOSE_FILE="infrastructure/docker/docker-compose.server.yml"
-          # postgres-testコンテナが起動していることを確認
-          docker ps | grep postgres-test || {
-            echo "PostgreSQL test container is not running"
-            exit 1
-          }
-          # バックアップテストを実行（postgres-testコンテナを直接使用）
-          bash scripts/test/backup-restore.test.sh || {
-            echo "Backup/restore tests failed!"
-            exit 1
-          }
+          docker ps | grep postgres-test
+          bash scripts/test/backup-restore.test.sh
 
-      - name: Install Ansible for template rendering
+      - name: Install Ansible
         run: |
-          python3 -m pip install --user ansible-core || {
-            echo "Warning: Failed to install ansible-core, tests will use sed fallback"
-          }
+          set -euo pipefail
+          python3 -m pip install --user ansible-core
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          command -v ansible-playbook
+
+      - name: Cache Ansible collections
+        uses: actions/cache@v4
+        with:
+          path: ~/.ansible/collections
+          key: ansible-collections-${{ runner.os }}-community-general-v1
 
       - name: Ansible syntax check
         run: |
-          echo "Running Ansible syntax check..."
+          set -euo pipefail
           cd infrastructure/ansible
-          export PATH="$HOME/.local/bin:$PATH"
-          
-          # Check if ansible-playbook is available
-          if ! command -v ansible-playbook &> /dev/null; then
-            echo "ansible-playbook not found, skipping Ansible tests"
-            exit 0
-          fi
-          
-          # Install required Ansible collections
-          echo "Installing Ansible collections..."
-          ansible-galaxy collection install community.general || {
-            echo "Warning: Failed to install community.general collection, but continuing..."
-          }
-          
-          # Create temporary ansible.cfg without vault_password_file for syntax check
-          # (vault decryption not needed for syntax validation)
+          ansible-galaxy collection install community.general
           cp ansible.cfg /tmp/ansible.cfg.backup || true
           sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI syntax check)/' ansible.cfg > /tmp/ansible-ci.cfg
           export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
           export ANSIBLE_ROLES_PATH="$(pwd)/roles"
-          
-          # Test all playbooks
-          # Note: backup-clients.yml and backup-client-directory.yml require runtime variables
-          # (client_host, client_file_path, etc.) and are excluded from syntax check
           PLAYBOOKS=(
             "playbooks/deploy.yml"
             "playbooks/update-clients.yml"
@@ -377,84 +216,73 @@ jobs:
             "playbooks/restart-services.yml"
             "playbooks/ping.yml"
           )
-          
           FAILED=0
           for playbook in "${PLAYBOOKS[@]}"; do
             echo "Checking syntax for $playbook..."
-            # Use inventory.yml for syntax check (doesn't need real hosts)
-            # Note: Vault files will fail to decrypt, but syntax check will still validate YAML structure
             if ansible-playbook --syntax-check "$playbook" -i inventory.yml > /tmp/ansible-syntax-check.log 2>&1; then
-              echo "✅ $playbook syntax OK"
+              echo "OK $playbook"
             else
-              # Check if error is due to vault decryption (expected) or actual syntax error
               if grep -qE "(vault password|ERROR.*vault)" /tmp/ansible-syntax-check.log && ! grep -qE "(syntax error|YAML|parse error)" /tmp/ansible-syntax-check.log; then
-                echo "⚠️  $playbook syntax check skipped (vault file decryption failed, but YAML syntax is OK)"
+                echo "WARN $playbook skipped (vault decrypt only)"
               else
-                echo "❌ $playbook syntax check failed:"
+                echo "FAIL $playbook"
                 cat /tmp/ansible-syntax-check.log
                 FAILED=1
               fi
             fi
           done
-          
           if [ $FAILED -eq 1 ]; then
-            echo "Ansible syntax check failed!"
             exit 1
           fi
-          
-          echo "All Ansible playbooks passed syntax check!"
 
       - name: Ansible dry-run check (deploy playbook only)
         run: |
-          echo "Running Ansible dry-run check for deploy.yml..."
+          set -euo pipefail
           cd infrastructure/ansible
-          export PATH="$HOME/.local/bin:$PATH"
-          
-          # Check if ansible-playbook is available
-          if ! command -v ansible-playbook &> /dev/null; then
-            echo "ansible-playbook not found, skipping Ansible dry-run"
-            exit 0
-          fi
-          
-          # Install required Ansible collections (if not already installed)
-          echo "Installing Ansible collections..."
-          ansible-galaxy collection install community.general || {
-            echo "Warning: Failed to install community.general collection, but continuing..."
-          }
-          
-          # Create temporary ansible.cfg without vault_password_file for dry-run check
-          # (vault decryption not needed for dry-run validation)
-          cp ansible.cfg /tmp/ansible.cfg.backup || true
+          ansible-galaxy collection install community.general
           sed 's/^vault_password_file = .vault-pass/# vault_password_file = .vault-pass (disabled for CI dry-run check)/' ansible.cfg > /tmp/ansible-ci.cfg
           export ANSIBLE_CONFIG=/tmp/ansible-ci.cfg
           export ANSIBLE_ROLES_PATH="$(pwd)/roles"
-          
-          # Dry-run check for deploy.yml (most critical playbook)
-          # Note: This will skip tasks that require actual host connection, but will validate
-          # variable references, task structure, and role dependencies
-          echo "Running dry-run check for playbooks/deploy.yml..."
           ansible-playbook --check --diff playbooks/deploy.yml -i inventory.yml --limit nonexistent_host 2>&1 | tee /tmp/ansible-dryrun.log || true
-          
-          # Check if error is due to no hosts (expected) or actual syntax/logic error
           if grep -qE "(No hosts matched|leaves us with no hosts to target)" /tmp/ansible-dryrun.log; then
-            echo "✅ deploy.yml dry-run check completed (no hosts matched, which is expected for syntax validation)"
+            echo "deploy.yml dry-run OK (no hosts matched)"
           elif grep -qE "(ERROR|error)" /tmp/ansible-dryrun.log && ! grep -qE "(No hosts matched|leaves us with no hosts|vault password)" /tmp/ansible-dryrun.log; then
-            echo "❌ deploy.yml dry-run check failed with actual errors:"
+            echo "deploy.yml dry-run failed"
             cat /tmp/ansible-dryrun.log
             exit 1
           else
-            echo "✅ deploy.yml dry-run check completed"
+            echo "deploy.yml dry-run OK"
           fi
 
       - name: Test monitoring scripts
         run: |
-          echo "Testing monitoring scripts..."
           API_URL=http://localhost:8080/api pnpm test:monitor || {
-            echo "Monitoring tests failed!"
-            echo "API server log:"
             cat /tmp/api-server.log || true
             exit 1
           }
+
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -n "${API_PID:-}" ]; then
+            kill "$API_PID" || true
+            sleep 2
+            kill -9 "$API_PID" 2>/dev/null || true
+          fi
+          pkill -f "node dist/main.js" || true
+          pkill -f "pnpm start" || true
+
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker stop postgres-test && docker rm postgres-test || true
+
+  # セキュリティスキャンと Docker イメージビルド（lint 通過後、API ジョブと並列可能）
+  security-docker:
+    runs-on: ubuntu-latest
+    needs: lint-build-unit
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Security scan (Trivy fs)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -468,11 +296,30 @@ jobs:
             **/certs
             **/alerts
 
-      - name: Build api image for Trivy image scan
-        run: docker build -t raspisys-api:ci -f infrastructure/docker/Dockerfile.api .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build web image for Trivy image scan
-        run: docker build -t raspisys-web:ci -f infrastructure/docker/Dockerfile.web .
+      - name: Build API image (Buildx) and load
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./infrastructure/docker/Dockerfile.api
+          push: false
+          load: true
+          tags: raspisys-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Web image (Buildx) and load
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./infrastructure/docker/Dockerfile.web
+          push: false
+          load: true
+          tags: raspisys-web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Security scan (Trivy image api)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
@@ -495,51 +342,17 @@ jobs:
           scanners: 'vuln'
           trivyignores: '.trivyignore'
 
-      - name: Stop API server
-        if: always()
-        run: |
-          if [ -n "$API_PID" ]; then
-            echo "Stopping API server (PID: $API_PID)"
-            kill $API_PID || true
-            sleep 2
-            kill -9 $API_PID 2>/dev/null || true
-          fi
-          pkill -f "node dist/main.js" || true
-          pkill -f "pnpm start" || true
-
-      - name: Cleanup PostgreSQL
-        if: always()
-        run: docker stop postgres-test && docker rm postgres-test || true
-
-      - name: Build Web
-        run: |
-          cd apps/web
-          pnpm build || {
-            echo "Build Web failed!"
-            exit 1
-          }
-
   e2e-smoke:
     runs-on: ubuntu-latest
-    needs: lint-and-test
-    
+    needs: lint-build-unit
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
         with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          playwright-cache: 'true'
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
@@ -559,141 +372,70 @@ jobs:
 
       - name: Wait for PostgreSQL (smoke)
         run: |
-          timeout=60
-          elapsed=0
-          until docker exec postgres-e2e-smoke pg_isready -U postgres 2>/dev/null; do
-            if [ $elapsed -ge $timeout ]; then
-              echo "PostgreSQL failed to start within $timeout seconds"
-              docker logs postgres-e2e-smoke
-              exit 1
-            fi
-            echo "Waiting for PostgreSQL... ($elapsed/$timeout seconds)"
-            sleep 2
-            elapsed=$((elapsed + 2))
-          done
-          echo "PostgreSQL is ready!"
+          chmod +x scripts/ci/wait-for-postgres.sh
+          scripts/ci/wait-for-postgres.sh postgres-e2e-smoke 60
 
       - name: Generate Prisma Client (smoke)
-        run: |
-          cd apps/api
-          pnpm prisma generate || {
-            echo "Prisma generate failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Run Prisma migrations (smoke)
-        run: |
-          cd apps/api
-          pnpm prisma migrate deploy || {
-            echo "Prisma migrate deploy failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Seed database (smoke)
-        run: |
-          cd apps/api
-          pnpm prisma db seed || {
-            echo "Database seed failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma db seed
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Build shared packages (smoke)
         run: |
-          cd packages/shared-types
-          pnpm build || {
-            echo "Build shared-types (smoke) failed!"
-            exit 1
-          }
-          cd ../part-search-core
-          pnpm build || {
-            echo "Build part-search-core (smoke) failed!"
-            exit 1
-          }
+          pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/part-search-core build
 
       - name: Run E2E smoke tests
         env:
           CI: true
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           VITE_KIOSK_DEFAULT_MODE: TAG
-        run: |
-          pnpm test:e2e:smoke || {
-            echo "E2E smoke tests failed!"
-            exit 1
-          }
+        run: pnpm test:e2e:smoke
 
       - name: Cleanup PostgreSQL (smoke)
         if: always()
-        run: docker stop postgres-e2e-smoke && docker rm postgres-e2e-smoke
+        run: docker stop postgres-e2e-smoke && docker rm postgres-e2e-smoke || true
 
   e2e-tests:
     runs-on: ubuntu-latest
-    needs: e2e-smoke
-    
+    needs: [e2e-smoke, api-db-and-infra]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
         with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          playwright-cache: 'true'
 
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Build shared packages
         run: |
-          cd packages/shared-types
-          pnpm build || {
-            echo "Build shared-types failed!"
-            exit 1
-          }
-          cd ../part-search-core
-          pnpm build || {
-            echo "Build part-search-core failed!"
-            exit 1
-          }
+          pnpm --filter @raspi-system/shared-types build
+          pnpm --filter @raspi-system/part-search-core build
 
       - name: Generate Prisma Client
-        run: |
-          cd apps/api
-          pnpm prisma generate || {
-            echo "Prisma generate failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Build API
-        run: |
-          cd apps/api
-          pnpm build || {
-            echo "Build API failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api build
 
       - name: Build Web
-        run: |
-          cd apps/web
-          pnpm build || {
-            echo "Build Web failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/web build
 
       - name: Start PostgreSQL
         run: |
@@ -710,54 +452,29 @@ jobs:
 
       - name: Wait for PostgreSQL
         run: |
-          timeout=60
-          elapsed=0
-          until docker exec postgres-e2e pg_isready -U postgres 2>/dev/null; do
-            if [ $elapsed -ge $timeout ]; then
-              echo "PostgreSQL failed to start within $timeout seconds"
-              docker logs postgres-e2e
-              exit 1
-            fi
-            echo "Waiting for PostgreSQL... ($elapsed/$timeout seconds)"
-            sleep 2
-            elapsed=$((elapsed + 2))
-          done
-          echo "PostgreSQL is ready!"
+          chmod +x scripts/ci/wait-for-postgres.sh
+          scripts/ci/wait-for-postgres.sh postgres-e2e 60
 
       - name: Run Prisma migrations
-        run: |
-          cd apps/api
-          pnpm prisma migrate deploy || {
-            echo "Prisma migrate deploy failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma migrate deploy
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Seed database
-        run: |
-          cd apps/api
-          pnpm prisma db seed || {
-            echo "Database seed failed!"
-            exit 1
-          }
+        run: pnpm --filter @raspi-system/api exec prisma db seed
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
       - name: Run E2E tests
-        run: |
-          echo "Running E2E tests..."
-          pnpm test:e2e || {
-            echo "E2E tests failed!"
-            exit 1
-          }
         env:
           CI: true
+          PLAYWRIGHT_WORKERS: '2'
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           BACKUP_CONFIG_PATH: /tmp/e2e-backup.json
           BACKUP_STORAGE_DIR: /tmp/e2e-backups
+        run: pnpm test:e2e
 
       - name: Upload test results
         if: always()
@@ -767,40 +484,17 @@ jobs:
           path: playwright-report/
           retention-days: 30
 
+      - name: Upload Playwright traces (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
       - name: Cleanup
         if: always()
         run: |
           docker stop postgres-e2e || true
           docker rm postgres-e2e || true
-
-  docker-build:
-    runs-on: ubuntu-latest
-    needs: [lint-and-test, e2e-smoke]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build API Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./infrastructure/docker/Dockerfile.api
-          push: false
-          tags: raspberry-pi-system-api:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build Web Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./infrastructure/docker/Dockerfile.web
-          push: false
-          tags: raspberry-pi-system-web:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
