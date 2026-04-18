@@ -99,6 +99,9 @@ export function AdminLayout() {
             <NavLink to="/admin/gmail/config" className={linkClass}>
               Gmail設定
             </NavLink>
+            <NavLink to="/admin/reports/loan-report" className={linkClass}>
+              貸出レポート
+            </NavLink>
             <NavLink to="/admin/local-llm" className={linkClass}>
               LocalLLM
             </NavLink>

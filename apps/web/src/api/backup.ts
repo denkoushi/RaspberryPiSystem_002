@@ -515,6 +515,50 @@ export async function refreshGmailToken(): Promise<GmailOAuthRefreshResponse> {
   return data;
 }
 
+// 貸出レポート（管理コンソール）
+export type LoanReportCategoryKey = 'measuring' | 'rigging' | 'tools';
+
+export interface LoanReportPreviewQuery {
+  category: LoanReportCategoryKey;
+  periodFrom?: string;
+  periodTo?: string;
+  monthlyMonths?: number;
+  timeZone?: string;
+  site?: string;
+  author?: string;
+  measuringInstrumentId?: string;
+  riggingGearId?: string;
+  itemId?: string;
+}
+
+export interface LoanReportPreviewResponse {
+  reportModel: Record<string, unknown>;
+  html: string;
+}
+
+export async function getLoanReportPreview(params: LoanReportPreviewQuery): Promise<LoanReportPreviewResponse> {
+  const { data } = await api.get<LoanReportPreviewResponse>('/reports/loan-report/preview', { params });
+  return data;
+}
+
+export interface LoanReportGmailDraftRequest extends LoanReportPreviewQuery {
+  subject: string;
+  to?: string;
+}
+
+export interface LoanReportGmailDraftResponse {
+  draftId: string;
+  messageId?: string;
+  reportModel: Record<string, unknown>;
+}
+
+export async function createLoanReportGmailDraft(
+  body: LoanReportGmailDraftRequest
+): Promise<LoanReportGmailDraftResponse> {
+  const { data } = await api.post<LoanReportGmailDraftResponse>('/reports/loan-report/gmail-draft', body);
+  return data;
+}
+
 // バックアップ設定の健全性チェックAPI
 export interface BackupConfigHealthIssue {
   type: 'collision' | 'drift' | 'missing' | 'coverage_gap';

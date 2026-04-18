@@ -638,5 +638,40 @@ export class GmailApiClient {
 
     return null;
   }
+
+  /**
+   * MIME(raw) から下書きを作成する
+   */
+  async createDraftFromRawMime(rawMime: string): Promise<{ id: string; messageId?: string }> {
+    const encodedMessage = Buffer.from(rawMime, 'utf8').toString('base64url');
+    try {
+      const response = await this.gateExecute('gmail.users.drafts.create', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.drafts.create as any)(
+          {
+            userId: 'me',
+            requestBody: {
+              message: {
+                raw: encodedMessage,
+              },
+            },
+          },
+          { retry: false }
+        )
+      );
+      const id = response.data.id as string | undefined;
+      const messageId = response.data.message?.id as string | undefined;
+      if (!id) {
+        throw new Error('Draft id missing from Gmail API response');
+      }
+      return { id, messageId };
+    } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
+      logger?.error({ err: error }, '[GmailApiClient] Failed to create draft');
+      throw new Error(`Failed to create draft: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 }
 

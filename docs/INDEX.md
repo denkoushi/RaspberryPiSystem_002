@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-18）
+
+- **管理コンソール 貸出レポート（HTML プレビュー・Gmail 下書き）本番・Pi5 のみ・Phase12・ドキュメント・`main` マージ**: ブランチ **`feat/admin-loan-report-gmail-draft`**・コミット **`6bc00a00`**（`LoanReportPage`・`GET /api/reports/loan-report/preview`・`POST /api/reports/loan-report/gmail-draft`・`gmail.compose`）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/admin-loan-report-gmail-draft infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260418-152952-9706`**（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **59s**）。**デプロイ前**: 未追跡ファイルは **`git stash push -u`**。**Pi4/Pi3**: 未反映（Pi3 は専用手順）。**CI**: Run **`24598528235`** success。**ナレッジ**: [KB-354](./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md)。**PR**: [#166](https://github.com/denkoushi/RaspberryPiSystem_002/pull/166)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-16）
 
 - **生産日程 FKOJUNST（Gmail 工順ステータス）本番・Pi5→Pi4×4 順次（Pi3 除外）・Phase12・ドキュメント・`main` マージ**: ブランチ **`feature/fkojunst-gmail-status-import`**・コミット **`2ff4da8d`**（`ProductionScheduleFkojunstStatus`・`rowData.FKOJUNST`・キオスク「工順ST」列）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/fkojunst-gmail-status-import infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260416-200358-17426` → `20260416-201513-2763` → `20260416-202019-27635` → `20260416-202436-9992` → `20260416-202952-27613`、各 **`failed=0` / `unreachable=0`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **89s**）。**Pi3**: 対象外。**運用**: Gmail `targets` に **`csvDashboards` + `9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c`**。**ナレッジ**: [KB-297 §FKOJUNST](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-from-gmail-csv-2026-04-16)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。

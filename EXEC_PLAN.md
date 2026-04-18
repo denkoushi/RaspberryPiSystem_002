@@ -1841,6 +1841,15 @@
 
 ## Next Steps（将来のタスク）
 
+### 管理コンソール 貸出レポート: Gmail 下書きの運用スモーク（2026-04-18）
+
+**概要**: [KB-354](./docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md)。**本番反映済み**（`raspberrypi5` のみ・ブランチ `feat/admin-loan-report-gmail-draft`・Detach **`20260418-152952-9706`**・Phase12 **42/1/0**・health warm-up・preview **401** ゲート確認済み）。
+
+**候補タスク**:
+
+1. **実アカウントで下書き作成**: 管理画面から **下書き作成** を 1 回実行し、Gmail 側に下書きが現れること（**`gmail.compose`**・トークン有効性）。
+2. **Pi4 展開の要否**: 管理 Web を Pi4 ローカル配信する要件が出た場合のみ、`--limit` で **1 台ずつ**順次デプロイを検討（現状は Pi5 集約 SPA）。
+
 ### CI: `pnpm audit` high の解消と Fastify v5 移行スパイク（2026-04-18）
 
 **概要**: [KB-353](./docs/knowledge-base/ci-cd.md#kb-353-github-actions-のジョブ分割と-composite-action-による-ci-高速化2026-04-18) で **critical のみ CI ゲート**としたため、`high`（例: 間接依存の `picomatch` 系）は **ログに残りつつマージは可能**な状態になっている。**恒久対策**は依存更新（[KB-227](./docs/knowledge-base/ci-cd.md#kb-227-pnpm-audit-のhighでciが失敗するfastify脆弱性--fastify-v5移行の影響範囲調査) の Fastify v5 調査を参照）。
