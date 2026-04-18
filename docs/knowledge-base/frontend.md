@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 57件  
+**件数**: 58件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -936,6 +936,38 @@ try {
 - `apps/api/src/routes/kiosk/signage-preview.ts`
 - `apps/api/src/lib/signage/kiosk-signage-preview-target.ts`
 - [サイネージモジュール README](../modules/signage/README.md)
+
+---
+
+### [KB-352] モバイルキオスク viewport dvh 本番反映
+
+**発生日**: 2026-04-18
+
+**Context**:
+- Android 等のブラウザキオスクでは **`100vh` が実表示高さとずれ**、縦の切れ・横はみ出し（`100vw` / `w-screen`）が起きやすい
+- 配膳スマホの `/kiosk/mobile-placement` は **沉浸式 `KioskLayout`** のため、ルートの **`h-dvh` / `flex-1` / `overflow-auto`** が実機一致に直結する
+
+**仕様（実装）**:
+- `apps/web/index.html`: `viewport-fit=cover`
+- `apps/web/src/index.css`: `body` / `#root` の **`min-height: 100dvh`**、`body` の **`overflow-x: hidden`**
+- `apps/web/src/constants/viewportLayout.ts`: **`VIEWPORT_*` / `DIALOG_MAX_HEIGHT`** に Tailwind 断片を集約（画面側は定数参照）
+- `KioskLayout`: 沉浸式 **`h-dvh`**、非沉浸式 **`min-h-dvh`** + **`main` を `flex-1 min-h-0 overflow-auto`**（従来の **`calc(100vh-6rem)` を廃止**）
+- その他: `Dialog`・`SignageDisplayPage`・`KioskCallPage`・管理系シェルで **`dvh` / `w-full min-w-0`**
+
+**Verification**:
+- 本番: ブランチ **`feat/web-mobile-viewport-dvh`**・**`b8650b37`**・**Pi5→Pi4×4** を **`--limit` 1 台ずつ**・Detach 上記 Run ID（各 exit **0**）
+- Phase12: **`./scripts/deploy/verify-phase12-real.sh` → PASS 42 / WARN 1 / FAIL 0**（**WARN** は Pi5→`raspi4-fjv60-80` SSH 不可の既定分岐。`deploy-status` が PASS なら API 経路は有効な可能性あり）
+
+**Troubleshooting**:
+- Mac で **`Another update-all-clients.sh process is already running`**（exit 3）: **前ジョブ完了待ち**または **`cmd1 && cmd2`**。ゾンビ bash が残ったら **PID 確認後**に再実行
+- 実機でまだズレる: **Chrome リモートデバッグ**で `dvh` 適用有無・横溢れ要素を確認（[ADR-20260418](../decisions/ADR-20260418-mobile-placement-android-browser-shell.md)・[KB-351](./KB-351-mobile-placement-android-browser-kiosk-research.md) と併読）
+
+**解決状況**: ✅ **本番反映・Phase12 完了**（FAIL 0・2026-04-18）
+
+**References**:
+- `apps/web/src/constants/viewportLayout.ts`
+- `apps/web/src/layouts/KioskLayout.tsx`
+- [deployment.md](../guides/deployment.md)（先頭運用ログ）
 
 ---
 
