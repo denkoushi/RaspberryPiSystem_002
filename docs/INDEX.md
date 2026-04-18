@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-04-19）
 
-- **貸出レポート API 本番衛生化（ingest テレメトリ除去・回帰テスト）本番・Pi5 のみ・Phase12**: ブランチ **`feat/loan-report-hardening`**・コミット **`20c4a765`**（`loan-report` 経路から開発用ローカル HTTP 計測を除去、期間正規化・月次アンカー・プレビュー API の Vitest）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/loan-report-hardening infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260419-081737-4484`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **65s**）。**スモーク**: 未認証 `GET /api/reports/loan-report/preview?category=rigging` → **`401`**。**ナレッジ**: [KB-354](./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md) §D。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **貸出レポート API 本番衛生化（ingest テレメトリ除去・回帰テスト）本番・Pi5 のみ・Phase12**: ブランチ **`feat/loan-report-hardening`**・コミット **`20c4a765`**（`loan-report` 経路から開発用ローカル HTTP 計測を除去、期間正規化・月次アンカー・プレビュー API の Vitest）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/loan-report-hardening infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260419-081737-4484`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **65s**）。**スモーク**: 未認証 `GET /api/reports/loan-report/preview?category=rigging` → **`401`**。**ナレッジ**: [KB-354](./knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md) §D。**PR**: [#169](https://github.com/denkoushi/RaspberryPiSystem_002/pull/169)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-04-18）
 

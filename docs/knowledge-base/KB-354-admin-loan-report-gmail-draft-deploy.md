@@ -91,6 +91,7 @@ category: knowledge-base
 
 ## References
 
+- **PR（§D 本番衛生化）**: [#169](https://github.com/denkoushi/RaspberryPiSystem_002/pull/169)
 - **PR（下書き）**: [#166](https://github.com/denkoushi/RaspberryPiSystem_002/pull/166)
 - **PR（送信・レイアウト）**: [#167](https://github.com/denkoushi/RaspberryPiSystem_002/pull/167)
 - 実装: `apps/api/src/routes/reports/loan-report.ts`、`apps/api/src/services/reports/loan-report/*`
