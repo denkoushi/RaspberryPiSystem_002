@@ -45,6 +45,7 @@ export interface RiggingLoanAnalyticsEmployeeAggregateRow {
   displayName: string;
   employeeCode: string;
   openRiggingCount: number;
+  overdueOpenRiggingCount: number;
   periodBorrowCount: number;
   periodReturnCount: number;
 }

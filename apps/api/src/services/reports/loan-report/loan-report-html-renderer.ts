@@ -419,8 +419,8 @@ const REPORT_STYLES = `
 
     .flow-row {
       display: grid;
-      grid-template-columns: 17mm 1fr 7mm;
-      gap: 0.7mm;
+      grid-template-columns: 15mm 1fr;
+      gap: 0.9mm;
       align-items: center;
     }
 
@@ -433,20 +433,44 @@ const REPORT_STYLES = `
       text-overflow: ellipsis;
     }
 
+    .flow-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.55mm;
+    }
+
+    .flow-metric {
+      display: grid;
+      gap: 0.25mm;
+    }
+
+    .flow-k {
+      font-size: 5.8px;
+      font-weight: 800;
+      color: var(--muted);
+      letter-spacing: 0.01em;
+    }
+
     .flow-track {
-      height: 4.2mm;
-      display: flex;
+      position: relative;
+      height: 3.5mm;
       overflow: hidden;
-      border-radius: 0.9mm;
+      border-radius: 0.8mm;
       border: 1px solid rgba(203, 213, 225, 0.75);
       background: var(--surface-2);
     }
 
-    .flow-seg { height: 100%; }
+    .flow-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      border-radius: 0.8mm;
+    }
 
     .flow-val {
       font-family: var(--num);
-      font-size: 7px;
+      font-size: 6.2px;
       font-weight: 800;
       text-align: right;
       color: var(--ink-2);
@@ -624,10 +648,10 @@ function renderSupplyScale(report: LoanReportViewModel): string {
   const trackH = 10;
   const pointerX = trackX + trackW * (score / 100);
   const zones = [
-    { w: 0.28, color: '#d9e4ef', label: '余り' },
+    { w: 0.28, color: '#d9e4ef', label: '余裕' },
     { w: 0.26, color: '#c7f0e5', label: '適正' },
-    { w: 0.2, color: '#fde0b9', label: 'やや不足' },
-    { w: 0.26, color: '#f8c7c7', label: '不足' },
+    { w: 0.2, color: '#fde0b9', label: 'やや逼迫' },
+    { w: 0.26, color: '#f8c7c7', label: '逼迫' },
   ];
   let x = trackX;
   let rects = '';
@@ -640,9 +664,9 @@ function renderSupplyScale(report: LoanReportViewModel): string {
   }
   return `
         <div class="hero-text">
-          <div class="big" style="color:${escapeHtml(accent)}">${score}</div>
+          <div class="big" style="color:${escapeHtml(accent)}">${score}%</div>
           <div class="state" style="color:${escapeHtml(accent)}">${escapeHtml(report.supply.state)}</div>
-          <div class="sub">右に寄るほど、需要集中・安全在庫不足・同時持出により欠品体感が出やすい状態。</div>
+          <div class="sub">現在の利用率。高いほど今すぐ使える在庫が少なく、需給が逼迫しています。</div>
         </div>
         <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" aria-hidden="true">
           ${rects}
@@ -670,7 +694,7 @@ function renderComplianceGauge(report: LoanReportViewModel): string {
           </svg>
           <div class="hero-text">
             <div class="state" style="color:${escapeHtml(accent)}">${escapeHtml(report.compliance.state)}</div>
-            <div class="sub">返却率・期限遵守・超過抑制を統合。高いほど、持出返却ルールが安定して守られている状態。</div>
+            <div class="sub">期間内の返却完了率。期限超過率と未返却件数は下段チップで補足します。</div>
           </div>
         </div>
       `;
@@ -722,18 +746,38 @@ function renderItemBars(report: LoanReportViewModel): string {
 }
 
 function renderFlowBars(report: LoanReportViewModel): string {
+  const maxBorrowed = Math.max(...report.personAxis.map((person) => person.borrowed), 1);
+  const maxReturned = Math.max(...report.personAxis.map((person) => person.returned), 1);
+  const maxOpen = Math.max(...report.personAxis.map((person) => person.open), 1);
+  const maxOverdue = Math.max(...report.personAxis.map((person) => person.overdue), 1);
   const rows = report.personAxis
     .map((person) => {
-      const total = Math.max(person.total, 1);
+      const openOnTime = Math.max(0, person.open - person.overdue);
       return `
               <div class="flow-row">
                 <div class="flow-label">${escapeHtml(person.name)}</div>
-                <div class="flow-track">
-                  <span class="flow-seg" style="width:${(person.returned / total) * 100}%;background:${'#0d9488'};"></span>
-                  <span class="flow-seg" style="width:${(person.open / total) * 100}%;background:${'#2563eb'};"></span>
-                  <span class="flow-seg" style="width:${(person.overdue / total) * 100}%;background:${'#dc2626'};"></span>
+                <div class="flow-metrics">
+                  <div class="flow-metric">
+                    <div class="flow-k">持出</div>
+                    <div class="flow-track"><span class="flow-fill" style="width:${(person.borrowed / maxBorrowed) * 100}%;background:${escapeHtml(report.accent)};"></span></div>
+                    <div class="flow-val">${person.borrowed}</div>
+                  </div>
+                  <div class="flow-metric">
+                    <div class="flow-k">返却</div>
+                    <div class="flow-track"><span class="flow-fill" style="width:${(person.returned / maxReturned) * 100}%;background:#0d9488;"></span></div>
+                    <div class="flow-val">${person.returned}</div>
+                  </div>
+                  <div class="flow-metric">
+                    <div class="flow-k">未返却</div>
+                    <div class="flow-track"><span class="flow-fill" style="width:${(openOnTime / maxOpen) * 100}%;background:#2563eb;"></span></div>
+                    <div class="flow-val">${openOnTime}</div>
+                  </div>
+                  <div class="flow-metric">
+                    <div class="flow-k">超過</div>
+                    <div class="flow-track"><span class="flow-fill" style="width:${(person.overdue / maxOverdue) * 100}%;background:#dc2626;"></span></div>
+                    <div class="flow-val">${person.overdue}</div>
+                  </div>
                 </div>
-                <div class="flow-val">${person.total}</div>
               </div>
             `;
     })
@@ -742,7 +786,7 @@ function renderFlowBars(report: LoanReportViewModel): string {
         <div class="flow-stack">
           ${rows}
         </div>
-        <div class="panel-note">人別に「返却済 / 未返却 / 超過」の構成比を表示。右端は総持出件数。</div>
+        <div class="panel-note">借用者ごとの実件数。持出・返却・未返却・超過を別バーで表示し、推定配分は行いません。</div>
       `;
 }
 
@@ -783,7 +827,7 @@ function renderTrend(report: LoanReportViewModel): string {
   const demandMax = Math.max(...demand, 1) * 1.05;
   const xAt = (i: number) => P.l + (i / Math.max(1, demand.length - 1)) * iW;
   const yDemand = (v: number) => P.t + iH - (v / demandMax) * iH;
-  const yComp = (v: number) => P.t + iH - ((v - 70) / 30) * iH;
+  const yComp = (v: number) => P.t + iH - (v / 100) * iH;
   let svg = '';
   for (let i = 0; i <= 4; i += 1) {
     const yy = P.t + (iH / 4) * i;
@@ -800,9 +844,9 @@ function renderTrend(report: LoanReportViewModel): string {
   labels.forEach((label, i) => {
     svg += `<text x="${xAt(i)}" y="${H - 4}" text-anchor="middle" font-size="6" fill="#94a3b8" font-family="var(--num)">${escapeHtml(label)}</text>`;
   });
-  svg += `<rect x="${W - 76}" y="8" width="4" height="4" rx="1" fill="${escapeHtml(report.accent)}"/><text x="${W - 69}" y="11.6" font-size="6" fill="#475569" font-family="var(--sans)">不足圧</text>`;
-  svg += `<rect x="${W - 38}" y="8" width="4" height="4" rx="1" fill="#0d9488"/><text x="${W - 31}" y="11.6" font-size="6" fill="#475569" font-family="var(--sans)">遵守</text>`;
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" aria-hidden="true">${svg}</svg><div class="panel-note">不足圧が上がり、遵守スコアが下がると、現場運用の悪化が疑われます。</div>`;
+  svg += `<rect x="${W - 76}" y="8" width="4" height="4" rx="1" fill="${escapeHtml(report.accent)}"/><text x="${W - 69}" y="11.6" font-size="6" fill="#475569" font-family="var(--sans)">持出件数</text>`;
+  svg += `<rect x="${W - 38}" y="8" width="4" height="4" rx="1" fill="#0d9488"/><text x="${W - 31}" y="11.6" font-size="6" fill="#475569" font-family="var(--sans)">返却率</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" aria-hidden="true">${svg}</svg><div class="panel-note">月別の持出件数と返却完了率の実測推移です。</div>`;
 }
 
 function pageHtml(report: LoanReportViewModel): string {
@@ -856,7 +900,7 @@ function pageHtml(report: LoanReportViewModel): string {
             </section>
 
             <section class="panel">
-              <div class="card-head"><h3>人軸 · 返却フロー構成</h3><span class="tiny-tag ${escapeHtml(report.compliance.tagClass)}">遵守</span></div>
+              <div class="card-head"><h3>人軸 · 借用者別の実件数</h3><span class="tiny-tag ${escapeHtml(report.compliance.tagClass)}">遵守</span></div>
               <div class="panel-body">
                 ${renderFlowBars(report)}
               </div>
@@ -870,7 +914,7 @@ function pageHtml(report: LoanReportViewModel): string {
             </section>
 
             <section class="panel">
-              <div class="card-head"><h3>時系列 · 不足圧と遵守スコア</h3><span class="tiny-tag ${escapeHtml(report.findings.trend.cls)}">${escapeHtml(report.findings.trend.text)}</span></div>
+              <div class="card-head"><h3>時系列 · 持出件数と返却完了率</h3><span class="tiny-tag ${escapeHtml(report.findings.trend.cls)}">${escapeHtml(report.findings.trend.text)}</span></div>
               <div class="panel-body">
                 ${renderTrend(report)}
               </div>

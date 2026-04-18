@@ -111,38 +111,29 @@ export class LoanReportEvaluationService {
       summary.totalActive > 0
         ? clamp((summary.periodBorrowCount / summary.totalActive) * 100, 0, 200)
         : 0;
+    const availableCount = Math.max(0, summary.totalActive - summary.openLoanCount);
 
-    // 需給スコア: 高いほど「不足圧」が強い（テンプレのスケールバーと整合）
-    const supplyScore = clamp(
-      demandIntensity * 0.55 + utilization * 0.25 + overdueRate * 0.35 + (100 - returnRate) * 0.15,
-      0,
-      100
-    );
+    // 需給は合成スコアではなく、現時点の利用率を主指標とする。
+    const supplyScore = utilization;
 
     let supplyState: string;
     let supplyTag: LoanReportViewModel['supply']['tagClass'];
-    if (supplyScore < 38) {
-      supplyState = '余り寄り';
+    if (supplyScore < 35) {
+      supplyState = '余裕あり';
       supplyTag = 'tag-ok';
-    } else if (supplyScore < 55) {
-      supplyState = '適正';
+    } else if (supplyScore < 60) {
+      supplyState = '概ね適正';
       supplyTag = 'tag-ok';
-    } else if (supplyScore < 72) {
-      supplyState = 'やや不足';
+    } else if (supplyScore < 80) {
+      supplyState = 'やや逼迫';
       supplyTag = 'tag-warn';
     } else {
-      supplyState = '不足寄り';
+      supplyState = '逼迫';
       supplyTag = 'tag-bad';
     }
 
-    const complianceBase =
-      returnRate * 0.55 +
-      (100 - overdueRate) * 0.35 +
-      (summary.periodBorrowCount > 0
-        ? clamp(100 - (summary.overdueOpenCount / summary.periodBorrowCount) * 100, 0, 100) * 0.1
-        : 10);
-
-    const complianceScore = clamp(complianceBase, 0, 100);
+    // 遵守は期間内の返却完了率を主指標とし、超過率は別チップで明示する。
+    const complianceScore = returnRate;
 
     let complianceState: string;
     let complianceTag: LoanReportViewModel['compliance']['tagClass'];
@@ -164,8 +155,7 @@ export class LoanReportEvaluationService {
     );
     const periodDays = periodMs / (24 * 60 * 60 * 1000);
     const avgDailyBorrow = summary.periodBorrowCount / periodDays;
-    const safetyCoverDays =
-      avgDailyBorrow > 0 ? summary.openLoanCount / avgDailyBorrow : summary.openLoanCount;
+    const safetyCoverDays = avgDailyBorrow > 0 ? availableCount / avgDailyBorrow : availableCount;
 
     const monthly = normalized.response.monthlyTrend;
     const borrowSeries = monthly.map((m) => m.borrowCount);
@@ -258,6 +248,7 @@ export class LoanReportEvaluationService {
             employeeId: e.employeeId,
             displayName: e.displayName,
             open: e.openInstrumentCount,
+            overdue: e.overdueOpenInstrumentCount,
             periodBorrowCount: e.periodBorrowCount,
             periodReturnCount: e.periodReturnCount,
           }))
@@ -266,6 +257,7 @@ export class LoanReportEvaluationService {
               employeeId: e.employeeId,
               displayName: e.displayName,
               open: e.openRiggingCount,
+              overdue: e.overdueOpenRiggingCount,
               periodBorrowCount: e.periodBorrowCount,
               periodReturnCount: e.periodReturnCount,
             }))
@@ -273,32 +265,18 @@ export class LoanReportEvaluationService {
               employeeId: e.employeeId,
               displayName: e.displayName,
               open: e.openItemCount,
+              overdue: e.overdueOpenItemCount,
               periodBorrowCount: e.periodBorrowCount,
               periodReturnCount: e.periodReturnCount,
             }));
 
     const topForPeople = [...employeeRows].sort((a, b) => b.periodBorrowCount - a.periodBorrowCount).slice(0, 5);
-    const overdueBudget = Math.min(
-      summary.overdueOpenCount,
-      topForPeople.reduce((s, p) => s + p.open, 0)
-    );
-    const overdueByEmployeeId = new Map<string, number>();
-    let remaining = overdueBudget;
-    const candidates = [...topForPeople].sort((a, b) => b.open - a.open);
-    for (const c of candidates) {
-      if (remaining <= 0) break;
-      if (c.open <= 0) continue;
-      const give = Math.min(c.open, remaining);
-      overdueByEmployeeId.set(c.employeeId, give);
-      remaining -= give;
-    }
-
     const topPeople = topForPeople.map((p) => ({
       name: shortLabel(p.displayName, 10),
-      total: Math.max(1, p.periodBorrowCount),
+      borrowed: p.periodBorrowCount,
       returned: p.periodReturnCount,
       open: p.open,
-      overdue: overdueByEmployeeId.get(p.employeeId) ?? 0,
+      overdue: p.overdue,
     }));
 
     const cross = this.buildCrossHeatmap({
@@ -320,8 +298,11 @@ export class LoanReportEvaluationService {
       complianceScore,
       trendLabel: trend.labels,
       returnRate,
+      overdueRate,
+      utilization,
       overdueOpenCount: summary.overdueOpenCount,
       openLoanCount: summary.openLoanCount,
+      availableCount,
     });
 
     return {
@@ -351,6 +332,8 @@ export class LoanReportEvaluationService {
         tagClass: supplyTag,
         chips: [
           { k: '安全在庫カバー', v: `${safetyCoverDays.toFixed(1)}日` },
+          { k: '即時利用可能', v: `${availableCount}点` },
+          { k: '需要密度', v: pct(demandIntensity) },
           { k: 'ピーク負荷', v: pct(peakLoadPct) },
           { k: 'TOP5集中度', v: pct(top5Share) },
         ],
@@ -381,8 +364,7 @@ export class LoanReportEvaluationService {
     const demand = monthly.map((m) => m.borrowCount);
     const compliance = monthly.map((m) => {
       if (m.borrowCount <= 0) return 100;
-      const r = clamp((m.returnCount / m.borrowCount) * 100, 0, 100);
-      return clamp(70 + (r - 85) * 2, 70, 100);
+      return clamp((m.returnCount / m.borrowCount) * 100, 0, 100);
     });
 
     const labels = monthly.map((m) => shortLabel(m.yearMonth.replace('-', '/'), 7));
@@ -401,31 +383,42 @@ export class LoanReportEvaluationService {
     complianceScore: number;
     trendLabel: string[];
     returnRate: number;
+    overdueRate: number;
+    utilization: number;
     overdueOpenCount: number;
     openLoanCount: number;
+    availableCount: number;
   }): LoanReportViewModel['findings'] {
     const overallCls: LoanReportViewModel['findings']['overall']['cls'] =
-      params.supplyScore >= 72 || params.complianceScore < 72 ? 'bad' : params.supplyScore >= 55 ? 'warn' : 'good';
+      params.supplyScore >= 80 || params.complianceScore < 72 || params.overdueRate > 20
+        ? 'bad'
+        : params.supplyScore >= 60 || params.overdueRate > 0
+          ? 'warn'
+          : 'good';
 
     const overallText =
-      params.complianceScore < 72
-        ? '遵守面に課題（優先確認）'
-        : params.supplyScore >= 72
-          ? '需給が逼迫気味'
-          : params.supplyScore >= 55
-            ? '概ね良好（局所注意）'
-            : '需給は余力あり';
+      params.complianceScore < 72 || params.overdueRate > 20
+        ? '遵守面に課題'
+        : params.supplyScore >= 80
+          ? '需給が逼迫'
+          : params.supplyScore >= 60
+            ? '需給はやや逼迫'
+            : '需給は安定';
 
     const last = params.trendLabel[params.trendLabel.length - 1] ?? '';
     const trendCls: LoanReportViewModel['findings']['trend']['cls'] =
-      params.supplyScore >= 68 && params.complianceScore < 78 ? 'bad' : params.supplyScore >= 60 ? 'warn' : 'good';
+      params.supplyScore >= 80 && params.complianceScore < 80 ? 'bad' : params.supplyScore >= 60 ? 'warn' : 'good';
     const trendText =
-      params.supplyScore > 65 && params.returnRate < 90 ? '悪化気味' : params.supplyScore < 50 ? '改善余地小' : '横ばい〜改善';
+      params.supplyScore >= 80 && params.returnRate < 85
+        ? '高負荷で要監視'
+        : params.supplyScore >= 60
+          ? 'やや高負荷'
+          : '安定';
 
     const body = [
-      `需給評価は「${params.supplyState}」、遵守評価は「${params.complianceState}」です。`,
-      `未返却 ${params.openLoanCount} 件のうち期限超過は ${params.overdueOpenCount} 件。`,
-      `月次系列（${last} まで）では、不足圧と遵守スコアの乖離に注意してください。`,
+      `利用率は ${Math.round(params.utilization)}% で、即時利用可能は ${params.availableCount} 点です。`,
+      `返却完了率は ${Math.round(params.returnRate)}%、未返却 ${params.openLoanCount} 件のうち期限超過は ${params.overdueOpenCount} 件です。`,
+      `月次系列（${last} まで）は持出件数と返却率の実測推移を表示しています。`,
     ].join('');
 
     return {

@@ -249,12 +249,16 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
     );
 
     const openCountByNormalizedName = new Map<string, number>();
+    const overdueCountByNormalizedName = new Map<string, number>();
     for (const open of statusByManagement.values()) {
       const normalized = normalizeEmployeeName(open.borrowerName);
       if (!normalized) {
         continue;
       }
       openCountByNormalizedName.set(normalized, (openCountByNormalizedName.get(normalized) ?? 0) + 1);
+      if (open.expectedReturnAt && open.expectedReturnAt < input.now) {
+        overdueCountByNormalizedName.set(normalized, (overdueCountByNormalizedName.get(normalized) ?? 0) + 1);
+      }
     }
 
     const knownManagement = new Set(activeInstruments.map((instrument) => instrument.managementNumber));
@@ -319,6 +323,7 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
           displayName,
           employeeCode: employee?.employeeCode ?? '-',
           openInstrumentCount: openCountByNormalizedName.get(normalized) ?? 0,
+          overdueOpenInstrumentCount: overdueCountByNormalizedName.get(normalized) ?? 0,
           periodBorrowCount: periodBorrowByEmployee.get(normalized) ?? 0,
           periodReturnCount: periodReturnByEmployee.get(normalized) ?? 0,
         };

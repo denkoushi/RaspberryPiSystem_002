@@ -86,6 +86,7 @@ const baseMeasuringResponse = (): MeasuringInstrumentLoanAnalyticsResponse => ({
       displayName: '山田 太郎',
       employeeCode: 'E001',
       openInstrumentCount: 2,
+      overdueOpenInstrumentCount: 1,
       periodBorrowCount: 25,
       periodReturnCount: 23,
     },
@@ -94,6 +95,7 @@ const baseMeasuringResponse = (): MeasuringInstrumentLoanAnalyticsResponse => ({
       displayName: '佐藤 花子',
       employeeCode: 'E002',
       openInstrumentCount: 1,
+      overdueOpenInstrumentCount: 0,
       periodBorrowCount: 10,
       periodReturnCount: 9,
     },
@@ -114,6 +116,7 @@ describe('loan report domain', () => {
     expect(vm.metrics.assets).toBe(100);
     expect(vm.cross.values.length).toBeGreaterThan(0);
     expect(vm.itemAxis[0]).toMatchObject({ name: 'ノギス', demand: 24, stock: 2 });
+    expect(vm.personAxis[0]).toMatchObject({ name: '山田 太郎', borrowed: 25, open: 2, overdue: 1 });
   });
 
   it('renders stable HTML containing category label', () => {

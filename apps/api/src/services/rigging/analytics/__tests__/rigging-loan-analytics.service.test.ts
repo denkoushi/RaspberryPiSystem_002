@@ -69,6 +69,7 @@ describe('RiggingLoanAnalyticsService', () => {
             displayName: '山田',
             employeeCode: 'E01',
             openRiggingCount: 1,
+            overdueOpenRiggingCount: 1,
             periodBorrowCount: 2,
             periodReturnCount: 1
           }
@@ -89,6 +90,7 @@ describe('RiggingLoanAnalyticsService', () => {
     expect(result.byGear[0].dueAt).toBe(due.toISOString());
     expect(result.byGear[1].isOutNow).toBe(false);
     expect(result.byGear[1].openIsOverdue).toBe(false);
+    expect(result.byEmployee[0].overdueOpenRiggingCount).toBe(1);
     expect(result.monthlyTrend).toHaveLength(1);
     expect(result.periodEvents).toHaveLength(1);
     expect(repo.loadAggregate).toHaveBeenCalledWith(

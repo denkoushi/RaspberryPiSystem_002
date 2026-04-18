@@ -92,7 +92,8 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
       periodLoans,
       borrowByEmployee,
       returnByEmployee,
-      openByEmployee
+      openByEmployee,
+      overdueByEmployee
     ] = await Promise.all([
       this.db.loan.count({
         where: {
@@ -197,6 +198,16 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
           employeeId: { not: null }
         },
         _count: { _all: true }
+      }),
+      this.db.loan.groupBy({
+        by: ['employeeId'],
+        where: {
+          ...riggingLoanBase,
+          returnedAt: null,
+          dueAt: { not: null, lt: input.now },
+          employeeId: { not: null }
+        },
+        _count: { _all: true }
       })
     ]);
 
@@ -252,6 +263,9 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
     const openEmpMap = new Map(
       openByEmployee.filter((r) => r.employeeId).map((r) => [r.employeeId!, r._count._all])
     );
+    const overdueEmpMap = new Map(
+      overdueByEmployee.filter((r) => r.employeeId).map((r) => [r.employeeId!, r._count._all])
+    );
 
     /** Prisma の `in: []` は環境によって未定義動作のためスキップ */
     const employees =
@@ -267,6 +281,7 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
       displayName: e.displayName,
       employeeCode: e.employeeCode,
       openRiggingCount: openEmpMap.get(e.id) ?? 0,
+      overdueOpenRiggingCount: overdueEmpMap.get(e.id) ?? 0,
       periodBorrowCount: borrowEmpMap.get(e.id) ?? 0,
       periodReturnCount: returnEmpMap.get(e.id) ?? 0
     }));

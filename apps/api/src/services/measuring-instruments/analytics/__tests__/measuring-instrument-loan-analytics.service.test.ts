@@ -59,6 +59,7 @@ describe('MeasuringInstrumentLoanAnalyticsService', () => {
             displayName: '山田太郎',
             employeeCode: 'EMP001',
             openInstrumentCount: 1,
+            overdueOpenInstrumentCount: 1,
             periodBorrowCount: 4,
             periodReturnCount: 3,
           },
@@ -78,6 +79,7 @@ describe('MeasuringInstrumentLoanAnalyticsService', () => {
     expect(result.byInstrument[0].openIsOverdue).toBe(true);
     expect(result.byInstrument[0].dueAt).toBe(due.toISOString());
     expect(result.byEmployee[0].openInstrumentCount).toBe(1);
+    expect(result.byEmployee[0].overdueOpenInstrumentCount).toBe(1);
     expect(result.periodEvents).toHaveLength(1);
     expect(repo.loadAggregate).toHaveBeenCalledWith(
       expect.objectContaining({

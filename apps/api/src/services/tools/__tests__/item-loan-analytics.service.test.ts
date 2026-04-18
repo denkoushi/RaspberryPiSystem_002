@@ -72,6 +72,7 @@ describe('ItemLoanAnalyticsService', () => {
             displayName: '山田',
             employeeCode: 'E01',
             openItemCount: 2,
+            overdueOpenItemCount: 1,
             periodBorrowCount: 20,
             periodReturnCount: 19
           }
@@ -94,6 +95,7 @@ describe('ItemLoanAnalyticsService', () => {
     expect(result.byItem[1].isOutNow).toBe(false);
     expect(result.byItem[1].openIsOverdue).toBe(false);
     expect(result.byEmployee[0].openItemCount).toBe(2);
+    expect(result.byEmployee[0].overdueOpenItemCount).toBe(1);
     expect(result.periodEvents).toHaveLength(1);
     expect(repo.loadAggregate).toHaveBeenCalledWith(
       expect.objectContaining({

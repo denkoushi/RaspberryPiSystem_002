@@ -36,7 +36,7 @@ export interface LoanReportItemAxisRow {
 
 export interface LoanReportPersonAxisRow {
   name: string;
-  total: number;
+  borrowed: number;
   returned: number;
   open: number;
   overdue: number;
