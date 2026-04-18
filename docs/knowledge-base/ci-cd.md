@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - CI/CD関連
 tags: [トラブルシューティング, CI/CD, GitHub Actions, テスト]
 audience: [開発者]
-last-verified: 2026-03-20
+last-verified: 2026-04-18
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: high
@@ -11,8 +11,39 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 14件  
+**件数**: 15件  
 **索引**: [index.md](./index.md)
+
+---
+
+### [KB-353] GitHub Actions のジョブ分割と composite action による CI 高速化（2026-04-18）
+
+**発生日・反映**: 2026-04-18（ブランチ `feat/ci-speed-quality-improvement`・コミット `5f4ac44d` 前後）
+
+**目的**:
+- 単一ジョブの直列ボトルネックを減らし、**lint/単体**・**DB 統合+インフラ検証**・**Docker+Trivy**・**E2E** の責務を分離する
+- セットアップを **composite action**（`.github/actions/setup-pnpm-monorepo`）に集約し、Playwright ブラウザキャッシュ等で **インストール時間を短縮**する
+
+**構成（要点）**:
+- **`lint-build-unit`**: `pnpm audit` は **`critical` のみゲート**（最大 3 回リトライ）、`high` はログ警告のみ（依存更新は別タスク・[KB-227](#kb-227-pnpm-audit-のhighでciが失敗するfastify脆弱性--fastify-v5移行の影響範囲調査) 参照）。lint・`part-search-core` / `web` ユニット・Prisma generate・API ビルド
+- **`api-db-and-infra`**: Docker PostgreSQL・`scripts/ci/wait-for-postgres.sh`・マイグレーション・API カバレッジテスト 1 パス・バックアップ/リストアスクリプト・Ansible syntax/dry-run・監視テスト
+- **`security-docker`**: Buildx で api/web イメージをビルド（load）し **fs + image の Trivy**（従来の重複 `docker-build` ジョブを統合）
+- **`e2e-smoke` / `e2e-tests`**: 共通 setup action・スモークは `lint-build-unit` 後に API ジョブと並列開始、**フル E2E は `api-db-and-infra` 成功後**（API 回帰を先に確定）
+- **Playwright**: `PLAYWRIGHT_WORKERS` でワーカー数を上書き可能、失敗時 **`video: retain-on-failure`** でデバッグ性向上
+- **E2E 安定化**: `e2e/admin.spec.ts` の「追加」ボタンを **`/^追加$/` + `.first()`** に限定し strict mode 多重解決を回避
+
+**本番への影響**:
+- ワークフローとテストコードのみの場合、**Ansible デプロイは必須ではない**。マージ後の本番健全性は `./scripts/deploy/verify-phase12-real.sh` 等の **既存スモーク**で確認可能（[deployment.md](../guides/deployment.md)）。
+
+**トラブルシュート**:
+- 失敗ジョブの見分け: [ci-troubleshooting.md §ワークフロー構成](../guides/ci-troubleshooting.md#ワークフロー構成ジョブの見方)
+- `pnpm audit` critical がレジストリ側の一時変動で落ちる場合は **リトライ後も失敗なら** 該当パッケージの更新または例外方針を Decision Log で記録する
+
+**関連ファイル**:
+- `.github/workflows/ci.yml`
+- `.github/actions/setup-pnpm-monorepo/action.yml`
+- `scripts/ci/wait-for-postgres.sh`
+- `playwright.config.ts`、`docs/guides/ci-troubleshooting.md`
 
 ---
 

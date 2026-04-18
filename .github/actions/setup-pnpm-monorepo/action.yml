@@ -1,0 +1,32 @@
+# Composite: checkout の後に呼ぶ。pnpm + Node + 依存インストールまでを共通化する。
+name: Setup pnpm monorepo
+description: Install pnpm, Node 20 with pnpm cache, and workspace dependencies
+inputs:
+  playwright-cache:
+    description: If true, restore/save Playwright browser cache after install
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: 9
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'pnpm'
+
+    - name: Cache Playwright browsers
+      if: inputs.playwright-cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

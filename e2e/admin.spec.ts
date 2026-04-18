@@ -84,8 +84,8 @@ test.describe('管理画面', () => {
       await page.goto('/admin/backup/targets');
       await page.waitForLoadState('networkidle');
 
-      // 「追加」ボタンをクリック
-      await page.getByRole('button', { name: /追加/i }).click();
+      // 推奨ターゲット一覧にも「追加」が並ぶため、管理カード上部の主ボタンを厳密一致で選ぶ
+      await page.getByRole('button', { name: /^追加$/ }).first().click();
 
       // フォームが表示されるまで待機
       await expect(page.getByLabel(/種類/i)).toBeVisible({ timeout: 3000 });

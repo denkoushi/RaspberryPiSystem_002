@@ -13,12 +13,18 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI
+    ? (() => {
+        const n = Number(process.env.PLAYWRIGHT_WORKERS ?? 2);
+        return Number.isFinite(n) && n > 0 ? Math.floor(n) : 2;
+      })()
+    : undefined,
   reporter: 'html',
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
 
   projects: [
