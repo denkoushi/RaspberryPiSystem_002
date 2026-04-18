@@ -22,7 +22,7 @@ category: knowledge-base
 | 送信 API | `POST /api/reports/loan-report/gmail-send`（**To 必須**・本文 HTML・件名任意） |
 | 認可 | プレビュー: `ADMIN` / `MANAGER` / `VIEWER`。下書き: `ADMIN` / `MANAGER`。**送信: `ADMIN` のみ** |
 | Gmail | 既存 OAuth に **`gmail.compose`**（下書き）および **`gmail.send`**（送信）。`users.drafts.create` / `users.messages.send` + **raw MIME**（base64url、**76 桁折り返し**で Gmail 互換）。MIME 組み立ては `loan-report-email-mime` に集約 |
-| 集計 | アイテム軸の名寄せ・評価ロジックは `LoanReport*` サービスに集約（Vitest あり） |
+| 集計 | アイテム軸の名寄せ・評価ロジックは `LoanReport*` サービスに集約（Vitest あり）。**2026-04-18 §C**: 推定配分を排除し借用実データへ。各 `loan-analytics` の従業員行に **期限超過件数** |
 
 ## 本番デプロイ実績
 
@@ -47,6 +47,19 @@ category: knowledge-base
 - **`GET /api/system/health`**: デプロイ直後〜数十秒は **memory 高で `degraded` が続く観測**あり。更長の warm-up で `ok` に戻る場合と、負荷次第で持続する場合あり（[deployment.md](../guides/deployment.md) 冒頭ログ参照）。
 - **CI**: Run **`24601330617`** success。
 
+### C. 実メトリクス・プレビュー幅（2026-04-18）
+
+- **ブランチ**: `fix/loan-report-real-metrics-wide-preview`（代表コミット **`937be20f`**）。
+- **内容（要約）**:
+  - **集計**: 計測・吊具・写真持出の各 `loan-analytics` で、従業員行に **期限超過件数**（`employeeOverdueLoanCount` 相当）を追加。レポート評価（`LoanReportEvaluationService`）は **推定配分を使わず**、借用トランザクション由来の実データに寄せた。
+  - **管理 UI**: `LoanReportPage` で **`AdminLayout` の `max-w-screen-2xl` を打ち消し**、プレビューを **ビューポート幅まで**使えるようにした（iframe 内レポートは従来の print レイアウト）。
+- **対象ホスト**: **`raspberrypi5` のみ**（Pi4/Pi3 未デプロイ・Pi3 は専用手順）。
+- **手順**: [deployment.md](../guides/deployment.md) どおり・`./scripts/update-all-clients.sh fix/loan-report-real-metrics-wide-preview infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **Detach Run ID**: **`20260418-204637-27968`**（**`failed=0` / `unreachable=0`**・exit `0`）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **62s**・fjv60-80 SSH WARN はベースライン同型）。
+- **デプロイ前（Mac）**: **未追跡のプレビュー HTML** 等があると `update-all-clients.sh` が fail-fast → **`git stash push -u`**（本記録では実施済み）。
+- **CI**: Run **`24603756892`** success（コード変更 push 時。docs 追記コミットでは再実行確認を推奨）。
+
 ## Troubleshooting
 
 | 症状 | 切り分け |
@@ -57,6 +70,7 @@ category: knowledge-base
 | 送信が **403**（ロール） | **送信は `ADMIN` のみ**。`MANAGER` 以下は下書きのみ。 |
 | プレビューが 401 | 管理コンソールと同じ **JWT**（またはロール付きセッション）で呼ぶ。匿名 curl では **401 正常**。 |
 | Vitest で `vi.mock` が先に評価されて失敗 | モック依存の定数は **`vi.hoisted`** で定義する（`loan-report-gmail-draft.service.test.ts` 参照）。 |
+| レポート数値がキオスク集計と「推定」でずれる | **§C 以降**は HTML レポート／プレビューが **借用イベント実データ寄り**。**期限超過**は従業員行の **`employeeOverdueLoanCount`** で確認（API `loan-analytics` と共有）。 |
 
 ## References
 
