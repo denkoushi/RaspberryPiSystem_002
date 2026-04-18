@@ -25,6 +25,19 @@ function toYearMonth(date: Date, timeZone: 'Asia/Tokyo' | 'UTC'): string {
   return `${year}-${month}`;
 }
 
+function shiftYearMonth(anchorYearMonth: string, monthDelta: number): string {
+  const [yearRaw, monthRaw] = anchorYearMonth.split('-');
+  const year = Number.parseInt(yearRaw ?? '', 10);
+  const month = Number.parseInt(monthRaw ?? '', 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return anchorYearMonth;
+  }
+  const total = year * 12 + (month - 1) + monthDelta;
+  const outYear = Math.floor(total / 12);
+  const outMonth = (total % 12 + 12) % 12;
+  return `${String(outYear).padStart(4, '0')}-${String(outMonth + 1).padStart(2, '0')}`;
+}
+
 function asRecord(input: unknown): Record<string, unknown> {
   return input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
 }
@@ -173,13 +186,10 @@ export class MeasuringInstrumentLoanAnalyticsRepository implements IMeasuringIns
     const unifiedEvents = dedupeUnifiedEvents(
       eventRecords.map(parseUnifiedEvent).filter((event): event is MeasuringInstrumentUnifiedEvent => Boolean(event))
     ).filter((event) => !(event.source === 'nfc' && event.loanId && cancelledLoanIds.has(event.loanId)));
-    const monthStarts = Array.from({ length: input.monthlyMonths }, (_, index) => {
-      const dt = new Date(input.now);
-      dt.setUTCDate(1);
-      dt.setUTCHours(0, 0, 0, 0);
-      dt.setUTCMonth(dt.getUTCMonth() - (input.monthlyMonths - 1 - index));
-      return toYearMonth(dt, input.timeZone);
-    });
+    const anchorYearMonth = toYearMonth(input.periodTo, input.timeZone);
+    const monthStarts = Array.from({ length: input.monthlyMonths }, (_, index) =>
+      shiftYearMonth(anchorYearMonth, -(input.monthlyMonths - 1 - index))
+    );
     const monthlyMap = new Map<string, { borrowCount: number; returnCount: number }>(
       monthStarts.map((yearMonth) => [yearMonth, { borrowCount: 0, returnCount: 0 }])
     );

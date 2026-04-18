@@ -103,7 +103,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       Array<{ year_month: string; borrow_count: bigint; return_count: bigint }>
     >`
       WITH anchor AS (
-        SELECT date_trunc('month', (CURRENT_TIMESTAMP AT TIME ZONE ${tzSql}))::date AS cur_month_start
+        SELECT date_trunc('month', (${input.periodTo}::timestamptz AT TIME ZONE ${tzSql}))::date AS cur_month_start
       ),
       bounds AS (
         SELECT (cur_month_start - (${monthOffset} * interval '1 month'))::date AS first_month,
