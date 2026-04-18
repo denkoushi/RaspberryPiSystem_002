@@ -1,15 +1,12 @@
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
-import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
-import { GmailStorageProvider } from '../backup/storage/gmail-storage.provider.js';
-import type { StorageProvider } from '../backup/storage/storage-provider.interface.js';
-import { StorageProviderFactory } from '../backup/storage-provider-factory.js';
 import { KioskDocumentService } from './kiosk-document.service.js';
 import { PrismaKioskDocumentRepository } from './adapters/prisma-kiosk-document.repository.js';
 import { PdfStorageFileStoreAdapter } from './adapters/pdf-storage-file-store.adapter.js';
 import { PdfStorageRenderAdapter } from './adapters/pdf-storage-render.adapter.js';
 import { PlaywrightHtmlToPdfAdapter } from './adapters/playwright-html-to-pdf.adapter.js';
+import { resolveGmailApiClientFromBackupConfig } from '../gmail/gmail-api-client.factory.js';
 
 /** @internal 単体テスト用に公開 */
 export function buildKioskDocumentGmailSearchQuery(subjectPattern: string, fromEmail?: string): string {
@@ -40,47 +37,6 @@ export type KioskDocumentGmailIngestSummary = {
   htmlSkippedOlderMail: number;
   errors: string[];
 };
-
-async function persistGmailAccessToken(newToken: string): Promise<void> {
-  const cfg = await BackupConfigLoader.load();
-  const prevGmail = (cfg.storage.options?.gmail ?? {}) as Record<string, unknown>;
-  cfg.storage.options = {
-    ...(cfg.storage.options ?? {}),
-    gmail: {
-      ...prevGmail,
-      accessToken: newToken,
-    },
-  };
-  await BackupConfigLoader.save(cfg);
-}
-
-type GmailStorageFactoryResult = {
-  provider: 'local' | 'dropbox' | 'gmail';
-  storageProvider: StorageProvider;
-};
-
-async function resolveGmailClientFromConfig(config: BackupConfig): Promise<ReturnType<GmailStorageProvider['getGmailApiClient']>> {
-  // returnProvider:true のとき実装は常に { provider, storageProvider } を返すが、オーバーロード型が追従しないため明示する
-  const created = (await StorageProviderFactory.createFromConfig(
-    config,
-    'http',
-    'localhost',
-    persistGmailAccessToken,
-    { returnProvider: true, allowFallbackToLocal: false, gmailAllowWait: true }
-  )) as unknown as GmailStorageFactoryResult;
-  if (!created || typeof created !== 'object' || !('storageProvider' in created)) {
-    throw new ApiError(500, 'Gmailストレージの初期化に失敗しました', undefined, 'KIOSK_DOC_GMAIL_INIT');
-  }
-  if (created.provider !== 'gmail' || !(created.storageProvider instanceof GmailStorageProvider)) {
-    throw new ApiError(
-      400,
-      '要領書のGmail取り込みには backup.json の storage.provider を gmail にし、有効なトークンを設定してください',
-      undefined,
-      'KIOSK_DOC_GMAIL_NOT_CONFIGURED'
-    );
-  }
-  return created.storageProvider.getGmailApiClient();
-}
 
 const MAX_MESSAGES_PER_RUN = 25;
 
@@ -124,7 +80,7 @@ export class KioskDocumentGmailIngestionService {
       return summary;
     }
 
-    const gmailClient = await resolveGmailClientFromConfig(config);
+    const gmailClient = await resolveGmailApiClientFromBackupConfig(config);
     const query = buildKioskDocumentGmailSearchQuery(schedule.subjectPattern, schedule.fromEmail);
 
     let messageIds: string[];

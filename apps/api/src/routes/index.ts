@@ -21,6 +21,7 @@ import { registerProductionScheduleSettingsRoutes } from './production-schedule-
 import { registerKioskDocumentRoutes } from './kiosk-documents.js';
 import { registerPartMeasurementRoutes } from './part-measurement/index.js';
 import { registerMobilePlacementRoutes } from './mobile-placement/index.js';
+import { registerLoanReportRoutes } from './reports/loan-report.js';
 
 /**
  * すべてのルートを登録
@@ -66,6 +67,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerCsvImportConfigRoutes(subApp);
       // 生産スケジュール設定管理ルート
       registerProductionScheduleSettingsRoutes(subApp);
+      // 管理コンソール向けレポート
+      registerLoanReportRoutes(subApp);
     },
     { prefix: '/api' },
   );

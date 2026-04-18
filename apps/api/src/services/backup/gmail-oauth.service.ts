@@ -44,10 +44,12 @@ export class GmailOAuthService {
     this.redirectUri = options.redirectUri;
     // デフォルトスコープ:
     // - gmail.readonly/gmail.modify: 既存の取得・移動処理
+    // - gmail.compose: 下書き作成（users.drafts.create）
     // - mail.google.com: ゴミ箱からの恒久削除（users.messages.delete）に必要
     this.scopes = options.scopes || [
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.compose',
       'https://mail.google.com/'
     ];
   }

@@ -15,6 +15,7 @@ import { CsvImportPage } from './pages/admin/CsvImportPage';
 import { DashboardPage } from './pages/admin/DashboardPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
+import { LoanReportPage } from './pages/admin/LoanReportPage';
 import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
 import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTemplatesPage';
 import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
@@ -146,6 +147,9 @@ function App() {
         <Route path="visualization-dashboards" element={<VisualizationDashboardsPage />} />
         <Route path="gmail">
           <Route path="config" element={<GmailConfigPage />} />
+        </Route>
+        <Route path="reports">
+          <Route path="loan-report" element={<LoanReportPage />} />
         </Route>
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
