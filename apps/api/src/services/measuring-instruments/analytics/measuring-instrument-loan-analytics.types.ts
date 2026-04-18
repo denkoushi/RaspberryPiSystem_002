@@ -35,6 +35,7 @@ export interface MeasuringInstrumentLoanAnalyticsEmployeeAggregateRow {
   displayName: string;
   employeeCode: string;
   openInstrumentCount: number;
+  overdueOpenInstrumentCount: number;
   periodBorrowCount: number;
   periodReturnCount: number;
 }

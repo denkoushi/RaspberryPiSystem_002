@@ -150,7 +150,8 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       openByLabelRows,
       borrowByEmployee,
       returnByEmployee,
-      openByEmployee
+      openByEmployee,
+      overdueByEmployee
     ] = await Promise.all([
       this.db.loan.count({
         where: withLoanScope({
@@ -290,6 +291,15 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
           employeeId: { not: null }
         }),
         _count: { _all: true }
+      }),
+      this.db.loan.groupBy({
+        by: ['employeeId'],
+        where: withLoanScope({
+          returnedAt: null,
+          dueAt: { not: null, lt: input.now },
+          employeeId: { not: null }
+        }),
+        _count: { _all: true }
       })
     ]);
 
@@ -371,6 +381,9 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
     const openEmpMap = new Map(
       openByEmployee.filter((r) => r.employeeId).map((r) => [r.employeeId!, r._count._all])
     );
+    const overdueEmpMap = new Map(
+      overdueByEmployee.filter((r) => r.employeeId).map((r) => [r.employeeId!, r._count._all])
+    );
 
     const employees =
       empIds.size === 0
@@ -385,6 +398,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       displayName: e.displayName,
       employeeCode: e.employeeCode,
       openItemCount: openEmpMap.get(e.id) ?? 0,
+      overdueOpenItemCount: overdueEmpMap.get(e.id) ?? 0,
       periodBorrowCount: borrowEmpMap.get(e.id) ?? 0,
       periodReturnCount: returnEmpMap.get(e.id) ?? 0
     }));

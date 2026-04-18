@@ -33,6 +33,7 @@ export interface MeasuringInstrumentLoanAnalyticsByEmployeeRow {
   displayName: string;
   employeeCode: string;
   openInstrumentCount: number;
+  overdueOpenInstrumentCount: number;
   periodBorrowCount: number;
   periodReturnCount: number;
 }

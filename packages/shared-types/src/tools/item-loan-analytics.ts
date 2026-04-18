@@ -38,6 +38,7 @@ export interface ItemLoanAnalyticsByEmployeeRow {
   displayName: string;
   employeeCode: string;
   openItemCount: number;
+  overdueOpenItemCount: number;
   periodBorrowCount: number;
   periodReturnCount: number;
 }

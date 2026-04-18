@@ -102,6 +102,7 @@ export class RiggingLoanAnalyticsService {
         displayName: row.displayName,
         employeeCode: row.employeeCode,
         openRiggingCount: row.openRiggingCount,
+        overdueOpenRiggingCount: row.overdueOpenRiggingCount,
         periodBorrowCount: row.periodBorrowCount,
         periodReturnCount: row.periodReturnCount
       }))

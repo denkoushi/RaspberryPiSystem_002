@@ -106,6 +106,7 @@ export class ItemLoanAnalyticsService {
         displayName: row.displayName,
         employeeCode: row.employeeCode,
         openItemCount: row.openItemCount,
+        overdueOpenItemCount: row.overdueOpenItemCount,
         periodBorrowCount: row.periodBorrowCount,
         periodReturnCount: row.periodReturnCount
       }))

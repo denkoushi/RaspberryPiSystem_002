@@ -100,6 +100,7 @@ export class MeasuringInstrumentLoanAnalyticsService {
         displayName: row.displayName,
         employeeCode: row.employeeCode,
         openInstrumentCount: row.openInstrumentCount,
+        overdueOpenInstrumentCount: row.overdueOpenInstrumentCount,
         periodBorrowCount: row.periodBorrowCount,
         periodReturnCount: row.periodReturnCount,
       })),

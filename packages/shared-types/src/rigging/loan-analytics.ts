@@ -45,6 +45,8 @@ export interface RiggingLoanAnalyticsByEmployeeRow {
   employeeCode: string;
   /** 現在、その従業員名義で未返却の吊具ローン件数 */
   openRiggingCount: number;
+  /** 上記のうち期限超過中の件数 */
+  overdueOpenRiggingCount: number;
   periodBorrowCount: number;
   periodReturnCount: number;
 }

@@ -76,9 +76,9 @@ export function LoanReportPage() {
   };
 
   return (
-    <div className="mx-auto max-w-screen-2xl px-4 py-6 text-white">
+    <div className="relative left-1/2 w-screen max-w-none -translate-x-1/2 px-4 py-6 text-white lg:px-6">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-stretch">
-        <div className="flex w-full shrink-0 flex-col gap-4 lg:max-h-[calc(100dvh-5rem)] lg:w-[min(100%,24rem)] lg:max-w-md lg:overflow-y-auto">
+        <div className="flex w-full shrink-0 flex-col gap-4 lg:max-h-[calc(100dvh-5rem)] lg:w-[22rem] lg:overflow-y-auto xl:w-[24rem]">
           <div>
             <h2 className="text-2xl font-bold">貸出レポート</h2>
             <p className="mt-1 text-sm text-white/70">
