@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 
 import { NetworkModeBadge } from '../components/NetworkModeBadge';
 import { Button } from '../components/ui/Button';
+import { VIEWPORT_MIN_HEIGHT_FULL } from '../constants/viewportLayout';
 import { useAuth } from '../contexts/AuthContext';
 import { ConfirmProvider } from '../contexts/ConfirmContext';
 
@@ -13,7 +14,7 @@ export function AdminLayout() {
 
   return (
     <ConfirmProvider>
-      <div className="min-h-screen bg-slate-800 text-white">
+      <div className={`${VIEWPORT_MIN_HEIGHT_FULL} bg-slate-800 text-white`}>
         <header className="border-b border-white/10 bg-slate-900/80 px-6 py-4 backdrop-blur">
           <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-4">
             <div>

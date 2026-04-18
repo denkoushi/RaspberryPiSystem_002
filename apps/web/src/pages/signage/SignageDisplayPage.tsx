@@ -9,6 +9,7 @@ import {
   type SignageSlotConfig
 } from '../../api/client';
 import { useSignageContent } from '../../api/hooks';
+import { VIEWPORT_MIN_HEIGHT_FULL, VIEWPORT_WIDTH_SAFE } from '../../constants/viewportLayout';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
 type InstrumentItem = NonNullable<SignageContentResponse['measuringInstruments']>[number];
@@ -16,7 +17,7 @@ type PdfSlotConfig = SignageSlotConfig & { pdfId: string };
 type CsvDashboardSlotConfig = SignageSlotConfig & { csvDashboardId: string };
 type VisualizationSlotConfig = SignageSlotConfig & { visualizationDashboardId: string };
 
-const screenClass = 'min-h-screen w-screen bg-slate-800 text-white';
+const screenClass = `${VIEWPORT_MIN_HEIGHT_FULL} ${VIEWPORT_WIDTH_SAFE} bg-slate-800 text-white`;
 const panelClass = 'rounded-xl border border-white/5 bg-slate-900/40 p-3';
 
 const renderPdfImage = (src?: string, alt?: string) => {

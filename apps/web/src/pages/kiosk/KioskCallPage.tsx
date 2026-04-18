@@ -9,6 +9,7 @@ import { useKioskCallTargets } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Dialog } from '../../components/ui/Dialog';
+import { VIEWPORT_HEIGHT_FULL } from '../../constants/viewportLayout';
 import { useWebRTCCall } from '../../features/webrtc/context/WebRTCCallContext';
 export function KioskCallPage() {
   const callTargetsQuery = useKioskCallTargets();
@@ -186,7 +187,7 @@ export function KioskCallPage() {
   const hasRemoteVideo = Boolean(remoteStream && remoteStream.getVideoTracks().length > 0);
 
   return (
-    <div className="flex h-screen flex-col bg-slate-100 p-4">
+    <div className={`flex flex-col bg-slate-100 p-4 ${VIEWPORT_HEIGHT_FULL}`}>
       {/* ヘッダー */}
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-slate-900">通話</h1>

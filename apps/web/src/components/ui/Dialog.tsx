@@ -2,6 +2,8 @@ import clsx from 'clsx';
 import { useEffect, useId, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
+import { DIALOG_MAX_HEIGHT } from '../../constants/viewportLayout';
+
 import type { MouseEvent, PropsWithChildren, RefObject } from 'react';
 
 type DialogSize = 'sm' | 'md' | 'lg' | 'full';
@@ -168,7 +170,8 @@ export function Dialog({
         ref={panelRef}
         tabIndex={-1}
         className={clsx(
-          'w-full rounded-xl border-2 border-slate-500 bg-white p-4 text-slate-900 shadow-lg max-h-[calc(100vh-2rem)] my-4',
+          'w-full rounded-xl border-2 border-slate-500 bg-white p-4 text-slate-900 shadow-lg my-4',
+          DIALOG_MAX_HEIGHT,
           sizeClassMap[size],
           className
         )}
