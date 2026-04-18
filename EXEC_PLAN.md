@@ -1132,6 +1132,8 @@
 
 ## Decision Log
 
+- 決定（2026-04-18）: **配膳スマホ（Android）のブラウザ殻**は当面 **Chrome 継続**とし、**Web アプリ側の UI/UX 改善**で運用リスク（一般ブラウザ UI 由来の誤操作）を下げる。OSS の専用キオスクブラウザ（例: `FreeKiosk` / F-Droid `Webview Kiosk`）は **即時必須ではなく将来オプション**とし、採用時の合否ゲートは **カメラ2系統**（`getUserMedia` と `input[type=file][capture]`）を **実機で確認**すること。  
+  参照: [ADR-20260418](./docs/decisions/ADR-20260418-mobile-placement-android-browser-shell.md)・[KB-351](./docs/knowledge-base/KB-351-mobile-placement-android-browser-kiosk-research.md)・[mobile-placement-smartphone.md](./docs/runbooks/mobile-placement-smartphone.md)
 - 決定（2026-04-12）: **部品配膳の分配枝**は、**履歴**（`OrderPlacementEvent` の追記）と **現在棚**（`OrderPlacementBranchState`）を分離する。`register-order-placement` は **新規の分配枝のみ**を作成し、既存枝の棚変更は **`PATCH …/order-placement-branches/:id/move`** に限定する。導入前の `OrderPlacementEvent` は **`actionType: LEGACY`**・**`branchNo: 1`** とし、マイグレーションで各製造orderの最新イベントから **現在棚を 1 件投影**する。  
   参照: [KB-339](./docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md)（V14 節）・[api/mobile-placement.md](./docs/api/mobile-placement.md)
 - 決定（2026-04-12）: **現品票画像 OCR** は **紙帳票の固定レイアウト**を前提に、`actual-slip-image-ocr.service` で **ROI 切り出し（正規化座標）→ 領域別 `ImageOcrPort` → `genpyo-slip-resolver` で集約**とする。製造order・製番の文字列ルール（V10/V11 相当）は **`genpyo-slip/` に集約**し、`ImageOcrPort` は引き続き **ドメイン非依存**のままとする。HTTP 応答キー（`manufacturingOrder10` / `fseiban` / `ocrText` / `ocrPreviewSafe`）は維持する。  
@@ -1836,6 +1838,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 配膳スマホ: Chrome 継続前提の UI/UX 改善（2026-04-18）
+
+**概要**: Android 側は当面 **Chrome**（[ADR-20260418](./docs/decisions/ADR-20260418-mobile-placement-android-browser-shell.md)）。ブラウザ殻の置換ではなく、**`/kiosk/mobile-placement*` の現場導線**（誤操作・迷い・戻る導線・カメラ起動の安定感）を改善する。
+
+**候補タスク**:
+
+1. **現場観測**: オペレーターがつまずく操作（アドレスバー・タブ・検索 UI・戻る・スキャン再開）を **1 セッション分**メモし、再現手順化する（[KB-351](./docs/knowledge-base/KB-351-mobile-placement-android-browser-kiosk-research.md)）。
+2. **Web 改善の優先順位付け**: 「1タップで戻れる」「スキャンを閉じても状態が残る」など、**業務フローに直結**する改善から入る（API 契約変更が必要なら別タスクに切り出す）。
+3. **将来オプション（必要になったら）**: OSS キオスクアプリは **カメラ2系統の実機ゲート**通過後のみ候補化（`Webview Kiosk` は **AGPL** のため利用形態も確認）。
 
 ### キオスク集計 BI ダッシュボード: 運用データ増加時の表示維持確認（2026-04-17）
 
