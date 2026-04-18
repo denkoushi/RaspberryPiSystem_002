@@ -19,13 +19,19 @@ const loanReportPreviewQuerySchema = z.object({
 });
 
 const loanReportGmailDraftBodySchema = loanReportPreviewQuerySchema.extend({
-  subject: z.string().min(1),
-  to: z.string().optional(),
+  subject: z.string().trim().min(1),
+  to: z.string().trim().optional(),
+});
+
+const loanReportGmailSendBodySchema = loanReportPreviewQuerySchema.extend({
+  subject: z.string().trim().min(1),
+  to: z.string().trim().min(1),
 });
 
 export function registerLoanReportRoutes(app: FastifyInstance): void {
   const canPreview = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
   const canDraft = authorizeRoles('ADMIN', 'MANAGER');
+  const canSendGmail = authorizeRoles('ADMIN');
   const service = LoanReportService.createDefault();
 
   app.get(
@@ -60,6 +66,31 @@ export function registerLoanReportRoutes(app: FastifyInstance): void {
       const periodTo = body.periodTo ?? now;
       const periodFrom = body.periodFrom ?? new Date(periodTo.getTime() - 90 * 24 * 60 * 60 * 1000);
       return service.createGmailDraft({
+        category: body.category,
+        periodFrom,
+        periodTo,
+        monthlyMonths: body.monthlyMonths ?? 6,
+        timeZone: body.timeZone,
+        site: body.site,
+        author: body.author,
+        measuringInstrumentId: body.measuringInstrumentId,
+        riggingGearId: body.riggingGearId,
+        itemId: body.itemId,
+        subject: body.subject,
+        to: body.to,
+      });
+    }
+  );
+
+  app.post(
+    '/reports/loan-report/gmail-send',
+    { preHandler: [canSendGmail], config: { rateLimit: false } },
+    async (request) => {
+      const body = loanReportGmailSendBodySchema.parse(request.body);
+      const now = new Date();
+      const periodTo = body.periodTo ?? now;
+      const periodFrom = body.periodFrom ?? new Date(periodTo.getTime() - 90 * 24 * 60 * 60 * 1000);
+      return service.sendGmailMessage({
         category: body.category,
         periodFrom,
         periodTo,

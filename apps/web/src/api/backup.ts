@@ -559,6 +559,23 @@ export async function createLoanReportGmailDraft(
   return data;
 }
 
+export interface LoanReportGmailSendRequest extends LoanReportPreviewQuery {
+  subject: string;
+  to: string;
+}
+
+export interface LoanReportGmailSendResponse {
+  messageId: string;
+  reportModel: Record<string, unknown>;
+}
+
+export async function createLoanReportGmailSend(
+  body: LoanReportGmailSendRequest
+): Promise<LoanReportGmailSendResponse> {
+  const { data } = await api.post<LoanReportGmailSendResponse>('/reports/loan-report/gmail-send', body);
+  return data;
+}
+
 // バックアップ設定の健全性チェックAPI
 export interface BackupConfigHealthIssue {
   type: 'collision' | 'drift' | 'missing' | 'coverage_gap';

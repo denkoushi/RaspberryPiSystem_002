@@ -673,5 +673,37 @@ export class GmailApiClient {
       throw new Error(`Failed to create draft: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+
+  /**
+   * MIME(raw) からメッセージを送信する（users.messages.send）
+   */
+  async sendMessageFromRawMime(rawMime: string): Promise<{ id: string }> {
+    const encodedMessage = Buffer.from(rawMime, 'utf8').toString('base64url');
+    try {
+      const response = await this.gateExecute('gmail.users.messages.send', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.send as any)(
+          {
+            userId: 'me',
+            requestBody: {
+              raw: encodedMessage,
+            },
+          },
+          { retry: false }
+        )
+      );
+      const id = response.data.id as string | undefined;
+      if (!id) {
+        throw new Error('Message id missing from Gmail API send response');
+      }
+      return { id };
+    } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
+      logger?.error({ err: error }, '[GmailApiClient] Failed to send message');
+      throw new Error(`Failed to send message: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 }
 
