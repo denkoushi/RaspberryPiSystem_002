@@ -1344,6 +1344,7 @@ APIの概要と詳細。
 
 ## 📅 更新履歴
 
+- 2026-04-18: GitHub Actions CI のジョブ分割・composite action・監査ゲート整理を [KB-353](./knowledge-base/ci-cd.md#kb-353-github-actions-のジョブ分割と-composite-action-による-ci-高速化2026-04-18) / [ci-troubleshooting.md](./guides/ci-troubleshooting.md) に記録。[deployment.md](./guides/deployment.md) 冒頭に **実機ベースライン**（`verify-phase12-real.sh`・デプロイ未実施）を追記。`EXEC_PLAN.md` の Progress / Next Steps を同期。
 - 2025-11-27: 初版作成
 - 2025-12-01: ローカルアラートシステム関連ドキュメント追加、ナレッジベースKB-059追加、統計更新
 - 2025-12-01: 工具管理システム運用・保守ガイド追加、NFCリーダートラブルシューティング追加、ナレッジベースKB-060追加、統計更新（58件）
