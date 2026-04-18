@@ -44,6 +44,7 @@ category: knowledge-base
 
 ## References
 
+- **PR**: [#166](https://github.com/denkoushi/RaspberryPiSystem_002/pull/166)
 - 実装: `apps/api/src/routes/reports/loan-report.ts`、`apps/api/src/services/reports/loan-report/*`
 - 管理 UI: `apps/web/src/pages/admin/LoanReportPage.tsx`、`apps/web/src/features/admin/loan-report/*`
 - デプロイ標準: [deployment.md](../guides/deployment.md)
