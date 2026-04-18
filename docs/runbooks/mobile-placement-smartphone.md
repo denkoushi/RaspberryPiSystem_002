@@ -1,6 +1,17 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク）**・**V20 部品検索（促音 `っ`/`ッ` の比較用写像・`q` 空でも機種名 `machineName` で suggest）**・**V19 部品検索（機種名 `machineName` AND・かな正規化拡張・数字パレット・プリセット追加）**・**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+最終更新: 2026-04-18（**Android ブラウザ殻方針: Chrome 継続 + Web UI/UX 改善（ADR/KB 追記）**）／2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク）**・**V20 部品検索（促音 `っ`/`ッ` の比較用写像・`q` 空でも機種名 `machineName` で suggest）**・**V19 部品検索（機種名 `machineName` AND・かな正規化拡張・数字パレット・プリセット追加）**・**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+
+## Android ブラウザ殻（キオスク）方針メモ（2026-04-18）
+
+**背景**: 一般ブラウザ（Chrome）運用では、アドレスバー・検索 UI・タブ操作など **ブラウザ由来の誤操作**が起きうる。一方で配膳スマホは **紙票のフォーマット固定**・**スマホ 1 台**・**有償キオスクアプリ不可**・**端末機種バラつき**という制約がある。
+
+**当面の正（このリポジトリの運用意思）**:
+
+- **Chrome を継続**し、**Web アプリ側の UI/UX 改善**で現場リスクを下げる（誤操作しにくい導線・表示・ガード）。
+- OSS の専用キオスクブラウザ（例: `FreeKiosk` / F-Droid の `Webview Kiosk`）は **即時必須ではない**。再検討する場合の **合否ゲート**は **カメラ2系統**（バーコード `getUserMedia` と 現品票撮影 `input[type=file][capture]`）が **対象端末で通ること**。
+
+**根拠・詳細**: [ADR-20260418](../decisions/ADR-20260418-mobile-placement-android-browser-shell.md) / [KB-351](../knowledge-base/KB-351-mobile-placement-android-browser-kiosk-research.md)
 
 ## 0. 本番デプロイ後の確認（運用）
 
