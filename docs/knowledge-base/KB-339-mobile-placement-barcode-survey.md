@@ -1,6 +1,16 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク修正）**・V20・V18 追記）
+最終更新: 2026-04-18（**V22 キオスク高視認テーマ・プレビュー整合**）・2026-04-13（**V21**・V20・V18 追記）
+
+## V22（2026-04-18）キオスク高視認テーマ・静的プレビュー整合
+
+- **目的**: `/kiosk/mobile-placement` 系の **コントラスト・文言・レイアウト**を [mobile-placement-main-page-detail-preview.html](../design-previews/mobile-placement-main-page-detail-preview.html) に寄せ、現場の視認性を上げる（[整合メモ](../plans/mobile-placement-main-page-preview-parity.md)）。
+- **実装（Web のみ）**: `mobilePlacementKioskTheme.ts` 集約、`MobilePlacementRegisterShelfPanel` / `RegisterOrderPanel` / `MobilePlacementVerifySection` 等の分割。**API/DB 契約不変**。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/mobile-placement-contrast-refactor infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** の順に **1 台ずつ**（**Pi3 は対象外**）。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260418-111058-3228` → `20260418-111559-19394` → `20260418-112049-24881` → `20260418-112437-2591` → `20260418-113342-26169`、各 **`failed=0` / `unreachable=0`**・**`Summary success check: true`**。実装コミット **`2d2528ec`**（ブランチ **`feature/mobile-placement-contrast-refactor`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **47s**・Mac / Tailscale）。
+- **知見**: 本変更は **Pi5 の `web` 配信 + Pi4 キオスク**が取り込めば足りる。**Pi3 サイネージは不要**（`/kiosk` は Pi5 由来）。
+- **残作業（手動）**: Android で **メイン画面の視認性**・**照合/登録ブロック**を目視。
 
 ## V18（2026-04-13）棚マスタ
 
