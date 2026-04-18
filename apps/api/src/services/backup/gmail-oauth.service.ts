@@ -45,11 +45,13 @@ export class GmailOAuthService {
     // デフォルトスコープ:
     // - gmail.readonly/gmail.modify: 既存の取得・移動処理
     // - gmail.compose: 下書き作成（users.drafts.create）
+    // - gmail.send: 即時送信（users.messages.send）— 貸出レポートの Gmail 送信など
     // - mail.google.com: ゴミ箱からの恒久削除（users.messages.delete）に必要
     this.scopes = options.scopes || [
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.modify',
       'https://www.googleapis.com/auth/gmail.compose',
+      'https://www.googleapis.com/auth/gmail.send',
       'https://mail.google.com/'
     ];
   }

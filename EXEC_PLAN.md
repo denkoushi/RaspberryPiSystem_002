@@ -1841,14 +1841,15 @@
 
 ## Next Steps（将来のタスク）
 
-### 管理コンソール 貸出レポート: Gmail 下書きの運用スモーク（2026-04-18）
+### 管理コンソール 貸出レポート: Gmail 下書き・送信の運用スモーク（2026-04-18）
 
-**概要**: [KB-354](./docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md)。**本番反映済み**（`raspberrypi5` のみ・ブランチ `feat/admin-loan-report-gmail-draft`・Detach **`20260418-152952-9706`**・Phase12 **42/1/0**・health warm-up・preview **401** ゲート確認済み）。
+**概要**: [KB-354](./docs/knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md)。**下書き**は **`feat/admin-loan-report-gmail-draft`**・Detach **`20260418-152952-9706`**。**送信・2ペイン**は **`feat/loan-report-gmail-send-and-layout`**（**`d97bdaa7`**）・`raspberrypi5` のみ・Detach **`20260418-183700-7508`**・Phase12 **42/1/0**・未認証 preview / **gmail-send** → **401**・**`gmail.send` は OAuth 再認可**が必要な場合あり。**health**: デプロイ直後 **memory 高の `degraded` が続く観測**あり（warm-up または負荷要因を確認）。
 
 **候補タスク**:
 
 1. **実アカウントで下書き作成**: 管理画面から **下書き作成** を 1 回実行し、Gmail 側に下書きが現れること（**`gmail.compose`**・トークン有効性）。
-2. **Pi4 展開の要否**: 管理 Web を Pi4 ローカル配信する要件が出た場合のみ、`--limit` で **1 台ずつ**順次デプロイを検討（現状は Pi5 集約 SPA）。
+2. **実アカウントで送信（ADMIN）**: **`gmail.send` 付きで再認可**後、テスト宛に **送信** を 1 回実行し、受信と HTML 体裁を確認（誤送信防止のため **To 必須**・確認ダイアログ前提）。
+3. **Pi4 展開の要否**: 管理 Web を Pi4 ローカル配信する要件が出た場合のみ、`--limit` で **1 台ずつ**順次デプロイを検討（現状は Pi5 集約 SPA）。
 
 ### CI: `pnpm audit` high の解消と Fastify v5 移行スパイク（2026-04-18）
 

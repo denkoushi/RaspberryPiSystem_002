@@ -20,12 +20,17 @@ export function LoanReportFilters(props: {
   onChange: (next: LoanReportFilterValues) => void;
   onPreview: () => void;
   previewLoading: boolean;
+  variant?: 'default' | 'sidebar';
 }) {
-  const { value, onChange, onPreview, previewLoading } = props;
+  const { value, onChange, onPreview, previewLoading, variant = 'default' } = props;
+  const gridClass =
+    variant === 'sidebar' ? 'grid grid-cols-1 gap-3' : 'grid gap-3 md:grid-cols-2 lg:grid-cols-3';
+  const wideFieldClass =
+    variant === 'sidebar' ? 'grid gap-1 text-sm' : 'grid gap-1 text-sm md:col-span-2';
 
   return (
     <div className="rounded-lg border border-white/10 bg-slate-900/40 p-4 text-white">
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div className={gridClass}>
         <label className="grid gap-1 text-sm">
           <span className="text-white/70">カテゴリ</span>
           <select
@@ -77,7 +82,7 @@ export function LoanReportFilters(props: {
           />
         </label>
 
-        <label className="grid gap-1 text-sm md:col-span-2">
+        <label className={wideFieldClass}>
           <span className="text-white/70">拠点（レポート表記）</span>
           <input
             className="rounded-md border border-white/10 bg-slate-950 px-3 py-2 text-sm"
@@ -87,8 +92,8 @@ export function LoanReportFilters(props: {
           />
         </label>
 
-        <label className="grid gap-1 text-sm md:col-span-2">
-          <span className="text-white/70">下書き件名</span>
+        <label className={wideFieldClass}>
+          <span className="text-white/70">メール件名（下書き・送信共通）</span>
           <input
             className="rounded-md border border-white/10 bg-slate-950 px-3 py-2 text-sm"
             value={value.subject}
@@ -97,13 +102,13 @@ export function LoanReportFilters(props: {
           />
         </label>
 
-        <label className="grid gap-1 text-sm md:col-span-2">
-          <span className="text-white/70">宛先 To（任意）</span>
+        <label className={wideFieldClass}>
+          <span className="text-white/70">宛先 To（下書きは任意・Gmail 送信は必須）</span>
           <input
             className="rounded-md border border-white/10 bg-slate-950 px-3 py-2 text-sm"
             value={value.to}
             onChange={(e) => onChange({ ...value, to: e.target.value })}
-            placeholder="未入力なら空の宛先で下書き作成します"
+            placeholder="例: team@example.com（下書きのみなら空でも可）"
           />
         </label>
       </div>

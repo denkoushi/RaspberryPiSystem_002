@@ -3,13 +3,15 @@ import { LoanReportAggregateService, type LoanReportAggregateQuery } from './loa
 import { LoanReportEvaluationService } from './loan-report-evaluation.service.js';
 import { LoanReportHtmlRenderer } from './loan-report-html-renderer.js';
 import { LoanReportGmailDraftService } from './loan-report-gmail-draft.service.js';
+import { LoanReportGmailSendService } from './loan-report-gmail-send.service.js';
 
 export class LoanReportService {
   constructor(
     private readonly aggregate = LoanReportAggregateService.createDefault(),
     private readonly evaluation = new LoanReportEvaluationService(),
     private readonly html = new LoanReportHtmlRenderer(),
-    private readonly gmailDraft = new LoanReportGmailDraftService()
+    private readonly gmailDraft = new LoanReportGmailDraftService(),
+    private readonly gmailSend = new LoanReportGmailSendService()
   ) {}
 
   static createDefault(): LoanReportService {
@@ -71,5 +73,29 @@ export class LoanReportService {
       to: params.to,
     });
     return { ...draft, reportModel: preview.reportModel };
+  }
+
+  async sendGmailMessage(params: {
+    category: LoanReportCategoryKey;
+    periodFrom: Date;
+    periodTo: Date;
+    monthlyMonths: number;
+    timeZone?: string;
+    site?: string;
+    author?: string;
+    measuringInstrumentId?: string;
+    riggingGearId?: string;
+    itemId?: string;
+    subject: string;
+    to: string;
+  }): Promise<{ messageId: string; reportModel: LoanReportPreviewPayload['reportModel'] }> {
+    const preview = await this.buildPreview(params);
+    const sent = await this.gmailSend.sendMessage({
+      reportModel: preview.reportModel,
+      htmlDocument: preview.html,
+      subject: params.subject,
+      to: params.to,
+    });
+    return { messageId: sent.messageId, reportModel: preview.reportModel };
   }
 }
