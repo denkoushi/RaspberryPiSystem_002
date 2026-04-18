@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>配膳スマホ — メイン画面（/kiosk/mobile-placement）静的プレビュー</title>
+  <style>
+    /* ===== 高コントラストテーマ: 黒背景 + 実色 ===== */
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #000;
+      color: #fff;
+      padding: 0.75rem 1rem 2rem;
+      -webkit-font-smoothing: antialiased;
+    }
+    h1 { margin: 0 0 0.35rem; font-size: 1.05rem; font-weight: 800; color: #fff; }
+    .lead { margin: 0 0 1rem; font-size: 0.82rem; color: #bbb; max-width: 72ch; line-height: 1.65; }
+    .lead code { font-size: 0.9em; background: #222; padding: 0.12em 0.35em; border-radius: 4px; color: #ddd; }
+    .preview-wrap { max-width: 420px; margin: 0 auto; }
+
+    .frame {
+      background: #111;
+      border-radius: 14px;
+      border: 2px solid #555;
+      overflow: hidden;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    .frame-inner { display: flex; flex-direction: column; min-height: min(860px, 88vh); max-height: min(860px, 88vh); }
+    .page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+    /* --- 上部「部品名で棚を探す」--- */
+    .top-actions { display: flex; justify-content: flex-end; padding: 0.5rem 0.75rem 0; }
+    .btn-part-search {
+      border-radius: 0.5rem;
+      border: 2px solid #38bdf8;
+      background: #0c4a6e;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.9rem; font-weight: 700;
+      color: #fff;
+      cursor: default;
+    }
+
+    /* --- 照合: 折りたたみ --- */
+    .verify-collapsed {
+      flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 0.65rem;
+      border-bottom: 2px solid #444;
+      background: #1a1a1a;
+    }
+    .verify-collapsed .label { flex: 1; min-width: 0; font-size: 14px; font-weight: 800; color: #fff; }
+    .verify-collapsed .hint { display: none; font-size: 11px; color: #aaa; font-weight: 500; }
+    @media (min-width: 640px) { .verify-collapsed .hint { display: inline; } }
+    .btn-expand {
+      flex-shrink: 0; padding: 0.45rem 0.8rem; border-radius: 0.5rem;
+      border: 2px solid #38bdf8; background: #0c4a6e;
+      color: #fff; font-size: 13px; font-weight: 800; cursor: default;
+    }
+
+    /* --- スキャンボタン（製造order横） --- */
+    .btn-scan.order {
+      flex-shrink: 0; width: 3rem; height: 3rem; border-radius: 0.375rem;
+      border: 2px solid #2dd4bf; background: #134e4a;
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      cursor: default; padding: 0;
+    }
+    .btn-scan.order svg { width: 1.85rem; height: 1.85rem; }
+
+    /* --- 登録セクション全体 --- */
+    .register-wrap {
+      flex: 1; min-height: 0; display: flex; flex-direction: column;
+      gap: 0.75rem; overflow: hidden; padding: 0.75rem;
+    }
+
+    /* --- amber帯: 棚 --- */
+    .panel-amber {
+      flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.625rem;
+      border-radius: 10px; border-left: 4px solid #f59e0b;
+      background: #1c1300; padding: 0.75rem;
+    }
+    .panel-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+
+    .btn-qr {
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 2.75rem; height: 2.75rem; min-width: 2.75rem; min-height: 2.75rem;
+      border: 2px solid #38bdf8; border-radius: 0.5rem; background: #0c4a6e;
+      padding: 0; color: #fff; cursor: default;
+    }
+    .btn-qr svg { width: 1.75rem; height: 1.75rem; }
+
+    .selected-shelf {
+      font-size: clamp(18px, 5.2vw, 24px); font-weight: 800;
+      color: #fbbf24; line-height: 1.2; max-width: 10rem;
+      word-break: break-all; letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
+    }
+
+    .btn-plus {
+      margin-left: auto; width: 2.75rem; height: 2.75rem; border-radius: 0.5rem;
+      border: 2px solid #f59e0b; background: #000;
+      font-size: 1.5rem; font-weight: 400; color: #fbbf24; line-height: 1; cursor: default;
+    }
+
+    /* --- エリア×列 6ボタン --- */
+    .grid-axis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.35rem; }
+    .axis-btn {
+      box-sizing: border-box; width: 100%; height: 2.75rem; min-height: 2.75rem; max-height: 2.75rem;
+      border-radius: 0.5rem; border: 2px solid #b45309; background: #292000;
+      font-size: clamp(15px, 4.2vw, 20px); font-weight: 800; color: #fff;
+      cursor: default; padding: 0; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .axis-btn.on { border-color: #22c55e; background: #14532d; color: #fff; }
+    .axis-btn.line-first { border-left: 2px solid #b45309; }
+
+    /* --- 棚リスト --- */
+    .shelf-list-box {
+      flex: 1; min-height: 0; display: flex; flex-direction: column;
+      border-radius: 0.5rem; border: 2px solid #92400e; background: #000; padding: 0.625rem;
+    }
+    .shelf-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.375rem; max-height: min(40vh, 240px); overflow-y: auto; }
+    .shelf-chip {
+      box-sizing: border-box; width: 100%; height: 2.75rem; min-height: 2.75rem; max-height: 2.75rem;
+      border-radius: 0.5rem; border: 2px solid #b45309; background: #292000;
+      font-weight: 800; color: #fff; cursor: default;
+      line-height: 1; padding: 0 0.15rem;
+      display: inline-flex; flex-direction: row; align-items: center; justify-content: center;
+      gap: 0; text-align: center; white-space: nowrap; overflow: hidden; max-width: 100%;
+    }
+    .shelf-chip-prefix {
+      font-size: clamp(14px, 4vw, 17px); font-weight: 800; letter-spacing: 0.02em;
+      flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    }
+    .shelf-chip-num {
+      font-size: clamp(15px, 4.2vw, 19px); font-weight: 800; font-variant-numeric: tabular-nums;
+      letter-spacing: 0.03em; line-height: 1; flex-shrink: 0;
+    }
+    .shelf-chip.on { border-color: #22c55e; background: #14532d; color: #fff; }
+
+    /* --- teal帯: 製造order・分配 --- */
+    .panel-teal {
+      flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem;
+      border-radius: 10px; border-left: 4px solid #14b8a6;
+      background: #001a18; padding: 0.75rem;
+    }
+    .order-row { display: flex; align-items: stretch; gap: 0.25rem; flex-wrap: nowrap; width: 100%; }
+    .order-row input {
+      box-sizing: border-box; flex: 0 0 auto; width: calc(10ch + 1.35rem);
+      max-width: calc(100% - 3.25rem); height: 3rem; min-height: 3rem;
+      border-radius: 0.375rem; border: 2px solid #14b8a6; background: #000;
+      padding: 0 0.45rem; font-size: 1.875rem; line-height: 1.15;
+      color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0;
+    }
+
+    .intent-row {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start;
+      gap: 0.45rem; border-top: 2px solid #115e59; padding-top: 0.75rem;
+    }
+    .intent-btn {
+      box-sizing: border-box; flex: 0 0 auto; width: fit-content; max-width: 100%;
+      min-height: 2.75rem; height: 2.75rem; border-radius: 0.5rem;
+      border: 2px solid #0d9488; background: #042f2e;
+      font-size: 15px; font-weight: 800; color: #fff;
+      cursor: default; padding: 0 0.65rem; line-height: 1.2; letter-spacing: 0.02em;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .intent-btn.on { border-color: #22c55e; background: #14532d; color: #fff; }
+
+    .btn-register {
+      box-sizing: border-box; flex: 0 0 auto; width: fit-content; max-width: 100%;
+      height: 2.75rem; min-height: 2.75rem; border-radius: 0.375rem;
+      border: 2px solid #5eead4; background: #0f766e;
+      padding: 0 0.65rem; font-size: 15px; font-weight: 800; color: #fff;
+      cursor: default; letter-spacing: 0.04em;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    /* --- 分配チップ --- */
+    .branch-block { display: flex; flex-direction: column; gap: 0.5rem; }
+    .branch-pick-label {
+      font-size: 12px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #bbb; line-height: 1.4;
+    }
+    .branch-chips { display: flex; flex-wrap: wrap; gap: 0.375rem; max-height: min(28vh, 200px); overflow-y: auto; }
+    .branch-chip {
+      box-sizing: border-box; min-width: 7rem; width: auto;
+      height: 2.5rem; min-height: 2.5rem; max-height: 2.5rem;
+      border-radius: 0.5rem; border: 2px solid #0d9488; background: #042f2e;
+      padding: 0.2rem 0.45rem; text-align: left; cursor: default;
+      display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 0.08rem;
+    }
+    .branch-chip.on { border-color: #22c55e; background: #14532d; color: #fff; }
+    .branch-chip .sub { font-size: clamp(11px, 2.6vw, 13px); font-weight: 700; color: #bbb; line-height: 1; }
+    .branch-chip .main {
+      font-size: clamp(13px, 3.6vw, 16px); font-weight: 800; color: #fff;
+      word-break: break-all; font-variant-numeric: tabular-nums; line-height: 1.05;
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .branch-chip.on .main { color: #fff; }
+
+    .note { margin-top: 0.75rem; font-size: 0.78rem; color: #aaa; line-height: 1.55; }
+  </style>
+</head>
+<body>
+  <h1>配膳スマホ — メイン画面 静的プレビュー</h1>
+  <p class="lead">
+    本番 <code>MobilePlacementPage</code>（<code>/kiosk/mobile-placement</code>）の <code>MobilePlacementVerifySection</code>（折りたたみ）＋ <code>MobilePlacementRegisterSection</code> の <strong>レイアウト・クラス趣旨に合わせた</strong>静的HTMLです。状態は一例（棚・製造order・分配が入力済み想定）。操作・API なし。
+  </p>
+
+  <div class="preview-wrap">
+      <div class="frame">
+        <div class="frame-inner page">
+          <div class="top-actions">
+            <button type="button" class="btn-part-search">部品名で棚を探す</button>
+          </div>
+
+          <!-- 照合: 折りたたみ（展開UIは verify-collapsible プレビュー参照） -->
+          <div class="verify-collapsed" role="region" aria-label="照合（折りたたみ）">
+            <span class="label">照合（移動票・現品票）</span>
+            <span class="hint">タップで入力・照合</span>
+            <button type="button" class="btn-expand">展開</button>
+          </div>
+
+          <div class="register-wrap">
+            <div class="panel-amber">
+              <div class="panel-header">
+                <button type="button" class="btn-qr" aria-label="棚をQRスキャン" title="棚をQRスキャン">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 3h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h6v2h-6v-2z"/></svg>
+                </button>
+                <div class="selected-shelf" aria-label="選択中の棚番 西-北-02">西-北-02</div>
+                <button type="button" class="btn-plus" aria-label="棚番を新規登録">+</button>
+              </div>
+              <div class="grid-axis" role="group" aria-label="エリア・列（6ボタン）">
+                <button type="button" class="axis-btn on">西</button>
+                <button type="button" class="axis-btn">中央</button>
+                <button type="button" class="axis-btn">東</button>
+                <button type="button" class="axis-btn on line-first">北</button>
+                <button type="button" class="axis-btn">中央</button>
+                <button type="button" class="axis-btn">南</button>
+              </div>
+              <div class="shelf-list-box">
+                <div class="shelf-grid">
+                  <button type="button" class="shelf-chip"><span class="shelf-chip-prefix">西-北-</span><span class="shelf-chip-num">01</span></button>
+                  <button type="button" class="shelf-chip on"><span class="shelf-chip-prefix">西-北-</span><span class="shelf-chip-num">02</span></button>
+                  <button type="button" class="shelf-chip"><span class="shelf-chip-prefix">西-北-</span><span class="shelf-chip-num">03</span></button>
+                  <button type="button" class="shelf-chip"><span class="shelf-chip-prefix">西-北-</span><span class="shelf-chip-num">04</span></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel-teal">
+              <div class="order-row">
+                <input type="text" readonly value="0002178005" placeholder="製造order番号" />
+                <button type="button" class="btn-scan order" title="スキャン" aria-label="製造orderをスキャン">
+                  <!-- BarcodeBarsIcon 相当 -->
+                  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <rect x="1.5" y="4" width="2.8" height="16" rx="0.6" />
+                    <rect x="5.8" y="4" width="1.8" height="16" rx="0.5" />
+                    <rect x="9" y="4" width="3.2" height="16" rx="0.6" />
+                    <rect x="13.4" y="4" width="1.8" height="16" rx="0.5" />
+                    <rect x="16.4" y="4" width="2.8" height="16" rx="0.6" />
+                    <rect x="20.4" y="4" width="2.8" height="16" rx="0.6" />
+                  </svg>
+                </button>
+              </div>
+              <div class="intent-row">
+                <button type="button" class="intent-btn">新規配分</button>
+                <button type="button" class="intent-btn on">既存配分</button>
+                <button type="button" class="btn-register">確定</button>
+              </div>
+              <div class="branch-block">
+                <p class="branch-pick-label">分配を選択</p>
+                <div class="branch-chips">
+                  <button type="button" class="branch-chip on">
+                    <span class="sub">分配1</span>
+                    <span class="main">西-北-01</span>
+                  </button>
+                  <button type="button" class="branch-chip">
+                    <span class="sub">分配2</span>
+                    <span class="main">中央-南-05</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note">※ 照合の <strong>展開UI</strong>は <a href="./mobile-placement-verify-collapsible-preview.html" style="color:#38bdf8;font-weight:600">mobile-placement-verify-collapsible-preview.html</a> を参照。</p>
+  </div>
+</body>
+</html>

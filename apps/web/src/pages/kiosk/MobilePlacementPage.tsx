@@ -5,6 +5,7 @@ import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
 import { MobilePlacementRegisterSection } from '../../features/mobile-placement/components/MobilePlacementRegisterSection';
 import { MobilePlacementVerifySection } from '../../features/mobile-placement/components/MobilePlacementVerifySection';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
+import { mpKioskTheme } from '../../features/mobile-placement/ui/mobilePlacementKioskTheme';
 import { useMobilePlacementPageState } from '../../features/mobile-placement/useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../../features/mobile-placement/useOrderPlacementBranches';
 import { useRegisteredShelves } from '../../features/mobile-placement/useRegisteredShelves';
@@ -35,7 +36,7 @@ export function MobilePlacementPage() {
       <div className="flex justify-end px-3 pt-2">
         <button
           type="button"
-          className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-semibold text-sky-200 active:bg-sky-500/20"
+          className={mpKioskTheme.partSearchButton}
           onClick={() => navigate('/kiosk/mobile-placement/part-search')}
         >
           部品名で棚を探す
