@@ -8,6 +8,10 @@ import { KioskHeader } from '../components/kiosk/KioskHeader';
 import { KioskMaintenanceScreen } from '../components/kiosk/KioskMaintenanceScreen';
 import { KioskSupportModal } from '../components/kiosk/KioskSupportModal';
 import { KioskRedirect } from '../components/KioskRedirect';
+import {
+  VIEWPORT_HEIGHT_FULL,
+  VIEWPORT_MIN_HEIGHT_FULL
+} from '../constants/viewportLayout';
 import { usesKioskImmersiveLayout } from '../features/kiosk/kioskImmersiveLayoutPolicy';
 import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../hooks/kioskRevealUi';
 import { useKioskTopEdgeHeaderReveal } from '../hooks/useKioskTopEdgeHeaderReveal';
@@ -44,8 +48,8 @@ export function KioskLayout() {
   return (
     <div
       className={clsx(
-        'bg-slate-800 text-white',
-        immersiveKioskLayout ? 'flex h-screen min-h-0 flex-col' : 'min-h-screen'
+        'flex flex-col bg-slate-800 text-white',
+        immersiveKioskLayout ? [VIEWPORT_HEIGHT_FULL, 'min-h-0'] : VIEWPORT_MIN_HEIGHT_FULL
       )}
     >
       {/* 設定変更を監視してリダイレクト */}
@@ -59,7 +63,7 @@ export function KioskLayout() {
       ) : null}
       <header
         className={clsx(
-          'border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur',
+          'shrink-0 border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur',
           immersiveKioskLayout &&
             clsx('fixed top-0 right-0 left-0 z-50 shadow-lg', KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS),
           immersiveKioskLayout && !headerReveal.isVisible && '-translate-y-full',
@@ -76,12 +80,7 @@ export function KioskLayout() {
           pathname={location.pathname}
         />
       </header>
-      <main
-        className={clsx(
-          'flex flex-col gap-4 px-4 py-4',
-          immersiveKioskLayout ? 'min-h-0 flex-1' : 'h-[calc(100vh-6rem)]'
-        )}
-      >
+      <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 py-4">
         <h1 className="sr-only">キオスク</h1>
         <Outlet />
       </main>

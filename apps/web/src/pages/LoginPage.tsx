@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { VIEWPORT_MIN_HEIGHT_FULL } from '../constants/viewportLayout';
 import { useAuth } from '../contexts/AuthContext';
 
 export function LoginPage() {
@@ -59,7 +60,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-800 text-white">
+    <div className={`flex ${VIEWPORT_MIN_HEIGHT_FULL} items-center justify-center bg-slate-800 text-white`}>
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-md space-y-4 rounded-2xl border border-white/10 bg-white/5 p-8 shadow-xl"
