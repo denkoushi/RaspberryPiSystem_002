@@ -1,12 +1,12 @@
 ---
-title: 'KB-354: 管理コンソール 貸出レポート（HTML プレビュー・Gmail 下書き・Gmail 送信）'
-tags: [管理コンソール, 貸出レポート, Gmail, API, デプロイ]
+title: 'KB-354: 管理コンソール 貸出レポート（HTML プレビュー・supply ツリーマップ・Gmail 下書き・Gmail 送信）'
+tags: [管理コンソール, 貸出レポート, Gmail, API, デプロイ, 可視化]
 audience: [開発者, 運用者]
 last-verified: 2026-04-19
 category: knowledge-base
 ---
 
-# KB-354: 管理コンソール 貸出レポート（HTML プレビュー・Gmail 下書き・Gmail 送信）
+# KB-354: 管理コンソール 貸出レポート（HTML プレビュー・supply ツリーマップ・Gmail 下書き・Gmail 送信）
 
 ## Context
 
@@ -23,6 +23,7 @@ category: knowledge-base
 | 認可 | プレビュー: `ADMIN` / `MANAGER` / `VIEWER`。下書き: `ADMIN` / `MANAGER`。**送信: `ADMIN` のみ** |
 | Gmail | 既存 OAuth に **`gmail.compose`**（下書き）および **`gmail.send`**（送信）。`users.drafts.create` / `users.messages.send` + **raw MIME**（base64url、**76 桁折り返し**で Gmail 互換）。MIME 組み立ては `loan-report-email-mime` に集約 |
 | 集計 | アイテム軸の名寄せ・評価ロジックは `LoanReport*` サービスに集約（Vitest あり）。**2026-04-18 §C**: 推定配分を排除し借用実データへ。各 `loan-analytics` の従業員行に **期限超過件数** |
+| 可視化（§E） | **supply 系ツリーマップ**を HTML レポート／プレビューへ組み込み（`loan-report/treemap/*`・プレビュー用 **デザインプレビュー HTML** と本番レンダラの見た目契約をペアで保守） |
 | 本番コード方針（§D） | 貸出レポート経路（ルート・評価・各 `loan-analytics` リポジトリ）に **開発用ローカル HTTP ingest（例: `127.0.0.1:7426`）や `flush*` 系の補助**を残さない。**契約・数値仕様は §C までと同一**（テレメトリ除去のみ） |
 
 ## 本番デプロイ実績
@@ -76,6 +77,22 @@ category: knowledge-base
 - **知見**: 本番で動く API に **ローカル固定 URL への毎リクエスト計測**を混ぜると、到達不能時のタイムアウト・ノイズ・情報漏えいリスクが生じうる。**観測は OpenTelemetry/構造化ログ等の正式経路**に寄せる。
 - **トラブルシュート**: デプロイ後に貸出レポートだけ異常に遅い場合、**残存する外向きデバッグ呼び出し**（プロキシ・`connect ECONNREFUSED`）をログで確認（§D 以降は当該パターンをコードから除去済み）。
 
+### E. supply ツリーマップ復旧（2026-04-19）
+
+- **ブランチ**: `feat/loan-report-supply-treemap-recovery`（機能コミット **`a8b2f7cf`**、CI 追随コミット **`90cc5385`**（ESLint `prefer-const`））。
+- **内容（要約）**:
+  - **supply 系ツリーマップ**を `LoanReport` HTML（プレビュー／印刷想定）へ復旧・統合（`apps/api/src/services/reports/loan-report/treemap/*`）。
+  - **デザインプレビュー HTML**（`docs/design-previews/*`）と本番レンダラの整合を、再統合時の回帰防止用の固定物として扱う。
+- **対象ホスト**: **`raspberrypi5` のみ**（Pi4/Pi3 未デプロイ・Pi3 は専用手順）。**複数台デプロイ時は `--limit` を 1 台ずつ**（本記録は Pi5 単独）。
+- **手順**: [deployment.md](../guides/deployment.md) どおり・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/loan-report-supply-treemap-recovery infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **Detach Run ID**: **`20260419-130715-8630`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（fjv60-80 SSH WARN はベースライン同型・`deploy-status` は PASS）。
+- **追加スモーク**: 未認証 `GET …/preview?category=rigging` → **`401`**。
+- **CI**: GitHub Actions Run **`24620066625`** success（PR #170 相当）。
+- **知見**: ローカル救出→`main` 再統合では、**静的プレビューと API レンダラの差分**が見落とされやすい（HTML 断片・CSS・データ契約をセットでレビューする）。
+- **トラブルシュート**: `lint-build-unit` が **`prefer-const` で落ちる**場合、評価ロジックを触らず **再代入のない `let` を `const` に**（本件では `LoanReportEvaluationService`）して CI を通す。
+- **PR**: [#170](https://github.com/denkoushi/RaspberryPiSystem_002/pull/170)
+
 ## Troubleshooting
 
 | 症状 | 切り分け |
@@ -91,6 +108,7 @@ category: knowledge-base
 
 ## References
 
+- **PR（§E supply ツリーマップ復旧）**: [#170](https://github.com/denkoushi/RaspberryPiSystem_002/pull/170)
 - **PR（§D 本番衛生化）**: [#169](https://github.com/denkoushi/RaspberryPiSystem_002/pull/169)
 - **PR（下書き）**: [#166](https://github.com/denkoushi/RaspberryPiSystem_002/pull/166)
 - **PR（送信・レイアウト）**: [#167](https://github.com/denkoushi/RaspberryPiSystem_002/pull/167)
