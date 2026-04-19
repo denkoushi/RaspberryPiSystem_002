@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>プレビュー — 過不足ペイン（全体バランス＋ボトルネック5件）</title>
+  <style>
+    :root {
+      --ink: #0f172a;
+      --ink-2: #1e293b;
+      --muted: #64748b;
+      --line: #dbe3ef;
+      --surface: #f8fafc;
+      --accent: #3b82f6;
+      --bad: #dc2626;
+      --ok: #059669;
+      --num: ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: ui-sans-serif, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #e9edf3; font-family: var(--sans); color: var(--ink); padding: 16px; }
+    .legend-wrap {
+      max-width: 210mm; margin: 0 auto 12px; padding: 12px 14px; font-size: 11px;
+      border: 1px solid #c4d0df; border-radius: 8px; background: #fff;
+      box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+    }
+    .legend-wrap h3 { font-size: 12px; font-weight: 900; color: var(--ink-2); margin-bottom: 8px; }
+    .legend-table { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.45; }
+    .legend-table th, .legend-table td {
+      border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top;
+    }
+    .legend-table th { background: var(--surface); font-weight: 800; color: var(--ink-2); width: 22%; }
+    .legend-table td:first-of-type { font-weight: 700; color: var(--ink-2); width: 28%; }
+    .legend-table .muted { color: var(--muted); font-weight: 600; }
+    .axis-lbl { font-size: 10px; font-weight: 800; color: var(--muted); margin-bottom: 2px; }
+    .balance-row-wrap { display: grid; gap: 2px; }
+    .bn-grid-h {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end;
+      padding: 0 10px 4px; font-size: 10px; font-weight: 800; color: var(--muted);
+    }
+    .bn-grid-h span:nth-child(2), .bn-grid-h span:nth-child(3) { text-align: right; }
+    .hero-card {
+      max-width: 210mm; margin: 0 auto; background: #fff; border: 1px solid #ccd5e1;
+      border-radius: 2.4mm; box-shadow: 0 8px 24px rgba(15,23,42,0.08); overflow: hidden;
+    }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; border-bottom: 1px solid var(--line); background: rgba(248,250,252,0.95);
+    }
+    .card-head h2 { font-size: 13px; font-weight: 800; color: var(--ink-2); }
+    .tag { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: rgba(220,38,38,0.12); color: var(--bad); }
+    .body { padding: 12px 14px 14px; }
+    .row-main { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center; margin-bottom: 12px; }
+    @media (max-width: 560px) { .row-main { grid-template-columns: 1fr; } }
+    .pct { font-family: var(--num); font-size: 36px; font-weight: 900; color: var(--accent); line-height: 1; }
+    .state { font-size: 14px; font-weight: 900; color: var(--accent); margin-top: 4px; }
+    .scale { width: 100%; height: auto; display: block; }
+    .balance { display: grid; gap: 6px; margin-bottom: 14px; }
+    .balance-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+    .track { height: 10px; background: #f1f5f9; border-radius: 5px; border: 1px solid #e2e8f0; overflow: hidden; }
+    .fill-slack { height: 100%; background: linear-gradient(90deg, #059669, #34d399); border-radius: 4px; }
+    .fill-press { height: 100%; background: linear-gradient(90deg, #ea580c, #dc2626); border-radius: 4px; }
+    .track-warn { box-shadow: inset 0 0 0 1px rgba(220,38,38,0.35); }
+    .bn { font-family: var(--num); font-size: 13px; font-weight: 800; min-width: 2.2em; text-align: right; }
+    .bn-head {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.06em; color: var(--muted);
+      text-transform: uppercase; margin-bottom: 8px;
+    }
+    .bn-list { display: grid; gap: 6px; }
+    .bn-item {
+      display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center;
+      padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+    }
+    .bn-name { font-size: 12px; font-weight: 800; color: var(--ink-2); }
+    .bn-sub { font-size: 10px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+    .bn-demand { font-family: var(--num); font-size: 12px; font-weight: 800; color: var(--accent); }
+    .bn-avail {
+      font-family: var(--num); font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
+      background: rgba(220,38,38,0.12); color: var(--bad);
+    }
+    .bn-avail.ok { background: rgba(5,150,105,0.12); color: var(--ok); }
+  </style>
+</head>
+<body>
+  <div class="legend-wrap">
+    <h3>このモックの読み方（プレビュー専用・本番ペインに長文は載せない想定）</h3>
+    <table class="legend-table">
+      <thead>
+        <tr><th>ビジュアル</th><th>意味（何を数にしているか）</th><th>用途（月1回・現場リーダーが何の判断に使うか）</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>大きな％＋右の色分け帯＋▼</td>
+          <td><strong>利用率</strong>（借り出し中 ÷ 管理対象）と、余裕〜逼迫の<strong>目安ゾーン</strong>上の位置</td>
+          <td>「全体として、需給が危険水域にいるか」を<strong>最初の10秒</strong>で掴む</td>
+        </tr>
+        <tr>
+          <td>緑のバー／赤のバー（右の数字）</td>
+          <td>同じ<strong>0〜100</strong>の尺。上＝<strong>即時余力</strong>（すぐ貸せる割合）、下＝<strong>需要圧</strong>（密度・ピーク・集中度などの合成）</td>
+          <td>「余力より需要の方が上か」を見て、<strong>不足寄りの強さ</strong>を比較する（下が上を上回れば不足側）</td>
+        </tr>
+        <tr>
+          <td>下のリスト5行</td>
+          <td><strong>アイテム単位</strong>。左＝識別、中央＝<strong>期間内持出件数</strong>（需要の集中）、右＝<strong>即時に貸せる台数</strong></td>
+          <td><strong>空き待ち・作業停止が付きやすいモノ</strong>を特定し、融通・回収・手配の<strong>当たりを付ける</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:8px;font-size:10px;">※ 数値はダミー。本番は <code>LoanReportEvaluationService</code> と同一ロジックに合わせる前提。</p>
+  </div>
+
+  <article class="hero-card">
+    <div class="card-head">
+      <h2>足りているか / 余っているか</h2>
+      <span class="tag">逼迫</span>
+    </div>
+    <div class="body">
+      <div class="row-main">
+        <div>
+          <div class="pct">100%</div>
+          <div class="state">逼迫</div>
+        </div>
+        <div>
+          <svg class="scale" viewBox="0 0 290 54" aria-hidden="true">
+            <rect x="10" y="20" width="75.6" height="10" rx="4" fill="#d9e4ef"/>
+            <rect x="85.6" y="20" width="70.2" height="10" rx="4" fill="#c7f0e5"/>
+            <rect x="155.8" y="20" width="54" height="10" rx="4" fill="#fde0b9"/>
+            <rect x="209.8" y="20" width="70.2" height="10" rx="4" fill="#f8c7c7"/>
+            <rect x="10" y="20" width="270" height="10" rx="4" fill="none" stroke="#94a3b8" stroke-width="0.8" opacity="0.65"/>
+            <path d="M 280 19 L 276 12 L 284 12 Z" fill="#0f172a"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="balance" aria-label="即時余力と需要圧の比較">
+        <div class="balance-row-wrap">
+          <div class="axis-lbl">即時余力（すぐ貸せる割合・0〜100）</div>
+          <div class="balance-row">
+            <div class="track"><div class="fill-slack" style="width:0%"></div></div>
+            <span class="bn">0</span>
+          </div>
+        </div>
+        <div class="balance-row-wrap">
+          <div class="axis-lbl">需要圧（流れ・偏りの強さ・0〜100）</div>
+          <div class="balance-row">
+            <div class="track track-warn"><div class="fill-press" style="width:92%"></div></div>
+            <span class="bn">92</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bn-head">ボトルネック（期間内持出が多い順・即時0台を優先表示）</div>
+      <div class="bn-grid-h"><span>アイテム</span><span>期間持出</span><span>即時台</span></div>
+      <div class="bn-list">
+        <div class="bn-item">
+          <div>
+            <div class="bn-name">デジタルノギス A</div>
+            <div class="bn-sub">M-201 · 計測</div>
+          </div>
+          <span class="bn-demand">48</span>
+          <span class="bn-avail">即時0</span>
+        </div>
+        <div class="bn-item">
+          <div>
+            <div class="bn-name">マイクロメータ B</div>
+            <div class="bn-sub">M-088 · 計測</div>
+          </div>
+          <span class="bn-demand">22</span>
+          <span class="bn-avail">即時1</span>
+        </div>
+        <div class="bn-item">
+          <div>
+            <div class="bn-name">ハイトゲージ C</div>
+            <div class="bn-sub">M-415 · 計測</div>
+          </div>
+          <span class="bn-demand">15</span>
+          <span class="bn-avail ok">即時4</span>
+        </div>
+        <div class="bn-item">
+          <div>
+            <div class="bn-name">レーザー距離計 D</div>
+            <div class="bn-sub">M-092 · 計測</div>
+          </div>
+          <span class="bn-demand">6</span>
+          <span class="bn-avail ok">即時5</span>
+        </div>
+        <div class="bn-item">
+          <div>
+            <div class="bn-name">テストハンマ E</div>
+            <div class="bn-sub">M-701 · 計測</div>
+          </div>
+          <span class="bn-demand">2</span>
+          <span class="bn-avail ok">即時8</span>
+        </div>
+      </div>
+    </div>
+  </article>
+</body>
+</html>

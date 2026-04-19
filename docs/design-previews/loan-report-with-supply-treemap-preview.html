@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>計測機器 持出返却レポート — 需給ツリーマップ組み込みプレビュー</title>
+  <meta name="loan-report:supply-pane" content="treemap-hero-v1" />
+  <meta name="description" content="既存A4レポートテンプレートへ、名寄せ群スクエアリファイドツリーマップ（持出中/台数・絶対値）を左ヒーローに当てはめたデザインプレビュー" />
+  <style>
+    :root {
+      --ink: #0f172a;
+      --ink-2: #1e293b;
+      --sub: #475569;
+      --muted: #64748b;
+      --faint: #94a3b8;
+      --line: #dbe3ef;
+      --line-2: #c4d0df;
+      --surface: #f8fafc;
+      --surface-2: #f1f5f9;
+      --page-bg: #e9edf3;
+      --white: #ffffff;
+      --loan: #ea580c;
+      --ret: #0d9488;
+      --open: #2563eb;
+      --over: #dc2626;
+      --ok: #059669;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --num: ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: ui-sans-serif, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--page-bg);
+      color: var(--ink);
+      font-family: var(--sans);
+    }
+    .pages { padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      max-height: 297mm;
+      background: var(--white);
+      border: 1px solid #ccd5e1;
+      box-shadow: 0 22px 48px rgba(15, 23, 42, 0.12);
+      padding: 5.5mm 6mm 5mm;
+      display: grid;
+      grid-template-rows: auto auto auto auto 1fr auto auto;
+      gap: 1.4mm;
+      overflow: hidden;
+    }
+    .header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2mm;
+      align-items: end;
+      padding-bottom: 1.8mm;
+      border-bottom: 2.6px solid var(--ink);
+    }
+    .title-row { display: flex; align-items: baseline; gap: 2.4mm; }
+    .title-row h1 { font-size: 18px; line-height: 1.08; letter-spacing: 0.05em; font-weight: 900; }
+    .cat-badge {
+      display: inline-flex; align-items: center; height: 6.5mm; padding: 0 2.8mm;
+      border-radius: 999px; color: #fff; font-size: 9.5px; font-weight: 900;
+      letter-spacing: 0.04em; white-space: nowrap;
+    }
+    .meta { text-align: right; font-family: var(--num); font-size: 7.1px; line-height: 1.45; color: var(--sub); }
+    .meta .id { font-weight: 800; color: var(--ink-2); font-size: 7.7px; }
+    .metric-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1mm; }
+    .metric {
+      position: relative; border: 1px solid var(--line); border-radius: 1.4mm;
+      background: var(--surface); padding: 1mm 1.35mm 1.2mm; overflow: hidden;
+    }
+    .metric::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--metric-color);
+    }
+    .metric .label { font-size: 6.8px; color: var(--muted); font-weight: 700; }
+    .metric .value {
+      margin-top: 0.55mm; font-family: var(--num); font-size: 16px; font-weight: 800;
+      color: var(--metric-color); font-variant-numeric: tabular-nums;
+    }
+    .metric .unit { margin-left: 0.5mm; font-size: 7px; color: var(--muted); font-weight: 600; }
+    .eval-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2mm; }
+    .hero-card {
+      border: 1px solid var(--line); border-radius: 1.8mm;
+      background: linear-gradient(180deg, #ffffff 0%, var(--surface) 100%);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 0;
+    }
+    .hero-card--supply-treemap {
+      min-height: 52mm;
+      grid-template-rows: auto 1fr;
+    }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1mm; padding: 1.15mm 1.6mm; border-bottom: 1px solid var(--line);
+      background: rgba(248, 250, 252, 0.92);
+    }
+    .card-head h2 { font-size: 7.9px; font-weight: 800; color: var(--ink-2); }
+    .tiny-tag {
+      display: inline-flex; align-items: center; min-height: 4mm; padding: 0 1.5mm;
+      border-radius: 999px; font-family: var(--num); font-size: 6.2px; font-weight: 800;
+    }
+    .tag-ok { background: rgba(5, 150, 105, 0.12); color: var(--ok); }
+    .tag-warn { background: rgba(217, 119, 6, 0.12); color: var(--warn); }
+    .tag-bad { background: rgba(220, 38, 38, 0.12); color: var(--bad); }
+    .supply-treemap-host {
+      margin: 1mm 1.4mm 1mm;
+      flex: 1;
+      min-height: 168px;
+      height: 40mm;
+      max-height: 44mm;
+      background: #0a0a0b;
+      border-radius: 1.2mm;
+      border: 1px solid var(--line);
+      position: relative;
+      overflow: hidden;
+    }
+    .tm-sector {
+      position: absolute;
+      border: 1px solid #3f3f46;
+      background: rgba(24, 24, 27, 0.88);
+      overflow: hidden;
+    }
+    .tm-sector-title {
+      position: absolute; left: 0; top: 0; right: 0; height: 16px;
+      padding: 2px 6px; font-size: 8px; font-weight: 800;
+      letter-spacing: 0.05em; color: #a1a1aa;
+      background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+      pointer-events: none; z-index: 1;
+    }
+    .tm-cell {
+      position: absolute;
+      border: 1px solid rgba(0,0,0,0.35);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 2px;
+    }
+    .tm-cell .tm-name {
+      font-weight: 800; line-height: 1.1; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; width: 100%;
+    }
+    .tm-cell .tm-nums {
+      font-weight: 800; font-variant-numeric: tabular-nums;
+    }
+    .chip-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9mm;
+      padding: 0 1.4mm 1.3mm;
+    }
+    .chip {
+      border: 1px solid var(--line); border-radius: 1.1mm;
+      background: rgba(255,255,255,0.88); padding: 0.85mm 1mm 0.95mm; min-height: 9mm;
+    }
+    .chip .k { font-size: 6.1px; color: var(--muted); font-weight: 700; }
+    .chip .v { margin-top: 0.45mm; font-family: var(--num); font-size: 10px; font-weight: 800; color: var(--ink-2); }
+    .hero-body {
+      padding: 1.4mm 1.6mm 1.2mm;
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 1.2mm;
+      align-items: center;
+    }
+    .divider { display: flex; align-items: center; gap: 1.4mm; min-height: 3.8mm; }
+    .divider h2 { font-size: 7.5px; font-weight: 900; letter-spacing: 0.08em; color: var(--ink); text-transform: uppercase; white-space: nowrap; }
+    .divider::after { content: ""; flex: 1; height: 1px; background: var(--line-2); }
+    .analysis-grid {
+      display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+      gap: 1.1mm; min-height: 52mm;
+    }
+    .panel {
+      border: 1px solid var(--line); border-radius: 1.8mm;
+      background: linear-gradient(180deg, #ffffff 0%, var(--surface) 100%);
+      display: grid; grid-template-rows: auto 1fr; min-height: 0; overflow: hidden;
+    }
+    .panel-body {
+      padding: 1.15mm 1.35mm 1.2mm;
+      font-size: 6.5px; color: var(--faint); font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center;
+    }
+    .findings {
+      border: 1px solid var(--line); border-radius: 1.8mm;
+      background: linear-gradient(180deg, #ffffff 0%, var(--surface) 100%);
+    }
+    .findings .head {
+      display: flex; align-items: center; gap: 1.2mm;
+      padding: 1.1mm 1.5mm; border-bottom: 1px solid var(--line);
+      background: rgba(248, 250, 252, 0.94);
+    }
+    .findings .dot { width: 2.2mm; height: 2.2mm; border-radius: 50%; flex-shrink: 0; }
+    .findings .head h2 { font-size: 7.8px; font-weight: 900; color: var(--ink-2); }
+    .verdicts { display: flex; flex-wrap: wrap; gap: 0.8mm; padding: 1mm 1.5mm 0; }
+    .verdict {
+      border: 1px solid var(--line-2); border-radius: 999px; padding: 0.45mm 1.3mm 0.5mm;
+      font-size: 6.8px; font-weight: 800; color: var(--ink-2); background: #fff;
+    }
+    .verdict strong { font-family: var(--num); color: var(--muted); margin-right: 0.55mm; }
+    .verdict.warn { border-color: rgba(217,119,6,0.38); background: rgba(217,119,6,0.08); }
+    .findings .body { padding: 1mm 1.5mm 1.3mm; font-size: 7.8px; line-height: 1.58; color: var(--ink-2); }
+    .footer {
+      display: flex; justify-content: space-between; padding-top: 1.2mm;
+      border-top: 1px solid var(--line-2); font-family: var(--num); font-size: 6.8px; color: var(--faint);
+    }
+    .preview-ribbon {
+      position: fixed; top: 10px; right: 10px; z-index: 99;
+      background: #1e293b; color: #fff; font-size: 11px; font-weight: 800;
+      padding: 6px 12px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-ribbon">デザインプレビュー（静的）</div>
+  <div class="pages">
+    <article class="page">
+      <header class="header">
+        <div class="title-row">
+          <h1>持出返却レポート</h1>
+          <span class="cat-badge" style="background:#ea580c">計測機器</span>
+        </div>
+        <div class="meta">
+          <div class="id">RPT-PREVIEW-TREEMAP</div>
+          <div>期間 2026-04-01 — 2026-04-18 · Asia/Tokyo · 本社 · admin · 生成 2026-04-19</div>
+        </div>
+      </header>
+
+      <section class="metric-strip" style="--metric-color:#1e293b">
+        <div class="metric" style="--metric-color:#1e293b"><div class="label">管理対象</div><div class="value">100<span class="unit">点</span></div></div>
+        <div class="metric" style="--metric-color:#ea580c"><div class="label">持出</div><div class="value">120</div></div>
+        <div class="metric" style="--metric-color:#0d9488"><div class="label">返却</div><div class="value">110</div></div>
+        <div class="metric" style="--metric-color:#2563eb"><div class="label">未返却</div><div class="value">5</div></div>
+        <div class="metric" style="--metric-color:#dc2626"><div class="label">期限超過</div><div class="value">1</div></div>
+        <div class="metric" style="--metric-color:#0d9488"><div class="label">返却率</div><div class="value">86<span class="unit">%</span></div></div>
+      </section>
+
+      <section class="eval-grid">
+        <div class="hero-card hero-card--supply-treemap">
+          <div class="card-head">
+            <h2>足りているか / 余っているか</h2>
+            <span class="tiny-tag tag-warn">やや逼迫</span>
+          </div>
+          <div class="supply-treemap-host" id="supplyTreemap" aria-label="需給ヒートマップ"></div>
+        </div>
+
+        <div class="hero-card">
+          <div class="card-head">
+            <h2>持出返却ルールが守られているか</h2>
+            <span class="tiny-tag tag-warn">注意</span>
+          </div>
+          <div class="hero-body">
+            <svg viewBox="0 0 70 70" width="56" height="56" aria-hidden="true">
+              <circle cx="35" cy="35" r="24" fill="none" stroke="#e2e8f0" stroke-width="9"/>
+              <circle cx="35" cy="35" r="24" fill="none" stroke="#ea580c" stroke-width="9" stroke-linecap="round"
+                stroke-dasharray="120 31" transform="rotate(-90 35 35)"/>
+              <text x="35" y="32" text-anchor="middle" font-size="6.5" fill="#64748b" font-family="var(--num)">遵守</text>
+              <text x="35" y="44" text-anchor="middle" font-size="15" font-weight="900" fill="#0f172a" font-family="var(--num)">86</text>
+            </svg>
+            <div>
+              <div style="font-size:8px;font-weight:900;color:#ea580c">注意</div>
+              <div style="font-size:6.4px;color:#94a3b8;margin-top:2px">返却率と期限内率の低い方で評価（本番どおり）</div>
+            </div>
+          </div>
+          <div class="chip-grid">
+            <div class="chip"><div class="k">返却完了率</div><div class="v">92%</div></div>
+            <div class="chip"><div class="k">期限内率</div><div class="v">80%</div></div>
+            <div class="chip"><div class="k">期限超過率</div><div class="v">20%</div></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="divider"><h2>アイテム軸 / 人軸 / 両軸</h2></div>
+
+      <section class="analysis-grid">
+        <section class="panel">
+          <div class="card-head"><h3 style="font-size:7.9px">アイテム軸 · 需要と在庫のギャップ</h3><span class="tiny-tag tag-warn">供給</span></div>
+          <div class="panel-body">既存の横棒グラフ（プレビュー省略）</div>
+        </section>
+        <section class="panel">
+          <div class="card-head"><h3 style="font-size:7.9px">人軸 · 借用者別の実件数</h3><span class="tiny-tag tag-warn">遵守</span></div>
+          <div class="panel-body">既存のフロー棒（プレビュー省略）</div>
+        </section>
+        <section class="panel">
+          <div class="card-head"><h3 style="font-size:7.9px">両軸 · 人×物の集中ヒート</h3><span class="tiny-tag tag-warn">交点</span></div>
+          <div class="panel-body">既存ヒートマップ（プレビュー省略）</div>
+        </section>
+        <section class="panel">
+          <div class="card-head"><h3 style="font-size:7.9px">時系列 · 持出件数と返却完了率</h3><span class="tiny-tag tag-warn">横ばい</span></div>
+          <div class="panel-body">既存トレンド SVG（プレビュー省略）</div>
+        </section>
+      </section>
+
+      <section class="findings">
+        <div class="head">
+          <span class="dot" style="background:#ea580c"></span>
+          <h2>所見・総括</h2>
+        </div>
+        <div class="verdicts">
+          <span class="verdict warn"><strong>総合</strong>需給に注意</span>
+          <span class="verdict warn"><strong>傾向</strong>やや逼迫</span>
+        </div>
+        <div class="body">
+          <p class="findings-p">左ペインは従来のゲージ＋二段バーの代わりに、名寄せTOPを株ボード風ツリーマップで提示する案のプレビューです。本番組み込み時は itemAxis 相当データに台数・即時持出を載せて同ロジックで描画します。</p>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>Generated by Admin Console</span>
+        <span>単票レポート — 計測機器</span>
+      </footer>
+    </article>
+  </div>
+
+  <script>
+(function () {
+  'use strict';
+
+  /** 名寄せ群ごとの台数・即時持出（プレビュー用。本番は API 集計値をそのまま渡す想定） */
+  const sectors = [
+    {
+      name: '計測機器（名寄せ）',
+      items: [
+        { n: 'ノギス', t: 3, o: 2 },
+        { n: 'マイクロメータ', t: 2, o: 2 },
+        { n: 'ピンゲージ', t: 4, o: 1 },
+        { n: '高度計', t: 6, o: 1 },
+      ],
+    },
+  ];
+
+  function loanRatio(o, t) {
+    return o / Math.max(1, t);
+  }
+
+  function colorForStock(o, t) {
+    const avail = t - o;
+    if (avail <= 0) return { bg: '#991b1b', fg: '#fecaca' };
+    if (t > 0 && avail / t <= 0.25) return { bg: '#ca8a04', fg: '#fef9c3' };
+    const r = loanRatio(o, t);
+    if (r >= 0.55) return { bg: '#166534', fg: '#bbf7d0' };
+    return { bg: '#14532d', fg: '#86efac' };
+  }
+
+  function severityArea(o, t) {
+    const r = loanRatio(o, t);
+    return Math.max(0.08, r * r);
+  }
+
+  function worst(row, s) {
+    if (!row.length) return Infinity;
+    let sum = 0, maxA = -Infinity, minA = Infinity;
+    for (const n of row) {
+      sum += n.a;
+      maxA = Math.max(maxA, n.a);
+      minA = Math.min(minA, n.a);
+    }
+    const s2 = s * s;
+    return Math.max((s2 * maxA) / (sum * sum), (sum * sum) / (s2 * minA));
+  }
+
+  function squarify(nodes, x, y, w, h) {
+    const sumV = nodes.reduce((s, n) => s + n.v, 0);
+    if (sumV <= 0 || w <= 0 || h <= 0) return [];
+    const area = w * h;
+    const prepared = nodes.map((n) => ({ ...n, a: (n.v / sumV) * area }))
+      .sort((a, b) => b.a - a.a);
+    const result = [];
+
+    function lay(items, rx, ry, rw, rh) {
+      if (!items.length) return;
+      if (items.length === 1) {
+        const n = items[0];
+        result.push({ ...n, x: rx, y: ry, w: Math.max(0, rw), h: Math.max(0, rh) });
+        return;
+      }
+      const horiz = rw >= rh;
+      const shortSide = Math.max(0.0001, horiz ? rh : rw);
+      let row = [];
+      let rest = items.slice();
+      while (rest.length) {
+        const next = rest[0];
+        const trial = row.concat([next]);
+        if (row.length > 0 && worst(trial, shortSide) >= worst(row, shortSide)) break;
+        row = trial;
+        rest.shift();
+      }
+      if (!row.length) row = [rest.shift()];
+      const sumRow = row.reduce((s, n) => s + n.a, 0);
+      if (horiz) {
+        const rowH = sumRow / rw;
+        let cx = rx;
+        for (const n of row) {
+          const cw = n.a / rowH;
+          lay([n], cx, ry, cw, rowH);
+          cx += cw;
+        }
+        lay(rest, rx, ry + rowH, rw, Math.max(0, rh - rowH));
+      } else {
+        const rowW = sumRow / rh;
+        let cy = ry;
+        for (const n of row) {
+          const ch = n.a / rowW;
+          lay([n], rx, cy, rowW, ch);
+          cy += ch;
+        }
+        lay(rest, rx + rowW, ry, Math.max(0, rw - rowW), rh);
+      }
+    }
+    lay(prepared, x, y, w, h);
+    return result;
+  }
+
+  function deflate(layout, m) {
+    return layout.map((r) => ({
+      ...r,
+      x: r.x + m,
+      y: r.y + m,
+      w: Math.max(0, r.w - 2 * m),
+      h: Math.max(0, r.h - 2 * m),
+    }));
+  }
+
+  function render() {
+    const host = document.getElementById('supplyTreemap');
+    host.innerHTML = '';
+    const W = host.offsetWidth;
+    const H = host.offsetHeight;
+    const pad = 4;
+    const gapS = 4;
+    const gapI = 1.5;
+    const labelH = 16;
+
+    const genreNodes = sectors.map((s) => ({
+      ...s,
+      v: s.items.reduce((a, it) => a + severityArea(it.o, it.t), 0),
+    }));
+
+    let gl = squarify(
+      genreNodes.map((g) => ({ ...g, v: g.v })),
+      pad,
+      pad,
+      W - 2 * pad,
+      H - 2 * pad
+    );
+    gl = deflate(gl, gapS / 2);
+
+    for (const g of gl) {
+      const se = document.createElement('div');
+      se.className = 'tm-sector';
+      se.style.left = g.x + 'px';
+      se.style.top = g.y + 'px';
+      se.style.width = g.w + 'px';
+      se.style.height = g.h + 'px';
+
+      const title = document.createElement('div');
+      title.className = 'tm-sector-title';
+      title.textContent = g.name;
+      se.appendChild(title);
+
+      const innerW = Math.max(0, g.w - 2);
+      const innerH = Math.max(0, g.h - labelH - 2);
+      const itemNodes = g.items.map((it) => ({ it, v: severityArea(it.o, it.t) }));
+
+      let il = squarify(
+        itemNodes.map((x) => ({ ...x, v: x.v })),
+        1,
+        labelH,
+        innerW,
+        innerH
+      );
+      il = deflate(il, gapI / 2);
+
+      for (const c of il) {
+        const el = document.createElement('div');
+        el.className = 'tm-cell';
+        el.style.left = c.x + 'px';
+        el.style.top = c.y + 'px';
+        el.style.width = c.w + 'px';
+        el.style.height = c.h + 'px';
+        const { bg, fg } = colorForStock(c.it.o, c.it.t);
+        el.style.background = bg;
+        el.style.color = fg;
+
+        const fs = Math.max(7, Math.min(11, Math.sqrt(c.w * c.h) * 0.11));
+        if (c.h > 20 && c.w > 32) {
+          const name = document.createElement('div');
+          name.className = 'tm-name';
+          name.style.fontSize = fs + 'px';
+          name.textContent = c.it.n;
+          const nums = document.createElement('div');
+          nums.className = 'tm-nums';
+          nums.style.fontSize = fs * 1.02 + 'px';
+          nums.textContent = c.it.o + ' / ' + c.it.t;
+          el.appendChild(name);
+          el.appendChild(nums);
+        } else if (c.h > 12) {
+          const nums = document.createElement('div');
+          nums.className = 'tm-nums';
+          nums.style.fontSize = fs + 'px';
+          nums.textContent = c.it.o + '/' + c.it.t;
+          el.appendChild(nums);
+        }
+        se.appendChild(el);
+      }
+      host.appendChild(se);
+    }
+  }
+
+  window.addEventListener('resize', render);
+  render();
+})();
+  </script>
+</body>
+</html>

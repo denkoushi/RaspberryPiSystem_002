@@ -2,6 +2,8 @@ import type { LoanAnalyticsPeriodEventRow } from '@raspi-system/shared-types';
 import type {
   LoanReportCategoryKey,
   LoanReportCategoryLabelJa,
+  LoanReportSupplyBottleneckRow,
+  LoanReportSupplyGroupTimeseries,
   LoanReportViewModel,
 } from './loan-report.types.js';
 import type { LoanReportNormalizedAnalytics } from './loan-report-aggregate.service.js';
@@ -27,6 +29,25 @@ function shortLabel(text: string, maxLen: number): string {
   const t = text.trim();
   if (t.length <= maxLen) return t;
   return `${t.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+/** analytics 月次バケットと揃える（meta.timeZone の IANA 名を想定） */
+function isoToYearMonth(iso: string, timeZone: string): string {
+  const d = new Date(iso);
+  try {
+    const parts = new Intl.DateTimeFormat('en', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(d);
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    if (!y || !m) return '';
+    return `${y}-${m.padStart(2, '0')}`;
+  } catch {
+    const utc = new Date(iso);
+    return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
 }
 
 function buildReportId(generatedAt: Date): string {
@@ -235,6 +256,27 @@ export class LoanReportEvaluationService {
       .sort((a, b) => b.periodBorrowCount - a.periodBorrowCount || b.assetCount - a.assetCount)
       .slice(0, 5);
 
+    const assetIdToGroup = new Map(assetRows.map((r) => [r.id, r.groupLabel]));
+    const timeZone = normalized.response.meta.timeZone;
+    let groupTimeseries: LoanReportSupplyGroupTimeseries | null = null;
+    if (monthly.length > 0 && topItems.length > 0) {
+      const raw = this.buildSupplyGroupTimeseries({
+        monthly,
+        periodEvents: normalized.response.periodEvents,
+        assetIdToGroup,
+        focusLabel: topItems[0].label,
+        periodFrom: normalized.response.meta.periodFrom,
+        periodTo: normalized.response.meta.periodTo,
+        timeZone,
+      });
+      groupTimeseries = this.fillSupplyGroupBorrowMonthFromTotalsWhenNoEvents({
+        ts: raw,
+        monthly,
+        topGroupPeriodBorrows: topItems[0].periodBorrowCount,
+      });
+    }
+    const bottleneckTop2: LoanReportSupplyBottleneckRow[] = this.buildSupplyBottleneckTop2(groupedAssets);
+
     const totalBorrowForShare = groupedAssets.reduce((s, r) => s + r.periodBorrowCount, 0);
     const top5Share =
       totalBorrowForShare > 0
@@ -242,10 +284,14 @@ export class LoanReportEvaluationService {
         : 0;
 
     const itemAxis = topItems.map((row) => {
+      const unitsTotal = row.assetCount;
+      const unitsOut = Math.max(0, unitsTotal - row.availableCount);
       return {
         name: shortLabel(row.label, 22),
         demand: row.periodBorrowCount,
         stock: row.availableCount,
+        unitsTotal,
+        unitsOut,
       };
     });
 
@@ -297,6 +343,30 @@ export class LoanReportEvaluationService {
     });
     const trend = this.buildTrend(monthly, supplyScore, complianceScore);
 
+    const safetyStrain = clamp(100 - Math.min(safetyCoverDays * (100 / 14), 100), 0, 100);
+    const demandStrain = clamp(demandIntensity / 2, 0, 100);
+    const peakStrain = clamp((peakLoadPct / 150) * 100, 0, 100);
+    const topStrain = clamp(top5Share, 0, 100);
+    const vitalsSparkPct: [number, number, number, number, number] = [
+      Math.round(safetyStrain),
+      Math.round(utilization),
+      Math.round(demandStrain),
+      Math.round(peakStrain),
+      Math.round(topStrain),
+    ];
+
+    const slackPct = Math.round(
+      summary.totalActive > 0 ? (availableCount / summary.totalActive) * 100 : 0
+    );
+    const pressurePct = Math.round(
+      clamp(
+        (demandIntensity / 2) * 0.4 + (peakLoadPct / 150) * 100 * 0.35 + top5Share * 0.25,
+        0,
+        100
+      )
+    );
+    const balanceViz = { slackPct, pressurePct };
+
     const findings = this.buildFindings({
       supplyState,
       supplyScore,
@@ -311,6 +381,14 @@ export class LoanReportEvaluationService {
       overdueOpenCount: summary.overdueOpenCount,
       openLoanCount: summary.openLoanCount,
       availableCount,
+      safetyCoverDays,
+      demandIntensity,
+      peakLoadPct,
+      top5Share,
+      slackPct,
+      pressurePct,
+      supplyFocusLabel: groupTimeseries?.groupLabel ?? null,
+      bottleneckTop2,
     });
     const metricsReturnRate = Math.round(complianceScore);
 
@@ -339,6 +417,8 @@ export class LoanReportEvaluationService {
         score: Math.round(supplyScore),
         state: supplyState,
         tagClass: supplyTag,
+        vitalsSparkPct,
+        balanceViz,
         chips: [
           { k: '安全在庫カバー', v: `${safetyCoverDays.toFixed(1)}日` },
           { k: '即時利用可能', v: `${availableCount}点` },
@@ -346,6 +426,8 @@ export class LoanReportEvaluationService {
           { k: 'ピーク負荷', v: pct(peakLoadPct) },
           { k: 'TOP5集中度', v: pct(top5Share) },
         ],
+        groupTimeseries,
+        bottleneckTop2,
       },
       compliance: {
         score: Math.round(complianceScore),
@@ -399,6 +481,14 @@ export class LoanReportEvaluationService {
     overdueOpenCount: number;
     openLoanCount: number;
     availableCount: number;
+    safetyCoverDays: number;
+    demandIntensity: number;
+    peakLoadPct: number;
+    top5Share: number;
+    slackPct: number;
+    pressurePct: number;
+    supplyFocusLabel: string | null;
+    bottleneckTop2: LoanReportSupplyBottleneckRow[];
   }): LoanReportViewModel['findings'] {
     const hasAnyLoanActivity = params.periodBorrowCount > 0 || params.openLoanCount > 0;
     if (!hasAnyLoanActivity) {
@@ -407,10 +497,10 @@ export class LoanReportEvaluationService {
         overall: { text: '判定保留', cls: 'warn' },
         trend: { text: 'データなし', cls: 'warn' },
         body: [
-          `利用率は ${Math.round(params.utilization)}% で、即時利用可能は ${params.availableCount} 点です。`,
-          '期間内に持出・返却・未返却が発生していないため、遵守評価は判定保留です。',
-          `月次系列（${last} まで）は持出件数と返却率の実測推移を表示しています。`,
-        ].join(''),
+          `【需給】左ペインのツリーマップは名寄せ群ごとの即時持出/台数（セル面積は持出の強さ）。即時余力 ${params.slackPct}、需要圧 ${params.pressurePct}。利用率 ${Math.round(params.utilization)}%、即時利用可能 ${params.availableCount} 点。`,
+          '【遵守】期間内に持出・返却・未返却がないため判定保留。',
+          `【図表】アイテム／人／ヒート／時系列の読み方は所見のみ。月次 ${last} まで。`,
+        ].join('\n\n'),
       };
     }
 
@@ -440,17 +530,112 @@ export class LoanReportEvaluationService {
           ? 'やや高負荷'
           : '安定';
 
+    const supplyAuxParts: string[] = [];
+    if (params.supplyFocusLabel) {
+      supplyAuxParts.push(
+        `名寄せ「${shortLabel(params.supplyFocusLabel, 14)}」は左ツリーマップでも面積が大きく出やすい（期間持出が集中しやすい群）。`
+      );
+    }
+    if (params.bottleneckTop2.length > 0) {
+      supplyAuxParts.push(
+        `需給が詰まりやすい名寄せは ${params.bottleneckTop2
+          .map((b) => `「${b.label}」（期間 ${b.periodBorrows} 件・即時 ${b.availableNow} 台）`)
+          .join('、')}。`
+      );
+    }
+    const supplyAux = supplyAuxParts.length > 0 ? supplyAuxParts.join('') : '';
+
     const body = [
-      `利用率は ${Math.round(params.utilization)}% で、即時利用可能は ${params.availableCount} 点です。`,
-      `返却完了率は ${Math.round(params.displayReturnRate)}%、未返却 ${params.openLoanCount} 件のうち期限超過は ${params.overdueOpenCount} 件です。`,
-      `月次系列（${last} まで）は持出件数と返却率の実測推移を表示しています。`,
-    ].join('');
+      `【需給・過不足】左のツリーマップは名寄せTOPをセルで表示（各セル＝持出中/台数、面積∝深刻度）。数値の補足: 即時余力 ${params.slackPct}、需要圧 ${params.pressurePct}。利用率 ${Math.round(params.utilization)}%、即時利用可能 ${params.availableCount} 点。${supplyAux}`,
+      `【遵守】スコア ${Math.round(params.complianceScore)} は期間内返却の総合。期限遵守・超過・返却/持出は右チップ。未返却 ${params.openLoanCount} 件のうち期限超過 ${params.overdueOpenCount} 件。`,
+      `【図表】アイテム軸＝需要帯と即時在庫線、人軸＝借用者別実件、ヒート＝人×物の集中、時系列＝月別持出と返却率。月次は ${last} まで。`,
+    ].join('\n\n');
 
     return {
       overall: { text: overallText, cls: overallCls },
       trend: { text: trendText, cls: trendCls },
       body,
     };
+  }
+
+  private buildSupplyGroupTimeseries(params: {
+    monthly: Array<{ yearMonth: string; borrowCount: number; returnCount: number }>;
+    periodEvents: LoanAnalyticsPeriodEventRow[];
+    assetIdToGroup: Map<string, string>;
+    focusLabel: string;
+    periodFrom: string;
+    periodTo: string;
+    timeZone: string;
+  }): LoanReportSupplyGroupTimeseries {
+    const { monthly, periodEvents, assetIdToGroup, focusLabel, periodFrom, periodTo, timeZone } = params;
+    const borrowByMonth = monthly.map(() => 0);
+    const totalBorrowByMonth = monthly.map((m) => m.borrowCount);
+    const from = new Date(periodFrom).getTime();
+    const to = new Date(periodTo).getTime();
+
+    for (const ev of periodEvents) {
+      if (ev.kind !== 'BORROW') continue;
+      const t = new Date(ev.eventAt).getTime();
+      if (t < from || t > to) continue;
+      if (assetIdToGroup.get(ev.assetId) !== focusLabel) continue;
+      const ym = isoToYearMonth(ev.eventAt, timeZone);
+      const idx = monthly.findIndex((m) => m.yearMonth === ym);
+      if (idx >= 0) borrowByMonth[idx] += 1;
+    }
+
+    return { groupLabel: focusLabel, borrowByMonth, totalBorrowByMonth };
+  }
+
+  /**
+   * periodEvents が空・または該当群の月別が取れないとき、
+   * 名寄せ群の期間合計持出件数を月次全体の形（比率）に按分してミニ経時を成立させる。
+   */
+  private fillSupplyGroupBorrowMonthFromTotalsWhenNoEvents(params: {
+    ts: LoanReportSupplyGroupTimeseries;
+    monthly: Array<{ yearMonth: string; borrowCount: number; returnCount: number }>;
+    topGroupPeriodBorrows: number;
+  }): LoanReportSupplyGroupTimeseries {
+    const sumEvents = params.ts.borrowByMonth.reduce((a, b) => a + b, 0);
+    if (sumEvents > 0) return params.ts;
+    const cap = Math.max(0, params.topGroupPeriodBorrows);
+    if (cap === 0) return params.ts;
+    const mSum = params.monthly.reduce((a, m) => a + m.borrowCount, 0);
+    if (mSum <= 0) return params.ts;
+    const borrowByMonth = params.monthly.map((m) => Math.round(cap * (m.borrowCount / mSum)));
+    let drift = cap - borrowByMonth.reduce((a, b) => a + b, 0);
+    if (drift !== 0 && borrowByMonth.length > 0) {
+      borrowByMonth[borrowByMonth.length - 1] += drift;
+    }
+    return { ...params.ts, borrowByMonth };
+  }
+
+  private buildSupplyBottleneckTop2(
+    groupedAssets: Array<{
+      label: string;
+      detailLabels: string[];
+      periodBorrowCount: number;
+      availableCount: number;
+    }>
+  ): LoanReportSupplyBottleneckRow[] {
+    const candidates = groupedAssets.filter((g) => g.periodBorrowCount > 0);
+    return [...candidates]
+      .map((g) => ({
+        g,
+        strain: g.periodBorrowCount / Math.max(1, g.availableCount),
+      }))
+      .sort(
+        (a, b) =>
+          b.strain - a.strain ||
+          b.g.periodBorrowCount - a.g.periodBorrowCount ||
+          b.g.availableCount - a.g.availableCount
+      )
+      .slice(0, 2)
+      .map(({ g }) => ({
+        label: shortLabel(g.label, 16),
+        detail: shortLabel(g.detailLabels[0] ?? g.label, 18),
+        periodBorrows: g.periodBorrowCount,
+        availableNow: g.availableCount,
+      }));
   }
 
   private buildCrossHeatmap(params: {

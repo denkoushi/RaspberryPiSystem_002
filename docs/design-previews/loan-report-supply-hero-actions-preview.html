@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>プレビュー — 過不足ペイン（本番テンプレ準拠）</title>
+  <style>
+    :root {
+      --ink: #0f172a;
+      --ink-2: #1e293b;
+      --sub: #475569;
+      --muted: #64748b;
+      --faint: #94a3b8;
+      --line: #dbe3ef;
+      --line-2: #c4d0df;
+      --surface: #f8fafc;
+      --surface-2: #f1f5f9;
+      --white: #fff;
+      --accent: #3b82f6;
+      --bad: #dc2626;
+      --num: ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: ui-sans-serif, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #e9edf3; font-family: var(--sans); color: var(--ink); padding: 16px; }
+    .preview-banner {
+      max-width: 210mm; margin: 0 auto 12px; padding: 10px 12px;
+      border: 1px dashed var(--line-2); border-radius: 8px;
+      background: rgba(255, 255, 255, 0.85); font-size: 12px; line-height: 1.55; color: var(--sub);
+    }
+    .page {
+      width: 210mm; max-width: 100%; margin: 0 auto; background: var(--white);
+      border: 1px solid #ccd5e1; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+      padding: 5.5mm 6mm 5mm; display: grid; gap: 1.4mm;
+    }
+    .header {
+      display: grid; grid-template-columns: 1fr auto; gap: 2mm; align-items: end;
+      padding-bottom: 1.8mm; border-bottom: 2.6px solid var(--ink);
+    }
+    .title-row { display: flex; align-items: baseline; gap: 2.4mm; }
+    .title-row h1 { font-size: 18px; font-weight: 900; letter-spacing: 0.05em; }
+    .cat-badge {
+      display: inline-flex; align-items: center; height: 6.5mm; padding: 0 2.8mm;
+      border-radius: 999px; color: #fff; font-size: 9.5px; font-weight: 900;
+      background: var(--accent);
+    }
+    .meta { text-align: right; font-family: var(--num); font-size: 7.1px; color: var(--sub); }
+    .meta .id { font-weight: 800; color: var(--ink-2); font-size: 7.7px; }
+
+    .metric-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1mm; }
+    .metric {
+      position: relative; border: 1px solid var(--line); border-radius: 1.4mm;
+      background: var(--surface); padding: 1mm 1.35mm 1.2mm; overflow: hidden;
+    }
+    .metric::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--metric-color);
+    }
+    .metric .label { font-size: 6.8px; color: var(--muted); font-weight: 700; }
+    .metric .value {
+      margin-top: 0.55mm; font-family: var(--num); font-size: 16px; font-weight: 800;
+      color: var(--metric-color);
+    }
+    .metric .unit { margin-left: 0.5mm; font-size: 7px; color: var(--muted); font-weight: 600; }
+
+    .eval-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2mm; }
+    .hero-card {
+      border: 1px solid var(--line); border-radius: 1.8mm;
+      background: linear-gradient(180deg, #fff 0%, var(--surface) 100%);
+      display: grid; grid-template-rows: auto 1fr auto; min-height: 36.5mm; overflow: hidden;
+    }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.15mm 1.6mm; border-bottom: 1px solid var(--line);
+      background: rgba(248, 250, 252, 0.92);
+    }
+    .card-head h2 { font-size: 7.9px; font-weight: 800; color: var(--ink-2); }
+    .tiny-tag {
+      font-family: var(--num); font-size: 6.2px; font-weight: 800;
+      padding: 0 1.5mm; border-radius: 999px; background: rgba(220,38,38,0.12); color: var(--bad);
+    }
+    .hero-body {
+      padding: 1.4mm 1.6mm 1.2mm; display: grid; grid-template-columns: 1.2fr 0.9fr;
+      gap: 1.2mm; align-items: center;
+    }
+    .hero-body--supply .supply-spark-row { grid-column: 1 / -1; display: flex; gap: 0.55mm; padding-top: 0.35mm; }
+    .supply-spark-cell {
+      flex: 1; min-height: 2.8mm; background: var(--surface-2); border-radius: 0.7mm;
+      overflow: hidden; border: 1px solid rgba(203,213,225,0.75);
+    }
+    .supply-spark-fill { height: 100%; border-radius: 0.45mm; }
+    .hero-text { display: grid; gap: 0.8mm; }
+    .hero-text .big { font-family: var(--num); font-size: 24px; font-weight: 900; color: var(--accent); }
+    .hero-text .state { font-size: 8px; font-weight: 900; color: var(--accent); }
+
+    .chip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.9mm; padding: 0 1.4mm 1.3mm; }
+    .chip {
+      border: 1px solid var(--line); border-radius: 1.1mm; background: rgba(255,255,255,0.88);
+      padding: 0.85mm 1mm; min-height: 9mm;
+    }
+    .chip .k { font-size: 6.1px; color: var(--muted); font-weight: 700; }
+    .chip .v { margin-top: 0.45mm; font-family: var(--num); font-size: 10px; font-weight: 800; color: var(--ink-2); }
+
+    .findings {
+      border: 1px solid var(--line); border-radius: 1.8mm;
+      background: linear-gradient(180deg, #fff 0%, var(--surface) 100%);
+    }
+    .findings .head {
+      display: flex; align-items: center; gap: 1.2mm; padding: 1.1mm 1.5mm;
+      border-bottom: 1px solid var(--line); background: rgba(248, 250, 252, 0.94);
+    }
+    .findings .head h2 { font-size: 7.8px; font-weight: 900; color: var(--ink-2); }
+    .findings .dot { width: 2.2mm; height: 2.2mm; border-radius: 50%; background: var(--accent); }
+    .findings .body { padding: 1mm 1.5mm 1.3mm; font-size: 7.8px; line-height: 1.58; color: var(--ink-2); }
+    .findings .body .findings-p { margin: 0 0 1mm; }
+    .findings .body .findings-p:last-child { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+  <p class="preview-banner">
+    <strong>過不足ペインの目的</strong>：今の需給で「すぐ貸せる在庫に余力があるか」を<strong>数値・帯・5本の緊張度バー・チップ</strong>だけで一瞥させる（説明文は置かない）。<br />
+    <strong>文章は「所見・総括」だけ</strong>（本番は <code>buildFindings</code> → 段落化）。分析パネル下の注釈も所見に集約済み。
+  </p>
+
+  <article class="page">
+    <header class="header">
+      <div class="title-row">
+        <h1>持出返却レポート</h1>
+        <span class="cat-badge">計測機器</span>
+      </div>
+      <div class="meta">
+        <div class="id">RPT-MOCK</div>
+        <div>期間・拠点・作成者（略）</div>
+      </div>
+    </header>
+
+    <section class="metric-strip">
+      <div class="metric" style="--metric-color:#1e293b"><div class="label">管理対象</div><div class="value">24<span class="unit">点</span></div></div>
+      <div class="metric" style="--metric-color:#ea580c"><div class="label">持出</div><div class="value">120</div></div>
+      <div class="metric" style="--metric-color:#0d9488"><div class="label">返却</div><div class="value">96</div></div>
+      <div class="metric" style="--metric-color:#2563eb"><div class="label">未返却</div><div class="value">24</div></div>
+      <div class="metric" style="--metric-color:#dc2626"><div class="label">期限超過</div><div class="value">3</div></div>
+      <div class="metric" style="--metric-color:#0d9488"><div class="label">返却率</div><div class="value">72<span class="unit">%</span></div></div>
+    </section>
+
+    <section class="eval-grid">
+      <div class="hero-card">
+        <div class="card-head">
+          <h2>足りているか / 余っているか</h2>
+          <span class="tiny-tag">逼迫</span>
+        </div>
+        <div class="hero-body hero-body--supply">
+          <div class="hero-text">
+            <div class="big">100%</div>
+            <div class="state">逼迫</div>
+          </div>
+          <div aria-hidden="true">
+            <svg viewBox="0 0 290 54" width="100%" height="54">
+              <rect x="10" y="20" width="75.6" height="10" rx="4" fill="#d9e4ef"/>
+              <rect x="85.6" y="20" width="70.2" height="10" rx="4" fill="#c7f0e5"/>
+              <rect x="155.8" y="20" width="54" height="10" rx="4" fill="#fde0b9"/>
+              <rect x="209.8" y="20" width="70.2" height="10" rx="4" fill="#f8c7c7"/>
+              <rect x="10" y="20" width="270" height="10" rx="4" fill="none" stroke="#94a3b8" stroke-width="0.8" opacity="0.65"/>
+              <path d="M 280 19 L 276 12 L 284 12 Z" fill="#0f172a"/>
+            </svg>
+          </div>
+          <div class="supply-spark-row">
+            <div class="supply-spark-cell"><div class="supply-spark-fill" style="width:100%;background:linear-gradient(90deg,var(--accent),#dc2626)"></div></div>
+            <div class="supply-spark-cell"><div class="supply-spark-fill" style="width:100%;background:linear-gradient(90deg,var(--accent),#dc2626)"></div></div>
+            <div class="supply-spark-cell"><div class="supply-spark-fill" style="width:100%;background:linear-gradient(90deg,var(--accent),#dc2626)"></div></div>
+            <div class="supply-spark-cell"><div class="supply-spark-fill" style="width:67%;background:linear-gradient(90deg,var(--accent),#dc2626)"></div></div>
+            <div class="supply-spark-cell"><div class="supply-spark-fill" style="width:100%;background:linear-gradient(90deg,var(--accent),#dc2626)"></div></div>
+          </div>
+        </div>
+        <div class="chip-grid">
+          <div class="chip"><div class="k">安全在庫カバー</div><div class="v">0.0日</div></div>
+          <div class="chip"><div class="k">即時利用可能</div><div class="v">0点</div></div>
+          <div class="chip"><div class="k">需要密度</div><div class="v">200%</div></div>
+          <div class="chip"><div class="k">ピーク負荷</div><div class="v">150%</div></div>
+          <div class="chip"><div class="k">TOP5集中度</div><div class="v">100%</div></div>
+        </div>
+      </div>
+      <div class="hero-card">
+        <div class="card-head"><h2>持出返却ルールが守られているか</h2><span class="tiny-tag" style="background:rgba(220,38,38,0.12);color:var(--bad)">要改善</span></div>
+        <div class="hero-body" style="grid-template-columns:1fr">
+          <div style="font-size:7px;color:var(--muted);text-align:center">（遵守ゲージ・チップは本番と同構造）</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="findings">
+      <div class="head">
+        <span class="dot"></span>
+        <h2>所見・総括</h2>
+      </div>
+      <div class="body">
+        <p class="findings-p">【需給・過不足】…（本文は API の所見のみ。過不足の読み方・次の判断材料をここに集約）</p>
+        <p class="findings-p">【遵守】…</p>
+        <p class="findings-p">【図表】…</p>
+      </div>
+    </section>
+  </article>
+</body>
+</html>
