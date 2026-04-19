@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>工場アイテム — ヒートマップ・ツリーマップ プレビュー</title>
+  <style>
+    :root {
+      --bg: #0a0a0b;
+      --panel: #121214;
+      --border: #2a2a2e;
+      --text: #e8e8ea;
+      --muted: #8b8b93;
+      --sector-label: #a1a1aa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .chrome {
+      padding: 10px 14px 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 20px;
+      background: var(--panel);
+    }
+    .chrome h1 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .chrome .meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .legend-bar {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .legend-gradient {
+      width: 180px;
+      height: 10px;
+      border-radius: 2px;
+      border: 1px solid var(--border);
+      background: linear-gradient(90deg, #14532d, #4ade80, #eab308, #f97316, #dc2626);
+    }
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      width: 180px;
+      font-size: 9px;
+      margin-top: 2px;
+    }
+    .wrap {
+      padding: 8px;
+    }
+    .treemap {
+      position: relative;
+      width: 100%;
+      height: min(72vh, 640px);
+      min-height: 420px;
+      background: #050506;
+      border: 1px solid var(--border);
+    }
+    .sector {
+      position: absolute;
+      border: 1px solid #3f3f46;
+      background: rgba(24, 24, 27, 0.85);
+      overflow: hidden;
+    }
+    .sector-title {
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      height: 18px;
+      padding: 2px 6px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: var(--sector-label);
+      background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+      pointer-events: none;
+      z-index: 1;
+    }
+    .cell {
+      position: absolute;
+      border: 1px solid rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2px;
+      cursor: default;
+      transition: filter 0.12s;
+    }
+    .cell:hover {
+      filter: brightness(1.12);
+      z-index: 2;
+    }
+    .cell .name {
+      font-weight: 800;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      width: 100%;
+    }
+    .cell .nums {
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.95;
+      letter-spacing: 0.02em;
+    }
+    .footnote {
+      padding: 10px 14px;
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <header class="chrome">
+    <h1>工場アイテム持出 · 過不足（デザインプレビュー）</h1>
+    <span class="meta" id="periodMeta">期間: —</span>
+    <div class="legend-bar">
+      <span>緊張度（面積）</span>
+      <div>
+        <div class="legend-gradient" aria-hidden="true"></div>
+        <div class="legend-labels"><span>低</span><span>高</span></div>
+      </div>
+    </div>
+  </header>
+  <div class="wrap">
+    <div class="treemap" id="map"></div>
+  </div>
+  <p class="footnote">
+    モック: 第1階層＝ジャンル、第2階層＝アイテム。セル内は<strong>持出数 / 保有数</strong>（点の絶対値）。面積・色は o÷t から算出。スクエアリファイド配置。
+  </p>
+
+  <script>
+(function () {
+  const sectors = [
+    {
+      name: '測定器',
+      items: [
+        { n: 'デジタルノギス', t: 12, o: 11 },
+        { n: 'マイクロメータ', t: 5, o: 2 },
+        { n: 'ピンゲージ', t: 4, o: 3 },
+        { n: '高度計', t: 8, o: 1 },
+      ],
+    },
+    {
+      name: '締結工具',
+      items: [
+        { n: 'トルクレンチ', t: 8, o: 7 },
+        { n: 'インパクト', t: 6, o: 3 },
+      ],
+    },
+    {
+      name: '安全用品',
+      items: [
+        { n: 'ヘルメット', t: 40, o: 38 },
+        { n: '手袋', t: 25, o: 7 },
+        { n: '安全靴', t: 30, o: 14 },
+        { n: '吊りベルト', t: 5, o: 5 },
+        { n: '保護メガネ', t: 20, o: 3 },
+      ],
+    },
+    {
+      name: '切削工具',
+      items: [
+        { n: 'エンドミルφ10', t: 15, o: 14 },
+        { n: 'ドリルφ8.5', t: 20, o: 7 },
+        { n: 'タップM6', t: 10, o: 0 },
+      ],
+    },
+    {
+      name: '計装',
+      items: [
+        { n: '圧力計', t: 3, o: 3 },
+        { n: '熱電対K', t: 6, o: 4 },
+        { n: 'PLC予備', t: 2, o: 0 },
+      ],
+    },
+  ];
+
+  function loanRatio(o, t) {
+    const tt = Math.max(1, t);
+    return o / tt;
+  }
+
+  /** 色: 在庫残 = t−o（不足 / 警告25%以下 / 正常＋持出の強さで緑の濃淡） */
+  function colorForStock(o, t) {
+    const avail = t - o;
+    if (avail <= 0) return { bg: '#991b1b', fg: '#fecaca' };
+    if (t > 0 && avail / t <= 0.25) return { bg: '#ca8a04', fg: '#fef9c3' };
+    const r = loanRatio(o, t);
+    if (r >= 0.55) return { bg: '#166534', fg: '#bbf7d0' };
+    return { bg: '#14532d', fg: '#86efac' };
+  }
+
+  function severityArea(o, t) {
+    const r = loanRatio(o, t);
+    return Math.max(0.08, r * r);
+  }
+
+  function worst(row, s) {
+    if (!row.length) return Infinity;
+    let sum = 0, maxA = -Infinity, minA = Infinity;
+    for (const n of row) {
+      sum += n.a;
+      maxA = Math.max(maxA, n.a);
+      minA = Math.min(minA, n.a);
+    }
+    const s2 = s * s;
+    return Math.max((s2 * maxA) / (sum * sum), (sum * sum) / (s2 * minA));
+  }
+
+  function squarify(nodes, x, y, w, h) {
+    const sumV = nodes.reduce((s, n) => s + n.v, 0);
+    if (sumV <= 0 || w <= 0 || h <= 0) return [];
+    const area = w * h;
+    const prepared = nodes.map((n) => ({ ...n, a: (n.v / sumV) * area }))
+      .sort((a, b) => b.a - a.a);
+    const result = [];
+
+    function lay(items, rx, ry, rw, rh) {
+      if (!items.length) return;
+      if (items.length === 1) {
+        const n = items[0];
+        result.push({ ...n, x: rx, y: ry, w: Math.max(0, rw), h: Math.max(0, rh) });
+        return;
+      }
+      const horiz = rw >= rh;
+      const shortSide = Math.max(0.0001, horiz ? rh : rw);
+      let row = [];
+      let rest = items.slice();
+      while (rest.length) {
+        const next = rest[0];
+        const trial = row.concat([next]);
+        if (row.length > 0 && worst(trial, shortSide) >= worst(row, shortSide)) break;
+        row = trial;
+        rest.shift();
+      }
+      if (!row.length) row = [rest.shift()];
+      const sumRow = row.reduce((s, n) => s + n.a, 0);
+      if (horiz) {
+        const rowH = sumRow / rw;
+        let cx = rx;
+        for (const n of row) {
+          const cw = n.a / rowH;
+          lay([n], cx, ry, cw, rowH);
+          cx += cw;
+        }
+        lay(rest, rx, ry + rowH, rw, Math.max(0, rh - rowH));
+      } else {
+        const rowW = sumRow / rh;
+        let cy = ry;
+        for (const n of row) {
+          const ch = n.a / rowW;
+          lay([n], rx, cy, rowW, ch);
+          cy += ch;
+        }
+        lay(rest, rx + rowW, ry, Math.max(0, rw - rowW), rh);
+      }
+    }
+    lay(prepared, x, y, w, h);
+    return result;
+  }
+
+  function deflate(layout, m) {
+    return layout.map((r) => ({
+      ...r,
+      x: r.x + m,
+      y: r.y + m,
+      w: Math.max(0, r.w - 2 * m),
+      h: Math.max(0, r.h - 2 * m),
+    }));
+  }
+
+  function render() {
+    const map = document.getElementById('map');
+    map.innerHTML = '';
+    const W = map.offsetWidth;
+    const H = map.offsetHeight;
+    const pad = 4;
+    const gapS = 4;
+    const gapI = 1.5;
+    const labelH = 18;
+
+    document.getElementById('periodMeta').textContent =
+      '表示: 今日 · ' + new Date().toLocaleDateString('ja-JP');
+
+    const genreNodes = sectors.map((s) => ({
+      ...s,
+      v: s.items.reduce((a, it) => a + severityArea(it.o, it.t), 0),
+    }));
+
+    let gl = squarify(
+      genreNodes.map((g) => ({ ...g, v: g.v })),
+      pad,
+      pad,
+      W - 2 * pad,
+      H - 2 * pad
+    );
+    gl = deflate(gl, gapS / 2);
+
+    for (const g of gl) {
+      const se = document.createElement('div');
+      se.className = 'sector';
+      se.style.left = g.x + 'px';
+      se.style.top = g.y + 'px';
+      se.style.width = g.w + 'px';
+      se.style.height = g.h + 'px';
+
+      const title = document.createElement('div');
+      title.className = 'sector-title';
+      title.textContent = g.name;
+      se.appendChild(title);
+
+      const innerW = Math.max(0, g.w - 2);
+      const innerH = Math.max(0, g.h - labelH - 2);
+      const items = g.items.map((it) => ({
+        it,
+        v: severityArea(it.o, it.t),
+      }));
+
+      let il = squarify(
+        items.map((x) => ({ ...x, v: x.v })),
+        1,
+        labelH,
+        innerW,
+        innerH
+      );
+      il = deflate(il, gapI / 2);
+
+      for (const c of il) {
+        const el = document.createElement('div');
+        el.className = 'cell';
+        el.style.left = c.x + 'px';
+        el.style.top = c.y + 'px';
+        el.style.width = c.w + 'px';
+        el.style.height = c.h + 'px';
+        const { bg, fg } = colorForStock(c.it.o, c.it.t);
+        el.style.background = bg;
+        el.style.color = fg;
+
+        const fs = Math.max(7, Math.min(12, Math.sqrt(c.w * c.h) * 0.12));
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.style.fontSize = fs + 'px';
+        name.textContent = c.it.n;
+        const nums = document.createElement('div');
+        nums.className = 'nums';
+        nums.style.fontSize = fs * 1.05 + 'px';
+        nums.textContent = c.it.o + ' / ' + c.it.t;
+        if (c.h > 22 && c.w > 36) {
+          el.appendChild(name);
+          el.appendChild(nums);
+        } else if (c.h > 14) {
+          nums.textContent = c.it.o + '/' + c.it.t;
+          el.appendChild(nums);
+        }
+
+        se.appendChild(el);
+      }
+      map.appendChild(se);
+    }
+  }
+
+  window.addEventListener('resize', render);
+  render();
+})();
+  </script>
+</body>
+</html>

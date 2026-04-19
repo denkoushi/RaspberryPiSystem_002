@@ -31,7 +31,11 @@ function createReportModel(): LoanReportViewModel {
       score: 48,
       state: '適正',
       tagClass: 'tag-ok',
+      vitalsSparkPct: [20, 30, 25, 40, 15],
+      balanceViz: { slackPct: 52, pressurePct: 38 },
       chips: [],
+      groupTimeseries: null,
+      bottleneckTop2: [],
     },
     compliance: {
       score: 92,

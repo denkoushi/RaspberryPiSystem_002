@@ -1,5 +1,8 @@
 import type { LoanReportViewModel } from './loan-report.types.js';
 
+import { layoutSupplyTreemap } from './treemap/loan-report-treemap-layout.js';
+import { buildEmptySupplyTreemapSvg, buildSupplyTreemapSvg } from './treemap/loan-report-treemap-svg.js';
+
 function escapeHtml(s: string): string {
   return s
     .replaceAll('&', '&amp;')
@@ -7,6 +10,29 @@ function escapeHtml(s: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function renderFindingsParagraphs(body: string): string {
+  const parts = body
+    .split(/\n\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.map((p) => `<p class="findings-p">${escapeHtml(p)}</p>`).join('');
+}
+
+function renderSupplyTreemap(report: LoanReportViewModel): string {
+  const cells = report.itemAxis.map((row) => ({
+    name: row.name,
+    o: row.unitsOut,
+    t: row.unitsTotal,
+  }));
+  const { cellRects, options } = layoutSupplyTreemap(cells);
+  const sectorTitle = `${report.category}（名寄せ）`;
+  const svg =
+    cells.length === 0
+      ? buildEmptySupplyTreemapSvg(options)
+      : buildSupplyTreemapSvg({ sectorTitle, cellRects, options });
+  return `<div class="supply-treemap-wrap">${svg}</div>`;
 }
 
 function mixHexWithWhite(hex: string, amount: number): string {
@@ -199,8 +225,14 @@ const REPORT_STYLES = `
 
     .hero-card {
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto auto auto;
       min-height: 36.5mm;
+      align-content: start;
+    }
+
+    .hero-card--supply-treemap {
+      grid-template-rows: auto 1fr;
+      min-height: 44mm;
     }
 
     .card-head {
@@ -244,6 +276,24 @@ const REPORT_STYLES = `
       grid-template-columns: 1.2fr 0.9fr;
       gap: 1.2mm;
       align-items: center;
+    }
+
+    .hero-body--supply-treemap {
+      padding: 1.1mm 1.4mm 1.3mm;
+      min-height: 0;
+    }
+
+    .supply-treemap-wrap {
+      width: 100%;
+      height: 40mm;
+      max-height: 42mm;
+      line-height: 0;
+    }
+
+    .supply-treemap-wrap svg {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
 
     .chip-grid {
@@ -578,6 +628,14 @@ const REPORT_STYLES = `
       color: var(--ink-2);
     }
 
+    .findings .body .findings-p {
+      margin: 0 0 1mm;
+    }
+
+    .findings .body .findings-p:last-child {
+      margin-bottom: 0;
+    }
+
     .footer {
       display: flex;
       justify-content: space-between;
@@ -637,46 +695,6 @@ function renderMetricStrip(metrics: LoanReportViewModel['metrics']): string {
       `;
 }
 
-function renderSupplyScale(report: LoanReportViewModel): string {
-  const score = report.supply.score;
-  const accent = report.accent;
-  const W = 290;
-  const H = 54;
-  const trackX = 10;
-  const trackY = 20;
-  const trackW = 270;
-  const trackH = 10;
-  const pointerX = trackX + trackW * (score / 100);
-  const zones = [
-    { w: 0.28, color: '#d9e4ef', label: '余裕' },
-    { w: 0.26, color: '#c7f0e5', label: '適正' },
-    { w: 0.2, color: '#fde0b9', label: 'やや逼迫' },
-    { w: 0.26, color: '#f8c7c7', label: '逼迫' },
-  ];
-  let x = trackX;
-  let rects = '';
-  let labels = '';
-  for (const zone of zones) {
-    const w = trackW * zone.w;
-    rects += `<rect x="${x}" y="${trackY}" width="${w}" height="${trackH}" rx="4" fill="${zone.color}"/>`;
-    labels += `<text x="${x + w / 2}" y="${trackY + 18}" text-anchor="middle" font-size="6" fill="#64748b" font-family="var(--sans)" font-weight="700">${escapeHtml(zone.label)}</text>`;
-    x += w;
-  }
-  return `
-        <div class="hero-text">
-          <div class="big" style="color:${escapeHtml(accent)}">${score}%</div>
-          <div class="state" style="color:${escapeHtml(accent)}">${escapeHtml(report.supply.state)}</div>
-          <div class="sub">現在の利用率。高いほど今すぐ使える在庫が少なく、需給が逼迫しています。</div>
-        </div>
-        <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" aria-hidden="true">
-          ${rects}
-          <rect x="${trackX}" y="${trackY}" width="${trackW}" height="${trackH}" rx="4" fill="none" stroke="#94a3b8" stroke-width="0.8" opacity="0.65"/>
-          ${labels}
-          <path d="M ${pointerX} ${trackY - 1} L ${pointerX - 4} ${trackY - 8} L ${pointerX + 4} ${trackY - 8} Z" fill="#0f172a"/>
-        </svg>
-      `;
-}
-
 function renderComplianceGauge(report: LoanReportViewModel): string {
   const score = report.compliance.score;
   const accent = report.accent;
@@ -694,7 +712,6 @@ function renderComplianceGauge(report: LoanReportViewModel): string {
           </svg>
           <div class="hero-text">
             <div class="state" style="color:${escapeHtml(accent)}">${escapeHtml(report.compliance.state)}</div>
-            <div class="sub">期間内の返却完了率。期限超過率と未返却件数は下段チップで補足します。</div>
           </div>
         </div>
       `;
@@ -741,7 +758,6 @@ function renderItemBars(report: LoanReportViewModel): string {
         <div class="bars">
           ${rows}
         </div>
-        <div class="panel-note">色帯=需要、黒線=使える在庫。需要帯が在庫線を超えるほど不足寄り。</div>
       `;
 }
 
@@ -786,7 +802,6 @@ function renderFlowBars(report: LoanReportViewModel): string {
         <div class="flow-stack">
           ${rows}
         </div>
-        <div class="panel-note">借用者ごとの実件数。持出・返却・未返却・超過を別バーで表示し、推定配分は行いません。</div>
       `;
 }
 
@@ -811,7 +826,6 @@ function renderHeatmap(report: LoanReportViewModel): string {
     }
   });
   html += '</div>';
-  html += '<div class="panel-note">濃いほど人×物の接点が強く、需給・運用ルールの両面で影響が出やすい交点。</div>';
   return html;
 }
 
@@ -846,7 +860,7 @@ function renderTrend(report: LoanReportViewModel): string {
   });
   svg += `<rect x="${W - 76}" y="8" width="4" height="4" rx="1" fill="${escapeHtml(report.accent)}"/><text x="${W - 69}" y="11.6" font-size="6" fill="#475569" font-family="var(--sans)">持出件数</text>`;
   svg += `<rect x="${W - 38}" y="8" width="4" height="4" rx="1" fill="#0d9488"/><text x="${W - 31}" y="11.6" font-size="6" fill="#475569" font-family="var(--sans)">返却率</text>`;
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" aria-hidden="true">${svg}</svg><div class="panel-note">月別の持出件数と返却完了率の実測推移です。</div>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" aria-hidden="true">${svg}</svg>`;
 }
 
 function pageHtml(report: LoanReportViewModel): string {
@@ -866,15 +880,14 @@ function pageHtml(report: LoanReportViewModel): string {
           ${renderMetricStrip(report.metrics)}
 
           <section class="eval-grid">
-            <div class="hero-card">
+            <div class="hero-card hero-card--supply-treemap">
               <div class="card-head">
                 <h2>足りているか / 余っているか</h2>
                 <span class="tiny-tag ${escapeHtml(report.supply.tagClass)}">${escapeHtml(report.supply.state)}</span>
               </div>
-              <div class="hero-body">
-                ${renderSupplyScale(report)}
+              <div class="hero-body hero-body--supply-treemap">
+                ${renderSupplyTreemap(report)}
               </div>
-              ${renderChips(report.supply.chips)}
             </div>
 
             <div class="hero-card">
@@ -930,7 +943,7 @@ function pageHtml(report: LoanReportViewModel): string {
               <span class="verdict ${escapeHtml(report.findings.overall.cls)}"><strong>総合</strong>${escapeHtml(report.findings.overall.text)}</span>
               <span class="verdict ${escapeHtml(report.findings.trend.cls)}"><strong>傾向</strong>${escapeHtml(report.findings.trend.text)}</span>
             </div>
-            <div class="body">${escapeHtml(report.findings.body)}</div>
+            <div class="body">${renderFindingsParagraphs(report.findings.body)}</div>
           </section>
 
           <footer class="footer">
@@ -949,6 +962,7 @@ export class LoanReportHtmlRenderer {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(report.category)} 持出返却レポート</title>
+  <meta name="loan-report:supply-pane" content="treemap-hero-v1" />
   <style>
 ${REPORT_STYLES}
   </style>

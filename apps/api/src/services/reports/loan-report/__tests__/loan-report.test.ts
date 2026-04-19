@@ -115,8 +115,24 @@ describe('loan report domain', () => {
     expect(vm.category).toBe('計測機器');
     expect(vm.metrics.assets).toBe(100);
     expect(vm.cross.values.length).toBeGreaterThan(0);
-    expect(vm.itemAxis[0]).toMatchObject({ name: 'ノギス', demand: 24, stock: 2 });
+    expect(vm.itemAxis[0]).toMatchObject({
+      name: 'ノギス',
+      demand: 24,
+      stock: 2,
+      unitsTotal: 2,
+      unitsOut: 0,
+    });
     expect(vm.personAxis[0]).toMatchObject({ name: '山田 太郎', borrowed: 25, open: 2, overdue: 1 });
+  });
+
+  it('does not describe removed supply UI (dual bar / inner gauge) in findings', () => {
+    const svc = new LoanReportEvaluationService();
+    const vm = svc.buildViewModel({
+      category: 'measuring',
+      normalized: { kind: 'measuring', response: baseMeasuringResponse() },
+    });
+    expect(vm.findings.body).not.toContain('二段バー');
+    expect(vm.findings.body).not.toContain('左内');
   });
 
   it('renders stable HTML containing category label', () => {
@@ -128,6 +144,96 @@ describe('loan report domain', () => {
     const html = new LoanReportHtmlRenderer().renderDocument(vm);
     expect(html).toContain('計測機器');
     expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('supply-treemap-svg');
+  });
+
+  it('fills group monthly borrow from category shape when periodEvents lack per-group detail', () => {
+    const response = baseMeasuringResponse();
+    response.periodEvents = [];
+    const svc = new LoanReportEvaluationService();
+    const vm = svc.buildViewModel({
+      category: 'measuring',
+      normalized: { kind: 'measuring', response },
+    });
+    expect(vm.supply.groupTimeseries).not.toBeNull();
+    expect(vm.supply.groupTimeseries?.groupLabel).toBe('ノギス');
+    expect(vm.supply.groupTimeseries?.borrowByMonth.reduce((a, b) => a + b, 0)).toBe(24);
+    const html = new LoanReportHtmlRenderer().renderDocument(vm);
+    expect(html).toContain('loan-report:supply-pane');
+    expect(html).toContain('content="treemap-hero-v1"');
+    expect(html).toContain('supply-treemap-svg');
+  });
+
+  it('adds name-group monthly borrow series and bottleneck strip to supply eval and HTML', () => {
+    const response = baseMeasuringResponse();
+    response.meta.periodFrom = '2026-02-01T00:00:00.000Z';
+    response.meta.periodTo = '2026-04-18T23:59:59.000Z';
+    response.periodEvents = [
+      {
+        kind: 'BORROW',
+        eventAt: '2026-02-05T10:00:00.000Z',
+        assetId: 'i1',
+        assetLabel: 'M-001 ノギス',
+        actorDisplayName: '山田',
+        actorEmployeeId: 'e1',
+      },
+      {
+        kind: 'BORROW',
+        eventAt: '2026-02-08T11:00:00.000Z',
+        assetId: 'i1',
+        assetLabel: 'M-001 ノギス',
+        actorDisplayName: '山田',
+        actorEmployeeId: 'e1',
+      },
+      {
+        kind: 'BORROW',
+        eventAt: '2026-03-01T09:00:00.000Z',
+        assetId: 'i1',
+        assetLabel: 'M-001 ノギス',
+        actorDisplayName: '佐藤',
+        actorEmployeeId: 'e2',
+      },
+      {
+        kind: 'BORROW',
+        eventAt: '2026-03-12T09:00:00.000Z',
+        assetId: 'i2',
+        assetLabel: 'M-002 マイクロメータ',
+        actorDisplayName: '佐藤',
+        actorEmployeeId: 'e2',
+      },
+      {
+        kind: 'BORROW',
+        eventAt: '2026-04-05T10:00:00.000Z',
+        assetId: 'i1',
+        assetLabel: 'M-001 ノギス',
+        actorDisplayName: '山田',
+        actorEmployeeId: 'e1',
+      },
+      {
+        kind: 'BORROW',
+        eventAt: '2026-04-06T11:00:00.000Z',
+        assetId: 'i1',
+        assetLabel: 'M-001 ノギス',
+        actorDisplayName: '佐藤',
+        actorEmployeeId: 'e2',
+      },
+    ];
+    const svc = new LoanReportEvaluationService();
+    const vm = svc.buildViewModel({
+      category: 'measuring',
+      normalized: { kind: 'measuring', response },
+    });
+    expect(vm.supply.groupTimeseries).not.toBeNull();
+    expect(vm.supply.groupTimeseries?.groupLabel).toBe('ノギス');
+    expect(vm.supply.groupTimeseries?.borrowByMonth).toEqual([2, 1, 2]);
+    expect(vm.supply.groupTimeseries?.totalBorrowByMonth).toEqual([30, 40, 50]);
+    expect(vm.supply.bottleneckTop2[0]?.label).toBe('ノギス');
+    expect(vm.supply.bottleneckTop2[1]?.label).toBe('マイクロメータ');
+    expect(vm.findings.body).toContain('名寄せ「ノギス」');
+
+    const html = new LoanReportHtmlRenderer().renderDocument(vm);
+    expect(html).toContain('supply-treemap-svg');
+    expect(html).toContain('計測機器（名寄せ）');
   });
 
   it('calculates safety cover days with same-day range as one day window', async () => {
@@ -178,7 +284,9 @@ describe('loan report domain', () => {
     expect(vm.compliance.score).toBe(50);
     expect(vm.compliance.state).toBe('要改善');
     expect(vm.compliance.chips.find((c) => c.k === '返却/持出')?.v).toBe('2/2');
-    expect(vm.findings.body).toContain('返却完了率は 50%');
+    expect(vm.findings.body).toContain('スコア 50');
+    expect(vm.supply.vitalsSparkPct).toHaveLength(5);
+    expect(vm.supply.balanceViz).toEqual({ slackPct: 80, pressurePct: 58 });
   });
 
   it('sets return/compliance score to 0 when there is no borrow in period', async () => {
