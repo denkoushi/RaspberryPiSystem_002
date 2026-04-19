@@ -602,7 +602,7 @@ export class LoanReportEvaluationService {
     const mSum = params.monthly.reduce((a, m) => a + m.borrowCount, 0);
     if (mSum <= 0) return params.ts;
     const borrowByMonth = params.monthly.map((m) => Math.round(cap * (m.borrowCount / mSum)));
-    let drift = cap - borrowByMonth.reduce((a, b) => a + b, 0);
+    const drift = cap - borrowByMonth.reduce((a, b) => a + b, 0);
     if (drift !== 0 && borrowByMonth.length > 0) {
       borrowByMonth[borrowByMonth.length - 1] += drift;
     }
