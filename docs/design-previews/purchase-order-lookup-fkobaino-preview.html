@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FKOBAINO</title>
+  <style>
+    /* 配膳メイン（mobile-placement-main-page-detail-preview.html / mpKioskTheme）に合わせた高コントラスト */
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #000;
+      color: #fff;
+      padding: 0.75rem 1rem 2rem;
+      -webkit-font-smoothing: antialiased;
+    }
+    .preview-wrap { max-width: 420px; margin: 0 auto; }
+    .frame {
+      background: #111;
+      border-radius: 14px;
+      border: 2px solid #555;
+      overflow: hidden;
+      max-width: 420px;
+      margin: 0 auto 1.25rem;
+    }
+    .frame-inner {
+      display: flex;
+      flex-direction: column;
+      min-height: min(640px, 85vh);
+    }
+
+    /* 戻る（配膳メインの sky ボタン系） */
+    .back-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.65rem;
+      border-bottom: 2px solid #333;
+      background: #0f172a;
+    }
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.45rem 0.75rem;
+      border-radius: 0.5rem;
+      border: 2px solid #38bdf8;
+      background: #0c4a6e;
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-back:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+    }
+    /* 購買パネル（左ライム帯） */
+    .panel-purchase {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      border-left: 4px solid #84cc16;
+      background: #0f1a0a;
+    }
+    .input-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      gap: 0.35rem;
+    }
+    .input-order {
+      min-width: 12rem;
+      flex: 1;
+      height: 3rem;
+      border-radius: 0.375rem;
+      border: 2px solid #65a30d;
+      background: #000;
+      color: #fff;
+      font-size: 1.65rem;
+      font-variant-numeric: tabular-nums;
+      padding: 0 0.45rem;
+      letter-spacing: 0.02em;
+    }
+    .input-order::placeholder { color: #525252; }
+    .input-order:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(132, 204, 22, 0.35);
+    }
+
+    /* スキャンのみ主CTA（照会ボタンは廃止・自動照会） */
+    .btn-scan {
+      flex-shrink: 0;
+      padding: 0 0.85rem;
+      height: 3rem;
+      border-radius: 0.5rem;
+      border: 2px solid #38bdf8;
+      background: #0c4a6e;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .btn-scan:active { background: rgba(14, 116, 144, 0.55); }
+
+    .hint-auto {
+      font-size: 0.7rem;
+      color: #86efac;
+      line-height: 1.45;
+    }
+
+    .status {
+      font-size: 0.78rem;
+      min-height: 1.25rem;
+    }
+    .status.loading { color: #fde047; }
+    .status.err { color: #fca5a5; }
+    .status.ok { color: #86efac; }
+
+    /* 照会結果: 項目名ラベルなし・値のみ1列（順: 機種→製番→品名→品番→個数）。約2倍の視認サイズ */
+    .result-shell {
+      overflow: auto;
+      border-radius: 0.5rem;
+      border: 2px solid #3f3f46;
+      background: #000;
+      padding: 0.65rem 0.6rem;
+    }
+    .result-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .result-card {
+      border-radius: 0.45rem;
+      border: 1px solid #404040;
+      background: #0a0a0a;
+      padding: 0.65rem 0.7rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    /* ラベルなし: 値のみを 機種名→製番→品名→品番→個数 の順で縦並び */
+    .val-line {
+      font-size: 1.56rem;
+      line-height: 1.35;
+      font-weight: 700;
+      color: #fafafa;
+      word-break: break-word;
+    }
+    .val-line .hinmei-sub {
+      display: block;
+      margin-top: 0.25rem;
+      font-size: 0.62em;
+      font-weight: 500;
+      color: #a3a3a3;
+      line-height: 1.3;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="preview-wrap">
+    <div class="frame">
+      <div class="frame-inner">
+        <div class="back-row">
+          <!-- 実装時は React Router で /kiosk/mobile-placement へ -->
+          <a class="btn-back" href="#" id="btn-back-demo" title="配膳メインへ戻る（デモではアラート）">
+            <span aria-hidden="true">←</span> 配膳に戻る
+          </a>
+        </div>
+
+        <div class="panel-purchase">
+          <div class="input-row">
+            <input
+              class="input-order"
+              type="text"
+              inputmode="numeric"
+              maxlength="10"
+              placeholder="0000000000"
+              id="order-input"
+              autocomplete="off"
+              aria-label="注文番号10桁"
+            />
+            <button type="button" class="btn-scan" id="btn-scan-demo" title="カメラスキャンの代わりにデモ値を入れます">
+              スキャン（デモ）
+            </button>
+          </div>
+          <p class="hint-auto">手入力で10桁そろったときも<strong>自動照会</strong>（このHTMLではモックAPI）。</p>
+
+          <div class="status" id="status-line" aria-live="polite"></div>
+
+          <div class="result-shell" id="result-wrap" hidden>
+            <div class="result-list" id="result-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var input = document.getElementById('order-input');
+      var statusLine = document.getElementById('status-line');
+      var resultWrap = document.getElementById('result-wrap');
+      var resultList = document.getElementById('result-list');
+      var scanBtn = document.getElementById('btn-scan-demo');
+      var backBtn = document.getElementById('btn-back-demo');
+
+      var debounceTimer = null;
+
+      function setStatus(kind, text) {
+        statusLine.className = 'status' + (kind ? ' ' + kind : '');
+        statusLine.textContent = text || '';
+      }
+
+      function mockRows(orderNo) {
+        return [
+          {
+            machineName: 'MH-FOO',
+            seiban: 'BE1N9321',
+            purchasePartName: 'テーブル脚（左）',
+            masterPartName: '脚 ASSY L',
+            partCode: 'MH-SH-9012',
+            quantity: '2'
+          },
+          {
+            machineName: 'MH-FOO',
+            seiban: 'BE1N9321',
+            purchasePartName: 'ボルト M8',
+            masterPartName: 'ボルト M8',
+            partCode: 'BT-M8-40',
+            quantity: '8'
+          }
+        ];
+      }
+
+      function renderResults(rows) {
+        resultList.innerHTML = '';
+        rows.forEach(function (r) {
+          var hinmeiVal = escapeHtml(r.purchasePartName);
+          if (r.masterPartName && r.masterPartName !== r.purchasePartName) {
+            hinmeiVal +=
+              '<span class="hinmei-sub">既存DB: ' + escapeHtml(r.masterPartName) + '</span>';
+          }
+          var card = document.createElement('article');
+          card.className = 'result-card';
+          card.setAttribute('aria-label', '照会結果1件');
+          card.innerHTML =
+            '<div class="val-line">' +
+            escapeHtml(r.machineName) +
+            '</div>' +
+            '<div class="val-line">' +
+            escapeHtml(r.seiban) +
+            '</div>' +
+            '<div class="val-line">' +
+            hinmeiVal +
+            '</div>' +
+            '<div class="val-line">' +
+            escapeHtml(r.partCode) +
+            '</div>' +
+            '<div class="val-line">' +
+            escapeHtml(r.quantity) +
+            '</div>';
+          resultList.appendChild(card);
+        });
+        resultWrap.hidden = rows.length === 0;
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function runMockLookup(orderNo) {
+        setStatus('loading', '照会中…');
+        renderResults([]);
+        window.setTimeout(function () {
+          if (orderNo === '0000000000') {
+            setStatus('err', 'データがありません（デモ）');
+            renderResults([]);
+            return;
+          }
+          setStatus('ok', '照会完了（モック） — ' + orderNo);
+          renderResults(mockRows(orderNo));
+        }, 420);
+      }
+
+      function digitsOnly(v) {
+        return String(v).replace(/\D/g, '').slice(0, 10);
+      }
+
+      input.addEventListener('input', function () {
+        var d = digitsOnly(input.value);
+        if (d !== input.value) input.value = d;
+        if (debounceTimer) window.clearTimeout(debounceTimer);
+        if (d.length !== 10) {
+          setStatus('', '');
+          renderResults([]);
+          return;
+        }
+        debounceTimer = window.setTimeout(function () {
+          runMockLookup(d);
+        }, 280);
+      });
+
+      scanBtn.addEventListener('click', function () {
+        input.value = '0005059741';
+        runMockLookup('0005059741');
+      });
+
+      backBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        window.alert('実装時: navigate("/kiosk/mobile-placement") 相当');
+      });
+
+      /* デザインプレビュー: 初回からサンプル表示（並び・視認をその場で判断可能） */
+      input.value = '0005059741';
+      renderResults(mockRows('0005059741'));
+      resultWrap.hidden = false;
+      setStatus('ok', '照会完了（モック・プレビュー初期表示） — 0005059741');
+    })();
+  </script>
+</body>
+</html>
