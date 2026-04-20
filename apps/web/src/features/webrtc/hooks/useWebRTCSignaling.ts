@@ -83,8 +83,7 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
     const clientKey = getResolvedClientKey();
     const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
     const macDefaultKey = 'client-key-mac-kiosk1';
-    const clientKeyKind =
-      clientKey === DEFAULT_CLIENT_KEY ? 'default' : isMac && clientKey === macDefaultKey ? 'mac_default' : 'custom';
+    void (clientKey === DEFAULT_CLIENT_KEY ? 'default' : isMac && clientKey === macDefaultKey ? 'mac_default' : 'custom');
 
     if (!clientKey) {
       console.warn('WebRTC signaling: clientKey not found');
