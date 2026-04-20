@@ -16,7 +16,6 @@ describe('MobilePlacementRegisterSection', () => {
         registeredShelvesError={false}
         onRetryRegisteredShelves={vi.fn()}
         orderBarcode=""
-        onOrderBarcodeChange={vi.fn()}
         onOrderScan={vi.fn()}
         orderPlacementIntent="move_existing"
         onOrderPlacementIntentChange={vi.fn()}

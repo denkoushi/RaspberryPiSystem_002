@@ -36,14 +36,14 @@ export const mpKioskTheme = {
 
   shelfListShell:
     'flex min-h-0 flex-1 flex-col rounded-lg border-2 border-amber-800 bg-black p-2',
-  shelfChipGrid: 'grid max-h-[min(40vh,240px)] grid-cols-4 gap-1.5 overflow-y-auto',
+  shelfChipGrid: 'grid max-h-[min(40vh,240px)] grid-cols-3 sm:grid-cols-4 gap-1.5 overflow-y-auto',
   shelfChipButton:
-    'inline-flex h-11 min-h-11 max-h-11 w-full items-center justify-center gap-0 overflow-hidden whitespace-nowrap rounded-lg border-2 border-amber-700 bg-[#292000] px-0.5 font-extrabold leading-none text-white active:bg-amber-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40',
+    'inline-flex h-auto min-h-[2.75rem] w-full flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-amber-700 bg-[#292000] px-1 py-1 text-center text-sm font-extrabold leading-tight text-white active:bg-amber-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/40 sm:text-base',
   shelfChipButtonOn: 'border-emerald-500 bg-[#14532d] text-white',
   shelfChipPrefix:
-    'min-w-0 shrink truncate text-[clamp(14px,4vw,17px)] font-extrabold tracking-wide',
+    'max-w-full break-words text-[clamp(13px,3.6vw,16px)] font-extrabold tracking-wide',
   shelfChipNum:
-    'flex-shrink-0 text-[clamp(15px,4.2vw,19px)] font-extrabold tabular-nums tracking-wide',
+    'flex-shrink-0 text-[clamp(14px,3.8vw,18px)] font-extrabold tabular-nums tracking-wide',
 
   shelfUnstructuredLabel:
     'mb-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-500',

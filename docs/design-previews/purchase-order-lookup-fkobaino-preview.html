@@ -93,7 +93,7 @@
       box-shadow: 0 0 0 2px rgba(132, 204, 22, 0.35);
     }
 
-    /* スキャンのみ主CTA（照会ボタンは廃止・自動照会） */
+    /* スキャンで注文番号を入れて照会（照会ボタンはなし） */
     .btn-scan {
       flex-shrink: 0;
       padding: 0 0.85rem;
@@ -107,12 +107,6 @@
       cursor: pointer;
     }
     .btn-scan:active { background: rgba(14, 116, 144, 0.55); }
-
-    .hint-auto {
-      font-size: 0.7rem;
-      color: #86efac;
-      line-height: 1.45;
-    }
 
     .status {
       font-size: 0.78rem;
@@ -179,18 +173,18 @@
             <input
               class="input-order"
               type="text"
-              inputmode="numeric"
+              inputmode="none"
+              readonly
               maxlength="10"
               placeholder="0000000000"
               id="order-input"
               autocomplete="off"
-              aria-label="注文番号10桁"
+              aria-label="注文番号10桁（スキャンで入力）"
             />
             <button type="button" class="btn-scan" id="btn-scan-demo" title="カメラスキャンの代わりにデモ値を入れます">
               スキャン（デモ）
             </button>
           </div>
-          <p class="hint-auto">手入力で10桁そろったときも<strong>自動照会</strong>（このHTMLではモックAPI）。</p>
 
           <div class="status" id="status-line" aria-live="polite"></div>
 
@@ -210,8 +204,6 @@
       var resultList = document.getElementById('result-list');
       var scanBtn = document.getElementById('btn-scan-demo');
       var backBtn = document.getElementById('btn-back-demo');
-
-      var debounceTimer = null;
 
       function setStatus(kind, text) {
         statusLine.className = 'status' + (kind ? ' ' + kind : '');
@@ -293,24 +285,6 @@
         }, 420);
       }
 
-      function digitsOnly(v) {
-        return String(v).replace(/\D/g, '').slice(0, 10);
-      }
-
-      input.addEventListener('input', function () {
-        var d = digitsOnly(input.value);
-        if (d !== input.value) input.value = d;
-        if (debounceTimer) window.clearTimeout(debounceTimer);
-        if (d.length !== 10) {
-          setStatus('', '');
-          renderResults([]);
-          return;
-        }
-        debounceTimer = window.setTimeout(function () {
-          runMockLookup(d);
-        }, 280);
-      });
-
       scanBtn.addEventListener('click', function () {
         input.value = '0005059741';
         runMockLookup('0005059741');
@@ -321,11 +295,6 @@
         window.alert('実装時: navigate("/kiosk/mobile-placement") 相当');
       });
 
-      /* デザインプレビュー: 初回からサンプル表示（並び・視認をその場で判断可能） */
-      input.value = '0005059741';
-      renderResults(mockRows('0005059741'));
-      resultWrap.hidden = false;
-      setStatus('ok', '照会完了（モック・プレビュー初期表示） — 0005059741');
     })();
   </script>
 </body>

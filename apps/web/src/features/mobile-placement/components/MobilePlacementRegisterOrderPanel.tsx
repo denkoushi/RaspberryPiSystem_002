@@ -10,7 +10,6 @@ import type { OrderPlacementPageIntent } from '../shelfSelection';
 
 export type MobilePlacementRegisterOrderPanelProps = {
   orderBarcode: string;
-  onOrderBarcodeChange: (v: string) => void;
   onOrderScan: () => void;
   orderPlacementIntent: OrderPlacementPageIntent;
   onOrderPlacementIntentChange: (v: OrderPlacementPageIntent) => void;
@@ -39,11 +38,12 @@ export function MobilePlacementRegisterOrderPanel(props: MobilePlacementRegister
         <input
           id="mp-order-scan"
           value={props.orderBarcode}
-          onChange={(e) => props.onOrderBarcodeChange(e.target.value)}
-          inputMode="numeric"
+          readOnly
+          inputMode="none"
           autoComplete="off"
           placeholder={MP_PLACEHOLDER_ORDER}
           className={mpKioskTheme.orderInput}
+          aria-label={`${MP_PLACEHOLDER_ORDER}（スキャンで入力）`}
         />
         <IconScanButton variant="order" title="スキャン" aria-label="製造orderをスキャン" onClick={props.onOrderScan} />
       </div>

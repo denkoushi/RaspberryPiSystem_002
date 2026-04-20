@@ -18,7 +18,6 @@ export type MobilePlacementRegisterSectionProps = {
   registeredShelvesError: boolean;
   onRetryRegisteredShelves: () => void;
   orderBarcode: string;
-  onOrderBarcodeChange: (v: string) => void;
   onOrderScan: () => void;
   orderPlacementIntent: OrderPlacementPageIntent;
   onOrderPlacementIntentChange: (v: OrderPlacementPageIntent) => void;
@@ -62,7 +61,6 @@ export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSec
 
       <MobilePlacementRegisterOrderPanel
         orderBarcode={props.orderBarcode}
-        onOrderBarcodeChange={props.onOrderBarcodeChange}
         onOrderScan={props.onOrderScan}
         orderPlacementIntent={props.orderPlacementIntent}
         onOrderPlacementIntentChange={props.onOrderPlacementIntentChange}

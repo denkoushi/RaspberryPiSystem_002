@@ -29,13 +29,12 @@ describe('usePurchaseOrderLookup', () => {
 
     const { result } = renderHook(() =>
       usePurchaseOrderLookup({
-        debounceMs: 0,
         lookup
       })
     );
 
     await act(async () => {
-      result.current.onOrderNoChange('1234567890');
+      result.current.onScanSuccess('1234567890');
     });
 
     await waitFor(() => {
@@ -55,7 +54,6 @@ describe('usePurchaseOrderLookup', () => {
 
     const { result } = renderHook(() =>
       usePurchaseOrderLookup({
-        debounceMs: 0,
         lookup
       })
     );

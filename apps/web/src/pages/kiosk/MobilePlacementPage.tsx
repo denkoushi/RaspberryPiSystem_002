@@ -125,7 +125,6 @@ export function MobilePlacementPage() {
         registeredShelvesError={registeredShelvesQuery.isError}
         onRetryRegisteredShelves={() => void registeredShelvesQuery.refetch()}
         orderBarcode={mp.orderBarcode}
-        onOrderBarcodeChange={mp.setOrderBarcode}
         onOrderScan={() => mp.setScanField('order')}
         orderPlacementIntent={mp.orderPlacementIntent}
         onOrderPlacementIntentChange={mp.setOrderPlacementIntent}

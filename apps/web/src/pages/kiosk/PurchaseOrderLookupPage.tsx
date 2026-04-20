@@ -34,14 +34,14 @@ export function PurchaseOrderLookupPage() {
         <div className="flex flex-wrap gap-2">
           <input
             type="text"
-            inputMode="numeric"
+            inputMode="none"
+            readOnly
             className={purchaseOrderLookupKioskTheme.orderInput}
             placeholder="0000000000"
             value={mp.orderNo}
-            onChange={(e) => mp.onOrderNoChange(e.target.value)}
             maxLength={10}
             autoComplete="off"
-            aria-label="注文番号10桁"
+            aria-label="注文番号10桁（スキャンで入力）"
           />
           <button
             type="button"
@@ -51,10 +51,6 @@ export function PurchaseOrderLookupPage() {
             スキャン
           </button>
         </div>
-
-        <p className={purchaseOrderLookupKioskTheme.hintAuto}>
-          手入力で10桁そろったときも<strong>自動照会</strong>します。
-        </p>
 
         <div className={statusClass} aria-live="polite">
           {statusText}

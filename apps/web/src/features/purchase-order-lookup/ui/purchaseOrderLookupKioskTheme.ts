@@ -16,8 +16,6 @@ export const purchaseOrderLookupKioskTheme = {
   orderInput:
     'box-border h-12 min-h-12 min-w-[12rem] flex-1 rounded-md border-2 border-lime-600 bg-black px-2 text-[1.65rem] font-normal tabular-nums text-white placeholder:text-neutral-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime-400/40',
 
-  hintAuto: 'text-[0.7rem] leading-snug text-lime-300/90',
-
   statusLoading: 'min-h-[1.25rem] text-sm text-yellow-200',
   statusErr: 'min-h-[1.25rem] text-sm text-red-200',
   statusOk: 'min-h-[1.25rem] text-sm text-emerald-200',
