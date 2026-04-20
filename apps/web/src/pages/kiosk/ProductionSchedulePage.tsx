@@ -1,6 +1,5 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -265,8 +264,6 @@ export function ProductionSchedulePage() {
 
     if (!prev && next) {
       scheduleFetchStartRef.current = performance.now();
-      if (cursorDebugEnabled) {
-      }
       return;
     }
 
@@ -275,6 +272,7 @@ export function ProductionSchedulePage() {
       const elapsedMs = start ? Math.round(performance.now() - start) : null;
       scheduleFetchStartRef.current = null;
       if (cursorDebugEnabled) {
+        void elapsedMs;
       }
     }
   }, [
@@ -647,6 +645,9 @@ export function ProductionSchedulePage() {
     const fetchingCountSchedule = queryClient.isFetching({ queryKey: ['kiosk-production-schedule'] });
     const fetchingCountOrderUsage = queryClient.isFetching({ queryKey: ['kiosk-production-schedule-order-usage'] });
     if (cursorDebugEnabled) {
+      void isFetchingSchedule;
+      void fetchingCountSchedule;
+      void fetchingCountOrderUsage;
     }
 
     // Optimistic Updateにより、UIは即座に更新される
@@ -654,10 +655,12 @@ export function ProductionSchedulePage() {
       await completeRow(rowId);
       const elapsedMs = Math.round(performance.now() - t0);
       if (cursorDebugEnabled) {
+        void elapsedMs;
       }
     } catch (error) {
       const elapsedMs = Math.round(performance.now() - t0);
       if (cursorDebugEnabled) {
+        void elapsedMs;
       }
       throw error;
     }

@@ -3,8 +3,6 @@ import path from 'path';
 import { BackupConfigSchema, type BackupConfig, defaultBackupConfig, type CsvImportTarget } from './backup-config.js';
 import { findMissingRecommendedBackupTargets } from './backup-recommended-targets.catalog.js';
 import { logger } from '../../lib/logger.js';
-import { writeDebugLog } from '../../lib/debug-log.js';
-
 /**
  * バックアップ設定の読み込み
  */

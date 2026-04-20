@@ -4,8 +4,6 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
-import { writeDebugLog } from '../../lib/debug-log.js';
-
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   clientId?: string;
   clientSecret?: string;

@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 
-import { postClientLogs, postKioskPower } from '../../api/client';
+import { postKioskPower } from '../../api/client';
 import { useVerifyKioskDueManagementAccessPassword } from '../../api/hooks';
 import { resolveClientKeyForPower } from '../../lib/client-key';
 import { Row } from '../layout/Row';
