@@ -369,7 +369,6 @@ export class GmailApiClient {
    */
   async markAsRead(messageId: string): Promise<void> {
     try {
-      const safeMessageId = messageId ? messageId.slice(-6) : null;
       await this.gateExecute('gmail.users.messages.modify(markAsRead)', async () =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (this.gmail.users.messages.modify as any)(
@@ -403,7 +402,6 @@ export class GmailApiClient {
    */
   async trashMessage(messageId: string): Promise<void> {
     try {
-      const safeMessageId = messageId ? messageId.slice(-6) : null;
       const processedLabelName = (process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
       const processedLabelId = await this.ensureLabel(processedLabelName);
       await this.gateExecute('gmail.users.messages.modify(addProcessedLabel)', async () =>

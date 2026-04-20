@@ -4,8 +4,6 @@ import path from 'path';
 import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
-import { writeDebugLog } from '../../lib/debug-log.js';
-
 const powerActionSchema = z.object({
   action: z.enum(['reboot', 'poweroff'])
 });
