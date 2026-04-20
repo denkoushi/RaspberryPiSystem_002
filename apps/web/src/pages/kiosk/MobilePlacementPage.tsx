@@ -33,7 +33,14 @@ export function MobilePlacementPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex justify-end px-3 pt-2">
+      <div className="flex justify-end gap-2 px-3 pt-2">
+        <button
+          type="button"
+          className={mpKioskTheme.partSearchButton}
+          onClick={() => navigate('/kiosk/purchase-order-lookup')}
+        >
+          購買照会
+        </button>
         <button
           type="button"
           className={mpKioskTheme.partSearchButton}

@@ -14,7 +14,11 @@ import { CsvDashboardPostIngestService } from './csv-dashboard-post-ingest.servi
 import {
   ensureProductionScheduleSeibanMachineNameSupplementDashboard,
 } from '../production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
-import { PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } from '../production-schedule/constants.js';
+import { ensureProductionScheduleFkobainoDashboard } from '../production-schedule/fkobaino-dashboard.definition.js';
+import {
+  PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+} from '../production-schedule/constants.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -112,11 +116,17 @@ export class CsvDashboardImportService {
   }
 
   private async ensureFixedDashboardIfNeeded(dashboardId: string): Promise<void> {
-    if (dashboardId !== PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID) {
+    if (dashboardId === PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID) {
+      await ensureProductionScheduleSeibanMachineNameSupplementDashboard(prisma);
       return;
     }
 
-    await ensureProductionScheduleSeibanMachineNameSupplementDashboard(prisma);
+    if (dashboardId === PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID) {
+      await ensureProductionScheduleFkobainoDashboard(prisma);
+      // #region agent log
+      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'post-fix',hypothesisId:'H5',location:'csv-dashboard-import.service.ts:126',message:'ensured fixed FKOBAINO dashboard definition',data:{dashboardId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
   }
 
   private static mergeAuditMessage(params: {
@@ -152,6 +162,7 @@ export class CsvDashboardImportService {
     const dashboardSubjects = new Map<string, string[]>();
     const unifiedPatternSet = new Set<string>();
     for (const dashboardId of dashboardIds) {
+      await this.ensureFixedDashboardIfNeeded(dashboardId);
       const dashboard = await prisma.csvDashboard.findUnique({ where: { id: dashboardId } });
       if (!dashboard || !dashboard.enabled) {
         continue;
@@ -184,8 +195,6 @@ export class CsvDashboardImportService {
     }
 
     for (const dashboardId of dashboardIds) {
-      await this.ensureFixedDashboardIfNeeded(dashboardId);
-
       // #region agent log
       void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:dashboard-loop', message: 'Start dashboard ingest loop', data: { dashboardId, provider } });
       // #endregion
@@ -202,6 +211,9 @@ export class CsvDashboardImportService {
       }
 
       const subjectPatterns = dashboardSubjects.get(dashboardId) ?? [];
+      // #region agent log
+      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H2',location:'csv-dashboard-import.service.ts:204',message:'dashboard subject patterns resolved',data:{dashboardId,provider,subjectPatternCount:subjectPatterns.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (subjectPatterns.length === 0) {
         logger?.warn(
           { dashboardId, provider },
@@ -244,6 +256,9 @@ export class CsvDashboardImportService {
       }
 
       if (bufferResults.length === 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H1',location:'csv-dashboard-import.service.ts:246',message:'no matching messages for dashboard',data:{dashboardId,provider,subjectPatterns},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         logger?.info(
           { dashboardId, subjectPatterns, provider },
           '[CsvDashboardImportService] No matching Gmail message, skipping'
@@ -343,6 +358,9 @@ export class CsvDashboardImportService {
           // #endregion
           const shouldPostProcess = provider === 'gmail' && !!messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider);
           // #region agent log
+          fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H3',location:'csv-dashboard-import.service.ts:345',message:'gmail post-process gate evaluated',data:{dashboardId,provider,hasMessageId:!!messageId,shouldPostProcess,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          // #region agent log
           void emitDebugEvent({ sessionId: 'debug-session', runId: 'gmail-inbox-not-clearing', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:postProcess-decision', message: 'Decide whether to post-process Gmail message', data: { provider, shouldPostProcess, messageIdSuffix: safeMessageId } });
           // #endregion
           if (shouldPostProcess && messageId) {
@@ -415,6 +433,9 @@ export class CsvDashboardImportService {
             });
           }
         } catch (error) {
+          // #region agent log
+          fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H4',location:'csv-dashboard-import.service.ts:418',message:'message ingest/post-process failed',data:{dashboardId,provider,messageIdSuffix:safeMessageId,errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           // #region agent debug
           const errMsg = error instanceof Error ? error.message : String(error);
           stepLogs.push(`${safeMessageId}:outer-catch:${errMsg.slice(0, 100)}`);
@@ -494,7 +515,10 @@ export class CsvDashboardImportService {
         }
       }
 
-      if (totalProcessed === 0 && lastError) {
+      if (lastError && failedMessageIdSuffixes.length > 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'post-fix',hypothesisId:'H4',location:'csv-dashboard-import.service.ts:499',message:'escalate dashboard run failure due to per-message failure',data:{dashboardId,provider,failedMessageCount:failedMessageIdSuffixes.length,failedMessageIdSuffixes},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         throw lastError;
       }
 
@@ -524,6 +548,9 @@ export class CsvDashboardImportService {
           // #endregion
         },
       };
+      // #region agent log
+      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H4',location:'csv-dashboard-import.service.ts:527',message:'dashboard ingestion aggregate result',data:{dashboardId,provider,rowsProcessed:aggregatedResult.rowsProcessed,rowsAdded:aggregatedResult.rowsAdded,rowsSkipped:aggregatedResult.rowsSkipped,debug:aggregatedResult.debug},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       results[dashboardId] = aggregatedResult;
       logger?.info({ dashboardId, result: aggregatedResult }, '[CsvDashboardImportService] CSV dashboard ingestion completed');
     }
