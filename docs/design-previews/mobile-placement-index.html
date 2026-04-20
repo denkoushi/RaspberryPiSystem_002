@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>配膳スマホ（Android）デザインプレビュー一覧</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem 1.25rem 2rem; line-height: 1.5; background: #0f172a; color: #e2e8f0; }
+    h1 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+    p.note { font-size: 0.85rem; color: #94a3b8; margin: 0 0 1rem; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { margin: 0.65rem 0; padding: 0.65rem 0.75rem; background: #1e293b; border-radius: 8px; border-left: 4px solid #38bdf8; }
+    a { color: #7dd3fc; font-weight: 600; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .desc { display: block; font-size: 0.8rem; font-weight: normal; color: #cbd5e1; margin-top: 0.35rem; }
+  </style>
+</head>
+<body>
+  <h1>配膳スマホ（Android）— 静的デザインプレビュー（全9ページ）</h1>
+  <p class="note">
+    <code>docs/design-previews/</code> 内の <code>mobile-placement-*.html</code> のみを列挙。本番未接続のモックです。
+    ローカル表示例: <code>python3 -m http.server 8766</code> → このファイルを開く。
+  </p>
+  <ul>
+    <li>
+      <a href="./mobile-placement-main-page-detail-preview.html">mobile-placement-main-page-detail-preview.html</a>
+      <span class="desc">メイン画面（照合＋登録の一例）。本番レイアウト準拠の静的プレビュー。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-verify-collapsible-preview.html">mobile-placement-verify-collapsible-preview.html</a>
+      <span class="desc">照合の折りたたみ（既定は閉じる・展開で移動票/現品票）。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-shelf-register-layout-preview.html">mobile-placement-shelf-register-layout-preview.html</a>
+      <span class="desc">棚番登録（現状 vs 改善案・ヘッダー確定など）。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-register-section-stack-preview.html">mobile-placement-register-section-stack-preview.html</a>
+      <span class="desc">下半（登録済み棚番＋製造order）— 重なり vs 縦積み案。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-placement-board-all-cases-preview.html">mobile-placement-placement-board-all-cases-preview.html</a>
+      <span class="desc">棚一覧・俯瞰（案A〜D）。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-part-find-min-steps-preview.html">mobile-placement-part-find-min-steps-preview.html</a>
+      <span class="desc">目的部品の棚を最少手数で探す（複数パターン比較）。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-part-name-incremental-search-preview.html">mobile-placement-part-name-incremental-search-preview.html</a>
+      <span class="desc">部品名の段階的絞り込み（口頭照会）。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-gojuon-prune-nav-preview.html">mobile-placement-gojuon-prune-nav-preview.html</a>
+      <span class="desc">五十音＋A–Z カーナビ風（プリセット・剪定）。</span>
+    </li>
+    <li>
+      <a href="./mobile-placement-part-keyword-and-search-preview.html">mobile-placement-part-keyword-and-search-preview.html</a>
+      <span class="desc">登録済み部品を探す（五十音・AND・リアルタイム絞り込み案）。</span>
+    </li>
+  </ul>
+</body>
+</html>

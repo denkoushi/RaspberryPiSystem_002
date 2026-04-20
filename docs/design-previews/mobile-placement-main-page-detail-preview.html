@@ -152,7 +152,15 @@
       padding: 0 0.45rem; font-size: 1.875rem; line-height: 1.15;
       color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0;
     }
-
+    /* ヒント（placeholder）: 枠サイズは据え置き。可読性のため入力フォント比 0.5em（約15px相当）＋明るめの灰 */
+    .order-row input::placeholder,
+    .order-row input::-webkit-input-placeholder {
+      font-size: 0.5em;
+      line-height: 1.3;
+      font-weight: 600;
+      color: #cbd5e1;
+      opacity: 1;
+    }
     .intent-row {
       display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start;
       gap: 0.45rem; border-top: 2px solid #115e59; padding-top: 0.75rem;
@@ -205,7 +213,7 @@
 <body>
   <h1>配膳スマホ — メイン画面 静的プレビュー</h1>
   <p class="lead">
-    本番 <code>MobilePlacementPage</code>（<code>/kiosk/mobile-placement</code>）の <code>MobilePlacementVerifySection</code>（折りたたみ）＋ <code>MobilePlacementRegisterSection</code> の <strong>レイアウト・クラス趣旨に合わせた</strong>静的HTMLです。状態は一例（棚・製造order・分配が入力済み想定）。操作・API なし。
+    本番 <code>MobilePlacementPage</code>（<code>/kiosk/mobile-placement</code>）の <code>MobilePlacementVerifySection</code>（折りたたみ）＋ <code>MobilePlacementRegisterSection</code> の <strong>レイアウト・クラス趣旨に合わせた</strong>静的HTMLです。棚・分配は入力済み想定。製造orderは<strong>ヒント(placeholder)の見切れ確認のため空欄</strong>（値ありにする場合は input の <code>value</code> に10桁）。操作・API なし。
   </p>
 
   <div class="preview-wrap">
@@ -251,7 +259,7 @@
 
             <div class="panel-teal">
               <div class="order-row">
-                <input type="text" readonly value="0002178005" placeholder="製造order番号" />
+                <input type="text" readonly value="" placeholder="製造order番号" />
                 <button type="button" class="btn-scan order" title="スキャン" aria-label="製造orderをスキャン">
                   <!-- BarcodeBarsIcon 相当 -->
                   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
