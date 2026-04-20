@@ -1,6 +1,16 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-18（**V22 キオスク高視認テーマ・プレビュー整合**）・2026-04-13（**V21**・V20・V18 追記）
+最終更新: 2026-04-20（**V23 スキャン専用注文入力・棚チップグリッド**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+
+## V23（2026-04-20）モバイル注文入力スキャン専用・棚チップグリッド {#v23-scan-only-shelf-chip-2026-04-20}
+
+- **目的**: スマホキオスクで **ソフトキーボードからの誤入力**を抑え、**バーコードスキャンを正**とする（[ADR-20260418](../decisions/ADR-20260418-mobile-placement-android-browser-shell.md) の Chrome 継続方針と整合）。
+- **実装（Web のみ）**: 購買照会 **`/kiosk/purchase-order-lookup`** の注文番号・配膳 **`/kiosk/mobile-placement`** メイン下半の **製造order** を **`readOnly` + `inputMode="none"`**。`usePurchaseOrderLookup` の手入力 debounce を除去。**棚番候補チップ**は `mobilePlacementKioskTheme` で **`grid-cols-3 sm:grid-cols-4`**・縦積み可変高。**API/DB 契約不変**。
+- **デプロイ**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/scan-only-order-inputs-and-shelf-chip-mobile infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** の順に **1 台ずつ**（**`raspi4-fjv60-80`** は到達不能時 **未デプロイ**可・**Pi3 は対象外**）。
+- **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260420-211100-899` → `20260420-211743-28526` → `20260420-212322-14477` → `20260420-213004-29970`、各 **`failed=0` / `unreachable=0`**。代表コミット **`423e32bb`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: `raspi4-fjv60-80` の Pi5 経由 SSH・ベースライン同型）。
+- **知見**: **`raspi4-fjv60-80` プレフライト失敗**のあと Pi5 に **`runPid: null` の stale `.update-all-clients.lock`** が残り、**次の `--limit` でリモートロック取得不能**になり得る → [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2（本記録では runId **`20260420-212814-6231`** を削除後に `raspi4-kensaku-stonebase01` を再実行）。
+- **残作業（手動）**: 実機で **注文番号・製造orderがスキャンのみ**になっていること、**棚チップの折り返し**を目視。
 
 ## V22（2026-04-18）キオスク高視認テーマ・静的プレビュー整合
 
