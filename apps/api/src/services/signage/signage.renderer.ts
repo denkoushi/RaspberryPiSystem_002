@@ -161,14 +161,8 @@ export class SignageRenderer {
   }
 
   private async renderContent(content: SignageContentResponse): Promise<Buffer> {
-    // #region agent log
-    logger.info({ location: 'signage.renderer.ts:66', hypothesisId: 'E', hasLayoutConfig: content.layoutConfig != null, contentType: content.contentType, layoutConfig: content.layoutConfig }, 'renderContent called');
-    // #endregion
     // layoutConfigを優先し、nullの場合は旧形式（contentType）から処理
     if (content.layoutConfig) {
-      // #region agent log
-      logger.info({ location: 'signage.renderer.ts:68', hypothesisId: 'E', layoutConfig: content.layoutConfig }, 'Rendering with layoutConfig');
-      // #endregion
       return await this.renderWithLayoutConfig(content);
     }
 
@@ -239,11 +233,7 @@ export class SignageRenderer {
           pdfConfig.slideInterval || null,
           pdf.id
         );
-        // #region agent log
         const pageUrl = pdf.pages[pdfPageIndex];
-        const pageNumber = pdfPageIndex + 1;
-        logger.info({ location: 'signage.renderer.ts:161', hypothesisId: 'F', pdfId: pdf.id, pdfPageIndex, pageNumber, totalPages: pdf.pages.length, pageUrl: pageUrl.substring(0, 50) + '...' }, 'Rendering PDF page');
-        // #endregion
         return await this.renderPdfImage(pageUrl, {
           title: pdf.name,
           slideInterval: pdfConfig.slideInterval ?? null,

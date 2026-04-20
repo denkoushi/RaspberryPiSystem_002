@@ -67,20 +67,15 @@
 **現状**:
 - 通話IDは`ClientDevice.id`に統一し、`kiosk-client-id`は不要
 
-### 🟢 問題3: デバッグログの残存
+### ✅ 問題3（解消）: エージェント用ローカル計測の残存
 
-**場所**: `apps/web/src/pages/kiosk/KioskCallPage.tsx`、`apps/web/src/features/webrtc/hooks/useWebRTC.ts`、`apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts`
+**場所**: `apps/web/src/pages/kiosk/KioskCallPage.tsx`、`apps/web/src/features/webrtc/hooks/useWebRTC.ts`、`apps/web/src/features/webrtc/hooks/useWebRTCSignaling.ts` ほか（バックアップ/ダッシュボード等の管理画面も含め全廃止）
 
 **問題の詳細**:
-- デバッグ用の`fetch`呼び出しが複数箇所に残っている（`http://127.0.0.1:7242/ingest/...`）
-- 本番環境では不要な可能性がある
+- Cursor 調査用の `http://127.0.0.1:7242/ingest/...` への `fetch`（`#region agent log` ブロック）が残っていた
 
-**影響**:
-- パフォーマンスへの影響は軽微（エラーは無視されている）
-- コードの可読性が低下
-
-**推奨される対応**:
-- デバッグログを環境変数で制御するか、削除する
+**現状**:
+- **2026-04-20** にリポジトリから除去。API 側の `emitDebugEvent` / `debug-sink.ts` も撤去済み（記録: `EXEC_PLAN.md` の Surprises & Discoveries、KB-297 FKOBAINO 節）
 
 ## 健全性評価
 

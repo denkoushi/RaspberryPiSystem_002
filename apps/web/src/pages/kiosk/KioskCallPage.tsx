@@ -134,9 +134,6 @@ export function KioskCallPage() {
   }, [callTargetsQuery.data, selfClientId]);
 
   const handleCall = async (to: string) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:handleCall',message:'user_action_call',data:{to,callState,isConnected},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     try {
       await call(to);
     } catch (error) {
@@ -146,9 +143,6 @@ export function KioskCallPage() {
   };
 
   const handleAccept = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:handleAccept',message:'user_action_accept',data:{callState,hasIncoming:Boolean(incomingCallInfo)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     try {
       await accept();
       setShowIncomingModal(false);
@@ -168,9 +162,6 @@ export function KioskCallPage() {
   };
 
   const handleEnableVideo = async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'KioskCallPage.tsx:handleEnableVideo',message:'user_action_enableVideo',data:{callState,isVideoEnabled},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     try {
       await enableVideo();
     } catch (error) {

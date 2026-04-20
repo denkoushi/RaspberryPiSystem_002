@@ -80,29 +80,13 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
       return;
     }
 
-    // #region agent log
-    try {
-      const rawKey = window.localStorage.getItem('kiosk-client-key');
-      const rawId = window.localStorage.getItem('kiosk-client-id');
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:connect:entry',message:'signaling_connect_entry',data:{enabled,readyState:socketRef.current?.readyState ?? null,online:typeof navigator!=='undefined'?navigator.onLine:null,visibility:typeof document!=='undefined'?document.visibilityState:null,hasStoredKey:Boolean(rawKey&&rawKey.length>0),hasStoredId:Boolean(rawId&&rawId.length>0),reconnectAttempts:reconnectAttemptsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    } catch {
-      // デバッグログの失敗は無視（本処理を止めない）
-    }
-    // #endregion
-
     const clientKey = getResolvedClientKey();
     const isMac = /Macintosh|Mac OS X/i.test(navigator.userAgent);
     const macDefaultKey = 'client-key-mac-kiosk1';
     const clientKeyKind =
       clientKey === DEFAULT_CLIENT_KEY ? 'default' : isMac && clientKey === macDefaultKey ? 'mac_default' : 'custom';
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'webrtc-pre',hypothesisId:'H3',location:'useWebRTCSignaling.ts:connect:resolved',message:'signaling_connect_resolved_key_kind',data:{enabled,clientKeyKind,isMac,pathname:typeof window!=='undefined'?window.location.pathname:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (!clientKey) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:connect:missing',message:'signaling_connect_missing_key',data:{hasClientKey:Boolean(clientKey&&clientKey.length>0),readyState:socketRef.current?.readyState ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       console.warn('WebRTC signaling: clientKey not found');
       return;
     }
@@ -110,9 +94,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
     // 既に接続済みまたは接続試行中の場合は重複接続を防ぐ
     const currentState = socketRef.current?.readyState;
     if (currentState === WebSocket.OPEN || currentState === WebSocket.CONNECTING) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:connect:skip',message:'signaling_connect_skipped_due_to_state',data:{readyState:currentState,online:typeof navigator!=='undefined'?navigator.onLine:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return;
     }
 
@@ -131,12 +112,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
         reconnectAttemptsRef.current = 0;
         connectionStartTimeRef.current = Date.now();
         lastPongAtRef.current = Date.now();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:socket:onopen',message:'signaling_socket_open',data:{online:typeof navigator!=='undefined'?navigator.onLine:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'webrtc-pre',hypothesisId:'H2',location:'useWebRTCSignaling.ts:socket:onopen',message:'signaling_socket_open',data:{pathname:typeof window!=='undefined'?window.location.pathname:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         console.log('WebRTC signaling connected');
         // Keepalive: 30秒ごとにpingメッセージを送信（5分タイムアウトを防ぐ）
         keepaliveIntervalRef.current = window.setInterval(() => {
@@ -144,9 +119,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
             try {
               socketRef.current.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
             } catch (error) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:keepalive:send',message:'signaling_keepalive_send_failed',data:{readyState:socketRef.current?.readyState ?? null,online:typeof navigator!=='undefined'?navigator.onLine:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-              // #endregion
               console.error('Failed to send keepalive ping:', error);
             }
           }
@@ -159,9 +131,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
 
           switch (message.type) {
             case 'incoming': {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'webrtc-pre',hypothesisId:'H4',location:'useWebRTCSignaling.ts:socket:onmessage:incoming',message:'signaling_incoming_received',data:{callId:message.callId ?? null,from:message.from ?? null,hasPayload:Boolean(message.payload),pathname:typeof window!=='undefined'?window.location.pathname:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               // 着信通知
               if (message.callId && message.from) {
                 const payload = message.payload as IncomingCallPayload | undefined;
@@ -234,9 +203,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
             case 'error': {
               const errorPayload = message.payload as { message?: string } | undefined;
               const error = new Error(errorPayload?.message || 'WebRTC signaling error');
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'webrtc-pre',hypothesisId:'H1',location:'useWebRTCSignaling.ts:socket:onmessage:error',message:'signaling_error_message_received',data:{errorMessage:errorPayload?.message ?? null,pathname:typeof window!=='undefined'?window.location.pathname:null},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               onErrorRef.current?.(error);
               break;
             }
@@ -252,9 +218,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
 
       socket.onerror = (error) => {
         console.error('WebRTC signaling WebSocket error:', error);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:socket:onerror',message:'signaling_socket_error',data:{readyState:socketRef.current?.readyState ?? null,online:typeof navigator!=='undefined'?navigator.onLine:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         setIsConnected(false);
         setIsConnecting(false);
         // onErrorはrate-limitされているため、ここでは呼ばない（oncloseで呼ばれる）
@@ -275,12 +238,6 @@ export function useWebRTCSignaling(options: UseWebRTCSignalingOptions = {}) {
           keepaliveIntervalRef.current = null;
         }
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTCSignaling.ts:socket:onclose',message:'signaling_socket_close',data:{code:event.code,wasClean:event.wasClean,hadKeepalive:Boolean(keepaliveIntervalRef.current),online:typeof navigator!=='undefined'?navigator.onLine:null,visibility:typeof document!=='undefined'?document.visibilityState:null,reconnectAttempts:reconnectAttemptsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'webrtc-pre',hypothesisId:'H2',location:'useWebRTCSignaling.ts:socket:onclose',message:'signaling_socket_close',data:{code:event.code,wasClean:event.wasClean,reason:typeof event.reason==='string'?event.reason:null,reconnectAttempts:reconnectAttemptsRef.current,pathname:typeof window!=='undefined'?window.location.pathname:null,visibility:typeof document!=='undefined'?document.visibilityState:null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         console.log('WebRTC signaling disconnected');
 
         // 手動disconnect（unmount/明示切断/自前のreconnect）では再接続をスケジュールしない

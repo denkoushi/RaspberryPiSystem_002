@@ -46,9 +46,6 @@ export function registerGmailConfigRoutes(app: FastifyInstance): void {
     const redirectUri = gmailOpts?.redirectUri ?? opts?.redirectUri as string | undefined;
     const accessToken = gmailOpts?.accessToken ?? opts?.gmailAccessToken as string | undefined;
     const refreshToken = gmailOpts?.refreshToken ?? opts?.gmailRefreshToken as string | undefined;
-    // #region agent log
-    await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'A',location:'gmail/config.ts:get',message:'gmail config fetched',data:{hasClientId:!!clientId,hasSubjectPattern:!!subjectPattern,hasFromEmail:!!fromEmail,hasAccessToken:!!accessToken,hasRefreshToken:!!refreshToken},timestamp:Date.now()});
-    // #endregion
     
     // Gmail設定のみを抽出（機密情報はマスク）
     const gmailConfig = {

@@ -1,7 +1,6 @@
 import type { StorageProvider } from '../backup/storage/storage-provider.interface.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
-import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { CsvDashboardIngestor } from './csv-dashboard-ingestor.js';
 import { CsvDashboardStorage } from '../../lib/csv-dashboard-storage.js';
 import { CsvDashboardSourceService } from './csv-dashboard-source.service.js';
@@ -35,10 +34,6 @@ export type CsvDashboardIngestResult = {
     disposeReasonByMessageIdSuffix?: Record<string, string>;
     postProcessStateByMessageIdSuffix?: Record<string, 'completed' | 'disposed_non_retriable' | 'failed'>;
     canPostProcessGmail: boolean;
-    // #region agent debug: ステップ追跡用
-    stepLogs: string[];
-    errorDetails: Array<{ messageIdSuffix: string; step: string; error: string }>;
-    // #endregion
   };
 };
 
@@ -123,9 +118,6 @@ export class CsvDashboardImportService {
 
     if (dashboardId === PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID) {
       await ensureProductionScheduleFkobainoDashboard(prisma);
-      // #region agent log
-      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'post-fix',hypothesisId:'H5',location:'csv-dashboard-import.service.ts:126',message:'ensured fixed FKOBAINO dashboard definition',data:{dashboardId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     }
   }
 
@@ -195,9 +187,6 @@ export class CsvDashboardImportService {
     }
 
     for (const dashboardId of dashboardIds) {
-      // #region agent log
-      void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:dashboard-loop', message: 'Start dashboard ingest loop', data: { dashboardId, provider } });
-      // #endregion
       const dashboard = await prisma.csvDashboard.findUnique({ where: { id: dashboardId } });
 
       if (!dashboard) {
@@ -211,9 +200,6 @@ export class CsvDashboardImportService {
       }
 
       const subjectPatterns = dashboardSubjects.get(dashboardId) ?? [];
-      // #region agent log
-      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H2',location:'csv-dashboard-import.service.ts:204',message:'dashboard subject patterns resolved',data:{dashboardId,provider,subjectPatternCount:subjectPatterns.length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (subjectPatterns.length === 0) {
         logger?.warn(
           { dashboardId, provider },
@@ -256,19 +242,12 @@ export class CsvDashboardImportService {
       }
 
       if (bufferResults.length === 0) {
-        // #region agent log
-        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H1',location:'csv-dashboard-import.service.ts:246',message:'no matching messages for dashboard',data:{dashboardId,provider,subjectPatterns},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         logger?.info(
           { dashboardId, subjectPatterns, provider },
           '[CsvDashboardImportService] No matching Gmail message, skipping'
         );
         continue;
       }
-
-      // #region agent log
-      void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:after-downloadCsv', message: 'downloadCsv returned results', data: { dashboardId, provider, resultsCount: bufferResults.length, canPostProcessGmail: (provider === 'gmail' && CsvDashboardImportService.canPostProcessGmail(storageProvider)) } });
-      // #endregion
 
       let totalProcessed = 0;
       let totalAdded = 0;
@@ -288,31 +267,16 @@ export class CsvDashboardImportService {
       > = {};
       const disposeReasonByMessageIdSuffix: Record<string, string> = {};
       const canPostProcessGmail = provider === 'gmail' && CsvDashboardImportService.canPostProcessGmail(storageProvider);
-      // #region agent debug
-      const stepLogs: string[] = [];
-      const errorDetails: Array<{ messageIdSuffix: string; step: string; error: string }> = [];
-      stepLogs.push(`init:canPostProcessGmail=${canPostProcessGmail}`);
-      // #endregion
 
       for (const bufferResult of bufferResults) {
         const { buffer, messageId, messageSubject } = bufferResult;
         const safeMessageId = messageId ? messageId.slice(-6) : null;
         if (safeMessageId) downloadedMessageIdSuffixes.push(safeMessageId);
-        // #region agent log
-        void emitDebugEvent({ sessionId: 'debug-session', runId: 'verify-step1', hypothesisId: 'D', location: 'csv-dashboard-import.service.ts:per-message', message: 'Start processing message', data: { dashboardId, provider, messageIdSuffix: safeMessageId, hasMessageId: !!messageId, hasMessageSubject: !!messageSubject } });
-        // #endregion
         const csvContent = buffer.toString('utf-8');
 
         try {
-          // #region agent debug
-          stepLogs.push(`${safeMessageId}:start`);
-          // #endregion
-
           // CSVファイルを原本として保存
           const csvFilePath = await CsvDashboardStorage.saveRawCsv(dashboardId, buffer, messageId);
-          // #region agent debug
-          stepLogs.push(`${safeMessageId}:after-saveRawCsv`);
-          // #endregion
 
           // 取り込み処理を実行
           const result = await this.ingestor.ingestFromGmail(
@@ -328,9 +292,6 @@ export class CsvDashboardImportService {
             ingestSource: 'gmail',
             ingestRunId: result.ingestRunId,
           });
-          // #region agent debug
-          stepLogs.push(`${safeMessageId}:after-ingestFromGmail:${result.rowsProcessed}`);
-          // #endregion
 
           totalProcessed += result.rowsProcessed;
           totalAdded += result.rowsAdded;
@@ -338,50 +299,20 @@ export class CsvDashboardImportService {
 
           // 計測機器持出返却のイベント投影
           if (dashboardId === CsvDashboardImportService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
-            // #region agent debug
-            stepLogs.push(`${safeMessageId}:before-projectEvents`);
-            // #endregion
             await this.measuringInstrumentLoanEventService.projectEventsFromCsv({
               dashboardId,
               csvContent,
               messageId,
               messageSubject,
             });
-            // #region agent debug
-            stepLogs.push(`${safeMessageId}:after-projectEvents`);
-            // #endregion
           }
 
           // Gmail後処理（成功時のみ）
-          // #region agent debug
-          stepLogs.push(`${safeMessageId}:check-postProcess:provider=${provider},hasMessageId=${!!messageId},canPostProcess=${CsvDashboardImportService.canPostProcessGmail(storageProvider)}`);
-          // #endregion
           const shouldPostProcess = provider === 'gmail' && !!messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider);
-          // #region agent log
-          fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H3',location:'csv-dashboard-import.service.ts:345',message:'gmail post-process gate evaluated',data:{dashboardId,provider,hasMessageId:!!messageId,shouldPostProcess,messageIdSuffix:safeMessageId},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-          // #region agent log
-          void emitDebugEvent({ sessionId: 'debug-session', runId: 'gmail-inbox-not-clearing', hypothesisId: 'A', location: 'csv-dashboard-import.service.ts:postProcess-decision', message: 'Decide whether to post-process Gmail message', data: { provider, shouldPostProcess, messageIdSuffix: safeMessageId } });
-          // #endregion
           if (shouldPostProcess && messageId) {
-            // #region agent debug
-            stepLogs.push(`${safeMessageId}:enter-postProcess`);
-            // #endregion
-
             try {
-              // #region agent debug
-              stepLogs.push(`${safeMessageId}:before-markAsRead`);
-              // #endregion
               await storageProvider.markAsRead(messageId);
-              // #region agent debug
-              stepLogs.push(`${safeMessageId}:after-markAsRead:success`);
-              // #endregion
             } catch (postProcessError) {
-              // #region agent debug
-              const errMsg = postProcessError instanceof Error ? postProcessError.message : String(postProcessError);
-              stepLogs.push(`${safeMessageId}:markAsRead-error:${errMsg.slice(0, 100)}`);
-              errorDetails.push({ messageIdSuffix: safeMessageId || 'unknown', step: 'markAsRead', error: errMsg });
-              // #endregion
               if (safeMessageId) {
                 postProcessErrorByMessageIdSuffix[safeMessageId] = {
                   step: 'markAsRead',
@@ -394,22 +325,8 @@ export class CsvDashboardImportService {
             }
 
             try {
-              // #region agent debug
-              stepLogs.push(`${safeMessageId}:before-trashMessage`);
-              // #endregion
               await storageProvider.trashMessage(messageId);
-              // #region agent debug
-              stepLogs.push(`${safeMessageId}:after-trashMessage:success`);
-              // #endregion
-              // #region agent log
-              void emitDebugEvent({ sessionId: 'debug-session', runId: 'gmail-inbox-not-clearing', hypothesisId: 'B', location: 'csv-dashboard-import.service.ts:after-trashMessage', message: 'Gmail post-process completed', data: { messageIdSuffix: safeMessageId } });
-              // #endregion
             } catch (postProcessError) {
-              // #region agent debug
-              const errMsg = postProcessError instanceof Error ? postProcessError.message : String(postProcessError);
-              stepLogs.push(`${safeMessageId}:trashMessage-error:${errMsg.slice(0, 100)}`);
-              errorDetails.push({ messageIdSuffix: safeMessageId || 'unknown', step: 'trashMessage', error: errMsg });
-              // #endregion
               if (safeMessageId) {
                 postProcessErrorByMessageIdSuffix[safeMessageId] = {
                   step: 'trashMessage',
@@ -421,9 +338,6 @@ export class CsvDashboardImportService {
               throw postProcessError;
             }
 
-            // #region agent debug
-            stepLogs.push(`${safeMessageId}:postProcess-complete`);
-            // #endregion
             if (safeMessageId) postProcessedMessageIdSuffixes.push(safeMessageId);
             if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = 'completed';
             await this.appendIngestRunAudit({
@@ -433,14 +347,6 @@ export class CsvDashboardImportService {
             });
           }
         } catch (error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H4',location:'csv-dashboard-import.service.ts:418',message:'message ingest/post-process failed',data:{dashboardId,provider,messageIdSuffix:safeMessageId,errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-          // #region agent debug
-          const errMsg = error instanceof Error ? error.message : String(error);
-          stepLogs.push(`${safeMessageId}:outer-catch:${errMsg.slice(0, 100)}`);
-          errorDetails.push({ messageIdSuffix: safeMessageId || 'unknown', step: 'outer-catch', error: errMsg });
-          // #endregion
           lastError = error;
           if (safeMessageId) failedMessageIdSuffixes.push(safeMessageId);
           if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = 'failed';
@@ -516,9 +422,6 @@ export class CsvDashboardImportService {
       }
 
       if (lastError && failedMessageIdSuffixes.length > 0) {
-        // #region agent log
-        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'post-fix',hypothesisId:'H4',location:'csv-dashboard-import.service.ts:499',message:'escalate dashboard run failure due to per-message failure',data:{dashboardId,provider,failedMessageCount:failedMessageIdSuffixes.length,failedMessageIdSuffixes},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         throw lastError;
       }
 
@@ -542,15 +445,8 @@ export class CsvDashboardImportService {
           disposeReasonByMessageIdSuffix:
             Object.keys(disposeReasonByMessageIdSuffix).length > 0 ? disposeReasonByMessageIdSuffix : undefined,
           canPostProcessGmail,
-          // #region agent debug
-          stepLogs,
-          errorDetails,
-          // #endregion
         },
       };
-      // #region agent log
-      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'gmail-manual-run',hypothesisId:'H4',location:'csv-dashboard-import.service.ts:527',message:'dashboard ingestion aggregate result',data:{dashboardId,provider,rowsProcessed:aggregatedResult.rowsProcessed,rowsAdded:aggregatedResult.rowsAdded,rowsSkipped:aggregatedResult.rowsSkipped,debug:aggregatedResult.debug},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       results[dashboardId] = aggregatedResult;
       logger?.info({ dashboardId, result: aggregatedResult }, '[CsvDashboardImportService] CSV dashboard ingestion completed');
     }

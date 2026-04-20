@@ -68,31 +68,6 @@ export function BackupRestorePage() {
   useEffect(() => {
     setPreBackup(targetKind === 'database');
     setDryRunResult(null);
-    if (!backupHistoryQuery.data) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'ui-debug-1',
-        hypothesisId: 'UI1',
-        location: 'BackupRestorePage.tsx:useEffect(candidates)',
-        message: 'Backup restore candidates computed',
-        data: {
-          targetKind,
-          showExistsOnly,
-          apiTotal: backupHistoryQuery.data.total,
-          apiCount: backupHistoryQuery.data.history.length,
-          candidatesCount: candidates.length,
-          visibleCandidatesCount: visibleCandidates.length,
-          hasSelection: Boolean(selectedHistoryId),
-          selectedFileStatus: selectedCandidate?.fileStatus ?? null
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
   }, [
     backupHistoryQuery.data,
     candidates.length,
@@ -117,28 +92,6 @@ export function BackupRestorePage() {
       alert('リストアするバックアップを選択してください');
       return;
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: 'debug-session',
-        runId: 'ui-debug-1',
-        hypothesisId: 'UI2',
-        location: 'BackupRestorePage.tsx:handleRestore',
-        message: 'User initiated restore',
-        data: {
-          targetKind,
-          verifyIntegrity,
-          selectedHistoryId: selectedHistoryId || null,
-          selectedFileStatus: selectedCandidate?.fileStatus ?? null,
-          selectedBackupPathLength: selectedBackupPath.length
-        },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
 
     if (
       !confirm(
@@ -265,27 +218,6 @@ export function BackupRestorePage() {
                   setSelectedHistoryId(id);
                   const selected = candidates.find((c) => c.id === id);
                   setSelectedBackupPath(selected?.path ?? '');
-                  // #region agent log
-                  fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      sessionId: 'debug-session',
-                      runId: 'ui-debug-1',
-                      hypothesisId: 'UI3',
-                      location: 'BackupRestorePage.tsx:onChange(selectHistory)',
-                      message: 'User selected backup history candidate',
-                      data: {
-                        targetKind,
-                        showExistsOnly,
-                        selectedHistoryId: id || null,
-                        resolvedFileStatus: selected?.fileStatus ?? null,
-                        resolvedPathLength: selected?.path?.length ?? 0
-                      },
-                      timestamp: Date.now()
-                    })
-                  }).catch(() => {});
-                  // #endregion
                 }}
                 disabled={isRestoring}
               >

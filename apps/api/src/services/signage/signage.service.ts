@@ -297,9 +297,6 @@ export class SignageService {
     const now = new Date();
     const { currentDayOfWeek, currentTime } = this.getCurrentTimeInfo(now);
 
-    // #region agent log
-    logger.info({ location: 'signage.service.ts:197', hypothesisId: 'A', currentDayOfWeek, currentTime, now: now.toISOString() }, 'getContent called');
-    // #endregion
 
     // 緊急表示を最優先で確認
     const emergency = await prisma.signageEmergency.findFirst({
@@ -436,35 +433,10 @@ export class SignageService {
       signageScheduleMatchesClientKey(s.targetClientKeys, requestClientKey),
     );
 
-    // #region agent log
-    logger.info(
-      {
-        location: 'signage.service.ts:303',
-        hypothesisId: 'A',
-        scheduleCount: schedules.length,
-        schedulesForClientCount: schedulesForClient.length,
-        requestClientKeyPresent: Boolean(requestClientKey),
-        schedules: schedules.map((s) => ({
-          id: s.id,
-          name: s.name,
-          priority: s.priority,
-          enabled: s.enabled,
-          dayOfWeek: s.dayOfWeek,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          hasLayoutConfig: s.layoutConfig != null,
-        })),
-      },
-      'Checking schedules',
-    );
-    // #endregion
 
     const matchedSchedules: Array<{ schedule: ScheduleSummary; priority: number }> = [];
     for (const schedule of schedulesForClient) {
       const matches = this.matchesScheduleWindow(schedule, currentDayOfWeek, currentTime);
-      // #region agent log
-      logger.info({ location: 'signage.service.ts:306', hypothesisId: 'A', scheduleId: schedule.id, scheduleName: schedule.name, matches, priority: schedule.priority, currentDayOfWeek, currentTime, dayOfWeek: schedule.dayOfWeek, startTime: schedule.startTime, endTime: schedule.endTime }, 'Schedule window check');
-      // #endregion
       if (!matches) {
         continue;
       }
@@ -473,9 +445,6 @@ export class SignageService {
 
     // マッチしたスケジュールを優先順位順にソート（高い順）
     matchedSchedules.sort((a, b) => b.priority - a.priority);
-    // #region agent log
-    logger.info({ location: 'signage.service.ts:320', hypothesisId: 'A', matchedCount: matchedSchedules.length, matchedSchedules: matchedSchedules.map(m => ({ id: m.schedule.id, name: m.schedule.name, priority: m.priority })) }, 'Matched schedules sorted by priority');
-    // #endregion
 
     // 複数のスケジュールがある場合は順番に切り替える
     if (matchedSchedules.length > 1) {
@@ -487,21 +456,6 @@ export class SignageService {
       if (scheduleIndex < matchedSchedules.length) {
         const { schedule } = matchedSchedules[scheduleIndex];
         const response = await this.buildScheduleResponse(schedule);
-        // #region agent log
-        logger.info({ 
-          location: 'signage.service.ts:330', 
-          hypothesisId: 'C', 
-          scheduleId: schedule.id, 
-          scheduleName: schedule.name, 
-          priority: schedule.priority,
-          scheduleIndex,
-          totalSchedules: matchedSchedules.length,
-          switchInterval,
-          currentSecond,
-          responseContentType: response?.contentType, 
-          responseLayoutConfig: response?.layoutConfig 
-        }, 'Schedule response built (rotating)');
-        // #endregion
         if (response) {
           return response;
         }
@@ -511,9 +465,6 @@ export class SignageService {
     // 単一スケジュールまたはフォールバック: 優先順位が最も高いスケジュールを使用
     for (const { schedule } of matchedSchedules) {
       const response = await this.buildScheduleResponse(schedule);
-      // #region agent log
-      logger.info({ location: 'signage.service.ts:327', hypothesisId: 'B', scheduleId: schedule.id, scheduleName: schedule.name, priority: schedule.priority, responseContentType: response?.contentType, responseLayoutConfig: response?.layoutConfig }, 'Schedule response built');
-      // #endregion
       if (response) {
         return response;
       }
@@ -790,9 +741,6 @@ export class SignageService {
   }
 
   private async buildScheduleResponse(schedule: ScheduleSummary): Promise<SignageContentResponse | null> {
-    // #region agent log
-    logger.info({ location: 'signage.service.ts:554', hypothesisId: 'B', scheduleId: schedule.id, scheduleName: schedule.name, hasLayoutConfig: schedule.layoutConfig != null, layoutConfigType: typeof schedule.layoutConfig, contentType: schedule.contentType }, 'buildScheduleResponse called');
-    // #endregion
     // layoutConfigを優先し、nullの場合は旧形式から変換
     let layoutConfig: SignageLayoutConfig;
     let pdf: { id: string; displayMode: SignageDisplayMode; slideInterval: number | null } | null = null;
@@ -800,9 +748,6 @@ export class SignageService {
     if (schedule.layoutConfig && typeof schedule.layoutConfig === 'object') {
       // 新形式（layoutConfig）を使用
       layoutConfig = schedule.layoutConfig as unknown as SignageLayoutConfig;
-      // #region agent log
-      logger.info({ location: 'signage.service.ts:561', hypothesisId: 'B', scheduleId: schedule.id, layoutConfig }, 'Using new layoutConfig format');
-      // #endregion
     } else {
       // 旧形式から変換（PDF情報が必要な場合は取得）
       if (schedule.pdfId) {
@@ -816,9 +761,6 @@ export class SignageService {
         });
       }
       layoutConfig = this.convertLegacyToLayoutConfig(schedule.contentType, schedule.pdfId, pdf);
-      // #region agent log
-      logger.info({ location: 'signage.service.ts:574', hypothesisId: 'B', scheduleId: schedule.id, layoutConfig }, 'Converted from legacy format');
-      // #endregion
     }
 
     // layoutConfigに基づいてレスポンスを構築

@@ -157,9 +157,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       }
     },
     onOffer: async (message: SignalingMessage) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:handlers.onOffer',message:'signal_offer_received',data:{callId:message.callId,hasPc:Boolean(peerConnectionRef.current),curCallId:currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
         return;
       }
@@ -189,9 +186,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       }
     },
     onAnswer: async (message: SignalingMessage) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:handlers.onAnswer',message:'signal_answer_received',data:{callId:message.callId,hasPc:Boolean(peerConnectionRef.current),curCallId:currentCallIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       // 相手からのAnswerを受信
       if (!peerConnectionRef.current || message.callId !== currentCallIdRef.current || !message.payload) {
         return;
@@ -544,9 +538,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     }
 
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo_start',data:{callId:currentCallId,signalingState:peerConnectionRef.current?.signalingState},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       const pcForVideo = peerConnectionRef.current;
       if (pcForVideo.signalingState !== 'stable') return;
       
@@ -561,9 +552,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
       // ビデオストリームを取得（マイクが利用できない端末でもビデオのみで継続できるように）
       const videoStream = await getVideoStream();
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWebRTC.ts:enableVideo',message:'enableVideo_gotVideoStream',data:{hasStream:Boolean(videoStream),videoTracks:videoStream?.getVideoTracks?.().length ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
 
       if (!videoStream || videoStream.getVideoTracks().length === 0) {
         throw new Error('ビデオストリームの取得に失敗しました');

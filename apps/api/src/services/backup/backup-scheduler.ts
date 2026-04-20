@@ -27,9 +27,6 @@ export class BackupScheduler {
 
     this.isRunning = true;
     const config = await BackupConfigLoader.load();
-    // #region agent log
-    await writeDebugLog({sessionId:'debug-session',runId:'pre',hypothesisId:'C',location:'backup-scheduler.ts:start',message:'backup scheduler start',data:{targetsTotal:Array.isArray(config.targets)?config.targets.length:0,targetsWithSchedule:Array.isArray(config.targets)?config.targets.filter((target)=>target.enabled && !!target.schedule).length:0,csvImportsLen:Array.isArray(config.csvImports)?config.csvImports.length:0},timestamp:Date.now()});
-    // #endregion
     
     // 各ターゲットのスケジュールを設定
     for (const target of config.targets) {

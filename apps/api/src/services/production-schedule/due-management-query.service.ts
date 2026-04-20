@@ -159,9 +159,6 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
       locationKey,
       resourceCds: rows.map((row) => row.resourceCd?.trim() ?? '').filter((resourceCd) => resourceCd.length > 0)
     });
-    // #region agent log
-    void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H3',location:'due-management-query.service.ts:listDueManagementSummaries:184',message:'actual-hours feature rows fetched for due summary',data:{locationKey,actualHoursLocationCandidates:actualHoursReadContext.locationCandidates,summaryRows:summaryRows.length,featureRowsSelected:actualHoursReadContext.selectedFeatureCount,resourceCodeMappings:actualHoursReadContext.resourceCodeMappingCount,summaryFetchedFeatureCountsByLocation:actualHoursReadContext.fetchedFeatureCountByLocation},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const aggregateMap = new Map<string, { totalRows: number; matchedRows: number }>();
     for (const row of rows) {
       const fseiban = row.fseiban?.trim();
@@ -276,9 +273,6 @@ export async function getDueManagementSeibanDetail(params: {
     locationKey,
     resourceCds: rows.map((row) => row.fsigencd ?? '')
   });
-  // #region agent log
-  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H5',location:'due-management-query.service.ts:getDueManagementSeibanDetail:355',message:'actual-hours feature rows fetched for seiban detail',data:{locationKey,fseiban,actualHoursLocationCandidates:detailActualHoursReadContext.locationCandidates,detailRows:rows.length,featureRowsSelected:detailActualHoursReadContext.selectedFeatureCount,resourceCodeMappings:detailActualHoursReadContext.resourceCodeMappingCount,detailFetchedFeatureCountsByLocation:detailActualHoursReadContext.fetchedFeatureCountByLocation},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   const resourceNameMap = await getResourceNameMapByResourceCds(rows.map((row) => row.fsigencd ?? ''));
 
   const grouped = new Map<
@@ -425,11 +419,6 @@ export async function getDueManagementSeibanDetail(params: {
         suggestedPriorityRank: index + 1
       };
     });
-  const detailMatchedParts = parts.filter((part) => part.actualPerPieceMinutes !== null).length;
-  // #region agent log
-  void fetch('http://127.0.0.1:7242/ingest/57ffe573-8750-493d-b168-a6f5796123fd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'07ef10'},body:JSON.stringify({sessionId:'07ef10',runId:'actual-hours-display-pre',hypothesisId:'H5',location:'due-management-query.service.ts:getDueManagementSeibanDetail:491',message:'actual-hours resolved result for seiban detail',data:{locationKey,fseiban,totalParts:parts.length,matchedParts:detailMatchedParts,unmatchedParts:parts.length-detailMatchedParts},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   const machineName = rows.find((row) => {
     const normalized = row.fhincd?.trim().toUpperCase() ?? '';
     return (normalized.startsWith('MH') || normalized.startsWith('SH')) && row.fhinmei?.trim().length > 0;

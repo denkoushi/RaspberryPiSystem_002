@@ -113,60 +113,9 @@ export function KioskHeader({
       setIsPowerProcessing(false);
       return;
     }
-    // #region agent log
-    const urlClientKey = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('clientKey') : null;
-    const storedKey = typeof window !== 'undefined' ? window.localStorage.getItem('kiosk-client-key') : null;
-    postClientLogs(
-      {
-        clientId: clientId || 'power-debug-unknown',
-        logs: [
-          {
-            level: 'INFO',
-            message: '[power-debug] power request start',
-            context: {
-              action: actionToExecute,
-              clientKeyProp: clientKey,
-              clientKeySent: effectiveClientKey,
-              urlClientKey,
-              localStorageKioskKey: storedKey?.slice(0, 50) ?? null,
-              pathname: typeof window !== 'undefined' ? window.location.pathname : null,
-            },
-          },
-        ],
-      },
-      effectiveClientKey
-    ).catch(() => {});
-    // #endregion
     try {
       await postKioskPower({ action: actionToExecute }, effectiveClientKey);
-      // #region agent log
-      postClientLogs(
-        {
-          clientId: clientId || 'power-debug-unknown',
-          logs: [{ level: 'INFO', message: '[power-debug] power request accepted', context: { action: actionToExecute } }],
-        },
-        effectiveClientKey
-      ).catch(() => {});
-      // #endregion
     } catch (error) {
-      // #region agent log
-      postClientLogs(
-        {
-          clientId: clientId || 'power-debug-unknown',
-          logs: [
-            {
-              level: 'ERROR',
-              message: '[power-debug] power request failed',
-              context: {
-                action: actionToExecute,
-                errorMessage: error instanceof Error ? error.message : String(error),
-              },
-            },
-          ],
-        },
-        effectiveClientKey
-      ).catch(() => {});
-      // #endregion
       setPowerOverlayAction(null);
       console.error('Failed to request power action:', error);
       window.alert('電源操作のリクエストに失敗しました。ネットワーク接続を確認して再度お試しください。');

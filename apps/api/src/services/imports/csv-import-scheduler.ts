@@ -2,7 +2,6 @@ import cron, { validate } from 'node-cron';
 import type { BackupConfig } from '../backup/backup-config.js';
 import { BackupHistoryService } from '../backup/backup-history.service.js';
 import { logger } from '../../lib/logger.js';
-import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { ImportHistoryService } from './import-history.service.js';
 import { ImportAlertService } from './import-alert.service.js';
 import { CsvDashboardRetentionService } from '../csv-dashboard/csv-dashboard-retention.service.js';
@@ -158,9 +157,6 @@ export class CsvImportScheduler {
         this.isGmailCsvDashboardSchedule(config, importSchedule) &&
         Object.keys(summary.csvDashboards ?? {}).length === 0
       ) {
-        // #region agent log
-        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'post-fix',hypothesisId:'H6',location:'csv-import-scheduler.ts:161',message:'manual gmail csvDashboard import returned empty dashboard summary',data:{taskId,provider:importSchedule.provider ?? config.storage.provider,targetCount:(importSchedule.targets ?? []).length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         throw new Error('No matching Gmail message found for CSV dashboard import');
       }
 
@@ -214,10 +210,6 @@ export class CsvImportScheduler {
           .filter(Boolean)
           .join(' ');
       }
-
-      // #region agent log
-      void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H3', location: 'csv-import-scheduler.ts:executeSingleRun', message: 'executeSingleRun error', data: { taskId, errorName: error instanceof Error ? error.name : 'unknown', errorMessage } });
-      // #endregion
 
       // scheduledのみ: Gmail 429クールダウン中は「延期」として扱い、アラート/連続失敗を抑制する
       if (!isManual && error instanceof GmailRateLimitedDeferredError) {
@@ -828,10 +820,6 @@ export class CsvImportScheduler {
       throw new Error(`CSV import schedule not found: ${importId}`);
     }
 
-    // #region agent log
-    void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H1', location: 'csv-import-scheduler.ts:runImport', message: 'runImport schedule loaded', data: { importId, enabled: importSchedule.enabled, provider: importSchedule.provider || 'default', targetTypes: (importSchedule.targets || []).map(target => target.type), targetSources: (importSchedule.targets || []).map(target => target.source) } });
-    // #endregion
-
     if (!importSchedule.enabled) {
       throw new Error(`CSV import schedule is disabled: ${importId}`);
     }
@@ -858,9 +846,6 @@ export class CsvImportScheduler {
     importSchedule: NonNullable<BackupConfig['csvImports']>[0],
     skipRetry = false
   ) {
-    // #region agent log
-    void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H2', location: 'csv-import-scheduler.ts:executeImport', message: 'executeImport start', data: { scheduleId: importSchedule.id, skipRetry, provider: importSchedule.provider || 'default', hasTargets: Array.isArray(importSchedule.targets) && importSchedule.targets.length > 0 } });
-    // #endregion
     const executionService = this.createExecutionService();
     return await executionService.execute({ config, importSchedule, skipRetry });
   }

@@ -3,7 +3,6 @@ import { parse } from 'csv-parse/sync';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
-import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   PRODUCTION_SCHEDULE_HASH_KEY_COLUMNS,
@@ -379,9 +378,6 @@ export class CsvDashboardIngestor {
       const trimmed = value.replace(/^\uFEFF/, '').replace(/^[\s\u3000]+|[\s\u3000]+$/g, '');
       return trimmed.replace(/^"+|"+$/g, '').toLowerCase();
     };
-    // #region agent log
-    void emitDebugEvent({ sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H3', location: 'csv-dashboard-ingestor.ts:createColumnMapping:entry', message: 'createColumnMapping headers preview', data: { headerCount: csvHeaders.length, headersPreview: csvHeaders.slice(0, 10).map((header) => ({ raw: header, normalized: header.replace(/^\uFEFF/, '').trim() })) } });
-    // #endregion
 
     for (const colDef of columnDefinitions) {
       // CSVヘッダーから候補を検索
@@ -394,9 +390,6 @@ export class CsvDashboardIngestor {
       if (csvIndex === -1) {
         // 必須列が見つからない場合はエラー
         if (colDef.required !== false) {
-          // #region agent log
-          void emitDebugEvent({ sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H3', location: 'csv-dashboard-ingestor.ts:createColumnMapping:missing', message: 'required column missing', data: { internalName: colDef.internalName, displayName: colDef.displayName, candidates: colDef.csvHeaderCandidates, headersPreview: csvHeaders.slice(0, 10) } });
-          // #endregion
           const userMessage = [
             'CSVファイルの列構成が設定と一致しません。',
             `見つからなかった列: ${colDef.displayName} (内部名: ${colDef.internalName})`,

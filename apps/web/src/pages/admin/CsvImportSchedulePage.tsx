@@ -313,9 +313,6 @@ export function CsvImportSchedulePage() {
   const handleRun = async (id: string) => {
     // 既に実行中のスケジュールがある場合は早期リターン（useRefで即座にチェック）
     if (runningScheduleIdRef.current !== null) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-blocked',hypothesisId:'H5',location:'CsvImportSchedulePage.tsx:handleRun',message:'run blocked - already running',data:{scheduleId:id,currentRunningId:runningScheduleIdRef.current},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return;
     }
 
@@ -345,22 +342,9 @@ export function CsvImportSchedulePage() {
     setRunningScheduleId(id);
     setRunError(prev => ({ ...prev, [id]: null }));
     setRunSuccess(prev => ({ ...prev, [id]: false }));
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-pre',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run confirmed',data:{scheduleId:id,provider,hasTargets:Array.isArray(schedule?.targets),targetsCount:schedule?.targets?.length ?? 0},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run requested',data:{scheduleId:id,provider:provider,targets:(schedule?.targets || []).map(t => ({ type: t.type, source: t.source }))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
       const response = await run.mutateAsync(id);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-success',hypothesisId:'H1',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run response received',data:{scheduleId:id,hasSummary:typeof (response as { summary?: unknown })?.summary !== 'undefined'},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'verify-step1',hypothesisId:'A',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run response received',data:{scheduleId:id,response},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       // 取り込みは200でも「部分失敗」があり得る（例: 列不一致で後段処理が失敗）
       // 安全仕様として、失敗が含まれる場合はGmail後処理（既読化/ゴミ箱移動）が行われず、受信箱に残る。
@@ -380,21 +364,27 @@ export function CsvImportSchedulePage() {
           const downloaded = Array.isArray(debug?.downloadedMessageIdSuffixes)
             ? debug.downloadedMessageIdSuffixes.length
             : 0;
-          const firstError =
+          const ppErrRaw = debug?.postProcessErrorByMessageIdSuffix;
+          const ppErr = isRecord(ppErrRaw) ? ppErrRaw : undefined;
+          const firstFromPostProcess =
+            ppErr &&
+            Object.values(ppErr).find(
+              (v): v is { error: string } =>
+                isRecord(v) && typeof (v as { error?: unknown }).error === 'string'
+            );
+          const firstErrorLegacy =
             Array.isArray(debug?.errorDetails) &&
             debug.errorDetails.length > 0 &&
             isRecord(debug.errorDetails[0]) &&
             typeof debug.errorDetails[0].error === 'string'
               ? debug.errorDetails[0].error
               : undefined;
+          const firstError = firstFromPostProcess?.error ?? firstErrorLegacy;
           const reason = firstError ? firstError : '不明なエラー';
           failureMessages.push(`- CSVダッシュボード(${dashboardId}): ${reason}（失敗 ${failed}/${downloaded || '?'}）`);
         }
       }
       if (failureMessages.length > 0) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'gmail-inbox-not-clearing',hypothesisId:'UI',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run had partial failures; showing warning',data:{scheduleId:id,failureCount:failureMessages.length,firstFailure:failureMessages[0]},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         alert(
           `一部の取り込みに失敗しました。\n\n${failureMessages.join('\n')}\n\n安全のため、該当メールは未読のまま残しています（受信箱が空になりません）。CSV列定義（例: day列）を確認して再実行してください。`
         );
@@ -416,12 +406,6 @@ export function CsvImportSchedulePage() {
         message?: string;
         response?: { status?: number; data?: { message?: unknown; errorCode?: unknown } | unknown };
       };
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run error',data:{scheduleId:id,errorMessage:err?.message,axiosStatus:err?.response?.status,axiosData:err?.response?.data},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run-error',hypothesisId:'H3',location:'CsvImportSchedulePage.tsx:handleRun',message:'manual run error detail',data:{scheduleId:id,status:err?.response?.status ?? null,apiMessage:typeof (err?.response?.data as { message?: unknown })?.message === 'string' ? (err?.response?.data as { message?: string }).message : null,apiErrorCode:typeof (err?.response?.data as { errorCode?: unknown })?.errorCode === 'string' ? (err?.response?.data as { errorCode?: string }).errorCode : null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       setRunError(prev => ({ ...prev, [id]: err as Error }));
     } finally {
       // 実行中のスケジュールIDをクリア（useRefとuseStateの両方をクリア）

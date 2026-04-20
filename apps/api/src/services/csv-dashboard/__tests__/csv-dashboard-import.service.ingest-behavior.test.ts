@@ -23,7 +23,7 @@ vi.mock('../../../lib/prisma.js', () => ({
   },
 }));
 
-describe('CsvDashboardImportService debug behavior', () => {
+describe('CsvDashboardImportService ingest behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     findUniqueMock.mockResolvedValue({

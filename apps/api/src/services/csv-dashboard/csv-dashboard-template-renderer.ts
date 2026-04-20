@@ -4,7 +4,6 @@ import type {
   CardGridTemplateConfig,
 } from './csv-dashboard.types.js';
 import { env } from '../../config/env.js';
-import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { createMd3Tokens } from '../visualization/renderers/_design-system/index.js';
 
 /**
@@ -79,7 +78,6 @@ export class CsvDashboardTemplateRenderer {
     const columnWidths = this.computeColumnWidths(
       displayColumns,
       rows,
-      rowsPerPage,
       config,
       canvasWidth,
       scale,
@@ -306,7 +304,6 @@ export class CsvDashboardTemplateRenderer {
   private computeColumnWidths(
     displayColumns: RenderableColumnDefinition[],
     rows: NormalizedRowData[],
-    rowsPerPage: number,
     config: TableTemplateConfig,
     canvasWidth: number,
     scale: number,
@@ -321,74 +318,12 @@ export class CsvDashboardTemplateRenderer {
       return typeof px === 'number' && Number.isFinite(px) && px > 0 ? px : null;
     });
 
-    const sampleRows = rows.slice(0, rowsPerPage);
     const basePadding = Math.round(12 * scale);
     const safetyPadding = Math.round(6 * scale);
     const minWidth = Math.max(60, Math.round(fontSizePx * 3));
     const headerFontSizePx = Math.round(config.fontSize + 4);
     // 太字ぶんをざっくり係数で見積もる（実フォントの差はあるが、列名が切れる方が痛い）
     const headerBoldFactor = 1.06;
-
-    // #region agent log
-    try {
-      const perColumn = displayColumns.map((col, idx) => {
-        // NOTE: PII防止のため、実値はログに出さない（em/長さ等の数値のみ）
-        let maxEmRawSample = this.approxTextEm(col.displayName);
-        let maxEmFmtSample = this.approxTextEm(col.displayName);
-        for (const row of sampleRows) {
-          const raw = row[col.internalName];
-          const rawStr = raw == null ? '' : String(raw);
-          const fmtStr = raw == null ? '' : String(this.formatCellValueForSignage(col, raw));
-          maxEmRawSample = Math.max(maxEmRawSample, this.approxTextEm(rawStr));
-          maxEmFmtSample = Math.max(maxEmFmtSample, this.approxTextEm(fmtStr));
-        }
-
-        let maxEmRawAll = this.approxTextEm(col.displayName);
-        let maxEmFmtAll = this.approxTextEm(col.displayName);
-        for (const row of rows) {
-          const raw = row[col.internalName];
-          const rawStr = raw == null ? '' : String(raw);
-          const fmtStr = raw == null ? '' : String(this.formatCellValueForSignage(col, raw));
-          maxEmRawAll = Math.max(maxEmRawAll, this.approxTextEm(rawStr));
-          maxEmFmtAll = Math.max(maxEmFmtAll, this.approxTextEm(fmtStr));
-        }
-
-        return {
-          index: idx,
-          internalName: col.internalName,
-          dataType: col.dataType ?? null,
-          fixedPx: fixed[idx] ?? null,
-          maxEmRawSample,
-          maxEmFmtSample,
-          maxEmRawAll,
-          maxEmFmtAll,
-        };
-      });
-
-      void emitDebugEvent({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'A',
-        location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
-        message: 'column width inputs (raw vs formatted, sample vs all)',
-        data: {
-          canvasWidth,
-          scale,
-          fontSizePx,
-          headerFontSizePx: Math.round(config.fontSize + 4),
-          rowsLen: rows.length,
-          rowsPerPage,
-          sampleLen: sampleRows.length,
-          basePadding,
-          safetyPadding,
-          minWidth,
-          perColumn,
-        },
-      });
-    } catch {
-      // ignore
-    }
-    // #endregion
 
     // 列幅は「表示中ページ」ではなく、全行の最大文字列に追随させる
     // （ページ切り替えで列幅が変わると視認性が落ち、ユーザー期待ともズレる）
@@ -413,16 +348,6 @@ export class CsvDashboardTemplateRenderer {
 
     if (total <= canvasWidth) {
       // 過剰な余白を作らない。右側に余白が残っても良い。
-      // #region agent log
-      void emitDebugEvent({
-        sessionId: 'debug-session',
-        runId: 'pre-fix',
-        hypothesisId: 'D',
-        location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
-        message: 'column widths chosen (no shrink)',
-        data: { canvasWidth, total, widths, requiredWidths },
-      });
-      // #endregion
       return widths;
     }
 
@@ -430,17 +355,6 @@ export class CsvDashboardTemplateRenderer {
     const scaleDown = canvasWidth / total;
     const minWidths = widths.map((w) => Math.min(w, minWidth));
     const scaled = widths.map((w, i) => Math.max(minWidths[i], Math.floor(w * scaleDown)));
-
-    // #region agent log
-    void emitDebugEvent({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'B',
-      location: 'csv-dashboard-template-renderer.ts:computeColumnWidths',
-      message: 'column widths chosen (pre shrink)',
-      data: { canvasWidth, total, scaleDown, widths, minWidths, scaled },
-    });
-    // #endregion
 
     return this.shrinkToFit(scaled, minWidths, canvasWidth);
   }
@@ -476,23 +390,6 @@ export class CsvDashboardTemplateRenderer {
     if (remaining > 0) {
       widths[widths.length - 1] = Math.max(1, widths[widths.length - 1] - remaining);
     }
-
-    // #region agent log
-    void emitDebugEvent({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'B',
-      location: 'csv-dashboard-template-renderer.ts:shrinkToFit',
-      message: 'column widths chosen (post shrink)',
-      data: {
-        canvasWidth,
-        totalBefore: total,
-        totalAfter: widths.reduce((sum, w) => sum + w, 0),
-        widths,
-        minWidths,
-      },
-    });
-    // #endregion
 
     return widths;
   }

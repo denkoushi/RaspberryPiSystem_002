@@ -1,4 +1,3 @@
-import { emitDebugEvent } from '../../lib/debug-sink.js';
 import { writeDebugLog } from '../../lib/debug-log.js';
 import { ApiError } from '../../lib/errors.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
@@ -174,14 +173,6 @@ export class ImportScheduleAdminService {
   }
 
   async runSchedule(scheduleId: string, context: RunScheduleContext): Promise<unknown> {
-    void emitDebugEvent({
-      location: 'imports.ts:1248',
-      message: 'manual run request received',
-      data: { scheduleId, reqId: context.requestId },
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId: 'H1',
-    });
     await writeDebugLog({
       sessionId: 'debug-session',
       runId: 'run2',
@@ -197,19 +188,6 @@ export class ImportScheduleAdminService {
       await this.getScheduler().reload();
     }
     const schedule = config.csvImports?.find((item) => item.id === scheduleId);
-    void emitDebugEvent({
-      location: 'imports.ts:1252',
-      message: 'loaded csv import schedules',
-      data: {
-        scheduleId,
-        hasCsvImports: Array.isArray(config.csvImports),
-        csvImportCount: config.csvImports?.length ?? 0,
-        scheduleIds: (config.csvImports ?? []).map((item) => item.id),
-      },
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId: 'H2',
-    });
     await writeDebugLog({
       sessionId: 'debug-session',
       runId: 'run2',
@@ -227,14 +205,6 @@ export class ImportScheduleAdminService {
     });
 
     if (!schedule) {
-      void emitDebugEvent({
-        location: 'imports.ts:1255',
-        message: 'schedule not found',
-        data: { scheduleId },
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'H1',
-      });
       await writeDebugLog({
         sessionId: 'debug-session',
         runId: 'run2',
@@ -248,14 +218,6 @@ export class ImportScheduleAdminService {
     }
 
     const scheduler = this.getScheduler();
-    void emitDebugEvent({
-      location: 'imports.ts:1260',
-      message: 'about to run scheduler import',
-      data: { scheduleId, hasScheduler: !!scheduler },
-      sessionId: 'debug-session',
-      runId: 'run1',
-      hypothesisId: 'H4',
-    });
     await writeDebugLog({
       sessionId: 'debug-session',
       runId: 'run2',
@@ -268,14 +230,6 @@ export class ImportScheduleAdminService {
 
     try {
       const summary = await scheduler.runImport(scheduleId);
-      void emitDebugEvent({
-        location: 'imports.ts:1262',
-        message: 'scheduler.runImport succeeded',
-        data: { scheduleId },
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'H4',
-      });
       await writeDebugLog({
         sessionId: 'debug-session',
         runId: 'run2',
@@ -287,18 +241,6 @@ export class ImportScheduleAdminService {
       });
       return summary;
     } catch (error) {
-      void emitDebugEvent({
-        location: 'imports.ts:1266',
-        message: 'scheduler.runImport failed',
-        data: {
-          scheduleId,
-          errorName: error instanceof Error ? error.name : 'unknown',
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
-        sessionId: 'debug-session',
-        runId: 'run1',
-        hypothesisId: 'H4',
-      });
       await writeDebugLog({
         sessionId: 'debug-session',
         runId: 'run2',

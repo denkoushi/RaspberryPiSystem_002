@@ -117,6 +117,11 @@ category: knowledge-base
 - **本番デプロイ（2026-04-20）**: [deployment.md](../guides/deployment.md) 標準。`feat/fkobaino-purchase-order-lookup` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260420-153825-14948` → `20260420-154924-28306` → `20260420-155406-1101` → `20260420-155936-12366`（各 **`failed=0` / `unreachable=0`**）。**`raspi4-fjv60-80`**: プレフライトで **Pi5 から `100.100.229.95:22` SSH timeout** のため **未デプロイ**（到達復旧後に **`--limit raspi4-fjv60-80` 単体**を推奨）。**Pi3**: 対象外。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: `raspi4-fjv60-80` の Pi5 経由 SSH・既存ベースラインと同型）。
 - **トラブルシュート**: プレフライト失敗で Pi5 に **stale lock** が残る場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。マイグレーション適用後は Pi5 で **`pnpm prisma migrate status`**（[deployment.md のデプロイ後チェックリスト](../guides/deployment.md#デプロイ後チェックリスト)）を確認。
+- **取込堅牢化（2026-04-20・追記）**:
+  - **固定 `CsvDashboard` の欠落**: 取込ループ開始時に **`ensureProductionScheduleFkobainoDashboard`** で **DB に upsert**（seed 名 `PurchaseOrder_FKOBAINO` と整合）。ダッシュボード行が無いと件名パターンが解決されず **スキップ**され続ける。
+  - **手動 Gmail 実行と履歴**: **`CsvImportScheduler`** は **手動**かつ **Gmail + `csvDashboards` ターゲット**のとき、サマリの **`csvDashboards` が空オブジェクト**なら **`No matching Gmail message found for CSV dashboard import`** で **失敗**とする（未読ゼロ・対象メール無しで **COMPLETED + 空サマリ**と誤記録されないようにする）。
+  - **部分失敗の表示**: 管理コンソールの手動実行後、**一部メッセージで取込／Gmail 後処理に失敗**した場合は、応答サマリの **`debug.failedMessageIdSuffixes`** と **`debug.postProcessErrorByMessageIdSuffix`** を参照（一次エラー文言の表示に利用可能）。
+  - **開発用計測の除去**: 調査用の **localhost ingest / `debug-sink`** は **本番に不要**のため削除済み（`DEBUG_SINK_ENABLED` による外部シンクも廃止）。
 
 ## 表示用納期 effectiveDueDate・計画列 UI（2026-04-01）
 

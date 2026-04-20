@@ -3,7 +3,6 @@ import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, resolve, join } from 'path';
 import { logger } from '../../lib/logger.js';
-import { emitDebugEvent } from '../../lib/debug-sink.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -49,10 +48,6 @@ export class ImportAlertService {
         '[ImportAlertService] Generating failure alert'
       );
 
-      // #region agent log
-      void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H4', location: 'import-alert.service.ts:generateFailureAlert', message: 'execFile alert payload', data: { scheduleId: params.scheduleId, messageHasParen: message.includes('('), detailsHasNewline: details.includes('\n'), messageLength: message.length, detailsLength: details.length } });
-      // #endregion
-
       // NOTE: exec(string) + シェルエスケープは、改行や括弧などを含む文字列で壊れやすい。
       // ここではexecFileで引数配列として渡して、安全にスクリプトを実行する。
       await execFileAsync('bash', [scriptPath, alertType, message, details], {
@@ -65,9 +60,6 @@ export class ImportAlertService {
         '[ImportAlertService] Failure alert generated'
       );
     } catch (error) {
-      // #region agent log
-      void emitDebugEvent({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId: 'H5', location: 'import-alert.service.ts:generateFailureAlert', message: 'execFile alert error', data: { scheduleId: params.scheduleId, errorName: error instanceof Error ? error.name : 'unknown', errorMessage: error instanceof Error ? error.message : String(error) } });
-      // #endregion
       // アラート生成の失敗はログに記録するが、例外は投げない（インポート処理を中断しない）
       logger?.error(
         { err: error, scheduleId: params.scheduleId },

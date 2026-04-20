@@ -266,9 +266,6 @@ export function ProductionSchedulePage() {
     if (!prev && next) {
       scheduleFetchStartRef.current = performance.now();
       if (cursorDebugEnabled) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:schedule-fetch-start',message:'scheduleQuery fetch started',data:{pauseRefetch,isWriting,isWriteCooldown,isLoading:scheduleQuery.isLoading,fetchingCountSchedule:queryClient.isFetching({queryKey:['kiosk-production-schedule']}),fetchingCountOrderUsage:queryClient.isFetching({queryKey:['kiosk-production-schedule-order-usage']}),hasQuery},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
       }
       return;
     }
@@ -278,9 +275,6 @@ export function ProductionSchedulePage() {
       const elapsedMs = start ? Math.round(performance.now() - start) : null;
       scheduleFetchStartRef.current = null;
       if (cursorDebugEnabled) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H2',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:schedule-fetch-end',message:'scheduleQuery fetch ended',data:{elapsedMs,pauseRefetch,isWriting,isWriteCooldown,isError:scheduleQuery.isError},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
       }
     }
   }, [
@@ -653,9 +647,6 @@ export function ProductionSchedulePage() {
     const fetchingCountSchedule = queryClient.isFetching({ queryKey: ['kiosk-production-schedule'] });
     const fetchingCountOrderUsage = queryClient.isFetching({ queryKey: ['kiosk-production-schedule-order-usage'] });
     if (cursorDebugEnabled) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H3',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:start',message:'complete click',data:{rowId,pauseRefetch,isWriting,isWriteCooldown,isFetchingSchedule,fetchingCountSchedule,fetchingCountOrderUsage,completePending},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
     }
 
     // Optimistic Updateにより、UIは即座に更新される
@@ -663,16 +654,10 @@ export function ProductionSchedulePage() {
       await completeRow(rowId);
       const elapsedMs = Math.round(performance.now() - t0);
       if (cursorDebugEnabled) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:success',message:'complete mutation resolved',data:{rowId,elapsedMs},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
       }
     } catch (error) {
       const elapsedMs = Math.round(performance.now() - t0);
       if (cursorDebugEnabled) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/efef6d23-e2ed-411f-be56-ab093f2725f8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'30be23'},body:JSON.stringify({sessionId:'30be23',runId:'kiosk-wait-debug',hypothesisId:'H1',location:'apps/web/src/pages/kiosk/ProductionSchedulePage.tsx:handleComplete:error',message:'complete mutation rejected',data:{rowId,elapsedMs,isAxiosError:isAxiosError(error),status:isAxiosError(error)?(error.response?.status??null):null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
       }
       throw error;
     }
