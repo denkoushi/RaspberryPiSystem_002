@@ -408,5 +408,46 @@ describe('CsvImportScheduler (DI-friendly)', () => {
     // Gmail認証切れアラートは生成されない（手動実行時）
     expect(mockCreateAlert).not.toHaveBeenCalled();
   });
+
+  it('manual Gmail csvDashboards run should fail when no matching message exists', async () => {
+    const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
+
+    loadMock.mockResolvedValue({
+      storage: { provider: 'dropbox', options: { dropbox: { accessToken: 'dummy' } } },
+      csvImports: [
+        {
+          id: 'test-1',
+          name: 'Test Import',
+          provider: 'gmail',
+          targets: [{ type: 'csvDashboards', source: 'dashboard-1' }],
+          schedule: '0 4 * * *',
+          enabled: true,
+          replaceExisting: false,
+        },
+      ],
+    });
+
+    const executionExecute = vi.fn().mockResolvedValue({ csvDashboards: {} });
+    const mockFailHistory = vi.fn().mockResolvedValue(undefined);
+    const mockGenerateFailureAlert = vi.fn().mockResolvedValue(undefined);
+
+    const scheduler = new CsvImportScheduler({
+      historyService: {
+        createHistory: vi.fn().mockResolvedValue('history-1'),
+        completeHistory: vi.fn(),
+        failHistory: mockFailHistory,
+        cleanupOldHistory: vi.fn(),
+      } as any,
+      alertService: {
+        generateFailureAlert: mockGenerateFailureAlert,
+        generateConsecutiveFailureAlert: vi.fn(),
+      } as any,
+      createExecutionService: () => ({ execute: executionExecute } as any),
+    });
+
+    await expect(scheduler.runImport('test-1')).rejects.toThrow('No matching Gmail message found');
+    expect(mockFailHistory).toHaveBeenCalledTimes(1);
+    expect(mockGenerateFailureAlert).toHaveBeenCalledTimes(1);
+  });
 });
 

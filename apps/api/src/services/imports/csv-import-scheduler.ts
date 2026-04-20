@@ -153,6 +153,16 @@ export class CsvImportScheduler {
       });
 
       const summary = await this.executeImport(config, importSchedule, isManual);
+      if (
+        isManual &&
+        this.isGmailCsvDashboardSchedule(config, importSchedule) &&
+        Object.keys(summary.csvDashboards ?? {}).length === 0
+      ) {
+        // #region agent log
+        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4605d2'},body:JSON.stringify({sessionId:'4605d2',runId:'post-fix',hypothesisId:'H6',location:'csv-import-scheduler.ts:161',message:'manual gmail csvDashboard import returned empty dashboard summary',data:{taskId,provider:importSchedule.provider ?? config.storage.provider,targetCount:(importSchedule.targets ?? []).length},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        throw new Error('No matching Gmail message found for CSV dashboard import');
+      }
 
       // インポート履歴を完了として更新
       if (historyId) {
