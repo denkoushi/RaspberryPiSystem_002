@@ -152,7 +152,15 @@
       padding: 0 0.45rem; font-size: 1.875rem; line-height: 1.15;
       color: #fff; font-variant-numeric: tabular-nums; letter-spacing: 0;
     }
-
+    /* ヒント（placeholder）のみ小さくし、既存の枠サイズは変えない */
+    .order-row input::placeholder,
+    .order-row input::-webkit-input-placeholder {
+      font-size: clamp(8px, 2.4vw, 10px);
+      line-height: 1.25;
+      font-weight: 600;
+      color: #64748b;
+      opacity: 1;
+    }
     .intent-row {
       display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start;
       gap: 0.45rem; border-top: 2px solid #115e59; padding-top: 0.75rem;
