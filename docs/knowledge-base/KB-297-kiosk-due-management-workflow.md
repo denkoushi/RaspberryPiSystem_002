@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-04-16
+last-verified: 2026-04-20
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -105,6 +105,18 @@ category: knowledge-base
 - **本番デプロイ（2026-04-16・追記・Gmail スケジュール保証のみ）**: ブランチ **`feat/fkojunst-gmail-schedule-guarantee`**・コミット **`3a762893`**（`ImportScheduleAdminService` の DI 契約維持・`fkojunst-import-schedule.ensure` の `BackupConfigLoader.save` ガード・CI `import-schedule` / `csv-import-scheduler` 回帰）。**対象**: **`raspberrypi5` のみ**（API/DB のみのため Pi4・Pi3 は未デプロイ）。**コマンド**: `./scripts/update-all-clients.sh feat/fkojunst-gmail-schedule-guarantee infrastructure/ansible/inventory.yml --limit "raspberrypi5" --detach --follow`。**Detach Run ID**: `20260416-222237-18706`（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（初回 FKOJUNST 反映後は約 **89s**、Gmail スケジュール保証のみの Pi5 反映後は約 **56s**・いずれも既存の生産日程系チェックを含む）。
 - **トラブルシュート**: 無効ステータス・winner 未照合は同期結果の **`skippedInvalidStatus` / `unmatched`** と API ログの **`[ProductionScheduleFkojunstSyncService] FKOJUNST rows skipped during sync`** を確認。`update-all-clients.sh` の **Mac 側ロック**（exit 3）は前ジョブ完了待ち。
+
+## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
+
+- **Context**: Gmail 件名 **`FKOBAINO`** の CSV（注文番号・購買品名など）を **生産日程本体とは分離**して保持し、現品票の一次元バーコード（**10 桁 `FKOBAINO`**）から **製番・購買品名・既存マスタ品名（正規化 `FHINCD`）・機種名** をキオスクに表示する。
+- **Fix（境界分離）**:
+  - 専用 `CsvDashboard`（固定 ID **`c3d4e5f6-a7b8-49c0-d1e2-f3a4b5c6d7e8`**・seed 名 `PurchaseOrder_FKOBAINO`）・`ingestMode: DEDUP`。
+  - 保持テーブル **`PurchaseOrderLookupRow`**（ダッシュボード単位の **全削除→再取込 CSV（ingest run）スナップショット**）。購買 CSV の `FHINCD` は括弧suffix除去で正規化し、既存生産日程 winner 行の **`FHINMEI`** と突合。機種名は既存 **`resolveSeibanMachineDisplayNamesBatched`**、未解決は **空文字**。
+  - API: **`GET /api/kiosk/purchase-order-lookup/:purchaseOrderNo`**（`purchaseOrderNo` は **10 桁数字**・`x-client-key`）。Web: **`/kiosk/purchase-order-lookup`**（バーコードスキャン・複数行は一覧）。
+- **運用（Gmail スケジュール）**: `backup.json` / 管理 API 経由で **固定 ID** **`csv-import-purchase-order-fkobaino`**（`ImportScheduleAdminService` で **自動補完・削除不可**）を **`ensureFkobainoCsvImportSchedule`** が維持。件名 **`FKOBAINO`** は他用途と重複させない。
+- **本番デプロイ（2026-04-20）**: [deployment.md](../guides/deployment.md) 標準。`feat/fkobaino-purchase-order-lookup` を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-kensaku-stonebase01`** を **1 台ずつ**・**`--detach --follow`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260420-153825-14948` → `20260420-154924-28306` → `20260420-155406-1101` → `20260420-155936-12366`（各 **`failed=0` / `unreachable=0`**）。**`raspi4-fjv60-80`**: プレフライトで **Pi5 から `100.100.229.95:22` SSH timeout** のため **未デプロイ**（到達復旧後に **`--limit raspi4-fjv60-80` 単体**を推奨）。**Pi3**: 対象外。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: `raspi4-fjv60-80` の Pi5 経由 SSH・既存ベースラインと同型）。
+- **トラブルシュート**: プレフライト失敗で Pi5 に **stale lock** が残る場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) §5.2。マイグレーション適用後は Pi5 で **`pnpm prisma migrate status`**（[deployment.md のデプロイ後チェックリスト](../guides/deployment.md#デプロイ後チェックリスト)）を確認。
 
 ## 表示用納期 effectiveDueDate・計画列 UI（2026-04-01）
 
