@@ -371,6 +371,71 @@ async function main() {
     },
   });
 
+  // 購買 FKOBAINO（現品票の注文番号 = 購買ナンバー）CSVダッシュボード
+  const productionScheduleFkobainoDashboardId = 'c3d4e5f6-a7b8-49c0-d1e2-f3a4b5c6d7e8';
+  const productionScheduleFkobainoSubjectPattern = 'FKOBAINO';
+  const productionScheduleFkobainoDashboardDefinition = {
+    name: 'PurchaseOrder_FKOBAINO',
+    description: '購買照会（Gmail件名: FKOBAINO）',
+    gmailSubjectPattern: productionScheduleFkobainoSubjectPattern,
+    enabled: true,
+    ingestMode: 'DEDUP' as const,
+    dedupKeyColumns: ['FKOBAINO', 'FHINCD', 'FSEIBAN'],
+    dateColumnName: null,
+    displayPeriodDays: 365,
+    emptyMessage: 'FKOBAINO データはありません',
+    columnDefinitions: [
+      {
+        internalName: 'FKOBAINO',
+        displayName: '購買ナンバー',
+        csvHeaderCandidates: ['FKOBAINO'],
+        dataType: 'string',
+        order: 0,
+        required: true,
+      },
+      { internalName: 'FHINCD', displayName: '購買品コード', csvHeaderCandidates: ['FHINCD'], dataType: 'string', order: 1 },
+      { internalName: 'FSEIBAN', displayName: '製番', csvHeaderCandidates: ['FSEIBAN'], dataType: 'string', order: 2 },
+      {
+        internalName: 'FKOBAIHINMEI',
+        displayName: '購買品名',
+        csvHeaderCandidates: ['FKOBAIHINMEI'],
+        dataType: 'string',
+        order: 3,
+      },
+      {
+        internalName: 'FUPDTEDT',
+        displayName: '更新日時',
+        csvHeaderCandidates: ['FUPDTEDT'],
+        dataType: 'string',
+        order: 4,
+        required: false,
+      },
+      {
+        internalName: 'FKENSAOKSU',
+        displayName: '検査合格数',
+        csvHeaderCandidates: ['FKENSAOKSU'],
+        dataType: 'number',
+        order: 5,
+        required: false,
+      },
+    ],
+    templateType: 'TABLE' as const,
+    templateConfig: {
+      rowsPerPage: 50,
+      fontSize: 14,
+      displayColumns: ['FKOBAINO', 'FSEIBAN', 'FHINCD', 'FKOBAIHINMEI', 'FKENSAOKSU'],
+      headerFixed: true,
+    },
+  };
+  await prisma.csvDashboard.upsert({
+    where: { id: productionScheduleFkobainoDashboardId },
+    update: productionScheduleFkobainoDashboardDefinition,
+    create: {
+      id: productionScheduleFkobainoDashboardId,
+      ...productionScheduleFkobainoDashboardDefinition,
+    },
+  });
+
   // 計測機器の持出状況用のCSVダッシュボードを作成（サイネージ表示のデータソース）
   const measuringInstrumentLoansDashboardId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
   const measuringInstrumentLoansGmailSubjectPattern = '計測機器持出状況';

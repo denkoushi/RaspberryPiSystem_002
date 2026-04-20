@@ -47,6 +47,7 @@ import { ProductionScheduleLeaderOrderBoardPage } from './pages/kiosk/Production
 import { ProductionScheduleManualOrderPage } from './pages/kiosk/ProductionScheduleManualOrderPage';
 import { ProductionSchedulePage } from './pages/kiosk/ProductionSchedulePage';
 import { ProductionScheduleProgressOverviewPage } from './pages/kiosk/ProductionScheduleProgressOverviewPage';
+import { PurchaseOrderLookupPage } from './pages/kiosk/PurchaseOrderLookupPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { SignageLiteDisplayPage } from './pages/signage/SignageLiteDisplayPage';
@@ -90,6 +91,7 @@ function App() {
           <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
           <Route path="/kiosk/mobile-placement/shelf-register" element={<KioskMobileShelfRegisterPage />} />
           <Route path="/kiosk/mobile-placement/register" element={<Navigate to="/kiosk/mobile-placement" replace />} />
+          <Route path="/kiosk/purchase-order-lookup" element={<PurchaseOrderLookupPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/part-measurement" element={<KioskPartMeasurementPage />} />
           <Route path="/kiosk/part-measurement/edit/:sheetId" element={<KioskPartMeasurementEditPage />} />

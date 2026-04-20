@@ -419,6 +419,31 @@ export async function getKioskEmployees(clientKey?: string) {
   return data.employees;
 }
 
+/** 購買照会（FKOBAINO）1行分 */
+export interface PurchaseOrderLookupRowDto {
+  seiban: string;
+  purchasePartName: string;
+  masterPartName: string;
+  machineName: string;
+  purchasePartCodeRaw: string;
+  purchasePartCodeNormalized: string;
+  acceptedQuantity: number;
+}
+
+export interface PurchaseOrderLookupResponse {
+  purchaseOrderNo: string;
+  rows: PurchaseOrderLookupRowDto[];
+}
+
+/** キオスク: 購買ナンバー（10桁）で照会 */
+export async function getKioskPurchaseOrderLookup(purchaseOrderNo: string, clientKey?: string) {
+  const { data } = await api.get<PurchaseOrderLookupResponse>(
+    `/kiosk/purchase-order-lookup/${encodeURIComponent(purchaseOrderNo)}`,
+    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
+  );
+  return data;
+}
+
 export interface ProductionScheduleRow {
   id: string;
   occurredAt: string;

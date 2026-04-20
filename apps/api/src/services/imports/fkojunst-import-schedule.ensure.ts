@@ -1,5 +1,6 @@
 import type { BackupConfig } from '../backup/backup-config.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
+import { ensureFkobainoCsvImportSchedule } from './fkobaino-import-schedule.policy.js';
 import { ensureFkojunstCsvImportSchedule } from './fkojunst-import-schedule.policy.js';
 import { ensureSeibanMachineNameSupplementCsvImportSchedule } from './seiban-machine-name-supplement-import-schedule.policy.js';
 
@@ -9,9 +10,10 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
 } {
   const fkojunstEnsured = ensureFkojunstCsvImportSchedule(config);
   const seibanEnsured = ensureSeibanMachineNameSupplementCsvImportSchedule(fkojunstEnsured.config);
+  const fkobainoEnsured = ensureFkobainoCsvImportSchedule(seibanEnsured.config);
   return {
-    config: seibanEnsured.config,
-    repaired: fkojunstEnsured.repaired || seibanEnsured.repaired,
+    config: fkobainoEnsured.config,
+    repaired: fkojunstEnsured.repaired || seibanEnsured.repaired || fkobainoEnsured.repaired,
   };
 }
 

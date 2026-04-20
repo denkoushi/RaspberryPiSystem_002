@@ -1,0 +1,85 @@
+import { readFile } from 'node:fs/promises';
+
+import { parse } from 'csv-parse/sync';
+
+import { ApiError } from '../../lib/errors.js';
+import { prisma } from '../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID } from '../production-schedule/constants.js';
+import {
+  type ParsedPurchaseOrderLookupCsvRow,
+  parsePurchaseOrderLookupRow,
+} from './purchase-order-lookup-sync.pipeline.js';
+
+const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
+const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
+
+export type PurchaseOrderLookupSyncResult = {
+  scanned: number;
+  inserted: number;
+};
+
+/**
+ * FKOBAINO CsvDashboard の「今回 ingest した原本CSV」から、`PurchaseOrderLookupRow` を全置換する。
+ * `CsvDashboardRow` 全体を読むと過去 run の残存行を拾ってしまうため、最新スナップショット要件に合わせて
+ * ingestRun に紐づく csvFilePath を単一の source of truth にする。
+ */
+export class PurchaseOrderLookupSyncService {
+  async syncFromFkobainoDashboard(params: { ingestRunId: string }): Promise<PurchaseOrderLookupSyncResult> {
+    const sourceCsvDashboardId = PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID;
+    const ingestRun = await prisma.csvDashboardIngestRun.findUnique({
+      where: { id: params.ingestRunId },
+      select: { csvDashboardId: true, csvFilePath: true },
+    });
+    if (!ingestRun || ingestRun.csvDashboardId !== sourceCsvDashboardId) {
+      throw new ApiError(404, `FKOBAINO 取り込み実行が見つかりません: ${params.ingestRunId}`);
+    }
+    if (!ingestRun.csvFilePath) {
+      throw new ApiError(400, `FKOBAINO 取り込み実行に CSV 原本がありません: ${params.ingestRunId}`);
+    }
+
+    const csvText = await readFile(ingestRun.csvFilePath, 'utf-8');
+    const records = parse(csvText, {
+      bom: true,
+      columns: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+      trim: false,
+    }) as Array<Record<string, unknown>>;
+
+    const parsed: ParsedPurchaseOrderLookupCsvRow[] = [];
+    for (let lineIndex = 0; lineIndex < records.length; lineIndex += 1) {
+      const p = parsePurchaseOrderLookupRow(records[lineIndex] ?? {}, lineIndex);
+      if (p != null) {
+        parsed.push(p);
+      }
+    }
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.purchaseOrderLookupRow.deleteMany({ where: { sourceCsvDashboardId } });
+        if (parsed.length === 0) {
+          return;
+        }
+        const chunkSize = 200;
+        for (let i = 0; i < parsed.length; i += chunkSize) {
+          const chunk = parsed.slice(i, i + chunkSize);
+          await tx.purchaseOrderLookupRow.createMany({
+            data: chunk.map((p) => ({
+              sourceCsvDashboardId,
+              purchaseOrderNo: p.purchaseOrderNo,
+              purchasePartCodeRaw: p.purchasePartCodeRaw,
+              purchasePartCodeNormalized: p.purchasePartCodeNormalized,
+              seiban: p.seiban,
+              purchasePartName: p.purchasePartName,
+              acceptedQuantity: p.acceptedQuantity,
+              lineIndex: p.lineIndex,
+            })),
+          });
+        }
+      },
+      { timeout: REPLACEMENT_TX_TIMEOUT_MS, maxWait: REPLACEMENT_TX_MAX_WAIT_MS }
+    );
+
+    return { scanned: records.length, inserted: parsed.length };
+  }
+}

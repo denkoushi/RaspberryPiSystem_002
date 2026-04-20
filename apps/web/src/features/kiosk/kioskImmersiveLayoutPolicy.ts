@@ -19,6 +19,8 @@ const KIOSK_PART_MEASUREMENT_PREFIX = '/kiosk/part-measurement';
 
 const KIOSK_MOBILE_PLACEMENT_PREFIX = '/kiosk/mobile-placement';
 
+const KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX = '/kiosk/purchase-order-lookup';
+
 const IMMERSIVE_PATH_EXACT = new Set([
   '/kiosk/tag',
   '/kiosk/instruments/borrow',
@@ -42,5 +44,6 @@ export function usesKioskImmersiveLayout(pathname: string): boolean {
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
   if (p === KIOSK_MOBILE_PLACEMENT_PREFIX || p.startsWith(`${KIOSK_MOBILE_PLACEMENT_PREFIX}/`)) return true;
+  if (p === KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX || p.startsWith(`${KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX}/`)) return true;
   return IMMERSIVE_PATH_EXACT.has(p);
 }
