@@ -5,6 +5,8 @@ export const PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID = '9e4f2c1a-8b7d-4e6f-a5c
 /** Gmail 件名 `FHINMEI_MH_SH` の製番→機種名補完CSV用ダッシュボード */
 export const PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID =
   'e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b';
+/** Gmail 件名 `FKOBAINO` の購買照会CSV用ダッシュボード */
+export const PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID = 'c3d4e5f6-a7b8-49c0-d1e2-f3a4b5c6d7e8';
 /** 生産日程に MH/SH 行も補完CSVも無い製番の機種表示（空欄は使わない） */
 export const SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL = '機種名未登録';
 export const COMPLETED_PROGRESS_VALUE = '完了';

@@ -852,6 +852,24 @@ model ProductionScheduleSeibanMachineNameSupplement {
   @@index([fseiban], map: "PSSeibanMachNmSup_idx_fseiban")
 }
 
+/// Gmail 件名 `FKOBAINO` の購買CSV由来。同一ダッシュボードの全行を同期で全置換（最新スナップショット）。
+model PurchaseOrderLookupRow {
+  id                         String   @id @default(uuid())
+  sourceCsvDashboardId       String
+  purchaseOrderNo            String   @db.VarChar(20)
+  purchasePartCodeRaw        String   @db.VarChar(128)
+  purchasePartCodeNormalized String   @db.VarChar(128)
+  seiban                     String   @db.VarChar(64)
+  purchasePartName           String   @db.VarChar(500)
+  acceptedQuantity           Int      @default(0)
+  lineIndex                  Int      @default(0)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([purchaseOrderNo], map: "POLookup_idx_purchaseOrderNo")
+  @@index([sourceCsvDashboardId], map: "POLookup_idx_sourceDashboard")
+}
+
 model ProductionScheduleRowNote {
   id                String    @id @default(uuid())
   csvDashboardId    String

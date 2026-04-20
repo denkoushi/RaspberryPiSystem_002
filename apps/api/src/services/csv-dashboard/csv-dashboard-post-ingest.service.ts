@@ -1,5 +1,6 @@
 import { logger } from '../../lib/logger.js';
 import {
+  PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
@@ -10,6 +11,10 @@ import { ProductionScheduleSeibanMachineNameSupplementSyncService } from '../pro
 import type { OrderSupplementSyncResult } from '../production-schedule/order-supplement-sync.pipeline.js';
 import type { FkojunstSyncResult } from '../production-schedule/fkojunst-sync.pipeline.js';
 import type { SeibanMachineNameSupplementSyncResult } from '../production-schedule/seiban-machine-name-supplement-sync.pipeline.js';
+import {
+  PurchaseOrderLookupSyncService,
+  type PurchaseOrderLookupSyncResult,
+} from '../purchase-order-lookup/purchase-order-lookup-sync.service.js';
 
 export type CsvDashboardIngestSource = 'gmail' | 'manual';
 
@@ -17,6 +22,7 @@ export type CsvDashboardPostIngestResult = {
   orderSupplementSync: OrderSupplementSyncResult | null;
   fkojunstSync: FkojunstSyncResult | null;
   seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null;
+  purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null;
 };
 
 /**
@@ -27,7 +33,8 @@ export class CsvDashboardPostIngestService {
   constructor(
     private readonly orderSupplementSyncService: ProductionScheduleOrderSupplementSyncService = new ProductionScheduleOrderSupplementSyncService(),
     private readonly fkojunstSyncService: ProductionScheduleFkojunstSyncService = new ProductionScheduleFkojunstSyncService(),
-    private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService()
+    private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService(),
+    private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService()
   ) {}
 
   async runAfterSuccessfulIngest(params: {
@@ -38,6 +45,7 @@ export class CsvDashboardPostIngestService {
     let orderSupplementSync: OrderSupplementSyncResult | null = null;
     let fkojunstSync: FkojunstSyncResult | null = null;
     let seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null = null;
+    let purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null = null;
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
       orderSupplementSync = await this.orderSupplementSyncService.syncFromSupplementDashboard();
@@ -73,10 +81,38 @@ export class CsvDashboardPostIngestService {
       );
     }
 
-    if (orderSupplementSync === null && fkojunstSync === null && seibanMachineNameSupplementSync === null) {
-      return { orderSupplementSync: null, fkojunstSync: null, seibanMachineNameSupplementSync: null };
+    if (params.dashboardId === PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID) {
+      if (!params.ingestRunId) {
+        throw new Error('[CsvDashboardPostIngestService] ingestRunId is required for FKOBAINO purchase order lookup sync');
+      }
+      purchaseOrderLookupSync = await this.purchaseOrderLookupSyncService.syncFromFkobainoDashboard({
+        ingestRunId: params.ingestRunId,
+      });
+      logger.info(
+        {
+          dashboardId: params.dashboardId,
+          ingestSource: params.ingestSource,
+          ingestRunId: params.ingestRunId,
+          syncResult: purchaseOrderLookupSync,
+        },
+        '[CsvDashboardPostIngestService] FKOBAINO purchase order lookup sync completed'
+      );
     }
 
-    return { orderSupplementSync, fkojunstSync, seibanMachineNameSupplementSync };
+    if (
+      orderSupplementSync === null &&
+      fkojunstSync === null &&
+      seibanMachineNameSupplementSync === null &&
+      purchaseOrderLookupSync === null
+    ) {
+      return {
+        orderSupplementSync: null,
+        fkojunstSync: null,
+        seibanMachineNameSupplementSync: null,
+        purchaseOrderLookupSync: null,
+      };
+    }
+
+    return { orderSupplementSync, fkojunstSync, seibanMachineNameSupplementSync, purchaseOrderLookupSync };
   }
 }

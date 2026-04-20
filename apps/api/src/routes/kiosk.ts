@@ -6,6 +6,7 @@ import { registerKioskCallTargetsRoute } from './kiosk/call-targets.js';
 import { registerKioskSupportRoute } from './kiosk/support.js';
 import { registerKioskPowerRoute } from './kiosk/power.js';
 import { registerKioskSignagePreviewRoutes } from './kiosk/signage-preview.js';
+import { registerPurchaseOrderLookupRoute } from './kiosk/purchase-order-lookup.js';
 import {
   checkPowerRateLimit,
   checkRateLimit,
@@ -51,6 +52,10 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   });
 
   await registerKioskSignagePreviewRoutes(app, {
+    requireClientDevice
+  });
+
+  await registerPurchaseOrderLookupRoute(app, {
     requireClientDevice
   });
 }

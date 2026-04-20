@@ -8,6 +8,10 @@ import { mapManualImportRunError } from './import-schedule-error-mapper.js';
 import { detectGmailScheduleMinuteCollisions } from './import-schedule-policy.js';
 import { ensureProductionScheduleCsvImportSchedules } from './fkojunst-import-schedule.ensure.js';
 import {
+  applyFkobainoImportScheduleInvariants,
+  FKOBAINO_CSV_IMPORT_SCHEDULE_ID,
+} from './fkobaino-import-schedule.policy.js';
+import {
   applyFkojunstImportScheduleInvariants,
   FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
 } from './fkojunst-import-schedule.policy.js';
@@ -138,8 +142,8 @@ export class ImportScheduleAdminService {
         input.autoBackupAfterImport ?? existingSchedule.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
     };
 
-    const canonicalSchedule = applySeibanMachineNameSupplementImportScheduleInvariants(
-      applyFkojunstImportScheduleInvariants(updatedSchedule)
+    const canonicalSchedule = applyFkobainoImportScheduleInvariants(
+      applySeibanMachineNameSupplementImportScheduleInvariants(applyFkojunstImportScheduleInvariants(updatedSchedule))
     );
     config.csvImports![scheduleIndex] = canonicalSchedule;
     const warnings = detectGmailScheduleMinuteCollisions(config);
@@ -152,7 +156,8 @@ export class ImportScheduleAdminService {
   async deleteSchedule(scheduleId: string): Promise<void> {
     if (
       scheduleId === FKOJUNST_CSV_IMPORT_SCHEDULE_ID ||
-      scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID
+      scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === FKOBAINO_CSV_IMPORT_SCHEDULE_ID
     ) {
       throw new ApiError(400, 'このスケジュールはシステムで固定されており削除できません');
     }

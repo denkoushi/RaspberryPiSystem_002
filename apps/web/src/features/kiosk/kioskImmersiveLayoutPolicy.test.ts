@@ -35,7 +35,9 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/part-measurement/finalized'],
     ['/kiosk/mobile-placement'],
     ['/kiosk/mobile-placement/register'],
-    ['/kiosk/mobile-placement/shelf-register']
+    ['/kiosk/mobile-placement/shelf-register'],
+    ['/kiosk/purchase-order-lookup'],
+    ['/kiosk/purchase-order-lookup/']
   ])('true for %s', (path) => {
     expect(usesKioskImmersiveLayout(path)).toBe(true);
   });

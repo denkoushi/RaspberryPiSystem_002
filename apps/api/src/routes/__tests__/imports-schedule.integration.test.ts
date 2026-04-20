@@ -97,12 +97,16 @@ describe('CSV Import Schedule API', () => {
       const json = response.json() as { schedules: Array<{ id: string; schedule: string; provider?: string }> };
       const fk = json.schedules.find((s) => s.id === 'csv-import-productionschedule-fkojunst');
       const seiban = json.schedules.find((s) => s.id === 'csv-import-seiban-machine-name-supplement');
+      const fkobaino = json.schedules.find((s) => s.id === 'csv-import-purchase-order-fkobaino');
       expect(fk).toBeDefined();
       expect(fk?.schedule).toBe('0 0 * * *');
       expect(fk?.provider).toBe('gmail');
       expect(seiban).toBeDefined();
       expect(seiban?.schedule).toBe('15 6 * * 0');
       expect(seiban?.provider).toBe('gmail');
+      expect(fkobaino).toBeDefined();
+      expect(fkobaino?.schedule).toBe('25 6 * * 0');
+      expect(fkobaino?.provider).toBe('gmail');
     });
 
     it('should return 401 without authentication', async () => {

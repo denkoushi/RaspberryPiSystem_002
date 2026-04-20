@@ -87,7 +87,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       csvFilePath
     );
 
-    const { orderSupplementSync, fkojunstSync, seibanMachineNameSupplementSync } =
+    const { orderSupplementSync, fkojunstSync, seibanMachineNameSupplementSync, purchaseOrderLookupSync } =
       await postIngestService.runAfterSuccessfulIngest({
         dashboardId: params.id,
         ingestSource: 'manual',
@@ -102,6 +102,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       ...(orderSupplementSync != null ? { orderSupplementSync } : {}),
       ...(fkojunstSync != null ? { fkojunstSync } : {}),
       ...(seibanMachineNameSupplementSync != null ? { seibanMachineNameSupplementSync } : {}),
+      ...(purchaseOrderLookupSync != null ? { purchaseOrderLookupSync } : {}),
     };
   });
 
