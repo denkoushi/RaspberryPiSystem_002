@@ -1,11 +1,14 @@
-import { normalizePurchaseFhinCdForScheduleLookup } from './purchase-fhincd-normalize.js';
+import { normalizePurchaseFhinCdForMatching, normalizePurchaseFhinCdForScheduleLookup } from './purchase-fhincd-normalize.js';
 
 const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 export type ParsedPurchaseOrderLookupCsvRow = {
   purchaseOrderNo: string;
   purchasePartCodeRaw: string;
+  /** 括弧除去のみ（従来列・表示互換） */
   purchasePartCodeNormalized: string;
+  /** 生産日程 `FHINCD` との照合キー（括弧除去 + 末尾数値枝番除去） */
+  purchasePartCodeMatchKey: string;
   seiban: string;
   purchasePartName: string;
   acceptedQuantity: number;
@@ -30,6 +33,7 @@ export function parsePurchaseOrderLookupRow(
   const seiban = normalizeToken(rowData.FSEIBAN);
   const purchasePartName = normalizeToken(rowData.FKOBAIHINMEI);
   const purchasePartCodeNormalized = normalizePurchaseFhinCdForScheduleLookup(purchasePartCodeRaw);
+  const purchasePartCodeMatchKey = normalizePurchaseFhinCdForMatching(purchasePartCodeRaw);
   const qtyRaw = normalizeToken(rowData.FKENSAOKSU);
   let acceptedQuantity = 0;
   if (qtyRaw.length > 0) {
@@ -40,6 +44,7 @@ export function parsePurchaseOrderLookupRow(
     purchaseOrderNo,
     purchasePartCodeRaw,
     purchasePartCodeNormalized,
+    purchasePartCodeMatchKey,
     seiban,
     purchasePartName,
     acceptedQuantity,

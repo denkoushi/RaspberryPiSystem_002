@@ -25,7 +25,7 @@ export type PurchaseOrderLookupSyncResult = {
 
 /**
  * FKOBAINO CsvDashboard の「今回 ingest した原本CSV」から、`PurchaseOrderLookupRow` を upsert する。
- * キーは `sourceCsvDashboardId + FKOBAINO + FSEIBAN + 正規化FHINCD`。既存行は上書きし、CSVに無い過去行は残す。
+ * キーは `sourceCsvDashboardId + FKOBAINO + FSEIBAN + 照合キーFHINCD`（括弧除去+末尾数値枝番除去）。既存行は上書きし、CSVに無い過去行は残す。
  */
 export class PurchaseOrderLookupSyncService {
   async syncFromFkobainoDashboard(params: { ingestRunId: string }): Promise<PurchaseOrderLookupSyncResult> {
@@ -65,11 +65,11 @@ export class PurchaseOrderLookupSyncService {
           for (const p of chunk) {
             await tx.purchaseOrderLookupRow.upsert({
               where: {
-                sourceCsvDashboardId_purchaseOrderNo_seiban_purchasePartCodeNormalized: {
+                sourceCsvDashboardId_purchaseOrderNo_seiban_purchasePartCodeMatchKey: {
                   sourceCsvDashboardId,
                   purchaseOrderNo: p.purchaseOrderNo,
                   seiban: p.seiban,
-                  purchasePartCodeNormalized: p.purchasePartCodeNormalized,
+                  purchasePartCodeMatchKey: p.purchasePartCodeMatchKey,
                 },
               },
               create: {
@@ -77,6 +77,7 @@ export class PurchaseOrderLookupSyncService {
                 purchaseOrderNo: p.purchaseOrderNo,
                 purchasePartCodeRaw: p.purchasePartCodeRaw,
                 purchasePartCodeNormalized: p.purchasePartCodeNormalized,
+                purchasePartCodeMatchKey: p.purchasePartCodeMatchKey,
                 seiban: p.seiban,
                 purchasePartName: p.purchasePartName,
                 acceptedQuantity: p.acceptedQuantity,
@@ -84,6 +85,7 @@ export class PurchaseOrderLookupSyncService {
               },
               update: {
                 purchasePartCodeRaw: p.purchasePartCodeRaw,
+                purchasePartCodeNormalized: p.purchasePartCodeNormalized,
                 purchasePartName: p.purchasePartName,
                 acceptedQuantity: p.acceptedQuantity,
                 lineIndex: p.lineIndex,

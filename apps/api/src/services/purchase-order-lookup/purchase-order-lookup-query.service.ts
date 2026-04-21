@@ -1,8 +1,13 @@
 import { prisma } from '../../lib/prisma.js';
-import { findMasterFhinmeisByNormalizedFhinCd } from './purchase-order-lookup-master-part.service.js';
+import {
+  findMasterFhinmeisByMatchKey,
+  findMasterFhinmeisByNormalizedFhinCd,
+} from './purchase-order-lookup-master-part.service.js';
 import { resolveMachineNamesForPurchaseLookup } from './purchase-order-lookup-machine-name.service.js';
 import {
+  findEarliestPlannedStartDatesBySeibanAndMatchKey,
   findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd,
+  purchaseOrderLookupSeibanMatchKey,
   purchaseOrderLookupSeibanNormKey,
 } from './purchase-order-lookup-planned-start.service.js';
 
@@ -29,9 +34,22 @@ export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise
     orderBy: [{ lineIndex: 'asc' }, { id: 'asc' }],
   });
 
-  const [masterPartNames, machineNames, plannedStartMap] = await Promise.all([
+  const [
+    masterPartNamesByMatchKey,
+    masterPartNamesByNormalized,
+    machineNames,
+    plannedStartByMatchKey,
+    plannedStartByNormalized,
+  ] = await Promise.all([
+    findMasterFhinmeisByMatchKey(rows.map((row) => row.purchasePartCodeMatchKey)),
     findMasterFhinmeisByNormalizedFhinCd(rows.map((row) => row.purchasePartCodeNormalized)),
     resolveMachineNamesForPurchaseLookup(rows.map((row) => row.seiban)),
+    findEarliestPlannedStartDatesBySeibanAndMatchKey(
+      rows.map((row) => ({
+        seiban: row.seiban,
+        purchasePartCodeMatchKey: row.purchasePartCodeMatchKey,
+      }))
+    ),
     findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd(
       rows.map((row) => ({
         seiban: row.seiban,
@@ -41,10 +59,13 @@ export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise
   ]);
 
   const out: PurchaseOrderLookupRowDto[] = rows.map((r) => {
-    const masterPartName = masterPartNames[r.purchasePartCodeNormalized.trim()] ?? '';
+    const mk = r.purchasePartCodeMatchKey.trim();
+    const normalized = r.purchasePartCodeNormalized.trim();
+    const masterPartName = masterPartNamesByMatchKey[mk] ?? masterPartNamesByNormalized[normalized] ?? '';
     const machineName = machineNames[r.seiban.trim()] ?? '';
-    const startKey = purchaseOrderLookupSeibanNormKey(r.seiban, r.purchasePartCodeNormalized);
-    const startDate = plannedStartMap[startKey] ?? null;
+    const startKey = purchaseOrderLookupSeibanMatchKey(r.seiban, r.purchasePartCodeMatchKey);
+    const fallbackStartKey = purchaseOrderLookupSeibanNormKey(r.seiban, r.purchasePartCodeNormalized);
+    const startDate = plannedStartByMatchKey[startKey] ?? plannedStartByNormalized[fallbackStartKey] ?? null;
     return {
       seiban: r.seiban,
       purchasePartName: r.purchasePartName,
