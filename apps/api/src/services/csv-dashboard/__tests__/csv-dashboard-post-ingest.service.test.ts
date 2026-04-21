@@ -66,6 +66,7 @@ describe('CsvDashboardPostIngestService', () => {
     syncFromFkobainoDashboard.mockResolvedValue({
       scanned: 4,
       inserted: 4,
+      upserted: 4,
     });
   });
 
@@ -166,6 +167,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(hit.purchaseOrderLookupSync).toEqual({
       scanned: 4,
       inserted: 4,
+      upserted: 4,
     });
     expect(hit.orderSupplementSync).toBeNull();
     expect(hit.fkojunstSync).toBeNull();

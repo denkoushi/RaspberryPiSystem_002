@@ -4,4 +4,8 @@ export {
   type ParsedPurchaseOrderLookupCsvRow,
 } from './purchase-order-lookup-sync.pipeline.js';
 export { PurchaseOrderLookupSyncService, type PurchaseOrderLookupSyncResult } from './purchase-order-lookup-sync.service.js';
+export {
+  findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd,
+  purchaseOrderLookupSeibanNormKey,
+} from './purchase-order-lookup-planned-start.service.js';
 export { queryPurchaseOrderLookup, type PurchaseOrderLookupResponse } from './purchase-order-lookup-query.service.js';

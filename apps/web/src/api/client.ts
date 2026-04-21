@@ -283,6 +283,8 @@ export interface PurchaseOrderLookupRowDto {
   purchasePartCodeRaw: string;
   purchasePartCodeNormalized: string;
   acceptedQuantity: number;
+  /** 生産日程補助の着手日（`YYYY-MM-DD`、無ければ null） */
+  plannedStartDate: string | null;
 }
 
 export interface PurchaseOrderLookupResponse {
