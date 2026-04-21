@@ -6,6 +6,7 @@ import {
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { resolveJstDayRange } from '../_shared/data-source-utils.js';
+import { formatLoanInspectionInstrumentLabel } from './format-loan-inspection-instrument-label.js';
 
 type LoanInspectionMetadata = {
   sectionEquals?: string;
@@ -146,7 +147,7 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
       }
     }
 
-    const activeInstrumentNamesByBorrower = new Map<string, string[]>();
+    const activeInstrumentLabelsByBorrower = new Map<string, string[]>();
     for (const event of borrowEvents) {
       const latestReturn = latestReturnByManagementNumber.get(event.managementNumber);
       if (latestReturn && latestReturn >= event.eventAt) {
@@ -158,17 +159,21 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
       if (!borrower || !instrumentName) {
         continue;
       }
-      const current = activeInstrumentNamesByBorrower.get(borrower) ?? [];
-      current.push(instrumentName);
-      activeInstrumentNamesByBorrower.set(borrower, current);
+      const label = formatLoanInspectionInstrumentLabel(instrumentName, event.managementNumber);
+      if (!label) {
+        continue;
+      }
+      const current = activeInstrumentLabelsByBorrower.get(borrower) ?? [];
+      current.push(label);
+      activeInstrumentLabelsByBorrower.set(borrower, current);
     }
 
     let inspectedUsers = 0;
     const rows = employees.map((employee) => {
       const inspectedCountToday = inspectedCountByEmployee.get(employee.id) ?? 0;
-      const rawNames =
-        activeInstrumentNamesByBorrower.get(normalizeEmployeeName(employee.displayName)) ?? [];
-      const activeInstrumentNames = Array.from(new Set(rawNames));
+      const labelTokens =
+        activeInstrumentLabelsByBorrower.get(normalizeEmployeeName(employee.displayName)) ?? [];
+      const activeInstrumentNames = Array.from(new Set(labelTokens));
       const activeInstrumentLoansCount = activeInstrumentNames.length;
       if (inspectedCountToday > 0) {
         inspectedUsers += 1;

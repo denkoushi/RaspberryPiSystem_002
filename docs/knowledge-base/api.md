@@ -448,6 +448,12 @@
 - 加工機: `apps/api/src/services/tools/machine.service.ts`（`findDailyInspectionSummaries`）
 - 計測機器持出可視化: `apps/api/src/services/visualization/data-sources/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-data-source.ts`
 
+**追補（2026-04-21・計測機器点検可視化の一覧ラベル形式）**:
+- **仕様**: レンダラー `measuring_instrument_loan_inspection` の表「計測機器名称一覧」は列名据え置きで、各項目を **`名称 (管理番号)`**（例: `デジタルノギス (AG1001)`）とする。純関数は `formatLoanInspectionInstrumentLabel`（`format-loan-inspection-instrument-label.ts`）。管理番号が空（空白のみ含む）のときは **名称のみ**。
+- **デプロイ**: **`raspberrypi5` のみ**で十分（API コンテナに変更が入るため）。キオスク Pi4・サイネージ Pi3 は **本機能手当てでは必須ではない**（画像は Pi5 API が生成）。
+- **本番**: ブランチ **`feat/measuring-instrument-inspection-display-label`**・代表 **`1c3d5e9b`**・Detach **`20260421-143351-15107`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**。
+- **トラブルシュート**: 表示文字が長くなり、JPEG カード内で **省略記号が早く出る**場合は、解像度・フォント・トークン分割の調整を別タスクで検討。
+
 **検証**:
 - `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
 
