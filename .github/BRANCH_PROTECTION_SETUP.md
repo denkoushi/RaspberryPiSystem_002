@@ -22,10 +22,14 @@
 
 - ✅ **「Require status checks to pass before merging」にチェック**
 - ✅ **「Require branches to be up to date before merging」にチェック**
-- ✅ **「Status checks that are required」で以下のチェックを選択**：
-  - `lint-and-test`
+- ✅ **「Status checks that are required」で以下のチェックを選択**（**ジョブ `name` と一致させる**。古い `lint-and-test` / `docker-build` は無効）：
+  - `lint-build-unit`（`.github/workflows/ci.yml`）
+  - `api-db-and-infra`
+  - `security-docker`
   - `e2e-smoke`
-  - `docker-build`
+  - `e2e-tests`
+  - `codeql`（`.github/workflows/codeql.yml`）
+  - `gitleaks`（`.github/workflows/gitleaks.yml`）
 
 ### 4. 管理者のスルーを禁止（最重要）
 

@@ -264,12 +264,13 @@ describe('クライアントテレメトリーAPI', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/clients/heartbeat',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': clientKey,
+      },
       payload: {
-        apiKey: clientKey,
-        name: 'Heartbeat Name',
-        location: '新しい場所'
-      }
+        location: '新しい場所',
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -278,6 +279,101 @@ describe('クライアントテレメトリーAPI', () => {
     });
     expect(clientDevice?.name).toBe(clientName);
     expect(clientDevice?.location).toBe('新しい場所');
+  });
+
+  it('POST /api/clients/heartbeat requires x-client-key', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/heartbeat',
+      headers: { 'Content-Type': 'application/json' },
+      payload: { location: 'x' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('POST /api/clients/heartbeat returns 404 for unknown client key', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/heartbeat',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': 'unknown-client-key-that-does-not-exist-12345',
+      },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('POST /api/clients/status returns 404 for unknown client key', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/status',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': 'unknown-client-key-that-does-not-exist-12345',
+      },
+      payload: {
+        clientId: 'pi-unknown',
+        hostname: 'pi-unknown',
+        ipAddress: '192.168.0.99',
+        cpuUsage: 10,
+        memoryUsage: 20,
+        diskUsage: 30,
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('POST /api/clients registers a device when ADMIN', async () => {
+    const apiKey = `new-admin-client-key-${Date.now()}`;
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        apiKey,
+        name: 'new-kiosk-from-admin',
+        location: '倉庫A',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const row = await prisma.clientDevice.findUnique({ where: { apiKey } });
+    expect(row).toBeTruthy();
+    expect(row?.name).toBe('new-kiosk-from-admin');
+    expect(row?.location).toBe('倉庫A');
+  });
+
+  it('POST /api/clients requires authentication', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      headers: { 'Content-Type': 'application/json' },
+      payload: {
+        apiKey: `no-auth-key-${Date.now()}`,
+        name: 'x',
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('POST /api/clients rejects VIEWER', async () => {
+    const viewer = await createTestUser('VIEWER');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients',
+      headers: { ...createAuthHeader(viewer.token), 'Content-Type': 'application/json' },
+      payload: {
+        apiKey: `viewer-blocked-${Date.now()}`,
+        name: 'n',
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
   });
 
   it('GET /api/clients/status requires auth and returns latest logs', async () => {
@@ -330,6 +426,23 @@ describe('クライアントテレメトリーAPI', () => {
     expect(response.statusCode).toBe(200);
     const logs = await prisma.clientLog.findMany({ where: { clientId } });
     expect(logs).toHaveLength(2);
+  });
+
+  it('POST /api/clients/logs returns 404 for unknown client key', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/clients/logs',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': 'unknown-client-key-that-does-not-exist-12345',
+      },
+      payload: {
+        clientId: 'unknown-client',
+        logs: [{ level: 'INFO', message: 'hello' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
   });
 
   it('GET /api/clients/logs filters by clientId', async () => {

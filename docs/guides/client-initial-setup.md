@@ -348,7 +348,8 @@ SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
   - vault管理のテンプレート（`{{ vault_status_agent_client_key ... }}`）は`register-clients.sh`でスキップされる
 - **既存端末（`raspberrypi3`, `raspberrypi4`, `raspberrypi5`）について**:
   - vaultで管理されているが、`register-clients.sh`はスキップされる
-  - `status-agent`のheartbeat（`POST /api/clients/heartbeat`）で自動登録されるため、手動登録は不要
+  - 既存登録済みであれば `status-agent` の **`POST /api/clients/status`**（`x-client-key`）で継続運用できる
+  - 未登録の新端末は **先に `POST /api/clients` または `register-clients.sh` で登録**する（`status-agent` / `heartbeat` による自動登録はしない）
 - **場所（location）設定について**:
   - `status_agent_location`は`register-clients.sh`で使用されるが、vaultテンプレートのためスキップされる
   - `status-agent`はlocationを送信しないため、DBの`location`は`status-agent`のheartbeatでは更新されない

@@ -99,8 +99,8 @@ register_client() {
     return 0
   fi
   
-  # クライアントデバイスを登録（heartbeatエンドポイントを使用）
-  RESPONSE=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/clients/heartbeat" \
+  # クライアントデバイスを登録（管理者専用 POST /clients）
+  RESPONSE=$(curl -sS "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/clients" \
     -H "Authorization: Bearer ${TOKEN}" \
     -H "Content-Type: application/json" \
     -d "{

@@ -37,6 +37,8 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 ./scripts/register-clients.sh
 ```
 
+**補足（2026-04）**: `register-clients.sh` は管理者ログイン後に **`POST /api/clients`** で `ClientDevice` を upsert する。未認証の **`POST /api/clients/heartbeat`** による登録は廃止。Pi4 の `status-agent` は従来どおり **`POST /api/clients/status`** と `x-client-key` のみ使用するが、**未知のキーでは自動登録されない**ため、初回だけ先に登録が必要。
+
 **期待される出力:**
 ```
 [INFO] Logging in to API...

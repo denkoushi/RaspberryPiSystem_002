@@ -6,7 +6,11 @@ import { ApiError } from '../../lib/errors.js';
 
 const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
 
-export async function upsertClientHeartbeat(params: {
+/**
+ * 管理者のみ: 端末を inventory 等から登録・再同期する（create + update の upsert）。
+ * update では表示名を上書きしない（管理画面の手動編集と競合させない）。
+ */
+export async function registerClientDeviceAdmin(params: {
   apiKey: string;
   name: string;
   location?: string | null;
@@ -16,15 +20,54 @@ export async function upsertClientHeartbeat(params: {
     where: { apiKey: params.apiKey },
     update: {
       location: params.location ?? undefined,
-      lastSeenAt: now
+      lastSeenAt: now,
     },
     create: {
       name: params.name,
       location: params.location ?? undefined,
       apiKey: params.apiKey,
-      lastSeenAt: now
-    }
+      lastSeenAt: now,
+    },
   });
+}
+
+/**
+ * 登録済み端末のみ: x-client-key 相当のキーで生存通知（lastSeen / location）。
+ * 未登録キーは 404。
+ */
+export async function touchClientHeartbeat(params: { clientKey: string; location?: string | null }) {
+  const now = new Date();
+  try {
+    return await prisma.clientDevice.update({
+      where: { apiKey: params.clientKey },
+      data: {
+        location: params.location ?? undefined,
+        lastSeenAt: now,
+      },
+    });
+  } catch (error) {
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw new ApiError(404, 'クライアントデバイスが見つかりません', undefined, 'CLIENT_DEVICE_NOT_FOUND');
+    }
+    throw error;
+  }
+}
+
+async function requireRegisteredClientDevice(clientKey: string, data: {
+  lastSeenAt: Date;
+  statusClientId?: string;
+}) {
+  try {
+    return await prisma.clientDevice.update({
+      where: { apiKey: clientKey },
+      data,
+    });
+  } catch (error) {
+    if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw new ApiError(404, 'クライアントデバイスが見つかりません', undefined, 'CLIENT_DEVICE_NOT_FOUND');
+    }
+    throw error;
+  }
 }
 
 export async function listClientDevices() {
@@ -71,18 +114,9 @@ export async function upsertClientStatus(params: {
   const { clientKey, metrics, requestId } = params;
   const now = new Date();
 
-  const clientDevice = await prisma.clientDevice.upsert({
-    where: { apiKey: clientKey },
-    update: {
-      statusClientId: metrics.clientId,
-      lastSeenAt: now
-    },
-    create: {
-      name: metrics.hostname,
-      apiKey: clientKey,
-      statusClientId: metrics.clientId,
-      lastSeenAt: now
-    }
+  const clientDevice = await requireRegisteredClientDevice(clientKey, {
+    statusClientId: metrics.clientId,
+    lastSeenAt: now,
   });
 
   const status = await prisma.clientStatus.upsert({
@@ -139,15 +173,7 @@ export async function storeClientLogs(params: {
   requestId: string;
 }) {
   const { clientKey, clientId, logs, requestId } = params;
-  await prisma.clientDevice.upsert({
-    where: { apiKey: clientKey },
-    update: { lastSeenAt: new Date() },
-    create: {
-      apiKey: clientKey,
-      name: clientId,
-      lastSeenAt: new Date()
-    }
-  });
+  await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
 
   await prisma.clientLog.createMany({
     data: logs.map((entry) => ({

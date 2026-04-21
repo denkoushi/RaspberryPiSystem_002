@@ -2386,7 +2386,7 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 - ✅ **解決済み**（2026-02-09）:
   1. `ClientDevice.name` を「表示名（手動編集）」として定義
   2. `POST /api/clients/status` は `update` で `name` を更新せず、`statusClientId` と `lastSeenAt` のみ更新
-  3. `POST /api/clients/heartbeat` は `update` で `name` を更新せず、`location` と `lastSeenAt` のみ更新
+  3. `POST /api/clients/heartbeat` は `update` で `name` を更新せず、`location` と `lastSeenAt` のみ更新（**追記**: 後続変更で **`x-client-key` 必須**・未登録キーは 404。新規台帳登録は **`POST /api/clients`（管理者）** に分離）
   4. `PUT /api/clients/:id` で `name` を更新可能に拡張
   5. 機械名は `ClientStatus.hostname` を参照する運用に統一
 - ✅ **実機検証完了**（2026-02-10）:

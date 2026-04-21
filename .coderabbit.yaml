@@ -1,0 +1,11 @@
+# CodeRabbit: https://docs.coderabbit.ai/guides/configuration-overview
+# GitHub App のインストールはリポジトリ／組織設定で別途実施する
+
+language: ja-JP
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  poem: false
+  auto_review:
+    enabled: true

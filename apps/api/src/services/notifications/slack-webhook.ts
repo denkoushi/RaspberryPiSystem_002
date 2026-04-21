@@ -21,9 +21,6 @@ export async function sendSlackNotification(message: SlackMessage): Promise<void
     return;
   }
 
-  // Webhook URLをログに出力しない（セキュリティ）
-  const sanitizedUrl = webhookUrl.substring(0, 30) + '...';
-
   try {
     const payload = {
       text: '🔔 キオスクサポート通知',
@@ -75,23 +72,16 @@ export async function sendSlackNotification(message: SlackMessage): Promise<void
       throw new Error(`Slack webhook returned ${response.status}: ${response.statusText}`);
     }
 
-    logger?.info(
-      { requestId: message.requestId, sanitizedUrl },
-      '[SlackWebhook] Notification sent successfully'
-    );
+    logger?.info({ requestId: message.requestId }, '[SlackWebhook] Notification sent successfully');
   } catch (error) {
     // タイムアウトまたはネットワークエラー
     if (error instanceof Error && error.name === 'AbortError') {
-      logger?.error(
-        { requestId: message.requestId, sanitizedUrl },
-        '[SlackWebhook] Request timeout'
-      );
+      logger?.error({ requestId: message.requestId }, '[SlackWebhook] Request timeout');
     } else {
       logger?.error(
         {
           err: error,
           requestId: message.requestId,
-          sanitizedUrl
         },
         '[SlackWebhook] Failed to send notification'
       );

@@ -4,26 +4,38 @@ import {
   getClientStatusesWithLatestLogs,
   listClientDevices,
   listClientLogs,
+  registerClientDeviceAdmin,
   storeClientLogs,
+  touchClientHeartbeat,
   updateClientDevice,
-  upsertClientHeartbeat,
   upsertClientStatus
 } from '../../services/clients/client-telemetry.service.js';
 import {
   canManage,
   canViewStatus,
-  heartbeatSchema,
+  clientHeartbeatBodySchema,
   logListQuerySchema,
   logsPayloadSchema,
   metricSchema,
+  registerClientBodySchema,
   requireClientKey,
   updateClientSchema
 } from './shared.js';
 
 export async function registerClientCoreRoutes(app: FastifyInstance): Promise<void> {
+  app.post('/clients', { preHandler: canManage }, async (request) => {
+    const body = registerClientBodySchema.parse(request.body);
+    const client = await registerClientDeviceAdmin(body);
+    return { client };
+  });
+
   app.post('/clients/heartbeat', async (request) => {
-    const body = heartbeatSchema.parse(request.body);
-    const client = await upsertClientHeartbeat(body);
+    const clientKey = requireClientKey(request.headers['x-client-key']);
+    const body = clientHeartbeatBodySchema.parse(request.body ?? {});
+    const client = await touchClientHeartbeat({
+      clientKey,
+      location: body.location,
+    });
     return { client };
   });
 
