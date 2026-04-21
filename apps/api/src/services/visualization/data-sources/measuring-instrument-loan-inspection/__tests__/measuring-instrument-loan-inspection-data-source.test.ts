@@ -14,12 +14,16 @@ vi.mock('../../../../../lib/prisma.js', () => ({
     measuringInstrumentLoanEvent: {
       findMany: vi.fn(),
     },
+    loan: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
 describe('MeasuringInstrumentLoanInspectionDataSource', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.loan.findMany).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -138,6 +142,62 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
       expect(result.metadata?.totalUsers).toBe(2);
       expect(result.metadata?.inspectedUsers).toBe(1);
       expect(result.metadata?.targetDate).toBe('2026-02-25');
+    }
+    expect(prisma.loan.findMany).not.toHaveBeenCalled();
+  });
+
+  it('NFC 由来の loanId が取消済み Loan と一致する持ち出しは貸出中に含めない', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-25T10:00:00+09:00'));
+
+    vi.mocked(prisma.employee.findMany).mockResolvedValue([
+      { id: 'emp-1', displayName: '山田 太郎' },
+    ] as never);
+    vi.mocked(prisma.inspectionRecord.groupBy).mockResolvedValue([] as never);
+    vi.mocked(prisma.loan.findMany).mockResolvedValue([{ id: 'loan-cancelled-1' }] as never);
+    vi.mocked(prisma.measuringInstrumentLoanEvent.findMany)
+      .mockResolvedValueOnce([
+        {
+          managementNumber: 'AG1001',
+          eventAt: new Date('2026-02-25T01:00:00.000Z'),
+          raw: {
+            borrower: '山田太郎',
+            name: 'デジタルノギス',
+            loanId: 'loan-cancelled-1',
+          },
+        },
+        {
+          managementNumber: 'AG1002',
+          eventAt: new Date('2026-02-25T02:00:00.000Z'),
+          raw: { borrower: '山田太郎', name: 'マイクロメータ' },
+        },
+      ] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const source = new MeasuringInstrumentLoanInspectionDataSource();
+    const result = await source.fetchData({
+      sectionEquals: '加工担当部署',
+      period: 'today_jst',
+    });
+
+    expect(prisma.loan.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['loan-cancelled-1'] },
+          cancelledAt: { not: null },
+        }),
+      }),
+    );
+    expect(result.kind).toBe('table');
+    if (result.kind === 'table') {
+      expect(result.rows).toEqual([
+        {
+          従業員名: '山田 太郎',
+          点検件数: 0,
+          貸出中計測機器数: 1,
+          計測機器名称一覧: 'マイクロメータ (AG1002)',
+        },
+      ]);
     }
   });
 

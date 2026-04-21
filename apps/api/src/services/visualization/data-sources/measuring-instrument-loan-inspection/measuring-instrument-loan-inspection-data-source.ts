@@ -6,7 +6,9 @@ import {
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { resolveJstDayRange } from '../_shared/data-source-utils.js';
+import { extractLoanIdFromEventRaw } from './extract-loan-id-from-event-raw.js';
 import { formatLoanInspectionInstrumentLabel } from './format-loan-inspection-instrument-label.js';
+import { loadCancelledLoanIdSet } from './load-cancelled-loan-id-set.js';
 
 type LoanInspectionMetadata = {
   sectionEquals?: string;
@@ -122,6 +124,18 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
     const inspectedCountByEmployee = new Map(
       inspectedGroup.map((group) => [group.employeeId, group._count._all ?? 0]),
     );
+
+    const borrowEventsWithLoanId = borrowEvents.map((event) => ({
+      event,
+      loanId: extractLoanIdFromEventRaw(event.raw),
+    }));
+    const loanIdsFromBorrowEvents = Array.from(
+      new Set(
+        borrowEventsWithLoanId.map(({ loanId }) => loanId).filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const cancelledLoanIdSet = await loadCancelledLoanIdSet(prisma, loanIdsFromBorrowEvents);
+
     const managementNumbers = Array.from(
       new Set(borrowEvents.map((event) => event.managementNumber).filter(Boolean)),
     );
@@ -148,12 +162,15 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
     }
 
     const activeInstrumentLabelsByBorrower = new Map<string, string[]>();
-    for (const event of borrowEvents) {
+    for (const { event, loanId } of borrowEventsWithLoanId) {
+      const raw = asRecord(event.raw);
+      if (loanId && cancelledLoanIdSet.has(loanId)) {
+        continue;
+      }
       const latestReturn = latestReturnByManagementNumber.get(event.managementNumber);
       if (latestReturn && latestReturn >= event.eventAt) {
         continue;
       }
-      const raw = asRecord(event.raw);
       const borrower = normalizeEmployeeName(asString(raw.borrower));
       const instrumentName = asString(raw.name);
       if (!borrower || !instrumentName) {
