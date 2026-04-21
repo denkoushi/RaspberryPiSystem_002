@@ -20,6 +20,18 @@ export const BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL: BarcodeFormat[] = [
 ];
 
 /**
+ * 購買照会（注文番号ラベル想定）向け。探索空間を抑えてデコードを安定・高速化。
+ * 現場で別形式が必要ならこの配列に追加する。
+ */
+export const BARCODE_FORMAT_PRESET_PURCHASE_ORDER: BarcodeFormat[] = [
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.ITF,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+];
+
+/**
  * 一次元 + 主要な二次元（汎用画面向け）。
  */
 export const BARCODE_FORMAT_PRESET_ALL_COMMON: BarcodeFormat[] = [

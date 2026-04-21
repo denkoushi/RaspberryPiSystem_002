@@ -1,5 +1,12 @@
 import { BarcodeFormat, BrowserMultiFormatReader, DecodeHintType } from '@zxing/library';
 
+export type BarcodeReaderTimingOptions = {
+  /** 読取成功後に次の試行まで待つ ms（連続ループ用） */
+  timeBetweenScansMillis?: number;
+  /** NotFound 等のあと再試行までの ms */
+  timeBetweenDecodingAttempts?: number;
+};
+
 export function createZxingPossibleFormatsHints(formats: BarcodeFormat[]): Map<DecodeHintType, unknown> {
   const hints = new Map<DecodeHintType, unknown>();
   hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
@@ -11,12 +18,7 @@ export function createZxingPossibleFormatsHints(formats: BarcodeFormat[]): Map<D
  */
 export function createBrowserMultiFormatReader(
   formats: BarcodeFormat[],
-  options?: {
-    /** 読取成功後に次の試行まで待つ ms（連続ループ用） */
-    timeBetweenScansMillis?: number;
-    /** NotFound 等のあと再試行までの ms */
-    timeBetweenDecodingAttempts?: number;
-  }
+  options?: BarcodeReaderTimingOptions
 ): BrowserMultiFormatReader {
   const hints = createZxingPossibleFormatsHints(formats);
   const reader = new BrowserMultiFormatReader(
