@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-20
+last-verified: 2026-04-21
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -35,6 +35,15 @@ update-frequency: medium
   - 4台の `kiosk-browser.service` / `status-agent.timer` → すべて `active`
   - 4台の `http://localhost:7071/api/agent/status` → すべて `readerConnected: true`, `queueSize: 0`
 - 機能の詳細は [KB-345](../knowledge-base/frontend.md#kb-345-計測機器持出で氏名nfcスキャン後に自動送信されない) と [ui.md](../modules/measuring-instruments/ui.md) を参照。
+
+### 補足（2026-04-21: クライアント境界のセキュリティ強化と全台順次デプロイ）
+
+- **変更概要**: `POST /api/clients/heartbeat` は **登録済み `x-client-key` のみ**で `lastSeenAt`/`location` を更新。新規 `ClientDevice` 作成は **`POST /api/clients`（管理者 JWT）** または **`scripts/register-clients.sh`**。`status` / `logs` も未登録キーからの端末 **upsert 作成は不可**。
+- **本番デプロイ（実績）**: ブランチ **`feat/security-hardening-review-gates`**・代表 **`72c95b57`**。**順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**: `20260421-095905-19176` → `20260421-101215-27707` → `20260421-101642-25779` → `20260421-102001-19607` → `20260421-102407-17708` → `20260421-102743-30478`、各 **`PLAY RECAP failed=0` / `unreachable=0`**。
+- **Pi3**: [ラズパイ3（サイネージ）の更新](#ラズパイ3サイネージの更新) に従い、**Pi5 成功後**に **`--limit raspberrypi3` のみ**で実行（リソース僅少・他ホストと並列起動しない）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s**）。
+- **Pi3 トラブルシュート**: デプロイ中のヘルス収集で `signage-lite` が一時 **`exit-code`** でも、playbook 完了時点で **`signage-lite.service is active`** なら正常系（lightdm 復旧後に収束）。長時間 `exit-code` のみが続く場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。
+- **ナレッジ**: [KB-206](../knowledge-base/api.md#kb-206-クライアント表示名を-status-agent-が上書きする問題)・[KB-337](../knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome)・[pr-review-bots.md](../security/pr-review-bots.md)。
 
 ## 概要
 

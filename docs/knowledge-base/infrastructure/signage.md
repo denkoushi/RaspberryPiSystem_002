@@ -96,6 +96,7 @@ update-frequency: medium
 **Investigation**:
 
 - `current-image` の **`key=`** / **`x-client-key`** は **登録済み `ClientDevice.apiKey`** と照合され、未登録は 401（実装: `apps/api/src/routes/signage/render.ts`）。  
+- **追記（2026-04-21）**: 端末台帳の新規作成は **`POST /api/clients`（管理者）** 等で行う。**未認証の `POST /api/clients/heartbeat` による upsert 登録は廃止**（本番は `feat/security-hardening-review-gates` 反映済み・[deployment.md](../../guides/deployment.md) 補足 2026-04-21）。
 - 症状 (2) は **Chrome のキャッシュ／サイトデータ**と SPA・`localStorage`（`kiosk-client-key`）の不整合が疑われる（`direct URL` はキャッシュ経路が異なるため片方だけ成功し得る）。
 
 **Root cause**:

@@ -2379,7 +2379,7 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 
 **要因**:
 - `POST /api/clients/status` が `ClientDevice.name = metrics.hostname` で毎回更新していた
-- `POST /api/clients/heartbeat` も `name` を更新可能で、手動編集と競合していた
+- `POST /api/clients/heartbeat` も `name` を更新可能で、手動編集と競合していた（**2026-04-21 本番反映**: 心拍は **登録済みキーのみ**・新規台帳は **`POST /api/clients`（管理者）** に分離。全台デプロイ実績・Phase12 は [deployment.md](../guides/deployment.md) 補足 2026-04-21 / `EXEC_PLAN.md` Progress を参照）
 - 一方で機械名は `ClientStatus.hostname` にすでに保持されており、`ClientDevice.name` と役割が混在していた
 
 **有効だった対策**:
