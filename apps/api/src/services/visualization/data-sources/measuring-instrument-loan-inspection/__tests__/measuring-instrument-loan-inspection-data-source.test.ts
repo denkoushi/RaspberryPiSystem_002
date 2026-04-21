@@ -125,13 +125,13 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           従業員名: '山田 太郎',
           点検件数: 3,
           貸出中計測機器数: 2,
-          計測機器名称一覧: 'デジタルノギス, マイクロメータ',
+          計測機器名称一覧: 'デジタルノギス (AG1001), マイクロメータ (AG1002)',
         },
         {
           従業員名: '佐藤 花子',
           点検件数: 0,
           貸出中計測機器数: 1,
-          計測機器名称一覧: 'トルクレンチ',
+          計測機器名称一覧: 'トルクレンチ (AG1003)',
         },
       ]);
       expect(result.metadata?.sectionEquals).toBe('加工担当部署');
@@ -182,7 +182,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           従業員名: '山田 太郎',
           点検件数: 0,
           貸出中計測機器数: 1,
-          計測機器名称一覧: 'デジタルノギス',
+          計測機器名称一覧: 'デジタルノギス (AG1001)',
         },
       ]);
     }
