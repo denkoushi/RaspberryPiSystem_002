@@ -12,12 +12,13 @@ function row(partial: Partial<PurchaseOrderLookupRowDto> & Pick<PurchaseOrderLoo
     machineName: partial.machineName ?? 'M',
     purchasePartCodeRaw: partial.purchasePartCodeRaw ?? 'RAW',
     purchasePartCodeNormalized: partial.purchasePartCodeNormalized ?? 'NORM',
-    acceptedQuantity: partial.acceptedQuantity ?? 0
+    acceptedQuantity: partial.acceptedQuantity ?? 0,
+    plannedStartDate: partial.plannedStartDate ?? null
   };
 }
 
 describe('buildPurchaseOrderRowLines', () => {
-  it('returns five logical fields in display order (機種→製番→品名→品番→個数)', () => {
+  it('returns six logical fields in display order (機種→製番→着手日→品名→品番→個数)', () => {
     const vm = buildPurchaseOrderRowLines(
       row({
         seiban: 'BE1',
@@ -25,14 +26,31 @@ describe('buildPurchaseOrderRowLines', () => {
         purchasePartName: 'ナット',
         masterPartName: 'ナット',
         purchasePartCodeRaw: 'FH-01',
-        acceptedQuantity: 3
+        acceptedQuantity: 3,
+        plannedStartDate: '2026-04-01'
       })
     );
     expect(vm.machineName).toBe('MH-X');
     expect(vm.seiban).toBe('BE1');
+    expect(vm.plannedStartDisplay).toBe('2026-04-01');
     expect(vm.purchasePartName).toBe('ナット');
     expect(vm.partCode).toBe('FH-01');
     expect(vm.quantityDisplay).toBe('3');
+  });
+
+  it('shows dash for missing plannedStartDate', () => {
+    const vm = buildPurchaseOrderRowLines(
+      row({
+        seiban: 'BE1',
+        machineName: 'M',
+        purchasePartName: 'P',
+        masterPartName: '',
+        purchasePartCodeRaw: 'x',
+        acceptedQuantity: 1,
+        plannedStartDate: null
+      })
+    );
+    expect(vm.plannedStartDisplay).toBe('-');
   });
 
   it('sets hinmeiSubLine when master differs from purchase name', () => {

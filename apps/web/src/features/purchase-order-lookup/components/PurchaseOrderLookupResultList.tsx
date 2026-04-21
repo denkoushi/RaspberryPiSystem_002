@@ -8,7 +8,7 @@ export type PurchaseOrderLookupResultListProps = {
 };
 
 /**
- * ラベルなし・値のみ（機種→製番→品名→品番→個数）。
+ * ラベルなし・値のみ（機種→製番→着手日→品名→品番→個数）。
  */
 export function PurchaseOrderLookupResultList({ data }: PurchaseOrderLookupResultListProps) {
   if (data.rows.length === 0) {
@@ -27,6 +27,7 @@ export function PurchaseOrderLookupResultList({ data }: PurchaseOrderLookupResul
           >
             <div className={t.valueLine}>{vm.machineName}</div>
             <div className={t.valueLine}>{vm.seiban}</div>
+            <div className={t.valueLine}>{vm.plannedStartDisplay}</div>
             <div className={t.valueLine}>
               {vm.purchasePartName}
               {vm.hinmeiSubLine != null ? (

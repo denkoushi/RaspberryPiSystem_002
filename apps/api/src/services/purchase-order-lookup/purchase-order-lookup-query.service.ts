@@ -1,6 +1,10 @@
 import { prisma } from '../../lib/prisma.js';
 import { findMasterFhinmeisByNormalizedFhinCd } from './purchase-order-lookup-master-part.service.js';
 import { resolveMachineNamesForPurchaseLookup } from './purchase-order-lookup-machine-name.service.js';
+import {
+  findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd,
+  purchaseOrderLookupSeibanNormKey,
+} from './purchase-order-lookup-planned-start.service.js';
 
 export type PurchaseOrderLookupRowDto = {
   seiban: string;
@@ -10,6 +14,8 @@ export type PurchaseOrderLookupRowDto = {
   purchasePartCodeRaw: string;
   purchasePartCodeNormalized: string;
   acceptedQuantity: number;
+  /** 生産日程補助の着手日（ISO 日付 `YYYY-MM-DD`、無ければ null） */
+  plannedStartDate: string | null;
 };
 
 export type PurchaseOrderLookupResponse = {
@@ -23,14 +29,22 @@ export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise
     orderBy: [{ lineIndex: 'asc' }, { id: 'asc' }],
   });
 
-  const [masterPartNames, machineNames] = await Promise.all([
+  const [masterPartNames, machineNames, plannedStartMap] = await Promise.all([
     findMasterFhinmeisByNormalizedFhinCd(rows.map((row) => row.purchasePartCodeNormalized)),
     resolveMachineNamesForPurchaseLookup(rows.map((row) => row.seiban)),
+    findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd(
+      rows.map((row) => ({
+        seiban: row.seiban,
+        purchasePartCodeNormalized: row.purchasePartCodeNormalized,
+      }))
+    ),
   ]);
 
   const out: PurchaseOrderLookupRowDto[] = rows.map((r) => {
     const masterPartName = masterPartNames[r.purchasePartCodeNormalized.trim()] ?? '';
     const machineName = machineNames[r.seiban.trim()] ?? '';
+    const startKey = purchaseOrderLookupSeibanNormKey(r.seiban, r.purchasePartCodeNormalized);
+    const startDate = plannedStartMap[startKey] ?? null;
     return {
       seiban: r.seiban,
       purchasePartName: r.purchasePartName,
@@ -39,6 +53,7 @@ export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise
       purchasePartCodeRaw: r.purchasePartCodeRaw,
       purchasePartCodeNormalized: r.purchasePartCodeNormalized,
       acceptedQuantity: r.acceptedQuantity,
+      plannedStartDate: startDate != null ? startDate.toISOString().slice(0, 10) : null,
     };
   });
 

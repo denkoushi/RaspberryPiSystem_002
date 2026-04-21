@@ -852,7 +852,7 @@ model ProductionScheduleSeibanMachineNameSupplement {
   @@index([fseiban], map: "PSSeibanMachNmSup_idx_fseiban")
 }
 
-/// Gmail 件名 `FKOBAINO` の購買CSV由来。同一ダッシュボードの全行を同期で全置換（最新スナップショット）。
+/// Gmail 件名 `FKOBAINO` の購買CSV由来。取り込みごとに upsert し、同一キーは更新・未登録は追加（履歴蓄積）。
 model PurchaseOrderLookupRow {
   id                         String   @id @default(uuid())
   sourceCsvDashboardId       String
@@ -866,6 +866,7 @@ model PurchaseOrderLookupRow {
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
+  @@unique([sourceCsvDashboardId, purchaseOrderNo, seiban, purchasePartCodeNormalized], map: "POLookup_unique_src_po_seiban_nfhincd")
   @@index([purchaseOrderNo], map: "POLookup_idx_purchaseOrderNo")
   @@index([sourceCsvDashboardId], map: "POLookup_idx_sourceDashboard")
 }

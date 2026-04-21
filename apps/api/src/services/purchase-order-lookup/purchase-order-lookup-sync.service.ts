@@ -13,15 +13,19 @@ import {
 const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
 const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
 
+/** 1 トランザクション内の upsert バッチサイズ（行数が多いCSVでもタイムアウトしにくい粒度） */
+const UPSERT_CHUNK_SIZE = 100;
+
 export type PurchaseOrderLookupSyncResult = {
   scanned: number;
+  /** 後方互換のため維持。意味は `upserted` と同じ。 */
   inserted: number;
+  upserted: number;
 };
 
 /**
- * FKOBAINO CsvDashboard の「今回 ingest した原本CSV」から、`PurchaseOrderLookupRow` を全置換する。
- * `CsvDashboardRow` 全体を読むと過去 run の残存行を拾ってしまうため、最新スナップショット要件に合わせて
- * ingestRun に紐づく csvFilePath を単一の source of truth にする。
+ * FKOBAINO CsvDashboard の「今回 ingest した原本CSV」から、`PurchaseOrderLookupRow` を upsert する。
+ * キーは `sourceCsvDashboardId + FKOBAINO + FSEIBAN + 正規化FHINCD`。既存行は上書きし、CSVに無い過去行は残す。
  */
 export class PurchaseOrderLookupSyncService {
   async syncFromFkobainoDashboard(params: { ingestRunId: string }): Promise<PurchaseOrderLookupSyncResult> {
@@ -56,30 +60,41 @@ export class PurchaseOrderLookupSyncService {
 
     await prisma.$transaction(
       async (tx) => {
-        await tx.purchaseOrderLookupRow.deleteMany({ where: { sourceCsvDashboardId } });
-        if (parsed.length === 0) {
-          return;
-        }
-        const chunkSize = 200;
-        for (let i = 0; i < parsed.length; i += chunkSize) {
-          const chunk = parsed.slice(i, i + chunkSize);
-          await tx.purchaseOrderLookupRow.createMany({
-            data: chunk.map((p) => ({
-              sourceCsvDashboardId,
-              purchaseOrderNo: p.purchaseOrderNo,
-              purchasePartCodeRaw: p.purchasePartCodeRaw,
-              purchasePartCodeNormalized: p.purchasePartCodeNormalized,
-              seiban: p.seiban,
-              purchasePartName: p.purchasePartName,
-              acceptedQuantity: p.acceptedQuantity,
-              lineIndex: p.lineIndex,
-            })),
-          });
+        for (let i = 0; i < parsed.length; i += UPSERT_CHUNK_SIZE) {
+          const chunk = parsed.slice(i, i + UPSERT_CHUNK_SIZE);
+          for (const p of chunk) {
+            await tx.purchaseOrderLookupRow.upsert({
+              where: {
+                sourceCsvDashboardId_purchaseOrderNo_seiban_purchasePartCodeNormalized: {
+                  sourceCsvDashboardId,
+                  purchaseOrderNo: p.purchaseOrderNo,
+                  seiban: p.seiban,
+                  purchasePartCodeNormalized: p.purchasePartCodeNormalized,
+                },
+              },
+              create: {
+                sourceCsvDashboardId,
+                purchaseOrderNo: p.purchaseOrderNo,
+                purchasePartCodeRaw: p.purchasePartCodeRaw,
+                purchasePartCodeNormalized: p.purchasePartCodeNormalized,
+                seiban: p.seiban,
+                purchasePartName: p.purchasePartName,
+                acceptedQuantity: p.acceptedQuantity,
+                lineIndex: p.lineIndex,
+              },
+              update: {
+                purchasePartCodeRaw: p.purchasePartCodeRaw,
+                purchasePartName: p.purchasePartName,
+                acceptedQuantity: p.acceptedQuantity,
+                lineIndex: p.lineIndex,
+              },
+            });
+          }
         }
       },
       { timeout: REPLACEMENT_TX_TIMEOUT_MS, maxWait: REPLACEMENT_TX_MAX_WAIT_MS }
     );
 
-    return { scanned: records.length, inserted: parsed.length };
+    return { scanned: records.length, inserted: parsed.length, upserted: parsed.length };
   }
 }
