@@ -859,6 +859,8 @@ model PurchaseOrderLookupRow {
   purchaseOrderNo            String   @db.VarChar(20)
   purchasePartCodeRaw        String   @db.VarChar(128)
   purchasePartCodeNormalized String   @db.VarChar(128)
+  /// 生産日程 `FHINCD` との照合キー（括弧除去 + 末尾数値枝番除去）。upsert 一意制約はこの列。
+  purchasePartCodeMatchKey   String   @db.VarChar(128)
   seiban                     String   @db.VarChar(64)
   purchasePartName           String   @db.VarChar(500)
   acceptedQuantity           Int      @default(0)
@@ -866,7 +868,7 @@ model PurchaseOrderLookupRow {
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
-  @@unique([sourceCsvDashboardId, purchaseOrderNo, seiban, purchasePartCodeNormalized], map: "POLookup_unique_src_po_seiban_nfhincd")
+  @@unique([sourceCsvDashboardId, purchaseOrderNo, seiban, purchasePartCodeMatchKey], map: "POLookup_unique_src_po_seiban_matchkey")
   @@index([purchaseOrderNo], map: "POLookup_idx_purchaseOrderNo")
   @@index([sourceCsvDashboardId], map: "POLookup_idx_sourceDashboard")
 }
