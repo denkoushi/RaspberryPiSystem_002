@@ -457,7 +457,7 @@
 **追補（2026-04-21・計測機器点検可視化と取消済み `Loan`）**:
 - **仕様**: `measuring_instrument_loan_inspection` の集計で、NFC ミラーされた `MeasuringInstrumentLoanEvent.raw.loanId` が **`Loan.id` かつ `Loan.cancelledAt` あり**のとき、その `持ち出し` は **返却イベントが無くても**「貸出中」に含めない（`loadCancelledLoanIdSet`・`extractLoanIdFromEventRaw`）。
 - **Gmail CSV**: `loanId` が無い行は **`返却` イベントの取り込み**で管理番号ペアを従来どおり解消（変更なし）。
-- **本番**: ブランチ **`feat/measuring-instrument-inspection-exclude-cancelled-loans`**・代表 **`41c981b3`**・**`raspberrypi5` のみ**・Detach **`20260421-163610-28348`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**。
+- **本番**: ブランチ **`feat/measuring-instrument-inspection-exclude-cancelled-loans`**・代表 **`41c981b3`**・**`raspberrypi5` のみ**・Detach **`20260421-175831-4238`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**（約 **134s**）。
 - **トラブルシュート**: 取消後も一覧に残る場合は **`raw.loanId` 欠落**（古いイベント・CSV のみ）を疑う。キオスク **`Loan.cancel`** は **`MeasuringInstrumentLoanEvent` に `返却` を書かない**ため、本追補まで NFC 紐付き取消が点検可視化に残り得た。
 
 **検証**:
