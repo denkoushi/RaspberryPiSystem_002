@@ -1,0 +1,20 @@
+# Gitleaks: 既定ルール + テスト・ドキュメント由来の誤検知を抑止
+title = "RaspberryPiSystem_002"
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''__tests__/''',
+  '''\.test\.ts$''',
+  '''\.spec\.ts$''',
+  '''integration\.test\.ts$''',
+  '''docs/''',
+]
+regexes = [
+  '''test-access-secret''',
+  '''test-refresh-secret''',
+  '''ci-prod-access-secret''',
+  '''ci-prod-refresh-secret''',
+]

@@ -28,14 +28,19 @@
 
 ### 2. 必須チェックの一覧
 
-以下のチェックが必須となります：
+GitHub の必須ステータス名は **ワークフロー内のジョブ名**（`jobs.<id>.name` があればその文字列）と一致させる。現行の主なチェックは以下：
 
-- `lint-and-test`: リントと単体テスト
-- `e2e-smoke`: E2Eスモークテスト
-- `docker-build`: Dockerイメージのビルド
-- `imports-dropbox-tests`: Dropbox CSVインポートテスト（Phase 1実装後）
-- `imports-schedule-tests`: スケジュールインポートテスト（Phase 2実装後）
-- `backup-restore-dropbox-tests`: Dropboxバックアップ・リストアテスト（Phase 3実装後）
+- `lint-build-unit`: リント・単体・ビルド・pnpm audit（`.github/workflows/ci.yml`）
+- `api-db-and-infra`: API 統合テスト・DB・Ansible 構文等
+- `security-docker`: Trivy・Docker イメージビルド
+- `e2e-smoke`: Playwright スモーク
+- `e2e-tests`: Playwright 本番相当 E2E
+- `codeql`: CodeQL 静的解析（`.github/workflows/codeql.yml`）
+- `gitleaks`: 秘密情報スキャン（`.github/workflows/gitleaks.yml`）
+
+**廃止**: `lint-and-test` / `docker-build` は過去名。ブランチ保護に残っていると **実質ゲートが掛からない**。
+
+**将来（未マージの Phase 用ジョブが追加されたら）**: `imports-dropbox-tests` 等をこの一覧に追記する。
 
 ## ブランチ保護ルールの設定
 
@@ -53,12 +58,13 @@
    - 「Require status checks to pass before merging」にチェック
    - 「Require branches to be up to date before merging」にチェック
    - 「Status checks that are required」で以下のチェックを選択：
-     - `lint-and-test`
+     - `lint-build-unit`
+     - `api-db-and-infra`
+     - `security-docker`
      - `e2e-smoke`
-     - `docker-build`
-     - （Phase 1実装後）`imports-dropbox-tests`
-     - （Phase 2実装後）`imports-schedule-tests`
-     - （Phase 3実装後）`backup-restore-dropbox-tests`
+     - `e2e-tests`
+     - `codeql`
+     - `gitleaks`
 
 4. **管理者のスルーを禁止**
    - 「Do not allow bypassing the above settings」にチェック
@@ -160,4 +166,5 @@ expect(processingTime).toBeLessThan(maxTime);
 
 ## 更新履歴
 
+- 2026-04-21: 必須チェック名を現行ワークフロー（`lint-build-unit` 等）と `codeql` / `gitleaks` に同期
 - 2025-12-15: 初版作成、`continue-on-error`削除を実施

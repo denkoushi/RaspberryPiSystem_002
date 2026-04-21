@@ -48,6 +48,7 @@
 - **デプロイ標準手順**: `docs/guides/deployment.md`
 - **ナレッジベース索引**: `docs/knowledge-base/index.md`
 - **CIトラブルシュート**: `docs/guides/ci-troubleshooting.md`
+- **PR 自動レビュー Bot（CodeRabbit / Bugbot）**: `docs/security/pr-review-bots.md`
 - **プロジェクト全体の進捗・決定・次のタスク**: `EXEC_PLAN.md`（ルート直下）
   - 進捗管理、決定事項の記録、発見事項の記録、振り返り、次のタスクの提示
   - 詳細は上記「ExecPlan（複雑な作業の必須手順）」セクションを参照

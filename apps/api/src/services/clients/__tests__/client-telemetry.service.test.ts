@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   listClientDevices,
+  registerClientDeviceAdmin,
   storeClientLogs,
-  upsertClientHeartbeat,
+  touchClientHeartbeat,
 } from '../client-telemetry.service.js';
 import { prisma } from '../../../lib/prisma.js';
 
@@ -10,6 +11,7 @@ vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     clientDevice: {
       upsert: vi.fn(),
+      update: vi.fn(),
       findMany: vi.fn(),
     },
     clientLog: {
@@ -23,13 +25,13 @@ describe('client-telemetry.service', () => {
     vi.clearAllMocks();
   });
 
-  it('heartbeatをclientDeviceへupsertする', async () => {
+  it('registerClientDeviceAdmin は clientDevice を upsert する', async () => {
     vi.mocked(prisma.clientDevice.upsert).mockResolvedValue({
       id: 'device-1',
       name: 'kiosk-1',
     } as never);
 
-    await upsertClientHeartbeat({
+    await registerClientDeviceAdmin({
       apiKey: 'api-key-1',
       name: 'kiosk-1',
       location: null,
@@ -40,6 +42,24 @@ describe('client-telemetry.service', () => {
       expect.objectContaining({
         where: { apiKey: 'api-key-1' },
         create: expect.objectContaining({ name: 'kiosk-1', apiKey: 'api-key-1' }),
+      })
+    );
+  });
+
+  it('touchClientHeartbeat は既存キーの lastSeen / location を更新する', async () => {
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({
+      id: 'device-1',
+      name: 'kiosk-1',
+      location: 'B',
+    } as never);
+
+    const row = await touchClientHeartbeat({ clientKey: 'ck-1', location: 'B' });
+
+    expect(row.location).toBe('B');
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { apiKey: 'ck-1' },
+        data: expect.objectContaining({ location: 'B' }),
       })
     );
   });

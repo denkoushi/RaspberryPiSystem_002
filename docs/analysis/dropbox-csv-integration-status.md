@@ -411,7 +411,7 @@
 
 **CIスルーの防止**:
 - ⚠️ **手動設定が必要**: GitHub Actionsのブランチ保護ルールを設定（手動で実施）
-- 必須チェック: `lint-and-test`, `e2e-smoke`, `docker-build`
+- 必須チェック（現行）: `lint-build-unit`, `api-db-and-infra`, `security-docker`, `e2e-smoke`, `e2e-tests`, `codeql`, `gitleaks`（詳細は [ci-branch-protection.md](../guides/ci-branch-protection.md)）
 - 管理者でもスルーできない設定（`Do not allow bypassing the above settings`）
 
 #### 成功要件
@@ -613,7 +613,7 @@
 
 **CIスルーの防止**:
 - GitHub Actionsのブランチ保護ルールを設定
-- 必須チェック: `lint-and-test`, `e2e-smoke`, `imports-schedule-tests`
+- 必須チェック: 共通ゲート（`lint-build-unit`, `api-db-and-infra`, `security-docker`, `e2e-smoke`, `e2e-tests`, `codeql`, `gitleaks`）に加え `imports-schedule-tests`
 - 管理者でもスルーできない設定
 
 #### PowerAutomate側の実装要件（別途実装）
@@ -855,7 +855,7 @@
 
 **CIスルーの防止**:
 - GitHub Actionsのブランチ保護ルールを設定
-- 必須チェック: `lint-and-test`, `e2e-smoke`, `backup-restore-dropbox-tests`
+- 必須チェック: 共通ゲートに加え `backup-restore-dropbox-tests`
 - 管理者でもスルーできない設定
 
 #### 成功要件
@@ -917,9 +917,13 @@
 **ブランチ保護ルールの設定**:
 - `main`ブランチと`develop`ブランチに保護ルールを設定
 - 必須チェック:
-  - `lint-and-test`
+  - `lint-build-unit`
+  - `api-db-and-infra`
+  - `security-docker`
   - `e2e-smoke`
-  - `docker-build`
+  - `e2e-tests`
+  - `codeql`
+  - `gitleaks`
   - Phase 1実装後: `imports-dropbox-tests`
   - Phase 2実装後: `imports-schedule-tests`
   - Phase 3実装後: `backup-restore-dropbox-tests`

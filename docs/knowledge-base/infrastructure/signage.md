@@ -96,21 +96,22 @@ update-frequency: medium
 **Investigation**:
 
 - `current-image` の **`key=`** / **`x-client-key`** は **登録済み `ClientDevice.apiKey`** と照合され、未登録は 401（実装: `apps/api/src/routes/signage/render.ts`）。  
+- **追記（2026-04-21）**: 端末台帳の新規作成は **`POST /api/clients`（管理者）** 等で行う。**未認証の `POST /api/clients/heartbeat` による upsert 登録は廃止**（本番は `feat/security-hardening-review-gates` 反映済み・[deployment.md](../../guides/deployment.md) 補足 2026-04-21）。
 - 症状 (2) は **Chrome のキャッシュ／サイトデータ**と SPA・`localStorage`（`kiosk-client-key`）の不整合が疑われる（`direct URL` はキャッシュ経路が異なるため片方だけ成功し得る）。
 
 **Root cause**:
 
-1. **401**: 当該 **`apiKey` が DB に未登録**（`heartbeat` 未実施または別キー）。  
+1. **401**: 当該 **`apiKey` が DB に未登録**（管理者登録未実施または別キー）。  
 2. **ページのみ異常**: **古いサイトデータ／キャッシュ**。
 
 **Fix**:
 
-1. **`POST /api/clients/heartbeat`**（`apiKey`, `name`, `location`・認証不要）で `ClientDevice` を upsert し、`current-image?key=…` が **200** になることを確認する。  
+1. **`POST /api/clients`**（`apiKey`, `name`, `location`・**管理者 JWT**）で `ClientDevice` を登録し、`current-image?key=…` が **200** になることを確認する。  
 2. Chrome で **当該オリジンの閲覧データ削除**（Cookie・サイトデータ・キャッシュ）を行い、**推奨の `?clientKey=…` 付き URL**から開き直す。
 
 **Prevention**:
 
-- 新規 Android 端末は **表示確認前に `heartbeat` を一度必ず実行**する運用にする。  
+- 新規 Android 端末は **表示確認前に管理者登録（`POST /api/clients` または `register-clients.sh`）を一度必ず実行**する運用にする。  
 - フロント更新後も **キオスク／常駐ブラウザはスタート URL を正とし、不整合時はサイトデータ削除**を Runbook 化する。
 
 **References**: [signage-client-setup.md](../../guides/signage-client-setup.md#android-signage-lite)・`apps/web/src/lib/client-key/`・`SignageLiteDisplayPage.tsx`・[ADR-20260407](../../decisions/ADR-20260407-signage-target-client-keys.md)（`targetClientKeys`）

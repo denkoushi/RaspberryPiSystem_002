@@ -26,7 +26,7 @@ update-frequency: medium
 
 - 端末は **`ClientDevice.apiKey`** で識別する（IP アドレスではない）。
 - 推奨例: `client-key-factory-android-signage-161`（`signage` または `android-signage` を含むと、管理画面のスケジュール対象端末候補に出やすい）。
-- DB にレコードを作る: 既存運用どおり **`POST /api/clients/heartbeat`**（`apiKey`, `name`, `location`）で upsert 可能。
+- DB にレコードを作る: **`POST /api/clients`**（JSON: `apiKey`, `name`, `location`・**管理者 JWT 必須**）。運用では Pi5 上で **`./scripts/register-clients.sh`**（内部で同APIを呼ぶ）か、管理コンソール相当の手順で登録する。
 
 ### 表示URL
 
@@ -40,13 +40,13 @@ https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-androi
 
 - **Web 正本は Pi5**。[deployment.md](./deployment.md) の `update-all-clients.sh` で **`--limit raspberrypi5`**・`RASPI_SERVER_HOST`・**`--detach --follow`**（実測 Detach Run ID: `20260407-174723-18058`・`failed=0`）。
 - **自動回帰**（リポジトリ直下）: `./scripts/deploy/verify-phase12-real.sh` → 2026-04-07 実測 **PASS 43 / WARN 0 / FAIL 0**。
-- **手動（Android）**: 上記 URL を実機で開き、JPEG が **約30秒周期**で更新することを目視。端末が未登録なら先に **`POST /api/clients/heartbeat`** で `apiKey` を登録する。
+- **手動（Android）**: 上記 URL を実機で開き、JPEG が **約30秒周期**で更新することを目視。端末が未登録なら先に **管理者で `POST /api/clients`**（または `register-clients.sh`）で `apiKey` を登録する。
 
 ### トラブルシュート（Android・Chrome・2026-04-08）
 
 1. **ページ上「画像を取得できません」／`GET /api/signage/current-image?key=…` が 401**  
    - **原因**: 当該 `apiKey` の **`ClientDevice` が未登録**。API は登録済みキーのみ 200 を返す（`apps/api/src/routes/signage/render.ts`）。  
-   - **対処**: **`POST /api/clients/heartbeat`**（JSON に `apiKey`, `name`, `location`・認証不要）で upsert 後、再度 URL または `current-image` を確認する。  
+   - **対処**: **`POST /api/clients`**（JSON に `apiKey`, `name`, `location`・**`Authorization: Bearer`**）で登録後、再度 URL または `current-image` を確認する。  
    - **参照**: [KB-337](../knowledge-base/infrastructure/signage.md#kb-337-android-signage-lite-401-chrome)
 
 2. **単体で `current-image` の URL を開くと画像が出るのに、`/signage-lite` だけ古い／エラー表示のまま**  

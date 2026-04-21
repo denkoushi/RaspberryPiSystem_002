@@ -293,8 +293,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 GitHubリポジトリのActionsタブで以下を確認：
 
 - `main`ブランチへのプッシュ時にCIパイプラインが実行される
-- `lint-and-test`ジョブが成功する
-- `docker-build`ジョブが成功する
+- `lint-build-unit` / `api-db-and-infra` / `security-docker` / `e2e-smoke` / `e2e-tests` ジョブが成功する
+- `codeql` / `gitleaks` ワークフローが成功する（`main` / `develop` 向け）
 
 #### 4.2 ローカルでのCI実行（オプション）
 

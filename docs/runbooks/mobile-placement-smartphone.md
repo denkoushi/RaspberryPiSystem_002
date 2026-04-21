@@ -88,7 +88,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/part-search/suggest?q=%E8%84%9A" -H
 
 ## 1. 端末登録（ClientDevice）
 
-`POST /api/clients/heartbeat` で `apiKey` / `name` / `location` を登録する（型落ち Android タブレットのサイネージ手順と同じ）。詳細は [signage-client-setup.md](../guides/signage-client-setup.md#android-signage-lite)。
+`POST /api/clients`（管理者 JWT）で `apiKey` / `name` / `location` を登録する（型落ち Android タブレットのサイネージ手順と同じ）。詳細は [signage-client-setup.md](../guides/signage-client-setup.md#android-signage-lite)。
 
 ## 2. 疎通
 

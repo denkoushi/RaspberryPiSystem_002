@@ -2379,14 +2379,14 @@ app.get('/kiosk/call/targets', async (request, reply) => {
 
 **要因**:
 - `POST /api/clients/status` が `ClientDevice.name = metrics.hostname` で毎回更新していた
-- `POST /api/clients/heartbeat` も `name` を更新可能で、手動編集と競合していた
+- `POST /api/clients/heartbeat` も `name` を更新可能で、手動編集と競合していた（**2026-04-21 本番反映**: 心拍は **登録済みキーのみ**・新規台帳は **`POST /api/clients`（管理者）** に分離。全台デプロイ実績・Phase12 は [deployment.md](../guides/deployment.md) 補足 2026-04-21 / `EXEC_PLAN.md` Progress を参照）
 - 一方で機械名は `ClientStatus.hostname` にすでに保持されており、`ClientDevice.name` と役割が混在していた
 
 **有効だった対策**:
 - ✅ **解決済み**（2026-02-09）:
   1. `ClientDevice.name` を「表示名（手動編集）」として定義
   2. `POST /api/clients/status` は `update` で `name` を更新せず、`statusClientId` と `lastSeenAt` のみ更新
-  3. `POST /api/clients/heartbeat` は `update` で `name` を更新せず、`location` と `lastSeenAt` のみ更新
+  3. `POST /api/clients/heartbeat` は `update` で `name` を更新せず、`location` と `lastSeenAt` のみ更新（**追記**: 後続変更で **`x-client-key` 必須**・未登録キーは 404。新規台帳登録は **`POST /api/clients`（管理者）** に分離）
   4. `PUT /api/clients/:id` で `name` を更新可能に拡張
   5. 機械名は `ClientStatus.hostname` を参照する運用に統一
 - ✅ **実機検証完了**（2026-02-10）:

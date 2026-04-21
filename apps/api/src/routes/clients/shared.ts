@@ -3,10 +3,16 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
 
-export const heartbeatSchema = z.object({
+/** 管理者 POST /clients 用（inventory / register-clients.sh） */
+export const registerClientBodySchema = z.object({
   apiKey: z.string().min(8),
   name: z.string().min(1),
-  location: z.string().optional().nullable()
+  location: z.string().optional().nullable(),
+});
+
+/** 端末 POST /clients/heartbeat 用（x-client-key 必須・本文は任意） */
+export const clientHeartbeatBodySchema = z.object({
+  location: z.string().optional().nullable(),
 });
 
 export const metricSchema = z.object({
