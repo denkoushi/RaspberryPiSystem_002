@@ -493,12 +493,24 @@
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
 - **HTTP スモーク**: `GET https://100.106.158.2/kiosk/pallet-visualization`・`…/admin/pallet-machine-illustrations` → **各 200**（認証前でも SPA エントリとして 200 になる構成）。
 
+**追補デプロイ（2026-04-22・UI/配信/ウェッジ）**:
+- ブランチ **`feat/pallet-visualization-ui-fixes`**・代表 **`d3c2f7b5`**（イラスト **公開 GET**・キオスク **左独立スクロール**・**パレット番号視認性**・**キーボードウェッジ**・API/Web 回帰テスト）。
+- **順序**: 上記と同じ **6 台直列**（Pi3 は **`--limit raspberrypi3` のみ**・[deployment.md の Pi3 節](../guides/deployment.md#ラズパイ3サイネージの更新)）。
+- **Detach Run ID**: `20260422-150051-25397` → `20260422-152055-3569` → `20260422-152512-6215` → `20260422-152824-13591` → `20260422-153204-7953` → `20260422-153534-30166`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）。
+
+**仕様（追補）**:
+- **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
+- **キオスク `/kiosk/pallet-visualization`**: 左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。カメラモーダル表示中・送信中は **非アクティブ**。
+
 **知見**:
 - **Pi5 初回**のみ `apps/api` / Web 変更検知により **Docker 再ビルド**が走る。Pi4 は Git 同期とキオスクサービス再起動が中心。Pi3 はメモリ確保のため **プレフライトで GUI/サイネージ停止**が入る；ヘルスログ上は一時 **`signage-lite` exit-code** が出ても、playbook 完了時点で **`signage-lite.service is active`** なら運用上は収束扱い（長時間のみ exit-code が続く場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
 
 **トラブルシュート**:
 - **DB**: Pi5 の API コンテナで `pnpm prisma migrate status` が **未適用**なら、`20260422140000_pallet_visualization` が残っていないか確認。
 - **イラスト MIME**: アップロードが **`ApiError`** になる場合は `PalletMachineIllustrationStorage.assertMime` の許可タイプに合わせる。
+- **イラストが表示されない**: ブラウザが **`Authorization` を付けられない**経路（`<img>`・サイネージ JPEG URL）では **公開 GET が必須**。404 のときは Pi5 上の `storage/pallet-machine-illustrations` と URL のファイル名一致を確認。
+- **ウェッジが反応しない**: `INPUT` / `TEXTAREA` フォーカス中は無視。**最小文字数未満**は確定しない。スキャナが **Enter を送らない**場合は **アイドル確定**に依存。
 - **デプロイロック**: 複数ホストを **1 台ずつ**にしても、**前の `--detach --follow` が Mac 側で終わる前**に次を起動すると **ローカルロック**（exit 3）→ 前ジョブ完了待ちまたは `cmd1 && cmd2`。
 
 **主な実装置き場**:
@@ -506,7 +518,7 @@
 - 可視化: `apps/api/src/services/visualization/data-sources/pallet-visualization-board/`、`renderers/pallet-board/`。
 - Web: `apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`pages/admin/PalletMachineIllustrationsPage.tsx`。
 
-**解決状況**: ✅ **本番反映済み**（2026-04-22・上記）
+**解決状況**: ✅ **本番反映済み**（2026-04-22・上記および **追補デプロイ**）
 
 ---
 
