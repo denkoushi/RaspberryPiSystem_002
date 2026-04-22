@@ -37,7 +37,9 @@ describe('usesKioskImmersiveLayout', () => {
     ['/kiosk/mobile-placement/register'],
     ['/kiosk/mobile-placement/shelf-register'],
     ['/kiosk/purchase-order-lookup'],
-    ['/kiosk/purchase-order-lookup/']
+    ['/kiosk/purchase-order-lookup/'],
+    ['/kiosk/pallet-visualization'],
+    ['/kiosk/pallet-visualization/']
   ])('true for %s', (path) => {
     expect(usesKioskImmersiveLayout(path)).toBe(true);
   });
