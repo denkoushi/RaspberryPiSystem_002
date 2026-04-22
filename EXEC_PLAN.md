@@ -1870,6 +1870,8 @@
 
 **追補（2026-04-22・持出左ペイン併設）**: ブランチ **`feat/kiosk-borrow-left-pane-pallet-embed`**（**`d189a971`**）を **Pi5→Pi4×4** へ順次デプロイ済み（**Pi3 除外**・Detach ID は [deployment.md 冒頭](./docs/guides/deployment.md)）。**Phase12**・**HTTP** `/kiosk/tag`・`/kiosk/photo` は自動確認済み（**200**）。**現場スモーク**: 左ペインで番号・操作・一覧が **専用ページと整合**し、**機械未選択時は全消去が無効**であること。
 
+**追補（2026-04-22・持出左ペイン パレット操作行 UX）**: PR [#184](https://github.com/denkoushi/RaspberryPiSystem_002/pull/184)・**`825a2f8d`** / **`1afec5c9`**・**Pi5→Pi4×4** 順次（**Pi3 除外**）・Detach **`20260422-212321-19726` → `20260422-212908-2306` → `20260422-213420-32381` → `20260422-213836-18696` → `20260422-214244-25414`**・Phase12 **43/0/0**（約 **111s**）・**HTTP** `/kiosk/tag`・`/kiosk/photo`・`/kiosk/pallet-visualization` **各 200**。**仕様**: `copy.ts`・`PalletVizActionRow` **`density`**（埋め込み **`compact`**）・**`ghostOnDark`**・イラスト **`h-32`**（[KB-355](./docs/knowledge-base/api.md)・[deployment.md 冒頭](./docs/guides/deployment.md)）。**CI**: 初回 `api-db-and-infra` が **Wait for PostgreSQL** で失敗したが **`gh run rerun --failed`** で **再実行成功**（フレーク想定）。**現場スモーク（残）**: 左ペインで **4 ボタン 1 行**・ラベル **追加/上書/選択削除/全削除**・後段 2 ボタンが **暗背景で読める**こと。
+
 **候補タスク（現場・認証込み）**:
 
 1. **キオスク**: 加工機を選択し、パレット操作が **記録・表示**されること（`x-client-key` 前提の端末で確認）。**併設 UI**: `/kiosk/tag` および `/kiosk/photo` の左列でも **同じ board が操作できる**こと（専用 `/kiosk/pallet-visualization` と選択機種の **localStorage 共有**）。
