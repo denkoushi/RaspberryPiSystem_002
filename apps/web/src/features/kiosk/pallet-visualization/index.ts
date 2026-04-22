@@ -1,7 +1,12 @@
 export { palletVizCopy } from './copy';
 export { PalletVizActionRow } from './PalletVizActionRow';
+export { PalletVizEmbeddedPanel } from './PalletVizEmbeddedPanel';
 export type { PalletVizListItem, PalletVizItemListProps } from './PalletVizItemList';
 export { PalletVizItemList } from './PalletVizItemList';
 export { PalletVizMachineHeader } from './PalletVizMachineHeader';
 export type { PalletVizMachineHeaderProps } from './PalletVizMachineHeader';
+export { PalletVizPalletNumberGrid } from './PalletVizPalletNumberGrid';
 export { PALLET_COUNT, PALLET_GRID_COLS } from './palletVizNumberGridConfig';
+export { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage';
+export { usePalletVisualizationController } from './usePalletVisualizationController';
+export type { UsePalletVisualizationControllerOptions } from './usePalletVisualizationController';
