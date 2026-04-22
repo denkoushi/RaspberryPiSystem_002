@@ -12,7 +12,7 @@ export type PalletVizEmbeddedPanelProps = {
   className?: string;
 };
 
-const ILLU_H_EMBED = 'h-28';
+const ILLU_H_EMBED = 'h-32';
 const ILLU_W_EMBED = 'w-full max-w-[17rem]';
 
 /**
@@ -52,6 +52,7 @@ export function PalletVizEmbeddedPanel({ className }: PalletVizEmbeddedPanelProp
         />
 
         <PalletVizActionRow
+          density="compact"
           busy={ctrl.busy}
           canOperate={Boolean(ctrl.selectedMachineCd)}
           canClearPallet={Boolean(ctrl.currentMachine)}
