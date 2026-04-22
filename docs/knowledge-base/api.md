@@ -512,6 +512,15 @@
 - **対策**: `docker-compose.server.yml` の `pallet-machine-illustrations-storage`（`type: none` + `device: /opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`）を `api` に付与。ローカル Mac は `docker-compose.mac-local.override.yml` で同パスをプロジェクト下に bind。計測機器ジャンル画像（[KB-343](./infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)）と同系。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録時 **約 74s**）。
 
+**追補（2026-04-22・持出左ペイン パレット併設・Web のみ・Pi3 除外）**:
+- ブランチ **`feat/kiosk-borrow-left-pane-pallet-embed`**・代表 **`d189a971`**（`PalletVizEmbeddedPanel`・`usePalletVisualizationController`・`KioskBorrowPage` / `KioskPhotoBorrowPage` 左列・`PalletVizActionRow` の **`canClearPallet`**）。
+- **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Pi3**: 今回 **未デプロイ**（`/kiosk/tag`・`/kiosk/photo` は Pi4 キオスク向け）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-195055-26766` → `20260422-195523-3733` → `20260422-200022-22643` → `20260422-200451-21847` → `20260422-201046-31258`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **65s**）。
+- **HTTP スモーク**: `GET https://100.106.158.2/kiosk/tag`・`…/kiosk/photo`・`…/kiosk/pallet-visualization` → **各 200**。
+- **仕様**: 専用ページ `/kiosk/pallet-visualization` は据え置き。タグ持出・写真持出の **左ペイン余白**に **同一 API 契約**のパレット操作 UI を埋め込み（番号選択・追加/上書き/部分削除/全削除・スキャン部品一覧・ローカルストレージの選択機種 CD 共有）。狭い列向け **`PalletVizPalletNumberGrid` variant `compact`**。
+- **トラブルシュート**: 多段デプロイの **ローカルロック**（exit 3）は [deployment.md の運用メモ](../guides/deployment.md) どおり **前ジョブ完了待ち**。
+
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
 - **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。カメラモーダル表示中・送信中は **非アクティブ**。
@@ -530,7 +539,7 @@
 **主な実装置き場**:
 - API: `apps/api/src/services/pallet-visualization/*`、`routes/kiosk/pallet-visualization.ts`、`routes/tools/pallet-visualization.ts`、ストレージ `pallet-machine-illustrations`。
 - 可視化: `apps/api/src/services/visualization/data-sources/pallet-visualization-board/`、`renderers/pallet-board/`。
-- Web: `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`、`apps/web/src/layouts/KioskLayout.tsx`、`apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`pages/admin/PalletMachineIllustrationsPage.tsx`。
+- Web: `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`、`apps/web/src/layouts/KioskLayout.tsx`、`apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskBorrowPage.tsx`、`apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`、`apps/web/src/features/kiosk/pallet-visualization/`（`PalletVizEmbeddedPanel`・`usePalletVisualizationController` 等）、`pages/admin/PalletMachineIllustrationsPage.tsx`。
 
 **解決状況**: ✅ **本番反映済み**（2026-04-22・上記および **追補デプロイ**）
 
