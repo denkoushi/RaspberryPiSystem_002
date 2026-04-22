@@ -9,5 +9,7 @@ export { DEFAULT_BARCODE_STABILITY, reduceBarcodeStability } from './barcodeRead
 export type { BarcodeStabilityConfig, BarcodeStabilityState } from './barcodeReadStability';
 export { useBarcodeScanSession } from './useBarcodeScanSession';
 export type { UseBarcodeScanSessionOptions } from './useBarcodeScanSession';
+export { useKeyboardWedgeScan } from './useKeyboardWedgeScan';
+export type { UseKeyboardWedgeScanOptions } from './useKeyboardWedgeScan';
 export { createBrowserMultiFormatReader, createZxingPossibleFormatsHints } from './zxingVideoReader';
 export type { BarcodeReaderTimingOptions } from './zxingVideoReader';
