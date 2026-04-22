@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PalletVizActionRow } from './PalletVizActionRow';
 
 describe('PalletVizActionRow', () => {
-  it('加工機が未解決のときはパレット全消去を無効化する', () => {
+  it('加工機が未解決のときは全削除を無効化する', () => {
     render(
       <PalletVizActionRow
         busy={false}
@@ -18,7 +18,7 @@ describe('PalletVizActionRow', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'パレット全消去' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '全削除' })).toBeDisabled();
   });
 
   it('canClearPallet が true のときだけ全消去を実行できる', () => {
@@ -37,8 +37,29 @@ describe('PalletVizActionRow', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'パレット全消去' }));
+    fireEvent.click(screen.getByRole('button', { name: '全削除' }));
 
     expect(onClearPallet).toHaveBeenCalledTimes(1);
+  });
+
+  it('compact 時も4つの操作ボタンが表示される', () => {
+    render(
+      <PalletVizActionRow
+        density="compact"
+        busy={false}
+        canOperate
+        canClearPallet
+        hasSelectedItem
+        onAdd={vi.fn()}
+        onOverwrite={vi.fn()}
+        onDelete={vi.fn()}
+        onClearPallet={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '追加' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '上書' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '選択削除' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '全削除' })).toBeVisible();
   });
 });

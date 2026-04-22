@@ -2,9 +2,9 @@
 export const palletVizCopy = {
   actions: {
     add: '追加',
-    overwrite: '上書き',
-    deleteSelected: '選択部品を削除',
-    clearPallet: 'パレット全消去',
+    overwrite: '上書',
+    deleteSelected: '選択削除',
+    clearPallet: '全削除',
   },
   emptyPallet: 'このパレットに部品はありません',
 } as const;

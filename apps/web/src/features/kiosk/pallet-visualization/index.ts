@@ -1,5 +1,6 @@
 export { palletVizCopy } from './copy';
 export { PalletVizActionRow } from './PalletVizActionRow';
+export type { PalletVizActionRowDensity } from './PalletVizActionRow';
 export { PalletVizEmbeddedPanel } from './PalletVizEmbeddedPanel';
 export type { PalletVizListItem, PalletVizItemListProps } from './PalletVizItemList';
 export { PalletVizItemList } from './PalletVizItemList';

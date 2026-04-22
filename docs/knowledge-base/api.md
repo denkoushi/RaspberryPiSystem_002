@@ -518,8 +518,16 @@
 - **Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-195055-26766` → `20260422-195523-3733` → `20260422-200022-22643` → `20260422-200451-21847` → `20260422-201046-31258`。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **65s**）。
 - **HTTP スモーク**: `GET https://100.106.158.2/kiosk/tag`・`…/kiosk/photo`・`…/kiosk/pallet-visualization` → **各 200**。
-- **仕様**: 専用ページ `/kiosk/pallet-visualization` は据え置き。タグ持出・写真持出の **左ペイン余白**に **同一 API 契約**のパレット操作 UI を埋め込み（番号選択・追加/上書き/部分削除/全削除・スキャン部品一覧・ローカルストレージの選択機種 CD 共有）。狭い列向け **`PalletVizPalletNumberGrid` variant `compact`**。
+- **仕様**: 専用ページ `/kiosk/pallet-visualization` は据え置き。タグ持出・写真持出の **左ペイン余白**に **同一 API 契約**のパレット操作 UI を埋め込み（番号選択・**追加/上書/選択削除/全削除**（`copy.ts`）・スキャン部品一覧・ローカルストレージの選択機種 CD 共有）。狭い列向け **`PalletVizPalletNumberGrid` variant `compact`**。操作行の 1 行レイアウト・暗背景視認性は下記「操作行 UX」追補。
 - **トラブルシュート**: 多段デプロイの **ローカルロック**（exit 3）は [deployment.md の運用メモ](../guides/deployment.md) どおり **前ジョブ完了待ち**。
+
+**追補（2026-04-22・持出左ペイン パレット操作行 UX・Web のみ・Pi3 除外）**:
+- ブランチ **`feat/kiosk-pallet-embed-action-row-layout`**・代表 **`825a2f8d`**（`PalletVizActionRow`・`density`・`Button` **`ghostOnDark`**・`copy.ts`・`PalletVizEmbeddedPanel` イラスト高さ・[design preview](../design-previews/kiosk-borrow-left-pallet-embed-preview.html)）。
+- **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-212321-19726` → `20260422-212908-2306` → `20260422-213420-32381` → `20260422-213836-18696` → `20260422-214244-25414`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **111s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/tag`・`…/kiosk/photo`・`…/kiosk/pallet-visualization` → **各 200**。
+- **仕様**: `palletVizCopy.actions` で **追加/上書/選択削除/全削除**。`PalletVizActionRow` に **`density?: 'default' | 'compact'`**（**`PalletVizEmbeddedPanel` のみ `compact`**・4 列 1 行・`min-h-10`・`truncate`）。3・4 番は **`variant="ghostOnDark"`**（暗背景で `ghost` が **`!text-slate-900`** のため見えない問題の回避）、全削除は **赤系**の上書き `className`。埋め込みイラストは **`h-32`**。専用 `/kiosk/pallet-visualization` は `density` 省略（default）で **後段ボタンの視認性修正のみ共有**。
+- **知見**: **Pi5 のみ** `Rebuild/Restart docker compose services`（**`web` 再ビルド**）。
+- **トラブルシュート**: 操作行が暗パネル上で読めないときは **`ghost` のままになっていないか**確認（→ **`ghostOnDark`**）。**直列デプロイ**で **前 `--detach --follow` 未完了**に次を起動すると **Mac ローカルロック** exit 3。
 
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
