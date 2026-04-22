@@ -94,6 +94,16 @@ enum OrderPlacementActionType {
   MOVE_BRANCH
 }
 
+/// パレット可視化の監査イベント
+enum MachinePalletEventActionType {
+  SET_ITEM
+  REPLACE_ITEM
+  DELETE_ITEM
+  CLEAR_PALLET
+  UPSERT_ILLUSTRATION
+  DELETE_ILLUSTRATION
+}
+
 model Employee {
   id                       String                    @id @default(uuid())
   employeeCode             String                    @unique
@@ -309,8 +319,57 @@ model ClientDevice {
   mobilePlacementEvents   MobilePlacementEvent[]
   orderPlacementEvents    OrderPlacementEvent[]
   mobilePlacementShelvesCreated MobilePlacementShelf[]
+  machinePalletEvents     MachinePalletEvent[]
 
   @@index([statusClientId])
+}
+
+/// 資源CD（ProductionScheduleResourceMaster.resourceCd）単位の加工機イラスト
+model PalletMachineIllustration {
+  resourceCd       String   @id @db.VarChar(20)
+  imageRelativeUrl String   @db.VarChar(512)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// パレット上の現在アイテム（投影）
+model MachinePalletItem {
+  id                 String   @id @default(uuid())
+  /// 資源CD（API 上は machineCd）
+  resourceCd         String   @db.VarChar(20)
+  palletNo           Int
+  displayOrder       Int
+  fhincd             String   @db.VarChar(120)
+  fhinmei            String   @db.VarChar(255)
+  fseiban            String   @db.VarChar(120)
+  machineName        String?  @db.VarChar(255)
+  csvDashboardRowId  String?
+  scheduleSnapshot   Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([resourceCd, palletNo, displayOrder], map: "MachinePalletItem_idx_machine_pallet_order")
+  @@index([resourceCd], map: "MachinePalletItem_idx_resource")
+}
+
+/// パレット可視化イベントログ
+model MachinePalletEvent {
+  id                             String                     @id @default(uuid())
+  clientDeviceId                 String?
+  actionType                     MachinePalletEventActionType
+  /// 資源CD（API 上は machineCd）
+  resourceCd                     String                     @db.VarChar(20)
+  palletNo                       Int?
+  affectedItemId                 String?
+  manufacturingOrderBarcodeRaw   String?
+  illustrationRelativeUrl        String?                    @db.VarChar(512)
+  scheduleSnapshot               Json?
+  createdAt                      DateTime                   @default(now())
+
+  clientDevice ClientDevice? @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([clientDeviceId, createdAt], map: "MachinePalletEvent_idx_device_time")
+  @@index([resourceCd, createdAt], map: "MachinePalletEvent_idx_resource_time")
 }
 
 /// 配膳スマホなどによる棚番・現物バーコード配置の履歴（現在値は Item.storageLocation）

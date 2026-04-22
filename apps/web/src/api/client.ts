@@ -2422,6 +2422,123 @@ export async function postKioskPower(
   return data;
 }
 
+/** パレット可視化（キオスク） */
+export type PalletVisualizationItemDto = {
+  id: string;
+  machineCd: string;
+  palletNo: number;
+  displayOrder: number;
+  fhincd: string;
+  fhinmei: string;
+  fseiban: string;
+  machineName: string | null;
+  csvDashboardRowId: string | null;
+};
+
+export type PalletVisualizationBoardResponseDto = {
+  machines: Array<{
+    machineCd: string;
+    machineName: string;
+    illustrationUrl: string | null;
+    pallets: Array<{ palletNo: number; items: PalletVisualizationItemDto[] }>;
+  }>;
+};
+
+export async function getKioskPalletVisualizationBoard(clientKey?: string) {
+  const { data } = await api.get<PalletVisualizationBoardResponseDto>('/kiosk/pallet-visualization/board', {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined,
+  });
+  return data;
+}
+
+export async function getKioskPalletVisualizationHistory(
+  params?: { limit?: number; cursor?: string },
+  clientKey?: string
+) {
+  const { data } = await api.get<{
+    events: Array<{
+      id: string;
+      actionType: string;
+      machineCd: string;
+      palletNo: number | null;
+      affectedItemId: string | null;
+      manufacturingOrderBarcodeRaw: string | null;
+      illustrationRelativeUrl: string | null;
+      createdAt: string;
+    }>;
+    nextCursor: string | null;
+  }>('/kiosk/pallet-visualization/history', {
+    params,
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined,
+  });
+  return data;
+}
+
+export async function postKioskPalletVisualizationItem(
+  payload: { machineCd: string; palletNo: number; manufacturingOrderBarcodeRaw: string },
+  clientKey?: string
+) {
+  const { data } = await api.post<{ id: string }>('/kiosk/pallet-visualization/items', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined,
+  });
+  return data;
+}
+
+export async function postKioskPalletVisualizationItemReplace(
+  itemId: string,
+  payload: { manufacturingOrderBarcodeRaw: string },
+  clientKey?: string
+) {
+  const { data } = await api.post<{ id: string }>(
+    `/kiosk/pallet-visualization/items/${encodeURIComponent(itemId)}/replace`,
+    payload,
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined,
+    }
+  );
+  return data;
+}
+
+export async function deleteKioskPalletVisualizationItem(itemId: string, clientKey?: string) {
+  await api.delete(`/kiosk/pallet-visualization/items/${encodeURIComponent(itemId)}`, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined,
+  });
+}
+
+export async function clearKioskPalletVisualizationPallet(
+  machineCd: string,
+  palletNo: number,
+  clientKey?: string
+) {
+  await api.post(
+    `/kiosk/pallet-visualization/machines/${encodeURIComponent(machineCd)}/pallets/${palletNo}/clear`,
+    {},
+    {
+      headers: clientKey ? { 'x-client-key': clientKey } : undefined,
+    }
+  );
+}
+
+export async function getToolsPalletVisualizationBoard() {
+  const { data } = await api.get<PalletVisualizationBoardResponseDto>('/tools/pallet-visualization/board');
+  return data;
+}
+
+export async function postToolsPalletVisualizationIllustration(machineCd: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const { data } = await api.post<{ illustrationUrl: string }>(
+    `/tools/pallet-visualization/machines/${encodeURIComponent(machineCd)}/illustration`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
+  return data;
+}
+
+export async function deleteToolsPalletVisualizationIllustration(machineCd: string) {
+  await api.delete(`/tools/pallet-visualization/machines/${encodeURIComponent(machineCd)}/illustration`);
+}
+
 export interface FileAlert {
   id: string;
   type: string;

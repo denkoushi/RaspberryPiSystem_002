@@ -14,6 +14,7 @@ import { initializeCsvImporters } from './services/imports/index.js';
 import { initializeVisualizationModules } from './services/visualization/index.js';
 import { MeasuringInstrumentGenreImageStorage } from './lib/measuring-instrument-genre-image-storage.js';
 import { PartMeasurementDrawingStorage } from './lib/part-measurement-drawing-storage.js';
+import { PalletMachineIllustrationStorage } from './lib/pallet-machine-illustration-storage.js';
 import { PhotoStorage } from './lib/photo-storage.js';
 import { PdfStorage } from './lib/pdf-storage.js';
 import { SignageRenderStorage } from './lib/signage-render-storage.js';
@@ -73,6 +74,13 @@ export async function buildServer(): Promise<FastifyInstance> {
     app.log.info('Part measurement drawing storage directories initialized');
   } catch (error) {
     app.log.warn({ err: error }, 'Failed to initialize part-measurement drawing storage (may not be critical)');
+  }
+
+  try {
+    await PalletMachineIllustrationStorage.initialize();
+    app.log.info('Pallet machine illustration storage directories initialized');
+  } catch (error) {
+    app.log.warn({ err: error }, 'Failed to initialize pallet machine illustration storage (may not be critical)');
   }
   
   try {

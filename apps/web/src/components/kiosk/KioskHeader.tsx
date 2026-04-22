@@ -85,6 +85,7 @@ export function KioskHeader({
   const isLeaderOrderBoardActive = pathname.startsWith('/kiosk/production-schedule/leader-order-board');
   const isProgressOverviewActive = pathname.startsWith('/kiosk/production-schedule/progress-overview');
   const isPurchaseOrderLookupActive = pathname.startsWith('/kiosk/purchase-order-lookup');
+  const isPalletVisualizationActive = pathname.startsWith('/kiosk/pallet-visualization');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const isDocumentsActive = pathname.startsWith('/kiosk/documents');
   const isPartMeasurementActive = pathname.startsWith('/kiosk/part-measurement');
@@ -254,6 +255,12 @@ export function KioskHeader({
             className={() => navClass(isPurchaseOrderLookupActive, 'bg-lime-600 text-white')}
           >
             購買照会
+          </NavLink>
+          <NavLink
+            to="/kiosk/pallet-visualization"
+            className={() => navClass(isPalletVisualizationActive, 'bg-orange-600 text-white')}
+          >
+            パレット
           </NavLink>
           <NavLink
             to="/kiosk/documents"

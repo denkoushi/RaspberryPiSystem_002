@@ -1,7 +1,8 @@
 export type VisualizationData =
   | SeriesVisualizationData
   | KpiVisualizationData
-  | TableVisualizationData;
+  | TableVisualizationData
+  | PalletBoardVisualizationData;
 
 export interface SeriesVisualizationData {
   kind: 'series';
@@ -32,6 +33,22 @@ export interface TableVisualizationData {
   kind: 'table';
   columns: string[];
   rows: Array<Record<string, string | number | null>>;
+  metadata?: Record<string, unknown>;
+}
+
+/** パレット可視化ボード（サイネージ・可視化ダッシュボード用） */
+export interface PalletBoardVisualizationData {
+  kind: 'pallet_board';
+  machines: Array<{
+    machineCd: string;
+    machineName: string;
+    illustrationUrl: string | null;
+    pallets: Array<{
+      palletNo: number;
+      /** 部品サマリ行 */
+      lines: string[];
+    }>;
+  }>;
   metadata?: Record<string, unknown>;
 }
 

@@ -11,6 +11,17 @@ const UNINSPECTED_DATA_SOURCE_TYPE = 'uninspected_machines';
 const UNINSPECTED_RENDERER_TYPE = 'uninspected_machines';
 const MI_LOAN_INSPECTION_DATA_SOURCE_TYPE = 'measuring_instrument_loan_inspection';
 const MI_LOAN_INSPECTION_RENDERER_TYPE = 'measuring_instrument_loan_inspection';
+const PALLET_VIZ_DATA_SOURCE_TYPE = 'pallet_visualization_board';
+const PALLET_VIZ_RENDERER_TYPE = 'pallet_visualization_board';
+const PALLET_VIZ_DATA_SOURCE_TEMPLATE = JSON.stringify({}, null, 2);
+const PALLET_VIZ_RENDERER_TEMPLATE = JSON.stringify(
+  {
+    pageIndex: 0,
+    machinesPerPage: 6,
+  },
+  null,
+  2,
+);
 const UNINSPECTED_DATA_SOURCE_TEMPLATE = JSON.stringify(
   {
     csvDashboardId: '',
@@ -281,6 +292,20 @@ export function VisualizationDashboardsPage() {
     setFormError(null);
   };
 
+  const applyPalletVisualizationPreset = () => {
+    setDataSourceType(PALLET_VIZ_DATA_SOURCE_TYPE);
+    setRendererType(PALLET_VIZ_RENDERER_TYPE);
+    setDataSourceConfig(PALLET_VIZ_DATA_SOURCE_TEMPLATE);
+    setRendererConfig(PALLET_VIZ_RENDERER_TEMPLATE);
+    if (!name.trim()) {
+      setName('パレット可視化ボード');
+    }
+    if (!description.trim()) {
+      setDescription('全加工機のパレット現在状態をJPEGで表示（ページは rendererConfig.pageIndex で切替）');
+    }
+    setFormError(null);
+  };
+
   return (
     <div className="space-y-6">
       <Card
@@ -379,6 +404,9 @@ export function VisualizationDashboardsPage() {
                   </Button>
                   <Button variant="secondary" onClick={applyMeasuringInspectionPreset}>
                     計測機器点検可視化プリセットを適用
+                  </Button>
+                  <Button variant="secondary" onClick={applyPalletVisualizationPreset}>
+                    パレット可視化プリセットを適用
                   </Button>
                   <p className="text-xs text-slate-600">
                     サイネージ向け可視化の推奨設定を自動入力します。

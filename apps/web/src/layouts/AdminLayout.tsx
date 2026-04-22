@@ -96,6 +96,9 @@ export function AdminLayout() {
             <NavLink to="/admin/visualization-dashboards" className={linkClass}>
               可視化ダッシュボード
             </NavLink>
+            <NavLink to="/admin/pallet-machine-illustrations" className={linkClass}>
+              パレット加工機イラスト
+            </NavLink>
             <NavLink to="/admin/gmail/config" className={linkClass}>
               Gmail設定
             </NavLink>

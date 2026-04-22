@@ -11,6 +11,8 @@ import { TableRenderer } from './renderers/table/index.js';
 import { ProgressListRenderer } from './renderers/progress-list/index.js';
 import { UninspectedMachinesRenderer } from './renderers/uninspected-machines/index.js';
 import { MeasuringInstrumentLoanInspectionRenderer } from './renderers/measuring-instrument-loan-inspection/index.js';
+import { PalletVisualizationBoardDataSource } from './data-sources/pallet-visualization-board/index.js';
+import { PalletBoardRenderer } from './renderers/pallet-board/index.js';
 
 export function initializeVisualizationModules(): void {
   const dataSourceRegistry = getDataSourceRegistry();
@@ -36,6 +38,10 @@ export function initializeVisualizationModules(): void {
     dataSourceRegistry.register(new MeasuringInstrumentLoanInspectionDataSource());
   }
 
+  if (!dataSourceRegistry.has('pallet_visualization_board')) {
+    dataSourceRegistry.register(new PalletVisualizationBoardDataSource());
+  }
+
   if (!rendererRegistry.has('kpi_cards')) {
     rendererRegistry.register(new KpiCardsRenderer());
   }
@@ -58,5 +64,9 @@ export function initializeVisualizationModules(): void {
 
   if (!rendererRegistry.has('measuring_instrument_loan_inspection')) {
     rendererRegistry.register(new MeasuringInstrumentLoanInspectionRenderer());
+  }
+
+  if (!rendererRegistry.has('pallet_visualization_board')) {
+    rendererRegistry.register(new PalletBoardRenderer());
   }
 }
