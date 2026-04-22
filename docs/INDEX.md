@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-22）
+
+- **キオスク パレット可視化 UI コンポーネント分割（feature モジュール・a11y 整理）本番・Pi5→Pi4×4→Pi3 順次・Phase12 43/0/0**: ブランチ **`feat/kiosk-pallet-visualization-ui`**・コミット **`029ecc16`**（`KioskPalletVisualizationPage` を `pallet-visualization/*` へ分割）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`--limit` を **1 台ずつ**（**Pi3 最後に `raspberrypi3` のみ**）・`--detach --follow`。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260422-172813-2568` → `20260422-173734-20394` → `20260422-174658-25070` → `20260422-175728-9680` → `20260422-180809-22370` → `20260422-181644-9337`。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（最終一巡 約 **148s**）。**ナレッジ**: [KB-311](./knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)（`/kiosk/pallet-visualization` 沉浸式）・[KB-355（api.md）](./knowledge-base/api.md)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-21）
 
 - **購買照会 履歴蓄積 upsert・着手日（`plannedStartDate`）合成・Web `Dockerfile.web` Caddy 同梱依存 pin 本番・Pi5 のみ・Phase12**: ブランチ **`feat/purchase-order-lookup-history-start-date`**・コミット **`92fd37e4`**（`PurchaseOrderLookupRow` 複合キー upsert・`plannedStartDate`・`replace` で `pgx` / `puddle` / `smallstep/certificates` / OTel SDK 等）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/purchase-order-lookup-history-start-date infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260421-192642-23281`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **94s**）。**Pi4/Pi3**: 未反映。**ナレッジ**: [KB-297 §FKOBAINO](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)・[KB-307](./knowledge-base/ci-cd.md#kb-307-trivy-image-web-が-usrbincaddy-の-cve-を検出して-ci-が失敗する)。**PR**: [#175](https://github.com/denkoushi/RaspberryPiSystem_002/pull/175)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
