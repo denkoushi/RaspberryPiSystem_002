@@ -12,6 +12,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
 import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../features/barcode-scan/formatPresets';
+import { useKeyboardWedgeScan } from '../../features/barcode-scan/useKeyboardWedgeScan';
 
 const LS_SELECTED_MACHINE = 'pallet-visualization-selected-machine-cd';
 
@@ -32,7 +33,6 @@ export function KioskPalletVisualizationPage() {
   const [palletNo, setPalletNo] = useState(1);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
-  const [scanIntent, setScanIntent] = useState<'add' | 'replace'>('add');
 
   useEffect(() => {
     if (machines.length === 0) return;
@@ -102,17 +102,26 @@ export function KioskPalletVisualizationPage() {
     },
   });
 
-  const handleScanSuccess = (text: string) => {
-    setScanOpen(false);
-    const barcode = text.trim();
-    if (!barcode) return;
-    if (scanIntent === 'replace') {
-      if (!selectedItemId) return;
-      replaceMutation.mutate({ itemId: selectedItemId, barcode });
-    } else {
-      addMutation.mutate(barcode);
-    }
-  };
+  const applyBarcode = useCallback(
+    (raw: string) => {
+      const barcode = raw.trim();
+      if (!barcode) return;
+      if (selectedItemId) {
+        replaceMutation.mutate({ itemId: selectedItemId, barcode });
+      } else {
+        addMutation.mutate(barcode);
+      }
+    },
+    [selectedItemId, addMutation, replaceMutation]
+  );
+
+  const handleScanSuccess = useCallback(
+    (text: string) => {
+      setScanOpen(false);
+      applyBarcode(text);
+    },
+    [applyBarcode]
+  );
 
   const busy =
     addMutation.isPending ||
@@ -120,8 +129,13 @@ export function KioskPalletVisualizationPage() {
     deleteMutation.isPending ||
     clearMutation.isPending;
 
+  useKeyboardWedgeScan({
+    active: !scanOpen && !busy && Boolean(selectedCd),
+    onScan: applyBarcode,
+  });
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 text-white">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 text-white">
       <BarcodeScanModal
         open={scanOpen}
         formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
@@ -130,7 +144,7 @@ export function KioskPalletVisualizationPage() {
         onAbort={() => setScanOpen(false)}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-bold text-emerald-200">パレット可視化</h1>
         {boardQuery.isError ? (
           <span className="text-sm text-red-300">読み込みに失敗しました</span>
@@ -139,15 +153,15 @@ export function KioskPalletVisualizationPage() {
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        <aside className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-lg bg-slate-900/80 p-2 lg:max-h-none lg:w-56 lg:shrink-0">
-          <p className="text-xs font-semibold text-white/60">加工機（資源CD順）</p>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row">
+        <aside className="flex max-h-48 min-h-0 w-full shrink-0 flex-col gap-2 overflow-y-auto overscroll-y-contain rounded-lg bg-slate-900/80 p-2 lg:max-h-none lg:w-56">
+          <p className="shrink-0 text-xs font-semibold text-white/60">加工機（資源CD順）</p>
           {machines.map((m) => (
             <button
               key={m.machineCd}
               type="button"
               onClick={() => selectMachine(m.machineCd)}
-              className={`rounded-md px-2 py-2 text-left text-sm font-semibold transition-colors ${
+              className={`shrink-0 rounded-md px-2 py-2 text-left text-sm font-semibold transition-colors ${
                 m.machineCd === selectedCd ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-white/90 hover:bg-slate-700'
               }`}
             >
@@ -157,10 +171,10 @@ export function KioskPalletVisualizationPage() {
           ))}
         </aside>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 rounded-lg bg-slate-900/60 p-3">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-lg bg-slate-900/60 p-3">
           {currentMachine ? (
             <>
-              <div className="flex flex-wrap items-start gap-3">
+              <div className="flex shrink-0 flex-wrap items-start gap-3">
                 {currentMachine.illustrationUrl ? (
                   <img
                     src={currentMachine.illustrationUrl}
@@ -181,7 +195,7 @@ export function KioskPalletVisualizationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
+              <div className="grid shrink-0 grid-cols-10 gap-2">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                   <button
                     key={n}
@@ -190,57 +204,60 @@ export function KioskPalletVisualizationPage() {
                       setPalletNo(n);
                       setSelectedItemId(null);
                     }}
-                    className={`rounded-lg py-3 text-center text-sm font-bold ${
+                    className={`rounded-lg py-3 text-center leading-none ${
                       palletNo === n ? 'bg-amber-500 text-slate-900' : 'bg-slate-800 text-white hover:bg-slate-700'
                     }`}
                   >
-                    {n}
+                    <span className="text-[1.75rem] font-bold tabular-nums">{n}</span>
                   </button>
                 ))}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  disabled={busy || !selectedCd}
-                  onClick={() => {
-                    setScanIntent('add');
-                    setScanOpen(true);
-                  }}
-                >
-                  追加（製造orderスキャン）
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy || !selectedItemId}
-                  onClick={() => {
-                    setScanIntent('replace');
-                    setScanOpen(true);
-                  }}
-                >
-                  上書き（部品選択＋スキャン）
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={busy || !selectedItemId}
-                  onClick={() => selectedItemId && deleteMutation.mutate(selectedItemId)}
-                >
-                  選択部品を削除
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => clearMutation.mutate()}
-                  className="text-red-200 hover:text-red-100"
-                >
-                  このパレットを全消し
-                </Button>
+              <div className="flex shrink-0 flex-col gap-1">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    disabled={busy || !selectedCd}
+                    onClick={() => {
+                      setScanOpen(true);
+                    }}
+                  >
+                    追加（製造orderスキャン）
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy || !selectedItemId}
+                    onClick={() => {
+                      setScanOpen(true);
+                    }}
+                  >
+                    上書き（部品選択＋スキャン）
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy || !selectedItemId}
+                    onClick={() => selectedItemId && deleteMutation.mutate(selectedItemId)}
+                  >
+                    選択部品を削除
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => clearMutation.mutate()}
+                    className="text-red-200 hover:text-red-100"
+                  >
+                    このパレットを全消し
+                  </Button>
+                </div>
+                <p className="text-xs text-white/45">
+                  USB ハンディ（キーボードウェッジ）はカメラを開かずに読取できます。部品を選択中ならスキャン値は上書きに使われます。
+                </p>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto rounded-md bg-slate-950/50 p-2">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain rounded-md bg-slate-950/50 p-2">
                 <p className="mb-2 text-xs text-white/50">
                   上書き・削除する部品をタップして選択してください（確認ダイアログはありません）。
                 </p>
@@ -272,7 +289,7 @@ export function KioskPalletVisualizationPage() {
               </div>
 
               {(addMutation.error || replaceMutation.error) && (
-                <p className="text-sm text-red-300">
+                <p className="shrink-0 text-sm text-red-300">
                   {(addMutation.error as Error)?.message ?? (replaceMutation.error as Error)?.message ?? 'エラーが発生しました'}
                 </p>
               )}
