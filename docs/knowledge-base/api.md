@@ -499,9 +499,15 @@
 - **Detach Run ID**: `20260422-150051-25397` → `20260422-152055-3569` → `20260422-152512-6215` → `20260422-152824-13591` → `20260422-153204-7953` → `20260422-153534-30166`。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）。
 
+**追補（2026-04-22・沉浸式レイアウト・左 aside スクロール）**:
+- ブランチ **`fix/pallet-visualization-immersive-scroll`**・ポリシー **`33d4092f`**・Playwright E2E **`019bc752`**（`e2e/pallet-viz-aside-scroll.spec.ts`）。
+- **本番**: **`raspberrypi5` のみ**（キオスク SPA は Pi5 `web` 配信のため）・**Detach Run ID**: **`20260422-161223-27548`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi4 個別デプロイ**: 不要（Pi5 更新でキオスクが新バンドルを取得）。
+- **根因**: `/kiosk/pallet-visualization` が **`usesKioskImmersiveLayout` allowlist** に無く、非沉浸式 `KioskLayout` のまま **左ペインの独立 `overflow-y` が効かず**、ウィンドウ全体が縦スクロールしていた。
+- **対策**: `kioskImmersiveLayoutPolicy.ts` に **`/kiosk/pallet-visualization` プレフィックス**を追加（**`kioskImmersiveLayoutPolicy.test.ts` 必須**）。**関連**: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)。
+
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
-- **キオスク `/kiosk/pallet-visualization`**: 左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。カメラモーダル表示中・送信中は **非アクティブ**。
+- **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。カメラモーダル表示中・送信中は **非アクティブ**。
 
 **知見**:
 - **Pi5 初回**のみ `apps/api` / Web 変更検知により **Docker 再ビルド**が走る。Pi4 は Git 同期とキオスクサービス再起動が中心。Pi3 はメモリ確保のため **プレフライトで GUI/サイネージ停止**が入る；ヘルスログ上は一時 **`signage-lite` exit-code** が出ても、playbook 完了時点で **`signage-lite.service is active`** なら運用上は収束扱い（長時間のみ exit-code が続く場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
@@ -512,11 +518,12 @@
 - **イラストが表示されない**: ブラウザが **`Authorization` を付けられない**経路（`<img>`・サイネージ JPEG URL）では **公開 GET が必須**。404 のときは Pi5 上の `storage/pallet-machine-illustrations` と URL のファイル名一致を確認。
 - **ウェッジが反応しない**: `INPUT` / `TEXTAREA` フォーカス中は無視。**最小文字数未満**は確定しない。スキャナが **Enter を送らない**場合は **アイドル確定**に依存。
 - **デプロイロック**: 複数ホストを **1 台ずつ**にしても、**前の `--detach --follow` が Mac 側で終わる前**に次を起動すると **ローカルロック**（exit 3）→ 前ジョブ完了待ちまたは `cmd1 && cmd2`。
+- **左ペインだけスクロールしない（ページ全体が動く）**: **`usesKioskImmersiveLayout(pathname)`** が false のまま。`/kiosk/pallet-visualization` は **`kioskImmersiveLayoutPolicy`** の **`startsWith` 登録**と Vitest を確認（上記「追補・沉浸式」節）。
 
 **主な実装置き場**:
 - API: `apps/api/src/services/pallet-visualization/*`、`routes/kiosk/pallet-visualization.ts`、`routes/tools/pallet-visualization.ts`、ストレージ `pallet-machine-illustrations`。
 - 可視化: `apps/api/src/services/visualization/data-sources/pallet-visualization-board/`、`renderers/pallet-board/`。
-- Web: `apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`pages/admin/PalletMachineIllustrationsPage.tsx`。
+- Web: `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`、`apps/web/src/layouts/KioskLayout.tsx`、`apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`pages/admin/PalletMachineIllustrationsPage.tsx`。
 
 **解決状況**: ✅ **本番反映済み**（2026-04-22・上記および **追補デプロイ**）
 
