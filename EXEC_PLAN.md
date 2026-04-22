@@ -1857,6 +1857,16 @@
 
 ## Next Steps（将来のタスク）
 
+### 加工機パレット可視化: 本番反映完了・現場スモーク残（2026-04-22）
+
+**実績**: ブランチ **`feat/pallet-visualization`**（代表 **`8ea52d09`**）を **`raspberrypi5` → Pi4×4 → `raspberrypi3`** へ **1 台ずつ** デプロイ済み（Detach Run ID・所要・Pi3 手順は [deployment.md 冒頭](./docs/guides/deployment.md)）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**HTTP**: `/kiosk/pallet-visualization`・`/admin/pallet-machine-illustrations` → **200**。ナレッジ: [api.md KB-355](./docs/knowledge-base/api.md)。
+
+**候補タスク（現場・認証込み）**:
+
+1. **キオスク**: 加工機を選択し、パレット操作が **記録・表示**されること（`x-client-key` 前提の端末で確認）。
+2. **管理**: イラストを **1 件アップロード**し、キオスク側の機種表示が更新されること。
+3. **サイネージ**: ダッシュボードに **`pallet_board`** スロットがある場合、画像が **エラーなく**更新されること。
+
 ### 計測機器点検可視化: 手動スモーク（2026-04-21）
 
 **概要**: [api.md の 2026-04-21 追補](./docs/knowledge-base/api.md)・[deployment.md 冒頭](./docs/guides/deployment.md)。本番 Pi5 は **`1c3d5e9b`** 相当を反映済み（Detach **`20260421-143351-15107`**）。

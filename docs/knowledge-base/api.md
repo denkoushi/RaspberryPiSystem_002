@@ -479,6 +479,37 @@
 
 ---
 
+### [KB-355] 加工機パレット可視化（キオスク・管理・可視化ボード・2026-04-22）
+
+**日付**: 2026-04-22
+
+**概要**:
+- キオスクで加工機別のパレット載せ／おろし等を記録し、管理コンソールで機種イラスト（`PalletMachineIllustration`）を差し替え、サイネージの可視化プリセットではデータソース `pallet_visualization_board` とレンダラー `pallet_board` で同じ契約を表示する。
+
+**本番デプロイ**:
+- ブランチ **`feat/pallet-visualization`**・代表 **`8ea52d09`**。
+- **順序**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → **`raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**・Pi3 は **他ホストと並列に起動しない**）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: `20260422-135405-32716` → `20260422-140303-10184` → `20260422-140726-29698` → `20260422-141044-15315` → `20260422-141446-12382` → `20260422-141809-5836`。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **HTTP スモーク**: `GET https://100.106.158.2/kiosk/pallet-visualization`・`…/admin/pallet-machine-illustrations` → **各 200**（認証前でも SPA エントリとして 200 になる構成）。
+
+**知見**:
+- **Pi5 初回**のみ `apps/api` / Web 変更検知により **Docker 再ビルド**が走る。Pi4 は Git 同期とキオスクサービス再起動が中心。Pi3 はメモリ確保のため **プレフライトで GUI/サイネージ停止**が入る；ヘルスログ上は一時 **`signage-lite` exit-code** が出ても、playbook 完了時点で **`signage-lite.service is active`** なら運用上は収束扱い（長時間のみ exit-code が続く場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
+
+**トラブルシュート**:
+- **DB**: Pi5 の API コンテナで `pnpm prisma migrate status` が **未適用**なら、`20260422140000_pallet_visualization` が残っていないか確認。
+- **イラスト MIME**: アップロードが **`ApiError`** になる場合は `PalletMachineIllustrationStorage.assertMime` の許可タイプに合わせる。
+- **デプロイロック**: 複数ホストを **1 台ずつ**にしても、**前の `--detach --follow` が Mac 側で終わる前**に次を起動すると **ローカルロック**（exit 3）→ 前ジョブ完了待ちまたは `cmd1 && cmd2`。
+
+**主な実装置き場**:
+- API: `apps/api/src/services/pallet-visualization/*`、`routes/kiosk/pallet-visualization.ts`、`routes/tools/pallet-visualization.ts`、ストレージ `pallet-machine-illustrations`。
+- 可視化: `apps/api/src/services/visualization/data-sources/pallet-visualization-board/`、`renderers/pallet-board/`。
+- Web: `apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`pages/admin/PalletMachineIllustrationsPage.tsx`。
+
+**解決状況**: ✅ **本番反映済み**（2026-04-22・上記）
+
+---
+
 ### [KB-257] backup/importsルート分割と実行ロジックのサービス層移設
 
 **日付**: 2026-02-12
