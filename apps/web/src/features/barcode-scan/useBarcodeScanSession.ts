@@ -2,15 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getCameraStream, stopCameraStream } from '../../utils/camera';
 
+import { reduceBarcodeStability } from './barcodeReadStability';
 import { createBrowserMultiFormatReader } from './zxingVideoReader';
 
+import type { BarcodeStabilityConfig, BarcodeStabilityState } from './barcodeReadStability';
+import type { BarcodeReaderTimingOptions } from './zxingVideoReader';
 import type { BarcodeFormat, BrowserMultiFormatReader } from '@zxing/library';
+
 
 export type UseBarcodeScanSessionOptions = {
   /** false ならカメラ・デコードを行わない */
   active: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   formats: BarcodeFormat[];
+  readerOptions?: BarcodeReaderTimingOptions;
+  stabilityConfig?: BarcodeStabilityConfig;
   /** 未検出のままこの時間で打ち切り */
   idleTimeoutMs: number;
   onSuccess: (text: string) => void;
@@ -25,6 +31,8 @@ export function useBarcodeScanSession({
   active,
   videoRef,
   formats,
+  readerOptions,
+  stabilityConfig,
   idleTimeoutMs,
   onSuccess,
   onAbort,
@@ -103,8 +111,10 @@ export function useBarcodeScanSession({
     disposedRef.current = false;
     setCameraError(null);
 
-    const reader = createBrowserMultiFormatReader(formats);
+    const reader = createBrowserMultiFormatReader(formats, readerOptions);
     readerRef.current = reader;
+
+    let stabilityState: BarcodeStabilityState | null = null;
 
     const finishSuccess = (text: string) => {
       if (disposedRef.current) {
@@ -145,8 +155,22 @@ export function useBarcodeScanSession({
           }
           const raw = result?.getText();
           const text = raw?.trim() ?? '';
-          if (text.length > 0) {
+          if (text.length === 0) {
+            return;
+          }
+          if (stabilityConfig == null) {
             finishSuccess(text);
+            return;
+          }
+          const { next, shouldConfirm } = reduceBarcodeStability(
+            stabilityState,
+            text,
+            Date.now(),
+            stabilityConfig
+          );
+          stabilityState = next;
+          if (shouldConfirm && next != null) {
+            finishSuccess(next.value);
           }
         });
       } catch {
@@ -165,7 +189,16 @@ export function useBarcodeScanSession({
       stopAcquiredStream();
       teardownReader();
     };
-  }, [active, formats, idleTimeoutMs, stopAcquiredStream, teardownReader, videoRef]);
+  }, [
+    active,
+    formats,
+    idleTimeoutMs,
+    readerOptions,
+    stabilityConfig,
+    stopAcquiredStream,
+    teardownReader,
+    videoRef,
+  ]);
 
   return { cameraError, clearCameraError, requestCancel };
 }

@@ -1,11 +1,21 @@
 import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
-import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../features/barcode-scan/formatPresets';
+import { BARCODE_FORMAT_PRESET_PURCHASE_ORDER } from '../../features/barcode-scan/formatPresets';
 import {
   PurchaseOrderLookupBackBar,
   PurchaseOrderLookupResultList,
   purchaseOrderLookupKioskTheme,
   usePurchaseOrderLookup
 } from '../../features/purchase-order-lookup';
+
+const PURCHASE_ORDER_SCAN_READER_OPTIONS = {
+  timeBetweenScansMillis: 220,
+  timeBetweenDecodingAttempts: 120,
+} as const;
+
+const PURCHASE_ORDER_SCAN_STABILITY = {
+  requiredConsecutiveHits: 2,
+  stableWindowMs: 600,
+} as const;
 
 export function PurchaseOrderLookupPage() {
   const mp = usePurchaseOrderLookup();
@@ -65,7 +75,9 @@ export function PurchaseOrderLookupPage() {
 
       <BarcodeScanModal
         open={mp.scanOpen}
-        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        formats={BARCODE_FORMAT_PRESET_PURCHASE_ORDER}
+        readerOptions={PURCHASE_ORDER_SCAN_READER_OPTIONS}
+        stabilityConfig={PURCHASE_ORDER_SCAN_STABILITY}
         idleTimeoutMs={30_000}
         onSuccess={mp.onScanSuccess}
         onAbort={() => mp.setScanOpen(false)}
