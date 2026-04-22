@@ -48,6 +48,7 @@ services:
       - ../../.docker/local/storage/signage-rendered:/app/storage/signage-rendered
       - ../../.docker/local/storage/part-measurement-drawings:/app/storage/part-measurement-drawings
       - ../../.docker/local/storage/measuring-instrument-genres:/app/storage/measuring-instrument-genres
+      - ../../.docker/local/storage/pallet-machine-illustrations:/app/storage/pallet-machine-illustrations
       - ../../.docker/local/alerts:/app/alerts
       - ../../.docker/local/power-actions:/app/power-actions
       - ../../.docker/local/config:/app/config
