@@ -157,6 +157,14 @@
     group: "{{ ansible_user }}"
     mode: '0755'
 
+- name: Ensure pallet machine illustration storage directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/storage/pallet-machine-illustrations"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
 - name: Stat existing Docker Compose .env
   ansible.builtin.stat:
     path: "{{ repo_path }}/infrastructure/docker/.env"

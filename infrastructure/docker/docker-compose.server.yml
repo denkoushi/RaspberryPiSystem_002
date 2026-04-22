@@ -60,6 +60,8 @@ services:
       - part-measurement-drawings-storage:/app/storage/part-measurement-drawings
       # 計測機器ジャンル点検画像（未マウントだとコンテナ再作成でファイル消失）
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
+      # パレット可視化・加工機イラスト（未マウントだとデプロイでコンテナ再作成時にファイル消失）
+      - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
       - /opt/RaspberryPiSystem_002/alerts:/app/alerts
       - /opt/RaspberryPiSystem_002/power-actions:/app/power-actions
       - /opt/RaspberryPiSystem_002/config:/app/config
@@ -179,3 +181,9 @@ volumes:
       type: none
       o: bind
       device: /opt/RaspberryPiSystem_002/storage/measuring-instrument-genres
+  pallet-machine-illustrations-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations
