@@ -2,7 +2,7 @@
 title: KB-311 キオスク沉浸式レイアウト（上端ヘッダーリビール）の URL allowlist
 tags: [キオスク, フロントエンド, KioskLayout]
 audience: [開発者]
-last-verified: 2026-03-25
+last-verified: 2026-04-22
 category: knowledge-base
 ---
 
@@ -27,7 +27,7 @@ category: knowledge-base
 | 種別 | パス |
 |------|------|
 | 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)） |
-| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/part-measurement`（部品測定ハブ・編集・テンプレ・確定一覧。Phase2 以降） |
+| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/part-measurement`（部品測定ハブ・編集・テンプレ・確定一覧。Phase2 以降）, `/kiosk/pallet-visualization`（加工機パレット可視化・[KB-355](./api.md)） |
 
 ### 除外例（false）
 
@@ -49,6 +49,7 @@ category: knowledge-base
 ## Troubleshooting
 
 - **沉浸式にならない / 逆に想定外の画面で隠れる**: `normalizeKioskPathname` の末尾 `/` と、`IMMERSIVE_PATH_EXACT` vs `startsWith` の扱いを確認（`/kiosk/production-schedule` は **子パスを含まない** 完全一致）。
+- **パレット可視化で左ペインだけスクロールせずページ全体が動く**: `/kiosk/pallet-visualization` が allowlist に無いと **`usesKioskImmersiveLayout` が false** のままになり、分割ペインの **overflow 前提が崩れる**（2026-04-22 修正・[KB-355](./api.md)）。
 - **E2E スモークでキオスクナビが失敗**: ヘッダー非表示のままクリックしている。`revealKioskHeader()` 等で上端ホバー相当を先に実行する（[`kiosk-smoke.spec.ts`](../../e2e/smoke/kiosk-smoke.spec.ts)）。
 - **ローカル Web テストで `act(...)` エラー**: シェルに `NODE_ENV=production` が残っていると再現しうる → **`NODE_ENV=test`** を明示して Vitest を実行。
 

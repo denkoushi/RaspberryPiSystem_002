@@ -21,6 +21,9 @@ const KIOSK_MOBILE_PLACEMENT_PREFIX = '/kiosk/mobile-placement';
 
 const KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX = '/kiosk/purchase-order-lookup';
 
+/** パレット可視化: 左・右の独立スクロールのためビューポート高を `h-dvh` で固定する */
+const KIOSK_PALLET_VISUALIZATION_PREFIX = '/kiosk/pallet-visualization';
+
 const IMMERSIVE_PATH_EXACT = new Set([
   '/kiosk/tag',
   '/kiosk/instruments/borrow',
@@ -45,5 +48,6 @@ export function usesKioskImmersiveLayout(pathname: string): boolean {
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
   if (p === KIOSK_MOBILE_PLACEMENT_PREFIX || p.startsWith(`${KIOSK_MOBILE_PLACEMENT_PREFIX}/`)) return true;
   if (p === KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX || p.startsWith(`${KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX}/`)) return true;
+  if (p === KIOSK_PALLET_VISUALIZATION_PREFIX || p.startsWith(`${KIOSK_PALLET_VISUALIZATION_PREFIX}/`)) return true;
   return IMMERSIVE_PATH_EXACT.has(p);
 }
