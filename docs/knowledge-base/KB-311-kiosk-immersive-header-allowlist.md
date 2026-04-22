@@ -46,6 +46,12 @@ category: knowledge-base
 - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 28 / WARN 0 / FAIL 0**。
 - **運用記録**: [KB-297 沉浸式拡張節](./KB-297-kiosk-due-management-workflow.md#kiosk-immersive-allowlist-manual-order-row-2026-03-21) / [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)（同趣旨のチェックリスト行）。
 
+## デプロイ・実機検証（実績、2026-04-22）
+
+- **内容**: キオスク `/kiosk/pallet-visualization` の UI を feature 配下に分割（ブランチ `feat/kiosk-pallet-visualization-ui`・代表 `029ecc16`）。ルートの沉浸式判定は従来どおり本 KB の allowlist（[KB-355](./api.md)・「加工機パレット可視化」節 とセットで参照）。
+- **本番**: `raspberrypi5` → … → `raspberrypi3` を **1 台ずつ**、Pi3 は最後に **`--limit raspberrypi3` のみ**（[deployment.md](../guides/deployment.md) の「ラズパイ3（サイネージ）の更新」）。Detach Run ID 列・Phase12 は [deployment.md](../guides/deployment.md) 冒頭（2026-04-22 ・パレット可視化 UI コンポーネント分割）を正とする。
+- **知見**: Pi5 のみ **Docker 再ビルド**（`web`）。表示仕様の変更是最小（`aria` 整備中心）。
+
 ## Troubleshooting
 
 - **沉浸式にならない / 逆に想定外の画面で隠れる**: `normalizeKioskPathname` の末尾 `/` と、`IMMERSIVE_PATH_EXACT` vs `startsWith` の扱いを確認（`/kiosk/production-schedule` は **子パスを含まない** 完全一致）。
