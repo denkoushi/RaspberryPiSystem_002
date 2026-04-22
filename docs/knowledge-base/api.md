@@ -505,6 +505,13 @@
 - **根因**: `/kiosk/pallet-visualization` が **`usesKioskImmersiveLayout` allowlist** に無く、非沉浸式 `KioskLayout` のまま **左ペインの独立 `overflow-y` が効かず**、ウィンドウ全体が縦スクロールしていた。
 - **対策**: `kioskImmersiveLayoutPolicy.ts` に **`/kiosk/pallet-visualization` プレフィックス**を追加（**`kioskImmersiveLayoutPolicy.test.ts` 必須**）。**関連**: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)。
 
+**追補（2026-04-22・`pallet-machine-illustrations` ストレージ永続化 / Pi5 `api`）**:
+- ブランチ **`fix/pallet-machine-illustrations-volume`**・代表 **`937684fd`**（compose bind + Ansible ホスト `0755` ディレクトリ + Mac override）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/pallet-machine-illustrations-volume infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260422-185725-32599`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **根因**: `api` コンテナ内の `…/pallet-machine-illustrations` に **host bind 無し**で書いていたため、`Rebuild/Restart docker compose services` 相当の再作成で **実ファイルが消えた**（DB 参照は残る）→ デプロイのたびに **404**。
+- **対策**: `docker-compose.server.yml` の `pallet-machine-illustrations-storage`（`type: none` + `device: /opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`）を `api` に付与。ローカル Mac は `docker-compose.mac-local.override.yml` で同パスをプロジェクト下に bind。計測機器ジャンル画像（[KB-343](./infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)）と同系。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録時 **約 74s**）。
+
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
 - **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。カメラモーダル表示中・送信中は **非アクティブ**。
@@ -515,7 +522,7 @@
 **トラブルシュート**:
 - **DB**: Pi5 の API コンテナで `pnpm prisma migrate status` が **未適用**なら、`20260422140000_pallet_visualization` が残っていないか確認。
 - **イラスト MIME**: アップロードが **`ApiError`** になる場合は `PalletMachineIllustrationStorage.assertMime` の許可タイプに合わせる。
-- **イラストが表示されない**: ブラウザが **`Authorization` を付けられない**経路（`<img>`・サイネージ JPEG URL）では **公開 GET が必須**。404 のときは Pi5 上の `storage/pallet-machine-illustrations` と URL のファイル名一致を確認。
+- **イラストが表示されない**: ブラウザが **`Authorization` を付けられない**経路（`<img>`・サイネージ JPEG URL）では **公開 GET が必須**。404 のときは Pi5 上の **`/opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`（`api` bind 前提）** と URL のファイル名一致を確認。**デプロイ後に消えた**場合は、上記永続化追補以前に **未マウントのまま**コンテナ再作成され実ファイルが失われている可能性（**再アップロード**で復旧）。
 - **ウェッジが反応しない**: `INPUT` / `TEXTAREA` フォーカス中は無視。**最小文字数未満**は確定しない。スキャナが **Enter を送らない**場合は **アイドル確定**に依存。
 - **デプロイロック**: 複数ホストを **1 台ずつ**にしても、**前の `--detach --follow` が Mac 側で終わる前**に次を起動すると **ローカルロック**（exit 3）→ 前ジョブ完了待ちまたは `cmd1 && cmd2`。
 - **左ペインだけスクロールしない（ページ全体が動く）**: **`usesKioskImmersiveLayout(pathname)`** が false のまま。`/kiosk/pallet-visualization` は **`kioskImmersiveLayoutPolicy`** の **`startsWith` 登録**と Vitest を確認（上記「追補・沉浸式」節）。
