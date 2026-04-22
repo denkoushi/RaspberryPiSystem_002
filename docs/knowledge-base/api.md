@@ -460,6 +460,11 @@
 - **本番**: ブランチ **`feat/measuring-instrument-inspection-exclude-cancelled-loans`**・代表 **`41c981b3`**・**`raspberrypi5` のみ**・Detach **`20260421-175831-4238`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**（約 **134s**）。
 - **トラブルシュート**: 取消後も一覧に残る場合は **`raw.loanId` 欠落**（古いイベント・CSV のみ）を疑う。キオスク **`Loan.cancel`** は **`MeasuringInstrumentLoanEvent` に `返却` を書かない**ため、本追補まで NFC 紐付き取消が点検可視化に残り得た。
 
+**追補（2026-04-22・計測機器点検可視化 カード密度・表示順）**:
+- **仕様**: レンダラー `measuring_instrument_loan_inspection` で画像上の表題行を **1行（タイトル＋日付）**に統合し、カード本体の描画高を拡大。行の並びは `sortLoanInspectionRows`（`row-priority.ts`）：**貸出中がありを上**、同帯は **貸出件数の降順**、同数は **従業員氏名の昇順**。グリッドは **4列固定**、カード高は内容に応じて **可変**（`card-layout.ts`）。1ページ（想定 1080p キャンバス）に収まらない場合は **警告テキスト**を同画像内に描画。機名トークンは `instrument-name-text.ts`（長い名称の折り返しと省略）で整形。
+- **本番**: ブランチ **`feat/mi-inspection-card-density-optimization`**・代表 **`7bbf1077`**・**`raspberrypi5` のみ**・Detach **`20260422-113105-23315`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**（約 **25s**）。
+- **トラブルシュート**: 行数が多いと **1画面に収まらない**のは想定内（警告で明示）。Pi4 キオスク・**Pi3 サイネージ**への追加デプロイは **本変更の必須条件ではない**（JPEG は Pi5 API が生成。Pi3 は **リソース僅少のため専用手順**があり、**今回の API のみ差分では対象外**とした）。
+
 **検証**:
 - `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
 
