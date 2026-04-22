@@ -13,6 +13,7 @@ import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hoo
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
+import { PalletVizEmbeddedPanel } from '../../features/kiosk/pallet-visualization';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import { KioskReturnPage } from './KioskReturnPage';
@@ -281,9 +282,9 @@ export function KioskBorrowPage() {
   };
 
   return (
-    <div className="flex h-full gap-4">
-      <div className="w-80 flex-shrink-0">
-        <Card title="持出フロー" className="h-full">
+    <div className="flex h-full min-h-0 gap-4">
+      <div className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden min-h-0">
+        <Card title="持出フロー" className="shrink-0">
           <div className="space-y-3 text-center">
             <div className="grid gap-4 md:grid-cols-2">
               <StepCard
@@ -311,9 +312,10 @@ export function KioskBorrowPage() {
             ) : null}
           </div>
         </Card>
+        <PalletVizEmbeddedPanel className="min-h-0 flex-1" />
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="min-h-0 min-w-0 flex-1">
         <KioskReturnPage loansQuery={loansQuery} clientKey={resolvedClientKey} />
       </div>
     </div>

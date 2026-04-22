@@ -5,6 +5,7 @@ import { palletVizCopy } from './copy';
 export type PalletVizActionRowProps = {
   busy: boolean;
   canOperate: boolean;
+  canClearPallet?: boolean;
   hasSelectedItem: boolean;
   onAdd: () => void;
   onOverwrite: () => void;
@@ -18,6 +19,7 @@ export type PalletVizActionRowProps = {
 export function PalletVizActionRow({
   busy,
   canOperate,
+  canClearPallet = true,
   hasSelectedItem,
   onAdd,
   onOverwrite,
@@ -50,7 +52,7 @@ export function PalletVizActionRow({
           type="button"
           variant="ghost"
           className="text-red-200 hover:text-red-100"
-          disabled={busy}
+          disabled={busy || !canClearPallet}
           onClick={onClearPallet}
         >
           {palletVizCopy.actions.clearPallet}

@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 
-import { PALLET_COUNT } from './palletVizNumberGridConfig';
+import { PalletVizPalletNumberGrid } from './PalletVizPalletNumberGrid';
 
 const ILLU_W = 'w-60';
 const ILLU_H = 'h-[10.5rem]';
@@ -54,30 +54,11 @@ export function PalletVizMachineHeader({
             </p>
           </div>
 
-          <div
-            className="grid w-full min-w-0 shrink-0 grid-cols-5 gap-2 sm:w-[17.5rem] sm:min-w-[17.5rem]"
-            role="group"
-            aria-label={`パレット番号1から${PALLET_COUNT}を選択`}
-          >
-            {Array.from({ length: PALLET_COUNT }, (_, i) => i + 1).map((n) => {
-              const selected = selectedPalletNo === n;
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  aria-pressed={selected}
-                  aria-label={`パレット${n}`}
-                  onClick={() => onSelectPalletNo(n)}
-                  className={clsx(
-                    'rounded-lg py-2 text-center leading-none sm:py-3',
-                    selected ? 'bg-amber-500 text-slate-900' : 'bg-slate-800 text-white hover:bg-slate-700'
-                  )}
-                >
-                  <span className="text-2xl font-bold tabular-nums sm:text-[1.75rem]">{n}</span>
-                </button>
-              );
-            })}
-          </div>
+          <PalletVizPalletNumberGrid
+            selectedPalletNo={selectedPalletNo}
+            onSelectPalletNo={onSelectPalletNo}
+            variant="default"
+          />
         </div>
       </div>
     </div>

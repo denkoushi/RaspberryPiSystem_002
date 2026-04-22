@@ -11,6 +11,7 @@ import {
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { PalletVizEmbeddedPanel } from '../../features/kiosk/pallet-visualization';
 import { useNfcStream } from '../../hooks/useNfcStream';
 import { captureAndCompressPhoto } from '../../utils/camera';
 
@@ -421,9 +422,9 @@ export function KioskPhotoBorrowPage() {
   };
 
   return (
-    <div className="flex h-full gap-4">
-      <div className="w-80 flex-shrink-0">
-        <Card title="写真撮影持出" className="h-full">
+    <div className="flex h-full min-h-0 gap-4">
+      <div className="flex w-80 shrink-0 flex-col gap-3 overflow-hidden min-h-0">
+        <Card title="写真撮影持出" className="shrink-0">
           <div className="space-y-4 text-center">
             {/* 撮影中の表示（スキャン時のみカメラを起動） */}
             {isCapturing && (
@@ -495,9 +496,10 @@ export function KioskPhotoBorrowPage() {
             )}
           </div>
         </Card>
+        <PalletVizEmbeddedPanel className="min-h-0 flex-1" />
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="min-h-0 min-w-0 flex-1">
         <KioskReturnPage loansQuery={loansQuery} clientKey={resolvedClientKey} />
       </div>
     </div>
