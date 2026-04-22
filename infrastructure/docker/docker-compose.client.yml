@@ -18,5 +18,19 @@ services:
       - /run/pcscd:/run/pcscd:ro
     restart: unless-stopped
 
+  # シリアル(CDC ACM)バーコードリーダー用。Ansible が clients/barcode-agent/.env を配布する。
+  # profile=barcode のため、通常の `docker compose up -d` では起動しない（nfc-agent のみ）。
+  barcode-agent:
+    profiles:
+      - barcode
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.barcode-agent
+    network_mode: host
+    privileged: true
+    env_file:
+      - ../../clients/barcode-agent/.env
+    restart: unless-stopped
+
 volumes:
   nfc-agent-data:

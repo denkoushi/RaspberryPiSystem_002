@@ -233,6 +233,11 @@ all:
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-kensaku-stonebase01-kiosk1"
               nfc_agent_client_secret: "client-key-raspi4-kensaku-stonebase01-kiosk1"
+              # USB シリアル(CDC ACM)バーコードリーダー → localhost WebSocket（profile=barcode）
+              barcode_agent_enabled: true
+              barcode_agent_serial_device: "/dev/ttyACM0"
+              barcode_agent_serial_baud: 9600
+              barcode_agent_rest_port: 7072
         signage:
           hosts:
             raspberrypi3:

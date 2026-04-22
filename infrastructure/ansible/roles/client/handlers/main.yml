@@ -6,3 +6,10 @@
     cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml up -d --force-recreate nfc-agent
   args:
     executable: /bin/bash
+
+- name: restart barcode-agent
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --build --force-recreate barcode-agent
+  args:
+    executable: /bin/bash

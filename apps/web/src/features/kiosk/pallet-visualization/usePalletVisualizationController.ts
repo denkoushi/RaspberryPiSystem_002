@@ -11,6 +11,7 @@ import {
   type PalletVisualizationItemDto,
 } from '../../../api/client';
 import { useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
+import { useSerialBarcodeStream } from '../../barcode-scan/useSerialBarcodeStream';
 
 import { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage';
 
@@ -32,6 +33,8 @@ export type UsePalletVisualizationControllerOptions = {
   clientKey?: string;
   /** false のときキーボードウェッジを張らない（テスト等） */
   enableKeyboardWedge?: boolean;
+  /** false のときシリアル( barcode-agent )WebSocket を張らない（テスト等） */
+  enableSerialBarcodeStream?: boolean;
 };
 
 /**
@@ -41,6 +44,7 @@ export type UsePalletVisualizationControllerOptions = {
 export function usePalletVisualizationController(options?: UsePalletVisualizationControllerOptions) {
   const clientKey = options?.clientKey ?? getResolvedClientKey();
   const enableKeyboardWedge = options?.enableKeyboardWedge !== false;
+  const enableSerialBarcodeStream = options?.enableSerialBarcodeStream !== false;
   const queryClient = useQueryClient();
 
   const boardQuery = useQuery({
@@ -160,10 +164,14 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
     deleteMutation.isPending ||
     clearMutation.isPending;
 
+  const barcodeInputActive = !scanOpen && !busy && Boolean(selectedCd);
+
   useKeyboardWedgeScan({
-    active: enableKeyboardWedge && !scanOpen && !busy && Boolean(selectedCd),
+    active: enableKeyboardWedge && barcodeInputActive,
     onScan: applyBarcode,
   });
+
+  useSerialBarcodeStream(enableSerialBarcodeStream && barcodeInputActive, applyBarcode);
 
   const handlePalletNoChange = useCallback((n: number) => {
     setPalletNo(n);

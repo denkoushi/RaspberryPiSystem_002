@@ -1,0 +1,49 @@
+---
+# バーコードエージェント起動保証（責務: ライフサイクル）
+# profile=barcode で docker compose 起動（他ホストでは .env 不要）
+
+- name: Ensure Docker is available for barcode-agent
+  ansible.builtin.command: docker --version
+  register: barcode_docker_version_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail if Docker is not available (barcode-agent requires Docker)
+  ansible.builtin.fail:
+    msg: "barcode-agent には Docker が必要です。{{ inventory_hostname }} に Docker をインストールしてください。"
+  when: barcode_docker_version_check.rc != 0
+
+- name: Ensure barcode-agent container is up
+  ansible.builtin.shell: |
+    set -euo pipefail
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --build barcode-agent
+  args:
+    executable: /bin/bash
+  register: barcode_agent_up_result
+
+- name: Wait for barcode-agent to become ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ barcode_agent_rest_port | default(7072) }}/api/agent/status"
+    method: GET
+    status_code: [200]
+    timeout: 10
+  register: barcode_agent_status_check
+  retries: 5
+  delay: 3
+  until: barcode_agent_status_check.status == 200
+  failed_when: false
+
+- name: Capture docker compose ps for barcode-agent (diagnostics on failure)
+  ansible.builtin.shell: |
+    cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml ps -a
+  register: barcode_agent_ps_result
+  changed_when: false
+  failed_when: false
+  when: barcode_agent_status_check.status | default(0) != 200
+
+- name: Emit barcode-agent status for diagnostics on failure
+  ansible.builtin.debug:
+    msg:
+      - "barcode-agent status API: {{ barcode_agent_status_check.json | default({}) }}"
+      - "docker compose ps: {{ barcode_agent_ps_result.stdout | default('') }}"
+  when: barcode_agent_status_check.status | default(0) != 200

@@ -73,6 +73,14 @@
   ansible.builtin.include_tasks: nfc-agent-lifecycle.yml
   when: nfc_agent_client_id is defined
 
+- name: Deploy barcode agent configuration (Pi4 kiosk, optional)
+  ansible.builtin.include_tasks: barcode-agent.yml
+  when: barcode_agent_enabled | default(false) | bool
+
+- name: Ensure barcode-agent is running (Pi4 kiosk, optional)
+  ansible.builtin.include_tasks: barcode-agent-lifecycle.yml
+  when: barcode_agent_enabled | default(false) | bool
+
 - name: Ensure sudoers overrides for client services
   ansible.builtin.template:
     src: "{{ role_path }}/templates/sudoers-client.j2"
