@@ -529,9 +529,17 @@
 - **知見**: **Pi5 のみ** `Rebuild/Restart docker compose services`（**`web` 再ビルド**）。
 - **トラブルシュート**: 操作行が暗パネル上で読めないときは **`ghost` のままになっていないか**確認（→ **`ghostOnDark`**）。**直列デプロイ**で **前 `--detach --follow` 未完了**に次を起動すると **Mac ローカルロック** exit 3。
 
+**追補（2026-04-23・Pi4 `barcode-agent`・CDC ACM シリアル・本番 Pi5→StoneBase01）**:
+- ブランチ **`feat/pallet-serial-barcode-agent`**・実装代表 **`9aa12436`** + **`Dockerfile.api` `lxml` 明示** **`53fcc704`**（Trivy **`CVE-2026-41066`** 回避）。
+- **順序**: **`raspberrypi5` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-091833-30823`** → **`20260423-093852-25734`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **29s**）。
+- **仕様**: USB リーダーが **HID キーボードではなく CDC ACM**（例: `/dev/ttyACM0`）のとき、既存 **`useKeyboardWedgeScan` だけではスキャンを拾えない**。Pi4 常駐 **`clients/barcode-agent`**（FastAPI・`GET /api/agent/status`・`WebSocket /stream`・ペイロード **`{ type: 'barcodeScan', text, eventId?, timestamp? }`**）を **`docker-compose.client.yml` の `profiles: [barcode]`** で起動し、キオスク Firefox は **`useSerialBarcodeStream`**（既定 **`VITE_BARCODE_AGENT_WS_URL=ws://localhost:7072/stream`**）で **`usePalletVisualizationController` の `applyBarcode` に合流**（カメラモーダル・送信中と同じ **`barcodeInputActive`** で **HID と併用可**）。
+- **Ansible / inventory**: **`barcode_agent_enabled`**・**`barcode_agent_serial_device`**・**`barcode_agent_serial_baud`**・**`barcode_agent_rest_port`**。本記録時点では **`raspi4-kensaku-stonebase01` のみ** `barcode_agent_enabled: true`。
+- **トラブルシュート**: デバイスパス・ボーレート・コンテナ未起動は Pi4 で **`docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode ps`** と **`curl -s http://127.0.0.1:7072/api/agent/status`**。Ansible は **`up -d --build barcode-agent`** でイメージ更新。**`eventId`** はフロントの **sessionStorage 去重**と併用。
+
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
-- **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。カメラモーダル表示中・送信中は **非アクティブ**。
+- **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。**CDC ACM シリアル**は Pi4 **`barcode-agent`** + **`useSerialBarcodeStream`**（上記「追補（2026-04-23）」）。カメラモーダル表示中・送信中は **非アクティブ**。
 
 **知見**:
 - **Pi5 初回**のみ `apps/api` / Web 変更検知により **Docker 再ビルド**が走る。Pi4 は Git 同期とキオスクサービス再起動が中心。Pi3 はメモリ確保のため **プレフライトで GUI/サイネージ停止**が入る；ヘルスログ上は一時 **`signage-lite` exit-code** が出ても、playbook 完了時点で **`signage-lite.service is active`** なら運用上は収束扱い（長時間のみ exit-code が続く場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
@@ -540,7 +548,7 @@
 - **DB**: Pi5 の API コンテナで `pnpm prisma migrate status` が **未適用**なら、`20260422140000_pallet_visualization` が残っていないか確認。
 - **イラスト MIME**: アップロードが **`ApiError`** になる場合は `PalletMachineIllustrationStorage.assertMime` の許可タイプに合わせる。
 - **イラストが表示されない**: ブラウザが **`Authorization` を付けられない**経路（`<img>`・サイネージ JPEG URL）では **公開 GET が必須**。404 のときは Pi5 上の **`/opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`（`api` bind 前提）** と URL のファイル名一致を確認。**デプロイ後に消えた**場合は、上記永続化追補以前に **未マウントのまま**コンテナ再作成され実ファイルが失われている可能性（**再アップロード**で復旧）。
-- **ウェッジが反応しない**: `INPUT` / `TEXTAREA` フォーカス中は無視。**最小文字数未満**は確定しない。スキャナが **Enter を送らない**場合は **アイドル確定**に依存。
+- **ウェッジが反応しない**: `INPUT` / `TEXTAREA` フォーカス中は無視。**最小文字数未満**は確定しない。スキャナが **Enter を送らない**場合は **アイドル確定**に依存。**シリアル(CDC ACM) リーダー**は **ウェッジでは拾えない** → **`barcode-agent` / `useSerialBarcodeStream`**（上記 2026-04-23 追補）を確認。
 - **デプロイロック**: 複数ホストを **1 台ずつ**にしても、**前の `--detach --follow` が Mac 側で終わる前**に次を起動すると **ローカルロック**（exit 3）→ 前ジョブ完了待ちまたは `cmd1 && cmd2`。
 - **左ペインだけスクロールしない（ページ全体が動く）**: **`usesKioskImmersiveLayout(pathname)`** が false のまま。`/kiosk/pallet-visualization` は **`kioskImmersiveLayoutPolicy`** の **`startsWith` 登録**と Vitest を確認（上記「追補・沉浸式」節）。
 
