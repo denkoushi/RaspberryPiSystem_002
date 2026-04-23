@@ -1,8 +1,10 @@
 import sharp from 'sharp';
+import type { Md3Tokens } from '../_design-system/md3.js';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { createMd3Tokens, escapeSvgText } from '../_design-system/index.js';
 import { planMiInspectionCardPlacements } from './card-layout.js';
+import type { BodyLineTone } from './mi-instrument-display.types.js';
 import type { MiLoanInspectionTableRow } from './row-priority.js';
 import { sortRowsForDisplay } from './row-priority.js';
 
@@ -39,6 +41,22 @@ function buildMessageSvg(message: string, width: number, height: number): string
       </text>
     </svg>
   `;
+}
+
+function resolveBodyFill(tone: BodyLineTone, inspected: boolean, t: Md3Tokens): string {
+  if (!inspected) {
+    if (tone === 'muted') {
+      return t.colors.outline;
+    }
+    if (tone === 'primary') {
+      return t.colors.text.primary;
+    }
+    return t.colors.text.secondary;
+  }
+  if (tone === 'muted') {
+    return t.colors.outline;
+  }
+  return t.colors.status.onInfoContainer;
 }
 
 const NAMES_START_YPX = 66;
@@ -93,13 +111,11 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
     });
     const namesStartY = Math.round(NAMES_START_YPX * scale);
     const nameHeaderBaselineY = Math.round(NAME_HEADER_BASELINE_YPX * scale);
-    const namesFontSize = Math.max(12, Math.round(13 * scale));
-    const lineHeight = Math.max(Math.round(namesFontSize * 1.35), Math.round(18 * scale));
     const countFontSize = Math.max(13, Math.round(14 * scale));
     const innerPad = Math.round(12 * scale);
     const cardsSvg = placements
       .map((p) => {
-        const { x, y, height: cardHeight, namesLines } = p;
+        const { x, y, height: cardHeight, bodyLines } = p;
         const row = p.row;
         const employeeName = String(row['従業員名'] ?? '-');
         const activeLoanCount = toNumber(row['貸出中計測機器数'], 0);
@@ -111,15 +127,24 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
         const textLeft = x + innerPad;
         const textRight = x + cardWidth - innerPad;
         const headerBaselineOnCard = y + nameHeaderBaselineY;
-        const namesStart = y + namesStartY;
-        const namesSvg = namesLines
-          .map((line, lineIndex) => {
-            const lineY = namesStart + lineIndex * lineHeight;
-            return `<text x="${textLeft}" y="${lineY}"
-              font-size="${namesFontSize}" font-weight="600" fill="${secondaryText}" font-family="sans-serif">
-              ${escapeXml(line)}
+        let lineY = y + namesStartY;
+        const bodySvg = bodyLines
+          .map((line) => {
+            const fill = line.isSpacer ? 'transparent' : resolveBodyFill(line.tone, inspected, t);
+            const advance = line.lineHeight;
+            if (line.isSpacer) {
+              lineY += advance;
+              return '';
+            }
+            const textContent = escapeXml(line.text);
+            const yPos = lineY;
+            lineY += advance;
+            return `<text x="${textLeft}" y="${yPos}"
+              font-size="${line.fontSize}" font-weight="600" fill="${fill}" font-family="sans-serif">
+              ${textContent}
             </text>`;
           })
+          .filter(Boolean)
           .join('\n');
         return `
           <g>
@@ -134,7 +159,7 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
               text-anchor="end" font-size="${countFontSize}" font-weight="700" fill="${secondaryText}" font-family="sans-serif">
               計測機器: ${activeLoanCount}
             </text>
-            ${namesSvg}
+            ${bodySvg}
           </g>
         `;
       })

@@ -130,12 +130,16 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           点検件数: 3,
           貸出中計測機器数: 2,
           計測機器名称一覧: 'デジタルノギス (AG1001), マイクロメータ (AG1002)',
+          計測機器明細:
+            '[{"kind":"active","managementNumber":"AG1001","name":"デジタルノギス"},{"kind":"active","managementNumber":"AG1002","name":"マイクロメータ"}]',
         },
         {
           従業員名: '佐藤 花子',
           点検件数: 0,
           貸出中計測機器数: 1,
           計測機器名称一覧: 'トルクレンチ (AG1003)',
+          計測機器明細:
+            '[{"kind":"active","managementNumber":"AG1003","name":"トルクレンチ"}]',
         },
       ]);
       expect(result.metadata?.sectionEquals).toBe('加工担当部署');
@@ -196,6 +200,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           点検件数: 0,
           貸出中計測機器数: 1,
           計測機器名称一覧: 'マイクロメータ (AG1002)',
+          計測機器明細: '[{"kind":"active","managementNumber":"AG1002","name":"マイクロメータ"}]',
         },
       ]);
     }
@@ -243,6 +248,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           点検件数: 0,
           貸出中計測機器数: 1,
           計測機器名称一覧: 'デジタルノギス (AG1001)',
+          計測機器明細: '[{"kind":"active","managementNumber":"AG1001","name":"デジタルノギス"}]',
         },
       ]);
     }

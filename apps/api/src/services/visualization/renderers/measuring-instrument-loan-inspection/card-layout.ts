@@ -1,4 +1,6 @@
-import { layoutInstrumentNameLines } from './instrument-name-text.js';
+import type { MiBodyLine } from './mi-instrument-display.types.js';
+import { layoutBodyWithinMaxHeight } from './layout-mi-instrument-body.js';
+import { parseRowInstrumentEntries } from './row-instrument-entries.js';
 import type { MiLoanInspectionTableRow } from './row-priority.js';
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -10,9 +12,6 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-/** 1カード内の名称行の上限（長文化けつつ1ページ枠内に収めやすくする） */
-export const MAX_INSTRUMENT_NAME_LINES = 32;
-
 const NAMES_START_YPX = 66;
 const BOTTOM_PAD_PX = 12;
 
@@ -23,56 +22,11 @@ export type MiCardPlacement = {
   width: number;
   height: number;
   col: number;
-  namesLines: string[];
+  bodyLines: MiBodyLine[];
 };
 
 /**
- * 名称折り返し行数の上限を下げながら、与えた最大高以下に収まる lines と高さを求める。
- */
-function layoutNamesWithinMaxHeight(params: {
-  namesText: string;
-  maxWidthPx: number;
-  namesFontSize: number;
-  lineHeight: number;
-  maxHeight: number;
-  namesStartY: number;
-  bottomPad: number;
-}): { namesLines: string[]; height: number } {
-  const { maxHeight, namesStartY, bottomPad, lineHeight, namesText, maxWidthPx, namesFontSize } = params;
-  const maxTextHeight = maxHeight - namesStartY - bottomPad;
-  if (maxTextHeight < lineHeight) {
-    return {
-      namesLines: [layoutInstrumentNameLines({ namesText, maxWidthPx, fontPx: namesFontSize, maxLines: 1 })[0] ?? '-'],
-      height: namesStartY + lineHeight + bottomPad,
-    };
-  }
-  const maxByHeight = Math.max(1, Math.floor(maxTextHeight / lineHeight));
-  for (let m = Math.min(MAX_INSTRUMENT_NAME_LINES, maxByHeight); m >= 1; m -= 1) {
-    const namesLines = layoutInstrumentNameLines({
-      namesText: namesText || '',
-      maxWidthPx,
-      fontPx: namesFontSize,
-      maxLines: m,
-    });
-    const h = namesStartY + namesLines.length * lineHeight + bottomPad;
-    if (h <= maxHeight) {
-      return { namesLines, height: h };
-    }
-  }
-  const fallback = layoutInstrumentNameLines({
-    namesText: namesText || '',
-    maxWidthPx,
-    fontPx: namesFontSize,
-    maxLines: 1,
-  });
-  return {
-    namesLines: fallback,
-    height: namesStartY + Math.min(1, fallback.length) * lineHeight + bottomPad,
-  };
-}
-
-/**
- * 4列グリッド・上揃え・行高は行内最大。縦可変1ページ分まで配置、はみ出す行は切り捨て。
+ * 4列グリッド・上揃め・行高は行内最大。縦可変1ページ分まで配置、はみ出す行は切り捨て。
  */
 export function planMiInspectionCardPlacements(params: {
   rows: readonly MiLoanInspectionTableRow[];
@@ -86,7 +40,6 @@ export function planMiInspectionCardPlacements(params: {
 }): { placements: MiCardPlacement[]; truncated: boolean; placedCount: number; totalRows: number } {
   const { rows, cardsTop, cardsAreaHeight, padding, cardWidth, cardGap, numColumns, scale } = params;
   const namesFontSize = Math.max(12, Math.round(13 * scale));
-  const lineHeight = Math.max(Math.round(namesFontSize * 1.35), Math.round(18 * scale));
   const namesStartY = Math.round(NAMES_START_YPX * scale);
   const bottomPad = Math.round(BOTTOM_PAD_PX * scale);
   const innerTextPad = Math.round(12 * scale);
@@ -107,41 +60,26 @@ export function planMiInspectionCardPlacements(params: {
       row: MiLoanInspectionTableRow;
       col: number;
       height: number;
-      namesLines: string[];
+      bodyLines: MiBodyLine[];
     }> = [];
 
     for (let col = 0; col < numColumns && i < rows.length; col += 1, i += 1) {
       const row = rows[i]!;
       const activeLoanCount = toNumber(row['貸出中計測機器数'], 0);
-      const instrumentNamesRaw = String(row['計測機器名称一覧'] ?? '').trim();
-      const isEmpty = activeLoanCount <= 0;
+      const entries = activeLoanCount <= 0 ? [] : parseRowInstrumentEntries(row);
 
-      let height: number;
-      let namesLines: string[];
-      if (isEmpty) {
-        namesLines = layoutInstrumentNameLines({
-          namesText: '',
-          maxWidthPx,
-          fontPx: namesFontSize,
-          maxLines: 1,
-        });
-        height = namesStartY + namesLines.length * lineHeight + bottomPad;
-        height = Math.min(height, availableForRow);
-      } else {
-        const laid = layoutNamesWithinMaxHeight({
-          namesText: instrumentNamesRaw,
-          maxWidthPx,
-          namesFontSize,
-          lineHeight,
-          maxHeight: availableForRow,
-          namesStartY,
-          bottomPad,
-        });
-        height = laid.height;
-        namesLines = laid.namesLines;
-      }
+      const laid = layoutBodyWithinMaxHeight({
+        entries,
+        maxWidthPx,
+        baseFontPx: namesFontSize,
+        scale,
+        maxHeight: availableForRow,
+        namesStartY,
+        bottomPad,
+      });
+      const height = Math.min(laid.height, availableForRow);
 
-      batch.push({ row, col, height, namesLines });
+      batch.push({ row, col, height, bodyLines: laid.bodyLines });
     }
 
     const rowMaxH = Math.max(...batch.map((b) => b.height));
@@ -159,7 +97,7 @@ export function planMiInspectionCardPlacements(params: {
         width: cardWidth,
         height: b.height,
         col: b.col,
-        namesLines: b.namesLines,
+        bodyLines: b.bodyLines,
       });
     }
     y += rowMaxH + cardGap;
