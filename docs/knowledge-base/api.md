@@ -537,6 +537,13 @@
 - **Ansible / inventory**: **`barcode_agent_enabled`**・**`barcode_agent_serial_device`**・**`barcode_agent_serial_baud`**・**`barcode_agent_rest_port`**。本記録時点では **`raspi4-kensaku-stonebase01` のみ** `barcode_agent_enabled: true`。
 - **トラブルシュート**: デバイスパス・ボーレート・コンテナ未起動は Pi4 で **`docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode ps`** と **`curl -s http://127.0.0.1:7072/api/agent/status`**。Ansible は **`up -d --build barcode-agent`** でイメージ更新。**`eventId`** はフロントの **sessionStorage 去重**と併用。
 
+**追補（2026-04-23・スマホ配膳 パレット可視化・機種別 `palletCount`・Pi5→Pi4×4→Pi3）**:
+- ブランチ **`feat/mobile-pallet-viz-machine-pallet-count`**・代表 **`17c39259`**（Prisma `PalletMachineIllustration.palletCount`・`PATCH /api/tools/pallet-visualization/machines/:machineCd/pallet-count`・`KioskMobilePalletVisualizationPage`・`pallet-board-renderer` 可変段数 等）。
+- **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-113519-6942`** → **`20260423-114540-21117`** → **`20260423-115005-11668`** → **`20260423-115332-29019`** → **`20260423-115720-25646`** → **`20260423-120114-31885`**。Pi3 初回は post_tasks の **`Start signage services after lightdm restore`** で **`signage-lite-update.timer`** 起動が **`Could not find the requested service`** となり **`failed=1`**；**`20260423-120929-13353`** に **再デプロイ**（**`--limit raspberrypi3` のみ**）し **`failed=0`**（**`signage-lite.service is active`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization`・`…/admin/pallet-machine-illustrations` → **各 200**。
+- **仕様**: 管理で **加工機ごとの `palletCount`（1..60、未設定行は API 既定 10）** を保持。スマホ **`/kiosk/mobile-placement/pallet-viz`**: 加工機セレクト・0-9 テンキー（**1 回→1 桁、2 回→2 桁**）→**カメラスキャン**で `addBarcodeToPallet`。キオスク専用ページ・埋め込みは **動的 `palletCount`** で番号グリッド。サイネージ **`pallet_board`** は **パレット行を `m.pallets.length` 分**描画。
+- **トラブルシュート（Pi3）**: **`signage-lite-update.timer` 起動**で **unit 未登録**相当が出た場合、**同じ** `--limit raspberrypi3` **を再実行**（本記録では収束）。併せて [deployment.md の運用メモ（2026-04-23 先頭）](../guides/deployment.md) を参照。
+
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
 - **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。**CDC ACM シリアル**は Pi4 **`barcode-agent`** + **`useSerialBarcodeStream`**（上記「追補（2026-04-23）」）。カメラモーダル表示中・送信中は **非アクティブ**。
@@ -555,7 +562,7 @@
 **主な実装置き場**:
 - API: `apps/api/src/services/pallet-visualization/*`、`routes/kiosk/pallet-visualization.ts`、`routes/tools/pallet-visualization.ts`、ストレージ `pallet-machine-illustrations`。
 - 可視化: `apps/api/src/services/visualization/data-sources/pallet-visualization-board/`、`renderers/pallet-board/`。
-- Web: `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`、`apps/web/src/layouts/KioskLayout.tsx`、`apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskBorrowPage.tsx`、`apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`、`apps/web/src/features/kiosk/pallet-visualization/`（`PalletVizEmbeddedPanel`・`usePalletVisualizationController` 等）、`pages/admin/PalletMachineIllustrationsPage.tsx`。
+- Web: `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`、`apps/web/src/layouts/KioskLayout.tsx`、`apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskMobilePalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskBorrowPage.tsx`、`apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`、`apps/web/src/pages/kiosk/MobilePlacementPage.tsx`、`apps/web/src/features/kiosk/pallet-visualization/`（`PalletVizEmbeddedPanel`・`usePalletVisualizationController` 等）、`pages/admin/PalletMachineIllustrationsPage.tsx`。
 
 **解決状況**: ✅ **本番反映済み**（2026-04-22・上記および **追補デプロイ**）
 
