@@ -551,6 +551,14 @@
 - **Ansible / inventory**: **`barcode_agent_enabled`**・**`barcode_agent_serial_device`**・**`barcode_agent_serial_baud`**・**`barcode_agent_rest_port`**。本記録時点では **`raspi4-kensaku-stonebase01` のみ** `barcode_agent_enabled: true`。
 - **トラブルシュート**: デバイスパス・ボーレート・コンテナ未起動は Pi4 で **`docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode ps`** と **`curl -s http://127.0.0.1:7072/api/agent/status`**。Ansible は **`up -d --build barcode-agent`** でイメージ更新。**`eventId`** はフロントの **sessionStorage 去重**と併用。
 
+**追補（2026-04-24・配膳スマホ パレット可視化 カード単体スクロール・Web のみ・Pi5 のみ）**:
+- ブランチ **`feat/mobile-pallet-viz-scroll-layout`**・代表 **`c6a7e655`**（`KioskMobilePalletVisualizationPage.tsx`・`e2e/mobile-pallet-viz-scroll-investigation.spec.ts`・`e2e/pallet-viz-aside-scroll.spec.ts` の employees モック安定化）。
+- **計画デプロイ**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-pallet-viz-scroll-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Pi3 不要**（本画面は Pi5 `web` の `/kiosk/...`）。
+- **状態（記録時点）**: **一部実行環境**では Pi5 へ **`ssh … 100.106.158.2:22` がタイムアウト**し **Detach Run ID 未取得**の例あり。運用端末で成功後、[deployment.md](../guides/deployment.md) 冒頭 **§2026-04-24** に **Run ID**・**Phase12** を追記すること。
+- **仕様**: テンキー・操作行 **固定**・部品カード **`PalletVizItemList` ルートのみ**縦スクロール（flex 親を `flex flex-col min-h-0 flex-1` で接続）。**API/DB 変更なし**。
+- **実機（成功後）**: `./scripts/deploy/verify-phase12-real.sh`・**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz` → **200**（`curl -k`）。**手動**: カード複数で **一覧だけ**フリックスクロール。
+- **ナレッジ**: [KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)。
+
 **追補（2026-04-23・スマホ配膳 パレット可視化・機種別 `palletCount`・Pi5→Pi4×4→Pi3）**:
 - ブランチ **`feat/mobile-pallet-viz-machine-pallet-count`**・代表 **`17c39259`**（Prisma `PalletMachineIllustration.palletCount`・`PATCH /api/tools/pallet-visualization/machines/:machineCd/pallet-count`・`KioskMobilePalletVisualizationPage`・`pallet-board-renderer` 可変段数 等）。
 - **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → `raspberrypi3`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-113519-6942`** → **`20260423-114540-21117`** → **`20260423-115005-11668`** → **`20260423-115332-29019`** → **`20260423-115720-25646`** → **`20260423-120114-31885`**。Pi3 初回は post_tasks の **`Start signage services after lightdm restore`** で **`signage-lite-update.timer`** 起動が **`Could not find the requested service`** となり **`failed=1`**；**`20260423-120929-13353`** に **再デプロイ**（**`--limit raspberrypi3` のみ**）し **`failed=0`**（**`signage-lite.service is active`**）。

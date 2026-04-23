@@ -1,6 +1,19 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+最終更新: 2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+
+## V25（2026-04-24）配膳スマホ パレット可視化・テンキー固定とカード一覧スクロール {#v25-mobile-pallet-viz-card-only-scroll-2026-04-24}
+
+- **目的**: `/kiosk/mobile-placement/pallet-viz` で **カードが多いときに一覧だけ**を縦スクロールし、**テンキー・操作行は常に表示**する（現場要望）。
+- **実装（Web のみ）**: ページを **`flex flex-col`** に分割。**テンキー**・**`PalletVizActionRow`** は **`shrink-0`**。エラー文（`localError` / `mutationError` / `boardQuery.isError`）は **一覧の上**に `shrink-0` で配置。一覧は **`relative flex min-h-0 flex-1 flex-col overflow-hidden`** 内の **`PalletVizItemList`**（既存の `min-h-0 flex-1 overflow-y-auto`）が **スクロールコンテナ**になるよう **親を flex 化**（以前は一覧の親が `relative min-h-0` のみで **`flex-1` が効かず**一体スクロールに近い挙動）。
+- **API/DB**: 変更なし。
+- **デプロイ（計画・最小）**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-pallet-viz-scroll-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Pi3 は対象外**（本画面は Pi5 `web` 配信の `/kiosk/...`）。
+- **本記録時点の状態**: リポジトリ実装コミット **`c6a7e655`**（ブランチ **`feat/mobile-pallet-viz-scroll-layout`**）。**本番デプロイは** 一部環境から **Pi5 SSH タイムアウト**のため **未実施の可能性**—成功後 **Detach Run ID** と **`verify-phase12-real.sh`** を [deployment.md](../guides/deployment.md) 冒頭 §2026-04-24 に追記すること。
+- **回帰テスト**: `e2e/mobile-pallet-viz-scroll-investigation.spec.ts`（一覧ルートの `scrollHeight > clientHeight`・`scrollBy`）。
+- **知見・トラブルシュート**:
+  - **「まだテンキーまで動く」**: ブラウザが **古いバンドル**をキャッシュ。**強制再読み込み**または Pi5 `web` 再デプロイの有無を確認。
+  - **一覧だけ動かない**: `PalletVizItemList` の親が **flex 子で `flex-1 min-h-0`** になっているか、DevTools で **`scrollHeight` と `clientHeight`** を比較。
+  - **デプロイだけ Pi5 で足りるか**: スマホ・Pi4 キオスクが **`https://<Pi5>/kiosk/...`** を読む運用なら **Pi5 の `web` 更新で足りる**（過去の Web のみ変更と同趣旨）。
 
 ## V24（2026-04-23）バーコード `readerOptions` 集約・一次元コア形式 {#v24-barcode-reader-tuning-2026-04-23}
 
