@@ -15,19 +15,14 @@ import { useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
 import { useSerialBarcodeStream } from '../../barcode-scan/useSerialBarcodeStream';
 
 import { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage';
+import { mapPalletVisualizationDtoToListItem } from './palletVizListItemMapping';
 
 import type { PalletVizListItem } from './PalletVizItemList';
 
 const BOARD_QUERY_KEY = 'kiosk-pallet-viz-board';
 
 function mapItemsToListItems(items: PalletVisualizationItemDto[]): PalletVizListItem[] {
-  return items.map((it) => ({
-    id: it.id,
-    fhincd: it.fhincd,
-    fhinmei: it.fhinmei,
-    fseiban: it.fseiban,
-    machineName: it.machineName,
-  }));
+  return items.map(mapPalletVisualizationDtoToListItem);
 }
 
 type ApiErrorPayload = {

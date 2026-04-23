@@ -6,6 +6,11 @@ import {
   resolveMachineNameForSeiban,
 } from '../part-measurement/part-measurement-schedule-lookup.service.js';
 import { normalizeSlipToken } from '../mobile-placement/mobile-placement-slip-match.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
+import {
+  extractOutsideDimensionsDisplay,
+  formatPlannedStartDateForPalletDisplay,
+} from './pallet-visualization-display-fields.js';
 
 const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
@@ -68,19 +73,35 @@ export async function resolveScheduleSnapshotForPalletItem(
 
   const row = await prisma.csvDashboardRow.findFirst({
     where: { id: primary.rowId },
-    select: { id: true, rowData: true },
+    select: {
+      id: true,
+      rowData: true,
+      orderSupplements: {
+        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+        take: 1,
+        select: { plannedQuantity: true, plannedStartDate: true },
+      },
+    },
   });
   if (!row) {
     throw new ApiError(404, 'スケジュール行の取得に失敗しました', undefined, 'PALLET_SCHEDULE_ROW_MISSING');
   }
 
   const rd = (row.rowData ?? {}) as Record<string, unknown>;
+  const supplement = row.orderSupplements[0];
+  const plannedQuantity = supplement?.plannedQuantity ?? null;
+  const plannedStartDateDisplay = formatPlannedStartDateForPalletDisplay(supplement?.plannedStartDate ?? null);
+  const outsideDimensionsDisplay = extractOutsideDimensionsDisplay(rd);
+
   const scheduleSnapshot: Record<string, unknown> = {
     ProductNo: rd.ProductNo ?? null,
     FSEIBAN: rd.FSEIBAN ?? null,
     FHINCD: rd.FHINCD ?? null,
     FHINMEI: rd.FHINMEI ?? null,
     FSIGENCD: rd.FSIGENCD ?? null,
+    plannedQuantity,
+    plannedStartDateDisplay,
+    outsideDimensionsDisplay,
   };
 
   const machineName = await resolveMachineNameForSeiban(primary.fseiban);

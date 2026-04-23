@@ -17,7 +17,12 @@ export type PalletVisualizationItem = {
   fhinmei: string;
   fseiban: string;
   machineName: string | null;
+  /** カード表示用（半角大文字・ハイフン前など）。 */
+  machineNameDisplay: string | null;
   csvDashboardRowId: string | null;
+  plannedStartDateDisplay: string | null;
+  plannedQuantity: number | null;
+  outsideDimensionsDisplay: string | null;
 };
 
 export type PalletVisualizationPalletView = {

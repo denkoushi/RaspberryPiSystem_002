@@ -11,7 +11,9 @@ import {
   PalletVizMobileMachineSelect,
   PalletVizMobilePageHeader,
   PalletVizMobileTenkeyPad,
+  resolvePalletNoFromTenkeyDigitsImmediate,
   useKioskMobilePalletDigitBuffer,
+  usePalletTenkeyNavBusy,
   usePalletVisualizationController,
 } from '../../features/kiosk/pallet-visualization';
 
@@ -29,10 +31,22 @@ export function KioskMobilePalletVisualizationPage() {
 
   const [localError, setLocalError] = useState<string | null>(null);
   const [orderScanOpen, setOrderScanOpen] = useState(false);
+  const { navBusy, pulseNavBusy } = usePalletTenkeyNavBusy();
 
   useEffect(() => {
     setLocalError(null);
   }, [ctrl.selectedMachineCd]);
+
+  const maxPallet = ctrl.currentMachine?.palletCount;
+  const { palletNo, setPalletNo } = ctrl;
+  useEffect(() => {
+    if (maxPallet == null || maxPallet < 1) return;
+    const resolved = resolvePalletNoFromTenkeyDigitsImmediate(digits, maxPallet);
+    if (resolved === null) return;
+    if (resolved !== palletNo) {
+      setPalletNo(resolved);
+    }
+  }, [digits, maxPallet, palletNo, setPalletNo]);
 
   const handleOrderScanSuccess = useCallback(
     (text: string) => {
@@ -53,6 +67,7 @@ export function KioskMobilePalletVisualizationPage() {
   );
 
   const busy = ctrl.busy;
+  const tenkeyDisabled = busy || navBusy;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 text-white">
@@ -89,21 +104,24 @@ export function KioskMobilePalletVisualizationPage() {
         <PalletVizMobileTenkeyPad
           onDigit={(d) => {
             setLocalError(null);
+            pulseNavBusy();
             appendDigit(d);
           }}
           onBackspace={() => {
             setLocalError(null);
+            pulseNavBusy();
             backspace();
           }}
           onClear={() => {
             setLocalError(null);
+            pulseNavBusy();
             clear();
           }}
           onOpenOrderScan={() => {
             setLocalError(null);
             setOrderScanOpen(true);
           }}
-          disabled={busy}
+          disabled={tenkeyDisabled}
         />
 
         {ctrl.currentMachine ? (
@@ -119,11 +137,21 @@ export function KioskMobilePalletVisualizationPage() {
               onDelete={ctrl.deleteSelectedItem}
               onClearPallet={ctrl.clearCurrentPallet}
             />
-            <PalletVizItemList
-              items={ctrl.listItems}
-              selectedItemId={ctrl.selectedItemId}
-              onToggleItem={ctrl.toggleItemSelection}
-            />
+            <div className="relative min-h-0">
+              {navBusy ? (
+                <div
+                  className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-black/25"
+                  aria-hidden
+                >
+                  <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-amber-300" />
+                </div>
+              ) : null}
+              <PalletVizItemList
+                items={ctrl.listItems}
+                selectedItemId={ctrl.selectedItemId}
+                onToggleItem={ctrl.toggleItemSelection}
+              />
+            </div>
           </>
         ) : (
           <p className="text-sm text-red-300">加工機を読み込めません</p>
