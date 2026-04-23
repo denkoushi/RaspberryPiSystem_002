@@ -559,6 +559,13 @@
 - **知見**: Pi5 で **`api`/`web` コンテナ再ビルド**（差分検知時）。Pi4 は **Git 同期 + `kiosk-browser` 再起動**。Pi3 は本記録で **ヘルス収集時に `signage-lite` が一時 `exit-code`** でも **post_tasks 後 `signage-lite.service is active`**。
 - **トラブルシュート**: 直列デプロイで **前ジョブの Mac 終了前**に次を起動すると **ローカルロック** exit 3。Pi3 の **`unreachable=1`** や長時間 **`exit-code` のみ**は [deployment.md](../guides/deployment.md)・[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)。
 
+**追補（2026-04-23・管理コンソール サイネージスケジュール 可視化選択・Pi5 のみ）**:
+- ブランチ **`main`**・代表 **`8e72335e`**（`SignageSchedulesPage.tsx`・`VisualizationDashboardGroupedSelect`・`Link` 誘導）。
+- **本番**: **`raspberrypi5` のみ**（管理 SPA は Pi5 `web`）・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-173454-25250`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **後追い実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **114s**・Tailscale）。
+- **仕様**: 可視化ダッシュボード一覧 API は **無効行も含めて取得**し、セレクトでは **`（無効）`** を付与。`<optgroup label="パレット可視化">` は **`dataSourceType === pallet_visualization_board`** のみ。パレット系が **0 件**のとき **`/admin/visualization-dashboards` へ誘導**（**`isListPending` / `isListError` のときはバナー非表示**でチラつき回避）。
+- **トラブルシュート**: 「パレット可視化がドロップダウンに無い」は **DB に `pallet_visualization_board` ダッシュボードが無い**ことが多い（管理の **パレット可視化プリセット**で作成）。Mac 側 **未追跡ファイル**でデプロイ fail-fast する場合は **`git stash push -u`**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。
+
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
 - **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。**CDC ACM シリアル**は Pi4 **`barcode-agent`** + **`useSerialBarcodeStream`**（上記「追補（2026-04-23）」）。カメラモーダル表示中・送信中は **非アクティブ**。
