@@ -287,7 +287,9 @@ export function VisualizationDashboardsPage() {
       setName('計測機器持出状況（点検可視化）');
     }
     if (!description.trim()) {
-      setDescription('加工担当部署の従業員ごとにJST当日の点検有無と貸出中計測機器数を表示');
+      setDescription(
+        '加工担当部署の従業員ごとにJST当日の点検有無・貸出中計測機器数・返却件数（返却はカード上グレー）を表示',
+      );
     }
     setFormError(null);
   };

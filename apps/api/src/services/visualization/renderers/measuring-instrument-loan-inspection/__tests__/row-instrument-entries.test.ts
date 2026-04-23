@@ -58,4 +58,20 @@ describe('parseRowInstrumentEntries', () => {
       { kind: 'active', managementNumber: 'K1', name: '新表示' },
     ]);
   });
+
+  it('orders JSON so active entries precede returned when payload order is mixed', () => {
+    const row: MiLoanInspectionTableRow = {
+      従業員名: 'X',
+      貸出中計測機器数: 1,
+      計測機器名称一覧: '',
+      [MI_INSTRUMENT_DETAIL_COLUMN]: JSON.stringify([
+        { kind: 'returned', managementNumber: 'R1', name: '返却機' },
+        { kind: 'active', managementNumber: 'A1', name: '貸出中' },
+      ]),
+    };
+    expect(parseRowInstrumentEntries(row)).toEqual([
+      { kind: 'active', managementNumber: 'A1', name: '貸出中' },
+      { kind: 'returned', managementNumber: 'R1', name: '返却機' },
+    ]);
+  });
 });

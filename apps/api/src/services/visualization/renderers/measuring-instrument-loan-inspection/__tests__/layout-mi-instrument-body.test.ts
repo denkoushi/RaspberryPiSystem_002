@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIVE_BODY_FONT_SCALE } from '../mi-instrument-display.types.js';
+import { ACTIVE_BODY_FONT_SCALE, RETURNED_BODY_FONT_SCALE } from '../mi-instrument-display.types.js';
 import {
   buildBodyLinesForEntrySlice,
   computeLineHeightForFont,
@@ -29,6 +29,20 @@ describe('layout-mi-instrument-body', () => {
     const hActive = computeLineHeightForFont(activePx, 1);
     const hBase = computeLineHeightForFont(base, 1);
     expect(hActive).toBeGreaterThan(hBase);
+  });
+
+  it('renders returned as one muted line at base body scale', () => {
+    const lines = buildBodyLinesForEntrySlice(
+      [{ kind: 'returned', managementNumber: 'R1', name: 'ノギス' }],
+      1,
+      400,
+      13,
+      1,
+      4,
+    );
+    expect(lines.length).toBe(1);
+    expect(lines[0]!.tone).toBe('muted');
+    expect(lines[0]!.fontSize).toBe(Math.round(13 * RETURNED_BODY_FONT_SCALE));
   });
 
   it('fits empty loan as dash with active scale', () => {

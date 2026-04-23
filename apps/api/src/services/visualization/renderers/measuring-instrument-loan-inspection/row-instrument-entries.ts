@@ -19,6 +19,13 @@ function parseKind(value: unknown): MiInstrumentKind {
   return 'active';
 }
 
+/** カード本文は貸出中を先、返却済みを後に並べる（データ供給側とも整合）。 */
+function normalizeEntryOrder(entries: readonly MiInstrumentEntry[]): MiInstrumentEntry[] {
+  const actives = entries.filter((e) => e.kind === 'active');
+  const returneds = entries.filter((e) => e.kind === 'returned');
+  return [...actives, ...returneds];
+}
+
 /**
  * レガシー列 `計測機器名称一覧`（カンマ区切り `名称 (管理番号)`）から active エントリを復元。
  */
@@ -70,12 +77,12 @@ export function parseRowInstrumentEntries(row: MiLoanInspectionTableRow): MiInst
           entries.push({ kind, managementNumber, name });
         }
         if (entries.length > 0) {
-          return entries;
+          return normalizeEntryOrder(entries);
         }
       }
     } catch {
       /* fall through to legacy */
     }
   }
-  return parseLegacyInstrumentList(String(row['計測機器名称一覧'] ?? ''));
+  return normalizeEntryOrder(parseLegacyInstrumentList(String(row['計測機器名称一覧'] ?? '')));
 }

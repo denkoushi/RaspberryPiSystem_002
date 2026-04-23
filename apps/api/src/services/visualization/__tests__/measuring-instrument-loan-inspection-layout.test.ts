@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { planMiInspectionCardPlacements } from '../renderers/measuring-instrument-loan-inspection/card-layout.js';
+import { MI_INSTRUMENT_DETAIL_COLUMN } from '../renderers/measuring-instrument-loan-inspection/mi-instrument-display.types.js';
 import type { MiLoanInspectionTableRow } from '../renderers/measuring-instrument-loan-inspection/row-priority.js';
 import { sortRowsForDisplay } from '../renderers/measuring-instrument-loan-inspection/row-priority.js';
 
@@ -102,5 +103,42 @@ describe('planMiInspectionCardPlacements', () => {
     expect(emptyP).toBeDefined();
     expect(activeP).toBeDefined();
     expect(emptyP!.height).toBeLessThan(activeP!.height);
+  });
+
+  it('includes returned-only body lines (muted) when 貸出中 is 0 but JSON has returned', () => {
+    const scale = 1;
+    const padding = 12;
+    const cardGap = 12;
+    const numColumns = 4;
+    const width = 1920;
+    const cardsTop = 100;
+    const cardsAreaHeight = 900;
+    const cardsAreaWidth = width - padding * 2;
+    const cardWidth = Math.floor((cardsAreaWidth - cardGap * (numColumns - 1)) / numColumns);
+    const rows: MiLoanInspectionTableRow[] = [
+      {
+        従業員名: '返却のみ',
+        点検件数: 0,
+        貸出中計測機器数: 0,
+        返却件数: 1,
+        計測機器名称一覧: 'ノギス (Z1)',
+        [MI_INSTRUMENT_DETAIL_COLUMN]: JSON.stringify([
+          { kind: 'returned', managementNumber: 'Z1', name: 'ノギス' },
+        ]),
+      },
+    ];
+    const { placements } = planMiInspectionCardPlacements({
+      rows,
+      cardsTop,
+      cardsAreaHeight,
+      padding,
+      cardWidth,
+      cardGap,
+      numColumns,
+      scale,
+    });
+    const p = placements[0];
+    expect(p).toBeDefined();
+    expect(p!.bodyLines.some((l) => l.tone === 'muted' && !l.isSpacer)).toBe(true);
   });
 });

@@ -7,15 +7,16 @@ describe('MeasuringInstrumentLoanInspectionRenderer', () => {
     const output = await renderer.render(
       {
         kind: 'table',
-        columns: ['従業員名', '貸出中計測機器数', '計測機器名称一覧'],
+        columns: ['従業員名', '貸出中計測機器数', '返却件数', '計測機器名称一覧'],
         rows: [
           {
             従業員名: '山田 太郎',
             点検件数: 2,
             貸出中計測機器数: 2,
+            返却件数: 0,
             計測機器名称一覧: 'デジタルノギス (AG1001), マイクロメータ (AG1002)',
           },
-          { 従業員名: '佐藤 花子', 点検件数: 0, 貸出中計測機器数: 1, 計測機器名称一覧: 'トルクレンチ (AG1003)' },
+          { 従業員名: '佐藤 花子', 点検件数: 0, 貸出中計測機器数: 1, 返却件数: 0, 計測機器名称一覧: 'トルクレンチ (AG1003)' },
         ],
         metadata: {
           targetDate: '2026-02-25',
@@ -35,7 +36,7 @@ describe('MeasuringInstrumentLoanInspectionRenderer', () => {
     const output = await renderer.render(
       {
         kind: 'table',
-        columns: ['従業員名', '貸出中計測機器数', '計測機器名称一覧'],
+        columns: ['従業員名', '貸出中計測機器数', '返却件数', '計測機器名称一覧'],
         rows: [],
         metadata: { error: 'sectionEquals is required' },
       },

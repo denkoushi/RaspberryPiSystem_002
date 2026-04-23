@@ -4,7 +4,7 @@ import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { createMd3Tokens, escapeSvgText } from '../_design-system/index.js';
 import { planMiInspectionCardPlacements } from './card-layout.js';
-import type { BodyLineTone } from './mi-instrument-display.types.js';
+import { MI_RETURNED_COUNT_COLUMN, type BodyLineTone } from './mi-instrument-display.types.js';
 import type { MiLoanInspectionTableRow } from './row-priority.js';
 import { sortRowsForDisplay } from './row-priority.js';
 
@@ -119,18 +119,19 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
         const row = p.row;
         const employeeName = String(row['従業員名'] ?? '-');
         const activeLoanCount = toNumber(row['貸出中計測機器数'], 0);
-        const inspected = activeLoanCount > 0;
-        const cardFill = inspected ? t.colors.status.infoContainer : '#020617';
-        const cardStroke = inspected ? 'transparent' : t.colors.card.border;
-        const primaryText = inspected ? t.colors.status.onInfoContainer : t.colors.text.primary;
-        const secondaryText = inspected ? t.colors.status.onInfoContainer : t.colors.text.secondary;
+        const returnedLoanCount = toNumber(row[MI_RETURNED_COUNT_COLUMN], 0);
+        const hasVisibleLoanState = activeLoanCount > 0 || returnedLoanCount > 0;
+        const cardFill = hasVisibleLoanState ? t.colors.status.infoContainer : '#020617';
+        const cardStroke = hasVisibleLoanState ? 'transparent' : t.colors.card.border;
+        const primaryText = hasVisibleLoanState ? t.colors.status.onInfoContainer : t.colors.text.primary;
+        const secondaryText = hasVisibleLoanState ? t.colors.status.onInfoContainer : t.colors.text.secondary;
         const textLeft = x + innerPad;
         const textRight = x + cardWidth - innerPad;
         const headerBaselineOnCard = y + nameHeaderBaselineY;
         let lineY = y + namesStartY;
         const bodySvg = bodyLines
           .map((line) => {
-            const fill = line.isSpacer ? 'transparent' : resolveBodyFill(line.tone, inspected, t);
+            const fill = line.isSpacer ? 'transparent' : resolveBodyFill(line.tone, hasVisibleLoanState, t);
             const advance = line.lineHeight;
             if (line.isSpacer) {
               lineY += advance;
@@ -157,7 +158,7 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
             </text>
             <text x="${textRight}" y="${headerBaselineOnCard}"
               text-anchor="end" font-size="${countFontSize}" font-weight="700" fill="${secondaryText}" font-family="sans-serif">
-              計測機器: ${activeLoanCount}
+              貸出中 ${activeLoanCount} ・ 返却 ${returnedLoanCount}
             </text>
             ${bodySvg}
           </g>
