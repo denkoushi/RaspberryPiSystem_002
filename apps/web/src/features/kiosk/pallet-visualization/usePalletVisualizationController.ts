@@ -112,7 +112,7 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
       if (n < 1) return 1;
       return n;
     });
-  }, [currentMachine?.machineCd, currentMachine?.palletCount]);
+  }, [currentMachine]);
 
   const selectMachine = useCallback((cd: string) => {
     setSelectedCd(cd);
@@ -185,7 +185,7 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
         addMutation.mutate({ barcode, palletNoOverride: options?.palletNo });
       }
     },
-    [selectedItemId, addMutation, replaceMutation, palletNo]
+    [selectedItemId, addMutation, replaceMutation]
   );
 
   const addBarcodeToPallet = useCallback(

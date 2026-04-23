@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
-import type { PalletVisualizationBoardResponseDto } from '../../api/client';
 import {
   deleteToolsPalletVisualizationIllustration,
   getToolsPalletVisualizationBoard,
   patchToolsPalletMachinePalletCount,
   postToolsPalletVisualizationIllustration,
+  type PalletVisualizationBoardResponseDto,
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';

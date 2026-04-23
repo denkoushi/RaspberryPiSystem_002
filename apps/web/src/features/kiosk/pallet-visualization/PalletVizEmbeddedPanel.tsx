@@ -5,8 +5,8 @@ import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../barcode-scan/format
 
 import { PalletVizActionRow } from './PalletVizActionRow';
 import { PalletVizItemList } from './PalletVizItemList';
-import { PalletVizPalletNumberGrid } from './PalletVizPalletNumberGrid';
 import { DEFAULT_KIOSK_PALLET_COUNT } from './palletVizNumberGridConfig';
+import { PalletVizPalletNumberGrid } from './PalletVizPalletNumberGrid';
 import { usePalletVisualizationController } from './usePalletVisualizationController';
 
 export type PalletVizEmbeddedPanelProps = {
