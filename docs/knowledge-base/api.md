@@ -465,6 +465,12 @@
 - **本番**: ブランチ **`feat/mi-inspection-card-density-optimization`**・代表 **`7bbf1077`**・**`raspberrypi5` のみ**・Detach **`20260422-113105-23315`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**（約 **25s**）。
 - **トラブルシュート**: 行数が多いと **1画面に収まらない**のは想定内（警告で明示）。Pi4 キオスク・**Pi3 サイネージ**への追加デプロイは **本変更の必須条件ではない**（JPEG は Pi5 API が生成。Pi3 は **リソース僅少のため専用手順**があり、**今回の API のみ差分では対象外**とした）。
 
+**追補（2026-04-23・計測機器点検可視化 カード本文・`計測機器明細`）**:
+- **仕様**: `MeasuringInstrumentLoanInspectionDataSource` は **`計測機器明細`** 列（JSON 配列。空・無効エントリは **除外**）を出す。`row-instrument-entries.ts` は **JSON 優先**、無い場合は **`計測機器名称一覧`** の従来トークン。`layout-mi-instrument-body.ts` で **貸出中**は **管理番号 1 行目→名称 2 行目**、**行間をベース比 1.5 倍**（返却行は 1 行・将来のグレーアウト等は型分岐で拡張可能）。`measuring-instrument-loan-inspection-renderer.ts` は **行ごと**に `font` / `fill`。
+- **本番**: ブランチ **`feature/mi-inspection-signage-body-typography`**・代表 **`6a6b190b`**・**`raspberrypi5` のみ**（**Pi3 は対象外**）・Detach **`20260423-184152-15152`**・Phase12 **PASS 43 / WARN 0 / FAIL 0**（約 **78s**）。
+- **知見**: `apps/api` 変更のため **Docker 再ビルド**。デプロイ前の **未追跡ファイル**は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast** し得る。
+- **トラブルシュート**: Pi4 キオスク・Pi3 サイネージへの追加デプロイは **本差分の必須条件ではない**（前項「カード密度」と同趣旨）。Pi3 だけ当てる場合は **専用節**（[deployment.md の Pi3 節](../guides/deployment.md#ラズパイ3サイネージの更新)）に従い **`--limit raspberrypi3` 単体**。
+
 **検証**:
 - `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
 
