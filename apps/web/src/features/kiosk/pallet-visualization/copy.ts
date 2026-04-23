@@ -7,4 +7,10 @@ export const palletVizCopy = {
     clearPallet: '全削除',
   },
   emptyPallet: 'このパレットに部品はありません',
+  card: {
+    startDate: '着手',
+    quantity: '個数',
+    outsideDimensions: '外寸',
+    emDash: '—',
+  },
 } as const;

@@ -2,8 +2,14 @@ import type { DataSource } from '../data-source.interface.js';
 import type { PalletBoardVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { queryPalletVisualizationBoard } from '../../../pallet-visualization/pallet-visualization-query.service.js';
 
-function buildLine(item: { fhincd: string; fhinmei: string; fseiban: string; machineName: string | null }): string {
-  const mn = item.machineName?.trim();
+function buildLine(item: {
+  fhincd: string;
+  fhinmei: string;
+  fseiban: string;
+  machineName: string | null;
+  machineNameDisplay: string | null;
+}): string {
+  const mn = (item.machineNameDisplay ?? item.machineName)?.trim();
   const tail = mn ? `${item.fseiban} / ${mn}` : item.fseiban;
   return `${item.fhincd} ${item.fhinmei}（${tail}）`;
 }

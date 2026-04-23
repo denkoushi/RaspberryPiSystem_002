@@ -2432,7 +2432,11 @@ export type PalletVisualizationItemDto = {
   fhinmei: string;
   fseiban: string;
   machineName: string | null;
+  machineNameDisplay: string | null;
   csvDashboardRowId: string | null;
+  plannedStartDateDisplay: string | null;
+  plannedQuantity: number | null;
+  outsideDimensionsDisplay: string | null;
 };
 
 export type PalletVisualizationBoardResponseDto = {

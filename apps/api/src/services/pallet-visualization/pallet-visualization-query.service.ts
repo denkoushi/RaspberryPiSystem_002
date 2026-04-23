@@ -12,6 +12,12 @@ import { getResourceNameMapByResourceCds } from '../production-schedule/resource
 import { listRegisteredMachineCds } from './pallet-visualization-resource.service.js';
 import { DEFAULT_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 import { ApiError } from '../../lib/errors.js';
+import {
+  buildPalletMachineNameDisplay,
+  extractOutsideDimensionsDisplay,
+  formatPlannedStartDateForPalletDisplay,
+  readPalletItemDisplayFromScheduleSnapshot,
+} from './pallet-visualization-display-fields.js';
 
 const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
@@ -25,7 +31,12 @@ function toItem(row: {
   fseiban: string;
   machineName: string | null;
   csvDashboardRowId: string | null;
+  scheduleSnapshot: unknown;
+  fallbackPlannedStartDateDisplay: string | null;
+  fallbackPlannedQuantity: number | null;
+  fallbackOutsideDimensionsDisplay: string | null;
 }): PalletVisualizationItem {
+  const fromSnap = readPalletItemDisplayFromScheduleSnapshot(row.scheduleSnapshot);
   return {
     id: row.id,
     machineCd: normalizeCd(row.resourceCd),
@@ -35,7 +46,11 @@ function toItem(row: {
     fhinmei: row.fhinmei,
     fseiban: row.fseiban,
     machineName: row.machineName,
+    machineNameDisplay: buildPalletMachineNameDisplay(row.machineName),
     csvDashboardRowId: row.csvDashboardRowId,
+    plannedStartDateDisplay: fromSnap.plannedStartDateDisplay ?? row.fallbackPlannedStartDateDisplay,
+    plannedQuantity: fromSnap.plannedQuantity ?? row.fallbackPlannedQuantity,
+    outsideDimensionsDisplay: fromSnap.outsideDimensionsDisplay ?? row.fallbackOutsideDimensionsDisplay,
   };
 }
 
@@ -52,6 +67,10 @@ function buildMachineBoards(params: {
     fseiban: string;
     machineName: string | null;
     csvDashboardRowId: string | null;
+    scheduleSnapshot: unknown;
+    fallbackPlannedStartDateDisplay: string | null;
+    fallbackPlannedQuantity: number | null;
+    fallbackOutsideDimensionsDisplay: string | null;
   }>;
   illustrations: Array<{ resourceCd: string; imageRelativeUrl: string | null; palletCount: number }>;
 }): PalletVisualizationMachineBoard[] {
@@ -123,10 +142,38 @@ async function queryPalletVisualizationMachineBoards(machineCd?: string): Promis
     }),
   ]);
 
+  const rowIds = Array.from(new Set(items.map((item) => item.csvDashboardRowId).filter((id): id is string => Boolean(id))));
+  const csvRows =
+    rowIds.length > 0
+      ? await prisma.csvDashboardRow.findMany({
+          where: { id: { in: rowIds } },
+          select: {
+            id: true,
+            rowData: true,
+            orderSupplements: {
+              take: 1,
+              select: { plannedQuantity: true, plannedStartDate: true },
+            },
+          },
+        })
+      : [];
+  const csvRowMap = new Map(csvRows.map((row) => [row.id, row]));
+  const itemsWithFallback = items.map((item) => {
+    const csvRow = item.csvDashboardRowId ? csvRowMap.get(item.csvDashboardRowId) : null;
+    const rowData = (csvRow?.rowData ?? null) as Record<string, unknown> | null;
+    const supplement = csvRow?.orderSupplements[0];
+    return {
+      ...item,
+      fallbackPlannedStartDateDisplay: formatPlannedStartDateForPalletDisplay(supplement?.plannedStartDate ?? null),
+      fallbackPlannedQuantity: supplement?.plannedQuantity ?? null,
+      fallbackOutsideDimensionsDisplay: rowData ? extractOutsideDimensionsDisplay(rowData) : null,
+    };
+  });
+
   return buildMachineBoards({
     machineCds: filteredMachineCds,
     nameMap,
-    items,
+    items: itemsWithFallback,
     illustrations,
   });
 }

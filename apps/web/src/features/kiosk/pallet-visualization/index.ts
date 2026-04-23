@@ -20,6 +20,9 @@ export { DEFAULT_KIOSK_PALLET_COUNT, PALLET_GRID_COLS, DEFAULT_KIOSK_PALLET_COUN
 export { pushPalletTenkeyDigit } from './pushPalletTenkeyDigit';
 export { resolvePalletNoFromTenkeyDigits } from './resolvePalletNoFromTenkeyDigits';
 export type { TenkeyPalletResolveResult } from './resolvePalletNoFromTenkeyDigits';
+export { resolvePalletNoFromTenkeyDigitsImmediate } from './resolvePalletNoFromTenkeyDigitsImmediate';
+export { usePalletTenkeyNavBusy } from './usePalletTenkeyNavBusy';
+export type { UsePalletTenkeyNavBusyOptions } from './usePalletTenkeyNavBusy';
 export { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage';
 export { useKioskMobilePalletDigitBuffer } from './useKioskMobilePalletDigitBuffer';
 export type { UseKioskMobilePalletDigitBufferOptions } from './useKioskMobilePalletDigitBuffer';
