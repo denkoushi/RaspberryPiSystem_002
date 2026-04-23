@@ -1,4 +1,48 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type CDPSession } from '@playwright/test';
+
+async function readPalletListScrollState(page: Page) {
+  return page.evaluate(() => {
+    const main = document.querySelector('main');
+    const list = document.querySelector('[data-pallet-viz-item-list-scroll]');
+    const html = document.documentElement;
+    return {
+      mainTop: main instanceof HTMLElement ? main.scrollTop : null,
+      listTop: list instanceof HTMLElement ? list.scrollTop : null,
+      htmlTop: html.scrollTop,
+    };
+  });
+}
+
+async function resetScrollPositions(page: Page) {
+  await page.evaluate(() => {
+    const list = document.querySelector('[data-pallet-viz-item-list-scroll]');
+    if (list instanceof HTMLElement) list.scrollTop = 0;
+    const main = document.querySelector('main');
+    if (main instanceof HTMLElement) main.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  });
+}
+
+/** 実機タッチに近い縦スワイプ（上に指を動かす＝一覧が下にスクロール） */
+async function cdpTouchSwipeVertical(client: CDPSession, x: number, yFrom: number, yTo: number, steps = 12) {
+  const xi = Math.round(x);
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: xi, y: Math.round(yFrom) }],
+  });
+  for (let i = 1; i <= steps; i++) {
+    const y = yFrom + ((yTo - yFrom) * i) / steps;
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: xi, y: Math.round(y) }],
+    });
+  }
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  });
+}
 
 /** 配膳スマホパレット可視化のスクロール構造調査（計画: DevTools 相当の計測を自動化） */
 function buildBoardWithManyItemsOnPallet1(itemCount: number) {
@@ -154,5 +198,66 @@ test.describe('配膳スマホ パレット可視化 スクロール計測', () 
       return listRoot.scrollTop;
     });
     expect(scrollTopAfter, 'カード一覧が scrollBy で縦移動できること').toBeGreaterThan(0);
+
+    await resetScrollPositions(page);
+
+    const beforeTenkeyWheel = await readPalletListScrollState(page);
+    const tkBox = await page.getByLabel('パレット番号テンキー').getByRole('button', { name: '5', exact: true }).boundingBox();
+    expect(tkBox, 'テンキー5の bbox').not.toBeNull();
+    await page.mouse.move(tkBox!.x + tkBox!.width / 2, tkBox!.y + tkBox!.height / 2);
+    await page.mouse.wheel(0, 900);
+    const afterTenkeyWheel = await readPalletListScrollState(page);
+
+    console.log('[pallet-viz-scroll-wheel]', JSON.stringify({ beforeTenkeyWheel, afterTenkeyWheel }, null, 2));
+
+    expect(afterTenkeyWheel.listTop ?? 0, 'テンキー上ホイールでは一覧は動かない').toBe(0);
+    expect(afterTenkeyWheel.mainTop ?? 0, 'テンキー上ホイール後も main は動かない').toBe(0);
+    expect(afterTenkeyWheel.htmlTop ?? 0, 'テンキー上ホイール後も html は動かない').toBe(0);
+  });
+});
+
+test.describe('配膳スマホ パレット可視化 タッチ相当ドラッグ', () => {
+  test.use({
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
+
+  test('カード上ドラッグで一覧がスクロールし、テンキー上ドラッグでは一覧は動かない', async ({ page }) => {
+    await mockKioskPalletApis(page, 24);
+    await page.goto('/kiosk/mobile-placement/pallet-viz', { waitUntil: 'networkidle' });
+    await expect(page.getByRole('heading', { name: 'パレット可視化' })).toBeVisible();
+    await expect(page.locator('main ul.space-y-2 > li')).toHaveCount(24, { timeout: 15_000 });
+
+    await resetScrollPositions(page);
+    const client = await page.context().newCDPSession(page);
+    const list = page.locator('[data-pallet-viz-item-list-scroll]');
+    const firstCard = list.locator('button').first();
+    await firstCard.scrollIntoViewIfNeeded();
+    const cardBox = await firstCard.boundingBox();
+    expect(cardBox, '先頭カードの bbox').not.toBeNull();
+    const cx = cardBox!.x + cardBox!.width / 2;
+    const cy = cardBox!.y + cardBox!.height / 2;
+    await cdpTouchSwipeVertical(client, cx, cy, cy - 180);
+
+    const afterCardDrag = await readPalletListScrollState(page);
+    console.log('[pallet-viz-touch-card-drag]', JSON.stringify({ afterCardDrag }, null, 2));
+    expect(afterCardDrag.listTop ?? 0, 'カード上ドラッグで一覧が縦スクロールする').toBeGreaterThan(15);
+
+    await resetScrollPositions(page);
+    const tkBox = await page.getByLabel('パレット番号テンキー').getByRole('button', { name: '5', exact: true }).boundingBox();
+    expect(tkBox, 'テンキー5の bbox').not.toBeNull();
+    const tx = tkBox!.x + tkBox!.width / 2;
+    const ty = tkBox!.y + tkBox!.height / 2;
+    await cdpTouchSwipeVertical(client, tx, ty, ty - 180);
+
+    const afterTenkeyDrag = await readPalletListScrollState(page);
+    console.log('[pallet-viz-touch-tenkey-drag]', JSON.stringify({ afterTenkeyDrag }, null, 2));
+    const cardScroll = afterCardDrag.listTop ?? 0;
+    const tenkeyLeak = afterTenkeyDrag.listTop ?? 0;
+    expect(
+      tenkeyLeak,
+      `テンキー上ドラッグでの一覧ズレはカード上タッチスクロール比で無視できる程度（card=${cardScroll} tenkey=${tenkeyLeak}）`
+    ).toBeLessThan(Math.max(12, cardScroll * 0.08));
+    expect(afterTenkeyDrag.mainTop ?? 0, 'テンキー上ドラッグ後も main は動かない').toBe(0);
   });
 });

@@ -72,21 +72,61 @@ export function KioskMobilePalletVisualizationPage() {
   const busy = ctrl.busy;
   const tenkeyDisabled = busy || navBusy;
 
+  /** 一覧以外（ヘッダー・加工機・テンキー等）でのホイールがカード一覧へ伝播して動かないようにする */
+  useEffect(() => {
+    const nodes = document.querySelectorAll<HTMLElement>('[data-pallet-viz-no-scroll-chain]');
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+    };
+    nodes.forEach((el) => el.addEventListener('wheel', onWheel, { passive: false }));
+    return () => {
+      nodes.forEach((el) => el.removeEventListener('wheel', onWheel));
+    };
+  }, [
+    ctrl.currentMachine?.machineCd,
+    ctrl.selectedMachineCd,
+    localError,
+    ctrl.mutationError,
+    ctrl.boardQuery.isError,
+  ]);
+
+  /**
+   * テンキー・操作行からのタッチスクロール連鎖で一覧だけ動くのを防ぐ（加工機 select は含めない）
+   */
+  useEffect(() => {
+    const nodes = document.querySelectorAll<HTMLElement>('[data-pallet-viz-no-scroll-touch]');
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    nodes.forEach((el) => el.addEventListener('touchmove', onTouchMove, { passive: false, capture: true }));
+    return () => {
+      nodes.forEach((el) => el.removeEventListener('touchmove', onTouchMove, { capture: true }));
+    };
+  }, [
+    ctrl.currentMachine?.machineCd,
+    ctrl.selectedMachineCd,
+    localError,
+    ctrl.mutationError,
+    ctrl.boardQuery.isError,
+  ]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 text-white">
-      <PalletVizMobilePageHeader
-        digits={digits}
-        title="パレット可視化"
-        onNavigateBack={() => navigate('/kiosk/mobile-placement')}
-      />
+      <div data-pallet-viz-no-scroll-chain className="flex shrink-0 flex-col gap-2">
+        <PalletVizMobilePageHeader
+          digits={digits}
+          title="パレット可視化"
+          onNavigateBack={() => navigate('/kiosk/mobile-placement')}
+        />
 
-      <PalletVizMobileMachineSelect
-        id="pallet-viz-mobile-machine"
-        machines={ctrl.machines}
-        value={ctrl.selectedMachineCd}
-        onChange={ctrl.selectMachine}
-        palletCount={ctrl.currentMachine?.palletCount ?? null}
-      />
+        <PalletVizMobileMachineSelect
+          id="pallet-viz-mobile-machine"
+          machines={ctrl.machines}
+          value={ctrl.selectedMachineCd}
+          onChange={ctrl.selectMachine}
+          palletCount={ctrl.currentMachine?.palletCount ?? null}
+        />
+      </div>
 
       <BarcodeScanModal
         open={orderScanOpen}
@@ -106,7 +146,11 @@ export function KioskMobilePalletVisualizationPage() {
       />
 
       <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <div className="shrink-0 space-y-2">
+        <div
+          data-pallet-viz-no-scroll-chain
+          data-pallet-viz-no-scroll-touch
+          className="shrink-0 space-y-2"
+        >
           <PalletVizMobileTenkeyPad
             onDigit={(d) => {
               setLocalError(null);
@@ -133,7 +177,11 @@ export function KioskMobilePalletVisualizationPage() {
 
         {ctrl.currentMachine ? (
           <>
-            <div className="shrink-0">
+            <div
+              data-pallet-viz-no-scroll-chain
+              data-pallet-viz-no-scroll-touch
+              className="flex shrink-0 flex-col gap-2"
+            >
               <PalletVizActionRow
                 density="compact"
                 busy={busy}
@@ -145,14 +193,14 @@ export function KioskMobilePalletVisualizationPage() {
                 onDelete={ctrl.deleteSelectedItem}
                 onClearPallet={ctrl.clearCurrentPallet}
               />
+              {(localError || ctrl.mutationError || ctrl.boardQuery.isError) && (
+                <div className="space-y-1">
+                  {localError ? <p className="text-sm text-red-300">{localError}</p> : null}
+                  {ctrl.mutationError ? <p className="text-sm text-red-300">{ctrl.mutationError}</p> : null}
+                  {ctrl.boardQuery.isError ? <p className="text-sm text-red-300">板データの取得に失敗しました</p> : null}
+                </div>
+              )}
             </div>
-            {(localError || ctrl.mutationError || ctrl.boardQuery.isError) && (
-              <div className="shrink-0 space-y-1">
-                {localError ? <p className="text-sm text-red-300">{localError}</p> : null}
-                {ctrl.mutationError ? <p className="text-sm text-red-300">{ctrl.mutationError}</p> : null}
-                {ctrl.boardQuery.isError ? <p className="text-sm text-red-300">板データの取得に失敗しました</p> : null}
-              </div>
-            )}
             <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
               {navBusy ? (
                 <div
@@ -170,7 +218,7 @@ export function KioskMobilePalletVisualizationPage() {
             </div>
           </>
         ) : (
-          <div className="shrink-0 space-y-1">
+          <div data-pallet-viz-no-scroll-chain className="shrink-0 space-y-1">
             <p className="text-sm text-red-300">加工機を読み込めません</p>
             {localError ? <p className="text-sm text-red-300">{localError}</p> : null}
             {ctrl.mutationError ? <p className="text-sm text-red-300">{ctrl.mutationError}</p> : null}
