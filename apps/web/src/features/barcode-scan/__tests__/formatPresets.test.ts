@@ -7,7 +7,10 @@ import {
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE,
   BARCODE_FORMAT_PRESET_PURCHASE_ORDER,
 } from '../formatPresets';
-import { BARCODE_READER_OPTIONS_KIOSK_DEFAULT } from '../readerOptionPresets';
+import {
+  BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE,
+  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
+} from '../readerOptionPresets';
 
 describe('formatPresets', () => {
   it('一次元プリセットに QR を含まない', () => {
@@ -52,6 +55,13 @@ describe('formatPresets', () => {
     expect(BARCODE_READER_OPTIONS_KIOSK_DEFAULT).toEqual({
       timeBetweenScansMillis: 220,
       timeBetweenDecodingAttempts: 120,
+    });
+  });
+
+  it('要領書向け conservative は zxing 既定の間隔に合わせる', () => {
+    expect(BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE).toEqual({
+      timeBetweenScansMillis: 400,
+      timeBetweenDecodingAttempts: 200,
     });
   });
 });
