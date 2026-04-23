@@ -471,11 +471,13 @@
 - **知見**: `apps/api` 変更のため **Docker 再ビルド**。デプロイ前の **未追跡ファイル**は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast** し得る。
 - **トラブルシュート**: Pi4 キオスク・Pi3 サイネージへの追加デプロイは **本差分の必須条件ではない**（前項「カード密度」と同趣旨）。Pi3 だけ当てる場合は **専用節**（[deployment.md の Pi3 節](../guides/deployment.md#ラズパイ3サイネージの更新)）に従い **`--limit raspberrypi3` 単体**。
 
-**追補（計測機器点検可視化・返却グレーアウト・`返却件数` 列）**:
+**追補（2026-04-23・計測機器点検可視化 返却グレーアウト・`返却件数` 列）**:
 - **仕様**: 業務日窓と `snapshotUpperBoundUtc` 内の **持出し**について、**従業員（borrower 正規化名）×管理番号** ごとに **最新の1件**（`eventAt` 降順で先に現れる＝最も遅い持出し）の状態を採用。最新持出しが **返却時刻以降に閉じている**（`最新返却 >= 持出し eventAt`）場合、当該機器は **返却**として扱い、`計測機器明細` JSON に **`kind: "returned"`**、カード本文は **1 行**・`tone: muted`（`measuring-instrument-loan-inspection-renderer` の `resolveBodyFill`）。**貸出中**は従来どおり 2 行（管理番号→名称、1.5 倍）が先。本文行の整列は **`row-instrument-entries` の `normalizeEntryOrder`（active 前・returned 後）**。
 - **列**: **`貸出中計測機器数`** = 未返却のみ。 **`返却件数`** = 上記定義の返却済み件数。`計測機器名称一覧` は活貸＋返却のラベル列挙。カード右上ラベルは **「貸出中 {n} ・ 返却 {m}」**。
 - **拡張**: `mi-instrument-presentation.ts` に **kind → 本文フォント倍率** を集約（`layout-mi-instrument-body` は参照）。将来の別状態は `PRESENTATION_BY_KIND` へ行を足す方針。
-- **本番反映**: 未（実装はブランチ **`feature/mi-inspection-returned-grayout`**。マージ・デプロイ・ドキュメント実績追記は別タスク）。
+- **本番反映**: ブランチ **`feature/mi-inspection-returned-grayout`**・代表 **`68b6a03b`** を **`raspberrypi5` のみ**へデプロイ。Detach **`20260423-194726-14100`**・**`PLAY RECAP failed=0` / `unreachable=0`**・`./scripts/deploy/verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**（約 **103s**）。
+- **知見**: 今回の差分は **Pi5 API が生成する JPEG** に閉じるため、**Pi4 / Pi3 の追加デプロイは必須ではない**。Pi5 `/api/system/health` はデプロイ直後に **memory high** で `degraded` を返し得るが、**`database: ok`** と Phase12 合格を併せて判断する。
+- **トラブルシュート**: Pi5 のデプロイ前チェックで **`apps/api/src` の root 所有ファイル**が残っていると Git 同期で詰まり得る。標準手順どおり **`sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src`** を先に実行してから `update-all-clients.sh ... --limit raspberrypi5 --detach --follow` を流す。
 
 **検証**:
 - `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
@@ -487,7 +489,7 @@
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **59s**）。
 - **トラブルシュート**: 直列実行でも、**前ホストのデプロイが Mac 側で完全終了する前**に次を起動すると **`logs/.update-all-clients.local.lock`** で `Another update-all-clients.sh process is already running`（exit 3）→ **前ジョブの終了を待つ**か、シェルで **`cmd1 && cmd2 && …`** と連鎖する。運用記録は [deployment.md](../guides/deployment.md) 冒頭（2026-04-16）。
 
-**解決状況**: ✅ **実装済み**（コード）・✅ **本番反映済み**（2026-04-16・上記）
+**解決状況**: ✅ **実装済み**・✅ **本番反映済み**（2026-04-23・Pi5 単体デプロイ完了）
 
 ---
 
