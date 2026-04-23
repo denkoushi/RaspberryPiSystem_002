@@ -6,7 +6,10 @@ import {
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { resolveJstDayRange } from '../_shared/data-source-utils.js';
-import { MI_INSTRUMENT_DETAIL_COLUMN } from '../../renderers/measuring-instrument-loan-inspection/mi-instrument-display.types.js';
+import {
+  MI_INSTRUMENT_DETAIL_COLUMN,
+  MI_RETURNED_COUNT_COLUMN,
+} from '../../renderers/measuring-instrument-loan-inspection/mi-instrument-display.types.js';
 import { extractLoanIdFromEventRaw } from './extract-loan-id-from-event-raw.js';
 import { formatLoanInspectionInstrumentLabel } from './format-loan-inspection-instrument-label.js';
 import { loadCancelledLoanIdSet } from './load-cancelled-loan-id-set.js';
@@ -36,7 +39,9 @@ function normalizeEmployeeName(value: string): string {
 
 const TABLE_COLUMNS = [
   '従業員名',
+  '点検件数',
   '貸出中計測機器数',
+  MI_RETURNED_COUNT_COLUMN,
   '計測機器名称一覧',
   MI_INSTRUMENT_DETAIL_COLUMN,
 ] as const;
@@ -170,60 +175,85 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
     }
 
     type ActiveInstrumentDetail = { name: string; managementNumber: string };
+    type ReturnedInstrumentDetail = { name: string; managementNumber: string };
     const activeInstrumentDetailsByBorrower = new Map<string, Map<string, ActiveInstrumentDetail>>();
+    const returnedInstrumentDetailsByBorrower = new Map<string, Map<string, ReturnedInstrumentDetail>>();
+
+    // 持ち出しは eventAt 降順。従業員×管理番号ごとに「窓内の最新の持ち出し」1件だけを見て active / returned を決める
+    const seenBorrowKey = new Set<string>();
     for (const { event, loanId } of borrowEventsWithLoanId) {
       const raw = asRecord(event.raw);
       if (loanId && cancelledLoanIdSet.has(loanId)) {
         continue;
       }
-      const latestReturn = latestReturnByManagementNumber.get(event.managementNumber);
-      if (latestReturn && latestReturn >= event.eventAt) {
-        continue;
-      }
       const borrower = normalizeEmployeeName(asString(raw.borrower));
       const instrumentName = asString(raw.name);
-      if (!borrower || !instrumentName) {
-        continue;
-      }
       const mgmt = event.managementNumber.trim();
-      if (!mgmt) {
+      if (!borrower || !instrumentName || !mgmt) {
         continue;
       }
-      const byMgmt =
-        activeInstrumentDetailsByBorrower.get(borrower) ?? new Map<string, ActiveInstrumentDetail>();
-      byMgmt.set(mgmt, { name: instrumentName, managementNumber: event.managementNumber });
-      activeInstrumentDetailsByBorrower.set(borrower, byMgmt);
+      const pairKey = `${borrower}\n${mgmt}`;
+      if (seenBorrowKey.has(pairKey)) {
+        continue;
+      }
+      seenBorrowKey.add(pairKey);
+
+      const latestReturn = latestReturnByManagementNumber.get(mgmt);
+      const isReturned = Boolean(latestReturn && latestReturn >= event.eventAt);
+      const detail = { name: instrumentName, managementNumber: event.managementNumber };
+      if (isReturned) {
+        const byMgmt =
+          returnedInstrumentDetailsByBorrower.get(borrower) ?? new Map<string, ReturnedInstrumentDetail>();
+        byMgmt.set(mgmt, detail);
+        returnedInstrumentDetailsByBorrower.set(borrower, byMgmt);
+      } else {
+        const byMgmt =
+          activeInstrumentDetailsByBorrower.get(borrower) ?? new Map<string, ActiveInstrumentDetail>();
+        byMgmt.set(mgmt, detail);
+        activeInstrumentDetailsByBorrower.set(borrower, byMgmt);
+      }
     }
 
     let inspectedUsers = 0;
     const rows = employees.map((employee) => {
       const inspectedCountToday = inspectedCountByEmployee.get(employee.id) ?? 0;
-      const detailMap =
-        activeInstrumentDetailsByBorrower.get(normalizeEmployeeName(employee.displayName)) ??
-        new Map<string, ActiveInstrumentDetail>();
-      const details = Array.from(detailMap.values());
-      const activeInstrumentNames = details.map((d) =>
-        formatLoanInspectionInstrumentLabel(d.name, d.managementNumber),
-      );
-      const activeInstrumentLoansCount = details.length;
+      const key = normalizeEmployeeName(employee.displayName);
+      const activeMap =
+        activeInstrumentDetailsByBorrower.get(key) ?? new Map<string, ActiveInstrumentDetail>();
+      const returnedMap =
+        returnedInstrumentDetailsByBorrower.get(key) ?? new Map<string, ReturnedInstrumentDetail>();
+      const activeDetails = Array.from(activeMap.values());
+      const returnedDetails = Array.from(returnedMap.values());
+      const nameTokens = [
+        ...activeDetails.map((d) => formatLoanInspectionInstrumentLabel(d.name, d.managementNumber)),
+        ...returnedDetails.map((d) => formatLoanInspectionInstrumentLabel(d.name, d.managementNumber)),
+      ];
       if (inspectedCountToday > 0) {
         inspectedUsers += 1;
       }
+      const activeInstrumentLoansCount = activeDetails.length;
+      const returnedInstrumentCount = returnedDetails.length;
       const instrumentDetailsJson =
-        details.length > 0
-          ? JSON.stringify(
-              details.map((d) => ({
+        activeDetails.length + returnedDetails.length > 0
+          ? JSON.stringify([
+              ...activeDetails.map((d) => ({
                 kind: 'active' as const,
                 managementNumber: d.managementNumber,
                 name: d.name,
               })),
-            )
+              ...returnedDetails.map((d) => ({
+                kind: 'returned' as const,
+                managementNumber: d.managementNumber,
+                name: d.name,
+              })),
+            ])
           : '';
       return {
         従業員名: employee.displayName,
         点検件数: inspectedCountToday,
         貸出中計測機器数: activeInstrumentLoansCount,
-        計測機器名称一覧: activeInstrumentNames.join(', '),
+        [MI_RETURNED_COUNT_COLUMN]: returnedInstrumentCount,
+        計測機器名称一覧: nameTokens.join(', '),
         [MI_INSTRUMENT_DETAIL_COLUMN]: instrumentDetailsJson,
       };
     });

@@ -1,10 +1,6 @@
 import { formatLoanInspectionInstrumentLabel } from '../../data-sources/measuring-instrument-loan-inspection/format-loan-inspection-instrument-label.js';
-import {
-  ACTIVE_BODY_FONT_SCALE,
-  RETURNED_BODY_FONT_SCALE,
-  type MiBodyLine,
-  type MiInstrumentEntry,
-} from './mi-instrument-display.types.js';
+import type { MiBodyLine, MiInstrumentEntry } from './mi-instrument-display.types.js';
+import { presentationForInstrumentKind } from './mi-instrument-presentation.js';
 import { truncateWithEllipsis } from './instrument-name-text.js';
 
 /** 本文行の安全上限（貸出中が多い場合の二重ループ用） */
@@ -20,7 +16,8 @@ export function computeLineHeightForFont(fontPx: number, scale: number): number 
  * 貸出 0 件カード: 「-」を貸出中と同じ 1.5 倍で表示（現場向け可読性）
  */
 export function buildEmptyBodyLines(baseFontPx: number, scale: number): MiBodyLine[] {
-  const fontSize = Math.max(1, Math.round(baseFontPx * ACTIVE_BODY_FONT_SCALE));
+  const { bodyFontScale } = presentationForInstrumentKind('active');
+  const fontSize = Math.max(1, Math.round(baseFontPx * bodyFontScale));
   const lineHeight = computeLineHeightForFont(fontSize, scale);
   return [{ text: '-', fontSize, lineHeight, tone: 'secondary' }];
 }
@@ -36,7 +33,8 @@ function pushActiveInstrumentLines(
   scale: number,
   out: MiBodyLine[],
 ): void {
-  const fontSize = Math.max(1, Math.round(baseFontPx * ACTIVE_BODY_FONT_SCALE));
+  const { bodyFontScale } = presentationForInstrumentKind('active');
+  const fontSize = Math.max(1, Math.round(baseFontPx * bodyFontScale));
   const lineHeight = computeLineHeightForFont(fontSize, scale);
   const mgmt = entry.managementNumber.trim();
   const name = entry.name.trim();
@@ -59,7 +57,8 @@ function pushReturnedInstrumentLine(
   scale: number,
   out: MiBodyLine[],
 ): void {
-  const fontSize = Math.max(1, Math.round(baseFontPx * RETURNED_BODY_FONT_SCALE));
+  const { bodyFontScale } = presentationForInstrumentKind('returned');
+  const fontSize = Math.max(1, Math.round(baseFontPx * bodyFontScale));
   const lineHeight = computeLineHeightForFont(fontSize, scale);
   const label = formatLoanInspectionInstrumentLabel(entry.name, entry.managementNumber);
   const text = label.trim() ? truncateWithEllipsis(label.trim(), maxWidthPx, fontSize) : '-';
@@ -144,7 +143,8 @@ export function layoutBodyWithinMaxHeight(params: {
   if (e.kind === 'returned') {
     pushReturnedInstrumentLine(e, maxWidthPx, baseFontPx, scale, out);
   } else {
-    const fontSize = Math.max(1, Math.round(baseFontPx * ACTIVE_BODY_FONT_SCALE));
+    const { bodyFontScale } = presentationForInstrumentKind('active');
+    const fontSize = Math.max(1, Math.round(baseFontPx * bodyFontScale));
     const lineHeight = computeLineHeightForFont(fontSize, scale);
     const full = [e.managementNumber.trim(), e.name.trim()].filter(Boolean).join(' ');
     const t = full ? truncateWithEllipsis(full, maxWidthPx, fontSize) : '-';

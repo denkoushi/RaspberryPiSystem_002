@@ -3,15 +3,6 @@ import { layoutBodyWithinMaxHeight } from './layout-mi-instrument-body.js';
 import { parseRowInstrumentEntries } from './row-instrument-entries.js';
 import type { MiLoanInspectionTableRow } from './row-priority.js';
 
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
 const NAMES_START_YPX = 66;
 const BOTTOM_PAD_PX = 12;
 
@@ -65,8 +56,7 @@ export function planMiInspectionCardPlacements(params: {
 
     for (let col = 0; col < numColumns && i < rows.length; col += 1, i += 1) {
       const row = rows[i]!;
-      const activeLoanCount = toNumber(row['貸出中計測機器数'], 0);
-      const entries = activeLoanCount <= 0 ? [] : parseRowInstrumentEntries(row);
+      const entries = parseRowInstrumentEntries(row);
 
       const laid = layoutBodyWithinMaxHeight({
         entries,

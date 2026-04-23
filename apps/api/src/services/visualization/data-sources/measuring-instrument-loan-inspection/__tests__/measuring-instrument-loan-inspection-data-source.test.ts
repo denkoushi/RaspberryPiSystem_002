@@ -129,6 +129,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           従業員名: '山田 太郎',
           点検件数: 3,
           貸出中計測機器数: 2,
+          返却件数: 0,
           計測機器名称一覧: 'デジタルノギス (AG1001), マイクロメータ (AG1002)',
           計測機器明細:
             '[{"kind":"active","managementNumber":"AG1001","name":"デジタルノギス"},{"kind":"active","managementNumber":"AG1002","name":"マイクロメータ"}]',
@@ -137,6 +138,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           従業員名: '佐藤 花子',
           点検件数: 0,
           貸出中計測機器数: 1,
+          返却件数: 0,
           計測機器名称一覧: 'トルクレンチ (AG1003)',
           計測機器明細:
             '[{"kind":"active","managementNumber":"AG1003","name":"トルクレンチ"}]',
@@ -199,6 +201,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           従業員名: '山田 太郎',
           点検件数: 0,
           貸出中計測機器数: 1,
+          返却件数: 0,
           計測機器名称一覧: 'マイクロメータ (AG1002)',
           計測機器明細: '[{"kind":"active","managementNumber":"AG1002","name":"マイクロメータ"}]',
         },
@@ -247,6 +250,7 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
           従業員名: '山田 太郎',
           点検件数: 0,
           貸出中計測機器数: 1,
+          返却件数: 0,
           計測機器名称一覧: 'デジタルノギス (AG1001)',
           計測機器明細: '[{"kind":"active","managementNumber":"AG1001","name":"デジタルノギス"}]',
         },
@@ -264,5 +268,94 @@ describe('MeasuringInstrumentLoanInspectionDataSource', () => {
         }),
       }),
     );
+  });
+
+  it('当日内の最新持出しが返却で閉じている場合は返却件数に含め、貸出中には含めない', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-25T10:00:00+09:00'));
+
+    vi.mocked(prisma.employee.findMany).mockResolvedValue([{ id: 'emp-1', displayName: '山田 太郎' }] as never);
+    vi.mocked(prisma.inspectionRecord.groupBy).mockResolvedValue([] as never);
+    vi.mocked(prisma.measuringInstrumentLoanEvent.findMany)
+      .mockResolvedValueOnce([
+        {
+          managementNumber: 'AG1001',
+          eventAt: new Date('2026-02-25T01:00:00.000Z'),
+          raw: { borrower: '山田太郎', name: 'デジタルノギス' },
+        },
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          managementNumber: 'AG1001',
+          eventAt: new Date('2026-02-25T04:00:00.000Z'),
+        },
+      ] as never);
+
+    const source = new MeasuringInstrumentLoanInspectionDataSource();
+    const result = await source.fetchData({
+      sectionEquals: '加工担当部署',
+      period: 'today_jst',
+    });
+
+    expect(result.kind).toBe('table');
+    if (result.kind === 'table') {
+      expect(result.rows).toEqual([
+        {
+          従業員名: '山田 太郎',
+          点検件数: 0,
+          貸出中計測機器数: 0,
+          返却件数: 1,
+          計測機器名称一覧: 'デジタルノギス (AG1001)',
+          計測機器明細: '[{"kind":"returned","managementNumber":"AG1001","name":"デジタルノギス"}]',
+        },
+      ]);
+    }
+  });
+
+  it('同一従業員・同一管理番号の複数持出しは当日内の最新持出しだけを表示判定に使う', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-02-25T10:00:00+09:00'));
+
+    vi.mocked(prisma.employee.findMany).mockResolvedValue([{ id: 'emp-1', displayName: '山田 太郎' }] as never);
+    vi.mocked(prisma.inspectionRecord.groupBy).mockResolvedValue([] as never);
+    vi.mocked(prisma.measuringInstrumentLoanEvent.findMany)
+      .mockResolvedValueOnce([
+        {
+          managementNumber: 'AG1001',
+          eventAt: new Date('2026-02-25T05:00:00.000Z'),
+          raw: { borrower: '山田太郎', name: 'デジタルノギス' },
+        },
+        {
+          managementNumber: 'AG1001',
+          eventAt: new Date('2026-02-25T01:00:00.000Z'),
+          raw: { borrower: '山田太郎', name: 'デジタルノギス' },
+        },
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          managementNumber: 'AG1001',
+          eventAt: new Date('2026-02-25T04:00:00.000Z'),
+        },
+      ] as never);
+
+    const source = new MeasuringInstrumentLoanInspectionDataSource();
+    const result = await source.fetchData({
+      sectionEquals: '加工担当部署',
+      period: 'today_jst',
+    });
+
+    expect(result.kind).toBe('table');
+    if (result.kind === 'table') {
+      expect(result.rows).toEqual([
+        {
+          従業員名: '山田 太郎',
+          点検件数: 0,
+          貸出中計測機器数: 1,
+          返却件数: 0,
+          計測機器名称一覧: 'デジタルノギス (AG1001)',
+          計測機器明細: '[{"kind":"active","managementNumber":"AG1001","name":"デジタルノギス"}]',
+        },
+      ]);
+    }
   });
 });

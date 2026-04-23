@@ -471,6 +471,12 @@
 - **知見**: `apps/api` 変更のため **Docker 再ビルド**。デプロイ前の **未追跡ファイル**は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast** し得る。
 - **トラブルシュート**: Pi4 キオスク・Pi3 サイネージへの追加デプロイは **本差分の必須条件ではない**（前項「カード密度」と同趣旨）。Pi3 だけ当てる場合は **専用節**（[deployment.md の Pi3 節](../guides/deployment.md#ラズパイ3サイネージの更新)）に従い **`--limit raspberrypi3` 単体**。
 
+**追補（計測機器点検可視化・返却グレーアウト・`返却件数` 列）**:
+- **仕様**: 業務日窓と `snapshotUpperBoundUtc` 内の **持出し**について、**従業員（borrower 正規化名）×管理番号** ごとに **最新の1件**（`eventAt` 降順で先に現れる＝最も遅い持出し）の状態を採用。最新持出しが **返却時刻以降に閉じている**（`最新返却 >= 持出し eventAt`）場合、当該機器は **返却**として扱い、`計測機器明細` JSON に **`kind: "returned"`**、カード本文は **1 行**・`tone: muted`（`measuring-instrument-loan-inspection-renderer` の `resolveBodyFill`）。**貸出中**は従来どおり 2 行（管理番号→名称、1.5 倍）が先。本文行の整列は **`row-instrument-entries` の `normalizeEntryOrder`（active 前・returned 後）**。
+- **列**: **`貸出中計測機器数`** = 未返却のみ。 **`返却件数`** = 上記定義の返却済み件数。`計測機器名称一覧` は活貸＋返却のラベル列挙。カード右上ラベルは **「貸出中 {n} ・ 返却 {m}」**。
+- **拡張**: `mi-instrument-presentation.ts` に **kind → 本文フォント倍率** を集約（`layout-mi-instrument-body` は参照）。将来の別状態は `PRESENTATION_BY_KIND` へ行を足す方針。
+- **本番反映**: 未（実装はブランチ **`feature/mi-inspection-returned-grayout`**。マージ・デプロイ・ドキュメント実績追記は別タスク）。
+
 **検証**:
 - `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
 
