@@ -579,6 +579,7 @@
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**・Mac / Tailscale）。
 - **仕様**: 配膳 `/kiosk/mobile-placement`・パレット可視化（キオスク／スマホ）・部品測定は **一次元コア形式 + 220/120ms**。要領書 `/kiosk/documents` は **全一次元形式のまま**、デコード間隔は **400/200ms**（負荷配慮）。購買照会は **`PURCHASE_ORDER` プリセット + 短時間2連続一致**（[KB-297 §FKOBAINO](./KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）を継続。
 - **トラブルシュート**: 形式を広げるとデコード負荷が上がる。遅延改善と Pi4 同時負荷は **要領書＝保守的間引き**、業務スキャン＝**コア形式 + やや積極的間引き**で切り分ける（[KB-313](./KB-313-kiosk-documents.md)・[KB-339](./KB-339-mobile-placement-barcode-survey.md) V24）。
+- **実機（Android・2026-04-24 追記）**: **購買照会**（`/kiosk/purchase-order-lookup`・**注番**）と **配膳**（`/kiosk/mobile-placement`・**製造order**）の **一次元スキャン**で、場内確認として **体感速度の改善**を記録（`readerOptionPresets`・`PURCHASE_ORDER` / `ONE_DIMENSIONAL_CORE` の狙いと一致。詳細 [KB-297 §FKOBAINO](./KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)・[KB-339 V24](./KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)）。
 
 **追補（2026-04-23・管理コンソール サイネージスケジュール 可視化選択・Pi5 のみ）**:
 - ブランチ **`main`**・代表 **`8e72335e`**（`SignageSchedulesPage.tsx`・`VisualizationDashboardGroupedSelect`・`Link` 誘導）。

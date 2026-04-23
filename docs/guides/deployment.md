@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-23（キオスク／配膳スマホ バーコード読取チューニング・Web のみ・Pi5 のみ）
+最終更新: 2026-04-24（Android 実機追記: 注番・製造order 一次元スキャン体感）
 
 ### 補足（2026-04-23: キオスク／配膳スマホ バーコード読取チューニング・Web のみ）
 
@@ -18,6 +18,7 @@ update-frequency: medium
 - **本番デプロイ（実績）**: ブランチ **`feat/kiosk-barcode-reader-tuning`**・代表 **`70cb9e09`**。**`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260423-211624-9136`**（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**）。
 - **トラブルシュート**: 未認識が続く場合は **照明・距離・ラベル品質**を先に確認。形式を増やす・間隔を短くするほど **CPU 負荷**が上がる。要領書で遅延だけを下げる場合は **保守的間隔**と **形式の二段**のトレードオフ（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）を参照。
+- **実機（Android Chrome・2026-04-24 追記）**: **`/kiosk/purchase-order-lookup`（注番）**と **`/kiosk/mobile-placement`（製造order）**の **一次元**で、反映後に **読取体感が速くなった**との場内確認（**配膳**＝コア一次元＋`KIOSK_DEFAULT`、**購買**＝`PURCHASE_ORDER`＋同 `readerOptions`＋2連続一致・[KB-297 §FKOBAINO](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)・[KB-339 V24](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)）。
 
 ### 補足（2026-04-23: 計測機器点検可視化 返却グレーアウト）
 
