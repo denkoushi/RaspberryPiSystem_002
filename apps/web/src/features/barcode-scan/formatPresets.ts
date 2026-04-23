@@ -20,6 +20,20 @@ export const BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL: BarcodeFormat[] = [
 ];
 
 /**
+ * モバイル配膳・パレット向けの一次元コア形式。
+ * 認識対象を絞ってデコード探索を軽くし、スマホカメラの初回ヒットを狙う。
+ */
+export const BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE: BarcodeFormat[] = [
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.ITF,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+];
+
+/**
  * 購買照会（注文番号ラベル想定）向け。探索空間を抑えてデコードを安定・高速化。
  * 現場で別形式が必要ならこの配列に追加する。
  */

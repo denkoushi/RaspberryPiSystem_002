@@ -1,7 +1,10 @@
 import clsx from 'clsx';
 
-import { BarcodeScanModal } from '../../barcode-scan/BarcodeScanModal';
-import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../barcode-scan/formatPresets';
+import {
+  BarcodeScanModal,
+  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE,
+  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
+} from '../../barcode-scan';
 
 import { PalletVizActionRow } from './PalletVizActionRow';
 import { PalletVizItemList } from './PalletVizItemList';
@@ -26,7 +29,8 @@ export function PalletVizEmbeddedPanel({ className }: PalletVizEmbeddedPanelProp
     <>
       <BarcodeScanModal
         open={ctrl.scanOpen}
-        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
+        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
         idleTimeoutMs={30_000}
         onSuccess={ctrl.handleScanSuccess}
         onAbort={() => ctrl.setScanOpen(false)}
