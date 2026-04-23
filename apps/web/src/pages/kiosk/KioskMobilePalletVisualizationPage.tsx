@@ -105,44 +105,55 @@ export function KioskMobilePalletVisualizationPage() {
         onAbort={() => ctrl.setScanOpen(false)}
       />
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
-        <PalletVizMobileTenkeyPad
-          onDigit={(d) => {
-            setLocalError(null);
-            pulseNavBusy();
-            appendDigit(d);
-          }}
-          onBackspace={() => {
-            setLocalError(null);
-            pulseNavBusy();
-            backspace();
-          }}
-          onClear={() => {
-            setLocalError(null);
-            pulseNavBusy();
-            clear();
-          }}
-          onOpenOrderScan={() => {
-            setLocalError(null);
-            setOrderScanOpen(true);
-          }}
-          disabled={tenkeyDisabled}
-        />
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="shrink-0 space-y-2">
+          <PalletVizMobileTenkeyPad
+            onDigit={(d) => {
+              setLocalError(null);
+              pulseNavBusy();
+              appendDigit(d);
+            }}
+            onBackspace={() => {
+              setLocalError(null);
+              pulseNavBusy();
+              backspace();
+            }}
+            onClear={() => {
+              setLocalError(null);
+              pulseNavBusy();
+              clear();
+            }}
+            onOpenOrderScan={() => {
+              setLocalError(null);
+              setOrderScanOpen(true);
+            }}
+            disabled={tenkeyDisabled}
+          />
+        </div>
 
         {ctrl.currentMachine ? (
           <>
-            <PalletVizActionRow
-              density="compact"
-              busy={busy}
-              canOperate={Boolean(ctrl.selectedMachineCd)}
-              canClearPallet={Boolean(ctrl.currentMachine)}
-              hasSelectedItem={Boolean(ctrl.selectedItemId)}
-              onAdd={() => ctrl.setScanOpen(true)}
-              onOverwrite={() => ctrl.setScanOpen(true)}
-              onDelete={ctrl.deleteSelectedItem}
-              onClearPallet={ctrl.clearCurrentPallet}
-            />
-            <div className="relative min-h-0">
+            <div className="shrink-0">
+              <PalletVizActionRow
+                density="compact"
+                busy={busy}
+                canOperate={Boolean(ctrl.selectedMachineCd)}
+                canClearPallet={Boolean(ctrl.currentMachine)}
+                hasSelectedItem={Boolean(ctrl.selectedItemId)}
+                onAdd={() => ctrl.setScanOpen(true)}
+                onOverwrite={() => ctrl.setScanOpen(true)}
+                onDelete={ctrl.deleteSelectedItem}
+                onClearPallet={ctrl.clearCurrentPallet}
+              />
+            </div>
+            {(localError || ctrl.mutationError || ctrl.boardQuery.isError) && (
+              <div className="shrink-0 space-y-1">
+                {localError ? <p className="text-sm text-red-300">{localError}</p> : null}
+                {ctrl.mutationError ? <p className="text-sm text-red-300">{ctrl.mutationError}</p> : null}
+                {ctrl.boardQuery.isError ? <p className="text-sm text-red-300">板データの取得に失敗しました</p> : null}
+              </div>
+            )}
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
               {navBusy ? (
                 <div
                   className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-black/25"
@@ -159,12 +170,13 @@ export function KioskMobilePalletVisualizationPage() {
             </div>
           </>
         ) : (
-          <p className="text-sm text-red-300">加工機を読み込めません</p>
+          <div className="shrink-0 space-y-1">
+            <p className="text-sm text-red-300">加工機を読み込めません</p>
+            {localError ? <p className="text-sm text-red-300">{localError}</p> : null}
+            {ctrl.mutationError ? <p className="text-sm text-red-300">{ctrl.mutationError}</p> : null}
+            {ctrl.boardQuery.isError ? <p className="text-sm text-red-300">板データの取得に失敗しました</p> : null}
+          </div>
         )}
-
-        {localError ? <p className="text-sm text-red-300">{localError}</p> : null}
-        {ctrl.mutationError ? <p className="text-sm text-red-300">{ctrl.mutationError}</p> : null}
-        {ctrl.boardQuery.isError ? <p className="text-sm text-red-300">板データの取得に失敗しました</p> : null}
       </div>
     </div>
   );
