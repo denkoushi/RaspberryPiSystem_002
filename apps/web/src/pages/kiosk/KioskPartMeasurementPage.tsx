@@ -13,7 +13,8 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import {
   BarcodeScanModal,
-  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL
+  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE,
+  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
 } from '../../features/barcode-scan';
 import {
   KIOSK_PART_MEASUREMENT_IN_PROGRESS_CARD_TITLE,
@@ -195,7 +196,8 @@ export function KioskPartMeasurementPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 text-white">
       <BarcodeScanModal
         open={scanOpen}
-        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
+        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
         idleTimeoutMs={30_000}
         onSuccess={handleScanSuccess}
         onAbort={() => setScanOpen(false)}

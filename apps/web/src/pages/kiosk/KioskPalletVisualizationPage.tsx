@@ -1,6 +1,9 @@
 import { getResolvedClientKey } from '../../api/client';
-import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
-import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../features/barcode-scan/formatPresets';
+import {
+  BarcodeScanModal,
+  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE,
+  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
+} from '../../features/barcode-scan';
 import {
   PalletVizActionRow,
   PalletVizItemList,
@@ -16,7 +19,8 @@ export function KioskPalletVisualizationPage() {
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 text-white">
       <BarcodeScanModal
         open={ctrl.scanOpen}
-        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
+        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
         idleTimeoutMs={30_000}
         onSuccess={ctrl.handleScanSuccess}
         onAbort={() => ctrl.setScanOpen(false)}

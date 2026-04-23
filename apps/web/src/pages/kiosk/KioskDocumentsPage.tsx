@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import {
   BarcodeScanModal,
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL,
+  BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE,
 } from '../../features/barcode-scan';
 import { buildPagePairs } from '../../features/kiosk/documents/kioskDocumentPageLayout';
 import { KioskDocumentsListPanel } from '../../features/kiosk/documents/KioskDocumentsListPanel';
@@ -106,6 +107,7 @@ export function KioskDocumentsPage() {
       <BarcodeScanModal
         open={scanOpen}
         formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        readerOptions={BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE}
         idleTimeoutMs={30_000}
         onSuccess={handleScanSuccess}
         onAbort={handleScanAbort}

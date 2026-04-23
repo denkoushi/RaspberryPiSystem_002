@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
+import {
+  BarcodeScanModal,
+  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
+} from '../../features/barcode-scan';
 import { MobilePlacementRegisterSection } from '../../features/mobile-placement/components/MobilePlacementRegisterSection';
 import { MobilePlacementVerifySection } from '../../features/mobile-placement/components/MobilePlacementVerifySection';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
@@ -72,6 +75,7 @@ export function MobilePlacementPage() {
       <BarcodeScanModal
         open={mp.scanField !== null}
         formats={mp.scanFormats}
+        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
         idleTimeoutMs={30_000}
         onSuccess={mp.onScanSuccess}
         onAbort={() => mp.setScanField(null)}

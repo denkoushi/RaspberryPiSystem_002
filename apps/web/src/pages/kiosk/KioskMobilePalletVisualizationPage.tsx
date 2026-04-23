@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { getResolvedClientKey } from '../../api/client';
-import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
-import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../features/barcode-scan/formatPresets';
+import {
+  BarcodeScanModal,
+  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE,
+  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
+} from '../../features/barcode-scan';
 import {
   applyMobilePalletOrderScan,
   PalletVizActionRow,
@@ -87,14 +90,16 @@ export function KioskMobilePalletVisualizationPage() {
 
       <BarcodeScanModal
         open={orderScanOpen}
-        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
+        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
         idleTimeoutMs={30_000}
         onSuccess={handleOrderScanSuccess}
         onAbort={() => setOrderScanOpen(false)}
       />
       <BarcodeScanModal
         open={ctrl.scanOpen}
-        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL}
+        formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
+        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
         idleTimeoutMs={30_000}
         onSuccess={ctrl.handleScanSuccess}
         onAbort={() => ctrl.setScanOpen(false)}

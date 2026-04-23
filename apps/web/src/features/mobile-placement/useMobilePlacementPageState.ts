@@ -10,7 +10,7 @@ import {
 } from '../../api/client';
 import {
   BARCODE_FORMAT_PRESET_ALL_COMMON,
-  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL
+  BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE
 } from '../barcode-scan/formatPresets';
 
 import {
@@ -56,7 +56,7 @@ export function useMobilePlacementPageState() {
     if (scanField === 'shelf') {
       return BARCODE_FORMAT_PRESET_ALL_COMMON;
     }
-    return BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL;
+    return BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE;
   }, [scanField]);
 
   const onScanSuccess = useCallback(
