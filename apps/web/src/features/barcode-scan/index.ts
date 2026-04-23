@@ -11,5 +11,7 @@ export { useBarcodeScanSession } from './useBarcodeScanSession';
 export type { UseBarcodeScanSessionOptions } from './useBarcodeScanSession';
 export { useKeyboardWedgeScan } from './useKeyboardWedgeScan';
 export type { UseKeyboardWedgeScanOptions } from './useKeyboardWedgeScan';
+export { useSerialBarcodeStream } from './useSerialBarcodeStream';
+export type { BarcodeAgentStreamPayload } from './useSerialBarcodeStream';
 export { createBrowserMultiFormatReader, createZxingPossibleFormatsHints } from './zxingVideoReader';
 export type { BarcodeReaderTimingOptions } from './zxingVideoReader';

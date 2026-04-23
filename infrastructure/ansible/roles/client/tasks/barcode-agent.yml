@@ -1,0 +1,20 @@
+---
+# バーコードエージェント設定の配布（責務: 設定生成のみ）
+# 対象: barcode_agent_enabled が true のホスト
+# 起動保証は barcode-agent-lifecycle.yml
+
+- name: Ensure barcode agent .env directory exists
+  ansible.builtin.file:
+    path: "{{ repo_path }}/clients/barcode-agent"
+    state: directory
+    mode: '0755'
+
+- name: Deploy barcode agent environment variables
+  ansible.builtin.template:
+    src: "{{ role_path }}/../../templates/barcode-agent.env.j2"
+    dest: "{{ repo_path }}/clients/barcode-agent/.env"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  register: barcode_agent_env_result
+  notify: restart barcode-agent

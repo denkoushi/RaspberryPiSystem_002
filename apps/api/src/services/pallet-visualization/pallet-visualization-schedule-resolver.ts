@@ -37,7 +37,17 @@ export async function resolveScheduleSnapshotForPalletItem(
 
   const candidates = await listScheduleRowsByProductNo(orderScan);
   const matched = candidates.filter((c) => normalizeCd(c.fsigencd) === machineCd);
+  const candidateResourceCds = Array.from(new Set(candidates.map((c) => normalizeCd(c.fsigencd)).filter(Boolean)));
   if (matched.length === 0) {
+    if (candidateResourceCds.length > 0) {
+      const candidatesLabel = candidateResourceCds.slice(0, 5).join(', ');
+      throw new ApiError(
+        404,
+        `選択中の加工機（${machineCd}）と一致しません。候補の加工機コード: ${candidatesLabel}`,
+        undefined,
+        'PALLET_SCHEDULE_NOT_FOUND_FOR_MACHINE'
+      );
+    }
     throw new ApiError(
       404,
       '製造order番号に一致する日程行がないか、選択中の加工機（資源）と一致しません',

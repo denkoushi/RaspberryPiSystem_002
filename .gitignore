@@ -12,6 +12,7 @@ build/
 *.env.local
 apps/api/.env
 clients/nfc-agent/.env
+clients/barcode-agent/.env
 infrastructure/docker/.env
 infrastructure/ansible/.vault-pass
 infrastructure/ansible/group_vars/**/vault.yml

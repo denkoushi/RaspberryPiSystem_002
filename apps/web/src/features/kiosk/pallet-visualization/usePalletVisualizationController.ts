@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -11,6 +12,7 @@ import {
   type PalletVisualizationItemDto,
 } from '../../../api/client';
 import { useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
+import { useSerialBarcodeStream } from '../../barcode-scan/useSerialBarcodeStream';
 
 import { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage';
 
@@ -28,10 +30,35 @@ function mapItemsToListItems(items: PalletVisualizationItemDto[]): PalletVizList
   }));
 }
 
+type ApiErrorPayload = {
+  message?: string;
+  errorCode?: string;
+};
+
+function resolveMutationError(error: unknown): string | null {
+  if (!error) return null;
+  if (isAxiosError(error)) {
+    const data = error.response?.data as ApiErrorPayload | undefined;
+    if (typeof data?.message === 'string' && data.message.trim()) {
+      return data.message;
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return null;
+}
+
+export const __testables = {
+  resolveMutationError,
+};
+
 export type UsePalletVisualizationControllerOptions = {
   clientKey?: string;
   /** false のときキーボードウェッジを張らない（テスト等） */
   enableKeyboardWedge?: boolean;
+  /** false のときシリアル( barcode-agent )WebSocket を張らない（テスト等） */
+  enableSerialBarcodeStream?: boolean;
 };
 
 /**
@@ -41,6 +68,7 @@ export type UsePalletVisualizationControllerOptions = {
 export function usePalletVisualizationController(options?: UsePalletVisualizationControllerOptions) {
   const clientKey = options?.clientKey ?? getResolvedClientKey();
   const enableKeyboardWedge = options?.enableKeyboardWedge !== false;
+  const enableSerialBarcodeStream = options?.enableSerialBarcodeStream !== false;
   const queryClient = useQueryClient();
 
   const boardQuery = useQuery({
@@ -160,10 +188,14 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
     deleteMutation.isPending ||
     clearMutation.isPending;
 
+  const barcodeInputActive = !scanOpen && !busy && Boolean(selectedCd);
+
   useKeyboardWedgeScan({
-    active: enableKeyboardWedge && !scanOpen && !busy && Boolean(selectedCd),
+    active: enableKeyboardWedge && barcodeInputActive,
     onScan: applyBarcode,
   });
+
+  useSerialBarcodeStream(enableSerialBarcodeStream && barcodeInputActive, applyBarcode);
 
   const handlePalletNoChange = useCallback((n: number) => {
     setPalletNo(n);
@@ -183,8 +215,8 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
   }, [clearMutation]);
 
   const mutationError =
-    (addMutation.error as Error | undefined)?.message ??
-    (replaceMutation.error as Error | undefined)?.message ??
+    resolveMutationError(addMutation.error) ??
+    resolveMutationError(replaceMutation.error) ??
     null;
 
   return {
