@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import {
   useSignageSchedulesForManagement,
@@ -47,15 +48,115 @@ function parseResourceCdListInput(text: string): string[] {
   );
 }
 
+const PALLET_VIZ_DATA_SOURCE = 'pallet_visualization_board';
+
 function formatVisualizationOptionLabel(dashboard: VisualizationDashboard): string {
   const tags: string[] = [];
   if (dashboard.dataSourceType === 'uninspected_machines') {
     tags.push('未点検加工機');
   }
+  if (dashboard.dataSourceType === PALLET_VIZ_DATA_SOURCE) {
+    tags.push('パレット可視化');
+  }
+  if (dashboard.dataSourceType === 'measuring_instrument_loan_inspection') {
+    tags.push('計測機器点検');
+  }
   if (dashboard.rendererType) {
     tags.push(`renderer:${dashboard.rendererType}`);
   }
-  return tags.length > 0 ? `${dashboard.name} [${tags.join(' / ')}]` : dashboard.name;
+  const labeled = tags.length > 0 ? `${dashboard.name} [${tags.join(' / ')}]` : dashboard.name;
+  return dashboard.enabled ? labeled : `${labeled} （無効）`;
+}
+
+function groupVisualizationDashboardsForSignage(dashboards: VisualizationDashboard[] | undefined): {
+  pallet: VisualizationDashboard[];
+  other: VisualizationDashboard[];
+} {
+  const list = dashboards ?? [];
+  const pallet = list
+    .filter((d) => d.dataSourceType === PALLET_VIZ_DATA_SOURCE)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  const other = list
+    .filter((d) => d.dataSourceType !== PALLET_VIZ_DATA_SOURCE)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  return { pallet, other };
+}
+
+function VisualizationDashboardGroupedSelect({
+  id,
+  value,
+  onChange,
+  dashboards,
+  isListPending,
+  isListError,
+}: {
+  id?: string;
+  value: string | null;
+  onChange: (id: string | null) => void;
+  dashboards: VisualizationDashboard[] | undefined;
+  /** 一覧取得中は「未登録」案内を出さない（誤表示防止） */
+  isListPending: boolean;
+  isListError: boolean;
+}) {
+  const { pallet, other } = useMemo(() => groupVisualizationDashboardsForSignage(dashboards), [dashboards]);
+  const palletMissing =
+    !isListPending && !isListError && pallet.length === 0;
+
+  return (
+    <div className="space-y-2">
+      {palletMissing ? (
+        <div
+          className="rounded-md border-2 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-950"
+          role="status"
+        >
+          <strong className="font-semibold">パレット可視化</strong>が一覧にありません。先に{' '}
+          <Link to="/admin/visualization-dashboards" className="font-semibold text-amber-900 underline hover:text-amber-950">
+            可視化ダッシュボード
+          </Link>
+          を開き、<strong className="font-semibold">パレット可視化プリセットを適用</strong>→保存してください。保存後、下のプルダウンに「
+          <strong className="font-semibold">パレット可視化</strong>」グループが現れます。
+        </div>
+      ) : null}
+      <select
+        id={id}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
+      >
+        <option value="">選択してください</option>
+        {pallet.length > 0 ? (
+          <optgroup label="パレット可視化">
+            {pallet.map((dashboard: VisualizationDashboard) => (
+              <option key={dashboard.id} value={dashboard.id}>
+                {formatVisualizationOptionLabel(dashboard)}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {other.length > 0 ? (
+          <optgroup label="その他の可視化">
+            {other.map((dashboard: VisualizationDashboard) => (
+              <option key={dashboard.id} value={dashboard.id}>
+                {formatVisualizationOptionLabel(dashboard)}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+      </select>
+    </div>
+  );
+}
+
+function VisualizationDashboardSelectHelp() {
+  return (
+    <p className="mt-1 text-xs text-slate-600">
+      「（無効）」のダッシュボードをサイネージで使う場合は、
+      <Link to="/admin/visualization-dashboards" className="font-semibold text-sky-700 underline hover:text-sky-900">
+        可視化ダッシュボード
+      </Link>
+      で<strong className="font-semibold text-slate-800">有効</strong>にしてください。
+    </p>
+  );
 }
 
 export function SignageSchedulesPage() {
@@ -63,7 +164,8 @@ export function SignageSchedulesPage() {
   const clientsForSignageQuery = useSignageScheduleEditorClients();
   const pdfsQuery = useSignagePdfs();
   const csvDashboardsQuery = useCsvDashboards({ enabled: true });
-  const visualizationDashboardsQuery = useVisualizationDashboards({ enabled: true });
+  /** サイネージ割当用: 無効なダッシュボードも表示（ラベルで区別）。未作成のパレット用は optgroup が空になる。 */
+  const visualizationDashboardsQuery = useVisualizationDashboards();
   const { create, update, remove } = useSignageScheduleMutations();
   const renderMutation = useSignageRenderMutation();
   const renderStatusQuery = useSignageRenderStatus();
@@ -962,19 +1064,18 @@ export function SignageSchedulesPage() {
                     )}
                     {fullSlotKind === 'visualization' && (
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700">可視化</label>
-                        <select
-                          value={fullVisualizationDashboardId || ''}
-                          onChange={(e) => setFullVisualizationDashboardId(e.target.value || null)}
-                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                        >
-                          <option value="">選択してください</option>
-                          {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
-                            <option key={dashboard.id} value={dashboard.id}>
-                              {formatVisualizationOptionLabel(dashboard)}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="block text-sm font-semibold text-slate-700" htmlFor="signage-full-visualization">
+                          可視化
+                        </label>
+                        <VisualizationDashboardGroupedSelect
+                          id="signage-full-visualization"
+                          value={fullVisualizationDashboardId}
+                          onChange={setFullVisualizationDashboardId}
+                          dashboards={visualizationDashboardsQuery.data}
+                          isListPending={visualizationDashboardsQuery.isPending}
+                          isListError={visualizationDashboardsQuery.isError}
+                        />
+                        <VisualizationDashboardSelectHelp />
                       </div>
                     )}
                     {fullSlotKind === 'kiosk_progress_overview' && (
@@ -1167,19 +1268,18 @@ export function SignageSchedulesPage() {
                     )}
                     {leftSlotKind === 'visualization' && (
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700">左側の可視化</label>
-                        <select
-                          value={leftVisualizationDashboardId || ''}
-                          onChange={(e) => setLeftVisualizationDashboardId(e.target.value || null)}
-                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                        >
-                          <option value="">選択してください</option>
-                          {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
-                            <option key={dashboard.id} value={dashboard.id}>
-                              {formatVisualizationOptionLabel(dashboard)}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="block text-sm font-semibold text-slate-700" htmlFor="signage-left-visualization">
+                          左側の可視化
+                        </label>
+                        <VisualizationDashboardGroupedSelect
+                          id="signage-left-visualization"
+                          value={leftVisualizationDashboardId}
+                          onChange={setLeftVisualizationDashboardId}
+                          dashboards={visualizationDashboardsQuery.data}
+                          isListPending={visualizationDashboardsQuery.isPending}
+                          isListError={visualizationDashboardsQuery.isError}
+                        />
+                        <VisualizationDashboardSelectHelp />
                       </div>
                     )}
                     <div>
@@ -1247,19 +1347,18 @@ export function SignageSchedulesPage() {
                     )}
                     {rightSlotKind === 'visualization' && (
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700">右側の可視化</label>
-                        <select
-                          value={rightVisualizationDashboardId || ''}
-                          onChange={(e) => setRightVisualizationDashboardId(e.target.value || null)}
-                          className="mt-1 w-full rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
-                        >
-                          <option value="">選択してください</option>
-                          {visualizationDashboardsQuery.data?.map((dashboard: VisualizationDashboard) => (
-                            <option key={dashboard.id} value={dashboard.id}>
-                              {formatVisualizationOptionLabel(dashboard)}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="block text-sm font-semibold text-slate-700" htmlFor="signage-right-visualization">
+                          右側の可視化
+                        </label>
+                        <VisualizationDashboardGroupedSelect
+                          id="signage-right-visualization"
+                          value={rightVisualizationDashboardId}
+                          onChange={setRightVisualizationDashboardId}
+                          dashboards={visualizationDashboardsQuery.data}
+                          isListPending={visualizationDashboardsQuery.isPending}
+                          isListError={visualizationDashboardsQuery.isError}
+                        />
+                        <VisualizationDashboardSelectHelp />
                       </div>
                     )}
                   </>
