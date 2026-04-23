@@ -573,6 +573,13 @@
 - **知見**: Pi5 で **`api`/`web` コンテナ再ビルド**（差分検知時）。Pi4 は **Git 同期 + `kiosk-browser` 再起動**。Pi3 は本記録で **ヘルス収集時に `signage-lite` が一時 `exit-code`** でも **post_tasks 後 `signage-lite.service is active`**。
 - **トラブルシュート**: 直列デプロイで **前ジョブの Mac 終了前**に次を起動すると **ローカルロック** exit 3。Pi3 の **`unreachable=1`** や長時間 **`exit-code` のみ**は [deployment.md](../guides/deployment.md)・[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)。
 
+**追補（2026-04-23・キオスク／配膳スマホ バーコード読取チューニング・Web のみ・Pi5 のみ）**:
+- ブランチ **`feat/kiosk-barcode-reader-tuning`**・代表 **`70cb9e09`**（`apps/web/src/features/barcode-scan/readerOptionPresets.ts`・`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`・各 `BarcodeScanModal`・`KioskDocumentsPage` は **保守的 400/200ms**）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-211624-9136`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**・Mac / Tailscale）。
+- **仕様**: 配膳 `/kiosk/mobile-placement`・パレット可視化（キオスク／スマホ）・部品測定は **一次元コア形式 + 220/120ms**。要領書 `/kiosk/documents` は **全一次元形式のまま**、デコード間隔は **400/200ms**（負荷配慮）。購買照会は **`PURCHASE_ORDER` プリセット + 短時間2連続一致**（[KB-297 §FKOBAINO](./KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）を継続。
+- **トラブルシュート**: 形式を広げるとデコード負荷が上がる。遅延改善と Pi4 同時負荷は **要領書＝保守的間引き**、業務スキャン＝**コア形式 + やや積極的間引き**で切り分ける（[KB-313](./KB-313-kiosk-documents.md)・[KB-339](./KB-339-mobile-placement-barcode-survey.md) V24）。
+
 **追補（2026-04-23・管理コンソール サイネージスケジュール 可視化選択・Pi5 のみ）**:
 - ブランチ **`main`**・代表 **`8e72335e`**（`SignageSchedulesPage.tsx`・`VisualizationDashboardGroupedSelect`・`Link` 誘導）。
 - **本番**: **`raspberrypi5` のみ**（管理 SPA は Pi5 `web`）・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-173454-25250`**（**`failed=0` / `unreachable=0` / exit `0`**）。

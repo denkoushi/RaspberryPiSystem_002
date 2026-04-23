@@ -10,7 +10,14 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-23（計測機器点検可視化の返却グレーアウト・`返却件数` 仕様と、本番デプロイ実績を反映）
+最終更新: 2026-04-23（キオスク／配膳スマホ バーコード読取チューニング・Web のみ・Pi5 のみ）
+
+### 補足（2026-04-23: キオスク／配膳スマホ バーコード読取チューニング・Web のみ）
+
+- **変更概要**: `@zxing/library` 連続デコードの **再試行間隔**（`timeBetweenScansMillis` / `timeBetweenDecodingAttempts`）を `readerOptionPresets` に集約。配膳・パレット可視化・部品測定などは **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** と **一次元コア形式**（`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`）で探索空間を削減。要領書 `/kiosk/documents` は **広域一次元（`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL`）**のまま、**`BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE`（400/200ms＝`zxingVideoReader` 既定）**で Pi4 Firefox の同時負荷を避ける。購買照会は従来どおり **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` + `stabilityConfig`**。
+- **本番デプロイ（実績）**: ブランチ **`feat/kiosk-barcode-reader-tuning`**・代表 **`70cb9e09`**。**`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260423-211624-9136`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**）。
+- **トラブルシュート**: 未認識が続く場合は **照明・距離・ラベル品質**を先に確認。形式を増やす・間隔を短くするほど **CPU 負荷**が上がる。要領書で遅延だけを下げる場合は **保守的間隔**と **形式の二段**のトレードオフ（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）を参照。
 
 ### 補足（2026-04-23: 計測機器点検可視化 返却グレーアウト）
 

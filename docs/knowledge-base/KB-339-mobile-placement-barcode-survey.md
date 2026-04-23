@@ -1,6 +1,13 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-20（**V23 スキャン専用注文入力・棚チップグリッド**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+最終更新: 2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+
+## V24（2026-04-23）バーコード `readerOptions` 集約・一次元コア形式 {#v24-barcode-reader-tuning-2026-04-23}
+
+- **目的**: `@zxing/library` 連続デコードの **再試行間隔**（`timeBetweenScansMillis` / `timeBetweenDecodingAttempts`）を `apps/web/src/features/barcode-scan/readerOptionPresets.ts` に集約し、**画面別に一貫して調整**できるようにする。配膳・パレット可視化・部品測定等は **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** と **`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`** で **探索空間を削減**。要領書 `/kiosk/documents` は **広域一次元（`ONE_DIMENSIONAL`）**のまま、**`BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE`（400/200ms）**で Pi4 同時負荷を抑える。購買照会は従来どおり **`PURCHASE_ORDER` + `stabilityConfig`**。
+- **デプロイ（本番）**: ブランチ **`feat/kiosk-barcode-reader-tuning`**・代表 **`70cb9e09`**。[deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**Web のみ・Pi5 のみ**。Pi3 専用手順不要）。**Detach Run ID**: `20260423-211624-9136`（**`failed=0` / `unreachable=0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**）。
+- **知見・トラブルシュート**: 形式を広げるとデコード負荷が上がる。未認識は **照明・距離**を先に確認。遅延と CPU は **要領書＝保守的間引き**、業務スキャン＝**コア形式 + やや積極的間引き**で切り分け（[KB-313](../knowledge-base/KB-313-kiosk-documents.md) バーコード節）。
 
 ## V23（2026-04-20）モバイル注文入力スキャン専用・棚チップグリッド {#v23-scan-only-shelf-chip-2026-04-20}
 
