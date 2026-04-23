@@ -6,6 +6,7 @@ import {
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { resolveJstDayRange } from '../_shared/data-source-utils.js';
+import { MI_INSTRUMENT_DETAIL_COLUMN } from '../../renderers/measuring-instrument-loan-inspection/mi-instrument-display.types.js';
 import { extractLoanIdFromEventRaw } from './extract-loan-id-from-event-raw.js';
 import { formatLoanInspectionInstrumentLabel } from './format-loan-inspection-instrument-label.js';
 import { loadCancelledLoanIdSet } from './load-cancelled-loan-id-set.js';
@@ -33,10 +34,17 @@ function normalizeEmployeeName(value: string): string {
   return value.replace(/[\s\u3000]/g, '');
 }
 
+const TABLE_COLUMNS = [
+  '従業員名',
+  '貸出中計測機器数',
+  '計測機器名称一覧',
+  MI_INSTRUMENT_DETAIL_COLUMN,
+] as const;
+
 function buildEmptyTable(metadata: LoanInspectionMetadata): TableVisualizationData {
   return {
     kind: 'table',
-    columns: ['従業員名', '貸出中計測機器数', '計測機器名称一覧'],
+    columns: [...TABLE_COLUMNS],
     rows: [],
     metadata,
   };
@@ -161,7 +169,8 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
       }
     }
 
-    const activeInstrumentLabelsByBorrower = new Map<string, string[]>();
+    type ActiveInstrumentDetail = { name: string; managementNumber: string };
+    const activeInstrumentDetailsByBorrower = new Map<string, Map<string, ActiveInstrumentDetail>>();
     for (const { event, loanId } of borrowEventsWithLoanId) {
       const raw = asRecord(event.raw);
       if (loanId && cancelledLoanIdSet.has(loanId)) {
@@ -176,36 +185,52 @@ export class MeasuringInstrumentLoanInspectionDataSource implements DataSource {
       if (!borrower || !instrumentName) {
         continue;
       }
-      const label = formatLoanInspectionInstrumentLabel(instrumentName, event.managementNumber);
-      if (!label) {
+      const mgmt = event.managementNumber.trim();
+      if (!mgmt) {
         continue;
       }
-      const current = activeInstrumentLabelsByBorrower.get(borrower) ?? [];
-      current.push(label);
-      activeInstrumentLabelsByBorrower.set(borrower, current);
+      const byMgmt =
+        activeInstrumentDetailsByBorrower.get(borrower) ?? new Map<string, ActiveInstrumentDetail>();
+      byMgmt.set(mgmt, { name: instrumentName, managementNumber: event.managementNumber });
+      activeInstrumentDetailsByBorrower.set(borrower, byMgmt);
     }
 
     let inspectedUsers = 0;
     const rows = employees.map((employee) => {
       const inspectedCountToday = inspectedCountByEmployee.get(employee.id) ?? 0;
-      const labelTokens =
-        activeInstrumentLabelsByBorrower.get(normalizeEmployeeName(employee.displayName)) ?? [];
-      const activeInstrumentNames = Array.from(new Set(labelTokens));
-      const activeInstrumentLoansCount = activeInstrumentNames.length;
+      const detailMap =
+        activeInstrumentDetailsByBorrower.get(normalizeEmployeeName(employee.displayName)) ??
+        new Map<string, ActiveInstrumentDetail>();
+      const details = Array.from(detailMap.values());
+      const activeInstrumentNames = details.map((d) =>
+        formatLoanInspectionInstrumentLabel(d.name, d.managementNumber),
+      );
+      const activeInstrumentLoansCount = details.length;
       if (inspectedCountToday > 0) {
         inspectedUsers += 1;
       }
+      const instrumentDetailsJson =
+        details.length > 0
+          ? JSON.stringify(
+              details.map((d) => ({
+                kind: 'active' as const,
+                managementNumber: d.managementNumber,
+                name: d.name,
+              })),
+            )
+          : '';
       return {
         従業員名: employee.displayName,
         点検件数: inspectedCountToday,
         貸出中計測機器数: activeInstrumentLoansCount,
         計測機器名称一覧: activeInstrumentNames.join(', '),
+        [MI_INSTRUMENT_DETAIL_COLUMN]: instrumentDetailsJson,
       };
     });
 
     return {
       kind: 'table',
-      columns: ['従業員名', '貸出中計測機器数', '計測機器名称一覧'],
+      columns: [...TABLE_COLUMNS],
       rows,
       metadata: {
         sectionEquals,
