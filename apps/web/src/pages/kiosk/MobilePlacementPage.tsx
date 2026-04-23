@@ -37,6 +37,13 @@ export function MobilePlacementPage() {
         <button
           type="button"
           className={mpKioskTheme.partSearchButton}
+          onClick={() => navigate('/kiosk/mobile-placement/pallet-viz')}
+        >
+          パレット
+        </button>
+        <button
+          type="button"
+          className={mpKioskTheme.partSearchButton}
           onClick={() => navigate('/kiosk/purchase-order-lookup')}
         >
           購買照会

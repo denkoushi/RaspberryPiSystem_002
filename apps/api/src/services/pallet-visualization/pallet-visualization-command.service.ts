@@ -3,13 +3,18 @@ import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { PalletMachineIllustrationStorage } from '../../lib/pallet-machine-illustration-storage.js';
 import { resolveScheduleSnapshotForPalletItem } from './pallet-visualization-schedule-resolver.js';
-import { assertMachineCdRegistered } from './pallet-visualization-resource.service.js';
+import {
+  assertMachineCdRegistered,
+  getPalletCountForResource,
+} from './pallet-visualization-resource.service.js';
+import { DEFAULT_MACHINE_PALLET_COUNT, MAX_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 
 const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
-function assertPalletNo(palletNo: number): void {
-  if (!Number.isInteger(palletNo) || palletNo < 1 || palletNo > 10) {
-    throw new ApiError(400, 'パレット番号は 1〜10 で指定してください', undefined, 'PALLET_NO_INVALID');
+async function assertPalletNoForMachine(machineCd: string, palletNo: number): Promise<void> {
+  const max = await getPalletCountForResource(machineCd);
+  if (!Number.isInteger(palletNo) || palletNo < 1 || palletNo > max) {
+    throw new ApiError(400, `パレット番号は 1〜${max} で指定してください`, undefined, 'PALLET_NO_INVALID');
   }
 }
 
@@ -20,7 +25,7 @@ export async function commandAddPalletItem(input: {
   manufacturingOrderBarcodeRaw: string;
 }): Promise<{ id: string }> {
   const machineCd = await assertMachineCdRegistered(input.machineCd);
-  assertPalletNo(input.palletNo);
+  await assertPalletNoForMachine(machineCd, input.palletNo);
   const resolved = await resolveScheduleSnapshotForPalletItem(machineCd, input.manufacturingOrderBarcodeRaw);
   const orderStored = input.manufacturingOrderBarcodeRaw.trim();
 
@@ -136,7 +141,7 @@ export async function commandClearPallet(input: {
   palletNo: number;
 }): Promise<void> {
   const machineCd = await assertMachineCdRegistered(input.machineCd);
-  assertPalletNo(input.palletNo);
+  await assertPalletNoForMachine(machineCd, input.palletNo);
 
   await prisma.$transaction(async (tx) => {
     const items = await tx.machinePalletItem.findMany({
@@ -181,6 +186,7 @@ export async function commandUpsertPalletIllustration(input: {
         create: {
           resourceCd: machineCd,
           imageRelativeUrl: relativeUrl,
+          palletCount: DEFAULT_MACHINE_PALLET_COUNT,
         },
         update: {
           imageRelativeUrl: relativeUrl,
@@ -220,13 +226,16 @@ export async function commandDeletePalletIllustration(input: { machineCd: string
     }
     previousRelativeUrl = prev.imageRelativeUrl;
 
-    await tx.palletMachineIllustration.delete({ where: { resourceCd: machineCd } });
+    await tx.palletMachineIllustration.update({
+      where: { resourceCd: machineCd },
+      data: { imageRelativeUrl: null },
+    });
 
     await tx.machinePalletEvent.create({
       data: {
         actionType: 'DELETE_ILLUSTRATION',
         resourceCd: machineCd,
-        illustrationRelativeUrl: prev.imageRelativeUrl,
+        illustrationRelativeUrl: previousRelativeUrl,
       },
     });
   });
@@ -234,4 +243,43 @@ export async function commandDeletePalletIllustration(input: { machineCd: string
   if (previousRelativeUrl) {
     await PalletMachineIllustrationStorage.deleteIllustrationFile(previousRelativeUrl);
   }
+}
+
+/**
+ * 加工機ごとのパレット数を upsert する。台数未設定行は `imageRelativeUrl: null` で作れる。
+ * 高い方のパレット番号に在庫がある場合は台数の縮小を拒否する。
+ */
+export async function commandUpdatePalletMachinePalletCount(input: {
+  machineCd: string;
+  palletCount: number;
+}): Promise<void> {
+  const machineCd = await assertMachineCdRegistered(input.machineCd);
+  if (!Number.isInteger(input.palletCount) || input.palletCount < 1 || input.palletCount > MAX_MACHINE_PALLET_COUNT) {
+    throw new ApiError(
+      400,
+      `パレット数は 1〜${MAX_MACHINE_PALLET_COUNT} を指定してください`,
+      undefined,
+      'PALLET_COUNT_INVALID'
+    );
+  }
+
+  const over = await prisma.machinePalletItem.findFirst({
+    where: { resourceCd: machineCd, palletNo: { gt: input.palletCount } },
+    orderBy: { palletNo: 'desc' },
+    select: { palletNo: true },
+  });
+  if (over) {
+    throw new ApiError(
+      400,
+      `パレット${over.palletNo}以降に登録があるため、台数を${String(input.palletCount)}未満にできません`,
+      undefined,
+      'PALLET_COUNT_CONFLICTS_WITH_ITEMS'
+    );
+  }
+
+  await prisma.palletMachineIllustration.upsert({
+    where: { resourceCd: machineCd },
+    create: { resourceCd: machineCd, palletCount: input.palletCount, imageRelativeUrl: null },
+    update: { palletCount: input.palletCount },
+  });
 }

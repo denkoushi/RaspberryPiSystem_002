@@ -2440,6 +2440,7 @@ export type PalletVisualizationBoardResponseDto = {
     machineCd: string;
     machineName: string;
     illustrationUrl: string | null;
+    palletCount: number;
     pallets: Array<{ palletNo: number; items: PalletVisualizationItemDto[] }>;
   }>;
 };
@@ -2537,6 +2538,13 @@ export async function postToolsPalletVisualizationIllustration(machineCd: string
 
 export async function deleteToolsPalletVisualizationIllustration(machineCd: string) {
   await api.delete(`/tools/pallet-visualization/machines/${encodeURIComponent(machineCd)}/illustration`);
+}
+
+export async function patchToolsPalletMachinePalletCount(machineCd: string, palletCount: number) {
+  await api.patch(
+    `/tools/pallet-visualization/machines/${encodeURIComponent(machineCd)}/pallet-count`,
+    { palletCount }
+  );
 }
 
 export interface FileAlert {

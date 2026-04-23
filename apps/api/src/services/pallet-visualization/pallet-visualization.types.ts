@@ -4,6 +4,8 @@ export type PalletVisualizationMachineSummary = {
   machineCd: string;
   machineName: string;
   illustrationUrl: string | null;
+  /** 1..N のパレット欄。未設定時は 10 相当をサーバが返す */
+  palletCount: number;
 };
 
 export type PalletVisualizationItem = {

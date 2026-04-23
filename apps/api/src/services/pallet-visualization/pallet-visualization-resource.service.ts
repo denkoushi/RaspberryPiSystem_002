@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { getResourceNameMapByResourceCds } from '../production-schedule/resource-master.service.js';
+import { DEFAULT_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 
 const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
@@ -32,4 +33,19 @@ export async function resolvePrimaryMachineName(machineCd: string): Promise<stri
   const map = await getResourceNameMapByResourceCds([machineCd]);
   const names = map[normalizeCd(machineCd)] ?? [];
   return names[0] ?? machineCd;
+}
+
+/**
+ * 資源CD のパレット台数。PalletMachineIllustration 行が無い場合は既定 10。
+ */
+export async function getPalletCountForResource(machineCdRaw: string): Promise<number> {
+  const machineCd = normalizeCd(machineCdRaw);
+  if (!machineCd) {
+    return DEFAULT_MACHINE_PALLET_COUNT;
+  }
+  const row = await prisma.palletMachineIllustration.findUnique({
+    where: { resourceCd: machineCd },
+    select: { palletCount: true },
+  });
+  return row?.palletCount ?? DEFAULT_MACHINE_PALLET_COUNT;
 }

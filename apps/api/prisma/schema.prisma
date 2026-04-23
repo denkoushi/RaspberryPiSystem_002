@@ -327,7 +327,10 @@ model ClientDevice {
 /// 資源CD（ProductionScheduleResourceMaster.resourceCd）単位の加工機イラスト
 model PalletMachineIllustration {
   resourceCd       String   @id @db.VarChar(20)
-  imageRelativeUrl String   @db.VarChar(512)
+  /// 未登録の場合は台数設定のみ先に upsert され null となり得る
+  imageRelativeUrl String?  @db.VarChar(512)
+  /// 加工機のパレット数（1..）。既存行はマイグレで 10
+  palletCount      Int      @default(10)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }

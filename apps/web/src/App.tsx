@@ -32,6 +32,7 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
+import { KioskMobilePalletVisualizationPage } from './pages/kiosk/KioskMobilePalletVisualizationPage';
 import { KioskMobileShelfRegisterPage } from './pages/kiosk/KioskMobileShelfRegisterPage';
 import { KioskPalletVisualizationPage } from './pages/kiosk/KioskPalletVisualizationPage';
 import { KioskPartMeasurementEditPage } from './pages/kiosk/KioskPartMeasurementEditPage';
@@ -92,6 +93,7 @@ function App() {
           <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
           <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
           <Route path="/kiosk/mobile-placement/shelf-register" element={<KioskMobileShelfRegisterPage />} />
+          <Route path="/kiosk/mobile-placement/pallet-viz" element={<KioskMobilePalletVisualizationPage />} />
           <Route path="/kiosk/mobile-placement/register" element={<Navigate to="/kiosk/mobile-placement" replace />} />
           <Route path="/kiosk/purchase-order-lookup" element={<PurchaseOrderLookupPage />} />
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />

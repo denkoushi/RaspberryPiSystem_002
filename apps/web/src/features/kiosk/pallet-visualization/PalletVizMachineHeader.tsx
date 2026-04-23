@@ -9,18 +9,20 @@ export type PalletVizMachineHeaderProps = {
   illustrationUrl: string | null;
   machineName: string;
   machineCd: string;
+  palletCount: number;
   selectedPalletNo: number;
   onSelectPalletNo: (n: number) => void;
 };
 
 /**
- * 加工機イラスト、機名・資源CD・パレット選択中の表示、パレット番号グリッド（5×2）のレイアウト。
+ * 加工機イラスト、機名・資源CD・パレット選択中の表示、パレット番号グリッド（5列）のレイアウト。
  * 表示専用：データ取得は親の責務。
  */
 export function PalletVizMachineHeader({
   illustrationUrl,
   machineName,
   machineCd,
+  palletCount,
   selectedPalletNo,
   onSelectPalletNo,
 }: PalletVizMachineHeaderProps) {
@@ -55,6 +57,7 @@ export function PalletVizMachineHeader({
           </div>
 
           <PalletVizPalletNumberGrid
+            palletCount={palletCount}
             selectedPalletNo={selectedPalletNo}
             onSelectPalletNo={onSelectPalletNo}
             variant="default"

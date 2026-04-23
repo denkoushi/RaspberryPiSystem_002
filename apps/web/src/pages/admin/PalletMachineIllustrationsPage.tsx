@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   deleteToolsPalletVisualizationIllustration,
   getToolsPalletVisualizationBoard,
+  patchToolsPalletMachinePalletCount,
   postToolsPalletVisualizationIllustration,
+  type PalletVisualizationBoardResponseDto,
 } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+
+/** API MAX_MACHINE_PALLET_COUNT と同値 */
+const MAX_ADMIN_PALLET_COUNT = 60;
 
 export function PalletMachineIllustrationsPage() {
   const queryClient = useQueryClient();
@@ -41,13 +46,23 @@ export function PalletMachineIllustrationsPage() {
     onError: () => setMessage('削除に失敗しました'),
   });
 
+  const patchPalletCountMutation = useMutation({
+    mutationFn: ({ machineCd, palletCount }: { machineCd: string; palletCount: number }) =>
+      patchToolsPalletMachinePalletCount(machineCd, palletCount),
+    onSuccess: () => {
+      setMessage('パレット台数を保存しました');
+      void queryClient.invalidateQueries({ queryKey: ['tools-pallet-viz-board'] });
+    },
+    onError: () => setMessage('台数の保存に失敗しました'),
+  });
+
   const machines = boardQuery.data?.machines ?? [];
 
   return (
     <div className="space-y-6">
       <Card title="パレット可視化・加工機イラスト">
         <p className="text-sm text-slate-600">
-          資源マスタに登録された加工機ごとに PNG/JPEG イラストを登録します。キオスク・サイネージの可視化に表示されます。
+          資源マスタに登録された加工機ごとにパレット台数（既定10）と PNG/JPEG イラストを設定します。キオスク・サイネージの可視化に表示されます。
         </p>
       </Card>
 
@@ -74,8 +89,77 @@ export function PalletMachineIllustrationsPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {machines.map((m) => (
-          <Card key={m.machineCd} title={`${m.machineName} (${m.machineCd})`}>
+          <PalletMachineCard
+            key={m.machineCd}
+            machine={m}
+            onPatchPalletCount={(palletCount) => patchPalletCountMutation.mutate({ machineCd: m.machineCd, palletCount })}
+            patchPalletCountBusy={patchPalletCountMutation.isPending}
+            uploadPending={uploadMutation.isPending}
+            deletePending={deleteMutation.isPending}
+            onPickUpload={() => {
+              setPendingMachineCd(m.machineCd);
+              requestAnimationFrame(() => fileRef.current?.click());
+            }}
+            onDeleteIllustration={() => {
+              if (confirm(`${m.machineName} のイラストを削除しますか？`)) {
+                deleteMutation.mutate(m.machineCd);
+              }
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PalletMachineCard(props: {
+  machine: PalletVisualizationBoardResponseDto['machines'][number];
+  onPatchPalletCount: (palletCount: number) => void;
+  patchPalletCountBusy: boolean;
+  uploadPending: boolean;
+  deletePending: boolean;
+  onPickUpload: () => void;
+  onDeleteIllustration: () => void;
+}) {
+  const { machine: m, onPatchPalletCount, patchPalletCountBusy, uploadPending, deletePending, onPickUpload, onDeleteIllustration } = props;
+  const [palletCountDraft, setPalletCountDraft] = useState(String(m.palletCount));
+
+  useEffect(() => {
+    setPalletCountDraft(String(m.palletCount));
+  }, [m.palletCount, m.machineCd]);
+
+  return (
+          <Card title={`${m.machineName} (${m.machineCd})`}>
             <div className="space-y-3">
+              <label className="flex flex-col gap-1 text-sm text-slate-700">
+                <span className="font-semibold">パレット台数</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={MAX_ADMIN_PALLET_COUNT}
+                    className="w-24 rounded-md border-2 border-slate-500 px-2 py-1 text-slate-900"
+                    value={palletCountDraft}
+                    onChange={(e) => setPalletCountDraft(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={patchPalletCountBusy}
+                    onClick={() => {
+                      const n = Number.parseInt(palletCountDraft, 10);
+                      if (!Number.isInteger(n) || n < 1 || n > MAX_ADMIN_PALLET_COUNT) {
+                        return;
+                      }
+                      onPatchPalletCount(n);
+                    }}
+                  >
+                    台数を保存
+                  </Button>
+                </div>
+                <span className="text-xs text-slate-500">1〜{MAX_ADMIN_PALLET_COUNT}。台数を下げる際は、高番号パレットに部品登録が無い必要があります。</span>
+              </label>
+
               {m.illustrationUrl ? (
                 <img
                   src={m.illustrationUrl}
@@ -89,34 +173,19 @@ export function PalletMachineIllustrationsPage() {
               )}
 
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={uploadMutation.isPending}
-                  onClick={() => {
-                    setPendingMachineCd(m.machineCd);
-                    requestAnimationFrame(() => fileRef.current?.click());
-                  }}
-                >
+                <Button type="button" variant="secondary" disabled={uploadPending} onClick={onPickUpload}>
                   画像を選択してアップロード
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled={!m.illustrationUrl || deleteMutation.isPending}
-                  onClick={() => {
-                    if (confirm(`${m.machineName} のイラストを削除しますか？`)) {
-                      deleteMutation.mutate(m.machineCd);
-                    }
-                  }}
+                  disabled={!m.illustrationUrl || deletePending}
+                  onClick={onDeleteIllustration}
                 >
                   削除
                 </Button>
               </div>
             </div>
           </Card>
-        ))}
-      </div>
-    </div>
   );
 }
