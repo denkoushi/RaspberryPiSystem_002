@@ -6,6 +6,7 @@ import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../barcode-scan/format
 import { PalletVizActionRow } from './PalletVizActionRow';
 import { PalletVizItemList } from './PalletVizItemList';
 import { PalletVizPalletNumberGrid } from './PalletVizPalletNumberGrid';
+import { DEFAULT_KIOSK_PALLET_COUNT } from './palletVizNumberGridConfig';
 import { usePalletVisualizationController } from './usePalletVisualizationController';
 
 export type PalletVizEmbeddedPanelProps = {
@@ -47,6 +48,7 @@ export function PalletVizEmbeddedPanel({ className }: PalletVizEmbeddedPanelProp
 
         <PalletVizPalletNumberGrid
           variant="compact"
+          palletCount={ctrl.currentMachine?.palletCount ?? DEFAULT_KIOSK_PALLET_COUNT}
           selectedPalletNo={ctrl.palletNo}
           onSelectPalletNo={ctrl.setPalletNo}
         />

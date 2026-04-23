@@ -11,6 +11,7 @@ const txMock = {
     findUnique: vi.fn(),
     upsert: vi.fn(),
     delete: vi.fn(),
+    update: vi.fn(),
   },
   machinePalletEvent: {
     create: vi.fn(),
@@ -19,6 +20,12 @@ const txMock = {
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    machinePalletItem: {
+      findFirst: vi.fn(),
+    },
+    palletMachineIllustration: {
+      upsert: vi.fn(),
+    },
     $transaction: vi.fn(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock)),
   },
 }));
@@ -36,6 +43,7 @@ vi.mock('../pallet-visualization-resource.service.js', () => ({
 
 import { prisma } from '../../../lib/prisma.js';
 import {
+  commandUpdatePalletMachinePalletCount,
   commandDeletePalletIllustration,
   commandUpsertPalletIllustration,
 } from '../pallet-visualization-command.service.js';
@@ -51,7 +59,10 @@ describe('pallet-visualization-command.service', () => {
     txMock.palletMachineIllustration.findUnique.mockResolvedValue(null);
     txMock.palletMachineIllustration.upsert.mockResolvedValue(undefined);
     txMock.palletMachineIllustration.delete.mockResolvedValue(undefined);
+    txMock.palletMachineIllustration.update.mockResolvedValue(undefined);
     txMock.machinePalletEvent.create.mockResolvedValue(undefined);
+    vi.mocked(prisma.machinePalletItem.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.palletMachineIllustration.upsert).mockResolvedValue(undefined);
   });
 
   it('イラスト更新成功後に旧ファイルを削除する', async () => {
@@ -74,6 +85,7 @@ describe('pallet-visualization-command.service', () => {
       create: {
         resourceCd: 'MC01',
         imageRelativeUrl: '/api/storage/pallet-machine-illustrations/new.jpg',
+        palletCount: 10,
       },
       update: {
         imageRelativeUrl: '/api/storage/pallet-machine-illustrations/new.jpg',
@@ -107,8 +119,9 @@ describe('pallet-visualization-command.service', () => {
 
     await commandDeletePalletIllustration({ machineCd: 'MC01' });
 
-    expect(txMock.palletMachineIllustration.delete).toHaveBeenCalledWith({
+    expect(txMock.palletMachineIllustration.update).toHaveBeenCalledWith({
       where: { resourceCd: 'MC01' },
+      data: { imageRelativeUrl: null },
     });
     expect(txMock.machinePalletEvent.create).toHaveBeenCalledWith({
       data: {
@@ -118,5 +131,28 @@ describe('pallet-visualization-command.service', () => {
       },
     });
     expect(deleteIllustrationFileMock).toHaveBeenCalledWith('/api/storage/pallet-machine-illustrations/old.jpg');
+  });
+
+  it('加工機ごとのパレット台数を保存する', async () => {
+    await commandUpdatePalletMachinePalletCount({ machineCd: 'MC01', palletCount: 28 });
+
+    expect(prisma.machinePalletItem.findFirst).toHaveBeenCalledWith({
+      where: { resourceCd: 'MC01', palletNo: { gt: 28 } },
+      orderBy: { palletNo: 'desc' },
+      select: { palletNo: true },
+    });
+    expect(prisma.palletMachineIllustration.upsert).toHaveBeenCalledWith({
+      where: { resourceCd: 'MC01' },
+      create: { resourceCd: 'MC01', palletCount: 28, imageRelativeUrl: null },
+      update: { palletCount: 28 },
+    });
+  });
+
+  it('高番号パレットに登録がある場合は台数縮小を拒否する', async () => {
+    vi.mocked(prisma.machinePalletItem.findFirst).mockResolvedValueOnce({ palletNo: 15 });
+
+    await expect(
+      commandUpdatePalletMachinePalletCount({ machineCd: 'MC01', palletCount: 10 })
+    ).rejects.toThrow('パレット15以降に登録があるため、台数を10未満にできません');
   });
 });

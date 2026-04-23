@@ -99,6 +99,21 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
     }
   }, [machines, selectedCd]);
 
+  const currentMachine = useMemo(
+    () => machines.find((m) => m.machineCd === selectedCd),
+    [machines, selectedCd]
+  );
+
+  useEffect(() => {
+    if (!currentMachine) return;
+    const maxP = currentMachine.palletCount;
+    setPalletNo((n) => {
+      if (n > maxP) return maxP;
+      if (n < 1) return 1;
+      return n;
+    });
+  }, [currentMachine?.machineCd, currentMachine?.palletCount]);
+
   const selectMachine = useCallback((cd: string) => {
     setSelectedCd(cd);
     setSelectedItemId(null);
@@ -106,11 +121,6 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
       window.localStorage.setItem(PALLET_VIZ_SELECTED_MACHINE_LS_KEY, cd);
     }
   }, []);
-
-  const currentMachine = useMemo(
-    () => machines.find((m) => m.machineCd === selectedCd),
-    [machines, selectedCd]
-  );
 
   const currentPallet = useMemo(
     () => currentMachine?.pallets.find((p) => p.palletNo === palletNo),
@@ -127,9 +137,13 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
   }, [queryClient, clientKey]);
 
   const addMutation = useMutation({
-    mutationFn: (barcode: string) =>
+    mutationFn: (input: { barcode: string; palletNoOverride?: number }) =>
       postKioskPalletVisualizationItem(
-        { machineCd: selectedCd, palletNo, manufacturingOrderBarcodeRaw: barcode },
+        {
+          machineCd: selectedCd,
+          palletNo: input.palletNoOverride ?? palletNo,
+          manufacturingOrderBarcodeRaw: input.barcode,
+        },
         clientKey
       ),
     onSuccess: () => {
@@ -162,16 +176,25 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
   });
 
   const applyBarcode = useCallback(
-    (raw: string) => {
+    (raw: string, options?: { palletNo?: number }) => {
       const barcode = raw.trim();
       if (!barcode) return;
       if (selectedItemId) {
         replaceMutation.mutate({ itemId: selectedItemId, barcode });
       } else {
-        addMutation.mutate(barcode);
+        addMutation.mutate({ barcode, palletNoOverride: options?.palletNo });
       }
     },
-    [selectedItemId, addMutation, replaceMutation]
+    [selectedItemId, addMutation, replaceMutation, palletNo]
+  );
+
+  const addBarcodeToPallet = useCallback(
+    (raw: string, palletNoOverride: number) => {
+      const barcode = raw.trim();
+      if (!barcode) return;
+      addMutation.mutate({ barcode, palletNoOverride });
+    },
+    [addMutation]
   );
 
   const handleScanSuccess = useCallback(
@@ -235,6 +258,7 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
     scanOpen,
     setScanOpen,
     applyBarcode,
+    addBarcodeToPallet,
     handleScanSuccess,
     busy,
     deleteSelectedItem,

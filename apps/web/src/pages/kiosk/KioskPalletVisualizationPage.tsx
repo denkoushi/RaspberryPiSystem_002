@@ -58,6 +58,7 @@ export function KioskPalletVisualizationPage() {
                 illustrationUrl={ctrl.currentMachine.illustrationUrl ?? null}
                 machineName={ctrl.currentMachine.machineName}
                 machineCd={ctrl.currentMachine.machineCd}
+                palletCount={ctrl.currentMachine.palletCount}
                 selectedPalletNo={ctrl.palletNo}
                 onSelectPalletNo={ctrl.setPalletNo}
               />

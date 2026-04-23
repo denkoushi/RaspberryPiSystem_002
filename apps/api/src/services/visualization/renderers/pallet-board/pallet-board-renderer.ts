@@ -78,19 +78,20 @@ export class PalletBoardRenderer implements Renderer {
       const headerBoxH = Math.round(innerH * 0.12);
 
       const palletCols = 5;
-      const palletRows = 2;
+      const palletN = m.pallets.length;
+      const palletRows = Math.max(1, Math.ceil(palletN / palletCols));
       const slotW = innerW / palletCols;
       const slotH = (innerH - headerBoxH) / palletRows;
 
       const palletBlocks: string[] = [];
-      for (let pi = 0; pi < 10; pi += 1) {
+      for (let pi = 0; pi < palletN; pi += 1) {
         const pc = pi % palletCols;
         const pr = Math.floor(pi / palletCols);
         const sx = x + pad + pc * slotW;
         const sy = y + pad + headerBoxH + pr * slotH;
-        const palletNo = pi + 1;
-        const pallet = m.pallets.find((p) => p.palletNo === palletNo);
-        const lines = pallet?.lines ?? [];
+        const slot = m.pallets[pi];
+        const palletNo = slot?.palletNo ?? pi + 1;
+        const lines = slot?.lines ?? [];
         const preview = lines.slice(0, 3).join(' / ') || '—';
         const more = lines.length > 3 ? ` +${lines.length - 3}` : '';
 

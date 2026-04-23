@@ -25,7 +25,7 @@ function requireDeviceId(clientDevice: { id?: string }): string {
 
 const addItemBodySchema = z.object({
   machineCd: z.string().min(1),
-  palletNo: z.number().int().min(1).max(10),
+  palletNo: z.number().int().min(1),
   manufacturingOrderBarcodeRaw: z.string().min(1),
 });
 
@@ -35,7 +35,7 @@ const replaceBodySchema = z.object({
 
 const clearParamsSchema = z.object({
   machineCd: z.string().min(1),
-  palletNo: z.coerce.number().int().min(1).max(10),
+  palletNo: z.coerce.number().int().min(1),
 });
 
 const historyQuerySchema = z.object({

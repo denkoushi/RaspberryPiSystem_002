@@ -1,8 +1,10 @@
 import clsx from 'clsx';
 
-import { PALLET_COUNT } from './palletVizNumberGridConfig';
+import { DEFAULT_KIOSK_PALLET_COUNT } from './palletVizNumberGridConfig';
 
 export type PalletVizPalletNumberGridProps = {
+  /** 加工機のパレット欄 1..N */
+  palletCount: number;
   selectedPalletNo: number;
   onSelectPalletNo: (n: number) => void;
   /** 左ペイン等の狭い幅向け（パディング・文字を縮小） */
@@ -10,25 +12,24 @@ export type PalletVizPalletNumberGridProps = {
 };
 
 /**
- * パレット番号 1..PALLET_COUNT（5×2）の選択グリッド。アクセシビリティ属性は本画面と埋め込みで共通。
+ * パレット番号 1..palletCount のグリッド（5列折返し）。アクセシビリティ属性は本画面と埋め込みで共通。
  */
 export function PalletVizPalletNumberGrid({
+  palletCount: palletCountProp,
   selectedPalletNo,
   onSelectPalletNo,
   variant = 'default',
 }: PalletVizPalletNumberGridProps) {
   const compact = variant === 'compact';
+  const palletCount = Math.max(1, palletCountProp || DEFAULT_KIOSK_PALLET_COUNT);
 
   return (
     <div
-      className={clsx(
-        'grid w-full min-w-0 shrink-0 grid-cols-5',
-        compact ? 'gap-1.5' : 'gap-2 sm:w-[17.5rem] sm:min-w-[17.5rem]'
-      )}
+      className={clsx('grid w-full min-w-0 shrink-0 grid-cols-5', compact ? 'gap-1.5' : 'gap-2 sm:w-[17.5rem] sm:min-w-[17.5rem]')}
       role="group"
-      aria-label={`パレット番号1から${PALLET_COUNT}を選択`}
+      aria-label={`パレット番号1から${palletCount}を選択`}
     >
-      {Array.from({ length: PALLET_COUNT }, (_, i) => i + 1).map((n) => {
+      {Array.from({ length: palletCount }, (_, i) => i + 1).map((n) => {
         const selected = selectedPalletNo === n;
         return (
           <button

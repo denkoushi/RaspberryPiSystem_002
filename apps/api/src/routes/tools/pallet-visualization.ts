@@ -4,8 +4,10 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   commandDeletePalletIllustration,
+  commandUpdatePalletMachinePalletCount,
   commandUpsertPalletIllustration,
 } from '../../services/pallet-visualization/pallet-visualization-command.service.js';
+import { MAX_MACHINE_PALLET_COUNT } from '../../services/pallet-visualization/pallet-count-bounds.js';
 import { queryPalletVisualizationBoard } from '../../services/pallet-visualization/pallet-visualization-query.service.js';
 import { PalletMachineIllustrationStorage } from '../../lib/pallet-machine-illustration-storage.js';
 
@@ -55,6 +57,24 @@ export async function registerToolsPalletVisualizationRoutes(app: FastifyInstanc
       const params = machineCdParamsSchema.parse(request.params);
       await commandDeletePalletIllustration({ machineCd: params.machineCd });
       return reply.status(204).send();
+    }
+  );
+
+  const patchPalletCountBodySchema = z.object({
+    palletCount: z.coerce.number().int().min(1).max(MAX_MACHINE_PALLET_COUNT),
+  });
+
+  app.patch(
+    '/pallet-visualization/machines/:machineCd/pallet-count',
+    { preHandler: canManage, config: { rateLimit: false } },
+    async (request) => {
+      const params = machineCdParamsSchema.parse(request.params);
+      const body = patchPalletCountBodySchema.parse(request.body);
+      await commandUpdatePalletMachinePalletCount({
+        machineCd: params.machineCd,
+        palletCount: body.palletCount,
+      });
+      return { ok: true as const };
     }
   );
 }

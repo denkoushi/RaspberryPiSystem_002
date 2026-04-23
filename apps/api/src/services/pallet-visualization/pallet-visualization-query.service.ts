@@ -10,6 +10,7 @@ import type {
 } from './pallet-visualization.types.js';
 import { getResourceNameMapByResourceCds } from '../production-schedule/resource-master.service.js';
 import { listRegisteredMachineCds } from './pallet-visualization-resource.service.js';
+import { DEFAULT_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 import { ApiError } from '../../lib/errors.js';
 
 const normalizeCd = (value: string): string => value.trim().toUpperCase();
@@ -52,9 +53,14 @@ function buildMachineBoards(params: {
     machineName: string | null;
     csvDashboardRowId: string | null;
   }>;
-  illustrations: Array<{ resourceCd: string; imageRelativeUrl: string }>;
+  illustrations: Array<{ resourceCd: string; imageRelativeUrl: string | null; palletCount: number }>;
 }): PalletVisualizationMachineBoard[] {
-  const illustByCd = new Map(params.illustrations.map((i) => [normalizeCd(i.resourceCd), i.imageRelativeUrl]));
+  const illustByCd = new Map(
+    params.illustrations.map((i) => [
+      normalizeCd(i.resourceCd),
+      { imageRelativeUrl: i.imageRelativeUrl, palletCount: i.palletCount },
+    ])
+  );
 
   const itemsByMachine = new Map<string, PalletVisualizationItem[]>();
   for (const row of params.items) {
@@ -66,10 +72,12 @@ function buildMachineBoards(params: {
 
   return params.machineCds.map((cd) => {
     const machineName = (params.nameMap[cd] ?? [])[0] ?? cd;
-    const illustrationUrl = illustByCd.get(cd) ?? null;
+    const meta = illustByCd.get(cd);
+    const illustrationUrl = meta?.imageRelativeUrl ?? null;
+    const palletCount = meta?.palletCount ?? DEFAULT_MACHINE_PALLET_COUNT;
     const machineItems = itemsByMachine.get(cd) ?? [];
     const palletMap = new Map<number, PalletVisualizationItem[]>();
-    for (let p = 1; p <= 10; p += 1) {
+    for (let p = 1; p <= palletCount; p += 1) {
       palletMap.set(p, []);
     }
     for (const it of machineItems) {
@@ -88,6 +96,7 @@ function buildMachineBoards(params: {
       machineCd: cd,
       machineName,
       illustrationUrl,
+      palletCount,
       pallets,
     };
   });
@@ -128,6 +137,7 @@ export async function queryPalletVisualizationMachines(): Promise<PalletVisualiz
     machineCd: machine.machineCd,
     machineName: machine.machineName,
     illustrationUrl: machine.illustrationUrl,
+    palletCount: machine.palletCount,
   }));
   return { machines: summaries };
 }
