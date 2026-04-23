@@ -544,6 +544,13 @@
 - **仕様**: 管理で **加工機ごとの `palletCount`（1..60、未設定行は API 既定 10）** を保持。スマホ **`/kiosk/mobile-placement/pallet-viz`**: 加工機セレクト・0-9 テンキー（**1 回→1 桁、2 回→2 桁**）→**カメラスキャン**で `addBarcodeToPallet`。キオスク専用ページ・埋め込みは **動的 `palletCount`** で番号グリッド。サイネージ **`pallet_board`** は **パレット行を `m.pallets.length` 分**描画。
 - **トラブルシュート（Pi3）**: **`signage-lite-update.timer` 起動**で **unit 未登録**相当が出た場合、**同じ** `--limit raspberrypi3` **を再実行**（本記録では収束）。併せて [deployment.md の運用メモ（2026-04-23 先頭）](../guides/deployment.md) を参照。
 
+**追補（2026-04-23・配膳スマホ パレット可視化 Web モジュール分割・Pi5→Pi4×4・Pi3 除外）**:
+- ブランチ **`feat/mobile-pallet-viz-solid`**・代表 **`25cdbe9b`**（`apps/web/src/features/kiosk/pallet-visualization/*` の分割・`design-previews/kiosk-mobile-pallet-viz.html`・API/DB 変更なし）。
+- **順序**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 単体**・**`--detach --follow`**）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260423-130413-22550`** → **`20260423-130834-5856`** → **`20260423-131244-3832`** → **`20260423-131556-13627`** → **`20260423-132037-22553`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz`・`…/kiosk/pallet-visualization` → **各 200**。
+- **仕様**: テンキー桁の純関数（`pushPalletTenkeyDigit`）+ Vitest、`useKioskMobilePalletDigitBuffer`（`resetKey: selectedMachineCd`）、注文スキャン適用（`applyMobilePalletOrderScan`）、`PalletVizBarcodeGlyph` / `palletVizMobileTenkeyTokens` / `PalletVizMobileTenkeyPad` 等。**ページ**は薄く保ち、テンキー操作でローカルエラーを消す処理は **`setLocalError(null)` を各ハンドラにインライン**（`useCallback` で包んだ `clearErrorAnd(() => …)` をやめ、将来の exhaustive-deps 迷子を避ける）。
+- **トラブルシュート**: 挙動不変のリファクタだが、**配膳スマホ**で `/kiosk/mobile-placement/pallet-viz` を開き **加工機選択→テンキー→スキャン**の目視を推奨。デプロイ直列は [deployment.md](../guides/deployment.md) 冒頭どおり **Mac ロック**に注意。
+
 **仕様（追補）**:
 - **`GET /api/storage/pallet-machine-illustrations/*`**: `<img src>` 互換のため **認証なし**（ファイル名 UUID 前提・ストレージ層でパストラバーサル拒否）。ルートは **`request.params['*']`** でファイル名を解決。
 - **キオスク `/kiosk/pallet-visualization`**: **`usesKioskImmersiveLayout` が true であること**（`h-dvh` 系シェル）が **左 `aside` 独立スクロールの前提**。左 `aside` と部品リストの **overflow 分離**・パレット番号 **10 列**・数字 **拡大**。**`useKeyboardWedgeScan`**: capture フェーズの `keydown`、**Enter** または **アイドル**で確定、**キー間隔が長い入力はバッファ破棄**（人手タイプの誤スキャン抑止）。**CDC ACM シリアル**は Pi4 **`barcode-agent`** + **`useSerialBarcodeStream`**（上記「追補（2026-04-23）」）。カメラモーダル表示中・送信中は **非アクティブ**。

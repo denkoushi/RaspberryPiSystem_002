@@ -1,24 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { getResolvedClientKey } from '../../api/client';
 import { BarcodeScanModal } from '../../features/barcode-scan/BarcodeScanModal';
 import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL } from '../../features/barcode-scan/formatPresets';
 import {
+  applyMobilePalletOrderScan,
   PalletVizActionRow,
   PalletVizItemList,
+  PalletVizMobileMachineSelect,
+  PalletVizMobilePageHeader,
   PalletVizMobileTenkeyPad,
-  resolvePalletNoFromTenkeyDigits,
+  useKioskMobilePalletDigitBuffer,
   usePalletVisualizationController,
 } from '../../features/kiosk/pallet-visualization';
-import { mpKioskTheme } from '../../features/mobile-placement/ui/mobilePlacementKioskTheme';
-
-function pushTenkeyDigit(prev: number[], d: number): number[] {
-  if (prev.length >= 2) {
-    return [d];
-  }
-  return [...prev, d];
-}
 
 /**
  * 配膳スマホ向けパレット可視化: 加工機 select + テンキー + スキャンで登録。ウェッジ/シリアルは使わない。
@@ -28,77 +23,52 @@ export function KioskMobilePalletVisualizationPage() {
   const navigate = useNavigate();
   const ctrl = usePalletVisualizationController({ clientKey, enableKeyboardWedge: false, enableSerialBarcodeStream: false });
 
-  const [digitBuffer, setDigitBuffer] = useState<number[]>([]);
+  const { digits, appendDigit, backspace, clear, reset } = useKioskMobilePalletDigitBuffer({
+    resetKey: ctrl.selectedMachineCd,
+  });
+
   const [localError, setLocalError] = useState<string | null>(null);
   const [orderScanOpen, setOrderScanOpen] = useState(false);
 
   useEffect(() => {
-    setDigitBuffer([]);
     setLocalError(null);
   }, [ctrl.selectedMachineCd]);
-
-  const handleDigit = useCallback((d: number) => {
-    setLocalError(null);
-    setDigitBuffer((prev) => pushTenkeyDigit(prev, d));
-  }, []);
 
   const handleOrderScanSuccess = useCallback(
     (text: string) => {
       setOrderScanOpen(false);
       setLocalError(null);
-      if (!ctrl.currentMachine) {
-        setLocalError('加工機を選択してください');
+      const result = applyMobilePalletOrderScan(text, digits, {
+        palletCount: ctrl.currentMachine?.palletCount,
+        setPalletNo: ctrl.setPalletNo,
+        addBarcodeToPallet: ctrl.addBarcodeToPallet,
+      });
+      if (!result.ok) {
+        setLocalError(result.message);
         return;
       }
-      const resolved = resolvePalletNoFromTenkeyDigits(digitBuffer, ctrl.currentMachine.palletCount);
-      if (!resolved.ok) {
-        setLocalError(resolved.message);
-        return;
-      }
-      ctrl.setPalletNo(resolved.value);
-      ctrl.addBarcodeToPallet(text, resolved.value);
-      setDigitBuffer([]);
+      reset();
     },
-    [ctrl, digitBuffer]
+    [ctrl.addBarcodeToPallet, ctrl.currentMachine?.palletCount, ctrl.setPalletNo, digits, reset]
   );
 
   const busy = ctrl.busy;
-  const tenkeyHint = useMemo(
-    () => (digitBuffer.length === 0 ? '1〜9を1回、または2回押してから「製造orderをスキャン」' : '製造orderのバーコードをスキャンで確定'),
-    [digitBuffer.length]
-  );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2 text-white">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <button type="button" className={mpKioskTheme.partSearchButton} onClick={() => navigate('/kiosk/mobile-placement')}>
-          配膳に戻る
-        </button>
-        <h1 className="min-w-0 text-lg font-extrabold text-amber-200">パレット可視化</h1>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 text-white">
+      <PalletVizMobilePageHeader
+        digits={digits}
+        title="パレット可視化"
+        onNavigateBack={() => navigate('/kiosk/mobile-placement')}
+      />
 
-      <div className="shrink-0 space-y-1 rounded-[10px] border-l-4 border-l-teal-400 bg-[#001a18] px-2.5 py-2">
-        <label className="text-xs font-bold uppercase tracking-wide text-neutral-400" htmlFor="pallet-viz-mobile-machine">
-          加工機
-        </label>
-        <select
-          id="pallet-viz-mobile-machine"
-          className="w-full min-w-0 rounded-md border-2 border-teal-500 bg-black px-2 py-2 text-base font-bold text-white"
-          value={ctrl.selectedMachineCd}
-          onChange={(e) => ctrl.selectMachine(e.target.value)}
-        >
-          {ctrl.machines.map((m) => (
-            <option key={m.machineCd} value={m.machineCd}>
-              {m.machineName} ({m.machineCd})
-            </option>
-          ))}
-        </select>
-        {ctrl.currentMachine ? (
-          <p className="text-xs text-neutral-400">
-            パレット1〜{ctrl.currentMachine.palletCount}（既定10・管理画面で変更）
-          </p>
-        ) : null}
-      </div>
+      <PalletVizMobileMachineSelect
+        id="pallet-viz-mobile-machine"
+        machines={ctrl.machines}
+        value={ctrl.selectedMachineCd}
+        onChange={ctrl.selectMachine}
+        palletCount={ctrl.currentMachine?.palletCount ?? null}
+      />
 
       <BarcodeScanModal
         open={orderScanOpen}
@@ -117,31 +87,24 @@ export function KioskMobilePalletVisualizationPage() {
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain">
         <PalletVizMobileTenkeyPad
-          digitBuffer={digitBuffer}
-          onDigit={handleDigit}
+          onDigit={(d) => {
+            setLocalError(null);
+            appendDigit(d);
+          }}
           onBackspace={() => {
             setLocalError(null);
-            setDigitBuffer((p) => p.slice(0, -1));
+            backspace();
           }}
           onClear={() => {
             setLocalError(null);
-            setDigitBuffer([]);
+            clear();
           }}
-          disabled={busy}
-        />
-        <p className="text-xs text-neutral-400">{tenkeyHint}</p>
-
-        <button
-          type="button"
-          className={mpKioskTheme.orderSubmitButton}
-          disabled={busy}
-          onClick={() => {
+          onOpenOrderScan={() => {
             setLocalError(null);
             setOrderScanOpen(true);
           }}
-        >
-          製造orderをスキャン（確定）
-        </button>
+          disabled={busy}
+        />
 
         {ctrl.currentMachine ? (
           <>
