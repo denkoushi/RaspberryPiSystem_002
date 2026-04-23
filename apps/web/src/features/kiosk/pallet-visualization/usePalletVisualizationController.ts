@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
@@ -28,6 +29,61 @@ function mapItemsToListItems(items: PalletVisualizationItemDto[]): PalletVizList
     machineName: it.machineName,
   }));
 }
+
+type ApiErrorPayload = {
+  message?: string;
+  errorCode?: string;
+};
+
+const DEBUG_ENDPOINT = 'http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e';
+const DEBUG_SESSION_ID = '529e0f';
+
+function postDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>
+): void {
+  // #region agent log
+  void fetch(DEBUG_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': DEBUG_SESSION_ID },
+    body: JSON.stringify({
+      sessionId: DEBUG_SESSION_ID,
+      runId: 'pallet-ui-error-message',
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+
+function resolveMutationError(error: unknown): string | null {
+  if (!error) return null;
+  if (isAxiosError(error)) {
+    const data = error.response?.data as ApiErrorPayload | undefined;
+    if (typeof data?.message === 'string' && data.message.trim()) {
+      postDebugLog('H6', 'usePalletVisualizationController.ts:resolveMutationError', 'use-api-message', {
+        hasErrorCode: typeof data.errorCode === 'string',
+      });
+      return data.message;
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    postDebugLog('H7', 'usePalletVisualizationController.ts:resolveMutationError', 'fallback-error-message', {
+      message: error.message,
+    });
+    return error.message;
+  }
+  return null;
+}
+
+export const __testables = {
+  resolveMutationError,
+};
 
 export type UsePalletVisualizationControllerOptions = {
   clientKey?: string;
@@ -191,8 +247,8 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
   }, [clearMutation]);
 
   const mutationError =
-    (addMutation.error as Error | undefined)?.message ??
-    (replaceMutation.error as Error | undefined)?.message ??
+    resolveMutationError(addMutation.error) ??
+    resolveMutationError(replaceMutation.error) ??
     null;
 
   return {
