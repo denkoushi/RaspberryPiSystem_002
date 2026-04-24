@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-24）
+
+- **キオスク順位ボード Pi4 向け軽量取得（`responseProfile=leaderboard`・Virtualization・ポーリング整理）本番・Pi5→Pi4×4 順次（Pi3 除外）・Phase12 43/0/0**: ブランチ **`feat/kiosk-leaderboard-pi4-performance-solid`**・代表 **`95bec8b7`**（API 一覧クエリ・Web `leaderOrderBoard/` 性能系）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-pi4-performance-solid infrastructure/ansible/inventory.yml --limit <host> --detach --follow` を **1 台ずつ**。**Detach Run ID**（`ansible-update-`）: `20260424-153647-24567` → `20260424-154843-4943` → `20260424-155623-24544` → `20260424-160421-6565` → `20260424-161137-27861`。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**トラブルシュート**: `raspi4-kensaku-stonebase01` で **barcode-agent 待機の 1 回リトライ**例あり（最終 **`failed=0`**）。**ナレッジ**: [KB-297 §Pi4 performance](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-pi4-performance-2026-04-24)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)（**PR** はマージ後に追記）。
+
 ### 🆕 最新アップデート（2026-04-22）
 
 - **加工機イラスト `pallet-machine-illustrations` Docker 永続化（compose bind + Ansible ホスト）本番・Pi5 のみ・Phase12 43/0/0**: ブランチ **`fix/pallet-machine-illustrations-volume`**・代表 **`937684fd`**（デプロイで `api` 再作成時に未マウントの実ファイルが消える不具合の是正）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/pallet-machine-illustrations-volume infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260422-185725-32599`**（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **74s**）。**Pi4/Pi3**: 本変更の対象外（ストレージは Pi5 `api`）。**ナレッジ**: [KB-355（api.md）](./knowledge-base/api.md)・[KB-343 同系（計測ジャンル）](./knowledge-base/infrastructure/ansible-deployment.md#kb-343-measuring-instrument-genre-image-persistence)。**PR**: [#183](https://github.com/denkoushi/RaspberryPiSystem_002/pull/183)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
