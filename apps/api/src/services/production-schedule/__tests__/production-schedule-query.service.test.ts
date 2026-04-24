@@ -575,5 +575,57 @@ describe('production-schedule-query.service', () => {
 
     expect(result.rows[0]?.actualPerPieceMinutes).toBe(4.4);
   });
+
+  it('responseProfile=leaderboard では actual-hours と機種名 enrich を省略する', async () => {
+    vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([
+      {
+        location: 'kiosk-1',
+        fhincd: 'X',
+        resourceCd: 'R01',
+        medianPerPieceMinutes: 4.4,
+        p75PerPieceMinutes: null
+      }
+    ] as never);
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'row-1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          rowData: {
+            ProductNo: '0001',
+            FSEIBAN: 'A',
+            FHINCD: 'X',
+            FSIGENCD: 'R01',
+            FKOJUN: '10',
+            progress: ''
+          },
+          processingOrder: 2,
+          globalRank: 5,
+          note: null,
+          processingType: null,
+          dueDate: null
+        }
+      ] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 20,
+      queryText: 'A',
+      productNos: [],
+      resourceCds: [],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.rows[0]?.actualPerPieceMinutes).toBeNull();
+    expect(result.rows[0]?.resolvedMachineName).toBeNull();
+    expect(prisma.productionScheduleActualHoursFeature.findMany).not.toHaveBeenCalled();
+    expect(enrichProductionScheduleRowsWithResolvedMachineName).not.toHaveBeenCalled();
+  });
 });
 

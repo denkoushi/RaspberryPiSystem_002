@@ -619,6 +619,8 @@ export async function getKioskProductionSchedule(params?: {
   allowResourceOnly?: boolean;
   /** v2: Mac が参照する端末の deviceScopeKey */
   targetDeviceScopeKey?: string;
+  /** `leaderboard`: API が軽量プロファイルで応答（actual-hours / 機種名バッチ解決省略） */
+  responseProfile?: 'full' | 'leaderboard';
 }) {
   const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', { params });
   return data;

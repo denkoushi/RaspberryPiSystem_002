@@ -30,7 +30,12 @@ export const productionScheduleQuerySchema = z.object({
     .optional()
     .transform((v) => v === 'true' || v === '1'),
   /** v2: Mac の一覧/usage 取得時に必須（サーバ側で検証） */
-  targetDeviceScopeKey: z.string().min(1).max(200).optional()
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  /**
+   * `leaderboard`: キオスク順位ボード向けに actual-hours / 機種名バッチ解決を省略し、
+   * COUNT+一覧取得を並列化してレイテンシを抑える（既定は full）。
+   */
+  responseProfile: z.enum(['full', 'leaderboard']).optional()
 });
 
 export const productionScheduleOrderSearchQuerySchema = z.object({

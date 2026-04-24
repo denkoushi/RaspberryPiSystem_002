@@ -66,6 +66,8 @@ export type ProductionScheduleListParams = {
   allowResourceOnly?: boolean;
   locationKey: string;
   siteKey?: string;
+  /** `leaderboard`: Pi4 順位ボード向けの軽量レスポンス（後方互換のため省略時は full） */
+  responseProfile?: 'full' | 'leaderboard';
 };
 
 export type ProductionScheduleOrderUsageParams = {
@@ -308,8 +310,10 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     hasDueDateOnly,
     allowResourceOnly = false,
     locationKey,
-    siteKey
+    siteKey,
+    responseProfile = 'full'
   } = params;
+  const isLeaderboardProfile = responseProfile === 'leaderboard';
   const textConditions = buildTextConditions(queryText);
   const resourceCategoryPolicy = await getResourceCategoryPolicy({
     siteKey,
@@ -369,16 +373,17 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     hasDueDateOnly
   })} ${productNoCondition}`;
 
-  const countRows = await prisma.$queryRaw<Array<{ total: bigint }>>`
+  const siteScopedGlobalRankLocation = siteKey?.trim().length ? siteKey.trim() : locationKey;
+
+  const offset = (page - 1) * pageSize;
+
+  const countPromise = prisma.$queryRaw<Array<{ total: bigint }>>`
     SELECT COUNT(*)::bigint AS total
     FROM "CsvDashboardRow"
     WHERE ${baseWhere} ${queryWhere}
   `;
-  const total = Number(countRows[0]?.total ?? 0n);
-  const siteScopedGlobalRankLocation = siteKey?.trim().length ? siteKey.trim() : locationKey;
 
-  const offset = (page - 1) * pageSize;
-  const rows = await prisma.$queryRaw<ProductionScheduleRow[]>`
+  const rowsPromise = prisma.$queryRaw<ProductionScheduleRow[]>`
     SELECT
       "CsvDashboardRow"."id",
       "CsvDashboardRow"."occurredAt",
@@ -453,6 +458,23 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LIMIT ${pageSize} OFFSET ${offset}
   `;
 
+  const [countRows, rows] = await Promise.all([countPromise, rowsPromise]);
+  const total = Number(countRows[0]?.total ?? 0n);
+
+  if (isLeaderboardProfile) {
+    const lightRows = rows.map((row) => ({
+      ...row,
+      actualPerPieceMinutes: null as number | null,
+      resolvedMachineName: null as string | null
+    }));
+    return {
+      page,
+      pageSize,
+      total,
+      rows: lightRows
+    };
+  }
+
   const rowResourceCds = rows
     .map((row) => {
       const rowData = (row.rowData ?? {}) as Record<string, unknown>;
@@ -461,7 +483,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     .filter((resourceCd) => resourceCd.length > 0);
   const actualHoursReadContext = await loadActualHoursReadContext({
     locationKey,
-    resourceCds: rowResourceCds,
+    resourceCds: rowResourceCds
   });
 
   const rowsWithActualHours = rows.map((row) => {

@@ -370,6 +370,29 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((r) => r.rowData.FSEIBAN)).toEqual(['A', 'A']);
   });
 
+  it('responseProfile=leaderboard omits actual-hours and resolvedMachineName enrichment', async () => {
+    const resLb = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A&responseProfile=leaderboard',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(resLb.statusCode).toBe(200);
+    const lbBody = resLb.json() as {
+      rows: Array<{
+        resolvedMachineName?: string | null;
+        actualPerPieceMinutes?: number | null;
+        rowData: { ProductNo?: string };
+      }>;
+      total: number;
+    };
+    expect(lbBody.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001']);
+    expect(lbBody.total).toBe(2);
+    for (const r of lbBody.rows) {
+      expect(r.resolvedMachineName ?? null).toBeNull();
+      expect(r.actualPerPieceMinutes ?? null).toBeNull();
+    }
+  });
+
   it('filters by q with comma-separated tokens (OR)', async () => {
     const res = await app.inject({
       method: 'GET',

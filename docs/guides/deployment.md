@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-24（T4 帯混色比集約の本番反映・計測機器持出関連）
+最終更新: 2026-04-24（順位ボード Pi4 軽量経路・T4 帯混色比集約・計測機器持出関連）
+
+### 補足（2026-04-24: キオスク順位ボード Pi4 向け軽量取得・Virtualization・API `responseProfile=leaderboard`）
+
+- **変更概要**: 生産スケジュール **キオスク一覧**に **`responseProfile=leaderboard`**（クエリ）を追加し、順位ボード専用に **実績時間系の重い付与**や **機種名の一覧外エンリッチ**を省略して **転送・DB 負荷を削減**。Web は **`@tanstack/react-virtual`** による仮想化、**`leaderBoardRefetchPolicy`** によるポーリング整理、**`useLeaderOrderBoardDeviceContext`** で **`manual-order-overview` をデバイス文脈から切り離し**、ミューテーション周りの **`useCallback` 安定化**（`useLeaderBoardDueAssist` / `useProductionScheduleMutations`）など。**DB/新規 HTTP パスはなし**（既存一覧契約のクエリ拡張）。
+- **対象ホスト（5 台・順次）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。各 **`--limit <host>`**。**Pi3 は対象外**（本変更は Pi3 専用手順不要）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-pi4-performance-solid infrastructure/ansible/inventory.yml --limit <host> --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`feat/kiosk-leaderboard-pi4-performance-solid`**・代表コミット **`95bec8b7`**。**Detach Run ID**（`ansible-update-`）: **`20260424-153647-24567`**（`raspberrypi5`）/ **`20260424-154843-4943`**（`raspberrypi4`）/ **`20260424-155623-24544`**（`raspi4-robodrill01`）/ **`20260424-160421-6565`**（`raspi4-fjv60-80`）/ **`20260424-161137-27861`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 `100.106.158.2`・Tailscale 経由の本セッション実測）。
+- **知見**: 順位ボードは **一覧 `pageSize` が大きい**と Pi4 の **パース・レイアウト**が律速になりやすい。**API 側の leaderboard プロファイル**と **行の仮想化**を組み合わせると、既存画面（本流スケジュール等）への **`responseProfile` 未指定の挙動**は変えずに済む。
+- **トラブルシュート（共通）**: デプロイ前 **未追跡ファイル**は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast**。**`raspi4-kensaku-stonebase01`** では **`barcode-agent` 健全性待機が 1 回リトライ**したが **最終的に成功**（`failed=0`）。継続失敗時は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) と当該ホストの `barcode-agent` / `deploy-status` を確認。
 
 ### 補足（2026-04-24: 計測機器持出 T4 帯 混色比の単一化・API のみ）
 

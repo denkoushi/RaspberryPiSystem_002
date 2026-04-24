@@ -308,16 +308,19 @@ export function useKioskProductionSchedule(
     pageSize?: number;
     allowResourceOnly?: boolean;
     targetDeviceScopeKey?: string;
+    responseProfile?: 'full' | 'leaderboard';
   },
-  options?: { enabled?: boolean; pauseRefetch?: boolean }
+  options?: { enabled?: boolean; pauseRefetch?: boolean; refetchIntervalMs?: number | false }
 ) {
+  const interval =
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
   return useQuery({
     queryKey: ['kiosk-production-schedule', params],
     queryFn: () => getKioskProductionSchedule(params),
     // 仕掛中が頻繁に変わるため軽く自動更新
     // NOTE: 書き込み操作（完了/未完了戻し/納期/備考/順番/処理など）と同時に走ると体感遅延が出やすいので、
     //       操作中はポーリングを止め、操作完了後に invalidate で再取得させる。
-    refetchInterval: options?.pauseRefetch ? false : 30000,
+    refetchInterval: interval,
     placeholderData: (previousData) => previousData,
     enabled: options?.enabled ?? true
   });
@@ -340,11 +343,16 @@ export function useKioskProductionScheduleOrderSearchCandidates(
   });
 }
 
-export function useKioskProductionScheduleResources(options?: { pauseRefetch?: boolean }) {
+export function useKioskProductionScheduleResources(options?: {
+  pauseRefetch?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const interval =
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 60000);
   return useQuery({
     queryKey: ['kiosk-production-schedule-resources'],
     queryFn: getKioskProductionScheduleResources,
-    refetchInterval: options?.pauseRefetch ? false : 60000,
+    refetchInterval: interval
   });
 }
 
@@ -358,8 +366,15 @@ export function useKioskProductionScheduleProcessingTypeOptions(options?: { paus
 
 export function useKioskProductionScheduleOrderUsage(
   resourceCds?: string,
-  options?: { pauseRefetch?: boolean; targetDeviceScopeKey?: string; enabled?: boolean }
+  options?: {
+    pauseRefetch?: boolean;
+    targetDeviceScopeKey?: string;
+    enabled?: boolean;
+    refetchIntervalMs?: number | false;
+  }
 ) {
+  const interval =
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 15000);
   return useQuery({
     queryKey: ['kiosk-production-schedule-order-usage', resourceCds, options?.targetDeviceScopeKey],
     queryFn: () =>
@@ -367,16 +382,21 @@ export function useKioskProductionScheduleOrderUsage(
         ...(resourceCds ? { resourceCds } : {}),
         ...(options?.targetDeviceScopeKey ? { targetDeviceScopeKey: options.targetDeviceScopeKey } : {})
       }),
-    refetchInterval: options?.pauseRefetch ? false : 15000,
+    refetchInterval: interval,
     enabled: options?.enabled ?? true
   });
 }
 
-export function useKioskProductionScheduleSearchState(options?: { pauseRefetch?: boolean }) {
+export function useKioskProductionScheduleSearchState(options?: {
+  pauseRefetch?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const interval =
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 4000);
   return useQuery({
     queryKey: ['kiosk-production-schedule-search-state'],
     queryFn: getKioskProductionScheduleSearchState,
-    refetchInterval: options?.pauseRefetch ? false : 4000,
+    refetchInterval: interval
   });
 }
 
@@ -388,11 +408,16 @@ export function useKioskProductionScheduleSearchHistory(options?: { pauseRefetch
   });
 }
 
-export function useKioskProductionScheduleHistoryProgress(options?: { pauseRefetch?: boolean }) {
+export function useKioskProductionScheduleHistoryProgress(options?: {
+  pauseRefetch?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
+  const interval =
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
   return useQuery({
     queryKey: ['kiosk-production-schedule-history-progress'],
     queryFn: getKioskProductionScheduleHistoryProgress,
-    refetchInterval: options?.pauseRefetch ? false : 30000,
+    refetchInterval: interval
   });
 }
 
@@ -619,24 +644,32 @@ export function useKioskProductionScheduleDueManagementManualOrderOverview(
 
 export function useKioskProductionScheduleManualOrderSiteDevices(
   siteKey: string | undefined,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
 ) {
+  const interval = options?.refetchIntervalMs === undefined ? false : options.refetchIntervalMs;
   return useQuery({
     queryKey: ['kiosk-production-schedule-manual-order-site-devices', siteKey],
     queryFn: () => getKioskProductionScheduleManualOrderSiteDevices(siteKey!),
-    enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0)
+    enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0),
+    refetchInterval: interval
   });
 }
 
 export function useKioskProductionScheduleManualOrderResourceAssignments(
   siteKey: string | undefined,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; refetchIntervalMs?: number | false }
 ) {
+  const interval =
+    options?.refetchIntervalMs === undefined
+      ? 30000
+      : options.refetchIntervalMs === false
+        ? false
+        : options.refetchIntervalMs;
   return useQuery({
     queryKey: ['kiosk-production-schedule-manual-order-resource-assignments', siteKey],
     queryFn: () => getKioskProductionScheduleManualOrderResourceAssignments(siteKey!),
     enabled: (options?.enabled ?? true) && Boolean(siteKey && siteKey.trim().length > 0),
-    refetchInterval: 30000
+    refetchInterval: interval
   });
 }
 
