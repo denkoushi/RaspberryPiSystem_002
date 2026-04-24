@@ -1,12 +1,13 @@
 import sharp from 'sharp';
-import type { Md3Tokens } from '../_design-system/md3.js';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { createMd3Tokens, escapeSvgText } from '../_design-system/index.js';
 import { planMiInspectionCardPlacements } from './card-layout.js';
-import { MI_RETURNED_COUNT_COLUMN, type BodyLineTone } from './mi-instrument-display.types.js';
+import { MI_RETURNED_COUNT_COLUMN } from './mi-instrument-display.types.js';
 import type { MiLoanInspectionTableRow } from './row-priority.js';
 import { sortRowsForDisplay } from './row-priority.js';
+import { resolveMiCardChrome } from './mi-instrument-card-palette.js';
+import { buildMiInspectionCardSvgFragment } from './mi-inspection-card-svg.js';
 
 type LoanInspectionMetadata = {
   sectionEquals?: string;
@@ -42,25 +43,6 @@ function buildMessageSvg(message: string, width: number, height: number): string
     </svg>
   `;
 }
-
-function resolveBodyFill(tone: BodyLineTone, inspected: boolean, t: Md3Tokens): string {
-  if (!inspected) {
-    if (tone === 'muted') {
-      return t.colors.outline;
-    }
-    if (tone === 'primary') {
-      return t.colors.text.primary;
-    }
-    return t.colors.text.secondary;
-  }
-  if (tone === 'muted') {
-    return t.colors.outline;
-  }
-  return t.colors.status.onInfoContainer;
-}
-
-const NAMES_START_YPX = 66;
-const NAME_HEADER_BASELINE_YPX = 34;
 
 export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
   readonly type = 'measuring_instrument_loan_inspection';
@@ -109,10 +91,6 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
       numColumns,
       scale,
     });
-    const namesStartY = Math.round(NAMES_START_YPX * scale);
-    const nameHeaderBaselineY = Math.round(NAME_HEADER_BASELINE_YPX * scale);
-    const countFontSize = Math.max(13, Math.round(14 * scale));
-    const innerPad = Math.round(12 * scale);
     const cardsSvg = placements
       .map((p) => {
         const { x, y, height: cardHeight, bodyLines } = p;
@@ -121,48 +99,20 @@ export class MeasuringInstrumentLoanInspectionRenderer implements Renderer {
         const activeLoanCount = toNumber(row['貸出中計測機器数'], 0);
         const returnedLoanCount = toNumber(row[MI_RETURNED_COUNT_COLUMN], 0);
         const hasVisibleLoanState = activeLoanCount > 0 || returnedLoanCount > 0;
-        const cardFill = hasVisibleLoanState ? t.colors.status.infoContainer : '#020617';
-        const cardStroke = hasVisibleLoanState ? 'transparent' : t.colors.card.border;
-        const primaryText = hasVisibleLoanState ? t.colors.status.onInfoContainer : t.colors.text.primary;
-        const secondaryText = hasVisibleLoanState ? t.colors.status.onInfoContainer : t.colors.text.secondary;
-        const textLeft = x + innerPad;
-        const textRight = x + cardWidth - innerPad;
-        const headerBaselineOnCard = y + nameHeaderBaselineY;
-        let lineY = y + namesStartY;
-        const bodySvg = bodyLines
-          .map((line) => {
-            const fill = line.isSpacer ? 'transparent' : resolveBodyFill(line.tone, hasVisibleLoanState, t);
-            const advance = line.lineHeight;
-            if (line.isSpacer) {
-              lineY += advance;
-              return '';
-            }
-            const textContent = escapeXml(line.text);
-            const yPos = lineY;
-            lineY += advance;
-            return `<text x="${textLeft}" y="${yPos}"
-              font-size="${line.fontSize}" font-weight="600" fill="${fill}" font-family="sans-serif">
-              ${textContent}
-            </text>`;
-          })
-          .filter(Boolean)
-          .join('\n');
-        return `
-          <g>
-            <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}"
-              rx="${Math.round(10 * scale)}" ry="${Math.round(10 * scale)}"
-              fill="${cardFill}" stroke="${cardStroke}" />
-            <text x="${textLeft}" y="${headerBaselineOnCard}"
-              font-size="${Math.max(17, Math.round(19 * scale))}" font-weight="700" fill="${primaryText}" font-family="sans-serif">
-              ${escapeXml(employeeName)}
-            </text>
-            <text x="${textRight}" y="${headerBaselineOnCard}"
-              text-anchor="end" font-size="${countFontSize}" font-weight="700" fill="${secondaryText}" font-family="sans-serif">
-              貸出中 ${activeLoanCount} ・ 返却 ${returnedLoanCount}
-            </text>
-            ${bodySvg}
-          </g>
-        `;
+        const chrome = resolveMiCardChrome(t, hasVisibleLoanState);
+        return buildMiInspectionCardSvgFragment({
+          x,
+          y,
+          cardWidth,
+          cardHeight,
+          scale,
+          t,
+          chrome,
+          employeeName,
+          activeLoanCount,
+          returnedLoanCount,
+          bodyLines,
+        });
       })
       .join('\n');
     const emptyMessage =
