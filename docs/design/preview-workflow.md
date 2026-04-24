@@ -75,7 +75,7 @@ Pi3(軽量サイネージ)はSVGを直接描画しない。
 
 プレビューの意味:
 - **HTML モック**: 同 MD3 トークン（CSS 変数）でカード帯と本文の区切りをいじる。SVG 実装のたたき台。帯下の空き（`--mi-header-body-gap`）と `MI_NAMES_START_YPX` は [`mi-instrument-card-metrics.ts`](../../apps/api/src/services/visualization/renderers/measuring-instrument-loan-inspection/mi-instrument-card-metrics.ts) を単一参照。
-- **帯色サンプル**: R / T / E の各 ID でレシピを比較。採用 ID を決めたら `mi-instrument-card-palette.ts`（hex 混色）と HTML モック（`buildMeasuringInstrumentLoanInspectionHtmlPreview` の帯 `color-mix`）へ反映する。フルグリッド HTML モックの既定帯は **R3 相当（24% text-primary 混ぜ）**。
+- **帯色サンプル**: R / T / E の各 ID でレシピを比較。本番の貸出あり帯は **T4**（`mi-instrument-card-palette.ts` の `warning` 22% + `infoContainer`）で、フルグリッド HTML モックの帯も同じ `color-mix` に揃える。
 - **SVG→JPEG**: 現行レンダラー出力。HTML 合意内容を `measuring-instrument-loan-inspection-renderer.ts` へ写す際の差分確認用
 
 ## 運用ルール(おすすめ)

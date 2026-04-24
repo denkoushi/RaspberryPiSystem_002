@@ -534,10 +534,10 @@ ${tokensCss}
       justify-content: space-between;
       gap: 8px;
       padding: var(--mi-card-pad-y) var(--mi-card-pad-x);
-      /* 帯: R3 相当（24% text-primary 混ぜ）— design-preview 帯サンプル R3 と同じ方針 */
+      /* 帯: 本番 palette T4 — color-mix(warning 22%, info-container) */
       background: color-mix(
         in srgb,
-        var(--rps-md3-color-text-primary) 24%,
+        var(--rps-md3-color-status-warning) 22%,
         var(--rps-md3-color-status-info-container)
       );
     }

@@ -2,14 +2,14 @@ import type { Md3Tokens } from '../_design-system/md3.js';
 
 /**
  * カード1枚分の塗り・線・テキスト色。SVG では CSS color-mix が使えないため、
- * HTML モック（color-mix(…10% text-primary, infoContainer) 等）に近い比で hex 合成。
+ * design-preview の T4（warning 22% + infoContainer）等に相当する比で hex 合成。
  */
 
 export type MiCardChrome = {
   hasLoans: boolean;
   cardFill: string;
   cardStroke: string;
-  /** 帯専用。貸出あり: info 系に primary を薄く混ぜる / 貸出なし: #020617 に primary を薄く混ぜる */
+  /** 帯専用。貸出あり: T4（warning を info 地に 22%）/ 貸出なし: #020617 に primary を薄く混ぜる */
   bandFill: string;
   nameFill: string;
   countFill: string;
@@ -43,8 +43,8 @@ function mixHex(a: string, b: string, ratioA: number): string {
  */
 export function resolveMiCardChrome(t: Md3Tokens, hasLoans: boolean): MiCardChrome {
   if (hasLoans) {
-    // HTML: color-mix(in srgb, text-primary 10%, status-info-container)
-    const bandFill = mixHex(t.colors.text.primary, t.colors.status.infoContainer, 0.1);
+    // design-preview T4: color-mix(in srgb, status-warning 22%, status-info-container)
+    const bandFill = mixHex(t.colors.status.warning, t.colors.status.infoContainer, 0.22);
     return {
       hasLoans: true,
       cardFill: t.colors.status.infoContainer,

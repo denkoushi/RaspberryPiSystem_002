@@ -39,4 +39,12 @@ describe('resolveMiCardChrome', () => {
     expect(withLoan.cardFill).toBe(t.colors.status.infoContainer);
     expect(empty.cardFill).toBe('#020617');
   });
+
+  it('uses T4 band for loans: warning 22% + infoContainer (srgb hex lerp)', () => {
+    const t = createMd3Tokens({ width: 1920, height: 1080 });
+    const c = resolveMiCardChrome(t, true);
+    // #ffb84d * 0.22 + #2d4a7a * 0.78 -> #5b6270
+    expect(c.bandFill).toBe('#5b6270');
+    expect(c.nameFill).toBe(t.colors.status.onInfoContainer);
+  });
 });
