@@ -112,7 +112,7 @@ function toNumberCell(value: unknown, fallback = 0): number {
 type MiLoanCardHtmlOptions = {
   /** `.mi-card__band` に付与（帯色サンプル用の修飾クラス） */
   bandExtraClass?: string;
-  /** `<article />` に付与（帯の色味メタファー用・例: `mi-card--band-hue-green`） */
+  /** `<article />` に付与（帯の薄色味 T1〜T4 用・例: `mi-card--band-tint-succ`） */
   cardExtraClass?: string;
 };
 
@@ -160,37 +160,49 @@ type LoanBandVariant = { id: string; label: string; bandClass: string };
 type LoanBandHueVariant = { id: string; label: string; cardClass: string };
 type EmptyBandVariant = { id: string; label: string; bandClass: string };
 
-const LOAN_BAND_COLOR_VARIANTS: readonly LoanBandVariant[] = [
-  { id: 'A', label: '10% text-primary + infoContainer（いまの実装に相当）', bandClass: 'mi-band--p10' },
-  { id: 'B', label: '18% text-primary + infoContainer', bandClass: 'mi-band--p18' },
-  { id: 'C', label: '28% text-primary + infoContainer', bandClass: 'mi-band--p28' },
-  { id: 'D', label: '40% text-primary + infoContainer', bandClass: 'mi-band--p40' },
-  { id: 'E', label: '12% 白 + infoContainer（帯を明るく）', bandClass: 'mi-band--w12' },
-  { id: 'F', label: '10% 黒 + infoContainer（帯を暗く）', bandClass: 'mi-band--k10' },
-  { id: 'G', label: '20% status-info + infoContainer（アクセント寄り）', bandClass: 'mi-band--i20' },
+/**
+ * 視認性・カラーバランス優先（帯は本文 info 地より一階調しっかり、表題はトークンでコントラスト確保）
+ */
+const LOAN_BAND_BALANCED: readonly LoanBandVariant[] = [
   {
-    id: 'H',
-    label: '10% + 帯下 1px 区切り（on-info 35% 線）',
-    bandClass: 'mi-band--p10-divider',
+    id: 'R1',
+    label: 'ニュートラル: surface 最上階の帯＋表題=primary（青本文との境界が最も明瞭）',
+    bandClass: 'mi-band--r1',
+  },
+  {
+    id: 'R2',
+    label: '青階調: 帯を地より一段濃い青（黒 12% 混ぜ）＋表題=on-info',
+    bandClass: 'mi-band--r2',
+  },
+  {
+    id: 'R3',
+    label: '推奨（既定）: text-primary 24% 混ぜ（10% より帯の存在感とコントラストが安定）',
+    bandClass: 'mi-band--r3',
+  },
+  {
+    id: 'R4',
+    label: '青統一: status-info 28% 混ぜ（トーン揃えで帯だけ際立たせる）',
+    bandClass: 'mi-band--r4',
+  },
+  {
+    id: 'R5',
+    label: 'R3 ＋ 帯下 1px 区切り（outline 系）',
+    bandClass: 'mi-band--r5',
   },
 ];
 
-/** 帯の塗りを MD3 ステータス系の「色味」で出し分け（本文は従来どおり infoContainer） */
-const LOAN_BAND_HUE_VARIANTS: readonly LoanBandHueVariant[] = [
-  { id: 'L', label: '緑系（success-container 帯 / on-success 表題）', cardClass: 'mi-card--band-hue-green' },
-  { id: 'M', label: '赤系（error-container 帯 / on-error 表題）', cardClass: 'mi-card--band-hue-red' },
-  {
-    id: 'N',
-    label: '青系（info + info-container 混色で帯を本文より鮮やかに）',
-    cardClass: 'mi-card--band-hue-blue',
-  },
-  { id: 'O', label: '暖色系（warning-container 帯 / on-warning 表題）', cardClass: 'mi-card--band-hue-warm' },
+/** 本文 info 地に馴染む「薄い色味」アクセント（地と帯の喧嘩を避ける）表題は on-info 統一 */
+const LOAN_BAND_TINT: readonly LoanBandHueVariant[] = [
+  { id: 'T1', label: '薄緑: success 20% を地に重ね＋on-info 表題', cardClass: 'mi-card--band-tint-succ' },
+  { id: 'T2', label: '薄赤: error 15% 混ぜ＋on-info 表題', cardClass: 'mi-card--band-tint-err' },
+  { id: 'T3', label: '薄青: status-info 34% 混ぜ＋on-info 表題', cardClass: 'mi-card--band-tint-info' },
+  { id: 'T4', label: '薄暖: warning 22% 混ぜ＋on-info 表題', cardClass: 'mi-card--band-tint-warn' },
 ];
 
-const EMPTY_BAND_COLOR_VARIANTS: readonly EmptyBandVariant[] = [
-  { id: 'I', label: '6% text-primary + #020617（いまの実装に相当）', bandClass: 'mi-band--empty-p6' },
-  { id: 'J', label: '14% text-primary + #020617', bandClass: 'mi-band--empty-p14' },
-  { id: 'K', label: '8% 白 + #020617', bandClass: 'mi-band--empty-w8' },
+const EMPTY_BAND_BALANCED: readonly EmptyBandVariant[] = [
+  { id: 'E1', label: '地より一段明るい帯: 10% primary ＋ #020617', bandClass: 'mi-band--e1' },
+  { id: 'E2', label: '階調分離: surface-container 帯＋表題=primary', bandClass: 'mi-band--e2' },
+  { id: 'E3', label: 'E1 ＋ 帯下 1px（outline 40%）', bandClass: 'mi-band--e3' },
 ];
 
 /**
@@ -204,21 +216,21 @@ function buildBandColorSamplesPageHtml(
   const headerBodyGapPx = getHeaderBodyGapCssPixels();
   const cardPadX = `${MI_CARD_INNER_PAD_PX}px`;
 
-  const loanFigures = LOAN_BAND_COLOR_VARIANTS.map(
+  const loanBalancedFigures = LOAN_BAND_BALANCED.map(
     (v) => `<figure class="mi-band-fig">
   <figcaption class="mi-band-fig__caption"><strong>${v.id}</strong> — ${escapeHtml(v.label)}</figcaption>
   ${buildMiLoanInspectionCardHtml(options.loanRow, { bandExtraClass: v.bandClass })}
 </figure>`,
   ).join('\n');
 
-  const loanHueFigures = LOAN_BAND_HUE_VARIANTS.map(
+  const loanTintFigures = LOAN_BAND_TINT.map(
     (v) => `<figure class="mi-band-fig">
   <figcaption class="mi-band-fig__caption"><strong>${v.id}</strong> — ${escapeHtml(v.label)}</figcaption>
   ${buildMiLoanInspectionCardHtml(options.loanRow, { cardExtraClass: v.cardClass })}
 </figure>`,
   ).join('\n');
 
-  const emptyFigures = EMPTY_BAND_COLOR_VARIANTS.map(
+  const emptyFigures = EMPTY_BAND_BALANCED.map(
     (v) => `<figure class="mi-band-fig">
   <figcaption class="mi-band-fig__caption"><strong>${v.id}</strong> — ${escapeHtml(v.label)}</figcaption>
   ${buildMiLoanInspectionCardHtml(options.emptyRow, { bandExtraClass: v.bandClass })}
@@ -296,68 +308,71 @@ ${tokensCss}
       background: #020617;
       border: 1px solid var(--rps-md3-color-card-border);
     }
-    /* 帯: 貸出あり（上書きは .mi-card__band + 修飾で明示） */
-    .mi-card--loans .mi-card__band.mi-band--p10 {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, var(--rps-md3-color-status-info-container));
+    /* 帯 R1〜R5（本文は info 地。R1 だけ帯=ニュートラル＋表題=primary） */
+    .mi-card--loans .mi-card__band.mi-band--r1 {
+      background: var(--rps-md3-color-surface-container-highest);
     }
-    .mi-card--loans .mi-card__band.mi-band--p18 {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 18%, var(--rps-md3-color-status-info-container));
+    .mi-card--loans .mi-card__band.mi-band--r1 .mi-card__name,
+    .mi-card--loans .mi-card__band.mi-band--r1 .mi-card__counts {
+      color: var(--rps-md3-color-text-primary);
     }
-    .mi-card--loans .mi-card__band.mi-band--p28 {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 28%, var(--rps-md3-color-status-info-container));
+    .mi-card--loans .mi-card__band.mi-band--r2 {
+      background: color-mix(in srgb, black 12%, var(--rps-md3-color-status-info-container));
     }
-    .mi-card--loans .mi-card__band.mi-band--p40 {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 40%, var(--rps-md3-color-status-info-container));
+    .mi-card--loans .mi-card__band.mi-band--r3 {
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-text-primary) 24%,
+        var(--rps-md3-color-status-info-container)
+      );
     }
-    .mi-card--loans .mi-card__band.mi-band--w12 {
-      background: color-mix(in srgb, white 12%, var(--rps-md3-color-status-info-container));
+    .mi-card--loans .mi-card__band.mi-band--r4 {
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-status-info) 28%,
+        var(--rps-md3-color-status-info-container)
+      );
     }
-    .mi-card--loans .mi-card__band.mi-band--k10 {
-      background: color-mix(in srgb, black 10%, var(--rps-md3-color-status-info-container));
-    }
-    .mi-card--loans .mi-card__band.mi-band--i20 {
-      background: color-mix(in srgb, var(--rps-md3-color-status-info) 20%, var(--rps-md3-color-status-info-container));
-    }
-    .mi-card--loans .mi-card__band.mi-band--p10-divider {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, var(--rps-md3-color-status-info-container));
-      border-bottom: 1px solid color-mix(in srgb, var(--rps-md3-color-status-on-info-container) 35%, transparent);
+    .mi-card--loans .mi-card__band.mi-band--r5 {
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-text-primary) 24%,
+        var(--rps-md3-color-status-info-container)
+      );
+      border-bottom: 1px solid color-mix(in srgb, var(--rps-md3-color-outline) 50%, transparent);
     }
     .mi-card--loans .mi-card__name,
     .mi-card--loans .mi-card__counts {
       color: var(--rps-md3-color-status-on-info-container);
     }
-    /* 帯: 緑 / 赤 / 青 / 暖色（L〜O。表題は帯上で可読な on-*） */
-    .mi-card--loans.mi-card--band-hue-green .mi-card__band {
-      background: var(--rps-md3-color-status-success-container);
-    }
-    .mi-card--loans.mi-card--band-hue-green .mi-card__name,
-    .mi-card--loans.mi-card--band-hue-green .mi-card__counts {
-      color: var(--rps-md3-color-status-on-success-container);
-    }
-    .mi-card--loans.mi-card--band-hue-red .mi-card__band {
-      background: var(--rps-md3-color-status-error-container);
-    }
-    .mi-card--loans.mi-card--band-hue-red .mi-card__name,
-    .mi-card--loans.mi-card--band-hue-red .mi-card__counts {
-      color: var(--rps-md3-color-status-on-error-container);
-    }
-    .mi-card--loans.mi-card--band-hue-blue .mi-card__band {
+    /* T1〜T4: 地に馴染む薄い色味、表題は on-info で統一 */
+    .mi-card--loans.mi-card--band-tint-succ .mi-card__band {
       background: color-mix(
         in srgb,
-        var(--rps-md3-color-status-info) 40%,
+        var(--rps-md3-color-status-success) 20%,
         var(--rps-md3-color-status-info-container)
       );
     }
-    .mi-card--loans.mi-card--band-hue-blue .mi-card__name,
-    .mi-card--loans.mi-card--band-hue-blue .mi-card__counts {
-      color: var(--rps-md3-color-status-on-info-container);
+    .mi-card--loans.mi-card--band-tint-err .mi-card__band {
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-status-error) 15%,
+        var(--rps-md3-color-status-info-container)
+      );
     }
-    .mi-card--loans.mi-card--band-hue-warm .mi-card__band {
-      background: var(--rps-md3-color-status-warning-container);
+    .mi-card--loans.mi-card--band-tint-info .mi-card__band {
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-status-info) 34%,
+        var(--rps-md3-color-status-info-container)
+      );
     }
-    .mi-card--loans.mi-card--band-hue-warm .mi-card__name,
-    .mi-card--loans.mi-card--band-hue-warm .mi-card__counts {
-      color: var(--rps-md3-color-status-on-warning-container);
+    .mi-card--loans.mi-card--band-tint-warn .mi-card__band {
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-status-warning) 22%,
+        var(--rps-md3-color-status-info-container)
+      );
     }
     .mi-card--empty .mi-card__name,
     .mi-card--empty .mi-card__counts {
@@ -370,14 +385,19 @@ ${tokensCss}
       gap: 8px;
       padding: var(--mi-card-pad-y) var(--mi-card-pad-x);
     }
-    .mi-card--empty .mi-card__band.mi-band--empty-p6 {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 6%, #020617);
+    .mi-card--empty .mi-card__band.mi-band--e1 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, #020617);
     }
-    .mi-card--empty .mi-card__band.mi-band--empty-p14 {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 14%, #020617);
+    .mi-card--empty .mi-card__band.mi-band--e2 {
+      background: var(--rps-md3-color-surface-container);
     }
-    .mi-card--empty .mi-card__band.mi-band--empty-w8 {
-      background: color-mix(in srgb, white 8%, #020617);
+    .mi-card--empty .mi-card__band.mi-band--e2 .mi-card__name,
+    .mi-card--empty .mi-card__band.mi-band--e2 .mi-card__counts {
+      color: var(--rps-md3-color-text-primary);
+    }
+    .mi-card--empty .mi-card__band.mi-band--e3 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, #020617);
+      border-bottom: 1px solid color-mix(in srgb, var(--rps-md3-color-outline) 40%, transparent);
     }
     .mi-card__name {
       font-size: max(16px, calc(19 * ${PREVIEW_WIDTH} / 1920 * 1px));
@@ -426,18 +446,18 @@ ${tokensCss}
   </style>
 </head>
 <body class="mi-band-samples">
-  <h1>帯色サンプル（MD3 トークン固定・同一カード中身）</h1>
+  <h1>帯色サンプル（視認性・カラーバランス優先）</h1>
   <p class="mi-gen-stamp" data-role="build-stamp">生成: <strong>${escapeHtml(options.generatedAtIso)}</strong>（<code>pnpm design:preview</code> 実行直後の時刻。更新されなければ再実行 or スーパーリロード）</p>
-  <p class="lead">各パターンの <strong>ID（A, B, …）</strong>を採用時に指定してください。先頭の A〜H は <code>infoContainer</code> 系の帯。続く <strong>L〜O</strong> は <strong>帯の色味</strong>（緑/赤/青/暖色）の試し。本文（カード地）は従来どおり <code>infoContainer</code> です。E（白混ぜ）は帯の明るさと文字のコントラストを確認。</p>
-  <h2>貸出あり（A〜H · info 系帯の濃度・混色）</h2>
+  <p class="lead"><strong>R1〜R5</strong> は帯と本文（<code>infoContainer</code>）の分離を優先したバランス案。<strong>T1〜T4</strong> は同じ青地に馴染む薄い色味アクセント（帯=補色で殴らない）。<strong>E1〜E3</strong> は空カード。採用時は ID を指定。</p>
+  <h2>貸出あり（R1〜R5 · 推奨・帯の見え方）</h2>
   <div class="mi-band-samples__grid">
-    ${loanFigures}
+    ${loanBalancedFigures}
   </div>
-  <h2>貸出あり（L〜O · 帯の色味: 緑 / 赤 / 青 / 暖色）</h2>
+  <h2>貸出あり（T1〜T4 · 地に馴染む薄色味）</h2>
   <div class="mi-band-samples__grid">
-    ${loanHueFigures}
+    ${loanTintFigures}
   </div>
-  <h2>貸出なし（空カード）</h2>
+  <h2>貸出なし（E1〜E3 · 空カード）</h2>
   <div class="mi-band-samples__grid">
     ${emptyFigures}
   </div>
@@ -514,10 +534,16 @@ ${tokensCss}
       justify-content: space-between;
       gap: 8px;
       padding: var(--mi-card-pad-y) var(--mi-card-pad-x);
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, var(--rps-md3-color-status-info-container));
+      /* 帯: R3 相当（24% text-primary 混ぜ）— design-preview 帯サンプル R3 と同じ方針 */
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-text-primary) 24%,
+        var(--rps-md3-color-status-info-container)
+      );
     }
     .mi-card--empty .mi-card__band {
-      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 6%, #020617);
+      /* 空カード帯: E1 相当（10%） */
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, #020617);
     }
     .mi-card--loans .mi-card__name,
     .mi-card--loans .mi-card__counts {
@@ -695,7 +721,7 @@ async function main(): Promise<void> {
     <div class="row">
       <div class="panel">
         <h2>帯色サンプル（複数パターン・採用 ID を決める）</h2>
-        <p class="meta"><code>measuring-loan-inspection-band-samples.html</code> — 貸出あり A〜H・L〜O（色味）、空 I〜K。<a href="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" target="_blank" rel="noopener">別タブで開く</a></p>
+        <p class="meta"><code>measuring-loan-inspection-band-samples.html</code> — 帯 R1〜R5・T1〜T4・空 E1〜E3（視認性バランス版）。<a href="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" target="_blank" rel="noopener">別タブで開く</a></p>
         <iframe src="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" title="帯色サンプル" style="min-height: 640px; aspect-ratio: auto;"></iframe>
       </div>
       <div class="panel">

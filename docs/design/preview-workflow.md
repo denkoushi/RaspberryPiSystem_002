@@ -65,7 +65,7 @@ Pi3(軽量サイネージ)はSVGを直接描画しない。
 出力（**計測機器持出状況**向けの最小セット）:
 - `tmp/design-preview/index.html` — HTML モックと SVG→JPEG（FULL / pane）の対照
 - `tmp/design-preview/measuring-loan-inspection-html-preview.html` — 実装前の **帯＋帯下の余白** などを CSS（`--mi-header-body-gap` 等）で合意する用
-- `tmp/design-preview/measuring-loan-inspection-band-samples.html` — **帯色の複数パターン**（貸出あり A〜H・L〜O〈緑/赤/青/暖色の色味〉・空カード I〜K）を同一中身で並べ、採用 ID を選ぶ用
+- `tmp/design-preview/measuring-loan-inspection-band-samples.html` — **帯色**（**R1〜R5** 視認性バランス・**T1〜T4** 地に馴染む薄色味・空 **E1〜E3**）を同一中身で並べ、採用 ID を選ぶ用
 - `tmp/design-preview/measuring-loan-inspection-full.jpg` — 現行 `MeasuringInstrumentLoanInspectionRenderer`（1920×1080）
 - `tmp/design-preview/measuring-loan-inspection-pane.jpg` — 同レンダラーを SPLIT ペイン相当サイズで
 - `tmp/design-preview/summary.json`
@@ -75,7 +75,7 @@ Pi3(軽量サイネージ)はSVGを直接描画しない。
 
 プレビューの意味:
 - **HTML モック**: 同 MD3 トークン（CSS 変数）でカード帯と本文の区切りをいじる。SVG 実装のたたき台。帯下の空き（`--mi-header-body-gap`）と `MI_NAMES_START_YPX` は [`mi-instrument-card-metrics.ts`](../../apps/api/src/services/visualization/renderers/measuring-instrument-loan-inspection/mi-instrument-card-metrics.ts) を単一参照。
-- **帯色サンプル**: `color-mix` のレシピ差だけを並べるページ。採用 ID を決めたら `mi-instrument-card-palette.ts`（と HTML モックの既定）へ反映する。
+- **帯色サンプル**: R / T / E の各 ID でレシピを比較。採用 ID を決めたら `mi-instrument-card-palette.ts`（hex 混色）と HTML モック（`buildMeasuringInstrumentLoanInspectionHtmlPreview` の帯 `color-mix`）へ反映する。フルグリッド HTML モックの既定帯は **R3 相当（24% text-primary 混ぜ）**。
 - **SVG→JPEG**: 現行レンダラー出力。HTML 合意内容を `measuring-instrument-loan-inspection-renderer.ts` へ写す際の差分確認用
 
 ## 運用ルール(おすすめ)
