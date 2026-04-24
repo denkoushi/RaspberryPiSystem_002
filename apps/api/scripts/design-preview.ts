@@ -17,9 +17,12 @@ import { parseRowInstrumentEntries } from '../src/services/visualization/rendere
 import {
   getHeaderBodyGapCssPixels,
   MI_CARD_INNER_PAD_PX,
+  MI_LOAN_ACTIVE_BAND_WARNING_MIX,
 } from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/mi-instrument-card-metrics.js';
 
 const PREVIEW_WIDTH = 1920;
+/** 本番 T4 帯と同じ混色比（`color-mix` の % 表記用） */
+const BAND_T4_WARN_CSS_PERCENT = Math.round(MI_LOAN_ACTIVE_BAND_WARNING_MIX * 100);
 const PREVIEW_HEIGHT = 1080;
 
 type PreviewConfig = {
@@ -196,7 +199,7 @@ const LOAN_BAND_TINT: readonly LoanBandHueVariant[] = [
   { id: 'T1', label: '薄緑: success 20% を地に重ね＋on-info 表題', cardClass: 'mi-card--band-tint-succ' },
   { id: 'T2', label: '薄赤: error 15% 混ぜ＋on-info 表題', cardClass: 'mi-card--band-tint-err' },
   { id: 'T3', label: '薄青: status-info 34% 混ぜ＋on-info 表題', cardClass: 'mi-card--band-tint-info' },
-  { id: 'T4', label: '薄暖: warning 22% 混ぜ＋on-info 表題', cardClass: 'mi-card--band-tint-warn' },
+  { id: 'T4', label: `薄暖: warning ${BAND_T4_WARN_CSS_PERCENT}% 混ぜ＋on-info 表題`, cardClass: 'mi-card--band-tint-warn' },
 ];
 
 const EMPTY_BAND_BALANCED: readonly EmptyBandVariant[] = [
@@ -370,7 +373,7 @@ ${tokensCss}
     .mi-card--loans.mi-card--band-tint-warn .mi-card__band {
       background: color-mix(
         in srgb,
-        var(--rps-md3-color-status-warning) 22%,
+        var(--rps-md3-color-status-warning) ${BAND_T4_WARN_CSS_PERCENT}%,
         var(--rps-md3-color-status-info-container)
       );
     }
@@ -534,10 +537,10 @@ ${tokensCss}
       justify-content: space-between;
       gap: 8px;
       padding: var(--mi-card-pad-y) var(--mi-card-pad-x);
-      /* 帯: 本番 palette T4 — color-mix(warning 22%, info-container) */
+      /* 帯: 本番 palette T4（mi-instrument-card-metrics の MI_LOAN_ACTIVE_BAND_WARNING_MIX と同期） */
       background: color-mix(
         in srgb,
-        var(--rps-md3-color-status-warning) 22%,
+        var(--rps-md3-color-status-warning) ${BAND_T4_WARN_CSS_PERCENT}%,
         var(--rps-md3-color-status-info-container)
       );
     }

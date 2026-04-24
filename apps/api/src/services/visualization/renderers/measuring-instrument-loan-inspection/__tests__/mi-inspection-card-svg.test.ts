@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createMd3Tokens } from '../../_design-system/index.js';
 import { buildMiInspectionCardSvgFragment } from '../mi-inspection-card-svg.js';
 import { resolveMiCardChrome } from '../mi-instrument-card-palette.js';
+import { MI_LOAN_ACTIVE_BAND_WARNING_MIX } from '../mi-instrument-card-metrics.js';
 import { buildEmptyBodyLines } from '../layout-mi-instrument-body.js';
 
 describe('buildMiInspectionCardSvgFragment', () => {
@@ -40,10 +41,11 @@ describe('resolveMiCardChrome', () => {
     expect(empty.cardFill).toBe('#020617');
   });
 
-  it('uses T4 band for loans: warning 22% + infoContainer (srgb hex lerp)', () => {
+  it('uses T4 band for loans: warning mix + infoContainer (srgb hex lerp, default MD3 tokens)', () => {
     const t = createMd3Tokens({ width: 1920, height: 1080 });
+    expect(MI_LOAN_ACTIVE_BAND_WARNING_MIX).toBe(0.22);
     const c = resolveMiCardChrome(t, true);
-    // #ffb84d * 0.22 + #2d4a7a * 0.78 -> #5b6270
+    // 既定トークン: #ffb84d + #2d4a7a at 0.22 -> #5b6270
     expect(c.bandFill).toBe('#5b6270');
     expect(c.nameFill).toBe(t.colors.status.onInfoContainer);
   });

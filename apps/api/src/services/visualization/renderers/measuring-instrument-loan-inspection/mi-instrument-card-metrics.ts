@@ -28,6 +28,12 @@ export const MI_CARD_INNER_PAD_PX = 12;
 export const MI_CARD_BOTTOM_PAD_PX = 12;
 export const MI_CARD_CORNER_RADIUS_PX = 10;
 
+/**
+ * 貸出ありカード帯（T4）: `color-mix(in srgb, status-warning この比, status-info-container)` 相当。
+ * `mi-instrument-card-palette`・`design-preview` HTML の帯 must match。
+ */
+export const MI_LOAN_ACTIVE_BAND_WARNING_MIX = 0.22;
+
 export function scaleDesignPx(designYpx: number, scale: number): number {
   return Math.round(designYpx * scale);
 }

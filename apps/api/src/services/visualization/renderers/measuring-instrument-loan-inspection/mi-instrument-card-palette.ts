@@ -1,4 +1,5 @@
 import type { Md3Tokens } from '../_design-system/md3.js';
+import { MI_LOAN_ACTIVE_BAND_WARNING_MIX } from './mi-instrument-card-metrics.js';
 
 /**
  * カード1枚分の塗り・線・テキスト色。SVG では CSS color-mix が使えないため、
@@ -43,8 +44,11 @@ function mixHex(a: string, b: string, ratioA: number): string {
  */
 export function resolveMiCardChrome(t: Md3Tokens, hasLoans: boolean): MiCardChrome {
   if (hasLoans) {
-    // design-preview T4: color-mix(in srgb, status-warning 22%, status-info-container)
-    const bandFill = mixHex(t.colors.status.warning, t.colors.status.infoContainer, 0.22);
+    const bandFill = mixHex(
+      t.colors.status.warning,
+      t.colors.status.infoContainer,
+      MI_LOAN_ACTIVE_BAND_WARNING_MIX,
+    );
     return {
       hasLoans: true,
       cardFill: t.colors.status.infoContainer,
