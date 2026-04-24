@@ -31,7 +31,10 @@ function formatQuantityLabel(q: number | null | undefined): string {
 
 export function PalletVizItemList({ items, selectedItemId, onToggleItem }: PalletVizItemListProps) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain rounded-md bg-slate-950/50 p-2">
+    <div
+      data-pallet-viz-item-list-scroll
+      className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] rounded-md bg-slate-950/50 p-2"
+    >
       <ul className="space-y-2">
         {items.map((it) => {
           const selected = it.id === selectedItemId;
@@ -43,7 +46,7 @@ export function PalletVizItemList({ items, selectedItemId, onToggleItem }: Palle
                 aria-pressed={selected}
                 onClick={() => onToggleItem(it.id)}
                 className={clsx(
-                  'flex h-[9.5rem] w-full flex-col rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                  'touch-pan-y flex h-[9.5rem] w-full flex-col rounded-md border px-3 py-2 text-left text-sm transition-colors',
                   selected
                     ? 'border-amber-400 bg-amber-500/20'
                     : 'border-white/10 bg-slate-800/80 hover:border-white/30'

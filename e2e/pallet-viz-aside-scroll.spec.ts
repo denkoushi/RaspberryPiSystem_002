@@ -35,6 +35,15 @@ test.describe('パレット可視化 左ペインスクロール', () => {
         body: JSON.stringify({ selfClientId: 'e2e-client', targets: [] }),
       })
     );
+    await page.route(
+      (url) => url.pathname.endsWith('/kiosk/employees'),
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ employees: [] }),
+        })
+    );
     await page.route('**/api/kiosk/pallet-visualization/board', (route) =>
       route.fulfill({
         status: 200,
