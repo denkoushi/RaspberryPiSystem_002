@@ -17,7 +17,7 @@
 
 **2026-04-24（V24 追記・一次元スキャン体感）**: `feat/kiosk-barcode-reader-tuning`（`main`）反映後、Android Chrome で **`/kiosk/mobile-placement` の製造order** と **`/kiosk/purchase-order-lookup` の注番**の **一次元**を読み取ったところ、**両方とも体感速度の改善**が場内確認された（**コア一次元＋`KIOSK_DEFAULT`**／**`PURCHASE_ORDER`＋同 `readerOptions`＋2連続一致**。[KB-339 §V24](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)）。
 
-**2026-04-24（V25・パレット可視化・カード単体スクロール）**: ブランチ **`feat/mobile-pallet-viz-scroll-layout`**（**`c6a7e655`**）。**仕様**: **`/kiosk/mobile-placement/pallet-viz`** で **テンキー・操作行固定**・**部品カード一覧のみ** `overflow-y-auto`。**デプロイ（最小）**: **`raspberrypi5` のみ**・[deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**Pi3 不要**。**状態**: 自動化環境からは Pi5 **SSH 未到達**の例あり—**運用端末でデプロイ成功後**に **Detach Run ID**・**Phase12** を deployment 冒頭 § に追記。**手動確認**: カード複数で **一覧だけ**縦スクロール。**詳細**: [KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)。
+**2026-04-24（V25・パレット可視化・カード単体スクロール）**: ブランチ **`feat/mobile-pallet-viz-scroll-layout`**（レイアウト **`c6a7e655`**・E2E **`b292a5db`**）。**仕様**: **`/kiosk/mobile-placement/pallet-viz`** で **テンキー・操作行固定**・**部品カード一覧のみ** `overflow-y-auto`。**デプロイ（最小）**: **`raspberrypi5` のみ**・[deployment.md](../guides/deployment.md)・**Pi3 不要**。**Detach Run ID**: **`20260424-093828-22068`**。**Phase12**: **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**手動確認**: カード複数で **一覧だけ**縦スクロール（テンキーは固定・ページ全体の縦バウンスが目立つ場合は KB の **`wheel`/`touchmove` 追補**を参照）。**詳細**: [KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)。
 
 ## 0. 本番デプロイ後の確認（運用）
 

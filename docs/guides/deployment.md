@@ -10,15 +10,16 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-24（配膳スマホパレット可視化スクロール・デプロイ試行メモ）
+最終更新: 2026-04-24（配膳スマホパレット可視化スクロール・本番 Pi5 反映実績）
 
 ### 補足（2026-04-24: 配膳スマホ パレット可視化・カード一覧のみ縦スクロール・Web のみ）
 
-- **変更概要**: `/kiosk/mobile-placement/pallet-viz` で **テンキー・操作行は固定**し、**部品カード一覧だけ**が `flex-1 min-h-0 overflow-y-auto` で縦スクロールする（`KioskMobilePalletVisualizationPage.tsx`）。従来はテンキ〜一覧が同一 `overflow-y-auto` ブロックで一体スクロール。**API/DB 変更なし**。
+- **変更概要**: `/kiosk/mobile-placement/pallet-viz` で **テンキー・操作行は固定**し、**部品カード一覧だけ**が `flex-1 min-h-0 overflow-y-auto` で縦スクロールする（`KioskMobilePalletVisualizationPage.tsx`）。従来はテンキ〜一覧が同一 `overflow-y-auto` ブロックで一体スクロール。**API/DB 変更なし**。一覧ルートに **`touch-action: pan-y`**・親チェーンで **`wheel` / `touchmove` の `preventDefault`（`passive: false`）** を入れ、**ページ全体の縦バウンス**と **テンキー領域への誤スクロール伝播**を抑える（詳細は [KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)）。
 - **対象ホスト（最小）**: **`raspberrypi5` のみ**（キオスク SPA は Pi5 の `web` 配信。**Pi3 サイネージは不要**）。
 - **標準コマンド（運用端末・Tailscale 等で Pi5 に SSH 可なこと）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-pallet-viz-scroll-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-- **本記録時点の自動化試行**: 上記と同一コマンドを **Cursor 実行環境**から試行したところ、**`ssh: connect to host 100.106.158.2 port 22: Operation timed out`** のため **デプロイ未完了**。**Detach Run ID 未取得**。**運用**: Mac 等 **到達可能な端末**から再実行し、成功後 **Run ID** と **`./scripts/deploy/verify-phase12-real.sh` の集計**を本節に追記すること。
-- **実機（自動・成功後）**: `./scripts/deploy/verify-phase12-real.sh`（本ドキュメント他節の **Web のみ Pi5** 記録と同型の **PASS/WARN/FAIL** を期待）。
+- **本番デプロイ（実績・2026-04-24）**: ブランチ **`feat/mobile-pallet-viz-scroll-layout`**・代表コミット例 **`b292a5db`**（E2E 安定化を含む先端）。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: **`20260424-093828-22068`**（**`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート exit **`0`**・所要約 **291s**）。Pi4/Pi3 の play は **`--limit raspberrypi5`** により **未実行（skipped）**。
+- **到達性メモ**: ネットワークによっては **`100.106.158.2:22` がタイムアウト**し得る。**Tailscale 到達可な運用端末**から実行すること（過去に Cursor 等の実行環境からは未到達の例あり）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。
 - **実機（手動・Android）**: 加工機選択済み・カード複数件で **一覧だけ**がフリックで動き、**テンキーが一緒に流れない**こと。反映が古い場合は **スーパーリロード**。
 - **トラブルシュート**: 一覧が伸びてもスクロールしない → DevTools で **`PalletVizItemList` ルート**の `scrollHeight > clientHeight` と親 flex（`relative flex min-h-0 flex-1 flex-col`）を確認（[KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)）。
 - **ナレッジ**: [KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)・[api.md KB-355 追補](../knowledge-base/api.md)・[mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)。

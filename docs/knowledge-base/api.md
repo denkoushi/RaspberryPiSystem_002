@@ -552,11 +552,11 @@
 - **トラブルシュート**: デバイスパス・ボーレート・コンテナ未起動は Pi4 で **`docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode ps`** と **`curl -s http://127.0.0.1:7072/api/agent/status`**。Ansible は **`up -d --build barcode-agent`** でイメージ更新。**`eventId`** はフロントの **sessionStorage 去重**と併用。
 
 **追補（2026-04-24・配膳スマホ パレット可視化 カード単体スクロール・Web のみ・Pi5 のみ）**:
-- ブランチ **`feat/mobile-pallet-viz-scroll-layout`**・代表 **`c6a7e655`**（`KioskMobilePalletVisualizationPage.tsx`・`e2e/mobile-pallet-viz-scroll-investigation.spec.ts`・`e2e/pallet-viz-aside-scroll.spec.ts` の employees モック安定化）。
-- **計画デプロイ**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-pallet-viz-scroll-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Pi3 不要**（本画面は Pi5 `web` の `/kiosk/...`）。
-- **状態（記録時点）**: **一部実行環境**では Pi5 へ **`ssh … 100.106.158.2:22` がタイムアウト**し **Detach Run ID 未取得**の例あり。運用端末で成功後、[deployment.md](../guides/deployment.md) 冒頭 **§2026-04-24** に **Run ID**・**Phase12** を追記すること。
-- **仕様**: テンキー・操作行 **固定**・部品カード **`PalletVizItemList` ルートのみ**縦スクロール（flex 親を `flex flex-col min-h-0 flex-1` で接続）。**API/DB 変更なし**。
-- **実機（成功後）**: `./scripts/deploy/verify-phase12-real.sh`・**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz` → **200**（`curl -k`）。**手動**: カード複数で **一覧だけ**フリックスクロール。
+- ブランチ **`feat/mobile-pallet-viz-scroll-layout`**・代表 **`c6a7e655`**（レイアウト）+ **`b292a5db`**（E2E: `e2e/mobile-pallet-viz-scroll-investigation.spec.ts` の CDP タッチはカード上のみ等）。
+- **本番デプロイ（実績）**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mobile-pallet-viz-scroll-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260424-093828-22068`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（本画面は Pi5 `web` の `/kiosk/...`）。
+- **仕様**: テンキー・操作行 **固定**・部品カード **`PalletVizItemList` ルートのみ**縦スクロール（flex 親を `flex flex-col min-h-0 flex-1` で接続）。**API/DB 変更なし**。モバイルで **誤ったスクロール伝播**を抑えるため **`touch-action: pan-y`**・親チェーンの **`wheel` / `touchmove`（`passive: false`）** を併用（[KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz` → **200**（`curl -k`）。**手動**: カード複数で **一覧だけ**フリックスクロール。
+- **到達性**: 実行環境によっては Pi5 **SSH タイムアウト**の例あり→ **Tailscale 到達可な端末**でデプロイ（[deployment.md](../guides/deployment.md) §2026-04-24）。
 - **ナレッジ**: [KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)。
 
 **追補（2026-04-23・スマホ配膳 パレット可視化・機種別 `palletCount`・Pi5→Pi4×4→Pi3）**:
