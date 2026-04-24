@@ -183,7 +183,7 @@ const EMPTY_BAND_COLOR_VARIANTS: readonly EmptyBandVariant[] = [
  */
 function buildBandColorSamplesPageHtml(
   tokensCss: string,
-  options: { loanRow: MiLoanInspectionTableRow; emptyRow: MiLoanInspectionTableRow },
+  options: { loanRow: MiLoanInspectionTableRow; emptyRow: MiLoanInspectionTableRow; generatedAtIso: string },
 ): string {
   const headerBodyGapPx = getHeaderBodyGapCssPixels();
   const cardPadX = `${MI_CARD_INNER_PAD_PX}px`;
@@ -207,6 +207,7 @@ function buildBandColorSamplesPageHtml(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
   <title>帯色サンプル — 計測機器持出カード</title>
   <style>
 ${tokensCss}
@@ -361,10 +362,16 @@ ${tokensCss}
       font-weight: 600;
       color: var(--rps-md3-color-text-secondary);
     }
+    .mi-gen-stamp {
+      margin: 0 0 12px 0;
+      font-size: 0.8rem;
+      color: var(--rps-md3-color-text-secondary);
+    }
   </style>
 </head>
 <body class="mi-band-samples">
   <h1>帯色サンプル（MD3 トークン固定・同一カード中身）</h1>
+  <p class="mi-gen-stamp" data-role="build-stamp">生成: <strong>${escapeHtml(options.generatedAtIso)}</strong>（<code>pnpm design:preview</code> 実行直後の時刻。更新されなければ再実行 or スーパーリロード）</p>
   <p class="lead">各パターンの <strong>ID（A, B, …）</strong>を採用時に指定してください。貸出ありは本文が <code>infoContainer</code> 一色、帯だけレシピ差です。E（白混ぜ）は帯が明るくなり、文字のコントラストも一緒に確認してください。</p>
   <h2>貸出あり</h2>
   <div class="mi-band-samples__grid">
@@ -380,7 +387,7 @@ ${tokensCss}
 
 function buildMeasuringInstrumentLoanInspectionHtmlPreview(
   tokensCss: string,
-  options: { title: string; targetDate: string; cardsHtml: string },
+  options: { title: string; targetDate: string; cardsHtml: string; generatedAtIso: string },
 ): string {
   const headerBodyGapPx = getHeaderBodyGapCssPixels();
   const cardPadX = `${MI_CARD_INNER_PAD_PX}px`;
@@ -389,6 +396,7 @@ function buildMeasuringInstrumentLoanInspectionHtmlPreview(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
   <title>計測機器持出状況（HTMLデザイン）</title>
   <style>
 ${tokensCss}
@@ -506,7 +514,7 @@ ${tokensCss}
   </style>
 </head>
 <body class="mi-preview-root">
-  <p class="mi-hint">実装前のHTMLモック（帯＋帯下の余白は CSS で調整可）。下の <code>index.html</code> では SVG→JPEG の現行出力と並べて対照します。</p>
+  <p class="mi-hint">生成: <strong>${escapeHtml(options.generatedAtIso)}</strong> — 実装前のHTMLモック（帯＋帯下の余白は CSS で調整可）。<code>index.html</code> では SVG→JPEG と対照。</p>
   <h1 class="mi-page-title"><span>${escapeHtml(options.title)}</span><span class="date">${escapeHtml(
     options.targetDate,
   )}</span></h1>
@@ -532,6 +540,10 @@ async function main(): Promise<void> {
   const fullTokens = createMd3Tokens(full);
   const cssVars = tokensToCssVars(fullTokens);
   const tokensCss = renderCssVars(':root', cssVars);
+
+  const generatedAt = new Date();
+  const generatedAtIso = generatedAt.toISOString();
+  const cacheBust = String(generatedAt.getTime());
 
   const table = sampleMeasuringInstrumentLoanInspectionTable();
   const targetDate = String((table.metadata as { targetDate?: string } | undefined)?.targetDate ?? '-');
@@ -559,6 +571,7 @@ async function main(): Promise<void> {
       title: displayTitle,
       targetDate,
       cardsHtml,
+      generatedAtIso,
     }),
     'utf8',
   );
@@ -566,7 +579,11 @@ async function main(): Promise<void> {
   const bandSamplesPath = path.join(outDir, 'measuring-loan-inspection-band-samples.html');
   await fs.writeFile(
     bandSamplesPath,
-    buildBandColorSamplesPageHtml(tokensCss, { loanRow: loanSampleRow, emptyRow: emptySampleRow }),
+    buildBandColorSamplesPageHtml(tokensCss, {
+      loanRow: loanSampleRow,
+      emptyRow: emptySampleRow,
+      generatedAtIso,
+    }),
     'utf8',
   );
 
@@ -592,12 +609,14 @@ async function main(): Promise<void> {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store" />
   <title>計測機器持出状況 — デザインプレビュー</title>
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #e8e8e8; color: #111; }
     .wrap { max-width: 2000px; margin: 0 auto; padding: 16px; }
     h1 { font-size: 1.25rem; margin: 0 0 8px 0; }
     p.note { font-size: 0.9rem; color: #333; margin: 0 0 16px 0; line-height: 1.5; }
+    p.stamp { font-size: 0.8rem; color: #666; margin: 0 0 12px 0; }
     code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
     @media (max-width: 1200px) { .row { grid-template-columns: 1fr; } }
@@ -611,29 +630,30 @@ async function main(): Promise<void> {
 <body>
   <div class="wrap">
     <h1>計測機器持出状況 — デザインプレビュー</h1>
-    <p class="note">目的: 実装前に <strong>帯＋帯下の余白</strong>を HTML で合意し、同じトークン前提の <code>MeasuringInstrumentLoanInspectionRenderer</code>（SVG→JPEG）と対照。帯色の<strong>採用選定</strong>は専用ページを使用。出力先: <code>${outDir}</code></p>
+    <p class="stamp">生成: <strong>${generatedAtIso}</strong> &nbsp;|&nbsp; cacheBust=<code>${cacheBust}</code> &nbsp;|&nbsp; 表示が古い場合は <strong>本ページを再読み込み</strong>（iframe は毎回別 URL）または <code>cd apps/api &amp;&amp; pnpm design:preview</code> を再実行。</p>
+    <p class="note">目的: 実装前に <strong>帯＋帯下の余白</strong>を HTML で合意し、同じトークン前提の <code>MeasuringInstrumentLoanInspectionRenderer</code>（SVG→JPEG）と対照。帯色の<strong>採用選定</strong>は専用ページを使用。<strong><code>tmp/design-preview</code> は .gitignore のため、clone 直後は未生成。必ず <code>pnpm design:preview</code> を実行。</strong> 出力先: <code>${outDir}</code></p>
     <div class="row">
       <div class="panel">
         <h2>帯色サンプル（複数パターン・採用 ID を決める）</h2>
-        <p class="meta"><code>measuring-loan-inspection-band-samples.html</code> — 貸出あり A〜H、空カード I〜K。<a href="./measuring-loan-inspection-band-samples.html" target="_blank" rel="noopener">別タブで開く</a></p>
-        <iframe src="./measuring-loan-inspection-band-samples.html" title="帯色サンプル" style="min-height: 640px; aspect-ratio: auto;"></iframe>
+        <p class="meta"><code>measuring-loan-inspection-band-samples.html</code> — 貸出あり A〜H、空カード I〜K。<a href="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" target="_blank" rel="noopener">別タブで開く</a></p>
+        <iframe src="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" title="帯色サンプル" style="min-height: 640px; aspect-ratio: auto;"></iframe>
       </div>
       <div class="panel">
         <h2>HTML モック（全カード ${full.width}×${full.height}）</h2>
-        <p class="meta"><code>measuring-loan-inspection-html-preview.html</code> — 帯下 <code>--mi-header-body-gap</code>。<a href="./measuring-loan-inspection-html-preview.html" target="_blank" rel="noopener">別タブ</a></p>
-        <iframe src="./measuring-loan-inspection-html-preview.html" title="計測機器持出 HTML"></iframe>
+        <p class="meta"><code>measuring-loan-inspection-html-preview.html</code> — 帯下 <code>--mi-header-body-gap</code>。<a href="./measuring-loan-inspection-html-preview.html?cb=${cacheBust}" target="_blank" rel="noopener">別タブ</a></p>
+        <iframe src="./measuring-loan-inspection-html-preview.html?cb=${cacheBust}" title="計測機器持出 HTML"></iframe>
       </div>
     </div>
     <div class="row" style="margin-top: 16px;">
       <div class="panel">
         <h2>参照: SVG レンダラー（FULL ${full.width}×${full.height}）</h2>
         <p class="meta">本番に近い JPEG 出力。帯色は <code>mi-instrument-card-palette</code> の定数に追随。</p>
-        <img src="./measuring-loan-inspection-full.jpg" width="${full.width}" height="${full.height}" alt="計測機器持出 SVG full" />
+        <img src="./measuring-loan-inspection-full.jpg?cb=${cacheBust}" width="${full.width}" height="${full.height}" alt="計測機器持出 SVG full" />
       </div>
       <div class="panel">
         <h2>参照: SPLIT ペイン相当（${g.rightPaneContentWidth}×${g.paneContentHeight}）</h2>
         <p class="meta">右ペイン等の縮尺感の確認用。</p>
-        <img src="./measuring-loan-inspection-pane.jpg" width="${g.rightPaneContentWidth}" height="${g.paneContentHeight}" alt="計測機器持出 SVG pane" />
+        <img src="./measuring-loan-inspection-pane.jpg?cb=${cacheBust}" width="${g.rightPaneContentWidth}" height="${g.paneContentHeight}" alt="計測機器持出 SVG pane" />
       </div>
     </div>
   </div>
@@ -643,6 +663,7 @@ async function main(): Promise<void> {
   await fs.writeFile(path.join(outDir, 'index.html'), indexHtml, 'utf8');
 
   const summary = {
+    generatedAtIso,
     outDir,
     purpose: 'measuring_instrument_loan_inspection design preview only',
     full,
@@ -658,11 +679,13 @@ async function main(): Promise<void> {
   await fs.writeFile(path.join(outDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf8');
 
   // eslint-disable-next-line no-console
-  console.log(`Design preview generated: ${path.join(outDir, 'index.html')}`);
+  console.log(`Design preview generated: ${path.join(outDir, 'index.html')} (${generatedAtIso})`);
   // eslint-disable-next-line no-console
   console.log(`  HTML mock: ${htmlPreviewPath}`);
   // eslint-disable-next-line no-console
   console.log(`  Band color samples: ${bandSamplesPath}`);
+  // eslint-disable-next-line no-console
+  console.log(`  Tip: open index.html in browser; tmp/ is gitignored — run this script after clone/pull.`);
 }
 
 main().catch((err) => {

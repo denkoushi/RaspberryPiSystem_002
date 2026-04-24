@@ -58,7 +58,9 @@ Pi3(軽量サイネージ)はSVGを直接描画しない。
 ## 整合プレビューの使い方
 
 コマンド:
-- `pnpm --filter @raspi-system/api design:preview`
+- `pnpm --filter @raspi-system/api design:preview`（または `cd apps/api && pnpm design:preview`）
+
+**重要**: 出力先 `tmp/design-preview` は **`.gitignore` 対象**のため、リポジトリ clone / pull 直後は **ファイルが存在しない**。コードを更新したあとも、**毎回このコマンドで再生成**する。古い `index.html` を開いたままだと表示が古い場合があるため、**再実行後にブラウザを再読み込み**する（`index.html` には生成時刻と `cacheBust` が出る）。
 
 出力（**計測機器持出状況**向けの最小セット）:
 - `tmp/design-preview/index.html` — HTML モックと SVG→JPEG（FULL / pane）の対照
