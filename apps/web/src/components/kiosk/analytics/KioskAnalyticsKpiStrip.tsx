@@ -25,26 +25,19 @@ export function KioskAnalyticsKpiStrip({
 }: KioskAnalyticsKpiStripProps) {
   return (
     <div
-      className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5"
+      className="grid shrink-0 grid-cols-5 gap-2"
       role="region"
       aria-label="期間サマリー指標"
       style={{ fontFamily: 'var(--font-family-sans)' }}
     >
-      <KpiCard
-        label="貸出中"
-        value={openLoanCount}
-        subLabel={`/ 全${totalMasterCount}台`}
-        valueColor="var(--color-primitive-yellow-300)"
-        theme={theme}
-      />
-      <KpiCard label="超過" value={overdueOpenCount} subLabel="要対応" valueColor={theme.error} theme={theme} />
-      <KpiCard label="今月 持出" value={periodBorrowCount} subLabel="件" valueColor={theme.chartBorrow} theme={theme} />
-      <KpiCard label="今月 返却" value={periodReturnCount} subLabel="件" valueColor={theme.chartReturn} theme={theme} />
+      <KpiCard label="貸出中" value={openLoanCount} subLabel={`/ 全${totalMasterCount}台`} theme={theme} />
+      <KpiCard label="超過" value={overdueOpenCount} subLabel="要対応" theme={theme} />
+      <KpiCard label="今月 持出" value={periodBorrowCount} subLabel="件" theme={theme} />
+      <KpiCard label="今月 返却" value={periodReturnCount} subLabel="件" theme={theme} />
       <KpiCard
         label="返却率"
         value={returnCompletionPercent === null ? '—' : `${returnCompletionPercent}`}
         subLabel={returnCompletionPercent === null ? '対象期間の持出0件' : '返却÷持出'}
-        valueColor="var(--color-semantic-success-1, var(--color-primitive-green-300, #86efac))"
         theme={theme}
         largeSuffix={returnCompletionPercent !== null ? '%' : undefined}
       />
@@ -57,39 +50,37 @@ function KpiCard({
   label,
   value,
   subLabel,
-  valueColor,
   largeSuffix
 }: {
   theme: KioskAnalyticsTheme;
   label: string;
   value: number | string;
   subLabel: string;
-  valueColor: string;
   largeSuffix?: string;
 }) {
   return (
     <div
-      className="flex min-h-[76px] flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:min-h-[80px]"
+      className="flex h-[47px] w-full min-w-0 flex-row flex-nowrap items-center justify-center gap-1.5 overflow-hidden px-2"
       style={{
         borderRadius: theme.radius8,
         border: `1px solid ${theme.border}`,
         backgroundColor: theme.surface
       }}
     >
-      <span className="text-[10px] tracking-wide" style={{ color: theme.textSub }}>
+      <span className="shrink-0 text-[10px] tracking-wide" style={{ color: theme.textSub }}>
         {label}
       </span>
-      <span className="flex items-baseline gap-0.5 tabular-nums">
-        <strong className="text-2xl font-extrabold leading-none" style={{ color: valueColor }}>
+      <span className="flex shrink-0 items-baseline gap-0.5 tabular-nums">
+        <strong className="text-2xl font-extrabold leading-none" style={{ color: theme.text }}>
           {value}
         </strong>
         {largeSuffix ? (
-          <span className="text-sm font-bold" style={{ color: valueColor }}>
+          <span className="text-sm font-bold" style={{ color: theme.text }}>
             {largeSuffix}
           </span>
         ) : null}
       </span>
-      <span className="text-[9px]" style={{ color: theme.textSub }}>
+      <span className="min-w-0 shrink truncate text-[9px]" style={{ color: theme.textSub }}>
         {subLabel}
       </span>
     </div>

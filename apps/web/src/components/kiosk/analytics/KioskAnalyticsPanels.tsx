@@ -16,6 +16,10 @@ const tableDense: CSSProperties = {
 
 /** ランキング行のバー高さ・行間（パネル間で統一） */
 const RANK_BAR_HEIGHT_CLASS = 'h-3.5';
+/** デザインプレビューと同じ帯の水平上限（無意味な全幅伸びを抑える） */
+const RANK_BAR_TRACK_MAX_CLASS = 'min-w-[3.5rem] max-w-[10rem] flex-1';
+/** 氏名・ラベル: 最大2行（プレビュー .panel--dense-list の意図に合わせる） */
+const RANK_LABEL_CLASS = 'min-w-0 max-w-[13rem] break-words text-[11px] leading-snug line-clamp-2';
 
 function formatAssetRowLabel(row: AssetRow): string {
   const code = row.code?.trim();
@@ -31,7 +35,7 @@ function PanelBadge({ theme, children }: { theme: KioskAnalyticsTheme; children:
     <span
       className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold"
       style={{
-        background: 'rgba(59, 130, 246, 0.12)',
+        background: 'rgba(249, 115, 22, 0.14)',
         color: theme.chartBorrow,
         borderRadius: theme.radius6
       }}
@@ -132,45 +136,47 @@ export function EmployeeBarsPanel({
             const magnitudeWidth = `${Math.max(4, Math.round((sum / maxActivity) * 100))}%`;
             return (
               <li key={row.employeeId}>
-                <div className="grid grid-cols-[22px_minmax(0,7rem)_1fr_auto] items-center gap-1.5">
+                <div className="flex min-w-0 items-start gap-1.5">
                   <span
-                    className="text-center text-[11px] font-bold tabular-nums"
+                    className="mt-0.5 w-[22px] shrink-0 text-center text-[11px] font-bold tabular-nums"
                     style={{ color: idx < 3 ? 'var(--color-primitive-amber-400, #fbbf24)' : theme.textSub }}
                   >
                     {idx + 1}
                   </span>
-                  <span className="truncate text-[11px] font-medium" style={{ color: theme.textSub }} title={row.displayName}>
-                    {row.displayName}
-                  </span>
-                  <div
-                    className={`${RANK_BAR_HEIGHT_CLASS} flex w-full min-w-0 overflow-hidden rounded-sm`}
-                    style={{ background: 'rgba(255,255,255,0.06)' }}
-                    aria-hidden
-                  >
-                    {sum === 0 ? null : (
-                      <div className="flex min-w-0 overflow-hidden rounded-sm" style={{ width: magnitudeWidth }}>
-                        <div
-                          className="min-h-0 min-w-[2px] shrink"
-                          style={{
-                            flexGrow: br,
-                            flexBasis: 0,
-                            backgroundColor: theme.chartBorrow
-                          }}
-                        />
-                        <div
-                          className="min-h-0 min-w-[2px] shrink"
-                          style={{
-                            flexGrow: rt,
-                            flexBasis: 0,
-                            backgroundColor: theme.chartReturn
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-0 text-[10px] tabular-nums leading-none">
-                    <span style={{ color: theme.chartBorrow }}>{br}</span>
-                    <span style={{ color: theme.chartReturn }}>{rt}</span>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className={`${RANK_LABEL_CLASS} font-medium`} style={{ color: theme.textSub }} title={row.displayName}>
+                      {row.displayName}
+                    </span>
+                    <div
+                      className={`${RANK_BAR_HEIGHT_CLASS} ${RANK_BAR_TRACK_MAX_CLASS} overflow-hidden rounded-sm`}
+                      style={{ background: 'rgba(255,255,255,0.06)' }}
+                      aria-hidden
+                    >
+                      {sum === 0 ? null : (
+                        <div className="flex h-full min-w-0 overflow-hidden rounded-sm" style={{ width: magnitudeWidth }}>
+                          <div
+                            className="min-h-0 min-w-[2px] shrink"
+                            style={{
+                              flexGrow: br,
+                              flexBasis: 0,
+                              backgroundColor: theme.chartBorrow
+                            }}
+                          />
+                          <div
+                            className="min-h-0 min-w-[2px] shrink"
+                            style={{
+                              flexGrow: rt,
+                              flexBasis: 0,
+                              backgroundColor: theme.chartReturn
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-0 text-[10px] tabular-nums leading-none">
+                      <span style={{ color: theme.chartBorrow }}>{br}</span>
+                      <span style={{ color: theme.chartReturn }}>{rt}</span>
+                    </div>
                   </div>
                 </div>
               </li>
@@ -251,33 +257,35 @@ export function AssetBorrowFrequencyPanel({
         <ul className="flex flex-col gap-1.5 pr-0.5">
           {sorted.map((row, idx) => (
             <li key={row.id}>
-              <div className="grid grid-cols-[22px_minmax(0,7.5rem)_1fr_auto] items-center gap-1.5">
+              <div className="flex min-w-0 items-start gap-1.5">
                 <span
-                  className="text-center text-[11px] font-bold tabular-nums"
+                  className="mt-0.5 w-[22px] shrink-0 text-center text-[11px] font-bold tabular-nums"
                   style={{ color: idx < 3 ? 'var(--color-primitive-amber-400, #fbbf24)' : theme.textSub }}
                 >
                   {idx + 1}
                 </span>
-                <span className="truncate text-[11px]" style={{ color: theme.textSub }} title={formatAssetRowLabel(row)}>
-                  {formatAssetRowLabel(row)}
-                </span>
-                <div
-                  className={`${RANK_BAR_HEIGHT_CLASS} w-full min-w-0 rounded-sm`}
-                  style={{
-                    background: 'rgba(255,255,255,0.06)'
-                  }}
-                >
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className={RANK_LABEL_CLASS} style={{ color: theme.textSub }} title={formatAssetRowLabel(row)}>
+                    {formatAssetRowLabel(row)}
+                  </span>
                   <div
-                    className={`${RANK_BAR_HEIGHT_CLASS} min-w-0 rounded-sm`}
+                    className={`${RANK_BAR_HEIGHT_CLASS} ${RANK_BAR_TRACK_MAX_CLASS} rounded-sm`}
                     style={{
-                      width: `${(row.periodBorrowCount / maxValue) * 100}%`,
-                      backgroundColor: theme.chartBorrow
+                      background: 'rgba(255,255,255,0.06)'
                     }}
-                  />
+                  >
+                    <div
+                      className={`${RANK_BAR_HEIGHT_CLASS} min-w-0 rounded-sm`}
+                      style={{
+                        width: `${(row.periodBorrowCount / maxValue) * 100}%`,
+                        backgroundColor: theme.chartBorrow
+                      }}
+                    />
+                  </div>
+                  <span className="shrink-0 text-[11px] font-bold tabular-nums" style={{ color: theme.chartBorrow }}>
+                    {row.periodBorrowCount}
+                  </span>
                 </div>
-                <span className="shrink-0 text-[11px] font-bold tabular-nums" style={{ color: theme.chartBorrow }}>
-                  {row.periodBorrowCount}
-                </span>
               </div>
             </li>
           ))}
