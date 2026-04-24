@@ -1,7 +1,7 @@
 import {
   BarcodeScanModal,
   BARCODE_FORMAT_PRESET_PURCHASE_ORDER,
-  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
+  KIOSK_STANDARD_BARCODE_SCAN_SESSION,
 } from '../../features/barcode-scan';
 import {
   PurchaseOrderLookupBackBar,
@@ -9,11 +9,6 @@ import {
   purchaseOrderLookupKioskTheme,
   usePurchaseOrderLookup
 } from '../../features/purchase-order-lookup';
-
-const PURCHASE_ORDER_SCAN_STABILITY = {
-  requiredConsecutiveHits: 2,
-  stableWindowMs: 600,
-} as const;
 
 export function PurchaseOrderLookupPage() {
   const mp = usePurchaseOrderLookup();
@@ -74,9 +69,7 @@ export function PurchaseOrderLookupPage() {
       <BarcodeScanModal
         open={mp.scanOpen}
         formats={BARCODE_FORMAT_PRESET_PURCHASE_ORDER}
-        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
-        stabilityConfig={PURCHASE_ORDER_SCAN_STABILITY}
-        idleTimeoutMs={30_000}
+        {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
         onSuccess={mp.onScanSuccess}
         onAbort={() => mp.setScanOpen(false)}
       />

@@ -2,7 +2,7 @@ import { getResolvedClientKey } from '../../api/client';
 import {
   BarcodeScanModal,
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE,
-  BARCODE_READER_OPTIONS_KIOSK_DEFAULT,
+  KIOSK_STANDARD_BARCODE_SCAN_SESSION,
 } from '../../features/barcode-scan';
 import {
   PalletVizActionRow,
@@ -20,8 +20,7 @@ export function KioskPalletVisualizationPage() {
       <BarcodeScanModal
         open={ctrl.scanOpen}
         formats={BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE}
-        readerOptions={BARCODE_READER_OPTIONS_KIOSK_DEFAULT}
-        idleTimeoutMs={30_000}
+        {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
         onSuccess={ctrl.handleScanSuccess}
         onAbort={() => ctrl.setScanOpen(false)}
       />
