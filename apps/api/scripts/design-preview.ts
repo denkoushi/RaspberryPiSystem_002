@@ -109,11 +109,16 @@ function toNumberCell(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+type MiLoanCardHtmlOptions = {
+  /** `.mi-card__band` に付与（帯色サンプル用の修飾クラス） */
+  bandExtraClass?: string;
+};
+
 /**
  * 実装前の見た目合意用: 帯（ヘッダ行）＋帯下〜明細のすき（--mi-header-body-gap）をいじれる HTML。
  * 本文の並びは parseRowInstrumentEntries に寄せ、SVG レンダラーと同じ解釈にする。
  */
-function buildMiLoanInspectionCardHtml(row: MiLoanInspectionTableRow): string {
+function buildMiLoanInspectionCardHtml(row: MiLoanInspectionTableRow, options?: MiLoanCardHtmlOptions): string {
   const activeLoanCount = toNumberCell(row['貸出中計測機器数'], 0);
   const returnedLoanCount = toNumberCell(row[MI_RETURNED_COUNT_COLUMN], 0);
   const hasLoans = activeLoanCount > 0 || returnedLoanCount > 0;
@@ -135,9 +140,10 @@ function buildMiLoanInspectionCardHtml(row: MiLoanInspectionTableRow): string {
     bodyLines.push('<div class="mi-line mi-line--empty">-</div>');
   }
   const cardClass = hasLoans ? 'mi-card mi-card--loans' : 'mi-card mi-card--empty';
+  const bandEx = options?.bandExtraClass?.trim() ? ` ${options.bandExtraClass.trim()}` : '';
   return `
   <article class="${cardClass}">
-    <div class="mi-card__band">
+    <div class="mi-card__band${bandEx}">
       <span class="mi-card__name">${escapeHtml(employeeName)}</span>
       <span class="mi-card__counts">貸出中 ${activeLoanCount} ・ 返却 ${returnedLoanCount}</span>
     </div>
@@ -145,6 +151,231 @@ function buildMiLoanInspectionCardHtml(row: MiLoanInspectionTableRow): string {
       ${bodyLines.join('')}
     </div>
   </article>`;
+}
+
+type LoanBandVariant = { id: string; label: string; bandClass: string };
+type EmptyBandVariant = { id: string; label: string; bandClass: string };
+
+const LOAN_BAND_COLOR_VARIANTS: readonly LoanBandVariant[] = [
+  { id: 'A', label: '10% text-primary + infoContainer（いまの実装に相当）', bandClass: 'mi-band--p10' },
+  { id: 'B', label: '18% text-primary + infoContainer', bandClass: 'mi-band--p18' },
+  { id: 'C', label: '28% text-primary + infoContainer', bandClass: 'mi-band--p28' },
+  { id: 'D', label: '40% text-primary + infoContainer', bandClass: 'mi-band--p40' },
+  { id: 'E', label: '12% 白 + infoContainer（帯を明るく）', bandClass: 'mi-band--w12' },
+  { id: 'F', label: '10% 黒 + infoContainer（帯を暗く）', bandClass: 'mi-band--k10' },
+  { id: 'G', label: '20% status-info + infoContainer（アクセント寄り）', bandClass: 'mi-band--i20' },
+  {
+    id: 'H',
+    label: '10% + 帯下 1px 区切り（on-info 35% 線）',
+    bandClass: 'mi-band--p10-divider',
+  },
+];
+
+const EMPTY_BAND_COLOR_VARIANTS: readonly EmptyBandVariant[] = [
+  { id: 'I', label: '6% text-primary + #020617（いまの実装に相当）', bandClass: 'mi-band--empty-p6' },
+  { id: 'J', label: '14% text-primary + #020617', bandClass: 'mi-band--empty-p14' },
+  { id: 'K', label: '8% 白 + #020617', bandClass: 'mi-band--empty-w8' },
+];
+
+/**
+ * 帯色だけを複数パターン並べ、選定用にブラウザで比較する専用ページ。
+ * 貸出あり・貸出なしを同一レイアウトで並べる。
+ */
+function buildBandColorSamplesPageHtml(
+  tokensCss: string,
+  options: { loanRow: MiLoanInspectionTableRow; emptyRow: MiLoanInspectionTableRow },
+): string {
+  const headerBodyGapPx = getHeaderBodyGapCssPixels();
+  const cardPadX = `${MI_CARD_INNER_PAD_PX}px`;
+
+  const loanFigures = LOAN_BAND_COLOR_VARIANTS.map(
+    (v) => `<figure class="mi-band-fig">
+  <figcaption class="mi-band-fig__caption"><strong>${v.id}</strong> — ${escapeHtml(v.label)}</figcaption>
+  ${buildMiLoanInspectionCardHtml(options.loanRow, { bandExtraClass: v.bandClass })}
+</figure>`,
+  ).join('\n');
+
+  const emptyFigures = EMPTY_BAND_COLOR_VARIANTS.map(
+    (v) => `<figure class="mi-band-fig">
+  <figcaption class="mi-band-fig__caption"><strong>${v.id}</strong> — ${escapeHtml(v.label)}</figcaption>
+  ${buildMiLoanInspectionCardHtml(options.emptyRow, { bandExtraClass: v.bandClass })}
+</figure>`,
+  ).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>帯色サンプル — 計測機器持出カード</title>
+  <style>
+${tokensCss}
+
+    :root {
+      --mi-header-body-gap: ${headerBodyGapPx}px;
+      --mi-card-pad-x: ${cardPadX};
+      --mi-card-pad-y: 10px;
+      --mi-surface: var(--rps-md3-color-surface-background);
+    }
+    * { box-sizing: border-box; }
+    body.mi-band-samples {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--mi-surface);
+      color: var(--rps-md3-color-text-primary);
+      font-family: system-ui, -apple-system, 'Noto Sans JP', 'Roboto', sans-serif;
+      padding: 20px 16px 32px;
+    }
+    .mi-band-samples h1 {
+      font-size: 1.35rem;
+      margin: 0 0 8px 0;
+    }
+    .mi-band-samples .lead {
+      margin: 0 0 16px 0;
+      font-size: 0.95rem;
+      color: var(--rps-md3-color-text-secondary);
+      line-height: 1.55;
+      max-width: 960px;
+    }
+    .mi-band-samples h2 {
+      font-size: 1.05rem;
+      margin: 24px 0 12px 0;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--rps-md3-color-outline);
+    }
+    .mi-band-samples__grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px 20px;
+      align-content: start;
+    }
+    .mi-band-fig {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mi-band-fig__caption {
+      font-size: 0.8rem;
+      line-height: 1.4;
+      color: var(--rps-md3-color-text-secondary);
+    }
+    .mi-card {
+      border-radius: 10px;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .mi-card--loans {
+      background: var(--rps-md3-color-status-info-container);
+    }
+    .mi-card--empty {
+      background: #020617;
+      border: 1px solid var(--rps-md3-color-card-border);
+    }
+    /* 帯: 貸出あり（上書きは .mi-card__band + 修飾で明示） */
+    .mi-card--loans .mi-card__band.mi-band--p10 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--loans .mi-card__band.mi-band--p18 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 18%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--loans .mi-card__band.mi-band--p28 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 28%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--loans .mi-card__band.mi-band--p40 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 40%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--loans .mi-card__band.mi-band--w12 {
+      background: color-mix(in srgb, white 12%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--loans .mi-card__band.mi-band--k10 {
+      background: color-mix(in srgb, black 10%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--loans .mi-card__band.mi-band--i20 {
+      background: color-mix(in srgb, var(--rps-md3-color-status-info) 20%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--loans .mi-card__band.mi-band--p10-divider {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, var(--rps-md3-color-status-info-container));
+      border-bottom: 1px solid color-mix(in srgb, var(--rps-md3-color-status-on-info-container) 35%, transparent);
+    }
+    .mi-card--loans .mi-card__name,
+    .mi-card--loans .mi-card__counts {
+      color: var(--rps-md3-color-status-on-info-container);
+    }
+    .mi-card--empty .mi-card__name,
+    .mi-card--empty .mi-card__counts {
+      color: var(--rps-md3-color-text-primary);
+    }
+    .mi-card__band {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: var(--mi-card-pad-y) var(--mi-card-pad-x);
+    }
+    .mi-card--empty .mi-card__band.mi-band--empty-p6 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 6%, #020617);
+    }
+    .mi-card--empty .mi-card__band.mi-band--empty-p14 {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 14%, #020617);
+    }
+    .mi-card--empty .mi-card__band.mi-band--empty-w8 {
+      background: color-mix(in srgb, white 8%, #020617);
+    }
+    .mi-card__name {
+      font-size: max(16px, calc(19 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 700;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mi-card__counts {
+      font-size: max(12px, calc(14 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .mi-card__body {
+      padding: var(--mi-header-body-gap) var(--mi-card-pad-x) 12px;
+    }
+    .mi-line--mgmt {
+      font-size: max(12px, calc(13 * 1.5 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-text-secondary);
+    }
+    .mi-line--name {
+      font-size: max(12px, calc(13 * 1.5 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-status-on-info-container);
+    }
+    .mi-card--empty .mi-line--mgmt,
+    .mi-card--empty .mi-line--name { color: var(--rps-md3-color-text-secondary); }
+    .mi-line--returned {
+      margin-top: 4px;
+      font-size: max(12px, calc(13 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-outline);
+    }
+    .mi-line--empty {
+      font-size: max(12px, calc(13 * 1.5 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-text-secondary);
+    }
+  </style>
+</head>
+<body class="mi-band-samples">
+  <h1>帯色サンプル（MD3 トークン固定・同一カード中身）</h1>
+  <p class="lead">各パターンの <strong>ID（A, B, …）</strong>を採用時に指定してください。貸出ありは本文が <code>infoContainer</code> 一色、帯だけレシピ差です。E（白混ぜ）は帯が明るくなり、文字のコントラストも一緒に確認してください。</p>
+  <h2>貸出あり</h2>
+  <div class="mi-band-samples__grid">
+    ${loanFigures}
+  </div>
+  <h2>貸出なし（空カード）</h2>
+  <div class="mi-band-samples__grid">
+    ${emptyFigures}
+  </div>
+</body>
+</html>`;
 }
 
 function buildMeasuringInstrumentLoanInspectionHtmlPreview(
@@ -308,6 +539,19 @@ async function main(): Promise<void> {
   const rows = sortRowsForDisplay((table.rows ?? []) as MiLoanInspectionTableRow[]);
   const cardsHtml = rows.map((r) => buildMiLoanInspectionCardHtml(r)).join('\n');
 
+  const loanSampleRow =
+    rows.find((r) => {
+      const a = toNumberCell(r['貸出中計測機器数'], 0);
+      const ret = toNumberCell(r[MI_RETURNED_COUNT_COLUMN], 0);
+      return a > 0 || ret > 0;
+    }) ?? rows[0];
+  const emptySampleRow =
+    rows.find((r) => {
+      const a = toNumberCell(r['貸出中計測機器数'], 0);
+      const ret = toNumberCell(r[MI_RETURNED_COUNT_COLUMN], 0);
+      return a === 0 && ret === 0;
+    }) ?? rows[0];
+
   const htmlPreviewPath = path.join(outDir, 'measuring-loan-inspection-html-preview.html');
   await fs.writeFile(
     htmlPreviewPath,
@@ -316,6 +560,13 @@ async function main(): Promise<void> {
       targetDate,
       cardsHtml,
     }),
+    'utf8',
+  );
+
+  const bandSamplesPath = path.join(outDir, 'measuring-loan-inspection-band-samples.html');
+  await fs.writeFile(
+    bandSamplesPath,
+    buildBandColorSamplesPageHtml(tokensCss, { loanRow: loanSampleRow, emptyRow: emptySampleRow }),
     'utf8',
   );
 
@@ -360,23 +611,24 @@ async function main(): Promise<void> {
 <body>
   <div class="wrap">
     <h1>計測機器持出状況 — デザインプレビュー</h1>
-    <p class="note">目的: 実装前に <strong>帯＋帯下の余白</strong>などを HTML で合意し、同じトークン前提の <code>MeasuringInstrumentLoanInspectionRenderer</code>（SVG→JPEG）の現行見えと対照する。出力先: <code>${outDir}</code></p>
+    <p class="note">目的: 実装前に <strong>帯＋帯下の余白</strong>を HTML で合意し、同じトークン前提の <code>MeasuringInstrumentLoanInspectionRenderer</code>（SVG→JPEG）と対照。帯色の<strong>採用選定</strong>は専用ページを使用。出力先: <code>${outDir}</code></p>
     <div class="row">
       <div class="panel">
-        <h2>HTML モック（${full.width}×${full.height} 固定・MD3 CSS 変数）</h2>
-        <p class="meta">ファイル: <code>measuring-loan-inspection-html-preview.html</code> — 帯下の空きは <code>--mi-header-body-gap</code></p>
-        <iframe src="./measuring-loan-inspection-html-preview.html" title="計測機器持出 HTML"></iframe>
+        <h2>帯色サンプル（複数パターン・採用 ID を決める）</h2>
+        <p class="meta"><code>measuring-loan-inspection-band-samples.html</code> — 貸出あり A〜H、空カード I〜K。<a href="./measuring-loan-inspection-band-samples.html" target="_blank" rel="noopener">別タブで開く</a></p>
+        <iframe src="./measuring-loan-inspection-band-samples.html" title="帯色サンプル" style="min-height: 640px; aspect-ratio: auto;"></iframe>
       </div>
       <div class="panel">
-        <h2>参照: 現行 SVG レンダラー（FULL ${full.width}×${full.height}）</h2>
-        <p class="meta">帯未実装の実装出力。差分洗い出し用。</p>
-        <img src="./measuring-loan-inspection-full.jpg" width="${full.width}" height="${full.height}" alt="計測機器持出 SVG full" />
+        <h2>HTML モック（全カード ${full.width}×${full.height}）</h2>
+        <p class="meta"><code>measuring-loan-inspection-html-preview.html</code> — 帯下 <code>--mi-header-body-gap</code>。<a href="./measuring-loan-inspection-html-preview.html" target="_blank" rel="noopener">別タブ</a></p>
+        <iframe src="./measuring-loan-inspection-html-preview.html" title="計測機器持出 HTML"></iframe>
       </div>
     </div>
     <div class="row" style="margin-top: 16px;">
       <div class="panel">
-        <h2>同 HTML を別タブで拡大表示</h2>
-        <p class="meta"><a href="./measuring-loan-inspection-html-preview.html" target="_blank" rel="noopener">measuring-loan-inspection-html-preview.html を開く</a></p>
+        <h2>参照: SVG レンダラー（FULL ${full.width}×${full.height}）</h2>
+        <p class="meta">本番に近い JPEG 出力。帯色は <code>mi-instrument-card-palette</code> の定数に追随。</p>
+        <img src="./measuring-loan-inspection-full.jpg" width="${full.width}" height="${full.height}" alt="計測機器持出 SVG full" />
       </div>
       <div class="panel">
         <h2>参照: SPLIT ペイン相当（${g.rightPaneContentWidth}×${g.paneContentHeight}）</h2>
@@ -398,6 +650,7 @@ async function main(): Promise<void> {
     files: {
       index: 'tmp/design-preview/index.html',
       htmlMock: 'tmp/design-preview/measuring-loan-inspection-html-preview.html',
+      bandSamples: 'tmp/design-preview/measuring-loan-inspection-band-samples.html',
       rendererFull: 'tmp/design-preview/measuring-loan-inspection-full.jpg',
       rendererPane: 'tmp/design-preview/measuring-loan-inspection-pane.jpg',
     },
@@ -408,6 +661,8 @@ async function main(): Promise<void> {
   console.log(`Design preview generated: ${path.join(outDir, 'index.html')}`);
   // eslint-disable-next-line no-console
   console.log(`  HTML mock: ${htmlPreviewPath}`);
+  // eslint-disable-next-line no-console
+  console.log(`  Band color samples: ${bandSamplesPath}`);
 }
 
 main().catch((err) => {

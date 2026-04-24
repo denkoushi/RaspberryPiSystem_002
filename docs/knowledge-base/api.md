@@ -4043,7 +4043,7 @@ CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
 - `apps/api/src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.ts`（カードレイアウト実装、背景色ロジック、バッジ背景色透明化）
 - `apps/api/src/services/visualization/renderers/_design-system/md3.ts`（青色の変更）
 - `apps/api/scripts/design-preview.ts`（現行は計測機器持出状況の HTML モックと SVG→JPEG の生成。過去の加工機向け複合プレビュー一括出力は廃止）
-- `tmp/design-preview/measuring-loan-inspection-html-preview.html` / `index.html`（運用は [preview-workflow.md](../design/preview-workflow.md)）
+- `tmp/design-preview/measuring-loan-inspection-html-preview.html` / `measuring-loan-inspection-band-samples.html` / `index.html`（運用は [preview-workflow.md](../design/preview-workflow.md)）
 
 **解決状況**: ✅ **解決済み**（2026-02-14）
 - カードレイアウトにより49件すべてを表示可能に
