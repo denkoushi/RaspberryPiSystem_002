@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-24（計測機器持出カード ヘッダ帯・本番 Pi5 反映実績）
+最終更新: 2026-04-24（T4 帯混色比集約の本番反映・計測機器持出関連）
+
+### 補足（2026-04-24: 計測機器持出 T4 帯 混色比の単一化・API のみ）
+
+- **変更概要**: 貸出ありカード帯（T4）の **warning と info-container の混色比**を **`mi-instrument-card-metrics.ts` の `MI_LOAN_ACTIVE_BAND_WARNING_MIX`（0.22）** に集約。`mi-instrument-card-palette` の SVG hex 合成、`apps/api/scripts/design-preview.ts` の `color-mix` パーセンテージと T4 ラベル、ユニットテストを同一定数に揃えた。見た目は従来の 22% 相当のまま。**DB/契約変更なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4 / Pi3 は必須ではない**（JPEG は Pi5 API が生成。Pi3 専用手順は不要）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`main`**・代表コミット **`85936fbe`**。**Detach Run ID**（`ansible-update-`）: **`20260424-124333-16207`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 11 分**（Docker 再ビルド含む））。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **2 分 24 秒**）。
+- **知見**: `design-preview.ts` の **HTML 生成テンプレ**内コメントに **バッククォート付き識別子**を入れると、ESLint がテンプレートリテラル境界を誤解し **パースエラー**になり得る。定数名は **プレーンテキスト**で参照メモする。
+- **知見 / トラブルシュート（共通）**: デプロイ前 **未追跡ファイル**は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast**。**Pi5 `apps/api/src` root 所有**は先に **`chown` 後**デプロイ（[KB-347 追補](../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ)）。
 
 ### 補足（2026-04-24: 計測機器持出可視化 カード ヘッダ帯＋帯下余白・API のみ）
 

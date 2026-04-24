@@ -479,6 +479,11 @@
 - **知見**: 今回の差分は **Pi5 API が生成する JPEG** に閉じるため、**Pi4 / Pi3 の追加デプロイは必須ではない**。Pi5 `/api/system/health` はデプロイ直後に **memory high** で `degraded` を返し得るが、**`database: ok`** と Phase12 合格を併せて判断する。
 - **トラブルシュート**: Pi5 のデプロイ前チェックで **`apps/api/src` の root 所有ファイル**が残っていると Git 同期で詰まり得る。標準手順どおり **`sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src`** を先に実行してから `update-all-clients.sh ... --limit raspberrypi5 --detach --follow` を流す。
 
+**追補（2026-04-24・計測機器点検可視化 T4 帯 混色比の単一化）**:
+- **仕様**: 貸出ありカード帯（T4）は **`color-mix(in srgb, status-warning 22%, status-info-container)`** 相当。SVG では `mixHex` で同じ比を使う。混色比は **`MI_LOAN_ACTIVE_BAND_WARNING_MIX`**（`mi-instrument-card-metrics.ts`）に集約し、palette・`design-preview`・テストで共有する（比率変更は 1 箇所の更新で追随）。
+- **本番反映**: ブランチ **`main`**・代表 **`85936fbe`** を **`raspberrypi5` のみ**へデプロイ。**Detach `20260424-124333-16207`**・**`failed=0` / `unreachable=0`**・`./scripts/deploy/verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**（約 **143s**）。
+- **知見**: Pi4 / Pi3 の追加デプロイは **本差分の必須条件ではない**（JPEG は Pi5 API）。`design-preview` のテンプレ内コメントは **バッククォート付き識別子**に注意（ESLint パースエラー回避）。
+
 **検証**:
 - `apps/api` Vitest: `data-source-jst-business-day.test.ts`, `machine.service.test.ts`, `measuring-instrument-loan-inspection-data-source.test.ts` ほか
 
