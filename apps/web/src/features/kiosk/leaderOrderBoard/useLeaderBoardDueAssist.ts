@@ -10,13 +10,19 @@ import { useKioskSharedSearchHistoryActions } from '../productionSchedule/useKio
 
 type DueDateTarget = { scope: 'seiban' } | { scope: 'processing'; processingType: string };
 
-export function useLeaderBoardDueAssist(options?: { pauseRefetch?: boolean }) {
+export function useLeaderBoardDueAssist(options?: {
+  pauseRefetch?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
   const {
     sharedHistory,
     historyWriting,
     addSeibanToHistory,
     removeSeibanFromHistory
-  } = useKioskSharedSearchHistoryActions({ pauseRefetch: options?.pauseRefetch });
+  } = useKioskSharedSearchHistoryActions({
+    pauseRefetch: options?.pauseRefetch,
+    refetchIntervalMs: options?.refetchIntervalMs
+  });
   const updateSeibanDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanDueDate();
   const updateProcessingDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate();
 
@@ -126,3 +132,5 @@ export function useLeaderBoardDueAssist(options?: { pauseRefetch?: boolean }) {
     historyWriting
   };
 }
+
+export type LeaderBoardDueAssistHandle = ReturnType<typeof useLeaderBoardDueAssist>;

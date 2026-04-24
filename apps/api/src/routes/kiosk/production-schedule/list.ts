@@ -48,7 +48,8 @@ export async function registerProductionScheduleListRoute(
       hasDueDateOnly,
       allowResourceOnly: query.allowResourceOnly === true,
       locationKey: assignmentLocationKey,
-      siteKey: locationScopeContext.siteKey
+      siteKey: locationScopeContext.siteKey,
+      responseProfile: query.responseProfile
     });
   });
 }

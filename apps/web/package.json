@@ -15,6 +15,7 @@
     "@raspi-system/part-search-core": "workspace:*",
     "@raspi-system/shared-types": "workspace:*",
     "@tanstack/react-query": "^5.35.2",
+    "@tanstack/react-virtual": "^3.11.2",
     "@xstate/react": "^6.0.0",
     "@zxing/library": "^0.21.3",
     "axios": "^1.15.0",

@@ -17,9 +17,15 @@ export type KioskSharedSearchHistoryOperation = { type: 'add' | 'remove'; value:
  * 生産スケジュールの共有 search-state（履歴のみサーバ永続）の読み取りと書き込み。
  * 手動順番ページの {@link useSharedSearchHistory} と同じ If-Match / 409 収束を、URL 状態なしで使う。
  */
-export function useKioskSharedSearchHistoryActions(options?: { pauseRefetch?: boolean }) {
+export function useKioskSharedSearchHistoryActions(options?: {
+  pauseRefetch?: boolean;
+  refetchIntervalMs?: number | false;
+}) {
   const queryClient = useQueryClient();
-  const searchStateQuery = useKioskProductionScheduleSearchState({ pauseRefetch: options?.pauseRefetch });
+  const searchStateQuery = useKioskProductionScheduleSearchState({
+    pauseRefetch: options?.pauseRefetch,
+    refetchIntervalMs: options?.refetchIntervalMs
+  });
   const updateMutation = useUpdateKioskProductionScheduleSearchState();
   const etagRef = useRef<string | null>(null);
 

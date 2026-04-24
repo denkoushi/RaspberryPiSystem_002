@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useCompleteKioskProductionScheduleRow,
@@ -118,48 +118,60 @@ export const useProductionScheduleMutations = ({
     ]
   );
 
-  const updateOrder = ({ rowId, resourceCd, nextValue }: UpdateOrderParams) => {
-    const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
-    orderMutation.mutate({
-      rowId,
-      payload: {
-        resourceCd,
-        orderNumber,
-        ...(productionScheduleTargetDeviceScopeKey
-          ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
-          : {})
-      },
-      cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
-    });
-  };
+  const updateOrder = useCallback(
+    ({ rowId, resourceCd, nextValue }: UpdateOrderParams) => {
+      const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
+      orderMutation.mutate({
+        rowId,
+        payload: {
+          resourceCd,
+          orderNumber,
+          ...(productionScheduleTargetDeviceScopeKey
+            ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
+            : {})
+        },
+        cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
+      });
+    },
+    [orderMutation, productionScheduleOrderCachePolicy, productionScheduleTargetDeviceScopeKey]
+  );
 
-  const updateProcessing = (rowId: string, nextValue: string) => {
-    processingMutation.mutate({ rowId, processingType: nextValue });
-  };
+  const updateProcessing = useCallback(
+    (rowId: string, nextValue: string) => {
+      processingMutation.mutate({ rowId, processingType: nextValue });
+    },
+    [processingMutation]
+  );
 
-  const saveNote = ({ rowId, note, onSettled }: SaveNoteParams) => {
-    if (noteMutation.isPending) return;
-    noteMutation.mutate(
-      { rowId, note: sanitizeNote(note, noteMaxLength) },
-      {
-        onSettled
-      }
-    );
-  };
+  const saveNote = useCallback(
+    ({ rowId, note, onSettled }: SaveNoteParams) => {
+      if (noteMutation.isPending) return;
+      noteMutation.mutate(
+        { rowId, note: sanitizeNote(note, noteMaxLength) },
+        {
+          onSettled
+        }
+      );
+    },
+    [noteMaxLength, noteMutation]
+  );
 
-  const commitDueDate = ({ rowId, dueDate, onSettled }: CommitDueDateParams) => {
-    if (dueDateMutation.isPending) return;
-    dueDateMutation.mutate(
-      { rowId, dueDate },
-      {
-        onSettled
-      }
-    );
-  };
+  const commitDueDate = useCallback(
+    ({ rowId, dueDate, onSettled }: CommitDueDateParams) => {
+      if (dueDateMutation.isPending) return;
+      dueDateMutation.mutate(
+        { rowId, dueDate },
+        {
+          onSettled
+        }
+      );
+    },
+    [dueDateMutation]
+  );
 
-  const completeRow = async (rowId: string) => {
+  const completeRow = useCallback(async (rowId: string) => {
     await completeMutation.mutateAsync(rowId);
-  };
+  }, [completeMutation]);
 
   return {
     ...pending,

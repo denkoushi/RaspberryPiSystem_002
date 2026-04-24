@@ -11,39 +11,31 @@ import {
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
+import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
 import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
-import {
-  filterLeaderBoardRowsByCompletion,
-  type LeaderOrderCompletionFilter
-} from '../../features/kiosk/leaderOrderBoard/filterLeaderBoardRowsByCompletion';
-import { groupRowsByResourceCd } from '../../features/kiosk/leaderOrderBoard/groupRowsByResourceCd';
-import { LeaderBoardDueAssistPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel';
+import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
+import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
-import { LeaderOrderResourceCard } from '../../features/kiosk/leaderOrderBoard/LeaderOrderResourceCard';
 import {
-  buildSeibanMachineNameMapFromProgressBySeiban,
-  mergeMachineNameFallback
-} from '../../features/kiosk/leaderOrderBoard/mergeMachineNameFallback';
-import { normalizeLeaderBoardRows } from '../../features/kiosk/leaderOrderBoard/normalizeLeaderBoardRow';
-import { sortLeaderBoardRowsForDisplay } from '../../features/kiosk/leaderOrderBoard/sortLeaderBoardRowsForDisplay';
+  LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS,
+  LEADER_BOARD_ORDER_USAGE_REFETCH_MS,
+  LEADER_BOARD_RESOURCES_REFETCH_MS,
+  LEADER_BOARD_SCHEDULE_REFETCH_MS,
+  LEADER_BOARD_SEARCH_STATE_REFETCH_MS
+} from '../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist';
 import { useLeaderBoardResourceSlots } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlots';
-import { useManualOrderPageController } from '../../features/kiosk/productionSchedule/useManualOrderPageController';
+import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
-import {
-  KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK,
-  KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS
-} from '../../hooks/kioskRevealUi';
-import {
-  KIOSK_LEFT_EDGE_HOT_ZONE_PX,
-  useKioskLeftEdgeDrawerReveal
-} from '../../hooks/useKioskLeftEdgeDrawerReveal';
+import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../hooks/kioskRevealUi';
+import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 import type { ProductionScheduleRow } from '../../api/client';
+import type { LeaderOrderCompletionFilter } from '../../features/kiosk/leaderOrderBoard/filterLeaderBoardRowsByCompletion';
 import type { LeaderBoardRow } from '../../features/kiosk/leaderOrderBoard/types';
 
 const LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY = 'leader-order-board-search-conditions';
@@ -56,7 +48,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const isMac = typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
 
-  const { siteKey, defaultSites, deviceCards, handleSiteChange } = useManualOrderPageController();
+  const { siteKey, defaultSites, deviceCards, handleSiteChange } = useLeaderOrderBoardDeviceContext();
   const [activeDeviceScopeKey, setActiveDeviceScopeKey] = useState('');
   const [searchConditions, setSearchConditions] = useProductionScheduleSearchConditionsWithStorageKey(
     LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY
@@ -125,6 +117,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       ...baseQueryParams,
       pageSize: boardPageSize,
       allowResourceOnly: true,
+      responseProfile: 'leaderboard' as const,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
@@ -158,7 +151,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
       queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
-      })
+      }),
+      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-manual-order-resource-assignments'] })
     ]);
 
   const {
@@ -202,12 +196,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
 
   const resourcesQuery = useKioskProductionScheduleResources({
-    pauseRefetch: writePause
+    pauseRefetch: writePause,
+    refetchIntervalMs: LEADER_BOARD_RESOURCES_REFETCH_MS
   });
 
   const scheduleQuery = useKioskProductionSchedule(scheduleListParams, {
     enabled: scheduleEnabled,
-    pauseRefetch: writePause
+    pauseRefetch: writePause,
+    refetchIntervalMs: LEADER_BOARD_SCHEDULE_REFETCH_MS
   });
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
@@ -215,6 +211,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     {
       pauseRefetch: writePause,
       enabled: scheduleEnabled && activeResourceCds.length > 0,
+      refetchIntervalMs: LEADER_BOARD_ORDER_USAGE_REFETCH_MS,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
@@ -222,7 +219,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   );
 
   const historyProgressQuery = useKioskProductionScheduleHistoryProgress({
-    pauseRefetch: writePause
+    pauseRefetch: writePause,
+    refetchIntervalMs: LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS
   });
 
   const resourceNameMap = useMemo(
@@ -230,7 +228,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [resourcesQuery.data]
   );
 
-  const dueAssist = useLeaderBoardDueAssist({ pauseRefetch: writePause });
+  const dueAssist = useLeaderBoardDueAssist({
+    pauseRefetch: writePause,
+    refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS
+  });
   const drawerReveal = useKioskLeftEdgeDrawerReveal(true, { keepOpen: dueAssist.isDetailOpen });
   const leftToolStackOuterRef = useRef<HTMLDivElement | null>(null);
   const [leftStackWidthPx, setLeftStackWidthPx] = useState(0);
@@ -272,25 +273,15 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const grouped = useMemo(() => {
     const rows = (scheduleQuery.data?.rows ?? []) as ProductionScheduleRow[];
-    const normalized = normalizeLeaderBoardRows(rows);
-    const fb = buildSeibanMachineNameMapFromProgressBySeiban(historyProgressQuery.data?.progressBySeiban);
-    const merged = mergeMachineNameFallback(normalized, fb);
-    return groupRowsByResourceCd(merged);
-  }, [
-    scheduleQuery.data?.rows,
-    historyProgressQuery.data?.progressBySeiban
-  ]);
+    return buildLeaderBoardGroupedRows(rows, historyProgressQuery.data?.progressBySeiban);
+  }, [scheduleQuery.data?.rows, historyProgressQuery.data?.progressBySeiban]);
 
   const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('all');
 
-  const sortedGrouped = useMemo(() => {
-    const m = new Map<string, LeaderBoardRow[]>();
-    grouped.forEach((list, cd) => {
-      const filtered = filterLeaderBoardRowsByCompletion(list, completionFilter);
-      m.set(cd, sortLeaderBoardRowsForDisplay(filtered));
-    });
-    return m;
-  }, [grouped, completionFilter]);
+  const sortedGrouped = useMemo(
+    () => buildLeaderBoardSortedGrouped(grouped, completionFilter),
+    [grouped, completionFilter]
+  );
 
   const listIncomplete =
     scheduleQuery.data != null && scheduleQuery.data.total > scheduleQuery.data.rows.length;
@@ -303,6 +294,27 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       updateOrder({ rowId: row.id, resourceCd: row.resourceCd, nextValue });
     },
     [updateOrder]
+  );
+
+  const handleOpenRowDueDate = useCallback(
+    (row: LeaderBoardRow) => {
+      openDueDatePicker(row.id, row.dueDate);
+    },
+    [openDueDatePicker]
+  );
+
+  const handleOpenRowNote = useCallback(
+    (row: LeaderBoardRow) => {
+      startNoteEdit(row.id, row.note);
+    },
+    [startNoteEdit]
+  );
+
+  const handleCompleteRow = useCallback(
+    (rowId: string) => {
+      void completeRow(rowId);
+    },
+    [completeRow]
   );
 
   const toggleGrinding = () =>
@@ -324,232 +336,30 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       />
 
       <div className="pointer-events-none fixed inset-y-0 left-0 z-50 flex">
-        <div
-          ref={leftToolStackOuterRef}
-          className={clsx(
-            'pointer-events-auto flex h-full max-h-full',
-            KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS,
-            drawerReveal.isVisible ? 'translate-x-0' : '-translate-x-full'
-          )}
-          onMouseEnter={drawerReveal.onDrawerMouseEnter}
-          onMouseLeave={drawerReveal.onDrawerMouseLeave}
-        >
-          <div
-            className="shrink-0"
-            style={{ width: KIOSK_LEFT_EDGE_HOT_ZONE_PX }}
-            onMouseEnter={drawerReveal.onHotZoneEnter}
-            aria-hidden
-          />
-          <aside
-            className="flex h-full min-h-0 w-64 max-w-[85vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-md"
-            aria-label="操作パネル"
-          >
-          <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
-            工場
-            <select
-              value={siteKey}
-              onChange={(event) => handleSiteChange(event.target.value)}
-              className="rounded border border-white/20 bg-slate-900 px-2 py-2 text-xs text-white"
-              aria-label="工場を選択"
-            >
-              {defaultSites.map((site) => (
-                <option key={site} value={site}>
-                  {site}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
-            対象端末
-            <select
-              value={activeDeviceScopeKey}
-              onChange={(ev) => {
-                setActiveDeviceScopeKey(ev.target.value);
-                setSelectedResourceCd(null);
-              }}
-              className="rounded border border-white/20 bg-slate-900 px-2 py-2 text-xs text-white"
-            >
-              {deviceCards.length === 0 ? (
-                <option value="">端末なし</option>
-              ) : (
-                deviceCards.map((d) => (
-                  <option key={d.deviceScopeKey} value={d.deviceScopeKey}>
-                    {d.label?.trim() || d.deviceScopeKey}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-white/5 p-2">
-            <div className="mb-2 flex shrink-0 items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-white/70">製番検索</span>
-              <button
-                type="button"
-                onClick={() => dueAssist.openDetail()}
-                disabled={!dueAssist.selectedFseiban}
-                className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"
-              >
-                詳細
-              </button>
-            </div>
-            <div className="flex shrink-0 gap-1.5">
-              <input
-                value={dueAssist.searchInput}
-                onChange={(event) => dueAssist.setSearchInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    void dueAssist.applySearch();
-                  }
-                }}
-                placeholder="製番を検索"
-                className="h-8 min-w-0 flex-1 rounded border border-white/20 bg-white px-2 text-xs text-slate-900"
-              />
-              <button
-                type="button"
-                onClick={openSearchKeyboard}
-                className="rounded border border-white/20 bg-slate-800 px-2 text-xs text-white hover:bg-slate-700"
-                aria-label="キーボードを開く"
-              >
-                ⌨
-              </button>
-              <button
-                type="button"
-                onClick={() => void dueAssist.applySearch()}
-                disabled={dueAssist.historyWriting}
-                className="rounded bg-blue-600 px-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
-              >
-                登録
-              </button>
-            </div>
-            <div
-              className="mt-2 flex min-h-0 flex-1 flex-wrap content-start gap-1 overflow-y-auto overflow-x-hidden pr-1"
-              style={{ WebkitOverflowScrolling: 'touch' }}
-              aria-label="登録済み製番"
-            >
-              {dueAssist.sharedHistory.map((fseiban) => {
-                const active = dueAssist.selectedFseiban === fseiban;
-                return (
-                  <div
-                    key={fseiban}
-                    className={clsx(
-                      'relative flex items-center rounded-full border pl-2 pr-5 text-[10px] font-semibold',
-                      active
-                        ? 'border-emerald-300 bg-emerald-400 text-slate-900'
-                        : 'border-white/25 bg-white/10 text-white hover:bg-white/20'
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => dueAssist.selectFseiban(fseiban)}
-                      className="py-1 font-mono"
-                    >
-                      {fseiban}
-                    </button>
-                    <button
-                      type="button"
-                      className={clsx(
-                        'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
-                        active ? 'bg-slate-200 text-slate-900' : 'bg-white text-slate-900'
-                      )}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void dueAssist.removeFromHistory(fseiban);
-                      }}
-                      aria-label={`履歴から削除: ${fseiban}`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-2 shrink-0 text-[10px] text-white/60">
-              選択中: <span className="font-mono text-white/90">{dueAssist.selectedFseiban ?? 'なし'}</span>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2 text-xs">
-            <button
-              type="button"
-              onClick={toggleGrinding}
-              className={clsx(
-                'rounded border px-2 py-1',
-                searchConditions.showGrindingResources
-                  ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-100'
-                  : 'border-white/20 text-white/70'
-              )}
-            >
-              研削
-            </button>
-            <button
-              type="button"
-              onClick={toggleCutting}
-              className={clsx(
-                'rounded border px-2 py-1',
-                searchConditions.showCuttingResources
-                  ? 'border-amber-400/50 bg-amber-500/20 text-amber-100'
-                  : 'border-white/20 text-white/70'
-              )}
-            >
-              切削
-            </button>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2 text-[10px] text-white/70">
-            <span className="w-full text-[9px] uppercase tracking-wide text-white/45">表示</span>
-            {(
-              [
-                ['all', '両方'],
-                ['incomplete', '未完'],
-                ['complete', '完了']
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setCompletionFilter(key)}
-                className={clsx(
-                  'rounded border px-2 py-1',
-                  completionFilter === key
-                    ? 'border-violet-400/50 bg-violet-500/20 text-violet-100'
-                    : 'border-white/20 text-white/70'
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {selectedResourceCategory ? (
-            <p className="shrink-0 text-[10px] text-white/45">検索: {selectedResourceCategory}</p>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setSlotModalOpen(true)}
-            className="shrink-0 rounded border border-white/25 bg-slate-800/80 px-2 py-1.5 text-left text-[11px] text-cyan-100 hover:bg-slate-800"
-          >
-            資源スロット（{activeResourceCds.length}/{slotCount}）
-          </button>
-          <p className="shrink-0 text-[10px] text-white/55">選択資源: {selectedResourceCd ?? '—'}</p>
-          {listIncomplete ? (
-            <p className="shrink-0 text-xs text-amber-200/90">
-              一覧が1ページに収まっていません。一部の行が表示されないことがあります。
-            </p>
-          ) : null}
-          <div className="mt-auto shrink-0 text-[10px] text-white/40">
-            順位は各行のドロップダウンで保存。「-」で納期順の自動並びへ。
-          </div>
-        </aside>
-        <LeaderBoardDueAssistPanel
-          isOpen={dueAssist.isDetailOpen}
-          selectedFseiban={dueAssist.selectedFseiban}
-          detail={dueAssist.detailQuery.data}
-          loading={dueAssist.detailQuery.isLoading}
-          error={dueAssist.detailQuery.isError}
-          dueUpdatePending={dueAssist.dueUpdatePending}
-          onClose={dueAssist.closeDetail}
-          onOpenSeibanDueDatePicker={dueAssist.openSeibanDueDatePicker}
-          onOpenProcessingDueDatePicker={dueAssist.openProcessingDueDatePicker}
+        <LeaderBoardLeftToolStack
+          leftToolStackOuterRef={leftToolStackOuterRef}
+          drawerReveal={drawerReveal}
+          siteKey={siteKey}
+          defaultSites={defaultSites}
+          handleSiteChange={handleSiteChange}
+          activeDeviceScopeKey={activeDeviceScopeKey}
+          setActiveDeviceScopeKey={setActiveDeviceScopeKey}
+          setSelectedResourceCd={setSelectedResourceCd}
+          deviceCards={deviceCards}
+          dueAssist={dueAssist}
+          openSearchKeyboard={openSearchKeyboard}
+          searchConditions={searchConditions}
+          toggleGrinding={toggleGrinding}
+          toggleCutting={toggleCutting}
+          completionFilter={completionFilter}
+          setCompletionFilter={setCompletionFilter}
+          selectedResourceCategory={selectedResourceCategory}
+          activeResourceCds={activeResourceCds}
+          slotCount={slotCount}
+          setSlotModalOpen={setSlotModalOpen}
+          selectedResourceCd={selectedResourceCd}
+          listIncomplete={listIncomplete}
         />
-        </div>
       </div>
 
       <main
@@ -567,48 +377,22 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         ) : scheduleQuery.isError ? (
           <p className="text-sm text-rose-200">一覧の取得に失敗しました。</p>
         ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto [grid-auto-rows:minmax(14rem,1fr)] md:grid-cols-4 xl:grid-cols-6">
-            {resourceCdBySlotIndex.map((cdRaw, slotIndex) => {
-              const cd = cdRaw?.trim() ?? '';
-              if (cd.length === 0) {
-                return (
-                  <div
-                    key={`slot-empty-${slotIndex}`}
-                    className="flex h-full min-h-[14rem] flex-col rounded-lg border border-dashed border-white/20 bg-slate-900/35 p-2.5"
-                  >
-                    <div className="text-[11px] font-medium text-white/50">スロット {slotIndex + 1}</div>
-                    <p className="mt-2 text-xs text-white/40">未設定（操作パネル→資源スロット）</p>
-                  </div>
-                );
-              }
-              const rows = sortedGrouped.get(cd) ?? [];
-              const selected = selectedResourceCd === cd;
-              const dimmed = selectedResourceCd != null && !selected;
-              const jpNames = (resourceNameMap[cd] ?? []).join(' / ');
-              return (
-                <LeaderOrderResourceCard
-                  key={`slot-${slotIndex}-${cd}`}
-                  resourceCd={cd}
-                  resourceJapaneseNames={jpNames}
-                  rows={rows}
-                  selected={selected}
-                  dimmed={dimmed}
-                  onSelect={() => {
-                    setSelectedResourceCd(cd);
-                  }}
-                  onOpenDueDatePicker={(row) => openDueDatePicker(row.id, row.dueDate)}
-                  dueDatePending={dueDatePending}
-                  orderUsageByResourceCd={orderUsageQuery.data}
-                  onOrderChange={handleOrderChange}
-                  onCompleteRow={(rowId) => void completeRow(rowId)}
-                  completePending={completePending}
-                  orderPending={orderPending}
-                  onOpenNote={(row) => startNoteEdit(row.id, row.note)}
-                  notePending={notePending}
-                />
-              );
-            })}
-          </div>
+          <LeaderBoardGrid
+            resourceCdBySlotIndex={resourceCdBySlotIndex}
+            sortedGrouped={sortedGrouped}
+            resourceNameMap={resourceNameMap}
+            orderUsageByResourceCd={orderUsageQuery.data}
+            selectedResourceCd={selectedResourceCd}
+            setSelectedResourceCd={setSelectedResourceCd}
+            onOpenDueDatePicker={handleOpenRowDueDate}
+            dueDatePending={dueDatePending}
+            onOrderChange={handleOrderChange}
+            onCompleteRow={handleCompleteRow}
+            completePending={completePending}
+            orderPending={orderPending}
+            onOpenNote={handleOpenRowNote}
+            notePending={notePending}
+          />
         )}
       </main>
       <LeaderBoardResourceSlotPickerModal
