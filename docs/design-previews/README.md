@@ -17,6 +17,7 @@
 | [kiosk-part-measurement-template-picker.html](./kiosk-part-measurement-template-picker.html) | **部品測定・テンプレート選択（提案）**（日程固定コンテキスト・候補一覧・図面アイコン＋ホバープレビュー・新規作成導線） |
 | [kiosk-rank-board-card-single-preview.html](./kiosk-rank-board-card-single-preview.html) | **キオスク順位ボード・カード1件**（本番 `LeaderOrderResourceCard` 相当の静的モック。CDN なし） |
 | [kiosk-analytics-bi-dashboard-preview.html](./kiosk-analytics-bi-dashboard-preview.html) | **キオスク集計（`/kiosk/rigging-analytics`）BI レイアウト改善案** — KPI 帯・Top N・当日コンパクト／スクロール不要の静的モック |
+| [kiosk-analytics-dads-system-refactor-preview.html](./kiosk-analytics-dads-system-refactor-preview.html) | **キオスク集計 — DADS 寄せリファクタ案** — **図表（円・棒）主役**・数値表は従。ラベル **14px 未満なし**・8px スケール・字重 400/700。2×2/当日の静的モック（本番非接続） |
 | [loan-report-supply-hero-actions-preview.html](./loan-report-supply-hero-actions-preview.html) | **貸出レポート・過不足ペイン** — 帯＋5緊張度バー＋チップ（**説明文なし**）、文章は**所見のみ**（本番 `loan-report-html-renderer` と同方針） |
 | [loan-report-gap-bottleneck-preview.html](./loan-report-gap-bottleneck-preview.html) | **過不足ペイン案** — 余力vs需要圧の二段＋**アイテム単位ボトルネック5件**（同一ペイン・静的モック） |
 | [loan-report-group-timeseries-preview.html](./loan-report-group-timeseries-preview.html) | **過不足ペイン内・グループ経時** — A4 1枚想定、本番と同スケールのカード幅に<strong>薄型経時SVG＋ボトルネック2行</strong>を収めたモック |

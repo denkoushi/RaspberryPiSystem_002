@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-24（順位ボード Pi4 軽量経路・T4 帯混色比集約・計測機器持出関連）
+最終更新: 2026-04-24（キオスク吊具集計 DADS リファクタ・順位ボード Pi4 軽量経路 ほか）
+
+### 補足（2026-04-24: キオスク吊具集計 `/kiosk/rigging-analytics` DADS 寄せリファクタ・Web のみ）
+
+- **変更概要**: キオスク **吊具集計**（期間・データセット切替）を DADS プレビュー意図に揃えて **UI 構造を分割**（`KioskAnalyticsShell` / `KioskAnalyticsPeriodFilterControls` / `KioskAnalyticsPanelsGrid`）。**`KIOSK_ANALYTICS_DADS_THEME` を `kioskAnalyticsTheme.ts` に集約**、**`useKioskRiggingAnalyticsPageModel` にページロジック集約**（6 系クエリの同時取得は従来どおり）。ランキング行の帯幅・氏名 `line-clamp`、KPI ストリップの 1 行 5 列・高さ・数値色など **見た目の調整**。**`isNotFoundQueryError` 分離**。**DB / API 契約変更なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**キオスク SPA は Pi5 の `web` 配信**のため。Pi4／Pi3 は本変更の**必須デプロイ対象外**（Pi4 は Pi5 上の URL を読めば反映後にバンドル取得）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh refactor/kiosk-analytics-dads infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`refactor/kiosk-analytics-dads`**・代表コミット **`1dd6f158`**。**Detach Run ID**（`ansible-update-`）: **`20260424-191202-23904`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・所要 **約 7.5 分**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本セッション・Tailscale 経由）。
+- **知見**: `update-all-clients.sh` の **ローカル fail-fast** により、**未コミットの `docs/design-previews` 等**があるとデプロイが起動しない。対処は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit するか一時 `stash`（`git stash push -u`）**。
+- **手動目視（任意）**: キオスクで **`/kiosk/rigging-analytics`** を開き、**期間プリセット**・**データセットタブ**（吊具／持出返却アイテム／計測機器）・**ランキング／KPI** が従来どおり利用できること。反映が古い場合は **スーパーリロード**。
 
 ### 補足（2026-04-24: キオスク順位ボード Pi4 向け軽量取得・Virtualization・API `responseProfile=leaderboard`）
 
