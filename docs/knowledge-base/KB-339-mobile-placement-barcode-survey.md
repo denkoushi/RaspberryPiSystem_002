@@ -1,6 +1,18 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+最終更新: 2026-04-24（**V26 購買照会バーコード即時確定**）・2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+
+## V26（2026-04-24）購買照会バーコード即時確定・`KIOSK_STANDARD_BARCODE_SCAN_SESSION` 共通化 {#v26-purchase-order-barcode-instant-2026-04-24}
+
+- **背景**: `PurchaseOrderLookupPage` のみ `BarcodeScanModal` に **`stabilityConfig`**（2 連続一致・600ms 窓）を付与しており、`readerOptions` を速くしても **確定ゲートで体感が相殺**され得た。配膳トップ・パレット可視化は **未指定（即時確定）**。
+- **仕様（Web のみ）**: 購買照会から **`stabilityConfig` を削除**。`readerOptions` と `idleTimeoutMs` は **`KIOSK_STANDARD_BARCODE_SCAN_SESSION`** に集約し、`MobilePlacementPage`・`KioskMobilePalletVisualizationPage`・`PalletVizEmbeddedPanel`・`KioskPalletVisualizationPage`・`PurchaseOrderLookupPage` で **`{...KIOSK_STANDARD_BARCODE_SCAN_SESSION}`** を共有。**形式プリセット**は画面ごと（購買は引き続き **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER`**）。**API/DB**: 変更なし。`usePurchaseOrderLookup` は **10 桁へ正規化**したうえで API を呼ぶ（満たさない場合は照会しない）。
+- **実装の先端**: ブランチ **`fix/kiosk-purchase-order-barcode-instant`**・代表 **`4bc2698f`**（新規 `kioskStandardBarcodeScanSession.ts`）。
+- **デプロイ（本番・最小）**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/kiosk-purchase-order-barcode-instant infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260424-102338-6782`**（**`failed=0` / `unreachable=0` / exit `0`**・所要約 **約 410s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **96s**）。
+- **知見・トラブルシュート**:
+  - **体感がまだ遅い**: **キャッシュ**や Pi5 `web` の **ビルド反映**を確認。Android では **スーパーリロード**。
+  - **誤読が増えた**: ラベル・距離・照明。**必要なら**購買のみ `stabilityConfig` を戻す（`BarcodeScanModal` の任意 prop・`barcodeReadStability.ts` は維持）。
+  - **Pi5 だけで足りるか**: `/kiosk/...` を Pi5 から配信する運用なら **他ホストの Ansible は不要**（過去の Web のみ変更と同趣旨）。
 
 ## V25（2026-04-24）配膳スマホ パレット可視化・テンキー固定とカード一覧スクロール {#v25-mobile-pallet-viz-card-only-scroll-2026-04-24}
 
@@ -19,11 +31,11 @@
 
 ## V24（2026-04-23）バーコード `readerOptions` 集約・一次元コア形式 {#v24-barcode-reader-tuning-2026-04-23}
 
-- **目的**: `@zxing/library` 連続デコードの **再試行間隔**（`timeBetweenScansMillis` / `timeBetweenDecodingAttempts`）を `apps/web/src/features/barcode-scan/readerOptionPresets.ts` に集約し、**画面別に一貫して調整**できるようにする。配膳・パレット可視化・部品測定等は **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** と **`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`** で **探索空間を削減**。要領書 `/kiosk/documents` は **広域一次元（`ONE_DIMENSIONAL`）**のまま、**`BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE`（400/200ms）**で Pi4 同時負荷を抑える。購買照会は従来どおり **`PURCHASE_ORDER` + `stabilityConfig`**。
+- **目的**: `@zxing/library` 連続デコードの **再試行間隔**（`timeBetweenScansMillis` / `timeBetweenDecodingAttempts`）を `apps/web/src/features/barcode-scan/readerOptionPresets.ts` に集約し、**画面別に一貫して調整**できるようにする。配膳・パレット可視化・部品測定等は **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** と **`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`** で **探索空間を削減**。要領書 `/kiosk/documents` は **広域一次元（`ONE_DIMENSIONAL`）**のまま、**`BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE`（400/200ms）**で Pi4 同時負荷を抑える。**当時の購買照会**は **`PURCHASE_ORDER` + `stabilityConfig`**（**2026-04-24 の V26 で撤去**—[§V26](#v26-purchase-order-barcode-instant-2026-04-24)）。
 - **デプロイ（本番）**: ブランチ **`feat/kiosk-barcode-reader-tuning`**・代表 **`70cb9e09`**。[deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**Web のみ・Pi5 のみ**。Pi3 専用手順不要）。**Detach Run ID**: `20260423-211624-9136`（**`failed=0` / `unreachable=0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**）。
 - **知見・トラブルシュート**: 形式を広げるとデコード負荷が上がる。未認識は **照明・距離**を先に確認。遅延と CPU は **要領書＝保守的間引き**、業務スキャン＝**コア形式 + やや積極的間引き**で切り分け（[KB-313](./KB-313-kiosk-documents.md) バーコード節）。
-- **実機（Android Chrome・2026-04-24 追記）**: `/kiosk/mobile-placement` の **製造order**（移動票一次元）と、購買照会 `/kiosk/purchase-order-lookup` の **注番**（**10 桁 `FKOBAINO`** 一次元）の **両方**で、反映後（`feat/kiosk-barcode-reader-tuning`・`main`）に **一次元の読取体感が速くなった**との場内確認。配膳は上記 **コア一次元＋`KIOSK_DEFAULT`**。注番は **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` + 同 `readerOptions` + `stabilityConfig`（2 連続一致）**（[KB-297 §FKOBAINO](./KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）。体感は端末・ラベル品質で変動する。
+- **実機（Android Chrome・2026-04-24 追記）**: `/kiosk/mobile-placement` の **製造order**（移動票一次元）と、購買照会 `/kiosk/purchase-order-lookup` の **注番**（**10 桁 `FKOBAINO`** 一次元）の **両方**で、反映後（`feat/kiosk-barcode-reader-tuning`・`main`）に **一次元の読取体感が速くなった**との場内確認。配膳は上記 **コア一次元＋`KIOSK_DEFAULT`**。注番は **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` + 同 `readerOptions` + ―当時― `stabilityConfig`（2 連続一致）**（[KB-297 §FKOBAINO](./KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）。**2026-04-24 以降**は注番も **即時確定**（[§V26](#v26-purchase-order-barcode-instant-2026-04-24)）。体感は端末・ラベル品質で変動する。
 
 ## V23（2026-04-20）モバイル注文入力スキャン専用・棚チップグリッド {#v23-scan-only-shelf-chip-2026-04-20}
 

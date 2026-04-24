@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-23
+last-verified: 2026-04-24
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-24（配膳スマホパレット可視化スクロール・本番 Pi5 反映実績）
+最終更新: 2026-04-24（購買照会バーコード即時確定・本番 Pi5 反映実績）
+
+### 補足（2026-04-24: 購買照会バーコード即時確定・キオスク標準セッション共通化・Web のみ）
+
+- **変更概要**: 購買照会 `/kiosk/purchase-order-lookup` の `BarcodeScanModal` から **`stabilityConfig`（短時間の同一値 2 連続一致）を撤去**し、配膳トップ・パレット可視化と同様に **最初の有効デコードで確定**（`useBarcodeScanSession`）。`readerOptions` と `idleTimeoutMs`（30s）は **`KIOSK_STANDARD_BARCODE_SCAN_SESSION`**（`apps/web/src/features/barcode-scan/kioskStandardBarcodeScanSession.ts`）に集約し、対象キオスク画面は **`{...KIOSK_STANDARD_BARCODE_SCAN_SESSION}`** をスプレッド。**API/DB 変更なし**。10 桁正規化と API 実行条件は `usePurchaseOrderLookup` 従来どおり（非 10 桁は `runLookup` 未実行）。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 不要**（キオスク SPA は Pi5 の `web` 配信。Pi4 個別のリポジトリ更新は不要で、`https://<Pi5>/kiosk/...` を読む端末は Pi5 反映後にバンドル更新を取得）。
+- **標準コマンド（運用端末・Tailscale 等で Pi5 に SSH 可なこと）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/kiosk-purchase-order-barcode-instant infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績・2026-04-24）**: ブランチ **`fix/kiosk-purchase-order-barcode-instant`**・代表コミット **`4bc2698f`**。**Detach Run ID**（ログ接頭辞 `ansible-update-`）: **`20260424-102338-6782`**（**`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート exit **`0`**・所要約 **約 410s**）。Pi4/Pi3 の play は **`--limit raspberrypi5`** により **未実行（skipped）**。
+- **到達性メモ**: ネットワークによっては **`100.106.158.2:22` がタイムアウト**し得る。**Tailscale 到達可な運用端末**から実行すること。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **96s**）。
+- **実機（手動・Android Chrome）**: `/kiosk/purchase-order-lookup` の **注番スキャン確定**が、従来より **配膳・パレットに近い速さ**に感じること。ブラウザが古いバンドルを掴んでいる場合は **スーパーリロード**。
+- **トラブルシュート**: **誤読で 10 桁が入り API 照会が走る**場合はラベル品質・距離・照明を先に確認。必要なら **`PurchaseOrderLookupPage` だけ `stabilityConfig` を復活**させるか UX 側で確認を増やす（トレードオフは [KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)）。**体感が変わらない**ときは **キャッシュ**と Pi5 `web` イメージ更新の有無を確認。
+- **ナレッジ**: [KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)・[KB-297 §FKOBAINO](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)。
 
 ### 補足（2026-04-24: 配膳スマホ パレット可視化・カード一覧のみ縦スクロール・Web のみ）
 
@@ -26,7 +38,7 @@ update-frequency: medium
 
 ### 補足（2026-04-23: キオスク／配膳スマホ バーコード読取チューニング・Web のみ）
 
-- **変更概要**: `@zxing/library` 連続デコードの **再試行間隔**（`timeBetweenScansMillis` / `timeBetweenDecodingAttempts`）を `readerOptionPresets` に集約。配膳・パレット可視化・部品測定などは **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** と **一次元コア形式**（`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`）で探索空間を削減。要領書 `/kiosk/documents` は **広域一次元（`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL`）**のまま、**`BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE`（400/200ms＝`zxingVideoReader` 既定）**で Pi4 Firefox の同時負荷を避ける。購買照会は従来どおり **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` + `stabilityConfig`**。
+- **変更概要**: `@zxing/library` 連続デコードの **再試行間隔**（`timeBetweenScansMillis` / `timeBetweenDecodingAttempts`）を `readerOptionPresets` に集約。配膳・パレット可視化・部品測定などは **`BARCODE_READER_OPTIONS_KIOSK_DEFAULT`（220/120ms）** と **一次元コア形式**（`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE`）で探索空間を削減。要領書 `/kiosk/documents` は **広域一次元（`BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL`）**のまま、**`BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE`（400/200ms＝`zxingVideoReader` 既定）**で Pi4 Firefox の同時負荷を避ける。**当時の購買照会**は **`BARCODE_FORMAT_PRESET_PURCHASE_ORDER` + `stabilityConfig`**（**2026-04-24 以降は撤去**し配膳等と同様の即時確定—上記「購買照会バーコード即時確定」節・[KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)）。
 - **本番デプロイ（実績）**: ブランチ **`feat/kiosk-barcode-reader-tuning`**・代表 **`70cb9e09`**。**`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-barcode-reader-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260423-211624-9136`**（**`failed=0` / `unreachable=0` / exit `0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **52s**）。
 - **トラブルシュート**: 未認識が続く場合は **照明・距離・ラベル品質**を先に確認。形式を増やす・間隔を短くするほど **CPU 負荷**が上がる。要領書で遅延だけを下げる場合は **保守的間隔**と **形式の二段**のトレードオフ（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）を参照。
