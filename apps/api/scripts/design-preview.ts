@@ -112,6 +112,8 @@ function toNumberCell(value: unknown, fallback = 0): number {
 type MiLoanCardHtmlOptions = {
   /** `.mi-card__band` に付与（帯色サンプル用の修飾クラス） */
   bandExtraClass?: string;
+  /** `<article />` に付与（帯の色味メタファー用・例: `mi-card--band-hue-green`） */
+  cardExtraClass?: string;
 };
 
 /**
@@ -140,9 +142,10 @@ function buildMiLoanInspectionCardHtml(row: MiLoanInspectionTableRow, options?: 
     bodyLines.push('<div class="mi-line mi-line--empty">-</div>');
   }
   const cardClass = hasLoans ? 'mi-card mi-card--loans' : 'mi-card mi-card--empty';
+  const cardEx = options?.cardExtraClass?.trim() ? ` ${options.cardExtraClass.trim()}` : '';
   const bandEx = options?.bandExtraClass?.trim() ? ` ${options.bandExtraClass.trim()}` : '';
   return `
-  <article class="${cardClass}">
+  <article class="${cardClass}${cardEx}">
     <div class="mi-card__band${bandEx}">
       <span class="mi-card__name">${escapeHtml(employeeName)}</span>
       <span class="mi-card__counts">貸出中 ${activeLoanCount} ・ 返却 ${returnedLoanCount}</span>
@@ -154,6 +157,7 @@ function buildMiLoanInspectionCardHtml(row: MiLoanInspectionTableRow, options?: 
 }
 
 type LoanBandVariant = { id: string; label: string; bandClass: string };
+type LoanBandHueVariant = { id: string; label: string; cardClass: string };
 type EmptyBandVariant = { id: string; label: string; bandClass: string };
 
 const LOAN_BAND_COLOR_VARIANTS: readonly LoanBandVariant[] = [
@@ -169,6 +173,18 @@ const LOAN_BAND_COLOR_VARIANTS: readonly LoanBandVariant[] = [
     label: '10% + 帯下 1px 区切り（on-info 35% 線）',
     bandClass: 'mi-band--p10-divider',
   },
+];
+
+/** 帯の塗りを MD3 ステータス系の「色味」で出し分け（本文は従来どおり infoContainer） */
+const LOAN_BAND_HUE_VARIANTS: readonly LoanBandHueVariant[] = [
+  { id: 'L', label: '緑系（success-container 帯 / on-success 表題）', cardClass: 'mi-card--band-hue-green' },
+  { id: 'M', label: '赤系（error-container 帯 / on-error 表題）', cardClass: 'mi-card--band-hue-red' },
+  {
+    id: 'N',
+    label: '青系（info + info-container 混色で帯を本文より鮮やかに）',
+    cardClass: 'mi-card--band-hue-blue',
+  },
+  { id: 'O', label: '暖色系（warning-container 帯 / on-warning 表題）', cardClass: 'mi-card--band-hue-warm' },
 ];
 
 const EMPTY_BAND_COLOR_VARIANTS: readonly EmptyBandVariant[] = [
@@ -192,6 +208,13 @@ function buildBandColorSamplesPageHtml(
     (v) => `<figure class="mi-band-fig">
   <figcaption class="mi-band-fig__caption"><strong>${v.id}</strong> — ${escapeHtml(v.label)}</figcaption>
   ${buildMiLoanInspectionCardHtml(options.loanRow, { bandExtraClass: v.bandClass })}
+</figure>`,
+  ).join('\n');
+
+  const loanHueFigures = LOAN_BAND_HUE_VARIANTS.map(
+    (v) => `<figure class="mi-band-fig">
+  <figcaption class="mi-band-fig__caption"><strong>${v.id}</strong> — ${escapeHtml(v.label)}</figcaption>
+  ${buildMiLoanInspectionCardHtml(options.loanRow, { cardExtraClass: v.cardClass })}
 </figure>`,
   ).join('\n');
 
@@ -303,6 +326,39 @@ ${tokensCss}
     .mi-card--loans .mi-card__counts {
       color: var(--rps-md3-color-status-on-info-container);
     }
+    /* 帯: 緑 / 赤 / 青 / 暖色（L〜O。表題は帯上で可読な on-*） */
+    .mi-card--loans.mi-card--band-hue-green .mi-card__band {
+      background: var(--rps-md3-color-status-success-container);
+    }
+    .mi-card--loans.mi-card--band-hue-green .mi-card__name,
+    .mi-card--loans.mi-card--band-hue-green .mi-card__counts {
+      color: var(--rps-md3-color-status-on-success-container);
+    }
+    .mi-card--loans.mi-card--band-hue-red .mi-card__band {
+      background: var(--rps-md3-color-status-error-container);
+    }
+    .mi-card--loans.mi-card--band-hue-red .mi-card__name,
+    .mi-card--loans.mi-card--band-hue-red .mi-card__counts {
+      color: var(--rps-md3-color-status-on-error-container);
+    }
+    .mi-card--loans.mi-card--band-hue-blue .mi-card__band {
+      background: color-mix(
+        in srgb,
+        var(--rps-md3-color-status-info) 40%,
+        var(--rps-md3-color-status-info-container)
+      );
+    }
+    .mi-card--loans.mi-card--band-hue-blue .mi-card__name,
+    .mi-card--loans.mi-card--band-hue-blue .mi-card__counts {
+      color: var(--rps-md3-color-status-on-info-container);
+    }
+    .mi-card--loans.mi-card--band-hue-warm .mi-card__band {
+      background: var(--rps-md3-color-status-warning-container);
+    }
+    .mi-card--loans.mi-card--band-hue-warm .mi-card__name,
+    .mi-card--loans.mi-card--band-hue-warm .mi-card__counts {
+      color: var(--rps-md3-color-status-on-warning-container);
+    }
     .mi-card--empty .mi-card__name,
     .mi-card--empty .mi-card__counts {
       color: var(--rps-md3-color-text-primary);
@@ -372,10 +428,14 @@ ${tokensCss}
 <body class="mi-band-samples">
   <h1>帯色サンプル（MD3 トークン固定・同一カード中身）</h1>
   <p class="mi-gen-stamp" data-role="build-stamp">生成: <strong>${escapeHtml(options.generatedAtIso)}</strong>（<code>pnpm design:preview</code> 実行直後の時刻。更新されなければ再実行 or スーパーリロード）</p>
-  <p class="lead">各パターンの <strong>ID（A, B, …）</strong>を採用時に指定してください。貸出ありは本文が <code>infoContainer</code> 一色、帯だけレシピ差です。E（白混ぜ）は帯が明るくなり、文字のコントラストも一緒に確認してください。</p>
-  <h2>貸出あり</h2>
+  <p class="lead">各パターンの <strong>ID（A, B, …）</strong>を採用時に指定してください。先頭の A〜H は <code>infoContainer</code> 系の帯。続く <strong>L〜O</strong> は <strong>帯の色味</strong>（緑/赤/青/暖色）の試し。本文（カード地）は従来どおり <code>infoContainer</code> です。E（白混ぜ）は帯の明るさと文字のコントラストを確認。</p>
+  <h2>貸出あり（A〜H · info 系帯の濃度・混色）</h2>
   <div class="mi-band-samples__grid">
     ${loanFigures}
+  </div>
+  <h2>貸出あり（L〜O · 帯の色味: 緑 / 赤 / 青 / 暖色）</h2>
+  <div class="mi-band-samples__grid">
+    ${loanHueFigures}
   </div>
   <h2>貸出なし（空カード）</h2>
   <div class="mi-band-samples__grid">
@@ -635,7 +695,7 @@ async function main(): Promise<void> {
     <div class="row">
       <div class="panel">
         <h2>帯色サンプル（複数パターン・採用 ID を決める）</h2>
-        <p class="meta"><code>measuring-loan-inspection-band-samples.html</code> — 貸出あり A〜H、空カード I〜K。<a href="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" target="_blank" rel="noopener">別タブで開く</a></p>
+        <p class="meta"><code>measuring-loan-inspection-band-samples.html</code> — 貸出あり A〜H・L〜O（色味）、空 I〜K。<a href="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" target="_blank" rel="noopener">別タブで開く</a></p>
         <iframe src="./measuring-loan-inspection-band-samples.html?cb=${cacheBust}" title="帯色サンプル" style="min-height: 640px; aspect-ratio: auto;"></iframe>
       </div>
       <div class="panel">

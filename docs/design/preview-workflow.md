@@ -65,7 +65,7 @@ Pi3(軽量サイネージ)はSVGを直接描画しない。
 出力（**計測機器持出状況**向けの最小セット）:
 - `tmp/design-preview/index.html` — HTML モックと SVG→JPEG（FULL / pane）の対照
 - `tmp/design-preview/measuring-loan-inspection-html-preview.html` — 実装前の **帯＋帯下の余白** などを CSS（`--mi-header-body-gap` 等）で合意する用
-- `tmp/design-preview/measuring-loan-inspection-band-samples.html` — **帯色の複数パターン**（貸出あり A〜H・空カード I〜K）を同一中身で並べ、採用 ID を選ぶ用
+- `tmp/design-preview/measuring-loan-inspection-band-samples.html` — **帯色の複数パターン**（貸出あり A〜H・L〜O〈緑/赤/青/暖色の色味〉・空カード I〜K）を同一中身で並べ、採用 ID を選ぶ用
 - `tmp/design-preview/measuring-loan-inspection-full.jpg` — 現行 `MeasuringInstrumentLoanInspectionRenderer`（1920×1080）
 - `tmp/design-preview/measuring-loan-inspection-pane.jpg` — 同レンダラーを SPLIT ペイン相当サイズで
 - `tmp/design-preview/summary.json`
