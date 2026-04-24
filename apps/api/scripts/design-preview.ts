@@ -1,16 +1,26 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import sharp from 'sharp';
 
 import type { TableVisualizationData } from '../src/services/visualization/visualization.types.js';
+import { formatLoanInspectionInstrumentLabel } from '../src/services/visualization/data-sources/measuring-instrument-loan-inspection/format-loan-inspection-instrument-label.js';
 import {
   createMd3Tokens,
   renderCssVars,
   tokensToCssVars,
 } from '../src/services/visualization/renderers/_design-system/index.js';
 import { computeSplitPaneGeometry } from '../src/services/signage/signage-layout-math.js';
-import { UninspectedMachinesRenderer } from '../src/services/visualization/renderers/uninspected-machines/uninspected-machines-renderer.js';
 import { MeasuringInstrumentLoanInspectionRenderer } from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/measuring-instrument-loan-inspection-renderer.js';
+import { MI_RETURNED_COUNT_COLUMN } from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/mi-instrument-display.types.js';
+import type { MiLoanInspectionTableRow } from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/row-priority.js';
+import { sortRowsForDisplay } from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/row-priority.js';
+import { parseRowInstrumentEntries } from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/row-instrument-entries.js';
+import {
+  getHeaderBodyGapCssPixels,
+  MI_CARD_INNER_PAD_PX,
+} from '../src/services/visualization/renderers/measuring-instrument-loan-inspection/mi-instrument-card-metrics.js';
+
+const PREVIEW_WIDTH = 1920;
+const PREVIEW_HEIGHT = 1080;
 
 type PreviewConfig = {
   width: number;
@@ -24,56 +34,6 @@ function repoRootFromCwd(cwd: string): string {
 
 async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true });
-}
-
-function sampleUninspectedTable(): TableVisualizationData {
-  const machineTypes = ['NC旋盤', 'マシニング', 'フライス', '研削盤', 'ボール盤', '旋盤'];
-  const suffixes = ['A型', 'B型', 'C型', 'D型', 'E型', 'F型', 'G型', 'H型', 'I型', 'J型'];
-  
-  const rows = [];
-  for (let i = 1; i <= 50; i++) {
-    // 管理番号40033を除外するため、40033の場合はスキップ
-    if (i === 33) {
-      continue;
-    }
-    
-    // 実際のデータ形式に合わせて、数値形式の管理番号も含める
-    const machineNum = i <= 49 ? `400${String(i).padStart(2, '0')}` : `M-${String(i - 49).padStart(3, '0')}`;
-    const typeIndex = (i - 1) % machineTypes.length;
-    const suffixIndex = Math.floor((i - 1) / machineTypes.length) % suffixes.length;
-    const machineName = `${machineTypes[typeIndex]} ${suffixes[suffixIndex]}`;
-    
-    // 点検結果の生成（バリエーションを持たせる）
-    let inspectionResult: string;
-    if (i % 7 === 0) {
-      inspectionResult = '未使用';
-    } else if (i % 5 === 0) {
-      const abnormal = Math.floor(Math.random() * 3) + 1;
-      const normal = Math.floor(Math.random() * 10) + 1;
-      inspectionResult = `正常${normal}/異常${abnormal}`;
-    } else {
-      const normal = Math.floor(Math.random() * 15) + 1;
-      inspectionResult = `正常${normal}/異常0`;
-    }
-    
-    rows.push({
-      設備管理番号: machineNum,
-      加工機名称: machineName,
-      点検結果: inspectionResult,
-    });
-  }
-  
-  return {
-    kind: 'table',
-    columns: ['設備管理番号', '加工機名称', '点検結果'],
-    rows,
-    metadata: {
-      date: '2026-02-13',
-      totalRunningMachines: 49,
-      inspectedRunningCount: 25,
-      uninspectedCount: 24,
-    },
-  };
 }
 
 function sampleMeasuringInstrumentLoanInspectionTable(): TableVisualizationData {
@@ -132,213 +92,198 @@ function sampleMeasuringInstrumentLoanInspectionTable(): TableVisualizationData 
   };
 }
 
-function buildHtmlPreview(tokensCss: string): string {
-  // NOTE:
-  // - HTML preview uses CSS vars generated from MD3 tokens.
-  // - It is still not identical to server-side SVG->JPEG because of font rendering,
-  //   but the intention is to align design decisions on the same token source.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function toNumberCell(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+/**
+ * 実装前の見た目合意用: 帯（ヘッダ行）＋帯下〜明細のすき（--mi-header-body-gap）をいじれる HTML。
+ * 本文の並びは parseRowInstrumentEntries に寄せ、SVG レンダラーと同じ解釈にする。
+ */
+function buildMiLoanInspectionCardHtml(row: MiLoanInspectionTableRow): string {
+  const activeLoanCount = toNumberCell(row['貸出中計測機器数'], 0);
+  const returnedLoanCount = toNumberCell(row[MI_RETURNED_COUNT_COLUMN], 0);
+  const hasLoans = activeLoanCount > 0 || returnedLoanCount > 0;
+  const employeeName = String(row['従業員名'] ?? '-');
+  const entries = parseRowInstrumentEntries(row);
+  const bodyLines: string[] = [];
+  for (const e of entries) {
+    if (e.kind === 'active') {
+      const mg = e.managementNumber.trim() || '—';
+      const nm = e.name.trim() || '—';
+      bodyLines.push(`<div class="mi-line mi-line--mgmt">${escapeHtml(mg)}</div>`);
+      bodyLines.push(`<div class="mi-line mi-line--name">${escapeHtml(nm)}</div>`);
+    } else {
+      const label = formatLoanInspectionInstrumentLabel(e.name, e.managementNumber).trim() || '-';
+      bodyLines.push(`<div class="mi-line mi-line--returned">${escapeHtml(label)}</div>`);
+    }
+  }
+  if (bodyLines.length === 0) {
+    bodyLines.push('<div class="mi-line mi-line--empty">-</div>');
+  }
+  const cardClass = hasLoans ? 'mi-card mi-card--loans' : 'mi-card mi-card--empty';
+  return `
+  <article class="${cardClass}">
+    <div class="mi-card__band">
+      <span class="mi-card__name">${escapeHtml(employeeName)}</span>
+      <span class="mi-card__counts">貸出中 ${activeLoanCount} ・ 返却 ${returnedLoanCount}</span>
+    </div>
+    <div class="mi-card__body">
+      ${bodyLines.join('')}
+    </div>
+  </article>`;
+}
+
+function buildMeasuringInstrumentLoanInspectionHtmlPreview(
+  tokensCss: string,
+  options: { title: string; targetDate: string; cardsHtml: string },
+): string {
+  const headerBodyGapPx = getHeaderBodyGapCssPixels();
+  const cardPadX = `${MI_CARD_INNER_PAD_PX}px`;
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Design Preview (MD3 tokens)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>計測機器持出状況（HTMLデザイン）</title>
   <style>
 ${tokensCss}
 
     :root {
-      --bg: var(--rps-md3-color-surface-background);
-      --panel: var(--rps-md3-color-surface-container);
-      --panelHigh: var(--rps-md3-color-surface-container-high);
-      --text: var(--rps-md3-color-text-primary);
-      --muted: var(--rps-md3-color-text-secondary);
-      --grid: var(--rps-md3-color-grid);
+      /* 帯下〜明細: mi-instrument-card-metrics.ts（MI_HEADER_TO_BODY_GAP_YPX）と同期 */
+      --mi-header-body-gap: ${headerBodyGapPx}px;
+      --mi-card-gap: 12px;
+      --mi-card-pad-x: ${cardPadX};
+      --mi-card-pad-y: 10px;
+      --mi-surface: var(--rps-md3-color-surface-background);
     }
 
     * { box-sizing: border-box; }
-    body {
+    .mi-preview-root {
       margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, 'Noto Sans JP', 'Roboto', sans-serif;
-      width: 1920px;
-      height: 1080px;
+      width: ${PREVIEW_WIDTH}px;
+      height: ${PREVIEW_HEIGHT}px;
       overflow: hidden;
-      padding: var(--rps-md3-spacing-md);
+      background: var(--mi-surface);
+      color: var(--rps-md3-color-text-primary);
+      font-family: system-ui, -apple-system, 'Noto Sans JP', 'Roboto', sans-serif;
+      padding: 12px;
     }
-
-    h1 {
-      margin: 0 0 var(--rps-md3-spacing-md) 0;
-      font-size: var(--rps-md3-typography-title-size);
+    .mi-page-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 0 0 8px 0;
+      font-size: max(20px, calc(30 * ${PREVIEW_WIDTH} / 1920 * 1px));
       font-weight: 700;
     }
-
-    .kpiRow {
-      display: flex;
-      gap: var(--rps-md3-spacing-md);
-      margin-bottom: var(--rps-md3-spacing-md);
-      width: 50%;
+    .mi-page-title .date { color: var(--rps-md3-color-text-secondary); font-size: 0.85em; }
+    .mi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--mi-card-gap);
+      align-content: start;
     }
-    .kpiCard {
-      flex: 1;
-      background: var(--panel);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: var(--rps-md3-shape-radius-lg);
-      padding: var(--rps-md3-spacing-lg);
-    }
-    .kpiLabel {
-      color: var(--muted);
-      font-size: 16px;
-      font-weight: 600;
-    }
-    .kpiValue {
-      margin-top: 10px;
-      font-size: 34px;
-      font-weight: 800;
-    }
-    .kpiValueSuccess { color: var(--rps-md3-color-status-success); }
-    .kpiValueError { color: var(--rps-md3-color-status-error); }
-
-    .tables {
-      display: flex;
-      gap: var(--rps-md3-spacing-md);
-    }
-    .panel {
-      flex: 1;
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: var(--rps-md3-shape-radius-lg);
+    .mi-card {
+      border-radius: 10px;
       overflow: hidden;
-      background: var(--panelHigh);
+      min-height: 0;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    thead th {
-      text-align: left;
-      padding: 14px 16px;
-      font-size: 15.75px;
-      color: var(--text);
-      background: var(--panelHigh);
-      border-bottom: 1px solid rgba(255,255,255,0.10);
-    }
-    tbody tr:nth-child(even) { background: var(--panel); }
-    tbody td {
-      padding: 14px 16px;
-      font-size: 31.5px;
-      color: var(--text);
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-    }
-
-    .chip {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: var(--rps-md3-shape-radius-sm);
-      font-weight: 600;
-    }
-    .chipNormal {
-      background: var(--rps-md3-color-status-success-container);
-      color: var(--rps-md3-color-status-on-success-container);
-    }
-    .chipAbnormal {
-      background: var(--rps-md3-color-status-error-container);
-      color: var(--rps-md3-color-status-on-error-container);
-    }
-    .chipInfo {
+    .mi-card--loans {
       background: var(--rps-md3-color-status-info-container);
+    }
+    .mi-card--empty {
+      background: #020617;
+      border: 1px solid var(--rps-md3-color-card-border);
+    }
+    .mi-card__band {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: var(--mi-card-pad-y) var(--mi-card-pad-x);
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 10%, var(--rps-md3-color-status-info-container));
+    }
+    .mi-card--empty .mi-card__band {
+      background: color-mix(in srgb, var(--rps-md3-color-text-primary) 6%, #020617);
+    }
+    .mi-card--loans .mi-card__name,
+    .mi-card--loans .mi-card__counts {
       color: var(--rps-md3-color-status-on-info-container);
+    }
+    .mi-card--empty .mi-card__name,
+    .mi-card--empty .mi-card__counts {
+      color: var(--rps-md3-color-text-primary);
+    }
+    .mi-card__name {
+      font-size: max(16px, calc(19 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 700;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mi-card__counts {
+      font-size: max(12px, calc(14 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .mi-card__body {
+      padding: var(--mi-header-body-gap) var(--mi-card-pad-x) 12px;
+    }
+    .mi-line--mgmt {
+      font-size: max(12px, calc(13 * 1.5 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-text-secondary);
+    }
+    .mi-line--name {
+      font-size: max(12px, calc(13 * 1.5 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-status-on-info-container);
+    }
+    .mi-card--empty .mi-line--mgmt,
+    .mi-card--empty .mi-line--name { color: var(--rps-md3-color-text-secondary); }
+    .mi-line--returned {
+      margin-top: 4px;
+      font-size: max(12px, calc(13 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-outline);
+    }
+    .mi-line--empty {
+      font-size: max(12px, calc(13 * 1.5 * ${PREVIEW_WIDTH} / 1920 * 1px));
+      font-weight: 600;
+      color: var(--rps-md3-color-text-secondary);
+    }
+    p.mi-hint {
+      margin: 0 0 8px 0;
+      font-size: 13px;
+      color: var(--rps-md3-color-text-secondary);
     }
   </style>
 </head>
-<body>
-  <h1>加工機点検状況</h1>
-  <div class="kpiRow">
-    <div class="kpiCard"><div class="kpiLabel">対象日</div><div class="kpiValue" style="color:var(--muted)">2026-02-13</div></div>
-    <div class="kpiCard"><div class="kpiLabel">稼働中</div><div class="kpiValue">49</div></div>
-    <div class="kpiCard"><div class="kpiLabel">点検済み</div><div class="kpiValue kpiValueSuccess">25</div></div>
-    <div class="kpiCard"><div class="kpiLabel">未点検</div><div class="kpiValue kpiValueError">24</div></div>
-  </div>
-
-  <div class="tables">
-    <div class="panel">
-      <table>
-        <thead><tr><th>設備管理番号</th><th>加工機名称</th><th>点検結果</th></tr></thead>
-        <tbody>
-          <tr><td>M-001</td><td>NC旋盤 A型</td><td><span class="chip chipInfo">正常12/異常0</span></td></tr>
-          <tr><td>M-002</td><td>NC旋盤 B型</td><td><span class="chip chipInfo">正常8/異常0</span></td></tr>
-          <tr><td>M-003</td><td>マシニング C型</td><td><span class="chip chipAbnormal">正常5/異常1</span></td></tr>
-          <tr><td>M-004</td><td>フライス D型</td><td>未使用</td></tr>
-          <tr><td>M-005</td><td>研削盤 E型</td><td><span class="chip chipInfo">正常3/異常0</span></td></tr>
-          <tr><td>M-006</td><td>ボール盤 F型</td><td><span class="chip chipAbnormal">正常0/異常2</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="panel">
-      <table>
-        <thead><tr><th>設備管理番号</th><th>加工機名称</th><th>点検結果</th></tr></thead>
-        <tbody>
-          <tr><td>M-007</td><td>旋盤 G型</td><td><span class="chip chipInfo">正常10/異常0</span></td></tr>
-          <tr><td>M-008</td><td>旋盤 H型</td><td>未使用</td></tr>
-          <tr><td>M-009</td><td>研削盤 I型</td><td><span class="chip chipAbnormal">正常2/異常1</span></td></tr>
-          <tr><td>M-010</td><td>研削盤 J型</td><td><span class="chip chipInfo">正常6/異常0</span></td></tr>
-        </tbody>
-      </table>
-    </div>
+<body class="mi-preview-root">
+  <p class="mi-hint">実装前のHTMLモック（帯＋帯下の余白は CSS で調整可）。下の <code>index.html</code> では SVG→JPEG の現行出力と並べて対照します。</p>
+  <h1 class="mi-page-title"><span>${escapeHtml(options.title)}</span><span class="date">${escapeHtml(
+    options.targetDate,
+  )}</span></h1>
+  <div class="mi-grid">
+    ${options.cardsHtml}
   </div>
 </body>
-</html>
-`;
-}
-
-function buildSplitCompositeSvg(options: {
-  width: number;
-  height: number;
-  leftTitle: string;
-  rightTitle: string;
-  leftImageBase64?: string | null;
-  rightImageBase64?: string | null;
-}): string {
-  const t = createMd3Tokens({ width: options.width, height: options.height });
-  const g = computeSplitPaneGeometry({ width: options.width, height: options.height });
-
-  const contentY = g.outerPadding + g.innerPadding + g.headerHeight;
-  const imageHeight = g.panelHeight - g.innerPadding * 2 - g.headerHeight;
-
-  const leftImage = options.leftImageBase64
-    ? `<image x="${g.leftX + g.innerPadding}" y="${contentY}" width="${g.leftWidth - g.innerPadding * 2}" height="${imageHeight}" preserveAspectRatio="xMidYMid meet" href="${options.leftImageBase64}" />`
-    : `<text x="${g.leftX + g.leftWidth / 2}" y="${g.outerPadding + g.panelHeight / 2}" text-anchor="middle" dominant-baseline="middle" font-size="${Math.max(18, Math.round(22 * g.scale))}" fill="${t.colors.text.secondary}" font-family="sans-serif">LEFT PANE (placeholder)</text>`;
-
-  const rightImage = options.rightImageBase64
-    ? `<image x="${g.rightX + g.innerPadding}" y="${contentY}" width="${g.rightWidth - g.innerPadding * 2}" height="${imageHeight}" preserveAspectRatio="xMidYMid meet" href="${options.rightImageBase64}" />`
-    : `<text x="${g.rightX + g.rightWidth / 2}" y="${g.outerPadding + g.panelHeight / 2}" text-anchor="middle" dominant-baseline="middle" font-size="${Math.max(18, Math.round(22 * g.scale))}" fill="${t.colors.text.secondary}" font-family="sans-serif">RIGHT PANE (placeholder)</text>`;
-
-  const titleY = g.outerPadding + g.innerPadding + Math.round(22 * g.scale);
-
-  return `
-    <svg width="${options.width}" height="${options.height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="${t.colors.surface.background}" />
-      <g>
-        <rect x="${g.leftX}" y="${g.outerPadding}" width="${g.leftWidth}" height="${g.panelHeight}"
-          rx="${Math.round(10 * g.scale)}" ry="${Math.round(10 * g.scale)}"
-          fill="${t.colors.surface.container}" stroke="rgba(255,255,255,0.08)" />
-        <text x="${g.leftX + g.innerPadding}" y="${titleY}"
-          font-size="${Math.max(16, Math.round(20 * g.scale))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
-          ${options.leftTitle}
-        </text>
-        ${leftImage}
-      </g>
-      <g>
-        <rect x="${g.rightX}" y="${g.outerPadding}" width="${g.rightWidth}" height="${g.panelHeight}"
-          rx="${Math.round(10 * g.scale)}" ry="${Math.round(10 * g.scale)}"
-          fill="${t.colors.surface.container}" stroke="rgba(255,255,255,0.08)" />
-        <text x="${g.rightX + g.innerPadding}" y="${titleY}"
-          font-size="${Math.max(16, Math.round(20 * g.scale))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">
-          ${options.rightTitle}
-        </text>
-        ${rightImage}
-      </g>
-    </svg>
-  `;
+</html>`;
 }
 
 async function writeBuffer(filePath: string, buffer: Buffer): Promise<void> {
@@ -350,99 +295,43 @@ async function main(): Promise<void> {
   const outDir = path.join(repoRoot, 'tmp', 'design-preview');
   await ensureDir(outDir);
 
-  const full: PreviewConfig = { width: 1920, height: 1080 };
+  const full: PreviewConfig = { width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT };
   const g = computeSplitPaneGeometry(full);
 
   const fullTokens = createMd3Tokens(full);
   const cssVars = tokensToCssVars(fullTokens);
   const tokensCss = renderCssVars(':root', cssVars);
 
-  const htmlPreviewPath = path.join(outDir, 'html-preview.html');
-  await fs.writeFile(htmlPreviewPath, buildHtmlPreview(tokensCss), 'utf8');
+  const table = sampleMeasuringInstrumentLoanInspectionTable();
+  const targetDate = String((table.metadata as { targetDate?: string } | undefined)?.targetDate ?? '-');
+  const displayTitle = '計測機器持出状況';
+  const rows = sortRowsForDisplay((table.rows ?? []) as MiLoanInspectionTableRow[]);
+  const cardsHtml = rows.map((r) => buildMiLoanInspectionCardHtml(r)).join('\n');
 
-  const renderer = new UninspectedMachinesRenderer();
-  const table = sampleUninspectedTable();
+  const htmlPreviewPath = path.join(outDir, 'measuring-loan-inspection-html-preview.html');
+  await fs.writeFile(
+    htmlPreviewPath,
+    buildMeasuringInstrumentLoanInspectionHtmlPreview(tokensCss, {
+      title: displayTitle,
+      targetDate,
+      cardsHtml,
+    }),
+    'utf8',
+  );
+
   const measuringInspectionRenderer = new MeasuringInstrumentLoanInspectionRenderer();
-  const measuringInspectionTable = sampleMeasuringInstrumentLoanInspectionTable();
-
-  const fullOut = await renderer.render(table, {
+  const miFullOut = await measuringInspectionRenderer.render(table, {
     width: full.width,
     height: full.height,
-    title: '加工機点検状況',
-  });
-  const vizFullPath = path.join(outDir, 'viz-full.jpg');
-  await writeBuffer(vizFullPath, fullOut.buffer);
-
-  const paneOut = await renderer.render(table, {
-    width: g.rightPaneContentWidth,
-    height: g.paneContentHeight,
-    title: '加工機点検状況',
-  });
-  const vizPanePath = path.join(outDir, 'viz-pane.jpg');
-  await writeBuffer(vizPanePath, paneOut.buffer);
-
-  const rightImageBase64 = `data:image/jpeg;base64,${paneOut.buffer.toString('base64')}`;
-  const splitSvg = buildSplitCompositeSvg({
-    width: full.width,
-    height: full.height,
-    leftTitle: 'LEFT (placeholder)',
-    rightTitle: 'RIGHT (uninspected_machines @ pane size)',
-    leftImageBase64: null,
-    rightImageBase64,
-  });
-  const signageSplitJpg = await sharp(Buffer.from(splitSvg))
-    .resize(full.width, full.height, { fit: 'fill' })
-    .jpeg({ quality: 90 })
-    .toBuffer();
-  const splitPath = path.join(outDir, 'signage-split.jpg');
-  await writeBuffer(splitPath, signageSplitJpg);
-
-  // カード形式のSVG出力を生成
-  const cardFullOut = await renderer.render(table, {
-    width: full.width,
-    height: full.height,
-    title: '加工機点検状況',
-  });
-  const vizCardFullPath = path.join(outDir, 'viz-card-full.jpg');
-  await writeBuffer(vizCardFullPath, cardFullOut.buffer);
-
-  const cardPaneOut = await renderer.render(table, {
-    width: g.rightPaneContentWidth,
-    height: g.paneContentHeight,
-    title: '加工機点検状況',
-  });
-  const vizCardPanePath = path.join(outDir, 'viz-card-pane.jpg');
-  await writeBuffer(vizCardPanePath, cardPaneOut.buffer);
-
-  const cardRightImageBase64 = `data:image/jpeg;base64,${cardPaneOut.buffer.toString('base64')}`;
-  const cardSplitSvg = buildSplitCompositeSvg({
-    width: full.width,
-    height: full.height,
-    leftTitle: 'LEFT (placeholder)',
-    rightTitle: 'RIGHT (uninspected_machines card layout @ pane size)',
-    leftImageBase64: null,
-    rightImageBase64: cardRightImageBase64,
-  });
-  const cardSignageSplitJpg = await sharp(Buffer.from(cardSplitSvg))
-    .resize(full.width, full.height, { fit: 'fill' })
-    .jpeg({ quality: 90 })
-    .toBuffer();
-  const cardSplitPath = path.join(outDir, 'signage-card-split.jpg');
-  await writeBuffer(cardSplitPath, cardSignageSplitJpg);
-
-  // 計測機器持出状況（点検可視化）プレビュー
-  const miFullOut = await measuringInspectionRenderer.render(measuringInspectionTable, {
-    width: full.width,
-    height: full.height,
-    title: '計測機器持出状況',
+    title: displayTitle,
   });
   const miFullPath = path.join(outDir, 'measuring-loan-inspection-full.jpg');
   await writeBuffer(miFullPath, miFullOut.buffer);
 
-  const miPaneOut = await measuringInspectionRenderer.render(measuringInspectionTable, {
+  const miPaneOut = await measuringInspectionRenderer.render(table, {
     width: g.rightPaneContentWidth,
     height: g.paneContentHeight,
-    title: '計測機器持出状況',
+    title: displayTitle,
   });
   const miPanePath = path.join(outDir, 'measuring-loan-inspection-pane.jpg');
   await writeBuffer(miPanePath, miPaneOut.buffer);
@@ -452,67 +341,48 @@ async function main(): Promise<void> {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Design Alignment Preview</title>
+  <title>計測機器持出状況 — デザインプレビュー</title>
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 16px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; }
-    .title { font-size: 16px; font-weight: 700; margin: 0 0 10px 0; }
-    .note { color: #444; font-size: 13px; margin: 8px 0 0 0; }
-    img { width: 100%; height: auto; border-radius: 8px; background: #000; }
-    iframe { width: 100%; height: 560px; border: 0; border-radius: 8px; }
-    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #e8e8e8; color: #111; }
+    .wrap { max-width: 2000px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px 0; }
+    p.note { font-size: 0.9rem; color: #333; margin: 0 0 16px 0; line-height: 1.5; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    @media (max-width: 1200px) { .row { grid-template-columns: 1fr; } }
+    .panel { background: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 12px; }
+    .panel h2 { font-size: 0.95rem; margin: 0 0 8px 0; }
+    .panel p.meta { font-size: 0.8rem; color: #666; margin: 0 0 8px 0; }
+    iframe, img { width: 100%; height: auto; border: 0; border-radius: 6px; background: #000; vertical-align: top; }
+    iframe { min-height: 480px; aspect-ratio: 16 / 9; }
   </style>
 </head>
 <body>
-  <h1>Design Alignment Preview</h1>
-  <p>出力先: <code>${outDir}</code></p>
-  <p class="note">目的: HTML(事前合意) と SVG→JPEG(実装) と サイネージSPLIT(実機経路) を同じトークン前提で並べて差分要因を見える化する。</p>
-  <div class="grid">
-    <div class="card">
-      <div class="title">HTML preview (1920x1080 fixed)</div>
-      <iframe src="./html-preview.html"></iframe>
-      <p class="note">CSS vars are generated from MD3 tokens (server-side).</p>
+  <div class="wrap">
+    <h1>計測機器持出状況 — デザインプレビュー</h1>
+    <p class="note">目的: 実装前に <strong>帯＋帯下の余白</strong>などを HTML で合意し、同じトークン前提の <code>MeasuringInstrumentLoanInspectionRenderer</code>（SVG→JPEG）の現行見えと対照する。出力先: <code>${outDir}</code></p>
+    <div class="row">
+      <div class="panel">
+        <h2>HTML モック（${full.width}×${full.height} 固定・MD3 CSS 変数）</h2>
+        <p class="meta">ファイル: <code>measuring-loan-inspection-html-preview.html</code> — 帯下の空きは <code>--mi-header-body-gap</code></p>
+        <iframe src="./measuring-loan-inspection-html-preview.html" title="計測機器持出 HTML"></iframe>
+      </div>
+      <div class="panel">
+        <h2>参照: 現行 SVG レンダラー（FULL ${full.width}×${full.height}）</h2>
+        <p class="meta">帯未実装の実装出力。差分洗い出し用。</p>
+        <img src="./measuring-loan-inspection-full.jpg" width="${full.width}" height="${full.height}" alt="計測機器持出 SVG full" />
+      </div>
     </div>
-    <div class="card">
-      <div class="title">SVG renderer output (FULL ${full.width}x${full.height})</div>
-      <img src="./viz-full.jpg" alt="viz full" />
-      <p class="note">Rendered by <code>UninspectedMachinesRenderer</code> on server-side.</p>
-    </div>
-    <div class="card">
-      <div class="title">SVG renderer output (pane ${g.rightPaneContentWidth}x${g.paneContentHeight})</div>
-      <img src="./viz-pane.jpg" alt="viz pane" />
-      <p class="note">Simulates SPLIT pane rendering (font scale changes).</p>
-    </div>
-    <div class="card">
-      <div class="title">Signage SPLIT composite preview (${full.width}x${full.height})</div>
-      <img src="./signage-split.jpg" alt="signage split" />
-      <p class="note">Uses <code>computeSplitPaneGeometry</code> to match SPLIT geometry.</p>
-    </div>
-    <div class="card">
-      <div class="title">カード形式 SVG renderer output (FULL ${full.width}x${full.height})</div>
-      <img src="./viz-card-full.jpg" alt="viz card full" />
-      <p class="note">カード形式のSVGレンダラー出力（4列グリッド、49件表示）。</p>
-    </div>
-    <div class="card">
-      <div class="title">カード形式 SVG renderer output (pane ${g.rightPaneContentWidth}x${g.paneContentHeight})</div>
-      <img src="./viz-card-pane.jpg" alt="viz card pane" />
-      <p class="note">SPLIT paneサイズでのカード形式SVGレンダラー出力。</p>
-    </div>
-    <div class="card">
-      <div class="title">カード形式 Signage SPLIT composite preview (${full.width}x${full.height})</div>
-      <img src="./signage-card-split.jpg" alt="signage card split" />
-      <p class="note">SPLITレイアウトでのカード形式SVGレンダラー出力（右側パネル）。</p>
-    </div>
-    <div class="card">
-      <div class="title">計測機器持出状況 FULL (${full.width}x${full.height})</div>
-      <img src="./measuring-loan-inspection-full.jpg" alt="measuring inspection full" />
-      <p class="note">ユーザー別カードで、点検有無に応じた背景色切り替えを確認。</p>
-    </div>
-    <div class="card">
-      <div class="title">計測機器持出状況 pane (${g.rightPaneContentWidth}x${g.paneContentHeight})</div>
-      <img src="./measuring-loan-inspection-pane.jpg" alt="measuring inspection pane" />
-      <p class="note">SPLIT右ペイン相当サイズで視認性を確認。</p>
+    <div class="row" style="margin-top: 16px;">
+      <div class="panel">
+        <h2>同 HTML を別タブで拡大表示</h2>
+        <p class="meta"><a href="./measuring-loan-inspection-html-preview.html" target="_blank" rel="noopener">measuring-loan-inspection-html-preview.html を開く</a></p>
+      </div>
+      <div class="panel">
+        <h2>参照: SPLIT ペイン相当（${g.rightPaneContentWidth}×${g.paneContentHeight}）</h2>
+        <p class="meta">右ペイン等の縮尺感の確認用。</p>
+        <img src="./measuring-loan-inspection-pane.jpg" width="${g.rightPaneContentWidth}" height="${g.paneContentHeight}" alt="計測機器持出 SVG pane" />
+      </div>
     </div>
   </div>
 </body>
@@ -522,22 +392,22 @@ async function main(): Promise<void> {
 
   const summary = {
     outDir,
+    purpose: 'measuring_instrument_loan_inspection design preview only',
     full,
     pane: { width: g.rightPaneContentWidth, height: g.paneContentHeight },
     files: {
       index: 'tmp/design-preview/index.html',
-      html: 'tmp/design-preview/html-preview.html',
-      vizFull: 'tmp/design-preview/viz-full.jpg',
-      vizPane: 'tmp/design-preview/viz-pane.jpg',
-      signageSplit: 'tmp/design-preview/signage-split.jpg',
-      measuringLoanInspectionFull: 'tmp/design-preview/measuring-loan-inspection-full.jpg',
-      measuringLoanInspectionPane: 'tmp/design-preview/measuring-loan-inspection-pane.jpg',
+      htmlMock: 'tmp/design-preview/measuring-loan-inspection-html-preview.html',
+      rendererFull: 'tmp/design-preview/measuring-loan-inspection-full.jpg',
+      rendererPane: 'tmp/design-preview/measuring-loan-inspection-pane.jpg',
     },
   };
   await fs.writeFile(path.join(outDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf8');
 
   // eslint-disable-next-line no-console
   console.log(`Design preview generated: ${path.join(outDir, 'index.html')}`);
+  // eslint-disable-next-line no-console
+  console.log(`  HTML mock: ${htmlPreviewPath}`);
 }
 
 main().catch((err) => {
@@ -545,4 +415,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

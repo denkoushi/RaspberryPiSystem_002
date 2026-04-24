@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-24（購買照会バーコード即時確定・本番 Pi5 反映実績）
+最終更新: 2026-04-24（計測機器持出カード ヘッダ帯・本番 Pi5 反映実績）
+
+### 補足（2026-04-24: 計測機器持出可視化 カード ヘッダ帯＋帯下余白・API のみ）
+
+- **変更概要**: `measuring_instrument_loan_inspection` レンダラーに **氏名・件数行の色面（帯）** と、**帯下〜明細の縦余白**を追加。レイアウト定数は **`mi-instrument-card-metrics.ts`**、配色は **`mi-instrument-card-palette.ts`**（HTML の `color-mix` 相当の hex 合成）、SVG 片は **`mi-inspection-card-svg.ts`**。**DB/契約変更なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4 / Pi3 は必須ではない**（JPEG は Pi5 API が生成。Pi3 専用手順は不要）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/mi-loan-inspection-header-band infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（`--foreground` 再実行は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) 参照）。
+- **本番デプロイ（実績）**: ブランチ **`feat/mi-loan-inspection-header-band`**・代表コミット **`ddf15fa2`**。**Detach Run ID**（`ansible-update-`）: **`20260424-113411-24095`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**）。Mac からの **`--follow` は Docker 再ビルド中に SSH がタイムアウト**し得るが、リモート `nohup` は最後まで完走。状態は Pi5（`/opt/.../logs/deploy/*.status.json` / `*.exit`）で確認。所要は **再ビルド込みで約 10 分前後**になりがち。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **2 分**）。
+- **手動目視（推奨）**: 管理 **サイネージプレビュー**または Pi3 表示で、**計測機器持出**カードの帯と本文の区切りが意図どおりか。
+- **知見 / トラブルシュート**: デプロイ前 **未追跡ファイル**は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast**。**Pi5 `apps/api/src` root 所有**は **`chown` 後に**デプロイ（過去 [KB-347 追補](../knowledge-base/api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ) と同型）。`pnpm --filter @raspi-system/api design:preview` の HTML モック（`--mi-header-body-gap`）は [preview-workflow.md](../design/preview-workflow.md) 参照。
 
 ### 補足（2026-04-24: 購買照会バーコード即時確定・キオスク標準セッション共通化・Web のみ）
 

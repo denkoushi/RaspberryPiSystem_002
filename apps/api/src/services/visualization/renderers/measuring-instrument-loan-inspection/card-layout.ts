@@ -1,10 +1,8 @@
 import type { MiBodyLine } from './mi-instrument-display.types.js';
 import { layoutBodyWithinMaxHeight } from './layout-mi-instrument-body.js';
+import { MI_CARD_BOTTOM_PAD_PX, MI_CARD_INNER_PAD_PX, MI_NAMES_START_YPX } from './mi-instrument-card-metrics.js';
 import { parseRowInstrumentEntries } from './row-instrument-entries.js';
 import type { MiLoanInspectionTableRow } from './row-priority.js';
-
-const NAMES_START_YPX = 66;
-const BOTTOM_PAD_PX = 12;
 
 export type MiCardPlacement = {
   row: MiLoanInspectionTableRow;
@@ -31,9 +29,9 @@ export function planMiInspectionCardPlacements(params: {
 }): { placements: MiCardPlacement[]; truncated: boolean; placedCount: number; totalRows: number } {
   const { rows, cardsTop, cardsAreaHeight, padding, cardWidth, cardGap, numColumns, scale } = params;
   const namesFontSize = Math.max(12, Math.round(13 * scale));
-  const namesStartY = Math.round(NAMES_START_YPX * scale);
-  const bottomPad = Math.round(BOTTOM_PAD_PX * scale);
-  const innerTextPad = Math.round(12 * scale);
+  const namesStartY = Math.round(MI_NAMES_START_YPX * scale);
+  const bottomPad = Math.round(MI_CARD_BOTTOM_PAD_PX * scale);
+  const innerTextPad = Math.round(MI_CARD_INNER_PAD_PX * scale);
   const maxWidthPx = cardWidth - innerTextPad * 2;
   const areaBottom = cardsTop + cardsAreaHeight;
 

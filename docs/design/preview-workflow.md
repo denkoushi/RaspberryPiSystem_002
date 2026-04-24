@@ -60,22 +60,19 @@ Pi3(軽量サイネージ)はSVGを直接描画しない。
 コマンド:
 - `pnpm --filter @raspi-system/api design:preview`
 
-出力:
-- `tmp/design-preview/index.html`
-- `tmp/design-preview/html-preview.html`
-- `tmp/design-preview/viz-full.jpg`
-- `tmp/design-preview/viz-pane.jpg`
-- `tmp/design-preview/signage-split.jpg`
+出力（**計測機器持出状況**向けの最小セット）:
+- `tmp/design-preview/index.html` — HTML モックと SVG→JPEG（FULL / pane）の対照
+- `tmp/design-preview/measuring-loan-inspection-html-preview.html` — 実装前の **帯＋帯下の余白** などを CSS（`--mi-header-body-gap` 等）で合意する用
+- `tmp/design-preview/measuring-loan-inspection-full.jpg` — 現行 `MeasuringInstrumentLoanInspectionRenderer`（1920×1080）
+- `tmp/design-preview/measuring-loan-inspection-pane.jpg` — 同レンダラーを SPLIT ペイン相当サイズで
 - `tmp/design-preview/summary.json`
 
 開き方:
-- Finder/ブラウザで `tmp/design-preview/index.html` を開く
+- ブラウザで `tmp/design-preview/index.html` を開く
 
 プレビューの意味:
-- HTML preview: 事前打ち合わせ用(トークンをCSS varsで参照)
-- SVG renderer output (FULL): レンダラーが 1920x1080 で出した結果
-- SVG renderer output (pane): SPLITペイン幅相当で出した結果(スケール差の可視化)
-- Signage SPLIT composite: ペイン配置まで含めた見え方の近似
+- **HTML モック**: 同 MD3 トークン（CSS 変数）でカード帯と本文の区切りをいじる。SVG 実装のたたき台。帯下の空き（`--mi-header-body-gap`）と `MI_NAMES_START_YPX` は [`mi-instrument-card-metrics.ts`](../../apps/api/src/services/visualization/renderers/measuring-instrument-loan-inspection/mi-instrument-card-metrics.ts) を単一参照。
+- **SVG→JPEG**: 現行レンダラー出力。HTML 合意内容を `measuring-instrument-loan-inspection-renderer.ts` へ写す際の差分確認用
 
 ## 運用ルール(おすすめ)
 
