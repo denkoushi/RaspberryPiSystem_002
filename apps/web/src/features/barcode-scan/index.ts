@@ -4,6 +4,10 @@ export {
   BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE,
   BARCODE_FORMAT_PRESET_PURCHASE_ORDER,
 } from './formatPresets';
+export {
+  KIOSK_STANDARD_BARCODE_SCAN_SESSION,
+  type KioskStandardBarcodeScanSessionDefaults,
+} from './kioskStandardBarcodeScanSession';
 export { BARCODE_READER_OPTIONS_KIOSK_CONSERVATIVE, BARCODE_READER_OPTIONS_KIOSK_DEFAULT } from './readerOptionPresets';
 export { BarcodeScanModal } from './BarcodeScanModal';
 export type { BarcodeScanModalProps } from './BarcodeScanModal';
