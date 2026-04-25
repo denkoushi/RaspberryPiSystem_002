@@ -1,4 +1,4 @@
-import type { PalletVizListItem } from './PalletVizItemList';
+import type { PalletVizListItem } from './palletVizListItem';
 import type { PalletVisualizationItemDto } from '../../../api/client';
 
 
