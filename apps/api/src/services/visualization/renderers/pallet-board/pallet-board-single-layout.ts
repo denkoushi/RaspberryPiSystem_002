@@ -2,7 +2,8 @@ import type { Md3Tokens } from '../_design-system/md3.js';
 import type { PalletBoardVisualizationData } from '../../visualization.types.js';
 import { escapeSvgText } from '../_design-system/index.js';
 import { palletBoardFixtureInnerSvg } from './pallet-board-fixture-svg.js';
-import { ellipsizeToMaxChars, estimateMaxCharsForLine } from './pallet-board-svg-text.js';
+import { computePalletSlotCardLayout } from './pallet-board-slot-card-layout.js';
+import { ellipsizeToMaxChars } from './pallet-board-svg-text.js';
 
 const EM_DASH = '—';
 
@@ -28,6 +29,7 @@ function isSlotEmpty(slot: PalletBoardVisualizationData['machines'][number]['pal
   return slot.lines.length === 0;
 }
 
+/** 単一加工機レイアウトの SVG 文字列（可視化・テスト用） */
 export function buildSingleMachinePalletBoardSvg(params: {
   width: number;
   height: number;
@@ -60,12 +62,12 @@ export function buildSingleMachinePalletBoardSvg(params: {
   const subFont = Math.round(headerH * 0.32);
 
   const heroTitle = `${machine.machineName} (${machine.machineCd})`;
-  const heroNote = machine.illustrationUrl ? 'PalletMachineIllustration（登録あり）' : 'PalletMachineIllustration（未登録）';
 
   const imgBoxX = leftX + 14;
-  const imgBoxY = contentTop + 76;
+  // タイトル直下の「登録あり/未登録」行は出さない分、イラスト枠を上に詰める
+  const imgBoxY = contentTop + 52;
   const imgBoxW = leftW - 28;
-  const imgBoxH = contentH - 90;
+  const imgBoxH = contentH - 66;
   const leftPanelClipId = 'pbLeftPanelImg';
 
   const leftPanelClipDef = leftPanelImageDataUri
@@ -129,7 +131,6 @@ export function buildSingleMachinePalletBoardSvg(params: {
     <rect x="${leftX}" y="${contentTop}" width="${leftW}" height="${contentH}" rx="12"
       fill="${t.colors.surface.containerHigh}" stroke="${t.colors.outline}" stroke-width="2" />
     <text x="${leftX + 14}" y="${contentTop + 36}" font-size="${Math.max(14, Math.round(leftW / 18))}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(heroTitle)}</text>
-    <text x="${leftX + 14}" y="${contentTop + 62}" font-size="${Math.max(11, Math.round(leftW / 22))}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(heroNote)}</text>
     <rect x="${imgBoxX}" y="${imgBoxY}" width="${imgBoxW}" height="${imgBoxH}" rx="10"
       fill="rgba(0,0,0,0.25)" stroke="${t.colors.grid}" stroke-width="1" />
     ${leftPanelImageBlock}
@@ -140,11 +141,17 @@ export function buildSingleMachinePalletBoardSvg(params: {
 
 type SlotRender = { clipDef: string; body: string };
 
-function renderSlotThumb(bx: number, by: number, thumbW: number, thumbH: number, cardThumbDataUri: string | null): string {
+function renderSlotThumb(
+  bx: number,
+  thumbY: number,
+  thumbW: number,
+  thumbH: number,
+  cardThumbDataUri: string | null,
+): string {
   if (cardThumbDataUri) {
     return `<image
       x="${bx + 4}"
-      y="${by + 6}"
+      y="${thumbY + 2}"
       width="${thumbW}"
       height="${thumbH}"
       href="${cardThumbDataUri}"
@@ -153,7 +160,7 @@ function renderSlotThumb(bx: number, by: number, thumbW: number, thumbH: number,
     />`;
   }
   return `
-    <svg x="${bx + 4}" y="${by + 6}" width="${thumbW}" height="${thumbH}" viewBox="0 0 100 140" preserveAspectRatio="xMidYMid meet">
+    <svg x="${bx + 4}" y="${thumbY + 2}" width="${thumbW}" height="${thumbH}" viewBox="0 0 100 140" preserveAspectRatio="xMidYMid meet">
       ${palletBoardFixtureInnerSvg()}
     </svg>`;
 }
@@ -183,32 +190,43 @@ function renderSlot(params: {
   const isEmpty = isSlotEmpty(slot);
   const strokeColor = isEmpty ? 'rgba(255,255,255,0.12)' : t.colors.status.success;
   const fillColor = isEmpty ? 'rgba(255,255,255,0.04)' : 'rgba(46, 125, 50, 0.15)';
-  const thumbW = Math.round(innerW * 0.3);
-  const thumbH = Math.round(innerH * 0.34);
-  const bodyX = bx + thumbW + 10;
-  const textBlockW = Math.max(0, innerW - thumbW - 10 - 8);
+  const noSize = Math.max(14, Math.round(innerH * 0.11));
+  const smallSize = Math.max(9, Math.round(innerH * 0.062));
+  const {
+    layout: {
+      headerBaselineY: headerY,
+      rowContentTopY,
+      thumbW,
+      thumbH,
+      bodyX,
+      machineBaselineY,
+      fullWidthX,
+      fullWidthLineBaselines: [d1y, d2y, d3y, d4y],
+    },
+    maxPallet,
+    maxQty: maxQtyW,
+    maxMachine,
+    maxFullWidth,
+  } = computePalletSlotCardLayout({ bx, by, innerW, innerH, noSize, smallSize });
   const clipId = `palletSlotClip_${idx}`;
 
   const baseRect = `<rect x="${bx}" y="${by}" width="${innerW}" height="${innerH}" rx="10" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" ${
     isEmpty ? `filter="url(#pbEmptyGray)" opacity="0.78"` : ''
   } />`;
 
-  const thumb = renderSlotThumb(bx, by, thumbW, thumbH, cardThumbDataUri);
+  const thumb = renderSlotThumb(bx, rowContentTopY, thumbW, thumbH, cardThumbDataUri);
 
-  const noSize = Math.max(14, Math.round(innerH * 0.11));
-  const smallSize = Math.max(9, Math.round(innerH * 0.062));
-  const maxNo = Math.max(1, estimateMaxCharsForLine(textBlockW, noSize));
-  const maxSmall = Math.max(1, estimateMaxCharsForLine(textBlockW, smallSize));
   const amber = isEmpty ? 'rgba(253, 230, 138, 0.45)' : '#fde68a';
 
   const clipDef = `<clipPath id="${clipId}"><rect x="${bx}" y="${by}" width="${innerW}" height="${innerH}" rx="10" /></clipPath>`;
 
   if (isEmpty) {
+    const tPallet = ellipsizeToMaxChars(String(slot.palletNo), maxPallet);
     const body = `
     <g clip-path="url(#${clipId})">
       ${baseRect}
+      <text x="${bx + 8}" y="${headerY}" font-size="${noSize}" font-weight="800" fill="${amber}" font-family="sans-serif">${escapeSvgText(tPallet)}</text>
       ${thumb}
-      <text x="${bodyX}" y="${by + 12 + noSize}" font-size="${noSize}" font-weight="800" fill="${amber}" font-family="sans-serif">${escapeSvgText(ellipsizeToMaxChars(String(slot.palletNo), maxNo))}</text>
       <text x="${bx + innerW / 2}" y="${by + innerH * 0.58}" text-anchor="middle" font-size="${Math.round(noSize * 1.25)}" fill="rgba(255,255,255,0.22)" font-family="sans-serif">${EM_DASH}</text>
     </g>`;
     return { clipDef, body };
@@ -216,27 +234,26 @@ function renderSlot(params: {
 
   const it = slot.primaryItem!;
   const machineLine = dashOr(it.machineNameDisplay);
-  const rowTop = by + 10;
 
-  const tPallet = ellipsizeToMaxChars(String(slot.palletNo), maxNo);
-  const tQty = ellipsizeToMaxChars(qtyLabel(it.plannedQuantity), maxSmall);
-  const tMachine = ellipsizeToMaxChars(machineLine, maxSmall);
-  const tFseiban = ellipsizeToMaxChars(`FHINBAN ${dashOr(it.fseiban)}`, maxSmall);
-  const tFhinmei = ellipsizeToMaxChars(`FHINMEI ${dashOr(it.fhinmei)}`, maxSmall);
-  const tFhincd = ellipsizeToMaxChars(`FHINCD ${dashOr(it.fhincd)}`, maxSmall);
-  const tStart = ellipsizeToMaxChars(`着手 ${dashOr(it.plannedStartDateDisplay)}`, maxSmall);
+  const tPallet = ellipsizeToMaxChars(String(slot.palletNo), maxPallet);
+  const tQty = ellipsizeToMaxChars(qtyLabel(it.plannedQuantity), maxQtyW);
+  const tMachine = ellipsizeToMaxChars(machineLine, maxMachine);
+  const tFseiban = ellipsizeToMaxChars(dashOr(it.fseiban), maxFullWidth);
+  const tFhinmei = ellipsizeToMaxChars(dashOr(it.fhinmei), maxFullWidth);
+  const tFhincd = ellipsizeToMaxChars(dashOr(it.fhincd), maxFullWidth);
+  const tStart = ellipsizeToMaxChars(dashOr(it.plannedStartDateDisplay), maxFullWidth);
 
   const body = `
     <g clip-path="url(#${clipId})">
       ${baseRect}
+      <text x="${bx + 8}" y="${headerY}" font-size="${noSize}" font-weight="800" fill="${amber}" font-family="sans-serif">${escapeSvgText(tPallet)}</text>
+      <text x="${bx + innerW - 8}" y="${headerY}" text-anchor="end" font-size="${smallSize}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(tQty)}</text>
       ${thumb}
-      <text x="${bodyX}" y="${rowTop + noSize}" font-size="${noSize}" font-weight="800" fill="${amber}" font-family="sans-serif">${escapeSvgText(tPallet)}</text>
-      <text x="${bx + innerW - 8}" y="${rowTop + smallSize}" text-anchor="end" font-size="${smallSize}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(tQty)}</text>
-      <text x="${bodyX}" y="${rowTop + noSize + smallSize * 1.15}" font-size="${smallSize}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(tMachine)}</text>
-      <text x="${bodyX}" y="${rowTop + noSize + smallSize * 2.35}" font-size="${smallSize}" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(tFseiban)}</text>
-      <text x="${bodyX}" y="${rowTop + noSize + smallSize * 3.55}" font-size="${smallSize}" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(tFhinmei)}</text>
-      <text x="${bodyX}" y="${rowTop + noSize + smallSize * 4.75}" font-size="${smallSize}" fill="${t.colors.status.info}" font-family="sans-serif">${escapeSvgText(tFhincd)}</text>
-      <text x="${bodyX}" y="${rowTop + noSize + smallSize * 5.9}" font-size="${smallSize * 0.95}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(tStart)}</text>
+      <text x="${bodyX}" y="${machineBaselineY}" font-size="${smallSize}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(tMachine)}</text>
+      <text x="${fullWidthX}" y="${d1y}" font-size="${smallSize}" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(tFseiban)}</text>
+      <text x="${fullWidthX}" y="${d2y}" font-size="${smallSize}" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(tFhinmei)}</text>
+      <text x="${fullWidthX}" y="${d3y}" font-size="${smallSize}" fill="${t.colors.status.info}" font-family="sans-serif">${escapeSvgText(tFhincd)}</text>
+      <text x="${fullWidthX}" y="${d4y}" font-size="${smallSize * 0.95}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(tStart)}</text>
     </g>`;
   return { clipDef, body };
 }
