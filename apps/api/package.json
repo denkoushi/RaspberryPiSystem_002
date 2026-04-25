@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && mkdir -p dist/services/visualization/renderers/pallet-board && cp -R src/services/visualization/renderers/pallet-board/assets dist/services/visualization/renderers/pallet-board/",
     "start": "node dist/main.js",
     "lint": "eslint . --ext .ts",
     "test": "vitest run",

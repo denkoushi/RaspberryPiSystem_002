@@ -2,6 +2,8 @@ import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { PalletBoardVisualizationData, RenderConfig, RenderOutput, VisualizationData } from '../../visualization.types.js';
 import { createMd3Tokens, escapeSvgText } from '../_design-system/index.js';
+import { getPalletCardThumbnailDataUri } from './pallet-card-thumbnail-data-uri.js';
+import { resolvePalletMachineIllustrationDataUri } from './pallet-board-illustration-data-uri.js';
 import { buildMultiMachinePalletBoardSvg } from './pallet-board-multi-layout.js';
 import { buildSingleMachinePalletBoardSvg } from './pallet-board-single-layout.js';
 
@@ -59,6 +61,8 @@ export class PalletBoardRenderer implements Renderer {
       svg = buildMessageSvg('表示対象の加工機がありません', width, height);
     } else if (pageMachines.length === 1) {
       const machine = pageMachines[0]!;
+      const leftPanelImageDataUri = await resolvePalletMachineIllustrationDataUri(machine.illustrationUrl);
+      const cardThumbDataUri = getPalletCardThumbnailDataUri();
       svg = buildSingleMachinePalletBoardSvg({
         width,
         height,
@@ -66,6 +70,8 @@ export class PalletBoardRenderer implements Renderer {
         title,
         subtitle,
         machine,
+        leftPanelImageDataUri,
+        cardThumbDataUri,
       });
     } else {
       svg = buildMultiMachinePalletBoardSvg({

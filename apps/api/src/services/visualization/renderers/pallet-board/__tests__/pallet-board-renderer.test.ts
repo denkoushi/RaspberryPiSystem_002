@@ -39,6 +39,39 @@ describe('PalletBoardRenderer', () => {
     expect(out.buffer.length).toBeGreaterThan(800);
   });
 
+  it('renders JPEG for single-machine layout with very long FHI fields (no throw)', async () => {
+    const out = await renderer.render(
+      {
+        kind: 'pallet_board',
+        machines: [
+          {
+            machineCd: 'M1',
+            machineName: 'Machine 1',
+            illustrationUrl: null,
+            pallets: [
+              {
+                palletNo: 1,
+                lines: ['line'],
+                isEmpty: false,
+                primaryItem: {
+                  fhincd: 'C1'.repeat(200),
+                  fhinmei: '部品名'.repeat(80),
+                  fseiban: 'S1'.repeat(200),
+                  machineNameDisplay: '横形ボーリング／フライス横形ボーリング／フライス',
+                  plannedStartDateDisplay: '2026-05-28',
+                  plannedQuantity: 5,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      config,
+    );
+    expect(out.contentType).toBe('image/jpeg');
+    expect(out.buffer.length).toBeGreaterThan(800);
+  });
+
   it('renders JPEG for multi-machine layout', async () => {
     const out = await renderer.render(
       {
