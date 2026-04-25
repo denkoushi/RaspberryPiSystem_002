@@ -10,7 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-25（パレット可視化ボード サイネージ JPEG・`PalletBoardRenderer` ほか）
+最終更新: 2026-04-25（パレットボード スロット幾何・全幅明細・JPEG ほか）
+
+### 補足（2026-04-25: パレット可視化ボード スロット幾何・下段4明細 全幅・API のみ・Pi5 のみ）
+
+- **変更概要**: シングルマシン `PalletBoardRenderer` のカード内レイアウトを **`computePalletSlotCardLayout`**（`pallet-board-slot-card-layout.ts`）へ分離。上段右の機種1行と、下段4明細を **`fullWidthX` 基準で全幅**表示（`pallet-board-single-layout.ts` の `renderSlot` は座標適用と `ellipsize` のみ）。**DB/新規 API 契約なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 専用手順は不要**（表示端末は `GET /api/signage/current-image` のみで、**JPEG は Pi5 `api` が生成**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-slot-geometry-and-fullwidth-details infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`feat/pallet-board-slot-geometry-and-fullwidth-details`**・代表コミット **`b67476da`**。**Detach Run ID**（`ansible-update-`）: **`20260425-133302-18334`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 13.6 分**・Docker 再ビルド含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 59s**・Tailscale）。
+- **手動目視（推奨）**: 管理 **`/admin/signage/preview`**（端末 `x-client-key` 指定）で **パレット可視化**スケジュールを表示し、**下段4明細がカード内で全幅に揃い**、機種行の位置が意図どおりか。反映が古い場合は端末の **画像キャッシュ/更新間隔**（[modules/signage/README.md](../modules/signage/README.md)）を確認。
+- **知見**: Vitest でスロット内 `<g>` だけを抜く正規表現は、フィクスチャ内 **子 SVG の `</g>`** で先にマッチし得るため、**下段4 `<text>` の `x` 整合**は **文書末尾4つの `<text x=`** で検証する前提（単一1スロット想定、`pallet-board-single-layout.test.ts`）。
+- **トラブルシュート**: デプロイ前 **未追跡ファイル**は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+- **ナレッジ**: [api.md KB-355 追補（スロット幾何・2026-04-25）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)。
 
 ### 補足（2026-04-25: パレット可視化ボード サイネージ JPEG・API のみ・Pi5 のみ）
 
