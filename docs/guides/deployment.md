@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-24
+last-verified: 2026-04-25
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-24（キオスク吊具集計 DADS リファクタ・順位ボード Pi4 軽量経路 ほか）
+最終更新: 2026-04-25（パレット可視化 部品カード UI・`PalletVizItemCard` ほか）
+
+### 補足（2026-04-25: キオスク／配膳 パレット可視化 部品カード UI・`PalletVizItemCard`・Web のみ）
+
+- **変更概要**: `PalletVizItemList` を `PalletVizItemCard` + `palletVizItemCardTokens` に分割。行1（番号・機種名 `truncate`・個数 em dash）、行2（製番・`fhincd`）、行3（着手日・`fhinmei` の `line-clamp-2`、ラベーなし）。**外寸は非表示**（`outsideDimensionsDisplay` は DTO/マッピングで温存、表示層は参照しない）。**API/DB 変更なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 専用手順は不要**（本変更は Pi5 `web` のキオスク SPA 配信。**Pi3 サイネージ**は本画面非対象）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-viz-item-card-solid-local infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`feat/pallet-viz-item-card-solid-local`**・代表コミット **`c986162c`**。**Detach Run ID**（`ansible-update-`）: **`20260425-094225-8483`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 7.3 分**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 134s**・Tailscale）。
+- **手動目視（推奨）**: **`/kiosk/pallet-visualization`**・**`/kiosk/mobile-placement/pallet-viz`**・タグ/写真持出の **左ペイン埋め込み**で **同一カード**・**一覧スクロール**の破綻が無いこと。古いバンドルは **スーパーリロード**。
+- **知見**:
+  - 機種名が **両方 null** のとき、行1 中央列は **空**（`flex-1`）で **個数は右端**（プレビュー確定案・[design preview](../design-previews/pallet-viz-card-layout-preview.html)）。
+  - `PalletVizItemList` で `export type { PalletVizListItem }` **のみ**だと、同一ファイル内の **`PalletVizListItem[]` が型解決できない**（**`import type { PalletVizListItem }`** を併用）。
+  - 行2 は長い **`fseiban` が伸びる**と **`fhincd` が潰れやすい**ため、トークン上 **`fseiban` を `min-w-0 flex-1 truncate`・`fhincd` を `shrink-0`** に寄せるとバランスが出やすい。
+- **トラブルシュート**: デプロイ前 **未追跡 `docs/design-previews/...`** 等は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **fail-fast** → **commit するか** **`git stash push -u`**（本記録ではデプロイ前に **stash**）。
+- **ナレッジ**: [KB-339 §V27](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v27-pallet-viz-item-card-ui-2026-04-25)・[api.md KB-355 追補（2026-04-25）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)。
 
 ### 補足（2026-04-24: キオスク吊具集計 `/kiosk/rigging-analytics` DADS 寄せリファクタ・Web のみ）
 

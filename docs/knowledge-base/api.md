@@ -562,7 +562,14 @@
 - **仕様**: テンキー・操作行 **固定**・部品カード **`PalletVizItemList` ルートのみ**縦スクロール（flex 親を `flex flex-col min-h-0 flex-1` で接続）。**API/DB 変更なし**。モバイルで **誤ったスクロール伝播**を抑えるため **`touch-action: pan-y`**・親チェーンの **`wheel` / `touchmove`（`passive: false`）** を併用（[KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**HTTP スモーク**: `GET https://100.106.158.2/kiosk/mobile-placement/pallet-viz` → **200**（`curl -k`）。**手動**: カード複数で **一覧だけ**フリックスクロール。
 - **到達性**: 実行環境によっては Pi5 **SSH タイムアウト**の例あり→ **Tailscale 到達可な端末**でデプロイ（[deployment.md](../guides/deployment.md) §2026-04-24）。
-- **ナレッジ**: [KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)。
+- **ナレッジ**: [KB-339 §V25](./KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24）。
+
+**追補（2026-04-25・部品カード UI・Web のみ・Pi5 のみ）**:
+- ブランチ **`feat/pallet-viz-item-card-solid-local`**・代表 **`c986162c`**（`PalletVizItemCard`・`palletVizItemCardTokens`・`palletVizListItem`・`palletVizItemCardFormatters`・`PalletVizItemList` 薄化・**外寸非表示**）。
+- **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-viz-item-card-solid-local infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-094225-8483`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **仕様**: 専用 `/kiosk/pallet-visualization`・配膳スマホ `/kiosk/mobile-placement/pallet-viz`・**持出左ペイン**（`PalletVizEmbeddedPanel`）の **`PalletVizItemList`** が同カード。静的プレビュー整合は [pallet-viz-card-layout-preview.html](../design-previews/pallet-viz-card-layout-preview.html)。**`outsideDimensionsDisplay`** は **表示しない**（データは温存）。機種名が無いとき行1 中央は **空**（[KB-339 §V27](./KB-339-mobile-placement-barcode-survey.md#v27-pallet-viz-item-card-ui-2026-04-25)）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **134s**）。
+- **トラブルシュート**: 未追跡 `docs/design-previews/...` で **デプロイ fail-fast**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）→ **commit** か **`git stash push -u`**。見た目が古い → **スーパーリロード**。
 
 **追補（2026-04-23・スマホ配膳 パレット可視化・機種別 `palletCount`・Pi5→Pi4×4→Pi3）**:
 - ブランチ **`feat/mobile-pallet-viz-machine-pallet-count`**・代表 **`17c39259`**（Prisma `PalletMachineIllustration.palletCount`・`PATCH /api/tools/pallet-visualization/machines/:machineCd/pallet-count`・`KioskMobilePalletVisualizationPage`・`pallet-board-renderer` 可変段数 等）。
@@ -619,7 +626,7 @@
 **主な実装置き場**:
 - API: `apps/api/src/services/pallet-visualization/*`、`routes/kiosk/pallet-visualization.ts`、`routes/tools/pallet-visualization.ts`、ストレージ `pallet-machine-illustrations`。
 - 可視化: `apps/api/src/services/visualization/data-sources/pallet-visualization-board/`、`renderers/pallet-board/`。
-- Web: `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`、`apps/web/src/layouts/KioskLayout.tsx`、`apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskMobilePalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskBorrowPage.tsx`、`apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`、`apps/web/src/pages/kiosk/MobilePlacementPage.tsx`、`apps/web/src/features/kiosk/pallet-visualization/`（`PalletVizEmbeddedPanel`・`usePalletVisualizationController` 等）、`pages/admin/PalletMachineIllustrationsPage.tsx`。
+- Web: `apps/web/src/features/kiosk/kioskImmersiveLayoutPolicy.ts`、`apps/web/src/layouts/KioskLayout.tsx`、`apps/web/src/pages/kiosk/KioskPalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskMobilePalletVisualizationPage.tsx`、`apps/web/src/pages/kiosk/KioskBorrowPage.tsx`、`apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`、`apps/web/src/pages/kiosk/MobilePlacementPage.tsx`、`apps/web/src/features/kiosk/pallet-visualization/`（`PalletVizItemCard`・`PalletVizItemList`・`PalletVizEmbeddedPanel`・`usePalletVisualizationController` 等）、`pages/admin/PalletMachineIllustrationsPage.tsx`。
 
 **解決状況**: ✅ **本番反映済み**（2026-04-22・上記および **追補デプロイ**）
 
