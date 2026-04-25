@@ -10,7 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-25（パレット可視化 部品カード UI・`PalletVizItemCard` ほか）
+最終更新: 2026-04-25（パレット可視化ボード サイネージ JPEG・`PalletBoardRenderer` ほか）
+
+### 補足（2026-04-25: パレット可視化ボード サイネージ JPEG・API のみ・Pi5 のみ）
+
+- **変更概要**: シングルマシン用 `PalletBoardRenderer`（`pallet_board`）の SVG に **登録済み加工機イラスト**（`illustrationUrl` → `PalletMachineIllustrationStorage.readIllustration` → data URI）と **同梱サムネ PNG**（各カード左）を埋め込み、**`clipPath`＋行省略**でカード内テキストの **枠外はみ出し/隣カード重なり**を抑制。`apps/api` の `package.json` `build` で `pallet-board/assets` を `dist` へ `cp -R`。**DB/新規 API 契約なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 専用手順は不要**（表示端末は `GET /api/signage/current-image` のみで、**JPEG は Pi5 `api` が生成**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-jpeg-illustration-and-text-clip infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`feat/pallet-board-jpeg-illustration-and-text-clip`**・代表コミット **`d01eb79c`**。**Detach Run ID**（`ansible-update-`）: **`20260425-121049-5082`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 10.3 分**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 58s**・Tailscale）。
+- **手動目視（推奨）**: 管理 **`/admin/signage/preview`**（端末 `x-client-key` 指定）で **パレット可視化**スケジュールを表示し、**左ペインの登録イラスト**・**カード左サムネ**・**長文の `…` 省略**が意図どおりか。反映が古い場合は端末の **画像キャッシュ/更新間隔**（[modules/signage/README.md](../modules/signage/README.md)）を確認。
+- **知見**: `<image>` は **`href` と `xlink:href` 併記**で古いラスタライザ互換。固定 PNG が読めない場合は **従来の `palletBoardFixtureInnerSvg` 線画**にフォールバック。
+- **トラブルシュート**: 左イラストが出ない → **`illustrationUrl` 未登録**または **`readIllustration` 失敗**（[KB-355](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・ストレージ bind）。**Mac fail-fast**（未追跡ファイル）は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+- **ナレッジ**: [api.md KB-355 追補（2026-04-25）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・[design/preview-workflow.md](../design/preview-workflow.md)（HTML と JPEG の表現差の前提）。
 
 ### 補足（2026-04-25: キオスク／配膳 パレット可視化 部品カード UI・`PalletVizItemCard`・Web のみ）
 
