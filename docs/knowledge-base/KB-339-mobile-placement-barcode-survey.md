@@ -1,6 +1,18 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
-最終更新: 2026-04-24（**V26 購買照会バーコード即時確定**）・2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+最終更新: 2026-04-25（**V27 パレット可視化 部品カード UI**）・2026-04-24（**V26 購買照会バーコード即時確定**）・2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
+
+## V27（2026-04-25）キオスク／配膳 パレット可視化 部品カード UI（`PalletVizItemCard`） {#v27-pallet-viz-item-card-ui-2026-04-25}
+
+- **目的**: 確定静プレビュー（[pallet-viz-card-layout-preview.html](../design-previews/pallet-viz-card-layout-preview.html)）に合わせ、**専用ページ** `/kiosk/pallet-visualization`・**配膳スマホ** `/kiosk/mobile-placement/pallet-viz`・**持出左ペイン埋め込み**（`PalletVizEmbeddedPanel`）で **同じ部品カード**を共有する。固定カード高・ラベー付きグリッドをやめ、**可変高**・**1.5 倍相当タイポ**（`palletVizItemCardTokens`）・**外寸は非表示**（DTO/マッピングの `outsideDimensionsDisplay` は温存・表示層は参照しない）。
+- **仕様（Web のみ）**: 行1 **番号 + 機種名（`truncate`）+ 個数**（`em dash` ルールは `palletVizItemCardFormatters`）。機種名が **両方 null** のとき行1 中央列は **空**（`flex-1`）で **個数は右**。**行2** 製番左・`fhincd` 右（長文は `fseiban` 側を truncate しやすい配分に調整可）。**行3** 着手日値 + `fhinmei`（`line-clamp-2`）・ラベーなし。**API/DB**: 変更なし。
+- **実装の先端**: ブランチ **`feat/pallet-viz-item-card-solid-local`**・代表コミット **`c986162c`**（`PalletVizItemCard.tsx`・`PalletVizItemList.tsx`・`palletVizListItem.ts`・`copy.ts` の `palletVizCopy.emDash` 集約・`PalletVizItemCard.test.tsx` 等）。
+- **デプロイ（本番・最小）**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-viz-item-card-solid-local infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-094225-8483`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3**: 専用手順**不要**（[deployment.md・ラズパイ3 節](../guides/deployment.md#ラズパイ3サイネージの更新)は **今回未実施**でよい）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **134s**・Mac / Tailscale）。
+- **知見・トラブルシュート**:
+  - **`PalletVizItemList` の型**: re-export だけのとき **`import type { PalletVizListItem }`** を忘れると `PalletVizListItem` が **解決不能**（TS）。
+  - **デプロイ fail-fast**: 未追跡 `docs/design-previews/...` は **`git stash push -u`** または **commit**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。
+  - 一覧スクロールは [§V25](#v25-mobile-pallet-viz-card-only-scroll-2026-04-24) の flex 前提が継続。カード**高さ可変**後も **`PalletVizItemList` ルート**の `scrollHeight` / 親 `min-h-0` を疑う。
 
 ## V26（2026-04-24）購買照会バーコード即時確定・`KIOSK_STANDARD_BARCODE_SCAN_SESSION` 共通化 {#v26-purchase-order-barcode-instant-2026-04-24}
 
