@@ -1,5 +1,6 @@
 /** パレット可視化（キオスク）画面の表示文言（単一ソース） */
 export const palletVizCopy = {
+  emDash: '—',
   actions: {
     add: '追加',
     overwrite: '上書',
@@ -7,10 +8,4 @@ export const palletVizCopy = {
     clearPallet: '全削除',
   },
   emptyPallet: 'このパレットに部品はありません',
-  card: {
-    startDate: '着手',
-    quantity: '個数',
-    outsideDimensions: '外寸',
-    emDash: '—',
-  },
 } as const;

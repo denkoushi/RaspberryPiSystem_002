@@ -17,7 +17,7 @@ import { useSerialBarcodeStream } from '../../barcode-scan/useSerialBarcodeStrea
 import { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage';
 import { mapPalletVisualizationDtoToListItem } from './palletVizListItemMapping';
 
-import type { PalletVizListItem } from './PalletVizItemList';
+import type { PalletVizListItem } from './palletVizListItem';
 
 const BOARD_QUERY_KEY = 'kiosk-pallet-viz-board';
 
