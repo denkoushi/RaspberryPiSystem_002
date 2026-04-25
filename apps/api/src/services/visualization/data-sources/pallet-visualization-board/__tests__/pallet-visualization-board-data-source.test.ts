@@ -56,6 +56,16 @@ describe('PalletVisualizationBoardDataSource', () => {
       expect(p1?.lines[0]).toContain('部品');
       expect(p1?.lines[0]).toContain('S1');
       expect(p1?.lines[0]).toContain('機種X');
+      expect(p1?.isEmpty).toBe(false);
+      expect(p1?.primaryItem?.fhincd).toBe('P1');
     }
+    expect(queryBoardMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it('passes machineCds filter to queryPalletVisualizationBoard', async () => {
+    queryBoardMock.mockResolvedValue({ machines: [] });
+    const source = new PalletVisualizationBoardDataSource();
+    await source.fetchData({ machineCds: ['mc01', ' mc02 '] });
+    expect(queryBoardMock).toHaveBeenCalledWith({ machineCds: ['MC01', 'MC02'] });
   });
 });

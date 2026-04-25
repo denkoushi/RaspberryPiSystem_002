@@ -1,10 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
+import { getToolsPalletVisualizationBoard, type VisualizationDashboard } from '../../api/client';
 import { useVisualizationDashboard, useVisualizationDashboardMutations, useVisualizationDashboards, useCsvDashboards } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-
-import type { VisualizationDashboard } from '../../api/client';
 
 const DEFAULT_JSON = '{}';
 const UNINSPECTED_DATA_SOURCE_TYPE = 'uninspected_machines';
@@ -97,6 +97,13 @@ export function VisualizationDashboardsPage() {
   const isEditing = Boolean(selectedId) && !isCreating;
   const isUninspectedPreset = dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE;
   const isMeasuringInspectionPreset = dataSourceType.trim() === MI_LOAN_INSPECTION_DATA_SOURCE_TYPE;
+  const isPalletVizPreset = dataSourceType.trim() === PALLET_VIZ_DATA_SOURCE_TYPE;
+
+  const palletVizBoardQuery = useQuery({
+    queryKey: ['tools-pallet-viz-board'],
+    queryFn: () => getToolsPalletVisualizationBoard(),
+    enabled: isPalletVizPreset,
+  });
 
   // 未点検加工機プリセット用のCSVダッシュボードID取得
   const currentCsvDashboardId = useMemo(() => {
@@ -131,6 +138,79 @@ export function VisualizationDashboardsPage() {
           2,
         ),
       );
+    }
+  };
+
+  const palletVizMachinesInOrder = useMemo(
+    () =>
+      palletVizBoardQuery.data?.machines
+        ?.map((m) => m.machineCd.trim().toUpperCase())
+        .filter(Boolean) ?? [],
+    [palletVizBoardQuery.data?.machines],
+  );
+
+  const palletVizSelectedMachineSet = useMemo(() => {
+    if (!isPalletVizPreset) {
+      return new Set<string>();
+    }
+    try {
+      const parsed = JSON.parse(dataSourceConfig) as { machineCds?: unknown };
+      if (!Array.isArray(parsed.machineCds)) {
+        return new Set<string>();
+      }
+      return new Set(
+        parsed.machineCds
+          .filter((v): v is string => typeof v === 'string')
+          .map((s) => s.trim().toUpperCase())
+          .filter(Boolean),
+      );
+    } catch {
+      return new Set<string>();
+    }
+  }, [dataSourceConfig, isPalletVizPreset]);
+
+  const handlePalletVizMachineToggle = (machineCdRaw: string) => {
+    const machineCd = machineCdRaw.trim().toUpperCase();
+    if (!machineCd) {
+      return;
+    }
+    const order = palletVizMachinesInOrder.length > 0 ? palletVizMachinesInOrder : [machineCd];
+    try {
+      const parsed = (JSON.parse(dataSourceConfig) as Record<string, unknown> & { machineCds?: unknown }) ?? {};
+      const next: Record<string, unknown> = { ...parsed };
+      const selected = new Set(palletVizSelectedMachineSet);
+      if (selected.has(machineCd)) {
+        selected.delete(machineCd);
+      } else {
+        selected.add(machineCd);
+      }
+      if (selected.size === 0) {
+        delete next.machineCds;
+      } else {
+        next.machineCds = order.filter((cd) => selected.has(cd));
+      }
+      setDataSourceConfig(JSON.stringify(next, null, 2));
+    } catch {
+      const selected = new Set(palletVizSelectedMachineSet);
+      if (selected.has(machineCd)) {
+        selected.delete(machineCd);
+      } else {
+        selected.add(machineCd);
+      }
+      const next: Record<string, unknown> =
+        selected.size === 0 ? {} : { machineCds: order.filter((cd) => selected.has(cd)) };
+      setDataSourceConfig(JSON.stringify(next, null, 2));
+    }
+  };
+
+  const handlePalletVizClearTargets = () => {
+    try {
+      const parsed = (JSON.parse(dataSourceConfig) as Record<string, unknown> & { machineCds?: unknown }) ?? {};
+      const next: Record<string, unknown> = { ...parsed };
+      delete next.machineCds;
+      setDataSourceConfig(JSON.stringify(next, null, 2));
+    } catch {
+      setDataSourceConfig('{}');
     }
   };
 
@@ -303,7 +383,9 @@ export function VisualizationDashboardsPage() {
       setName('パレット可視化ボード');
     }
     if (!description.trim()) {
-      setDescription('全加工機のパレット現在状態をJPEGで表示（ページは rendererConfig.pageIndex で切替）');
+      setDescription(
+        'パレット現在状態をJPEGで表示。対象加工機未指定時は資源マスタ登録の全機。1台のみのときは大画面レイアウト（ページは rendererConfig.pageIndex）',
+      );
     }
     setFormError(null);
   };
@@ -451,6 +533,49 @@ export function VisualizationDashboardsPage() {
                       部署フィルタは <code>dataSourceConfig.sectionEquals</code> で設定します。
                       既定値は「加工担当部署」です。
                     </p>
+                  </div>
+                )}
+                {isPalletVizPreset && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-slate-700">
+                      <strong>対象加工機</strong>を未選択のままにすると、資源マスタに登録された<strong>全加工機</strong>が対象になります。
+                      1台だけに絞ると、サイネージ側は<strong>大画面（1台専用レイアウト）</strong>で描画されます。
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="secondary" onClick={handlePalletVizClearTargets}>
+                        対象をクリア（全機）
+                      </Button>
+                      {palletVizSelectedMachineSet.size > 0 && (
+                        <span className="text-xs text-slate-600">
+                          選択中: {palletVizSelectedMachineSet.size} 台（資源マスタ登録順）
+                        </span>
+                      )}
+                    </div>
+                    <div className="max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white px-2 py-2">
+                      {palletVizBoardQuery.isLoading && (
+                        <p className="text-xs text-slate-500">加工機一覧を読み込み中...</p>
+                      )}
+                      {palletVizBoardQuery.isError && (
+                        <p className="text-xs text-rose-600">加工機一覧の取得に失敗しました。</p>
+                      )}
+                      {(palletVizBoardQuery.data?.machines ?? []).map((m) => {
+                        const cd = m.machineCd.trim().toUpperCase();
+                        const checked = palletVizSelectedMachineSet.has(cd);
+                        return (
+                          <label key={m.machineCd} className="flex cursor-pointer items-center gap-2 py-1 text-xs font-semibold text-slate-800">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => handlePalletVizMachineToggle(m.machineCd)}
+                              className="h-4 w-4"
+                            />
+                            <span>
+                              {m.machineName} <span className="font-mono text-slate-600">({m.machineCd})</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

@@ -1,0 +1,715 @@
+<!doctype html>
+<!-- 静的プレビュー: API の PalletBoardRenderer（1台専用レイアウト・空スロットの番号/サムネ/「—」）の見た目確認用。JPEG 本番とピクセル一致はしません。 -->
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <title>デザインプレビュー · パレット可視化ボード（1台専用・サイネージ想定）</title>
+    <style>
+      :root {
+        --bg: #0f1116;
+        --surface: #1a1d24;
+        --surface-high: #252932;
+        --text: #f4f6fb;
+        --text-muted: rgba(244, 246, 251, 0.62);
+        --info: #3b6ea5;
+        --info-on: #e8f0ff;
+        --border: rgba(255, 255, 255, 0.12);
+        --occupied: rgba(46, 125, 50, 0.22);
+        --occupied-border: rgba(129, 199, 132, 0.55);
+        --empty: rgba(255, 255, 255, 0.04);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0a0c10;
+        color: var(--text);
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 12px;
+      }
+      .banner {
+        max-width: 1200px;
+        width: 100%;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+      .banner strong {
+        color: #7ec8ff;
+        font-weight: 600;
+      }
+      .stage-wrap {
+        width: min(100%, 1280px);
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+      }
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        transform-origin: top left;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        padding: 32px 40px 36px;
+      }
+      .header-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        flex-shrink: 0;
+      }
+      .title {
+        font-size: 52px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .subtitle {
+        font-size: 28px;
+        font-weight: 600;
+        color: var(--text-muted);
+      }
+      /*
+       * 左 1/4 · 右 3/4。
+       * 上段行は auto → イラストパネル高（= JS でカード高に同期）にぴったり合わせ、下に空白を作らない。
+       * 下段は残りをパレット2段目が使用。
+       */
+      .main {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 1fr 3fr;
+        grid-template-rows: auto 1fr;
+        row-gap: 14px;
+        column-gap: 28px;
+        align-items: stretch;
+      }
+      .illustration-panel {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: start;
+        justify-self: stretch;
+        width: 100%;
+        max-height: none;
+        background: linear-gradient(165deg, var(--surface) 0%, #12151c 100%);
+        border: 2px solid var(--border);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        padding: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      .machine-chip {
+        flex-shrink: 0;
+        margin: 10px 12px 0;
+        background: var(--info);
+        color: var(--info-on);
+        font-size: 22px;
+        font-weight: 700;
+        padding: 8px 12px;
+        border-radius: 10px;
+        text-align: center;
+      }
+      .illustration-panel .hero-wrap {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 12px 4px;
+      }
+      .illustration-panel .hero-svg {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        filter: drop-shadow(0 20px 28px rgba(0, 0, 0, 0.5));
+      }
+      .illustration-caption {
+        flex-shrink: 0;
+        padding: 0 10px 8px;
+        font-size: 14px;
+        color: var(--text-muted);
+        text-align: center;
+        line-height: 1.3;
+      }
+      .pallet-region {
+        grid-column: 2;
+        grid-row: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        align-self: stretch;
+      }
+      .pallet-grid {
+        flex: 1;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 14px;
+        min-height: 0;
+      }
+      .slot {
+        background: var(--surface-high);
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-height: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      .slot.occupied {
+        container-type: size;
+        background: var(--occupied);
+        border-color: var(--occupied-border);
+        display: grid;
+        /* 上段: サムネ | 番号・機種・着手 — 下段: FHIN を全幅（左下サムネ下の余白も使用） */
+        grid-template-columns: minmax(108px, 32%) 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+        column-gap: 10px;
+        row-gap: 6px;
+        align-items: start;
+      }
+      /* カード高さの 1/3（cqh でサムネ外寸を維持） */
+      .slot-thumb {
+        grid-row: 1;
+        grid-column: 1;
+        align-self: start;
+        height: 33cqh;
+        max-height: 33cqh;
+        min-height: 0;
+        width: 100%;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .slot-thumb svg {
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      .slot .slot-body {
+        grid-column: 2;
+        grid-row: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        justify-content: flex-start;
+        align-self: start;
+      }
+      /* 未登録：番号＋治具サムネ＋「—」を示しつつグレーアウト（占有スロットと同列のサムネ寸法） */
+      .slot.empty {
+        container-type: size;
+        display: grid;
+        grid-template-columns: minmax(108px, 32%) 1fr;
+        grid-template-rows: 1fr;
+        column-gap: 10px;
+        align-items: start;
+        background: rgba(255, 255, 255, 0.03);
+        border: 2px solid rgba(255, 255, 255, 0.08);
+        opacity: 0.68;
+        filter: grayscale(0.45);
+      }
+      .slot.empty .slot-thumb {
+        grid-column: 1;
+        grid-row: 1;
+        align-self: start;
+        height: 33cqh;
+        max-height: 33cqh;
+        min-height: 0;
+        width: 100%;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.55;
+      }
+      .slot.empty .slot-thumb svg {
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      .slot-empty-main {
+        grid-column: 2;
+        grid-row: 1;
+        align-self: center;
+        justify-self: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        min-width: 0;
+        width: 100%;
+      }
+      .pallet-no--empty {
+        font-size: 22px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: rgba(253, 230, 138, 0.42);
+      }
+      .slot .dash {
+        font-size: 42px;
+        color: var(--text-muted);
+        font-weight: 300;
+      }
+      .slot.empty .dash {
+        color: rgba(255, 255, 255, 0.22);
+        line-height: 1;
+      }
+      .row1 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .pallet-no {
+        font-size: 22px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: #fde68a;
+        min-width: 2ch;
+      }
+      .qty {
+        margin-left: auto;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-muted);
+      }
+      /* 上段：番号・個数・機種名・着手（従来位置のまま） */
+      .slot-head {
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      /*
+       * 機種名：パレット可視化 API の machineNameDisplay（または machineName）。
+       * 設備型番（HCN-4000NEO 等）そのものではなく、取得済みの表示用機種名をバインドする想定。
+       */
+      .row-machine {
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.3;
+        min-width: 0;
+      }
+      .machine-name {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        color: rgba(244, 246, 251, 0.9);
+      }
+      .row-start {
+        flex-shrink: 0;
+      }
+      .start {
+        color: var(--text-muted);
+        font-size: 11px;
+      }
+      /* カード下段・全幅（左列サムネ下も含む領域） */
+      .slot.occupied > .slot-fhin-details {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        align-self: stretch;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        gap: 8px;
+        padding-top: 2px;
+      }
+      .fhin-row {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .fhin-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-muted);
+        letter-spacing: 0.04em;
+      }
+      /* 従来比 70% 相当の表示サイズ */
+      .fhin-val {
+        font-size: 25px;
+        font-weight: 700;
+        line-height: 1.12;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .fhin-val.fhin-cd {
+        font-family: ui-monospace, monospace;
+        font-size: 24px;
+        font-weight: 700;
+        color: #a5d4ff;
+      }
+      .fhin-val.fhin-mei {
+        display: -webkit-box;
+        -webkit-line-clamp: 5;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .svg-defs {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+      }
+      @media (max-width: 900px) {
+        .stage-wrap {
+          aspect-ratio: auto;
+        }
+        .stage {
+          transform: scale(0.42);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="svg-defs" aria-hidden="true" focusable="false">
+      <defs>
+        <!-- 複数 <use> でも ID 衝突しないようグラデーションは使わない -->
+        <symbol id="pallet-fixture-art" viewBox="0 0 400 520">
+          <g transform="translate(200,420)">
+            <polygon
+              points="-120,-30 -95,-55 95,-55 120,-30 120,25 -120,25"
+              fill="#7a828a"
+              stroke="#3d4248"
+              stroke-width="2"
+            />
+            <polygon points="-95,-55 95,-55 85,-70 -85,-70" fill="#7a8088" stroke="#3d4248" stroke-width="1.5" />
+            <circle cx="-85" cy="5" r="8" fill="#2a2d32" stroke="#1a1c20" />
+            <circle cx="85" cy="5" r="8" fill="#2a2d32" stroke="#1a1c20" />
+          </g>
+          <g transform="translate(200,120)">
+            <rect x="-55" y="0" width="110" height="260" rx="6" fill="#8b939c" stroke="#3d4248" stroke-width="2" />
+            <rect x="-50" y="8" width="100" height="244" rx="4" fill="#8f97a0" opacity="0.35" />
+            <g fill="#2e3238" stroke="#1e2126" stroke-width="0.8">
+              <circle cx="52" cy="40" r="5" />
+              <circle cx="68" cy="40" r="5" />
+              <circle cx="84" cy="40" r="5" />
+              <circle cx="100" cy="40" r="5" />
+              <circle cx="52" cy="58" r="5" />
+              <circle cx="68" cy="58" r="5" />
+              <circle cx="84" cy="58" r="5" />
+              <circle cx="100" cy="58" r="5" />
+              <circle cx="52" cy="76" r="5" />
+              <circle cx="68" cy="76" r="5" />
+              <circle cx="84" cy="76" r="5" />
+              <circle cx="100" cy="76" r="5" />
+              <circle cx="52" cy="94" r="5" />
+              <circle cx="68" cy="94" r="5" />
+              <circle cx="84" cy="94" r="5" />
+              <circle cx="100" cy="94" r="5" />
+            </g>
+            <rect x="-52" y="-8" width="104" height="14" rx="3" fill="#6d737a" stroke="#3d4248" />
+          </g>
+        </symbol>
+      </defs>
+    </svg>
+
+    <p class="banner">
+      <strong>静的デザインプレビューのみ</strong>（本番未接続）。カード上段の機種名は
+      <strong>パレット可視化の machineNameDisplay（なければ machineName）</strong>を想定（型番 HCN… そのものではない）。左パネルは登録イラスト。
+    </p>
+    <div class="stage-wrap" id="stageWrap">
+      <div class="stage" id="stage">
+        <div class="header-row">
+          <h1 class="title">パレット可視化ボード</h1>
+          <span class="subtitle">第2工場 · プレビュー</span>
+        </div>
+        <div class="main">
+          <section class="illustration-panel" aria-label="加工機イラスト">
+            <div class="machine-chip">HCN-4000NEO 1号機（021）</div>
+            <div class="hero-wrap">
+              <svg
+                class="hero-svg"
+                viewBox="0 0 400 520"
+                preserveAspectRatio="xMidYMid meet"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <use href="#pallet-fixture-art" width="400" height="520" />
+              </svg>
+            </div>
+            <p class="illustration-caption">
+              本番: 登録イラストを表示。プレビューは上段カードと同じ縦寸・CAD 風 SVG
+            </p>
+          </section>
+          <section class="pallet-region" aria-label="パレットスロット">
+            <div class="pallet-grid">
+              <article class="slot occupied">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-body">
+                  <div class="slot-head">
+                    <div class="row1">
+                      <span class="pallet-no">1</span>
+                      <span class="qty">12 個</span>
+                    </div>
+                    <div class="row-machine">
+                      <span
+                        class="machine-name"
+                        title="本番: パレットAPI machineNameDisplay"
+                      >臥式マシニングセンタ</span>
+                    </div>
+                    <div class="row-start"><span class="start">着手 4/28</span></div>
+                  </div>
+                </div>
+                <div class="slot-fhin-details" aria-label="品目情報">
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINBAN</span>
+                    <span class="fhin-val fhin-ban">25A-8841</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINMEI</span>
+                    <span class="fhin-val fhin-mei">ブラケット A（溶接後）</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINCD</span>
+                    <span class="fhin-val fhin-cd" title="品番（MH/SH 始まり。加工機名称ではない）">MH00481233</span>
+                  </div>
+                </div>
+              </article>
+              <article class="slot occupied">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-body">
+                  <div class="slot-head">
+                    <div class="row1">
+                      <span class="pallet-no">2</span>
+                      <span class="qty">—</span>
+                    </div>
+                    <div class="row-machine">
+                      <span class="machine-name" title="本番: パレットAPI machineNameDisplay">立形マシニングセンタ</span>
+                    </div>
+                    <div class="row-start"><span class="start">着手 4/29</span></div>
+                  </div>
+                </div>
+                <div class="slot-fhin-details" aria-label="品目情報">
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINBAN</span>
+                    <span class="fhin-val fhin-ban">25B-1203</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINMEI</span>
+                    <span class="fhin-val fhin-mei">シャフト 中仕上げ</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINCD</span>
+                    <span class="fhin-val fhin-cd" title="品番（MH/SH 始まり。加工機名称ではない）">SH00519470</span>
+                  </div>
+                </div>
+              </article>
+              <article class="slot empty" aria-label="パレット3 未登録">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-empty-main">
+                  <span class="pallet-no pallet-no--empty">3</span>
+                  <span class="dash">—</span>
+                </div>
+              </article>
+              <article class="slot occupied">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-body">
+                  <div class="slot-head">
+                    <div class="row1">
+                      <span class="pallet-no">4</span>
+                      <span class="qty">6 個</span>
+                    </div>
+                    <div class="row-machine">
+                      <span class="machine-name" title="本番: パレットAPI machineNameDisplay">横形ボーリング／フライス</span>
+                    </div>
+                    <div class="row-start"><span class="start">着手 5/02</span></div>
+                  </div>
+                </div>
+                <div class="slot-fhin-details" aria-label="品目情報">
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINBAN</span>
+                    <span class="fhin-val fhin-ban">25A-9012</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINMEI</span>
+                    <span class="fhin-val fhin-mei">カバー（アルマイト）</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINCD</span>
+                    <span class="fhin-val fhin-cd" title="品番（MH/SH 始まり。加工機名称ではない）">MH00110022</span>
+                  </div>
+                </div>
+              </article>
+              <article class="slot empty" aria-label="パレット5 未登録">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-empty-main">
+                  <span class="pallet-no pallet-no--empty">5</span>
+                  <span class="dash">—</span>
+                </div>
+              </article>
+              <article class="slot empty" aria-label="パレット6 未登録">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-empty-main">
+                  <span class="pallet-no pallet-no--empty">6</span>
+                  <span class="dash">—</span>
+                </div>
+              </article>
+              <article class="slot empty" aria-label="パレット7 未登録">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-empty-main">
+                  <span class="pallet-no pallet-no--empty">7</span>
+                  <span class="dash">—</span>
+                </div>
+              </article>
+              <article class="slot occupied">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-body">
+                  <div class="slot-head">
+                    <div class="row1">
+                      <span class="pallet-no">8</span>
+                      <span class="qty">4 個</span>
+                    </div>
+                    <div class="row-machine">
+                      <span class="machine-name" title="本番: パレットAPI machineNameDisplay">5軸複合加工機</span>
+                    </div>
+                    <div class="row-start"><span class="start">着手 —</span></div>
+                  </div>
+                </div>
+                <div class="slot-fhin-details" aria-label="品目情報">
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINBAN</span>
+                    <span class="fhin-val fhin-ban">25C-0044</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINMEI</span>
+                    <span class="fhin-val fhin-mei">試作フランジ（長い品名が2行で省略されるケースのダミーテキスト）</span>
+                  </div>
+                  <div class="fhin-row">
+                    <span class="fhin-label">FHINCD</span>
+                    <span class="fhin-val fhin-cd" title="品番（MH/SH 始まり。加工機名称ではない）">SH00998811</span>
+                  </div>
+                </div>
+              </article>
+              <article class="slot empty" aria-label="パレット9 未登録">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-empty-main">
+                  <span class="pallet-no pallet-no--empty">9</span>
+                  <span class="dash">—</span>
+                </div>
+              </article>
+              <article class="slot empty" aria-label="パレット10 未登録">
+                <div class="slot-thumb" aria-hidden="true">
+                  <svg viewBox="0 0 400 520" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+                    <use href="#pallet-fixture-art" width="400" height="520" />
+                  </svg>
+                </div>
+                <div class="slot-empty-main">
+                  <span class="pallet-no pallet-no--empty">10</span>
+                  <span class="dash">—</span>
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var wrap = document.getElementById('stageWrap');
+        var stage = document.getElementById('stage');
+        function syncIllustrationPanelHeight() {
+          var panel = document.querySelector('.illustration-panel');
+          var grid = document.querySelector('.pallet-grid');
+          if (!panel || !grid) return;
+          var slot = grid.querySelector('.slot');
+          if (!slot) return;
+          var h = slot.offsetHeight;
+          if (h < 1) return;
+          /* 上段カード1枚の outer height に左パネルを合わせる（プレビュー専用・本番未使用） */
+          panel.style.height = h + 'px';
+        }
+        function syncAfterLayout() {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(syncIllustrationPanelHeight);
+          });
+        }
+        function scale() {
+          var w = wrap.clientWidth;
+          var s = w / 1920;
+          stage.style.transform = 'scale(' + s + ')';
+          wrap.style.height = Math.ceil(1080 * s) + 'px';
+          syncAfterLayout();
+        }
+        scale();
+        window.addEventListener('resize', scale);
+        window.addEventListener('load', syncAfterLayout);
+        var pg = document.querySelector('.pallet-grid');
+        if (pg && typeof ResizeObserver !== 'undefined') {
+          new ResizeObserver(syncIllustrationPanelHeight).observe(pg);
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -36,6 +36,16 @@ export interface TableVisualizationData {
   metadata?: Record<string, unknown>;
 }
 
+/** 1スロット先頭部品の表示用（キオスク `PalletVizItemCard` と同系の項目） */
+export interface PalletBoardSlotPrimaryItem {
+  fhincd: string;
+  fhinmei: string;
+  fseiban: string;
+  machineNameDisplay: string | null;
+  plannedStartDateDisplay: string | null;
+  plannedQuantity: number | null;
+}
+
 /** パレット可視化ボード（サイネージ・可視化ダッシュボード用） */
 export interface PalletBoardVisualizationData {
   kind: 'pallet_board';
@@ -45,8 +55,12 @@ export interface PalletBoardVisualizationData {
     illustrationUrl: string | null;
     pallets: Array<{
       palletNo: number;
-      /** 部品サマリ行 */
+      /** 部品サマリ行（後方互換・複数行連結用） */
       lines: string[];
+      /** 空きスロット */
+      isEmpty?: boolean;
+      /** 先頭部品の構造化表示（空きのときは未設定） */
+      primaryItem?: PalletBoardSlotPrimaryItem;
     }>;
   }>;
   metadata?: Record<string, unknown>;

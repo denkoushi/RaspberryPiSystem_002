@@ -121,24 +121,32 @@ function buildMachineBoards(params: {
   });
 }
 
-async function queryPalletVisualizationMachineBoards(machineCd?: string): Promise<PalletVisualizationMachineBoard[]> {
-  const machineCds = await listRegisteredMachineCds();
-  const filteredMachineCds = machineCd
-    ? machineCds.filter((cd) => cd === normalizeCd(machineCd))
-    : machineCds;
-  if (machineCd && filteredMachineCds.length === 0) {
-    throw new ApiError(404, '加工機（資源マスタ）が登録されていません', undefined, 'PALLET_MACHINE_NOT_REGISTERED');
+/**
+ * Intersects requested machine codes with the registered resource list, preserving **registered** sort order
+ * (stable with existing “all machines” board ordering).
+ */
+function intersectMachineCdsWithRegistered(requested: string[], registered: string[]): string[] {
+  if (requested.length === 0) {
+    return [];
+  }
+  const wanted = new Set(requested.map((cd) => normalizeCd(cd)));
+  return registered.filter((cd) => wanted.has(cd));
+}
+
+async function loadMachineBoardsForOrderedCds(filteredMachineCds: string[]): Promise<PalletVisualizationMachineBoard[]> {
+  if (filteredMachineCds.length === 0) {
+    return [];
   }
 
   const nameMap = await getResourceNameMapByResourceCds(filteredMachineCds);
 
   const [items, illustrations] = await Promise.all([
     prisma.machinePalletItem.findMany({
-      where: machineCd ? { resourceCd: normalizeCd(machineCd) } : undefined,
+      where: { resourceCd: { in: filteredMachineCds } },
       orderBy: [{ resourceCd: 'asc' }, { palletNo: 'asc' }, { displayOrder: 'asc' }],
     }),
     prisma.palletMachineIllustration.findMany({
-      where: machineCd ? { resourceCd: normalizeCd(machineCd) } : undefined,
+      where: { resourceCd: { in: filteredMachineCds } },
     }),
   ]);
 
@@ -178,6 +186,18 @@ async function queryPalletVisualizationMachineBoards(machineCd?: string): Promis
   });
 }
 
+async function queryPalletVisualizationMachineBoards(machineCd?: string): Promise<PalletVisualizationMachineBoard[]> {
+  const machineCds = await listRegisteredMachineCds();
+  const filteredMachineCds = machineCd
+    ? machineCds.filter((cd) => cd === normalizeCd(machineCd))
+    : machineCds;
+  if (machineCd && filteredMachineCds.length === 0) {
+    throw new ApiError(404, '加工機（資源マスタ）が登録されていません', undefined, 'PALLET_MACHINE_NOT_REGISTERED');
+  }
+
+  return loadMachineBoardsForOrderedCds(filteredMachineCds);
+}
+
 export async function queryPalletVisualizationMachines(): Promise<PalletVisualizationMachinesResponse> {
   const machines = await queryPalletVisualizationMachineBoards();
   const summaries: PalletVisualizationMachineSummary[] = machines.map((machine) => ({
@@ -189,8 +209,13 @@ export async function queryPalletVisualizationMachines(): Promise<PalletVisualiz
   return { machines: summaries };
 }
 
-export async function queryPalletVisualizationBoard(): Promise<PalletVisualizationBoardResponse> {
-  const machines = await queryPalletVisualizationMachineBoards();
+export async function queryPalletVisualizationBoard(options?: { machineCds?: string[] }): Promise<PalletVisualizationBoardResponse> {
+  const registered = await listRegisteredMachineCds();
+  const filteredMachineCds =
+    options?.machineCds && options.machineCds.length > 0
+      ? intersectMachineCdsWithRegistered(options.machineCds, registered)
+      : registered;
+  const machines = await loadMachineBoardsForOrderedCds(filteredMachineCds);
   return { machines };
 }
 
