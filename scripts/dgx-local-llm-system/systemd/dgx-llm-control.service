@@ -1,0 +1,22 @@
+[Unit]
+Description=DGX system-prod LocalLLM runtime control (on-demand llama-server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+User=__DGX_LLM_USER__
+Group=__DGX_LLM_GROUP__
+WorkingDirectory=/srv/dgx/system-prod
+Environment=LLM_RUNTIME_LISTEN_HOST=127.0.0.1
+Environment=LLM_RUNTIME_LISTEN_PORT=39090
+Environment=LLM_RUNTIME_START_CMD=/srv/dgx/system-prod/bin/start-llama-server.sh
+Environment=LLM_RUNTIME_STOP_CMD=/srv/dgx/system-prod/bin/stop-llama-server.sh
+# secrets/control-server.env に LLM_RUNTIME_CONTROL_TOKEN=... を1行で置く（値は DGX secrets/runtime-control-token と同一）
+EnvironmentFile=-/srv/dgx/system-prod/secrets/control-server.env
+ExecStart=/usr/bin/python3 /srv/dgx/system-prod/bin/control-server.py
+
+[Install]
+WantedBy=multi-user.target

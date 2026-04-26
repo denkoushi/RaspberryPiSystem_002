@@ -1,6 +1,9 @@
 import { config } from 'dotenv';
 import { z } from 'zod';
 
+import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
+import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
+
 config();
 
 const SECRET_MIN_LENGTH = 32;
@@ -305,6 +308,27 @@ const envSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['PHOTO_TOOL_EMBEDDING_MODEL_ID'],
         message: 'PHOTO_TOOL_EMBEDDING_MODEL_ID is required when PHOTO_TOOL_EMBEDDING_ENABLED=true',
+      });
+    }
+  }
+
+  const parsedProviders = parseInferenceProvidersJsonQuiet(value.INFERENCE_PROVIDERS_JSON);
+  if (parsedProviders && parsedProviders.length > 0) {
+    for (const issue of collectLocalLlmProviderAlignmentIssues(parsedProviders, {
+      LOCAL_LLM_BASE_URL: value.LOCAL_LLM_BASE_URL,
+      LOCAL_LLM_SHARED_TOKEN: value.LOCAL_LLM_SHARED_TOKEN,
+      LOCAL_LLM_MODEL: value.LOCAL_LLM_MODEL,
+      LOCAL_LLM_RUNTIME_MODE: value.LOCAL_LLM_RUNTIME_MODE,
+      LOCAL_LLM_RUNTIME_CONTROL_START_URL: value.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+      LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: value.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+      LOCAL_LLM_RUNTIME_CONTROL_TOKEN: value.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
+      INFERENCE_PHOTO_LABEL_PROVIDER_ID: value.INFERENCE_PHOTO_LABEL_PROVIDER_ID,
+      INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: value.INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID,
+    })) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: issue.path as string[],
+        message: issue.message,
       });
     }
   }

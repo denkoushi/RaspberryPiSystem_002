@@ -147,6 +147,15 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 - `EMBEDDING_NORMALIZE`
   - 既定 `true`。cosine 距離を使う前提で画像特徴を L2 normalize する
 
+## systemd（推奨・再起動耐性）
+
+`@reboot` 運用の代替として、`systemd` ユニットを同梱している。
+
+- ユニット: [`systemd/`](./systemd/)（`dgx-llm-embedding.service` → Docker、`dgx-llm-control.service`、`dgx-llm-gateway.service`）
+- 秘密: `secrets/control-server.env` / `secrets/gateway-server.env`（`.example` を参照。値は既存 token ファイルと Pi5 vault と一致させる）
+- 導入: root で [`systemd/install-systemd-units.sh`](./systemd/install-systemd-units.sh)（既定では `/srv/dgx/system-prod` の owner/group を実行ユーザーに自動採用。必要なら `DGX_LLM_RUN_USER` / `DGX_LLM_RUN_GROUP` で上書き可）
+- 注意: `systemd` で root のまま起動すると `logs/` や PID などの所有者が崩れやすい。installer が owner/group を埋め込むのはその事故防止のため
+
 ## 優先順
 
 - まずは **既存の `system-prod-primary` を単一 VLM endpoint として成立**させる

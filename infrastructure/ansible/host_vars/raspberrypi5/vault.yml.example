@@ -8,6 +8,8 @@ vault_status_agent_client_key: "client-key-raspberrypi5-server"
 vault_api_local_llm_shared_token: ""
 # オンデマンド起停（DGX system-prod）。空なら API は shared トークンを制御ヘッダにも流用
 vault_api_local_llm_runtime_control_token: ""
+# 上記2つは DGX の api-token / runtime-control-token と必ず同一にすること。
+# manage-app-configs.yml が INFERENCE_PROVIDERS_JSON 内の sharedToken / controlToken と LOCAL_LLM_* の整合を検証する。
 
 # Tailscale preauth key (reusable, tagged推奨)
 vault_tailscale_auth_key: ""

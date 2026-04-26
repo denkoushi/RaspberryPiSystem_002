@@ -15,6 +15,7 @@
 
 import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
+import { formatPhotoToolEmbeddingFingerprint } from '../services/tools/photo-tool-label/photo-tool-embedding-fingerprint.js';
 import { createHttpPhotoToolImageEmbeddingAdapter } from '../services/tools/photo-tool-label/http-photo-tool-image-embedding.adapter.js';
 import { PgPhotoToolSimilarityGalleryRepository } from '../services/tools/photo-tool-label/pg-photo-tool-similarity-gallery.repository.js';
 import { PhotoStorageVisionImageSource } from '../services/tools/photo-tool-label/photo-storage-vision-image-source.adapter.js';
@@ -45,7 +46,16 @@ async function main(): Promise<number> {
   }
 
   const batchSize = parseBatchSize();
-  console.log(`[backfill-photo-tool-gallery] batchSize=${batchSize}`);
+  const fingerprint = formatPhotoToolEmbeddingFingerprint({
+    embeddingUrl: env.PHOTO_TOOL_EMBEDDING_URL!,
+    modelId: env.PHOTO_TOOL_EMBEDDING_MODEL_ID!,
+    pipelineVersion: env.PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION,
+    dimension: env.PHOTO_TOOL_EMBEDDING_DIMENSION,
+  });
+  console.log(`[backfill-photo-tool-gallery] batchSize=${batchSize} fingerprint=${fingerprint}`);
+  console.log(
+    '[backfill-photo-tool-gallery] 埋め込みURL/モデル/パイプラインを変えた場合はギャラリー空間が変わるため、本 backfill を完了させてから assist / 類似検索を本番判断すること'
+  );
 
   const vision = new PhotoStorageVisionImageSource();
   const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(env.PHOTO_TOOL_EMBEDDING_DIMENSION);
