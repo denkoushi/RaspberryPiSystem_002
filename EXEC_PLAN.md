@@ -1926,7 +1926,7 @@
 1. **通常運用**: 人レビュー `GOOD` gallery を継続蓄積し、active assist 前提の実運用精度を徐々に上げる。
 2. **運用観測**: DGX 一本化後の `component: inference` / `useCase: photo_label` と `component: localLlmRuntimeControl` を数回分 spot check し、不要な start/stop やエラー再発がないかを見る。併せて **DGX↔Pi5 token drift**（Runbook 既出）の再発予防を続ける。
 3. **将来課題**: `ねじゲージ` / `金属棒` / `てこ式ダイヤルゲージ` の hard case は、実運用上の痛みが再度強くなった時点で再開する。
-4. **blue / Qwen3.6**: **本番で green から切り替えるか**、cold start・リソース占有・VLM 残課題を材料に**判断して記録**する（検証専用なら `BLUE_LLM_RUNTIME_KEEP_WARM` の運用方針も含む）。
+4. **blue / Qwen3.6**: **本番で green から切り替えるか**、cold start・リソース占有・VLM 残課題を材料に**判断して記録**する（検証専用なら `BLUE_LLM_RUNTIME_STOP_MODE` / 互換 `BLUE_LLM_RUNTIME_KEEP_WARM` の運用方針も含む。実装: [runtime_stop_policy.py](./scripts/dgx-local-llm-system/runtime_stop_policy.py)、[ADR-20260427](./docs/decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)）。
 5. **将来置換**: green のまま**別 GGUF へ 1:1 置換**するか、blue へ**移行**するかは 4. と一緒に扱う（同じ `system-prod-primary` alias を維持する前提）。
 
 ### 加工機パレット可視化: 本番反映完了・現場スモーク残（2026-04-22）

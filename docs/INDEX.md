@@ -155,7 +155,7 @@
 ### LocalLLM（Ubuntu / Tailscale）
 
 - **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（**トークンローテーション**は同 Runbook の「共有トークンのローテーション」節）
-- **DGX system-prod 段階切替 Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（`green/blue` 差し替え、blue cold start・`BLUE_LLM_RUNTIME_KEEP_WARM`、`INFERENCE_PROVIDERS_JSON` / `LOCAL_LLM_*`、**コンテナ隔離の限界**とトラブルシューティング） / **DGX 起動雛形・systemd**: [scripts/dgx-local-llm-system/README.md](../scripts/dgx-local-llm-system/README.md)
+- **DGX system-prod 段階切替 Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（`green/blue` 差し替え、blue cold start・`BLUE_LLM_RUNTIME_STOP_MODE` / 互換 `BLUE_LLM_RUNTIME_KEEP_WARM`、`INFERENCE_PROVIDERS_JSON` / `LOCAL_LLM_*`、**コンテナ隔離の限界**とトラブルシューティング） / **DGX 起動雛形・systemd**: [scripts/dgx-local-llm-system/README.md](../scripts/dgx-local-llm-system/README.md) / **ADR（blue 停止ポリシー）**: [ADR-20260427-blue-llm-runtime-stop-policy.md](./decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)
 - **DGX Spark 移行・多用途分離運用計画**: [dgx-spark-local-llm-migration-execplan.md](./plans/dgx-spark-local-llm-migration-execplan.md)（Ubuntu PC から DGX Spark への LocalLLM 置換、公式 NVIDIA スタック優先、業務/私用/実験用途の気密分離、巨大モデル共有、ストレージ運用、段階計画と進捗管理表）
 - **2026-04-27 追補（Pi5 整合）**: `manage-app-configs` + 必要な `apps/api` / Ansible 同期 + `api` 再ビルド後、開発端末で `./scripts/deploy/verify-phase12-real.sh` **PASS 42 / WARN 1 / FAIL 0**（Runbook ・ ExecPlan `Progress` 参照）
 - **DGX Spark photo_label VLM 検証計画**: [dgx-spark-photo-label-validation-plan.md](./plans/dgx-spark-photo-label-validation-plan.md)（`photo_label` を Ubuntu fallback から Spark へ寄せるための互換性・安定性・品質・退役判断条件）

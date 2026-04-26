@@ -529,7 +529,17 @@ inference_photo_label_model: "system-prod-primary"
 
 `blue`（`vLLM` + NVFP4）を on-demand で使う場合、cold start が 10 分超になるケースがある。`api_local_llm_runtime_ready_timeout_ms` は `900000` 以上を推奨する。
 
-さらに、検証フェーズでは DGX `control-server.env` に `BLUE_LLM_RUNTIME_KEEP_WARM=true` を入れると、active backend が blue のとき `/stop` を no-op 化できる。これにより毎回の cold start を避け、連続テストの待機時間を大幅に減らせる。
+さらに、検証フェーズでは DGX `control-server.env` で **blue の停止ポリシー**を指定できる（推奨: `BLUE_LLM_RUNTIME_STOP_MODE`）。`keep_warm` または `always_on` のとき、active backend が blue なら `/stop` は no-op 化し、**実ランタイムを落とさない**（`on_demand` では従来どおり `BLUE_LLM_RUNTIME_STOP_CMD` を実行）。**互換**: `BLUE_LLM_RUNTIME_STOP_MODE` 未使用時は `BLUE_LLM_RUNTIME_KEEP_WARM=true` で同等の `keep_warm` 相当。詳細: `scripts/dgx-local-llm-system/runtime_stop_policy.py`、ADR: [ADR-20260427-blue-llm-runtime-stop-policy.md](../decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)。
+
+#### Blue 停止ポリシーと一般的大規模推論運用（対照）
+
+| 本リポのモード | ざっくり意味 | 主な比較軸（トレードオフ） |
+| --- | --- | --- |
+| `on_demand` | 利用後に止める | **リソース回収**・他用途との併用に有利。起動**待ち**は最大（blue cold start ~12 分規模の可能性）。 |
+| `keep_warm` / `always_on` | `/stop` を掛けず温存 | **反復検証/SLA 寄り**の応答導通に有利。GPU/メモリ**占有**が続く。 |
+| （Pi5 側 `on_demand` 制御） | リクエスト単位の ensure/release | クラウド系では **HPA + 最小レプリカ**、**重みの事前キャッシュ**と同軸。単一 DGX では `STOP_MODE` で近似。 |
+
+**外部のよくあるパターン（要約）**: 本番 vLLM / K8s では、巨大モデルは **起動＋重み load がボトルネック**になることが多く、**永続 volume 上の重み**・**スケール時の待ち行列**・**prefix caching 等**で tail latency を抑える。本システムは **1 台 DGX**・Pi5 gateway が `start`/`stop` を叩くため、**`keep_warm` は「最小レプリカ 1 相当の温域」**、`on_demand` は **ゼロスケール寄り**と読み替えられる。推奨の整理は ADR および `docs/plans/dgx-spark-local-llm-migration-execplan.md` の **green→blue 本番採用判断**と合わせる。
 
 blue では upstream `chat.completions` の返りが `message.content` ではなく `message.reasoning`（または `reasoning_content`）に寄ることがある。Pi5 API 側 `local-llm-proxy` では、`content` が空のときに `reasoning` / `reasoning_content` / `content[]`（text parts）へフォールバックして本文を抽出する実装を入れておく。
 
