@@ -1,0 +1,59 @@
+server {
+    listen 38081;
+    server_name _;
+
+    location = /healthz {
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+    }
+
+    location = /start {
+        if ($http_x_runtime_control_token != "${LLM_RUNTIME_CONTROL_TOKEN}") {
+            return 403;
+        }
+
+        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:39090/start;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /stop {
+        if ($http_x_runtime_control_token != "${LLM_RUNTIME_CONTROL_TOKEN}") {
+            return 403;
+        }
+
+        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:39090/stop;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /embed {
+        if ($http_authorization != "Bearer ${EMBEDDING_API_KEY}") {
+            return 403;
+        }
+
+        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:38100/embed;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /v1/ {
+        if ($http_x_llm_token != "${LLM_SHARED_TOKEN}") {
+            return 403;
+        }
+
+        proxy_pass http://127.0.0.1:38082;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

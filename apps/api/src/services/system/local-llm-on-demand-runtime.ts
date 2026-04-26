@@ -13,28 +13,32 @@ function wantsAdminChatOnDemandWrapper(): boolean {
   );
 }
 
+function isRuntimeControlConfigError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('on_demand config incomplete');
+}
+
 export async function withAdminConsoleChatOnDemandRuntime<T>(fn: () => Promise<T>): Promise<T> {
   if (!wantsAdminChatOnDemandWrapper()) {
     return fn();
   }
 
   const runtime = getLocalLlmRuntimeController();
-  if (runtime.getMode() !== 'on_demand') {
-    throw new ApiError(
-      503,
-      'LocalLLM はオンデマンド運用ですが、起動制御の設定が不完全です',
-      {
-        hint: 'LOCAL_LLM_RUNTIME_CONTROL_START_URL / STOP_URL とトークン、LOCAL_LLM_RUNTIME_HEALTH_BASE_URL（または LOCAL_LLM_BASE_URL）を確認してください',
-      },
-      'LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED'
-    );
-  }
-
   let runtimeHeld = false;
   try {
     await runtime.ensureReady(ADMIN_CHAT_USE_CASE);
     runtimeHeld = true;
   } catch (error) {
+    if (isRuntimeControlConfigError(error)) {
+      throw new ApiError(
+        503,
+        'LocalLLM はオンデマンド運用ですが、起動制御の設定が不完全です',
+        {
+          hint: 'provider.runtimeControl または LOCAL_LLM_RUNTIME_CONTROL_START_URL / STOP_URL / TOKEN / HEALTH_BASE_URL を確認してください',
+          message: error instanceof Error ? error.message : String(error),
+        },
+        'LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED'
+      );
+    }
     throw new ApiError(
       503,
       'LocalLLM ランタイムの起動に失敗しました',

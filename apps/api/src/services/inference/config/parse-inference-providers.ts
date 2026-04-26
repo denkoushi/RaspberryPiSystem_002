@@ -4,12 +4,21 @@ import { logger } from '../../../lib/logger.js';
 
 import type { InferenceProviderDefinition } from './inference-provider.types.js';
 
+const runtimeControlSchema = z.object({
+  mode: z.enum(['always_on', 'on_demand']),
+  startUrl: z.string().url().optional(),
+  stopUrl: z.string().url().optional(),
+  controlToken: z.string().min(1).optional(),
+  healthBaseUrl: z.string().url().optional(),
+});
+
 const providerSchema = z.object({
   id: z.string().min(1).max(64),
   baseUrl: z.string().url(),
   sharedToken: z.string().min(1),
   timeoutMs: z.coerce.number().int().min(1000).max(300000).optional(),
   defaultModel: z.string().min(1),
+  runtimeControl: runtimeControlSchema.optional(),
 });
 
 const providersArraySchema = z.array(providerSchema).min(1).max(16);
@@ -19,6 +28,11 @@ export type LegacyLocalLlmShape = {
   sharedToken?: string;
   model?: string;
   timeoutMs: number;
+  runtimeMode?: 'always_on' | 'on_demand';
+  runtimeControlStartUrl?: string;
+  runtimeControlStopUrl?: string;
+  runtimeControlToken?: string;
+  runtimeHealthBaseUrl?: string;
 };
 
 /**
@@ -37,6 +51,15 @@ export function tryParseInferenceProvidersJson(raw: string | undefined): Inferen
       sharedToken: r.sharedToken,
       timeoutMs: r.timeoutMs ?? 60_000,
       defaultModel: r.defaultModel,
+      runtimeControl: r.runtimeControl
+        ? {
+            mode: r.runtimeControl.mode,
+            startUrl: r.runtimeControl.startUrl,
+            stopUrl: r.runtimeControl.stopUrl,
+            controlToken: r.runtimeControl.controlToken,
+            healthBaseUrl: r.runtimeControl.healthBaseUrl,
+          }
+        : undefined,
     }));
   } catch (err) {
     logger.warn({ err }, '[Inference] INFERENCE_PROVIDERS_JSON parse failed, falling back to LOCAL_LLM_*');
@@ -58,6 +81,20 @@ export function synthesizeProvidersFromLegacyLlm(legacy: LegacyLocalLlmShape): I
       sharedToken: legacy.sharedToken,
       timeoutMs: legacy.timeoutMs,
       defaultModel: legacy.model,
+      runtimeControl:
+        legacy.runtimeMode === 'on_demand'
+          ? {
+              mode: 'on_demand',
+              startUrl: legacy.runtimeControlStartUrl,
+              stopUrl: legacy.runtimeControlStopUrl,
+              controlToken: legacy.runtimeControlToken,
+              healthBaseUrl: legacy.runtimeHealthBaseUrl ?? legacy.baseUrl,
+            }
+          : legacy.runtimeMode === 'always_on'
+            ? {
+                mode: 'always_on',
+              }
+            : undefined,
     },
   ];
 }

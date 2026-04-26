@@ -23,6 +23,11 @@ update-frequency: medium
 - Pi5 だけが LocalLLM に到達できる構成を維持する
 - auth key と共有トークンの露出を防ぎつつ、再起動後も復旧できる形で運用する
 
+## 現在の位置づけ
+
+2026-04-26 時点では、この Ubuntu 構成は **恒久本命ではなく fallback runbook** として扱う。  
+本システム用 LocalLLM の最終目標は Spark 集中であり、Ubuntu を残している理由は **`photo_label` の Spark VLM 実証が完了するまでの保険**である。したがって、この runbook は今後も rollback / 暫定並行運用には重要だが、長期的には縮退対象になりうる。
+
 ## オンデマンド llama-server（VRAM を ComfyUI 等と分ける）
 
 **判断**: [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)
@@ -50,6 +55,33 @@ update-frequency: medium
 - `LOCAL_LLM_RUNTIME_CONTROL_TOKEN` … Ubuntu の `LLM_RUNTIME_CONTROL_TOKEN` と一致（未設定時は `LOCAL_LLM_SHARED_TOKEN` を流用可）
 - `LOCAL_LLM_RUNTIME_HEALTH_BASE_URL` … 省略時は `LOCAL_LLM_BASE_URL`（`/healthz` 待ちに使用）
 
+### 複数 provider へ拡張する場合
+
+`LOCAL_LLM_*` は **primary provider（管理 Chat / status）** の既定値として残しつつ、`INFERENCE_PROVIDERS_JSON` の各 provider に **`runtimeControl`** を載せると、用途別 provider ごとに on-demand 起動停止を分けられる。
+
+```json
+[
+  {
+    "id": "ubuntu_vlm",
+    "baseUrl": "http://100.107.223.92:38081",
+    "sharedToken": "<ubuntu-api-token>",
+    "defaultModel": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+    "timeoutMs": 60000,
+    "runtimeControl": {
+      "mode": "on_demand",
+      "startUrl": "http://100.107.223.92:38081/start",
+      "stopUrl": "http://100.107.223.92:38081/stop",
+      "controlToken": "<ubuntu-runtime-control-token>",
+      "healthBaseUrl": "http://100.107.223.92:38081"
+    }
+  }
+]
+```
+
+この契約では、Pi5 API の runtime controller が **useCase -> provider** を解決し、その provider の `runtimeControl` に対して `POST /start` / `POST /stop` を送る。したがって **推論先だけ Ubuntu へ分けたのに起動停止は別ホストを見る**、というズレを防げる。
+
+ただし、この複数 provider 構成は **段階切替のための暫定形**である。Spark 側で `photo_label` が安定したら、Ubuntu provider は外して Spark へ一本化する想定でよい。
+
 **補助スクリプトのパス**: `POST /start` と `POST /stop`（ルート直下）。**推論本体と同じ `38081` に共存**させる。
 
 ### 挙動（要約）
@@ -62,7 +94,7 @@ update-frequency: medium
 
 - [deployment.md](../guides/deployment.md) 前提で Mac から Tailscale 経由の到達が取れる状態で、`../../scripts/deploy/verify-phase12-real.sh` を実行する。API・キオスク系・サイネージサービス等の回帰を一括確認できる。**2026-03-30 実測**: **PASS 37 / WARN 0 / FAIL 0**（約 100s）。**2026-04-01 実測**（管理 Chat 制御ガードを `main` 取り込み後）: **PASS 38 / WARN 0 / FAIL 0**（約 24s）。Pi5+Pi4×4 に本ブランチを順次載せた直後の確認に使用可（Pi3 はスクリプトが別途 SSH する。**Pi3 専用の慎重手順**は deployment ガイドのサイネージ節に従う）。
 - **`on_demand` を本番で有効化した後**は Phase12 に加え、Pi5 ログの **`component: localLlmRuntimeControl`**（`runtime_ready` / `runtime_stopped` 等）と Ubuntu の **`nvidia-smi`**（プロセスに `/app/llama-server` が常時残っていないか）で起停を目視確認する。VRAM 競合の背景は [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) と [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) の Verification を参照。
-- **管理コンソール Chat・制御設定不足（2026-04-01）**: `LOCAL_LLM_RUNTIME_MODE=on_demand` なのに **`LOCAL_LLM_RUNTIME_CONTROL_START_URL` / `STOP_URL` / `TOKEN`（または `LOCAL_LLM_SHARED_TOKEN` 流用）** が **`infrastructure/docker/.env`（Ansible `docker.env.j2`）** 側で揃っていないと、ランタイムコントローラが **noop** になりうる。API は管理 Chat を **upstream へ流さず** **503**・**`errorCode=LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED`** とする。復旧は [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) と上記「Pi5 API」節の env を満たし、`api` コンテナを再作成すること。
+- **管理コンソール Chat・制御設定不足（2026-04-01 / 2026-04-25 追補）**: `LOCAL_LLM_RUNTIME_MODE=on_demand` なのに **primary provider の `runtimeControl`（または legacy の `LOCAL_LLM_RUNTIME_CONTROL_START_URL` / `STOP_URL` / `TOKEN`）** が揃っていないと、API は管理 Chat を **upstream へ流さず** **503**・**`errorCode=LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED`** とする。複数 provider 運用では、`photo_label` など secondary provider にも **その provider 用 `runtimeControl`** が必要。
 - **本番有効化の確認（2026-03-30）**: Pi5 の `LOCAL_LLM_RUNTIME_MODE=on_demand` と `LOCAL_LLM_RUNTIME_CONTROL_*=/start|/stop` を `main` に反映後、Pi5 から Ubuntu へ **`start=200` / `stop=200`** を確認。運用者の実機確認では **ComfyUI は従来手順で起動・生成 OK、CUDA OOM なし**。さらに Ubuntu `docker compose ps` で **アイドル時は `compose-llama-server-1` 不在**を確認し、VRAM 常駐解消を目視した。
 
 ## 現在の構成（2026-03-28）
@@ -252,6 +284,7 @@ fetch(new URL('/healthz', b), { headers: h })
 
 - 写真持出 VLM ラベルは **公開 API ではなく、Pi5 API 内部の cron ジョブ**として動作する
 - LocalLLM への到達は **既存の `LOCAL_LLM_*`** を再利用する
+- 複数 provider 構成では、runtime 起動停止は **`INFERENCE_PROVIDERS_JSON[*].runtimeControl`** に従う
 - 追加のジョブ設定:
   - `PHOTO_TOOL_LABEL_CRON`（既定 `*/5 * * * *`）
   - `PHOTO_TOOL_LABEL_BATCH_SIZE`（既定 `3`）
