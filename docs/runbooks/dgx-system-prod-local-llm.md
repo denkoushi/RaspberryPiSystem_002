@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
- last-verified: 2026-04-26
+last-verified: 2026-04-27
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -258,6 +258,53 @@ update-frequency: high
 
 詳細は [`scripts/dgx-local-llm-system/README.md`](../../scripts/dgx-local-llm-system/README.md) の systemd 節を参照。
 
+### Blue/Green backend での安全な差し替え
+
+新 runtime を並行検証するときは、Pi5 から見える契約は固定したまま、DGX 内部だけを切り替える。
+
+- 固定するもの:
+  - 外部入口 `38081`
+  - `api-token` / `runtime-control-token`
+  - alias `system-prod-primary`
+- 切り替えるもの:
+  - `ACTIVE_LLM_BACKEND=green`（現行 `llama.cpp`）
+  - `ACTIVE_LLM_BACKEND=blue`（新しい blue backend。現時点の第一候補は `Qwen3.6-27B-NVFP4` を Spark 向け `vLLM` image で起動する構成）
+
+systemd 運用では、`/srv/dgx/system-prod/secrets/control-server.env` と `gateway-server.env` の両方に同じ `ACTIVE_LLM_BACKEND` を書き、`systemctl restart dgx-llm-control dgx-llm-gateway` で反映する。blue 側は `127.0.0.1:38083` 想定で、`start-trtllm-server.sh` / `stop-trtllm-server.sh` から container を起動停止する。ファイル名は歴史的に `trtllm` だが、実体は **任意 image + 任意 command を受ける blue backend launcher** である。`@reboot` / 手動起動の `start-control-server.sh` / `start-gateway-server.sh` も同じ `secrets/*.env` を自動で `source` する。
+
+まずは DFlash なしで blue 単体起動を成立させ、`system-prod-primary` alias の text / vision 疎通を確認する。その後に必要なら `z-lab/Qwen3.6-27B-DFlash` を追加する。Phase2 実機投入で使う最小 blue 例:
+
+```dotenv
+# /srv/dgx/system-prod/secrets/control-server.env
+LLM_RUNTIME_CONTROL_TOKEN=...
+ACTIVE_LLM_BACKEND=blue
+BLUE_SERVER_IMAGE=ghcr.io/aeon-7/vllm-spark-omni-q36:v1.2
+BLUE_SERVER_PORT=38083
+BLUE_SERVER_CONTAINER_PORT=8000
+# BLUE_SERVER_ENTRYPOINT=bash
+BLUE_MODEL_DIR=/srv/dgx/shared-models/vllm/qwen36-27b-nvfp4
+BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/shared-models/vllm/qwen36-27b-nvfp4 --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.85 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
+BLUE_EXTRA_DOCKER_ARGS='--ipc host --ulimit memlock=-1 --ulimit stack=67108864'
+```
+
+```dotenv
+# /srv/dgx/system-prod/secrets/gateway-server.env
+LLM_SHARED_TOKEN=...
+LLM_RUNTIME_CONTROL_TOKEN=...
+ACTIVE_LLM_BACKEND=blue
+GREEN_LLM_BASE_URL=http://127.0.0.1:38082
+BLUE_LLM_BASE_URL=http://127.0.0.1:38083
+```
+
+メモ:
+
+- `TRTLLM_*` という env 名は互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない
+- 新しい設定では `BLUE_SERVER_*` / `BLUE_MODEL_DIR` / `BLUE_EXTRA_DOCKER_ARGS` の別名も使える
+- image 既定 entrypoint が shell でない場合は `BLUE_SERVER_ENTRYPOINT=bash` を併用する
+- 最初の成功条件は **`/v1/models` が `system-prod-primary` を返し、Pi5 の on-demand ready probe が通ること**
+- DFlash を後から足す場合は、drafter mount と `--attention-backend flash_attn` / `--speculative-config ...` を追加する
+- `Qwen3.6-27B-NVFP4` は dense 27B なので、MoE の `Qwen3.6-35B-A3B` より速度期待は控えめに見る
+
 ### 2026-04-26 DGX 上の不要物を整理
 
 - DGX Spark の本番稼働確認後、**その時点で未使用と確認できた試験残骸だけ**を削除した
@@ -286,13 +333,38 @@ update-frequency: high
 
 したがって、**今回の不要物整理は本番サービスを維持したまま実施済み**であり、以後は「現行 runtime / embedding backend が参照していないこと」を確認できたものだけを削除対象にする。
 
+## コンテナ隔離・ホスト汚染・他コンテナとの関係（2026-04-26 追補）
+
+- **推論の実体**は DGX 上の **Docker コンテナ**（`llama-server` や vLLM blue など）内に置き、ホストに CUDA スタックを手作業で導入する前提にはしない。モデル重みは **`/srv/dgx/shared-models` 等への bind mount** など、用途領域で決めたパスに置く。
+- **本システム用（`system-prod`）**は、用途別に用意した **ディレクトリ・`secrets`・Docker network**（例: `dgx_system_prod_net`）で他用途（`private-personal` / `lab-experiments`）の Compose や業務外データ path と**混ぜない**方針とする（ExecPlan の分離設計に沿う）。
+- **他コンテナと混信ゼロ**の意味では、**同一物理 DGX** では **GPU / 統一メモリ / CPU** を**共有**する。別コンテナの負荷や巨大モデル起動は、**リソース上は相互に影響**し得る。ネットワーク分離（別 bridge）や port 分離は**通信上の衝突**を避けるが、**演算リソースの排他**までは保証しない。
+- blue（vLLM）起動例で `--ipc host` を付与する場合、**IPC 名前空間がホストと共有**される。これは性能目的の**意図的なトレード**であり、**仮想マシン相当の厳密分離**ではない。必要なら Runbook / launcher の `BLUE_EXTRA_DOCKER_ARGS` を見直す。
+- **混信（データの混入）**の観点では、**Pi5 用 token / 業務データ path を他用途の Compose に mount しない**こと、**別 tailnet 入口**（ACL で Pi5 から `llm:38081` のみ、等）を維持することが主な防御策である。
+
+## トラブルシューティング補足（blue・Pi5 連携）
+
+- **DGX へ SSH / Tailscale が通らない**: cold start 中の高負荷に加え、**ホスト全体の応答不良**でも banner 前で落ちることがある。ローカル LAN や**物理コンソール**を試し、必要なら**再起動**。常に **`docker logs`（vLLM / gateway）**で起動段階を先に追う。
+- **Pi5 API が起動に失敗（Zod）**: `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS` を inventory で伸ばす場合、**`apps/api/src/config/env.ts` の `max` 以下**でないと API コンテナが起動しない。repo 側の上限拡大と**セット**で反映する。
+- **upstream `400` + 画像（`Failed to load image` 等）**: DGX 側 vLLM の画像デコード経路の問題の可能性。payload（base64 / URL）の最小再現、**DGX 上で直接** `probe-photo-label-vlm.py`、**`docker logs`** を参照。Pi5 側 `local-llm-proxy` の `reasoning` フォールバックは**本文空**対策であり、**400 自体**は解消しない。
+
+### 2026-04-27 Pi5 本番：repo 差分の「正規 + 手元同期」で収束した例
+
+- **状況**: Pi5 の checkout が `main` より古いと、`/opt/.../infrastructure/ansible` だけ `manage-app-configs` しても **生成 `.env` が意図どおりに上がらない**（Zod 上限や `api_local_llm_runtime_ready_timeout_ms` の反映遅れ）ことがある。
+- **手順（実施済み）**:
+  1. 開発端末のリポジトリから、少なくとも **`apps/api/src/`** と **Ansible**（`inventory.yml`、`playbooks/manage-app-configs.yml`、`templates/api.env.j2`、`templates/docker.env.j2`）を Pi5 の同パスへ `rsync` 等で同期
+  2. Pi5 上で `cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --limit raspberrypi5`（**PLAY RECAP `failed=0`** を確認）
+  3. `infrastructure/docker` で `docker compose -f docker-compose.server.yml build api` のあと `up -d --force-recreate api`（**実行中の API が新イメージ**になるよう再作成）
+- **検証**: 開発端末で `./scripts/deploy/verify-phase12-real.sh` → 実測 **`PASS 42 / WARN 1 / FAIL 0`**（WARN は `auto-tuning scheduler` ログ 0 件。スクリプトは `PUT auto-generate=200` を代替合格とする）。
+- **恒久化**: 上記の「手元同期」は**例外**。リモートを **`main` に追従**（`update-all-clients` 等）してから、同じ playbook だけで再現できる状態に戻すのが望ましい。
+
 ## 推奨ポートと役割
 
 Ubuntu 現行構成との互換を優先し、DGX 側でも次を基本にする。
 
 - 外部入口: `38081` (`nginx` / 認証 / `/healthz` / `/v1/`* / `/start` / `/stop`)
 - 内部推論: `127.0.0.1:38082` (`llama-server`)
-- 内部制御: `39090` (`control-server.mjs`)
+- 内部推論 blue: `127.0.0.1:38083`（blue backend。現時点の第一候補は Spark 向け `vLLM`）
+- 内部制御: `39090` (`control-server.py` / `control-server.mjs` 互換)
 - 内部埋め込み: `127.0.0.1:38100` (`embedding-server`)
 
 この割当なら、Pi5 側の `LOCAL_LLM`_* は **接続先 IP だけ差し替える**構成にしやすい。
@@ -444,6 +516,7 @@ api_local_llm_runtime_control_start_url: "http://<dgx-tailnet-ip>:38081/start"
 api_local_llm_runtime_control_stop_url: "http://<dgx-tailnet-ip>:38081/stop"
 api_local_llm_runtime_control_token: "{{ vault_api_local_llm_runtime_control_token | default('') }}"
 api_local_llm_runtime_health_base_url: ""
+api_local_llm_runtime_ready_timeout_ms: "900000"
 
 inference_providers_json: >-
   [{"id":"dgx_primary","baseUrl":"http://<dgx-tailnet-ip>:38081","sharedToken":"<dgx-token>","defaultModel":"system-prod-primary","timeoutMs":60000,
@@ -453,6 +526,12 @@ inference_document_summary_model: "system-prod-primary"
 inference_photo_label_provider_id: "dgx_primary"
 inference_photo_label_model: "system-prod-primary"
 ```
+
+`blue`（`vLLM` + NVFP4）を on-demand で使う場合、cold start が 10 分超になるケースがある。`api_local_llm_runtime_ready_timeout_ms` は `900000` 以上を推奨する。
+
+さらに、検証フェーズでは DGX `control-server.env` に `BLUE_LLM_RUNTIME_KEEP_WARM=true` を入れると、active backend が blue のとき `/stop` を no-op 化できる。これにより毎回の cold start を避け、連続テストの待機時間を大幅に減らせる。
+
+blue では upstream `chat.completions` の返りが `message.content` ではなく `message.reasoning`（または `reasoning_content`）に寄ることがある。Pi5 API 側 `local-llm-proxy` では、`content` が空のときに `reasoning` / `reasoning_content` / `content[]`（text parts）へフォールバックして本文を抽出する実装を入れておく。
 
 secret は少なくとも次を vault で持つ。
 

@@ -57,7 +57,7 @@ update-frequency: medium
 
 ### 複数 provider へ拡張する場合
 
-`LOCAL_LLM_*` は **primary provider（管理 Chat / status）** の既定値として残しつつ、`INFERENCE_PROVIDERS_JSON` の各 provider に **`runtimeControl`** を載せると、用途別 provider ごとに on-demand 起動停止を分けられる。
+`LOCAL_LLM_*` は **admin provider（管理 Chat / status。未指定時は `default` 優先、その次に先頭）** の既定値として残しつつ、`INFERENCE_PROVIDERS_JSON` の各 provider に **`runtimeControl`** を載せると、用途別 provider ごとに on-demand 起動停止を分けられる。
 
 ```json
 [
@@ -94,7 +94,7 @@ update-frequency: medium
 
 - [deployment.md](../guides/deployment.md) 前提で Mac から Tailscale 経由の到達が取れる状態で、`../../scripts/deploy/verify-phase12-real.sh` を実行する。API・キオスク系・サイネージサービス等の回帰を一括確認できる。**2026-03-30 実測**: **PASS 37 / WARN 0 / FAIL 0**（約 100s）。**2026-04-01 実測**（管理 Chat 制御ガードを `main` 取り込み後）: **PASS 38 / WARN 0 / FAIL 0**（約 24s）。Pi5+Pi4×4 に本ブランチを順次載せた直後の確認に使用可（Pi3 はスクリプトが別途 SSH する。**Pi3 専用の慎重手順**は deployment ガイドのサイネージ節に従う）。
 - **`on_demand` を本番で有効化した後**は Phase12 に加え、Pi5 ログの **`component: localLlmRuntimeControl`**（`runtime_ready` / `runtime_stopped` 等）と Ubuntu の **`nvidia-smi`**（プロセスに `/app/llama-server` が常時残っていないか）で起停を目視確認する。VRAM 競合の背景は [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md) と [ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md) の Verification を参照。
-- **管理コンソール Chat・制御設定不足（2026-04-01 / 2026-04-25 追補）**: `LOCAL_LLM_RUNTIME_MODE=on_demand` なのに **primary provider の `runtimeControl`（または legacy の `LOCAL_LLM_RUNTIME_CONTROL_START_URL` / `STOP_URL` / `TOKEN`）** が揃っていないと、API は管理 Chat を **upstream へ流さず** **503**・**`errorCode=LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED`** とする。複数 provider 運用では、`photo_label` など secondary provider にも **その provider 用 `runtimeControl`** が必要。
+- **管理コンソール Chat・制御設定不足（2026-04-01 / 2026-04-25 追補）**: `LOCAL_LLM_RUNTIME_MODE=on_demand` なのに **admin provider の `runtimeControl`（または legacy の `LOCAL_LLM_RUNTIME_CONTROL_START_URL` / `STOP_URL` / `TOKEN`）** が揃っていないと、API は管理 Chat を **upstream へ流さず** **503**・**`errorCode=LOCAL_LLM_RUNTIME_CONTROL_NOT_CONFIGURED`** とする。複数 provider 運用では、`photo_label` など secondary provider にも **その provider 用 `runtimeControl`** が必要。
 - **本番有効化の確認（2026-03-30）**: Pi5 の `LOCAL_LLM_RUNTIME_MODE=on_demand` と `LOCAL_LLM_RUNTIME_CONTROL_*=/start|/stop` を `main` に反映後、Pi5 から Ubuntu へ **`start=200` / `stop=200`** を確認。運用者の実機確認では **ComfyUI は従来手順で起動・生成 OK、CUDA OOM なし**。さらに Ubuntu `docker compose ps` で **アイドル時は `compose-llama-server-1` 不在**を確認し、VRAM 常駐解消を目視した。
 
 ## 現在の構成（2026-03-28）

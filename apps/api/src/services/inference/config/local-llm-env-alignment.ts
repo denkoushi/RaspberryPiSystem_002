@@ -1,4 +1,5 @@
 import type { InferenceProviderDefinition } from './inference-provider.types.js';
+import { resolveAdminInferenceModel, resolveAdminInferenceProvider } from './admin-inference-provider.js';
 
 /**
  * env.ts から渡す LOCAL_LLM / 用途別 provider id のスライス。
@@ -12,6 +13,8 @@ export type LocalLlmAlignmentEnvSlice = {
   LOCAL_LLM_RUNTIME_CONTROL_START_URL?: string;
   LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?: string;
   LOCAL_LLM_RUNTIME_CONTROL_TOKEN?: string;
+  INFERENCE_ADMIN_PROVIDER_ID: string;
+  INFERENCE_ADMIN_MODEL?: string;
   INFERENCE_PHOTO_LABEL_PROVIDER_ID: string;
   INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: string;
 };
@@ -37,7 +40,15 @@ export function collectLocalLlmProviderAlignmentIssues(
   }
 
   const ids = new Set(providers.map((p) => p.id));
-  for (const routeId of [slice.INFERENCE_PHOTO_LABEL_PROVIDER_ID, slice.INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID]) {
+  const referencedProviderIds = [
+    slice.INFERENCE_PHOTO_LABEL_PROVIDER_ID,
+    slice.INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID,
+  ];
+  const adminProviderId = slice.INFERENCE_ADMIN_PROVIDER_ID?.trim();
+  if (adminProviderId && adminProviderId !== 'default') {
+    referencedProviderIds.unshift(adminProviderId);
+  }
+  for (const routeId of referencedProviderIds) {
     if (!ids.has(routeId)) {
       issues.push({
         path: ['INFERENCE_PROVIDERS_JSON'],
@@ -53,31 +64,35 @@ export function collectLocalLlmProviderAlignmentIssues(
     return issues;
   }
 
-  const primary = providers.find((p) => p.id === 'default') ?? providers[0];
+  const adminProvider = resolveAdminInferenceProvider(providers, slice.INFERENCE_ADMIN_PROVIDER_ID);
+  if (!adminProvider) {
+    return issues;
+  }
+  const adminModel = resolveAdminInferenceModel(adminProvider, slice.INFERENCE_ADMIN_MODEL);
 
-  if (primary.baseUrl !== baseUrl) {
+  if (adminProvider.baseUrl !== baseUrl) {
     issues.push({
       path: ['LOCAL_LLM_BASE_URL', 'INFERENCE_PROVIDERS_JSON'],
       message:
-        'LOCAL_LLM_BASE_URL must match admin-primary inference provider baseUrl (id=default if present, else first provider)',
+        'LOCAL_LLM_BASE_URL must match admin inference provider baseUrl (INFERENCE_ADMIN_PROVIDER_ID, default if present, else first provider)',
     });
   }
-  if (primary.sharedToken !== shared) {
+  if (adminProvider.sharedToken !== shared) {
     issues.push({
       path: ['LOCAL_LLM_SHARED_TOKEN', 'INFERENCE_PROVIDERS_JSON'],
       message:
-        'LOCAL_LLM_SHARED_TOKEN must match admin-primary inference provider sharedToken (Pi5 vault と DGX api-token のドリフトを防ぐ)',
+        'LOCAL_LLM_SHARED_TOKEN must match admin inference provider sharedToken (Pi5 vault と DGX api-token のドリフトを防ぐ)',
     });
   }
-  if (primary.defaultModel !== model) {
+  if (adminModel !== model) {
     issues.push({
       path: ['LOCAL_LLM_MODEL', 'INFERENCE_PROVIDERS_JSON'],
-      message: 'LOCAL_LLM_MODEL must match admin-primary inference provider defaultModel',
+      message: 'LOCAL_LLM_MODEL must match admin inference provider model (INFERENCE_ADMIN_MODEL or provider.defaultModel)',
     });
   }
 
   if (slice.LOCAL_LLM_RUNTIME_MODE === 'on_demand') {
-    const rc = primary.runtimeControl;
+    const rc = adminProvider.runtimeControl;
     const startU = slice.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim();
     const stopU = slice.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim();
 
@@ -98,46 +113,46 @@ export function collectLocalLlmProviderAlignmentIssues(
       issues.push({
         path: ['LOCAL_LLM_RUNTIME_MODE', 'INFERENCE_PROVIDERS_JSON'],
         message:
-          'LOCAL_LLM_RUNTIME_MODE=on_demand requires admin-primary provider runtimeControl.mode=on_demand',
+          'LOCAL_LLM_RUNTIME_MODE=on_demand requires admin inference provider runtimeControl.mode=on_demand',
       });
     } else {
       if (!rc.startUrl?.trim()) {
         issues.push({
           path: ['INFERENCE_PROVIDERS_JSON'],
-          message: 'admin-primary provider runtimeControl.startUrl is required when LOCAL_LLM_RUNTIME_MODE=on_demand',
+          message: 'admin inference provider runtimeControl.startUrl is required when LOCAL_LLM_RUNTIME_MODE=on_demand',
         });
       } else if (startU && rc.startUrl !== startU) {
         issues.push({
           path: ['LOCAL_LLM_RUNTIME_CONTROL_START_URL', 'INFERENCE_PROVIDERS_JSON'],
-          message: 'LOCAL_LLM_RUNTIME_CONTROL_START_URL must match primary provider runtimeControl.startUrl',
+          message: 'LOCAL_LLM_RUNTIME_CONTROL_START_URL must match admin inference provider runtimeControl.startUrl',
         });
       }
       if (!rc.stopUrl?.trim()) {
         issues.push({
           path: ['INFERENCE_PROVIDERS_JSON'],
-          message: 'admin-primary provider runtimeControl.stopUrl is required when LOCAL_LLM_RUNTIME_MODE=on_demand',
+          message: 'admin inference provider runtimeControl.stopUrl is required when LOCAL_LLM_RUNTIME_MODE=on_demand',
         });
       } else if (stopU && rc.stopUrl !== stopU) {
         issues.push({
           path: ['LOCAL_LLM_RUNTIME_CONTROL_STOP_URL', 'INFERENCE_PROVIDERS_JSON'],
-          message: 'LOCAL_LLM_RUNTIME_CONTROL_STOP_URL must match primary provider runtimeControl.stopUrl',
+          message: 'LOCAL_LLM_RUNTIME_CONTROL_STOP_URL must match admin inference provider runtimeControl.stopUrl',
         });
       }
       const effectiveLocal = slice.LOCAL_LLM_RUNTIME_CONTROL_TOKEN?.trim() || shared;
-      const effectiveProv = rc.controlToken?.trim() || primary.sharedToken;
+      const effectiveProv = rc.controlToken?.trim() || adminProvider.sharedToken;
       if (effectiveLocal !== effectiveProv) {
         issues.push({
           path: ['LOCAL_LLM_RUNTIME_CONTROL_TOKEN', 'INFERENCE_PROVIDERS_JSON'],
           message:
-            'Effective runtime control token must match primary provider (LOCAL_LLM_RUNTIME_CONTROL_TOKEN if set, else LOCAL_LLM_SHARED_TOKEN) === (runtimeControl.controlToken if set, else sharedToken)',
+            'Effective runtime control token must match admin inference provider (LOCAL_LLM_RUNTIME_CONTROL_TOKEN if set, else LOCAL_LLM_SHARED_TOKEN) === (runtimeControl.controlToken if set, else sharedToken)',
         });
       }
     }
-  } else if (primary.runtimeControl?.mode === 'on_demand') {
+  } else if (adminProvider.runtimeControl?.mode === 'on_demand') {
     issues.push({
       path: ['LOCAL_LLM_RUNTIME_MODE', 'INFERENCE_PROVIDERS_JSON'],
       message:
-        'LOCAL_LLM_RUNTIME_MODE=always_on but admin-primary provider declares runtimeControl.mode=on_demand; align LOCAL_LLM_RUNTIME_MODE and provider runtimeControl',
+        'LOCAL_LLM_RUNTIME_MODE=always_on but admin inference provider declares runtimeControl.mode=on_demand; align LOCAL_LLM_RUNTIME_MODE and provider runtimeControl',
     });
   }
 

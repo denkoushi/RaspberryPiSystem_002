@@ -65,6 +65,6 @@ describe('env secret policy', () => {
       },
     ]);
 
-    await expect(loadEnvModule()).rejects.toThrow(/LOCAL_LLM_SHARED_TOKEN|admin-primary/);
+    await expect(loadEnvModule()).rejects.toThrow(/LOCAL_LLM_SHARED_TOKEN|admin inference/);
   });
 });

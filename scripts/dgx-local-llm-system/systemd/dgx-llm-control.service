@@ -1,5 +1,5 @@
 [Unit]
-Description=DGX system-prod LocalLLM runtime control (on-demand llama-server)
+Description=DGX system-prod LocalLLM runtime control (green/blue backend)
 After=network-online.target
 Wants=network-online.target
 
@@ -10,11 +10,16 @@ RestartSec=5
 User=__DGX_LLM_USER__
 Group=__DGX_LLM_GROUP__
 WorkingDirectory=/srv/dgx/system-prod
+Environment=ACTIVE_LLM_BACKEND=green
 Environment=LLM_RUNTIME_LISTEN_HOST=127.0.0.1
 Environment=LLM_RUNTIME_LISTEN_PORT=39090
-Environment=LLM_RUNTIME_START_CMD=/srv/dgx/system-prod/bin/start-llama-server.sh
-Environment=LLM_RUNTIME_STOP_CMD=/srv/dgx/system-prod/bin/stop-llama-server.sh
-# secrets/control-server.env に LLM_RUNTIME_CONTROL_TOKEN=... を1行で置く（値は DGX secrets/runtime-control-token と同一）
+Environment=LLM_RUNTIME_START_CMD=bash /srv/dgx/system-prod/bin/start-llama-server.sh
+Environment=LLM_RUNTIME_STOP_CMD=bash /srv/dgx/system-prod/bin/stop-llama-server.sh
+Environment=GREEN_LLM_RUNTIME_START_CMD=bash /srv/dgx/system-prod/bin/start-llama-server.sh
+Environment=GREEN_LLM_RUNTIME_STOP_CMD=bash /srv/dgx/system-prod/bin/stop-llama-server.sh
+Environment=BLUE_LLM_RUNTIME_START_CMD=bash /srv/dgx/system-prod/bin/start-trtllm-server.sh
+Environment=BLUE_LLM_RUNTIME_STOP_CMD=bash /srv/dgx/system-prod/bin/stop-trtllm-server.sh
+# secrets/control-server.env に LLM_RUNTIME_CONTROL_TOKEN=... を置く（値は DGX secrets/runtime-control-token と同一）
 EnvironmentFile=-/srv/dgx/system-prod/secrets/control-server.env
 ExecStart=/usr/bin/python3 /srv/dgx/system-prod/bin/control-server.py
 

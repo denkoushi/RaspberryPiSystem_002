@@ -67,6 +67,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
       globalMode: 'on_demand',
       router,
       providers,
+      resolveAdminProvider: () => providers[0],
       resolveAdminModel: () => 'system-prod-primary',
       readyTimeoutMs: 30_000,
       startRequestTimeoutMs: 10_000,
@@ -117,8 +118,9 @@ describe('ProviderLocalLlmRuntimeController', () => {
       globalMode: 'on_demand',
       router,
       providers,
+      resolveAdminProvider: () => providers[0],
       resolveAdminModel: () => 'system-prod-primary',
-      legacyPrimaryRuntimeControl: {
+      legacyAdminRuntimeControl: {
         mode: 'on_demand',
         startUrl: 'http://dgx:38081/legacy/start',
         stopUrl: 'http://dgx:38081/legacy/stop',

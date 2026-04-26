@@ -43,8 +43,12 @@ all:
           api_local_llm_runtime_control_stop_url: "http://100.118.82.72:38081/stop"
           api_local_llm_runtime_control_token: "{{ vault_api_local_llm_runtime_control_token | default('') }}"
           api_local_llm_runtime_health_base_url: ""
+          # blue(vLLM+NVFP4) は cold start が 10分超になることがあるため ready timeout を延長
+          api_local_llm_runtime_ready_timeout_ms: "900000"
           inference_providers_json: >-
             [{"id":"dgx_primary","baseUrl":"http://100.118.82.72:38081","sharedToken":"{{ vault_api_local_llm_shared_token | default('') }}","defaultModel":"system-prod-primary","timeoutMs":60000,"runtimeControl":{"mode":"on_demand","startUrl":"http://100.118.82.72:38081/start","stopUrl":"http://100.118.82.72:38081/stop","controlToken":"{{ vault_api_local_llm_runtime_control_token | default('') }}","healthBaseUrl":"http://100.118.82.72:38081"}}]
+          inference_admin_provider_id: "dgx_primary"
+          inference_admin_model: "system-prod-primary"
           inference_document_summary_provider_id: "dgx_primary"
           inference_document_summary_model: "system-prod-primary"
           inference_photo_label_provider_id: "dgx_primary"

@@ -23,8 +23,9 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
     globalMode: env.LOCAL_LLM_RUNTIME_MODE,
     router: inferenceRuntime.router,
     providers: inferenceRuntime.providers,
+    resolveAdminProvider: inferenceRuntime.getAdminProvider,
     resolveAdminModel: resolveAdminConsoleChatModel,
-    legacyPrimaryRuntimeControl:
+    legacyAdminRuntimeControl:
       env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim() || env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim()
         ? {
             mode: 'on_demand',

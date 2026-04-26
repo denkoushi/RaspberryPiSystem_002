@@ -30,6 +30,7 @@ describe('collectLocalLlmProviderAlignmentIssues', () => {
       LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://100.118.82.72:38081/start',
       LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://100.118.82.72:38081/stop',
       LOCAL_LLM_RUNTIME_CONTROL_TOKEN: '',
+      INFERENCE_ADMIN_PROVIDER_ID: 'dgx_primary',
       INFERENCE_PHOTO_LABEL_PROVIDER_ID: 'missing',
       INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: 'dgx_primary',
     });
@@ -45,6 +46,7 @@ describe('collectLocalLlmProviderAlignmentIssues', () => {
       LOCAL_LLM_RUNTIME_MODE: 'on_demand',
       LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://100.118.82.72:38081/start',
       LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://100.118.82.72:38081/stop',
+      INFERENCE_ADMIN_PROVIDER_ID: 'dgx_primary',
       INFERENCE_PHOTO_LABEL_PROVIDER_ID: 'dgx_primary',
       INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: 'dgx_primary',
     });
@@ -70,6 +72,7 @@ describe('collectLocalLlmProviderAlignmentIssues', () => {
       LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://100.118.82.72:38081/start',
       LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://100.118.82.72:38081/stop',
       LOCAL_LLM_RUNTIME_CONTROL_TOKEN: undefined,
+      INFERENCE_ADMIN_PROVIDER_ID: 'dgx_primary',
       INFERENCE_PHOTO_LABEL_PROVIDER_ID: 'dgx_primary',
       INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: 'dgx_primary',
     });
@@ -93,6 +96,7 @@ describe('collectLocalLlmProviderAlignmentIssues', () => {
       LOCAL_LLM_RUNTIME_CONTROL_START_URL: undefined,
       LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: undefined,
       LOCAL_LLM_RUNTIME_CONTROL_TOKEN: undefined,
+      INFERENCE_ADMIN_PROVIDER_ID: 'dgx_primary',
       INFERENCE_PHOTO_LABEL_PROVIDER_ID: 'dgx_primary',
       INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: 'dgx_primary',
     });
@@ -118,8 +122,44 @@ describe('collectLocalLlmProviderAlignmentIssues', () => {
       LOCAL_LLM_RUNTIME_MODE: 'on_demand',
       LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://100.118.82.72:38081/start',
       LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://100.118.82.72:38081/stop',
+      INFERENCE_ADMIN_PROVIDER_ID: 'default',
       INFERENCE_PHOTO_LABEL_PROVIDER_ID: 'default',
       INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: 'default',
+    });
+    expect(issues).toHaveLength(0);
+  });
+
+  it('allows admin provider override with explicit admin model override', () => {
+    const providers: InferenceProviderDefinition[] = [
+      baseProvider({
+        id: 'legacy_green',
+        sharedToken: 'legacy-secret',
+        defaultModel: 'system-prod-green',
+      }),
+      baseProvider({
+        id: 'trtllm_blue',
+        baseUrl: 'http://100.118.82.73:38081',
+        sharedToken: 'blue-secret',
+        defaultModel: 'system-prod-blue',
+        runtimeControl: {
+          mode: 'on_demand',
+          startUrl: 'http://100.118.82.73:38081/start',
+          stopUrl: 'http://100.118.82.73:38081/stop',
+          healthBaseUrl: 'http://100.118.82.73:38081',
+        },
+      }),
+    ];
+    const issues = collectLocalLlmProviderAlignmentIssues(providers, {
+      LOCAL_LLM_BASE_URL: 'http://100.118.82.73:38081',
+      LOCAL_LLM_SHARED_TOKEN: 'blue-secret',
+      LOCAL_LLM_MODEL: 'system-prod-primary',
+      LOCAL_LLM_RUNTIME_MODE: 'on_demand',
+      LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://100.118.82.73:38081/start',
+      LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://100.118.82.73:38081/stop',
+      INFERENCE_ADMIN_PROVIDER_ID: 'trtllm_blue',
+      INFERENCE_ADMIN_MODEL: 'system-prod-primary',
+      INFERENCE_PHOTO_LABEL_PROVIDER_ID: 'legacy_green',
+      INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID: 'legacy_green',
     });
     expect(issues).toHaveLength(0);
   });

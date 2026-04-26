@@ -7,7 +7,7 @@ import {
 } from '../services/system/local-llm-proxy.service.js';
 import { getInferenceRuntime } from '../services/inference/inference-runtime.js';
 
-/** 管理用疎通: 既定プロバイダ（id=default または先頭）。業務推論ルートとは別経路。 */
+/** 管理用疎通: admin provider（未指定時は id=default 優先、その次に先頭）。業務推論ルートとは別経路。 */
 const getLocalLlmRuntimeConfig = (): LocalLlmRuntimeConfig => getInferenceRuntime().getAdminLocalLlmRuntimeConfig();
 
 export async function registerLocalLlmGateway(app: FastifyInstance): Promise<void> {

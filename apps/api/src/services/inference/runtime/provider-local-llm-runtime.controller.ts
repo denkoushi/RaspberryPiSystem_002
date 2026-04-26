@@ -13,12 +13,13 @@ type ProviderLocalLlmRuntimeControllerDeps = {
   globalMode: 'always_on' | 'on_demand';
   router: InferenceRouter;
   providers: InferenceProviderDefinition[];
+  resolveAdminProvider: () => InferenceProviderDefinition | undefined;
   resolveAdminModel: () => string;
   readyTimeoutMs: number;
   startRequestTimeoutMs: number;
   stopRequestTimeoutMs: number;
   healthPollIntervalMs: number;
-  legacyPrimaryRuntimeControl?: InferenceProviderRuntimeControlDefinition;
+  legacyAdminRuntimeControl?: InferenceProviderRuntimeControlDefinition;
 };
 
 class InvalidOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeControllerPort {
@@ -70,17 +71,13 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
 
   private resolveProvider(useCase: LocalLlmRuntimeUseCase): InferenceProviderDefinition | undefined {
     if (useCase === 'admin_console_chat') {
-      return this.resolvePrimaryProvider();
+      return this.deps.resolveAdminProvider();
     }
     try {
       return this.deps.router.resolve(useCase).provider;
     } catch {
       return undefined;
     }
-  }
-
-  private resolvePrimaryProvider(): InferenceProviderDefinition | undefined {
-    return this.deps.providers.find((p) => p.id === 'default') ?? this.deps.providers[0];
   }
 
   private createControllerForProvider(provider: InferenceProviderDefinition): LocalLlmRuntimeControllerPort {
@@ -123,9 +120,9 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
     if (provider.runtimeControl) {
       return provider.runtimeControl;
     }
-    const primary = this.resolvePrimaryProvider();
-    if (primary && primary.id === provider.id) {
-      return this.deps.legacyPrimaryRuntimeControl;
+    const adminProvider = this.deps.resolveAdminProvider();
+    if (adminProvider && adminProvider.id === provider.id) {
+      return this.deps.legacyAdminRuntimeControl;
     }
     return undefined;
   }
@@ -134,8 +131,8 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
     provider: InferenceProviderDefinition
   ): Partial<Record<LocalLlmRuntimeUseCase, string>> {
     const models: Partial<Record<LocalLlmRuntimeUseCase, string>> = {};
-    const primary = this.resolvePrimaryProvider();
-    if (primary?.id === provider.id) {
+    const adminProvider = this.deps.resolveAdminProvider();
+    if (adminProvider?.id === provider.id) {
       models.admin_console_chat = this.deps.resolveAdminModel();
     }
     for (const useCase of ROUTED_RUNTIME_USE_CASES) {

@@ -20,6 +20,8 @@ describe('system local llm routes', () => {
     baseUrl: typeof env.LOCAL_LLM_BASE_URL;
     sharedToken: typeof env.LOCAL_LLM_SHARED_TOKEN;
     model: typeof env.LOCAL_LLM_MODEL;
+    adminProviderId: typeof env.INFERENCE_ADMIN_PROVIDER_ID;
+    adminModel: typeof env.INFERENCE_ADMIN_MODEL;
     timeoutMs: typeof env.LOCAL_LLM_TIMEOUT_MS;
     runtimeMode: typeof env.LOCAL_LLM_RUNTIME_MODE;
     startUrl: typeof env.LOCAL_LLM_RUNTIME_CONTROL_START_URL;
@@ -38,6 +40,8 @@ describe('system local llm routes', () => {
       baseUrl: env.LOCAL_LLM_BASE_URL,
       sharedToken: env.LOCAL_LLM_SHARED_TOKEN,
       model: env.LOCAL_LLM_MODEL,
+      adminProviderId: env.INFERENCE_ADMIN_PROVIDER_ID,
+      adminModel: env.INFERENCE_ADMIN_MODEL,
       timeoutMs: env.LOCAL_LLM_TIMEOUT_MS,
       runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
       startUrl: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
@@ -57,6 +61,8 @@ describe('system local llm routes', () => {
     env.LOCAL_LLM_BASE_URL = 'http://100.107.223.92:38081';
     env.LOCAL_LLM_SHARED_TOKEN = 'test-shared-token';
     env.LOCAL_LLM_MODEL = 'Qwen_Qwen3.5-9B-Q4_K_M.gguf';
+    env.INFERENCE_ADMIN_PROVIDER_ID = 'default';
+    env.INFERENCE_ADMIN_MODEL = undefined;
     env.LOCAL_LLM_TIMEOUT_MS = 1500;
     env.LOCAL_LLM_RUNTIME_MODE = 'always_on';
     env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = undefined;
@@ -72,6 +78,8 @@ describe('system local llm routes', () => {
     env.LOCAL_LLM_BASE_URL = originalConfig.baseUrl;
     env.LOCAL_LLM_SHARED_TOKEN = originalConfig.sharedToken;
     env.LOCAL_LLM_MODEL = originalConfig.model;
+    env.INFERENCE_ADMIN_PROVIDER_ID = originalConfig.adminProviderId;
+    env.INFERENCE_ADMIN_MODEL = originalConfig.adminModel;
     env.LOCAL_LLM_TIMEOUT_MS = originalConfig.timeoutMs;
     env.LOCAL_LLM_RUNTIME_MODE = originalConfig.runtimeMode;
     env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = originalConfig.startUrl;
@@ -201,6 +209,85 @@ describe('system local llm routes', () => {
     });
   });
 
+  it('falls back to reasoning when assistant content is empty', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        model: 'system-prod-primary',
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'length',
+            message: {
+              role: 'assistant',
+              content: null,
+              reasoning: 'OK',
+            },
+          },
+        ],
+      }),
+    } as Response);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/system/local-llm/chat/completions',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      payload: {
+        messages: [{ role: 'user', content: 'Return only OK' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      model: 'system-prod-primary',
+      content: 'OK',
+      finishReason: 'length',
+    });
+  });
+
+  it('extracts text from content parts array', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        model: 'system-prod-primary',
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: '配列形式' }],
+            },
+          },
+        ],
+      }),
+    } as Response);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/system/local-llm/chat/completions',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      payload: {
+        messages: [{ role: 'user', content: '配列レスポンス確認' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      model: 'system-prod-primary',
+      content: '配列形式',
+      finishReason: 'stop',
+    });
+  });
+
   it('returns 503 when local llm is not configured', async () => {
     env.LOCAL_LLM_BASE_URL = undefined;
     env.LOCAL_LLM_SHARED_TOKEN = undefined;
@@ -324,6 +411,8 @@ describe('system local llm routes', () => {
     env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = undefined;
     env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = undefined;
     env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL = undefined;
+    env.INFERENCE_ADMIN_PROVIDER_ID = 'dgx_text';
+    env.INFERENCE_ADMIN_MODEL = 'system-prod-primary';
     env.INFERENCE_PROVIDERS_JSON = JSON.stringify([
       {
         id: 'dgx_text',
@@ -396,6 +485,99 @@ describe('system local llm routes', () => {
     const calledUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
     expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/start')).toBe(true);
     expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/stop')).toBe(true);
+  });
+
+  it('uses explicit admin provider even when routed use cases stay on another provider', async () => {
+    env.LOCAL_LLM_BASE_URL = 'http://100.118.82.73:38081';
+    env.LOCAL_LLM_SHARED_TOKEN = 'blue-shared-token';
+    env.LOCAL_LLM_MODEL = 'system-prod-primary';
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://100.118.82.73:38081/start';
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://100.118.82.73:38081/stop';
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'blue-control-token';
+    env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL = 'http://100.118.82.73:38081';
+    env.INFERENCE_ADMIN_PROVIDER_ID = 'trtllm_blue';
+    env.INFERENCE_ADMIN_MODEL = 'system-prod-primary';
+    env.INFERENCE_PROVIDERS_JSON = JSON.stringify([
+      {
+        id: 'legacy_green',
+        baseUrl: 'http://100.118.82.72:38081',
+        sharedToken: 'green-shared-token',
+        defaultModel: 'green-model',
+        timeoutMs: 60000,
+        runtimeControl: {
+          mode: 'on_demand',
+          startUrl: 'http://100.118.82.72:38081/start',
+          stopUrl: 'http://100.118.82.72:38081/stop',
+          controlToken: 'green-control-token',
+          healthBaseUrl: 'http://100.118.82.72:38081',
+        },
+      },
+      {
+        id: 'trtllm_blue',
+        baseUrl: 'http://100.118.82.73:38081',
+        sharedToken: 'blue-shared-token',
+        defaultModel: 'blue-default-model',
+        timeoutMs: 45000,
+        runtimeControl: {
+          mode: 'on_demand',
+          startUrl: 'http://100.118.82.73:38081/start',
+          stopUrl: 'http://100.118.82.73:38081/stop',
+          controlToken: 'blue-control-token',
+          healthBaseUrl: 'http://100.118.82.73:38081',
+        },
+      },
+    ]);
+    resetInferenceRuntimeForTests();
+    resetLocalLlmRuntimeControllerForTests();
+
+    let chatCallCount = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'http://100.118.82.73:38081/start' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        chatCallCount += 1;
+        if (chatCallCount === 1) {
+          return new Response('ready', { status: 200 });
+        }
+        return new Response(
+          JSON.stringify({
+            model: 'system-prod-primary',
+            choices: [{ finish_reason: 'stop', message: { content: 'blue admin runtime ok' } }],
+            usage: { prompt_tokens: 11, completion_tokens: 5, total_tokens: 16 },
+          }),
+          { status: 200 }
+        );
+      }
+      if (url === 'http://100.118.82.73:38081/stop' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/system/local-llm/chat/completions',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      payload: {
+        messages: [{ role: 'user', content: 'blue admin runtime を実行' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      model: 'system-prod-primary',
+      content: 'blue admin runtime ok',
+    });
+    const calledUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+    expect(calledUrls.some((url) => url === 'http://100.118.82.73:38081/start')).toBe(true);
+    expect(calledUrls.some((url) => url === 'http://100.118.82.73:38081/stop')).toBe(true);
+    expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/start')).toBe(false);
   });
 
   it('returns LOCAL_LLM_RUNTIME_UNAVAILABLE when runtime pre-start fails', async () => {

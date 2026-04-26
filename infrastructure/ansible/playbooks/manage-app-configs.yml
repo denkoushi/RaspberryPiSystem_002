@@ -134,12 +134,12 @@
         - (inference_providers_json | default('') | length) > 0
       no_log: true
 
-    - name: Resolve admin-primary inference provider for LocalLLM alignment (server)
+    - name: Resolve admin inference provider for LocalLLM alignment (server)
       ansible.builtin.set_fact:
-        _llm_primary_inference_provider: >-
+        _llm_admin_inference_provider: >-
           {{
             (
-              (_parsed_inference_providers | selectattr('id', 'equalto', 'default') | list | first)
+              (_parsed_inference_providers | selectattr('id', 'equalto', (inference_admin_provider_id | default('default'))) | list | first)
               | default(_parsed_inference_providers[0], true)
             )
           }}
@@ -151,44 +151,49 @@
     - name: Assert inference route provider ids exist in INFERENCE_PROVIDERS_JSON (server)
       ansible.builtin.assert:
         that:
+          - >-
+            {{
+              (inference_admin_provider_id | default('default')) == 'default'
+              or (inference_admin_provider_id | default('default')) in (_parsed_inference_providers | map(attribute='id') | list)
+            }}
           - inference_photo_label_provider_id in (_parsed_inference_providers | map(attribute='id') | list)
           - inference_document_summary_provider_id in (_parsed_inference_providers | map(attribute='id') | list)
         fail_msg: >-
-          INFERENCE_PHOTO_LABEL_PROVIDER_ID または INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID が
+          INFERENCE_ADMIN_PROVIDER_ID / INFERENCE_PHOTO_LABEL_PROVIDER_ID / INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID のいずれかが
           INFERENCE_PROVIDERS_JSON 内の id と一致しません。inventory の inference_* を確認してください。
       when:
         - '"server" in group_names'
         - _parsed_inference_providers is defined
       no_log: true
 
-    - name: Assert LOCAL_LLM matches admin-primary inference provider (server)
+    - name: Assert LOCAL_LLM matches admin inference provider (server)
       ansible.builtin.assert:
         that:
-          - _llm_primary_inference_provider.baseUrl == api_local_llm_base_url
-          - _llm_primary_inference_provider.sharedToken == api_local_llm_shared_token
-          - _llm_primary_inference_provider.defaultModel == api_local_llm_model
+          - _llm_admin_inference_provider.baseUrl == api_local_llm_base_url
+          - _llm_admin_inference_provider.sharedToken == api_local_llm_shared_token
+          - (inference_admin_model | default(_llm_admin_inference_provider.defaultModel, true)) == api_local_llm_model
         fail_msg: >-
-          LOCAL_LLM_* と INFERENCE_PROVIDERS_JSON の default/先頭プロバイダが一致しません。
+          LOCAL_LLM_* と INFERENCE_PROVIDERS_JSON の admin provider が一致しません。
           vault_api_local_llm_shared_token / DGX api-token、inventory の inference_providers_json を確認してください。
       when:
         - '"server" in group_names'
-        - _llm_primary_inference_provider is defined
+        - _llm_admin_inference_provider is defined
         - (api_local_llm_base_url | default('') | length) > 0
         - (api_local_llm_shared_token | default('') | length) > 0
         - (api_local_llm_model | default('') | length) > 0
       no_log: true
 
-    - name: Assert on_demand runtime URLs and effective control token match primary provider (server)
+    - name: Assert on_demand runtime URLs and effective control token match admin provider (server)
       ansible.builtin.assert:
         that:
-          - _llm_primary_inference_provider.runtimeControl is defined
-          - _llm_primary_inference_provider.runtimeControl.mode == 'on_demand'
-          - _llm_primary_inference_provider.runtimeControl.startUrl == api_local_llm_runtime_control_start_url
-          - _llm_primary_inference_provider.runtimeControl.stopUrl == api_local_llm_runtime_control_stop_url
+          - _llm_admin_inference_provider.runtimeControl is defined
+          - _llm_admin_inference_provider.runtimeControl.mode == 'on_demand'
+          - _llm_admin_inference_provider.runtimeControl.startUrl == api_local_llm_runtime_control_start_url
+          - _llm_admin_inference_provider.runtimeControl.stopUrl == api_local_llm_runtime_control_stop_url
           - _llm_effective_runtime_token_local == _llm_effective_runtime_token_provider
         fail_msg: >-
-          on_demand 時は LOCAL_LLM_RUNTIME_CONTROL_* と primary の runtimeControl が一致し、
-          制御トークンも（未設定時は shared と揃える含め）primary と一致している必要があります。
+          on_demand 時は LOCAL_LLM_RUNTIME_CONTROL_* と admin provider の runtimeControl が一致し、
+          制御トークンも（未設定時は shared と揃える含め）admin provider と一致している必要があります。
       vars:
         _llm_effective_runtime_token_local: >-
           {{
@@ -203,16 +208,16 @@
         _llm_effective_runtime_token_provider: >-
           {{
             (
-              (_llm_primary_inference_provider.runtimeControl.controlToken | default('') | length) > 0
+              (_llm_admin_inference_provider.runtimeControl.controlToken | default('') | length) > 0
             )
             | ternary(
-                _llm_primary_inference_provider.runtimeControl.controlToken,
-                _llm_primary_inference_provider.sharedToken
+                _llm_admin_inference_provider.runtimeControl.controlToken,
+                _llm_admin_inference_provider.sharedToken
               )
           }}
       when:
         - '"server" in group_names'
-        - _llm_primary_inference_provider is defined
+        - _llm_admin_inference_provider is defined
         - api_local_llm_runtime_mode | default('always_on') == 'on_demand'
         - (api_local_llm_base_url | default('') | length) > 0
       no_log: true

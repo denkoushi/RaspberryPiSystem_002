@@ -23,14 +23,18 @@ DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`*
   - `llama-server` を PID ファイル付きで起動
 - `stop-llama-server.sh`
   - PID ファイルを使って停止
+- `start-trtllm-server.sh`
+  - OpenAI 互換 HTTP を出す blue backend container / host process を起動
+- `stop-trtllm-server.sh`
+  - blue backend container / host process を停止
 - `start-embedding-server.sh`
   - PyTorch container を使って embedding server を起動
 - `stop-embedding-server.sh`
   - embedding server container を停止
 - `start-control-server.sh`
-  - token file を読み、`control-server.py` を常駐起動
+  - token file を読み、`control-server.py` を常駐起動（`ACTIVE_LLM_BACKEND=green|blue` で active backend を切替）
 - `start-gateway-server.sh`
-  - token file を読み、`gateway-server.py` を常駐起動
+  - token file を読み、`gateway-server.py` を常駐起動（active backend の `/v1/*` upstream を切替）
 - `probe-photo-label-vlm.py`
   - `photo_label` の current payload をそのまま `/v1/chat/completions` へ送る単体疎通スクリプト
 - `compose.yaml.example`
@@ -55,8 +59,8 @@ DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`*
 
 ```bash
 export LLM_RUNTIME_CONTROL_TOKEN='...'
-export LLM_RUNTIME_START_CMD='/srv/dgx/system-prod/bin/start-llama-server.sh'
-export LLM_RUNTIME_STOP_CMD='/srv/dgx/system-prod/bin/stop-llama-server.sh'
+export LLM_RUNTIME_START_CMD='bash /srv/dgx/system-prod/bin/start-llama-server.sh'
+export LLM_RUNTIME_STOP_CMD='bash /srv/dgx/system-prod/bin/stop-llama-server.sh'
 export LLM_RUNTIME_LISTEN_HOST='0.0.0.0'
 python3 ./control-server.py
 ```
@@ -132,6 +136,25 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 - `LLAMA_SERVER_EXTRA_ARGS`
   - `--chat-template-kwargs '{"enable_thinking":false}'` など、追加で渡したい引数
 
+`start-trtllm-server.sh` の主な環境変数:
+
+- `BLUE_SERVER_*`
+  - 新しい推奨 alias。blue backend の実体が TRT-LLM でなくても意味が通る
+- `TRTLLM_SERVER_IMAGE`
+  - 互換 alias。blue backend で起動する container image。必須
+- `TRTLLM_SERVER_PORT`
+  - host 側 bind port。既定: `38083`
+- `TRTLLM_SERVER_CONTAINER_PORT`
+  - container 内の OpenAI 互換 HTTP listen port。既定: `8000`
+- `TRTLLM_SERVER_ENTRYPOINT`
+  - image 既定 entrypoint が shell でない場合だけ上書きする。`vllm/vllm-openai:*` を `bash -lc "..."` で起動するときは `bash`
+- `TRTLLM_MODEL_DIR`
+  - 必要なら model repository / engine ディレクトリを read-only mount する
+- `TRTLLM_SERVER_COMMAND`
+  - image 既定 entrypoint で足りないときの起動コマンド
+- `TRTLLM_EXTRA_DOCKER_ARGS`
+  - `--shm-size=32g` など追加の `docker run` 引数
+
 `start-embedding-server.sh` / `embedding-server.py` の主な環境変数:
 
 - `EMBEDDING_SERVER_IMAGE`
@@ -155,6 +178,60 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 - 秘密: `secrets/control-server.env` / `secrets/gateway-server.env`（`.example` を参照。値は既存 token ファイルと Pi5 vault と一致させる）
 - 導入: root で [`systemd/install-systemd-units.sh`](./systemd/install-systemd-units.sh)（既定では `/srv/dgx/system-prod` の owner/group を実行ユーザーに自動採用。必要なら `DGX_LLM_RUN_USER` / `DGX_LLM_RUN_GROUP` で上書き可）
 - 注意: `systemd` で root のまま起動すると `logs/` や PID などの所有者が崩れやすい。installer が owner/group を埋め込むのはその事故防止のため
+
+### Blue/Green backend 切替
+
+- `ACTIVE_LLM_BACKEND=green`
+  - 既定。現行 `llama.cpp` 系 backend を使う
+- `ACTIVE_LLM_BACKEND=blue`
+  - 新しい blue backend を使う。現時点の第一候補は `Qwen3.6-27B-NVFP4` を Spark 向け `vLLM` image で起動する構成
+
+切替は `control-server` と `gateway-server` の **両方**で同じ値にそろえる。systemd 運用では
+`secrets/control-server.env` / `secrets/gateway-server.env` に同じ `ACTIVE_LLM_BACKEND` を入れ、`systemctl restart dgx-llm-control dgx-llm-gateway` で反映する。
+`@reboot` / 手動起動の `start-control-server.sh` / `start-gateway-server.sh` も、同じ `secrets/*.env` を自動で `source` する。
+
+この構成では、Pi5 から見える契約はそのまま固定する。
+
+- 外部入口: `38081`
+- token: 既存の `api-token` / `runtime-control-token`
+- model alias: `system-prod-primary`
+
+したがって、Pi5 側は alias を変えずに、DGX 側だけで green / blue の backend を切り替えられる。
+
+systemd 用の最小例:
+
+```dotenv
+# /srv/dgx/system-prod/secrets/control-server.env
+LLM_RUNTIME_CONTROL_TOKEN=replace-me
+ACTIVE_LLM_BACKEND=blue
+BLUE_SERVER_IMAGE=ghcr.io/aeon-7/vllm-spark-omni-q36:v1.2
+BLUE_SERVER_PORT=38083
+BLUE_SERVER_CONTAINER_PORT=8000
+# BLUE_SERVER_ENTRYPOINT=bash
+BLUE_MODEL_DIR=/srv/dgx/shared-models/vllm/qwen36-27b-nvfp4
+BLUE_SERVER_COMMAND='export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 && export TORCH_MATMUL_PRECISION=high && export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True && export NVIDIA_FORWARD_COMPAT=1 && export VLLM_TEST_FORCE_FP8_MARLIN=1 && exec vllm serve /srv/dgx/shared-models/vllm/qwen36-27b-nvfp4 --served-model-name system-prod-primary --host 0.0.0.0 --port 8000 --dtype auto --quantization compressed-tensors --max-model-len 8192 --max-num-seqs 4 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.85 --kv-cache-dtype fp8 --enable-chunked-prefill --enable-prefix-caching --load-format safetensors --trust-remote-code --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3'
+BLUE_EXTRA_DOCKER_ARGS='--ipc host --ulimit memlock=-1 --ulimit stack=67108864'
+```
+
+```dotenv
+# /srv/dgx/system-prod/secrets/gateway-server.env
+LLM_SHARED_TOKEN=replace-me
+LLM_RUNTIME_CONTROL_TOKEN=replace-me
+ACTIVE_LLM_BACKEND=blue
+GREEN_LLM_BASE_URL=http://127.0.0.1:38082
+BLUE_LLM_BASE_URL=http://127.0.0.1:38083
+```
+
+この例のポイントは、**Pi5 から見える `38081` / token / alias を固定したまま**、DGX 内部だけで green / blue を切り替えることにある。
+
+`TRTLLM_*` という env 名は歴史的な互換のため残しているだけで、blue backend の実体は TRT-LLM に限らない。`start-trtllm-server.sh` は **任意 image + 任意 command** を受けるため、Spark 向け `vLLM` + `Qwen3.6-27B-NVFP4` をそのまま起動できる。新しい設定では意味が明確な `BLUE_SERVER_*` / `BLUE_MODEL_DIR` / `BLUE_EXTRA_DOCKER_ARGS` も同じ launcher で受けられる。image 既定 entrypoint が shell でない場合は、`BLUE_SERVER_ENTRYPOINT=bash` を併用する。
+
+### Blue backend の優先順
+
+- 最初の到達点は **`Qwen3.6-27B-NVFP4` を blue backend として起動し、`system-prod-primary` alias で `/v1/models` と text / vision の疎通を取ること**
+- 最初から DFlash や TRT-LLM を同時に持ち込まない
+- まずは `vLLM` 単体で起動成立を確認し、その後に必要なら `z-lab/Qwen3.6-27B-DFlash` を追加する
+- blue backend の起動確認が取れるまでは `ACTIVE_LLM_BACKEND=green` を維持し、内部 port `38083` を直接叩いて検証する
 
 ## 優先順
 

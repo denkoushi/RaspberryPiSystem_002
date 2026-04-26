@@ -12,7 +12,7 @@ server {
             return 403;
         }
 
-        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:39090/start;
+        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:38081/start;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
@@ -25,7 +25,7 @@ server {
             return 403;
         }
 
-        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:39090/stop;
+        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:38081/stop;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Runtime-Control-Token $http_x_runtime_control_token;
@@ -38,7 +38,7 @@ server {
             return 403;
         }
 
-        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:38100/embed;
+        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:38081/embed;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
@@ -50,7 +50,7 @@ server {
             return 403;
         }
 
-        proxy_pass http://127.0.0.1:38082;
+        proxy_pass http://${DOCKER_BRIDGE_GATEWAY}:38081;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;

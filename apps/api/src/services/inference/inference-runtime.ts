@@ -2,6 +2,10 @@ import { env } from '../../config/env.js';
 
 import { OpenAiCompatibleTextAdapter } from './adapters/openai-compatible-text.adapter.js';
 import { RoutedVisionCompletionAdapter } from './adapters/routed-vision-completion.adapter.js';
+import {
+  resolveAdminInferenceModel,
+  resolveAdminInferenceProvider,
+} from './config/admin-inference-provider.js';
 import { synthesizeProvidersFromLegacyLlm, tryParseInferenceProvidersJson } from './config/parse-inference-providers.js';
 import type { InferenceProviderDefinition } from './config/inference-provider.types.js';
 import { InferenceRouter, type InferenceRouterConfig } from './routing/inference-router.js';
@@ -19,6 +23,7 @@ export type AdminLocalLlmRuntimeConfigShape = {
 export type InferenceRuntime = {
   router: InferenceRouter;
   providers: InferenceProviderDefinition[];
+  getAdminProvider: () => InferenceProviderDefinition | undefined;
   /** 管理用 LocalLLM プロキシ（既定プロバイダ default または先頭） */
   getAdminLocalLlmRuntimeConfig: () => AdminLocalLlmRuntimeConfigShape;
   createVisionCompletionPort: () => VisionCompletionPort;
@@ -65,22 +70,26 @@ function buildRouterConfig(providers: InferenceProviderDefinition[]): InferenceR
 export function buildInferenceRuntime(fetchImpl: typeof fetch = fetch): InferenceRuntime {
   const providers = buildProviders();
   const router = new InferenceRouter(buildRouterConfig(providers));
+  const getAdminProvider = (): InferenceProviderDefinition | undefined =>
+    resolveAdminInferenceProvider(providers, env.INFERENCE_ADMIN_PROVIDER_ID);
 
   const getAdminLocalLlmRuntimeConfig = (): AdminLocalLlmRuntimeConfigShape => {
-    const primary = providers.find((p) => p.id === 'default') ?? providers[0];
-    const configured = Boolean(primary?.baseUrl && primary?.sharedToken && primary?.defaultModel);
+    const adminProvider = getAdminProvider();
+    const adminModel = resolveAdminInferenceModel(adminProvider, env.INFERENCE_ADMIN_MODEL);
+    const configured = Boolean(adminProvider?.baseUrl && adminProvider?.sharedToken && adminModel);
     return {
       configured,
-      baseUrl: primary?.baseUrl,
-      sharedToken: primary?.sharedToken,
-      model: primary?.defaultModel,
-      timeoutMs: primary?.timeoutMs ?? env.LOCAL_LLM_TIMEOUT_MS,
+      baseUrl: adminProvider?.baseUrl,
+      sharedToken: adminProvider?.sharedToken,
+      model: adminModel,
+      timeoutMs: adminProvider?.timeoutMs ?? env.LOCAL_LLM_TIMEOUT_MS,
     };
   };
 
   return {
     router,
     providers,
+    getAdminProvider,
     getAdminLocalLlmRuntimeConfig,
     createVisionCompletionPort: () =>
       new RoutedVisionCompletionAdapter({
