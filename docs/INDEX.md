@@ -155,7 +155,7 @@
 ### LocalLLM（Ubuntu / Tailscale）
 
 - **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（**トークンローテーション**は同 Runbook の「共有トークンのローテーション」節）
-- **DGX system-prod 段階切替 Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（DGX text 先行・photo_label は Ubuntu 残留の段階切替、`INFERENCE_PROVIDERS_JSON` と `LOCAL_LLM_*` の役割分担、`38081/38082/39090` 推奨ポート）
+- **DGX system-prod 段階切替 Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（DGX text 先行・photo_label は Ubuntu 残留の段階切替、`INFERENCE_PROVIDERS_JSON` と `LOCAL_LLM_*` の役割分担、`38081/38082/39090` 推奨ポート） / **DGX 起動雛形・systemd**: [scripts/dgx-local-llm-system/README.md](../scripts/dgx-local-llm-system/README.md)
 - **DGX Spark 移行・多用途分離運用計画**: [dgx-spark-local-llm-migration-execplan.md](./plans/dgx-spark-local-llm-migration-execplan.md)（Ubuntu PC から DGX Spark への LocalLLM 置換、公式 NVIDIA スタック優先、業務/私用/実験用途の気密分離、巨大モデル共有、ストレージ運用、段階計画と進捗管理表）
 - **DGX Spark photo_label VLM 検証計画**: [dgx-spark-photo-label-validation-plan.md](./plans/dgx-spark-photo-label-validation-plan.md)（`photo_label` を Ubuntu fallback から Spark へ寄せるための互換性・安定性・品質・退役判断条件）
 - **判断記録**: [ADR-20260328](./decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md)（Ubuntu / Tailscale 側） / [ADR-20260329](./decisions/ADR-20260329-local-llm-pi5-api-operations.md)（Pi5 API 代理・ログ方針） / [ADR-20260402](./decisions/ADR-20260402-inference-foundation-phase1.md)（推論基盤フェーズ1・複数プロバイダ・text/vision・要領書要約オプション） / [ADR-20260403](./decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)（オンデマンド llama-server・VRAM 共有）

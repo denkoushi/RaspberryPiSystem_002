@@ -246,6 +246,18 @@ update-frequency: high
 
 したがって、`**@reboot` による自動復帰は実機で確認済み**であり、DGX Spark 単独運用は**再起動耐性まで含めて成立**したと扱ってよい。
 
+### systemd への移行（推奨・`@reboot` の代替）
+
+`@reboot` は起動順が保証されず、journald との統合も弱い。**恒久運用**では systemd ユニットへ寄せることを推奨する（`llama-server` 本体は従来どおり on-demand のみ常駐させない）。
+
+1. リポジトリの [`scripts/dgx-local-llm-system/systemd/`](../../scripts/dgx-local-llm-system/systemd/) を DGX 上の同パス（または手元からコピー）で参照する。
+2. `control-server.env.example` / `gateway-server.env.example` を元に、`/srv/dgx/system-prod/secrets/control-server.env` と `gateway-server.env` を作成する（`chmod 600`）。値は既存の `runtime-control-token` / `api-token` と**同一**にする（Pi5 `vault` とも整合）。
+3. root で `install-systemd-units.sh` を実行し、`dgx-llm-embedding.service` → `dgx-llm-control.service` → `dgx-llm-gateway.service` を有効化する。installer は既定で `/srv/dgx/system-prod` の owner/group を unit の `User` / `Group` に埋め込むため、root 実行による log / PID 所有者の崩れを避けられる。
+4. `systemctl status` で `38081` / `39090` / 埋め込みコンテナ相当が復帰することを確認したら、重複起動を避けるため **ユーザ `crontab` の `@reboot` 3 行を削除またはコメントアウト**する。
+5. Pi5 から `POST /start` → `GET /v1/models` → `POST /v1/chat/completions` → `POST /embed` → `POST /stop` のスモークを再実行する。
+
+詳細は [`scripts/dgx-local-llm-system/README.md`](../../scripts/dgx-local-llm-system/README.md) の systemd 節を参照。
+
 ### 2026-04-26 DGX 上の不要物を整理
 
 - DGX Spark の本番稼働確認後、**その時点で未使用と確認できた試験残骸だけ**を削除した

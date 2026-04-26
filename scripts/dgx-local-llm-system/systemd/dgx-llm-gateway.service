@@ -1,0 +1,23 @@
+[Unit]
+Description=DGX system-prod LocalLLM gateway (tailnet / healthz / v1 / embed)
+After=network-online.target dgx-llm-control.service dgx-llm-embedding.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+User=__DGX_LLM_USER__
+Group=__DGX_LLM_GROUP__
+WorkingDirectory=/srv/dgx/system-prod
+Environment=GATEWAY_LISTEN_HOST=0.0.0.0
+Environment=GATEWAY_LISTEN_PORT=38081
+Environment=LLAMA_SERVER_BASE_URL=http://127.0.0.1:38082
+Environment=RUNTIME_CONTROL_BASE_URL=http://127.0.0.1:39090
+Environment=EMBEDDING_BASE_URL=http://127.0.0.1:38100
+# LLM_SHARED_TOKEN / LLM_RUNTIME_CONTROL_TOKEN / 任意 EMBEDDING_API_KEY
+EnvironmentFile=-/srv/dgx/system-prod/secrets/gateway-server.env
+ExecStart=/usr/bin/python3 /srv/dgx/system-prod/bin/gateway-server.py
+
+[Install]
+WantedBy=multi-user.target

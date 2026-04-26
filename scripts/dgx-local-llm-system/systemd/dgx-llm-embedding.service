@@ -1,0 +1,18 @@
+[Unit]
+Description=DGX system-prod embedding backend (Docker / CLIP)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# 既存の start/stop スクリプト（--restart unless-stopped 付きコンテナ起動）を再利用
+User=__DGX_LLM_USER__
+Group=__DGX_LLM_GROUP__
+WorkingDirectory=/srv/dgx/system-prod
+ExecStart=/srv/dgx/system-prod/bin/start-embedding-server.sh
+ExecStop=/srv/dgx/system-prod/bin/stop-embedding-server.sh
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
