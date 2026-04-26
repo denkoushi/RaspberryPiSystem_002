@@ -26,6 +26,7 @@ describe('system local llm routes', () => {
     stopUrl: typeof env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL;
     controlToken: typeof env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN;
     healthBaseUrl: typeof env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL;
+    inferenceProvidersJson: typeof env.INFERENCE_PROVIDERS_JSON;
   };
 
   beforeAll(async () => {
@@ -43,6 +44,7 @@ describe('system local llm routes', () => {
       stopUrl: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
       controlToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
       healthBaseUrl: env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL,
+      inferenceProvidersJson: env.INFERENCE_PROVIDERS_JSON,
     };
   });
 
@@ -76,6 +78,7 @@ describe('system local llm routes', () => {
     env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = originalConfig.stopUrl;
     env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = originalConfig.controlToken;
     env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL = originalConfig.healthBaseUrl;
+    env.INFERENCE_PROVIDERS_JSON = originalConfig.inferenceProvidersJson;
     resetInferenceRuntimeForTests();
     resetLocalLlmRuntimeControllerForTests();
 
@@ -313,6 +316,86 @@ describe('system local llm routes', () => {
     expect(calledUrls.some((url) => url.endsWith('/start'))).toBe(true);
     expect(calledUrls.some((url) => url.includes('/v1/chat/completions'))).toBe(true);
     expect(calledUrls.some((url) => url.endsWith('/stop'))).toBe(true);
+  });
+
+  it('uses provider runtime control from INFERENCE_PROVIDERS_JSON for admin chat', async () => {
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = undefined;
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = undefined;
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = undefined;
+    env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL = undefined;
+    env.INFERENCE_PROVIDERS_JSON = JSON.stringify([
+      {
+        id: 'dgx_text',
+        baseUrl: 'http://100.118.82.72:38081',
+        sharedToken: 'dgx-shared-token',
+        defaultModel: 'system-prod-primary',
+        timeoutMs: 60000,
+        runtimeControl: {
+          mode: 'on_demand',
+          startUrl: 'http://100.118.82.72:38081/start',
+          stopUrl: 'http://100.118.82.72:38081/stop',
+          controlToken: 'dgx-control-token',
+          healthBaseUrl: 'http://100.118.82.72:38081',
+        },
+      },
+      {
+        id: 'ubuntu_vlm',
+        baseUrl: 'http://100.107.223.92:38081',
+        sharedToken: 'ubuntu-shared-token',
+        defaultModel: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf',
+        timeoutMs: 60000,
+      },
+    ]);
+    resetInferenceRuntimeForTests();
+    resetLocalLlmRuntimeControllerForTests();
+
+    let chatCallCount = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/start') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        chatCallCount += 1;
+        if (chatCallCount === 1) {
+          return new Response('ready', { status: 200 });
+        }
+        return new Response(
+          JSON.stringify({
+            model: 'system-prod-primary',
+            choices: [{ finish_reason: 'stop', message: { content: 'provider runtime control ok' } }],
+            usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/stop') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/system/local-llm/chat/completions',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      payload: {
+        messages: [{ role: 'user', content: 'provider runtime control を実行' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      model: 'system-prod-primary',
+      content: 'provider runtime control ok',
+    });
+    const calledUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+    expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/start')).toBe(true);
+    expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/stop')).toBe(true);
   });
 
   it('returns LOCAL_LLM_RUNTIME_UNAVAILABLE when runtime pre-start fails', async () => {

@@ -194,7 +194,9 @@ const envSchema = z.object({
 
   /**
    * 推論プロバイダ配列（JSON）。未設定時は LOCAL_LLM_* から id=default を1件合成。
-   * 例: [{"id":"default","baseUrl":"http://host:8080","sharedToken":"...","defaultModel":"qwen","timeoutMs":60000}]
+   * 例:
+   * [{"id":"default","baseUrl":"http://host:8080","sharedToken":"...","defaultModel":"qwen","timeoutMs":60000,
+   *   "runtimeControl":{"mode":"on_demand","startUrl":"http://host:8080/start","stopUrl":"http://host:8080/stop","controlToken":"...","healthBaseUrl":"http://host:8080"}}]
    */
   INFERENCE_PROVIDERS_JSON: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),

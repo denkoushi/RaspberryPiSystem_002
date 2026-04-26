@@ -32,17 +32,23 @@ all:
           api_database_url: "postgresql://postgres:postgres@db:5432/borrow_return"
           api_jwt_access_secret: "{{ vault_api_jwt_access_secret | default('change-me-in-production') }}"
           api_jwt_refresh_secret: "{{ vault_api_jwt_refresh_secret | default('change-me-in-production') }}"
-          api_local_llm_base_url: "http://{{ ubuntu_local_llm_host }}:{{ ubuntu_local_llm_inference_nginx_port }}"
+          api_local_llm_base_url: "http://100.118.82.72:38081"
           api_local_llm_shared_token: "{{ vault_api_local_llm_shared_token | default('') }}"
-          api_local_llm_model: "Qwen_Qwen3.5-9B-Q4_K_M.gguf"
+          api_local_llm_model: "system-prod-primary"
           api_local_llm_timeout_ms: "60000"
-          # llama-server オンデマンド（Ubuntu: control-server.mjs + local-llm-system/nginx の /start /stop）
+          # llama-server オンデマンド（DGX system-prod の /start /stop）
           # 制御トークンは vault_api_local_llm_runtime_control_token で分離可。未設定なら API は LOCAL_LLM_SHARED_TOKEN を流用
           api_local_llm_runtime_mode: "on_demand"
-          api_local_llm_runtime_control_start_url: "http://{{ ubuntu_local_llm_host }}:{{ ubuntu_local_llm_inference_nginx_port }}/start"
-          api_local_llm_runtime_control_stop_url: "http://{{ ubuntu_local_llm_host }}:{{ ubuntu_local_llm_inference_nginx_port }}/stop"
+          api_local_llm_runtime_control_start_url: "http://100.118.82.72:38081/start"
+          api_local_llm_runtime_control_stop_url: "http://100.118.82.72:38081/stop"
           api_local_llm_runtime_control_token: "{{ vault_api_local_llm_runtime_control_token | default('') }}"
           api_local_llm_runtime_health_base_url: ""
+          inference_providers_json: >-
+            [{"id":"dgx_primary","baseUrl":"http://100.118.82.72:38081","sharedToken":"{{ vault_api_local_llm_shared_token | default('') }}","defaultModel":"system-prod-primary","timeoutMs":60000,"runtimeControl":{"mode":"on_demand","startUrl":"http://100.118.82.72:38081/start","stopUrl":"http://100.118.82.72:38081/stop","controlToken":"{{ vault_api_local_llm_runtime_control_token | default('') }}","healthBaseUrl":"http://100.118.82.72:38081"}}]
+          inference_document_summary_provider_id: "dgx_primary"
+          inference_document_summary_model: "system-prod-primary"
+          inference_photo_label_provider_id: "dgx_primary"
+          inference_photo_label_model: "system-prod-primary"
           kiosk_document_summary_inference_enabled: "true"
           # 持出カードグリッドは Pi5 API 側で HTML/CSS → Playwright 描画を有効化する
           api_signage_loan_grid_engine: "playwright_html"

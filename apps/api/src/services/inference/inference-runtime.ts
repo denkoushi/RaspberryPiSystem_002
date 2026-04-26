@@ -37,6 +37,12 @@ function buildProviders(): InferenceProviderDefinition[] {
     sharedToken: env.LOCAL_LLM_SHARED_TOKEN,
     model: env.LOCAL_LLM_MODEL,
     timeoutMs: env.LOCAL_LLM_TIMEOUT_MS,
+    runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+    runtimeControlStartUrl: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+    runtimeControlStopUrl: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+    runtimeControlToken:
+      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN?.trim() || env.LOCAL_LLM_SHARED_TOKEN?.trim() || undefined,
+    runtimeHealthBaseUrl: env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL,
   });
 }
 

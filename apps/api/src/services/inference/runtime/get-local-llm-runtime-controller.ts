@@ -1,12 +1,9 @@
 import { env } from '../../../config/env.js';
-import { logger } from '../../../lib/logger.js';
 import { getInferenceRuntime } from '../inference-runtime.js';
 
-import { HttpOnDemandLocalLlmRuntimeController } from './http-on-demand-local-llm-runtime.controller.js';
 import type { LocalLlmRuntimeControllerPort } from './local-llm-runtime-control.port.js';
 import { NoopLocalLlmRuntimeController } from './noop-local-llm-runtime.controller.js';
-
-const log = logger.child({ component: 'localLlmRuntimeControl' });
+import { ProviderLocalLlmRuntimeController } from './provider-local-llm-runtime.controller.js';
 
 let singleton: LocalLlmRuntimeControllerPort | null = null;
 
@@ -20,40 +17,24 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
     return new NoopLocalLlmRuntimeController();
   }
 
-  const startUrl = env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim();
-  const stopUrl = env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim();
-  const controlToken =
-    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN?.trim() || env.LOCAL_LLM_SHARED_TOKEN?.trim() || '';
-  const healthBase =
-    env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL?.trim() || env.LOCAL_LLM_BASE_URL?.trim() || '';
-
-  if (!startUrl || !stopUrl || !controlToken || !healthBase) {
-    log.warn(
-      {
-        hasStartUrl: Boolean(startUrl),
-        hasStopUrl: Boolean(stopUrl),
-        hasControlToken: Boolean(controlToken),
-        hasHealthBase: Boolean(healthBase),
-      },
-      '[LocalLlmRuntimeControl] on_demand selected but control URLs/token/health base incomplete; falling back to no-op (inference may fail if server is stopped)'
-    );
-    return new NoopLocalLlmRuntimeController();
-  }
-
-  const llmToken = env.LOCAL_LLM_SHARED_TOKEN?.trim() || '';
-
-  return new HttpOnDemandLocalLlmRuntimeController({
+  const inferenceRuntime = getInferenceRuntime();
+  return new ProviderLocalLlmRuntimeController({
     fetchImpl,
-    startUrl,
-    stopUrl,
-    controlToken,
-    healthCheckBaseUrl: healthBase,
-    llmToken,
-    readyProbeModels: {
-      photo_label: env.INFERENCE_PHOTO_LABEL_MODEL?.trim() || env.LOCAL_LLM_MODEL?.trim() || '',
-      document_summary: env.INFERENCE_DOCUMENT_SUMMARY_MODEL?.trim() || env.LOCAL_LLM_MODEL?.trim() || '',
-      admin_console_chat: resolveAdminConsoleChatModel(),
-    },
+    globalMode: env.LOCAL_LLM_RUNTIME_MODE,
+    router: inferenceRuntime.router,
+    providers: inferenceRuntime.providers,
+    resolveAdminModel: resolveAdminConsoleChatModel,
+    legacyPrimaryRuntimeControl:
+      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim() || env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim()
+        ? {
+            mode: 'on_demand',
+            startUrl: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim(),
+            stopUrl: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim(),
+            controlToken:
+              env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN?.trim() || env.LOCAL_LLM_SHARED_TOKEN?.trim() || undefined,
+            healthBaseUrl: env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL?.trim() || env.LOCAL_LLM_BASE_URL?.trim(),
+          }
+        : undefined,
     readyTimeoutMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
     startRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS,
     stopRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS,
