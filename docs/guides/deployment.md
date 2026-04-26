@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-25
+last-verified: 2026-04-26
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-25（パレットボード スロット幾何・全幅明細・JPEG ほか）
+最終更新: 2026-04-26（DGX LocalLLM 運用堅牢化・env 整合・Pi5 のみ）
+
+### 補足（2026-04-26: DGX LocalLLM 運用堅牢化・`LOCAL_LLM` / `INFERENCE_PROVIDERS_JSON` 整合・embedding 指紋・Ansible fail-fast・API のみ・Pi5 のみ）
+
+- **変更概要**: Pi5 API の起動時 Zod（`env.ts`）で **`LOCAL_LLM_*` と `INFERENCE_PROVIDERS_JSON` の整合**・**`PHOTO_TOOL_EMBEDDING_*`（有効時必須）** を検証。`manage-app-configs.yml` に **assert** を追加し、デプロイ時に **token / provider / on_demand URL** の不整合を早期失敗。写真ツール類似ギャラリ用に **embedding 設定の fingerprint**（秘密を含まない）を backfill ログへ。DGX 側 **systemd 化**はリポジトリの `scripts/dgx-local-llm-system/systemd/` と [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（**inventory 外・別作業**）。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4 / Pi3 は不要**（本変更は Pi5 `api` と Ansible の Pi5 設定検証が中心）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/dgx-ops-hardening infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`feat/dgx-ops-hardening`**・代表コミット **`01a257be`**（機能）＋本記録の **docs 追補コミット**。**Detach Run ID**（`ansible-update-`）: **`20260426-135827-7914`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 13.7 分**・Docker 再ビルド含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 361s**・Tailscale）。
+- **知見**: **Secret ドリフト**は Pi5 vault / `docker.env` と DGX 実トークンの **手動同期**が前提。不整合は **Ansible assert** または **API 起動時**で検出される（[KB-356](../knowledge-base/infrastructure/ansible-deployment.md#kb-356-local-llm--inference_providers_json-の整合検証とデプロイ時-assert)）。**Embedding バックエンド変更**後は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) に従い **gallery backfill を再実行**。
+- **トラブルシュート**: `manage-app-configs` / API が **整合エラー**で止まる → `INFERENCE_PROVIDERS_JSON` の primary と **`LOCAL_LLM_PROVIDER_ID` / `LOCAL_LLM_BASE_URL` / token / on_demand URL** を突合。未追跡ファイルで `update-all-clients.sh` が fail-fast する場合は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+- **ナレッジ**: [KB-356](../knowledge-base/infrastructure/ansible-deployment.md#kb-356-local-llm--inference_providers_json-の整合検証とデプロイ時-assert)・[KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)・[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)・[photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)。
 
 ### 補足（2026-04-25: パレット可視化ボード スロット幾何・下段4明細 全幅・API のみ・Pi5 のみ）
 
