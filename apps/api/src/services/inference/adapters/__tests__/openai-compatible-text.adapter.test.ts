@@ -49,6 +49,35 @@ describe('OpenAiCompatibleTextAdapter', () => {
     });
   });
 
+  it('uses reasoning when assistant content is empty (vLLM / Qwen系)', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: '', reasoning: 'フォールバック本文' } }],
+      }),
+    })) as unknown as typeof fetch;
+
+    const router = new InferenceRouter({
+      providers: [provider],
+      routes: {
+        photo_label: { providerId: 'default' },
+        document_summary: { providerId: 'default' },
+      },
+    });
+
+    const adapter = new OpenAiCompatibleTextAdapter({ router, fetchImpl });
+    const result = await adapter.complete({
+      useCase: 'document_summary',
+      messages: [{ role: 'user', content: 'a' }],
+      maxTokens: 10,
+      temperature: 0,
+      enableThinking: false,
+    });
+
+    expect(result.rawText).toBe('フォールバック本文');
+  });
+
   it('throws on upstream error', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: false,

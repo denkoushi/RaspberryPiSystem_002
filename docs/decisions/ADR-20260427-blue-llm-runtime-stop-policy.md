@@ -34,3 +34,7 @@ Status: accepted
 - `scripts/dgx-local-llm-system/runtime_stop_policy.py`
 - `docs/runbooks/dgx-system-prod-local-llm.md`（Blue 停止ポリシー・一般運用との対照）
 - vLLM / K8s 系: cold start 対策として **永続化キャッシュ・最小レプリカ・HPA** がよく用いられる（本リポ外の一般ベースラインとして Runbook に要約）
+
+## Related: 本番既定の `ACTIVE_LLM_BACKEND`（green vs blue）
+
+停止ポリシー（`/stop` の挙動）とは別に、**どちらを「本番で既定の active backend」とするか**は運用判断である。**2026-04-28** 時点では本番既定は **green** とし、blue 本番既定化の判断ログは [ADR-20260428-dgx-active-backend-prod-default.md](./ADR-20260428-dgx-active-backend-prod-default.md) を正とする。

@@ -2,7 +2,7 @@
 title: トラブルシューティングナレッジベース - CI/CD関連
 tags: [トラブルシューティング, CI/CD, GitHub Actions, テスト]
 audience: [開発者]
-last-verified: 2026-04-21
+last-verified: 2026-04-27
 related: [index.md, ../guides/ci-troubleshooting.md]
 category: knowledge-base
 update-frequency: high
@@ -11,8 +11,51 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 15件  
+**件数**: 17件  
 **索引**: [index.md](./index.md)
+
+---
+
+### [KB-358] `api-db-and-infra` の Wait for PostgreSQL が flake する（`borrow_return` 等）
+
+**発生日・反映**: 2026-04-27（PR [#203](https://github.com/denkoushi/RaspberryPiSystem_002/pull/203) 向け CI・run 例 `24990946449`）
+
+**事象**:
+- ジョブ **`api-db-and-infra`** が **`Wait for PostgreSQL`** で失敗する
+- ログに **テスト用 DB**（例: **`borrow_return`**）が**存在しない**旨が出る（ runner 上の PostgreSQL 初期化タイミングと干渉しうる）
+
+**対処（最小）**:
+- **`gh run rerun <run_id> --failed`** または Actions UI で **失敗ジョブのみ再実行**
+- 再実行で **緑化**した例あり（アプリ差分と**無関係**な一時失敗として扱う）
+
+**再発防止**:
+- 同一 mainline で**連続再発**する場合のみ、`scripts/ci/wait-for-postgres.sh`・マイグレーション順・テスト DB 名の前提を見直す（チケット化）
+
+**関連**:
+- [ci-troubleshooting.md §api-db-and-infra](../guides/ci-troubleshooting.md#api-db-and-infra-のwait-for-postgresqlで失敗するborrow_return-等フレーク)
+- `scripts/ci/wait-for-postgres.sh`
+
+---
+
+### [KB-359] 開発端末の `python3` パス不良（`update-all-clients` の非致命警告）
+
+**発生日・反映**: 2026-04-27（Mac から `update-all-clients.sh` 実行時）
+
+**事象**:
+- 標準出力に **`./scripts/update-all-clients.sh: line 904: …/pyenv/shims/python3: No such file or directory`** のような行が出る
+- **リモートの Ansible デプロイ自体は exit 0** で完走し得る（**ローカル側**のパイプ処理で `python3` を解決できない）
+
+**根本原因**:
+- **`pyenv` の shim が壊れている**、または **`PATH` が意図しない `python3`** を指している
+
+**対処**:
+- `command -v python3` / `which -a python3` で実体を確認
+- pyenv 利用なら **`pyenv rehash`**、shim 欠損なら **Python の再インストール**または **システム `/usr/bin/python3` を優先する `PATH`**
+- デプロイ結果の正本は Pi5 の **`logs/deploy/ansible-update-*.exit`** / **`PLAY RECAP`** で確認する
+
+**関連**:
+- [deployment.md §2026-04-27](../guides/deployment.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
+- `scripts/update-all-clients.sh`（`python3` パイプ箇所）
 
 ---
 

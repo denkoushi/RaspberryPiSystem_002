@@ -258,6 +258,13 @@ update-frequency: high
 
 詳細は [`scripts/dgx-local-llm-system/README.md`](../../scripts/dgx-local-llm-system/README.md) の systemd 節を参照。
 
+### 本番既定 backend の判断ログ（2026-04-28）
+
+- **現時点の本番既定**: DGX 上の **`ACTIVE_LLM_BACKEND=green`**（`llama.cpp` + `mmproj` の `system-prod-primary`）を維持する。
+- **理由（要約）**: blue（`vLLM` + NVFP4）は疎通・VLM プローブまで到達済みだが、**cold start が ~12 分規模**になり得ること、**GPU/メモリ占有**、Pi5→DGX 経路の **VLM/画像 400** の残チューニングを、本番 SLA として一括採用する前に切り分けたいため。
+- **blue を本番既定にする場合**: 上記を運用で受容した判断を **ADR**（[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)）と本 Runbook に追記してから切り替える。
+- **Pi5 側の耐性**: `photo_label` 向けに、画像デコード系 **400** に限り **JPEG の再エンコードで 1 回だけ再試行**する実装を API に入れた（[`RoutedVisionCompletionAdapter`](../../apps/api/src/services/inference/adapters/routed-vision-completion.adapter.ts) / `vision-vlm-fallback.util.ts`）。**400 の根本原因を消すものではない**ため、DGX `docker logs` との併用が前提。
+
 ### Blue/Green backend での安全な差し替え
 
 新 runtime を並行検証するときは、Pi5 から見える契約は固定したまま、DGX 内部だけを切り替える。

@@ -4,6 +4,11 @@ import { InferenceRouter } from '../routing/inference-router.js';
 import type { InferenceUseCase } from '../types/inference-usecase.js';
 
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from './openai-chat-response.util.js';
+import {
+  classifyVlmHttp400SubReason,
+  isLikelyVlmImageLoadOrDecodeHttp400,
+  reencodeImageBufferForVlmFallback,
+} from './vision-vlm-fallback.util.js';
 
 const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
   const controller = new AbortController();
@@ -14,6 +19,8 @@ const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup:
   };
 };
 
+const trimErrorBody = (body: string): string => body.slice(0, 2000);
+
 export type RoutedVisionCompletionAdapterDeps = {
   router: InferenceRouter;
   fetchImpl: typeof fetch;
@@ -21,10 +28,16 @@ export type RoutedVisionCompletionAdapterDeps = {
   useCase: InferenceUseCase;
   getMaxTokens: () => number;
   getTemperature: () => number;
+  /**
+   * DGX vLLM 等で画像デコード 400 時の再エンコード（テスト差し替え用）。
+   * 未指定時は `reencodeImageBufferForVlmFallback`（sharp）を使う。
+   */
+  reencodeImageBufferForVlmFallback?: (imageBytes: Buffer, mimeType: string) => Promise<Buffer>;
 };
 
 /**
  * OpenAI 互換 VLM: 指定 useCase へルーティングし `/v1/chat/completions` を呼ぶ。
+ * 画像ロード/デコード系 400 のときだけ、JPEG 再エンコードで **最大 1 回** 再送する。
  */
 export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
   constructor(private readonly deps: RoutedVisionCompletionAdapterDeps) {}
@@ -38,10 +51,12 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
     let errorReason: string | undefined;
     let outputSize = 0;
 
-    const dataUrl = `data:${input.mimeType};base64,${input.imageBytes.toString('base64')}`;
+    const reencode = this.deps.reencodeImageBufferForVlmFallback ?? reencodeImageBufferForVlmFallback;
+
     const { signal, cleanup } = createTimeoutSignal(provider.timeoutMs);
-    try {
-      const response = await this.deps.fetchImpl(new URL('/v1/chat/completions', provider.baseUrl), {
+
+    const postChat = (imageBytes: Buffer, mimeType: string) =>
+      this.deps.fetchImpl(new URL('/v1/chat/completions', provider.baseUrl), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -53,7 +68,10 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
             {
               role: 'user',
               content: [
-                { type: 'image_url', image_url: { url: dataUrl } },
+                {
+                  type: 'image_url',
+                  image_url: { url: `data:${mimeType};base64,${imageBytes.toString('base64')}` },
+                },
                 { type: 'text', text: input.userText },
               ],
             },
@@ -65,11 +83,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
         signal,
       });
 
-      if (!response.ok) {
-        errorReason = `upstream_http_${response.status}`;
-        throw new Error(`Inference vision upstream error: HTTP ${response.status}`);
-      }
-
+    const parseAndReturn = async (response: Response): Promise<VisionCompletionResult> => {
       const payload = (await response.json()) as OpenAiStyleChatResponse;
       const rawText = extractTextFromOpenAiStylePayload(payload);
       if (!rawText) {
@@ -88,6 +102,43 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
         outputSize,
       });
       return { rawText };
+    };
+
+    const assignUpstreamError = (status: number, errBody: string) => {
+      if (status === 400) {
+        const sub = classifyVlmHttp400SubReason(400, errBody);
+        errorReason = `upstream_http_400_vlm_${sub}`;
+      } else {
+        errorReason = `upstream_http_${status}`;
+      }
+    };
+
+    try {
+      let response = await postChat(input.imageBytes, input.mimeType);
+
+      if (response.ok) {
+        return await parseAndReturn(response);
+      }
+
+      let errText = trimErrorBody(await response.text());
+
+      if (response.status === 400 && isLikelyVlmImageLoadOrDecodeHttp400(400, errText)) {
+        try {
+          const reencoded = await reencode(input.imageBytes, input.mimeType);
+          response = await postChat(reencoded, 'image/jpeg');
+          if (response.ok) {
+            return await parseAndReturn(response);
+          }
+          errText = trimErrorBody(await response.text());
+        } catch (re) {
+          // 再エンコード失敗: errorReason のみ付与し、観測は外側の catch で 1 回だけ出す
+          errorReason = 'vlm_image_reencode_failed';
+          throw re;
+        }
+      }
+
+      assignUpstreamError(response.status, errText);
+      throw new Error(`Inference vision upstream error: HTTP ${response.status}`);
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
         errorReason = 'timeout';
