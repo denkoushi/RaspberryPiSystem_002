@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-04-27
+last-verified: 2026-04-28
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -260,10 +260,17 @@ update-frequency: high
 
 ### 本番既定 backend の判断ログ（2026-04-28）
 
-- **現時点の本番既定**: DGX 上の **`ACTIVE_LLM_BACKEND=green`**（`llama.cpp` + `mmproj` の `system-prod-primary`）を維持する。
-- **理由（要約）**: blue（`vLLM` + NVFP4）は疎通・VLM プローブまで到達済みだが、**cold start が ~12 分規模**になり得ること、**GPU/メモリ占有**、Pi5→DGX 経路の **VLM/画像 400** の残チューニングを、本番 SLA として一括採用する前に切り分けたいため。
-- **blue を本番既定にする場合**: 上記を運用で受容した判断を **ADR**（[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)）と本 Runbook に追記してから切り替える。
-- **Pi5 側の耐性**: `photo_label` 向けに、画像デコード系 **400** に限り **JPEG の再エンコードで 1 回だけ再試行**する実装を API に入れた（[`RoutedVisionCompletionAdapter`](../../apps/api/src/services/inference/adapters/routed-vision-completion.adapter.ts) / `vision-vlm-fallback.util.ts`）。**400 の根本原因を消すものではない**ため、DGX `docker logs` との併用が前提。
+- **方針（ADR）**: リポジトリ上の **本番既定**は **`ACTIVE_LLM_BACKEND=green`**（`llama.cpp` + `mmproj` の `system-prod-primary`）を正とする（[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)）。
+- **実機の確認**: **DGX 実機が green か blue かは設定次第**。ドキュメントより **`POST /start` の JSON `backend`** と **`GET /v1/models` の `root`**（例: `sakamakismile/Qwen3.6-27B-NVFP4`）を **正**とする。
+- **理由（方針で green を正とする要約）**: blue（`vLLM` + NVFP4）は疎通・VLM プローブまで到達済みだが、**cold start が ~12 分規模**になり得ること、**GPU/メモリ占有**、VLM/画像経路のトラブルシュートを、**SLA として一括で締める前に**材料として残したい。
+- **blue を本番方針の既定にする場合**: 上記を運用で受容した判断を **ADR** と本 Runbook に追記してから切り替える。
+- **Pi5 側の耐性**: `photo_label` 向けに、画像ロード/デコード・大きさ由来など **条件付き 400** に限り **JPEG の再エンコードで最大 1 回再試行**する実装を API に入れた（[`RoutedVisionCompletionAdapter`](../../apps/api/src/services/inference/adapters/routed-vision-completion.adapter.ts) / `vision-vlm-fallback.util.ts`）。**400 の根本原因を消すものではない**ため、DGX `docker logs` との併用が前提。
+
+### 当初運用方針との対応関係（要約）
+
+- **ホストを汚さない / 用途ごとにコンテナ**: 推論・埋め込み等の実体は **コンテナ**に置き、重みは **`/srv/dgx/shared-models` 等へ bind mount** する前提（ホストへの手作業 CUDA 導入は前提にしない）。
+- **データ混在防止**: `system-prod` は **ディレクトリ・`secrets`・Docker network** を用途別に分離する。ただし **GPU/CPU/統一メモリは物理共有**であり、別コンテナの負荷は性能面で相互に影響し得る（通信分離と同義ではない）。
+- **単一 alias・差し替え容易**: 外部は **`38081` + `system-prod-primary` を固定**し、モデル差し替えは DGX 側（green/blue 切替・起動コマンド）で完結させる。
 
 ### Blue/Green backend での安全な差し替え
 
@@ -352,7 +359,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 - **DGX へ SSH / Tailscale が通らない**: cold start 中の高負荷に加え、**ホスト全体の応答不良**でも banner 前で落ちることがある。ローカル LAN や**物理コンソール**を試し、必要なら**再起動**。常に **`docker logs`（vLLM / gateway）**で起動段階を先に追う。
 - **Pi5 API が起動に失敗（Zod）**: `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS` を inventory で伸ばす場合、**`apps/api/src/config/env.ts` の `max` 以下**でないと API コンテナが起動しない。repo 側の上限拡大と**セット**で反映する。
-- **upstream `400` + 画像（`Failed to load image` 等）**: DGX 側 vLLM の画像デコード経路の問題の可能性。payload（base64 / URL）の最小再現、**DGX 上で直接** `probe-photo-label-vlm.py`、**`docker logs`** を参照。Pi5 側 `local-llm-proxy` の `reasoning` フォールバックは**本文空**対策であり、**400 自体**は解消しない。
+- **upstream `400` + 画像（VLM）**: **応答 body** で大まかに分類できる。**(1) 画像デコード失敗**系（例: `Failed to load image: cannot identify image file`）は **bytes / MIME / 破損**を疑う。**(2) コンテキスト超過**系（例: `Input length … exceeds … maximum context length`）は **プロンプト＋画像トークンが長すぎる**可能性。切り分け: payload（base64 / URL）の最小再現、**DGX 上**または **Pi5 から到達する同一 URL** で `probe-photo-label-vlm.py`、**`docker logs`**（vLLM `system-prod-trtllm` 等）。**到達経路**: 開発端末から DGX 入口 **直接 HTTP** は **timeout** になり得る → **Pi5 へ SSH** し **`127.0.0.1:38081`** へ **ローカルポートフォワード**（トンネル）で当てると切り分けしやすい。**観測（2026-04-28）**: Pi5 **保存済み**画像 **531 件**を一括プローブした例では **全件 200**（ストレージ母集団では 400 が出ない観測）。Pi5 側 `local-llm-proxy` の `reasoning` フォールバックは**本文空**対策であり、**400 自体**は解消しない。
 
 ### 2026-04-27 Pi5 本番：repo 差分の「正規 + 手元同期」で収束した例
 
