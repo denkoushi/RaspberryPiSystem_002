@@ -260,10 +260,17 @@ update-frequency: high
 
 ### 本番既定 backend の判断ログ（2026-04-28）
 
-- **現時点の本番既定**: DGX 上の **`ACTIVE_LLM_BACKEND=green`**（`llama.cpp` + `mmproj` の `system-prod-primary`）を維持する。
-- **理由（要約）**: blue（`vLLM` + NVFP4）は疎通・VLM プローブまで到達済みだが、**cold start が ~12 分規模**になり得ること、**GPU/メモリ占有**、Pi5→DGX 経路の **VLM/画像 400** の残チューニングを、本番 SLA として一括採用する前に切り分けたいため。
-- **blue を本番既定にする場合**: 上記を運用で受容した判断を **ADR**（[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)）と本 Runbook に追記してから切り替える。
-- **Pi5 側の耐性**: `photo_label` 向けに、画像デコード系 **400** に限り **JPEG の再エンコードで 1 回だけ再試行**する実装を API に入れた（[`RoutedVisionCompletionAdapter`](../../apps/api/src/services/inference/adapters/routed-vision-completion.adapter.ts) / `vision-vlm-fallback.util.ts`）。**400 の根本原因を消すものではない**ため、DGX `docker logs` との併用が前提。
+- **方針（ADR）**: リポジトリ上の **本番既定**は **`ACTIVE_LLM_BACKEND=green`**（`llama.cpp` + `mmproj` の `system-prod-primary`）を正とする（[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)）。
+- **実機の確認**: **DGX 実機が green か blue かは設定次第**。ドキュメントより **`POST /start` の JSON `backend`** と **`GET /v1/models` の `root`**（例: `sakamakismile/Qwen3.6-27B-NVFP4`）を **正**とする。
+- **理由（方針で green を正とする要約）**: blue（`vLLM` + NVFP4）は疎通・VLM プローブまで到達済みだが、**cold start が ~12 分規模**になり得ること、**GPU/メモリ占有**、VLM/画像経路のトラブルシュートを、**SLA として一括で締める前に**材料として残したい。
+- **blue を本番方針の既定にする場合**: 上記を運用で受容した判断を **ADR** と本 Runbook に追記してから切り替える。
+- **Pi5 側の耐性**: `photo_label` 向けに、画像ロード/デコード・大きさ由来など **条件付き 400** に限り **JPEG の再エンコードで最大 1 回再試行**する実装を API に入れた（[`RoutedVisionCompletionAdapter`](../../apps/api/src/services/inference/adapters/routed-vision-completion.adapter.ts) / `vision-vlm-fallback.util.ts`）。**400 の根本原因を消すものではない**ため、DGX `docker logs` との併用が前提。
+
+### 当初運用方針との対応関係（要約）
+
+- **ホストを汚さない / 用途ごとにコンテナ**: 推論・埋め込み等の実体は **コンテナ**に置き、重みは **`/srv/dgx/shared-models` 等へ bind mount** する前提（ホストへの手作業 CUDA 導入は前提にしない）。
+- **データ混在防止**: `system-prod` は **ディレクトリ・`secrets`・Docker network** を用途別に分離する。ただし **GPU/CPU/統一メモリは物理共有**であり、別コンテナの負荷は性能面で相互に影響し得る（通信分離と同義ではない）。
+- **単一 alias・差し替え容易**: 外部は **`38081` + `system-prod-primary` を固定**し、モデル差し替えは DGX 側（green/blue 切替・起動コマンド）で完結させる。
 
 ### Blue/Green backend での安全な差し替え
 

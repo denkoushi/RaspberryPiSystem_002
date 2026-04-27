@@ -16,12 +16,12 @@ update-frequency: medium
 
 - **仕様要約（API）**: PR [#204](https://github.com/denkoushi/RaspberryPiSystem_002/pull/204)（VLM 400 再試行・`openai-chat-response` 共通化 等）に続き、PR [#205](https://github.com/denkoushi/RaspberryPiSystem_002/pull/205) では **`isRetryableVlmImageHttp400` の拡張**、**大きさ由来の 400 でも再送**、**`reencodeImageBufferForVlmFallback` の `maxEdge` / `quality` 等**を反映（詳細は PR / `vision-vlm-fallback`・`routed-vision-completion` 周辺テストを参照）。
 - **知見（真因分類）**: 観測した **400** は単一の常設バグではなく、**入力条件依存**。**応答 body** 例: **(1) コンテキスト超過**（`Input length … exceeds … maximum context length`）、**(2) 画像デコード失敗**（`Failed to load image: cannot identify image file` 等）。**Pi5 保存画像 531 件**を本リポの `probe-photo-label-vlm.py` 相当手順で**一括**したところ**全件 HTTP 200**（当該母集団では 400 再現は出ず）。巨大・**意図的破損**画像では 400 を再現可能。
-- **トラブルシュート（到達経路）**: DGX 入口へ **Mac 直 HTTP** すると **timeout** になり得る。検証は **Pi5 経由**（例: SSH トンネルで **`127.0.0.1:38081`** へ中継）が現実的なことが多い（[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)「トラブルシューティング補足」）。
+- **トラブルシュート（到達経路）**: DGX 入口へ **Mac 直 HTTP** すると **timeout** になり得る。検証は **Pi5 経由**（例: SSH トンネルで **`127.0.0.1:38081`** へ中継）が現実的なことが多い（[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)「トラブルシューティング補足」）。**長時間の `-L` トンネル**は **SSH セッション断**（例: `exit 255` / `Connection reset by peer`）で落ち得るため、**再接続して張り直す**。
 - **本番追従**: 当時点の本番 **Pi5 API** は、当該差分取り込み後は従来どおり **`update-all-clients.sh main … --limit raspberrypi5`**（[deployment.md](./deployment.md) 他項・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress）で正本。
 
 ### 補足（2026-04-27: VLM 画像 400 再送・OpenAI 応答抽出共通化・`feat/dgx-blue-vlm400-hardening`・Pi5 のみ）
 
-- **変更概要**: ブランチ **`feat/dgx-blue-vlm400-hardening`**（代表コミット **`d962afa3`**）。VLM 上流が画像ペイロードを拒否（HTTP 400 相当）する場合に **JPEG 再エンコード後の最大 1 回再送**、OpenAI 互レスポンスのテキスト抽出を **`message.content` → `reasoning` / `reasoning_content` 等へフォールバック**する共通化。本番の **DGX active backend 既定**（green 維持）の方針は [ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md) 参照。
+- **変更概要**: ブランチ **`feat/dgx-blue-vlm400-hardening`**（代表コミット **`d962afa3`**）。VLM 上流が画像ペイロードを拒否（HTTP 400 相当）する場合に **JPEG 再エンコード後の最大 1 回再送**、OpenAI 互レスポンスのテキスト抽出を **`message.content` → `reasoning` / `reasoning_content` 等へフォールバック**する共通化。**DGX の本番方針**（既定は green）と **実機が green/blue か**は別。方針は [ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)、実機は **`POST /start` / `GET /v1/models`** で確認。
 - **対象ホスト（本記録）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 / Pi4 個別デプロイは本変更の必須対象外**（従来どおり API は Pi5）。
 - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/dgx-blue-vlm400-hardening infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
 - **本番デプロイ（実績）**: **Detach Run ID**（`ansible-update-`）: **`20260427-205257-20823`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 738s**（**`Rebuild/Restart docker compose services`** を含む））。
