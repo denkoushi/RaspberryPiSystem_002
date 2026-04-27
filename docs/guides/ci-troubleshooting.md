@@ -2,13 +2,26 @@
 title: CIテスト失敗のトラブルシューティングガイド
 tags: [CI/CD, トラブルシューティング, GitHub Actions]
 audience: [開発者]
-last-verified: 2026-04-18
+last-verified: 2026-04-27
 related: [../knowledge-base/ci-cd.md, development.md]
 category: guides
 update-frequency: high
 ---
 
 # CIテスト失敗のトラブルシューティングガイド
+
+## `api-db-and-infra` の「Wait for PostgreSQL」で失敗する（`borrow_return` 等・フレーク）
+
+**症状**: ジョブ `api-db-and-infra` 内の **`Wait for PostgreSQL`**（`scripts/ci/wait-for-postgres.sh`）が失敗し、ログに **参照先 DB 名**（例: `borrow_return`）が**存在しない**旨が出る。
+
+**切り分け**: アプリ改修と**無関係**な一次失敗のとき、GitHub Actions ランナー上の **PostgreSQL コンテナ初期化／マイグレーション順**の一時的な不整合（**フレーク**）として扱う。
+
+**対処（運用）**:
+- GitHub UI または `gh run rerun <run_id> --failed` で**失敗ジョブのみ再実行**する
+- 再実行で緑化する例: 2026-04-27 の PR #203 系 CI（記録: [KB-358](../knowledge-base/ci-cd.md#kb-358-api-db-and-infra-の-wait-for-postgresql-が-flake-するborrow_return-等)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Surprises）
+
+**再発防止（開発）**:
+- 同一段階で連続再発する場合は、workflow の DB 起動手順・テスト用 DB 名の前提を `scripts/ci/` 側で点検する（**必要になったら** Issue/ADR に切り出す）
 
 ## Trivy（`aquasecurity/trivy-action`）が解決できない
 

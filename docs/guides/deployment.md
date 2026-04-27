@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-26
+last-verified: 2026-04-27
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-26（DGX LocalLLM 運用堅牢化・env 整合・Pi5 のみ）
+最終更新: 2026-04-27（PR #203・`main`・Pi5 のみ・`runtime_stop_policy` 同梱を含む）
+
+### 補足（2026-04-27: PR #203 マージ後の Pi5 正規追従・`main`・`runtime_stop_policy` / DGX ドキュメント同梱）
+
+- **変更概要**: [#203](https://github.com/denkoushi/RaspberryPiSystem_002/pull/203) を `main` にマージ（マージコミット **`e97c7941`**）。含む: `scripts/dgx-local-llm-system/runtime_stop_policy.py`・`control-server.py` 更新・[ADR-20260427](../decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)・Runbook/KB/INDEX 追補。
+- **対象ホスト（本記録）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。DGX ホスト上のファイル配置は [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md) / [KB-357](../knowledge-base/infrastructure/security.md)（inventory 外作業）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: **Detach Run ID**（`ansible-update-`）: **`20260427-201319-30682`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 202s**（**Docker 再ビルドは本記録では skip** 中心・サマリ `Git: changed`））。
+- **知見（Mac 運用端末）**: 同一実行で **`./scripts/update-all-clients.sh: line 904: …/.pyenv/shims/python3: No such file or directory`** が出ることがある。リモート Ansible は完走し得るが、**整形用パイプの `python3` 解決に失敗**している。対処: **`command -v python3`** で実体を確認し、**pyenv shims を直す**か **`PATH` 先頭に解決可能な `python3`** を置く（[KB-359](../knowledge-base/ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告)）。
+- **ナレッジ**: [KB-358](../knowledge-base/ci-cd.md#kb-358-api-db-and-infra-の-wait-for-postgresql-が-flake-するborrow_return-等)（CI）・[KB-359](../knowledge-base/ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告)（Mac）・[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
+
+最終更新（前項まで）: 2026-04-26（DGX LocalLLM 運用堅牢化・env 整合・Pi5 のみ）
 
 ### 補足（2026-04-26: DGX LocalLLM 運用堅牢化・`LOCAL_LLM` / `INFERENCE_PROVIDERS_JSON` 整合・embedding 指紋・Ansible fail-fast・API のみ・Pi5 のみ）
 
