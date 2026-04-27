@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-27（PR #203・`main`・Pi5 のみ・`runtime_stop_policy` 同梱を含む）
+最終更新: 2026-04-27（`feat/dgx-blue-vlm400-hardening`・Pi5 のみ・VLM 400 再送・OpenAI 応答抽出共通化・Phase12 実機検証）
+
+### 補足（2026-04-27: VLM 画像 400 再送・OpenAI 応答抽出共通化・`feat/dgx-blue-vlm400-hardening`・Pi5 のみ）
+
+- **変更概要**: ブランチ **`feat/dgx-blue-vlm400-hardening`**（代表コミット **`d962afa3`**）。VLM 上流が画像ペイロードを拒否（HTTP 400 相当）する場合に **JPEG 再エンコード後の最大 1 回再送**、OpenAI 互レスポンスのテキスト抽出を **`message.content` → `reasoning` / `reasoning_content` 等へフォールバック**する共通化。本番の **DGX active backend 既定**（green 維持）の方針は [ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md) 参照。
+- **対象ホスト（本記録）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 / Pi4 個別デプロイは本変更の必須対象外**（従来どおり API は Pi5）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/dgx-blue-vlm400-hardening infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: **Detach Run ID**（`ansible-update-`）: **`20260427-205257-20823`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 738s**（**`Rebuild/Restart docker compose services`** を含む））。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 96s**・Tailscale・Pi5 `100.106.158.2`）。
+- **トラブルシュート**: 400 が続く場合は **元画像**・**上流 VLM の制限**を確認。本アダプタは **再送は最大 1 回**（`routed-vision-completion`）。デプロイ前 **未追跡ファイル**は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+- **ナレッジ**: [ADR-20260427](../decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)・[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-27: PR #203 マージ後の Pi5 正規追従・`main`・`runtime_stop_policy` / DGX ドキュメント同梱）
 
