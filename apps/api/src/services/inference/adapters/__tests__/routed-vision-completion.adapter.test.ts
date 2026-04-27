@@ -90,6 +90,49 @@ describe('RoutedVisionCompletionAdapter', () => {
     expect(out.rawText).toBe('再送後の応答');
   });
 
+  it('retries once on pixel limit 400 with smaller maxEdge reencode', async () => {
+    const reencode = vi.fn(async (_buf: Buffer, _mime: string, opts?: { maxEdge?: number }) => {
+      expect(opts?.maxEdge).toBe(384);
+      return Buffer.from('jpeg-384');
+    });
+    let call = 0;
+    const fetchImpl = vi.fn(async () => {
+      call += 1;
+      if (call === 1) {
+        return {
+          ok: false,
+          status: 400,
+          text: async () => 'image pixel limit exceeded for vision input',
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: 'ok-after-resize' } }],
+        }),
+      };
+    }) as unknown as typeof fetch;
+
+    const adapter = new RoutedVisionCompletionAdapter({
+      router: baseRouter(),
+      fetchImpl,
+      useCase: 'photo_label',
+      getMaxTokens: () => 100,
+      getTemperature: () => 0.1,
+      reencodeImageBufferForVlmFallback: reencode,
+    });
+
+    const out = await adapter.complete({
+      imageBytes: Buffer.from([1, 2, 3]),
+      mimeType: 'image/png',
+      userText: 't',
+    });
+    expect(out.rawText).toBe('ok-after-resize');
+    expect(reencode).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('does not retry on non-decode 400', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: false,

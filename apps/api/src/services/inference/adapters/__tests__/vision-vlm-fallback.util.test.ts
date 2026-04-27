@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyVlmHttp400SubReason,
   isLikelyVlmImageLoadOrDecodeHttp400,
+  isRetryableVlmImageHttp400,
 } from '../vision-vlm-fallback.util.js';
 
 describe('vision-vlm-fallback.util', () => {
@@ -15,7 +16,14 @@ describe('vision-vlm-fallback.util', () => {
 
   it('classifies 400 sub-reasons', () => {
     expect(classifyVlmHttp400SubReason(400, 'too large max pixels')).toBe('size');
+    expect(classifyVlmHttp400SubReason(400, 'image pixel limit exceeded')).toBe('size');
     expect(classifyVlmHttp400SubReason(400, 'Failed to load image')).toBe('image_decode');
     expect(classifyVlmHttp400SubReason(400, 'generic')).toBe('unknown');
+  });
+
+  it('marks size and decode 400s as retryable for one JPEG resend', () => {
+    expect(isRetryableVlmImageHttp400(400, 'image exceeds max pixels')).toBe(true);
+    expect(isRetryableVlmImageHttp400(400, 'Failed to load image: x')).toBe(true);
+    expect(isRetryableVlmImageHttp400(400, 'unrelated client error')).toBe(false);
   });
 });
