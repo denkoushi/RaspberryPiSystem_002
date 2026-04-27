@@ -1,4 +1,5 @@
 import { ApiError } from '../../lib/errors.js';
+import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from '../inference/adapters/openai-chat-response.util.js';
 
 import type { LocalLlmObservability } from './local-llm-observability.js';
 
@@ -112,52 +113,12 @@ const trimErrorBody = (body: string): string => body.slice(0, 500);
 const toOptionalNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
-type LocalLlmUpstreamMessage = {
-  content?: unknown;
-  reasoning?: unknown;
-  reasoning_content?: unknown;
-};
-
-const extractTextLikeField = (value: unknown): string | null => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-  if (Array.isArray(value)) {
-    const texts = value
-      .map((part) => {
-        if (!part || typeof part !== 'object') {
-          return '';
-        }
-        if ('text' in part && typeof (part as { text?: unknown }).text === 'string') {
-          return (part as { text: string }).text;
-        }
-        return '';
-      })
-      .filter(Boolean);
-    const joined = texts.join(' ').trim();
-    return joined.length > 0 ? joined : null;
-  }
-  return null;
-};
-
-const resolveAssistantContent = (message: LocalLlmUpstreamMessage | undefined): string | null => {
-  if (!message) {
-    return null;
-  }
-  return (
-    extractTextLikeField(message.content) ??
-    extractTextLikeField(message.reasoning) ??
-    extractTextLikeField(message.reasoning_content)
-  );
-};
-
 const normalizeChatCompletionResponse = (
   payload: LocalLlmUpstreamResponse,
   fallbackModel: string
 ): LocalLlmChatCompletionResult => {
   const firstChoice = Array.isArray(payload.choices) ? payload.choices[0] : undefined;
-  const content = resolveAssistantContent(firstChoice?.message);
+  const content = extractTextFromOpenAiStylePayload(payload as OpenAiStyleChatResponse);
   if (!content) {
     throw new ApiError(
       502,
