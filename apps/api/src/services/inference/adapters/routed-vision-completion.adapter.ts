@@ -6,8 +6,9 @@ import type { InferenceUseCase } from '../types/inference-usecase.js';
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from './openai-chat-response.util.js';
 import {
   classifyVlmHttp400SubReason,
-  isLikelyVlmImageLoadOrDecodeHttp400,
+  isRetryableVlmImageHttp400,
   reencodeImageBufferForVlmFallback,
+  type VlmReencodeOptions,
 } from './vision-vlm-fallback.util.js';
 
 const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
@@ -32,7 +33,11 @@ export type RoutedVisionCompletionAdapterDeps = {
    * DGX vLLM 等で画像デコード 400 時の再エンコード（テスト差し替え用）。
    * 未指定時は `reencodeImageBufferForVlmFallback`（sharp）を使う。
    */
-  reencodeImageBufferForVlmFallback?: (imageBytes: Buffer, mimeType: string) => Promise<Buffer>;
+  reencodeImageBufferForVlmFallback?: (
+    imageBytes: Buffer,
+    mimeType: string,
+    options?: VlmReencodeOptions
+  ) => Promise<Buffer>;
 };
 
 /**
@@ -122,9 +127,14 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort {
 
       let errText = trimErrorBody(await response.text());
 
-      if (response.status === 400 && isLikelyVlmImageLoadOrDecodeHttp400(400, errText)) {
+      if (response.status === 400 && isRetryableVlmImageHttp400(400, errText)) {
         try {
-          const reencoded = await reencode(input.imageBytes, input.mimeType);
+          const sub = classifyVlmHttp400SubReason(400, errText);
+          const reencodeOpts: VlmReencodeOptions =
+            sub === 'size'
+              ? { maxEdge: 384, quality: 65 }
+              : { maxEdge: 512, quality: 72 };
+          const reencoded = await reencode(input.imageBytes, input.mimeType, reencodeOpts);
           response = await postChat(reencoded, 'image/jpeg');
           if (response.ok) {
             return await parseAndReturn(response);
