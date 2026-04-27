@@ -357,6 +357,14 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - **検証**: 開発端末で `./scripts/deploy/verify-phase12-real.sh` → 実測 **`PASS 42 / WARN 1 / FAIL 0`**（WARN は `auto-tuning scheduler` ログ 0 件。スクリプトは `PUT auto-generate=200` を代替合格とする）。
 - **恒久化**: 上記の「手元同期」は**例外**。リモートを **`main` に追従**（`update-all-clients` 等）してから、同じ playbook だけで再現できる状態に戻すのが望ましい。
 
+### 2026-04-27 DGX 本番: `runtime_stop_policy` 同梱の `control-server.py` 反映と到達経路
+
+- **目的**: repo の `scripts/dgx-local-llm-system/`（`control-server.py` + **`runtime_stop_policy.py` 同梱必須**）を DGX の `/srv/dgx/system-prod/bin/` に揃え、`BLUE_LLM_RUNTIME_STOP_MODE` / 互換 `BLUE_LLM_RUNTIME_KEEP_WARM` による **blue `/stop` 方針**を本番で有効にする。
+- **Tailscale / SSH**: 既定 ACL では **Pi5 → DGX の `38081` は通るが `22` は通らない**ことが多い（`38081` のみ許可のため）。ホストへ直接配置する場合は **一時 grant**（`tag:server` → `tag:llm`, `tcp:22`）→ 作業後 **grants から除去**。[tailscale-policy.md](../security/tailscale-policy.md)・[KB-357](../knowledge-base/infrastructure/security.md)。
+- **到達経路の例**: `tag:admin`（Mac）から DGX tailnet IP への直 **HTTP は ACL で届かない**ことが多い → **Pi5 経由**の疎通確認、または **工場 LAN**（例: `192.168.128.156`）と **登録済み SSH 鍵**（LAN と tailnet で同じ公開鍵を `authorized_keys` に載せる必要あり）。
+- **疎通時の注意（blue / vLLM）**: cold start 中は **`127.0.0.1:38083`** および gateway 経由の **`/v1/models`** が **502** や **connection reset** になり得る。`docker logs`（`system-prod-trtllm` 等）で **重み load・`torch.compile`・autotune** 完了まで待つ。最小チャット検証では **`chat_template_kwargs: { "enable_thinking": false }`** を付けないと **`message.content` が空**になりやすい。
+- **`keep_warm`**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）かつ active backend が blue のとき、**`POST /stop` 後も** trtllm コンテナと **`/v1/models` が生存**する挙動を確認できる（本番ではリソース方針に合わせ ADR のとおり）。
+
 ## 推奨ポートと役割
 
 Ubuntu 現行構成との互換を優先し、DGX 側でも次を基本にする。

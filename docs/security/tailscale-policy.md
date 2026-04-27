@@ -1,6 +1,6 @@
 # Tailscale Policy（タグ/ACL/SSH）運用台帳
 
-最終更新: 2026-03-28
+最終更新: 2026-04-27
 
 ## 目的
 
@@ -329,6 +329,7 @@ Stage 3（Tailscale SSH）:
 - **NFCストリーム端末分離**: Pi4でNFCスキャンした際、Macで開いたキオスク画面でも動作が発動する問題を解決。NFCストリームポリシー（`disabled`/`localOnly`/`legacy`）を実装し、MacではNFCを無効化、Pi4では`ws://localhost:7071/stream`のみに接続するように変更。Pi5経由の`/stream`プロキシを削除し、共有購読面を撤去（KB-266参照）
 - **LocalLLM 用 auth key の扱い**: `docker compose config` や `tailscale` 起動ログに `TS_AUTHKEY` が展開表示されうる。auth key は **新規参加後に revoke + ローカル削除** を前提とし、平常運用では残さない。
 - **`tag:llm` の永続化**: `tailscale up --advertise-tags=tag:llm` を適用したら、`TS_EXTRA_ARGS` にも同じ `--advertise-tags=tag:llm` を残さないと、再起動時に `requires mentioning all non-default flags` でループする。
+- **DGX（`tag:llm`）への SSH は既定で閉じている**: allowlist の原型は **`tag:server → tag:llm: tcp:38081`**（LocalLLM 入口）まで。Pi5 から DGX ホストへ **ファイル投入・`control-server.py` 更新**を **tailnet SSH** だけで行うには **`tcp:22` の grant が別途必要**。**一時的に** `{"src":["tag:server"],"dst":["tag:llm"],"ip":["tcp:22"]}` を足し、作業完了後 **必ず削除**する（台帳の本節を更新し、横移動面を元に戻す）。運用の切り分けと手順の正本: [KB-357](../knowledge-base/infrastructure/security.md)（「DGX（`tag:llm`）への制御層ファイル反映…」）。
 
 ## ロールバック
 

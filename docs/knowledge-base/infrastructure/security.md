@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 21件  
+**件数**: 22件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
@@ -73,6 +73,33 @@ update-frequency: medium
 - `docs/security/tailscale-policy.md`
 - `docs/security/system-inventory.md`
 - `docs/decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md`
+
+---
+
+### [KB-357] DGX（`tag:llm`）への制御層ファイル反映と Tailscale / SSH 経路
+
+**状況**: リポジトリの `scripts/dgx-local-llm-system/`（例: `control-server.py` + 同梱 `runtime_stop_policy.py`）を DGX 本番パス `/srv/dgx/system-prod/bin/` へ反映する必要がある。通常の allowlist は **`tag:server -> tag:llm: tcp:38081`** のみであり、**API 疎通と「ホストへ SSH で配置」は別問題**である。
+
+**事象・切り分け**:
+- **Mac (`tag:admin`) から `100.118.82.72:38081` が timeout**: ACL 上 **想定どおり**（`tag:admin -> tag:llm` は閉じている）。`tailscale status` に DGX が出ない場合は、**制御プレーン未同期**（`offline` / network map 未受信）も疑う → Tailscale の再接続や端末側のオン/オフを試す。
+- **Pi5 (`tag:server`) から `:38081` は通るが `:22` が timeout**: 既定の grants では **Pi5→DGX の SSH が許可されていない**ため。**一時的に** `tag:server -> tag:llm` に `tcp:22` を足し、作業後に **元に戻す**（台帳: [tailscale-policy.md](../../security/tailscale-policy.md)）。
+- **`:22` が開いても `Permission denied`**: 経路はあるが **DGX 側 `authorized_keys` に Pi5 / 運用端末の公開鍵がない**。LAN 上の DGX（例: `192.168.128.156`）へ既存鍵（例: `~/.ssh/id_ed25519_raspi`）で入れる場合は、**同じ鍵を `ubudgxkoushi@100.118.82.72` 側にも登録**する必要がある（tailnet 越しのユーザーは環境に合わせる）。
+- **反映後 `GET /v1/models` が `502` / `Connection reset`**: 多くは **vLLM（blue）の cold start**（重み load・`torch.compile`・FlashInfer autotune 等）で、**`docker logs system-prod-trtllm` が `Application startup complete` まで待つ**。`/healthz` だけ早くても推論系は未 ready になり得る。
+
+**2026-04-27 実施した手順（要約）**:
+1. 必要なら一時 grant: `{"src":["tag:server"],"dst":["tag:llm"],"ip":["tcp:22"]}` → 作業完了後 **削除**。
+2. 運用端末 → DGX（LAN または上記 SSH が通る経路）で `/srv/dgx/system-prod/bin` に `control-server.py` / `runtime_stop_policy.py` / `start-control-server.sh` 等を配置（旧版は `backup-YYYYMMDD-...` へ退避）。
+3. `start-control-server.sh` 相当で **control プロセスを再起動**（PID 管理のため **kill してから起動**が安全）。
+4. 検証: `127.0.0.1:39090` に `X-Runtime-Control-Token` 付き `GET /healthz` → `ok`。Pi5 から `http://100.118.82.72:38081/healthz` と、トークン付き `GET /v1/models`。blue かつ `BLUE_LLM_RUNTIME_KEEP_WARM=true`（または `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`）のとき **`POST /stop` 後も** `v1/models` が生存し、コンテナが落ちなければ **keep-warm no-op** が有効。
+
+**学んだこと / 再発防止**:
+- `control-server.py` は **`runtime_stop_policy.py` 同梱**が必須。片方だけ配置すると import 失敗。
+- チャットの最小疎通では `chat_template_kwargs: { "enable_thinking": false }` を付けないと **`message.content` が空**になりやすい（vLLM / Qwen3.6 系の既知挙動と整合）。
+- 運用方針の正本: [dgx-system-prod-local-llm.md](../../runbooks/dgx-system-prod-local-llm.md)・[ADR-20260427-blue-llm-runtime-stop-policy.md](../../decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)。
+
+**関連**:
+- [tailscale-policy.md](../../security/tailscale-policy.md)
+- [dgx-system-prod-local-llm.md](../../runbooks/dgx-system-prod-local-llm.md)
 
 ---
 
