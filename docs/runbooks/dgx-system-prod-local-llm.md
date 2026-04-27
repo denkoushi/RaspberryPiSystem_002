@@ -357,6 +357,14 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - **検証**: 開発端末で `./scripts/deploy/verify-phase12-real.sh` → 実測 **`PASS 42 / WARN 1 / FAIL 0`**（WARN は `auto-tuning scheduler` ログ 0 件。スクリプトは `PUT auto-generate=200` を代替合格とする）。
 - **恒久化**: 上記の「手元同期」は**例外**。リモートを **`main` に追従**（`update-all-clients` 等）してから、同じ playbook だけで再現できる状態に戻すのが望ましい。
 
+### 2026-04-27 DGX 本番: `runtime_stop_policy` 同梱の `control-server.py` 反映と到達経路
+
+- **目的**: repo の `scripts/dgx-local-llm-system/`（`control-server.py` + **`runtime_stop_policy.py` 同梱必須**）を DGX の `/srv/dgx/system-prod/bin/` に揃え、`BLUE_LLM_RUNTIME_STOP_MODE` / 互換 `BLUE_LLM_RUNTIME_KEEP_WARM` による **blue `/stop` 方針**を本番で有効にする。
+- **Tailscale / SSH**: 既定 ACL では **Pi5 → DGX の `38081` は通るが `22` は通らない**ことが多い（`38081` のみ許可のため）。ホストへ直接配置する場合は **一時 grant**（`tag:server` → `tag:llm`, `tcp:22`）→ 作業後 **grants から除去**。[tailscale-policy.md](../security/tailscale-policy.md)・[KB-357](../knowledge-base/infrastructure/security.md)。
+- **到達経路の例**: `tag:admin`（Mac）から DGX tailnet IP への直 **HTTP は ACL で届かない**ことが多い → **Pi5 経由**の疎通確認、または **工場 LAN**（例: `192.168.128.156`）と **登録済み SSH 鍵**（LAN と tailnet で同じ公開鍵を `authorized_keys` に載せる必要あり）。
+- **疎通時の注意（blue / vLLM）**: cold start 中は **`127.0.0.1:38083`** および gateway 経由の **`/v1/models`** が **502** や **connection reset** になり得る。`docker logs`（`system-prod-trtllm` 等）で **重み load・`torch.compile`・autotune** 完了まで待つ。最小チャット検証では **`chat_template_kwargs: { "enable_thinking": false }`** を付けないと **`message.content` が空**になりやすい。
+- **`keep_warm`**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）かつ active backend が blue のとき、**`POST /stop` 後も** trtllm コンテナと **`/v1/models` が生存**する挙動を確認できる（本番ではリソース方針に合わせ ADR のとおり）。
+
 ## 推奨ポートと役割
 
 Ubuntu 現行構成との互換を優先し、DGX 側でも次を基本にする。
@@ -529,7 +537,17 @@ inference_photo_label_model: "system-prod-primary"
 
 `blue`（`vLLM` + NVFP4）を on-demand で使う場合、cold start が 10 分超になるケースがある。`api_local_llm_runtime_ready_timeout_ms` は `900000` 以上を推奨する。
 
-さらに、検証フェーズでは DGX `control-server.env` に `BLUE_LLM_RUNTIME_KEEP_WARM=true` を入れると、active backend が blue のとき `/stop` を no-op 化できる。これにより毎回の cold start を避け、連続テストの待機時間を大幅に減らせる。
+さらに、検証フェーズでは DGX `control-server.env` で **blue の停止ポリシー**を指定できる（推奨: `BLUE_LLM_RUNTIME_STOP_MODE`）。`keep_warm` または `always_on` のとき、active backend が blue なら `/stop` は no-op 化し、**実ランタイムを落とさない**（`on_demand` では従来どおり `BLUE_LLM_RUNTIME_STOP_CMD` を実行）。**互換**: `BLUE_LLM_RUNTIME_STOP_MODE` 未使用時は `BLUE_LLM_RUNTIME_KEEP_WARM=true` で同等の `keep_warm` 相当。詳細: `scripts/dgx-local-llm-system/runtime_stop_policy.py`、ADR: [ADR-20260427-blue-llm-runtime-stop-policy.md](../decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)。
+
+#### Blue 停止ポリシーと一般的大規模推論運用（対照）
+
+| 本リポのモード | ざっくり意味 | 主な比較軸（トレードオフ） |
+| --- | --- | --- |
+| `on_demand` | 利用後に止める | **リソース回収**・他用途との併用に有利。起動**待ち**は最大（blue cold start ~12 分規模の可能性）。 |
+| `keep_warm` / `always_on` | `/stop` を掛けず温存 | **反復検証/SLA 寄り**の応答導通に有利。GPU/メモリ**占有**が続く。 |
+| （Pi5 側 `on_demand` 制御） | リクエスト単位の ensure/release | クラウド系では **HPA + 最小レプリカ**、**重みの事前キャッシュ**と同軸。単一 DGX では `STOP_MODE` で近似。 |
+
+**外部のよくあるパターン（要約）**: 本番 vLLM / K8s では、巨大モデルは **起動＋重み load がボトルネック**になることが多く、**永続 volume 上の重み**・**スケール時の待ち行列**・**prefix caching 等**で tail latency を抑える。本システムは **1 台 DGX**・Pi5 gateway が `start`/`stop` を叩くため、**`keep_warm` は「最小レプリカ 1 相当の温域」**、`on_demand` は **ゼロスケール寄り**と読み替えられる。推奨の整理は ADR および `docs/plans/dgx-spark-local-llm-migration-execplan.md` の **green→blue 本番採用判断**と合わせる。
 
 blue では upstream `chat.completions` の返りが `message.content` ではなく `message.reasoning`（または `reasoning_content`）に寄ることがある。Pi5 API 側 `local-llm-proxy` では、`content` が空のときに `reasoning` / `reasoning_content` / `content[]`（text parts）へフォールバックして本文を抽出する実装を入れておく。
 

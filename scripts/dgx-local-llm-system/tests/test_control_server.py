@@ -32,7 +32,7 @@ class ControlServerTests(unittest.TestCase):
             green_stop_cmd="green-stop",
             blue_start_cmd="blue-start",
             blue_stop_cmd="blue-stop",
-            blue_keep_warm=False,
+            blue_stop_mode="on_demand",
             host="127.0.0.1",
             port=39090,
         )
@@ -51,7 +51,7 @@ class ControlServerTests(unittest.TestCase):
             green_stop_cmd="green-stop",
             blue_start_cmd="blue-start",
             blue_stop_cmd="blue-stop",
-            blue_keep_warm=False,
+            blue_stop_mode="on_demand",
             host="127.0.0.1",
             port=39090,
         )
@@ -87,7 +87,7 @@ class ControlServerTests(unittest.TestCase):
 
         self.assertEqual(calls, ["blue-start", "blue-stop"])
 
-    def test_resolve_command_blue_stop_noop_when_keep_warm_enabled(self):
+    def test_resolve_command_blue_stop_noop_when_keep_warm_mode(self):
         module = load_module()
         config = module.ControlConfig(
             token="token",
@@ -98,12 +98,30 @@ class ControlServerTests(unittest.TestCase):
             green_stop_cmd="green-stop",
             blue_start_cmd="blue-start",
             blue_stop_cmd="blue-stop",
-            blue_keep_warm=True,
+            blue_stop_mode="keep_warm",
             host="127.0.0.1",
             port=39090,
         )
 
         self.assertEqual(module.resolve_command(config, "start"), "blue-start")
+        self.assertEqual(module.resolve_command(config, "stop"), ":")
+
+    def test_resolve_command_blue_stop_noop_when_always_on_mode(self):
+        module = load_module()
+        config = module.ControlConfig(
+            token="token",
+            active_backend="blue",
+            start_cmd="legacy-start",
+            stop_cmd="legacy-stop",
+            green_start_cmd="green-start",
+            green_stop_cmd="green-stop",
+            blue_start_cmd="blue-start",
+            blue_stop_cmd="blue-stop",
+            blue_stop_mode="always_on",
+            host="127.0.0.1",
+            port=39090,
+        )
+
         self.assertEqual(module.resolve_command(config, "stop"), ":")
 
 

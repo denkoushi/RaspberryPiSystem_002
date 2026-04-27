@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-27）
+
+- **DGX `tag:llm` 本番: `runtime_stop_policy` 同梱の `control-server.py` 反映・Tailscale 一時 `tcp:22` 終了・到達経路 / トラブルシュート集約**: 手順・知見は [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（「2026-04-27 DGX 本番」節）・[tailscale-policy.md](./security/tailscale-policy.md)（知見）・[KB-357](./knowledge-base/infrastructure/security.md)（DGX ファイル投入・SSH・502/reset・`enable_thinking` 等）。**Progress/Surprises**: [dgx-spark-local-llm-migration-execplan.md](./plans/dgx-spark-local-llm-migration-execplan.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)（Next Steps の DGX 節）。
+
 ### 🆕 最新アップデート（2026-04-25）
 
 - **パレット可視化ボード スロット幾何・下段4明細 全幅（`computePalletSlotCardLayout`）本番 API のみ・`raspberrypi5` のみ・Phase12 43/0/0**: ブランチ **`feat/pallet-board-slot-geometry-and-fullwidth-details`**・代表 **`b67476da`**（`pallet-board-slot-card-layout.ts`・`pallet-board-single-layout.ts`・Vitest）。**デプロイ**: [deployment.md](./guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-slot-geometry-and-fullwidth-details infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-133302-18334`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 13.6 分**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **59s**）。**Pi3 不要**（JPEG は Pi5 `api`）。**手動目視（推奨）**: 管理 `/admin/signage/preview` で **下段4行の全幅**。**ナレッジ**: [api.md KB-355 追補（スロット幾何）](./knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)。**進捗**: [EXEC_PLAN.md](../EXEC_PLAN.md)。**PR**: [#200](https://github.com/denkoushi/RaspberryPiSystem_002/pull/200)
@@ -155,7 +159,7 @@
 ### LocalLLM（Ubuntu / Tailscale）
 
 - **運用手順**: [local-llm-tailscale-sidecar.md](./runbooks/local-llm-tailscale-sidecar.md)（**トークンローテーション**は同 Runbook の「共有トークンのローテーション」節）
-- **DGX system-prod 段階切替 Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（`green/blue` 差し替え、blue cold start・`BLUE_LLM_RUNTIME_KEEP_WARM`、`INFERENCE_PROVIDERS_JSON` / `LOCAL_LLM_*`、**コンテナ隔離の限界**とトラブルシューティング） / **DGX 起動雛形・systemd**: [scripts/dgx-local-llm-system/README.md](../scripts/dgx-local-llm-system/README.md)
+- **DGX system-prod 段階切替 Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（`green/blue` 差し替え、blue cold start・`BLUE_LLM_RUNTIME_STOP_MODE` / 互換 `BLUE_LLM_RUNTIME_KEEP_WARM`、`INFERENCE_PROVIDERS_JSON` / `LOCAL_LLM_*`、**コンテナ隔離の限界**とトラブルシューティング） / **DGX 起動雛形・systemd**: [scripts/dgx-local-llm-system/README.md](../scripts/dgx-local-llm-system/README.md) / **ADR（blue 停止ポリシー）**: [ADR-20260427-blue-llm-runtime-stop-policy.md](./decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)
 - **DGX Spark 移行・多用途分離運用計画**: [dgx-spark-local-llm-migration-execplan.md](./plans/dgx-spark-local-llm-migration-execplan.md)（Ubuntu PC から DGX Spark への LocalLLM 置換、公式 NVIDIA スタック優先、業務/私用/実験用途の気密分離、巨大モデル共有、ストレージ運用、段階計画と進捗管理表）
 - **2026-04-27 追補（Pi5 整合）**: `manage-app-configs` + 必要な `apps/api` / Ansible 同期 + `api` 再ビルド後、開発端末で `./scripts/deploy/verify-phase12-real.sh` **PASS 42 / WARN 1 / FAIL 0**（Runbook ・ ExecPlan `Progress` 参照）
 - **DGX Spark photo_label VLM 検証計画**: [dgx-spark-photo-label-validation-plan.md](./plans/dgx-spark-photo-label-validation-plan.md)（`photo_label` を Ubuntu fallback から Spark へ寄せるための互換性・安定性・品質・退役判断条件）

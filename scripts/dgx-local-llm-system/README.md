@@ -13,6 +13,8 @@ DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`*
 
 - `control-server.py`
   - `LLM_RUNTIME_START_CMD` / `LLM_RUNTIME_STOP_CMD` を実行する最小 HTTP サーバ
+- `runtime_stop_policy.py`
+  - blue 向け `/stop` の挙動（`on_demand` / `keep_warm` / `always_on`）を解決。環境変数: **`BLUE_LLM_RUNTIME_STOP_MODE`（推奨）**、**`BLUE_LLM_RUNTIME_KEEP_WARM`（非推奨・互換）** — 前者が優先
 - `gateway-server.py`
   - `/healthz` / `/start` / `/stop` / `/v1/*` / `/embed` を localhost 上で束ねる軽量 gateway
 - `embedding-server.py`
@@ -197,6 +199,8 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 - model alias: `system-prod-primary`
 
 したがって、Pi5 側は alias を変えずに、DGX 側だけで green / blue の backend を切り替えられる。
+
+**blue ランタイムの温存（検証用）**: `ACTIVE_LLM_BACKEND=blue` のとき、`BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）にすると `POST /stop` が**実 stop を実行せず** no-op になり、**vLLM の cold start を繰り返さない**。本番の常時占有方針は [docs/runbooks/dgx-system-prod-local-llm.md](../../docs/runbooks/dgx-system-prod-local-llm.md) および [ADR-20260427](../../docs/decisions/ADR-20260427-blue-llm-runtime-stop-policy.md) と併せて判断する。
 
 systemd 用の最小例:
 
