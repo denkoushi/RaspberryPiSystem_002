@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-28）
+
+- **VLM 画像 400 追加堅牢化（PR #204 / PR #205）· 真因分類（コンテキスト超過 / デコード失敗）· Pi5 保存画像 531 件プローブ全件 200**: 実装は `main` 取り込み済み（`isRetryableVlmImageHttp400`・再エンコード `maxEdge`/`quality` 等）。保存画像一括では **400 再現なし**（巨大・破損テストで意図的再現）。DGX 入口は **Mac 直が timeout になり得る** → **Pi5 経由 SSH トンネル**（例 `127.0.0.1:38081`）で切り分え。**記録**: [deployment.md](./guides/deployment.md) 補足（2026-04-28）・[dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)・[EXEC_PLAN.md](../EXEC_PLAN.md) Progress / Surprises。
+
 ### 🆕 最新アップデート（2026-04-27）
 
 - **`main` マージ + Pi5 正規デプロイ（PR #203）・DGX/CI/運用ドキュメント収束**: [#203](https://github.com/denkoushi/RaspberryPiSystem_002/pull/203) を `main` にマージ（**`e97c7941`**）。`runtime_stop_policy.py`・`control-server.py`・[ADR-20260427](./decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)・Runbook/KB を含む。**Pi5**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach**（`ansible-update-`）: **`20260427-201319-30682`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 202s**）。**CI**: `api-db-and-infra` / **Wait for PostgreSQL** が 1 回 `borrow_return` 系で失敗 → **`gh run rerun --failed`** で緑化（[KB-358](./knowledge-base/ci-cd.md#kb-358-api-db-and-infra-の-wait-for-postgresql-が-flake-するborrow_return-等)）。**Mac**: `update-all-clients` 実行時 **`pyenv` shim の `python3` 不在警告**の例（デプロイは成功し得る・[KB-359](./knowledge-base/ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告)）。DGX 本番作業の手順・知見は [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（「2026-04-27 DGX 本番」節）・[tailscale-policy.md](./security/tailscale-policy.md)・[KB-357](./knowledge-base/infrastructure/security.md)。**Progress**: [dgx-spark-local-llm-migration-execplan.md](./plans/dgx-spark-local-llm-migration-execplan.md)・[EXEC_PLAN.md](../EXEC_PLAN.md)・[deployment.md](./guides/deployment.md) 冒頭。

@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-27
+last-verified: 2026-04-28
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,14 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-27（`feat/dgx-blue-vlm400-hardening`・Pi5 のみ・VLM 400 再送・OpenAI 応答抽出共通化・Phase12 実機検証）
+最終更新: 2026-04-28（VLM 400 追加堅牢化 #204/#205·真因分類·Pi5 保存画像 531 件プローブ。直前の Detach/実機記録は下記 2026-04-27 項を参照）
+
+### 補足（2026-04-28: VLM 画像 400 追加対策 `main`（PR #204 / PR #205）· 400 真因分類·ストレージ一括プローブ）
+
+- **仕様要約（API）**: PR [#204](https://github.com/denkoushi/RaspberryPiSystem_002/pull/204)（VLM 400 再試行・`openai-chat-response` 共通化 等）に続き、PR [#205](https://github.com/denkoushi/RaspberryPiSystem_002/pull/205) では **`isRetryableVlmImageHttp400` の拡張**、**大きさ由来の 400 でも再送**、**`reencodeImageBufferForVlmFallback` の `maxEdge` / `quality` 等**を反映（詳細は PR / `vision-vlm-fallback`・`routed-vision-completion` 周辺テストを参照）。
+- **知見（真因分類）**: 観測した **400** は単一の常設バグではなく、**入力条件依存**。**応答 body** 例: **(1) コンテキスト超過**（`Input length … exceeds … maximum context length`）、**(2) 画像デコード失敗**（`Failed to load image: cannot identify image file` 等）。**Pi5 保存画像 531 件**を本リポの `probe-photo-label-vlm.py` 相当手順で**一括**したところ**全件 HTTP 200**（当該母集団では 400 再現は出ず）。巨大・**意図的破損**画像では 400 を再現可能。
+- **トラブルシュート（到達経路）**: DGX 入口へ **Mac 直 HTTP** すると **timeout** になり得る。検証は **Pi5 経由**（例: SSH トンネルで **`127.0.0.1:38081`** へ中継）が現実的なことが多い（[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)「トラブルシューティング補足」）。
+- **本番追従**: 当時点の本番 **Pi5 API** は、当該差分取り込み後は従来どおり **`update-all-clients.sh main … --limit raspberrypi5`**（[deployment.md](./deployment.md) 他項・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress）で正本。
 
 ### 補足（2026-04-27: VLM 画像 400 再送・OpenAI 応答抽出共通化・`feat/dgx-blue-vlm400-hardening`・Pi5 のみ）
 

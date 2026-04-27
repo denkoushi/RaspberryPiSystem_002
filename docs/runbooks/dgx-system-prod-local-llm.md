@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-04-27
+last-verified: 2026-04-28
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -352,7 +352,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 - **DGX へ SSH / Tailscale が通らない**: cold start 中の高負荷に加え、**ホスト全体の応答不良**でも banner 前で落ちることがある。ローカル LAN や**物理コンソール**を試し、必要なら**再起動**。常に **`docker logs`（vLLM / gateway）**で起動段階を先に追う。
 - **Pi5 API が起動に失敗（Zod）**: `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS` を inventory で伸ばす場合、**`apps/api/src/config/env.ts` の `max` 以下**でないと API コンテナが起動しない。repo 側の上限拡大と**セット**で反映する。
-- **upstream `400` + 画像（`Failed to load image` 等）**: DGX 側 vLLM の画像デコード経路の問題の可能性。payload（base64 / URL）の最小再現、**DGX 上で直接** `probe-photo-label-vlm.py`、**`docker logs`** を参照。Pi5 側 `local-llm-proxy` の `reasoning` フォールバックは**本文空**対策であり、**400 自体**は解消しない。
+- **upstream `400` + 画像（VLM）**: **応答 body** で大まかに分類できる。**(1) 画像デコード失敗**系（例: `Failed to load image: cannot identify image file`）は **bytes / MIME / 破損**を疑う。**(2) コンテキスト超過**系（例: `Input length … exceeds … maximum context length`）は **プロンプト＋画像トークンが長すぎる**可能性。切り分け: payload（base64 / URL）の最小再現、**DGX 上**または **Pi5 から到達する同一 URL** で `probe-photo-label-vlm.py`、**`docker logs`**（vLLM `system-prod-trtllm` 等）。**到達経路**: 開発端末から DGX 入口 **直接 HTTP** は **timeout** になり得る → **Pi5 へ SSH** し **`127.0.0.1:38081`** へ **ローカルポートフォワード**（トンネル）で当てると切り分けしやすい。**観測（2026-04-28）**: Pi5 **保存済み**画像 **531 件**を一括プローブした例では **全件 200**（ストレージ母集団では 400 が出ない観測）。Pi5 側 `local-llm-proxy` の `reasoning` フォールバックは**本文空**対策であり、**400 自体**は解消しない。
 
 ### 2026-04-27 Pi5 本番：repo 差分の「正規 + 手元同期」で収束した例
 

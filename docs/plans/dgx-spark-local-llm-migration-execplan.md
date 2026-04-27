@@ -4,7 +4,7 @@
 
 tags: [DGX Spark, LocalLLM, NVIDIA, Docker, Tailscale, セキュリティ, 運用, 計画]
 audience: [運用者, 開発者, AIアシスタント]
-last-verified: 2026-04-27
+last-verified: 2026-04-28
 related:
 
 - ../runbooks/local-llm-tailscale-sidecar.md
@@ -171,6 +171,8 @@ Evidence: Pi5 から `POST /start` 後、`/v1/models` は ready 待ち後に `sy
 - Observation: **「コンテナに閉じてホストを汚さないか」について、本システムは 推論は Docker コンテナ内（公式/検証済み image + bind mount したモデル）に閉じ、ホストへ CUDA/PyTorch を手作業導入する運用は採用しない（ExecPlan の方針どおり）。一方、他コンテナと完全に混信・混入ゼロは、同一 DGX 上で GPU/DRAM/CPU を共有する限り保証しにくい。実務上の分離は 用途別 Docker network / 用途別 `compose` プロジェクト / ディレクトリと token の分離（`system-prod` / `private-personal` / `lab-experiments`）で行い、同一ホスト上の他ワークロードとはリソース競合し得る。blue（vLLM）で `--ipc host` を付ける例では IPC 名前空間をホストと共有する貿易（性能目的）が入り、「VM 相当の厳密分離」ではない**点に注意する。
 - Observation: 一部の経路で、vision payload が upstream で `**400 Bad Request`（画像デコード系メッセージ）** になる事象は、DGX 側 vLLM / 前処理の組み合わせ次第で **未解決のチューニング余地** として残る。本文抽出は Pi5 `local-llm-proxy` で `reasoning` フォールバック等の対策済み。
 - Evidence: エラーメッセージ例は `Failed to load image: cannot identify image file` 系（vLLM 側の解釈）。再現条件は payload / image pipeline に依存。
+- Observation（2026-04-28）: **400** は単一原因に帰せない。**コンテキスト超過**（`Input length … maximum context length`）と **画像デコード失敗**（`cannot identify image file` 等）を **body** で区別できる。本番 Pi5 保存画像 **531 件**の一括プローブ例では **全件 200**。PR [#204](https://github.com/denkoushi/RaspberryPiSystem_002/pull/204) / [#205](https://github.com/denkoushi/RaspberryPiSystem_002/pull/205) で API 側の **再試行・再エンコード**を拡張済み。
+- Evidence: 巨大・破損の**合成**画像で 400 を意図的再現。到達は **Pi5 経由 SSH トンネル**（`127.0.0.1:38081`）の方が Mac 直より安定しやすい例（[deployment.md](../guides/deployment.md) 2026-04-28 補足）。
 
 ## Decision Log
 
