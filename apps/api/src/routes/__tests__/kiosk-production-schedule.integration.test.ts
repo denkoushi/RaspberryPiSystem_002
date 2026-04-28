@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -23,6 +24,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
     await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementOperatorDecisionEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -54,6 +56,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
     await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.dueManagementOperatorDecisionEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -237,6 +240,78 @@ describe('Kiosk Production Schedule API', () => {
     // 完了状態のものはprogressが'完了'
     const completedRow = body.rows.find((r) => r.rowData.ProductNo === '0002');
     expect(completedRow?.rowData.progress).toBe('完了');
+  });
+
+  it('shows S/R from FKOJUNST_Status mail sync rows', async () => {
+    const targetRow = await prisma.csvDashboardRow.findFirst({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: '0001' },
+      },
+      select: { id: true },
+    });
+    expect(targetRow).toBeDefined();
+    if (!targetRow) return;
+
+    await prisma.productionScheduleFkojunstMailStatus.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: targetRow.id,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        fkojun: '210',
+        fkoteicd: '1',
+        fsezono: '0001',
+        statusCode: 'S',
+        sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      rows: Array<{ rowData: { ProductNo?: string; FKOJUNST?: string } }>;
+    };
+    expect(body.rows.find((row) => row.rowData.ProductNo === '0001')?.rowData.FKOJUNST).toBe('S');
+  });
+
+  it('hides rows when matched FKOJUNST_Status mail sync result is non S/R', async () => {
+    const targetRow = await prisma.csvDashboardRow.findFirst({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: '0001' },
+      },
+      select: { id: true },
+    });
+    expect(targetRow).toBeDefined();
+    if (!targetRow) return;
+
+    await prisma.productionScheduleFkojunstMailStatus.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: targetRow.id,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        fkojun: '210',
+        fkoteicd: '1',
+        fsezono: '0001',
+        statusCode: '?',
+        sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      rows: Array<{ rowData: { ProductNo?: string } }>;
+    };
+    expect(body.rows.map((row) => row.rowData.ProductNo)).toEqual(['0000', '0002']);
   });
 
   it('returns planned supplement fields when linked row exists', async () => {

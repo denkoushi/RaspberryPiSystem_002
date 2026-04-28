@@ -14,8 +14,10 @@ import {
   ensureProductionScheduleSeibanMachineNameSupplementDashboard,
 } from '../production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
 import { ensureProductionScheduleFkobainoDashboard } from '../production-schedule/fkobaino-dashboard.definition.js';
+import { ensureProductionScheduleFkojunstStatusMailDashboard } from '../production-schedule/fkojunst-status-mail-dashboard.definition.js';
 import {
   PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from '../production-schedule/constants.js';
 
@@ -118,6 +120,12 @@ export class CsvDashboardImportService {
 
     if (dashboardId === PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID) {
       await ensureProductionScheduleFkobainoDashboard(prisma);
+      return;
+    }
+
+    if (dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
+      await ensureProductionScheduleFkojunstStatusMailDashboard(prisma);
+      return;
     }
   }
 

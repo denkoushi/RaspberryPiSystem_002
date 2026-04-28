@@ -96,11 +96,15 @@ describe('CSV Import Schedule API', () => {
       expect(response.statusCode).toBe(200);
       const json = response.json() as { schedules: Array<{ id: string; schedule: string; provider?: string }> };
       const fk = json.schedules.find((s) => s.id === 'csv-import-productionschedule-fkojunst');
+      const fkStatusMail = json.schedules.find((s) => s.id === 'csv-import-productionschedule-fkojunst-status-mail');
       const seiban = json.schedules.find((s) => s.id === 'csv-import-seiban-machine-name-supplement');
       const fkobaino = json.schedules.find((s) => s.id === 'csv-import-purchase-order-fkobaino');
       expect(fk).toBeDefined();
       expect(fk?.schedule).toBe('0 0 * * *');
       expect(fk?.provider).toBe('gmail');
+      expect(fkStatusMail).toBeDefined();
+      expect(fkStatusMail?.schedule).toBe('5 1 * * *');
+      expect(fkStatusMail?.provider).toBe('gmail');
       expect(seiban).toBeDefined();
       expect(seiban?.schedule).toBe('15 6 * * 0');
       expect(seiban?.provider).toBe('gmail');
@@ -404,6 +408,34 @@ describe('CSV Import Schedule API', () => {
       ]);
     });
 
+    it('should keep fixed FKOJUNST_Status mail invariants in update response', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/imports/schedule/csv-import-productionschedule-fkojunst-status-mail',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          provider: 'dropbox',
+          schedule: '0 4 * * *',
+          targets: [{ type: 'csvDashboards', source: 'wrong-id' }],
+          enabled: true
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as {
+        schedule: { id: string; provider?: string; schedule: string; enabled: boolean; targets?: Array<{ source: string }> }
+      };
+      expect(json.schedule.id).toBe('csv-import-productionschedule-fkojunst-status-mail');
+      expect(json.schedule.provider).toBe('gmail');
+      expect(json.schedule.schedule).toBe('5 1 * * *');
+      expect(json.schedule.enabled).toBe(true);
+      expect(json.schedule.targets).toEqual([
+        { type: 'csvDashboards', source: 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e' }
+      ]);
+    });
+
     it('should keep fixed seiban machine name supplement invariants in update response', async () => {
       const response = await app.inject({
         method: 'PUT',
@@ -490,6 +522,18 @@ describe('CSV Import Schedule API', () => {
       const response = await app.inject({
         method: 'DELETE',
         url: '/api/imports/schedule/csv-import-productionschedule-fkojunst',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should return 400 when deleting fixed FKOJUNST_Status mail schedule', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/api/imports/schedule/csv-import-productionschedule-fkojunst-status-mail',
         headers: {
           authorization: `Bearer ${adminToken}`
         }
