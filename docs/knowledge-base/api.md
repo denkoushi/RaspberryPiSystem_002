@@ -593,7 +593,7 @@
 - **知見**: v3 機能本体は先行デプロイ済み。**`main`** に追随修正が入ったあとでも、JPEG は Pi5 **`api`** のため **追加で Pi5 へ `main` をデプロイ**して初めて本番に反映される。
 
 **追補（2026-04-28・サイネJPEG 静的プレビュー整合・`feat/pallet-board-signage-preview-parity`·`158ae8fe`·API のみ·Pi5 のみ）**:
-- **本番**: **`raspberrypi5` のみ**・Detach **`ansible-update-20260428-125721-24544`**（**`failed=0` / `unreachable=0` / exit `0`**・所要約 **620s**）・標準コマンドは [deployment.md 補足（preview parity）](../guides/deployment.md) 項。**`main`** への取り込みは **PR マージ**（本記録時点）。
+- **本番**: **`raspberrypi5` のみ**・Detach **`ansible-update-20260428-125721-24544`**（**`failed=0` / `unreachable=0` / exit `0`**・所要約 **620s**）・標準コマンドは [deployment.md 補足（preview parity）](../guides/deployment.md) 項。**PR**: [#208](https://github.com/denkoushi/RaspberryPiSystem_002/pull/208)。
 - **仕様**: **`DENSE_FHINC_FHINMEI_FONT_PX`**（FHIN／品名行 **14px**）・**デュアル帯仕切り** **`DUAL_STRIP_SEP_STROKE_WIDTH` / `5 4` / `stroke-linecap`**。静的プレビュー HTML と **並べて確認**すると差分が追いやすい。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**）。
 - **トラブルシュート**: メタ製番とヒント機種は別行のため、**サイズのみ**変更してもレイアウト破綻しにくいが、**JPEG が古い**ときはキャッシュ再起動または更新間隔（[modules/signage/README.md](../modules/signage/README.md)）。
