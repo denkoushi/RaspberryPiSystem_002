@@ -64,7 +64,7 @@ category: knowledge-base
 - **背景**: 順位ボードは軽量化のため `responseProfile=leaderboard` を使っていたが、当時は **`resolvedMachineName` を常に null** にしており、キオスク順位ボードの各カードで機種名が欠落していた（`actual-hours` 解決は引き続き省略）。
 - **対策**: `listProductionScheduleRows` の `leaderboard` 分岐で **`enrichProductionScheduleRowsWithResolvedMachineName` を呼び出す**（`full` と同一のバッチ解決）。`actualPerPieceMinutes` は null のまま。
 - **実装**: `apps/api/src/services/production-schedule/production-schedule-query.service.ts`・スキーマコメント `apps/api/src/routes/kiosk/production-schedule/shared.ts`・テスト更新（`production-schedule-query.service.test.ts`・`kiosk-production-schedule.integration.test.ts`）。
-- **本番デプロイ（実績）**: ブランチ **`feat/kiosk-leaderboard-machine-name-enrich`**・代表コミット **`e0305c8e`**。[deployment.md](../guides/deployment.md) 標準。**対象**: **`raspberrypi5` のみ**（Pi3/Pi4 不要・Web 差分なし）。**Detach Run ID**（`ansible-update-`）: **`20260428-192136-21236`**（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **167s**）。
+- **本番デプロイ（実績）**: ブランチ **`feat/kiosk-leaderboard-machine-name-enrich`**・代表コミット **`e0305c8e`**。[deployment.md](../guides/deployment.md) 標準。**対象**: **`raspberrypi5` のみ**（Pi3/Pi4 不要・Web 差分なし）。**Detach Run ID**（`ansible-update-`）: **`20260428-192136-21236`**（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **167s**）。**`main` マージ**: [PR #212](https://github.com/denkoushi/RaspberryPiSystem_002/pull/212)（merge **`75c01f24`**）。
 - **トラブルシュート**: 表示が更新されない場合は **Pi5 API イメージ**が当該コミットか確認。クライアントは従来どおり **`resolvedMachineName` を優先**（`normalizeLeaderBoardRow`）。旧 **`history-progress` の製番マップだけ**では未登録製番が埋まらない問題は本変更で緩和（一覧応答で正本を返す）。
 
 ## References
