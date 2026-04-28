@@ -576,7 +576,7 @@ describe('production-schedule-query.service', () => {
     expect(result.rows[0]?.actualPerPieceMinutes).toBe(4.4);
   });
 
-  it('responseProfile=leaderboard では actual-hours と機種名 enrich を省略する', async () => {
+  it('responseProfile=leaderboard では actual-hours のみ省略し機種名 enrich は行う', async () => {
     vi.mocked(prisma.productionScheduleActualHoursFeature.findMany).mockResolvedValue([
       {
         location: 'kiosk-1',
@@ -623,9 +623,9 @@ describe('production-schedule-query.service', () => {
 
     expect(result.total).toBe(1);
     expect(result.rows[0]?.actualPerPieceMinutes).toBeNull();
-    expect(result.rows[0]?.resolvedMachineName).toBeNull();
+    expect(result.rows[0]?.resolvedMachineName).toBe('機種-A');
     expect(prisma.productionScheduleActualHoursFeature.findMany).not.toHaveBeenCalled();
-    expect(enrichProductionScheduleRowsWithResolvedMachineName).not.toHaveBeenCalled();
+    expect(enrichProductionScheduleRowsWithResolvedMachineName).toHaveBeenCalledTimes(1);
   });
 });
 

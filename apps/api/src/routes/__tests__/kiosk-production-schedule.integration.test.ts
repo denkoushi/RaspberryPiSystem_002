@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
+import {
+  PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+  SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
+} from '../../services/production-schedule/constants.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -522,7 +525,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((r) => r.rowData.FSEIBAN)).toEqual(['A', 'A']);
   });
 
-  it('responseProfile=leaderboard omits actual-hours and resolvedMachineName enrichment', async () => {
+  it('responseProfile=leaderboard omits actual-hours but resolves resolvedMachineName', async () => {
     const resLb = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule?q=A&responseProfile=leaderboard',
@@ -540,7 +543,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(lbBody.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001']);
     expect(lbBody.total).toBe(2);
     for (const r of lbBody.rows) {
-      expect(r.resolvedMachineName ?? null).toBeNull();
+      expect(r.resolvedMachineName ?? null).toBe(SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL);
       expect(r.actualPerPieceMinutes ?? null).toBeNull();
     }
   });

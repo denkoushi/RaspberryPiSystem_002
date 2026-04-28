@@ -32,8 +32,8 @@ export const productionScheduleQuerySchema = z.object({
   /** v2: Mac の一覧/usage 取得時に必須（サーバ側で検証） */
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   /**
-   * `leaderboard`: キオスク順位ボード向けに actual-hours / 機種名バッチ解決を省略し、
-   * COUNT+一覧取得を並列化してレイテンシを抑える（既定は full）。
+   * `leaderboard`: キオスク順位ボード向けに actual-hours 解決を省略しレイテンシを抑える。
+   * 機種名（`resolvedMachineName`）は full と同じバッチ解決を行い、順位ボードの表示欠落を防ぐ（既定は full）。
    */
   responseProfile: z.enum(['full', 'leaderboard']).optional()
 });

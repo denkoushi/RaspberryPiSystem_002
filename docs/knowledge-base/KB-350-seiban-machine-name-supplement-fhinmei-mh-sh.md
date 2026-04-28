@@ -2,7 +2,7 @@
 title: 'KB-350: 製番→機種名補完（Gmail FHINMEI_MH_SH）'
 tags: [生産スケジュール, CSVダッシュボード, キオスク, 機種名]
 audience: [開発者, 運用者]
-last-verified: 2026-04-17
+last-verified: 2026-04-28
 category: knowledge-base
 ---
 
@@ -58,6 +58,12 @@ category: knowledge-base
 - **Detach Run ID**（Pi5 上ログ接頭辞 `ansible-update-`）: **`20260417-175707-4538`**（`raspberrypi5`）→ **`20260417-180747-13902`**（`raspberrypi4`）、各 **`PLAY RECAP` `failed=0` / `unreachable=0`**。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。**トラブルシュート**: 同一 Mac から `update-all-clients.sh` を並列起動しない（exit 3・[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。**知見**: 旧 **`POST …/seiban-machine-names`** はリクエストに **最大 100 製番**（Zod）があり、ユニーク製番が 100 を超えると **400** となり順位ボードに機種名が出なかった。一覧側で解決する方式に寄せて回避。
 - **PR**: [#158](https://github.com/denkoushi/RaspberryPiSystem_002/pull/158)（**`main` マージ**・merge **`09bce17c`**）
+
+## 追補（2026-04-28）: `responseProfile=leaderboard` でも `resolvedMachineName` を付与
+
+- **背景**: 順位ボードは軽量化のため `responseProfile=leaderboard` を使っていたが、当時は **`resolvedMachineName` を常に null** にしており、キオスク順位ボードの各カードで機種名が欠落していた（`actual-hours` 解決は引き続き省略）。
+- **対策**: `listProductionScheduleRows` の `leaderboard` 分岐で **`enrichProductionScheduleRowsWithResolvedMachineName` を呼び出す**（`full` と同一のバッチ解決）。`actualPerPieceMinutes` は null のまま。
+- **実装**: `apps/api/src/services/production-schedule/production-schedule-query.service.ts`・スキーマコメント `apps/api/src/routes/kiosk/production-schedule/shared.ts`。
 
 ## References
 
