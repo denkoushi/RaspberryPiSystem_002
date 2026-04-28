@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（**生産日程一覧 FKOJUNST S/R のみ可視性**・**FKOJUNST_Status Gmail ルート**・Pi5·Phase12。パレット/VLM 等は下項参照）
+最終更新: 2026-04-28（**順位ボード `leaderboard` 機種名付与**・生産日程一覧 FKOJUNST / ほか。詳細は下項）
+
+### 補足（2026-04-28: 生産日程 **`responseProfile=leaderboard` で `resolvedMachineName` 付与**·`feat/kiosk-leaderboard-machine-name-enrich`·API のみ·Pi5 のみ）
+
+- **変更概要**: キオスク順位ボードは一覧を **`leaderboard`** で取得するが、従来は **`resolvedMachineName` を常に null** にしてカードの機種名が欠落していた。**`listProductionScheduleRows`** の `leaderboard` 分岐で **`enrichProductionScheduleRowsWithResolvedMachineName`** を実行し、`full` と同一のバッチ解決で表示名を付与。**`actualPerPieceMinutes` は引き続き null**（actual-hours 読み込みは省略）。**DB マイグレーションなし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 不要**（**Web 変更なし**・API は Pi5）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-machine-name-enrich infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`e0305c8e`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-192136-21236`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・サマリ **`Summary success check: true`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 167s**・Tailscale）。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。順位ボードで機種名が空のときは **`GET /api/kiosk/production-schedule?...&responseProfile=leaderboard`** の各行 **`resolvedMachineName`** と [KB-350](../knowledge-base/KB-350-seiban-machine-name-supplement-fhinmei-mh-sh.md) の解決順を確認。
+- **ナレッジ**: [KB-350 追補（2026-04-28）](../knowledge-base/KB-350-seiban-machine-name-supplement-fhinmei-mh-sh.md)·[KB-297（順位ボード）](../knowledge-base/KB-297-kiosk-due-management-workflow.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-28: 生産日程 **一覧** FKOJUNST **S/R のみ**可視·`fkmail` 優先·`fkmail` 非 S/R は `fkst` 不救済·`feat/production-schedule-fkojunst-sr-only-list`·API のみ·Pi5 のみ）
 
