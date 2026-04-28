@@ -10,7 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（VLM 400 追加堅牢化 #204/#205·真因分類·Pi5 保存画像 531 件プローブ。直前の Detach/実機記録は下記 2026-04-27 項を参照）
+最終更新: 2026-04-28（パレット可視化サイネJPEG ティール系差し替え·Pi5·Phase12。また VLM #204/#205 等は下項参照）
+
+### 補足（2026-04-28: パレット可視化ボード サイネージJPEG ティール系レイアウト·`feature/pallet-board-teal-svg-v2`·API のみ·Pi5 のみ）
+
+- **変更概要**: `PalletBoardRenderer` の **SVG/JPEG** をティール基調へ刷新（**`pallet-board-appearance`** で MD3 トークン上書き）。**単一機**レイアウトで **左ペイン簡素化・4列グリッド**、スロットは **空／単品／同一パレット2品（`primaryItem` + `secondaryItem`・`displayOrder` 順）** を描画。**複数機**レイアウトも配色・列数整合（`PALLET_SIGNAGE_GRID_COLS`）。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 個別は不要**（表示端末は `GET /api/signage/current-image` のみで、**JPEG は Pi5 `api` が生成**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/pallet-board-teal-svg-v2 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: ブランチ **`feature/pallet-board-teal-svg-v2`**・代表コミット **`354f927a`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-093626-27554`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 630s**・**Docker `api` 再ビルド**を含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 38s**・Tailscale）。
+- **手動目視（推奨）**: 管理 **`/admin/signage/preview`**（端末 **`x-client-key`** 指定可）で **パレット可視化**スケジュールの **JPEG** がティール系UI意図どおりか。反映が古い場合は端末の **画像キャッシュ/更新間隔**（[modules/signage/README.md](../modules/signage/README.md)）。
+- **知見**: テーマや配色は **`mergeMd3TokensForPalletBoardSignage`** に寄せるとレイアウト関数と変更理由が分離しやすい。
+- **トラブルシュート**: デプロイ前 **未追跡ファイル**で **fail-fast** する場合は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+- **ナレッジ**: [api.md KB-355 追補（2026-04-28）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-28: VLM 画像 400 追加対策 `main`（PR #204 / PR #205）· 400 真因分類·ストレージ一括プローブ）
 

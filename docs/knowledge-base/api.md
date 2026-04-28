@@ -571,6 +571,13 @@
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **134s**）。
 - **トラブルシュート**: 未追跡 `docs/design-previews/...` で **デプロイ fail-fast**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）→ **commit** か **`git stash push -u`**。見た目が古い → **スーパーリロード**。
 
+**追補（2026-04-28・パレット可視化ボード サイネJPEG ティール系レイアウト·API のみ·Pi5 のみ）**:
+- ブランチ **`feature/pallet-board-teal-svg-v2`**・代表 **`354f927a`**（`pallet-board-appearance.ts`・`pallet-board-single-layout.ts`・`pallet-board-multi-layout.ts`・**`secondaryItem`** と **`pallet-visualization-board-data-source`** の **`displayOrder` ソート後 2件**）。
+- **本番**: **`raspberrypi5` のみ**・Detach **`ansible-update-20260428-093626-27554`**（**`failed=0` / `unreachable=0` / exit `0`**）・標準コマンドは [deployment.md（2026-04-28・ティールJPEG）](../guides/deployment.md) 項。
+- **仕様**: ティール配色の **表面/サイドバー/枠線**。スロットは **空（破線・プレースホルダ）**／**単品**／**2品横並び**（中央 **破線縦分割**）。既定 **列数 4**（`PALLET_SIGNAGE_GRID_COLS`）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**手動**: 管理 **`/admin/signage/preview`** で **パレット可視化** JPEG のレイアウト確認。
+- **トラブルシュート**: 二品が出ない → 当該パレットの **`items`** が **複数なく**、または **`displayOrder`** で先頭のみ、の可能性（データ側）。JPEG が古い → 端末 **キャッシュ/ポーリング**（`modules/signage/README.md`）。
+
 **追補（2026-04-25・パレット可視化ボード サイネージ JPEG レンダラー・API のみ・Pi5 のみ）**:
 - ブランチ **`feat/pallet-board-jpeg-illustration-and-text-clip`**・代表 **`d01eb79c`**（`PalletBoardRenderer`・`pallet-board-single-layout.ts`・`pallet-board-illustration-data-uri.ts`・`pallet-card-thumbnail-data-uri.ts`・`pallet-board-svg-text.ts`・`apps/api` `build` の **assets コピー**）。
 - **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-jpeg-illustration-and-text-clip infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-121049-5082`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（`current-image` は Pi5 API の JPEG を取得するだけ・[deployment.md 冒頭](../guides/deployment.md) 同補足）。
