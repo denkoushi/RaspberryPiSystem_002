@@ -10,14 +10,10 @@ import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from './constants.js';
-
-/** メール同期で一致した行のうち、FKOJUNST が S/R 以外なら一覧から除外（COUNT と明細で同一条件） */
-const fkojunstMailListVisibilitySql = Prisma.sql`
-  AND NOT (
-    "fkmail"."id" IS NOT NULL
-    AND "fkmail"."statusCode" NOT IN ('S', 'R')
-  )
-`;
+import {
+  buildFkojunstProductionScheduleListRowDataFkojunstSql,
+  buildFkojunstProductionScheduleListVisibilityWhereSql,
+} from './policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
@@ -388,10 +384,13 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   const countPromise = prisma.$queryRaw<Array<{ total: bigint }>>`
     SELECT COUNT(*)::bigint AS total
     FROM "CsvDashboardRow"
+    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
+      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${baseWhere} ${queryWhere} ${fkojunstMailListVisibilitySql}
+    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
   `;
 
   const rowsPromise = prisma.$queryRaw<ProductionScheduleRow[]>`
@@ -406,12 +405,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
         'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
         'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
-        'FKOJUNST', (
-          CASE
-            WHEN "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R') THEN "fkmail"."statusCode"
-            ELSE COALESCE("fkst"."statusCode", '')
-          END
-        ),
+        'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
         'progress', (CASE WHEN COALESCE("p"."isCompleted", FALSE) THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
       (
@@ -465,7 +459,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${baseWhere} ${queryWhere} ${fkojunstMailListVisibilitySql}
+    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
     ORDER BY
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
       ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,

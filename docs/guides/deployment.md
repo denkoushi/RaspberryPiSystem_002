@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（**生産日程 FKOJUNST_Status Gmail ルート**・Pi5·Phase12。パレット/VLM 等は下項参照）
+最終更新: 2026-04-28（**生産日程一覧 FKOJUNST S/R のみ可視性**・**FKOJUNST_Status Gmail ルート**・Pi5·Phase12。パレット/VLM 等は下項参照）
+
+### 補足（2026-04-28: 生産日程 **一覧** FKOJUNST **S/R のみ**可視·`fkmail` 優先·`fkmail` 非 S/R は `fkst` 不救済·`feat/production-schedule-fkojunst-sr-only-list`·API のみ·Pi5 のみ）
+
+- **変更概要**: 生産日程一覧（COUNT/明細）の可視条件を **`apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts`** に集約。**`ProductionScheduleFkojunstMailStatus`（`fkmail`）が `S`/`R`** の行は **`rowData.FKOJUNST` をメール値**。**`fkmail` 行が無い** winner は **`ProductionScheduleFkojunstStatus`（`fkst`）が `S`/`R` のときのみ**残す。**`fkmail` はあるが `S`/`R` でない** winner は **非表示**（**`fkst` が `S`/`R` でも表示しない**）。COUNT 用クエリも **`fkst` を JOIN** し、明細と同一条件。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 不要**（**DB マイグレーション無し**・API のみ）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/production-schedule-fkojunst-sr-only-list infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`06e62912`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-181153-28174`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 1372s**・**Docker 再ビルド**を含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **272s**・Tailscale）。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。一覧が薄い／空に見える場合は **`fkmail` / `fkst` の `S`/`R` と「メールあり非 S/R は `fkst` で救わない」**を確認（[KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28)）。
+- **ナレッジ**: [KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-28: 生産日程 FKOJUNST_Status Gmail 取込・一覧の S/R 表示／非 S/R 行除外·`feature/fkojunst-status-gmail-route`·API+DB·Pi5 のみ）
 
