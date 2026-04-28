@@ -574,9 +574,17 @@
 **追補（2026-04-28・パレット可視化ボード サイネJPEG ティール系レイアウト·API のみ·Pi5 のみ）**:
 - ブランチ **`feature/pallet-board-teal-svg-v2`**・代表 **`354f927a`**（`pallet-board-appearance.ts`・`pallet-board-single-layout.ts`・`pallet-board-multi-layout.ts`・**`secondaryItem`** と **`pallet-visualization-board-data-source`** の **`displayOrder` ソート後 2件**）。
 - **本番**: **`raspberrypi5` のみ**・Detach **`ansible-update-20260428-093626-27554`**（**`failed=0` / `unreachable=0` / exit `0`**）・標準コマンドは [deployment.md（2026-04-28・ティールJPEG）](../guides/deployment.md) 項。
-- **仕様**: ティール配色の **表面/サイドバー/枠線**。スロットは **空（破線・プレースホルダ）**／**単品**／**2品横並び**（中央 **破線縦分割**）。既定 **列数 4**（`PALLET_SIGNAGE_GRID_COLS`）。
+- **仕様**: ティール配色の **表面/サイドバー/枠線**。スロットは **空（破線・プレースホルダ）**／**単品**／**2品横並び**（中央 **破線縦分割**・本記録時点の **ティール初版**）。**追補（同梱 `feature/pallet-board-signage-density-v3`）** では **サイネJPEGの2品表現を縦2段＋横破線**へ置換（下記 **v3 追補**）。既定 **列数 4**（`PALLET_SIGNAGE_GRID_COLS`）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**手動**: 管理 **`/admin/signage/preview`** で **パレット可視化** JPEG のレイアウト確認。
 - **トラブルシュート**: 二品が出ない → 当該パレットの **`items`** が **複数なく**、または **`displayOrder`** で先頭のみ、の可能性（データ側）。JPEG が古い → 端末 **キャッシュ/ポーリング**（`modules/signage/README.md`）。
+
+**追補（2026-04-28・パレット可視化ボード サイネJPEG v3（プレビュー準拠密着）·API のみ·Pi5 のみ）**:
+- ブランチ **`feature/pallet-board-signage-density-v3`**・代表 **`4b325c01`**（`renderDenseItemBlock`・**縦デュアル＋横破線**・`metaPlainTeal` / `metaSeparatorMuted`・`visualization.types`・Vitest）＋ **`7e300e74`**（静プレビュー [`pallet-board-teal-dual-vertical-preview.html`](../design-previews/pallet-board-teal-dual-vertical-preview.html)）。
+- **本番**: **`raspberrypi5` のみ**・Detach **`ansible-update-20260428-103644-15464`**（**`failed=0` / `unreachable=0` / exit `0`**・所要約 **539s**）・標準コマンドは [deployment.md 補足（v3）](../guides/deployment.md) 冒頭項。
+- **仕様（サイネJPEG）**: **FHIN と品名を同一行**（右 `text-anchor="end"`）・**メタ一行**（製番プレーン・着手日バッジ・個数プレーン）。**2品**は **横2カラムではなく縦段**（キオスク `PalletViz*` のカードUIとは **別レンダラ**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **31s**）。**手動**: 管理 **`/admin/signage/preview`**。
+- **知見（テスト）**: 旧 **「末尾4 `<text x=` 同一」** は同一行のため不適切 → **構造ベース**へ（`pallet-board-single-layout.test.ts`）。
+- **トラブルシュート**: 未コミット/未追跡で **`update-all-clients.sh` fail-fast**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。
 
 **追補（2026-04-25・パレット可視化ボード サイネージ JPEG レンダラー・API のみ・Pi5 のみ）**:
 - ブランチ **`feat/pallet-board-jpeg-illustration-and-text-clip`**・代表 **`d01eb79c`**（`PalletBoardRenderer`・`pallet-board-single-layout.ts`・`pallet-board-illustration-data-uri.ts`・`pallet-card-thumbnail-data-uri.ts`・`pallet-board-svg-text.ts`・`apps/api` `build` の **assets コピー**）。
