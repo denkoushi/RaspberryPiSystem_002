@@ -1,0 +1,308 @@
+<!doctype html>
+<!--
+  デザイン検討用のみ（本番未接続・API・SVG と一致しない）。
+  目的: 2件は縦2段メタ行。着手日オレンジバッジ／個数はプレーン（シングルも同様）。
+-->
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache" />
+    <title>プレビュー · ティール調 · 2件縦積み + 個数バッジ位置</title>
+    <style>
+      :root {
+        --surface-bg: #0a0f14;
+        --card-fill: rgba(18, 32, 40, 0.95);
+        --stroke-active: rgba(76, 200, 200, 0.85);
+        --text-main: rgba(248, 250, 252, 0.95);
+        --text-muted: rgba(160, 200, 210, 0.75);
+        --hint: rgba(148, 180, 195, 0.9);
+        --badge-fill: rgba(251, 146, 60, 0.95);
+        --badge-text: rgba(28, 20, 8, 0.95);
+        --dash-border: rgba(126, 200, 200, 0.42);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--surface-bg);
+        color: var(--text-main);
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        padding: 20px;
+      }
+      .note {
+        max-width: 960px;
+        margin: 0 auto 14px;
+        font-size: 0.82rem;
+        color: rgba(200, 220, 230, 0.75);
+        line-height: 1.55;
+      }
+      .note strong {
+        color: #7ec8ff;
+      }
+      .row {
+        max-width: 960px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+      @media (max-width: 720px) {
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+      /* カード外枠 */
+      .slot {
+        border-radius: 12px;
+        border: 2px solid var(--stroke-active);
+        background: var(--card-fill);
+        box-shadow: 0 0 2px rgba(76, 200, 200, 0.35);
+        padding: 10px 12px;
+        min-height: 260px;
+        display: flex;
+        flex-direction: column;
+      }
+      .slot-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+        flex-shrink: 0;
+      }
+      .pallet-no {
+        font-size: clamp(26px, 4.5vw, 34px);
+        font-weight: 800;
+        color: rgba(147, 250, 255, 0.95);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 4px 10px;
+        border-radius: 8px;
+        background: var(--badge-fill);
+        color: var(--badge-text);
+        font-size: 14px;
+        font-weight: 700;
+      }
+      /* 単一品: 個数は line-meta 右端（dual と同型） */
+      .single .info-block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-height: 0;
+      }
+      /* 階調: hint/meta を旧カタログ幅（大口）へ。品番 line-cd は品名(line-name)と同じ段階へ */
+      .line-hint {
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--hint);
+      }
+      .line-cd {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-main);
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.3;
+      }
+      .line-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: rgba(240, 253, 250, 0.95);
+        overflow-wrap: anywhere;
+      }
+      /* FHINCD（左）と品名（右）を同一行 */
+      .line-cd-name-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        width: 100%;
+      }
+      .line-cd-name-row .line-cd {
+        flex: 0 1 auto;
+        min-width: 0;
+      }
+      .line-cd-name-row .line-name {
+        flex: 1 1 0;
+        min-width: 0;
+        text-align: right;
+        line-height: 1.35;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+      }
+      .line-meta {
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.2;
+        color: rgba(134, 200, 200, 0.88);
+      }
+      /* メタ行: 左ブロックで「製番 |」＋着手日バッジ、右で個数はプレーンテキスト（日付／個数の見た目入替） */
+      .dual-line-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .dual-line-meta .meta-leading {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        min-width: 0;
+        flex: 1;
+      }
+      .dual-line-meta .seiban-plain,
+      .dual-line-meta .meta-sep {
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.2;
+        color: rgba(134, 200, 200, 0.88);
+      }
+      .dual-line-meta .meta-sep {
+        color: rgba(134, 200, 200, 0.45);
+      }
+      .dual-line-meta .meta-qty-plain {
+        flex-shrink: 0;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.2;
+        color: rgba(134, 200, 200, 0.88);
+      }
+      /* 2段: 各段が「自分のヘッダ行（左: 開始）＋個数だけ右」→ 詳細全文幅 */
+      .dual-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        min-height: 0;
+      }
+      .dual-strip {
+        flex: 1;
+        padding: 6px 0 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-height: 0;
+      }
+      .dual-strip:first-of-type {
+        padding-top: 0;
+      }
+      .dual-strip:last-of-type {
+        padding-bottom: 0;
+      }
+      /* 段ごとのヘッダ: ヒントコードのみ（個数は line-meta 行右へ） */
+      .strip-head {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+        width: 100%;
+        flex-shrink: 0;
+      }
+      .strip-head .line-hint {
+        min-width: 0;
+      }
+      .sep {
+        flex-shrink: 0;
+        height: 0;
+        border: none;
+        border-top: 1px dashed var(--dash-border);
+        margin: 4px 0 6px;
+        width: 100%;
+      }
+      h2 {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: rgba(180, 210, 230, 0.55);
+        margin: 0 0 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <p class="note">
+      <strong>デザイン検討用 HTML のみ</strong>（`apps/api` 未変更）。横並び2列ではなく
+      <strong>縦に2ブロック</strong>。メタ最下行は<strong>左: 製番 | 着手日バッジ</strong>、<strong>右: 個数プレーン</strong>。
+    </p>
+
+    <h2>比較: シングル vs 縦二段ダブル</h2>
+    <div class="row">
+      <article class="slot single" aria-label="パレット1 単品">
+        <div class="slot-title">
+          <span class="pallet-no">1</span>
+        </div>
+        <div class="info-block">
+          <div class="line-hint">BA1S5321</div>
+          <div class="line-cd-name-row">
+            <div class="line-cd">MD004812331</div>
+            <div class="line-name">テーブル（X軸）</div>
+          </div>
+          <div class="line-meta dual-line-meta">
+            <span class="meta-leading">
+              <span class="seiban-plain">BA1S5321</span><span class="meta-sep"> | </span><span class="badge badge-date">2026-05-28</span>
+            </span>
+            <span class="meta-qty-plain">5個</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="slot dual" aria-label="パレット2 縦二段ダブル">
+        <div class="slot-title">
+          <!-- 2件表示時: タイトル行はパレット番号のみ。個数は各 dual-line-meta 行の右端 -->
+          <span class="pallet-no">2</span>
+        </div>
+
+        <div class="dual-body">
+          <div class="dual-strip">
+            <div class="strip-head">
+              <span class="line-hint">BA1S4320</span>
+            </div>
+            <div class="line-cd-name-row">
+              <div class="line-cd">MD004809512</div>
+              <div class="line-name">スライダ（Y1軸）</div>
+            </div>
+            <div class="line-meta dual-line-meta">
+              <span class="meta-leading">
+                <span class="seiban-plain">BA1S4320</span><span class="meta-sep"> | </span><span class="badge badge-date">2026-05-28</span>
+              </span>
+              <span class="meta-qty-plain">2個</span>
+            </div>
+          </div>
+
+          <hr class="sep" aria-hidden="true" />
+
+          <div class="dual-strip">
+            <div class="strip-head">
+              <span class="line-hint">BA1S4349</span>
+            </div>
+            <div class="line-cd-name-row">
+              <div class="line-cd">MD0048095</div>
+              <div class="line-name">スライダ（Y1軸）</div>
+            </div>
+            <div class="line-meta dual-line-meta">
+              <span class="meta-leading">
+                <span class="seiban-plain">BA1S4349</span><span class="meta-sep"> | </span><span class="badge badge-date">2026-05-28</span>
+              </span>
+              <span class="meta-qty-plain">5個</span>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </body>
+</html>
