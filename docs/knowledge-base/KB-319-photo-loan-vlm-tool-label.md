@@ -98,6 +98,16 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **CONFIRMED**: 本番 checkout `e93cef83`・ブランチ `feat/photo-loan-vlm-human-review-and-vision-input`
 - **CONFIRMED**: 写真付き Loan **154** 件のうち **`photoToolHumanReviewedAt` あり 15** 件（運用で人レビュー済みデータが存在）
 - **CONFIRMED**: `PHOTO_TOOL_LABEL_VISION_SOURCE` / `PHOTO_TOOL_LABEL_USER_PROMPT` は **未設定時はコード既定**（本番では `VISION_SOURCE` 既定 `original`・長辺既定 768 等。帯域節約でサムネのみにしたい場合は `thumbnail` を明示）
+- **追記（2026-04-28）**: 初見1回目のみ厳格化する **`PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE`** および任意の **`PHOTO_TOOL_LABEL_FIRST_PASS_VISION_*`** が追加された（説明文混入・部品語誤答の抑制。シャドー2回目は従来 `INFERENCE_PHOTO_LABEL_VISION_*`）。詳細は [photo-loan.md](../modules/tools/photo-loan.md) 環境変数節・`photo-tool-label-first-pass.policy.ts`。
+
+### 本番反映（2026-04-28）: `feat/photo-label-firstpass-precision-tuning`
+
+- **内容**: 上記 **初見厳格モード**の API・正規化・VLM アダプタ上書き・Ansible / **`docker.env`** 配線を **本番 Pi5** に反映。**厳格 ON は vault 明示時のみ**（未設定は OFF で後方互換）。
+- **対象ホスト**: **`raspberrypi5` のみ**（Pi3/Pi4 個別デプロイ不要）。
+- **Detach Run ID**（`ansible-update-`）: **`20260428-203203-20465`**（**`PLAY RECAP` `failed=0` / `unreachable=0`**・**`ok=134` `changed=7`**・**`Summary success check: true`**）。
+- **代表コミット**: **`3e21b007`**（ブランチ **`feat/photo-label-firstpass-precision-tuning`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → 1 回目は **`エラー: Pi5に到達できません`**（Tailscale 経由 **ICMP の一時失敗**）→ **再試行で PASS 43 / WARN 0 / FAIL 0**（所要 **約 253s**）。**対処**: `ping -c 1 -W 5 100.106.158.2` または `ssh` で到達確認後に再実行（スクリプトは **ping 最大 5 回**・[deployment.md 冒頭](../guides/deployment.md) 補足）。
+- **仕様の要点**: strict 時は **追加ユーザ規約**＋**低 `temperature` / 短め `maxTokens`（既定 24）**＋**厳格 `normalizePhotoToolDisplayName`**。2 回目（assist 経路）は **`INFERENCE_PHOTO_LABEL_VISION_*`** のまま。
 
 ### 管理 API（ADMIN / MANAGER）
 

@@ -250,6 +250,30 @@ const envSchema = z.object({
   /** original: 保存済み本画像をリサイズ。thumbnail: 従来どおりサムネのみ（切り戻し用） */
   PHOTO_TOOL_LABEL_VISION_SOURCE: z.enum(['original', 'thumbnail']).default('original'),
 
+  /**
+   * true のとき、初見 1 回目のみ: 厳しめのサンプリング既定・追加回答ルール・厳格な正規化を適用
+   * （2 回目シャドー／assist の経路は従来どおり INFERENCE_PHOTO_LABEL_VISION_*）
+   */
+  PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  PHOTO_TOOL_LABEL_FIRST_PASS_VISION_MAX_TOKENS: z.preprocess(
+    (v) => {
+      if (v === undefined || v === null) return undefined;
+      if (typeof v === 'string' && v.trim() === '') return undefined;
+      return v;
+    },
+    z.coerce.number().int().min(16).max(4096).optional()
+  ),
+  PHOTO_TOOL_LABEL_FIRST_PASS_VISION_TEMPERATURE: z.preprocess(
+    (v) => {
+      if (v === undefined || v === null) return undefined;
+      if (typeof v === 'string' && v.trim() === '') return undefined;
+      return v;
+    },
+    z.coerce.number().min(0).max(2).optional()
+  ),
+
   /** 写真持出 GOOD ギャラリーの類似検索: 埋め込みAPIを有効化 */
   PHOTO_TOOL_EMBEDDING_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))

@@ -10,7 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（**順位ボード `leaderboard` 機種名付与**・生産日程一覧 FKOJUNST / ほか。詳細は下項）
+最終更新: 2026-04-28（**写真持出 VLM 初見厳格化**・順位ボード `leaderboard` 機種名付与・生産日程一覧 FKOJUNST / ほか。詳細は下項）
+
+### 補足（2026-04-28: 写真持出 **初見1回目 VLM 厳格化**·`feat/photo-label-firstpass-precision-tuning`·API のみ·Pi5 のみ）
+
+- **変更概要**: 初見1回目（`FIRST_PASS_VLM`）向けに **厳格プロンプト**・**リクエスト単位の `maxTokens` / `temperature`**（`VisionCompletionInput` 上書き）・**厳格正規化**（句読点・説明混入の抑制）を **`PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE=true`** で有効化可能にした。シャドー／アクティブ補助の2回目は従来どおり **`INFERENCE_PHOTO_LABEL_VISION_*`**。Ansible `docker.env.j2` / `inventory.yml` に **`PHOTO_TOOL_LABEL_FIRST_PASS_*`** を配線（未設定時は **strict OFF**・既存挙動維持）。**DB マイグレーションなし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/photo-label-firstpass-precision-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`3e21b007`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-203203-20465`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=134` `changed=7`**・サマリ **`Summary success check: true`**・所要 **約 15 分規模**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 253s**・Tailscale）。**手順前の到達確認**: 初回実行で **`エラー: Pi5に到達できません`** となる場合がある（`100.106.158.2` への **ICMP が一時的に失敗**し得る）。**`ping` 成功を確認してから再実行**、または **`ssh denkon5sd02@100.106.158.2`** で到達を確認（スクリプト側は **ping 5 回リトライ**）。
+- **運用**: vault で **`vault_photo_tool_label_first_pass_strict_mode: "true"`** 等を設定したうえで **同手順デプロイ**すると本番で厳格モード ON（詳細は [photo-loan.md](../modules/tools/photo-loan.md)・[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+- **ナレッジ**: [KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-28: 生産日程 **`responseProfile=leaderboard` で `resolvedMachineName` 付与**·`feat/kiosk-leaderboard-machine-name-enrich`·API のみ·Pi5 のみ）
 

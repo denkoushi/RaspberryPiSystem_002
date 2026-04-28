@@ -8,6 +8,12 @@ import {
 import { logger } from '../../../lib/logger.js';
 
 import { normalizePhotoToolDisplayName } from './photo-tool-label-normalize.js';
+import {
+  augmentUserTextForFirstPass,
+  resolveFirstPassSampling,
+  shouldUseStrictFirstPassNormalization,
+  type PhotoToolFirstPassPolicyInput,
+} from './photo-tool-label-first-pass.policy.js';
 import { env } from '../../../config/env.js';
 
 import type {
@@ -80,6 +86,20 @@ export class PhotoToolLabelingService {
     );
   }
 
+  private firstPassPolicyInput(): PhotoToolFirstPassPolicyInput {
+    return {
+      strictMode: env.PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE,
+      firstPassMaxTokens: env.PHOTO_TOOL_LABEL_FIRST_PASS_VISION_MAX_TOKENS,
+      firstPassTemperature: env.PHOTO_TOOL_LABEL_FIRST_PASS_VISION_TEMPERATURE,
+      inferenceMaxTokens: env.INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS,
+      inferenceTemperature: env.INFERENCE_PHOTO_LABEL_VISION_TEMPERATURE,
+    };
+  }
+
+  private visionUserPromptFirstPass(): string {
+    return augmentUserTextForFirstPass(this.visionUserPrompt(), this.firstPassPolicyInput());
+  }
+
   private async processClaimedLoan(loanId: string, photoUrl: string): Promise<void> {
     const started = performance.now();
     let ok = false;
@@ -91,13 +111,19 @@ export class PhotoToolLabelingService {
         runtimeHeld = true;
       }
       const imageBytes = await this.deps.visionImageSource.readImageBytesForVision(photoUrl);
+      const fpPolicy = this.firstPassPolicyInput();
+      const fpSampling = resolveFirstPassSampling(fpPolicy);
       const { rawText } = await this.deps.vision.complete({
-        userText: this.visionUserPrompt(),
+        userText: this.visionUserPromptFirstPass(),
         imageBytes,
         mimeType: 'image/jpeg',
+        maxTokens: fpSampling.maxTokens,
+        temperature: fpSampling.temperature,
       });
       responseCharLen = rawText.length;
-      const firstPassLabel = normalizePhotoToolDisplayName(rawText);
+      const firstPassLabel = normalizePhotoToolDisplayName(rawText, {
+        strict: shouldUseStrictFirstPassNormalization(fpPolicy),
+      });
 
       let persistLabel = firstPassLabel;
       let vlmProvenance: PhotoToolVlmLabelProvenance = PHOTO_TOOL_VLM_LABEL_PROVENANCE.FIRST_PASS_VLM;

@@ -239,6 +239,9 @@ apps/web/src/
   - `PHOTO_TOOL_LABEL_VISION_MAX_LONG_EDGE`（既定 768）
   - `PHOTO_TOOL_LABEL_VISION_JPEG_QUALITY`（既定 85）
   - `PHOTO_TOOL_LABEL_USER_PROMPT`（任意・未設定時はサーバー既定プロンプト）
+  - `PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE`（既定 `false`。`true` のとき初見1回目のみ厳しめのサンプリング既定・追加回答ルール・厳格正規化。シャドー2回目は従来 `INFERENCE_PHOTO_LABEL_VISION_*`）
+  - `PHOTO_TOOL_LABEL_FIRST_PASS_VISION_MAX_TOKENS`（任意・空は未指定。strict 時未指定なら code 既定 24、非 strict 時は `INFERENCE_PHOTO_LABEL_VISION_MAX_TOKENS`）
+  - `PHOTO_TOOL_LABEL_FIRST_PASS_VISION_TEMPERATURE`（任意・空は未指定。strict 時未指定なら code 既定 0.05）
 
 ### 写真自動削除フロー
 
