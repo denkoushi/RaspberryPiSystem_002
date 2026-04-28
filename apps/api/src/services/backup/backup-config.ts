@@ -260,6 +260,16 @@ export const defaultBackupConfig: BackupConfig = {
       autoBackupAfterImport: { enabled: false, targets: ['csv'] }
     },
     {
+      id: 'csv-import-productionschedule-fkojunst-status-mail',
+      name: 'ProductionSchedule_FKOJUNST_Status (Gmail)',
+      provider: 'gmail',
+      targets: [{ type: 'csvDashboards', source: 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e' }],
+      schedule: '5 1 * * *',
+      enabled: false,
+      replaceExisting: false,
+      autoBackupAfterImport: { enabled: false, targets: ['csv'] }
+    },
+    {
       id: 'csv-import-seiban-machine-name-supplement',
       name: 'ProductionSchedule_SeibanMachineNameSupplement (Gmail, FHINMEI_MH_SH)',
       provider: 'gmail',

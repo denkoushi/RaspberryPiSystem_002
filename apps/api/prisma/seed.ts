@@ -13,6 +13,8 @@ import { fileURLToPath } from 'node:url';
 import {
   buildProductionScheduleSeibanMachineNameSupplementDashboardDefinition,
 } from '../src/services/production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
+import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../src/services/production-schedule/constants.js';
+import { buildProductionScheduleFkojunstStatusMailDashboardDefinition } from '../src/services/production-schedule/fkojunst-status-mail-dashboard.definition.js';
 
 const prisma = new PrismaClient();
 const seedDir = dirname(fileURLToPath(import.meta.url));
@@ -356,6 +358,18 @@ async function main() {
     create: {
       id: productionScheduleFkojunstDashboardId,
       ...productionScheduleFkojunstDashboardDefinition,
+    },
+  });
+
+  // 生産日程 FKOJUNST_Status（Gmail件名: FKOJUNST_Status）
+  const productionScheduleFkojunstStatusMailDefinition =
+    buildProductionScheduleFkojunstStatusMailDashboardDefinition();
+  await prisma.csvDashboard.upsert({
+    where: { id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
+    update: productionScheduleFkojunstStatusMailDefinition,
+    create: {
+      id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+      ...productionScheduleFkojunstStatusMailDefinition,
     },
   });
 

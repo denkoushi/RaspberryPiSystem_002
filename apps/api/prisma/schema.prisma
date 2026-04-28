@@ -851,6 +851,7 @@ model CsvDashboardRow {
   globalRowRanks             ProductionScheduleGlobalRowRank[]
   orderSupplements           ProductionScheduleOrderSupplement[]
   fkojunstStatus             ProductionScheduleFkojunstStatus?
+  fkojunstMailStatus         ProductionScheduleFkojunstMailStatus?
 
   @@index([csvDashboardId])
   @@index([csvDashboardId, occurredAt]) // 表示期間フィルタ用の複合インデックス
@@ -899,6 +900,28 @@ model ProductionScheduleFkojunstStatus {
   @@unique([csvDashboardId, sourceCsvDashboardId, productNo, resourceCd, processOrder], map: "ProductionScheduleFkojunstStatus_unique_source_key")
   @@index([csvDashboardId], map: "ProductionScheduleFkojunstStatus_idx_dashboard")
   @@index([sourceCsvDashboardId], map: "ProductionScheduleFkojunstStatus_idx_source_dashboard")
+}
+
+/// Gmail 件名 `FKOJUNST_Status` のCSV由来。キーは (FKOJUN, FKOTEICD→本体FSIGENCD, FSEZONO→本体ProductNo)。最新FUPDTEDTを正。
+model ProductionScheduleFkojunstMailStatus {
+  id                   String   @id @default(uuid())
+  csvDashboardId       String
+  csvDashboardRowId    String
+  sourceCsvDashboardId String
+  fkojun               String   @db.VarChar(20)
+  fkoteicd             String   @db.VarChar(40)
+  fsezono              String   @db.VarChar(32)
+  statusCode           String   @db.VarChar(1)
+  sourceUpdatedAt      DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@unique([csvDashboardRowId], map: "PSFkojunstMailStatus_unique_row")
+  @@unique([csvDashboardId, sourceCsvDashboardId, fkojun, fkoteicd, fsezono], map: "PSFkojunstMailStatus_unique_src_key")
+  @@index([csvDashboardId], map: "PSFkojunstMailStatus_idx_dashboard")
+  @@index([sourceCsvDashboardId], map: "PSFkojunstMailStatus_idx_source_dashboard")
 }
 
 /// Gmail 件名 `FHINMEI_MH_SH` の補完CSV由来。同一取り込み実行内の重複 FSEIBAN は末尾行が正（同期処理で解決）。

@@ -10,7 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（**パレット可視化 サイネJPEG プレビュー整合（`feat/pallet-board-signage-preview-parity`）**・Pi5·Phase12。v3/`287c959e`/ティール/VLM は下項参照）
+最終更新: 2026-04-28（**生産日程 FKOJUNST_Status Gmail ルート**・Pi5·Phase12。パレット/VLM 等は下項参照）
+
+### 補足（2026-04-28: 生産日程 FKOJUNST_Status Gmail 取込・一覧の S/R 表示／非 S/R 行除外·`feature/fkojunst-status-gmail-route`·API+DB·Pi5 のみ）
+
+- **変更概要**: Gmail 件名 **`FKOJUNST_Status`** の CSV を専用 `CsvDashboard`（固定 ID **`b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e`**）へ取込み、同一キーは **`FUPDTEDT` 最大**を正とする同期で **`ProductionScheduleFkojunstMailStatus`** に winner 行へ反映。生産日程一覧 API は **`LEFT JOIN`** し、メール側が **`S`/`R`** のときだけ `rowData.FKOJUNST` をメール値とし、メール側が **`S`/`R` 以外で行が存在する**ときは **一覧から行除外**（**COUNT と明細で同一**）。旧 `FKOJUNST` ルートの **`ProductionScheduleFkojunstStatus`** とは別系統（併存時はメール側優先）。**Prisma マイグレーション**: `20260428130000_add_production_schedule_fkojunst_mail_status`。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 個別デプロイ不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/fkojunst-status-gmail-route infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`df90caf4`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-145623-7353`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 13 分**・**Docker 再起動**を含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **62s**）。
+- **運用**: 固定 **`csv-import-productionschedule-fkojunst-status-mail`**（cron **`5 1 * * *`**・既定 **`enabled: false`**・`targets` は **`b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e`** へ強制）・**削除は 400**。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。一覧が期待と違う場合は **キー3項目が本体 winner と一致しているか**・同期ログ **`[ProductionScheduleFkojunstMailStatusSyncService]`**・**`skippedUnparseableDate` / `skippedInvalidStatus` / `unmatched`** を確認。
+- **ナレッジ**: [KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-28: パレット可視化ボード サイネJPEG v3（プレビュー準拠）·`feature/pallet-board-signage-density-v3`·API のみ·Pi5 のみ）
 

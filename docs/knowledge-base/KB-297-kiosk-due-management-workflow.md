@@ -106,6 +106,19 @@ category: knowledge-base
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（初回 FKOJUNST 反映後は約 **89s**、Gmail スケジュール保証のみの Pi5 反映後は約 **56s**・いずれも既存の生産日程系チェックを含む）。
 - **トラブルシュート**: 無効ステータス・winner 未照合は同期結果の **`skippedInvalidStatus` / `unmatched`** と API ログの **`[ProductionScheduleFkojunstSyncService] FKOJUNST rows skipped during sync`** を確認。`update-all-clients.sh` の **Mac 側ロック**（exit 3）は前ジョブ完了待ち。
 
+## FKOJUNST_Status mail from Gmail CSV (2026-04-28) {#fkojunst_status-mail-from-gmail-csv-2026-04-28}
+
+- **Context**: Gmail 件名 **`FKOJUNST_Status`** の CSV（**`FKOJUN`・`FKOTEICD`・`FSEZONO`・`FUPDTEDT`・`FKOJUNST`**）は、既存 **`FKOJUNST` 件名ルート**（`ProductNo`・`FSIGENCD`・`FKOJUN` キー）とは**別物**。**生産スケジュール本体 winner 行**に対して **`(FKOJUN, FKOTEICD→本体 `FSIGENCD`, FSEZONO→本体 `ProductNo`)** で照合し、一覧の **「工順ST」** 表示と **非表示制御**のみを担う（責務分離）。
+- **Fix（境界分離）**:
+  - 専用 `CsvDashboard`（固定 ID **`b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e`**・`gmailSubjectPattern: FKOJUNST_Status`）・同一キーは **`FUPDTEDT`（`MM/DD/YYYY HH:mm:ss`）最大**を正。
+  - 保持テーブル **`ProductionScheduleFkojunstMailStatus`**（ソース毎 **全削除→再作成**・winner 行 `csvDashboardRowId` 一意）。**空・不正ステータス・日付パース不能**でも「メールでキーが当たった」判定のため **同期行に載せる**（DB 上は **`''`** / **`?`** と **epoch 代替日付**＋**不確実フラグ**で `FUPDTEDT` 競合時は不確実側を優先）。
+  - 一覧 API（`listProductionScheduleRows`）: **`ProductionScheduleFkojunstMailStatus` を `LEFT JOIN`**。メール側が **`S`/`R`** のときだけ **`rowData.FKOJUNST`** をメールの **`statusCode`** とし、メール側が **`S`/`R` 以外で行が存在する**ときは **当該 winner 行を一覧から除外**（**COUNT と明細で同一条件**）。メール側が無い行は従来どおり **`ProductionScheduleFkojunstStatus`（`fkst`）** を表示。
+  - 取込後: **`CsvDashboardPostIngestService`** が当該ダッシュボード ID のとき **`ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard`** を実行。手動アップロード応答に **`fkojunstMailSync`** を含め得る。
+- **運用（Gmail スケジュール）**: 固定 ID **`csv-import-productionschedule-fkojunst-status-mail`**（cron **`5 1 * * *`**・既定 **`enabled: false`**・`targets` は **`b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e`** へ強制）を **`ensureFkojunstStatusMailCsvImportSchedule`** が補完。**`DELETE …/csv-import-productionschedule-fkojunst-status-mail`** は **400**。
+- **本番デプロイ（2026-04-28）**: [deployment.md](../guides/deployment.md) 補足（2026-04-28 FKOJUNST_Status）。**対象**: **`raspberrypi5` のみ**（**Pi4・Pi3 個別不要**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/fkojunst-status-gmail-route infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ名を `main` に**）。**Detach Run ID**（`ansible-update-`）: **`20260428-145623-7353`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 62s**）。
+- **トラブルシュート**: **キー不一致**（メールの **`FSEZONO` が本体 `ProductNo` と一致しない**等）は **`unmatched`** が増える。**一覧から消えた**がメールにはある行は **`statusCode` が `S`/`R` 以外**を確認（**`?`/`''` も非表示**）。デプロイ fail-fast（未コミット/未追跡）は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
 
 - **Context**: Gmail 件名 **`FKOBAINO`** の CSV（注文番号・購買品名など）を **生産日程本体とは分離**して保持し、現品票の一次元バーコード（**10 桁 `FKOBAINO`**）から **製番・購買品名・既存マスタ品名（正規化 `FHINCD`）・機種名** をキオスクに表示する。

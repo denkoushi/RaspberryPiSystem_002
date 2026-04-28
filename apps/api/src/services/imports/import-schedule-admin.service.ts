@@ -15,6 +15,10 @@ import {
   FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
 } from './fkojunst-import-schedule.policy.js';
 import {
+  applyFkojunstStatusMailImportScheduleInvariants,
+  FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID,
+} from './fkojunst-status-mail-import-schedule.policy.js';
+import {
   applySeibanMachineNameSupplementImportScheduleInvariants,
   SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID,
 } from './seiban-machine-name-supplement-import-schedule.policy.js';
@@ -142,7 +146,9 @@ export class ImportScheduleAdminService {
     };
 
     const canonicalSchedule = applyFkobainoImportScheduleInvariants(
-      applySeibanMachineNameSupplementImportScheduleInvariants(applyFkojunstImportScheduleInvariants(updatedSchedule))
+      applySeibanMachineNameSupplementImportScheduleInvariants(
+        applyFkojunstStatusMailImportScheduleInvariants(applyFkojunstImportScheduleInvariants(updatedSchedule))
+      )
     );
     config.csvImports![scheduleIndex] = canonicalSchedule;
     const warnings = detectGmailScheduleMinuteCollisions(config);
@@ -155,6 +161,7 @@ export class ImportScheduleAdminService {
   async deleteSchedule(scheduleId: string): Promise<void> {
     if (
       scheduleId === FKOJUNST_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === FKOBAINO_CSV_IMPORT_SCHEDULE_ID
     ) {
