@@ -68,4 +68,63 @@ describe('PalletVisualizationBoardDataSource', () => {
     await source.fetchData({ machineCds: ['mc01', ' mc02 '] });
     expect(queryBoardMock).toHaveBeenCalledWith({ machineCds: ['MC01', 'MC02'] });
   });
+
+  it('maps secondaryItem from sorted second workstation (displayOrder)', async () => {
+    queryBoardMock.mockResolvedValue({
+      machines: [
+        {
+          machineCd: 'MC01',
+          machineName: '機A',
+          illustrationUrl: null,
+          pallets: [
+            {
+              palletNo: 5,
+              items: [
+                {
+                  id: 'i-later',
+                  machineCd: 'MC01',
+                  palletNo: 5,
+                  displayOrder: 2,
+                  fhincd: 'FIRST',
+                  fhinmei: '先',
+                  fseiban: 'S-A',
+                  machineName: null,
+                  machineNameDisplay: null,
+                  csvDashboardRowId: null,
+                  plannedStartDateDisplay: null,
+                  plannedQuantity: 1,
+                  outsideDimensionsDisplay: null,
+                },
+                {
+                  id: 'i-first',
+                  machineCd: 'MC01',
+                  palletNo: 5,
+                  displayOrder: 1,
+                  fhincd: 'SECOND_PRIMARY',
+                  fhinmei: '先頭',
+                  fseiban: 'S-B',
+                  machineName: null,
+                  machineNameDisplay: null,
+                  csvDashboardRowId: null,
+                  plannedStartDateDisplay: '2026-01-02',
+                  plannedQuantity: 2,
+                  outsideDimensionsDisplay: null,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const source = new PalletVisualizationBoardDataSource();
+    const result = await source.fetchData({});
+
+    expect(result.kind).toBe('pallet_board');
+    if (result.kind === 'pallet_board') {
+      const p = result.machines[0]?.pallets.find((x) => x.palletNo === 5);
+      expect(p?.primaryItem?.fhincd).toBe('SECOND_PRIMARY');
+      expect(p?.secondaryItem?.fhincd).toBe('FIRST');
+    }
+  });
 });

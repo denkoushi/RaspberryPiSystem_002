@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { PalletBoardVisualizationData, RenderConfig, RenderOutput, VisualizationData } from '../../visualization.types.js';
 import { createMd3Tokens, escapeSvgText } from '../_design-system/index.js';
+import { mergeMd3TokensForPalletBoardSignage } from './pallet-board-appearance.js';
 import { getPalletCardThumbnailDataUri } from './pallet-card-thumbnail-data-uri.js';
 import { resolvePalletMachineIllustrationDataUri } from './pallet-board-illustration-data-uri.js';
 import { buildMultiMachinePalletBoardSvg } from './pallet-board-multi-layout.js';
@@ -43,7 +44,8 @@ export class PalletBoardRenderer implements Renderer {
     const palletData = data as PalletBoardVisualizationData;
     const width = config.width;
     const height = config.height;
-    const t = createMd3Tokens({ width, height });
+    const tRaw = createMd3Tokens({ width, height });
+    const t = mergeMd3TokensForPalletBoardSignage(tRaw);
 
     const pageIndex = Math.max(0, Math.floor(toNumber(config.pageIndex, 0)));
     const machinesPerPage = Math.max(1, Math.min(12, Math.floor(toNumber(config.machinesPerPage, width < 960 ? 2 : width < 1400 ? 4 : 6))));

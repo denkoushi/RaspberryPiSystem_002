@@ -1,6 +1,7 @@
 import type { Md3Tokens } from '../_design-system/md3.js';
 import type { PalletBoardVisualizationData } from '../../visualization.types.js';
 import { escapeSvgText } from '../_design-system/index.js';
+import { PALLET_SIGNAGE_GRID_COLS, palletBoardSignageColor } from './pallet-board-appearance.js';
 
 export function buildMultiMachinePalletBoardSvg(params: {
   width: number;
@@ -36,7 +37,7 @@ export function buildMultiMachinePalletBoardSvg(params: {
     const innerH = cellH - pad * 2;
     const headerBoxH = Math.round(innerH * 0.12);
 
-    const palletCols = 5;
+    const palletCols = PALLET_SIGNAGE_GRID_COLS;
     const palletN = m.pallets.length;
     const palletRows = Math.max(1, Math.ceil(palletN / palletCols));
     const slotW = innerW / palletCols;
@@ -55,14 +56,14 @@ export function buildMultiMachinePalletBoardSvg(params: {
       const more = lines.length > 3 ? ` +${lines.length - 3}` : '';
 
       palletBlocks.push(`
-          <rect x="${sx + 2}" y="${sy + 2}" width="${slotW - 4}" height="${slotH - 4}" rx="6" fill="${t.colors.surface.containerHigh}" stroke="${t.colors.grid}" stroke-width="1" />
+          <rect x="${sx + 2}" y="${sy + 2}" width="${slotW - 4}" height="${slotH - 4}" rx="6" fill="${palletBoardSignageColor.cardOccupiedFill}" stroke="${palletBoardSignageColor.activeStroke}" stroke-width="1" />
           <text x="${sx + 8}" y="${sy + 8 + bodySize}" font-size="${bodySize}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(`#${palletNo}`)}</text>
           <text x="${sx + 8}" y="${sy + 8 + bodySize * 2.4}" font-size="${bodySize * 0.85}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(preview + more)}</text>
         `);
     }
 
     cards.push(`
-        <rect x="${x + pad}" y="${y + pad}" width="${innerW}" height="${innerH}" rx="12" fill="${t.colors.surface.background}" stroke="${t.colors.outline}" stroke-width="2" />
+        <rect x="${x + pad}" y="${y + pad}" width="${innerW}" height="${innerH}" rx="12" fill="${palletBoardSignageColor.surfaceBackground}" stroke="${palletBoardSignageColor.sidebarOutline}" stroke-width="1" />
         <rect x="${x + pad}" y="${y + pad}" width="${innerW}" height="${headerBoxH}" rx="10" fill="${t.colors.status.infoContainer}" />
         <text x="${x + pad + 10}" y="${y + pad + headerBoxH * 0.65}" font-size="${titleSize}" font-weight="700" fill="${t.colors.status.onInfoContainer}" font-family="sans-serif">
           ${escapeSvgText(`${m.machineName} (${m.machineCd})`)}

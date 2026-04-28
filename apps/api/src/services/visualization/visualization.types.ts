@@ -61,6 +61,8 @@ export interface PalletBoardVisualizationData {
       isEmpty?: boolean;
       /** 先頭部品の構造化表示（空きのときは未設定） */
       primaryItem?: PalletBoardSlotPrimaryItem;
+      /** 同一パレット内の次点（サイネJPEGでの横並び用、最大で先頭〜2番目のみ） */
+      secondaryItem?: PalletBoardSlotPrimaryItem;
     }>;
   }>;
   metadata?: Record<string, unknown>;

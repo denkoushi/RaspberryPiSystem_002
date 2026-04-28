@@ -15,6 +15,31 @@ function buildLine(item: {
   return `${item.fhincd} ${item.fhinmei}（${tail}）`;
 }
 
+function mapPrimaryFromItem(first: {
+  fhincd: string;
+  fhinmei: string;
+  fseiban: string;
+  machineNameDisplay: string | null;
+  plannedStartDateDisplay: string | null;
+  plannedQuantity: number | null;
+}): {
+  fhincd: string;
+  fhinmei: string;
+  fseiban: string;
+  machineNameDisplay: string | null;
+  plannedStartDateDisplay: string | null;
+  plannedQuantity: number | null;
+} {
+  return {
+    fhincd: first.fhincd,
+    fhinmei: first.fhinmei,
+    fseiban: first.fseiban,
+    machineNameDisplay: first.machineNameDisplay,
+    plannedStartDateDisplay: first.plannedStartDateDisplay,
+    plannedQuantity: first.plannedQuantity,
+  };
+}
+
 export class PalletVisualizationBoardDataSource implements DataSource {
   readonly type = 'pallet_visualization_board';
 
@@ -26,22 +51,15 @@ export class PalletVisualizationBoardDataSource implements DataSource {
       machineName: m.machineName,
       illustrationUrl: m.illustrationUrl,
       pallets: m.pallets.map((p) => {
-        const first = p.items[0];
+        const ordered = [...p.items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+        const first = ordered[0];
+        const second = ordered[1];
         return {
           palletNo: p.palletNo,
           lines: p.items.map((it) => buildLine(it)),
           isEmpty: p.items.length === 0,
-          primaryItem:
-            first !== undefined
-              ? {
-                  fhincd: first.fhincd,
-                  fhinmei: first.fhinmei,
-                  fseiban: first.fseiban,
-                  machineNameDisplay: first.machineNameDisplay,
-                  plannedStartDateDisplay: first.plannedStartDateDisplay,
-                  plannedQuantity: first.plannedQuantity,
-                }
-              : undefined,
+          primaryItem: first !== undefined ? mapPrimaryFromItem(first) : undefined,
+          secondaryItem: second !== undefined ? mapPrimaryFromItem(second) : undefined,
         };
       }),
     }));
