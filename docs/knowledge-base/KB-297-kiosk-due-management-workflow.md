@@ -2258,6 +2258,20 @@ category: knowledge-base
   - **個数が出ない**: `plannedQuantity` が null の行では仕様どおり非表示。CSV 補助・API の `plannedQuantity` を疑う。
   - **バーが閉じすぎる**: `KIOSK_REVEAL_CLOSE_DELAY_MS` を 200→280ms 程度へ、`duration-100` を `duration-150` へ、など **単一定数**で緩める。
 
+### Leader order board: opaque left panel (2026-04-29) {#leader-order-board-opaque-left-panel-2026-04-29}
+
+- **目的**: 左端ホバーで開く **操作パネル**と **納期アシスト詳細**（第2シート）で、**半透明＋`backdrop-blur`** がページ背景グラデと重なり文字が読みづらかった問題を解消する。**Web のみ**・API 契約不変。
+- **仕様**:
+  - **左 `aside`（操作パネル）**: `bg-slate-950`（従来 `bg-slate-950/98`）。**製番検索内枠**: `bg-slate-900`（従来 `bg-white/5`）。
+  - **納期アシスト**: `bg-slate-900`（従来 `bg-slate-900/95` + `backdrop-blur-md` を撤去）。**テーブル見出し（sticky）**: `bg-slate-900` で同色に揃える。
+- **デプロイ・実機検証（2026-04-29）**:
+  - **ブランチ**: `fix/kiosk-leaderboard-left-panel-opaque-bg`（コミット **`93e111c3`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`。**対象**: **`raspberrypi5` のみ**（**Pi3/Pi4 不要**）。
+  - **Detach Run ID**（`ansible-update-`）: **`20260428-212925-25339`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **151s**）。
+- **知見**: キオスク沉浸式画面は **装飾レイヤ**（`ProductionScheduleLeaderOrderBoardPage` の `radial-gradient`）の上にパネルを載せる。**ガラス表現（`/95` + `backdrop-blur`）** は現場環境では **コントラスト不足**になりやすい。読むテキスト面は **`bg-*` のアルファなし**または **実質不透明**を優先し、レイヤごと統一すると sticky との境もぶれない。
+- **トラブルシューティング**: 体感が変わらないときは Pi5 **`web`** の **再ビルド**可否（`Rebuild/Restart docker compose services` が走ったか）と **ブラウザのハード再読込**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。

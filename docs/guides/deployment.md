@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-28
+last-verified: 2026-04-29
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（**写真持出 VLM 初見厳格化**・順位ボード `leaderboard` 機種名付与・生産日程一覧 FKOJUNST / ほか。詳細は下項）
+最終更新: 2026-04-29（**キオスク順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク **順位ボード左スタック・納期アシスト不透明背景**·`fix/kiosk-leaderboard-left-panel-opaque-bg`·Web のみ·Pi5 のみ）
+
+- **変更概要**: 左端ホバーで開く **操作パネル**（[`LeaderBoardLeftToolStack`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)）の `aside` を **`bg-slate-950/98` → `bg-slate-950`**、製番検索内枠を **`bg-white/5` → `bg-slate-900`**。**第2シート** [`LeaderBoardDueAssistPanel`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel.tsx) は **`bg-slate-900/95 backdrop-blur-md` → `bg-slate-900`**（ぼかし撤去）・sticky 見出しも不透明に。背後のページ装飾グラデが透けないよう可読性優先。**API/DB 変更なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 不要**（キオスク SPA は Pi5 `web` 配信）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/kiosk-leaderboard-left-panel-opaque-bg infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`93e111c3`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-212925-25339`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・サマリ **`Summary success check: true`**・所要 **約 6 分**・**Docker 再ビルド**含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 151s**・Tailscale）。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。見た目が変わらないときは **キャッシュ**・Pi5 **`web` イメージ再ビルド**・[`KB-297 §左パネル不透明化`](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-opaque-left-panel-2026-04-29)。
+- **ナレッジ**: [KB-297（不透明化節）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-opaque-left-panel-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-28: 写真持出 **初見1回目 VLM 厳格化**·`feat/photo-label-firstpass-precision-tuning`·API のみ·Pi5 のみ）
 
