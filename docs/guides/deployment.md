@@ -24,6 +24,16 @@ update-frequency: medium
 - **トラブルシュート**: デプロイ前 **未追跡・未コミット**で **fail-fast** する場合は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
 - **ナレッジ**: [api.md KB-355（v3 追補）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
+### 補足（2026-04-28: パレット可視化サイネJPEG v3 追随修正·`287c959e`·`main`·API のみ·Pi5 のみ）
+
+- **変更概要**: `fix(api): pallet signage machine-type hint, single typo in dual strip`（**`287c959e`**）。機種ヒント行のソース整理（FHIN/MH/SH と `machineNameDisplay`〜FHINMEI の優先順）。密着ヒント文字列について **`ellipsizeToMaxChars` の結果にさらに `…` を足さない**ようにし、省略記号の二重付けを解消。**`renderOccupiedDual`** で **`slotTypo(innerH)` を一度だけ算出**して縦デュアル帯と **`splitY`（横破線）** を参照し、未定義になる描画異常を解消。**DB/API 契約変更なし**。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 個別不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-114616-12424`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 564s**・**Rebuild/Restart docker compose services**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**・Tailscale）。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) と同様。
+- **ナレッジ**: [api.md KB-355（追随fix 追補）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
+
 ### 補足（2026-04-28: パレット可視化ボード サイネージJPEG ティール系レイアウト·`feature/pallet-board-teal-svg-v2`·API のみ·Pi5 のみ）
 
 - **変更概要**: `PalletBoardRenderer` の **SVG/JPEG** をティール基調へ刷新（**`pallet-board-appearance`** で MD3 トークン上書き）。**単一機**レイアウトで **左ペイン簡素化・4列グリッド**、スロットは **空／単品／同一パレット2品（`primaryItem` + `secondaryItem`・`displayOrder` 順）** を描画。**複数機**レイアウトも配色・列数整合（`PALLET_SIGNAGE_GRID_COLS`）。

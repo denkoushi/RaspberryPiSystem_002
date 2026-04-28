@@ -586,6 +586,12 @@
 - **知見（テスト）**: 旧 **「末尾4 `<text x=` 同一」** は同一行のため不適切 → **構造ベース**へ（`pallet-board-single-layout.test.ts`）。
 - **トラブルシュート**: 未コミット/未追跡で **`update-all-clients.sh` fail-fast**（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。
 
+**追補（2026-04-28・パレット可視化サイネJPEG v3 追随修正·`287c959e`/`main`·API のみ·Pi5 のみ）**:
+- **本番**: **`raspberrypi5` のみ**・Detach **`ansible-update-20260428-114616-12424`**（**`failed=0` / `unreachable=0` / exit `0`**・所要約 **564s**）。**標準**: [deployment.md 補足（287c959e）](../guides/deployment.md) と同じ **`update-all-clients.sh main … --limit raspberrypi5`**。
+- **仕様差分**: 機種名ヒント行のロジック整理。**`ellipsizeDenseHintLine`** は **`ellipsizeToMaxChars` の結果のみ採用**（二重省略記号の回避）。デュアル帯 **`renderOccupiedDual`** は **`slotTypo(innerH)` と `splitY`** を単一算出に統一（水平破線の Y に参照欠落しないようにする）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**）。
+- **知見**: v3 機能本体は先行デプロイ済み。**`main`** に追随修正が入ったあとでも、JPEG は Pi5 **`api`** のため **追加で Pi5 へ `main` をデプロイ**して初めて本番に反映される。
+
 **追補（2026-04-25・パレット可視化ボード サイネージ JPEG レンダラー・API のみ・Pi5 のみ）**:
 - ブランチ **`feat/pallet-board-jpeg-illustration-and-text-clip`**・代表 **`d01eb79c`**（`PalletBoardRenderer`・`pallet-board-single-layout.ts`・`pallet-board-illustration-data-uri.ts`・`pallet-card-thumbnail-data-uri.ts`・`pallet-board-svg-text.ts`・`apps/api` `build` の **assets コピー**）。
 - **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-jpeg-illustration-and-text-clip infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-121049-5082`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（`current-image` は Pi5 API の JPEG を取得するだけ・[deployment.md 冒頭](../guides/deployment.md) 同補足）。
