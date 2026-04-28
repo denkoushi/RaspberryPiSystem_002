@@ -19,7 +19,7 @@
         --hint: rgba(148, 180, 195, 0.9);
         --badge-fill: rgba(251, 146, 60, 0.95);
         --badge-text: rgba(28, 20, 8, 0.95);
-        --dash-border: rgba(126, 200, 200, 0.42);
+        --dash-border: rgba(140, 206, 206, 0.55);
       }
       * {
         box-sizing: border-box;
@@ -104,9 +104,10 @@
         font-size: 22px;
         font-weight: 700;
         line-height: 1.2;
-        color: var(--hint);
+        color: #fff;
       }
       .line-cd {
+        /* 本番 JPEG: pallet-board-single-layout.ts `DENSE_FHINC_FHINMEI_FONT_PX` と同期 */
         font-size: 14px;
         font-weight: 600;
         color: var(--text-main);
@@ -115,6 +116,7 @@
         line-height: 1.3;
       }
       .line-name {
+        /* 本番 JPEG: 上記 `DENSE_FHINC_FHINMEI_FONT_PX` と同期 */
         font-size: 14px;
         font-weight: 600;
         color: rgba(240, 253, 250, 0.95);
@@ -149,8 +151,9 @@
         line-height: 1.2;
         color: rgba(134, 200, 200, 0.88);
       }
-      /* メタ行: 左ブロックで「製番 |」＋着手日バッジ、右で個数はプレーンテキスト（日付／個数の見た目入替） */
+      /* メタ行: 左は「製番」＋padding 相当の gap＋着手日バッジ、右は個数（縦棒区切りなし） */
       .dual-line-meta {
+        color: #fff;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -161,26 +164,28 @@
         display: inline-flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 6px;
+        /* 製番とバッジの間は padding 相当（旧「 | 」の代わり） */
+        column-gap: 14px;
+        row-gap: 6px;
         min-width: 0;
         flex: 1;
       }
-      .dual-line-meta .seiban-plain,
-      .dual-line-meta .meta-sep {
+      .dual-line-meta .seiban-plain {
         font-size: 22px;
         font-weight: 700;
         line-height: 1.2;
-        color: rgba(134, 200, 200, 0.88);
-      }
-      .dual-line-meta .meta-sep {
-        color: rgba(134, 200, 200, 0.45);
+        color: #fff;
       }
       .dual-line-meta .meta-qty-plain {
         flex-shrink: 0;
         font-size: 22px;
         font-weight: 700;
         line-height: 1.2;
-        color: rgba(134, 200, 200, 0.88);
+        color: #fff;
+      }
+      /* 着手日バッジ内の文字色は従来どおり（オレンジ地に黒系） */
+      .dual-line-meta .badge.badge-date {
+        color: var(--badge-text);
       }
       /* 2段: 各段が「自分のヘッダ行（左: 開始）＋個数だけ右」→ 詳細全文幅 */
       .dual-body {
@@ -220,7 +225,8 @@
         flex-shrink: 0;
         height: 0;
         border: none;
-        border-top: 1px dashed var(--dash-border);
+        /* 本番 SVG 2段仕切り（太め破線）に近づける */
+        border-top: 2.5px dashed var(--dash-border);
         margin: 4px 0 6px;
         width: 100%;
       }
@@ -255,7 +261,7 @@
           </div>
           <div class="line-meta dual-line-meta">
             <span class="meta-leading">
-              <span class="seiban-plain">BA1S5321</span><span class="meta-sep"> | </span><span class="badge badge-date">2026-05-28</span>
+              <span class="seiban-plain">BA1S5321</span><span class="badge badge-date">2026-05-28</span>
             </span>
             <span class="meta-qty-plain">5個</span>
           </div>
@@ -279,7 +285,7 @@
             </div>
             <div class="line-meta dual-line-meta">
               <span class="meta-leading">
-                <span class="seiban-plain">BA1S4320</span><span class="meta-sep"> | </span><span class="badge badge-date">2026-05-28</span>
+                <span class="seiban-plain">BA1S4320</span><span class="badge badge-date">2026-05-28</span>
               </span>
               <span class="meta-qty-plain">2個</span>
             </div>
@@ -297,7 +303,7 @@
             </div>
             <div class="line-meta dual-line-meta">
               <span class="meta-leading">
-                <span class="seiban-plain">BA1S4349</span><span class="meta-sep"> | </span><span class="badge badge-date">2026-05-28</span>
+                <span class="seiban-plain">BA1S4349</span><span class="badge badge-date">2026-05-28</span>
               </span>
               <span class="meta-qty-plain">5個</span>
             </div>

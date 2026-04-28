@@ -592,6 +592,12 @@
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**）。
 - **知見**: v3 機能本体は先行デプロイ済み。**`main`** に追随修正が入ったあとでも、JPEG は Pi5 **`api`** のため **追加で Pi5 へ `main` をデプロイ**して初めて本番に反映される。
 
+**追補（2026-04-28・サイネJPEG 静的プレビュー整合・`feat/pallet-board-signage-preview-parity`·`158ae8fe`·API のみ·Pi5 のみ）**:
+- **本番**: **`raspberrypi5` のみ**・Detach **`ansible-update-20260428-125721-24544`**（**`failed=0` / `unreachable=0` / exit `0`**・所要約 **620s**）・標準コマンドは [deployment.md 補足（preview parity）](../guides/deployment.md) 項。**`main`** への取り込みは **PR マージ**（本記録時点）。
+- **仕様**: **`DENSE_FHINC_FHINMEI_FONT_PX`**（FHIN／品名行 **14px**）・**デュアル帯仕切り** **`DUAL_STRIP_SEP_STROKE_WIDTH` / `5 4` / `stroke-linecap`**。静的プレビュー HTML と **並べて確認**すると差分が追いやすい。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**）。
+- **トラブルシュート**: メタ製番とヒント機種は別行のため、**サイズのみ**変更してもレイアウト破綻しにくいが、**JPEG が古い**ときはキャッシュ再起動または更新間隔（[modules/signage/README.md](../modules/signage/README.md)）。
+
 **追補（2026-04-25・パレット可視化ボード サイネージ JPEG レンダラー・API のみ・Pi5 のみ）**:
 - ブランチ **`feat/pallet-board-jpeg-illustration-and-text-clip`**・代表 **`d01eb79c`**（`PalletBoardRenderer`・`pallet-board-single-layout.ts`・`pallet-board-illustration-data-uri.ts`・`pallet-card-thumbnail-data-uri.ts`・`pallet-board-svg-text.ts`・`apps/api` `build` の **assets コピー**）。
 - **本番**: **`raspberrypi5` のみ**・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-jpeg-illustration-and-text-clip infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260425-121049-5082`**（**`failed=0` / `unreachable=0` / exit `0`**）。**Pi3 不要**（`current-image` は Pi5 API の JPEG を取得するだけ・[deployment.md 冒頭](../guides/deployment.md) 同補足）。

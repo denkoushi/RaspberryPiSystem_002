@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（**パレット可視化サイネJPEG v3（プレビュー準拠密着レイアウト）**·Pi5·Phase12。ティール系初版·VLM #204/#205 等は下項参照）
+最終更新: 2026-04-28（**パレット可視化 サイネJPEG プレビュー整合（`feat/pallet-board-signage-preview-parity`）**・Pi5·Phase12。v3/`287c959e`/ティール/VLM は下項参照）
 
 ### 補足（2026-04-28: パレット可視化ボード サイネJPEG v3（プレビュー準拠）·`feature/pallet-board-signage-density-v3`·API のみ·Pi5 のみ）
 
@@ -33,6 +33,15 @@ update-frequency: medium
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**・Tailscale）。
 - **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) と同様。
 - **ナレッジ**: [api.md KB-355（追随fix 追補）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
+
+### 補足（2026-04-28: サイネJPEG プレビュー整合·`feat/pallet-board-signage-preview-parity`·APIのみ·Pi5のみ）
+
+- **変更概要**: コミット **`158ae8fe`**。**密着 FHINCD/品名行**を **`DENSE_FHINC_FHINMEI_FONT_PX`（14px）** で静的プレビュー [`pallet-board-teal-dual-vertical-preview.html`](../design-previews/pallet-board-teal-dual-vertical-preview.html) に合わせる。**2件時仕切り**は **`stroke-width` 強化・`stroke-dasharray`/`stroke-linecap`**、`DUAL_STRIP_SEP_STROKE`。プレビュー HTML はヒント／メタ行の色、`meta-sep` 撤去 **`column-gap`**、`.sep` 太線、`--dash-border` など。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/pallet-board-signage-preview-parity infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-125721-24544`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・所要 **約 620s**・**Rebuild/Restart docker compose services**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**・Tailscale）。
+- **ナレッジ**: [api.md KB-355（preview parity 追補）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。**`main` 取り込み**: PR でマージ（本記録時点）。
 
 ### 補足（2026-04-28: パレット可視化ボード サイネージJPEG ティール系レイアウト·`feature/pallet-board-teal-svg-v2`·API のみ·Pi5 のみ）
 
