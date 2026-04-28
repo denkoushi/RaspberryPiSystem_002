@@ -204,7 +204,7 @@
       .dual-strip:last-of-type {
         padding-bottom: 0;
       }
-      /* 段ごとのヘッダ: ヒントコードのみ（個数は line-meta 行右へ） */
+      /* 段ごとの上段: 機種名（製番は line-meta のみ） */
       .strip-head {
         display: flex;
         align-items: center;
@@ -236,8 +236,9 @@
   </head>
   <body>
     <p class="note">
-      <strong>デザイン検討用 HTML のみ</strong>（`apps/api` 未変更）。横並び2列ではなく
-      <strong>縦に2ブロック</strong>。メタ最下行は<strong>左: 製番 | 着手日バッジ</strong>、<strong>右: 個数プレーン</strong>。
+      <strong>デザイン検討用 HTML のみ</strong>（API レンダラは <code>pallet-board-single-layout</code> 参照）。
+      縦並び2ブロックでも<strong>フォント係数は単品と同じ</strong>。上段 1 行目は<strong>機種名</strong>（SH/MH の FHINCD は FHINMEI、それ以外は
+      machineNameDisplay 優先）。製番は<strong>メタ行に1回のみ</strong>。
     </p>
 
     <h2>比較: シングル vs 縦二段ダブル</h2>
@@ -247,7 +248,7 @@
           <span class="pallet-no">1</span>
         </div>
         <div class="info-block">
-          <div class="line-hint">BA1S5321</div>
+          <div class="line-hint">HCN-4000NEO</div>
           <div class="line-cd-name-row">
             <div class="line-cd">MD004812331</div>
             <div class="line-name">テーブル（X軸）</div>
@@ -270,7 +271,7 @@
         <div class="dual-body">
           <div class="dual-strip">
             <div class="strip-head">
-              <span class="line-hint">BA1S4320</span>
+              <span class="line-hint">HCN-4000NEO</span>
             </div>
             <div class="line-cd-name-row">
               <div class="line-cd">MD004809512</div>
@@ -288,7 +289,7 @@
 
           <div class="dual-strip">
             <div class="strip-head">
-              <span class="line-hint">BA1S4349</span>
+              <span class="line-hint">HCN-4000NEO</span>
             </div>
             <div class="line-cd-name-row">
               <div class="line-cd">MD0048095</div>

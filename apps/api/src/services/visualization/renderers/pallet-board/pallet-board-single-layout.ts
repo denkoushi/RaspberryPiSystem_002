@@ -22,10 +22,27 @@ function isSlotEmpty(slot: PalletBoardVisualizationData['machines'][number]['pal
   return slot.lines.length === 0;
 }
 
-function estimateHintFromFseiban(fseiban: string, maxChars: number): string {
-  const trimmed = fseiban.trim();
-  if (trimmed.length <= maxChars + 3) return trimmed;
-  return `${ellipsizeToMaxChars(trimmed, maxChars - 3)}…`;
+/** ヒント行（機種名）の省略（幅に収める）。`ellipsizeToMaxChars` が単独で `…` を付与する。 */
+function ellipsizeDenseHintLine(raw: string, maxChars: number): string {
+  const trimmed = raw.trim();
+  const lim = Math.max(4, maxChars);
+  if (trimmed.length <= lim) return trimmed;
+  return ellipsizeToMaxChars(trimmed, lim);
+}
+
+/**
+ * パレット番号直下の「機種名」行。
+ * - FHINCD が SH/MH で始まる（大文字同一視）は FHINMEI を使う。
+ * - それ以外は machineNameDisplay（あれば）、なければ FHINMEI。
+ */
+function resolveDenseHintMachineTypeLine(it: PalletBoardSlotPrimaryItem): string {
+  const cd = it.fhincd?.trim().toUpperCase() ?? '';
+  if (cd.startsWith('SH') || cd.startsWith('MH')) {
+    return dashOr(it.fhinmei);
+  }
+  const mn = it.machineNameDisplay?.trim();
+  if (mn && mn.length > 0) return mn;
+  return dashOr(it.fhinmei);
 }
 
 /** サイネ用タイポ（スロット高さ依存） */
@@ -82,20 +99,21 @@ function estimateMaxWideChars(fontPx: number, widthPx: number): number {
   return Math.max(4, Math.floor(widthPx / (fontPx * 0.72)));
 }
 
-/** 1製番・品目の密着ブロック（プレビュー準拠：ヒント／品番+品名同行／メタ行）。 */
+/** 1製番・品目の密着ブロック（ヒント行＝機種名／品番+品名同行／製番はメタ行のみ）。 */
 function renderDenseItemBlock(params: {
   bx: number;
   hintBaselineY: number;
   innerW: number;
-  slotInnerHeight: number;
+  /** 単品でも2件でも、この高さで `slotTypo` する（2件並びでもフォントは単品と同じ）。 */
+  slotInnerHeightForTypo: number;
   it: PalletBoardSlotPrimaryItem;
   t: Md3Tokens;
 }): string {
-  const { bx, hintBaselineY, innerW, slotInnerHeight, it, t } = params;
+  const { bx, hintBaselineY, innerW, slotInnerHeightForTypo, it, t } = params;
   const pad = 10;
-  const ty = slotTypo(slotInnerHeight);
+  const ty = slotTypo(slotInnerHeightForTypo);
   const maxHint = Math.max(5, estimateMaxWideChars(ty.hintSize, innerW - pad * 2));
-  const hint = estimateHintFromFseiban(dashOr(it.fseiban), maxHint);
+  const hint = ellipsizeDenseHintLine(resolveDenseHintMachineTypeLine(it), maxHint);
 
   const cdSize = Math.round(ty.bodySize * 1.05);
   const nameSize = ty.bodySize;
@@ -189,7 +207,7 @@ function renderOccupiedDenseSingle(slot: PalletBoardVisualizationData['machines'
       bx,
       hintBaselineY: yHintStart,
       innerW,
-      slotInnerHeight: innerH,
+      slotInnerHeightForTypo: innerH,
       it,
       t,
     })}
@@ -217,9 +235,7 @@ function renderOccupiedDual(slot: PalletBoardVisualizationData['machines'][numbe
   const avail = bottomLimit - stripTop;
   const segBodyH = (avail - DUAL_STRIP_GAP_PX) / 2;
   const splitY = stripTop + segBodyH + DUAL_STRIP_GAP_PX / 2;
-  const segH = Math.max(36, Math.round(segBodyH));
-  const typoSeg = slotTypo(segH);
-  const insetHint = Math.round(typoSeg.hintSize * 1.12);
+  const insetHint = Math.round(ty.hintSize * 1.12);
   const hintBaseline1 = stripTop + insetHint;
   const hintBaseline2 = stripTop + segBodyH + DUAL_STRIP_GAP_PX + insetHint;
 
@@ -235,7 +251,7 @@ function renderOccupiedDual(slot: PalletBoardVisualizationData['machines'][numbe
       bx,
       hintBaselineY: hintBaseline1,
       innerW,
-      slotInnerHeight: segH,
+      slotInnerHeightForTypo: innerH,
       it: a,
       t,
     })}
@@ -243,7 +259,7 @@ function renderOccupiedDual(slot: PalletBoardVisualizationData['machines'][numbe
       bx,
       hintBaselineY: hintBaseline2,
       innerW,
-      slotInnerHeight: segH,
+      slotInnerHeightForTypo: innerH,
       it: b,
       t,
     })}

@@ -38,11 +38,50 @@ describe('buildSingleMachinePalletBoardSvg', () => {
 
     expect(svg).toContain('>C1<');
     expect(svg).toContain('>部品<');
+    expect(svg).toContain('機種名テスト');
     expect(svg).toContain('text-anchor="end"');
     expect(svg).toContain(palletBoardSignageColor.metaPlainTeal);
     expect(svg).toContain(`fill="${palletBoardSignageColor.badgeFill}"`);
     expect(svg).toContain('>3個<');
-    expect(/S1/.test(svg) || /\u2026/.test(svg)).toBe(true);
+    // 製番はメタ行のみ（ヒントは機種名）。省略されても先頭は残る想定
+    expect(svg).toMatch(/S1[-\u2026O]/);
+  });
+
+  it('FHINCD が SH/MH のときヒント行は FHINMEI（machineNameDisplay より FHINMEI 優先）', () => {
+    const t = createMd3Tokens({ width: 1920, height: 1080 });
+    const svg = buildSingleMachinePalletBoardSvg({
+      width: 1920,
+      height: 1080,
+      t,
+      title: 'T',
+      subtitle: '',
+      machine: {
+        machineCd: 'M1',
+        machineName: 'Machine 1',
+        illustrationUrl: null,
+        pallets: [
+          {
+            palletNo: 1,
+            lines: ['line'],
+            isEmpty: false,
+            primaryItem: {
+              fhincd: 'SH001',
+              fhinmei: 'スライダ優先',
+              fseiban: 'SEI-1',
+              machineNameDisplay: '設備側機種は使わない',
+              plannedStartDateDisplay: null,
+              plannedQuantity: 1,
+            },
+          },
+        ],
+      },
+      leftPanelImageDataUri: null,
+      cardThumbDataUri: null,
+    });
+
+    expect(svg).toContain('スライダ優先');
+    expect(svg).not.toContain('設備側機種は使わない');
+    expect(svg.includes('SEI-1') || svg.includes('SEI')).toBe(true);
   });
 
   it('プライマリ＋セカンダリ時は縦セパ線（破線 horizontal line）が入る', () => {
