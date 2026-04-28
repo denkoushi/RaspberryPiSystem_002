@@ -67,4 +67,13 @@ describe('env secret policy', () => {
 
     await expect(loadEnvModule()).rejects.toThrow(/LOCAL_LLM_SHARED_TOKEN|admin inference/);
   });
+
+  it('fails when warm window enabled but start hour >= end hour', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED = 'true';
+    process.env.LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR = '23';
+    process.env.LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR = '7';
+
+    await expect(loadEnvModule()).rejects.toThrow(/LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR/);
+  });
 });

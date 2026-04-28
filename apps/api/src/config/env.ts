@@ -194,6 +194,18 @@ const envSchema = z.object({
   LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(60000),
   LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(60000),
   LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS: z.coerce.number().int().min(200).max(30_000).default(2000),
+  /**
+   * true かつ LOCAL_LLM_RUNTIME_MODE=on_demand のとき、指定タイムゾーンの時間帯内は release 後も /stop を送らず warm 維持する。
+   * 既定は無効（従来どおり refCount=0 で停止）。
+   */
+  LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  LOCAL_LLM_RUNTIME_WARM_WINDOW_TIMEZONE: z.string().min(1).default('Asia/Tokyo'),
+  /** warm 窓の開始時（この時を含む。0–23） */
+  LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR: z.coerce.number().int().min(0).max(23).default(7),
+  /** warm 窓の終了時（この時を含まない。0–23）。07–23 なら 07:00〜22:59 が warm */
+  LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR: z.coerce.number().int().min(0).max(23).default(23),
 
   /**
    * 推論プロバイダ配列（JSON）。未設定時は LOCAL_LLM_* から id=default を1件合成。
@@ -326,6 +338,17 @@ const envSchema = z.object({
   /** 収束ラベルと BTRIM 一致する photo_tool_similarity_gallery 行数の下限（マイルド既定 5） */
   PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS: z.coerce.number().int().min(1).max(100).default(5),
 }).superRefine((value, ctx) => {
+  if (value.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED) {
+    if (value.LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR >= value.LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR'],
+        message:
+          'LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR must be greater than LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR when warm window is enabled',
+      });
+    }
+  }
+
   if (value.PHOTO_TOOL_EMBEDDING_ENABLED) {
     if (!value.PHOTO_TOOL_EMBEDDING_URL) {
       ctx.addIssue({

@@ -20,6 +20,8 @@ type ProviderLocalLlmRuntimeControllerDeps = {
   stopRequestTimeoutMs: number;
   healthPollIntervalMs: number;
   legacyAdminRuntimeControl?: InferenceProviderRuntimeControlDefinition;
+  /** 全 HttpOnDemand インスタンスで共有。true のとき release で /stop を抑止 */
+  shouldSuppressStop?: () => boolean;
 };
 
 class InvalidOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeControllerPort {
@@ -111,6 +113,7 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
       startRequestTimeoutMs: this.deps.startRequestTimeoutMs,
       stopRequestTimeoutMs: this.deps.stopRequestTimeoutMs,
       healthPollIntervalMs: this.deps.healthPollIntervalMs,
+      shouldSuppressStop: this.deps.shouldSuppressStop,
     });
   }
 

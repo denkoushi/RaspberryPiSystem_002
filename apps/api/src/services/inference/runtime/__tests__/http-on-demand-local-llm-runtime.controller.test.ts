@@ -131,4 +131,41 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       'LocalLlmRuntimeControl: ready probe auth failed HTTP 403'
     );
   });
+
+  it('skips stop when shouldSuppressStop returns true', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/start') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        return new Response('ok\n', { status: 200 });
+      }
+      if (url.includes('/stop') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      return new Response('nope', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const c = new HttpOnDemandLocalLlmRuntimeController({
+      fetchImpl,
+      startUrl: 'http://ubuntu/start',
+      stopUrl: 'http://ubuntu/stop',
+      controlToken: 'ctrl',
+      healthCheckBaseUrl: 'http://llm:38081/',
+      llmToken: 't',
+      readyProbeModels: { admin_console_chat: 'm' },
+      readyTimeoutMs: 30_000,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      shouldSuppressStop: () => true,
+    });
+
+    await c.ensureReady('admin_console_chat');
+    await c.release('admin_console_chat');
+    expect(
+      fetchImpl.mock.calls.filter(([u, init]) => String(u).includes('/stop') && init?.method === 'POST').length
+    ).toBe(0);
+  });
 });

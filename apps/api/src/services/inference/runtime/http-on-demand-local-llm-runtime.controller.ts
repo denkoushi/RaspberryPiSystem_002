@@ -19,6 +19,11 @@ export type HttpOnDemandLocalLlmRuntimeControllerDeps = {
   startRequestTimeoutMs: number;
   stopRequestTimeoutMs: number;
   healthPollIntervalMs: number;
+  /**
+   * true のとき、refCount=0 での release で /stop を送らない（昼間 warm 維持など）。
+   * 未指定・false は従来どおり停止試行。
+   */
+  shouldSuppressStop?: () => boolean;
 };
 
 /**
@@ -62,6 +67,13 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
       return;
     }
     this.readyPromise = null;
+    if (this.deps.shouldSuppressStop?.() === true) {
+      log.info(
+        { useCase, action: 'runtime_stop_suppressed' },
+        '[LocalLlmRuntimeControl] stop suppressed (schedule policy)'
+      );
+      return;
+    }
     await this.stopQuietly(useCase);
   }
 
@@ -104,6 +116,7 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
       );
       throw new Error(`LocalLlmRuntimeControl: start failed HTTP ${res.status}`);
     }
+    await res.text().catch(() => '');
   }
 
   private async pollHealthUntilReady(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<void> {
@@ -147,8 +160,10 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
         const signal = AbortSignal.timeout(perReqMs);
         const r = await this.deps.fetchImpl(readyProbeUrl, { ...requestInit, signal });
         if (r.ok) {
+          await r.text().catch(() => '');
           return;
         }
+        await r.text().catch(() => '');
         if (this.deps.llmToken && (r.status === 401 || r.status === 403)) {
           log.warn(
             {
@@ -209,6 +224,7 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
           '[LocalLlmRuntimeControl] stop endpoint non-OK'
         );
       } else {
+        await res.text().catch(() => '');
         log.info(
           {
             useCase,

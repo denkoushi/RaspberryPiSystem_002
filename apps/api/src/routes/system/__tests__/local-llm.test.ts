@@ -405,6 +405,73 @@ describe('system local llm routes', () => {
     expect(calledUrls.some((url) => url.endsWith('/stop'))).toBe(true);
   });
 
+  it('runs two sequential admin chats in on_demand mode (start/probe/chat/stop each time)', async () => {
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://100.107.223.92:38081/start';
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://100.107.223.92:38081/stop';
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-control-token';
+    env.LOCAL_LLM_RUNTIME_HEALTH_BASE_URL = 'http://100.107.223.92:38081';
+    resetLocalLlmRuntimeControllerForTests();
+
+    let chatCallCount = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/start') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        chatCallCount += 1;
+        const isProbe = chatCallCount % 2 === 1;
+        if (isProbe) {
+          return new Response('ready', { status: 200 });
+        }
+        const round = chatCallCount / 2;
+        return new Response(
+          JSON.stringify({
+            model: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf',
+            choices: [{ finish_reason: 'stop', message: { content: `on_demand chat ok round ${round}` } }],
+            usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
+          }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/stop') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const payload = {
+      messages: [{ role: 'user', content: 'on demand chat を実行' }],
+    };
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/system/local-llm/chat/completions',
+      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      payload,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({ content: 'on_demand chat ok round 1' });
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/system/local-llm/chat/completions',
+      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      payload,
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json()).toMatchObject({ content: 'on_demand chat ok round 2' });
+
+    const startHits = vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/start') && init?.method === 'POST')
+      .length;
+    const stopHits = vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/stop') && init?.method === 'POST')
+      .length;
+    expect(startHits).toBe(2);
+    expect(stopHits).toBe(2);
+    expect(chatCallCount).toBe(4);
+  });
+
   it('uses provider runtime control from INFERENCE_PROVIDERS_JSON for admin chat', async () => {
     env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
     env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = undefined;

@@ -140,4 +140,49 @@ describe('ProviderLocalLlmRuntimeController', () => {
     expect(calledUrls.filter((url) => url === 'http://dgx:38081/legacy/start')).toHaveLength(1);
     expect(calledUrls.filter((url) => url === 'http://dgx:38081/legacy/stop')).toHaveLength(1);
   });
+
+  it('passes shouldSuppressStop so release does not POST /stop', async () => {
+    const providers = createProviders();
+    const router = new InferenceRouter({
+      providers,
+      routes: {
+        document_summary: { providerId: 'dgx_text', modelOverride: 'system-prod-primary' },
+        photo_label: { providerId: 'ubuntu_vlm', modelOverride: 'Qwen_Qwen3.5-9B-Q4_K_M.gguf' },
+      },
+    });
+
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/start') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        return new Response('ready', { status: 200 });
+      }
+      if (url.endsWith('/stop') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const controller = new ProviderLocalLlmRuntimeController({
+      fetchImpl,
+      globalMode: 'on_demand',
+      router,
+      providers,
+      resolveAdminProvider: () => providers[0],
+      resolveAdminModel: () => 'system-prod-primary',
+      readyTimeoutMs: 30_000,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      shouldSuppressStop: () => true,
+    });
+
+    await controller.ensureReady('document_summary');
+    await controller.release('document_summary');
+    expect(
+      fetchImpl.mock.calls.filter(([u, init]) => String(u).endsWith('/stop') && init?.method === 'POST').length
+    ).toBe(0);
+  });
 });

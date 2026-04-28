@@ -55,6 +55,11 @@ update-frequency: medium
 - `LOCAL_LLM_RUNTIME_CONTROL_TOKEN` … Ubuntu の `LLM_RUNTIME_CONTROL_TOKEN` と一致（未設定時は `LOCAL_LLM_SHARED_TOKEN` を流用可）
 - `LOCAL_LLM_RUNTIME_HEALTH_BASE_URL` … 省略時は `LOCAL_LLM_BASE_URL`（`/healthz` 待ちに使用）
 
+#### 昼間 warm ウィンドウ（任意・2026-04-28 以降）
+
+- **`LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED=true`** のとき、指定 TZ の時間帯内は **`release` 後も `POST /stop` を送らない**（07:00〜22:59 JST の既定など）。深夜は従来の on_demand のまま停止試行する。
+- 変数一覧・境界の意味は [KB-360](../knowledge-base/KB-360-local-llm-warm-window-schedule.md) を参照。
+
 ### 複数 provider へ拡張する場合
 
 `LOCAL_LLM_*` は **admin provider（管理 Chat / status。未指定時は `default` 優先、その次に先頭）** の既定値として残しつつ、`INFERENCE_PROVIDERS_JSON` の各 provider に **`runtimeControl`** を載せると、用途別 provider ごとに on-demand 起動停止を分けられる。

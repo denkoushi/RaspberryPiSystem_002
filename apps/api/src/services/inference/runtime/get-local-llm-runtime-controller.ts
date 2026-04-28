@@ -1,15 +1,42 @@
+import { logger } from '../../../lib/logger.js';
 import { env } from '../../../config/env.js';
 import { getInferenceRuntime } from '../inference-runtime.js';
 
 import type { LocalLlmRuntimeControllerPort } from './local-llm-runtime-control.port.js';
+import { isWithinLocalLlmWarmWindow } from './local-llm-runtime-schedule.policy.js';
 import { NoopLocalLlmRuntimeController } from './noop-local-llm-runtime.controller.js';
 import { ProviderLocalLlmRuntimeController } from './provider-local-llm-runtime.controller.js';
+
+const log = logger.child({ component: 'localLlmRuntimeControl' });
 
 let singleton: LocalLlmRuntimeControllerPort | null = null;
 
 function resolveAdminConsoleChatModel(): string {
   const runtimeConfig = getInferenceRuntime().getAdminLocalLlmRuntimeConfig();
   return runtimeConfig.model?.trim() || env.LOCAL_LLM_MODEL?.trim() || '';
+}
+
+function buildWarmWindowSuppressStop(): (() => boolean) | undefined {
+  if (!env.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED) {
+    return undefined;
+  }
+  const warmConfig = {
+    enabled: true as const,
+    timeZone: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_TIMEZONE,
+    startHourInclusive: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR,
+    endHourExclusive: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR,
+  };
+  return () => {
+    try {
+      return isWithinLocalLlmWarmWindow(new Date(), warmConfig);
+    } catch (err) {
+      log.warn(
+        { err, action: 'warm_window_eval_failed' },
+        '[LocalLlmRuntimeControl] warm window evaluation failed; not suppressing stop'
+      );
+      return false;
+    }
+  };
 }
 
 function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeControllerPort {
@@ -40,6 +67,7 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
     startRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS,
     stopRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS,
     healthPollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
+    shouldSuppressStop: buildWarmWindowSuppressStop(),
   });
 }
 

@@ -45,6 +45,11 @@ all:
           api_local_llm_runtime_health_base_url: ""
           # blue(vLLM+NVFP4) は cold start が 10分超になることがあるため ready timeout を延長
           api_local_llm_runtime_ready_timeout_ms: "900000"
+          # 07:00–22:59 JST は warm（release でも upstream /stop しない）。23:00–06:59 は従来 on_demand
+          api_local_llm_runtime_warm_window_enabled: "true"
+          api_local_llm_runtime_warm_window_timezone: "Asia/Tokyo"
+          api_local_llm_runtime_warm_window_start_hour: "7"
+          api_local_llm_runtime_warm_window_end_hour: "23"
           inference_providers_json: >-
             [{"id":"dgx_primary","baseUrl":"http://100.118.82.72:38081","sharedToken":"{{ vault_api_local_llm_shared_token | default('') }}","defaultModel":"system-prod-primary","timeoutMs":60000,"runtimeControl":{"mode":"on_demand","startUrl":"http://100.118.82.72:38081/start","stopUrl":"http://100.118.82.72:38081/stop","controlToken":"{{ vault_api_local_llm_runtime_control_token | default('') }}","healthBaseUrl":"http://100.118.82.72:38081"}}]
           inference_admin_provider_id: "dgx_primary"
