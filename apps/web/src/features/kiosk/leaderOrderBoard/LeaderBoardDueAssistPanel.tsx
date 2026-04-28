@@ -47,7 +47,7 @@ export function LeaderBoardDueAssistPanel({
   return (
     <aside
       className={clsx(
-        'flex h-full min-h-0 flex-col overflow-hidden bg-slate-900/95 shadow-2xl backdrop-blur-md transition-[max-width,width,opacity] duration-200 ease-out',
+        'flex h-full min-h-0 flex-col overflow-hidden bg-slate-900 shadow-2xl transition-[max-width,width,opacity] duration-200 ease-out',
         isOpen
           ? 'w-[min(52rem,min(92vw,calc(100vw-5rem)))] shrink-0 border-l border-white/15 opacity-100'
           : 'pointer-events-none w-0 max-w-0 shrink-0 border-0 opacity-0'
@@ -106,7 +106,7 @@ export function LeaderBoardDueAssistPanel({
         ) : null}
         {!loading && !error && detail && detail.parts.length > 0 ? (
           <table className="w-full border-collapse text-left text-xs text-white">
-            <thead className="sticky top-0 z-10 bg-slate-900/95">
+            <thead className="sticky top-0 z-10 bg-slate-900">
               <tr className="border-b border-white/20 text-white/80">
                 <th className="px-2 py-2">部品</th>
                 <th className="px-2 py-2">製造order番号</th>

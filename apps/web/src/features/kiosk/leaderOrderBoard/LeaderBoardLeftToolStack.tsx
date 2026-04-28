@@ -88,7 +88,7 @@ export function LeaderBoardLeftToolStack({
         aria-hidden
       />
       <aside
-        className="flex h-full min-h-0 w-64 max-w-[85vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950/98 p-3 shadow-xl"
+        className="flex h-full min-h-0 w-64 max-w-[85vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950 p-3 shadow-xl"
         aria-label="操作パネル"
       >
         <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
@@ -127,7 +127,7 @@ export function LeaderBoardLeftToolStack({
             )}
           </select>
         </label>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-white/5 p-2">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-slate-900 p-2">
           <div className="mb-2 flex shrink-0 items-center justify-between">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-white/70">製番検索</span>
             <button
