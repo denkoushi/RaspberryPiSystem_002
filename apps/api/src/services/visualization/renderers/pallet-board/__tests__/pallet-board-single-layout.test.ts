@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createMd3Tokens } from '../../_design-system/index.js';
+import { palletBoardSignageColor } from '../pallet-board-appearance.js';
 import { buildSingleMachinePalletBoardSvg } from '../pallet-board-single-layout.js';
 
 describe('buildSingleMachinePalletBoardSvg', () => {
-  it('品目ありスロットの SVG に下段4行用の等間隔 x が繰り返し含まれる（全幅揃え）', () => {
+  it('シングル占用スロットに品番／品名同行と製番／着手バッジ／個数メタが現れる', () => {
     const t = createMd3Tokens({ width: 1920, height: 1080 });
     const svg = buildSingleMachinePalletBoardSvg({
       width: 1920,
@@ -34,12 +35,56 @@ describe('buildSingleMachinePalletBoardSvg', () => {
       leftPanelImageDataUri: null,
       cardThumbDataUri: null,
     });
-    // 4 行とも fullWidthX（bx+8）始まり: 同じ数値の <text x="..."> を複数行で含む
-    // 単一加工機1スロット時: 先頭にボード他テキストあり。ネスト<g>内の <text> は子SVGで拾うため
-    // 文書順の末尾4つ＝下段4明細（fseiban〜着手）の <text> が同一 x（fullWidthX）
-    const allTextXs = Array.from(svg.matchAll(/<text x="([0-9.]+)"/g), (m) => m[1]);
-    const detailXs = allTextXs.slice(-4);
-    expect(detailXs.length).toBe(4);
-    expect(new Set(detailXs).size).toBe(1);
+
+    expect(svg).toContain('>C1<');
+    expect(svg).toContain('>部品<');
+    expect(svg).toContain('text-anchor="end"');
+    expect(svg).toContain(palletBoardSignageColor.metaPlainTeal);
+    expect(svg).toContain(`fill="${palletBoardSignageColor.badgeFill}"`);
+    expect(svg).toContain('>3個<');
+    expect(/S1/.test(svg) || /\u2026/.test(svg)).toBe(true);
+  });
+
+  it('プライマリ＋セカンダリ時は縦セパ線（破線 horizontal line）が入る', () => {
+    const t = createMd3Tokens({ width: 1920, height: 1080 });
+    const svg = buildSingleMachinePalletBoardSvg({
+      width: 1920,
+      height: 1080,
+      t,
+      title: '',
+      subtitle: '',
+      machine: {
+        machineCd: 'M1',
+        machineName: 'M',
+        illustrationUrl: null,
+        pallets: [
+          {
+            palletNo: 1,
+            lines: [],
+            primaryItem: {
+              fhincd: 'CA',
+              fhinmei: 'A',
+              fseiban: 'SA',
+              machineNameDisplay: null,
+              plannedStartDateDisplay: '1/1',
+              plannedQuantity: 1,
+            },
+            secondaryItem: {
+              fhincd: 'CB',
+              fhinmei: 'B',
+              fseiban: 'SB',
+              machineNameDisplay: null,
+              plannedStartDateDisplay: '2/2',
+              plannedQuantity: 2,
+            },
+          },
+        ],
+      },
+      leftPanelImageDataUri: null,
+      cardThumbDataUri: null,
+    });
+
+    expect(svg.includes('stroke-dasharray="4 3"')).toBe(true);
+    expect(svg).toContain('>CB<');
   });
 });

@@ -17,6 +17,10 @@ export const palletBoardSignageColor = {
   badgeStroke: 'rgba(255, 143, 74, 0.45)',
   badgeText: 'rgba(255, 143, 74, 0.92)',
   metaCyan: '#5dd5f5',
+  /** メタ行の製番・個数などプレーンテキスト（ティール系） */
+  metaPlainTeal: 'rgba(134, 200, 200, 0.88)',
+  /** メタ区切り "|" を弱める */
+  metaSeparatorMuted: 'rgba(134, 200, 200, 0.45)',
   emptyDashBorder: 'rgba(120, 130, 145, 0.35)',
 } as const;
 
