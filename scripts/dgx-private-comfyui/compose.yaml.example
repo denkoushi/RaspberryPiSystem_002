@@ -1,0 +1,33 @@
+# Copy to `compose.yaml` beside `.env` on the DGX host.
+# Requires: external network `dgx_private_personal_net`, NVIDIA Container Toolkit, GPU.
+# Project name: set COMPOSE_PROJECT_NAME in `.env`.
+
+services:
+  comfyui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dgx-private-comfyui:local
+    container_name: dgx-private-comfyui
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+    # GPU access (Compose v2+); aligns with DGX Spark docs (`docker run --gpus=all`).
+    gpus: all
+    volumes:
+      - ${COMFYUI_DATA_ROOT}/models:/opt/ComfyUI/models
+      - ${COMFYUI_DATA_ROOT}/input:/opt/ComfyUI/input
+      - ${COMFYUI_DATA_ROOT}/output:/opt/ComfyUI/output
+      - ${COMFYUI_DATA_ROOT}/user:/opt/ComfyUI/user
+    ports:
+      # Loopback-only publish: use Tailscale SSH port-forward from your Mac to this host port.
+      - "127.0.0.1:${COMFYUI_PORT:-8188}:8188"
+    networks:
+      - dgx_private_personal
+
+networks:
+  dgx_private_personal:
+    external: true
+    name: dgx_private_personal_net

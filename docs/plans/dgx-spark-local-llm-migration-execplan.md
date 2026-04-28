@@ -4,10 +4,11 @@
 
 tags: [DGX Spark, LocalLLM, NVIDIA, Docker, Tailscale, セキュリティ, 運用, 計画]
 audience: [運用者, 開発者, AIアシスタント]
-last-verified: 2026-04-28
+last-verified: 2026-04-29
 related:
 
 - ../runbooks/local-llm-tailscale-sidecar.md
+- ../runbooks/dgx-private-comfyui.md
 - ../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
 - ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
 - ../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md
@@ -29,6 +30,7 @@ update-frequency: high
 
 ## Progress
 
+- (2026-04-29 JST) **private用途 ComfyUI**: repo にコンテナ雛形を追加した（[`scripts/dgx-private-comfyui`](../../scripts/dgx-private-comfyui)、Runbook [`dgx-private-comfyui.md`](../runbooks/dgx-private-comfyui.md)）。公式 Playbook（CUDA 13 / PyTorch `cu130` / ComfyUI GitHub）に沿った **`Dockerfile.example`**。ホスト公開は **127.0.0.1 のみ**、Tailscale は **SSH ポートフォワード**前提。**未実施**: DGX 実機での `docker compose build/up`、Mac ブラウザによるワークフロー検証。
 - (2026-04-25 14:37 JST) ドキュメント作業ブランチ `docs/dgx-spark-operations-plan` を作成した。
 - (2026-04-25 14:45 JST) 現行 LocalLLM 構成を確認した。Pi5 API は `LOCAL_LLM_*` により Ubuntu LocalLLM を利用し、`LOCAL_LLM_RUNTIME_MODE=on_demand` と `/start` `/stop` 制御を使う。
 - (2026-04-25 14:55 JST) NVIDIA 公式情報を確認した。DGX Spark は DGX OS、Docker、NVIDIA Container Runtime、NGC を前提にするのが正規ルートである。

@@ -1,0 +1,39 @@
+# NVIDIA Spark ComfyUI playbook aligns with: CUDA 13 + PyTorch cu130 + ComfyUI from GitHub.
+# Copy this file to `Dockerfile` beside `compose.yaml` before `docker compose build`.
+#
+# References:
+# - https://build.nvidia.com/spark/comfy-ui/instructions
+# - https://github.com/NVIDIA/dgx-spark-playbooks/tree/main/nvidia/comfy-ui
+
+FROM nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+    python3-pip \
+    git \
+    wget \
+    ca-certificates \
+    build-essential \
+    python3-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+# Isolated venv (matches playbook spirit; avoids PEP 668 conflicts on the base image).
+RUN python3 -m venv /opt/comfyui-venv
+ENV PATH="/opt/comfyui-venv/bin:${PATH}"
+
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu130
+
+WORKDIR /opt/ComfyUI
+RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+EXPOSE 8188
+
+# Listen inside the container; host publish is restricted to 127.0.0.1 in compose.yaml.
+CMD ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188"]

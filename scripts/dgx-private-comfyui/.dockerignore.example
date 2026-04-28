@@ -1,0 +1,6 @@
+# Copy to `.dockerignore` next to `Dockerfile` if you add local overrides.
+.git
+.env
+*.md
+compose.yaml
+compose.override.yaml
