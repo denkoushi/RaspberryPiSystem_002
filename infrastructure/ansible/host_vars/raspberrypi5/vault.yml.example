@@ -40,4 +40,9 @@ vault_dropbox_access_token: ""
 # アクティブ: 埋め込みONかつゲート通過時のみ2回目を photoToolDisplayName に採用しうる（docs/decisions/ADR-20260404）
 # vault_photo_tool_label_assist_active_enabled: "false"
 # vault_photo_tool_label_assist_active_min_gallery_rows: "5"
+# 初見1回目のみ厳格化（低温度・短max・追加回答ルール）。シャドー2回目は従来どおり
+# vault_photo_tool_label_first_pass_strict_mode: "false"
+# 空は未指定（strict時は code 既定 max=24 temp=0.05）。任意で上書き可
+# vault_photo_tool_label_first_pass_vision_max_tokens: ""
+# vault_photo_tool_label_first_pass_vision_temperature: ""
 

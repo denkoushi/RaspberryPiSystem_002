@@ -49,6 +49,38 @@ describe('RoutedVisionCompletionAdapter', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('uses per-request max_tokens and temperature when provided', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: 'a' } }],
+      }),
+    })) as unknown as typeof fetch;
+
+    const adapter = new RoutedVisionCompletionAdapter({
+      router: baseRouter(),
+      fetchImpl,
+      useCase: 'photo_label',
+      getMaxTokens: () => 100,
+      getTemperature: () => 0.1,
+    });
+
+    await adapter.complete({
+      imageBytes: Buffer.from([0xff]),
+      mimeType: 'image/jpeg',
+      userText: 'x',
+      maxTokens: 24,
+      temperature: 0.05,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { max_tokens: number; temperature: number };
+    expect(body.max_tokens).toBe(24);
+    expect(body.temperature).toBe(0.05);
+  });
+
   it('retries once on image load/decode 400 with reencode then succeeds', async () => {
     const reencode = vi.fn(async () => Buffer.from('jpeg-bytes'));
     let call = 0;

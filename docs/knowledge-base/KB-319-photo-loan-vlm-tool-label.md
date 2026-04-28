@@ -98,6 +98,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - **CONFIRMED**: 本番 checkout `e93cef83`・ブランチ `feat/photo-loan-vlm-human-review-and-vision-input`
 - **CONFIRMED**: 写真付き Loan **154** 件のうち **`photoToolHumanReviewedAt` あり 15** 件（運用で人レビュー済みデータが存在）
 - **CONFIRMED**: `PHOTO_TOOL_LABEL_VISION_SOURCE` / `PHOTO_TOOL_LABEL_USER_PROMPT` は **未設定時はコード既定**（本番では `VISION_SOURCE` 既定 `original`・長辺既定 768 等。帯域節約でサムネのみにしたい場合は `thumbnail` を明示）
+- **追記（2026-04-28）**: 初見1回目のみ厳格化する **`PHOTO_TOOL_LABEL_FIRST_PASS_STRICT_MODE`** および任意の **`PHOTO_TOOL_LABEL_FIRST_PASS_VISION_*`** が追加された（説明文混入・部品語誤答の抑制。シャドー2回目は従来 `INFERENCE_PHOTO_LABEL_VISION_*`）。詳細は [photo-loan.md](../modules/tools/photo-loan.md) 環境変数節・`photo-tool-label-first-pass.policy.ts`。
 
 ### 管理 API（ADMIN / MANAGER）
 

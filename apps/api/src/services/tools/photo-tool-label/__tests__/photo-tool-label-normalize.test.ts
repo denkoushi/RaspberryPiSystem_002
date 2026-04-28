@@ -22,4 +22,13 @@ describe('normalizePhotoToolDisplayName', () => {
     const out = normalizePhotoToolDisplayName(long);
     expect(out).toHaveLength(PHOTO_TOOL_DISPLAY_NAME_MAX_LEN);
   });
+
+  it('strict: keeps text before first period-like delimiter', () => {
+    expect(normalizePhotoToolDisplayName('ペンチ。これは工具です。', { strict: true })).toBe('ペンチ');
+    expect(normalizePhotoToolDisplayName('マイクロメータ. extra', { strict: true })).toBe('マイクロメータ');
+  });
+
+  it('strict: trims trailing colon', () => {
+    expect(normalizePhotoToolDisplayName('ノギス：', { strict: true })).toBe('ノギス');
+  });
 });

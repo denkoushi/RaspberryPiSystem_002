@@ -76,6 +76,9 @@ all:
           # VLM アクティブ補助（2回目推論の本番保存。vault で true にし server ロールで docker .env 再生成後、api に反映）
           photo_tool_label_assist_active_enabled: "{{ vault_photo_tool_label_assist_active_enabled | default('false') }}"
           photo_tool_label_assist_active_min_gallery_rows: "{{ vault_photo_tool_label_assist_active_min_gallery_rows | default('5') }}"
+          photo_tool_label_first_pass_strict_mode: "{{ vault_photo_tool_label_first_pass_strict_mode | default('false') }}"
+          photo_tool_label_first_pass_vision_max_tokens: "{{ vault_photo_tool_label_first_pass_vision_max_tokens | default('') }}"
+          photo_tool_label_first_pass_vision_temperature: "{{ vault_photo_tool_label_first_pass_vision_temperature | default('') }}"
           # Web環境変数
           web_api_base_url: "/api"
           web_ws_base_url: "/ws"
