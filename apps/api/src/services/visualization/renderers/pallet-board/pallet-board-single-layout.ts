@@ -50,15 +50,16 @@ function badgeWidthPx(textLen: number, fontSize: number): number {
   return Math.max(Math.round(fontSize * 2.9), Math.round(fontSize * 0.72 * Math.max(textLen, 3)));
 }
 
-function badgeRectSvgAnchoredRight(params: {
-  rightX: number;
+/** メタ行で着手日用（左アンカー） */
+function badgeRectSvgAnchoredLeft(params: {
+  leftX: number;
   ryTop: number;
   text: string;
   fontSize: number;
 }): string {
   const bw = badgeWidthPx(params.text.length, params.fontSize);
   const bh = Math.round(params.fontSize * 1.55);
-  const rx = params.rightX - bw;
+  const rx = params.leftX;
   return `
     <rect x="${rx}" y="${params.ryTop}" width="${bw}" height="${bh}" rx="${Math.round(params.fontSize * 0.75)}"
       fill="${palletBoardSignageColor.badgeFill}"
@@ -70,46 +71,99 @@ function badgeRectSvgAnchoredRight(params: {
   `;
 }
 
+function textAdvanceApprox(fontSize: number, charCount: number): number {
+  return Math.round(fontSize * 0.72 * Math.max(0, charCount));
+}
+
+const DUAL_STRIP_GAP_PX = 6;
+const DUAL_STRIP_SEP_STROKE = 'rgba(126,200,200,0.42)';
+
 function estimateMaxWideChars(fontPx: number, widthPx: number): number {
   return Math.max(4, Math.floor(widthPx / (fontPx * 0.72)));
 }
 
-function renderDenseLinesColumn(params: {
+/** 1製番・品目の密着ブロック（プレビュー準拠：ヒント／品番+品名同行／メタ行）。 */
+function renderDenseItemBlock(params: {
   bx: number;
-  yStartHint: number;
+  hintBaselineY: number;
   innerW: number;
   slotInnerHeight: number;
   it: PalletBoardSlotPrimaryItem;
   t: Md3Tokens;
 }): string {
-  const { bx, yStartHint, innerW, slotInnerHeight, it, t } = params;
-  const ty = slotTypo(slotInnerHeight);
+  const { bx, hintBaselineY, innerW, slotInnerHeight, it, t } = params;
   const pad = 10;
+  const ty = slotTypo(slotInnerHeight);
   const maxHint = Math.max(5, estimateMaxWideChars(ty.hintSize, innerW - pad * 2));
   const hint = estimateHintFromFseiban(dashOr(it.fseiban), maxHint);
 
-  let y = yStartHint;
+  const cdSize = Math.round(ty.bodySize * 1.05);
+  const nameSize = ty.bodySize;
+  const leftColWPx = Math.round((innerW - pad * 2) * 0.36);
+  const rightColWPx = innerW - pad * 2 - leftColWPx - 6;
+  const cdText = ellipsizeToMaxChars(dashOr(it.fhincd), estimateMaxWideChars(cdSize, leftColWPx));
+  const meiText = ellipsizeToMaxChars(dashOr(it.fhinmei), estimateMaxWideChars(nameSize, rightColWPx));
+
+  let y = hintBaselineY;
   let block = `
-    <text x="${bx + pad}" y="${y}" font-size="${ty.hintSize}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(hint)}</text>
+    <text x="${bx + pad}" y="${y}" font-size="${ty.hintSize}" font-weight="700" fill="${t.colors.text.secondary}"
+      font-family="sans-serif">${escapeSvgText(hint)}</text>
   `;
-  y += ty.hintSize * ty.lead + ty.bodySize * 1.05;
+
+  y += ty.hintSize * ty.lead + cdSize * 0.95;
+  block += `
+    <text x="${bx + pad}" y="${y}" font-size="${cdSize}" font-weight="600"
+      fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(cdText)}</text>
+    <text x="${bx + innerW - pad}" y="${y}" font-size="${nameSize}" fill="${t.colors.text.primary}"
+      text-anchor="end" font-family="sans-serif">${escapeSvgText(meiText)}</text>
+  `;
+
+  const metaFont = Math.max(ty.metaSize, Math.round(ty.hintSize * 0.9));
+  const badgeFs = Math.max(8, Math.round(metaFont * 0.78));
+  const dateStr = `${it.plannedStartDateDisplay ?? ''}`.trim();
+  const hasDate = dateStr.length > 0;
+  const sepStr = ' | ';
+  const qtyStr = qtyLabel(it.plannedQuantity);
+  const sepW = hasDate ? textAdvanceApprox(metaFont, sepStr.length) : 0;
+  const qtyW = textAdvanceApprox(metaFont, qtyStr.length);
+  const gapBeforeQty = 8;
+  const rightEdge = bx + innerW - pad;
+  const qtyTextX = rightEdge;
+  const clusterRight = qtyTextX - qtyW - gapBeforeQty;
+  const badgeW = hasDate ? badgeWidthPx(dateStr.length, badgeFs) + 4 : 0;
+  const leadBudget = clusterRight - bx - pad - (hasDate ? sepW + badgeW : 0);
+  const seibanDraw = ellipsizeToMaxChars(
+    dashOr(it.fseiban),
+    Math.max(4, estimateMaxWideChars(metaFont, Math.max(leadBudget, metaFont * 2))),
+  );
+
+  y += Math.max(cdSize, nameSize) * ty.lead + metaFont * 1.1;
+  const metaBadgeTop = Math.round(y - badgeFs * 1.12);
+  let leadX = bx + pad;
+  block += `
+    <text x="${leadX}" y="${y}" font-size="${metaFont}" font-weight="700" fill="${palletBoardSignageColor.metaPlainTeal}"
+      font-family="sans-serif">${escapeSvgText(seibanDraw)}</text>
+  `;
+  leadX += textAdvanceApprox(metaFont, seibanDraw.length);
+
+  if (hasDate) {
+    block += `
+      <text x="${leadX}" y="${y}" font-size="${metaFont}" fill="${palletBoardSignageColor.metaSeparatorMuted}"
+        font-family="sans-serif">${escapeSvgText(sepStr)}</text>
+    `;
+    leadX += sepW;
+    block += badgeRectSvgAnchoredLeft({
+      leftX: leadX,
+      ryTop: metaBadgeTop,
+      text: dateStr,
+      fontSize: badgeFs,
+    });
+  }
 
   block += `
-    <text x="${bx + pad}" y="${y}" font-size="${Math.round(ty.bodySize * 1.05)}" font-weight="600"
-      fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(dashOr(it.fhincd))}</text>
-  `;
-  y += ty.bodySize * ty.lead + 2;
-
-  block += `
-    <text x="${bx + pad}" y="${y}" font-size="${ty.bodySize}" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(dashOr(it.fhinmei))}</text>
-  `;
-  y += ty.bodySize * ty.lead + 2;
-
-  const metaTxt = `${dashOr(it.fseiban)}${it.plannedStartDateDisplay != null && `${it.plannedStartDateDisplay}`.trim() ? ` | ${dashOr(it.plannedStartDateDisplay)}` : ''}`;
-  block += `
-    <text x="${bx + pad}" y="${y}" font-size="${ty.metaSize}" fill="${t.colors.status.info}"
-      font-family="sans-serif">${escapeSvgText(
-        ellipsizeToMaxChars(metaTxt, estimateMaxWideChars(ty.metaSize, innerW - pad * 2)),
+    <text x="${qtyTextX}" y="${y}" font-size="${metaFont}" font-weight="700"
+      fill="${palletBoardSignageColor.metaPlainTeal}" font-family="sans-serif" text-anchor="end">${escapeSvgText(
+        qtyStr,
       )}</text>
   `;
 
@@ -124,23 +178,16 @@ function renderOccupiedDenseSingle(slot: PalletBoardVisualizationData['machines'
   const clipId = `pbSlot_${idx}`;
   const pad = 10;
   const headerLineY = by + pad + tyInner.noSize;
-  const qty = qtyLabel(it.plannedQuantity);
   const tPalletNo = ellipsizeToMaxChars(String(slot.palletNo), estimateMaxWideChars(tyInner.noSize, innerW / 4));
-  const yHintStart = by + tyInner.noSize + Math.round(tyInner.badgeSize * 2.2);
+  const yHintStart = headerLineY + pad * 2.8;
 
   const bodyAfterHeader = `
-    ${badgeRectSvgAnchoredRight({
-      rightX: bx + innerW - pad,
-      ryTop: by + pad + 2,
-      text: qty,
-      fontSize: tyInner.badgeSize,
-    })}
     <text x="${bx + pad}" y="${headerLineY}"
       font-size="${tyInner.noSize}" font-weight="800" fill="${palletBoardSignageColor.palletNumberBright}"
       font-family="sans-serif">${escapeSvgText(tPalletNo)}</text>
-    ${renderDenseLinesColumn({
+    ${renderDenseItemBlock({
       bx,
-      yStartHint: yHintStart,
+      hintBaselineY: yHintStart,
       innerW,
       slotInnerHeight: innerH,
       it,
@@ -164,51 +211,39 @@ function renderOccupiedDual(slot: PalletBoardVisualizationData['machines'][numbe
   const clipId = `pbSlot_dual_${idx}`;
   const pad = 10;
   const headerLineY = by + pad + ty.noSize;
-  const SPLIT = 8;
-  const splitMid = SPLIT / 2;
-  const halfW = (innerW - SPLIT) / 2;
   const tPalletNo = ellipsizeToMaxChars(String(slot.palletNo), estimateMaxWideChars(ty.noSize, innerW / 4));
-  const midX = bx + halfW + splitMid;
-  const lineTop = headerLineY + pad * 0.85;
-  const badgeRowY = by + ty.noSize + pad * 0.9;
-  const yHintBelowBadges = by + ty.noSize + ty.badgeSize + pad * 3.2;
-
-  const leftBadgeRight = bx + halfW + splitMid - pad;
-  const rightBadgeRight = bx + innerW - pad;
+  const stripTop = headerLineY + pad * 2.8;
+  const bottomLimit = by + innerH - pad;
+  const avail = bottomLimit - stripTop;
+  const segBodyH = (avail - DUAL_STRIP_GAP_PX) / 2;
+  const splitY = stripTop + segBodyH + DUAL_STRIP_GAP_PX / 2;
+  const segH = Math.max(36, Math.round(segBodyH));
+  const typoSeg = slotTypo(segH);
+  const insetHint = Math.round(typoSeg.hintSize * 1.12);
+  const hintBaseline1 = stripTop + insetHint;
+  const hintBaseline2 = stripTop + segBodyH + DUAL_STRIP_GAP_PX + insetHint;
 
   const bodyDual = `
     <text x="${bx + pad}" y="${headerLineY}"
       font-size="${ty.noSize}" font-weight="800" fill="${palletBoardSignageColor.palletNumberBright}"
       font-family="sans-serif">${escapeSvgText(tPalletNo)}</text>
-    <line x1="${midX}" y1="${lineTop}" x2="${midX}" y2="${by + innerH - pad}"
-      stroke="rgba(126,200,200,0.42)" stroke-width="1" stroke-dasharray="4 3" />
 
-    ${badgeRectSvgAnchoredRight({
-      rightX: leftBadgeRight,
-      ryTop: badgeRowY,
-      text: qtyLabel(a.plannedQuantity),
-      fontSize: ty.badgeSize,
-    })}
-    ${badgeRectSvgAnchoredRight({
-      rightX: rightBadgeRight,
-      ryTop: badgeRowY,
-      text: qtyLabel(b.plannedQuantity),
-      fontSize: ty.badgeSize,
-    })}
+    <line x1="${bx + pad}" y1="${splitY}" x2="${bx + innerW - pad}" y2="${splitY}"
+      stroke="${DUAL_STRIP_SEP_STROKE}" stroke-width="1" stroke-dasharray="4 3" />
 
-    ${renderDenseLinesColumn({
-      bx: bx + pad,
-      yStartHint: yHintBelowBadges,
-      innerW: halfW + splitMid - pad * 2,
-      slotInnerHeight: innerH,
+    ${renderDenseItemBlock({
+      bx,
+      hintBaselineY: hintBaseline1,
+      innerW,
+      slotInnerHeight: segH,
       it: a,
       t,
     })}
-    ${renderDenseLinesColumn({
-      bx: bx + halfW + SPLIT + pad,
-      yStartHint: yHintBelowBadges,
-      innerW: halfW + splitMid - pad * 2,
-      slotInnerHeight: innerH,
+    ${renderDenseItemBlock({
+      bx,
+      hintBaselineY: hintBaseline2,
+      innerW,
+      slotInnerHeight: segH,
       it: b,
       t,
     })}

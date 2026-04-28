@@ -10,7 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-28（パレット可視化サイネJPEG ティール系差し替え·Pi5·Phase12。また VLM #204/#205 等は下項参照）
+最終更新: 2026-04-28（**パレット可視化サイネJPEG v3（プレビュー準拠密着レイアウト）**·Pi5·Phase12。ティール系初版·VLM #204/#205 等は下項参照）
+
+### 補足（2026-04-28: パレット可視化ボード サイネJPEG v3（プレビュー準拠）·`feature/pallet-board-signage-density-v3`·API のみ·Pi5 のみ）
+
+- **変更概要**: `pallet-board-single-layout.ts` に **`renderDenseItemBlock`**（ヒント → **品番＋品名を同一行**（右 `text-anchor="end"`）→ **メタ一行**：製番プレーン・着手日 **オレンジ系バッジ**・個数は **ティール系プレーンテキスト**）。**`primaryItem` + `secondaryItem`** 時は **左右分割ではなく縦2段**＋**横破線**（破線の向きは水平）。**`palletBoardSignageColor.metaPlainTeal` / `metaSeparatorMuted`** を追加。ミニ一覧（`pallet-board-multi-layout.ts`）は **配色・本文サイズ係数のみ**微調整（細密レイアウトはシングル系と非共有）。静プレビュー: [`docs/design-previews/pallet-board-teal-dual-vertical-preview.html`](../design-previews/pallet-board-teal-dual-vertical-preview.html)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3/Pi4 個別は不要**（JPEG は Pi5 `api` が生成）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feature/pallet-board-signage-density-v3 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績）**: 代表コミット **`4b325c01`**（レイアウト）＋ **`7e300e74`**（上記プレビュー HTML 追跡）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260428-103644-15464`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。所要 **約 539s**・**Docker `api` 再ビルド**を含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 31s**・Tailscale）。
+- **手動目視（推奨）**: 管理 **`/admin/signage/preview`**（端末 **`x-client-key`** 指定可）で **2品（`secondaryItem`）** が **縦段**になっていること・メタ行の **日付バッジ／個数プレーン**の位置を確認。反映が古い場合は端末の **画像キャッシュ/更新間隔**（[modules/signage/README.md](../modules/signage/README.md)）。
+- **知見**: 着手日用バッジは **`badgeRectSvgAnchoredLeft`**。旧 **右上の個数バッジ**は廃止（個数はメタ行へ）。Vitest の **「末尾4 `<text x=` 同一」** は同一行2要素のため **不適切** → **構造ベースの検証に置換**（`pallet-board-single-layout.test.ts`）。
+- **トラブルシュート**: デプロイ前 **未追跡・未コミット**で **fail-fast** する場合は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+- **ナレッジ**: [api.md KB-355（v3 追補）](../knowledge-base/api.md#kb-355-加工機パレット可視化キオスク管理可視化ボード2026-04-22)・[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-28: パレット可視化ボード サイネージJPEG ティール系レイアウト·`feature/pallet-board-teal-svg-v2`·API のみ·Pi5 のみ）
 

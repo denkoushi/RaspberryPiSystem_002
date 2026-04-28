@@ -31,8 +31,9 @@ export function buildMultiMachinePalletBoardSvg(params: {
     if (!m) continue;
 
     const pad = Math.round(Math.min(cellW, cellH) * 0.04);
+    /** シングルサイネ側の体感に寄せつつ過大化しない係数（ミニ一覧は短文前提） */
     const titleSize = Math.max(12, Math.round(cellW / 28));
-    const bodySize = Math.max(10, Math.round(cellW / 32));
+    const bodySize = Math.max(10, Math.round(cellW / 30));
     const innerW = cellW - pad * 2;
     const innerH = cellH - pad * 2;
     const headerBoxH = Math.round(innerH * 0.12);
@@ -58,7 +59,7 @@ export function buildMultiMachinePalletBoardSvg(params: {
       palletBlocks.push(`
           <rect x="${sx + 2}" y="${sy + 2}" width="${slotW - 4}" height="${slotH - 4}" rx="6" fill="${palletBoardSignageColor.cardOccupiedFill}" stroke="${palletBoardSignageColor.activeStroke}" stroke-width="1" />
           <text x="${sx + 8}" y="${sy + 8 + bodySize}" font-size="${bodySize}" font-weight="700" fill="${t.colors.text.primary}" font-family="sans-serif">${escapeSvgText(`#${palletNo}`)}</text>
-          <text x="${sx + 8}" y="${sy + 8 + bodySize * 2.4}" font-size="${bodySize * 0.85}" fill="${t.colors.text.secondary}" font-family="sans-serif">${escapeSvgText(preview + more)}</text>
+          <text x="${sx + 8}" y="${sy + 8 + bodySize * 2.4}" font-size="${bodySize * 0.87}" fill="${palletBoardSignageColor.metaPlainTeal}" font-family="sans-serif">${escapeSvgText(preview + more)}</text>
         `);
     }
 
