@@ -70,7 +70,9 @@ export type ProductionScheduleListParams = {
   allowResourceOnly?: boolean;
   locationKey: string;
   siteKey?: string;
-  /** `leaderboard`: Pi4 順位ボード向けの軽量レスポンス（後方互換のため省略時は full） */
+  /**
+   * `leaderboard`: actual-hours を省略。`resolvedMachineName` は full と同様にバッチ解決する（省略時は full）。
+   */
   responseProfile?: 'full' | 'leaderboard';
 };
 
@@ -477,14 +479,14 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   if (isLeaderboardProfile) {
     const lightRows = rows.map((row) => ({
       ...row,
-      actualPerPieceMinutes: null as number | null,
-      resolvedMachineName: null as string | null
+      actualPerPieceMinutes: null as number | null
     }));
+    const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
     return {
       page,
       pageSize,
       total,
-      rows: lightRows
+      rows: rowsWithResolvedMachineName
     };
   }
 
