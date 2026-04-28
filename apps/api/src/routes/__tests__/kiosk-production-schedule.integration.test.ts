@@ -9,8 +9,33 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 const DASHBOARD_ID = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 const ORDER_SUPPLEMENT_SOURCE_DASHBOARD_ID = '8f0b8d6e-4b77-4e7e-8d9a-6c8b2f5d1a31';
+/** Gmail FKOJUNST（旧ルート）想定の sourceCsvDashboardId — fkst 行のテスト種付け用 */
+const FKOJUNST_GMAIL_LEGACY_SOURCE_DASHBOARD_ID = '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c';
 const CLIENT_KEY = 'client-demo-key';
 const CLIENT_KEY_2 = 'client-demo-key-2';
+
+async function seedDefaultFkojunstStatusForAllDashboardRows(): Promise<void> {
+  const rows = await prisma.csvDashboardRow.findMany({
+    where: { csvDashboardId: DASHBOARD_ID },
+    select: { id: true, rowData: true },
+  });
+  if (rows.length === 0) return;
+  await prisma.productionScheduleFkojunstStatus.createMany({
+    data: rows.map((rw) => {
+      const rd = rw.rowData as Record<string, string | undefined>;
+      return {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: rw.id,
+        sourceCsvDashboardId: FKOJUNST_GMAIL_LEGACY_SOURCE_DASHBOARD_ID,
+        productNo: rd.ProductNo ?? '',
+        resourceCd: (rd.FSIGENCD ?? '').trim().toUpperCase(),
+        processOrder: rd.FKOJUN ?? '',
+        statusCode: 'S',
+      };
+    }),
+    skipDuplicates: true,
+  });
+}
 
 describe('Kiosk Production Schedule API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -24,6 +49,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   afterAll(async () => {
+    await prisma.productionScheduleFkojunstStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
     await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -56,6 +82,7 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   beforeEach(async () => {
+    await prisma.productionScheduleFkojunstStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
     await prisma.productionScheduleAccessPasswordConfig.deleteMany();
     await prisma.dueManagementOutcomeEvent.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
@@ -185,6 +212,8 @@ describe('Kiosk Production Schedule API', () => {
         update: { isCompleted: true }
       });
     }
+
+    await seedDefaultFkojunstStatusForAllDashboardRows();
   });
 
   it('rejects request without x-client-key', async () => {
@@ -314,6 +343,52 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((row) => row.rowData.ProductNo)).toEqual(['0000', '0002']);
   });
 
+  it('hides rows when fkst is non S/R and there is no FKOJUNST_Status mail row', async () => {
+    const targetRow = await prisma.csvDashboardRow.findFirst({
+      where: { csvDashboardId: DASHBOARD_ID, rowData: { path: ['ProductNo'], equals: '0001' } },
+      select: { id: true },
+    });
+    expect(targetRow).toBeDefined();
+    if (!targetRow) return;
+
+    await prisma.productionScheduleFkojunstStatus.updateMany({
+      where: { csvDashboardRowId: targetRow.id },
+      data: { statusCode: 'X' },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0002']);
+  });
+
+  it('shows fkst R when there is no FKOJUNST_Status mail row', async () => {
+    const targetRow = await prisma.csvDashboardRow.findFirst({
+      where: { csvDashboardId: DASHBOARD_ID, rowData: { path: ['ProductNo'], equals: '0001' } },
+      select: { id: true },
+    });
+    expect(targetRow).toBeDefined();
+    if (!targetRow) return;
+
+    await prisma.productionScheduleFkojunstStatus.updateMany({
+      where: { csvDashboardRowId: targetRow.id },
+      data: { statusCode: 'R' },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; FKOJUNST?: string } }> };
+    expect(body.rows.find((r) => r.rowData.ProductNo === '0001')?.rowData.FKOJUNST).toBe('R');
+  });
+
   it('returns planned supplement fields when linked row exists', async () => {
     const rows = await prisma.csvDashboardRow.findMany({
       where: { csvDashboardId: DASHBOARD_ID },
@@ -381,6 +456,8 @@ describe('Kiosk Production Schedule API', () => {
         },
       ],
     });
+
+    await seedDefaultFkojunstStatusForAllDashboardRows();
 
     const res = await app.inject({
       method: 'GET',
@@ -633,6 +710,8 @@ describe('Kiosk Production Schedule API', () => {
       ]
     });
     expect(created.count).toBe(2);
+
+    await seedDefaultFkojunstStatusForAllDashboardRows();
 
     const list = await prisma.csvDashboardRow.findMany({
       where: { csvDashboardId: DASHBOARD_ID },
@@ -2184,6 +2263,8 @@ describe('Kiosk Production Schedule API', () => {
       ]
     });
 
+    await seedDefaultFkojunstStatusForAllDashboardRows();
+
     const res = await app.inject({
       method: 'GET',
       url: '/api/kiosk/production-schedule?q=CAT1&resourceCategory=grinding',
@@ -2256,6 +2337,8 @@ describe('Kiosk Production Schedule API', () => {
         }
       ]
     });
+
+    await seedDefaultFkojunstStatusForAllDashboardRows();
 
     const res = await app.inject({
       method: 'GET',
