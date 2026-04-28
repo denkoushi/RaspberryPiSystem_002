@@ -123,7 +123,7 @@ describe('buildSingleMachinePalletBoardSvg', () => {
       cardThumbDataUri: null,
     });
 
-    expect(svg.includes('stroke-dasharray="4 3"')).toBe(true);
+    expect(svg.includes('stroke-dasharray="5 4"')).toBe(true);
     expect(svg).toContain('>CB<');
   });
 });

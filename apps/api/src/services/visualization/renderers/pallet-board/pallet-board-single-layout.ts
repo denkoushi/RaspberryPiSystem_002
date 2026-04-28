@@ -93,13 +93,20 @@ function textAdvanceApprox(fontSize: number, charCount: number): number {
 }
 
 const DUAL_STRIP_GAP_PX = 6;
-const DUAL_STRIP_SEP_STROKE = 'rgba(126,200,200,0.42)';
+const DUAL_STRIP_SEP_STROKE = 'rgba(140,206,206,0.55)';
+/** 2段仕切り破線の太さ（1px は JPEG だと潰れやすい） */
+const DUAL_STRIP_SEP_STROKE_WIDTH = 2.5;
 
 function estimateMaxWideChars(fontPx: number, widthPx: number): number {
   return Math.max(4, Math.floor(widthPx / (fontPx * 0.72)));
 }
 
-/** 1製番・品目の密着ブロック（ヒント行＝機種名／品番+品名同行／製番はメタ行のみ）。 */
+/**
+ * FHINCD・品名（密着ブロック中央行）の px。静的プレビュー
+ * `docs/design-previews/pallet-board-teal-dual-vertical-preview.html` の `.line-cd`/`.line-name`（14px）と合わせる。
+ */
+const DENSE_FHINC_FHINMEI_FONT_PX = 14;
+
 function renderDenseItemBlock(params: {
   bx: number;
   hintBaselineY: number;
@@ -115,8 +122,8 @@ function renderDenseItemBlock(params: {
   const maxHint = Math.max(5, estimateMaxWideChars(ty.hintSize, innerW - pad * 2));
   const hint = ellipsizeDenseHintLine(resolveDenseHintMachineTypeLine(it), maxHint);
 
-  const cdSize = Math.round(ty.bodySize * 1.05);
-  const nameSize = ty.bodySize;
+  const cdSize = DENSE_FHINC_FHINMEI_FONT_PX;
+  const nameSize = DENSE_FHINC_FHINMEI_FONT_PX;
   const leftColWPx = Math.round((innerW - pad * 2) * 0.36);
   const rightColWPx = innerW - pad * 2 - leftColWPx - 6;
   const cdText = ellipsizeToMaxChars(dashOr(it.fhincd), estimateMaxWideChars(cdSize, leftColWPx));
@@ -245,7 +252,7 @@ function renderOccupiedDual(slot: PalletBoardVisualizationData['machines'][numbe
       font-family="sans-serif">${escapeSvgText(tPalletNo)}</text>
 
     <line x1="${bx + pad}" y1="${splitY}" x2="${bx + innerW - pad}" y2="${splitY}"
-      stroke="${DUAL_STRIP_SEP_STROKE}" stroke-width="1" stroke-dasharray="4 3" />
+      stroke="${DUAL_STRIP_SEP_STROKE}" stroke-width="${DUAL_STRIP_SEP_STROKE_WIDTH}" stroke-dasharray="5 4" stroke-linecap="round" />
 
     ${renderDenseItemBlock({
       bx,
