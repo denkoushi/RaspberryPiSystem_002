@@ -2215,6 +2215,13 @@ category: knowledge-base
 - **境界**: ドメインロジックは `apps/web/src/features/kiosk/leaderOrderBoard/`（正規化・`sortLeaderBoardRowsForDisplay`・`filterLeaderBoardRowsByCompletion`・`mergeMachineNameFallback`・Vitest）。API 契約は新設せず既存 order / complete 系を利用。
 - **沉浸式**: `usesKioskImmersiveLayout` に `KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX` を含む（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md) と併読）。
 
+### 状態の永続化・資源順序同期・製番フィルタ連動（2026-04-29）
+
+- **対象端末（deviceScopeKey）**: キオスク localStorage に **工場（siteKey）単位**で保存し、ページ再入室で復元する。端末一覧に存在しない保存値は破棄し **先頭端末へフォールバック**。
+- **資源スロットの資源 CD 順（端末間）**: 既存の `GET/PUT …/manual-order-resource-assignments` の **`resourceCds` 配列の順序**を正とし、各端末で **デバウンス PUT** して共有する。**スロット本数（slotCount）は端末ローカル**のまま（localStorage）。**サーバ割当が空 `[]` でローカルに選択がある初回**は、誤って空配列で上書きしない（ローカルから PUT してサーバと整合してからマージ）。
+- **製番カードと一覧の連動**: 左パネルで **選択中の製番**（納期アシストの `selectedFseiban`）へ、同一画面の生産スケジュール検索条件 **`activeQueries` を単一製番で上書き**し、順位ボード一覧を絞り込む（製番納期アシスト UI 自体は従来どおり維持）。
+- **参照実装**: `usePersistedLeaderBoardDeviceScope`・`useLeaderBoardResourceSlotsWithServerSync`・[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。
+
 ### 行アクション・機種名フォールバック（2026-04-02）
 
 - **完了**: 各行の ✓ ボタンで生産スケジュール画面と同様に完了／未完了を切替。表示上の完了は `rowData.progress === '完了'` と同期（`LeaderBoardRow.isCompleted`）。
