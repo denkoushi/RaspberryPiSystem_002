@@ -128,7 +128,7 @@ export function LeaderBoardLeftToolStack({
           </select>
         </label>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-slate-900 p-2">
-          <div className="mb-2 flex shrink-0 items-center justify-between">
+          <div className="mb-2 flex shrink-0 items-center justify-between gap-1">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-white/70">製番検索</span>
             <button
               type="button"
@@ -139,6 +139,14 @@ export function LeaderBoardLeftToolStack({
               詳細
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => dueAssist.clearFseibanFilters()}
+            disabled={dueAssist.selectedFseibanFilters.length === 0}
+            className="mb-2 w-full shrink-0 rounded border border-white/20 bg-slate-800/70 px-2 py-1 text-[10px] text-white/90 hover:bg-slate-800 disabled:opacity-40"
+          >
+            製番OR検索を全解除
+          </button>
           <div className="flex shrink-0 gap-1.5">
             <input
               value={dueAssist.searchInput}
@@ -175,25 +183,30 @@ export function LeaderBoardLeftToolStack({
             aria-label="登録済み製番"
           >
             {dueAssist.sharedHistory.map((fseiban) => {
-              const active = dueAssist.selectedFseiban === fseiban;
+              const filtered = dueAssist.isFseibanFilterSelected(fseiban);
               return (
                 <div
                   key={fseiban}
                   className={clsx(
                     'relative flex items-center rounded-full border pl-2 pr-5 text-[10px] font-semibold',
-                    active
+                    filtered
                       ? 'border-emerald-300 bg-emerald-400 text-slate-900'
                       : 'border-white/25 bg-white/10 text-white hover:bg-white/20'
                   )}
                 >
-                  <button type="button" onClick={() => dueAssist.selectFseiban(fseiban)} className="py-1 font-mono">
+                  <button
+                    type="button"
+                    onClick={() => dueAssist.toggleFseibanFilter(fseiban)}
+                    className="py-1 text-left font-mono"
+                    aria-pressed={filtered}
+                  >
                     {fseiban}
                   </button>
                   <button
                     type="button"
                     className={clsx(
                       'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
-                      active ? 'bg-slate-200 text-slate-900' : 'bg-white text-slate-900'
+                      filtered ? 'bg-slate-200 text-slate-900' : 'bg-white text-slate-900'
                     )}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -207,8 +220,19 @@ export function LeaderBoardLeftToolStack({
               );
             })}
           </div>
-          <div className="mt-2 shrink-0 text-[10px] text-white/60">
-            選択中: <span className="font-mono text-white/90">{dueAssist.selectedFseiban ?? 'なし'}</span>
+          <div className="mt-2 shrink-0 space-y-0.5 text-[10px] text-white/60">
+            <div>
+              OR検索:{' '}
+              <span className="break-all font-mono text-white/90">
+                {dueAssist.selectedFseibanFilters.length === 0
+                  ? 'なし'
+                  : `${dueAssist.selectedFseibanFilters.length}件（${dueAssist.selectedFseibanFilters.join(' · ')}）`}
+              </span>
+            </div>
+            <div>
+              納期詳細の製番:{' '}
+              <span className="font-mono text-white/90">{dueAssist.selectedFseiban ?? '—'}</span>
+            </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 text-xs">
