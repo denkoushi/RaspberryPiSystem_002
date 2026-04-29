@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**順位ボード・端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク順位ボード **製番チップ・複数選択（OR）・全解除**·`feat/leaderboard-seiban-multiselect-or-clear`·Web のみ·Pi5 のみ）
+
+- **変更概要**: 左パネル登録済み製番を **クリックで OR 検索トグル**（再クリックで解除）。複数選択時は一覧の **`activeQueries`**（`GET` の **`q`** はカンマ区切りで OR と既存クエリ構築と整合）へ同期。**「製番OR検索を全解除」** は **`activeQueries` のみクリア**（履歴チップ削除・研削/切削など他条件はそのまま）。納期アシストの **詳細表示対象**は `selectedFseiban` と分離。純粋モデル: [`leaderBoardSeibanFilterModel.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderBoardSeibanFilterModel.ts)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（SPA は Pi5 `web`）。**Pi3 が対象となる場合のみ**、`deployment.md` の **Pi3 専用（軽量）手順**に従う。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-multiselect-or-clear infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`d26b50d3`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-123438-30137`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・所要 **約 348s**・**Docker 再ビルド**含む）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 23s**・Tailscale）。
+- **トラブルシュート**: 共有 search-state 取得前に **履歴に無い製番だけ OR フィルタに残る**と見える場合は **ページ再読込**（`searchStateQuery.isSuccess` 後にフィルタを履歴で剪定）。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §製番OR検索](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク順位ボード **端末スコープ永続・資源CD順の共有・製番フィルタ**·`feat/kiosk-leaderboard-device-memory-and-slot-sync`·Web のみ·Pi5 のみ）
 

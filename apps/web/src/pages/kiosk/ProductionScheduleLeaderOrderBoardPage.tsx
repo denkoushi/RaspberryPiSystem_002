@@ -243,31 +243,19 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const dueAssist = useLeaderBoardDueAssist({
     pauseRefetch: writePause,
-    refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS
+    refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS,
+    initialSeibanFilters: searchConditions.activeQueries
   });
 
-  /** 製番検索／履歴カードの選択製番と順位ボード一覧（activeQueries）を単一製番へ同期 */
-  const previousSelectedFseibanRef = useRef<string | null>(null);
+  /** 製番 OR 検索フィルタ（左パネル）と `activeQueries` を同期（API は `q` のカンマ区切りが OR） */
   useEffect(() => {
-    const s = dueAssist.selectedFseiban?.trim();
-    const prevSelected = previousSelectedFseibanRef.current;
-    previousSelectedFseibanRef.current = s && s.length > 0 ? s : null;
-
-    if (s?.length) {
-      setSearchConditions((prev) => {
-        if (prev.activeQueries.length === 1 && prev.activeQueries[0] === s) return prev;
-        return { ...prev, activeQueries: [s] };
-      });
-      return;
-    }
-
-    if (prevSelected) {
-      setSearchConditions((prev) => {
-        if (prev.activeQueries.length === 0) return prev;
-        return { ...prev, activeQueries: [] };
-      });
-    }
-  }, [dueAssist.selectedFseiban, setSearchConditions]);
+    const next = dueAssist.selectedFseibanFilters;
+    setSearchConditions((prev) => {
+      const a = prev.activeQueries;
+      if (a.length === next.length && next.every((v, i) => a[i] === v)) return prev;
+      return { ...prev, activeQueries: [...next] };
+    });
+  }, [dueAssist.selectedFseibanFilters, setSearchConditions]);
 
   const drawerReveal = useKioskLeftEdgeDrawerReveal(true, { keepOpen: dueAssist.isDetailOpen });
   const leftToolStackOuterRef = useRef<HTMLDivElement | null>(null);
