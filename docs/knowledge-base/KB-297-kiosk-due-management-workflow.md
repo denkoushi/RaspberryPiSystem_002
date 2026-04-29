@@ -2431,7 +2431,12 @@ category: knowledge-base
   - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**。
   - **Detach Run ID**（`ansible-update-`）: **`20260424-153647-24567`** / **`20260424-154843-4943`** / **`20260424-155623-24544`** / **`20260424-160421-6565`** / **`20260424-161137-27861`**。いずれも **`failed=0` / `unreachable=0`**。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Mac / Tailscale・本セッション）。
-- **知見**: **`responseProfile` は既定なし＝従来**にしておくと、**順位ボードだけ軽量経路**へ切り替えやすい。Pi4 は **DOM 数**も律速になりうるため **仮想化**と **API 削減**の両面が効く。
+- **本番デプロイ・実機検証（2026-04-29 追補・`order-usage` 再レンダー波及の追加抑制）**:
+  - **ブランチ**: `feat/kiosk-leaderboard-pi4-followup`（代表コミット **`7902f5ac`**。**`main` マージ後**はマージコミットを正とする）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**（キオスク Web のみ・リソース僅少のため本節の Pi3 専用手順は不要）。
+  - **Detach Run ID**（`ansible-update-`）: **`20260429-214453-13263`** / **`20260429-215053-15127`** / **`20260429-215805-17537`** / **`20260429-220418-1032`** / **`20260429-221048-28118`**。いずれも **`failed=0` / `unreachable=0`**。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **64s**・Tailscale）。
+- **知見**: **`responseProfile` は既定なし＝従来**にしておくと、**順位ボードだけ軽量経路**へ切り替えやすい。Pi4 は **DOM 数**も律速になりうるため **仮想化**と **API 削減**の両面が効く。**ポーリングはオブジェクト同一性だけでなく「渡す props の粒度」**でも再レンダーが伝播しうる → 資源単位の **配列参照**に分離すると **`order-usage` 周期での体感**が安定しやすい。
 - **トラブルシューティング**:
   - **他画面の一覧が壊れた**: 順位ボード以外が **`responseProfile=leaderboard` を付けていないか**（Network タブ）を確認。付与ロジックは **プロファイル未指定時は従来**。
   - **`raspi4-kensaku-stonebase01` でデプロイログに barcode-agent 待機リトライ**: **1 回程度のリトライ後に成功**し得る。`PLAY RECAP` が **`failed=0`** なら完走扱い。繰り返す場合はエージェントと [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。

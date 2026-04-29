@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク順位ボード **Pi4 向け再レンダー抑制（order-usage 波及削減）**·`feat/kiosk-leaderboard-pi4-followup`·Web のみ·Pi5→Pi4×4）
+
+- **変更概要**: [`LeaderBoardGrid.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx)·[`LeaderOrderResourceCard.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx)·[`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx)·[`buildLeaderBoardViewModel.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel.ts)·[`apps/web/src/api/client.ts`](../../apps/web/src/api/client.ts)（`leaderboard` コメント整合）。**15 秒 `order-usage` 更新**で UI 全体へ同一マップ参照が波及しにくいよう **資源ごとの使用順位配列**だけを下流へ渡す。**`@tanstack/react-virtual`** の行キーを **`row.id`** に固定し **overscan を抑制**、資源カード外枠の **`transition-all` は使わない**（**`transform` / `opacity` 系のみ**に寄せる）。**API 契約変更なし**。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 除外**（本変更は Pi3 専用（軽量）手順の対象外）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-pi4-followup infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`7902f5ac`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-214453-13263`**（`raspberrypi5`）/ **`20260429-215053-15127`**（`raspberrypi4`）/ **`20260429-215805-17537`**（`raspi4-robodrill01`）/ **`20260429-220418-1032`**（`raspi4-fjv60-80`）/ **`20260429-221048-28118`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 64s**）。
+- **トラブルシュート**: **旧挙動のまま**: Pi4 キオスクで **強制リロード**（[`verification-checklist.md`](verification-checklist.md) §6.6.4）・各ホスト `/opt/RaspberryPiSystem_002` の取り込みコミットが意図どおりか確認。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §Pi4 performance](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-pi4-performance-2026-04-24)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク順位ボード **製番一覧パネル（接頭辞UI改修・末尾削除／全解除・3列・9桁表示枠）**·`feat/leaderboard-seiban-panel-layout-and-prefix-controls`·Web のみ·Pi5 のみ）
 
