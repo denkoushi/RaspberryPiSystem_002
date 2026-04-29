@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク順位ボード **備考モーダルから製番登録（共有履歴）**·`feat/leaderboard-seiban-register-modal-close`·Web のみ·Pi5 のみ）
+
+- **変更概要**: [`KioskNoteModal.tsx`](../../apps/web/src/components/kiosk/KioskNoteModal.tsx) に任意の小型 **`extraAction`**（ラベル・`onClick`・`disabled`）。順位ボード [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の備考（鉛筆）モーダルに **「製番登録」** を配置し、押下で当該行の **`fseiban`** を共有製番履歴（**`PUT …/search-state`**、`useKioskSharedSearchHistoryActions`）へ **`registerSeibanToSharedHistory`** 経由で追加し、成功時は **`closeNoteModal()`** でモーダルを閉じる（この操作だけでは備考本文は保存しない）。**API 契約変更なし**。Vitest: [`KioskNoteModal.test.tsx`](../../apps/web/src/components/kiosk/KioskNoteModal.test.tsx)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（キオスク SPA は Pi5 `web`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-register-modal-close infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`a3265139`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-184211-20335`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・所要 **約 405s**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 90s**・Tailscale）。
+- **トラブルシュート**: **`製番登録` が無効のまま**: `dueAssist.historyWriting` が **`true`**（共有履歴書き込み中）。**押しても閉じない**: **`PUT …/search-state`**（If-Match）が失敗した場合はモーダルを開いたまま（実装どおり）。**UI が古い**: キオスクで **強制リロード**（[`verification-checklist.md`](verification-checklist.md) §6.6.4）。デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §備考モーダル製番登録](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-note-modal-seiban-register-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: 加工機日次点検 **KPI（点検済/未点検）とカードの基準統一**·`fix/uninspected-kpi-card-alignment`·API のみ·Pi5 のみ）
 
@@ -48,7 +58,7 @@ update-frequency: medium
 - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/leaderboard-seiban-registration-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
 - **本番デプロイ（実績）**: 代表コミット **`b4afb2d7`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-143937-21499`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・サマリ **`Summary success check: true`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale）。
-- **トラブルシュート**: **共有履歴取得が遅い／一度だけ成功しない**ときは **フィルタ剪定が再実行されるよう `sharedHistory` を effect 依存に含める**設計。**進捗一覧に製番が出ない**ときは **`POST …/search-state` の製番集合**と **`GET …/progress-overview`** の **`scheduled`/`unscheduled`** を突き合わせる（製番レベル納期なしは **`unscheduled`** 側）。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **トラブルシュート**: **共有履歴取得が遅い／一度だけ成功しない**ときは **フィルタ剪定が再実行されるよう `sharedHistory` を effect 依存に含める**設計。**進捗一覧に製番が出ない**ときは **`GET …/search-state`** の製番集合と **`GET …/progress-overview`** の **`scheduled`/`unscheduled`** を突き合わせる（製番レベル納期なしは **`unscheduled`** 側）。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 - **ナレッジ**: [KB-297 §製番登録と進捗一覧同期](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leaderboard-progress-overview-shared-history-sync-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: **システム固定 CSV インポートスケジュール** 更新の **不変条件**・有効 **cron 保持**·`feat/csv-import-system-schedule-preserve-cron`·API+管理 Web·Pi5 のみ）

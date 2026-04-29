@@ -2281,8 +2281,31 @@ category: knowledge-base
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
 
 - **トラブルシュート**:
-  - **順位ボードで選んだ製番が進捗一覧に出ない**: Network で **`POST/GET …/search-state`** の製番集合と **`GET …/progress-overview`** の応答を確認。**履歴に無い製番**は本修正どおり **`addSeibanToHistory` 経由でサーバへ載るまで**一覧側とずれることがある。
+  - **順位ボードで選んだ製番が進捗一覧に出ない**: Network で **`GET …/search-state`** の製番集合と **`GET …/progress-overview`** の応答を確認。**履歴に無い製番**は本修正どおり **`addSeibanToHistory` 経由でサーバへ載るまで**一覧側とずれることがある。
   - **`scheduled` に無く `unscheduled` にだけある**: 製番レベル納期が無いケースとして仕様どおり。**フィルタ候補**は両バケツを見る。
+
+### 備考モーダルから製番登録（共有履歴）（2026-04-29） {#leader-order-board-note-modal-seiban-register-2026-04-29}
+
+- **目的**: カード上に **製番登録専用ボタンを増やさず**、備考（鉛筆）モーダル内から **当該行の製番を共有履歴へ登録**できるようにする（テンキー／検索以外の導線）。
+- **仕様（要約）**:
+  - **トリガー**: 順位ボード各行の鉛筆 → **備考モーダル**で **「製番登録」**（小型ボタン・説明文なし）。
+  - **対象製番**: モーダルを開いた行の **`row.fseiban`** を **`noteModalTargetFseiban`** に保持（モーダルクローズでクリア）。
+  - **登録処理**: [`useLeaderBoardDueAssist`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts) の **`registerSeibanToSharedHistory`**（内部は **`addSeibanToHistory`** のみ・一覧フィルタ／詳細の選択状態は変えない）。
+  - **成功後**: **`closeNoteModal()`** でモーダルを閉じる（**備考本文の保存はしない**。ユーザーが「保存」を押したときのみ既存の **`commitNote`** 経路）。
+  - **無効化**: **`dueAssist.historyWriting`** または製番が空のとき。
+  - **汎用 UI**: [`KioskNoteModal`](../../apps/web/src/components/kiosk/KioskNoteModal.tsx) の **`extraAction`**（他画面は未指定で従来どおり）。
+- **参照実装**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)·[`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)·[`useKioskSharedSearchHistoryActions.ts`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)·[`KioskNoteModal.tsx`](../../apps/web/src/components/kiosk/KioskNoteModal.tsx)·[`KioskNoteModal.test.tsx`](../../apps/web/src/components/kiosk/KioskNoteModal.test.tsx)。
+
+- **本番デプロイ・実機検証（2026-04-29）**:
+  - **ブランチ**: `feat/leaderboard-seiban-register-modal-close`（代表コミット **`a3265139`**）。
+  - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
+  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-register-modal-close infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-184211-20335`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 405s**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 90s**・Tailscale）。
+
+- **トラブルシュート**:
+  - **製番登録を押しても何も起きない**: Network で **`PUT …/search-state`** が **`428`（If-Match 欠如）**や **`409`（競合）**になっていないか確認。競合時は既存フックが **リベースしてリトライ**するが、連続失敗時は **`historyWriting`** が続きボタンが **`disabled`** のままになり得る → **ページ再読込**。
+  - **登録したのに他画面の製番チップに出ない**: **`GET …/search-state`** のポーリング間隔（最大数秒）や **ブラウザキャッシュ**を疑う。**強制リロード**後に左パネル履歴を確認。
 
 ### 行アクション・機種名フォールバック（2026-04-02）
 
