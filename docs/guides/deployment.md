@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク順位ボード **製番一覧パネル（接頭辞UI改修・末尾削除／全解除・3列・9桁表示枠）**·`feat/leaderboard-seiban-panel-layout-and-prefix-controls`·Web のみ·Pi5 のみ）
+
+- **変更概要**: [`LeaderBoardSeibanListPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel.tsx)・[`leaderBoardSeibanPrefixFilterActions.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderBoardSeibanPrefixFilterActions.ts)。**接頭辞表示**は **最大9桁相当の固定幅**（表示用パディング・フィルタ値は従来どおり）。**末尾削除**・**全解除**を **表示欄と次文字ボタン群の間**に配置し、文字ボタン行は **境界線で区切り**。一覧カードは **`sm` 以上で3列**。共有履歴登録済みカードは **グレーアウト表現**。**API 契約変更なし**。Vitest: [`LeaderBoardSeibanListPanel.test.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/LeaderBoardSeibanListPanel.test.tsx)·[`leaderBoardSeibanPrefixFilterActions.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/leaderBoardSeibanPrefixFilterActions.test.ts)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（キオスク SPA は Pi5 `web`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-panel-layout-and-prefix-controls infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`74d360b6`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-210617-3239`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 139s**・Tailscale）。
+- **トラブルシュート**: **接頭辞が9桁で伸びない**: **仕様どおり最大9桁**で charset 追加は無効化。**一覧が古い**: キオスクで **強制リロード**（[`verification-checklist.md`](verification-checklist.md) §6.6.4）。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §製番一覧パネル](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-board-seiban-list-panel-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク順位ボード **製番一覧パネル（接頭辞フィルタ・共有履歴優先ソート・コントラスト・横幅）**·`feat/leaderboard-seiban-panel-prefix-filter`·Web のみ·Pi5 のみ）
 
