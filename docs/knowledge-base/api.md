@@ -420,6 +420,29 @@
 
 ---
 
+### [KB-360] 加工機点検状況のKPIをカード配色基準と統一（正常/異常件数）
+
+**日付**: 2026-04-29
+
+**背景**:
+- `inspectedRunningCount` / `uninspectedCount` が **`used`（当日CSV行の有無）**基準だった一方、サイネージカードの青/赤は **`normalCount` / `abnormalCount`** 基準のため、早朝表示でも **KPIとカードが毎日ずれる**ことがあった。
+- 画面上のラベルは **「点検済み」「未点検」を据え置き**、意味だけカードと揃える。
+
+**仕様（確定）**:
+- **点検済み（KPI）** = `normalCount > 0 || abnormalCount > 0`（カードが青または赤になる条件と一致）。
+- **未点検（KPI）** = 上記以外（`未使用`・`正常0/異常0`のグレー相当を含む）。
+- **`machines[].used`** は互換のため従来どおり（並び「CSV行あり優先」等）。
+- **`GET` 系の未点検一覧**（`findUninspected`）も **KPIの未点検**と同じ条件で抽出し、件数と一覧を一致させる。
+
+**実装**:
+- `apps/api/src/services/tools/daily-inspection-kpi.ts` … `isDailyInspectionKpiInspected`
+- `apps/api/src/services/tools/machine.service.ts` … `findDailyInspectionSummaries` / `findUninspected`
+
+**検証**:
+- `vitest`: `machine.service.test.ts` / `daily-inspection-kpi.test.ts` / `uninspected-machines-data-source.test.ts`（関連スイート）
+
+---
+
 ### [KB-347] サイネージ可視化の業務日切替（JST 翌9:00・自動表示のみ）
 
 **日付**: 2026-04-16

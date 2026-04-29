@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { resolveJstSignageBusinessDate } from '../../lib/signage-business-day.js';
+import { isDailyInspectionKpiInspected } from './daily-inspection-kpi.js';
 
 export interface MachineQuery {
   search?: string;
@@ -469,7 +470,9 @@ export class MachineService {
       };
     });
 
-    const inspectedRunningCount = machines.filter((machine) => machine.used).length;
+    const inspectedRunningCount = machines.filter((machine) =>
+      isDailyInspectionKpiInspected(machine.normalCount, machine.abnormalCount),
+    ).length;
     const uninspectedCount = machines.length - inspectedRunningCount;
 
     return {
@@ -482,10 +485,17 @@ export class MachineService {
     };
   }
 
+  /**
+   * 稼働中加工機のうち、KPI 上「未点検」（`normalCount` と `abnormalCount` がいずれも 0）の一覧を返す。
+   * `inspectedRunningCount` / `uninspectedCount` は {@link findDailyInspectionSummaries} と同じ基準（カードの青/赤条件と整合）。
+   */
   async findUninspected(params: UninspectedMachineQuery) {
     const result = await this.findDailyInspectionSummaries(params);
     const uninspectedMachines = result.machines
-      .filter((machine) => !machine.used)
+      .filter(
+        (machine) =>
+          !isDailyInspectionKpiInspected(machine.normalCount, machine.abnormalCount),
+      )
       .map((machine) => ({
         equipmentManagementNumber: machine.equipmentManagementNumber,
         name: machine.name,
