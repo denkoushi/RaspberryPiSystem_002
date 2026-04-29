@@ -41,6 +41,9 @@ export type LeaderBoardLeftToolStackProps = {
   setSlotModalOpen: (open: boolean) => void;
   selectedResourceCd: string | null;
   listIncomplete: boolean;
+  /** 表示中製番一覧パネル（ページ側オーバーレイ）の開閉 */
+  isSeibanListPanelOpen: boolean;
+  onToggleSeibanListPanel: () => void;
 };
 
 /**
@@ -68,7 +71,9 @@ export function LeaderBoardLeftToolStack({
   slotCount,
   setSlotModalOpen,
   selectedResourceCd,
-  listIncomplete
+  listIncomplete,
+  isSeibanListPanelOpen,
+  onToggleSeibanListPanel
 }: LeaderBoardLeftToolStackProps) {
   return (
     <div
@@ -128,16 +133,33 @@ export function LeaderBoardLeftToolStack({
           </select>
         </label>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded border border-white/15 bg-slate-900 p-2">
-          <div className="mb-2 flex shrink-0 items-center justify-between gap-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-white/70">製番検索</span>
-            <button
-              type="button"
-              onClick={() => dueAssist.openDetail()}
-              disabled={!dueAssist.selectedFseiban}
-              className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"
-            >
-              詳細
-            </button>
+          <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-1">
+            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white/70">
+              製番検索
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={onToggleSeibanListPanel}
+                aria-pressed={isSeibanListPanelOpen}
+                className={clsx(
+                  'rounded border px-2 py-0.5 text-[10px] hover:bg-white/10',
+                  isSeibanListPanelOpen
+                    ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-50'
+                    : 'border-white/25 bg-white/5 text-white/90'
+                )}
+              >
+                製番一覧
+              </button>
+              <button
+                type="button"
+                onClick={() => dueAssist.openDetail()}
+                disabled={!dueAssist.selectedFseiban}
+                className="rounded border border-cyan-400/40 px-2 py-0.5 text-[10px] text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-50"
+              >
+                詳細
+              </button>
+            </div>
           </div>
           <button
             type="button"

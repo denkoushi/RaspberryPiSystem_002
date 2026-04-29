@@ -13,9 +13,11 @@ import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
 import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
+import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
+import { LeaderBoardSeibanListPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel';
 import {
   LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS,
   LEADER_BOARD_ORDER_USAGE_REFETCH_MS,
@@ -310,11 +312,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [grouped, completionFilter]
   );
 
+  const visibleSeibanEntries = useMemo(() => deriveVisibleSeibanEntries(sortedGrouped), [sortedGrouped]);
+
   const listIncomplete =
     scheduleQuery.data != null && scheduleQuery.data.total > scheduleQuery.data.rows.length;
 
   const [selectedResourceCd, setSelectedResourceCd] = useState<string | null>(null);
   const [slotModalOpen, setSlotModalOpen] = useState(false);
+  const [isSeibanListPanelOpen, setIsSeibanListPanelOpen] = useState(false);
   /** 備考モーダル対象行の製番（製番登録ボタン用） */
   const [noteModalTargetFseiban, setNoteModalTargetFseiban] = useState<string | null>(null);
 
@@ -410,6 +415,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           setSlotModalOpen={setSlotModalOpen}
           selectedResourceCd={selectedResourceCd}
           listIncomplete={listIncomplete}
+          isSeibanListPanelOpen={isSeibanListPanelOpen}
+          onToggleSeibanListPanel={() => setIsSeibanListPanelOpen((open) => !open)}
         />
       </div>
 
@@ -446,6 +453,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           />
         )}
       </main>
+      <LeaderBoardSeibanListPanel
+        isOpen={isSeibanListPanelOpen}
+        onClose={() => setIsSeibanListPanelOpen(false)}
+        entries={visibleSeibanEntries}
+        sharedHistory={dueAssist.sharedHistory}
+        historyWriting={dueAssist.historyWriting}
+        onToggle={(fseiban) => void dueAssist.toggleSeibanInSharedHistory(fseiban)}
+      />
       <LeaderBoardResourceSlotPickerModal
         isOpen={slotModalOpen}
         onClose={() => setSlotModalOpen(false)}

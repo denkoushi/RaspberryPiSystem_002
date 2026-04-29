@@ -166,16 +166,19 @@ export function useLeaderBoardDueAssist(options?: {
     setSelectedFseibanFilters([]);
   }, []);
 
-  const removeFromHistory = async (fseiban: string) => {
-    const nextAfterRemove = sharedHistory.filter((item) => item !== fseiban);
-    try {
-      await removeSeibanFromHistory(fseiban);
-      setSelectedFseibanFilters((prev) => prev.filter((x) => x !== fseiban));
-      setSelectedFseiban((prev) => (prev === fseiban ? nextAfterRemove[0] ?? null : prev));
-    } catch {
-      /* 同上 */
-    }
-  };
+  const removeFromHistory = useCallback(
+    async (fseiban: string) => {
+      const nextAfterRemove = sharedHistory.filter((item) => item !== fseiban);
+      try {
+        await removeSeibanFromHistory(fseiban);
+        setSelectedFseibanFilters((prev) => prev.filter((x) => x !== fseiban));
+        setSelectedFseiban((prev) => (prev === fseiban ? nextAfterRemove[0] ?? null : prev));
+      } catch {
+        /* 同上 */
+      }
+    },
+    [sharedHistory, removeSeibanFromHistory]
+  );
 
   /** 一覧フィルタや詳細表示は変更せず、共有製番履歴のみへ追加する */
   const registerSeibanToSharedHistory = useCallback(
@@ -185,6 +188,27 @@ export function useLeaderBoardDueAssist(options?: {
       await addSeibanToHistory(trimmed);
     },
     [addSeibanToHistory]
+  );
+
+  /**
+   * 共有製番履歴への登録をトグルする（登録済みなら解除）。
+   * UI の複数導線から同一契約で呼べるようフックへ集約する。
+   */
+  const toggleSeibanInSharedHistory = useCallback(
+    async (fseiban: string) => {
+      const trimmed = fseiban.trim();
+      if (!trimmed.length) return;
+      try {
+        if (sharedHistoryRef.current.includes(trimmed)) {
+          await removeFromHistory(trimmed);
+        } else {
+          await addSeibanToHistory(trimmed);
+        }
+      } catch {
+        /* addSeibanToHistory の失敗時は呼び出し側UIを変えない（register と同様） */
+      }
+    },
+    [addSeibanToHistory, removeFromHistory]
   );
 
   const openSeibanDueDatePicker = () => {
@@ -246,7 +270,8 @@ export function useLeaderBoardDueAssist(options?: {
     commitDueDate,
     dueUpdatePending: updateSeibanDueDateMutation.isPending || updateProcessingDueDateMutation.isPending,
     historyWriting,
-    registerSeibanToSharedHistory
+    registerSeibanToSharedHistory,
+    toggleSeibanInSharedHistory
   };
 }
 
