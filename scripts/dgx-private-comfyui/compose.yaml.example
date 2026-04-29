@@ -1,6 +1,9 @@
 # Copy to `compose.yaml` beside `.env` on the DGX host.
 # Requires: external network `dgx_private_personal_net`, NVIDIA Container Toolkit, GPU.
 # Project name: set COMPOSE_PROJECT_NAME in `.env`.
+#
+# Volume rule: only `${COMFYUI_DATA_ROOT}/…` under `/srv/dgx/private-personal/…`.
+# Do not add binds to `/srv/dgx/system-prod`, `/srv/dgx/lab-experiments`, etc.
 
 services:
   comfyui:

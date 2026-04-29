@@ -19,6 +19,16 @@ ENV_FILE="${ENV_FILE:-${SCRIPT_DIR}/.env}"
 [[ -f "${COMPOSE_FILE}" ]] || die "missing ${COMPOSE_FILE}"
 [[ -f "${ENV_FILE}" ]] || die "missing ${ENV_FILE}"
 
+# shellcheck disable=SC1090
+set -a
+# shellcheck disable=SC1091
+source "${ENV_FILE}"
+set +a
+
+# shellcheck source=boundary-check.sh
+source "${SCRIPT_DIR}/boundary-check.sh"
+validate_comfyui_data_root "${COMFYUI_DATA_ROOT:-}"
+
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" down
 
 echo "OK: private ComfyUI stack stopped."

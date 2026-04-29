@@ -63,11 +63,20 @@ docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-s
 
 **`/srv/dgx/system-prod` はマウントしないでください。**
 
-## Tailscale 経由で Mac ブラウザから使う（推奨）
+## 境界チェック（自動）
 
-`compose.yaml` では **`127.0.0.1:${COMFYUI_PORT:-8188}` のみ** にポート公開しています（LAN 全域へのバインド回避）。
+[`boundary-check.sh`](./boundary-check.sh) は **`start-private-comfyui.sh` / `stop-private-comfyui.sh` から読み込まれ**、起動前に次を検証します。
 
-Mac からは **SSH ポートフォワード** でローカルブラウザへ載せ替えます。
+- **`COMFYUI_DATA_ROOT`** が **`/srv/dgx/private-personal` 配下の絶対パス**であること（`..` 禁止。`system-prod` / `lab-experiments` を指さないこと）。
+- **`docker compose … config`** で解決した設定に **`/srv/dgx/system-prod` または `/srv/dgx/lab-experiments` のホストバインドが含まれない**こと。
+
+ポリシー変更は **このスクリプトと Runbook** に集約し、compose 側はデータルート変数のみを参照する形を維持します。
+
+## Tailscale 経由で Mac ブラウザから使う（標準経路・これ以外は運用禁止）
+
+`compose.yaml` では **`127.0.0.1:${COMFYUI_PORT:-8188}` のみ** にポート公開しています（**LAN 全域 `0.0.0.0` バインドは運用禁止**。ループバックのみ）。
+
+Mac からは **tailnet 経由の SSH ポートフォワード**だけを標準とします。
 
 ```bash
 ssh -N -L 8188:127.0.0.1:8188 <user>@<dgx-tailscale-ip-or-dns>
@@ -75,7 +84,7 @@ ssh -N -L 8188:127.0.0.1:8188 <user>@<dgx-tailscale-ip-or-dns>
 
 ブラウザ: `http://127.0.0.1:8188`
 
-詳細・境界・検証項目は Runbook **[dgx-private-comfyui.md](../../docs/runbooks/dgx-private-comfyui.md)** を参照。
+詳細・検証チェックリストは Runbook **[dgx-private-comfyui.md](../../docs/runbooks/dgx-private-comfyui.md)** を参照。
 
 ## Private と LocalLLM（VRAM）
 

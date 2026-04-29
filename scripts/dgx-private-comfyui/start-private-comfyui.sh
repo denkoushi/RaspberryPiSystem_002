@@ -32,13 +32,17 @@ set -a
 source "${ENV_FILE}"
 set +a
 
+# shellcheck source=boundary-check.sh
+source "${SCRIPT_DIR}/boundary-check.sh"
+validate_comfyui_data_root "${COMFYUI_DATA_ROOT:-}"
+validate_compose_config_resolved_paths "${COMPOSE_FILE}" "${ENV_FILE}"
+
 NETWORK_NAME="${DGX_PRIVATE_NETWORK_NAME:-dgx_private_personal_net}"
 if ! docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
   die "Docker network '${NETWORK_NAME}' not found. Create once on the host: docker network create ${NETWORK_NAME}"
 fi
 
 ROOT="${COMFYUI_DATA_ROOT:-}"
-[[ -n "${ROOT}" ]] || die "COMFYUI_DATA_ROOT must be set in ${ENV_FILE}"
 
 install -d -m 0750 "${ROOT}/models/checkpoints" "${ROOT}/input" "${ROOT}/output" "${ROOT}/user"
 

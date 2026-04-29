@@ -30,7 +30,7 @@ update-frequency: high
 
 ## Progress
 
-- (2026-04-29 JST) **private用途 ComfyUI**: repo にコンテナ雛形を追加した（[`scripts/dgx-private-comfyui`](../../scripts/dgx-private-comfyui)、Runbook [`dgx-private-comfyui.md`](../runbooks/dgx-private-comfyui.md)）。公式 Playbook（CUDA 13 / PyTorch `cu130` / ComfyUI GitHub）に沿った **`Dockerfile.example`**。ホスト公開は **127.0.0.1 のみ**、Tailscale は **SSH ポートフォワード**前提。**未実施**: DGX 実機での `docker compose build/up`、Mac ブラウザによるワークフロー検証。
+- (2026-04-29 JST) **private用途 ComfyUI**: repo にコンテナ雛形を追加した（[`scripts/dgx-private-comfyui`](../../scripts/dgx-private-comfyui)、Runbook [`dgx-private-comfyui.md`](../runbooks/dgx-private-comfyui.md)）。ブランチ **`feat/dgx-private-personal-route-hardening`** で [`boundary-check.sh`](../../scripts/dgx-private-comfyui/boundary-check.sh) を追加し、**`COMFYUI_DATA_ROOT` は `/srv/dgx/private-personal` のみ**・**compose 解決結果に `system-prod`/`lab-experiments` バインド禁止**を launcher に集約。公式 Playbook（CUDA 13 / PyTorch `cu130` / ComfyUI GitHub）に沿った **`Dockerfile.example`**。ホスト公開は **127.0.0.1 のみ**、Mac からは **tailnet 経由 SSH `-L 8188:127.0.0.1:8188`** を標準経路とする（LAN 直は運用禁止）。**実測済み**: DGX で `docker compose up -d --build` と `curl -I http://127.0.0.1:8188` 成功、Mac トンネル経由で ComfyUI UI 表示成功。**運用知見**: ACL で `tag:admin -> tag:llm tcp:22` が閉じていると Mac からの SSH は timeout、初回 build の DNS 解決失敗は再試行で回復することがある。**未完了**: `models/checkpoints/` が空のため、workflow 実行と生成物保存の最終確認は checkpoint 配置後に実施する。
 - (2026-04-25 14:37 JST) ドキュメント作業ブランチ `docs/dgx-spark-operations-plan` を作成した。
 - (2026-04-25 14:45 JST) 現行 LocalLLM 構成を確認した。Pi5 API は `LOCAL_LLM_*` により Ubuntu LocalLLM を利用し、`LOCAL_LLM_RUNTIME_MODE=on_demand` と `/start` `/stop` 制御を使う。
 - (2026-04-25 14:55 JST) NVIDIA 公式情報を確認した。DGX Spark は DGX OS、Docker、NVIDIA Container Runtime、NGC を前提にするのが正規ルートである。
