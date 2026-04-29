@@ -420,6 +420,38 @@
 
 ---
 
+### [KB-360] 加工機点検状況のKPIをカード配色基準と統一（正常/異常件数）
+
+**日付**: 2026-04-29
+
+**背景**:
+- `inspectedRunningCount` / `uninspectedCount` が **`used`（当日CSV行の有無）**基準だった一方、サイネージカードの青/赤は **`normalCount` / `abnormalCount`** 基準のため、早朝表示でも **KPIとカードが毎日ずれる**ことがあった。
+- 画面上のラベルは **「点検済み」「未点検」を据え置き**、意味だけカードと揃える。
+
+**仕様（確定）**:
+- **点検済み（KPI）** = `normalCount > 0 || abnormalCount > 0`（カードが青または赤になる条件と一致）。
+- **未点検（KPI）** = 上記以外（`未使用`・`正常0/異常0`のグレー相当を含む）。
+- **`machines[].used`** は互換のため従来どおり（並び「CSV行あり優先」等）。
+- **`GET` 系の未点検一覧**（`findUninspected`）も **KPIの未点検**と同じ条件で抽出し、件数と一覧を一致させる。
+
+**実装**:
+- `apps/api/src/services/tools/daily-inspection-kpi.ts` … `isDailyInspectionKpiInspected`
+- `apps/api/src/services/tools/machine.service.ts` … `findDailyInspectionSummaries` / `findUninspected`
+
+**検証**:
+- `vitest`: `machine.service.test.ts` / `daily-inspection-kpi.test.ts` / `uninspected-machines-data-source.test.ts`（関連スイート）
+
+**本番デプロイ（2026-04-29 追補）**:
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（可視化 JPEG・`/api/tools/machines/uninspected` は Pi5 `api`）。
+- **標準コマンド**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/uninspected-kpi-card-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-174518-6203`**（リモート **`*.exit`=`0`**・`PLAY RECAP` **`failed=0` / `unreachable=0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 148s**・Tailscale）。
+
+**トラブルシューティング（追補）**:
+- **Mac 側 `--follow` が `Rebuild/Restart docker compose` 付近で SSH timeout** しても、**デタッチ実行は Pi5 の `nohup` が継続**し得る。完了確認は Pi5 の **`/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-<runId>.exit`**（`0` なら成功）および **`*.status.json`**。
+
+---
+
 ### [KB-347] サイネージ可視化の業務日切替（JST 翌9:00・自動表示のみ）
 
 **日付**: 2026-04-16

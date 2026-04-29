@@ -52,6 +52,7 @@
 - **実装方式**: 既存 `visualization` スロットを再利用（専用スロットは追加しない）
 - **データソース**: `uninspected_machines`（`MachineService.findUninspected` を再利用）
 - **レンダラー**: `uninspected_machines`（KPI: 稼働中/点検済み/未点検 + 一覧表示）
+- **KPIとカードの基準（2026-04-29）**: 「点検済み」「未点検」は **正常/異常のカウント有無**で集計し、**青/赤カード**の意味と一致させる（`used`＝CSV行ありは並び等の互換用）。[KB-360](../../knowledge-base/api.md#kb-360-加工機点検状況のkpiをカード配色基準と統一正常異常件数)
 - **必須設定**: `dataSourceConfig.csvDashboardId`（UUID）
 - **表示範囲**: FULL/SPLITの両レイアウトで表示可能（SPLITでは左右いずれの `visualization` スロットでも可）
 - **0件時表示**: 「未点検加工機はありません」

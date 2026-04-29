@@ -69,7 +69,12 @@ describe('MachineService', () => {
       {
         id: 'r1',
         occurredAt: new Date('2026-02-11T12:00:00Z'),
-        rowData: { equipmentManagementNumber: '30024', inspectionAt: '2026-02-11T12:00:00Z', inspectionItem: '主軸' },
+        rowData: {
+          equipmentManagementNumber: '30024',
+          inspectionAt: '2026-02-11T12:00:00Z',
+          inspectionItem: '主軸',
+          inspectionResult: '正常',
+        },
       },
       {
         id: 'r2',
@@ -440,5 +445,124 @@ describe('MachineService', () => {
         abnormalCount: 0,
       }),
     ]);
+    expect(result.inspectedRunningCount).toBe(0);
+    expect(result.uninspectedCount).toBe(1);
+  });
+
+  it('findDailyInspectionSummaries の KPI はカード基準（正常/異常件数>0）で集計し、used でも 0/0 は未点検に含める', async () => {
+    vi.mocked(prisma.machine.findMany).mockResolvedValue([
+      {
+        id: 'm1',
+        equipmentManagementNumber: '60011',
+        name: 'AZ-610G',
+        shortName: null,
+        classification: 'マシニングセンター',
+        operatingStatus: '稼働中',
+        ncManual: null,
+        maker: '日立',
+        processClassification: '切削',
+        coolant: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 'm2',
+        equipmentManagementNumber: '60012',
+        name: 'AZ-611G',
+        shortName: null,
+        classification: 'マシニングセンター',
+        operatingStatus: '稼働中',
+        ncManual: null,
+        maker: '日立',
+        processClassification: '切削',
+        coolant: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as any);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'r1',
+        occurredAt: new Date('2026-04-16T12:00:00Z'),
+        rowData: {
+          equipmentManagementNumber: '60011',
+          inspectionAt: '2026-04-16T12:00:00Z',
+          inspectionItem: '主軸',
+          inspectionResult: '未使用',
+        },
+      },
+      {
+        id: 'r2',
+        occurredAt: new Date('2026-04-16T12:05:00Z'),
+        rowData: {
+          equipmentManagementNumber: '60012',
+          inspectionAt: '2026-04-16T12:05:00Z',
+          inspectionItem: '主軸',
+          inspectionResult: '正常',
+        },
+      },
+    ] as any);
+
+    const result = await service.findDailyInspectionSummaries({
+      csvDashboardId: 'dashboard-kpi',
+      date: '2026-04-16',
+    });
+
+    expect(result.inspectedRunningCount).toBe(1);
+    expect(result.uninspectedCount).toBe(1);
+    expect(result.machines).toEqual([
+      expect.objectContaining({
+        equipmentManagementNumber: '60011',
+        used: true,
+        normalCount: 0,
+        abnormalCount: 0,
+      }),
+      expect.objectContaining({
+        equipmentManagementNumber: '60012',
+        used: true,
+        normalCount: 1,
+        abnormalCount: 0,
+      }),
+    ]);
+  });
+
+  it('findUninspected の一覧は KPI 未点検（正常/異常0件）と一致する', async () => {
+    vi.mocked(prisma.machine.findMany).mockResolvedValue([
+      {
+        id: 'm1',
+        equipmentManagementNumber: '60011',
+        name: 'AZ-610G',
+        shortName: null,
+        classification: 'マシニングセンター',
+        operatingStatus: '稼働中',
+        ncManual: null,
+        maker: '日立',
+        processClassification: '切削',
+        coolant: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ] as any);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'r1',
+        occurredAt: new Date('2026-04-16T12:00:00Z'),
+        rowData: {
+          equipmentManagementNumber: '60011',
+          inspectionAt: '2026-04-16T12:00:00Z',
+          inspectionItem: '主軸',
+          inspectionResult: '未使用',
+        },
+      },
+    ] as any);
+
+    const result = await service.findUninspected({
+      csvDashboardId: 'dashboard-u',
+      date: '2026-04-16',
+    });
+
+    expect(result.inspectedRunningCount).toBe(0);
+    expect(result.uninspectedCount).toBe(1);
+    expect(result.uninspectedMachines.map((m) => m.equipmentManagementNumber)).toEqual(['60011']);
   });
 });

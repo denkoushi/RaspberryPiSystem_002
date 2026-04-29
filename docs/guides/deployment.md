@@ -10,7 +10,16 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: 加工機日次点検 **KPI（点検済/未点検）とカードの基準統一**·`fix/uninspected-kpi-card-alignment`·API のみ·Pi5 のみ）
+
+- **変更概要**: [`daily-inspection-kpi.ts`](../../apps/api/src/services/tools/daily-inspection-kpi.ts)（`isDailyInspectionKpiInspected`）で「点検済」をカード（正常/異常の青・赤）と同一基準に。[`machine.service.ts`](../../apps/api/src/services/tools/machine.service.ts) の `inspectedRunningCount` / `uninspectedCount`、`findUninspected` の一覧条件を統一（テスト: `daily-inspection-kpi.test.ts`·`machine.service.test.ts`）。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（本変更は **API のみ**。Pi3 はリソース僅少のため従来どおり **専用手順**・対象外のときは触れない）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/uninspected-kpi-card-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`48cfb6c2`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-174518-6203`**（**`PLAY RECAP` `failed=0` / `unreachable=0`**・Pi4/Pi3 play は **no hosts matched**）。**`--follow` が Docker 再作成付近で SSH タイムアウトしても、リモートデタッチは継続**。終了確認は **`scripts/deploy/read-detach-exit-*.sh`** で Pi5 の **`*.exit` が `0`** を確認（詳細 [KB-360](../knowledge-base/api.md#kb-360-加工機点検状況のkpiをカード配色基準と統一正常異常件数)）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **ナレッジ**: [KB-360](../knowledge-base/api.md#kb-360-加工機点検状況のkpiをカード配色基準と統一正常異常件数)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク持出一覧 **本文末尾揃え・サムネ1.5倍・カード外寸固定**·`feat/kiosk-active-loan-card-right-align-thumb-15x-fixed-size`·Web のみ·Pi5 のみ）
 
