@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク順位ボード **表示中製番一覧パネル（共有履歴トグル）**·`feat/leaderboard-seiban-list-panel`·Web のみ·Pi5 のみ）
+
+- **変更概要**: 左パネル「製番検索」行に **「製番一覧」** を追加し、右半画面オーバーレイ [`LeaderBoardSeibanListPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel.tsx) で **`sortedGrouped` 由来の製番を一意に一覧**（[`deriveVisibleSeibanEntries.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts)）。各行は **製番＋機種名の2行ボタン**・共有履歴に載っている製番はグレーアウト表示。**押下で登録／再押下で解除**は [`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts) の **`toggleSeibanInSharedHistory`**（**`PUT …/search-state`** 経由・既存 **`useKioskSharedSearchHistoryActions`** と同一契約）。**API 契約変更なし**。Vitest: [`LeaderBoardSeibanListPanel.test.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/LeaderBoardSeibanListPanel.test.tsx)·[`deriveVisibleSeibanEntries.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/deriveVisibleSeibanEntries.test.ts)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（キオスク SPA は Pi5 `web`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-list-panel infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`f544a45c`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-193317-26767`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・所要 **約 436s**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 88s**・Tailscale）。
+- **トラブルシュート**: **一覧が空**: 順位ボードに **表示中行が無い**／完了フィルタで絞り込み済み。**ボタンが無効**: **`dueAssist.historyWriting`**（共有履歴書き込み中）。**解除できない**: Network で **`PUT …/search-state`** の **`409`/`428`**。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §製番一覧パネル](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-board-seiban-list-panel-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク順位ボード **備考モーダルから製番登録（共有履歴）**·`feat/leaderboard-seiban-register-modal-close`·Web のみ·Pi5 のみ）
 

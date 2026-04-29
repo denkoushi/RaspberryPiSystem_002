@@ -2307,6 +2307,28 @@ category: knowledge-base
   - **製番登録を押しても何も起きない**: Network で **`PUT …/search-state`** が **`428`（If-Match 欠如）**や **`409`（競合）**になっていないか確認。競合時は既存フックが **リベースしてリトライ**するが、連続失敗時は **`historyWriting`** が続きボタンが **`disabled`** のままになり得る → **ページ再読込**。
   - **登録したのに他画面の製番チップに出ない**: **`GET …/search-state`** のポーリング間隔（最大数秒）や **ブラウザキャッシュ**を疑う。**強制リロード**後に左パネル履歴を確認。
 
+### 表示中製番一覧パネル（共有履歴トグル）（2026-04-29） {#leader-board-seiban-list-panel-2026-04-29}
+
+- **目的**: **現在フィルタ後に順位ボードへ表示されている製番**だけを、テンキー入力なしで共有製番履歴へ **一括登録／解除**できるようにする。
+- **仕様（要約）**:
+  - **入口**: 左パネル「製番検索」行の **「製番一覧」** → 右半画面オーバーレイ [`LeaderBoardSeibanListPanel`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel.tsx)。
+  - **対象集合**: [`buildLeaderBoardSortedGrouped`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel.ts) の結果をフラット化し、**`fseiban` で一意**（先勝ちで **`machineName`** を採用）。[`deriveVisibleSeibanEntries`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts)。
+  - **トグル**: [`toggleSeibanInSharedHistory`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts) — 共有履歴に **無ければ `addSeibanToHistory`**、**あれば `removeFromHistory`**（チップの × と同様に **OR フィルタ／詳細対象も整合**）。
+  - **見た目**: 共有履歴に含まれる製番は **グレーアウト**（**解除は可能**）。**`historyWriting`** 中はボタン **`disabled`**。
+  - **オーバーレイ**: **`z-[85]`**・背景クリック／**Esc**／ヘッダー「閉じる」で閉じる。
+- **参照実装**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)·[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)·[`LeaderBoardSeibanListPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel.tsx)·[`deriveVisibleSeibanEntries.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts)·[`useKioskSharedSearchHistoryActions.ts`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)。
+
+- **本番デプロイ・実機検証（2026-04-29）**:
+  - **ブランチ**: `feat/leaderboard-seiban-list-panel`（代表コミット **`f544a45c`**）。
+  - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
+  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-list-panel infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-193317-26767`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 436s**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 88s**・Tailscale）。
+
+- **トラブルシュート**:
+  - **パネルに製番が出ない**: **一覧が空**／**完了フィルタ**で行が消えている。**ページネーション超過**で見えている範囲外の製番は [`deriveVisibleSeibanEntries`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts) に **現れない**（現状仕様）。
+  - **トグルが効かない**: **`historyWriting`** または **`PUT …/search-state` が競合連続** → **ページ再読込**。
+
 ### 行アクション・機種名フォールバック（2026-04-02）
 
 - **完了**: 各行の ✓ ボタンで生産スケジュール画面と同様に完了／未完了を切替。表示上の完了は `rowData.progress === '完了'` と同期（`LeaderBoardRow.isCompleted`）。
