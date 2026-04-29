@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-04-29）
 
-- **加工機点検状況 KPI とカード配色基準の統一（`fix/uninspected-kpi-card-alignment`）**: `inspectedRunningCount` / `uninspectedCount` を **`normalCount` / `abnormalCount`**（青/赤カード条件）で集計。`findUninspected` 一覧も同基準。純関数 [`daily-inspection-kpi.ts`](../apps/api/src/services/tools/daily-inspection-kpi.ts)。**ナレッジ**: [KB-360](./knowledge-base/api.md#kb-360-加工機点検状況のkpiをカード配色基準と統一正常異常件数)。
+- **加工機点検状況 KPI とカード配色基準の統一（`fix/uninspected-kpi-card-alignment`·`48cfb6c2`）本番 Pi5 のみ·Phase12 43/0/0**: **`raspberrypi5`**・Detach **`20260429-174518-6203`**・`verify-phase12-real.sh`。**ナレッジ**: [KB-360](./knowledge-base/api.md#kb-360-加工機点検状況のkpiをカード配色基準と統一正常異常件数)·[deployment.md](./guides/deployment.md) 冒頭·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
 
 - **キオスク持出一覧 本文末尾揃え・サムネ108px・カード外寸固定（`feat/kiosk-active-loan-card-right-align-thumb-15x-fixed-size`·`d1c6abe7`）本番 Pi5 のみ·Phase12 43/0/0·Web のみ**: [`kioskActiveLoanCardLayout.ts`](../apps/web/src/components/kiosk/kioskActiveLoanCardLayout.ts)·[`KioskActiveLoanCard.tsx`](../apps/web/src/components/kiosk/KioskActiveLoanCard.tsx)。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（末尾揃え・108pxサムネ）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-active-loan-card-right-align-thumb-15x-fixed-size infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。**Detach Run ID**（`ansible-update-`）: **`20260429-163457-5210`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**Pi4/Pi3 不要**。**ナレッジ**: [KB-323 追補](./knowledge-base/KB-323-kiosk-return-card-button-layout.md)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
 
