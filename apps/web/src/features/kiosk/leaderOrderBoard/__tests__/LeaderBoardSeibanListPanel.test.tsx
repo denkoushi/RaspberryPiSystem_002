@@ -19,6 +19,21 @@ describe('LeaderBoardSeibanListPanel', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('製番カード一覧は sm 以上で3列のグリッドクラスを付与する', () => {
+    render(
+      <LeaderBoardSeibanListPanel
+        isOpen
+        onClose={vi.fn()}
+        entries={[{ fseiban: 'S1', machineName: '機種A' }]}
+        sharedHistory={[]}
+        historyWriting={false}
+        onToggle={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('leader-board-seiban-card-grid').className).toContain('sm:grid-cols-3');
+  });
+
   it('製番・機種名を表示し、登録済みは aria-pressed=true', () => {
     render(
       <LeaderBoardSeibanListPanel
@@ -42,6 +57,22 @@ describe('LeaderBoardSeibanListPanel', () => {
     expect(screen.getByText('S2').closest('button')).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('登録済みカードはグレーアウト表現を維持する', () => {
+    render(
+      <LeaderBoardSeibanListPanel
+        isOpen
+        onClose={vi.fn()}
+        entries={[{ fseiban: 'S1', machineName: '機種A' }]}
+        sharedHistory={['S1']}
+        historyWriting={false}
+        onToggle={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('S1').closest('button')).toHaveClass('bg-slate-800/90');
+    expect(screen.getByText('S1')).toHaveClass('text-slate-200');
+  });
+
   it('共有履歴登録済みの製番がリスト先頭に並ぶ', () => {
     render(
       <LeaderBoardSeibanListPanel
@@ -63,7 +94,7 @@ describe('LeaderBoardSeibanListPanel', () => {
     expect(rows[1]).toHaveTextContent('A');
   });
 
-  it('接頭辞ボタンで段階的に絞り込み、解除で戻る', () => {
+  it('接頭辞ボタン・末尾削除・全解除で絞り込みを操作できる', () => {
     render(
       <LeaderBoardSeibanListPanel
         isOpen
@@ -95,7 +126,15 @@ describe('LeaderBoardSeibanListPanel', () => {
     expect(within(list).queryByText('AC')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /接頭辞の末尾に「C」/ })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '接頭辞フィルタを解除' }));
+    fireEvent.click(screen.getByRole('button', { name: '接頭辞の末尾を1文字削除' }));
+    expect(within(list).getByText('AB')).toBeInTheDocument();
+    expect(within(list).getByText('AC')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /接頭辞の末尾に「B」/ }));
+    expect(within(list).getByText('AB')).toBeInTheDocument();
+    expect(within(list).queryByText('AC')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '接頭辞フィルタをすべて解除' }));
     expect(within(list).getByText('AB')).toBeInTheDocument();
     expect(within(list).getByText('AC')).toBeInTheDocument();
   });
