@@ -382,7 +382,7 @@ describe('CSV Import Schedule API', () => {
       expect(response.statusCode).toBe(404);
     });
 
-    it('should keep fixed FKOJUNST invariants in update response', async () => {
+    it('should keep structural FKOJUNST invariants and preserve valid cron in update response', async () => {
       const response = await app.inject({
         method: 'PUT',
         url: '/api/imports/schedule/csv-import-productionschedule-fkojunst',
@@ -402,13 +402,13 @@ describe('CSV Import Schedule API', () => {
       };
       expect(json.schedule.id).toBe('csv-import-productionschedule-fkojunst');
       expect(json.schedule.provider).toBe('gmail');
-      expect(json.schedule.schedule).toBe('0 0 * * *');
+      expect(json.schedule.schedule).toBe('0 4 * * *');
       expect(json.schedule.targets).toEqual([
         { type: 'csvDashboards', source: '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3f4a5b6c' }
       ]);
     });
 
-    it('should keep fixed FKOJUNST_Status mail invariants in update response', async () => {
+    it('should keep structural FKOJUNST_Status mail invariants and preserve valid cron in update response', async () => {
       const response = await app.inject({
         method: 'PUT',
         url: '/api/imports/schedule/csv-import-productionschedule-fkojunst-status-mail',
@@ -429,14 +429,14 @@ describe('CSV Import Schedule API', () => {
       };
       expect(json.schedule.id).toBe('csv-import-productionschedule-fkojunst-status-mail');
       expect(json.schedule.provider).toBe('gmail');
-      expect(json.schedule.schedule).toBe('5 1 * * *');
+      expect(json.schedule.schedule).toBe('0 4 * * *');
       expect(json.schedule.enabled).toBe(true);
       expect(json.schedule.targets).toEqual([
         { type: 'csvDashboards', source: 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e' }
       ]);
     });
 
-    it('should keep fixed seiban machine name supplement invariants in update response', async () => {
+    it('should keep structural seiban machine name supplement invariants and preserve valid cron in update response', async () => {
       const response = await app.inject({
         method: 'PUT',
         url: '/api/imports/schedule/csv-import-seiban-machine-name-supplement',
@@ -457,7 +457,7 @@ describe('CSV Import Schedule API', () => {
       };
       expect(json.schedule.id).toBe('csv-import-seiban-machine-name-supplement');
       expect(json.schedule.provider).toBe('gmail');
-      expect(json.schedule.schedule).toBe('15 6 * * 0');
+      expect(json.schedule.schedule).toBe('0 4 * * *');
       expect(json.schedule.enabled).toBe(true);
       expect(json.schedule.targets).toEqual([
         { type: 'csvDashboards', source: 'e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b' }
