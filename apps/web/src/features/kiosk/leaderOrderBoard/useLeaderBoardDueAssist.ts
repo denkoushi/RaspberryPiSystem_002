@@ -177,6 +177,16 @@ export function useLeaderBoardDueAssist(options?: {
     }
   };
 
+  /** 一覧フィルタや詳細表示は変更せず、共有製番履歴のみへ追加する */
+  const registerSeibanToSharedHistory = useCallback(
+    async (fseiban: string) => {
+      const trimmed = fseiban.trim();
+      if (!trimmed.length) return;
+      await addSeibanToHistory(trimmed);
+    },
+    [addSeibanToHistory]
+  );
+
   const openSeibanDueDatePicker = () => {
     if (!detailQuery.data?.fseiban) return;
     setEditingDueDateTarget({ scope: 'seiban' });
@@ -235,7 +245,8 @@ export function useLeaderBoardDueAssist(options?: {
     closeDatePicker: () => setIsDatePickerOpen(false),
     commitDueDate,
     dueUpdatePending: updateSeibanDueDateMutation.isPending || updateProcessingDueDateMutation.isPending,
-    historyWriting
+    historyWriting,
+    registerSeibanToSharedHistory
   };
 }
 

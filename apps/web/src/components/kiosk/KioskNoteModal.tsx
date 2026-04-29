@@ -3,12 +3,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 
+export type KioskNoteModalExtraAction = {
+  label: string;
+  onClick: () => void | Promise<void>;
+  disabled?: boolean;
+};
+
 type KioskNoteModalProps = {
   isOpen: boolean;
   value: string;
   maxLength?: number;
   onCancel: () => void;
   onCommit: (next: string) => void;
+  /** Optional compact action (e.g. register manufacturing number) placed before Cancel/Save row */
+  extraAction?: KioskNoteModalExtraAction;
 };
 
 const DEFAULT_MAX_LENGTH = 100;
@@ -18,7 +26,8 @@ export function KioskNoteModal({
   value,
   maxLength = DEFAULT_MAX_LENGTH,
   onCancel,
-  onCommit
+  onCommit,
+  extraAction
 }: KioskNoteModalProps) {
   const [draft, setDraft] = useState(value);
   const normalizedValue = useMemo(() => value ?? '', [value]);
@@ -120,7 +129,17 @@ export function KioskNoteModal({
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {extraAction ? (
+          <button
+            type="button"
+            disabled={extraAction.disabled}
+            onClick={() => void Promise.resolve(extraAction.onClick())}
+            className="rounded-md border border-slate-400/70 px-2 py-1 text-xs font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {extraAction.label}
+          </button>
+        ) : null}
         <Button type="button" variant="ghost" onClick={onCancel}>
           キャンセル
         </Button>

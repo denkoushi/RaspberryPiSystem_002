@@ -246,6 +246,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS,
     initialSeibanFilters: searchConditions.activeQueries
   });
+  const registerSeibanToSharedHistory = dueAssist.registerSeibanToSharedHistory;
 
   /** 製番フィルタ ⇔ searchConditions.activeQueries（順位ボード専用 localStorage）。
    * サーバ共有履歴との同期は {@link useLeaderBoardDueAssist} 側（検索確定・フィルタON・初回ハイドレート）。 */
@@ -314,6 +315,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const [selectedResourceCd, setSelectedResourceCd] = useState<string | null>(null);
   const [slotModalOpen, setSlotModalOpen] = useState(false);
+  /** 備考モーダル対象行の製番（製番登録ボタン用） */
+  const [noteModalTargetFseiban, setNoteModalTargetFseiban] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isNoteModalOpen) setNoteModalTargetFseiban(null);
+  }, [isNoteModalOpen]);
 
   useEffect(() => {
     if (selectedResourceCd == null) return;
@@ -337,10 +344,22 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const handleOpenRowNote = useCallback(
     (row: LeaderBoardRow) => {
+      setNoteModalTargetFseiban(row.fseiban.trim() ? row.fseiban.trim() : null);
       startNoteEdit(row.id, row.note);
     },
     [startNoteEdit]
   );
+
+  const handleRegisterSeibanFromNoteModal = useCallback(async () => {
+    const f = noteModalTargetFseiban?.trim();
+    if (!f) return;
+    try {
+      await registerSeibanToSharedHistory(f);
+      closeNoteModal();
+    } catch {
+      /* 共有履歴保存失敗時はモーダルを開いたまま */
+    }
+  }, [closeNoteModal, noteModalTargetFseiban, registerSeibanToSharedHistory]);
 
   const handleCompleteRow = useCallback(
     (rowId: string) => {
@@ -443,6 +462,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         maxLength={100}
         onCancel={closeNoteModal}
         onCommit={commitNote}
+        extraAction={{
+          label: '製番登録',
+          disabled:
+            dueAssist.historyWriting || !(noteModalTargetFseiban?.trim().length),
+          onClick: handleRegisterSeibanFromNoteModal
+        }}
       />
       <KioskDatePickerModal
         isOpen={isDueDatePickerOpen}
