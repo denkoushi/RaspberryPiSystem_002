@@ -163,9 +163,21 @@ export function useLeaderBoardResourceSlots({
     });
   }, []);
 
+  const replaceSlotPattern = useCallback((next: Array<string | null>) => {
+    setResourceCdBySlotIndex((prev) => {
+      const count = prev.length;
+      const clipped = next.slice(0, count);
+      const padded = [...clipped, ...Array.from({ length: Math.max(0, count - clipped.length) }, () => null)];
+      return padded.slice(0, count);
+    });
+  }, []);
+
   const clearSlot = useCallback((slotIndex: number) => {
     assignSlotCd(slotIndex, null);
   }, [assignSlotCd]);
+
+  const isHydrated =
+    hydratedStorageKey != null && hydratedStorageKey.length > 0 && hydratedStorageKey === storageKey;
 
   return {
     slotCount,
@@ -173,6 +185,8 @@ export function useLeaderBoardResourceSlots({
     resourceCdBySlotIndex,
     assignSlotCd,
     clearSlot,
-    activeResourceCds
+    activeResourceCds,
+    replaceSlotPattern,
+    isHydrated
   } as const;
 }

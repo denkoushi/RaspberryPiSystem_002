@@ -16,6 +16,22 @@ export function leaderBoardSlotStorageKey(scopeKey: string): string {
   return trimmed.length > 0 ? `${LEADER_BOARD_SLOT_STORAGE_PREFIX}:${trimmed}` : LEADER_BOARD_SLOT_STORAGE_PREFIX;
 }
 
+/** 順位ボード・対象端末選択の localStorage スコープ（工場単位） */
+export const LEADER_BOARD_PERSIST_DEVICE_SCOPE_SCHEMA_VERSION = 1;
+const LEADER_BOARD_PERSIST_DEVICE_SCOPE_PREFIX = 'kiosk-leader-order-board-active-device-scope';
+
+export type PersistedLeaderBoardActiveDeviceScope = {
+  schemaVersion: typeof LEADER_BOARD_PERSIST_DEVICE_SCOPE_SCHEMA_VERSION;
+  deviceScopeKey: string;
+};
+
+export function persistedLeaderBoardDeviceScopeStorageKey(siteKey: string): string {
+  const trimmed = siteKey.trim();
+  return trimmed.length > 0
+    ? `${LEADER_BOARD_PERSIST_DEVICE_SCOPE_PREFIX}:${trimmed}`
+    : LEADER_BOARD_PERSIST_DEVICE_SCOPE_PREFIX;
+}
+
 /** スロット数に応じて 1 ページ完全性をとりやすくする（単一クエリ方針） */
 export function leaderOrderBoardQueryPageSize(uniqueResourceSlotCount: number): number {
   const n = Math.max(1, uniqueResourceSlotCount);

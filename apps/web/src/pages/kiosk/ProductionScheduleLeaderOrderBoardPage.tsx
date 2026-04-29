@@ -24,8 +24,9 @@ import {
   LEADER_BOARD_SEARCH_STATE_REFETCH_MS
 } from '../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist';
-import { useLeaderBoardResourceSlots } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlots';
+import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlotsWithServerSync';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
+import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
@@ -48,8 +49,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const isMac = typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
   const macManualOrderV2 = isMac && MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED;
 
-  const { siteKey, defaultSites, deviceCards, handleSiteChange } = useLeaderOrderBoardDeviceContext();
-  const [activeDeviceScopeKey, setActiveDeviceScopeKey] = useState('');
+  const { siteKey, defaultSites, deviceCards, handleSiteChange, resourceAssignmentsQuery } =
+    useLeaderOrderBoardDeviceContext();
+  const validDeviceScopeKeys = useMemo(() => deviceCards.map((d) => d.deviceScopeKey.trim()), [deviceCards]);
+  const { activeDeviceScopeKey, setActiveDeviceScopeKey } = usePersistedLeaderBoardDeviceScope(siteKey, validDeviceScopeKeys);
   const [searchConditions, setSearchConditions] = useProductionScheduleSearchConditionsWithStorageKey(
     LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY
   );
@@ -60,14 +63,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     }
   }, [searchConditions.showGrindingResources, searchConditions.showCuttingResources, setSearchConditions]);
 
-  useEffect(() => {
-    if (activeDeviceScopeKey.trim().length > 0) return;
-    const first = deviceCards[0]?.deviceScopeKey;
-    if (first) setActiveDeviceScopeKey(first);
-  }, [activeDeviceScopeKey, deviceCards, setActiveDeviceScopeKey]);
-
   const assignedResourceCds = useMemo(() => {
-    const device = deviceCards.find((d) => d.deviceScopeKey === activeDeviceScopeKey);
+    const device = deviceCards.find((d) => d.deviceScopeKey.trim() === activeDeviceScopeKey.trim());
     if (!device) return [];
     const cds: string[] = [];
     for (const r of device.resources) {
@@ -82,16 +79,32 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     activeDeviceScopeKey
   ]);
 
-  const {
-    slotCount,
-    setSlotCount,
-    resourceCdBySlotIndex,
-    assignSlotCd,
-    activeResourceCds
-  } = useLeaderBoardResourceSlots({
-    scopeKey: slotsScopeKey,
-    fallbackAssignedResourceCds: assignedResourceCds
-  });
+  const resourceAssignmentRowForDevice = useMemo(
+    () =>
+      resourceAssignmentsQuery.data?.assignments?.find(
+        (a) => a.deviceScopeKey.trim() === activeDeviceScopeKey.trim()
+      ),
+    [activeDeviceScopeKey, resourceAssignmentsQuery.data?.assignments]
+  );
+
+  const serverOrderedResourceCds =
+    resourceAssignmentsQuery.isSuccess && activeDeviceScopeKey.trim().length > 0
+      ? (resourceAssignmentRowForDevice?.resourceCds ?? [])
+      : undefined;
+
+  const assignmentsSyncEnabled =
+    Boolean(siteKey.trim()) && Boolean(activeDeviceScopeKey.trim()) && resourceAssignmentsQuery.isSuccess;
+
+  const { slotCount, setSlotCount, resourceCdBySlotIndex, assignSlotCd, activeResourceCds } =
+    useLeaderBoardResourceSlotsWithServerSync({
+      scopeKey: slotsScopeKey,
+      fallbackAssignedResourceCds: assignedResourceCds,
+      siteKey,
+      deviceScopeKey: activeDeviceScopeKey,
+      serverOrderedResourceCds,
+      assignmentsQuerySuccess: resourceAssignmentsQuery.isSuccess,
+      enabled: assignmentsSyncEnabled
+    });
 
   const boardPageSize = useMemo(
     () => leaderOrderBoardQueryPageSize(activeResourceCds.length),
@@ -232,6 +245,30 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS
   });
+
+  /** 製番検索／履歴カードの選択製番と順位ボード一覧（activeQueries）を単一製番へ同期 */
+  const previousSelectedFseibanRef = useRef<string | null>(null);
+  useEffect(() => {
+    const s = dueAssist.selectedFseiban?.trim();
+    const prevSelected = previousSelectedFseibanRef.current;
+    previousSelectedFseibanRef.current = s && s.length > 0 ? s : null;
+
+    if (s?.length) {
+      setSearchConditions((prev) => {
+        if (prev.activeQueries.length === 1 && prev.activeQueries[0] === s) return prev;
+        return { ...prev, activeQueries: [s] };
+      });
+      return;
+    }
+
+    if (prevSelected) {
+      setSearchConditions((prev) => {
+        if (prev.activeQueries.length === 0) return prev;
+        return { ...prev, activeQueries: [] };
+      });
+    }
+  }, [dueAssist.selectedFseiban, setSearchConditions]);
+
   const drawerReveal = useKioskLeftEdgeDrawerReveal(true, { keepOpen: dueAssist.isDetailOpen });
   const leftToolStackOuterRef = useRef<HTMLDivElement | null>(null);
   const [leftStackWidthPx, setLeftStackWidthPx] = useState(0);
@@ -288,6 +325,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const [selectedResourceCd, setSelectedResourceCd] = useState<string | null>(null);
   const [slotModalOpen, setSlotModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedResourceCd == null) return;
+    if (activeResourceCds.includes(selectedResourceCd)) return;
+    setSelectedResourceCd(null);
+  }, [activeResourceCds, selectedResourceCd]);
 
   const handleOrderChange = useCallback(
     (row: LeaderBoardRow, nextValue: string) => {

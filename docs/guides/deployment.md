@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**キオスク順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**順位ボード・端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク順位ボード **端末スコープ永続・資源CD順の共有・製番フィルタ**·`feat/kiosk-leaderboard-device-memory-and-slot-sync`·Web のみ·Pi5 のみ）
+
+- **変更概要**: **`deviceScopeKey`** を localStorage に保持して復元。**資源スロット並び**は既存 `GET/PUT …/manual-order-resource-assignments` の **`resourceCds` の順序** と同期（デバウンス PUT）。**スロット本数は端末ローカル**。製番選択と **`activeQueries`** の単一製番フィルタを連動。詳細は [KB-297 の該当節](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-device-and-slot-sync-2026-04-29)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**。**複数台デプロイ時はホスト単位で `--limit` を 1 台ずつ**。**Pi3 単独は資源が僅少のため、本 playbook の縮小運用または deployment.md にある Pi3 専用手順が正**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-device-memory-and-slot-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`ba2e8da8`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-114156-3453`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130`**・所要 **約 928s**・**Docker 再ビルド**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 24s**・Tailscale）。
+- **トラブルシュート**: PUT とサーバ側マージの競合、`activeQueries` と製番選択の **`ref`** 監視、`selectedResourceCd` の無効化は [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md)。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §状態永続・同期](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-device-and-slot-sync-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク **順位ボード左スタック・納期アシスト不透明背景**·`fix/kiosk-leaderboard-left-panel-opaque-bg`·Web のみ·Pi5 のみ）
 
