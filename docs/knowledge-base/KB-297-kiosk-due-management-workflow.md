@@ -2314,19 +2314,30 @@ category: knowledge-base
   - **入口**: 左パネル「製番検索」行の **「製番一覧」** → 右半画面オーバーレイ [`LeaderBoardSeibanListPanel`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel.tsx)。
   - **対象集合**: [`buildLeaderBoardSortedGrouped`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel.ts) の結果をフラット化し、**`fseiban` で一意**（先勝ちで **`machineName`** を採用）。[`deriveVisibleSeibanEntries`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts)。
   - **トグル**: [`toggleSeibanInSharedHistory`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts) — 共有履歴に **無ければ `addSeibanToHistory`**、**あれば `removeFromHistory`**（チップの × と同様に **OR フィルタ／詳細対象も整合**）。
-  - **見た目**: 共有履歴に含まれる製番は **グレーアウト**（**解除は可能**）。**`historyWriting`** 中はボタン **`disabled`**。
+  - **見た目（追補 2026-04-29）**: **共有履歴登録済み**は **エメラルド系の強調**、未登録は **シアン系の境界線**でコントラストを確保（過度な `opacity` 依存を避ける）。
+  - **並べ替え（追補 2026-04-29）**: **共有履歴に登録済みの製番を先頭**に、その後は製番文字列の昇順（[`sortVisibleSeibanEntriesForDisplay`](../../apps/web/src/features/kiosk/leaderOrderBoard/sortVisibleSeibanEntriesForDisplay.ts)）。
+  - **接頭辞フィルタ（追補 2026-04-29）**: パネル上部に **現在の接頭辞表示**と **次に続けられる文字のみ**のボタン（[`collectNextPrefixChars`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectSeibanPrefixCharset.ts)）。押下で接頭辞を延長し、一覧は **`fseiban.startsWith(prefix)`** で絞り込み。**解除**で接頭辞リセット。パネル閉鎖時も接頭辞はクリア。
+  - **レイアウト（追補 2026-04-29）**: パネル横幅を **約2倍**（`w-[min(100vw,84rem)]`、`max-w-[92vw]` 維持）。フィルタ行は **`flex-wrap`** で複数行可。
   - **オーバーレイ**: **`z-[85]`**・背景クリック／**Esc**／ヘッダー「閉じる」で閉じる。
-- **参照実装**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)·[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)·[`LeaderBoardSeibanListPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel.tsx)·[`deriveVisibleSeibanEntries.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts)·[`useKioskSharedSearchHistoryActions.ts`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)。
+- **参照実装**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)·[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)·[`LeaderBoardSeibanListPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel.tsx)·[`deriveVisibleSeibanEntries.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts)·[`useKioskSharedSearchHistoryActions.ts`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)·[`sortVisibleSeibanEntriesForDisplay.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/sortVisibleSeibanEntriesForDisplay.ts)·[`collectSeibanPrefixCharset.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectSeibanPrefixCharset.ts)。
 
-- **本番デプロイ・実機検証（2026-04-29）**:
+- **本番デプロイ・実機検証（2026-04-29・初回・製番一覧パネル本体）**:
   - **ブランチ**: `feat/leaderboard-seiban-list-panel`（代表コミット **`f544a45c`**）。
   - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
   - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-list-panel infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
   - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-193317-26767`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 436s**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 88s**・Tailscale）。
 
+- **本番デプロイ・実機検証（2026-04-29・追補・接頭辞フィルタ／並べ替え／コントラスト／横幅）**:
+  - **ブランチ**: `feat/leaderboard-seiban-panel-prefix-filter`（代表コミット **`900cb141`**）。
+  - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
+  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-panel-prefix-filter infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-202355-27582`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 106s**・Tailscale）。
+
 - **トラブルシュート**:
   - **パネルに製番が出ない**: **一覧が空**／**完了フィルタ**で行が消えている。**ページネーション超過**で見えている範囲外の製番は [`deriveVisibleSeibanEntries`](../../apps/web/src/features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries.ts) に **現れない**（現状仕様）。
+  - **接頭辞が進められない**: **次文字ボタンが無い**ときは、現在の接頭辞では **一致する製番が無いか、完全一致のみ**（これ以上の深化なし）。**解除**からやり直す。
   - **トグルが効かない**: **`historyWriting`** または **`PUT …/search-state` が競合連続** → **ページ再読込**。
 
 ### 行アクション・機種名フォールバック（2026-04-02）
