@@ -2219,7 +2219,7 @@ category: knowledge-base
 
 - **対象端末（deviceScopeKey）**: キオスク localStorage に **工場（siteKey）単位**で保存し、ページ再入室で復元する。端末一覧に存在しない保存値は破棄し **先頭端末へフォールバック**。
 - **資源スロットの資源 CD 順（端末間）**: 既存の `GET/PUT …/manual-order-resource-assignments` の **`resourceCds` 配列の順序**を正とし、各端末で **デバウンス PUT** して共有する。**スロット本数（slotCount）は端末ローカル**のまま（localStorage）。**サーバ割当が空 `[]` でローカルに選択がある初回**は、誤って空配列で上書きしない（ローカルから PUT してサーバと整合してからマージ）。
-- **製番カードと一覧の連動**: 左パネルで **選択中の製番**（納期アシストの `selectedFseiban`）へ、同一画面の生産スケジュール検索条件 **`activeQueries` を単一製番で上書き**し、順位ボード一覧を絞り込む（製番納期アシスト UI 自体は従来どおり維持）。
+- **製番カードと一覧の連動**: 左パネルで **OR 検索用の製番集合**（`selectedFseibanFilters`）をトグルし、同一画面の生産スケジュール検索条件 **`activeQueries` に反映**して順位ボード一覧を絞り込む（**`q` のカンマ区切りが OR**・既存 `useProductionScheduleQueryParams` と整合）。**納期アシストの詳細**は **単一 `selectedFseiban`** で従来どおり（一覧フィルタと責務分離）。詳細は下記 **§製番チップ・複数選択**。
 - **参照実装**: `usePersistedLeaderBoardDeviceScope`・`useLeaderBoardResourceSlotsWithServerSync`・[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。
 
 - **本番デプロイ・実機検証（2026-04-29）**:
@@ -2233,9 +2233,35 @@ category: knowledge-base
 
 - **トラブルシュート**:
   - **サーバ割当マージ直後に古いローカル順で PUT が上書きしうる**: `lastPushedSigRef` 等でフェッチ済みより古い順序での PUT を抑止。**再現時**はブラウザの PUT 順と `useLeaderBoardResourceSlotsWithServerSync` を確認。
-  - **製番未選択への遷移で一覧が絞られたまま**: `activeQueries` は **ref で `selectedFseiban` を監視**し、解除時は **フィルタを空へ**。
+  - **製番未選択への遷移で一覧が絞られたまま**: `selectedFseibanFilters` を空にすると `activeQueries` も **空へ**（`ProductionScheduleLeaderOrderBoardPage` の同期 `useEffect`）。
   - **資源変更後ドロップダウンが不整合**: 一覧に無い **`selectedResourceCd` はクリア**。
   - **デプロイ fail-fast**: 未コミット・未追跡は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+
+### 製番チップ・複数選択（OR）・全解除（2026-04-29） {#leader-board-seiban-or-filter-2026-04-29}
+
+- **仕様**:
+  - **トグル**: 登録済み製番チップを押すたびに **OR 検索集合**へ追加／除去（同じ製番を再押しで解除）。
+  - **一覧**: **`selectedFseibanFilters`** を `ProductionScheduleLeaderOrderBoardPage` で **`searchConditions.activeQueries`** と同期（**`q` のカンマ区切りが OR**）。
+
+  - **localStorage 復元**: hook 初期化に **`initialSeibanFilters: searchConditions.activeQueries`** を渡し、画面専用ストアの **`activeQueries`** と整合。
+
+  - **納期詳細**: **`selectedFseiban`** は納期アシスト API・モーダル用の **単一製番**（一覧フィルタと分離）。
+
+  - **全解除**: **製番 OR 検索のみ**空にする（履歴チップは残す・研削/切削・資源スロットは維持）。
+
+  - **履歴整合**: 共有 `search-state` 取得後（**`searchStateQuery.isSuccess`**）、**履歴に存在しない製番はフィルタから除去**（初回ロード競合を避ける）。
+- **参照実装**: [`leaderBoardSeibanFilterModel.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderBoardSeibanFilterModel.ts)·[`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)·[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)·[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。
+
+- **本番デプロイ・実機検証（2026-04-29）**:
+  - **ブランチ**: `feat/leaderboard-seiban-multiselect-or-clear`（代表コミット **`d26b50d3`**）。
+  - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
+  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/leaderboard-seiban-multiselect-or-clear infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-123438-30137`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 348s**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**・Tailscale）。
+
+- **トラブルシュート**:
+  - **OR に入れたいのに一覧が変わらない**: Network で **`GET …/kiosk/production-schedule` のクエリ `q`**（カンマ区切り）を確認。
+  - **詳細が空で開けない**: 先にチップで製番を選択するか **登録**して `selectedFseiban` を付与。
 
 ### 行アクション・機種名フォールバック（2026-04-02）
 
