@@ -6,7 +6,7 @@ import { availableProcessingOrderOptions } from './availableProcessingOrderOptio
 type Props = {
   resourceCd: string;
   currentOrder: number | null;
-  usageByResourceCd: Record<string, number[]> | undefined;
+  usageNumbers: readonly number[] | undefined;
   disabled: boolean;
   onChange: (nextValue: string) => void;
 };
@@ -17,13 +17,13 @@ type Props = {
 export function LeaderOrderRowOrderSelect({
   resourceCd,
   currentOrder,
-  usageByResourceCd,
+  usageNumbers,
   disabled,
   onChange
 }: Props) {
   const options = useMemo(
-    () => availableProcessingOrderOptions(resourceCd, currentOrder, usageByResourceCd),
-    [resourceCd, currentOrder, usageByResourceCd]
+    () => availableProcessingOrderOptions(resourceCd, currentOrder, usageNumbers),
+    [resourceCd, currentOrder, usageNumbers]
   );
 
   return (

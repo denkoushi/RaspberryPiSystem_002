@@ -27,7 +27,7 @@ type SlotCardProps = {
   selectedResourceCd: string | null;
   setSelectedResourceCd: (cd: string) => void;
   resourceJapaneseNames: string;
-  orderUsageByResourceCd: Record<string, number[]> | undefined;
+  orderUsageNumbers: readonly number[] | undefined;
   onOpenDueDatePicker: (row: LeaderBoardRow) => void;
   dueDatePending: boolean;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
@@ -44,7 +44,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   selectedResourceCd,
   setSelectedResourceCd,
   resourceJapaneseNames,
-  orderUsageByResourceCd,
+  orderUsageNumbers,
   onOpenDueDatePicker,
   dueDatePending,
   onOrderChange,
@@ -71,7 +71,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       onSelect={onSelect}
       onOpenDueDatePicker={onOpenDueDatePicker}
       dueDatePending={dueDatePending}
-      orderUsageByResourceCd={orderUsageByResourceCd}
+      orderUsageNumbers={orderUsageNumbers}
       onOrderChange={onOrderChange}
       onCompleteRow={onCompleteRow}
       completePending={completePending}
@@ -118,6 +118,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
         }
         const rows = sortedGrouped.get(cd) ?? [];
         const jpNames = (resourceNameMap[cd] ?? []).join(' / ');
+        const orderUsageNumbers = orderUsageByResourceCd?.[cd];
         return (
           <LeaderBoardSlotCard
             key={`slot-${slotIndex}-${cd}`}
@@ -126,7 +127,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             selectedResourceCd={selectedResourceCd}
             setSelectedResourceCd={setSelectedResourceCd}
             resourceJapaneseNames={jpNames}
-            orderUsageByResourceCd={orderUsageByResourceCd}
+            orderUsageNumbers={orderUsageNumbers}
             onOpenDueDatePicker={onOpenDueDatePicker}
             dueDatePending={dueDatePending}
             onOrderChange={onOrderChange}

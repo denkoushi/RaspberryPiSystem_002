@@ -2423,14 +2423,20 @@ category: knowledge-base
 ### Leader order board Pi4 performance (2026-04-24)
 
 - **目的**: Pi4 上の順位ボードで **一覧 GET のペイロードと再描画コスト**を抑え、**ポーリング・デバイス文脈**まわりの無駄な **`manual-order-overview` 取得**を減らす（**Web + API**・既存 URL は維持し **クエリ `responseProfile` を拡張**）。
-- **API（要約）**: キオスク生産スケジュール一覧に **`responseProfile=leaderboard`**。**`leaderboard`** 時は **実績基準時間系の重い付与**や **一覧行の機種名サーバエンリッチ**を **省略**し、**件数取得と行選択を並列化**（`production-schedule-query.service.ts`・ルート `list.ts` / `shared.ts`・統合/ユニットテスト）。**省略時は従来どおり**（他画面の契約を壊さない）。
+- **API（要約）**: キオスク生産スケジュール一覧に **`responseProfile=leaderboard`**。**`leaderboard`** 時は **実績基準時間系の重い付与**を **省略**し、**件数取得と行選択を並列化**する。**`resolvedMachineName` は 2026-04-28 追補以降 full と同じバッチ解決を維持**（`production-schedule-query.service.ts`・ルート `list.ts` / `shared.ts`・統合/ユニットテスト）。**省略時は従来どおり**（他画面の契約を壊さない）。
 - **Web（要約）**: 順位ボード専用ビルドパス（例: `buildLeaderBoardViewModel.ts`・`LeaderBoardGrid.tsx`・`LeaderOrderResourceRow.tsx`・`LeaderBoardLeftToolStack.tsx`）、**`@tanstack/react-virtual`**、**`performance/leaderBoardRefetchPolicy.ts`**、**`useLeaderOrderBoardDeviceContext.ts`**（**`manual-order-overview` を順位ボード文脈から分離**）、**`useLeaderBoardDueAssist` / `useProductionScheduleMutations` の `useCallback` 安定化**・共有検索履歴 hooks の整理（`useKioskSharedSearchHistoryActions.ts` 等）。
+- **Web 追補（2026-04-29）**: Pi4 の **15 秒ごとの `order-usage` 更新**で **全資源カード・全行に再レンダーが波及**しないよう、`LeaderBoardGrid.tsx` → `LeaderOrderResourceCard.tsx` → `LeaderOrderResourceRow.tsx` では **資源ごとの使用順位配列だけ**を渡す。`buildLeaderBoardViewModel.ts` は **中間配列を減らす 1 パス寄りのグループ化**へ寄せ、`LeaderOrderResourceCard.tsx` では **virtual row key を `row.id`** に固定し **overscan を抑制**、カード外枠の **`transition-all` は使わない**。見た目・API 契約は不変。
 - **デプロイ・実機検証（2026-04-24）**:
   - **ブランチ**: `feat/kiosk-leaderboard-pi4-performance-solid`（機能コミット **`95bec8b7`**。**`main` マージ後**はマージコミットを正とする）。
   - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**。
   - **Detach Run ID**（`ansible-update-`）: **`20260424-153647-24567`** / **`20260424-154843-4943`** / **`20260424-155623-24544`** / **`20260424-160421-6565`** / **`20260424-161137-27861`**。いずれも **`failed=0` / `unreachable=0`**。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Mac / Tailscale・本セッション）。
-- **知見**: **`responseProfile` は既定なし＝従来**にしておくと、**順位ボードだけ軽量経路**へ切り替えやすい。Pi4 は **DOM 数**も律速になりうるため **仮想化**と **API 削減**の両面が効く。
+- **本番デプロイ・実機検証（2026-04-29 追補・`order-usage` 再レンダー波及の追加抑制）**:
+  - **ブランチ**: `feat/kiosk-leaderboard-pi4-followup`（代表コミット **`7902f5ac`**。**`main` マージ後**はマージコミットを正とする）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**（キオスク Web のみ・リソース僅少のため本節の Pi3 専用手順は不要）。
+  - **Detach Run ID**（`ansible-update-`）: **`20260429-214453-13263`** / **`20260429-215053-15127`** / **`20260429-215805-17537`** / **`20260429-220418-1032`** / **`20260429-221048-28118`**。いずれも **`failed=0` / `unreachable=0`**。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **64s**・Tailscale）。
+- **知見**: **`responseProfile` は既定なし＝従来**にしておくと、**順位ボードだけ軽量経路**へ切り替えやすい。Pi4 は **DOM 数**も律速になりうるため **仮想化**と **API 削減**の両面が効く。**ポーリングはオブジェクト同一性だけでなく「渡す props の粒度」**でも再レンダーが伝播しうる → 資源単位の **配列参照**に分離すると **`order-usage` 周期での体感**が安定しやすい。
 - **トラブルシューティング**:
   - **他画面の一覧が壊れた**: 順位ボード以外が **`responseProfile=leaderboard` を付けていないか**（Network タブ）を確認。付与ロジックは **プロファイル未指定時は従来**。
   - **`raspi4-kensaku-stonebase01` でデプロイログに barcode-agent 待機リトライ**: **1 回程度のリトライ後に成功**し得る。`PLAY RECAP` が **`failed=0`** なら完走扱い。繰り返す場合はエージェントと [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) を参照。

@@ -21,7 +21,7 @@ const isMachinePartCode = (fhincd: string | null | undefined): boolean => {
  * 部品行の機種名表示に利用する（`normalizeScheduleRows` で MH/SH 行は除外されるため、正本は raw のみ）。
  */
 export function buildFseibanToMachineDisplayName(
-  sourceRows: ProductionScheduleRow[]
+  sourceRows: readonly ProductionScheduleRow[]
 ): Map<string, string> {
   const index = new Map<string, string>();
   for (const row of sourceRows) {

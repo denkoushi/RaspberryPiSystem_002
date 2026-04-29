@@ -40,6 +40,32 @@ describe('buildLeaderBoardViewModel', () => {
     expect(list.map((r) => r.id)).toEqual(['b', 'a']);
   });
 
+  it('falls back to history progress machine name when list row has no machine name', () => {
+    const row: ProductionScheduleRow = {
+      id: 'fallback',
+      occurredAt: '2026-01-01T00:00:00.000Z',
+      rowData: {
+        FSIGENCD: 'R1',
+        FSEIBAN: 'S100',
+        ProductNo: 'P1',
+        FHINCD: 'K001',
+        FHINMEI: '品',
+        FKOJUN: '1',
+        progress: ''
+      },
+      processingOrder: null,
+      dueDate: '2026-02-01',
+      plannedEndDate: null,
+      resolvedMachineName: null
+    };
+
+    const grouped = buildLeaderBoardGroupedRows([row], {
+      S100: { machineName: 'MX-100' }
+    });
+
+    expect(grouped.get('R1')?.[0]?.machineName).toBe('MX-100');
+  });
+
   it('filters completed rows when completionFilter is incomplete', () => {
     const rows = [mk('c1', 'R1', 'S1', null, '完了'), mk('c2', 'R1', 'S2', null, '')];
     const grouped = buildLeaderBoardGroupedRows(rows, undefined);
