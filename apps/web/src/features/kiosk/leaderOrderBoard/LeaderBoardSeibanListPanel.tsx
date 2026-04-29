@@ -1,5 +1,8 @@
 import clsx from 'clsx';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
+import { collectNextPrefixChars } from './collectSeibanPrefixCharset';
+import { sortVisibleSeibanEntriesForDisplay } from './sortVisibleSeibanEntriesForDisplay';
 
 import type { VisibleSeibanEntry } from './deriveVisibleSeibanEntries';
 
@@ -26,6 +29,24 @@ export function LeaderBoardSeibanListPanel({
   onToggle
 }: LeaderBoardSeibanListPanelProps) {
   const registered = useMemo(() => new Set(sharedHistory.map((s) => s.trim()).filter(Boolean)), [sharedHistory]);
+  const [prefixFilter, setPrefixFilter] = useState('');
+
+  const sortedEntries = useMemo(
+    () => sortVisibleSeibanEntriesForDisplay(entries, registered),
+    [entries, registered]
+  );
+  const filteredEntries = useMemo(
+    () => sortedEntries.filter((e) => e.fseiban.startsWith(prefixFilter)),
+    [sortedEntries, prefixFilter]
+  );
+  const charsetButtons = useMemo(
+    () => collectNextPrefixChars(sortedEntries.map((e) => e.fseiban), prefixFilter),
+    [prefixFilter, sortedEntries]
+  );
+
+  useEffect(() => {
+    if (!isOpen) setPrefixFilter('');
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -49,7 +70,7 @@ export function LeaderBoardSeibanListPanel({
         onClick={onClose}
       />
       <aside
-        className="relative flex h-full w-[min(50vw,42rem)] max-w-[92vw] flex-col border-l border-white/15 bg-slate-950 shadow-2xl"
+        className="relative flex h-full w-[min(100vw,84rem)] max-w-[92vw] flex-col border-l border-white/25 bg-slate-950 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="leader-board-seiban-list-title"
@@ -66,12 +87,68 @@ export function LeaderBoardSeibanListPanel({
             閉じる
           </button>
         </header>
+
+        <div
+          className="shrink-0 border-b border-white/10 px-4 py-3"
+          aria-label="製番接頭辞フィルタ"
+          role="region"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="sr-only" aria-live="polite">
+              {prefixFilter.length > 0 ? `現在の接頭辞は ${prefixFilter} です` : '接頭辞は設定されていません'}
+            </span>
+            <span className="text-xs font-medium text-white/70">接頭辞:</span>
+            <kbd
+              className="min-h-[1.75rem] rounded border border-white/25 bg-slate-900 px-2 py-1 font-mono text-sm text-white"
+              aria-label={prefixFilter.length > 0 ? `現在の接頭辞 ${prefixFilter}` : '接頭辞は未設定'}
+            >
+              {prefixFilter.length > 0 ? prefixFilter : '(なし)'}
+            </kbd>
+            {charsetButtons.map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                disabled={historyWriting}
+                aria-label={`接頭辞の末尾に「${ch}」を追加`}
+                title={`「${ch}」を追加`}
+                className={clsx(
+                  'min-h-[2rem] min-w-[2rem] rounded-md border px-2 font-mono text-sm font-semibold text-white transition-colors',
+                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70',
+                  'border-cyan-500/45 bg-slate-900 hover:bg-slate-800',
+                  historyWriting && 'cursor-wait opacity-60'
+                )}
+                onClick={() => setPrefixFilter((prev) => prev + ch)}
+              >
+                {ch === ' ' ? '\u00a0' : ch}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={historyWriting || prefixFilter.length === 0}
+              aria-label="接頭辞フィルタを解除"
+              className={clsx(
+                'rounded border px-3 py-1.5 text-sm font-medium transition-colors',
+                'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70',
+                prefixFilter.length === 0
+                  ? 'cursor-not-allowed border-white/15 text-white/40'
+                  : 'border-amber-400/60 bg-amber-950/50 text-amber-100 hover:bg-amber-900/50',
+                historyWriting && 'cursor-wait opacity-70'
+              )}
+              onClick={() => setPrefixFilter('')}
+            >
+              解除
+            </button>
+          </div>
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto p-4" style={{ WebkitOverflowScrolling: 'touch' }}>
-          {entries.length === 0 ? (
-            <p className="text-sm text-white/60">表示中の製番がありません。</p>
+          {filteredEntries.length === 0 ? (
+            <p className="text-sm text-white/60">
+              {entries.length === 0 ? '表示中の製番がありません。' : 'この接頭辞に一致する製番がありません。'}
+            </p>
           ) : (
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {entries.map((entry) => {
+              {filteredEntries.map((entry) => {
                 const isRegistered = registered.has(entry.fseiban);
                 return (
                   <li key={entry.fseiban}>
@@ -81,16 +158,28 @@ export function LeaderBoardSeibanListPanel({
                       aria-pressed={isRegistered}
                       onClick={() => onToggle(entry.fseiban)}
                       className={clsx(
-                        'flex w-full flex-col items-start rounded-lg border px-3 py-3 text-left transition-colors',
+                        'flex w-full flex-col items-start rounded-lg border-2 px-3 py-3 text-left transition-colors',
                         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400/70',
                         isRegistered
-                          ? 'border-white/15 bg-white/5 opacity-60 hover:bg-white/10'
-                          : 'border-cyan-400/35 bg-slate-900/90 hover:bg-slate-800/90',
-                        historyWriting && 'cursor-wait opacity-70'
+                          ? 'border-emerald-400 bg-emerald-950/85 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.25)] hover:bg-emerald-900/70'
+                          : 'border-cyan-400/70 bg-slate-900 hover:bg-slate-800',
+                        historyWriting && 'cursor-wait opacity-75'
                       )}
                     >
-                      <span className="font-mono text-lg font-bold leading-tight text-white">{entry.fseiban}</span>
-                      <span className="mt-1 line-clamp-2 text-base leading-snug text-white/85">
+                      <span
+                        className={clsx(
+                          'font-mono text-lg font-bold leading-tight',
+                          isRegistered ? 'text-emerald-100' : 'text-white'
+                        )}
+                      >
+                        {entry.fseiban}
+                      </span>
+                      <span
+                        className={clsx(
+                          'mt-1 line-clamp-2 text-base leading-snug',
+                          isRegistered ? 'text-emerald-50/95' : 'text-white/90'
+                        )}
+                      >
                         {entry.machineName.length > 0 ? entry.machineName : '—'}
                       </span>
                     </button>
