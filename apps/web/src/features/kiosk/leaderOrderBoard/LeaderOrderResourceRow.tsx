@@ -15,7 +15,7 @@ export type LeaderOrderResourceRowProps = {
   variant?: 'interactive' | 'signage';
   resourceCd: string;
   row: LeaderBoardRow;
-  orderUsageByResourceCd: Record<string, number[]> | undefined;
+  orderUsageNumbers: readonly number[] | undefined;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
   onCompleteRow: (rowId: string) => void;
   completePending: boolean;
@@ -33,7 +33,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   variant = 'interactive',
   resourceCd,
   row,
-  orderUsageByResourceCd,
+  orderUsageNumbers,
   onOrderChange,
   onCompleteRow,
   completePending,
@@ -80,7 +80,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           <LeaderOrderRowOrderSelect
             resourceCd={resourceCd}
             currentOrder={row.processingOrder}
-            usageByResourceCd={orderUsageByResourceCd}
+            usageNumbers={orderUsageNumbers}
             disabled={completePending || row.isCompleted || orderPending || Boolean(dueDatePending)}
             onChange={(nextValue) => onOrderChange(row, nextValue)}
           />

@@ -2423,8 +2423,9 @@ category: knowledge-base
 ### Leader order board Pi4 performance (2026-04-24)
 
 - **目的**: Pi4 上の順位ボードで **一覧 GET のペイロードと再描画コスト**を抑え、**ポーリング・デバイス文脈**まわりの無駄な **`manual-order-overview` 取得**を減らす（**Web + API**・既存 URL は維持し **クエリ `responseProfile` を拡張**）。
-- **API（要約）**: キオスク生産スケジュール一覧に **`responseProfile=leaderboard`**。**`leaderboard`** 時は **実績基準時間系の重い付与**や **一覧行の機種名サーバエンリッチ**を **省略**し、**件数取得と行選択を並列化**（`production-schedule-query.service.ts`・ルート `list.ts` / `shared.ts`・統合/ユニットテスト）。**省略時は従来どおり**（他画面の契約を壊さない）。
+- **API（要約）**: キオスク生産スケジュール一覧に **`responseProfile=leaderboard`**。**`leaderboard`** 時は **実績基準時間系の重い付与**を **省略**し、**件数取得と行選択を並列化**する。**`resolvedMachineName` は 2026-04-28 追補以降 full と同じバッチ解決を維持**（`production-schedule-query.service.ts`・ルート `list.ts` / `shared.ts`・統合/ユニットテスト）。**省略時は従来どおり**（他画面の契約を壊さない）。
 - **Web（要約）**: 順位ボード専用ビルドパス（例: `buildLeaderBoardViewModel.ts`・`LeaderBoardGrid.tsx`・`LeaderOrderResourceRow.tsx`・`LeaderBoardLeftToolStack.tsx`）、**`@tanstack/react-virtual`**、**`performance/leaderBoardRefetchPolicy.ts`**、**`useLeaderOrderBoardDeviceContext.ts`**（**`manual-order-overview` を順位ボード文脈から分離**）、**`useLeaderBoardDueAssist` / `useProductionScheduleMutations` の `useCallback` 安定化**・共有検索履歴 hooks の整理（`useKioskSharedSearchHistoryActions.ts` 等）。
+- **Web 追補（2026-04-29）**: Pi4 の **15 秒ごとの `order-usage` 更新**で **全資源カード・全行に再レンダーが波及**しないよう、`LeaderBoardGrid.tsx` → `LeaderOrderResourceCard.tsx` → `LeaderOrderResourceRow.tsx` では **資源ごとの使用順位配列だけ**を渡す。`buildLeaderBoardViewModel.ts` は **中間配列を減らす 1 パス寄りのグループ化**へ寄せ、`LeaderOrderResourceCard.tsx` では **virtual row key を `row.id`** に固定し **overscan を抑制**、カード外枠の **`transition-all` は使わない**。見た目・API 契約は不変。
 - **デプロイ・実機検証（2026-04-24）**:
   - **ブランチ**: `feat/kiosk-leaderboard-pi4-performance-solid`（機能コミット **`95bec8b7`**。**`main` マージ後**はマージコミットを正とする）。
   - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象 5 台**を **`--limit` 1 台ずつ**（**`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**）。**Pi3 除外**。

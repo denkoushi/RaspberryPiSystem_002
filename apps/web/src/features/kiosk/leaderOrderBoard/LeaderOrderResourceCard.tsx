@@ -22,7 +22,7 @@ type Props = {
   /** 行納期編集（生産スケジュールと同契約の API へ） */
   onOpenDueDatePicker?: (row: LeaderBoardRow) => void;
   dueDatePending?: boolean;
-  orderUsageByResourceCd: Record<string, number[]> | undefined;
+  orderUsageNumbers: readonly number[] | undefined;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
   onCompleteRow: (rowId: string) => void;
   completePending: boolean;
@@ -42,7 +42,7 @@ function LeaderOrderResourceCardInner({
   onSelect,
   onOpenDueDatePicker,
   dueDatePending,
-  orderUsageByResourceCd,
+  orderUsageNumbers,
   onOrderChange,
   onCompleteRow,
   completePending,
@@ -59,8 +59,9 @@ function LeaderOrderResourceCardInner({
   const rowVirtualizer = useVirtualizer({
     count: useVirtual ? rows.length : 0,
     getScrollElement: () => scrollParentRef.current,
+    getItemKey: (index) => rows[index]?.id ?? index,
     estimateSize: () => LEADER_BOARD_ROW_ESTIMATE_PX,
-    overscan: 6,
+    overscan: 3,
     measureElement: (el) => el.getBoundingClientRect().height
   });
 
@@ -80,7 +81,7 @@ function LeaderOrderResourceCardInner({
             }
       }
       className={clsx(
-        'flex h-full min-h-[12rem] flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-all outline-none',
+        'flex h-full min-h-[12rem] flex-col rounded-lg border bg-slate-900/60 p-2.5 transition-[border-color,box-shadow,opacity] outline-none',
         !isSignage && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400/60',
         isSignage && 'cursor-default',
         KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS,
@@ -127,7 +128,7 @@ function LeaderOrderResourceCardInner({
                     variant={variant}
                     resourceCd={resourceCd}
                     row={row}
-                    orderUsageByResourceCd={orderUsageByResourceCd}
+                    orderUsageNumbers={orderUsageNumbers}
                     onOrderChange={onOrderChange}
                     onCompleteRow={onCompleteRow}
                     completePending={completePending}
@@ -148,7 +149,7 @@ function LeaderOrderResourceCardInner({
                 variant={variant}
                 resourceCd={resourceCd}
                 row={row}
-                orderUsageByResourceCd={orderUsageByResourceCd}
+                orderUsageNumbers={orderUsageNumbers}
                 onOrderChange={onOrderChange}
                 onCompleteRow={onCompleteRow}
                 completePending={completePending}

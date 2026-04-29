@@ -1,10 +1,9 @@
 import { filterLeaderBoardRowsByCompletion, type LeaderOrderCompletionFilter } from './filterLeaderBoardRowsByCompletion';
-import { groupRowsByResourceCd } from './groupRowsByResourceCd';
 import {
-  buildSeibanMachineNameMapFromProgressBySeiban,
-  mergeMachineNameFallback
+  buildSeibanMachineNameMapFromProgressBySeiban
 } from './mergeMachineNameFallback';
-import { normalizeLeaderBoardRows } from './normalizeLeaderBoardRow';
+import { normalizeLeaderBoardRow } from './normalizeLeaderBoardRow';
+import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
 import { sortLeaderBoardRowsForDisplay } from './sortLeaderBoardRowsForDisplay';
 
 import type { LeaderBoardRow } from './types';
@@ -19,10 +18,36 @@ export function buildLeaderBoardGroupedRows(
   scheduleRows: readonly ProductionScheduleRow[],
   progressBySeiban: HistoryProgressBySeiban | undefined
 ): Map<string, LeaderBoardRow[]> {
-  const normalized = normalizeLeaderBoardRows([...scheduleRows]);
-  const fb = buildSeibanMachineNameMapFromProgressBySeiban(progressBySeiban);
-  const merged = mergeMachineNameFallback(normalized, fb);
-  return groupRowsByResourceCd(merged);
+  const machineNameBySeiban = buildFseibanToMachineDisplayName(scheduleRows);
+  const fallbackBySeiban = buildSeibanMachineNameMapFromProgressBySeiban(progressBySeiban);
+  const grouped = new Map<string, LeaderBoardRow[]>();
+
+  for (const row of scheduleRows) {
+    const normalized = normalizeLeaderBoardRow(row);
+    if (!normalized) continue;
+
+    let resolved = normalized.machineName.trim();
+    if (resolved.length === 0) {
+      const seiban = normalized.fseiban.trim();
+      if (seiban.length > 0) {
+        resolved = machineNameBySeiban.get(seiban)?.trim() ?? fallbackBySeiban.get(seiban)?.trim() ?? '';
+      }
+    }
+
+    const nextRow =
+      resolved.length > 0 && resolved !== normalized.machineName
+        ? { ...normalized, machineName: resolved }
+        : normalized;
+
+    const list = grouped.get(nextRow.resourceCd);
+    if (list) {
+      list.push(nextRow);
+    } else {
+      grouped.set(nextRow.resourceCd, [nextRow]);
+    }
+  }
+
+  return new Map([...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ja')));
 }
 
 /**

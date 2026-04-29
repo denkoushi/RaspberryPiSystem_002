@@ -6,9 +6,9 @@ import { ORDER_NUMBERS } from '../productionSchedule/resourceColors';
 export function availableProcessingOrderOptions(
   resourceCd: string,
   currentOrder: number | null,
-  usageByResourceCd: Record<string, number[]> | undefined
+  usageNumbers: readonly number[] | undefined
 ): number[] {
   if (resourceCd.trim().length === 0) return [];
-  const usage = usageByResourceCd?.[resourceCd] ?? [];
+  const usage = usageNumbers ?? [];
   return ORDER_NUMBERS.filter((num) => num === currentOrder || !usage.includes(num));
 }
