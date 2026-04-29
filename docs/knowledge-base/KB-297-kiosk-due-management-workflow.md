@@ -2263,6 +2263,27 @@ category: knowledge-base
   - **OR に入れたいのに一覧が変わらない**: Network で **`GET …/kiosk/production-schedule` のクエリ `q`**（カンマ区切り）を確認。
   - **詳細が空で開けない**: 先にチップで製番を選択するか **登録**して `selectedFseiban` を付与。
 
+### 順位ボード製番登録と進捗一覧の共有履歴同期（2026-04-29） {#leaderboard-progress-overview-shared-history-sync-2026-04-29}
+
+- **背景**: 順位ボードで触った製番が **進捗一覧** に現れないことがあった。進捗一覧の製番集合は **サーバ共有の製番履歴**／**progress-overview の `scheduled`/`unscheduled`** と整合している一方、順位ボード側で **フィルタのみ先行**すると共有履歴へ **まだ載っていない**状態になりうる。
+- **仕様（要約）**:
+  - **フィルタ ON**: 共有履歴に無い製番は **先に `addSeibanToHistory`**（`useLeaderBoardDueAssist`）。
+  - **初回ハイドレート**: `search-state` 取得成功後、ローカル復元のみに残った製番を **順にサーバへ登録**（即時削除はしない）。`toggleFseibanFilter` は **async**。effect 依存に **`sharedHistory`** を含め、取得遅延時も **再剪定**しやすくする。
+  - **共有履歴更新後**: `writeHistory` 成功で **`kiosk-production-schedule-progress-overview`** を invalidate（`useKioskSharedSearchHistoryActions`）。
+  - **進捗一覧**: **`scheduled` + `unscheduled`** をカード表示・フィルタ候補に反映（`ProductionScheduleProgressOverviewPage`）。納期未割当製番は **`unscheduled`**。
+- **参照実装**: [`leaderBoardSharedHistoryGate.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderBoardSharedHistoryGate.ts)·[`useLeaderBoardDueAssist.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)·[`useKioskSharedSearchHistoryActions.ts`](../../apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)·[`ProductionScheduleProgressOverviewPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleProgressOverviewPage.tsx)·[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。
+
+- **本番デプロイ・実機検証（2026-04-29）**:
+  - **ブランチ**: `fix/leaderboard-seiban-registration-sync`（代表コミット **`b4afb2d7`**）。
+  - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**）。
+  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/leaderboard-seiban-registration-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-143937-21499`**（**`failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+
+- **トラブルシュート**:
+  - **順位ボードで選んだ製番が進捗一覧に出ない**: Network で **`POST/GET …/search-state`** の製番集合と **`GET …/progress-overview`** の応答を確認。**履歴に無い製番**は本修正どおり **`addSeibanToHistory` 経由でサーバへ載るまで**一覧側とずれることがある。
+  - **`scheduled` に無く `unscheduled` にだけある**: 製番レベル納期が無いケースとして仕様どおり。**フィルタ候補**は両バケツを見る。
+
 ### 行アクション・機種名フォールバック（2026-04-02）
 
 - **完了**: 各行の ✓ ボタンで生産スケジュール画面と同様に完了／未完了を切替。表示上の完了は `rowData.progress === '完了'` と同期（`LeaderBoardRow.isCompleted`）。

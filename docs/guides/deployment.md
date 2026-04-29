@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**システム CSV インポートスケジュール不変条件**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク順位ボード **製番登録と進捗一覧の共有履歴同期**·`fix/leaderboard-seiban-registration-sync`·Web のみ·Pi5 のみ）
+
+- **変更概要**: 順位ボードで製番フィルタを ON にしたとき **サーバ共有の製番履歴（search-state）へ未登録なら先に `addSeibanToHistory`**。共有状態取得成功後の **初回ハイドレート**で、ローカル復元のみに残った製番を **順にサーバ登録**し、進捗一覧クエリ（**`kiosk-production-schedule-progress-overview`**）を **共有履歴書き込み成功後に invalidate**。進捗一覧 UI は **`scheduled` と `unscheduled`** の製番をカード／フィルタ候補に反映。**API 契約変更なし**（Web のみ）。純粋ゲート: [`leaderBoardSharedHistoryGate.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderBoardSharedHistoryGate.ts)（Vitest あり）。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（キオスク SPA は Pi5 `web`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/leaderboard-seiban-registration-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`b4afb2d7`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-143937-21499`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・サマリ **`Summary success check: true`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale）。
+- **トラブルシュート**: **共有履歴取得が遅い／一度だけ成功しない**ときは **フィルタ剪定が再実行されるよう `sharedHistory` を effect 依存に含める**設計。**進捗一覧に製番が出ない**ときは **`POST …/search-state` の製番集合**と **`GET …/progress-overview`** の **`scheduled`/`unscheduled`** を突き合わせる（製番レベル納期なしは **`unscheduled`** 側）。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §製番登録と進捗一覧同期](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leaderboard-progress-overview-shared-history-sync-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: **システム固定 CSV インポートスケジュール** 更新の **不変条件**・有効 **cron 保持**·`feat/csv-import-system-schedule-preserve-cron`·API+管理 Web·Pi5 のみ）
 

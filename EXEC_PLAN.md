@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-04-29) **キオスク順位ボード 製番登録と進捗一覧の共有履歴同期**·`fix/leaderboard-seiban-registration-sync`·`b4afb2d7`·本番 **`raspberrypi5` のみ**·Phase12·[deployment.md](./docs/guides/deployment.md)·[KB-297 §同期](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leaderboard-progress-overview-shared-history-sync-2026-04-29): [`leaderBoardSharedHistoryGate.ts`](./apps/web/src/features/kiosk/leaderOrderBoard/leaderBoardSharedHistoryGate.ts)·[`useLeaderBoardDueAssist.ts`](./apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist.ts)·[`useKioskSharedSearchHistoryActions.ts`](./apps/web/src/features/kiosk/productionSchedule/useKioskSharedSearchHistoryActions.ts)·[`ProductionScheduleProgressOverviewPage.tsx`](./apps/web/src/pages/kiosk/ProductionScheduleProgressOverviewPage.tsx)。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/leaderboard-seiban-registration-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260429-143937-21499`**（**`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**Pi3/Pi4**: 不要（Pi5 `web` のみ）。**`main`**: **merge + push**（ローカル `main` 同期）。
+
 - [x] (2026-04-29) **システム固定 CSV インポートスケジュールの更新時不変条件（有効 cron 保持・provider/targets 矯正）**·`feat/csv-import-system-schedule-preserve-cron`·`e4e862a4`·本番 **`raspberrypi5` のみ**·Phase12·[deployment.md](./docs/guides/deployment.md)·[csv-import-export.md](./docs/guides/csv-import-export.md): `system-csv-import-schedule-invariants.ts`・`system-csv-import-schedule-builtin-rows.ts`・各 `*-import-schedule.policy.ts`・`ImportScheduleAdminService`・[`CsvImportSchedulePage.tsx`](./apps/web/src/pages/admin/CsvImportSchedulePage.tsx)（`startEdit` の `scheduleMode`）。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/csv-import-system-schedule-preserve-cron infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260429-133724-8769`**（**`failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**・所要 **約 938s**・Docker 再ビルド）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**）。**Pi3/Pi4**: 不要。**CI**: `imports-schedule.integration.test.ts` を不変条件に整合。**`main`**: 本セッションで **merge + `origin/main` push**（ローカル `main` 同期）。
 
 - [x] (2026-04-29) **DGX private-personal ComfyUI 境界ガード強化**: ブランチ **`feat/dgx-private-personal-route-hardening`**。[`scripts/dgx-private-comfyui/boundary-check.sh`](./scripts/dgx-private-comfyui/boundary-check.sh) で **`COMFYUI_DATA_ROOT` を `/srv/dgx/private-personal` 配下のみ**に限定し、`docker compose config` の解決結果に **`/srv/dgx/system-prod` / `lab-experiments` のホストバインドが無い**ことを検証。`start-private-comfyui.sh` / `stop-private-comfyui.sh` から実行。Runbook/README で **Tailscale→SSH `-L 8188:127.0.0.1:8188`→ブラウザ `http://127.0.0.1:8188`** を標準経路として統一し、LAN 直・`0.0.0.0` 公開は**運用禁止**と明記。**実測**: DGX で `compose up` と `curl -I` は成功、Mac トンネル経由で ComfyUI UI 表示まで確認。**知見**: `tag:admin -> tag:llm tcp:22` が無いと Mac→DGX SSH は timeout、初回 build は一時 DNS failure で失敗する場合があり再試行で回復。**未完了**: `models/checkpoints/` が空で workflow 実行は未確認。**Pi5 経路**: 変更なし。**コミット/プッシュ**: 計画により未実施。
@@ -1956,6 +1958,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク: 順位ボード製番 → 進捗一覧の現場スモーク（2026-04-29 追補）
+
+**概要**: **`fix/leaderboard-seiban-registration-sync`**（**`b4afb2d7`**）は Pi5 SPA のみ。**自動検証**は Phase12 **PASS 43/0/0** 済み。**残りは認証込みの場内確認**。
+
+**候補タスク**:
+
+1. **順位ボード**: `/kiosk/production-schedule/leader-order-board` で製番フィルタを **ON** にした製番が、共有履歴／一覧クエリと矛盾しないこと（必要なら **ページ再読込**後も製番チップ・一覧が整合）。
+2. **進捗一覧**: `/kiosk/production-schedule/progress-overview` で、上記製番が **`scheduled` または `unscheduled`** のどちらかに現れ、フィルタ候補からも選べること（納期未設定は **`unscheduled`** 側になりうる）。
+3. **Pi4 キオスク**: SPA は Pi5 配信のため **追加デプロイは不要**。別端末ブラウザで **キャッシュクリア後**に同様を確認してよい。
 
 ### DGX Spark LocalLLM: 一区切り後の将来課題（2026-04-28 追補: VLM 400 分類·#204/#205 反映後の観測）
 
