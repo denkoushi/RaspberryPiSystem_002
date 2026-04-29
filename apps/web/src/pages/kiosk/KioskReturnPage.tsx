@@ -5,6 +5,7 @@ import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../
 import { KioskActiveLoanCard } from '../../components/kiosk/KioskActiveLoanCard';
 import { Card } from '../../components/ui/Card';
 import { presentActiveLoanListLines } from '../../features/kiosk/activeLoanListLines';
+import { formatKioskActiveLoanBorrowedAt } from '../../features/kiosk/formatKioskActiveLoanBorrowedAt';
 
 import type { Loan, ReturnPayload } from '../../api/types';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -176,7 +177,7 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
                     photoUrl={loan.photoUrl}
                     isOverdue={isOverdue}
                     employeeDisplayName={loan.employee?.displayName ?? '従業員情報なし'}
-                    borrowedAtDisplay={borrowedAt.toLocaleString()}
+                    borrowedAtDisplay={formatKioskActiveLoanBorrowedAt(borrowedAt)}
                     returnButtonLabel={returnButtonLabel}
                     cancelButtonLabel={cancelButtonLabel}
                     actionsDisabled={actionsDisabled}
