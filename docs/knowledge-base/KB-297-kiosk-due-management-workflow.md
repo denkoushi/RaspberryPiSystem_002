@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-04-20
+last-verified: 2026-04-29
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -2215,12 +2215,27 @@ category: knowledge-base
 - **境界**: ドメインロジックは `apps/web/src/features/kiosk/leaderOrderBoard/`（正規化・`sortLeaderBoardRowsForDisplay`・`filterLeaderBoardRowsByCompletion`・`mergeMachineNameFallback`・Vitest）。API 契約は新設せず既存 order / complete 系を利用。
 - **沉浸式**: `usesKioskImmersiveLayout` に `KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX` を含む（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md) と併読）。
 
-### 状態の永続化・資源順序同期・製番フィルタ連動（2026-04-29）
+### 状態の永続化・資源順序同期・製番フィルタ連動（2026-04-29） {#leader-order-board-device-and-slot-sync-2026-04-29}
 
 - **対象端末（deviceScopeKey）**: キオスク localStorage に **工場（siteKey）単位**で保存し、ページ再入室で復元する。端末一覧に存在しない保存値は破棄し **先頭端末へフォールバック**。
 - **資源スロットの資源 CD 順（端末間）**: 既存の `GET/PUT …/manual-order-resource-assignments` の **`resourceCds` 配列の順序**を正とし、各端末で **デバウンス PUT** して共有する。**スロット本数（slotCount）は端末ローカル**のまま（localStorage）。**サーバ割当が空 `[]` でローカルに選択がある初回**は、誤って空配列で上書きしない（ローカルから PUT してサーバと整合してからマージ）。
 - **製番カードと一覧の連動**: 左パネルで **選択中の製番**（納期アシストの `selectedFseiban`）へ、同一画面の生産スケジュール検索条件 **`activeQueries` を単一製番で上書き**し、順位ボード一覧を絞り込む（製番納期アシスト UI 自体は従来どおり維持）。
 - **参照実装**: `usePersistedLeaderBoardDeviceScope`・`useLeaderBoardResourceSlotsWithServerSync`・[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。
+
+- **本番デプロイ・実機検証（2026-04-29）**:
+  - **ブランチ**: `feat/kiosk-leaderboard-device-memory-and-slot-sync`（代表コミット **`ba2e8da8`**）。
+  - **対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`。**Pi4/Pi3 個別デプロイ不要**・キオスク SPA は Pi5 `web` 配信）。
+  - **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-device-memory-and-slot-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**複数ホスト運用では `--limit` を 1 台ずつ**。**Pi3 単体は資源僅少のため別手順（`deployment.md` の Pi3 節）**。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-114156-3453`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・所要 **約 928s**。**Docker 再ビルド**含む）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **24s**・Tailscale）。
+
+- **知見**: 複数端末間の資源順共有は **`manual-order-resource-assignments` の `resourceCds` 並び**のみ。**スロット本数・端末選択はローカル**に留め、DB/API を増やさない。
+
+- **トラブルシュート**:
+  - **サーバ割当マージ直後に古いローカル順で PUT が上書きしうる**: `lastPushedSigRef` 等でフェッチ済みより古い順序での PUT を抑止。**再現時**はブラウザの PUT 順と `useLeaderBoardResourceSlotsWithServerSync` を確認。
+  - **製番未選択への遷移で一覧が絞られたまま**: `activeQueries` は **ref で `selectedFseiban` を監視**し、解除時は **フィルタを空へ**。
+  - **資源変更後ドロップダウンが不整合**: 一覧に無い **`selectedResourceCd` はクリア**。
+  - **デプロイ fail-fast**: 未コミット・未追跡は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 
 ### 行アクション・機種名フォールバック（2026-04-02）
 
