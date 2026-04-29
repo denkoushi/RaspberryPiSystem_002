@@ -247,7 +247,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     initialSeibanFilters: searchConditions.activeQueries
   });
 
-  /** 製番 OR 検索フィルタ（左パネル）と `activeQueries` を同期（API は `q` のカンマ区切りが OR） */
+  /** 製番フィルタ ⇔ searchConditions.activeQueries（順位ボード専用 localStorage）。
+   * サーバ共有履歴との同期は {@link useLeaderBoardDueAssist} 側（検索確定・フィルタON・初回ハイドレート）。 */
   useEffect(() => {
     const next = dueAssist.selectedFseibanFilters;
     setSearchConditions((prev) => {

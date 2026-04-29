@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   useKioskProductionScheduleDueManagementSeibanDetail,
@@ -13,6 +13,7 @@ import {
   isSeibanFilterSelected,
   toggleSeibanFilter
 } from './leaderBoardSeibanFilterModel';
+import { requiresSharedHistoryInsertBeforeEnableFilter } from './leaderBoardSharedHistoryGate';
 
 type DueDateTarget = { scope: 'seiban' } | { scope: 'processing'; processingType: string };
 
@@ -33,7 +34,8 @@ export function useLeaderBoardDueAssist(options?: {
     refetchIntervalMs: options?.refetchIntervalMs
   });
   const updateSeibanDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanDueDate();
-  const updateProcessingDueDateMutation = useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate();
+  const updateProcessingDueDateMutation =
+    useUpdateKioskProductionScheduleDueManagementSeibanProcessingDueDate();
 
   const [searchInput, setSearchInput] = useState('');
   /** 納期アシスト詳細・日付ピッカー対象の単一製番 */
@@ -42,6 +44,12 @@ export function useLeaderBoardDueAssist(options?: {
   const [selectedFseibanFilters, setSelectedFseibanFilters] = useState<string[]>(
     () => [...(options?.initialSeibanFilters ?? [])].filter((s) => s.trim().length > 0)
   );
+
+  const selectedFseibanFiltersRef = useRef(selectedFseibanFilters);
+  selectedFseibanFiltersRef.current = selectedFseibanFilters;
+
+  const sharedHistoryRef = useRef(sharedHistory);
+  sharedHistoryRef.current = sharedHistory;
 
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
@@ -61,14 +69,41 @@ export function useLeaderBoardDueAssist(options?: {
     }
   }, [sharedHistory, selectedFseiban]);
 
+  /**
+   * search-state 取得完了後に1回だけ: ローカル復元フィルタのうちサーバ履歴に無い製番を登録する。
+   * （旧「sharedHistory に無いフィルタを即削除」ロジックは、ハイドレート前にチップが消えるため廃止）
+   */
+  const didHydrateLocalFiltersRef = useRef(false);
   useEffect(() => {
-    if (!searchStateQuery.isSuccess) return;
-    setSelectedFseibanFilters((prev) => {
-      const next = prev.filter((item) => sharedHistory.includes(item));
-      if (next.length === prev.length) return prev;
-      return next;
-    });
-  }, [searchStateQuery.isSuccess, sharedHistory]);
+    if (!searchStateQuery.isSuccess || didHydrateLocalFiltersRef.current) {
+      return;
+    }
+
+    const orphans = selectedFseibanFiltersRef.current.filter(
+      (f) => !sharedHistoryRef.current.includes(f)
+    );
+    if (orphans.length === 0) {
+      didHydrateLocalFiltersRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        for (const f of orphans) {
+          if (cancelled) return;
+          await addSeibanToHistory(f);
+        }
+        didHydrateLocalFiltersRef.current = true;
+      } catch {
+        /* 失敗時は再試行のためフラグを立てない（同一セッションで search を再度取得できれば再度試せる） */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchStateQuery.isSuccess, addSeibanToHistory, sharedHistory]);
 
   const applySearch = async () => {
     const trimmed = searchInput.trim();
@@ -90,22 +125,42 @@ export function useLeaderBoardDueAssist(options?: {
     setIsDetailOpen(true);
   };
 
-  const toggleFseibanFilter = useCallback((fseiban: string) => {
-    const trimmed = fseiban.trim();
-    if (!trimmed.length) return;
+  const toggleFseibanFilter = useCallback(
+    async (fseiban: string) => {
+      const trimmed = fseiban.trim();
+      if (!trimmed.length) return;
 
-    setSelectedFseibanFilters((prevFilters) => {
-      const nextFilters = toggleSeibanFilter(prevFilters, trimmed);
-      setSelectedFseiban((prevDetail) => {
-        const wasIn = prevFilters.includes(trimmed);
-        const nowIn = nextFilters.includes(trimmed);
-        if (nowIn && !wasIn) return trimmed;
-        if (!nowIn && prevDetail === trimmed) return nextFilters[0] ?? null;
-        return prevDetail;
-      });
-      return nextFilters;
-    });
-  }, []);
+      const prevFilters = selectedFseibanFiltersRef.current;
+      const wasSelected = isSeibanFilterSelected(prevFilters, trimmed);
+
+      if (wasSelected) {
+        setSelectedFseibanFilters((prevFiltersInner) => {
+          const nextFilters = toggleSeibanFilter(prevFiltersInner, trimmed);
+          setSelectedFseiban((prevDetail) => {
+            const wasIn = prevFiltersInner.includes(trimmed);
+            const nowIn = nextFilters.includes(trimmed);
+            if (nowIn && !wasIn) return trimmed;
+            if (!nowIn && prevDetail === trimmed) return nextFilters[0] ?? null;
+            return prevDetail;
+          });
+          return nextFilters;
+        });
+        return;
+      }
+
+      if (requiresSharedHistoryInsertBeforeEnableFilter(sharedHistoryRef.current, trimmed)) {
+        try {
+          await addSeibanToHistory(trimmed);
+        } catch {
+          return;
+        }
+      }
+
+      setSelectedFseibanFilters((prevFiltersInner) => toggleSeibanFilter(prevFiltersInner, trimmed));
+      setSelectedFseiban(trimmed);
+    },
+    [addSeibanToHistory]
+  );
 
   const clearFseibanFilters = useCallback(() => {
     setSelectedFseibanFilters([]);

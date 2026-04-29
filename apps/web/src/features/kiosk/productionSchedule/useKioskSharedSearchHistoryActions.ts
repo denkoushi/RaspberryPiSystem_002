@@ -10,6 +10,7 @@ import {
 import { normalizeHistoryList } from './useProductionScheduleQueryParams';
 
 const SEARCH_STATE_QUERY_KEY = ['kiosk-production-schedule-search-state'] as const;
+const PROGRESS_OVERVIEW_QUERY_KEY = ['kiosk-production-schedule-progress-overview'] as const;
 
 export type KioskSharedSearchHistoryOperation = { type: 'add' | 'remove'; value: string };
 
@@ -57,6 +58,7 @@ export function useKioskSharedSearchHistoryActions(options?: {
           etagRef.current = result.etag;
         }
         await queryClient.invalidateQueries({ queryKey: [...SEARCH_STATE_QUERY_KEY] });
+        await queryClient.invalidateQueries({ queryKey: [...PROGRESS_OVERVIEW_QUERY_KEY] });
       } catch (error) {
         if (isAxiosError(error) && error.response?.status === 409 && attempt < 2) {
           const details = (error.response?.data?.details ?? {}) as {

@@ -13,26 +13,37 @@ export function ProductionScheduleProgressOverviewPage() {
   const overviewQuery = useKioskProductionScheduleProgressOverview();
   const overview = overviewQuery.data;
   const scheduledItems = useMemo(() => overview?.scheduled ?? [], [overview?.scheduled]);
-  const hasScheduledItems = scheduledItems.length > 0;
+  const unscheduledItems = useMemo(() => overview?.unscheduled ?? [], [overview?.unscheduled]);
+  const registeredCount = overview?.registeredFseibans?.length ?? 0;
+  const hasOverviewRows = scheduledItems.length + unscheduledItems.length > 0;
   const updatedAtLabel = useMemo(
     () => formatProgressOverviewUpdatedAt(overview?.updatedAt ?? null),
     [overview?.updatedAt]
   );
-  const filterCandidates = useMemo(
-    () =>
-      scheduledItems.map((item) => ({
-        fseiban: item.fseiban,
-        machineName: item.machineName
-      })),
-    [scheduledItems]
-  );
+  const filterCandidates = useMemo(() => {
+    const dedupe = new Map<string, { fseiban: string; machineName: string | null }>();
+    for (const item of [...scheduledItems, ...unscheduledItems]) {
+      if (!dedupe.has(item.fseiban)) {
+        dedupe.set(item.fseiban, { fseiban: item.fseiban, machineName: item.machineName });
+      }
+    }
+    return Array.from(dedupe.values());
+  }, [scheduledItems, unscheduledItems]);
   const { items, selectedSet, selectedCount, totalCount, isAllOff, toggle, setAll } =
     useProgressOverviewSeibanFilter(filterCandidates);
   const visibleScheduledItems = useMemo(
     () => scheduledItems.filter((item) => selectedSet.has(item.fseiban)),
     [scheduledItems, selectedSet]
   );
-  const hasVisibleScheduledItems = visibleScheduledItems.length > 0;
+  const visibleUnscheduledItems = useMemo(
+    () => unscheduledItems.filter((item) => selectedSet.has(item.fseiban)),
+    [unscheduledItems, selectedSet]
+  );
+  const visibleCards = useMemo(
+    () => [...visibleScheduledItems, ...visibleUnscheduledItems],
+    [visibleScheduledItems, visibleUnscheduledItems]
+  );
+  const hasVisibleCards = visibleCards.length > 0;
 
   return (
     <div className="flex h-full flex-col gap-2">
@@ -65,18 +76,21 @@ export function ProductionScheduleProgressOverviewPage() {
       <section className="flex-1 overflow-auto rounded-lg border border-white/20 bg-slate-900/60 p-2">
         {overviewQuery.isLoading ? <p className="text-sm text-white/80">読み込み中...</p> : null}
         {overviewQuery.isError ? <p className="text-sm text-rose-300">進捗一覧の取得に失敗しました。</p> : null}
-        {!overviewQuery.isLoading && !overviewQuery.isError && !hasScheduledItems ? (
+        {!overviewQuery.isLoading && !overviewQuery.isError && registeredCount === 0 ? (
           <p className="text-sm text-white/80">
             登録製番がありません。生産スケジュール画面で製番を登録してください。
           </p>
         ) : null}
-        {!overviewQuery.isLoading && !overviewQuery.isError && hasScheduledItems && isAllOff ? (
+        {!overviewQuery.isLoading && !overviewQuery.isError && registeredCount > 0 && !hasOverviewRows ? (
+          <p className="text-sm text-white/80">進捗を表示できる製番がありません。データ取込または時間をおいて再度更新してください。</p>
+        ) : null}
+        {!overviewQuery.isLoading && !overviewQuery.isError && hasOverviewRows && isAllOff ? (
           <p className="text-sm text-white/80">フィルタで非表示にしています。製番フィルタで表示対象をONにしてください。</p>
         ) : null}
 
-        {!overviewQuery.isLoading && !overviewQuery.isError && hasVisibleScheduledItems ? (
+        {!overviewQuery.isLoading && !overviewQuery.isError && hasVisibleCards ? (
           <div className={PROGRESS_OVERVIEW_CARD_GRID_CLASS}>
-            {visibleScheduledItems.map((item) => (
+            {visibleCards.map((item) => (
               <ProgressOverviewSeibanCard key={item.fseiban} item={item} />
             ))}
           </div>
