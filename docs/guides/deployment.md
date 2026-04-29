@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク持出一覧 **貸出日時（秒なし・24時間制・Asia/Tokyo）**·`feat/kiosk-active-loan-borrowed-at-format`·Web のみ·Pi5 のみ）
+
+- **変更概要**: `KioskReturnPage` の貸出日時を **`Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', … hour12: false })`** で **`formatKioskActiveLoanBorrowedAt`** に集約。**秒なし**・**午前/午後なし**。`Invalid Date` は **`—`**（部品測定の下書き日時整形と同系）。実装: [`formatKioskActiveLoanBorrowedAt.ts`](../../apps/web/src/features/kiosk/formatKioskActiveLoanBorrowedAt.ts)・Vitest。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（キオスク SPA は Pi5 `web`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-active-loan-borrowed-at-format infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`5d83816f`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-151939-18182`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（**WARN**: `raspi4-kensaku-stonebase01` への Pi5 経由 SSH は既存ベースラインと同型。**FAIL 0**）。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。見た目が変わらないときはキオスクで **強制リロード**（[`verification-checklist.md`](verification-checklist.md) §6.6.4）。
+- **ナレッジ**: [KB-323](../knowledge-base/KB-323-kiosk-return-card-button-layout.md)（追補）·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク順位ボード **製番登録と進捗一覧の共有履歴同期**·`fix/leaderboard-seiban-registration-sync`·Web のみ·Pi5 のみ）
 

@@ -38,6 +38,11 @@
 | 極端に長い名称が依然 `...` | `truncate` は1行省略のまま | 今回の修正は **ボタンとの幅競合**の緩和。複数行表示が必要なら別要件（`line-clamp` 等） |
 | 画像モーダル操作後にメモリが伸びる | Blob URL 未解放（旧版） | 本 KB 対応版では `revoke` を挟む。古いビルドなら再デプロイ |
 
+## 追補（2026-04-29: 貸出日時の表示フォーマット）
+
+- **変更**: `borrowedAt.toLocaleString()` をやめ、**`formatKioskActiveLoanBorrowedAt`**（`ja-JP`・`Asia/Tokyo`・**秒なし**・**24時間表記**）で **`KioskActiveLoanCard`** へ渡す。カード DOM は従来どおり（KB 本文のレイアウト意図は維持）。
+- **デプロイ**: Web のみ・本番 **`raspberrypi5` のみ**が最小（[`deployment.md`](../guides/deployment.md) 補足・代表 **`5d83816f`**・Detach **`20260429-151939-18182`**）。実機自動検証は `./scripts/deploy/verify-phase12-real.sh`（本記録では **PASS 42 / WARN 1 / FAIL 0**）。
+
 ## References
 
 - マージ: [PR #72](https://github.com/denkoushi/RaspberryPiSystem_002/pull/72)
