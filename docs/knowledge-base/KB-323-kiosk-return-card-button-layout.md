@@ -43,11 +43,17 @@
 - **変更**: `borrowedAt.toLocaleString()` をやめ、**`formatKioskActiveLoanBorrowedAt`**（`ja-JP`・`Asia/Tokyo`・**秒なし**・**24時間表記**）で **`KioskActiveLoanCard`** へ渡す。カード DOM は従来どおり（KB 本文のレイアウト意図は維持）。
 - **デプロイ**: Web のみ・本番 **`raspberrypi5` のみ**が最小（[`deployment.md`](../guides/deployment.md) 補足・代表 **`5d83816f`**・Detach **`20260429-151939-18182`**）。実機自動検証は `./scripts/deploy/verify-phase12-real.sh`（本記録では **PASS 42 / WARN 1 / FAIL 0**）。
 
+## 追補（2026-04-29: 本文末尾揃え・サムネ1.5倍・カード外寸固定）
+
+- **変更**: [`kioskActiveLoanCardLayout.ts`](../../apps/web/src/components/kiosk/kioskActiveLoanCardLayout.ts) を追加し、`KioskActiveLoanCard` のサムネを **108×108px**、カード外寸 **`248px` 固定**、本文 **`text-end`**。一覧グリッドは **`[&>li]:min-w-0`**。
+- **デプロイ**: Web のみ・本番 **`raspberrypi5` のみ**（[`deployment.md`](../guides/deployment.md) 補足・代表 **`d1c6abe7`**・Detach **`20260429-163457-5210`**）。実機自動検証は `./scripts/deploy/verify-phase12-real.sh`（本記録では **PASS 43 / WARN 0 / FAIL 0**）。
+
 ## References
 
 - マージ: [PR #72](https://github.com/denkoushi/RaspberryPiSystem_002/pull/72)
 - 実装コミット例: `22a24626`（ブランチ `fix/kiosk-return-card-button-layout`）
 - `apps/web/src/pages/kiosk/KioskReturnPage.tsx`
+- `apps/web/src/components/kiosk/kioskActiveLoanCardLayout.ts`
 - `apps/web/src/components/kiosk/KioskActiveLoanCard.tsx`
 - [KB-314](./KB-314-kiosk-loan-card-display-labels.md)（同一画面の表記・ラベル）
 - [KB-312](./KB-312-rigging-idnum-deploy-verification.md)（持出一覧カード行レイアウトの別改修）

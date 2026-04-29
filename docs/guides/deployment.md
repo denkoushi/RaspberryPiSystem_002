@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: キオスク持出一覧 **本文末尾揃え・サムネ1.5倍・カード外寸固定**·`feat/kiosk-active-loan-card-right-align-thumb-15x-fixed-size`·Web のみ·Pi5 のみ）
+
+- **変更概要**: [`kioskActiveLoanCardLayout.ts`](../../apps/web/src/components/kiosk/kioskActiveLoanCardLayout.ts) で寸法・整列トークンを分離（色トークンは既存のまま）。**サムネ** 歴史ベース 72px の **1.5 倍 → 108px**。本文全体 **`text-end`**（論理末尾揃え）。カード **`min-h-[248px] h-[248px]`** で外寸固定、`overflow-hidden`。一覧 [`KioskReturnPage.tsx`](../../apps/web/src/pages/kiosk/KioskReturnPage.tsx) に **`[&>li]:min-w-0`**（狭列での横あふれ抑制）。[`KioskActiveLoanCard.tsx`](../../apps/web/src/components/kiosk/KioskActiveLoanCard.tsx)·Vitest。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（キオスク SPA は Pi5 `web`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-active-loan-card-right-align-thumb-15x-fixed-size infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`d1c6abe7`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-163457-5210`**（**`PLAY RECAP` `failed=0` / `unreachable=0`**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **トラブルシュート**: デプロイ前 **未コミット/未追跡** は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。見た目が変わらないときはキオスクで **強制リロード**（[`verification-checklist.md`](verification-checklist.md) §6.6.4）。
+- **ナレッジ**: [KB-323](../knowledge-base/KB-323-kiosk-return-card-button-layout.md)（追補）·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク持出一覧 **貸出日時（秒なし・24時間制・Asia/Tokyo）**·`feat/kiosk-active-loan-borrowed-at-format`·Web のみ·Pi5 のみ）
 
