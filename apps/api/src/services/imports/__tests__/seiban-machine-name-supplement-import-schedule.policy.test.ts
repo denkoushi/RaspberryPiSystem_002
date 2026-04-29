@@ -77,4 +77,27 @@ describe('seiban-machine-name-supplement-import-schedule.policy', () => {
     expect(row.id).toBe(SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID);
     expect(row.schedule).toBe(SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_CRON);
   });
+
+  it('ensure preserves valid custom schedule when structural fields match', () => {
+    const customCron = '10 5 * * 1';
+    const input: BackupConfig = {
+      storage: { provider: 'local', options: {} },
+      targets: [],
+      csvImports: [
+        {
+          id: SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID,
+          name: 'x',
+          provider: 'gmail',
+          targets: [{ type: 'csvDashboards', source: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID }],
+          schedule: customCron,
+          enabled: false,
+          replaceExisting: false,
+          autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+        },
+      ],
+    };
+    const { config, repaired } = ensureSeibanMachineNameSupplementCsvImportSchedule(input);
+    expect(repaired).toBe(false);
+    expect(config.csvImports?.[0]?.schedule).toBe(customCron);
+  });
 });
