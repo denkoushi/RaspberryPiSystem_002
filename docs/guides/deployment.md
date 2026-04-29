@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-29（**システム CSV インポートスケジュール不変条件**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-29: **システム固定 CSV インポートスケジュール** 更新の **不変条件**・有効 **cron 保持**·`feat/csv-import-system-schedule-preserve-cron`·API+管理 Web·Pi5 のみ）
+
+- **変更概要**: 固定 ID の Gmail 系スケジュール（FKOJUNST / FKOBAINO / 製番補完 等）を管理画面で編集したとき、**有効な cron は保持**しつつ **`provider` / `targets` / `replaceExisting` 等はレジストリどおり矯正**。無効 cron・最短間隔違反は **既定へ**。実装の正本: [`system-csv-import-schedule-invariants.ts`](../../apps/api/src/services/imports/system-csv-import-schedule-invariants.ts)·[`import-schedule-admin.service.ts`](../../apps/api/src/services/imports/import-schedule-admin.service.ts)。管理 UI は [`CsvImportSchedulePage.tsx`](../../apps/web/src/pages/admin/CsvImportSchedulePage.tsx) の **`startEdit`** で **`scheduleMode`** を **`parsed.mode`** に合わせる。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 不要**。**Pi3 のみが対象のときは** Pi3 専用（軽量）手順（今回は未実施）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/csv-import-system-schedule-preserve-cron infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`e4e862a4`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260429-133724-8769`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・所要 **約 938s**・**Docker 再ビルド**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 23s**・Tailscale）。
+- **トラブルシュート**: CI で `imports-schedule.integration.test.ts` が旧仕様（cron を常にデフォルトへ）を期待すると失敗 → 応答の **有効 cron 保持**に期待値を合わせる。デプロイ前 fail-fast は [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [csv-import-export.md](./csv-import-export.md)（システム行の保存仕様）·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク順位ボード **製番チップ・複数選択（OR）・全解除**·`feat/leaderboard-seiban-multiselect-or-clear`·Web のみ·Pi5 のみ）
 

@@ -76,4 +76,27 @@ describe('fkojunst-import-schedule.policy', () => {
     expect(row.id).toBe(FKOJUNST_CSV_IMPORT_SCHEDULE_ID);
     expect(row.schedule).toBe('0 0 * * *');
   });
+
+  it('ensure preserves valid custom schedule when structural fields match', () => {
+    const customCron = '20 3 * * *';
+    const input: BackupConfig = {
+      storage: { provider: 'local', options: {} },
+      targets: [],
+      csvImports: [
+        {
+          id: FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
+          name: 'x',
+          provider: 'gmail',
+          targets: [{ type: 'csvDashboards', source: PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID }],
+          schedule: customCron,
+          enabled: true,
+          replaceExisting: false,
+          autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+        },
+      ],
+    };
+    const { config, repaired } = ensureFkojunstCsvImportSchedule(input);
+    expect(repaired).toBe(false);
+    expect(config.csvImports?.[0]?.schedule).toBe(customCron);
+  });
 });

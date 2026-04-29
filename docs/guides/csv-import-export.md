@@ -118,6 +118,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - CSVダッシュボードを選択すると、スケジュールIDと名前が自動生成されます（形式: `csv-import-${dashboardName.toLowerCase().replace(/\s+/g, '-')}`）
 - Gmailに該当する未読メールがない場合でも、エラーにならず正常に完了します（該当ダッシュボードはスキップされる）
 - 管理コンソールのスケジュール設定は **「時刻指定」または「間隔（N分ごと）」** を選択できます（**最小5分**）。間隔指定の場合は `*/N * * * *` のcronに変換されます。
+- **システム固定スケジュール行の保存（2026-04-29）**: 固定 ID（例: FKOJUNST / FKOBAINO / 製番→機種名補完）を管理画面から更新するとき、API は [`system-csv-import-schedule-invariants.ts`](../../apps/api/src/services/imports/system-csv-import-schedule-invariants.ts) で **`provider`・`targets`・`replaceExisting` 等をレジストリに整合**し、**cron が文法的に有効でポリシー上許容ならユーザー設定を保持**する（無効・最短間隔違反は既定へ）。本番デプロイ記録は [deployment.md](./deployment.md) 補足（2026-04-29・システム CSV スケジュール）。
 
 ### Production runbook: Gmail CSV dashboard import via SSH and API
 

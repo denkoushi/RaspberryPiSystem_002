@@ -432,7 +432,7 @@ export function CsvImportSchedulePage() {
     const parsed = parseCronSchedule(schedule.schedule);
     setScheduleTime(parsed.time);
     setScheduleDaysOfWeek(parsed.daysOfWeek);
-    setScheduleMode(parsed.mode === 'custom' ? 'timeOfDay' : parsed.mode);
+    setScheduleMode(parsed.mode);
     setIntervalMinutes(parsed.intervalMinutes ? String(parsed.intervalMinutes) : '10');
     setOffsetMinutes(typeof parsed.offsetMinutes === 'number' ? String(parsed.offsetMinutes) : '0');
     setScheduleEditable(parsed.isEditable);

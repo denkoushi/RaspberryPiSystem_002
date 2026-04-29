@@ -6,22 +6,11 @@ import { getCsvImportScheduler } from './csv-import-scheduler.js';
 import { mapManualImportRunError } from './import-schedule-error-mapper.js';
 import { detectGmailScheduleMinuteCollisions } from './import-schedule-policy.js';
 import { ensureProductionScheduleCsvImportSchedules } from './fkojunst-import-schedule.ensure.js';
-import {
-  applyFkobainoImportScheduleInvariants,
-  FKOBAINO_CSV_IMPORT_SCHEDULE_ID,
-} from './fkobaino-import-schedule.policy.js';
-import {
-  applyFkojunstImportScheduleInvariants,
-  FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
-} from './fkojunst-import-schedule.policy.js';
-import {
-  applyFkojunstStatusMailImportScheduleInvariants,
-  FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID,
-} from './fkojunst-status-mail-import-schedule.policy.js';
-import {
-  applySeibanMachineNameSupplementImportScheduleInvariants,
-  SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID,
-} from './seiban-machine-name-supplement-import-schedule.policy.js';
+import { FKOBAINO_CSV_IMPORT_SCHEDULE_ID } from './fkobaino-import-schedule.policy.js';
+import { FKOJUNST_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-import-schedule.policy.js';
+import { FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-status-mail-import-schedule.policy.js';
+import { SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID } from './seiban-machine-name-supplement-import-schedule.policy.js';
+import { normalizeSystemCsvImportRowForPersistence } from './system-csv-import-schedule-invariants.js';
 
 type CsvImportSchedule = NonNullable<BackupConfig['csvImports']>[number];
 
@@ -145,11 +134,7 @@ export class ImportScheduleAdminService {
         input.autoBackupAfterImport ?? existingSchedule.autoBackupAfterImport ?? { enabled: false, targets: ['csv'] },
     };
 
-    const canonicalSchedule = applyFkobainoImportScheduleInvariants(
-      applySeibanMachineNameSupplementImportScheduleInvariants(
-        applyFkojunstStatusMailImportScheduleInvariants(applyFkojunstImportScheduleInvariants(updatedSchedule))
-      )
-    );
+    const canonicalSchedule = normalizeSystemCsvImportRowForPersistence(updatedSchedule);
     config.csvImports![scheduleIndex] = canonicalSchedule;
     const warnings = detectGmailScheduleMinuteCollisions(config);
     await this.store.save(config);

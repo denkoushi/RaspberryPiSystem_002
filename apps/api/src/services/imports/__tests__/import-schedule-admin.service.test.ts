@@ -4,6 +4,8 @@ import { ApiError } from '../../../lib/errors.js';
 import type { BackupConfig } from '../../backup/backup-config.js';
 import { GmailReauthRequiredError } from '../../backup/gmail-oauth.service.js';
 import { ImportScheduleAdminService } from '../import-schedule-admin.service.js';
+import { FKOJUNST_CSV_IMPORT_SCHEDULE_CRON, FKOJUNST_CSV_IMPORT_SCHEDULE_ID } from '../fkojunst-import-schedule.policy.js';
+import { PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID } from '../seiban-machine-name-supplement-import-schedule.policy.js';
 
 function createBaseConfig(): BackupConfig {
@@ -86,6 +88,40 @@ describe('ImportScheduleAdminService', () => {
     await expect(
       service.updateSchedule('missing-id', { enabled: false })
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('updateSchedule: システム予約IDでも有効なcronは上書きされず保持される', async () => {
+    const customCron = '45 2 * * *';
+    const config = createBaseConfig();
+    config.csvImports = [
+      {
+        id: FKOJUNST_CSV_IMPORT_SCHEDULE_ID,
+        name: 'FKOJUNST',
+        provider: 'gmail',
+        targets: [{ type: 'csvDashboards', source: PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID }],
+        schedule: FKOJUNST_CSV_IMPORT_SCHEDULE_CRON,
+        enabled: true,
+        replaceExisting: false,
+        autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+      },
+    ];
+    const store = {
+      load: vi.fn(async () => config),
+      save: vi.fn(async () => {}),
+    };
+    const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    const { schedule: updated } = await service.updateSchedule(FKOJUNST_CSV_IMPORT_SCHEDULE_ID, {
+      schedule: customCron,
+    });
+
+    expect(updated.schedule).toBe(customCron);
+    expect(store.save).toHaveBeenCalled();
+    const lastSaved = store.save.mock.calls.at(-1)![0] as BackupConfig;
+    expect(lastSaved.csvImports?.find((s) => s.id === FKOJUNST_CSV_IMPORT_SCHEDULE_ID)?.schedule).toBe(
+      customCron
+    );
   });
 
   it('runSchedule: 実行中エラーは409へ変換する', async () => {

@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-04-29）
 
+- **システム固定 CSV インポートスケジュール不変条件（`feat/csv-import-system-schedule-preserve-cron`·`e4e862a4`）本番 Pi5 のみ·Phase12 43/0/0·API+管理 Web**: 固定 ID 行の PUT で **有効 cron は保持**・**`provider`/`targets` はレジストリどおり矯正**。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（システム CSV スケジュール）・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/csv-import-system-schedule-preserve-cron infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。**Detach Run ID**（`ansible-update-`）: **`20260429-133724-8769`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **23s**）。**Pi4/Pi3 不要**。**ナレッジ**: [csv-import-export.md](./guides/csv-import-export.md)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
+
 - **キオスク順位ボード左パネル・納期アシスト不透明背景（`fix/kiosk-leaderboard-left-panel-opaque-bg`·`93e111c3`）本番 Pi5 のみ·Phase12 43/0/0·Web のみ**: 操作パネル・検索カード・第2シートを **実質不透明**（`backdrop-blur` 撤去含む）。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（2026-04-29 順位ボード不透明化）・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh fix/kiosk-leaderboard-left-panel-opaque-bg infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260428-212925-25339`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **151s**）。**Pi4/Pi3 不要**。**ナレッジ**: [KB-297 opaque 節](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-opaque-left-panel-2026-04-29)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
 
 ### 🆕 最新アップデート（2026-04-28）
