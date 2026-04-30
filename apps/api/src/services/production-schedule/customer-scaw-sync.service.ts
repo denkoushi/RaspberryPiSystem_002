@@ -1,8 +1,8 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID } from './constants.js';
+import { buildFankenmeiKeyToCandidates } from './customer-scaw-candidates.js';
 import {
-  buildFankenmeiToCustomerLastWins,
   buildFseibanToCustomerFromProductionRows,
   loadCustomerScawSourceRowsFromIngest,
   loadMhShWinnerRowsForCustomerScaw,
@@ -29,16 +29,16 @@ export class ProductionScheduleCustomerScawSyncService {
       return result;
     }
 
-    const fankenmeiToCustomer = buildFankenmeiToCustomerLastWins(orderedRows);
+    const fankenmeiKeyToCandidates = buildFankenmeiKeyToCandidates(orderedRows);
     const productionRows = await loadMhShWinnerRowsForCustomerScaw(prisma);
-    const fseibanToCustomer = buildFseibanToCustomerFromProductionRows(productionRows, fankenmeiToCustomer);
+    const fseibanToCustomer = buildFseibanToCustomerFromProductionRows(productionRows, fankenmeiKeyToCandidates);
 
     const createInputs = mapToCreateInputs(fseibanToCustomer, PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID);
 
     const result = await runCustomerScawReplacementTransaction(prisma, {
       resultMeta: {
         csvRowsScanned: scanned,
-        fankenmeiKeys: fankenmeiToCustomer.size,
+        fankenmeiKeys: fankenmeiKeyToCandidates.size,
         productionRowsScanned: productionRows.length,
         matchedFseibans: fseibanToCustomer.size,
       },

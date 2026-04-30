@@ -28,12 +28,20 @@ export function buildProductionScheduleCustomerScawDashboardDefinition() {
         order: 1,
         required: true,
       },
+      {
+        internalName: 'FANKENYMD',
+        displayName: '顧客SCAW基準日',
+        csvHeaderCandidates: ['FANKENYMD'],
+        dataType: 'string',
+        order: 2,
+        required: false,
+      },
     ],
     templateType: 'TABLE' as const,
     templateConfig: {
       rowsPerPage: 50,
       fontSize: 14,
-      displayColumns: ['Customer', 'FANKENMEI'],
+      displayColumns: ['Customer', 'FANKENMEI', 'FANKENYMD'],
       headerFixed: true,
     },
   };
