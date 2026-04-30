@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-30（**CustomerSCAW 着手日＝製番集約（近傍選定の実害修正）**／**CustomerSCAW `FANKENYMD` 近傍選定**／**CustomerSCAW（製番→顧客名・API/順位ボード）**／2026-04-29 項は下記）／**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-30（**キオスク負荷調整（山崩し支援・API/Web/DB）**／**CustomerSCAW 着手日＝製番集約（近傍選定の実害修正）**／**CustomerSCAW `FANKENYMD` 近傍選定**／**CustomerSCAW（製番→顧客名・API/順位ボード）**／2026-04-29 項は下記）／**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-30: **キオスク負荷調整（山崩し支援）**·`feat/kiosk-load-balance-suggest`·API+Web+DB·Pi5→Pi4×4）
+
+- **変更概要**: キオスク **`/kiosk/production-schedule/load-balancing`**・管理の負荷調整設定 CRUD・月次負荷 **`overview`**／サジェスト **`suggestions`** API。**Prisma マイグレーション**: `20260430124500_load_balancing_settings`。詳細は [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[kiosk-production-schedule-load-balancing.md](kiosk-production-schedule-load-balancing.md)。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（必須対象外・リソース僅少・専用手順は別）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-load-balance-suggest infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`d3c37b6f`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260430-131611-14988`**（`raspberrypi5`・**`ok=130` `changed=4`**）/ **`20260430-132522-19139`**（`raspberrypi4`）/ **`20260430-132943-9367`**（`raspi4-robodrill01`）/ **`20260430-133254-30349`**（`raspi4-fjv60-80`）/ **`20260430-133615-21765`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**・Tailscale）。負荷調整 API は本スクリプト未カバーのため、キオスク画面または `curl` で **`overview`/`suggestions`** のスモークを推奨（[KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)）。
+- **トラブルシュート**: **マイグレーション失敗**は Pi5 の API ログ・`prisma migrate status`。**Mac／device-scope v2** で **`targetDeviceScopeKey` 未指定**は 400（他キオスク画面と同様）。**キオスクが古い**: [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。**`--follow` が SSH 切断**: リモートデタッチは完走し得る → Pi5 `logs/deploy/*.exit` で確認。
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[kiosk-production-schedule-load-balancing.md](kiosk-production-schedule-load-balancing.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-30: **CustomerSCAW 近傍選定の着手日（製番 `MIN(plannedStartDate)`・`FANKENYMD` パース拡張）**·`fix/customer-scaw-seiban-start-date`·API のみ·Pi5→Pi4×4）
 

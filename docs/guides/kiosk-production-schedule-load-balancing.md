@@ -35,6 +35,10 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 
 Prisma モデル: `ProductionScheduleResourceCapacityBase`, `ProductionScheduleResourceMonthlyCapacity`, `ProductionScheduleLoadBalanceClass`, `ProductionScheduleLoadBalanceTransferRule`（`csvDashboardId` + `siteKey` 単位）。
 
+## 本番デプロイ（実績 2026-04-30）
+
+標準手順は [deployment.md](deployment.md)。**Pi5 → Pi4×4 を `--limit` 1 台ずつ**、`feat/kiosk-load-balance-suggest`（代表 **`d3c37b6f`**）を適用。**Pi3 は除外**。Detach ID・検証結果・トラブルシュートは [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md) を参照。
+
 ## 関連
 
 - 手動順番・Mac 代理: [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md)
