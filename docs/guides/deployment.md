@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-30（**キオスク負荷調整（山崩し支援・API/Web/DB）**／**CustomerSCAW 着手日＝製番集約（近傍選定の実害修正）**／**CustomerSCAW `FANKENYMD` 近傍選定**／**CustomerSCAW（製番→顧客名・API/順位ボード）**／2026-04-29 項は下記）／**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-30（**キオスク負荷調整（山崩し支援・API/Web/DB）**／**順位ボード・完了フィルタ既定を未完**／**CustomerSCAW 着手日＝製番集約（近傍選定の実害修正）**／**CustomerSCAW `FANKENYMD` 近傍選定**／**CustomerSCAW（製番→顧客名・API/順位ボード）**／2026-04-29 項は下記）／**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-30: **キオスク順位ボード・左ペイン完了フィルタの既定を「未完」**·`feat/kiosk-leaderboard-default-incomplete`·Web のみ·Pi5 のみ）
+
+- **変更概要**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の **`completionFilter`** 初期状態を **`'all'`（両方）→ `'incomplete'`（未完）** に変更。左ペイン [`LeaderBoardLeftToolStack`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx) の **両方／未完／完了** トグル表示と整合。**API / DB 変更なし**（クライアント `useState` のみ）。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（キオスク SPA は Pi5 `web` 配信）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/kiosk-leaderboard-default-incomplete infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`e8d3943f`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260430-184641-30513`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 153s**・Tailscale）。
+- **トラブルシュート**: **初期が「両方」のまま**: キオスクで **強制リロード**（[`verification-checklist.md`](verification-checklist.md) §6.6.4）・Pi5 **`web` イメージ**が当該コミットで再ビルド済みか（`Rebuild/Restart docker compose`）を確認。**一覧が空に見える**: 仕様どおり **未完行のみ**表示のため、**「両方」**へ切り替えて完了行も表示。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §完了フィルタ既定](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-default-completion-filter-incomplete-2026-04-30)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-30: **キオスク負荷調整（山崩し支援）**·`feat/kiosk-load-balance-suggest`·API+Web+DB·Pi5→Pi4×4）
 

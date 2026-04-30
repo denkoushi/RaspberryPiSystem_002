@@ -2404,6 +2404,22 @@ category: knowledge-base
 - **知見**: キオスク沉浸式画面は **装飾レイヤ**（`ProductionScheduleLeaderOrderBoardPage` の `radial-gradient`）の上にパネルを載せる。**ガラス表現（`/95` + `backdrop-blur`）** は現場環境では **コントラスト不足**になりやすい。読むテキスト面は **`bg-*` のアルファなし**または **実質不透明**を優先し、レイヤごと統一すると sticky との境もぶれない。
 - **トラブルシューティング**: 体感が変わらないときは Pi5 **`web`** の **再ビルド**可否（`Rebuild/Restart docker compose services` が走ったか）と **ブラウザのハード再読込**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 
+### Leader order board: default completion filter incomplete (2026-04-30) {#leader-order-board-default-completion-filter-incomplete-2026-04-30}
+
+- **目的**: 順位ボード左ペインの **完了フィルタ**（両方／未完／完了）の **初回表示**を **未完優先**にそろえ、オープン直後から **未完了行に集中**できるようにする。**Web のみ**・API・DB・共有状態の契約は不変。
+- **仕様**:
+  - [`ProductionScheduleLeaderOrderBoardPage`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) で **`useState<LeaderOrderCompletionFilter>('incomplete')`**（従来 `'all'`）。
+  - フィルタ値は [`filterLeaderBoardRowsByCompletion`](../../apps/web/src/features/kiosk/leaderOrderBoard/filterLeaderBoardRowsByCompletion.ts) 経由で [`buildLeaderBoardSortedGrouped`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel.ts) に渡る。**「両方」「完了」**への切り替えは従来どおり。
+- **デプロイ・実機検証（2026-04-30）**:
+  - **ブランチ**: `feat/kiosk-leaderboard-default-incomplete`（コミット **`e8d3943f`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`。**対象**: **`raspberrypi5` のみ**（**Pi3/Pi4 不要**）。
+  - **Detach Run ID**（`ansible-update-`）: **`20260430-184641-30513`**（**`failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **153s**・Tailscale）。
+- **知見**: 既定 UI 状態は **URL や localStorage に永続していない**限り **`useState` 初期値**がそのまま効く。キオスクは **キャッシュ**の影響を受けやすいため、反映確認は **強制リロード**を先に試すと早い。
+- **トラブルシューティング**:
+  - **開いた瞬間に完了行も並ぶ**: 古いバンドル／キャッシュを疑い **強制リロード**、Pi5 `web` のデプロイ取り込みコミットを確認。
+  - **一覧が空**: **未完行がゼロ**のときは仕様どおり。**「両方」**へ切り替えて完了行を表示。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。
