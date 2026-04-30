@@ -29,6 +29,7 @@ import { registerProductionScheduleManualOrderSiteDevicesRoute } from './manual-
 import { registerProductionScheduleManualOrderResourceAssignmentsRoute } from './manual-order-resource-assignments.js';
 import { registerProductionScheduleProcessingTypeOptionsRoute } from './processing-type-options.js';
 import { registerProductionScheduleProgressOverviewRoute } from './progress-overview.js';
+import { registerProductionScheduleLoadBalancingRoutes } from './load-balancing.js';
 import type { KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleRoutes(
@@ -64,4 +65,5 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleDueManagementActualHoursRoute(app, deps);
   await registerProductionScheduleProcessingTypeOptionsRoute(app, deps);
   await registerProductionScheduleProgressOverviewRoute(app, deps);
+  await registerProductionScheduleLoadBalancingRoutes(app, deps);
 }

@@ -4,6 +4,9 @@ import { KIOSK_MANUAL_ORDER_PATH_PREFIX } from './manualOrder/kioskManualOrderRo
 /** 進捗一覧（および将来の子パス）を沉浸式に含める接頭辞 */
 const KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX = '/kiosk/production-schedule/progress-overview';
 
+/** 負荷調整（山崩し支援）専用画面 */
+const KIOSK_LOAD_BALANCING_PATH_PREFIX = '/kiosk/production-schedule/load-balancing';
+
 /**
  * pathname 末尾のスラッシュを除いたキオスクパス（空は `/`）。
  */
@@ -45,6 +48,7 @@ export function usesKioskImmersiveLayout(pathname: string): boolean {
   if (p.startsWith(KIOSK_MANUAL_ORDER_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX)) return true;
   if (p.startsWith(KIOSK_PROGRESS_OVERVIEW_PATH_PREFIX)) return true;
+  if (p.startsWith(KIOSK_LOAD_BALANCING_PATH_PREFIX)) return true;
   if (p === KIOSK_PART_MEASUREMENT_PREFIX || p.startsWith(`${KIOSK_PART_MEASUREMENT_PREFIX}/`)) return true;
   if (p === KIOSK_MOBILE_PLACEMENT_PREFIX || p.startsWith(`${KIOSK_MOBILE_PLACEMENT_PREFIX}/`)) return true;
   if (p === KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX || p.startsWith(`${KIOSK_PURCHASE_ORDER_LOOKUP_PREFIX}/`)) return true;

@@ -84,6 +84,7 @@ export function KioskHeader({
   const isManualOrderActive = pathname.startsWith('/kiosk/production-schedule/manual-order');
   const isLeaderOrderBoardActive = pathname.startsWith('/kiosk/production-schedule/leader-order-board');
   const isProgressOverviewActive = pathname.startsWith('/kiosk/production-schedule/progress-overview');
+  const isLoadBalancingActive = pathname.startsWith('/kiosk/production-schedule/load-balancing');
   const isPurchaseOrderLookupActive = pathname.startsWith('/kiosk/purchase-order-lookup');
   const isPalletVisualizationActive = pathname.startsWith('/kiosk/pallet-visualization');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
@@ -249,6 +250,12 @@ export function KioskHeader({
             className={() => navClass(isProgressOverviewActive, 'bg-cyan-600 text-white')}
           >
             進捗一覧
+          </NavLink>
+          <NavLink
+            to="/kiosk/production-schedule/load-balancing"
+            className={() => navClass(isLoadBalancingActive, 'bg-fuchsia-700 text-white')}
+          >
+            負荷調整
           </NavLink>
           <NavLink
             to="/kiosk/purchase-order-lookup"

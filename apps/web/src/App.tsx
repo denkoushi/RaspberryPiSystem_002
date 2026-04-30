@@ -47,6 +47,7 @@ import { MobilePlacementPage } from './pages/kiosk/MobilePlacementPage';
 import { MobilePlacementPartSearchPage } from './pages/kiosk/MobilePlacementPartSearchPage';
 import { ProductionScheduleDueManagementPage } from './pages/kiosk/ProductionScheduleDueManagementPage';
 import { ProductionScheduleLeaderOrderBoardPage } from './pages/kiosk/ProductionScheduleLeaderOrderBoardPage';
+import { ProductionScheduleLoadBalancingPage } from './pages/kiosk/ProductionScheduleLoadBalancingPage';
 import { ProductionScheduleManualOrderPage } from './pages/kiosk/ProductionScheduleManualOrderPage';
 import { ProductionSchedulePage } from './pages/kiosk/ProductionSchedulePage';
 import { ProductionScheduleProgressOverviewPage } from './pages/kiosk/ProductionScheduleProgressOverviewPage';
@@ -89,6 +90,10 @@ function App() {
             element={<ProductionScheduleLeaderOrderBoardPage />}
           />
           <Route path="/kiosk/production-schedule/progress-overview" element={<ProductionScheduleProgressOverviewPage />} />
+          <Route
+            path="/kiosk/production-schedule/load-balancing"
+            element={<ProductionScheduleLoadBalancingPage />}
+          />
           <Route path="/kiosk/production-schedule/due-management" element={<ProductionScheduleDueManagementPage />} />
           <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
           <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />

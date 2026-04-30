@@ -365,6 +365,56 @@ export interface ProductionScheduleResourceCodeMappingsImportResult {
   };
 }
 
+export interface ProductionScheduleLoadBalancingCapacityBaseItem {
+  resourceCd: string;
+  baseAvailableMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingMonthlyCapacityItem {
+  resourceCd: string;
+  availableMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingClassItem {
+  resourceCd: string;
+  classCode: string;
+}
+
+export interface ProductionScheduleLoadBalancingTransferRuleItem {
+  fromClassCode: string;
+  toClassCode: string;
+  priority: number;
+  enabled: boolean;
+  efficiencyRatio: number;
+}
+
+export interface ProductionScheduleLoadBalancingOverviewResource {
+  resourceCd: string;
+  requiredMinutes: number;
+  availableMinutes: number | null;
+  overMinutes: number;
+  classCode: string | null;
+}
+
+export interface ProductionScheduleLoadBalancingSuggestionItem {
+  rowId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fkojun: string | null;
+  resourceCdFrom: string;
+  resourceCdTo: string;
+  rowMinutes: number;
+  estimatedReductionMinutesOnSource: number;
+  estimatedBurdenMinutesOnDestination: number;
+  simulatedSourceOverAfter: number;
+  simulatedDestinationOverAfter: number;
+  rulePriority: number;
+  fromClassCode: string;
+  toClassCode: string;
+  efficiencyRatio: number;
+}
+
 export interface ProductionScheduleDueManagementSummaryItem {
   fseiban: string;
   machineName: string | null;
@@ -1192,6 +1242,109 @@ export async function updateProductionScheduleDueManagementAccessPassword(payloa
     settings: ProductionScheduleDueManagementAccessPasswordSettings;
   }>('/production-schedule-settings/due-management-access-password', payload);
   return data.settings;
+}
+
+export async function getProductionScheduleLoadBalancingCapacityBase(location: string) {
+  const { data } = await api.get<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingCapacityBaseItem[] };
+  }>('/production-schedule-settings/load-balancing/capacity-base', {
+    params: { location }
+  });
+  return data.settings;
+}
+
+export async function updateProductionScheduleLoadBalancingCapacityBase(payload: {
+  location: string;
+  items: ProductionScheduleLoadBalancingCapacityBaseItem[];
+}) {
+  const { data } = await api.put<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingCapacityBaseItem[] };
+  }>('/production-schedule-settings/load-balancing/capacity-base', payload);
+  return data.settings;
+}
+
+export async function getProductionScheduleLoadBalancingMonthlyCapacity(location: string, yearMonth: string) {
+  const { data } = await api.get<{
+    settings: { siteKey: string; yearMonth: string; items: ProductionScheduleLoadBalancingMonthlyCapacityItem[] };
+  }>('/production-schedule-settings/load-balancing/monthly-capacity', {
+    params: { location, yearMonth }
+  });
+  return data.settings;
+}
+
+export async function updateProductionScheduleLoadBalancingMonthlyCapacity(payload: {
+  location: string;
+  yearMonth: string;
+  items: ProductionScheduleLoadBalancingMonthlyCapacityItem[];
+}) {
+  const { data } = await api.put<{
+    settings: { siteKey: string; yearMonth: string; items: ProductionScheduleLoadBalancingMonthlyCapacityItem[] };
+  }>('/production-schedule-settings/load-balancing/monthly-capacity', payload);
+  return data.settings;
+}
+
+export async function getProductionScheduleLoadBalancingClasses(location: string) {
+  const { data } = await api.get<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingClassItem[] };
+  }>('/production-schedule-settings/load-balancing/classes', {
+    params: { location }
+  });
+  return data.settings;
+}
+
+export async function updateProductionScheduleLoadBalancingClasses(payload: {
+  location: string;
+  items: ProductionScheduleLoadBalancingClassItem[];
+}) {
+  const { data } = await api.put<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingClassItem[] };
+  }>('/production-schedule-settings/load-balancing/classes', payload);
+  return data.settings;
+}
+
+export async function getProductionScheduleLoadBalancingTransferRules(location: string) {
+  const { data } = await api.get<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingTransferRuleItem[] };
+  }>('/production-schedule-settings/load-balancing/transfer-rules', {
+    params: { location }
+  });
+  return data.settings;
+}
+
+export async function updateProductionScheduleLoadBalancingTransferRules(payload: {
+  location: string;
+  items: ProductionScheduleLoadBalancingTransferRuleItem[];
+}) {
+  const { data } = await api.put<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingTransferRuleItem[] };
+  }>('/production-schedule-settings/load-balancing/transfer-rules', payload);
+  return data.settings;
+}
+
+export async function getKioskProductionScheduleLoadBalancingOverview(params: {
+  month: string;
+  targetDeviceScopeKey?: string;
+}) {
+  const { data } = await api.get<{
+    siteKey: string;
+    yearMonth: string;
+    resources: ProductionScheduleLoadBalancingOverviewResource[];
+  }>('/kiosk/production-schedule/load-balancing/overview', { params });
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingSuggestions(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  maxSuggestions?: number;
+  overResourceCds?: string[];
+}) {
+  const { data } = await api.post<{
+    siteKey: string;
+    yearMonth: string;
+    suggestions: ProductionScheduleLoadBalancingSuggestionItem[];
+  }>('/kiosk/production-schedule/load-balancing/suggestions', payload);
+  return data;
 }
 
 export async function verifyKioskDueManagementAccessPassword(payload: { password: string }) {

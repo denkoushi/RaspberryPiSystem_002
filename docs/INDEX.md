@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-04-30）
 
+- **キオスク 生産スケジュール 負荷調整（山崩し支援）**: `plannedEndDate` 月次集計・能力/分類/移管ルール・工程行サジェスト。ガイド: [kiosk-production-schedule-load-balancing.md](./guides/kiosk-production-schedule-load-balancing.md) / KB: [KB-362](./knowledge-base/KB-362-kiosk-load-balancing.md)。
+
 - **CustomerSCAW Gmail CSV（製番→顧客名・一覧 `customerName`・順位ボード）**: 件名 **`CustomerSCAW`**・固定ダッシュボード・スケジュール **`csv-import-productionschedule-customer-scaw`**（**`31 5 * * 0`**）・`ProductionScheduleFseibanCustomerScaw`。仕様・運用: [KB-361](./knowledge-base/KB-361-customer-scaw-gmail-csv.md) / [csv-import-export.md](./guides/csv-import-export.md)。
 
 ### 🆕 最新アップデート（2026-04-29）

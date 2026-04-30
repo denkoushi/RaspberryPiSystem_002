@@ -15,6 +15,16 @@ import {
   upsertProductionScheduleProcessingTypeOptions,
   upsertProductionScheduleResourceCategorySettings
 } from '../services/production-schedule/production-schedule-settings.service.js';
+import {
+  listLoadBalancingCapacityBase,
+  listLoadBalancingClasses,
+  listLoadBalancingMonthlyCapacity,
+  listLoadBalancingTransferRules,
+  replaceLoadBalancingCapacityBase,
+  replaceLoadBalancingClasses,
+  replaceLoadBalancingMonthlyCapacity,
+  replaceLoadBalancingTransferRules
+} from '../services/production-schedule/load-balancing/load-balancing-settings.service.js';
 
 const resourceCategoryQuerySchema = z.object({
   location: z.string().min(1).max(100).default('shared')
@@ -74,6 +84,66 @@ const dueManagementAccessPasswordQuerySchema = z.object({
 const dueManagementAccessPasswordBodySchema = z.object({
   location: z.string().min(1).max(100).default(SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION),
   password: z.string().min(1).max(128)
+});
+
+const loadBalancingLocationQuerySchema = z.object({
+  location: z.string().min(1).max(100).default('shared')
+});
+
+const loadBalancingMonthlyQuerySchema = loadBalancingLocationQuerySchema.extend({
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/)
+});
+
+const loadBalancingCapacityBaseBodySchema = z.object({
+  location: z.string().min(1).max(100),
+  items: z
+    .array(
+      z.object({
+        resourceCd: z.string().min(1).max(20),
+        baseAvailableMinutes: z.coerce.number().finite().nonnegative()
+      })
+    )
+    .max(500)
+});
+
+const loadBalancingMonthlyCapacityBodySchema = z.object({
+  location: z.string().min(1).max(100),
+  yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  items: z
+    .array(
+      z.object({
+        resourceCd: z.string().min(1).max(20),
+        availableMinutes: z.coerce.number().finite().nonnegative()
+      })
+    )
+    .max(500)
+});
+
+const loadBalancingClassesBodySchema = z.object({
+  location: z.string().min(1).max(100),
+  items: z
+    .array(
+      z.object({
+        resourceCd: z.string().min(1).max(20),
+        classCode: z.string().min(1).max(40)
+      })
+    )
+    .max(500)
+});
+
+const loadBalancingTransferRulesBodySchema = z.object({
+  location: z.string().min(1).max(100),
+  items: z
+    .array(
+      z.object({
+        fromClassCode: z.string().min(1).max(40),
+        toClassCode: z.string().min(1).max(40),
+        priority: z.coerce.number().int().min(1).max(9999),
+        enabled: z.boolean(),
+        efficiencyRatio: z.coerce.number().finite().positive().max(100)
+      })
+    )
+    .max(300)
 });
 
 export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): void {
@@ -163,6 +233,70 @@ export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): 
     const settings = await upsertDueManagementAccessPassword({
       location: body.location,
       password: body.password
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/load-balancing/capacity-base', { preHandler: canManage }, async (request) => {
+    const query = loadBalancingLocationQuerySchema.parse(request.query);
+    const settings = await listLoadBalancingCapacityBase(query.location);
+    return { settings };
+  });
+
+  app.put('/production-schedule-settings/load-balancing/capacity-base', { preHandler: canManage }, async (request) => {
+    const body = loadBalancingCapacityBaseBodySchema.parse(request.body);
+    const settings = await replaceLoadBalancingCapacityBase({
+      siteKeyInput: body.location,
+      items: body.items
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/load-balancing/monthly-capacity', { preHandler: canManage }, async (request) => {
+    const query = loadBalancingMonthlyQuerySchema.parse(request.query);
+    const settings = await listLoadBalancingMonthlyCapacity({
+      siteKeyInput: query.location,
+      yearMonth: query.yearMonth
+    });
+    return { settings };
+  });
+
+  app.put('/production-schedule-settings/load-balancing/monthly-capacity', { preHandler: canManage }, async (request) => {
+    const body = loadBalancingMonthlyCapacityBodySchema.parse(request.body);
+    const settings = await replaceLoadBalancingMonthlyCapacity({
+      siteKeyInput: body.location,
+      yearMonth: body.yearMonth,
+      items: body.items
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/load-balancing/classes', { preHandler: canManage }, async (request) => {
+    const query = loadBalancingLocationQuerySchema.parse(request.query);
+    const settings = await listLoadBalancingClasses(query.location);
+    return { settings };
+  });
+
+  app.put('/production-schedule-settings/load-balancing/classes', { preHandler: canManage }, async (request) => {
+    const body = loadBalancingClassesBodySchema.parse(request.body);
+    const settings = await replaceLoadBalancingClasses({
+      siteKeyInput: body.location,
+      items: body.items
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/load-balancing/transfer-rules', { preHandler: canManage }, async (request) => {
+    const query = loadBalancingLocationQuerySchema.parse(request.query);
+    const settings = await listLoadBalancingTransferRules(query.location);
+    return { settings };
+  });
+
+  app.put('/production-schedule-settings/load-balancing/transfer-rules', { preHandler: canManage }, async (request) => {
+    const body = loadBalancingTransferRulesBodySchema.parse(request.body);
+    const settings = await replaceLoadBalancingTransferRules({
+      siteKeyInput: body.location,
+      items: body.items
     });
     return { settings };
   });

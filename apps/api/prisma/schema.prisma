@@ -1158,6 +1158,67 @@ model ProductionScheduleResourceCodeMapping {
   @@index([csvDashboardId, location, fromResourceCd, enabled, priority], map: "ProductionScheduleResourceCodeMapping_idx_lookup")
 }
 
+/// 資源CDごとの基準月間能力（分）。月次上書きが無い場合に使用する。
+model ProductionScheduleResourceCapacityBase {
+  id                   String   @id @default(uuid())
+  csvDashboardId       String
+  siteKey              String   @db.VarChar(120)
+  resourceCd           String   @db.VarChar(20)
+  baseAvailableMinutes Int
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([csvDashboardId, siteKey, resourceCd], map: "PSResourceCapacityBase_unique_site_rc")
+  @@index([csvDashboardId, siteKey], map: "PSResourceCapacityBase_idx_site")
+}
+
+/// 資源CDごとの月次能力上書き（分）。yearMonth は YYYY-MM。
+model ProductionScheduleResourceMonthlyCapacity {
+  id                 String   @id @default(uuid())
+  csvDashboardId     String
+  siteKey            String   @db.VarChar(120)
+  resourceCd         String   @db.VarChar(20)
+  yearMonth          String   @db.VarChar(7)
+  availableMinutes   Int
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([csvDashboardId, siteKey, resourceCd, yearMonth], map: "PSResourceMonthlyCapacity_unique")
+  @@index([csvDashboardId, siteKey, yearMonth], map: "PSResourceMonthlyCapacity_idx_month")
+}
+
+/// 山崩し用: 資源CDを細分類コードへ割り当てる。
+model ProductionScheduleLoadBalanceClass {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(120)
+  resourceCd     String   @db.VarChar(20)
+  classCode      String   @db.VarChar(80)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, siteKey, resourceCd], map: "PSLoadBalanceClass_unique_rc")
+  @@index([csvDashboardId, siteKey, classCode], map: "PSLoadBalanceClass_idx_class")
+}
+
+/// 山崩し用: 分類間の肩代わり候補ルール。
+model ProductionScheduleLoadBalanceTransferRule {
+  id              String   @id @default(uuid())
+  csvDashboardId  String
+  siteKey         String   @db.VarChar(120)
+  fromClassCode   String   @db.VarChar(80)
+  toClassCode     String   @db.VarChar(80)
+  priority        Int      @default(1)
+  enabled         Boolean  @default(true)
+  /// 移管先での所要増加係数（1.0=等価、0.8なら移管先では 1/0.8 倍の分が必要）。
+  efficiencyRatio Float    @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([csvDashboardId, siteKey, fromClassCode, toClassCode, priority], map: "PSLBTransferRule_unique_pri")
+  @@index([csvDashboardId, siteKey, fromClassCode], map: "PSLBTransferRule_idx_from")
+}
+
 model ProductionScheduleAccessPasswordConfig {
   id                        String   @id @default(uuid())
   location                  String

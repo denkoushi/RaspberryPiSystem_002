@@ -16,6 +16,8 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 
+import { ProductionScheduleLoadBalancingSettingsSection } from './ProductionScheduleLoadBalancingSettingsSection';
+
 const DEFAULT_LOCATION = 'shared';
 const LOCATION_SEGMENT_DELIMITER = ' - ';
 
@@ -477,6 +479,7 @@ export function ProductionScheduleSettingsPage() {
           </div>
         </div>
       </Card>
+      <ProductionScheduleLoadBalancingSettingsSection location={location} />
       <Card title="納期管理アクセス設定">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
