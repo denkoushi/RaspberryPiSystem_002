@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-29
+last-verified: 2026-04-30
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-29（**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-04-30（**CustomerSCAW（製番→顧客名・API/順位ボード）**／2026-04-29 項は下記）／**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+
+### 補足（2026-04-30: **CustomerSCAW（製番→顧客名・生産日程一覧/順位ボード）**·`feat/customer-scaw-fseiban-customer-link`·API+Web+DB·Pi5→Pi4×4）
+
+- **変更概要**: Gmail 件名 **`CustomerSCAW`** の CSV を固定 `CsvDashboard` で取込み、MH/SH winner の **`FHINMEI`** と **`FANKENMEI`** を正規化照合して **`ProductionScheduleFseibanCustomerScaw`** を **取込ソース単位で全置換**。生産日程一覧・`responseProfile=leaderboard` の **トップレベル `customerName`** と順位ボード行表示。**Prisma マイグレーション**あり。詳細は [KB-361](../knowledge-base/KB-361-customer-scaw-gmail-csv.md)·[`csv-import-export.md`](csv-import-export.md)。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**可能（リソース僅少・専用手順は別。本記録では未実施）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/customer-scaw-fseiban-customer-link infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`31c7985c`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260430-092747-16`**（`raspberrypi5`）/ **`20260430-093831-8790`**（`raspberrypi4`）/ **`20260430-094303-29499`**（`raspi4-robodrill01`）/ **`20260430-094627-7368`**（`raspi4-fjv60-80`）/ **`20260430-094955-16246`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**・Tailscale）。
+- **トラブルシュート**: **`customerName` が空のまま**: CSV 未到達・`FANKENMEI` と本体 `FHINMEI` の不一致・MH/SH 以外の行のみ、等。**キオスクが古い**: [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。**`--follow` が SSH 切断**: リモートデタッチは完走し得る → Pi5 `logs/deploy/*.exit` で確認。
+- **ナレッジ**: [KB-361](../knowledge-base/KB-361-customer-scaw-gmail-csv.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ### 補足（2026-04-29: キオスク順位ボード **Pi4 向け再レンダー抑制（order-usage 波及削減）**·`feat/kiosk-leaderboard-pi4-followup`·Web のみ·Pi5→Pi4×4）
 

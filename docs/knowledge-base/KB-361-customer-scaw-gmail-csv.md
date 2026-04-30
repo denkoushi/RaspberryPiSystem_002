@@ -37,6 +37,14 @@ Gmail 件名 **`CustomerSCAW`** の CSV を専用 CsvDashboard（固定 ID `PROD
 - 固定スケジュールの変更は `system-csv-import-schedule-builtin-rows.ts` と `import-schedule-admin.service.ts` の削除ガードを同期すること
 - 仕様変更時は `docs/guides/csv-import-export.md` と本 KB を更新すること
 
+## 本番デプロイ記録（2026-04-30）
+
+- **ブランチ**: `feat/customer-scaw-fseiban-customer-link`・代表コミット **`31c7985c`**
+- **対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 1 台ずつ**）·**`raspberrypi3` は除外**
+- **Detach Run ID**（`ansible-update-`）: **`20260430-092747-16`** / **`20260430-093831-8790`** / **`20260430-094303-29499`** / **`20260430-094627-7368`** / **`20260430-094955-16246`**（各 **`failed=0` / `unreachable=0`**）
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**）
+- **トラブルシュート**: 顧客名が出ないときは **CSV 取込・照合キー・MH/SH 行**を疑う。キオスク UI が古いときは [verification-checklist.md](../guides/verification-checklist.md) の **強制リロード**。デプロイ手順の正本は [deployment.md](../guides/deployment.md) 補足（2026-04-30 CustomerSCAW）。
+
 ## References
 
 - [csv-import-export.md](../guides/csv-import-export.md)
