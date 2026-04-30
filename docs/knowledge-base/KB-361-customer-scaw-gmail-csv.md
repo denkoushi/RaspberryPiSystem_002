@@ -38,6 +38,15 @@ Gmail 件名 **`CustomerSCAW`** の CSV を専用 CsvDashboard（固定 ID `PROD
 - 固定スケジュールの変更は `system-csv-import-schedule-builtin-rows.ts` と `import-schedule-admin.service.ts` の削除ガードを同期すること
 - 仕様変更時は `docs/guides/csv-import-export.md` と本 KB を更新すること
 
+## 本番デプロイ記録（2026-04-30: `FANKENYMD` 近傍選定）
+
+- **ブランチ**: `feat/customer-scaw-fankenymd-proximity`・代表コミット **`8d95c2dd`**
+- **対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 1 台ずつ**）·**`raspberrypi3` は除外**
+- **Detach Run ID**（`ansible-update-`）: **`20260430-104715-27689`** / **`20260430-105722-30608`** / **`20260430-110145-20682`** / **`20260430-110452-23417`** / **`20260430-110808-28659`**（各 **`failed=0` / `unreachable=0`**・リモート **`exit` `0`**）
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**）
+- **知見**: `FANKENYMD` は **`Date.parse` 相当でパースできた行だけ**が近傍候補。**着手日**は `ProductionScheduleOrderSupplement.plannedStartDate`（部品納期個数系補助 CSV と同期）。パース不能・欠損は従来どおり **CSV 後勝ち**に落ちる。
+- **トラブルシュート**: 顧客が食い違うときは **日付列の字句**・**補助の着手日有無**・**同一機種の複数行の順序**を確認。手順の正本は [deployment.md](../guides/deployment.md) 補足（2026-04-30 CustomerSCAW `FANKENYMD`）。
+
 ## 本番デプロイ記録（2026-04-30）
 
 - **ブランチ**: `feat/customer-scaw-fseiban-customer-link`・代表コミット **`31c7985c`**
