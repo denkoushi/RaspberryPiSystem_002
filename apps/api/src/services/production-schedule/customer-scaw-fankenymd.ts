@@ -10,11 +10,27 @@ const isValidUtcDateParts = (year: number, month1Based: number, day: number): bo
 };
 
 const parseDirectDateOnlyUtcDayMs = (normalized: string): number | null => {
-  const iso = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s.*)?$/);
+  const iso = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
   if (iso) {
     const year = Number.parseInt(iso[1]!, 10);
     const month = Number.parseInt(iso[2]!, 10);
     const day = Number.parseInt(iso[3]!, 10);
+    return isValidUtcDateParts(year, month, day) ? Date.UTC(year, month - 1, day) : null;
+  }
+
+  const ymdSlash = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:[T\s].*)?$/);
+  if (ymdSlash) {
+    const year = Number.parseInt(ymdSlash[1]!, 10);
+    const month = Number.parseInt(ymdSlash[2]!, 10);
+    const day = Number.parseInt(ymdSlash[3]!, 10);
+    return isValidUtcDateParts(year, month, day) ? Date.UTC(year, month - 1, day) : null;
+  }
+
+  const jp = normalized.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日(?:.*)?$/);
+  if (jp) {
+    const year = Number.parseInt(jp[1]!, 10);
+    const month = Number.parseInt(jp[2]!, 10);
+    const day = Number.parseInt(jp[3]!, 10);
     return isValidUtcDateParts(year, month, day) ? Date.UTC(year, month - 1, day) : null;
   }
 

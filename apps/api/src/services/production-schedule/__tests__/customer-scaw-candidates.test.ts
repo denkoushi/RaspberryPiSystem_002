@@ -12,6 +12,9 @@ describe('customer-scaw candidates / FANKENYMD proximity', () => {
   it('parseCustomerScawFankenymdUtcDayMs: 日付だけ文字列はタイムゾーン非依存で同じ日を返す', () => {
     expect(parseCustomerScawFankenymdUtcDayMs('2026-04-14')).toBe(Date.UTC(2026, 3, 14));
     expect(parseCustomerScawFankenymdUtcDayMs('04/14/2026')).toBe(Date.UTC(2026, 3, 14));
+    expect(parseCustomerScawFankenymdUtcDayMs('2026/04/14')).toBe(Date.UTC(2026, 3, 14));
+    expect(parseCustomerScawFankenymdUtcDayMs('2026-04-14T00:00:00')).toBe(Date.UTC(2026, 3, 14));
+    expect(parseCustomerScawFankenymdUtcDayMs('2026年4月14日')).toBe(Date.UTC(2026, 3, 14));
   });
 
   it('pickCustomerNameFromCandidates: 最短距離を採用', () => {

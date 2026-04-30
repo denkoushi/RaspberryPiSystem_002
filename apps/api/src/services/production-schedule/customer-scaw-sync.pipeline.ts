@@ -147,11 +147,21 @@ export async function loadMhShWinnerRowsForCustomerScaw(client: PrismaClient): P
       "r"."rowData"->>'FSEIBAN' AS "fseiban",
       "r"."rowData"->>'FHINMEI' AS "fhinmei",
       "r"."id"::text AS "id",
-      "sup"."plannedStartDate" AS "plannedStartDate"
+      "seiban_sup"."plannedStartDate" AS "plannedStartDate"
     FROM "CsvDashboardRow" AS "r"
-    LEFT JOIN "ProductionScheduleOrderSupplement" AS "sup"
-      ON "sup"."csvDashboardRowId" = "r"."id"
-      AND "sup"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN (
+      SELECT
+        "src"."rowData"->>'FSEIBAN' AS "fseiban",
+        MIN("sup"."plannedStartDate") AS "plannedStartDate"
+      FROM "CsvDashboardRow" AS "src"
+      INNER JOIN "ProductionScheduleOrderSupplement" AS "sup"
+        ON "sup"."csvDashboardRowId" = "src"."id"
+        AND "sup"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      WHERE "src"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('src')}
+      GROUP BY "src"."rowData"->>'FSEIBAN'
+    ) AS "seiban_sup"
+      ON "seiban_sup"."fseiban" = ("r"."rowData"->>'FSEIBAN')
     WHERE "r"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('r')}
       AND (
