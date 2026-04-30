@@ -5,8 +5,15 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 
 import { PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import {
+  buildFankenmeiKeyToCandidates,
+  pickCustomerNameFromCandidates,
+  type CustomerScawCsvCandidate,
+} from './customer-scaw-candidates.js';
 import { normalizeCustomerScawMatchKey } from './customer-scaw-normalize.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+
+export type { CustomerScawCsvCandidate };
 
 const CREATE_MANY_CHUNK_SIZE = 200;
 const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
@@ -58,21 +65,19 @@ async function loadIngestRunWindow(client: PrismaClient, ingestRunId: string): P
 }
 
 /**
- * 同一 FANKENMEI（正規化キー）は CSV 走査順で **後勝ち**。同一 Customer 列の重複も同様。
+ * 同一 FANKENMEI（正規化キー）は CSV 走査順で **後勝ち**（着手日を使わない集約）。
+ * `FANKENYMD` 近傍判定は {@link buildFankenmeiKeyToCandidates} を使用する。
  */
 export function buildFankenmeiToCustomerLastWins(
   orderedRows: Array<{ rowData: Record<string, unknown> }>
 ): Map<string, string> {
+  const candidatesByKey = buildFankenmeiKeyToCandidates(orderedRows);
   const map = new Map<string, string>();
-  for (const { rowData } of orderedRows) {
-    const fankRaw = rowData.FANKENMEI;
-    const custRaw = rowData.Customer;
-    const key = normalizeCustomerScawMatchKey(fankRaw);
-    const customer = String(custRaw ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ');
-    if (key.length === 0 || customer.length === 0) {
-      continue;
+  for (const [key, list] of candidatesByKey) {
+    const last = list[list.length - 1];
+    if (last) {
+      map.set(key, last.customerName);
     }
-    map.set(key, customer);
   }
   return map;
 }
@@ -129,31 +134,40 @@ export async function loadCustomerScawSourceRowsFromIngest(
   };
 }
 
-type ProdRow = { fseiban: string | null; fhinmei: string | null; id: string };
+export type ProdRow = {
+  fseiban: string | null;
+  fhinmei: string | null;
+  id: string;
+  plannedStartDate: Date | null;
+};
 
 export async function loadMhShWinnerRowsForCustomerScaw(client: PrismaClient): Promise<ProdRow[]> {
   return client.$queryRaw<ProdRow[]>`
     SELECT
-      "CsvDashboardRow"."rowData"->>'FSEIBAN' AS "fseiban",
-      "CsvDashboardRow"."rowData"->>'FHINMEI' AS "fhinmei",
-      "CsvDashboardRow"."id"::text AS "id"
-    FROM "CsvDashboardRow"
-    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+      "r"."rowData"->>'FSEIBAN' AS "fseiban",
+      "r"."rowData"->>'FHINMEI' AS "fhinmei",
+      "r"."id"::text AS "id",
+      "sup"."plannedStartDate" AS "plannedStartDate"
+    FROM "CsvDashboardRow" AS "r"
+    LEFT JOIN "ProductionScheduleOrderSupplement" AS "sup"
+      ON "sup"."csvDashboardRowId" = "r"."id"
+      AND "sup"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    WHERE "r"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('r')}
       AND (
-        UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
-        OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+        UPPER(COALESCE("r"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+        OR UPPER(COALESCE("r"."rowData"->>'FHINCD', '')) LIKE 'SH%'
       )
-    ORDER BY "CsvDashboardRow"."id" ASC
+    ORDER BY "r"."id" ASC
   `;
 }
 
 /**
- * 同一製番は winner 行走査順で **後勝ち**。
+ * 同一製番は winner 行走査順で **後勝ち**（行ごとに Customer を決めたうえで上書き）。
  */
 export function buildFseibanToCustomerFromProductionRows(
   productionRows: ProdRow[],
-  fankenmeiToCustomer: Map<string, string>
+  fankenmeiKeyToCandidates: Map<string, CustomerScawCsvCandidate[]>
 ): Map<string, string> {
   const out = new Map<string, string>();
   for (const row of productionRows) {
@@ -161,7 +175,7 @@ export function buildFseibanToCustomerFromProductionRows(
     if (fseiban.length === 0) continue;
     const key = normalizeCustomerScawMatchKey(row.fhinmei);
     if (key.length === 0) continue;
-    const customer = fankenmeiToCustomer.get(key);
+    const customer = pickCustomerNameFromCandidates(fankenmeiKeyToCandidates.get(key), row.plannedStartDate);
     if (!customer) continue;
     out.set(fseiban, customer);
   }
