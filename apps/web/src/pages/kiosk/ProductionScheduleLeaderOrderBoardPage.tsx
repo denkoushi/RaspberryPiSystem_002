@@ -305,7 +305,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     return buildLeaderBoardGroupedRows(rows, historyProgressQuery.data?.progressBySeiban);
   }, [scheduleQuery.data?.rows, historyProgressQuery.data?.progressBySeiban]);
 
-  const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('all');
+  const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
 
   const sortedGrouped = useMemo(
     () => buildLeaderBoardSortedGrouped(grouped, completionFilter),
