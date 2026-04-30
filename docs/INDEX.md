@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-04-30）
+
+- **CustomerSCAW Gmail CSV（製番→顧客名・一覧 `customerName`・順位ボード）**: 件名 **`CustomerSCAW`**・固定ダッシュボード・スケジュール **`csv-import-productionschedule-customer-scaw`**（**`31 5 * * 0`**）・`ProductionScheduleFseibanCustomerScaw`。仕様・運用: [KB-361](./knowledge-base/KB-361-customer-scaw-gmail-csv.md) / [csv-import-export.md](./guides/csv-import-export.md)。
+
 ### 🆕 最新アップデート（2026-04-29）
 
 - **キオスク順位ボード Pi4 向け再レンダー抑制（`order-usage` 波及削減）（`feat/kiosk-leaderboard-pi4-followup`·`7902f5ac`）本番 Pi5→Pi4×4·1 台ずつ·Phase12 43/0/0·Web のみ**: [`LeaderBoardGrid.tsx`](../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx)·[`LeaderOrderResourceCard.tsx`](../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx)·[`buildLeaderBoardViewModel.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel.ts)。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（Pi4 向け再レンダー抑制）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-pi4-followup infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main`**）。**Detach Run ID**（`ansible-update-`）: **`20260429-214453-13263`** / **`20260429-215053-15127`** / **`20260429-215805-17537`** / **`20260429-220418-1032`** / **`20260429-221048-28118`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **64s**）。**Pi3 不要**。**ナレッジ**: [KB-297 §Pi4 performance](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-pi4-performance-2026-04-24)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。

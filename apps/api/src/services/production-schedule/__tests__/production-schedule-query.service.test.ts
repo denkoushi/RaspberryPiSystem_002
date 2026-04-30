@@ -7,6 +7,7 @@ import {
 import { resolveActualHoursLocationCandidates } from '../actual-hours-location-scope.service.js';
 import { prisma } from '../../../lib/prisma.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
+import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -53,6 +54,15 @@ vi.mock('../production-schedule-machine-name-enrichment.service.js', () => ({
   ),
 }));
 
+vi.mock('../production-schedule-customer-name-enrichment.service.js', () => ({
+  enrichProductionScheduleRowsWithCustomerName: vi.fn(async (rows: Array<Record<string, unknown>>) =>
+    rows.map((row) => ({
+      ...row,
+      customerName: null as string | null,
+    }))
+  ),
+}));
+
 describe('production-schedule-query.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,6 +73,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.productionScheduleResourceCodeMapping.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([]);
     vi.mocked(enrichProductionScheduleRowsWithResolvedMachineName).mockClear();
+    vi.mocked(enrichProductionScheduleRowsWithCustomerName).mockClear();
   });
 
   it('資源CD単独指定時（assignedOnlyなし）は空結果を返しDBクエリしない', async () => {
@@ -624,8 +635,10 @@ describe('production-schedule-query.service', () => {
     expect(result.total).toBe(1);
     expect(result.rows[0]?.actualPerPieceMinutes).toBeNull();
     expect(result.rows[0]?.resolvedMachineName).toBe('機種-A');
+    expect(result.rows[0]?.customerName).toBeNull();
     expect(prisma.productionScheduleActualHoursFeature.findMany).not.toHaveBeenCalled();
     expect(enrichProductionScheduleRowsWithResolvedMachineName).toHaveBeenCalledTimes(1);
+    expect(enrichProductionScheduleRowsWithCustomerName).toHaveBeenCalledTimes(1);
   });
 });
 

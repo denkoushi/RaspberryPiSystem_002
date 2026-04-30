@@ -48,6 +48,8 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     typeof noteRaw === 'string' && noteRaw.trim().length > 0 ? noteRaw.trim() : null;
   const resolvedMachineName =
     typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : '';
+  const customerName =
+    typeof row.customerName === 'string' ? row.customerName.trim() : '';
 
   return {
     id: row.id,
@@ -60,6 +62,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     fkojun: strField(data, 'FKOJUN'),
     fhincd: strField(data, 'FHINCD'),
     fhinmei: strField(data, 'FHINMEI'),
+    customerName,
     machineName: resolvedMachineName,
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,

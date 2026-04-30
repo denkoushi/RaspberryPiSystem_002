@@ -28,6 +28,7 @@ import {
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from './production-schedule-machine-name-enrichment.service.js';
+import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
@@ -54,6 +55,7 @@ type ProductionScheduleRow = {
   plannedStartDate: Date | null;
   plannedEndDate: Date | null;
   resolvedMachineName?: string | null;
+  customerName: string | null;
 };
 
 export type ProductionScheduleListParams = {
@@ -482,11 +484,12 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       actualPerPieceMinutes: null as number | null
     }));
     const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
+    const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
     return {
       page,
       pageSize,
       total,
-      rows: rowsWithResolvedMachineName
+      rows: enrichedRows
     };
   }
 
@@ -512,12 +515,13 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     };
   });
   const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(rowsWithActualHours);
+  const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
 
   return {
     page,
     pageSize,
     total,
-    rows: rowsWithResolvedMachineName
+    rows: enrichedRows
   };
 }
 

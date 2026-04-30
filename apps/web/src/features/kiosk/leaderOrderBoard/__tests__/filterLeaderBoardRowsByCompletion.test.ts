@@ -15,6 +15,7 @@ const r = (id: string, isCompleted: boolean): LeaderBoardRow => ({
   fkojun: '',
   fhincd: '',
   fhinmei: '',
+  customerName: '',
   machineName: '',
   machineTypeCode: '',
   plannedQuantity: null,

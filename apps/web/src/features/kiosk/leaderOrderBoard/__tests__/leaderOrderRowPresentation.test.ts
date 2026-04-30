@@ -15,6 +15,7 @@ const base = (): LeaderBoardRow => ({
   fkojun: '10',
   fhincd: 'MH001',
   fhinmei: '部品A',
+  customerName: '',
   machineName: '立マシンA',
   machineTypeCode: '',
   plannedQuantity: 3,
@@ -64,6 +65,11 @@ describe('presentLeaderOrderRow', () => {
   it('part name line is fhinmei only (kojun shown in card top row)', () => {
     const p = presentLeaderOrderRow(base());
     expect(p.partNameLine).toBe('部品A');
+  });
+
+  it('customer line is trimmed customerName when present', () => {
+    expect(presentLeaderOrderRow(base()).customerLine).toBe('');
+    expect(presentLeaderOrderRow({ ...base(), customerName: '  ACME  ' }).customerLine).toBe('ACME');
   });
 
   it('formats quantity inline Japanese suffix', () => {

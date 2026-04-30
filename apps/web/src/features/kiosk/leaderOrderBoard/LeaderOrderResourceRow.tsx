@@ -141,6 +141,9 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
       {pres.clusterSegments.length > 0 || pres.quantityInlineJa ? (
         <LeaderOrderRowClusterLine segments={pres.clusterSegments} quantityInlineJa={pres.quantityInlineJa} />
       ) : null}
+      {pres.customerLine.length > 0 ? (
+        <div className="min-w-0 break-words text-[11px] text-white/70">{pres.customerLine}</div>
+      ) : null}
       {pres.partNameLine.length > 0 ? <div className="text-white/60">{pres.partNameLine}</div> : null}
       {pres.machineTypeNameLine.length > 0 ? (
         <div className="min-w-0 break-words text-[11px] text-white/80">{pres.machineTypeNameLine}</div>

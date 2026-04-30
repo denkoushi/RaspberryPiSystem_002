@@ -18,6 +18,7 @@ const row = (fseiban: string, machineName: string): LeaderBoardRow => ({
   fkojun: '',
   fhincd: '',
   fhinmei: '',
+  customerName: '',
   machineName,
   machineTypeCode: '',
   plannedQuantity: null,

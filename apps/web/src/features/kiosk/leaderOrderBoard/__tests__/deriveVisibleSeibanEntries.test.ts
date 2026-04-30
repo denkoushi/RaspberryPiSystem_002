@@ -15,6 +15,7 @@ const row = (id: string, fseiban: string, machineName: string, resourceCd = '305
   fkojun: '',
   fhincd: '',
   fhinmei: '',
+  customerName: '',
   machineName,
   machineTypeCode: '',
   plannedQuantity: null,

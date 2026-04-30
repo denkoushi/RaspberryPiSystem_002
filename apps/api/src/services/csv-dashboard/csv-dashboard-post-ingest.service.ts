@@ -1,5 +1,6 @@
 import { logger } from '../../lib/logger.js';
 import {
+  PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
@@ -9,10 +10,12 @@ import {
 import { ProductionScheduleFkojunstSyncService } from '../production-schedule/fkojunst-sync.service.js';
 import { ProductionScheduleFkojunstMailStatusSyncService } from '../production-schedule/fkojunst-status-mail-sync.service.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../production-schedule/order-supplement-sync.service.js';
+import { ProductionScheduleCustomerScawSyncService } from '../production-schedule/customer-scaw-sync.service.js';
 import { ProductionScheduleSeibanMachineNameSupplementSyncService } from '../production-schedule/seiban-machine-name-supplement-sync.service.js';
 import type { OrderSupplementSyncResult } from '../production-schedule/order-supplement-sync.pipeline.js';
 import type { FkojunstSyncResult } from '../production-schedule/fkojunst-sync.pipeline.js';
 import type { FkojunstMailSyncResult } from '../production-schedule/fkojunst-status-mail-sync.pipeline.js';
+import type { CustomerScawSyncResult } from '../production-schedule/customer-scaw-sync.pipeline.js';
 import type { SeibanMachineNameSupplementSyncResult } from '../production-schedule/seiban-machine-name-supplement-sync.pipeline.js';
 import {
   PurchaseOrderLookupSyncService,
@@ -26,6 +29,7 @@ export type CsvDashboardPostIngestResult = {
   fkojunstSync: FkojunstSyncResult | null;
   fkojunstMailSync: FkojunstMailSyncResult | null;
   seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null;
+  customerScawSync: CustomerScawSyncResult | null;
   purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null;
 };
 
@@ -39,6 +43,7 @@ export class CsvDashboardPostIngestService {
     private readonly fkojunstSyncService: ProductionScheduleFkojunstSyncService = new ProductionScheduleFkojunstSyncService(),
     private readonly fkojunstMailStatusSyncService: ProductionScheduleFkojunstMailStatusSyncService = new ProductionScheduleFkojunstMailStatusSyncService(),
     private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService(),
+    private readonly customerScawSyncService: ProductionScheduleCustomerScawSyncService = new ProductionScheduleCustomerScawSyncService(),
     private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService()
   ) {}
 
@@ -51,6 +56,7 @@ export class CsvDashboardPostIngestService {
     let fkojunstSync: FkojunstSyncResult | null = null;
     let fkojunstMailSync: FkojunstMailSyncResult | null = null;
     let seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null = null;
+    let customerScawSync: CustomerScawSyncResult | null = null;
     let purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null = null;
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
@@ -95,6 +101,24 @@ export class CsvDashboardPostIngestService {
       );
     }
 
+    if (params.dashboardId === PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID) {
+      if (!params.ingestRunId) {
+        throw new Error('[CsvDashboardPostIngestService] ingestRunId is required for CustomerSCAW sync');
+      }
+      customerScawSync = await this.customerScawSyncService.syncFromCustomerScawDashboard({
+        ingestRunId: params.ingestRunId,
+      });
+      logger.info(
+        {
+          dashboardId: params.dashboardId,
+          ingestSource: params.ingestSource,
+          ingestRunId: params.ingestRunId,
+          syncResult: customerScawSync,
+        },
+        '[CsvDashboardPostIngestService] CustomerSCAW sync completed'
+      );
+    }
+
     if (params.dashboardId === PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID) {
       if (!params.ingestRunId) {
         throw new Error('[CsvDashboardPostIngestService] ingestRunId is required for FKOBAINO purchase order lookup sync');
@@ -118,6 +142,7 @@ export class CsvDashboardPostIngestService {
       fkojunstSync === null &&
       fkojunstMailSync === null &&
       seibanMachineNameSupplementSync === null &&
+      customerScawSync === null &&
       purchaseOrderLookupSync === null
     ) {
       return {
@@ -125,10 +150,18 @@ export class CsvDashboardPostIngestService {
         fkojunstSync: null,
         fkojunstMailSync: null,
         seibanMachineNameSupplementSync: null,
+        customerScawSync: null,
         purchaseOrderLookupSync: null,
       };
     }
 
-    return { orderSupplementSync, fkojunstSync, fkojunstMailSync, seibanMachineNameSupplementSync, purchaseOrderLookupSync };
+    return {
+      orderSupplementSync,
+      fkojunstSync,
+      fkojunstMailSync,
+      seibanMachineNameSupplementSync,
+      customerScawSync,
+      purchaseOrderLookupSync,
+    };
   }
 }

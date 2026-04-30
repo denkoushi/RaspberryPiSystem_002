@@ -92,6 +92,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       fkojunstSync,
       fkojunstMailSync,
       seibanMachineNameSupplementSync,
+      customerScawSync,
       purchaseOrderLookupSync,
     } = await postIngestService.runAfterSuccessfulIngest({
       dashboardId: params.id,
@@ -108,6 +109,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
       ...(fkojunstSync != null ? { fkojunstSync } : {}),
       ...(fkojunstMailSync != null ? { fkojunstMailSync } : {}),
       ...(seibanMachineNameSupplementSync != null ? { seibanMachineNameSupplementSync } : {}),
+      ...(customerScawSync != null ? { customerScawSync } : {}),
       ...(purchaseOrderLookupSync != null ? { purchaseOrderLookupSync } : {}),
     };
   });
