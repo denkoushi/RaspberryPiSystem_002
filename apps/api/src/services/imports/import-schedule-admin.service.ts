@@ -6,6 +6,7 @@ import { getCsvImportScheduler } from './csv-import-scheduler.js';
 import { mapManualImportRunError } from './import-schedule-error-mapper.js';
 import { detectGmailScheduleMinuteCollisions } from './import-schedule-policy.js';
 import { ensureProductionScheduleCsvImportSchedules } from './fkojunst-import-schedule.ensure.js';
+import { CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID } from './customer-scaw-import-schedule.policy.js';
 import { FKOBAINO_CSV_IMPORT_SCHEDULE_ID } from './fkobaino-import-schedule.policy.js';
 import { FKOJUNST_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-import-schedule.policy.js';
 import { FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-status-mail-import-schedule.policy.js';
@@ -148,6 +149,7 @@ export class ImportScheduleAdminService {
       scheduleId === FKOJUNST_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === FKOBAINO_CSV_IMPORT_SCHEDULE_ID
     ) {
       throw new ApiError(400, 'このスケジュールはシステムで固定されており削除できません');

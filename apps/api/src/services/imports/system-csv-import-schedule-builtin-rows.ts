@@ -1,5 +1,6 @@
 import type { BackupConfig } from '../backup/backup-config.js';
 import {
+  PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
@@ -33,6 +34,12 @@ export const SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID =
 
 /** 日曜 6:15（Asia/Tokyo 想定の calendar 起動は CsvImportScheduler 側） */
 export const SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_CRON = '15 6 * * 0';
+
+/** Gmail 経由で CustomerSCAW CsvDashboard を定期取り込みする固定スケジュールID */
+export const CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID = 'csv-import-productionschedule-customer-scaw';
+
+/** 日曜 5:31 JST（仕様固定） */
+export const CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_CRON = '31 5 * * 0';
 
 export function buildDefaultFkojunstCsvImportSchedule(): CsvImportScheduleRow {
   return {
@@ -86,12 +93,26 @@ export function buildDefaultSeibanMachineNameSupplementCsvImportSchedule(): CsvI
   };
 }
 
+export function buildDefaultCustomerScawCsvImportSchedule(): CsvImportScheduleRow {
+  return {
+    id: CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID,
+    name: 'ProductionSchedule_CustomerSCAW (Gmail)',
+    provider: 'gmail',
+    targets: [{ type: 'csvDashboards', source: PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID }],
+    schedule: CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_CRON,
+    enabled: true,
+    replaceExisting: false,
+    autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+  };
+}
+
 /** システム予約スケジュールID → デフォルト行ビルダー（拡張時はここに追加） */
 export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => CsvImportScheduleRow> = {
   [FKOJUNST_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstCsvImportSchedule,
   [FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstStatusMailCsvImportSchedule,
   [FKOBAINO_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkobainoCsvImportSchedule,
   [SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID]: buildDefaultSeibanMachineNameSupplementCsvImportSchedule,
+  [CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID]: buildDefaultCustomerScawCsvImportSchedule,
 };
 
 export function resolveSystemCsvImportDefaultBuilder(

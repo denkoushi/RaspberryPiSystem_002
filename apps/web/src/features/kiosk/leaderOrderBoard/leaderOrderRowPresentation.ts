@@ -13,6 +13,8 @@ export type LeaderOrderRowPresentation = {
    * 順位ボード1行目クラスタ用: 製番・品目コード（空は含めない）。
    */
   clusterSegments: string[];
+  /** CustomerSCAW 顧客名（空なら表示しない） */
+  customerLine: string;
   /**
    * 品名の下: 機種記号 · 機種名（いずれも空なら空文字）。
    */
@@ -54,10 +56,12 @@ export function presentLeaderOrderRow(row: LeaderBoardRow): LeaderOrderRowPresen
   const machineTypeNameLine = joinMiddleDot([row.machineTypeCode, machineNameNormalized]);
 
   const partNameLine = row.fhinmei.trim();
+  const customerLine = row.customerName.trim();
 
   return {
     machinePartLine,
     clusterSegments,
+    customerLine,
     machineTypeNameLine,
     partNameLine,
     quantityInlineJa: formatPlannedQuantityInlineJa(row.plannedQuantity)

@@ -280,6 +280,16 @@ export const defaultBackupConfig: BackupConfig = {
       autoBackupAfterImport: { enabled: false, targets: ['csv'] }
     },
     {
+      id: 'csv-import-productionschedule-customer-scaw',
+      name: 'ProductionSchedule_CustomerSCAW (Gmail)',
+      provider: 'gmail',
+      targets: [{ type: 'csvDashboards', source: 'a9b8c7d6-e5f4-4a3b-9c8d-7e6f5a4b3c2d' }],
+      schedule: '31 5 * * 0',
+      enabled: true,
+      replaceExisting: false,
+      autoBackupAfterImport: { enabled: false, targets: ['csv'] }
+    },
+    {
       id: 'csv-import-purchase-order-fkobaino',
       name: 'PurchaseOrder_FKOBAINO (Gmail)',
       provider: 'gmail',

@@ -98,6 +98,7 @@ describe('CSV Import Schedule API', () => {
       const fk = json.schedules.find((s) => s.id === 'csv-import-productionschedule-fkojunst');
       const fkStatusMail = json.schedules.find((s) => s.id === 'csv-import-productionschedule-fkojunst-status-mail');
       const seiban = json.schedules.find((s) => s.id === 'csv-import-seiban-machine-name-supplement');
+      const customerScaw = json.schedules.find((s) => s.id === 'csv-import-productionschedule-customer-scaw');
       const fkobaino = json.schedules.find((s) => s.id === 'csv-import-purchase-order-fkobaino');
       expect(fk).toBeDefined();
       expect(fk?.schedule).toBe('0 0 * * *');
@@ -108,6 +109,9 @@ describe('CSV Import Schedule API', () => {
       expect(seiban).toBeDefined();
       expect(seiban?.schedule).toBe('15 6 * * 0');
       expect(seiban?.provider).toBe('gmail');
+      expect(customerScaw).toBeDefined();
+      expect(customerScaw?.schedule).toBe('31 5 * * 0');
+      expect(customerScaw?.provider).toBe('gmail');
       expect(fkobaino).toBeDefined();
       expect(fkobaino?.schedule).toBe('25 6 * * 0');
       expect(fkobaino?.provider).toBe('gmail');
@@ -463,6 +467,34 @@ describe('CSV Import Schedule API', () => {
         { type: 'csvDashboards', source: 'e2f3a4b5-c6d7-4e8f-9a0b-1c2d3e4f5a6b' }
       ]);
     });
+
+    it('should keep structural CustomerSCAW invariants and preserve valid cron in update response', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/imports/schedule/csv-import-productionschedule-customer-scaw',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        },
+        payload: {
+          provider: 'dropbox',
+          schedule: '0 4 * * *',
+          targets: [{ type: 'csvDashboards', source: 'wrong-id' }],
+          enabled: true
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      const json = response.json() as {
+        schedule: { id: string; provider?: string; schedule: string; enabled: boolean; targets?: Array<{ source: string }> }
+      };
+      expect(json.schedule.id).toBe('csv-import-productionschedule-customer-scaw');
+      expect(json.schedule.provider).toBe('gmail');
+      expect(json.schedule.schedule).toBe('0 4 * * *');
+      expect(json.schedule.enabled).toBe(true);
+      expect(json.schedule.targets).toEqual([
+        { type: 'csvDashboards', source: 'a9b8c7d6-e5f4-4a3b-9c8d-7e6f5a4b3c2d' }
+      ]);
+    });
   });
 
   describe('DELETE /api/imports/schedule/:id', () => {
@@ -546,6 +578,18 @@ describe('CSV Import Schedule API', () => {
       const response = await app.inject({
         method: 'DELETE',
         url: '/api/imports/schedule/csv-import-seiban-machine-name-supplement',
+        headers: {
+          authorization: `Bearer ${adminToken}`
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should return 400 when deleting fixed CustomerSCAW schedule', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/api/imports/schedule/csv-import-productionschedule-customer-scaw',
         headers: {
           authorization: `Bearer ${adminToken}`
         }

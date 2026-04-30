@@ -937,6 +937,19 @@ model ProductionScheduleSeibanMachineNameSupplement {
   @@index([fseiban], map: "PSSeibanMachNmSup_idx_fseiban")
 }
 
+/// Gmail 件名 `CustomerSCAW` 由来。FANKENMEI と MH/SH 行の FHINMEI を正規化照合し、同一製番は後勝ちで顧客名を紐付け（source 単位で全置換）。
+model ProductionScheduleFseibanCustomerScaw {
+  id                   String   @id @default(uuid())
+  sourceCsvDashboardId String
+  fseiban              String   @db.VarChar(64)
+  customerName         String   @db.VarChar(500)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([sourceCsvDashboardId, fseiban], map: "PSFseibanCustScaw_unique_src_fsb")
+  @@index([fseiban], map: "PSFseibanCustScaw_idx_fseiban")
+}
+
 /// Gmail 件名 `FKOBAINO` の購買CSV由来。取り込みごとに upsert し、同一キーは更新・未登録は追加（履歴蓄積）。
 model PurchaseOrderLookupRow {
   id                         String   @id @default(uuid())

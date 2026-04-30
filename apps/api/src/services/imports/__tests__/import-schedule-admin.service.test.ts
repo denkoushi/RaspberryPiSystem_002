@@ -7,6 +7,7 @@ import { ImportScheduleAdminService } from '../import-schedule-admin.service.js'
 import { FKOJUNST_CSV_IMPORT_SCHEDULE_CRON, FKOJUNST_CSV_IMPORT_SCHEDULE_ID } from '../fkojunst-import-schedule.policy.js';
 import { PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID } from '../seiban-machine-name-supplement-import-schedule.policy.js';
+import { CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID } from '../customer-scaw-import-schedule.policy.js';
 
 function createBaseConfig(): BackupConfig {
   return {
@@ -46,6 +47,7 @@ describe('ImportScheduleAdminService', () => {
     const schedules = await service.listSchedules();
 
     expect(schedules.some((row) => row.id === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID)).toBe(true);
+    expect(schedules.some((row) => row.id === CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID)).toBe(true);
     expect(store.save).toHaveBeenCalledOnce();
     expect(scheduler.reload).toHaveBeenCalledOnce();
   });
@@ -244,6 +246,19 @@ describe('ImportScheduleAdminService', () => {
     const service = new ImportScheduleAdminService(store, () => scheduler);
 
     await expect(service.deleteSchedule(SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID)).rejects.toMatchObject({
+      statusCode: 400,
+    });
+  });
+
+  it('deleteSchedule: 固定の CustomerSCAW スケジュールは400を返す', async () => {
+    const store = {
+      load: vi.fn(async () => createBaseConfig()),
+      save: vi.fn(async () => {}),
+    };
+    const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    await expect(service.deleteSchedule(CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID)).rejects.toMatchObject({
       statusCode: 400,
     });
   });

@@ -13,7 +13,11 @@ import { fileURLToPath } from 'node:url';
 import {
   buildProductionScheduleSeibanMachineNameSupplementDashboardDefinition,
 } from '../src/services/production-schedule/seiban-machine-name-supplement-dashboard.definition.js';
-import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../src/services/production-schedule/constants.js';
+import { buildProductionScheduleCustomerScawDashboardDefinition } from '../src/services/production-schedule/customer-scaw-dashboard.definition.js';
+import {
+  PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+} from '../src/services/production-schedule/constants.js';
 import { buildProductionScheduleFkojunstStatusMailDashboardDefinition } from '../src/services/production-schedule/fkojunst-status-mail-dashboard.definition.js';
 
 const prisma = new PrismaClient();
@@ -382,6 +386,17 @@ async function main() {
     create: {
       id: productionScheduleSeibanMachineNameSupplementDashboardId,
       ...productionScheduleSeibanMachineNameSupplementDefinition,
+    },
+  });
+
+  // 生産日程 CustomerSCAW（Gmail件名: CustomerSCAW）
+  const productionScheduleCustomerScawDefinition = buildProductionScheduleCustomerScawDashboardDefinition();
+  await prisma.csvDashboard.upsert({
+    where: { id: PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID },
+    update: productionScheduleCustomerScawDefinition,
+    create: {
+      id: PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
+      ...productionScheduleCustomerScawDefinition,
     },
   });
 

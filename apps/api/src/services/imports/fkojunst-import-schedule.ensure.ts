@@ -1,5 +1,6 @@
 import type { BackupConfig } from '../backup/backup-config.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
+import { ensureCustomerScawCsvImportSchedule } from './customer-scaw-import-schedule.policy.js';
 import { ensureFkobainoCsvImportSchedule } from './fkobaino-import-schedule.policy.js';
 import { ensureFkojunstCsvImportSchedule } from './fkojunst-import-schedule.policy.js';
 import { ensureFkojunstStatusMailCsvImportSchedule } from './fkojunst-status-mail-import-schedule.policy.js';
@@ -12,13 +13,15 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
   const fkojunstEnsured = ensureFkojunstCsvImportSchedule(config);
   const fkojunstStatusMailEnsured = ensureFkojunstStatusMailCsvImportSchedule(fkojunstEnsured.config);
   const seibanEnsured = ensureSeibanMachineNameSupplementCsvImportSchedule(fkojunstStatusMailEnsured.config);
-  const fkobainoEnsured = ensureFkobainoCsvImportSchedule(seibanEnsured.config);
+  const customerScawEnsured = ensureCustomerScawCsvImportSchedule(seibanEnsured.config);
+  const fkobainoEnsured = ensureFkobainoCsvImportSchedule(customerScawEnsured.config);
   return {
     config: fkobainoEnsured.config,
     repaired:
       fkojunstEnsured.repaired ||
       fkojunstStatusMailEnsured.repaired ||
       seibanEnsured.repaired ||
+      customerScawEnsured.repaired ||
       fkobainoEnsured.repaired,
   };
 }
