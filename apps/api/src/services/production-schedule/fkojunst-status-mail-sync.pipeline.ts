@@ -7,8 +7,11 @@ import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
 } from './constants.js';
+import { parseFkojunstStatusMailFupdteDt } from '../csv-dashboard/csv-dashboard-datetime-parse.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+
+export { parseFkojunstStatusMailFupdteDt };
 
 const CREATE_MANY_CHUNK_SIZE = 200;
 const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
@@ -53,22 +56,6 @@ function normalizeStatusCode(value: unknown): string | null {
   const s = normalizeToken(value).toUpperCase();
   if (s.length !== 1) return null;
   return ALLOWED_STATUS.has(s) ? s : null;
-}
-
-export function parseFkojunstStatusMailFupdteDt(value: unknown): Date | null {
-  const s = normalizeToken(value);
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
-  if (!m) return null;
-  const [, mm, dd, yyyy, HH, MM, ss] = m;
-  const d = new Date(
-    Number(yyyy),
-    Number(mm) - 1,
-    Number(dd),
-    Number(HH),
-    Number(MM),
-    Number(ss)
-  );
-  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export function buildFkojunstMailStatusKey(parts: { fkojun: string; fkoteicd: string; fsezono: string }): string {

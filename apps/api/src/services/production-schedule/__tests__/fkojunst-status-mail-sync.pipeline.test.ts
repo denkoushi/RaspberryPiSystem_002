@@ -25,6 +25,12 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
     expect(parseFkojunstStatusMailFupdteDt('')).toBeNull();
   });
 
+  it('parses FUPDTEDT as ISO8601 with Z', () => {
+    const d = parseFkojunstStatusMailFupdteDt('2026-04-23T15:50:35Z');
+    expect(d).not.toBeNull();
+    expect(d!.toISOString()).toBe('2026-04-23T15:50:35.000Z');
+  });
+
   it('dedupes by key keeping latest sourceUpdatedAt', () => {
     const older: FkojunstMailNormalizedRow = {
       sourceRowId: 'a',

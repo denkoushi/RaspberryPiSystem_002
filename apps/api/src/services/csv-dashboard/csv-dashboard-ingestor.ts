@@ -14,6 +14,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constan
 import { ProductionScheduleCleanupService } from '../production-schedule/retention/index.js';
 import { ProgressSyncFromCsvService } from '../production-schedule/progress-sync-from-csv.service.js';
 import { ProgressSyncEligibilityPolicy } from '../production-schedule/progress-sync-eligibility.policy.js';
+import { parseCsvDashboardDateColumnToUtc } from './csv-dashboard-datetime-parse.js';
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
@@ -89,7 +90,10 @@ export class CsvDashboardIngestor {
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
         const normalized = this.normalizeRow(row, columnMapping);
-        const occurredAt = this.extractOccurredAt(row, dateColumnIndex);
+        const occurredAt = this.extractOccurredAt(row, dateColumnIndex, {
+          dashboardId,
+          dateColumnName: dashboard.dateColumnName ?? null,
+        });
         if (dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
           this.validateProductionScheduleRow(normalized, i);
         }
@@ -465,11 +469,16 @@ export class CsvDashboardIngestor {
 
   /**
    * 日付列からoccurredAtを抽出
-   * 日付形式: "2026/1/8 8:13" をパースしてAsia/Tokyoタイムゾーンで解釈
+   * - 従来: `YYYY/M/D` または `YYYY/M/D H:M` を Asia/Tokyo としてUTCへ
+   * - 拡張: ISO8601 日時（`T` 区切り、`csv-dashboard-datetime-parse` 参照）
    */
   private extractOccurredAt(
     row: string[],
-    dateColumnIndex: number
+    dateColumnIndex: number,
+    context?: {
+      dashboardId: string;
+      dateColumnName: string | null;
+    }
   ): Date {
     if (dateColumnIndex === -1) {
       // 日付列が指定されていない場合は現在時刻を使用
@@ -482,32 +491,29 @@ export class CsvDashboardIngestor {
     }
 
     try {
-      // 日付形式: "2026/1/8 8:13" または "2026/1/8" をパース
-      // 正規表現でパース
-      const dateTimeMatch = dateValue.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?$/);
-      if (!dateTimeMatch) {
-        logger.warn({ dateValue }, '[CsvDashboardIngestor] Invalid date format, using current time');
+      const utcDate = parseCsvDashboardDateColumnToUtc(dateValue);
+      if (!utcDate) {
+        logger.warn(
+          {
+            dateValue,
+            dashboardId: context?.dashboardId,
+            dateColumnName: context?.dateColumnName,
+          },
+          '[CsvDashboardIngestor] Invalid date format, using current time'
+        );
         return new Date();
       }
-
-      const [, year, month, day, hour = '0', minute = '0'] = dateTimeMatch;
-      const yearNum = parseInt(year, 10);
-      const monthNum = parseInt(month, 10) - 1; // JavaScriptのDateは0始まり
-      const dayNum = parseInt(day, 10);
-      const hourNum = parseInt(hour, 10);
-      const minuteNum = parseInt(minute, 10);
-
-      // 入力値は常にAsia/Tokyoとして扱い、実行環境のローカルTZに依存しないUTCへ変換する
-      const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
-
-      if (isNaN(utcDate.getTime())) {
-        logger.warn({ dateValue }, '[CsvDashboardIngestor] Invalid date, using current time');
-        return new Date();
-      }
-
       return utcDate;
     } catch (error) {
-      logger.warn({ err: error, dateValue }, '[CsvDashboardIngestor] Failed to parse date, using current time');
+      logger.warn(
+        {
+          err: error,
+          dateValue,
+          dashboardId: context?.dashboardId,
+          dateColumnName: context?.dateColumnName,
+        },
+        '[CsvDashboardIngestor] Failed to parse date, using current time'
+      );
       return new Date();
     }
   }
