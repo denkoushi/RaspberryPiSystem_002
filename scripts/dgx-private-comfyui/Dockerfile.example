@@ -35,5 +35,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8188
 
+# DGX Spark unified-memory safeguard:
+# avoid extra copy on safetensors device transfer when ComfyUI's utils still uses copy=True.
+RUN python - <<'PY'
+from pathlib import Path
+path = Path("/opt/ComfyUI/comfy/utils.py")
+src = path.read_text(encoding="utf-8")
+if "copy=True" in src:
+    path.write_text(src.replace("copy=True", "copy=False"), encoding="utf-8")
+PY
+
 # Listen inside the container; host publish is restricted to 127.0.0.1 in compose.yaml.
+# Keep runtime args in compose/.env via COMFYUI_EXTRA_ARGS.
 CMD ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188"]

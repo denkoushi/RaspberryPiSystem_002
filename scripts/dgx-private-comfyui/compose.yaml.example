@@ -17,6 +17,8 @@ services:
       - .env
     environment:
       NVIDIA_VISIBLE_DEVICES: all
+      CUDA_CACHE_MAXSIZE: ${CUDA_CACHE_MAXSIZE:-4294967296}
+      NCCL_P2P_DISABLE: ${NCCL_P2P_DISABLE:-1}
     # GPU access (Compose v2+); aligns with DGX Spark docs (`docker run --gpus=all`).
     gpus: all
     volumes:
@@ -27,6 +29,17 @@ services:
     ports:
       # Loopback-only publish: use Tailscale SSH port-forward from your Mac to this host port.
       - "127.0.0.1:${COMFYUI_PORT:-8188}:8188"
+    command:
+      - python
+      - main.py
+      - --listen
+      - 0.0.0.0
+      - --port
+      - "8188"
+      - --bf16-unet
+      - --bf16-vae
+      - --bf16-text-enc
+      - --disable-dynamic-vram
     networks:
       - dgx_private_personal
 

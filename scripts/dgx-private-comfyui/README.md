@@ -54,6 +54,40 @@ docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-s
 
 7. DGX **本体では** `curl -I http://127.0.0.1:8188` が `HTTP/1` で応答することを確認。
 
+## DGX Spark 追加最適化（推奨）
+
+### ComfyUI ランタイム
+
+`compose.yaml.example` の既定 command は以下を有効化しています。
+
+- `--bf16-unet`
+- `--bf16-vae`
+- `--bf16-text-enc`
+- `--disable-dynamic-vram`
+
+環境変数は `.env` で次を指定します（既定値あり）。
+
+- `CUDA_CACHE_MAXSIZE=4294967296`
+- `NCCL_P2P_DISABLE=1`
+
+`--use-sage-attention` は導入済み環境でのみ有効化してください（未導入で付けると起動失敗）。
+
+### safetensors コピー最小化
+
+`Dockerfile.example` は ComfyUI の `comfy/utils.py` にある `copy=True` を `copy=False` に置換するパッチを build 時に適用します。  
+DGX Spark の unified memory で不要コピーを抑え、メモリ圧迫を避ける目的です。
+
+### ホスト側（DGX）安定化手順
+
+電力スパイクとスワップ由来の不安定化を避けるため、DGX ホスト側で次を実施します。
+
+```bash
+sudo swapoff -a
+echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.conf
+sudo nvidia-smi -pm 1
+sudo nvidia-smi -lgc 300,2100
+```
+
 ## データの置き場所
 
 既定 (`COMFYUI_DATA_ROOT`) は次を想定しています。
