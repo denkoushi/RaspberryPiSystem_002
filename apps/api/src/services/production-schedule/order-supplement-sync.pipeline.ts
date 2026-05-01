@@ -66,6 +66,13 @@ type ExistingSupplementRow = {
 
 type ExistingSupplementMap = Map<string, ExistingSupplementRow>;
 
+/**
+ * 更新時: CSV からパースした計画納期が無い（空・不正で null）場合は既存値を保持する。
+ * 着手日の「CSV 空は既存維持」と同系（手動納期 `dueDate` とは別テーブル）。
+ */
+const mergePlannedEndDateForUpdate = (fromCsv: Date | null, existing: Date | null): Date | null =>
+  fromCsv ?? existing;
+
 const parseQuantity = (value: unknown): number | null => {
   const normalized = normalizeToken(value);
   if (normalized.length === 0) return null;
@@ -97,9 +104,6 @@ const parsePlannedDate = (value: unknown): Date | null => {
 
   const mdYMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?$/);
   if (!mdYMatch) {
-    // #region agent log
-    fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'48d506'},body:JSON.stringify({sessionId:'48d506',runId:'run-initial',hypothesisId:'H1',location:'order-supplement-sync.pipeline.ts:parsePlannedDate',message:'planned date format rejected',data:{raw:String(value ?? ''),normalized},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return null;
   }
   const [, m, d, y] = mdYMatch;
@@ -116,9 +120,6 @@ export function toSupplementNormalizedRow(
   const productNo = normalizeToken(rowData.ProductNo);
   const processOrder = normalizeToken(rowData.FKOJUN);
   const resourceCd = normalizeProductionScheduleResourceCd(normalizeToken(rowData.FSIGENCD));
-  // #region agent log
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'48d506'},body:JSON.stringify({sessionId:'48d506',runId:'run-initial',hypothesisId:'H2',location:'order-supplement-sync.pipeline.ts:toSupplementNormalizedRow',message:'supplement row normalize input',data:{sourceRowId,hasPlannedEndDateKey:Object.prototype.hasOwnProperty.call(rowData,'plannedEndDate'),plannedEndDateRaw:typeof rowData.plannedEndDate==='string'?rowData.plannedEndDate:null,productNo,processOrder,resourceCd},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (productNo.length === 0 || processOrder.length === 0 || resourceCd.length === 0) {
     return null;
   }
@@ -223,9 +224,6 @@ export function buildReplacementCreateInputs(
     });
     const winnerRowId = winnerIdByKey.get(key);
     if (!winnerRowId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'48d506'},body:JSON.stringify({sessionId:'48d506',runId:'run-initial',hypothesisId:'H3',location:'order-supplement-sync.pipeline.ts:buildReplacementCreateInputs',message:'supplement row unmatched to winner',data:{productNo:row.productNo,resourceCd:row.resourceCd,processOrder:row.processOrder,plannedEndDate:row.plannedEndDate?row.plannedEndDate.toISOString():null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       unmatched += 1;
       continue;
     }
@@ -253,13 +251,15 @@ export function buildReplacementCreateInputs(
       ? existing.plannedStartDate
       : row.plannedStartDate ?? existing.plannedStartDate;
 
+    const nextPlannedEndDate = mergePlannedEndDateForUpdate(row.plannedEndDate, existing.plannedEndDate);
+
     updateInputs.push({
       id: existing.id,
       data: {
         csvDashboardRowId: winnerRowId,
         plannedQuantity: row.plannedQuantity,
         plannedStartDate: nextPlannedStartDate,
-        plannedEndDate: row.plannedEndDate,
+        plannedEndDate: nextPlannedEndDate,
         lastSeenAt: now,
       },
     });
