@@ -13,6 +13,7 @@ import { ClientsPage } from './pages/admin/ClientsPage';
 import { CsvDashboardsPage } from './pages/admin/CsvDashboardsPage';
 import { CsvImportPage } from './pages/admin/CsvImportPage';
 import { DashboardPage } from './pages/admin/DashboardPage';
+import { DgxResourceAdminPage } from './pages/admin/DgxResourceAdminPage';
 import { GmailConfigPage } from './pages/admin/GmailConfigPage';
 import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
 import { LoanReportPage } from './pages/admin/LoanReportPage';
@@ -129,6 +130,7 @@ function App() {
         <Route index element={<DashboardPage />} />
         <Route path="tools">
           <Route path="employees" element={<EmployeesPage />} />
+          <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
           <Route path="items" element={<ItemsPage />} />
           <Route path="unified" element={<UnifiedItemsPage />} />
           <Route path="rigging-gears" element={<RiggingGearsPage />} />
@@ -165,6 +167,7 @@ function App() {
           <Route path="loan-report" element={<LoanReportPage />} />
         </Route>
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
+        <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />

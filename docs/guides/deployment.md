@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-01（**Gmail CSV 日時の PowerAutomate 互換（FKOJUNST_Status / CsvDashboard 一般）**／**補助 `plannedEndDate` 字句拡張**／**着手日補助の差分同期**／2026-04-30 項は下記）
+最終更新: 2026-05-01（**DGX リソース管理コンソール（Pi5 API/Web）**／**Gmail CSV 日時の PowerAutomate 互換（FKOJUNST_Status / CsvDashboard 一般）**／**補助 `plannedEndDate` 字句拡張**／**着手日補助の差分同期**／2026-04-30 項は下記）
+
+### 補足（2026-05-01: **DGX リソース管理コンソール（`/admin/tools/dgx-resource`・Pi5 API 境界）**·`feature/dgx-resource-ui-phase1`·API+Web·Pi5 のみ）
+
+- **変更概要**: Pi5 **`apps/api`** に **`/system/dgx-resource/*`**（overview / events / actions）、**`apps/web`** に管理画面 **`/admin/tools/dgx-resource`**（後方互換 **`/admin/dgx-resource`**）。DGX 本体へ直アクセスせず、Pi5 API 経由で `LOCAL_LLM_START` / `LOCAL_LLM_STOP` / `SET_POLICY` と疎通確認を集約。**停止**は **`LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`** を使用（開始用タイムアウトとの混同を避ける）。任意 ENV: `DGX_RESOURCE_*`（[Runbook: dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)）。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**。**Pi3 は今回対象外**（リソース僅少・専用手順は別ドキュメント）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**マージ前の先行検証は** `feature/dgx-resource-ui-phase1`）。
+- **本番デプロイ（実績・先行反映）**: 代表コミット **`5eb78001`**。**CI**（ブランチ push）: GitHub Actions **`25214297856`** **success**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260501-214011-6943`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・Pi4/Pi3 play は **no hosts matched**・Docker 再作成 **約 16 分規模**になり得る）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 54s**・Tailscale）。
+- **トラブルシュート**: **`update-all-clients.sh` が未コミットで拒否** → **commit** するか **`git stash push -u`**（[KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。**管理 UI が 404**: Pi5 **`web` 再ビルド**済みか・ルート **`/admin/tools/dgx-resource`** を確認。**`/stop` がタイムアウトしやすい**: `LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS` と DGX 側の停止完了時間を確認。
+- **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-01: **Gmail CSV 日時字句の PowerAutomate 互換（`FKOJUNST_Status`・一般 `CsvDashboard`）**·`fix/csv-datetime-compat-powerautomate`·API のみ·Pi5 のみ）
 

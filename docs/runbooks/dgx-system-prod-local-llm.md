@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-04-28
+last-verified: 2026-05-01
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -22,6 +22,32 @@ update-frequency: high
 - Ubuntu PC 上の現行 LocalLLM を、DGX Spark の `system-prod` へ安全に置き換える
 - ただし写真持出 VLM を壊さないため、**途中経路として text 先行の段階切替も取れる**ようにしておく
 - Pi5 API が期待する `/healthz`、`/v1/chat/completions`、`/start`、`/stop` の運用形を維持する
+
+## 管理コンソール: DGX リソース（Pi5 API 経由）
+
+**目的**: ブラウザから疎通・推論可否の目安・運用ポリシー表示、`on_demand` 時の `/start` `/stop` 要求を **Pi5 の API だけ**に閉じ込める（トークンを Web に持たせない）。
+
+**UI ルート**:
+
+- 推奨: **管理コンソール** → `/admin/tools/dgx-resource`
+- 後方互換: `/admin/dgx-resource`
+
+**サーバ API（管理者・マネージャー）**:
+
+- `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通
+- `GET /api/system/dgx-resource/events?limit=…` — UI 操作の直近履歴（プロセス内リングバッファ）
+- `POST /api/system/dgx-resource/actions` — `LOCAL_LLM_START` / `LOCAL_LLM_STOP` / `SET_POLICY`（運用モードの記録）
+
+**任意の環境変数（Pi5 `apps/api`）**:
+
+- `DGX_RESOURCE_METRICS_URL` — GPU/メモリKPI 用の GET JSON（Pi5 から到達可能な URL）
+- `DGX_RESOURCE_COMFYUI_HEALTH_URL` — ComfyUI 等の GET が 200 なら running とみなす
+- `DGX_RESOURCE_EMBEDDING_HEALTH_URL` — 相対なら admin `LOCAL_LLM` baseUrl を prefix
+- `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
+
+**実装参照**: `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts`
+
+**本番反映（2026-05-01・Phase1）**: 管理 UI は **Pi5 の `api` + `web` 再デプロイ**で配信される。**対象は `raspberrypi5` のみ**（Pi3 は専用手順・必須対象外）。標準: [deployment.md](../guides/deployment.md) 補足（2026-05-01 DGX リソース管理コンソール）。**実機**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 43 / WARN 0 / FAIL 0**。**運用メモ**: **`LOCAL_LLM_STOP`** は **`LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`**（開始用 `…_START…` とは別）で制御する。
 
 ## 現時点の判断（2026-04-26）
 

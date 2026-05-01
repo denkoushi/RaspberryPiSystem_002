@@ -208,6 +208,27 @@ const envSchema = z.object({
   LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR: z.coerce.number().int().min(0).max(23).default(23),
 
   /**
+   * DGXリソース管理UI: オプション。GET で JSON を返すメトリクス集約URL（Pi5 から到達可能な場所に置く）。
+   * 例: { "gpuUtilPct": 64, "unifiedMemoryUsedGiB": 92, "unifiedMemoryTotalGiB": 128, "freeMemoryGiB": 36 }
+   */
+  DGX_RESOURCE_METRICS_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  /** ComfyUI 等の疎通確認用（GET が 200 なら running 扱い）。未設定なら unknown */
+  DGX_RESOURCE_COMFYUI_HEALTH_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  /** embedding など追加プローブ用。相対パスのとき admin LocalLLM baseUrl を prefix にする */
+  DGX_RESOURCE_EMBEDDING_HEALTH_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).optional()
+  ),
+  DGX_RESOURCE_PROBE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10_000),
+  DGX_RESOURCE_EVENT_LOG_MAX: z.coerce.number().int().min(10).max(500).default(50),
+
+  /**
    * 推論プロバイダ配列（JSON）。未設定時は LOCAL_LLM_* から id=default を1件合成。
    * 例:
    * [{"id":"default","baseUrl":"http://host:8080","sharedToken":"...","defaultModel":"qwen","timeoutMs":60000,
