@@ -7,8 +7,10 @@ import { ProductionScheduleOrderSupplementSyncService } from '../order-supplemen
 type PrismaMock = {
   csvDashboardRow: { findMany: ReturnType<typeof vi.fn> };
   productionScheduleOrderSupplement: {
+    findMany: ReturnType<typeof vi.fn>;
     deleteMany: ReturnType<typeof vi.fn>;
     createMany: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
   };
   $queryRaw: ReturnType<typeof vi.fn>;
   $transaction: ReturnType<typeof vi.fn>;
@@ -20,8 +22,10 @@ const { prismaMock } = vi.hoisted(() => {
       findMany: vi.fn(),
     },
     productionScheduleOrderSupplement: {
+      findMany: vi.fn(),
       deleteMany: vi.fn(),
       createMany: vi.fn(),
+      update: vi.fn(),
     },
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
@@ -40,11 +44,13 @@ describe('order-supplement-sync.service', () => {
     prismaMock.$transaction.mockImplementation(async (fn: (tx: PrismaMock) => Promise<unknown>, _opts?: unknown) =>
       fn(prismaMock)
     );
+    prismaMock.productionScheduleOrderSupplement.findMany.mockResolvedValue([] as never);
     prismaMock.productionScheduleOrderSupplement.deleteMany.mockResolvedValue({ count: 0 } as never);
     prismaMock.productionScheduleOrderSupplement.createMany.mockResolvedValue({ count: 0 } as never);
+    prismaMock.productionScheduleOrderSupplement.update.mockResolvedValue({ id: 'updated-1' } as never);
   });
 
-  it('supplement行をwinner行へ照合し、ソース単位でdeleteManyの後にcreateManyする', async () => {
+  it('supplement行をwinner行へ照合し、既存が無ければcreateManyで追加する', async () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
       {
         id: 'src-1',
@@ -80,12 +86,7 @@ describe('order-supplement-sync.service', () => {
       upserted: 1,
       pruned: 0,
     });
-    expect(prisma.productionScheduleOrderSupplement.deleteMany).toHaveBeenCalledWith({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
-      },
-    });
+    expect(prisma.productionScheduleOrderSupplement.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleOrderSupplement.createMany).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleOrderSupplement.createMany).toHaveBeenCalledWith({
       data: [
@@ -98,13 +99,16 @@ describe('order-supplement-sync.service', () => {
           processOrder: '200',
           plannedQuantity: 15,
           plannedStartDate: expect.any(Date),
+          plannedStartDateManuallySet: false,
           plannedEndDate: expect.any(Date),
+          lastSeenAt: expect.any(Date),
         },
       ],
     });
+    expect(prisma.productionScheduleOrderSupplement.update).not.toHaveBeenCalled();
   });
 
-  it('照合不能な行はunmatchedとして集計し、createManyは行わず既存補助をすべて削除する', async () => {
+  it('照合不能な行はunmatchedとして集計し、既存補助を削除しない', async () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
       {
         id: 'src-1',
@@ -117,19 +121,20 @@ describe('order-supplement-sync.service', () => {
       },
     ] as never);
     vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
-    vi.mocked(prisma.productionScheduleOrderSupplement.deleteMany).mockResolvedValue({ count: 2 } as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.deleteMany).mockResolvedValue({ count: 0 } as never);
 
     const service = new ProductionScheduleOrderSupplementSyncService();
     const result = await service.syncFromSupplementDashboard();
 
     expect(result.unmatched).toBe(1);
     expect(result.matched).toBe(0);
-    expect(result.pruned).toBe(2);
+    expect(result.pruned).toBe(0);
     expect(result.upserted).toBe(0);
     expect(prisma.productionScheduleOrderSupplement.createMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSupplement.update).not.toHaveBeenCalled();
   });
 
-  it('winner行IDが付け替わっても複合ユニーク衝突なく再作成できる（全削除→createMany）', async () => {
+  it('既存manual着手日はCSV同期で上書きしない', async () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
       {
         id: 'src-1',
@@ -149,21 +154,37 @@ describe('order-supplement-sync.service', () => {
         processOrder: '200',
       },
     ] as never);
-    vi.mocked(prisma.productionScheduleOrderSupplement.deleteMany).mockResolvedValue({ count: 1 } as never);
-    vi.mocked(prisma.productionScheduleOrderSupplement.createMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-1',
+        csvDashboardRowId: 'winner-old',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 8,
+        plannedStartDate: new Date('2026-04-20T00:00:00.000Z'),
+        plannedEndDate: new Date('2026-04-20T00:00:00.000Z'),
+        plannedStartDateManuallySet: true,
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.deleteMany).mockResolvedValue({ count: 0 } as never);
 
     const service = new ProductionScheduleOrderSupplementSyncService();
     const result = await service.syncFromSupplementDashboard();
 
     expect(result.matched).toBe(1);
     expect(result.upserted).toBe(1);
-    expect(result.pruned).toBe(1);
-    const deleteOrder = vi.mocked(prisma.productionScheduleOrderSupplement.deleteMany).mock.invocationCallOrder[0] ?? 0;
-    const createOrder = vi.mocked(prisma.productionScheduleOrderSupplement.createMany).mock.invocationCallOrder[0] ?? 0;
-    expect(deleteOrder).toBeLessThan(createOrder);
-    expect(vi.mocked(prisma.productionScheduleOrderSupplement.createMany).mock.calls[0]?.[0]?.data?.[0]).toMatchObject({
-      csvDashboardRowId: 'winner-new',
-      productNo: '0003712732',
+    expect(result.pruned).toBe(0);
+    expect(prisma.productionScheduleOrderSupplement.createMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledTimes(1);
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'existing-1' },
+      data: expect.objectContaining({
+        csvDashboardRowId: 'winner-new',
+        plannedQuantity: 10,
+        plannedStartDate: new Date('2026-04-20T00:00:00.000Z'),
+        lastSeenAt: expect.any(Date),
+      }),
     });
   });
 });

@@ -3,9 +3,9 @@ import { logger } from '../../lib/logger.js';
 import {
   dedupeSupplementRows,
   loadSupplementSourceRows,
+  loadExistingSupplementsByKey,
   resolveWinnerIdByKey,
   buildReplacementCreateInputs,
-  runOrderSupplementClearTransaction,
   runOrderSupplementReplacementTransaction,
 } from './order-supplement-sync.pipeline.js';
 
@@ -19,16 +19,15 @@ export type ProductionScheduleOrderSupplementSyncResult = import('./order-supple
 export class ProductionScheduleOrderSupplementSyncService {
   async syncFromSupplementDashboard(): Promise<ProductionScheduleOrderSupplementSyncResult> {
     const { scanned, normalizedRows } = await loadSupplementSourceRows(prisma);
-
-    if (normalizedRows.length === 0) {
-      const result = await runOrderSupplementClearTransaction(prisma, scanned);
-      logger.info(result, '[ProductionScheduleOrderSupplementSyncService] Order supplement sync cleared (no normalized rows)');
-      return result;
-    }
-
     const dedupedRows = dedupeSupplementRows(normalizedRows);
     const winnerIdByKey = await resolveWinnerIdByKey(prisma, dedupedRows);
-    const { matched, unmatched, createInputs } = buildReplacementCreateInputs(dedupedRows, winnerIdByKey);
+    const existingByKey = await loadExistingSupplementsByKey(prisma);
+    const { matched, unmatched, createInputs, updateInputs } = buildReplacementCreateInputs(
+      dedupedRows,
+      winnerIdByKey,
+      existingByKey,
+      new Date()
+    );
 
     const result = await runOrderSupplementReplacementTransaction(prisma, {
       scanned,
@@ -36,6 +35,7 @@ export class ProductionScheduleOrderSupplementSyncService {
       matched,
       unmatched,
       createInputs,
+      updateInputs,
     });
 
     logger.info(result, '[ProductionScheduleOrderSupplementSyncService] Order supplement sync completed');

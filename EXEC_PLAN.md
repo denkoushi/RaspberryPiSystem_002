@@ -9,6 +9,7 @@
 
 ## Progress
 
+- [x] (2026-05-01) **着手日同期を差分反映へ移行（全削除置換廃止・手動補正保護・1年超過 prune）**·`feat/order-supplement-incremental-sync`·未コミット: `ProductionScheduleOrderSupplement` の同期を **`deleteMany -> createMany` 全置換**から **create/update 差分反映**へ変更し、`plannedStartDateManuallySet` / `lastSeenAt` を Prisma へ追加。CSV 側が空でも既存非 null 着手日を維持し、**手動補正フラグ=true** の着手日は同期で上書きしない。1年以上前の自動着手日は prune。**ローカル検証**: `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts`（**3 passed**）/ `pnpm --filter @raspi-system/api lint` / `pnpm --filter @raspi-system/api build` を通過。詳細計画: [order-supplement-incremental-sync-execplan.md](./docs/plans/order-supplement-incremental-sync-execplan.md)。
 - [x] (2026-04-30) **キオスク順位ボード・完了フィルタ既定を未完**·`feat/kiosk-leaderboard-default-incomplete`·`e8d3943f`·本番 **`raspberrypi5` のみ**·Phase12·[deployment.md](./docs/guides/deployment.md)·[KB-297 §完了フィルタ既定](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-default-completion-filter-incomplete-2026-04-30): [`ProductionScheduleLeaderOrderBoardPage.tsx`](./apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の **`completionFilter`** 初期値 **`'incomplete'`**（従来 `'all'`）。**API/DB 変更なし**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-default-incomplete infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260430-184641-30513`**（**`failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **153s**）。**Pi4/Pi3**: 不要（Pi5 `web` のみ）。**知見**: 一覧が空に見えるときは **未完ゼロ**か **「両方」未選択**を確認。**トラブルシュート**: [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.4 **強制リロード**。**`main`**: merge + push（本セッション・ドキュメント記録コミット含む）。
 
 - [x] (2026-04-30) **キオスク負荷調整（山崩し支援）**·`feat/kiosk-load-balance-suggest`·`d3c37b6f`·本番 **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**·Phase12·[deployment.md](./docs/guides/deployment.md)·[KB-362](./docs/knowledge-base/KB-362-kiosk-load-balancing.md)·[kiosk-production-schedule-load-balancing.md](./docs/guides/kiosk-production-schedule-load-balancing.md): Prisma **`20260430124500_load_balancing_settings`**・管理 `/production-schedule-settings/load-balancing/*`・キオスク `load-balancing/overview|suggestions`・`reallocation-suggestion.engine.ts`。**Pi3**: **除外**（必須対象外）。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-load-balance-suggest infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260430-131611-14988`** / **`20260430-132522-19139`** / **`20260430-132943-9367`** / **`20260430-133254-30349`** / **`20260430-133615-21765`**（各 **`failed=0` / `unreachable=0` / exit `0`**・Pi5 **`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **25s**）。**知見**: Phase12 は負荷調整 API 未カバー → キオスクまたは `curl` で `overview`/`suggestions` をスモーク。**`main`**: merged + pushed（ローカル／`origin/main` 同期済み・本記録コミット含む）。
@@ -980,6 +981,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-01）: `ProductionScheduleOrderSupplement` の差分同期で Prisma client を再生成したあとでも、`update` では **外部キー scalar (`csvDashboardRowId`) を checked update input へ直接書けない**。`build` で **`Did you mean to write 'csvDashboardRow'?`** が出るため、**`UncheckedUpdateInput`** を用いるか relation connect へ寄せる必要があった。今回の同期は既存ユニークキー更新を優先し、**unchecked update** で解消した。  
+  参照: [order-supplement-incremental-sync-execplan.md](./docs/plans/order-supplement-incremental-sync-execplan.md)
 - 観測（2026-04-28）: VLM 上流の **HTTP 400** は、常に同じ単一バグとは限らず、(a) **コンテキスト超過**（`Input length … maximum context length`）、(b) **画像デコード失敗**（`cannot identify image file` 等）など**条件依存**で返り得る。本番 `Loan` 保存画像 **531 件**の一括プローブでは**全件 200**で、**破損・巨大**など**合成テスト**で 400 を意図的再現。DGX 入口へ **開発端末から直接 HTTP** すると**タイムアウト**しやすく、**Pi5 経由**（`127.0.0.1:38081` へ **SSH トンネル**等）の方が**切り分け**に向きやすい。**記録**: [deployment.md](./docs/guides/deployment.md) 補足（2026-04-28）・[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md) トラブルシューティング。ローカル診断用に **`probe-photo-label-vlm.py` へ一時 NDJSON 等を挿入**した作業分は、**固定パス依存的改変**になり得るため、**`main` にそのままコミットしない**（不要なら `git restore` か専用フラグ化）こと。
 - 観測（2026-04-27）: GitHub Actions の **`api-db-and-infra`** で **`Wait for PostgreSQL`**（`wait-for-postgres.sh`）が 1 回失敗し、ログに **`borrow_return` 等の DB が存在しない**旨が出た。PR 向けジョブは成功していたが、push 系実行でも同型の失敗が 1 回ある。**対処**: **`gh run rerun <id> --failed`** で再実行し **緑化**（コード変更と無関係な **フレーク**として扱うのが妥当な例）。**記録**: [KB-358](./docs/knowledge-base/ci-cd.md#kb-358-api-db-and-infra-の-wait-for-postgresql-が-flake-するborrow_return-等)・[ci-troubleshooting.md](./docs/guides/ci-troubleshooting.md)。
 - 観測（2026-04-27）: Mac から `update-all-clients.sh` 実行中に **`line 904: …/.pyenv/shims/python3: No such file or directory`** が出るが、**Pi5 上の Ansible は完走**し得る。ローカル **パイプ用 `python3`** の解決失敗で、**デプロイ成否の正本は `PLAY RECAP` とリモート `exit`**。**記録**: [KB-359](./docs/knowledge-base/ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告)・[deployment.md](./docs/guides/deployment.md)。
@@ -1258,6 +1261,8 @@
 
 ## Decision Log
 
+- 決定（2026-05-01）: **部品納期個数 CSV 補助同期は full replacement をやめ、差分反映を正規動作とする**。具体的には、**既存あり + 新規なしは維持**、**既存あり + 新規ありは更新**、**既存なし + 新規ありは追加**とし、**`plannedStartDateManuallySet=true` の着手日は CSV 同期で上書きしない**。さらに自動値のみ **1年超過で prune** し、CSV の一時欠落や高頻度取込で UI の `-` が増える退行を防ぐ。  
+  参照: [order-supplement-incremental-sync-execplan.md](./docs/plans/order-supplement-incremental-sync-execplan.md)・[KB-328](./docs/knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md)
 - 決定（2026-04-26）: **DGX Spark への LocalLLM 移行は、`system-prod-primary` 単一 endpoint で text + image を扱える構造と、`active assist` + 人レビュー済み gallery を前提にした実運用改善経路が成立した段階で、いったん一区切り**とする。`photo_label` の**生の初期判定精度**をさらに追い込むことは現時点の優先事項とせず、hard case（`ねじゲージ` / `金属棒` / `てこ式ダイヤルゲージ`）は**将来課題**として保持する。今後の改善は、**人レビュー `GOOD` gallery の継続蓄積**、必要時の **assist 条件見直し**、および **同じ alias / 同じ入口を保った `Qwen3.6` 系への 1:1 置換判断**に限定する。  
   参照: [docs/plans/dgx-spark-photo-label-validation-plan.md](./docs/plans/dgx-spark-photo-label-validation-plan.md)・[docs/runbooks/dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)
 - 決定（2026-04-18）: **配膳スマホ（Android）のブラウザ殻**は当面 **Chrome 継続**とし、**Web アプリ側の UI/UX 改善**で運用リスク（一般ブラウザ UI 由来の誤操作）を下げる。OSS の専用キオスクブラウザ（例: `FreeKiosk` / F-Droid `Webview Kiosk`）は **即時必須ではなく将来オプション**とし、採用時の合否ゲートは **カメラ2系統**（`getUserMedia` と `input[type=file][capture]`）を **実機で確認**すること。  
@@ -1432,6 +1437,17 @@
   日付/担当: 2026-01-31 / KB-217 デプロイ再整備
 
 ## Outcomes & Retrospective
+
+### 着手日補助同期の差分化（2026-05-01）
+
+**達成事項**:
+- `ProductionScheduleOrderSupplement` の同期を **全削除置換**から **差分反映**へ切り替え、CSV 欠落時でも既存着手日を保持できる形にした
+- `plannedStartDateManuallySet` / `lastSeenAt` を追加し、**手動補正保護**と**鮮度追跡**の土台を整えた
+- 単体テスト 3 件、`lint`、`build` を通し、Prisma 型不整合（checked/unchecked update）も解消した
+
+**学んだこと**:
+- この補助テーブルは「最新CSVだけが真」とみなすより、**一時欠落に耐える保持型同期**の方が現場運用に合う
+- Prisma では relation 外部キーを update する箇所が **createMany と同じ書き味にならない**ため、ビルド確認が必須
 
 ### DGX Spark LocalLLM: 構造成立で一区切り（2026-04-26）
 

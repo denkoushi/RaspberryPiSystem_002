@@ -868,7 +868,11 @@ model ProductionScheduleOrderSupplement {
   processOrder       String    @db.VarChar(20)
   plannedQuantity    Int?
   plannedStartDate   DateTime? @db.Date
+  /// 現場の手動補正を保護するフラグ（true のとき取込同期で着手日を上書きしない）。
+  plannedStartDateManuallySet Boolean @default(false)
   plannedEndDate     DateTime? @db.Date
+  /// 直近で CSV 同期に再出現した時刻（差分同期の鮮度管理）。
+  lastSeenAt         DateTime  @default(now())
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -878,6 +882,8 @@ model ProductionScheduleOrderSupplement {
   @@unique([csvDashboardId, sourceCsvDashboardId, productNo, resourceCd, processOrder], map: "ProductionScheduleOrderSupplement_unique_source_key")
   @@index([csvDashboardId], map: "ProductionScheduleOrderSupplement_idx_dashboard")
   @@index([sourceCsvDashboardId], map: "ProductionScheduleOrderSupplement_idx_source_dashboard")
+  @@index([plannedStartDate], map: "ProductionScheduleOrderSupplement_idx_start_date")
+  @@index([lastSeenAt], map: "ProductionScheduleOrderSupplement_idx_last_seen")
 }
 
 /// Gmail FKOJUNST CSV 由来の工順ステータス（最新CSVが正。source 単位で全置換）
