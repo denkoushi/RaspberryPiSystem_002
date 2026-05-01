@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-04-28
+last-verified: 2026-05-01
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -46,6 +46,8 @@ update-frequency: high
 - `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
 
 **実装参照**: `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts`
+
+**本番反映（2026-05-01・Phase1）**: 管理 UI は **Pi5 の `api` + `web` 再デプロイ**で配信される。**対象は `raspberrypi5` のみ**（Pi3 は専用手順・必須対象外）。標準: [deployment.md](../guides/deployment.md) 補足（2026-05-01 DGX リソース管理コンソール）。**実機**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 43 / WARN 0 / FAIL 0**。**運用メモ**: **`LOCAL_LLM_STOP`** は **`LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`**（開始用 `…_START…` とは別）で制御する。
 
 ## 現時点の判断（2026-04-26）
 
