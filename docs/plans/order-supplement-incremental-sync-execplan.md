@@ -16,6 +16,9 @@
 - [x] (2026-05-01T02:22Z) `pnpm --filter @raspi-system/api test -- src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts` を実行し 3 tests passed を確認。
 - [x] (2026-05-01T02:23Z) `pnpm --filter @raspi-system/api lint` を実行し成功を確認。
 - [x] (2026-05-01T02:24Z) 実装結果の最終点検とユーザー報告準備。
+- [x] (2026-05-01 JST) 本番 **`raspberrypi5` のみ**デプロイ（[deployment.md](../guides/deployment.md) 標準・Detach **`20260501-111010-10961`**・**`PLAY RECAP` `failed=0` / `unreachable=0`**）。
+- [x] (2026-05-01 JST) `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**・Tailscale）。
+- [x] (2026-05-01 JST) デプロイ実績・仕様・TS を [deployment.md](../guides/deployment.md)·[KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md)·[KB-328](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md)·[INDEX](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md) に反映。
 
 ## Surprises & Discoveries
 

@@ -2,7 +2,7 @@
 title: "KB-328: 生産日程本体CSVと部品納期個数（補助）の照合ずれ・上流データ・表示設計の整理"
 tags: [production-schedule, ProductionScheduleOrderSupplement, csv-dashboard, winner-dedup, unmatched, upstream-erp]
 audience: [開発者, 運用者, 生産管理システム連携担当]
-last-verified: 2026-04-04
+last-verified: 2026-05-01
 related:
   - ./KB-297-kiosk-due-management-workflow.md
   - ./KB-326-manual-upload-order-supplement-sync.md
@@ -18,6 +18,11 @@ category: knowledge-base
 2026-04-03 前後、キオスク生産日程で **Gmail 経由の部品納期個数CSV（補助）** を取り込んでも、一部行で **納期・指示数（`plannedQuantity` / `plannedStartDate` / `plannedEndDate`）が空**のままになる事象の調査を実施した。あわせて、**本体生産日程CSV**（件名例: `生産日程_三島_研削工程`）の取込成否・列不一致・手動アップロードUIの落とし穴も切り分けた。
 
 本KBは **コード改修の記録ではなく**、調査で確定した仕様・事象・上流とのギャップ・将来判断用の背景を **再現可能な形**で残す。
+
+## 着手日が「急に `-` に戻る」系の切り分け（2026-05-01 追補）
+
+- **典型原因（運用）**: 補助CSVの **行欠落**や **着手日列の空** が増えたタイミングと一致する場合、旧同期が **全削除→再投入** だった頃は **既存着手日まで消える**ことがあった。**2026-05-01** 以降は **`ProductionScheduleOrderSupplement` を incremental 同期**に変更し、当該現象を抑える（詳細・デプロイ実績は [KB-297 §着手日補助の差分同期](./KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)·[deployment.md](../guides/deployment.md)）。
+- **依然 `-` のままになり得るケース**: **そもそも補助にキーが無い**・**winner に照合できない（unmatched）**・**本体側に工程が無い** 等は、従来どおり **[KB-297](./KB-297-kiosk-due-management-workflow.md) / 本章の照合キー節**で切り分ける。
 
 ## Symptoms（現場で見えること）
 
@@ -41,6 +46,7 @@ category: knowledge-base
   - `FKOJUN`
 - **製番（`FSEIBAN`）・品番（`FHINCD`）は照合キーに含めない**（`KB-297` の設計判断: `FSIGENCD + ProductNo` だけでは衝突があり得るため、工順を含めた3キー）。
 - **実装参照**: `apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts`（`buildOrderSupplementKey`, `resolveWinnerIdByKey`, `buildReplacementCreateInputs`）。
+- **同期方式（2026-05-01）**: `ProductionScheduleOrderSupplement` は **incremental 同期**（詳細は [KB-297 §着手日補助の差分同期](./KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)）。旧来の **全削除→再投入**ではなかった頃の「CSV 欠落で着手日が消える」退行とは切り分ける。
 - **同期結果**: `matched` / `unmatched` がログ・手動アップロード応答の `orderSupplementSync` に出る。`unmatched` は **誤結合を避けるため仕様どおり捨てる**（補助を無関係な本体行に誤マージしない）。
 
 ### 3. 手動アップロードと Gmail の扱い
