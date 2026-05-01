@@ -156,6 +156,13 @@ category: knowledge-base
 - **本番反映（2026-05-01）**: [deployment.md](../guides/deployment.md) 補足（PowerAutomate 日時互換）。**`raspberrypi5` のみ**。**Detach Run ID**（`ansible-update-`）: **`20260501-141453-4379`**（**`failed=0` / `unreachable=0`**・**`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。
 - **トラブルシュート**: 表示行がおかしいときは **まず** [§FKOJUNST_Status（2026-04-28）](#fkojunst_status-mail-from-gmail-csv-2026-04-28) の **キー・`S`/`R` 可視**を確認。パース周りは **API ログの warn** と **CSV 字句**を突き合わせる。**Pi4/Pi3**: **個別デプロイ不要**（API のみ）。
 
+### `ProductionSchedule_Mishima_Grinding` CSV に実日付が無いこと（仕様・2026-05-01） {#mishima-grinding-csv-no-date-2026-05-01}
+
+- **Context**: キオスク生産日程の本体 CSV の一つとして **`ProductionSchedule_Mishima_Grinding`**（固定 `CsvDashboard` ID **`3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01`**・seed 参照）がある。設定上の **`dateColumnName`** は **`registeredAt`**（列定義に **`registeredAt` / `updatedAt`** もある）だが、**上流 PowerAutomate が出す CSV には日時が載らない**（該当ヘッダが無い、または **全行空**）。**日時字句の PowerAutomate 変更**（上記 §）とは別件で、**欠損ではなく源流仕様**として扱う。
+- **挙動（本システム）**: `CsvDashboardIngestor` は **`dateColumnName`** のセルをパースし **`occurredAt`** に使う。**空・受理不能**のときは **取込実行時刻**へフォールバックし **[CsvDashboardIngestor] warn**（`dashboardId` / `dateColumnName` 付き）になり得る。**削除ルール**の基準日は `max(rowData.updatedAt, occurredAt)` のため、`updatedAt` も空なら **`occurredAt`（≒取込時刻）**が効く。
+- **調査（2026-05-01・手動取込）**: 本番 Pi5 で **手動 Gmail 取込 run** の一例 **`a1f180aa-9aba-4e3a-87c4-92ea0a83d26a`** について、保存 CSV と DB を確認。**BOM 付き**ヘッダ **`ProductNo` 始まり**・必須キー相当（**`ProductNo`・`FSEIBAN`・`FHINCD`・`FSIGENCD`・`FKOJUN`**）に欠損なし・**`FSIGENSHOYORYO`** は数値。**`registeredAt` / `updatedAt` は CSV 上すべて空**（源流に日付列が無いことと整合）。
+- **トラブルシュート**: **「日付がパースできない」warn** が三島研削で出るのは **CSV に値が無い**場合の **想定内**。原因切り分けするなら **他ダッシュボード**と混同していないか（`dashboardId`）・**上流で列追加できるか**（運用）を確認。**表示欠落**や **キオスクの FKOJUNST 問題**は [§FKOJUNST_Status](#fkojunst_status-mail-from-gmail-csv-2026-04-28)・**FHINCD プレフィックス**ではなく **ステータス可視ポリシー**などを優先して見る。**正本（CSV ダッシュボード全般）**: [csv-import-export.md](../guides/csv-import-export.md)。
+
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
 
 - **Context**: Gmail 件名 **`FKOBAINO`** の CSV（注文番号・購買品名など）を **生産日程本体とは分離**して保持し、現品票の一次元バーコード（**10 桁 `FKOBAINO`**）から **製番・購買品名・既存マスタ品名（正規化 `FHINCD`）・機種名** をキオスクに表示する。
