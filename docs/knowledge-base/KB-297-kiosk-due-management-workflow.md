@@ -2463,6 +2463,24 @@ category: knowledge-base
   - **開いた瞬間に完了行も並ぶ**: 古いバンドル／キャッシュを疑い **強制リロード**、Pi5 `web` のデプロイ取り込みコミットを確認。
   - **一覧が空**: **未完行がゼロ**のときは仕様どおり。**「両方」**へ切り替えて完了行を表示。
 
+### Leader order board: seiban visibility UX（資源進捗列・左ペイン2列・行左アクセント）（2026-05-01） {#leader-order-board-ux-seiban-accent-2026-05-01}
+
+- **目的**: 順位ボードで **登録製番**と **納期アシスト内の工程進捗**を読みやすくし、製番で絞り込んだ行を **左縁アクセント**で一目で追いやすくする。**Web のみ**・API / DB 契約は不変。
+- **仕様（要約）**:
+  - **進捗チップ**: 生産スケジュール進捗一覧と共有の [`KioskResourceProcessChips`](../../apps/web/src/components/kiosk/resourceProgress/KioskResourceProcessChips.tsx)（一覧側は [`ProgressOverviewPartRow`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx) から委譲）。
+  - **納期アシスト**: [`LeaderBoardDueAssistPanel`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel.tsx) に **資源進捗**列・**横スクロール**。
+  - **左ペイン**: [`LeaderBoardLeftToolStack`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx) の **`w-72`**・登録製番 **`grid-cols-2`**・チップ大型化。
+  - **製番フィルタ時の行強調**: [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) で **安定配色**、`ProductionScheduleLeaderOrderBoardPage` → `LeaderBoardGrid` → `LeaderOrderResourceCard` → `LeaderOrderResourceRow` へ **`activeQueries`** を伝播。**回帰**: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)。
+- **デプロイ・実機検証（2026-05-01）**:
+  - **ブランチ**: `feat/kiosk-leader-order-board-ux`（代表コミット **`84abca0b`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（ユーザー指定運用どおり）。
+  - **Detach Run ID**（`ansible-update-`）: **`20260501-224248-30928`** / **`20260501-224814-26947`** / **`20260501-225329-28559`** / **`20260501-225740-4207`** / **`20260501-230236-8738`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **67s**・Tailscale）。
+- **知見**: **`activeQueries`** は **クエリ駆動の「どの製番で絞っているか」**の単一ソースに寄せ、アクセントは **製番ごとにハッシュ安定色**へマップすると列が増えても見通しが保てる。**チップは 1 コンポーネント**にまとめると進捗一覧と納期アシストの **見え方ドリフト**を抑えられる。
+- **トラブルシューティング**:
+  - **アクセントが付かない**: `activeQueries` が空でないか（フィルタ未適用では付かない）、**強制リロード**後に再確認。
+  - **納期アシストが横に伸びない / 進捗列が無い**: 古い SPA を疑う → Pi5 `web` と各 Pi4 **`kiosk-browser`** 再起動ログ・`/opt/RaspberryPiSystem_002` の **ブランチ**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。

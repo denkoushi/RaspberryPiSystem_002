@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-01（**DGX リソース管理コンソール（Pi5 API/Web）**／**Gmail CSV 日時の PowerAutomate 互換（FKOJUNST_Status / CsvDashboard 一般）**／**補助 `plannedEndDate` 字句拡張**／**着手日補助の差分同期**／2026-04-30 項は下記）
+最終更新: 2026-05-01（**キオスク順位ボード UX（製番・アクセント・資源進捗列）**／**DGX リソース管理コンソール（Pi5 API/Web）**／**Gmail CSV 日時の PowerAutomate 互換（FKOJUNST_Status / CsvDashboard 一般）**／**補助 `plannedEndDate` 字句拡張**／**着手日補助の差分同期**／2026-04-30 項は下記）
+
+### 補足（2026-05-01: **キオスク順位ボード UX（製番視認性・納期アシスト資源進捗・左ペイン2列・行左アクセント）**·`feat/kiosk-leader-order-board-ux`·Web のみ·Pi5→Pi4×4）
+
+- **変更概要**: 進捗一覧と共有の [`KioskResourceProcessChips.tsx`](../../apps/web/src/components/kiosk/resourceProgress/KioskResourceProcessChips.tsx)（[`ProgressOverviewPartRow.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx) から委譲）。納期アシスト [`LeaderBoardDueAssistPanel.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardDueAssistPanel.tsx) に **資源進捗**列と **横スクロール**。左ペイン [`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx) **幅拡張（`w-72`）**・登録製番 **2 列グリッド**・チップ大型化。製番フィルタ時の **行左アクセント色**（[`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts)·[`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)·`ProductionScheduleLeaderOrderBoardPage`→`LeaderBoardGrid`→`LeaderOrderResourceCard`→`LeaderOrderResourceRow` へ **`activeQueries` 伝播**）。**API / DB 変更なし**。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（本記録では対象外・リソース僅少のため専用手順は未実施）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leader-order-board-ux infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`84abca0b`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260501-224248-30928`**（`raspberrypi5`）/ **`20260501-224814-26947`**（`raspberrypi4`）/ **`20260501-225329-28559`**（`raspi4-robodrill01`）/ **`20260501-225740-4207`**（`raspi4-fjv60-80`）/ **`20260501-230236-8738`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**（Pi5 は Docker 再構築込みで **`ok=130` `changed=4` 規模**、Pi4 クライアントはホストにより **`ok≈129` `changed≈10`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 67s**・Tailscale）。
+- **トラブルシュート**: 見た目が旧のまま → [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**・各ホスト `/opt/RaspberryPiSystem_002` の **取り込みブランチ/HEAD**。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §順位ボード UX（2026-05-01）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-ux-seiban-accent-2026-05-01)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-01: **DGX リソース管理コンソール（`/admin/tools/dgx-resource`・Pi5 API 境界）**·`feature/dgx-resource-ui-phase1`·API+Web·Pi5 のみ）
 
