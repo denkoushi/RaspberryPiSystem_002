@@ -93,7 +93,7 @@ export function LeaderBoardLeftToolStack({
         aria-hidden
       />
       <aside
-        className="flex h-full min-h-0 w-64 max-w-[85vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950 p-3 shadow-xl"
+        className="flex h-full min-h-0 w-72 max-w-[90vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950 p-3 shadow-xl"
         aria-label="操作パネル"
       >
         <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
@@ -200,7 +200,7 @@ export function LeaderBoardLeftToolStack({
             </button>
           </div>
           <div
-            className="mt-2 flex min-h-0 flex-1 flex-wrap content-start gap-1 overflow-y-auto overflow-x-hidden pr-1"
+            className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2 content-start overflow-y-auto overflow-x-hidden pr-0.5"
             style={{ WebkitOverflowScrolling: 'touch' }}
             aria-label="登録済み製番"
           >
@@ -210,7 +210,7 @@ export function LeaderBoardLeftToolStack({
                 <div
                   key={fseiban}
                   className={clsx(
-                    'relative flex items-center rounded-full border pl-2 pr-5 text-[10px] font-semibold',
+                    'relative flex min-h-[2.5rem] min-w-0 w-full items-stretch rounded-lg border',
                     filtered
                       ? 'border-emerald-300 bg-emerald-400 text-slate-900'
                       : 'border-white/25 bg-white/10 text-white hover:bg-white/20'
@@ -219,7 +219,7 @@ export function LeaderBoardLeftToolStack({
                   <button
                     type="button"
                     onClick={() => dueAssist.toggleFseibanFilter(fseiban)}
-                    className="py-1 text-left font-mono"
+                    className="min-w-0 flex-1 px-2 py-2 text-left text-sm font-semibold leading-tight font-mono"
                     aria-pressed={filtered}
                   >
                     {fseiban}
@@ -227,8 +227,8 @@ export function LeaderBoardLeftToolStack({
                   <button
                     type="button"
                     className={clsx(
-                      'absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
-                      filtered ? 'bg-slate-200 text-slate-900' : 'bg-white text-slate-900'
+                      'flex min-h-[2.25rem] min-w-[2.25rem] shrink-0 items-center justify-center rounded-r-[0.4rem] text-base font-bold leading-none',
+                      filtered ? 'bg-slate-900/25 text-slate-900 hover:bg-slate-900/35' : 'bg-white/15 text-white hover:bg-white/25'
                     )}
                     onClick={(event) => {
                       event.stopPropagation();

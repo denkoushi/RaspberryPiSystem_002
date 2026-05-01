@@ -440,6 +440,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             sortedGrouped={sortedGrouped}
             resourceNameMap={resourceNameMap}
             orderUsageByResourceCd={orderUsageQuery.data}
+            activeSeibanFilters={searchConditions.activeQueries}
             selectedResourceCd={selectedResourceCd}
             setSelectedResourceCd={setSelectedResourceCd}
             onOpenDueDatePicker={handleOpenRowDueDate}

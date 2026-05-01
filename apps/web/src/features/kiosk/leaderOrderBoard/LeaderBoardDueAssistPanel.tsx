@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 
+import { KioskResourceProcessChips } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { formatPlannedDateLabel, formatPlannedQuantityLabel } from '../productionSchedule/plannedDueDisplay';
 
@@ -23,6 +24,14 @@ function PartRow({ part }: { part: ProductionScheduleDueManagementPartItem }) {
       <td className="px-2 py-2 font-mono">{part.fhincd || '-'}</td>
       <td className="px-2 py-2 font-mono">{part.productNo || '-'}</td>
       <td className="px-2 py-2">{part.fhinmei || '-'}</td>
+      <td className="min-w-[8rem] px-2 py-2 align-top">
+        <div className="flex flex-col gap-1">
+          <span className="whitespace-nowrap font-mono text-[10px] text-white/60 tabular-nums">
+            {part.completedProcessCount}/{part.totalProcessCount}
+          </span>
+          <KioskResourceProcessChips processes={part.processes} />
+        </div>
+      </td>
       <td className="px-2 py-2">{part.processingType || '-'}</td>
       <td className="px-2 py-2">{formatPlannedQuantityLabel(part.plannedQuantity ?? null)}</td>
       <td className="px-2 py-2">{formatPlannedDateLabel(part.plannedStartDate ?? null)}</td>
@@ -105,24 +114,27 @@ export function LeaderBoardDueAssistPanel({
           <p className="text-sm text-white/70">部品一覧がありません。</p>
         ) : null}
         {!loading && !error && detail && detail.parts.length > 0 ? (
-          <table className="w-full border-collapse text-left text-xs text-white">
-            <thead className="sticky top-0 z-10 bg-slate-900">
-              <tr className="border-b border-white/20 text-white/80">
-                <th className="px-2 py-2">部品</th>
-                <th className="px-2 py-2">製造order番号</th>
-                <th className="px-2 py-2">品名</th>
-                <th className="px-2 py-2">処理</th>
-                <th className="px-2 py-2">指示数</th>
-                <th className="px-2 py-2">着手日</th>
-                <th className="px-2 py-2">納期</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.parts.map((part, index) => (
-                <PartRow key={`${part.fhincd}\0${part.productNo}\0${index}`} part={part} />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="min-w-[52rem] w-full border-collapse text-left text-xs text-white">
+              <thead className="sticky top-0 z-10 bg-slate-900">
+                <tr className="border-b border-white/20 text-white/80">
+                  <th className="px-2 py-2">部品</th>
+                  <th className="px-2 py-2">製造order番号</th>
+                  <th className="px-2 py-2">品名</th>
+                  <th className="px-2 py-2">資源進捗</th>
+                  <th className="px-2 py-2">処理</th>
+                  <th className="px-2 py-2">指示数</th>
+                  <th className="px-2 py-2">着手日</th>
+                  <th className="px-2 py-2">納期</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.parts.map((part, index) => (
+                  <PartRow key={`${part.fhincd}\0${part.productNo}\0${index}`} part={part} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : null}
       </div>
     </aside>
