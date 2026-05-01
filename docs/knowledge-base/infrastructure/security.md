@@ -84,6 +84,7 @@ update-frequency: medium
 - **Mac (`tag:admin`) から `100.118.82.72:38081` が timeout**: ACL 上 **想定どおり**（`tag:admin -> tag:llm` は閉じている）。`tailscale status` に DGX が出ない場合は、**制御プレーン未同期**（`offline` / network map 未受信）も疑う → Tailscale の再接続や端末側のオン/オフを試す。
 - **Pi5 (`tag:server`) から `:38081` は通るが `:22` が timeout**: 既定の grants では **Pi5→DGX の SSH が許可されていない**ため。**一時的に** `tag:server -> tag:llm` に `tcp:22` を足し、作業後に **元に戻す**（台帳: [tailscale-policy.md](../../security/tailscale-policy.md)）。
 - **`:22` が開いても `Permission denied`**: 経路はあるが **DGX 側 `authorized_keys` に Pi5 / 運用端末の公開鍵がない**。LAN 上の DGX（例: `192.168.128.156`）へ既存鍵（例: `~/.ssh/id_ed25519_raspi`）で入れる場合は、**同じ鍵を `ubudgxkoushi@100.118.82.72` 側にも登録**する必要がある（tailnet 越しのユーザーは環境に合わせる）。
+- **運用端末では SSH 成功するのに AI 実行環境だけ失敗**: AI 側は通常 `BatchMode`（非対話）で走るため、**パスワード入力前提の経路は使えない**。AI 側が提示する公開鍵を DGX `authorized_keys` に追加し、`ssh -o BatchMode=yes ...` で疎通確認する。
 - **反映後 `GET /v1/models` が `502` / `Connection reset`**: 多くは **vLLM（blue）の cold start**（重み load・`torch.compile`・FlashInfer autotune 等）で、**`docker logs system-prod-trtllm` が `Application startup complete` まで待つ**。`/healthz` だけ早くても推論系は未 ready になり得る。
 
 **2026-04-27 実施した手順（要約）**:
@@ -96,6 +97,7 @@ update-frequency: medium
 - `control-server.py` は **`runtime_stop_policy.py` 同梱**が必須。片方だけ配置すると import 失敗。
 - チャットの最小疎通では `chat_template_kwargs: { "enable_thinking": false }` を付けないと **`message.content` が空**になりやすい（vLLM / Qwen3.6 系の既知挙動と整合）。
 - 運用方針の正本: [dgx-system-prod-local-llm.md](../../runbooks/dgx-system-prod-local-llm.md)・[ADR-20260427-blue-llm-runtime-stop-policy.md](../../decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)。
+- ホスト名（例: `gx10-5ef3`）が端末ごとに引けない場合がある。**最初は tailnet IP（`100.x.x.x`）を正本**として扱い、必要ならローカル `~/.ssh/config` へ alias を追加する。
 
 **関連**:
 - [tailscale-policy.md](../../security/tailscale-policy.md)

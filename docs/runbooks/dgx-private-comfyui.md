@@ -2,7 +2,7 @@
 title: Runbook DGX Spark private ComfyUI（コンテナ・Tailscale）
 tags: [運用, DGX Spark, ComfyUI, Docker, Tailscale, private-personal]
 audience: [運用者, 開発者]
-last-verified: 2026-04-29
+last-verified: 2026-05-01
 related:
   - ../plans/dgx-spark-local-llm-migration-execplan.md
   - ../../scripts/dgx-private-comfyui/README.md
@@ -56,6 +56,38 @@ ssh -N -L 8188:127.0.0.1:8188 <dgx_user>@<dgx_tailscale_ip_or_magicdns>
 2. `./start-private-comfyui.sh`
 3. DGX 上で `curl -I http://127.0.0.1:8188` が応答すること
 
+## DGX Spark 最適化プロファイル（2026-04 反映）
+
+`scripts/dgx-private-comfyui/compose.yaml.example` は DGX Spark 前提で次を既定化しています。
+
+- `--bf16-unet`
+- `--bf16-vae`
+- `--bf16-text-enc`
+- `--disable-dynamic-vram`
+
+`.env` では以下を使う。
+
+- `CUDA_CACHE_MAXSIZE=4294967296`
+- `NCCL_P2P_DISABLE=1`
+
+`--use-sage-attention` は環境に導入済みの場合のみ追加する（未導入では起動失敗）。
+
+### safetensors コピー回避パッチ
+
+`Dockerfile.example` は build 時に `comfy/utils.py` の `copy=True` を `copy=False` へ置換する。  
+DGX Spark の unified memory での不要コピー抑制を狙う。
+
+### DGX ホスト安定化（運用時）
+
+```bash
+sudo swapoff -a
+echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.conf
+sudo nvidia-smi -pm 1
+sudo nvidia-smi -lgc 300,2100
+```
+
+上記はホスト運用設定のため、Compose 内ではなく DGX ホストで実施する。
+
 ## 境界チェック（launcher が自動実行）
 
 [`scripts/dgx-private-comfyui/boundary-check.sh`](../../scripts/dgx-private-comfyui/boundary-check.sh) は **ポリシーのみ**を担当する（単一責任）。
@@ -88,6 +120,29 @@ ssh -N -L 8188:127.0.0.1:8188 <dgx_user>@<dgx_tailscale_ip_or_magicdns>
 - **保存先分離**: `COMFYUI_DATA_ROOT=/srv/dgx/private-personal/comfyui/data` 配下に `models/` `input/` `output/` `user/` を作成。`output/` は初期時点で空、`system-prod` への bind はなし。
 - **未完了**: `models/checkpoints/` が空のため、**workflow の実行確認は未完了**。checkpoint 配置後に UI から実行し、生成物が `private-personal` 配下だけへ出ることを確認する。
 
+## 2026-05-01 追補（外出先運用・接続復旧・workflow エラー切り分け）
+
+- **ComfyUI 稼働確認**: DGX 上 `docker ps` で `dgx-private-comfyui` は `Up`、`curl -I http://127.0.0.1:8188` は **`HTTP 200`**。
+- **SSH トンネル運用**:
+  - `ssh -N -L ...` は **標準出力が出ないのが正常**。疎通確認は別ターミナルで `curl -I http://127.0.0.1:8188`。
+  - `bind [127.0.0.1]:8188: Address already in use` は、**DGX 上で `ssh -L` してしまった**ときに発生する（トンネルは Mac 側で張る）。
+- **外出先での接続差**:
+  - Mac ではパスワード SSH が通るが、AI 実行環境は非対話のため `publickey` が必須。
+  - DGX 側 `~/.ssh/authorized_keys` に AI 実行環境の公開鍵を追加すると、`BatchMode` で接続復旧できる。
+- **workflow エラー（ログ実測）**:
+  - `Flux2KleinEnhancer.mid_layer_scale` に文字列 `linear` が入り、`FLOAT` 変換失敗。
+  - `UNETLoader` / `CLIPLoader` が `fp8` と `bf16` の不一致で検証失敗。
+  - `Node 'Note' not found` は、当該カスタムノード未導入が原因。
+- **2026-05-01 実施対策（暫定互換ホットフィックス）**:
+  - `Flux2KleinEnhancer` の `mid_layer_scale` を `STRING` 許容にし、`linear` を `1.0` として扱う互換変換を追加。
+  - `Note` 互換 custom node（`note_compat.py`）を追加し、古い workflow の `class_type: Note` を受理可能化。
+  - モデル名互換 alias を追加（`flux-2-klein-base-9b-fp8.safetensors` / `qwen_3_8b_fp8mixed.safetensors`）。
+- **モデル実体（2026-05-01 実測）**:
+  - `diffusion_models`: `flux-2-klein-base-9b-bf16.safetensors`
+  - `text_encoders`: `qwen_3_8b_bf16.safetensors`
+  - したがって loader は **bf16 側へ揃える**のが正。
+- **補足**: `models/checkpoints/` が空でも、今回の Flux2Klein 系 workflow は `diffusion_models` / `text_encoders` 参照のため、直接原因ではない。
+
 ## トラブルシュート（公式 Playbook との対応）
 
 | 症状 | 典型原因 | まず試すこと |
@@ -97,7 +152,15 @@ ssh -N -L 8188:127.0.0.1:8188 <dgx_user>@<dgx_tailscale_ip_or_magicdns>
 | 初回 `docker compose build` が `Temporary failure resolving` で失敗 | DGX 側の一時 DNS 解決不安定 | DGX で `getent hosts ports.ubuntu.com` / `getent hosts developer.download.nvidia.com` を確認し、解決できる状態になってから `./start-private-comfyui.sh` を再実行する |
 | ブラウザが開けない | ポート転送・バインド | DGX で `curl -I http://127.0.0.1:8188`、Mac の SSH `-L` が生きているか |
 | Mac から DGX へ `ssh ...@100.x.x.x` が timeout | Tailscale ACL で `tag:admin -> tag:llm tcp:22` が未許可 | Tailscale ACL に一時許可を追加し、作業後は不要なら閉じる。鍵エラーなら `authorized_keys` も合わせて確認 |
+| `ssh -N -L ...` 後に何も出ず止まって見える | トンネル専用モード（正常） | 別ターミナルで `curl -I http://127.0.0.1:8188` を実行し `200` を確認する |
+| `bind [127.0.0.1]:8188: Address already in use` | DGX 上で `ssh -L` を実行している | トンネルは **Mac 側**で実行する。必要ならローカル側を `18188` など別ポートに変える |
+| AI 実行環境からは `Permission denied (publickey,password)` だが、Mac 手動 SSH は成功 | AI 側は非対話実行でパスワード入力不可。公開鍵が DGX に未登録 | DGX の `~/.ssh/authorized_keys` に AI 実行環境の公開鍵を追加し、`ssh -o BatchMode=yes ...` で再確認 |
 | メモリ関連の不安定さ | UMA / キャッシュ | User Guide / Playbook の `drop_caches` は **運用上の最終手段**として慎重に |
+| 起動時に `--use-sage-attention` で失敗 | SageAttention 未導入 | フラグを外して起動し、導入済みイメージに切り替えてから再度有効化 |
+| BF16指定でモデルが見つからない | BF16実体ファイル未配置 | `models/diffusion_models` と `models/text_encoders` に BF16実体を配置し、必要なら不要なFP8を削除して容量を確保 |
+| workflow 実行時に `mid_layer_scale ... could not convert string to float: 'linear'` | workflow JSON の型不一致 | `Flux2KleinEnhancer.mid_layer_scale` を数値（例: `1.0`）へ修正する |
+| `UNETLoader/CLIPLoader Value not in list` | workflow が存在しないモデル名（`fp8`/`bf16` 混在）を参照 | 現在の実体ファイル名（例: `flux-2-klein-base-9b-bf16.safetensors` / `qwen_3_8b_bf16.safetensors`）に合わせる |
+| `Node 'Note' not found` | カスタムノード未導入 | ノードを削除するか、必要なら該当 custom node を導入する |
 
 ## 参照
 
