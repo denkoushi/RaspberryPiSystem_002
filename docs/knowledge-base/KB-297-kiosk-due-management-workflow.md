@@ -83,6 +83,13 @@ category: knowledge-base
 - **補助は付くが特定行だけ納期・個数が空／上流の工程変更とのギャップ（2026-04 調査）**:
   - 本体の winner 論理キー（`FSEIBAN+FHINCD+FSIGENCD+FKOJUN`）と、補助照合3キー（`ProductNo+FSIGENCD+FKOJUN`）の関係、本体取込失敗・unmatched・管理UIの二重ファイル入力、上流クエリ（資源CD欠落）の知見を **[KB-328](./KB-328-production-schedule-supplement-key-mismatch-investigation.md)** に集約した（判断候補・トラブルシュート含む）。
 
+### 補助 `plannedEndDate` の字句拡張（ISO datetime 等・2026-05-01） {#order-supplement-planned-end-date-parse-2026-05-01}
+
+- **Context**: 部品納期個数 CSV の **`plannedEndDate`** が **`YYYY-MM-DDTHH:mm:ss`** 等で届く一方、`order-supplement-sync` の **`parsePlannedDate`** が受理せず **null** になり、`ProductionScheduleOrderSupplement` に **計画納期が載らない**。キオスクでは **`dueDate` 無し時の表示納期**（`plannedEndDate` フォールバック）が `-` になる。
+- **Fix**: [`order-supplement-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts) で日付字句を拡張（**ISO 接頭辞＋時刻**・**`YYYY/M/D`** 等）。**Prisma マイグレーションなし**。回帰: [`order-supplement-sync.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts)（例: **`2026-05-08T00:00:00`**）。
+- **本番反映（2026-05-01）**: [deployment.md](../guides/deployment.md) 標準・**`raspberrypi5` のみ**。**Detach Run ID**（`ansible-update-`）: **`20260501-122119-30686`**（**`failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**）。
+- **トラブルシュート**: **既存行が null のまま**なら **補助の再取込／同期**が必要（コードだけでは過去行が自動では埋まらない）。CSV には日付があるのに unmatched のときは **[KB-328](./KB-328-production-schedule-supplement-key-mismatch-investigation.md)** で winner／3キーを確認。
+
 ### 着手日補助の差分同期・手動保護・保持期限（2026-05-01） {#order-supplement-incremental-sync-2026-05-01}
 
 - **Context**: Gmail 取得頻度増加に伴い、補助CSVの **行欠落・着手日列の空** が増えると、旧実装の **テーブル全削除→再投入** により **既存の着手日まで消える**（順位ボード・購買照会で `-` が増える）。これは照合ロジックのバグではなく **入力ゆらぎに対する同期方式**の問題だった。
