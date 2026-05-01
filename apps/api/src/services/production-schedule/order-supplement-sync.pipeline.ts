@@ -1,6 +1,6 @@
 /**
  * Production schedule order supplement sync: read/normalize → plan → short DB write.
- * DB write uses delete-all-for-source + batched createMany (no long per-row upsert loop).
+ * DB write uses incremental create/update + retention prune.
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
 
@@ -12,9 +12,11 @@ import { normalizeProductionScheduleResourceCd } from './policies/resource-categ
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 
 const CREATE_MANY_CHUNK_SIZE = 200;
+const UPDATE_CHUNK_SIZE = 100;
 /** Interactive transaction: avoid default ~5s cap on slow hosts / large CSVs */
 const REPLACEMENT_TX_TIMEOUT_MS = 60_000;
 const REPLACEMENT_TX_MAX_WAIT_MS = 15_000;
+const RETENTION_YEARS = 1;
 
 export type SupplementNormalizedRow = {
   sourceRowId: string;
@@ -49,6 +51,20 @@ export const buildOrderSupplementKey = (params: {
   resourceCd: string;
   processOrder: string;
 }): string => `${params.productNo}\t${params.resourceCd}\t${params.processOrder}`;
+
+type ExistingSupplementRow = {
+  id: string;
+  csvDashboardRowId: string;
+  productNo: string;
+  resourceCd: string;
+  processOrder: string;
+  plannedQuantity: number | null;
+  plannedStartDate: Date | null;
+  plannedEndDate: Date | null;
+  plannedStartDateManuallySet: boolean;
+};
+
+type ExistingSupplementMap = Map<string, ExistingSupplementRow>;
 
 const parseQuantity = (value: unknown): number | null => {
   const normalized = normalizeToken(value);
@@ -166,15 +182,19 @@ export async function resolveWinnerIdByKey(
 
 export function buildReplacementCreateInputs(
   dedupedRows: SupplementNormalizedRow[],
-  winnerIdByKey: Map<string, string>
+  winnerIdByKey: Map<string, string>,
+  existingByKey: ExistingSupplementMap,
+  now: Date
 ): {
   matched: number;
   unmatched: number;
   createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
+  updateInputs: Array<{ id: string; data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput }>;
 } {
   let matched = 0;
   let unmatched = 0;
   const createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[] = [];
+  const updateInputs: Array<{ id: string; data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput }> = [];
 
   for (const row of dedupedRows) {
     const key = buildOrderSupplementKey({
@@ -188,20 +208,42 @@ export function buildReplacementCreateInputs(
       continue;
     }
     matched += 1;
-    createInputs.push({
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      csvDashboardRowId: winnerRowId,
-      sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
-      productNo: row.productNo,
-      resourceCd: row.resourceCd,
-      processOrder: row.processOrder,
-      plannedQuantity: row.plannedQuantity,
-      plannedStartDate: row.plannedStartDate,
-      plannedEndDate: row.plannedEndDate,
+    const existing = existingByKey.get(key);
+    if (!existing) {
+      createInputs.push({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        csvDashboardRowId: winnerRowId,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+        productNo: row.productNo,
+        resourceCd: row.resourceCd,
+        processOrder: row.processOrder,
+        plannedQuantity: row.plannedQuantity,
+        plannedStartDate: row.plannedStartDate,
+        plannedEndDate: row.plannedEndDate,
+        plannedStartDateManuallySet: false,
+        lastSeenAt: now,
+      });
+      continue;
+    }
+
+    // 手動補正は上書きせず、CSV 側が空でも既存非 null を消さない。
+    const nextPlannedStartDate = existing.plannedStartDateManuallySet
+      ? existing.plannedStartDate
+      : row.plannedStartDate ?? existing.plannedStartDate;
+
+    updateInputs.push({
+      id: existing.id,
+      data: {
+        csvDashboardRowId: winnerRowId,
+        plannedQuantity: row.plannedQuantity,
+        plannedStartDate: nextPlannedStartDate,
+        plannedEndDate: row.plannedEndDate,
+        lastSeenAt: now,
+      },
     });
   }
 
-  return { matched, unmatched, createInputs };
+  return { matched, unmatched, createInputs, updateInputs };
 }
 
 export async function runOrderSupplementReplacementTransaction(
@@ -212,17 +254,14 @@ export async function runOrderSupplementReplacementTransaction(
     matched: number;
     unmatched: number;
     createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
+    updateInputs: Array<{ id: string; data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput }>;
   }
 ): Promise<OrderSupplementSyncResult> {
+  const retentionCutoff = new Date();
+  retentionCutoff.setUTCFullYear(retentionCutoff.getUTCFullYear() - RETENTION_YEARS);
+
   return client.$transaction(
     async (tx) => {
-      const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
-        where: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
-        },
-      });
-
       let inserted = 0;
       for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
         const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
@@ -231,18 +270,33 @@ export async function runOrderSupplementReplacementTransaction(
         inserted += batch.count;
       }
 
-      if (inserted !== params.createInputs.length) {
-        throw new Error(
-          `[OrderSupplementSync] insert count mismatch: expected ${params.createInputs.length}, got ${inserted}`
+      for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
+        const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
+        await Promise.all(
+          chunk.map((entry) =>
+            tx.productionScheduleOrderSupplement.update({
+              where: { id: entry.id },
+              data: entry.data,
+            })
+          )
         );
       }
+
+      const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
+        where: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+          plannedStartDate: { lt: retentionCutoff },
+          plannedStartDateManuallySet: false,
+        },
+      });
 
       return {
         scanned: params.scanned,
         normalized: params.normalized,
         matched: params.matched,
         unmatched: params.unmatched,
-        upserted: inserted,
+        upserted: inserted + params.updateInputs.length,
         pruned: pruneResult.count,
       };
     },
@@ -253,27 +307,35 @@ export async function runOrderSupplementReplacementTransaction(
   );
 }
 
-export async function runOrderSupplementClearTransaction(client: PrismaClient, scanned: number): Promise<OrderSupplementSyncResult> {
-  return client.$transaction(
-    async (tx) => {
-      const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
-        where: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
-        },
-      });
-      return {
-        scanned,
-        normalized: 0,
-        matched: 0,
-        unmatched: 0,
-        upserted: 0,
-        pruned: pruneResult.count,
-      };
+export async function loadExistingSupplementsByKey(client: PrismaClient): Promise<ExistingSupplementMap> {
+  const rows = await client.productionScheduleOrderSupplement.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
     },
-    {
-      maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
-      timeout: REPLACEMENT_TX_TIMEOUT_MS,
-    }
-  );
+    select: {
+      id: true,
+      csvDashboardRowId: true,
+      productNo: true,
+      resourceCd: true,
+      processOrder: true,
+      plannedQuantity: true,
+      plannedStartDate: true,
+      plannedEndDate: true,
+      plannedStartDateManuallySet: true,
+    },
+  });
+
+  const byKey: ExistingSupplementMap = new Map();
+  for (const row of rows) {
+    byKey.set(
+      buildOrderSupplementKey({
+        productNo: row.productNo,
+        resourceCd: row.resourceCd,
+        processOrder: row.processOrder,
+      }),
+      row
+    );
+  }
+  return byKey;
 }

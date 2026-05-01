@@ -83,6 +83,19 @@ category: knowledge-base
 - **補助は付くが特定行だけ納期・個数が空／上流の工程変更とのギャップ（2026-04 調査）**:
   - 本体の winner 論理キー（`FSEIBAN+FHINCD+FSIGENCD+FKOJUN`）と、補助照合3キー（`ProductNo+FSIGENCD+FKOJUN`）の関係、本体取込失敗・unmatched・管理UIの二重ファイル入力、上流クエリ（資源CD欠落）の知見を **[KB-328](./KB-328-production-schedule-supplement-key-mismatch-investigation.md)** に集約した（判断候補・トラブルシュート含む）。
 
+### 着手日補助の差分同期・手動保護・保持期限（2026-05-01） {#order-supplement-incremental-sync-2026-05-01}
+
+- **Context**: Gmail 取得頻度増加に伴い、補助CSVの **行欠落・着手日列の空** が増えると、旧実装の **テーブル全削除→再投入** により **既存の着手日まで消える**（順位ボード・購買照会で `-` が増える）。これは照合ロジックのバグではなく **入力ゆらぎに対する同期方式**の問題だった。
+- **Fix（同期ポリシー）**:
+  - `ProductionScheduleOrderSupplement` は **incremental**（**既存キーなし**→`createMany`、**既存キーあり**→`update`）。補助CSVに **当該論理キーが一時的に無い**だけでは **DB 行は残る**。
+  - CSV で **`plannedStartDate` が空**でも、**自動同期では既存の非 null 着手日を NULL に戻さない**（現場で一度入った着手日を維持）。
+  - **`plannedStartDateManuallySet=true`** の行は **着手日を CSV 同期で上書きしない**（DB でフラグを立てた行のみ。UI は別途要検討）。
+  - **`lastSeenAt`**: 同期バッチに **キーが再出現した時刻**を記録（鮮度・将来拡張用）。
+  - **保持期限**: **`plannedStartDate` が UTC 基準で 1 年以上前**かつ **`plannedStartDateManuallySet=false`** の行を **削除**（自動データの肥大化抑制）。手動保護行は削除しない。
+  - **実装の正本**: [`order-supplement-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)·マイグレーション **`20260501015000_order_supplement_incremental_sync`**。
+- **本番反映（2026-05-01）**: [deployment.md](../guides/deployment.md) 標準・**`raspberrypi5` のみ**。**Detach Run ID**（`ansible-update-`）: **`20260501-111010-10961`**（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **トラブルシュート**: 着手日が更新されないときは **補助CSVにその `(ProductNo, FSIGENCD, FKOJUN)` が存在するか**・**winner 照合（本体側）**・**手動フラグ**を確認。**Prisma の型**: relation 付きモデルで **`csvDashboardRowId` を更新する場合は `UncheckedUpdateInput` が必要**になり得る（ビルドで検知）。詳細計画: [`order-supplement-incremental-sync-execplan.md`](../plans/order-supplement-incremental-sync-execplan.md)。
+
 **検証・本番反映（2026-04-01）**
 
 - **実機回帰**: `./scripts/deploy/verify-phase12-real.sh` を全対象キオスクで実行し、**PASS 40 / WARN 0 / FAIL 0**（本リリースで `GET /api/kiosk/production-schedule` 応答に `"plannedQuantity"` を含むことの grep を追加したため、スクリプト合計 PASS が 39→40）。**2026-04-03**: 別機能のスモーク追加によりスクリプト基準は **PASS 41**（手動 upload 補助同期の Pi5 反映後も同基準で **PASS 41 / WARN 0 / FAIL 0** を確認）。

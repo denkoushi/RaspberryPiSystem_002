@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-01）
+
+- **生産日程 部品納期個数・着手日補助を差分同期へ変更（`feat/order-supplement-incremental-sync`·`58dfe0ee`）本番 Pi5 のみ·Phase12 43/0/0·API+DB**: `ProductionScheduleOrderSupplement` の **`plannedStartDateManuallySet` / `lastSeenAt`**・incremental create/update・1年超過 prune。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（2026-05-01 部品納期個数差分同期）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/order-supplement-incremental-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。**Detach Run ID**（`ansible-update-`）: **`20260501-111010-10961`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。**Pi4/Pi3 不要**。**ナレッジ**: [KB-297 §着手日補助の差分同期](./knowledge-base/KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)·[KB-328](./knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md)·[order-supplement-incremental-sync-execplan.md](./plans/order-supplement-incremental-sync-execplan.md)·[EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-04-30）
 
 - **キオスク順位ボード 完了フィルタ既定を「未完」（`feat/kiosk-leaderboard-default-incomplete`·`e8d3943f`）本番 Pi5 のみ·Phase12 43/0/0·Web のみ**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) の **`completionFilter`** 初期値 **`incomplete`**。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（完了フィルタ既定）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-default-incomplete infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。**Detach Run ID**（`ansible-update-`）: **`20260430-184641-30513`**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **153s**）。**Pi4/Pi3 不要**。**ナレッジ**: [KB-297 §完了フィルタ既定](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-default-completion-filter-incomplete-2026-04-30)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。

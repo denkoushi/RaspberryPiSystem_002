@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-04-30
+last-verified: 2026-05-01
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-04-30（**キオスク負荷調整（山崩し支援・API/Web/DB）**／**順位ボード・完了フィルタ既定を未完**／**CustomerSCAW 着手日＝製番集約（近傍選定の実害修正）**／**CustomerSCAW `FANKENYMD` 近傍選定**／**CustomerSCAW（製番→顧客名・API/順位ボード）**／2026-04-29 項は下記）／**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
+最終更新: 2026-05-01（**部品納期個数・着手日補助の差分同期（incremental）**／2026-04-30 項は下記）
+
+### 補足（2026-05-01: **部品納期個数 CSV 補助・着手日同期を差分反映**·`feat/order-supplement-incremental-sync`·API+DB·Pi5 のみ）
+
+- **変更概要**: `ProductionScheduleOrderSupplement` の同期を **`deleteMany`→全件 `createMany`** から **incremental `createMany` / `update`** に変更。CSV で着手日が空のときも **既存の非 null 着手日を維持**。**`plannedStartDateManuallySet=true`** の行は **着手日を CSV 同期で上書きしない**。**`lastSeenAt`** で再出現時刻を記録。**Prisma マイグレーション**: `20260501015000_order_supplement_incremental_sync`。実装: [`order-supplement-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)·[`order-supplement-sync.service.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.service.ts)。詳細計画: [`order-supplement-incremental-sync-execplan.md`](../plans/order-supplement-incremental-sync-execplan.md)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（API/DB のみ。Pi3 はリソース僅少のため本変更の追加対象外）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/order-supplement-incremental-sync infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main` を指定**）。
+- **本番デプロイ（実績）**: 代表コミット **`58dfe0ee`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260501-111010-10961`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 26s**・Tailscale）。
+- **トラブルシュート**: **着手日が期待と違う**: まず **補助 CSV に当該 `(ProductNo, FSIGENCD, FKOJUN)` が存在するか**・**winner 照合**・**手動フラグ**を確認。**マイグレーション失敗**: Pi5 API ログ・`prisma migrate status`。**キオスクのみ更新したつもりが API が古い**: 本変更は **Pi5 API** が正。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §着手日補助の差分同期](../knowledge-base/KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)·[KB-328](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+最終更新（履歴）: 2026-04-30（**キオスク負荷調整（山崩し支援・API/Web/DB）**／**順位ボード・完了フィルタ既定を未完**／**CustomerSCAW 着手日＝製番集約（近傍選定の実害修正）**／**CustomerSCAW `FANKENYMD` 近傍選定**／**CustomerSCAW（製番→顧客名・API/順位ボード）**／2026-04-29 項は下記）／**順位ボード・Pi4 向け再レンダー抑制（order-usage 波及削減）**／**順位ボード・製番一覧パネル（UI改修・末尾削除／全解除・3列・9桁表示）**／**順位ボード・製番一覧パネル（接頭辞フィルタ・並べ替え・コントラスト・横幅）**／**順位ボード・表示中製番一覧パネル（共有履歴トグル）**／**順位ボード・備考モーダルから製番登録（共有履歴）**／**加工機日次点検 KPI（API）・カード基準統一**／**キオスク持出一覧・末尾揃え・108pxサムネ・固定外寸**／**キオスク持出一覧・貸出日時フォーマット**／**システム CSV インポートスケジュール不変条件**／**順位ボード・製番登録→進捗一覧・共有履歴同期**／**順位ボード・製番OR検索**／**端末記憶／資源CD順サーバ同期**／**順位ボード左パネル不透明化**／2026-04-28 項は下記）
 
 ### 補足（2026-04-30: **キオスク順位ボード・左ペイン完了フィルタの既定を「未完」**·`feat/kiosk-leaderboard-default-incomplete`·Web のみ·Pi5 のみ）
 
