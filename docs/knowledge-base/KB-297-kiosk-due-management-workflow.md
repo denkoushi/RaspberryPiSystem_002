@@ -90,6 +90,13 @@ category: knowledge-base
 - **本番反映（2026-05-01）**: [deployment.md](../guides/deployment.md) 標準・**`raspberrypi5` のみ**。**Detach Run ID**（`ansible-update-`）: **`20260501-122119-30686`**（**`failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**）。
 - **トラブルシュート**: **既存行が null のまま**なら **補助の再取込／同期**が必要（コードだけでは過去行が自動では埋まらない）。CSV には日付があるのに unmatched のときは **[KB-328](./KB-328-production-schedule-supplement-key-mismatch-investigation.md)** で winner／3キーを確認。
 
+### 補助 `plannedEndDate` の更新時空値維持とバックフィル（2026-05-01） {#order-supplement-planned-end-date-retain-2026-05-01}
+
+- **仕様（同期ポリシー）**: 差分同期の **update** で **`mergePlannedEndDateForUpdate(fromCsv, existing) => fromCsv ?? existing`**。補助 CSV に当該キー行があり **`plannedEndDate` が空またはパース不能（null）** のとき、**既存の計画納期を null で上書きしない**（着手日の「CSV 空は既存維持」に同型）。**create** 経路は従来どおり CSV パース結果。
+- **既存 null の回復（運用）**: [`backfill-order-supplement-planned-end-date.ts`](../../apps/api/src/scripts/backfill-order-supplement-planned-end-date.ts) が **`syncFromSupplementDashboard()` を 1 回**実行。手順の正本: [csv-import-export.md §D-補](../guides/csv-import-export.md#order-supplement-planned-end-date-backfill)·[deployment.md](../guides/deployment.md) 冒頭補足（2026-05-01）。
+- **本番反映（2026-05-01）**: Pi5 **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Detach Run ID**（`ansible-update-`）: **`20260501-131827-4551`**（**`PLAY RECAP` `failed=0` / `unreachable=0`**・**`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**）。
+- **トラブルシュート**: **`pnpm backfill:order-supplement-planned-end-date:prod` が無い** → API イメージに `dist/scripts/backfill-order-supplement-planned-end-date.js` が乗っているか。**CSV 上も納期が空**なら **同期・バックフィル後も null**（更新は空を既存維持のため、ソースに字句が無いと埋まらない）。**字句あり・DB 空**はパース受理・[KB-328](./KB-328-production-schedule-supplement-key-mismatch-investigation.md) の winner／3キー切り分け。
+
 ### 着手日補助の差分同期・手動保護・保持期限（2026-05-01） {#order-supplement-incremental-sync-2026-05-01}
 
 - **Context**: Gmail 取得頻度増加に伴い、補助CSVの **行欠落・着手日列の空** が増えると、旧実装の **テーブル全削除→再投入** により **既存の着手日まで消える**（順位ボード・購買照会で `-` が増える）。これは照合ロジックのバグではなく **入力ゆらぎに対する同期方式**の問題だった。
