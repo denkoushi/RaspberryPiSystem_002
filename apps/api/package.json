@@ -15,6 +15,8 @@
     "backfill:actual-hours:prod": "node dist/scripts/backfill-actual-hours-canonical.js",
     "backfill:photo-tool-gallery": "tsx src/scripts/backfill-photo-tool-similarity-gallery.ts",
     "backfill:photo-tool-gallery:prod": "node dist/scripts/backfill-photo-tool-similarity-gallery.js",
+    "backfill:order-supplement-planned-end-date": "tsx src/scripts/backfill-order-supplement-planned-end-date.ts",
+    "backfill:order-supplement-planned-end-date:prod": "node dist/scripts/backfill-order-supplement-planned-end-date.js",
     "import:resource-groupcd": "tsx src/scripts/import-resource-groupcd.ts",
     "cleanup:pdf-orphans": "tsx src/scripts/cleanup-pdf-storage-orphans.ts",
     "prisma:migrate": "prisma migrate dev",

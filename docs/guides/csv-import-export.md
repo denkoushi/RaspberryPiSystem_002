@@ -167,10 +167,33 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 
 保存先は **`config/backup.json` の `csvImports`**（`ImportScheduleAdminService` が `BackupConfigLoader` 経由で更新）。登録後、スケジューラが **reload** される。
 
+<a id="csv-import-schedule-manual-run"></a>
+
 #### D. 手動 1 回実行
 
 - `POST /api/imports/schedule/<scheduleId>/run`
 - **注意**: `Content-Type: application/json` を付けず body 空にすると **400** になり得る。`curl` 例: `-H 'Content-Type: application/json' -d '{}'`
+
+<a id="order-supplement-planned-end-date-backfill"></a>
+
+#### D-補. 部品納期個数補助の `plannedEndDate` 再同期（デプロイ後 1 回バックフィル）
+
+**いつ**: API に **`plannedEndDate` パース拡張**や **「CSV で空のときは既存値維持」ポリシー**を反映した直後など、**過去の誤同期で `null` 化した行**を CsvDashboard 上の最新字句で埋め直すとき（Gmail 経由の次回同期を待たずに済ませる）。
+
+**本番（Pi5・`api` コンテナ内）**:
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm backfill:order-supplement-planned-end-date:prod
+```
+
+**ローカル**:
+
+```bash
+pnpm --filter @raspi-system/api build
+pnpm --filter @raspi-system/api backfill:order-supplement-planned-end-date
+```
+
+実装は [`apps/api/src/scripts/backfill-order-supplement-planned-end-date.ts`](../../apps/api/src/scripts/backfill-order-supplement-planned-end-date.ts)（既存 `ProductionScheduleOrderSupplementSyncService.syncFromSupplementDashboard()` を 1 回実行）。**CsvDashboard に当該 3 キー行があり、かつ納期列に有効な字句がある**場合のみ DB が更新される。行が無い／列が空の行は、**更新側ポリシーで既存 `null` を維持**しうる。
 
 #### E. 期待挙動・検証
 
@@ -191,6 +214,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 | 本体生産日程CSVが **FHINCD 等で FAILED**、補助だけ新しい | 本体ヘッダとダッシュボード列定義の不一致。失敗メールは NON_RETRIABLE ならゴミ箱行きで **同時刻に成功・失敗が混在**しうる | 本体 `CsvDashboardIngestRun` の `errorMessage`・KB-328 |
 | 手動取込したつもりだが API に届いていない | 管理画面で **プレビュー用**ファイル入力だけ選び、**アップロード（取り込み）用**のファイルが未選択（エラー文言が汎用） | `CsvDashboardsPage.tsx`（二重 `input`）・[KB-328](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md) |
 | 補助同期で `Transaction not found` / 取込は成功するがメールが未読のまま | 旧実装の長いインタラクティブ tx・`upsert` 列と一意制約の衝突（修正後は deleteMany+createMany 系）。同期失敗時は Gmail 後処理に進まない | [KB-324](../knowledge-base/KB-324-gmail-order-supplement-prisma-transaction.md)（原因・対策・本番反映実績） |
+| デプロイ後も **`plannedEndDate` が null**（順位ボード納期が `-`） | 過去同期で null 化／**CSV 上も当該行の納期が空**。パース修正や「空は既存維持」だけでは **字句が無い行は埋まらない** | **まず CsvDashboard 行と列**を確認。字句があるなら [**D-補 バックフィル**](#order-supplement-planned-end-date-backfill) または [**D. 手動 1 回実行**](#csv-import-schedule-manual-run)。なお **更新**では **CSV で `plannedEndDate` が空のときは既存値を維持**（意図的に消さない）。**`backfill:…:prod` が無い**ときは API イメージの `dist` ビルドを確認 |
 
 #### レシピ: Gmail自動取得 → CSVダッシュボード → 可視化ダッシュボード → サイネージ
 

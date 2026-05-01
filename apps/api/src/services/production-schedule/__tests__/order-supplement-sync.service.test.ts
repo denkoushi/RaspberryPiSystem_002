@@ -219,8 +219,159 @@ describe('order-supplement-sync.service', () => {
         csvDashboardRowId: 'winner-new',
         plannedQuantity: 10,
         plannedStartDate: new Date('2026-04-20T00:00:00.000Z'),
+        plannedEndDate: new Date('2026-04-20T00:00:00.000Z'),
         lastSeenAt: expect.any(Date),
       }),
+    });
+  });
+
+  it('既存行ありで CSV に plannedEndDate があるとき上書きする', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-1',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '10',
+          plannedEndDate: '2026-05-08T00:00:00',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-new',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-1',
+        csvDashboardRowId: 'winner-old',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 8,
+        plannedStartDate: null,
+        plannedEndDate: new Date('2026-06-01T00:00:00.000Z'),
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'existing-1' },
+      data: expect.objectContaining({
+        plannedEndDate: new Date('2026-05-08T00:00:00.000Z'),
+      }),
+    });
+  });
+
+  it('既存行ありで CSV の plannedEndDate が空のとき既存計画納期を維持する', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-1',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '10',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-new',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    const keptEnd = new Date('2026-06-01T00:00:00.000Z');
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-1',
+        csvDashboardRowId: 'winner-old',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 8,
+        plannedStartDate: new Date('2026-04-20T00:00:00.000Z'),
+        plannedEndDate: keptEnd,
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledTimes(1);
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'existing-1' },
+      data: expect.objectContaining({
+        plannedEndDate: keptEnd,
+        plannedQuantity: 10,
+      }),
+    });
+  });
+
+  it('CSV に無いキーの補助行は同期ループの対象外となり更新されない', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-only-a',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '1',
+          plannedEndDate: '2026-07-01T00:00:00',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-a',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'existing-a',
+        csvDashboardRowId: 'winner-a',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 1,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        plannedStartDateManuallySet: false,
+      },
+      {
+        id: 'existing-b',
+        csvDashboardRowId: 'winner-b',
+        productNo: '0000099999',
+        resourceCd: '504',
+        processOrder: '300',
+        plannedQuantity: 2,
+        plannedStartDate: null,
+        plannedEndDate: new Date('2026-08-15T00:00:00.000Z'),
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledTimes(1);
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'existing-a' },
+      data: expect.any(Object),
     });
   });
 });
