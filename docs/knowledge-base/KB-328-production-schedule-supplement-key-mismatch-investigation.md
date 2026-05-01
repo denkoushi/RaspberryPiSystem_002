@@ -22,6 +22,7 @@ category: knowledge-base
 ## 着手日が「急に `-` に戻る」系の切り分け（2026-05-01 追補）
 
 - **典型原因（運用）**: 補助CSVの **行欠落**や **着手日列の空** が増えたタイミングと一致する場合、旧同期が **全削除→再投入** だった頃は **既存着手日まで消える**ことがあった。**2026-05-01** 以降は **`ProductionScheduleOrderSupplement` を incremental 同期**に変更し、当該現象を抑える（詳細・デプロイ実績は [KB-297 §着手日補助の差分同期](./KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)·[deployment.md](../guides/deployment.md)）。
+- **計画納期（`plannedEndDate`）が CSV では見えるのに DB／画面が空（2026-05-01 追補）**: **`plannedEndDate` 字句**が同期時の `parsePlannedDate` で **非対応**だった場合、**照合に成功していても列値が null 化**され得る（incremental 移行とは**独立**したパース問題）。**修正後**も、**既に null で保存された行**は **補助の再取込／同期**が必要なことがある。正本: [KB-297 §補助 plannedEndDate 字句拡張](./KB-297-kiosk-due-management-workflow.md#order-supplement-planned-end-date-parse-2026-05-01)·[deployment.md](../guides/deployment.md) 補足（同項）。
 - **依然 `-` のままになり得るケース**: **そもそも補助にキーが無い**・**winner に照合できない（unmatched）**・**本体側に工程が無い** 等は、従来どおり **[KB-297](./KB-297-kiosk-due-management-workflow.md) / 本章の照合キー節**で切り分ける。
 
 ## Symptoms（現場で見えること）

@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-01（**部品納期個数・着手日補助の差分同期（incremental）**／2026-04-30 項は下記）
+最終更新: 2026-05-01（**補助 `plannedEndDate` 字句拡張（ISO datetime）**／**着手日補助の差分同期（incremental）**／2026-04-30 項は下記）
+
+### 補足（2026-05-01: **部品納期個数補助・`plannedEndDate` 字句拡張（ISO datetime 等）**·`main`·API のみ·Pi5 のみ）
+
+- **変更概要**: 部品納期個数 CSV の **`plannedEndDate`** が多く **`YYYY-MM-DDTHH:mm:ss`（ISO datetime）** 形式で届く一方、同期パイプラインの `parsePlannedDate` が受理せず **`plannedEndDate` が null 化**され、キオスク順位ボード等で **`dueDate` 無し時の表示納期**が `-` になる不具合を修正。**ISO 日付接頭辞＋時刻**（`T`／空白）、**`YYYY/M/D`** 等を追加受理（既存 **`MM/DD/YYYY`** 系も維持）。**Prisma マイグレーションなし**。実装: [`order-supplement-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)·テスト: [`order-supplement-sync.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**（API のみ）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **本番デプロイ（実績）**: 代表コミット **`0356b304`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260501-122119-30686`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 28s**・Tailscale）。
+- **トラブルシュート**: **修正前に同期済みで `plannedEndDate` が既に null の行**は、**コード反映だけでは自動復旧しない**ことがある。**補助 CSV の再取込／同期を再実行**して `ProductionScheduleOrderSupplement` を更新する。**字句は CSV に見えるのに DB が空**: まず **パース受理範囲**（本項の修正後 API）と **winner／3キー照合**（[KB-328](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md)）を切り分ける。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §補助 plannedEndDate 字句拡張](../knowledge-base/KB-297-kiosk-due-management-workflow.md#order-supplement-planned-end-date-parse-2026-05-01)·[KB-328](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-01: **部品納期個数 CSV 補助・着手日同期を差分反映**·`feat/order-supplement-incremental-sync`·API+DB·Pi5 のみ）
 
