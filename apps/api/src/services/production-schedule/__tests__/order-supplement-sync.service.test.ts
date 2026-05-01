@@ -108,6 +108,42 @@ describe('order-supplement-sync.service', () => {
     expect(prisma.productionScheduleOrderSupplement.update).not.toHaveBeenCalled();
   });
 
+  it('plannedEndDate が ISO datetime 形式でも補助納期として取り込める', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-iso',
+        rowData: {
+          ProductNo: '0003798331',
+          FSIGENCD: '581',
+          FKOJUN: '210',
+          plannedEndDate: '2026-05-08T00:00:00'
+        }
+      }
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-iso',
+        productNo: '0003798331',
+        resourceCd: '581',
+        processOrder: '210'
+      }
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.deleteMany).mockResolvedValue({ count: 0 } as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.createMany).mockResolvedValue({ count: 1 } as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          csvDashboardRowId: 'winner-iso',
+          plannedEndDate: new Date('2026-05-08T00:00:00.000Z')
+        })
+      ]
+    });
+  });
+
   it('照合不能な行はunmatchedとして集計し、既存補助を削除しない', async () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
       {

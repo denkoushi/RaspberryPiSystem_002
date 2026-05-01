@@ -77,15 +77,31 @@ const parsePlannedDate = (value: unknown): Date | null => {
   const normalized = normalizeToken(value);
   if (normalized.length === 0) return null;
 
-  const ymdMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (ymdMatch) {
-    const [, y, m, d] = ymdMatch;
+  const isoPrefixMatch = normalized.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T\s]\d{1,2}:\d{1,2}(?::\d{1,2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
+  );
+  if (isoPrefixMatch) {
+    const [, y, m, d] = isoPrefixMatch;
     const date = new Date(`${y}-${m}-${d}T00:00:00.000Z`);
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
+  const ymdMatch = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?$/);
+  if (ymdMatch) {
+    const [, y, m, d] = ymdMatch;
+    const month = m.padStart(2, '0');
+    const day = d.padStart(2, '0');
+    const date = new Date(`${y}-${month}-${day}T00:00:00.000Z`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
   const mdYMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+\d{1,2}:\d{1,2}(?::\d{1,2})?)?$/);
-  if (!mdYMatch) return null;
+  if (!mdYMatch) {
+    // #region agent log
+    fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'48d506'},body:JSON.stringify({sessionId:'48d506',runId:'run-initial',hypothesisId:'H1',location:'order-supplement-sync.pipeline.ts:parsePlannedDate',message:'planned date format rejected',data:{raw:String(value ?? ''),normalized},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return null;
+  }
   const [, m, d, y] = mdYMatch;
   const month = m.padStart(2, '0');
   const day = d.padStart(2, '0');
@@ -100,6 +116,9 @@ export function toSupplementNormalizedRow(
   const productNo = normalizeToken(rowData.ProductNo);
   const processOrder = normalizeToken(rowData.FKOJUN);
   const resourceCd = normalizeProductionScheduleResourceCd(normalizeToken(rowData.FSIGENCD));
+  // #region agent log
+  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'48d506'},body:JSON.stringify({sessionId:'48d506',runId:'run-initial',hypothesisId:'H2',location:'order-supplement-sync.pipeline.ts:toSupplementNormalizedRow',message:'supplement row normalize input',data:{sourceRowId,hasPlannedEndDateKey:Object.prototype.hasOwnProperty.call(rowData,'plannedEndDate'),plannedEndDateRaw:typeof rowData.plannedEndDate==='string'?rowData.plannedEndDate:null,productNo,processOrder,resourceCd},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (productNo.length === 0 || processOrder.length === 0 || resourceCd.length === 0) {
     return null;
   }
@@ -204,6 +223,9 @@ export function buildReplacementCreateInputs(
     });
     const winnerRowId = winnerIdByKey.get(key);
     if (!winnerRowId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'48d506'},body:JSON.stringify({sessionId:'48d506',runId:'run-initial',hypothesisId:'H3',location:'order-supplement-sync.pipeline.ts:buildReplacementCreateInputs',message:'supplement row unmatched to winner',data:{productNo:row.productNo,resourceCd:row.resourceCd,processOrder:row.processOrder,plannedEndDate:row.plannedEndDate?row.plannedEndDate.toISOString():null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       unmatched += 1;
       continue;
     }
