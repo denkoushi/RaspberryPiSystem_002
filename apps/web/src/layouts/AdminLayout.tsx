@@ -39,6 +39,9 @@ export function AdminLayout() {
             <NavLink to="/admin" end className={linkClass}>
               ダッシュボード
             </NavLink>
+            <NavLink to="/admin/tools/dgx-resource" className={linkClass}>
+              DGXリソース
+            </NavLink>
             <NavLink to="/admin/tools/employees" className={linkClass}>
               従業員
             </NavLink>
