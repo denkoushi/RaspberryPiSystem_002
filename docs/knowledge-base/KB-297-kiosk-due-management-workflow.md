@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-04-29
+last-verified: 2026-05-01
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -137,7 +137,7 @@ category: knowledge-base
 
 - **Context**: Gmail 件名 **`FKOJUNST_Status`** の CSV（**`FKOJUN`・`FKOTEICD`・`FSEZONO`・`FUPDTEDT`・`FKOJUNST`**）は、既存 **`FKOJUNST` 件名ルート**（`ProductNo`・`FSIGENCD`・`FKOJUN` キー）とは**別物**。**生産スケジュール本体 winner 行**に対して **`(FKOJUN, FKOTEICD→本体 `FSIGENCD`, FSEZONO→本体 `ProductNo`)** で照合し、一覧の **「工順ST」** 表示と **非表示制御**のみを担う（責務分離）。
 - **Fix（境界分離）**:
-  - 専用 `CsvDashboard`（固定 ID **`b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e`**・`gmailSubjectPattern: FKOJUNST_Status`）・同一キーは **`FUPDTEDT`（`MM/DD/YYYY HH:mm:ss`）最大**を正。
+  - 専用 `CsvDashboard`（固定 ID **`b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e`**・`gmailSubjectPattern: FKOJUNST_Status`）・同一キーは **`FUPDTEDT` 最大**を正（字句は **`MM/DD/YYYY HH:mm:ss`** に加え **ISO8601（`…T…Z`・時刻必須）**・2026-05-01 以降は [`parseFkojunstStatusMailFupdteDt`](../../apps/api/src/services/csv-dashboard/csv-dashboard-datetime-parse.ts)）。
   - 保持テーブル **`ProductionScheduleFkojunstMailStatus`**（ソース毎 **全削除→再作成**・winner 行 `csvDashboardRowId` 一意）。**空・不正ステータス・日付パース不能**でも「メールでキーが当たった」判定のため **同期行に載せる**（DB 上は **`''`** / **`?`** と **epoch 代替日付**＋**不確実フラグ**で `FUPDTEDT` 競合時は不確実側を優先）。
   - 一覧 API（`listProductionScheduleRows`）: **`ProductionScheduleFkojunstMailStatus`（`fkmail`）と `ProductionScheduleFkojunstStatus`（`fkst`）を `LEFT JOIN`**。可視条件は **`fkojunst-production-schedule-list-visibility.policy.ts`** で **COUNT と明細を同一 `WHERE`** に集約（**2026-04-28 追補**）。**`fkmail` が `S`/`R`**: **`rowData.FKOJUNST`** はメールの **`statusCode`**。**`fkmail` 行が無い** winner: **`fkst` が `S`/`R` のときのみ**一覧に残り、`rowData.FKOJUNST` は **`fkst` 由来**。**`fkmail` はあるが `S`/`R` でない** winner: **一覧から除外**（**`fkst` が `S`/`R` でもフォールバック表示しない**）。
   - 取込後: **`CsvDashboardPostIngestService`** が当該ダッシュボード ID のとき **`ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard`** を実行。手動アップロード応答に **`fkojunstMailSync`** を含め得る。
@@ -146,6 +146,15 @@ category: knowledge-base
 - **本番デプロイ（2026-04-28・追記・一覧 S/R のみ可視性・API のみ）**: ブランチ **`feat/production-schedule-fkojunst-sr-only-list`**・コミット **`06e62912`**（ポリシーモジュール・COUNT に `fkst` JOIN・キオスク統合テスト）。**対象**: **`raspberrypi5` のみ**。[deployment.md](../guides/deployment.md) 補足（**一覧 FKOJUNST S/R のみ**）。**コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh feat/production-schedule-fkojunst-sr-only-list infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260428-181153-28174`**（**`failed=0` / `unreachable=0` / exit `0`**・所要 **約 1372s**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 62s**・FKOJUNST_Status 初回反映後）。**一覧 S/R のみ追補後**の再検証: **約 272s**（同一スクリプト・**PASS 43 / WARN 0 / FAIL 0**）。
 - **トラブルシュート**: **キー不一致**（メールの **`FSEZONO` が本体 `ProductNo` と一致しない**等）は **`unmatched`** が増える。**一覧から消えた**がメールにはある行は **`statusCode` が `S`/`R` 以外**を確認（**`?`/`''` も非表示**）。**`fkmail` 行がある winner は `fkst` が `S`/`R` でも表示されない**（**非 S/R は `fkst` で救済しない**）。**`fkmail` が無い**行は **`fkst` が `S`/`R` のときのみ**残る。デプロイ fail-fast（未コミット/未追跡）は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
+
+### PowerAutomate 由来の日時字句互換（ISO8601 等・2026-05-01） {#powerautomate-csv-datetime-compat-2026-05-01}
+
+- **Context**: PowerAutomate 変更により **`FUPDTEDT`** が **`YYYY-MM-DDTHH:mm:ss[.SSS]Z`** で届くケースが増えた。旧実装は **`MM/DD/YYYY HH:mm:ss`** のみ受理のため **パース不能**→**epoch 代替**になり、**同一キーで「最新」を決める `FUPDTEDT` 最大**の選定が崩れ、一覧の **`fkmail` 紐付き・工順ST表示**に間接的に影響し得た（可視ポリシー自体は不変）。
+- **仕様（共通パーサ）**: [`csv-dashboard-datetime-parse.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-datetime-parse.ts) の **`parseFkojunstStatusMailFupdteDt`** が **従来形式＋上記 ISO8601（`Z` 終端・時刻必須）**を受理。**日付のみ**（`YYYY-MM-DD`）は **拒否**（誤って UTC 深夜 を最新扱いにしない）。
+- **一般 CsvDashboard**: `CsvDashboardIngestor` の **`occurredAt`** は **`parseCsvDashboardDateColumnToUtc`**（**`YYYY/M/D H:M`（JST→UTC）**＋**同上 ISO8601**）。失敗時は **現在時刻**フォールバックし **`[CsvDashboardIngestor]`** へ **`dashboardId` / `dateColumnName`** 付き **warn**（例: 計測機器貸出ダッシュボード）。
+- **Fix の正本**: [`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)·[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)·テスト上記ファイル。
+- **本番反映（2026-05-01）**: [deployment.md](../guides/deployment.md) 補足（PowerAutomate 日時互換）。**`raspberrypi5` のみ**。**Detach Run ID**（`ansible-update-`）: **`20260501-141453-4379`**（**`failed=0` / `unreachable=0`**・**`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。
+- **トラブルシュート**: 表示行がおかしいときは **まず** [§FKOJUNST_Status（2026-04-28）](#fkojunst_status-mail-from-gmail-csv-2026-04-28) の **キー・`S`/`R` 可視**を確認。パース周りは **API ログの warn** と **CSV 字句**を突き合わせる。**Pi4/Pi3**: **個別デプロイ不要**（API のみ）。
 
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
 

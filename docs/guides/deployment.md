@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-01（**補助 `plannedEndDate` 字句拡張（ISO datetime）**／**着手日補助の差分同期（incremental）**／2026-04-30 項は下記）
+最終更新: 2026-05-01（**Gmail CSV 日時の PowerAutomate 互換（FKOJUNST_Status / CsvDashboard 一般）**／**補助 `plannedEndDate` 字句拡張**／**着手日補助の差分同期**／2026-04-30 項は下記）
+
+### 補足（2026-05-01: **Gmail CSV 日時字句の PowerAutomate 互換（`FKOJUNST_Status`・一般 `CsvDashboard`）**·`fix/csv-datetime-compat-powerautomate`·API のみ·Pi5 のみ）
+
+- **変更概要**: PowerAutomate 側の出力変更で **`FKOJUNST_Status` の `FUPDTEDT`** や **一般 CsvDashboard の日付列**が **`YYYY-MM-DDTHH:mm:ss[.SSS]Z`（ISO8601）** で届く一方、従来は **`MM/DD/YYYY HH:mm:ss`**（Status）・**`YYYY/M/D H:M`（JST→UTC）**（ダッシュボード一般）のみ受理しており、**受理不能時は epoch 近傍／現在時刻フォールバック**となり **`FUPDTEDT` 最大選定**や **`occurredAt`** の鮮度が崩れ得た。**共通モジュール** [`csv-dashboard-datetime-parse.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-datetime-parse.ts) に **`parseFkojunstStatusMailFupdteDt`** / **`parseCsvDashboardDateColumnToUtc`** を集約し、[`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)·[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) に適用。**日付のみの ISO**（時刻なし）は **Status 側で拒否**。**Prisma マイグレーションなし**。テスト: [`csv-dashboard-datetime-parse.test.ts`](../../apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-datetime-parse.test.ts)·[`fkojunst-status-mail-sync.pipeline.test.ts`](../../apps/api/src/services/production-schedule/__tests__/fkojunst-status-mail-sync.pipeline.test.ts)。
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**先行反映時は** `fix/csv-datetime-compat-powerautomate`）。
+- **本番デプロイ（実績）**: 代表コミット **`a9ce2f1b`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260501-141453-4379`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・Pi4/Pi3 play は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 26s**・Tailscale）。
+- **トラブルシュート**: 一般ダッシュボードの解析失敗は API ログ **`[CsvDashboardIngestor]`** に **`dashboardId` / `dateColumnName`** 付きで **warn**。一覧の工順STが期待と違うときは **従来どおり** **`fkmail` / 可視ポリシー**（[KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28)）を先に切り分け（本変更は **字句パース互換**）。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §PowerAutomate 日時互換](../knowledge-base/KB-297-kiosk-due-management-workflow.md#powerautomate-csv-datetime-compat-2026-05-01)·[csv-import-export.md](csv-import-export.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-01: **部品納期個数補助・`plannedEndDate` 字句拡張（ISO datetime 等）**·`main`·API のみ·Pi5 のみ）
 
