@@ -9,6 +9,8 @@ export type LeaderBoardGridProps = {
   sortedGrouped: Map<string, LeaderBoardRow[]>;
   resourceNameMap: Record<string, string[]>;
   orderUsageByResourceCd: Record<string, number[]> | undefined;
+  /** 製番 OR フィルタ（1件以上で行左縁の識別色を付与）。空なら未着色 */
+  activeSeibanFilters?: readonly string[];
   selectedResourceCd: string | null;
   setSelectedResourceCd: (cd: string) => void;
   onOpenDueDatePicker: (row: LeaderBoardRow) => void;
@@ -24,6 +26,7 @@ export type LeaderBoardGridProps = {
 type SlotCardProps = {
   resourceCd: string;
   rows: LeaderBoardRow[];
+  activeSeibanFilters: readonly string[] | undefined;
   selectedResourceCd: string | null;
   setSelectedResourceCd: (cd: string) => void;
   resourceJapaneseNames: string;
@@ -41,6 +44,7 @@ type SlotCardProps = {
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   resourceCd,
   rows,
+  activeSeibanFilters,
   selectedResourceCd,
   setSelectedResourceCd,
   resourceJapaneseNames,
@@ -72,6 +76,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       onOpenDueDatePicker={onOpenDueDatePicker}
       dueDatePending={dueDatePending}
       orderUsageNumbers={orderUsageNumbers}
+      activeSeibanFilters={activeSeibanFilters}
       onOrderChange={onOrderChange}
       onCompleteRow={onCompleteRow}
       completePending={completePending}
@@ -90,6 +95,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   sortedGrouped,
   resourceNameMap,
   orderUsageByResourceCd,
+  activeSeibanFilters,
   selectedResourceCd,
   setSelectedResourceCd,
   onOpenDueDatePicker,
@@ -124,6 +130,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             key={`slot-${slotIndex}-${cd}`}
             resourceCd={cd}
             rows={rows}
+            activeSeibanFilters={activeSeibanFilters}
             selectedResourceCd={selectedResourceCd}
             setSelectedResourceCd={setSelectedResourceCd}
             resourceJapaneseNames={jpNames}

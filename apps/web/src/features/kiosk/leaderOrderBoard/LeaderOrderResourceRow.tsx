@@ -15,6 +15,8 @@ export type LeaderOrderResourceRowProps = {
   variant?: 'interactive' | 'signage';
   resourceCd: string;
   row: LeaderBoardRow;
+  /** 製番 OR フィルタ時の左縁アクセント（Tailwind リテラル） */
+  seibanAccentRowClass?: string;
   orderUsageNumbers: readonly number[] | undefined;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
   onCompleteRow: (rowId: string) => void;
@@ -33,6 +35,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   variant = 'interactive',
   resourceCd,
   row,
+  seibanAccentRowClass,
   orderUsageNumbers,
   onOrderChange,
   onCompleteRow,
@@ -52,7 +55,8 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   return (
     <div
       className={clsx(
-        'rounded bg-slate-800/80 px-2 py-1 text-[11px]',
+        'rounded bg-slate-800/80 py-1 text-[11px]',
+        seibanAccentRowClass ? clsx('pl-2 pr-2', seibanAccentRowClass) : 'px-2',
         row.isCompleted && 'opacity-50 grayscale'
       )}
     >

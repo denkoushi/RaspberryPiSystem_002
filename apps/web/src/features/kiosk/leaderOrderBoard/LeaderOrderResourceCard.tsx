@@ -6,6 +6,7 @@ import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manu
 
 import { LeaderOrderResourceRow } from './LeaderOrderResourceRow';
 import { LEADER_BOARD_ROW_ESTIMATE_PX, LEADER_BOARD_VIRTUAL_ROW_THRESHOLD } from './performance/leaderBoardRefetchPolicy';
+import { resolveSeibanAccentRowClass } from './seibanAccentPalette';
 
 import type { LeaderBoardRow } from './types';
 
@@ -30,6 +31,8 @@ type Props = {
   /** 備考の追加・編集。空行はグレー鉛筆、内容ありは色付き鉛筆（親がモーダルを開く） */
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
+  /** 製番 OR フィルタ ON 時のみ行左縁に識別色 */
+  activeSeibanFilters?: readonly string[];
 };
 
 function LeaderOrderResourceCardInner({
@@ -48,7 +51,8 @@ function LeaderOrderResourceCardInner({
   completePending,
   orderPending,
   onOpenNote,
-  notePending
+  notePending,
+  activeSeibanFilters
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
@@ -128,6 +132,7 @@ function LeaderOrderResourceCardInner({
                     variant={variant}
                     resourceCd={resourceCd}
                     row={row}
+                    seibanAccentRowClass={resolveSeibanAccentRowClass(row.fseiban, activeSeibanFilters ?? [])}
                     orderUsageNumbers={orderUsageNumbers}
                     onOrderChange={onOrderChange}
                     onCompleteRow={onCompleteRow}
@@ -149,6 +154,7 @@ function LeaderOrderResourceCardInner({
                 variant={variant}
                 resourceCd={resourceCd}
                 row={row}
+                seibanAccentRowClass={resolveSeibanAccentRowClass(row.fseiban, activeSeibanFilters ?? [])}
                 orderUsageNumbers={orderUsageNumbers}
                 onOrderChange={onOrderChange}
                 onCompleteRow={onCompleteRow}

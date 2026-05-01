@@ -1,35 +1,17 @@
 import { formatDueDateForProgressOverview } from '../../../features/kiosk/productionSchedule/formatDueDate';
 import {
   isProgressOverviewDueDateOverdue,
-  progressOverviewProcessChipClassName,
-  progressOverviewResourceAriaLabel,
-  progressOverviewResourceTooltip,
   PROGRESS_OVERVIEW_PART_ROW_DUE_CELL_CLASS,
   PROGRESS_OVERVIEW_PART_ROW_PRODUCT_CELL_CLASS,
-  PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS,
-  PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CHIPS_CLASS
+  PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS
 } from '../../../features/kiosk/productionSchedule/progressOverviewPresentation';
+import { KioskResourceProcessChips } from '../resourceProgress/KioskResourceProcessChips';
 
-import type {
-  ProductionScheduleProgressOverviewPartItem,
-  ProductionScheduleProgressOverviewProcessItem
-} from '../../../api/client';
+import type { ProductionScheduleProgressOverviewPartItem } from '../../../api/client';
 
 type ProgressOverviewPartRowProps = {
   part: ProductionScheduleProgressOverviewPartItem;
 };
-
-function ProcessChip({ process }: { process: ProductionScheduleProgressOverviewProcessItem }) {
-  return (
-    <span
-      className={progressOverviewProcessChipClassName(process.isCompleted)}
-      title={progressOverviewResourceTooltip(process.resourceNames)}
-      aria-label={progressOverviewResourceAriaLabel(process.resourceCd, process.resourceNames)}
-    >
-      {process.resourceCd}
-    </span>
-  );
-}
 
 export function ProgressOverviewPartRow({ part }: ProgressOverviewPartRowProps) {
   return (
@@ -47,11 +29,7 @@ export function ProgressOverviewPartRow({ part }: ProgressOverviewPartRowProps) 
         </span>
       </td>
       <td className={PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS}>
-        <div className={PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CHIPS_CLASS}>
-          {part.processes.map((process) => (
-            <ProcessChip key={process.rowId} process={process} />
-          ))}
-        </div>
+        <KioskResourceProcessChips processes={part.processes} />
       </td>
     </tr>
   );
