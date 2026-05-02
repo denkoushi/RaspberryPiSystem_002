@@ -2,6 +2,10 @@ import clsx from 'clsx';
 import { memo } from 'react';
 
 import { KioskPencilGlyph } from '../../../components/kiosk/KioskPencilGlyph';
+import {
+  KioskResourceProcessChips,
+  type KioskResourceProgressProcessChip
+} from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
@@ -26,6 +30,7 @@ export type LeaderOrderResourceRowProps = {
   dueDatePending?: boolean;
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
+  footerResourceChips?: readonly KioskResourceProgressProcessChip[];
 };
 
 /**
@@ -44,7 +49,8 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   onOpenDueDatePicker,
   dueDatePending,
   onOpenNote,
-  notePending
+  notePending,
+  footerResourceChips = []
 }: LeaderOrderResourceRowProps) {
   const isSignage = variant === 'signage';
   const manual = isManualDueDateSet(row.dueDate);
@@ -151,6 +157,11 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
       {pres.partNameLine.length > 0 ? <div className="text-white/60">{pres.partNameLine}</div> : null}
       {pres.machineTypeNameLine.length > 0 ? (
         <div className="min-w-0 break-words text-[11px] text-white/80">{pres.machineTypeNameLine}</div>
+      ) : null}
+      {footerResourceChips.length > 0 ? (
+        <div className="mt-1 overflow-x-auto overflow-y-hidden border-t border-white/10 pt-1">
+          <KioskResourceProcessChips processes={footerResourceChips} className="flex-nowrap" />
+        </div>
       ) : null}
     </div>
   );
