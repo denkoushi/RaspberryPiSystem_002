@@ -249,4 +249,65 @@ describe('createDgxResourceService', () => {
       code: 'DGX_RUNTIME_CONTROL_NOT_CONFIGURED',
     });
   });
+
+  it('getOverview includes targets registry aligned with legacy services', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: false,
+        health: { ok: false },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const svc = makeSvc(store, gateway);
+    const ov = await svc.getOverview();
+
+    expect(ov.targets).toHaveLength(6);
+    expect(ov.targets.map((t) => t.id)).toEqual([
+      'system-prod-gateway',
+      'system-prod-inference',
+      'system-prod-embedding',
+      'private-comfyui',
+      'spark-host',
+      'metrics-kpi',
+    ]);
+    expect(ov.services).toHaveLength(4);
+    const comfySvc = ov.services.find((s) => s.id === 'private-comfyui');
+    const comfyTgt = ov.targets.find((t) => t.id === 'private-comfyui');
+    expect(comfySvc?.status).toBe(comfyTgt?.status);
+  });
+
+  it('rejects EXECUTE_TARGET_ACTION start on read-only spark-host', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(),
+      createChatCompletion: vi.fn(),
+    };
+    const svc = makeSvc(store, gateway);
+
+    await expect(
+      svc.executeAction({
+        type: 'EXECUTE_TARGET_ACTION',
+        targetId: 'spark-host',
+        action: 'start',
+      })
+    ).rejects.toMatchObject({ code: 'DGX_TARGET_ACTION_NOT_SUPPORTED' });
+  });
+
+  it('EXECUTE_TARGET_ACTION gateway start delegates same as LOCAL_LLM_START when misconfigured', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(),
+      createChatCompletion: vi.fn(),
+    };
+    const svc = makeSvc(store, gateway);
+
+    await expect(
+      svc.executeAction({
+        type: 'EXECUTE_TARGET_ACTION',
+        targetId: 'system-prod-gateway',
+        action: 'start',
+      })
+    ).rejects.toMatchObject({ code: 'DGX_RUNTIME_CONTROL_NOT_CONFIGURED' });
+  });
 });

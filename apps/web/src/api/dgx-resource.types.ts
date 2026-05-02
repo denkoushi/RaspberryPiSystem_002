@@ -1,7 +1,29 @@
 /** API の DgxPolicyMode と同一キー（表示は dgxResourceProfiles で定義） */
 export type DgxPolicyModeApi = 'business_first' | 'private_ok' | 'experiment_first';
 
+export type DgxControlTargetIdApi =
+  | 'system-prod-gateway'
+  | 'system-prod-inference'
+  | 'system-prod-embedding'
+  | 'private-comfyui'
+  | 'spark-host'
+  | 'metrics-kpi';
+
+export type DgxControlTargetKindApi = 'gateway' | 'http_probe' | 'metrics_source';
+
+export type DgxControlTargetCapabilityApi = 'readStatus' | 'start' | 'stop';
+
 export type DgxServiceStatusKind = 'running' | 'degraded' | 'stopped' | 'unknown';
+
+export type DgxControlTargetSnapshotApi = {
+  id: DgxControlTargetIdApi;
+  kind: DgxControlTargetKindApi;
+  displayName: string;
+  capabilities: DgxControlTargetCapabilityApi[];
+  status: DgxServiceStatusKind;
+  badges: string[];
+  metaLines: string[];
+};
 
 export type DgxResourceKpis = {
   gpuUtilPct: number | null;
@@ -55,7 +77,9 @@ export type DgxResourceOverview = {
     embeddingHealthConfigured: boolean;
     sparkHostConfigured: boolean;
   };
+  targets?: DgxControlTargetSnapshotApi[];
   sparkHost: DgxSparkHostOverview;
+  /** @deprecated 後方互換。表示は targets を優先 */
   services: DgxResourceServiceCard[];
   notes: string[];
 };
@@ -73,7 +97,13 @@ export type DgxResourceEventsResponse = {
 export type DgxResourceActionBody =
   | { type: 'LOCAL_LLM_START'; reason?: string }
   | { type: 'LOCAL_LLM_STOP'; reason?: string }
-  | { type: 'SET_POLICY'; policyMode: DgxPolicyModeApi };
+  | { type: 'SET_POLICY'; policyMode: DgxPolicyModeApi }
+  | {
+      type: 'EXECUTE_TARGET_ACTION';
+      targetId: DgxControlTargetIdApi;
+      action: 'start' | 'stop';
+      reason?: string;
+    };
 
 export type DgxResourceActionResult = {
   ok: true;

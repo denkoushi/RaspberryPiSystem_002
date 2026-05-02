@@ -34,6 +34,7 @@
 
 - **`Connection closed by … port 22` が `--detach --follow` に混ざる**: `docker compose` 再起動付近で **一時切断**があり得る。**完了判定は `PLAY RECAP` / `summary.json` を正本**とする（detach 運用の既知パターン）
 - **未認証で `GET /api/system/dgx-resource/overview` が 401**: **正常**（管理者セッション必須）。匿名で 200 しない
+- **Control Targets / `EXECUTE_TARGET_ACTION`**: `overview.targets[]` で標準監視対象を一覧化。書き込みは **`system-prod-gateway` のみ**。詳細は [ADR-20260502](../decisions/ADR-20260502-dgx-resource-control-targets.md)・[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）
 - **専用 sidecar を使う運用へ寄せたい**: `DGX_RESOURCE_SPARK_HOST_STATUS_URL` を明示し、ゲートウェイ `/healthz` と意味を分離する（Runbook の ENV 説明を正とする）
 
 **参照**: [KB-363（詳細）](./KB-363-dgx-resource-spark-status-fallback.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment.md](../guides/deployment.md)

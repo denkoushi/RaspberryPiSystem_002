@@ -12,6 +12,7 @@ related:
 - ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
 - ../decisions/ADR-20260402-inference-foundation-phase1.md
 - ../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md
+- ../decisions/ADR-20260502-dgx-resource-control-targets.md
 category: runbooks
 update-frequency: high
 
@@ -34,9 +35,22 @@ update-frequency: high
 
 **サーバ API（管理者・マネージャー）**:
 
-- `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**
+- `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。
 - `GET /api/system/dgx-resource/events?limit=…` — UI 操作の直近履歴（プロセス内リングバッファ）
-- `POST /api/system/dgx-resource/actions` — `LOCAL_LLM_START` / `LOCAL_LLM_STOP` / `SET_POLICY`（運用プロファイルの記録）
+- `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が **書き込みの正規経路**。**書き込み可能なのは `system-prod-gateway` のみ**（DGX `/start` `/stop`）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（運用プロファイル記録）も継続。
+
+**Control Targets（`overview.targets` の例）**:
+
+| `targetId` | 種別 | 書き込み |
+| --- | --- | --- |
+| `system-prod-gateway` | gateway | `start` / `stop`（`on_demand` かつ制御 URL 設定時のみ capability に含む） |
+| `system-prod-inference` | http_probe | 読取のみ |
+| `system-prod-embedding` | http_probe | 読取のみ |
+| `private-comfyui` | http_probe | 読取のみ |
+| `spark-host` | http_probe | 読取のみ |
+| `metrics-kpi` | metrics_source | 読取のみ（KPI JSON の取得可否） |
+
+読取のみのターゲットへ `EXECUTE_TARGET_ACTION` した場合は API が **`DGX_TARGET_ACTION_NOT_SUPPORTED`** で拒否する。
 
 **運用プロファイル（`SET_POLICY` / `policy.mode`）**:
 
@@ -54,7 +68,7 @@ update-frequency: high
 - **`DGX_RESOURCE_SPARK_HOST_STATUS_URL`** — DGX Spark **ホスト**の簡易疎通用（メトリクス sidecar の `/health` 等。**GET が 200** なら管理 UI で「応答あり」）。未設定時は **admin `LOCAL_LLM_BASE_URL` の `/healthz` を既定フォールバック**として使うため、Pi5 から DGX gateway に到達できれば Spark（ホスト）パネルも最低限の生存監視を行う。専用 sidecar を使う場合だけ明示設定する
 - `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
 
-**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（ポリシー説明は `dgx-resource.policy-profile.ts`）
+**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（Control Target 型: `dgx-resource.control-target.types.ts`、ビルダ: `dgx-resource.control-targets.builder.ts`、gateway 起停: `dgx-resource.gateway-runtime.executor.ts`、ポリシー説明は `dgx-resource.policy-profile.ts`）
 
 **本番反映（2026-05-02・Phase2）**: `feat/dgx-resource-profile-and-spark-visibility-clean`（`09b2423e`）を **`raspberrypi5` のみ**へ反映。`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`、Detach **`20260502-190642-27778`**、`PLAY RECAP`: **`ok=130 changed=4 unreachable=0 failed=0`**。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。  
 **運用知見（2026-05-02）**: `--follow` が停止して見えるケースでは `status.json` が stale のままでも、遠隔ログの **`PLAY RECAP failed=0`** と `summary.json` を優先して完了判定してよい。  

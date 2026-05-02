@@ -6,7 +6,12 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { createDgxResourceService } from '../../services/system/dgx-resource/dgx-resource.service.js';
 import { getDgxResourcePolicyStore } from '../../services/system/dgx-resource/dgx-resource.policy-store.js';
 import type { DgxResourceServicePort } from '../../services/system/dgx-resource/dgx-resource.service.js';
+import { DGX_CONTROL_TARGET_IDS } from '../../services/system/dgx-resource/dgx-resource.control-target.types.js';
 import { getInferenceRuntime } from '../../services/inference/inference-runtime.js';
+
+const dgxControlTargetIdSchema = z.enum(
+  DGX_CONTROL_TARGET_IDS as unknown as [typeof DGX_CONTROL_TARGET_IDS[number], ...typeof DGX_CONTROL_TARGET_IDS[number][]]
+);
 
 const actionBodySchema = z.discriminatedUnion('type', [
   z.object({
@@ -20,6 +25,12 @@ const actionBodySchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('SET_POLICY'),
     policyMode: z.enum(['business_first', 'private_ok', 'experiment_first']),
+  }),
+  z.object({
+    type: z.literal('EXECUTE_TARGET_ACTION'),
+    targetId: dgxControlTargetIdSchema,
+    action: z.enum(['start', 'stop']),
+    reason: z.string().trim().max(200).optional(),
   }),
 ]);
 

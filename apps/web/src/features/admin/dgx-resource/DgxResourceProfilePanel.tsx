@@ -13,34 +13,37 @@ import type { DgxResourceOverview } from '../../../api/dgx-resource.types';
 
 type Props = {
   overview: DgxResourceOverview;
-  onPolicyError: (message: string | null) => void;
+  onControlUiError: (message: string | null) => void;
 };
 
-function inferenceLooksDegraded(services: DgxResourceOverview['services']): boolean {
-  const inf = services.find((s) => s.id === 'system-prod-inference');
+function inferenceLooksDegraded(overview: DgxResourceOverview): boolean {
+  const targets = overview.targets ?? [];
+  const inf =
+    targets.find((t) => t.id === 'system-prod-inference') ??
+    overview.services.find((s) => s.id === 'system-prod-inference');
   return inf?.status === 'degraded' || (inf?.badges ?? []).includes('degraded');
 }
 
-export function DgxResourceProfilePanel({ overview, onPolicyError }: Props) {
+export function DgxResourceProfilePanel({ overview, onControlUiError }: Props) {
   const qc = useQueryClient();
   const policyMode = overview.policy.mode;
 
   const mutatePolicy = useMutation({
     mutationFn: postDgxResourceAction,
     onSuccess: async () => {
-      onPolicyError(null);
+      onControlUiError(null);
       await Promise.all([
         qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview }),
         qc.invalidateQueries({ queryKey: ['dgx-resource', 'events'] }),
       ]);
     },
     onError: (e) => {
-      onPolicyError(getDgxResourceApiErrorMessage(e));
+      onControlUiError(getDgxResourceApiErrorMessage(e));
     },
   });
 
   const busy = mutatePolicy.isPending;
-  const degraded = inferenceLooksDegraded(overview.services);
+  const degraded = inferenceLooksDegraded(overview);
   const rb = overview.policy.previousMode;
   const canRollback = rb != null && rb !== policyMode;
 
