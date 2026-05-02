@@ -1,6 +1,12 @@
 import { ApiError } from '../../../lib/errors.js';
 import { env } from '../../../config/env.js';
 
+import {
+  comfyPolicyBadgeApplicable,
+  isBusinessFirstSuppressionHintActive,
+  policyLabelJa,
+  setPolicyEventMessage,
+} from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode, DgxResourceEvent, DgxResourcePolicyStore } from './dgx-resource.policy-store.js';
 
 import type { LocalLlmGateway, LocalLlmRuntimeConfig, LocalLlmStatus } from '../local-llm-proxy.service.js';
@@ -10,10 +16,21 @@ export type DgxResourceKpis = {
   unifiedMemoryUsedGiB: number | null;
   unifiedMemoryTotalGiB: number | null;
   freeMemoryGiB: number | null;
+  /** グラフ配色などはこちらで分岐（表示ラベル文字列依存を避ける） */
+  policyMode: DgxPolicyMode;
   policyLabel: string;
 };
 
 export type DgxServiceStatusKind = 'running' | 'degraded' | 'stopped' | 'unknown';
+
+export type DgxSparkHostOverview = {
+  configured: boolean;
+  probedAt: string;
+  status: DgxServiceStatusKind;
+  probeUrl?: string;
+  httpStatus?: number;
+  errorBrief?: string;
+};
 
 export type DgxResourceServiceCard = {
   id: string;
@@ -35,6 +52,8 @@ export type DgxResourceOverview = {
   kpis: DgxResourceKpis;
   policy: {
     mode: DgxPolicyMode;
+    /** ロールバック用。未切替または同一モード再設定のみのとき null */
+    previousMode: DgxPolicyMode | null;
     comfyStartBlockedHint: boolean;
   };
   runtime: {
@@ -46,7 +65,9 @@ export type DgxResourceOverview = {
     metricsConfigured: boolean;
     comfyHealthConfigured: boolean;
     embeddingHealthConfigured: boolean;
+    sparkHostConfigured: boolean;
   };
+  sparkHost: DgxSparkHostOverview;
   services: DgxResourceServiceCard[];
   notes: string[];
 };
@@ -78,8 +99,6 @@ const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup:
   };
 };
 
-const policyLabelJa = (mode: DgxPolicyMode): string => (mode === 'business_first' ? '業務優先' : '私用OK');
-
 export type DgxResourceServiceDeps = {
   fetchImpl: typeof fetch;
   localLlmGateway: LocalLlmGateway;
@@ -89,6 +108,8 @@ export type DgxResourceServiceDeps = {
   metricsUrl?: string;
   comfyHealthUrl?: string;
   embeddingHealthUrl?: string;
+  /** DGX Spark ホスト疎通（任意） */
+  sparkHostStatusUrl?: string;
 };
 
 async function fetchJsonMetrics(
@@ -124,12 +145,29 @@ async function probeHttpOk(
   timeoutMs: number,
   headers?: Record<string, string>
 ): Promise<boolean> {
+  const r = await probeHttpGet(url, fetchImpl, timeoutMs, headers);
+  return r.ok;
+}
+
+async function probeHttpGet(
+  url: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  headers?: Record<string, string>
+): Promise<{ ok: boolean; statusCode?: number; errorBrief?: string }> {
   const { signal, cleanup } = createTimeoutSignal(timeoutMs);
   try {
     const response = await fetchImpl(url, { method: 'GET', headers, signal });
-    return response.ok;
-  } catch {
-    return false;
+    const ok = response.ok;
+    const statusCode = response.status;
+    return {
+      ok,
+      statusCode,
+      ...(ok ? {} : { errorBrief: `HTTP ${statusCode}` }),
+    };
+  } catch (e: unknown) {
+    const aborted = typeof e === 'object' && e != null && (e as { name?: string }).name === 'AbortError';
+    return { ok: false, errorBrief: aborted ? 'timeout_or_abort' : 'network_or_error' };
   } finally {
     cleanup();
   }
@@ -169,6 +207,18 @@ function buildWarmWindow(): DgxResourceWarmWindow {
   };
 }
 
+function comfyMetaLines(policyMode: DgxPolicyMode, comfyConfigured: boolean, comfyProbeUrl?: string): string[] {
+  const lines: string[] = [];
+  if (comfyConfigured && comfyProbeUrl) lines.push(`probe: GET ${comfyProbeUrl}`);
+  if (isBusinessFirstSuppressionHintActive(policyMode)) {
+    lines.push('業務優先: 私用GPU負荷は運用手順で抑制');
+  }
+  if (policyMode === 'experiment_first') {
+    lines.push('実験優先: 業務 Inference との競合は人手で確認（Runbook）');
+  }
+  return lines;
+}
+
 export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResourceServicePort {
   const postRuntimeControl = async (
     targetUrl: string,
@@ -206,46 +256,54 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     }
   };
 
+  const handleSetPolicy = (mode: DgxPolicyMode): { ok: true; message: string } => {
+    const changed = deps.policyStore.setPolicyMode(mode);
+    if (!changed) {
+      return { ok: true, message: `${policyLabelJa(mode)}モードのままです` };
+    }
+    const msg = setPolicyEventMessage(mode);
+    deps.policyStore.appendEvent(msg);
+    return { ok: true, message: msg };
+  };
+
+  const handleRuntimeAction = async (body: Extract<DgxResourceActionBody, { type: 'LOCAL_LLM_START' } | { type: 'LOCAL_LLM_STOP' }>): Promise<{ ok: true; message: string }> => {
+    const startUrl = env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim();
+    const stopUrl = env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim();
+    const runtimeConfigured = Boolean(startUrl && stopUrl);
+    if (!runtimeConfigured || env.LOCAL_LLM_RUNTIME_MODE !== 'on_demand') {
+      throw new ApiError(
+        400,
+        'LocalLLM が on_demand かつ 起動/停止 URL が設定されているときのみ操作できます',
+        { mode: env.LOCAL_LLM_RUNTIME_MODE, runtimeConfigured },
+        'DGX_RUNTIME_CONTROL_NOT_CONFIGURED'
+      );
+    }
+
+    if (body.type === 'LOCAL_LLM_START') {
+      await postRuntimeControl(startUrl!, env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS, body.reason);
+      deps.policyStore.appendEvent('LocalLLM ランタイム起動を要求しました');
+      return { ok: true, message: '起動リクエストを送信しました（反映まで時間がかかる場合があります）' };
+    }
+
+    await postRuntimeControl(stopUrl!, env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS, body.reason);
+    deps.policyStore.appendEvent('LocalLLM ランタイム停止を要求しました');
+    return { ok: true, message: '停止リクエストを送信しました' };
+  };
+
   return {
     getEvents(limit: number): DgxResourceEvent[] {
       return deps.policyStore.getEvents(limit);
     },
 
     async executeAction(body: DgxResourceActionBody): Promise<{ ok: true; message: string }> {
-      if (body.type === 'SET_POLICY') {
-        deps.policyStore.setPolicyMode(body.policyMode);
-        const msg =
-          body.policyMode === 'business_first' ? '業務優先モードに変更しました' : '私用OKモードに変更しました';
-        deps.policyStore.appendEvent(msg);
-        return { ok: true, message: msg };
-      }
-
-      const startUrl = env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim();
-      const stopUrl = env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim();
-      const runtimeConfigured = Boolean(startUrl && stopUrl);
-      if (!runtimeConfigured || env.LOCAL_LLM_RUNTIME_MODE !== 'on_demand') {
-        throw new ApiError(
-          400,
-          'LocalLLM が on_demand かつ 起動/停止 URL が設定されているときのみ操作できます',
-          { mode: env.LOCAL_LLM_RUNTIME_MODE, runtimeConfigured },
-          'DGX_RUNTIME_CONTROL_NOT_CONFIGURED'
-        );
-      }
-
-      if (body.type === 'LOCAL_LLM_START') {
-        await postRuntimeControl(startUrl!, env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS, body.reason);
-        deps.policyStore.appendEvent('LocalLLM ランタイム起動を要求しました');
-        return { ok: true, message: '起動リクエストを送信しました（反映まで時間がかかる場合があります）' };
-      }
-
-      await postRuntimeControl(stopUrl!, env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS, body.reason);
-      deps.policyStore.appendEvent('LocalLLM ランタイム停止を要求しました');
-      return { ok: true, message: '停止リクエストを送信しました' };
+      if (body.type === 'SET_POLICY') return handleSetPolicy(body.policyMode);
+      return handleRuntimeAction(body);
     },
 
     async getOverview(): Promise<DgxResourceOverview> {
       const generatedAt = new Date().toISOString();
       const policyMode = deps.policyStore.getPolicyMode();
+      const previousMode = deps.policyStore.getPreviousPolicyMode();
 
       const adminCfg = deps.getAdminLocalLlmRuntimeConfig();
       const status: LocalLlmStatus = await deps.localLlmGateway.getStatus();
@@ -290,6 +348,13 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         });
       }
 
+      const sparkUrl = deps.sparkHostStatusUrl?.trim();
+      const sparkConfigured = Boolean(sparkUrl);
+      let sparkProbe: { ok: boolean; statusCode?: number; errorBrief?: string } = { ok: false };
+      if (sparkConfigured) {
+        sparkProbe = await probeHttpGet(sparkUrl!, deps.fetchImpl, deps.probeTimeoutMs);
+      }
+
       const gatewayStatus: DgxServiceStatusKind = status.configured
         ? status.health.ok
           ? 'running'
@@ -309,7 +374,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       }
 
       const comfyBadges =
-        comfyConfigured && !comfyReachable && policyMode === 'business_first' ? ['policy'] : [];
+        comfyPolicyBadgeApplicable(policyMode, comfyConfigured, comfyReachable) ? ['policy'] : [];
 
       const embeddingStatus: DgxServiceStatusKind = !embeddingConfigured
         ? 'unknown'
@@ -324,6 +389,11 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       if (!comfyConfigured) {
         notes.push(
           'ComfyUI は DGX_RESOURCE_COMFYUI_HEALTH_URL 未設定のため疎通のみ表示できません（SSH ポートフォワード運用は Runbook 参照）'
+        );
+      }
+      if (!sparkConfigured) {
+        notes.push(
+          'DGX Spark ホスト簡易監視は DGX_RESOURCE_SPARK_HOST_STATUS_URL 未設定のため未取得です（メトリクス sidecar の /health 等を Runbook で設定）'
         );
       }
 
@@ -353,10 +423,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           name: 'private-comfyui',
           status: comfyUiStatus,
           badges: comfyBadges,
-          metaLines: [
-            ...(comfyConfigured ? [`probe: GET ${deps.comfyHealthUrl}`] : []),
-            ...(policyMode === 'business_first' ? ['業務優先: 私用GPU負荷は運用手順で抑制'] : []),
-          ],
+          metaLines: comfyMetaLines(policyMode, comfyConfigured, deps.comfyHealthUrl ?? undefined),
         },
         {
           id: 'system-prod-embedding',
@@ -372,6 +439,15 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         Boolean(env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim() && env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim()) &&
         env.LOCAL_LLM_RUNTIME_MODE === 'on_demand';
 
+      const sparkHost: DgxSparkHostOverview = {
+        configured: sparkConfigured,
+        probedAt: generatedAt,
+        status: sparkConfigured ? (sparkProbe.ok ? 'running' : 'stopped') : 'unknown',
+        ...(sparkConfigured && sparkUrl ? { probeUrl: sparkUrl } : {}),
+        ...(sparkProbe.statusCode !== undefined ? { httpStatus: sparkProbe.statusCode } : {}),
+        ...(sparkProbe.errorBrief && !sparkProbe.ok ? { errorBrief: sparkProbe.errorBrief } : {}),
+      };
+
       return {
         generatedAt,
         kpis: {
@@ -379,11 +455,13 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           unifiedMemoryUsedGiB: metricsPayload?.unifiedMemoryUsedGiB ?? null,
           unifiedMemoryTotalGiB: metricsPayload?.unifiedMemoryTotalGiB ?? null,
           freeMemoryGiB: metricsPayload?.freeMemoryGiB ?? null,
+          policyMode,
           policyLabel: policyLabelJa(policyMode),
         },
         policy: {
           mode: policyMode,
-          comfyStartBlockedHint: policyMode === 'business_first',
+          previousMode,
+          comfyStartBlockedHint: isBusinessFirstSuppressionHintActive(policyMode),
         },
         runtime: {
           localLlmMode: env.LOCAL_LLM_RUNTIME_MODE,
@@ -394,7 +472,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           metricsConfigured,
           comfyHealthConfigured: comfyConfigured,
           embeddingHealthConfigured: embeddingConfigured,
+          sparkHostConfigured: sparkConfigured,
         },
+        sparkHost,
         services,
         notes,
       };

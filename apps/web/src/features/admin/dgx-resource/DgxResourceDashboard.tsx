@@ -13,6 +13,7 @@ import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
 import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourceServiceGrid } from './DgxResourceServiceGrid';
+import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
 
 const EVENT_LIMIT = 12;
 
@@ -77,12 +78,14 @@ export function DgxResourceDashboard() {
                 <div className="mt-1 truncate">
                   probes: metrics {overviewQuery.data.optionalProbes.metricsConfigured ? 'on' : 'off'} · comfy{' '}
                   {overviewQuery.data.optionalProbes.comfyHealthConfigured ? 'on' : 'off'} · emb{' '}
-                  {overviewQuery.data.optionalProbes.embeddingHealthConfigured ? 'on' : 'off'}
+                  {overviewQuery.data.optionalProbes.embeddingHealthConfigured ? 'on' : 'off'} · spark{' '}
+                  {overviewQuery.data.optionalProbes.sparkHostConfigured ? 'on' : 'off'}
                 </div>
               </footer>
             </section>
 
             <aside className="flex min-h-0 shrink-0 flex-col gap-2 lg:col-span-4">
+              <DgxResourceSparkStatusPanel sparkHost={overviewQuery.data.sparkHost} />
               <DgxResourcePolicyPanel
                 overview={overviewQuery.data}
                 onPolicyError={(m) => setActionError(m)}

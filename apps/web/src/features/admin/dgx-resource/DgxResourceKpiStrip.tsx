@@ -1,3 +1,5 @@
+import { policyBarTone } from './dgxResourceProfiles';
+
 import type { DgxResourceKpis } from '../../../api/dgx-resource.types';
 
 function pctBarClass(v: number | null, ok: (n: number) => boolean, warn: (n: number) => boolean): string {
@@ -26,6 +28,8 @@ export function DgxResourceKpiStrip({ kpis }: Props) {
     kpis.freeMemoryGiB != null && t != null && t > 0
       ? Math.min(100, (kpis.freeMemoryGiB / t) * 100)
       : null;
+
+  const polBar = policyBarTone(kpis.policyMode);
 
   const items: Array<{
     key: string;
@@ -66,8 +70,8 @@ export function DgxResourceKpiStrip({ kpis }: Props) {
       key: 'pol',
       label: 'Policy',
       value: kpis.policyLabel,
-      barPct: kpis.policyLabel === '業務優先' ? 100 : 40,
-      barClass: kpis.policyLabel === '業務優先' ? 'bg-amber-500/90' : 'bg-emerald-500/80',
+      barPct: polBar.barPct,
+      barClass: polBar.barClass,
     },
   ];
 
