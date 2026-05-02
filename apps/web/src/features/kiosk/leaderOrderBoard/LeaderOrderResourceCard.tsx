@@ -1,6 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
-import { memo, useRef } from 'react';
+import { memo, useMemo, useRef } from 'react';
 
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manualOrderOverviewTypography';
 
@@ -62,12 +62,28 @@ function LeaderOrderResourceCardInner({
   const isSignage = variant === 'signage';
   const scrollParentRef = useRef<HTMLDivElement | null>(null);
 
-  const useVirtual = rows.length > LEADER_BOARD_VIRTUAL_ROW_THRESHOLD;
+  const rowsWithFooter = useMemo(
+    () =>
+      rows.map((row) => ({
+        row,
+        footerChips:
+          footerResourceChipsByPartKey.get(
+            buildLeaderBoardPartResourceProcessKey({
+              seibanJoinKey: row.seibanJoinKey,
+              productNo: row.productNo,
+              fhincd: row.fhincd
+            })
+          ) ?? []
+      })),
+    [rows, footerResourceChipsByPartKey]
+  );
+
+  const useVirtual = rowsWithFooter.length > LEADER_BOARD_VIRTUAL_ROW_THRESHOLD;
 
   const rowVirtualizer = useVirtualizer({
-    count: useVirtual ? rows.length : 0,
+    count: useVirtual ? rowsWithFooter.length : 0,
     getScrollElement: () => scrollParentRef.current,
-    getItemKey: (index) => rows[index]?.id ?? index,
+    getItemKey: (index) => rowsWithFooter[index]?.row.id ?? index,
     estimateSize: () => LEADER_BOARD_ROW_ESTIMATE_PX,
     overscan: 3,
     measureElement: (el) => el.getBoundingClientRect().height
@@ -115,7 +131,7 @@ function LeaderOrderResourceCardInner({
         className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden pr-0.5"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {rows.length === 0 ? (
+        {rowsWithFooter.length === 0 ? (
           <p className="rounded bg-slate-800/80 px-2 py-2 text-xs text-white/45">行なし</p>
         ) : useVirtual ? (
           <div
@@ -123,7 +139,7 @@ function LeaderOrderResourceCardInner({
             style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
           >
             {rowVirtualizer.getVirtualItems().map((vi) => {
-              const row = rows[vi.index];
+              const { row, footerChips } = rowsWithFooter[vi.index];
               return (
                 <div
                   key={row.id}
@@ -146,22 +162,14 @@ function LeaderOrderResourceCardInner({
                     dueDatePending={dueDatePending}
                     onOpenNote={onOpenNote}
                     notePending={notePending}
-                    footerResourceChips={
-                      footerResourceChipsByPartKey.get(
-                        buildLeaderBoardPartResourceProcessKey({
-                          seibanJoinKey: row.seibanJoinKey,
-                          productNo: row.productNo,
-                          fhincd: row.fhincd
-                        })
-                      ) ?? []
-                    }
+                    footerResourceChips={footerChips}
                   />
                 </div>
               );
             })}
           </div>
         ) : (
-          rows.map((row) => (
+          rowsWithFooter.map(({ row, footerChips }) => (
             <div key={row.id} className="pb-1">
               <LeaderOrderResourceRow
                 variant={variant}
@@ -177,15 +185,7 @@ function LeaderOrderResourceCardInner({
                 dueDatePending={dueDatePending}
                 onOpenNote={onOpenNote}
                 notePending={notePending}
-                footerResourceChips={
-                  footerResourceChipsByPartKey.get(
-                    buildLeaderBoardPartResourceProcessKey({
-                      seibanJoinKey: row.seibanJoinKey,
-                      productNo: row.productNo,
-                      fhincd: row.fhincd
-                    })
-                  ) ?? []
-                }
+                footerResourceChips={footerChips}
               />
             </div>
           ))

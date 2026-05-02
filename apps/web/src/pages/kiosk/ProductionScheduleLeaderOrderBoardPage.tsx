@@ -6,14 +6,12 @@ import {
   useKioskProductionSchedule,
   useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleOrderUsage,
-  useKioskProductionScheduleProgressOverview,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
-import { buildLeaderBoardFooterResourceChipsByPartKey } from '../../features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips';
 import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
@@ -40,6 +38,7 @@ import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawer
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 import type { ProductionScheduleRow } from '../../api/client';
+import type { KioskResourceProgressProcessChip } from '../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import type { LeaderOrderCompletionFilter } from '../../features/kiosk/leaderOrderBoard/filterLeaderBoardRowsByCompletion';
 import type { LeaderBoardRow } from '../../features/kiosk/leaderOrderBoard/types';
 
@@ -239,7 +238,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS
   });
-  const progressOverviewQuery = useKioskProductionScheduleProgressOverview();
 
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -315,13 +313,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [grouped, completionFilter]
   );
   const footerResourceChipsByPartKey = useMemo(() => {
-    const overview = progressOverviewQuery.data;
-    if (!overview) return new Map();
-    return buildLeaderBoardFooterResourceChipsByPartKey([
-      ...(overview.scheduled ?? []),
-      ...(overview.unscheduled ?? [])
-    ]);
-  }, [progressOverviewQuery.data]);
+    const raw = scheduleQuery.data?.leaderboardFooterChipsByPartKey;
+    if (!raw) return new Map<string, readonly KioskResourceProgressProcessChip[]>();
+    return new Map<string, readonly KioskResourceProgressProcessChip[]>(
+      Object.entries(raw).map(([k, v]) => [k, v as readonly KioskResourceProgressProcessChip[]])
+    );
+  }, [scheduleQuery.data?.leaderboardFooterChipsByPartKey]);
 
   const visibleSeibanEntries = useMemo(() => deriveVisibleSeibanEntries(sortedGrouped), [sortedGrouped]);
 

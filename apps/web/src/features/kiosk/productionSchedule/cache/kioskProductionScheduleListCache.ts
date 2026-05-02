@@ -14,4 +14,13 @@ export type KioskProductionScheduleListCache = {
     note?: string | null;
     dueDate?: string | null;
   }>;
+  leaderboardFooterChipsByPartKey?: Record<
+    string,
+    Array<{
+      rowId: string;
+      resourceCd: string;
+      resourceNames?: string[];
+      isCompleted: boolean;
+    }>
+  >;
 };

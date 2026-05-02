@@ -29,6 +29,8 @@ import {
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from './production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
+import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
+import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
@@ -301,12 +303,16 @@ const buildMachineNameCondition = async (machineName: string | undefined): Promi
   )})`;
 };
 
-export async function listProductionScheduleRows(params: ProductionScheduleListParams): Promise<{
+export type ProductionScheduleListResult = {
   page: number;
   pageSize: number;
   total: number;
   rows: ProductionScheduleRow[];
-}> {
+  /** `responseProfile=leaderboard` のときのみ。progress-overview を二重取得せず行下工程チップへ供給する。 */
+  leaderboardFooterChipsByPartKey?: Record<string, LeaderboardPartFooterProcessItem[]>;
+};
+
+export async function listProductionScheduleRows(params: ProductionScheduleListParams): Promise<ProductionScheduleListResult> {
   const {
     page,
     pageSize,
@@ -488,11 +494,17 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     }));
     const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
     const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+    const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+      rows: enrichedRows,
+      locationKey,
+      siteKey
+    });
     return {
       page,
       pageSize,
       total,
-      rows: enrichedRows
+      rows: enrichedRows,
+      ...(leaderboardFooterChipsByPartKey ? { leaderboardFooterChipsByPartKey } : {})
     };
   }
 

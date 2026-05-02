@@ -1204,21 +1204,14 @@ export function useCompleteKioskProductionScheduleRow() {
     },
     onSuccess: (data, rowId) => {
       // Optimistic Update: キャッシュを直接更新して即座にUIを更新
-      queryClient.setQueriesData<{
-        page: number;
-        pageSize: number;
-        total: number;
-        rows: Array<{ id: string; occurredAt: string | Date; rowData: unknown; processingOrder?: number | null; note?: string | null }>;
-      }>(
+      queryClient.setQueriesData<KioskProductionScheduleListCache>(
         { queryKey: ['kiosk-production-schedule'] },
         (oldData) => {
           if (!oldData) return oldData;
           return {
             ...oldData,
             rows: oldData.rows.map((row) =>
-              row.id === rowId
-                ? { ...row, rowData: data.rowData }
-                : row
+              row.id === rowId ? { ...row, rowData: data.rowData } : row
             )
           };
         }
@@ -1226,6 +1219,8 @@ export function useCompleteKioskProductionScheduleRow() {
       // バックグラウンドで再取得（エラー時の整合性確保）
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-history-progress'] });
+      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-progress-overview'] });
       void queryClient.invalidateQueries({
         queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
       });
