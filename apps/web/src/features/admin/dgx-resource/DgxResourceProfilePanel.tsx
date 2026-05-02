@@ -47,11 +47,11 @@ export function DgxResourceProfilePanel({ overview, onPolicyError }: Props) {
   const currentCopy = DGX_POLICY_PROFILES[policyMode];
 
   return (
-    <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-sky-400/25 bg-sky-950/40 p-2">
-      <h2 className="text-xs font-semibold text-sky-100/90">運用プロファイル</h2>
-      <p className="text-[10px] leading-snug text-white/70">{currentCopy.description}</p>
+    <div className="flex shrink-0 flex-col gap-2.5 rounded-lg border border-sky-400/25 bg-sky-950/40 p-3">
+      <h2 className="text-lg font-semibold text-sky-100/90">運用プロファイル</h2>
+      <p className="text-sm leading-snug text-white/70">{currentCopy.description}</p>
       {degraded ? (
-        <p className="rounded border border-amber-500/35 bg-amber-950/40 px-2 py-1 text-[10px] text-amber-100/95">
+        <p className="rounded border border-amber-500/35 bg-amber-950/40 px-2.5 py-1.5 text-sm text-amber-100/95">
           推論レイヤが degraded の可能性があります（/v1/models）。切り替え前に復旧を推奨します。
         </p>
       ) : null}
@@ -61,7 +61,7 @@ export function DgxResourceProfilePanel({ overview, onPolicyError }: Props) {
             key={p.mode}
             type="button"
             variant={policyMode === p.mode ? 'primary' : 'secondary'}
-            className="px-3 py-1.5 text-xs"
+            className="px-4 py-2 text-sm"
             disabled={busy}
             onClick={() => mutatePolicy.mutate({ type: 'SET_POLICY', policyMode: p.mode })}
           >
@@ -75,7 +75,7 @@ export function DgxResourceProfilePanel({ overview, onPolicyError }: Props) {
             <Button
               type="button"
               variant="ghost"
-              className="border border-white/15 px-2 py-1 text-[11px]"
+              className="border border-white/15 px-3 py-2 text-sm"
               disabled={busy}
               onClick={() =>
                 mutatePolicy.mutate({
@@ -86,10 +86,10 @@ export function DgxResourceProfilePanel({ overview, onPolicyError }: Props) {
             >
               直前モードへ戻す ({DGX_POLICY_PROFILES[rb].titleShort})
             </Button>
-            <span className="text-[9px] text-white/45">安全ロールバック用（ひとつ前の状態）</span>
+            <span className="text-sm text-white/45">安全ロールバック用（ひとつ前の状態）</span>
           </div>
         ) : (
-          <p className="text-[9px] leading-tight text-white/40">
+          <p className="text-sm leading-tight text-white/40">
             まだ運用変更の履歴がありません。プロファイル変更後は「直前モードへ戻す」が使えます。
           </p>
         )}

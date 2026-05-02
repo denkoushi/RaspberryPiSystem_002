@@ -44,23 +44,23 @@ export function DgxResourceRuntimeControlPanel({ overview, onPolicyError, confir
   const warm = overview.runtime.warmWindow;
 
   return (
-    <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-slate-500/35 bg-slate-900/50 p-2">
-      <h2 className="text-xs font-semibold text-white/85">ランタイム制御</h2>
+    <div className="flex shrink-0 flex-col gap-2.5 rounded-lg border border-slate-500/35 bg-slate-900/50 p-3">
+      <h2 className="text-lg font-semibold text-white/85">ランタイム制御</h2>
       {warm.enabled ? (
-        <p className="text-[10px] text-white/50">
+        <p className="text-sm text-white/50">
           Warm: {warm.timeZone ?? '—'} · {warm.startHourInclusive}–{warm.endHourExclusive}（窓内は on_demand
           での自動 /stop が抑制されます）
         </p>
       ) : null}
       <div>
-        <p className="mb-1 text-[10px] font-medium text-white/60">
+        <p className="mb-1 text-sm font-medium text-white/60">
           LocalLLM ランタイム（DGX gateway /start|/stop）
         </p>
         <div className="flex flex-wrap gap-1.5">
           <Button
             type="button"
             variant="secondary"
-            className="px-3 py-1.5 text-xs"
+            className="px-4 py-2 text-sm"
             disabled={busy || !canControl}
             title={!canControl ? 'on_demand + 起動/停止URL が必要です' : undefined}
             onClick={() => mutate.mutate({ type: 'LOCAL_LLM_START', reason: 'admin_dgx_resource_ui' })}
@@ -70,7 +70,7 @@ export function DgxResourceRuntimeControlPanel({ overview, onPolicyError, confir
           <Button
             type="button"
             variant="secondary"
-            className="bg-red-600 px-3 py-1.5 text-xs text-white hover:bg-red-500 disabled:opacity-60"
+            className="bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-500 disabled:opacity-60"
             disabled={busy || !canControl}
             title={!canControl ? 'on_demand + 起動/停止URL が必要です' : undefined}
             onClick={async () => {
@@ -86,7 +86,7 @@ export function DgxResourceRuntimeControlPanel({ overview, onPolicyError, confir
             停止
           </Button>
         </div>
-        <p className="mt-1 text-[9px] leading-tight text-white/45">
+        <p className="mt-1 text-sm leading-tight text-white/45">
           mode: {overview.runtime.localLlmMode} / control: {canControl ? 'on' : 'off'}
         </p>
       </div>

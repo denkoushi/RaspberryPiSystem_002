@@ -139,6 +139,68 @@ describe('createDgxResourceService', () => {
     expect(ov.sparkHost.httpStatus).toBe(200);
   });
 
+  it('sparkHost falls back to admin /healthz when explicit URL is absent', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/v1/models' || u === 'http://127.0.0.1:38081/healthz') {
+        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      }
+      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+
+    const svc = makeSvc(store, gateway, {
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    const ov = await svc.getOverview();
+    expect(ov.optionalProbes.sparkHostConfigured).toBe(true);
+    expect(ov.sparkHost.status).toBe('running');
+    expect(ov.sparkHost.probeUrl).toBe('http://127.0.0.1:38081/healthz');
+    expect(ov.notes.some((n) => n.includes('DGX_RESOURCE_SPARK_HOST_STATUS_URL'))).toBe(false);
+  });
+
+  it('sparkHost fallback reports stopped when admin /healthz is unreachable', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: false, statusCode: 503 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/healthz') {
+        return { ok: false, status: 503, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      }
+      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+
+    const svc = makeSvc(store, gateway, {
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    const ov = await svc.getOverview();
+    expect(ov.optionalProbes.sparkHostConfigured).toBe(true);
+    expect(ov.sparkHost.status).toBe('stopped');
+    expect(ov.sparkHost.httpStatus).toBe(503);
+    expect(ov.sparkHost.probeUrl).toBe('http://127.0.0.1:38081/healthz');
+  });
+
   it('comfy comfyPolicy badge only under business_first', async () => {
     const store = new DgxResourcePolicyStore(10);
     store.setPolicyMode('private_ok');

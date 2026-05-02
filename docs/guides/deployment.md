@@ -10,7 +10,27 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-02（**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**／**順位ボード資源チップ × progress-overview 部品行粒度**ほか同日項は下記）
+最終更新: 2026-05-02（**DGX Spark ホスト状態フォールバック（API）**／**DGX リソース管理画面タイポ改善**／**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**ほか同日項は下記）
+
+### 補足（2026-05-02: **DGX リソース `sparkHost` — Spark ホスト簡易状態の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）**·`fix/dgx-resource-admin-readable-typography`·API（+ Ansible env テンプレ）·Pi5 のみ）
+
+- **変更概要**: **`DGX_RESOURCE_SPARK_HOST_STATUS_URL` 未設定時**は、Pi5 API が admin の **`LOCAL_LLM_BASE_URL`** に対して **`/healthz`** を既定フォールバックとして試行し、`overview.sparkHost` を最低限モニター可能にする（実装: [`dgx-resource.service.ts`](../../apps/api/src/services/system/dgx-resource/dgx-resource.service.ts)）。あわせて Ansible の [`api.env.j2`](../../infrastructure/ansible/templates/api.env.j2) / [`docker.env.j2`](../../infrastructure/ansible/templates/docker.env.j2) で **`DGX_RESOURCE_*` を出力対象に追加**（将来の明示設定を配線しやすくする）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 不要**。  
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。  
+- **本番デプロイ（実績）**: 代表コミット **`6c6888d6`**（`fix(api): restore DGX spark status fallback`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-203857-20230`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。  
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale）。  
+- **トラブルシュート**: **`Connection closed by … port 22` が `--follow` 中に一度混ざる** → `docker compose` 再起動付近の **一時切断**があり得る。**完了判定は `PLAY RECAP` / 遠隔 `summary.json` を正本**とする（[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md) の detach 運用メモと同系）。**`/api/system/dgx-resource/overview` が 401** → **未認証**（ルート生存の煙では 401 は正常）。  
+- **ナレッジ**: [KB-363](../knowledge-base/KB-363-dgx-resource-spark-status-fallback.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+### 補足（2026-05-02: **DGX リソース管理画面タイポ・余白改善（`/admin/tools/dgx-resource`）**·`fix/dgx-resource-admin-readable-typography`·Web のみ·Pi5 のみ）
+
+- **変更概要**: [`apps/web/src/features/admin/dgx-resource/*.tsx`](../../apps/web/src/features/admin/dgx-resource/) で **見出し・本文・KPI・ボタン・フッター注記の文字サイズとパディング**を引き上げ。**`truncate`** の注記・`probes` 行に **`title`** を付け、ホバーで全文確認可能に。**当該コミット（`f856e2f2`）は Web のみで API 変更なし**（フォールバック等の API 変更は **別コミット `6c6888d6`** を参照）。  
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 不要**。  
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。  
+- **本番デプロイ（実績）**: 代表コミット **`f856e2f2`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-195653-14945`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**）。  
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale）。  
+- **トラブルシュート**: **文字が旧のまま**: [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** イメージの取り込みコミット確認。  
+- **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **`responseProfile=leaderboard` の `pageSize` サーバ上限制御（旧フロントキャッシュ吸収）と計測コード撤去**）
 

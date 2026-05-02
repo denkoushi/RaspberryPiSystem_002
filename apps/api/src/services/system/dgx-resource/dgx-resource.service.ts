@@ -348,7 +348,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         });
       }
 
-      const sparkUrl = deps.sparkHostStatusUrl?.trim();
+      const explicitSparkUrl = deps.sparkHostStatusUrl?.trim();
+      const fallbackSparkUrl = !explicitSparkUrl && adminCfg.baseUrl ? new URL('/healthz', adminCfg.baseUrl).toString() : undefined;
+      const sparkUrl = explicitSparkUrl || fallbackSparkUrl;
       const sparkConfigured = Boolean(sparkUrl);
       let sparkProbe: { ok: boolean; statusCode?: number; errorBrief?: string } = { ok: false };
       if (sparkConfigured) {
