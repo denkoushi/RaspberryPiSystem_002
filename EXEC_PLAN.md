@@ -9,7 +9,9 @@
 
 ## Progress
 
-- [x] (2026-05-02) **DGX リソース管理画面タイポ・余白改善（Pi5 `web` のみ）**·`fix/dgx-resource-admin-readable-typography`·**`f856e2f2`**·[PR #238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238): [`apps/web/src/features/admin/dgx-resource/*`](./apps/web/src/features/admin/dgx-resource/) で **可読性**を改善。**API 不変**。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260502-195653-14945`**（`PLAY RECAP` **`ok=130 changed=4 failed=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見**: フッター `truncate` 行は **`title` で全文**を確認可能。関連: [deployment.md](./docs/guides/deployment.md)·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
+- [x] (2026-05-02) **DGX リソース `sparkHost` — Spark ホスト簡易状態の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）·Pi5 `api`（+ Ansible env テンプレ）**·`fix/dgx-resource-admin-readable-typography`·**`6c6888d6`**·[PR #238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238): [`dgx-resource.service.ts`](./apps/api/src/services/system/dgx-resource/dgx-resource.service.ts)·[`dgx-resource.service.test.ts`](./apps/api/src/services/system/dgx-resource/__tests__/dgx-resource.service.test.ts)·[`api.env.j2`](./infrastructure/ansible/templates/api.env.j2)·[`docker.env.j2`](./infrastructure/ansible/templates/docker.env.j2)。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260502-203857-20230`**（`PLAY RECAP` **`failed=0` / `unreachable=0`**・リモート exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見**: `--follow` 中の **`Connection closed by … port 22` は再起動付近で混ざり得る**ため、**`PLAY RECAP` / `summary.json` を正本**とする。**ナレッジ**: [KB-363](./docs/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md)。関連: [deployment.md](./docs/guides/deployment.md)·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
+
+- [x] (2026-05-02) **DGX リソース管理画面タイポ・余白改善（Pi5 `web` のみ）**·`fix/dgx-resource-admin-readable-typography`·**`f856e2f2`**·[PR #238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238): [`apps/web/src/features/admin/dgx-resource/*`](./apps/web/src/features/admin/dgx-resource/) で **可読性**を改善（**API 変更なし**）。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260502-195653-14945`**（`PLAY RECAP` **`ok=130 changed=4 failed=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見**: フッター `truncate` 行は **`title` で全文**を確認可能。関連: [deployment.md](./docs/guides/deployment.md)·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
 
 - [x] (2026-05-02) **DGX リソース統合運用 Phase2（運用3プロファイル + Sparkホスト可視化）を Pi5 本番へ反映**·`feat/dgx-resource-profile-and-spark-visibility-clean`·**`09b2423e`**: API `SET_POLICY` を **3値**（`business_first` / `private_ok` / `experiment_first`）へ拡張し、`overview` に `policy.previousMode` / `kpis.policyMode` / `sparkHost` を追加。UI は `ProfilePanel` / `RuntimeControlPanel` / `SparkStatusPanel` に責務分離し、**直前モードへ戻す**導線を追加。**対象ホスト**: **`raspberrypi5` のみ**（Pi3/Pi4 追加反映なし）。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260502-190642-27778`**（`PLAY RECAP` **`ok=130 changed=4 unreachable=0 failed=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見**: `--follow` 停止時は状態ファイルが stale の場合があるため、遠隔ログ `PLAY RECAP failed=0` と `summary.json` を優先して完了判定する。関連: [deployment.md](./docs/guides/deployment.md)・[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)・[docs/INDEX.md](./docs/INDEX.md)・[docs/knowledge-base/index.md](./docs/knowledge-base/index.md)。
 
@@ -2026,6 +2028,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### DGX リソース管理コンソール: `sparkHost` フォールバック反映後の場内確認（2026-05-02）
+
+**概要**: Pi5 本番へ **`6c6888d6`**（`sparkHost` の **`DGX_RESOURCE_SPARK_HOST_STATUS_URL` 未設定時 `/healthz` フォールバック**）を反映済み（Detach **`20260502-203857-20230`**・Phase12 **43/0/0**）。自動検証では UI を認証込みで見られないため、**管理者ログインでのスモーク**が残る。
+
+**候補タスク**:
+
+1. **管理コンソール** `/admin/tools/dgx-resource`: **ログイン済み**で **`sparkHost`** が **`unknown` ばかり**になっていないこと（運用状態に応じて `responding` / `stopped` 等が変化しうる）。
+2. **HTTP の見え方**: `overview.sparkHost.lastProbe.httpStatus` が **`401`** のときは **匿名ではなく認証境界**が効いているだけなので、`stopped` / `unknown` の見え方と混同しない（必要なら Runbook の説明どおり **管理者セッション前提**）。
+3. **明示設定の要不要**: メトリクス sidecar 等で **`DGX_RESOURCE_SPARK_HOST_STATUS_URL` を別 URL にしたい**場合だけ ansible/inventory で明示し、ゲートウェイ `/healthz` との意味混同を避ける（[KB-363](./docs/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md)）。
 
 ### キオスク: 製番アクセント常時化・進捗一覧資源チップ帯の場内スモーク（2026-05-02）
 

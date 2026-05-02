@@ -1,5 +1,45 @@
 ---
 
+### [KB-363] DGX リソース `sparkHost` の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）
+
+**日付**: 2026-05-02
+
+**Context**:
+
+- 管理コンソール `/admin/tools/dgx-resource` の `overview.sparkHost` は Pi5 API が HTTP GET で **簡易生存監視**する
+- **`DGX_RESOURCE_SPARK_HOST_STATUS_URL` が未設定**でも、Pi5→DGX gateway まで到達しているなら **沈黙（常に unknown）を避ける**必要がある
+
+**Symptoms**:
+
+- `DGX_RESOURCE_SPARK_HOST_STATUS_URL` を置いていない環境で Spark（ホスト）パネルが **`unknown` に見える**/監視できないように見える
+
+**Investigation**:
+
+- **CONFIRMED**: `DGX_RESOURCE_SPARK_HOST_STATUS_URL` が空のとき **admin の `LOCAL_LLM_BASE_URL` に対する `/healthz`** を既定フォールバックとして試行する（[`dgx-resource.service.ts`](../../apps/api/src/services/system/dgx-resource/dgx-resource.service.ts)）
+- **CONFIRMED**: ユニットテストでフォールバック成功・`/healthz` 失敗時の `stopped` を固定（[`dgx-resource.service.test.ts`](../../apps/api/src/services/system/dgx-resource/__tests__/dgx-resource.service.test.ts)）
+- **CONFIRMED**: Ansible の [`api.env.j2`](../../infrastructure/ansible/templates/api.env.j2) / [`docker.env.j2`](../../infrastructure/ansible/templates/docker.env.j2) で **`DGX_RESOURCE_*` を出力対象に追加**（将来の明示設定を配線しやすくする）
+
+**Fix**:
+
+- 代表コミット: **`6c6888d6`**（`fix(api): restore DGX spark status fallback`）
+- PR: [#238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238)
+
+**本番（記録）**:
+
+- **ホスト**: `raspberrypi5` のみ（`--limit raspberrypi5`）
+- **Detach**: **`20260502-203857-20230`**
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+
+**Prevention / Troubleshooting**:
+
+- **`Connection closed by … port 22` が `--detach --follow` に混ざる**: `docker compose` 再起動付近で **一時切断**があり得る。**完了判定は `PLAY RECAP` / `summary.json` を正本**とする（detach 運用の既知パターン）
+- **未認証で `GET /api/system/dgx-resource/overview` が 401**: **正常**（管理者セッション必須）。匿名で 200 しない
+- **専用 sidecar を使う運用へ寄せたい**: `DGX_RESOURCE_SPARK_HOST_STATUS_URL` を明示し、ゲートウェイ `/healthz` と意味を分離する（Runbook の ENV 説明を正とする）
+
+**参照**: [KB-363（詳細）](./KB-363-dgx-resource-spark-status-fallback.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment.md](../guides/deployment.md)
+
+---
+
 ### [KB-301] 実績工数CSV手動投入で 413 Payload Too Large になる
 
 **日付**: 2026-03-10
