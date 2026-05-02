@@ -23,15 +23,15 @@ export function DgxResourceServiceGrid({ services }: Props) {
         return (
           <section
             key={svc.id}
-            className="flex min-h-[5.5rem] flex-col rounded-lg border border-white/10 bg-slate-900/50 p-2"
+            className="flex min-h-[6.5rem] flex-col rounded-lg border border-white/10 bg-slate-900/50 p-3"
           >
             <div className="flex items-start justify-between gap-2">
-              <h3 className="truncate text-xs font-bold text-white">{svc.name}</h3>
-              <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${b.className}`}>
+              <h3 className="truncate text-base font-bold text-white">{svc.name}</h3>
+              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-sm font-bold ${b.className}`}>
                 {b.text}
               </span>
             </div>
-            <ul className="mt-1 space-y-0.5 text-[10px] leading-snug text-white/55">
+            <ul className="mt-1.5 space-y-1 text-sm leading-snug text-white/55">
               {svc.metaLines.slice(0, 2).map((line, i) => (
                 <li key={i} className="truncate" title={line}>
                   {line}
