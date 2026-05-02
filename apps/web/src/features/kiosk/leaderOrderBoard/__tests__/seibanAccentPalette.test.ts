@@ -6,8 +6,14 @@ import {
 } from '../seibanAccentPalette';
 
 describe('resolveSeibanAccentRowClass', () => {
-  it('returns undefined when filters empty', () => {
-    expect(resolveSeibanAccentRowClass('S001', [])).toBeUndefined();
+  it('returns stable hash-based class when filters empty', () => {
+    const a = resolveSeibanAccentRowClass('S001', []);
+    expect(a).toBeTruthy();
+    expect(resolveSeibanAccentRowClass('S001', [])).toBe(a);
+  });
+
+  it('returns undefined when fseiban is blank after trim', () => {
+    expect(resolveSeibanAccentRowClass('   ', [])).toBeUndefined();
   });
 
   it('returns stable class for matching filter entry', () => {

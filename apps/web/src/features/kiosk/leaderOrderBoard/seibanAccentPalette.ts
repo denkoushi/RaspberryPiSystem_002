@@ -1,5 +1,7 @@
 /**
- * 製番 OR フィルタ ON 時に、順位ボード行左縁の識別色を安定割当する（Tailwind クラスはリテラル列挙）。
+ * 順位ボード行左縁の識別色を安定割当する（Tailwind クラスはリテラル列挙）。
+ * - **フィルタが 1 件以上**: リスト順とアクセントを対応付けし、リスト外の製番行は製番文字列ハッシュで配色。
+ * - **フィルタが空**: 製番のみでハッシュ配色（一覧検索のみでも色分け）。
  */
 
 const BORDER_LEFT_WIDTH = 'border-l-4';
@@ -39,18 +41,23 @@ export function seibanAccentPaletteIndexForString(value: string): number {
 }
 
 /**
- * @returns 行コンテナに付与する Tailwind クラス。フィルタ無効時は undefined。
+ * @returns 行コンテナに付与する Tailwind クラス。製番が空のみ undefined。
  */
 export function resolveSeibanAccentRowClass(
   fseiban: string,
   activeFilters: readonly string[]
 ): string | undefined {
   const fs = fseiban.trim();
-  const filters = normalizeFilters(activeFilters);
-  if (!fs.length || filters.length === 0) {
+  if (!fs.length) {
     return undefined;
   }
+  const filters = normalizeFilters(activeFilters);
+  if (filters.length === 0) {
+    const paletteIdx = seibanAccentPaletteIndexForString(fs);
+    return SEIBAN_ROW_ACCENT_PALETTE[paletteIdx];
+  }
   const idx = filters.indexOf(fs);
-  const paletteIdx = idx >= 0 ? idx % SEIBAN_ROW_ACCENT_PALETTE.length : seibanAccentPaletteIndexForString(fs);
+  const paletteIdx =
+    idx >= 0 ? idx % SEIBAN_ROW_ACCENT_PALETTE.length : seibanAccentPaletteIndexForString(fs);
   return SEIBAN_ROW_ACCENT_PALETTE[paletteIdx];
 }

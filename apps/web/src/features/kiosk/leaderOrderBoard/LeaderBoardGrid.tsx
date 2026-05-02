@@ -9,7 +9,7 @@ export type LeaderBoardGridProps = {
   sortedGrouped: Map<string, LeaderBoardRow[]>;
   resourceNameMap: Record<string, string[]>;
   orderUsageByResourceCd: Record<string, number[]> | undefined;
-  /** 製番 OR フィルタ（1件以上で行左縁の識別色を付与）。空なら未着色 */
+  /** 製番 OR フィルタ。1件以上のときリスト順と左縁色を対応付け。**空でも製番単位でハッシュ着色**される */
   activeSeibanFilters?: readonly string[];
   selectedResourceCd: string | null;
   setSelectedResourceCd: (cd: string) => void;
