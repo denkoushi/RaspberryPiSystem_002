@@ -2552,6 +2552,17 @@ category: knowledge-base
   - **チップ無しだが一覧は載る**: **`leaderboardFooterChipsByPartKey` が未定義または空**。API の **`leaderboard` 経路が旧**、`**web`** だけ先行等を疑う。**Pi5 で `api`/`web` ペア**を確認。
   - **[旧節・行下辺チップ](#leader-order-board-row-footer-resource-chips-2026-05-02) の記述と混同しない**: **現行順位ボードは overview フェッチ無し**。過去項は **`scheduled`/`unscheduled` から製番単位で集約**したフェーズの記録。
 
+### Leader order board: leaderboard `pageSize` server cap + remove debug ingest（2026-05-02） {#leader-order-board-leaderboard-pagesize-server-cap-2026-05-02}
+
+- **症状**: 順位ボードの **一覧 GET** が再び重い。`Caddy access.log`（JSON）で **`pageSize=1240` 前後と `880` が混在**する。
+- **原因**: **旧 Web バンドル**が大きな `pageSize` を送信し、その分 **行・フッターマップ・JSON が肥大化**。
+- **対策**:
+  - **API**: `GET …/kiosk/production-schedule` で **`responseProfile=leaderboard` のときだけ** **`pageSize` を最大 900 にクランプ**。実装 [`list.ts`](../../apps/api/src/routes/kiosk/production-schedule/list.ts)（定数 **`LEADERBOARD_PAGE_SIZE_HARD_CAP`**）。
+  - **Web**: [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) の **`leaderOrderBoardQueryPageSize`** 調整（新バンドル側の要求を抑える）に加え、**サーバ側で旧クライアントを吸収**。
+  - **計測撤去**: 開発用の **`127.0.0.1:7426` ingest `fetch`** と `#region agent log` を **本番経路から除去**（[KB-354 §D](../knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md) と同趣旨）。
+- **検証（Pi5）**: `pageSize=1240` リクエストでも応答 **`rows` が 900 に抑えられ**、応答バイト数が **約 1.1MB → 約 0.82MB** に減ることを確認。ウォーム時の **curl 総時間**も **旧平均より改善**（同一条件 8 本の簡易平均）。
+- **デプロイ**: [deployment.md](../guides/deployment.md) の **「`leaderboard` `pageSize` サーバ上限制御」** 補足を参照。**`main` 取込後** `update-all-clients.sh`・**Pi5 のみ**で可（全クライアントは **旧バンドルが残る Pi4** まで含めて段階展開してもよい）。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。
