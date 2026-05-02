@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-05-02) **DGX Control Targets（overview.targets · EXECUTE_TARGET_ACTION · 薄いオーケストレーション層）**·ブランチ **`feat/dgx-resource-standard-control-targets`**·**コードのみ（Pi5 本番デプロイ・マージは別判断）**: `GET …/overview` に **`targets[]`**（gateway / HTTP probe / metrics）。`POST …/actions` に **`EXECUTE_TARGET_ACTION`**（書き込みは **`system-prod-gateway`** のみ＝既存 DGX `/start` `/stop`）。**後方互換**: `services[]`・`LOCAL_LLM_START|STOP`・`SET_POLICY`。モジュール分割: [`dgx-resource.control-target.types.ts`](./apps/api/src/services/system/dgx-resource/dgx-resource.control-target.types.ts)·[`dgx-resource.probes.ts`](./apps/api/src/services/system/dgx-resource/dgx-resource.probes.ts)·[`dgx-resource.control-targets.builder.ts`](./apps/api/src/services/system/dgx-resource/dgx-resource.control-targets.builder.ts)·[`dgx-resource.gateway-runtime.executor.ts`](./apps/api/src/services/system/dgx-resource/dgx-resource.gateway-runtime.executor.ts)。Web: [`DgxResourceDashboard.tsx`](./apps/web/src/features/admin/dgx-resource/DgxResourceDashboard.tsx)·[`DgxResourceTargetGrid.tsx`](./apps/web/src/features/admin/dgx-resource/DgxResourceTargetGrid.tsx)。**単体テスト**: `pnpm exec vitest run apps/api/src/services/system/dgx-resource/__tests__/`。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./docs/decisions/ADR-20260502-dgx-resource-control-targets.md)。**Runbook**: [dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
+- [x] (2026-05-03) **DGX Control Targets（overview.targets · EXECUTE_TARGET_ACTION · 薄いオーケストレーション層）**·ブランチ **`feat/dgx-resource-standard-control-targets`**·代表 **`1e24d169`**·**Pi5 本番デプロイ + `main` マージ込み**: `GET …/overview` に **`targets[]`**。`POST …/actions` に **`EXECUTE_TARGET_ACTION`**（書き込みは **`system-prod-gateway`** のみ）。**後方互換**: `services[]`・`LOCAL_LLM_START|STOP`・`SET_POLICY`。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-082132-17926`**（`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ドキュメント**: [deployment.md](./docs/guides/deployment.md) 補足（2026-05-03）·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./docs/decisions/ADR-20260502-dgx-resource-control-targets.md)。
 
 - [x] (2026-05-02) **DGX リソース `sparkHost` — Spark ホスト簡易状態の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）·Pi5 `api`（+ Ansible env テンプレ）**·`fix/dgx-resource-admin-readable-typography`·**`6c6888d6`**·[PR #238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238): [`dgx-resource.service.ts`](./apps/api/src/services/system/dgx-resource/dgx-resource.service.ts)·[`dgx-resource.service.test.ts`](./apps/api/src/services/system/dgx-resource/__tests__/dgx-resource.service.test.ts)·[`api.env.j2`](./infrastructure/ansible/templates/api.env.j2)·[`docker.env.j2`](./infrastructure/ansible/templates/docker.env.j2)。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260502-203857-20230`**（`PLAY RECAP` **`failed=0` / `unreachable=0`**・リモート exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見**: `--follow` 中の **`Connection closed by … port 22` は再起動付近で混ざり得る**ため、**`PLAY RECAP` / `summary.json` を正本**とする。**ナレッジ**: [KB-363](./docs/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md)。関連: [deployment.md](./docs/guides/deployment.md)·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
 
@@ -2032,6 +2032,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### DGX リソース管理コンソール: Control Targets 場内スモーク（2026-05-03）
+
+**概要**: Pi5 本番へ **`1e24d169`**（**`targets[]` / `EXECUTE_TARGET_ACTION`**）を反映済み（Detach **`20260503-082132-17926`**・Phase12 **43/0/0**）。自動検証は **認証なし API** 中心のため、**管理者ログイン後の UI** が残る。
+
+**候補タスク**:
+
+1. `/admin/tools/dgx-resource` で **Control Targets** グリッドが表示され、各ターゲットの **状態**が期待どおりに更新されること（**強制リロード**: [verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.4）。
+2. **`system-prod-gateway`** で **`start`/`stop`**（または互換の Local LLM 起停）が、**`on_demand` かつ制御 URL 設定**に応じて **有効/無効**になること（無効時はボタンが出ないまたは API が拒否する挙動を確認）。
+3. 読取専用ターゲット（**`metrics-kpi`** 等）へ誤って書き込み操作をして **API が拒否**することを確認したい場合は、開発者ツールから **意図的な不正ボディ**を送る（本番では通常不要）。**設計**: **`DGX_TARGET_ACTION_NOT_SUPPORTED`**。
 
 ### DGX リソース管理コンソール: `sparkHost` フォールバック反映後の場内確認（2026-05-02）
 

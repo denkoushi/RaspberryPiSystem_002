@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-02
+last-verified: 2026-05-03
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-02（**DGX Spark ホスト状態フォールバック（API）**／**DGX リソース管理画面タイポ改善**／**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**ほか同日項は下記）
+最終更新: 2026-05-03（**DGX Control Targets（`overview.targets` · `EXECUTE_TARGET_ACTION`）本番反映**）／2026-05-02 項は下記
+
+### 補足（2026-05-03: **DGX Control Targets（標準ターゲット一覧・gateway 起停の正規アクション）**·`feat/dgx-resource-standard-control-targets`·API+Web·Pi5 のみ）
+
+- **変更概要**: `GET /api/system/dgx-resource/overview` に **`targets[]`**（`kind` / `capabilities` / `status`）。`POST …/actions` に **`EXECUTE_TARGET_ACTION`**（書き込みは **`system-prod-gateway`** のみ）。**後方互換**: `services[]`・`LOCAL_LLM_START` / `LOCAL_LLM_STOP`・`SET_POLICY`。実装分割: [`dgx-resource.control-target.types.ts`](../../apps/api/src/services/system/dgx-resource/dgx-resource.control-target.types.ts) ほか。**ADR**: [`ADR-20260502-dgx-resource-control-targets.md`](../decisions/ADR-20260502-dgx-resource-control-targets.md)。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`1e24d169`**（`refactor(dgx): introduce control targets for resource console`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-082132-17926`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**・所要 **約 610s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 79s**・Tailscale）。
+- **トラブルシュート**: **Control Targets グリッドが出ない** → Pi5 **`api`/`web` の同一ブランチ**・ブラウザ **[verification-checklist.md](verification-checklist.md) §6.6.4 強制リロード**。**読取専用ターゲットへ `EXECUTE_TARGET_ACTION`** → API が **`DGX_TARGET_ACTION_NOT_SUPPORTED`**（設計どおり）。**`metrics-kpi` が常に不明** → KPI JSON が空または到達不能のときは **数値が1つも取れない限り running とみなさない**（2026-05-02 以降の実装）。
+- **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **`FKOJUNST_Status` CSV 不在による外部完了（別テーブル・`manual OR external`）**·`feature/fkojunst-external-completion-b`·API+DB·Pi5 のみ）
 

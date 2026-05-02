@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-05-02
+last-verified: 2026-05-03
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -69,6 +69,8 @@ update-frequency: high
 - `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
 
 **実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（Control Target 型: `dgx-resource.control-target.types.ts`、ビルダ: `dgx-resource.control-targets.builder.ts`、gateway 起停: `dgx-resource.gateway-runtime.executor.ts`、ポリシー説明は `dgx-resource.policy-profile.ts`）
+
+**本番反映（2026-05-03・Control Targets 本番・API+Web）**: ブランチ **`feat/dgx-resource-standard-control-targets`**（**`1e24d169`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-082132-17926`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 610s**）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `overview.targets[]`・**`EXECUTE_TARGET_ACTION`** が書き込みの正規経路（**`system-prod-gateway`** のみ）。**知見**: `targets` 欠落の旧 API 応答でも UI が落ちないよう **optional フォールバック**を維持。**トラブルシュート**: 管理画面の Control Targets が旧のまま → **`web` 再ビルド**と **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
 
 **本番反映（2026-05-02・Phase2）**: `feat/dgx-resource-profile-and-spark-visibility-clean`（`09b2423e`）を **`raspberrypi5` のみ**へ反映。`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`、Detach **`20260502-190642-27778`**、`PLAY RECAP`: **`ok=130 changed=4 unreachable=0 failed=0`**。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。  
 **運用知見（2026-05-02）**: `--follow` が停止して見えるケースでは `status.json` が stale のままでも、遠隔ログの **`PLAY RECAP failed=0`** と `summary.json` を優先して完了判定してよい。  

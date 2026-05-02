@@ -8,9 +8,13 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-03）
+
+- **DGX Control Targets 本番反映（`overview.targets` · `EXECUTE_TARGET_ACTION`）·`feat/dgx-resource-standard-control-targets`·`1e24d169`·Pi5 のみ·Phase12 43/0/0**: 管理 API/UI で **標準 Control Target グリッド**と **gateway の `start`/`stop` 正規アクション**。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（2026-05-03）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**記録当時は先行** `feat/dgx-resource-standard-control-targets`）。**Detach Run ID**: **`20260503-082132-17926`**。**実機**: `./scripts/deploy/verify-phase12-real.sh`。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./decisions/ADR-20260502-dgx-resource-control-targets.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。
+
 ### 🆕 最新アップデート（2026-05-02）
 
-- **DGX Control Targets（`overview.targets` · `EXECUTE_TARGET_ACTION`）·ブランチ `feat/dgx-resource-standard-control-targets`**:**標準監視ターゲット**を API で一覧化し、書き込みは **`system-prod-gateway` のみ**（`/start` `/stop`）。互換で `services[]` と `LOCAL_LLM_START|STOP` を維持。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./decisions/ADR-20260502-dgx-resource-control-targets.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）。
+- **DGX Control Targets（`overview.targets` · `EXECUTE_TARGET_ACTION`）·ブランチ `feat/dgx-resource-standard-control-targets`**:**標準監視ターゲット**を API で一覧化し、書き込みは **`system-prod-gateway` のみ**（`/start` `/stop`）。互換で `services[]` と `LOCAL_LLM_START|STOP` を維持。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./decisions/ADR-20260502-dgx-resource-control-targets.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）。**本番反映（2026-05-03）**は上記 **2026-05-03** 項を参照。
 
 - **FKOJUNST_Status CSV 不在を別テーブルで外部完了（`S`/`R` のみ・CSV 0件ガード・一覧=進捗=順位ボードで OR 判定）·ブランチ `feature/fkojunst-external-completion-b`·API+DB**: **`ProductionScheduleExternalCompletion`**・[`fkojunst-external-completion-sync.repository.ts`](../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.repository.ts)·[`production-schedule-effective-completion.sql.ts`](../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts)·マイグレーション **`20260502103000_add_production_schedule_external_completion`**。**ナレッジ**: [KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)。
 
