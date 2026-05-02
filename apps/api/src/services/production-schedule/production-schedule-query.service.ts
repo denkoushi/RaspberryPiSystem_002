@@ -43,6 +43,8 @@ function normalizeMachineNameForCompare(value: string | null | undefined): strin
 
 type ProductionScheduleRow = {
   id: string;
+  /** 生産日程一覧と progress-overview を製番単位で突合するための専用キー。 */
+  seibanJoinKey: string | null;
   occurredAt: Date;
   rowData: Prisma.JsonValue;
   processingOrder: number | null;
@@ -400,6 +402,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   const rowsPromise = prisma.$queryRaw<ProductionScheduleRow[]>`
     SELECT
       "CsvDashboardRow"."id",
+      NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
       "CsvDashboardRow"."occurredAt",
       jsonb_build_object(
         'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',

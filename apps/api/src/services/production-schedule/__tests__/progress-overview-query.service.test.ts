@@ -12,6 +12,7 @@ const buildItem = (
   dueDate: string | null
 ): ProductionScheduleProgressOverviewSeibanItem => ({
   fseiban,
+  seibanJoinKey: fseiban,
   machineName: null,
   dueDate: dueDate ? new Date(dueDate) : null,
   parts: []

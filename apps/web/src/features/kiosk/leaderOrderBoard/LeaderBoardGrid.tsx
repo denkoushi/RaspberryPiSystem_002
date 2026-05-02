@@ -22,7 +22,7 @@ export type LeaderBoardGridProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
-  footerResourceChipsBySeiban: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
+  footerResourceChipsBySeibanJoinKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
 type SlotCardProps = {
@@ -41,7 +41,7 @@ type SlotCardProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
-  footerResourceChipsBySeiban: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
+  footerResourceChipsBySeibanJoinKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
@@ -60,7 +60,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   orderPending,
   onOpenNote,
   notePending,
-  footerResourceChipsBySeiban
+  footerResourceChipsBySeibanJoinKey
 }: SlotCardProps) {
   const onSelect = useCallback(() => {
     setSelectedResourceCd(resourceCd);
@@ -87,7 +87,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       orderPending={orderPending}
       onOpenNote={onOpenNote}
       notePending={notePending}
-      footerResourceChipsBySeiban={footerResourceChipsBySeiban}
+      footerResourceChipsBySeibanJoinKey={footerResourceChipsBySeibanJoinKey}
     />
   );
 });
@@ -111,7 +111,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   orderPending,
   onOpenNote,
   notePending,
-  footerResourceChipsBySeiban
+  footerResourceChipsBySeibanJoinKey
 }: LeaderBoardGridProps) {
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto [grid-auto-rows:minmax(14rem,1fr)] md:grid-cols-4 xl:grid-cols-6">
@@ -149,7 +149,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             orderPending={orderPending}
             onOpenNote={onOpenNote}
             notePending={notePending}
-            footerResourceChipsBySeiban={footerResourceChipsBySeiban}
+            footerResourceChipsBySeibanJoinKey={footerResourceChipsBySeibanJoinKey}
           />
         );
       })}

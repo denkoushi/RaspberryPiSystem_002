@@ -19,7 +19,7 @@ type KioskResourceProcessChipsProps = {
 };
 
 /**
- * キオスク進捗一覧（ProgressOverviewPartRow）と同一の見た目で資源 CD チップ列を描画する。
+ * キオスク資源 CD 進捗チップの描画（順位ボード行下辺・納期アシスト部品表等で共有）。
  */
 export function KioskResourceProcessChips({ processes, className }: KioskResourceProcessChipsProps) {
   const wrap = className ? `${PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CHIPS_CLASS} ${className}` : PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CHIPS_CLASS;

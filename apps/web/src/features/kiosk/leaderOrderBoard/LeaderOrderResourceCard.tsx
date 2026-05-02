@@ -34,7 +34,7 @@ type Props = {
   notePending?: boolean;
   /** 製番 OR フィルタ ON 時のみ行左縁に識別色 */
   activeSeibanFilters?: readonly string[];
-  footerResourceChipsBySeiban: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
+  footerResourceChipsBySeibanJoinKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
 function LeaderOrderResourceCardInner({
@@ -55,7 +55,7 @@ function LeaderOrderResourceCardInner({
   onOpenNote,
   notePending,
   activeSeibanFilters,
-  footerResourceChipsBySeiban
+  footerResourceChipsBySeibanJoinKey
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
@@ -145,7 +145,7 @@ function LeaderOrderResourceCardInner({
                     dueDatePending={dueDatePending}
                     onOpenNote={onOpenNote}
                     notePending={notePending}
-                    footerResourceChips={footerResourceChipsBySeiban.get(row.fseiban.trim()) ?? []}
+                    footerResourceChips={footerResourceChipsBySeibanJoinKey.get(row.seibanJoinKey) ?? []}
                   />
                 </div>
               );
@@ -168,7 +168,7 @@ function LeaderOrderResourceCardInner({
                 dueDatePending={dueDatePending}
                 onOpenNote={onOpenNote}
                 notePending={notePending}
-                footerResourceChips={footerResourceChipsBySeiban.get(row.fseiban.trim()) ?? []}
+                footerResourceChips={footerResourceChipsBySeibanJoinKey.get(row.seibanJoinKey) ?? []}
               />
             </div>
           ))

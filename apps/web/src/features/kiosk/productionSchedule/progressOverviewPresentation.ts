@@ -4,15 +4,12 @@ export const PROGRESS_OVERVIEW_CARD_GRID_CLASS =
   'grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-5';
 
 /**
- * 行ごとの表示クラス。
- * 納期列と資源CD列の間は、重なりを防ぐため最小限のギャップを常に確保する。
+ * 行ごとの表示クラス（製品名・納期の2列）。
  */
 export const PROGRESS_OVERVIEW_PART_ROW_PRODUCT_CELL_CLASS = 'min-w-0 px-0 py-1 pr-1 align-top';
 
 export const PROGRESS_OVERVIEW_PART_ROW_DUE_CELL_CLASS =
   'w-[78px] whitespace-nowrap px-0 py-1 pr-1 align-top font-mono text-[11px] tabular-nums';
-
-export const PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS = 'min-w-0 px-0 py-1 pl-1 align-top';
 
 export const PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CHIPS_CLASS = 'flex flex-wrap gap-0.5';
 

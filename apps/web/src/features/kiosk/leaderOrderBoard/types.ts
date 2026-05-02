@@ -1,5 +1,7 @@
 export type LeaderBoardRow = {
   id: string;
+  /** progress-overview の製番単位集約と結ぶ専用キー。 */
+  seibanJoinKey: string;
   resourceCd: string;
   dueDate: string | null;
   plannedEndDate: string | null;

@@ -1,22 +1,50 @@
-import { collectAggregatedProgressOverviewResourceProcesses } from '../productionSchedule/collectAggregatedProgressOverviewResourceProcesses';
+import { aggregateResourceCdProcessChips } from '../productionSchedule/aggregateResourceCdProcessChips';
 
 import type { ProductionScheduleProgressOverviewSeibanItem } from '../../../api/client';
 import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 
 /**
- * progress-overview の製番カード群から、順位ボード行下辺に表示する
- * 「製番 -> 集約済み資源 CD チップ列」の索引を構築する。
+ * progress-overview の各部品プロセスから、順位ボード行下辺チップへ渡すデータを構築する。
+ * Join キーは **生産日程一覧 API の `seibanJoinKey`** と **overview 側の `seibanJoinKey`**。
  */
-export function buildLeaderBoardFooterResourceChipsBySeiban(
+export function buildLeaderBoardFooterResourceChipsBySeibanJoinKey(
   items: readonly ProductionScheduleProgressOverviewSeibanItem[]
 ): ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]> {
-  const bySeiban = new Map<string, readonly KioskResourceProgressProcessChip[]>();
+  const processesBySeibanJoinKey = new Map<
+    string,
+    Array<{ resourceCd: string; resourceNames?: string[]; isCompleted: boolean }>
+  >();
 
   for (const item of items) {
-    const fseiban = item.fseiban.trim();
-    if (!fseiban.length) continue;
-    bySeiban.set(fseiban, collectAggregatedProgressOverviewResourceProcesses(fseiban, item.parts));
+    const seibanJoinKey = item.seibanJoinKey.trim();
+    if (!seibanJoinKey.length) continue;
+    for (const part of item.parts) {
+      for (const proc of part.processes) {
+        const cd = proc.resourceCd.trim();
+        if (!cd.length) continue;
+
+        let list = processesBySeibanJoinKey.get(seibanJoinKey);
+        if (!list) {
+          list = [];
+          processesBySeibanJoinKey.set(seibanJoinKey, list);
+        }
+        list.push({
+          resourceCd: proc.resourceCd,
+          resourceNames: proc.resourceNames,
+          isCompleted: proc.isCompleted
+        });
+      }
+    }
   }
 
-  return bySeiban;
+  const byJoinKey = new Map<string, readonly KioskResourceProgressProcessChip[]>();
+
+  for (const [seibanJoinKey, flat] of processesBySeibanJoinKey) {
+    byJoinKey.set(
+      seibanJoinKey,
+      aggregateResourceCdProcessChips(flat, (cd) => `lb-footer-${seibanJoinKey}-res-${cd}`)
+    );
+  }
+
+  return byJoinKey;
 }

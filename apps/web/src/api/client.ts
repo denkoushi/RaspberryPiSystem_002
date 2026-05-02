@@ -303,6 +303,8 @@ export async function getKioskPurchaseOrderLookup(purchaseOrderNo: string, clien
 
 export interface ProductionScheduleRow {
   id: string;
+  /** `ProductionScheduleProgressOverviewSeibanItem.seibanJoinKey` と突合する専用キー。 */
+  seibanJoinKey?: string | null;
   occurredAt: string;
   rowData: Record<string, unknown>;
   processingOrder?: number | null;
@@ -626,6 +628,7 @@ export interface ProductionScheduleDueManagementSeibanDetail {
 }
 
 export interface ProductionScheduleProgressOverviewProcessItem {
+  /** `{@link ProductionScheduleRow.id}`（CSV ダッシュボード行）と同一。 */
   rowId: string;
   resourceCd: string;
   resourceNames?: string[];
@@ -643,6 +646,8 @@ export interface ProductionScheduleProgressOverviewPartItem {
 
 export interface ProductionScheduleProgressOverviewSeibanItem {
   fseiban: string;
+  /** `ProductionScheduleRow.seibanJoinKey` と突合する専用キー。現状は製番文字列と同値。 */
+  seibanJoinKey: string;
   machineName: string | null;
   dueDate: string | null;
   parts: ProductionScheduleProgressOverviewPartItem[];

@@ -51,6 +51,8 @@ export type ProductionScheduleProgressOverviewPartItem = {
 
 export type ProductionScheduleProgressOverviewSeibanItem = {
   fseiban: string;
+  /** 生産日程一覧 API の `seibanJoinKey` と同一意味の専用 join キー。 */
+  seibanJoinKey: string;
   machineName: string | null;
   dueDate: Date | null;
   parts: ProductionScheduleProgressOverviewPartItem[];
@@ -227,6 +229,7 @@ export async function getProductionScheduleProgressOverview(
     string,
     {
       fseiban: string;
+      seibanJoinKey: string;
       machineName: string | null;
       dueDate: Date | null;
       parts: Map<
@@ -244,6 +247,7 @@ export async function getProductionScheduleProgressOverview(
   registeredFseibans.forEach((fseiban) => {
     seibanMap.set(fseiban, {
       fseiban,
+      seibanJoinKey: fseiban,
       machineName: null,
       dueDate: seibanDueDateMap.get(fseiban) ?? null,
       parts: new Map()
@@ -256,6 +260,7 @@ export async function getProductionScheduleProgressOverview(
     if (!seibanMap.has(fseiban)) {
       seibanMap.set(fseiban, {
         fseiban,
+        seibanJoinKey: fseiban,
         machineName: null,
         dueDate: seibanDueDateMap.get(fseiban) ?? null,
         parts: new Map()
@@ -321,6 +326,7 @@ export async function getProductionScheduleProgressOverview(
     }));
     return {
       fseiban: seibanItem.fseiban,
+      seibanJoinKey: seibanItem.seibanJoinKey,
       machineName: seibanItem.machineName,
       dueDate: seibanItem.dueDate,
       parts
