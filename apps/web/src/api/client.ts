@@ -325,6 +325,18 @@ export interface ProductionScheduleListResponse {
   pageSize: number;
   total: number;
   rows: ProductionScheduleRow[];
+  /**
+   * `responseProfile=leaderboard` のときのみ。行下工程チップ用。
+   */
+  leaderboardFooterChipsByPartKey?: Record<
+    string,
+    Array<{
+      rowId: string;
+      resourceCd: string;
+      resourceNames?: string[];
+      isCompleted: boolean;
+    }>
+  >;
 }
 
 export interface ProductionScheduleResourceCategorySettings {

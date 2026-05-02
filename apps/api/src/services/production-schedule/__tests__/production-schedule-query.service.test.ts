@@ -617,7 +617,8 @@ describe('production-schedule-query.service', () => {
           processingType: null,
           dueDate: null
         }
-      ] as never);
+      ] as never)
+      .mockResolvedValueOnce([] as never);
 
     const result = await listProductionScheduleRows({
       page: 1,
@@ -639,6 +640,9 @@ describe('production-schedule-query.service', () => {
     expect(prisma.productionScheduleActualHoursFeature.findMany).not.toHaveBeenCalled();
     expect(enrichProductionScheduleRowsWithResolvedMachineName).toHaveBeenCalledTimes(1);
     expect(enrichProductionScheduleRowsWithCustomerName).toHaveBeenCalledTimes(1);
+
+    const partKey = ['A', '0001', 'X'].join('\0');
+    expect(result.leaderboardFooterChipsByPartKey?.[partKey]).toEqual([]);
   });
 });
 

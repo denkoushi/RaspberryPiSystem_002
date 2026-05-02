@@ -536,9 +536,13 @@ describe('Kiosk Production Schedule API', () => {
       rows: Array<{
         resolvedMachineName?: string | null;
         actualPerPieceMinutes?: number | null;
-        rowData: { ProductNo?: string };
+        rowData: { ProductNo?: string; FSEIBAN?: string; FHINCD?: string; FSIGENCD?: string };
       }>;
       total: number;
+      leaderboardFooterChipsByPartKey?: Record<
+        string,
+        Array<{ rowId: string; resourceCd: string; isCompleted: boolean; resourceNames?: string[] }>
+      >;
     };
     expect(lbBody.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001']);
     expect(lbBody.total).toBe(2);
@@ -546,6 +550,16 @@ describe('Kiosk Production Schedule API', () => {
       expect(r.resolvedMachineName ?? null).toBe(SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL);
       expect(r.actualPerPieceMinutes ?? null).toBeNull();
     }
+    const chips = lbBody.leaderboardFooterChipsByPartKey;
+    expect(chips).toBeDefined();
+    const rPn0 = lbBody.rows.find((r) => r.rowData.ProductNo === '0000');
+    const rPn1 = lbBody.rows.find((r) => r.rowData.ProductNo === '0001');
+    expect(rPn0?.rowData.FSEIBAN).toBe('A');
+    expect(rPn1?.rowData.FSEIBAN).toBe('A');
+    const k0 = [rPn0!.rowData.FSEIBAN!, rPn0!.rowData.ProductNo!, rPn0!.rowData.FHINCD!].join('\0');
+    const k1 = [rPn1!.rowData.FSEIBAN!, rPn1!.rowData.ProductNo!, rPn1!.rowData.FHINCD!].join('\0');
+    expect(chips![k0]?.map((c) => c.resourceCd)).toEqual([rPn0!.rowData.FSIGENCD!]);
+    expect(chips![k1]?.map((c) => c.resourceCd)).toEqual([rPn1!.rowData.FSIGENCD!]);
   });
 
   it('filters by q with comma-separated tokens (OR)', async () => {
