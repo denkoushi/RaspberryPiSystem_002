@@ -1,22 +1,29 @@
-import { collectAggregatedProgressOverviewResourceProcesses } from '../productionSchedule/collectAggregatedProgressOverviewResourceProcesses';
+import { buildLeaderBoardPartResourceProcessKey } from './buildLeaderBoardPartResourceProcessKey';
 
 import type { ProductionScheduleProgressOverviewSeibanItem } from '../../../api/client';
 import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 
 /**
- * progress-overview の製番カード群から、順位ボード行下辺に表示する
- * 「製番 -> 集約済み資源 CD チップ列」の索引を構築する。
+ * progress-overview の各部品行 `part.processes` を、順位ボード行単位で引ける Map にする。
+ * Join キーは `seibanJoinKey + productNo + fhincd` の部品キー。
  */
-export function buildLeaderBoardFooterResourceChipsBySeiban(
+export function buildLeaderBoardFooterResourceChipsByPartKey(
   items: readonly ProductionScheduleProgressOverviewSeibanItem[]
 ): ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]> {
-  const bySeiban = new Map<string, readonly KioskResourceProgressProcessChip[]>();
+  const byPartKey = new Map<string, readonly KioskResourceProgressProcessChip[]>();
 
   for (const item of items) {
-    const fseiban = item.fseiban.trim();
-    if (!fseiban.length) continue;
-    bySeiban.set(fseiban, collectAggregatedProgressOverviewResourceProcesses(fseiban, item.parts));
+    const seibanJoinKey = item.seibanJoinKey.trim();
+    if (!seibanJoinKey.length) continue;
+    for (const part of item.parts) {
+      const partKey = buildLeaderBoardPartResourceProcessKey({
+        seibanJoinKey,
+        productNo: part.productNo,
+        fhincd: part.fhincd
+      });
+      byPartKey.set(partKey, [...part.processes]);
+    }
   }
 
-  return bySeiban;
+  return byPartKey;
 }

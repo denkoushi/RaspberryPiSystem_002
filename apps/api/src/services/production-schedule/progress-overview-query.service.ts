@@ -51,6 +51,8 @@ export type ProductionScheduleProgressOverviewPartItem = {
 
 export type ProductionScheduleProgressOverviewSeibanItem = {
   fseiban: string;
+  /** 生産日程一覧 API の `seibanJoinKey` と同一意味の専用 join キー。 */
+  seibanJoinKey: string;
   machineName: string | null;
   dueDate: Date | null;
   parts: ProductionScheduleProgressOverviewPartItem[];
@@ -83,6 +85,9 @@ const parseProcessOrder = (value: string): number | null => {
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+export const buildProgressOverviewPartMapKey = (productNo: string, fhincd: string): string =>
+  `${productNo.trim()}\0${fhincd.trim()}`;
 
 const isMachinePartCode = (fhincd: string): boolean => {
   const code = fhincd.trim().toUpperCase();
@@ -227,6 +232,7 @@ export async function getProductionScheduleProgressOverview(
     string,
     {
       fseiban: string;
+      seibanJoinKey: string;
       machineName: string | null;
       dueDate: Date | null;
       parts: Map<
@@ -244,6 +250,7 @@ export async function getProductionScheduleProgressOverview(
   registeredFseibans.forEach((fseiban) => {
     seibanMap.set(fseiban, {
       fseiban,
+      seibanJoinKey: fseiban,
       machineName: null,
       dueDate: seibanDueDateMap.get(fseiban) ?? null,
       parts: new Map()
@@ -256,6 +263,7 @@ export async function getProductionScheduleProgressOverview(
     if (!seibanMap.has(fseiban)) {
       seibanMap.set(fseiban, {
         fseiban,
+        seibanJoinKey: fseiban,
         machineName: null,
         dueDate: seibanDueDateMap.get(fseiban) ?? null,
         parts: new Map()
@@ -270,8 +278,9 @@ export async function getProductionScheduleProgressOverview(
       seibanItem.machineName = row.fhinmei.trim();
     }
 
-    if (!seibanItem.parts.has(fhincd)) {
-      seibanItem.parts.set(fhincd, {
+    const partMapKey = buildProgressOverviewPartMapKey(row.productNo, fhincd);
+    if (!seibanItem.parts.has(partMapKey)) {
+      seibanItem.parts.set(partMapKey, {
         productNo: row.productNo.trim(),
         fhincd,
         fhinmei: row.fhinmei.trim(),
@@ -279,7 +288,7 @@ export async function getProductionScheduleProgressOverview(
         processes: []
       });
     }
-    const part = seibanItem.parts.get(fhincd);
+    const part = seibanItem.parts.get(partMapKey);
     if (!part) return;
     if (!part.processingType && row.processingType?.trim()) {
       part.processingType = row.processingType.trim();
@@ -321,6 +330,7 @@ export async function getProductionScheduleProgressOverview(
     }));
     return {
       fseiban: seibanItem.fseiban,
+      seibanJoinKey: seibanItem.seibanJoinKey,
       machineName: seibanItem.machineName,
       dueDate: seibanItem.dueDate,
       parts

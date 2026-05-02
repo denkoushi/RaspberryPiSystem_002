@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildLeaderBoardFooterResourceChipsBySeiban } from '../collectLeaderBoardFooterResourceChips';
+import { buildLeaderBoardPartResourceProcessKey } from '../buildLeaderBoardPartResourceProcessKey';
+import { buildLeaderBoardFooterResourceChipsByPartKey } from '../collectLeaderBoardFooterResourceChips';
 
 import type { ProductionScheduleProgressOverviewPartItem, ProductionScheduleProgressOverviewSeibanItem } from '../../../../api/client';
 
@@ -17,42 +18,72 @@ function part(
   };
 }
 
-describe('buildLeaderBoardFooterResourceChipsBySeiban', () => {
-  it('builds aggregated chip map per seiban', () => {
+describe('buildLeaderBoardFooterResourceChipsByPartKey', () => {
+  it('indexes part processes by leaderboard row part key', () => {
     const items: ProductionScheduleProgressOverviewSeibanItem[] = [
       {
         fseiban: 'S1',
+        seibanJoinKey: 'masked-S1',
         machineName: 'MC-1',
         dueDate: null,
         parts: [
           part('P1', [
-            { rowId: 'a1', resourceCd: 'BB', resourceNames: ['B'], processOrder: 1, isCompleted: true },
-            { rowId: 'a2', resourceCd: 'AA', resourceNames: ['A'], processOrder: 2, isCompleted: false }
+            { rowId: 'csv-row-a', resourceCd: 'BB', resourceNames: ['B'], processOrder: 1, isCompleted: true },
+            { rowId: 'csv-row-b', resourceCd: 'AA', resourceNames: ['A'], processOrder: 2, isCompleted: false }
           ]),
-          part('P2', [{ rowId: 'a3', resourceCd: 'BB', resourceNames: ['B'], processOrder: 1, isCompleted: false }])
+          part('P2', [
+            {
+              rowId: 'csv-row-c',
+              resourceCd: 'BB',
+              resourceNames: ['B'],
+              processOrder: 1,
+              isCompleted: false
+            }
+          ])
         ]
       }
     ];
-    const index = buildLeaderBoardFooterResourceChipsBySeiban(items);
-    expect(index.get('S1')).toEqual([
-      { rowId: 'overview-S1-res-AA', resourceCd: 'AA', resourceNames: ['A'], isCompleted: false },
-      { rowId: 'overview-S1-res-BB', resourceCd: 'BB', resourceNames: ['B'], isCompleted: false }
+
+    const index = buildLeaderBoardFooterResourceChipsByPartKey(items);
+
+    expect(
+      index.get(
+        buildLeaderBoardPartResourceProcessKey({
+          seibanJoinKey: 'masked-S1',
+          productNo: 'P1',
+          fhincd: 'P1-H'
+        })
+      )
+    ).toEqual([
+      { rowId: 'csv-row-a', resourceCd: 'BB', resourceNames: ['B'], processOrder: 1, isCompleted: true },
+      { rowId: 'csv-row-b', resourceCd: 'AA', resourceNames: ['A'], processOrder: 2, isCompleted: false }
     ]);
+    expect(
+      index.get(
+        buildLeaderBoardPartResourceProcessKey({
+          seibanJoinKey: 'masked-S1',
+          productNo: 'P2',
+          fhincd: 'P2-H'
+        })
+      )
+    ).toEqual([{ rowId: 'csv-row-c', resourceCd: 'BB', resourceNames: ['B'], processOrder: 1, isCompleted: false }]);
   });
 
-  it('skips blank seiban keys', () => {
-    const index = buildLeaderBoardFooterResourceChipsBySeiban([
-      {
-        fseiban: '   ',
-        machineName: null,
-        dueDate: null,
-        parts: [part('P1', [{ rowId: 'x', resourceCd: 'AA', processOrder: 1, isCompleted: true }])]
-      }
-    ]);
-    expect(index.size).toBe(0);
+  it('skips blank join keys', () => {
+    expect(
+      buildLeaderBoardFooterResourceChipsByPartKey([
+        {
+          fseiban: 'S1',
+          seibanJoinKey: '   ',
+          machineName: null,
+          dueDate: null,
+          parts: []
+        }
+      ]).size
+    ).toBe(0);
   });
 
   it('returns empty map for no items', () => {
-    expect(buildLeaderBoardFooterResourceChipsBySeiban([]).size).toBe(0);
+    expect(buildLeaderBoardFooterResourceChipsByPartKey([]).size).toBe(0);
   });
 });

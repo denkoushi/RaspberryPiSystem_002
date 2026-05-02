@@ -53,6 +53,10 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
 
   return {
     id: row.id,
+    seibanJoinKey:
+      typeof row.seibanJoinKey === 'string' && row.seibanJoinKey.trim().length > 0
+        ? row.seibanJoinKey.trim()
+        : strField(data, 'FSEIBAN'),
     resourceCd,
     dueDate,
     plannedEndDate: plannedEnd,

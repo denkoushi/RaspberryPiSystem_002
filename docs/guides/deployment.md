@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-02（**キオスク順位ボード各行下辺・製番別資源進捗チップ帯**／同日内の他項は下記）
+最終更新: 2026-05-02（**順位ボード資源チップを部品行キーで progress-overview と整合（API+Web）**／同日内の他項は下記）
+
+### 補足（2026-05-02: **順位ボード・行下資源チップの progress-overview 結合粒度（`productNo`+`fhincd`/部品行 `part.processes`）**·`fix/leaderboard-resource-chips-join-and-scope`·API+Web·Pi5→Pi4×4）
+
+- **変更概要**: 進捗一覧の [**`ProgressOverviewPartRow`**](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx) で **部品行ごとの `part.processes`** チップを復元。[**`progressOverviewPresentation`**](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts) の部品行モデルと整合。**順位ボード**側は製番のみのキーではなく、**`seibanJoinKey + productNo + fhincd`** で progress-overview の **部品行**に引き、[**`collectLeaderBoardFooterResourceChips`**](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts) は **部品行スコープの `resourceProcesses`**（`KioskResourceChipData[]`）を **`ReadonlyMap` の値**として保持。[**`buildLeaderBoardPartResourceProcessKey`**](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardPartResourceProcessKey.ts) でキー正規化。API は [**`progress-overview-query.service`**](../../apps/api/src/services/production-schedule/progress-overview-query.service.ts) で部品行マップキーを **`productNo` と `fhincd` の組**に寄せ、Web の結合と一致させる。**Prisma マイグレーションなし**。テスト: [`collectLeaderBoardFooterResourceChips.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/collectLeaderBoardFooterResourceChips.test.ts) 等。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（本変更はキオスク API/Web・Pi5 コンテナが主・Pi3 のみ個別運用しない）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/leaderboard-resource-chips-join-and-scope infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`44aea2d9`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-125430-31676`**（`raspberrypi5`）/ **`20260502-130426-1173`**（`raspberrypi4`）/ **`20260502-131032-13145`**（`raspi4-robodrill01`）/ **`20260502-131507-16128`**（`raspi4-fjv60-80`）/ **`20260502-132009-12509`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**（Pi5 **`ok≈130` `changed≥4`** 規模、Pi4 はホストにより **`ok≈122–129` `changed≈9–10`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 152s**・Tailscale）。
+- **トラブルシュート**: **`update-all-clients.sh` が手元で `origin/<branch>` fetch に失敗**する場合は、実行環境で **`git fetch` がネット到達できるか**（エージェント/サンドボックスのオフラーンなど）を先に確認。**チップや部品行が期待とずれる**: Pi5 **`api`/`web` の両方**が同一コミットか、順位ボードが **製番のみキー**の旧 SPA でないか（強制リロード・[`verification-checklist.md`](verification-checklist.md) §6.6.4）。**StoneBase で barcode-agent 待機 RETRYING**: [§行下辺チップ（2026-05-02）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-footer-resource-chips-2026-05-02) と同様に **完走して `failed=0`** になり得る。
+- **ナレッジ**: [KB-297 §結合粒度（2026-05-02）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-resource-chips-part-key-overview-join-2026-05-02)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **キオスク順位ボード 行下辺・製番単位の資源進捗チップ帯（scheduled/unscheduled から集約）**·`fix/leaderboard-row-footer-resource-chips`·Web のみ·Pi5→Pi4×4）
 
