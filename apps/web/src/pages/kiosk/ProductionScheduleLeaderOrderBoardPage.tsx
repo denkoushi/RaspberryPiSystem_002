@@ -47,6 +47,30 @@ const LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY = 'leader-order-board-search-conditi
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
   import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
 
+// #region agent log
+const emitLeaderboardPageDebugLog = (payload: {
+  hypothesisId: string;
+  location: string;
+  message: string;
+  data: Record<string, unknown>;
+  runId?: string;
+}) => {
+  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '44c291' },
+    body: JSON.stringify({
+      sessionId: '44c291',
+      runId: payload.runId ?? 'investigate-1',
+      hypothesisId: payload.hypothesisId,
+      location: payload.location,
+      message: payload.message,
+      data: payload.data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+};
+// #endregion
+
 export function ProductionScheduleLeaderOrderBoardPage() {
   const queryClient = useQueryClient();
   const isMac = typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
@@ -113,6 +137,19 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     () => leaderOrderBoardQueryPageSize(activeResourceCds.length),
     [activeResourceCds.length]
   );
+  useEffect(() => {
+    // #region agent log
+    emitLeaderboardPageDebugLog({
+      hypothesisId: 'H1',
+      location: 'ProductionScheduleLeaderOrderBoardPage.tsx:boardPageSize',
+      message: 'board page size recalculated',
+      data: {
+        activeResourceCount: activeResourceCds.length,
+        boardPageSize
+      }
+    });
+    // #endregion
+  }, [activeResourceCds.length, boardPageSize]);
 
   const { selectedResourceCategory, queryParams: baseQueryParams, hasResourceCategoryResourceSelection } =
     useProductionScheduleQueryParams({
@@ -324,6 +361,30 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const listIncomplete =
     scheduleQuery.data != null && scheduleQuery.data.total > scheduleQuery.data.rows.length;
+  useEffect(() => {
+    // #region agent log
+    emitLeaderboardPageDebugLog({
+      hypothesisId: 'H4',
+      location: 'ProductionScheduleLeaderOrderBoardPage.tsx:scheduleQueryResult',
+      message: 'schedule query result observed on page',
+      data: {
+        isLoading: scheduleQuery.isLoading,
+        isError: scheduleQuery.isError,
+        total: scheduleQuery.data?.total ?? 0,
+        rowCount: scheduleQuery.data?.rows?.length ?? 0,
+        footerPartKeyCount: scheduleQuery.data?.leaderboardFooterChipsByPartKey
+          ? Object.keys(scheduleQuery.data.leaderboardFooterChipsByPartKey).length
+          : 0
+      }
+    });
+    // #endregion
+  }, [
+    scheduleQuery.data?.leaderboardFooterChipsByPartKey,
+    scheduleQuery.data?.rows?.length,
+    scheduleQuery.data?.total,
+    scheduleQuery.isError,
+    scheduleQuery.isLoading
+  ]);
 
   const [selectedResourceCd, setSelectedResourceCd] = useState<string | null>(null);
   const [slotModalOpen, setSlotModalOpen] = useState(false);

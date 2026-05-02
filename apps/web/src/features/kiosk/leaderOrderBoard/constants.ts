@@ -1,7 +1,7 @@
 /** API 契約に合わせる（`apps/api/src/routes/kiosk/production-schedule/shared.ts`） */
 export const LEADER_ORDER_BOARD_ORDER_NUMBER_MAX = 10;
 
-export const LEADER_ORDER_BOARD_PAGE_SIZE = 400;
+export const LEADER_ORDER_BOARD_PAGE_SIZE = 320;
 
 /** 順位ボードの資源スロット（進捗一覧の seiban ページ上限とは別物） */
 export const LEADER_BOARD_MIN_RESOURCE_SLOTS = 1;
@@ -35,6 +35,6 @@ export function persistedLeaderBoardDeviceScopeStorageKey(siteKey: string): stri
 /** スロット数に応じて 1 ページ完全性をとりやすくする（単一クエリ方針） */
 export function leaderOrderBoardQueryPageSize(uniqueResourceSlotCount: number): number {
   const n = Math.max(1, uniqueResourceSlotCount);
-  const bump = (n - 1) * 120;
-  return Math.min(2000, LEADER_ORDER_BOARD_PAGE_SIZE + bump);
+  const bump = (n - 1) * 80;
+  return Math.min(1200, LEADER_ORDER_BOARD_PAGE_SIZE + bump);
 }
