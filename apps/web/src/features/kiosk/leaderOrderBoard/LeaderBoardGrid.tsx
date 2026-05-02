@@ -3,6 +3,7 @@ import { memo, useCallback } from 'react';
 import { LeaderOrderResourceCard } from './LeaderOrderResourceCard';
 
 import type { LeaderBoardRow } from './types';
+import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 
 export type LeaderBoardGridProps = {
   resourceCdBySlotIndex: Array<string | null>;
@@ -21,6 +22,7 @@ export type LeaderBoardGridProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
+  footerResourceChipsBySeiban: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
 type SlotCardProps = {
@@ -39,6 +41,7 @@ type SlotCardProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
+  footerResourceChipsBySeiban: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
@@ -56,7 +59,8 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   completePending,
   orderPending,
   onOpenNote,
-  notePending
+  notePending,
+  footerResourceChipsBySeiban
 }: SlotCardProps) {
   const onSelect = useCallback(() => {
     setSelectedResourceCd(resourceCd);
@@ -83,6 +87,7 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       orderPending={orderPending}
       onOpenNote={onOpenNote}
       notePending={notePending}
+      footerResourceChipsBySeiban={footerResourceChipsBySeiban}
     />
   );
 });
@@ -105,7 +110,8 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   completePending,
   orderPending,
   onOpenNote,
-  notePending
+  notePending,
+  footerResourceChipsBySeiban
 }: LeaderBoardGridProps) {
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto [grid-auto-rows:minmax(14rem,1fr)] md:grid-cols-4 xl:grid-cols-6">
@@ -143,6 +149,7 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             orderPending={orderPending}
             onOpenNote={onOpenNote}
             notePending={notePending}
+            footerResourceChipsBySeiban={footerResourceChipsBySeiban}
           />
         );
       })}

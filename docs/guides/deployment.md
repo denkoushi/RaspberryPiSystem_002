@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-02（**キオスク順位ボード製番アクセント常時化・進捗一覧製番カード資源チップ集約帯**／2026-05-01 項は下記）
+最終更新: 2026-05-02（**キオスク順位ボード各行下辺・製番別資源進捗チップ帯**／同日内の他項は下記）
+
+### 補足（2026-05-02: **キオスク順位ボード 行下辺・製番単位の資源進捗チップ帯（scheduled/unscheduled から集約）**·`fix/leaderboard-row-footer-resource-chips`·Web のみ·Pi5→Pi4×4）
+
+- **変更概要**: 進捗一覧の集約と同趣旨で、[`useKioskProductionScheduleProgressOverview`](../../apps/web/src/api/hooks.ts) の取得データ（**`scheduled` / `unscheduled`**）から [`buildLeaderBoardFooterResourceChipsBySeiban`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts)（製番キー → **`KioskResourceChipData[]`** の `ReadonlyMap`）を [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) で **`useMemo`**。[`LeaderBoardGrid.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx) → [`LeaderOrderResourceCard.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx) へ受け渡し、[`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) **下辺**に [`KioskResourceProcessChips`](../../apps/web/src/components/kiosk/resourceProgress/KioskResourceProcessChips.tsx)（**`flex-nowrap`**・横スクロールラッパ）。**API / DB 変更なし**。テスト: [`collectLeaderBoardFooterResourceChips.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/collectLeaderBoardFooterResourceChips.test.ts)。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（本変更は Web のみ・Pi3 専用手順は未実施）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/leaderboard-row-footer-resource-chips infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`16911165`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-105130-11663`**（`raspberrypi5`）/ **`20260502-105758-25070`**（`raspberrypi4`）/ **`20260502-110434-28709`**（`raspi4-robodrill01`）/ **`20260502-110923-18185`**（`raspi4-fjv60-80`）/ **`20260502-111424-3838`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**（Pi5 **`ok=130` `changed=4`**、Pi4 はホストにより **`ok≈122–129` `changed≈9–10`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 130s**・Tailscale）。
+- **トラブルシュート**: 行下のチップが出ない・旧 UI → [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** と各 Pi4 **`kiosk-browser`** の取り込みブランチ／**`deploy-status`**。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §行下辺資源チップ](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-footer-resource-chips-2026-05-02)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **キオスク順位ボード製番左縁アクセント（フィルタ空でも安定色）／進捗一覧製番カードの資源CD集約チップ帯**·`feat/kiosk-seiban-accent-and-progress-resource-strip`·Web のみ·Pi5→Pi4×4）
 

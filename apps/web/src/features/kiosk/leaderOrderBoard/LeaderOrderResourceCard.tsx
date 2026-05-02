@@ -9,6 +9,7 @@ import { LEADER_BOARD_ROW_ESTIMATE_PX, LEADER_BOARD_VIRTUAL_ROW_THRESHOLD } from
 import { resolveSeibanAccentRowClass } from './seibanAccentPalette';
 
 import type { LeaderBoardRow } from './types';
+import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 
 type Props = {
   /** interactive: キオスク順位ボード（既定）。signage: 操作系UIなしの閲覧専用 */
@@ -33,6 +34,7 @@ type Props = {
   notePending?: boolean;
   /** 製番 OR フィルタ ON 時のみ行左縁に識別色 */
   activeSeibanFilters?: readonly string[];
+  footerResourceChipsBySeiban: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
 function LeaderOrderResourceCardInner({
@@ -52,7 +54,8 @@ function LeaderOrderResourceCardInner({
   orderPending,
   onOpenNote,
   notePending,
-  activeSeibanFilters
+  activeSeibanFilters,
+  footerResourceChipsBySeiban
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
@@ -142,6 +145,7 @@ function LeaderOrderResourceCardInner({
                     dueDatePending={dueDatePending}
                     onOpenNote={onOpenNote}
                     notePending={notePending}
+                    footerResourceChips={footerResourceChipsBySeiban.get(row.fseiban.trim()) ?? []}
                   />
                 </div>
               );
@@ -164,6 +168,7 @@ function LeaderOrderResourceCardInner({
                 dueDatePending={dueDatePending}
                 onOpenNote={onOpenNote}
                 notePending={notePending}
+                footerResourceChips={footerResourceChipsBySeiban.get(row.fseiban.trim()) ?? []}
               />
             </div>
           ))

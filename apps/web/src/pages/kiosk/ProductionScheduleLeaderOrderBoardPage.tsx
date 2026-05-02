@@ -6,12 +6,14 @@ import {
   useKioskProductionSchedule,
   useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleOrderUsage,
+  useKioskProductionScheduleProgressOverview,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
+import { buildLeaderBoardFooterResourceChipsBySeiban } from '../../features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips';
 import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
@@ -237,6 +239,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS
   });
+  const progressOverviewQuery = useKioskProductionScheduleProgressOverview();
 
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -311,6 +314,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     () => buildLeaderBoardSortedGrouped(grouped, completionFilter),
     [grouped, completionFilter]
   );
+  const footerResourceChipsBySeiban = useMemo(() => {
+    const overview = progressOverviewQuery.data;
+    if (!overview) return new Map();
+    return buildLeaderBoardFooterResourceChipsBySeiban([
+      ...(overview.scheduled ?? []),
+      ...(overview.unscheduled ?? [])
+    ]);
+  }, [progressOverviewQuery.data]);
 
   const visibleSeibanEntries = useMemo(() => deriveVisibleSeibanEntries(sortedGrouped), [sortedGrouped]);
 
@@ -451,6 +462,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             orderPending={orderPending}
             onOpenNote={handleOpenRowNote}
             notePending={notePending}
+            footerResourceChipsBySeiban={footerResourceChipsBySeiban}
           />
         )}
       </main>
