@@ -2478,8 +2478,24 @@ category: knowledge-base
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **67s**・Tailscale）。
 - **知見**: **`activeQueries`** は **クエリ駆動の「どの製番で絞っているか」**の単一ソースに寄せ、アクセントは **製番ごとにハッシュ安定色**へマップすると列が増えても見通しが保てる。**チップは 1 コンポーネント**にまとめると進捗一覧と納期アシストの **見え方ドリフト**を抑えられる。
 - **トラブルシューティング**:
-  - **アクセントが付かない**: `activeQueries` が空でないか（フィルタ未適用では付かない）、**強制リロード**後に再確認。
+  - **アクセントが付かない**: **製番が空／無効でないか**確認。[2026-05-02 追補節](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02)反映後は**クエリ空でも製番がある行に付く**。旧挙動（クエリ入力が無いと付かない）の場合は SPA が旧バンドル。**強制リロード**と Pi5 **`web`** / Pi4 **`kiosk-browser`** 更新を確認。
   - **納期アシストが横に伸びない / 進捗列が無い**: 古い SPA を疑う → Pi5 `web` と各 Pi4 **`kiosk-browser`** 再起動ログ・`/opt/RaspberryPiSystem_002` の **ブランチ**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+
+### Leader order board: 製番アクセント常時化・進捗一覧製番カード資源チップ集約（2026-05-02） {#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02}
+
+- **目的**: 順位ボードで **登録済み製番行**をクエリ状態に依存せず **左縁の安定配色**で追いやすくする。進捗一覧では **製番カード単位**で工程を跨いだ **資源CDの完了集約チップ帯**を一目で読めるようにする。**Web のみ**・API / DB 契約は不変。
+- **仕様（要約）**:
+  - **順位ボード左縁**: [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) は **`activeQueries` が空でも**有効な **`fseiban`** に **ハッシュ由来のクラス**を付与（**製番ブランクのみ** `undefined`）。[`LeaderBoardGrid.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx) の製番強調状態とドキュメント整合。**回帰**: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)。
+  - **進捗一覧**: [`collectAggregatedProgressOverviewResourceProcesses.ts`](../../apps/web/src/features/kiosk/productionSchedule/collectAggregatedProgressOverviewResourceProcesses.ts) が **`resourceProcesses` を資源ごとに AND 完了**でまとめ、**`resourceCd` 昇順**・安定 **`rowId`**。型 **`AggregatedProgressOverviewResourceProcess`** は **features で定義**し、presentation レイヤへの型逆流を避ける。[`ProgressOverviewSeibanCard.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewSeibanCard.tsx) のヘッダ直下に [`KioskResourceProcessChips`](../../apps/web/src/components/kiosk/resourceProgress/KioskResourceProcessChips.tsx)。**回帰**: [`collectAggregatedProgressOverviewResourceProcesses.test.ts`](../../apps/web/src/features/kiosk/productionSchedule/__tests__/collectAggregatedProgressOverviewResourceProcesses.test.ts)。
+- **デプロイ・実機検証（2026-05-02）**:
+  - **ブランチ**: `feat/kiosk-seiban-accent-and-progress-resource-strip`（代表コミット **`924a2ff4`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260502-094331-28033`** / **`20260502-094916-31090`** / **`20260502-095506-23348`** / **`20260502-095947-26960`** / **`20260502-100443-16279`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **114s**・Tailscale）。
+- **知見**: 順位ボードのアクセントを **クエリ入力の有無から切り離す**と、「登録済みだが検索クエリ無し」の行も **同色で追える**。進捗側の資源チップは **純関数集約 + 一覧と共有コンポーネント**に寄せると、カード先頭での **一覧との見え方の一貫性**が保てる。
+- **トラブルシューティング**:
+  - **`raspi4-kensaku-stonebase01`** のデプロイで **barcode-agent 待機が一時 RETRYING** が出ても、Ansible が **その後収束して `failed=0`** の場合がある（複合 Docker エージェント構成・リソース競合時）。異常終了時は該当ホストの **`docker compose ps`** / エージェントログを確認。
+  - UI が旧のまま → [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** 再構築の有無。
 
 ### Leader order resource card: preview alignment (2026-04-17)
 
