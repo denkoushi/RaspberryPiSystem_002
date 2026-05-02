@@ -7,7 +7,6 @@ import {
   isProductionScheduleExcludedCuttingResourceCd
 } from '../policies/resource-category-policy.service.js';
 import { getResourceNameMapByResourceCds } from '../resource-master.service.js';
-import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 import { resolveProgressOverviewResourceNames } from '../progress-overview-query.service.js';
 import {
   buildLeaderboardPartFooterChipLookupKey,
@@ -136,31 +135,51 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
   const sqlRows = await prisma.$queryRaw<FooterSqlRow[]>(Prisma.sql`
     WITH "targetKeys" ("seibanJoinKey", "productNo", "fhincd") AS (
       VALUES ${Prisma.join(targetKeyRows, ',')}
+    ),
+    "matchedRows" AS (
+      SELECT "CsvDashboardRow".*
+      FROM "CsvDashboardRow"
+      INNER JOIN "targetKeys"
+        ON NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') = "targetKeys"."seibanJoinKey"
+        AND COALESCE(NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'ProductNo'), ''), '') = "targetKeys"."productNo"
+        AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FHINCD'), '') = "targetKeys"."fhincd"
+      WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    ),
+    "winnerRows" AS (
+      SELECT DISTINCT ON (
+        COALESCE("matchedRows"."rowData"->>'FSEIBAN', ''),
+        COALESCE("matchedRows"."rowData"->>'FHINCD', ''),
+        COALESCE("matchedRows"."rowData"->>'FSIGENCD', ''),
+        COALESCE("matchedRows"."rowData"->>'FKOJUN', '')
+      )
+        "matchedRows".*
+      FROM "matchedRows"
+      ORDER BY
+        COALESCE("matchedRows"."rowData"->>'FSEIBAN', '') ASC,
+        COALESCE("matchedRows"."rowData"->>'FHINCD', '') ASC,
+        COALESCE("matchedRows"."rowData"->>'FSIGENCD', '') ASC,
+        COALESCE("matchedRows"."rowData"->>'FKOJUN', '') ASC,
+        "matchedRows"."createdAt" DESC,
+        "matchedRows"."id" DESC
     )
     SELECT
-      "CsvDashboardRow"."id" AS "rowId",
-      ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
-      COALESCE(("CsvDashboardRow"."rowData"->>'ProductNo'), '') AS "productNo",
-      COALESCE(("CsvDashboardRow"."rowData"->>'FHINCD'), '') AS "fhincd",
-      COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') AS "fhinmei",
-      COALESCE(("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') AS "fsigencd",
-      COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
+      "winnerRows"."id" AS "rowId",
+      ("winnerRows"."rowData"->>'FSEIBAN') AS "fseiban",
+      COALESCE(("winnerRows"."rowData"->>'ProductNo'), '') AS "productNo",
+      COALESCE(("winnerRows"."rowData"->>'FHINCD'), '') AS "fhincd",
+      COALESCE(("winnerRows"."rowData"->>'FHINMEI'), '') AS "fhinmei",
+      COALESCE(("winnerRows"."rowData"->>'FSIGENCD'), '') AS "fsigencd",
+      COALESCE(("winnerRows"."rowData"->>'FKOJUN'), '') AS "fkojun",
       COALESCE("p"."isCompleted", FALSE) AS "isCompleted"
-    FROM "CsvDashboardRow"
-    INNER JOIN "targetKeys"
-      ON NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') = "targetKeys"."seibanJoinKey"
-      AND COALESCE(NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'ProductNo'), ''), '') = "targetKeys"."productNo"
-      AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FHINCD'), '') = "targetKeys"."fhincd"
+    FROM "winnerRows"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
-      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      ON "p"."csvDashboardRowId" = "winnerRows"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
     ORDER BY
-      ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
-      ("CsvDashboardRow"."rowData"->>'FHINCD') ASC,
+      ("winnerRows"."rowData"->>'FSEIBAN') ASC,
+      ("winnerRows"."rowData"->>'FHINCD') ASC,
       (CASE
-        WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
+        WHEN ("winnerRows"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("winnerRows"."rowData"->>'FKOJUN'))::int
         ELSE NULL
       END) ASC
   `);
