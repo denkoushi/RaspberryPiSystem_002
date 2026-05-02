@@ -2533,6 +2533,24 @@ category: knowledge-base
   - **実行環境で `update-all-clients.sh` が早い段階で失敗**: 手元の **事前 `git fetch origin …`** が **ネット未許可**だとブランチ解決できない。ネットワーク到達できる環境で **`git fetch`** してから **[再実行]**。
   - **チップは出るが中身が旧（製番一括のみ）**: Pi5 **`web` だけ**更新して **`api` が旧**だと overview の部品行構造だけ先行し得ないが、逆に **両方そろえる**まで観察。`deploy-status` と **コンテナ再起動ログ**で HEAD を確認。**強制リロード**: [verification-checklist.md](../guides/verification-checklist.md) §6.6.4。
 
+### Leader order board: leaderboard 一覧へ行フッター工程チップを内包（2026-05-02） {#leader-order-board-leaderboard-footer-chips-contract-2026-05-02}
+
+- **背景**: [progress-overview と部品行キーで結合する節](#leader-order-board-resource-chips-part-key-overview-join-2026-05-02) では、順位ボードが **一覧 + progress-overview の二重 GET** でフッター工程チップを組み立てていた。**一覧（`leaderboard` プロファイル）だけ**へ集約すると **ネットワークと Pi4 の再描画負荷**を抑えられる。
+- **仕様（現行・要約）**:
+  - **API**: キオスク生産スケジュール一覧の **`responseProfile=leaderboard`** 応答に **`leaderboardFooterChipsByPartKey`** を付与。**集約**は [`leaderboard-part-footer-processes.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.ts)・キー規約 [`leaderboard-part-footer-chip-key.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.ts)。組み込み経路 [`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)。
+  - **Web**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) が **`leaderboardFooterChipsByPartKey`** を [`collectLeaderBoardFooterResourceChips`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts) に渡し **`partKey → chips` の `ReadonlyMap`** を構築。**順位ボード文脈では `useKioskProductionScheduleProgressOverview` を取得しない**。キャッシュ運用 [`kioskProductionScheduleListCache.ts`](../../apps/web/src/features/kiosk/productionSchedule/cache/kioskProductionScheduleListCache.ts)。
+  - **完了ミューテーション後**: [`hooks.ts`](../../apps/web/src/api/hooks.ts) **`useCompleteKioskProductionScheduleRow`** が **`history-progress` と `progress-overview`** も **`invalidateQueries`** — 一覧以外の進捗画面との **即時整合**を維持。
+  - **Prisma**: 変更なし。
+- **デプロイ・実機検証（2026-05-02）**:
+  - **ブランチ**: `feat/kiosk-leaderboard-footer-contract`（代表コミット **`a1be93a4`**。**`main` マージ後**は squash マージコミットを正とする）。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**複数ホスト時は 1 台ずつ**。**Pi3 は除外**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260502-142341-11156`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**・Pi4/Pi3 は **no hosts matched**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **127s**・Tailscale）。
+- **知見**: **一覧に表示に必要な従属性を同梱**すると、`progress-overview` の **別エンドポイント全件**に依存しない。**invalidate の対象クエリキーは「一覧と矛盾しうるキャッシュ」を列挙**しておくと、楽観更新とキャッシュのみの画面が食い違いにくい。
+- **トラブルシューティング**:
+  - **チップ無しだが一覧は載る**: **`leaderboardFooterChipsByPartKey` が未定義または空**。API の **`leaderboard` 経路が旧**、`**web`** だけ先行等を疑う。**Pi5 で `api`/`web` ペア**を確認。
+  - **[旧節・行下辺チップ](#leader-order-board-row-footer-resource-chips-2026-05-02) の記述と混同しない**: **現行順位ボードは overview フェッチ無し**。過去項は **`scheduled`/`unscheduled` から製番単位で集約**したフェーズの記録。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。

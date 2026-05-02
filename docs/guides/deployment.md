@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-02（**順位ボード資源チップを部品行キーで progress-overview と整合（API+Web）**／同日内の他項は下記）
+最終更新: 2026-05-02（**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**／**順位ボード資源チップ × progress-overview 部品行粒度**ほか同日項は下記）
+
+### 補足（2026-05-02: **キオスク順位ボード 行フッター工程チップを `responseProfile=leaderboard` 一覧へ内包（progress-overview の二重取得撤去・完了ミューテーション後の invalidate 拡張）**·`feat/kiosk-leaderboard-footer-contract`·API+Web·**Pi5 のみ**）
+
+- **変更概要**: API の **`responseProfile=leaderboard`** 一覧に **`leaderboardFooterChipsByPartKey`** を同梱。[`leaderboard-part-footer-processes.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.ts)·[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)·[`leaderboard-part-footer-chip-key.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.ts)。順位ボードページ [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) は一覧の **`leaderboardFooterChipsByPartKey`** と [`collectLeaderBoardFooterResourceChips`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts) で **`ReadonlyMap`** を構築し **`useKioskProductionScheduleProgressOverview`** を順位ボード文脈で呼ばない。[`hooks.ts`](../../apps/web/src/api/hooks.ts) **`useCompleteKioskProductionScheduleRow`** は **`history-progress` と `progress-overview`** を **`invalidateQueries`**。**Prisma マイグレーションなし**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4 は本記録では未デプロイ**（順次 1 台ずつ運用では後続ホストユーザー判断）。**Pi3 は除外**（リソース僅少・専用手順対象外）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-footer-contract infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` に取り込み後は** `main`）。
+- **本番デプロイ（実績）**: 代表コミット **`a1be93a4`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-142341-11156`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・Pi4/Pi3 は **no hosts matched**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 127s**・Tailscale）。
+- **トラブルシュート**: **チップ無し／常に軽い一覧だけ**: **`api`** が **`leaderboardFooterChipsByPartKey`** を返しているか、`**web`** が当該コミットか（**強制リロード**: [verification-checklist.md](verification-checklist.md) §6.6.4）。**完了直後のみ他画面と齟齬**: **`history-progress` / `progress-overview` のキャッシュ無効化**が Network で観察できるか。
+- **ナレッジ**: [KB-297 §一覧内包契約（2026-05-02）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-footer-chips-contract-2026-05-02)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **順位ボード・行下資源チップの progress-overview 結合粒度（`productNo`+`fhincd`/部品行 `part.processes`）**·`fix/leaderboard-resource-chips-join-and-scope`·API+Web·Pi5→Pi4×4）
 
