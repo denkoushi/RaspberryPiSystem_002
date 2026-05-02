@@ -225,6 +225,14 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().min(1).optional()
   ),
+  /**
+   * DGX Spark ホスト状態の簡易疎通（GET）。200 応答なら監視対象ホスト側エージェントが生存している前提。
+   * 未設定時は監視ペインは unknown のまま（Runbook の例: メトリクス sidecar が返す軽い /health）。
+   */
+  DGX_RESOURCE_SPARK_HOST_STATUS_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
   DGX_RESOURCE_PROBE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10_000),
   DGX_RESOURCE_EVENT_LOG_MAX: z.coerce.number().int().min(10).max(500).default(50),
 

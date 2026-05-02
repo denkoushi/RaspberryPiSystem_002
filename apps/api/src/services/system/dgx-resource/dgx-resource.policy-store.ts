@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 /** 運用モード（管理UIから切替）。プロセス存続のみ（再起動で既定に戻る）。 */
-export type DgxPolicyMode = 'business_first' | 'private_ok';
+export type DgxPolicyMode = 'business_first' | 'private_ok' | 'experiment_first';
 
 export type DgxResourceEvent = {
   id: string;
@@ -12,6 +12,9 @@ export type DgxResourceEvent = {
 export class DgxResourcePolicyStore {
   private policyMode: DgxPolicyMode = 'business_first';
 
+  /** 直前のモード（GUI ロールバック用。初回切替前は null） */
+  private previousPolicyMode: DgxPolicyMode | null = null;
+
   private readonly events: DgxResourceEvent[] = [];
 
   constructor(private readonly maxEvents: number) {}
@@ -20,8 +23,15 @@ export class DgxResourcePolicyStore {
     return this.policyMode;
   }
 
-  setPolicyMode(mode: DgxPolicyMode): void {
+  getPreviousPolicyMode(): DgxPolicyMode | null {
+    return this.previousPolicyMode;
+  }
+
+  setPolicyMode(mode: DgxPolicyMode): boolean {
+    if (mode === this.policyMode) return false;
+    this.previousPolicyMode = this.policyMode;
     this.policyMode = mode;
+    return true;
   }
 
   appendEvent(message: string): void {

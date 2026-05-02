@@ -19,7 +19,7 @@ const actionBodySchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('SET_POLICY'),
-    policyMode: z.enum(['business_first', 'private_ok']),
+    policyMode: z.enum(['business_first', 'private_ok', 'experiment_first']),
   }),
 ]);
 
@@ -33,6 +33,7 @@ function resolveDgxResourceService(app: FastifyInstance): DgxResourceServicePort
     metricsUrl: env.DGX_RESOURCE_METRICS_URL,
     comfyHealthUrl: env.DGX_RESOURCE_COMFYUI_HEALTH_URL,
     embeddingHealthUrl: env.DGX_RESOURCE_EMBEDDING_HEALTH_URL,
+    sparkHostStatusUrl: env.DGX_RESOURCE_SPARK_HOST_STATUS_URL,
   });
 }
 
