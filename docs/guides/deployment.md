@@ -12,6 +12,14 @@ update-frequency: medium
 
 最終更新: 2026-05-02（**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**／**順位ボード資源チップ × progress-overview 部品行粒度**ほか同日項は下記）
 
+### 補足（2026-05-02: **`responseProfile=leaderboard` の `pageSize` サーバ上限制御（旧フロントキャッシュ吸収）と計測コード撤去**）
+
+- **背景**: ブラウザが **旧 SPA バンドル**のままだと、一覧取得に **過大な `pageSize`（例 1240）** を送り、**API 応答・DB 負荷**が増える。Caddy `access.log` の `uri` に `pageSize` が残るため実害の有無を確認できる。
+- **変更概要**: [`list.ts`](../../apps/api/src/routes/kiosk/production-schedule/list.ts) で **`responseProfile=leaderboard` のときだけ** `pageSize = min(requested, 900)`。**他プロファイル・既定は不変**。同時に一時調査で入れた **`127.0.0.1:7426` への `fetch` 計測**を API/Web から撤去。
+- **標準コマンド**: **`main` 取込後**、本書上部の **標準手順**（`scripts/update-all-clients.sh`）・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`--detach --follow`。遅延再発のみの是正なら **`--limit raspberrypi5`** で足りる。**Pi3 は除外方針のまま**。
+- **トラブルシュート**: `git pull` が **リモートの未コミット差分**で止まる → 当該ファイルの **所有権**（`cache/` 等が `root` 所有になっていないか）と **[KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)**。一時 **`git stash`** が複数ある場合は、不要なら整理して **ワークツリー clean** に戻してから Ansible を再実行。
+- **ナレッジ**: [KB-297 §ページサイズ上限制御（2026-05-02）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-pagesize-server-cap-2026-05-02)。
+
 ### 補足（2026-05-02: **キオスク順位ボード 行フッター工程チップを `responseProfile=leaderboard` 一覧へ内包（progress-overview の二重取得撤去・完了ミューテーション後の invalidate 拡張）**·`feat/kiosk-leaderboard-footer-contract`·API+Web·**Pi5 のみ**）
 
 - **変更概要**: API の **`responseProfile=leaderboard`** 一覧に **`leaderboardFooterChipsByPartKey`** を同梱。[`leaderboard-part-footer-processes.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.ts)·[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)·[`leaderboard-part-footer-chip-key.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.ts)。順位ボードページ [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) は一覧の **`leaderboardFooterChipsByPartKey`** と [`collectLeaderBoardFooterResourceChips`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts) で **`ReadonlyMap`** を構築し **`useKioskProductionScheduleProgressOverview`** を順位ボード文脈で呼ばない。[`hooks.ts`](../../apps/web/src/api/hooks.ts) **`useCompleteKioskProductionScheduleRow`** は **`history-progress` と `progress-overview`** を **`invalidateQueries`**。**Prisma マイグレーションなし**。

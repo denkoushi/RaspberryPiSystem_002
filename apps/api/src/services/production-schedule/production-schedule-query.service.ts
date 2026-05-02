@@ -32,30 +32,6 @@ import { enrichProductionScheduleRowsWithCustomerName } from './production-sched
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 
-// #region agent log
-const emitLeaderboardQueryDebugLog = (payload: {
-  hypothesisId: string;
-  location: string;
-  message: string;
-  data: Record<string, unknown>;
-  runId?: string;
-}) => {
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '44c291' },
-    body: JSON.stringify({
-      sessionId: '44c291',
-      runId: payload.runId ?? 'investigate-1',
-      hypothesisId: payload.hypothesisId,
-      location: payload.location,
-      message: payload.message,
-      data: payload.data,
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-};
-// #endregion
-
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
   if (value == null) return '';
@@ -337,7 +313,6 @@ export type ProductionScheduleListResult = {
 };
 
 export async function listProductionScheduleRows(params: ProductionScheduleListParams): Promise<ProductionScheduleListResult> {
-  const listStartAt = Date.now();
   const {
     page,
     pageSize,
@@ -378,20 +353,6 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory, resourceCategoryPolicy);
   const machineNameCondition = await buildMachineNameCondition(machineName);
   const productNoCondition = buildProductNoCondition(productNos);
-  // #region agent log
-  emitLeaderboardQueryDebugLog({
-    hypothesisId: 'H2',
-    location: 'production-schedule-query.service.ts:afterFilterBuild',
-    message: 'query filter build completed',
-    data: {
-      responseProfile,
-      textConditionCount: textConditions.length,
-      resourceConditionCount: resourceConditions.length,
-      hasMachineNameInput: normalizeMachineNameForCompare(machineName).length > 0,
-      productNoFilterCount: productNos.length
-    }
-  });
-  // #endregion
 
   // 登録製番なし かつ 割当なし の場合は検索しない。
   // - 資源CD単独（resourceCds）
@@ -525,53 +486,20 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
 
   const [countRows, rows] = await Promise.all([countPromise, rowsPromise]);
   const total = Number(countRows[0]?.total ?? 0n);
-  // #region agent log
-  emitLeaderboardQueryDebugLog({
-    hypothesisId: 'H2',
-    location: 'production-schedule-query.service.ts:afterCountAndRows',
-    message: 'count and rows query completed',
-    data: {
-      responseProfile,
-      elapsedMs: Date.now() - listStartAt,
-      total,
-      rowCount: rows.length
-    }
-  });
-  // #endregion
 
   if (isLeaderboardProfile) {
-    const enrichStartAt = Date.now();
     const lightRows = rows.map((row) => ({
       ...row,
       actualPerPieceMinutes: null as number | null
     }));
     const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
     const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
-    const enrichElapsedMs = Date.now() - enrichStartAt;
 
-    const footerStartAt = Date.now();
     const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
       rows: enrichedRows,
       locationKey,
       siteKey
     });
-    const footerElapsedMs = Date.now() - footerStartAt;
-    // #region agent log
-    emitLeaderboardQueryDebugLog({
-      hypothesisId: 'H3',
-      location: 'production-schedule-query.service.ts:leaderboardPipeline',
-      message: 'leaderboard enrich and footer pipeline completed',
-      data: {
-        enrichElapsedMs,
-        footerElapsedMs,
-        totalElapsedMs: Date.now() - listStartAt,
-        rowCount: enrichedRows.length,
-        footerPartKeyCount: leaderboardFooterChipsByPartKey
-          ? Object.keys(leaderboardFooterChipsByPartKey).length
-          : 0
-      }
-    });
-    // #endregion
     return {
       page,
       pageSize,
