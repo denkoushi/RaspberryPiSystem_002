@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-02（**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**／**順位ボード資源チップ × progress-overview 部品行粒度**ほか同日項は下記）
+最終更新: 2026-05-02（**DGX リソース管理画面タイポ改善**／**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**ほか同日項は下記）
+
+### 補足（2026-05-02: **DGX リソース管理画面タイポ・余白改善（`/admin/tools/dgx-resource`）**·`fix/dgx-resource-admin-readable-typography`·Web のみ·Pi5 のみ）
+
+- **変更概要**: [`apps/web/src/features/admin/dgx-resource/*.tsx`](../../apps/web/src/features/admin/dgx-resource/) で **見出し・本文・KPI・ボタン・フッター注記の文字サイズとパディング**を引き上げ。**`truncate`** の注記・`probes` 行に **`title`** を付け、ホバーで全文確認可能に。**API 契約・サーバ処理は不変**。  
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 不要**。  
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。  
+- **本番デプロイ（実績）**: 代表コミット **`f856e2f2`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-195653-14945`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**）。  
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale）。  
+- **トラブルシュート**: **文字が旧のまま**: [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** イメージの取り込みコミット確認。  
+- **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **`responseProfile=leaderboard` の `pageSize` サーバ上限制御（旧フロントキャッシュ吸収）と計測コード撤去**）
 

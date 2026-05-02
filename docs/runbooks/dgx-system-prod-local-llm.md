@@ -59,6 +59,8 @@ update-frequency: high
 **本番反映（2026-05-02・Phase2）**: `feat/dgx-resource-profile-and-spark-visibility-clean`（`09b2423e`）を **`raspberrypi5` のみ**へ反映。`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`、Detach **`20260502-190642-27778`**、`PLAY RECAP`: **`ok=130 changed=4 unreachable=0 failed=0`**。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。  
 **運用知見（2026-05-02）**: `--follow` が停止して見えるケースでは `status.json` が stale のままでも、遠隔ログの **`PLAY RECAP failed=0`** と `summary.json` を優先して完了判定してよい。  
 
+**本番反映（2026-05-02・管理UI可読性）**: `fix/dgx-resource-admin-readable-typography`（`f856e2f2`）で **タイポ・余白**を調整、[PR #238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238)。**対象**: **`raspberrypi5` のみ**。Detach **`20260502-195653-14945`**、`PLAY RECAP`: **`ok=130 changed=4 failed=0`**。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。**運用メモ**: 反映後も文字が小さく見える場合は **ブラウザのページズーム**と **[verification-checklist.md](../guides/verification-checklist.md) §6.6.4 の強制リロード**を先に確認。
+
 **本番反映（2026-05-01・Phase1）**: 管理 UI は **Pi5 の `api` + `web` 再デプロイ**で配信される。**対象は `raspberrypi5` のみ**（Pi3 は専用手順・必須対象外）。標準: [deployment.md](../guides/deployment.md) 補足（2026-05-01 DGX リソース管理コンソール）。**実機**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 43 / WARN 0 / FAIL 0**。**運用メモ**: **`LOCAL_LLM_STOP`** は **`LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`**（開始用 `…_START…` とは別）で制御する。
 
 ## 現時点の判断（2026-04-26）
