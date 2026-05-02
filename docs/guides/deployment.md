@@ -12,6 +12,16 @@ update-frequency: medium
 
 最終更新: 2026-05-02（**DGX Spark ホスト状態フォールバック（API）**／**DGX リソース管理画面タイポ改善**／**順位ボード 一覧内包フッター工程チップ（`leaderboard` プロファイル）**ほか同日項は下記）
 
+### 補足（2026-05-02: **`FKOJUNST_Status` CSV 不在による外部完了（別テーブル・`manual OR external`）**·`feature/fkojunst-external-completion-b`·API+DB·Pi5 のみ）
+
+- **変更概要**: **`ProductionScheduleExternalCompletion`** で **`FKOJUNST_Status` メール CSV にキーが無い** `S`/`R` winner を **外部完了**として保持。**`rowData.FKOJUNST` は変更しない**。一覧と同義の **S/R 対象のみ**。dedupe 後キーが **0 件**なら **外部完了同期をスキップ**（異常）。メール同期後／本体生産日程 CSV の **`PRODUCTION_SCHEDULE_DASHBOARD_ID` 取込成功後**にも **現行 Status CSV から再計算**。[`fkojunst-external-completion-sync.service.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts)·[`production-schedule-effective-completion.sql.ts`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts)·[`csv-dashboard-post-ingest.service.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-post-ingest.service.ts)·マイグレーション **`20260502103000_add_production_schedule_external_completion`**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 不要**（Pi3 はリソース僅少・専用手順の対象外）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/fkojunst-external-completion-b infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`a83c5439`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-215033-1769`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**・**`ok=130` `changed=4`**・所要 **約 1445s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 139s**・Tailscale）。
+- **トラブルシュート**: **`Rebuild/Restart docker compose services` のあと長時間出力が止まって見える** → Pi5 側 **`docker compose` 再構築**で **数十分**になり得る。**完了判定は `PLAY RECAP` / リモート `summary.json` / `*.exit`**（`--follow` 中の **SSH 一時切断**と混同しない）。**マイグレーション**: Phase12 の **`マイグレーション状態`** が失敗なら Pi5 API ログ・`prisma migrate status`。**表示が期待とズレる**: まず [KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28) の **S/R 可視**と **キー照合**を確認し、外部完了は **CSV キー集合の有無**で決まる（**メール同期または本体 CSV 取込後の再計算**も確認）。
+- **ナレッジ**: [KB-297 §外部完了（2026-05-02）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
 ### 補足（2026-05-02: **DGX リソース `sparkHost` — Spark ホスト簡易状態の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）**·`fix/dgx-resource-admin-readable-typography`·API（+ Ansible env テンプレ）·Pi5 のみ）
 
 - **変更概要**: **`DGX_RESOURCE_SPARK_HOST_STATUS_URL` 未設定時**は、Pi5 API が admin の **`LOCAL_LLM_BASE_URL`** に対して **`/healthz`** を既定フォールバックとして試行し、`overview.sparkHost` を最低限モニター可能にする（実装: [`dgx-resource.service.ts`](../../apps/api/src/services/system/dgx-resource/dgx-resource.service.ts)）。あわせて Ansible の [`api.env.j2`](../../infrastructure/ansible/templates/api.env.j2) / [`docker.env.j2`](../../infrastructure/ansible/templates/docker.env.j2) で **`DGX_RESOURCE_*` を出力対象に追加**（将来の明示設定を配線しやすくする）。

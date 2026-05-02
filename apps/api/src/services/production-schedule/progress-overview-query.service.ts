@@ -9,6 +9,7 @@ import {
 import { getProductionScheduleSearchState } from './production-schedule-search-state.service.js';
 import { getResourceNameMapByResourceCds } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 
 type ProgressOverviewRowRaw = {
   rowId: string;
@@ -177,11 +178,14 @@ export async function getProductionScheduleProgressOverview(
         COALESCE(("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') AS "fsigencd",
         COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
         COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
-        COALESCE("p"."isCompleted", FALSE) AS "isCompleted"
+        ${buildProductionScheduleEffectiveCompletedSql()} AS "isCompleted"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleProgress" AS "p"
         ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+        ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       LEFT JOIN "ProductionScheduleRowNote" AS "n"
         ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}

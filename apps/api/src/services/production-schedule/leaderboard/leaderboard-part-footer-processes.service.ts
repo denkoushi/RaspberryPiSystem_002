@@ -8,6 +8,7 @@ import {
 } from '../policies/resource-category-policy.service.js';
 import { getResourceNameMapByResourceCds } from '../resource-master.service.js';
 import { resolveProgressOverviewResourceNames } from '../progress-overview-query.service.js';
+import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
 import {
   buildLeaderboardPartFooterChipLookupKey,
   readTrimmedRowDataField,
@@ -122,11 +123,14 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
       COALESCE(("winnerRows"."rowData"->>'FHINMEI'), '') AS "fhinmei",
       COALESCE(("winnerRows"."rowData"->>'FSIGENCD'), '') AS "fsigencd",
       COALESCE(("winnerRows"."rowData"->>'FKOJUN'), '') AS "fkojun",
-      COALESCE("p"."isCompleted", FALSE) AS "isCompleted"
+      ${buildProductionScheduleEffectiveCompletedSql()} AS "isCompleted"
     FROM "winnerRows"
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "winnerRows"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "winnerRows"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     ORDER BY
       ("winnerRows"."rowData"->>'FSEIBAN') ASC,
       ("winnerRows"."rowData"->>'FHINCD') ASC,

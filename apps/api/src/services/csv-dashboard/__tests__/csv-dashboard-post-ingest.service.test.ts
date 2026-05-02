@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
@@ -13,6 +14,7 @@ import { CsvDashboardPostIngestService } from '../csv-dashboard-post-ingest.serv
 const syncFromSupplementDashboard = vi.fn();
 const syncFromFkojunstDashboard = vi.fn();
 const syncFromStatusMailDashboard = vi.fn();
+const syncFromCurrentStatusMailDashboard = vi.fn();
 const syncFromSeibanMachineNameSupplementDashboard = vi.fn();
 const syncFromCustomerScawDashboard = vi.fn();
 const syncFromFkobainoDashboard = vi.fn();
@@ -32,6 +34,12 @@ vi.mock('../../production-schedule/fkojunst-sync.service.js', () => ({
 vi.mock('../../production-schedule/fkojunst-status-mail-sync.service.js', () => ({
   ProductionScheduleFkojunstMailStatusSyncService: vi.fn().mockImplementation(() => ({
     syncFromStatusMailDashboard,
+  })),
+}));
+
+vi.mock('../../production-schedule/external-completion/fkojunst-external-completion-sync.service.js', () => ({
+  FkojunstExternalCompletionSyncService: vi.fn().mockImplementation(() => ({
+    syncFromCurrentStatusMailDashboard,
   })),
 }));
 
@@ -83,6 +91,10 @@ describe('CsvDashboardPostIngestService', () => {
       upserted: 2,
       pruned: 0,
     });
+    syncFromCurrentStatusMailDashboard.mockResolvedValue({
+      skipped: false,
+      distinctKeys: 2,
+    });
     syncFromSeibanMachineNameSupplementDashboard.mockResolvedValue({
       scanned: 3,
       normalized: 2,
@@ -119,6 +131,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
     expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
@@ -172,6 +185,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(hit.purchaseOrderLookupSync).toBeNull();
     expect(syncFromFkojunstDashboard).toHaveBeenCalledTimes(1);
     expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
@@ -203,6 +217,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
     expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
   });
@@ -230,6 +245,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(hit.customerScawSync).toBeNull();
     expect(hit.purchaseOrderLookupSync).toBeNull();
     expect(syncFromStatusMailDashboard).toHaveBeenCalledTimes(1);
+    expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
@@ -261,6 +277,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
     expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
   });
@@ -290,7 +307,30 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
     expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
+    expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+  });
+
+  it('runs external completion sync for the main production schedule dashboard id', async () => {
+    const svc = new CsvDashboardPostIngestService();
+    const hit = await svc.runAfterSuccessfulIngest({
+      dashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      ingestSource: 'manual',
+      ingestRunId: 'run-production-schedule',
+    });
+    expect(hit.orderSupplementSync).toBeNull();
+    expect(hit.fkojunstSync).toBeNull();
+    expect(hit.fkojunstMailSync).toBeNull();
+    expect(hit.seibanMachineNameSupplementSync).toBeNull();
+    expect(hit.customerScawSync).toBeNull();
+    expect(hit.purchaseOrderLookupSync).toBeNull();
+    expect(syncFromCurrentStatusMailDashboard).toHaveBeenCalledTimes(1);
+    expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
+    expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
+    expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
+    expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
   });
 });
