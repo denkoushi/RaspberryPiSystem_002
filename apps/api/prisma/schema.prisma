@@ -848,6 +848,7 @@ model CsvDashboardRow {
   orderAssignments           ProductionScheduleOrderAssignment[]
   rowNotes                   ProductionScheduleRowNote[]
   productionScheduleProgress ProductionScheduleProgress?
+  productionScheduleExternalCompletion ProductionScheduleExternalCompletion?
   globalRowRanks             ProductionScheduleGlobalRowRank[]
   orderSupplements           ProductionScheduleOrderSupplement[]
   fkojunstStatus             ProductionScheduleFkojunstStatus?
@@ -1042,6 +1043,19 @@ model ProductionScheduleProgress {
   csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
   @@index([csvDashboardId, isCompleted])
+}
+
+/// FKOJUNST_Status CSV に行が無い（外部で完了扱い）ことを保持する。本体 rowData.FKOJUNST は変更しない。
+model ProductionScheduleExternalCompletion {
+  csvDashboardRowId       String   @id
+  csvDashboardId          String
+  isExternallyCompleted   Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
+
+  @@index([csvDashboardId, isExternallyCompleted])
 }
 
 model KioskProductionScheduleSearchState {

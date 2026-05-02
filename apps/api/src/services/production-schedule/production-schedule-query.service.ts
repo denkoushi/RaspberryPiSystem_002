@@ -14,6 +14,7 @@ import {
   buildFkojunstProductionScheduleListRowDataFkojunstSql,
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from './policies/fkojunst-production-schedule-list-visibility.policy.js';
+import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from './due-management-ranking-scope-policy.service.js';
 import {
   filterProductionScheduleResourceCdsByCategoryWithPolicy,
@@ -419,7 +420,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
         'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
         'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
         'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
-        'progress', (CASE WHEN COALESCE("p"."isCompleted", FALSE) THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
+        'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
       (
         SELECT "orderNumber"
@@ -457,6 +458,9 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}

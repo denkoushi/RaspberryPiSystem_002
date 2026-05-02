@@ -1,12 +1,14 @@
 import { logger } from '../../lib/logger.js';
 import {
   PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from '../production-schedule/constants.js';
+import { FkojunstExternalCompletionSyncService } from '../production-schedule/external-completion/fkojunst-external-completion-sync.service.js';
 import { ProductionScheduleFkojunstSyncService } from '../production-schedule/fkojunst-sync.service.js';
 import { ProductionScheduleFkojunstMailStatusSyncService } from '../production-schedule/fkojunst-status-mail-sync.service.js';
 import { ProductionScheduleOrderSupplementSyncService } from '../production-schedule/order-supplement-sync.service.js';
@@ -42,6 +44,7 @@ export class CsvDashboardPostIngestService {
     private readonly orderSupplementSyncService: ProductionScheduleOrderSupplementSyncService = new ProductionScheduleOrderSupplementSyncService(),
     private readonly fkojunstSyncService: ProductionScheduleFkojunstSyncService = new ProductionScheduleFkojunstSyncService(),
     private readonly fkojunstMailStatusSyncService: ProductionScheduleFkojunstMailStatusSyncService = new ProductionScheduleFkojunstMailStatusSyncService(),
+    private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService(),
     private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService(),
     private readonly customerScawSyncService: ProductionScheduleCustomerScawSyncService = new ProductionScheduleCustomerScawSyncService(),
     private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService()
@@ -80,6 +83,14 @@ export class CsvDashboardPostIngestService {
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstMailSync },
         '[CsvDashboardPostIngestService] FKOJUNST_Status mail sync completed'
+      );
+    }
+
+    if (params.dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+      const externalCompletionSync = await this.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
+      logger.info(
+        { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: externalCompletionSync },
+        '[CsvDashboardPostIngestService] external completion sync completed after production schedule ingest'
       );
     }
 

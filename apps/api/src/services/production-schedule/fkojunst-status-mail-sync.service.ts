@@ -8,6 +8,7 @@ import {
   runFkojunstMailClearTransaction,
   runFkojunstMailReplacementTransaction,
 } from './fkojunst-status-mail-sync.pipeline.js';
+import { FkojunstExternalCompletionSyncService } from './external-completion/fkojunst-external-completion-sync.service.js';
 
 export type ProductionScheduleFkojunstMailStatusSyncResult = import('./fkojunst-status-mail-sync.pipeline.js').FkojunstMailSyncResult;
 
@@ -16,6 +17,10 @@ export type ProductionScheduleFkojunstMailStatusSyncResult = import('./fkojunst-
  * onto the main production schedule dashboard (winner rows only). Latest FUPDTEDT per key is authoritative.
  */
 export class ProductionScheduleFkojunstMailStatusSyncService {
+  constructor(
+    private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService()
+  ) {}
+
   async syncFromStatusMailDashboard(): Promise<ProductionScheduleFkojunstMailStatusSyncResult> {
     const { scanned, normalizedRows, skippedInvalidStatus, skippedUnparseableDate } =
       await loadFkojunstMailSourceRows(prisma);
@@ -28,6 +33,10 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
         skippedUnparseableDate
       );
       logger.info(result, '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status mail sync cleared (no normalized rows)');
+      logger.warn(
+        { scanned },
+        '[ProductionScheduleFkojunstMailStatusSyncService] skip external completion sync (no normalized FKOJUNST_Status rows)'
+      );
       return result;
     }
 
@@ -57,6 +66,15 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     }
 
     logger.info(result, '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status mail sync completed');
+
+    const extResult = await this.externalCompletionSyncService.syncFromDedupedStatusMailRows(dedupedRows);
+    if (!extResult.skipped) {
+      logger.info(
+        { distinctKeys: extResult.distinctKeys },
+        '[ProductionScheduleFkojunstMailStatusSyncService] external completion sync completed'
+      );
+    }
+
     return result;
   }
 }

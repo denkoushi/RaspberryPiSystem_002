@@ -27,3 +27,14 @@ export function buildFkojunstProductionScheduleListVisibilityWhereSql(): Prisma.
     )
   `;
 }
+
+/**
+ * 一覧可視条件と同義の「工順STが S/R として扱われる行」スカラー式（WHERE ではなく SELECT で利用）。
+ * 別名は `fkmail` / `fkst` 固定。
+ */
+export function buildFkojunstSrEligibleScalarSql(): Prisma.Sql {
+  return Prisma.sql`(
+    NOT ("fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" NOT IN ('S', 'R'))
+    AND NOT ("fkmail"."id" IS NULL AND COALESCE("fkst"."statusCode", '') NOT IN ('S', 'R'))
+  )`;
+}
