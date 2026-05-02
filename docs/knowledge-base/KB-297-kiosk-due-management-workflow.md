@@ -2561,7 +2561,6 @@ category: knowledge-base
   - **Web**: [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) の **`leaderOrderBoardQueryPageSize`** 調整（新バンドル側の要求を抑える）に加え、**サーバ側で旧クライアントを吸収**。
   - **計測撤去**: 開発用の **`127.0.0.1:7426` ingest `fetch`** と `#region agent log` を **本番経路から除去**（[KB-354 §D](../knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md) と同趣旨）。
 - **検証（Pi5）**: `pageSize=1240` リクエストでも応答 **`rows` が 900 に抑えられ**、応答バイト数が **約 1.1MB → 約 0.82MB** に減ることを確認。ウォーム時の **curl 総時間**も **旧平均より改善**（同一条件 8 本の簡易平均）。
-- **実施記録（2026-05-02）**: PR **[#236](https://github.com/t-suk/RaspberryPiSystem_002/pull/236)**（`0865cc56`）。Pi5 に **`./scripts/deploy/update-all-clients.sh --limit raspberrypi5`**（Detach **`20260502-175955-7198`**）。**`verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（約 **141s**）。
 - **デプロイ**: [deployment.md](../guides/deployment.md) の **「`leaderboard` `pageSize` サーバ上限制御」** 補足を参照。**`main` 取込後** `update-all-clients.sh`・**Pi5 のみ**で可（全クライアントは **旧バンドルが残る Pi4** まで含めて段階展開してもよい）。
 
 ### Leader order resource card: preview alignment (2026-04-17)
