@@ -56,6 +56,9 @@ update-frequency: high
 
 **実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（ポリシー説明は `dgx-resource.policy-profile.ts`）
 
+**本番反映（2026-05-02・Phase2）**: `feat/dgx-resource-profile-and-spark-visibility-clean`（`09b2423e`）を **`raspberrypi5` のみ**へ反映。`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`、Detach **`20260502-190642-27778`**、`PLAY RECAP`: **`ok=130 changed=4 unreachable=0 failed=0`**。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。  
+**運用知見（2026-05-02）**: `--follow` が停止して見えるケースでは `status.json` が stale のままでも、遠隔ログの **`PLAY RECAP failed=0`** と `summary.json` を優先して完了判定してよい。  
+
 **本番反映（2026-05-01・Phase1）**: 管理 UI は **Pi5 の `api` + `web` 再デプロイ**で配信される。**対象は `raspberrypi5` のみ**（Pi3 は専用手順・必須対象外）。標準: [deployment.md](../guides/deployment.md) 補足（2026-05-01 DGX リソース管理コンソール）。**実機**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 43 / WARN 0 / FAIL 0**。**運用メモ**: **`LOCAL_LLM_STOP`** は **`LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`**（開始用 `…_START…` とは別）で制御する。
 
 ## 現時点の判断（2026-04-26）

@@ -70,6 +70,16 @@ update-frequency: medium
 - **トラブルシュート**: 見た目が旧のまま → [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**・各ホスト `/opt/RaspberryPiSystem_002` の **取り込みブランチ/HEAD**。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 - **ナレッジ**: [KB-297 §順位ボード UX（2026-05-01）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-ux-seiban-accent-2026-05-01)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
+### 補足（2026-05-02: **DGX リソース統合運用 Phase2（運用3プロファイル + Sparkホスト可視化）**·`feat/dgx-resource-profile-and-spark-visibility-clean`·API+Web·Pi5 のみ）
+
+- **変更概要**: `SET_POLICY` を **`business_first` / `private_ok` / `experiment_first`** の3値へ拡張し、管理UIで **直前モードへ戻す**導線を追加。`overview` に **`policy.previousMode`** / **`kpis.policyMode`** / **`sparkHost`** を追加し、任意ENV **`DGX_RESOURCE_SPARK_HOST_STATUS_URL`** で DGX Spark ホスト簡易疎通を可視化。既存 `LOCAL_LLM_START/STOP` は互換維持。  
+- **対象ホスト（最小）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi4/Pi3 個別不要**。  
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（`main` 取り込み後は `main`）。  
+- **本番デプロイ（実績）**: 代表コミット **`09b2423e`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-190642-27778`**（`PLAY RECAP` **`ok=130 changed=4 unreachable=0 failed=0`**）。  
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Tailscale）。  
+- **トラブルシュート**: `--follow` が長時間停止して見える場合、`ssh "$RASPI_SERVER_HOST" "grep -A20 'PLAY RECAP' /opt/RaspberryPiSystem_002/logs/deploy/ansible-update-<RUN_ID>.log"` で **遠隔ログの RECAP** を先に確認する。`status.json` が `running` のままでも、`PLAY RECAP failed=0` を優先して判定してよい（ログ追従と状態ファイル更新がずれることがある）。  
+- **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[docs/INDEX.md](../INDEX.md)·[docs/knowledge-base/index.md](../knowledge-base/index.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
 ### 補足（2026-05-01: **DGX リソース管理コンソール（`/admin/tools/dgx-resource`・Pi5 API 境界）**·`feature/dgx-resource-ui-phase1`·API+Web·Pi5 のみ）
 
 - **変更概要**: Pi5 **`apps/api`** に **`/system/dgx-resource/*`**（overview / events / actions）、**`apps/web`** に管理画面 **`/admin/tools/dgx-resource`**（後方互換 **`/admin/dgx-resource`**）。DGX 本体へ直アクセスせず、Pi5 API 経由で `LOCAL_LLM_START` / `LOCAL_LLM_STOP` / `SET_POLICY` と疎通確認を集約。**停止**は **`LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`** を使用（開始用タイムアウトとの混同を避ける）。任意 ENV: `DGX_RESOURCE_*`（[Runbook: dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)）。
