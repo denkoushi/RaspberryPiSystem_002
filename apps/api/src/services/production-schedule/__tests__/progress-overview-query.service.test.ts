@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { buildProgressOverviewPartMapKey } from '../progress-overview-query.service.js';
 import {
   normalizeProgressOverviewParts,
   resolveProgressOverviewResourceNames,
@@ -78,5 +79,10 @@ describe('progress-overview-query.service', () => {
 
     expect(resolveProgressOverviewResourceNames('A1', map)).toEqual(['研削機A', '研削機A予備']);
     expect(resolveProgressOverviewResourceNames('UNKNOWN', map)).toBeUndefined();
+  });
+
+  it('part map keyはproductNoとfhincdの組み合わせで構築する', () => {
+    expect(buildProgressOverviewPartMapKey(' P-100 ', ' H-100 ')).toBe('P-100\0H-100');
+    expect(buildProgressOverviewPartMapKey('P-100', 'H-200')).not.toBe(buildProgressOverviewPartMapKey('P-100', 'H-100'));
   });
 });

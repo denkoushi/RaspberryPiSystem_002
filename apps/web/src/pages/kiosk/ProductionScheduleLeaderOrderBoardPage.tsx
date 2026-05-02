@@ -13,7 +13,7 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
-import { buildLeaderBoardFooterResourceChipsBySeibanJoinKey } from '../../features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips';
+import { buildLeaderBoardFooterResourceChipsByPartKey } from '../../features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips';
 import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
@@ -314,10 +314,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     () => buildLeaderBoardSortedGrouped(grouped, completionFilter),
     [grouped, completionFilter]
   );
-  const footerResourceChipsBySeibanJoinKey = useMemo(() => {
+  const footerResourceChipsByPartKey = useMemo(() => {
     const overview = progressOverviewQuery.data;
     if (!overview) return new Map();
-    return buildLeaderBoardFooterResourceChipsBySeibanJoinKey([
+    return buildLeaderBoardFooterResourceChipsByPartKey([
       ...(overview.scheduled ?? []),
       ...(overview.unscheduled ?? [])
     ]);
@@ -462,7 +462,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             orderPending={orderPending}
             onOpenNote={handleOpenRowNote}
             notePending={notePending}
-            footerResourceChipsBySeibanJoinKey={footerResourceChipsBySeibanJoinKey}
+            footerResourceChipsByPartKey={footerResourceChipsByPartKey}
           />
         )}
       </main>

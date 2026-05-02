@@ -86,6 +86,9 @@ const parseProcessOrder = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+export const buildProgressOverviewPartMapKey = (productNo: string, fhincd: string): string =>
+  `${productNo.trim()}\0${fhincd.trim()}`;
+
 const isMachinePartCode = (fhincd: string): boolean => {
   const code = fhincd.trim().toUpperCase();
   return code.startsWith('MH') || code.startsWith('SH');
@@ -275,8 +278,9 @@ export async function getProductionScheduleProgressOverview(
       seibanItem.machineName = row.fhinmei.trim();
     }
 
-    if (!seibanItem.parts.has(fhincd)) {
-      seibanItem.parts.set(fhincd, {
+    const partMapKey = buildProgressOverviewPartMapKey(row.productNo, fhincd);
+    if (!seibanItem.parts.has(partMapKey)) {
+      seibanItem.parts.set(partMapKey, {
         productNo: row.productNo.trim(),
         fhincd,
         fhinmei: row.fhinmei.trim(),
@@ -284,7 +288,7 @@ export async function getProductionScheduleProgressOverview(
         processes: []
       });
     }
-    const part = seibanItem.parts.get(fhincd);
+    const part = seibanItem.parts.get(partMapKey);
     if (!part) return;
     if (!part.processingType && row.processingType?.trim()) {
       part.processingType = row.processingType.trim();

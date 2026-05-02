@@ -2,8 +2,10 @@ import { formatDueDateForProgressOverview } from '../../../features/kiosk/produc
 import {
   isProgressOverviewDueDateOverdue,
   PROGRESS_OVERVIEW_PART_ROW_DUE_CELL_CLASS,
-  PROGRESS_OVERVIEW_PART_ROW_PRODUCT_CELL_CLASS
+  PROGRESS_OVERVIEW_PART_ROW_PRODUCT_CELL_CLASS,
+  PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS
 } from '../../../features/kiosk/productionSchedule/progressOverviewPresentation';
+import { KioskResourceProcessChips } from '../resourceProgress/KioskResourceProcessChips';
 
 import type { ProductionScheduleProgressOverviewPartItem } from '../../../api/client';
 
@@ -25,6 +27,9 @@ export function ProgressOverviewPartRow({ part }: ProgressOverviewPartRowProps) 
         >
           {formatDueDateForProgressOverview(part.dueDate)}
         </span>
+      </td>
+      <td className={PROGRESS_OVERVIEW_PART_ROW_RESOURCE_CELL_CLASS}>
+        <KioskResourceProcessChips processes={part.processes} />
       </td>
     </tr>
   );

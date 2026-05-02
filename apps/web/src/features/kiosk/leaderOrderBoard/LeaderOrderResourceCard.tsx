@@ -4,6 +4,7 @@ import { memo, useRef } from 'react';
 
 import { KIOSK_MANUAL_ORDER_OVERVIEW_BODY_TEXT_CLASS } from '../manualOrder/manualOrderOverviewTypography';
 
+import { buildLeaderBoardPartResourceProcessKey } from './buildLeaderBoardPartResourceProcessKey';
 import { LeaderOrderResourceRow } from './LeaderOrderResourceRow';
 import { LEADER_BOARD_ROW_ESTIMATE_PX, LEADER_BOARD_VIRTUAL_ROW_THRESHOLD } from './performance/leaderBoardRefetchPolicy';
 import { resolveSeibanAccentRowClass } from './seibanAccentPalette';
@@ -34,7 +35,7 @@ type Props = {
   notePending?: boolean;
   /** 製番 OR フィルタ ON 時のみ行左縁に識別色 */
   activeSeibanFilters?: readonly string[];
-  footerResourceChipsBySeibanJoinKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
+  footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
 function LeaderOrderResourceCardInner({
@@ -55,7 +56,7 @@ function LeaderOrderResourceCardInner({
   onOpenNote,
   notePending,
   activeSeibanFilters,
-  footerResourceChipsBySeibanJoinKey
+  footerResourceChipsByPartKey
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
@@ -145,7 +146,15 @@ function LeaderOrderResourceCardInner({
                     dueDatePending={dueDatePending}
                     onOpenNote={onOpenNote}
                     notePending={notePending}
-                    footerResourceChips={footerResourceChipsBySeibanJoinKey.get(row.seibanJoinKey) ?? []}
+                    footerResourceChips={
+                      footerResourceChipsByPartKey.get(
+                        buildLeaderBoardPartResourceProcessKey({
+                          seibanJoinKey: row.seibanJoinKey,
+                          productNo: row.productNo,
+                          fhincd: row.fhincd
+                        })
+                      ) ?? []
+                    }
                   />
                 </div>
               );
@@ -168,7 +177,15 @@ function LeaderOrderResourceCardInner({
                 dueDatePending={dueDatePending}
                 onOpenNote={onOpenNote}
                 notePending={notePending}
-                footerResourceChips={footerResourceChipsBySeibanJoinKey.get(row.seibanJoinKey) ?? []}
+                footerResourceChips={
+                  footerResourceChipsByPartKey.get(
+                    buildLeaderBoardPartResourceProcessKey({
+                      seibanJoinKey: row.seibanJoinKey,
+                      productNo: row.productNo,
+                      fhincd: row.fhincd
+                    })
+                  ) ?? []
+                }
               />
             </div>
           ))
