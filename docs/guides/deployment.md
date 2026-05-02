@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-01
+last-verified: 2026-05-02
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-01（**キオスク順位ボード UX（製番・アクセント・資源進捗列）**／**DGX リソース管理コンソール（Pi5 API/Web）**／**Gmail CSV 日時の PowerAutomate 互換（FKOJUNST_Status / CsvDashboard 一般）**／**補助 `plannedEndDate` 字句拡張**／**着手日補助の差分同期**／2026-04-30 項は下記）
+最終更新: 2026-05-02（**キオスク順位ボード製番アクセント常時化・進捗一覧製番カード資源チップ集約帯**／2026-05-01 項は下記）
+
+### 補足（2026-05-02: **キオスク順位ボード製番左縁アクセント（フィルタ空でも安定色）／進捗一覧製番カードの資源CD集約チップ帯**·`feat/kiosk-seiban-accent-and-progress-resource-strip`·Web のみ·Pi5→Pi4×4）
+
+- **変更概要**: [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) で **`activeQueries` が空でも**有効製番には **製番ハッシュ由来の左縁アクセント**を付与（**製番ブランクのみ** `undefined`）。[`LeaderBoardGrid.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx) の `activeSeibanFilters` と整合。**進捗一覧**: [`collectAggregatedProgressOverviewResourceProcesses.ts`](../../apps/web/src/features/kiosk/productionSchedule/collectAggregatedProgressOverviewResourceProcesses.ts) で製番カード内の **`resourceProcesses` を AND 完了**で集約し **`resourceCd` 昇順**・安定 **`rowId`**・型は **features で定義**（components への型逆流を回避）。[`ProgressOverviewSeibanCard.tsx`](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewSeibanCard.tsx) ヘッダ直下に **`KioskResourceProcessChips`** で集約チップ帯。テスト: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)·[`collectAggregatedProgressOverviewResourceProcesses.test.ts`](../../apps/web/src/features/kiosk/productionSchedule/__tests__/collectAggregatedProgressOverviewResourceProcesses.test.ts)。**API / DB 変更なし**。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（ユーザー指定運用／リソース僅少のため本記録でも専用手順は未実施）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-seiban-accent-and-progress-resource-strip infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`924a2ff4`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-094331-28033`**（`raspberrypi5`）/ **`20260502-094916-31090`**（`raspberrypi4`）/ **`20260502-095506-23348`**（`raspi4-robodrill01`）/ **`20260502-095947-26960`**（`raspi4-fjv60-80`）/ **`20260502-100443-16279`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**（Pi5 は Docker 再起動ログあり **`ok=130` `changed=4`** 規模、Pi4 クライアントはホストにより **`ok≈122–129` `changed≈9–10`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 114s**・Tailscale）。
+- **トラブルシュート**: 見た目が旧のまま → [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**`raspi4-kensaku-stonebase01`** で **barcode-agent 待機が一時 RETRYING**しても playbook は **収束して `failed=0`** になり得る（Pi4 複合エージェント構成の過去事例と同系）。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §2026-05-02 追補](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-01: **キオスク順位ボード UX（製番視認性・納期アシスト資源進捗・左ペイン2列・行左アクセント）**·`feat/kiosk-leader-order-board-ux`·Web のみ·Pi5→Pi4×4）
 
