@@ -2497,6 +2497,24 @@ category: knowledge-base
   - **`raspi4-kensaku-stonebase01`** のデプロイで **barcode-agent 待機が一時 RETRYING** が出ても、Ansible が **その後収束して `failed=0`** の場合がある（複合 Docker エージェント構成・リソース競合時）。異常終了時は該当ホストの **`docker compose ps`** / エージェントログを確認。
   - UI が旧のまま → [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** 再構築の有無。
 
+### Leader order board: 行下辺・製番単位の資源進捗チップ帯（2026-05-02） {#leader-order-board-row-footer-resource-chips-2026-05-02}
+
+- **目的**: 順位ボードの **各資源行の直下**に、進捗一覧の製番カードと同様の **製番キー別・資源CD集約チップ**を出し、一覧を開かずに **工程完了状況を横スクロールで追える**ようにする。**Web のみ**・API / DB 契約は不変。
+- **仕様（要約）**:
+  - **データ**: [`useKioskProductionScheduleProgressOverview`](../../apps/web/src/api/hooks.ts) の **`scheduled` / `unscheduled`** を入力に、[`buildLeaderBoardFooterResourceChipsBySeiban`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts) で **製番（trim）→ `KioskResourceChipData[]`** の `ReadonlyMap` を構築（進捗一覧の [`collectAggregatedProgressOverviewResourceProcesses`](../../apps/web/src/features/kiosk/productionSchedule/collectAggregatedProgressOverviewResourceProcesses.ts) と同様の **資源ごとの AND 完了**・**`resourceCd` 昇順**）。
+  - **伝播**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) で **`useMemo`** → [`LeaderBoardGrid.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx) → [`LeaderOrderResourceCard.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx) → 行の **`fseiban`** で lookup。
+  - **表示**: [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) **下辺**に [`KioskResourceProcessChips`](../../apps/web/src/components/kiosk/resourceProgress/KioskResourceProcessChips.tsx)、**`flex-nowrap`** と横スクロール用ラッパ（カード下辺ヘッダ重复を避けるため **行側**に載せる）。
+  - **回帰**: [`collectLeaderBoardFooterResourceChips.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/collectLeaderBoardFooterResourceChips.test.ts)。
+- **デプロイ・実機検証（2026-05-02）**:
+  - **ブランチ**: `fix/leaderboard-row-footer-resource-chips`（代表コミット **`16911165`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260502-105130-11663`** / **`20260502-105758-25070`** / **`20260502-110434-28709`** / **`20260502-110923-18185`** / **`20260502-111424-3838`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **130s**・Tailscale）。
+- **知見**: カード単位のフッターより **行単位**にチップ帯を載せると、**複数行カード**でも **製番ごとの帯が一意**に付き、グルーピング都合のヘッダ重複を避けられる。集約ロジックは **進捗一覧と共有の純関数**に寄せると仕様ドリフトが減る。
+- **トラブルシューティング**:
+  - **チップが空**: 当該製番に **進捗 overview の `resourceProcesses` が無い**場合は仕様どおり。データは overview 取得に依存。
+  - **表示が古い**: [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**・`deploy-status`・Pi5 / Pi4 の **取り込みブランチ**。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。
