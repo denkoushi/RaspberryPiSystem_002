@@ -8,6 +8,12 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-02）
+
+- **順位ボード 資源チップを **部品行キー（`productNo`+`fhincd`/join）** で progress-overview と整合・進捗一覧 `part.processes` 復元（`fix/leaderboard-resource-chips-join-and-scope`·`44aea2d9`）Pi5→Pi4×4 順次·Phase12 43/0/0**: [`progress-overview-query.service.ts`](../apps/api/src/services/production-schedule/progress-overview-query.service.ts)·[`buildLeaderBoardPartResourceProcessKey.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardPartResourceProcessKey.ts)·[`collectLeaderBoardFooterResourceChips.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts)。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（2026-05-02 結合粒度）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**マージ前は** `fix/leaderboard-resource-chips-join-and-scope`）。**Detach Run ID**: **`20260502-125430-31676`** / **`20260502-130426-1173`** / **`20260502-131032-13145`** / **`20260502-131507-16128`** / **`20260502-132009-12509`**。**Pi3 不要**。**ナレッジ**: [KB-297 §結合粒度](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-resource-chips-part-key-overview-join-2026-05-02)·[EXEC_PLAN.md](../EXEC_PLAN.md)。
+
+- **キオスク順位ボード 各行下辺・製番単位の資源進捗チップ帯（`fix/leaderboard-row-footer-resource-chips`·`16911165`）Pi5→Pi4×4·Phase12 43/0/0·Web のみ**: [deployment.md](./guides/deployment.md) 補足（行下辺チップ）·Detach **`20260502-105130-11663`** … **`20260502-111424-3838`**。**ナレッジ**: [KB-297 §行下辺](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-footer-resource-chips-2026-05-02)。
+
 ### 🆕 最新アップデート（2026-05-01）
 
 - **DGX リソース管理コンソール Phase1（Pi5 API `/system/dgx-resource/*`・`/admin/tools/dgx-resource`）·`feature/dgx-resource-ui-phase1`·`5eb78001`·本番 Pi5 のみ·Phase12 43/0/0**: Pi5 経由で overview / events / actions（`LOCAL_LLM_START|STOP`、`SET_POLICY`）。**任意 ENV**: `DGX_RESOURCE_*`。**停止タイムアウト**: `LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`。**デプロイ**: [deployment.md](./guides/deployment.md) 補足（2026-05-01 DGX リソース管理コンソール）·`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·**先行検証時** `./scripts/update-all-clients.sh feature/dgx-resource-ui-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260501-214011-6943`**。**CI**: run **`25214297856`** success。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh`。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[EXEC_PLAN.md](../EXEC_PLAN.md)。

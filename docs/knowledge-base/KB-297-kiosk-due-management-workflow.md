@@ -2515,6 +2515,24 @@ category: knowledge-base
   - **チップが空**: 当該製番に **進捗 overview の `resourceProcesses` が無い**場合は仕様どおり。データは overview 取得に依存。
   - **表示が古い**: [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**・`deploy-status`・Pi5 / Pi4 の **取り込みブランチ**。
 
+### Leader order board: progress-overview 部品行キーでの資源チップ結合・進捗一覧 `part.processes` 復元（2026-05-02） {#leader-order-board-resource-chips-part-key-overview-join-2026-05-02}
+
+- **背景**: [行下辺チップ節](#leader-order-board-row-footer-resource-chips-2026-05-02) までは **製番単位**で進捗 overview から **`resourceProcesses` を AND 集約**していた。**部品行が複数**ある製番では、進捗一覧の **各部品行の `part.processes`** と **粒度が一致しない**問題があった。
+- **仕様（要約）**:
+  - **進捗一覧**: [**`progressOverviewPresentation`**](../../apps/web/src/features/kiosk/productionSchedule/progressOverviewPresentation.ts)・[**`ProgressOverviewPartRow`**](../../apps/web/src/components/kiosk/progressOverview/ProgressOverviewPartRow.tsx) で **部品行ごとに `part.processes`** を **[`KioskResourceProcessChips`](../../apps/web/src/components/kiosk/resourceProgress/KioskResourceProcessChips.tsx)** 表示へ復元。
+  - **API**: [**`progress-overview-query.service.ts`**](../../apps/api/src/services/production-schedule/progress-overview-query.service.ts) が部品行のルックアップキーを **`productNo` + `fhincd`**（および製番側の join キー）に統一。
+  - **順位ボード**: [**`buildLeaderBoardPartResourceProcessKey`**](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardPartResourceProcessKey.ts) で **`seibanJoinKey`・`productNo`・`fhincd`** から安定キーを生成し、[**`collectLeaderBoardFooterResourceChips`**](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts) が **各部品行スコープ**の `resourceProcesses` を **`ReadonlyMap` の値**として保持。[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)・[`LeaderBoardGrid.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardGrid.tsx)・[`LeaderOrderResourceCard.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceCard.tsx) へ伝搬。
+  - **Prisma**: 変更なし（クエリ応答組み立てのみ）。
+- **デプロイ・実機検証（2026-05-02）**:
+  - **ブランチ**: `fix/leaderboard-resource-chips-join-and-scope`（代表コミット **`44aea2d9`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の `update-all-clients.sh`・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260502-125430-31676`** / **`20260502-130426-1173`** / **`20260502-131032-13145`** / **`20260502-131507-16128`** / **`20260502-132009-12509`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **152s**・Tailscale）。
+- **知見**: **一覧（progress-overview）と順位ボードのチップは、集約関数の入力キーを部品行に揃える**と、「同じ製番・別部品」の取り違えを防げる。**API と Web でマップキー規約を二重に定義しない**よう、クエリ側の部品行キーを Web の **`buildLeaderBoardPartResourceProcessKey` と同趣旨に寄せた**。
+- **トラブルシューティング**:
+  - **実行環境で `update-all-clients.sh` が早い段階で失敗**: 手元の **事前 `git fetch origin …`** が **ネット未許可**だとブランチ解決できない。ネットワーク到達できる環境で **`git fetch`** してから **[再実行]**。
+  - **チップは出るが中身が旧（製番一括のみ）**: Pi5 **`web` だけ**更新して **`api` が旧**だと overview の部品行構造だけ先行し得ないが、逆に **両方そろえる**まで観察。`deploy-status` と **コンテナ再起動ログ**で HEAD を確認。**強制リロード**: [verification-checklist.md](../guides/verification-checklist.md) §6.6.4。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。
