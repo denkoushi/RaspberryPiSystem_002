@@ -32,30 +32,6 @@ import { enrichProductionScheduleRowsWithCustomerName } from './production-sched
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 
-// #region agent log
-const emitLeaderboardDebugLog = (payload: {
-  hypothesisId: string;
-  location: string;
-  message: string;
-  data: Record<string, unknown>;
-  runId?: string;
-}) => {
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '44c291' },
-    body: JSON.stringify({
-      sessionId: '44c291',
-      runId: payload.runId ?? 'pre-fix',
-      hypothesisId: payload.hypothesisId,
-      location: payload.location,
-      message: payload.message,
-      data: payload.data,
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-};
-// #endregion
-
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
   if (value == null) return '';
@@ -337,7 +313,6 @@ export type ProductionScheduleListResult = {
 };
 
 export async function listProductionScheduleRows(params: ProductionScheduleListParams): Promise<ProductionScheduleListResult> {
-  const listStartAt = Date.now();
   const {
     page,
     pageSize,
@@ -355,22 +330,6 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     responseProfile = 'full'
   } = params;
   const isLeaderboardProfile = responseProfile === 'leaderboard';
-  // #region agent log
-  emitLeaderboardDebugLog({
-    hypothesisId: 'H1',
-    location: 'production-schedule-query.service.ts:listProductionScheduleRows:entry',
-    message: 'leaderboard-list entry params',
-    data: {
-      responseProfile,
-      page,
-      pageSize,
-      queryTextLength: queryText.length,
-      productNosCount: productNos.length,
-      resourceCdsCount: resourceCds.length,
-      assignedOnlyCdsCount: assignedOnlyCds.length
-    }
-  });
-  // #endregion
   const textConditions = buildTextConditions(queryText);
   const resourceCategoryPolicy = await getResourceCategoryPolicy({
     siteKey,
@@ -527,22 +486,8 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
 
   const [countRows, rows] = await Promise.all([countPromise, rowsPromise]);
   const total = Number(countRows[0]?.total ?? 0n);
-  // #region agent log
-  emitLeaderboardDebugLog({
-    hypothesisId: 'H1',
-    location: 'production-schedule-query.service.ts:listProductionScheduleRows:afterRawListQuery',
-    message: 'leaderboard-list raw query completed',
-    data: {
-      responseProfile,
-      elapsedMs: Date.now() - listStartAt,
-      total,
-      rowCount: rows.length
-    }
-  });
-  // #endregion
 
   if (isLeaderboardProfile) {
-    const leaderboardPathStartAt = Date.now();
     const lightRows = rows.map((row) => ({
       ...row,
       actualPerPieceMinutes: null as number | null
@@ -554,26 +499,6 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       locationKey,
       siteKey
     });
-    const footerPartKeyCount = leaderboardFooterChipsByPartKey
-      ? Object.keys(leaderboardFooterChipsByPartKey).length
-      : 0;
-    const footerChipTotal = leaderboardFooterChipsByPartKey
-      ? Object.values(leaderboardFooterChipsByPartKey).reduce((sum, chips) => sum + chips.length, 0)
-      : 0;
-    // #region agent log
-    emitLeaderboardDebugLog({
-      hypothesisId: 'H2',
-      location: 'production-schedule-query.service.ts:listProductionScheduleRows:leaderboardPostProcess',
-      message: 'leaderboard-list post process completed',
-      data: {
-        leaderboardElapsedMs: Date.now() - leaderboardPathStartAt,
-        totalElapsedMs: Date.now() - listStartAt,
-        rowCount: enrichedRows.length,
-        footerPartKeyCount,
-        footerChipTotal
-      }
-    });
-    // #endregion
     return {
       page,
       pageSize,

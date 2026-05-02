@@ -2546,6 +2546,7 @@ category: knowledge-base
   - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**複数ホスト時は 1 台ずつ**。**Pi3 は除外**。
   - **Detach Run ID**（`ansible-update-`）: **`20260502-142341-11156`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**・Pi4/Pi3 は **no hosts matched**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **127s**・Tailscale）。
+  - **性能追補（同日）**: API のフッター組み立てSQLを `targetKeys + matchedRows + winnerRows (DISTINCT ON)` へ変更したコミット **`1da74f2a`** を Pi5 のみ再デプロイ（Detach **`20260502-150239-22559`**）。Pi5 localhost 実測（`pageSize=400`）は **修正前** `leaderboard` **4.28–4.81s** / `full` **1.63–1.68s** → **修正後** `leaderboard` **1.40–1.43s** / `full` **1.61–1.82s**。応答契約（`leaderboardFooterChipsByPartKey`）の件数は維持。
 - **知見**: **一覧に表示に必要な従属性を同梱**すると、`progress-overview` の **別エンドポイント全件**に依存しない。**invalidate の対象クエリキーは「一覧と矛盾しうるキャッシュ」を列挙**しておくと、楽観更新とキャッシュのみの画面が食い違いにくい。
 - **トラブルシューティング**:
   - **チップ無しだが一覧は載る**: **`leaderboardFooterChipsByPartKey` が未定義または空**。API の **`leaderboard` 経路が旧**、`**web`** だけ先行等を疑う。**Pi5 で `api`/`web` ペア**を確認。

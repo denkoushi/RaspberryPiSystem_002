@@ -14,30 +14,6 @@ import {
   resolveLeaderboardRowSeibanJoinKeyForFooter
 } from './leaderboard-part-footer-chip-key.js';
 
-// #region agent log
-const emitLeaderboardFooterDebugLog = (payload: {
-  hypothesisId: string;
-  location: string;
-  message: string;
-  data: Record<string, unknown>;
-  runId?: string;
-}) => {
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '44c291' },
-    body: JSON.stringify({
-      sessionId: '44c291',
-      runId: payload.runId ?? 'pre-fix',
-      hypothesisId: payload.hypothesisId,
-      location: payload.location,
-      message: payload.message,
-      data: payload.data,
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-};
-// #endregion
-
 export type LeaderboardPartFooterProcessItem = {
   rowId: string;
   resourceCd: string;
@@ -76,7 +52,6 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
   locationKey: string;
   siteKey?: string;
 }): Promise<Record<string, LeaderboardPartFooterProcessItem[]> | undefined> {
-  const startAt = Date.now();
   const { rows, locationKey, siteKey } = params;
   const uniqueKeys = new Set<string>();
   const tripleByKey = new Map<
@@ -97,30 +72,8 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
   }
 
   if (tripleByKey.size === 0) {
-    // #region agent log
-    emitLeaderboardFooterDebugLog({
-      hypothesisId: 'H1',
-      location: 'leaderboard-part-footer-processes.service.ts:buildLeaderboardFooterChipsByPartKeyForScheduleRows:empty',
-      message: 'leaderboard-footer skipped because no part keys',
-      data: {
-        rowCount: rows.length,
-        elapsedMs: Date.now() - startAt
-      }
-    });
-    // #endregion
     return undefined;
   }
-  // #region agent log
-  emitLeaderboardFooterDebugLog({
-    hypothesisId: 'H1',
-    location: 'leaderboard-part-footer-processes.service.ts:buildLeaderboardFooterChipsByPartKeyForScheduleRows:prepared',
-    message: 'leaderboard-footer part keys prepared',
-    data: {
-      rowCount: rows.length,
-      uniquePartKeyCount: tripleByKey.size
-    }
-  });
-  // #endregion
 
   const resourceCategoryPolicy = await getResourceCategoryPolicy({
     siteKey,
@@ -131,7 +84,6 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
     (t) => Prisma.sql`(${t.seibanJoinKey}, ${t.productNo}, ${t.fhincd})`
   );
 
-  const sqlStartAt = Date.now();
   const sqlRows = await prisma.$queryRaw<FooterSqlRow[]>(Prisma.sql`
     WITH "targetKeys" ("seibanJoinKey", "productNo", "fhincd") AS (
       VALUES ${Prisma.join(targetKeyRows, ',')}
@@ -183,18 +135,6 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
         ELSE NULL
       END) ASC
   `);
-  // #region agent log
-  emitLeaderboardFooterDebugLog({
-    hypothesisId: 'H1',
-    location: 'leaderboard-part-footer-processes.service.ts:buildLeaderboardFooterChipsByPartKeyForScheduleRows:sqlDone',
-    message: 'leaderboard-footer sql query completed',
-    data: {
-      uniquePartKeyCount: tripleByKey.size,
-      sqlRowCount: sqlRows.length,
-      sqlElapsedMs: Date.now() - sqlStartAt
-    }
-  });
-  // #endregion
 
   const resourceNameMap = await getResourceNameMapByResourceCds(sqlRows.map((r) => r.fsigencd));
 
@@ -246,19 +186,6 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
         : { rowId, resourceCd, isCompleted }
     );
   }
-
-  // #region agent log
-  emitLeaderboardFooterDebugLog({
-    hypothesisId: 'H5',
-    location: 'leaderboard-part-footer-processes.service.ts:buildLeaderboardFooterChipsByPartKeyForScheduleRows:done',
-    message: 'leaderboard-footer payload shape completed',
-    data: {
-      elapsedMs: Date.now() - startAt,
-      outputPartKeyCount: Object.keys(out).length,
-      outputChipTotal: Object.values(out).reduce((sum, chips) => sum + chips.length, 0)
-    }
-  });
-  // #endregion
 
   return out;
 }
