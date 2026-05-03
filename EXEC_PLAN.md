@@ -1009,6 +1009,7 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-03）: 管理コンソール **DGX リソース**の **`inference-backend`（`/v1/models`）WARN** と、Pi5 経由 gateway の **502（本文 `Connection refused`）** は、**blue vLLM（`system-prod-trtllm`）の cold start 待ち**だけでなく、**同一 GPU 上の私用 ComfyUI 占有**で **`ValueError: Free memory on device cuda:0 …`** により **upstream が listen しない**状態と**一致しうる**。UI は数秒周期の更新があるが、**裏側が変わらなければ空振り**。**対処例**（業務優先時）: ComfyUI 停止→ **`POST /start` 再試行**（私用で ComfyUI を再開すると **再衝突**しうる）。**記録**: [KB-364](./docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)（2026-05-03 節）·[deployment.md](./docs/guides/deployment.md) 補足（2026-05-03）。
 - 観測（2026-05-01）: `ProductionScheduleOrderSupplement` の差分同期で Prisma client を再生成したあとでも、`update` では **外部キー scalar (`csvDashboardRowId`) を checked update input へ直接書けない**。`build` で **`Did you mean to write 'csvDashboardRow'?`** が出るため、**`UncheckedUpdateInput`** を用いるか relation connect へ寄せる必要があった。今回の同期は既存ユニークキー更新を優先し、**unchecked update** で解消した。  
   参照: [order-supplement-incremental-sync-execplan.md](./docs/plans/order-supplement-incremental-sync-execplan.md)
 - 観測（2026-04-28）: VLM 上流の **HTTP 400** は、常に同じ単一バグとは限らず、(a) **コンテキスト超過**（`Input length … maximum context length`）、(b) **画像デコード失敗**（`cannot identify image file` 等）など**条件依存**で返り得る。本番 `Loan` 保存画像 **531 件**の一括プローブでは**全件 200**で、**破損・巨大**など**合成テスト**で 400 を意図的再現。DGX 入口へ **開発端末から直接 HTTP** すると**タイムアウト**しやすく、**Pi5 経由**（`127.0.0.1:38081` へ **SSH トンネル**等）の方が**切り分け**に向きやすい。**記録**: [deployment.md](./docs/guides/deployment.md) 補足（2026-04-28）・[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md) トラブルシューティング。ローカル診断用に **`probe-photo-label-vlm.py` へ一時 NDJSON 等を挿入**した作業分は、**固定パス依存的改変**になり得るため、**`main` にそのままコミットしない**（不要なら `git restore` か専用フラグ化）こと。
@@ -2032,6 +2033,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### DGX blue vLLM × 私用 ComfyUI（GPU 競合の可視化と運用補助）（2026-05-03）
+
+**概要**: [KB-364](./docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md) のとおり、**同一 DGX** では GPU を共有するため、**`business_first`** で業務 blue を安定させたい場合に **私用 ComfyUI と同時フル要件**が衝突しうる。
+
+**候補タスク**:
+
+1. 管理 UI で **GPU 競合の説明**（WARN が **cold start だけでない**こと、**`nvidia-smi` / `docker logs`** の見方への Runbook リンク）を **補足表示**できないか。
+2. **`business_first`**（または同等ポリシー）で **`POST /start` 前**に、**文書化済みの手順**（例: ComfyUI 停止）を**運用チェックリスト**化するか（**自動 `docker stop` は影響大**のため、実装するなら **明示ガード + ADR**）。
+3. Pi5 **API コンテナ内**に `curl` が無い環境での **トラブルシュート**は **ホスト `python3` + `.env`** または **DGX SSH** が現実的、という **Runbook 手順の定型化**。
 
 ### DGX リソース管理コンソール: Control Targets 場内スモーク（2026-05-03）
 

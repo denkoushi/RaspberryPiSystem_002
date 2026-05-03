@@ -19,8 +19,8 @@ update-frequency: medium
 - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。
 - **本番デプロイ（実績）**: 代表コミット **`1e24d169`**（`refactor(dgx): introduce control targets for resource console`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-082132-17926`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**・所要 **約 610s**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 79s**・Tailscale）。
-- **トラブルシュート**: **Control Targets グリッドが出ない** → Pi5 **`api`/`web` の同一ブランチ**・ブラウザ **[verification-checklist.md](verification-checklist.md) §6.6.4 強制リロード**。**読取専用ターゲットへ `EXECUTE_TARGET_ACTION`** → API が **`DGX_TARGET_ACTION_NOT_SUPPORTED`**（設計どおり）。**`metrics-kpi` が常に不明** → KPI JSON が空または到達不能のときは **数値が1つも取れない限り running とみなさない**（2026-05-02 以降の実装）。
-- **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **トラブルシュート**: **Control Targets グリッドが出ない** → Pi5 **`api`/`web` の同一ブランチ**・ブラウザ **[verification-checklist.md](verification-checklist.md) §6.6.4 強制リロード**。**読取専用ターゲットへ `EXECUTE_TARGET_ACTION`** → API が **`DGX_TARGET_ACTION_NOT_SUPPORTED`**（設計どおり）。**`metrics-kpi` が常に不明** → KPI JSON が空または到達不能のときは **数値が1つも取れない限り running とみなさない**（2026-05-02 以降の実装）。**`inference-backend` WARN・gateway `/v1/models` が 502（`Connection refused`）で UI が空振り** → cold start 以外に **同一 GPU 上の ComfyUI 占有で blue vLLM が起動失敗**しうる（[KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・Runbook 2026-05-03 節）。
+- **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **`FKOJUNST_Status` CSV 不在による外部完了（別テーブル・`manual OR external`）**·`feature/fkojunst-external-completion-b`·API+DB·Pi5 のみ）
 

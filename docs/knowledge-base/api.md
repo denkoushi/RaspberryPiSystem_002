@@ -1,5 +1,25 @@
 ---
 
+### [KB-364] DGX blue vLLM と私用 ComfyUI の GPU 競合（502・`inference-backend` WARN）
+
+**日付**: 2026-05-03
+
+**Context**:
+
+- 同一 DGX では GPU を共有する。**私用 ComfyUI** と **業務 blue（vLLM）** が同時にフル要件を満たせないことがある
+
+**Symptoms**:
+
+- `/admin/tools/dgx-resource` の **`inference-backend`** が WARN のまま、Pi5 経由 **`GET /v1/models`** が **502**（upstream **`Connection refused`**）、`system-prod-trtllm` に **`ValueError: Free memory on device cuda:0`**
+
+**Investigation / Fix**:
+
+- **CONFIRMED**: `nvidia-smi` / `docker logs` で GPU 占有と即死ログを確認。業務優先なら ComfyUI 停止→`POST /start` 再試行（詳細は [KB-364（詳細）](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）
+
+**参照**: [KB-364（詳細）](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)
+
+---
+
 ### [KB-363] DGX リソース `sparkHost` の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）
 
 **日付**: 2026-05-02

@@ -437,6 +437,14 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - **疎通時の注意（blue / vLLM）**: cold start 中は **`127.0.0.1:38083`** および gateway 経由の **`/v1/models`** が **502** や **connection reset** になり得る。`docker logs`（`system-prod-trtllm` 等）で **重み load・`torch.compile`・autotune** 完了まで待つ。最小チャット検証では **`chat_template_kwargs: { "enable_thinking": false }`** を付けないと **`message.content` が空**になりやすい。
 - **`keep_warm`**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）かつ active backend が blue のとき、**`POST /stop` 後も** trtllm コンテナと **`/v1/models` が生存**する挙動を確認できる（本番ではリソース方針に合わせ ADR のとおり）。
 
+### 2026-05-03 blue vLLM と ComfyUI の GPU 競合（502・inference-backend WARN）
+
+- **起きうること**: 同一 DGX 上で **私用 ComfyUI**（例: `dgx-private-comfyui`）が GPU メモリを占有していると、blue（`system-prod-trtllm`）が **`ValueError: Free memory on device cuda:0 … is less than desired GPU memory utilization`** で**即死**し、**gateway 先が listen しない** → Pi5 経由の **502**（本文に **`Connection refused`**）、管理 UI の **`inference-backend` WARN** が**更新周期どおりにポーリングしても直らない**（裏側が変わっていないため）。
+- **cold start との見分け**: ログに上記 **`ValueError`** が出るなら **GPU 不足が第一候補**。cold start のみなら **重みロード／compile／autotune** の進行ログが主で、**`nvidia-smi` に ComfyUI 等の大きな占有**が典型。
+- **復旧の例（業務優先時）**: ComfyUI コンテナを停止して VRAM を空け、**`POST /start`** をやり直す → cold start 経過後 **`127.0.0.1:38083` / gateway `/v1/models` が 200** まで確認。**私用で ComfyUI を再開する場合は blue と再衝突しうる**（プロファイル `private_ok` vs `business_first` の意味と整合）。
+- **切り分けのコツ**: Pi5 **API コンテナ内**に `curl` が無いことがある → **ホストの `python3`** で `.env` の **`LOCAL_LLM_SHARED_TOKEN`** を読み **`X-LLM-Token`** 付きで gateway を叩く、または **DGX SSH** で `docker logs` / `nvidia-smi` を見る。
+- **記録**: [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)。
+
 ## 推奨ポートと役割
 
 Ubuntu 現行構成との互換を優先し、DGX 側でも次を基本にする。
