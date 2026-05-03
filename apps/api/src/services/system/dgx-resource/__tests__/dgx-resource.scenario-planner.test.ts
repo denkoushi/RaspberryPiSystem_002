@@ -11,6 +11,7 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: 'business_to_private' as const,
       targetPolicyMode: 'private_ok' as const,
       applyWorkloadChanges: false,
+      postPolicyPrivateComfyStart: false,
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
@@ -19,7 +20,36 @@ describe('dgx-resource.scenario-planner', () => {
     expect(computeScenarioPlanFingerprint(input)).toBe(computeScenarioPlanFingerprint(input));
   });
 
-  it('buildOrchestrationScenarioPreview includes policy step last and aligns fingerprint inputs', () => {
+  it('buildOrchestrationScenarioPreview includes policy step before optional post-policy comfy start when hooks exist', () => {
+    const p = buildOrchestrationScenarioPreview({
+      scenarioId: 'business_to_private',
+      comfyRuntimeConfigured: true,
+      experimentLabRuntimeConfigured: false,
+      gatewayRuntimeConfigured: true,
+      currentPolicyMode: 'business_first',
+      inferenceLooksDegraded: false,
+      comfyLooksRunning: false,
+    });
+
+    const policyIdx = p.steps.findIndex((s) => s.kind === 'policy');
+    const postComfyIdx = p.steps.findIndex((s) => s.kind === 'workload' && s.targetId === 'private-comfyui' && s.action === 'start');
+    expect(policyIdx).toBeGreaterThan(-1);
+    expect(postComfyIdx).toBeGreaterThan(policyIdx);
+
+    expect(
+      computeScenarioPlanFingerprint({
+        scenarioId: p.scenarioId,
+        targetPolicyMode: p.targetPolicyMode,
+        applyWorkloadChanges: p.applyWorkloadChanges,
+        postPolicyPrivateComfyStart: true,
+        comfyRuntimeConfigured: true,
+        experimentLabRuntimeConfigured: false,
+        gatewayRuntimeConfigured: true,
+      })
+    ).toBe(p.planFingerprint);
+  });
+
+  it('buildOrchestrationScenarioPreview includes policy step last when no post-policy steps and aligns fingerprint inputs', () => {
     const p = buildOrchestrationScenarioPreview({
       scenarioId: 'experiment_to_business',
       comfyRuntimeConfigured: true,
@@ -35,6 +65,7 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: p.scenarioId,
       targetPolicyMode: p.targetPolicyMode,
       applyWorkloadChanges: p.applyWorkloadChanges,
+      postPolicyPrivateComfyStart: false,
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
       gatewayRuntimeConfigured: true,

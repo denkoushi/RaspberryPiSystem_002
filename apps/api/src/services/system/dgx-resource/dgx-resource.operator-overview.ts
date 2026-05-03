@@ -173,7 +173,7 @@ export function buildDgxResourceOperatorConsole(input: {
   const currentPolicyLabelJa = policyLabelJa(policyMode);
   const prevLabel = previousMode != null ? policyLabelJa(previousMode) : null;
 
-  const headlineJa = `現在の運用プロファイルは「${currentPolicyLabelJa}」です。`;
+  const headlineJa = `現在の運用モードは「${currentPolicyLabelJa}」です。`;
   const inferenceSparkLine =
     monitoring.activeInferenceSummary != null
       ? monitoring.activeInferenceSummary
@@ -195,34 +195,35 @@ export function buildDgxResourceOperatorConsole(input: {
   add({
     id: 'business_to_private',
     scenarioId: 'business_to_private',
-    labelJa: '私用モードへ（私用OK）',
-    subtitleJa: '業務優先を維持しつつ私利用途を許可します。Comfy の自動起動はありません。',
+    labelJa: '私用を始める',
+    subtitleJa:
+      '「私用OK」へ切り替えます。Pi5 に Comfy の起停 URL が揃っていれば、続けて私用 ComfyUI の起動も依頼します。',
     primary: primaryForPrivate,
     disabledReasonJa: policyMode === 'private_ok' ? 'すでに「私用OK」です' : undefined,
   });
 
   add({
+    id: 'private_to_business',
+    scenarioId: 'private_to_business',
+    labelJa: '業務に戻す（私用を終える）',
+    subtitleJa: '必要な停止試行の後、「業務優先」へ戻します。',
+    primary: primaryReturnFromPrivate,
+  });
+
+  add({
     id: 'business_to_experiment',
     scenarioId: 'business_to_experiment',
-    labelJa: '実験優先へ切替',
-    subtitleJa: 'ワークロード調停（設定されている POST）の後、実験優先モードへ進みます。',
+    labelJa: '実験を始める',
+    subtitleJa: 'ワークロード調停（設定されている POST）の後、「実験優先」へ進みます。',
     primary: primaryForExperiment,
     disabledReasonJa: policyMode === 'experiment_first' ? 'すでに「実験優先」です' : undefined,
   });
 
   add({
-    id: 'private_to_business',
-    scenarioId: 'private_to_business',
-    labelJa: '業務優先へ戻す（私用から）',
-    subtitleJa: '必要な停止試行の後、業務優先モードへ戻します。',
-    primary: primaryReturnFromPrivate,
-  });
-
-  add({
     id: 'experiment_to_business',
     scenarioId: 'experiment_to_business',
-    labelJa: '業務優先へ戻す（実験から）',
-    subtitleJa: '調停により停止試行後、業務優先へ戻します。途中失敗時はイベントログを確認してください。',
+    labelJa: '実験を終えて業務に戻す',
+    subtitleJa: '調停による停止試行の後、「業務優先」へ戻します。失敗時はイベントログと個別復旧を確認してください。',
     primary: primaryReturnFromExperiment,
   });
 

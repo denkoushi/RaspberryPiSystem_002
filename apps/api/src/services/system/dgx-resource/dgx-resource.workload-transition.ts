@@ -9,6 +9,7 @@ import {
   resolveScenarioPolicyIntent,
   type DgxOrchestrationScenarioId,
 } from './dgx-resource.scenario-planner.js';
+import { buildPostPolicyOrchestrationSteps } from './dgx-resource.scenario-post-policy.js';
 import type { DgxResourceScenarioExecuteResult, DgxResourceScenarioOutcomeKind } from './dgx-resource.scenario-execute.types.js';
 
 /** ターゲット実行の戻り（service 内の runTargetRuntimeAction と一致） */
@@ -94,10 +95,16 @@ export async function executeOrchestrationScenarioTransition(input: {
   const { scenarioId, planFingerprint, capability, runTargetRuntimeAction, policyStore } = input;
   const intent = resolveScenarioPolicyIntent(scenarioId);
 
+  const postPolicyPlan = buildPostPolicyOrchestrationSteps({
+    scenarioId,
+    comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
+  });
+
   const recomputedFingerprint = computeScenarioPlanFingerprint({
     scenarioId,
     targetPolicyMode: intent.targetPolicyMode,
     applyWorkloadChanges: intent.applyWorkloadChanges,
+    postPolicyPrivateComfyStart: postPolicyPlan.length > 0,
     comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
@@ -124,32 +131,55 @@ export async function executeOrchestrationScenarioTransition(input: {
 
   policyStore.clearScenarioFailure();
 
-  let workloadOrderCounter = 1;
+  /** プレビューの step order と順序対応させるカウンタ */
+  let stepOrderSeq = 1;
   try {
     for (const step of plan) {
       await runTargetRuntimeAction(step.targetId, step.action, 'scenario_guide', 'none');
       policyStore.appendEvent(step.eventMessageJa);
-      completedStepOrders.push(workloadOrderCounter++);
+      completedStepOrders.push(stepOrderSeq++);
     }
 
     const changed = policyStore.setPolicyMode(intent.targetPolicyMode);
-    let msg: string;
-    let outcomeKind: DgxResourceScenarioOutcomeKind = 'success';
+    completedStepOrders.push(stepOrderSeq++);
 
-    if (!changed) {
-      if (plan.length > 0) {
-        msg = `${policyLabelJa(intent.targetPolicyMode)}モードのまま。ワークロード調停のみ適用しました（ガイド）`;
-      } else {
-        msg = `${policyLabelJa(intent.targetPolicyMode)}モードのままです（ガイド）`;
-        outcomeKind = 'noop';
-      }
-    } else {
-      msg = setPolicyEventMessage(intent.targetPolicyMode);
-      policyStore.appendEvent(msg);
+    let outcomeKind: DgxResourceScenarioOutcomeKind = 'success';
+    const msgPieces: string[] = [];
+
+    if (changed) {
+      const pm = setPolicyEventMessage(intent.targetPolicyMode);
+      policyStore.appendEvent(pm);
+      msgPieces.push(pm);
+    } else if (plan.length > 0) {
+      msgPieces.push(
+        `${policyLabelJa(intent.targetPolicyMode)}モードのまま。ワークロード調停のみ適用しました（ガイド）`
+      );
     }
 
-    const policyStepOrder = workloadOrderCounter;
-    completedStepOrders.push(policyStepOrder);
+    let ranPostSteps = false;
+    for (const ps of postPolicyPlan) {
+      await runTargetRuntimeAction(ps.targetId, ps.action, 'scenario_guide', 'none');
+      policyStore.appendEvent(ps.eventMessageJa);
+      completedStepOrders.push(stepOrderSeq++);
+      ranPostSteps = true;
+    }
+
+    let msg: string;
+    if (!changed && plan.length === 0 && !ranPostSteps) {
+      outcomeKind = 'noop';
+      msgPieces.length = 0;
+      msgPieces.push(`${policyLabelJa(intent.targetPolicyMode)}モードのままです（ガイド）`);
+      msg = msgPieces.join(' ');
+    } else if (ranPostSteps) {
+      if (changed || plan.length > 0) {
+        msgPieces.push('続いて私用 ComfyUI の起動リクエストを送信しました（ガイド）');
+      } else {
+        msgPieces.push('私用OKモードです。私用 ComfyUI の起動リクエストを送信しました（ガイド）');
+      }
+      msg = msgPieces.join(' ');
+    } else {
+      msg = msgPieces.filter((s) => s.length > 0).join(' ') || setPolicyEventMessage(intent.targetPolicyMode);
+    }
 
     policyStore.clearScenarioFailure();
 

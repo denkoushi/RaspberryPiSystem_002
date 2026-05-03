@@ -64,7 +64,7 @@ describe('DgxResourceOrchestrationPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'プレビュー取得' }));
 
     expect(await screen.findByText('運用プロファイルを「私用OK」へ適用します')).toBeInTheDocument();
-    expect(screen.getByText(/Fingerprint SHA-256 hex/)).toBeInTheDocument();
+    expect(screen.getByText(/実行計画 ID（指紋）/)).toBeInTheDocument();
     expect(screen.getByText(/注意事項/)).toBeInTheDocument();
   });
 
@@ -106,7 +106,7 @@ describe('DgxResourceOrchestrationPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'プレビュー取得' }));
     await screen.findByText('運用プロファイルを「私用OK」へ適用します');
 
-    fireEvent.click(screen.getByRole('button', { name: '指紋確認済みとして実行' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この内容で実行する' }));
 
     expect(confirmMock).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('実行結果: 部分成功または失敗')).toBeInTheDocument();

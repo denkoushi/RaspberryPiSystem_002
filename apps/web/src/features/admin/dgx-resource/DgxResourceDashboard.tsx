@@ -10,6 +10,7 @@ import {
 } from '../../../api/dgx-resource';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
+import { DgxResourceAdvancedControls } from './DgxResourceAdvancedControls';
 import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
 import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
 import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
@@ -83,7 +84,7 @@ export function DgxResourceDashboard() {
       <header className="shrink-0">
         <h1 className="text-2xl font-bold text-white">DGX リソース</h1>
         <p className="text-sm text-white/55">
-          業務 VLM・私用 Comfy・実験ラボの切替と監視。主要操作は下の運用コンソールから。自動更新 5 秒。
+          日常的には「運用ガイド」の 4 操作だけを使ってください（自動更新 5 秒）。
         </p>
         {ovError ? <p className="mt-1 text-sm font-medium text-red-300">{ovError}</p> : null}
         {evError ? <p className="mt-1 text-sm text-amber-200/90">{evError}</p> : null}
@@ -123,11 +124,8 @@ export function DgxResourceDashboard() {
                 </p>
               )}
 
-              <details className="min-h-0 shrink-0 rounded-lg border border-white/10 bg-slate-950/50 open:max-h-[40vh] open:overflow-hidden [&[open]]:flex [&[open]]:flex-col">
-                <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-white/80">
-                  詳細: Control Targets（技術 ID・起停ボタン）
-                </summary>
-                <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10 px-2 pb-2 pt-2">
+              <DgxResourceAdvancedControls summary="詳細・保守: サービス単位での起動・停止（技術 ID / Pi5 POST）">
+                <div className="max-h-[40vh] min-h-0 overflow-y-auto">
                   <DgxResourceWarmRuntimeNotice overview={overview} />
                   <DgxResourceTargetGrid
                     targets={targets}
@@ -151,7 +149,7 @@ export function DgxResourceDashboard() {
                     }}
                   />
                 </div>
-              </details>
+              </DgxResourceAdvancedControls>
 
               <footer className="max-h-16 shrink-0 overflow-y-auto text-xs leading-snug text-white/45">
                 {overview.notes.map((line) => (
@@ -163,20 +161,22 @@ export function DgxResourceDashboard() {
             </div>
 
             <aside className="flex min-h-0 flex-col gap-2 overflow-y-auto lg:col-span-5">
-              <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
-              {showMonitoringPanel ? (
-                <div className="max-h-[14rem] min-h-0 shrink-0 overflow-y-auto">
-                  <DgxResourceMonitoringPanel monitoring={overview.monitoring} />
+              <DgxResourceAdvancedControls summary="詳細・保守: Spark・監視・運用モードの手動切替">
+                <div className="flex flex-col gap-2">
+                  <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
+                  {showMonitoringPanel ? (
+                    <div className="max-h-[14rem] min-h-0 shrink-0 overflow-y-auto">
+                      <DgxResourceMonitoringPanel monitoring={overview.monitoring} />
+                    </div>
+                  ) : null}
+                  <DgxResourcePolicyPanel
+                    overview={overview}
+                    onControlUiError={setActionError}
+                    postDgxAction={postDgxActionAsync}
+                    actionBusy={mutateAction.isPending}
+                  />
                 </div>
-              ) : null}
-              <div className="shrink-0">
-                <DgxResourcePolicyPanel
-                  overview={overview}
-                  onControlUiError={setActionError}
-                  postDgxAction={postDgxActionAsync}
-                  actionBusy={mutateAction.isPending}
-                />
-              </div>
+              </DgxResourceAdvancedControls>
               <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-white/10 bg-slate-900/40 px-2 py-2">
                 <DgxResourceEventsTimeline events={eventsQuery.data?.events ?? []} />
               </div>

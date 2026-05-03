@@ -96,9 +96,9 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
 
   return (
     <div className="flex shrink-0 flex-col gap-2.5 rounded-lg border border-sky-400/25 bg-sky-950/40 p-3">
-      <h2 className="text-lg font-semibold text-sky-100/90">運用プロファイル</h2>
+      <h2 className="text-lg font-semibold text-sky-100/90">運用モード（保守・手動切替）</h2>
       <p className="text-sm leading-snug text-white/60">
-        直上の状態バッジが現在モードです。詳しい意味は{' '}
+        左上の運用ガイドで済む場合は触らなくて大丈夫です。ここではモードのみを明示的に切り替えます。詳しい意味は{' '}
         <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.business_first.description}>
           業務優先
         </abbr>
@@ -185,7 +185,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
           </div>
         ) : (
           <p className="text-sm leading-tight text-white/40">
-            まだ運用変更の履歴がありません。プロファイル変更後は「直前モードへ戻す」が使えます。
+            まだ運用変更の履歴がありません。運用モード変更後は「直前モードへ戻す」が使えます。
           </p>
         )}
       </div>

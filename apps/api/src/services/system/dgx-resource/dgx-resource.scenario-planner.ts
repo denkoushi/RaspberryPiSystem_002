@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { DgxPolicyMode } from './dgx-resource.policy-store.js';
 import { policyLabelJa } from './dgx-resource.policy-profile.js';
 import { planWorkloadAdjustmentsBeforePolicyChange, type WorkloadAdjustmentStep } from './dgx-resource.policy-arbitrator.js';
+import { buildPostPolicyOrchestrationSteps } from './dgx-resource.scenario-post-policy.js';
 
 /** GUI の複合運用ガイド用シナリオ（ユーザー向け日本語説明とは別レイヤー） */
 export type DgxOrchestrationScenarioId =
@@ -23,6 +24,8 @@ export type ScenarioPlanFingerprintInputs = {
   scenarioId: DgxOrchestrationScenarioId;
   targetPolicyMode: DgxPolicyMode;
   applyWorkloadChanges: boolean;
+  /** business_to_private かつ comfy hook 両方設定時のみ true（適用順序込みで指紋に含める） */
+  postPolicyPrivateComfyStart: boolean;
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
@@ -85,6 +88,7 @@ export function buildScenarioFingerprintPayload(input: ScenarioPlanFingerprintIn
     scenarioId: input.scenarioId,
     policyMode: input.targetPolicyMode,
     applyWorkloadChanges: input.applyWorkloadChanges,
+    postPolicyPrivateComfyStart: input.postPolicyPrivateComfyStart,
     capabilities: {
       comfyRuntimeConfigured: input.comfyRuntimeConfigured,
       experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
@@ -121,6 +125,12 @@ export function buildOrchestrationScenarioPreview(input: {
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
   });
 
+  const postPolicyWorkloadTemplate = buildPostPolicyOrchestrationSteps({
+    scenarioId,
+    comfyRuntimeConfigured: input.comfyRuntimeConfigured,
+  });
+  const postPolicyPrivateComfyStart = postPolicyWorkloadTemplate.length > 0;
+
   const steps: ScenarioStepPreview[] = [];
   let order = 1;
 
@@ -141,10 +151,21 @@ export function buildOrchestrationScenarioPreview(input: {
     summaryJa: `運用プロファイルを「${policyLabelJa(targetPolicyMode)}」へ適用します`,
   });
 
+  for (const p of postPolicyWorkloadTemplate) {
+    steps.push({
+      kind: 'workload',
+      order: order++,
+      targetId: p.targetId,
+      action: p.action,
+      summaryJa: p.summaryJa,
+    });
+  }
+
   const fingerprint = computeScenarioPlanFingerprint({
     scenarioId,
     targetPolicyMode,
     applyWorkloadChanges,
+    postPolicyPrivateComfyStart,
     comfyRuntimeConfigured: input.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
@@ -160,7 +181,7 @@ export function buildOrchestrationScenarioPreview(input: {
 
   if (scenarioId === 'business_to_private' && !input.comfyRuntimeConfigured) {
     warnings.push(
-      '私用 ComfyUI の POST 起停 URL が Pi5 に未設定のため、このガイドはモードのみ切り替わります。Comfy は Runbook で手運用するか、URL を Ansible で設定してください'
+      '私用 ComfyUI の POST 起停 URL が Pi5 に未設定のため、このガイドは運用モードを私用OKへ変えるのみです（Comfy 自体は手動で立ち上げてください）。運用自動化には URL を両方 Ansible で設定してください'
     );
   }
 
@@ -186,7 +207,17 @@ export function buildOrchestrationScenarioPreview(input: {
     warnings.push('私用→業務: 必要に応じて私用 GPU 負荷を止めてから適用すると安全です')
   }
 
-  if (input.currentPolicyMode === targetPolicyMode && workloadSteps.length === 0) {
+  if (
+    scenarioId === 'business_to_private' &&
+    input.currentPolicyMode === 'private_ok' &&
+    input.comfyRuntimeConfigured
+  ) {
+    warnings.push(
+      '運用モードはすでに私用OKです。続いて私用 ComfyUI の起動リクエストを送ります（hook がべき等でない環境では二重送信に注意してください）'
+    );
+  }
+
+  if (input.currentPolicyMode === targetPolicyMode && workloadSteps.length === 0 && !postPolicyPrivateComfyStart) {
     warnings.push('すでに同じ運用モードです。ワークロード調停も実行されません')
   }
 
