@@ -37,40 +37,49 @@ update-frequency: high
 
 - `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。
 - `GET /api/system/dgx-resource/events?limit=…` — UI 操作の直近履歴（プロセス内リングバッファ）
-- `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が **書き込みの正規経路**。**書き込み可能なのは `system-prod-gateway` のみ**（DGX `/start` `/stop`）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（運用プロファイル記録）も継続。
+- `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が書き込みの正規経路。実行可否は **`GET …/overview` の `targets[].capabilities`** に従う（`system-prod-gateway` に加え、Pi5 で補助 URL を両方設定すると **`private-comfyui`** と **`experiment-lab`** が起停可能）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（任意 **`applyWorkloadChanges`**）も継続。
 
 **Control Targets（`overview.targets` の例）**:
 
-| `targetId` | 種別 | 書き込み |
+| `targetId` | 種別 | 書き込み（capabilities 次第） |
 | --- | --- | --- |
-| `system-prod-gateway` | gateway | `start` / `stop`（`on_demand` かつ制御 URL 設定時のみ capability に含む） |
+| `system-prod-gateway` | gateway | `start` / `stop`（`on_demand` かつ `LOCAL_LLM_RUNTIME_CONTROL_*` 設定時） |
 | `system-prod-inference` | http_probe | 読取のみ |
 | `system-prod-embedding` | http_probe | 読取のみ |
-| `private-comfyui` | http_probe | 読取のみ |
+| `private-comfyui` | http_probe | 既定は読取のみ。**`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `STOP_URL` が両方**なら `start`/`stop`（POST。**DGX 側 hook** が Pi5/Tailscale から到達可能であること） |
+| `experiment-lab` | http_probe | **`DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_*` が両方**なら `start`/`stop`。状態は任意の **`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL`**（GET）で監視可 |
 | `spark-host` | http_probe | 読取のみ |
-| `metrics-kpi` | metrics_source | 読取のみ（KPI JSON の取得可否） |
+| `metrics-kpi` | metrics_source | 読取のみ（KPI JSON） |
 
-読取のみのターゲットへ `EXECUTE_TARGET_ACTION` した場合は API が **`DGX_TARGET_ACTION_NOT_SUPPORTED`** で拒否する。
+capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した場合は **`DGX_TARGET_ACTION_NOT_SUPPORTED`**。
 
 **運用プロファイル（`SET_POLICY` / `policy.mode`）**:
 
-- `business_first`（**業務優先**）— 本番 VLM/LocalLLM を最優先。**表示上のみ**私用ワークロード抑制のヒント（GPU を強制しません）。
+- `business_first`（**業務優先**）— 本番 VLM/LocalLLM を最優先。**表示上のみ**私用ワークロード抑制のヒント（GPU は強制しません）。
 - `private_ok`（**私用OK**）— ComfyUI 等の競合を許容。
 - `experiment_first`（**実験優先**）— lab/実験コンテナ検証寄り。**業務 Inference との競合は人手で確認**してください。
 
-履歴として **ひとつ前のモード** は `overview.policy.previousMode` に返り、GUI の「直前モードへ戻す」から `SET_POLICY` で復帰できます（**再起動またはマルチプロセス構成では単一ソースではない**。厳密な監査が必要なら将来の永続化を検討）。
+**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / Comfy に対して **停止 POST を順に試行**。**実験優先へ切替える前に**（設定済みなら）Comfy 停止試行→業務 **`system-prod-gateway`** ランタイム停止試行。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
+
+履歴として **ひとつ前のモード** は `overview.policy.previousMode` に返り、GUI の「直前モードへ戻す」から `SET_POLICY`（**ワークロード自動調停なし**）で復帰できます（**再起動またはマルチプロセス構成では単一ソースではない**。厳密な監査が必要なら将来の永続化を検討）。
 
 **任意の環境変数（Pi5 `apps/api`）**:
 
 - `DGX_RESOURCE_METRICS_URL` — GPU/メモリKPI 用の GET JSON（Pi5 から到達可能な URL）
 - `DGX_RESOURCE_COMFYUI_HEALTH_URL` — ComfyUI 等の GET が 200 なら running とみなす
+- **`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — Comfy を Pi5 API 経由で起停するための POST。本文 JSON `{ reason }`・ヘッダ `X-Runtime-Control-Token`（トークン設定時）。
+- **`DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — 実験ラボ論理ターゲットの起停用 POST。
+- **`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL`** — 実験環境 GET ヘルス（任意）
+- **`DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS`** — 上記補助 POST のタイムアウト（既定 90000）
 - `DGX_RESOURCE_EMBEDDING_HEALTH_URL` — 相対なら admin `LOCAL_LLM` baseUrl を prefix
 - **`DGX_RESOURCE_SPARK_HOST_STATUS_URL`** — DGX Spark **ホスト**の簡易疎通用（メトリクス sidecar の `/health` 等。**GET が 200** なら管理 UI で「応答あり」）。未設定時は **admin `LOCAL_LLM_BASE_URL` の `/healthz` を既定フォールバック**として使うため、Pi5 から DGX gateway に到達できれば Spark（ホスト）パネルも最低限の生存監視を行う。専用 sidecar を使う場合だけ明示設定する
 - `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
 
-**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（Control Target 型: `dgx-resource.control-target.types.ts`、ビルダ: `dgx-resource.control-targets.builder.ts`、gateway 起停: `dgx-resource.gateway-runtime.executor.ts`、ポリシー説明は `dgx-resource.policy-profile.ts`）
+**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（`dgx-resource.control-target.types.ts`・`dgx-resource.control-targets.builder.ts`・`dgx-resource.gateway-runtime.executor.ts`・`dgx-resource.aux-http-runtime.executor.ts`・`dgx-resource.policy-arbitrator.ts`・`dgx-resource.policy-profile.ts`）
 
-**本番反映（2026-05-03・Control Targets 本番・API+Web）**: ブランチ **`feat/dgx-resource-standard-control-targets`**（**`1e24d169`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-082132-17926`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 610s**）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `overview.targets[]`・**`EXECUTE_TARGET_ACTION`** が書き込みの正規経路（**`system-prod-gateway`** のみ）。**知見**: `targets` 欠落の旧 API 応答でも UI が落ちないよう **optional フォールバック**を維持。**トラブルシュート**: 管理画面の Control Targets が旧のまま → **`web` 再ビルド**と **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
+**本番反映（2026-05-03・Phase3・補助起停 + `SET_POLICY.applyWorkloadChanges`・API+Web）**: ブランチ **`feat/dgx-resource-policy-orchestration-phase3`**（代表 **`a44b9f78`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-policy-orchestration-phase3 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-094340-23537`**・`PLAY RECAP`: **`ok=135` `changed=8` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 597s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `EXECUTE_TARGET_ACTION` は **`targets[].capabilities` に応じて** **`system-prod-gateway`** に加え、補助 URL 設定済みなら **`private-comfyui`**・**`experiment-lab`** も起停可能。**ワークロード調停**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**ナレッジ**: カード直下に **`EXECUTE_TARGET_ACTION` 失敗**を表示して操作文脈を維持（Web）。
+
+**本番反映（2026-05-03・Control Targets 本番・API+Web・旧仕様：gateway のみ書込）**: ブランチ **`feat/dgx-resource-standard-control-targets`**（**`1e24d169`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-082132-17926`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 610s**）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `overview.targets[]`・**`EXECUTE_TARGET_ACTION`** が書き込みの正規経路（**`system-prod-gateway`** のみ）。**知見**: `targets` 欠落の旧 API 応答でも UI が落ちないよう **optional フォールバック**を維持。**トラブルシュート**: 管理画面の Control Targets が旧のまま → **`web` 再ビルド**と **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
 
 **本番反映（2026-05-02・Phase2）**: `feat/dgx-resource-profile-and-spark-visibility-clean`（`09b2423e`）を **`raspberrypi5` のみ**へ反映。`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`、Detach **`20260502-190642-27778`**、`PLAY RECAP`: **`ok=130 changed=4 unreachable=0 failed=0`**。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。  
 **運用知見（2026-05-02）**: `--follow` が停止して見えるケースでは `status.json` が stale のままでも、遠隔ログの **`PLAY RECAP failed=0`** と `summary.json` を優先して完了判定してよい。  

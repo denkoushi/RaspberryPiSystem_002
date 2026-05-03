@@ -28,6 +28,13 @@ export type OverviewProbeBundle = {
   sparkConfigured: boolean;
   sparkProbe: { ok: boolean; statusCode?: number; errorBrief?: string };
   runtimeControlConfigured: boolean;
+  /** POST start/stop がともに設定されているとき true */
+  comfyRuntimeControlConfigured: boolean;
+  /** GET ヘルス URL が設定されていれば監視対象として true */
+  experimentLabHealthConfigured: boolean;
+  experimentLabReachable: boolean;
+  experimentLabProbeUrl?: string;
+  experimentLabRuntimeControlConfigured: boolean;
 };
 
 function comfyMetaLines(policyMode: DgxPolicyMode, comfyConfigured: boolean, comfyProbeUrl?: string): string[] {
@@ -65,6 +72,9 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
     embeddingConfigured,
     embeddingReachable,
     embeddingProbeDisplay,
+    experimentLabHealthConfigured,
+    experimentLabReachable,
+    experimentLabProbeUrl,
   } = bundle;
 
   const gatewayCardStatus: DgxServiceStatusKind = gatewayStatus.configured
@@ -94,6 +104,11 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
     : embeddingReachable
       ? 'running'
       : 'stopped';
+
+  let experimentLabStatus: DgxServiceStatusKind = 'unknown';
+  if (experimentLabHealthConfigured) {
+    experimentLabStatus = experimentLabReachable ? 'running' : 'stopped';
+  }
 
   return [
     {
@@ -132,6 +147,16 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
       badges: [],
       metaLines: embeddingConfigured && embeddingProbeDisplay ? [`probe: ${embeddingProbeDisplay}`] : [],
     },
+    {
+      id: 'experiment-lab',
+      name: 'experiment-lab',
+      status: experimentLabStatus,
+      badges: [],
+      metaLines: [
+        ...(experimentLabHealthConfigured && experimentLabProbeUrl ? [`probe: GET ${experimentLabProbeUrl}`] : []),
+        ...(policyMode === 'experiment_first' ? ['実験優先: 業務との GPU 共有に注意'] : []),
+      ],
+    },
   ];
 }
 
@@ -153,6 +178,11 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
     sparkConfigured,
     sparkProbe,
     runtimeControlConfigured,
+    comfyRuntimeControlConfigured,
+    experimentLabHealthConfigured,
+    experimentLabReachable,
+    experimentLabProbeUrl,
+    experimentLabRuntimeControlConfigured,
   } = bundle;
 
   const gatewayStatusKind: DgxServiceStatusKind = gatewayStatus.configured
@@ -198,6 +228,19 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
     ? ['readStatus', 'start', 'stop']
     : ['readStatus'];
 
+  const comfyCaps: DgxControlTargetSnapshot['capabilities'] = comfyRuntimeControlConfigured
+    ? ['readStatus', 'start', 'stop']
+    : ['readStatus'];
+
+  let experimentLabStatusSnapshot: DgxServiceStatusKind = 'unknown';
+  if (experimentLabHealthConfigured) {
+    experimentLabStatusSnapshot = experimentLabReachable ? 'running' : 'stopped';
+  }
+
+  const experimentLabCaps: DgxControlTargetSnapshot['capabilities'] = experimentLabRuntimeControlConfigured
+    ? ['readStatus', 'start', 'stop']
+    : ['readStatus'];
+
   return [
     {
       id: 'system-prod-gateway',
@@ -238,10 +281,26 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
       id: 'private-comfyui',
       kind: 'http_probe',
       displayName: 'private-comfyui',
-      capabilities: ['readStatus'],
+      capabilities: comfyCaps,
       status: comfyUiStatus,
       badges: comfyBadges,
-      metaLines: comfyMetaLines(policyMode, comfyConfigured, comfyProbeUrl),
+      metaLines: [
+        ...comfyMetaLines(policyMode, comfyConfigured, comfyProbeUrl),
+        ...(comfyRuntimeControlConfigured ? ['runtime: POST start/stop（DGX側 hook・Pi5経由）'] : []),
+      ],
+    },
+    {
+      id: 'experiment-lab',
+      kind: 'http_probe',
+      displayName: 'experiment-lab',
+      capabilities: experimentLabCaps,
+      status: experimentLabStatusSnapshot,
+      badges: [],
+      metaLines: [
+        ...(experimentLabHealthConfigured && experimentLabProbeUrl ? [`probe: GET ${experimentLabProbeUrl}`] : []),
+        ...(experimentLabRuntimeControlConfigured ? ['runtime: POST start/stop（DGX側 hook）'] : ['runtime: URL 未設定（読取のみ）']),
+        ...(policyMode === 'experiment_first' ? ['実験優先モードが有効'] : []),
+      ],
     },
     {
       id: 'spark-host',

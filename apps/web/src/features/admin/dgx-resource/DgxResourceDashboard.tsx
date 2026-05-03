@@ -17,6 +17,8 @@ import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
 
+import type { DgxControlTargetIdApi } from '../../../api/dgx-resource.types';
+
 const EVENT_LIMIT = 12;
 
 /** スクロールなし一覧用の単一ブラウザチャート直下ビューポート高 */
@@ -24,6 +26,9 @@ export function DgxResourceDashboard() {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [targetActionError, setTargetActionError] = useState<{ targetId: DgxControlTargetIdApi; message: string } | null>(
+    null
+  );
 
   const overviewQuery = useQuery({
     queryKey: dgxResourceQueryKeys.overview,
@@ -37,17 +42,25 @@ export function DgxResourceDashboard() {
     refetchInterval: 5000,
   });
 
-  const mutateGateway = useMutation({
+  const mutateAction = useMutation({
     mutationFn: postDgxResourceAction,
     onSuccess: async () => {
       setActionError(null);
+      setTargetActionError(null);
       await Promise.all([
         qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview }),
         qc.invalidateQueries({ queryKey: ['dgx-resource', 'events'] }),
       ]);
     },
-    onError: (e) => {
-      setActionError(getDgxResourceApiErrorMessage(e));
+    onError: (e, variables) => {
+      const message = getDgxResourceApiErrorMessage(e);
+      if (variables.type === 'EXECUTE_TARGET_ACTION') {
+        setTargetActionError({ targetId: variables.targetId, message });
+        setActionError(null);
+        return;
+      }
+      setTargetActionError(null);
+      setActionError(message);
     },
   });
 
@@ -63,8 +76,8 @@ export function DgxResourceDashboard() {
       <header className="shrink-0">
         <h1 className="text-2xl font-bold text-white">DGX リソース</h1>
         <p className="text-base text-white/60">
-          Pi5 API 経由（/api/system/dgx-resource/*）。標準 Control Target の監視と、gateway のみ /start・/stop。自動更新
-          5 秒。
+          Pi5 API 経由（/api/system/dgx-resource/*）。Control Target を監視し、起停用 URL が Pi5 に設定されているターゲットは POST
+          で起動・停止できます（gateway / 私用 ComfyUI / experiment-lab）。自動更新 5 秒。
         </p>
         {ovError ? <p className="mt-1 text-base font-medium text-red-300">{ovError}</p> : null}
         {evError ? <p className="mt-1 text-base text-amber-200/90">{evError}</p> : null}
@@ -90,33 +103,30 @@ export function DgxResourceDashboard() {
                 </span>
               </div>
               <p className="text-sm text-white/45">
-                読取のみのターゲットは状態表示のみです。書き込みは{' '}
-                <span className="font-mono text-white/55">EXECUTE_TARGET_ACTION</span> の{' '}
-                <span className="font-mono text-white/55">system-prod-gateway</span> のみ。
+                読取のみのターゲットは状態表示のみ。<span className="font-mono text-white/55">capabilities</span> に起停があるカードのみボタン表示（DGX
+                側に Pi5 から到達可能な POST hook を用意する）。
               </p>
               <DgxResourceWarmRuntimeNotice overview={overview} />
               <DgxResourceTargetGrid
                 targets={targets}
                 overview={overview}
-                onControlUiError={(m) => setActionError(m)}
+                targetActionError={targetActionError}
+                onControlUiError={(m) => {
+                  setTargetActionError(null);
+                  setActionError(m);
+                }}
                 confirmStop={(opts) => confirm(opts)}
-                gatewayBusy={mutateGateway.isPending}
-                onGatewayStart={() =>
-                  mutateGateway.mutate({
+                busy={mutateAction.isPending}
+                onExecuteTarget={(targetId, action) => {
+                  setActionError(null);
+                  setTargetActionError(null);
+                  mutateAction.mutate({
                     type: 'EXECUTE_TARGET_ACTION',
-                    targetId: 'system-prod-gateway',
-                    action: 'start',
+                    targetId,
+                    action,
                     reason: 'admin_dgx_resource_ui',
-                  })
-                }
-                onGatewayStop={() =>
-                  mutateGateway.mutate({
-                    type: 'EXECUTE_TARGET_ACTION',
-                    targetId: 'system-prod-gateway',
-                    action: 'stop',
-                    reason: 'admin_dgx_resource_ui',
-                  })
-                }
+                  });
+                }}
               />
               <footer className="shrink-0 text-sm leading-snug text-white/45">
                 {overview.notes.map((line) => (
@@ -126,12 +136,14 @@ export function DgxResourceDashboard() {
                 ))}
                 <div
                   className="mt-1 truncate"
-                  title={`probes: metrics ${overview.optionalProbes.metricsConfigured ? 'on' : 'off'} · comfy ${overview.optionalProbes.comfyHealthConfigured ? 'on' : 'off'} · emb ${overview.optionalProbes.embeddingHealthConfigured ? 'on' : 'off'} · spark ${overview.optionalProbes.sparkHostConfigured ? 'on' : 'off'}`}
+                  title={`probes: metrics ${overview.optionalProbes.metricsConfigured ? 'on' : 'off'} · comfy ${overview.optionalProbes.comfyHealthConfigured ? 'on' : 'off'} · emb ${overview.optionalProbes.embeddingHealthConfigured ? 'on' : 'off'} · spark ${overview.optionalProbes.sparkHostConfigured ? 'on' : 'off'} · comfyRt ${overview.optionalProbes.comfyRuntimeControlConfigured ? 'on' : 'off'} · expLabHlth ${overview.optionalProbes.experimentLabHealthConfigured ? 'on' : 'off'} · expRt ${overview.optionalProbes.experimentLabRuntimeControlConfigured ? 'on' : 'off'}`}
                 >
                   probes: metrics {overview.optionalProbes.metricsConfigured ? 'on' : 'off'} · comfy{' '}
                   {overview.optionalProbes.comfyHealthConfigured ? 'on' : 'off'} · emb{' '}
                   {overview.optionalProbes.embeddingHealthConfigured ? 'on' : 'off'} · spark{' '}
-                  {overview.optionalProbes.sparkHostConfigured ? 'on' : 'off'}
+                  {overview.optionalProbes.sparkHostConfigured ? 'on' : 'off'} · comfyRt{' '}
+                  {overview.optionalProbes.comfyRuntimeControlConfigured ? 'on' : 'off'} · expLab{' '}
+                  {overview.optionalProbes.experimentLabRuntimeControlConfigured ? 'on' : 'off'}
                 </div>
               </footer>
             </section>

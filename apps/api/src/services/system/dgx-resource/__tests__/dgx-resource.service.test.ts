@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { env } from '../../../../config/env.js';
 import { ApiError } from '../../../../lib/errors.js';
 import { DgxResourcePolicyStore } from '../dgx-resource.policy-store.js';
 import { createDgxResourceService } from '../dgx-resource.service.js';
@@ -262,16 +263,17 @@ describe('createDgxResourceService', () => {
     const svc = makeSvc(store, gateway);
     const ov = await svc.getOverview();
 
-    expect(ov.targets).toHaveLength(6);
+    expect(ov.targets).toHaveLength(7);
     expect(ov.targets.map((t) => t.id)).toEqual([
       'system-prod-gateway',
       'system-prod-inference',
       'system-prod-embedding',
       'private-comfyui',
+      'experiment-lab',
       'spark-host',
       'metrics-kpi',
     ]);
-    expect(ov.services).toHaveLength(4);
+    expect(ov.services).toHaveLength(5);
     const comfySvc = ov.services.find((s) => s.id === 'private-comfyui');
     const comfyTgt = ov.targets.find((t) => t.id === 'private-comfyui');
     expect(comfySvc?.status).toBe(comfyTgt?.status);
@@ -309,5 +311,65 @@ describe('createDgxResourceService', () => {
         action: 'start',
       })
     ).rejects.toMatchObject({ code: 'DGX_RUNTIME_CONTROL_NOT_CONFIGURED' });
+  });
+
+  it('does not change policy when workload adjustment fails before SET_POLICY', async () => {
+    const prev = {
+      expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
+      expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
+      expToken: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN,
+      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
+      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
+      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
+    };
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = 'http://127.0.0.1:9191/experiment/start';
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = 'http://127.0.0.1:9191/experiment/stop';
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = 'tok-xxx';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = undefined;
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = undefined;
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = undefined;
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      store.setPolicyMode('private_ok');
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: false,
+          health: { ok: false },
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (): Promise<Response> => ({
+        ok: false,
+        status: 503,
+        headers: new Headers(),
+        url: '',
+        text: async () => 'experiment stop failed',
+        json: async () => ({}),
+      })) as typeof fetch;
+
+      const svc = makeSvc(store, gateway, { fetchImpl });
+
+      await expect(
+        svc.executeAction({
+          type: 'SET_POLICY',
+          policyMode: 'business_first',
+          applyWorkloadChanges: true,
+        })
+      ).rejects.toThrow(ApiError);
+
+      const ov = await svc.getOverview();
+      expect(ov.policy.mode).toBe('private_ok');
+      expect(fetchImpl).toHaveBeenCalled();
+      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:9191/experiment/stop');
+      expect(svc.getEvents(10).some((e) => e.message.includes('業務優先'))).toBe(false);
+    } finally {
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = prev.expToken;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
+    }
   });
 });

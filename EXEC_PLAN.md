@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-03) **DGXリソース Phase3（補助起停：`private-comfyui` / `experiment-lab`・ポリシー自動調停 `SET_POLICY.applyWorkloadChanges`・Ansible ENV 出力拡張）**·ブランチ **`feat/dgx-resource-policy-orchestration-phase3`**·代表 **`a44b9f78`**·[PR #240](https://github.com/denkoushi/RaspberryPiSystem_002/pull/240)·**実装**: `dgx-resource.aux-http-runtime.executor.ts`・`dgx-resource.policy-arbitrator.ts`・`experiment-lab` target・Web `capabilities` 駆動 UI・単体検証 PASS（`apps/api` + `apps/web`）。**運用備考**: **補助 URL 両方**が無いときは **`readStatus` のみ**（読取のみのまま後方互換）。調停 POST 失敗時は **`policy.mode` 非更新**のことがある。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-policy-orchestration-phase3 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-094340-23537`**（`PLAY RECAP` **`ok=135` `changed=8` `failed=0` / `unreachable=0`**・exit **`0`**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ナレッジ**: [KB-365](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)·[deployment.md](./docs/guides/deployment.md) Phase3 項·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)·`docs/knowledge-base/api.md`。
+
 - [x] (2026-05-03) **DGX Control Targets（overview.targets · EXECUTE_TARGET_ACTION · 薄いオーケストレーション層）**·ブランチ **`feat/dgx-resource-standard-control-targets`**·代表 **`1e24d169`**·**Pi5 本番デプロイ + `main` マージ込み**: `GET …/overview` に **`targets[]`**。`POST …/actions` に **`EXECUTE_TARGET_ACTION`**（書き込みは **`system-prod-gateway`** のみ）。**後方互換**: `services[]`・`LOCAL_LLM_START|STOP`・`SET_POLICY`。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-082132-17926`**（`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**ドキュメント**: [deployment.md](./docs/guides/deployment.md) 補足（2026-05-03）·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。**ADR**: [ADR-20260502-dgx-resource-control-targets.md](./docs/decisions/ADR-20260502-dgx-resource-control-targets.md)。
 
 - [x] (2026-05-02) **DGX リソース `sparkHost` — Spark ホスト簡易状態の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）·Pi5 `api`（+ Ansible env テンプレ）**·`fix/dgx-resource-admin-readable-typography`·**`6c6888d6`**·[PR #238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238): [`dgx-resource.service.ts`](./apps/api/src/services/system/dgx-resource/dgx-resource.service.ts)·[`dgx-resource.service.test.ts`](./apps/api/src/services/system/dgx-resource/__tests__/dgx-resource.service.test.ts)·[`api.env.j2`](./infrastructure/ansible/templates/api.env.j2)·[`docker.env.j2`](./infrastructure/ansible/templates/docker.env.j2)。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260502-203857-20230`**（`PLAY RECAP` **`failed=0` / `unreachable=0`**・リモート exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見**: `--follow` 中の **`Connection closed by … port 22` は再起動付近で混ざり得る**ため、**`PLAY RECAP` / `summary.json` を正本**とする。**ナレッジ**: [KB-363](./docs/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md)。関連: [deployment.md](./docs/guides/deployment.md)·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
@@ -2043,6 +2045,16 @@
 1. 管理 UI で **GPU 競合の説明**（WARN が **cold start だけでない**こと、**`nvidia-smi` / `docker logs`** の見方への Runbook リンク）を **補足表示**できないか。
 2. **`business_first`**（または同等ポリシー）で **`POST /start` 前**に、**文書化済みの手順**（例: ComfyUI 停止）を**運用チェックリスト**化するか（**自動 `docker stop` は影響大**のため、実装するなら **明示ガード + ADR**）。
 3. Pi5 **API コンテナ内**に `curl` が無い環境での **トラブルシュート**は **ホスト `python3` + `.env`** または **DGX SSH** が現実的、という **Runbook 手順の定型化**。
+
+### DGX リソース管理コンソール: Phase3（補助起停・`applyWorkloadChanges`）場内スモーク（2026-05-03）
+
+**概要**: Pi5 へ **`feat/dgx-resource-policy-orchestration-phase3`**（代表 **`a44b9f78`**）を反映済み（Detach **`20260503-094340-23537`**・Phase12 **43/0/0**）。**補助起停**や **ポリシー調停**は **環境依存**かつ **認証付き GUI** が主のため自動検証外。
+
+**候補タスク**:
+
+1. Ansible / Pi5 **`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_*`**・**`DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_*`** が **両方セット**されているときのみ、`overview.targets[].capabilities` に **`start`/`stop`** が出ること。**片方のみ**なら **`overview.notes`** に警告が出る運用確認。
+2. **`SET_POLICY` + `applyWorkloadChanges: true`** でモード変更したとき、ワークロード停止が **順次試行**され、中途失敗なら **`policy.mode` が変わらない**ことをイベントログまたは API で確認する（詳細は [KB-365](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)）。
+3. カード直下の **`EXECUTE_TARGET_ACTION`** エラー表示と、**強制リロード**（[verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.4）で UI がずれないこと。
 
 ### DGX リソース管理コンソール: Control Targets 場内スモーク（2026-05-03）
 
