@@ -1,15 +1,6 @@
-import type { DgxResourceMonitoringAlertApi, DgxResourceMonitoringSummaryApi } from '../../../api/dgx-resource.types';
+import { monitoringAlertContainerTokens } from './dgxResourceUi';
 
-function toneClasses(level: DgxResourceMonitoringAlertApi['level']): string {
-  switch (level) {
-    case 'danger':
-      return 'border-red-500/40 bg-red-950/45';
-    case 'warning':
-      return 'border-amber-500/35 bg-amber-950/40';
-    default:
-      return 'border-white/15 bg-slate-900/35';
-  }
-}
+import type { DgxResourceMonitoringSummaryApi } from '../../../api/dgx-resource.types';
 
 type Props = {
   monitoring: Pick<DgxResourceMonitoringSummaryApi, 'activeInferenceSummary' | 'sparkSummaryJa' | 'alerts' | 'targetHighlights'>;
@@ -21,7 +12,7 @@ export function DgxResourceMonitoringPanel({ monitoring }: Props) {
     <div className="flex shrink-0 flex-col gap-2 rounded-lg border border-violet-400/25 bg-violet-950/35 p-3">
       <h2 className="text-lg font-semibold text-violet-50/95">運用監視ヒント</h2>
 
-      <div className="space-y-1.5 text-sm leading-snug text-white/72">
+      <div className="space-y-1.5 text-base leading-snug text-white/75">
         {monitoring.activeInferenceSummary ? (
           <p title={monitoring.activeInferenceSummary} className="truncate">
             <span className="font-semibold text-violet-100/90">Inference 状況: </span>
@@ -37,7 +28,7 @@ export function DgxResourceMonitoringPanel({ monitoring }: Props) {
       </div>
 
       {monitoring.targetHighlights.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5 text-xs font-mono text-white/65">
+        <div className="flex flex-wrap gap-1.5 text-sm font-mono text-white/70">
           {monitoring.targetHighlights.map((h) => (
             <span key={h.id} className="rounded border border-white/10 bg-black/35 px-1.5 py-0.5" title={`${h.id}: ${h.status}`}>
               {h.label}: {h.status}
@@ -47,16 +38,16 @@ export function DgxResourceMonitoringPanel({ monitoring }: Props) {
       ) : null}
 
       {monitoring.alerts.length === 0 ? (
-        <p className="text-sm text-emerald-200/85">運用上の自動アラートはありません。</p>
+        <p className="text-base text-emerald-200/90">運用上の自動アラートはありません。</p>
       ) : (
         <ul className="max-h-[18rem] space-y-1.5 overflow-y-auto pr-0.5 text-sm leading-snug">
           {monitoring.alerts.map((a) => (
             <li
               key={`${a.code}-${a.title}`}
-              className={`rounded px-2.5 py-1.5 text-white/88 ${toneClasses(a.level)}`}
+              className={`rounded-lg border px-2.5 py-2 text-white/90 ${monitoringAlertContainerTokens(a.level)}`}
             >
-              <div className="font-semibold text-white/94">{a.title}</div>
-              <div className="mt-0.5 text-[13px] text-white/70">{a.detail}</div>
+              <div className="text-base font-semibold text-white">{a.title}</div>
+              <div className="mt-1 text-sm text-white/75">{a.detail}</div>
             </li>
           ))}
         </ul>

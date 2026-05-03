@@ -158,6 +158,31 @@ describe('DgxResourceOperatorConsole', () => {
     expect(screen.getByText('私用モードへ')).toBeInTheDocument();
   });
 
+  it('does not call preview when only selecting a scenario (explicit preview button)', async () => {
+    const postDgxAction = vi.fn(async () => ({ ok: true as const, message: 'ok' }));
+    const op = makeOperator();
+    renderWithProviders(
+      <DgxResourceOperatorConsole
+        overview={makeOverview(op)}
+        operator={op}
+        postDgxAction={postDgxAction}
+        actionBusy={false}
+        onControlUiError={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /業務へ戻す/ }));
+    expect(postDgxAction).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /プレビュー(取得|再取得)/ }));
+    await waitFor(() =>
+      expect(postDgxAction).toHaveBeenCalledWith({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: 'private_to_business',
+      })
+    );
+  });
+
   it('falls back to an available scenario when the current selection becomes disabled', async () => {
     const postDgxAction = vi.fn(async () => ({ ok: true as const, message: 'ok' }));
     const initial = makeOperator();
@@ -187,7 +212,7 @@ describe('DgxResourceOperatorConsole', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'プレビュー再取得' }));
+    fireEvent.click(screen.getByRole('button', { name: /プレビュー(取得|再取得)/ }));
     await waitFor(() =>
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
@@ -211,7 +236,7 @@ describe('DgxResourceOperatorConsole', () => {
       </QueryClientProvider>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'プレビュー再取得' }));
+    fireEvent.click(screen.getByRole('button', { name: /プレビュー(取得|再取得)/ }));
     await waitFor(() =>
       expect(postDgxAction).toHaveBeenLastCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',

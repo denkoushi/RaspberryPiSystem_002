@@ -17,6 +17,7 @@ import { DgxResourceOperatorConsole } from './DgxResourceOperatorConsole';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
+import { shouldShowMonitoringPanel } from './dgxResourceUi';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
 
 import type { DgxControlTargetIdApi, DgxResourceActionBody } from '../../../api/dgx-resource.types';
@@ -75,6 +76,7 @@ export function DgxResourceDashboard() {
   const overview = overviewQuery.data;
   const targets = overview?.targets ?? [];
   const operator = overview?.operator;
+  const showMonitoringPanel = overview ? shouldShowMonitoringPanel(overview.monitoring) : false;
 
   return (
     <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-2 overflow-hidden px-4 py-2 text-base sm:-mx-6">
@@ -151,7 +153,7 @@ export function DgxResourceDashboard() {
                 </div>
               </details>
 
-              <footer className="max-h-16 shrink-0 overflow-y-auto text-[11px] leading-snug text-white/40">
+              <footer className="max-h-16 shrink-0 overflow-y-auto text-xs leading-snug text-white/45">
                 {overview.notes.map((line) => (
                   <div key={line} className="truncate" title={line}>
                     ※ {line}
@@ -162,9 +164,11 @@ export function DgxResourceDashboard() {
 
             <aside className="flex min-h-0 flex-col gap-2 overflow-y-auto lg:col-span-5">
               <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
-              <div className="max-h-[14rem] min-h-0 shrink-0 overflow-y-auto">
-                <DgxResourceMonitoringPanel monitoring={overview.monitoring} />
-              </div>
+              {showMonitoringPanel ? (
+                <div className="max-h-[14rem] min-h-0 shrink-0 overflow-y-auto">
+                  <DgxResourceMonitoringPanel monitoring={overview.monitoring} />
+                </div>
+              ) : null}
               <div className="shrink-0">
                 <DgxResourcePolicyPanel
                   overview={overview}
