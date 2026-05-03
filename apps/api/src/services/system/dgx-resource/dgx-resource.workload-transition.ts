@@ -2,7 +2,6 @@ import { ApiError } from '../../../lib/errors.js';
 
 import { policyLabelJa, setPolicyEventMessage } from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode, DgxResourcePolicyStore } from './dgx-resource.policy-store.js';
-import type { DgxControlTargetAction, DgxControlTargetId } from './dgx-resource.control-target.types.js';
 import { planWorkloadAdjustmentsBeforePolicyChange } from './dgx-resource.policy-arbitrator.js';
 import {
   computeScenarioPlanFingerprint,
@@ -12,22 +11,35 @@ import {
 import { buildPostPolicyOrchestrationSteps } from './dgx-resource.scenario-post-policy.js';
 import type { DgxResourceScenarioExecuteResult, DgxResourceScenarioOutcomeKind } from './dgx-resource.scenario-execute.types.js';
 
-/** ターゲット実行の戻り（service 内の runTargetRuntimeAction と一致） */
+import type { CollectOverviewProbeBundleFn } from './dgx-resource.scenario-readiness.js';
+import {
+  buildScenarioReadinessTargetSpec,
+  isReadinessNoop,
+  waitScenarioReadiness,
+} from './dgx-resource.scenario-readiness.js';
+import { performSafeScenarioRollback } from './dgx-resource.scenario-safe-rollback.js';
+
+import type { TargetRuntimeDispatchFn, TargetRuntimeEventLogMode } from './dgx-resource.target-runtime-fn.js';
+
+/** ターゲット実行の戻り（サービス側の結果型）。 */
 export type TargetRuntimeRunResult = { ok: true; message: string };
 
-export type TargetRuntimeEventLogMode = 'default' | 'none';
+/** サービスおよびテストでの既存名前（TargetRuntimeDispatchFn と同一） */
+export type RunTargetRuntimeActionFn = TargetRuntimeDispatchFn;
 
-export type RunTargetRuntimeActionFn = (
-  targetId: DgxControlTargetId,
-  action: DgxControlTargetAction,
-  reason: string | undefined,
-  eventLog: TargetRuntimeEventLogMode
-) => Promise<TargetRuntimeRunResult>;
+export type { TargetRuntimeEventLogMode };
 
 export type WorkloadCapabilityFlags = {
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
+};
+
+export type OrchestrationReadinessCoordinator = {
+  collectProbeBundle: CollectOverviewProbeBundleFn;
+  localLlmRuntimeMode: 'always_on' | 'on_demand';
+  readinessDeadlineMs: number;
+  readinessPollIntervalMs: number;
 };
 
 function summarizeControlErrorJa(error: unknown): string {
@@ -79,7 +91,7 @@ export async function executeWorkloadTransitionsThenApplyPolicyMode(input: {
 }
 
 /**
- * オーケストレーションシナリオの確定実行（指紋照合・ワークロード順序・ポリシー適用・部分失敗記録）
+ * オーケストレーションシナリオの確定実行（指紋照合・ワークロード順序・ポリシー適用・Strict Ready）
  */
 export async function executeOrchestrationScenarioTransition(input: {
   scenarioId: DgxOrchestrationScenarioId;
@@ -87,13 +99,15 @@ export async function executeOrchestrationScenarioTransition(input: {
   capability: WorkloadCapabilityFlags;
   runTargetRuntimeAction: RunTargetRuntimeActionFn;
   policyStore: DgxResourcePolicyStore;
+  readinessCoordinator?: OrchestrationReadinessCoordinator;
 }): Promise<{
   ok: true;
   message: string;
   scenarioExecute: DgxResourceScenarioExecuteResult;
 }> {
-  const { scenarioId, planFingerprint, capability, runTargetRuntimeAction, policyStore } = input;
+  const { scenarioId, planFingerprint, capability, runTargetRuntimeAction, policyStore, readinessCoordinator } = input;
   const intent = resolveScenarioPolicyIntent(scenarioId);
+  const policyBefore = policyStore.getPolicyMode();
 
   const postPolicyPlan = buildPostPolicyOrchestrationSteps({
     scenarioId,
@@ -173,11 +187,13 @@ export async function executeOrchestrationScenarioTransition(input: {
     }
 
     let msg: string;
+    let noopOrchestration = false;
     if (!changed && plan.length === 0 && !ranPostSteps) {
       outcomeKind = 'noop';
       msgPieces.length = 0;
       msgPieces.push(`${policyLabelJa(intent.targetPolicyMode)}モードのままです（ガイド）`);
       msg = msgPieces.join(' ');
+      noopOrchestration = true;
     } else if (ranPostSteps) {
       const startedTargets = postPolicyPlan
         .filter((s) => s.action === 'start')
@@ -189,6 +205,100 @@ export async function executeOrchestrationScenarioTransition(input: {
       msg = msgPieces.filter((s) => s.length > 0).join(' ') || setPolicyEventMessage(intent.targetPolicyMode);
     }
 
+    const willPostPolicyStartComfy = postPolicyPlan.some((p) => p.targetId === 'private-comfyui' && p.action === 'start');
+    const willPostPolicyStartExperimentLab = postPolicyPlan.some(
+      (p) => p.targetId === 'experiment-lab' && p.action === 'start'
+    );
+
+    let readinessChecksJa: DgxResourceScenarioExecuteResult['readinessChecksJa'];
+    let readinessSummaryJa: string | undefined;
+    let rollback: DgxResourceScenarioExecuteResult['rollback'];
+
+    if (!noopOrchestration && readinessCoordinator) {
+      const spec = buildScenarioReadinessTargetSpec({
+        scenarioId,
+        willPostPolicyStartComfy,
+        willPostPolicyStartExperimentLab,
+        localLlmRuntimeMode: readinessCoordinator.localLlmRuntimeMode,
+        gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
+      });
+      const runGatewayWithEvent: RunTargetRuntimeActionFn =
+        spec.allowGatewayStartRemediation && spec.requireInferenceBusiness
+          ? async (tid, act, reason, ev) => {
+              const out = await runTargetRuntimeAction(tid, act, reason, ev);
+              if (tid === 'system-prod-gateway' && act === 'start' && reason === 'readiness_remediation') {
+                policyStore.appendEvent('Strict Ready 調整: system-prod-gateway に /start を 1 回試行しました');
+              }
+              return out;
+            }
+          : runTargetRuntimeAction;
+
+      if (!isReadinessNoop(spec)) {
+        policyStore.appendEvent(`Strict Ready: 「${scenarioId}」完了条件の確認を開始します`);
+
+        const wait = await waitScenarioReadiness({
+          spec,
+          collectProbeBundle: readinessCoordinator.collectProbeBundle,
+          readinessDeadlineMs: readinessCoordinator.readinessDeadlineMs,
+          readinessPollIntervalMs: readinessCoordinator.readinessPollIntervalMs,
+          runGatewayStartOnceIfNeeded:
+            spec.allowGatewayStartRemediation && spec.requireInferenceBusiness ? runGatewayWithEvent : undefined,
+        });
+
+        if (!wait.ok) {
+          policyStore.recordScenarioFailure({
+            scenarioId,
+            message: wait.failureJa,
+            completedStepOrders,
+          });
+          policyStore.appendEvent(`Strict Ready がタイムアウトしました: ${wait.failureJa}`);
+          rollback = await performSafeScenarioRollback({
+            ctx: {
+              scenarioId,
+              policyBefore,
+              rollbackPolicyMode: policyBefore,
+              comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
+              experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
+            },
+            policyStore,
+            currentPolicyBeforeRollback: policyStore.getPolicyMode(),
+            runTargetRuntimeAction,
+          });
+
+          const scenarioExecute: DgxResourceScenarioExecuteResult = {
+            scenarioId,
+            success: false,
+            completedStepOrders,
+            completedPolicyApplied: false,
+            outcomeKind: 'partial_failure',
+            readinessChecksJa: wait.checksJa,
+            readinessSummaryJa: wait.failureJa,
+            rollback,
+            failureMessageJa: wait.failureJa,
+            recommendedNextJa: [
+              rollback?.policyRestoredJa,
+              ...(rollback?.workloadStepsJa ?? []),
+              'Control Targets・イベントログ・Runbook を確認してください（自動復帰で未解決なら単発 EXECUTE で補修）。',
+            ]
+              .filter((s): s is string => Boolean(s?.trim()))
+              .join(' · '),
+          };
+
+          return {
+            ok: true,
+            message: wait.failureJa,
+            scenarioExecute,
+          };
+        }
+
+        readinessChecksJa = wait.checksJa;
+        readinessSummaryJa = wait.summaryJa;
+        policyStore.appendEvent(wait.summaryJa);
+        msgPieces.push(wait.summaryJa);
+        msg = msgPieces.join(' ');
+      }
+    }
+
     policyStore.clearScenarioFailure();
 
     const scenarioExecute: DgxResourceScenarioExecuteResult = {
@@ -197,8 +307,8 @@ export async function executeOrchestrationScenarioTransition(input: {
       completedStepOrders,
       completedPolicyApplied: changed,
       outcomeKind,
-      recommendedNextJa:
-        `/v1/models と Control Targets が期待どおりになるまで数十秒〜数十分かかることがあります（blue cold start 等）。`,
+      readinessChecksJa,
+      ...(readinessSummaryJa ? { readinessSummaryJa } : {}),
     };
 
     return {

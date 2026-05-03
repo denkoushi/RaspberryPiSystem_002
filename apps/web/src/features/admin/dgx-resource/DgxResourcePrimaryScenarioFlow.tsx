@@ -93,12 +93,31 @@ export function DgxResourcePrimaryScenarioFlow({
         confirmed: true,
       });
       onControlUiError(null);
+      const se = executeResult.scenarioExecute;
+      const readinessLines =
+        se?.readinessChecksJa && se.readinessChecksJa.length > 0
+          ? [
+              '',
+              'Ready 確認:',
+              ...se.readinessChecksJa.map((c) => `・${c.code}: ${c.satisfied ? 'OK' : '未達'} — ${c.detailJa}`),
+            ]
+          : [];
+      const rollbackLines =
+        se?.rollback?.attempted && (se.rollback.policyRestoredJa || (se.rollback.workloadStepsJa?.length ?? 0) > 0)
+          ? [
+              '',
+              '自動復帰:',
+              ...(se.rollback.policyRestoredJa ? [`・${se.rollback.policyRestoredJa}`] : []),
+              ...((se.rollback.workloadStepsJa ?? []).map((s) => `・${s}`) as string[]),
+            ]
+          : [];
+
       setResultNote({
         tone: executeResult.scenarioExecute?.success === false ? 'error' : 'success',
         message:
           executeResult.scenarioExecute?.success === false && executeResult.scenarioExecute.failureMessageJa
-            ? `${executeResult.message} — ${executeResult.scenarioExecute.failureMessageJa}`
-            : executeResult.message,
+            ? `${executeResult.message} — ${executeResult.scenarioExecute.failureMessageJa}${readinessLines.join('\n')}${rollbackLines.join('\n')}${se?.recommendedNextJa ? `\n\n次の手順: ${se.recommendedNextJa}` : ''}`
+            : `${executeResult.message}${readinessLines.join('\n')}${rollbackLines.join('\n')}`,
       });
       await qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview });
     } catch (error) {

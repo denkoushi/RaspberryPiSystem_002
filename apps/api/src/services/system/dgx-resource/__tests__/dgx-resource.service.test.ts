@@ -440,4 +440,133 @@ describe('createDgxResourceService', () => {
       code: 'DGX_SCENARIO_PLAN_STALE',
     });
   });
+
+  it('business_to_private succeeds only after strict readiness is confirmed', async () => {
+    const prev = {
+      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
+      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
+      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
+      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
+      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
+    };
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/start';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/stop';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'tok-private';
+    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 200;
+    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 10;
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: false,
+          health: { ok: false },
+          timeoutMs: 60_000,
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
+        const u = typeof input === 'string' ? input : (input as URL).href;
+        if (u === 'http://127.0.0.1:8188/start' && init?.method === 'POST') {
+          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+        }
+        if (u === 'http://127.0.0.1:8188/health' && init?.method === 'GET') {
+          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+        }
+        return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      });
+
+      const svc = makeSvc(store, gateway, {
+        fetchImpl: fetchImpl as typeof fetch,
+        comfyHealthUrl: 'http://127.0.0.1:8188/health',
+      });
+
+      const preview = await svc.executeAction({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: 'business_to_private',
+      });
+      const execute = await svc.executeAction({
+        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
+        scenarioId: 'business_to_private',
+        planFingerprint: preview.scenarioPreview!.planFingerprint,
+        confirmed: true,
+      });
+
+      expect(execute.scenarioExecute?.success).toBe(true);
+      expect(execute.scenarioExecute?.readinessSummaryJa).toContain('Strict Ready');
+      expect(execute.scenarioExecute?.readinessChecksJa?.every((c) => c.satisfied)).toBe(true);
+      expect(store.getPolicyMode()).toBe('private_ok');
+    } finally {
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
+      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
+      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
+    }
+  });
+
+  it('business_to_private timeout returns rollback details and restores prior policy', async () => {
+    const prev = {
+      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
+      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
+      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
+      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
+      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
+    };
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/start';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/stop';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'tok-private';
+    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 60;
+    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 10;
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: false,
+          health: { ok: false },
+          timeoutMs: 60_000,
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
+        const u = typeof input === 'string' ? input : (input as URL).href;
+        if ((u === 'http://127.0.0.1:8188/start' || u === 'http://127.0.0.1:8188/stop') && init?.method === 'POST') {
+          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+        }
+        if (u === 'http://127.0.0.1:8188/health' && init?.method === 'GET') {
+          return { ok: false, status: 503, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+        }
+        return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      });
+
+      const svc = makeSvc(store, gateway, {
+        fetchImpl: fetchImpl as typeof fetch,
+        comfyHealthUrl: 'http://127.0.0.1:8188/health',
+      });
+
+      const preview = await svc.executeAction({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: 'business_to_private',
+      });
+      const execute = await svc.executeAction({
+        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
+        scenarioId: 'business_to_private',
+        planFingerprint: preview.scenarioPreview!.planFingerprint,
+        confirmed: true,
+      });
+
+      expect(execute.scenarioExecute?.success).toBe(false);
+      expect(execute.scenarioExecute?.rollback?.attempted).toBe(true);
+      expect(execute.scenarioExecute?.rollback?.policyRestoredJa).toContain('業務優先');
+      expect(store.getPolicyMode()).toBe('business_first');
+      expect(execute.scenarioExecute?.readinessChecksJa?.some((c) => c.code === 'private_comfy' && !c.satisfied)).toBe(true);
+    } finally {
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
+      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
+      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
+    }
+  });
 });

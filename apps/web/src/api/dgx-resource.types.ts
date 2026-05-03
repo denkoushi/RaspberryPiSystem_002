@@ -121,6 +121,17 @@ export type DgxResourceScenarioExecuteResultApi = {
   failureMessageJa?: string;
   recommendedNextJa?: string;
   outcomeKind?: 'success' | 'partial_failure' | 'noop';
+  readinessChecksJa?: readonly {
+    code: 'inference_business' | 'private_comfy' | 'experiment_lab';
+    satisfied: boolean;
+    detailJa: string;
+  }[];
+  readinessSummaryJa?: string;
+  rollback?: {
+    attempted: boolean;
+    policyRestoredJa?: string;
+    workloadStepsJa?: string[];
+  };
 };
 
 export type DgxOperatorRiskLevelApi = 'low' | 'medium' | 'high';
