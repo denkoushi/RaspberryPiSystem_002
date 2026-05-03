@@ -19,6 +19,16 @@ update-frequency: medium
 - **構成管理**: **server** ロールが（`ansible_connection != local` のとき）`~/.ssh/id_ed25519.pub` を **`authorized_keys` へ冪等追記**し、`.ssh` 700 / `authorized_keys` 600 を担保する（[`ssh-loopback-authorized.yml`](../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml)）。
 - **孤立 lock**: preflight 失敗時でも **bootstrap 用リモート lock は EXIT で解放**する。異常終了で残った **`runner=bootstrap` / `runPid=null` / `logs/deploy/ansible-update-<runId>.status.json` 無し** は、**`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`（既定 180 秒）** 経過後、**`ansible-playbook` も `ansible … -m ping` も動いていない**場合に **次回 `acquire_remote_lock` で削除**される。詳細は [KB-366](../knowledge-base/infrastructure/ansible-deployment.md#kb-366-pi5-self-ssh-preflight-and-orphan-lock)。
 
+### 補足（2026-05-03: **Pi5 deploy 再発防止（self-SSH／authorized_keys／orphan bootstrap lock）本番反映**·`feat/deploy-preflight-selfssh-lock-guard`·Pi5 のみ）
+
+- **変更概要**: `update-all-clients.sh` に **preflight 直前の Pi5 loopback SSH チェック**（`UPDATE_ALL_CLIENTS_SELF_SSH_OK`）。**server** ロール [`ssh-loopback-authorized.yml`](../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml) で **`id_ed25519.pub` の `authorized_keys` 冪等追記**（`ansible_connection != local`）。**bootstrap リモート lock** は preflight 完了まで **EXIT で解放**、孤立 lock は **`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`** と **`ansible … -m ping` / `ansible-playbook` の稼働確認**で **次回 acquire 時に掃除し得る**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。**Pi3 個別デプロイ不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/deploy-preflight-selfssh-lock-guard infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`31baa662`**（`feat(deploy): Pi5 self-SSH preflight guard and orphan bootstrap lock cleanup`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-190010-8105`**（**`PLAY RECAP` `ok=131` `changed=3` `failed=0` / `unreachable=0` / リモート `exit` `0`**・ローカル `--follow` 完了まで **約 194s**）。preflight ログに **self-SSH チェック成功後に ansible ping** が確認できる。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 103s**・Tailscale）。
+- **トラブルシュート**: self-SSH／lock の典型は [KB-366](../knowledge-base/infrastructure/ansible-deployment.md#kb-366-pi5-self-ssh-preflight-and-orphan-lock)。**手動で lock を消す前**は **`ansible-playbook` / `ansible … -m ping` が無いこと**と **対応する `.status.json` の有無**を確認する。
+- **ナレッジ**: [KB-366](../knowledge-base/infrastructure/ansible-deployment.md#kb-366-pi5-self-ssh-preflight-and-orphan-lock)·上記「Pi5 リモートデプロイ前提」節·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
 ### 補足（2026-05-03: **DGX リソース Phase8（KPI 先頭・説明削減・全文可読）**·`feat/dgx-resource-dashboard-ui-phase8`·**Web のみ**·Pi5 のみ）
 
 - **変更概要**: `/admin/tools/dgx-resource` の Web を **KPI ストリップ先頭**へ再構成。**`overview.kpis`** を横一列（狭幅は横スクロール）で表示し、**読み込み完了後の `h1「DGX リソース」` と補助説明文を削除**。シナリオカードの **絵文字** と **「4つの操作だけ…」説明**を除去し、`Spark` / シナリオ / KPI の文言は **`truncate` をやめて折り返し表示**。実装は **`dgxResourceKpiStripModel.ts`** に表示モデルを分離し、KPI 組み立てを React 非依存でテスト固定。
