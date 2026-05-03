@@ -1,11 +1,7 @@
 import { ApiError } from '../../../lib/errors.js';
 import { env } from '../../../config/env.js';
 
-import {
-  isBusinessFirstSuppressionHintActive,
-  policyLabelJa,
-  setPolicyEventMessage,
-} from './dgx-resource.policy-profile.js';
+import { isBusinessFirstSuppressionHintActive, policyLabelJa } from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode, DgxResourceEvent, DgxResourcePolicyStore } from './dgx-resource.policy-store.js';
 
 import type { DgxControlTargetAction, DgxControlTargetId, DgxControlTargetSnapshot } from './dgx-resource.control-target.types.js';
@@ -17,15 +13,18 @@ import {
   type DgxResourceServiceCard,
   type OverviewProbeBundle,
 } from './dgx-resource.control-targets.builder.js';
-import { planWorkloadAdjustmentsBeforePolicyChange } from './dgx-resource.policy-arbitrator.js';
 import {
   buildOrchestrationScenarioPreview,
-  computeScenarioPlanFingerprint,
-  resolveScenarioPolicyIntent,
   type DgxOrchestrationScenarioId,
   type ScenarioPlanPreview,
 } from './dgx-resource.scenario-planner.js';
 import { buildDgxResourceMonitoringOverview, type DgxResourceMonitoringSummary } from './dgx-resource.monitoring-overview.js';
+import { buildDgxResourceOperatorConsole, type DgxResourceOperatorConsole } from './dgx-resource.operator-overview.js';
+import {
+  executeOrchestrationScenarioTransition,
+  executeWorkloadTransitionsThenApplyPolicyMode,
+} from './dgx-resource.workload-transition.js';
+import type { DgxResourceScenarioExecuteResult } from './dgx-resource.scenario-execute.types.js';
 import { fetchJsonMetrics, probeHttpGet, probeHttpOk, probeV1Models } from './dgx-resource.probes.js';
 
 import type { LocalLlmGateway, LocalLlmRuntimeConfig } from '../local-llm-proxy.service.js';
@@ -45,14 +44,7 @@ export type DgxResourceKpis = {
   policyLabel: string;
 };
 
-export type DgxResourceScenarioExecuteResult = {
-  scenarioId: DgxOrchestrationScenarioId;
-  success: boolean;
-  completedStepOrders: number[];
-  completedPolicyApplied: boolean;
-  failureMessageJa?: string;
-  recommendedNextJa?: string;
-};
+export type { DgxResourceScenarioExecuteResult } from './dgx-resource.scenario-execute.types.js';
 
 /** API POST /system/dgx-resource/actions の戻り（後方互換: message と ok は常に設定） */
 export type DgxResourceActionResult = {
@@ -109,6 +101,8 @@ export type DgxResourceOverview = {
   notes: string[];
   /** Phase4 以降の構造化運用ヒント・アラート */
   monitoring: DgxResourceMonitoringSummary;
+  /** 運用者向け表示モデル（targets[] を置き換えない） */
+  operator: DgxResourceOperatorConsole;
 };
 
 export type DgxResourceActionBody =
@@ -189,13 +183,6 @@ function comfyRuntimeControlConfigured(): boolean {
 
 function experimentLabRuntimeControlConfigured(): boolean {
   return readExperimentLabRuntimeEndpoints() !== undefined;
-}
-
-function summarizeControlErrorJa(error: unknown): string {
-  if (typeof error === 'object' && error != null && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
-    return (error as { message: string }).message;
-  }
-  return '予期しないエラーにより停止しました';
 }
 
 function inferenceHeuristics(bundle: OverviewProbeBundle): {
@@ -512,48 +499,22 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   ): Promise<{ ok: true; message: string }> =>
     runTargetRuntimeAction(targetId, action, reason, 'default');
 
-  const executeWorkloadTransitionsThenApplyPolicyMode = async (
-    mode: DgxPolicyMode,
-    applyWorkloadChanges: boolean,
-    workloadTraceReason: string
-  ): Promise<{ ok: true; message: string }> => {
-    const plan = planWorkloadAdjustmentsBeforePolicyChange({
-      nextMode: mode,
-      applyWorkloadChanges,
-      comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
-      experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
-      gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
-    });
-
-    for (const step of plan) {
-      await runTargetRuntimeAction(step.targetId, step.action, workloadTraceReason, 'none');
-      deps.policyStore.appendEvent(step.eventMessageJa);
-    }
-
-    const changed = deps.policyStore.setPolicyMode(mode);
-    if (!changed) {
-      if (plan.length > 0) {
-        return {
-          ok: true,
-          message: `${policyLabelJa(mode)}モードのまま。ワークロード調整のみ実行しました`,
-        };
-      }
-      return { ok: true, message: `${policyLabelJa(mode)}モードのままです` };
-    }
-    const msg = setPolicyEventMessage(mode);
-    deps.policyStore.appendEvent(msg);
-    return { ok: true, message: msg };
-  };
-
   const handleSetPolicy = async (
     mode: DgxPolicyMode,
     opts?: { applyWorkloadChanges?: boolean }
   ): Promise<DgxResourceActionResult> => {
-    const res = await executeWorkloadTransitionsThenApplyPolicyMode(
+    const res = await executeWorkloadTransitionsThenApplyPolicyMode({
       mode,
-      Boolean(opts?.applyWorkloadChanges),
-      'policy_ui'
-    );
+      applyWorkloadChanges: Boolean(opts?.applyWorkloadChanges),
+      workloadTraceReason: 'policy_ui',
+      capability: {
+        comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
+        experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
+        gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
+      },
+      runTargetRuntimeAction,
+      policyStore: deps.policyStore,
+    });
     deps.policyStore.clearScenarioFailure();
     return res;
   };
@@ -584,104 +545,18 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   const orchestrationScenarioExecute = async (
     scenarioId: DgxOrchestrationScenarioId,
     planFingerprint: string
-  ): Promise<DgxResourceActionResult> => {
-    const comfyRt = comfyRuntimeControlConfigured();
-    const expRt = experimentLabRuntimeControlConfigured();
-    const gwRt = gatewayRuntimeControlConfiguredFlag();
-    const intent = resolveScenarioPolicyIntent(scenarioId);
-
-    const recomputedFingerprint = computeScenarioPlanFingerprint({
+  ): Promise<DgxResourceActionResult> =>
+    executeOrchestrationScenarioTransition({
       scenarioId,
-      targetPolicyMode: intent.targetPolicyMode,
-      applyWorkloadChanges: intent.applyWorkloadChanges,
-      comfyRuntimeConfigured: comfyRt,
-      experimentLabRuntimeConfigured: expRt,
-      gatewayRuntimeConfigured: gwRt,
+      planFingerprint,
+      capability: {
+        comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
+        experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
+        gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
+      },
+      runTargetRuntimeAction,
+      policyStore: deps.policyStore,
     });
-
-    if (recomputedFingerprint !== planFingerprint.trim()) {
-      throw new ApiError(
-        409,
-        'プレビュー後に起停設定や計画前提が変わったかプレビューが古くなった可能性があります（指紋不一致）。もう一度プレビューを取得してください。',
-        { scenarioId, expectedPrefix: recomputedFingerprint.slice(0, 12) },
-        'DGX_SCENARIO_PLAN_STALE'
-      );
-    }
-
-    const plan = planWorkloadAdjustmentsBeforePolicyChange({
-      nextMode: intent.targetPolicyMode,
-      applyWorkloadChanges: intent.applyWorkloadChanges,
-      comfyRuntimeConfigured: comfyRt,
-      experimentLabRuntimeConfigured: expRt,
-      gatewayRuntimeConfigured: gwRt,
-    });
-
-    const completedStepOrders: number[] = [];
-
-    deps.policyStore.clearScenarioFailure();
-
-    let workloadOrderCounter = 1;
-    try {
-      for (const step of plan) {
-        await runTargetRuntimeAction(step.targetId, step.action, 'scenario_guide', 'none');
-        deps.policyStore.appendEvent(step.eventMessageJa);
-        completedStepOrders.push(workloadOrderCounter++);
-      }
-
-      const changed = deps.policyStore.setPolicyMode(intent.targetPolicyMode);
-      let msg: string;
-
-      if (!changed) {
-        if (plan.length > 0) {
-          msg = `${policyLabelJa(intent.targetPolicyMode)}モードのまま。ワークロード調停のみ適用しました（ガイド）`;
-        } else {
-          msg = `${policyLabelJa(intent.targetPolicyMode)}モードのままです（ガイド）`;
-        }
-      } else {
-        msg = setPolicyEventMessage(intent.targetPolicyMode);
-        deps.policyStore.appendEvent(msg);
-      }
-
-      const policyStepOrder = workloadOrderCounter;
-      completedStepOrders.push(policyStepOrder);
-
-      deps.policyStore.clearScenarioFailure();
-
-      return {
-        ok: true,
-        message: msg,
-        scenarioExecute: {
-          scenarioId,
-          success: true,
-          completedStepOrders,
-          completedPolicyApplied: changed,
-          recommendedNextJa:
-            `/v1/models と Control Targets が期待どおりになるまで数十秒〜数十分かかることがあります（blue cold start 等）。`,
-        },
-      };
-    } catch (error: unknown) {
-      const brief = summarizeControlErrorJa(error);
-      deps.policyStore.recordScenarioFailure({
-        scenarioId,
-        message: brief,
-        completedStepOrders,
-      });
-      deps.policyStore.appendEvent(`ガイド ${scenarioId} が途中停止: ${brief}`);
-      return {
-        ok: true,
-        message: brief,
-        scenarioExecute: {
-          scenarioId,
-          success: false,
-          completedStepOrders,
-          completedPolicyApplied: false,
-          failureMessageJa: brief,
-          recommendedNextJa:
-            'Control Targets とイベントログを確認してください。環境側で一部 POST が通っていることがあるため、そのまま単発操作での復旧や Runbook / KB-364 に従ってください',
-        },
-      };
-    }
-  };
 
   return {
     getEvents(limit: number): DgxResourceEvent[] {
@@ -727,6 +602,14 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         lastScenarioFailure: deps.policyStore.getLastScenarioFailure(),
       });
 
+      const operator = buildDgxResourceOperatorConsole({
+        policyMode: pb.policyMode,
+        previousMode: pb.previousMode,
+        comfyStartBlockedHint: isBusinessFirstSuppressionHintActive(pb.policyMode),
+        targets,
+        monitoring,
+      });
+
       return {
         generatedAt: pb.generatedAt,
         kpis: {
@@ -761,6 +644,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         services,
         notes: pb.notes,
         monitoring,
+        operator,
       };
     },
   };

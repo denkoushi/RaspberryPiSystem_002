@@ -35,7 +35,7 @@ update-frequency: high
 
 **サーバ API（管理者・マネージャー）**:
 
-- `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。
+- `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。**運用者向け**に **`overview.operator`**（業務 VLM / 私用 Comfy / 実験ラボの 3 ワークロード要約・主要ガイド操作・注意プレビュー）を返す（表示の正本は引き続き `targets[]`。UI はコンソールを優先し、技術 ID は詳細欄へ）。
 - `GET /api/system/dgx-resource/events?limit=…` — UI 操作の直近履歴（プロセス内リングバッファ）
 - `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が書き込みの正規経路。実行可否は **`GET …/overview` の `targets[].capabilities`** に従う（`system-prod-gateway` に加え、Pi5 で補助 URL を両方設定すると **`private-comfyui`** と **`experiment-lab`** が起停可能）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（任意 **`applyWorkloadChanges`**）も継続。
 
@@ -75,7 +75,9 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **`DGX_RESOURCE_SPARK_HOST_STATUS_URL`** — DGX Spark **ホスト**の簡易疎通用（メトリクス sidecar の `/health` 等。**GET が 200** なら管理 UI で「応答あり」）。未設定時は **admin `LOCAL_LLM_BASE_URL` の `/healthz` を既定フォールバック**として使うため、Pi5 から DGX gateway に到達できれば Spark（ホスト）パネルも最低限の生存監視を行う。専用 sidecar を使う場合だけ明示設定する
 - `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
 
-**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（`dgx-resource.control-target.types.ts`・`dgx-resource.control-targets.builder.ts`・`dgx-resource.gateway-runtime.executor.ts`・`dgx-resource.aux-http-runtime.executor.ts`・`dgx-resource.policy-arbitrator.ts`・`dgx-resource.policy-profile.ts`）
+**運用コンソール（管理 UI）**: 「目的別ガイド」は Phase4 の **`PREVIEW_ORCHESTRATION_SCENARIO`（指紋取得）→確定後 `EXECUTE_ORCHESTRATION_SCENARIO`** を前提とする。**Stale（409）**時はプレビューを取り直す。単発の起停は **`EXECUTE_TARGET_ACTION`**（詳細の Control Targets 折りたたみ）。**ガイドが途中停止**した場合は `scenarioExecute.completedStepOrders`・`overview.monitoring.lastScenarioFailure`・イベントログを参照（一部 POST 済みの可能性）。
+
+**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（`dgx-resource.control-target.types.ts`・`dgx-resource.control-targets.builder.ts`・`dgx-resource.gateway-runtime.executor.ts`・`dgx-resource.aux-http-runtime.executor.ts`・`dgx-resource.policy-arbitrator.ts`・`dgx-resource.policy-profile.ts`・**`dgx-resource.operator-overview.ts`**・**`dgx-resource.workload-transition.ts`**）
 
 **本番反映（2026-05-03・Phase3・補助起停 + `SET_POLICY.applyWorkloadChanges`・API+Web）**: ブランチ **`feat/dgx-resource-policy-orchestration-phase3`**（代表 **`a44b9f78`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-policy-orchestration-phase3 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-094340-23537`**・`PLAY RECAP`: **`ok=135` `changed=8` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 597s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `EXECUTE_TARGET_ACTION` は **`targets[].capabilities` に応じて** **`system-prod-gateway`** に加え、補助 URL 設定済みなら **`private-comfyui`**・**`experiment-lab`** も起停可能。**ワークロード調停**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**ナレッジ**: カード直下に **`EXECUTE_TARGET_ACTION` 失敗**を表示して操作文脈を維持（Web）。
 

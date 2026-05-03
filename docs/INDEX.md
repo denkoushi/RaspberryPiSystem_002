@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-05-03）
 
+- **DGX Resource 運用者コンソール（`overview.operator`・ワークロード遷移モジュール分離・Web 1 画面優先）·ブランチ `feat/dgx-resource-operator-console`**: API に **`operator`**（3 ワークロード要約・目的別ガイド）を追加し、`dgx-resource.workload-transition.ts` / `dgx-resource.operator-overview.ts` で境界整理。管理 UI は **運用コンソール**を主軸、Control Targets は折りたたみ詳細。**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) §Phase5。**ADR**: [ADR-20260503](./decisions/ADR-20260503-dgx-resource-operator-console.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。
+
 - **DGX blue vLLM × 私用 ComfyUI（GPU 競合）·`inference-backend` WARN·gateway `/v1/models` 502**: 同一 GPU で **ComfyUI 占有**があると blue（`system-prod-trtllm`）が **`ValueError: Free memory on device`** で起動失敗し、**502（`Connection refused`）**と **UI の WARN 空振り**につながりうる。**KB**: [KB-364](./knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)（2026-05-03 節）。**デプロイ補足**: [deployment.md](./guides/deployment.md)（2026-05-03 項）。**EXEC_PLAN**: Surprises / Next Steps。
 
 - **DGXリソース Phase4（ガイド付き複合運用：`overview.monitoring`・複合シナリオ Preview/Execute）·ブランチ `feat/dgx-resource-guided-orchestration-monitoring`**: **Pi5 のみ本番デプロイ**（Detach **`20260503-102936-930`**·`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**・exit **`0`**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` **43/0/0**。**詳細**: [deployment.md](./guides/deployment.md) Phase4 節·**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) §Phase4·**EXEC_PLAN** Progress・Next Steps（Phase4 場内スモーク）。

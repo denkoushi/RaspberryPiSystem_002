@@ -11,11 +11,14 @@ import { useConfirm } from '../../../contexts/ConfirmContext';
 
 import { DGX_POLICY_PROFILES, orderProfilesForUi } from './dgxResourceProfiles';
 
-import type { DgxPolicyModeApi, DgxResourceOverview } from '../../../api/dgx-resource.types';
+import type { DgxPolicyModeApi, DgxResourceActionBody, DgxResourceOverview } from '../../../api/dgx-resource.types';
 
 type Props = {
   overview: DgxResourceOverview;
   onControlUiError: (message: string | null) => void;
+  /** Dashboard 等で mutation を集約する場合に渡す */
+  postDgxAction?: (body: DgxResourceActionBody) => Promise<unknown>;
+  actionBusy?: boolean;
 };
 
 async function confirmWorkloadOrchestration(
@@ -49,7 +52,7 @@ function inferenceLooksDegraded(overview: DgxResourceOverview): boolean {
   return inf?.status === 'degraded' || (inf?.badges ?? []).includes('degraded');
 }
 
-export function DgxResourceProfilePanel({ overview, onControlUiError }: Props) {
+export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAction, actionBusy }: Props) {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const policyMode = overview.policy.mode;
@@ -69,7 +72,24 @@ export function DgxResourceProfilePanel({ overview, onControlUiError }: Props) {
     },
   });
 
-  const busy = mutatePolicy.isPending;
+  const runPolicy = async (body: DgxResourceActionBody) => {
+    if (postDgxAction) {
+      try {
+        onControlUiError(null);
+        await postDgxAction(body);
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview }),
+          qc.invalidateQueries({ queryKey: ['dgx-resource', 'events'] }),
+        ]);
+      } catch (e) {
+        onControlUiError(getDgxResourceApiErrorMessage(e));
+      }
+      return;
+    }
+    mutatePolicy.mutate(body as Parameters<typeof mutatePolicy.mutate>[0]);
+  };
+
+  const busy = actionBusy ?? mutatePolicy.isPending;
   const degraded = inferenceLooksDegraded(overview);
   const rb = overview.policy.previousMode;
   const canRollback = rb != null && rb !== policyMode;
@@ -113,7 +133,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError }: Props) {
                 const ok = await confirmWorkloadOrchestration(confirm, p.mode);
                 if (!ok) return;
               }
-              mutatePolicy.mutate({
+              await runPolicy({
                 type: 'SET_POLICY',
                 policyMode: p.mode,
                 ...(applyWorkloadChanges ? { applyWorkloadChanges: true } : {}),
@@ -133,7 +153,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError }: Props) {
               className="border border-white/15 px-3 py-2 text-sm"
               disabled={busy}
               onClick={() =>
-                mutatePolicy.mutate({
+                void runPolicy({
                   type: 'SET_POLICY',
                   policyMode: rb,
                   applyWorkloadChanges: false,

@@ -120,6 +120,47 @@ export type DgxResourceScenarioExecuteResultApi = {
   completedPolicyApplied: boolean;
   failureMessageJa?: string;
   recommendedNextJa?: string;
+  outcomeKind?: 'success' | 'partial_failure' | 'noop';
+};
+
+export type DgxOperatorRiskLevelApi = 'low' | 'medium' | 'high';
+
+export type DgxOperatorWorkloadIdApi = 'business_vlm' | 'private_comfy' | 'experiment_lab';
+
+export type DgxOperatorWorkloadApi = {
+  id: DgxOperatorWorkloadIdApi;
+  labelJa: string;
+  purposeJa: string;
+  risk: DgxOperatorRiskLevelApi;
+  status: DgxServiceStatusKind;
+  statusHeadlineJa: string;
+  detailHintJa?: string;
+  relatedTargetIds: string[];
+  runtimeControlConfigured: boolean;
+};
+
+export type DgxOperatorConsoleActionApi = {
+  id: DgxOrchestrationScenarioIdApi;
+  labelJa: string;
+  subtitleJa: string;
+  scenarioId: DgxOrchestrationScenarioIdApi;
+  primary: boolean;
+  disabledReasonJa?: string;
+};
+
+export type DgxResourceOperatorConsoleApi = {
+  workloads: DgxOperatorWorkloadApi[];
+  operatorSummary: {
+    headlineJa: string;
+    policyMode: DgxPolicyModeApi;
+    policyLabelJa: string;
+    previousMode: DgxPolicyModeApi | null;
+    previousPolicyLabelJa: string | null;
+    comfyStartBlockedHint: boolean;
+    inferenceSparkLineJa: string | null;
+    alertPreviewJa: string[];
+  };
+  operatorActions: DgxOperatorConsoleActionApi[];
 };
 
 export type DgxResourceOverview = {
@@ -150,6 +191,8 @@ export type DgxResourceOverview = {
   services: DgxResourceServiceCard[];
   notes: string[];
   monitoring: DgxResourceMonitoringSummaryApi;
+  /** 運用者向け（API が返す新モデル。互換のため一時的に省略可能） */
+  operator?: DgxResourceOperatorConsoleApi;
 };
 
 export type DgxResourceEvent = {

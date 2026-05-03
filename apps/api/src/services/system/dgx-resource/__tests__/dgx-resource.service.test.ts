@@ -391,6 +391,24 @@ describe('createDgxResourceService', () => {
     expect(ov.monitoring.lastScenarioFailure).toBeNull();
   });
 
+  it('getOverview includes operator-facing console (workloads + actions)', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: false,
+        health: { ok: false },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const svc = makeSvc(store, gateway);
+    const ov = await svc.getOverview();
+
+    expect(ov.operator).toBeDefined();
+    expect(ov.operator.workloads.map((w) => w.id)).toEqual(['business_vlm', 'private_comfy', 'experiment_lab']);
+    expect(ov.operator.operatorActions).toHaveLength(4);
+    expect(ov.operator.operatorSummary.policyMode).toBe(ov.policy.mode);
+  });
+
   it('PREVIEW_ORCHESTRATION_SCENARIO returns planFingerprint; EXECUTE rejects stale fingerprint', async () => {
     const store = new DgxResourcePolicyStore(10);
     const gateway: LocalLlmGateway = {
