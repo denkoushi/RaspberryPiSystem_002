@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX Phase7**: 運用 UI 最小化・`business_to_experiment` の post-policy・gateway ヘルス・Ansible `api_dgx_resource_*`／ほか同日項は下記）
+最終更新: 2026-05-03（**DGX Phase8**: KPI 先頭・説明削減・全文可読 / Pi5 deploy + Phase12 PASS 43、**DGX Phase7**: 運用 UI 最小化・`business_to_experiment` の post-policy・gateway ヘルス・Ansible `api_dgx_resource_*`／ほか同日項は下記）
+
+### 補足（2026-05-03: **DGX リソース Phase8（KPI 先頭・説明削減・全文可読）**·`feat/dgx-resource-dashboard-ui-phase8`·**Web のみ**·Pi5 のみ）
+
+- **変更概要**: `/admin/tools/dgx-resource` の Web を **KPI ストリップ先頭**へ再構成。**`overview.kpis`** を横一列（狭幅は横スクロール）で表示し、**読み込み完了後の `h1「DGX リソース」` と補助説明文を削除**。シナリオカードの **絵文字** と **「4つの操作だけ…」説明**を除去し、`Spark` / シナリオ / KPI の文言は **`truncate` をやめて折り返し表示**。実装は **`dgxResourceKpiStripModel.ts`** に表示モデルを分離し、KPI 組み立てを React 非依存でテスト固定。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。**Pi3 個別デプロイ不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-dashboard-ui-phase8 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後の標準運用は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`89f65a7c`**（`feat(web): simplify DGX dashboard into a KPI-first operator view`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-181600-946`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**・ローカル `--follow` 完了まで **約 666s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 118s**・Tailscale）。
+- **トラブルシュート**: `update-all-clients.sh` の preflight で **`raspberrypi5 | UNREACHABLE! Permission denied (publickey)`** が出る場合、**Pi5 自身の公開鍵が Pi5 の `authorized_keys` に入っていない**可能性がある。Pi5 上の **`ssh -o BatchMode=yes denkon5sd02@100.106.158.2`** で self-SSH を確認し、必要なら `~/.ssh/id_ed25519.pub` を `authorized_keys` へ追加する。失敗時に **`runner=bootstrap` / `runPid=null` / deploy artifact なし** の lock だけ残った場合は、**実行中プロセスが無いことを確認してから** `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock` を退避・削除して再試行する（詳細は [Ansible/デプロイ KB](../knowledge-base/infrastructure/ansible-deployment.md)）。
+- **ナレッジ**: [KB-365 §Phase8](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-8kpi-先頭説明削減全文可読web-のみ本番反映)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-03: **DGX リソース Phase7（運用 UI 最小化・実験シナリオ・gateway／Ansible 整合）**·`main`·API+Web+DGX·Pi5 のみ）
 

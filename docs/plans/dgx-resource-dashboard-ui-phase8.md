@@ -2,8 +2,11 @@
 
 ## ステータス
 
-- proposed（ブランチ `feat/dgx-resource-dashboard-ui-phase8` で実装中）
-- **コミット・プッシュ**: 依頼があるまで実施しない
+- completed（ブランチ `feat/dgx-resource-dashboard-ui-phase8` で実装・Pi5 deploy・実機検証まで完了）
+- **代表コミット**: `89f65a7c`
+- **本番デプロイ**: `./scripts/update-all-clients.sh feat/dgx-resource-dashboard-ui-phase8 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **Detach Run ID**: `20260503-181600-946`
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → `PASS 43 / WARN 0 / FAIL 0`
 
 ## 背景
 
@@ -75,7 +78,8 @@
 
 ## Surprises（メモ）
 
-- ユーザー要件で「コミット・プッシュ禁止」のため、CI はローカル検証のみ。
+- Pi5 標準デプロイ preflight は **Pi5→Pi5 self-SSH** を使うため、Pi5 自身の公開鍵が `authorized_keys` に無いと **`Permission denied (publickey)`** で止まる。
+- preflight 失敗時に **`runner=bootstrap` / `runPid=null`** の orphan lock が残ることがあり、**実行中プロセスと deploy artifact 不在**を確認してから lock を退避削除する必要があった。
 
 ## References
 
