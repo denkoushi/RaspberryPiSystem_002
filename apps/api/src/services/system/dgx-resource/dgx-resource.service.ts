@@ -243,18 +243,16 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         ? ([
             {
               url: new URL('/system/metrics', adminCfg.baseUrl).toString(),
-              headers: undefined as Record<string, string> | undefined,
-              source: 'gateway_system_metrics',
+              headers: adminCfg.sharedToken ? ({ 'X-LLM-Token': adminCfg.sharedToken } as const) : undefined,
             },
             {
               url: new URL('/v1/system/metrics', adminCfg.baseUrl).toString(),
               headers: adminCfg.sharedToken ? ({ 'X-LLM-Token': adminCfg.sharedToken } as const) : undefined,
-              source: 'gateway_v1_system_metrics',
             },
           ] as const)
         : [];
     const metricsProbeCandidates = metricsConfigured
-      ? ([{ url: deps.metricsUrl!, headers: undefined as Record<string, string> | undefined, source: 'explicit_metrics_url' }] as const)
+      ? ([{ url: deps.metricsUrl!, headers: undefined as Record<string, string> | undefined }] as const)
       : metricsFallbackCandidates;
     let metricsPayload: Awaited<ReturnType<typeof fetchJsonMetrics>> = undefined;
     for (const candidate of metricsProbeCandidates) {

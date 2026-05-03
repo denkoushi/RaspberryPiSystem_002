@@ -3,6 +3,7 @@
 DGX system-prod 用のローカル gateway。
 
 - /healthz は 200 ok
+- /system/metrics は GPU/メモリ JSON（Pi KPI 用）。X-LLM-Token が LLM_SHARED_TOKEN と一致することを要求（/v1/* と同様）
 - /start /stop は runtime control へ転送
 - /v1/* は active backend へ転送
 
@@ -267,6 +268,9 @@ def make_handler(
                 self._send_text(200, "ok\n")
                 return
             if self.path == "/system/metrics":
+                if self.headers.get("X-LLM-Token", "") != config.llm_shared_token:
+                    self._send_text(403, "forbidden")
+                    return
                 ok, payload = collect_gpu_metrics()
                 if ok and payload is not None:
                     self._send(200, json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8")

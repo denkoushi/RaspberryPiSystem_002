@@ -290,6 +290,13 @@ describe('createDgxResourceService', () => {
     const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
     const ov = await svc.getOverview();
 
+    const systemMetricsAttempt = fetchImpl.mock.calls.find(([input, init]) => {
+      const u = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+      return u === 'http://127.0.0.1:38081/system/metrics';
+    });
+    expect(systemMetricsAttempt).toBeDefined();
+    expect(systemMetricsAttempt![1]?.headers).toMatchObject({ 'X-LLM-Token': 'x'.repeat(32) });
+
     expect(ov.kpis.gpuUtilPct).toBe(71);
     expect(ov.kpis.unifiedMemoryUsedGiB).toBe(88);
     expect(ov.kpis.unifiedMemoryTotalGiB).toBe(128);
