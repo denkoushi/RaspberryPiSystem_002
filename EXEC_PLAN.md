@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-03) **DGX リソース Phase7（運用 UI 最小化・`business_to_experiment` の post-policy・gateway ヘルス・Ansible `api_dgx_resource_*`）**·**`main`**·代表 **`956cccf7`**（**`feat(web): simplify DGX resource screen to task-first flow`**）·**`0a136ce9`**（**`feat(dgx): align scenario execution with runtime health visibility`**）。**対象ホスト**: **`raspberrypi5` のみ**。**標準デプロイ**: `main` を **`./scripts/update-all-clients.sh main … --limit raspberrypi5`** で反映。**ナレッジ**: [KB-365 §Phase7](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-7運用-ui-の最小化補助ランタイム実運用実験シナリオ整合api--web--dgx-gateway--ansible)·[deployment.md](./docs/guides/deployment.md) Phase7 項·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。**仕様要約**: メインからイベントログを外し **詳細・保守**へ。**プレビュー→実行連続**。API **`postPolicyStarts`**・実験 **`experiment-lab start`**。gateway **`private-comfyui/health`** 認証緩和・**`experiment_lab_health_mode=container`**。inventory に **`api_dgx_resource_*`**。
+
 - [x] (2026-05-03) **DGX リソース 目的別ガイド（タスク優先 UI）／`business_to_private` に post-policy Comfy 起動（API+Web）**·ブランチ **`feat/dgx-resource-ui-task-first`**·代表 **`5ac0f17d`**·**対象ホスト**: **`raspberrypi5` のみ**（Pi3/Pi4 play **no hosts matched**。**Pi3 専用手順は未実施で正**）。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-ui-task-first infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-140320-20910`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / exit `0`**・`--follow` 約 **651s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **113s**）。**ナレッジ**: [KB-365 §Phase6](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-6目的別ガイド--post-policy-comfy-apiweb本番反映)·[deployment.md](./docs/guides/deployment.md)（2026-05-03 目的別ガイド項）·Surprises（post-policy 型と本番 `tsc`）。**仕様**: 4 シナリオ固定順・保守ブロック `<details>`・post-policy で Comfy **`start`**。**知見**: 本番 `api` は **`tsconfig.build.json`** で開発時のみ走る Vitest より厳しく、**広い `DgxControlTargetId` をプレビュー型へ直代入**しないこと。
 
 - [x] (2026-05-03) **DGX リソース管理 UI 再設計（運用コンソール／`dgxResourceUi`・Web のみ）**·ブランチ **`feat/dgx-resource-ui-redesign`**·代表 **`d449b655`**·**実装**: `apps/web` の DGX 管理画面・共通 `Button`（**`danger` / `ghostOnDark`**）・**シナリオ選択とプレビューボタン分離**・**`shouldShowMonitoringPanel`**。**API 契約変更なし**。**対象ホスト**: **`raspberrypi5` のみ**。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-ui-redesign infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-131606-21654`**（`PLAY RECAP` **`ok=130` `changed=4` `failed=0`**・exit **`0`**・`--follow` 約 **347s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **125s**）。**ナレッジ**: [KB-365](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)·[deployment.md](./docs/guides/deployment.md)（UI 再設計項）·`docs/INDEX.md`。**知見**: StatusBar の注意件数は **`monitoring.alerts` のみ**（`alertPreviewJa` は同一ソースの要約のため二重加算しない）。
@@ -2054,6 +2056,16 @@
 1. 管理 UI で **GPU 競合の説明**（WARN が **cold start だけでない**こと、**`nvidia-smi` / `docker logs`** の見方への Runbook リンク）を **補足表示**できないか。
 2. **`business_first`**（または同等ポリシー）で **`POST /start` 前**に、**文書化済みの手順**（例: ComfyUI 停止）を**運用チェックリスト**化するか（**自動 `docker stop` は影響大**のため、実装するなら **明示ガード + ADR**）。
 3. Pi5 **API コンテナ内**に `curl` が無い環境での **トラブルシュート**は **ホスト `python3` + `.env`** または **DGX SSH** が現実的、という **Runbook 手順の定型化**。
+
+### DGX リソース管理コンソール: Phase7（最小 UI・実験 post-policy・gateway／inventory）運用確認（2026-05-03）
+
+**概要**: [KB-365 §Phase7](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-7運用-ui-の最小化補助ランタイム実運用実験シナリオ整合api--web--dgx-gateway--ansible) のとおり **`main`** に **`956cccf7`** / **`0a136ce9`** を取り込み済みの前提。**詳細・保守** を開けば従来の Control Targets／手動ポリシー／監視系にアクセス可能。
+
+**候補タスク**:
+
+1. **`main`** を Pi5 へ **`update-all-clients.sh main … --limit raspberrypi5`** で反映後、**/admin/tools/dgx-resource** が **4 操作 + 状態チップ**中心で、**メインにイベント一覧が無い**ことを確認（履歴は必要時 **`GET …/events`** または詳細欄）。
+2. **`business_to_experiment`** 実行後、**post-policy** で **`experiment-lab`** が起動し、**`overview.targets`** の **`experiment-lab`** 状態が **`container`** ヘルスで更新されること（環境により立ち上がりに時間）。
+3. **NVIDIA / コミュニティ**: 公式 [NVIDIA/dgx-spark-playbooks](https://github.com/NVIDIA/dgx-spark-playbooks) と [DGX Spark フォーラム](https://forums.developer.nvidia.com/c/accelerated-computing/dgx-spark-gb10) を参照しつつ、**本 repo の Runbook/KB** を正とする（環境固有フックは **`gateway-server.py` + Ansible**）。
 
 ### DGX リソース管理コンソール: Phase3（補助起停・`applyWorkloadChanges`）場内スモーク（2026-05-03）
 

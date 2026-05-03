@@ -69,13 +69,13 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - `DGX_RESOURCE_COMFYUI_HEALTH_URL` — ComfyUI 等の GET が 200 なら running とみなす
 - **`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — Comfy を Pi5 API 経由で起停するための POST。本文 JSON `{ reason }`・ヘッダ `X-Runtime-Control-Token`（トークン設定時）。
 - **`DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — 実験ラボ論理ターゲットの起停用 POST。
-- **`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL`** — 実験環境 GET ヘルス（任意）
+- **`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL`** — 実験環境 GET ヘルス（任意）。DGX **`gateway-server.py`** 側では **`experiment_lab_health_mode`**（既定 **`container`**）により **`docker ps`** でコンテナ生存を見る運用が可能（立ち上がり直後の **`v1/models` 502** で overview が沈むのを避ける）
 - **`DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS`** — 上記補助 POST のタイムアウト（既定 90000）
 - `DGX_RESOURCE_EMBEDDING_HEALTH_URL` — 相対なら admin `LOCAL_LLM` baseUrl を prefix
 - **`DGX_RESOURCE_SPARK_HOST_STATUS_URL`** — DGX Spark **ホスト**の簡易疎通用（メトリクス sidecar の `/health` 等。**GET が 200** なら管理 UI で「応答あり」）。未設定時は **admin `LOCAL_LLM_BASE_URL` の `/healthz` を既定フォールバック**として使うため、Pi5 から DGX gateway に到達できれば Spark（ホスト）パネルも最低限の生存監視を行う。専用 sidecar を使う場合だけ明示設定する
 - `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
 
-**運用コンソール（管理 UI）**: 「目的別ガイド」は Phase4 の **`PREVIEW_ORCHESTRATION_SCENARIO`（指紋取得）→確定後 `EXECUTE_ORCHESTRATION_SCENARIO`** を前提とする。**Stale（409）**時はプレビューを取り直す。単発の起停は **`EXECUTE_TARGET_ACTION`**（詳細の Control Targets 折りたたみ）。**ガイドが途中停止**した場合は `scenarioExecute.completedStepOrders`・`overview.monitoring.lastScenarioFailure`・イベントログを参照（一部 POST 済みの可能性）。
+**運用コンソール（管理 UI）**: 「目的別ガイド」は Phase4 の **`PREVIEW_ORCHESTRATION_SCENARIO`（指紋取得）→確定後 `EXECUTE_ORCHESTRATION_SCENARIO`** をバックエンド契約として維持。**Phase 7（2026-05-03）** ではフロントを **状態チップ一行 + 4 操作**に最小化し、**確認ダイアログ後にプレビュー→実行を連続**（プレビュー専用ボタンなし。**メイン画面にイベントログタイムラインは出さない**。履歴は **`GET …/events`** とサーバログ）。**Stale（409）**時は内部的にプレビューを取り直してから実行する運用が前提。単発の起停は **`EXECUTE_TARGET_ACTION`**（**詳細・保守** の Control Targets）。**ガイドが途中停止**した場合は `scenarioExecute.completedStepOrders`・`overview.monitoring.lastScenarioFailure`・`/events` を参照（一部 POST 済みの可能性）。
 
 **実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（`dgx-resource.control-target.types.ts`・`dgx-resource.control-targets.builder.ts`・`dgx-resource.gateway-runtime.executor.ts`・`dgx-resource.aux-http-runtime.executor.ts`・`dgx-resource.policy-arbitrator.ts`・`dgx-resource.policy-profile.ts`・**`dgx-resource.operator-overview.ts`**・**`dgx-resource.workload-transition.ts`**）
 

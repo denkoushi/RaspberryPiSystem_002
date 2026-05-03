@@ -10,7 +10,15 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX 目的別ガイド UI／私用開始に post-policy Comfy 起動（API+Web）本番反映**）／運用コンソール UI 再設計／Phase5（API）／Phase4／Control Targets／Phase3／2026-05-02 項は下記
+最終更新: 2026-05-03（**DGX Phase7**: 運用 UI 最小化・`business_to_experiment` の post-policy・gateway ヘルス・Ansible `api_dgx_resource_*`／ほか同日項は下記）
+
+### 補足（2026-05-03: **DGX リソース Phase7（運用 UI 最小化・実験シナリオ・gateway／Ansible 整合）**·`main`·API+Web+DGX·Pi5 のみ）
+
+- **変更概要**: Web は **`DgxResourceDashboard` / `DgxResourcePrimaryScenarioFlow`** で **状態チップ一行 + 目的別 4 操作**。**監視 KPI・イベントタイムライン**はメインから外し **「詳細・保守」** へ。主操作は **確認後にプレビュー→実行を連続**（プレビュー専用ボタン撤去。**フロントは `planFingerprint` を主要表示しない**）。API は **`business_to_experiment`** で **`experiment-lab` post-policy `start`**、指紋 **`postPolicyStarts`**。DGX **`gateway-server.py`**: **`GET /private-comfyui/health`** はプローブ用に **認証なし**、**`experiment_lab_health_mode`**（既定 **`container`**）でコンテナ生存確認、実験起動は **`control-server.env` を source**。Ansible **`inventory.yml`** の **`api_dgx_resource_*`** と **`vault.yml.example`** の **`vault_api_dgx_resource_*`**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **リポジトリ代表コミット**: **`956cccf7`**（Web 簡素化）·**`0a136ce9`**（シナリオ・ヘルス・gateway／inventory 整合）。
+- **ナレッジ**: [KB-365 §Phase7](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-7運用-ui-の最小化補助ランタイム実運用実験シナリオ整合api--web--dgx-gateway--ansible)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-03: **DGX リソース 目的別4操作ガイド（タスク優先 UI）／`business_to_private` の post-policy Comfy 起動**·`feat/dgx-resource-ui-task-first`·API+Web·Pi5 のみ）
 
