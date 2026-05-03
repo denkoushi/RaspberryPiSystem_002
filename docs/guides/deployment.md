@@ -39,6 +39,16 @@ update-frequency: medium
 - **トラブルシュート**: `update-all-clients.sh` の preflight で **`raspberrypi5 | UNREACHABLE! Permission denied (publickey)`** が出る場合、**Pi5 自身の公開鍵が Pi5 の `authorized_keys` に入っていない**可能性がある。Pi5 上の **`ssh -o BatchMode=yes denkon5sd02@100.106.158.2`** で self-SSH を確認し、必要なら `~/.ssh/id_ed25519.pub` を `authorized_keys` へ追加する。失敗時に **`runner=bootstrap` / `runPid=null` / deploy artifact なし** の lock だけ残った場合は、**実行中プロセスが無いことを確認してから** `/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock` を退避・削除して再試行する（詳細は [Ansible/デプロイ KB](../knowledge-base/infrastructure/ansible-deployment.md)）。
 - **ナレッジ**: [KB-365 §Phase8](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-8kpi-先頭説明削減全文可読web-のみ本番反映)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
+### 補足（2026-05-03: **DGX リソース Phase9（Orchestration Strict Ready・安全ロールバック）**·`feat/dgx-resource-ready-guarantee`·API+Web·Pi5 のみ）
+
+- **変更概要**: **`EXECUTE_ORCHESTRATION_SCENARIO`** の API 成功を **Strict Ready（業務復帰は `/v1/models`・私用は Comfy ヘルス・実験は experiment ヘルス）達成まで**に拡張。**タイムアウト時**は運用モードをガイド前へ戻し、私用／実験で補助ワークロードの **安全ロールバック**を試行。応答に **`readinessChecksJa` / `readinessSummaryJa` / `rollback`**（省略可・後方互換）。**実装**: `dgx-resource.scenario-readiness.ts`・`dgx-resource.scenario-safe-rollback.ts`・ワークロード遷移統合。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。**Pi3 個別デプロイ不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-ready-guarantee infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`8cbc6f38`**（`feat(dgx): require ready state before completing orchestration`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-194121-32704`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**・ローカル `--follow` 完了まで **約 684s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 89s**・Tailscale）。
+- **トラブルシュート**: **`LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS`** 超過で業務復帰が失敗 → Runbook / Ansible で閾値延伸（**`apps/api/src/config/env.ts` の Zod `max` とセット**）。**Ready 表示が長い** → **`readinessChecksJa`** と API ログ。**Phase12** はガイドの Strict Ready を直接検証しない（広域ヘルス中心）。
+- **ナレッジ**: [KB-365 §Phase9](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-9orchestration-strict-readyapi--web)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
 ### 補足（2026-05-03: **DGX リソース Phase7（運用 UI 最小化・実験シナリオ・gateway／Ansible 整合）**·`main`·API+Web+DGX·Pi5 のみ）
 
 - **変更概要**: Web は **`DgxResourceDashboard` / `DgxResourcePrimaryScenarioFlow`** で **状態チップ一行 + 目的別 4 操作**。**監視 KPI・イベントタイムライン**はメインから外し **「詳細・保守」** へ。主操作は **確認後にプレビュー→実行を連続**（プレビュー専用ボタン撤去。**フロントは `planFingerprint` を主要表示しない**）。API は **`business_to_experiment`** で **`experiment-lab` post-policy `start`**、指紋 **`postPolicyStarts`**。DGX **`gateway-server.py`**: **`GET /private-comfyui/health`** はプローブ用に **認証なし**、**`experiment_lab_health_mode`**（既定 **`container`**）でコンテナ生存確認、実験起動は **`control-server.env` を source**。Ansible **`inventory.yml`** の **`api_dgx_resource_*`** と **`vault.yml.example`** の **`vault_api_dgx_resource_*`**。
