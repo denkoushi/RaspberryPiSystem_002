@@ -17,11 +17,12 @@ export const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; c
 export async function fetchJsonMetrics(
   url: string,
   fetchImpl: typeof fetch,
-  timeoutMs: number
+  timeoutMs: number,
+  headers?: Record<string, string>
 ): Promise<MetricsPayload | undefined> {
   const { signal, cleanup } = createTimeoutSignal(timeoutMs);
   try {
-    const response = await fetchImpl(url, { method: 'GET', signal });
+    const response = await fetchImpl(url, { method: 'GET', signal, ...(headers ? { headers } : {}) });
     if (!response.ok) return undefined;
     const body: unknown = await response.json();
     if (!body || typeof body !== 'object') return undefined;
