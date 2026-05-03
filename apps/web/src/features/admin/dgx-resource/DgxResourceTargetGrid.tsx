@@ -143,7 +143,7 @@ export function DgxResourceTargetGrid({
                 </Button>
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="danger"
                   disabled={busy}
                   onClick={async () => {
                     const copy = stopConfirmCopy(t.id as DgxControlTargetIdApi, t.displayName);
@@ -155,7 +155,7 @@ export function DgxResourceTargetGrid({
                     onControlUiError(null);
                     onExecuteTarget(t.id as DgxControlTargetIdApi, 'stop');
                   }}
-                  className="bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-500"
+                  className="px-3 py-1.5 text-sm"
                 >
                   停止
                 </Button>

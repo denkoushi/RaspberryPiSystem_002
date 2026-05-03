@@ -94,24 +94,41 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
   const rb = overview.policy.previousMode;
   const canRollback = rb != null && rb !== policyMode;
 
-  const currentCopy = DGX_POLICY_PROFILES[policyMode];
-
   return (
     <div className="flex shrink-0 flex-col gap-2.5 rounded-lg border border-sky-400/25 bg-sky-950/40 p-3">
       <h2 className="text-lg font-semibold text-sky-100/90">運用プロファイル</h2>
-      <p className="text-sm leading-snug text-white/70">{currentCopy.description}</p>
+      <p className="text-sm leading-snug text-white/60">
+        直上の状態バッジが現在モードです。詳しい意味は{' '}
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.business_first.description}>
+          業務優先
+        </abbr>
+        ／
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.private_ok.description}>
+          私用OK
+        </abbr>
+        ／
+        <abbr className="cursor-help underline decoration-dotted decoration-white/40" title={DGX_POLICY_PROFILES.experiment_first.description}>
+          実験優先
+        </abbr>
+        のツールチップを参照。
+      </p>
 
-      <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug text-white/75">
+      <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug text-white/80">
         <input
           type="checkbox"
-          className="mt-1 rounded border-white/30 bg-black/40"
+          className="mt-1 h-4 w-4 rounded border-white/30 bg-black/40"
           checked={applyWorkloadChanges}
           disabled={busy}
           onChange={(ev) => setApplyWorkloadChanges(ev.target.checked)}
         />
         <span>
-          <span className="font-medium text-sky-100/90">モード適用時にワークロードも自動調整する</span>
-          （チェックあり・かつ業務優先/実験優先への切替のみ、Pi5 が POST 送信。私用 OK への切替では通常何もしない）
+          <span className="font-semibold text-sky-100/95">切替時にワークロード自動調整</span>
+          <span
+            className="ml-1 inline-block text-sky-200/80"
+            title="業務優先／実験優先へ切り替えるときだけ Pi5 から停止 POST を試行します。私用OK では通常なし。"
+          >
+            ⓘ
+          </span>
         </span>
       </label>
 
@@ -126,7 +143,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
             key={p.mode}
             type="button"
             variant={policyMode === p.mode ? 'primary' : 'secondary'}
-            className="px-4 py-2 text-sm"
+            className="px-4 py-2.5 text-base"
             disabled={busy}
             onClick={async () => {
               if (applyWorkloadChanges && (p.mode === 'business_first' || p.mode === 'experiment_first')) {
@@ -149,8 +166,8 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
-              variant="ghost"
-              className="border border-white/15 px-3 py-2 text-sm"
+              variant="ghostOnDark"
+              className="px-3 py-2 text-base"
               disabled={busy}
               onClick={() =>
                 void runPolicy({
@@ -162,7 +179,9 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
             >
               直前モードへ戻す ({DGX_POLICY_PROFILES[rb].titleShort})
             </Button>
-            <span className="text-sm text-white/45">安全ロールバック用（ひとつ前の状態のみ・ワークロード自動調整は行いません）</span>
+            <span className="text-sm text-white/55" title="ワークロード POST は送信しません">
+              直前状態へ（自動調整なし）
+            </span>
           </div>
         ) : (
           <p className="text-sm leading-tight text-white/40">

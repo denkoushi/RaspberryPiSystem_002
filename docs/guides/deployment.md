@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX Phase5（運用者コンソール `overview.operator`・ワークロード遷移分離）本番反映**）／Phase4／Control Targets／Phase3／2026-05-02 項は下記
+最終更新: 2026-05-03（**DGX 運用コンソール UI 再設計（Web のみ）本番反映**）／DGX Phase5（API）／Phase4／Control Targets／Phase3／2026-05-02 項は下記
+
+### 補足（2026-05-03: **DGX リソース管理 UI 再設計（運用コンソール／デザイントークン集約）**·`feat/dgx-resource-ui-redesign`·**Web のみ**·Pi5 のみ）
+
+- **変更概要**: `apps/web` の **`/admin/tools/dgx-resource`**。**`dgxResourceUi.ts`** にステータス／リスク／ポリシーバッジ／監視アラート枠・**`shouldShowMonitoringPanel`**（正常時は StatusBar へ集約）を集約。**`Button`**: **`danger`**・ダーク面は **`ghostOnDark`**（**`ghost` はライト背景向け**のまま）。**運用コンソール**: StatusBar／3 ワークロード／目的別ガイド。**シナリオクリックは選択のみ**・**プレビュー取得／再取得**は別ボタン。**StatusBar「注意」件数**は **`monitoring.alerts.length` のみ**（`operatorSummary.alertPreviewJa` は同一アラート先頭の短文要約のため加算しない）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。**Pi3 個別デプロイ不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-ui-redesign infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`d449b655`**（`feat(web): DGX resource admin UI redesign`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-131606-21654`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**・ローカル `--follow` 完了まで **約 347s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 125s**・Tailscale）。
+- **トラブルシュート**: **UI が旧のまま** → [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** イメージのコミット確認。**ダークグラデ上でボタン文字が消える** → **`ghostOnDark`** を使う（`ghost` は意図的にライト向け）。**運用監視ヒントパネルが出ない** → **仕様どおり**アラート・直近ガイド失敗・Inference 短文が異常候補のときだけ表示。
+- **ナレッジ**: [KB-365 §Phase5 UI](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-03: **DGXリソース Phase5（運用者コンソール・API 境界整理）**·`feat/dgx-resource-operator-console`·API+Web·Pi5 のみ）
 

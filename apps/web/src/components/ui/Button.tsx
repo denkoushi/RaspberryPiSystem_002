@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import type { ButtonHTMLAttributes } from 'react';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'ghostOnDark';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostOnDark';
 };
 
 export function Button({ variant = 'primary', className, children, ...rest }: ButtonProps) {
@@ -12,9 +12,11 @@ export function Button({ variant = 'primary', className, children, ...rest }: Bu
       ? 'bg-emerald-500 text-white hover:bg-emerald-600'
       : variant === 'secondary'
         ? 'bg-blue-500 text-white hover:bg-blue-600'
-        : variant === 'ghostOnDark'
-          ? 'bg-transparent text-white/90 hover:bg-white/10 hover:text-white'
-          : 'bg-transparent !text-slate-900 hover:bg-slate-100 hover:!text-slate-900';
+        : variant === 'danger'
+          ? 'bg-red-600 text-white hover:bg-red-500'
+          : variant === 'ghostOnDark'
+            ? 'border border-white/20 bg-transparent text-white/90 hover:bg-white/10 hover:text-white'
+            : 'bg-transparent text-slate-800 hover:bg-slate-100 hover:text-slate-900';
 
   return (
     <button

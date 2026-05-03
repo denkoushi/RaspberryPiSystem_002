@@ -79,8 +79,8 @@ export function DgxResourceKpiStrip({ kpis }: Props) {
     <div className="grid shrink-0 grid-cols-2 gap-2 lg:grid-cols-4">
       {items.map((it) => (
         <div key={it.key} className="rounded-lg border border-white/10 bg-slate-900/50 px-4 py-3">
-          <div className="text-sm font-medium uppercase tracking-wide text-white/55">{it.label}</div>
-          <div className="truncate text-2xl font-bold leading-tight text-white">{it.value}</div>
+          <div className="text-base font-medium uppercase tracking-wide text-white/60">{it.label}</div>
+          <div className="truncate text-3xl font-bold leading-tight text-white">{it.value}</div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-950/80">
             {it.barPct == null ? (
               <div className="h-full w-1/6 bg-slate-600" />
