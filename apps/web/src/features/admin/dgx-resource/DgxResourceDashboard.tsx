@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { dgxResourceQueryKeys, fetchDgxResourceOverview, getDgxResourceApiErrorMessage, postDgxResourceAction } from '../../../api/dgx-resource';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
+import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
 import { DGX_POLICY_PROFILES } from './dgxResourceProfiles';
@@ -83,8 +84,6 @@ export function DgxResourceDashboard() {
   return (
     <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-3 overflow-y-auto px-4 py-2 text-base sm:-mx-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold text-white">DGX リソース</h1>
-        <p className="text-sm text-white/55">普段はこの画面の 4操作だけを使ってください。詳細ログや保守操作は下の「詳細・保守」にあります。</p>
         {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}
         {actionError ? (
           <p className="text-sm font-medium text-red-300" role="alert">
@@ -92,6 +91,8 @@ export function DgxResourceDashboard() {
           </p>
         ) : null}
       </header>
+
+      <DgxResourceKpiStrip kpis={overview.kpis} />
 
       <section className="flex flex-wrap gap-2">
         <div className="rounded-full border border-cyan-400/35 bg-cyan-950/20 px-3 py-1.5 text-sm font-semibold text-cyan-100">{policyLabel}</div>

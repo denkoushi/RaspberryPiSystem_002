@@ -23,21 +23,6 @@ type Props = {
   onControlUiError: (message: string | null) => void;
 };
 
-function scenarioIcon(scenarioId: DgxOrchestrationScenarioIdApi): string {
-  switch (scenarioId) {
-    case 'business_to_private':
-      return '🎨';
-    case 'private_to_business':
-      return '💼';
-    case 'business_to_experiment':
-      return '🧪';
-    case 'experiment_to_business':
-      return '🔄';
-    default:
-      return '⚙️';
-  }
-}
-
 /** 日常運用向け UI: 4操作を選んで、そのまま確認→実行。 */
 export function DgxResourcePrimaryScenarioFlow({
   operator,
@@ -127,10 +112,7 @@ export function DgxResourcePrimaryScenarioFlow({
 
   return (
     <div className="space-y-3">
-      <div>
-        <h3 className="text-lg font-semibold text-white/95">やりたいこと</h3>
-        <p className="mt-0.5 text-sm text-white/55">4つの操作だけ使ってください。内部IDや詳細ログは下部の詳細画面へ退避しています。</p>
-      </div>
+      <h3 className="text-lg font-semibold text-white/95">やりたいこと</h3>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {actions.map((action) => {
@@ -152,17 +134,18 @@ export function DgxResourcePrimaryScenarioFlow({
                 disabled && 'opacity-45'
               )}
             >
-              <div className="text-xl">{scenarioIcon(action.scenarioId)}</div>
-              <div className="mt-1 text-xl font-semibold text-white">{action.labelJa}</div>
-              <p className="mt-1 text-sm text-white/65">{action.subtitleJa}</p>
-              {action.disabledReasonJa ? <p className="mt-2 text-sm text-amber-200">現在は実行できません: {action.disabledReasonJa}</p> : null}
+              <div className="break-words text-xl font-semibold leading-snug text-white">{action.labelJa}</div>
+              <p className="mt-1 break-words text-sm leading-snug text-white/65">{action.subtitleJa}</p>
+              {action.disabledReasonJa ? (
+                <p className="mt-2 break-words text-sm leading-snug text-amber-200">現在は実行できません: {action.disabledReasonJa}</p>
+              ) : null}
             </button>
           );
         })}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/25 p-3">
-        <p className="mr-auto text-sm text-white/70">
+        <p className="min-w-[12rem] flex-1 break-words text-sm leading-snug text-white/70">
           選択中: <span className="font-semibold text-white">{selectedAction?.labelJa ?? 'なし'}</span>
         </p>
         <Button type="button" variant="ghostOnDark" disabled={!selectedAction || busy} onClick={() => void openSimpleConfirm()}>
@@ -177,7 +160,7 @@ export function DgxResourcePrimaryScenarioFlow({
         <p
           role="status"
           className={clsx(
-            'rounded-lg border px-3 py-2 text-sm',
+            'break-words rounded-lg border px-3 py-2 text-sm leading-snug',
             resultNote.tone === 'success'
               ? 'border-emerald-500/35 bg-emerald-950/25 text-emerald-100'
               : 'border-red-500/35 bg-red-950/25 text-red-100'

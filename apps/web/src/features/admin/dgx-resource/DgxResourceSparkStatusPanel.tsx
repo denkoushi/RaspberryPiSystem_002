@@ -41,9 +41,7 @@ export function DgxResourceSparkStatusPanel({ sparkHost }: Props) {
       <span className={`rounded-full border px-2.5 py-1 text-sm font-semibold ${statusPillClass(sparkHost.status)}`}>{label}</span>
       <span className="font-mono text-sm text-white/55">{new Date(sparkHost.probedAt).toLocaleTimeString('ja-JP')}</span>
       {sparkHost.errorBrief ? (
-        <span className="max-w-full truncate text-sm text-amber-100/95" title={sparkHost.errorBrief}>
-          {sparkHost.errorBrief}
-        </span>
+        <span className="max-w-full break-words text-sm leading-snug text-amber-100/95">{sparkHost.errorBrief}</span>
       ) : null}
       {!sparkHost.configured ? <span className="text-sm text-white/45">ENV 未設定</span> : null}
 
@@ -53,11 +51,11 @@ export function DgxResourceSparkStatusPanel({ sparkHost }: Props) {
           <p className="text-xs leading-snug text-white/55">
             Pi5 からの簡易疎通。任意 URL: <span className="font-mono">DGX_RESOURCE_SPARK_HOST_STATUS_URL</span>
           </p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+          <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
             {sparkHost.probeUrl ? (
               <>
                 <dt className="text-white/45">probe</dt>
-                <dd className="truncate font-mono text-xs text-white/65">{sparkHost.probeUrl}</dd>
+                <dd className="break-all font-mono text-xs leading-snug text-white/65">{sparkHost.probeUrl}</dd>
               </>
             ) : null}
             {sparkHost.httpStatus != null ? (
