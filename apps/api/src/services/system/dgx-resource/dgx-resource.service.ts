@@ -625,6 +625,15 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       },
       runTargetRuntimeAction,
       policyStore: deps.policyStore,
+      readinessCoordinator: {
+        collectProbeBundle: async () => {
+          const pb = await collectOverviewProbeBundle();
+          return pb.bundle;
+        },
+        localLlmRuntimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+        readinessDeadlineMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
+        readinessPollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
+      },
     });
 
   return {
