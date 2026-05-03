@@ -66,6 +66,13 @@ describe('DgxResourceProfilePanel', () => {
         },
       ],
       notes: [],
+      monitoring: {
+        activeInferenceSummary: null,
+        sparkSummaryJa: 'テスト用',
+        alerts: [],
+        targetHighlights: [],
+        lastScenarioFailure: null,
+      },
     } satisfies Omit<DgxResourceOverview, 'targets'>;
 
     renderWithClient(

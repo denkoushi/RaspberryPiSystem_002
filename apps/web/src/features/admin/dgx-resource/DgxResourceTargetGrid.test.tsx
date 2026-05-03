@@ -71,6 +71,13 @@ function makeOverview(): DgxResourceOverview {
     },
     services: [],
     notes: [],
+    monitoring: {
+      activeInferenceSummary: null,
+      sparkSummaryJa: 'Spark 未設定（テスト）',
+      alerts: [],
+      targetHighlights: [],
+      lastScenarioFailure: null,
+    },
   };
 }
 

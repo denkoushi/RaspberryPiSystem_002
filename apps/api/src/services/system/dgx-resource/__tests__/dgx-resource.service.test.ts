@@ -372,4 +372,54 @@ describe('createDgxResourceService', () => {
       env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
     }
   });
+
+  it('getOverview exposes monitoring.summary with stable shape', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: false,
+        health: { ok: false },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const svc = makeSvc(store, gateway);
+    const ov = await svc.getOverview();
+
+    expect(ov.monitoring.sparkSummaryJa.length > 0).toBe(true);
+    expect(Array.isArray(ov.monitoring.alerts)).toBe(true);
+    expect(Array.isArray(ov.monitoring.targetHighlights)).toBe(true);
+    expect(ov.monitoring.lastScenarioFailure).toBeNull();
+  });
+
+  it('PREVIEW_ORCHESTRATION_SCENARIO returns planFingerprint; EXECUTE rejects stale fingerprint', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: false,
+        health: { ok: false },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const svc = makeSvc(store, gateway);
+
+    const preview = await svc.executeAction({
+      type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+      scenarioId: 'business_to_private',
+    });
+
+    expect(preview.scenarioPreview).toBeTruthy();
+    expect(preview.scenarioPreview?.planFingerprint).toMatch(/^[a-f0-9]{64}$/);
+
+    await expect(
+      svc.executeAction({
+        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
+        scenarioId: 'business_to_private',
+        planFingerprint: '0'.repeat(64),
+        confirmed: true,
+      })
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'DGX_SCENARIO_PLAN_STALE',
+    });
+  });
 });

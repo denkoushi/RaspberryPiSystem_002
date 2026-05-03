@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { authorizeRoles } from '../../lib/auth.js';
 import { createDgxResourceService } from '../../services/system/dgx-resource/dgx-resource.service.js';
+import { DGX_ORCHESTRATION_SCENARIO_IDS } from '../../services/system/dgx-resource/dgx-resource.scenario-planner.js';
 import { getDgxResourcePolicyStore } from '../../services/system/dgx-resource/dgx-resource.policy-store.js';
 import type { DgxResourceServicePort } from '../../services/system/dgx-resource/dgx-resource.service.js';
 import { DGX_CONTROL_TARGET_IDS } from '../../services/system/dgx-resource/dgx-resource.control-target.types.js';
@@ -11,6 +12,13 @@ import { getInferenceRuntime } from '../../services/inference/inference-runtime.
 
 const dgxControlTargetIdSchema = z.enum(
   DGX_CONTROL_TARGET_IDS as unknown as [typeof DGX_CONTROL_TARGET_IDS[number], ...typeof DGX_CONTROL_TARGET_IDS[number][]]
+);
+
+const orchestrationScenarioIdSchema = z.enum(
+  DGX_ORCHESTRATION_SCENARIO_IDS as unknown as [
+    (typeof DGX_ORCHESTRATION_SCENARIO_IDS)[number],
+    ...(typeof DGX_ORCHESTRATION_SCENARIO_IDS)[number][],
+  ]
 );
 
 const actionBodySchema = z.discriminatedUnion('type', [
@@ -33,6 +41,18 @@ const actionBodySchema = z.discriminatedUnion('type', [
     targetId: dgxControlTargetIdSchema,
     action: z.enum(['start', 'stop']),
     reason: z.string().trim().max(200).optional(),
+  }),
+  z.object({
+    type: z.literal('PREVIEW_ORCHESTRATION_SCENARIO'),
+    scenarioId: orchestrationScenarioIdSchema,
+  }),
+  z.object({
+    type: z.literal('EXECUTE_ORCHESTRATION_SCENARIO'),
+    scenarioId: orchestrationScenarioIdSchema,
+    /** プレビュー応答の planFingerprint と一致している必要があります */
+    planFingerprint: z.string().trim().min(32).max(128),
+    /** 明示的な二段階確認（クライアントは必ず true を送る） */
+    confirmed: z.literal(true),
   }),
 ]);
 
