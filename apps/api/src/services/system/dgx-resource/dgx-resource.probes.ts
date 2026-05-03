@@ -82,7 +82,7 @@ export async function probeV1Models(
   token: string,
   fetchImpl: typeof fetch,
   timeoutMs: number
-): Promise<{ ok: boolean; statusCode?: number }> {
+): Promise<{ ok: boolean; statusCode?: number; inferenceHint?: string }> {
   const { signal, cleanup } = createTimeoutSignal(timeoutMs);
   try {
     const url = new URL('/v1/models', baseUrl);
@@ -91,7 +91,30 @@ export async function probeV1Models(
       headers: { 'X-LLM-Token': token },
       signal,
     });
-    return { ok: response.ok, statusCode: response.status };
+    let inferenceHint: string | undefined;
+    if (response.ok) {
+      try {
+        const body: unknown = await response.clone().json();
+        if (body && typeof body === 'object') {
+          const o = body as Record<string, unknown>;
+          const root = typeof o.root === 'string' ? o.root : undefined;
+          const data = o.data;
+          const first =
+            Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0] !== null
+              ? (data[0] as Record<string, unknown>)
+              : undefined;
+          const modelId = typeof first?.id === 'string' ? first.id : undefined;
+          const modelRoot = typeof first?.root === 'string' ? first.root : undefined;
+          const parts = [modelId ?? modelRoot, root].filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+          if (parts.length > 0) {
+            inferenceHint = parts.slice(0, 2).join(' · ');
+          }
+        }
+      } catch {
+        /* optional parse */
+      }
+    }
+    return { ok: response.ok, statusCode: response.status, ...(inferenceHint ? { inferenceHint } : {}) };
   } catch {
     return { ok: false };
   } finally {

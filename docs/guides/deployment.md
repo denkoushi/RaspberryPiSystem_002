@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX Control Targets（`overview.targets` · `EXECUTE_TARGET_ACTION`）本番反映**）／2026-05-02 項は下記
+最終更新: 2026-05-03（**DGX Phase4（半自動オーケストレーション監視：`PREVIEW_*`/`EXECUTE_*`・`overview.monitoring`）本番反映**）／同日 Control Targets／Phase3／2026-05-02 項は下記
 
 ### 補足（2026-05-03: **DGX Control Targets（標準ターゲット一覧・gateway 起停の正規アクション）**·`feat/dgx-resource-standard-control-targets`·API+Web·Pi5 のみ）
 
@@ -33,6 +33,17 @@ update-frequency: medium
 - **知見**: `update-all-clients.sh` が **両 server と clients と記載していても**、`--limit raspberrypi5` なら Pi4／Pi3 play は **`skipping: no hosts matched`** で問題なし。**正本は `PLAY RECAP` / `*.exit`**（既存 detach 運用どおり）。
 - **トラブルシュート**: **補助起停ボタンが出ない** → Pi5 の `apps/api`/docker `.env` に **`_RUNTIME_START_URL` と `_STOP_URL` の両方**が入っているか（片方のみは **`overview.notes`** に警告が出て起停不可）。**`applyWorkloadChanges` が途切れる** → DGX hook が **503/502** なら **`policy.mode` は変わっていない**可能性が高い。UI は **[verification-checklist.md](verification-checklist.md) §6.6.4 強制リロード**。GPU 競合は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)。
 - **ナレッジ**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+### 補足（2026-05-03: **DGXリソース Phase4（複合運用ガイド・プレビュー指紋付き実行・運用ヒント構造化）**·`feat/dgx-resource-guided-orchestration-monitoring`）
+
+- **変更概要**: `POST /api/system/dgx-resource/actions` に **`PREVIEW_ORCHESTRATION_SCENARIO`** と **`EXECUTE_ORCHESTRATION_SCENARIO`（`planFingerprint`・`confirmed: true`）** を追加。**`EXECUTE`** は環境側のランタイム起停構成が変われば **Stale（`409 / DGX_SCENARIO_PLAN_STALE`）**。`GET /api/system/dgx-resource/overview` に **`monitoring`** を追加し、**Inference/`/v1/models` のヒント**・**競合ヒューリスティクス**・**直近ガイド失敗**などを載せて Web が **運用判断に使える短文**へ昇格させる。**後方互換**: 既存 `SET_POLICY` / `EXECUTE_TARGET_ACTION` は維持。実装モジュール: [`dgx-resource.scenario-planner.ts`](../../apps/api/src/services/system/dgx-resource/dgx-resource.scenario-planner.ts)·[`dgx-resource.monitoring-overview.ts`](../../apps/api/src/services/system/dgx-resource/dgx-resource.monitoring-overview.ts)。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。**Pi3 は単体 Ansible 適用しない**（スクリプト上のサービス確認があるだけで、本変更のコンテナ再起動対象には含めない）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-guided-orchestration-monitoring infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 実装側代表コミット **`522ec93a`**（`feat(dgx): add guided orchestration monitoring`。**`main` マージ後は `merge commit` が正）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-102936-930`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**）。ローカル `update-all-clients.sh --detach --follow` のログ上 **総所要約 663s（Docker compose 再構築を含む）**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 205s**。Pi3 は **検証のみ**・**単体デプロイなし**）。
+- **知見**: `--follow` が **detach 側のログに `PLAY RECAP` が見えても、`*.exit` 書き込み直後までローカルの待機ループが数秒ぶん残る**ことがある。**判断の正本**は **`PLAY RECAP` / `.exit`（`0` 期待）/`summary.json`**。Phase12 は **広域 API と Pi3 signage の疎通**も踏むため、**Pi5 だけ更新しても総所要は 200s 前後になり得る**。
+- **トラブルシュート**: **`409 / DGX_SCENARIO_PLAN_STALE`** → **`PREVIEW` をやり直し**（環境側のランタイム起停構成が変わると fingerptint 変化）。**UI に monitoring が無い** → **`api`/`web` が同一ブランチ**であること・強制リロード（§6.6.4）。
+- **ナレッジ**: [KB-365 §Phase 4](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-4半自動オーケストレーションoverview-運用ヒント実機反映)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-02: **`FKOJUNST_Status` CSV 不在による外部完了（別テーブル・`manual OR external`）**·`feature/fkojunst-external-completion-b`·API+DB·Pi5 のみ）
 

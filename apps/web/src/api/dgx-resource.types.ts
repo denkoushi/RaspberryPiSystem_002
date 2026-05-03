@@ -59,6 +59,69 @@ export type DgxResourceWarmWindow = {
   endHourExclusive?: number;
 };
 
+export type DgxOrchestrationScenarioIdApi =
+  | 'business_to_private'
+  | 'private_to_business'
+  | 'business_to_experiment'
+  | 'experiment_to_business';
+
+export type DgxResourceMonitoringAlertApi = {
+  level: 'info' | 'warning' | 'danger';
+  code: string;
+  title: string;
+  detail: string;
+};
+
+export type DgxResourceScenarioFailureSummaryApi = {
+  scenarioId: string;
+  at: string;
+  message: string;
+  completedStepOrders: number[];
+};
+
+export type DgxResourceMonitoringSummaryApi = {
+  activeInferenceSummary: string | null;
+  sparkSummaryJa: string;
+  alerts: DgxResourceMonitoringAlertApi[];
+  targetHighlights: Array<{ id: string; label: string; status: DgxServiceStatusKind }>;
+  lastScenarioFailure: DgxResourceScenarioFailureSummaryApi | null;
+};
+
+export type ScenarioWorkloadStepPreviewApi = {
+  kind: 'workload';
+  order: number;
+  targetId: string;
+  action: 'start' | 'stop';
+  summaryJa: string;
+};
+
+export type ScenarioPolicyStepPreviewApi = {
+  kind: 'policy';
+  order: number;
+  policyMode: DgxPolicyModeApi;
+  summaryJa: string;
+};
+
+export type ScenarioStepPreviewApi = ScenarioWorkloadStepPreviewApi | ScenarioPolicyStepPreviewApi;
+
+export type ScenarioPlanPreviewApi = {
+  scenarioId: DgxOrchestrationScenarioIdApi;
+  targetPolicyMode: DgxPolicyModeApi;
+  applyWorkloadChanges: boolean;
+  planFingerprint: string;
+  steps: ScenarioStepPreviewApi[];
+  warnings: string[];
+};
+
+export type DgxResourceScenarioExecuteResultApi = {
+  scenarioId: DgxOrchestrationScenarioIdApi;
+  success: boolean;
+  completedStepOrders: number[];
+  completedPolicyApplied: boolean;
+  failureMessageJa?: string;
+  recommendedNextJa?: string;
+};
+
 export type DgxResourceOverview = {
   generatedAt: string;
   kpis: DgxResourceKpis;
@@ -86,6 +149,7 @@ export type DgxResourceOverview = {
   /** @deprecated 後方互換。表示は targets を優先 */
   services: DgxResourceServiceCard[];
   notes: string[];
+  monitoring: DgxResourceMonitoringSummaryApi;
 };
 
 export type DgxResourceEvent = {
@@ -107,9 +171,18 @@ export type DgxResourceActionBody =
       targetId: DgxControlTargetIdApi;
       action: 'start' | 'stop';
       reason?: string;
+    }
+  | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioIdApi }
+  | {
+      type: 'EXECUTE_ORCHESTRATION_SCENARIO';
+      scenarioId: DgxOrchestrationScenarioIdApi;
+      planFingerprint: string;
+      confirmed: true;
     };
 
 export type DgxResourceActionResult = {
   ok: true;
   message: string;
+  scenarioPreview?: ScenarioPlanPreviewApi;
+  scenarioExecute?: DgxResourceScenarioExecuteResultApi;
 };

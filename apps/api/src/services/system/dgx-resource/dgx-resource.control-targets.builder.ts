@@ -15,7 +15,7 @@ export type OverviewProbeBundle = {
   policyMode: DgxPolicyMode;
   adminCfg: LocalLlmRuntimeConfig;
   gatewayStatus: LocalLlmStatus;
-  modelsProbe: { ok: boolean; statusCode?: number };
+  modelsProbe: { ok: boolean; statusCode?: number; inferenceHint?: string };
   metricsConfigured: boolean;
   metricsPayload: MetricsPayload | undefined;
   comfyConfigured: boolean;
@@ -130,6 +130,7 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
       badges: modelsProbe.ok ? [] : inferenceStatus === 'degraded' ? ['degraded'] : [],
       metaLines: [
         ...(modelsProbe.statusCode !== undefined ? [`/v1/models → ${modelsProbe.statusCode}`] : []),
+        ...(modelsProbe.inferenceHint?.trim() ? [`inference routing: ${modelsProbe.inferenceHint}`] : []),
         ...(adminCfg.model ? [`model hint: ${adminCfg.model}`] : []),
       ],
     },
@@ -265,6 +266,7 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
       badges: modelsProbe.ok ? [] : inferenceStatus === 'degraded' ? ['degraded'] : [],
       metaLines: [
         ...(modelsProbe.statusCode !== undefined ? [`/v1/models → ${modelsProbe.statusCode}`] : []),
+        ...(modelsProbe.inferenceHint?.trim() ? [`inference routing: ${modelsProbe.inferenceHint}`] : []),
         ...(adminCfg.model ? [`model hint: ${adminCfg.model}`] : []),
       ],
     },

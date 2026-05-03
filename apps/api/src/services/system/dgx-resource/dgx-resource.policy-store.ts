@@ -9,6 +9,13 @@ export type DgxResourceEvent = {
   message: string;
 };
 
+export type DgxResourceScenarioFailureSummary = {
+  scenarioId: string;
+  at: string;
+  message: string;
+  completedStepOrders: number[];
+};
+
 export class DgxResourcePolicyStore {
   private policyMode: DgxPolicyMode = 'business_first';
 
@@ -16,6 +23,8 @@ export class DgxResourcePolicyStore {
   private previousPolicyMode: DgxPolicyMode | null = null;
 
   private readonly events: DgxResourceEvent[] = [];
+
+  private lastScenarioFailure: DgxResourceScenarioFailureSummary | null = null;
 
   constructor(private readonly maxEvents: number) {}
 
@@ -32,6 +41,18 @@ export class DgxResourcePolicyStore {
     this.previousPolicyMode = this.policyMode;
     this.policyMode = mode;
     return true;
+  }
+
+  recordScenarioFailure(summary: Omit<DgxResourceScenarioFailureSummary, 'at'>): void {
+    this.lastScenarioFailure = { ...summary, at: new Date().toISOString() };
+  }
+
+  clearScenarioFailure(): void {
+    this.lastScenarioFailure = null;
+  }
+
+  getLastScenarioFailure(): DgxResourceScenarioFailureSummary | null {
+    return this.lastScenarioFailure;
   }
 
   appendEvent(message: string): void {

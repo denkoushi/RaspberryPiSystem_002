@@ -18,6 +18,14 @@ import {
   type OverviewProbeBundle,
 } from './dgx-resource.control-targets.builder.js';
 import { planWorkloadAdjustmentsBeforePolicyChange } from './dgx-resource.policy-arbitrator.js';
+import {
+  buildOrchestrationScenarioPreview,
+  computeScenarioPlanFingerprint,
+  resolveScenarioPolicyIntent,
+  type DgxOrchestrationScenarioId,
+  type ScenarioPlanPreview,
+} from './dgx-resource.scenario-planner.js';
+import { buildDgxResourceMonitoringOverview, type DgxResourceMonitoringSummary } from './dgx-resource.monitoring-overview.js';
 import { fetchJsonMetrics, probeHttpGet, probeHttpOk, probeV1Models } from './dgx-resource.probes.js';
 
 import type { LocalLlmGateway, LocalLlmRuntimeConfig } from '../local-llm-proxy.service.js';
@@ -35,6 +43,23 @@ export type DgxResourceKpis = {
   /** グラフ配色などはこちらで分岐（表示ラベル文字列依存を避ける） */
   policyMode: DgxPolicyMode;
   policyLabel: string;
+};
+
+export type DgxResourceScenarioExecuteResult = {
+  scenarioId: DgxOrchestrationScenarioId;
+  success: boolean;
+  completedStepOrders: number[];
+  completedPolicyApplied: boolean;
+  failureMessageJa?: string;
+  recommendedNextJa?: string;
+};
+
+/** API POST /system/dgx-resource/actions の戻り（後方互換: message と ok は常に設定） */
+export type DgxResourceActionResult = {
+  ok: true;
+  message: string;
+  scenarioPreview?: ScenarioPlanPreview;
+  scenarioExecute?: DgxResourceScenarioExecuteResult;
 };
 
 export type DgxSparkHostOverview = {
@@ -82,6 +107,8 @@ export type DgxResourceOverview = {
   /** @deprecated 後方互換。UI は targets を優先 */
   services: DgxResourceServiceCard[];
   notes: string[];
+  /** Phase4 以降の構造化運用ヒント・アラート */
+  monitoring: DgxResourceMonitoringSummary;
 };
 
 export type DgxResourceActionBody =
@@ -93,11 +120,18 @@ export type DgxResourceActionBody =
       targetId: DgxControlTargetId;
       action: DgxControlTargetAction;
       reason?: string;
+    }
+  | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioId }
+  | {
+      type: 'EXECUTE_ORCHESTRATION_SCENARIO';
+      scenarioId: DgxOrchestrationScenarioId;
+      planFingerprint: string;
+      confirmed: true;
     };
 
 export type DgxResourceServicePort = {
   getOverview: () => Promise<DgxResourceOverview>;
-  executeAction: (body: DgxResourceActionBody) => Promise<{ ok: true; message: string }>;
+  executeAction: (body: DgxResourceActionBody) => Promise<DgxResourceActionResult>;
   getEvents: (limit: number) => DgxResourceEvent[];
 };
 
@@ -157,10 +191,202 @@ function experimentLabRuntimeControlConfigured(): boolean {
   return readExperimentLabRuntimeEndpoints() !== undefined;
 }
 
+function summarizeControlErrorJa(error: unknown): string {
+  if (typeof error === 'object' && error != null && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return '予期しないエラーにより停止しました';
+}
+
+function inferenceHeuristics(bundle: OverviewProbeBundle): {
+  inferenceLooksDegraded: boolean;
+  comfyLooksRunning: boolean;
+} {
+  const gatewayRunning = bundle.gatewayStatus.configured && bundle.gatewayStatus.health.ok;
+  const inferenceLooksDegraded = Boolean(gatewayRunning && !bundle.modelsProbe.ok && bundle.gatewayStatus.configured);
+  const comfyLooksRunning = Boolean(bundle.comfyConfigured && bundle.comfyReachable);
+  return { inferenceLooksDegraded, comfyLooksRunning };
+}
+
 type TargetRuntimeEventLogMode = 'default' | 'none';
 
 export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResourceServicePort {
   const auxTimeoutMs = env.DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS;
+
+  const collectOverviewProbeBundle = async (): Promise<{
+    generatedAt: string;
+    policyMode: DgxPolicyMode;
+    previousMode: DgxPolicyMode | null;
+    adminCfg: LocalLlmRuntimeConfig;
+    gatewayStatus: Awaited<ReturnType<LocalLlmGateway['getStatus']>>;
+    bundle: OverviewProbeBundle;
+    runtimeControlConfigured: boolean;
+    comfyRtCfg: boolean;
+    expLabRtCfg: boolean;
+    metricsConfigured: boolean;
+    comfyConfigured: boolean;
+    embeddingConfigured: boolean;
+    sparkConfigured: boolean;
+    experimentLabHealthConfigured: boolean;
+    experimentLabProbeUrl: string | undefined;
+    sparkHost: DgxSparkHostOverview;
+    notes: string[];
+  }> => {
+    const generatedAt = new Date().toISOString();
+    const policyMode = deps.policyStore.getPolicyMode();
+    const previousMode = deps.policyStore.getPreviousPolicyMode();
+
+    const adminCfg = deps.getAdminLocalLlmRuntimeConfig();
+    const gatewayStatus = await deps.localLlmGateway.getStatus();
+
+    let modelsProbe: OverviewProbeBundle['modelsProbe'] = { ok: false };
+    if (
+      gatewayStatus.configured &&
+      adminCfg.configured &&
+      adminCfg.baseUrl &&
+      adminCfg.sharedToken &&
+      gatewayStatus.health.ok
+    ) {
+      modelsProbe = await probeV1Models(adminCfg.baseUrl, adminCfg.sharedToken, deps.fetchImpl, deps.probeTimeoutMs);
+    }
+
+    const metricsConfigured = Boolean(deps.metricsUrl?.trim());
+    const metricsPayload = metricsConfigured
+      ? await fetchJsonMetrics(deps.metricsUrl!, deps.fetchImpl, deps.probeTimeoutMs)
+      : undefined;
+
+    const comfyConfigured = Boolean(deps.comfyHealthUrl?.trim());
+    let comfyReachable = false;
+    if (comfyConfigured) {
+      comfyReachable = await probeHttpOk(deps.comfyHealthUrl!, deps.fetchImpl, deps.probeTimeoutMs);
+    }
+
+    const embeddingConfigured = Boolean(deps.embeddingHealthUrl?.trim());
+    let embeddingReachable = false;
+    let embeddingProbeDisplay: string | undefined;
+    if (embeddingConfigured && adminCfg.sharedToken && adminCfg.baseUrl) {
+      const raw = deps.embeddingHealthUrl!;
+      embeddingProbeDisplay = raw;
+      const embUrl =
+        raw.startsWith('http://') || raw.startsWith('https://')
+          ? raw
+          : new URL(raw, adminCfg.baseUrl).toString();
+      embeddingReachable = await probeHttpOk(embUrl, deps.fetchImpl, deps.probeTimeoutMs, {
+        'X-LLM-Token': adminCfg.sharedToken,
+      });
+    }
+
+    const explicitSparkUrl = deps.sparkHostStatusUrl?.trim();
+    const fallbackSparkUrl =
+      !explicitSparkUrl && adminCfg.baseUrl ? new URL('/healthz', adminCfg.baseUrl).toString() : undefined;
+    const sparkUrl = explicitSparkUrl || fallbackSparkUrl;
+    const sparkConfigured = Boolean(sparkUrl);
+    let sparkProbe: { ok: boolean; statusCode?: number; errorBrief?: string } = { ok: false };
+    if (sparkConfigured) {
+      sparkProbe = await probeHttpGet(sparkUrl!, deps.fetchImpl, deps.probeTimeoutMs);
+    }
+
+    const experimentLabHealthConfigured = Boolean(env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim());
+    let experimentLabReachable = false;
+    const experimentLabProbeUrl = env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim();
+    if (experimentLabHealthConfigured && experimentLabProbeUrl) {
+      experimentLabReachable = await probeHttpOk(experimentLabProbeUrl, deps.fetchImpl, deps.probeTimeoutMs);
+    }
+
+    const runtimeControlConfigured = gatewayRuntimeControlConfiguredFlag();
+    const comfyRtCfg = comfyRuntimeControlConfigured();
+    const expLabRtCfg = experimentLabRuntimeControlConfigured();
+
+    const bundle: OverviewProbeBundle = {
+      policyMode,
+      adminCfg,
+      gatewayStatus,
+      modelsProbe,
+      metricsConfigured,
+      metricsPayload,
+      comfyConfigured,
+      comfyReachable,
+      comfyProbeUrl: deps.comfyHealthUrl ?? undefined,
+      embeddingConfigured,
+      embeddingReachable,
+      embeddingProbeDisplay,
+      sparkUrl,
+      sparkConfigured,
+      sparkProbe,
+      runtimeControlConfigured,
+      comfyRuntimeControlConfigured: comfyRtCfg,
+      experimentLabHealthConfigured,
+      experimentLabReachable,
+      experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
+      experimentLabRuntimeControlConfigured: expLabRtCfg,
+    };
+
+    const notes: string[] = [];
+    if (!metricsConfigured) {
+      notes.push('GPU/メモリKPI は DGX_RESOURCE_METRICS_URL が未設定のため取得していません');
+    }
+    if (!comfyConfigured) {
+      notes.push(
+        'ComfyUI は DGX_RESOURCE_COMFYUI_HEALTH_URL 未設定のため疎通のみ表示できません（SSH ポートフォワード運用は Runbook 参照）'
+      );
+    }
+    if (!sparkConfigured) {
+      notes.push(
+        'DGX Spark ホスト簡易監視は DGX_RESOURCE_SPARK_HOST_STATUS_URL 未設定のため未取得です（メトリクス sidecar の /health 等を Runbook で設定）'
+      );
+    }
+
+    const cStart = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL?.trim();
+    const cStop = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL?.trim();
+    if ((cStart && !cStop) || (!cStart && cStop)) {
+      notes.push(
+        'DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
+      );
+    }
+
+    const eStart = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL?.trim();
+    const eStop = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL?.trim();
+    if ((eStart && !eStop) || (!eStart && eStop)) {
+      notes.push(
+        'DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
+      );
+    }
+
+    if (!experimentLabHealthConfigured && expLabRtCfg) {
+      notes.push(
+        'experiment-lab のヘルス URL 未設定のため状態は不明ですが、起停用 POST は利用できます（任意で DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL）'
+      );
+    }
+
+    const sparkHost: DgxSparkHostOverview = {
+      configured: sparkConfigured,
+      probedAt: generatedAt,
+      status: sparkConfigured ? (sparkProbe.ok ? 'running' : 'stopped') : 'unknown',
+      ...(sparkConfigured && sparkUrl ? { probeUrl: sparkUrl } : {}),
+      ...(sparkProbe.statusCode !== undefined ? { httpStatus: sparkProbe.statusCode } : {}),
+      ...(sparkProbe.errorBrief && !sparkProbe.ok ? { errorBrief: sparkProbe.errorBrief } : {}),
+    };
+
+    return {
+      generatedAt,
+      policyMode,
+      previousMode,
+      adminCfg,
+      gatewayStatus,
+      bundle,
+      runtimeControlConfigured,
+      comfyRtCfg,
+      expLabRtCfg,
+      metricsConfigured,
+      comfyConfigured,
+      embeddingConfigured,
+      sparkConfigured,
+      experimentLabHealthConfigured,
+      experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
+      sparkHost,
+      notes,
+    };
+  };
 
   const runGatewayRuntimeStartStop = async (
     action: DgxControlTargetAction,
@@ -286,12 +512,11 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   ): Promise<{ ok: true; message: string }> =>
     runTargetRuntimeAction(targetId, action, reason, 'default');
 
-  const handleSetPolicy = async (
+  const executeWorkloadTransitionsThenApplyPolicyMode = async (
     mode: DgxPolicyMode,
-    opts?: { applyWorkloadChanges?: boolean }
+    applyWorkloadChanges: boolean,
+    workloadTraceReason: string
   ): Promise<{ ok: true; message: string }> => {
-    const applyWorkloadChanges = Boolean(opts?.applyWorkloadChanges);
-
     const plan = planWorkloadAdjustmentsBeforePolicyChange({
       nextMode: mode,
       applyWorkloadChanges,
@@ -301,14 +526,17 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     });
 
     for (const step of plan) {
-      await runTargetRuntimeAction(step.targetId, step.action, 'policy_workload_transition', 'none');
+      await runTargetRuntimeAction(step.targetId, step.action, workloadTraceReason, 'none');
       deps.policyStore.appendEvent(step.eventMessageJa);
     }
 
     const changed = deps.policyStore.setPolicyMode(mode);
     if (!changed) {
       if (plan.length > 0) {
-        return { ok: true, message: `${policyLabelJa(mode)}モードのまま。ワークロード調整のみ実行しました` };
+        return {
+          ok: true,
+          message: `${policyLabelJa(mode)}モードのまま。ワークロード調整のみ実行しました`,
+        };
       }
       return { ok: true, message: `${policyLabelJa(mode)}モードのままです` };
     }
@@ -317,203 +545,222 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     return { ok: true, message: msg };
   };
 
+  const handleSetPolicy = async (
+    mode: DgxPolicyMode,
+    opts?: { applyWorkloadChanges?: boolean }
+  ): Promise<DgxResourceActionResult> => {
+    const res = await executeWorkloadTransitionsThenApplyPolicyMode(
+      mode,
+      Boolean(opts?.applyWorkloadChanges),
+      'policy_ui'
+    );
+    deps.policyStore.clearScenarioFailure();
+    return res;
+  };
+
+  const orchestrationScenarioPreview = async (
+    scenarioId: DgxOrchestrationScenarioId
+  ): Promise<DgxResourceActionResult> => {
+    const pb = await collectOverviewProbeBundle();
+    const hints = inferenceHeuristics(pb.bundle);
+    const preview = buildOrchestrationScenarioPreview({
+      scenarioId,
+      comfyRuntimeConfigured: pb.bundle.comfyRuntimeControlConfigured,
+      experimentLabRuntimeConfigured: pb.bundle.experimentLabRuntimeControlConfigured,
+      gatewayRuntimeConfigured: pb.bundle.runtimeControlConfigured,
+      currentPolicyMode: pb.bundle.policyMode,
+      inferenceLooksDegraded: hints.inferenceLooksDegraded,
+      comfyLooksRunning: hints.comfyLooksRunning,
+    });
+
+    const lines = preview.steps.map((s) => `${s.order}. ${s.summaryJa}`).join(' / ');
+    return {
+      ok: true,
+      message: preview.warnings.length > 0 ? `プレビュー（警告あり）: ${lines}` : `プレビュー（${lines}）`,
+      scenarioPreview: preview,
+    };
+  };
+
+  const orchestrationScenarioExecute = async (
+    scenarioId: DgxOrchestrationScenarioId,
+    planFingerprint: string
+  ): Promise<DgxResourceActionResult> => {
+    const comfyRt = comfyRuntimeControlConfigured();
+    const expRt = experimentLabRuntimeControlConfigured();
+    const gwRt = gatewayRuntimeControlConfiguredFlag();
+    const intent = resolveScenarioPolicyIntent(scenarioId);
+
+    const recomputedFingerprint = computeScenarioPlanFingerprint({
+      scenarioId,
+      targetPolicyMode: intent.targetPolicyMode,
+      applyWorkloadChanges: intent.applyWorkloadChanges,
+      comfyRuntimeConfigured: comfyRt,
+      experimentLabRuntimeConfigured: expRt,
+      gatewayRuntimeConfigured: gwRt,
+    });
+
+    if (recomputedFingerprint !== planFingerprint.trim()) {
+      throw new ApiError(
+        409,
+        'プレビュー後に起停設定や計画前提が変わったかプレビューが古くなった可能性があります（指紋不一致）。もう一度プレビューを取得してください。',
+        { scenarioId, expectedPrefix: recomputedFingerprint.slice(0, 12) },
+        'DGX_SCENARIO_PLAN_STALE'
+      );
+    }
+
+    const plan = planWorkloadAdjustmentsBeforePolicyChange({
+      nextMode: intent.targetPolicyMode,
+      applyWorkloadChanges: intent.applyWorkloadChanges,
+      comfyRuntimeConfigured: comfyRt,
+      experimentLabRuntimeConfigured: expRt,
+      gatewayRuntimeConfigured: gwRt,
+    });
+
+    const completedStepOrders: number[] = [];
+
+    deps.policyStore.clearScenarioFailure();
+
+    let workloadOrderCounter = 1;
+    try {
+      for (const step of plan) {
+        await runTargetRuntimeAction(step.targetId, step.action, 'scenario_guide', 'none');
+        deps.policyStore.appendEvent(step.eventMessageJa);
+        completedStepOrders.push(workloadOrderCounter++);
+      }
+
+      const changed = deps.policyStore.setPolicyMode(intent.targetPolicyMode);
+      let msg: string;
+
+      if (!changed) {
+        if (plan.length > 0) {
+          msg = `${policyLabelJa(intent.targetPolicyMode)}モードのまま。ワークロード調停のみ適用しました（ガイド）`;
+        } else {
+          msg = `${policyLabelJa(intent.targetPolicyMode)}モードのままです（ガイド）`;
+        }
+      } else {
+        msg = setPolicyEventMessage(intent.targetPolicyMode);
+        deps.policyStore.appendEvent(msg);
+      }
+
+      const policyStepOrder = workloadOrderCounter;
+      completedStepOrders.push(policyStepOrder);
+
+      deps.policyStore.clearScenarioFailure();
+
+      return {
+        ok: true,
+        message: msg,
+        scenarioExecute: {
+          scenarioId,
+          success: true,
+          completedStepOrders,
+          completedPolicyApplied: changed,
+          recommendedNextJa:
+            `/v1/models と Control Targets が期待どおりになるまで数十秒〜数十分かかることがあります（blue cold start 等）。`,
+        },
+      };
+    } catch (error: unknown) {
+      const brief = summarizeControlErrorJa(error);
+      deps.policyStore.recordScenarioFailure({
+        scenarioId,
+        message: brief,
+        completedStepOrders,
+      });
+      deps.policyStore.appendEvent(`ガイド ${scenarioId} が途中停止: ${brief}`);
+      return {
+        ok: true,
+        message: brief,
+        scenarioExecute: {
+          scenarioId,
+          success: false,
+          completedStepOrders,
+          completedPolicyApplied: false,
+          failureMessageJa: brief,
+          recommendedNextJa:
+            'Control Targets とイベントログを確認してください。環境側で一部 POST が通っていることがあるため、そのまま単発操作での復旧や Runbook / KB-364 に従ってください',
+        },
+      };
+    }
+  };
+
   return {
     getEvents(limit: number): DgxResourceEvent[] {
       return deps.policyStore.getEvents(limit);
     },
 
-    async executeAction(body: DgxResourceActionBody): Promise<{ ok: true; message: string }> {
+    async executeAction(body: DgxResourceActionBody): Promise<DgxResourceActionResult> {
       if (body.type === 'SET_POLICY') {
         return handleSetPolicy(body.policyMode, {
           applyWorkloadChanges: body.applyWorkloadChanges,
         });
       }
+      if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
+        return orchestrationScenarioPreview(body.scenarioId);
+      }
+      if (body.type === 'EXECUTE_ORCHESTRATION_SCENARIO') {
+        return orchestrationScenarioExecute(body.scenarioId, body.planFingerprint);
+      }
       if (body.type === 'EXECUTE_TARGET_ACTION') {
-        return handleExecuteTargetAction(body.targetId, body.action, body.reason);
+        const r = await handleExecuteTargetAction(body.targetId, body.action, body.reason);
+        deps.policyStore.clearScenarioFailure();
+        return r;
       }
       if (body.type === 'LOCAL_LLM_START') {
-        return handleExecuteTargetAction('system-prod-gateway', 'start', body.reason);
+        const r = await handleExecuteTargetAction('system-prod-gateway', 'start', body.reason);
+        deps.policyStore.clearScenarioFailure();
+        return r;
       }
-      return handleExecuteTargetAction('system-prod-gateway', 'stop', body.reason);
+      const r = await handleExecuteTargetAction('system-prod-gateway', 'stop', body.reason);
+      deps.policyStore.clearScenarioFailure();
+      return r;
     },
 
     async getOverview(): Promise<DgxResourceOverview> {
-      const generatedAt = new Date().toISOString();
-      const policyMode = deps.policyStore.getPolicyMode();
-      const previousMode = deps.policyStore.getPreviousPolicyMode();
-
-      const adminCfg = deps.getAdminLocalLlmRuntimeConfig();
-      const gatewayStatus = await deps.localLlmGateway.getStatus();
-
-      let modelsProbe: { ok: boolean; statusCode?: number } = { ok: false };
-      if (
-        gatewayStatus.configured &&
-        adminCfg.configured &&
-        adminCfg.baseUrl &&
-        adminCfg.sharedToken &&
-        gatewayStatus.health.ok
-      ) {
-        modelsProbe = await probeV1Models(
-          adminCfg.baseUrl,
-          adminCfg.sharedToken,
-          deps.fetchImpl,
-          deps.probeTimeoutMs
-        );
-      }
-
-      const metricsConfigured = Boolean(deps.metricsUrl?.trim());
-      const metricsPayload = metricsConfigured
-        ? await fetchJsonMetrics(deps.metricsUrl!, deps.fetchImpl, deps.probeTimeoutMs)
-        : undefined;
-
-      const comfyConfigured = Boolean(deps.comfyHealthUrl?.trim());
-      let comfyReachable = false;
-      if (comfyConfigured) {
-        comfyReachable = await probeHttpOk(deps.comfyHealthUrl!, deps.fetchImpl, deps.probeTimeoutMs);
-      }
-
-      const embeddingConfigured = Boolean(deps.embeddingHealthUrl?.trim());
-      let embeddingReachable = false;
-      let embeddingProbeDisplay: string | undefined;
-      if (embeddingConfigured && adminCfg.sharedToken && adminCfg.baseUrl) {
-        const raw = deps.embeddingHealthUrl!;
-        embeddingProbeDisplay = raw;
-        const embUrl =
-          raw.startsWith('http://') || raw.startsWith('https://')
-            ? raw
-            : new URL(raw, adminCfg.baseUrl).toString();
-        embeddingReachable = await probeHttpOk(embUrl, deps.fetchImpl, deps.probeTimeoutMs, {
-          'X-LLM-Token': adminCfg.sharedToken,
-        });
-      }
-
-      const explicitSparkUrl = deps.sparkHostStatusUrl?.trim();
-      const fallbackSparkUrl =
-        !explicitSparkUrl && adminCfg.baseUrl ? new URL('/healthz', adminCfg.baseUrl).toString() : undefined;
-      const sparkUrl = explicitSparkUrl || fallbackSparkUrl;
-      const sparkConfigured = Boolean(sparkUrl);
-      let sparkProbe: { ok: boolean; statusCode?: number; errorBrief?: string } = { ok: false };
-      if (sparkConfigured) {
-        sparkProbe = await probeHttpGet(sparkUrl!, deps.fetchImpl, deps.probeTimeoutMs);
-      }
-
-      const experimentLabHealthConfigured = Boolean(env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim());
-      let experimentLabReachable = false;
-      const experimentLabProbeUrl = env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim();
-      if (experimentLabHealthConfigured && experimentLabProbeUrl) {
-        experimentLabReachable = await probeHttpOk(experimentLabProbeUrl, deps.fetchImpl, deps.probeTimeoutMs);
-      }
-
-      const runtimeControlConfigured = gatewayRuntimeControlConfiguredFlag();
-      const comfyRtCfg = comfyRuntimeControlConfigured();
-      const expLabRtCfg = experimentLabRuntimeControlConfigured();
-
-      const bundle: OverviewProbeBundle = {
-        policyMode,
-        adminCfg,
-        gatewayStatus,
-        modelsProbe,
-        metricsConfigured,
-        metricsPayload,
-        comfyConfigured,
-        comfyReachable,
-        comfyProbeUrl: deps.comfyHealthUrl ?? undefined,
-        embeddingConfigured,
-        embeddingReachable,
-        embeddingProbeDisplay,
-        sparkUrl,
-        sparkConfigured,
-        sparkProbe,
-        runtimeControlConfigured,
-        comfyRuntimeControlConfigured: comfyRtCfg,
-        experimentLabHealthConfigured,
-        experimentLabReachable,
-        experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
-        experimentLabRuntimeControlConfigured: expLabRtCfg,
-      };
-
+      const pb = await collectOverviewProbeBundle();
+      const bundle = pb.bundle;
       const targets = buildControlTargetSnapshots(bundle);
       const services = buildLegacyServiceCards(bundle);
-
-      const notes: string[] = [];
-      if (!metricsConfigured) {
-        notes.push('GPU/メモリKPI は DGX_RESOURCE_METRICS_URL が未設定のため取得していません');
-      }
-      if (!comfyConfigured) {
-        notes.push(
-          'ComfyUI は DGX_RESOURCE_COMFYUI_HEALTH_URL 未設定のため疎通のみ表示できません（SSH ポートフォワード運用は Runbook 参照）'
-        );
-      }
-      if (!sparkConfigured) {
-        notes.push(
-          'DGX Spark ホスト簡易監視は DGX_RESOURCE_SPARK_HOST_STATUS_URL 未設定のため未取得です（メトリクス sidecar の /health 等を Runbook で設定）'
-        );
-      }
-
-      const cStart = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL?.trim();
-      const cStop = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL?.trim();
-      if ((cStart && !cStop) || (!cStart && cStop)) {
-        notes.push(
-          'DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
-        );
-      }
-
-      const eStart = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL?.trim();
-      const eStop = env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL?.trim();
-      if ((eStart && !eStop) || (!eStart && eStop)) {
-        notes.push(
-          'DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
-        );
-      }
-
-      if (!experimentLabHealthConfigured && expLabRtCfg) {
-        notes.push(
-          'experiment-lab のヘルス URL 未設定のため状態は不明ですが、起停用 POST は利用できます（任意で DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL）'
-        );
-      }
-
-      const sparkHost: DgxSparkHostOverview = {
-        configured: sparkConfigured,
-        probedAt: generatedAt,
-        status: sparkConfigured ? (sparkProbe.ok ? 'running' : 'stopped') : 'unknown',
-        ...(sparkConfigured && sparkUrl ? { probeUrl: sparkUrl } : {}),
-        ...(sparkProbe.statusCode !== undefined ? { httpStatus: sparkProbe.statusCode } : {}),
-        ...(sparkProbe.errorBrief && !sparkProbe.ok ? { errorBrief: sparkProbe.errorBrief } : {}),
-      };
+      const monitoring = buildDgxResourceMonitoringOverview({
+        bundle,
+        targets,
+        adminCfg: pb.adminCfg,
+        lastScenarioFailure: deps.policyStore.getLastScenarioFailure(),
+      });
 
       return {
-        generatedAt,
+        generatedAt: pb.generatedAt,
         kpis: {
-          gpuUtilPct: metricsPayload?.gpuUtilPct ?? null,
-          unifiedMemoryUsedGiB: metricsPayload?.unifiedMemoryUsedGiB ?? null,
-          unifiedMemoryTotalGiB: metricsPayload?.unifiedMemoryTotalGiB ?? null,
-          freeMemoryGiB: metricsPayload?.freeMemoryGiB ?? null,
-          policyMode,
-          policyLabel: policyLabelJa(policyMode),
+          gpuUtilPct: bundle.metricsPayload?.gpuUtilPct ?? null,
+          unifiedMemoryUsedGiB: bundle.metricsPayload?.unifiedMemoryUsedGiB ?? null,
+          unifiedMemoryTotalGiB: bundle.metricsPayload?.unifiedMemoryTotalGiB ?? null,
+          freeMemoryGiB: bundle.metricsPayload?.freeMemoryGiB ?? null,
+          policyMode: pb.policyMode,
+          policyLabel: policyLabelJa(pb.policyMode),
         },
         policy: {
-          mode: policyMode,
-          previousMode,
-          comfyStartBlockedHint: isBusinessFirstSuppressionHintActive(policyMode),
+          mode: pb.policyMode,
+          previousMode: pb.previousMode,
+          comfyStartBlockedHint: isBusinessFirstSuppressionHintActive(pb.policyMode),
         },
         runtime: {
           localLlmMode: env.LOCAL_LLM_RUNTIME_MODE,
-          runtimeControlConfigured,
+          runtimeControlConfigured: pb.runtimeControlConfigured,
           warmWindow: buildWarmWindow(),
         },
         optionalProbes: {
-          metricsConfigured,
-          comfyHealthConfigured: comfyConfigured,
-          embeddingHealthConfigured: embeddingConfigured,
-          sparkHostConfigured: sparkConfigured,
-          comfyRuntimeControlConfigured: comfyRtCfg,
-          experimentLabHealthConfigured,
-          experimentLabRuntimeControlConfigured: expLabRtCfg,
+          metricsConfigured: pb.metricsConfigured,
+          comfyHealthConfigured: pb.comfyConfigured,
+          embeddingHealthConfigured: pb.embeddingConfigured,
+          sparkHostConfigured: pb.sparkConfigured,
+          comfyRuntimeControlConfigured: pb.comfyRtCfg,
+          experimentLabHealthConfigured: pb.experimentLabHealthConfigured,
+          experimentLabRuntimeControlConfigured: pb.expLabRtCfg,
         },
         targets,
-        sparkHost,
+        sparkHost: pb.sparkHost,
         services,
-        notes,
+        notes: pb.notes,
+        monitoring,
       };
     },
   };

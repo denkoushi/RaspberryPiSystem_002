@@ -12,6 +12,8 @@ import { useConfirm } from '../../../contexts/ConfirmContext';
 
 import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
 import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
+import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
+import { DgxResourceOrchestrationPanel } from './DgxResourceOrchestrationPanel';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
@@ -150,6 +152,8 @@ export function DgxResourceDashboard() {
 
             <aside className="flex min-h-0 shrink-0 flex-col gap-2 lg:col-span-4">
               <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
+              <DgxResourceMonitoringPanel monitoring={overview.monitoring} />
+              <DgxResourceOrchestrationPanel onControlUiError={(m) => setActionError(m)} />
               <DgxResourcePolicyPanel overview={overview} onControlUiError={(m) => setActionError(m)} />
               <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-white/10 bg-slate-900/40 px-3 py-3 lg:overflow-hidden">
                 <DgxResourceEventsTimeline events={eventsQuery.data?.events ?? []} />
