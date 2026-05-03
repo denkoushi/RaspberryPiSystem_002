@@ -3,6 +3,7 @@
 DGX system-prod 用のローカル gateway。
 
 - /healthz は 200 ok
+- /system/metrics は GPU/メモリ JSON（Pi KPI 用）。X-LLM-Token が LLM_SHARED_TOKEN と一致することを要求（/v1/* と同様）
 - /start /stop は runtime control へ転送
 - /v1/* は active backend へ転送
 
@@ -148,6 +149,81 @@ def is_container_running(container_name: str) -> bool:
     return container_name in names
 
 
+def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
+    proc = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return False, None
+    rows = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
+    if not rows:
+        return False, None
+    gpu_utils: list[float] = []
+    mem_pairs: list[tuple[float, float]] = []
+    for row in rows:
+        parts = [p.strip() for p in row.split(",")]
+        if len(parts) != 3:
+            continue
+        try:
+            util = float(parts[0])
+            gpu_utils.append(util)
+        except ValueError:
+            continue
+        try:
+            mem_used_mib = float(parts[1])
+            mem_total_mib = float(parts[2])
+            mem_pairs.append((mem_used_mib, mem_total_mib))
+        except ValueError:
+            # DGX Spark unified memory では memory.* が [N/A] になることがある。
+            pass
+    if not gpu_utils:
+        return False, None
+    util_avg = sum(gpu_utils) / len(gpu_utils)
+    used_gib: float | None = None
+    total_gib: float | None = None
+    if mem_pairs:
+        used_gib = sum(v[0] for v in mem_pairs) / 1024.0
+        total_gib = sum(v[1] for v in mem_pairs) / 1024.0
+    else:
+        mem_proc = subprocess.run(
+            ["bash", "-lc", "free -b"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if mem_proc.returncode == 0:
+            for line in (mem_proc.stdout or "").splitlines():
+                if not line.startswith("Mem:"):
+                    continue
+                cols = [c for c in line.split() if c]
+                if len(cols) < 7:
+                    continue
+                try:
+                    mem_total_b = float(cols[1])
+                    mem_available_b = float(cols[6])
+                except ValueError:
+                    continue
+                total_gib = mem_total_b / (1024.0**3)
+                used_gib = max(0.0, (mem_total_b - mem_available_b) / (1024.0**3))
+                break
+    if used_gib is None or total_gib is None or total_gib <= 0:
+        return False, None
+    payload = {
+        "gpuUtilPct": round(util_avg, 1),
+        "unifiedMemoryUsedGiB": round(used_gib, 1),
+        "unifiedMemoryTotalGiB": round(total_gib, 1),
+        "freeMemoryGiB": round(max(0.0, total_gib - used_gib), 1),
+    }
+    return True, payload
+
+
 def proxy_request(method: str, url: str, body: bytes, headers: dict[str, str]) -> tuple[int, bytes, str]:
     req = urllib.request.Request(url, data=body if method != "GET" else None, method=method)
     for key, value in headers.items():
@@ -190,6 +266,16 @@ def make_handler(
         def do_GET(self) -> None:
             if self.path == "/healthz":
                 self._send_text(200, "ok\n")
+                return
+            if self.path == "/system/metrics":
+                if self.headers.get("X-LLM-Token", "") != config.llm_shared_token:
+                    self._send_text(403, "forbidden")
+                    return
+                ok, payload = collect_gpu_metrics()
+                if ok and payload is not None:
+                    self._send(200, json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8")
+                else:
+                    self._send(503, b'{"ok":false,"reason":"gpu_metrics_unavailable"}', "application/json; charset=utf-8")
                 return
             if self.path == "/private-comfyui/health":
                 status, body, content_type = proxy_impl("GET", config.private_comfy_health_url, b"", {})

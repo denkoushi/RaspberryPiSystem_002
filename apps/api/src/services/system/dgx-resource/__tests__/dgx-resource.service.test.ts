@@ -24,6 +24,7 @@ function makeSvc(
     fetchImpl?: typeof fetch;
     sparkHostStatusUrl?: string;
     comfyHealthUrl?: string;
+    metricsUrl?: string;
   }
 ) {
   return createDgxResourceService({
@@ -40,6 +41,7 @@ function makeSvc(
     probeTimeoutMs: 3000,
     ...(opts?.sparkHostStatusUrl ? { sparkHostStatusUrl: opts.sparkHostStatusUrl } : {}),
     ...(opts?.comfyHealthUrl ? { comfyHealthUrl: opts.comfyHealthUrl } : {}),
+    ...(opts?.metricsUrl ? { metricsUrl: opts.metricsUrl } : {}),
   });
 }
 
@@ -200,6 +202,105 @@ describe('createDgxResourceService', () => {
     expect(ov.sparkHost.status).toBe('stopped');
     expect(ov.sparkHost.httpStatus).toBe(503);
     expect(ov.sparkHost.probeUrl).toBe('http://127.0.0.1:38081/healthz');
+  });
+
+  it('uses admin /v1/system/metrics fallback when DGX_RESOURCE_METRICS_URL is unset', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/v1/models') {
+        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      }
+      if (u === 'http://127.0.0.1:38081/v1/system/metrics') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            gpuUtilPct: 63,
+            unifiedMemoryUsedGiB: 82,
+            unifiedMemoryTotalGiB: 128,
+            freeMemoryGiB: 46,
+          }),
+        } as Response;
+      }
+      if (u === 'http://127.0.0.1:38081/healthz') {
+        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      }
+      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+    const ov = await svc.getOverview();
+
+    expect(ov.kpis.gpuUtilPct).toBe(63);
+    expect(ov.kpis.unifiedMemoryUsedGiB).toBe(82);
+    expect(ov.kpis.unifiedMemoryTotalGiB).toBe(128);
+    expect(ov.kpis.freeMemoryGiB).toBe(46);
+    expect(ov.notes.some((n) => n.includes('DGX_RESOURCE_METRICS_URL 未設定'))).toBe(false);
+  });
+
+  it('prefers admin /system/metrics fallback when available', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/v1/models') {
+        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      }
+      if (u === 'http://127.0.0.1:38081/system/metrics') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            gpuUtilPct: 71,
+            unifiedMemoryUsedGiB: 88,
+            unifiedMemoryTotalGiB: 128,
+            freeMemoryGiB: 40,
+          }),
+        } as Response;
+      }
+      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+    const ov = await svc.getOverview();
+
+    const systemMetricsAttempt = fetchImpl.mock.calls.find(([input, init]) => {
+      const u = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+      return u === 'http://127.0.0.1:38081/system/metrics';
+    });
+    expect(systemMetricsAttempt).toBeDefined();
+    expect(systemMetricsAttempt![1]?.headers).toMatchObject({ 'X-LLM-Token': 'x'.repeat(32) });
+
+    expect(ov.kpis.gpuUtilPct).toBe(71);
+    expect(ov.kpis.unifiedMemoryUsedGiB).toBe(88);
+    expect(ov.kpis.unifiedMemoryTotalGiB).toBe(128);
+    expect(ov.kpis.freeMemoryGiB).toBe(40);
   });
 
   it('comfy comfyPolicy badge only under business_first', async () => {

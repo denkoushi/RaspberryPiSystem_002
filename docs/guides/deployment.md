@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX Phase8**: KPI 先頭・説明削減・全文可読 / Pi5 deploy + Phase12 PASS 43、**DGX Phase7**: 運用 UI 最小化・`business_to_experiment` の post-policy・gateway ヘルス・Ansible `api_dgx_resource_*`／ほか同日項は下記）
+最終更新: 2026-05-03（**DGX KPI メトリクス（API+gateway）**: `/system/metrics` フォールバック・トークン保護 / Pi5→DGX 順次・Phase12 PASS 43。併記: **DGX Phase8** KPI 先頭 UI、**DGX Phase7** 等は下記）
 
 ### Pi5 リモートデプロイ前提（self-SSH・孤立 lock 再発防止）
 
@@ -28,6 +28,18 @@ update-frequency: medium
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 103s**・Tailscale）。
 - **トラブルシュート**: self-SSH／lock の典型は [KB-366](../knowledge-base/infrastructure/ansible-deployment.md#kb-366-pi5-self-ssh-preflight-and-orphan-lock)。**手動で lock を消す前**は **`ansible-playbook` / `ansible … -m ping` が無いこと**と **対応する `.status.json` の有無**を確認する。
 - **ナレッジ**: [KB-366](../knowledge-base/infrastructure/ansible-deployment.md#kb-366-pi5-self-ssh-preflight-and-orphan-lock)·上記「Pi5 リモートデプロイ前提」節·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+### 補足（2026-05-03: **DGX リソース KPI メトリクス（overview 数値・gateway `/system/metrics`）**·`feat/dgx-kpi-metrics-fallback`·**API + DGX gateway**·**Pi5 → DGX 順次**）
+
+- **変更概要**: Pi5 API の **`DGX_RESOURCE_METRICS_URL` 未設定**時に、admin LocalLLM の base へ **`GET /system/metrics`**（**`X-LLM-Token` 必須**）→ 失敗時 **`GET /v1/system/metrics`** の順で KPI JSON を取得。DGX **`gateway-server.py`** に **`GET /system/metrics`**（`nvidia-smi`、GPU メモリ N/A 時は **`free -b`** 由来の used/total/free）を追加し、**`/v1/*` と同様に `X-LLM-Token` を検証**。repo: `apps/api/.../dgx-resource.*`・`scripts/dgx-local-llm-system/gateway-server.py`。
+- **対象ホスト**: **① `raspberrypi5` のみ**（`--limit raspberrypi5`）。**② DGX**（`100.118.82.72`、ユーザーは環境に合わせる）へ **`gateway-server.py` を `/srv/dgx/system-prod/bin/` に配置しゲートウェイを再起動**。Pi4／Pi3 は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド（Pi5）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-kpi-metrics-fallback infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **標準手順（DGX）**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（**repo の `scripts/dgx-local-llm-system/` を `/srv/dgx/system-prod/bin/` に揃える**方針・**systemd** は `systemctl restart dgx-llm-gateway` を参照）。**本番デプロイ実績（2026-05-03）**: `scp gateway-server.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/` のち **`sudo systemctl restart dgx-llm-gateway`** は **運用ユーザーに sudo が無く対話パスワードが必要なため実行できなかった**。当該ホストでは **`dgx-llm-gateway` が `inactive`** で **`start-gateway-server.sh`** 常駐のため、**既存 `gateway-server.py` プロセスを終了**したうえで **`/srv/dgx/system-prod/bin/start-gateway-server.sh`** を実行し **`127.0.0.1:38081/healthz` が 200** であることを確認した（詳細は Runbook の本項補足）。
+- **本番デプロイ（実績・Pi5）**: ブランチ **`feat/dgx-kpi-metrics-fallback`**（代表コミット **`47a17096`**・`fix(api): /system/metrics を LLM トークンで保護` を含む）。**Detach Run ID**: **`20260503-211051-8713`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート `exit` **`0`**・ローカル `--follow` 完了まで **約 702s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 157s**・Tailscale）。
+- **仕様・知見**: **API と gateway は同じ反映窗口で揃える**（先にトークン必須 gateway だけを当てると、旧 API は `/system/metrics` へヘッダ無しでフォールバックし **KPI が一時的に空**になり得る）。**DGX Spark** では `nvidia-smi` の memory 列が **`[N/A]`** になり得るため、gateway 側で **システムメモリにフォールバック**する。
+- **トラブルシュート**: KPI が空のまま → Pi5 **`api` イメージが当該コミットか**、`/api/system/dgx-resource/overview` の **`kpis`** と **`notes`**、DGX で **`curl -H "X-LLM-Token: …" http://127.0.0.1:38081/system/metrics`**（**403** はトークン不一致・**503** は `nvidia-smi`/`free` 双方の収集失敗）。gateway 再起動は **systemd 利用時は root/sudo**、**ユーザー常駐時は PID 確認のうえ `start-gateway-server.sh`**（[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 10 節）。
+- **ナレッジ**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 10 節·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-03: **DGX リソース Phase8（KPI 先頭・説明削減・全文可読）**·`feat/dgx-resource-dashboard-ui-phase8`·**Web のみ**·Pi5 のみ）
 
