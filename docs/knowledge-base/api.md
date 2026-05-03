@@ -34,7 +34,14 @@
 
 - `overview.optionalProbes` に **`comfyRuntimeControlConfigured`** 等が出る（フッター `probes` 行にも要約）
 
-**詳細**: [KB-365（詳細）](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）
+**本番（記録）**:
+
+- **ホスト**: `raspberrypi5` のみ（`--limit raspberrypi5`）
+- **ブランチ / コミット**: **`feat/dgx-resource-policy-orchestration-phase3`** / **`a44b9f78`**
+- **Detach**: **`20260503-094340-23537`**（`PLAY RECAP`: **`ok=135` `changed=8` `failed=0` / `unreachable=0`**）
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+
+**詳細**: [KB-365（詳細）](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[deployment.md](../guides/deployment.md)（2026-05-03 Phase3 項）
 
 ---
 
