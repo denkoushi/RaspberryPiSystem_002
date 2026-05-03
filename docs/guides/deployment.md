@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX Phase4（半自動オーケストレーション監視：`PREVIEW_*`/`EXECUTE_*`・`overview.monitoring`）本番反映**）／同日 Control Targets／Phase3／2026-05-02 項は下記
+最終更新: 2026-05-03（**DGX Phase5（運用者コンソール `overview.operator`・ワークロード遷移分離）本番反映**）／Phase4／Control Targets／Phase3／2026-05-02 項は下記
+
+### 補足（2026-05-03: **DGXリソース Phase5（運用者コンソール・API 境界整理）**·`feat/dgx-resource-operator-console`·API+Web·Pi5 のみ）
+
+- **変更概要**: `GET …/overview` に **`operator`**（3 ワークロード要約・`operatorSummary`・目的別ガイド **`operatorActions`**）。`SET_POLICY` / シナリオ実行の本体を **`dgx-resource.workload-transition.ts`** へ分離し、プレゼンを **`dgx-resource.operator-overview.ts`** に集約。`EXECUTE_ORCHESTRATION_SCENARIO` 応答に **`scenarioExecute.outcomeKind`**（`success` | `partial_failure` | `noop`）を付与可能。**後方互換**: `targets[]`・`monitoring`・Phase4 の Preview/Execute・既存 actions は維持。**ADR**: [`ADR-20260503-dgx-resource-operator-console.md`](../decisions/ADR-20260503-dgx-resource-operator-console.md)。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。**Pi3 は個別デプロイ不要**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-operator-console infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`e88d9206`**（`feat(dgx): add operator console overview boundary`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-115446-2532`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**・ローカル `--follow` 完了まで **約 826s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 97s**・Tailscale。**Pi3 は検証スクリプトが疎通確認するのみ**・本変更の Ansible 適用対象外）。
+- **トラブルシュート**: **運用コンソールが出ない／`operator` が無い** → Pi5 **`api`/`web` が同一コミット**か・[verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**ポリシー変更後に選んでいたシナリオが無効化** → Web は **`operator` 同期後に主要シナリオへフォールバック**（実装: `DgxResourceOperatorConsole` の `useEffect`）。**Phase4 と同様**: Stale（409）は **プレビュー再取得**、ガイド途中停止は **`completedStepOrders`** / `lastScenarioFailure` / イベントログ。
+- **ナレッジ**: [KB-365 §Phase5](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-5-本番反映記録)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-03: **DGX Control Targets（標準ターゲット一覧・gateway 起停の正規アクション）**·`feat/dgx-resource-standard-control-targets`·API+Web·Pi5 のみ）
 
