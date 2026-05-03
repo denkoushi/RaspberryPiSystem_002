@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { dgxResourceQueryKeys, getDgxResourceApiErrorMessage } from '../../../api/dgx-resource';
 import { Button } from '../../../components/ui/Button';
@@ -9,17 +9,12 @@ import { useConfirm } from '../../../contexts/ConfirmContext';
 import { orderPrimaryScenarioActions } from './dgxResourceTaskFlows';
 
 import type {
+  DgxOperatorConsoleActionApi,
   DgxOrchestrationScenarioIdApi,
   DgxResourceActionBody,
   DgxResourceActionResult,
   DgxResourceOperatorConsoleApi,
-  DgxResourceScenarioExecuteResultApi,
-  ScenarioPlanPreviewApi,
 } from '../../../api/dgx-resource.types';
-
-function formatStepsForConfirm(preview: ScenarioPlanPreviewApi): string {
-  return preview.steps.map((s) => `${s.order}. ${s.summaryJa}`).join('\n');
-}
 
 type Props = {
   operator: DgxResourceOperatorConsoleApi;
@@ -28,7 +23,22 @@ type Props = {
   onControlUiError: (message: string | null) => void;
 };
 
-/** 4 つの目的別操作（プレビュー・実行）だけをまとめる */
+function scenarioIcon(scenarioId: DgxOrchestrationScenarioIdApi): string {
+  switch (scenarioId) {
+    case 'business_to_private':
+      return '🎨';
+    case 'private_to_business':
+      return '💼';
+    case 'business_to_experiment':
+      return '🧪';
+    case 'experiment_to_business':
+      return '🔄';
+    default:
+      return '⚙️';
+  }
+}
+
+/** 日常運用向け UI: 4操作を選んで、そのまま確認→実行。 */
 export function DgxResourcePrimaryScenarioFlow({
   operator,
   postDgxAction,
@@ -37,235 +47,144 @@ export function DgxResourcePrimaryScenarioFlow({
 }: Props) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const primaryActionsOrdered = useMemo(
-    () => orderPrimaryScenarioActions(operator.operatorActions),
-    [operator.operatorActions]
-  );
-
+  const actions = useMemo(() => orderPrimaryScenarioActions(operator.operatorActions), [operator.operatorActions]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<DgxOrchestrationScenarioIdApi | null>(null);
-  const [lastPreview, setLastPreview] = useState<ScenarioPlanPreviewApi | null>(null);
-  const [lastExecute, setLastExecute] = useState<{
-    message: string;
-    detail: DgxResourceScenarioExecuteResultApi;
-  } | null>(null);
-  const [resultNote, setResultNote] = useState<string | null>(null);
   const [flowBusy, setFlowBusy] = useState(false);
-
+  const [resultNote, setResultNote] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const busy = actionBusy || flowBusy;
 
-  const invalidateDgx = useCallback(async () => {
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview }),
-      qc.invalidateQueries({ queryKey: ['dgx-resource', 'events'] }),
-    ]);
-  }, [qc]);
-
   useEffect(() => {
-    const preferred =
-      primaryActionsOrdered.find((a) => a.primary && !a.disabledReasonJa)?.scenarioId ??
-      primaryActionsOrdered.find((a) => !a.disabledReasonJa)?.scenarioId ??
-      null;
-
+    const preferred = actions.find((a) => a.primary && !a.disabledReasonJa)?.scenarioId ?? actions.find((a) => !a.disabledReasonJa)?.scenarioId ?? null;
     setSelectedScenarioId((prev) => {
       if (prev == null) return preferred;
-      const current = primaryActionsOrdered.find((a) => a.scenarioId === prev);
-      if (!current || current.disabledReasonJa) {
-        return preferred;
-      }
+      const current = actions.find((a) => a.scenarioId === prev);
+      if (!current || current.disabledReasonJa) return preferred;
       return prev;
     });
-  }, [primaryActionsOrdered]);
+  }, [actions]);
 
-  const runPreview = async (scenarioId: DgxOrchestrationScenarioIdApi) => {
-    setFlowBusy(true);
-    setResultNote(null);
-    setLastExecute(null);
-    try {
-      const data = await postDgxAction({ type: 'PREVIEW_ORCHESTRATION_SCENARIO', scenarioId });
-      onControlUiError(null);
-      if (data.scenarioPreview != null && data.scenarioPreview.scenarioId === scenarioId) {
-        setLastPreview(data.scenarioPreview);
-      } else {
-        setLastPreview(null);
-      }
-      setResultNote(`プレビュー: ${data.message}`);
-    } catch (e) {
-      setLastPreview(null);
-      onControlUiError(getDgxResourceApiErrorMessage(e));
-    } finally {
-      setFlowBusy(false);
-    }
+  const selectedAction: DgxOperatorConsoleActionApi | undefined =
+    selectedScenarioId != null ? actions.find((a) => a.scenarioId === selectedScenarioId) : undefined;
+
+  const openSimpleConfirm = async () => {
+    if (!selectedAction) return;
+    await confirm({
+      title: selectedAction.labelJa,
+      description: [selectedAction.subtitleJa, selectedAction.disabledReasonJa ? `\n実行不可: ${selectedAction.disabledReasonJa}` : ''].join('\n'),
+      tone: selectedAction.primary ? 'primary' : 'danger',
+    });
   };
 
-  const runExecute = async (preview: ScenarioPlanPreviewApi) => {
+  const executeSelectedScenario = async () => {
+    if (!selectedAction || selectedAction.disabledReasonJa) return;
     setFlowBusy(true);
+    setResultNote(null);
     try {
-      const data = await postDgxAction({
+      // 実行指紋が必要なため、内部で preview→execute を連続実行する。
+      const previewResult = await postDgxAction({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: selectedAction.scenarioId,
+      });
+      const preview = previewResult.scenarioPreview;
+      if (!preview) {
+        throw new Error(previewResult.message || '実行計画の取得に失敗しました');
+      }
+
+      const ok = await confirm({
+        title: `${selectedAction.labelJa} を実行`,
+        description: [
+          selectedAction.subtitleJa,
+          '',
+          ...preview.warnings.slice(0, 2).map((w) => `・${w}`),
+        ].join('\n'),
+        tone: preview.warnings.length > 0 ? 'danger' : 'primary',
+      });
+      if (!ok) return;
+
+      const executeResult = await postDgxAction({
         type: 'EXECUTE_ORCHESTRATION_SCENARIO',
         scenarioId: preview.scenarioId,
         planFingerprint: preview.planFingerprint,
         confirmed: true,
       });
       onControlUiError(null);
-      if (data.scenarioExecute != null) {
-        setLastExecute({ message: data.message, detail: data.scenarioExecute });
-      } else {
-        setLastExecute(null);
-      }
-      if (data.scenarioExecute?.success === false && data.scenarioExecute.failureMessageJa) {
-        setResultNote(`${data.message} — ${data.scenarioExecute.failureMessageJa}`);
-      } else {
-        setResultNote(data.message);
-      }
-      setLastPreview(null);
-      await invalidateDgx();
-    } catch (e) {
-      onControlUiError(getDgxResourceApiErrorMessage(e));
+      setResultNote({
+        tone: executeResult.scenarioExecute?.success === false ? 'error' : 'success',
+        message:
+          executeResult.scenarioExecute?.success === false && executeResult.scenarioExecute.failureMessageJa
+            ? `${executeResult.message} — ${executeResult.scenarioExecute.failureMessageJa}`
+            : executeResult.message,
+      });
+      await qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview });
+    } catch (error) {
+      const message = getDgxResourceApiErrorMessage(error);
+      onControlUiError(message);
+      setResultNote({ tone: 'error', message });
     } finally {
       setFlowBusy(false);
     }
   };
 
-  const scenarioIdForPreview = selectedScenarioId;
-  const previewMatchesSelection = Boolean(lastPreview && lastPreview.scenarioId === scenarioIdForPreview);
-  const previewButtonLabel = previewMatchesSelection ? 'プレビュー再取得' : 'プレビュー取得';
-
   return (
-    <div className="min-h-0 shrink-0 space-y-3">
+    <div className="space-y-3">
       <div>
-        <h3 className="text-lg font-semibold text-white/95">いまやりたいこと（推奨）</h3>
-        <p className="mt-0.5 text-sm text-white/55">
-          ボタンを選ぶ → 「{previewButtonLabel}」でステップ確認 → 「この内容で実行する」まで進めます。
-        </p>
+        <h3 className="text-lg font-semibold text-white/95">やりたいこと</h3>
+        <p className="mt-0.5 text-sm text-white/55">4つの操作だけ使ってください。内部IDや詳細ログは下部の詳細画面へ退避しています。</p>
       </div>
+
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {primaryActionsOrdered.map((a) => {
-          const selected = selectedScenarioId === a.scenarioId;
-          const disabled = Boolean(a.disabledReasonJa) || busy;
+        {actions.map((action) => {
+          const selected = selectedScenarioId === action.scenarioId;
+          const disabled = Boolean(action.disabledReasonJa) || busy;
           return (
-            <div
-              key={a.id}
+            <button
+              key={action.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                setSelectedScenarioId(action.scenarioId);
+                setResultNote(null);
+              }}
               className={clsx(
-                'rounded-xl border px-2 py-2',
-                a.primary ? 'border-cyan-400/45 bg-cyan-950/35' : 'border-white/12 bg-black/30',
-                selected && 'ring-2 ring-cyan-400/55'
+                'rounded-xl border px-3 py-3 text-left transition disabled:cursor-not-allowed',
+                action.primary ? 'border-cyan-400/40 bg-cyan-950/20' : 'border-white/12 bg-black/30',
+                selected && 'ring-2 ring-cyan-400/50',
+                disabled && 'opacity-45'
               )}
             >
-              <Button
-                type="button"
-                variant={selected ? 'primary' : 'ghostOnDark'}
-                className="h-auto w-full justify-start px-2 py-2 text-left"
-                disabled={disabled}
-                title={a.disabledReasonJa}
-                onClick={() => {
-                  if (a.disabledReasonJa) return;
-                  setSelectedScenarioId(a.scenarioId);
-                  setLastPreview(null);
-                  setLastExecute(null);
-                  setResultNote(null);
-                }}
-              >
-                <span className="block text-base font-semibold">{a.labelJa}</span>
-                <span className="mt-1 block text-sm font-normal text-white/65">{a.subtitleJa}</span>
-                {a.disabledReasonJa ? (
-                  <span className="mt-1.5 block text-sm text-amber-100/95">現在は実行できません: {a.disabledReasonJa}</span>
-                ) : null}
-              </Button>
-            </div>
+              <div className="text-xl">{scenarioIcon(action.scenarioId)}</div>
+              <div className="mt-1 text-xl font-semibold text-white">{action.labelJa}</div>
+              <p className="mt-1 text-sm text-white/65">{action.subtitleJa}</p>
+              {action.disabledReasonJa ? <p className="mt-2 text-sm text-amber-200">現在は実行できません: {action.disabledReasonJa}</p> : null}
+            </button>
           );
         })}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          className="px-4 py-2 text-base"
-          disabled={busy || scenarioIdForPreview == null}
-          onClick={() => {
-            if (scenarioIdForPreview != null) void runPreview(scenarioIdForPreview);
-          }}
-        >
-          {previewButtonLabel}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/25 p-3">
+        <p className="mr-auto text-sm text-white/70">
+          選択中: <span className="font-semibold text-white">{selectedAction?.labelJa ?? 'なし'}</span>
+        </p>
+        <Button type="button" variant="ghostOnDark" disabled={!selectedAction || busy} onClick={() => void openSimpleConfirm()}>
+          内容を確認
         </Button>
-        <Button
-          type="button"
-          variant="primary"
-          className="px-4 py-2 text-base disabled:opacity-40"
-          disabled={!lastPreview || lastPreview.scenarioId !== scenarioIdForPreview || busy}
-          onClick={async () => {
-            if (!lastPreview || scenarioIdForPreview == null) return;
-            const preview = lastPreview;
-            const ok = await confirm({
-              title: '運用ガイドの実行',
-              description: [
-                `種別（内部キー）: ${preview.scenarioId}`,
-                `実行計画 ID（先頭 16 文字）: ${preview.planFingerprint.slice(0, 16)}…`,
-                '',
-                '進むステップ:',
-                formatStepsForConfirm(preview),
-                '',
-                preview.warnings.length > 0 ? ['確認事項:', ...preview.warnings.map((w) => `・${w}`), ''].join('\n') : '',
-              ].join('\n'),
-              tone: preview.warnings.length > 2 ? 'danger' : 'primary',
-            });
-            if (!ok) return;
-            await runExecute(preview);
-          }}
-        >
-          この内容で実行する
+        <Button type="button" variant="primary" disabled={!selectedAction || !!selectedAction?.disabledReasonJa || busy} onClick={() => void executeSelectedScenario()}>
+          実行する →
         </Button>
       </div>
 
-      {lastPreview && lastPreview.scenarioId === scenarioIdForPreview ? (
-        <div className="max-h-40 shrink-0 overflow-y-auto rounded-xl border border-white/12 bg-black/40 p-3 text-sm text-white/80">
-          <div className="font-mono text-xs text-cyan-200/95 sm:text-sm">
-            実行計画 ID（指紋）: <span className="break-all">{lastPreview.planFingerprint.slice(0, 24)}…</span>
-          </div>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 leading-snug">
-            {lastPreview.steps.map((s) => (
-              <li key={s.order}>{s.summaryJa}</li>
-            ))}
-          </ol>
-          {lastPreview.warnings.length > 0 ? (
-            <ul className="mt-2 list-none space-y-1 border-t border-white/10 pt-2 text-sm text-amber-100/95">
-              {lastPreview.warnings.map((w) => (
-                <li key={w}>⚠ {w}</li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-
       {resultNote ? (
-        <p className="shrink-0 text-base text-cyan-100/90" role="status">
-          {resultNote}
-        </p>
-      ) : null}
-
-      {lastExecute ? (
-        <div
+        <p
+          role="status"
           className={clsx(
-            'max-h-32 shrink-0 overflow-y-auto rounded-xl border p-3 text-sm',
-            lastExecute.detail.success ? 'border-emerald-500/40 bg-emerald-950/30' : 'border-amber-500/40 bg-amber-950/30'
+            'rounded-lg border px-3 py-2 text-sm',
+            resultNote.tone === 'success'
+              ? 'border-emerald-500/35 bg-emerald-950/25 text-emerald-100'
+              : 'border-red-500/35 bg-red-950/25 text-red-100'
           )}
         >
-          <div className="text-base font-semibold text-white">
-            {lastExecute.detail.success
-              ? lastExecute.detail.outcomeKind === 'noop'
-                ? '実行結果: 変更なし（noop）'
-                : '実行結果: 成功'
-              : '実行結果: 部分成功または失敗'}
-          </div>
-          <div className="mt-1.5 leading-snug text-white/85">{lastExecute.message}</div>
-          <div className="mt-2 text-sm text-white/65">
-            完了 step order: {lastExecute.detail.completedStepOrders.join(', ') || 'none'}
-            {lastExecute.detail.outcomeKind ? ` · ${lastExecute.detail.outcomeKind}` : ''}
-          </div>
-          {lastExecute.detail.recommendedNextJa ? (
-            <div className="mt-2 text-sm leading-snug text-white/75">次の確認: {lastExecute.detail.recommendedNextJa}</div>
-          ) : null}
-        </div>
+          {resultNote.message}
+        </p>
       ) : null}
     </div>
   );

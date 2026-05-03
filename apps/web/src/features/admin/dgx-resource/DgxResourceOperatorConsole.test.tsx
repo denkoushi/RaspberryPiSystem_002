@@ -154,13 +154,29 @@ describe('DgxResourceOperatorConsole', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'DGX 運用ガイド' })).toBeInTheDocument();
-    expect(screen.getByText('業務 VLM')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'いまやりたいこと（推奨）' })).toBeInTheDocument();
-    expect(screen.getByText('私用を始める')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'やりたいこと' })).toBeInTheDocument();
+    expect(screen.getAllByText('私用を始める').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '実行する →' })).toBeInTheDocument();
   });
 
-  it('does not call preview when only selecting a scenario (explicit preview button)', async () => {
-    const postDgxAction = vi.fn(async () => ({ ok: true as const, message: 'ok' }));
+  it('does not call API when only selecting a scenario', async () => {
+    const postDgxAction = vi.fn(async (body) => {
+      if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
+        return {
+          ok: true as const,
+          message: 'preview',
+          scenarioPreview: {
+            scenarioId: body.scenarioId,
+            targetPolicyMode: 'business_first',
+            applyWorkloadChanges: true,
+            planFingerprint: 'fp-test',
+            steps: [{ kind: 'policy' as const, order: 1, policyMode: 'business_first' as const, summaryJa: 'step' }],
+            warnings: [],
+          },
+        };
+      }
+      return { ok: true as const, message: 'ok', scenarioExecute: { scenarioId: 'private_to_business', success: true, completedStepOrders: [1], completedPolicyApplied: true } };
+    });
     const op = makeOperator();
     renderWithProviders(
       <DgxResourceOperatorConsole
@@ -174,27 +190,51 @@ describe('DgxResourceOperatorConsole', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /業務に戻す/ }));
     expect(postDgxAction).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole('button', { name: /プレビュー(取得|再取得)/ }));
+    fireEvent.click(screen.getByRole('button', { name: '実行する →' }));
     await waitFor(() =>
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
         scenarioId: 'private_to_business',
       })
     );
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() =>
+      expect(postDgxAction).toHaveBeenCalledWith({
+        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
+        scenarioId: 'private_to_business',
+        planFingerprint: 'fp-test',
+        confirmed: true,
+      })
+    );
   });
 
-  it('falls back to an available scenario when the current selection becomes disabled', async () => {
-    const postDgxAction = vi.fn(async () => ({ ok: true as const, message: 'ok' }));
-    const initial = makeOperator();
+  it('selects available primary scenario when business_to_private is disabled', async () => {
+    const postDgxAction = vi.fn(async (body) => {
+      if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
+        return {
+          ok: true as const,
+          message: 'preview',
+          scenarioPreview: {
+            scenarioId: body.scenarioId,
+            targetPolicyMode: 'business_first',
+            applyWorkloadChanges: true,
+            planFingerprint: `fp-${body.scenarioId}`,
+            steps: [{ kind: 'policy' as const, order: 1, policyMode: 'business_first' as const, summaryJa: 'step' }],
+            warnings: [],
+          },
+        };
+      }
+      return { ok: true as const, message: 'ok', scenarioExecute: { scenarioId: 'private_to_business', success: true, completedStepOrders: [1], completedPolicyApplied: true } };
+    });
+    const base = makeOperator();
     const updated: DgxResourceOperatorConsoleApi = {
-      ...initial,
+      ...base,
       operatorSummary: {
-        ...initial.operatorSummary,
+        ...base.operatorSummary,
         policyMode: 'private_ok',
         policyLabelJa: '私用OK',
       },
-      operatorActions: initial.operatorActions.map((action) =>
+      operatorActions: base.operatorActions.map((action) =>
         action.scenarioId === 'business_to_private'
           ? { ...action, disabledReasonJa: 'すでに「私用OK」です', primary: false }
           : action.scenarioId === 'private_to_business'
@@ -203,43 +243,19 @@ describe('DgxResourceOperatorConsole', () => {
       ),
     };
 
-    const { rerender } = renderWithProviders(
+    renderWithProviders(
       <DgxResourceOperatorConsole
-        overview={makeOverview(initial)}
-        operator={initial}
+        overview={makeOverview(updated)}
+        operator={updated}
         postDgxAction={postDgxAction}
         actionBusy={false}
         onControlUiError={() => undefined}
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /プレビュー(取得|再取得)/ }));
+    fireEvent.click(screen.getByRole('button', { name: '実行する →' }));
     await waitFor(() =>
       expect(postDgxAction).toHaveBeenCalledWith({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-      })
-    );
-
-    rerender(
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}
-      >
-        <ConfirmProvider>
-          <DgxResourceOperatorConsole
-            overview={makeOverview(updated)}
-            operator={updated}
-            postDgxAction={postDgxAction}
-            actionBusy={false}
-            onControlUiError={() => undefined}
-          />
-        </ConfirmProvider>
-      </QueryClientProvider>
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /プレビュー(取得|再取得)/ }));
-    await waitFor(() =>
-      expect(postDgxAction).toHaveBeenLastCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
         scenarioId: 'private_to_business',
       })

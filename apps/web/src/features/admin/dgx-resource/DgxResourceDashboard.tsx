@@ -1,48 +1,43 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { useState } from 'react';
 
-import {
-  dgxResourceQueryKeys,
-  fetchDgxResourceEvents,
-  fetchDgxResourceOverview,
-  getDgxResourceApiErrorMessage,
-  postDgxResourceAction,
-} from '../../../api/dgx-resource';
+import { dgxResourceQueryKeys, fetchDgxResourceOverview, getDgxResourceApiErrorMessage, postDgxResourceAction } from '../../../api/dgx-resource';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
-import { DgxResourceAdvancedControls } from './DgxResourceAdvancedControls';
-import { DgxResourceEventsTimeline } from './DgxResourceEventsTimeline';
-import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
-import { DgxResourceMonitoringPanel } from './DgxResourceMonitoringPanel';
-import { DgxResourceOperatorConsole } from './DgxResourceOperatorConsole';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
+import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow';
+import { DGX_POLICY_PROFILES } from './dgxResourceProfiles';
 import { DgxResourceSparkStatusPanel } from './DgxResourceSparkStatusPanel';
 import { DgxResourceTargetGrid } from './DgxResourceTargetGrid';
-import { shouldShowMonitoringPanel } from './dgxResourceUi';
 import { DgxResourceWarmRuntimeNotice } from './DgxResourceWarmRuntimeNotice';
 
-import type { DgxControlTargetIdApi, DgxResourceActionBody } from '../../../api/dgx-resource.types';
+import type { DgxControlTargetIdApi, DgxResourceActionBody, DgxServiceStatusKind } from '../../../api/dgx-resource.types';
 
-const EVENT_LIMIT = 12;
+function statusChipTone(status: DgxServiceStatusKind): string {
+  switch (status) {
+    case 'running':
+      return 'border-emerald-400/45 bg-emerald-950/25 text-emerald-100';
+    case 'degraded':
+      return 'border-amber-400/45 bg-amber-950/25 text-amber-100';
+    case 'stopped':
+      return 'border-white/20 bg-white/5 text-white/55';
+    case 'unknown':
+    default:
+      return 'border-white/15 bg-black/25 text-white/45';
+  }
+}
 
-/** 運用者向け 1 画面優先。ページ縦スクロールを避け、詳細は内部スクロール。 */
+/** 通常画面は最小表示（状態 + 4操作 + 実行結果）。詳細は折りたたみへ退避。 */
 export function DgxResourceDashboard() {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
-  const [targetActionError, setTargetActionError] = useState<{ targetId: DgxControlTargetIdApi; message: string } | null>(
-    null
-  );
+  const [targetActionError, setTargetActionError] = useState<{ targetId: DgxControlTargetIdApi; message: string } | null>(null);
 
   const overviewQuery = useQuery({
     queryKey: dgxResourceQueryKeys.overview,
     queryFn: fetchDgxResourceOverview,
-    refetchInterval: 5000,
-  });
-
-  const eventsQuery = useQuery({
-    queryKey: dgxResourceQueryKeys.events(EVENT_LIMIT),
-    queryFn: () => fetchDgxResourceEvents(EVENT_LIMIT),
     refetchInterval: 5000,
   });
 
@@ -51,10 +46,7 @@ export function DgxResourceDashboard() {
     onSuccess: async () => {
       setActionError(null);
       setTargetActionError(null);
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview }),
-        qc.invalidateQueries({ queryKey: ['dgx-resource', 'events'] }),
-      ]);
+      await qc.invalidateQueries({ queryKey: dgxResourceQueryKeys.overview });
     },
     onError: (e, variables) => {
       const message = getDgxResourceApiErrorMessage(e);
@@ -69,121 +61,108 @@ export function DgxResourceDashboard() {
   });
 
   const postDgxActionAsync = (body: DgxResourceActionBody) => mutateAction.mutateAsync(body);
-
-  const ovError =
-    overviewQuery.error != null ? getDgxResourceApiErrorMessage(overviewQuery.error) : null;
-  const evError = eventsQuery.error != null ? getDgxResourceApiErrorMessage(eventsQuery.error) : null;
-
+  const overviewError = overviewQuery.error != null ? getDgxResourceApiErrorMessage(overviewQuery.error) : null;
   const overview = overviewQuery.data;
-  const targets = overview?.targets ?? [];
-  const operator = overview?.operator;
-  const showMonitoringPanel = overview ? shouldShowMonitoringPanel(overview.monitoring) : false;
+
+  if (!overview) {
+    return (
+      <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-2 overflow-hidden px-4 py-2 text-base sm:-mx-6">
+        <h1 className="text-2xl font-bold text-white">DGX リソース</h1>
+        {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}
+        <p className="text-sm text-white/60">{overviewQuery.isLoading ? '読み込み中…' : 'データなし'}</p>
+      </div>
+    );
+  }
+
+  const targetById = new Map((overview.targets ?? []).map((t) => [t.id, t]));
+  const businessStatus = targetById.get('system-prod-inference')?.status ?? 'unknown';
+  const comfyStatus = targetById.get('private-comfyui')?.status ?? 'unknown';
+  const experimentStatus = targetById.get('experiment-lab')?.status ?? 'unknown';
+  const policyLabel = DGX_POLICY_PROFILES[overview.policy.mode].titleShort;
 
   return (
-    <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-2 overflow-hidden px-4 py-2 text-base sm:-mx-6">
-      <header className="shrink-0">
+    <div className="-mx-4 -my-6 flex min-h-[calc(100dvh-7.75rem)] flex-col gap-3 overflow-y-auto px-4 py-2 text-base sm:-mx-6">
+      <header className="space-y-1">
         <h1 className="text-2xl font-bold text-white">DGX リソース</h1>
-        <p className="text-sm text-white/55">
-          日常的には「運用ガイド」の 4 操作だけを使ってください（自動更新 5 秒）。
-        </p>
-        {ovError ? <p className="mt-1 text-sm font-medium text-red-300">{ovError}</p> : null}
-        {evError ? <p className="mt-1 text-sm text-amber-200/90">{evError}</p> : null}
+        <p className="text-sm text-white/55">普段はこの画面の 4操作だけを使ってください。詳細ログや保守操作は下の「詳細・保守」にあります。</p>
+        {overviewError ? <p className="text-sm text-red-300">{overviewError}</p> : null}
         {actionError ? (
-          <p className="mt-1 text-sm font-medium text-red-300" role="alert">
+          <p className="text-sm font-medium text-red-300" role="alert">
             {actionError}
           </p>
         ) : null}
       </header>
 
-      {!overview ? (
-        <p className="text-sm text-white/60">{overviewQuery.isLoading ? '読み込み中…' : 'データなし'}</p>
+      <section className="flex flex-wrap gap-2">
+        <div className="rounded-full border border-cyan-400/35 bg-cyan-950/20 px-3 py-1.5 text-sm font-semibold text-cyan-100">{policyLabel}</div>
+        <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(businessStatus))}>VLM 推論: {businessStatus}</div>
+        <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(comfyStatus))}>ComfyUI: {comfyStatus}</div>
+        <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(experimentStatus))}>実験: {experimentStatus}</div>
+      </section>
+
+      {overview.operator ? (
+        <section className="rounded-xl border border-cyan-400/25 bg-slate-950/65 p-3">
+          <DgxResourcePrimaryScenarioFlow
+            operator={overview.operator}
+            postDgxAction={postDgxActionAsync}
+            actionBusy={mutateAction.isPending}
+            onControlUiError={(message) => {
+              setActionError(message);
+              if (message == null) setTargetActionError(null);
+            }}
+          />
+        </section>
       ) : (
-        <>
-          <div className="shrink-0">
-            <DgxResourceKpiStrip kpis={overview.kpis} />
-          </div>
-
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-12 lg:gap-2">
-            <div className="flex min-h-0 flex-col gap-2 lg:col-span-7 lg:overflow-hidden">
-              {operator ? (
-                <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-                  <DgxResourceOperatorConsole
-                    overview={overview}
-                    operator={operator}
-                    postDgxAction={postDgxActionAsync}
-                    actionBusy={mutateAction.isPending}
-                    onControlUiError={(m) => {
-                      setActionError(m);
-                      if (m == null) setTargetActionError(null);
-                    }}
-                  />
-                </div>
-              ) : (
-                <p className="rounded border border-amber-400/30 bg-amber-950/30 p-2 text-sm text-amber-100/90">
-                  API が運用者向け overview（operator）を返していません。Pi5 API を更新してください。
-                </p>
-              )}
-
-              <DgxResourceAdvancedControls summary="詳細・保守: サービス単位での起動・停止（技術 ID / Pi5 POST）">
-                <div className="max-h-[40vh] min-h-0 overflow-y-auto">
-                  <DgxResourceWarmRuntimeNotice overview={overview} />
-                  <DgxResourceTargetGrid
-                    targets={targets}
-                    overview={overview}
-                    targetActionError={targetActionError}
-                    onControlUiError={(m) => {
-                      setTargetActionError(null);
-                      setActionError(m);
-                    }}
-                    confirmStop={(opts) => confirm(opts)}
-                    busy={mutateAction.isPending}
-                    onExecuteTarget={(targetId, action) => {
-                      setActionError(null);
-                      setTargetActionError(null);
-                      mutateAction.mutate({
-                        type: 'EXECUTE_TARGET_ACTION',
-                        targetId,
-                        action,
-                        reason: 'admin_dgx_resource_ui',
-                      });
-                    }}
-                  />
-                </div>
-              </DgxResourceAdvancedControls>
-
-              <footer className="max-h-16 shrink-0 overflow-y-auto text-xs leading-snug text-white/45">
-                {overview.notes.map((line) => (
-                  <div key={line} className="truncate" title={line}>
-                    ※ {line}
-                  </div>
-                ))}
-              </footer>
-            </div>
-
-            <aside className="flex min-h-0 flex-col gap-2 overflow-y-auto lg:col-span-5">
-              <DgxResourceAdvancedControls summary="詳細・保守: Spark・監視・運用モードの手動切替">
-                <div className="flex flex-col gap-2">
-                  <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
-                  {showMonitoringPanel ? (
-                    <div className="max-h-[14rem] min-h-0 shrink-0 overflow-y-auto">
-                      <DgxResourceMonitoringPanel monitoring={overview.monitoring} />
-                    </div>
-                  ) : null}
-                  <DgxResourcePolicyPanel
-                    overview={overview}
-                    onControlUiError={setActionError}
-                    postDgxAction={postDgxActionAsync}
-                    actionBusy={mutateAction.isPending}
-                  />
-                </div>
-              </DgxResourceAdvancedControls>
-              <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-white/10 bg-slate-900/40 px-2 py-2">
-                <DgxResourceEventsTimeline events={eventsQuery.data?.events ?? []} />
-              </div>
-            </aside>
-          </div>
-        </>
+        <p className="rounded border border-amber-400/30 bg-amber-950/30 p-3 text-sm text-amber-100/90">
+          API が運用者向け overview（operator）を返していません。Pi5 API を更新してください。
+        </p>
       )}
+
+      <div className="rounded-lg border border-white/12 bg-black/20 p-2">
+        <DgxResourceSparkStatusPanel sparkHost={overview.sparkHost} />
+      </div>
+
+      <details className="rounded-xl border border-white/12 bg-black/20">
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-white/65">詳細・保守（通常は不要）</summary>
+        <div className="space-y-3 border-t border-white/10 px-3 py-3">
+          <DgxResourceWarmRuntimeNotice overview={overview} />
+
+          <DgxResourcePolicyPanel
+            overview={overview}
+            onControlUiError={setActionError}
+            postDgxAction={postDgxActionAsync}
+            actionBusy={mutateAction.isPending}
+          />
+
+          <DgxResourceTargetGrid
+            targets={overview.targets ?? []}
+            overview={overview}
+            targetActionError={targetActionError}
+            onControlUiError={(message) => {
+              setTargetActionError(null);
+              setActionError(message);
+            }}
+            confirmStop={(opts) => confirm(opts)}
+            busy={mutateAction.isPending}
+            onExecuteTarget={(targetId, action) => {
+              setActionError(null);
+              setTargetActionError(null);
+              mutateAction.mutate({
+                type: 'EXECUTE_TARGET_ACTION',
+                targetId,
+                action,
+                reason: 'admin_dgx_resource_ui',
+              });
+            }}
+          />
+
+          <footer className="space-y-1 text-xs text-white/45">
+            {overview.notes.map((line) => (
+              <div key={line}>※ {line}</div>
+            ))}
+          </footer>
+        </div>
+      </details>
     </div>
   );
 }
