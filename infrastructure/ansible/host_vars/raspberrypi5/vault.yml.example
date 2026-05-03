@@ -11,6 +11,21 @@ vault_api_local_llm_runtime_control_token: ""
 # 上記2つは DGX の api-token / runtime-control-token と必ず同一にすること。
 # manage-app-configs.yml が INFERENCE_PROVIDERS_JSON 内の sharedToken / controlToken と LOCAL_LLM_* の整合を検証する。
 
+# DGXリソース管理（空なら read-only / 設定不足としてUI表示）
+vault_api_dgx_resource_metrics_url: ""
+vault_api_dgx_resource_comfyui_health_url: ""
+vault_api_dgx_resource_embedding_health_url: ""
+vault_api_dgx_resource_spark_host_status_url: ""
+vault_api_dgx_resource_probe_timeout_ms: "10000"
+vault_api_dgx_resource_private_comfyui_runtime_start_url: ""
+vault_api_dgx_resource_private_comfyui_runtime_stop_url: ""
+vault_api_dgx_resource_private_comfyui_runtime_control_token: ""
+vault_api_dgx_resource_experiment_lab_runtime_start_url: ""
+vault_api_dgx_resource_experiment_lab_runtime_stop_url: ""
+vault_api_dgx_resource_experiment_lab_runtime_control_token: ""
+vault_api_dgx_resource_experiment_lab_health_url: ""
+vault_api_dgx_resource_aux_runtime_request_timeout_ms: "90000"
+
 # Tailscale preauth key (reusable, tagged推奨)
 vault_tailscale_auth_key: ""
 

@@ -98,13 +98,21 @@ export async function executeOrchestrationScenarioTransition(input: {
   const postPolicyPlan = buildPostPolicyOrchestrationSteps({
     scenarioId,
     comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
+    experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
   });
+  const postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'> = [];
+  for (const s of postPolicyPlan) {
+    if (s.action !== 'start') continue;
+    if (s.targetId === 'private-comfyui' || s.targetId === 'experiment-lab') {
+      postPolicyStarts.push(s.targetId);
+    }
+  }
 
   const recomputedFingerprint = computeScenarioPlanFingerprint({
     scenarioId,
     targetPolicyMode: intent.targetPolicyMode,
     applyWorkloadChanges: intent.applyWorkloadChanges,
-    postPolicyPrivateComfyStart: postPolicyPlan.length > 0,
+    postPolicyStarts,
     comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
@@ -171,11 +179,11 @@ export async function executeOrchestrationScenarioTransition(input: {
       msgPieces.push(`${policyLabelJa(intent.targetPolicyMode)}モードのままです（ガイド）`);
       msg = msgPieces.join(' ');
     } else if (ranPostSteps) {
-      if (changed || plan.length > 0) {
-        msgPieces.push('続いて私用 ComfyUI の起動リクエストを送信しました（ガイド）');
-      } else {
-        msgPieces.push('私用OKモードです。私用 ComfyUI の起動リクエストを送信しました（ガイド）');
-      }
+      const startedTargets = postPolicyPlan
+        .filter((s) => s.action === 'start')
+        .map((s) => s.targetId)
+        .join(', ');
+      msgPieces.push(`続いて ${startedTargets} の起動リクエストを送信しました（ガイド）`);
       msg = msgPieces.join(' ');
     } else {
       msg = msgPieces.filter((s) => s.length > 0).join(' ') || setPolicyEventMessage(intent.targetPolicyMode);

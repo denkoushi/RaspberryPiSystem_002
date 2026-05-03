@@ -38,6 +38,27 @@ export async function executeAuxHttpRuntimeStartStop(
 
   const { signal, cleanup } = createTimeoutSignal(opts.timeoutMs);
   try {
+    // #region agent log
+    await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+      body: JSON.stringify({
+        sessionId: 'a59f92',
+        runId: 'pre-fix',
+        hypothesisId: 'H4',
+        location: 'dgx-resource.aux-http-runtime.executor.ts:executeAuxHttpRuntimeStartStop',
+        message: 'aux runtime request start',
+        data: {
+          action: opts.action,
+          targetUrl,
+          timeoutMs: opts.timeoutMs,
+          hasControlToken: Boolean(opts.controlToken?.trim()),
+          errorCodePrefix: code,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const tok = opts.controlToken?.trim();
     if (tok) {
@@ -52,6 +73,27 @@ export async function executeAuxHttpRuntimeStartStop(
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
+      // #region agent log
+      await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+        body: JSON.stringify({
+          sessionId: 'a59f92',
+          runId: 'pre-fix',
+          hypothesisId: 'H5',
+          location: 'dgx-resource.aux-http-runtime.executor.ts:executeAuxHttpRuntimeStartStop',
+          message: 'aux runtime response not ok',
+          data: {
+            action: opts.action,
+            targetUrl,
+            httpStatus: response.status,
+            bodyPreview: text.slice(0, 160),
+            errorCodePrefix: code,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       throw new ApiError(
         502,
         '補助ランタイム制御が拒否または失敗しました',
@@ -60,6 +102,25 @@ export async function executeAuxHttpRuntimeStartStop(
       );
     }
     await response.text().catch(() => '');
+    // #region agent log
+    await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+      body: JSON.stringify({
+        sessionId: 'a59f92',
+        runId: 'post-fix',
+        hypothesisId: 'H6',
+        location: 'dgx-resource.aux-http-runtime.executor.ts:executeAuxHttpRuntimeStartStop',
+        message: 'aux runtime response ok',
+        data: {
+          action: opts.action,
+          targetUrl,
+          errorCodePrefix: code,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
   } finally {
     cleanup();
   }

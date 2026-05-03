@@ -24,8 +24,8 @@ export type ScenarioPlanFingerprintInputs = {
   scenarioId: DgxOrchestrationScenarioId;
   targetPolicyMode: DgxPolicyMode;
   applyWorkloadChanges: boolean;
-  /** business_to_private かつ comfy hook 両方設定時のみ true（適用順序込みで指紋に含める） */
-  postPolicyPrivateComfyStart: boolean;
+  /** ポリシー適用後に追加で起動する post-policy ワークロード（順序込みで指紋に含める） */
+  postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'>;
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
@@ -88,7 +88,7 @@ export function buildScenarioFingerprintPayload(input: ScenarioPlanFingerprintIn
     scenarioId: input.scenarioId,
     policyMode: input.targetPolicyMode,
     applyWorkloadChanges: input.applyWorkloadChanges,
-    postPolicyPrivateComfyStart: input.postPolicyPrivateComfyStart,
+    postPolicyStarts: [...input.postPolicyStarts].sort(),
     capabilities: {
       comfyRuntimeConfigured: input.comfyRuntimeConfigured,
       experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
@@ -128,8 +128,15 @@ export function buildOrchestrationScenarioPreview(input: {
   const postPolicyWorkloadTemplate = buildPostPolicyOrchestrationSteps({
     scenarioId,
     comfyRuntimeConfigured: input.comfyRuntimeConfigured,
+    experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
   });
-  const postPolicyPrivateComfyStart = postPolicyWorkloadTemplate.length > 0;
+  const postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'> = [];
+  for (const s of postPolicyWorkloadTemplate) {
+    if (s.action !== 'start') continue;
+    if (s.targetId === 'private-comfyui' || s.targetId === 'experiment-lab') {
+      postPolicyStarts.push(s.targetId);
+    }
+  }
 
   const steps: ScenarioStepPreview[] = [];
   let order = 1;
@@ -165,7 +172,7 @@ export function buildOrchestrationScenarioPreview(input: {
     scenarioId,
     targetPolicyMode,
     applyWorkloadChanges,
-    postPolicyPrivateComfyStart,
+    postPolicyStarts,
     comfyRuntimeConfigured: input.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
@@ -217,7 +224,7 @@ export function buildOrchestrationScenarioPreview(input: {
     );
   }
 
-  if (input.currentPolicyMode === targetPolicyMode && workloadSteps.length === 0 && !postPolicyPrivateComfyStart) {
+  if (input.currentPolicyMode === targetPolicyMode && workloadSteps.length === 0 && postPolicyStarts.length === 0) {
     warnings.push('すでに同じ運用モードです。ワークロード調停も実行されません')
   }
 

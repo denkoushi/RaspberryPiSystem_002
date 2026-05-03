@@ -11,7 +11,7 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: 'business_to_private' as const,
       targetPolicyMode: 'private_ok' as const,
       applyWorkloadChanges: false,
-      postPolicyPrivateComfyStart: false,
+      postPolicyStarts: [],
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
@@ -41,7 +41,7 @@ describe('dgx-resource.scenario-planner', () => {
         scenarioId: p.scenarioId,
         targetPolicyMode: p.targetPolicyMode,
         applyWorkloadChanges: p.applyWorkloadChanges,
-        postPolicyPrivateComfyStart: true,
+        postPolicyStarts: ['private-comfyui'],
         comfyRuntimeConfigured: true,
         experimentLabRuntimeConfigured: false,
         gatewayRuntimeConfigured: true,
@@ -65,11 +65,38 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: p.scenarioId,
       targetPolicyMode: p.targetPolicyMode,
       applyWorkloadChanges: p.applyWorkloadChanges,
-      postPolicyPrivateComfyStart: false,
+      postPolicyStarts: [],
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
       gatewayRuntimeConfigured: true,
     });
     expect(p.planFingerprint).toBe(expectedFp);
+  });
+
+  it('business_to_experiment adds post-policy experiment start when hooks exist', () => {
+    const p = buildOrchestrationScenarioPreview({
+      scenarioId: 'business_to_experiment',
+      comfyRuntimeConfigured: true,
+      experimentLabRuntimeConfigured: true,
+      gatewayRuntimeConfigured: true,
+      currentPolicyMode: 'business_first',
+      inferenceLooksDegraded: false,
+      comfyLooksRunning: false,
+    });
+    const postExpIdx = p.steps.findIndex((s) => s.kind === 'workload' && s.targetId === 'experiment-lab' && s.action === 'start');
+    const policyIdx = p.steps.findIndex((s) => s.kind === 'policy');
+    expect(policyIdx).toBeGreaterThan(-1);
+    expect(postExpIdx).toBeGreaterThan(policyIdx);
+    expect(p.planFingerprint).toBe(
+      computeScenarioPlanFingerprint({
+        scenarioId: p.scenarioId,
+        targetPolicyMode: p.targetPolicyMode,
+        applyWorkloadChanges: p.applyWorkloadChanges,
+        postPolicyStarts: ['experiment-lab'],
+        comfyRuntimeConfigured: true,
+        experimentLabRuntimeConfigured: true,
+        gatewayRuntimeConfigured: true,
+      })
+    );
   });
 });

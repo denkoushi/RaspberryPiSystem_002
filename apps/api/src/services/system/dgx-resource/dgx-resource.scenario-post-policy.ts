@@ -18,18 +18,30 @@ export function buildPostPolicyOrchestrationSteps(args: {
   /** orchestration の scenario ID（プランナーとは循環しないよう literal で受ける） */
   scenarioId: string;
   comfyRuntimeConfigured: boolean;
+  experimentLabRuntimeConfigured: boolean;
 }): PostPolicyOrchestrationStep[] {
-  const { scenarioId, comfyRuntimeConfigured } = args;
-  if (scenarioId !== 'business_to_private' || !comfyRuntimeConfigured) {
-    return [];
+  const { scenarioId, comfyRuntimeConfigured, experimentLabRuntimeConfigured } = args;
+  if (scenarioId === 'business_to_private' && comfyRuntimeConfigured) {
+    return [
+      {
+        targetId: 'private-comfyui',
+        action: 'start',
+        eventMessageJa:
+          'ガイド「私用を始める」: 私用 ComfyUI 起動リクエストを送信しました（設定済み POST hook）',
+        summaryJa: 'private-comfyui: 起動リクエスト（Pi5 POST）',
+      },
+    ];
   }
-  return [
-    {
-      targetId: 'private-comfyui',
-      action: 'start',
-      eventMessageJa:
-        'ガイド「私用を始める」: 私用 ComfyUI 起動リクエストを送信しました（設定済み POST hook）',
-      summaryJa: 'private-comfyui: 起動リクエスト（Pi5 POST）',
-    },
-  ];
+  if (scenarioId === 'business_to_experiment' && experimentLabRuntimeConfigured) {
+    return [
+      {
+        targetId: 'experiment-lab',
+        action: 'start',
+        eventMessageJa:
+          'ガイド「実験へ切替」: experiment-lab 起動リクエストを送信しました（設定済み POST hook）',
+        summaryJa: 'experiment-lab: 起動リクエスト（Pi5 POST）',
+      },
+    ];
+  }
+  return [];
 }

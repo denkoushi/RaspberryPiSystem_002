@@ -23,7 +23,9 @@ DGX system-prod 用のローカル gateway。
 from __future__ import annotations
 
 import os
+import json
 import sys
+import subprocess
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -44,6 +46,17 @@ class GatewayConfig:
     runtime_control_base_url: str
     embedding_api_key: str
     embedding_base_url: str
+    private_comfy_root: str
+    private_comfy_start_cmd: str
+    private_comfy_stop_cmd: str
+    private_comfy_health_url: str
+    experiment_lab_root: str
+    experiment_lab_start_cmd: str
+    experiment_lab_stop_cmd: str
+    experiment_lab_health_url: str
+    experiment_lab_health_mode: str
+    experiment_lab_container_name: str
+    private_comfy_cmd_timeout_sec: int
 
 
 def load_config_from_env() -> GatewayConfig:
@@ -59,6 +72,30 @@ def load_config_from_env() -> GatewayConfig:
         runtime_control_base_url=(os.environ.get("RUNTIME_CONTROL_BASE_URL") or "http://127.0.0.1:39090").rstrip("/"),
         embedding_api_key=(os.environ.get("EMBEDDING_API_KEY") or "").strip(),
         embedding_base_url=(os.environ.get("EMBEDDING_BASE_URL") or "http://127.0.0.1:38100").rstrip("/"),
+        private_comfy_root=(
+            os.environ.get("PRIVATE_COMFY_ROOT")
+            or "/srv/dgx/private-personal/compose/dgx-private-comfyui"
+        ).strip(),
+        private_comfy_start_cmd=(os.environ.get("PRIVATE_COMFY_START_CMD") or "./start-private-comfyui.sh").strip(),
+        private_comfy_stop_cmd=(os.environ.get("PRIVATE_COMFY_STOP_CMD") or "./stop-private-comfyui.sh").strip(),
+        private_comfy_health_url=(
+            os.environ.get("PRIVATE_COMFY_HEALTH_URL") or "http://127.0.0.1:8188"
+        ).strip(),
+        experiment_lab_root=(os.environ.get("EXPERIMENT_LAB_ROOT") or "/srv/dgx/system-prod/bin").strip(),
+        experiment_lab_start_cmd=(
+            os.environ.get("EXPERIMENT_LAB_START_CMD")
+            or "set -a; source /srv/dgx/system-prod/secrets/control-server.env; set +a; ./start-trtllm-server.sh"
+        ).strip(),
+        experiment_lab_stop_cmd=(
+            os.environ.get("EXPERIMENT_LAB_STOP_CMD")
+            or "set -a; source /srv/dgx/system-prod/secrets/control-server.env; set +a; ./stop-trtllm-server.sh"
+        ).strip(),
+        experiment_lab_health_url=(
+            os.environ.get("EXPERIMENT_LAB_HEALTH_URL") or "http://127.0.0.1:38083/v1/models"
+        ).strip(),
+        experiment_lab_health_mode=(os.environ.get("EXPERIMENT_LAB_HEALTH_MODE") or "container").strip().lower(),
+        experiment_lab_container_name=(os.environ.get("EXPERIMENT_LAB_CONTAINER_NAME") or "system-prod-trtllm").strip(),
+        private_comfy_cmd_timeout_sec=int((os.environ.get("PRIVATE_COMFY_CMD_TIMEOUT_SEC") or "240").strip()),
     )
 
 
@@ -83,6 +120,32 @@ def resolve_backend_base_url(config: GatewayConfig) -> str:
 def read_body(handler: BaseHTTPRequestHandler) -> bytes:
     length = int(handler.headers.get("Content-Length", "0"))
     return handler.rfile.read(length) if length > 0 else b""
+
+
+def run_local_command(command: str, cwd: str, timeout_sec: int) -> tuple[int, str]:
+    proc = subprocess.run(
+        ["bash", "-lc", command],
+        cwd=cwd,
+        timeout=timeout_sec,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    out = (proc.stdout or "") + ("\n" if proc.stdout and proc.stderr else "") + (proc.stderr or "")
+    return proc.returncode, out.strip()
+
+
+def is_container_running(container_name: str) -> bool:
+    proc = subprocess.run(
+        ["bash", "-lc", "docker ps --format '{{.Names}}'"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return False
+    names = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
+    return container_name in names
 
 
 def proxy_request(method: str, url: str, body: bytes, headers: dict[str, str]) -> tuple[int, bytes, str]:
@@ -128,6 +191,20 @@ def make_handler(
             if self.path == "/healthz":
                 self._send_text(200, "ok\n")
                 return
+            if self.path == "/private-comfyui/health":
+                status, body, content_type = proxy_impl("GET", config.private_comfy_health_url, b"", {})
+                self._send(status, body, content_type)
+                return
+            if self.path == "/experiment-lab/health":
+                if config.experiment_lab_health_mode == "container":
+                    if is_container_running(config.experiment_lab_container_name):
+                        self._send(200, b'{"ok":true,"mode":"container"}', "application/json; charset=utf-8")
+                    else:
+                        self._send(503, b'{"ok":false,"mode":"container"}', "application/json; charset=utf-8")
+                    return
+                status, body, content_type = proxy_impl("GET", config.experiment_lab_health_url, b"", {})
+                self._send(status, body, content_type)
+                return
             if self.path == "/embed":
                 if not self._embedding_auth_ok():
                     self._send_text(403, "forbidden")
@@ -163,6 +240,84 @@ def make_handler(
                 )
                 self._send(status, resp_body, content_type)
                 return
+            if self.path in ("/private-comfyui/start", "/private-comfyui/stop"):
+                if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
+                    self._send_text(403, "forbidden")
+                    return
+                command = (
+                    config.private_comfy_start_cmd
+                    if self.path.endswith("/start")
+                    else config.private_comfy_stop_cmd
+                )
+                try:
+                    rc, output = run_local_command(
+                        command,
+                        config.private_comfy_root,
+                        config.private_comfy_cmd_timeout_sec,
+                    )
+                    if rc == 0:
+                        payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
+                        self._send(200, payload, "application/json; charset=utf-8")
+                        return
+                    payload = json.dumps(
+                        {
+                            "ok": False,
+                            "path": self.path,
+                            "exitCode": rc,
+                            "output": output[:400],
+                        }
+                    ).encode("utf-8")
+                    self._send(502, payload, "application/json; charset=utf-8")
+                    return
+                except subprocess.TimeoutExpired:
+                    payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
+                    self._send(504, payload, "application/json; charset=utf-8")
+                    return
+                except Exception as exc:
+                    payload = json.dumps(
+                        {"ok": False, "path": self.path, "message": str(exc)}
+                    ).encode("utf-8")
+                    self._send(500, payload, "application/json; charset=utf-8")
+                    return
+            if self.path in ("/experiment-lab/start", "/experiment-lab/stop"):
+                if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
+                    self._send_text(403, "forbidden")
+                    return
+                command = (
+                    config.experiment_lab_start_cmd
+                    if self.path.endswith("/start")
+                    else config.experiment_lab_stop_cmd
+                )
+                try:
+                    rc, output = run_local_command(
+                        command,
+                        config.experiment_lab_root,
+                        config.private_comfy_cmd_timeout_sec,
+                    )
+                    if rc == 0:
+                        payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
+                        self._send(200, payload, "application/json; charset=utf-8")
+                        return
+                    payload = json.dumps(
+                        {
+                            "ok": False,
+                            "path": self.path,
+                            "exitCode": rc,
+                            "output": output[:400],
+                        }
+                    ).encode("utf-8")
+                    self._send(502, payload, "application/json; charset=utf-8")
+                    return
+                except subprocess.TimeoutExpired:
+                    payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
+                    self._send(504, payload, "application/json; charset=utf-8")
+                    return
+                except Exception as exc:
+                    payload = json.dumps(
+                        {"ok": False, "path": self.path, "message": str(exc)}
+                    ).encode("utf-8")
+                    self._send(500, payload, "application/json; charset=utf-8")
+                    return
             if self.path == "/embed":
                 if not self._embedding_auth_ok():
                     self._send_text(403, "forbidden")

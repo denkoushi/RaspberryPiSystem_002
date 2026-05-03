@@ -405,6 +405,25 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   ): Promise<{ ok: true; message: string }> => {
     const rt = readComfyRuntimeEndpoints();
     if (!rt) {
+      // #region agent log
+      await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+        body: JSON.stringify({
+          sessionId: 'a59f92',
+          runId: 'pre-fix',
+          hypothesisId: 'H2',
+          location: 'dgx-resource.service.ts:runComfyAuxStartStop',
+          message: 'comfy runtime endpoint missing',
+          data: {
+            action,
+            comfyStartConfigured: Boolean(env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL?.trim()),
+            comfyStopConfigured: Boolean(env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL?.trim()),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       throw new ApiError(
         400,
         'private-comfyui の起停 URL が Pi5 に未設定です（DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_* を Runbook 参照）',
@@ -439,6 +458,25 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   ): Promise<{ ok: true; message: string }> => {
     const rt = readExperimentLabRuntimeEndpoints();
     if (!rt) {
+      // #region agent log
+      await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+        body: JSON.stringify({
+          sessionId: 'a59f92',
+          runId: 'pre-fix',
+          hypothesisId: 'H2',
+          location: 'dgx-resource.service.ts:runExperimentLabAuxStartStop',
+          message: 'experiment runtime endpoint missing',
+          data: {
+            action,
+            experimentStartConfigured: Boolean(env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL?.trim()),
+            experimentStopConfigured: Boolean(env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL?.trim()),
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       throw new ApiError(
         400,
         'experiment-lab の起停 URL が Pi5 に未設定です（DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_*）',
@@ -475,6 +513,21 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     reason: string | undefined,
     eventLog: TargetRuntimeEventLogMode
   ): Promise<{ ok: true; message: string }> => {
+    // #region agent log
+    await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+      body: JSON.stringify({
+        sessionId: 'a59f92',
+        runId: 'pre-fix',
+        hypothesisId: 'H1',
+        location: 'dgx-resource.service.ts:runTargetRuntimeAction',
+        message: 'target runtime action dispatch',
+        data: { targetId, action, hasReason: Boolean(reason), eventLog },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     switch (targetId) {
       case 'system-prod-gateway':
         return runGatewayRuntimeStartStop(action, reason, eventLog);
@@ -496,8 +549,24 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     targetId: DgxControlTargetId,
     action: DgxControlTargetAction,
     reason?: string
-  ): Promise<{ ok: true; message: string }> =>
-    runTargetRuntimeAction(targetId, action, reason, 'default');
+  ): Promise<{ ok: true; message: string }> => {
+    // #region agent log
+    await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+      body: JSON.stringify({
+        sessionId: 'a59f92',
+        runId: 'pre-fix',
+        hypothesisId: 'H1',
+        location: 'dgx-resource.service.ts:handleExecuteTargetAction',
+        message: 'execute target action called',
+        data: { targetId, action, hasReason: Boolean(reason) },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    return runTargetRuntimeAction(targetId, action, reason, 'default');
+  };
 
   const handleSetPolicy = async (
     mode: DgxPolicyMode,
@@ -564,6 +633,27 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     },
 
     async executeAction(body: DgxResourceActionBody): Promise<DgxResourceActionResult> {
+      // #region agent log
+      await fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a59f92' },
+        body: JSON.stringify({
+          sessionId: 'a59f92',
+          runId: 'pre-fix',
+          hypothesisId: 'H3',
+          location: 'dgx-resource.service.ts:executeAction',
+          message: 'execute action entry',
+          data: {
+            type: body.type,
+            gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
+            comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
+            experimentRuntimeConfigured: experimentLabRuntimeControlConfigured(),
+            localLlmRuntimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+      // #endregion
       if (body.type === 'SET_POLICY') {
         return handleSetPolicy(body.policyMode, {
           applyWorkloadChanges: body.applyWorkloadChanges,
