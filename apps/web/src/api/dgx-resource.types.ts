@@ -6,6 +6,7 @@ export type DgxControlTargetIdApi =
   | 'system-prod-inference'
   | 'system-prod-embedding'
   | 'private-comfyui'
+  | 'experiment-lab'
   | 'spark-host'
   | 'metrics-kpi';
 
@@ -76,6 +77,9 @@ export type DgxResourceOverview = {
     comfyHealthConfigured: boolean;
     embeddingHealthConfigured: boolean;
     sparkHostConfigured: boolean;
+    comfyRuntimeControlConfigured: boolean;
+    experimentLabHealthConfigured: boolean;
+    experimentLabRuntimeControlConfigured: boolean;
   };
   targets?: DgxControlTargetSnapshotApi[];
   sparkHost: DgxSparkHostOverview;
@@ -97,7 +101,7 @@ export type DgxResourceEventsResponse = {
 export type DgxResourceActionBody =
   | { type: 'LOCAL_LLM_START'; reason?: string }
   | { type: 'LOCAL_LLM_STOP'; reason?: string }
-  | { type: 'SET_POLICY'; policyMode: DgxPolicyModeApi }
+  | { type: 'SET_POLICY'; policyMode: DgxPolicyModeApi; applyWorkloadChanges?: boolean }
   | {
       type: 'EXECUTE_TARGET_ACTION';
       targetId: DgxControlTargetIdApi;

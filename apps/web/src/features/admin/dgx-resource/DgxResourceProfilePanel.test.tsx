@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { ConfirmProvider } from '../../../contexts/ConfirmContext';
+
 import { DgxResourceProfilePanel } from './DgxResourceProfilePanel';
 
 import type { DgxResourceOverview } from '../../../api/dgx-resource.types';
@@ -11,7 +13,11 @@ function renderWithClient(ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ConfirmProvider>{ui}</ConfirmProvider>
+    </QueryClientProvider>
+  );
 }
 
 describe('DgxResourceProfilePanel', () => {
@@ -41,6 +47,9 @@ describe('DgxResourceProfilePanel', () => {
         comfyHealthConfigured: false,
         embeddingHealthConfigured: false,
         sparkHostConfigured: false,
+        comfyRuntimeControlConfigured: false,
+        experimentLabHealthConfigured: false,
+        experimentLabRuntimeControlConfigured: false,
       },
       sparkHost: {
         configured: false,

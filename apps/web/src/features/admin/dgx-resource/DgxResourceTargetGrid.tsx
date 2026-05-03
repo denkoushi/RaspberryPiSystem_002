@@ -1,6 +1,6 @@
 import { Button } from '../../../components/ui/Button';
 
-import type { DgxControlTargetSnapshotApi, DgxResourceOverview } from '../../../api/dgx-resource.types';
+import type { DgxControlTargetIdApi, DgxControlTargetSnapshotApi, DgxResourceOverview } from '../../../api/dgx-resource.types';
 
 function badge(
   status: DgxControlTargetSnapshotApi['status'],
@@ -31,43 +31,78 @@ function kindLabel(kind: DgxControlTargetSnapshotApi['kind']): string {
 
 function capabilitySummary(capabilities: DgxControlTargetSnapshotApi['capabilities']): string {
   if (capabilities.includes('start') && capabilities.includes('stop')) {
-    return '操作: 起動・停止（DGX /start | /stop）';
+    return '操作: 起動・停止（設定されている POST hook）';
   }
   return '操作: 読取のみ';
+}
+
+function stopConfirmCopy(targetId: DgxControlTargetIdApi, displayName: string): {
+  title: string;
+  description: string;
+} {
+  switch (targetId) {
+    case 'system-prod-gateway':
+      return {
+        title: `${displayName} を停止しますか？`,
+        description: '実行中の推論やオンデマンド利用に影響します。',
+      };
+    case 'private-comfyui':
+      return {
+        title: '私用 ComfyUI を停止しますか？',
+        description:
+          'DGX 側の Comfy UI コンテナ等が停止試行されます。未保存ワークフローがあれば先に確認してください。',
+      };
+    case 'experiment-lab':
+      return {
+        title: 'experiment-lab を停止しますか？',
+        description: '実験コンテナの停止試行です。検証データに注意してください。',
+      };
+    default:
+      return {
+        title: `${displayName} を停止しますか？`,
+        description: '関連ワークロードが停止試行されます。',
+      };
+  }
 }
 
 type Props = {
   targets: DgxControlTargetSnapshotApi[];
   overview: DgxResourceOverview;
+  targetActionError: { targetId: DgxControlTargetIdApi; message: string } | null;
   onControlUiError: (message: string | null) => void;
   confirmStop: (opts: {
     title: string;
     description?: string;
     tone?: 'danger' | 'primary';
   }) => Promise<boolean>;
-  onGatewayStart: () => void;
-  onGatewayStop: () => void;
-  gatewayBusy: boolean;
+  busy: boolean;
+  onExecuteTarget: (targetId: DgxControlTargetIdApi, action: 'start' | 'stop') => void;
 };
 
 export function DgxResourceTargetGrid({
   targets,
   overview,
+  targetActionError,
   onControlUiError,
   confirmStop,
-  onGatewayStart,
-  onGatewayStop,
-  gatewayBusy,
+  busy,
+  onExecuteTarget,
 }: Props) {
-  const canGatewayControl =
-    overview.runtime.runtimeControlConfigured &&
-    targets.some((t) => t.id === 'system-prod-gateway' && t.capabilities.includes('start'));
-
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
       {targets.map((t) => {
         const b = badge(t.status, t.badges);
-        const isGateway = t.id === 'system-prod-gateway';
+        const canControlRuntime = t.capabilities.includes('start') && t.capabilities.includes('stop');
+        const cardError = targetActionError?.targetId === t.id ? targetActionError.message : null;
+
+        /** gateway は on_demand + 制御 URL、他は Pi5 env の hook URL が揃っているときのみ操作可 */
+        const gatewayReady =
+          t.id === 'system-prod-gateway' &&
+          overview.runtime.runtimeControlConfigured &&
+          canControlRuntime;
+        const otherReady = t.id !== 'system-prod-gateway' && canControlRuntime;
+
+        const showButtons = gatewayReady || otherReady;
 
         return (
           <section
@@ -86,21 +121,21 @@ export function DgxResourceTargetGrid({
               </span>
             </div>
             <ul className="mt-1.5 space-y-1 text-sm leading-snug text-white/55">
-              {t.metaLines.slice(0, 2).map((line, i) => (
+              {t.metaLines.slice(0, 3).map((line, i) => (
                 <li key={i} className="truncate" title={line}>
                   {line}
                 </li>
               ))}
             </ul>
-            {isGateway && canGatewayControl ? (
+            {showButtons ? (
               <div className="mt-2 flex flex-wrap gap-1.5 border-t border-white/10 pt-2">
                 <Button
                   type="button"
                   variant="ghostOnDark"
-                  disabled={gatewayBusy}
+                  disabled={busy}
                   onClick={() => {
                     onControlUiError(null);
-                    onGatewayStart();
+                    onExecuteTarget(t.id as DgxControlTargetIdApi, 'start');
                   }}
                   className="border border-white/20 px-3 py-1.5 text-sm"
                 >
@@ -109,22 +144,27 @@ export function DgxResourceTargetGrid({
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={gatewayBusy}
+                  disabled={busy}
                   onClick={async () => {
+                    const copy = stopConfirmCopy(t.id as DgxControlTargetIdApi, t.displayName);
                     const ok = await confirmStop({
-                      title: 'system-prod-gateway を停止しますか？',
-                      description: '実行中の推論があると失敗することがあります。',
+                      ...copy,
                       tone: 'danger',
                     });
                     if (!ok) return;
                     onControlUiError(null);
-                    onGatewayStop();
+                    onExecuteTarget(t.id as DgxControlTargetIdApi, 'stop');
                   }}
                   className="bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-500"
                 >
                   停止
                 </Button>
               </div>
+            ) : null}
+            {cardError ? (
+              <p className="mt-2 rounded border border-red-500/35 bg-red-950/40 px-2.5 py-1.5 text-sm text-red-100/95" role="alert">
+                {cardError}
+              </p>
             ) : null}
           </section>
         );
