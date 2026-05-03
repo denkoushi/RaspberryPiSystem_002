@@ -65,14 +65,14 @@ function makeOperator(): DgxResourceOperatorConsoleApi {
     operatorActions: [
       {
         id: 'business_to_private',
-        labelJa: '私用モードへ',
+        labelJa: '私用を始める',
         subtitleJa: 'sub',
         scenarioId: 'business_to_private',
         primary: true,
       },
       {
         id: 'private_to_business',
-        labelJa: '業務へ戻す',
+        labelJa: '業務に戻す（私用を終える）',
         subtitleJa: 'sub',
         scenarioId: 'private_to_business',
         primary: false,
@@ -153,9 +153,10 @@ describe('DgxResourceOperatorConsole', () => {
       />
     );
 
-    expect(screen.getByRole('heading', { name: '運用コンソール' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'DGX 運用ガイド' })).toBeInTheDocument();
     expect(screen.getByText('業務 VLM')).toBeInTheDocument();
-    expect(screen.getByText('私用モードへ')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'いまやりたいこと（推奨）' })).toBeInTheDocument();
+    expect(screen.getByText('私用を始める')).toBeInTheDocument();
   });
 
   it('does not call preview when only selecting a scenario (explicit preview button)', async () => {
@@ -171,7 +172,7 @@ describe('DgxResourceOperatorConsole', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /業務へ戻す/ }));
+    fireEvent.click(screen.getByRole('button', { name: /業務に戻す/ }));
     expect(postDgxAction).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /プレビュー(取得|再取得)/ }));

@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX 運用コンソール UI 再設計（Web のみ）本番反映**）／DGX Phase5（API）／Phase4／Control Targets／Phase3／2026-05-02 項は下記
+最終更新: 2026-05-03（**DGX 目的別ガイド UI／私用開始に post-policy Comfy 起動（API+Web）本番反映**）／運用コンソール UI 再設計／Phase5（API）／Phase4／Control Targets／Phase3／2026-05-02 項は下記
+
+### 補足（2026-05-03: **DGX リソース 目的別4操作ガイド（タスク優先 UI）／`business_to_private` の post-policy Comfy 起動**·`feat/dgx-resource-ui-task-first`·API+Web·Pi5 のみ）
+
+- **変更概要**: **`/admin/tools/dgx-resource`** を **「私用を始める／業務に戻す／実験を始める／実験を終えて業務に戻す」** の 4 導線中心にし、Spark・監視・手動運用モード・個別起停・技術 ID は **`DgxResourceAdvancedControls`（`<details>`）で既定折りたたみ**。API は **`dgx-resource.scenario-post-policy.ts`** で **`business_to_private` かつ Comfy の Pi5 POST 両方設定時**、ポリシー適用後に **`private-comfyui` `start`** をプレビュー・実行・指紋に組み込み（順序は **事前ワークロード → policy → post-policy**）。Web は **`dgxResourceTaskFlows.ts`** の順序安定化、`DgxResourceCurrentStateSummary`／`DgxResourcePrimaryScenarioFlow` 分離。既存 **`PREVIEW_*`/`EXECUTE_*`/`targets`/`operator` 契約は維持**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。**Pi3 個別デプロイは不要**（ユーザー方針の専用手順対象外）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-ui-task-first infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`5ac0f17d`**（`feat(admin-dgx): task-first dashboard and post-policy comfy start`）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260503-140320-20910`**（**`PLAY RECAP` `ok=130` `changed=4` `failed=0` / `unreachable=0` / リモート `exit` `0`**・ローカル `--follow` 完了まで **約 651s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 113s**・Tailscale。**Pi3 は検証のみ**）。
+- **トラブルシュート**: **UI が旧のまま／`operator` 欠落**: Pi5 **`api`/`web` を同一ブランチ**、[verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**Stale（409）**は Phase 4 節どおりプレビュー再取得。**本番ビルドで post-policy の `targetId` 型不一致**: **`PostPolicyOrchestrationStep`** の `targetId` は **`WorkloadAdjustmentStep['targetId']`** にそろえると `ScenarioWorkloadStepPreview` と整合（開発時 Vitest と `tsconfig.build` の差異に注意）。
+- **ナレッジ**: [KB-365 §Phase6](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-6目的別ガイド--post-policy-comfy-apiweb本番反映)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](../INDEX.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-03: **DGX リソース管理 UI 再設計（運用コンソール／デザイントークン集約）**·`feat/dgx-resource-ui-redesign`·**Web のみ**·Pi5 のみ）
 

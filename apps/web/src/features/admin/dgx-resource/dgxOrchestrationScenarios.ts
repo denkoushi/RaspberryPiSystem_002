@@ -16,22 +16,22 @@ export type DgxOrchestrationScenarioMeta = {
 export const DGX_ORCHESTRATION_SCENARIO_META: Record<DgxOrchestrationScenarioIdApi, DgxOrchestrationScenarioMeta> = {
   business_to_private: {
     id: 'business_to_private',
-    titleJa: '業務 → 私用OK',
-    descriptionJa: 'モードのみ「私用OK」へ。Comfy は自動停止しません。',
+    titleJa: '私用を始める',
+    descriptionJa: '「私用OK」へ。起停フックが揃っていれば私用 ComfyUI の起動も同一ガイドに含められます。',
   },
   private_to_business: {
     id: 'private_to_business',
-    titleJa: '私用 → 業務優先',
-    descriptionJa: '必要ならワークロード調停（POST）の後、「業務優先」へ。',
+    titleJa: '業務に戻す（私用終了）',
+    descriptionJa: '必要な停止試行の後、「業務優先」へ戻します。',
   },
   business_to_experiment: {
     id: 'business_to_experiment',
-    titleJa: '業務 → 実験優先',
-    descriptionJa: '実験用に GPU を寄せます。競合には注意してください。',
+    titleJa: '実験を始める',
+    descriptionJa: '調停後「実験優先」。業務 Inference との競合に注意してください。',
   },
   experiment_to_business: {
     id: 'experiment_to_business',
-    titleJa: '実験 → 業務優先へ戻す',
-    descriptionJa: '調停により停止試行後、「業務優先」へ戻します。',
+    titleJa: '実験を終えて業務に戻す',
+    descriptionJa: '調停で停止試行後、「業務優先」へ戻します。',
   },
 };

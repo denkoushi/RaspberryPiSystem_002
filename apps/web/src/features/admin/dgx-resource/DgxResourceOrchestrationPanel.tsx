@@ -157,16 +157,16 @@ export function DgxResourceOrchestrationPanel({ onControlUiError }: Props) {
             if (!lastPreview) return;
             const preview = lastPreview;
             const ok = await confirm({
-              title: '複合ガイド実行の確定',
+              title: '運用ガイドの実行',
               description: [
-                `シナリオ: ${preview.scenarioId}`,
-                `指紋（先頭16文字）: ${preview.planFingerprint.slice(0, 16)}…`,
+                `種別（内部キー）: ${preview.scenarioId}`,
+                `実行計画 ID（先頭16文字）: ${preview.planFingerprint.slice(0, 16)}…`,
                 '',
-                'ステップ一覧:',
+                '進むステップ:',
                 formatStepsForConfirm(preview),
                 '',
                 preview.warnings.length > 0
-                  ? ['警告:', ...preview.warnings.map((w) => `・${w}`), ''].join('\n')
+                  ? ['確認事項:', ...preview.warnings.map((w) => `・${w}`), ''].join('\n')
                   : '',
               ].join('\n'),
               tone: preview.warnings.length > 2 ? 'danger' : 'primary',
@@ -178,14 +178,14 @@ export function DgxResourceOrchestrationPanel({ onControlUiError }: Props) {
             });
           }}
         >
-          指紋確認済みとして実行
+          この内容で実行する
         </Button>
       </div>
 
       {lastPreview && lastPreview.scenarioId === scenarioId ? (
         <div className="rounded border border-white/10 bg-black/30 p-2.5 text-sm text-white/75">
           <div className="font-mono text-xs text-teal-200/95">
-            Fingerprint SHA-256 hex:{' '}
+            実行計画 ID（指紋）:{' '}
             <span className="break-all">{lastPreview.planFingerprint.slice(0, 24)}…</span>
           </div>
           <ol className="mt-2 list-decimal space-y-1 pl-5 leading-snug">
