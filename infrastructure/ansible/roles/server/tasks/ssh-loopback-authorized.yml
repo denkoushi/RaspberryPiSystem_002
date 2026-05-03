@@ -1,0 +1,41 @@
+---
+# Pi5 標準デプロイの preflight は Pi5 上で ansible を実行し、inventory の raspberrypi5 は
+# SSH で ansible_host（通常 Tailscale の server_ip）へ接続するため、Pi5→自分自身 の公開鍵認証が必要。
+# （詳細: docs/knowledge-base/infrastructure/ansible-deployment.md §KB-366）
+- name: Ensure Pi5 loopback SSH authorized_keys includes local ed25519 pubkey (preflight self-SSH)
+  when:
+    - ansible_connection | default('ssh') != 'local'
+  vars:
+    # ansible_env は環境により未取得のことがあるため fact でフォールバック
+    pi5_ssh_home: "{{ ansible_env.HOME | default(ansible_user_dir | default('/home/' ~ ansible_user, true), true) }}"
+  block:
+    - name: Ensure ~/.ssh exists
+      ansible.builtin.file:
+        path: "{{ pi5_ssh_home }}/.ssh"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0700'
+
+    - name: Stat ~/.ssh/id_ed25519.pub
+      ansible.builtin.stat:
+        path: "{{ pi5_ssh_home }}/.ssh/id_ed25519.pub"
+      register: pi5_loop_ed25519_pub
+
+    - name: Read ~/.ssh/id_ed25519.pub
+      ansible.builtin.slurp:
+        path: "{{ pi5_ssh_home }}/.ssh/id_ed25519.pub"
+      register: pi5_loop_pub_slurp
+      when: pi5_loop_ed25519_pub.stat.exists | default(false)
+
+    - name: Ensure authorized_keys contains loopback pubkey (idempotent)
+      ansible.builtin.lineinfile:
+        path: "{{ pi5_ssh_home }}/.ssh/authorized_keys"
+        line: "{{ pi5_loop_pub_slurp.content | b64decode | trim }}"
+        create: true
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+      when:
+        - pi5_loop_pub_slurp is defined
+        - pi5_loop_pub_slurp.content is defined

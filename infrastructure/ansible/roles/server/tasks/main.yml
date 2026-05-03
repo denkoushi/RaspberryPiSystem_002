@@ -22,6 +22,9 @@
       - docker_server_ip is defined
     fail_msg: "Docker Compose用SERVER_IPが定義されていません（inventory.ymlを確認してください）"
 
+- name: Include SSH loopback authorized_keys guard (Pi5 self-SSH / ansible preflight)
+  ansible.builtin.import_tasks: ssh-loopback-authorized.yml
+
 - name: Ensure API .env directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}/apps/api"

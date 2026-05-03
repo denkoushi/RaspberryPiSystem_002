@@ -73,6 +73,8 @@ PREFLIGHT_LOG_FILE="${LOG_DIR}/ansible-preflight-${TIMESTAMP}.log"
 HISTORY_FILE="${LOG_DIR}/ansible-history.jsonl"
 REMOTE_LOCK_FILE="${REMOTE_LOCK_FILE:-/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock}"
 REMOTE_LOCK_TIMEOUT_SECONDS="${REMOTE_LOCK_TIMEOUT_SECONDS:-2400}"
+# bootstrap runner が理由なく残ったときの orphan 判定（preflight の ansible ping が動いていない・status artifact 無し）
+REMOTE_BOOTSTRAP_ORPHAN_SECONDS="${REMOTE_BOOTSTRAP_ORPHAN_SECONDS:-180}"
 REMOTE_DEPLOY_STATUS_FILE="${REMOTE_DEPLOY_STATUS_FILE:-/opt/RaspberryPiSystem_002/config/deploy-status.json}"
 REMOTE_LOG_DIR="${REMOTE_LOG_DIR:-/opt/RaspberryPiSystem_002/logs/deploy}"
 LOCAL_LOCK_DIR="${LOCAL_LOCK_DIR:-${LOG_DIR}/.update-all-clients.local.lock}"
@@ -585,6 +587,141 @@ check_network_mode() {
   fi
 }
 
+# Pi5 リモート preflight は Pi5 上で ansible を実行する。
+# inventory の raspberrypi5 は既定で SSH 接続のため、Pi5→ansible_host（通常は Tailscale の server_ip）への
+# **self-SSH** が無いと `ansible … -m ping` が Permission denied で落ちる。
+preflight_requires_pi5_loopback_ssh() {
+  [[ -n "${REMOTE_HOST}" ]] || return 1
+  case "${INVENTORY_PATH:-}" in
+    *inventory-talkplaza*|*talkplaza*)
+      return 1
+      ;;
+  esac
+  if [[ -z "${LIMIT_HOSTS}" ]]; then
+    return 0
+  fi
+  local tok
+  local -a tokens
+  IFS=',' read -ra tokens <<< "${LIMIT_HOSTS}"
+  for tok in "${tokens[@]}"; do
+    tok="${tok// /}"
+    [[ "${tok}" == *raspberrypi5* ]] && return 0
+    [[ "${tok}" == server ]] && return 0
+  done
+  return 1
+}
+
+check_pi5_loopback_ssh_preflight() {
+  preflight_requires_pi5_loopback_ssh || return 0
+
+  echo "[INFO] Checking Pi5 self-SSH (Pi5→inventory server_ip; required before ansible ping to raspberrypi5)"
+  local inventory_basename
+  inventory_basename=$(basename "${INVENTORY_PATH}")
+
+  if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" /usr/bin/env python3 - "${inventory_basename}" <<'PY'
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+INV_ARG = sys.argv[1]
+
+
+def iter_server_host_items(inv_tree):
+    items = []
+    children = inv_tree.get('all', {}).get('children', {})
+    if not isinstance(children, dict):
+        return items
+    srv = children.get('server')
+    if isinstance(srv, dict) and isinstance(srv.get('hosts'), dict):
+        items.extend(srv['hosts'].items())
+    for grp in children.values():
+        if not isinstance(grp, dict):
+            continue
+        nested = grp.get('children')
+        if not isinstance(nested, dict):
+            continue
+        srv2 = nested.get('server')
+        if isinstance(srv2, dict) and isinstance(srv2.get('hosts'), dict):
+            items.extend(srv2['hosts'].items())
+    return items
+
+
+base = Path('/opt/RaspberryPiSystem_002/infrastructure/ansible')
+inv_path = base / INV_ARG
+gv_path = base / 'group_vars' / 'all.yml'
+
+try:
+    inv = yaml.safe_load(inv_path.read_text(encoding='utf-8'))
+except Exception as exc:
+    print(f'[ERROR] Cannot read inventory on Pi5 ({inv_path}): {exc}', file=sys.stderr)
+    sys.exit(2)
+
+try:
+    gv = yaml.safe_load(gv_path.read_text(encoding='utf-8'))
+except Exception as exc:
+    print(f'[ERROR] Cannot read group_vars/all.yml on Pi5 ({gv_path}): {exc}', file=sys.stderr)
+    sys.exit(2)
+
+nm = gv.get('network_mode') or 'tailscale'
+ln = gv.get('local_network') or {}
+tn = gv.get('tailscale_network') or {}
+if nm == 'local':
+    ip = ln.get('raspberrypi5_ip')
+else:
+    ip = tn.get('raspberrypi5_ip') or ln.get('raspberrypi5_ip')
+
+target_user = None
+for _hn, hv in iter_server_host_items(inv):
+    if not isinstance(hv, dict):
+        continue
+    if hv.get('ansible_connection') == 'local':
+        continue
+    target_user = hv.get('ansible_user')
+    break
+
+if not target_user:
+    target_user = 'denkon5sd02'
+
+if not ip:
+    print('[ERROR] Could not resolve raspberrypi5 IP from group_vars (server_ip)', file=sys.stderr)
+    sys.exit(2)
+
+cp = subprocess.run(
+    [
+        'ssh',
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'ConnectTimeout=15',
+        '-o',
+        'StrictHostKeyChecking=accept-new',
+        f'{target_user}@{ip}',
+        'echo',
+        'UPDATE_ALL_CLIENTS_SELF_SSH_OK',
+    ],
+    capture_output=True,
+    text=True,
+)
+if cp.returncode != 0:
+    err = (cp.stderr or cp.stdout or '').strip()
+    print(
+        '[ERROR] Pi5 self-SSH failed '
+        f'({target_user}@{ip}). '
+        'Ensure ~/.ssh/id_ed25519.pub is in ~/.ssh/authorized_keys on Pi5 '
+        f'(ansible inventory {INV_ARG}). Detail: {err}',
+        file=sys.stderr,
+    )
+    sys.exit(3)
+
+sys.exit(0)
+PY
+  then
+    exit_with_error 3 "Preflight failed: Pi5 self-SSH check failed (see stderr above). KB: docs/knowledge-base/infrastructure/ansible-deployment.md §KB-366"
+  fi
+}
+
 check_tailscale_on_pi5() {
   if [[ -z "${REMOTE_HOST}" ]]; then
     return 0
@@ -630,6 +767,8 @@ run_preflight_remotely() {
 
   check_tailscale_on_pi5
 
+  check_pi5_loopback_ssh_preflight
+
   local inventory_basename
   inventory_basename=$(basename "${INVENTORY_PATH}")
   local limit_arg=""
@@ -657,7 +796,7 @@ acquire_remote_lock() {
   echo "[INFO] Acquiring remote lock on ${REMOTE_HOST} (${REMOTE_LOCK_FILE})"
   ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p \"$(dirname "${REMOTE_LOCK_FILE}")\""
 
-  if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "LOCK_FILE=\"${REMOTE_LOCK_FILE}\" LOCK_TIMEOUT=\"${REMOTE_LOCK_TIMEOUT_SECONDS}\" RUN_ID=\"${RUN_ID}\" /usr/bin/env python3 - <<'PY'
+  if ! ssh ${SSH_OPTS} "${REMOTE_HOST}" "LOCK_FILE=\"${REMOTE_LOCK_FILE}\" LOCK_TIMEOUT=\"${REMOTE_LOCK_TIMEOUT_SECONDS}\" RUN_ID=\"${RUN_ID}\" REMOTE_DEPLOY_LOG_DIR=\"${REMOTE_LOG_DIR}\" REMOTE_BOOTSTRAP_ORPHAN_SECONDS=\"${REMOTE_BOOTSTRAP_ORPHAN_SECONDS}\" /usr/bin/env python3 - <<'PY'
 import json
 import os
 import socket
@@ -678,6 +817,16 @@ def ansible_playbook_running() -> bool:
     try:
         subprocess.check_output(
             ['pgrep', '-f', r'ansible-playbook.*playbooks/update-clients\\.yml'],
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def ansible_adhoc_ping_running() -> bool:
+    try:
+        subprocess.check_output(
+            ['pgrep', '-f', r'ansible .* -m ping'],
             stderr=subprocess.DEVNULL,
         )
         return True
@@ -713,21 +862,49 @@ if os.path.exists(lock_path):
         created_epoch = int(os.path.getmtime(lock_path))
 
     age_seconds = now - created_epoch
+    deploy_log_dir = os.environ.get(
+        'REMOTE_DEPLOY_LOG_DIR', '/opt/RaspberryPiSystem_002/logs/deploy'
+    )
+    bootstrap_orphan_seconds = int(os.environ.get('REMOTE_BOOTSTRAP_ORPHAN_SECONDS', '180'))
+    runner = payload.get('runner')
+    lock_rid = payload.get('runId')
+    status_path = ''
+    if lock_rid:
+        status_path = os.path.join(deploy_log_dir, f'ansible-update-{lock_rid}.status.json')
+
+    orphan_bootstrap = (
+        runner == 'bootstrap'
+        and not pid_alive(existing_pid)
+        and age_seconds >= bootstrap_orphan_seconds
+        and not ansible_playbook_running()
+        and not ansible_adhoc_ping_running()
+        and bool(lock_rid)
+        and not os.path.exists(status_path)
+    )
+
     if pid_alive(existing_pid):
         print('LOCKED: active runPid')
         sys.exit(2)
     if ansible_playbook_running():
         print('LOCKED: ansible-playbook is still running')
         sys.exit(2)
-    if age_seconds <= timeout_seconds:
+    if orphan_bootstrap:
+        print(
+            f'[INFO] Removing orphan bootstrap lock (age={age_seconds}s, no status artifact)'
+        )
+        try:
+            os.remove(lock_path)
+        except FileNotFoundError:
+            pass
+    elif age_seconds <= timeout_seconds:
         print(f'LOCKED: age={age_seconds}s timeout={timeout_seconds}s')
         sys.exit(2)
-
-    print(f'[INFO] Removing stale lock (age={age_seconds}s, timeout={timeout_seconds}s)')
-    try:
-        os.remove(lock_path)
-    except FileNotFoundError:
-        pass
+    else:
+        print(f'[INFO] Removing stale lock (age={age_seconds}s, timeout={timeout_seconds}s)')
+        try:
+            os.remove(lock_path)
+        except FileNotFoundError:
+            pass
 
 payload = {
     'version': 2,
@@ -1844,10 +2021,14 @@ if [[ -n "${REMOTE_HOST}" ]]; then
   check_network_mode
   RUN_ID="$(build_run_id)"
   acquire_remote_lock
+  # detach/job でも preflight 失敗時は EXIT で bootstrap lock を返す（孤立 lock 連鎖防止）。
+  trap 'release_remote_lock; release_local_lock' EXIT
+  run_preflight_remotely "${LIMIT_HOSTS}"
   if [[ ${DETACH_MODE} -eq 0 && ${JOB_MODE} -eq 0 ]]; then
     trap 'release_remote_lock; clear_pi4_maintenance_flag_if_needed; release_local_lock' EXIT
+  else
+    trap 'release_local_lock' EXIT
   fi
-  run_preflight_remotely "${LIMIT_HOSTS}"
   set_pi4_maintenance_flag
   clear_server_deployment_flag
   if [[ ${JOB_MODE} -eq 1 ]]; then

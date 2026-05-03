@@ -12,6 +12,13 @@ update-frequency: medium
 
 最終更新: 2026-05-03（**DGX Phase8**: KPI 先頭・説明削減・全文可読 / Pi5 deploy + Phase12 PASS 43、**DGX Phase7**: 運用 UI 最小化・`business_to_experiment` の post-policy・gateway ヘルス・Ansible `api_dgx_resource_*`／ほか同日項は下記）
 
+### Pi5 リモートデプロイ前提（self-SSH・孤立 lock 再発防止）
+
+- **なぜ必要か**: `update-all-clients.sh` の Pi5 **preflight** は **Pi5 上で** `ansible … -m ping` を実行する。標準 `inventory.yml` の `raspberrypi5` は **SSH 接続**のため、Pi5 から **同一ホストの `ansible_host`（通常は Tailscale の `server_ip`）** へ鍵認証できる **self-SSH** が前提（`authorized_keys` に自分の **`~/.ssh/id_ed25519.pub`** が無いと `Permission denied (publickey)`）。
+- **事前確認（手動）**: `ssh <Pi5> 'ssh -o BatchMode=yes <user>@<server_ip> "echo UPDATE_ALL_CLIENTS_SELF_SSH_OK"'`（値は Pi5 の `group_vars/all.yml` の `network_mode` / `tailscale_network|local_network` に合わせる）。**スクリプトは同チェックを preflight の ansible ping 直前に自動実行**する（TalkPlaza `inventory-talkplaza.yml` は `ansible_connection: local` のため **スキップ**）。
+- **構成管理**: **server** ロールが（`ansible_connection != local` のとき）`~/.ssh/id_ed25519.pub` を **`authorized_keys` へ冪等追記**し、`.ssh` 700 / `authorized_keys` 600 を担保する（[`ssh-loopback-authorized.yml`](../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml)）。
+- **孤立 lock**: preflight 失敗時でも **bootstrap 用リモート lock は EXIT で解放**する。異常終了で残った **`runner=bootstrap` / `runPid=null` / `logs/deploy/ansible-update-<runId>.status.json` 無し** は、**`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`（既定 180 秒）** 経過後、**`ansible-playbook` も `ansible … -m ping` も動いていない**場合に **次回 `acquire_remote_lock` で削除**される。詳細は [KB-366](../knowledge-base/infrastructure/ansible-deployment.md#kb-366-pi5-self-ssh-preflight-and-orphan-lock)。
+
 ### 補足（2026-05-03: **DGX リソース Phase8（KPI 先頭・説明削減・全文可読）**·`feat/dgx-resource-dashboard-ui-phase8`·**Web のみ**·Pi5 のみ）
 
 - **変更概要**: `/admin/tools/dgx-resource` の Web を **KPI ストリップ先頭**へ再構成。**`overview.kpis`** を横一列（狭幅は横スクロール）で表示し、**読み込み完了後の `h1「DGX リソース」` と補助説明文を削除**。シナリオカードの **絵文字** と **「4つの操作だけ…」説明**を除去し、`Spark` / シナリオ / KPI の文言は **`truncate` をやめて折り返し表示**。実装は **`dgxResourceKpiStripModel.ts`** に表示モデルを分離し、KPI 組み立てを React 非依存でテスト固定。
