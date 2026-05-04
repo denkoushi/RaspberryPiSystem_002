@@ -2606,7 +2606,25 @@ category: knowledge-base
 - **知見**: 段階移動の矢印より **ランク直指定**のほうが、**長いリスト**で操作回数とミスタップが減る。**Portal の z-index** は左ペインの固定ツールスタックと **`kioskRevealUi` の定数**で揃えると、キオスクで隠れにくい。
 - **トラブルシューティング**:
   - **ピッカーが見えない／背面**: `fixedZIndex`・`KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK`・**強制リロード**（§6.6.4）。
+  - **ピッカー左列が画面外** → [**左ペイン・ビューポートクランプ（2026-05-05）**](#leader-order-board-left-pane-viewport-clamp-2026-05-05)（`AnchoredDropdownPortal` の既定クランプ）。
   - **`AnchoredDropdownPortal` の型エラー（ref）**: アンカーの **型を `HTMLElement | null` の `MutableRefObject` に統一**（本変更で `anchorRef` / `panelRef` を緩和）。
+
+### Leader order board: 左ペイン・順位ピッカー ビューポートクランプ（2026-05-05） {#leader-order-board-left-pane-viewport-clamp-2026-05-05}
+
+- **目的**: 左ドロワー直下で **順位ピッカーの左端がビューポート外に欠ける**のを防ぎ、**登録製番行で × と製番の視覚的な食い違い**を減らす。**Web のみ**・**API / DB 不変**。
+- **仕様（要約）**:
+  - **左ペイン** [`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx): **製番順評価 ON** 時 **`grid-cols-1`**（同一ブロック内は 1 列）。**OFF** は **`grid-cols-2` のまま**。アサイド幅 **OFF `w-80` / ON `w-96`**（従来より 1 段ずつ拡張）。
+  - **幾何**: [`anchoredDropdownViewportClamp.ts`](../../apps/web/src/components/kiosk/anchoredDropdownViewportClamp.ts) の **`computeAnchoredPanelLeftEdge`**（純関数・Vitest あり）。[`AnchoredDropdownPortal.tsx`](../../apps/web/src/components/kiosk/AnchoredDropdownPortal.tsx): 既定 **`clampToViewport: true`**・**`viewportPaddingPx`**（既定 16）。パネル幅は **`panelRef.getBoundingClientRect().width`**。初回は **二重 `requestAnimationFrame`** でレイアウト後に再測定。**`isOpen === false`** で **`position` を null** に戻す。**rAF 内 `setState`** は **アンマウント時 `cancelled`** で抑止。
+  - **後方互換**: 生産スケジュールの **広いフィルタパネル**で左クランプが気になる場合のみ、呼び出し側で **`clampToViewport={false}`**（ドキュメント: [deployment.md](../guides/deployment.md) 本項）。
+- **本番デプロイ・実機検証（2026-05-05）**:
+  - **ブランチ**: `feat/leader-board-left-pane-rank-picker-clamp`（代表 **`d8583f2d`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 不要**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260505-081520-1295`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **60s**・Tailscale）。
+- **知見**: **アンカーが画面左寄り**のとき **`translateX(-100%)` だけ**ではパネル左が負座標になり得る。**右端そろえ優先**を数式でクランプすると **再利用可能**（生産スケジュールの Portal と共有）。
+- **トラブルシューティング**:
+  - **まだ左が欠ける**: **`web` コミット**・キャッシュ・§6.6.4。**`clampToViewport` が意図せず false** になっていないか。
+  - **フィルタdropdown の位置が変** → [deployment.md](../guides/deployment.md) の **「広い登録製番ドロップダウン」** 追記どおり **`clampToViewport={false}`** を検討。
 
 ### Leader order board: leaderboard `pageSize` server cap + remove debug ingest（2026-05-02） {#leader-order-board-leaderboard-pagesize-server-cap-2026-05-02}
 

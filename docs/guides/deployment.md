@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-05（**FKOJUNST_Status 外部完了＝キー消失差分（Pi5 本番・マイグレ適用済み）**・ほか下記）
+最終更新: 2026-05-05（**順位ボード左ペイン・順位ピッカー ビューポートクランプ（Web のみ・Pi5 のみ本記録）**・**FKOJUNST_Status 外部完了**・ほか下記）
+
+### 補足（2026-05-05: **キオスク順位ボード・左ペイン幅／登録製番グリッド／順位ピッカーの画面内表示**·**`feat/leader-board-left-pane-rank-picker-clamp`**·**Pi5 のみ**）
+
+- **変更概要**: **登録製番**が **2 列グリッド＋順位列**で狭く **× と製番が重なりやすい**問題への対処。**製番順評価 ON** 時は **`grid-cols-1`**（1 行＝1 製番）。アサイドは **OFF `w-80` / ON `w-96`**（`max-w-[90vw]` 維持）。**順位ピッカー** [`LeaderBoardSeibanRankPicker`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanRankPicker.tsx) は [`AnchoredDropdownPortal`](../../apps/web/src/components/kiosk/AnchoredDropdownPortal.tsx) を利用。既定 **`clampToViewport: true`** で **パネル左端がビューポート外に出ない**よう [`anchoredDropdownViewportClamp.ts`](../../apps/web/src/components/kiosk/anchoredDropdownViewportClamp.ts) **`computeAnchoredPanelLeftEdge`** を適用（**`clampToViewport={false}`** で従来の `translateX(-100%)` 寄りに戻せる）。**閉鎖時 `position` クリア**・**二重 rAF 前のアンマウント**は `cancelled` フラグでガード。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/leader-board-left-pane-rank-picker-clamp infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`d8583f2d`**。**Detach Run ID** **`20260505-081520-1295`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・ローカル `--follow` 完了まで **約 294s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 60s**・Tailscale）。
+- **トラブルシュート**: **ピッカー左が欠ける** → **`web`** が当該コミットか・**強制リロード**（[verification-checklist.md](verification-checklist.md) §6.6.4）。**広い登録製番ドロップダウン**（[`ProductionScheduleSeibanFilterDropdown`](../../apps/web/src/components/kiosk/ProductionScheduleSeibanFilterDropdown.tsx) 等）で **アンカーからパネル右端がずれる**ことがある（左クランプの意図どおり）。必要なら当該コンポーネントのみ **`clampToViewport={false}`**。
+- **ナレッジ**: [KB-297 §左ペイン・ビューポートクランプ（2026-05-05）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-left-pane-viewport-clamp-2026-05-05)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-04 / **2026-05-05 本番反映**: **`FKOJUNST_Status` CSV 由来外部完了を「前回 dedupe キーあり→今回なし」差分へ**·ブランチ **`feat/fkojunst-status-disappearance-external-completion`**）
 
