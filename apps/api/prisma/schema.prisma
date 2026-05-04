@@ -309,6 +309,8 @@ model ClientDevice {
   defaultMode    String?       @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
   signagePreviewTargetApiKey String?
+  /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
+  haizenPresetShelfCodeRaw String?
   lastSeenAt     DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -320,8 +322,50 @@ model ClientDevice {
   orderPlacementEvents    OrderPlacementEvent[]
   mobilePlacementShelvesCreated MobilePlacementShelf[]
   machinePalletEvents     MachinePalletEvent[]
+  haizenScanEvents        HaizenScanEvent[]
+  haizenCurrentPlacements HaizenCurrentPlacement[] @relation("HaizenCurrentLastDevice")
 
   @@index([statusClientId])
+}
+
+/// Zero2W / ヘッドレスエッジ由来の配膳スキャン履歴（1スキャン1行）
+model HaizenScanEvent {
+  id                           String   @id @default(uuid())
+  clientDeviceId               String
+  /// スキャン時点の端末プリセット棚番
+  presetShelfCodeRaw           String
+  manufacturingOrderBarcodeRaw String
+  distributionNumber           Int?
+  rawBarcode                   String?
+  csvDashboardRowId            String?
+  scheduleSnapshot             Json?
+  /// RESOLVED | UNRESOLVED
+  resolutionStatus             String   @db.VarChar(32)
+  createdAt                    DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([clientDeviceId, createdAt])
+  @@index([manufacturingOrderBarcodeRaw])
+  @@index([resolutionStatus, createdAt])
+}
+
+/// 製造order（ProductNo）ごとの最新配膳位置（常に最新スキャンで上書き）
+model HaizenCurrentPlacement {
+  id                           String   @id @default(uuid())
+  manufacturingOrderBarcodeRaw String   @unique
+  shelfCodeRaw                 String
+  clientDeviceId               String
+  distributionNumber           Int?
+  csvDashboardRowId            String?
+  scheduleSnapshot             Json?
+  updatedAt                    DateTime @updatedAt
+  createdAt                    DateTime @default(now())
+
+  lastScanClientDevice ClientDevice @relation("HaizenCurrentLastDevice", fields: [clientDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([shelfCodeRaw])
+  @@index([clientDeviceId])
 }
 
 /// 資源CD（ProductionScheduleResourceMaster.resourceCd）単位の加工機イラスト

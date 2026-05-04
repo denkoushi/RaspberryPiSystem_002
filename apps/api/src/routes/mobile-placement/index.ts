@@ -17,6 +17,12 @@ import {
   listRegisteredShelvesFromShelfMaster,
   registerMobilePlacementShelf
 } from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
+import {
+  applyHaizenScan,
+  getHaizenPresetShelf,
+  listHaizenCurrentPlacements,
+  updateHaizenPresetShelf
+} from '../../services/mobile-placement/haizen-placement.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 import { suggestPartPlacementSearch } from '../../services/mobile-placement/part-search/part-search.service.js';
 import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
@@ -110,6 +116,21 @@ const registerMobilePlacementShelfBodySchema = z.object({
   shelfCodeRaw: z.string().min(1).max(200)
 });
 
+const haizenScanBodySchema = z.object({
+  manufacturingOrderBarcodeRaw: z.string().min(1),
+  distributionNumber: z.number().int().min(1).max(999).optional().nullable(),
+  rawBarcode: z.string().max(500).optional().nullable()
+});
+
+const haizenPresetShelfBodySchema = z.object({
+  shelfCodeRaw: z.string().min(1).max(200)
+});
+
+const haizenCurrentQuerySchema = z.object({
+  shelfCode: z.string().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional()
+});
+
 export async function registerMobilePlacementRoutes(app: FastifyInstance): Promise<void> {
   const kioskDeps = {
     requireClientDevice
@@ -124,6 +145,60 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     await requireClientDevice(request.headers['x-client-key']);
     const shelves = await listRegisteredShelvesFromShelfMaster();
     return { shelves };
+  });
+
+  /**
+   * Zero2W 棚番エッジ: 端末に紐づく棚番プリセットの取得
+   */
+  app.get('/mobile-placement/haizen-preset-shelf', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const identity = resolveCredentialIdentity(clientDevice);
+    return getHaizenPresetShelf(identity.clientDeviceId);
+  });
+
+  /**
+   * Zero2W 棚番エッジ: 棚番プリセットの更新（構造化棚形式）
+   */
+  app.patch('/mobile-placement/haizen-preset-shelf', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const body = haizenPresetShelfBodySchema.parse(request.body);
+    const identity = resolveCredentialIdentity(clientDevice);
+    return updateHaizenPresetShelf({
+      clientDeviceId: identity.clientDeviceId,
+      shelfCodeRaw: body.shelfCodeRaw
+    });
+  });
+
+  /**
+   * Zero2W 棚番エッジ: 製造orderスキャン受付（履歴 + 現在値 upsert）
+   */
+  app.post('/mobile-placement/haizen-scans', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const body = haizenScanBodySchema.parse(request.body);
+    const identity = resolveCredentialIdentity(clientDevice);
+    const result = await applyHaizenScan({
+      clientDeviceId: identity.clientDeviceId,
+      manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw,
+      distributionNumber: body.distributionNumber ?? undefined,
+      rawBarcode: body.rawBarcode ?? undefined
+    });
+    return {
+      eventId: result.eventId,
+      resolutionStatus: result.resolutionStatus,
+      current: result.current
+    };
+  });
+
+  /**
+   * 配膳スマホ等: 棚番配膳の現在値一覧（棚でフィルタ可）
+   */
+  app.get('/mobile-placement/haizen-current', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const q = haizenCurrentQuerySchema.parse(request.query);
+    return listHaizenCurrentPlacements({
+      shelfCodeRaw: q.shelfCode,
+      limit: q.limit
+    });
   });
 
   /**

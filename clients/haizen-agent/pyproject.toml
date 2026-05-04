@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "haizen-agent"
+version = "0.1.0"
+description = "Zero2W 向け HID バーコードリーダーから棚番配膳 API へ送信するエッジエージェント"
+authors = ["Factory Systems <factory@example.com>"]
+readme = "README.md"
+packages = [{ include = "haizen_agent" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2.0"
+ruff = "^0.4.2"
+
+[build-system]
+requires = ["poetry-core>=1.6.1"]
+build-backend = "poetry.core.masonry.api"

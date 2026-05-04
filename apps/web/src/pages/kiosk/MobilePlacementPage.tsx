@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
+import { MobilePlacementHaizenPanel } from '../../features/mobile-placement/components/MobilePlacementHaizenPanel';
 import { MobilePlacementRegisterSection } from '../../features/mobile-placement/components/MobilePlacementRegisterSection';
 import { MobilePlacementVerifySection } from '../../features/mobile-placement/components/MobilePlacementVerifySection';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
@@ -117,6 +118,8 @@ export function MobilePlacementPage() {
         slipResult={mp.slipResult}
         onVerify={() => void mp.runSlipVerify()}
       />
+
+      <MobilePlacementHaizenPanel selectedShelfCode={mp.shelfCode} />
 
       <MobilePlacementRegisterSection
         shelfCode={mp.shelfCode}
