@@ -1,0 +1,30 @@
+# Zero 2 W 棚番エッジ用インベントリ断片（サンプル・コミット可）
+#
+# 使い方:
+#   1. コピー: cp inventory-zero2w-edge-fragment.sample.yml inventory-zero2w-edge-fragment.yml
+#      （ローカル用 inventory-zero2w-edge-fragment.yml は .gitignore 済み）
+#   2. ansible_host を Zero 2 W の Tailscale IPv4（100.x.x.x）に置換
+#   3. Pi 5 で（paths: infrastructure/ansible 直下）:
+#        ansible-playbook playbooks/zero2w-edge-setup.yml \
+#          -i inventory.yml -i inventory-zero2w-edge-fragment.yml --limit zero2w-tanaban01
+#
+# 参照: docs/runbooks/zero2w-tanaban-edge-setup.md
+
+all:
+  hosts:
+    zero2w-tanaban01:
+      ansible_host: "100.x.x.x"
+      ansible_user: zero2w-tanaban01
+      ansible_python_interpreter: /usr/bin/python3
+      tailscale_enabled: true
+      ansible_command_timeout: 600
+      manage_kiosk_browser: false
+      manage_signage_lite: false
+      status_agent_client_id: zero2w-tanaban01-edge1
+      status_agent_client_key: "client-key-zero2w-tanaban01-edge1"
+      status_agent_location: "棚番エッジ（自宅検証・Zero2W）"
+      # 既存 Pi5 は自己署名証明書運用のため初期導入は 1 を前提
+      status_agent_tls_skip_verify: "1"
+      services_to_restart:
+        - status-agent.service
+        - status-agent.timer

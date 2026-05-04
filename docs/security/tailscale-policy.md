@@ -1,6 +1,6 @@
 # Tailscale Policy（タグ/ACL/SSH）運用台帳
 
-最終更新: 2026-04-27
+最終更新: 2026-05-04
 
 ## 目的
 
@@ -20,6 +20,7 @@
 - `tag:server`: Pi5（サーバー）
 - `tag:kiosk`: Pi4（キオスク、今後増台）
 - `tag:signage`: Pi3/Zero2W（サイネージ、今後増台の可能性）
+  - **補足（2026-05-04）**: **ヘッドレス棚番エッジ**（Zero 2 W・キオスク UI なし・`status-agent` のみ）も、更新経路を **Pi 5 → SSH** に揃えるなら **同一タグ族として扱える**（実運用では端末台帳で **用途（サイネージ／棚番エッジ）** を区別する）。**Mac（admin）→ Zero 直 SSH**は本ポリシーでは原則想定外のため、不通時は **Pi 5 踏み台**を正とする（詳細は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）。
 - `tag:llm`: Ubuntu LocalLLM 専用ノード（Tailscale sidecar で分離）
 
 補足:

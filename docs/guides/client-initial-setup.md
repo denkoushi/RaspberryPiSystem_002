@@ -2,7 +2,7 @@
 title: 新規クライアント端末の初期設定手順
 tags: [初期設定, クライアント, status-agent, SSH]
 audience: [運用者, 開発者]
-last-verified: 2026-03-28
+last-verified: 2026-05-04
 related: [status-agent.md, ssh-setup.md, operation-manual.md]
 category: guides
 update-frequency: medium
@@ -10,11 +10,13 @@ update-frequency: medium
 
 # 新規クライアント端末の初期設定手順
 
-最終更新: 2026-03-28（Pi5 から新 Pi4 の LAN 直で `No route to host` になる場合の切り分けを追記。FJV60/80 3台目追加時の知見は [KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk)）
+最終更新: 2026-05-04（Zero 2 W 棚番エッジの導線・トラブルシュートは [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)。従来の Pi5→Pi4 LAN 知見: 2026-03-28 追記・[KB-315](../knowledge-base/infrastructure/ansible-deployment.md#kb-315-pi4-fjv-third-kiosk)）
 
 ## 概要
 
 本ドキュメントでは、新規のRaspberry Piクライアント端末（Raspberry Pi 3/4/Zero2W）をシステムに追加する際の初期設定手順を説明します。
+
+**Zero 2 W をヘッドレスの棚番エッジ（キオスク UI なし・status-agent 中心）として載せる場合**は、[Zero 2 W 棚番エッジ Runbook](../runbooks/zero2w-tanaban-edge-setup.md) を先に参照してください（`inventory.yml` に自宅端末を載せず、インベントリ断片 + 専用 playbook で Pi 5 から適用する流れ）。
 
 ## 前提条件
 
