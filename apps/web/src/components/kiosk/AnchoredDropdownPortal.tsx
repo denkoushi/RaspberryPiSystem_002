@@ -1,6 +1,8 @@
 import { useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { computeAnchoredPanelLeftEdge } from './anchoredDropdownViewportClamp';
+
 import type { CSSProperties, MutableRefObject, ReactNode } from 'react';
 
 type AnchoredDropdownPortalProps = {
@@ -14,25 +16,64 @@ type AnchoredDropdownPortalProps = {
   offsetY?: number;
   /** 指定時は `z-40` の代わりにインライン z-index（左ドロワー z-50 より手前に出す等） */
   fixedZIndex?: number;
+  /**
+   * When true (default), panel `left` is the left edge and stays inside the viewport
+   * while keeping the right edge aligned to the anchor when possible.
+   */
+  clampToViewport?: boolean;
+  /** Horizontal inset used with {@link clampToViewport} (default 16). */
+  viewportPaddingPx?: number;
 };
 
 type AnchorPosition = {
   top: number;
   left: number;
+  transform: CSSProperties['transform'];
 };
 
 const DEFAULT_OFFSET_Y = 8;
+const DEFAULT_VIEWPORT_PADDING_PX = 16;
 
 const resolveAnchorPosition = (
   anchorRef: MutableRefObject<HTMLElement | null>,
-  offsetY: number
+  panelRef: MutableRefObject<HTMLDivElement | null>,
+  offsetY: number,
+  clampToViewport: boolean,
+  viewportPaddingPx: number
 ): AnchorPosition | null => {
   const anchor = anchorRef.current;
   if (!anchor) return null;
   const rect = anchor.getBoundingClientRect();
+  const top = rect.bottom + offsetY;
+
+  if (!clampToViewport) {
+    return {
+      top,
+      left: rect.right,
+      transform: 'translateX(-100%)'
+    };
+  }
+
+  const panel = panelRef.current;
+  const panelWidth = panel?.getBoundingClientRect().width ?? 0;
+
+  if (panelWidth <= 0) {
+      return {
+        top,
+        left: rect.right,
+        transform: 'translateX(-100%)'
+      };
+    }
+
   return {
-    top: rect.bottom + offsetY,
-    left: rect.right
+    top,
+    left: computeAnchoredPanelLeftEdge({
+      anchorRight: rect.right,
+      panelWidth,
+      viewportWidth: window.innerWidth,
+      padding: viewportPaddingPx
+    }),
+    transform: 'none'
   };
 };
 
@@ -45,25 +86,62 @@ export function AnchoredDropdownPortal({
   className,
   children,
   offsetY = DEFAULT_OFFSET_Y,
-  fixedZIndex
+  fixedZIndex,
+  clampToViewport = true,
+  viewportPaddingPx = DEFAULT_VIEWPORT_PADDING_PX
 }: AnchoredDropdownPortalProps) {
   const [position, setPosition] = useState<AnchorPosition | null>(null);
 
   useLayoutEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen) {
+      setPosition(null);
+      return undefined;
+    }
+
+    let cancelled = false;
 
     const updatePosition = () => {
-      setPosition(resolveAnchorPosition(anchorRef, offsetY));
+      if (cancelled) return;
+      const next = resolveAnchorPosition(
+        anchorRef,
+        panelRef,
+        offsetY,
+        clampToViewport,
+        viewportPaddingPx
+      );
+      setPosition(next);
+
+      // First open: portal was not mounted yet, so panel width was 0 → fall back to legacy
+      // transform. Double rAF waits for layout so we can measure and apply viewport clamp.
+      if (clampToViewport && next != null && next.transform === 'translateX(-100%)') {
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          requestAnimationFrame(() => {
+            if (cancelled) return;
+            const refined = resolveAnchorPosition(
+              anchorRef,
+              panelRef,
+              offsetY,
+              clampToViewport,
+              viewportPaddingPx
+            );
+            if (refined != null) {
+              setPosition(refined);
+            }
+          });
+        });
+      }
     };
 
     updatePosition();
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     return () => {
+      cancelled = true;
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [anchorRef, isOpen, offsetY]);
+  }, [anchorRef, panelRef, isOpen, offsetY, clampToViewport, viewportPaddingPx]);
 
   if (!isOpen || typeof document === 'undefined') return null;
   if (!position) return null;
@@ -71,7 +149,7 @@ export function AnchoredDropdownPortal({
   const style: CSSProperties = {
     top: `${position.top}px`,
     left: `${position.left}px`,
-    transform: 'translateX(-100%)',
+    transform: position.transform,
     ...(fixedZIndex !== undefined ? { zIndex: fixedZIndex } : {})
   };
 

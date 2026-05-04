@@ -129,7 +129,7 @@ export function LeaderBoardLeftToolStack({
       <aside
         className={clsx(
           'flex h-full min-h-0 shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950 p-3 shadow-xl max-w-[90vw]',
-          seibanEvalEnabled ? 'w-80' : 'w-72'
+          seibanEvalEnabled ? 'w-96' : 'w-80'
         )}
         aria-label="操作パネル"
       >
@@ -256,7 +256,10 @@ export function LeaderBoardLeftToolStack({
             </button>
           </div>
           <div
-            className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2 content-start overflow-y-auto overflow-x-hidden pr-0.5"
+            className={clsx(
+              'mt-2 grid min-h-0 flex-1 gap-2 content-start overflow-y-auto overflow-x-hidden pr-0.5',
+              seibanEvalEnabled ? 'grid-cols-1' : 'grid-cols-2'
+            )}
             style={{ WebkitOverflowScrolling: 'touch' }}
             aria-label="登録済み製番"
           >
