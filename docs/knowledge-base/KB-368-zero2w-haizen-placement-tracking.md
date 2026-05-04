@@ -70,7 +70,7 @@ category: knowledge-base
 
 - **変更**: キオスク **Zero2W 担当棚** ページ・`haizen-target-devices` / `…/preset-shelf` API（一覧はブラウザへ **`apiKey` を載せない**）。
 - **標準デプロイ**: [deployment.md](../guides/deployment.md)。**対象インベントリ名**: **`raspberrypi5` のみ**（`./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`）。**Pi4／Pi3 は当該 play にマッチしない**ため **個別 Pi3 手順は不要**。
-- **実績（先行リリース）**: ブランチ **`feat/mobile-placement-zero2w-assignment`**（代表 **`153af161`**）。**Detach Run ID** **`20260504-183939-27983`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**）。
+- **実績**: **`main`** へ fast-forward **`8c2dfbf4`**（実装基底 **`153af161`**）。**Detach Run ID** **`20260504-183939-27983`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 95s**・Tailscale）。
 - **実機（手動・任意）**: キオスク URL で **`/kiosk/mobile-placement/zero2w-assignment`** を開き **4 つ目ボタン**の有無を確認。Android で **古いバンドル**が残る場合は [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 の **強制リロード**。API スモーク: キオスクの `x-client-key` で `GET /api/mobile-placement/haizen-target-devices` が **200**（候補は DB 次第で 0 件もあり得る）。
 - **トラブルシュート**
