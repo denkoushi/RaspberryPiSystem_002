@@ -44,6 +44,12 @@ export type LeaderBoardLeftToolStackProps = {
   /** 表示中製番一覧パネル（ページ側オーバーレイ）の開閉 */
   isSeibanListPanelOpen: boolean;
   onToggleSeibanListPanel: () => void;
+  /** 端末ローカルのみ: 製番順を最優先表示する評価モード（共有履歴とは独立） */
+  seibanEvalEnabled: boolean;
+  onToggleSeibanEval: () => void;
+  /** 登録製番ボタン列の表示順（評価モードOFF時は共有履歴順・ON時はマージ順をページ側で選ぶ） */
+  registeredSeibansForDisplay: readonly string[];
+  onMoveRegisteredSeiban: (fseiban: string, direction: 'up' | 'down') => void;
 };
 
 /**
@@ -73,7 +79,11 @@ export function LeaderBoardLeftToolStack({
   selectedResourceCd,
   listIncomplete,
   isSeibanListPanelOpen,
-  onToggleSeibanListPanel
+  onToggleSeibanListPanel,
+  seibanEvalEnabled,
+  onToggleSeibanEval,
+  registeredSeibansForDisplay,
+  onMoveRegisteredSeiban
 }: LeaderBoardLeftToolStackProps) {
   return (
     <div
@@ -169,6 +179,25 @@ export function LeaderBoardLeftToolStack({
           >
             製番OR検索を全解除
           </button>
+          <div className="mb-2 flex shrink-0 items-center justify-between gap-2 rounded border border-violet-400/30 bg-violet-500/10 px-2 py-1.5">
+            <div className="min-w-0 text-[9px] leading-tight text-violet-100/90">
+              <div className="font-semibold text-violet-50">製番順評価</div>
+              <div className="text-white/55">ON で順位ボードを製番順優先（この端末のみ）</div>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleSeibanEval}
+              aria-pressed={seibanEvalEnabled}
+              className={clsx(
+                'shrink-0 rounded border px-2 py-1 text-[10px] font-semibold',
+                seibanEvalEnabled
+                  ? 'border-violet-300 bg-violet-500/40 text-white'
+                  : 'border-white/25 bg-white/5 text-white/80 hover:bg-white/10'
+              )}
+            >
+              {seibanEvalEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
           <div className="flex shrink-0 gap-1.5">
             <input
               value={dueAssist.searchInput}
@@ -204,8 +233,10 @@ export function LeaderBoardLeftToolStack({
             style={{ WebkitOverflowScrolling: 'touch' }}
             aria-label="登録済み製番"
           >
-            {dueAssist.sharedHistory.map((fseiban) => {
+            {registeredSeibansForDisplay.map((fseiban, rankIdx) => {
               const filtered = dueAssist.isFseibanFilterSelected(fseiban);
+              const canUp = seibanEvalEnabled && rankIdx > 0;
+              const canDown = seibanEvalEnabled && rankIdx < registeredSeibansForDisplay.length - 1;
               return (
                 <div
                   key={fseiban}
@@ -224,6 +255,51 @@ export function LeaderBoardLeftToolStack({
                   >
                     {fseiban}
                   </button>
+                  {seibanEvalEnabled ? (
+                    <div
+                      className={clsx(
+                        'flex shrink-0 flex-col border-l',
+                        filtered ? 'border-slate-900/15' : 'border-white/15'
+                      )}
+                    >
+                      <button
+                        type="button"
+                        disabled={!canUp}
+                        aria-label={`${fseiban} を上へ`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (!canUp) return;
+                          onMoveRegisteredSeiban(fseiban, 'up');
+                        }}
+                        className={clsx(
+                          'flex min-h-[1.2rem] min-w-[1.75rem] items-center justify-center text-[10px] font-bold leading-none',
+                          filtered
+                            ? 'text-slate-900 hover:bg-slate-900/15 disabled:opacity-35'
+                            : 'text-white/90 hover:bg-white/10 disabled:opacity-35'
+                        )}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canDown}
+                        aria-label={`${fseiban} を下へ`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (!canDown) return;
+                          onMoveRegisteredSeiban(fseiban, 'down');
+                        }}
+                        className={clsx(
+                          'flex min-h-[1.2rem] min-w-[1.75rem] items-center justify-center text-[10px] font-bold leading-none',
+                          filtered
+                            ? 'text-slate-900 hover:bg-slate-900/15 disabled:opacity-35'
+                            : 'text-white/90 hover:bg-white/10 disabled:opacity-35'
+                        )}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     className={clsx(

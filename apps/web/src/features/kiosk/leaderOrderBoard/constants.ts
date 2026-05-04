@@ -32,6 +32,24 @@ export function persistedLeaderBoardDeviceScopeStorageKey(siteKey: string): stri
     : LEADER_BOARD_PERSIST_DEVICE_SCOPE_PREFIX;
 }
 
+/** 製番順「評価モード」— 端末ローカルのみ（共有 search-state とは独立） */
+export const LEADER_BOARD_SEIBAN_EVAL_SCHEMA_VERSION = 1;
+const LEADER_BOARD_SEIBAN_EVAL_PREFIX = 'kiosk-leader-order-board-seiban-eval';
+
+export type PersistedLeaderBoardSeibanEval = {
+  schemaVersion: typeof LEADER_BOARD_SEIBAN_EVAL_SCHEMA_VERSION;
+  enabled: boolean;
+  /** `sharedHistory` に対する表示順（未登録キーは無視し、マージで正規化される） */
+  localOrder: string[];
+};
+
+export function persistedLeaderBoardSeibanEvalStorageKey(siteKey: string, deviceScopeKey: string): string {
+  const s = siteKey.trim();
+  const d = deviceScopeKey.trim();
+  const core = s.length > 0 && d.length > 0 ? `${s}\0${d}` : s.length > 0 ? s : d.length > 0 ? d : '';
+  return core.length > 0 ? `${LEADER_BOARD_SEIBAN_EVAL_PREFIX}:${core}` : LEADER_BOARD_SEIBAN_EVAL_PREFIX;
+}
+
 /** スロット数に応じて 1 ページ完全性をとりやすくする（単一クエリ方針） */
 export function leaderOrderBoardQueryPageSize(uniqueResourceSlotCount: number): number {
   const n = Math.max(1, uniqueResourceSlotCount);

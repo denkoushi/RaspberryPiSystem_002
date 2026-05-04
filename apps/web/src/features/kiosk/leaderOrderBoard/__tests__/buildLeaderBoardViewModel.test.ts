@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../buildLeaderBoardViewModel';
+import { buildSeibanRankMapFromMergedOrder } from '../seibanPriority/buildSeibanRankMap';
 
 import type { ProductionScheduleRow } from '../../../../api/client';
 
@@ -35,7 +36,7 @@ describe('buildLeaderBoardViewModel', () => {
       mk('b', 'R1', 'S2', 1, '', '2026-02-01')
     ];
     const grouped = buildLeaderBoardGroupedRows(rows, undefined);
-    const sorted = buildLeaderBoardSortedGrouped(grouped, 'all');
+    const sorted = buildLeaderBoardSortedGrouped(grouped, 'all', { kind: 'default' });
     const list = sorted.get('R1') ?? [];
     expect(list.map((r) => r.id)).toEqual(['b', 'a']);
   });
@@ -69,8 +70,20 @@ describe('buildLeaderBoardViewModel', () => {
   it('filters completed rows when completionFilter is incomplete', () => {
     const rows = [mk('c1', 'R1', 'S1', null, '完了'), mk('c2', 'R1', 'S2', null, '')];
     const grouped = buildLeaderBoardGroupedRows(rows, undefined);
-    const sorted = buildLeaderBoardSortedGrouped(grouped, 'incomplete');
+    const sorted = buildLeaderBoardSortedGrouped(grouped, 'incomplete', { kind: 'default' });
     const list = sorted.get('R1') ?? [];
     expect(list.map((r) => r.id)).toEqual(['c2']);
+  });
+
+  it('seiban eval mode orders rows by seiban rank inside resource', () => {
+    const rows = [
+      mk('a', 'R1', 'S2', 1, '', '2026-03-01'),
+      mk('b', 'R1', 'S1', null, '', '2026-02-01')
+    ];
+    const grouped = buildLeaderBoardGroupedRows(rows, undefined);
+    const rank = buildSeibanRankMapFromMergedOrder(['S1', 'S2']);
+    const sorted = buildLeaderBoardSortedGrouped(grouped, 'all', { kind: 'seibanEval', seibanRank: rank });
+    const list = sorted.get('R1') ?? [];
+    expect(list.map((r) => r.id)).toEqual(['b', 'a']);
   });
 });

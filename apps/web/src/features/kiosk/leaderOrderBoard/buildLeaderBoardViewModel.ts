@@ -5,6 +5,7 @@ import {
 import { normalizeLeaderBoardRow } from './normalizeLeaderBoardRow';
 import { buildFseibanToMachineDisplayName } from './seibanMachineNameIndex';
 import { sortLeaderBoardRowsForDisplay } from './sortLeaderBoardRowsForDisplay';
+import { sortLeaderBoardRowsForSeibanEvalDisplay } from './sortLeaderBoardRowsForSeibanEvalDisplay';
 
 import type { LeaderBoardRow } from './types';
 import type { ProductionScheduleRow } from '../../../api/client';
@@ -50,17 +51,26 @@ export function buildLeaderBoardGroupedRows(
   return new Map([...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ja')));
 }
 
+export type LeaderBoardRowSortContext =
+  | { kind: 'default' }
+  | { kind: 'seibanEval'; seibanRank: ReadonlyMap<string, number> };
+
 /**
  * 完了フィルタ適用後、資源内表示順へソートしたマップ。
  */
 export function buildLeaderBoardSortedGrouped(
   grouped: Map<string, LeaderBoardRow[]>,
-  completionFilter: LeaderOrderCompletionFilter
+  completionFilter: LeaderOrderCompletionFilter,
+  sortContext: LeaderBoardRowSortContext = { kind: 'default' }
 ): Map<string, LeaderBoardRow[]> {
   const m = new Map<string, LeaderBoardRow[]>();
   grouped.forEach((list, cd) => {
     const filtered = filterLeaderBoardRowsByCompletion(list, completionFilter);
-    m.set(cd, sortLeaderBoardRowsForDisplay(filtered));
+    const sorted =
+      sortContext.kind === 'seibanEval'
+        ? sortLeaderBoardRowsForSeibanEvalDisplay(filtered, sortContext.seibanRank)
+        : sortLeaderBoardRowsForDisplay(filtered);
+    m.set(cd, sorted);
   });
   return m;
 }

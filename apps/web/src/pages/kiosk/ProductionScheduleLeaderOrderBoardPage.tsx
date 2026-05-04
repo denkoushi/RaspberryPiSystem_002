@@ -25,10 +25,12 @@ import {
   LEADER_BOARD_SCHEDULE_REFETCH_MS,
   LEADER_BOARD_SEARCH_STATE_REFETCH_MS
 } from '../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
+import { buildSeibanRankMapFromMergedOrder } from '../../features/kiosk/leaderOrderBoard/seibanPriority/buildSeibanRankMap';
 import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist';
 import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlotsWithServerSync';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
+import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
@@ -249,6 +251,27 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS,
     initialSeibanFilters: searchConditions.activeQueries
   });
+  const {
+    seibanEvalEnabled,
+    setSeibanEvalEnabled,
+    mergedRegisteredSeibanOrder,
+    moveRegisteredSeiban
+  } = usePersistedLeaderBoardSeibanEval(siteKey, activeDeviceScopeKey, dueAssist.sharedHistory);
+
+  const seibanEvalRankMap = useMemo(
+    () => buildSeibanRankMapFromMergedOrder(mergedRegisteredSeibanOrder),
+    [mergedRegisteredSeibanOrder]
+  );
+
+  const toggleSeibanEvalMode = useCallback(() => {
+    setSeibanEvalEnabled((prev) => !prev);
+  }, [setSeibanEvalEnabled]);
+
+  const registeredSeibansForLeftPane = useMemo(
+    () => (seibanEvalEnabled ? mergedRegisteredSeibanOrder : dueAssist.sharedHistory),
+    [dueAssist.sharedHistory, mergedRegisteredSeibanOrder, seibanEvalEnabled]
+  );
+
   const registerSeibanToSharedHistory = dueAssist.registerSeibanToSharedHistory;
 
   /** 製番フィルタ ⇔ searchConditions.activeQueries（順位ボード専用 localStorage）。
@@ -309,8 +332,13 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
 
   const sortedGrouped = useMemo(
-    () => buildLeaderBoardSortedGrouped(grouped, completionFilter),
-    [grouped, completionFilter]
+    () =>
+      buildLeaderBoardSortedGrouped(
+        grouped,
+        completionFilter,
+        seibanEvalEnabled ? { kind: 'seibanEval', seibanRank: seibanEvalRankMap } : { kind: 'default' }
+      ),
+    [grouped, completionFilter, seibanEvalEnabled, seibanEvalRankMap]
   );
   const footerResourceChipsByPartKey = useMemo(() => {
     const raw = scheduleQuery.data?.leaderboardFooterChipsByPartKey;
@@ -425,6 +453,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           listIncomplete={listIncomplete}
           isSeibanListPanelOpen={isSeibanListPanelOpen}
           onToggleSeibanListPanel={() => setIsSeibanListPanelOpen((open) => !open)}
+          seibanEvalEnabled={seibanEvalEnabled}
+          onToggleSeibanEval={toggleSeibanEvalMode}
+          registeredSeibansForDisplay={registeredSeibansForLeftPane}
+          onMoveRegisteredSeiban={moveRegisteredSeiban}
         />
       </div>
 
