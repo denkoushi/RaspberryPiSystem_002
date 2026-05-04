@@ -601,6 +601,66 @@ describe('mobile-placement API', () => {
     expect(dup.statusCode).toBe(409);
   });
 
+  it('GET /api/mobile-placement/haizen-target-devices returns zero2w candidates only', async () => {
+    const actor = await createTestClientDevice();
+    await prisma.clientDevice.create({
+      data: {
+        name: 'Test Client zero2w-tanaban01',
+        apiKey: 'client-key-zero2w-tanaban01-edge1',
+        haizenPresetShelfCodeRaw: '西-北-01'
+      }
+    });
+    await prisma.clientDevice.create({
+      data: {
+        name: 'Test Client Android kiosk',
+        apiKey: 'client-key-android-kiosk-1'
+      }
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/mobile-placement/haizen-target-devices',
+      headers: { 'x-client-key': actor.apiKey }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      devices: Array<{ name: string; shelfCodeRaw: string | null }>;
+    };
+    expect(body.devices).toHaveLength(1);
+    expect(body.devices[0]).toMatchObject({
+      name: 'Test Client zero2w-tanaban01',
+      shelfCodeRaw: '西-北-01'
+    });
+  });
+
+  it('PUT /api/mobile-placement/haizen-target-devices/:id/preset-shelf updates selected zero2w shelf', async () => {
+    const actor = await createTestClientDevice();
+    const target = await prisma.clientDevice.create({
+      data: {
+        name: 'Test Client zero2w-tanaban01',
+        apiKey: 'client-key-zero2w-tanaban01-edge1'
+      }
+    });
+    await prisma.mobilePlacementShelf.create({
+      data: { shelfCodeRaw: '西-北-02', createdByClientDeviceId: actor.id }
+    });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/mobile-placement/haizen-target-devices/${target.id}/preset-shelf`,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': actor.apiKey
+      },
+      payload: { shelfCodeRaw: '西-北-02' }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ shelfCodeRaw: '西-北-02' });
+
+    const fromDb = await prisma.clientDevice.findUnique({ where: { id: target.id } });
+    expect(fromDb?.haizenPresetShelfCodeRaw).toBe('西-北-02');
+  });
+
   it('returns 401 without client key for resolve-item', async () => {
     const res = await app.inject({
       method: 'GET',

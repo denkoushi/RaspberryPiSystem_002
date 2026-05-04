@@ -33,7 +33,8 @@ category: knowledge-base
 ## キオスク（Android 向け配膳 Web）
 
 - **`/kiosk/mobile-placement`** に **「棚番配膳（Zero2W）」**パネル（`MobilePlacementHaizenPanel`）。
-- 選択中の棚で一覧を絞り込む **表示専用パネル**。棚番プリセット更新は **対象端末の `x-client-key`** で `PATCH /api/mobile-placement/haizen-preset-shelf` を実行する。
+- Top 上辺の **「Zero2W担当棚」** から **`/kiosk/mobile-placement/zero2w-assignment`** へ遷移し、**Zero2W 候補端末**に **棚マスタの登録済み構造化棚**を割り当てる。
+- Top 上の **「棚番配膳（Zero2W）」** パネル自体は、選択中の棚で一覧を絞り込む **表示専用パネル**のまま維持する。
 
 ## エッジエージェント
 
@@ -57,11 +58,11 @@ category: knowledge-base
    `POST /api/mobile-placement/haizen-scans`、例 `{ "manufacturingOrderBarcodeRaw": "E2E-HAIZEN-20260504", "rawBarcode": "E2E-HAIZEN-20260504" }`。  
    **200**、`resolutionStatus` が `RESOLVED` または `UNRESOLVED`（日程未一致時は後者で正常）、`current` に同梱されること。
 
-3. **一覧**: `GET /api/mobile-placement/haizen-current?shelfCodeRaw=<URLエンコードした棚>&limit=5` で **当該製造 order 行が返る**こと。
+3. **一覧**: `GET /api/mobile-placement/haizen-current?shelfCode=<URLエンコードした棚>&limit=5` で **当該製造 order 行が返る**こと。
 
 4. **Zero 側**: `systemctl is-enabled haizen-agent.service` / `is-active` が **enabled / active**、`journalctl -u haizen-agent.service` に **`haizen-agent start base=https://… hid=…`** の起動ログがあること（`/dev/input/by-id/...-event-kbd` 等。README 参照）。
 
-**知見**: キオスク（Android）の `x-client-key` でプリセットを汎用設定すると **別端末のキーで誤設定**しうるため、**配膳パネルは表示専用**とし、プリセットは **Zero 端末キーで API 実行**する（本 KB の API 節・Runbook 参照）。
+**知見**: キオスク（Android）の `x-client-key` で既存 self API をそのまま叩くと **別端末のキーで誤設定**しうるため、**Top の配膳パネルは表示専用**に保ち、**専用ページ + 対象 Zero2W 指定 API** に分離した。
 
 **トラブル**: Zero のリポジトリが **`main` のまま**だと `clients/haizen-agent` が無く `WorkingDirectory` の **CHDIR 失敗**で `haizen-agent` がループする。**対処**: Pi5 で `ANSIBLE_REPO_VERSION=feat/zero2w-haizen-tracking`（マージ後は `main`）を指定して `zero2w-edge-setup.yml` を再実行する。設定ファイル **`/etc/raspi-haizen-agent.conf` を `root` の `600` のまま**にすると当該サービス実行ユーザーが読めず **PermissionError**。**対処**: `chown root:<haizen 実行ユーザー>` と **`chmod 640`**（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・Runbook）。
 

@@ -106,7 +106,8 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 ### Zero 2 W 配膳追跡（キオスク表示）
 
 - **`/kiosk/mobile-placement`** の **照合ブロックと登録ブロックの間**に **「棚番配膳（Zero2W）」**パネルを表示する（選択中の棚で `haizen-current` を絞り込み・15s ポーリング）。
-- この画面は **表示専用**。Zero2W の棚番プリセット更新は、**対象端末の `x-client-key`** で `PATCH /api/mobile-placement/haizen-preset-shelf` を実行して設定する。
+- Top 上辺の **4つ目ボタン「Zero2W担当棚」** から **`/kiosk/mobile-placement/zero2w-assignment`** へ遷移し、**Zero2W を選ぶ → 棚番を選ぶ → 保存** で担当棚を設定する。
+- 専用ページは **棚マスタの登録済み構造化棚**だけを候補にし、対象端末は **`zero2w` 命名の `ClientDevice`** のみに絞る。
 - **詳細**: [api/mobile-placement.md](../api/mobile-placement.md)・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・エージェント [clients/haizen-agent/README.md](../../clients/haizen-agent/README.md)。
 
 ## 前提

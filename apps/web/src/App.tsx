@@ -35,6 +35,7 @@ import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskMobilePalletVisualizationPage } from './pages/kiosk/KioskMobilePalletVisualizationPage';
 import { KioskMobileShelfRegisterPage } from './pages/kiosk/KioskMobileShelfRegisterPage';
+import { KioskMobileZero2wAssignmentPage } from './pages/kiosk/KioskMobileZero2wAssignmentPage';
 import { KioskPalletVisualizationPage } from './pages/kiosk/KioskPalletVisualizationPage';
 import { KioskPartMeasurementEditPage } from './pages/kiosk/KioskPartMeasurementEditPage';
 import { KioskPartMeasurementFinalizedPage } from './pages/kiosk/KioskPartMeasurementFinalizedPage';
@@ -99,6 +100,7 @@ function App() {
           <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
           <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
           <Route path="/kiosk/mobile-placement/shelf-register" element={<KioskMobileShelfRegisterPage />} />
+          <Route path="/kiosk/mobile-placement/zero2w-assignment" element={<KioskMobileZero2wAssignmentPage />} />
           <Route path="/kiosk/mobile-placement/pallet-viz" element={<KioskMobilePalletVisualizationPage />} />
           <Route path="/kiosk/mobile-placement/register" element={<Navigate to="/kiosk/mobile-placement" replace />} />
           <Route path="/kiosk/purchase-order-lookup" element={<PurchaseOrderLookupPage />} />

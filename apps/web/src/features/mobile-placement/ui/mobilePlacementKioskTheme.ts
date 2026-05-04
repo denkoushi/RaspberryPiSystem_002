@@ -77,4 +77,19 @@ export const mpKioskTheme = {
   branchChipSubOn: 'text-neutral-200',
   branchChipMain:
     'max-w-full truncate whitespace-nowrap text-[clamp(13px,3.6vw,16px)] font-extrabold leading-tight tabular-nums text-white',
+
+  /** Zero2W 担当棚設定 */
+  assignmentPanelRoot:
+    'flex min-h-0 min-w-0 flex-1 flex-col gap-2.5 rounded-[10px] border-l-4 border-l-sky-400 bg-[#07111d] px-2.5 py-2.5',
+  assignmentSummaryCard:
+    'rounded-[10px] border-2 border-sky-700 bg-[#0b1728] px-3 py-2',
+  assignmentSummaryLabel: 'text-[11px] font-bold uppercase tracking-wide text-slate-400',
+  assignmentSummaryValue: 'mt-1 text-[clamp(17px,4.2vw,22px)] font-extrabold leading-tight text-white',
+  assignmentDeviceGrid: 'grid max-h-[min(34vh,220px)] grid-cols-1 gap-1.5 overflow-y-auto',
+  assignmentDeviceButton:
+    'w-full rounded-lg border-2 border-sky-700 bg-[#0b1728] px-3 py-2 text-left active:bg-sky-700/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40',
+  assignmentDeviceButtonOn: 'border-emerald-500 bg-[#14532d]',
+  assignmentDeviceName: 'text-[clamp(15px,3.6vw,18px)] font-extrabold leading-tight text-white',
+  assignmentDeviceMeta: 'mt-1 text-xs font-semibold text-slate-300',
+  assignmentDeviceShelf: 'mt-1 text-sm font-bold text-amber-300',
 } as const;

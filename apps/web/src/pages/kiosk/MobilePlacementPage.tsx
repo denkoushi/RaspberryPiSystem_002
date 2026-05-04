@@ -38,6 +38,13 @@ export function MobilePlacementPage() {
         <button
           type="button"
           className={mpKioskTheme.partSearchButton}
+          onClick={() => navigate('/kiosk/mobile-placement/zero2w-assignment')}
+        >
+          Zero2W担当棚
+        </button>
+        <button
+          type="button"
+          className={mpKioskTheme.partSearchButton}
           onClick={() => navigate('/kiosk/mobile-placement/pallet-viz')}
         >
           パレット

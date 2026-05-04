@@ -28,13 +28,49 @@ export type HaizenCurrentRowDto = {
   resolutionNote: 'RESOLVED' | 'UNRESOLVED';
 };
 
+export type HaizenAssignableDeviceDto = {
+  id: string;
+  name: string;
+  location: string | null;
+  shelfCodeRaw: string | null;
+  lastSeenAt: string | null;
+};
+
 const HAIZEN_RESOLVED = 'RESOLVED' as const;
 const HAIZEN_UNRESOLVED = 'UNRESOLVED' as const;
+const ZERO2W_DEVICE_TOKEN = 'zero2w';
 
 function assertDistributionNumber(n: number | null | undefined): void {
   if (n === null || n === undefined) return;
   if (!Number.isInteger(n) || n < 1 || n > 999) {
     throw new ApiError(400, '分配番号は 1〜999 の整数で指定してください', undefined, 'HAIZEN_INVALID_DISTRIBUTION');
+  }
+}
+
+function normalizePresetShelf(raw: string | null | undefined): string | null {
+  const normalized = raw?.trim() ?? '';
+  return normalized.length > 0 ? normalized : null;
+}
+
+function isHaizenAssignableDevice(input: { apiKey: string; name: string }): boolean {
+  return (
+    input.apiKey.toLowerCase().includes(ZERO2W_DEVICE_TOKEN) ||
+    input.name.toLowerCase().includes(ZERO2W_DEVICE_TOKEN)
+  );
+}
+
+async function assertHaizenPresetShelfRegistered(raw: string): Promise<void> {
+  const shelf = await prisma.mobilePlacementShelf.findUnique({
+    where: { shelfCodeRaw: raw },
+    select: { shelfCodeRaw: true }
+  });
+  if (!shelf) {
+    throw new ApiError(
+      400,
+      'Zero2W の担当棚は棚マスタに登録済みの棚番から選択してください',
+      undefined,
+      'HAIZEN_PRESET_SHELF_NOT_REGISTERED'
+    );
   }
 }
 
@@ -46,8 +82,7 @@ export async function getHaizenPresetShelf(clientDeviceId: string): Promise<{ sh
     where: { id: clientDeviceId },
     select: { haizenPresetShelfCodeRaw: true }
   });
-  const raw = device?.haizenPresetShelfCodeRaw?.trim();
-  return { shelfCodeRaw: raw && raw.length > 0 ? raw : null };
+  return { shelfCodeRaw: normalizePresetShelf(device?.haizenPresetShelfCodeRaw) };
 }
 
 export async function updateHaizenPresetShelf(input: {
@@ -73,6 +108,70 @@ export async function updateHaizenPresetShelf(input: {
     data: { haizenPresetShelfCodeRaw: raw }
   });
   return { shelfCodeRaw: raw };
+}
+
+/**
+ * Android キオスクの設定画面向け。Zero2W 候補だけを返す。
+ */
+export async function listHaizenAssignableDevices(): Promise<{ devices: HaizenAssignableDeviceDto[] }> {
+  const rows = await prisma.clientDevice.findMany({
+    where: {
+      OR: [
+        { apiKey: { contains: ZERO2W_DEVICE_TOKEN, mode: 'insensitive' } },
+        { name: { contains: ZERO2W_DEVICE_TOKEN, mode: 'insensitive' } }
+      ]
+    },
+    select: {
+      id: true,
+      name: true,
+      location: true,
+      apiKey: true,
+      haizenPresetShelfCodeRaw: true,
+      lastSeenAt: true
+    },
+    orderBy: [{ name: 'asc' }, { apiKey: 'asc' }]
+  });
+
+  return {
+    devices: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      location: row.location,
+      shelfCodeRaw: normalizePresetShelf(row.haizenPresetShelfCodeRaw),
+      lastSeenAt: row.lastSeenAt?.toISOString() ?? null
+    }))
+  };
+}
+
+/**
+ * Android キオスクから、対象 Zero2W の担当棚を更新する。
+ */
+export async function updateHaizenPresetShelfForTarget(input: {
+  clientDeviceId: string;
+  shelfCodeRaw: string;
+}): Promise<{ shelfCodeRaw: string }> {
+  const target = await prisma.clientDevice.findUnique({
+    where: { id: input.clientDeviceId },
+    select: { id: true, name: true, apiKey: true }
+  });
+  if (!target) {
+    throw new ApiError(404, '対象の Zero2W 端末が見つかりません', undefined, 'HAIZEN_TARGET_DEVICE_NOT_FOUND');
+  }
+  if (!isHaizenAssignableDevice(target)) {
+    throw new ApiError(
+      400,
+      'Zero2W 端末のみ担当棚を設定できます',
+      undefined,
+      'HAIZEN_TARGET_DEVICE_INVALID'
+    );
+  }
+
+  const raw = input.shelfCodeRaw.trim();
+  await assertHaizenPresetShelfRegistered(raw);
+  return updateHaizenPresetShelf({
+    clientDeviceId: target.id,
+    shelfCodeRaw: raw
+  });
 }
 
 /**

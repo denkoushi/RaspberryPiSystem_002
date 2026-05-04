@@ -41,8 +41,7 @@ export function MobilePlacementHaizenPanel({ selectedShelfCode }: MobilePlacemen
         )}
       </p>
       <p className="mb-2 text-xs text-slate-400">
-        Zero2W の棚番プリセットは、対象端末の `x-client-key` で
-        `PATCH /api/mobile-placement/haizen-preset-shelf` を実行して設定します。
+        Zero2W の担当棚は、上部の「Zero2W担当棚」から設定します。
       </p>
       {currentQuery.isError ? (
         <p className="text-sm text-red-300">配膳一覧の取得に失敗しました。更新を再度お試しください。</p>

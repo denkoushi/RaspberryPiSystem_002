@@ -882,6 +882,34 @@ export async function patchMobilePlacementHaizenPresetShelf(payload: { shelfCode
   return data;
 }
 
+export type HaizenTargetDeviceDto = {
+  id: string;
+  name: string;
+  location: string | null;
+  shelfCodeRaw: string | null;
+  lastSeenAt: string | null;
+};
+
+/** Zero2W 担当棚設定: 候補端末一覧 */
+export async function getMobilePlacementHaizenTargetDevices() {
+  const { data } = await api.get<{ devices: HaizenTargetDeviceDto[] }>('/mobile-placement/haizen-target-devices');
+  return data;
+}
+
+/** Zero2W 担当棚設定: 対象端末の担当棚を更新 */
+export async function putMobilePlacementHaizenTargetPresetShelf(payload: {
+  clientDeviceId: string;
+  shelfCodeRaw: string;
+}) {
+  const { data } = await api.put<{ shelfCodeRaw: string }>(
+    `/mobile-placement/haizen-target-devices/${payload.clientDeviceId}/preset-shelf`,
+    {
+      shelfCodeRaw: payload.shelfCodeRaw
+    }
+  );
+  return data;
+}
+
 export type HaizenCurrentRowDto = {
   id: string;
   manufacturingOrderBarcodeRaw: string;

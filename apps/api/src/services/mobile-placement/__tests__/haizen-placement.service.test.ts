@@ -8,14 +8,20 @@ import {
   applyHaizenScan,
   getHaizenPresetShelf,
   listHaizenCurrentPlacements,
-  updateHaizenPresetShelf
+  listHaizenAssignableDevices,
+  updateHaizenPresetShelf,
+  updateHaizenPresetShelfForTarget
 } from '../haizen-placement.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     clientDevice: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn()
+    },
+    mobilePlacementShelf: {
+      findUnique: vi.fn()
     },
     csvDashboardRow: {
       findFirst: vi.fn()
@@ -60,6 +66,73 @@ describe('haizen-placement.service', () => {
 
     expect(prisma.clientDevice.update).toHaveBeenCalledWith({
       where: { id: 'dev-1' },
+      data: { haizenPresetShelfCodeRaw: '西-北-02' }
+    });
+  });
+
+  it('listHaizenAssignableDevices は zero2w 候補だけを返す', async () => {
+    const lastSeenAt = new Date('2026-05-04T08:00:00.000Z');
+    vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([
+      {
+        id: 'zero-1',
+        name: 'zero2w-tanaban01',
+        location: '工場A',
+        apiKey: 'client-key-zero2w-tanaban01-edge1',
+        haizenPresetShelfCodeRaw: ' 西-北-01 ',
+        lastSeenAt
+      }
+    ] as never);
+
+    await expect(listHaizenAssignableDevices()).resolves.toEqual({
+      devices: [
+        {
+          id: 'zero-1',
+          name: 'zero2w-tanaban01',
+          location: '工場A',
+          shelfCodeRaw: '西-北-01',
+          lastSeenAt: '2026-05-04T08:00:00.000Z'
+        }
+      ]
+    });
+  });
+
+  it('updateHaizenPresetShelfForTarget は棚マスタ未登録の棚を拒否する', async () => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValueOnce({
+      id: 'zero-1',
+      name: 'zero2w-tanaban01',
+      apiKey: 'client-key-zero2w-tanaban01-edge1'
+    } as never);
+    vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue(null as never);
+
+    await expect(
+      updateHaizenPresetShelfForTarget({
+        clientDeviceId: 'zero-1',
+        shelfCodeRaw: '西-北-09'
+      })
+    ).rejects.toThrow(ApiError);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
+  });
+
+  it('updateHaizenPresetShelfForTarget は Zero2W 端末の担当棚を更新する', async () => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValueOnce({
+      id: 'zero-1',
+      name: 'zero2w-tanaban01',
+      apiKey: 'client-key-zero2w-tanaban01-edge1'
+    } as never);
+    vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue({
+      shelfCodeRaw: '西-北-02'
+    } as never);
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({} as never);
+
+    await expect(
+      updateHaizenPresetShelfForTarget({
+        clientDeviceId: 'zero-1',
+        shelfCodeRaw: '西-北-02'
+      })
+    ).resolves.toEqual({ shelfCodeRaw: '西-北-02' });
+
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith({
+      where: { id: 'zero-1' },
       data: { haizenPresetShelfCodeRaw: '西-北-02' }
     });
   });

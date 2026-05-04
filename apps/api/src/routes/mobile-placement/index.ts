@@ -20,8 +20,10 @@ import {
 import {
   applyHaizenScan,
   getHaizenPresetShelf,
+  listHaizenAssignableDevices,
   listHaizenCurrentPlacements,
-  updateHaizenPresetShelf
+  updateHaizenPresetShelf,
+  updateHaizenPresetShelfForTarget
 } from '../../services/mobile-placement/haizen-placement.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 import { suggestPartPlacementSearch } from '../../services/mobile-placement/part-search/part-search.service.js';
@@ -131,6 +133,10 @@ const haizenCurrentQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional()
 });
 
+const haizenTargetDeviceParamsSchema = z.object({
+  clientDeviceId: z.string().min(1)
+});
+
 export async function registerMobilePlacementRoutes(app: FastifyInstance): Promise<void> {
   const kioskDeps = {
     requireClientDevice
@@ -200,6 +206,31 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       limit: q.limit
     });
   });
+
+  /**
+   * Android キオスク: Zero2W 候補端末一覧
+   */
+  app.get('/mobile-placement/haizen-target-devices', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    return listHaizenAssignableDevices();
+  });
+
+  /**
+   * Android キオスク: 対象 Zero2W の担当棚を更新
+   */
+  app.put(
+    '/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf',
+    { config: { rateLimit: false } },
+    async (request) => {
+      await requireClientDevice(request.headers['x-client-key']);
+      const body = haizenPresetShelfBodySchema.parse(request.body);
+      const params = haizenTargetDeviceParamsSchema.parse(request.params);
+      return updateHaizenPresetShelfForTarget({
+        clientDeviceId: params.clientDeviceId,
+        shelfCodeRaw: body.shelfCodeRaw
+      });
+    }
+  );
 
   /**
    * 棚マスタへ棚番を新規登録（配膳トップの `+`）。`西-北-01` 形式のみ。
