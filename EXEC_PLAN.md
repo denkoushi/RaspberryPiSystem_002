@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-04) **DGX リソース Phase11（進行中表示の持続化・長時間切替の運用整理）**·Web + ドキュメント更新: `private_to_business` 実行中にタブ移動して戻ると進行表示が消える事象を、**イベントログ判定（`GET /system/dgx-resource/events`）+ `sessionStorage` pending** の二系統判定で解消。表示文言は `進行中:` を明示。**仕様/知見/トラブルシュート**を [KB-365](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 11・[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)・[docs/INDEX.md](./docs/INDEX.md)・[knowledge-base/index.md](./docs/knowledge-base/index.md) に反映。
+
 - [x] (2026-05-03) **DGX KPI メトリクス（`GET /system/metrics`・Pi5 API フォールバック・gateway トークン保護）**·ブランチ **`feat/dgx-kpi-metrics-fallback`**·代表 **`47a17096`**（先行 **`a3b67495`**）·**順序**: **① `raspberrypi5` のみ** Ansible → **② DGX** `gateway-server.py` 反映。**Pi5 デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-kpi-metrics-fallback infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-211051-8713`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0` / exit `0`**・`--follow` 約 **702s**）。**DGX**: repo の **`scripts/dgx-local-llm-system/gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置。**実績**: **`sudo systemctl restart dgx-llm-gateway`** は運用ユーザーに **sudo が無く未実行**。当該ホストでは **`dgx-llm-gateway` が inactive** で **`start-gateway-server.sh`** 常駐のため **既存プロセス終了後に `start-gateway-server.sh`** で再起動。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **157s**）。**仕様**: メトリクス URL 未設定時 **`/system/metrics`**（トークン必須）→ **`/v1/system/metrics`**。**知見**: **API と gateway は同じ窗口で揃える**。**ナレッジ**: [KB-365](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 10·[deployment.md](./docs/guides/deployment.md)（2026-05-03 KPI メトリクス項）·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。**`main` 取り込み後はブランチ引数を `main`**。
 
 - [x] (2026-05-03) **DGX リソース Phase9（Orchestration Strict Ready・安全ロールバック）**·ブランチ **`feat/dgx-resource-ready-guarantee`**·代表 **`8cbc6f38`**·**対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 play **no hosts matched**。**Pi3 個別デプロイ不要**）。**デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-ready-guarantee infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-194121-32704`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0` / exit `0`**・`--follow` 約 **684s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **89s**）。**仕様**: **`EXECUTE_ORCHESTRATION_SCENARIO` 成功＝Strict Ready 達成まで**・タイムアウト時 **安全ロールバック**・`scenarioExecute.readiness*` / `rollback`。**ナレッジ**: [KB-365 §Phase9](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-9orchestration-strict-readyapi--web)·[deployment.md](./docs/guides/deployment.md) Phase9 項·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)·**`main` 取り込み後はブランチ引数を `main`**。
@@ -1029,6 +1031,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-04）: DGX 画面の「進行中表示が消える」症状は、バックエンド停止ではなく **UI の判定源が局所 state に寄りすぎていたこと**が主因だった。`Strict Ready` は継続していても、タブ移動/再描画境界でローカル `flowBusy` が失われると未実行に見える。**イベントログ判定 + `sessionStorage` pending** の二系統にすると、イベント到着遅延があっても表示の穴が埋まる。記録: [KB-365 Phase 11](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)・[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
+
 - 観測（2026-05-03）: **`update-all-clients.sh --detach --follow`** の **preflight** で **`Checking Pi5 self-SSH`** がログに出たあと **`ansible … ping`** が成功する。**恒久対策のみ**のデプロイ（例: **Detach Run ID `20260503-190010-8105`**）では **`PLAY RECAP` `ok=131` `changed=3`**・**Docker compose 再構成タスクは skipping** になり得る。**orphan bootstrap lock** は通常 **EXIT トラップで解放**されるが、異常終了が続く場合は **`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`** と **`ansible-update-<runId>.status.json` 不在**により **次回 `acquire_remote_lock` が削除し得る**。**記録**: [KB-366](./docs/knowledge-base/infrastructure/ansible-deployment.md#kb-366-pi5-self-ssh-preflight-and-orphan-lock)·[deployment.md](./docs/guides/deployment.md)。
 - 観測（2026-05-03）: **`dgx-resource.scenario-planner`** のプレビュー **`ScenarioWorkloadStepPreview.targetId`** は **`WorkloadAdjustmentStep['targetId']`**（調停許容集合に狭い）。**post-policy** 側のステップ型を広い **`DgxControlTargetId` のまま**にすると、**`pnpm --filter api build`**（**`tsconfig.build.json`**）で **`TS2322`** になりうる。**Fix**: **`PostPolicyOrchestrationStep.targetId`** を **`WorkloadAdjustmentStep['targetId']`** と揃える（`private-comfyui` は許容）。**記録**: [deployment.md](./docs/guides/deployment.md)（目的別ガイド項 TS 注意）・[KB-365 §Phase6](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-6目的別ガイド--post-policy-comfy-apiweb本番反映)。
 - 観測（2026-05-03）: 管理コンソール **DGX リソース**の **`inference-backend`（`/v1/models`）WARN** と、Pi5 経由 gateway の **502（本文 `Connection refused`）** は、**blue vLLM（`system-prod-trtllm`）の cold start 待ち**だけでなく、**同一 GPU 上の私用 ComfyUI 占有**で **`ValueError: Free memory on device cuda:0 …`** により **upstream が listen しない**状態と**一致しうる**。UI は数秒周期の更新があるが、**裏側が変わらなければ空振り**。**対処例**（業務優先時）: ComfyUI 停止→ **`POST /start` 再試行**（私用で ComfyUI を再開すると **再衝突**しうる）。**記録**: [KB-364](./docs/knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)（2026-05-03 節）·[deployment.md](./docs/guides/deployment.md) 補足（2026-05-03）。
@@ -1311,6 +1315,10 @@
   対応: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、`git pull`前後のHEADを比較して変更を検知。コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証で正のテスト（コード変更→再ビルド）と負のテスト（コード変更なし→再ビルドなし）を確認。**[KB-217]**
 
 ## Decision Log
+
+- 決定（2026-05-04）: DGX リソース画面の進行状態は **単一 state で管理しない**。表示判定は **(1) イベントログ由来の実行判定** と **(2) `sessionStorage` pending（TTL 付き）** を併用し、どちらかが true の間は `進行中:` を表示する。  
+  理由: `private_to_business` のような長時間シナリオで、タブ移動や再描画境界があっても「処理中」を見失わないため。  
+  参照: [KB-365 Phase 11](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) / [dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)
 
 - 決定（2026-05-02）: **キオスク順位ボードの行下フッター工程チップは、進捗一覧 `progress-overview` 全件取得に依存しない**。API の **`responseProfile=leaderboard`** 一覧に **`leaderboardFooterChipsByPartKey`**（製番JOIN＋製品番号＋ `fhincd` の `\0` 結合キー・Web と整合）を同梱し、集約は **`production-schedule/leaderboard/`** に閉じる。Web は順位ボードページで **progress-overview query を読まない**。**完了ミューテーション後**は一覧キャッシュの楽観更新に加え、**`kiosk-production-schedule-history-progress` と `kiosk-production-schedule-progress-overview` を invalidate**し、製番進捗・他画面との表示ズレを抑える。（加工順変更の **`leaderBoardFastPath`** は従来どおり一覧のみ局所パッチし、チップ構成は変わらないため追加 invalidate は不要。）
   参照: [`leaderboard-part-footer-chip-key.ts`](./apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.ts)·[`ProductionScheduleLeaderOrderBoardPage.tsx`](./apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)
@@ -2055,6 +2063,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### DGX リソース Phase12（進行中表示の運用検証自動化）（2026-05-04）
+
+**概要**: Phase11 で進行中表示の持続化（イベント判定 + `sessionStorage`）は実装済み。次は「表示が出ること」を運用手順だけでなく **再現可能な検証観点**として固定する。
+
+**候補タスク**:
+
+1. `/admin/tools/dgx-resource` の `private_to_business` 実行中に、タブ移動→復帰しても `進行中:` が残ることを **Runbook の手順化**（スクリーンショット/確認観点を最小化）。
+2. `GET /api/system/dgx-resource/events` の「開始/終端」メッセージ差分から **実行中判定ヘルパー**の仕様をテストで固定（終端語彙追加に備える）。
+3. 長時間切替時の利用者案内（cold start 目安、異常時のイベント確認順）を **管理UIの補助文言**へ追加するか検討（過剰表示を避ける）。
 
 ### DGX blue vLLM × 私用 ComfyUI（GPU 競合の可視化と運用補助）（2026-05-03）
 

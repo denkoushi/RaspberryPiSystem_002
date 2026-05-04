@@ -63,7 +63,7 @@ function mapScenarioToPolicyInputs(scenarioId: DgxOrchestrationScenarioId): {
 } {
   switch (scenarioId) {
     case 'business_to_private':
-      return { targetPolicyMode: 'private_ok', applyWorkloadChanges: false };
+      return { targetPolicyMode: 'private_ok', applyWorkloadChanges: true };
     case 'private_to_business':
     case 'experiment_to_business':
       return { targetPolicyMode: 'business_first', applyWorkloadChanges: true };

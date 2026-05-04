@@ -10,7 +10,7 @@ describe('dgx-resource.scenario-planner', () => {
     const input = {
       scenarioId: 'business_to_private' as const,
       targetPolicyMode: 'private_ok' as const,
-      applyWorkloadChanges: false,
+      applyWorkloadChanges: true,
       postPolicyStarts: [],
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: false,
@@ -47,6 +47,24 @@ describe('dgx-resource.scenario-planner', () => {
         gatewayRuntimeConfigured: true,
       })
     ).toBe(p.planFingerprint);
+  });
+
+  it('business_to_private adds pre-policy experiment stop when runtime hook exists', () => {
+    const p = buildOrchestrationScenarioPreview({
+      scenarioId: 'business_to_private',
+      comfyRuntimeConfigured: true,
+      experimentLabRuntimeConfigured: true,
+      gatewayRuntimeConfigured: true,
+      currentPolicyMode: 'business_first',
+      inferenceLooksDegraded: false,
+      comfyLooksRunning: false,
+    });
+    const expStopIdx = p.steps.findIndex(
+      (s) => s.kind === 'workload' && s.targetId === 'experiment-lab' && s.action === 'stop'
+    );
+    const policyIdx = p.steps.findIndex((s) => s.kind === 'policy');
+    expect(expStopIdx).toBeGreaterThan(-1);
+    expect(policyIdx).toBeGreaterThan(expStopIdx);
   });
 
   it('buildOrchestrationScenarioPreview includes policy step last when no post-policy steps and aligns fingerprint inputs', () => {

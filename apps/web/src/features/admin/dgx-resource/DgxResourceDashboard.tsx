@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { dgxResourceQueryKeys, fetchDgxResourceOverview, getDgxResourceApiErrorMessage, postDgxResourceAction } from '../../../api/dgx-resource';
+import {
+  dgxResourceQueryKeys,
+  fetchDgxResourceEvents,
+  fetchDgxResourceOverview,
+  getDgxResourceApiErrorMessage,
+  postDgxResourceAction,
+} from '../../../api/dgx-resource';
 import { useConfirm } from '../../../contexts/ConfirmContext';
 
 import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
@@ -29,16 +35,88 @@ function statusChipTone(status: DgxServiceStatusKind): string {
   }
 }
 
+function isDgxScenarioLikelyRunning(eventMessages: string[]): boolean {
+  for (const message of eventMessages) {
+    if (message.includes('Strict Ready:') && message.includes('完了条件の確認を開始します')) {
+      return true;
+    }
+    if (
+      message.includes('Strict Ready を確認しました') ||
+      message.includes('Strict Ready がタイムアウトしました') ||
+      (message.includes('ガイド ') && message.includes('途中停止'))
+    ) {
+      return false;
+    }
+  }
+  return false;
+}
+
+function deriveDgxRunningScenario(events: Array<{ at: string; message: string }>):
+  | { running: false }
+  | { running: true; scenarioId: string; startedAt: string; elapsedMinutes: number } {
+  const startRegex = /Strict Ready: 「([^」]+)」完了条件の確認を開始します/;
+  const terminalRegexes = [/Strict Ready を確認しました/, /Strict Ready がタイムアウトしました/, /ガイド .* が途中停止/];
+
+  let startIndex = -1;
+  let startMatch: RegExpMatchArray | null = null;
+  for (let i = 0; i < events.length; i += 1) {
+    const m = events[i]?.message.match(startRegex);
+    if (m) {
+      startIndex = i;
+      startMatch = m;
+      break;
+    }
+  }
+  if (startIndex < 0 || !startMatch || !events[startIndex]?.at) {
+    return { running: false };
+  }
+  for (let i = 0; i < startIndex; i += 1) {
+    const msg = events[i]?.message ?? '';
+    if (terminalRegexes.some((r) => r.test(msg))) {
+      return { running: false };
+    }
+  }
+  const startedAt = events[startIndex]!.at;
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 60000));
+  return {
+    running: true,
+    scenarioId: startMatch[1] ?? 'unknown',
+    startedAt,
+    elapsedMinutes,
+  };
+}
+
+const DGX_SCENARIO_PENDING_STORAGE_KEY = 'dgx-resource:primary-scenario-pending';
+
+function readPendingScenarioFromStorage(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.sessionStorage.getItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { pending?: boolean; startedAt?: number } | null;
+    if (!parsed?.pending || typeof parsed.startedAt !== 'number') return false;
+    return Date.now() - parsed.startedAt <= 20 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
 /** 通常画面は最小表示（状態 + 4操作 + 実行結果）。詳細は折りたたみへ退避。 */
 export function DgxResourceDashboard() {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
   const [targetActionError, setTargetActionError] = useState<{ targetId: DgxControlTargetIdApi; message: string } | null>(null);
+  const [pendingFromStorage, setPendingFromStorage] = useState<boolean>(() => readPendingScenarioFromStorage());
 
   const overviewQuery = useQuery({
     queryKey: dgxResourceQueryKeys.overview,
     queryFn: fetchDgxResourceOverview,
+    refetchInterval: 5000,
+  });
+  const eventsQuery = useQuery({
+    queryKey: dgxResourceQueryKeys.events(24),
+    queryFn: () => fetchDgxResourceEvents(24),
     refetchInterval: 5000,
   });
 
@@ -64,6 +142,16 @@ export function DgxResourceDashboard() {
   const postDgxActionAsync = (body: DgxResourceActionBody) => mutateAction.mutateAsync(body);
   const overviewError = overviewQuery.error != null ? getDgxResourceApiErrorMessage(overviewQuery.error) : null;
   const overview = overviewQuery.data;
+  const events = eventsQuery.data?.events ?? [];
+  const scenarioLikelyRunning = isDgxScenarioLikelyRunning(events.map((e) => e.message));
+  const runningScenario = deriveDgxRunningScenario(events);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setPendingFromStorage(readPendingScenarioFromStorage());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   if (!overview) {
     return (
@@ -100,6 +188,14 @@ export function DgxResourceDashboard() {
         <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(comfyStatus))}>ComfyUI: {comfyStatus}</div>
         <div className={clsx('rounded-full border px-3 py-1.5 text-sm font-semibold', statusChipTone(experimentStatus))}>実験: {experimentStatus}</div>
       </section>
+      {runningScenario.running || scenarioLikelyRunning || pendingFromStorage ? (
+        <p className="rounded-lg border border-cyan-400/35 bg-cyan-950/25 px-3 py-2 text-sm text-cyan-100" role="status">
+          進行中:
+          {runningScenario.running
+            ? ` ${runningScenario.scenarioId}（Strict Ready確認中・開始から約${runningScenario.elapsedMinutes}分）`
+            : ' 切替処理を確認中です（イベント反映待ち）'}
+        </p>
+      ) : null}
 
       {overview.operator ? (
         <section className="rounded-xl border border-cyan-400/25 bg-slate-950/65 p-3">
@@ -107,6 +203,7 @@ export function DgxResourceDashboard() {
             operator={overview.operator}
             postDgxAction={postDgxActionAsync}
             actionBusy={mutateAction.isPending}
+            externalBusy={scenarioLikelyRunning}
             onControlUiError={(message) => {
               setActionError(message);
               if (message == null) setTargetActionError(null);

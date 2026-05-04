@@ -39,7 +39,7 @@ describe('planWorkloadAdjustmentsBeforePolicyChange', () => {
     expect(plan.every((s) => s.action === 'stop')).toBe(true);
   });
 
-  it('private_ok never schedules adjustments', () => {
+  it('private_ok stops experiment-lab when configured', () => {
     expect(
       planWorkloadAdjustmentsBeforePolicyChange({
         nextMode: 'private_ok',
@@ -48,6 +48,12 @@ describe('planWorkloadAdjustmentsBeforePolicyChange', () => {
         experimentLabRuntimeConfigured: true,
         gatewayRuntimeConfigured: true,
       })
-    ).toEqual([]);
+    ).toEqual([
+      {
+        targetId: 'experiment-lab',
+        action: 'stop',
+        eventMessageJa: '私用OK: experiment-lab 停止リクエストを送信しました（GPU 解放）',
+      },
+    ]);
   });
 });

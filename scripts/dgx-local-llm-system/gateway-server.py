@@ -27,6 +27,7 @@ import os
 import json
 import sys
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -136,6 +137,29 @@ def run_local_command(command: str, cwd: str, timeout_sec: int) -> tuple[int, st
     return proc.returncode, out.strip()
 
 
+def emit_agent_debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    payload = {
+        "sessionId": "504530",
+        "runId": "dgx-resource-debug",
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        # region agent log
+        with open(
+            "/Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug-504530.log",
+            "a",
+            encoding="utf-8",
+        ) as fp:
+            fp.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        # endregion
+    except Exception:
+        pass
+
+
 def is_container_running(container_name: str) -> bool:
     proc = subprocess.run(
         ["bash", "-lc", "docker ps --format '{{.Names}}'"],
@@ -161,9 +185,25 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
         check=False,
     )
     if proc.returncode != 0:
+        # region agent log
+        emit_agent_debug_log(
+            "H6",
+            "gateway-server.py:collect_gpu_metrics:nvidia-smi-failed",
+            "nvidia-smi command failed",
+            {"returncode": proc.returncode},
+        )
+        # endregion
         return False, None
     rows = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
     if not rows:
+        # region agent log
+        emit_agent_debug_log(
+            "H6",
+            "gateway-server.py:collect_gpu_metrics:no-rows",
+            "nvidia-smi returned no rows",
+            {},
+        )
+        # endregion
         return False, None
     gpu_utils: list[float] = []
     mem_pairs: list[tuple[float, float]] = []
@@ -184,6 +224,14 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
             # DGX Spark unified memory では memory.* が [N/A] になることがある。
             pass
     if not gpu_utils:
+        # region agent log
+        emit_agent_debug_log(
+            "H6",
+            "gateway-server.py:collect_gpu_metrics:no-gpu-utils",
+            "gpu utilization parse failed",
+            {"rows": rows[:3]},
+        )
+        # endregion
         return False, None
     util_avg = sum(gpu_utils) / len(gpu_utils)
     used_gib: float | None = None
@@ -192,35 +240,107 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, float] | None]:
         used_gib = sum(v[0] for v in mem_pairs) / 1024.0
         total_gib = sum(v[1] for v in mem_pairs) / 1024.0
     else:
-        mem_proc = subprocess.run(
-            ["bash", "-lc", "free -b"],
+        # region agent log
+        emit_agent_debug_log(
+            "H6",
+            "gateway-server.py:collect_gpu_metrics:compute-apps-fallback",
+            "memory columns unavailable; try compute-apps memory",
+            {"rows": rows[:3]},
+        )
+        # endregion
+        apps_proc = subprocess.run(
+            [
+                "bash",
+                "-lc",
+                "nvidia-smi --query-compute-apps=used_memory --format=csv,noheader,nounits",
+            ],
             capture_output=True,
             text=True,
             check=False,
         )
-        if mem_proc.returncode == 0:
-            for line in (mem_proc.stdout or "").splitlines():
-                if not line.startswith("Mem:"):
-                    continue
-                cols = [c for c in line.split() if c]
-                if len(cols) < 7:
+        app_used_mib = 0.0
+        if apps_proc.returncode == 0:
+            for line in (apps_proc.stdout or "").splitlines():
+                raw = line.strip().replace(" MiB", "")
+                if not raw:
                     continue
                 try:
-                    mem_total_b = float(cols[1])
-                    mem_available_b = float(cols[6])
+                    app_used_mib += float(raw)
                 except ValueError:
                     continue
-                total_gib = mem_total_b / (1024.0**3)
-                used_gib = max(0.0, (mem_total_b - mem_available_b) / (1024.0**3))
-                break
+
+        memtotal_proc = subprocess.run(
+            ["bash", "-lc", "awk '/MemTotal:/ {print $2}' /proc/meminfo"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        memtotal_kib: float | None = None
+        if memtotal_proc.returncode == 0:
+            raw = (memtotal_proc.stdout or "").strip()
+            try:
+                memtotal_kib = float(raw)
+            except ValueError:
+                memtotal_kib = None
+
+        if memtotal_kib and memtotal_kib > 0:
+            used_gib = app_used_mib / 1024.0
+            total_gib = memtotal_kib / (1024.0 * 1024.0)
+            # region agent log
+            emit_agent_debug_log(
+                "H8",
+                "gateway-server.py:collect_gpu_metrics:compute-apps-fallback",
+                "compute-apps memory fallback succeeded",
+                {
+                    "appUsedMiB": round(app_used_mib, 1),
+                    "memTotalKiB": round(memtotal_kib, 1),
+                    "usedGiB": round(used_gib, 1),
+                    "totalGiB": round(total_gib, 1),
+                },
+            )
+            # endregion
+        else:
+            payload = {"gpuUtilPct": round(util_avg, 1)}
+            # region agent log
+            emit_agent_debug_log(
+                "H6",
+                "gateway-server.py:collect_gpu_metrics:payload",
+                "gpu-only metrics payload produced",
+                {
+                    "gpuUtilAvg": payload["gpuUtilPct"],
+                    "usedRamFallback": False,
+                    "rows": rows[:3],
+                    "appMemoryFallbackTried": True,
+                    "appUsedMiB": round(app_used_mib, 1),
+                    "memTotalKiB": memtotal_kib,
+                },
+            )
+            # endregion
+            return True, payload
+
     if used_gib is None or total_gib is None or total_gib <= 0:
         return False, None
+
     payload = {
         "gpuUtilPct": round(util_avg, 1),
         "unifiedMemoryUsedGiB": round(used_gib, 1),
         "unifiedMemoryTotalGiB": round(total_gib, 1),
         "freeMemoryGiB": round(max(0.0, total_gib - used_gib), 1),
     }
+    # region agent log
+    emit_agent_debug_log(
+        "H6",
+        "gateway-server.py:collect_gpu_metrics:payload",
+        "gpu metrics payload produced",
+        {
+            "gpuUtilAvg": round(util_avg, 1),
+            "usedGiB": payload["unifiedMemoryUsedGiB"],
+            "totalGiB": payload["unifiedMemoryTotalGiB"],
+                "usedRamFallback": False,
+            "rows": rows[:3],
+        },
+    )
+    # endregion
     return True, payload
 
 
@@ -342,9 +462,33 @@ def make_handler(
                         config.private_comfy_cmd_timeout_sec,
                     )
                     if rc == 0:
+                        # region agent log
+                        emit_agent_debug_log(
+                            "H9",
+                            "gateway-server.py:private-comfyui-runtime",
+                            "private-comfyui runtime command succeeded",
+                            {
+                                "path": self.path,
+                                "exitCode": rc,
+                                "outputSample": output[:200],
+                            },
+                        )
+                        # endregion
                         payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
+                    # region agent log
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:private-comfyui-runtime",
+                        "private-comfyui runtime command failed",
+                        {
+                            "path": self.path,
+                            "exitCode": rc,
+                            "outputSample": output[:300],
+                        },
+                    )
+                    # endregion
                     payload = json.dumps(
                         {
                             "ok": False,
@@ -356,10 +500,32 @@ def make_handler(
                     self._send(502, payload, "application/json; charset=utf-8")
                     return
                 except subprocess.TimeoutExpired:
+                    # region agent log
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:private-comfyui-runtime",
+                        "private-comfyui runtime command timeout",
+                        {
+                            "path": self.path,
+                            "timeoutSec": config.private_comfy_cmd_timeout_sec,
+                        },
+                    )
+                    # endregion
                     payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
                     self._send(504, payload, "application/json; charset=utf-8")
                     return
                 except Exception as exc:
+                    # region agent log
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:private-comfyui-runtime",
+                        "private-comfyui runtime command exception",
+                        {
+                            "path": self.path,
+                            "error": str(exc),
+                        },
+                    )
+                    # endregion
                     payload = json.dumps(
                         {"ok": False, "path": self.path, "message": str(exc)}
                     ).encode("utf-8")
@@ -381,9 +547,33 @@ def make_handler(
                         config.private_comfy_cmd_timeout_sec,
                     )
                     if rc == 0:
+                        # region agent log
+                        emit_agent_debug_log(
+                            "H9",
+                            "gateway-server.py:experiment-lab-runtime",
+                            "experiment-lab runtime command succeeded",
+                            {
+                                "path": self.path,
+                                "exitCode": rc,
+                                "outputSample": output[:200],
+                            },
+                        )
+                        # endregion
                         payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
+                    # region agent log
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:experiment-lab-runtime",
+                        "experiment-lab runtime command failed",
+                        {
+                            "path": self.path,
+                            "exitCode": rc,
+                            "outputSample": output[:300],
+                        },
+                    )
+                    # endregion
                     payload = json.dumps(
                         {
                             "ok": False,
@@ -395,10 +585,32 @@ def make_handler(
                     self._send(502, payload, "application/json; charset=utf-8")
                     return
                 except subprocess.TimeoutExpired:
+                    # region agent log
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:experiment-lab-runtime",
+                        "experiment-lab runtime command timeout",
+                        {
+                            "path": self.path,
+                            "timeoutSec": config.private_comfy_cmd_timeout_sec,
+                        },
+                    )
+                    # endregion
                     payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
                     self._send(504, payload, "application/json; charset=utf-8")
                     return
                 except Exception as exc:
+                    # region agent log
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:experiment-lab-runtime",
+                        "experiment-lab runtime command exception",
+                        {
+                            "path": self.path,
+                            "error": str(exc),
+                        },
+                    )
+                    # endregion
                     payload = json.dumps(
                         {"ok": False, "path": self.path, "message": str(exc)}
                     ).encode("utf-8")

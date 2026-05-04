@@ -7,16 +7,19 @@ import { DgxResourceDashboard } from './DgxResourceDashboard';
 import type { DgxResourceOverview } from '../../../api/dgx-resource.types';
 import type { ReactElement } from 'react';
 
-const { fetchDgxResourceOverview, useConfirmMock } = vi.hoisted(() => ({
+const { fetchDgxResourceOverview, fetchDgxResourceEvents, useConfirmMock } = vi.hoisted(() => ({
   fetchDgxResourceOverview: vi.fn(),
+  fetchDgxResourceEvents: vi.fn(),
   useConfirmMock: vi.fn(async () => true),
 }));
 
 vi.mock('../../../api/dgx-resource', () => ({
   dgxResourceQueryKeys: {
     overview: ['dgx-resource', 'overview'],
+    events: (limit: number) => ['dgx-resource', 'events', limit],
   },
   fetchDgxResourceOverview,
+  fetchDgxResourceEvents,
   getDgxResourceApiErrorMessage: (error: unknown) => (error instanceof Error ? error.message : 'error'),
   postDgxResourceAction: vi.fn(),
 }));
@@ -151,11 +154,13 @@ function makeOverview(): DgxResourceOverview {
 describe('DgxResourceDashboard', () => {
   beforeEach(() => {
     fetchDgxResourceOverview.mockReset();
+    fetchDgxResourceEvents.mockReset();
     useConfirmMock.mockClear();
   });
 
   it('loaded state hides page heading and renders KPI strip first', async () => {
     fetchDgxResourceOverview.mockResolvedValue(makeOverview());
+    fetchDgxResourceEvents.mockResolvedValue({ events: [] });
 
     renderWithClient(<DgxResourceDashboard />);
 
