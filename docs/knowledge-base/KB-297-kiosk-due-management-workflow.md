@@ -2568,6 +2568,26 @@ category: knowledge-base
   - **チップ無しだが一覧は載る**: **`leaderboardFooterChipsByPartKey` が未定義または空**。API の **`leaderboard` 経路が旧**、`**web`** だけ先行等を疑う。**Pi5 で `api`/`web` ペア**を確認。
   - **[旧節・行下辺チップ](#leader-order-board-row-footer-resource-chips-2026-05-02) の記述と混同しない**: **現行順位ボードは overview フェッチ無し**。過去項は **`scheduled`/`unscheduled` から製番単位で集約**したフェーズの記録。
 
+### Leader order board: 製番順評価モード（端末ローカルのみ）（2026-05-04） {#leader-order-board-seiban-priority-eval-mode-2026-05-04}
+
+- **目的**: 順位ボードで **登録製番の並び**を、**他端末に影響を与えず**（共有履歴・サーバ順序はそのまま）**端末内だけ**で試し、**資源列内の表示順**に反映できるようにする。**Web のみ**・**API / Prisma / `search-state` 契約は不変**。
+- **仕様（要約）**:
+  - **左ペイン**（[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)）: **製番順評価**トグル、ON 時のみ **登録製番の ↑↓**（対象は **共有履歴に載っている製番**に限定）。
+  - **永続化**: [`usePersistedLeaderBoardSeibanEval.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval.ts)・ストレージキーは [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)（**工場 + 端末スコープ**の `localStorage`）。
+  - **データ合成**: [`mergeSharedHistoryWithLocalOrder.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/mergeSharedHistoryWithLocalOrder.ts)·[`reorderSeibanInMergedList.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/reorderSeibanInMergedList.ts)·[`buildSeibanRankMap.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/buildSeibanRankMap.ts)。
+  - **ソート**: **OFF** → 既存の資源列ソート（**納期・`processingOrder` 等**）。**ON** → 資源列内で **製番のローカル評価順を最優先**し、同順位帯は [`sortLeaderBoardRowsForSeibanEvalDisplay.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/sortLeaderBoardRowsForSeibanEvalDisplay.ts) から既存 **`compareLeaderBoardRowsForDisplay`** へ委譲。ビルドコンテキストは [`buildLeaderBoardViewModel.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel.ts) の **`LeaderBoardRowSortContext`**。
+  - **左ペインの製番一覧順**: **OFF** は **共有履歴順**、**ON** は **共有履歴とローカル評価順のマージ表示**（実装: `ProductionScheduleLeaderOrderBoardPage`）。
+- **単体テスト**: `sortLeaderBoardRowsForSeibanEvalDisplay.test.ts`・`seibanPriority.pure.test.ts`・`buildLeaderBoardViewModel.test.ts` 拡張など。
+- **本番デプロイ・実機検証（2026-05-04）**:
+  - **ブランチ**: `feat/kiosk-seiban-priority-eval-mode`（代表 **`ffe250cb`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**・**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**・**`--detach --follow`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 は対象外**（今回の Ansible limit では play 自体スキップ）。
+  - **Detach Run ID**（`ansible-update-`）: **`20260504-203034-22339`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **156s**）。
+- **知見**: 表示順の「試行」を **サーバに持ち込まない**ほうが、現場の一時並び替えと本番の手動順番 API の境界が曖昧にならない。**ランクは純粋関数でマップ化**してから既存比較器へ渡すと、テストが安定する。
+- **トラブルシューティング**:
+  - **評価 ON でも列の並びが変わらない**: **製番がその資源行に無い**・**同一製番のみ**・**既存ソートキーがすべて上流**で差が出ない場合は正常。**`web` バンドル**と **強制リロード**を確認。
+  - **pre-commit で止まる**: **`import/order`** — `eslint-plugin-import` の **type/import グループ**に合わせ、`buildSeibanRankMap` 等を **同一グループ内の正しい位置**へ。
+
 ### Leader order board: leaderboard `pageSize` server cap + remove debug ingest（2026-05-02） {#leader-order-board-leaderboard-pagesize-server-cap-2026-05-02}
 
 - **症状**: 順位ボードの **一覧 GET** が再び重い。`Caddy access.log`（JSON）で **`pageSize=1240` 前後と `880` が混在**する。

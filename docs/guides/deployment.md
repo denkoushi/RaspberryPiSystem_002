@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-04（**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）** 等・下記）
+最終更新: 2026-05-04（**キオスク順位ボード・製番順評価モード（Web のみ）**・**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）** 等・下記）
+
+### 補足（2026-05-04 evening: **キオスク順位ボード・製番順評価モード（端末ローカル `localStorage`）**·**`feat/kiosk-seiban-priority-eval-mode`**·**Pi5 のみ**）
+
+- **変更概要**: 順位ボード `/kiosk/production-schedule/leader-order-board` の左ペインに **製番順評価 ON/OFF** と、ON 時のみ **登録製番の上下移動**。**共有 `sharedHistory`・DB・API は不変**。評価順は **`usePersistedLeaderBoardSeibanEval.ts`**・`seibanPriority/*` 純粋関数・資源列内ソートは **`sortLeaderBoardRowsForSeibanEvalDisplay`** → **`buildLeaderBoardViewModel`**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-seiban-priority-eval-mode infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は** `main`）。
+- **本番デプロイ（実績）**: 代表コミット **`ffe250cb`**。**Detach Run ID** **`20260504-203034-22339`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・`--follow` 約 **397s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 156s**・Tailscale）。
+- **トラブルシュート**: **トグルが見えない／資源列の並びが変わらない** → Pi5 **`web`** の反映コミット・ブラウザ **強制リロード**（[verification-checklist.md](./verification-checklist.md) §6.6.4）。**開発時**: **`pnpm --filter @raspi-system/web lint`** で **import/order** を先に通す（pre-commit で止まる典型は **純粋関数の import がグループ外**）。
+- **ナレッジ**: [KB-297 §製番順評価](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-priority-eval-mode-2026-05-04)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-04 evening: **Zero2W 担当棚設定（キオスク + `haizen-target-devices` API）**·**`feat/mobile-placement-zero2w-assignment`**·**Pi5 のみ**）
 
