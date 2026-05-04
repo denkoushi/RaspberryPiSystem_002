@@ -94,6 +94,7 @@ describe('CsvDashboardPostIngestService', () => {
     syncFromCurrentStatusMailDashboard.mockResolvedValue({
       skipped: false,
       distinctKeys: 2,
+      disappearedDistinctKeys: 0,
     });
     syncFromSeibanMachineNameSupplementDashboard.mockResolvedValue({
       scanned: 3,

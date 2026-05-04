@@ -274,6 +274,42 @@ describe('Kiosk Production Schedule API', () => {
     expect(completedRow?.rowData.progress).toBe('完了');
   });
 
+  it('treats external completion as completed in the list response', async () => {
+    const targetRow = await prisma.csvDashboardRow.findFirst({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: '0001' },
+      },
+      select: { id: true },
+    });
+    expect(targetRow).toBeDefined();
+    if (!targetRow) return;
+
+    await prisma.productionScheduleExternalCompletion.upsert({
+      where: { csvDashboardRowId: targetRow.id },
+      create: {
+        csvDashboardRowId: targetRow.id,
+        csvDashboardId: DASHBOARD_ID,
+        isExternallyCompleted: true,
+      },
+      update: {
+        isExternallyCompleted: true,
+      },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      rows: Array<{ rowData: { ProductNo?: string; progress?: string } }>;
+    };
+    expect(body.rows.find((r) => r.rowData.ProductNo === '0001')?.rowData.progress).toBe('完了');
+  });
+
   it('shows S/R from FKOJUNST_Status mail sync rows', async () => {
     const targetRow = await prisma.csvDashboardRow.findFirst({
       where: {

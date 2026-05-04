@@ -10,7 +10,13 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-04（**キオスク順位ボード・製番順評価＋登録製番ランクピッカー（Web・Pi5→Pi4×4）**・**製番順評価モード単体（Pi5 のみ）**・**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）** 等・下記）
+最終更新: 2026-05-04（**キオスク順位ボード・製番順評価＋登録製番ランクピッカー（Web・Pi5→Pi4×4）**・**製番順評価モード単体（Pi5 のみ）**・**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）**・**FKOJUNST_Status 外部完了＝キー消失差分（ローカル実装・未本番）** 等・下記）
+
+### 補足（2026-05-04: **`FKOJUNST_Status` CSV 由来外部完了を「前回 dedupe キーあり→今回なし」差分へ**·ブランチ **`feat/fkojunst-status-disappearance-external-completion`**·**未マージ・未デプロイ**）
+
+- **変更概要**: **`ProductionScheduleExternalCompletion`** は **`S`/`R` winner** に対し **直前成功同期の dedupe 済みキー集合との差分**で **`isExternallyCompleted`** を更新。永続化 **`ProductionScheduleFkojunstStatusMailDedupeKeySnapshot`**（マイグレーション **`20260504220000_fkojunst_status_mail_dedupe_key_snapshot`**）。**dedupe 後キー 0 件**・失敗同期では **外部完了同期・スナップショット更新をスキップ**。**初回同期**はスナップショット無しのため **CSV由来完了は付かない**。手動完了との **OR（実効完了）** は [`production-schedule-effective-completion.sql.ts`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts) どおり維持。
+- **正本**: [`fkojunst-external-completion-sync.service.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts)·[`fkojunst-status-mail-dedupe-key-snapshot.repository.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-status-mail-dedupe-key-snapshot.repository.ts)·[KB-297 §外部完了](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)。
+- **デプロイ時**: **`pnpm exec prisma migrate deploy`**（API）で上記マイグレーション適用後、通常どおり Pi5 API 反映。**本項時点**: **ワークツリー実装のみ**（Detach Run ID 無し）。
 
 ### 補足（2026-05-04 late: **キオスク順位ボード・製番順評価 ON 時の登録製番ランクピッカー（↑↓ 廃止）**·**`feat/leader-board-seiban-rank-picker`**·**Pi5→Pi4×4**）
 

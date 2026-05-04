@@ -1089,7 +1089,7 @@ model ProductionScheduleProgress {
   @@index([csvDashboardId, isCompleted])
 }
 
-/// FKOJUNST_Status CSV に行が無い（外部で完了扱い）ことを保持する。本体 rowData.FKOJUNST は変更しない。
+/// FKOJUNST_Status CSV の直前成功同期との差分で「前回あり→今回なし」となった winner の外部完了を保持する。本体 rowData.FKOJUNST は変更しない。
 model ProductionScheduleExternalCompletion {
   csvDashboardRowId       String   @id
   csvDashboardId          String
@@ -1100,6 +1100,13 @@ model ProductionScheduleExternalCompletion {
   csvDashboardRow CsvDashboardRow @relation(fields: [csvDashboardRowId], references: [id], onDelete: Cascade)
 
   @@index([csvDashboardId, isExternallyCompleted])
+}
+
+/// `FKOJUNST_Status` Gmail CSV を dedupe した論理キー（FKOJUN \t FSIGENCD \t ProductNo と同一形式）の直近スナップショット。
+/// 前回成功同期との差分で「CSV から消えたキー」を検知する。
+model ProductionScheduleFkojunstStatusMailDedupeKeySnapshot {
+  compositeKey String   @id
+  updatedAt    DateTime @default(now()) @updatedAt
 }
 
 model KioskProductionScheduleSearchState {

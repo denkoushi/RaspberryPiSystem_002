@@ -70,7 +70,10 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     const extResult = await this.externalCompletionSyncService.syncFromDedupedStatusMailRows(dedupedRows);
     if (!extResult.skipped) {
       logger.info(
-        { distinctKeys: extResult.distinctKeys },
+        {
+          distinctKeys: extResult.distinctKeys,
+          disappearedDistinctKeys: extResult.disappearedDistinctKeys,
+        },
         '[ProductionScheduleFkojunstMailStatusSyncService] external completion sync completed'
       );
     }

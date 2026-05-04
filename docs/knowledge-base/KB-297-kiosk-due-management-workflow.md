@@ -147,21 +147,21 @@ category: knowledge-base
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 62s**・FKOJUNST_Status 初回反映後）。**一覧 S/R のみ追補後**の再検証: **約 272s**（同一スクリプト・**PASS 43 / WARN 0 / FAIL 0**）。
 - **トラブルシュート**: **キー不一致**（メールの **`FSEZONO` が本体 `ProductNo` と一致しない**等）は **`unmatched`** が増える。**一覧から消えた**がメールにはある行は **`statusCode` が `S`/`R` 以外**を確認（**`?`/`''` も非表示**）。**`fkmail` 行がある winner は `fkst` が `S`/`R` でも表示されない**（**非 S/R は `fkst` で救済しない**）。**`fkmail` が無い**行は **`fkst` が `S`/`R` のときのみ**残る。デプロイ fail-fast（未コミット/未追跡）は [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能) どおり **commit** か **`git stash push -u`**。
 
-### FKOJUNST_Status CSV 不在による外部完了（別テーブル・2026-05-02） {#fkojunst-status-external-completion-b-2026-05-02}
+### FKOJUNST_Status CSV 由来外部完了（別テーブル・キー消失差分・2026-05-02/04） {#fkojunst-status-external-completion-b-2026-05-02}
 
-- **目的**: キオスクの手動チェックが無くても、**最新の `FKOJUNST_Status` CSV に当該キーが無い**ときに **完了相当**とみなす。**`rowData.FKOJUNST` は変更しない**（`ProductionScheduleExternalCompletion` で別管理）。
+- **目的**: キオスクの手動チェックが無くても、**`FKOJUNST_Status` CSV の変化**から **完了相当**とみなす。**`rowData.FKOJUNST` は変更しない**（`ProductionScheduleExternalCompletion` で別管理）。
 - **対象**: 一覧の **`S`/`R` 可視**と同義の winner のみ（[`fkojunst-production-schedule-list-visibility.policy.ts`](../../apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts)・**`buildFkojunstSrEligibleScalarSql`**）。
 - **キー**: メール同期と同一（**`FKOJUN`・正規化 `FSIGENCD`・`ProductNo`** ↔ CSV の **`FKOJUN`・`FKOTEICD`・`FSEZONO`**）。
-- **判定**: dedupe 済みステータス CSV のキー集合に **無い** `S`/`R` winner は **`isExternallyCompleted=true`**。CSV に **再登場**したら **false**。
+- **判定（2026-05-04 改訂）**: **直前成功同期の dedupe 済みキー集合にあり、今回の dedupe 済みキー集合から消えたキー**に対応する `S`/`R` winner に **`isExternallyCompleted=true`**。CSV に **同一キーが再登場**した同期では **該当 winner は false**（キーが今日の CSV に再度載っているため）。**初回同期**（スナップショット無し）では消失差分が無いため **CSV由来の外部完了は付かない**。
 - **異常時**: **正規化後・dedupe 後にキーが 1 つも無い**ときは **外部完了同期をスキップ**（誤って大量完了扱いにしない）。**`normalizedRows` が空で `fkmail` をクリアする**経路でも **外部完了テーブルは触らない**。
 - **画面**: **`ProductionScheduleProgress.isCompleted` OR `isExternallyCompleted`** を **`progress` / `isCompleted` として同一表示**。適用: **進捗一覧**・**順位ボード（一覧・行下資源チップ）**・**製番進捗集計（左ペイン完了フィルタの根拠になる履歴進捗）**。
-- **実装の正本**: [`fkojunst-external-completion-sync.repository.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.repository.ts)·[`fkojunst-external-completion-sync.service.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts)·[`production-schedule-effective-completion.sql.ts`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts)·マイグレーション **`20260502103000_add_production_schedule_external_completion`**。
+- **実装の正本**: [`fkojunst-external-completion-sync.repository.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.repository.ts)·[`fkojunst-external-completion-sync.service.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts)·[`fkojunst-status-mail-dedupe-key-snapshot.repository.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-status-mail-dedupe-key-snapshot.repository.ts)·[`production-schedule-effective-completion.sql.ts`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts)·マイグレーション **`20260502103000_add_production_schedule_external_completion`**・**`20260504220000_fkojunst_status_mail_dedupe_key_snapshot`**。
 - **再計算トリガ（運用）**:
   - **`FKOJUNST_Status` メール CSV** の取込成功後（Gmail / 手動 upload の両方）は、従来どおり **`ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard`** のあと **外部完了同期**が走る。
   - **生産日程本体 CSV**（固定 `CsvDashboard` ID **`PRODUCTION_SCHEDULE_DASHBOARD_ID`**）の取込成功後も、[`CsvDashboardPostIngestService`](../../apps/api/src/services/csv-dashboard/csv-dashboard-post-ingest.service.ts) が **現行 Status CSV を読み直して**外部完了を **再同期**する（winner 変更への追従）。
 - **本番デプロイ（2026-05-02）**: [deployment.md](../guides/deployment.md) 標準・**`raspberrypi5` のみ**（`--limit raspberrypi5`）。ブランチ **`feature/fkojunst-external-completion-b`**・代表コミット **`a83c5439`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-215033-1769`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**・所要 **約 1445s**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 139s**・Tailscale）。
-- **トラブルシュート**: **Docker 再構築が長く見える** → **`Rebuild/Restart docker compose services` の無出力待ち**が続き得る。**完了判定は `PLAY RECAP` / `summary.json` / `*.exit`**。**外部完了が期待とズレる**: まず **Status CSV が空になっていないか**（dedupe 後キー **0 件**なら同期スキップ）・**S/R 可視 winner のみ**であること・キー照合（§FKOJUNST_Status）を確認。
+- **トラブルシュート**: **Docker 再構築が長く見える** → **`Rebuild/Restart docker compose services` の無出力待ち**が続き得る。**完了判定は `PLAY RECAP` / `summary.json` / `*.exit`**。**外部完了が期待とズレる**: **スナップショットが一度も無い初回**では CSV由来完了が付かないことを確認する。**Status CSV が空**（dedupe 後キー **0 件**）なら同期スキップ。**S/R 可視 winner のみ**であること・キー照合（§FKOJUNST_Status）を確認。
 
 ### PowerAutomate 由来の日時字句互換（ISO8601 等・2026-05-01） {#powerautomate-csv-datetime-compat-2026-05-01}
 
