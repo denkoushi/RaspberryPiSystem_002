@@ -2572,7 +2572,7 @@ category: knowledge-base
 
 - **目的**: 順位ボードで **登録製番の並び**を、**他端末に影響を与えず**（共有履歴・サーバ順序はそのまま）**端末内だけ**で試し、**資源列内の表示順**に反映できるようにする。**Web のみ**・**API / Prisma / `search-state` 契約は不変**。
 - **仕様（要約）**:
-  - **左ペイン**（[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)）: **製番順評価**トグル、ON 時のみ **登録製番の ↑↓**（対象は **共有履歴に載っている製番**に限定）。
+  - **左ペイン**（[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)）: **製番順評価**トグル。**ON 時の登録製番の並べ替え**は **[ランクピッカー（同日追補）](#leader-order-board-seiban-rank-picker-2026-05-04)**（**1…N** 選択・**↑↓ 廃止**）。
   - **永続化**: [`usePersistedLeaderBoardSeibanEval.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval.ts)・ストレージキーは [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)（**工場 + 端末スコープ**の `localStorage`）。
   - **データ合成**: [`mergeSharedHistoryWithLocalOrder.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/mergeSharedHistoryWithLocalOrder.ts)·[`reorderSeibanInMergedList.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/reorderSeibanInMergedList.ts)·[`buildSeibanRankMap.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/buildSeibanRankMap.ts)。
   - **ソート**: **OFF** → 既存の資源列ソート（**納期・`processingOrder` 等**）。**ON** → 資源列内で **製番のローカル評価順を最優先**し、同順位帯は [`sortLeaderBoardRowsForSeibanEvalDisplay.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/sortLeaderBoardRowsForSeibanEvalDisplay.ts) から既存 **`compareLeaderBoardRowsForDisplay`** へ委譲。ビルドコンテキストは [`buildLeaderBoardViewModel.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel.ts) の **`LeaderBoardRowSortContext`**。
@@ -2587,6 +2587,24 @@ category: knowledge-base
 - **トラブルシューティング**:
   - **評価 ON でも列の並びが変わらない**: **製番がその資源行に無い**・**同一製番のみ**・**既存ソートキーがすべて上流**で差が出ない場合は正常。**`web` バンドル**と **強制リロード**を確認。
   - **pre-commit で止まる**: **`import/order`** — `eslint-plugin-import` の **type/import グループ**に合わせ、`buildSeibanRankMap` 等を **同一グループ内の正しい位置**へ。
+
+### Leader order board: 登録製番ランクピッカー（製番順評価 ON 時）（2026-05-04） {#leader-order-board-seiban-rank-picker-2026-05-04}
+
+- **目的**: 製番順評価 ON 時に、**登録製番を目的ランクへ一発で移動**できるようにする（**多段 ↑↓ より誤操作が減る**）。**Web のみ**・**API / DB / `search-state` は不変**（[**製番順評価モード**](#leader-order-board-seiban-priority-eval-mode-2026-05-04)と同じ **端末ローカル `localStorage`**）。
+- **仕様（要約）**:
+  - **操作**: 左ペイン登録製番行の **先頭順位番号**タップ → **1…N** リスト（[`LeaderBoardSeibanRankPicker`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanRankPicker.tsx)）。**外側クリック**・**Esc** で閉じる。同じアンカー再タップでも閉じる。
+  - **純関数**: 現在順と `targetRank1Based` から新しい製番配列を作る [`reorderSeibanToRank.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/reorderSeibanToRank.ts)（Vitest: `seibanPriority.pure.test.ts`）。
+  - **永続化**: [`usePersistedLeaderBoardSeibanEval.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval.ts) の **`moveRegisteredSeibanToRank(fseiban, targetRank1Based)`**（旧 **`moveRegisteredSeiban` は廃止**）。
+  - **重なり順**: [`AnchoredDropdownPortal`](../../apps/web/src/components/kiosk/AnchoredDropdownPortal.tsx) の **`fixedZIndex`** と [`kioskRevealUi.ts`](../../apps/web/src/hooks/kioskRevealUi.ts) **`KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK`**（左ツールスタックより前面）。
+- **本番デプロイ・実機検証（2026-05-04）**:
+  - **ブランチ**: `feat/leader-board-seiban-rank-picker`（代表 **`d4d6160c`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 除外**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260504-211859-16303`** / **`20260504-212412-27756`** / **`20260504-212945-9891`** / **`20260504-213330-19891`** / **`20260504-213745-19344`**（各 **`failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **60s**・Tailscale）。
+- **知見**: 段階移動の矢印より **ランク直指定**のほうが、**長いリスト**で操作回数とミスタップが減る。**Portal の z-index** は左ペインの固定ツールスタックと **`kioskRevealUi` の定数**で揃えると、キオスクで隠れにくい。
+- **トラブルシューティング**:
+  - **ピッカーが見えない／背面**: `fixedZIndex`・`KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK`・**強制リロード**（§6.6.4）。
+  - **`AnchoredDropdownPortal` の型エラー（ref）**: アンカーの **型を `HTMLElement | null` の `MutableRefObject` に統一**（本変更で `anchorRef` / `panelRef` を緩和）。
 
 ### Leader order board: leaderboard `pageSize` server cap + remove debug ingest（2026-05-02） {#leader-order-board-leaderboard-pagesize-server-cap-2026-05-02}
 
