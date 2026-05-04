@@ -108,6 +108,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 - **`/kiosk/mobile-placement`** の **照合ブロックと登録ブロックの間**に **「棚番配膳（Zero2W）」**パネルを表示する（選択中の棚で `haizen-current` を絞り込み・15s ポーリング）。
 - Top 上辺の **4つ目ボタン「Zero2W担当棚」** から **`/kiosk/mobile-placement/zero2w-assignment`** へ遷移し、**Zero2W を選ぶ → 棚番を選ぶ → 保存** で担当棚を設定する。
 - 専用ページは **棚マスタの登録済み構造化棚**だけを候補にし、対象端末は **`zero2w` 命名の `ClientDevice`** のみに絞る。
+- **本番反映（記録・2026-05-04）**: Pi5 **`raspberrypi5` のみ** `update-all-clients.sh`。**Detach Run ID** **`20260504-183939-27983`**。広域自動検証 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。**Pi3 への Ansible は当該デプロイで未実行**（**no hosts matched**）。詳細は [deployment.md](../guides/deployment.md) evening 項・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)。
 - **詳細**: [api/mobile-placement.md](../api/mobile-placement.md)・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・エージェント [clients/haizen-agent/README.md](../../clients/haizen-agent/README.md)。
 
 ## 前提
@@ -171,6 +172,9 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 - **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
 - **`mo10ParseSource` が `global-filter` だが製造orderが空／誤り**: **V11** 以降、同一行に **注文番号＋枝番**があるとその行の 10 桁は除外され、残り候補から文脈スコアで選ぶ。ログの `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` と [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V11** を参照
 - **V12 以降の現品票 OCR で欄が空になりやすい**: **ROI 切り出し**が帳票レイアウトとズレると、その領域の OCR が空になり製造order／製番が取れない。Pi5 ログの **`mo10ResolvedFromRoi`**（`moHeader` / `moFooter`）と [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V12** を参照。撮影は **正面・全体が枠内**になるよう寄せる
+- **Zero2W 担当棚ページが出ない／ボタンが無い**: Pi5 の **`web` が当該コミット**か確認し、キオスクで **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）
+- **`haizen-target-devices` が常に空**: `ClientDevice` の **`apiKey` または `name` に `zero2w`** が含まれるか（[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）
+- **担当棚保存が 400 `HAIZEN_PRESET_SHELF_NOT_REGISTERED`**: 棚マスタ（`MobilePlacementShelf`）に未登録のコードを選んでいないか
 
 ## 6. API 契約
 

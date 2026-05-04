@@ -27,6 +27,8 @@ category: knowledge-base
 | PATCH | `/api/mobile-placement/haizen-preset-shelf` | `{ "shelfCodeRaw": "西-北-01" }` |
 | POST | `/api/mobile-placement/haizen-scans` | `{ "manufacturingOrderBarcodeRaw", "distributionNumber?", "rawBarcode?" }` |
 | GET | `/api/mobile-placement/haizen-current` | `shelfCode?`, `limit?`（省略時は全棚から最新 N 件） |
+| GET | `/api/mobile-placement/haizen-target-devices` | キオスク設定用。**`apiKey` または `name` に `zero2w` を含む** `ClientDevice` のみ。要素は `id` / `name` / `location` / `shelfCodeRaw` / `lastSeenAt`（**`apiKey` は返さない**） |
+| PUT | `/api/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf` | `{ "shelfCodeRaw" }`。**対象は上記と同様の Zero2W 候補に限定**。**棚マスタ未登録棚は拒否**（`HAIZEN_PRESET_SHELF_NOT_REGISTERED`） |
 
 仕様の詳細: [api/mobile-placement.md](../api/mobile-placement.md)
 
@@ -63,6 +65,18 @@ category: knowledge-base
 4. **Zero 側**: `systemctl is-enabled haizen-agent.service` / `is-active` が **enabled / active**、`journalctl -u haizen-agent.service` に **`haizen-agent start base=https://… hid=…`** の起動ログがあること（`/dev/input/by-id/...-event-kbd` 等。README 参照）。
 
 **知見**: キオスク（Android）の `x-client-key` で既存 self API をそのまま叩くと **別端末のキーで誤設定**しうるため、**Top の配膳パネルは表示専用**に保ち、**専用ページ + 対象 Zero2W 指定 API** に分離した。
+
+## 本番デプロイ・広域検証（2026-05-04 evening・Pi5 のみ）
+
+- **変更**: キオスク **Zero2W 担当棚** ページ・`haizen-target-devices` / `…/preset-shelf` API（一覧はブラウザへ **`apiKey` を載せない**）。
+- **標準デプロイ**: [deployment.md](../guides/deployment.md)。**対象インベントリ名**: **`raspberrypi5` のみ**（`./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`）。**Pi4／Pi3 は当該 play にマッチしない**ため **個別 Pi3 手順は不要**。
+- **実績（先行リリース）**: ブランチ **`feat/mobile-placement-zero2w-assignment`**（代表 **`153af161`**）。**Detach Run ID** **`20260504-183939-27983`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 95s**・Tailscale）。
+- **実機（手動・任意）**: キオスク URL で **`/kiosk/mobile-placement/zero2w-assignment`** を開き **4 つ目ボタン**の有無を確認。Android で **古いバンドル**が残る場合は [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 の **強制リロード**。API スモーク: キオスクの `x-client-key` で `GET /api/mobile-placement/haizen-target-devices` が **200**（候補は DB 次第で 0 件もあり得る）。
+- **トラブルシュート**
+  - **候補端末が常に 0 件**: `ClientDevice` の **`name` または `apiKey` に `zero2w`（大小無視）** が含まれるかを確認（抽出ルールは API 実装の正本）。
+  - **保存が 400 `HAIZEN_PRESET_SHELF_NOT_REGISTERED`**: 選択棚が **`MobilePlacementShelf` 未登録**。既存の棚番登録フロー（`POST /api/mobile-placement/shelves`）でマスタ投入後に再試行。
+  - **保存が 400 `HAIZEN_TARGET_DEVICE_INVALID`**: 指定 `clientDeviceId` が Zero2W 候補に当てはまらない（一覧外の ID を直接叩いていないか）。
 
 **トラブル**: Zero のリポジトリが **`main` のまま**だと `clients/haizen-agent` が無く `WorkingDirectory` の **CHDIR 失敗**で `haizen-agent` がループする。**対処**: Pi5 で `ANSIBLE_REPO_VERSION=feat/zero2w-haizen-tracking`（マージ後は `main`）を指定して `zero2w-edge-setup.yml` を再実行する。設定ファイル **`/etc/raspi-haizen-agent.conf` を `root` の `600` のまま**にすると当該サービス実行ユーザーが読めず **PermissionError**。**対処**: `chown root:<haizen 実行ユーザー>` と **`chmod 640`**（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・Runbook）。
 

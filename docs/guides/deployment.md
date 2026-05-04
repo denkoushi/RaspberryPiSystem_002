@@ -10,7 +10,16 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-04（**DGX リソース Phase11（`main`・Pi5→DGX）**: 進行中表示持続化の本番反映・Phase12 **43/0/0**。併記: **DGX KPI メトリクス**、**Phase8** 等は下記）
+最終更新: 2026-05-04（**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）** 等・下記）
+
+### 補足（2026-05-04 evening: **Zero2W 担当棚設定（キオスク + `haizen-target-devices` API）**·**`feat/mobile-placement-zero2w-assignment`**·**Pi5 のみ**）
+
+- **変更概要**: 配膳キオスクに **Zero2W 担当棚** ページ（`/kiosk/mobile-placement/zero2w-assignment`）と、`GET/PUT /api/mobile-placement/haizen-target-devices…` を追加。**候補一覧応答は `apiKey` を含めない**（ブラウザ露出抑制）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/mobile-placement-zero2w-assignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`153af161`**。**Detach Run ID** **`20260504-183939-27983`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・ローカル `--follow` 完了まで **約 721s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 95s**・Tailscale）。
+- **ナレッジ**: [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-04: **DGX リソース Phase11（進行中表示持続化）**·**`main`**·**API+Web+DGX gateway**·**Pi5 → DGX 順次**）
 
