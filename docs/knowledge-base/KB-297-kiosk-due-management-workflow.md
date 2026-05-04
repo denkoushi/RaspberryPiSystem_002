@@ -160,8 +160,10 @@ category: knowledge-base
   - **`FKOJUNST_Status` メール CSV** の取込成功後（Gmail / 手動 upload の両方）は、従来どおり **`ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard`** のあと **外部完了同期**が走る。
   - **生産日程本体 CSV**（固定 `CsvDashboard` ID **`PRODUCTION_SCHEDULE_DASHBOARD_ID`**）の取込成功後も、[`CsvDashboardPostIngestService`](../../apps/api/src/services/csv-dashboard/csv-dashboard-post-ingest.service.ts) が **現行 Status CSV を読み直して**外部完了を **再同期**する（winner 変更への追従）。
 - **本番デプロイ（2026-05-02）**: [deployment.md](../guides/deployment.md) 標準・**`raspberrypi5` のみ**（`--limit raspberrypi5`）。ブランチ **`feature/fkojunst-external-completion-b`**・代表コミット **`a83c5439`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260502-215033-1769`**（**`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**・**`ok=130` `changed=4`**・所要 **約 1445s**）。
-- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 139s**・Tailscale）。
-- **トラブルシュート**: **Docker 再構築が長く見える** → **`Rebuild/Restart docker compose services` の無出力待ち**が続き得る。**完了判定は `PLAY RECAP` / `summary.json` / `*.exit`**。**外部完了が期待とズレる**: **スナップショットが一度も無い初回**では CSV由来完了が付かないことを確認する。**Status CSV が空**（dedupe 後キー **0 件**）なら同期スキップ。**S/R 可視 winner のみ**であること・キー照合（§FKOJUNST_Status）を確認。
+- **本番デプロイ（2026-05-05・キー消失差分）**: [deployment.md](../guides/deployment.md) 標準・**`raspberrypi5` のみ**。ブランチ **`feat/fkojunst-status-disappearance-external-completion`**・代表コミット **`6d9c3549`**。**Detach Run ID**: **`20260505-072811-487`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・**`--follow` 約 617s**）。**マイグレーション `20260504220000_fkojunst_status_mail_dedupe_key_snapshot`** は Pi5 **`prisma migrate deploy`** で適用済み。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-05 記録 **約 82s**・Tailscale）。
+- **知見（運用）**: **「今の CSV にキーが無いだけ」では完了にならない**。完了は **直前成功同期スナップショットにあったキーが、今回の dedupe 後キー集合から消えたとき**のみ（再登場で **false** に戻る）。**初回**はスナップショット無しのため **CSV由来の外部完了は付かない**（次回同期から差分が効く）。
+- **トラブルシュート**: **Docker 再構築が長く見える** → **`Rebuild/Restart docker compose services` の無出力待ち**が続き得る。**完了判定は `PLAY RECAP` / `summary.json` / `*.exit`**。**外部完了が期待とズレる**: **スナップショットが一度も無い初回**では CSV由来完了が付かないことを確認する。**Status CSV が空**（dedupe 後キー **0 件**）なら同期スキップ。**S/R 可視 winner のみ**であること・キー照合（§FKOJUNST_Status）を確認。**マイグレ未適用**は Pi5 **`deploy-status`** / Ansible **`Run prisma migrate deploy`** ログで確認する。
 
 ### PowerAutomate 由来の日時字句互換（ISO8601 等・2026-05-01） {#powerautomate-csv-datetime-compat-2026-05-01}
 

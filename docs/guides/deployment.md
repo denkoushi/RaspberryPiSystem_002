@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-04
+last-verified: 2026-05-05
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,13 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-04（**キオスク順位ボード・製番順評価＋登録製番ランクピッカー（Web・Pi5→Pi4×4）**・**製番順評価モード単体（Pi5 のみ）**・**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）**・**FKOJUNST_Status 外部完了＝キー消失差分（ローカル実装・未本番）** 等・下記）
+最終更新: 2026-05-05（**FKOJUNST_Status 外部完了＝キー消失差分（Pi5 本番・マイグレ適用済み）**・ほか下記）
 
-### 補足（2026-05-04: **`FKOJUNST_Status` CSV 由来外部完了を「前回 dedupe キーあり→今回なし」差分へ**·ブランチ **`feat/fkojunst-status-disappearance-external-completion`**·**未マージ・未デプロイ**）
+### 補足（2026-05-04 / **2026-05-05 本番反映**: **`FKOJUNST_Status` CSV 由来外部完了を「前回 dedupe キーあり→今回なし」差分へ**·ブランチ **`feat/fkojunst-status-disappearance-external-completion`**）
 
 - **変更概要**: **`ProductionScheduleExternalCompletion`** は **`S`/`R` winner** に対し **直前成功同期の dedupe 済みキー集合との差分**で **`isExternallyCompleted`** を更新。永続化 **`ProductionScheduleFkojunstStatusMailDedupeKeySnapshot`**（マイグレーション **`20260504220000_fkojunst_status_mail_dedupe_key_snapshot`**）。**dedupe 後キー 0 件**・失敗同期では **外部完了同期・スナップショット更新をスキップ**。**初回同期**はスナップショット無しのため **CSV由来完了は付かない**。手動完了との **OR（実効完了）** は [`production-schedule-effective-completion.sql.ts`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts) どおり維持。
 - **正本**: [`fkojunst-external-completion-sync.service.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts)·[`fkojunst-status-mail-dedupe-key-snapshot.repository.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-status-mail-dedupe-key-snapshot.repository.ts)·[KB-297 §外部完了](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)。
-- **デプロイ時**: **`pnpm exec prisma migrate deploy`**（API）で上記マイグレーション適用後、通常どおり Pi5 API 反映。**本項時点**: **ワークツリー実装のみ**（Detach Run ID 無し）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/fkojunst-status-disappearance-external-completion infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（2026-05-05）**: 代表コミット **`6d9c3549`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260505-072811-487`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート `exit` **`0`**・ローカル `--follow` 完了まで **約 617s**）。Ansible の **`Run prisma migrate deploy`** が **成功**（マイグレーション **`20260504220000`** 適用）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 82s**・Tailscale）。
+- **トラブルシュート**: **`Rebuild/Restart docker compose services` が無出力のまま長い**場合は **detach ログ**で **`docker compose` 完了**まで待つ（既存運用どおり）。**外部完了が期待とズレる** → [KB-297 §外部完了](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02) の **初回／空 CSV／キー照合**を確認。
 
 ### 補足（2026-05-04 late: **キオスク順位ボード・製番順評価 ON 時の登録製番ランクピッカー（↑↓ 廃止）**·**`feat/leader-board-seiban-rank-picker`**·**Pi5→Pi4×4**）
 
