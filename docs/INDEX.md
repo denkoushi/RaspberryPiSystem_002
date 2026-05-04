@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-04）
+
+- **DGX リソース Phase11（進行中表示の持続化・長時間切替の運用解釈）·Web + Runbook·本番反映済み**: `private_to_business` の長時間切替中でも、**タブ移動後に `進行中:` が消えない**ように **イベントログ判定 + `sessionStorage` pending** で UI 判定を二系統化。**知見**: `private_to_business` の 10 分級待機は cold start 由来で起こり得る。`business_to_private` でメモリ低下は `experiment-lab stop` 成功時の整合挙動。**KB**: [KB-365 Phase 11](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。**EXEC_PLAN**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-05-03）
 
 - **DGX KPI メトリクス（overview 数値・`GET /system/metrics`・Pi5→DGX 順次）·ブランチ `feat/dgx-kpi-metrics-fallback`·代表 `47a17096`（先行 `a3b67495`）·本番**: **`raspberrypi5` のみ Ansible** のち **DGX** `gateway-server.py`。Pi5 Detach **`20260503-211051-8713`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **157s**。**Pi3 はデプロイ対象外**）。**KB**: [KB-365](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 10。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。**デプロイ**: [deployment.md](./guides/deployment.md)（2026-05-03 KPI メトリクス項）。

@@ -16,10 +16,63 @@ import type {
   DgxResourceOperatorConsoleApi,
 } from '../../../api/dgx-resource.types';
 
+const DGX_SCENARIO_PENDING_EVENT = 'dgx-resource:primary-scenario-pending-changed';
+const DGX_SCENARIO_PENDING_STORAGE_KEY = 'dgx-resource:primary-scenario-pending';
+const DGX_SCENARIO_PENDING_TTL_MS = 20 * 60 * 1000;
+let dgxPrimaryScenarioPendingCount = 0;
+
+function emitDgxScenarioPendingChanged(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(DGX_SCENARIO_PENDING_EVENT, {
+      detail: { pending: dgxPrimaryScenarioPendingCount > 0, count: dgxPrimaryScenarioPendingCount },
+    })
+  );
+}
+
+function readPersistedPendingState(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = window.sessionStorage.getItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { pending?: boolean; startedAt?: number } | null;
+    if (!parsed?.pending) return false;
+    if (typeof parsed.startedAt !== 'number') return false;
+    if (Date.now() - parsed.startedAt > DGX_SCENARIO_PENDING_TTL_MS) {
+      window.sessionStorage.removeItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function persistPendingState(pending: boolean, scenarioId: DgxOrchestrationScenarioIdApi | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!pending) {
+      window.sessionStorage.removeItem(DGX_SCENARIO_PENDING_STORAGE_KEY);
+      return;
+    }
+    window.sessionStorage.setItem(
+      DGX_SCENARIO_PENDING_STORAGE_KEY,
+      JSON.stringify({
+        pending: true,
+        startedAt: Date.now(),
+        scenarioId,
+      })
+    );
+  } catch {
+    // best effort
+  }
+}
+
 type Props = {
   operator: DgxResourceOperatorConsoleApi;
   postDgxAction: (body: DgxResourceActionBody) => Promise<DgxResourceActionResult>;
   actionBusy: boolean;
+  externalBusy?: boolean;
   onControlUiError: (message: string | null) => void;
 };
 
@@ -28,6 +81,7 @@ export function DgxResourcePrimaryScenarioFlow({
   operator,
   postDgxAction,
   actionBusy,
+  externalBusy = false,
   onControlUiError,
 }: Props) {
   const qc = useQueryClient();
@@ -35,8 +89,9 @@ export function DgxResourcePrimaryScenarioFlow({
   const actions = useMemo(() => orderPrimaryScenarioActions(operator.operatorActions), [operator.operatorActions]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<DgxOrchestrationScenarioIdApi | null>(null);
   const [flowBusy, setFlowBusy] = useState(false);
+  const [globalPending, setGlobalPending] = useState(() => dgxPrimaryScenarioPendingCount > 0 || readPersistedPendingState());
   const [resultNote, setResultNote] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
-  const busy = actionBusy || flowBusy;
+  const busy = actionBusy || flowBusy || globalPending || externalBusy;
 
   useEffect(() => {
     const preferred = actions.find((a) => a.primary && !a.disabledReasonJa)?.scenarioId ?? actions.find((a) => !a.disabledReasonJa)?.scenarioId ?? null;
@@ -51,6 +106,19 @@ export function DgxResourcePrimaryScenarioFlow({
   const selectedAction: DgxOperatorConsoleActionApi | undefined =
     selectedScenarioId != null ? actions.find((a) => a.scenarioId === selectedScenarioId) : undefined;
 
+  useEffect(() => {
+    const sync = () => setGlobalPending(dgxPrimaryScenarioPendingCount > 0);
+    sync();
+    if (readPersistedPendingState()) {
+      setGlobalPending(true);
+    }
+    if (typeof window === 'undefined') return;
+    window.addEventListener(DGX_SCENARIO_PENDING_EVENT, sync as EventListener);
+    return () => {
+      window.removeEventListener(DGX_SCENARIO_PENDING_EVENT, sync as EventListener);
+    };
+  }, []);
+
   const openSimpleConfirm = async () => {
     if (!selectedAction) return;
     await confirm({
@@ -63,6 +131,9 @@ export function DgxResourcePrimaryScenarioFlow({
   const executeSelectedScenario = async () => {
     if (!selectedAction || selectedAction.disabledReasonJa) return;
     setFlowBusy(true);
+    dgxPrimaryScenarioPendingCount += 1;
+    persistPendingState(true, selectedAction.scenarioId);
+    emitDgxScenarioPendingChanged();
     setResultNote(null);
     try {
       // 実行指紋が必要なため、内部で preview→execute を連続実行する。
@@ -126,6 +197,11 @@ export function DgxResourcePrimaryScenarioFlow({
       setResultNote({ tone: 'error', message });
     } finally {
       setFlowBusy(false);
+      dgxPrimaryScenarioPendingCount = Math.max(0, dgxPrimaryScenarioPendingCount - 1);
+      if (dgxPrimaryScenarioPendingCount === 0) {
+        persistPendingState(false, null);
+      }
+      emitDgxScenarioPendingChanged();
     }
   };
 
@@ -186,6 +262,11 @@ export function DgxResourcePrimaryScenarioFlow({
           )}
         >
           {resultNote.message}
+        </p>
+      ) : null}
+      {busy ? (
+        <p role="status" className="break-words rounded-lg border border-cyan-400/35 bg-cyan-950/25 px-3 py-2 text-sm leading-snug text-cyan-100">
+          進行中: 切替処理を実行中です。別タブへ移動しても処理は継続します。
         </p>
       ) : null}
     </div>
