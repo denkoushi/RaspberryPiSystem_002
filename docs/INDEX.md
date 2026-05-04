@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-05-05）
 
-- **`FKOJUNST_Status` 外部完了＝dedupe キー消失差分（Pi5 のみ本番）·ブランチ `feat/fkojunst-status-disappearance-external-completion`·代表 `6d9c3549`**: [KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)·[deployment.md](./guides/deployment.md)（2026-05-04 / **2026-05-05 本番反映** 項）。Detach Run ID **`20260505-072811-487`**（`PLAY RECAP` **`ok=134` `changed=4` `failed=0`**・Pi4／Pi3 **no hosts matched**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **82s**）。**`main`**: squash merge・PR リンクは [EXEC_PLAN.md](../EXEC_PLAN.md) Progress（2026-05-05 項）を参照。
+- **`FKOJUNST_Status` 外部完了＝dedupe キー消失差分（Pi5 のみ本番）·ブランチ `feat/fkojunst-status-disappearance-external-completion`·代表 `6d9c3549`**: [KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)·[deployment.md](./guides/deployment.md)（2026-05-04 / **2026-05-05 本番反映** 項）。Detach Run ID **`20260505-072811-487`**（`PLAY RECAP` **`ok=134` `changed=4` `failed=0`**・Pi4／Pi3 **no hosts matched**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **82s**）。**`main`**: [PR #250](https://github.com/denkoushi/RaspberryPiSystem_002/pull/250) squash merge。
 
 ### 🆕 最新アップデート（2026-05-04）
 
