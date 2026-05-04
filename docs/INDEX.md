@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-05-04）
 
-- **DGX リソース Phase11（進行中表示の持続化・長時間切替の運用解釈）·Web + Runbook·本番反映済み**: `private_to_business` の長時間切替中でも、**タブ移動後に `進行中:` が消えない**ように **イベントログ判定 + `sessionStorage` pending** で UI 判定を二系統化。**知見**: `private_to_business` の 10 分級待機は cold start 由来で起こり得る。`business_to_private` でメモリ低下は `experiment-lab stop` 成功時の整合挙動。**KB**: [KB-365 Phase 11](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。**EXEC_PLAN**: [EXEC_PLAN.md](../EXEC_PLAN.md)。
+- **DGX リソース Phase11（進行中表示の持続化）·`main`·**[PR #246](https://github.com/denkoushi/RaspberryPiSystem_002/pull/246)**·Pi5→DGX 順次本番**: **`raspberrypi5` のみ** Detach **`20260504-113918-744`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）·`gateway-server.py` **`scp`** のち **`start-gateway-server.sh`** 再起動。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **109s**）。**知見**: 広い **`pkill -f`** でゲートウェイを誤停止し得る → **`start-gateway-server.sh`** が正規復旧。**KB**: [KB-365 Phase 11](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。**EXEC_PLAN**: [EXEC_PLAN.md](../EXEC_PLAN.md)。**デプロイ**: [deployment.md](./guides/deployment.md)（2026-05-04 項）。
 
 ### 🆕 最新アップデート（2026-05-03）
 

@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-03
+last-verified: 2026-05-04
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-03（**DGX KPI メトリクス（API+gateway）**: `/system/metrics` フォールバック・トークン保護 / Pi5→DGX 順次・Phase12 PASS 43。併記: **DGX Phase8** KPI 先頭 UI、**DGX Phase7** 等は下記）
+最終更新: 2026-05-04（**DGX リソース Phase11（`main`・Pi5→DGX）**: 進行中表示持続化の本番反映・Phase12 **43/0/0**。併記: **DGX KPI メトリクス**、**Phase8** 等は下記）
+
+### 補足（2026-05-04: **DGX リソース Phase11（進行中表示持続化）**·**`main`**·**API+Web+DGX gateway**·**Pi5 → DGX 順次**）
+
+- **変更概要**: 管理 UI `/admin/tools/dgx-resource` で、長時間シナリオ（例: `private_to_business`）実行中にタブを切り替えて戻っても **`進行中:`** が消えにくいよう、**イベントログ判定**と **`sessionStorage` pending** を併用。API／gateway のシナリオ系整理（PR #246 代表 **`5d96b59b`**）。
+- **対象ホスト**: **① `raspberrypi5` のみ**（`--limit raspberrypi5`）。**② DGX** へ **`gateway-server.py`** を配置しゲートウェイ再起動。Pi4／Pi3 は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド（Pi5）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **標準手順（DGX）**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)。**本番実績（2026-05-04）**: `scp scripts/dgx-local-llm-system/gateway-server.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/` の後、**systemd 再起動は sudo 不可**のため **`/srv/dgx/system-prod/bin/start-gateway-server.sh`** で **`127.0.0.1:38081/healthz` 200** を確認。
+- **本番デプロイ（実績・Pi5）**: **Detach Run ID** **`20260504-113918-744`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・`--follow` 約 **702s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**・Tailscale）。
+- **トラブルシュート**: ゲートウェイ **`healthz` が通らない** → [KB-365 §Phase11](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-11進行中表示の持続化長時間切替の運用解釈web--runbook)（**広い `pkill` は避け**、`start-gateway-server.sh` を正規経路に）。
+- **ナレッジ**: [KB-365 Phase 11](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### Pi5 リモートデプロイ前提（self-SSH・孤立 lock 再発防止）
 
