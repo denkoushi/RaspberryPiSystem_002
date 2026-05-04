@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-05）
+
+- **`FKOJUNST_Status` 外部完了＝dedupe キー消失差分（Pi5 のみ本番）·ブランチ `feat/fkojunst-status-disappearance-external-completion`·代表 `6d9c3549`**: [KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)·[deployment.md](./guides/deployment.md)（2026-05-04 / **2026-05-05 本番反映** 項）。Detach Run ID **`20260505-072811-487`**（`PLAY RECAP` **`ok=134` `changed=4` `failed=0`**・Pi4／Pi3 **no hosts matched**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **82s**）。**`main`**: [PR #250](https://github.com/denkoushi/RaspberryPiSystem_002/pull/250) squash merge。
+
 ### 🆕 最新アップデート（2026-05-04）
 
 - **Zero 2 W 棚番エッジ**（ヘッドレス・`status-agent`・Tailscale・インベントリ断片・専用 playbook）: [zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md)·[KB-367](./knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[tailscale-policy.md](./security/tailscale-policy.md)·[client-initial-setup.md](./guides/client-initial-setup.md)。**Ansible**: `playbooks/zero2w-edge-setup.yml`・`inventory-zero2w-edge-fragment.sample.yml`（実 IP 用断片は `.gitignore`）。**知見**: **Mac→Zero 直 SSH は ACL 次第で不可**（**Pi 5 踏み台**）・OS Lite は **`git` 手動 `apt`**・Pi 5 自己署名 TLS は **`status_agent_tls_skip_verify: "1"`** 初期。**配膳スキャン送信 / Android 設定**: [KB-368](./knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·`clients/haizen-agent/`·[api/mobile-placement.md](./api/mobile-placement.md)（`haizen-*`）・`/kiosk/mobile-placement/zero2w-assignment`。**2026-05-04 実機 E2E（正常終了）**: Pi5 上 `curl` で `haizen-preset-shelf` / `haizen-scans` / `haizen-current`、Zero で `haizen-agent.service` active。手順・障害は Runbook / KB-368。

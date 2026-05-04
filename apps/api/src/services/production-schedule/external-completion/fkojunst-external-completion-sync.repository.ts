@@ -7,22 +7,24 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 export type PrismaExecutor = Pick<PrismaClient, '$executeRaw'>;
 
 /**
- * FKOJUNST_Status CSV のキー集合と突き合わせ、winner 行ごとの外部完了フラグを一括反映する。
- * @param statusKeys buildFkojunstMailStatusKey と同一形式のキー（CSV 側 dedupe 済み集合）
+ * `FKOJUNST_Status` の「前回同期では存在したが今回の dedupe キー集合から消えたキー」と winner を突き合わせ、外部完了フラグを一括反映する。
+ * @param disappearedKeys buildFkojunstMailStatusKey と同一形式のキー（前回スナップショット − 今回キー）
  */
 export async function replaceAllWinnerExternalCompletionStates(
   executor: PrismaExecutor,
-  statusKeys: readonly string[]
+  disappearedKeys: readonly string[]
 ): Promise<void> {
-  if (statusKeys.length === 0) {
-    throw new Error('[FkojunstExternalCompletionSync] statusKeys must be non-empty');
-  }
-
-  const keyRows = statusKeys.map((k) => Prisma.sql`(${k})`);
+  const disappearedSourceSql =
+    disappearedKeys.length > 0
+      ? Prisma.sql`SELECT * FROM (VALUES ${Prisma.join(
+          disappearedKeys.map((k) => Prisma.sql`(${k})`),
+          ','
+        )}) AS "dk"("k")`
+      : Prisma.sql`SELECT CAST(NULL AS text) AS "k" WHERE FALSE`;
 
   await executor.$executeRaw`
-    WITH "statusKeys" ("k") AS (
-      VALUES ${Prisma.join(keyRows, ',')}
+    WITH "disappearedKeys" AS (
+      ${disappearedSourceSql}
     ),
     "winners" AS (
       SELECT
@@ -57,7 +59,7 @@ export async function replaceAllWinnerExternalCompletionStates(
       ${PRODUCTION_SCHEDULE_DASHBOARD_ID},
       CASE
         WHEN NOT "w"."srEligible" THEN FALSE
-        WHEN NOT EXISTS (SELECT 1 FROM "statusKeys" "sk" WHERE "sk"."k" = "w"."rowKey") THEN TRUE
+        WHEN EXISTS (SELECT 1 FROM "disappearedKeys" "dk" WHERE "dk"."k" = "w"."rowKey") THEN TRUE
         ELSE FALSE
       END,
       NOW(),
