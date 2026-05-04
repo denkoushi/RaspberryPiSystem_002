@@ -1,10 +1,10 @@
 # Zero 2 W（棚番エッジ）セットアップ Runbook
 
-最終更新: 2026-05-04
+最終更新: 2026-05-04（**haizen-agent 追記**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）
 
 ## 目的
 
-Raspberry Pi **Zero 2 W**（例: ホスト名 `zero2w-tanaban01`）を、**キオスク UI なし**のエッジ端末として本システムに繋ぐ。**status-agent**（管理画面での死活・メトリクス）と **Tailscale** までを標準とする。USB バーコード → API の送信本体は別タスク（専用エージェント／既存 API の利用）。
+Raspberry Pi **Zero 2 W**（例: ホスト名 `zero2w-tanaban01`）を、**キオスク UI なし**のエッジ端末として本システムに繋ぐ。**status-agent**（管理画面での死活・メトリクス）と **Tailscale** までを標準とする。**配膳（棚番）スキャン送信**はリポジトリの **`clients/haizen-agent/`**（HID → `POST /api/mobile-placement/haizen-scans`）を参照。運用・API 契約は [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・[mobile-placement.md](../api/mobile-placement.md)。
 
 ### 中長期の配膳（棚番）連携イメージ（仕様メモ）
 

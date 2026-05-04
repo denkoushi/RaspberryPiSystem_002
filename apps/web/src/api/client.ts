@@ -871,6 +871,43 @@ export async function moveOrderPlacementBranch(payload: {
   return data;
 }
 
+/** Zero2W 棚番エッジ: 端末の棚番プリセット */
+export async function getMobilePlacementHaizenPresetShelf() {
+  const { data } = await api.get<{ shelfCodeRaw: string | null }>('/mobile-placement/haizen-preset-shelf');
+  return data;
+}
+
+export async function patchMobilePlacementHaizenPresetShelf(payload: { shelfCodeRaw: string }) {
+  const { data } = await api.patch<{ shelfCodeRaw: string }>('/mobile-placement/haizen-preset-shelf', payload);
+  return data;
+}
+
+export type HaizenCurrentRowDto = {
+  id: string;
+  manufacturingOrderBarcodeRaw: string;
+  shelfCodeRaw: string;
+  clientDeviceId: string;
+  distributionNumber: number | null;
+  csvDashboardRowId: string | null;
+  productNo: string | null;
+  fseiban: string | null;
+  fhincd: string | null;
+  fhinmei: string | null;
+  updatedAt: string;
+  resolutionNote: 'RESOLVED' | 'UNRESOLVED';
+};
+
+/** Zero2W 配膳の現在値一覧（棚で絞り込み可） */
+export async function getMobilePlacementHaizenCurrent(params?: { shelfCode?: string; limit?: number }) {
+  const { data } = await api.get<{ rows: HaizenCurrentRowDto[] }>('/mobile-placement/haizen-current', {
+    params: {
+      ...(params?.shelfCode != null && params.shelfCode.length > 0 ? { shelfCode: params.shelfCode } : {}),
+      ...(params?.limit != null ? { limit: params.limit } : {})
+    }
+  });
+  return data;
+}
+
 export interface KioskProductionScheduleOrderSearchResponse {
   partNameOptions: string[];
   orders: string[];

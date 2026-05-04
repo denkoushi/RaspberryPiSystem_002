@@ -1,6 +1,6 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
-最終更新: 2026-04-24（**V26 購買照会バーコード即時確定**・[KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)・[deployment.md](../guides/deployment.md)）／2026-04-24（**V25 パレット可視化・カード単体スクロール**・[KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)・[deployment.md §2026-04-24](../guides/deployment.md)）／2026-04-24（**V24 一次元スキャン体感・Android 実機追記**・[KB-339 §V24](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)・[KB-297 §FKOBAINO](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）／2026-04-20（**V23 モバイル注文入力スキャン専用・棚チップ `grid-cols-3 sm:grid-cols-4`**・デプロイ Detach `20260420-211100-899` → `20260420-213004-29970`・fjv60 未・stale lock runId `20260420-212814-6231` は [deploy-status-recovery.md](./deploy-status-recovery.md) §5.2）／2026-04-18（**V22 キオスク高視認テーマ・プレビュー整合・Register/Verify 分割**／**Android ブラウザ殻方針: Chrome 継続 + Web UI/UX 改善（ADR/KB 追記）**）／2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク）**・**V20 部品検索（促音 `っ`/`ッ` の比較用写像・`q` 空でも機種名 `machineName` で suggest）**・**V19 部品検索（機種名 `machineName` AND・かな正規化拡張・数字パレット・プリセット追加）**・**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+最終更新: 2026-05-04（**Zero2W 配膳追跡 `haizen-*`・キオスクパネル**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）／2026-04-24（**V26 購買照会バーコード即時確定**・[KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)・[deployment.md](../guides/deployment.md)）／2026-04-24（**V25 パレット可視化・カード単体スクロール**・[KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)・[deployment.md §2026-04-24](../guides/deployment.md)）／2026-04-24（**V24 一次元スキャン体感・Android 実機追記**・[KB-339 §V24](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)・[KB-297 §FKOBAINO](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）／2026-04-20（**V23 モバイル注文入力スキャン専用・棚チップ `grid-cols-3 sm:grid-cols-4`**・デプロイ Detach `20260420-211100-899` → `20260420-213004-29970`・fjv60 未・stale lock runId `20260420-212814-6231` は [deploy-status-recovery.md](./deploy-status-recovery.md) §5.2）／2026-04-18（**V22 キオスク高視認テーマ・プレビュー整合・Register/Verify 分割**／**Android ブラウザ殻方針: Chrome 継続 + Web UI/UX 改善（ADR/KB 追記）**）／2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク）**・**V20 部品検索（促音 `っ`/`ッ` の比較用写像・`q` 空でも機種名 `machineName` で suggest）**・**V19 部品検索（機種名 `machineName` AND・かな正規化拡張・数字パレット・プリセット追加）**・**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
 ## Android ブラウザ殻（キオスク）方針メモ（2026-04-18）
 
@@ -84,7 +84,30 @@ curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
 
 # 部品名検索（V16・現在棚優先 + スケジュール補助 + 同義語）
 curl -sk "https://<Pi5>/api/mobile-placement/part-search/suggest?q=%E8%84%9A" -H "x-client-key: <key>"
+
+# Zero 2 W 配膳追跡（haizen）— 端末プリセット参照
+curl -sk "https://<Pi5>/api/mobile-placement/haizen-preset-shelf" -H "x-client-key: <key>"
+
+# Zero 2 W 配膳追跡 — プリセット更新（構造化棚のみ）
+curl -sk -X PATCH "https://<Pi5>/api/mobile-placement/haizen-preset-shelf" \
+  -H "Content-Type: application/json" -H "x-client-key: <key>" \
+  -d '{"shelfCodeRaw":"西-北-01"}'
+
+# Zero 2 W 配膳追跡 — スキャン適用（履歴 + 製造order 現在値 upsert）
+curl -sk -X POST "https://<Pi5>/api/mobile-placement/haizen-scans" \
+  -H "Content-Type: application/json" -H "x-client-key: <key>" \
+  -d '{"manufacturingOrderBarcodeRaw":"0002178005","distributionNumber":2}'
+
+# Zero 2 W 配膳追跡 — 現在値一覧（棚で絞り込み可。省略時は全棚から最新 limit 件）
+curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-%E5%8C%97-01&limit=20" \
+  -H "x-client-key: <key>"
 ```
+
+### Zero 2 W 配膳追跡（キオスク表示）
+
+- **`/kiosk/mobile-placement`** の **照合ブロックと登録ブロックの間**に **「棚番配膳（Zero2W）」**パネルを表示する（選択中の棚で `haizen-current` を絞り込み・15s ポーリング）。
+- この画面は **表示専用**。Zero2W の棚番プリセット更新は、**対象端末の `x-client-key`** で `PATCH /api/mobile-placement/haizen-preset-shelf` を実行して設定する。
+- **詳細**: [api/mobile-placement.md](../api/mobile-placement.md)・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・エージェント [clients/haizen-agent/README.md](../../clients/haizen-agent/README.md)。
 
 ## 前提
 

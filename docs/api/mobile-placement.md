@@ -1,6 +1,6 @@
 # 配膳スマホ API（mobile-placement）
 
-最終更新: 2026-04-13（**V18 棚マスタ `MobilePlacementShelf`**・`GET/POST registered-shelves` 正本切替・`POST /mobile-placement/shelves`）／2026-04-12（**V16 部品名検索**・**V14 分配枝**・`OrderPlacementBranchState`／履歴は `OrderPlacementEvent` + `branchNo` / `actionType`）
+最終更新: 2026-04-13（**V18 棚マスタ `MobilePlacementShelf`**・`GET/POST registered-shelves` 正本切替・`POST /mobile-placement/shelves`）／2026-04-12（**V16 部品名検索**・**V14 分配枝**・`OrderPlacementBranchState`／履歴は `OrderPlacementEvent` + `branchNo` / `actionType`）／**2026-05-04（Zero2W 配膳 `haizen-*` API・`HaizenScanEvent` / `HaizenCurrentPlacement`）**
 
 **本番（2026-04-12・V16）**: ブランチ **`feat/mobile-placement-part-name-search`**（コミット **`62721227`**）を Pi5→Pi4×4 順次反映（**Pi3 除外**）・Phase12 **43/0/0**・部品名検索 API の spot check 済み。手順・知見・Detach Run ID の扱いは [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §0（V16）。
 
@@ -188,7 +188,19 @@ JSON:
 
 `csvDashboardRowId` 指定時は、(1) スキャン値が当該行の `ProductNo` / `FSEIBAN` / `FHINCD` のいずれかと一致する、または (2) マスタへ解決した **`Item.itemCode` が、上記3フィールドのいずれかと一致**すること（**行と無関係な `itemCode` のみの一致では `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**）。
 
+### Zero 2 W 配膳追跡（専用。`OrderPlacementBranchState` とは別テーブル）
+
+**目的**: 棚番固定エッジ（1 台 1 棚）からのスキャンで、**製造 order ごとの現在値**（`HaizenCurrentPlacement`）を上書きしつつ、**履歴**（`HaizenScanEvent`）を残す。日程行は `listScheduleRowsByProductNo` 系で解決。未照合でもイベント・現在値は保存される（`resolutionStatus` / `csvDashboardRowId` で区別）。
+
+- **`GET /api/mobile-placement/haizen-preset-shelf`** — 認証端末の **`ClientDevice.haizenPresetShelfCodeRaw`**（構造化棚 `西-北-01` 形式）を返す。未設定は `{ "shelfCodeRaw": null }`。
+- **`PATCH /api/mobile-placement/haizen-preset-shelf`** — Body `{ "shelfCodeRaw": "西-北-01" }` でプリセット更新（構造化棚のみ）。
+- **`POST /api/mobile-placement/haizen-scans`** — Body 例: `{ "manufacturingOrderBarcodeRaw": "…", "distributionNumber": 1, "rawBarcode": "…" }`。分配番号は **1〜999 の整数**（省略可）。**プリセット棚が未設定なら 400**（`HAIZEN_PRESET_SHELF_REQUIRED`）。
+- **`GET /api/mobile-placement/haizen-current`** — クエリ `shelfCode`（任意・trim 一致）、`limit`（1〜200、既定 50）。**`shelfCode` 省略時は全棚から最新 N 件**。応答 `rows[]` に製造 order・棚・分配・日程スナップショット由来の品目表示・`resolutionNote`（`RESOLVED` | `UNRESOLVED`）。
+
+**クライアント**: `clients/haizen-agent/`（HID → POST）。**ナレッジ**: [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)。
+
 ## 関連
 
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)
+- Zero 2 W エッジ: [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)
 - バーコード調査: [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)
