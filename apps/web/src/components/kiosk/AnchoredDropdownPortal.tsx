@@ -1,17 +1,19 @@
 import { useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import type { CSSProperties, ReactNode, RefObject } from 'react';
+import type { CSSProperties, MutableRefObject, ReactNode } from 'react';
 
 type AnchoredDropdownPortalProps = {
   isOpen: boolean;
   id: string;
   ariaLabel: string;
-  anchorRef: RefObject<HTMLElement>;
-  panelRef: RefObject<HTMLDivElement>;
+  anchorRef: MutableRefObject<HTMLElement | null>;
+  panelRef: MutableRefObject<HTMLDivElement | null>;
   className: string;
   children: ReactNode;
   offsetY?: number;
+  /** 指定時は `z-40` の代わりにインライン z-index（左ドロワー z-50 より手前に出す等） */
+  fixedZIndex?: number;
 };
 
 type AnchorPosition = {
@@ -22,7 +24,7 @@ type AnchorPosition = {
 const DEFAULT_OFFSET_Y = 8;
 
 const resolveAnchorPosition = (
-  anchorRef: RefObject<HTMLElement>,
+  anchorRef: MutableRefObject<HTMLElement | null>,
   offsetY: number
 ): AnchorPosition | null => {
   const anchor = anchorRef.current;
@@ -42,7 +44,8 @@ export function AnchoredDropdownPortal({
   panelRef,
   className,
   children,
-  offsetY = DEFAULT_OFFSET_Y
+  offsetY = DEFAULT_OFFSET_Y,
+  fixedZIndex
 }: AnchoredDropdownPortalProps) {
   const [position, setPosition] = useState<AnchorPosition | null>(null);
 
@@ -68,8 +71,11 @@ export function AnchoredDropdownPortal({
   const style: CSSProperties = {
     top: `${position.top}px`,
     left: `${position.left}px`,
-    transform: 'translateX(-100%)'
+    transform: 'translateX(-100%)',
+    ...(fixedZIndex !== undefined ? { zIndex: fixedZIndex } : {})
   };
+
+  const zClass = fixedZIndex === undefined ? 'z-40' : '';
 
   return createPortal(
     <div
@@ -77,7 +83,7 @@ export function AnchoredDropdownPortal({
       id={id}
       role="dialog"
       aria-label={ariaLabel}
-      className={`fixed z-40 ${className}`}
+      className={`fixed ${zClass} ${className}`.trim().replace(/\s+/g, ' ')}
       style={style}
     >
       {children}

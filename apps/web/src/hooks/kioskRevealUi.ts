@@ -13,3 +13,6 @@ export const KIOSK_REVEAL_CLOSE_DELAY_MS = 200;
 
 /** 左ドロワースタック（z-50）より手前に日付 Dialog を出す */
 export const KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK = 80;
+
+/** 製番順位ピッカー等: 左ドロワーより手前（製番一覧オーバーレイ z-[85] に整合） */
+export const KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK = 85;

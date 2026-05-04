@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>順位ボード左ペイン — 登録製番 順位番号UI プレビュー（モック）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --card: rgba(255, 255, 255, 0.1);
+      --border: rgba(255, 255, 255, 0.25);
+      --emerald: #34d399;
+      --emerald-dim: rgba(16, 185, 129, 0.35);
+      --blue: #2563eb;
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.55);
+      --rank-col: 2.75rem;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(ellipse 120% 80% at 20% 0%, rgba(34, 211, 238, 0.07), transparent 50%),
+        radial-gradient(ellipse 100% 60% at 100% 100%, rgba(99, 102, 241, 0.06), transparent 45%),
+        var(--bg);
+      color: var(--text);
+      padding: 1.5rem;
+    }
+    .banner {
+      max-width: 56rem;
+      margin-bottom: 1rem;
+      padding: 0.65rem 0.9rem;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      background: rgba(251, 191, 36, 0.08);
+      font-size: 0.8rem;
+      color: #fde68a;
+    }
+    .layout {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+    }
+    aside.mock-left {
+      width: 20rem;
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.5rem;
+      background: var(--panel);
+      padding: 0.75rem;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.35);
+    }
+    aside.mock-left.wide {
+      width: 22.5rem;
+    }
+    .section-title {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+    .search-row {
+      display: flex;
+      gap: 0.35rem;
+      margin-bottom: 0.65rem;
+    }
+    .search-row input {
+      flex: 1;
+      min-width: 0;
+      height: 2rem;
+      border-radius: 0.25rem;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 0 0.5rem;
+      font-size: 0.75rem;
+      background: #fff;
+      color: #0f172a;
+    }
+    .btn {
+      border-radius: 0.25rem;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: #1e293b;
+      color: #fff;
+      padding: 0 0.5rem;
+      font-size: 0.75rem;
+      cursor: default;
+    }
+    .btn-primary {
+      border: none;
+      background: var(--blue);
+      font-weight: 600;
+    }
+    .grid-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+      max-height: 22rem;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .seiban-card {
+      display: flex;
+      min-height: 2.5rem;
+      min-width: 0;
+      border-radius: 0.5rem;
+      border: 1px solid var(--border);
+      background: var(--card);
+      overflow: visible;
+      position: relative;
+    }
+    .seiban-card.active-filter {
+      border-color: rgba(52, 211, 153, 0.65);
+      background: var(--emerald);
+      color: #0f172a;
+    }
+    .rank-hit {
+      flex-shrink: 0;
+      width: var(--rank-col);
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      border-right: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.2);
+    }
+    .seiban-card.active-filter .rank-hit {
+      border-right-color: rgba(15, 23, 42, 0.2);
+      background: rgba(15, 23, 42, 0.12);
+    }
+    .rank-btn {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-size: 0.85rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+      padding: 0.25rem;
+    }
+    .rank-btn:hover { background: rgba(255,255,255,0.08); }
+    .seiban-card.active-filter .rank-btn:hover { background: rgba(15,23,42,0.1); }
+    .seiban-label {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+      padding: 0.5rem 0.35rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: ui-monospace, monospace;
+      line-height: 1.2;
+    }
+    .seiban-x {
+      flex-shrink: 0;
+      width: 2.25rem;
+      border: none;
+      background: rgba(255,255,255,0.15);
+      color: inherit;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: default;
+    }
+    .seiban-card.active-filter .seiban-x {
+      background: rgba(15,23,42,0.25);
+    }
+    .picker {
+      position: fixed;
+      z-index: 100;
+      min-width: 8rem;
+      max-height: 14rem;
+      overflow-y: auto;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: #0c1220;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+      padding: 0.35rem;
+    }
+    .picker h4 {
+      margin: 0 0 0.35rem;
+      padding: 0.25rem 0.4rem;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .picker button.opt {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.4rem 0.55rem;
+      margin-bottom: 2px;
+      border: none;
+      border-radius: 0.35rem;
+      background: transparent;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+    }
+    .picker button.opt:hover { background: rgba(99, 102, 241, 0.25); }
+    .picker button.opt.current {
+      background: var(--emerald-dim);
+      color: var(--emerald);
+    }
+    .picker-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 99;
+      background: transparent;
+    }
+    .hint {
+      margin-top: 0.6rem;
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .main-mock {
+      flex: 1;
+      border: 1px dashed rgba(255,255,255,0.15);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    デザインプレビューのみ（本番コード未接続）。番号をクリックすると順位を選べます。ESC でピッカーを閉じます。
+  </div>
+  <div class="layout">
+    <aside class="mock-left wide" aria-label="操作パネル モック">
+      <div class="section-title">製番検索（省略）</div>
+      <div class="search-row">
+        <input type="text" value="ABC-000" readonly />
+        <button type="button" class="btn">⌨</button>
+        <button type="button" class="btn btn-primary">登録</button>
+      </div>
+      <div class="section-title" style="margin-top:0.5rem">登録済み製番 · 順位番号（案）</div>
+      <div class="grid-cards" id="card-grid"></div>
+      <p class="hint">
+        左端の数字タップ → 1…N の一覧から新しい順位を選択 → 他カードの番号が詰め直し。
+        ペイン幅はランク列（約2.75rem）ぶん広げた想定（本体は <code>w-72</code> → 少し拡張）。
+      </p>
+    </aside>
+    <div class="main-mock">
+      （順位ボード本体エリアのプレースホルダ）
+    </div>
+  </div>
+
+  <script>
+    const items = [
+      { id: 'a', fseiban: '25A-0103', filtered: true },
+      { id: 'b', fseiban: '25A-0201', filtered: false },
+      { id: 'c', fseiban: '25B-0044', filtered: true },
+      { id: 'd', fseiban: '24Z-9911', filtered: false },
+      { id: 'e', fseiban: '25C-0007', filtered: false },
+    ];
+    /** display order = array of ids */
+    let order = items.map((x) => x.id);
+
+    const grid = document.getElementById('card-grid');
+    let pickerOpen = null;
+
+    function itemById(id) {
+      return items.find((x) => x.id === id);
+    }
+
+    function render() {
+      grid.innerHTML = '';
+      order.forEach((id, index) => {
+        const it = itemById(id);
+        const card = document.createElement('div');
+        card.className = 'seiban-card' + (it.filtered ? ' active-filter' : '');
+ card.dataset.id = id;
+
+        const rankCol = document.createElement('div');
+        rankCol.className = 'rank-hit';
+        const rb = document.createElement('button');
+        rb.type = 'button';
+        rb.className = 'rank-btn';
+        rb.textContent = String(index + 1);
+        rb.setAttribute('aria-label', `順位 ${index + 1}、クリックで変更`);
+        rb.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openPicker(rb, id, index);
+        });
+        rankCol.appendChild(rb);
+
+        const lab = document.createElement('button');
+        lab.type = 'button';
+        lab.className = 'seiban-label';
+        lab.textContent = it.fseiban;
+        lab.style.border = 'none';
+        lab.style.background = 'transparent';
+        lab.style.color = 'inherit';
+        lab.style.cursor = 'default';
+
+        const xb = document.createElement('button');
+        xb.type = 'button';
+        xb.className = 'seiban-x';
+        xb.textContent = '×';
+        xb.setAttribute('aria-label', '履歴から削除（モックでは無効）');
+
+        card.appendChild(rankCol);
+        card.appendChild(lab);
+        card.appendChild(xb);
+        grid.appendChild(card);
+      });
+    }
+
+    function openPicker(anchorEl, itemId, fromIndex) {
+      closePicker();
+      const backdrop = document.createElement('div');
+      backdrop.className = 'picker-backdrop';
+      const picker = document.createElement('div');
+      picker.className = 'picker';
+      picker.setAttribute('role', 'dialog');
+      picker.setAttribute('aria-label', '順位を選択');
+
+      const title = document.createElement('h4');
+      title.textContent = '順位を選択';
+      picker.appendChild(title);
+
+      const rect = anchorEl.getBoundingClientRect();
+      picker.style.left = Math.min(rect.left, window.innerWidth - 140) + 'px';
+      picker.style.top = (rect.bottom + 6) + 'px';
+
+      const n = order.length;
+      for (let rank = 1; rank <= n; rank++) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'opt' + (rank === fromIndex + 1 ? ' current' : '');
+        b.textContent = String(rank);
+        if (rank === fromIndex + 1) b.setAttribute('aria-current', 'true');
+        b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          applyMove(itemId, fromIndex, rank - 1);
+          closePicker();
+        });
+        picker.appendChild(b);
+      }
+
+      backdrop.addEventListener('click', closePicker);
+      document.body.appendChild(backdrop);
+      document.body.appendChild(picker);
+      pickerOpen = { backdrop, picker };
+    }
+
+    function closePicker() {
+      if (!pickerOpen) return;
+      pickerOpen.backdrop.remove();
+      pickerOpen.picker.remove();
+      pickerOpen = null;
+    }
+
+    function applyMove(itemId, fromIndex, toIndex) {
+      if (fromIndex === toIndex) return;
+      const next = order.slice();
+      next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, itemId);
+      order = next;
+      render();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePicker();
+    });
+
+    render();
+  </script>
+</body>
+</html>

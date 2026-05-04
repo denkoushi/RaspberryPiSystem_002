@@ -255,7 +255,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     seibanEvalEnabled,
     setSeibanEvalEnabled,
     mergedRegisteredSeibanOrder,
-    moveRegisteredSeiban
+    moveRegisteredSeibanToRank
   } = usePersistedLeaderBoardSeibanEval(siteKey, activeDeviceScopeKey, dueAssist.sharedHistory);
 
   const seibanEvalRankMap = useMemo(
@@ -456,7 +456,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           seibanEvalEnabled={seibanEvalEnabled}
           onToggleSeibanEval={toggleSeibanEvalMode}
           registeredSeibansForDisplay={registeredSeibansForLeftPane}
-          onMoveRegisteredSeiban={moveRegisteredSeiban}
+          onMoveRegisteredSeibanToRank={moveRegisteredSeibanToRank}
         />
       </div>
 
