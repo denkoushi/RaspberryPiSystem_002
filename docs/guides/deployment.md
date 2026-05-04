@@ -10,17 +10,27 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-04（**キオスク順位ボード・製番順評価モード（Web のみ）**・**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）** 等・下記）
+最終更新: 2026-05-04（**キオスク順位ボード・製番順評価＋登録製番ランクピッカー（Web・Pi5→Pi4×4）**・**製番順評価モード単体（Pi5 のみ）**・**Zero2W 担当棚キオスク**・**DGX リソース Phase11（`main`・Pi5→DGX）** 等・下記）
+
+### 補足（2026-05-04 late: **キオスク順位ボード・製番順評価 ON 時の登録製番ランクピッカー（↑↓ 廃止）**·**`feat/leader-board-seiban-rank-picker`**·**Pi5→Pi4×4**）
+
+- **変更概要**: **製番順評価 ON** のとき、左ペインの登録製番で **先頭の順位番号**をタップすると **1…N** から移動先を選ぶ [`LeaderBoardSeibanRankPicker`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanRankPicker.tsx)（**幅 `w-80` 相当**）。**↑↓ は撤去**。並び替えは純関数 [`reorderSeibanToRank.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanPriority/reorderSeibanToRank.ts)、永続化は [`usePersistedLeaderBoardSeibanEval.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval.ts) の **`moveRegisteredSeibanToRank`**。[`AnchoredDropdownPortal`](../../apps/web/src/components/kiosk/AnchoredDropdownPortal.tsx) に **`fixedZIndex`**、[`kioskRevealUi.ts`](../../apps/web/src/hooks/kioskRevealUi.ts) に **`KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK`**。**API / DB / `search-state` は不変**。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** を **`--limit` 1 台ずつ**。**Pi3 は除外**（Web のみ・リソース僅少のため専用手順は未実施）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/leader-board-seiban-rank-picker infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` 取り込み後は `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`d4d6160c`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260504-211859-16303`**（`raspberrypi5`）/ **`20260504-212412-27756`**（`raspberrypi4`）/ **`20260504-212945-9891`**（`raspi4-robodrill01`）/ **`20260504-213330-19891`**（`raspi4-fjv60-80`）/ **`20260504-213745-19344`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / リモート `exit` `0`**（Pi5 は **`ok≈129–134` `changed≈4–10`** 規模、Pi4 はホストにより **`ok≈129` `changed≈10`** 前後）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 60s**・Tailscale）。
+- **トラブルシュート**: **ピッカーが左ペインの下に隠れる** → Portal の **`fixedZIndex`** と `KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK`。**並びが戻る** → **製番順評価 OFF** または **端末ローカル `localStorage` の別端末**を疑う。**強制リロード**: [verification-checklist.md](verification-checklist.md) §6.6.4。**デプロイ前 fail-fast**: [KB-200](../knowledge-base/infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
+- **ナレッジ**: [KB-297 §ランクピッカー（2026-05-04）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-rank-picker-2026-05-04)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-04 evening: **キオスク順位ボード・製番順評価モード（端末ローカル `localStorage`）**·**`feat/kiosk-seiban-priority-eval-mode`**·**Pi5 のみ**）
 
-- **変更概要**: 順位ボード `/kiosk/production-schedule/leader-order-board` の左ペインに **製番順評価 ON/OFF** と、ON 時のみ **登録製番の上下移動**。**共有 `sharedHistory`・DB・API は不変**。評価順は **`usePersistedLeaderBoardSeibanEval.ts`**・`seibanPriority/*` 純粋関数・資源列内ソートは **`sortLeaderBoardRowsForSeibanEvalDisplay`** → **`buildLeaderBoardViewModel`**。
+- **変更概要**: 順位ボード `/kiosk/production-schedule/leader-order-board` の左ペインに **製番順評価 ON/OFF**。登録製番の **移動 UI** は同日追補の [**ランクピッカー項**](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-rank-picker-2026-05-04)（**`feat/leader-board-seiban-rank-picker`**）を正とする（本項リリース時点では ↑↓）。**共有 `sharedHistory`・DB・API は不変**。評価順は **`usePersistedLeaderBoardSeibanEval.ts`**・`seibanPriority/*` 純粋関数・資源列内ソートは **`sortLeaderBoardRowsForSeibanEvalDisplay`** → **`buildLeaderBoardViewModel`**。
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
 - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-seiban-priority-eval-mode infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は** `main`）。
 - **本番デプロイ（実績）**: 代表コミット **`ffe250cb`**。**Detach Run ID** **`20260504-203034-22339`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・`--follow` 約 **397s**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 156s**・Tailscale）。
 - **トラブルシュート**: **トグルが見えない／資源列の並びが変わらない** → Pi5 **`web`** の反映コミット・ブラウザ **強制リロード**（[verification-checklist.md](./verification-checklist.md) §6.6.4）。**開発時**: **`pnpm --filter @raspi-system/web lint`** で **import/order** を先に通す（pre-commit で止まる典型は **純粋関数の import がグループ外**）。
-- **ナレッジ**: [KB-297 §製番順評価](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-priority-eval-mode-2026-05-04)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **ナレッジ**: [KB-297 §製番順評価](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-priority-eval-mode-2026-05-04)·[KB-297 §ランクピッカー（登録製番移動 UI）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-rank-picker-2026-05-04)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-04 evening: **Zero2W 担当棚設定（キオスク + `haizen-target-devices` API）**·**`feat/mobile-placement-zero2w-assignment`**·**Pi5 のみ**）
 

@@ -6,7 +6,7 @@ import {
   type PersistedLeaderBoardSeibanEval
 } from './constants';
 import { mergeSharedHistoryWithLocalOrder } from './seibanPriority/mergeSharedHistoryWithLocalOrder';
-import { reorderSeibanInMergedList } from './seibanPriority/reorderSeibanInMergedList';
+import { reorderSeibanToRank } from './seibanPriority/reorderSeibanToRank';
 
 function loadPersistedSeibanEval(storageKey: string): Pick<PersistedLeaderBoardSeibanEval, 'enabled' | 'localOrder'> {
   if (typeof window === 'undefined') {
@@ -80,11 +80,11 @@ export function usePersistedLeaderBoardSeibanEval(
     [sharedHistory, localOrder]
   );
 
-  const moveRegisteredSeiban = useCallback(
-    (fseiban: string, direction: 'up' | 'down') => {
+  const moveRegisteredSeibanToRank = useCallback(
+    (fseiban: string, targetRank1Based: number) => {
       setLocalOrder((prev) => {
         const merged = mergeSharedHistoryWithLocalOrder(sharedHistory, prev);
-        return reorderSeibanInMergedList(merged, fseiban, direction);
+        return reorderSeibanToRank(merged, fseiban, targetRank1Based);
       });
     },
     [sharedHistory]
@@ -94,6 +94,6 @@ export function usePersistedLeaderBoardSeibanEval(
     seibanEvalEnabled: enabled,
     setSeibanEvalEnabled: setEnabled,
     mergedRegisteredSeibanOrder: mergedDisplayOrder,
-    moveRegisteredSeiban
+    moveRegisteredSeibanToRank
   };
 }

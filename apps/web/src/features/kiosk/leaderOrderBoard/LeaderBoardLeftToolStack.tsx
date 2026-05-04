@@ -1,9 +1,11 @@
 import clsx from 'clsx';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../../../hooks/kioskRevealUi';
 import { KIOSK_LEFT_EDGE_HOT_ZONE_PX } from '../../../hooks/useKioskLeftEdgeDrawerReveal';
 
 import { LeaderBoardDueAssistPanel } from './LeaderBoardDueAssistPanel';
+import { LeaderBoardSeibanRankPicker } from './LeaderBoardSeibanRankPicker';
 
 import type { LeaderOrderCompletionFilter } from './filterLeaderBoardRowsByCompletion';
 import type { LeaderBoardDueAssistHandle } from './useLeaderBoardDueAssist';
@@ -49,7 +51,8 @@ export type LeaderBoardLeftToolStackProps = {
   onToggleSeibanEval: () => void;
   /** 登録製番ボタン列の表示順（評価モードOFF時は共有履歴順・ON時はマージ順をページ側で選ぶ） */
   registeredSeibansForDisplay: readonly string[];
-  onMoveRegisteredSeiban: (fseiban: string, direction: 'up' | 'down') => void;
+  /** 製番順評価ON時: 表示順を 1 始まりの順位へ変更（他製番は繰り上げ／繰り下げ） */
+  onMoveRegisteredSeibanToRank: (fseiban: string, targetRank1Based: number) => void;
 };
 
 /**
@@ -83,8 +86,29 @@ export function LeaderBoardLeftToolStack({
   seibanEvalEnabled,
   onToggleSeibanEval,
   registeredSeibansForDisplay,
-  onMoveRegisteredSeiban
+  onMoveRegisteredSeibanToRank
 }: LeaderBoardLeftToolStackProps) {
+  const rankPickerPanelDomId = useId();
+  const rankPickerAnchorRef = useRef<HTMLElement | null>(null);
+  const rankPickerPanelRef = useRef<HTMLDivElement | null>(null);
+  const [rankPickerForFseiban, setRankPickerForFseiban] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!seibanEvalEnabled) {
+      setRankPickerForFseiban(null);
+    }
+  }, [seibanEvalEnabled]);
+
+  useEffect(() => {
+    if (rankPickerForFseiban != null && !registeredSeibansForDisplay.includes(rankPickerForFseiban)) {
+      setRankPickerForFseiban(null);
+    }
+  }, [rankPickerForFseiban, registeredSeibansForDisplay]);
+
+  const rankPickerCurrentIndex =
+    rankPickerForFseiban != null ? registeredSeibansForDisplay.indexOf(rankPickerForFseiban) : -1;
+  const rankPickerCurrentRank = rankPickerCurrentIndex >= 0 ? rankPickerCurrentIndex + 1 : 1;
+
   return (
     <div
       ref={leftToolStackOuterRef}
@@ -103,7 +127,10 @@ export function LeaderBoardLeftToolStack({
         aria-hidden
       />
       <aside
-        className="flex h-full min-h-0 w-72 max-w-[90vw] shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950 p-3 shadow-xl"
+        className={clsx(
+          'flex h-full min-h-0 shrink-0 flex-col gap-2 border-r border-white/10 bg-slate-950 p-3 shadow-xl max-w-[90vw]',
+          seibanEvalEnabled ? 'w-80' : 'w-72'
+        )}
         aria-label="操作パネル"
       >
         <label className="flex shrink-0 flex-col gap-1 text-[10px] uppercase tracking-wide text-white/55">
@@ -235,8 +262,7 @@ export function LeaderBoardLeftToolStack({
           >
             {registeredSeibansForDisplay.map((fseiban, rankIdx) => {
               const filtered = dueAssist.isFseibanFilterSelected(fseiban);
-              const canUp = seibanEvalEnabled && rankIdx > 0;
-              const canDown = seibanEvalEnabled && rankIdx < registeredSeibansForDisplay.length - 1;
+              const displayRank = rankIdx + 1;
               return (
                 <div
                   key={fseiban}
@@ -247,6 +273,39 @@ export function LeaderBoardLeftToolStack({
                       : 'border-white/25 bg-white/10 text-white hover:bg-white/20'
                   )}
                 >
+                  {seibanEvalEnabled ? (
+                    <div
+                      className={clsx(
+                        'flex min-w-[2.75rem] shrink-0 flex-col justify-stretch border-r',
+                        filtered ? 'border-slate-900/15' : 'border-white/15'
+                      )}
+                    >
+                      <button
+                        type="button"
+                        ref={(el) => {
+                          if (fseiban === rankPickerForFseiban) {
+                            rankPickerAnchorRef.current = el;
+                          } else if (el != null && rankPickerAnchorRef.current === el) {
+                            rankPickerAnchorRef.current = null;
+                          }
+                        }}
+                        className={clsx(
+                          'flex min-h-[2.5rem] flex-1 items-center justify-center text-sm font-bold tabular-nums leading-none',
+                          filtered
+                            ? 'text-slate-900 hover:bg-slate-900/12'
+                            : 'text-white/95 hover:bg-white/10'
+                        )}
+                        aria-label={`順位 ${displayRank}、タップで変更`}
+                        aria-haspopup="dialog"
+                        aria-expanded={rankPickerForFseiban === fseiban}
+                        onClick={() =>
+                          setRankPickerForFseiban((prev) => (prev === fseiban ? null : fseiban))
+                        }
+                      >
+                        {displayRank}
+                      </button>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => dueAssist.toggleFseibanFilter(fseiban)}
@@ -255,51 +314,6 @@ export function LeaderBoardLeftToolStack({
                   >
                     {fseiban}
                   </button>
-                  {seibanEvalEnabled ? (
-                    <div
-                      className={clsx(
-                        'flex shrink-0 flex-col border-l',
-                        filtered ? 'border-slate-900/15' : 'border-white/15'
-                      )}
-                    >
-                      <button
-                        type="button"
-                        disabled={!canUp}
-                        aria-label={`${fseiban} を上へ`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (!canUp) return;
-                          onMoveRegisteredSeiban(fseiban, 'up');
-                        }}
-                        className={clsx(
-                          'flex min-h-[1.2rem] min-w-[1.75rem] items-center justify-center text-[10px] font-bold leading-none',
-                          filtered
-                            ? 'text-slate-900 hover:bg-slate-900/15 disabled:opacity-35'
-                            : 'text-white/90 hover:bg-white/10 disabled:opacity-35'
-                        )}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!canDown}
-                        aria-label={`${fseiban} を下へ`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (!canDown) return;
-                          onMoveRegisteredSeiban(fseiban, 'down');
-                        }}
-                        className={clsx(
-                          'flex min-h-[1.2rem] min-w-[1.75rem] items-center justify-center text-[10px] font-bold leading-none',
-                          filtered
-                            ? 'text-slate-900 hover:bg-slate-900/15 disabled:opacity-35'
-                            : 'text-white/90 hover:bg-white/10 disabled:opacity-35'
-                        )}
-                      >
-                        ↓
-                      </button>
-                    </div>
-                  ) : null}
                   <button
                     type="button"
                     className={clsx(
@@ -403,6 +417,20 @@ export function LeaderBoardLeftToolStack({
           順位は各行のドロップダウンで保存。「-」で納期順の自動並びへ。
         </div>
       </aside>
+      <LeaderBoardSeibanRankPicker
+        isOpen={rankPickerForFseiban != null}
+        anchorRef={rankPickerAnchorRef}
+        panelRef={rankPickerPanelRef}
+        panelId={rankPickerPanelDomId}
+        totalCount={registeredSeibansForDisplay.length}
+        currentRank={rankPickerCurrentRank}
+        onSelectRank={(rank) => {
+          if (rankPickerForFseiban != null) {
+            onMoveRegisteredSeibanToRank(rankPickerForFseiban, rank);
+          }
+        }}
+        onRequestClose={() => setRankPickerForFseiban(null)}
+      />
       <LeaderBoardDueAssistPanel
         isOpen={dueAssist.isDetailOpen}
         selectedFseiban={dueAssist.selectedFseiban}
