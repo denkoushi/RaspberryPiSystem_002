@@ -36,3 +36,5 @@ python3 -m haizen_agent
 ## systemd 例（別途ユニットファイルを配置）
 
 `ExecStart=/usr/bin/python3 -m haizen_agent`、環境で `CONFIG_PATH` を指定。
+
+**systemd の `User`/`Group` が設定ファイルを読めること**: **`/etc/raspi-haizen-agent.conf` を `root:<User>` とし `chmod 640`** にする（`600` のままだと **`PermissionError`**）。詳細は [KB-368](../../docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・[zero2w-tanaban-edge-setup.md](../../docs/runbooks/zero2w-tanaban-edge-setup.md)。

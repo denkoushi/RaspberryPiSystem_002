@@ -45,6 +45,26 @@ category: knowledge-base
 - API サービス: `apps/api/src/services/mobile-placement/__tests__/haizen-placement.service.test.ts`（Vitest）。
 - エージェント: `clients/haizen-agent/tests/`（pytest）。
 
+## 実機検証（2026-05-04・工場 Pi5 + Zero2W `zero2w-tanaban01`）
+
+**前提**: Pi5 に当該機能ブランチ相当がデプロイ済み（API に `haizen-*` ルート・Prisma マイグレーション適用済み）。`ClientDevice` の `apiKey` がインベントリ断片の `status_agent_client_key`（例: `client-key-zero2w-tanaban01-edge1`）と一致。
+
+1. **Pi5 上**（自己署名 TLS のため `-k` 相当）で **棚プリセット**を設定する。  
+   `PATCH /api/mobile-placement/haizen-preset-shelf`、ボディ `{ "shelfCodeRaw": "西-北-01" }`、ヘッダ `x-client-key: <端末の apiKey>`。  
+   **200** で `shelfCodeRaw` が返ること。
+
+2. 同じキーで **スキャン相当**の POST。  
+   `POST /api/mobile-placement/haizen-scans`、例 `{ "manufacturingOrderBarcodeRaw": "E2E-HAIZEN-20260504", "rawBarcode": "E2E-HAIZEN-20260504" }`。  
+   **200**、`resolutionStatus` が `RESOLVED` または `UNRESOLVED`（日程未一致時は後者で正常）、`current` に同梱されること。
+
+3. **一覧**: `GET /api/mobile-placement/haizen-current?shelfCodeRaw=<URLエンコードした棚>&limit=5` で **当該製造 order 行が返る**こと。
+
+4. **Zero 側**: `systemctl is-enabled haizen-agent.service` / `is-active` が **enabled / active**、`journalctl -u haizen-agent.service` に **`haizen-agent start base=https://… hid=…`** の起動ログがあること（`/dev/input/by-id/...-event-kbd` 等。README 参照）。
+
+**知見**: キオスク（Android）の `x-client-key` でプリセットを汎用設定すると **別端末のキーで誤設定**しうるため、**配膳パネルは表示専用**とし、プリセットは **Zero 端末キーで API 実行**する（本 KB の API 節・Runbook 参照）。
+
+**トラブル**: Zero のリポジトリが **`main` のまま**だと `clients/haizen-agent` が無く `WorkingDirectory` の **CHDIR 失敗**で `haizen-agent` がループする。**対処**: Pi5 で `ANSIBLE_REPO_VERSION=feat/zero2w-haizen-tracking`（マージ後は `main`）を指定して `zero2w-edge-setup.yml` を再実行する。設定ファイル **`/etc/raspi-haizen-agent.conf` を `root` の `600` のまま**にすると当該サービス実行ユーザーが読めず **PermissionError**。**対処**: `chown root:<haizen 実行ユーザー>` と **`chmod 640`**（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・Runbook）。
+
 ## References
 
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)（curl 例・UI 節）
