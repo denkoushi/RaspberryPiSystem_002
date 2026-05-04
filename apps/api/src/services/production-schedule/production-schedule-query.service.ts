@@ -32,6 +32,7 @@ import { enrichProductionScheduleRowsWithResolvedMachineName } from './productio
 import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
+import { fetchLeaderboardScheduleRowsWithSeibanAwarePriority } from './leaderboard/leaderboard-row-selection.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
@@ -78,7 +79,8 @@ export type ProductionScheduleListParams = {
   locationKey: string;
   siteKey?: string;
   /**
-   * `leaderboard`: actual-hours を省略。`resolvedMachineName` は full と同様にバッチ解決する（省略時は full）。
+   * `leaderboard`: actual-hours を省略。手動割当・同一製番展開・納期補完の優先取得を行う。
+   * `resolvedMachineName` は full と同様にバッチ解決する（省略時は full）。
    */
   responseProfile?: 'full' | 'leaderboard';
 };
@@ -389,6 +391,14 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     hasNoteOnly,
     hasDueDateOnly
   })} ${productNoCondition}`;
+  const leaderboardExpansionWhere = buildQueryWhere({
+    textConditions: [],
+    resourceConditions,
+    resourceCategoryCondition,
+    machineNameCondition: Prisma.empty,
+    hasNoteOnly: false,
+    hasDueDateOnly: false
+  });
 
   const siteScopedGlobalRankLocation = siteKey?.trim().length ? siteKey.trim() : locationKey;
 
@@ -406,7 +416,30 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
   `;
 
-  const rowsPromise = prisma.$queryRaw<ProductionScheduleRow[]>`
+  let countRows: Array<{ total: bigint }>;
+  let rows: ProductionScheduleRow[];
+
+  if (isLeaderboardProfile) {
+    countRows = await countPromise;
+    rows = (
+      await fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
+        baseWhere,
+        queryWhere,
+        expansionWhere: leaderboardExpansionWhere,
+        locationKey,
+        siteScopedGlobalRankLocation,
+        pageSize
+      })
+    ).map((r) => {
+      const row: ProductionScheduleRow = {
+        ...r,
+        actualPerPieceMinutes: null,
+        customerName: null
+      };
+      return row;
+    });
+  } else {
+    const rowsPromiseFull = prisma.$queryRaw<ProductionScheduleRow[]>`
     SELECT
       "CsvDashboardRow"."id",
       NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
@@ -487,8 +520,8 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
     LIMIT ${pageSize} OFFSET ${offset}
   `;
-
-  const [countRows, rows] = await Promise.all([countPromise, rowsPromise]);
+    [countRows, rows] = await Promise.all([countPromise, rowsPromiseFull]);
+  }
   const total = Number(countRows[0]?.total ?? 0n);
 
   if (isLeaderboardProfile) {
