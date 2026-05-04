@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-05-04）
 
+- **Zero 2 W 棚番エッジ**（ヘッドレス・`status-agent`・Tailscale・インベントリ断片・専用 playbook）: [zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md)·[KB-367](./knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[tailscale-policy.md](./security/tailscale-policy.md)·[client-initial-setup.md](./guides/client-initial-setup.md)。**Ansible**: `playbooks/zero2w-edge-setup.yml`・`inventory-zero2w-edge-fragment.sample.yml`（実 IP 用断片は `.gitignore`）。**知見**: **Mac→Zero 直 SSH は ACL 次第で不可**（**Pi 5 踏み台**）・OS Lite は **`git` 手動 `apt`**・Pi 5 自己署名 TLS は **`status_agent_tls_skip_verify: "1"`** 初期。
+
 - **DGX リソース Phase11（進行中表示の持続化）·`main`·**[PR #246](https://github.com/denkoushi/RaspberryPiSystem_002/pull/246)**·Pi5→DGX 順次本番**: **`raspberrypi5` のみ** Detach **`20260504-113918-744`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）·`gateway-server.py` **`scp`** のち **`start-gateway-server.sh`** 再起動。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **109s**）。**知見**: 広い **`pkill -f`** でゲートウェイを誤停止し得る → **`start-gateway-server.sh`** が正規復旧。**KB**: [KB-365 Phase 11](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)。**EXEC_PLAN**: [EXEC_PLAN.md](../EXEC_PLAN.md)。**デプロイ**: [deployment.md](./guides/deployment.md)（2026-05-04 項）。
 
 ### 🆕 最新アップデート（2026-05-03）
@@ -1117,6 +1119,7 @@
 | **クライアント一括更新と監視のクイックスタート** | [guides/quick-start-deployment.md](./guides/quick-start-deployment.md) |
 | **ローカル環境対応の通知機能** | [guides/local-alerts.md](./guides/local-alerts.md) |
 || **新規クライアント端末の初期設定** | [guides/client-initial-setup.md](./guides/client-initial-setup.md) |
+|| **Zero 2 W 棚番エッジ（Tailscale・status-agent・断片インベントリ）** | [runbooks/zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md) |
 || **MacからRaspberry Pi 5へのSSH接続** | [guides/mac-ssh-access.md](./guides/mac-ssh-access.md) |
 || **Ansible SSH接続アーキテクチャの説明** | [guides/ansible-ssh-architecture.md](./guides/ansible-ssh-architecture.md) |
 || **環境構築ガイド（ローカルネットワーク変更時）** | [guides/environment-setup.md](./guides/environment-setup.md) |
@@ -1345,6 +1348,7 @@ APIの概要と詳細。
 | [operation-manual.md](./guides/operation-manual.md) | **運用マニュアル**（日常運用・トラブル対応・メンテナンス） |
 | [ai-handoff.md](./guides/ai-handoff.md) | **AI引き継ぎガイド**（別AIへの引き継ぎ時） |
 || [client-initial-setup.md](./guides/client-initial-setup.md) | **新規クライアント端末の初期設定手順** |
+|| [zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md) | **Zero 2 W 棚番エッジ（Tailscale・status-agent）** |
 || [mac-ssh-access.md](./guides/mac-ssh-access.md) | **MacからRaspberry Pi 5へのSSH接続ガイド** |
 || [auto-startup-status.md](./guides/auto-startup-status.md) | **システム自動起動の現状と設定手順** |
 || [ai-ssh-access.md](./guides/ai-ssh-access.md) | **AIアシスタントのSSHアクセスについて** |

@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-04) **Zero 2 W 棚番エッジ（ドキュメント・Ansible・ナレッジ）**·**実装記録のみ**（コードは `main` 取り込み前提の **Runbook / KB / tailscale-policy / INDEX / EXEC_PLAN**）。**背景**: Raspberry Pi OS **Lite** の **Zero 2 W** を **Tailscale (`tag:signage` 例) + `status-agent`** で Pi 5 に接続。**SSH**: [tailscale-policy.md](./docs/security/tailscale-policy.md) に合わせ **Pi 5 踏み台**（Mac 直 Zero は ACL 次第で不可）。**Ansible**: `infrastructure/ansible/playbooks/zero2w-edge-setup.yml` + **`inventory-zero2w-edge-fragment.yml`（`.gitignore`・サンプルは `.sample.yml`）**。**障害実績**: **`git` 未インストール**・**自己署名 TLS で `CERTIFICATE_VERIFY_FAILED`**（**`TLS_SKIP_VERIFY=1`** で初回回避）。**ナレッジ**: [KB-367](./docs/knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[zero2w-tanaban-edge-setup.md](./docs/runbooks/zero2w-tanaban-edge-setup.md)·[knowledge-base/index.md](./docs/knowledge-base/index.md)。**NEXT**: **HID バーコード → API** の専用エージェントと **棚番プリセット API/UI**（別タスク）。
+
 - [x] (2026-05-04) **DGX リソース Phase11（進行中表示の持続化・長時間切替の運用整理）**·**`main`**（代表 **`5d96b59b`**・[PR #246](https://github.com/denkoushi/RaspberryPiSystem_002/pull/246)）·**順序**: **① `raspberrypi5` のみ** Ansible → **② DGX** `gateway-server.py` 反映＋ゲートウェイ再起動（Pi4／Pi3 **対象外**）。**Pi5**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260504-113918-744`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・`--follow` 約 **702s**）。**DGX**: repo の **`scripts/dgx-local-llm-system/gateway-server.py`** を **`ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/gateway-server.py`** へ **`scp`**。**再起動（実績）**: **`sudo systemctl restart dgx-llm-gateway`** は **sudo 非対話で不可**・**`dgx-llm-gateway` は inactive** のため **`/srv/dgx/system-prod/bin/start-gateway-server.sh`** で起動し直し（誤った広い **`pkill -f`** で止めた場合も同スクリプトで **`healthz` 200** まで復旧可）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**）。**仕様**: **`GET /system/dgx-resource/events` + `sessionStorage` pending**・文言 **`進行中:`**。**ナレッジ**: [KB-365](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 11·[deployment.md](./docs/guides/deployment.md)（2026-05-04 Phase11 項）·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)·[docs/INDEX.md](./docs/INDEX.md)·[knowledge-base/index.md](./docs/knowledge-base/index.md)。
 
 - [x] (2026-05-03) **DGX KPI メトリクス（`GET /system/metrics`・Pi5 API フォールバック・gateway トークン保護）**·ブランチ **`feat/dgx-kpi-metrics-fallback`**·代表 **`47a17096`**（先行 **`a3b67495`**）·**順序**: **① `raspberrypi5` のみ** Ansible → **② DGX** `gateway-server.py` 反映。**Pi5 デプロイ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-kpi-metrics-fallback infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**: **`20260503-211051-8713`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0` / exit `0`**・`--follow` 約 **702s**）。**DGX**: repo の **`scripts/dgx-local-llm-system/gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置。**実績**: **`sudo systemctl restart dgx-llm-gateway`** は運用ユーザーに **sudo が無く未実行**。当該ホストでは **`dgx-llm-gateway` が inactive** で **`start-gateway-server.sh`** 常駐のため **既存プロセス終了後に `start-gateway-server.sh`** で再起動。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **157s**）。**仕様**: メトリクス URL 未設定時 **`/system/metrics`**（トークン必須）→ **`/v1/system/metrics`**。**知見**: **API と gateway は同じ窗口で揃える**。**ナレッジ**: [KB-365](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md) Phase 10·[deployment.md](./docs/guides/deployment.md)（2026-05-03 KPI メトリクス項）·[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。**`main` 取り込み後はブランチ引数を `main`**。
@@ -1030,6 +1032,8 @@
     - **関連ドキュメント**: [ナレッジベース索引](docs/knowledge-base/index.md)（KB-030〜KB-036）
 
 ## Surprises & Discoveries
+
+- 観測（2026-05-04）: **Zero 2 W 棚番エッジ**導入で、**(1)** **Mac から Zero の Tailscale IP へ SSH**が **事実上止まる**一方、**Pi 5 経由**なら同じ Zero に入れた → **ACL が admin→signage 直 SSH を許さない**構成と整合（[tailscale-policy.md](./docs/security/tailscale-policy.md)）。**(2)** **Raspberry Pi OS Lite** は **`git` が無く**、**`common` ロールの repo 同期**が **`git: command not found`** で落ちた → **`apt install git`** 後に playbook 再走。**(3)** **Pi 5 API の自己署名 TLS** で **`status-agent` が `CERTIFICATE_VERIFY_FAILED`** → **`TLS_SKIP_VERIFY=1`**（Ansible `status_agent_tls_skip_verify: "1"`）が初回の現実解。**記録**: [KB-367](./docs/knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[zero2w-tanaban-edge-setup.md](./docs/runbooks/zero2w-tanaban-edge-setup.md)。
 
 - 観測（2026-05-04）: DGX 画面の「進行中表示が消える」症状は、バックエンド停止ではなく **UI の判定源が局所 state に寄りすぎていたこと**が主因だった。`Strict Ready` は継続していても、タブ移動/再描画境界でローカル `flowBusy` が失われると未実行に見える。**イベントログ判定 + `sessionStorage` pending** の二系統にすると、イベント到着遅延があっても表示の穴が埋まる。記録: [KB-365 Phase 11](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)・[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
 
@@ -2063,6 +2067,17 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### Zero 2 W 棚番エッジ — バーコード入力と API 連携（2026-05-04）
+
+**概要**: 本フェーズの到達点は **Tailscale + `status-agent` + Ansible 断片**まで（[zero2w-tanaban-edge-setup.md](./docs/runbooks/zero2w-tanaban-edge-setup.md)）。**配膳（棚番）追跡**の現場要件は **物理ボタンなし・棚番プリセット・スキャン回数最小**（移動票 1 回または QR+移動票）。
+
+**候補タスク**:
+
+1. **HID バーコードリーダー**（キーボード入力相当）を Zero で読み取り、**正規化したコード**を Pi 5 API へ送る **軽量エージェント**（言語・常駐方式・ログ方針）。既存 **キオスク USB シリアル barcode-agent** との住み分けを [overview.md](./docs/architecture/overview.md) に沿って整理。
+2. **棚番プリセット**の永続化（端末ローカル vs API 直）と、**管理 Web / モバイル**からの設定導線の釘打ち（認証・`x-client-key`・端末 ID）。
+3. **移動票コードと DB スキーマ**の対応（既存 **mobile-placement** API の拡張か、専用ルートか）を ADR 化。
+4. 本番 TLS を **検証可能な証明書**へ寄せたら **Zero 側 `TLS_SKIP_VERIFY=0`** へ戻す（[KB-367](./docs/knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）。
 
 ### DGX リソース Phase12（進行中表示の運用検証自動化）（2026-05-04）
 

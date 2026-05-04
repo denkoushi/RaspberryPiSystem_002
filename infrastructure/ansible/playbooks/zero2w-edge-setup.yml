@@ -1,0 +1,48 @@
+---
+# Zero 2 W 等のヘッドレスエッジ向け: common（リポジトリ同期）+ client（status-agent のみ）。
+# kiosk / signage ロールは含まない。
+#
+# 実行例（Pi 5・カレントを infrastructure/ansible に）:
+#   ansible-playbook playbooks/zero2w-edge-setup.yml \
+#     -i inventory.yml \
+#     -i inventory-zero2w-edge-fragment.yml \
+#     --limit zero2w-tanaban01
+#
+# 参照: docs/runbooks/zero2w-tanaban-edge-setup.md
+
+- name: Zero 2 W edge — repository sync and status-agent
+  hosts: zero2w-tanaban01
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+    repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+    repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
+    git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
+    git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
+    backup_dir: /opt/backups/configs
+    backup_service_files:
+      - status-agent.service
+      - status-agent.timer
+  pre_tasks:
+    - name: Run common shared preparation tasks
+      ansible.builtin.import_role:
+        name: common
+
+    - name: Run Tailscale preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-tailscale.yml"
+      when:
+        - network_mode | default('tailscale') == 'tailscale'
+        - tailscale_enabled | default(false) | bool
+
+    - name: Run resource guard checks
+      ansible.builtin.include_tasks: "../tasks/resource-guard.yml"
+
+  tasks:
+    - name: Apply client role (status-agent; no kiosk/signage)
+      ansible.builtin.import_role:
+        name: client
+
+    - name: Sync client-side git / optional hooks
+      ansible.builtin.include_tasks: "../tasks/update-clients-core.yml"
