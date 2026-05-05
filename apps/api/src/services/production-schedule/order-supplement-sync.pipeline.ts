@@ -215,6 +215,9 @@ export function buildReplacementCreateInputs(
   let unmatched = 0;
   const createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[] = [];
   const updateInputs: Array<{ id: string; data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput }> = [];
+  const existingByWinnerRowId = new Map(
+    [...existingByKey.values()].map((existing) => [existing.csvDashboardRowId, existing] as const)
+  );
 
   for (const row of dedupedRows) {
     const key = buildOrderSupplementKey({
@@ -229,6 +232,29 @@ export function buildReplacementCreateInputs(
     }
     matched += 1;
     const existing = existingByKey.get(key);
+    const existingByWinner = existingByWinnerRowId.get(winnerRowId);
+    const existingTarget = existing ?? existingByWinner;
+    if (existingTarget) {
+      const nextPlannedStartDate = existingTarget.plannedStartDateManuallySet
+        ? existingTarget.plannedStartDate
+        : row.plannedStartDate ?? existingTarget.plannedStartDate;
+      const nextPlannedEndDate = mergePlannedEndDateForUpdate(row.plannedEndDate, existingTarget.plannedEndDate);
+      updateInputs.push({
+        id: existingTarget.id,
+        data: {
+          csvDashboardRowId: winnerRowId,
+          productNo: row.productNo,
+          resourceCd: row.resourceCd,
+          processOrder: row.processOrder,
+          plannedQuantity: row.plannedQuantity,
+          plannedStartDate: nextPlannedStartDate,
+          plannedEndDate: nextPlannedEndDate,
+          lastSeenAt: now,
+        },
+      });
+      continue;
+    }
+
     if (!existing) {
       createInputs.push({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -245,24 +271,6 @@ export function buildReplacementCreateInputs(
       });
       continue;
     }
-
-    // 手動補正は上書きせず、CSV 側が空でも既存非 null を消さない。
-    const nextPlannedStartDate = existing.plannedStartDateManuallySet
-      ? existing.plannedStartDate
-      : row.plannedStartDate ?? existing.plannedStartDate;
-
-    const nextPlannedEndDate = mergePlannedEndDateForUpdate(row.plannedEndDate, existing.plannedEndDate);
-
-    updateInputs.push({
-      id: existing.id,
-      data: {
-        csvDashboardRowId: winnerRowId,
-        plannedQuantity: row.plannedQuantity,
-        plannedStartDate: nextPlannedStartDate,
-        plannedEndDate: nextPlannedEndDate,
-        lastSeenAt: now,
-      },
-    });
   }
 
   return { matched, unmatched, createInputs, updateInputs };

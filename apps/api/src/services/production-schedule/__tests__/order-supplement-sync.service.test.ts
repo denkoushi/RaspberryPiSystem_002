@@ -319,6 +319,58 @@ describe('order-supplement-sync.service', () => {
     });
   });
 
+  it('補助3キーが既存行と一致しないが同一 winner 行を指すとき、createMany せず update でキーと値を揃える', async () => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+      {
+        id: 'src-1',
+        rowData: {
+          ProductNo: '0003712732',
+          FSIGENCD: '503',
+          FKOJUN: '200',
+          plannedQuantity: '5',
+        },
+      },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      {
+        id: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.findMany).mockResolvedValue([
+      {
+        id: 'stale-key-row',
+        csvDashboardRowId: 'winner-1',
+        productNo: 'OLD-PNO',
+        resourceCd: '504',
+        processOrder: '999',
+        plannedQuantity: 1,
+        plannedStartDate: null,
+        plannedEndDate: null,
+        plannedStartDateManuallySet: false,
+      },
+    ] as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.createMany).mockResolvedValue({ count: 0 } as never);
+    vi.mocked(prisma.productionScheduleOrderSupplement.update).mockResolvedValue({ id: 'stale-key-row' } as never);
+
+    const service = new ProductionScheduleOrderSupplementSyncService();
+    await service.syncFromSupplementDashboard();
+
+    expect(prisma.productionScheduleOrderSupplement.createMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
+      where: { id: 'stale-key-row' },
+      data: expect.objectContaining({
+        csvDashboardRowId: 'winner-1',
+        productNo: '0003712732',
+        resourceCd: '503',
+        processOrder: '200',
+        plannedQuantity: 5,
+      }),
+    });
+  });
+
   it('CSV に無いキーの補助行は同期ループの対象外となり更新されない', async () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
       {

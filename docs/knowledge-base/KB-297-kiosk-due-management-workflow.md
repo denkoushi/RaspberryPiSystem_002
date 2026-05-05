@@ -106,6 +106,7 @@ category: knowledge-base
   - **`plannedStartDateManuallySet=true`** の行は **着手日を CSV 同期で上書きしない**（DB でフラグを立てた行のみ。UI は別途要検討）。
   - **`lastSeenAt`**: 同期バッチに **キーが再出現した時刻**を記録（鮮度・将来拡張用）。
   - **保持期限**: **`plannedStartDate` が UTC 基準で 1 年以上前**かつ **`plannedStartDateManuallySet=false`** の行を **削除**（自動データの肥大化抑制）。手動保護行は削除しない。
+  - **winner 行への既存補助と 3キー不整合（2026-05-06）**: `csvDashboardRowId` は本体 winner に **1:1**。DB の `productNo` / `resourceCd` / `processOrder` が CSV とずれていると、同期が **新規 create** に落ち **`P2002`** になり得た。**修正**: 同一 winner 行を指す既存行は **update で CSV 3キーへ整合**（[KB-328 §P2002](./KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id)）。
   - **実装の正本**: [`order-supplement-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)·マイグレーション **`20260501015000_order_supplement_incremental_sync`**。
 - **本番反映（2026-05-01）**: [deployment.md](../guides/deployment.md) 標準・**`raspberrypi5` のみ**。**Detach Run ID**（`ansible-update-`）: **`20260501-111010-10961`**（**`failed=0` / `unreachable=0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
 - **トラブルシュート**: 着手日が更新されないときは **補助CSVにその `(ProductNo, FSIGENCD, FKOJUN)` が存在するか**・**winner 照合（本体側）**・**手動フラグ**を確認。**Prisma の型**: relation 付きモデルで **`csvDashboardRowId` を更新する場合は `UncheckedUpdateInput` が必要**になり得る（ビルドで検知）。詳細計画: [`order-supplement-incremental-sync-execplan.md`](../plans/order-supplement-incremental-sync-execplan.md)。
