@@ -20,7 +20,7 @@ update-frequency: medium
 - **本番デプロイ（実績）**: 代表コミット **`e4a8417d`**。**Detach Run ID** **`20260505-181206-15069`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・ローカル `--follow` 完了まで **約 658s**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 84s**・Tailscale）。
 - **トラブルシュート**: **`order-usage` では 1…N が占有なのに順位ボード一覧に手動行が見えない** → Pi5 **`api` イメージ**が当該コミット以降か確認。[KB-297 §leaderboard 取得整合](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05)。**キオスク**は [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。
-- **ナレッジ**: [KB-297 §leaderboard 取得整合](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **ナレッジ**: [KB-297 §leaderboard 取得整合](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·**`main`**: [PR #251](https://github.com/denkoushi/RaspberryPiSystem_002/pull/251)。
 
 ### 補足（2026-05-05: **キオスク順位ボード・左ペイン幅／登録製番グリッド／順位ピッカーの画面内表示**·**`feat/leader-board-left-pane-rank-picker-clamp`**·**Pi5 のみ**）
 

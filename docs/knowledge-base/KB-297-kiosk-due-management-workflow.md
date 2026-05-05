@@ -2649,7 +2649,7 @@ category: knowledge-base
   - **段階 3**: 残り枠を **納期系ソート**で補完。**手動＋展開が `pageSize` を超える場合も手動側を切り捨てない**。
   - **`full` プロファイル**は従来クエリのまま（影響隔離）。
 - **検証**: Vitest [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)·[`leaderboard-row-selection.compare.test.ts`](../../apps/api/src/services/production-schedule/__tests__/leaderboard-row-selection.compare.test.ts)。CI 緑化済み（ブランチ push 時）。
-- **本番デプロイ（2026-05-05）**: ブランチ **`feat/leaderboard-priority-selection-consistency`**・コミット **`e4a8417d`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Detach Run ID**: **`20260505-181206-15069`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **84s**）。
+- **本番デプロイ（2026-05-05）**: ブランチ **`feat/leaderboard-priority-selection-consistency`**・コミット **`e4a8417d`**。**`main` 反映**: [PR #251](https://github.com/denkoushi/RaspberryPiSystem_002/pull/251) squash（**`3a6a1a42`**）。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Detach Run ID**: **`20260505-181206-15069`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **84s**）。
 - **トラブルシュート**:
   - **まだ手動行が見えない** → Pi5 の `docker compose` **`api` イメージ**が **`e4a8417d` 以降**か、`deploy-status`・`/opt/RaspberryPiSystem_002` の ref を確認。キオスク **キャッシュ**を疑い [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 で**強制リロード**。
   - **展開で余計な行が増えた** → 仕様上、手動行の **同一製番は意図的にまとめて載る**。資源・除外・FKOJUNST 可視など **他フィルタ**は従来どおり効く（展開は **`text` / `machineName` だけ緩める**）。
