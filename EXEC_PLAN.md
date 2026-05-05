@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-06) **部品納期個数補助同期の `P2002`（`csvDashboardRowId`）修復**·**`fix/order-supplement-winner-row-unique-fallback`** → **`main`（PR マージ後）**。**原因**: 既存 `ProductionScheduleOrderSupplement` が **同一 winner `csvDashboardRowId`** を指すが **3キー**（`ProductNo`/`FSIGENCD`/`FKOJUN`）が CSV とずれ、`createMany` が一意制約で失敗。**Fix**: その場合は **update で CSV 3キーと計画列を上書き**（`skipDuplicates` による黙殺はしない）。**実装**: [`order-supplement-sync.pipeline.ts`](./apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)·[`order-supplement-sync.service.test.ts`](./apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts)。**ナレッジ**: [KB-328 §P2002](./docs/knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id)·[csv-import-export.md](./docs/guides/csv-import-export.md) §F·[KB-297 §差分同期](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)。**本番**: **`raspberrypi5` のみ** API 反映推奨（`./scripts/update-all-clients.sh main … --limit raspberrypi5`）。**残確認**: 反映後に補助スケジュール手動実行が **P2002 なし**で完走すること。
+
 - [x] (2026-05-06) **Phase12 広域実機検証の再実行 + Zero2W 断片の限定 NOPASSWD をサンプルへ固定**·**アプリ無変更**。**検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 74s**・Tailscale）。**標本**: **`infrastructure/ansible/inventory-zero2w-edge-fragment.sample.yml`** に **`sudo_nopasswd_commands`**（**工場 Pi4 と同趣旨**・**status-agent / haizen-agent の systemctl**・**reboot/poweroff**。**kiosk-browser 行はキオスク無しのため無し**）。**目的**: **`Missing sudo password`** 回避を **`ansible_become_password` 依存から `client` ロールの限定 sudoers へ**寄せる（平文パスワードをコマンドラインに渡さない）。**ナレッジ**: [KB-367](./docs/knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[KB-368](./docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[deployment.md](./docs/guides/deployment.md)（2026-05-06 項）·[zero2w-tanaban-edge-setup.md](./docs/runbooks/zero2w-tanaban-edge-setup.md)·[INDEX.md](./docs/INDEX.md)。
 
 - [x] (2026-05-05) **Zero2W 棚番エッジ hardening（API/Web・haizen-agent・Ansible `/etc/raspi-haizen-agent.conf` 640・TLS 検証モード）**·ブランチ **`feat/zero2w-haizen-edge-hardening`**·代表 **`1237f37a`**。**本番対象**: **① Pi5 のみ**（標準 `./scripts/update-all-clients.sh … --limit raspberrypi5`）。**Detach Run ID** **`20260505-201203-6644`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・**`--follow` 約 678s**）。**② Zero2W `zero2w-tanaban01`**: 初回は Pi5→断片 `ansible_host` の SSH `:22 timeout` で `UNREACHABLE`。端末再起動後に Pi5 からの SSH は復旧したが、再実行時に **`Missing sudo password`** と **`haizen-agent` `hid=stdin`（inactive）**が判明。**`ansible_become_password`** 付与と **`haizen_agent_hid_device`** 設定（`/dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd`）で再実行し、**`ok=81 changed=11 failed=0 unreachable=0`** で完了。`haizen-agent.service` / `status-agent.timer` は **active+enabled**。**CI**: **`25372469180`** **success**。**広域検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 102s**。**Pi3 は対象外**）。**Zero2W E2E**: Pi5 で `PATCH /haizen-preset-shelf` → `POST /haizen-scans` → `GET /haizen-current` を実行し、イベント反映を確認（`UNRESOLVED` は契約どおり）。**ナレッジ**: [KB-368](./docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[deployment.md](./docs/guides/deployment.md)（2026-05-05 late 項）·[zero2w-tanaban-edge-setup.md](./docs/runbooks/zero2w-tanaban-edge-setup.md)。**マージ後**は Pi5／Zero のデプロイ引数を **`main`** に統一すること。
@@ -2089,6 +2091,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 部品納期個数補助 — `P2002` 修正の本番反映確認（2026-05-06）
+
+**概要**: [KB-328 §P2002](./docs/knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id) の修正を **`main` 取り込み後**、**Pi5 API のみ**デプロイする。
+
+**候補タスク**:
+
+1. `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` で API 反映（標準手順は [deployment.md](./docs/guides/deployment.md)）。
+2. 管理コンソールから補助用 CSV インポートスケジュールを **手動実行**し、**`Unique constraint failed (csvDashboardRowId)` が再発しない**ことを確認（履歴・API ログ）。
+3. まだ `unmatched` が多い行は、従来どおり **本体CSVと補助3キー整合**（KB-328 本体節）で切り分け。
 
 ### Raspberry Pi UX Phase C — 効果確認と開発フロー（2026-05-05）
 

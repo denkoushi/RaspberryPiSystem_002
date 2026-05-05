@@ -2,7 +2,7 @@
 title: "KB-328: 生産日程本体CSVと部品納期個数（補助）の照合ずれ・上流データ・表示設計の整理"
 tags: [production-schedule, ProductionScheduleOrderSupplement, csv-dashboard, winner-dedup, unmatched, upstream-erp]
 audience: [開発者, 運用者, 生産管理システム連携担当]
-last-verified: 2026-05-01
+last-verified: 2026-05-06
 related:
   - ./KB-297-kiosk-due-management-workflow.md
   - ./KB-326-manual-upload-order-supplement-sync.md
@@ -18,6 +18,15 @@ category: knowledge-base
 2026-04-03 前後、キオスク生産日程で **Gmail 経由の部品納期個数CSV（補助）** を取り込んでも、一部行で **納期・指示数（`plannedQuantity` / `plannedStartDate` / `plannedEndDate`）が空**のままになる事象の調査を実施した。あわせて、**本体生産日程CSV**（件名例: `生産日程_三島_研削工程`）の取込成否・列不一致・手動アップロードUIの落とし穴も切り分けた。
 
 本KBは **コード改修の記録ではなく**、調査で確定した仕様・事象・上流とのギャップ・将来判断用の背景を **再現可能な形**で残す。
+
+<a id="order-supplement-sync-p2002-csv-dashboard-row-id"></a>
+
+## 補助同期で `Unique constraint failed on csvDashboardRowId`（2026-05-06 追補）
+
+- **症状**: CSV 取込や手動実行後、**`productionScheduleOrderSupplement.createMany`** が **`P2002` / `csvDashboardRowId` 一意**で失敗する（管理画面「インポート実行に失敗しました」等）。
+- **原因（確定）**: `ProductionScheduleOrderSupplement` は **本体 winner 行 ID（`csvDashboardRowId`）に 1:1**。既存補助行が **すでにその winner 行を指している**のに、DB 上の **`productNo` / `resourceCd` / `processOrder` が補助CSVの3キーと一致しない**と、同期が **新規 create** に回り、同じ `csvDashboardRowId` を再挿入しようとして衝突する（過去データ不整合・上流キー変更・手動修正の残骸などで起こり得る）。
+- **Fix（コード）**: `buildReplacementCreateInputs` で **3キー一致の既存が無くても**、`winnerRowId` に紐づく既存行があれば **update にフォールバック**し、**CSV 側の3キーと計画列で上書き**する（`skipDuplicates` による黙殺はしない）。実装: [`order-supplement-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)。回帰: [`order-supplement-sync.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts)。
+- **運用TS**: 根本原因が **本体と補助の3キーずれ**の場合は、従来どおり **上流CSV整合**・**KB-328 照合節**で追う（本修正は DB 整合の修復と取込失敗回避が主目的）。
 
 ## 着手日が「急に `-` に戻る」系の切り分け（2026-05-01 追補）
 
@@ -109,9 +118,10 @@ category: knowledge-base
 
 1. **手動 upload の応答**に `orderSupplementSync` があるか（無い → 補助ダッシュボードIDではない／同期スキップ／クライアント側失敗。Network タブで `POST .../upload` を確認）。
 2. **同期結果**の `matched` / `unmatched`。`unmatched` が多い → キー不一致パターンを疑う。
-3. **本体 `CsvDashboardIngestRun`** が該当日に `COMPLETED` か、直近 `FAILED` の **`errorMessage`（FHINCD 等）** を確認。
-4. **DB**: 補助のキー行はあるが本体 winner の `rowData` の3キーが一致するか（`CsvDashboardRow` + `buildMaxProductNoWinnerCondition` の考え方）。
-5. **管理画面**: プレビューではなく **「CSVアップロード（取り込み）」** のファイル欄で選択しているか。
+3. **`Unique constraint failed`（`csvDashboardRowId`）** → [KB-328 §P2002 補足](./KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id)。デプロイ前は **同一 winner に別3キーの幽霊行**が無いか Prisma で確認。
+4. **本体 `CsvDashboardIngestRun`** が該当日に `COMPLETED` か、直近 `FAILED` の **`errorMessage`（FHINCD 等）** を確認。
+5. **DB**: 補助のキー行はあるが本体 winner の `rowData` の3キーが一致するか（`CsvDashboardRow` + `buildMaxProductNoWinnerCondition` の考え方）。
+6. **管理画面**: プレビューではなく **「CSVアップロード（取り込み）」** のファイル欄で選択しているか。
 
 ## References（コード）
 
