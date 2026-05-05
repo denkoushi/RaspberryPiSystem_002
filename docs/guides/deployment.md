@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-05（**順位ボード左ペイン・順位ピッカー ビューポートクランプ（Web のみ・Pi5 のみ本記録）**・**FKOJUNST_Status 外部完了**・ほか下記）
+最終更新: 2026-05-05（**順位ボード・一覧取得と手動順位の整合（API のみ・Pi5）**・**順位ボード左ペイン・順位ピッカー ビューポートクランプ（Web のみ）**・**FKOJUNST_Status 外部完了**)
+
+### 補足（2026-05-05 evening: **キオスク順位ボード・一覧取得と手動順位の整合（API のみ）**·**`feat/leaderboard-priority-selection-consistency`**·**Pi5 のみ**）
+
+- **変更概要**: `responseProfile=leaderboard` の `listProductionScheduleRows` で、**手動割当（`ProductionScheduleOrderAssignment.processingOrder`）行を SQL 取得で最優先**し、**同一製番（`FSEIBAN`）の関連行を第 2 クエリで展開**（展開は **`expansionWhere`** により **全文検索・機種名条件を外し**、絞り込み起因の製番分裂を防止）。残り枠は **納期（補助の計画終期を含む）昇順**で `pageSize` まで補完。**手動＋製番展開が `pageSize` を超えても手動側は切り捨てない**。`full` プロファイルは従来の単一 SQL のまま。実装: [`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts)·[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/leaderboard-priority-selection-consistency infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`e4a8417d`**。**Detach Run ID** **`20260505-181206-15069`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・ローカル `--follow` 完了まで **約 658s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 84s**・Tailscale）。
+- **トラブルシュート**: **`order-usage` では 1…N が占有なのに順位ボード一覧に手動行が見えない** → Pi5 **`api` イメージ**が当該コミット以降か確認。[KB-297 §leaderboard 取得整合](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05)。**キオスク**は [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。
+- **ナレッジ**: [KB-297 §leaderboard 取得整合](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-05: **キオスク順位ボード・左ペイン幅／登録製番グリッド／順位ピッカーの画面内表示**·**`feat/leader-board-left-pane-rank-picker-clamp`**·**Pi5 のみ**）
 

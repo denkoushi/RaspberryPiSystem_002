@@ -618,6 +618,8 @@ describe('production-schedule-query.service', () => {
           dueDate: null
         }
       ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never);
 
     const result = await listProductionScheduleRows({
@@ -643,6 +645,268 @@ describe('production-schedule-query.service', () => {
 
     const partKey = ['A', '0001', 'X'].join('\0');
     expect(result.leaderboardFooterChipsByPartKey?.[partKey]).toEqual([]);
+  });
+
+  it('responseProfile=leaderboard では手動割当が pageSize を超えても切り捨てない', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 10n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S1',
+          rowData: { ProductNo: '0001', FSEIBAN: 'S1', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        },
+        {
+          id: 'm2',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S2',
+          rowData: { ProductNo: '0002', FSEIBAN: 'S2', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: 2,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        },
+        {
+          id: 'm3',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S3',
+          rowData: { ProductNo: '0003', FSEIBAN: 'S3', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: 3,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 2,
+      queryText: '',
+      productNos: [],
+      resourceCds: ['R01'],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    expect(result.rows).toHaveLength(3);
+    expect(new Set(result.rows.map((r) => r.id))).toEqual(new Set(['m1', 'm2', 'm3']));
+  });
+
+  it('responseProfile=leaderboard では同一製番展開で関連行をまとめて含める', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 5n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SX',
+          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '10', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SX',
+          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '10', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        },
+        {
+          id: 'm2',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SX',
+          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '20', progress: '' },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 5,
+      queryText: '',
+      productNos: [],
+      resourceCds: ['R01'],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    const ids = new Set(result.rows.map((r) => r.id));
+    expect(ids.has('m1')).toBe(true);
+    expect(ids.has('m2')).toBe(true);
+  });
+
+  it('responseProfile=leaderboard では製番展開時に元の検索語で関連行を落とさない', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 2n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SX',
+          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '10', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SX',
+          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '10', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        },
+        {
+          id: 'm2',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SX',
+          rowData: { ProductNo: '9999', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '20', progress: '' },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 5,
+      queryText: '0001',
+      productNos: [],
+      resourceCds: ['R01'],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    expect(new Set(result.rows.map((r) => r.id))).toEqual(new Set(['m1', 'm2']));
+  });
+
+  it('responseProfile=leaderboard で手動行が無いとき納期順フィラーで pageSize まで埋める', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ total: 100n }] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'f1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'Z1',
+          rowData: { ProductNo: '1000', FSEIBAN: 'Z1', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: new Date('2026-04-01T00:00:00.000Z'),
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        },
+        {
+          id: 'f2',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'Z2',
+          rowData: { ProductNo: '1001', FSEIBAN: 'Z2', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: new Date('2026-03-15T00:00:00.000Z'),
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 2,
+      queryText: '',
+      productNos: [],
+      resourceCds: ['R01'],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows.map((r) => r.id)).toEqual(['f2', 'f1']);
   });
 });
 

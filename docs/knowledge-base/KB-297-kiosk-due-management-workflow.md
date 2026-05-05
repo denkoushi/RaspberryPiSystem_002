@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-05-02
+last-verified: 2026-05-05
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -2637,6 +2637,23 @@ category: knowledge-base
 - **検証（Pi5）**: `pageSize=1240` リクエストでも応答 **`rows` が 900 に抑えられ**、応答バイト数が **約 1.1MB → 約 0.82MB** に減ることを確認。ウォーム時の **curl 総時間**も **旧平均より改善**（同一条件 8 本の簡易平均）。
 - **実施記録（2026-05-02）**: PR **[#236](https://github.com/denkoushi/RaspberryPiSystem_002/pull/236)**（`0865cc56`）。Pi5 に **`./scripts/deploy/update-all-clients.sh --limit raspberrypi5`**（Detach **`20260502-175955-7198`**）。**`verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（約 **141s**）。
 - **デプロイ**: [deployment.md](../guides/deployment.md) の **「`leaderboard` `pageSize` サーバ上限制御」** 補足を参照。**`main` 取込後** `update-all-clients.sh`・**Pi5 のみ**で可（全クライアントは **旧バンドルが残る Pi4** まで含めて段階展開してもよい）。
+
+### Leader order board: `leaderboard` 一覧取得と手動順位・製番展開の整合（2026-05-05） {#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05}
+
+- **症状**: 資源 CD ごとの **`order-usage`**（使用済み `processingOrder`）では **1 や 2 が既に埋まっている**のに、順位ボードの **`responseProfile=leaderboard` 一覧**には **当該手動行が現れない**ことがある。現場からは「最高優先の手動順位なのに画面上に無い」と見える。
+- **原因（設計不整合）**: **`order-usage`** は **DB 上の全割当**を返す一方、従来の一覧は **ページング付きの 1 本 SQL** で行を取っており、**`ORDER BY` が手動順位を最優先していない**（フロントのソートは **取得済み行のみ**に作用する）。その結果、**手動行が先頭ページの外**に落ち、**順位番号だけ占有**という状態になり得た。
+- **対策（API）**:
+  - **`responseProfile=leaderboard` のときだけ** [`fetchLeaderboardScheduleRowsWithSeibanAwarePriority`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts) を使用。
+  - **段階 1**: スコープ内の **手動割当行**を `processingOrder` 昇順で取得。
+  - **段階 2**: 得られた製番集合に対し **`expansionWhere`**（**テキスト検索・機種名条件なし**）で **同一製番の全行**を追加（検索語句だけ別品目にマッチして製番が分裂する取りこぼしを防ぐ）。
+  - **段階 3**: 残り枠を **納期系ソート**で補完。**手動＋展開が `pageSize` を超える場合も手動側を切り捨てない**。
+  - **`full` プロファイル**は従来クエリのまま（影響隔離）。
+- **検証**: Vitest [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)·[`leaderboard-row-selection.compare.test.ts`](../../apps/api/src/services/production-schedule/__tests__/leaderboard-row-selection.compare.test.ts)。CI 緑化済み（ブランチ push 時）。
+- **本番デプロイ（2026-05-05）**: ブランチ **`feat/leaderboard-priority-selection-consistency`**・コミット **`e4a8417d`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Detach Run ID**: **`20260505-181206-15069`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **84s**）。
+- **トラブルシュート**:
+  - **まだ手動行が見えない** → Pi5 の `docker compose` **`api` イメージ**が **`e4a8417d` 以降**か、`deploy-status`・`/opt/RaspberryPiSystem_002` の ref を確認。キオスク **キャッシュ**を疑い [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 で**強制リロード**。
+  - **展開で余計な行が増えた** → 仕様上、手動行の **同一製番は意図的にまとめて載る**。資源・除外・FKOJUNST 可視など **他フィルタ**は従来どおり効く（展開は **`text` / `machineName` だけ緩める**）。
+- **参照**: [deployment.md](../guides/deployment.md)（2026-05-05 evening 項）·[`shared.ts` JSDoc](../../apps/api/src/routes/kiosk/production-schedule/shared.ts)（`responseProfile=leaderboard` の契約説明）。
 
 ### Leader order resource card: preview alignment (2026-04-17)
 
