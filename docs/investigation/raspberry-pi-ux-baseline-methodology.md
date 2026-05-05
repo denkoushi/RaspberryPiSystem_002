@@ -2,6 +2,11 @@
 
 変更前後の比較用。実装ブランチ `improve/pi-ux-phase-c` 起点。
 
+## 本番反映（2026-05-05）
+
+- Pi5 **`raspberrypi5` のみ** に `improve/pi-ux-phase-c` を適用。**Detach Run ID**: `ansible-update-20260505-190249-31447`（**`PLAY RECAP` `failed=0`**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- 体感・数値の比較は、下記「観測項目」の手順で **変更後に再採取**すること（本書に数値は固定しない）。運用ログ: [deployment.md](../guides/deployment.md)（2026-05-05 **Pi5 UX 負荷緩和**項）·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
 ## 観測項目
 
 1. **API 起動**: `buildServer` 完了〜`listen` 完了まで（ログの時刻差）。

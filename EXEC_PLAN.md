@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-05) **Pi5 API/Web 体感遅延・バックグラウンド負荷の緩和**·ブランチ **`improve/pi-ux-phase-c`**·代表 **`a5395af4`**。**仕様（要約）**: API は **ストレージ初期化並列化**·**PostgreSQL URL クエリ安定化**·**システムメトリクス（heap／event loop 等）**·**network_mode に応じた bind**·**アラート／スケジューラの排他 tick**·**リクエストロガー負荷低減**。Web は **axios 既定タイムアウト**·**ポーリング間隔緩和**·**生産日程ミューテーションの短期クールダウン**。**調査手順**: [raspberry-pi-ux-baseline-methodology.md](./docs/investigation/raspberry-pi-ux-baseline-methodology.md)。**本番**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 **no hosts matched**。**Detach Run ID**: **`20260505-190249-31447`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·exit **`0`**·`--follow` **約 576s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 84s**）。**トラブルシュート**: 挙動が古い／重いまま → Pi5 **`api`/`web`** の ref とキオスク **強制リロード**（[verification-checklist.md](./docs/guides/verification-checklist.md) §6.6.4）。**デプロイ成功後でも `alerts/alert-*.json` が作られる**ことがあるが **完了判定は `PLAY RECAP` 等が正本**。**ナレッジ**: [deployment.md](./docs/guides/deployment.md)（2026-05-05 Pi5 UX 項）·上記調査ドキュメント。**`main` マージ後**はデプロイ引数 **`main`**。
+
 - [x] (2026-05-05) **キオスク順位ボード・`leaderboard` 一覧取得と手動順位の整合（製番展開・API のみ）**·ブランチ **`feat/leaderboard-priority-selection-consistency`**·代表 **`e4a8417d`**（**`main`**: [PR #251](https://github.com/denkoushi/RaspberryPiSystem_002/pull/251) **squash merge**・**`main` 先端**は **`3a6a1a42`** を正とする）。**仕様**: `responseProfile=leaderboard` で **手動割当行を SQL で最優先取得**し、**同一 `FSEIBAN` を `expansionWhere`（テキスト・機種名条件除外）で展開**、残りを **納期昇順**で補完。**手動＋展開が `pageSize` 超でも手動を切り捨てない**。実装: [`leaderboard-row-selection.service.ts`](./apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts)·[`production-schedule-query.service.ts`](./apps/api/src/services/production-schedule/production-schedule-query.service.ts)。**本番**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 **no hosts matched**。**Detach Run ID**: **`20260505-181206-15069`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・`--follow` **約 658s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **84s**）。**トラブルシュート**: `order-usage` と一覧のズレ → [KB-297 §取得整合](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05)·[deployment.md](./docs/guides/deployment.md) evening 項。**ナレッジ**: 上記 KB・本 `EXEC_PLAN` 項。**`main` マージ後**は **`main` 先端**を正とし、以降のデプロイは **`main`** を引数にする。
 
 - [x] (2026-05-05) **キオスク順位ボード・左ペイン（登録製番レイアウト）／順位ピッカー ビューポートクランプ**·ブランチ **`feat/leader-board-left-pane-rank-picker-clamp`**·代表 **`d8583f2d`**。**仕様**: **製番順評価 ON** 時 **登録製番 `grid-cols-1`**・アサイド **OFF `w-80` / ON `w-96`**。[`anchoredDropdownViewportClamp.ts`](./apps/web/src/components/kiosk/anchoredDropdownViewportClamp.ts)·[`AnchoredDropdownPortal`](./apps/web/src/components/kiosk/AnchoredDropdownPortal.tsx) 既定 **`clampToViewport`**（**`isOpen` で position リセット**・**rAF `cancelled`**）。**本番**: **`raspberrypi5` のみ**（`--limit raspberrypi5`・**1 台ずつ**）。Pi4／Pi3 **no hosts matched**。**Detach Run ID**: **`20260505-081520-1295`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**・`--follow` **約 294s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 60s**）。**トラブルシュート**: 広いフィルタ Portal で位置が変なら **`clampToViewport={false}`**（[deployment.md](./docs/guides/deployment.md) 2026-05-05 項）。**ナレッジ**: [KB-297 §左ペイン・クランプ](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-left-pane-viewport-clamp-2026-05-05)·[deployment.md](./docs/guides/deployment.md)。
@@ -1045,6 +1047,10 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-05）: Pi5 **`update-all-clients.sh --detach --follow` が exit `0`** でも、ログ後段で **`alerts/alert-<timestamp>.json` が作成**されることがある。**デプロイ成否の正本は `PLAY RECAP`／`logs/deploy/ansible-update-<runId>.summary.json`／リモート終了ログ**であり、アラート JSON の有無だけで失敗とはみなさない。**記録**: [deployment.md](./docs/guides/deployment.md)（2026-05-05 Pi5 UX 項）。
+
+- 観測（2026-05-05）: 開発端末で **`pnpm --filter @raspi-system/web build`（プロジェクト参照 + `tsc -b`）** が **`TS6310`** 等で落ちても、`vite build` や API ビルドは通り得る（**ワークスペースの参照プロジェクト設定**側の問題と切り分け）。本番 Docker 経路での型検証ポリシーは **`tsconfig.build` 系と CI** を優先。**記録**: [deployment.md](./docs/guides/deployment.md) Pi5 UX 項（知見）。
+
 - 観測（2026-05-04）: **Zero 2 W 棚番エッジ**導入で、**(1)** **Mac から Zero の Tailscale IP へ SSH**が **事実上止まる**一方、**Pi 5 経由**なら同じ Zero に入れた → **ACL が admin→signage 直 SSH を許さない**構成と整合（[tailscale-policy.md](./docs/security/tailscale-policy.md)）。**(2)** **Raspberry Pi OS Lite** は **`git` が無く**、**`common` ロールの repo 同期**が **`git: command not found`** で落ちた → **`apt install git`** 後に playbook 再走。**(3)** **Pi 5 API の自己署名 TLS** で **`status-agent` が `CERTIFICATE_VERIFY_FAILED`** → **`TLS_SKIP_VERIFY=1`**（Ansible `status_agent_tls_skip_verify: "1"`）が初回の現実解。**記録**: [KB-367](./docs/knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[zero2w-tanaban-edge-setup.md](./docs/runbooks/zero2w-tanaban-edge-setup.md)。
 
 - 観測（2026-05-04）: DGX 画面の「進行中表示が消える」症状は、バックエンド停止ではなく **UI の判定源が局所 state に寄りすぎていたこと**が主因だった。`Strict Ready` は継続していても、タブ移動/再描画境界でローカル `flowBusy` が失われると未実行に見える。**イベントログ判定 + `sessionStorage` pending** の二系統にすると、イベント到着遅延があっても表示の穴が埋まる。記録: [KB-365 Phase 11](./docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)・[dgx-system-prod-local-llm.md](./docs/runbooks/dgx-system-prod-local-llm.md)。
@@ -2079,6 +2085,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### Raspberry Pi UX Phase C — 効果確認と開発フロー（2026-05-05）
+
+**概要**: **`improve/pi-ux-phase-c`** は Pi5 のみ本番反映済み（[investigation の本番反映節](./docs/investigation/raspberry-pi-ux-baseline-methodology.md)・[deployment.md](./docs/guides/deployment.md)）。変更意図は **体感遅延とバックグラウンド負荷の抑制**。
+
+**候補タスク**:
+
+1. [raspberry-pi-ux-baseline-methodology.md](./docs/investigation/raspberry-pi-ux-baseline-methodology.md) に従い、**起動・主要操作・ポーリング・event loop** を **変更後に 3 回採取**し中央値で比較する（数値は ExecPlan 本文へベタ書きせず、必要なら別 KB／調査メモへ）。
+2. **`improve/**` ブランチ向けの CI 自動実行**を `.github/workflows/ci.yml` の `on.push.branches` に含めるか検討（現状は **`workflow_dispatch` のみ**になり得る）。
+3. **`pnpm --filter @raspi-system/web build`（`tsc -b`）の TS6310** が出る環境では、**参照プロジェクト（Solution 風 `tsconfig`）**を点検し、CI／本番ビルドとの差分を文書化する。
 
 ### Zero 2 W 棚番エッジ — バーコード入力と API 連携（2026-05-04）
 
