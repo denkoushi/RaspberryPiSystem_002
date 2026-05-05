@@ -311,6 +311,9 @@ export class CsvDashboardImportService {
           totalProcessed += result.rowsProcessed;
           totalAdded += result.rowsAdded;
           totalSkipped += result.rowsSkipped;
+          // #region agent log
+          fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1d05af'},body:JSON.stringify({sessionId:'1d05af',runId:'mishima-import-debug-1',hypothesisId:'H2',location:'csv-dashboard-import.service.ts:314',message:'dashboard message ingest succeeded',data:{dashboardId,messageIdSuffix:safeMessageId,rowsProcessed:result.rowsProcessed,rowsAdded:result.rowsAdded,rowsSkipped:result.rowsSkipped},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
 
           // 計測機器持出返却のイベント投影
           if (dashboardId === CsvDashboardImportService.MEASURING_INSTRUMENT_LOANS_DASHBOARD_ID) {
@@ -365,6 +368,9 @@ export class CsvDashboardImportService {
           lastError = error;
           if (safeMessageId) failedMessageIdSuffixes.push(safeMessageId);
           if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = 'failed';
+          // #region agent log
+          fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1d05af'},body:JSON.stringify({sessionId:'1d05af',runId:'mishima-import-debug-1',hypothesisId:'H1',location:'csv-dashboard-import.service.ts:368',message:'dashboard message ingest failed',data:{dashboardId,messageIdSuffix:safeMessageId,errorMessage:error instanceof Error ? error.message : String(error),failedMessageCount:failedMessageIdSuffixes.length},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           logger?.error(
             { err: error, dashboardId, messageId },
             '[CsvDashboardImportService] CSV dashboard ingestion failed for message'
@@ -383,6 +389,9 @@ export class CsvDashboardImportService {
             CsvDashboardImportService.canPostProcessGmail(storageProvider) &&
             this.errorDispositionPolicy.classify(error) === 'NON_RETRIABLE'
           ) {
+            // #region agent log
+            fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1d05af'},body:JSON.stringify({sessionId:'1d05af',runId:'mishima-import-debug-1',hypothesisId:'H3',location:'csv-dashboard-import.service.ts:389',message:'non-retriable error disposition triggered',data:{dashboardId,messageIdSuffix:safeMessageId,disposition:'NON_RETRIABLE'},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             try {
               await storageProvider.trashMessage(messageId);
               if (safeMessageId) {
@@ -390,6 +399,11 @@ export class CsvDashboardImportService {
                 postProcessStateByMessageIdSuffix[safeMessageId] = 'disposed_non_retriable';
                 disposeReasonByMessageIdSuffix[safeMessageId] =
                   error instanceof Error ? error.message : String(error);
+                // NON_RETRIABLE を廃棄できた場合は、最終判定用の failed 集計から除外する。
+                const failedIndex = failedMessageIdSuffixes.lastIndexOf(safeMessageId);
+                if (failedIndex >= 0) {
+                  failedMessageIdSuffixes.splice(failedIndex, 1);
+                }
               }
               await this.appendIngestRunAudit({
                 dashboardId,
@@ -406,6 +420,9 @@ export class CsvDashboardImportService {
                 },
                 '[CsvDashboardImportService] Non-retriable CSV error: message moved to trash'
               );
+              // #region agent log
+              fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1d05af'},body:JSON.stringify({sessionId:'1d05af',runId:'mishima-import-debug-1',hypothesisId:'H1',location:'csv-dashboard-import.service.ts:432',message:'non-retriable message disposed',data:{dashboardId,messageIdSuffix:safeMessageId,failedMessageCount:failedMessageIdSuffixes.length,disposedCount:disposedMessageIdSuffixes.length},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
             } catch (disposeError) {
               if (safeMessageId) {
                 postProcessStateByMessageIdSuffix[safeMessageId] = 'failed';
@@ -437,6 +454,9 @@ export class CsvDashboardImportService {
       }
 
       if (lastError && failedMessageIdSuffixes.length > 0) {
+        // #region agent log
+        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'1d05af'},body:JSON.stringify({sessionId:'1d05af',runId:'mishima-import-debug-1',hypothesisId:'H1',location:'csv-dashboard-import.service.ts:446',message:'ingestTargets throws due to failed message suffixes',data:{dashboardId,failedMessageCount:failedMessageIdSuffixes.length,disposedCount:disposedMessageIdSuffixes.length,lastErrorMessage:lastError instanceof Error ? lastError.message : String(lastError),failedMessageIdSuffixes,disposedMessageIdSuffixes},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         throw lastError;
       }
 
