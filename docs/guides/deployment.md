@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**Phase12 実機広域検証の再実行記録**·**Zero2W 断片の限定 NOPASSWD 手順をサンプルへ反映**）
+最終更新: 2026-05-06（**部品納期個数補助 `P2002` 修正の Pi5 本番**·**Phase12 実機検証**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+
+### 補足（2026-05-06 · **部品納期個数補助同期 `P2002`（`csvDashboardRowId`）修正の Pi5 本番反映**·**`main`**·**API のみ**）
+
+- **変更概要**: [PR #256](https://github.com/denkoushi/RaspberryPiSystem_002/pull/256)（squash **`a204da0a`**）で、補助同期が **同一 winner `csvDashboardRowId` の既存行**に対し **3キー不整合でも create せず update** へフォールバック（`skipDuplicates` 不使用）。ドキュメント追補は [#257](https://github.com/denkoushi/RaspberryPiSystem_002/pull/257)（**`6f5ac422`**）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **本番デプロイ（実績）**: **`main`**（**`6f5ac422` 以降**）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260505-223440-27566`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 818s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 61s**・Tailscale）。
+- **トラブルシュート**: 補助同期で **`P2002` on `csvDashboardRowId`** が残る → Pi5 **`api` イメージ**が当該修正を含むか（`git log -1` / デプロイ Detach ログ）、**上流3キーと本体 winner**は [KB-328 §P2002](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id) を参照。
+- **ナレッジ**: [KB-328 §P2002](../knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id)·[csv-import-export.md](./csv-import-export.md) §F·[KB-297 §差分同期](../knowledge-base/KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-06 · **Phase12 実機検証・Zero2W `sudo_nopasswd_commands`**）
 
