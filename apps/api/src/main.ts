@@ -1,92 +1,29 @@
 import { buildServer } from './app.js';
 import { logger } from './lib/logger.js';
 import { env } from './config/env.js';
-import { getBackupScheduler } from './services/backup/backup-scheduler.js';
-import { getCsvImportScheduler } from './services/imports/csv-import-scheduler.js';
 import { getKioskDocumentGmailScheduler } from './services/kiosk-documents/kiosk-document-gmail.scheduler.js';
-import { getKioskDocumentOcrScheduler } from './services/kiosk-documents/kiosk-document-ocr.scheduler.js';
-import { getGmailTrashCleanupScheduler } from './services/gmail/gmail-trash-cleanup.scheduler.js';
-import { getDueManagementTuningOrchestrator } from './services/production-schedule/auto-tuning/tuning-orchestrator.service.js';
-import { getAlertsDispatcher } from './services/alerts/alerts-dispatcher.js';
-import { getAlertsDbDispatcher } from './services/alerts/alerts-db-dispatcher.js';
-import { getAlertsIngestor } from './services/alerts/alerts-ingestor.js';
-import { loadAlertsDispatcherConfig } from './services/alerts/alerts-config.js';
 import { getPhotoToolLabelScheduler } from './services/tools/photo-tool-label/photo-tool-label.scheduler.js';
+import { startPostListenSchedulers } from './bootstrap/start-post-listen-schedulers.js';
 
 if (process.env['NODE_ENV'] !== 'test') {
   buildServer()
     .then(async (app) => {
       await app.listen({ port: env.PORT, host: env.HOST });
       logger.info({ address: `http://${env.HOST}:${env.PORT}` }, 'API server listening');
-      
-      // サイネージレンダリングの定期実行を開始（app.tsで作成されたスケジューラーを使用）
-      app.signageRenderScheduler.start();
-      
-      logger.info(
-        { intervalSeconds: env.SIGNAGE_RENDER_INTERVAL_SECONDS, runner: env.SIGNAGE_RENDER_RUNNER },
-        'Signage render scheduler started'
-      );
-      
-      // バックアップスケジューラーを開始
-      const backupScheduler = getBackupScheduler();
-      await backupScheduler.start();
-      
-      logger.info('Backup scheduler started');
-      
-      // CSVインポートスケジューラーを開始
-      const csvImportScheduler = getCsvImportScheduler();
-      await csvImportScheduler.start();
-      
-      logger.info('CSV import scheduler started');
 
-      const kioskDocGmailScheduler = getKioskDocumentGmailScheduler();
-      await kioskDocGmailScheduler.start();
-      logger.info('Kiosk document Gmail scheduler started');
-      const kioskDocOcrScheduler = getKioskDocumentOcrScheduler();
-      await kioskDocOcrScheduler.start();
-      logger.info('Kiosk document OCR scheduler started');
-
-      const gmailTrashCleanupScheduler = getGmailTrashCleanupScheduler();
-      await gmailTrashCleanupScheduler.start();
-      logger.info('Gmail trash cleanup scheduler started');
-
-      const dueManagementTuningOrchestrator = getDueManagementTuningOrchestrator();
-      await dueManagementTuningOrchestrator.start();
-      logger.info('Due management auto-tuning scheduler started');
-
-      // Alerts dispatchers
-      // - mode=file: Phase1 (alertsファイル -> Slack配送)
-      // - mode=db: Phase2 follow-up (DBキュー -> Slack配送)
-      // NOTE: どちらもデフォルト無効。各 enabled フラグが true の場合のみ動作。
-      const alertsConfig = await loadAlertsDispatcherConfig();
-      const alertsDispatcher = getAlertsDispatcher();
-      const alertsDbDispatcher = getAlertsDbDispatcher();
-      if (alertsConfig.mode === 'db') {
-        await alertsDbDispatcher.start();
-      } else {
-        await alertsDispatcher.start();
-      }
-
-      // Alerts ingestor を開始（alertsファイル -> DB取り込み）
-      // NOTE: デフォルト無効。ALERTS_DB_INGEST_ENABLED=true の場合のみ動作。
-      const alertsIngestor = getAlertsIngestor();
-      await alertsIngestor.start();
-
-      const photoToolLabelScheduler = getPhotoToolLabelScheduler();
-      photoToolLabelScheduler.start();
-      logger.info('Photo tool label scheduler started');
+      const handles = await startPostListenSchedulers(app);
 
       // Graceful shutdown (best-effort)
       const shutdown = async (signal: string) => {
         try {
           logger.info({ signal }, 'Shutting down API server');
-          await alertsIngestor.stop();
-          await alertsDbDispatcher.stop();
-          await alertsDispatcher.stop();
+          await handles.alertsIngestor.stop();
+          await handles.alertsDbDispatcher.stop();
+          await handles.alertsDispatcher.stop();
           getKioskDocumentGmailScheduler().stop();
-          kioskDocOcrScheduler.stop();
-          gmailTrashCleanupScheduler.stop();
-          dueManagementTuningOrchestrator.stop();
+          handles.kioskDocOcrScheduler.stop();
+          handles.gmailTrashCleanupScheduler.stop();
+          handles.dueManagementTuningOrchestrator.stop();
           getPhotoToolLabelScheduler().stop();
           await app.close();
         } catch (err) {

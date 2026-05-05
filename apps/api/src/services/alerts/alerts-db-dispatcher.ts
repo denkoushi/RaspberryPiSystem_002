@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
+import { runExclusiveSchedulerTick } from '../../lib/exclusive-scheduler-tick.js';
 import { loadAlertsDispatcherConfig, type AlertsRouteKey } from './alerts-config.js';
 import { sendSlackWebhook } from './slack-sink.js';
 import { AlertChannel, AlertDeliveryStatus, type Alert as DbAlert, type AlertDelivery as DbAlertDelivery } from '@prisma/client';
@@ -50,6 +51,7 @@ export function computeBackoffSeconds(baseRetryDelaySeconds: number, attemptCoun
 export class AlertsDbDispatcher {
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private readonly tickExclusive = { locked: false };
 
   /**
    * Run dispatcher once using current configuration.
@@ -85,10 +87,16 @@ export class AlertsDbDispatcher {
       '[AlertsDbDispatcher] Starting'
     );
 
-    await this.runOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDbDispatcher] Initial run failed'));
+    await this.guardedRunOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDbDispatcher] Initial run failed'));
     this.timer = setInterval(() => {
-      this.runOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDbDispatcher] Run failed'));
+      void this.guardedRunOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDbDispatcher] Run failed'));
     }, config.dbDispatcher.intervalSeconds * 1000);
+  }
+
+  private async guardedRunOnce(config: Awaited<ReturnType<typeof loadAlertsDispatcherConfig>>): Promise<void> {
+    await runExclusiveSchedulerTick(this.tickExclusive, logger, 'AlertsDbDispatcher', async () => {
+      await this.runOnce(config);
+    });
   }
 
   async stop(): Promise<void> {

@@ -1,4 +1,7 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { env } from '../config/env.js';
+
+const isProdLeanLogging = env.NODE_ENV === 'production';
 
 /**
  * リクエスト/レスポンスの詳細ログを記録するプラグイン
@@ -6,27 +9,39 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
  */
 export function registerRequestLogger(app: FastifyInstance): void {
   app.addHook('onRequest', async (request: FastifyRequest) => {
-    request.log.info({
-      req: {
-        id: request.id,
-        method: request.method,
-        url: request.url,
-        headers: {
-          'user-agent': request.headers['user-agent'],
-          'x-forwarded-for': request.headers['x-forwarded-for'],
-          'x-client-key': request.headers['x-client-key'] ? '[REDACTED]' : undefined,
-          'authorization': request.headers['authorization'] ? '[REDACTED]' : undefined,
+    if (isProdLeanLogging) {
+      request.log.debug(
+        {
+          req: { id: request.id, method: request.method, url: request.url }
         },
-        ip: request.ip,
-        hostname: request.hostname,
-      },
-    }, 'incoming request');
+        'incoming request'
+      );
+    } else {
+      request.log.info(
+        {
+          req: {
+            id: request.id,
+            method: request.method,
+            url: request.url,
+            headers: {
+              'user-agent': request.headers['user-agent'],
+              'x-forwarded-for': request.headers['x-forwarded-for'],
+              'x-client-key': request.headers['x-client-key'] ? '[REDACTED]' : undefined,
+              authorization: request.headers['authorization'] ? '[REDACTED]' : undefined
+            },
+            ip: request.ip,
+            hostname: request.hostname
+          }
+        },
+        'incoming request'
+      );
+    }
   });
 
   app.addHook('onResponse', async (request: FastifyRequest, reply: FastifyReply) => {
     const statusCode = reply.statusCode;
     const responseTime = reply.elapsedTime;
-    
+
     // 429エラーや404エラーの場合は詳細ログを出力
     if (statusCode === 429 || statusCode === 404) {
       request.log.warn({
@@ -37,29 +52,39 @@ export function registerRequestLogger(app: FastifyInstance): void {
           headers: {
             'user-agent': request.headers['user-agent'],
             'x-forwarded-for': request.headers['x-forwarded-for'],
-            'x-client-key': request.headers['x-client-key'] ? '[REDACTED]' : undefined,
+            'x-client-key': request.headers['x-client-key'] ? '[REDACTED]' : undefined
           },
           ip: request.ip,
-          hostname: request.hostname,
+          hostname: request.hostname
         },
         res: {
           statusCode,
-          responseTime,
-        },
+          responseTime
+        }
       }, `HTTP ${statusCode} error`);
+    } else if (isProdLeanLogging) {
+      request.log.debug(
+        {
+          req: { id: request.id, method: request.method, url: request.url },
+          res: { statusCode, responseTime }
+        },
+        'request completed'
+      );
     } else {
-      request.log.info({
-        req: {
-          id: request.id,
-          method: request.method,
-          url: request.url,
+      request.log.info(
+        {
+          req: {
+            id: request.id,
+            method: request.method,
+            url: request.url
+          },
+          res: {
+            statusCode,
+            responseTime
+          }
         },
-        res: {
-          statusCode,
-          responseTime,
-        },
-      }, 'request completed');
+        'request completed'
+      );
     }
   });
 }
-

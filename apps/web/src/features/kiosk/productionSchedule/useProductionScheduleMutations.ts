@@ -9,7 +9,8 @@ import {
   type KioskProductionScheduleOrderCachePolicy
 } from '../../../api/hooks';
 
-const WRITE_REFETCH_COOLDOWN_MS = 2500;
+/** 書き込み直後のリスト再取得とポーリング復帰が重ならないよう空ける（体感待ちと Pi 負荷のバランス）。 */
+const WRITE_REFETCH_COOLDOWN_MS = 1800;
 
 type Params = {
   isSearchStateWriting: boolean;

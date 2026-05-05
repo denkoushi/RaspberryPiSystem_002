@@ -7,6 +7,7 @@ import {
   patchOrderUsageForProcessingOrderChange,
   patchScheduleListProcessingOrder
 } from '../features/kiosk/productionSchedule/cache/kioskProductionScheduleOrderCachePatch';
+import { POLL_MS } from '../lib/admin-polling-intervals';
 import { buildClientDevicesByApiKey } from '../lib/signageTargetClientDevices';
 
 import {
@@ -384,7 +385,7 @@ export function useKioskProductionScheduleOrderUsage(
   }
 ) {
   const interval =
-    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 15000);
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 20000);
   return useQuery({
     queryKey: ['kiosk-production-schedule-order-usage', resourceCds, options?.targetDeviceScopeKey],
     queryFn: () =>
@@ -402,7 +403,7 @@ export function useKioskProductionScheduleSearchState(options?: {
   refetchIntervalMs?: number | false;
 }) {
   const interval =
-    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 4000);
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 5500);
   return useQuery({
     queryKey: ['kiosk-production-schedule-search-state'],
     queryFn: getKioskProductionScheduleSearchState,
@@ -414,7 +415,7 @@ export function useKioskProductionScheduleSearchHistory(options?: { pauseRefetch
   return useQuery({
     queryKey: ['kiosk-production-schedule-search-history'],
     queryFn: getKioskProductionScheduleSearchHistory,
-    refetchInterval: options?.pauseRefetch ? false : 4000,
+    refetchInterval: options?.pauseRefetch ? false : 5500,
   });
 }
 
@@ -1717,7 +1718,7 @@ export function useSystemInfo() {
   return useQuery({
     queryKey: ['system-info'],
     queryFn: getSystemInfo,
-    refetchInterval: 10_000, // 10秒間隔で更新（CPU負荷軽減のため）
+    refetchInterval: POLL_MS.systemInfo, // 負荷軽減のため既定を緩和（管理画面中心）
     staleTime: 3000, // 3秒間はキャッシュを使用
     refetchOnWindowFocus: true, // ウィンドウフォーカス時に更新
   });
@@ -1737,7 +1738,7 @@ export function useDeployStatus() {
   return useQuery({
     queryKey: ['deploy-status'],
     queryFn: getDeployStatus,
-    refetchInterval: 5000, // 5秒ごとにポーリング（メンテナンス画面の表示/非表示を即座に反映）
+    refetchInterval: POLL_MS.deployStatus, // メンテ状態を比較的早く反映しつつポーリング頻度は緩和
     staleTime: 0, // キャッシュを無効化して常に最新データを取得
     refetchOnWindowFocus: true
   });
@@ -1912,7 +1913,7 @@ export function useSignageRenderStatus() {
   return useQuery({
     queryKey: ['signage-render-status'],
     queryFn: getSignageRenderStatus,
-    refetchInterval: 10_000 // 10秒間隔で更新
+    refetchInterval: POLL_MS.signageRenderStatus // 表示用の進捗確認。負荷との兼ね合いで間隔緩和。
   });
 }
 

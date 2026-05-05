@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
+import { runExclusiveSchedulerTick } from '../../lib/exclusive-scheduler-tick.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from './alerts-config.js';
 import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
 
@@ -57,6 +58,7 @@ async function readAlert(filePath: string): Promise<AlertFile | null> {
 export class AlertsIngestor {
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private readonly tickExclusive = { locked: false };
 
   /**
    * Run ingestor once using current configuration.
@@ -99,10 +101,21 @@ export class AlertsIngestor {
     );
 
     // First run immediately, then on interval
-    await this.ingestOnce(config, ingestConfig).catch((err) => logger?.warn({ err }, '[AlertsIngestor] Initial run failed'));
+    await this.guardedIngestOnce(config, ingestConfig).catch((err) =>
+      logger?.warn({ err }, '[AlertsIngestor] Initial run failed')
+    );
     this.timer = setInterval(() => {
-      this.ingestOnce(config, ingestConfig).catch((err) => logger?.warn({ err }, '[AlertsIngestor] Run failed'));
+      void this.guardedIngestOnce(config, ingestConfig).catch((err) => logger?.warn({ err }, '[AlertsIngestor] Run failed'));
     }, ingestConfig.intervalSeconds * 1000);
+  }
+
+  private async guardedIngestOnce(
+    config: Awaited<ReturnType<typeof loadAlertsDispatcherConfig>>,
+    ingestConfig: { enabled: boolean; intervalSeconds: number; limit: number }
+  ): Promise<void> {
+    await runExclusiveSchedulerTick(this.tickExclusive, logger, 'AlertsIngestor', async () => {
+      await this.ingestOnce(config, ingestConfig);
+    });
   }
 
   async stop(): Promise<void> {

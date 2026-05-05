@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
-import { ItemStatus, EmployeeStatus } from '@prisma/client';
+import { env } from '../../config/env.js';
 import { snapshotEventLoopObservability } from '../../services/system/event-loop-observability.js';
+import { resolveMetricsDbAggregates } from './metrics-db-aggregates-cache.js';
 
 /**
  * システムメトリクスエンドポイント
@@ -13,41 +14,23 @@ export function registerMetricsRoute(app: FastifyInstance): void {
     const metrics: string[] = [];
 
     try {
-      // データベース接続数
-      const dbConnections = await prisma.$queryRaw<Array<{ count: bigint }>>`
-        SELECT count(*) as count FROM pg_stat_activity WHERE datname = 'borrow_return'
-      `;
+      // DB 集計は比較的重いため、既定で短い TTL のメモリキャッシュを使用（Pi の高頻度観測向け）
+      const aggregates = await resolveMetricsDbAggregates(prisma, env.SYSTEM_METRICS_DB_AGGREGATES_TTL_MS);
       metrics.push(`# HELP db_connections_total Current database connections`);
       metrics.push(`# TYPE db_connections_total gauge`);
-      metrics.push(`db_connections_total ${dbConnections[0]?.count || 0}`);
+      metrics.push(`db_connections_total ${aggregates.dbConnections}`);
 
-      // アクティブな貸出数
-      const activeLoans = await prisma.loan.count({
-        where: { returnedAt: null },
-      });
       metrics.push(`# HELP loans_active_total Current active loans`);
       metrics.push(`# TYPE loans_active_total gauge`);
-      metrics.push(`loans_active_total ${activeLoans}`);
+      metrics.push(`loans_active_total ${aggregates.activeLoans}`);
 
-      // 従業員数
-      const employeeCount = await prisma.employee.count({
-        where: { status: EmployeeStatus.ACTIVE },
-      });
       metrics.push(`# HELP employees_active_total Active employees`);
       metrics.push(`# TYPE employees_active_total gauge`);
-      metrics.push(`employees_active_total ${employeeCount}`);
+      metrics.push(`employees_active_total ${aggregates.employeeCount}`);
 
-      // アイテム数（AVAILABLEとIN_USEをカウント）
-      const itemCount = await prisma.item.count({
-        where: {
-          status: {
-            in: [ItemStatus.AVAILABLE, ItemStatus.IN_USE],
-          },
-        },
-      });
       metrics.push(`# HELP items_active_total Active items`);
       metrics.push(`# TYPE items_active_total gauge`);
-      metrics.push(`items_active_total ${itemCount}`);
+      metrics.push(`items_active_total ${aggregates.itemCount}`);
 
       // メモリ使用量
       const memUsage = process.memoryUsage();
