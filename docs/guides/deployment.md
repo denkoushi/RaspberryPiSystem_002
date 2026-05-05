@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-05
+last-verified: 2026-05-06
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,13 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-05（**Zero2W 棚番エッジ hardening（Pi5 + Zero2W 復旧完了）**·**Pi5 UX 負荷緩和（API+Web・`improve/pi-ux-phase-c`・Pi5 のみ）**·**順位ボード関連**·**FKOJUNST_Status 外部完了**)
+最終更新: 2026-05-06（**Phase12 実機広域検証の再実行記録**·**Zero2W 断片の限定 NOPASSWD 手順をサンプルへ反映**）
+
+### 補足（2026-05-06 · **Phase12 実機検証・Zero2W `sudo_nopasswd_commands`**）
+
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**・Tailscale・**コード変更なしの健全性確認**）。
+- **知見**: Zero2W が **対話 sudo 必須** のままだと Pi5 からの **`zero2w-edge-setup.yml`** で **`Missing sudo password`** になり得る。初回復旧では **`ansible_become_password`** で通したが、**Pi4 と同様**に断片へ **`sudo_nopasswd_commands`**（**`status-agent` / `haizen-agent` の `systemctl`**・**reboot/poweroff**。**キオスク browser 無しのため kiosk-browser 行は無し**）を載せれば **`-e ansible_become_password` なし**で Ansible の become が通り、`sudo -n true` と **`ansible ansible_host -m ping -b`** で確認できる。
+- **正本**: **`infrastructure/ansible/inventory-zero2w-edge-fragment.sample.yml`**（実 IP を含む **`inventory-zero2w-edge-fragment.yml`** は `.gitignore`）·[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)。
 
 ### 補足（2026-05-05 late · **Zero2W 棚番エッジ hardening**·**`feat/zero2w-haizen-edge-hardening`**·**Pi5 のみ標準デプロイ → Zero2W 復旧完了**）
 
