@@ -1,6 +1,6 @@
 # Zero 2 W（棚番エッジ）セットアップ Runbook
 
-最終更新: 2026-05-04（**haizen-agent 実機手順・`ANSIBLE_REPO_VERSION` 追記**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）
+最終更新: 2026-05-05（**Pi5→Zero SSH タイムアウトのトラブルシュート追記**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）
 
 ## 目的
 
@@ -167,6 +167,12 @@ curl -sk "https://<Pi5-Tailscale-IP>/api/mobile-placement/registered-shelves" \
 
 - **原因**: 過去の手配置や独自 unit で **非 root 実行**しているのに、設定が **`root:root` + `mode 600`** のまま。
 - **対処**: 現行標準は **Ansible 配備の root 実行 unit** に揃える。独自に `User=` を付ける場合のみ、当該ユーザー/グループで **読取可能な最小権限**へ調整する。 [KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)
+
+### Ansible: Pi5 から Zero へ `ssh: connect to host … port 22: Connection timed out`
+
+- **症状**: `zero2w-edge-setup.yml` の先頭で **`zero2w-tanaban01` が `UNREACHABLE`**。メッセージ例: **`Failed to connect to the host via ssh: … port 22: Connection timed out`**。
+- **原因（典型）**: Zero が **オフ／未接続**、**Tailscale 未参加**、断片の **`ansible_host` が古い 100.x**（Zero で `tailscale ip -4` と突き合わせ）、**Pi5→client の ACL で 22/tcp が拒否**、現場 LAN 経路の問題。
+- **対処**: 上記 **「到達確認の順序」**（Zero で 100.x 取得 → **Pi5 から** `ssh -o BatchMode=yes zero2w-user@100.x 'echo OK'`）を満たしてから playbook を再実行。**2026-05-05 実績**: `feat/zero2w-haizen-edge-hardening` 反映後の Pi5 本番は成功したが、当該 Zero は Pi5 から **未到達のまま playbook 未完**となった（詳細・Run ID は [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）。
 
 ## 関連ドキュメント
 

@@ -2,7 +2,7 @@
 title: 'KB-368: Zero 2 W 配膳追跡（haizen API・エージェント・キオスク表示）'
 tags: [Zero2W, mobile-placement, 配膳, HID, API]
 audience: [開発者, 運用者]
-last-verified: 2026-05-04
+last-verified: 2026-05-05
 category: knowledge-base
 ---
 
@@ -80,6 +80,12 @@ category: knowledge-base
   - **保存が 400 `HAIZEN_TARGET_DEVICE_INVALID`**: 指定 `clientDeviceId` が Zero2W 候補に当てはまらない（一覧外の ID を直接叩いていないか）。
 
 **トラブル**: Zero のリポジトリが **`main` のまま**だと `clients/haizen-agent` が無く `WorkingDirectory` の **CHDIR 失敗**で `haizen-agent` がループする。**対処**: Pi5 で `ANSIBLE_REPO_VERSION=feat/zero2w-haizen-tracking`（マージ後は `main`）を指定して `zero2w-edge-setup.yml` を再実行する。現行標準の Ansible 配備では設定ファイルは **`/etc/raspi-haizen-agent.conf` = `root:root` + `640`**。**独自に非 root 実行へ変えている場合のみ**、その実行ユーザーが読める最小権限へ調整する（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・Runbook）。
+
+## 本番ロールアウト記録（2026-05-05 · **`feat/zero2w-haizen-edge-hardening`**）
+
+- **Pi5（標準 `update-all-clients.sh`）**: **`raspberrypi5` のみ**・**Detach Run ID** **`20260505-201203-6644`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。ブランチ先端検証時の代表コミット **`1237f37a`**。**CI**: GitHub Actions **`25372469180`** **success**。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 102s**）。
+- **Zero2W `zero2w-tanaban01`**: Pi5 で `zero2w-edge-setup.yml`（**`ANSIBLE_REPO_VERSION`** を機能ブランチに合わせる）を **`--limit zero2w-tanaban01`** で実行したところ、**Ansible 初期タスクが `ansible_host` への SSH でタイムアウト（`:22 Connection timed out`）となり未完**。**次の運用手順**: Zero の電源／Tailscale 参加、`tailscale ip -4` と断片 **`ansible_host` の整合**、[Runbook](../runbooks/zero2w-tanaban-edge-setup.md) の **Pi5→Zero の `ssh -o BatchMode=yes` チェック**後に **playbook を再実行**。**Zero が未到達の間、`haizen-agent` の机上確認（journal / unit）は未実施**。
 
 ## References
 
