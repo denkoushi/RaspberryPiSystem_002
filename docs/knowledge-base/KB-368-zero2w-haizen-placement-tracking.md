@@ -85,7 +85,13 @@ category: knowledge-base
 
 - **Pi5（標準 `update-all-clients.sh`）**: **`raspberrypi5` のみ**・**Detach Run ID** **`20260505-201203-6644`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。ブランチ先端検証時の代表コミット **`1237f37a`**。**CI**: GitHub Actions **`25372469180`** **success**。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 102s**）。
-- **Zero2W `zero2w-tanaban01`**: Pi5 で `zero2w-edge-setup.yml`（**`ANSIBLE_REPO_VERSION`** を機能ブランチに合わせる）を **`--limit zero2w-tanaban01`** で実行したところ、**Ansible 初期タスクが `ansible_host` への SSH でタイムアウト（`:22 Connection timed out`）となり未完**。**次の運用手順**: Zero の電源／Tailscale 参加、`tailscale ip -4` と断片 **`ansible_host` の整合**、[Runbook](../runbooks/zero2w-tanaban-edge-setup.md) の **Pi5→Zero の `ssh -o BatchMode=yes` チェック**後に **playbook を再実行**。**Zero が未到達の間、`haizen-agent` の机上確認（journal / unit）は未実施**。
+- **Zero2W `zero2w-tanaban01`**:
+  - 初回: `ansible_host` への SSH `:22 Connection timed out` で `UNREACHABLE`。
+  - 復旧: 端末再起動後に Pi5 から `ssh` と `ansible ping` が復旧。
+  - 追加トラブル: `zero2w-edge-setup.yml` 再実行時に **`Missing sudo password`**。また `haizen_agent_hid_device` 未指定で `hid=stdin` 起動となり `haizen-agent.service` が `inactive`。
+  - 対処: `-e ansible_become_password='...'` を付与し、断片インベントリへ **`haizen_agent_hid_device: /dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd`** を追記して再実行。
+  - 最終: playbook **成功**（`ok=81 changed=11 failed=0 unreachable=0`）、`haizen-agent.service` / `status-agent.timer` とも **active + enabled**。
+- **Zero2W E2E（Pi5 実行）**: `PATCH /api/mobile-placement/haizen-preset-shelf` → `POST /api/mobile-placement/haizen-scans` → `GET /api/mobile-placement/haizen-current?shelfCodeRaw=西-北-01&limit=5` で、Zero2W キー (`client-key-zero2w-tanaban01-edge1`) の新規イベント (`eventId`) と `rows` 反映を確認。`UNRESOLVED` は日程未一致時の契約どおり。
 
 ## References
 
