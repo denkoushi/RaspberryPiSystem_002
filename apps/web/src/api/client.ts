@@ -1,5 +1,6 @@
-import axios from 'axios';
+import axios, { AxiosError, isAxiosError } from 'axios';
 
+import { readViteApiTimeoutMs } from '../lib/api-timeout-ms';
 import {
   DEFAULT_CLIENT_KEY,
   ensureClientKeyStorageInitialized,
@@ -63,7 +64,8 @@ const KIOSK_KEY_RESET_TS_KEY = 'kiosk-client-key-last-reset-at';
 const KIOSK_KEY_RESET_COOLDOWN_MS = 30000;
 
 export const api = axios.create({
-  baseURL: apiBase
+  baseURL: apiBase,
+  timeout: readViteApiTimeoutMs()
 });
 
 export function getResolvedClientKey() {
@@ -127,10 +129,27 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const status = error?.response?.status;
-    const code = error?.response?.data?.code;
-    const message = error?.response?.data?.message;
+  (error: unknown) => {
+    if (isAxiosError(error)) {
+      const ax = error as AxiosError<{ code?: unknown; message?: unknown }>;
+      // axios: 請求タイムアウトは通常 ECONNABORTED を付与
+      const isTimeout = ax.code === 'ECONNABORTED';
+      if (isTimeout) {
+        ax.message = 'リクエストがタイムアウトしました。ネットワークまたはサーバの負荷を確認してください。';
+        (ax as AxiosError & { apiTimeout?: boolean }).apiTimeout = true;
+      }
+    }
+
+    const status = isAxiosError(error) ? error.response?.status : undefined;
+    const code =
+      error && typeof error === 'object' && 'response' in error
+        ? (error.response as { data?: { code?: unknown } } | undefined)?.data?.code
+        : undefined;
+    const message =
+      error && typeof error === 'object' && 'response' in error
+        ? (error.response as { data?: { message?: unknown } } | undefined)?.data?.message
+        : undefined;
+
     const isInvalidClientKey =
       code === 'INVALID_CLIENT_KEY' ||
       code === 'CLIENT_KEY_INVALID' ||

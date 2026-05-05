@@ -54,54 +54,26 @@ export async function buildServer(): Promise<FastifyInstance> {
     }
   });
   
-  // ストレージディレクトリを初期化
-  try {
-    await PhotoStorage.initialize();
-    app.log.info('Photo storage directories initialized');
-  } catch (error) {
-    app.log.warn({ err: error }, 'Failed to initialize photo storage directories (may not be critical)');
-  }
+  // ストレージディレクトリを初期化（I/O 並列化で起動クリティカルパス短縮）
+  const storageTasks: Array<{ label: string; run: () => Promise<unknown> }> = [
+    { label: 'Photo storage directories', run: () => PhotoStorage.initialize() },
+    { label: 'Measuring instrument genre image storage', run: () => MeasuringInstrumentGenreImageStorage.initialize() },
+    { label: 'Part-measurement drawing storage', run: () => PartMeasurementDrawingStorage.initialize() },
+    { label: 'Pallet machine illustration storage', run: () => PalletMachineIllustrationStorage.initialize() },
+    { label: 'PDF storage directories', run: () => PdfStorage.initialize() },
+    { label: 'Signage render storage', run: () => SignageRenderStorage.initialize() },
+    { label: 'CSV dashboard storage', run: () => CsvDashboardStorage.initialize() }
+  ];
 
-  try {
-    await MeasuringInstrumentGenreImageStorage.initialize();
-    app.log.info('Measuring instrument genre image storage initialized');
-  } catch (error) {
-    app.log.warn({ err: error }, 'Failed to initialize measuring instrument genre image storage (may not be critical)');
-  }
-
-  try {
-    await PartMeasurementDrawingStorage.initialize();
-    app.log.info('Part measurement drawing storage directories initialized');
-  } catch (error) {
-    app.log.warn({ err: error }, 'Failed to initialize part-measurement drawing storage (may not be critical)');
-  }
-
-  try {
-    await PalletMachineIllustrationStorage.initialize();
-    app.log.info('Pallet machine illustration storage directories initialized');
-  } catch (error) {
-    app.log.warn({ err: error }, 'Failed to initialize pallet machine illustration storage (may not be critical)');
-  }
-  
-  try {
-    await PdfStorage.initialize();
-    app.log.info('PDF storage directories initialized');
-  } catch (error) {
-    app.log.warn({ err: error }, 'Failed to initialize PDF storage directories (may not be critical)');
-  }
-
-  try {
-    await SignageRenderStorage.initialize();
-    app.log.info('Signage render storage initialized');
-  } catch (error) {
-    app.log.warn({ err: error }, 'Failed to initialize signage render storage (may not be critical)');
-  }
-
-  try {
-    await CsvDashboardStorage.initialize();
-    app.log.info('CSV dashboard storage initialized');
-  } catch (error) {
-    app.log.warn({ err: error }, 'Failed to initialize CSV dashboard storage (may not be critical)');
+  const settled = await Promise.allSettled(storageTasks.map((t) => t.run()));
+  for (let i = 0; i < settled.length; i += 1) {
+    const task = storageTasks[i]!;
+    const r = settled[i]!;
+    if (r.status === 'fulfilled') {
+      app.log.info(`${task.label} initialized`);
+    } else {
+      app.log.warn({ err: r.reason }, `${task.label}: init failed (may not be critical)`);
+    }
   }
   
   // サイネージレンダリングスケジューラーを作成（ルートからアクセス可能にするため）

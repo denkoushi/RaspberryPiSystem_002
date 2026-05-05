@@ -10,7 +10,18 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-05（**順位ボード・一覧取得と手動順位の整合（API のみ・Pi5）**・**順位ボード左ペイン・順位ピッカー ビューポートクランプ（Web のみ）**・**FKOJUNST_Status 外部完了**)
+最終更新: 2026-05-05（**Pi5 UX 負荷緩和（API+Web・`improve/pi-ux-phase-c`・Pi5 のみ）**·**順位ボード・一覧取得と手動順位の整合（API のみ・Pi5）**·**順位ボード左ペイン・順位ピッカー ビューポートクランプ（Web のみ）**·**FKOJUNST_Status 外部完了**)
+
+### 補足（2026-05-05: **Pi5 体感遅延・バックグラウンド負荷の緩和（API+Web）**·**`improve/pi-ux-phase-c`**·**Pi5 のみ**）
+
+- **変更概要**: **API**: 起動経路の **ストレージ初期化並列化**、**Prisma 接続 URL のクエリ安定化**（`postgres-url-params`・`statement_timeout` 等の二重付与抑制）、**`/api/system/metrics` のヒープ／イベントループlatency 等**、`network_mode` に応じた **listen bind**、複数アラート／スケジューラ系 **`exclusive-scheduler-tick` による同日 tick 排他**、**リクエストロガーの同期 I/O 回避** 等。**Web**: **axios 既定タイムアウト**（[`api-timeout-ms`](../../apps/web/src/lib/api-timeout-ms.ts)）、**管理画面ポーリング間隔の見直し**（[`admin-polling-intervals`](../../apps/web/src/lib/admin-polling-intervals.ts)）、**React Query の refetch 間隔緩和**（[`hooks.ts`](../../apps/web/src/api/hooks.ts)）、**生産日程ミューテーションの短期クールダウン**。**調査手順の正本**: [raspberry-pi-ux-baseline-methodology.md](../investigation/raspberry-pi-ux-baseline-methodology.md)。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`・**1 台**）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh improve/pi-ux-phase-c infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`a5395af4`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260505-190249-31447`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 完了まで約 576s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 84s**・Tailscale）。
+- **トラブルシュート**: **操作が重いまま** → Pi5 の **`api` / `web` コンテナが当該コミット以降か**（`git log -1`／イメージビルド時刻）、キオスク **[verification-checklist.md](verification-checklist.md) §6.6.4 強制リロード**。**デプロイ完了後に `alerts/alert-*.json` が増える**場合があるが、**成功の正本は `PLAY RECAP` / `*.summary.json` / リモート `exit`**（既存 detach 運用どおり）。
+- **知見（開発）**: **`pnpm --filter @raspi-system/web build`（`tsc -b`）** が **TS6310** で落ちる環境があり得る（参照プロジェクト構成）。**`vite build` と API 系ビルドが通れば**本番 Docker 経路と乖離しないことが多いが、疑う場合は **該当 tsconfig / project references** を確認。
+- **ナレッジ**: [raspberry-pi-ux-baseline-methodology.md](../investigation/raspberry-pi-ux-baseline-methodology.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-05 evening: **キオスク順位ボード・一覧取得と手動順位の整合（API のみ）**·**`feat/leaderboard-priority-selection-consistency`**·**Pi5 のみ**）
 

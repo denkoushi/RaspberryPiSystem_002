@@ -10,6 +10,7 @@ import {
   postDgxResourceAction,
 } from '../../../api/dgx-resource';
 import { useConfirm } from '../../../contexts/ConfirmContext';
+import { POLL_MS } from '../../../lib/admin-polling-intervals';
 
 import { DgxResourceKpiStrip } from './DgxResourceKpiStrip';
 import { DgxResourcePolicyPanel } from './DgxResourcePolicyPanel';
@@ -112,12 +113,12 @@ export function DgxResourceDashboard() {
   const overviewQuery = useQuery({
     queryKey: dgxResourceQueryKeys.overview,
     queryFn: fetchDgxResourceOverview,
-    refetchInterval: 5000,
+    refetchInterval: POLL_MS.dgxResourceDashboardPrimary,
   });
   const eventsQuery = useQuery({
     queryKey: dgxResourceQueryKeys.events(24),
     queryFn: () => fetchDgxResourceEvents(24),
-    refetchInterval: 5000,
+    refetchInterval: POLL_MS.dgxResourceDashboardPrimary,
   });
 
   const mutateAction = useMutation({

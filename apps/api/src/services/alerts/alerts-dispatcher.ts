@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { logger } from '../../lib/logger.js';
+import { runExclusiveSchedulerTick } from '../../lib/exclusive-scheduler-tick.js';
 import { loadAlertsDispatcherConfig, type AlertsRouteKey, resolveRouteKey } from './alerts-config.js';
 import { sendSlackWebhook } from './slack-sink.js';
 
@@ -76,6 +77,7 @@ function shouldRetry(
 export class AlertsDispatcher {
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
+  private readonly tickExclusive = { locked: false };
 
   /**
    * Run dispatcher once using current configuration.
@@ -106,10 +108,16 @@ export class AlertsDispatcher {
     );
 
     // First run immediately, then on interval
-    await this.runOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDispatcher] Initial run failed'));
+    await this.guardedRunOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDispatcher] Initial run failed'));
     this.timer = setInterval(() => {
-      this.runOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDispatcher] Run failed'));
+      void this.guardedRunOnce(config).catch((err) => logger?.warn({ err }, '[AlertsDispatcher] Run failed'));
     }, config.intervalSeconds * 1000);
+  }
+
+  private async guardedRunOnce(config: Awaited<ReturnType<typeof loadAlertsDispatcherConfig>>): Promise<void> {
+    await runExclusiveSchedulerTick(this.tickExclusive, logger, 'AlertsDispatcher', async () => {
+      await this.runOnce(config);
+    });
   }
 
   async stop(): Promise<void> {
