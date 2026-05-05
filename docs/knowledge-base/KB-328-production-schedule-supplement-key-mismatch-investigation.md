@@ -27,6 +27,7 @@ category: knowledge-base
 - **原因（確定）**: `ProductionScheduleOrderSupplement` は **本体 winner 行 ID（`csvDashboardRowId`）に 1:1**。既存補助行が **すでにその winner 行を指している**のに、DB 上の **`productNo` / `resourceCd` / `processOrder` が補助CSVの3キーと一致しない**と、同期が **新規 create** に回り、同じ `csvDashboardRowId` を再挿入しようとして衝突する（過去データ不整合・上流キー変更・手動修正の残骸などで起こり得る）。
 - **Fix（コード）**: `buildReplacementCreateInputs` で **3キー一致の既存が無くても**、`winnerRowId` に紐づく既存行があれば **update にフォールバック**し、**CSV 側の3キーと計画列で上書き**する（`skipDuplicates` による黙殺はしない）。実装: [`order-supplement-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)。回帰: [`order-supplement-sync.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts)。
 - **運用TS**: 根本原因が **本体と補助の3キーずれ**の場合は、従来どおり **上流CSV整合**・**KB-328 照合節**で追う（本修正は DB 整合の修復と取込失敗回避が主目的）。
+- **本番反映（2026-05-06）**: Pi5 **`raspberrypi5` のみ**・`./scripts/update-all-clients.sh main … --limit raspberrypi5 --detach --follow`・**Detach Run ID** **`20260505-223440-27566`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）·**Phase12** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **61s**）。正本: [deployment.md](../guides/deployment.md)（2026-05-06 部品納期個数補助項）·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress。
 
 ## 着手日が「急に `-` に戻る」系の切り分け（2026-05-01 追補）
 

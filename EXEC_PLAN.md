@@ -9,7 +9,7 @@
 
 ## Progress
 
-- [x] (2026-05-06) **部品納期個数補助同期の `P2002`（`csvDashboardRowId`）修復**·**`fix/order-supplement-winner-row-unique-fallback`**（**`main`**: [PR #256](https://github.com/denkoushi/RaspberryPiSystem_002/pull/256) **squash merge**・**`main` 先端**は **`a204da0a`** を正とする）。**原因**: 既存 `ProductionScheduleOrderSupplement` が **同一 winner `csvDashboardRowId`** を指すが **3キー**（`ProductNo`/`FSIGENCD`/`FKOJUN`）が CSV とずれ、`createMany` が一意制約で失敗。**Fix**: その場合は **update で CSV 3キーと計画列を上書き**（`skipDuplicates` による黙殺はしない）。**実装**: [`order-supplement-sync.pipeline.ts`](./apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)·[`order-supplement-sync.service.test.ts`](./apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts)。**ナレッジ**: [KB-328 §P2002](./docs/knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id)·[csv-import-export.md](./docs/guides/csv-import-export.md) §F·[KB-297 §差分同期](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)。**本番**: **`raspberrypi5` のみ** API 反映推奨（`./scripts/update-all-clients.sh main … --limit raspberrypi5`）。**残確認**: 反映後に補助スケジュール手動実行が **P2002 なし**で完走すること。
+- [x] (2026-05-06) **部品納期個数補助同期の `P2002`（`csvDashboardRowId`）修復**·**`fix/order-supplement-winner-row-unique-fallback`**（**`main`**: [PR #256](https://github.com/denkoushi/RaspberryPiSystem_002/pull/256) **squash merge**・**`main` 先端**は **`a204da0a`** を正とする）。**原因**: 既存 `ProductionScheduleOrderSupplement` が **同一 winner `csvDashboardRowId`** を指すが **3キー**（`ProductNo`/`FSIGENCD`/`FKOJUN`）が CSV とずれ、`createMany` が一意制約で失敗。**Fix**: その場合は **update で CSV 3キーと計画列を上書き**（`skipDuplicates` による黙殺はしない）。**実装**: [`order-supplement-sync.pipeline.ts`](./apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts)·[`order-supplement-sync.service.test.ts`](./apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts)。**ナレッジ**: [KB-328 §P2002](./docs/knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id)·[csv-import-export.md](./docs/guides/csv-import-export.md) §F·[KB-297 §差分同期](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#order-supplement-incremental-sync-2026-05-01)。**本番（Pi5 のみ）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach Run ID**（`ansible-update-`）: **`20260505-223440-27566`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 818s**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 61s**・Tailscale）。**運用スモーク（残）**: 補助 CSV インポートスケジュールを **手動実行**し **`P2002` 再発なし**を確認（履歴・API ログ）。**記録**: [deployment.md](./docs/guides/deployment.md)（2026-05-06 部品納期個数補助項）·[INDEX.md](./docs/INDEX.md)。
 
 - [x] (2026-05-06) **Phase12 広域実機検証の再実行 + Zero2W 断片の限定 NOPASSWD をサンプルへ固定**·**アプリ無変更**。**検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 74s**・Tailscale）。**標本**: **`infrastructure/ansible/inventory-zero2w-edge-fragment.sample.yml`** に **`sudo_nopasswd_commands`**（**工場 Pi4 と同趣旨**・**status-agent / haizen-agent の systemctl**・**reboot/poweroff**。**kiosk-browser 行はキオスク無しのため無し**）。**目的**: **`Missing sudo password`** 回避を **`ansible_become_password` 依存から `client` ロールの限定 sudoers へ**寄せる（平文パスワードをコマンドラインに渡さない）。**ナレッジ**: [KB-367](./docs/knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[KB-368](./docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[deployment.md](./docs/guides/deployment.md)（2026-05-06 項）·[zero2w-tanaban-edge-setup.md](./docs/runbooks/zero2w-tanaban-edge-setup.md)·[INDEX.md](./docs/INDEX.md)。
 
@@ -2092,15 +2092,14 @@
 
 ## Next Steps（将来のタスク）
 
-### 部品納期個数補助 — `P2002` 修正の本番反映確認（2026-05-06）
+### 部品納期個数補助 — `P2002` 修正の運用スモーク（2026-05-06）
 
-**概要**: [KB-328 §P2002](./docs/knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id) の修正を **`main` 取り込み後**、**Pi5 API のみ**デプロイする。
+**概要**: [KB-328 §P2002](./docs/knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id) の修正は **Pi5 へデプロイ済み**（`deployment.md` 2026-05-06 部品納期個数補助項・Detach **`20260505-223440-27566`**）。**Phase12** `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 61s**）まで完了。
 
 **候補タスク**:
 
-1. `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow` で API 反映（標準手順は [deployment.md](./docs/guides/deployment.md)）。
-2. 管理コンソールから補助用 CSV インポートスケジュールを **手動実行**し、**`Unique constraint failed (csvDashboardRowId)` が再発しない**ことを確認（履歴・API ログ）。
-3. まだ `unmatched` が多い行は、従来どおり **本体CSVと補助3キー整合**（KB-328 本体節）で切り分け。
+1. 管理コンソールから補助用 CSV インポートスケジュールを **手動実行**し、**`Unique constraint failed (csvDashboardRowId)` が再発しない**ことを確認（履歴・API ログ）。
+2. まだ `unmatched` が多い行は、従来どおり **本体CSVと補助3キー整合**（KB-328 本体節）で切り分け。
 
 ### Raspberry Pi UX Phase C — 効果確認と開発フロー（2026-05-05）
 
