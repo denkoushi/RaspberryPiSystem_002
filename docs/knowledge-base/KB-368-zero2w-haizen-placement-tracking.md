@@ -2,7 +2,7 @@
 title: 'KB-368: Zero 2 W 配膳追跡（haizen API・エージェント・キオスク表示）'
 tags: [Zero2W, mobile-placement, 配膳, HID, API]
 audience: [開発者, 運用者]
-last-verified: 2026-05-05
+last-verified: 2026-05-06
 category: knowledge-base
 ---
 
@@ -92,6 +92,11 @@ category: knowledge-base
   - 対処: `-e ansible_become_password='...'` を付与し、断片インベントリへ **`haizen_agent_hid_device: /dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd`** を追記して再実行。
   - 最終: playbook **成功**（`ok=81 changed=11 failed=0 unreachable=0`）、`haizen-agent.service` / `status-agent.timer` とも **active + enabled**。
 - **Zero2W E2E（Pi5 実行）**: `PATCH /api/mobile-placement/haizen-preset-shelf` → `POST /api/mobile-placement/haizen-scans` → `GET /api/mobile-placement/haizen-current?shelfCodeRaw=西-北-01&limit=5` で、Zero2W キー (`client-key-zero2w-tanaban01-edge1`) の新規イベント (`eventId`) と `rows` 反映を確認。`UNRESOLVED` は日程未一致時の契約どおり。
+
+## 運用・ドキュメント整合（2026-05-06）
+
+- **限定 NOPASSWD（推奨・再発防止）**: Pi5 からの **`ansible_become_password`** 運用はログ・シェル履歴に残り得るため、**断片へ `sudo_nopasswd_commands`** を追加し **工場 Pi4 と同趣旨**に限定 sudoers を配る方法を **サンプル断片**に固定した（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・`inventory-zero2w-edge-fragment.sample.yml`）。HID デバイスパスは **`haizen_agent_hid_device`** のまま実機に合わせる。
+- **広域健全性**: 当該運用整理後、**コード変更なし**で `./scripts/deploy/verify-phase12-real.sh` を再実行し **PASS 43 / WARN 0 / FAIL 0**（**約 74s**・Tailscale）を確認（[deployment.md](../guides/deployment.md) 2026-05-06 項）。
 
 ## References
 

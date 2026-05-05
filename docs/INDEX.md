@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-06）
+
+- **Phase12 広域実機検証（再実行）+ Zero2W 断片の限定 NOPASSWD 標本化**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **74s**・Tailscale）。**断片サンプル**（`inventory-zero2w-edge-fragment.sample.yml`）へ **`sudo_nopasswd_commands`** を追加（**Pi4 と同趣旨**・**status-agent / haizen-agent**・**reboot/poweroff**）。[deployment.md](./guides/deployment.md)（2026-05-06 項）·[KB-367](./knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[KB-368](./knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
+
 ### 🆕 最新アップデート（2026-05-05）
 
 - **`FKOJUNST_Status` 外部完了＝dedupe キー消失差分（Pi5 のみ本番）·ブランチ `feat/fkojunst-status-disappearance-external-completion`·代表 `6d9c3549`**: [KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)·[deployment.md](./guides/deployment.md)（2026-05-04 / **2026-05-05 本番反映** 項）。Detach Run ID **`20260505-072811-487`**（`PLAY RECAP` **`ok=134` `changed=4` `failed=0`**・Pi4／Pi3 **no hosts matched**）。**実機** `./scripts/deploy/verify-phase12-real.sh` **43/0/0**（約 **82s**）。**`main`**: [PR #250](https://github.com/denkoushi/RaspberryPiSystem_002/pull/250) squash merge。

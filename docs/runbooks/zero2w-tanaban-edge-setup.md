@@ -1,6 +1,6 @@
 # Zero 2 W（棚番エッジ）セットアップ Runbook
 
-最終更新: 2026-05-05（**Pi5→Zero SSH タイムアウトのトラブルシュート追記**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）
+最終更新: 2026-05-06（**断片 `sudo_nopasswd_commands`（Pi4 準拠の限定 NOPASSWD）**・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）
 
 ## 目的
 
@@ -74,7 +74,7 @@ ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/zero2w-edge-setup.yml \
 - 第 1 インベントリで `group_vars/all.yml`（`api_base_url` 等）を読み込む。
 - 第 2 インベントリで **Zero 2 W のホスト変数と到達先 IP** を足すだけなので、**工場用 `inventory.yml` に自宅端末を恒久追加しない**運用ができる。
 - **リポジトリ追従ブランチ**: playbook は環境変数 **`ANSIBLE_REPO_VERSION`**（未設定時は **`main`**）で `git checkout` / `reset` する。`clients/haizen-agent/` を含む変更を Zero に載せるまで **`feat/...`** 等を明示し、**`main` にマージ済みなら `main` のみ**でよい。
-- **sudo パスワード**: Zero の sudo が **対話パスワード必須**のとき、Pi5 からは **`ansible-playbook ... -e ansible_become_password='…'`** で通すか、Zero に **限定 NOPASSWD**（一時）を入れる。詳細は [KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)。
+- **sudo パスワード / 限定 NOPASSWD**: Zero の sudo が **対話パスワード必須**のとき、Pi5 からは **`ansible-playbook ... -e ansible_become_password='…'`** で通す（**平文が履歴に残り得る**）。**推奨（2026-05-06）**: 断片に **`sudo_nopasswd_commands`** を追加し、**工場 Pi4 と同趣旨**に **`client` ロール**が **`/etc/sudoers.d/…`** を配布する（**status-agent / haizen-agent の `systemctl`**・**reboot/poweroff**。キオスク browser 無しのため **kiosk-browser 行は不要**）。**例は** `inventory-zero2w-edge-fragment.sample.yml`。**検証**: Zero 上で **`sudo -n true`**、Pi5 から **`ansible … -m ping -b`**。詳細は [KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)。
 
 ## 登録用 API キー（例）
 
@@ -159,6 +159,7 @@ curl -sk "https://<Pi5-Tailscale-IP>/api/mobile-placement/registered-shelves" \
 - **記録**: [KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)（**become**・**NOPASSWD**）。
 - **運用メモ（2026-05-05）**: `zero2w-edge-setup.yml` は `become: true` のため、Zero が sudo パスワード必須設定なら  
   `ansible-playbook ... -e ansible_become_password='...'` を明示する（平文引数の扱いに注意）。
+- **再発防止（2026-05-06）**: 断片へ **`sudo_nopasswd_commands`** を足し、**サンプル断片**どおり **`client` ロール経由で限定 sudoers を配布**する。適用後は **`ansible_become_password` なし**で playbook を再走できる。広域健全性は `./scripts/deploy/verify-phase12-real.sh` で **PASS 43 / WARN 0 / FAIL 0** を再確認済み（記録は [deployment.md](../guides/deployment.md)）。
 
 ### `haizen-agent` が `inactive` になる（ログに `hid=stdin`）
 

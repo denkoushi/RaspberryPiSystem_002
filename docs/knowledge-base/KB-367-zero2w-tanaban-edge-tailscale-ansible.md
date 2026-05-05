@@ -1,6 +1,6 @@
 # KB-367: Zero 2 W 棚番エッジ — Tailscale・Ansible・status-agent（TLS・git）実地トラブルシュート
 
-**記録日**: 2026-05-04  
+**記録日**: 2026-05-04（**2026-05-06 追記**: 断片 `sudo_nopasswd_commands` と Phase12 再検証との整合）
 **Status**: 記録済み・自宅検証端末で復旧・運用手順は Runbook へ集約
 
 ## Context
@@ -28,6 +28,7 @@
 - **CONFIRMED（TLS）**: `status-agent` の **`TLS_SKIP_VERIFY`**（Ansible: `status_agent_tls_skip_verify`）が **`0`** のままだと、Pi 5 の **自己署名証明書を検証できず** HTTPS 送出が失敗する。
 - **CONFIRMED（curl）**: シェル内の `"` / `'` の **ネストが深い**と JSON が壊れる。**here-doc** や Pi 5 上で **一時ファイルに JSON を書いてから `curl -d @file`** が安全。
 - **CONFIRMED（sudo）**: Ansible の become が **対話パスワード**を要求する Zero では、**`ansible_become_password` を渡す**か Zero 上で **NOPASSWD（一時）** を入れないと playbook が最初の root タスクで止まる。
+- **CONFIRMED（sudo・Pi4 準拠 2026-05-06）**: **`client` ロール**はホスト変数 **`sudo_nopasswd_commands`** を **`sudoers-client.j2`** で **`/etc/sudoers.d/…`** に書く。工場 **Pi4** と同趣旨に、Zero2W 断片へ **限定コマンド列**（**`status-agent` / `haizen-agent` の `systemctl`**・**reboot/poweroff**。キオスク無しのため **kiosk-browser 行は不要**）を載せると、**`-e ansible_become_password` なし**で **`zero2w-edge-setup.yml`** を再実行できる。**サンプル断片**（`inventory-zero2w-edge-fragment.sample.yml`）に例をコミット済み。
 - **CONFIRMED（git 権限）**: **common ロール**は root でリポジトリを同期するが、作業ディレクトリの **所有者が期待とずれる**と、後続の **手動 `git`** が `Permission denied` になる。
 - **CONFIRMED（haizen-agent CHDIR）**: **`zero2w-edge-setup.yml` の既定 `repo_version` は `main`**。**haizen-agent は feature ブランチ導入後に `clients/haizen-agent` が追加**されるため、`main` のみのクローンでは **ディレクトリ不在**。
 - **CONFIRMED（haizen-agent conf）**: **`install -m 600`** 等で **`/etc/raspi-haizen-agent.conf` が root のみ読取**のままだと、**User= 通常ユーザー**の systemd ユニットが **開けない**。
@@ -61,7 +62,7 @@
 
 ## Prevention
 
-- Runbook [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md) に **手順・トラブルシュート**を集約。**サンプル断片** `inventory-zero2w-edge-fragment.sample.yml` には **`status_agent_tls_skip_verify: "1"`** を初期値として記載。
+- Runbook [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md) に **手順・トラブルシュート**を集約。**サンプル断片** `inventory-zero2w-edge-fragment.sample.yml` には **`status_agent_tls_skip_verify: "1"`** を初期値として記載し、**`sudo_nopasswd_commands`** の例を載せる（**Pi5 からの非対話 become**用。秘密はリポジトリに書かない）。
 - **`inventory-zero2w-edge-fragment.yml`**（実 IP を含む）を **`.gitignore`** でコミットから除外。
 - Tailscale の **端末タグ**は ACL と整合させる（検証端末は **`tag:signage`** で Pi 5 から SSH 可能な経路に載せた例あり。**`tag:kiosk` 前提の手順とは別**であることに注意）。
 - **`haizen-agent`**: [KB-368](./KB-368-zero2w-haizen-placement-tracking.md) の **実機検証**と **systemd / 権限**を参照。将来は **Ansible でユニットと conf を配布**できると手戻りが減る。
