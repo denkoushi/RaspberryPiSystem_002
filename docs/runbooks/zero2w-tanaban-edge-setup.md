@@ -157,6 +157,16 @@ curl -sk "https://<Pi5-Tailscale-IP>/api/mobile-placement/registered-shelves" \
 ### Ansible: `Missing sudo password`
 
 - **記録**: [KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)（**become**・**NOPASSWD**）。
+- **運用メモ（2026-05-05）**: `zero2w-edge-setup.yml` は `become: true` のため、Zero が sudo パスワード必須設定なら  
+  `ansible-playbook ... -e ansible_become_password='...'` を明示する（平文引数の扱いに注意）。
+
+### `haizen-agent` が `inactive` になる（ログに `hid=stdin`）
+
+- **症状**: `haizen-agent.service` は `ExecStart` を実行して終了コード 0 だが、Ansible の「active 判定」で失敗する。ログに `haizen-agent start ... hid=stdin` が出る。
+- **原因**: `haizen_agent_hid_device` 未設定で stdin フォールバックになり、systemd 常駐サービスとして維持されない。
+- **対処**: 断片インベントリに `haizen_agent_hid_device` を設定する。例:  
+  `haizen_agent_hid_device: "/dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd"`  
+  （`ls /dev/input/by-id/*-event-kbd` で実機の安定パスを確認）。
 
 ### `haizen-agent`: `CHDIR`（WorkingDirectory が無い）
 
@@ -173,6 +183,7 @@ curl -sk "https://<Pi5-Tailscale-IP>/api/mobile-placement/registered-shelves" \
 - **症状**: `zero2w-edge-setup.yml` の先頭で **`zero2w-tanaban01` が `UNREACHABLE`**。メッセージ例: **`Failed to connect to the host via ssh: … port 22: Connection timed out`**。
 - **原因（典型）**: Zero が **オフ／未接続**、**Tailscale 未参加**、断片の **`ansible_host` が古い 100.x**（Zero で `tailscale ip -4` と突き合わせ）、**Pi5→client の ACL で 22/tcp が拒否**、現場 LAN 経路の問題。
 - **対処**: 上記 **「到達確認の順序」**（Zero で 100.x 取得 → **Pi5 から** `ssh -o BatchMode=yes zero2w-user@100.x 'echo OK'`）を満たしてから playbook を再実行。**2026-05-05 実績**: `feat/zero2w-haizen-edge-hardening` 反映後の Pi5 本番は成功したが、当該 Zero は Pi5 から **未到達のまま playbook 未完**となった（詳細・Run ID は [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）。
+- **追記（2026-05-05）**: Zero 再起動後に Pi5→Zero SSH は復旧し、`ansible_become_password` + `haizen_agent_hid_device` 設定で playbook 完走（`failed=0`）を確認。
 
 ## 関連ドキュメント
 

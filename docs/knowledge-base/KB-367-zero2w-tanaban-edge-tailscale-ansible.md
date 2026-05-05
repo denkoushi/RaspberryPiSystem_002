@@ -19,6 +19,7 @@
 6. Zero の **`git checkout` / `git reset`** が **`Permission denied`**（`/opt` 下のリポジトリが **root 所有**のまま、通常ユーザーが `git` で書けない）。
 7. **`haizen-agent.service`** が **`status=200/CHDIR`** で落ちる（**`WorkingDirectory=/opt/.../clients/haizen-agent` が存在しない**。ブランチが古い等）。
 8. **`haizen-agent`** が **`PermissionError: ... '/etc/raspi-haizen-agent.conf'`**（設定を **`root:root` + `600`** のまま **非 root ユーザー**で動かしている）。
+9. `haizen_agent_hid_device` 未設定時、`haizen-agent` が **`hid=stdin`** で起動して直後に終了し、Ansible の再起動検証で **`inactive`** 扱いになる。
 
 ## Investigation
 
@@ -30,6 +31,7 @@
 - **CONFIRMED（git 権限）**: **common ロール**は root でリポジトリを同期するが、作業ディレクトリの **所有者が期待とずれる**と、後続の **手動 `git`** が `Permission denied` になる。
 - **CONFIRMED（haizen-agent CHDIR）**: **`zero2w-edge-setup.yml` の既定 `repo_version` は `main`**。**haizen-agent は feature ブランチ導入後に `clients/haizen-agent` が追加**されるため、`main` のみのクローンでは **ディレクトリ不在**。
 - **CONFIRMED（haizen-agent conf）**: **`install -m 600`** 等で **`/etc/raspi-haizen-agent.conf` が root のみ読取**のままだと、**User= 通常ユーザー**の systemd ユニットが **開けない**。
+- **CONFIRMED（haizen-agent stdin fallback）**: HID デバイス未指定だと service 起動ログに `hid=stdin` が出て常駐せず終了する。`haizen_agent_hid_device` に `/dev/input/by-id/*-event-kbd` を指定すると `active` を維持できる。
 
 ## Root cause
 
@@ -55,6 +57,7 @@
   `ANSIBLE_REPO_VERSION='<対象ブランチ>' ansible-playbook playbooks/zero2w-edge-setup.yml …`  
   （**マージ後は `main`**）。Mac から Zero へ **Ansible を直接当てない**（ACL・経路は [tailscale-policy.md](../security/tailscale-policy.md)）。
 - **`haizen-agent` 設定ファイル**: **`chown root:<実行ユーザー>`**、`chmod 640`（実行ユーザーが **グループ読取**で開ける）。
+- **`haizen-agent` HID**: 断片インベントリへ **`haizen_agent_hid_device`** を設定（例: `"/dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd"`）。`ls /dev/input/by-id/*-event-kbd` で実機パスを確認してから再適用。
 
 ## Prevention
 

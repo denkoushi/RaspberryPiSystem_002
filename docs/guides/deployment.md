@@ -10,17 +10,22 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-05（**Zero2W 棚番エッジ hardening（Pi5 は本番適用済・Zero は Pi5 SSH 未到達で playbook 未完）**·**Pi5 UX 負荷緩和（API+Web・`improve/pi-ux-phase-c`・Pi5 のみ）**·**順位ボード関連**·**FKOJUNST_Status 外部完了**)
+最終更新: 2026-05-05（**Zero2W 棚番エッジ hardening（Pi5 + Zero2W 復旧完了）**·**Pi5 UX 負荷緩和（API+Web・`improve/pi-ux-phase-c`・Pi5 のみ）**·**順位ボード関連**·**FKOJUNST_Status 外部完了**)
 
-### 補足（2026-05-05 late · **Zero2W 棚番エッジ hardening**·**`feat/zero2w-haizen-edge-hardening`**·**Pi5 のみ標準デプロイ**·**Zero2W は未定**）
+### 補足（2026-05-05 late · **Zero2W 棚番エッジ hardening**·**`feat/zero2w-haizen-edge-hardening`**·**Pi5 のみ標準デプロイ → Zero2W 復旧完了**）
 
 - **変更概要**: `haizen-*` API 契約の整理（例: **`shelfCodeRaw`／`haizen-current`**・統合テストの **`errorCode`**）、Web クライアント追随、**`clients/haizen-agent`** の **`HAIZEN_TLS_VERIFY_MODE`**、Ansible **`haizen-agent.yml`**・**`/etc/raspi-haizen-agent.conf` を `0640`**（**`x-client-key` の world-readable 化を避ける**）等。**Pi3 は対象外**（本ロールアウトで **Pi3 専用手順は未実施で正**）。
 - **対象ホスト（標準 `update-all-clients.sh`）**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**。
 - **標準コマンド（Pi5）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/zero2w-haizen-edge-hardening infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 反映後は** `main`）。
 - **本番デプロイ（Pi5・実績）**: 代表コミット **`1237f37a`**。**Detach Run ID** **`20260505-201203-6644`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 完了まで約 678s**）。
 - **CI（feature push）**: GitHub Actions Run **`25372469180`** **success**（所要 **約 11m**）。
-- **Zero2W（`zero2w-tanaban01`・専用 playbook）**: Pi5 上で `ANSIBLE_REPO_VERSION=feat/zero2w-haizen-edge-hardening ansible-playbook playbooks/zero2w-edge-setup.yml … --limit zero2w-tanaban01` を試行したところ、**断片の `ansible_host`（100.x）へ SSH :22 が Pi5 からタイムアウト**し **`UNREACHABLE`**（**2026-05-05 時点・端末オフライン／ACL／IP 取り違えのいずれかを疑う**）。**復旧後** [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md) の **到達確認（Pi5→Zero `BatchMode` SSH）** のあと **同 playbook を再実行**。
-- **実機（自動・広域）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 102s**・Tailscale）。**Zero 上の `haizen-agent` 実機確認は上記 SSH 復旧後**。
+- **Zero2W（`zero2w-tanaban01`・専用 playbook）**:
+  - 初回は **Pi5→Zero SSH :22 timeout** で `UNREACHABLE`（端末再起動前）。
+  - 端末再起動後、Pi5 からの **`ssh` / `ansible ping` は復旧**。ただし playbook 再実行で **`Missing sudo password`** と **`haizen-agent` の `hid=stdin`（service が inactive）** が判明。
+  - 対処: `ansible_become_password` を付与し、断片インベントリへ **`haizen_agent_hid_device: /dev/input/by-id/usb-TMC_HIDKeyBoard_1234567890abcd-event-kbd`** を追加して再適用。
+  - 最終結果: `zero2w-edge-setup.yml` **成功**（`ok=81 changed=11 failed=0 unreachable=0`）。
+- **実機（自動・広域）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 102s**・Tailscale）。
+- **実機（Zero2W E2E）**: Pi5 上 `PATCH /haizen-preset-shelf` → `POST /haizen-scans` → `GET /haizen-current?shelfCodeRaw=西-北-01` を実行し、Zero2W キー（`client-key-zero2w-tanaban01-edge1`）で **イベント作成と一覧反映を確認**。`resolutionStatus=UNRESOLVED` は日程未一致時の仕様どおり。
 - **ナレッジ**: [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)·[mobile-placement.md](../api/mobile-placement.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-05: **Pi5 体感遅延・バックグラウンド負荷の緩和（API+Web）**·**`improve/pi-ux-phase-c`**·**Pi5 のみ**）
