@@ -128,10 +128,20 @@ const haizenPresetShelfBodySchema = z.object({
   shelfCodeRaw: z.string().min(1).max(200)
 });
 
-const haizenCurrentQuerySchema = z.object({
-  shelfCode: z.string().max(200).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional()
-});
+const haizenCurrentQuerySchema = z
+  .object({
+    /** @deprecated 内部名に合わせて `shelfCodeRaw` を推奨 */
+    shelfCode: z.string().max(200).optional(),
+    shelfCodeRaw: z.string().max(200).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional()
+  })
+  .transform((q) => {
+    const combined = (q.shelfCodeRaw ?? q.shelfCode)?.trim();
+    return {
+      shelfCodeRaw: combined && combined.length > 0 ? combined : undefined,
+      limit: q.limit
+    };
+  });
 
 const haizenTargetDeviceParamsSchema = z.object({
   clientDeviceId: z.string().min(1)
@@ -202,7 +212,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     await requireClientDevice(request.headers['x-client-key']);
     const q = haizenCurrentQuerySchema.parse(request.query);
     return listHaizenCurrentPlacements({
-      shelfCodeRaw: q.shelfCode,
+      shelfCodeRaw: q.shelfCodeRaw,
       limit: q.limit
     });
   });

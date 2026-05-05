@@ -37,6 +37,8 @@ kiosk_full_url: "{{ server_base_url }}/kiosk"
 # ベストプラクティス: APIはDocker内部ネットワーク上でのみ8080を待ち受け、外部アクセスはCaddy(443)経由で行う
 # クライアント（Pi3/Pi4）のエージェントは https://<Pi5>/api を使用する
 api_base_url: "{{ server_base_url }}/api"
+# haizen-agent は api_client 側で `/api/mobile-placement/...` を付与するため、ベースはサーバー**オリジン**（/api なし）
+haizen_agent_api_base_url: "{{ server_base_url }}"
 websocket_agent_url: "ws://{{ server_ip }}:7071/stream"
 
 # APIヘルスチェックURL: Caddy経由（HTTPS 443）でアクセス

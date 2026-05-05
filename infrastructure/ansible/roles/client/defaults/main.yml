@@ -3,5 +3,9 @@ repo_path: /opt/RaspberryPiSystem_002
 client_default_services_to_restart:
   - status-agent.service
   - status-agent.timer
+haizen_agent_enabled: false
+haizen_agent_install_evdev: true
+# insecure: 自己署名 Pi5 TLS 向け / system: OS 検証（Caddy 等で正規証明書を載せた環境）
+haizen_agent_tls_verify_mode: "insecure"
 client_sudo_user: "{{ ansible_user | default('') }}"
 client_sudo_nopasswd_commands: "{{ sudo_nopasswd_commands | default([]) }}"

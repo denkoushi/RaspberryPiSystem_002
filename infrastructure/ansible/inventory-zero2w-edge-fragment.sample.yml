@@ -25,6 +25,13 @@ all:
       status_agent_location: "棚番エッジ（自宅検証・Zero2W）"
       # 既存 Pi5 は自己署名証明書運用のため初期導入は 1 を前提
       status_agent_tls_skip_verify: "1"
+      # 棚番スキャン送信エージェント（リポジトリ clients/haizen-agent）。不要なら false のまま
+      haizen_agent_enabled: true
+      haizen_agent_client_key: "client-key-zero2w-tanaban01-edge1"
+      haizen_agent_tls_verify_mode: "insecure"
+      # 例: USB HID バーコード（実機では evdev デバイスパスを指定）
+      # haizen_agent_hid_device: "/dev/input/event0"
       services_to_restart:
         - status-agent.service
         - status-agent.timer
+        - haizen-agent.service

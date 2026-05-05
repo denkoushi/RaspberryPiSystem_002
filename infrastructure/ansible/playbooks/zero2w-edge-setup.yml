@@ -25,6 +25,7 @@
     backup_service_files:
       - status-agent.service
       - status-agent.timer
+      - haizen-agent.service
   pre_tasks:
     - name: Run common shared preparation tasks
       ansible.builtin.import_role:

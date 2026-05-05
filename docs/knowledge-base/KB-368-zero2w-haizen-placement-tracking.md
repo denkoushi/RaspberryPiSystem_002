@@ -2,7 +2,7 @@
 title: 'KB-368: Zero 2 W 配膳追跡（haizen API・エージェント・キオスク表示）'
 tags: [Zero2W, mobile-placement, 配膳, HID, API]
 audience: [開発者, 運用者]
-last-verified: 2026-05-04
+last-verified: 2026-05-05
 category: knowledge-base
 ---
 
@@ -24,9 +24,9 @@ category: knowledge-base
 | メソッド | パス | 説明 |
 |--------|------|------|
 | GET | `/api/mobile-placement/haizen-preset-shelf` | 端末の棚プリセット取得 |
-| PATCH | `/api/mobile-placement/haizen-preset-shelf` | `{ "shelfCodeRaw": "西-北-01" }` |
+| PATCH | `/api/mobile-placement/haizen-preset-shelf` | `{ "shelfCodeRaw": "西-北-01" }`。**棚マスタ未登録棚は拒否**（`HAIZEN_PRESET_SHELF_NOT_REGISTERED`）。キオスク経由の target 更新と **同一のマスタ規則** |
 | POST | `/api/mobile-placement/haizen-scans` | `{ "manufacturingOrderBarcodeRaw", "distributionNumber?", "rawBarcode?" }` |
-| GET | `/api/mobile-placement/haizen-current` | `shelfCode?`, `limit?`（省略時は全棚から最新 N 件） |
+| GET | `/api/mobile-placement/haizen-current` | クエリ **`shelfCodeRaw`**（推奨）または **`shelfCode`**（後方互換）、`limit?`（省略時は全棚から最新 N 件） |
 | GET | `/api/mobile-placement/haizen-target-devices` | キオスク設定用。**`apiKey` または `name` に `zero2w` を含む** `ClientDevice` のみ。要素は `id` / `name` / `location` / `shelfCodeRaw` / `lastSeenAt`（**`apiKey` は返さない**） |
 | PUT | `/api/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf` | `{ "shelfCodeRaw" }`。**対象は上記と同様の Zero2W 候補に限定**。**棚マスタ未登録棚は拒否**（`HAIZEN_PRESET_SHELF_NOT_REGISTERED`） |
 
@@ -40,8 +40,9 @@ category: knowledge-base
 
 ## エッジエージェント
 
-- **`clients/haizen-agent/`**: `evdev` または stdin フォールバック、分配番号ゲート、分類、HTTP POST。
-- **注意**: 分配番号は **短い数値スキャンをヒューリスティック**で認識する。現場のチケット／スキャン値と **衝突し得る**ため、ログとサンプルで早期に正規化を確認すること（README 参照）。
+- **`clients/haizen-agent/`**: `evdev` または stdin フォールバック、分配番号ゲート、分類、HTTP POST。Ansible は **`roles/client/tasks/haizen-agent.yml`**（`haizen_agent_enabled`）で **unit + `/etc/raspi-haizen-agent.conf`** を配布。
+- **TLS**: 設定 **`HAIZEN_TLS_VERIFY_MODE`**（`insecure` \| `system`）と、互換の **`TLS_SKIP_VERIFY`**（`1` = 検証スキップ）。運用は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md) 参照。
+- **注意**: 分配番号は **短い数値スキャンをヒューリスティック**で認識する。現場のチケット／スキャン値と **衝突し得る**ため、ログとサンプルで早期に正規化を確認すること（クライアント README 参照）。
 
 ## 調査・テスト
 
@@ -60,7 +61,7 @@ category: knowledge-base
    `POST /api/mobile-placement/haizen-scans`、例 `{ "manufacturingOrderBarcodeRaw": "E2E-HAIZEN-20260504", "rawBarcode": "E2E-HAIZEN-20260504" }`。  
    **200**、`resolutionStatus` が `RESOLVED` または `UNRESOLVED`（日程未一致時は後者で正常）、`current` に同梱されること。
 
-3. **一覧**: `GET /api/mobile-placement/haizen-current?shelfCode=<URLエンコードした棚>&limit=5` で **当該製造 order 行が返る**こと。
+3. **一覧**: `GET /api/mobile-placement/haizen-current?shelfCodeRaw=<URLエンコードした棚>&limit=5`（後方互換として **`shelfCode=`** も可）で **当該製造 order 行が返る**こと。
 
 4. **Zero 側**: `systemctl is-enabled haizen-agent.service` / `is-active` が **enabled / active**、`journalctl -u haizen-agent.service` に **`haizen-agent start base=https://… hid=…`** の起動ログがあること（`/dev/input/by-id/...-event-kbd` 等。README 参照）。
 
@@ -78,7 +79,13 @@ category: knowledge-base
   - **保存が 400 `HAIZEN_PRESET_SHELF_NOT_REGISTERED`**: 選択棚が **`MobilePlacementShelf` 未登録**。既存の棚番登録フロー（`POST /api/mobile-placement/shelves`）でマスタ投入後に再試行。
   - **保存が 400 `HAIZEN_TARGET_DEVICE_INVALID`**: 指定 `clientDeviceId` が Zero2W 候補に当てはまらない（一覧外の ID を直接叩いていないか）。
 
-**トラブル**: Zero のリポジトリが **`main` のまま**だと `clients/haizen-agent` が無く `WorkingDirectory` の **CHDIR 失敗**で `haizen-agent` がループする。**対処**: Pi5 で `ANSIBLE_REPO_VERSION=feat/zero2w-haizen-tracking`（マージ後は `main`）を指定して `zero2w-edge-setup.yml` を再実行する。設定ファイル **`/etc/raspi-haizen-agent.conf` を `root` の `600` のまま**にすると当該サービス実行ユーザーが読めず **PermissionError**。**対処**: `chown root:<haizen 実行ユーザー>` と **`chmod 640`**（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・Runbook）。
+**トラブル**: Zero のリポジトリが **`main` のまま**だと `clients/haizen-agent` が無く `WorkingDirectory` の **CHDIR 失敗**で `haizen-agent` がループする。**対処**: Pi5 で `ANSIBLE_REPO_VERSION=feat/zero2w-haizen-tracking`（マージ後は `main`）を指定して `zero2w-edge-setup.yml` を再実行する。現行標準の Ansible 配備では設定ファイルは **`/etc/raspi-haizen-agent.conf` = `root:root` + `640`**。**独自に非 root 実行へ変えている場合のみ**、その実行ユーザーが読める最小権限へ調整する（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・Runbook）。
+
+## 本番ロールアウト記録（2026-05-05 · **`feat/zero2w-haizen-edge-hardening`**）
+
+- **Pi5（標準 `update-all-clients.sh`）**: **`raspberrypi5` のみ**・**Detach Run ID** **`20260505-201203-6644`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。ブランチ先端検証時の代表コミット **`1237f37a`**。**CI**: GitHub Actions **`25372469180`** **success**。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 102s**）。
+- **Zero2W `zero2w-tanaban01`**: Pi5 で `zero2w-edge-setup.yml`（**`ANSIBLE_REPO_VERSION`** を機能ブランチに合わせる）を **`--limit zero2w-tanaban01`** で実行したところ、**Ansible 初期タスクが `ansible_host` への SSH でタイムアウト（`:22 Connection timed out`）となり未完**。**次の運用手順**: Zero の電源／Tailscale 参加、`tailscale ip -4` と断片 **`ansible_host` の整合**、[Runbook](../runbooks/zero2w-tanaban-edge-setup.md) の **Pi5→Zero の `ssh -o BatchMode=yes` チェック**後に **playbook を再実行**。**Zero が未到達の間、`haizen-agent` の机上確認（journal / unit）は未実施**。
 
 ## References
 

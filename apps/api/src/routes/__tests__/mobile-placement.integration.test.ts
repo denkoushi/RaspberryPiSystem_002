@@ -62,6 +62,8 @@ describe('mobile-placement API', () => {
     await prisma.orderPlacementBranchState.deleteMany();
     await prisma.orderPlacementEvent.deleteMany();
     await prisma.mobilePlacementEvent.deleteMany();
+    await prisma.haizenScanEvent.deleteMany();
+    await prisma.haizenCurrentPlacement.deleteMany();
     await prisma.mobilePlacementShelf.deleteMany();
     await prisma.csvDashboardRow.deleteMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }
@@ -659,6 +661,78 @@ describe('mobile-placement API', () => {
 
     const fromDb = await prisma.clientDevice.findUnique({ where: { id: target.id } });
     expect(fromDb?.haizenPresetShelfCodeRaw).toBe('西-北-02');
+  });
+
+  it('PATCH /api/mobile-placement/haizen-preset-shelf rejects shelf not in master', async () => {
+    const actor = await createTestClientDevice('client-key-zero2w-patch-self-1');
+    await prisma.mobilePlacementShelf.create({
+      data: { shelfCodeRaw: '西-北-20', createdByClientDeviceId: actor.id }
+    });
+    const ok = await app.inject({
+      method: 'PATCH',
+      url: '/api/mobile-placement/haizen-preset-shelf',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': 'client-key-zero2w-patch-self-1'
+      },
+      payload: { shelfCodeRaw: '西-北-20' }
+    });
+    expect(ok.statusCode).toBe(200);
+
+    const bad = await app.inject({
+      method: 'PATCH',
+      url: '/api/mobile-placement/haizen-preset-shelf',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': 'client-key-zero2w-patch-self-1'
+      },
+      payload: { shelfCodeRaw: '西-北-99' }
+    });
+    expect(bad.statusCode).toBe(400);
+    const bj = bad.json() as { errorCode?: string };
+    expect(bj.errorCode).toBe('HAIZEN_PRESET_SHELF_NOT_REGISTERED');
+  });
+
+  it('GET /api/mobile-placement/haizen-current accepts shelfCodeRaw query alias', async () => {
+    const actor = await createTestClientDevice();
+    const a = await app.inject({
+      method: 'GET',
+      url: '/api/mobile-placement/haizen-current?shelfCodeRaw=西-北-01&limit=5',
+      headers: { 'x-client-key': actor.apiKey }
+    });
+    const b = await app.inject({
+      method: 'GET',
+      url: '/api/mobile-placement/haizen-current?shelfCode=西-北-01&limit=5',
+      headers: { 'x-client-key': actor.apiKey }
+    });
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+    expect(a.json()).toEqual(b.json());
+  });
+
+  it('POST /api/mobile-placement/haizen-scans records scan with preset', async () => {
+    const edge = await createTestClientDevice('client-key-zero2w-scan-int-1');
+    await prisma.mobilePlacementShelf.create({
+      data: { shelfCodeRaw: '西-北-30', createdByClientDeviceId: edge.id }
+    });
+    await prisma.clientDevice.update({
+      where: { id: edge.id },
+      data: { haizenPresetShelfCodeRaw: '西-北-30' }
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/mobile-placement/haizen-scans',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': 'client-key-zero2w-scan-int-1'
+      },
+      payload: { manufacturingOrderBarcodeRaw: 'ORD-SCAN-1' }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { resolutionStatus: string; current: { manufacturingOrderBarcodeRaw: string } | null };
+    expect(body.resolutionStatus).toBe('UNRESOLVED');
+    expect(body.current?.manufacturingOrderBarcodeRaw).toBe('ORD-SCAN-1');
   });
 
   it('returns 401 without client key for resolve-item', async () => {

@@ -11,7 +11,7 @@ export function useHaizenCurrentPlacements(shelfCode: string | undefined) {
     queryKey: ['mobile-placement', 'haizen-current', shelf || '__all__'] as const,
     queryFn: () =>
       getMobilePlacementHaizenCurrent({
-        shelfCode: shelf.length > 0 ? shelf : undefined,
+        shelfCodeRaw: shelf.length > 0 ? shelf : undefined,
         limit: 50
       }),
     staleTime: 5_000,

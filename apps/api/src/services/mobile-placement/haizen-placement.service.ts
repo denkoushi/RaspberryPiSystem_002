@@ -6,9 +6,11 @@ import { listScheduleRowsByProductNo } from '../part-measurement/part-measuremen
 import { pickPrimaryScheduleRowForOrder, normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { parseStructuredShelfCode } from './mobile-placement-registered-shelves.service.js';
 
+export type HaizenManufacturingOrderBarcodeRaw = string;
+
 export type ApplyHaizenScanInput = {
   clientDeviceId: string;
-  manufacturingOrderBarcodeRaw: string;
+  manufacturingOrderBarcodeRaw: HaizenManufacturingOrderBarcodeRaw;
   distributionNumber?: number | null;
   rawBarcode?: string | null;
 };
@@ -102,6 +104,8 @@ export async function updateHaizenPresetShelf(input: {
       'HAIZEN_PRESET_NOT_STRUCTURED'
     );
   }
+
+  await assertHaizenPresetShelfRegistered(raw);
 
   await prisma.clientDevice.update({
     where: { id: input.clientDeviceId },

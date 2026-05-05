@@ -1,0 +1,16 @@
+[Unit]
+Description=Haizen placement scan agent (Zero2W edge)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONPATH=/opt/RaspberryPiSystem_002/clients/haizen-agent
+WorkingDirectory=/opt/RaspberryPiSystem_002/clients/haizen-agent
+ExecStart=/usr/bin/python3 -m haizen_agent
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

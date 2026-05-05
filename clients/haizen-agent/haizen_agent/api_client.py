@@ -44,6 +44,8 @@ def post_haizen_scan(
     if tls_skip_verify:
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+    else:
+        ctx.verify_mode = ssl.CERT_REQUIRED
 
     req = urllib.request.Request(
         url,

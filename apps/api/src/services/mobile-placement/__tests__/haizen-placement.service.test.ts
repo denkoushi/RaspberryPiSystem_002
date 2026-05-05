@@ -58,6 +58,9 @@ describe('haizen-placement.service', () => {
   });
 
   it('updateHaizenPresetShelf は構造化棚を保存する', async () => {
+    vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue({
+      shelfCodeRaw: '西-北-02'
+    } as never);
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({} as never);
 
     await expect(
@@ -68,6 +71,15 @@ describe('haizen-placement.service', () => {
       where: { id: 'dev-1' },
       data: { haizenPresetShelfCodeRaw: '西-北-02' }
     });
+  });
+
+  it('updateHaizenPresetShelf は棚マスタ未登録の棚を拒否する', async () => {
+    vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue(null as never);
+
+    await expect(
+      updateHaizenPresetShelf({ clientDeviceId: 'dev-1', shelfCodeRaw: '西-北-02' })
+    ).rejects.toThrow(ApiError);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
   });
 
   it('listHaizenAssignableDevices は zero2w 候補だけを返す', async () => {

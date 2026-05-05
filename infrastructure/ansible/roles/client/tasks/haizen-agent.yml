@@ -1,0 +1,41 @@
+---
+# Zero2W 棚番エッジ: haizen-agent（オプション）。status-agent とは API_BASE_URL の意味が異なる（オリジンのみ）。
+- name: Ensure python3-evdev for HID barcode (optional)
+  ansible.builtin.apt:
+    name: python3-evdev
+    state: present
+  when:
+    - haizen_agent_install_evdev | default(true) | bool
+    - (haizen_agent_hid_device | default('') | length) > 0
+
+- name: Create haizen-agent configuration file
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/raspi-haizen-agent.conf.j2"
+    dest: /etc/raspi-haizen-agent.conf
+    owner: root
+    group: root
+    mode: '0640'
+  register: haizen_agent_config_result
+  notify: restart haizen-agent
+
+- name: Copy haizen-agent systemd service file
+  ansible.builtin.copy:
+    src: "{{ repo_path }}/clients/haizen-agent/haizen-agent.service"
+    dest: /etc/systemd/system/haizen-agent.service
+    owner: root
+    group: root
+    mode: '0644'
+    remote_src: true
+  register: haizen_agent_service_result
+
+- name: Reload systemd after haizen-agent unit change
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: haizen_agent_config_result.changed | default(false) or haizen_agent_service_result.changed | default(false)
+
+- name: Enable and start haizen-agent
+  ansible.builtin.systemd:
+    name: haizen-agent.service
+    enabled: true
+    state: started
+    daemon_reload: true
