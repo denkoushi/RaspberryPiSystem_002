@@ -23,10 +23,10 @@ def main() -> None:
     cfg = load_haizen_config()
     gate = DistributionGate()
     LOG.info(
-        "haizen-agent start base=%s hid=%s tls_skip_verify=%s",
+        "haizen-agent start base=%s hid=%s tls_verify_mode=%s",
         cfg.api_base_url,
         cfg.hid_device or "stdin",
-        cfg.tls_skip_verify,
+        cfg.tls_verify_mode,
     )
 
     for line in iter_scan_lines(cfg.hid_device):

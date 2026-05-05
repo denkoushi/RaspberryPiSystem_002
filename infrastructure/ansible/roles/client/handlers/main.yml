@@ -13,3 +13,9 @@
     cd "{{ repo_path }}" && docker compose -f infrastructure/docker/docker-compose.client.yml --profile barcode up -d --build --force-recreate barcode-agent
   args:
     executable: /bin/bash
+
+- name: restart haizen-agent
+  ansible.builtin.systemd:
+    name: haizen-agent.service
+    state: restarted
+    daemon_reload: true

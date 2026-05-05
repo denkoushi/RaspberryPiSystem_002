@@ -944,11 +944,21 @@ export type HaizenCurrentRowDto = {
   resolutionNote: 'RESOLVED' | 'UNRESOLVED';
 };
 
-/** Zero2W 配膳の現在値一覧（棚で絞り込み可） */
-export async function getMobilePlacementHaizenCurrent(params?: { shelfCode?: string; limit?: number }) {
+/** Zero2W 配膳の現在値一覧（棚で絞り込み可）。`shelfCode` は後方互換、`shelfCodeRaw` を推奨 */
+export async function getMobilePlacementHaizenCurrent(params?: {
+  shelfCode?: string;
+  shelfCodeRaw?: string;
+  limit?: number;
+}) {
+  const shelf =
+    params?.shelfCodeRaw != null && params.shelfCodeRaw.length > 0
+      ? params.shelfCodeRaw
+      : params?.shelfCode != null && params.shelfCode.length > 0
+        ? params.shelfCode
+        : undefined;
   const { data } = await api.get<{ rows: HaizenCurrentRowDto[] }>('/mobile-placement/haizen-current', {
     params: {
-      ...(params?.shelfCode != null && params.shelfCode.length > 0 ? { shelfCode: params.shelfCode } : {}),
+      ...(shelf != null ? { shelfCodeRaw: shelf } : {}),
       ...(params?.limit != null ? { limit: params.limit } : {})
     }
   });

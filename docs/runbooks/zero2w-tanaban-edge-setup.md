@@ -116,13 +116,15 @@ curl -sk "https://<Pi5-Tailscale-IP>/api/mobile-placement/registered-shelves" \
 
 ## haizen-agent（HID → Pi5 API）
 
-リポジトリの **`clients/haizen-agent/`** を参照。**Zero 上**では `python3-evdev`（`sudo apt-get install -y python3-evdev`）と **`/etc/raspi-haizen-agent.conf`**（`API_BASE_URL`・`X_CLIENT_KEY`・`TLS_SKIP_VERIFY`・任意 `HAIZEN_HID_DEVICE`）が必要。
+リポジトリの **`clients/haizen-agent/`** を参照。**標準配備**: **`client` ロール**の `haizen-agent.yml`（`haizen_agent_enabled: true` のホスト）で **`/etc/raspi-haizen-agent.conf`** と **`haizen-agent.service`** を配布。**Zero 上**では `python3-evdev`（HID 利用時・Ansible が `haizen_agent_install_evdev` 既定で導入）と、設定 **`API_BASE_URL`（Pi5 の HTTPS オリジン・`/api` なし）**・**`X_CLIENT_KEY`**・**`HAIZEN_TLS_VERIFY_MODE`**（`insecure` = 自己署名許容 / `system` = OS 信頼ストアで検証）・任意 **`HAIZEN_HID_DEVICE`**。
 
 - **デバイス**: `ls /dev/input/by-id/*-event-kbd` で **安定パス**を選ぶ。
-- **systemd**: README の例どおり **`User`/`Group` は Zero のログインユーザ**。**`/etc/raspi-haizen-agent.conf` は `root:<User>` + `chmod 640`**（`600` のままだと **PermissionError**）。**`WorkingDirectory`** は **`/opt/RaspberryPiSystem_002/clients/haizen-agent`**（上記 playbook で **haizen を含むブランチ**に追従したあとで有効）。
-- **確認**: `systemctl enable --now haizen-agent.service` 後、`journalctl -u haizen-agent.service` に起動ログがあること。
+- **systemd**: リポジトリ同梱の **`clients/haizen-agent/haizen-agent.service`**（`zero2w-edge-setup.yml` + 断片インベントリで有効化）。現行 unit は **root 実行**。**`/etc/raspi-haizen-agent.conf` は `root:root` + `chmod 640`** とし、**`x-client-key` を world-readable にしない**。**`WorkingDirectory`** は **`/opt/RaspberryPiSystem_002/clients/haizen-agent`**（上記 playbook で **haizen を含むブランチ**に追従したあとで有効）。
+- **確認**: `systemctl is-active haizen-agent.service` と `journalctl -u haizen-agent.service` に起動ログ（**`tls_verify_mode=…`**）があること。
 
-**補足**: 現状はリポジトリに **専用 systemd ユニットの Ansible タスクは未同梱**のため、初回は **手配置 + playbook でリポのみ同期**が実績あり。恒久化は Next（EXEC_PLAN）。
+**補足（TLS 移行）**: 初期は **`HAIZEN_TLS_VERIFY_MODE=insecure`**（Ansible 既定 `haizen_agent_tls_verify_mode`）。Pi5 前段に **検証可能な証明書**を載せたらインベントリで **`haizen_agent_tls_verify_mode: "system"`** に変更し playbook を再適用（失敗時は **`insecure` に戻す**）。
+
+**補足（旧手順）**: 過去版は **専用 systemd の Ansible タスク未同梱**のため手配置が実績とした。現在は **`roles/client/tasks/haizen-agent.yml`** が正本。
 
 ## トラブルシュート
 
@@ -163,8 +165,8 @@ curl -sk "https://<Pi5-Tailscale-IP>/api/mobile-placement/registered-shelves" \
 
 ### `haizen-agent`: `Permission denied`（`/etc/raspi-haizen-agent.conf`）
 
-- **原因**: 設定が **`root:root` + `mode 600`** のまま、**非 root** の `User=` で動いている。
-- **対処**: `chown root:<ユーザ>`、`chmod 640`。 [KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)
+- **原因**: 過去の手配置や独自 unit で **非 root 実行**しているのに、設定が **`root:root` + `mode 600`** のまま。
+- **対処**: 現行標準は **Ansible 配備の root 実行 unit** に揃える。独自に `User=` を付ける場合のみ、当該ユーザー/グループで **読取可能な最小権限**へ調整する。 [KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)
 
 ## 関連ドキュメント
 

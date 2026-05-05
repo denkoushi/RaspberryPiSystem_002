@@ -193,9 +193,9 @@ JSON:
 **目的**: 棚番固定エッジ（1 台 1 棚）からのスキャンで、**製造 order ごとの現在値**（`HaizenCurrentPlacement`）を上書きしつつ、**履歴**（`HaizenScanEvent`）を残す。日程行は `listScheduleRowsByProductNo` 系で解決。未照合でもイベント・現在値は保存される（`resolutionStatus` / `csvDashboardRowId` で区別）。
 
 - **`GET /api/mobile-placement/haizen-preset-shelf`** — 認証端末の **`ClientDevice.haizenPresetShelfCodeRaw`**（構造化棚 `西-北-01` 形式）を返す。未設定は `{ "shelfCodeRaw": null }`。
-- **`PATCH /api/mobile-placement/haizen-preset-shelf`** — Body `{ "shelfCodeRaw": "西-北-01" }` でプリセット更新（構造化棚のみ）。
+- **`PATCH /api/mobile-placement/haizen-preset-shelf`** — Body `{ "shelfCodeRaw": "西-北-01" }` でプリセット更新（構造化棚のみ）。**棚マスタ（`MobilePlacementShelf`）に登録済みの棚のみ**許可（未登録は `HAIZEN_PRESET_SHELF_NOT_REGISTERED`）。
 - **`POST /api/mobile-placement/haizen-scans`** — Body 例: `{ "manufacturingOrderBarcodeRaw": "…", "distributionNumber": 1, "rawBarcode": "…" }`。分配番号は **1〜999 の整数**（省略可）。**プリセット棚が未設定なら 400**（`HAIZEN_PRESET_SHELF_REQUIRED`）。
-- **`GET /api/mobile-placement/haizen-current`** — クエリ `shelfCode`（任意・trim 一致）、`limit`（1〜200、既定 50）。**`shelfCode` 省略時は全棚から最新 N 件**。応答 `rows[]` に製造 order・棚・分配・日程スナップショット由来の品目表示・`resolutionNote`（`RESOLVED` | `UNRESOLVED`）。
+- **`GET /api/mobile-placement/haizen-current`** — クエリ **`shelfCodeRaw`**（推奨）または **`shelfCode`**（後方互換・同等）、`limit`（1〜200、既定 50）。**棚パラメータ省略時は全棚から最新 N 件**。応答 `rows[]` に製造 order・棚・分配・日程スナップショット由来の品目表示・`resolutionNote`（`RESOLVED` | `UNRESOLVED`）。
 - **`GET /api/mobile-placement/haizen-target-devices`** — Android キオスクの専用設定画面向け。**`apiKey` または `name` に `zero2w` を含む端末だけ**を返す。各要素は `id` / `name` / `location` / `shelfCodeRaw` / `lastSeenAt`。
 - **`PUT /api/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf`** — Android キオスクから **対象 Zero2W** の担当棚を更新する。Body `{ "shelfCodeRaw": "西-北-01" }`。**棚マスタに登録済みの構造化棚のみ**許可し、対象が Zero2W 候補でない場合はエラー。
 
