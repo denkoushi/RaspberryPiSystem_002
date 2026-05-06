@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
   SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
 } from '../../services/production-schedule/constants.js';
+import { fetchMaxProductNoWinnerRowIdsForDashboard } from '../../services/production-schedule/row-resolver/max-product-no-winner-materialization.js';
+import { buildMaxProductNoWinnerCondition } from '../../services/production-schedule/row-resolver/max-product-no-sql.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -656,6 +659,20 @@ describe('Kiosk Production Schedule API', () => {
       expect(d.resolvedMachineName ?? null).toBe(SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL);
     }
     expect(Object.keys(decoBody.leaderboardFooterChipsByPartKey ?? {}).length).toBeGreaterThan(0);
+  });
+
+  it('max ProductNo winner materialization equals correlated winner filter (seeded dashboard)', async () => {
+    const materialized = await fetchMaxProductNoWinnerRowIdsForDashboard({
+      prisma,
+      csvDashboardId: DASHBOARD_ID
+    });
+    const correlatedRows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "CsvDashboardRow"."id"::text AS "id"
+      FROM "CsvDashboardRow"
+      WHERE "CsvDashboardRow"."csvDashboardId" = ${DASHBOARD_ID}
+        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+    `);
+    expect(new Set(materialized)).toEqual(new Set(correlatedRows.map((r) => r.id)));
   });
 
   it('filters by q with comma-separated tokens (OR)', async () => {

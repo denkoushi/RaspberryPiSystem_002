@@ -1,17 +1,14 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
-import {
-  COMPLETED_PROGRESS_VALUE,
-  PRODUCTION_SCHEDULE_DASHBOARD_ID
-} from '../constants.js';
+import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { GLOBAL_SHARED_LOCATION_KEY } from '../due-management-ranking-scope-policy.service.js';
 import {
   buildFkojunstProductionScheduleListRowDataFkojunstSql,
   buildFkojunstProductionScheduleListVisibilityWhereSql
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
-import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
+import { buildProductionScheduleLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import type { LeaderboardScheduleRowSql } from './leaderboard-row-selection.service.js';
 
 const MAX_ROWS = 900;
@@ -40,6 +37,7 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
   }
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
+  const leaderboardMaterializedBaseWhere = await buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma);
 
   const processingOrderScalar = Prisma.sql`(
     SELECT "orderNumber"
@@ -116,8 +114,7 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+    WHERE ${leaderboardMaterializedBaseWhere}
       ${visibilitySql}
       AND "CsvDashboardRow"."id"::text IN (${Prisma.join(orderedIdParts)})
     ORDER BY array_position(${orderedIdArraySql}, "CsvDashboardRow"."id"::text)

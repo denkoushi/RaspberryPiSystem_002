@@ -37,9 +37,25 @@ category: knowledge-base
 
 `responseProfile=full` はもともと `Promise.all([count, mainSelect])` のため論点は leaderboard 側。
 
+### 追補（2026-05-06）: ProductNo winner の materialization（相関除去・仕様同一）
+
+- **課題**: `baseWhere` に含まれる `buildMaxProductNoWinnerCondition`（同一論理キー内で最大 ProductNo の行）は **WHERE ごとに相関評価**され、順位ボードの **複数クエリ × ページ行** でコストが積み上がることがある。
+- **方針（同値変換のみ）**: 正本の PARTITION / ORDER は [`max-product-no-winner-spec.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-spec.ts) に集約し、**`fetchMaxProductNoWinnerRowIdsForDashboard`**（`ROW_NUMBER … rn=1`）で winner id を **1 クエリ確定**。`responseProfile=leaderboard` と `listLeaderboardShellProductionScheduleRows` と装飾 **hydrate** では、`buildProductionScheduleLeaderboardMaterializedBaseWhere` 由来の **`csvDashboardId` + `id IN (...)`** を **`COUNT`** と **`fetchLeaderboardScheduleRowsWithSeibanAwarePriority`** が **共有**。`prepareProductionScheduleDashboardFilters` の correlated `baseWhere` は **`full` 一覧**など従来どおり維持。
+- **関連モジュール**: [`max-product-no-winner-materialization.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)·[`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts)（`leaderboardMaterializedBaseWhere` 引数へ変更）·[`leaderboard-shell-hydrate.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-hydrate.service.ts)
+
 ## Prevention
 
-- [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)（leaderboard を含む 17 ケース）で回帰監視
+- [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)（leaderboard を含むケース）。**追補**: [`max-product-no-winner-materialization.test.ts`](../../apps/api/src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts)（モック）。
+- [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の **winner materialization と相関 winner の集合一致**（シード済みダッシュボード）。
+
+## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
+
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **必須対象外**（play **no hosts matched**。**Pi3 専用手順不要**）。
+- **リポジトリ**: ブランチ **`fix/leaderboard-shell-winner-materialization`**・代表コミット **`b05baa5f`**（**`main` 取り込み後は `origin/main` HEAD を正とする**）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·**`--detach --follow`**）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-190944-2060`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 888s**）。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 132s**・Tailscale）。
+- **トラブルシュート**: 体感が変わらない／挙動が期待と違う → Pi5 **`api` イメージ**が当該コミット以降か（detach ログ・`git log -1`）。**相関 winner と materialize の集合**は統合テストで一致を確認済み。
 
 ## Production deploy & verification（2026-05-06 · leaderboard COUNT 並列化）
 
@@ -79,6 +95,6 @@ category: knowledge-base
 ## References
 
 - 計画メモ（ローカル）: 「仕様不変の順位ボード高速化計画」（`leaderboard-spec-preserving-speedup`）
-- [deployment.md](../guides/deployment.md)（2026-05-06 · leaderboard COUNT 並列化項·段階取得項）
+- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項）
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)
