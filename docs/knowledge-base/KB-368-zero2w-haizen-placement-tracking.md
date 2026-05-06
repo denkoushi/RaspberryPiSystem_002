@@ -100,9 +100,17 @@ category: knowledge-base
   - 最終: playbook **成功**（`ok=81 changed=11 failed=0 unreachable=0`）、`haizen-agent.service` / `status-agent.timer` とも **active + enabled**。
 - **Zero2W E2E（Pi5 実行）**: `PATCH /api/mobile-placement/haizen-preset-shelf` → `POST /api/mobile-placement/haizen-scans` → `GET /api/mobile-placement/haizen-current?shelfCodeRaw=西-北-01&limit=5` で、Zero2W キー (`client-key-zero2w-tanaban01-edge1`) の新規イベント (`eventId`) と `rows` 反映を確認。`UNRESOLVED` は日程未一致時の契約どおり。
 
+## 本番ロールアウト記録（2026-05-06 · **`feat/mobile-placement-zero2w-hardening`**）
+
+- **Pi5（標準 `update-all-clients.sh`）**: **`raspberrypi5` のみ**・**Detach Run ID** **`20260506-203237-17583`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**）。**`Run prisma migrate deploy`**: **成功**（**`20260507190000_client_device_haizen_edge_enabled`** 相当が適用済みであることを前提）。代表コミット（fixture 整合）**`a533f7b6`**。
+- **キオスク Pi4（`--limit` 順次 1 台ずつ）**: **`20260506-204833-27605`**（`raspberrypi4`）/ **`20260506-205620-28633`**（`raspi4-robodrill01`）/ **`20260506-210226-30541`**（`raspi4-fjv60-80`）/ **`20260506-210653-10599`**（`raspi4-kensaku-stonebase01`）。いずれも **`failed=0` / `unreachable=0`**。**Pi3 は本変更の必須対象外**（前回提示どおりデプロイ未実施でよい）。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 67s**・Tailscale）。
+- **API スモーク（Pi5 ローカル）**: `GET /api/mobile-placement/haizen-target-devices` + **`x-client-key: client-key-raspberrypi4-kiosk1`** → **HTTP 200**。
+- **Zero2W `zero2w-tanaban01`（`zero2w-edge-setup.yml`・Pi5 実行）**: **未完了**。Ansible が **`common`** で **`/opt/RaspberryPiSystem_002` 親ディレクトリ作成等に sudo が必要な時点**で **`Missing sudo password`** と終了（Zero 上 **`sudo -n true` が失敗**している状態）。断片の **`sudo_nopasswd_commands`** は **`client` ロール適用後**に効くため、**初回／現状態では common を突破できない**。**是正**: Runbook どおり **`ansible-playbook … -e ansible_become_password='…'`**（履歴リスクは Runbook 記載）、または Zero に **`NOPASSWD: ALL`** 級は避けつつ **`mkdir`/パッケージ/`git`** 等 **common が必要とするコマンド列だけを追加した限定 NOPASSWD** を運用で許容する（詳細は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）。
+
 ## 運用・ドキュメント整合（2026-05-06）
 
-- **限定 NOPASSWD（推奨・再発防止）**: Pi5 からの **`ansible_become_password`** 運用はログ・シェル履歴に残り得るため、**断片へ `sudo_nopasswd_commands`** を追加し **工場 Pi4 と同趣旨**に限定 sudoers を配る方法を **サンプル断片**に固定した（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・`inventory-zero2w-edge-fragment.sample.yml`）。HID デバイスパスは **`haizen_agent_hid_device`** のまま実機に合わせる。
+- **限定 NOPASSWD（推奨・再発防止）**: Pi5 からの **`ansible_become_password`** 運用はログ・シェル履歴に残り得るため、**断片へ `sudo_nopasswd_commands`** を追加し **工場 Pi4 と同趣旨**に限定 sudoers を配る方法を **サンプル断片**に固定した（[KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md)・`inventory-zero2w-edge-fragment.sample.yml`）。HID デバイスパスは **`haizen_agent_hid_device`** のまま実機に合わせる。**注意**: 上記は **`client` ロールが sudoers を配った後**に **`systemctl` 等が無対話で通る**ようになる。**`common` が先行する `zero2w-edge-setup.yml` 単体では、`Ensure repository parent directory exists` 等が対話 sudo を要求し続ける**（→ «本番ロールアウト記録（2026-05-06）»）。
 - **広域健全性**: 当該運用整理後、**コード変更なし**で `./scripts/deploy/verify-phase12-real.sh` を再実行し **PASS 43 / WARN 0 / FAIL 0**（**約 74s**・Tailscale）を確認（[deployment.md](../guides/deployment.md) 2026-05-06 項）。
 
 ## References

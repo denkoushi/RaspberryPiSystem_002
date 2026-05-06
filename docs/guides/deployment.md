@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-06（**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+
+### 補足（2026-05-06 late · **Mobile Placement Zero2W hardening（`feat/mobile-placement-zero2w-hardening`）**·**Pi5 + Pi4×4 順次・Zero2W playbook は別**）
+
+- **変更概要**: **`ClientDevice.haizenEdgeEnabled`** と **`GET/PUT …/haizen-target-devices`** の **フラグ連動**、キオスク **`/kiosk/mobile-placement/zero2w-status`**、**`HAIZEN_DISTRIBUTION_MODE`**（README／テンプレ追随）。**正本**: [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[mobile-placement.md](../api/mobile-placement.md)。
+- **対象ホスト**: **`raspberrypi5`** → **`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit <host> --detach --follow`**・**1 台ずつ**）。**Pi3 は対象外**（ユーザー提示リスト／変更スコープ外）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·ブランチ先行時は **`feat/mobile-placement-zero2w-hardening`**。**マージ後は `main`**。
+- **本番デプロイ（実績・ブランチ先行反映）**: **`Detach Run ID`**: **`20260506-203237-17583`**（`raspberrypi5`）/ **`20260506-204833-27605`**（`raspberrypi4`）/ **`20260506-205620-28633`**（`raspi4-robodrill01`）/ **`20260506-210226-30541`**（`raspi4-fjv60-80`）/ **`20260506-210653-10599`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**。Pi5 で **`Run prisma migrate deploy`** **成功**。
+- **Zero2W（`zero2w-edge-setup.yml`）**: 当記録では **実行未完**（`common` 先頭タスクで **`Missing sudo password`**）。運用手順・是正は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-368 §2026-05-06](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 67s**・Tailscale）。Pi5 で **`GET /api/mobile-placement/haizen-target-devices`**（キオスク **`x-client-key`**）が **200** であることをスモーク。
+- **ナレッジ**: [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·[mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)。
 
 ### 補足（2026-05-06 · **キオスク順位ボード・最大 ProductNo winner の materialization（相関除去・API のみ）**·**Pi5 のみ**）
 
