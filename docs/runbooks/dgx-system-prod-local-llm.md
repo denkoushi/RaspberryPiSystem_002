@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-05-04
+last-verified: 2026-05-06
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -88,6 +88,8 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 **本番反映（2026-05-03・KPI メトリクス・`GET /system/metrics`・API + DGX gateway）**: **① Pi5 のみ** Ansible（**`--limit raspberrypi5`**）→ **② DGX** へ **`scripts/dgx-local-llm-system/gateway-server.py`** を **`/srv/dgx/system-prod/bin/gateway-server.py`** に配置しゲートウェイを再起動（**順序付き**。Pi4／Pi3 は **対象外**）。Pi5: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-kpi-metrics-fallback infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-211051-8713`**・`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**（ローカル `--follow` 約 **702s**）。**仕様**: **`DGX_RESOURCE_METRICS_URL` 未設定**時、Pi5 API は **`GET /system/metrics`**（**`X-LLM-Token` 必須**）→ **`/v1/system/metrics`** の順で KPI を取得。gateway は **`nvidia-smi`** と **`free -b`** フォールバック。**知見**: **API と gateway は同じ反映窗口で揃える**。**DGX 再起動（実績）**: **`sudo systemctl restart dgx-llm-gateway`** は運用ユーザーに **sudo が無く未実行**。当該ホストでは **`dgx-llm-gateway` が inactive** で **`start-gateway-server.sh`** 常駐のため、**既存 `gateway-server.py` を終了**してから **`/srv/dgx/system-prod/bin/start-gateway-server.sh`** を実行。**systemd へ統一する場合**は下記 **`install-systemd-units.sh`** 節。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**KB**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)（Phase 10）·[deployment.md](../guides/deployment.md)（2026-05-03 KPI メトリクス項）。
 
 **本番反映（2026-05-04・Phase11・進行中表示持続化・API+Web+DGX gateway）**: **① `raspberrypi5` のみ**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`）→ **② DGX** へ repo の **`gateway-server.py`** を **`scp`**。**Detach `20260504-113918-744`**・`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**（`--follow` 約 **702s**）。**`main`** 代表 **`5d96b59b`**（[PR #246](https://github.com/denkoushi/RaspberryPiSystem_002/pull/246)）。Pi4／Pi3 **対象外**。**DGX 再起動**: **`sudo systemctl restart dgx-llm-gateway`** は **sudo 非対話不可**のため **`/srv/dgx/system-prod/bin/start-gateway-server.sh`**。**トラブルシュート**: 広い **`pkill -f`** は **SSH コマンドラインを巻き込み得る** → **`start-gateway-server.sh`** で **`healthz` 200** まで復旧。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**）。**KB**: [KB-365 §Phase11](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-11進行中表示の持続化長時間切替の運用解釈web--runbook)·[deployment.md](../guides/deployment.md)（2026-05-04 項）。
+
+**本番反映（2026-05-06・`control-server` 単一アクティブ運用ガード・DGX のみ）**: **対象は DGX のみ**（Pi5／Pi4／Pi3 **Ansible 不要**）。repo の **`control-server.py`**・**`dgx_llm_single_active_guard.py`**（**同一ディレクトリに必ず同梱**）・**`stop-llama-server.sh`**・**`stop-trtllm-server.sh`** を **`scp`** で **`/srv/dgx/system-prod/bin/`**（例: `ubudgxkoushi@100.118.82.72`）。**`runtime_stop_policy.py` は既存が `/srv/dgx/system-prod/bin/` にあれば追加 `scp` は不要**（`control-server.py` が import）。**再起動**: **`start-control-server.sh` は既存 PID が生きていると新コードを読まず終了する**ため、**`/srv/dgx/system-prod/logs/control-server.pid` の PID を `kill`（必要なら `kill -9`）して PID ファイルを消したうえで** **`bash /srv/dgx/system-prod/bin/start-control-server.sh`**。**ゲートウェイは本変更の範囲では再起動しない**。**検証**: 本文「単一アクティブ運用ガード」節・「切替後の 4 点チェック」節のコマンド。**実績（2026-05-06）**: **`ACTIVE_LLM_BACKEND=blue`** で **`38081/healthz` 200**・**`/v1/models` に `system-prod-primary`**・**`39090` 401**・**`38082` 非 listen**・**`llama-server` プロセス無し**。**KB**: [KB-365 §Phase12](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-12-dgx-control-server-single-active-guard-2026-05-06)·[deployment.md](../guides/deployment.md)（2026-05-06 DGX control-server 項）。
 
 **本番反映（2026-05-03・Phase3・補助起停 + `SET_POLICY.applyWorkloadChanges`・API+Web）**: ブランチ **`feat/dgx-resource-policy-orchestration-phase3`**（代表 **`a44b9f78`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-policy-orchestration-phase3 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-094340-23537`**・`PLAY RECAP`: **`ok=135` `changed=8` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 597s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `EXECUTE_TARGET_ACTION` は **`targets[].capabilities` に応じて** **`system-prod-gateway`** に加え、補助 URL 設定済みなら **`private-comfyui`**・**`experiment-lab`** も起停可能。**ワークロード調停**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**ナレッジ**: カード直下に **`EXECUTE_TARGET_ACTION` 失敗**を表示して操作文脈を維持（Web）。
 
@@ -364,6 +366,46 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - `ACTIVE_LLM_BACKEND=blue`（新しい blue backend。現時点の第一候補は `Qwen3.6-27B-NVFP4` を Spark 向け `vLLM` image で起動する構成）
 
 systemd 運用では、`/srv/dgx/system-prod/secrets/control-server.env` と `gateway-server.env` の両方に同じ `ACTIVE_LLM_BACKEND` を書き、`systemctl restart dgx-llm-control dgx-llm-gateway` で反映する。blue 側は `127.0.0.1:38083` 想定で、`start-trtllm-server.sh` / `stop-trtllm-server.sh` から container を起動停止する。ファイル名は歴史的に `trtllm` だが、実体は **任意 image + 任意 command を受ける blue backend launcher** である。`@reboot` / 手動起動の `start-control-server.sh` / `start-gateway-server.sh` も同じ `secrets/*.env` を自動で `source` する。
+
+#### 単一アクティブ運用ガード（`DGX_LLM_SINGLE_ACTIVE_GUARD`）
+
+- **目的**: `green`（`llama-server`）と `blue`（vLLM コンテナ等）の推論ランタイムが **同時に残らない**ようにする（GPU/統一メモリの二重占有・応答モデルが不明瞭になることを防ぐ）。
+- **既定**: 環境変数未設定でも **有効**（`true` 相当）。`control-server.py` は **`POST /start` の直前に非アクティブ側へ実 stop を必ず実行**し、その後にアクティブ側の start を実行する。
+- **`keep_warm` との関係**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または `always_on`）は **アクティブ側が blue のときの `/stop` のみ no-op** となる。**非アクティブ側**を止める処理には適用されない（`/start` 前に残留していたもう一方の backend は必ず実停止される）。
+- **起動時検証**: ガード有効時、`GREEN_LLM_RUNTIME_STOP_CMD` / `BLUE_LLM_RUNTIME_STOP_CMD` と **`LLM_RUNTIME_STOP_CMD`（フォールバック）の両系統から実停止コマンドが解決できること**を起動時に確認する（片側のみしか用意しない検証ホストでは起動を拒否される）。
+- **オプトアウト**: `DGX_LLM_SINGLE_ACTIVE_GUARD=false`（または `0` / `no` / `off`）で **`/start` 前の非アクティブ stop と dual-stop の起動検証を無効化**。通常の `system-prod` では **両 backend の stop コマンドを揃えたうえでガード ON を維持**する。
+- **実装の置き場所**: [`scripts/dgx-local-llm-system/dgx_llm_single_active_guard.py`](../../scripts/dgx-local-llm-system/dgx_llm_single_active_guard.py) に単一アクティブ判定を集約し、`control-server.py` が import して `/start` に組み込む。
+
+#### 切替後の 4 点チェック（推奨）
+
+1. **`ACTIVE_LLM_BACKEND` の実効値**: `control-server.env` と `gateway-server.env` が **同一**であること。
+2. **`GET /v1/models`（入口は通常 `38081`）**: `system-prod-primary` の応答があり、`root`（またはモデル識別子）が **期待どおり**であること。
+3. **Listen ポート**: アクティブに応じて **不要側が listen していない**こと（例: `ACTIVE_LLM_BACKEND=blue` なら `127.0.0.1:38082` に **いない**）。
+4. **プロセスとコンテナ**: `ps` と `docker ps` で **もう一方の backend** が残っていないこと。
+
+```bash
+# 1) env の一致
+sed -n '/^ACTIVE_LLM_BACKEND=/p' /srv/dgx/system-prod/secrets/control-server.env
+sed -n '/^ACTIVE_LLM_BACKEND=/p' /srv/dgx/system-prod/secrets/gateway-server.env
+
+# 2) gateway 応答モデル
+TOKEN="$(cat /srv/dgx/system-prod/secrets/api-token)"
+curl -sS -H "X-LLM-Token: ${TOKEN}" http://127.0.0.1:38081/v1/models
+
+# 3) listen port
+ss -ltnp | awk '/:38081|:38082|:38083|:39090|:38100/'
+
+# 4) process / container
+ps -eo pid,cmd | awk 'BEGIN{IGNORECASE=1} /llama-server|vllm|system-prod-trtllm/ {print}'
+docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk 'BEGIN{IGNORECASE=1} /system-prod|trtllm|vllm/ {print}'
+```
+
+**PASS の目安**:
+
+- `control-server.env` / `gateway-server.env` の `ACTIVE_LLM_BACKEND` が一致
+- `38081 /v1/models` の `root` が期待した backend と一致
+- 非アクティブ側 port が listen していない（例: blue active なら `38082` 不在）
+- 非アクティブ側の `llama-server` / `vllm` / `system-prod-trtllm` が残っていない
 
 まずは DFlash なしで blue 単体起動を成立させ、`system-prod-primary` alias の text / vision 疎通を確認する。その後に必要なら `z-lab/Qwen3.6-27B-DFlash` を追加する。Phase2 実機投入で使う最小 blue 例:
 

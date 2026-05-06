@@ -20,6 +20,12 @@ if [[ "${MODE}" == "host" ]]; then
       sleep 1
     done
     kill -9 "${PID}" 2>/dev/null || true
+    sleep 1
+  fi
+  if [[ -n "${PID}" ]] && kill -0 "${PID}" 2>/dev/null; then
+    echo "failed to stop pid=${PID}" >&2
+    rm -f "${PID_PATH}"
+    exit 1
   fi
   rm -f "${PID_PATH}"
   echo "stopped pid=${PID:-unknown}"
@@ -32,5 +38,8 @@ if [[ "${EXISTING_NAME}" != "${CONTAINER_NAME}" ]]; then
   exit 0
 fi
 
-docker rm -f "${CONTAINER_NAME}" >/dev/null
+if ! docker rm -f "${CONTAINER_NAME}" >/dev/null; then
+  echo "docker rm failed for container=${CONTAINER_NAME}" >&2
+  exit 1
+fi
 echo "stopped container=${CONTAINER_NAME}"

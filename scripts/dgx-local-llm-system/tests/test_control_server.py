@@ -85,7 +85,7 @@ class ControlServerTests(unittest.TestCase):
             httpd.server_close()
             thread.join(timeout=5)
 
-        self.assertEqual(calls, ["blue-start", "blue-stop"])
+        self.assertEqual(calls, ["green-stop", "blue-start", "blue-stop"])
 
     def test_resolve_command_blue_stop_noop_when_keep_warm_mode(self):
         module = load_module()
@@ -123,6 +123,129 @@ class ControlServerTests(unittest.TestCase):
         )
 
         self.assertEqual(module.resolve_command(config, "stop"), ":")
+
+    def test_http_handler_keep_warm_still_hard_stops_green_before_start(self):
+        module = load_module()
+        config = module.ControlConfig(
+            token="runtime-token",
+            active_backend="blue",
+            start_cmd="legacy-start",
+            stop_cmd="legacy-stop",
+            green_start_cmd="green-start",
+            green_stop_cmd="green-stop",
+            blue_start_cmd="blue-start",
+            blue_stop_cmd="blue-stop",
+            blue_stop_mode="keep_warm",
+            host="127.0.0.1",
+            port=39090,
+        )
+        calls: list[str] = []
+        handler = module.make_handler(config, command_runner=calls.append)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{httpd.server_port}"
+        try:
+            start_req = urllib.request.Request(
+                f"{base_url}/start",
+                data=b"",
+                method="POST",
+                headers={"X-Runtime-Control-Token": "runtime-token"},
+            )
+            with urllib.request.urlopen(start_req, timeout=5):
+                pass
+            stop_req = urllib.request.Request(
+                f"{base_url}/stop",
+                data=b"",
+                method="POST",
+                headers={"X-Runtime-Control-Token": "runtime-token"},
+            )
+            with urllib.request.urlopen(stop_req, timeout=5):
+                pass
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+        self.assertEqual(calls, ["green-stop", "blue-start", ":"])
+
+    def test_http_handler_green_active_hard_stops_blue_before_start(self):
+        module = load_module()
+        config = module.ControlConfig(
+            token="runtime-token",
+            active_backend="green",
+            start_cmd="legacy-start",
+            stop_cmd="legacy-stop",
+            green_start_cmd="green-start",
+            green_stop_cmd="green-stop",
+            blue_start_cmd="blue-start",
+            blue_stop_cmd="blue-stop",
+            blue_stop_mode="on_demand",
+            host="127.0.0.1",
+            port=39090,
+        )
+        calls: list[str] = []
+        handler = module.make_handler(config, command_runner=calls.append)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{httpd.server_port}"
+        try:
+            start_req = urllib.request.Request(
+                f"{base_url}/start",
+                data=b"",
+                method="POST",
+                headers={"X-Runtime-Control-Token": "runtime-token"},
+            )
+            with urllib.request.urlopen(start_req, timeout=5):
+                pass
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+        self.assertEqual(calls, ["blue-stop", "green-start"])
+
+    def test_single_active_guard_disabled_skips_hard_stop_on_start(self):
+        import os
+
+        self.addCleanup(lambda: os.environ.pop("DGX_LLM_SINGLE_ACTIVE_GUARD", None))
+        os.environ["DGX_LLM_SINGLE_ACTIVE_GUARD"] = "false"
+        module = load_module()
+        config = module.ControlConfig(
+            token="runtime-token",
+            active_backend="blue",
+            start_cmd="legacy-start",
+            stop_cmd="legacy-stop",
+            green_start_cmd="green-start",
+            green_stop_cmd="green-stop",
+            blue_start_cmd="blue-start",
+            blue_stop_cmd="blue-stop",
+            blue_stop_mode="on_demand",
+            host="127.0.0.1",
+            port=39090,
+        )
+        calls: list[str] = []
+        handler = module.make_handler(config, command_runner=calls.append)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{httpd.server_port}"
+        try:
+            start_req = urllib.request.Request(
+                f"{base_url}/start",
+                data=b"",
+                method="POST",
+                headers={"X-Runtime-Control-Token": "runtime-token"},
+            )
+            with urllib.request.urlopen(start_req, timeout=5):
+                pass
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+        self.assertEqual(calls, ["blue-start"])
 
 
 if __name__ == "__main__":

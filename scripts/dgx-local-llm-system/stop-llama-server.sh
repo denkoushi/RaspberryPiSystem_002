@@ -16,8 +16,23 @@ if [[ -z "${PID}" ]]; then
 fi
 
 if kill -0 "${PID}" 2>/dev/null; then
-  kill "${PID}"
-  sleep 2
+  kill "${PID}" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if ! kill -0 "${PID}" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  if kill -0 "${PID}" 2>/dev/null; then
+    kill -9 "${PID}" 2>/dev/null || true
+    sleep 1
+  fi
+fi
+
+if kill -0 "${PID}" 2>/dev/null; then
+  echo "failed to stop pid=${PID}" >&2
+  rm -f "${PID_PATH}"
+  exit 1
 fi
 
 rm -f "${PID_PATH}"
