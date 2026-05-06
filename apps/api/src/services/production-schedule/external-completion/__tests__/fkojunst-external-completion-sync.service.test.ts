@@ -7,7 +7,7 @@ import * as repo from '../fkojunst-external-completion-sync.repository.js';
 import { FkojunstExternalCompletionSyncService } from '../fkojunst-external-completion-sync.service.js';
 
 vi.mock('../fkojunst-external-completion-sync.repository.js', () => ({
-  replaceAllWinnerExternalCompletionStates: vi.fn(),
+  replaceAllWinnerExternalCompletionStatesFromMailSync: vi.fn(),
 }));
 
 vi.mock('../fkojunst-status-mail-dedupe-key-snapshot.repository.js', () => ({
@@ -48,7 +48,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
 
     expect(r).toEqual({ skipped: true, reason: 'empty_status_csv' });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
-    expect(repo.replaceAllWinnerExternalCompletionStates).not.toHaveBeenCalled();
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).not.toHaveBeenCalled();
     expect(snapshotRepo.replaceDedupeKeySnapshot).not.toHaveBeenCalled();
   });
 
@@ -61,7 +61,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
       }),
     };
 
-    vi.mocked(repo.replaceAllWinnerExternalCompletionStates).mockResolvedValue(undefined);
+    vi.mocked(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).mockResolvedValue(undefined);
 
     const svc = new FkojunstExternalCompletionSyncService({
       prismaClient: prismaMock as never,
@@ -76,8 +76,8 @@ describe('FkojunstExternalCompletionSyncService', () => {
 
     expect(r).toEqual({ skipped: false, distinctKeys: 1, disappearedDistinctKeys: 0 });
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-    expect(repo.replaceAllWinnerExternalCompletionStates).toHaveBeenCalledTimes(1);
-    expect(repo.replaceAllWinnerExternalCompletionStates).toHaveBeenCalledWith(txArg, []);
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledTimes(1);
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(txArg, []);
     expect(snapshotRepo.replaceDedupeKeySnapshot).toHaveBeenCalledWith(txArg, ['10\tR01\t0001']);
   });
 
@@ -91,7 +91,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
     };
 
     vi.mocked(snapshotRepo.loadPreviousDedupeKeys).mockResolvedValue(['10\tR01\t0001', '20\tR02\t0002']);
-    vi.mocked(repo.replaceAllWinnerExternalCompletionStates).mockResolvedValue(undefined);
+    vi.mocked(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).mockResolvedValue(undefined);
 
     const svc = new FkojunstExternalCompletionSyncService({
       prismaClient: prismaMock as never,
@@ -102,7 +102,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
     const r = await svc.syncFromDedupedStatusMailRows(rows);
 
     expect(r).toEqual({ skipped: false, distinctKeys: 1, disappearedDistinctKeys: 1 });
-    expect(repo.replaceAllWinnerExternalCompletionStates).toHaveBeenCalledWith(txArg, ['10\tR01\t0001']);
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(txArg, ['10\tR01\t0001']);
     expect(snapshotRepo.replaceDedupeKeySnapshot).toHaveBeenCalledWith(txArg, ['20\tR02\t0002']);
   });
 
@@ -116,7 +116,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
     };
 
     vi.mocked(snapshotRepo.loadPreviousDedupeKeys).mockResolvedValue(['10\tR01\t0001']);
-    vi.mocked(repo.replaceAllWinnerExternalCompletionStates).mockResolvedValue(undefined);
+    vi.mocked(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).mockResolvedValue(undefined);
 
     const svc = new FkojunstExternalCompletionSyncService({
       prismaClient: prismaMock as never,
@@ -130,7 +130,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
     const r = await svc.syncFromDedupedStatusMailRows(rows);
 
     expect(r).toEqual({ skipped: false, distinctKeys: 2, disappearedDistinctKeys: 0 });
-    expect(repo.replaceAllWinnerExternalCompletionStates).toHaveBeenCalledWith(txArg, []);
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(txArg, []);
     expect(snapshotRepo.replaceDedupeKeySnapshot).toHaveBeenCalledWith(txArg, ['10\tR01\t0001', '20\tR02\t0002']);
   });
 });

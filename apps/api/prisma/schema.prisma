@@ -1089,11 +1089,18 @@ model ProductionScheduleProgress {
   @@index([csvDashboardId, isCompleted])
 }
 
-/// FKOJUNST_Status CSV の直前成功同期との差分で「前回あり→今回なし」となった winner の外部完了を保持する。本体 rowData.FKOJUNST は変更しない。
+/// CSV 由来の実効完了（工順STメール差分・工順ST状態・生産日程CSV差分）を winner 単位で保持する。本体 rowData は変更しない。
+/// `isExternallyCompleted` は下位3フラグの論理OR（後方互換・検索用に同期する）。
 model ProductionScheduleExternalCompletion {
   csvDashboardRowId       String   @id
   csvDashboardId          String
   isExternallyCompleted   Boolean  @default(false)
+  /// FKOJUNST_Status メール CSV: 直前スナップショットにあって今回 dedupe キー集合から消えた。
+  externallyCompletedFromFkojunstDisappeared Boolean @default(false)
+  /// FKOJUNST メール側 status が完了系（C/P/X/O）。S/R は未完了。
+  externallyCompletedFromFkojunstMailStatus   Boolean @default(false)
+  /// 生産日程CSV取込: 取込直前 winner 集合にあって取込後 winner 集合から消えた。
+  externallyCompletedFromScheduleCsvDisappeared Boolean @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -1105,6 +1112,12 @@ model ProductionScheduleExternalCompletion {
 /// `FKOJUNST_Status` Gmail CSV を dedupe した論理キー（FKOJUN \t FSIGENCD \t ProductNo と同一形式）の直近スナップショット。
 /// 前回成功同期との差分で「CSV から消えたキー」を検知する。
 model ProductionScheduleFkojunstStatusMailDedupeKeySnapshot {
+  compositeKey String   @id
+  updatedAt    DateTime @default(now()) @updatedAt
+}
+
+/// 生産日程CSV 取込直前の winner 論理キー（FKOJUN + TAB + 資源CD + TAB + ProductNo）スナップショット。取込後と比較して消滅キーを検知する。
+model ProductionScheduleCsvIngestLogicalKeySnapshot {
   compositeKey String   @id
   updatedAt    DateTime @default(now()) @updatedAt
 }
