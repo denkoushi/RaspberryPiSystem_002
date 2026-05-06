@@ -51,7 +51,7 @@ category: knowledge-base
 ## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
 
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **必須対象外**（play **no hosts matched**。**Pi3 専用手順不要**）。
-- **リポジトリ**: ブランチ **`fix/leaderboard-shell-winner-materialization`**・代表コミット **`b05baa5f`**（**`main` 取り込み後は `origin/main` HEAD を正とする**）。
+- **リポジトリ**: **`main`**: [PR #265](https://github.com/denkoushi/RaspberryPiSystem_002/pull/265) **squash**・**`ae5f938a`**（ブランチ **`fix/leaderboard-shell-winner-materialization`**・実装代表 **`b05baa5f`**）。
 - **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·**`--detach --follow`**）。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-190944-2060`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 888s**）。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 132s**・Tailscale）。

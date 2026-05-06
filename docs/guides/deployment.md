@@ -16,8 +16,8 @@ update-frequency: medium
 
 - **変更概要**: `responseProfile=leaderboard` と **`leaderboard-shell`** 経路で、同一論理キー内の **`buildMaxProductNoWinnerCondition`（相関）** を **`fetchMaxProductNoWinnerRowIdsForDashboard`（`ROW_NUMBER`・1 クエリ）** で置き換え、**COUNT** と **行取得**・**装飾 hydrate** が **同一 `materializedBaseWhere`（`IN`）を共有**。**契約・順序・件数は不変**。**正本**: [`max-product-no-winner-spec.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-spec.ts)·[`max-product-no-winner-materialization.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)。
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
-- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/leaderboard-shell-winner-materialization infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
-- **本番デプロイ（先行反映・実績）**: 代表コミット **`b05baa5f`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-190944-2060`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 888s**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main`**: [PR #265](https://github.com/denkoushi/RaspberryPiSystem_002/pull/265) **squash**・**`ae5f938a`** 以降。**先行反映時**はブランチ名を引数に指定）。
+- **本番デプロイ（先行反映・実績）**: 先行反映コミット **`b05baa5f`**（**`main` 取り込み後は `main` 先端**を正とする）。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-190944-2060`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 888s**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 132s**・Tailscale）。
 - **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
