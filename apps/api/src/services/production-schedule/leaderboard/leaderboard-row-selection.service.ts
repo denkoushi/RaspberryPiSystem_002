@@ -340,13 +340,13 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
     const nextP = pIdx < pSorted.length ? pSorted[pIdx]! : null;
     const nextF = fIdx < fillerRows.length ? fillerRows[fIdx]! : null;
 
-    if (!nextP && !nextF) break;
+    if (nextP == null && nextF == null) break;
 
     let pick: LeaderboardScheduleRowSql;
-    if (!nextP) {
-      pick = nextF;
+    if (nextP == null) {
+      pick = nextF!;
       fIdx++;
-    } else if (!nextF) {
+    } else if (nextF == null) {
       pick = nextP;
       pIdx++;
     } else if (compareLeaderboardFetchedRows(nextP, nextF) <= 0) {
