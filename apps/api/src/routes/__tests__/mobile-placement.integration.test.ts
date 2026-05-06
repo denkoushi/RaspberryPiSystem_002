@@ -609,6 +609,7 @@ describe('mobile-placement API', () => {
       data: {
         name: 'Test Client zero2w-tanaban01',
         apiKey: 'client-key-zero2w-tanaban01-edge1',
+        haizenEdgeEnabled: true,
         haizenPresetShelfCodeRaw: '西-北-01'
       }
     });
@@ -640,7 +641,8 @@ describe('mobile-placement API', () => {
     const target = await prisma.clientDevice.create({
       data: {
         name: 'Test Client zero2w-tanaban01',
-        apiKey: 'client-key-zero2w-tanaban01-edge1'
+        apiKey: 'client-key-zero2w-tanaban01-edge1',
+        haizenEdgeEnabled: true
       }
     });
     await prisma.mobilePlacementShelf.create({
