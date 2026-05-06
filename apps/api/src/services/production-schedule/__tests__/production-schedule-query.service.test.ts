@@ -866,20 +866,6 @@ describe('production-schedule-query.service', () => {
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([
         {
-          id: 'f1',
-          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
-          seibanJoinKey: 'Z1',
-          rowData: { ProductNo: '1000', FSEIBAN: 'Z1', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
-          processingOrder: null,
-          globalRank: null,
-          note: null,
-          processingType: null,
-          dueDate: new Date('2026-04-01T00:00:00.000Z'),
-          plannedQuantity: null,
-          plannedStartDate: null,
-          plannedEndDate: null
-        },
-        {
           id: 'f2',
           occurredAt: new Date('2026-03-09T00:00:00.000Z'),
           seibanJoinKey: 'Z2',
@@ -889,6 +875,20 @@ describe('production-schedule-query.service', () => {
           note: null,
           processingType: null,
           dueDate: new Date('2026-03-15T00:00:00.000Z'),
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        },
+        {
+          id: 'f1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'Z1',
+          rowData: { ProductNo: '1000', FSEIBAN: 'Z1', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: new Date('2026-04-01T00:00:00.000Z'),
           plannedQuantity: null,
           plannedStartDate: null,
           plannedEndDate: null
