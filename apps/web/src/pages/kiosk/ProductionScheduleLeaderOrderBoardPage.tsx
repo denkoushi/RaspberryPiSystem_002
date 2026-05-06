@@ -3,7 +3,9 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  useKioskProductionSchedule,
+  useKioskProductionScheduleLeaderboardDecorations,
+  useKioskProductionScheduleLeaderboardShell,
+  useKioskProductionScheduleLeaderboardTotal,
   useKioskProductionScheduleHistoryProgress,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources
@@ -12,7 +14,7 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
-import { leaderOrderBoardQueryPageSize } from '../../features/kiosk/leaderOrderBoard/constants';
+import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
@@ -39,7 +41,7 @@ import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../hooks/kioskR
 import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
-import type { ProductionScheduleRow } from '../../api/client';
+import type { ProductionScheduleListResponse, ProductionScheduleRow } from '../../api/client';
 import type { KioskResourceProgressProcessChip } from '../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import type { LeaderOrderCompletionFilter } from '../../features/kiosk/leaderOrderBoard/filterLeaderBoardRowsByCompletion';
 import type { LeaderBoardRow } from '../../features/kiosk/leaderOrderBoard/types';
@@ -111,11 +113,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       enabled: assignmentsSyncEnabled
     });
 
-  const boardPageSize = useMemo(
-    () => leaderOrderBoardQueryPageSize(activeResourceCds.length),
-    [activeResourceCds.length]
-  );
-
   const { selectedResourceCategory, queryParams: baseQueryParams, hasResourceCategoryResourceSelection } =
     useProductionScheduleQueryParams({
       activeQueries: searchConditions.activeQueries,
@@ -130,17 +127,16 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       history: []
     });
 
-  const scheduleListParams = useMemo(
+  const leaderboardPhasedParams = useMemo(
     () => ({
       ...baseQueryParams,
-      pageSize: boardPageSize,
+      pageSize: LEADER_ORDER_BOARD_SHELL_PAGE_SIZE,
       allowResourceOnly: true,
-      responseProfile: 'leaderboard' as const,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     }),
-    [activeDeviceScopeKey, baseQueryParams, boardPageSize, macManualOrderV2]
+    [activeDeviceScopeKey, baseQueryParams, macManualOrderV2]
   );
 
   const targetDeviceScopeKey =
@@ -218,11 +214,92 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     refetchIntervalMs: LEADER_BOARD_RESOURCES_REFETCH_MS
   });
 
-  const scheduleQuery = useKioskProductionSchedule(scheduleListParams, {
+  const shellQuery = useKioskProductionScheduleLeaderboardShell(
+    leaderboardPhasedParams,
+    {
+      enabled: scheduleEnabled,
+      pauseRefetch: writePause,
+      refetchIntervalMs: LEADER_BOARD_SCHEDULE_REFETCH_MS
+    }
+  );
+
+  const totalQuery = useKioskProductionScheduleLeaderboardTotal(leaderboardPhasedParams, {
     enabled: scheduleEnabled,
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_SCHEDULE_REFETCH_MS
   });
+
+  const leaderboardDecorationsPayload = useMemo(() => {
+    const rows = shellQuery.data?.rows;
+    if (!rows || rows.length === 0) return undefined;
+    return {
+      rowIds: rows.map((r) => r.id),
+      ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
+        ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
+        : {})
+    };
+  }, [activeDeviceScopeKey, macManualOrderV2, shellQuery.data?.rows]);
+
+  const decorationsQuery = useKioskProductionScheduleLeaderboardDecorations(leaderboardDecorationsPayload, {
+    enabled: scheduleEnabled && shellQuery.isSuccess && leaderboardDecorationsPayload != null,
+    pauseRefetch: writePause,
+    refetchIntervalMs: LEADER_BOARD_SCHEDULE_REFETCH_MS
+  });
+
+  const leaderboardDecorationByRowId = useMemo(() => {
+    const m = new Map<string, { resolvedMachineName: string | null; customerName: string | null }>();
+    for (const d of decorationsQuery.data?.rowDecorations ?? []) {
+      m.set(d.id, {
+        resolvedMachineName: d.resolvedMachineName ?? null,
+        customerName: d.customerName ?? null
+      });
+    }
+    return m;
+  }, [decorationsQuery.data?.rowDecorations]);
+
+  const mergedLeaderboardScheduleData = useMemo((): ProductionScheduleListResponse | undefined => {
+    if (!shellQuery.data) return undefined;
+    const chips = decorationsQuery.data?.leaderboardFooterChipsByPartKey;
+    const total = totalQuery.data?.total ?? shellQuery.data.rows.length;
+    const rows = shellQuery.data.rows.map((row): ProductionScheduleRow => {
+      const deco = leaderboardDecorationByRowId.get(row.id);
+      return deco ? { ...row, ...deco } : row;
+    });
+    return {
+      page: shellQuery.data.page,
+      pageSize: shellQuery.data.pageSize,
+      total,
+      rows,
+      ...(chips ? { leaderboardFooterChipsByPartKey: chips } : {})
+    };
+  }, [
+    decorationsQuery.data?.leaderboardFooterChipsByPartKey,
+    leaderboardDecorationByRowId,
+    shellQuery.data,
+    totalQuery.data?.total
+  ]);
+
+  const scheduleQuery = useMemo(
+    () => ({
+      data: mergedLeaderboardScheduleData,
+      isLoading: shellQuery.isLoading,
+      isError: shellQuery.isError || totalQuery.isError,
+      isFetching:
+        shellQuery.isFetching ||
+        totalQuery.isFetching ||
+        (leaderboardDecorationsPayload != null && decorationsQuery.isFetching)
+    }),
+    [
+      decorationsQuery.isFetching,
+      leaderboardDecorationsPayload,
+      mergedLeaderboardScheduleData,
+      shellQuery.isError,
+      shellQuery.isFetching,
+      shellQuery.isLoading,
+      totalQuery.isError,
+      totalQuery.isFetching
+    ]
+  );
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
     activeResourceCds.length > 0 ? activeResourceCds.join(',') : undefined,

@@ -598,6 +598,66 @@ describe('Kiosk Production Schedule API', () => {
     expect(chips![k1]?.map((c) => c.resourceCd)).toEqual([rPn1!.rowData.FSIGENCD!]);
   });
 
+  it('leaderboard phased read: shell + total + decorations match monolithic leaderboard ordering', async () => {
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?q=A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as {
+      page: number;
+      pageSize: number;
+      rows: Array<{
+        id: string;
+        rowData: { ProductNo?: string };
+        resolvedMachineName?: unknown;
+        customerName?: unknown;
+        actualPerPieceMinutes?: unknown;
+      }>;
+    };
+    expect(shellBody.pageSize).toBeLessThanOrEqual(160);
+    expect(shellBody.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001']);
+    for (const r of shellBody.rows) {
+      expect('resolvedMachineName' in r ? r.resolvedMachineName : undefined).toBeUndefined();
+      expect(r.customerName ?? null).toBeNull();
+      expect(r.actualPerPieceMinutes ?? null).toBeNull();
+    }
+
+    const mono = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A&responseProfile=leaderboard',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(mono.statusCode).toBe(200);
+    const monoBody = mono.json() as { rows: Array<{ id: string }> };
+    expect(shellBody.rows.map((r) => r.id)).toEqual(monoBody.rows.map((r) => r.id));
+
+    const totalRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-total?q=A',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(totalRes.statusCode).toBe(200);
+    expect((totalRes.json() as { total: number }).total).toBe(2);
+
+    const deco = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-decorations',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: { rowIds: shellBody.rows.map((r) => r.id) }
+    });
+    expect(deco.statusCode).toBe(200);
+    const decoBody = deco.json() as {
+      rowDecorations: Array<{ id: string; resolvedMachineName: string | null }>;
+      leaderboardFooterChipsByPartKey: Record<string, Array<{ resourceCd: string }>>;
+    };
+    for (const d of decoBody.rowDecorations) {
+      expect(d.resolvedMachineName ?? null).toBe(SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL);
+    }
+    expect(Object.keys(decoBody.leaderboardFooterChipsByPartKey ?? {}).length).toBeGreaterThan(0);
+  });
+
   it('filters by q with comma-separated tokens (OR)', async () => {
     const res = await app.inject({
       method: 'GET',
