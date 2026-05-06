@@ -72,5 +72,5 @@ category: knowledge-base
 
 ## References
 
-- ブランチ: `feat/completion-triple-source-unification`（本番反映後は **`main` 先端**を正とする）
+- ブランチ: `feat/completion-triple-source-unification`（**`main`**: [PR #263](https://github.com/denkoushi/RaspberryPiSystem_002/pull/263) **squash**・先端 **`4af94e05`** を正とする）
 - デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR）
