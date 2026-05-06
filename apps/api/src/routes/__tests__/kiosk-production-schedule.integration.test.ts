@@ -661,6 +661,117 @@ describe('Kiosk Production Schedule API', () => {
     expect(Object.keys(decoBody.leaderboardFooterChipsByPartKey ?? {}).length).toBeGreaterThan(0);
   });
 
+  it('leaderboard phased read caps shell at 160 even when total is larger', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 170 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)),
+        dataHash: `bulk-hash-${index}`,
+        rowData: {
+          ProductNo: `B${String(index).padStart(4, '0')}`,
+          FSEIBAN: `S${String(index).padStart(7, '0')}`,
+          FHINCD: `P${String(index).padStart(4, '0')}`,
+          FHINMEI: `Part ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultFkojunstStatusForAllDashboardRows();
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=320',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as {
+      pageSize: number;
+      rows: Array<{ id: string }>;
+    };
+    expect(shellBody.pageSize).toBe(160);
+    expect(shellBody.rows).toHaveLength(160);
+
+    const totalRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-total',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(totalRes.statusCode).toBe(200);
+    expect((totalRes.json() as { total: number }).total).toBeGreaterThan(shellBody.rows.length);
+  });
+
+  it('leaderboard shell continue accumulates rows to match monolithic leaderboard order', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 170 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)),
+        dataHash: `bulk-hash-continue-${index}`,
+        rowData: {
+          ProductNo: `B${String(index).padStart(4, '0')}`,
+          FSEIBAN: `S${String(index).padStart(7, '0')}`,
+          FHINCD: `P${String(index).padStart(4, '0')}`,
+          FHINMEI: `Part ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultFkojunstStatusForAllDashboardRows();
+
+    const mono = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?responseProfile=leaderboard',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(mono.statusCode).toBe(200);
+    const monoBody = mono.json() as { rows: Array<{ id: string }>; total: number };
+    const expectIds = monoBody.rows.map((r) => r.id);
+    expect(expectIds).toHaveLength(monoBody.total);
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=320',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as { rows: Array<{ id: string }> };
+    expect(shellBody.rows).toHaveLength(160);
+
+    const seen = new Set(shellBody.rows.map((r) => r.id));
+    const merged = shellBody.rows.map((r) => r.id);
+    let guard = 0;
+    while (merged.length < monoBody.total && guard < 20) {
+      guard += 1;
+      const cont = await app.inject({
+        method: 'POST',
+        url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+        headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+        payload: {
+          excludeRowIds: merged,
+          pageSize: 160
+        }
+      });
+      expect(cont.statusCode).toBe(200);
+      const contBody = cont.json() as { rows: Array<{ id: string }> };
+      if (contBody.rows.length === 0) break;
+      let added = 0;
+      for (const r of contBody.rows) {
+        if (!seen.has(r.id)) {
+          seen.add(r.id);
+          merged.push(r.id);
+          added += 1;
+        }
+      }
+      if (added === 0) break;
+    }
+
+    expect(merged).toEqual(expectIds);
+    expect(seen.size).toBe(merged.length);
+  });
+
   it('max ProductNo winner materialization equals correlated winner filter (seeded dashboard)', async () => {
     const materialized = await fetchMaxProductNoWinnerRowIdsForDashboard({
       prisma,

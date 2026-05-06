@@ -45,6 +45,27 @@ export const productionScheduleLeaderboardPhasedQuerySchema = productionSchedule
   responseProfile: true
 });
 
+/** 順位ボード shell 続き取得（POST・excludeRowIds が大きいため GET 非推奨） */
+export const productionScheduleLeaderboardShellContinuationBodySchema = z.object({
+  excludeRowIds: z.array(z.string().uuid()).min(1).max(900),
+  pageSize: z.coerce.number().int().min(1).max(160).optional(),
+  productNo: z.string().min(1).max(100).optional(),
+  q: z.string().min(1).max(200).optional(),
+  productNos: z.string().min(1).max(4000).optional(),
+  resourceCds: z.string().min(1).max(400).optional(),
+  resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
+  resourceCategory: z.enum(['grinding', 'cutting']).optional(),
+  machineName: z.string().min(1).max(200).optional(),
+  hasNoteOnly: z.boolean().optional(),
+  hasDueDateOnly: z.boolean().optional(),
+  allowResourceOnly: z.boolean().optional(),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional()
+});
+
+export type ProductionScheduleLeaderboardShellContinuationBody = z.infer<
+  typeof productionScheduleLeaderboardShellContinuationBodySchema
+>;
+
 export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
   /** shell 応答の `rows[].id` を **表示順のまま** 渡す（最大 900） */
   rowIds: z.array(z.string().uuid()).max(900).optional().default([]),

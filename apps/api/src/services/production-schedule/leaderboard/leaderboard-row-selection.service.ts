@@ -7,7 +7,7 @@ import {
 } from '../constants.js';
 import {
   buildFkojunstProductionScheduleListRowDataFkojunstSql,
-  buildFkojunstProductionScheduleListVisibilityWhereSql
+  buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
 import { buildLeaderboardGlobalRankScalarSql } from './leaderboard-global-rank-scalar.sql.js';
@@ -39,28 +39,21 @@ function readFseibanFromRow(row: LeaderboardScheduleRowSql): string {
   return typeof raw === 'string' ? raw.trim() : '';
 }
 
-/**
- * 順位ボード: 手動割当つき行を必ず含め、同一製番はまとめて取得し、
- * 残り枠を納期（表示納期に近い COALESCE）昇順で補完する。
- *
- * - `pageSize` を超えるよう手動+製番展開が膨らんだ場合でも、手動側を切り捨てない。
- * - `pageSize` 未満のときだけフィラーを追加し、合計を `pageSize` まで埋める。
- */
-export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params: {
-  /**
-   * `prepareProductionScheduleDashboardFilters()` の correlated winner ではなく、
-   * {@link buildProductionScheduleLeaderboardMaterializedBaseWhere} 由来のベース WHERE（COUNT / hydrate と同一リクエスト内で共有）。
-   */
+export type LeaderboardShellPriorityContext = {
+  commonWhere: Prisma.Sql;
+  processingOrderScalar: Prisma.Sql;
+  pSorted: LeaderboardScheduleRowSql[];
+};
+
+async function buildLeaderboardShellPriorityContext(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
-  pageSize: number;
-}): Promise<LeaderboardScheduleRowSql[]> {
+}): Promise<LeaderboardShellPriorityContext> {
   const { leaderboardMaterializedBaseWhere, queryWhere, expansionWhere, locationKey, siteScopedGlobalRankLocation } =
     params;
-  const pageSize = Math.max(1, params.pageSize);
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
   const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql}`;
@@ -230,18 +223,39 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
     }
   }
 
-  const selected = Array.from(idToRow.values());
-  if (selected.length >= pageSize) {
-    return sortLeaderboardFetchRows(selected);
-  }
+  const pSorted = sortLeaderboardFetchRows(Array.from(idToRow.values()));
+  return { commonWhere, processingOrderScalar, pSorted };
+}
 
-  const excludeIds = Array.from(idToRow.keys());
-  const fillLimit = pageSize - selected.length;
-  const excludeSql =
-    excludeIds.length > 0
-      ? Prisma.sql`AND NOT ("CsvDashboardRow"."id" IN (${Prisma.join(
-          excludeIds.map((id) => Prisma.sql`${id}`)
-        )}))`
+/**
+ * 手動+製番展開を除くフィラー候補を全件読み、priority と {@link compareLeaderboardFetchedRows} でマージした
+ * グローバル順序で exclude を飛ばし takeCount 件を返す（段階取得の続きき用）。
+ */
+export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
+  commonWhere: Prisma.Sql;
+  processingOrderScalar: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  pSorted: LeaderboardScheduleRowSql[];
+  excludeRowIds: ReadonlySet<string>;
+  takeCount: number;
+}): Promise<LeaderboardScheduleRowSql[]> {
+  const {
+    commonWhere,
+    processingOrderScalar,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    pSorted,
+    excludeRowIds,
+    takeCount,
+  } = params;
+  const nTake = Math.max(0, Math.floor(takeCount));
+  if (nTake === 0) return [];
+
+  const priorityIdParts = pSorted.map((r) => Prisma.sql`${r.id}`);
+  const priorityExcludeSql =
+    priorityIdParts.length > 0
+      ? Prisma.sql`AND NOT ("CsvDashboardRow"."id" IN (${Prisma.join(priorityIdParts)}))`
       : Prisma.empty;
 
   const fillerRows = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
@@ -291,7 +305,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE ${commonWhere}
-      ${excludeSql}
+      ${priorityExcludeSql}
     ORDER BY
       ${dueSortExpr} ASC NULLS LAST,
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
@@ -300,11 +314,117 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
         WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
         ELSE NULL
       END) ASC NULLS LAST,
-      ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
-    LIMIT ${fillLimit}
+      ("CsvDashboardRow"."rowData"->>'FHINCD') ASC,
+      "CsvDashboardRow"."id"::text ASC
   `;
 
-  return sortLeaderboardFetchRows([...selected, ...fillerRows]);
+  let pIdx = 0;
+  let fIdx = 0;
+  const out: LeaderboardScheduleRowSql[] = [];
+
+  const skipExcludedP = () => {
+    while (pIdx < pSorted.length && excludeRowIds.has(pSorted[pIdx]!.id)) {
+      pIdx++;
+    }
+  };
+  const skipExcludedF = () => {
+    while (fIdx < fillerRows.length && excludeRowIds.has(fillerRows[fIdx]!.id)) {
+      fIdx++;
+    }
+  };
+
+  skipExcludedP();
+  skipExcludedF();
+
+  while (out.length < nTake) {
+    const nextP = pIdx < pSorted.length ? pSorted[pIdx]! : null;
+    const nextF = fIdx < fillerRows.length ? fillerRows[fIdx]! : null;
+
+    if (!nextP && !nextF) break;
+
+    let pick: LeaderboardScheduleRowSql;
+    if (!nextP) {
+      pick = nextF;
+      fIdx++;
+    } else if (!nextF) {
+      pick = nextP;
+      pIdx++;
+    } else if (compareLeaderboardFetchedRows(nextP, nextF) <= 0) {
+      pick = nextP;
+      pIdx++;
+    } else {
+      pick = nextF;
+      fIdx++;
+    }
+
+    if (!excludeRowIds.has(pick.id)) {
+      out.push(pick);
+    }
+    skipExcludedP();
+    skipExcludedF();
+  }
+
+  return out;
+}
+
+/**
+ * `leaderboard-shell` 続き取得: 既に返却済み id を除外し chunkSize 件を返す。
+ */
+export async function fetchLeaderboardShellRowsContinuationChunk(params: {
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  expansionWhere: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  excludeRowIds: readonly string[];
+  chunkSize: number;
+}): Promise<LeaderboardScheduleRowSql[]> {
+  const ctx = await buildLeaderboardShellPriorityContext(params);
+  const exclude = new Set(params.excludeRowIds.map((id) => id.trim()).filter((id) => id.length > 0));
+  return takeLeaderboardShellMergedRowsAfterExclude({
+    commonWhere: ctx.commonWhere,
+    processingOrderScalar: ctx.processingOrderScalar,
+    locationKey: params.locationKey,
+    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+    pSorted: ctx.pSorted,
+    excludeRowIds: exclude,
+    takeCount: params.chunkSize,
+  });
+}
+
+/**
+ * 順位ボード: 手動割当つき行を必ず含め、同一製番はまとめて取得し、
+ * 残り枠を納期（表示納期に近い COALESCE）昇順で補完する。
+ *
+ * - `pageSize` を超えるよう手動+製番展開が膨らんだ場合でも、手動側は切り捨てない。
+ * - `pageSize` 未満のときはフィラーとマージしたグローバル順で先頭 `pageSize` 件を返す。
+ */
+export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params: {
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  expansionWhere: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  pageSize: number;
+}): Promise<LeaderboardScheduleRowSql[]> {
+  const { locationKey, siteScopedGlobalRankLocation } = params;
+  const pageSize = Math.max(1, params.pageSize);
+
+  const { commonWhere, processingOrderScalar, pSorted } = await buildLeaderboardShellPriorityContext(params);
+
+  if (pSorted.length >= pageSize) {
+    return pSorted;
+  }
+
+  return takeLeaderboardShellMergedRowsAfterExclude({
+    commonWhere,
+    processingOrderScalar,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    pSorted,
+    excludeRowIds: new Set(),
+    takeCount: pageSize,
+  });
 }
 
 /** @internal exported for tests */
@@ -335,6 +455,17 @@ export function compareLeaderboardFetchedRows(
   const bp = typeof bd.ProductNo === 'string' ? bd.ProductNo : '';
   const pc = ap.localeCompare(bp, 'ja');
   if (pc !== 0) return pc;
+  const afkojun = numericFkojun(ad.FKOJUN);
+  const bfkojun = numericFkojun(bd.FKOJUN);
+  if (afkojun !== bfkojun) {
+    if (afkojun == null) return 1;
+    if (bfkojun == null) return -1;
+    return afkojun - bfkojun;
+  }
+  const ah = typeof ad.FHINCD === 'string' ? ad.FHINCD : '';
+  const bh = typeof bd.FHINCD === 'string' ? bd.FHINCD : '';
+  const hc = ah.localeCompare(bh, 'ja');
+  if (hc !== 0) return hc;
   return a.id.localeCompare(b.id);
 }
 
@@ -344,6 +475,11 @@ function dueTime(row: LeaderboardScheduleRowSql): number | null {
   const e = row.plannedEndDate;
   if (e) return new Date(e).getTime();
   return null;
+}
+
+function numericFkojun(value: unknown): number | null {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+  return Number(value);
 }
 
 function sortLeaderboardFetchRows(rows: LeaderboardScheduleRowSql[]): LeaderboardScheduleRowSql[] {
