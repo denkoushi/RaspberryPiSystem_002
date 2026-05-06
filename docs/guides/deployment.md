@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-06（**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+
+### 補足（2026-05-06 · **生産スケジュール「実効完了」の3系統OR統合（手動・FKOJUNST・生産日程CSV）**·**API+DB**·**Pi5 のみ**）
+
+- **変更概要**: **実効完了**を **手動** OR **工順ST**（**FKOJUNST_Status メール**の **dedupe キー消滅** ＋ **`C`/`P`/`X`/`O`**・**`S`/`R` winner のみ**消滅差分を反映）OR **生産日程CSV DEDUP 取込**（**取込直前 winner 論理キー**と**今回CSVから確定した winner キー集合**の差で**消滅**を検知）の **論理OR** に統一。`ProductionScheduleExternalCompletion` に **由来別3列**＋ **`isExternallyCompleted`（3列OR同步）**・生産日程用スナップショット **`ProductionScheduleCsvIngestLogicalKeySnapshot`**。マイグレーション **`20260506150000_triple_source_external_completion`**。**正本**: [KB-370](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)·[`production-schedule-effective-completion.sql.ts`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts)·[`fkojunst-external-completion-sync.repository.ts`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.repository.ts)·[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`・**1 台**）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/completion-triple-source-unification infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`2b8c8427`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-152049-17895`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 803s**）。Ansible **`Run prisma migrate deploy`** **成功**（マイグレ **`20260506150000`** 適用）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 138s**・Tailscale）。
+- **トラブルシュート**: **外部完了が期待とズレる** → [KB-370](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)（**3由来列**・**スナップショット**・**初回／空CSV**）·**工順ST** は [KB-297 §外部完了](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)。**DB が古い** → Pi5 **`api`** の ref と **`prisma migrate status`**。**キオスク表示** → 一覧 API は実効完了式のまま → [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。
+- **ナレッジ**: [KB-370](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)·[knowledge-base/index.md](../knowledge-base/index.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-06 · **キオスク順位ボード一覧 API（`responseProfile=leaderboard`）内部レイテンシ改善・COUNT と行 SELECT 並列化**·**API のみ**·**Pi5 のみ**）
 

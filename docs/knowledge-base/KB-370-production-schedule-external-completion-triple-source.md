@@ -51,6 +51,26 @@ category: knowledge-base
 
 - Vitest: `src/services/production-schedule/external-completion/__tests__/`、`src/services/csv-dashboard/__tests__/`
 
+## Production（2026-05-06）
+
+- **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 の個別デプロイは不要）。
+- **ブランチ**: `feat/completion-triple-source-unification`（代表コミット **`2b8c8427`**）。
+- **標準手順**: [deployment.md](../guides/deployment.md) の **2026-05-06 · 実効完了3系統OR** 項。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-152049-17895`**
+  - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`・リモート **`exit 0`**
+  - **`Run prisma migrate deploy`**: **成功**（**`20260506150000_triple_source_external_completion`** 適用）
+- **Phase12 実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 138s**・Tailscale）。
+
+## Troubleshooting
+
+- **実効完了が付かない／期待とずれる**
+  - **工順ST**: メール同期が **dedupe 後キー0でスキップ**していないか・**初回**は消滅差分が無い（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
+  - **メール status**: **`C`/`P`/`X`/`O` のみ**完了扱い（`?` や空は未完了のまま）。
+  - **生産日程CSV**: **DEDUP** 取込でのみスナップショット＆差分。**取込後の「現在キー」は DB 再クエリではなく今回CSVの winner 集合**で比較（取りこぼし防止）。`ProductionScheduleCsvIngestLogicalKeySnapshot` の内容と取込ログを確認。
+- **マイグレ未適用**
+  - Pi5 で **`prisma migrate status`** が **`20260506150000`** を **Applied** と報告するか（デプロイ playbook の migrate ログが正本）。
+
 ## References
 
-- ブランチ例: `feat/completion-triple-source-unification`（作業用・未コミット想定の場合あり）
+- ブランチ: `feat/completion-triple-source-unification`（本番反映後は **`main` 先端**を正とする）
+- デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR）
