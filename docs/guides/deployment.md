@@ -18,7 +18,7 @@ update-frequency: medium
 - **対象ホスト**: **`raspberrypi5`** → **`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit <host> --detach --follow`**・**1 台ずつ**）。**Pi3 は対象外**（ユーザー提示リスト／変更スコープ外）。
 - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·ブランチ先行時は **`feat/mobile-placement-zero2w-hardening`**。**マージ後は `main`**。
 - **本番デプロイ（実績・ブランチ先行反映）**: **`Detach Run ID`**: **`20260506-203237-17583`**（`raspberrypi5`）/ **`20260506-204833-27605`**（`raspberrypi4`）/ **`20260506-205620-28633`**（`raspi4-robodrill01`）/ **`20260506-210226-30541`**（`raspi4-fjv60-80`）/ **`20260506-210653-10599`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**。Pi5 で **`Run prisma migrate deploy`** **成功**。
-- **Zero2W（`zero2w-edge-setup.yml`）**: 当記録では **実行未完**（`common` 先頭タスクで **`Missing sudo password`**）。運用手順・是正は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-368 §2026-05-06](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)。
+- **Zero2W（`zero2w-edge-setup.yml`）**: 後続で **Pi3/Pi4 と同じ `NOPASSWD: ALL` 前提**へそろえたあと、Pi5 からの専用 playbook が **`ok=82 changed=10 failed=0 unreachable=0`** で完了。運用手順・実績は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-368 §2026-05-06](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 67s**・Tailscale）。Pi5 で **`GET /api/mobile-placement/haizen-target-devices`**（キオスク **`x-client-key`**）が **200** であることをスモーク。
 - **ナレッジ**: [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·[mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)。
 
@@ -94,7 +94,7 @@ update-frequency: medium
 ### 補足（2026-05-06 · **Phase12 実機検証・Zero2W `sudo_nopasswd_commands`**）
 
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**・Tailscale・**コード変更なしの健全性確認**）。
-- **知見**: Zero2W が **対話 sudo 必須** のままだと Pi5 からの **`zero2w-edge-setup.yml`** で **`Missing sudo password`** になり得る。初回復旧では **`ansible_become_password`** で通したが、**Pi4 と同様**に断片へ **`sudo_nopasswd_commands`**（**`status-agent` / `haizen-agent` の `systemctl`**・**reboot/poweroff**。**キオスク browser 無しのため kiosk-browser 行は無し**）を載せれば **`-e ansible_become_password` なし**で Ansible の become が通り、`sudo -n true` と **`ansible ansible_host -m ping -b`** で確認できる。
+- **知見**: Zero2W が **対話 sudo 必須** のままだと Pi5 からの **`zero2w-edge-setup.yml`** で **`Missing sudo password`** になり得る。断片の **`sudo_nopasswd_commands`**（**`status-agent` / `haizen-agent` の `systemctl`**・**reboot/poweroff**）は **サービス操作向けの限定 sudoers**。**Pi3/Pi4 と同じく playbook 全体を無人で通す**には、Zero 側でも **`sudo -n true` が通る広い sudo 前提**が必要で、今回は **`NOPASSWD: ALL`** にそろえて解消した。
 - **正本**: **`infrastructure/ansible/inventory-zero2w-edge-fragment.sample.yml`**（実 IP を含む **`inventory-zero2w-edge-fragment.yml`** は `.gitignore`）·[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)。
 
 ### 補足（2026-05-05 late · **Zero2W 棚番エッジ hardening**·**`feat/zero2w-haizen-edge-hardening`**·**Pi5 のみ標準デプロイ → Zero2W 復旧完了**）
