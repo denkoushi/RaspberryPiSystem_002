@@ -10,7 +10,16 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-06（**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+
+### 補足（2026-05-06 · **キオスク順位ボード・最大 ProductNo winner の materialization（相関除去・API のみ）**·**Pi5 のみ**）
+
+- **変更概要**: `responseProfile=leaderboard` と **`leaderboard-shell`** 経路で、同一論理キー内の **`buildMaxProductNoWinnerCondition`（相関）** を **`fetchMaxProductNoWinnerRowIdsForDashboard`（`ROW_NUMBER`・1 クエリ）** で置き換え、**COUNT** と **行取得**・**装飾 hydrate** が **同一 `materializedBaseWhere`（`IN`）を共有**。**契約・順序・件数は不変**。**正本**: [`max-product-no-winner-spec.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-spec.ts)·[`max-product-no-winner-materialization.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/leaderboard-shell-winner-materialization infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（先行反映・実績）**: 代表コミット **`b05baa5f`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-190944-2060`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 888s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 132s**・Tailscale）。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-06 · **生産日程CSV DEDUP 取込の空 winner ガード**·**Web axios セキュリティ**·**API+Web**·**Pi5 のみ**）
 

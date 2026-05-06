@@ -48,6 +48,15 @@ category: knowledge-base
 - [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)（leaderboard を含むケース）。**追補**: [`max-product-no-winner-materialization.test.ts`](../../apps/api/src/services/production-schedule/__tests__/max-product-no-winner-materialization.test.ts)（モック）。
 - [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の **winner materialization と相関 winner の集合一致**（シード済みダッシュボード）。
 
+## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
+
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **必須対象外**（play **no hosts matched**。**Pi3 専用手順不要**）。
+- **リポジトリ**: ブランチ **`fix/leaderboard-shell-winner-materialization`**・代表コミット **`b05baa5f`**（**`main` 取り込み後は `origin/main` HEAD を正とする**）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·**`--detach --follow`**）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260506-190944-2060`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 888s**）。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 132s**・Tailscale）。
+- **トラブルシュート**: 体感が変わらない／挙動が期待と違う → Pi5 **`api` イメージ**が当該コミット以降か（detach ログ・`git log -1`）。**相関 winner と materialize の集合**は統合テストで一致を確認済み。
+
 ## Production deploy & verification（2026-05-06 · leaderboard COUNT 並列化）
 
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **本変更の必須デプロイ対象外**（inventory 上 **no hosts matched**）。
@@ -86,6 +95,6 @@ category: knowledge-base
 ## References
 
 - 計画メモ（ローカル）: 「仕様不変の順位ボード高速化計画」（`leaderboard-spec-preserving-speedup`）
-- [deployment.md](../guides/deployment.md)（2026-05-06 · leaderboard COUNT 並列化項·段階取得項）
+- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項）
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)
