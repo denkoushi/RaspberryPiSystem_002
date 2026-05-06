@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-06
+last-verified: 2026-05-07
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-07（**順位ボード段階取得・total materialized 整合・globalRank 索引・Web stale（`feat/leaderboard-output-stable-speedup`・Pi5 のみ）**·**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
 
 ### 補足（2026-05-06 late · **Mobile Placement Zero2W hardening（`feat/mobile-placement-zero2w-hardening`）**·**Pi5 + Pi4×4 順次・Zero2W playbook は別**）
 
@@ -70,6 +70,16 @@ update-frequency: medium
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**・Tailscale）。
 - **トラブルシュート**: **初回だけ空欄がチラつく** → ネットワークで **shell → total → decorations** の順と失敗有無を確認。**装飾が常に欠ける** → Pi5 **`api`/`web`** の ref。**キオスク**は [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**切り分けの正本**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)（段階取得・hydrate 知見）。
 - **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-297 §段階取得（2026-05-06）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+### 補足（2026-05-07 · **順位ボード段階取得・total の materialized COUNT 整合・globalRank 索引・Web 再取得抑制**·**API+Web+DB（索引のみ）**·**Pi5 のみ**）
+
+- **変更概要**: **`leaderboard-total`** の件数 COUNT を **materialized winner**（`resolveLeaderboardMaterializedBaseWhere`）に揃え、**shell／一覧 leaderboard と同一 winner 定義**のままプランナ負荷のみ低減。**装飾 hydrate** は呼び出し元から **任意で `leaderboardMaterializedBaseWhere` 注入**可能。**`globalRank` 相関**は SQL 断片を共通化。**DB**: `ProductionScheduleGlobalRowRank` の **`csvDashboardRowId` 単独 INDEX**（マイグレ **`20260506170000_add_global_row_rank_csv_dashboard_row_id_index`**）。**Web**: 段階取得 3 フックの **`staleTime` / `refetchOnWindowFocus: false`** と **履歴 progress クエリの `enabled: scheduleEnabled`**。**契約・並び・件数定義・装飾内容は不変**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/leaderboard-output-stable-speedup infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（先行反映・実績）**: 代表コミット **`137e7e07`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260507-073532-249`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 739s**）。**`Run prisma migrate deploy`** **成功**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 27s**・Tailscale）。
+- **トラブルシュート**: **total と shell の件数が食い違う**ように見える → Pi5 **`api`/`web`** が当該コミット（または **`main` マージ先端**）か。**索引未適用** → `prisma migrate status`。**キオスク**は [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**切り分けの正本**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)（**2026-05-07** 項）。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-06 · **DGX `control-server` 単一アクティブ運用ガード（`dgx_llm_single_active_guard`）**·**DGX のみ**）
 
