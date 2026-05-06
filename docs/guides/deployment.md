@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**順位ボード一覧 API の leaderboard COUNT 並列化（Pi5 のみ）**·**DGX control-server 単一アクティブ運用ガードの本番反映**·**部品納期個数補助 `P2002` 修正の Pi5 本番**·**Phase12 実機検証**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-06（**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
 
 ### 補足（2026-05-06 · **キオスク順位ボード一覧 API（`responseProfile=leaderboard`）内部レイテンシ改善・COUNT と行 SELECT 並列化**·**API のみ**·**Pi5 のみ**）
 
@@ -21,6 +21,16 @@ update-frequency: medium
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 80s**・Tailscale）。
 - **トラブルシュート**: **体感が変わらない** → Pi5 **`api` イメージ**が **`35629338` 以降**か（detach ログ・`git log -1`）。**キオスク**は [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**切り分けの正本**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。
 - **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-297 §COUNT 並列化（2026-05-06）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+### 補足（2026-05-06 · **キオスク順位ボード・段階取得（leaderboard-shell／leaderboard-total／leaderboard-decorations）初回体感短縮**·**API+Web**·**Pi5 のみ**）
+
+- **変更概要**: 順位ボードは **単一の `responseProfile=leaderboard` で全装飾を一括取得**する従来に加え、**初回**は **シェル行 → 総件数 → 装飾（機種名・顧客名・フッターチップ）**を分割取得。**並び順は `fetchLeaderboardScheduleRowsWithSeibanAwarePriority` を再利用し、応答結合では `rowId` マージのみ（再ソートしない）**。初回ページは **`pageSize` 既定 160**・上限 **160**。実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)·[`leaderboard-shell-hydrate.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-hydrate.service.ts)·[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts)（phased ケース）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **対象外**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/leaderboard-phased-fetch-2s infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`cd751a2a`**。**Detach Run ID** **`20260506-113443-32585`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 849s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**・Tailscale）。
+- **トラブルシュート**: **初回だけ空欄がチラつく** → ネットワークで **shell → total → decorations** の順と失敗有無を確認。**装飾が常に欠ける** → Pi5 **`api`/`web`** の ref。**キオスク**は [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**切り分けの正本**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)（段階取得・hydrate 知見）。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-297 §段階取得（2026-05-06）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-06 · **DGX `control-server` 単一アクティブ運用ガード（`dgx_llm_single_active_guard`）**·**DGX のみ**）
 
