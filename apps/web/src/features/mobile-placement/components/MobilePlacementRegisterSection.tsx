@@ -43,7 +43,7 @@ export function MobilePlacementRegisterSection(props: MobilePlacementRegisterSec
   const [lineId, setLineId] = useState<ShelfLineId | null>(null);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5 overflow-hidden p-3">
+    <div className="flex min-w-0 flex-col gap-2.5 p-3">
       <MobilePlacementRegisterShelfPanel
         shelfCode={props.shelfCode}
         onSelectShelf={props.onSelectShelf}

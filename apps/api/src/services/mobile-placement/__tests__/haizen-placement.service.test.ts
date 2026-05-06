@@ -82,14 +82,13 @@ describe('haizen-placement.service', () => {
     expect(prisma.clientDevice.update).not.toHaveBeenCalled();
   });
 
-  it('listHaizenAssignableDevices は zero2w 候補だけを返す', async () => {
+  it('listHaizenAssignableDevices は haizenEdgeEnabled の端末だけを返す', async () => {
     const lastSeenAt = new Date('2026-05-04T08:00:00.000Z');
     vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([
       {
         id: 'zero-1',
         name: 'zero2w-tanaban01',
         location: '工場A',
-        apiKey: 'client-key-zero2w-tanaban01-edge1',
         haizenPresetShelfCodeRaw: ' 西-北-01 ',
         lastSeenAt
       }
@@ -108,11 +107,29 @@ describe('haizen-placement.service', () => {
     });
   });
 
+  it('updateHaizenPresetShelfForTarget は haizenEdgeEnabled が無効な端末を拒否する', async () => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValueOnce({
+      id: 'plain-1',
+      name: 'kiosk-01',
+      apiKey: 'client-key-kiosk',
+      haizenEdgeEnabled: false
+    } as never);
+
+    await expect(
+      updateHaizenPresetShelfForTarget({
+        clientDeviceId: 'plain-1',
+        shelfCodeRaw: '西-北-02'
+      })
+    ).rejects.toThrow(ApiError);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
+  });
+
   it('updateHaizenPresetShelfForTarget は棚マスタ未登録の棚を拒否する', async () => {
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValueOnce({
       id: 'zero-1',
       name: 'zero2w-tanaban01',
-      apiKey: 'client-key-zero2w-tanaban01-edge1'
+      apiKey: 'client-key-zero2w-tanaban01-edge1',
+      haizenEdgeEnabled: true
     } as never);
     vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue(null as never);
 
@@ -129,7 +146,8 @@ describe('haizen-placement.service', () => {
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValueOnce({
       id: 'zero-1',
       name: 'zero2w-tanaban01',
-      apiKey: 'client-key-zero2w-tanaban01-edge1'
+      apiKey: 'client-key-zero2w-tanaban01-edge1',
+      haizenEdgeEnabled: true
     } as never);
     vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue({
       shelfCodeRaw: '西-北-02'

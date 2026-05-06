@@ -2631,6 +2631,8 @@ export interface ClientDevice {
   location?: string | null;
   apiKey: string;
   defaultMode?: 'PHOTO' | 'TAG' | null;
+  /** Zero2W / haizen-agent 配膳エッジとしてキオスク設定対象に含める */
+  haizenEdgeEnabled?: boolean;
   /** キオスクのサイネージプレビュー参照先（API が返す場合のみ） */
   signagePreviewTargetApiKey?: string | null;
   lastSeenAt?: string | null;
@@ -2643,7 +2645,10 @@ export async function getClients() {
   return data.clients;
 }
 
-export async function updateClient(id: string, payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null }) {
+export async function updateClient(
+  id: string,
+  payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null; haizenEdgeEnabled?: boolean }
+) {
   const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
   return data.client;
 }

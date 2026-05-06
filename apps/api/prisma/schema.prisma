@@ -311,6 +311,8 @@ model ClientDevice {
   signagePreviewTargetApiKey String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
   haizenPresetShelfCodeRaw String?
+  /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）
+  haizenEdgeEnabled        Boolean  @default(false)
   lastSeenAt     DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

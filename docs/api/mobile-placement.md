@@ -1,6 +1,6 @@
 # 配膳スマホ API（mobile-placement）
 
-最終更新: 2026-04-13（**V18 棚マスタ `MobilePlacementShelf`**・`GET/POST registered-shelves` 正本切替・`POST /mobile-placement/shelves`）／2026-04-12（**V16 部品名検索**・**V14 分配枝**・`OrderPlacementBranchState`／履歴は `OrderPlacementEvent` + `branchNo` / `actionType`）／**2026-05-04（Zero2W 配膳 `haizen-*` API・`HaizenScanEvent` / `HaizenCurrentPlacement`）**
+最終更新: 2026-04-13（**V18 棚マスタ `MobilePlacementShelf`**・`GET/POST registered-shelves` 正本切替・`POST /mobile-placement/shelves`）／2026-04-12（**V16 部品名検索**・**V14 分配枝**・`OrderPlacementBranchState`／履歴は `OrderPlacementEvent` + `branchNo` / `actionType`）／2026-05-04（Zero2W 配膳 `haizen-*` API・`HaizenScanEvent` / `HaizenCurrentPlacement`）／**2026-05-07（`ClientDevice.haizenEdgeEnabled`・キオスク `/zero2w-status`・分配モード `HAIZEN_DISTRIBUTION_MODE`）**
 
 **本番（2026-04-12・V16）**: ブランチ **`feat/mobile-placement-part-name-search`**（コミット **`62721227`**）を Pi5→Pi4×4 順次反映（**Pi3 除外**）・Phase12 **43/0/0**・部品名検索 API の spot check 済み。手順・知見・Detach Run ID の扱いは [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §0（V16）。
 
@@ -194,10 +194,10 @@ JSON:
 
 - **`GET /api/mobile-placement/haizen-preset-shelf`** — 認証端末の **`ClientDevice.haizenPresetShelfCodeRaw`**（構造化棚 `西-北-01` 形式）を返す。未設定は `{ "shelfCodeRaw": null }`。
 - **`PATCH /api/mobile-placement/haizen-preset-shelf`** — Body `{ "shelfCodeRaw": "西-北-01" }` でプリセット更新（構造化棚のみ）。**棚マスタ（`MobilePlacementShelf`）に登録済みの棚のみ**許可（未登録は `HAIZEN_PRESET_SHELF_NOT_REGISTERED`）。
-- **`POST /api/mobile-placement/haizen-scans`** — Body 例: `{ "manufacturingOrderBarcodeRaw": "…", "distributionNumber": 1, "rawBarcode": "…" }`。分配番号は **1〜999 の整数**（省略可）。**プリセット棚が未設定なら 400**（`HAIZEN_PRESET_SHELF_REQUIRED`）。
+- **`POST /api/mobile-placement/haizen-scans`** — Body 例: `{ "manufacturingOrderBarcodeRaw": "…", "distributionNumber": 1, "rawBarcode": "…" }`。分配番号は **1〜999 の整数**（省略可）。エージェント側では **`HAIZEN_DISTRIBUTION_MODE`**（既定は単独整数ヒューリスティック／省略時 **`legacy_short_numeric`**）で入力規則が変わる。**プリセット棚が未設定なら 400**（`HAIZEN_PRESET_SHELF_REQUIRED`）。
 - **`GET /api/mobile-placement/haizen-current`** — クエリ **`shelfCodeRaw`**（推奨）または **`shelfCode`**（後方互換・同等）、`limit`（1〜200、既定 50）。**棚パラメータ省略時は全棚から最新 N 件**。応答 `rows[]` に製造 order・棚・分配・日程スナップショット由来の品目表示・`resolutionNote`（`RESOLVED` | `UNRESOLVED`）。
-- **`GET /api/mobile-placement/haizen-target-devices`** — Android キオスクの専用設定画面向け。**`apiKey` または `name` に `zero2w` を含む端末だけ**を返す。各要素は `id` / `name` / `location` / `shelfCodeRaw` / `lastSeenAt`。
-- **`PUT /api/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf`** — Android キオスクから **対象 Zero2W** の担当棚を更新する。Body `{ "shelfCodeRaw": "西-北-01" }`。**棚マスタに登録済みの構造化棚のみ**許可し、対象が Zero2W 候補でない場合はエラー。
+- **`GET /api/mobile-placement/haizen-target-devices`** — Android キオスクの専用設定画面向け。**`ClientDevice.haizenEdgeEnabled === true` の端末だけ**を返す。各要素は `id` / `name` / `location` / `shelfCodeRaw` / `lastSeenAt`。
+- **`PUT /api/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf`** — Android キオスクから **対象 Zero2W** の担当棚を更新する。Body `{ "shelfCodeRaw": "西-北-01" }`。**棚マスタに登録済みの構造化棚のみ**許可し、対象が **`haizenEdgeEnabled` 無効**の場合はエラー。**フラグの付け替え**は **管理画面「クライアント端末管理」** または **`PUT /api/clients/:id`**（`haizenEdgeEnabled`）。
 
 **クライアント**: `clients/haizen-agent/`（HID → POST）。**ナレッジ**: [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)。
 

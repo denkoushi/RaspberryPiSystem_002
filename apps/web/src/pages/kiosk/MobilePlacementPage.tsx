@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
-import { MobilePlacementHaizenPanel } from '../../features/mobile-placement/components/MobilePlacementHaizenPanel';
 import { MobilePlacementRegisterSection } from '../../features/mobile-placement/components/MobilePlacementRegisterSection';
 import { MobilePlacementVerifySection } from '../../features/mobile-placement/components/MobilePlacementVerifySection';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
@@ -33,14 +32,21 @@ export function MobilePlacementPage() {
   }, [location.state, location.pathname, mp.restoreShelfRegisterRouteState, navigate]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex justify-end gap-2 px-3 pt-2">
+    <div className="flex min-h-0 w-full flex-col">
+      <div className="flex flex-wrap justify-end gap-2 px-3 pt-2">
         <button
           type="button"
           className={mpKioskTheme.partSearchButton}
           onClick={() => navigate('/kiosk/mobile-placement/zero2w-assignment')}
         >
           Zero2W担当棚
+        </button>
+        <button
+          type="button"
+          className={mpKioskTheme.partSearchButton}
+          onClick={() => navigate('/kiosk/mobile-placement/zero2w-status')}
+        >
+          棚番配膳一覧（Zero2W）
         </button>
         <button
           type="button"
@@ -125,8 +131,6 @@ export function MobilePlacementPage() {
         slipResult={mp.slipResult}
         onVerify={() => void mp.runSlipVerify()}
       />
-
-      <MobilePlacementHaizenPanel selectedShelfCode={mp.shelfCode} />
 
       <MobilePlacementRegisterSection
         shelfCode={mp.shelfCode}
