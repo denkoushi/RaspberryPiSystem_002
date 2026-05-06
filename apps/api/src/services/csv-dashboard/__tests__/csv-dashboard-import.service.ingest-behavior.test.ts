@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NoMatchingMessageError } from '../../backup/storage/gmail-storage.provider.js';
+import { ApiError } from '../../../lib/errors.js';
 import { CsvDashboardImportService } from '../csv-dashboard-import.service.js';
 
 const { findUniqueMock, upsertMock, findFirstMock, updateMock } = vi.hoisted(() => ({
@@ -111,5 +112,54 @@ describe('CsvDashboardImportService ingest behavior', () => {
 
     expect(markAsRead).toHaveBeenCalledTimes(1);
     expect(trashMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves when a non-retriable message is trashed and another message succeeds', async () => {
+    const markAsRead = vi.fn().mockResolvedValue(undefined);
+    const trashMessage = vi.fn().mockResolvedValue(undefined);
+    const service = new CsvDashboardImportService() as any;
+    service.subjectPatternProvider = {
+      listEnabledPatterns: vi.fn().mockResolvedValue(['生産日程_三島_研削工程']),
+    };
+    service.sourceService = {
+      downloadCsv: vi
+        .fn()
+        .mockResolvedValueOnce([
+          { buffer: Buffer.from('bad-header\nx\n'), messageId: 'message-bad-000001', messageSubject: '生産日程_三島_研削工程' },
+          { buffer: Buffer.from('ok-header\nx\n'), messageId: 'message-good-000002', messageSubject: '生産日程_三島_研削工程' },
+        ])
+        .mockResolvedValueOnce([]),
+    };
+    service.ingestor = {
+      ingestFromGmail: vi
+        .fn()
+        .mockRejectedValueOnce(new ApiError(400, 'CSV header mismatch', undefined, 'CSV_HEADER_MISMATCH'))
+        .mockResolvedValueOnce({
+          ingestRunId: 'ingest-run-2',
+          rowsProcessed: 10,
+          rowsAdded: 10,
+          rowsSkipped: 0,
+        }),
+    };
+    service.postIngestService = {
+      runAfterSuccessfulIngest: vi.fn().mockResolvedValue({}),
+    };
+
+    await expect(
+      service.ingestTargets({
+        provider: 'gmail',
+        storageProvider: { markAsRead, trashMessage },
+        dashboardIds: ['dashboard-1'],
+      })
+    ).resolves.toMatchObject({
+      'dashboard-1': {
+        rowsProcessed: 10,
+        rowsAdded: 10,
+        rowsSkipped: 0,
+      },
+    });
+
+    expect(trashMessage).toHaveBeenCalledTimes(2);
+    expect(markAsRead).toHaveBeenCalledTimes(1);
   });
 });

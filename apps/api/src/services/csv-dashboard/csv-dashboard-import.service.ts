@@ -390,6 +390,11 @@ export class CsvDashboardImportService {
                 postProcessStateByMessageIdSuffix[safeMessageId] = 'disposed_non_retriable';
                 disposeReasonByMessageIdSuffix[safeMessageId] =
                   error instanceof Error ? error.message : String(error);
+                // NON_RETRIABLE を廃棄できた場合は、最終判定用の failed 集計から除外する。
+                const failedIndex = failedMessageIdSuffixes.lastIndexOf(safeMessageId);
+                if (failedIndex >= 0) {
+                  failedMessageIdSuffixes.splice(failedIndex, 1);
+                }
               }
               await this.appendIngestRunAudit({
                 dashboardId,
