@@ -2673,6 +2673,14 @@ category: knowledge-base
 - **ナレッジ（正本）**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](../guides/deployment.md)（2026-05-06 項）。
 - **トラブルシュート**: 反映確認は Pi5 **`api` イメージ**・detach ログ。キオスクは **強制リロード**（本件は API のみ）。
 
+### Leader order board: 順位ボード段階取得（leaderboard-shell／total／decorations）（2026-05-06） {#leader-order-board-leaderboard-phased-fetch-2026-05-06}
+
+- **目的**: 初回表示の **壁時計時間**を短くする（**一覧の並び・件数定義・装飾の意味は従来と整合**）。**Web** は **シェル → 総件数 → 装飾**の順で取得し、**API** は責務分割した **GET/POST** を追加。
+- **実装（要約）**: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)·[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)·[`leaderboard-shell-hydrate.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-hydrate.service.ts)。**Web**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)·[`hooks.ts`](../../apps/web/src/api/hooks.ts)·[`client.ts`](../../apps/web/src/api/client.ts)。
+- **本番デプロイ（2026-05-06）**: ブランチ **`feat/leaderboard-phased-fetch-2s`**・コミット **`cd751a2a`**。**対象**: **`raspberrypi5` のみ**。**Detach Run ID**: **`20260506-113443-32585`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **74s**・Tailscale）。
+- **ナレッジ（正本）**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](../guides/deployment.md)（2026-05-06 段階取得項）。
+- **トラブルシュート**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md) の **hydrate raw SQL 知見**（`Prisma.join`・型・Fkojunst 可視 WHERE の連結）。キオスク **強制リロード**（API+Web のため **`api` と `web` の両方**を確認）。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。

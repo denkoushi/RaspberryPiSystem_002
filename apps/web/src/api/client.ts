@@ -358,6 +358,35 @@ export interface ProductionScheduleListResponse {
   >;
 }
 
+export type ProductionScheduleLeaderboardShellResponse = Pick<ProductionScheduleListResponse, 'page' | 'pageSize' | 'rows'>;
+
+export type ProductionScheduleLeaderboardTotalResponse = { total: number };
+
+export type ProductionScheduleLeaderboardDecorationsResponse = {
+  rowDecorations: Array<{
+    id: string;
+    resolvedMachineName: string | null;
+    customerName: string | null;
+  }>;
+  leaderboardFooterChipsByPartKey?: ProductionScheduleListResponse['leaderboardFooterChipsByPartKey'];
+};
+
+export type KioskProductionScheduleLeaderboardPhasedQueryParams = {
+  productNo?: string;
+  q?: string;
+  productNos?: string;
+  resourceCds?: string;
+  resourceAssignedOnlyCds?: string;
+  resourceCategory?: 'grinding' | 'cutting';
+  machineName?: string;
+  hasNoteOnly?: boolean;
+  hasDueDateOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+  allowResourceOnly?: boolean;
+  targetDeviceScopeKey?: string;
+};
+
 export interface ProductionScheduleResourceCategorySettings {
   location: string;
   cuttingExcludedResourceCds: string[];
@@ -710,6 +739,35 @@ export async function getKioskProductionSchedule(params?: {
   responseProfile?: 'full' | 'leaderboard';
 }) {
   const { data } = await api.get<ProductionScheduleListResponse>('/kiosk/production-schedule', { params });
+  return data;
+}
+
+export async function getKioskProductionScheduleLeaderboardShell(
+  params?: KioskProductionScheduleLeaderboardPhasedQueryParams
+) {
+  const { data } = await api.get<ProductionScheduleLeaderboardShellResponse>(
+    '/kiosk/production-schedule/leaderboard-shell',
+    { params }
+  );
+  return data;
+}
+
+export async function getKioskProductionScheduleLeaderboardTotal(params?: KioskProductionScheduleLeaderboardPhasedQueryParams) {
+  const { data } = await api.get<ProductionScheduleLeaderboardTotalResponse>(
+    '/kiosk/production-schedule/leaderboard-total',
+    { params }
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLeaderboardDecorations(payload: {
+  rowIds: string[];
+  targetDeviceScopeKey?: string;
+}) {
+  const { data } = await api.post<ProductionScheduleLeaderboardDecorationsResponse>(
+    '/kiosk/production-schedule/leaderboard-decorations',
+    payload
+  );
   return data;
 }
 

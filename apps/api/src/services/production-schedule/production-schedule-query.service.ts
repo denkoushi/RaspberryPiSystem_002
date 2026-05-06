@@ -33,6 +33,7 @@ import { enrichProductionScheduleRowsWithCustomerName } from './production-sched
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import { fetchLeaderboardScheduleRowsWithSeibanAwarePriority } from './leaderboard/leaderboard-row-selection.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
 import { countProductionScheduleDashboardVisibleRows } from './production-schedule-list-count.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
@@ -84,6 +85,213 @@ export type ProductionScheduleListParams = {
    * `resolvedMachineName` は full と同様にバッチ解決する（省略時は full）。
    */
   responseProfile?: 'full' | 'leaderboard';
+};
+
+export type PreparedProductionScheduleDashboardFilters =
+  | { kind: 'blocked_empty_search' }
+  | {
+      kind: 'ready';
+      baseWhere: Prisma.Sql;
+      queryWhere: Prisma.Sql;
+      leaderboardExpansionWhere: Prisma.Sql;
+      /** `siteKey` 優先。global rank 選択に使用。 */
+      siteScopedGlobalRankLocation: string;
+    };
+
+async function prepareProductionScheduleDashboardFilters(
+  params: Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile'>
+): Promise<PreparedProductionScheduleDashboardFilters> {
+  const {
+    queryText,
+    productNos,
+    machineName,
+    resourceCds,
+    assignedOnlyCds,
+    resourceCategory,
+    hasNoteOnly,
+    hasDueDateOnly,
+    allowResourceOnly = false,
+    locationKey,
+    siteKey
+  } = params;
+
+  const textConditions = buildTextConditions(queryText);
+  const resourceCategoryPolicy = await getResourceCategoryPolicy({
+    siteKey,
+    deviceScopeKey: locationKey
+  });
+  const filteredResourceCds = filterProductionScheduleResourceCdsByCategoryWithPolicy(
+    resourceCds,
+    resourceCategory,
+    resourceCategoryPolicy
+  );
+  const filteredAssignedOnlyCds = filterProductionScheduleResourceCdsByCategoryWithPolicy(
+    assignedOnlyCds,
+    resourceCategory,
+    resourceCategoryPolicy
+  );
+  const resourceConditions = buildResourceConditions({
+    resourceCds: filteredResourceCds,
+    assignedOnlyCds: filteredAssignedOnlyCds,
+    locationKey
+  });
+  const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory, resourceCategoryPolicy);
+  const machineNameCondition = await buildMachineNameCondition(machineName);
+  const productNoCondition = buildProductNoCondition(productNos);
+
+  const hasOnlyResourceFilters =
+    textConditions.length === 0 &&
+    normalizeMachineNameForCompare(machineName).length === 0 &&
+    productNos.length === 0 &&
+    filteredAssignedOnlyCds.length === 0 &&
+    (filteredResourceCds.length > 0 || resourceCategory !== undefined);
+
+  if (hasOnlyResourceFilters && !allowResourceOnly) {
+    return { kind: 'blocked_empty_search' };
+  }
+
+  const baseWhere = Prisma.sql`
+    "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+  `;
+  const queryWhere = Prisma.sql`${buildQueryWhere({
+    textConditions,
+    resourceConditions,
+    resourceCategoryCondition,
+    machineNameCondition,
+    hasNoteOnly,
+    hasDueDateOnly
+  })} ${productNoCondition}`;
+  const leaderboardExpansionWhere = buildQueryWhere({
+    textConditions: [],
+    resourceConditions,
+    resourceCategoryCondition,
+    machineNameCondition: Prisma.empty,
+    hasNoteOnly: false,
+    hasDueDateOnly: false
+  });
+
+  const siteScopedGlobalRankLocation = siteKey?.trim().length ? siteKey.trim() : locationKey;
+
+  return {
+    kind: 'ready',
+    baseWhere,
+    queryWhere,
+    leaderboardExpansionWhere,
+    siteScopedGlobalRankLocation
+  };
+}
+
+/** 順位ボード段階取得: COUNT・装飾なしの leaderboard 選定のみ */
+export async function listLeaderboardShellProductionScheduleRows(
+  params: ProductionScheduleListParams
+): Promise<Pick<ProductionScheduleListResult, 'page' | 'pageSize' | 'rows'>> {
+  const { page, pageSize, locationKey } = params;
+
+  const filters = await prepareProductionScheduleDashboardFilters({
+    queryText: params.queryText,
+    productNos: params.productNos,
+    machineName: params.machineName,
+    resourceCds: params.resourceCds,
+    assignedOnlyCds: params.assignedOnlyCds,
+    resourceCategory: params.resourceCategory,
+    hasNoteOnly: params.hasNoteOnly,
+    hasDueDateOnly: params.hasDueDateOnly,
+    allowResourceOnly: params.allowResourceOnly ?? false,
+    locationKey,
+    siteKey: params.siteKey
+  });
+
+  if (filters.kind === 'blocked_empty_search') {
+    return { page, pageSize, rows: [] };
+  }
+
+  const { baseWhere, queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
+
+  const leaderboardRows = await fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
+    baseWhere,
+    queryWhere,
+    expansionWhere: leaderboardExpansionWhere,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    pageSize
+  });
+
+  const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({
+    ...r,
+    actualPerPieceMinutes: null,
+    customerName: null
+  }));
+
+  return { page, pageSize, rows };
+}
+
+/** leaderboard 一覧と同一フィルタ条件での可視行件数のみ */
+export async function countProductionScheduleDashboardVisibleRowsFromListFilters(
+  params: Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile'>
+): Promise<number> {
+  const filters = await prepareProductionScheduleDashboardFilters(params);
+  if (filters.kind === 'blocked_empty_search') {
+    return 0;
+  }
+  const { baseWhere, queryWhere } = filters;
+  const totalBig = await countProductionScheduleDashboardVisibleRows({ baseWhere, queryWhere });
+  return Number(totalBig);
+}
+
+/** rowIds 順で leaderboard 選定クエリと同形の行を hydrate し、装飾用ペイロードを返す */
+export async function decorateLeaderboardShellRowsForKiosk(params: {
+  orderedRowIds: string[];
+  locationKey: string;
+  siteKey?: string;
+}): Promise<ProductionScheduleLeaderboardDecorationPayload> {
+  const { orderedRowIds, locationKey, siteKey } = params;
+
+  if (orderedRowIds.length === 0) {
+    return {
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: {}
+    };
+  }
+
+  const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+    orderedRowIds,
+    locationKey,
+    siteScopedGlobalRankLocation: siteKey?.trim().length ? siteKey.trim() : locationKey
+  });
+
+  const lightRows = rawRows.map((r) => ({
+    ...r,
+    actualPerPieceMinutes: null as number | null,
+    customerName: null as string | null
+  }));
+
+  const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
+  const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+
+  const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+    rows: enrichedRows,
+    locationKey,
+    siteKey
+  });
+
+  return {
+    rowDecorations: enrichedRows.map((r) => ({
+      id: r.id,
+      resolvedMachineName: r.resolvedMachineName ?? null,
+      customerName: r.customerName ?? null
+    })),
+    leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {}
+  };
+}
+
+export type ProductionScheduleLeaderboardDecorationPayload = {
+  rowDecorations: Array<{
+    id: string;
+    resolvedMachineName: string | null;
+    customerName: string | null;
+  }>;
+  leaderboardFooterChipsByPartKey: Record<string, LeaderboardPartFooterProcessItem[]>;
 };
 
 export type ProductionScheduleOrderUsageParams = {
@@ -367,44 +575,22 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     responseProfile = 'full'
   } = params;
   const isLeaderboardProfile = responseProfile === 'leaderboard';
-  const textConditions = buildTextConditions(queryText);
-  const resourceCategoryPolicy = await getResourceCategoryPolicy({
-    siteKey,
-    deviceScopeKey: locationKey
-  });
-  const filteredResourceCds = filterProductionScheduleResourceCdsByCategoryWithPolicy(
+
+  const filters = await prepareProductionScheduleDashboardFilters({
+    queryText,
+    productNos,
+    machineName,
     resourceCds,
-    resourceCategory,
-    resourceCategoryPolicy
-  );
-  const filteredAssignedOnlyCds = filterProductionScheduleResourceCdsByCategoryWithPolicy(
     assignedOnlyCds,
     resourceCategory,
-    resourceCategoryPolicy
-  );
-  const resourceConditions = buildResourceConditions({
-    resourceCds: filteredResourceCds,
-    assignedOnlyCds: filteredAssignedOnlyCds,
-    locationKey
+    hasNoteOnly,
+    hasDueDateOnly,
+    allowResourceOnly,
+    locationKey,
+    siteKey
   });
-  const resourceCategoryCondition = buildResourceCategoryCondition(resourceCategory, resourceCategoryPolicy);
-  const machineNameCondition = await buildMachineNameCondition(machineName);
-  const productNoCondition = buildProductNoCondition(productNos);
 
-  // 登録製番なし かつ 割当なし の場合は検索しない。
-  // - 資源CD単独（resourceCds）
-  // - 工程カテゴリ単独（resourceCategory）
-  // - 資源CD + 工程カテゴリ（resourceCds + resourceCategory）
-  // はいずれも0件を返す。
-  // 割当のみは対象が少ないため単独検索を許可する。
-  const hasOnlyResourceFilters =
-    textConditions.length === 0 &&
-    normalizeMachineNameForCompare(machineName).length === 0 &&
-    productNos.length === 0 &&
-    filteredAssignedOnlyCds.length === 0 &&
-    (filteredResourceCds.length > 0 || resourceCategory !== undefined);
-
-  if (hasOnlyResourceFilters && !allowResourceOnly) {
+  if (filters.kind === 'blocked_empty_search') {
     return {
       page,
       pageSize,
@@ -413,28 +599,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     };
   }
 
-  const baseWhere = Prisma.sql`
-    "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-  `;
-  const queryWhere = Prisma.sql`${buildQueryWhere({
-    textConditions,
-    resourceConditions,
-    resourceCategoryCondition,
-    machineNameCondition,
-    hasNoteOnly,
-    hasDueDateOnly
-  })} ${productNoCondition}`;
-  const leaderboardExpansionWhere = buildQueryWhere({
-    textConditions: [],
-    resourceConditions,
-    resourceCategoryCondition,
-    machineNameCondition: Prisma.empty,
-    hasNoteOnly: false,
-    hasDueDateOnly: false
-  });
-
-  const siteScopedGlobalRankLocation = siteKey?.trim().length ? siteKey.trim() : locationKey;
+  const { baseWhere, queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
 
   const offset = (page - 1) * pageSize;
 

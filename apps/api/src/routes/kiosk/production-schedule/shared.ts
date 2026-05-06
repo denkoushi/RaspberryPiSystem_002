@@ -40,6 +40,18 @@ export const productionScheduleQuerySchema = z.object({
   responseProfile: z.enum(['full', 'leaderboard']).optional()
 });
 
+/** 順位ボード段階取得用（一覧と同一クエリ、`responseProfile` は不要）。 */
+export const productionScheduleLeaderboardPhasedQuerySchema = productionScheduleQuerySchema.omit({
+  responseProfile: true
+});
+
+export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
+  /** shell 応答の `rows[].id` を **表示順のまま** 渡す（最大 900） */
+  rowIds: z.array(z.string().uuid()).max(900).optional().default([]),
+  /** v2: Mac が参照する端末の deviceScopeKey（一覧 shell/total と一致させる） */
+  targetDeviceScopeKey: z.string().min(1).max(200).optional()
+});
+
 export const productionScheduleOrderSearchQuerySchema = z.object({
   resourceCds: z.string().min(1).max(400),
   resourceCategory: z.enum(['grinding', 'cutting']).optional(),
