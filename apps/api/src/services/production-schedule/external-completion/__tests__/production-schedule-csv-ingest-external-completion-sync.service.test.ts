@@ -23,6 +23,7 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'warn').mockImplementation(() => {});
   });
 
   it('capturePreIngestSnapshot stores current winner keys', async () => {
@@ -59,7 +60,7 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
 
     const r = await svc.applyPostIngestFromSnapshot();
 
-    expect(r).toEqual({ disappearedDistinctKeys: 1 });
+    expect(r).toEqual({ skipped: false, disappearedDistinctKeys: 1 });
     expect(repo.replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync).toHaveBeenCalledWith({ t: true }, [
       '200\t021\tP1',
     ]);
@@ -83,11 +84,44 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
       currentWinnerKeys: ['210\t588\tP1'],
     });
 
-    expect(r).toEqual({ disappearedDistinctKeys: 1 });
+    expect(r).toEqual({ skipped: false, disappearedDistinctKeys: 1 });
     expect(keyQuery.queryWinnerLogicalKeys).not.toHaveBeenCalled();
     expect(repo.replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync).toHaveBeenCalledWith({ t: true }, [
       '200\t021\tP1',
     ]);
     expect(snapshotRepo.replaceScheduleCsvIngestLogicalKeySnapshot).toHaveBeenCalledWith({ t: true }, ['210\t588\tP1']);
+  });
+
+  it('applyPostIngestFromSnapshot skips when ingest batch has no winner keys (empty currentWinnerKeys)', async () => {
+    const prismaMock = { $transaction: vi.fn() };
+
+    const svc = new ProductionScheduleCsvIngestExternalCompletionSyncService({
+      prismaClient: prismaMock as never,
+    });
+
+    const r = await svc.applyPostIngestFromSnapshot({
+      currentWinnerKeys: [],
+    });
+
+    expect(r).toEqual({ skipped: true, reason: 'empty_schedule_csv' });
+    expect(snapshotRepo.loadScheduleCsvIngestSnapshotKeys).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync).not.toHaveBeenCalled();
+    expect(snapshotRepo.replaceScheduleCsvIngestLogicalKeySnapshot).not.toHaveBeenCalled();
+  });
+
+  it('applyPostIngestFromSnapshot skips when DB reports no winner keys and currentWinnerKeys is omitted', async () => {
+    vi.mocked(keyQuery.queryWinnerLogicalKeys).mockResolvedValue([]);
+    const prismaMock = { $transaction: vi.fn() };
+
+    const svc = new ProductionScheduleCsvIngestExternalCompletionSyncService({
+      prismaClient: prismaMock as never,
+    });
+
+    const r = await svc.applyPostIngestFromSnapshot();
+
+    expect(r).toEqual({ skipped: true, reason: 'empty_schedule_csv' });
+    expect(snapshotRepo.loadScheduleCsvIngestSnapshotKeys).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });
