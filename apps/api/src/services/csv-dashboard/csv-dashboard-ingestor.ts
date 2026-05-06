@@ -330,9 +330,15 @@ export class CsvDashboardIngestor {
 
       if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
         try {
-          await this.scheduleCsvExternalCompletionSync.applyPostIngestFromSnapshot({
+          const extResult = await this.scheduleCsvExternalCompletionSync.applyPostIngestFromSnapshot({
             currentWinnerKeys: currentProductionScheduleWinnerKeys,
           });
+          if (extResult.skipped) {
+            logger.warn(
+              { dashboardId, reason: extResult.reason },
+              '[CsvDashboardIngestor] Schedule CSV external completion sync skipped'
+            );
+          }
         } catch (error) {
           logger.error(
             { err: error, dashboardId },

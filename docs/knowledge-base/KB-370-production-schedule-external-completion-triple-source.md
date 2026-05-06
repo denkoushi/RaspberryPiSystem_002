@@ -12,6 +12,12 @@ category: knowledge-base
 
 順位ボード等で参照する **実効完了** を、CSV 由来の複数ソースで一貫させる必要があった。
 
+## ガード: 生産日程CSVで winner 論理キーが 0 件
+
+**DEDUP** 取込の本体処理の直前時点で **現 winner の論理キー集合が空** の場合、**CSV 由来の「消滅」差分・`ProductionScheduleExternalCompletion` の当該列同期・`ProductionScheduleCsvIngestLogicalKeySnapshot` の更新は行わない**（戻り値 `skipped: true`, `reason: 'empty_schedule_csv'`）。空CSVや事故入力で **DB 上の全 winner を一括「消滅完了」扱いにしない**ため。
+
+取込パイプライン側は [`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) で当該 skip を **warn**（`dashboardId` / `reason`）し、観測可能にする。
+
 ## Decision（仕様の要約）
 
 実効完了は次の **論理 OR**（いずれかが真なら完了扱い）:
@@ -61,8 +67,17 @@ category: knowledge-base
   - **`Run prisma migrate deploy`**: **成功**（**`20260506150000_triple_source_external_completion`** 適用）
 - **Phase12 実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 138s**・Tailscale）。
 
+### 追補（2026-05-06 · **空 winner ガード本番反映**·**axios**）
+
+- **ブランチ**: **`fix/schedule-csv-empty-guard`**（API [`0fd0f248`](https://github.com/denkoushi/RaspberryPiSystem_002/commit/0fd0f248)·Web lock [`a372ecce`](https://github.com/denkoushi/RaspberryPiSystem_002/commit/a372ecce)）。
+- **対象**: **`raspberrypi5` のみ**。[deployment.md](../guides/deployment.md) の **空 winner ガード** 項を正とする。
+- **Detach Run ID**: **`20260506-171017-29269`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit 0`**）。
+- **Phase12**: **PASS 43 / WARN 0 / FAIL 0**（**約 146s**）。
+
 ## Troubleshooting
 
+- **`[CsvDashboardIngestor]` warn と `empty_schedule_csv`**
+  - **0 件 winner** 時の **想定どおりのスキップ**。上流の生産日程CSV・取込ダッシュボード・DEDUP 設定を確認（本当に行が 0 であるべきか）。
 - **実効完了が付かない／期待とずれる**
   - **工順ST**: メール同期が **dedupe 後キー0でスキップ**していないか・**初回**は消滅差分が無い（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
   - **メール status**: **`C`/`P`/`X`/`O` のみ**完了扱い（`?` や空は未完了のまま）。
@@ -73,4 +88,5 @@ category: knowledge-base
 ## References
 
 - ブランチ: `feat/completion-triple-source-unification`（**`main`**: [PR #263](https://github.com/denkoushi/RaspberryPiSystem_002/pull/263) **squash**・先端 **`4af94e05`** を正とする）
+- **空 winner ガード + axios**: **`fix/schedule-csv-empty-guard`**（**`main`**: [PR #264](https://github.com/denkoushi/RaspberryPiSystem_002/pull/264) **squash** を正とする）·デプロイ記録は [deployment.md](../guides/deployment.md)（2026-05-06 · 空 winner ガード 項）
 - デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR）
