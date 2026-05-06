@@ -33,6 +33,7 @@ import { enrichProductionScheduleRowsWithCustomerName } from './production-sched
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import { fetchLeaderboardScheduleRowsWithSeibanAwarePriority } from './leaderboard/leaderboard-row-selection.service.js';
+import { countProductionScheduleDashboardVisibleRows } from './production-schedule-list-count.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
 function normalizeMachineNameForCompare(value: string | null | undefined): string {
@@ -315,6 +316,39 @@ export type ProductionScheduleListResult = {
   leaderboardFooterChipsByPartKey?: Record<string, LeaderboardPartFooterProcessItem[]>;
 };
 
+async function enrichLeaderboardListRowsAndFooter(params: {
+  page: number;
+  pageSize: number;
+  total: number;
+  rows: ProductionScheduleRow[];
+  locationKey: string;
+  siteKey: string | undefined;
+}): Promise<ProductionScheduleListResult> {
+  const { page, pageSize, total, rows, locationKey, siteKey } = params;
+
+  const lightRows = rows.map((row) => ({
+    ...row,
+    actualPerPieceMinutes: null as number | null
+  }));
+
+  const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
+  const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+
+  const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+    rows: enrichedRows,
+    locationKey,
+    siteKey
+  });
+
+  return {
+    page,
+    pageSize,
+    total,
+    rows: enrichedRows,
+    ...(leaderboardFooterChipsByPartKey ? { leaderboardFooterChipsByPartKey } : {})
+  };
+}
+
 export async function listProductionScheduleRows(params: ProductionScheduleListParams): Promise<ProductionScheduleListResult> {
   const {
     page,
@@ -404,42 +438,39 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
 
   const offset = (page - 1) * pageSize;
 
-  const countPromise = prisma.$queryRaw<Array<{ total: bigint }>>`
-    SELECT COUNT(*)::bigint AS total
-    FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
-      ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${baseWhere} ${queryWhere} ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
-  `;
-
-  let countRows: Array<{ total: bigint }>;
-  let rows: ProductionScheduleRow[];
+  const totalPromise = countProductionScheduleDashboardVisibleRows({ baseWhere, queryWhere });
 
   if (isLeaderboardProfile) {
-    countRows = await countPromise;
-    rows = (
-      await fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
-        baseWhere,
-        queryWhere,
-        expansionWhere: leaderboardExpansionWhere,
-        locationKey,
-        siteScopedGlobalRankLocation,
-        pageSize
-      })
-    ).map((r) => {
-      const row: ProductionScheduleRow = {
-        ...r,
-        actualPerPieceMinutes: null,
-        customerName: null
-      };
-      return row;
+    const leaderboardRowsPromise = fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
+      baseWhere,
+      queryWhere,
+      expansionWhere: leaderboardExpansionWhere,
+      locationKey,
+      siteScopedGlobalRankLocation,
+      pageSize
+    }).then((rawRows) =>
+      rawRows.map(
+        (r): ProductionScheduleRow => ({
+          ...r,
+          actualPerPieceMinutes: null,
+          customerName: null
+        })
+      )
+    );
+
+    const [totalBig, leaderboardRows] = await Promise.all([totalPromise, leaderboardRowsPromise]);
+
+    return enrichLeaderboardListRowsAndFooter({
+      page,
+      pageSize,
+      total: Number(totalBig),
+      rows: leaderboardRows,
+      locationKey,
+      siteKey
     });
-  } else {
-    const rowsPromiseFull = prisma.$queryRaw<ProductionScheduleRow[]>`
+  }
+
+  const rowsPromiseFull = prisma.$queryRaw<ProductionScheduleRow[]>`
     SELECT
       "CsvDashboardRow"."id",
       NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
@@ -520,33 +551,11 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
     LIMIT ${pageSize} OFFSET ${offset}
   `;
-    [countRows, rows] = await Promise.all([countPromise, rowsPromiseFull]);
-  }
-  const total = Number(countRows[0]?.total ?? 0n);
 
-  if (isLeaderboardProfile) {
-    const lightRows = rows.map((row) => ({
-      ...row,
-      actualPerPieceMinutes: null as number | null
-    }));
-    const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
-    const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+  const [totalBig, fullRows] = await Promise.all([totalPromise, rowsPromiseFull]);
+  const total = Number(totalBig);
 
-    const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
-      rows: enrichedRows,
-      locationKey,
-      siteKey
-    });
-    return {
-      page,
-      pageSize,
-      total,
-      rows: enrichedRows,
-      ...(leaderboardFooterChipsByPartKey ? { leaderboardFooterChipsByPartKey } : {})
-    };
-  }
-
-  const rowResourceCds = rows
+  const rowResourceCds = fullRows
     .map((row) => {
       const rowData = (row.rowData ?? {}) as Record<string, unknown>;
       return typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';
@@ -557,7 +566,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
     resourceCds: rowResourceCds
   });
 
-  const rowsWithActualHours = rows.map((row) => {
+  const rowsWithActualHours = fullRows.map((row) => {
     const rowData = (row.rowData ?? {}) as Record<string, unknown>;
     const fhincd = typeof rowData.FHINCD === 'string' ? rowData.FHINCD.trim() : '';
     const resourceCd = typeof rowData.FSIGENCD === 'string' ? rowData.FSIGENCD.trim() : '';

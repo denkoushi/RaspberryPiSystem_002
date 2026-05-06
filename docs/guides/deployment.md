@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**DGX control-server 単一アクティブ運用ガードの本番反映**·**部品納期個数補助 `P2002` 修正の Pi5 本番**·**Phase12 実機検証**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-06（**順位ボード一覧 API の leaderboard COUNT 並列化（Pi5 のみ）**·**DGX control-server 単一アクティブ運用ガードの本番反映**·**部品納期個数補助 `P2002` 修正の Pi5 本番**·**Phase12 実機検証**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+
+### 補足（2026-05-06 · **キオスク順位ボード一覧 API（`responseProfile=leaderboard`）内部レイテンシ改善・COUNT と行 SELECT 並列化**·**API のみ**·**Pi5 のみ**）
+
+- **変更概要**: `listProductionScheduleRows` の **`leaderboard` 経路**で、**可視行 `COUNT(*)`** と **`fetchLeaderboardScheduleRowsWithSeibanAwarePriority`** を **`Promise.all`** で **並列実行**。COUNT は [`production-schedule-list-count.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-list-count.service.ts) に分離。**API 契約・SQL の意味・返却内容は不変**（`full` 経路は従来どおり並列 COUNT + 主 SELECT）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/leaderboard-internal-query-latency infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（実績）**: 代表コミット **`35629338`**。**Detach Run ID** **`20260506-103441-24679`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 649s**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 80s**・Tailscale）。
+- **トラブルシュート**: **体感が変わらない** → Pi5 **`api` イメージ**が **`35629338` 以降**か（detach ログ・`git log -1`）。**キオスク**は [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。**切り分けの正本**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-297 §COUNT 並列化（2026-05-06）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-06 · **DGX `control-server` 単一アクティブ運用ガード（`dgx_llm_single_active_guard`）**·**DGX のみ**）
 

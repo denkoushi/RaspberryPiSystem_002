@@ -2665,6 +2665,14 @@ category: knowledge-base
   - **展開で余計な行が増えた** → 仕様上、手動行の **同一製番は意図的にまとめて載る**。資源・除外・FKOJUNST 可視など **他フィルタ**は従来どおり効く（展開は **`text` / `machineName` だけ緩める**）。
 - **参照**: [deployment.md](../guides/deployment.md)（2026-05-05 evening 項）·[`shared.ts` JSDoc](../../apps/api/src/routes/kiosk/production-schedule/shared.ts)（`responseProfile=leaderboard` の契約説明）。
 
+### Leader order board: `leaderboard` の COUNT と行 SELECT の並列化（2026-05-06） {#leader-order-board-api-count-parallel-2026-05-06}
+
+- **目的**: `responseProfile=leaderboard` の **`GET /api/kiosk/production-schedule`** で、**可視行 `COUNT(*)`** と **製番-aware 行取得**の待ちを **壁時計時間の直列和**にしない（**API 契約・返却内容は不変**）。
+- **実装（要約）**: [`countProductionScheduleDashboardVisibleRows`](../../apps/api/src/services/production-schedule/production-schedule-list-count.service.ts) に COUNT を分離し、[`listProductionScheduleRows`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts) で **`Promise.all([count, rowSelect])`**。**`full` 経路**は従来どおり **COUNT + 主 SELECT を並列**。
+- **本番デプロイ（2026-05-06）**: ブランチ **`fix/leaderboard-internal-query-latency`**・コミット **`35629338`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 不要**。**Detach Run ID**: **`20260506-103441-24679`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **80s**・Tailscale）。
+- **ナレッジ（正本）**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](../guides/deployment.md)（2026-05-06 項）。
+- **トラブルシュート**: 反映確認は Pi5 **`api` イメージ**・detach ログ。キオスクは **強制リロード**（本件は API のみ）。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。
@@ -2684,7 +2692,7 @@ category: knowledge-base
 ### Leader order board Pi4 performance (2026-04-24)
 
 - **目的**: Pi4 上の順位ボードで **一覧 GET のペイロードと再描画コスト**を抑え、**ポーリング・デバイス文脈**まわりの無駄な **`manual-order-overview` 取得**を減らす（**Web + API**・既存 URL は維持し **クエリ `responseProfile` を拡張**）。
-- **API（要約）**: キオスク生産スケジュール一覧に **`responseProfile=leaderboard`**。**`leaderboard`** 時は **実績基準時間系の重い付与**を **省略**し、**件数取得と行選択を並列化**する。**`resolvedMachineName` は 2026-04-28 追補以降 full と同じバッチ解決を維持**（`production-schedule-query.service.ts`・ルート `list.ts` / `shared.ts`・統合/ユニットテスト）。**省略時は従来どおり**（他画面の契約を壊さない）。
+- **API（要約）**: キオスク生産スケジュール一覧に **`responseProfile=leaderboard`**。**`leaderboard`** 時は **実績基準時間系の重い付与**を **省略**する。**件数取得（COUNT）と行選択の並列実行**は **2026-05-06** に **`leaderboard` 経路へも拡張**（[§COUNT 並列化（2026-05-06）](#leader-order-board-api-count-parallel-2026-05-06)·[KB-369](./KB-369-leader-order-board-api-internal-latency.md)）。**`resolvedMachineName` は 2026-04-28 追補以降 full と同じバッチ解決を維持**（`production-schedule-query.service.ts`・ルート `list.ts` / `shared.ts`・統合/ユニットテスト）。**省略時は従来どおり**（他画面の契約を壊さない）。
 - **Web（要約）**: 順位ボード専用ビルドパス（例: `buildLeaderBoardViewModel.ts`・`LeaderBoardGrid.tsx`・`LeaderOrderResourceRow.tsx`・`LeaderBoardLeftToolStack.tsx`）、**`@tanstack/react-virtual`**、**`performance/leaderBoardRefetchPolicy.ts`**、**`useLeaderOrderBoardDeviceContext.ts`**（**`manual-order-overview` を順位ボード文脈から分離**）、**`useLeaderBoardDueAssist` / `useProductionScheduleMutations` の `useCallback` 安定化**・共有検索履歴 hooks の整理（`useKioskSharedSearchHistoryActions.ts` 等）。
 - **Web 追補（2026-04-29）**: Pi4 の **15 秒ごとの `order-usage` 更新**で **全資源カード・全行に再レンダーが波及**しないよう、`LeaderBoardGrid.tsx` → `LeaderOrderResourceCard.tsx` → `LeaderOrderResourceRow.tsx` では **資源ごとの使用順位配列だけ**を渡す。`buildLeaderBoardViewModel.ts` は **中間配列を減らす 1 パス寄りのグループ化**へ寄せ、`LeaderOrderResourceCard.tsx` では **virtual row key を `row.id`** に固定し **overscan を抑制**、カード外枠の **`transition-all` は使わない**。見た目・API 契約は不変。
 - **デプロイ・実機検証（2026-04-24）**:
