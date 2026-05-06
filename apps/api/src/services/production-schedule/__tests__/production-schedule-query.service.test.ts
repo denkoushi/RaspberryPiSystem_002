@@ -598,6 +598,7 @@ describe('production-schedule-query.service', () => {
       }
     ] as never);
     vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 1n }] as never)
       .mockResolvedValueOnce([
         {
@@ -649,6 +650,7 @@ describe('production-schedule-query.service', () => {
 
   it('responseProfile=leaderboard では手動割当が pageSize を超えても切り捨てない', async () => {
     vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 10n }] as never)
       .mockResolvedValueOnce([
         {
@@ -717,6 +719,7 @@ describe('production-schedule-query.service', () => {
 
   it('responseProfile=leaderboard では同一製番展開で関連行をまとめて含める', async () => {
     vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 5n }] as never)
       .mockResolvedValueOnce([
         {
@@ -788,6 +791,7 @@ describe('production-schedule-query.service', () => {
 
   it('responseProfile=leaderboard では製番展開時に元の検索語で関連行を落とさない', async () => {
     vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 2n }] as never)
       .mockResolvedValueOnce([
         {
@@ -857,6 +861,7 @@ describe('production-schedule-query.service', () => {
 
   it('responseProfile=leaderboard で手動行が無いとき納期順フィラーで pageSize まで埋める', async () => {
     vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 100n }] as never)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([

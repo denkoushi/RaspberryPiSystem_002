@@ -4,6 +4,7 @@ import {
   compareLeaderboardFetchedRows,
   type LeaderboardScheduleRowSql,
 } from '../leaderboard/leaderboard-row-selection.service.js';
+import { buildMaxProductNoLogicalKeyPartitionExprs } from '../row-resolver/max-product-no-winner-spec.js';
 
 const row = (
   id: string,
@@ -31,6 +32,16 @@ const row = (
   plannedQuantity: null,
   plannedStartDate: null,
   plannedEndDate: null,
+});
+
+describe('winner logical key specification (parity helper)', () => {
+  it('logical key PARTITION 式に製番〜工順キーが含まれる', () => {
+    const exprs = buildMaxProductNoLogicalKeyPartitionExprs('t');
+    expect(exprs).toContain('FSEIBAN');
+    expect(exprs).toContain('FHINCD');
+    expect(exprs).toContain('FSIGENCD');
+    expect(exprs).toContain('FKOJUN');
+  });
 });
 
 describe('compareLeaderboardFetchedRows', () => {

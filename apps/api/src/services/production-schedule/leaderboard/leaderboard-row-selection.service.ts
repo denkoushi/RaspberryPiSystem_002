@@ -47,18 +47,23 @@ function readFseibanFromRow(row: LeaderboardScheduleRowSql): string {
  * - `pageSize` 未満のときだけフィラーを追加し、合計を `pageSize` まで埋める。
  */
 export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params: {
-  baseWhere: Prisma.Sql;
+  /**
+   * `prepareProductionScheduleDashboardFilters()` の correlated winner ではなく、
+   * `buildProductionScheduleLeaderboardMaterializedBaseWhere()` 由来のベース WHERE（同一リクエスト内で COUNT と共有する）。
+   */
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   pageSize: number;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const { baseWhere, queryWhere, expansionWhere, locationKey, siteScopedGlobalRankLocation } = params;
+  const { leaderboardMaterializedBaseWhere, queryWhere, expansionWhere, locationKey, siteScopedGlobalRankLocation } =
+    params;
   const pageSize = Math.max(1, params.pageSize);
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const commonWhere = Prisma.sql`${baseWhere} ${queryWhere} ${visibilitySql}`;
+  const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql}`;
 
   const processingOrderScalar = Prisma.sql`(
     SELECT "orderNumber"
@@ -230,7 +235,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
       LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
         ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
         AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      WHERE ${baseWhere} ${expansionWhere} ${visibilitySql}
+      WHERE ${leaderboardMaterializedBaseWhere} ${expansionWhere} ${visibilitySql}
         AND ${seibanCondition}
       ORDER BY
         ${dueSortExpr} ASC NULLS LAST,

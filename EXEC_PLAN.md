@@ -1065,6 +1065,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-06）: キオスク順位ボード（`responseProfile=leaderboard` / `leaderboard-shell` / 装飾 hydrate）で `prepareProductionScheduleDashboardFilters` の `baseWhere` に埋め込まれていた **`buildMaxProductNoWinnerCondition`（相関サブクエリ）** が、**複数本の行取得 SQL それぞれで行ごとに再評価**されやすく、**シェル単体のレイテンシ支配要因**になり得る。**同値の winner 集合を `ROW_NUMBER` で 1 本 materialize して `IN` 共有**すれば、並び・件数・winner 定義を変えずに **DB 側の評価を畳み込める**。**記録**: [KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·実装: [`max-product-no-winner-materialization.ts`](./apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)。
+
 - 観測（2026-05-05）: Pi5 **`update-all-clients.sh --detach --follow` が exit `0`** でも、ログ後段で **`alerts/alert-<timestamp>.json` が作成**されることがある。**デプロイ成否の正本は `PLAY RECAP`／`logs/deploy/ansible-update-<runId>.summary.json`／リモート終了ログ**であり、アラート JSON の有無だけで失敗とはみなさない。**記録**: [deployment.md](./docs/guides/deployment.md)（2026-05-05 Pi5 UX 項）。
 
 - 観測（2026-05-05）: 開発端末で **`pnpm --filter @raspi-system/web build`（プロジェクト参照 + `tsc -b`）** が **`TS6310`** 等で落ちても、`vite build` や API ビルドは通り得る（**ワークスペースの参照プロジェクト設定**側の問題と切り分け）。本番 Docker 経路での型検証ポリシーは **`tsconfig.build` 系と CI** を優先。**記録**: [deployment.md](./docs/guides/deployment.md) Pi5 UX 項（知見）。

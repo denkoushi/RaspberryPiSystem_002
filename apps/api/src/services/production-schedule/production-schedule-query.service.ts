@@ -27,7 +27,10 @@ import {
   getResourceNameMapByResourceCds,
   type ProductionScheduleResourceNameMap
 } from './resource-master.service.js';
-import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import {
+  buildMaxProductNoWinnerCondition,
+  buildProductionScheduleLeaderboardMaterializedBaseWhere
+} from './row-resolver/index.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from './production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
@@ -206,10 +209,12 @@ export async function listLeaderboardShellProductionScheduleRows(
     return { page, pageSize, rows: [] };
   }
 
-  const { baseWhere, queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
+  const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
+
+  const leaderboardMaterializedBaseWhere = await buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma);
 
   const leaderboardRows = await fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
-    baseWhere,
+    leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
     locationKey,
@@ -603,11 +608,18 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
 
   const offset = (page - 1) * pageSize;
 
-  const totalPromise = countProductionScheduleDashboardVisibleRows({ baseWhere, queryWhere });
+  const leaderboardMaterializedBaseWhere = isLeaderboardProfile
+    ? await buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma)
+    : null;
+
+  const totalPromise = countProductionScheduleDashboardVisibleRows({
+    baseWhere: isLeaderboardProfile && leaderboardMaterializedBaseWhere ? leaderboardMaterializedBaseWhere : baseWhere,
+    queryWhere
+  });
 
   if (isLeaderboardProfile) {
     const leaderboardRowsPromise = fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
-      baseWhere,
+      leaderboardMaterializedBaseWhere: leaderboardMaterializedBaseWhere!,
       queryWhere,
       expansionWhere: leaderboardExpansionWhere,
       locationKey,
