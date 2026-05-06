@@ -183,6 +183,14 @@ category: knowledge-base
 - **調査（2026-05-01・手動取込）**: 本番 Pi5 で **手動 Gmail 取込 run** の一例 **`a1f180aa-9aba-4e3a-87c4-92ea0a83d26a`** について、保存 CSV と DB を確認。**BOM 付き**ヘッダ **`ProductNo` 始まり**・必須キー相当（**`ProductNo`・`FSEIBAN`・`FHINCD`・`FSIGENCD`・`FKOJUN`**）に欠損なし・**`FSIGENSHOYORYO`** は数値。**`registeredAt` / `updatedAt` は CSV 上すべて空**（源流に日付列が無いことと整合）。
 - **トラブルシュート**: **「日付がパースできない」warn** が三島研削で出るのは **CSV に値が無い**場合の **想定内**。原因切り分けするなら **他ダッシュボード**と混同していないか（`dashboardId`）・**上流で列追加できるか**（運用）を確認。**表示欠落**や **キオスクの FKOJUNST 問題**は [§FKOJUNST_Status](#fkojunst_status-mail-from-gmail-csv-2026-04-28)・**FHINCD プレフィックス**ではなく **ステータス可視ポリシー**などを優先して見る。**正本（CSV ダッシュボード全般）**: [csv-import-export.md](../guides/csv-import-export.md)。
 
+### 三島研削: 空に近い添付（BOM のみ）・`CSV_HEADER_MISMATCH`・NON_RETRIABLE 廃棄と同一バッチ成功（2026-05-06） {#mishima-grinding-empty-csv-bom-nonretriable-2026-05-06}
+
+- **Context**: PowerAutomate から届く **`生産日程_三島_研削工程`** メールで、添付が **UTF-8 BOM のみ（数バイト）**に近いサイズになることがある（Gmail API の part `size` が **3** 程度・正常時は **約 1.4MB** 級）。**誤った MIME part 選択ではなく**、**送信側の空に近いファイル**が主因となる観測が取れる。
+- **挙動（本システム）**: 最小コンテンツでは **必須列が解決できず** **`CSV_HEADER_MISMATCH`**（`ApiError`）→ エラー分類 **`NON_RETRIABLE`**。ポリシーどおり **Gmail 側でゴミ箱へ移動**し、**再試行の対象にしない**。
+- **Fix（2026-05-06）**: `CsvDashboardImportService.ingestTargets` で **NON_RETRIABLE を廃棄（`trashMessage`）できたメッセージ**は、ループ終了時の **`failedMessageIdSuffixes` 集計から除外**する。これにより **同一ダッシュボード・同一バッチ内に正常なメールが続く場合**、全体が **最後の `lastError` で例外終了しない**。**実装**: [`csv-dashboard-import.service.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-import.service.ts)。**単体**: [`csv-dashboard-import.service.ingest-behavior.test.ts`](../../apps/api/src/services/csv-dashboard/__tests__/csv-dashboard-import.service.ingest-behavior.test.ts)。
+- **PR / マージ**: [PR #259](https://github.com/denkoushi/RaspberryPiSystem_002/pull/259)（ブランチ **`cursor/mishima-nonretriable-dispose-fix`**）。**本番反映**: マージ後 **Pi5 API のみ** [deployment.md](../guides/deployment.md) 標準（`./scripts/update-all-clients.sh main … --limit raspberrypi5`）。
+- **トラブルシュート**: **「添付はあるのに取れない」**→ 管理実行の **`debug`**（`downloadedMessageIdSuffixes` / `disposedMessageIdSuffixes` 等）と **保存された raw CSV サイズ**を確認。**開発用 localhost への計測 POST** は **本番に含めない**（調査後はコードから除去する）。
+
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
 
 - **Context**: Gmail 件名 **`FKOBAINO`** の CSV（注文番号・購買品名など）を **生産日程本体とは分離**して保持し、現品票の一次元バーコード（**10 桁 `FKOBAINO`**）から **製番・購買品名・既存マスタ品名（正規化 `FHINCD`）・機種名** をキオスクに表示する。

@@ -114,7 +114,7 @@ describe('CsvDashboardImportService ingest behavior', () => {
     expect(trashMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('throws even when non-retriable message is disposed and another message succeeds', async () => {
+  it('resolves when a non-retriable message is trashed and another message succeeds', async () => {
     const markAsRead = vi.fn().mockResolvedValue(undefined);
     const trashMessage = vi.fn().mockResolvedValue(undefined);
     const service = new CsvDashboardImportService() as any;
