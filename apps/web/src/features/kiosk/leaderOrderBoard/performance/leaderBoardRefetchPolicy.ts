@@ -4,6 +4,11 @@
  */
 export const LEADER_BOARD_SCHEDULE_REFETCH_MS = 120_000;
 /**
+ * 段階取得（shell / total / decorations）の staleTime。
+ * フォーカス復帰時の即再取得を抑えつつ、ポーリングのリズムは維持する。
+ */
+export const LEADER_BOARD_LEADER_PHASED_STALE_MS = 60_000;
+/**
  * 順位候補の占有状況は他端末更新と競合しやすいため、一覧より短く保つ。
  */
 export const LEADER_BOARD_ORDER_USAGE_REFETCH_MS = 15_000;

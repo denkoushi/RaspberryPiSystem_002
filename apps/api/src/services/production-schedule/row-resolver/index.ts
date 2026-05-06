@@ -9,6 +9,7 @@ export {
   buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners,
   buildProductionScheduleLeaderboardMaterializedBaseWhere,
   fetchMaxProductNoWinnerRowIdsForDashboard,
+  resolveLeaderboardMaterializedBaseWhere,
 } from './max-product-no-winner-materialization.js';
 export {
   buildMaxProductNoLogicalKeyMatchAndSql,

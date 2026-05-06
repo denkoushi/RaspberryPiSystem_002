@@ -5,12 +5,12 @@ import {
   COMPLETED_PROGRESS_VALUE,
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
 } from '../constants.js';
-import { GLOBAL_SHARED_LOCATION_KEY } from '../due-management-ranking-scope-policy.service.js';
 import {
   buildFkojunstProductionScheduleListRowDataFkojunstSql,
-  buildFkojunstProductionScheduleListVisibilityWhereSql,
+  buildFkojunstProductionScheduleListVisibilityWhereSql
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
+import { buildLeaderboardGlobalRankScalarSql } from './leaderboard-global-rank-scalar.sql.js';
 
 /**
  * `listProductionScheduleRows` と同一形状（enrich 前）の行。
@@ -49,7 +49,7 @@ function readFseibanFromRow(row: LeaderboardScheduleRowSql): string {
 export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params: {
   /**
    * `prepareProductionScheduleDashboardFilters()` の correlated winner ではなく、
-   * `buildProductionScheduleLeaderboardMaterializedBaseWhere()` 由来のベース WHERE（同一リクエスト内で COUNT と共有する）。
+   * {@link buildProductionScheduleLeaderboardMaterializedBaseWhere} 由来のベース WHERE（COUNT / hydrate と同一リクエスト内で共有）。
    */
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
@@ -96,19 +96,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
         'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
       ${processingOrderScalar} AS "processingOrder",
-      (
-        SELECT "globalRank"
-        FROM "ProductionScheduleGlobalRowRank"
-        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-          AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND "location" IN (${siteScopedGlobalRankLocation}, ${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
-        ORDER BY CASE
-          WHEN "location" = ${siteScopedGlobalRankLocation} THEN 0
-          WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 1
-          ELSE 2
-        END ASC
-        LIMIT 1
-      ) AS "globalRank",
+      ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."dueDate" AS "dueDate",
@@ -194,19 +182,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
           'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
         ) AS "rowData",
         ${processingOrderScalar} AS "processingOrder",
-        (
-          SELECT "globalRank"
-          FROM "ProductionScheduleGlobalRowRank"
-          WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-            AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND "location" IN (${siteScopedGlobalRankLocation}, ${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
-          ORDER BY CASE
-            WHEN "location" = ${siteScopedGlobalRankLocation} THEN 0
-            WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 1
-            ELSE 2
-          END ASC
-          LIMIT 1
-        ) AS "globalRank",
+        ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
         NULLIF(TRIM("n"."note"), '') AS "note",
         COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
         "n"."dueDate" AS "dueDate",
@@ -285,19 +261,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
         'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
       ${processingOrderScalar} AS "processingOrder",
-      (
-        SELECT "globalRank"
-        FROM "ProductionScheduleGlobalRowRank"
-        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-          AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND "location" IN (${siteScopedGlobalRankLocation}, ${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
-        ORDER BY CASE
-          WHEN "location" = ${siteScopedGlobalRankLocation} THEN 0
-          WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 1
-          ELSE 2
-        END ASC
-        LIMIT 1
-      ) AS "globalRank",
+      ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."dueDate" AS "dueDate",

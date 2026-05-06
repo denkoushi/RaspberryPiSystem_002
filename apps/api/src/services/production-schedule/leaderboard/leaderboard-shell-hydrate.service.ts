@@ -2,13 +2,13 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { GLOBAL_SHARED_LOCATION_KEY } from '../due-management-ranking-scope-policy.service.js';
 import {
   buildFkojunstProductionScheduleListRowDataFkojunstSql,
   buildFkojunstProductionScheduleListVisibilityWhereSql
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
-import { buildProductionScheduleLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
+import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
+import { buildLeaderboardGlobalRankScalarSql } from './leaderboard-global-rank-scalar.sql.js';
 import type { LeaderboardScheduleRowSql } from './leaderboard-row-selection.service.js';
 
 const MAX_ROWS = 900;
@@ -20,6 +20,8 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
   orderedRowIds: readonly string[];
   locationKey: string;
   siteScopedGlobalRankLocation: string;
+  /** 呼び出し元が既に確定している場合、winner materialization クエリを省略 */
+  leaderboardMaterializedBaseWhere?: Prisma.Sql;
 }): Promise<LeaderboardScheduleRowSql[]> {
   const { locationKey, siteScopedGlobalRankLocation } = params;
   const seen = new Set<string>();
@@ -37,7 +39,10 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
   }
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const leaderboardMaterializedBaseWhere = await buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(
+    prisma,
+    params.leaderboardMaterializedBaseWhere
+  );
 
   const processingOrderScalar = Prisma.sql`(
     SELECT "orderNumber"
@@ -73,19 +78,7 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
         'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
       ) AS "rowData",
       ${processingOrderScalar} AS "processingOrder",
-      (
-        SELECT "globalRank"
-        FROM "ProductionScheduleGlobalRowRank"
-        WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-          AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND "location" IN (${siteScopedGlobalRankLocation}, ${GLOBAL_SHARED_LOCATION_KEY}, ${locationKey})
-        ORDER BY CASE
-          WHEN "location" = ${siteScopedGlobalRankLocation} THEN 0
-          WHEN "location" = ${GLOBAL_SHARED_LOCATION_KEY} THEN 1
-          ELSE 2
-        END ASC
-        LIMIT 1
-      ) AS "globalRank",
+      ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
       NULLIF(TRIM("n"."note"), '') AS "note",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."dueDate" AS "dueDate",

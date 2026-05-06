@@ -87,3 +87,17 @@ export async function buildProductionScheduleLeaderboardMaterializedBaseWhere(
     winnerRowIds
   );
 }
+
+/**
+ * 同一 HTTP リクエスト内で winner materialization を複数箇所から参照するための薄い境界。
+ * `precomputed` がある場合は再クエリせずそれを返す。
+ */
+export async function resolveLeaderboardMaterializedBaseWhere(
+  prisma: PrismaClientLike,
+  precomputed?: Prisma.Sql
+): Promise<Prisma.Sql> {
+  if (precomputed !== undefined) {
+    return precomputed;
+  }
+  return buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma);
+}

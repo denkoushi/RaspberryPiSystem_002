@@ -314,6 +314,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   );
 
   const historyProgressQuery = useKioskProductionScheduleHistoryProgress({
+    enabled: scheduleEnabled,
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS
   });

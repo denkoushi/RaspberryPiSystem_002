@@ -1389,6 +1389,7 @@ model ProductionScheduleGlobalRowRank {
   @@unique([csvDashboardId, location, globalRank], map: "ProductionScheduleGlobalRowRank_unique_rank")
   @@index([csvDashboardId, location, globalRank], map: "ProductionScheduleGlobalRowRank_idx_rank")
   @@index([csvDashboardId, location, fseiban], map: "ProductionScheduleGlobalRowRank_idx_fseiban")
+  @@index([csvDashboardRowId], map: "ProductionScheduleGlobalRowRank_idx_csv_dashboard_row_id")
 }
 
 model ProductionScheduleGlobalRankTemporaryOverride {

@@ -2,7 +2,7 @@
 title: KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 tags: [kiosk, production-schedule, leader-order-board, api, performance]
 audience: [開発者]
-last-verified: 2026-05-06
+last-verified: 2026-05-07
 category: knowledge-base
 ---
 
@@ -40,7 +40,8 @@ category: knowledge-base
 ### 追補（2026-05-06）: ProductNo winner の materialization（相関除去・仕様同一）
 
 - **課題**: `baseWhere` に含まれる `buildMaxProductNoWinnerCondition`（同一論理キー内で最大 ProductNo の行）は **WHERE ごとに相関評価**され、順位ボードの **複数クエリ × ページ行** でコストが積み上がることがある。
-- **方針（同値変換のみ）**: 正本の PARTITION / ORDER は [`max-product-no-winner-spec.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-spec.ts) に集約し、**`fetchMaxProductNoWinnerRowIdsForDashboard`**（`ROW_NUMBER … rn=1`）で winner id を **1 クエリ確定**。`responseProfile=leaderboard` と `listLeaderboardShellProductionScheduleRows` と装飾 **hydrate** では、`buildProductionScheduleLeaderboardMaterializedBaseWhere` 由来の **`csvDashboardId` + `id IN (...)`** を **`COUNT`** と **`fetchLeaderboardScheduleRowsWithSeibanAwarePriority`** が **共有**。`prepareProductionScheduleDashboardFilters` の correlated `baseWhere` は **`full` 一覧**など従来どおり維持。
+- **方針（同値変換のみ）**: 正本の PARTITION / ORDER は [`max-product-no-winner-spec.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-spec.ts) に集約し、**`fetchMaxProductNoWinnerRowIdsForDashboard`**（`ROW_NUMBER … rn=1`）で winner id を **1 クエリ確定**。`responseProfile=leaderboard`・`listLeaderboardShellProductionScheduleRows`・装飾 **hydrate**・**段階取得の `leaderboard-total`（総件数）**では、`buildProductionScheduleLeaderboardMaterializedBaseWhere` / `resolveLeaderboardMaterializedBaseWhere` 由来の **`csvDashboardId` + `id IN (...)`** を **`COUNT`**・**`fetchLeaderboardScheduleRowsWithSeibanAwarePriority`**・**hydrate** が **共有**（hydrate は呼び出し側から任意で `leaderboardMaterializedBaseWhere` を注入可能）。`prepareProductionScheduleDashboardFilters` の correlated `baseWhere` は **`full` 一覧**など従来どおり維持。
+- **索引（2026-05-06 追補）**: `ProductionScheduleGlobalRowRank` に `csvDashboardRowId` 単独 INDEX を追加し、globalRank 相関サブクエリの探索を補助（定義・返却内容は不変）。
 - **関連モジュール**: [`max-product-no-winner-materialization.ts`](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)·[`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts)（`leaderboardMaterializedBaseWhere` 引数へ変更）·[`leaderboard-shell-hydrate.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-hydrate.service.ts)
 
 ## Prevention
@@ -74,6 +75,23 @@ category: knowledge-base
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 74s**・Tailscale）。
 - **知見（装飾 hydrate の raw SQL）**: `Prisma.sql` の **`Prisma.join(array, ',')`** は **カンマ区切りの単一プレースホルダ**ではなく **断片連結**として解釈されるため、**`ARRAY[...]::uuid[]`** や **`IN (...)`** には **`Prisma.join` を 1 回だけ**渡す。**UUID 順序付け**は **`::text` 比較の `text[]` + `array_position`** が型安全。**Fkojunst 可視 SQL** は既存 leaderboard と同様、**連結済みフラグメントの先頭に余計な `AND` を付けない**（二重 AND になる）。
 
+## Production deploy & verification（2026-05-07 · 段階取得 total の materialized COUNT 整合・globalRank 索引・Web stale 最小追随）
+
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 は **必須対象外**（play **no hosts matched**。**Pi3 専用手順不要**）。
+- **変更概要（仕様不変）**:
+  - **API**: `leaderboard-total`（`countProductionScheduleDashboardVisibleRowsFromListFilters`）の **COUNT** を **相関 winner の `prepareProductionScheduleDashboardFilters().baseWhere`** ではなく、**`resolveLeaderboardMaterializedBaseWhere` と shell/leaderboard 本体と同じ materialized winner** に揃え、プランナ負荷のみ低減（件数定義は同一）。
+  - **API**: `resolveLeaderboardMaterializedBaseWhere` 薄い境界・hydrate への **任意 `leaderboardMaterializedBaseWhere` 注入**・**`globalRank` 相関サブクエリの SQL 断片共通化**（[`leaderboard-global-rank-scalar.sql.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-global-rank-scalar.sql.ts)）。
+  - **DB**: マイグレーション **`20260506170000_add_global_row_rank_csv_dashboard_row_id_index`**（`ProductionScheduleGlobalRowRank.csvDashboardRowId` 索引のみ・意味変更なし）。
+  - **Web**: 段階取得 3 フックの **`staleTime` / `refetchOnWindowFocus: false`**・順位ボードページの **`useKioskProductionScheduleHistoryProgress({ enabled: scheduleEnabled })`**（表示内容は不変・再取得抑制のみ）。
+- **リポジトリ**: ブランチ **`feat/leaderboard-output-stable-speedup`**・代表コミット **`137e7e07`**（**`main` で squash マージ後は `main` 先端 SHA を正とする**）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・**`--detach --follow`**）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260507-073532-249`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 739s**）。Ansible の **`Run prisma migrate deploy`** **成功**（索引マイグレーション適用）。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 27s**・Tailscale）。
+- **トラブルシュート**:
+  - **総件数（leaderboard-total）が一覧 shell とズレるように見える** → Pi5 **`api`** が **`137e7e07` 以降**（または **`main` マージ後の先端**）か。旧経路は相関 winner COUNT・新経路は materialized COUNT で **定義は同値だが**、イメージが古いと **レスポンスだけ**ズレたように見える。
+  - **マイグレ未適用** → Pi5 `api` ログの **`prisma migrate deploy`** と `prisma migrate status`。索引名 **`ProductionScheduleGlobalRowRank_idx_csv_dashboard_row_id`**。
+  - **Web の挙動が古い** → Pi5 **`web` コンテナ**の ref とキオスク [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**。
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
@@ -95,6 +113,6 @@ category: knowledge-base
 ## References
 
 - 計画メモ（ローカル）: 「仕様不変の順位ボード高速化計画」（`leaderboard-spec-preserving-speedup`）
-- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項）
+- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**）
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)
