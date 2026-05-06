@@ -10,7 +10,17 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-06（**部品納期個数補助 `P2002` 修正の Pi5 本番**·**Phase12 実機検証**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-06（**DGX control-server 単一アクティブ運用ガードの本番反映**·**部品納期個数補助 `P2002` 修正の Pi5 本番**·**Phase12 実機検証**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+
+### 補足（2026-05-06 · **DGX `control-server` 単一アクティブ運用ガード（`dgx_llm_single_active_guard`）**·**DGX のみ**）
+
+- **変更概要**: `POST /start` の直前に **非アクティブ側 backend へ実 stop** を必ず掛け、その後アクティブ側を起動。ガード ON 時は起動時に **green/blue 双方の stop コマンドが解決できること**を検証（未設定なら **プロセスは listen せず**）。実装: [`control-server.py`](../../scripts/dgx-local-llm-system/control-server.py)·[`dgx_llm_single_active_guard.py`](../../scripts/dgx-local-llm-system/dgx_llm_single_active_guard.py)·[`stop-llama-server.sh`](../../scripts/dgx-local-llm-system/stop-llama-server.sh)·[`stop-trtllm-server.sh`](../../scripts/dgx-local-llm-system/stop-trtllm-server.sh)。**Pi5 API／Ansible 変更なし**。
+- **対象ホスト**: **DGX Spark（`system-prod`）のみ**。Pi5／Pi4／Pi3 は **対象外**（**Pi3 専用手順は不要**）。
+- **標準手順（DGX）**: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)。**本番実績（2026-05-06）**: 上記 4 ファイルを **`scp`** で **`ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/`**。**`dgx_llm_single_active_guard.py` は `control-server.py` と同じディレクトリに必ず配置**（import 失敗で起動不可）。
+- **再起動の注意**: **`/srv/dgx/system-prod/bin/start-control-server.sh`** は **既存 PID が生存していると `control-server already running` で終了**し、**新しい `control-server.py` を読まない**。反映時は **`control-server.pid` の PID を停止**してからスクリプトを再実行する（詳細は Runbook・KB-365 Phase12）。
+- **実機検証（2026-05-06）**: **`ACTIVE_LLM_BACKEND` が control/gateway で一致**・`38081/healthz` **200**・`39090` **401**・`/v1/models` に **`system-prod-primary`**・（blue active 時）**`38082` 非 listen**・**`llama-server` 不在**。ゲートウェイは **再起動していない**（当該変更は control のみ）。
+- **トラブルシュート**: **コードを置いたが挙動が古い** → **PID ガード**を疑い **`control-server.pid` を確認**。**起動直後にプロセスがいない** → **`GREEN_*`/`BLUE_*` stop が片系だけ**だとガード ON で **起動拒否**（`DGX_LLM_SINGLE_ACTIVE_GUARD=false` は非推奨・検証用）。
+- **ナレッジ**: [KB-365 §Phase12](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-12-dgx-control-server-single-active-guard-2026-05-06)·[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-06 · **部品納期個数補助同期 `P2002`（`csvDashboardRowId`）修正の Pi5 本番反映**·**`main`**·**API のみ**）
 
