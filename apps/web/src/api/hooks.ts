@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/
 import { useMemo } from 'react';
 
 import { kioskDocumentDetailQueryKey } from '../features/kiosk/documents/kioskDocumentQueryKeys';
+import { LEADER_BOARD_LEADER_PHASED_STALE_MS } from '../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
   findProcessingOrderForRow,
   patchOrderUsageForProcessingOrderChange,
@@ -352,6 +353,8 @@ export function useKioskProductionScheduleLeaderboardShell(
     queryFn: () => getKioskProductionScheduleLeaderboardShell(params),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS,
+    refetchOnWindowFocus: false,
     enabled: (options?.enabled ?? true) && Boolean(params)
   });
 }
@@ -367,6 +370,8 @@ export function useKioskProductionScheduleLeaderboardTotal(
     queryFn: () => getKioskProductionScheduleLeaderboardTotal(params),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS,
+    refetchOnWindowFocus: false,
     enabled: (options?.enabled ?? true) && Boolean(params)
   });
 }
@@ -394,6 +399,8 @@ export function useKioskProductionScheduleLeaderboardDecorations(
       }),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS,
+    refetchOnWindowFocus: false,
     enabled: (options?.enabled ?? true) && Boolean(payload && payload.rowIds.length > 0)
   });
 }
@@ -483,13 +490,15 @@ export function useKioskProductionScheduleSearchHistory(options?: { pauseRefetch
 export function useKioskProductionScheduleHistoryProgress(options?: {
   pauseRefetch?: boolean;
   refetchIntervalMs?: number | false;
+  enabled?: boolean;
 }) {
   const interval =
     options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
   return useQuery({
     queryKey: ['kiosk-production-schedule-history-progress'],
     queryFn: getKioskProductionScheduleHistoryProgress,
-    refetchInterval: interval
+    refetchInterval: interval,
+    enabled: options?.enabled ?? true
   });
 }
 

@@ -29,7 +29,7 @@ import {
 } from './resource-master.service.js';
 import {
   buildMaxProductNoWinnerCondition,
-  buildProductionScheduleLeaderboardMaterializedBaseWhere
+  resolveLeaderboardMaterializedBaseWhere
 } from './row-resolver/index.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from './production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
@@ -211,7 +211,7 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
 
-  const leaderboardMaterializedBaseWhere = await buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
   const leaderboardRows = await fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
     leaderboardMaterializedBaseWhere,
@@ -239,8 +239,12 @@ export async function countProductionScheduleDashboardVisibleRowsFromListFilters
   if (filters.kind === 'blocked_empty_search') {
     return 0;
   }
-  const { baseWhere, queryWhere } = filters;
-  const totalBig = await countProductionScheduleDashboardVisibleRows({ baseWhere, queryWhere });
+  const { queryWhere } = filters;
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const totalBig = await countProductionScheduleDashboardVisibleRows({
+    baseWhere: leaderboardMaterializedBaseWhere,
+    queryWhere
+  });
   return Number(totalBig);
 }
 
@@ -259,10 +263,13 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
     };
   }
 
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+
   const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
     orderedRowIds,
     locationKey,
-    siteScopedGlobalRankLocation: siteKey?.trim().length ? siteKey.trim() : locationKey
+    siteScopedGlobalRankLocation: siteKey?.trim().length ? siteKey.trim() : locationKey,
+    leaderboardMaterializedBaseWhere
   });
 
   const lightRows = rawRows.map((r) => ({
@@ -609,7 +616,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
   const offset = (page - 1) * pageSize;
 
   const leaderboardMaterializedBaseWhere = isLeaderboardProfile
-    ? await buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma)
+    ? await resolveLeaderboardMaterializedBaseWhere(prisma)
     : null;
 
   const totalPromise = countProductionScheduleDashboardVisibleRows({
