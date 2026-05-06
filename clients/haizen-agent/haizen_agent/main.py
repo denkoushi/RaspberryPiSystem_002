@@ -23,15 +23,16 @@ def main() -> None:
     cfg = load_haizen_config()
     gate = DistributionGate()
     LOG.info(
-        "haizen-agent start base=%s hid=%s tls_verify_mode=%s",
+        "haizen-agent start base=%s hid=%s tls_verify_mode=%s distribution_mode=%s",
         cfg.api_base_url,
         cfg.hid_device or "stdin",
         cfg.tls_verify_mode,
+        cfg.distribution_mode,
     )
 
     for line in iter_scan_lines(cfg.hid_device):
         try:
-            token = classify_scan_line(line)
+            token = classify_scan_line(line, distribution_mode=cfg.distribution_mode)
         except ValueError:
             continue
 

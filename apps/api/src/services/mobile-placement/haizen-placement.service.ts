@@ -5,6 +5,7 @@ import { prisma } from '../../lib/prisma.js';
 import { listScheduleRowsByProductNo } from '../part-measurement/part-measurement-schedule-lookup.service.js';
 import { pickPrimaryScheduleRowForOrder, normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { parseStructuredShelfCode } from './mobile-placement-registered-shelves.service.js';
+import { isHaizenEdgeDevice } from './haizen-edge-device.policy.js';
 
 export type HaizenManufacturingOrderBarcodeRaw = string;
 
@@ -40,7 +41,6 @@ export type HaizenAssignableDeviceDto = {
 
 const HAIZEN_RESOLVED = 'RESOLVED' as const;
 const HAIZEN_UNRESOLVED = 'UNRESOLVED' as const;
-const ZERO2W_DEVICE_TOKEN = 'zero2w';
 
 function assertDistributionNumber(n: number | null | undefined): void {
   if (n === null || n === undefined) return;
@@ -52,13 +52,6 @@ function assertDistributionNumber(n: number | null | undefined): void {
 function normalizePresetShelf(raw: string | null | undefined): string | null {
   const normalized = raw?.trim() ?? '';
   return normalized.length > 0 ? normalized : null;
-}
-
-function isHaizenAssignableDevice(input: { apiKey: string; name: string }): boolean {
-  return (
-    input.apiKey.toLowerCase().includes(ZERO2W_DEVICE_TOKEN) ||
-    input.name.toLowerCase().includes(ZERO2W_DEVICE_TOKEN)
-  );
 }
 
 async function assertHaizenPresetShelfRegistered(raw: string): Promise<void> {
@@ -119,17 +112,11 @@ export async function updateHaizenPresetShelf(input: {
  */
 export async function listHaizenAssignableDevices(): Promise<{ devices: HaizenAssignableDeviceDto[] }> {
   const rows = await prisma.clientDevice.findMany({
-    where: {
-      OR: [
-        { apiKey: { contains: ZERO2W_DEVICE_TOKEN, mode: 'insensitive' } },
-        { name: { contains: ZERO2W_DEVICE_TOKEN, mode: 'insensitive' } }
-      ]
-    },
+    where: { haizenEdgeEnabled: true },
     select: {
       id: true,
       name: true,
       location: true,
-      apiKey: true,
       haizenPresetShelfCodeRaw: true,
       lastSeenAt: true
     },
@@ -156,12 +143,12 @@ export async function updateHaizenPresetShelfForTarget(input: {
 }): Promise<{ shelfCodeRaw: string }> {
   const target = await prisma.clientDevice.findUnique({
     where: { id: input.clientDeviceId },
-    select: { id: true, name: true, apiKey: true }
+    select: { id: true, name: true, apiKey: true, haizenEdgeEnabled: true }
   });
   if (!target) {
     throw new ApiError(404, '対象の Zero2W 端末が見つかりません', undefined, 'HAIZEN_TARGET_DEVICE_NOT_FOUND');
   }
-  if (!isHaizenAssignableDevice(target)) {
+  if (!isHaizenEdgeDevice(target)) {
     throw new ApiError(
       400,
       'Zero2W 端末のみ担当棚を設定できます',

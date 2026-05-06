@@ -37,6 +37,7 @@ export function ClientsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [selectedMode, setSelectedMode] = useState<'PHOTO' | 'TAG' | null>(null);
+  const [editingHaizenEdge, setEditingHaizenEdge] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const dateFormatter = useMemo(
     () =>
@@ -53,11 +54,11 @@ export function ClientsPage() {
     [statusData]
   );
 
-
   const handleEdit = (client: ClientDevice) => {
     setEditingId(client.id);
     setEditingName(client.name);
     setSelectedMode(client.defaultMode ?? 'TAG');
+    setEditingHaizenEdge(Boolean(client.haizenEdgeEnabled));
     setEditError(null);
   };
 
@@ -75,11 +76,12 @@ export function ClientsPage() {
     try {
       await update.mutateAsync({
         id,
-        payload: { name: normalizedName, defaultMode: selectedMode }
+        payload: { name: normalizedName, defaultMode: selectedMode, haizenEdgeEnabled: editingHaizenEdge }
       });
       setEditingId(null);
       setEditingName('');
       setSelectedMode(null);
+      setEditingHaizenEdge(false);
       setEditError(null);
     } catch {
       setEditError('保存に失敗しました。時間をおいて再試行してください。');
@@ -90,6 +92,7 @@ export function ClientsPage() {
     setEditingId(null);
     setEditingName('');
     setSelectedMode(null);
+    setEditingHaizenEdge(false);
     setEditError(null);
   };
 
@@ -297,6 +300,7 @@ export function ClientsPage() {
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">場所</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">APIキー</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">初期表示</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">Zero2W配膳</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">最終確認</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">操作</th>
                 </tr>
@@ -305,71 +309,93 @@ export function ClientsPage() {
                 {clientsQuery.data.map((client: ClientDevice) => {
                   const isEditing = editingId === client.id;
                   return (
-                  <tr key={client.id} className="border-b border-slate-500">
-                    <td className="px-4 py-2 font-bold text-base text-slate-900">
-                      {isEditing ? (
-                        <Input
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          maxLength={MAX_CLIENT_NAME_LENGTH}
-                          aria-label="クライアント名"
-                        />
-                      ) : (
-                        client.name
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-sm font-semibold text-slate-700">{client.location ?? '-'}</td>
-                    <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>
-                    <td className="px-4 py-2">
-                      {editingId === client.id ? (
-                        <select
-                          value={selectedMode ?? 'TAG'}
-                          onChange={(e) => setSelectedMode(e.target.value as 'PHOTO' | 'TAG')}
-                          className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
-                        >
-                          <option value="TAG">2タグスキャン</option>
-                          <option value="PHOTO">写真撮影持出</option>
-                        </select>
-                      ) : (
-                        <span className="text-sm font-semibold text-slate-900">{client.defaultMode === 'PHOTO' ? '写真撮影持出' : '2タグスキャン'}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-sm font-semibold text-slate-700">{formatDateTime(client.lastSeenAt)}</td>
-                    <td className="px-4 py-2">
-                      {editingId === client.id ? (
-                        <div className="space-y-1">
-                          <div className="flex gap-2">
-                            <Button
-                              type="button"
-                              onClick={() => handleSave(client.id)}
-                              disabled={update.isPending}
-                              className="px-3 py-1 text-sm"
-                            >
-                              保存
-                            </Button>
-                            <Button
-                              type="button"
-                              onClick={handleCancel}
-                              disabled={update.isPending}
-                              variant="ghost"
-                              className="px-3 py-1 text-sm"
-                            >
-                              キャンセル
-                            </Button>
+                    <tr key={client.id} className="border-b border-slate-500">
+                      <td className="px-4 py-2 font-bold text-base text-slate-900">
+                        {isEditing ? (
+                          <Input
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            maxLength={MAX_CLIENT_NAME_LENGTH}
+                            aria-label="クライアント名"
+                          />
+                        ) : (
+                          client.name
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-semibold text-slate-700">{client.location ?? '-'}</td>
+                      <td className="px-4 py-2 font-mono text-sm font-semibold text-slate-700">{client.apiKey}</td>
+                      <td className="px-4 py-2">
+                        {editingId === client.id ? (
+                          <select
+                            value={selectedMode ?? 'TAG'}
+                            onChange={(e) => setSelectedMode(e.target.value as 'PHOTO' | 'TAG')}
+                            className="rounded-md border-2 border-slate-500 bg-white px-2 py-1 text-sm font-semibold text-slate-900"
+                          >
+                            <option value="TAG">2タグスキャン</option>
+                            <option value="PHOTO">写真撮影持出</option>
+                          </select>
+                        ) : (
+                          <span className="text-sm font-semibold text-slate-900">
+                            {client.defaultMode === 'PHOTO' ? '写真撮影持出' : '2タグスキャン'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        {isEditing ? (
+                          <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-emerald-600"
+                              checked={editingHaizenEdge}
+                              onChange={(e) => setEditingHaizenEdge(e.target.checked)}
+                              aria-label="Zero2W配膳エッジ端末として扱う"
+                            />
+                            対象にする
+                          </label>
+                        ) : (
+                          <span className="text-sm font-semibold text-slate-900">
+                            {client.haizenEdgeEnabled ? '対象' : '—'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-semibold text-slate-700">
+                        {formatDateTime(client.lastSeenAt)}
+                      </td>
+                      <td className="px-4 py-2">
+                        {editingId === client.id ? (
+                          <div className="space-y-1">
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                onClick={() => handleSave(client.id)}
+                                disabled={update.isPending}
+                                className="px-3 py-1 text-sm"
+                              >
+                                保存
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={handleCancel}
+                                disabled={update.isPending}
+                                variant="ghost"
+                                className="px-3 py-1 text-sm"
+                              >
+                                キャンセル
+                              </Button>
+                            </div>
+                            {editError ? <p className="text-xs font-semibold text-red-600">{editError}</p> : null}
                           </div>
-                          {editError ? <p className="text-xs font-semibold text-red-600">{editError}</p> : null}
-                        </div>
-                      ) : (
-                        <Button
-                          type="button"
-                          onClick={() => handleEdit(client)}
-                          className="px-3 py-1 text-sm"
-                        >
-                          編集
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
+                        ) : (
+                          <Button
+                            type="button"
+                            onClick={() => handleEdit(client)}
+                            className="px-3 py-1 text-sm"
+                          >
+                            編集
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>

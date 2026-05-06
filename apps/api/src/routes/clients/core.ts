@@ -50,7 +50,8 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
     const client = await updateClientDevice({
       id,
       name: body.name,
-      defaultMode: body.defaultMode ?? undefined
+      defaultMode: body.defaultMode ?? undefined,
+      haizenEdgeEnabled: body.haizenEdgeEnabled
     });
     return { client };
   });

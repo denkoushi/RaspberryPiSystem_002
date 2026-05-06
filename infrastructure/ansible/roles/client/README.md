@@ -19,3 +19,4 @@ Zero2W 配膳エッジ（`haizen-agent`）:
   - `haizen_agent_api_base_url`: Pi5 の HTTPS オリジン（`/api` なし）。未設定時は `server_base_url` 等の共通変数にフォールバック（`group_vars` を参照）
   - `haizen_agent_tls_verify_mode`: `insecure`（既定）または `system`（証明書検証）。`status_agent_tls_skip_verify` とは **別経路**（誤注入防止）
   - `haizen_agent_hid_device` / `haizen_agent_install_evdev`: HID・evdev パッケージ
+  - **`HAIZEN_DISTRIBUTION_MODE`**（`/etc/raspi-haizen-agent.conf`・既定 **`legacy_short_numeric`**／誤認抑止は **`prefixed_dist`**）: 詳細は [`clients/haizen-agent/README.md`](../../../../clients/haizen-agent/README.md) とテンプレ [`templates/raspi-haizen-agent.conf.j2`](../../templates/raspi-haizen-agent.conf.j2)

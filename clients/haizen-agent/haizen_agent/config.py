@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from haizen_agent.classifier import DistributionClassificationMode
 
 TlsVerifyMode = Literal["insecure", "system"]
 
@@ -19,6 +20,7 @@ class HaizenAgentConfig:
     x_client_key: str
     tls_verify_mode: TlsVerifyMode
     hid_device: str | None
+    distribution_mode: DistributionClassificationMode
 
     @property
     def tls_skip_verify(self) -> bool:
@@ -46,6 +48,16 @@ def load_config_path(path: Path) -> dict[str, str]:
         k = key.strip()
         out[k] = _strip_quotes(rest)
     return out
+
+
+def _parse_distribution_mode(file_vals: dict[str, str]) -> DistributionClassificationMode:
+    """HAIZEN_DISTRIBUTION_MODE: legacy_short_numeric（既定）または prefixed_dist（DIST:n のみ分配）。"""
+    raw = (
+        os.environ.get("HAIZEN_DISTRIBUTION_MODE") or file_vals.get("HAIZEN_DISTRIBUTION_MODE") or ""
+    ).strip().lower()
+    if raw in ("prefixed_dist", "prefixed", "dist_prefix"):
+        return "prefixed_dist"
+    return "legacy_short_numeric"
 
 
 def _parse_tls_verify_mode(file_vals: dict[str, str]) -> TlsVerifyMode:
@@ -82,9 +94,11 @@ def load_haizen_config() -> HaizenAgentConfig:
 
     tls_verify_mode = _parse_tls_verify_mode(file_vals)
     hid_device = hid.strip() or None
+    distribution_mode = _parse_distribution_mode(file_vals)
     return HaizenAgentConfig(
         api_base_url=api.rstrip("/"),
         x_client_key=key,
         tls_verify_mode=tls_verify_mode,
         hid_device=hid_device,
+        distribution_mode=distribution_mode,
     )

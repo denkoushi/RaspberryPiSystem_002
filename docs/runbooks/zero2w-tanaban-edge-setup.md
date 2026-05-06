@@ -1,10 +1,10 @@
 # Zero 2 W（棚番エッジ）セットアップ Runbook
 
-最終更新: 2026-05-06（**断片 `sudo_nopasswd_commands`（Pi4 準拠の限定 NOPASSWD）**・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）
+最終更新: 2026-05-07（**`HAIZEN_DISTRIBUTION_MODE`・分配 QR 契約**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）／2026-05-06（**断片 `sudo_nopasswd_commands`（Pi4 準拠の限定 NOPASSWD）**・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）
 
 ## 目的
 
-Raspberry Pi **Zero 2 W**（例: ホスト名 `zero2w-tanaban01`）を、**キオスク UI なし**のエッジ端末として本システムに繋ぐ。**status-agent**（管理画面での死活・メトリクス）と **Tailscale** までを標準とする。**配膳（棚番）スキャン送信**はリポジトリの **`clients/haizen-agent/`**（HID → `POST /api/mobile-placement/haizen-scans`）を参照。運用・API 契約は [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・[mobile-placement.md](../api/mobile-placement.md)。
+Raspberry Pi **Zero 2 W**（例: ホスト名 `zero2w-tanaban01`）を、**キオスク UI なし**のエッジ端末として本システムに繋ぐ。**status-agent**（管理画面での死活・メトリクス）と **Tailscale** までを標準とする。**配膳（棚番）スキャン送信**はリポジトリの **`clients/haizen-agent/`**（HID → `POST /api/mobile-placement/haizen-scans`）を参照。**分配番号**は既定で短い整数ヒューリスティックを使うため、誤認対策として **`HAIZEN_DISTRIBUTION_MODE=prefixed_dist`** と **`DIST:<番号>`** QR を推奨（詳細は **`clients/haizen-agent/README.md`**）。運用・API 契約は [KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・[mobile-placement.md](../api/mobile-placement.md)。
 
 ### 中長期の配膳（棚番）連携イメージ（仕様メモ）
 

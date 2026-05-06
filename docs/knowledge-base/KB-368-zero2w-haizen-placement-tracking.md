@@ -2,7 +2,7 @@
 title: 'KB-368: Zero 2 W 配膳追跡（haizen API・エージェント・キオスク表示）'
 tags: [Zero2W, mobile-placement, 配膳, HID, API]
 audience: [開発者, 運用者]
-last-verified: 2026-05-06
+last-verified: 2026-05-07
 category: knowledge-base
 ---
 
@@ -18,6 +18,7 @@ category: knowledge-base
 - **`HaizenScanEvent`**: 1 スキャン 1 行の履歴（端末・プリセット棚・製造 order・分配・日程解決結果など）。
 - **`HaizenCurrentPlacement`**: **`manufacturingOrderBarcodeRaw` を一意キー**とする最新行（棚・分配・日程スナップショットを上書き）。
 - **`ClientDevice.haizenPresetShelfCodeRaw`**: 端末に紐づく **構造化棚**（`西-北-01` 形式）。`POST …/haizen-scans` の前に必須。
+- **`ClientDevice.haizenEdgeEnabled`**: **`GET …/haizen-target-devices` の抽出条件**および **`PUT …/haizen-target-devices/…` の対象可否**。既定 `false`。マイグレーションで **`apiKey`/`name` に `zero2w` を含む既存端末は `true` にバックフィル**。新規は **管理画面（クライアント端末管理の「Zero2W配膳」）** または **`PUT /api/clients/:id`** で明示する。
 
 ## API（すべて `x-client-key`）
 
@@ -27,22 +28,22 @@ category: knowledge-base
 | PATCH | `/api/mobile-placement/haizen-preset-shelf` | `{ "shelfCodeRaw": "西-北-01" }`。**棚マスタ未登録棚は拒否**（`HAIZEN_PRESET_SHELF_NOT_REGISTERED`）。キオスク経由の target 更新と **同一のマスタ規則** |
 | POST | `/api/mobile-placement/haizen-scans` | `{ "manufacturingOrderBarcodeRaw", "distributionNumber?", "rawBarcode?" }` |
 | GET | `/api/mobile-placement/haizen-current` | クエリ **`shelfCodeRaw`**（推奨）または **`shelfCode`**（後方互換）、`limit?`（省略時は全棚から最新 N 件） |
-| GET | `/api/mobile-placement/haizen-target-devices` | キオスク設定用。**`apiKey` または `name` に `zero2w` を含む** `ClientDevice` のみ。要素は `id` / `name` / `location` / `shelfCodeRaw` / `lastSeenAt`（**`apiKey` は返さない**） |
-| PUT | `/api/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf` | `{ "shelfCodeRaw" }`。**対象は上記と同様の Zero2W 候補に限定**。**棚マスタ未登録棚は拒否**（`HAIZEN_PRESET_SHELF_NOT_REGISTERED`） |
+| GET | `/api/mobile-placement/haizen-target-devices` | キオスク設定用。**`ClientDevice.haizenEdgeEnabled === true`** の端末のみ。要素は `id` / `name` / `location` / `shelfCodeRaw` / `lastSeenAt`（**`apiKey` は返さない**） |
+| PUT | `/api/mobile-placement/haizen-target-devices/:clientDeviceId/preset-shelf` | `{ "shelfCodeRaw" }`。**対象は `haizenEdgeEnabled` が true の端末に限定**。**棚マスタ未登録棚は拒否**（`HAIZEN_PRESET_SHELF_NOT_REGISTERED`） |
 
 仕様の詳細: [api/mobile-placement.md](../api/mobile-placement.md)
 
 ## キオスク（Android 向け配膳 Web）
 
-- **`/kiosk/mobile-placement`** に **「棚番配膳（Zero2W）」**パネル（`MobilePlacementHaizenPanel`）。
-- Top 上辺の **「Zero2W担当棚」** から **`/kiosk/mobile-placement/zero2w-assignment`** へ遷移し、**Zero2W 候補端末**に **棚マスタの登録済み構造化棚**を割り当てる。
-- Top 上の **「棚番配膳（Zero2W）」** パネル自体は、選択中の棚で一覧を絞り込む **表示専用パネル**のまま維持する。
+- **`/kiosk/mobile-placement`** は **既存の照合・棚選択・製造 order 登録**を優先する。**Zero2W 配膳一覧**は別画面 **`/kiosk/mobile-placement/zero2w-status`**（ボタン **「棚番配膳一覧（Zero2W）」**）。
+- Top 上辺の **「Zero2W担当棚」** から **`/kiosk/mobile-placement/zero2w-assignment`** へ遷移し、**`haizenEdgeEnabled` の端末**に **棚マスタの登録済み構造化棚**を割り当てる。
+- メイン画面と一覧画面では **選択棚は共有しない**（一覧は既定で全棚の最新数十件。必要なら画面内更新や製造 order で確認）。
 
 ## エッジエージェント
 
 - **`clients/haizen-agent/`**: `evdev` または stdin フォールバック、分配番号ゲート、分類、HTTP POST。Ansible は **`roles/client/tasks/haizen-agent.yml`**（`haizen_agent_enabled`）で **unit + `/etc/raspi-haizen-agent.conf`** を配布。
 - **TLS**: 設定 **`HAIZEN_TLS_VERIFY_MODE`**（`insecure` \| `system`）と、互換の **`TLS_SKIP_VERIFY`**（`1` = 検証スキップ）。運用は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md) 参照。
-- **注意**: 分配番号は **短い数値スキャンをヒューリスティック**で認識する。現場のチケット／スキャン値と **衝突し得る**ため、ログとサンプルで早期に正規化を確認すること（クライアント README 参照）。
+- **分配番号の入力**: 設定 **`HAIZEN_DISTRIBUTION_MODE`**。既定 **`legacy_short_numeric`** は **1〜999 の単独整数スキャン**を分配とみなし **製造 order と誤認しうる**。誤認対策として **`prefixed_dist`**（または別名 `prefixed` / `dist_prefix`）では **`DIST:<整数>`** 形式のみを分配とみなす。詳細は **`clients/haizen-agent/README.md`**。
 
 ## 調査・テスト
 
@@ -65,7 +66,13 @@ category: knowledge-base
 
 4. **Zero 側**: `systemctl is-enabled haizen-agent.service` / `is-active` が **enabled / active**、`journalctl -u haizen-agent.service` に **`haizen-agent start base=https://… hid=…`** の起動ログがあること（`/dev/input/by-id/...-event-kbd` 等。README 参照）。
 
-**知見**: キオスク（Android）の `x-client-key` で既存 self API をそのまま叩くと **別端末のキーで誤設定**しうるため、**Top の配膳パネルは表示専用**に保ち、**専用ページ + 対象 Zero2W 指定 API** に分離した。
+**知見**: キオスク（Android）の `x-client-key` で既存 self API をそのまま叩くと **別端末のキーで誤設定**しうるため、**担当棚の更新は専用ページ + 対象端末指定 API** とした。**一覧閲覧**もメインとは別 URL に分離し、既定業務 UI を優先する。
+
+### UI／対象端末の変更履歴（2026-05-07）
+
+- **マイグレーション**: `ClientDevice.haizenEdgeEnabled` を追加し、`apiKey`/`name` に `zero2w` を含む既存端末は **`true` にバックフィル**。
+- **ランタイム抽出**: `haizen-target-devices` は **`haizenEdgeEnabled === true` のみ**（命名規約への依存をやめる）。
+- **一覧ページ**: `/kiosk/mobile-placement/zero2w-status` を追加。**メイン** `/kiosk/mobile-placement` から Zero2W 常設パネルを削除。
 
 ## 本番デプロイ・広域検証（2026-05-04 evening・Pi5 のみ）
 
@@ -73,9 +80,9 @@ category: knowledge-base
 - **標準デプロイ**: [deployment.md](../guides/deployment.md)。**対象インベントリ名**: **`raspberrypi5` のみ**（`./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`）。**Pi4／Pi3 は当該 play にマッチしない**ため **個別 Pi3 手順は不要**。
 - **実績**: **`main`** へ fast-forward **`8c2dfbf4`**（実装基底 **`153af161`**）。**Detach Run ID** **`20260504-183939-27983`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（所要 **約 95s**・Tailscale）。
-- **実機（手動・任意）**: キオスク URL で **`/kiosk/mobile-placement/zero2w-assignment`** を開き **4 つ目ボタン**の有無を確認。Android で **古いバンドル**が残る場合は [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 の **強制リロード**。API スモーク: キオスクの `x-client-key` で `GET /api/mobile-placement/haizen-target-devices` が **200**（候補は DB 次第で 0 件もあり得る）。
+- **実機（手動・任意）**: キオスク URL で **`/kiosk/mobile-placement/zero2w-assignment`** を開き **Zero2W 関連ボタン**の有無を確認。**一覧**は **`/kiosk/mobile-placement/zero2w-status`**。Android で **古いバンドル**が残る場合は [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 の **強制リロード**。API スモーク: キオスクの `x-client-key` で `GET /api/mobile-placement/haizen-target-devices` が **200**（候補は DB 次第で 0 件もあり得る）。
 - **トラブルシュート**
-  - **候補端末が常に 0 件**: `ClientDevice` の **`name` または `apiKey` に `zero2w`（大小無視）** が含まれるかを確認（抽出ルールは API 実装の正本）。
+  - **候補端末が常に 0 件**: `ClientDevice.haizenEdgeEnabled` が **true** か（管理画面「Zero2W配膳」列または **`PUT /api/clients/:id`**）。マイグレーション適用済みか。
   - **保存が 400 `HAIZEN_PRESET_SHELF_NOT_REGISTERED`**: 選択棚が **`MobilePlacementShelf` 未登録**。既存の棚番登録フロー（`POST /api/mobile-placement/shelves`）でマスタ投入後に再試行。
   - **保存が 400 `HAIZEN_TARGET_DEVICE_INVALID`**: 指定 `clientDeviceId` が Zero2W 候補に当てはまらない（一覧外の ID を直接叩いていないか）。
 
