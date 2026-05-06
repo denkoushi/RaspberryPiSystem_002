@@ -13,6 +13,7 @@ DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`*
 
 - `control-server.py`
   - `LLM_RUNTIME_START_CMD` / `LLM_RUNTIME_STOP_CMD` を実行する最小 HTTP サーバ
+  - **`DGX_LLM_SINGLE_ACTIVE_GUARD`**（既定 ON）: `/start` 前に非アクティブ backend を実停止。詳細は [`dgx_llm_single_active_guard.py`](./dgx_llm_single_active_guard.py)
 - `runtime_stop_policy.py`
   - blue 向け `/stop` の挙動（`on_demand` / `keep_warm` / `always_on`）を解決。環境変数: **`BLUE_LLM_RUNTIME_STOP_MODE`（推奨）**、**`BLUE_LLM_RUNTIME_KEEP_WARM`（非推奨・互換）** — 前者が優先
 - `gateway-server.py`
@@ -201,6 +202,23 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 したがって、Pi5 側は alias を変えずに、DGX 側だけで green / blue の backend を切り替えられる。
 
 **blue ランタイムの温存（検証用）**: `ACTIVE_LLM_BACKEND=blue` のとき、`BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）にすると `POST /stop` が**実 stop を実行せず** no-op になり、**vLLM の cold start を繰り返さない**。本番の常時占有方針は [docs/runbooks/dgx-system-prod-local-llm.md](../../docs/runbooks/dgx-system-prod-local-llm.md) および [ADR-20260427](../../docs/decisions/ADR-20260427-blue-llm-runtime-stop-policy.md) と併せて判断する。
+
+### 単一アクティブ運用ガード（`DGX_LLM_SINGLE_ACTIVE_GUARD`）
+
+- **概要**: `control-server.py` は既定で、`POST /start` の直前に **非アクティブ側（green/blue のもう一方）へ実 stop** を掛けてから、アクティブ側を起動する。これにより **両 backend が同時に GPU を占有する状態**をコード側で抑止する。
+- **既定**: 未設定でも **有効**（`true`）。無効化する場合のみ `DGX_LLM_SINGLE_ACTIVE_GUARD=false` を `secrets/control-server.env` 等に明示する（検証環境で stop を片側だけ用意するとき等）。
+- **配置**: ポリシー実装は [`dgx_llm_single_active_guard.py`](./dgx_llm_single_active_guard.py)。詳細と切替後チェックリストは Runbook「Blue/Green backend での安全な差し替え」を参照。
+
+最小の確認コマンド（DGX 実機）:
+
+```bash
+sed -n '/^ACTIVE_LLM_BACKEND=/p' /srv/dgx/system-prod/secrets/control-server.env /srv/dgx/system-prod/secrets/gateway-server.env
+TOKEN="$(cat /srv/dgx/system-prod/secrets/api-token)"
+curl -sS -H "X-LLM-Token: ${TOKEN}" http://127.0.0.1:38081/v1/models
+ss -ltnp | awk '/:38081|:38082|:38083|:39090|:38100/'
+ps -eo pid,cmd | awk 'BEGIN{IGNORECASE=1} /llama-server|vllm|system-prod-trtllm/ {print}'
+docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk 'BEGIN{IGNORECASE=1} /system-prod|trtllm|vllm/ {print}'
+```
 
 systemd 用の最小例:
 

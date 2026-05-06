@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-05-04
+last-verified: 2026-05-06
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -364,6 +364,46 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - `ACTIVE_LLM_BACKEND=blue`（新しい blue backend。現時点の第一候補は `Qwen3.6-27B-NVFP4` を Spark 向け `vLLM` image で起動する構成）
 
 systemd 運用では、`/srv/dgx/system-prod/secrets/control-server.env` と `gateway-server.env` の両方に同じ `ACTIVE_LLM_BACKEND` を書き、`systemctl restart dgx-llm-control dgx-llm-gateway` で反映する。blue 側は `127.0.0.1:38083` 想定で、`start-trtllm-server.sh` / `stop-trtllm-server.sh` から container を起動停止する。ファイル名は歴史的に `trtllm` だが、実体は **任意 image + 任意 command を受ける blue backend launcher** である。`@reboot` / 手動起動の `start-control-server.sh` / `start-gateway-server.sh` も同じ `secrets/*.env` を自動で `source` する。
+
+#### 単一アクティブ運用ガード（`DGX_LLM_SINGLE_ACTIVE_GUARD`）
+
+- **目的**: `green`（`llama-server`）と `blue`（vLLM コンテナ等）の推論ランタイムが **同時に残らない**ようにする（GPU/統一メモリの二重占有・応答モデルが不明瞭になることを防ぐ）。
+- **既定**: 環境変数未設定でも **有効**（`true` 相当）。`control-server.py` は **`POST /start` の直前に非アクティブ側へ実 stop を必ず実行**し、その後にアクティブ側の start を実行する。
+- **`keep_warm` との関係**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または `always_on`）は **アクティブ側が blue のときの `/stop` のみ no-op** となる。**非アクティブ側**を止める処理には適用されない（`/start` 前に残留していたもう一方の backend は必ず実停止される）。
+- **起動時検証**: ガード有効時、`GREEN_LLM_RUNTIME_STOP_CMD` / `BLUE_LLM_RUNTIME_STOP_CMD` と **`LLM_RUNTIME_STOP_CMD`（フォールバック）の両系統から実停止コマンドが解決できること**を起動時に確認する（片側のみしか用意しない検証ホストでは起動を拒否される）。
+- **オプトアウト**: `DGX_LLM_SINGLE_ACTIVE_GUARD=false`（または `0` / `no` / `off`）で **`/start` 前の非アクティブ stop と dual-stop の起動検証を無効化**。通常の `system-prod` では **両 backend の stop コマンドを揃えたうえでガード ON を維持**する。
+- **実装の置き場所**: [`scripts/dgx-local-llm-system/dgx_llm_single_active_guard.py`](../../scripts/dgx-local-llm-system/dgx_llm_single_active_guard.py) に単一アクティブ判定を集約し、`control-server.py` が import して `/start` に組み込む。
+
+#### 切替後の 4 点チェック（推奨）
+
+1. **`ACTIVE_LLM_BACKEND` の実効値**: `control-server.env` と `gateway-server.env` が **同一**であること。
+2. **`GET /v1/models`（入口は通常 `38081`）**: `system-prod-primary` の応答があり、`root`（またはモデル識別子）が **期待どおり**であること。
+3. **Listen ポート**: アクティブに応じて **不要側が listen していない**こと（例: `ACTIVE_LLM_BACKEND=blue` なら `127.0.0.1:38082` に **いない**）。
+4. **プロセスとコンテナ**: `ps` と `docker ps` で **もう一方の backend** が残っていないこと。
+
+```bash
+# 1) env の一致
+sed -n '/^ACTIVE_LLM_BACKEND=/p' /srv/dgx/system-prod/secrets/control-server.env
+sed -n '/^ACTIVE_LLM_BACKEND=/p' /srv/dgx/system-prod/secrets/gateway-server.env
+
+# 2) gateway 応答モデル
+TOKEN="$(cat /srv/dgx/system-prod/secrets/api-token)"
+curl -sS -H "X-LLM-Token: ${TOKEN}" http://127.0.0.1:38081/v1/models
+
+# 3) listen port
+ss -ltnp | awk '/:38081|:38082|:38083|:39090|:38100/'
+
+# 4) process / container
+ps -eo pid,cmd | awk 'BEGIN{IGNORECASE=1} /llama-server|vllm|system-prod-trtllm/ {print}'
+docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | awk 'BEGIN{IGNORECASE=1} /system-prod|trtllm|vllm/ {print}'
+```
+
+**PASS の目安**:
+
+- `control-server.env` / `gateway-server.env` の `ACTIVE_LLM_BACKEND` が一致
+- `38081 /v1/models` の `root` が期待した backend と一致
+- 非アクティブ側 port が listen していない（例: blue active なら `38082` 不在）
+- 非アクティブ側の `llama-server` / `vllm` / `system-prod-trtllm` が残っていない
 
 まずは DFlash なしで blue 単体起動を成立させ、`system-prod-primary` alias の text / vision 疎通を確認する。その後に必要なら `z-lab/Qwen3.6-27B-DFlash` を追加する。Phase2 実機投入で使う最小 blue 例:
 
