@@ -6,7 +6,7 @@ import {
   buildFkojunstMailStatusKey,
   type FkojunstMailNormalizedRow,
 } from '../fkojunst-status-mail-sync.pipeline.js';
-import { replaceAllWinnerExternalCompletionStates } from './fkojunst-external-completion-sync.repository.js';
+import { replaceAllWinnerExternalCompletionStatesFromMailSync } from './fkojunst-external-completion-sync.repository.js';
 import {
   loadPreviousDedupeKeys,
   replaceDedupeKeySnapshot,
@@ -57,7 +57,7 @@ export class FkojunstExternalCompletionSyncService {
     const disappearedKeys = previousKeys.filter((k) => !currentSet.has(k));
 
     await this.deps.prismaClient.$transaction(async (tx) => {
-      await replaceAllWinnerExternalCompletionStates(tx, disappearedKeys);
+      await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, disappearedKeys);
       await replaceDedupeKeySnapshot(tx, currentDistinctKeys);
     });
 

@@ -18,6 +18,8 @@ import { parseCsvDashboardDateColumnToUtc } from './csv-dashboard-datetime-parse
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
+import { ProductionScheduleCsvIngestExternalCompletionSyncService } from '../production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.js';
+import { extractProductionScheduleExternalCompletionKeysFromRows } from '../production-schedule/external-completion/production-schedule-external-completion-key.js';
 
 /**
  * CSVダッシュボード取り込みサービス
@@ -28,6 +30,7 @@ export class CsvDashboardIngestor {
   private dedupCleanupService = new CsvDashboardDedupCleanupService();
   private progressSyncFromCsvService = new ProgressSyncFromCsvService();
   private progressSyncEligibilityPolicy = new ProgressSyncEligibilityPolicy();
+  private scheduleCsvExternalCompletionSync = new ProductionScheduleCsvIngestExternalCompletionSyncService();
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -133,6 +136,15 @@ export class CsvDashboardIngestor {
               hash: this.calculateDataHash(row.data, dedupKeyColumns),
             }))
           : productionScheduleDedupRows;
+
+      if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
+        await this.scheduleCsvExternalCompletionSync.capturePreIngestSnapshot();
+      }
+
+      const currentProductionScheduleWinnerKeys =
+        isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
+          ? extractProductionScheduleExternalCompletionKeysFromRows(productionScheduleDedupRows)
+          : [];
 
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
@@ -312,6 +324,19 @@ export class CsvDashboardIngestor {
           logger.error(
             { err: error, dashboardId },
             '[CsvDashboardIngestor] Dashboard duplicate loser cleanup failed'
+          );
+        }
+      }
+
+      if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
+        try {
+          await this.scheduleCsvExternalCompletionSync.applyPostIngestFromSnapshot({
+            currentWinnerKeys: currentProductionScheduleWinnerKeys,
+          });
+        } catch (error) {
+          logger.error(
+            { err: error, dashboardId },
+            '[CsvDashboardIngestor] Schedule CSV external completion sync failed'
           );
         }
       }

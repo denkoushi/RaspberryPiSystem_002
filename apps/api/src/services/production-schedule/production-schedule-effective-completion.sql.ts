@@ -1,10 +1,14 @@
 import { Prisma } from '@prisma/client';
 
 /**
- * キオスク完了表示の実効値（手動完了 OR CSV由来外部完了）。
+ * キオスク完了表示の実効値。
+ * - 手動: `ProductionScheduleProgress.isCompleted`
+ * - CSV外部: `ProductionScheduleExternalCompletion.isExternallyCompleted`
+ *   （工順STメール消滅・工順STメール C/P/X/O・生産日程CSV消滅の論理ORを同期済み）
+ *
  * 利用側で LEFT JOIN:
- * - "ProductionScheduleProgress" AS "p" ON p.csvDashboardRowId = … AND p.csvDashboardId = …
- * - "ProductionScheduleExternalCompletion" AS "ext" ON ext.csvDashboardRowId = … AND ext.csvDashboardId = …
+ * - "ProductionScheduleProgress" AS "p" ON …
+ * - "ProductionScheduleExternalCompletion" AS "ext" ON …
  */
 export function buildProductionScheduleEffectiveCompletedSql(): Prisma.Sql {
   return Prisma.sql`(COALESCE("p"."isCompleted", FALSE) OR COALESCE("ext"."isExternallyCompleted", FALSE))`;

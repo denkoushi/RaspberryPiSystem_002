@@ -6,67 +6,175 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 
 export type PrismaExecutor = Pick<PrismaClient, '$executeRaw'>;
 
+function buildDisappearedKeysValuesSql(disappearedKeys: readonly string[]): Prisma.Sql {
+  return disappearedKeys.length > 0
+    ? Prisma.sql`SELECT * FROM (VALUES ${Prisma.join(
+        disappearedKeys.map((k) => Prisma.sql`(${k})`),
+        ','
+      )}) AS "dk"("k")`
+    : Prisma.sql`SELECT CAST(NULL AS text) AS "k" WHERE FALSE`;
+}
+
+const winnersBaseSql = Prisma.sql`
+  SELECT
+    "cdr"."id" AS "id",
+    (
+      BTRIM("cdr"."rowData"->>'FKOJUN')
+      || E'\t'
+      || UPPER(BTRIM("cdr"."rowData"->>'FSIGENCD'))
+      || E'\t'
+      || BTRIM("cdr"."rowData"->>'ProductNo')
+    ) AS "rowKey",
+    ${buildFkojunstSrEligibleScalarSql()} AS "srEligible",
+    COALESCE((UPPER(BTRIM("fkmail"."statusCode")) IN ('C', 'P', 'X', 'O')), FALSE) AS "mailStatusComplete"
+  FROM "CsvDashboardRow" AS "cdr"
+  LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
+    ON "fkst"."csvDashboardRowId" = "cdr"."id"
+    AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+  LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
+    ON "fkmail"."csvDashboardRowId" = "cdr"."id"
+    AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+  WHERE "cdr"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    AND ${buildMaxProductNoWinnerCondition('cdr')}
+`;
+
 /**
- * `FKOJUNST_Status` の「前回同期では存在したが今回の dedupe キー集合から消えたキー」と winner を突き合わせ、外部完了フラグを一括反映する。
- * @param disappearedKeys buildFkojunstMailStatusKey と同一形式のキー（前回スナップショット − 今回キー）
+ * FKOJUNST_Status メール同期後: 工順STメールの「消滅差分」と C/P/X/O 完了を反映し、生産日程CSV由来フラグは保持する。
  */
-export async function replaceAllWinnerExternalCompletionStates(
+export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
   executor: PrismaExecutor,
-  disappearedKeys: readonly string[]
+  disappearedMailKeys: readonly string[]
 ): Promise<void> {
-  const disappearedSourceSql =
-    disappearedKeys.length > 0
-      ? Prisma.sql`SELECT * FROM (VALUES ${Prisma.join(
-          disappearedKeys.map((k) => Prisma.sql`(${k})`),
-          ','
-        )}) AS "dk"("k")`
-      : Prisma.sql`SELECT CAST(NULL AS text) AS "k" WHERE FALSE`;
+  const disappearedMailSql = buildDisappearedKeysValuesSql(disappearedMailKeys);
 
   await executor.$executeRaw`
-    WITH "disappearedKeys" AS (
-      ${disappearedSourceSql}
+    WITH "disappearedMailKeys" AS (
+      ${disappearedMailSql}
     ),
     "winners" AS (
+      ${winnersBaseSql}
+    ),
+    "computed" AS (
       SELECT
-        "cdr"."id" AS "id",
+        "w"."id",
+        "w"."rowKey",
         (
-          BTRIM("cdr"."rowData"->>'FKOJUN')
-          || E'\t'
-          || UPPER(BTRIM("cdr"."rowData"->>'FSIGENCD'))
-          || E'\t'
-          || BTRIM("cdr"."rowData"->>'ProductNo')
-        ) AS "rowKey",
-        ${buildFkojunstSrEligibleScalarSql()} AS "srEligible"
-      FROM "CsvDashboardRow" AS "cdr"
-      LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-        ON "fkst"."csvDashboardRowId" = "cdr"."id"
-        AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
-        ON "fkmail"."csvDashboardRowId" = "cdr"."id"
-        AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      WHERE "cdr"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND ${buildMaxProductNoWinnerCondition('cdr')}
+          "w"."srEligible"
+          AND EXISTS (SELECT 1 FROM "disappearedMailKeys" "dk" WHERE "dk"."k" = "w"."rowKey")
+        ) AS "mailDisappeared",
+        "w"."mailStatusComplete" AS "mailStatusComplete"
+      FROM "winners" "w"
     )
     INSERT INTO "ProductionScheduleExternalCompletion" (
       "csvDashboardRowId",
       "csvDashboardId",
       "isExternallyCompleted",
+      "externallyCompletedFromFkojunstDisappeared",
+      "externallyCompletedFromFkojunstMailStatus",
+      "externallyCompletedFromScheduleCsvDisappeared",
       "createdAt",
       "updatedAt"
     )
     SELECT
-      "w"."id",
+      "c"."id",
       ${PRODUCTION_SCHEDULE_DASHBOARD_ID},
-      CASE
-        WHEN NOT "w"."srEligible" THEN FALSE
-        WHEN EXISTS (SELECT 1 FROM "disappearedKeys" "dk" WHERE "dk"."k" = "w"."rowKey") THEN TRUE
-        ELSE FALSE
-      END,
+      (
+        "c"."mailDisappeared"
+        OR "c"."mailStatusComplete"
+        OR COALESCE("ext"."externallyCompletedFromScheduleCsvDisappeared", FALSE)
+      ),
+      "c"."mailDisappeared",
+      "c"."mailStatusComplete",
+      COALESCE("ext"."externallyCompletedFromScheduleCsvDisappeared", FALSE),
       NOW(),
       NOW()
-    FROM "winners" "w"
+    FROM "computed" "c"
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "c"."id"
     ON CONFLICT ("csvDashboardRowId") DO UPDATE SET
-      "isExternallyCompleted" = EXCLUDED."isExternallyCompleted",
+      "externallyCompletedFromFkojunstDisappeared" = EXCLUDED."externallyCompletedFromFkojunstDisappeared",
+      "externallyCompletedFromFkojunstMailStatus" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
+      "externallyCompletedFromScheduleCsvDisappeared" = "ProductionScheduleExternalCompletion"."externallyCompletedFromScheduleCsvDisappeared",
+      "isExternallyCompleted" = (
+        EXCLUDED."externallyCompletedFromFkojunstDisappeared"
+        OR EXCLUDED."externallyCompletedFromFkojunstMailStatus"
+        OR "ProductionScheduleExternalCompletion"."externallyCompletedFromScheduleCsvDisappeared"
+      ),
       "updatedAt" = NOW()
   `;
+}
+
+/**
+ * 生産日程CSV 取込後: 取込直前スナップショットとの消滅差分を反映し、工順ST由来2フラグは保持する。
+ */
+export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync(
+  executor: PrismaExecutor,
+  disappearedScheduleKeys: readonly string[]
+): Promise<void> {
+  const disappearedScheduleSql = buildDisappearedKeysValuesSql(disappearedScheduleKeys);
+
+  await executor.$executeRaw`
+    WITH "disappearedScheduleKeys" AS (
+      ${disappearedScheduleSql}
+    ),
+    "winners" AS (
+      ${winnersBaseSql}
+    ),
+    "computed" AS (
+      SELECT
+        "w"."id",
+        (
+          "w"."srEligible"
+          AND EXISTS (SELECT 1 FROM "disappearedScheduleKeys" "dk" WHERE "dk"."k" = "w"."rowKey")
+        ) AS "scheduleDisappeared"
+      FROM "winners" "w"
+    )
+    INSERT INTO "ProductionScheduleExternalCompletion" (
+      "csvDashboardRowId",
+      "csvDashboardId",
+      "isExternallyCompleted",
+      "externallyCompletedFromFkojunstDisappeared",
+      "externallyCompletedFromFkojunstMailStatus",
+      "externallyCompletedFromScheduleCsvDisappeared",
+      "createdAt",
+      "updatedAt"
+    )
+    SELECT
+      "c"."id",
+      ${PRODUCTION_SCHEDULE_DASHBOARD_ID},
+      (
+        COALESCE("ext"."externallyCompletedFromFkojunstDisappeared", FALSE)
+        OR COALESCE("ext"."externallyCompletedFromFkojunstMailStatus", FALSE)
+        OR "c"."scheduleDisappeared"
+      ),
+      COALESCE("ext"."externallyCompletedFromFkojunstDisappeared", FALSE),
+      COALESCE("ext"."externallyCompletedFromFkojunstMailStatus", FALSE),
+      "c"."scheduleDisappeared",
+      NOW(),
+      NOW()
+    FROM "computed" "c"
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "c"."id"
+    ON CONFLICT ("csvDashboardRowId") DO UPDATE SET
+      "externallyCompletedFromFkojunstDisappeared" = "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstDisappeared",
+      "externallyCompletedFromFkojunstMailStatus" = "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstMailStatus",
+      "externallyCompletedFromScheduleCsvDisappeared" = EXCLUDED."externallyCompletedFromScheduleCsvDisappeared",
+      "isExternallyCompleted" = (
+        "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstDisappeared"
+        OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstMailStatus"
+        OR EXCLUDED."externallyCompletedFromScheduleCsvDisappeared"
+      ),
+      "updatedAt" = NOW()
+  `;
+}
+
+/**
+ * @deprecated 呼び出し側は {@link replaceAllWinnerExternalCompletionStatesFromMailSync} を明示利用する。
+ * 互換のためメール同期と同じ処理とする。
+ */
+export async function replaceAllWinnerExternalCompletionStates(
+  executor: PrismaExecutor,
+  disappearedKeys: readonly string[]
+): Promise<void> {
+  await replaceAllWinnerExternalCompletionStatesFromMailSync(executor, disappearedKeys);
 }
