@@ -794,8 +794,8 @@ export async function getKioskProductionScheduleLeaderboardShell(
     postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:getKioskProductionScheduleLeaderboardShell', 'leaderboard shell response', {
       durationMs: Date.now() - startedAt,
       rowCount: data.rows.length,
-      total: data.total,
       pageSize: data.pageSize,
+      hasSnapshotId: Boolean(data.snapshotId),
       hasTargetDeviceScopeKey: Boolean(params?.targetDeviceScopeKey),
       resourceCdCount: params?.resourceCds?.split(',').filter(Boolean).length ?? 0
     });
