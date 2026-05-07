@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { buildServer } from '../../app.js';
@@ -689,9 +691,11 @@ describe('Kiosk Production Schedule API', () => {
     const shellBody = shell.json() as {
       pageSize: number;
       rows: Array<{ id: string }>;
+      snapshotId?: string;
     };
     expect(shellBody.pageSize).toBe(160);
     expect(shellBody.rows).toHaveLength(160);
+    expect(shellBody.snapshotId).toBeTruthy();
 
     const totalRes = await app.inject({
       method: 'GET',
@@ -737,8 +741,10 @@ describe('Kiosk Production Schedule API', () => {
       headers: { 'x-client-key': CLIENT_KEY }
     });
     expect(shell.statusCode).toBe(200);
-    const shellBody = shell.json() as { rows: Array<{ id: string }> };
+    const shellBody = shell.json() as { rows: Array<{ id: string }>; snapshotId?: string };
     expect(shellBody.rows).toHaveLength(160);
+    expect(shellBody.snapshotId).toBeTruthy();
+    const shellSnapshotId = shellBody.snapshotId as string;
 
     const seen = new Set(shellBody.rows.map((r) => r.id));
     const merged = shellBody.rows.map((r) => r.id);
@@ -751,7 +757,8 @@ describe('Kiosk Production Schedule API', () => {
         headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
         payload: {
           excludeRowIds: merged,
-          pageSize: 160
+          pageSize: 160,
+          snapshotId: shellSnapshotId
         }
       });
       expect(cont.statusCode).toBe(200);
@@ -770,6 +777,68 @@ describe('Kiosk Production Schedule API', () => {
 
     expect(merged).toEqual(expectIds);
     expect(seen.size).toBe(merged.length);
+  });
+
+  it('leaderboard shell continue with unknown snapshotId returns snapshotExpired', async () => {
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as { rows: Array<{ id: string }>; snapshotId?: string };
+    expect(shellBody.snapshotId).toBeTruthy();
+    expect(shellBody.rows.length).toBeGreaterThan(0);
+
+    const cont = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: {
+        excludeRowIds: shellBody.rows.map((r) => r.id),
+        pageSize: 160,
+        snapshotId: randomUUID()
+      }
+    });
+    expect(cont.statusCode).toBe(200);
+    const contBody = cont.json() as { rows: unknown[]; snapshotExpired?: boolean };
+    expect(contBody.snapshotExpired).toBe(true);
+    expect(contBody.rows).toEqual([]);
+  });
+
+  it('leaderboard shell continue expires when source generation changes', async () => {
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as { rows: Array<{ id: string }>; snapshotId?: string };
+    expect(shellBody.snapshotId).toBeTruthy();
+    expect(shellBody.rows.length).toBeGreaterThan(0);
+
+    await prisma.productionScheduleRowNote.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: shellBody.rows[0]!.id,
+        note: 'snapshot invalidation',
+      }
+    });
+
+    const cont = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: {
+        excludeRowIds: shellBody.rows.map((r) => r.id),
+        pageSize: 160,
+        snapshotId: shellBody.snapshotId
+      }
+    });
+    expect(cont.statusCode).toBe(200);
+    const contBody = cont.json() as { rows: unknown[]; snapshotExpired?: boolean };
+    expect(contBody.snapshotExpired).toBe(true);
+    expect(contBody.rows).toEqual([]);
   });
 
   it('max ProductNo winner materialization equals correlated winner filter (seeded dashboard)', async () => {

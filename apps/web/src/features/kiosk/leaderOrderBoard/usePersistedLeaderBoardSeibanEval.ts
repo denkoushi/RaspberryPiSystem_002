@@ -39,6 +39,14 @@ function persistSeibanEval(storageKey: string, payload: Pick<PersistedLeaderBoar
   window.localStorage.setItem(storageKey, JSON.stringify(body));
 }
 
+function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 /**
  * 製番順「評価モード」とローカル製番並び。共有 `sharedHistory` とは別永続（端末ローカルのみ）。
  */
@@ -67,7 +75,10 @@ export function usePersistedLeaderBoardSeibanEval(
 
   useEffect(() => {
     if (!hydrated) return;
-    setLocalOrder((prev) => mergeSharedHistoryWithLocalOrder(sharedHistory, prev));
+    setLocalOrder((prev) => {
+      const next = mergeSharedHistoryWithLocalOrder(sharedHistory, prev);
+      return arraysEqual(prev, next) ? prev : next;
+    });
   }, [hydrated, sharedHistory, sharedSig]);
 
   useEffect(() => {

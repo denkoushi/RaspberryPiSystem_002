@@ -37,9 +37,13 @@ import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboa
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import {
   fetchLeaderboardScheduleRowsWithSeibanAwarePriority,
+  fetchFullLeaderboardShellMergedOrderedRows,
   fetchLeaderboardShellRowsContinuationChunk
 } from './leaderboard/leaderboard-row-selection.service.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
+import { buildLeaderboardShellFilterFingerprint } from './leaderboard/leaderboard-shell-snapshot-fingerprint.js';
+import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
+import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
 import { countProductionScheduleDashboardVisibleRows } from './production-schedule-list-count.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
@@ -91,6 +95,12 @@ export type ProductionScheduleListParams = {
    * `resolvedMachineName` は full と同様にバッチ解決する（省略時は full）。
    */
   responseProfile?: 'full' | 'leaderboard';
+};
+
+/** 順位ボード phased read（shell / continue）の共通レスポンス形（snapshotId は shell・正常 continue で付与） */
+export type LeaderboardShellPhasedReadResult = Pick<ProductionScheduleListResult, 'page' | 'pageSize' | 'rows'> & {
+  snapshotId?: string;
+  snapshotExpired?: boolean;
 };
 
 export type PreparedProductionScheduleDashboardFilters =
@@ -188,10 +198,11 @@ async function prepareProductionScheduleDashboardFilters(
   };
 }
 
-/** 順位ボード段階取得: COUNT・装飾なしの leaderboard 選定のみ */
+/** 順位ボード段階取得: COUNT・装飾なしの leaderboard 選定のみ（初回で全順位を確定し snapshot を発行） */
 export async function listLeaderboardShellProductionScheduleRows(
-  params: ProductionScheduleListParams
-): Promise<Pick<ProductionScheduleListResult, 'page' | 'pageSize' | 'rows'>> {
+  params: ProductionScheduleListParams,
+  options: { snapshotStore: LeaderboardShellSnapshotStore }
+): Promise<LeaderboardShellPhasedReadResult> {
   const { page, pageSize, locationKey } = params;
 
   const filters = await prepareProductionScheduleDashboardFilters({
@@ -216,32 +227,60 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
-  const leaderboardRows = await fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
+  const fullMerged = await fetchFullLeaderboardShellMergedOrderedRows({
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
     locationKey,
-    siteScopedGlobalRankLocation,
-    pageSize
+    siteScopedGlobalRankLocation
   });
 
-  const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({
+  const orderedRowIds = fullMerged.map((r) => r.id);
+  const generationToken = await readLeaderboardShellSnapshotGenerationToken();
+
+  const filterFingerprint = buildLeaderboardShellFilterFingerprint({
+    locationKey,
+    siteKey: params.siteKey,
+    queryText: params.queryText,
+    productNos: params.productNos,
+    machineName: params.machineName,
+    resourceCds: params.resourceCds,
+    assignedOnlyCds: params.assignedOnlyCds,
+    resourceCategory: params.resourceCategory,
+    hasNoteOnly: params.hasNoteOnly,
+    hasDueDateOnly: params.hasDueDateOnly,
+    allowResourceOnly: params.allowResourceOnly ?? false
+  });
+
+  const snapshotId = options.snapshotStore.create({
+    orderedRowIds,
+    filterFingerprint,
+    generationToken,
+    locationKey,
+    siteKey: params.siteKey
+  });
+
+  const firstRows = fullMerged.slice(0, pageSize);
+
+  const rows: ProductionScheduleRow[] = firstRows.map((r) => ({
     ...r,
     actualPerPieceMinutes: null,
     customerName: null
   }));
 
-  return { page, pageSize, rows };
+  return { page, pageSize, rows, snapshotId };
 }
 
-/** 順位ボード段階取得: shell の続き（exclude 済み id を除いたマージ順の次枠） */
+/** 順位ボード段階取得: shell の続き（snapshot がある場合は再計算せずスライス＋hydrate） */
 export async function listLeaderboardShellContinuationProductionScheduleRows(
   params: Omit<ProductionScheduleListParams, 'page' | 'pageSize'> & {
     page?: number;
     excludeRowIds: readonly string[];
     chunkSize: number;
-  }
-): Promise<Pick<ProductionScheduleListResult, 'page' | 'pageSize' | 'rows'>> {
+    snapshotId?: string;
+  },
+  options: { snapshotStore: LeaderboardShellSnapshotStore }
+): Promise<LeaderboardShellPhasedReadResult> {
   const page = params.page ?? 1;
   const { locationKey, excludeRowIds } = params;
   const appliedChunk = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
@@ -262,6 +301,75 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
 
   if (filters.kind === 'blocked_empty_search') {
     return { page, pageSize: appliedChunk, rows: [] };
+  }
+
+  const filterFingerprint = buildLeaderboardShellFilterFingerprint({
+    locationKey,
+    siteKey: params.siteKey,
+    queryText: params.queryText,
+    productNos: params.productNos,
+    machineName: params.machineName,
+    resourceCds: params.resourceCds,
+    assignedOnlyCds: params.assignedOnlyCds,
+    resourceCategory: params.resourceCategory,
+    hasNoteOnly: params.hasNoteOnly,
+    hasDueDateOnly: params.hasDueDateOnly,
+    allowResourceOnly: params.allowResourceOnly ?? false
+  });
+
+  const snapshotId = params.snapshotId?.trim();
+
+  if (snapshotId && snapshotId.length > 0) {
+    return options.snapshotStore.withContinueLock(snapshotId, async () => {
+      const snap = options.snapshotStore.get(snapshotId);
+      if (
+        !snap ||
+        snap.filterFingerprint !== filterFingerprint ||
+        snap.locationKey !== locationKey ||
+        (snap.siteKey ?? '') !== (params.siteKey ?? '')
+      ) {
+        return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+      }
+
+      if (excludeRowIds.length > snap.orderedRowIds.length) {
+        return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+      }
+      for (let i = 0; i < excludeRowIds.length; i++) {
+        if (snap.orderedRowIds[i] !== excludeRowIds[i]) {
+          return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+        }
+      }
+
+      const currentGenerationToken = await readLeaderboardShellSnapshotGenerationToken();
+      if (snap.generationToken !== currentGenerationToken) {
+        options.snapshotStore.delete(snapshotId);
+        return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+      }
+
+      const sliceIds = snap.orderedRowIds.slice(excludeRowIds.length, excludeRowIds.length + appliedChunk);
+
+      if (sliceIds.length === 0) {
+        return { page, pageSize: appliedChunk, rows: [], snapshotId };
+      }
+
+      const { siteScopedGlobalRankLocation } = filters;
+      const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+
+      const leaderboardRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+        orderedRowIds: sliceIds,
+        locationKey,
+        siteScopedGlobalRankLocation,
+        leaderboardMaterializedBaseWhere
+      });
+
+      const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({
+        ...r,
+        actualPerPieceMinutes: null,
+        customerName: null
+      }));
+
+      return { page, pageSize: appliedChunk, rows, snapshotId };
+    });
   }
 
   const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
