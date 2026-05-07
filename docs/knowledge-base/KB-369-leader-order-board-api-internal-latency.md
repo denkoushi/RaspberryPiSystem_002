@@ -96,7 +96,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 は対象外**（提示スコープ外）。
 - **変更概要**: 初回 shell が **`pageSize` 未満**のとき **`POST …/leaderboard-shell/continue`** で続きを **同一フィルタ・同一並び**のまま追加（統合テストで monolithic `id` 一致を確認）。**マイグレなし**。
-- **リポジトリ**: ブランチ **`feat/leaderboard-phased-shell-append`**・代表コミット **`2dd3c9b2`**（**`main` squash マージ後は `origin/main` HEAD**）。
+- **リポジトリ**: [PR #268](https://github.com/denkoushi/RaspberryPiSystem_002/pull/268) **squash**・**`main` `1baaee98`**。先行デプロイ時の実装 tip は **`2dd3c9b2`**。
 - **Detach Run ID**（`ansible-update-`）: **`20260507-090345-18842`**（Pi5）/ **`20260507-091500-1467`**（`raspberrypi4`）/ **`20260507-093553-18573`**（`raspi4-robodrill01`・初回 `20260507-092030-22339` は `status-agent` 失敗→rollback 後に再試行成功）/ **`20260507-094833-877`**（`raspi4-fjv60-80`・初回 `20260507-093945-11807` 同様）/ **`20260507-095322-14546`**（`raspi4-kensaku-stonebase01`）。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（全台完走後。途中では `deploy-status` が **一時メンテナンス**で **FAIL 1** になり得る）。
 - **トラブルシュート**: **Pi4 `status-agent.service` 再起動失敗** → rollback 後 **同一 `--limit` で再実行**。rescue 経路の **`utf-8` surrogate deserialize** は **付随**。**deploy-status** → 連続デプロイでは **`isMaintenance:true`** が残り得るため **完了後に再検証**。
