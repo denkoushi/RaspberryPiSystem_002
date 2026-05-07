@@ -45,6 +45,51 @@ export type LeaderboardShellPriorityContext = {
   pSorted: LeaderboardScheduleRowSql[];
 };
 
+async function leaderboardShellManualAssignmentExists(params: {
+  commonWhere: Prisma.Sql;
+  locationKey: string;
+}): Promise<boolean> {
+  const [row] = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM "CsvDashboardRow"
+      LEFT JOIN "ProductionScheduleProgress" AS "p"
+        ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+        ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      LEFT JOIN "ProductionScheduleRowNote" AS "n"
+        ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
+        ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
+      LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
+        ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
+        ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
+        ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      WHERE ${params.commonWhere}
+        AND EXISTS (
+          SELECT 1
+          FROM "ProductionScheduleOrderAssignment" AS "ord_m"
+          WHERE "ord_m"."csvDashboardRowId" = "CsvDashboardRow"."id"
+            AND "ord_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+            AND (
+              "ord_m"."location" = ${params.locationKey}
+              OR "ord_m"."siteKey" = ${params.locationKey}
+            )
+        )
+    ) AS "exists"
+  `;
+  return Boolean(row?.exists);
+}
+
 async function buildLeaderboardShellPriorityContext(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
@@ -65,7 +110,6 @@ async function buildLeaderboardShellPriorityContext(params: {
     siteScopedGlobalRankLocation,
     seibanExpansion = true
   } = params;
-
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
   const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql}`;
 
@@ -82,6 +126,11 @@ async function buildLeaderboardShellPriorityContext(params: {
       "updatedAt" DESC
     LIMIT 1
   )`;
+
+  const hasManualAssignment = await leaderboardShellManualAssignmentExists({ commonWhere, locationKey });
+  if (!hasManualAssignment) {
+    return { commonWhere, processingOrderScalar, pSorted: [] };
+  }
 
   const manualRows = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
     SELECT
@@ -244,16 +293,26 @@ async function queryLeaderboardShellFillerRows(params: {
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   pSorted: LeaderboardScheduleRowSql[];
+  takeLimit?: number;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const { commonWhere, processingOrderScalar, locationKey, siteScopedGlobalRankLocation, pSorted } = params;
+  const {
+    commonWhere,
+    processingOrderScalar,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    pSorted,
+    takeLimit,
+  } = params;
 
   const priorityIdParts = pSorted.map((r) => Prisma.sql`${r.id}`);
   const priorityExcludeSql =
     priorityIdParts.length > 0
       ? Prisma.sql`AND NOT ("CsvDashboardRow"."id" IN (${Prisma.join(priorityIdParts)}))`
       : Prisma.empty;
+  const takeLimitSql =
+    takeLimit != null ? Prisma.sql`LIMIT ${Math.max(1, Math.floor(takeLimit))}` : Prisma.empty;
 
-  return prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
+  const fillerRows = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
     SELECT
       "CsvDashboardRow"."id",
       NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
@@ -311,21 +370,33 @@ async function queryLeaderboardShellFillerRows(params: {
       END) ASC NULLS LAST,
       ("CsvDashboardRow"."rowData"->>'FHINCD') ASC,
       "CsvDashboardRow"."id"::text ASC
+    ${takeLimitSql}
   `;
+  return fillerRows;
 }
 
 /**
- * priority（手動+製番展開）とフィラーを {@link compareLeaderboardFetchedRows} で終端までマージする。
+ * priority（手動+製番展開）とフィラーを {@link compareLeaderboardFetchedRows} でマージし、
+ * 先頭 `prefixLimit` 件（またはストリーム枯渇まで）を返す。
+ *
+ * @internal 単体テストで full merge の prefix 一致を検証するため export。
  */
-function mergeLeaderboardShellPriorityAndFillerFully(
+export function mergeLeaderboardShellPriorityAndFillerUpTo(
   pSorted: LeaderboardScheduleRowSql[],
-  fillerRows: LeaderboardScheduleRowSql[]
-): LeaderboardScheduleRowSql[] {
+  fillerRows: LeaderboardScheduleRowSql[],
+  prefixLimit: number
+): { rows: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean } {
+  const limit = Math.max(0, Math.floor(prefixLimit));
   let pIdx = 0;
   let fIdx = 0;
   const out: LeaderboardScheduleRowSql[] = [];
 
   while (pIdx < pSorted.length || fIdx < fillerRows.length) {
+    if (out.length >= limit) {
+      const mergeFullyCompleted = pIdx >= pSorted.length && fIdx >= fillerRows.length;
+      return { rows: out, mergeFullyCompleted };
+    }
+
     const nextP = pIdx < pSorted.length ? pSorted[pIdx]! : null;
     const nextF = fIdx < fillerRows.length ? fillerRows[fIdx]! : null;
     if (nextP == null && nextF == null) break;
@@ -347,7 +418,60 @@ function mergeLeaderboardShellPriorityAndFillerFully(
     out.push(pick);
   }
 
-  return out;
+  return { rows: out, mergeFullyCompleted: true };
+}
+
+/**
+ * 順位ボード shell 初回: 先頭 N 件だけグローバル順の正しい prefix として返す（全件マージ完了は保証しない）。
+ */
+export async function fetchLeaderboardShellMergedPrefixRows(params: {
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  expansionWhere: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  seibanExpansion?: boolean;
+  prefixLimit: number;
+}): Promise<{ mergedPrefix: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
+  const limit = Math.max(1, Math.floor(params.prefixLimit));
+  const ctx = await buildLeaderboardShellPriorityContext(params);
+
+  if (ctx.pSorted.length >= limit) {
+    if (ctx.pSorted.length > limit) {
+      return {
+        mergedPrefix: ctx.pSorted.slice(0, limit),
+        mergeFullyCompleted: false
+      };
+    }
+
+    const fillerProbe = await queryLeaderboardShellFillerRows({
+      commonWhere: ctx.commonWhere,
+      processingOrderScalar: ctx.processingOrderScalar,
+      locationKey: params.locationKey,
+      siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+      pSorted: ctx.pSorted,
+      takeLimit: 1
+    });
+    return {
+      mergedPrefix: ctx.pSorted.slice(0, limit),
+      mergeFullyCompleted: fillerProbe.length === 0
+    };
+  }
+
+  const fillerRows = await queryLeaderboardShellFillerRows({
+    commonWhere: ctx.commonWhere,
+    processingOrderScalar: ctx.processingOrderScalar,
+    locationKey: params.locationKey,
+    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+    pSorted: ctx.pSorted
+  });
+
+  const { rows, mergeFullyCompleted } = mergeLeaderboardShellPriorityAndFillerUpTo(
+    ctx.pSorted,
+    fillerRows,
+    limit
+  );
+  return { mergedPrefix: rows, mergeFullyCompleted };
 }
 
 /**
@@ -361,15 +485,11 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
   siteScopedGlobalRankLocation: string;
   seibanExpansion?: boolean;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const ctx = await buildLeaderboardShellPriorityContext(params);
-  const fillerRows = await queryLeaderboardShellFillerRows({
-    commonWhere: ctx.commonWhere,
-    processingOrderScalar: ctx.processingOrderScalar,
-    locationKey: params.locationKey,
-    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
-    pSorted: ctx.pSorted
+  const { mergedPrefix } = await fetchLeaderboardShellMergedPrefixRows({
+    ...params,
+    prefixLimit: Number.MAX_SAFE_INTEGER
   });
-  return mergeLeaderboardShellPriorityAndFillerFully(ctx.pSorted, fillerRows);
+  return mergedPrefix;
 }
 
 /**

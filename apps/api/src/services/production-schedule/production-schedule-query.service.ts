@@ -37,7 +37,7 @@ import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboa
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import {
   fetchLeaderboardScheduleRowsWithSeibanAwarePriority,
-  fetchFullLeaderboardShellMergedOrderedRows,
+  fetchLeaderboardShellMergedPrefixRows,
   fetchLeaderboardShellRowsContinuationChunk
 } from './leaderboard/leaderboard-row-selection.service.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
@@ -215,7 +215,7 @@ function shouldExpandLeaderboardSeibanAcrossResources(resourceCds: readonly stri
   return resourceCds.length !== 1;
 }
 
-/** 順位ボード段階取得: COUNT・装飾なしの leaderboard 選定のみ（初回で全順位を確定し snapshot を発行） */
+/** 順位ボード段階取得: COUNT・装飾なしの leaderboard 選定のみ（初回 shell は先頭 page 件の並びを確定し snapshot を発行。全件は遅延マテリアライズ可） */
 export async function listLeaderboardShellProductionScheduleRows(
   params: ProductionScheduleListParams,
   options: { snapshotStore: LeaderboardShellSnapshotStore }
@@ -246,16 +246,17 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 
-  const fullMerged = await fetchFullLeaderboardShellMergedOrderedRows({
+  const { mergedPrefix, mergeFullyCompleted } = await fetchLeaderboardShellMergedPrefixRows({
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
     locationKey,
     siteScopedGlobalRankLocation,
-    seibanExpansion
+    seibanExpansion,
+    prefixLimit: pageSize
   });
 
-  const orderedRowIds = fullMerged.map((r) => r.id);
+  const orderedRowIds = mergedPrefix.map((r) => r.id);
   const generationToken = await readLeaderboardShellSnapshotGenerationToken();
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
@@ -274,13 +275,14 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const snapshotId = options.snapshotStore.create({
     orderedRowIds,
+    partialOrdering: !mergeFullyCompleted,
     filterFingerprint,
     generationToken,
     locationKey,
     siteKey: params.siteKey
   });
 
-  const firstRows = fullMerged.slice(0, pageSize);
+  const firstRows = mergedPrefix;
 
   const rows: ProductionScheduleRow[] = firstRows.map((r) => ({
     ...r,
@@ -289,7 +291,7 @@ export async function listLeaderboardShellProductionScheduleRows(
   }));
 
   const nextCursor = rows.length;
-  const hasMore = nextCursor < orderedRowIds.length;
+  const hasMore = !mergeFullyCompleted;
 
   return { page, pageSize, rows, snapshotId, nextCursor, hasMore };
 }
@@ -365,31 +367,103 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
         return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
       }
 
-      const useCursor = params.cursor !== undefined;
-      let sliceIds: readonly string[];
-      let nextCursor: number;
-      let hasMore: boolean;
+      const { siteScopedGlobalRankLocation, queryWhere, leaderboardExpansionWhere } = filters;
+      const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+      const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 
-      if (useCursor) {
-        const sliced = sliceLeaderboardSnapshotIdsByCursor(snap.orderedRowIds, params.cursor!, appliedChunk);
-        if (sliced.kind === 'cursor_overflow') {
+      const materializeNextSnapshotChunk = async () => {
+        const live = options.snapshotStore.get(snapshotId);
+        if (!live?.partialOrdering) return;
+        const chunkRows = await fetchLeaderboardShellRowsContinuationChunk({
+          leaderboardMaterializedBaseWhere,
+          queryWhere,
+          expansionWhere: leaderboardExpansionWhere,
+          locationKey,
+          siteScopedGlobalRankLocation,
+          excludeRowIds: [...live.orderedRowIds],
+          chunkSize: appliedChunk,
+          seibanExpansion
+        });
+        options.snapshotStore.appendSnapshotOrderingChunk(
+          snapshotId,
+          chunkRows.map((r) => r.id),
+          appliedChunk
+        );
+      };
+
+      const useCursor = params.cursor !== undefined;
+      let resolved:
+        | { sliceIds: readonly string[]; nextCursor: number; hasMore: boolean }
+        | undefined;
+
+      let liveSnap = options.snapshotStore.get(snapshotId);
+      if (!liveSnap) {
+        return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+      }
+
+      const MAX_SNAPSHOT_MATERIALIZE_ROUNDS = 640;
+      for (let round = 0; round < MAX_SNAPSHOT_MATERIALIZE_ROUNDS; round++) {
+        if (useCursor) {
+          const sliced = sliceLeaderboardSnapshotIdsByCursor(
+            liveSnap.orderedRowIds,
+            params.cursor!,
+            appliedChunk
+          );
+          if (sliced.kind === 'cursor_overflow') {
+            return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+          }
+          if (sliced.sliceIds.length > 0 || !liveSnap.partialOrdering) {
+            resolved = {
+              sliceIds: sliced.sliceIds,
+              nextCursor: sliced.nextCursor,
+              hasMore: sliced.hasMore
+            };
+            break;
+          }
+          await materializeNextSnapshotChunk();
+        } else {
+          const sliced = sliceLeaderboardSnapshotIdsByExcludePrefix(
+            liveSnap.orderedRowIds,
+            excludeRowIds,
+            appliedChunk
+          );
+          if (sliced.kind === 'expired') {
+            return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+          }
+          if (sliced.sliceIds.length > 0 || !liveSnap.partialOrdering) {
+            resolved = {
+              sliceIds: sliced.sliceIds,
+              nextCursor: sliced.nextCursor,
+              hasMore: sliced.hasMore
+            };
+            break;
+          }
+          await materializeNextSnapshotChunk();
+        }
+
+        const refreshed = options.snapshotStore.get(snapshotId);
+        if (!refreshed) {
           return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
         }
-        ({ sliceIds, nextCursor, hasMore } = sliced);
-      } else {
-        const sliced = sliceLeaderboardSnapshotIdsByExcludePrefix(snap.orderedRowIds, excludeRowIds, appliedChunk);
-        if (sliced.kind === 'expired') {
-          return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
-        }
-        ({ sliceIds, nextCursor, hasMore } = sliced);
+        liveSnap = refreshed;
+      }
+
+      if (resolved == null) {
+        return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+      }
+
+      const { sliceIds, nextCursor } = resolved;
+      let { hasMore } = resolved;
+
+      const snapForHasMore = options.snapshotStore.get(snapshotId);
+      if (snapForHasMore && sliceIds.length > 0) {
+        hasMore =
+          nextCursor < snapForHasMore.orderedRowIds.length || snapForHasMore.partialOrdering;
       }
 
       if (sliceIds.length === 0) {
         return { page, pageSize: appliedChunk, rows: [], snapshotId, nextCursor, hasMore };
       }
-
-      const { siteScopedGlobalRankLocation } = filters;
-      const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
       const leaderboardRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
         orderedRowIds: sliceIds,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   getProductionScheduleOrderUsage,
+  listLeaderboardShellProductionScheduleRows,
   listProductionScheduleResources,
   listProductionScheduleRows,
 } from '../production-schedule-query.service.js';
@@ -8,6 +9,7 @@ import { resolveActualHoursLocationCandidates } from '../actual-hours-location-s
 import { prisma } from '../../../lib/prisma.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
+import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -601,6 +603,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([{ exists: true }] as never)
       .mockResolvedValueOnce([
         {
           id: 'row-1',
@@ -653,6 +656,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 10n }] as never)
+      .mockResolvedValueOnce([{ exists: true }] as never)
       .mockResolvedValueOnce([
         {
           id: 'm1',
@@ -722,6 +726,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 5n }] as never)
+      .mockResolvedValueOnce([{ exists: true }] as never)
       .mockResolvedValueOnce([
         {
           id: 'm1',
@@ -794,6 +799,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([{ exists: true }] as never)
       .mockResolvedValueOnce([
         {
           id: 'm1',
@@ -834,6 +840,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 2n }] as never)
+      .mockResolvedValueOnce([{ exists: true }] as never)
       .mockResolvedValueOnce([
         {
           id: 'm1',
@@ -904,7 +911,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 100n }] as never)
-      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ exists: false }] as never)
       .mockResolvedValueOnce([
         {
           id: 'f2',
@@ -959,6 +966,7 @@ describe('production-schedule-query.service', () => {
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
       .mockResolvedValueOnce([{ total: 2n }] as never)
+      .mockResolvedValueOnce([{ exists: true }] as never)
       .mockResolvedValueOnce([
         {
           id: 'seed-r1',
@@ -1012,6 +1020,96 @@ describe('production-schedule-query.service', () => {
       ['seed-r1', 'R01', '2026-05-01T00:00:00.000Z'],
       ['seed-r2', 'R02', '2026-05-01T00:00:00.000Z']
     ]);
+  });
+
+  it('leaderboard shell は manual が pageSize ちょうどでも filler が残るなら hasMore=true を返す', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
+      .mockResolvedValueOnce([{ exists: true }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S1',
+          rowData: { ProductNo: '0001', FSEIBAN: 'S1', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        },
+        {
+          id: 'm2',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S2',
+          rowData: { ProductNo: '0002', FSEIBAN: 'S2', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: 2,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'f1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'S3',
+          rowData: { ProductNo: '0003', FSEIBAN: 'S3', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '1', progress: '' },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: new Date('2026-04-01T00:00:00.000Z'),
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          rowsCount: 3n,
+          rowsLatestCreatedAt: null,
+          orderAssignmentUpdatedAt: null,
+          globalRowRankUpdatedAt: null,
+          rowNoteUpdatedAt: null,
+          progressUpdatedAt: null,
+          externalCompletionUpdatedAt: null,
+          fkstUpdatedAt: null,
+          fkmailUpdatedAt: null,
+          orderSupplementUpdatedAt: null,
+          seibanDueDateUpdatedAt: null,
+          seibanProcessingDueDateUpdatedAt: null,
+          resourceCategoryUpdatedAt: null,
+          resourceCodeMappingUpdatedAt: null
+        }
+      ] as never);
+
+    const result = await listLeaderboardShellProductionScheduleRows(
+      {
+        page: 1,
+        pageSize: 2,
+        queryText: '',
+        productNos: [],
+        resourceCds: ['R01'],
+        assignedOnlyCds: [],
+        hasNoteOnly: false,
+        hasDueDateOnly: false,
+        allowResourceOnly: true,
+        locationKey: 'kiosk-1'
+      },
+      { snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) }
+    );
+
+    expect(result.rows.map((r) => r.id)).toEqual(['m1', 'm2']);
+    expect(result.hasMore).toBe(true);
+    expect(result.nextCursor).toBe(2);
   });
 });
 
