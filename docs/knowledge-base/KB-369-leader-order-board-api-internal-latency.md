@@ -108,7 +108,7 @@ category: knowledge-base
   - shell が **`snapshotId`（任意）** を返し、continue が **`snapshotId` + `excludeRowIds`/`pageSize`** で **軽量追補**（未送信・不明・失効は **`excludeRowIds` フォールバック**）。
   - **TTL** 付き **プロセス内メモリ** `LeaderboardShellSnapshotStore`・**世代トークン**でソースデータ更新時の失効。**continue は同一 snapshot 内を直列化**（ロック）。
   - **`snapshotExpired: true`** 時、Web は **shell/total を invalidate**（`useLeaderboardPhasedScheduleWithAutoAppend`）。
-- **リポジトリ**: **`fix/leaderboard-shell-snapshot`**（**`main` に squash マージ後は `main` 先端**を正とする・**PR は EXEC_PLAN / GitHub で確定**）。
+- **リポジトリ**: [PR #269](https://github.com/denkoushi/RaspberryPiSystem_002/pull/269) **squash merge**・**`main` `fa3f3f2c`**（ブランチ **`fix/leaderboard-shell-snapshot`** は履歴用）。
 - **標準手順**: [`deployment.md` の snapshot 項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・**`--detach --follow`**）。
 - **Detach Run ID**（`ansible-update-`）: **`20260507-163719-11899`**（Pi5）/ **`20260507-164825-22626`**（`raspberrypi4`）/ **`20260507-165243-2819`**（`raspi4-robodrill01`）/ **`20260507-165602-24775`**（`raspi4-fjv60-80`）/ **`20260507-165951-8928`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s** 規模・Tailscale）。
