@@ -25,8 +25,8 @@ import {
   LEADER_BOARD_SEARCH_STATE_REFETCH_MS
 } from '../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import { buildSeibanRankMapFromMergedOrder } from '../../features/kiosk/leaderOrderBoard/seibanPriority/buildSeibanRankMap';
+import { useCompositeLeaderboardPhasedScheduleWithAutoAppend } from '../../features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend';
 import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist';
-import { useLeaderboardPhasedScheduleWithAutoAppend } from '../../features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend';
 import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlotsWithServerSync';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
@@ -125,17 +125,18 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       history: []
     });
 
-  const leaderboardPhasedParams = useMemo(
-    () => ({
-      ...baseQueryParams,
+  const leaderboardPhasedBase = useMemo(() => {
+    const { resourceCds: _omitResourceCds, ...rest } = baseQueryParams;
+    void _omitResourceCds;
+    return {
+      ...rest,
       pageSize: LEADER_ORDER_BOARD_SHELL_PAGE_SIZE,
       allowResourceOnly: true,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
-    }),
-    [activeDeviceScopeKey, baseQueryParams, macManualOrderV2]
-  );
+    };
+  }, [activeDeviceScopeKey, baseQueryParams, macManualOrderV2]);
 
   const targetDeviceScopeKey =
     macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
@@ -212,8 +213,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     refetchIntervalMs: LEADER_BOARD_RESOURCES_REFETCH_MS
   });
 
-  const { scheduleQuery, appendError } = useLeaderboardPhasedScheduleWithAutoAppend({
-    leaderboardPhasedParams,
+  const {
+    scheduleQuery,
+    appendError,
+    feedMounts,
+    listIncomplete
+  } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+    leaderboardPhasedBaseParams: leaderboardPhasedBase,
+    resourceCdsOrdered: activeResourceCds,
     scheduleEnabled,
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_SCHEDULE_REFETCH_MS,
@@ -348,9 +355,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const visibleSeibanEntries = useMemo(() => deriveVisibleSeibanEntries(sortedGrouped), [sortedGrouped]);
 
-  const listIncomplete =
-    scheduleQuery.data != null && scheduleQuery.data.total > scheduleQuery.data.rows.length;
-
   const [selectedResourceCd, setSelectedResourceCd] = useState<string | null>(null);
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [isSeibanListPanelOpen, setIsSeibanListPanelOpen] = useState(false);
@@ -417,6 +421,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-[#0c1222] text-white">
+      {feedMounts}
       <div
         className="pointer-events-none fixed inset-0 z-0 opacity-100"
         style={{

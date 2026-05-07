@@ -65,6 +65,7 @@ vi.mock('../production-schedule-customer-name-enrichment.service.js', () => ({
 
 describe('production-schedule-query.service', () => {
   beforeEach(() => {
+    vi.mocked(prisma.$queryRaw).mockReset();
     vi.clearAllMocks();
     vi.mocked(resolveActualHoursLocationCandidates).mockImplementation((locationKey: string) => [locationKey]);
     vi.mocked(prisma.productionScheduleSeibanMachineNameSupplement.findMany).mockResolvedValue([]);
@@ -756,8 +757,50 @@ describe('production-schedule-query.service', () => {
           id: 'm2',
           occurredAt: new Date('2026-03-09T00:00:00.000Z'),
           seibanJoinKey: 'SX',
-          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '20', progress: '' },
+          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R02', FKOJUN: '20', progress: '' },
           processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: null,
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 5,
+      queryText: '',
+      productNos: [],
+      resourceCds: ['R01', 'R02'],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    const ids = new Set(result.rows.map((r) => r.id));
+    expect(ids.has('m1')).toBe(true);
+    expect(ids.has('m2')).toBe(true);
+  });
+
+  it('responseProfile=leaderboard で resourceCds が1件のとき他資源の同一製番行を展開しない', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
+      .mockResolvedValueOnce([{ total: 1n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SX',
+          rowData: { ProductNo: '0001', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '10', progress: '' },
+          processingOrder: 1,
           globalRank: null,
           note: null,
           processingType: null,
@@ -784,9 +827,7 @@ describe('production-schedule-query.service', () => {
       responseProfile: 'leaderboard'
     });
 
-    const ids = new Set(result.rows.map((r) => r.id));
-    expect(ids.has('m1')).toBe(true);
-    expect(ids.has('m2')).toBe(true);
+    expect(result.rows.map((r) => r.id)).toEqual(['m1']);
   });
 
   it('responseProfile=leaderboard では製番展開時に元の検索語で関連行を落とさない', async () => {
@@ -828,7 +869,7 @@ describe('production-schedule-query.service', () => {
           id: 'm2',
           occurredAt: new Date('2026-03-09T00:00:00.000Z'),
           seibanJoinKey: 'SX',
-          rowData: { ProductNo: '9999', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R01', FKOJUN: '20', progress: '' },
+          rowData: { ProductNo: '9999', FSEIBAN: 'SX', FHINCD: 'X', FSIGENCD: 'R02', FKOJUN: '20', progress: '' },
           processingOrder: null,
           globalRank: null,
           note: null,
@@ -847,7 +888,7 @@ describe('production-schedule-query.service', () => {
       pageSize: 5,
       queryText: '0001',
       productNos: [],
-      resourceCds: ['R01'],
+      resourceCds: ['R01', 'R02'],
       assignedOnlyCds: [],
       hasNoteOnly: false,
       hasDueDateOnly: false,
@@ -912,6 +953,65 @@ describe('production-schedule-query.service', () => {
 
     expect(result.rows).toHaveLength(2);
     expect(result.rows.map((r) => r.id)).toEqual(['f2', 'f1']);
+  });
+
+  it('responseProfile=leaderboard で同一製番の 5/1 行が複数資源へ展開されうる', async () => {
+    vi.mocked(prisma.$queryRaw)
+      .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
+      .mockResolvedValueOnce([{ total: 2n }] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'seed-r1',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SEI-001',
+          rowData: { ProductNo: '1000', FSEIBAN: 'SEI-001', FHINCD: 'A', FSIGENCD: 'R01', FKOJUN: '10', progress: '' },
+          processingOrder: 1,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: new Date('2026-05-01T00:00:00.000Z'),
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'seed-r2',
+          occurredAt: new Date('2026-03-09T00:00:00.000Z'),
+          seibanJoinKey: 'SEI-001',
+          rowData: { ProductNo: '1001', FSEIBAN: 'SEI-001', FHINCD: 'B', FSIGENCD: 'R02', FKOJUN: '20', progress: '' },
+          processingOrder: null,
+          globalRank: null,
+          note: null,
+          processingType: null,
+          dueDate: new Date('2026-05-01T00:00:00.000Z'),
+          plannedQuantity: null,
+          plannedStartDate: null,
+          plannedEndDate: null
+        }
+      ] as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    const result = await listProductionScheduleRows({
+      page: 1,
+      pageSize: 5,
+      queryText: '',
+      productNos: [],
+      resourceCds: ['R01', 'R02'],
+      assignedOnlyCds: [],
+      hasNoteOnly: false,
+      hasDueDateOnly: false,
+      allowResourceOnly: true,
+      locationKey: 'kiosk-1',
+      responseProfile: 'leaderboard'
+    });
+
+    expect(result.rows.map((r) => [r.id, (r.rowData as Record<string, unknown>).FSIGENCD, r.dueDate?.toISOString?.() ?? null])).toEqual([
+      ['seed-r1', 'R01', '2026-05-01T00:00:00.000Z'],
+      ['seed-r2', 'R02', '2026-05-01T00:00:00.000Z']
+    ]);
   });
 });
 

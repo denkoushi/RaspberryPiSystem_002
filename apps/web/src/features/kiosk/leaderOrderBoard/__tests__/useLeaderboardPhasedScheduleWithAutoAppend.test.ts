@@ -212,11 +212,17 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ['kiosk-production-schedule', 'leaderboard-shell', leaderboardParams]
+      queryKey: ['kiosk-production-schedule', 'leaderboard-shell']
     });
     expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ['kiosk-production-schedule', 'leaderboard-total', leaderboardParams]
+      queryKey: ['kiosk-production-schedule', 'leaderboard-total']
     });
+
+    const decoInvalidate = invalidateSpy.mock.calls.find((c) => {
+      const arg = c[0] as { predicate?: unknown };
+      return typeof arg?.predicate === 'function';
+    });
+    expect(decoInvalidate).toBeDefined();
 
     expect(invalidateSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
 

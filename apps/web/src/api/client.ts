@@ -787,33 +787,11 @@ export async function getKioskProductionSchedule(params?: {
 export async function getKioskProductionScheduleLeaderboardShell(
   params?: KioskProductionScheduleLeaderboardPhasedQueryParams
 ) {
-  const startedAt = Date.now();
-  try {
-    const { data } = await api.get<ProductionScheduleLeaderboardShellResponse>(
-      '/kiosk/production-schedule/leaderboard-shell',
-      { params }
-    );
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:getKioskProductionScheduleLeaderboardShell', 'leaderboard shell response', {
-      durationMs: Date.now() - startedAt,
-      rowCount: data.rows.length,
-      pageSize: data.pageSize,
-      hasSnapshotId: Boolean(data.snapshotId),
-      hasTargetDeviceScopeKey: Boolean(params?.targetDeviceScopeKey),
-      resourceCdCount: params?.resourceCds?.split(',').filter(Boolean).length ?? 0
-    });
-    // #endregion
-    return data;
-  } catch (error) {
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:getKioskProductionScheduleLeaderboardShell', 'leaderboard shell error', {
-      durationMs: Date.now() - startedAt,
-      message: isAxiosError(error) ? error.message : String(error),
-      status: isAxiosError(error) ? (error.response?.status ?? null) : null
-    });
-    // #endregion
-    throw error;
-  }
+  const { data } = await api.get<ProductionScheduleLeaderboardShellResponse>(
+    '/kiosk/production-schedule/leaderboard-shell',
+    { params }
+  );
+  return data;
 }
 
 export type KioskProductionScheduleLeaderboardShellContinuePayload = KioskProductionScheduleLeaderboardPhasedQueryParams & {
@@ -826,95 +804,30 @@ export type KioskProductionScheduleLeaderboardShellContinuePayload = KioskProduc
 export async function postKioskProductionScheduleLeaderboardShellContinue(
   payload: KioskProductionScheduleLeaderboardShellContinuePayload
 ) {
-  const startedAt = Date.now();
-  try {
-    const { data } = await api.post<ProductionScheduleLeaderboardShellResponse>(
-      '/kiosk/production-schedule/leaderboard-shell/continue',
-      payload
-    );
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:postKioskProductionScheduleLeaderboardShellContinue', 'leaderboard continue response', {
-      durationMs: Date.now() - startedAt,
-      requestedExcludeCount: payload.excludeRowIds?.length ?? 0,
-      cursor: payload.cursor ?? null,
-      chunkSize: payload.pageSize ?? null,
-      returnedRowCount: data.rows.length,
-      hasMore: data.hasMore ?? null,
-      nextCursor: data.nextCursor ?? null
-    });
-    // #endregion
-    return data;
-  } catch (error) {
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:postKioskProductionScheduleLeaderboardShellContinue', 'leaderboard continue error', {
-      durationMs: Date.now() - startedAt,
-      requestedExcludeCount: payload.excludeRowIds?.length ?? 0,
-      cursor: payload.cursor ?? null,
-      message: isAxiosError(error) ? error.message : String(error),
-      status: isAxiosError(error) ? (error.response?.status ?? null) : null
-    });
-    // #endregion
-    throw error;
-  }
+  const { data } = await api.post<ProductionScheduleLeaderboardShellResponse>(
+    '/kiosk/production-schedule/leaderboard-shell/continue',
+    payload
+  );
+  return data;
 }
 
 export async function getKioskProductionScheduleLeaderboardTotal(params?: KioskProductionScheduleLeaderboardPhasedQueryParams) {
-  const startedAt = Date.now();
-  try {
-    const { data } = await api.get<ProductionScheduleLeaderboardTotalResponse>(
-      '/kiosk/production-schedule/leaderboard-total',
-      { params }
-    );
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:getKioskProductionScheduleLeaderboardTotal', 'leaderboard total response', {
-      durationMs: Date.now() - startedAt,
-      total: data.total,
-      hasTargetDeviceScopeKey: Boolean(params?.targetDeviceScopeKey),
-      resourceCdCount: params?.resourceCds?.split(',').filter(Boolean).length ?? 0
-    });
-    // #endregion
-    return data;
-  } catch (error) {
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:getKioskProductionScheduleLeaderboardTotal', 'leaderboard total error', {
-      durationMs: Date.now() - startedAt,
-      message: isAxiosError(error) ? error.message : String(error),
-      status: isAxiosError(error) ? (error.response?.status ?? null) : null
-    });
-    // #endregion
-    throw error;
-  }
+  const { data } = await api.get<ProductionScheduleLeaderboardTotalResponse>(
+    '/kiosk/production-schedule/leaderboard-total',
+    { params }
+  );
+  return data;
 }
 
 export async function postKioskProductionScheduleLeaderboardDecorations(payload: {
   rowIds: string[];
   targetDeviceScopeKey?: string;
 }) {
-  const startedAt = Date.now();
-  try {
-    const { data } = await api.post<ProductionScheduleLeaderboardDecorationsResponse>(
-      '/kiosk/production-schedule/leaderboard-decorations',
-      payload
-    );
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:postKioskProductionScheduleLeaderboardDecorations', 'leaderboard decorations response', {
-      durationMs: Date.now() - startedAt,
-      requestedRowCount: payload.rowIds.length,
-      returnedRowDecorationCount: data.rowDecorations.length
-    });
-    // #endregion
-    return data;
-  } catch (error) {
-    // #region agent log
-    postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:postKioskProductionScheduleLeaderboardDecorations', 'leaderboard decorations error', {
-      durationMs: Date.now() - startedAt,
-      requestedRowCount: payload.rowIds.length,
-      message: isAxiosError(error) ? error.message : String(error),
-      status: isAxiosError(error) ? (error.response?.status ?? null) : null
-    });
-    // #endregion
-    throw error;
-  }
+  const { data } = await api.post<ProductionScheduleLeaderboardDecorationsResponse>(
+    '/kiosk/production-schedule/leaderboard-decorations',
+    payload
+  );
+  return data;
 }
 
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */

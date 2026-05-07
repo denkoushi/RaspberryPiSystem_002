@@ -78,6 +78,11 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   refetchIntervalMs: number;
   macManualOrderV2: boolean;
   activeDeviceScopeKey: string;
+  /**
+   * `false` のとき装飾クエリを実行しない（複数資源カード合成で親が一括装飾する場合）。
+   * @default true
+   */
+  includeDecorations?: boolean;
 }) {
   const {
     leaderboardPhasedParams,
@@ -85,7 +90,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     pauseRefetch,
     refetchIntervalMs,
     macManualOrderV2,
-    activeDeviceScopeKey
+    activeDeviceScopeKey,
+    includeDecorations = true
   } = options;
 
   const queryClient = useQueryClient();
@@ -242,12 +248,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
           if (more.snapshotExpired) {
             await Promise.all([
-              queryClient.invalidateQueries({
-                queryKey: ['kiosk-production-schedule', 'leaderboard-shell', leaderboardPhasedParams]
-              }),
-              queryClient.invalidateQueries({
-                queryKey: ['kiosk-production-schedule', 'leaderboard-total', leaderboardPhasedParams]
-              }),
+              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-shell'] }),
+              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-total'] }),
               invalidateLeaderboardDecorationsQueries(queryClient)
             ]);
             break;
@@ -326,6 +328,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   ]);
 
   const leaderboardDecorationsPayload = useMemo(() => {
+    if (!includeDecorations) return undefined;
     if (!mergedRows || mergedRows.length === 0) return undefined;
     return {
       rowIds: mergedRows.map((r) => r.id),
@@ -333,7 +336,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     };
-  }, [activeDeviceScopeKey, macManualOrderV2, mergedRows]);
+  }, [activeDeviceScopeKey, includeDecorations, macManualOrderV2, mergedRows]);
 
   const decorationsQuery = useKioskProductionScheduleLeaderboardDecorations(leaderboardDecorationsPayload, {
     enabled: scheduleEnabled && mergedRows.length > 0 && leaderboardDecorationsPayload != null,
@@ -354,9 +357,10 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   const mergedLeaderboardScheduleData = useMemo((): ProductionScheduleListResponse | undefined => {
     if (!shellQuery.data) return undefined;
-    const chips = decorationsQuery.data?.leaderboardFooterChipsByPartKey;
+    const chips = includeDecorations ? decorationsQuery.data?.leaderboardFooterChipsByPartKey : undefined;
     const total = totalQuery.data?.total ?? mergedRows.length;
     const rows = mergedRows.map((row): ProductionScheduleRow => {
+      if (!includeDecorations) return row;
       const deco = leaderboardDecorationByRowId.get(row.id);
       return deco ? { ...row, ...deco } : row;
     });
@@ -369,6 +373,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     };
   }, [
     decorationsQuery.data?.leaderboardFooterChipsByPartKey,
+    includeDecorations,
     leaderboardDecorationByRowId,
     mergedRows,
     shellQuery.data,
@@ -384,10 +389,13 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         shellQuery.isFetching ||
         totalQuery.isFetching ||
         isAppending ||
-        (leaderboardDecorationsPayload != null && decorationsQuery.isFetching)
+        (includeDecorations &&
+          leaderboardDecorationsPayload != null &&
+          decorationsQuery.isFetching)
     }),
     [
       decorationsQuery.isFetching,
+      includeDecorations,
       isAppending,
       leaderboardDecorationsPayload,
       mergedLeaderboardScheduleData,

@@ -51,9 +51,20 @@ async function buildLeaderboardShellPriorityContext(params: {
   expansionWhere: Prisma.Sql;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
+  /**
+   * `true`（既定）: 手動割当の製番に一致する行を `expansionWhere` 集合から追加（従来の「同一製番展開」）。
+   * `false`: 展開しない（`resourceCd` 1件カードなど、カード単位で候補を独立させる）。
+   */
+  seibanExpansion?: boolean;
 }): Promise<LeaderboardShellPriorityContext> {
-  const { leaderboardMaterializedBaseWhere, queryWhere, expansionWhere, locationKey, siteScopedGlobalRankLocation } =
-    params;
+  const {
+    leaderboardMaterializedBaseWhere,
+    queryWhere,
+    expansionWhere,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    seibanExpansion = true
+  } = params;
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
   const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql}`;
@@ -152,7 +163,7 @@ async function buildLeaderboardShellPriorityContext(params: {
     idToRow.set(r.id, r);
   }
 
-  if (seibanSet.size > 0) {
+  if (seibanExpansion && seibanSet.size > 0) {
     const seibanList = Array.from(seibanSet);
     const seibanCondition = Prisma.sql`NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') IN (${Prisma.join(
       seibanList.map((s) => Prisma.sql`${s}`)
@@ -348,6 +359,7 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
   expansionWhere: Prisma.Sql;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
+  seibanExpansion?: boolean;
 }): Promise<LeaderboardScheduleRowSql[]> {
   const ctx = await buildLeaderboardShellPriorityContext(params);
   const fillerRows = await queryLeaderboardShellFillerRows({
@@ -453,6 +465,7 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
   siteScopedGlobalRankLocation: string;
   excludeRowIds: readonly string[];
   chunkSize: number;
+  seibanExpansion?: boolean;
 }): Promise<LeaderboardScheduleRowSql[]> {
   const ctx = await buildLeaderboardShellPriorityContext(params);
   const exclude = new Set(params.excludeRowIds.map((id) => id.trim()).filter((id) => id.length > 0));
@@ -481,6 +494,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   pageSize: number;
+  seibanExpansion?: boolean;
 }): Promise<LeaderboardScheduleRowSql[]> {
   const { locationKey, siteScopedGlobalRankLocation } = params;
   const pageSize = Math.max(1, params.pageSize);

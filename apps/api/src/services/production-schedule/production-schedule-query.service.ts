@@ -96,7 +96,7 @@ export type ProductionScheduleListParams = {
   locationKey: string;
   siteKey?: string;
   /**
-   * `leaderboard`: actual-hours を省略。手動割当・同一製番展開・納期補完の優先取得を行う。
+   * `leaderboard`: actual-hours を省略。手動割当を優先し、`resourceCds` がちょうど1件のときは**同一製番の他資源へ展開しない**（カード単位）。2件以上または0件のときは従来どおり製番展開あり。残り枠は納期（補完）で埋める。
    * `resolvedMachineName` は full と同様にバッチ解決する（省略時は full）。
    */
   responseProfile?: 'full' | 'leaderboard';
@@ -207,6 +207,14 @@ async function prepareProductionScheduleDashboardFilters(
   };
 }
 
+/**
+ * `resourceCds` がちょうど 1 件のときはカード単位選定とみなし、同一製番の他資源への展開を行わない。
+ * 0 件・2 件以上は従来どおり展開あり（後方互換）。
+ */
+function shouldExpandLeaderboardSeibanAcrossResources(resourceCds: readonly string[]): boolean {
+  return resourceCds.length !== 1;
+}
+
 /** 順位ボード段階取得: COUNT・装飾なしの leaderboard 選定のみ（初回で全順位を確定し snapshot を発行） */
 export async function listLeaderboardShellProductionScheduleRows(
   params: ProductionScheduleListParams,
@@ -236,12 +244,15 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
+  const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
+
   const fullMerged = await fetchFullLeaderboardShellMergedOrderedRows({
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
     locationKey,
-    siteScopedGlobalRankLocation
+    siteScopedGlobalRankLocation,
+    seibanExpansion
   });
 
   const orderedRowIds = fullMerged.map((r) => r.id);
@@ -404,6 +415,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
+  const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
+
   const leaderboardRows = await fetchLeaderboardShellRowsContinuationChunk({
     leaderboardMaterializedBaseWhere,
     queryWhere,
@@ -411,7 +424,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     locationKey,
     siteScopedGlobalRankLocation,
     excludeRowIds,
-    chunkSize: appliedChunk
+    chunkSize: appliedChunk,
+    seibanExpansion
   });
 
   const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({
@@ -823,7 +837,8 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       expansionWhere: leaderboardExpansionWhere,
       locationKey,
       siteScopedGlobalRankLocation,
-      pageSize
+      pageSize,
+      seibanExpansion: shouldExpandLeaderboardSeibanAcrossResources(resourceCds)
     }).then((rawRows) =>
       rawRows.map(
         (r): ProductionScheduleRow => ({

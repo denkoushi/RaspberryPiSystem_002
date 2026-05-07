@@ -86,4 +86,16 @@ describe('buildLeaderBoardViewModel', () => {
     const list = sorted.get('R1') ?? [];
     expect(list.map((r) => r.id)).toEqual(['b', 'a']);
   });
+
+  it('displayDue は dueDate をそのまま使い、複数資源でも 5/1 を保持する', () => {
+    const rows = [
+      mk('r1', 'R1', 'SEI-001', 1, '', '2026-05-01'),
+      mk('r2', 'R2', 'SEI-001', null, '', '2026-05-01')
+    ];
+
+    const grouped = buildLeaderBoardGroupedRows(rows, undefined);
+
+    expect(grouped.get('R1')?.[0]?.displayDue).toBe('2026-05-01');
+    expect(grouped.get('R2')?.[0]?.displayDue).toBe('2026-05-01');
+  });
 });

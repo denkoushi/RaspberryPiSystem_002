@@ -34,7 +34,8 @@ export const productionScheduleQuerySchema = z.object({
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   /**
    * `leaderboard`: キオスク順位ボード向けに actual-hours 解決を省略しレイテンシを抑える。
-   * 取得は「当該スコープの手動割当行 + 同一製番の関連行」を優先し、残りを納期（補助終期を含む）昇順で `pageSize` まで補完する。
+   * 取得は「当該スコープの手動割当行」を優先し、`resourceCds` が1件の場合は同一製番の他資源行を含めない（カード単位）。複数資源指定時のみ従来の製番展開を行う。
+   * 残りを納期（補助終期を含む）昇順で `pageSize` まで補完する。
    * 手動+製番展開が `pageSize` を超える場合でも手動側は切り捨てない。
    * 機種名（`resolvedMachineName`）は full と同じバッチ解決を行い、順位ボードの表示欠落を防ぐ（既定は full）。
    */
