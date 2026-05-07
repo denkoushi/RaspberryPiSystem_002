@@ -11,7 +11,15 @@ const postContinueMock = vi.fn();
 
 let shellQueryMock: {
   data:
-    | { page: number; pageSize: number; total: number; rows: ProductionScheduleRow[]; snapshotId?: string }
+    | {
+        page: number;
+        pageSize: number;
+        total: number;
+        rows: ProductionScheduleRow[];
+        snapshotId?: string;
+        nextCursor?: number;
+        hasMore?: boolean;
+      }
     | undefined;
   isSuccess: boolean;
   isPlaceholderData: boolean;
@@ -73,7 +81,15 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     const shellRows = makeRows(1, 20);
     shellQueryMock = {
-      data: { page: 1, pageSize: 160, total: 45, rows: shellRows, snapshotId: 'snap-test' },
+      data: {
+        page: 1,
+        pageSize: 160,
+        total: 45,
+        rows: shellRows,
+        snapshotId: 'snap-test',
+        nextCursor: 20,
+        hasMore: true
+      },
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: 1000,
@@ -96,8 +112,22 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     postContinueMock.mockReset();
     postContinueMock
-      .mockResolvedValueOnce({ page: 1, pageSize: 160, rows: makeRows(21, 20), snapshotId: 'snap-test' })
-      .mockResolvedValueOnce({ page: 1, pageSize: 160, rows: makeRows(41, 5), snapshotId: 'snap-test' });
+      .mockResolvedValueOnce({
+        page: 1,
+        pageSize: 160,
+        rows: makeRows(21, 20),
+        snapshotId: 'snap-test',
+        nextCursor: 40,
+        hasMore: true
+      })
+      .mockResolvedValueOnce({
+        page: 1,
+        pageSize: 160,
+        rows: makeRows(41, 5),
+        snapshotId: 'snap-test',
+        nextCursor: 45,
+        hasMore: false
+      });
   });
 
   const leaderboardParams: { pageSize: number; allowResourceOnly: boolean } = {
@@ -124,17 +154,19 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     await waitFor(() => {
       expect(postContinueMock).toHaveBeenCalledTimes(2);
+      expect(postContinueMock.mock.calls[0]![0]).toMatchObject({ cursor: 20, snapshotId: 'snap-test' });
+      expect(postContinueMock.mock.calls[1]![0]).toMatchObject({ cursor: 40, snapshotId: 'snap-test' });
       expect(result.current.scheduleQuery.data?.rows).toHaveLength(45);
     });
 
     expect(postContinueMock).toHaveBeenCalledWith(
-      expect.objectContaining({ snapshotId: 'snap-test', excludeRowIds: expect.any(Array) })
+      expect.objectContaining({ snapshotId: 'snap-test', cursor: 20, pageSize: 160 })
     );
 
     shellQueryMock = {
       ...shellQueryMock,
       data: shellQueryMock.data
-        ? { ...shellQueryMock.data, rows: [...shellQueryMock.data.rows], snapshotId: 'snap-test' }
+        ? { ...shellQueryMock.data, rows: [...shellQueryMock.data.rows], snapshotId: 'snap-test', nextCursor: 20, hasMore: true }
         : undefined
     };
     totalQueryMock = {
@@ -151,7 +183,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     expect(postContinueMock).toHaveBeenCalledTimes(2);
   });
 
-  it('continue が snapshotExpired のとき shell/total を invalidate する', async () => {
+  it('continue が snapshotExpired のとき shell/total/decorations を invalidate する', async () => {
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
     postContinueMock.mockReset();
@@ -186,9 +218,34 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
       queryKey: ['kiosk-production-schedule', 'leaderboard-total', leaderboardParams]
     });
 
+    expect(invalidateSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
+
     // 失効時は追補を打ち切るため、shell 20 行のまま
     await waitFor(() => {
       expect(result.current.scheduleQuery.data?.rows).toHaveLength(20);
+    });
+  });
+
+  it('continue がネットワークエラー時は appendError を返す', async () => {
+    postContinueMock.mockReset();
+    postContinueMock.mockRejectedValueOnce(new Error('network down'));
+
+    const { result } = renderHook(
+      () =>
+        useLeaderboardPhasedScheduleWithAutoAppend({
+          leaderboardPhasedParams: leaderboardParams,
+          scheduleEnabled: true,
+          pauseRefetch: false,
+          refetchIntervalMs: 120000,
+          macManualOrderV2: false,
+          activeDeviceScopeKey: ''
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => {
+      expect(result.current.appendError).not.toBeNull();
+      expect(result.current.appendError?.message).toContain('network');
     });
   });
 });

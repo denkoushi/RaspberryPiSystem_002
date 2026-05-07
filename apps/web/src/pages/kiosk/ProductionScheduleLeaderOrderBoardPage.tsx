@@ -212,7 +212,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     refetchIntervalMs: LEADER_BOARD_RESOURCES_REFETCH_MS
   });
 
-  const { scheduleQuery } = useLeaderboardPhasedScheduleWithAutoAppend({
+  const { scheduleQuery, appendError } = useLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedParams,
     scheduleEnabled,
     pauseRefetch: writePause,
@@ -473,7 +473,13 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         ) : scheduleQuery.isError ? (
           <p className="text-sm text-rose-200">一覧の取得に失敗しました。</p>
         ) : (
-          <LeaderBoardGrid
+          <>
+            {appendError != null ? (
+              <p className="mb-2 shrink-0 text-sm text-amber-200" role="alert">
+                順位一覧の追補取得に失敗しました（{appendError.message}）。表示は一部のみの可能性があります。少し待ってから再読み込みしてください。
+              </p>
+            ) : null}
+            <LeaderBoardGrid
             resourceCdBySlotIndex={resourceCdBySlotIndex}
             sortedGrouped={sortedGrouped}
             resourceNameMap={resourceNameMap}
@@ -490,7 +496,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             onOpenNote={handleOpenRowNote}
             notePending={notePending}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
-          />
+            />
+          </>
         )}
       </main>
       <LeaderBoardSeibanListPanel

@@ -44,6 +44,11 @@ import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/
 import { buildLeaderboardShellFilterFingerprint } from './leaderboard/leaderboard-shell-snapshot-fingerprint.js';
 import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard/leaderboard-shell-snapshot.store.js';
+import {
+  isLeaderboardShellSnapshotStaleForContinue,
+  sliceLeaderboardSnapshotIdsByCursor,
+  sliceLeaderboardSnapshotIdsByExcludePrefix
+} from './leaderboard/leaderboard-shell-continue.slice.js';
 import { countProductionScheduleDashboardVisibleRows } from './production-schedule-list-count.service.js';
 
 /** 機種名比較用: 全角→半角・前後空白除去・大文字化（フロントの toHalfWidthAscii + uppercase と同一） */
@@ -101,6 +106,10 @@ export type ProductionScheduleListParams = {
 export type LeaderboardShellPhasedReadResult = Pick<ProductionScheduleListResult, 'page' | 'pageSize' | 'rows'> & {
   snapshotId?: string;
   snapshotExpired?: boolean;
+  /** 次の continue で送る cursor（既に返した行数）。shell・snapshot continue で付与。 */
+  nextCursor?: number;
+  /** さらに続きがあるか（snapshot 経路で確実。無 snapshot フォールバックでは省略可） */
+  hasMore?: boolean;
 };
 
 export type PreparedProductionScheduleDashboardFilters =
@@ -268,21 +277,26 @@ export async function listLeaderboardShellProductionScheduleRows(
     customerName: null
   }));
 
-  return { page, pageSize, rows, snapshotId };
+  const nextCursor = rows.length;
+  const hasMore = nextCursor < orderedRowIds.length;
+
+  return { page, pageSize, rows, snapshotId, nextCursor, hasMore };
 }
 
 /** 順位ボード段階取得: shell の続き（snapshot がある場合は再計算せずスライス＋hydrate） */
 export async function listLeaderboardShellContinuationProductionScheduleRows(
   params: Omit<ProductionScheduleListParams, 'page' | 'pageSize'> & {
     page?: number;
-    excludeRowIds: readonly string[];
+    excludeRowIds?: readonly string[];
+    cursor?: number;
     chunkSize: number;
     snapshotId?: string;
   },
   options: { snapshotStore: LeaderboardShellSnapshotStore }
 ): Promise<LeaderboardShellPhasedReadResult> {
   const page = params.page ?? 1;
-  const { locationKey, excludeRowIds } = params;
+  const { locationKey } = params;
+  const excludeRowIds = params.excludeRowIds ?? [];
   const appliedChunk = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
 
   const filters = await prepareProductionScheduleDashboardFilters({
@@ -322,34 +336,45 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   if (snapshotId && snapshotId.length > 0) {
     return options.snapshotStore.withContinueLock(snapshotId, async () => {
       const snap = options.snapshotStore.get(snapshotId);
-      if (
-        !snap ||
-        snap.filterFingerprint !== filterFingerprint ||
-        snap.locationKey !== locationKey ||
-        (snap.siteKey ?? '') !== (params.siteKey ?? '')
-      ) {
+      if (!snap) {
         return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
       }
 
-      if (excludeRowIds.length > snap.orderedRowIds.length) {
+      const stale = isLeaderboardShellSnapshotStaleForContinue({
+        snap,
+        filterFingerprint,
+        locationKey,
+        siteKey: params.siteKey,
+        currentGenerationToken: await readLeaderboardShellSnapshotGenerationToken()
+      });
+      if (stale === 'generation') {
+        options.snapshotStore.delete(snapshotId);
+      }
+      if (stale != null) {
         return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
       }
-      for (let i = 0; i < excludeRowIds.length; i++) {
-        if (snap.orderedRowIds[i] !== excludeRowIds[i]) {
+
+      const useCursor = params.cursor !== undefined;
+      let sliceIds: readonly string[];
+      let nextCursor: number;
+      let hasMore: boolean;
+
+      if (useCursor) {
+        const sliced = sliceLeaderboardSnapshotIdsByCursor(snap.orderedRowIds, params.cursor!, appliedChunk);
+        if (sliced.kind === 'cursor_overflow') {
           return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
         }
+        ({ sliceIds, nextCursor, hasMore } = sliced);
+      } else {
+        const sliced = sliceLeaderboardSnapshotIdsByExcludePrefix(snap.orderedRowIds, excludeRowIds, appliedChunk);
+        if (sliced.kind === 'expired') {
+          return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
+        }
+        ({ sliceIds, nextCursor, hasMore } = sliced);
       }
-
-      const currentGenerationToken = await readLeaderboardShellSnapshotGenerationToken();
-      if (snap.generationToken !== currentGenerationToken) {
-        options.snapshotStore.delete(snapshotId);
-        return { page, pageSize: appliedChunk, rows: [], snapshotExpired: true };
-      }
-
-      const sliceIds = snap.orderedRowIds.slice(excludeRowIds.length, excludeRowIds.length + appliedChunk);
 
       if (sliceIds.length === 0) {
-        return { page, pageSize: appliedChunk, rows: [], snapshotId };
+        return { page, pageSize: appliedChunk, rows: [], snapshotId, nextCursor, hasMore };
       }
 
       const { siteScopedGlobalRankLocation } = filters;
@@ -368,8 +393,12 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
         customerName: null
       }));
 
-      return { page, pageSize: appliedChunk, rows, snapshotId };
+      return { page, pageSize: appliedChunk, rows, snapshotId, nextCursor, hasMore };
     });
+  }
+
+  if (excludeRowIds.length === 0) {
+    return { page, pageSize: appliedChunk, rows: [] };
   }
 
   const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;

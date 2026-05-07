@@ -397,6 +397,9 @@ export type ProductionScheduleLeaderboardShellResponse = Pick<ProductionSchedule
   /** shell 応答で付与。continue で送信し軽量経路となる。 */
   snapshotId?: string;
   snapshotExpired?: boolean;
+  /** 次の continue で送る cursor（これまでに返した行数）。 */
+  nextCursor?: number;
+  hasMore?: boolean;
 };
 
 export type ProductionScheduleLeaderboardTotalResponse = { total: number };
@@ -814,8 +817,10 @@ export async function getKioskProductionScheduleLeaderboardShell(
 }
 
 export type KioskProductionScheduleLeaderboardShellContinuePayload = KioskProductionScheduleLeaderboardPhasedQueryParams & {
-  excludeRowIds: string[];
+  /** 後方互換: snapshot が無い、または古いクライアントのみ */
+  excludeRowIds?: string[];
   snapshotId?: string;
+  cursor?: number;
 };
 
 export async function postKioskProductionScheduleLeaderboardShellContinue(
@@ -830,9 +835,12 @@ export async function postKioskProductionScheduleLeaderboardShellContinue(
     // #region agent log
     postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:postKioskProductionScheduleLeaderboardShellContinue', 'leaderboard continue response', {
       durationMs: Date.now() - startedAt,
-      requestedExcludeCount: payload.excludeRowIds.length,
+      requestedExcludeCount: payload.excludeRowIds?.length ?? 0,
+      cursor: payload.cursor ?? null,
       chunkSize: payload.pageSize ?? null,
-      returnedRowCount: data.rows.length
+      returnedRowCount: data.rows.length,
+      hasMore: data.hasMore ?? null,
+      nextCursor: data.nextCursor ?? null
     });
     // #endregion
     return data;
@@ -840,7 +848,8 @@ export async function postKioskProductionScheduleLeaderboardShellContinue(
     // #region agent log
     postLeaderboardDebugLog('H4', 'apps/web/src/api/client.ts:postKioskProductionScheduleLeaderboardShellContinue', 'leaderboard continue error', {
       durationMs: Date.now() - startedAt,
-      requestedExcludeCount: payload.excludeRowIds.length,
+      requestedExcludeCount: payload.excludeRowIds?.length ?? 0,
+      cursor: payload.cursor ?? null,
       message: isAxiosError(error) ? error.message : String(error),
       status: isAxiosError(error) ? (error.response?.status ?? null) : null
     });

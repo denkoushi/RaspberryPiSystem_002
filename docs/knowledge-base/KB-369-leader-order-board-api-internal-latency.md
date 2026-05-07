@@ -117,6 +117,18 @@ category: knowledge-base
   - **`snapshotExpired` が妙に多い** → **API が複数プロセスのとき snapshot はプロセスローカル**（振り分けで continue が別インスタンスに当たると失効やフォールバックが増えうる）。**ADR [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)** の注意と **`LEADERBOARD_SHELL_SNAPSHOT_TTL_MS`** を確認。
   - **Web ビルドで型エラー（shell ログが `total` を参照）** → 契約上 shell に **`total` が無い**場合はデバッグログを **`hasSnapshotId` 等**へ（`apps/web/src/api/client.ts`）。
 
+## Production deploy & verification（2026-05-07 · continue の snapshot+cursor）
+
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 は対象外**。
+- **変更概要**: continue を **`snapshotId` + `cursor`** 主軸にし、**`excludeRowIds`** は後方互換のみ。shell に **`nextCursor` / `hasMore`**。slice 境界は [`leaderboard-shell-continue.slice.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-continue.slice.ts)。Web は cursor ループ・**`appendError`**・**`snapshotExpired` 時に decorations も invalidate**。
+- **リポジトリ**: [PR #270](https://github.com/denkoushi/RaspberryPiSystem_002/pull/270)（**squash マージ後は `main` 先端 SHA を正とする**）。実装ブランチ tip **`52b68c8c`**。
+- **標準手順**: [`deployment.md` の snapshot+cursor 項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・**`--detach --follow`**）。
+- **Detach Run ID**（`ansible-update-`）: **`20260507-190947-13634`**（Pi5）/ **`20260507-192208-14169`**（`raspberrypi4`）/ **`20260507-192734-3017`**（`raspi4-robodrill01`）/ **`20260507-193134-2805`**（`raspi4-fjv60-80`）/ **`20260507-193553-4333`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 104s**・Tailscale）。
+- **トラブルシュート**:
+  - **画面上に追補エラー** → **`appendError`** のメッセージと Network の **`leaderboard-shell/continue`** を確認。
+  - **snapshot 系の失効・複数 API プロセス** → 上記 **サーバ内 snapshot** 項と [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md) を参照。
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
@@ -130,9 +142,17 @@ category: knowledge-base
 | メソッド | パス | 役割 |
 |---------|------|------|
 | GET | `/api/kiosk/production-schedule/leaderboard-shell` | 装飾なし行（`pageSize` 既定 160・上限 160） |
-| POST | `/api/kiosk/production-schedule/leaderboard-shell/continue` | 続き行（`excludeRowIds`・任意 **`snapshotId`**・同一並び・上限 160） |
+| POST | `/api/kiosk/production-schedule/leaderboard-shell/continue` | 続き行。**推奨**: `snapshotId` + **`cursor`**（shell の `nextCursor`）+ `pageSize`≤160。**後方互換**: `excludeRowIds`（最大 900・プレフィックス一致検証） |
 | GET | `/api/kiosk/production-schedule/leaderboard-total` | 一覧と同一条件の可視行件数のみ |
-| POST | `/api/kiosk/production-schedule/leaderboard-decorations` | `{ rowIds[], targetDeviceScopeKey? }` で機種名・顧客名・フッターチップ |
+| POST | `/api/kiosk/production-schedule/leaderboard-decorations` | `{ rowIds[], targetDeviceScopeKey? }` で機種名・顧客名・フッターチップ（`rowIds` は表示順のまま。**上限 20000**） |
+
+### 追補（2026-05-07）: `snapshotId` + `cursor` による continue（900 件 `excludeRowIds` 上限の回避）
+
+- **課題**: 旧 continue は取得済み行 ID を毎回 **最大 900 件**までボディに載せ、件数増加で **payload 肥大化**・**全件追補不能**になった。
+- **方針**: shell 応答に **`nextCursor`**（これまでに返した行数）と **`hasMore`** を付与し、continue は **`snapshotId` + `cursor`** のみで次チャンクを取得。並びの正本は従来どおり **インメモリ snapshot の `orderedRowIds`**（[`leaderboard-shell-snapshot.store.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.ts)）。
+- **slice 境界**: [`leaderboard-shell-continue.slice.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-continue.slice.ts)（cursor 進行・旧 exclude プレフィックス検証の純関数）。
+- **Web**: [`useLeaderboardPhasedScheduleWithAutoAppend.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) が snapshot あり時 **cursor ループ**。**`snapshotExpired`** 時は shell / total に加え **`leaderboard-decorations` を predicate invalidate**。追補 API 失敗時は **`appendError`** をページに表示（[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)）。
+- **残課題**: 初回 shell は引き続き **全件順序を一度確定**するため、極大件数では初回レイテンシは別途最適化の余地あり（全件性・cursor 化とは独立）。
 
 実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)・[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)（`listLeaderboardShellProductionScheduleRows` 等）。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の phased ケース。
 

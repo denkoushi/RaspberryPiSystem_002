@@ -10,7 +10,20 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-07。**直近の本番**: ① **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・ブランチ先行 **`fix/leaderboard-shell-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot）」・**マージ後は `main`**）。② 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+最終更新: 2026-05-07。**直近の本番**: ① **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。② **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。③ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+
+### 補足（2026-05-07 · **キオスク順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`）**·**API+Web**·**Pi5→Pi4×4・順次**）
+
+- **変更概要**: `POST …/leaderboard-shell/continue` を **`snapshotId` + `cursor`** 主軸にし、**`excludeRowIds`（最大 900）** は移行期間の後方互換のみ。初回 shell に **`nextCursor`** / **`hasMore`**。**装飾 POST** の **`rowIds` 上限 20000**。**新規マイグレーションなし**。**Pi3 は対象外**（リソース僅少・ユーザー指定リストにも無し）。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`./scripts/update-all-clients.sh fix/leaderboard-cursor-snapshot infrastructure/ansible/inventory.yml --limit <host> --detach --follow`**・**1 台ずつ**）。**`main` マージ後の再デプロイは引数 `main`**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·先行反映時は **`fix/leaderboard-cursor-snapshot`**（実装 tip **`52b68c8c`**）。
+- **本番デプロイ（先行反映・実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260507-190947-13634`**（`raspberrypi5`·**`PLAY RECAP` `failed=0` / `unreachable=0`**）/ **`20260507-192208-14169`**（`raspberrypi4`）/ **`20260507-192734-3017`**（`raspi4-robodrill01`）/ **`20260507-193134-2805`**（`raspi4-fjv60-80`）/ **`20260507-193553-4333`**（`raspi4-kensaku-stonebase01`）。いずれもリモート **`exit` `0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 104s**・Tailscale）。
+- **トラブルシュート**:
+  - **追補 API 失敗** → Web の **`appendError`**（[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)）。**`snapshotExpired`** 時は **decorations も invalidate**。
+  - **空チャンク＋`hasMore` で cursor が進まない** → 実装側で **無限ループ防止**（[`useLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) 等）。
+  - 重複・失効一般論は [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)·下記 snapshot 項と共通。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[PR #270](https://github.com/denkoushi/RaspberryPiSystem_002/pull/270)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-07 · **キオスク順位ボード・サーバ内 snapshot（`snapshotId` / TTL インメモリ・世代失効）**·**API+Web**·**Pi5→Pi4×4・順次**）
 
@@ -37,7 +50,7 @@ update-frequency: medium
 
 ### 最終更新（履歴一覧・2026-05-07）
 
-**順位ボード・サーバ内 snapshot（`fix/leaderboard-shell-snapshot`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード段階取得・total materialized 整合・globalRank 索引・Web stale（`feat/leaderboard-output-stable-speedup`・Pi5 のみ）**·**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**
+**順位ボード・continue snapshot+cursor（`fix/leaderboard-cursor-snapshot`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード・サーバ内 snapshot（`fix/leaderboard-shell-snapshot`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード段階取得・total materialized 整合・globalRank 索引・Web stale（`feat/leaderboard-output-stable-speedup`・Pi5 のみ）**·**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**
 
 ### 補足（2026-05-06 late · **Mobile Placement Zero2W hardening（`feat/mobile-placement-zero2w-hardening`）**·**Pi5 + Pi4×4 順次・Zero2W playbook は別**）
 
