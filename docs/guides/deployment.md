@@ -10,7 +10,20 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-07。**直近の本番**: ① **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。② **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。③ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+最終更新: 2026-05-07。**直近の本番**: ① **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。② **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。③ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。④ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+
+### 補足（2026-05-07 · **キオスク順位ボード・資源CDカード単位 phased（`resourceCds` 1 件時は同一製番展開オフ・複合 Web hook）**·**API+Web**·**Pi5→Pi4×4・順次**）
+
+- **変更概要**: **全資源カード**を一度に選ぶ UI でも、**段階取得（shell/continue/total）**は **`resourceCds` を 1 件だけ載せたリクエスト**を **カードごとに独立**させる。API は **問い合わせの `resourceCds.length === 1` のとき**、[同一製番展開（`expansionWhere`）](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts) を **スキップ**し、**当該資源内**の手動優先＋納期順の選定に閉じる（**0 件・複数資源**のリクエストでは従来どおり展開あり）。Web は [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) が資源 CD ごとに [`useLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) を束ね、**装飾は表示行 ID を集約して 1 回**。**新規マイグレーションなし**。**Pi3 は対象外**（リソース僅少・専用手順の対象外。本変更はキオスク Pi5+Pi4 系）。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`./scripts/update-all-clients.sh feature/kiosk-leaderboard-card-scope infrastructure/ansible/inventory.yml --limit <host> --detach --follow`**・**1 台ずつ**）。**`main` マージ後の再デプロイは引数 `main`**（実装 tip **`30a664f1`** を正本にできる）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·先行反映時は **`feature/kiosk-leaderboard-card-scope`**。
+- **本番デプロイ（先行反映・実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260507-212820-17030`**（`raspberrypi5`·**`PLAY RECAP` `failed=0` / `unreachable=0`**）/ **`20260507-213838-14511`**（`raspberrypi4`）/ **`20260507-214421-9979`**（`raspi4-robodrill01`）/ **`20260507-214913-28430`**（`raspi4-fjv60-80`）/ **`20260507-215416-19850`**（`raspi4-kensaku-stonebase01`）。いずれもリモート **`exit` `0`**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 121s**・Tailscale）。
+- **トラブルシュート**:
+  - **カードごとに納期・順位が期待と違う** → Network で **各 shell の `resourceCds` が 1 要素**か・Pi5 **`api` / Pi4 `web` の ref** が **`30a664f1` 以降（またはマージ後 `main`）**か。旧 API は **複数資源を一括**すると **製番展開あり**のまま。
+  - **追補・装飾まわり** → 下記 snapshot+cursor / snapshot 項の **`appendError`・`snapshotExpired`・decorations invalidate** と [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md) を参照（本変更は **それらと直列で利用**）。
+  - **Pi4 `status-agent` 再起動失敗** → 本ファイルの **「段階取得 append（`leaderboard-shell/continue`）」項**と同様に **rollback 後に同一 `--limit` で再実行**。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-297 · カード単位節](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-resource-card-phased-scope-2026-05-07)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-07 · **キオスク順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`）**·**API+Web**·**Pi5→Pi4×4・順次**）
 
@@ -50,7 +63,7 @@ update-frequency: medium
 
 ### 最終更新（履歴一覧・2026-05-07）
 
-**順位ボード・continue snapshot+cursor（`fix/leaderboard-cursor-snapshot`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード・サーバ内 snapshot（`fix/leaderboard-shell-snapshot`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード段階取得・total materialized 整合・globalRank 索引・Web stale（`feat/leaderboard-output-stable-speedup`・Pi5 のみ）**·**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**
+**順位ボード・資源CDカード単位 phased（`feature/kiosk-leaderboard-card-scope`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード・continue snapshot+cursor（`fix/leaderboard-cursor-snapshot`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード・サーバ内 snapshot（`fix/leaderboard-shell-snapshot`・Pi5→Pi4×4・マージ後 `main`）**·**順位ボード段階取得・total materialized 整合・globalRank 索引・Web stale（`feat/leaderboard-output-stable-speedup`・Pi5 のみ）**·**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**
 
 ### 補足（2026-05-06 late · **Mobile Placement Zero2W hardening（`feat/mobile-placement-zero2w-hardening`）**·**Pi5 + Pi4×4 順次・Zero2W playbook は別**）
 

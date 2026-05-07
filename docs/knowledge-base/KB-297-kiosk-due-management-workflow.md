@@ -2681,6 +2681,16 @@ category: knowledge-base
 - **ナレッジ（正本）**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](../guides/deployment.md)（2026-05-06 段階取得項）。
 - **トラブルシュート**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md) の **hydrate raw SQL 知見**（`Prisma.join`・型・Fkojunst 可視 WHERE の連結）。キオスク **強制リロード**（API+Web のため **`api` と `web` の両方**を確認）。
 
+### Leader order board: 資源CDカード単位・段階取得（製番展開の条件付きオフ・2026-05-07） {#leader-order-board-resource-card-phased-scope-2026-05-07}
+
+- **目的**: **複数資源カード**を並べる順位ボードで、**各資源列**が **他資源の手動行に引きずられない**よう、段階取得の **選定プールを資源 CD 単位**に閉じる（**API+Web**）。
+- **仕様（要約）**:
+  - **API**: `resourceCds` が **1 要素**のときのみ **同一製番展開（`expansionWhere`）を無効化**。**複数資源を 1 リクエストに載せる**従来の一括経路では **展開あり**（[KB-297 §取得整合](#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05) の精神を **複数リソース時に維持**）。
+  - **Web**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) が **カード（資源）ごと**に shell/continue/total を走らせ、**`leaderboard-decorations` は結合 `rowIds` で 1 回**。
+- **本番デプロイ（2026-05-07）**: ブランチ **`feature/kiosk-leaderboard-card-scope`**・コミット **`30a664f1`**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 除外**（専用手順の対象外）。**Detach Run ID**（`ansible-update-`）: **`20260507-212820-17030`** / **`20260507-213838-14511`** / **`20260507-214421-9979`** / **`20260507-214913-28430`** / **`20260507-215416-19850`**（各 **`failed=0` / `unreachable=0` / exit `0`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **121s**・Tailscale）。
+- **ナレッジ（正本）**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](../guides/deployment.md)（2026-05-07 · カード単位項）。
+- **トラブルシュート**: 挙動が **全カード同一製番に偏る**ときは **API が旧版**（一括＋常時展開）の疑い。**Network** で shell の **クエリ `resourceCds`** が **単一 CD**か確認。続き・失効は [KB-369](./KB-369-leader-order-board-api-internal-latency.md) の **snapshot / cursor** 項を参照。
+
 ### Leader order resource card: preview alignment (2026-04-17)
 
 - **目的**: レビュー済み静的プレビュー（[`kiosk-rank-board-card-single-preview.html`](../design-previews/kiosk-rank-board-card-single-preview.html)）と **キオスク順位ボードの資源カード**（`LeaderOrderResourceCard`・[`presentLeaderOrderRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderOrderRowPresentation.ts)）の **表示順・クラスタ行・個数色・完了ボタン（白系）・備考ありの鉛筆強調**を揃える。**Web のみ**・API 契約は不変。

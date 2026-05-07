@@ -117,6 +117,21 @@ category: knowledge-base
   - **`snapshotExpired` が妙に多い** → **API が複数プロセスのとき snapshot はプロセスローカル**（振り分けで continue が別インスタンスに当たると失効やフォールバックが増えうる）。**ADR [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)** の注意と **`LEADERBOARD_SHELL_SNAPSHOT_TTL_MS`** を確認。
   - **Web ビルドで型エラー（shell ログが `total` を参照）** → 契約上 shell に **`total` が無い**場合はデバッグログを **`hasSnapshotId` 等**へ（`apps/web/src/api/client.ts`）。
 
+## Production deploy & verification（2026-05-07 · 資源CDカード単位 phased・同一製番展開の条件付き無効化）
+
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 は対象外**（本変更の必須反映対象外）。
+- **変更概要**:
+  - **API**: `resourceCds` が **ちょうど 1 件**の leaderboard phased 問い合わせでは、[`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts) の **同一製番展開（`seibanExpansion`）をオフ**。**0 件・2 件以上**では従来どおり展開あり（互換・一括一覧相当）。
+  - **Web**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) が **資源 CD ごと**に段階取得し、**装飾 POST はマージ後行 ID で 1 回**。ページ: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。
+  - **検証**: Vitest [`production-schedule-query.service.test.ts`](../../apps/api/src/services/production-schedule/__tests__/production-schedule-query.service.test.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx)。
+- **リポジトリ**: ブランチ **`feature/kiosk-leaderboard-card-scope`**・代表コミット **`30a664f1`**（**`main` マージ後は `origin/main` HEAD を正とする**）。
+- **標準手順**: [`deployment.md` のカード単位項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・**`--detach --follow`**）。
+- **Detach Run ID**（`ansible-update-`）: **`20260507-212820-17030`**（Pi5）/ **`20260507-213838-14511`**（`raspberrypi4`）/ **`20260507-214421-9979`**（`raspi4-robodrill01`）/ **`20260507-214913-28430`**（`raspi4-fjv60-80`）/ **`20260507-215416-19850`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 121s**・Tailscale）。
+- **トラブルシュート**:
+  - **全カードの見た目納期が同一に偏る** → 旧挙動（一括プール＋製番展開）の疑い。API/Web の **ref** と Network の **shell ごとの `resourceCds`**（1 要素であること）を確認。
+  - **append / snapshot / 装飾** → 直前の snapshot+cursor・サーバ内 snapshot 項と [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md) を参照。
+
 ## Production deploy & verification（2026-05-07 · continue の snapshot+cursor）
 
 - **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 は対象外**。
@@ -159,7 +174,7 @@ category: knowledge-base
 ## References
 
 - 計画メモ（ローカル）: 「仕様不変の順位ボード高速化計画」（`leaderboard-spec-preserving-speedup`）
-- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**·**2026-05-07 · append（continue）項**·**2026-05-07 · snapshot（サーバ内 TTL・`snapshotId`）項**）
+- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**·**2026-05-07 · append（continue）項**·**2026-05-07 · snapshot（サーバ内 TTL・`snapshotId`）項**·**2026-05-07 · 資源CDカード単位 phased 項**）
 - [ADR-20260507-leaderboard-shell-snapshot](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)
