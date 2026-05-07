@@ -1,6 +1,7 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
+import type { LeaderboardShellSnapshotStore } from '../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
 import type { ClientDeviceForScopeResolution, LocationScopeContext } from '../shared.js';
 
 export const ORDER_NUMBER_MIN = 1;
@@ -47,6 +48,8 @@ export const productionScheduleLeaderboardPhasedQuerySchema = productionSchedule
 
 /** 順位ボード shell 続き取得（POST・excludeRowIds が大きいため GET 非推奨） */
 export const productionScheduleLeaderboardShellContinuationBodySchema = z.object({
+  /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
+  snapshotId: z.string().uuid().optional(),
   excludeRowIds: z.array(z.string().uuid()).min(1).max(900),
   pageSize: z.coerce.number().int().min(1).max(160).optional(),
   productNo: z.string().min(1).max(100).optional(),
@@ -269,4 +272,6 @@ export type KioskRouteDeps = {
   }>;
   resolveLocationScopeContext: (clientDevice: ClientDeviceForScopeResolution) => LocationScopeContext;
   resolveTargetLocation: (params: { requestedTargetLocation?: string; actorLocation: string }) => string;
+  /** 順位ボード shell 段階取得の並び固定（TTL 付きインメモリ）。 */
+  leaderboardShellSnapshotStore: LeaderboardShellSnapshotStore;
 };

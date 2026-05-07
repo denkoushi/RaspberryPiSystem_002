@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import {
   postKioskProductionScheduleLeaderboardShellContinue,
@@ -26,6 +27,41 @@ function buildRowIdsKey(rows: readonly ProductionScheduleRow[]): string {
   return rows.map((row) => row.id).join('\0');
 }
 
+function getLeaderboardDebugRunId() {
+  if (typeof window === 'undefined') return `leaderboard-server-${Date.now()}`;
+  const key = 'cursor-debug-leaderboard-run-id';
+  const existing = window.sessionStorage.getItem(key);
+  if (existing) return existing;
+  const created = `leaderboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  window.sessionStorage.setItem(key, created);
+  return created;
+}
+
+function postLeaderboardDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>
+) {
+  if (typeof window === 'undefined') return;
+  const runId = getLeaderboardDebugRunId();
+  // #region agent log
+  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7a86a1' },
+    body: JSON.stringify({
+      sessionId: '7a86a1',
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
+}
+
 export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   leaderboardPhasedParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
   scheduleEnabled: boolean;
@@ -43,6 +79,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     activeDeviceScopeKey
   } = options;
 
+  const queryClient = useQueryClient();
   const paramsKey = useMemo(() => JSON.stringify(leaderboardPhasedParams), [leaderboardPhasedParams]);
 
   const shellQuery = useKioskProductionScheduleLeaderboardShell(leaderboardPhasedParams, {
@@ -89,7 +126,18 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     setIsAppending(false);
     setAppendError(null);
     lastSyncedShellSignatureRef.current = null;
-  }, [paramsKey]);
+    // #region agent log
+    postLeaderboardDebugLog(
+      'H1',
+      'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:params-reset',
+      'leaderboard params reset',
+      {
+        paramsKey,
+        scheduleEnabled
+      }
+    );
+    // #endregion
+  }, [paramsKey, scheduleEnabled]);
 
   useEffect(() => {
     if (!hasFreshShell || shellRowCount === 0) {
@@ -112,9 +160,27 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     const runId = ++runIdRef.current;
     let cancelled = false;
 
+    // #region agent log
+    postLeaderboardDebugLog(
+      'H2',
+      'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-gate',
+      'leaderboard append gate opened',
+      {
+        paramsKey,
+        shellRowCount,
+        total: totalQuery.data.total,
+        shellDataUpdatedAt: shellQuery.dataUpdatedAt,
+        totalDataUpdatedAt: totalQuery.dataUpdatedAt
+      }
+    );
+    // #endregion
+
     void (async () => {
       try {
         let next = shellRowsRef.current.slice();
+        let iterationCount = 0;
+        /** 同一 append 実行内では初回 shell 応答の snapshot を使い続ける（途中の shell 再取得と混ぜない） */
+        const snapshotIdForSession = shellQuery.data?.snapshotId?.trim();
         if (next.length >= total) {
           if (runId === runIdRef.current) setMergedRows(next);
           return;
@@ -122,11 +188,40 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
         setIsAppending(true);
         while (!cancelled && runId === runIdRef.current && next.length < total) {
+          iterationCount += 1;
+          // #region agent log
+          postLeaderboardDebugLog(
+            'H7',
+            'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-iteration',
+            'leaderboard append iteration started',
+            {
+              paramsKey,
+              runId,
+              iterationCount,
+              currentRowCount: next.length,
+              total,
+              continuePageSize
+            }
+          );
+          // #endregion
           const more = await postKioskProductionScheduleLeaderboardShellContinue({
             ...continueBaseBody,
             excludeRowIds: next.map((r) => r.id),
-            pageSize: continuePageSize
+            pageSize: continuePageSize,
+            ...(snapshotIdForSession ? { snapshotId: snapshotIdForSession } : {})
           });
+
+          if (more.snapshotExpired) {
+            await Promise.all([
+              queryClient.invalidateQueries({
+                queryKey: ['kiosk-production-schedule', 'leaderboard-shell', leaderboardPhasedParams]
+              }),
+              queryClient.invalidateQueries({
+                queryKey: ['kiosk-production-schedule', 'leaderboard-total', leaderboardPhasedParams]
+              })
+            ]);
+            break;
+          }
 
           if (more.rows.length === 0) break;
           const seen = new Set(next.map((r) => r.id));
@@ -135,6 +230,22 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
           next = [...next, ...deduped];
           if (runId === runIdRef.current) setMergedRows(next);
         }
+        // #region agent log
+        postLeaderboardDebugLog(
+          'H7',
+          'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-finished',
+          'leaderboard append run finished',
+          {
+            paramsKey,
+            runId,
+            iterationCount,
+            finalRowCount: next.length,
+            total,
+            cancelled,
+            superseded: runId !== runIdRef.current
+          }
+        );
+        // #endregion
       } catch (e) {
         if (!cancelled && runId === runIdRef.current) {
           setAppendError(e instanceof Error ? e : new Error(String(e)));
@@ -150,9 +261,12 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   }, [
     continueBaseBody,
     continuePageSize,
+    leaderboardPhasedParams,
     paramsKey,
+    queryClient,
     scheduleEnabled,
     hasFreshShell,
+    shellQuery.data?.snapshotId,
     shellQuery.dataUpdatedAt,
     shellRowCount,
     shellRowsKey,

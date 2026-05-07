@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-05-07）
 
+- **キオスク順位ボード・サーバ内 snapshot（`fix/leaderboard-shell-snapshot`・実装のみ／コミットは作業方針に従う）**: shell 応答の **`snapshotId`** を continue に載せて軽量経路とし、**`snapshotExpired`** 時は **shell/total を invalidate**。**ADR**: [ADR-20260507](./decisions/ADR-20260507-leaderboard-shell-snapshot.md)。**索引**: [KB-369](./knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。
+
 - **Mobile Placement Zero2W hardening（ブランチ `feat/mobile-placement-zero2w-hardening`・ユーザー指示によりコミット/プッシュ未実施）**: メイン **`/kiosk/mobile-placement`** から Zero2W 常設一覧を分離し **`/kiosk/mobile-placement/zero2w-status`**（ボタン「棚番配膳一覧（Zero2W）」）。下半 **`MobilePlacementRegisterSection`** の **`flex-1 overflow-hidden`** を撤去。**Prisma** **`ClientDevice.haizenEdgeEnabled`**（マイグレ **`20260507190000_client_device_haizen_edge_enabled`**）・API **`GET …/haizen-target-devices`** は **`haizenEdgeEnabled === true` のみ**。管理画面 **Zero2W配膳**・**`PUT /api/clients/:id`** に **`haizenEdgeEnabled`**。**エージェント** **`HAIZEN_DISTRIBUTION_MODE`**（既定 **`legacy_short_numeric`**／誤認抑止 **`prefixed_dist`** + **`DIST:<整数>`**）。**ナレッジ**: [KB-368](./knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[mobile-placement-smartphone.md](./runbooks/mobile-placement-smartphone.md)·[api/mobile-placement.md](./api/mobile-placement.md)·[zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md)。**運用上の残**: 本番 **`prisma migrate deploy`**・Pi5 **API/Web デプロイ**・キオスク **強制リロード**。**EXEC_PLAN**: [../EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
 
 

@@ -227,30 +227,14 @@ async function buildLeaderboardShellPriorityContext(params: {
   return { commonWhere, processingOrderScalar, pSorted };
 }
 
-/**
- * 手動+製番展開を除くフィラー候補を全件読み、priority と {@link compareLeaderboardFetchedRows} でマージした
- * グローバル順序で exclude を飛ばし takeCount 件を返す（段階取得の続きき用）。
- */
-export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
+async function queryLeaderboardShellFillerRows(params: {
   commonWhere: Prisma.Sql;
   processingOrderScalar: Prisma.Sql;
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   pSorted: LeaderboardScheduleRowSql[];
-  excludeRowIds: ReadonlySet<string>;
-  takeCount: number;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const {
-    commonWhere,
-    processingOrderScalar,
-    locationKey,
-    siteScopedGlobalRankLocation,
-    pSorted,
-    excludeRowIds,
-    takeCount,
-  } = params;
-  const nTake = Math.max(0, Math.floor(takeCount));
-  if (nTake === 0) return [];
+  const { commonWhere, processingOrderScalar, locationKey, siteScopedGlobalRankLocation, pSorted } = params;
 
   const priorityIdParts = pSorted.map((r) => Prisma.sql`${r.id}`);
   const priorityExcludeSql =
@@ -258,7 +242,7 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
       ? Prisma.sql`AND NOT ("CsvDashboardRow"."id" IN (${Prisma.join(priorityIdParts)}))`
       : Prisma.empty;
 
-  const fillerRows = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
+  return prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
     SELECT
       "CsvDashboardRow"."id",
       NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
@@ -317,6 +301,97 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
       ("CsvDashboardRow"."rowData"->>'FHINCD') ASC,
       "CsvDashboardRow"."id"::text ASC
   `;
+}
+
+/**
+ * priority（手動+製番展開）とフィラーを {@link compareLeaderboardFetchedRows} で終端までマージする。
+ */
+function mergeLeaderboardShellPriorityAndFillerFully(
+  pSorted: LeaderboardScheduleRowSql[],
+  fillerRows: LeaderboardScheduleRowSql[]
+): LeaderboardScheduleRowSql[] {
+  let pIdx = 0;
+  let fIdx = 0;
+  const out: LeaderboardScheduleRowSql[] = [];
+
+  while (pIdx < pSorted.length || fIdx < fillerRows.length) {
+    const nextP = pIdx < pSorted.length ? pSorted[pIdx]! : null;
+    const nextF = fIdx < fillerRows.length ? fillerRows[fIdx]! : null;
+    if (nextP == null && nextF == null) break;
+
+    let pick: LeaderboardScheduleRowSql;
+    if (nextP == null) {
+      pick = nextF!;
+      fIdx++;
+    } else if (nextF == null) {
+      pick = nextP;
+      pIdx++;
+    } else if (compareLeaderboardFetchedRows(nextP, nextF) <= 0) {
+      pick = nextP;
+      pIdx++;
+    } else {
+      pick = nextF;
+      fIdx++;
+    }
+    out.push(pick);
+  }
+
+  return out;
+}
+
+/**
+ * shell 初回で並びを固定するため、モノリシック順位ボードと同一のマージ結果を全件返す。
+ */
+export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  expansionWhere: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+}): Promise<LeaderboardScheduleRowSql[]> {
+  const ctx = await buildLeaderboardShellPriorityContext(params);
+  const fillerRows = await queryLeaderboardShellFillerRows({
+    commonWhere: ctx.commonWhere,
+    processingOrderScalar: ctx.processingOrderScalar,
+    locationKey: params.locationKey,
+    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+    pSorted: ctx.pSorted
+  });
+  return mergeLeaderboardShellPriorityAndFillerFully(ctx.pSorted, fillerRows);
+}
+
+/**
+ * 手動+製番展開を除くフィラー候補を全件読み、priority と {@link compareLeaderboardFetchedRows} でマージした
+ * グローバル順序で exclude を飛ばし takeCount 件を返す（段階取得の続きき用）。
+ */
+export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
+  commonWhere: Prisma.Sql;
+  processingOrderScalar: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  pSorted: LeaderboardScheduleRowSql[];
+  excludeRowIds: ReadonlySet<string>;
+  takeCount: number;
+}): Promise<LeaderboardScheduleRowSql[]> {
+  const {
+    commonWhere,
+    processingOrderScalar,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    pSorted,
+    excludeRowIds,
+    takeCount,
+  } = params;
+  const nTake = Math.max(0, Math.floor(takeCount));
+  if (nTake === 0) return [];
+
+  const fillerRows = await queryLeaderboardShellFillerRows({
+    commonWhere,
+    processingOrderScalar,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    pSorted
+  });
 
   let pIdx = 0;
   let fIdx = 0;

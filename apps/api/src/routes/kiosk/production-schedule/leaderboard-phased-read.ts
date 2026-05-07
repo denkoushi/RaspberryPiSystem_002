@@ -43,21 +43,24 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
       targetDeviceScopeKey: query.targetDeviceScopeKey
     });
 
-    return listLeaderboardShellProductionScheduleRows({
-      page,
-      pageSize,
-      queryText: rawQueryText,
-      productNos,
-      machineName: machineName && machineName.length > 0 ? machineName : undefined,
-      resourceCds,
-      assignedOnlyCds,
-      resourceCategory,
-      hasNoteOnly: query.hasNoteOnly === true,
-      hasDueDateOnly: query.hasDueDateOnly === true,
-      allowResourceOnly: query.allowResourceOnly === true,
-      locationKey: assignmentLocationKey,
-      siteKey: locationScopeContext.siteKey
-    });
+    return listLeaderboardShellProductionScheduleRows(
+      {
+        page,
+        pageSize,
+        queryText: rawQueryText,
+        productNos,
+        machineName: machineName && machineName.length > 0 ? machineName : undefined,
+        resourceCds,
+        assignedOnlyCds,
+        resourceCategory,
+        hasNoteOnly: query.hasNoteOnly === true,
+        hasDueDateOnly: query.hasDueDateOnly === true,
+        allowResourceOnly: query.allowResourceOnly === true,
+        locationKey: assignmentLocationKey,
+        siteKey: locationScopeContext.siteKey
+      },
+      { snapshotStore: deps.leaderboardShellSnapshotStore }
+    );
   });
 
   app.post('/kiosk/production-schedule/leaderboard-shell/continue', { config: { rateLimit: false } }, async (request) => {
@@ -79,21 +82,25 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
       targetDeviceScopeKey: body.targetDeviceScopeKey
     });
 
-    return listLeaderboardShellContinuationProductionScheduleRows({
-      locationKey: assignmentLocationKey,
-      siteKey: locationScopeContext.siteKey,
-      queryText: rawQueryText,
-      productNos,
-      machineName: machineName && machineName.length > 0 ? machineName : undefined,
-      resourceCds,
-      assignedOnlyCds,
-      resourceCategory,
-      hasNoteOnly: body.hasNoteOnly === true,
-      hasDueDateOnly: body.hasDueDateOnly === true,
-      allowResourceOnly: body.allowResourceOnly === true,
-      excludeRowIds: body.excludeRowIds,
-      chunkSize
-    });
+    return listLeaderboardShellContinuationProductionScheduleRows(
+      {
+        locationKey: assignmentLocationKey,
+        siteKey: locationScopeContext.siteKey,
+        queryText: rawQueryText,
+        productNos,
+        machineName: machineName && machineName.length > 0 ? machineName : undefined,
+        resourceCds,
+        assignedOnlyCds,
+        resourceCategory,
+        hasNoteOnly: body.hasNoteOnly === true,
+        hasDueDateOnly: body.hasDueDateOnly === true,
+        allowResourceOnly: body.allowResourceOnly === true,
+        excludeRowIds: body.excludeRowIds,
+        chunkSize,
+        snapshotId: body.snapshotId
+      },
+      { snapshotStore: deps.leaderboardShellSnapshotStore }
+    );
   });
 
   app.get('/kiosk/production-schedule/leaderboard-total', { config: { rateLimit: false } }, async (request) => {
