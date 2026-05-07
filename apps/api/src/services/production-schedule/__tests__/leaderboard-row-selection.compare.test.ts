@@ -58,4 +58,21 @@ describe('compareLeaderboardFetchedRows', () => {
     const list = [late, early].sort(compareLeaderboardFetchedRows);
     expect(list.map((r) => r.id)).toEqual(['b', 'a']);
   });
+
+  it('同一納期・製番・品番では工順数値と品目コードで安定化する', () => {
+    const a = {
+      ...row('c', 'S', '0001', null, new Date('2026-03-01')),
+      rowData: { ProductNo: '0001', FSEIBAN: 'S', FHINCD: 'B', FSIGENCD: 'R01', FKOJUN: '20', progress: '' },
+    };
+    const b = {
+      ...row('b', 'S', '0001', null, new Date('2026-03-01')),
+      rowData: { ProductNo: '0001', FSEIBAN: 'S', FHINCD: 'A', FSIGENCD: 'R01', FKOJUN: '10', progress: '' },
+    };
+    const c = {
+      ...row('a', 'S', '0001', null, new Date('2026-03-01')),
+      rowData: { ProductNo: '0001', FSEIBAN: 'S', FHINCD: 'A', FSIGENCD: 'R01', FKOJUN: '20', progress: '' },
+    };
+    const list = [a, b, c].sort(compareLeaderboardFetchedRows);
+    expect(list.map((r) => r.id)).toEqual(['b', 'a', 'c']);
+  });
 });

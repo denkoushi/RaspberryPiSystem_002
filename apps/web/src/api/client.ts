@@ -752,6 +752,20 @@ export async function getKioskProductionScheduleLeaderboardShell(
   return data;
 }
 
+export type KioskProductionScheduleLeaderboardShellContinuePayload = KioskProductionScheduleLeaderboardPhasedQueryParams & {
+  excludeRowIds: string[];
+};
+
+export async function postKioskProductionScheduleLeaderboardShellContinue(
+  payload: KioskProductionScheduleLeaderboardShellContinuePayload
+) {
+  const { data } = await api.post<ProductionScheduleLeaderboardShellResponse>(
+    '/kiosk/production-schedule/leaderboard-shell/continue',
+    payload
+  );
+  return data;
+}
+
 export async function getKioskProductionScheduleLeaderboardTotal(params?: KioskProductionScheduleLeaderboardPhasedQueryParams) {
   const { data } = await api.get<ProductionScheduleLeaderboardTotalResponse>(
     '/kiosk/production-schedule/leaderboard-total',

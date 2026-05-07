@@ -10,7 +10,21 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-07（**順位ボード段階取得・total materialized 整合・globalRank 索引・Web stale（`feat/leaderboard-output-stable-speedup`・Pi5 のみ）**·**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**）
+最終更新: 2026-05-07。**直近の本番**: 順位ボード段階 **`leaderboard-shell/continue`（append）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+
+### 補足（2026-05-07 · **キオスク順位ボード・段階取得 append（`leaderboard-shell/continue`）**·**API+Web**·**Pi5→Pi4×4・順次**）
+
+- **変更概要**: 初回 `leaderboard-shell` の **`pageSize` 未満**でも **同一フィルタ・同一並び**のまま **`POST …/leaderboard-shell/continue`** で続き行を取得し Web 側でマージ（`excludeRowIds`・上限 160）。**契約**: [`shared.ts`](../../apps/api/src/routes/kiosk/production-schedule/shared.ts) の `productionScheduleLeaderboardShellContinuationBodySchema`・ルート [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)。選定は [`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts) の続き枠。**Web**: [`useLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts)。**Pi3 は対象外**（ユーザー提示リスト・リソース僅少。**Pi3 専用手順は未実施で正**）。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`./scripts/update-all-clients.sh feat/leaderboard-phased-shell-append infrastructure/ansible/inventory.yml --limit <host> --detach --follow`**・**1 台ずつ**）。**マージ後の標準デプロイは `main`**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·ブランチ先行時は **`feat/leaderboard-phased-shell-append`**。
+- **本番デプロイ（先行反映・実績）**: 代表コミット **`2dd3c9b2`**。**Detach Run ID**（接頭辞 `ansible-update-`）: **`20260507-090345-18842`**（`raspberrypi5`·**`PLAY RECAP` `failed=0` / `unreachable=0`**）/ **`20260507-091500-1467`**（`raspberrypi4`）/ **`20260507-093553-18573`**（`raspi4-robodrill01`·**再試行で成功**・初回 **`20260507-092030-22339`** は `status-agent.service` 再起動失敗で **rollback**）/ **`20260507-094833-877`**（`raspi4-fjv60-80`·**再試行で成功**・初回 **`20260507-093945-11807`** は同趣旨）/ **`20260507-095322-14546`**（`raspi4-kensaku-stonebase01`）。いずれも成功 run は **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。**新規マイグレーションなし**（コードのみ）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **第2実行 約 25s**・第1実行は `deploy-status raspberrypi4` が一時 **`isMaintenance:true`** で **FAIL 1**・全台完走後に再実行で **全 PASS**）。
+- **トラブルシュート**: **Pi4 で `status-agent.service` 再起動が数回リトライ後も失敗** → ロールバック後に **同じ `--limit` で再実行**すると解消する例あり（一過性）。**失敗後の rescue で journal 取り込みが UTF-8 surrogate で Ansible が deserialize 失敗**することがあるが、**根本原因は status-agent**。**`deploy-status` が一時 true** → 別ホストデプロイ中の **メンテナンスフラグ**が残るタイミングがあり得る・**全完了後に再検証**または Pi5 の **`config/deploy-status.json`**（API コンテナ内パス）を確認。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+### 最終更新（履歴一覧・2026-05-07）
+
+**順位ボード段階取得・total materialized 整合・globalRank 索引・Web stale（`feat/leaderboard-output-stable-speedup`・Pi5 のみ）**·**Mobile Placement Zero2W hardening（Pi5+Pi4×4・マイグレ・Zero playbook は KB 参照）**·**順位ボード winner materialization（leaderboard-shell 経路・Pi5 のみ）**·**生産日程CSV 空 winner ガード・Web axios 1.16+（Trivy）**·**生産スケジュール実効完了3系統OR（Pi5・API+DB）**·**順位ボード段階取得（leaderboard-shell／total／decorations）Pi5 のみ**·**leaderboard COUNT 並列化**·**DGX control-server 単一アクティブ運用ガード**·**部品納期個数補助 `P2002`**·**Phase12**·**Zero2W 断片 `sudo_nopasswd_commands`**
 
 ### 補足（2026-05-06 late · **Mobile Placement Zero2W hardening（`feat/mobile-placement-zero2w-hardening`）**·**Pi5 + Pi4×4 順次・Zero2W playbook は別**）
 

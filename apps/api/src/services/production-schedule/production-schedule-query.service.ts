@@ -35,7 +35,10 @@ import { enrichProductionScheduleRowsWithResolvedMachineName } from './productio
 import { enrichProductionScheduleRowsWithCustomerName } from './production-schedule-customer-name-enrichment.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard/leaderboard-part-footer-processes.service.js';
 import type { LeaderboardPartFooterProcessItem } from './leaderboard/leaderboard-part-footer-processes.service.js';
-import { fetchLeaderboardScheduleRowsWithSeibanAwarePriority } from './leaderboard/leaderboard-row-selection.service.js';
+import {
+  fetchLeaderboardScheduleRowsWithSeibanAwarePriority,
+  fetchLeaderboardShellRowsContinuationChunk
+} from './leaderboard/leaderboard-row-selection.service.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
 import { countProductionScheduleDashboardVisibleRows } from './production-schedule-list-count.service.js';
 
@@ -229,6 +232,58 @@ export async function listLeaderboardShellProductionScheduleRows(
   }));
 
   return { page, pageSize, rows };
+}
+
+/** 順位ボード段階取得: shell の続き（exclude 済み id を除いたマージ順の次枠） */
+export async function listLeaderboardShellContinuationProductionScheduleRows(
+  params: Omit<ProductionScheduleListParams, 'page' | 'pageSize'> & {
+    page?: number;
+    excludeRowIds: readonly string[];
+    chunkSize: number;
+  }
+): Promise<Pick<ProductionScheduleListResult, 'page' | 'pageSize' | 'rows'>> {
+  const page = params.page ?? 1;
+  const { locationKey, excludeRowIds } = params;
+  const appliedChunk = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
+
+  const filters = await prepareProductionScheduleDashboardFilters({
+    queryText: params.queryText,
+    productNos: params.productNos,
+    machineName: params.machineName,
+    resourceCds: params.resourceCds,
+    assignedOnlyCds: params.assignedOnlyCds,
+    resourceCategory: params.resourceCategory,
+    hasNoteOnly: params.hasNoteOnly,
+    hasDueDateOnly: params.hasDueDateOnly,
+    allowResourceOnly: params.allowResourceOnly ?? false,
+    locationKey,
+    siteKey: params.siteKey
+  });
+
+  if (filters.kind === 'blocked_empty_search') {
+    return { page, pageSize: appliedChunk, rows: [] };
+  }
+
+  const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+
+  const leaderboardRows = await fetchLeaderboardShellRowsContinuationChunk({
+    leaderboardMaterializedBaseWhere,
+    queryWhere,
+    expansionWhere: leaderboardExpansionWhere,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    excludeRowIds,
+    chunkSize: appliedChunk
+  });
+
+  const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({
+    ...r,
+    actualPerPieceMinutes: null,
+    customerName: null
+  }));
+
+  return { page, pageSize: appliedChunk, rows };
 }
 
 /** leaderboard 一覧と同一フィルタ条件での可視行件数のみ */
