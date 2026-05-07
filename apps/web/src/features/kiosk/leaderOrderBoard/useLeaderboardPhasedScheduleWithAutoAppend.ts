@@ -22,6 +22,10 @@ function phasedParamsToExcludeBody(base: KioskProductionScheduleLeaderboardPhase
   return rest;
 }
 
+function buildRowIdsKey(rows: readonly ProductionScheduleRow[]): string {
+  return rows.map((row) => row.id).join('\0');
+}
+
 export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   leaderboardPhasedParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
   scheduleEnabled: boolean;
@@ -58,26 +62,49 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   const [isAppending, setIsAppending] = useState(false);
 
   const runIdRef = useRef(0);
+  const lastSyncedShellSignatureRef = useRef<string | null>(null);
+  const shellRowsRef = useRef<ProductionScheduleRow[]>([]);
   const hasFreshShell = shellQuery.isSuccess && !shellQuery.isPlaceholderData;
   const hasFreshTotal = totalQuery.isSuccess && !totalQuery.isPlaceholderData;
   const shellRows = useMemo(() => shellQuery.data?.rows ?? [], [shellQuery.data?.rows]);
+  const shellRowCount = shellRows.length;
+  const shellRowsKey = useMemo(() => buildRowIdsKey(shellRows), [shellRows]);
+  const stableLeaderboardPhasedParams = useMemo(
+    () => JSON.parse(paramsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams,
+    [paramsKey]
+  );
+  const continuePageSize = stableLeaderboardPhasedParams.pageSize;
+  const continueBaseBody = useMemo(
+    () => phasedParamsToExcludeBody(stableLeaderboardPhasedParams),
+    [stableLeaderboardPhasedParams]
+  );
+  const shellSyncSignature = `${shellQuery.dataUpdatedAt}:${shellRowsKey}`;
+
+  useEffect(() => {
+    shellRowsRef.current = shellRows;
+  }, [shellRows, shellRowsKey]);
 
   useEffect(() => {
     setMergedRows([]);
     setIsAppending(false);
     setAppendError(null);
+    lastSyncedShellSignatureRef.current = null;
   }, [paramsKey]);
 
   useEffect(() => {
-    if (!hasFreshShell || shellRows.length === 0) {
-      setMergedRows([]);
+    if (!hasFreshShell || shellRowCount === 0) {
+      if (mergedRows.length > 0) setMergedRows([]);
+      lastSyncedShellSignatureRef.current = null;
       return;
     }
-    setMergedRows(shellRows);
-  }, [hasFreshShell, shellQuery.dataUpdatedAt, shellRows]);
+    if (lastSyncedShellSignatureRef.current !== shellSyncSignature) {
+      lastSyncedShellSignatureRef.current = shellSyncSignature;
+      setMergedRows(shellRows);
+    }
+  }, [hasFreshShell, mergedRows.length, shellRowCount, shellRows, shellSyncSignature]);
 
   useEffect(() => {
-    if (!scheduleEnabled || !hasFreshShell || !hasFreshTotal || shellRows.length === 0) {
+    if (!scheduleEnabled || !hasFreshShell || !hasFreshTotal || shellRowCount === 0) {
       return;
     }
 
@@ -87,7 +114,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     void (async () => {
       try {
-        let next = shellRows.slice();
+        let next = shellRowsRef.current.slice();
         if (next.length >= total) {
           if (runId === runIdRef.current) setMergedRows(next);
           return;
@@ -95,11 +122,10 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
         setIsAppending(true);
         while (!cancelled && runId === runIdRef.current && next.length < total) {
-          const baseBody = phasedParamsToExcludeBody(leaderboardPhasedParams);
           const more = await postKioskProductionScheduleLeaderboardShellContinue({
-            ...baseBody,
+            ...continueBaseBody,
             excludeRowIds: next.map((r) => r.id),
-            pageSize: leaderboardPhasedParams.pageSize
+            pageSize: continuePageSize
           });
 
           if (more.rows.length === 0) break;
@@ -122,12 +148,14 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
       cancelled = true;
     };
   }, [
-    leaderboardPhasedParams,
+    continueBaseBody,
+    continuePageSize,
     paramsKey,
     scheduleEnabled,
     hasFreshShell,
     shellQuery.dataUpdatedAt,
-    shellRows,
+    shellRowCount,
+    shellRowsKey,
     totalQuery.data?.total,
     hasFreshTotal,
     totalQuery.dataUpdatedAt
