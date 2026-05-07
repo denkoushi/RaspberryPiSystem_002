@@ -46,32 +46,63 @@ export const productionScheduleLeaderboardPhasedQuerySchema = productionSchedule
   responseProfile: true
 });
 
-/** 順位ボード shell 続き取得（POST・excludeRowIds が大きいため GET 非推奨） */
-export const productionScheduleLeaderboardShellContinuationBodySchema = z.object({
-  /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
-  snapshotId: z.string().uuid().optional(),
-  excludeRowIds: z.array(z.string().uuid()).min(1).max(900),
-  pageSize: z.coerce.number().int().min(1).max(160).optional(),
-  productNo: z.string().min(1).max(100).optional(),
-  q: z.string().min(1).max(200).optional(),
-  productNos: z.string().min(1).max(4000).optional(),
-  resourceCds: z.string().min(1).max(400).optional(),
-  resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
-  resourceCategory: z.enum(['grinding', 'cutting']).optional(),
-  machineName: z.string().min(1).max(200).optional(),
-  hasNoteOnly: z.boolean().optional(),
-  hasDueDateOnly: z.boolean().optional(),
-  allowResourceOnly: z.boolean().optional(),
-  targetDeviceScopeKey: z.string().min(1).max(200).optional()
-});
+/** 順位ボード shell 続き取得（POST・旧 excludeRowIds 全送は後方互換のみ） */
+export const productionScheduleLeaderboardShellContinuationBodySchema = z
+  .object({
+    /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
+    snapshotId: z.string().uuid().optional(),
+    /**
+     * snapshot 並びでの次読み取り位置（0-based・既に返した行数）。
+     * shell の `nextCursor` をそのまま送る。`snapshotId` がある場合はこれを優先する。
+     */
+    cursor: z.number().int().min(0).max(5_000_000).optional(),
+    /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け */
+    excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
+    pageSize: z.coerce.number().int().min(1).max(160).optional(),
+    productNo: z.string().min(1).max(100).optional(),
+    q: z.string().min(1).max(200).optional(),
+    productNos: z.string().min(1).max(4000).optional(),
+    resourceCds: z.string().min(1).max(400).optional(),
+    resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
+    resourceCategory: z.enum(['grinding', 'cutting']).optional(),
+    machineName: z.string().min(1).max(200).optional(),
+    hasNoteOnly: z.boolean().optional(),
+    hasDueDateOnly: z.boolean().optional(),
+    allowResourceOnly: z.boolean().optional(),
+    targetDeviceScopeKey: z.string().min(1).max(200).optional()
+  })
+  .superRefine((data, ctx) => {
+    const hasSnapshot = Boolean(data.snapshotId?.trim());
+    const hasCursor = data.cursor !== undefined;
+    const excludeLen = data.excludeRowIds?.length ?? 0;
+
+    if (hasSnapshot) {
+      if (hasCursor) return;
+      if (excludeLen >= 1) return;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'snapshotId 指定時は cursor、または後方互換として excludeRowIds（1件以上）が必要です',
+        path: ['cursor']
+      });
+      return;
+    }
+
+    if (excludeLen >= 1) return;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'snapshotId が無い場合は excludeRowIds（1件以上）が必要です（snapshotId + cursor でも可）',
+      path: ['excludeRowIds']
+    });
+  });
 
 export type ProductionScheduleLeaderboardShellContinuationBody = z.infer<
   typeof productionScheduleLeaderboardShellContinuationBodySchema
 >;
 
 export const productionScheduleLeaderboardDecorationsBodySchema = z.object({
-  /** shell 応答の `rows[].id` を **表示順のまま** 渡す（最大 900） */
-  rowIds: z.array(z.string().uuid()).max(900).optional().default([]),
+  /** shell 応答の `rows[].id` を **表示順のまま** 渡す（順位ボード全件表示に合わせ上限を緩和） */
+  rowIds: z.array(z.string().uuid()).max(20_000).optional().default([]),
   /** v2: Mac が参照する端末の deviceScopeKey（一覧 shell/total と一致させる） */
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });

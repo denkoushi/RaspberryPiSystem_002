@@ -95,7 +95,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         hasNoteOnly: body.hasNoteOnly === true,
         hasDueDateOnly: body.hasDueDateOnly === true,
         allowResourceOnly: body.allowResourceOnly === true,
-        excludeRowIds: body.excludeRowIds,
+        excludeRowIds: body.excludeRowIds ?? [],
+        cursor: body.cursor,
         chunkSize,
         snapshotId: body.snapshotId
       },

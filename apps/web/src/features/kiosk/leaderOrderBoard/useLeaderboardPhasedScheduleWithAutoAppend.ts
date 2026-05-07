@@ -13,6 +13,15 @@ import {
   useKioskProductionScheduleLeaderboardTotal
 } from '../../../api/hooks';
 
+function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  return queryClient.invalidateQueries({
+    predicate: (q) =>
+      Array.isArray(q.queryKey) &&
+      q.queryKey[0] === 'kiosk-production-schedule' &&
+      q.queryKey[1] === 'leaderboard-decorations'
+  });
+}
+
 function phasedParamsToExcludeBody(base: KioskProductionScheduleLeaderboardPhasedQueryParams): Omit<
   KioskProductionScheduleLeaderboardPhasedQueryParams,
   'page' | 'pageSize'
@@ -110,7 +119,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     () => JSON.parse(paramsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams,
     [paramsKey]
   );
-  const continuePageSize = stableLeaderboardPhasedParams.pageSize;
+  const continuePageSize = stableLeaderboardPhasedParams.pageSize ?? 160;
   const continueBaseBody = useMemo(
     () => phasedParamsToExcludeBody(stableLeaderboardPhasedParams),
     [stableLeaderboardPhasedParams]
@@ -179,15 +188,23 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
       try {
         let next = shellRowsRef.current.slice();
         let iterationCount = 0;
-        /** 同一 append 実行内では初回 shell 応答の snapshot を使い続ける（途中の shell 再取得と混ぜない） */
         const snapshotIdForSession = shellQuery.data?.snapshotId?.trim();
+        const shellHasMore = shellQuery.data?.hasMore ?? next.length < total;
+        /** cursor 方式: shell の nextCursor を初期値に。無ければ返却行数。 */
+        let cursor =
+          typeof shellQuery.data?.nextCursor === 'number'
+            ? shellQuery.data.nextCursor
+            : shellRowsRef.current.length;
+        let hasMore = snapshotIdForSession ? shellHasMore : true;
+
         if (next.length >= total) {
           if (runId === runIdRef.current) setMergedRows(next);
           return;
         }
 
+        if (runId === runIdRef.current) setAppendError(null);
         setIsAppending(true);
-        while (!cancelled && runId === runIdRef.current && next.length < total) {
+        while (!cancelled && runId === runIdRef.current && next.length < total && hasMore) {
           iterationCount += 1;
           // #region agent log
           postLeaderboardDebugLog(
@@ -200,16 +217,28 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
               iterationCount,
               currentRowCount: next.length,
               total,
-              continuePageSize
+              continuePageSize,
+              cursor,
+              snapshotMode: Boolean(snapshotIdForSession)
             }
           );
           // #endregion
-          const more = await postKioskProductionScheduleLeaderboardShellContinue({
-            ...continueBaseBody,
-            excludeRowIds: next.map((r) => r.id),
-            pageSize: continuePageSize,
-            ...(snapshotIdForSession ? { snapshotId: snapshotIdForSession } : {})
-          });
+
+          const continuePayload =
+            snapshotIdForSession != null && snapshotIdForSession.length > 0
+              ? {
+                  ...continueBaseBody,
+                  pageSize: continuePageSize,
+                  snapshotId: snapshotIdForSession,
+                  cursor
+                }
+              : {
+                  ...continueBaseBody,
+                  pageSize: continuePageSize,
+                  excludeRowIds: next.map((r) => r.id)
+                };
+
+          const more = await postKioskProductionScheduleLeaderboardShellContinue(continuePayload);
 
           if (more.snapshotExpired) {
             await Promise.all([
@@ -218,17 +247,36 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
               }),
               queryClient.invalidateQueries({
                 queryKey: ['kiosk-production-schedule', 'leaderboard-total', leaderboardPhasedParams]
-              })
+              }),
+              invalidateLeaderboardDecorationsQueries(queryClient)
             ]);
             break;
           }
 
-          if (more.rows.length === 0) break;
+          if (more.rows.length === 0) {
+            if (snapshotIdForSession) {
+              const prevCursor = cursor;
+              hasMore = Boolean(more.hasMore);
+              if (typeof more.nextCursor === 'number') {
+                cursor = more.nextCursor;
+              }
+              if (!hasMore) break;
+              if (cursor <= prevCursor) break;
+              continue;
+            }
+            break;
+          }
           const seen = new Set(next.map((r) => r.id));
           const deduped = more.rows.filter((r) => !seen.has(r.id));
           if (deduped.length === 0) break;
           next = [...next, ...deduped];
           if (runId === runIdRef.current) setMergedRows(next);
+          cursor =
+            typeof more.nextCursor === 'number' ? more.nextCursor : cursor + more.rows.length;
+          hasMore =
+            typeof more.hasMore === 'boolean'
+              ? more.hasMore
+              : cursor < total || more.rows.length >= continuePageSize;
         }
         // #region agent log
         postLeaderboardDebugLog(
@@ -267,6 +315,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     scheduleEnabled,
     hasFreshShell,
     shellQuery.data?.snapshotId,
+    shellQuery.data?.hasMore,
+    shellQuery.data?.nextCursor,
     shellQuery.dataUpdatedAt,
     shellRowCount,
     shellRowsKey,

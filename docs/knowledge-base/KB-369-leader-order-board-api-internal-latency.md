@@ -130,9 +130,17 @@ category: knowledge-base
 | メソッド | パス | 役割 |
 |---------|------|------|
 | GET | `/api/kiosk/production-schedule/leaderboard-shell` | 装飾なし行（`pageSize` 既定 160・上限 160） |
-| POST | `/api/kiosk/production-schedule/leaderboard-shell/continue` | 続き行（`excludeRowIds`・任意 **`snapshotId`**・同一並び・上限 160） |
+| POST | `/api/kiosk/production-schedule/leaderboard-shell/continue` | 続き行。**推奨**: `snapshotId` + **`cursor`**（shell の `nextCursor`）+ `pageSize`≤160。**後方互換**: `excludeRowIds`（最大 900・プレフィックス一致検証） |
 | GET | `/api/kiosk/production-schedule/leaderboard-total` | 一覧と同一条件の可視行件数のみ |
-| POST | `/api/kiosk/production-schedule/leaderboard-decorations` | `{ rowIds[], targetDeviceScopeKey? }` で機種名・顧客名・フッターチップ |
+| POST | `/api/kiosk/production-schedule/leaderboard-decorations` | `{ rowIds[], targetDeviceScopeKey? }` で機種名・顧客名・フッターチップ（`rowIds` は表示順のまま。**上限 20000**） |
+
+### 追補（2026-05-07）: `snapshotId` + `cursor` による continue（900 件 `excludeRowIds` 上限の回避）
+
+- **課題**: 旧 continue は取得済み行 ID を毎回 **最大 900 件**までボディに載せ、件数増加で **payload 肥大化**・**全件追補不能**になった。
+- **方針**: shell 応答に **`nextCursor`**（これまでに返した行数）と **`hasMore`** を付与し、continue は **`snapshotId` + `cursor`** のみで次チャンクを取得。並びの正本は従来どおり **インメモリ snapshot の `orderedRowIds`**（[`leaderboard-shell-snapshot.store.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.ts)）。
+- **slice 境界**: [`leaderboard-shell-continue.slice.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-continue.slice.ts)（cursor 進行・旧 exclude プレフィックス検証の純関数）。
+- **Web**: [`useLeaderboardPhasedScheduleWithAutoAppend.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) が snapshot あり時 **cursor ループ**。**`snapshotExpired`** 時は shell / total に加え **`leaderboard-decorations` を predicate invalidate**。追補 API 失敗時は **`appendError`** をページに表示（[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)）。
+- **残課題**: 初回 shell は引き続き **全件順序を一度確定**するため、極大件数では初回レイテンシは別途最適化の余地あり（全件性・cursor 化とは独立）。
 
 実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)・[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)（`listLeaderboardShellProductionScheduleRows` 等）。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の phased ケース。
 

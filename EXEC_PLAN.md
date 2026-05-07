@@ -2116,6 +2116,15 @@
 
 ## Next Steps（将来のタスク）
 
+### キオスク順位ボード — continue の snapshot+cursor（ブランチ `fix/leaderboard-cursor-snapshot`・ローカル実装・2026-05-07）
+
+**概要**: `POST …/leaderboard-shell/continue` を **`snapshotId` + `cursor`** 主軸にし、**`excludeRowIds`（最大900）は後方互換のみ**。shell 応答に **`nextCursor` / `hasMore`**。slice 境界は [`leaderboard-shell-continue.slice.ts`](./apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-continue.slice.ts)。Web は追補失敗時 **`appendError`** 表示・**`snapshotExpired`** 時 **decorations も invalidate**。
+
+**候補タスク**:
+
+1. **コミット／PR／本番**（運用ルールに従い実施）。
+2. 初回 shell の全件順序構築コストは別タスク（全件性とは独立）。
+
 ### DGX LocalLLM — `/start` 経路での green⇄blue 切替スモーク（任意・2026-05-06）
 
 **概要**: **単一アクティブガード**は本番 DGX に反映済み（本セッションの Progress 項）。稼働確認として、**運用モードと矛盾しない時間帯**に **管理コンソールまたは runtime-control 経由**で **`POST /start`** を挟んだ **green⇄blue の切替**を試し、**非アクティブ側プロセス／listen が残らない**ことを確認する（**Strict Ready**・シナリオ完了までの所要は KB-365 Phase11 参照）。

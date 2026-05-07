@@ -620,9 +620,13 @@ describe('Kiosk Production Schedule API', () => {
         customerName?: unknown;
         actualPerPieceMinutes?: unknown;
       }>;
+      nextCursor?: number;
+      hasMore?: boolean;
     };
     expect(shellBody.pageSize).toBeLessThanOrEqual(160);
     expect(shellBody.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0001']);
+    expect(shellBody.nextCursor).toBe(2);
+    expect(shellBody.hasMore).toBe(false);
     for (const r of shellBody.rows) {
       expect('resolvedMachineName' in r ? r.resolvedMachineName : undefined).toBeUndefined();
       expect(r.customerName ?? null).toBeNull();
@@ -696,6 +700,8 @@ describe('Kiosk Production Schedule API', () => {
     expect(shellBody.pageSize).toBe(160);
     expect(shellBody.rows).toHaveLength(160);
     expect(shellBody.snapshotId).toBeTruthy();
+    expect(shellBody.nextCursor).toBe(160);
+    expect(shellBody.hasMore).toBe(true);
 
     const totalRes = await app.inject({
       method: 'GET',
@@ -777,6 +783,165 @@ describe('Kiosk Production Schedule API', () => {
 
     expect(merged).toEqual(expectIds);
     expect(seen.size).toBe(merged.length);
+  });
+
+  it('leaderboard shell continue with snapshotId+cursor matches monolithic leaderboard order', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 170 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)),
+        dataHash: `bulk-hash-cursor-${index}`,
+        rowData: {
+          ProductNo: `C${String(index).padStart(4, '0')}`,
+          FSEIBAN: `T${String(index).padStart(7, '0')}`,
+          FHINCD: `Q${String(index).padStart(4, '0')}`,
+          FHINMEI: `PartC ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultFkojunstStatusForAllDashboardRows();
+
+    const mono = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?responseProfile=leaderboard',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(mono.statusCode).toBe(200);
+    const monoBody = mono.json() as { rows: Array<{ id: string }>; total: number };
+    const expectIds = monoBody.rows.map((r) => r.id);
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=320',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as {
+      rows: Array<{ id: string }>;
+      snapshotId?: string;
+      nextCursor?: number;
+      hasMore?: boolean;
+    };
+    expect(shellBody.rows).toHaveLength(160);
+    const shellSnapshotId = shellBody.snapshotId as string;
+    expect(shellBody.nextCursor).toBe(160);
+    expect(shellBody.hasMore).toBe(true);
+
+    const seen = new Set(shellBody.rows.map((r) => r.id));
+    const merged = shellBody.rows.map((r) => r.id);
+    let cursor = shellBody.nextCursor!;
+    let hasMore = shellBody.hasMore!;
+    let guard = 0;
+    while (merged.length < monoBody.total && hasMore && guard < 30) {
+      guard += 1;
+      const cont = await app.inject({
+        method: 'POST',
+        url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+        headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+        payload: {
+          snapshotId: shellSnapshotId,
+          cursor,
+          pageSize: 160
+        }
+      });
+      expect(cont.statusCode).toBe(200);
+      const contBody = cont.json() as {
+        rows: Array<{ id: string }>;
+        nextCursor?: number;
+        hasMore?: boolean;
+        snapshotExpired?: boolean;
+      };
+      expect(contBody.snapshotExpired).not.toBe(true);
+      for (const r of contBody.rows) {
+        if (!seen.has(r.id)) {
+          seen.add(r.id);
+          merged.push(r.id);
+        }
+      }
+      cursor = contBody.nextCursor ?? cursor;
+      hasMore = Boolean(contBody.hasMore);
+    }
+
+    expect(merged).toEqual(expectIds);
+  });
+
+  it('leaderboard shell continue cursor path works beyond 900 total rows (no excludeRowIds)', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 1000 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 0, 2, 0, 0, index)),
+        dataHash: `bulk-hash-1k-${index}`,
+        rowData: {
+          ProductNo: `K${String(index).padStart(4, '0')}`,
+          FSEIBAN: `K${String(index).padStart(7, '0')}`,
+          FHINCD: `H${String(index).padStart(4, '0')}`,
+          FHINMEI: `Big ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultFkojunstStatusForAllDashboardRows();
+
+    const totalRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-total',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(totalRes.statusCode).toBe(200);
+    const total = (totalRes.json() as { total: number }).total;
+    expect(total).toBeGreaterThan(900);
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as {
+      rows: Array<{ id: string }>;
+      snapshotId?: string;
+      nextCursor?: number;
+      hasMore?: boolean;
+    };
+    expect(shellBody.rows).toHaveLength(160);
+    const shellSnapshotId = shellBody.snapshotId as string;
+
+    const ids: string[] = shellBody.rows.map((r) => r.id);
+    let cursor = shellBody.nextCursor!;
+    let hasMore = shellBody.hasMore!;
+    let guard = 0;
+    while (ids.length < total && hasMore && guard < 80) {
+      guard += 1;
+      const cont = await app.inject({
+        method: 'POST',
+        url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+        headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+        payload: { snapshotId: shellSnapshotId, cursor, pageSize: 160 }
+      });
+      expect(cont.statusCode).toBe(200);
+      const contBody = cont.json() as { rows: Array<{ id: string }>; nextCursor?: number; hasMore?: boolean };
+      ids.push(...contBody.rows.map((r) => r.id));
+      cursor = contBody.nextCursor ?? cursor;
+      hasMore = Boolean(contBody.hasMore);
+    }
+
+    expect(ids).toHaveLength(total);
+    expect(new Set(ids).size).toBe(total);
+  });
+
+  it('leaderboard shell continue rejects empty body without snapshot cursor or excludeRowIds', async () => {
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-shell/continue',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: { pageSize: 160 }
+    });
+    expect(bad.statusCode).toBe(400);
   });
 
   it('leaderboard shell continue with unknown snapshotId returns snapshotExpired', async () => {
