@@ -121,7 +121,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 は対象外**。
 - **変更概要**: continue を **`snapshotId` + `cursor`** 主軸にし、**`excludeRowIds`** は後方互換のみ。shell に **`nextCursor` / `hasMore`**。slice 境界は [`leaderboard-shell-continue.slice.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-continue.slice.ts)。Web は cursor ループ・**`appendError`**・**`snapshotExpired` 時に decorations も invalidate**。
-- **リポジトリ**: ブランチ **`fix/leaderboard-cursor-snapshot`**・実装 tip **`52b68c8c`**（**`main` で squash マージ後は `main` 先端 SHA を正とする**）。
+- **リポジトリ**: [PR #270](https://github.com/denkoushi/RaspberryPiSystem_002/pull/270)（**squash マージ後は `main` 先端 SHA を正とする**）。実装ブランチ tip **`52b68c8c`**。
 - **標準手順**: [`deployment.md` の snapshot+cursor 項（2026-05-07）](../guides/deployment.md) と同様に **`update-all-clients.sh`**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・**`--detach --follow`**）。
 - **Detach Run ID**（`ansible-update-`）: **`20260507-190947-13634`**（Pi5）/ **`20260507-192208-14169`**（`raspberrypi4`）/ **`20260507-192734-3017`**（`raspi4-robodrill01`）/ **`20260507-193134-2805`**（`raspi4-fjv60-80`）/ **`20260507-193553-4333`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 104s**・Tailscale）。

@@ -23,7 +23,7 @@ update-frequency: medium
   - **追補 API 失敗** → Web の **`appendError`**（[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)）。**`snapshotExpired`** 時は **decorations も invalidate**。
   - **空チャンク＋`hasMore` で cursor が進まない** → 実装側で **無限ループ防止**（[`useLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) 等）。
   - 重複・失効一般論は [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)·下記 snapshot 項と共通。
-- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[PR #270](https://github.com/denkoushi/RaspberryPiSystem_002/pull/270)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-07 · **キオスク順位ボード・サーバ内 snapshot（`snapshotId` / TTL インメモリ・世代失効）**·**API+Web**·**Pi5→Pi4×4・順次**）
 
