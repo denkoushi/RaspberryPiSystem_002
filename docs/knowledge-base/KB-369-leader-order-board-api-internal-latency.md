@@ -92,6 +92,15 @@ category: knowledge-base
   - **マイグレ未適用** → Pi5 `api` ログの **`prisma migrate deploy`** と `prisma migrate status`。索引名 **`ProductionScheduleGlobalRowRank_idx_csv_dashboard_row_id`**。
   - **Web の挙動が古い** → Pi5 **`web` コンテナ**の ref とキオスク [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**。
 
+## Production deploy & verification（2026-05-07 · 段階取得 append・`leaderboard-shell/continue`）
+
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**Pi3 は対象外**（提示スコープ外）。
+- **変更概要**: 初回 shell が **`pageSize` 未満**のとき **`POST …/leaderboard-shell/continue`** で続きを **同一フィルタ・同一並び**のまま追加（統合テストで monolithic `id` 一致を確認）。**マイグレなし**。
+- **リポジトリ**: ブランチ **`feat/leaderboard-phased-shell-append`**・代表コミット **`2dd3c9b2`**（**`main` squash マージ後は `origin/main` HEAD**）。
+- **Detach Run ID**（`ansible-update-`）: **`20260507-090345-18842`**（Pi5）/ **`20260507-091500-1467`**（`raspberrypi4`）/ **`20260507-093553-18573`**（`raspi4-robodrill01`・初回 `20260507-092030-22339` は `status-agent` 失敗→rollback 後に再試行成功）/ **`20260507-094833-877`**（`raspi4-fjv60-80`・初回 `20260507-093945-11807` 同様）/ **`20260507-095322-14546`**（`raspi4-kensaku-stonebase01`）。
+- **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（全台完走後。途中では `deploy-status` が **一時メンテナンス**で **FAIL 1** になり得る）。
+- **トラブルシュート**: **Pi4 `status-agent.service` 再起動失敗** → rollback 後 **同一 `--limit` で再実行**。rescue 経路の **`utf-8` surrogate deserialize** は **付随**。**deploy-status** → 連続デプロイでは **`isMaintenance:true`** が残り得るため **完了後に再検証**。
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
@@ -105,6 +114,7 @@ category: knowledge-base
 | メソッド | パス | 役割 |
 |---------|------|------|
 | GET | `/api/kiosk/production-schedule/leaderboard-shell` | 装飾なし行（`pageSize` 既定 160・上限 160） |
+| POST | `/api/kiosk/production-schedule/leaderboard-shell/continue` | 続き行（`excludeRowIds`・同一並び・上限 160） |
 | GET | `/api/kiosk/production-schedule/leaderboard-total` | 一覧と同一条件の可視行件数のみ |
 | POST | `/api/kiosk/production-schedule/leaderboard-decorations` | `{ rowIds[], targetDeviceScopeKey? }` で機種名・顧客名・フッターチップ |
 
@@ -113,6 +123,6 @@ category: knowledge-base
 ## References
 
 - 計画メモ（ローカル）: 「仕様不変の順位ボード高速化計画」（`leaderboard-spec-preserving-speedup`）
-- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**）
+- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**·**2026-05-07 · append（continue）項**）
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)
