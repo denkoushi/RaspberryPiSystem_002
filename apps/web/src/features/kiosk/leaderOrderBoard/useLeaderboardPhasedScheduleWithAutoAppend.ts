@@ -40,6 +40,40 @@ function buildRowIdsKey(rows: readonly ProductionScheduleRow[]): string {
   return rows.map((row) => row.id).join('\0');
 }
 
+function getLeaderboardFanoutDebugRunId() {
+  if (typeof window === 'undefined') return `leaderboard-fanout-server-${Date.now()}`;
+  const key = 'cursor-debug-leaderboard-fanout-run-id';
+  const existing = window.sessionStorage.getItem(key);
+  if (existing) return existing;
+  const created = `leaderboard-fanout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  window.sessionStorage.setItem(key, created);
+  return created;
+}
+
+function postLeaderboardFanoutDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>
+) {
+  if (typeof window === 'undefined') return;
+  // #region agent log
+  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'dd2d0f' },
+    body: JSON.stringify({
+      sessionId: 'dd2d0f',
+      runId: getLeaderboardFanoutDebugRunId(),
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
+}
+
 export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   leaderboardPhasedParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
   scheduleEnabled: boolean;
@@ -89,6 +123,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   const runIdRef = useRef(0);
   const lastSyncedShellSignatureRef = useRef<string | null>(null);
+  const shellStatusSignatureRef = useRef<string | null>(null);
+  const totalStatusSignatureRef = useRef<string | null>(null);
   const shellRowsRef = useRef<ProductionScheduleRow[]>([]);
   const mergedRowsRef = useRef<ProductionScheduleRow[]>([]);
   /** snapshot continue 用: total 未到達で effect が再実行されてもカーソルを失わない */
@@ -108,6 +144,10 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     [stableLeaderboardPhasedParams]
   );
   const shellSyncSignature = `${shellQuery.dataUpdatedAt}:${shellRowsKey}`;
+  const debugResourceCd = useMemo(() => {
+    const value = stableLeaderboardPhasedParams.resourceCds;
+    return typeof value === 'string' ? value : '';
+  }, [stableLeaderboardPhasedParams.resourceCds]);
 
   useEffect(() => {
     shellRowsRef.current = shellRows;
@@ -116,6 +156,86 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   useEffect(() => {
     mergedRowsRef.current = mergedRows;
   }, [mergedRows]);
+
+  useEffect(() => {
+    if (!scheduleEnabled) return;
+    const signature = JSON.stringify({
+      resourceCd: debugResourceCd,
+      isLoading: shellQuery.isLoading,
+      isFetching: shellQuery.isFetching,
+      hasFreshShell,
+      rowCount: shellRowCount,
+      hasMore: shellQuery.data?.hasMore ?? null,
+      nextCursor: shellQuery.data?.nextCursor ?? null,
+      dataUpdatedAt: shellQuery.dataUpdatedAt
+    });
+    if (shellStatusSignatureRef.current === signature) return;
+    shellStatusSignatureRef.current = signature;
+    // #region agent log
+    postLeaderboardFanoutDebugLog(
+      'H1',
+      'useLeaderboardPhasedScheduleWithAutoAppend.ts:shell-status',
+      'leaderboard shell status changed',
+      {
+        resourceCd: debugResourceCd,
+        isLoading: shellQuery.isLoading,
+        isFetching: shellQuery.isFetching,
+        hasFreshShell,
+        rowCount: shellRowCount,
+        hasMore: shellQuery.data?.hasMore ?? null,
+        nextCursor: shellQuery.data?.nextCursor ?? null,
+        dataUpdatedAt: shellQuery.dataUpdatedAt
+      }
+    );
+    // #endregion
+  }, [
+    debugResourceCd,
+    hasFreshShell,
+    scheduleEnabled,
+    shellQuery.data?.hasMore,
+    shellQuery.data?.nextCursor,
+    shellQuery.dataUpdatedAt,
+    shellQuery.isFetching,
+    shellQuery.isLoading,
+    shellRowCount
+  ]);
+
+  useEffect(() => {
+    if (!scheduleEnabled) return;
+    const signature = JSON.stringify({
+      resourceCd: debugResourceCd,
+      isLoading: totalQuery.isLoading,
+      isFetching: totalQuery.isFetching,
+      hasFreshTotal,
+      total: totalQuery.data?.total ?? null,
+      dataUpdatedAt: totalQuery.dataUpdatedAt
+    });
+    if (totalStatusSignatureRef.current === signature) return;
+    totalStatusSignatureRef.current = signature;
+    // #region agent log
+    postLeaderboardFanoutDebugLog(
+      'H2',
+      'useLeaderboardPhasedScheduleWithAutoAppend.ts:total-status',
+      'leaderboard total status changed',
+      {
+        resourceCd: debugResourceCd,
+        isLoading: totalQuery.isLoading,
+        isFetching: totalQuery.isFetching,
+        hasFreshTotal,
+        total: totalQuery.data?.total ?? null,
+        dataUpdatedAt: totalQuery.dataUpdatedAt
+      }
+    );
+    // #endregion
+  }, [
+    debugResourceCd,
+    hasFreshTotal,
+    scheduleEnabled,
+    totalQuery.data?.total,
+    totalQuery.dataUpdatedAt,
+    totalQuery.isFetching,
+    totalQuery.isLoading
+  ]);
 
   useEffect(() => {
     setMergedRows([]);
@@ -191,6 +311,22 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
           return;
         }
 
+        // #region agent log
+        postLeaderboardFanoutDebugLog(
+          'H5',
+          'useLeaderboardPhasedScheduleWithAutoAppend.ts:append-start',
+          'leaderboard append session started',
+          {
+            resourceCd: debugResourceCd,
+            shellRowCount: shellSnap.length,
+            mergedRowCount: next.length,
+            resolvedTotal: resolvedTotal ?? null,
+            shellHasMore,
+            snapshotIdPresent: Boolean(snapshotIdForSession),
+            cursor
+          }
+        );
+        // #endregion
         if (runId === runIdRef.current) setAppendError(null);
         setIsAppending(true);
         while (
@@ -278,6 +414,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   }, [
     continueBaseBody,
     continuePageSize,
+    debugResourceCd,
     leaderboardPhasedParams,
     paramsKey,
     queryClient,
