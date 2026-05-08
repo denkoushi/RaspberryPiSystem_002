@@ -2,7 +2,7 @@
 title: KB-372 FKOJUNST メール同期 winner 解決の bind 上限と長時間化
 tags: [FKOJUNST_Status, fkmail, Prisma, PostgreSQL, 生産スケジュール]
 audience: [開発者, 運用者]
-last-verified: 2026-05-08
+last-verified: 2026-05-09
 related: [deployment.md, KB-371, ADR-20260508-fkojunst-status-sole-source]
 category: knowledge-base
 ---
@@ -59,6 +59,7 @@ category: knowledge-base
 - **マイグレーション**: **新規なし**（`prisma migrate deploy` / `status` 成功）
 - **Pi5 本処理確認**: `ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard()` をコンテナ内で直接実行し、**`FKOJUNST_Status mail sync completed`**・**`external completion recalculated`**・**`RESULT=...`** を確認（**real 37.309s**）
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 141s**・Tailscale）
+- **main 再検証（2026-05-09）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**。WARN は **`auto-tuning schedulerログ確認（件数=0）`** で、同一実行中の **`PUT global-rank/auto-generate` が 200** のため代替正常判定（スクリプト仕様）。
 
 ## References
 
