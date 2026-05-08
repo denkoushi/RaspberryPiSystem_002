@@ -169,6 +169,13 @@ category: knowledge-base
 - **Web**: [`useLeaderboardPhasedScheduleWithAutoAppend.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) が snapshot あり時 **cursor ループ**。**`snapshotExpired`** 時は shell / total に加え **`leaderboard-decorations` を predicate invalidate**。追補 API 失敗時は **`appendError`** をページに表示（[`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)）。
 - **残課題**: 初回 shell は引き続き **全件順序を一度確定**するため、極大件数では初回レイテンシは別途最適化の余地あり（全件性・cursor 化とは独立）。
 
+### 追補（2026-05-08）: Web 初回表示 fastpath（`total` 非依存・1カード20件）
+
+- **目的**: KPI を **「初回に一覧が見え始めるまでの時間」** に固定し、件数確定より **行の先出し**を優先。
+- **Web**: [`useLeaderboardPhasedScheduleWithAutoAppend.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) は **`hasFreshTotal` を append 開始条件から外し**、shell 応答があれば total 未確定でも continue を開始する。
+- **件数表示**: total 未確定中は **`mergedRows.length` を暫定 total** として扱い、取得後に確定値へ置換する。**total 単独失敗では shell rows を全体エラー扱いしない**。
+- **初回件数**: Web の [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20** に変更。API の許容上限 **160** は維持しつつ、**1資源CDカード20件**で初回負荷を抑える。
+
 実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)・[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)（`listLeaderboardShellProductionScheduleRows` 等）。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の phased ケース。
 
 ## References

@@ -47,7 +47,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         return {
           appendError: null,
           scheduleQuery: {
-            data: { page: 1, pageSize: 160, total: 3, rows: [row('r1-a', 'R1'), row('r1-b', 'R1')] },
+            data: { page: 1, pageSize: 20, total: 3, rows: [row('r1-a', 'R1'), row('r1-b', 'R1')] },
             isLoading: false,
             isError: false,
             isFetching: false
@@ -57,7 +57,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       return {
         appendError: null,
         scheduleQuery: {
-          data: { page: 1, pageSize: 160, total: 1, rows: [row('r2-a', 'R2')] },
+          data: { page: 1, pageSize: 20, total: 1, rows: [row('r2-a', 'R2')] },
           isLoading: false,
           isError: false,
           isFetching: false
@@ -75,7 +75,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
           leaderboardPhasedBaseParams: {
             allowResourceOnly: true,
-            pageSize: 160
+            pageSize: 20
           },
           resourceCdsOrdered: ['R1', 'R2'],
           scheduleEnabled: true,
@@ -109,7 +109,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         return {
           appendError: null,
           scheduleQuery: {
-            data: { page: 1, pageSize: 160, total: 3, rows: [row('r1-a', 'R1'), row('r1-b', 'R1')] },
+            data: { page: 1, pageSize: 20, total: 3, rows: [row('r1-a', 'R1'), row('r1-b', 'R1')] },
             isLoading: false,
             isError: false,
             isFetching: false
@@ -135,7 +135,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
-          pageSize: 160
+          pageSize: 20
         },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
