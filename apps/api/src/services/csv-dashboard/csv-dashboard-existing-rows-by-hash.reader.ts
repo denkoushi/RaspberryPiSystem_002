@@ -1,10 +1,8 @@
 import type { Prisma } from '@prisma/client';
 
-/**
- * PostgreSQL prepared statement はバインド変数に上限がある（典型値 32767）。
- * `where: { csvDashboardId, dataHash: { in: [...] } }` は 1 + N 個のバインドとなる。
- */
-export const POSTGRES_PREPARED_STATEMENT_MAX_BIND_PARAMS = 32767;
+import { POSTGRES_PREPARED_STATEMENT_MAX_BIND_PARAMS } from '../../lib/postgres-prepared-statement-bind-limit.js';
+
+export { POSTGRES_PREPARED_STATEMENT_MAX_BIND_PARAMS };
 
 /** DEDUP 取り込み時の既存行取得で、1クエリあたりに載せる dataHash 件数の既定値（余裕を持たせる） */
 export const CSV_DASHBOARD_DATA_HASH_FINDMANY_DEFAULT_CHUNK_SIZE = 10_000;
