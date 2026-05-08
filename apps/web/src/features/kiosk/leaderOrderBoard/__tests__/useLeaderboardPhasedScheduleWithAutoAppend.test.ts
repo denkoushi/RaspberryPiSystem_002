@@ -83,7 +83,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     shellQueryMock = {
       data: {
         page: 1,
-        pageSize: 160,
+        pageSize: 20,
         total: 45,
         rows: shellRows,
         snapshotId: 'snap-test',
@@ -114,7 +114,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     postContinueMock
       .mockResolvedValueOnce({
         page: 1,
-        pageSize: 160,
+        pageSize: 20,
         rows: makeRows(21, 20),
         snapshotId: 'snap-test',
         nextCursor: 40,
@@ -122,7 +122,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
       })
       .mockResolvedValueOnce({
         page: 1,
-        pageSize: 160,
+        pageSize: 20,
         rows: makeRows(41, 5),
         snapshotId: 'snap-test',
         nextCursor: 45,
@@ -131,7 +131,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
   });
 
   const leaderboardParams: { pageSize: number; allowResourceOnly: boolean } = {
-    pageSize: 160,
+    pageSize: 20,
     allowResourceOnly: true
   };
 
@@ -160,7 +160,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     expect(postContinueMock).toHaveBeenCalledWith(
-      expect.objectContaining({ snapshotId: 'snap-test', cursor: 20, pageSize: 160 })
+      expect.objectContaining({ snapshotId: 'snap-test', cursor: 20, pageSize: 20 })
     );
 
     shellQueryMock = {
@@ -189,7 +189,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     postContinueMock.mockReset();
     postContinueMock.mockResolvedValueOnce({
       page: 1,
-      pageSize: 160,
+      pageSize: 20,
       rows: [],
       snapshotExpired: true
     });
@@ -253,5 +253,108 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(result.current.appendError).not.toBeNull();
       expect(result.current.appendError?.message).toContain('network');
     });
+  });
+
+  it('total 取得だけ失敗しても shell rows があれば一覧全体をエラー扱いしない', async () => {
+    postContinueMock.mockReset();
+    postContinueMock.mockResolvedValueOnce({
+      page: 1,
+      pageSize: 20,
+      rows: makeRows(21, 20),
+      snapshotId: 'snap-test',
+      nextCursor: 40,
+      hasMore: false
+    });
+
+    totalQueryMock = {
+      data: { total: 45 },
+      isSuccess: false,
+      isPlaceholderData: false,
+      dataUpdatedAt: 1000,
+      isError: true,
+      isFetching: false
+    };
+
+    const { result } = renderHook(
+      () =>
+        useLeaderboardPhasedScheduleWithAutoAppend({
+          leaderboardPhasedParams: leaderboardParams,
+          scheduleEnabled: true,
+          pauseRefetch: false,
+          refetchIntervalMs: 120000,
+          macManualOrderV2: false,
+          activeDeviceScopeKey: ''
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => {
+      expect(result.current.scheduleQuery.isError).toBe(false);
+      expect(result.current.scheduleQuery.data?.rows).toHaveLength(40);
+      expect(result.current.scheduleQuery.data?.total).toBe(40);
+    });
+  });
+
+  it('total が未確定でも shell 成功後に continue を開始する（total 待ちで append をブロックしない）', async () => {
+    postContinueMock.mockReset();
+
+    let releaseFirst!: (value: unknown) => void;
+    const firstDeferred = new Promise((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    postContinueMock
+      .mockReturnValueOnce(firstDeferred as ReturnType<typeof postContinueMock>)
+      .mockResolvedValueOnce({
+        page: 1,
+        pageSize: 20,
+        rows: makeRows(41, 5),
+        snapshotId: 'snap-test',
+        nextCursor: 45,
+        hasMore: false
+      });
+
+    totalQueryMock = {
+      data: { total: 45 },
+      isSuccess: false,
+      isPlaceholderData: false,
+      dataUpdatedAt: 0,
+      isError: false,
+      isFetching: true
+    };
+
+    renderHook(
+      () =>
+        useLeaderboardPhasedScheduleWithAutoAppend({
+          leaderboardPhasedParams: leaderboardParams,
+          scheduleEnabled: true,
+          pauseRefetch: false,
+          refetchIntervalMs: 120000,
+          macManualOrderV2: false,
+          activeDeviceScopeKey: ''
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => {
+      expect(postContinueMock).toHaveBeenCalledTimes(1);
+      expect(postContinueMock.mock.calls[0]![0]).toMatchObject({ cursor: 20, pageSize: 20 });
+    });
+    expect(totalQueryMock.isSuccess).toBe(false);
+
+    releaseFirst({
+      page: 1,
+      pageSize: 20,
+      rows: makeRows(21, 20),
+      snapshotId: 'snap-test',
+      nextCursor: 40,
+      hasMore: true
+    });
+
+    await waitFor(() => {
+      expect(postContinueMock).toHaveBeenCalledTimes(2);
+      expect(postContinueMock.mock.calls[1]![0]).toMatchObject({ cursor: 40, pageSize: 20 });
+    });
+    expect(totalQueryMock.isSuccess).toBe(false);
   });
 });

@@ -49,6 +49,40 @@ const LEADER_ORDER_BOARD_SEARCH_STORAGE_KEY = 'leader-order-board-search-conditi
 const MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED =
   import.meta.env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED !== 'false';
 
+function getLeaderBoardPageDebugRunId() {
+  if (typeof window === 'undefined') return `leaderboard-page-server-${Date.now()}`;
+  const key = 'cursor-debug-leaderboard-page-run-id';
+  const existing = window.sessionStorage.getItem(key);
+  if (existing) return existing;
+  const created = `leaderboard-page-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  window.sessionStorage.setItem(key, created);
+  return created;
+}
+
+function postLeaderBoardPageDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>
+) {
+  if (typeof window === 'undefined') return;
+  // #region agent log
+  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'dd2d0f' },
+    body: JSON.stringify({
+      sessionId: 'dd2d0f',
+      runId: getLeaderBoardPageDebugRunId(),
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
+}
+
 export function ProductionScheduleLeaderOrderBoardPage() {
   const queryClient = useQueryClient();
   const isMac = typeof window !== 'undefined' ? isMacEnvironment(window.navigator.userAgent) : false;
@@ -216,7 +250,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const {
     scheduleQuery,
     appendError,
-    feedMounts,
     listIncomplete
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
@@ -418,10 +451,70 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const gridReady =
     scheduleEnabled && !scheduleQuery.isLoading && !scheduleQuery.isError;
+  const scheduleEnabledKey = useMemo(
+    () => `${activeDeviceScopeKey}\0${activeResourceCds.join(',')}`,
+    [activeDeviceScopeKey, activeResourceCds]
+  );
+  const boardEnabledAtRef = useRef<number | null>(null);
+  const firstRowsLoggedKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!scheduleEnabled) {
+      boardEnabledAtRef.current = null;
+      firstRowsLoggedKeyRef.current = null;
+      return;
+    }
+    boardEnabledAtRef.current = performance.now();
+    firstRowsLoggedKeyRef.current = null;
+    // #region agent log
+    postLeaderBoardPageDebugLog(
+      'H3',
+      'ProductionScheduleLeaderOrderBoardPage.tsx:schedule-enabled',
+      'leaderboard page schedule enabled',
+      {
+        activeDeviceScopeKey,
+        activeResourceCds,
+        macManualOrderV2
+      }
+    );
+    // #endregion
+  }, [activeDeviceScopeKey, activeResourceCds, macManualOrderV2, scheduleEnabled, scheduleEnabledKey]);
+
+  useEffect(() => {
+    const rowCount = scheduleQuery.data?.rows.length ?? 0;
+    if (!scheduleEnabled || rowCount === 0) return;
+    if (firstRowsLoggedKeyRef.current === scheduleEnabledKey) return;
+    firstRowsLoggedKeyRef.current = scheduleEnabledKey;
+    // #region agent log
+    postLeaderBoardPageDebugLog(
+      'H3',
+      'ProductionScheduleLeaderOrderBoardPage.tsx:first-rows-visible',
+      'leaderboard page first rows rendered',
+      {
+        activeDeviceScopeKey,
+        activeResourceCds,
+        rowCount,
+        sortedGroupCount: sortedGrouped.size,
+        listIncomplete,
+        gridReady,
+        elapsedSinceEnabledMs:
+          boardEnabledAtRef.current == null ? null : Math.round(performance.now() - boardEnabledAtRef.current)
+      }
+    );
+    // #endregion
+  }, [
+    activeDeviceScopeKey,
+    activeResourceCds,
+    gridReady,
+    listIncomplete,
+    scheduleEnabled,
+    scheduleEnabledKey,
+    scheduleQuery.data?.rows.length,
+    sortedGrouped.size
+  ]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-[#0c1222] text-white">
-      {feedMounts}
       <div
         className="pointer-events-none fixed inset-0 z-0 opacity-100"
         style={{

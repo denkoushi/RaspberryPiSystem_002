@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-08）
+
+- **順位ボード・集約 API（fan-out 撤去）**: `GET/POST …/leaderboard-board` を追加し、多資源スロットの shell/追補/件数/装飾をサーバでスロット順に束ねる（既存 phased API は維持）。**本番進捗（2026-05-08）**: `raspberrypi5` / `raspberrypi4` 反映済み（Detach `20260508-175314-10578` / `20260508-181440-11189`）。`verify-phase12-real.sh` は途中時点 **PASS 42 / FAIL 1**（`deploy-status raspberrypi4` が一時 `isMaintenance:true`）。**ADR**: [ADR-20260508](./decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**実装**: [`leaderboard-composite-board.service.ts`](../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)。**KB**: [KB-369](./knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。
+
 ### 🆕 最新アップデート（2026-05-07）
 
 - **キオスク順位ボード・資源CDカード単位 phased（ブランチ `feature/kiosk-leaderboard-card-scope`・本番 Pi5→Pi4×4 順次・Phase12 PASS 43）**: 段階取得を **資源 CD ごと**に分離。**API** は **`resourceCds.length===1` のとき同一製番展開オフ**（複数資源一括では従来どおり展開あり）。**Web**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)。**代表 `30a664f1`**・**マージ後は `main` を正**。**Detach Run ID**（`ansible-update-`）: **`20260507-212820-17030`** / **`20260507-213838-14511`** / **`20260507-214421-9979`** / **`20260507-214913-28430`** / **`20260507-215416-19850`**。**KB**: [KB-369](./knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-297 §カード単位](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-resource-card-phased-scope-2026-05-07)。**運用**: [deployment.md](./guides/deployment.md)（2026-05-07 · カード単位項）・[EXEC_PLAN.md](../EXEC_PLAN.md)。

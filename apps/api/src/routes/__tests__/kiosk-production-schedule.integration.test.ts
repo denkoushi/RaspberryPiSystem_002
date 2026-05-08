@@ -667,6 +667,49 @@ describe('Kiosk Production Schedule API', () => {
     expect(Object.keys(decoBody.leaderboardFooterChipsByPartKey ?? {}).length).toBeGreaterThan(0);
   });
 
+  it('leaderboard-board aggregates ordered shells and totals for boardResourceCds', async () => {
+    const s1 = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?q=A&resourceCds=1&pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const s2 = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-shell?q=A&resourceCds=2&pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const board = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?q=A&boardResourceCds=1,2&pageSize=160',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(s1.statusCode).toBe(200);
+    expect(s2.statusCode).toBe(200);
+    expect(board.statusCode).toBe(200);
+    const b = board.json() as {
+      rows: Array<{ id: string }>;
+      total: number;
+      resources: Array<{ resourceCd: string; total: number }>;
+    };
+    const o1 = s1.json() as { rows: Array<{ id: string }> };
+    const o2 = s2.json() as { rows: Array<{ id: string }> };
+    expect(b.rows.map((r) => r.id)).toEqual([...o1.rows.map((r) => r.id), ...o2.rows.map((r) => r.id)]);
+
+    const tt1 = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-total?q=A&resourceCds=1',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const tt2 = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-total?q=A&resourceCds=2',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const sum = (tt1.json() as { total: number }).total + (tt2.json() as { total: number }).total;
+    expect(b.total).toBe(sum);
+    expect(b.resources).toHaveLength(2);
+  });
+
   it('leaderboard phased read caps shell at 160 even when total is larger', async () => {
     await prisma.csvDashboardRow.createMany({
       data: Array.from({ length: 170 }, (_, index) => ({

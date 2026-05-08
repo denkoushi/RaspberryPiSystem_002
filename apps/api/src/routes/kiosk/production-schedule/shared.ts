@@ -47,32 +47,34 @@ export const productionScheduleLeaderboardPhasedQuerySchema = productionSchedule
   responseProfile: true
 });
 
+/** 順位ボード shell 続き取得の共通フィールド（単一資源 continue / 集約 continue で再利用） */
+export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.object({
+  /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
+  snapshotId: z.string().uuid().optional(),
+  /**
+   * snapshot 並びでの次読み取り位置（0-based・既に返した行数）。
+   * shell の `nextCursor` をそのまま送る。`snapshotId` がある場合はこれを優先する。
+   */
+  cursor: z.number().int().min(0).max(5_000_000).optional(),
+  /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け */
+  excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
+  pageSize: z.coerce.number().int().min(1).max(160).optional(),
+  productNo: z.string().min(1).max(100).optional(),
+  q: z.string().min(1).max(200).optional(),
+  productNos: z.string().min(1).max(4000).optional(),
+  resourceCds: z.string().min(1).max(400).optional(),
+  resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
+  resourceCategory: z.enum(['grinding', 'cutting']).optional(),
+  machineName: z.string().min(1).max(200).optional(),
+  hasNoteOnly: z.boolean().optional(),
+  hasDueDateOnly: z.boolean().optional(),
+  allowResourceOnly: z.boolean().optional(),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional()
+});
+
 /** 順位ボード shell 続き取得（POST・旧 excludeRowIds 全送は後方互換のみ） */
-export const productionScheduleLeaderboardShellContinuationBodySchema = z
-  .object({
-    /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
-    snapshotId: z.string().uuid().optional(),
-    /**
-     * snapshot 並びでの次読み取り位置（0-based・既に返した行数）。
-     * shell の `nextCursor` をそのまま送る。`snapshotId` がある場合はこれを優先する。
-     */
-    cursor: z.number().int().min(0).max(5_000_000).optional(),
-    /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け */
-    excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
-    pageSize: z.coerce.number().int().min(1).max(160).optional(),
-    productNo: z.string().min(1).max(100).optional(),
-    q: z.string().min(1).max(200).optional(),
-    productNos: z.string().min(1).max(4000).optional(),
-    resourceCds: z.string().min(1).max(400).optional(),
-    resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
-    resourceCategory: z.enum(['grinding', 'cutting']).optional(),
-    machineName: z.string().min(1).max(200).optional(),
-    hasNoteOnly: z.boolean().optional(),
-    hasDueDateOnly: z.boolean().optional(),
-    allowResourceOnly: z.boolean().optional(),
-    targetDeviceScopeKey: z.string().min(1).max(200).optional()
-  })
-  .superRefine((data, ctx) => {
+export const productionScheduleLeaderboardShellContinuationBodySchema =
+  productionScheduleLeaderboardShellContinuationFieldsSchema.superRefine((data, ctx) => {
     const hasSnapshot = Boolean(data.snapshotId?.trim());
     const hasCursor = data.cursor !== undefined;
     const excludeLen = data.excludeRowIds?.length ?? 0;
@@ -95,6 +97,76 @@ export const productionScheduleLeaderboardShellContinuationBodySchema = z
       message: 'snapshotId が無い場合は excludeRowIds（1件以上）が必要です（snapshotId + cursor でも可）',
       path: ['excludeRowIds']
     });
+  });
+
+/** 順位ボード集約 API: スロット順の資源 CD（カンマ区切り・重複除去はサーバ側 parseCsvList） */
+export const productionScheduleLeaderboardBoardQuerySchema = productionScheduleLeaderboardPhasedQuerySchema.extend({
+  boardResourceCds: z.string().min(1).max(4000)
+});
+
+/** 集約 continue: 各スロットごとの snapshot / cursor（単一 continue と同じ制約をスライス単位で適用） */
+export const productionScheduleLeaderboardBoardContinueBodySchema = productionScheduleLeaderboardShellContinuationFieldsSchema
+  .omit({
+    snapshotId: true,
+    cursor: true,
+    excludeRowIds: true
+  })
+  .extend({
+    boardResourceCds: z.string().min(1).max(4000),
+    resourceSlices: z
+      .array(
+        z.object({
+          resourceCd: z.string().min(1).max(100),
+          snapshotId: z.string().uuid().optional(),
+          cursor: z.number().int().min(0).max(5_000_000).optional(),
+          excludeRowIds: z.array(z.string().uuid()).max(900).optional(),
+          hasMore: z.boolean()
+        })
+      )
+      .min(1)
+      .max(100)
+  })
+  .superRefine((data, ctx) => {
+    const expected = parseCsvList(data.boardResourceCds);
+    if (data.resourceSlices.length !== expected.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'resourceSlices の件数は boardResourceCds（カンマ区切り）の件数と一致させてください',
+        path: ['resourceSlices']
+      });
+      return;
+    }
+    for (let i = 0; i < expected.length; i += 1) {
+      if (data.resourceSlices[i]!.resourceCd !== expected[i]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'resourceSlices[i].resourceCd は boardResourceCds の順序・値と一致させてください',
+          path: ['resourceSlices', i, 'resourceCd']
+        });
+      }
+    }
+    for (let i = 0; i < data.resourceSlices.length; i += 1) {
+      const slice = data.resourceSlices[i]!;
+      if (!slice.hasMore) continue;
+      const hasSnapshot = Boolean(slice.snapshotId?.trim());
+      const hasCursor = slice.cursor !== undefined;
+      const excludeLen = slice.excludeRowIds?.length ?? 0;
+      if (hasSnapshot) {
+        if (hasCursor) continue;
+        if (excludeLen >= 1) continue;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'snapshotId 指定時は cursor、または後方互換として excludeRowIds（1件以上）が必要です',
+          path: ['resourceSlices', i, 'cursor']
+        });
+      } else if (excludeLen < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'snapshotId が無い場合は excludeRowIds（1件以上）が必要です',
+          path: ['resourceSlices', i, 'excludeRowIds']
+        });
+      }
+    }
   });
 
 export type ProductionScheduleLeaderboardShellContinuationBody = z.infer<

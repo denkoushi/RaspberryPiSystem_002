@@ -13,6 +13,10 @@ import {
   useKioskProductionScheduleLeaderboardTotal
 } from '../../../api/hooks';
 
+import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from './constants';
+
+import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
+
 function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
   return queryClient.invalidateQueries({
     predicate: (q) =>
@@ -36,31 +40,30 @@ function buildRowIdsKey(rows: readonly ProductionScheduleRow[]): string {
   return rows.map((row) => row.id).join('\0');
 }
 
-function getLeaderboardDebugRunId() {
-  if (typeof window === 'undefined') return `leaderboard-server-${Date.now()}`;
-  const key = 'cursor-debug-leaderboard-run-id';
+function getLeaderboardFanoutDebugRunId() {
+  if (typeof window === 'undefined') return `leaderboard-fanout-server-${Date.now()}`;
+  const key = 'cursor-debug-leaderboard-fanout-run-id';
   const existing = window.sessionStorage.getItem(key);
   if (existing) return existing;
-  const created = `leaderboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const created = `leaderboard-fanout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   window.sessionStorage.setItem(key, created);
   return created;
 }
 
-function postLeaderboardDebugLog(
+function postLeaderboardFanoutDebugLog(
   hypothesisId: string,
   location: string,
   message: string,
   data: Record<string, unknown>
 ) {
   if (typeof window === 'undefined') return;
-  const runId = getLeaderboardDebugRunId();
   // #region agent log
   fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7a86a1' },
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'dd2d0f' },
     body: JSON.stringify({
-      sessionId: '7a86a1',
-      runId,
+      sessionId: 'dd2d0f',
+      runId: getLeaderboardFanoutDebugRunId(),
       hypothesisId,
       location,
       message,
@@ -83,6 +86,10 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
    * @default true
    */
   includeDecorations?: boolean;
+  /**
+   * 複数カードで `leaderboard-shell` continue が同時多発しないようスロット取得（release は finally）
+   */
+  appendAcquire?: LeaderboardAppendAcquire;
 }) {
   const {
     leaderboardPhasedParams,
@@ -91,7 +98,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     refetchIntervalMs,
     macManualOrderV2,
     activeDeviceScopeKey,
-    includeDecorations = true
+    includeDecorations = true,
+    appendAcquire
   } = options;
 
   const queryClient = useQueryClient();
@@ -115,7 +123,12 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   const runIdRef = useRef(0);
   const lastSyncedShellSignatureRef = useRef<string | null>(null);
+  const shellStatusSignatureRef = useRef<string | null>(null);
+  const totalStatusSignatureRef = useRef<string | null>(null);
   const shellRowsRef = useRef<ProductionScheduleRow[]>([]);
+  const mergedRowsRef = useRef<ProductionScheduleRow[]>([]);
+  /** snapshot continue 用: total 未到達で effect が再実行されてもカーソルを失わない */
+  const snapshotContinueCursorRef = useRef<number | null>(null);
   const hasFreshShell = shellQuery.isSuccess && !shellQuery.isPlaceholderData;
   const hasFreshTotal = totalQuery.isSuccess && !totalQuery.isPlaceholderData;
   const shellRows = useMemo(() => shellQuery.data?.rows ?? [], [shellQuery.data?.rows]);
@@ -125,111 +138,203 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     () => JSON.parse(paramsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams,
     [paramsKey]
   );
-  const continuePageSize = stableLeaderboardPhasedParams.pageSize ?? 160;
+  const continuePageSize = stableLeaderboardPhasedParams.pageSize ?? LEADER_ORDER_BOARD_SHELL_PAGE_SIZE;
   const continueBaseBody = useMemo(
     () => phasedParamsToExcludeBody(stableLeaderboardPhasedParams),
     [stableLeaderboardPhasedParams]
   );
   const shellSyncSignature = `${shellQuery.dataUpdatedAt}:${shellRowsKey}`;
+  const debugResourceCd = useMemo(() => {
+    const value = stableLeaderboardPhasedParams.resourceCds;
+    return typeof value === 'string' ? value : '';
+  }, [stableLeaderboardPhasedParams.resourceCds]);
 
   useEffect(() => {
     shellRowsRef.current = shellRows;
   }, [shellRows, shellRowsKey]);
 
   useEffect(() => {
+    mergedRowsRef.current = mergedRows;
+  }, [mergedRows]);
+
+  useEffect(() => {
+    if (!scheduleEnabled) return;
+    const signature = JSON.stringify({
+      resourceCd: debugResourceCd,
+      isLoading: shellQuery.isLoading,
+      isFetching: shellQuery.isFetching,
+      hasFreshShell,
+      rowCount: shellRowCount,
+      hasMore: shellQuery.data?.hasMore ?? null,
+      nextCursor: shellQuery.data?.nextCursor ?? null,
+      dataUpdatedAt: shellQuery.dataUpdatedAt
+    });
+    if (shellStatusSignatureRef.current === signature) return;
+    shellStatusSignatureRef.current = signature;
+    // #region agent log
+    postLeaderboardFanoutDebugLog(
+      'H1',
+      'useLeaderboardPhasedScheduleWithAutoAppend.ts:shell-status',
+      'leaderboard shell status changed',
+      {
+        resourceCd: debugResourceCd,
+        isLoading: shellQuery.isLoading,
+        isFetching: shellQuery.isFetching,
+        hasFreshShell,
+        rowCount: shellRowCount,
+        hasMore: shellQuery.data?.hasMore ?? null,
+        nextCursor: shellQuery.data?.nextCursor ?? null,
+        dataUpdatedAt: shellQuery.dataUpdatedAt
+      }
+    );
+    // #endregion
+  }, [
+    debugResourceCd,
+    hasFreshShell,
+    scheduleEnabled,
+    shellQuery.data?.hasMore,
+    shellQuery.data?.nextCursor,
+    shellQuery.dataUpdatedAt,
+    shellQuery.isFetching,
+    shellQuery.isLoading,
+    shellRowCount
+  ]);
+
+  useEffect(() => {
+    if (!scheduleEnabled) return;
+    const signature = JSON.stringify({
+      resourceCd: debugResourceCd,
+      isLoading: totalQuery.isLoading,
+      isFetching: totalQuery.isFetching,
+      hasFreshTotal,
+      total: totalQuery.data?.total ?? null,
+      dataUpdatedAt: totalQuery.dataUpdatedAt
+    });
+    if (totalStatusSignatureRef.current === signature) return;
+    totalStatusSignatureRef.current = signature;
+    // #region agent log
+    postLeaderboardFanoutDebugLog(
+      'H2',
+      'useLeaderboardPhasedScheduleWithAutoAppend.ts:total-status',
+      'leaderboard total status changed',
+      {
+        resourceCd: debugResourceCd,
+        isLoading: totalQuery.isLoading,
+        isFetching: totalQuery.isFetching,
+        hasFreshTotal,
+        total: totalQuery.data?.total ?? null,
+        dataUpdatedAt: totalQuery.dataUpdatedAt
+      }
+    );
+    // #endregion
+  }, [
+    debugResourceCd,
+    hasFreshTotal,
+    scheduleEnabled,
+    totalQuery.data?.total,
+    totalQuery.dataUpdatedAt,
+    totalQuery.isFetching,
+    totalQuery.isLoading
+  ]);
+
+  useEffect(() => {
     setMergedRows([]);
     setIsAppending(false);
     setAppendError(null);
     lastSyncedShellSignatureRef.current = null;
-    // #region agent log
-    postLeaderboardDebugLog(
-      'H1',
-      'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:params-reset',
-      'leaderboard params reset',
-      {
-        paramsKey,
-        scheduleEnabled
-      }
-    );
-    // #endregion
+    snapshotContinueCursorRef.current = null;
   }, [paramsKey, scheduleEnabled]);
 
   useEffect(() => {
     if (!hasFreshShell || shellRowCount === 0) {
       if (mergedRows.length > 0) setMergedRows([]);
       lastSyncedShellSignatureRef.current = null;
+      snapshotContinueCursorRef.current = null;
       return;
     }
     if (lastSyncedShellSignatureRef.current !== shellSyncSignature) {
       lastSyncedShellSignatureRef.current = shellSyncSignature;
+      snapshotContinueCursorRef.current = null;
       setMergedRows(shellRows);
     }
   }, [hasFreshShell, mergedRows.length, shellRowCount, shellRows, shellSyncSignature]);
 
   useEffect(() => {
-    if (!scheduleEnabled || !hasFreshShell || !hasFreshTotal || shellRowCount === 0) {
+    if (!scheduleEnabled || !hasFreshShell || shellRowCount === 0) {
       return;
     }
 
-    const total = totalQuery.data.total;
+    const resolvedTotal = hasFreshTotal ? totalQuery.data?.total : undefined;
     const runId = ++runIdRef.current;
     let cancelled = false;
 
-    // #region agent log
-    postLeaderboardDebugLog(
-      'H2',
-      'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-gate',
-      'leaderboard append gate opened',
-      {
-        paramsKey,
-        shellRowCount,
-        total: totalQuery.data.total,
-        shellDataUpdatedAt: shellQuery.dataUpdatedAt,
-        totalDataUpdatedAt: totalQuery.dataUpdatedAt
-      }
-    );
-    // #endregion
-
     void (async () => {
       try {
-        let next = shellRowsRef.current.slice();
-        let iterationCount = 0;
+        const shellSnap = shellRowsRef.current;
+        const mergedSnap = mergedRowsRef.current;
+        let next: ProductionScheduleRow[];
+        if (
+          mergedSnap.length >= shellSnap.length &&
+          shellSnap.length > 0 &&
+          shellSnap.every((r, i) => mergedSnap[i]?.id === r.id)
+        ) {
+          next = mergedSnap.slice();
+        } else {
+          next = shellSnap.slice();
+        }
         const snapshotIdForSession = shellQuery.data?.snapshotId?.trim();
-        const shellHasMore = shellQuery.data?.hasMore ?? next.length < total;
-        /** cursor 方式: shell の nextCursor を初期値に。無ければ返却行数。 */
-        let cursor =
-          typeof shellQuery.data?.nextCursor === 'number'
-            ? shellQuery.data.nextCursor
-            : shellRowsRef.current.length;
+        const shellHasMore =
+          shellQuery.data?.hasMore ??
+          (typeof resolvedTotal === 'number' ? next.length < resolvedTotal : true);
+        /** cursor 方式: shell の nextCursor を初期値に。無ければ返却行数。再開時は ref を優先。 */
+        let cursor: number;
+        if (
+          snapshotIdForSession &&
+          next.length > shellSnap.length &&
+          shellSnap.every((r, i) => next[i]?.id === r.id) &&
+          snapshotContinueCursorRef.current != null
+        ) {
+          cursor = snapshotContinueCursorRef.current;
+        } else {
+          cursor =
+            typeof shellQuery.data?.nextCursor === 'number'
+              ? shellQuery.data.nextCursor
+              : shellSnap.length;
+        }
+        if (snapshotIdForSession) {
+          snapshotContinueCursorRef.current = cursor;
+        }
         let hasMore = snapshotIdForSession ? shellHasMore : true;
 
-        if (next.length >= total) {
+        if (typeof resolvedTotal === 'number' && next.length >= resolvedTotal) {
           if (runId === runIdRef.current) setMergedRows(next);
           return;
         }
 
+        // #region agent log
+        postLeaderboardFanoutDebugLog(
+          'H5',
+          'useLeaderboardPhasedScheduleWithAutoAppend.ts:append-start',
+          'leaderboard append session started',
+          {
+            resourceCd: debugResourceCd,
+            shellRowCount: shellSnap.length,
+            mergedRowCount: next.length,
+            resolvedTotal: resolvedTotal ?? null,
+            shellHasMore,
+            snapshotIdPresent: Boolean(snapshotIdForSession),
+            cursor
+          }
+        );
+        // #endregion
         if (runId === runIdRef.current) setAppendError(null);
         setIsAppending(true);
-        while (!cancelled && runId === runIdRef.current && next.length < total && hasMore) {
-          iterationCount += 1;
-          // #region agent log
-          postLeaderboardDebugLog(
-            'H7',
-            'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-iteration',
-            'leaderboard append iteration started',
-            {
-              paramsKey,
-              runId,
-              iterationCount,
-              currentRowCount: next.length,
-              total,
-              continuePageSize,
-              cursor,
-              snapshotMode: Boolean(snapshotIdForSession)
-            }
-          );
-          // #endregion
-
+        while (
+          !cancelled &&
+          runId === runIdRef.current &&
+          hasMore &&
+          (typeof resolvedTotal !== 'number' || next.length < resolvedTotal)
+        ) {
           const continuePayload =
             snapshotIdForSession != null && snapshotIdForSession.length > 0
               ? {
@@ -244,7 +349,16 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
                   excludeRowIds: next.map((r) => r.id)
                 };
 
-          const more = await postKioskProductionScheduleLeaderboardShellContinue(continuePayload);
+          let release: (() => void) | undefined;
+          if (appendAcquire) {
+            release = await appendAcquire();
+          }
+          let more: Awaited<ReturnType<typeof postKioskProductionScheduleLeaderboardShellContinue>>;
+          try {
+            more = await postKioskProductionScheduleLeaderboardShellContinue(continuePayload);
+          } finally {
+            release?.();
+          }
 
           if (more.snapshotExpired) {
             await Promise.all([
@@ -262,6 +376,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
               if (typeof more.nextCursor === 'number') {
                 cursor = more.nextCursor;
               }
+              snapshotContinueCursorRef.current = cursor;
               if (!hasMore) break;
               if (cursor <= prevCursor) break;
               continue;
@@ -275,27 +390,15 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
           if (runId === runIdRef.current) setMergedRows(next);
           cursor =
             typeof more.nextCursor === 'number' ? more.nextCursor : cursor + more.rows.length;
+          if (snapshotIdForSession) {
+            snapshotContinueCursorRef.current = cursor;
+          }
           hasMore =
             typeof more.hasMore === 'boolean'
               ? more.hasMore
-              : cursor < total || more.rows.length >= continuePageSize;
+              : (typeof resolvedTotal === 'number' ? cursor < resolvedTotal : false) ||
+                more.rows.length >= continuePageSize;
         }
-        // #region agent log
-        postLeaderboardDebugLog(
-          'H7',
-          'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-finished',
-          'leaderboard append run finished',
-          {
-            paramsKey,
-            runId,
-            iterationCount,
-            finalRowCount: next.length,
-            total,
-            cancelled,
-            superseded: runId !== runIdRef.current
-          }
-        );
-        // #endregion
       } catch (e) {
         if (!cancelled && runId === runIdRef.current) {
           setAppendError(e instanceof Error ? e : new Error(String(e)));
@@ -311,6 +414,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   }, [
     continueBaseBody,
     continuePageSize,
+    debugResourceCd,
     leaderboardPhasedParams,
     paramsKey,
     queryClient,
@@ -324,7 +428,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     shellRowsKey,
     totalQuery.data?.total,
     hasFreshTotal,
-    totalQuery.dataUpdatedAt
+    totalQuery.dataUpdatedAt,
+    appendAcquire
   ]);
 
   const leaderboardDecorationsPayload = useMemo(() => {
@@ -358,7 +463,10 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   const mergedLeaderboardScheduleData = useMemo((): ProductionScheduleListResponse | undefined => {
     if (!shellQuery.data) return undefined;
     const chips = includeDecorations ? decorationsQuery.data?.leaderboardFooterChipsByPartKey : undefined;
-    const total = totalQuery.data?.total ?? mergedRows.length;
+    const total =
+      hasFreshTotal && typeof totalQuery.data?.total === 'number'
+        ? totalQuery.data.total
+        : mergedRows.length;
     const rows = mergedRows.map((row): ProductionScheduleRow => {
       if (!includeDecorations) return row;
       const deco = leaderboardDecorationByRowId.get(row.id);
@@ -377,14 +485,15 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     leaderboardDecorationByRowId,
     mergedRows,
     shellQuery.data,
-    totalQuery.data?.total
+    totalQuery.data?.total,
+    hasFreshTotal
   ]);
 
   const scheduleQuery = useMemo(
     () => ({
       data: mergedLeaderboardScheduleData,
       isLoading: shellQuery.isLoading,
-      isError: shellQuery.isError || totalQuery.isError,
+      isError: shellQuery.isError || (totalQuery.isError && mergedLeaderboardScheduleData == null),
       isFetching:
         shellQuery.isFetching ||
         totalQuery.isFetching ||

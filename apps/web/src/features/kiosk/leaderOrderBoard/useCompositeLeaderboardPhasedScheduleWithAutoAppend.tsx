@@ -1,125 +1,79 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { useKioskProductionScheduleLeaderboardDecorations } from '../../../api/hooks';
+import {
+  postKioskProductionScheduleLeaderboardBoardContinue,
+  type KioskProductionScheduleLeaderboardBoardContinuePayload,
+  type KioskProductionScheduleLeaderboardBoardQueryParams,
+  type KioskProductionScheduleLeaderboardPhasedQueryParams,
+  type ProductionScheduleLeaderboardBoardResponse,
+  type ProductionScheduleListResponse
+} from '../../../api/client';
+import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
 import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from './constants';
-import { useLeaderboardPhasedScheduleWithAutoAppend } from './useLeaderboardPhasedScheduleWithAutoAppend';
 
-import type {
-  KioskProductionScheduleLeaderboardPhasedQueryParams,
-  ProductionScheduleListResponse,
-  ProductionScheduleRow
-} from '../../../api/client';
-
-function buildRowIdsKey(rows: readonly ProductionScheduleRow[]): string {
-  return rows.map((row) => row.id).join('\0');
+function getCompositeLeaderboardDebugRunId() {
+  if (typeof window === 'undefined') return `leaderboard-composite-server-${Date.now()}`;
+  const key = 'cursor-debug-leaderboard-composite-run-id';
+  const existing = window.sessionStorage.getItem(key);
+  if (existing) return existing;
+  const created = `leaderboard-composite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  window.sessionStorage.setItem(key, created);
+  return created;
 }
 
-export type LeaderboardResourceCardFeedSlice = {
-  rowsKey: string;
-  mergedRows: ProductionScheduleRow[];
-  total: number;
-  appendError: Error | null;
-  isShellLoading: boolean;
-  isShellError: boolean;
-  isFetching: boolean;
-  page: number;
-  pageSize: number;
-};
-
-function feedSliceEqual(a: LeaderboardResourceCardFeedSlice, b: LeaderboardResourceCardFeedSlice): boolean {
-  return (
-    a.rowsKey === b.rowsKey &&
-    a.total === b.total &&
-    (a.appendError?.message ?? '') === (b.appendError?.message ?? '') &&
-    a.isShellLoading === b.isShellLoading &&
-    a.isShellError === b.isShellError &&
-    a.isFetching === b.isFetching &&
-    a.page === b.page &&
-    a.pageSize === b.pageSize
-  );
+function postCompositeLeaderboardDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>
+) {
+  if (typeof window === 'undefined') return;
+  // #region agent log
+  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'dd2d0f' },
+    body: JSON.stringify({
+      sessionId: 'dd2d0f',
+      runId: getCompositeLeaderboardDebugRunId(),
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now()
+    })
+  }).catch(() => {});
+  // #endregion
 }
 
-type FeedBridgeProps = {
-  resourceCd: string;
-  leaderboardPhasedBaseParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
-  scheduleEnabled: boolean;
-  pauseRefetch: boolean;
-  refetchIntervalMs: number;
-  macManualOrderV2: boolean;
-  activeDeviceScopeKey: string;
-  onFeedSlice: (resourceCd: string, slice: LeaderboardResourceCardFeedSlice) => void;
-};
+function buildBoardContinuePayload(
+  base: KioskProductionScheduleLeaderboardBoardQueryParams,
+  resourceCdsOrdered: string[],
+  board: ProductionScheduleLeaderboardBoardResponse
+): KioskProductionScheduleLeaderboardBoardContinuePayload {
+  const { page: _p, pageSize: _ps, ...rest } = base;
+  void _p;
+  void _ps;
+  return {
+    ...rest,
+    boardResourceCds: resourceCdsOrdered.join(','),
+    resourceSlices: board.resources.map((r) => ({
+      resourceCd: r.resourceCd,
+      snapshotId: r.snapshotId,
+      cursor: r.nextCursor,
+      hasMore: r.hasMore
+    })),
+    pageSize: board.pageSize ?? LEADER_ORDER_BOARD_SHELL_PAGE_SIZE
+  };
+}
 
 /**
- * 1 資源 CD 分の phased leaderboard feed。装飾は親で一括付与するため `includeDecorations: false`。
+ * 多資源カードの順位ボード取得（集約 API 1 本＋サーバ側 shell 相当をスロット順に連結）。
+ * 取得済み行の装飾は API 応答に同梱される（取得完了を待たずに段階的に表示）。
  */
-function LeaderboardResourcePhasedFeedBridge(props: FeedBridgeProps) {
-  const {
-    resourceCd,
-    leaderboardPhasedBaseParams,
-    scheduleEnabled,
-    pauseRefetch,
-    refetchIntervalMs,
-    macManualOrderV2,
-    activeDeviceScopeKey,
-    onFeedSlice
-  } = props;
-
-  const leaderboardPhasedParams = useMemo(
-    () => ({
-      ...leaderboardPhasedBaseParams,
-      resourceCds: resourceCd
-    }),
-    [leaderboardPhasedBaseParams, resourceCd]
-  );
-
-  const { scheduleQuery, appendError } = useLeaderboardPhasedScheduleWithAutoAppend({
-    leaderboardPhasedParams,
-    scheduleEnabled,
-    pauseRefetch,
-    refetchIntervalMs,
-    macManualOrderV2,
-    activeDeviceScopeKey,
-    includeDecorations: false
-  });
-
-  const mergedRows = useMemo(() => scheduleQuery.data?.rows ?? [], [scheduleQuery.data?.rows]);
-  const rowsKey = useMemo(() => buildRowIdsKey(mergedRows), [mergedRows]);
-
-  const onFeedSliceRef = useRef(onFeedSlice);
-  onFeedSliceRef.current = onFeedSlice;
-
-  useEffect(() => {
-    onFeedSliceRef.current(resourceCd, {
-      rowsKey,
-      mergedRows,
-      total: scheduleQuery.data?.total ?? mergedRows.length,
-      appendError,
-      isShellLoading: scheduleQuery.isLoading,
-      isShellError: scheduleQuery.isError,
-      isFetching: scheduleQuery.isFetching,
-      page: scheduleQuery.data?.page ?? 1,
-      pageSize: scheduleQuery.data?.pageSize ?? LEADER_ORDER_BOARD_SHELL_PAGE_SIZE
-    });
-  }, [
-    appendError,
-    mergedRows,
-    resourceCd,
-    rowsKey,
-    scheduleQuery.data?.page,
-    scheduleQuery.data?.pageSize,
-    scheduleQuery.data?.total,
-    scheduleQuery.isError,
-    scheduleQuery.isFetching,
-    scheduleQuery.isLoading
-  ]);
-
-  return null;
-}
-
 export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
-  /** `resourceCds` を含めない（各カードで上書きする） */
+  /** `resourceCds` / `boardResourceCds` を含めない（集約 params で上書きする） */
   leaderboardPhasedBaseParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
   /** スロット順など、画面上のカード並び */
   resourceCdsOrdered: string[];
@@ -136,9 +90,9 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     isFetching: boolean;
   };
   appendError: Error | null;
-  /** ページ直下で描画して各カード feed をマウントする */
+  /** 旧カード別 feed マウント用（集約化により null） */
   feedMounts: ReactNode;
-  /** カード単位で total > rows のとき真（従来の listIncomplete を一般化） */
+  /** いずれかのスロットで総件数に未到達のとき真（左ツールスタック等の UI 用） */
   listIncomplete: boolean;
 } {
   const {
@@ -151,124 +105,125 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     activeDeviceScopeKey
   } = options;
 
-  const baseKey = useMemo(() => JSON.stringify(leaderboardPhasedBaseParams), [leaderboardPhasedBaseParams]);
-  const resourcesKey = useMemo(() => resourceCdsOrdered.join('\0'), [resourceCdsOrdered]);
-  const resetKey = `${baseKey}@@${resourcesKey}`;
+  const queryClient = useQueryClient();
 
-  const [feedMap, setFeedMap] = useState<Partial<Record<string, LeaderboardResourceCardFeedSlice>>>({});
-
-  useEffect(() => {
-    setFeedMap({});
-  }, [resetKey]);
-
-  useEffect(() => {
-    if (!scheduleEnabled) setFeedMap({});
-  }, [scheduleEnabled]);
-
-  const onFeedSlice = useCallback((resourceCd: string, slice: LeaderboardResourceCardFeedSlice) => {
-    setFeedMap((prev) => {
-      const cur = prev[resourceCd];
-      if (cur && feedSliceEqual(cur, slice)) return prev;
-      return { ...prev, [resourceCd]: slice };
-    });
-  }, []);
-
-  const feedMounts = useMemo(
-    () => (
-      <>
-        {resourceCdsOrdered.map((resourceCd) => (
-          <LeaderboardResourcePhasedFeedBridge
-            key={`${resetKey}:${resourceCd}`}
-            resourceCd={resourceCd}
-            leaderboardPhasedBaseParams={leaderboardPhasedBaseParams}
-            scheduleEnabled={scheduleEnabled && resourceCdsOrdered.length > 0}
-            pauseRefetch={pauseRefetch}
-            refetchIntervalMs={refetchIntervalMs}
-            macManualOrderV2={macManualOrderV2}
-            activeDeviceScopeKey={activeDeviceScopeKey}
-            onFeedSlice={onFeedSlice}
-          />
-        ))}
-      </>
-    ),
-    [
-      activeDeviceScopeKey,
-      leaderboardPhasedBaseParams,
-      macManualOrderV2,
-      onFeedSlice,
-      pauseRefetch,
-      refetchIntervalMs,
-      resetKey,
-      resourceCdsOrdered,
-      scheduleEnabled
-    ]
-  );
-
-  const mergedRowsOrdered = useMemo(() => {
-    const out: ProductionScheduleRow[] = [];
-    for (const rc of resourceCdsOrdered) {
-      const slice = feedMap[rc];
-      if (slice) out.push(...slice.mergedRows);
-    }
-    return out;
-  }, [feedMap, resourceCdsOrdered]);
-
-  const decorationsPayload = useMemo(() => {
-    if (!scheduleEnabled || mergedRowsOrdered.length === 0) return undefined;
+  const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
+    if (!scheduleEnabled || resourceCdsOrdered.length === 0) return undefined;
     return {
-      rowIds: mergedRowsOrdered.map((r) => r.id),
-      ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
-        ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
-        : {})
+      ...leaderboardPhasedBaseParams,
+      boardResourceCds: resourceCdsOrdered.join(',')
     };
-  }, [activeDeviceScopeKey, macManualOrderV2, mergedRowsOrdered, scheduleEnabled]);
+  }, [leaderboardPhasedBaseParams, resourceCdsOrdered, scheduleEnabled]);
 
-  const decorationsQuery = useKioskProductionScheduleLeaderboardDecorations(decorationsPayload, {
-    enabled: scheduleEnabled && mergedRowsOrdered.length > 0 && decorationsPayload != null,
+  const paramsKey = useMemo(() => JSON.stringify(boardQueryParams), [boardQueryParams]);
+
+  const [appendOverride, setAppendOverride] = useState<ProductionScheduleLeaderboardBoardResponse | null>(null);
+  const [appendError, setAppendError] = useState<Error | null>(null);
+  const [isAppending, setIsAppending] = useState(false);
+  const appendRunIdRef = useRef(0);
+  /** 同一 shell 応答（dataUpdatedAt）に対する追補セッションを一度だけ開始する */
+  const appendSessionForShellAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    appendSessionForShellAtRef.current = null;
+    setAppendOverride(null);
+    setAppendError(null);
+  }, [paramsKey]);
+
+  const boardQuery = useKioskProductionScheduleLeaderboardBoard(boardQueryParams, {
+    enabled: scheduleEnabled && resourceCdsOrdered.length > 0,
     pauseRefetch,
     refetchIntervalMs
   });
 
-  const leaderboardDecorationByRowId = useMemo(() => {
-    const m = new Map<string, { resolvedMachineName: string | null; customerName: string | null }>();
-    for (const d of decorationsQuery.data?.rowDecorations ?? []) {
-      m.set(d.id, {
-        resolvedMachineName: d.resolvedMachineName ?? null,
-        customerName: d.customerName ?? null
-      });
-    }
-    return m;
-  }, [decorationsQuery.data?.rowDecorations]);
-
-  const allFeedsPresent =
-    scheduleEnabled &&
-    resourceCdsOrdered.length > 0 &&
-    resourceCdsOrdered.every((rc) => feedMap[rc] != null);
-
-  const aggregatedAppendError = useMemo(() => {
-    for (const rc of resourceCdsOrdered) {
-      const e = feedMap[rc]?.appendError;
-      if (e) return e;
-    }
-    return null;
-  }, [feedMap, resourceCdsOrdered]);
+  const displayBoard = appendOverride ?? boardQuery.data;
 
   const listIncomplete = useMemo(() => {
-    if (!scheduleEnabled || resourceCdsOrdered.length === 0) return false;
-    return resourceCdsOrdered.some((rc) => {
-      const slice = feedMap[rc];
-      if (!slice) return false;
-      return slice.total > slice.mergedRows.length;
-    });
-  }, [feedMap, resourceCdsOrdered, scheduleEnabled]);
+    if (!displayBoard) return false;
+    return displayBoard.resources.some((r) => r.hasMore || (typeof r.nextCursor === 'number' && r.nextCursor < r.total));
+  }, [displayBoard]);
 
-  const totalSum = useMemo(() => {
-    let s = 0;
-    for (const rc of resourceCdsOrdered) {
-      s += feedMap[rc]?.total ?? 0;
-    }
-    return s;
-  }, [feedMap, resourceCdsOrdered]);
+  const compositeStatusSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!scheduleEnabled) return;
+    const signature = JSON.stringify({
+      resources: resourceCdsOrdered,
+      mergedRowCount: displayBoard?.rows.length ?? 0,
+      totalSum: displayBoard?.total ?? 0,
+      listIncomplete,
+      boardSource: appendOverride != null ? 'append-override' : 'query'
+    });
+    if (compositeStatusSignatureRef.current === signature) return;
+    compositeStatusSignatureRef.current = signature;
+    // #region agent log
+    postCompositeLeaderboardDebugLog(
+      'H4',
+      'useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx:composite-status',
+      'leaderboard composite board status',
+      {
+        resources: resourceCdsOrdered,
+        mergedRowCount: displayBoard?.rows.length ?? 0,
+        totalSum: displayBoard?.total ?? 0,
+        listIncomplete,
+        appendOverride: appendOverride != null
+      }
+    );
+    // #endregion
+  }, [appendOverride, displayBoard?.rows.length, displayBoard?.total, listIncomplete, resourceCdsOrdered, scheduleEnabled]);
+
+  useEffect(() => {
+    if (!scheduleEnabled || !boardQuery.isSuccess || !boardQuery.data) return;
+    if (!boardQuery.data.resources.some((r) => r.hasMore)) return;
+
+    const shellAt = boardQuery.dataUpdatedAt;
+    if (appendSessionForShellAtRef.current === shellAt) return;
+    appendSessionForShellAtRef.current = shellAt;
+
+    const runId = ++appendRunIdRef.current;
+    let cancelled = false;
+
+    const fullBoardParams: KioskProductionScheduleLeaderboardBoardQueryParams = {
+      ...leaderboardPhasedBaseParams,
+      boardResourceCds: resourceCdsOrdered.join(',')
+    };
+
+    void (async () => {
+      try {
+        let cur: ProductionScheduleLeaderboardBoardResponse = boardQuery.data!;
+        while (!cancelled && runId === appendRunIdRef.current && cur.resources.some((r) => r.hasMore)) {
+          setIsAppending(true);
+          setAppendError(null);
+          const next = await postKioskProductionScheduleLeaderboardBoardContinue(
+            buildBoardContinuePayload(fullBoardParams, resourceCdsOrdered, cur)
+          );
+          if (next.snapshotExpired) {
+            await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+            break;
+          }
+          setAppendOverride(next);
+          cur = next;
+        }
+      } catch (e) {
+        if (!cancelled && runId === appendRunIdRef.current) {
+          setAppendError(e instanceof Error ? e : new Error(String(e)));
+        }
+      } finally {
+        if (runId === appendRunIdRef.current) setIsAppending(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    boardQuery.data,
+    boardQuery.dataUpdatedAt,
+    boardQuery.isSuccess,
+    leaderboardPhasedBaseParams,
+    queryClient,
+    resourceCdsOrdered,
+    scheduleEnabled
+  ]);
 
   const scheduleQuery = useMemo(() => {
     if (!scheduleEnabled || resourceCdsOrdered.length === 0) {
@@ -280,60 +235,48 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       };
     }
 
-    const anyLoading = resourceCdsOrdered.some((rc) => {
-      const slice = feedMap[rc];
-      return !slice || slice.isShellLoading;
-    });
-    const anyError = resourceCdsOrdered.some((rc) => feedMap[rc]?.isShellError === true);
-    const anyFeedFetching = resourceCdsOrdered.some((rc) => feedMap[rc]?.isFetching === true);
+    if (!displayBoard) {
+      return {
+        data: undefined as ProductionScheduleListResponse | undefined,
+        isLoading: boardQuery.isLoading,
+        isError: boardQuery.isError,
+        isFetching: boardQuery.isFetching || isAppending
+      };
+    }
 
-    const chips = decorationsQuery.data?.leaderboardFooterChipsByPartKey;
-    const first = resourceCdsOrdered[0] ? feedMap[resourceCdsOrdered[0]!] : undefined;
-    const page = first?.page ?? 1;
-    const pageSize = first?.pageSize ?? mergedRowsOrdered.length;
-
-    const rows =
-      allFeedsPresent || mergedRowsOrdered.length > 0
-        ? mergedRowsOrdered.map((row): ProductionScheduleRow => {
-            const deco = leaderboardDecorationByRowId.get(row.id);
-            return deco ? { ...row, ...deco } : row;
-          })
-        : [];
-
-    const data: ProductionScheduleListResponse | undefined =
-      allFeedsPresent || rows.length > 0
-        ? {
-            page,
-            pageSize,
-            total: totalSum,
-            rows,
-            ...(chips ? { leaderboardFooterChipsByPartKey: chips } : {})
-          }
-        : undefined;
+    const data: ProductionScheduleListResponse = {
+      page: displayBoard.page,
+      pageSize: displayBoard.pageSize,
+      total: displayBoard.total,
+      rows: displayBoard.rows,
+      ...(displayBoard.leaderboardFooterChipsByPartKey
+        ? { leaderboardFooterChipsByPartKey: displayBoard.leaderboardFooterChipsByPartKey }
+        : {})
+    };
 
     return {
       data,
-      isLoading: anyLoading,
-      isError: anyError,
-      isFetching: anyFeedFetching || (decorationsPayload != null && decorationsQuery.isFetching)
+      isLoading: boardQuery.isLoading && displayBoard.rows.length === 0,
+      isError: boardQuery.isError,
+      isFetching: boardQuery.isFetching || isAppending
     };
   }, [
-    allFeedsPresent,
-    decorationsPayload,
-    decorationsQuery.data?.leaderboardFooterChipsByPartKey,
-    decorationsQuery.isFetching,
-    feedMap,
-    leaderboardDecorationByRowId,
-    mergedRowsOrdered,
-    resourceCdsOrdered,
-    scheduleEnabled,
-    totalSum
+    boardQuery.isError,
+    boardQuery.isFetching,
+    boardQuery.isLoading,
+    displayBoard,
+    isAppending,
+    resourceCdsOrdered.length,
+    scheduleEnabled
   ]);
+
+  void macManualOrderV2;
+  void activeDeviceScopeKey;
 
   return {
     scheduleQuery,
-    appendError: aggregatedAppendError,
-    feedMounts,
+    appendError,
+    feedMounts: null,
     listIncomplete
   };
 }

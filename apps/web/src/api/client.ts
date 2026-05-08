@@ -830,6 +830,60 @@ export async function postKioskProductionScheduleLeaderboardDecorations(payload:
   return data;
 }
 
+/** 順位ボード集約 GET: `boardResourceCds` にスロット順の資源（カンマ区切り） */
+export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProductionScheduleLeaderboardPhasedQueryParams & {
+  boardResourceCds: string;
+};
+
+export type LeaderboardBoardResourceSliceResponse = {
+  resourceCd: string;
+  snapshotId?: string;
+  nextCursor?: number;
+  hasMore: boolean;
+  total: number;
+  pageSize: number;
+};
+
+export type ProductionScheduleLeaderboardBoardResponse = ProductionScheduleListResponse & {
+  snapshotExpired?: boolean;
+  resources: LeaderboardBoardResourceSliceResponse[];
+};
+
+export async function getKioskProductionScheduleLeaderboardBoard(
+  params: KioskProductionScheduleLeaderboardBoardQueryParams
+) {
+  const { data } = await api.get<ProductionScheduleLeaderboardBoardResponse>(
+    '/kiosk/production-schedule/leaderboard-board',
+    { params }
+  );
+  return data;
+}
+
+export type KioskProductionScheduleLeaderboardBoardContinuePayload = Omit<
+  KioskProductionScheduleLeaderboardBoardQueryParams,
+  'page' | 'pageSize'
+> & {
+  boardResourceCds: string;
+  resourceSlices: Array<{
+    resourceCd: string;
+    snapshotId?: string;
+    cursor?: number;
+    excludeRowIds?: string[];
+    hasMore: boolean;
+  }>;
+  pageSize?: number;
+};
+
+export async function postKioskProductionScheduleLeaderboardBoardContinue(
+  payload: KioskProductionScheduleLeaderboardBoardContinuePayload
+) {
+  const { data } = await api.post<ProductionScheduleLeaderboardBoardResponse>(
+    '/kiosk/production-schedule/leaderboard-board/continue',
+    payload
+  );
+  return data;
+}
+
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
 export type MobilePlacementRegisteredShelfEntry = RegisteredShelfEntryDto;

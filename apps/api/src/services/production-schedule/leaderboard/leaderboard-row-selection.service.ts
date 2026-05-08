@@ -244,8 +244,19 @@ async function queryLeaderboardShellFillerRows(params: {
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   pSorted: LeaderboardScheduleRowSql[];
+  takeLimit?: number;
+  /** priority 集合外で SQL から除く id（返却済み行・既取得フィラーなど） */
+  additionalExcludeIds?: readonly string[];
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const { commonWhere, processingOrderScalar, locationKey, siteScopedGlobalRankLocation, pSorted } = params;
+  const {
+    commonWhere,
+    processingOrderScalar,
+    locationKey,
+    siteScopedGlobalRankLocation,
+    pSorted,
+    takeLimit,
+    additionalExcludeIds
+  } = params;
 
   const priorityIdParts = pSorted.map((r) => Prisma.sql`${r.id}`);
   const priorityExcludeSql =
@@ -253,7 +264,22 @@ async function queryLeaderboardShellFillerRows(params: {
       ? Prisma.sql`AND NOT ("CsvDashboardRow"."id" IN (${Prisma.join(priorityIdParts)}))`
       : Prisma.empty;
 
-  return prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
+  const extraIds = Array.from(
+    new Set(
+      (additionalExcludeIds ?? [])
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0)
+    )
+  );
+  const additionalExcludeSql =
+    extraIds.length > 0
+      ? Prisma.sql`AND NOT ("CsvDashboardRow"."id" IN (${Prisma.join(extraIds.map((id) => Prisma.sql`${id}`))}))`
+      : Prisma.empty;
+
+  const takeLimitSql =
+    takeLimit != null ? Prisma.sql`LIMIT ${Math.max(1, Math.floor(takeLimit))}` : Prisma.empty;
+
+  const raw = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
     SELECT
       "CsvDashboardRow"."id",
       NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
@@ -301,6 +327,7 @@ async function queryLeaderboardShellFillerRows(params: {
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE ${commonWhere}
       ${priorityExcludeSql}
+      ${additionalExcludeSql}
     ORDER BY
       ${dueSortExpr} ASC NULLS LAST,
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
@@ -311,7 +338,9 @@ async function queryLeaderboardShellFillerRows(params: {
       END) ASC NULLS LAST,
       ("CsvDashboardRow"."rowData"->>'FHINCD') ASC,
       "CsvDashboardRow"."id"::text ASC
+    ${takeLimitSql}
   `;
+  return raw ?? [];
 }
 
 /**
@@ -351,7 +380,105 @@ function mergeLeaderboardShellPriorityAndFillerFully(
 }
 
 /**
+ * priority（手動+製番展開）とフィラーを {@link compareLeaderboardFetchedRows} でマージし、
+ * 先頭 `prefixLimit` 件（またはストリーム枯渇まで）を返す。
+ *
+ * @internal 単体テストで full merge の prefix 一致を検証するため export。
+ */
+export function mergeLeaderboardShellPriorityAndFillerUpTo(
+  pSorted: LeaderboardScheduleRowSql[],
+  fillerRows: LeaderboardScheduleRowSql[],
+  prefixLimit: number
+): { rows: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean } {
+  const limit = Math.max(0, Math.floor(prefixLimit));
+  let pIdx = 0;
+  let fIdx = 0;
+  const out: LeaderboardScheduleRowSql[] = [];
+
+  while (pIdx < pSorted.length || fIdx < fillerRows.length) {
+    if (out.length >= limit) {
+      const exhausted = pIdx >= pSorted.length && fIdx >= fillerRows.length;
+      return { rows: out, mergeFullyCompleted: exhausted };
+    }
+
+    const nextP = pIdx < pSorted.length ? pSorted[pIdx]! : null;
+    const nextF = fIdx < fillerRows.length ? fillerRows[fIdx]! : null;
+    if (nextP == null && nextF == null) break;
+
+    let pick: LeaderboardScheduleRowSql;
+    if (nextP == null) {
+      pick = nextF!;
+      fIdx++;
+    } else if (nextF == null) {
+      pick = nextP;
+      pIdx++;
+    } else if (compareLeaderboardFetchedRows(nextP, nextF) <= 0) {
+      pick = nextP;
+      pIdx++;
+    } else {
+      pick = nextF;
+      fIdx++;
+    }
+    out.push(pick);
+  }
+
+  return { rows: out, mergeFullyCompleted: true };
+}
+
+const LEADERBOARD_SHELL_FILLER_BATCH = 320;
+
+/**
+ * 順位ボード shell 初回: 先頭 N 件だけグローバル順の正しい prefix として返す（全件マージ完了は保証しない）。
+ */
+export async function fetchLeaderboardShellMergedPrefixRows(params: {
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
+  queryWhere: Prisma.Sql;
+  expansionWhere: Prisma.Sql;
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  seibanExpansion?: boolean;
+  prefixLimit: number;
+}): Promise<{ mergedPrefix: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
+  const limit = Math.max(1, Math.floor(params.prefixLimit));
+  const ctx = await buildLeaderboardShellPriorityContext(params);
+
+  if (ctx.pSorted.length >= limit) {
+    if (ctx.pSorted.length > limit) {
+      return {
+        mergedPrefix: ctx.pSorted.slice(0, limit),
+        mergeFullyCompleted: false
+      };
+    }
+
+    const fillerProbe = await queryLeaderboardShellFillerRows({
+      commonWhere: ctx.commonWhere,
+      processingOrderScalar: ctx.processingOrderScalar,
+      locationKey: params.locationKey,
+      siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+      pSorted: ctx.pSorted,
+      takeLimit: 1
+    });
+    return {
+      mergedPrefix: ctx.pSorted.slice(0, limit),
+      mergeFullyCompleted: fillerProbe.length === 0
+    };
+  }
+
+  const { rows, mergeFullyCompleted } = await takeLeaderboardShellMergedRowsAfterExclude({
+    commonWhere: ctx.commonWhere,
+    processingOrderScalar: ctx.processingOrderScalar,
+    locationKey: params.locationKey,
+    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+    pSorted: ctx.pSorted,
+    excludeRowIds: new Set(),
+    takeCount: limit
+  });
+  return { mergedPrefix: rows, mergeFullyCompleted };
+}
+
+/**
  * shell 初回で並びを固定するため、モノリシック順位ボードと同一のマージ結果を全件返す。
+ * （フィラーは単一クエリで全件。段階取得の hot path では使わない）
  */
 export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
@@ -373,8 +500,9 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
 }
 
 /**
- * 手動+製番展開を除くフィラー候補を全件読み、priority と {@link compareLeaderboardFetchedRows} でマージした
+ * 手動+製番展開を除くフィラー候補をバッチで読み、priority と {@link compareLeaderboardFetchedRows} でマージした
  * グローバル順序で exclude を飛ばし takeCount 件を返す（段階取得の続きき用）。
+ * 1 呼び出しあたりのフィラー読み込み行数に上限があり、上限到達時は mergeFullyCompleted=false になる。
  */
 export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
   commonWhere: Prisma.Sql;
@@ -384,7 +512,7 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
   pSorted: LeaderboardScheduleRowSql[];
   excludeRowIds: ReadonlySet<string>;
   takeCount: number;
-}): Promise<LeaderboardScheduleRowSql[]> {
+}): Promise<{ rows: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
   const {
     commonWhere,
     processingOrderScalar,
@@ -392,18 +520,68 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
     siteScopedGlobalRankLocation,
     pSorted,
     excludeRowIds,
-    takeCount,
+    takeCount
   } = params;
   const nTake = Math.max(0, Math.floor(takeCount));
-  if (nTake === 0) return [];
+  if (nTake === 0) return { rows: [], mergeFullyCompleted: true };
 
-  const fillerRows = await queryLeaderboardShellFillerRows({
-    commonWhere,
-    processingOrderScalar,
-    locationKey,
-    siteScopedGlobalRankLocation,
-    pSorted
-  });
+  const pSortedIds = new Set(pSorted.map((r) => r.id));
+  const fillerChunks: LeaderboardScheduleRowSql[] = [];
+  const fillerIdsEverLoaded = new Set<string>();
+
+  const maxFillerTotal = Math.min(
+    12_000,
+    nTake * 48 + excludeRowIds.size * 3 + 800
+  );
+  let totalFillerLoaded = 0;
+  let hitFillerCap = false;
+  let lastFillerBatchSize = 0;
+  let lastRequestedFillerTake = 0;
+  let fillerFetchExhausted = false;
+
+  const loadNextFillerBatch = async (): Promise<void> => {
+    if (fillerFetchExhausted) {
+      lastFillerBatchSize = 0;
+      return;
+    }
+    if (totalFillerLoaded >= maxFillerTotal) {
+      hitFillerCap = true;
+      lastFillerBatchSize = 0;
+      fillerFetchExhausted = true;
+      return;
+    }
+    const batchTake = Math.min(LEADERBOARD_SHELL_FILLER_BATCH, maxFillerTotal - totalFillerLoaded);
+    lastRequestedFillerTake = batchTake;
+    const excludeForSql: string[] = [];
+    for (const id of excludeRowIds) {
+      const t = id.trim();
+      if (!t || pSortedIds.has(t)) continue;
+      excludeForSql.push(t);
+    }
+    for (const id of fillerIdsEverLoaded) {
+      excludeForSql.push(id);
+    }
+
+    const batch = await queryLeaderboardShellFillerRows({
+      commonWhere,
+      processingOrderScalar,
+      locationKey,
+      siteScopedGlobalRankLocation,
+      pSorted,
+      takeLimit: batchTake,
+      additionalExcludeIds: excludeForSql.length > 0 ? excludeForSql : undefined
+    });
+
+    lastFillerBatchSize = batch.length;
+    if (batch.length === 0) {
+      fillerFetchExhausted = true;
+    }
+    for (const r of batch) {
+      fillerIdsEverLoaded.add(r.id);
+    }
+    totalFillerLoaded += batch.length;
+    fillerChunks.push(...batch);
+  };
 
   let pIdx = 0;
   let fIdx = 0;
@@ -415,8 +593,16 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
     }
   };
   const skipExcludedF = () => {
-    while (fIdx < fillerRows.length && excludeRowIds.has(fillerRows[fIdx]!.id)) {
+    while (fIdx < fillerChunks.length && excludeRowIds.has(fillerChunks[fIdx]!.id)) {
       fIdx++;
+    }
+  };
+
+  const ensureFillerHead = async () => {
+    while (fIdx >= fillerChunks.length) {
+      const before = fillerChunks.length;
+      await loadNextFillerBatch();
+      if (fillerChunks.length === before) return;
     }
   };
 
@@ -424,8 +610,10 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
   skipExcludedF();
 
   while (out.length < nTake) {
+    await ensureFillerHead();
+
     const nextP = pIdx < pSorted.length ? pSorted[pIdx]! : null;
-    const nextF = fIdx < fillerRows.length ? fillerRows[fIdx]! : null;
+    const nextF = fIdx < fillerChunks.length ? fillerChunks[fIdx]! : null;
 
     if (nextP == null && nextF == null) break;
 
@@ -451,7 +639,32 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
     skipExcludedF();
   }
 
-  return out;
+  const hasMorePriorityNotExcluded = (): boolean => {
+    let i = pIdx;
+    while (i < pSorted.length) {
+      if (!excludeRowIds.has(pSorted[i]!.id)) return true;
+      i++;
+    }
+    return false;
+  };
+
+  const hasMoreFillerNotExcluded = (): boolean => {
+    let j = fIdx;
+    while (j < fillerChunks.length) {
+      if (!excludeRowIds.has(fillerChunks[j]!.id)) return true;
+      j++;
+    }
+    return false;
+  };
+
+  const exhaustedDbFiller =
+    lastFillerBatchSize === 0 ||
+    (lastFillerBatchSize < lastRequestedFillerTake && !hasMoreFillerNotExcluded());
+
+  const mergeFullyCompleted =
+    !hitFillerCap && !hasMorePriorityNotExcluded() && !hasMoreFillerNotExcluded() && exhaustedDbFiller;
+
+  return { rows: out, mergeFullyCompleted };
 }
 
 /**
@@ -466,7 +679,7 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
   excludeRowIds: readonly string[];
   chunkSize: number;
   seibanExpansion?: boolean;
-}): Promise<LeaderboardScheduleRowSql[]> {
+}): Promise<{ rows: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
   const ctx = await buildLeaderboardShellPriorityContext(params);
   const exclude = new Set(params.excludeRowIds.map((id) => id.trim()).filter((id) => id.length > 0));
   return takeLeaderboardShellMergedRowsAfterExclude({
@@ -476,7 +689,7 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
     pSorted: ctx.pSorted,
     excludeRowIds: exclude,
-    takeCount: params.chunkSize,
+    takeCount: params.chunkSize
   });
 }
 
@@ -505,15 +718,16 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
     return pSorted;
   }
 
-  return takeLeaderboardShellMergedRowsAfterExclude({
+  const { rows } = await takeLeaderboardShellMergedRowsAfterExclude({
     commonWhere,
     processingOrderScalar,
     locationKey,
     siteScopedGlobalRankLocation,
     pSorted,
     excludeRowIds: new Set(),
-    takeCount: pageSize,
+    takeCount: pageSize
   });
+  return rows;
 }
 
 /** @internal exported for tests */

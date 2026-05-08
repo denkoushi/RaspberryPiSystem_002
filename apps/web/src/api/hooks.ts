@@ -90,8 +90,10 @@ import {
   getKioskProductionSchedule,
   getKioskProductionScheduleLeaderboardShell,
   getKioskProductionScheduleLeaderboardTotal,
+  getKioskProductionScheduleLeaderboardBoard,
   postKioskProductionScheduleLeaderboardDecorations,
   type KioskProductionScheduleLeaderboardPhasedQueryParams,
+  type KioskProductionScheduleLeaderboardBoardQueryParams,
   getKioskProductionScheduleOrderSearchCandidates,
   getKioskProductionScheduleOrderUsage,
   getKioskProductionScheduleResources,
@@ -402,6 +404,24 @@ export function useKioskProductionScheduleLeaderboardDecorations(
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS,
     refetchOnWindowFocus: false,
     enabled: (options?.enabled ?? true) && Boolean(payload && payload.rowIds.length > 0)
+  });
+}
+
+/** 順位ボード（多資源スロット）集約 GET。追補は {@link useCompositeLeaderboardPhasedScheduleWithAutoAppend} 内の continue 呼び出し。 */
+export function useKioskProductionScheduleLeaderboardBoard(
+  params: KioskProductionScheduleLeaderboardBoardQueryParams | undefined,
+  options?: { enabled?: boolean; pauseRefetch?: boolean; refetchIntervalMs?: number | false }
+) {
+  const interval =
+    options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
+  return useQuery({
+    queryKey: ['kiosk-production-schedule', 'leaderboard-board', params],
+    queryFn: () => getKioskProductionScheduleLeaderboardBoard(params!),
+    placeholderData: (previousData) => previousData,
+    refetchInterval: interval,
+    staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS,
+    refetchOnWindowFocus: false,
+    enabled: (options?.enabled ?? true) && Boolean(params)
   });
 }
 
