@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useKioskProductionScheduleLeaderboardDecorations } from '../../../api/hooks';
 
 import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from './constants';
+import { createLeaderboardAppendSemaphore, type LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
 import { useLeaderboardPhasedScheduleWithAutoAppend } from './useLeaderboardPhasedScheduleWithAutoAppend';
 
 import type {
@@ -49,6 +50,7 @@ type FeedBridgeProps = {
   macManualOrderV2: boolean;
   activeDeviceScopeKey: string;
   onFeedSlice: (resourceCd: string, slice: LeaderboardResourceCardFeedSlice) => void;
+  appendAcquire: LeaderboardAppendAcquire;
 };
 
 /**
@@ -63,7 +65,8 @@ function LeaderboardResourcePhasedFeedBridge(props: FeedBridgeProps) {
     refetchIntervalMs,
     macManualOrderV2,
     activeDeviceScopeKey,
-    onFeedSlice
+    onFeedSlice,
+    appendAcquire
   } = props;
 
   const leaderboardPhasedParams = useMemo(
@@ -81,7 +84,8 @@ function LeaderboardResourcePhasedFeedBridge(props: FeedBridgeProps) {
     refetchIntervalMs,
     macManualOrderV2,
     activeDeviceScopeKey,
-    includeDecorations: false
+    includeDecorations: false,
+    appendAcquire
   });
 
   const mergedRows = useMemo(() => scheduleQuery.data?.rows ?? [], [scheduleQuery.data?.rows]);
@@ -155,9 +159,13 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const resourcesKey = useMemo(() => resourceCdsOrdered.join('\0'), [resourceCdsOrdered]);
   const resetKey = `${baseKey}@@${resourcesKey}`;
 
+  const [appendAcquire, setAppendAcquire] = useState<LeaderboardAppendAcquire>(() =>
+    createLeaderboardAppendSemaphore(2)
+  );
   const [feedMap, setFeedMap] = useState<Partial<Record<string, LeaderboardResourceCardFeedSlice>>>({});
 
   useEffect(() => {
+    setAppendAcquire(() => createLeaderboardAppendSemaphore(2));
     setFeedMap({});
   }, [resetKey]);
 
@@ -187,12 +195,14 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             macManualOrderV2={macManualOrderV2}
             activeDeviceScopeKey={activeDeviceScopeKey}
             onFeedSlice={onFeedSlice}
+            appendAcquire={appendAcquire}
           />
         ))}
       </>
     ),
     [
       activeDeviceScopeKey,
+      appendAcquire,
       leaderboardPhasedBaseParams,
       macManualOrderV2,
       onFeedSlice,
@@ -213,18 +223,33 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     return out;
   }, [feedMap, resourceCdsOrdered]);
 
+  const listIncomplete = useMemo(() => {
+    if (!scheduleEnabled || resourceCdsOrdered.length === 0) return false;
+    return resourceCdsOrdered.some((rc) => {
+      const slice = feedMap[rc];
+      if (!slice) return false;
+      return slice.total > slice.mergedRows.length;
+    });
+  }, [feedMap, resourceCdsOrdered, scheduleEnabled]);
+
   const decorationsPayload = useMemo(() => {
-    if (!scheduleEnabled || mergedRowsOrdered.length === 0) return undefined;
+    if (!scheduleEnabled || mergedRowsOrdered.length === 0 || listIncomplete) return undefined;
     return {
       rowIds: mergedRowsOrdered.map((r) => r.id),
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     };
-  }, [activeDeviceScopeKey, macManualOrderV2, mergedRowsOrdered, scheduleEnabled]);
+  }, [
+    activeDeviceScopeKey,
+    listIncomplete,
+    macManualOrderV2,
+    mergedRowsOrdered,
+    scheduleEnabled
+  ]);
 
   const decorationsQuery = useKioskProductionScheduleLeaderboardDecorations(decorationsPayload, {
-    enabled: scheduleEnabled && mergedRowsOrdered.length > 0 && decorationsPayload != null,
+    enabled: scheduleEnabled && mergedRowsOrdered.length > 0 && decorationsPayload != null && !listIncomplete,
     pauseRefetch,
     refetchIntervalMs
   });
@@ -252,15 +277,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     }
     return null;
   }, [feedMap, resourceCdsOrdered]);
-
-  const listIncomplete = useMemo(() => {
-    if (!scheduleEnabled || resourceCdsOrdered.length === 0) return false;
-    return resourceCdsOrdered.some((rc) => {
-      const slice = feedMap[rc];
-      if (!slice) return false;
-      return slice.total > slice.mergedRows.length;
-    });
-  }, [feedMap, resourceCdsOrdered, scheduleEnabled]);
 
   const totalSum = useMemo(() => {
     let s = 0;

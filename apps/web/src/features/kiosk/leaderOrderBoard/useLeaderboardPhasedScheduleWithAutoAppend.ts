@@ -13,6 +13,8 @@ import {
   useKioskProductionScheduleLeaderboardTotal
 } from '../../../api/hooks';
 
+import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
+
 function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
   return queryClient.invalidateQueries({
     predicate: (q) =>
@@ -36,41 +38,6 @@ function buildRowIdsKey(rows: readonly ProductionScheduleRow[]): string {
   return rows.map((row) => row.id).join('\0');
 }
 
-function getLeaderboardDebugRunId() {
-  if (typeof window === 'undefined') return `leaderboard-server-${Date.now()}`;
-  const key = 'cursor-debug-leaderboard-run-id';
-  const existing = window.sessionStorage.getItem(key);
-  if (existing) return existing;
-  const created = `leaderboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  window.sessionStorage.setItem(key, created);
-  return created;
-}
-
-function postLeaderboardDebugLog(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>
-) {
-  if (typeof window === 'undefined') return;
-  const runId = getLeaderboardDebugRunId();
-  // #region agent log
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7a86a1' },
-    body: JSON.stringify({
-      sessionId: '7a86a1',
-      runId,
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-}
-
 export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
   leaderboardPhasedParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
   scheduleEnabled: boolean;
@@ -83,6 +50,10 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
    * @default true
    */
   includeDecorations?: boolean;
+  /**
+   * 複数カードで `leaderboard-shell` continue が同時多発しないようスロット取得（release は finally）
+   */
+  appendAcquire?: LeaderboardAppendAcquire;
 }) {
   const {
     leaderboardPhasedParams,
@@ -91,7 +62,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     refetchIntervalMs,
     macManualOrderV2,
     activeDeviceScopeKey,
-    includeDecorations = true
+    includeDecorations = true,
+    appendAcquire
   } = options;
 
   const queryClient = useQueryClient();
@@ -141,17 +113,6 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     setIsAppending(false);
     setAppendError(null);
     lastSyncedShellSignatureRef.current = null;
-    // #region agent log
-    postLeaderboardDebugLog(
-      'H1',
-      'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:params-reset',
-      'leaderboard params reset',
-      {
-        paramsKey,
-        scheduleEnabled
-      }
-    );
-    // #endregion
   }, [paramsKey, scheduleEnabled]);
 
   useEffect(() => {
@@ -175,25 +136,9 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     const runId = ++runIdRef.current;
     let cancelled = false;
 
-    // #region agent log
-    postLeaderboardDebugLog(
-      'H2',
-      'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-gate',
-      'leaderboard append gate opened',
-      {
-        paramsKey,
-        shellRowCount,
-        total: totalQuery.data.total,
-        shellDataUpdatedAt: shellQuery.dataUpdatedAt,
-        totalDataUpdatedAt: totalQuery.dataUpdatedAt
-      }
-    );
-    // #endregion
-
     void (async () => {
       try {
         let next = shellRowsRef.current.slice();
-        let iterationCount = 0;
         const snapshotIdForSession = shellQuery.data?.snapshotId?.trim();
         const shellHasMore = shellQuery.data?.hasMore ?? next.length < total;
         /** cursor 方式: shell の nextCursor を初期値に。無ければ返却行数。 */
@@ -211,25 +156,6 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
         if (runId === runIdRef.current) setAppendError(null);
         setIsAppending(true);
         while (!cancelled && runId === runIdRef.current && next.length < total && hasMore) {
-          iterationCount += 1;
-          // #region agent log
-          postLeaderboardDebugLog(
-            'H7',
-            'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-iteration',
-            'leaderboard append iteration started',
-            {
-              paramsKey,
-              runId,
-              iterationCount,
-              currentRowCount: next.length,
-              total,
-              continuePageSize,
-              cursor,
-              snapshotMode: Boolean(snapshotIdForSession)
-            }
-          );
-          // #endregion
-
           const continuePayload =
             snapshotIdForSession != null && snapshotIdForSession.length > 0
               ? {
@@ -244,7 +170,16 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
                   excludeRowIds: next.map((r) => r.id)
                 };
 
-          const more = await postKioskProductionScheduleLeaderboardShellContinue(continuePayload);
+          let release: (() => void) | undefined;
+          if (appendAcquire) {
+            release = await appendAcquire();
+          }
+          let more: Awaited<ReturnType<typeof postKioskProductionScheduleLeaderboardShellContinue>>;
+          try {
+            more = await postKioskProductionScheduleLeaderboardShellContinue(continuePayload);
+          } finally {
+            release?.();
+          }
 
           if (more.snapshotExpired) {
             await Promise.all([
@@ -280,22 +215,6 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
               ? more.hasMore
               : cursor < total || more.rows.length >= continuePageSize;
         }
-        // #region agent log
-        postLeaderboardDebugLog(
-          'H7',
-          'apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts:append-finished',
-          'leaderboard append run finished',
-          {
-            paramsKey,
-            runId,
-            iterationCount,
-            finalRowCount: next.length,
-            total,
-            cancelled,
-            superseded: runId !== runIdRef.current
-          }
-        );
-        // #endregion
       } catch (e) {
         if (!cancelled && runId === runIdRef.current) {
           setAppendError(e instanceof Error ? e : new Error(String(e)));
@@ -324,7 +243,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     shellRowsKey,
     totalQuery.data?.total,
     hasFreshTotal,
-    totalQuery.dataUpdatedAt
+    totalQuery.dataUpdatedAt,
+    appendAcquire
   ]);
 
   const leaderboardDecorationsPayload = useMemo(() => {

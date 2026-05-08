@@ -97,8 +97,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(latest?.listIncomplete).toBe(true);
       expect(latest?.appendError).toBeNull();
       expect(decorationsMock).toHaveBeenCalledWith(
-        { rowIds: ['r1-a', 'r1-b', 'r2-a'] },
-        expect.objectContaining({ enabled: true })
+        undefined,
+        expect.objectContaining({ enabled: false })
       );
     });
   });

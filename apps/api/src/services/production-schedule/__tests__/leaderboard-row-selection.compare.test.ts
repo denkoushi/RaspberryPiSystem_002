@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   compareLeaderboardFetchedRows,
+  mergeLeaderboardShellPriorityAndFillerUpTo,
   type LeaderboardScheduleRowSql,
 } from '../leaderboard/leaderboard-row-selection.service.js';
 import { buildMaxProductNoLogicalKeyPartitionExprs } from '../row-resolver/max-product-no-winner-spec.js';
@@ -74,5 +75,30 @@ describe('compareLeaderboardFetchedRows', () => {
     };
     const list = [a, b, c].sort(compareLeaderboardFetchedRows);
     expect(list.map((r) => r.id)).toEqual(['b', 'a', 'c']);
+  });
+});
+
+describe('mergeLeaderboardShellPriorityAndFillerUpTo', () => {
+  it('prefixLimit 件だけ返し、後続が残るときは未完了扱いにする', () => {
+    const priority = [row('p1', 'S', '0002', 1, new Date('2026-01-02'))];
+    const filler = [
+      row('f1', 'A', '0001', null, new Date('2026-01-01')),
+      row('f2', 'Z', '9999', null, new Date('2026-12-31'))
+    ];
+
+    const result = mergeLeaderboardShellPriorityAndFillerUpTo(priority, filler, 2);
+
+    expect(result.rows.map((r) => r.id)).toEqual(['p1', 'f1']);
+    expect(result.mergeFullyCompleted).toBe(false);
+  });
+
+  it('priority と filler を最後まで消費したときは完了扱いにする', () => {
+    const priority = [row('p1', 'S', '0002', 1, new Date('2026-01-02'))];
+    const filler = [row('f1', 'A', '0001', null, new Date('2026-01-01'))];
+
+    const result = mergeLeaderboardShellPriorityAndFillerUpTo(priority, filler, 5);
+
+    expect(result.rows.map((r) => r.id)).toEqual(['p1', 'f1']);
+    expect(result.mergeFullyCompleted).toBe(true);
   });
 });

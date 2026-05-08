@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 
 export type LeaderboardShellSnapshotRecord = {
   readonly orderedRowIds: readonly string[];
+  /**
+   * `true`: `orderedRowIds` はまだ全体列の先頭の一部だけ（shell 初回で prefix のみ確定）。
+   * continue では cursor / exclude の先頭一致後に空配列になる場合があるため、再計算で追記する。
+   */
+  readonly partialOrdering: boolean;
   readonly filterFingerprint: string;
   readonly generationToken: string;
   readonly locationKey: string;
@@ -25,11 +30,22 @@ export interface LeaderboardShellSnapshotStore {
    */
   create(record: {
     orderedRowIds: readonly string[];
+    partialOrdering: boolean;
     filterFingerprint: string;
     generationToken: string;
     locationKey: string;
     siteKey: string | undefined;
   }): string;
+
+  /**
+   * partialOrdering 時の続き行 ID を付け足す。
+   * `mergeFullyCompleted === true` のとき並びが枯渇したとみなし `partialOrdering` を `false` にする。
+   */
+  appendSnapshotOrderingChunk(
+    snapshotId: string,
+    appendedRowIds: readonly string[],
+    mergeFullyCompleted: boolean
+  ): void;
 
   get(snapshotId: string): LeaderboardShellSnapshotRecord | undefined;
 
@@ -88,6 +104,7 @@ export function createInMemoryLeaderboardShellSnapshotStore(
       const now = Date.now();
       map.set(id, {
         orderedRowIds: Object.freeze([...record.orderedRowIds]) as readonly string[],
+        partialOrdering: record.partialOrdering,
         filterFingerprint: record.filterFingerprint,
         generationToken: record.generationToken,
         locationKey: record.locationKey,
@@ -96,6 +113,21 @@ export function createInMemoryLeaderboardShellSnapshotStore(
         expiresAtMs: now + defaultTtlMs
       });
       return id;
+    },
+    appendSnapshotOrderingChunk(snapshotId, appendedRowIds, mergeFullyCompleted) {
+      gc();
+      const rec = map.get(snapshotId);
+      if (!rec) return;
+      const appended = [...appendedRowIds];
+      const nextIds =
+        appended.length > 0
+          ? ([...rec.orderedRowIds, ...appended] as string[])
+          : ([...rec.orderedRowIds] as string[]);
+      map.set(snapshotId, {
+        ...rec,
+        orderedRowIds: Object.freeze(nextIds) as readonly string[],
+        partialOrdering: !mergeFullyCompleted
+      });
     },
     get(snapshotId) {
       gc();
