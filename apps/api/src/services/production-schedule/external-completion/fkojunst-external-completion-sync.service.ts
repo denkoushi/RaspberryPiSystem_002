@@ -11,6 +11,9 @@ export type FkojunstExternalCompletionSyncResult =
   | { skipped: true; reason: 'empty_status_csv' }
   | { skipped: false };
 
+const EXTERNAL_COMPLETION_TX_TIMEOUT_MS = 60_000;
+const EXTERNAL_COMPLETION_TX_MAX_WAIT_MS = 15_000;
+
 /**
  * FKOJUNST_Status 取込同期の直後に呼ぶ。
  * CSV が空（正規化後・dedupe 後にキーが一つも無い）場合は異常扱いで何も更新しない。
@@ -36,9 +39,15 @@ export class FkojunstExternalCompletionSyncService {
       return { skipped: true, reason: 'empty_status_csv' };
     }
 
-    await this.deps.prismaClient.$transaction(async (tx) => {
-      await replaceAllWinnerExternalCompletionStatesFromMailSync(tx);
-    });
+    await this.deps.prismaClient.$transaction(
+      async (tx) => {
+        await replaceAllWinnerExternalCompletionStatesFromMailSync(tx);
+      },
+      {
+        maxWait: EXTERNAL_COMPLETION_TX_MAX_WAIT_MS,
+        timeout: EXTERNAL_COMPLETION_TX_TIMEOUT_MS,
+      }
+    );
 
     logger.info(
       {},

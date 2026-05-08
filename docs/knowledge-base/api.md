@@ -1,22 +1,23 @@
 ---
 
-### [KB-372] FKOJUNST メール winner 照合の PostgreSQL バインド上限（複合3キー IN チャンク / 32767）
+### [KB-372] FKOJUNST メール winner 解決の bind 上限と長時間化
 
 **日付**: 2026-05-08
 
 **Context**:
 
-- **`FKOJUNST_Status` メール取込**の **幕 winner 行 ID 解決**が、**3 本の巨大 `IN` + `$queryRaw`** に載り、候補が多いと **prepared statement のバインド上限（典型 32767）**を超え **`received 32768` 級**で失敗し得た
+- **`FKOJUNST_Status` メール取込**の **幕 winner 行 ID 解決**が、最初は **巨大 `IN` による bind 上限**、次に **実データ 91,998 件での repeated scan 長時間化**、最後に **外部完了同期の transaction timeout** を順に露呈した
 
 **Fix**:
 
-- **`findFkojunstMailWinnerIdsByMailTriples`**（タプル `IN` チャンク・`Map` マージ）·[`postgres-prepared-statement-bind-limit.ts`](../../apps/api/src/lib/postgres-prepared-statement-bind-limit.ts)·pipeline [`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)·コミット **`a9fd7fcf`**（**`fix/fkojunst-mail-winner-triple-chunk`**）·**`main`**: [PR #274](https://github.com/denkoushi/RaspberryPiSystem_002/pull/274)（squash **`411a635c`**）
+- **winner 全件 1-pass 読込 + requested key の `Map` フィルタ**へ変更し、外部完了同期の transaction に **`timeout: 60000` / `maxWait: 15000`** を追加。代表 **`ef9e3125`** → **`b144fb40`** → **`b6bb449a`**（ブランチ **`fix/fkojunst-mail-winner-stack-depth`**）
 
 **本番（記録）**:
 
 - **ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）
-- **Detach**: **`20260508-211407-25543`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 1063s**）
-- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 167s**）
+- **Detach**: **`20260508-230134-12773`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**）
+- **Pi5 本処理確認**: `syncFromStatusMailDashboard()` を直接実行し **37.309s** で完了
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 141s**）
 
 **詳細**: [KB-372（詳細）](./KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·[deployment.md §FKOJUNST mail winner チャンク](../guides/deployment.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
 
