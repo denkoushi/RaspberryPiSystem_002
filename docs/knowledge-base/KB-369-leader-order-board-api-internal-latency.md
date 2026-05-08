@@ -2,7 +2,7 @@
 title: KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 tags: [kiosk, production-schedule, leader-order-board, api, performance]
 audience: [開発者]
-last-verified: 2026-05-07
+last-verified: 2026-05-08
 category: knowledge-base
 ---
 
@@ -143,6 +143,23 @@ category: knowledge-base
 - **トラブルシュート**:
   - **画面上に追補エラー** → **`appendError`** のメッセージと Network の **`leaderboard-shell/continue`** を確認。
   - **snapshot 系の失効・複数 API プロセス** → 上記 **サーバ内 snapshot** 項と [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md) を参照。
+
+## Production deploy & verification（2026-05-08 · board 集約 API / fan-out 撤去）
+
+- **対象ホスト**: 仕様上は **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**）。**2026-05-08 時点の実施済み**は `raspberrypi5` と `raspberrypi4`。
+- **変更概要（仕様不変）**:
+  - **API**: `GET /api/kiosk/production-schedule/leaderboard-board` と `POST /api/kiosk/production-schedule/leaderboard-board/continue` を追加し、資源カードごとの shell/continue/total/装飾を **サーバ内で集約**して返す。
+  - **Web**: 資源カードごとの fan-out ループを撤去し、単一 hook が board 集約 API を主経路として使用。
+  - **既存 phased API は維持**し、互換性を壊さない。
+- **リポジトリ**: ブランチ **`fix/leaderboard-shell-bounded-filler-fetch`**（マージ後は `main` を正本とする）。
+- **標準手順**: [`deployment.md` のデプロイ運用](../guides/deployment.md) と同じく `update-all-clients.sh`（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`--detach --follow`）。
+- **Detach Run ID**（`ansible-update-`）: **`20260508-175314-10578`**（Pi5）/ **`20260508-181440-11189`**（`raspberrypi4`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
+- **広域自動検証（途中）**: `./scripts/deploy/verify-phase12-real.sh` は **PASS 42 / WARN 0 / FAIL 1**（約 **77s**）。FAIL は **`deploy-status raspberrypi4` が `isMaintenance:true`** のため。
+- **API 計測（補助）**: `GET …/leaderboard-board?q=A&boardResourceCds=1,2&pageSize=160&responseProfile=leaderboard`（`x-client-key: client-key-raspberrypi4-kiosk1`）は **HTTP 200 / 5.43s・6.01s**（2 回）。この時の payload は **rows 0 件**で、重負荷データ条件の代表計測ではない。
+- **トラブルシュート**:
+  - **deploy-status が `isMaintenance:true` のまま** → 連続デプロイ中/直後は残留しうる。全対象ホスト完了後に再検証、または Pi5 `config/deploy-status.json` を確認。
+  - **デプロイスクリプトの fail-fast（ローカル差分）** → `git stash push -u` で作業ツリーをクリーン化してから再実行。
+  - **性能判断が不安定** → 空データ計測のみで「改善」と断定しない。運用相当データで再計測する。
 
 ## Troubleshooting
 

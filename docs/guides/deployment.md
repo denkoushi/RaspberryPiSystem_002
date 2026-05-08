@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-07
+last-verified: 2026-05-08
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,21 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-07。**直近の本番**: ① **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。② **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。③ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。④ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+最終更新: 2026-05-08。**直近の本番**: ① **順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`・`fix/leaderboard-shell-bounded-filler-fetch`）**・**Pi5→Pi4（ここまで実施）**（下記「補足（2026-05-08 · board 集約 API）」・**マージ後は `main`**）。② **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。③ **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。④ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。⑤ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+
+### 補足（2026-05-08 · **キオスク順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）**·**API+Web**·**Pi5→Pi4（進行中）**）
+
+- **変更概要**: 端末側の資源カードごとの fan-out を廃止し、`GET /api/kiosk/production-schedule/leaderboard-board` と `POST /api/kiosk/production-schedule/leaderboard-board/continue` で **shell/continue/total/装飾をサーバで集約**して返す。既存 phased API は互換維持。正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`./scripts/update-all-clients.sh fix/leaderboard-shell-bounded-filler-fetch infrastructure/ansible/inventory.yml --limit <host> --detach --follow`**・**1 台ずつ**）。**2026-05-08 時点の実施済み**: `raspberrypi5` / `raspberrypi4`。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·先行反映時は **`fix/leaderboard-shell-bounded-filler-fetch`**（マージ後は `main`）。
+- **本番デプロイ（先行反映・実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260508-175314-10578`**（`raspberrypi5`・**`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**）/ **`20260508-181440-11189`**（`raspberrypi4`・**`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` は **PASS 42 / WARN 0 / FAIL 1**（約 **77s**）。FAIL は **`deploy-status raspberrypi4` が `isMaintenance:true`** の一時状態で、既知の運用事象（下記）と整合。
+- **補助計測（API）**: `GET /api/kiosk/production-schedule/leaderboard-board?q=A&boardResourceCds=1,2&pageSize=160&responseProfile=leaderboard`（`x-client-key: client-key-raspberrypi4-kiosk1`）は **HTTP 200 / time_total 5.43s・6.01s**（2 回）。この計測時の payload は **rows 0 件**（空データ条件）。
+- **トラブルシュート**:
+  - **`update-all-clients.sh` がローカル差分で停止** → `git stash push -u` 等でクリーン化してから実行し、完了後に必要なら復元。
+  - **`verify-phase12-real.sh` で `deploy-status raspberrypi4` のみ FAIL** → `isMaintenance:true` は連続デプロイ時に残ることがある。全対象ホスト完了後に再確認、または Pi5 の `config/deploy-status.json` を確認。
+  - **性能評価の誤判定** → 空データ計測（rows 0）だけでは体感改善を断定できないため、運用相当データ条件で再計測する。
+- **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-07 · **キオスク順位ボード・資源CDカード単位 phased（`resourceCds` 1 件時は同一製番展開オフ・複合 Web hook）**·**API+Web**·**Pi5→Pi4×4・順次**）
 

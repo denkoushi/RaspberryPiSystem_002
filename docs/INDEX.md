@@ -10,7 +10,7 @@
 
 ### 🆕 最新アップデート（2026-05-08）
 
-- **順位ボード・集約 API（fan-out 撤去）**: `GET/POST …/leaderboard-board` を追加し、多資源スロットの shell/追補/件数/装飾をサーバでスロット順に束ねる（既存 phased API は維持）。**ADR**: [ADR-20260508](./decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**実装**: [`leaderboard-composite-board.service.ts`](../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)。
+- **順位ボード・集約 API（fan-out 撤去）**: `GET/POST …/leaderboard-board` を追加し、多資源スロットの shell/追補/件数/装飾をサーバでスロット順に束ねる（既存 phased API は維持）。**本番進捗（2026-05-08）**: `raspberrypi5` / `raspberrypi4` 反映済み（Detach `20260508-175314-10578` / `20260508-181440-11189`）。`verify-phase12-real.sh` は途中時点 **PASS 42 / FAIL 1**（`deploy-status raspberrypi4` が一時 `isMaintenance:true`）。**ADR**: [ADR-20260508](./decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**実装**: [`leaderboard-composite-board.service.ts`](../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)。**KB**: [KB-369](./knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。
 
 ### 🆕 最新アップデート（2026-05-07）
 
