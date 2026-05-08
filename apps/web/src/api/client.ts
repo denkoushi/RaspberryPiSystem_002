@@ -170,6 +170,9 @@ api.interceptors.response.use(
       // axios: 請求タイムアウトは通常 ECONNABORTED を付与
       const isTimeout = ax.code === 'ECONNABORTED';
       if (isTimeout) {
+        // #region agent log
+        fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99aa8f'},body:JSON.stringify({sessionId:'99aa8f',runId:'fkmail-timeout-debug',hypothesisId:'H4|H5',location:'apps/web/src/api/client.ts:172',message:'axios timeout surfaced to UI',data:{url:ax.config?.url ?? null,method:ax.config?.method ?? null,timeout:ax.config?.timeout ?? null,code:ax.code ?? null,status:ax.response?.status ?? null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         ax.message = 'リクエストがタイムアウトしました。ネットワークまたはサーバの負荷を確認してください。';
         (ax as AxiosError & { apiTimeout?: boolean }).apiTimeout = true;
       }

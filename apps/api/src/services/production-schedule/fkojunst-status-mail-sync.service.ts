@@ -22,6 +22,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
   ) {}
 
   async syncFromStatusMailDashboard(): Promise<ProductionScheduleFkojunstMailStatusSyncResult> {
+    const syncStartedAt = Date.now();
     const { scanned, normalizedRows, skippedInvalidStatus, skippedUnparseableDate } =
       await loadFkojunstMailSourceRows(prisma);
 
@@ -41,9 +42,17 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     }
 
     const dedupedRows = dedupeFkojunstMailRowsByLatest(normalizedRows);
+    // #region agent log
+    fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99aa8f'},body:JSON.stringify({sessionId:'99aa8f',runId:'fkmail-timeout-debug',hypothesisId:'H1|H3',location:'apps/api/src/services/production-schedule/fkojunst-status-mail-sync.service.ts:43',message:'prepared FKOJUNST mail rows for winner resolution',data:{scanned,normalizedRows:normalizedRows.length,dedupedRows:dedupedRows.length,skippedInvalidStatus,skippedUnparseableDate,elapsedMs:Date.now()-syncStartedAt},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    const winnerResolveStartedAt = Date.now();
     const winnerIdByKey = await resolveFkojunstMailWinnerIdByKey(prisma, dedupedRows);
     const { matched, unmatched, createInputs } = buildFkojunstMailReplacementCreateInputs(dedupedRows, winnerIdByKey);
+    // #region agent log
+    fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99aa8f'},body:JSON.stringify({sessionId:'99aa8f',runId:'fkmail-timeout-debug',hypothesisId:'H1|H2',location:'apps/api/src/services/production-schedule/fkojunst-status-mail-sync.service.ts:45',message:'winner resolution completed',data:{elapsedMs:Date.now()-winnerResolveStartedAt,winnerIds:winnerIdByKey.size,matched,unmatched,createInputs:createInputs.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
+    const replacementStartedAt = Date.now();
     const result = await runFkojunstMailReplacementTransaction(prisma, {
       scanned,
       normalized: dedupedRows.length,
@@ -53,6 +62,9 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
       skippedUnparseableDate,
       createInputs,
     });
+    // #region agent log
+    fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99aa8f'},body:JSON.stringify({sessionId:'99aa8f',runId:'fkmail-timeout-debug',hypothesisId:'H2|H3',location:'apps/api/src/services/production-schedule/fkojunst-status-mail-sync.service.ts:57',message:'replacement transaction completed',data:{elapsedMs:Date.now()-replacementStartedAt,upserted:result.upserted,pruned:result.pruned,matched:result.matched,unmatched:result.unmatched},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (result.skippedInvalidStatus > 0 || result.skippedUnparseableDate > 0 || result.unmatched > 0) {
       logger.warn(
@@ -69,6 +81,9 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
 
     const extResult = await this.externalCompletionSyncService.syncFromDedupedStatusMailRows(dedupedRows);
     if (!extResult.skipped) {
+      // #region agent log
+      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99aa8f'},body:JSON.stringify({sessionId:'99aa8f',runId:'fkmail-timeout-debug',hypothesisId:'H3',location:'apps/api/src/services/production-schedule/fkojunst-status-mail-sync.service.ts:72',message:'external completion sync completed after FKOJUNST mail sync',data:{dedupedStatusMailRows:dedupedRows.length,totalElapsedMs:Date.now()-syncStartedAt},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       logger.info(
         {
           dedupedStatusMailRows: dedupedRows.length,

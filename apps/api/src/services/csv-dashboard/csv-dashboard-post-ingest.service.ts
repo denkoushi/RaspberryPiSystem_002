@@ -79,7 +79,14 @@ export class CsvDashboardPostIngestService {
     }
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
+      const fkojunstMailSyncStartedAt = Date.now();
+      // #region agent log
+      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99aa8f'},body:JSON.stringify({sessionId:'99aa8f',runId:'fkmail-timeout-debug',hypothesisId:'H3|H5',location:'apps/api/src/services/csv-dashboard/csv-dashboard-post-ingest.service.ts:81',message:'entered FKOJUNST_Status post-ingest sync',data:{dashboardId:params.dashboardId,ingestSource:params.ingestSource,ingestRunId:params.ingestRunId ?? null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       fkojunstMailSync = await this.fkojunstMailStatusSyncService.syncFromStatusMailDashboard();
+      // #region agent log
+      fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'99aa8f'},body:JSON.stringify({sessionId:'99aa8f',runId:'fkmail-timeout-debug',hypothesisId:'H3|H5',location:'apps/api/src/services/csv-dashboard/csv-dashboard-post-ingest.service.ts:83',message:'completed FKOJUNST_Status post-ingest sync',data:{dashboardId:params.dashboardId,elapsedMs:Date.now()-fkojunstMailSyncStartedAt,upserted:fkojunstMailSync.upserted,matched:fkojunstMailSync.matched,unmatched:fkojunstMailSync.unmatched},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: fkojunstMailSync },
         '[CsvDashboardPostIngestService] FKOJUNST_Status mail sync completed'

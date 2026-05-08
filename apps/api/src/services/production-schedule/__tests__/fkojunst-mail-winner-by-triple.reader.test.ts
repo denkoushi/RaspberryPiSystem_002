@@ -58,6 +58,7 @@ describe('findFkojunstMailWinnerIdsByMailTriples', () => {
     const bindsPerTuple = 3;
     const fixedReserve = 65;
     expect(chunk * bindsPerTuple + fixedReserve).toBeLessThanOrEqual(POSTGRES_PREPARED_STATEMENT_MAX_BIND_PARAMS);
+    expect(chunk).toBeLessThanOrEqual(1000);
     expect(chunk).toBeGreaterThan(0);
   });
 
