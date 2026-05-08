@@ -2,7 +2,7 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-08
+last-verified: 2026-05-09
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
@@ -10,7 +10,7 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-08。**直近の本番**: ① **FKOJUNST_Status メール同期・winner 解決の 1-pass 化 + 外部完了 transaction timeout 延長**·**API のみ**·**Pi5 のみ**（下記「補足（2026-05-08 · FKOJUNST mail winner 解決最終 fix）」・**マージ後は `main`**）。② **CSVダッシュボード DEDUP 取込の `dataHash IN (...)` バインド上限対策（PostgreSQL 32767）**·**API のみ**·**Pi5 のみ**（下記「補足（2026-05-08 · CSV DEDUP バインド上限）」・**マージ後は `main`**）。③ **順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`・`fix/leaderboard-shell-bounded-filler-fetch`）**・**Pi5+Pi4 まで反映済（残りキオスク Pi4×3 は台帳上未完了）**（下記「補足（2026-05-08 · board 集約 API）」・**マージ後は `main`**）。④ **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。⑤ **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。⑥ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。⑦ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+最終更新: 2026-05-09。**直近の本番/実機**: ① **FKOJUNST_Status メール同期・winner 解決の 1-pass 化 + 外部完了 transaction timeout 延長**（2026-05-08 反映）を **`main` で再検証**（2026-05-09・`verify-phase12-real.sh` **PASS 42 / WARN 1 / FAIL 0**、WARN は `auto-tuning scheduler` ログ欠損で **PUT auto-generate=200** により代替判定）·**API のみ**·**Pi5 のみ**（下記「補足（2026-05-08 · FKOJUNST mail winner 解決最終 fix）」）。② **CSVダッシュボード DEDUP 取込の `dataHash IN (...)` バインド上限対策（PostgreSQL 32767）**·**API のみ**·**Pi5 のみ**（下記「補足（2026-05-08 · CSV DEDUP バインド上限）」・**マージ後は `main`**）。③ **順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`・`fix/leaderboard-shell-bounded-filler-fetch`）**・**Pi5+Pi4 まで反映済（残りキオスク Pi4×3 は台帳上未完了）**（下記「補足（2026-05-08 · board 集約 API）」・**マージ後は `main`**）。④ **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。⑤ **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。⑥ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。⑦ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
 
 ### 補足（2026-05-08 · **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767）対策**·**API のみ**·**Pi5 のみ**） {#csv-dedup-ingest-postgres-bind-limit-2026-05-08}
 
@@ -44,8 +44,10 @@ update-frequency: medium
 - **本番デプロイ（最終反映・実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260508-230134-12773`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**）。**`Run prisma migrate deploy` / `prisma migrate status`**: **成功**。
 - **Pi5 本処理確認**: API コンテナ内で `ProductionScheduleFkojunstMailStatusSyncService.syncFromStatusMailDashboard()` を直接実行し、**mail sync completed** → **external completion recalculated** → **result 出力**まで **約 37.3s** を確認。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 141s**・Tailscale・Pi5 API `100.106.158.2`）。
+- **main 再検証（2026-05-09）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**。WARN は **`auto-tuning schedulerログ確認（件数=0）`** で、同一実行中の **`PUT global-rank/auto-generate` が 200** のためガイドどおり代替判定で正常扱い。
 - **トラブルシュート**:
   - **メール同期で同種 timeout / 長時間化** → Pi5 **API** が **`b6bb449a` 以降（またはマージ後 `main` HEAD）**か、Detach の **`Git: changed`**・**Docker 再ビルド**有無を確認。
+  - **`verify-phase12-real.sh` の WARN（auto-tuning scheduler ログ 0 件）** → ログローテーションの可能性があるため、**同一実行で `PUT global-rank/auto-generate` が 200** を代替正常判定にする（スクリプト出力仕様どおり）。
   - **`update-all-clients.sh` がローカル未コミットで停止** — **stash / commit**。
   - **開発**：一時 Postgres での統合検証は **`pnpm prisma migrate deploy` 後**に実行。**テストデータの資源CD正規化**が本番とずれると winner アサートが崩れる。
 - **ナレッジ**: [KB-372](../knowledge-base/KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·代表コミット **`b6bb449a`**（途中 fix: **`ef9e3125`**, **`b144fb40`**）·[EXEC_PLAN.md](../../EXEC_PLAN.md)。

@@ -18,6 +18,7 @@
 - **Detach**: **`20260508-230134-12773`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**）
 - **Pi5 本処理確認**: `syncFromStatusMailDashboard()` を直接実行し **37.309s** で完了
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 141s**）
+- **main 再検証（2026-05-09）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（WARN は `auto-tuning schedulerログ確認` 0 件で、`PUT global-rank/auto-generate=200` により代替正常判定）
 
 **詳細**: [KB-372（詳細）](./KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·[deployment.md §FKOJUNST mail winner チャンク](../guides/deployment.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
 
