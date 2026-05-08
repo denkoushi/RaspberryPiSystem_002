@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
  * キオスク完了表示の実効値。
  * - 手動: `ProductionScheduleProgress.isCompleted`
  * - CSV外部: `ProductionScheduleExternalCompletion.isExternallyCompleted`
- *   （工順STメール消滅・工順STメール C/P/X/O・生産日程CSV消滅の論理ORを同期済み）
+ *   （旧「メールキー消失」は廃止。**FKOJUNST_Status の C/X**・生産日程CSV消失の論理ORを同期済み）
  *
  * 利用側で LEFT JOIN:
  * - "ProductionScheduleProgress" AS "p" ON …

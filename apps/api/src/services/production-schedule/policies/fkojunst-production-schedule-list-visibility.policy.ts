@@ -2,39 +2,30 @@ import { Prisma } from '@prisma/client';
 
 /**
  * 生産日程 winner 行の一覧で、工順ST（FKOJUNST）表示の根拠を決める式（SQL 断片）。
- * - FKOJUNST_Status 同期（fkmail）が S/R のときはメールを優先
- * - それ以外は従来どおり fkst（Gmail FKOJUNST ルート同期）
+ * **正本は FKOJUNST_Status 同期（`fkmail`）のみ**。旧 Gmail FKOJUNST 行（`fkst`）は参照しない。
  */
 export function buildFkojunstProductionScheduleListRowDataFkojunstSql(): Prisma.Sql {
   return Prisma.sql`
     CASE
       WHEN "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R') THEN "fkmail"."statusCode"
-      ELSE COALESCE("fkst"."statusCode", '')
+      ELSE ''
     END
   `;
 }
 
 /**
  * 一覧 COUNT / 明細で同一の可視性条件。
- * - fkmail 行があるのに S/R 以外 → 除外（fkst へはフォールバックしない）
- * - fkmail 無し → fkst が S/R の行だけ残す（NULL・空は S/R 以外扱い）
+ * - `fkmail` がある、かつ `S` / `R` のときのみ表示
+ * - `fkmail` が無い、または `S` / `R` 以外は除外
  */
 export function buildFkojunstProductionScheduleListVisibilityWhereSql(): Prisma.Sql {
-  return Prisma.sql`
-    AND NOT (
-      ("fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" NOT IN ('S', 'R'))
-      OR ("fkmail"."id" IS NULL AND COALESCE("fkst"."statusCode", '') NOT IN ('S', 'R'))
-    )
-  `;
+  return Prisma.sql`AND "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R')`;
 }
 
 /**
- * 一覧可視条件と同義の「工順STが S/R として扱われる行」スカラー式（WHERE ではなく SELECT で利用）。
- * 別名は `fkmail` / `fkst` 固定。
+ * 生産日程CSV「消滅」判定を適用する winner かどうか。
+ * 一覧可視条件と同義で、`fkmail` が `S` / `R` の winner にのみ適用する。
  */
-export function buildFkojunstSrEligibleScalarSql(): Prisma.Sql {
-  return Prisma.sql`(
-    NOT ("fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" NOT IN ('S', 'R'))
-    AND NOT ("fkmail"."id" IS NULL AND COALESCE("fkst"."statusCode", '') NOT IN ('S', 'R'))
-  )`;
+export function buildFkojunstScheduleCsvDisappearanceEligibleScalarSql(): Prisma.Sql {
+  return Prisma.sql`("fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R'))`;
 }

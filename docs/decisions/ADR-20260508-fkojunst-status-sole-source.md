@@ -1,0 +1,21 @@
+# ADR-20260508: FKOJUNST_Status（メール同期）を工順ST表示・外部完了の唯一の正本とする
+
+- **Status**: accepted
+- **Context**:
+  - 旧仕様では一覧の工順ST列が **`fkmail` 優先・`fkst`（Gmail FKOJUNST）フォールバック**であり、外部完了のメール由来が **dedupe キー消失差分**に依存していた。
+  - **運用上の単一の意味の正本**を **`FKOJUNST_Status` CSV → `ProductionScheduleFkojunstMailStatus`** に揃えたい。
+- **Decision**:
+  - **一覧の FKOJUNST 表示・可視性**: `fkmail` のみ。**`statusCode` が `S`/`R` の winner だけ**一覧に残し、**`rowData.FKOJUNST`** はそのコード。**`fkmail` が無い**、または **`S`/`R` 以外**（`C`/`X`/`O`/`P`/`?`/空など）の winner は **一覧から除外**（旧 `fkst` は参照しない）。
+  - **外部完了（メール由来）**: **`statusCode` が `C` または `X` のみ**。`O`/`P` は未完了。
+  - **キー消失ベースのメール同期外部完了**と **`fkst` フォールバック**を撤去（生産日程本体 CSV のスナップショット「消滅」同期は別途維持。消滅の対象 winner は **`fkmail` が `S`/`R` の行に限定**）。
+- **Alternatives**:
+  - **A**: `fkst` フォールバックを残す — 正本が二重になり運用混乱のリスク。
+  - **B**: キー消失で完了を継続 — status と矛盾し得る。
+- **Consequences**:
+  - **良**: 表示・完了・非表示の説明が **`fkmail.statusCode` だけ**で完結する。
+  - **悪**: `fkmail` 未着（または `S`/`R` になる同期が無い）winner は **一覧に出ない**（旧 `fkst` のみでは救済されない）。
+- **References**:
+  - [KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28)
+  - [`fkojunst-mail-status-completion.policy.ts`](../../apps/api/src/services/production-schedule/completion/fkojunst-mail-status-completion.policy.ts)
+  - [`fkojunst-production-schedule-list-visibility.policy.ts`](../../apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts)
+  - [deployment.md（2026-05-08 · FKOJUNST_Status 唯一正本・Pi5）](../guides/deployment.md#fkojunst-status-sole-source-2026-05-08)

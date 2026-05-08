@@ -76,7 +76,7 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
     expect(out[0]!.statusCode).toBe('?');
   });
 
-  it('normalizes valid S/R/C/P/X/O and preserves invalid or empty status as hidden sentinels', () => {
+  it('normalizes valid S/R/C/P/X/O; C/X は外部完了、O/P は一覧非表示・未完了（異常・空は隠しセンチネル）', () => {
     const base = {
       FKOJUN: '10',
       FKOTEICD: 'r01',
