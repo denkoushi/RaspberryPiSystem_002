@@ -12,6 +12,18 @@ update-frequency: medium
 
 最終更新: 2026-05-08。**直近の本番**: ① **順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`・`fix/leaderboard-shell-bounded-filler-fetch`）**・**Pi5+Pi4 まで反映済（残りキオスク Pi4×3 は台帳上未完了）**（下記「補足（2026-05-08 · board 集約 API）」・**マージ後は `main`**）。② **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。③ **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。④ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。⑤ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
 
+### 補足（2026-05-08 · **FKOJUNST_Status メール同期を一覧・外部完了の唯一正本とする**·**API のみ**·**Pi5 のみ**） {#fkojunst-status-sole-source-2026-05-08}
+
+- **変更概要**: `ProductionScheduleFkojunstMailStatus`（`fkmail`）のみでキオスク生産日程の **工順ST列・一覧可視性**と **メール由来外部完了**を判定。**`S`/`R`** の winner のみ一覧表示。**`C`/`X`** がメール由来完了。**`O`/`P`** は一覧非表示・未完了（製番進捗 total には残る）。旧 **`fkst`（Gmail `FKOJUNST`）フォールバック**・**dedupe キー消失によるメール完了**を撤去（アプリは `fkojunst-status-mail-dedupe-key-snapshot.repository` を削除。DB スナップショットテーブルは残り得るが **2026-05-08 以降アプリ未参照**）。**正本**: [ADR-20260508-fkojunst-status-sole-source](../decisions/ADR-20260508-fkojunst-status-sole-source.md)·代表コミット **`d12b40de`**（先行ブランチ **`feat/fkojunst-status-cx-completion`**）。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/fkojunst-status-cx-completion infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（先行反映・実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260508-192843-15997`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 741s（約 12.3 分）**）。**`Run prisma migrate deploy` / `prisma migrate status`**: **成功**（当該リリースに **新規マイグレーションなし**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 188s**・Tailscale・Pi5 API `100.106.158.2`）。
+- **トラブルシュート**:
+  - **一覧から行が消えたが旧 Gmail `FKOJUNST`（`fkst`）には `S`/`R` 相当がある** → **仕様**。一覧は **`fkmail` の `S`/`R` のみ**。`fkst` のみでは **表示されない**。`FKOJUNST_Status` の **`unmatched`・キー照合**は [KB-297 §FKOJUNST_Status](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst_status-mail-from-gmail-csv-2026-04-28) を参照。
+  - **外部完了が期待と違う** → メール由来は **`C`/`X` のみ**。生産日程CSV「消滅」由来は **`fkmail` が `S`/`R` の winner** に限定（[KB-370](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)）。
+  - **`update-all-clients.sh` がローカル未コミット／未追跡で即終了** → 本リポジトリどおり **stash / commit** で作業ツリーをクリーンにする。
+
 ### 補足（2026-05-08 · **キオスク順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）**·**API+Web**·**Pi5+Pi4 は反映済・残り Pi4×3**）
 
 - **変更概要**: 端末側で **資源カードごと**に `leaderboard-shell` / `leaderboard-total` / `leaderboard-decorations` / `leaderboard-shell/continue` を **同時多発（fan-out）**していたパターンをやめ、**1 本の board 系**で **サーバがスロット順に shell・追補・件数・装飾を束ねて返す**（応答に **`resources[]`**）。**表示する行・並び・件数・装飾の意味は変えない**（行削減による疑似高速化はしない）。既存 phased ルートは **互換のため維持**。**意思決定の正本**: [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。

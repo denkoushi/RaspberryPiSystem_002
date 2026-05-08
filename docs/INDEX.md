@@ -36,6 +36,8 @@
 
 - **Phase12 広域実機検証（再実行）+ Zero2W 断片の限定 NOPASSWD 標本化**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **74s**・Tailscale）。**断片サンプル**（`inventory-zero2w-edge-fragment.sample.yml`）へ **`sudo_nopasswd_commands`** を追加（**Pi4 と同趣旨**・**status-agent / haizen-agent**・**reboot/poweroff**）。[deployment.md](./guides/deployment.md)（2026-05-06 項）·[KB-367](./knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)·[KB-368](./knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)·[zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md)·[EXEC_PLAN.md](../EXEC_PLAN.md) Progress。
 
+- **正本統一の本番・実機（2026-05-08）**: [deployment.md §FKOJUNST 唯一正本](../guides/deployment.md#fkojunst-status-sole-source-2026-05-08)·[KB-370 §Production 2026-05-08](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-08-fkojunst-sole-source)·**Detach `20260508-192843-15997`**·**Phase12** **43/0/0**（**約 188s**）。**`main` マージ後**は再デプロイ引数 **`main`**（[ADR-20260508-fkojunst-status-sole-source](./decisions/ADR-20260508-fkojunst-status-sole-source.md)）。
+
 ### 🆕 最新アップデート（2026-05-05）
 
 - **`FKOJUNST_Status` 外部完了（2026-05-08）·`fkmail` の C/X のみ・一覧正本はメール**: [ADR-20260508-fkojunst](./decisions/ADR-20260508-fkojunst-status-sole-source.md)·[KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)·[KB-370](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)。**歴史**: dedupe キー消失差分は **2026-05-05 まで**（[deployment.md](./guides/deployment.md) 2026-05-04/05 項は **経緯**として残す）。

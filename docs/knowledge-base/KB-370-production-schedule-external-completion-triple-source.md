@@ -57,6 +57,18 @@ category: knowledge-base
 
 - Vitest: `src/services/production-schedule/external-completion/__tests__/`、`src/services/csv-dashboard/__tests__/`
 
+## Production（2026-05-08 · **FKOJUNST_Status を一覧・メール由来外部完了の唯一正本に統一**） {#production-2026-05-08-fkojunst-sole-source}
+
+- **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 **no hosts matched**）。
+- **ブランチ**: **`feat/fkojunst-status-cx-completion`**（代表 **`d12b40de`**）。
+- **標準手順**: [deployment.md §FKOJUNST 唯一正本（2026-05-08）](../guides/deployment.md#fkojunst-status-sole-source-2026-05-08)。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260508-192843-15997`**
+  - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`・リモート **`exit 0`**
+  - **新規マイグレーション**: **なし**（`prisma migrate deploy` / `status` は playbook 内 **成功**）
+- **Phase12 実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 188s**）。
+- **仕様差分（メール由来）**: **完了は `C`/`X` のみ**（`externallyCompletedFromFkojunstMailStatus`）。**`externallyCompletedFromFkojunstDisappeared`** は再計算で **常に false**（キー消失完了は廃止）。**生産日程CSV消滅**は **`fkmail` が `S`/`R` の winner** にのみ適用（`buildFkojunstScheduleCsvDisappearanceEligibleScalarSql`）。
+- **トラブルシュート（追補）**: 下記 **「実効完了が付かない／期待とずれる」** の **メール status** は **`C`/`X` のみ**と読み替える（歴史的に **`P`/`O` 完了**と書かれた箇所は **2026-05-08 以前の経緯**）。
+
 ## Production（2026-05-06）
 
 - **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 の個別デプロイは不要）。
@@ -79,8 +91,8 @@ category: knowledge-base
 - **`[CsvDashboardIngestor]` warn と `empty_schedule_csv`**
   - **0 件 winner** 時の **想定どおりのスキップ**。上流の生産日程CSV・取込ダッシュボード・DEDUP 設定を確認（本当に行が 0 であるべきか）。
 - **実効完了が付かない／期待とずれる**
-  - **工順ST**: メール同期が **dedupe 後キー0でスキップ**していないか・**初回**は消滅差分が無い（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
-  - **メール status**: **`C`/`P`/`X`/`O` のみ**完了扱い（`?` や空は未完了のまま）。
+  - **工順ST**: **2026-05-08 以降**は **メール status（`C`/`X`）**と **生産日程CSV消滅**（`S`/`R` 相当 winner のみ）が主因。旧 **dedupe キー消失**完了は **廃止**（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
+  - **メール status**: **`C`/`X` のみ**メール由来完了（`?` / 空 / **`O`/`P`** は **未完了**。**`O`/`P`** は一覧にも出ない）。
   - **生産日程CSV**: **DEDUP** 取込でのみスナップショット＆差分。**取込後の「現在キー」は DB 再クエリではなく今回CSVの winner 集合**で比較（取りこぼし防止）。`ProductionScheduleCsvIngestLogicalKeySnapshot` の内容と取込ログを確認。
 - **マイグレ未適用**
   - Pi5 で **`prisma migrate status`** が **`20260506150000`** を **Applied** と報告するか（デプロイ playbook の migrate ログが正本）。
