@@ -1,5 +1,27 @@
 ---
 
+### [KB-372] FKOJUNST メール winner 照合の PostgreSQL バインド上限（複合3キー IN チャンク / 32767）
+
+**日付**: 2026-05-08
+
+**Context**:
+
+- **`FKOJUNST_Status` メール取込**の **幕 winner 行 ID 解決**が、**3 本の巨大 `IN` + `$queryRaw`** に載り、候補が多いと **prepared statement のバインド上限（典型 32767）**を超え **`received 32768` 級**で失敗し得た
+
+**Fix**:
+
+- **`findFkojunstMailWinnerIdsByMailTriples`**（タプル `IN` チャンク・`Map` マージ）·[`postgres-prepared-statement-bind-limit.ts`](../../apps/api/src/lib/postgres-prepared-statement-bind-limit.ts)·pipeline [`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)·コミット **`a9fd7fcf`**（**`fix/fkojunst-mail-winner-triple-chunk`**）
+
+**本番（記録）**:
+
+- **ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）
+- **Detach**: **`20260508-211407-25543`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 1063s**）
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 167s**）
+
+**詳細**: [KB-372（詳細）](./KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·[deployment.md §FKOJUNST mail winner チャンク](../guides/deployment.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
+
+---
+
 ### [KB-371] CSVダッシュボード DEDUP 取込の PostgreSQL バインド上限（`too many bind variables` / 32767）
 
 **日付**: 2026-05-08
