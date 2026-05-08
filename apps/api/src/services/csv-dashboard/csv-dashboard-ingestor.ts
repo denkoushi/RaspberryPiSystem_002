@@ -20,6 +20,7 @@ import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
 import { ProductionScheduleCsvIngestExternalCompletionSyncService } from '../production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.js';
 import { extractProductionScheduleExternalCompletionKeysFromRows } from '../production-schedule/external-completion/production-schedule-external-completion-key.js';
+import { findCsvDashboardRowsByDataHashes } from './csv-dashboard-existing-rows-by-hash.reader.js';
 
 /**
  * CSVダッシュボード取り込みサービス
@@ -168,17 +169,10 @@ export class CsvDashboardIngestor {
           .map((row) => row.hash)
           .filter((hash): hash is string => !!hash);
         const existingRows = incomingHashes.length
-          ? await prisma.csvDashboardRow.findMany({
-              where: {
-                csvDashboardId: dashboardId,
-                dataHash: { in: incomingHashes },
-              },
-              select: {
-                id: true,
-                dataHash: true,
-                occurredAt: true,
-                rowData: true,
-              },
+          ? await findCsvDashboardRowsByDataHashes({
+              client: prisma.csvDashboardRow,
+              csvDashboardId: dashboardId,
+              dataHashes: incomingHashes,
             })
           : [];
 
