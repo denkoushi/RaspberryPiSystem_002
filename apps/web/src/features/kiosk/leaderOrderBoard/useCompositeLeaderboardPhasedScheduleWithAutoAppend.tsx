@@ -329,7 +329,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     return {
       data,
-      isLoading: anyLoading,
+      isLoading: anyLoading && mergedRowsOrdered.length === 0,
       isError: anyError,
       isFetching: anyFeedFetching || (decorationsPayload != null && decorationsQuery.isFetching)
     };

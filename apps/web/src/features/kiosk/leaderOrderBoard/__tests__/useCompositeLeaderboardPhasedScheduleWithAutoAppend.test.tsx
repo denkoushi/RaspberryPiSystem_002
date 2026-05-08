@@ -102,4 +102,59 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       );
     });
   });
+
+  it('一部カードの rows が先に来たら全カード完了前でも loading を解除する', () => {
+    innerHookMock.mockImplementation((options: { leaderboardPhasedParams: { resourceCds?: string } }) => {
+      if (options.leaderboardPhasedParams.resourceCds === 'R1') {
+        return {
+          appendError: null,
+          scheduleQuery: {
+            data: { page: 1, pageSize: 160, total: 3, rows: [row('r1-a', 'R1'), row('r1-b', 'R1')] },
+            isLoading: false,
+            isError: false,
+            isFetching: false
+          }
+        };
+      }
+      return {
+        appendError: null,
+        scheduleQuery: {
+          data: undefined,
+          isLoading: true,
+          isError: false,
+          isFetching: true
+        }
+      };
+    });
+
+    let latest:
+      | ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend>
+      | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 160
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return <>{latest?.feedMounts}</>;
+    }
+
+    render(
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness))
+    );
+
+    return waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+      expect(latest?.scheduleQuery.isFetching).toBe(false);
+    });
+  });
 });
