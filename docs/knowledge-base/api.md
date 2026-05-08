@@ -1,5 +1,27 @@
 ---
 
+### [KB-371] CSVダッシュボード DEDUP 取込の PostgreSQL バインド上限（`too many bind variables` / 32767）
+
+**日付**: 2026-05-08
+
+**Context**:
+
+- **`ingestMode === DEDUP`** の CSV 取込で、既存行を **`dataHash IN (...)` 一発**で引いていたため、**数万ユニーク hash** で **prepared statement のバインド上限（典型 32767）**を超え、`received 32768` 等で **Prisma `csvDashboardRow.findMany` が失敗**し得た
+
+**Fix**:
+
+- **`findCsvDashboardRowsByDataHashes`**（チャンク分割・重複除去）·[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)·コミット **`f4360e0d`**（**`fix/csv-import-bind-limit-dedup`**）
+
+**本番（記録）**:
+
+- **ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）
+- **Detach**: **`20260508-202603-25493`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 783s**）
+- **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 134s**）
+
+**詳細**: [KB-371（詳細）](./KB-371-csv-dashboard-dedup-postgres-bind-limit.md)·[deployment.md §CSV DEDUP バインド上限](../guides/deployment.md#csv-dedup-ingest-postgres-bind-limit-2026-05-08)
+
+---
+
 ### [KB-364] DGX blue vLLM と私用 ComfyUI の GPU 競合（502・`inference-backend` WARN）
 
 **日付**: 2026-05-03

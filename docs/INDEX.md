@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-05-08）
 
+- **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767・チャンク照合・Pi5 API のみ）**: 大量 `dataHash` の一括 `IN` が Prisma / PostgreSQL の prepared statement 上限を超え **`too many bind variables` / `received 32768` 級**で落ちる事象。**Fix**: `findCsvDashboardRowsByDataHashes` を **チャンク分割＋重複排除**に隔離（[`csv-dashboard-existing-rows-by-hash.reader.ts`](../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts)）。**本番**: **`raspberrypi5` のみ**・**Detach `20260508-202603-25493`**・**Phase12 43/0/0**（約 **134s**）。**ナレッジ**: [KB-371](./knowledge-base/KB-371-csv-dashboard-dedup-postgres-bind-limit.md)·[deployment.md §DEDUP バインド上限](./guides/deployment.md#csv-dedup-ingest-postgres-bind-limit-2026-05-08)·[api.md §KB-371](./knowledge-base/api.md#kb-371-csvダッシュボード-dedup-取込の-postgresql-バインド上限too-many-bind-variables--32767)。
+
 - **順位ボード・board 集約 API（fan-out 撤去）**
   - **何をしたか**: 多資源スロット画面で、資源カード **ごと**に `leaderboard-shell` / `leaderboard-total` / `leaderboard-decorations` / `continue` を **並列取得していた構造**をやめ、**`GET` / `POST …/leaderboard-board`** で **サーバが `resources[]` 順に shell・追補・件数・装飾を束ねる**。**行の意味・並び・件数・装飾契約は不変**（表示削減による見かけの高速化はしない）。既存 phased エンドポイントは **後方互換で残す**。
   - **本番の位置づけ（2026-05-08）**: **`raspberrypi5`（API）と `raspberrypi4`（キオスク Web 等）に反映済み**。**Detach** `20260508-175314-10578` / `20260508-181440-11189`。**未反映（標準手順の対象として残）**: `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01`（**`main` を `--limit` 順次**）。

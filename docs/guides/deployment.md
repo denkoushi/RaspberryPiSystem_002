@@ -10,7 +10,19 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-最終更新: 2026-05-08。**直近の本番**: ① **順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`・`fix/leaderboard-shell-bounded-filler-fetch`）**・**Pi5+Pi4 まで反映済（残りキオスク Pi4×3 は台帳上未完了）**（下記「補足（2026-05-08 · board 集約 API）」・**マージ後は `main`**）。② **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。③ **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。④ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。⑤ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+最終更新: 2026-05-08。**直近の本番**: ① **CSVダッシュボード DEDUP 取込の `dataHash IN (...)` バインド上限対策（PostgreSQL 32767）**·**API のみ**·**Pi5 のみ**（下記「補足（2026-05-08 · CSV DEDUP バインド上限）」・**マージ後は `main`**）。② **順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`・`fix/leaderboard-shell-bounded-filler-fetch`）**・**Pi5+Pi4 まで反映済（残りキオスク Pi4×3 は台帳上未完了）**（下記「補足（2026-05-08 · board 集約 API）」・**マージ後は `main`**）。③ **順位ボード・資源CDカード単位 phased（同一製番展開の条件付き無効化・`feature/kiosk-leaderboard-card-scope`）**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · カード単位）」・**マージ後は `main`**）。④ **順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor`）**・ブランチ先行 **`fix/leaderboard-cursor-snapshot`**・Pi5→Pi4×4 順次（下記「補足（2026-05-07 · snapshot+cursor）」・**マージ後は `main`**）。⑤ **順位ボード・サーバ内 snapshot（`snapshotId` / `snapshotExpired`）**・**`main`**（下記「補足（2026-05-07 · snapshot）」）。⑥ 順位ボード段階 **`leaderboard-shell/continue`（append）**・`main` 反映済み（下記「補足（2026-05-07 · append）」）。**従来の一行サマリ**は **`### 最終更新（履歴一覧・2026-05-07）`** を参照。
+
+### 補足（2026-05-08 · **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767）対策**·**API のみ**·**Pi5 のみ**） {#csv-dedup-ingest-postgres-bind-limit-2026-05-08}
+
+- **変更概要**: `ingestMode === DEDUP` の取込で、既存行照合 **`csvDashboardRow.findMany({ dataHash: { in: incomingHashes } })`** が **単一クエリ**だったため、**`incomingHashes` が数万件**になると **Prisma / PostgreSQL の prepared statement バインド上限（典型 32767）**を超え、**`too many bind variables … received 32768`** で失敗し得た。**対策**: [`findCsvDashboardRowsByDataHashes`](../../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts) で **ハッシュ重複除去＋チャンク分割 `findMany`**・[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) から呼び出し。**新規マイグレーションなし**。
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。Pi4／Pi3 play は **no hosts matched**（**Pi3 専用手順は不要**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/csv-import-bind-limit-dedup infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後はブランチ引数を `main`**）。
+- **本番デプロイ（先行反映・実績）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260508-202603-25493`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**・ローカル **`--follow` 約 783s**）。**`Run prisma migrate deploy` / `prisma migrate status`**: **成功**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 134s**・Tailscale・Pi5 API `100.106.158.2`）。
+- **トラブルシュート**:
+  - **同じエラーが出る** → Pi5 **API コンテナ**が **`f4360e0d` 以降（またはマージ後 `main` HEAD）**か、Detach ログ **`Git: changed`** を確認。
+  - **`update-all-clients.sh` がローカル未コミットで停止** — **stash / commit** で作業ツリーをクリーンにする。
+- **ナレッジ**: [KB-371](../knowledge-base/KB-371-csv-dashboard-dedup-postgres-bind-limit.md)·代表コミット **`f4360e0d`**·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-08 · **FKOJUNST_Status メール同期を一覧・外部完了の唯一正本とする**·**API のみ**·**Pi5 のみ**） {#fkojunst-status-sole-source-2026-05-08}
 
