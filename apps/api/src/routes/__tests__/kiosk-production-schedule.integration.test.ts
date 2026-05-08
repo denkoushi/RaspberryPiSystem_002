@@ -22,23 +22,24 @@ const FKOJUNST_GMAIL_LEGACY_SOURCE_DASHBOARD_ID = '9e4f2c1a-8b7d-4e6f-a5c4-1d2e3
 const CLIENT_KEY = 'client-demo-key';
 const CLIENT_KEY_2 = 'client-demo-key-2';
 
-async function seedDefaultFkojunstStatusForAllDashboardRows(): Promise<void> {
+async function seedDefaultVisibleFkojunstMailStatusForAllDashboardRows(): Promise<void> {
   const rows = await prisma.csvDashboardRow.findMany({
     where: { csvDashboardId: DASHBOARD_ID },
     select: { id: true, rowData: true },
   });
   if (rows.length === 0) return;
-  await prisma.productionScheduleFkojunstStatus.createMany({
+  await prisma.productionScheduleFkojunstMailStatus.createMany({
     data: rows.map((rw) => {
       const rd = rw.rowData as Record<string, string | undefined>;
       return {
         csvDashboardId: DASHBOARD_ID,
         csvDashboardRowId: rw.id,
-        sourceCsvDashboardId: FKOJUNST_GMAIL_LEGACY_SOURCE_DASHBOARD_ID,
-        productNo: rd.ProductNo ?? '',
-        resourceCd: (rd.FSIGENCD ?? '').trim().toUpperCase(),
-        processOrder: rd.FKOJUN ?? '',
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        fkojun: rd.FKOJUN ?? '',
+        fkoteicd: (rd.FSIGENCD ?? '').trim().toUpperCase(),
+        fsezono: rd.ProductNo ?? '',
         statusCode: 'S',
+        sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
       };
     }),
     skipDuplicates: true,
@@ -221,7 +222,7 @@ describe('Kiosk Production Schedule API', () => {
       });
     }
 
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
   });
 
   it('rejects request without x-client-key', async () => {
@@ -326,14 +327,19 @@ describe('Kiosk Production Schedule API', () => {
     expect(targetRow).toBeDefined();
     if (!targetRow) return;
 
-    await prisma.productionScheduleFkojunstMailStatus.create({
-      data: {
+    await prisma.productionScheduleFkojunstMailStatus.upsert({
+      where: { csvDashboardRowId: targetRow.id },
+      create: {
         csvDashboardId: DASHBOARD_ID,
         csvDashboardRowId: targetRow.id,
         sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
         fkojun: '210',
         fkoteicd: '1',
         fsezono: '0001',
+        statusCode: 'S',
+        sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+      },
+      update: {
         statusCode: 'S',
         sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
       },
@@ -362,14 +368,19 @@ describe('Kiosk Production Schedule API', () => {
     expect(targetRow).toBeDefined();
     if (!targetRow) return;
 
-    await prisma.productionScheduleFkojunstMailStatus.create({
-      data: {
+    await prisma.productionScheduleFkojunstMailStatus.upsert({
+      where: { csvDashboardRowId: targetRow.id },
+      create: {
         csvDashboardId: DASHBOARD_ID,
         csvDashboardRowId: targetRow.id,
         sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
         fkojun: '210',
         fkoteicd: '1',
         fsezono: '0001',
+        statusCode: '?',
+        sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+      },
+      update: {
         statusCode: '?',
         sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
       },
@@ -387,7 +398,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((row) => row.rowData.ProductNo)).toEqual(['0000', '0002']);
   });
 
-  it('hides rows when fkst is non S/R and there is no FKOJUNST_Status mail row', async () => {
+  it('hides rows when only legacy fkst is non-S/R and there is no FKOJUNST_Status mail row', async () => {
     const targetRow = await prisma.csvDashboardRow.findFirst({
       where: { csvDashboardId: DASHBOARD_ID, rowData: { path: ['ProductNo'], equals: '0001' } },
       select: { id: true },
@@ -395,9 +406,22 @@ describe('Kiosk Production Schedule API', () => {
     expect(targetRow).toBeDefined();
     if (!targetRow) return;
 
-    await prisma.productionScheduleFkojunstStatus.updateMany({
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({
       where: { csvDashboardRowId: targetRow.id },
-      data: { statusCode: 'X' },
+    });
+
+    await prisma.productionScheduleFkojunstStatus.upsert({
+      where: { csvDashboardRowId: targetRow.id },
+      create: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: targetRow.id,
+        sourceCsvDashboardId: FKOJUNST_GMAIL_LEGACY_SOURCE_DASHBOARD_ID,
+        productNo: '0001',
+        resourceCd: '1',
+        processOrder: '210',
+        statusCode: 'X',
+      },
+      update: { statusCode: 'X' },
     });
 
     const res = await app.inject({
@@ -410,7 +434,7 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0002']);
   });
 
-  it('shows fkst R when there is no FKOJUNST_Status mail row', async () => {
+  it('hides rows when only legacy fkst is S/R and there is no FKOJUNST_Status mail row', async () => {
     const targetRow = await prisma.csvDashboardRow.findFirst({
       where: { csvDashboardId: DASHBOARD_ID, rowData: { path: ['ProductNo'], equals: '0001' } },
       select: { id: true },
@@ -418,9 +442,22 @@ describe('Kiosk Production Schedule API', () => {
     expect(targetRow).toBeDefined();
     if (!targetRow) return;
 
-    await prisma.productionScheduleFkojunstStatus.updateMany({
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({
       where: { csvDashboardRowId: targetRow.id },
-      data: { statusCode: 'R' },
+    });
+
+    await prisma.productionScheduleFkojunstStatus.upsert({
+      where: { csvDashboardRowId: targetRow.id },
+      create: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: targetRow.id,
+        sourceCsvDashboardId: FKOJUNST_GMAIL_LEGACY_SOURCE_DASHBOARD_ID,
+        productNo: '0001',
+        resourceCd: '1',
+        processOrder: '210',
+        statusCode: 'R',
+      },
+      update: { statusCode: 'R' },
     });
 
     const res = await app.inject({
@@ -429,8 +466,68 @@ describe('Kiosk Production Schedule API', () => {
       headers: { 'x-client-key': CLIENT_KEY },
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string; FKOJUNST?: string } }> };
-    expect(body.rows.find((r) => r.rowData.ProductNo === '0001')?.rowData.FKOJUNST).toBe('R');
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000', '0002']);
+  });
+
+  it('hides O/P mail rows from kiosk list but keeps them in seiban progress total', async () => {
+    const targetRow = await prisma.csvDashboardRow.findFirst({
+      where: { csvDashboardId: DASHBOARD_ID, rowData: { path: ['ProductNo'], equals: '0001' } },
+      select: { id: true },
+    });
+    expect(targetRow).toBeDefined();
+    if (!targetRow) return;
+
+    await prisma.productionScheduleFkojunstMailStatus.upsert({
+      where: { csvDashboardRowId: targetRow.id },
+      create: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: targetRow.id,
+        sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        fkojun: '210',
+        fkoteicd: '1',
+        fsezono: '0001',
+        statusCode: 'O',
+        sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+      },
+      update: {
+        statusCode: 'O',
+        sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule?q=A',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { rows: Array<{ rowData: { ProductNo?: string } }> };
+    expect(body.rows.map((r) => r.rowData.ProductNo)).toEqual(['0000']);
+
+    const stateGet = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    const etag = stateGet.headers.etag;
+    await app.inject({
+      method: 'PUT',
+      url: '/api/kiosk/production-schedule/search-state',
+      headers: { 'x-client-key': CLIENT_KEY, 'if-match': String(etag) },
+      payload: { state: { history: ['A'] } },
+    });
+
+    const progressRes = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/history-progress',
+      headers: { 'x-client-key': CLIENT_KEY },
+    });
+    expect(progressRes.statusCode).toBe(200);
+    const progressBody = progressRes.json() as {
+      progressBySeiban: Record<string, { total: number; completed: number }>;
+    };
+    expect(progressBody.progressBySeiban.A).toMatchObject({ total: 2, completed: 0 });
   });
 
   it('returns planned supplement fields when linked row exists', async () => {
@@ -501,7 +598,7 @@ describe('Kiosk Production Schedule API', () => {
       ],
     });
 
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const res = await app.inject({
       method: 'GET',
@@ -727,7 +824,7 @@ describe('Kiosk Production Schedule API', () => {
         }
       }))
     });
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const shell = await app.inject({
       method: 'GET',
@@ -772,7 +869,7 @@ describe('Kiosk Production Schedule API', () => {
         }
       }))
     });
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const mono = await app.inject({
       method: 'GET',
@@ -845,7 +942,7 @@ describe('Kiosk Production Schedule API', () => {
         }
       }))
     });
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const mono = await app.inject({
       method: 'GET',
@@ -928,7 +1025,7 @@ describe('Kiosk Production Schedule API', () => {
         }
       }))
     });
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const totalRes = await app.inject({
       method: 'GET',
@@ -1229,7 +1326,7 @@ describe('Kiosk Production Schedule API', () => {
     });
     expect(created.count).toBe(2);
 
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const list = await prisma.csvDashboardRow.findMany({
       where: { csvDashboardId: DASHBOARD_ID },
@@ -2781,7 +2878,7 @@ describe('Kiosk Production Schedule API', () => {
       ]
     });
 
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const res = await app.inject({
       method: 'GET',
@@ -2856,7 +2953,7 @@ describe('Kiosk Production Schedule API', () => {
       ]
     });
 
-    await seedDefaultFkojunstStatusForAllDashboardRows();
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
 
     const res = await app.inject({
       method: 'GET',

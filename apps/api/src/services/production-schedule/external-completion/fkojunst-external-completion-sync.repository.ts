@@ -1,7 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { buildFkojunstMailStatusCompletedScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildFkojunstSrEligibleScalarSql } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
+import { buildFkojunstScheduleCsvDisappearanceEligibleScalarSql } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 
 export type PrismaExecutor = Pick<PrismaClient, '$executeRaw'>;
@@ -25,12 +26,9 @@ const winnersBaseSql = Prisma.sql`
       || E'\t'
       || BTRIM("cdr"."rowData"->>'ProductNo')
     ) AS "rowKey",
-    ${buildFkojunstSrEligibleScalarSql()} AS "srEligible",
-    COALESCE((UPPER(BTRIM("fkmail"."statusCode")) IN ('C', 'P', 'X', 'O')), FALSE) AS "mailStatusComplete"
+    ${buildFkojunstScheduleCsvDisappearanceEligibleScalarSql()} AS "scheduleCsvWinnerEligible",
+    ${buildFkojunstMailStatusCompletedScalarSql()} AS "mailStatusComplete"
   FROM "CsvDashboardRow" AS "cdr"
-  LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-    ON "fkst"."csvDashboardRowId" = "cdr"."id"
-    AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
   LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
     ON "fkmail"."csvDashboardRowId" = "cdr"."id"
     AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -39,29 +37,18 @@ const winnersBaseSql = Prisma.sql`
 `;
 
 /**
- * FKOJUNST_Status メール同期後: 工順STメールの「消滅差分」と C/P/X/O 完了を反映し、生産日程CSV由来フラグは保持する。
+ * FKOJUNST_Status メール同期後: `fkmail` の **C/X** を外部完了に反映し、生産日程CSV由来フラグは保持する。
+ * 旧「メール dedupe キー消失」ロジックは使わない（`externallyCompletedFromFkojunstDisappeared` は常に false に更新）。
  */
-export async function replaceAllWinnerExternalCompletionStatesFromMailSync(
-  executor: PrismaExecutor,
-  disappearedMailKeys: readonly string[]
-): Promise<void> {
-  const disappearedMailSql = buildDisappearedKeysValuesSql(disappearedMailKeys);
-
+export async function replaceAllWinnerExternalCompletionStatesFromMailSync(executor: PrismaExecutor): Promise<void> {
   await executor.$executeRaw`
-    WITH "disappearedMailKeys" AS (
-      ${disappearedMailSql}
-    ),
-    "winners" AS (
+    WITH "winners" AS (
       ${winnersBaseSql}
     ),
     "computed" AS (
       SELECT
         "w"."id",
-        "w"."rowKey",
-        (
-          "w"."srEligible"
-          AND EXISTS (SELECT 1 FROM "disappearedMailKeys" "dk" WHERE "dk"."k" = "w"."rowKey")
-        ) AS "mailDisappeared",
+        FALSE AS "mailDisappeared",
         "w"."mailStatusComplete" AS "mailStatusComplete"
       FROM "winners" "w"
     )
@@ -124,7 +111,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSyn
       SELECT
         "w"."id",
         (
-          "w"."srEligible"
+          "w"."scheduleCsvWinnerEligible"
           AND EXISTS (SELECT 1 FROM "disappearedScheduleKeys" "dk" WHERE "dk"."k" = "w"."rowKey")
         ) AS "scheduleDisappeared"
       FROM "winners" "w"
@@ -173,8 +160,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSyn
  * 互換のためメール同期と同じ処理とする。
  */
 export async function replaceAllWinnerExternalCompletionStates(
-  executor: PrismaExecutor,
-  disappearedKeys: readonly string[]
+  executor: PrismaExecutor
 ): Promise<void> {
-  await replaceAllWinnerExternalCompletionStatesFromMailSync(executor, disappearedKeys);
+  await replaceAllWinnerExternalCompletionStatesFromMailSync(executor);
 }

@@ -71,8 +71,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
     if (!extResult.skipped) {
       logger.info(
         {
-          distinctKeys: extResult.distinctKeys,
-          disappearedDistinctKeys: extResult.disappearedDistinctKeys,
+          dedupedStatusMailRows: dedupedRows.length,
         },
         '[ProductionScheduleFkojunstMailStatusSyncService] external completion sync completed'
       );

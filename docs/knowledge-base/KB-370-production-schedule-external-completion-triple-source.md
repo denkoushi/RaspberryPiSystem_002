@@ -2,7 +2,7 @@
 title: KB-370 生産スケジュール「実効完了」の外部要因3系統OR統合（手動・工順ST・生産日程CSV）
 tags: [生産スケジュール, CSV, FKOJUNST, 外部完了, 順位ボード]
 audience: [開発者, 運用者]
-last-verified: 2026-05-06
+last-verified: 2026-05-08
 category: knowledge-base
 ---
 
@@ -23,9 +23,9 @@ category: knowledge-base
 実効完了は次の **論理 OR**（いずれかが真なら完了扱い）:
 
 1. **手動**: 既存 `ProductionScheduleProgress.isCompleted`
-2. **工順ST（FKOJUNST_Status メール同期）**
-   - メール dedupe キー集合の **前回あり→今回なし（消滅）**
-   - かつ **ステータスが `C` / `P` / `X` / `O` のいずれか**（`S` / `R` は未完了のまま）
+2. **工順ST（FKOJUNST_Status メール同期 → `ProductionScheduleFkojunstMailStatus`）**
+   - **`statusCode` が `C` または `X`** のとき外部完了（**2026-05-08 改訂**: 旧 **dedupe キー消失**・**`O`/`P` による完了**は廃止。`externallyCompletedFromFkojunstDisappeared` は再計算で **常に false**）
+   - **`O` / `P`**: 一覧非表示だが **未完了**（製番進捗 total に残る）
 3. **生産日程CSV取込**
    - 取込 **直前** の winner **論理キー** スナップショットと、取込 **後** の winner 集合を比較し、**消えたキー**を完了扱い
 
@@ -34,8 +34,8 @@ category: knowledge-base
 ## Data model
 
 - `ProductionScheduleExternalCompletion` に由来別フラグを保持し、同期時に **`isExternallyCompleted` を3列の OR** で更新する:
-  - `externallyCompletedFromFkojunstDisappeared`
-  - `externallyCompletedFromFkojunstMailStatus`
+  - `externallyCompletedFromFkojunstDisappeared`（**2026-05-08**: メール再計算で **常に false**。列は後方互換のため保持）
+  - `externallyCompletedFromFkojunstMailStatus`（**`fkmail` の `C`/`X`**）
   - `externallyCompletedFromScheduleCsvDisappeared`
 - 生産日程CSV用スナップショット: `ProductionScheduleCsvIngestLogicalKeySnapshot`
 
