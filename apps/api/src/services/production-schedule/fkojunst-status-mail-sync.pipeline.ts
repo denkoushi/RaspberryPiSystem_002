@@ -8,8 +8,11 @@ import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
 } from './constants.js';
 import { parseFkojunstStatusMailFupdteDt } from '../csv-dashboard/csv-dashboard-datetime-parse.js';
+import { findFkojunstMailWinnerIdsByMailTriples } from './fkojunst-mail-winner-by-triple.reader.js';
+import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
-import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+
+export { buildFkojunstMailStatusKey };
 
 export { parseFkojunstStatusMailFupdteDt };
 
@@ -32,13 +35,6 @@ export type FkojunstMailNormalizedRow = {
   hasUnparseableDate: boolean;
 };
 
-type WinnerKeyRow = {
-  id: string;
-  fkojun: string | null;
-  fkoteicd: string | null;
-  fsezono: string | null;
-};
-
 export type FkojunstMailSyncResult = {
   scanned: number;
   normalized: number;
@@ -56,10 +52,6 @@ function normalizeStatusCode(value: unknown): string | null {
   const s = normalizeToken(value).toUpperCase();
   if (s.length !== 1) return null;
   return ALLOWED_STATUS.has(s) ? s : null;
-}
-
-export function buildFkojunstMailStatusKey(parts: { fkojun: string; fkoteicd: string; fsezono: string }): string {
-  return `${parts.fkojun}\t${parts.fkoteicd}\t${parts.fsezono}`;
 }
 
 export function toFkojunstMailNormalizedRow(
@@ -156,34 +148,15 @@ export async function resolveFkojunstMailWinnerIdByKey(
   if (dedupedRows.length === 0) {
     return new Map();
   }
-
-  const fkojuns = [...new Set(dedupedRows.map((row) => row.fkojun))];
-  const fkoteicds = [...new Set(dedupedRows.map((row) => row.fkoteicd))];
-  const fsezonos = [...new Set(dedupedRows.map((row) => row.fsezono))];
-
-  const winnerRows = await client.$queryRaw<WinnerKeyRow[]>`
-    SELECT
-      "CsvDashboardRow"."id" AS "id",
-      BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN') AS "fkojun",
-      UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "fkoteicd",
-      BTRIM("CsvDashboardRow"."rowData"->>'ProductNo') AS "fsezono"
-    FROM "CsvDashboardRow"
-    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND BTRIM("CsvDashboardRow"."rowData"->>'FKOJUN') IN (${Prisma.join(fkojuns.map((value) => Prisma.sql`${value}`), ',')})
-      AND UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) IN (${Prisma.join(fkoteicds.map((value) => Prisma.sql`${value}`), ',')})
-      AND BTRIM("CsvDashboardRow"."rowData"->>'ProductNo') IN (${Prisma.join(fsezonos.map((value) => Prisma.sql`${value}`), ',')})
-  `;
-
-  const winnerIdByKey = new Map<string, string>();
-  for (const row of winnerRows) {
-    const fkojun = normalizeToken(row.fkojun);
-    const fkoteicd = normalizeProductionScheduleResourceCd(normalizeToken(row.fkoteicd));
-    const fsezono = normalizeToken(row.fsezono);
-    if (fkojun.length === 0 || fkoteicd.length === 0 || fsezono.length === 0) continue;
-    winnerIdByKey.set(buildFkojunstMailStatusKey({ fkojun, fkoteicd, fsezono }), row.id);
-  }
-  return winnerIdByKey;
+  return findFkojunstMailWinnerIdsByMailTriples({
+    client,
+    productionScheduleDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+    triples: dedupedRows.map((row) => ({
+      fkojun: row.fkojun,
+      fkoteicd: row.fkoteicd,
+      fsezono: row.fsezono,
+    })),
+  });
 }
 
 export function buildFkojunstMailReplacementCreateInputs(
