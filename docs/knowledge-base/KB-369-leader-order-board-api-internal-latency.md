@@ -10,9 +10,12 @@ category: knowledge-base
 
 ## Context
 
-- 対象: `GET /api/kiosk/production-schedule`（`responseProfile=leaderboard`）
-- 主経路: `listProductionScheduleRows` → 可視行 `COUNT(*)` + `fetchLeaderboardScheduleRowsWithSeibanAwarePriority`
-- 目的: **UI/API 契約・並び・件数定義を変えず**、サーバ内部の待ち時間を短縮する
+本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。
+
+- **運用・合意上の制約（イニシアチブ共通）**: **表示内容を削って速く見せる**ことは禁止。**データ意味・並びの定義・装飾の契約**は従来と同値。改善は **HTTP 形状・クエリ評価・クライアントの取得パターン**に限定する。
+- **対象（一覧 monolithic）**: `GET /api/kiosk/production-schedule`（`responseProfile=leaderboard`）
+- **主経路（当該プロファイル）**: `listProductionScheduleRows` → 可視行 `COUNT(*)` + `fetchLeaderboardScheduleRowsWithSeibanAwarePriority`
+- **目的**: **UI/API 契約・並び・件数定義を変えず**、サーバ内部および **ブラウザ↔API 往復**の待ち時間を短縮する
 
 ## Symptoms
 
@@ -161,6 +164,25 @@ category: knowledge-base
   - **デプロイスクリプトの fail-fast（ローカル差分）** → `git stash push -u` で作業ツリーをクリーン化してから再実行。
   - **性能判断が不安定** → 空データ計測のみで「改善」と断定しない。運用相当データで再計測する。
 
+## Open work（board 集約 API・2026-05-08 時点）
+
+以下は **実装マージ済み／一部本番反映済み**だが、**運用・測定として未完了**の項目である。
+
+1. **残りキオスク 3 台へのデプロイ**  
+   **`raspi4-robodrill01`**, **`raspi4-fjv60-80`**, **`raspi4-kensaku-stonebase01`** には、2026-05-08 時点では **board 集約（API+Web）の反映が未記録**。手順は [deployment.md の 2026-05-08 項](../guides/deployment.md) と同一で、**`main`（または合流済みブランチ）**を **`--limit` 1 台ずつ**適用する。
+
+2. **広域 Phase12 の「緑」再確認**  
+   Pi5/Pi4 反映直後に **`verify-phase12-real.sh`** を走らせた記録では **PASS 42 / FAIL 1**（**`deploy-status raspberrypi4` が一時 `isMaintenance: true`**）。連続デプロイでは **メンテフラグ残留**が起きうるため、**全ホスト完了後に再実行**し **PASS 43 / FAIL 0** を狙う。
+
+3. **本番相当データでの latency 証跡**  
+   記録済みの **curl** は **`rows 0 件`** 条件下で **約 5.4〜6.0s**。**空結果はプランナ・I/O の経路が実データと異なる**ため、**「board 集約で十分速い」ことの根拠にはならない**。多資源・多行・代表的検索語での **ブラウザ Network（board 往返）**または **API サーバ側の構造化ログ**で **P95 帯**を取る。
+
+4. **初回 shell の全件順序コスト**  
+   board 集約は **往復数**を抑えるが、**初回一覧の選定・並び確定**が重い場合は **サーバ CPU/DB 時間**として残る。続柄の **cursor 化された continue** や snapshot TTL は別途議論（[ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)）。
+
+5. **集約後の API プロセス負荷**  
+   1 リクエストが複数スロット分の shell/total/装飾を扱うため、**同時リクエストが少数でも DB 並行性・プール枯渇**に触れうる。アルート別メトリクスや **遅いクエリログ**で監視対象に追加することを推奨。
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
@@ -197,8 +219,9 @@ category: knowledge-base
 
 ## References
 
+- [ADR-20260508 · board 集約 API（意思決定・代替案・ロールアウト）](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)
 - 計画メモ（ローカル）: 「仕様不変の順位ボード高速化計画」（`leaderboard-spec-preserving-speedup`）
-- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**·**2026-05-07 · append（continue）項**·**2026-05-07 · snapshot（サーバ内 TTL・`snapshotId`）項**·**2026-05-07 · 資源CDカード単位 phased 項**）
+- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**·**2026-05-07 · append（continue）項**·**2026-05-07 · snapshot（サーバ内 TTL・`snapshotId`）項**·**2026-05-07 · 資源CDカード単位 phased 項**·**2026-05-08 · board 集約 API 項**）
 - [ADR-20260507-leaderboard-shell-snapshot](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)

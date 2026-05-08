@@ -10,7 +10,12 @@
 
 ### 🆕 最新アップデート（2026-05-08）
 
-- **順位ボード・集約 API（fan-out 撤去）**: `GET/POST …/leaderboard-board` を追加し、多資源スロットの shell/追補/件数/装飾をサーバでスロット順に束ねる（既存 phased API は維持）。**本番進捗（2026-05-08）**: `raspberrypi5` / `raspberrypi4` 反映済み（Detach `20260508-175314-10578` / `20260508-181440-11189`）。`verify-phase12-real.sh` は途中時点 **PASS 42 / FAIL 1**（`deploy-status raspberrypi4` が一時 `isMaintenance:true`）。**ADR**: [ADR-20260508](./decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**実装**: [`leaderboard-composite-board.service.ts`](../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)。**KB**: [KB-369](./knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。
+- **順位ボード・board 集約 API（fan-out 撤去）**
+  - **何をしたか**: 多資源スロット画面で、資源カード **ごと**に `leaderboard-shell` / `leaderboard-total` / `leaderboard-decorations` / `continue` を **並列取得していた構造**をやめ、**`GET` / `POST …/leaderboard-board`** で **サーバが `resources[]` 順に shell・追補・件数・装飾を束ねる**。**行の意味・並び・件数・装飾契約は不変**（表示削減による見かけの高速化はしない）。既存 phased エンドポイントは **後方互換で残す**。
+  - **本番の位置づけ（2026-05-08）**: **`raspberrypi5`（API）と `raspberrypi4`（キオスク Web 等）に反映済み**。**Detach** `20260508-175314-10578` / `20260508-181440-11189`。**未反映（標準手順の対象として残）**: `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01`（**`main` を `--limit` 順次**）。
+  - **検証メモ**: 広域 `./scripts/deploy/verify-phase12-real.sh` は **途中実行で PASS 42 / FAIL 1** の記録あり（**`deploy-status raspberrypi4` が一時 `isMaintenance: true`** → 連続デプロイでは既知。**全台完了後に再実行**で緑化を狙う）。
+  - **計測の限界**: 補助的な **curl** では **rows 0 件**条件で **約 5.4〜6.0s**。これは **本番負荷の改善証明にならない**（空結果はクエリ経路が異なる）。運用相当の検索・件数で **board 1 往復**と旧 **N 往復**を対比すること。
+  - **参照**: [ADR-20260508](./decisions/ADR-20260508-leaderboard-board-aggregate-api.md)（経緯・代替案・トレードオフ）·[KB-369](./knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[`leaderboard-composite-board.service.ts`](../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)·[deployment.md](./guides/deployment.md) 補足（2026-05-08）·[EXEC_PLAN.md](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-05-07）
 

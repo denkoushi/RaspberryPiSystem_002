@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-08 / **本番先行反映・部分完**） **キオスク順位ボード・board 集約 API（fan-out 撤去・`GET/POST …/leaderboard-board`）**·ブランチ **`fix/leaderboard-shell-bounded-filler-fetch`**（**`main` マージ後は `origin/main` HEAD を正とする**）。**API 集約**: [`leaderboard-composite-board.service.ts`](./apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·ルート [`leaderboard-phased-read.ts`](./apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)（board ルート）。**Web**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](./apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) を **単一取得主経路**に。**既存** `leaderboard-shell` / `leaderboard-total` / `leaderboard-decorations` / `leaderboard-shell/continue` は **後方互換維持**。**本番（2026-05-08）**: **`raspberrypi5` / `raspberrypi4` のみ**完了。**未反映**: **`raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01`**（[`deployment.md`](./docs/guides/deployment.md) 補足 2026-05-08 と同じ **`update-all-clients.sh main … --limit`**）。**Detach Run ID**（`ansible-update-`）: **`20260508-175314-10578`**（Pi5）/ **`20260508-181440-11189`**（`raspberrypi4`）。**実機（自動・途中）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 0 / FAIL 1**（**`deploy-status raspberrypi4` が一時 `isMaintenance:true`**・連続デプロイでは既知）。**補助計測**: board GET は **rows 0** 条件下 **~5.4–6.0s**（**改善の根拠には不足**）。**ナレッジ**: [ADR-20260508](./docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md)·[KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](./docs/guides/deployment.md)。
+
 - [x] (2026-05-07 / **本番先行反映**） **キオスク順位ボード・資源CDカード単位 phased（同一製番展開を `resourceCds.length===1` のみオフ・複合 Web hook）**·ブランチ **`feature/kiosk-leaderboard-card-scope`**·実装代表 **`30a664f1`**（**`main` マージ後は `origin/main` HEAD を正とする**）。**API**: [`leaderboard-row-selection.service.ts`](./apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts) の `seibanExpansion`·[`production-schedule-query.service.ts`](./apps/api/src/services/production-schedule/production-schedule-query.service.ts) の `shouldExpandLeaderboardSeibanAcrossResources`。**Web**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](./apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)·[`useLeaderboardPhasedScheduleWithAutoAppend`](./apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts)·[`ProductionScheduleLeaderOrderBoardPage.tsx`](./apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx)。**本番**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**·**Pi3 除外**·**新規マイグレなし**）。**Detach Run ID**（`ansible-update-`）: **`20260507-212820-17030`** / **`20260507-213838-14511`** / **`20260507-214421-9979`** / **`20260507-214913-28430`** / **`20260507-215416-19850`**。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 121s**）。**ナレッジ**: [KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-297 §カード単位](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-resource-card-phased-scope-2026-05-07)·[deployment.md](./docs/guides/deployment.md)（2026-05-07 · カード単位項）。
 
 - [x] (2026-05-07 / **本番先行反映**） **キオスク順位ボード・continue の snapshot+cursor（`nextCursor` / `hasMore`・`snapshotId` + `cursor` 主軸）**·**[PR #270](https://github.com/denkoushi/RaspberryPiSystem_002/pull/270)**（**squash マージ後は `origin/main` HEAD を正とする**）·実装 tip **`52b68c8c`**。**slice**: [`leaderboard-shell-continue.slice.ts`](./apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-continue.slice.ts)。Web: [`useLeaderboardPhasedScheduleWithAutoAppend`](./apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts)·**`appendError`**・**`snapshotExpired` 時に decorations も invalidate**。**本番**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**`--limit` 順次**·**Pi3 除外**·**新規マイグレなし**）。**Detach Run ID**（`ansible-update-`）: **`20260507-190947-13634`** / **`20260507-192208-14169`** / **`20260507-192734-3017`** / **`20260507-193134-2805`** / **`20260507-193553-4333`**。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 104s**）。**ナレッジ**: [KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](./docs/guides/deployment.md)（2026-05-07 · snapshot+cursor 項）.
@@ -1079,6 +1081,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-08）: **board 集約**は **ブラウザ側 fan-out（資源カード数 × 多 HTTP）**を **往復数**の観点で抑えうるが、代わりに **1 リクエストあたり API が複数スロット分の shell/total/装飾/continue を直列・準直列に処理**するため、**サーバ CPU・DB 時間は「集中」**しうる。別系統の最適化（winner materialization 等）と累積で見る必要がある。また **空結果（rows 0）** 付近での **~5–6s** の **curl** は、**遅延の内訳（プランナ・ロック・ネットワーク）を切り分けづらく**、**体感改善のエビデンスとしては弱い**（運用データでの **Network / サーバログ**が必要）。**連続デプロイ**では **`deploy-status` が一時メンテ**になり **`verify-phase12-real.sh` が FAIL 1** になりうる。**記録**: [KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[ADR-20260508](./docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md)·[deployment.md](./docs/guides/deployment.md)。
+
 - 観測（2026-05-06）: キオスク順位ボード（`responseProfile=leaderboard` / `leaderboard-shell` / 装飾 hydrate）で `prepareProductionScheduleDashboardFilters` の `baseWhere` に埋め込まれていた **`buildMaxProductNoWinnerCondition`（相関サブクエリ）** が、**複数本の行取得 SQL それぞれで行ごとに再評価**されやすく、**シェル単体のレイテンシ支配要因**になり得る。**同値の winner 集合を `ROW_NUMBER` で 1 本 materialize して `IN` 共有**すれば、並び・件数・winner 定義を変えずに **DB 側の評価を畳み込める**。**記録**: [KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·実装: [`max-product-no-winner-materialization.ts`](./apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)。**本番**: Pi5 **`raspberrypi5` のみ**・Detach **`20260506-190944-2060`**（**`failed=0`**）·Phase12 **43/0/0**（**約 132s**）→ [deployment.md](./docs/guides/deployment.md) 冒頭項。
 
 - 観測（2026-05-05）: Pi5 **`update-all-clients.sh --detach --follow` が exit `0`** でも、ログ後段で **`alerts/alert-<timestamp>.json` が作成**されることがある。**デプロイ成否の正本は `PLAY RECAP`／`logs/deploy/ansible-update-<runId>.summary.json`／リモート終了ログ**であり、アラート JSON の有無だけで失敗とはみなさない。**記録**: [deployment.md](./docs/guides/deployment.md)（2026-05-05 Pi5 UX 項）。
@@ -1371,6 +1375,11 @@
   対応: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、`git pull`前後のHEADを比較して変更を検知。コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証で正のテスト（コード変更→再ビルド）と負のテスト（コード変更なし→再ビルドなし）を確認。**[KB-217]**
 
 ## Decision Log
+
+- 決定（2026-05-08）: **多資源キオスク順位ボードの HTTP fan-out を、クライアント側の並列度だけでは吸収しきれない規模にしない**。**追加**で `GET` / `POST …/kiosk/production-schedule/leaderboard-board`（および continue）を設け、**`leaderboard-composite-board.service` に shell・追補・total・装飾を束ねる**。既存の段階取得系エンドポイントは **破棄せず後方互換維持**。**Web** の [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](./apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) は **board を主経路**とし **資源カード別の複数 hook fan-out を撤去**する。  
+  理由: 資源スロット数に比例して **ブラウザ発の同時リクエスト**が増え、Pi4 キオスクで **初回・追補の体感**を支配しうるため。**表示の削減や並び意味の変更で擬似高速化**はしない（別途のプロダクト合意）。  
+  ロールアウト: **2026-05-08 時点**で **Pi5 / `raspberrypi4` は反映済み**。**キオスク Pi4×3** は **同一 detach 手順の未完了**。**検証**: **空 rows の単発 curl** や **途中 Phase12 の FAIL 1** だけでは「完了」とは見なさない（[`KB-369`](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）。  
+  参照: [ADR-20260508](./docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md)·[KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[deployment.md](./docs/guides/deployment.md)（2026-05-08 · board）
 
 - 決定（2026-05-04）: DGX リソース画面の進行状態は **単一 state で管理しない**。表示判定は **(1) イベントログ由来の実行判定** と **(2) `sessionStorage` pending（TTL 付き）** を併用し、どちらかが true の間は `進行中:` を表示する。  
   理由: `private_to_business` のような長時間シナリオで、タブ移動や再描画境界があっても「処理中」を見失わないため。  
@@ -2119,6 +2128,18 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク順位ボード — board 集約 API（`leaderboard-board`）残デプロイ・本番計測（2026-05-08）
+
+**概要**: [ADR-20260508](./docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md)・[KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。**実装は `main` に合流済み**想定。本番では **API（Pi5）と各キオスク `web`（Pi4 系）**の ref を揃える。**2026-05-08 時点**で **Detach 実績があるのは `raspberrypi5` と `raspberrypi4` のみ**。 **`raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01`** は **`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`** で **順次**（[`deployment.md`](./docs/guides/deployment.md) 補足 2026-05-08）。
+
+**候補タスク**:
+
+1. **残 Pi4×3 への反映**と **Detach Run ID / `PLAY RECAP` / リモート `exit`** の記録（**[deployment.md](./docs/guides/deployment.md)**・**[KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)** へ追記）。
+2. **全台完了後**に `./scripts/deploy/verify-phase12-real.sh` を再実行し、**FAIL 0** を確認（**`deploy-status` の一時 `isMaintenance`** で途中 FAIL していた場合は **再試行が前提**）。
+3. **本番相当**（**複数資源・多行・代表的検索語**）で **board 1 往返**の壁時計と、旧来の **fan-out N 往返**（または HTTP 数・ペイロード総量）を **対比** — **rows 0 の curl だけに依存しない**。
+4. **初回 shell の全件順序確定コスト**は board 集約とは **独立した残課題**。continue の **cursor 化**や snapshot 方針（[ADR-20260507](./docs/decisions/ADR-20260507-leaderboard-shell-snapshot.md)）と **切り分けて**次施策を検討。
+5. **API レプリカ・負荷分散**がある環境では **snapshot ストア非共有**と組み合わせ **`snapshotExpired` 頻度**を監視（board は **集約サービス内**の一貫性に寄与するが **プロセス間**は別問題）。
 
 ### キオスク順位ボード — 資源CDカード単位 phased（ブランチ `feature/kiosk-leaderboard-card-scope`・**本番反映済 2026-05-07**）
 
