@@ -47,7 +47,7 @@ update-frequency: medium
   - **メール同期で同種の bind エラー** → Pi5 **API** が **`a9fd7fcf` 以降（またはマージ後 `main` HEAD）**か、Detach の **`Git: changed`**・**Docker 再ビルド**有無を確認。
   - **`update-all-clients.sh` がローカル未コミットで停止** — **stash / commit**。
   - **開発**：一時 Postgres での統合検証は **`pnpm prisma migrate deploy` 後**に実行。**テストデータの資源CD正規化**が本番とずれると winner アサートが崩れる（過去の切り分け知見）。
-- **ナレッジ**: [KB-372](../knowledge-base/KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·代表コミット **`a9fd7fcf`**·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **ナレッジ**: [KB-372](../knowledge-base/KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·代表コミット **`a9fd7fcf`**·**`main`**: [PR #274](https://github.com/denkoushi/RaspberryPiSystem_002/pull/274)（squash **`411a635c`**）·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-08 · **キオスク順位ボード・board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）**·**API+Web**·**Pi5+Pi4 は反映済・残り Pi4×3**）
 

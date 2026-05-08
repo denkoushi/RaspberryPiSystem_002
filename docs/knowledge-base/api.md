@@ -10,7 +10,7 @@
 
 **Fix**:
 
-- **`findFkojunstMailWinnerIdsByMailTriples`**（タプル `IN` チャンク・`Map` マージ）·[`postgres-prepared-statement-bind-limit.ts`](../../apps/api/src/lib/postgres-prepared-statement-bind-limit.ts)·pipeline [`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)·コミット **`a9fd7fcf`**（**`fix/fkojunst-mail-winner-triple-chunk`**）
+- **`findFkojunstMailWinnerIdsByMailTriples`**（タプル `IN` チャンク・`Map` マージ）·[`postgres-prepared-statement-bind-limit.ts`](../../apps/api/src/lib/postgres-prepared-statement-bind-limit.ts)·pipeline [`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)·コミット **`a9fd7fcf`**（**`fix/fkojunst-mail-winner-triple-chunk`**）·**`main`**: [PR #274](https://github.com/denkoushi/RaspberryPiSystem_002/pull/274)（squash **`411a635c`**）
 
 **本番（記録）**:
 

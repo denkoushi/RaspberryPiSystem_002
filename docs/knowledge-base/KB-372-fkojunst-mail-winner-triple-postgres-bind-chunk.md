@@ -37,7 +37,7 @@ category: knowledge-base
 - **論理キー**: [`fkojunst-mail-status-key.ts`](../../apps/api/src/services/production-schedule/fkojunst-mail-status-key.ts) の **`buildFkojunstMailStatusKey`**
 - **pipeline 配線**: [`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts) が reader を使用
 - **関連**: [`csv-dashboard-existing-rows-by-hash.reader.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts) は **同一 lib の定数**を参照（KB-371 と同系）
-- **代表コミット**: **`a9fd7fcf`**（ブランチ **`fix/fkojunst-mail-winner-triple-chunk`**）
+- **代表コミット**: **`a9fd7fcf`**（ブランチ **`fix/fkojunst-mail-winner-triple-chunk`**）·**`main`**: [PR #274](https://github.com/denkoushi/RaspberryPiSystem_002/pull/274)（squash **`411a635c`**）
 - **テスト**: [`fkojunst-mail-winner-by-triple.reader.test.ts`](../../apps/api/src/services/production-schedule/__tests__/fkojunst-mail-winner-by-triple.reader.test.ts)·（任意）Docker 一時 Postgres による統合テスト
 
 ## Prevention / Troubleshooting
@@ -59,3 +59,4 @@ category: knowledge-base
 - [deployment.md](../guides/deployment.md#fkojunst-mail-winner-triple-tuple-in-chunk-2026-05-08)
 - [KB-371](./KB-371-csv-dashboard-dedup-postgres-bind-limit.md)
 - [ADR-20260508-fkojunst-status-sole-source](../decisions/ADR-20260508-fkojunst-status-sole-source.md)
+- **Git**: [PR #274](https://github.com/denkoushi/RaspberryPiSystem_002/pull/274)（squash merge **`411a635c`**）
