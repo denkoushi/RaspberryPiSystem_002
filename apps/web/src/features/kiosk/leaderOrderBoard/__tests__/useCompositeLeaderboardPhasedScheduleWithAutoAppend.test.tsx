@@ -119,6 +119,78 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
+  it('snapshotId+hasMore で nextCursor が無いとき continue に cursor:0 を載せる', async () => {
+    const sid = '550e8400-e29b-41d4-a716-446655440002';
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('c1', 'R1'), row('c2', 'R1')],
+      resources: [
+        {
+          resourceCd: 'R1',
+          snapshotId: sid,
+          hasMore: true,
+          total: 3,
+          pageSize: 20
+        }
+      ]
+    });
+
+    const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('c1', 'R1'), row('c2', 'R1'), row('c3', 'R1')],
+      resources: [
+        {
+          resourceCd: 'R1',
+          snapshotId: sid,
+          hasMore: false,
+          nextCursor: 3,
+          total: 3,
+          pageSize: 20
+        }
+      ]
+    });
+
+    postContinue.mockResolvedValue(afterContinue);
+
+    boardHookMock.mockReturnValue({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: Date.now()
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+    });
+
+    const firstPayload = postContinue.mock.calls[0]![0];
+    expect(firstPayload.resourceSlices[0]!.cursor).toBe(0);
+
+    await waitFor(() => {
+      expect(latest?.appendError).toBeNull();
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['c1', 'c2', 'c3']);
+    });
+  });
+
   it('GET 応答待ちの間は loading、feedMounts は不要（null）', () => {
     boardHookMock.mockReturnValue({
       data: undefined,

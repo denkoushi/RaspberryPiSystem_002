@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
   postKioskProductionScheduleLeaderboardBoardContinue,
-  type KioskProductionScheduleLeaderboardBoardContinuePayload,
   type KioskProductionScheduleLeaderboardBoardQueryParams,
   type KioskProductionScheduleLeaderboardPhasedQueryParams,
   type ProductionScheduleLeaderboardBoardResponse,
@@ -11,26 +10,7 @@ import {
 } from '../../../api/client';
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
-import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from './constants';
-
-function buildBoardContinuePayload(
-  base: KioskProductionScheduleLeaderboardBoardQueryParams,
-  board: ProductionScheduleLeaderboardBoardResponse
-): KioskProductionScheduleLeaderboardBoardContinuePayload {
-  const { page: _p, pageSize: _ps, ...rest } = base;
-  void _p;
-  void _ps;
-  return {
-    ...rest,
-    resourceSlices: board.resources.map((r) => ({
-      resourceCd: r.resourceCd,
-      snapshotId: r.snapshotId,
-      cursor: r.nextCursor,
-      hasMore: r.hasMore
-    })),
-    pageSize: board.pageSize ?? LEADER_ORDER_BOARD_SHELL_PAGE_SIZE
-  };
-}
+import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
 
 /**
  * 多資源カードの順位ボード取得（集約 API 1 本＋サーバ側 shell 相当をスロット順に連結）。
@@ -132,7 +112,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           setIsAppending(true);
           setAppendError(null);
           const next = await postKioskProductionScheduleLeaderboardBoardContinue(
-            buildBoardContinuePayload(boardQueryParams, cur)
+            buildLeaderboardBoardContinuePayload(boardQueryParams, cur)
           );
           if (next.snapshotExpired) {
             await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });

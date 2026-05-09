@@ -14,6 +14,7 @@ import {
 } from '../production-schedule-query.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
+import { resolveFiniteLeaderboardBoardNextCursor } from './leaderboard-board-resource-cursor.js';
 import type { LeaderboardShellSnapshotRecord, LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
 const HYDRATE_CHUNK_SIZE = 900;
@@ -212,7 +213,7 @@ export async function fetchLeaderboardCompositeBoardShell(
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => ({
     resourceCd,
     snapshotId: shells[i]?.snapshotId,
-    nextCursor: shells[i]?.nextCursor,
+    nextCursor: resolveFiniteLeaderboardBoardNextCursor(shells[i]?.nextCursor, [shells[i]?.rows.length]),
     hasMore: shells[i]?.hasMore ?? false,
     total: totals[i] ?? 0,
     pageSize: shells[i]?.pageSize ?? cappedPageSize
@@ -353,7 +354,10 @@ export async function continueLeaderboardCompositeBoard(
       return {
         resourceCd,
         snapshotId: slice.snapshotId,
-        nextCursor: cont.nextCursor,
+        nextCursor: resolveFiniteLeaderboardBoardNextCursor(cont.nextCursor, [
+          slice.cursor,
+          snap?.orderedRowIds.length
+        ]),
         hasMore: cont.hasMore ?? false,
         total: totalI,
         pageSize: chunkSize
@@ -364,7 +368,7 @@ export async function continueLeaderboardCompositeBoard(
     return {
       resourceCd,
       snapshotId: slice.snapshotId,
-      nextCursor: derived.nextCursor,
+      nextCursor: resolveFiniteLeaderboardBoardNextCursor(derived.nextCursor, []),
       hasMore: false,
       total: totalI,
       pageSize: chunkSize
