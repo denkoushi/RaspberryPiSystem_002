@@ -9,7 +9,11 @@
 
 ## Progress
 
-- [x] (2026-05-09 / **ドキュメントのみ**） **`FKOJUNST_Status` の `C` が `fkmail` に載らない現象の調査ナレッジ化**。**結論**: **厳密3キー**（`ProductNo` + `FKOTEICD`/`FSIGENCD` + `FKOJUN`）で本体 winner と **交わらない**ため（**上流キー空間の乖離**）。**同期ロジック単独の不具合ではない**。**方針 ADR**: [`docs/decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md`](./docs/decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md)。**KB**: [`docs/knowledge-base/KB-373-fkojunst-status-c-key-domain-mismatch.md`](./docs/knowledge-base/KB-373-fkojunst-status-c-key-domain-mismatch.md)。**索引**: [`docs/INDEX.md`](./docs/INDEX.md)·[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)。**CI**: ドキュメントのみのため **完了待ち不要**（ユーザー合意）。
+- [x] (2026-05-09 / **ドキュメントのみ・全面改稿**） **`FKOJUNST_Status` の `C` 欠落調査を、後追い可能な文脈で再構成**。  
+  **改稿内容**: 調査時系列（症状→仮説→棄却/確定）・観測値（`801` 偏重、`FKOTEICD`/`FSIGENCD` 極小重複、選択資源 `C=12` の重複否定）・最終合意（厳密3キー/trim+upper/両取込再計算/`FUPDTEDT` 最新優先/未マッチ `C` 無視）を明記。  
+  **結論**: **実装不具合ではなく上流キー空間の乖離**が支配要因。  
+  **反映先**: [`docs/knowledge-base/KB-373-fkojunst-status-c-key-domain-mismatch.md`](./docs/knowledge-base/KB-373-fkojunst-status-c-key-domain-mismatch.md)・[`docs/decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md`](./docs/decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md)・[`docs/knowledge-base/KB-297-kiosk-due-management-workflow.md`](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-c-key-domain-mismatch-2026-05-09)・[`docs/knowledge-base/api.md`](./docs/knowledge-base/api.md)・[`docs/INDEX.md`](./docs/INDEX.md)・[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)。  
+  **CI**: ドキュメントのみのため **完了待ち不要**（ユーザー合意）。
 
 - [x] (2026-05-09 / **main 再検証・ドキュメント同期**） **FKOJUNST / CSV bind 上限系の本番検証結果を `main` 基準へ更新**。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（WARN は **`auto-tuning schedulerログ確認（件数=0）`**。同一実行中の **`PUT global-rank/auto-generate` 200** で代替正常判定）。**反映**: [`docs/guides/deployment.md`](./docs/guides/deployment.md)·[`docs/knowledge-base/KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md`](./docs/knowledge-base/KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md)·[`docs/knowledge-base/api.md`](./docs/knowledge-base/api.md)·[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)·[`docs/INDEX.md`](./docs/INDEX.md)。
 
