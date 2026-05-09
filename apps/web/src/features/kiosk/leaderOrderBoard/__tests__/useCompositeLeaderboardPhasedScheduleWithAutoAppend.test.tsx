@@ -119,6 +119,78 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
+  it('snapshotId+hasMore で nextCursor が無いとき continue に cursor:0 を載せる', async () => {
+    const sid = '550e8400-e29b-41d4-a716-446655440002';
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('c1', 'R1'), row('c2', 'R1')],
+      resources: [
+        {
+          resourceCd: 'R1',
+          snapshotId: sid,
+          hasMore: true,
+          total: 3,
+          pageSize: 20
+        }
+      ]
+    });
+
+    const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [row('c1', 'R1'), row('c2', 'R1'), row('c3', 'R1')],
+      resources: [
+        {
+          resourceCd: 'R1',
+          snapshotId: sid,
+          hasMore: false,
+          nextCursor: 3,
+          total: 3,
+          pageSize: 20
+        }
+      ]
+    });
+
+    postContinue.mockResolvedValue(afterContinue);
+
+    boardHookMock.mockReturnValue({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: Date.now()
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+    });
+
+    const firstPayload = postContinue.mock.calls[0]![0];
+    expect(firstPayload.resourceSlices[0]!.cursor).toBe(0);
+
+    await waitFor(() => {
+      expect(latest?.appendError).toBeNull();
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['c1', 'c2', 'c3']);
+    });
+  });
+
   it('GET 応答待ちの間は loading、feedMounts は不要（null）', () => {
     boardHookMock.mockReturnValue({
       data: undefined,
@@ -151,5 +223,114 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     expect(latest?.scheduleQuery.isLoading).toBe(true);
     expect(latest?.feedMounts).toBeNull();
+  });
+
+  it('hasMore が続く間は continue を複数回呼び切ってから listIncomplete を下ろす', async () => {
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 5,
+      rows: [row('a1', 'R1'), row('a2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 20 }]
+    });
+
+    const step1: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 5,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 4, total: 5, pageSize: 20 }]
+    });
+
+    const step2: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 5,
+      rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1'), row('a5', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 20 }]
+    });
+
+    postContinue.mockResolvedValueOnce(step1).mockResolvedValueOnce(step2);
+
+    boardHookMock.mockReturnValue({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: Date.now()
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(2);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
+      expect(latest?.listIncomplete).toBe(false);
+      expect(latest?.appendError).toBeNull();
+    });
+  });
+
+  it('continue が snapshotExpired を返すと invalidateQueries で打ち切り、shell の行数のまま残る', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 5,
+      rows: [row('b1', 'R1'), row('b2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 20 }]
+    });
+
+    postContinue.mockResolvedValueOnce(
+      boardPayload({
+        total: 5,
+        rows: [],
+        resources: [],
+        snapshotExpired: true
+      })
+    );
+
+    boardHookMock.mockReturnValue({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: Date.now()
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(invalidateSpy).toHaveBeenCalled();
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['b1', 'b2']);
+      expect(latest?.listIncomplete).toBe(true);
+    });
+
+    invalidateSpy.mockRestore();
   });
 });

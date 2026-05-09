@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
   postKioskProductionScheduleLeaderboardBoardContinue,
-  type KioskProductionScheduleLeaderboardBoardContinuePayload,
   type KioskProductionScheduleLeaderboardBoardQueryParams,
   type KioskProductionScheduleLeaderboardPhasedQueryParams,
   type ProductionScheduleLeaderboardBoardResponse,
@@ -11,62 +10,7 @@ import {
 } from '../../../api/client';
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
-import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from './constants';
-
-function getCompositeLeaderboardDebugRunId() {
-  if (typeof window === 'undefined') return `leaderboard-composite-server-${Date.now()}`;
-  const key = 'cursor-debug-leaderboard-composite-run-id';
-  const existing = window.sessionStorage.getItem(key);
-  if (existing) return existing;
-  const created = `leaderboard-composite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  window.sessionStorage.setItem(key, created);
-  return created;
-}
-
-function postCompositeLeaderboardDebugLog(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>
-) {
-  if (typeof window === 'undefined') return;
-  // #region agent log
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'dd2d0f' },
-    body: JSON.stringify({
-      sessionId: 'dd2d0f',
-      runId: getCompositeLeaderboardDebugRunId(),
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-}
-
-function buildBoardContinuePayload(
-  base: KioskProductionScheduleLeaderboardBoardQueryParams,
-  resourceCdsOrdered: string[],
-  board: ProductionScheduleLeaderboardBoardResponse
-): KioskProductionScheduleLeaderboardBoardContinuePayload {
-  const { page: _p, pageSize: _ps, ...rest } = base;
-  void _p;
-  void _ps;
-  return {
-    ...rest,
-    boardResourceCds: resourceCdsOrdered.join(','),
-    resourceSlices: board.resources.map((r) => ({
-      resourceCd: r.resourceCd,
-      snapshotId: r.snapshotId,
-      cursor: r.nextCursor,
-      hasMore: r.hasMore
-    })),
-    pageSize: board.pageSize ?? LEADER_ORDER_BOARD_SHELL_PAGE_SIZE
-  };
-}
+import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
 
 /**
  * 多資源カードの順位ボード取得（集約 API 1 本＋サーバ側 shell 相当をスロット順に連結）。
@@ -106,14 +50,21 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   } = options;
 
   const queryClient = useQueryClient();
+  const leaderboardPhasedBaseParamsKey = useMemo(
+    () => JSON.stringify(leaderboardPhasedBaseParams),
+    [leaderboardPhasedBaseParams]
+  );
+  const resourceCdsOrderedKey = useMemo(() => resourceCdsOrdered.join('\0'), [resourceCdsOrdered]);
 
   const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
-    if (!scheduleEnabled || resourceCdsOrdered.length === 0) return undefined;
+    if (!scheduleEnabled || resourceCdsOrderedKey.length === 0) return undefined;
+    const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
+    const orderedResourceCds = resourceCdsOrderedKey.split('\0');
     return {
-      ...leaderboardPhasedBaseParams,
-      boardResourceCds: resourceCdsOrdered.join(',')
+      ...baseParams,
+      boardResourceCds: orderedResourceCds.join(',')
     };
-  }, [leaderboardPhasedBaseParams, resourceCdsOrdered, scheduleEnabled]);
+  }, [leaderboardPhasedBaseParamsKey, resourceCdsOrderedKey, scheduleEnabled]);
 
   const paramsKey = useMemo(() => JSON.stringify(boardQueryParams), [boardQueryParams]);
 
@@ -143,36 +94,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     return displayBoard.resources.some((r) => r.hasMore || (typeof r.nextCursor === 'number' && r.nextCursor < r.total));
   }, [displayBoard]);
 
-  const compositeStatusSignatureRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!scheduleEnabled) return;
-    const signature = JSON.stringify({
-      resources: resourceCdsOrdered,
-      mergedRowCount: displayBoard?.rows.length ?? 0,
-      totalSum: displayBoard?.total ?? 0,
-      listIncomplete,
-      boardSource: appendOverride != null ? 'append-override' : 'query'
-    });
-    if (compositeStatusSignatureRef.current === signature) return;
-    compositeStatusSignatureRef.current = signature;
-    // #region agent log
-    postCompositeLeaderboardDebugLog(
-      'H4',
-      'useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx:composite-status',
-      'leaderboard composite board status',
-      {
-        resources: resourceCdsOrdered,
-        mergedRowCount: displayBoard?.rows.length ?? 0,
-        totalSum: displayBoard?.total ?? 0,
-        listIncomplete,
-        appendOverride: appendOverride != null
-      }
-    );
-    // #endregion
-  }, [appendOverride, displayBoard?.rows.length, displayBoard?.total, listIncomplete, resourceCdsOrdered, scheduleEnabled]);
-
-  useEffect(() => {
-    if (!scheduleEnabled || !boardQuery.isSuccess || !boardQuery.data) return;
+    if (!scheduleEnabled || !boardQuery.isSuccess || !boardQuery.data || !boardQueryParams) return;
     if (!boardQuery.data.resources.some((r) => r.hasMore)) return;
 
     const shellAt = boardQuery.dataUpdatedAt;
@@ -182,11 +105,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     const runId = ++appendRunIdRef.current;
     let cancelled = false;
 
-    const fullBoardParams: KioskProductionScheduleLeaderboardBoardQueryParams = {
-      ...leaderboardPhasedBaseParams,
-      boardResourceCds: resourceCdsOrdered.join(',')
-    };
-
     void (async () => {
       try {
         let cur: ProductionScheduleLeaderboardBoardResponse = boardQuery.data!;
@@ -194,7 +112,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           setIsAppending(true);
           setAppendError(null);
           const next = await postKioskProductionScheduleLeaderboardBoardContinue(
-            buildBoardContinuePayload(fullBoardParams, resourceCdsOrdered, cur)
+            buildLeaderboardBoardContinuePayload(boardQueryParams, cur)
           );
           if (next.snapshotExpired) {
             await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
@@ -219,9 +137,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     boardQuery.data,
     boardQuery.dataUpdatedAt,
     boardQuery.isSuccess,
-    leaderboardPhasedBaseParams,
+    boardQueryParams,
     queryClient,
-    resourceCdsOrdered,
     scheduleEnabled
   ]);
 

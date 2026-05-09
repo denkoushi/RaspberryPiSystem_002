@@ -6,6 +6,7 @@ import { prisma } from '../../../lib/prisma.js';
 import {
   countProductionScheduleDashboardVisibleRowsFromListFilters,
   decorateLeaderboardShellRowsForKiosk,
+  decorateLeaderboardShellRowsForKioskFromHydratedRows,
   listLeaderboardShellContinuationProductionScheduleRows,
   listLeaderboardShellProductionScheduleRows,
   type LeaderboardShellPhasedReadResult,
@@ -13,6 +14,7 @@ import {
 } from '../production-schedule-query.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
+import { resolveFiniteLeaderboardBoardNextCursor } from './leaderboard-board-resource-cursor.js';
 import type { LeaderboardShellSnapshotRecord, LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
 const HYDRATE_CHUNK_SIZE = 900;
@@ -70,6 +72,83 @@ async function hydrateLightLeaderboardRowsFromOrderedIds(params: {
     combined.push(...mapped);
   }
   return combined;
+}
+
+/**
+ * continue 応答向け: snapshot の確定 prefix はそのままに、続きチャンクのみ continuation が hydrate 済みであれば差分合成する。
+ * ID 整合が取れない場合は安全側にフォールバック（対象範囲をまとめて hydrate）。
+ */
+async function assembleContinueMergedRowsForResource(params: {
+  slice: {
+    resourceCd: string;
+    snapshotId?: string;
+    cursor?: number;
+    hasMore: boolean;
+  };
+  cont: LeaderboardShellPhasedReadResult | null;
+  deps: { snapshotStore: LeaderboardShellSnapshotStore };
+  locationKey: string;
+  siteKey?: string;
+}): Promise<LightShellRow[]> {
+  const { slice, cont, deps, locationKey, siteKey } = params;
+
+  const hydrateOrdered = async (ids: readonly string[]) =>
+    hydrateLightLeaderboardRowsFromOrderedIds({
+      orderedRowIds: ids,
+      locationKey,
+      siteKey
+    });
+
+  const snap = slice.snapshotId?.trim() ? deps.snapshotStore.get(slice.snapshotId.trim()) : undefined;
+  const snapIds = snap?.orderedRowIds ?? [];
+
+  if (!slice.hasMore) {
+    return hydrateOrdered(snapIds);
+  }
+
+  if (!cont) {
+    return hydrateOrdered(snapIds);
+  }
+
+  const cursorStart = Math.max(0, Math.floor(slice.cursor ?? 0));
+  const rawNext =
+    cont.nextCursor != null ? Math.max(0, Math.floor(cont.nextCursor)) : snapIds.length;
+  const boundNext = Math.min(rawNext, snapIds.length);
+  const targetIds = snapIds.slice(0, boundNext);
+
+  const chunkRows = cont.rows ?? [];
+
+  if (chunkRows.length === 0) {
+    return hydrateOrdered(targetIds);
+  }
+
+  const chunkTargetIds = snapIds.slice(cursorStart, boundNext);
+  const idsAligned =
+    chunkTargetIds.length === chunkRows.length &&
+    chunkTargetIds.every((id, i) => id === chunkRows[i]!.id);
+
+  if (!idsAligned) {
+    return hydrateOrdered(targetIds);
+  }
+
+  const prefixIds = snapIds.slice(0, cursorStart);
+  const prefixHydrated = prefixIds.length > 0 ? await hydrateOrdered(prefixIds) : [];
+  const chunkLight = chunkRows.map(
+    (r) =>
+      ({
+        ...r,
+        actualPerPieceMinutes: null,
+        customerName: null
+      }) as LightShellRow
+  );
+  const merged = [...prefixHydrated, ...chunkLight];
+
+  const mergedIds = merged.map((r) => r.id);
+  if (mergedIds.length !== targetIds.length || mergedIds.some((id, i) => id !== targetIds[i])) {
+    return hydrateOrdered(targetIds);
+  }
+
+  return merged;
 }
 
 function deriveStateFromSnapshot(
@@ -134,7 +213,7 @@ export async function fetchLeaderboardCompositeBoardShell(
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => ({
     resourceCd,
     snapshotId: shells[i]?.snapshotId,
-    nextCursor: shells[i]?.nextCursor,
+    nextCursor: resolveFiniteLeaderboardBoardNextCursor(shells[i]?.nextCursor, [shells[i]?.rows.length]),
     hasMore: shells[i]?.hasMore ?? false,
     total: totals[i] ?? 0,
     pageSize: shells[i]?.pageSize ?? cappedPageSize
@@ -248,19 +327,17 @@ export async function continueLeaderboardCompositeBoard(
   }
 
   const perResourceRows: LightShellRow[][] = [];
-
   for (let i = 0; i < params.boardResourceCds.length; i += 1) {
     const slice = params.resourceSlices[i]!;
-    const snap = slice.snapshotId?.trim()
-      ? deps.snapshotStore.get(slice.snapshotId.trim())
-      : undefined;
-    const ids = snap?.orderedRowIds ?? [];
-    const hydrated = await hydrateLightLeaderboardRowsFromOrderedIds({
-      orderedRowIds: ids,
+    const cont = contOutputs[i];
+    const mergedForResource = await assembleContinueMergedRowsForResource({
+      slice,
+      cont,
+      deps,
       locationKey: params.listParamsBase.locationKey,
       siteKey: params.listParamsBase.siteKey
     });
-    perResourceRows.push(hydrated);
+    perResourceRows.push(mergedForResource);
   }
 
   const mergedRows = perResourceRows.flat();
@@ -277,7 +354,10 @@ export async function continueLeaderboardCompositeBoard(
       return {
         resourceCd,
         snapshotId: slice.snapshotId,
-        nextCursor: cont.nextCursor,
+        nextCursor: resolveFiniteLeaderboardBoardNextCursor(cont.nextCursor, [
+          slice.cursor,
+          snap?.orderedRowIds.length
+        ]),
         hasMore: cont.hasMore ?? false,
         total: totalI,
         pageSize: chunkSize
@@ -288,15 +368,15 @@ export async function continueLeaderboardCompositeBoard(
     return {
       resourceCd,
       snapshotId: slice.snapshotId,
-      nextCursor: derived.nextCursor,
+      nextCursor: resolveFiniteLeaderboardBoardNextCursor(derived.nextCursor, []),
       hasMore: false,
       total: totalI,
       pageSize: chunkSize
     };
   });
 
-  const deco = await decorateLeaderboardShellRowsForKiosk({
-    orderedRowIds: mergedRows.map((r) => r.id),
+  const deco = await decorateLeaderboardShellRowsForKioskFromHydratedRows({
+    hydratedRows: mergedRows,
     locationKey: params.listParamsBase.locationKey,
     siteKey: params.listParamsBase.siteKey
   });

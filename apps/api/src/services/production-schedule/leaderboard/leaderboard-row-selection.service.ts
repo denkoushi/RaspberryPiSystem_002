@@ -11,6 +11,9 @@ import {
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
 import { buildLeaderboardGlobalRankScalarSql } from './leaderboard-global-rank-scalar.sql.js';
+import {
+  computeLeaderboardShellFillerBudget
+} from './leaderboard-shell-filler-budget.js';
 
 /**
  * `listProductionScheduleRows` と同一形状（enrich 前）の行。
@@ -425,8 +428,6 @@ export function mergeLeaderboardShellPriorityAndFillerUpTo(
   return { rows: out, mergeFullyCompleted: true };
 }
 
-const LEADERBOARD_SHELL_FILLER_BATCH = 320;
-
 /**
  * 順位ボード shell 初回: 先頭 N 件だけグローバル順の正しい prefix として返す（全件マージ完了は保証しない）。
  */
@@ -529,10 +530,10 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
   const fillerChunks: LeaderboardScheduleRowSql[] = [];
   const fillerIdsEverLoaded = new Set<string>();
 
-  const maxFillerTotal = Math.min(
-    12_000,
-    nTake * 48 + excludeRowIds.size * 3 + 800
-  );
+  const { maxFillerTotal, batchTakeSoftCap } = computeLeaderboardShellFillerBudget({
+    takeCount: nTake,
+    excludeRowIdCount: excludeRowIds.size
+  });
   let totalFillerLoaded = 0;
   let hitFillerCap = false;
   let lastFillerBatchSize = 0;
@@ -550,7 +551,7 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
       fillerFetchExhausted = true;
       return;
     }
-    const batchTake = Math.min(LEADERBOARD_SHELL_FILLER_BATCH, maxFillerTotal - totalFillerLoaded);
+    const batchTake = Math.min(batchTakeSoftCap, maxFillerTotal - totalFillerLoaded);
     lastRequestedFillerTake = batchTake;
     const excludeForSql: string[] = [];
     for (const id of excludeRowIds) {

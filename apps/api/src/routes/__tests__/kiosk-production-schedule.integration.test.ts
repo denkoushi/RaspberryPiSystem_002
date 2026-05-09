@@ -10,6 +10,7 @@ import {
 } from '../../services/production-schedule/constants.js';
 import { fetchMaxProductNoWinnerRowIdsForDashboard } from '../../services/production-schedule/row-resolver/max-product-no-winner-materialization.js';
 import { buildMaxProductNoWinnerCondition } from '../../services/production-schedule/row-resolver/max-product-no-sql.js';
+import { computeLeaderboardShellFillerBudget } from '../../services/production-schedule/leaderboard/leaderboard-shell-filler-budget.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -848,6 +849,98 @@ describe('Kiosk Production Schedule API', () => {
     const sum = (tt1.json() as { total: number }).total + (tt2.json() as { total: number }).total;
     expect(b.total).toBe(sum);
     expect(b.resources).toHaveLength(2);
+  });
+
+  it('leaderboard-board continue profile logs: multi-resource append reaches hasMore=false', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 140 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 1, 1, 0, 0, index)),
+        dataHash: `board-r1-${index}`,
+        rowData: {
+          ProductNo: `R1${String(index).padStart(4, '0')}`,
+          FSEIBAN: `R1-S${String(index).padStart(7, '0')}`,
+          FHINCD: `R1-P${String(index).padStart(4, '0')}`,
+          FHINMEI: `R1 Part ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 140 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 1, 2, 0, 0, index)),
+        dataHash: `board-r2-${index}`,
+        rowData: {
+          ProductNo: `R2${String(index).padStart(4, '0')}`,
+          FSEIBAN: `R2-S${String(index).padStart(7, '0')}`,
+          FHINCD: `R2-P${String(index).padStart(4, '0')}`,
+          FHINMEI: `R2 Part ${index}`,
+          FSIGENCD: '2',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1,2&pageSize=20&allowResourceOnly=true',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    let board = shell.json() as {
+      rows: Array<{ id: string }>;
+      total: number;
+      resources: Array<{
+        resourceCd: string;
+        snapshotId?: string;
+        nextCursor?: number;
+        hasMore: boolean;
+      }>;
+      pageSize: number;
+    };
+    expect(board.rows).toHaveLength(40);
+    expect(board.resources.some((r) => r.hasMore)).toBe(true);
+
+    let prevRowLen = board.rows.length;
+    let guard = 0;
+    while (board.resources.some((r) => r.hasMore) && guard < 20) {
+      guard += 1;
+      const cont = await app.inject({
+        method: 'POST',
+        url: '/api/kiosk/production-schedule/leaderboard-board/continue',
+        headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+        payload: {
+          boardResourceCds: '1,2',
+          allowResourceOnly: true,
+          resourceSlices: board.resources.map((r) => ({
+            resourceCd: r.resourceCd,
+            snapshotId: r.snapshotId,
+            cursor: r.nextCursor,
+            hasMore: r.hasMore
+          })),
+          pageSize: board.pageSize
+        }
+      });
+      expect(cont.statusCode).toBe(200);
+      board = cont.json() as typeof board;
+      expect(board.snapshotExpired).not.toBe(true);
+      expect(board.rows.length).toBeGreaterThanOrEqual(prevRowLen);
+      prevRowLen = board.rows.length;
+    }
+
+    expect(board.resources.some((r) => r.hasMore)).toBe(false);
+    expect(board.rows.length).toBe(board.total);
+  });
+
+  it('leaderboard shell filler budget caps incremental filler batches for takeCount 20', () => {
+    const b = computeLeaderboardShellFillerBudget({ takeCount: 20, excludeRowIdCount: 0 });
+    expect(b.batchTakeSoftCap).toBeLessThan(320);
+    expect(b.maxFillerTotal).toBeLessThan(20 * 48 + 800);
   });
 
   it('leaderboard phased read caps shell at 160 even when total is larger', async () => {

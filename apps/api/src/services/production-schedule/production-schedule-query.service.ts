@@ -62,7 +62,7 @@ function normalizeMachineNameForCompare(value: string | null | undefined): strin
   return half.toUpperCase();
 }
 
-type ProductionScheduleRow = {
+export type ProductionScheduleRow = {
   id: string;
   /** 生産日程一覧と progress-overview を製番単位で突合するための専用キー。 */
   seibanJoinKey: string | null;
@@ -529,6 +529,46 @@ export async function countProductionScheduleDashboardVisibleRowsFromListFilters
   return Number(totalBig);
 }
 
+/** 既に hydrate 済みの shell 行へ kiosk 向け装飾のみ適用（compose continue で二重 hydrate を避ける） */
+export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(params: {
+  hydratedRows: ProductionScheduleRow[];
+  locationKey: string;
+  siteKey?: string;
+}): Promise<ProductionScheduleLeaderboardDecorationPayload> {
+  const { hydratedRows, locationKey, siteKey } = params;
+
+  if (hydratedRows.length === 0) {
+    return {
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: {}
+    };
+  }
+
+  const lightRows = hydratedRows.map((r) => ({
+    ...r,
+    actualPerPieceMinutes: null as number | null,
+    customerName: null as string | null
+  }));
+
+  const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
+  const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+
+  const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+    rows: enrichedRows,
+    locationKey,
+    siteKey
+  });
+
+  return {
+    rowDecorations: enrichedRows.map((r) => ({
+      id: r.id,
+      resolvedMachineName: r.resolvedMachineName ?? null,
+      customerName: r.customerName ?? null
+    })),
+    leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {}
+  };
+}
+
 /** rowIds 順で leaderboard 選定クエリと同形の行を hydrate し、装飾用ペイロードを返す */
 export async function decorateLeaderboardShellRowsForKiosk(params: {
   orderedRowIds: string[];
@@ -559,23 +599,11 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
     customerName: null as string | null
   }));
 
-  const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
-  const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
-
-  const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
-    rows: enrichedRows,
+  return decorateLeaderboardShellRowsForKioskFromHydratedRows({
+    hydratedRows: lightRows,
     locationKey,
     siteKey
   });
-
-  return {
-    rowDecorations: enrichedRows.map((r) => ({
-      id: r.id,
-      resolvedMachineName: r.resolvedMachineName ?? null,
-      customerName: r.customerName ?? null
-    })),
-    leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey ?? {}
-  };
 }
 
 export type ProductionScheduleLeaderboardDecorationPayload = {
