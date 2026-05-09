@@ -10,6 +10,10 @@ const CREATE_MANY_CHUNK_SIZE = 500;
 
 /**
  * 生産日程CSV 取込直前に保存した winner 論理キー集合（昇順で安定）。
+ *
+ * @remarks
+ * 取込後の消滅完了は `FKOJUNST 非C×occurredAt窓` 母集団ベースに置換済み。
+ * 本テーブル／リポジトリは互換・将来用途のため残置。
  */
 export async function loadScheduleCsvIngestSnapshotKeys(client: ScheduleCsvSnapshotDb): Promise<string[]> {
   const rows = await client.productionScheduleCsvIngestLogicalKeySnapshot.findMany({
