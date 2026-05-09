@@ -24,6 +24,18 @@
 
 ---
 
+### [KB-373] `FKOJUNST_Status` の `C` が `fkmail` にほぼ載らない（キー空間不一致）
+
+**日付**: 2026-05-09
+
+**要約**: ソース CSV に `C` があっても、**厳密3キー**（`ProductNo` + `FKOTEICD`/`FSIGENCD` + `FKOJUN`）で本体 winner と一致しないため **`ProductionScheduleFkojunstMailStatus` に反映されない**ケースが支配的。**同期バグではなくデータ座標の乖離**が主因。
+
+**方針（製品意思決定）**: [ADR-20260509](../decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md)
+
+**詳細**: [KB-373（詳細）](./KB-373-fkojunst-status-c-key-domain-mismatch.md)
+
+---
+
 ### [KB-371] CSVダッシュボード DEDUP 取込の PostgreSQL バインド上限（`too many bind variables` / 32767）
 
 **日付**: 2026-05-08
