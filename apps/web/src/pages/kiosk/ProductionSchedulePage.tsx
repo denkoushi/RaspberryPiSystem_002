@@ -639,7 +639,7 @@ export function ProductionSchedulePage() {
     setIsKeyboardOpen(false);
   };
 
-  const handleComplete = async (rowId: string) => {
+  const handleComplete = async (rowId: string, intent: 'complete' | 'incomplete') => {
     const t0 = performance.now();
     const isFetchingSchedule = scheduleQuery.isFetching;
     const fetchingCountSchedule = queryClient.isFetching({ queryKey: ['kiosk-production-schedule'] });
@@ -652,7 +652,7 @@ export function ProductionSchedulePage() {
 
     // Optimistic Updateにより、UIは即座に更新される
     try {
-      await completeRow(rowId);
+      await completeRow(rowId, intent);
       const elapsedMs = Math.round(performance.now() - t0);
       if (cursorDebugEnabled) {
         void elapsedMs;

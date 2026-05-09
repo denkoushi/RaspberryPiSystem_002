@@ -867,7 +867,7 @@ export function ProductionScheduleManualOrderPage() {
                 canEditProcessingOrder={sortMode === 'manual' && manualSortEnabled}
                 processingTypeOptions={processingTypeOptionsQuery.data ?? []}
                 getAvailableOrders={getAvailableOrders}
-                handleComplete={(rowId) => void completeRow(rowId)}
+                handleComplete={(rowId, intent) => void completeRow(rowId, intent)}
                 handleOrderChange={handleOrderChange}
                 handleProcessingChange={handleProcessingChange}
                 openDueDatePicker={openDueDatePicker}

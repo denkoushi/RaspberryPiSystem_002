@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  useCompleteKioskProductionScheduleRow,
+  useSetKioskProductionScheduleRowCompletion,
   useUpdateKioskProductionScheduleDueDate,
   useUpdateKioskProductionScheduleNote,
   useUpdateKioskProductionScheduleOrder,
   useUpdateKioskProductionScheduleProcessing,
   type KioskProductionScheduleOrderCachePolicy
 } from '../../../api/hooks';
+
+import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
 
 /** 書き込み直後のリスト再取得とポーリング復帰が重ならないよう空ける（体感待ちと Pi 負荷のバランス）。 */
 const WRITE_REFETCH_COOLDOWN_MS = 1800;
@@ -49,7 +51,7 @@ export const useProductionScheduleMutations = ({
   productionScheduleTargetDeviceScopeKey,
   productionScheduleOrderCachePolicy
 }: Params) => {
-  const completeMutation = useCompleteKioskProductionScheduleRow();
+  const completeMutation = useSetKioskProductionScheduleRowCompletion();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
   const processingMutation = useUpdateKioskProductionScheduleProcessing();
   const noteMutation = useUpdateKioskProductionScheduleNote();
@@ -170,9 +172,12 @@ export const useProductionScheduleMutations = ({
     [dueDateMutation]
   );
 
-  const completeRow = useCallback(async (rowId: string) => {
-    await completeMutation.mutateAsync(rowId);
-  }, [completeMutation]);
+  const completeRow = useCallback(
+    async (rowId: string, intent: KioskProductionScheduleCompletionIntent) => {
+      await completeMutation.mutateAsync({ rowId, intent });
+    },
+    [completeMutation]
+  );
 
   return {
     ...pending,

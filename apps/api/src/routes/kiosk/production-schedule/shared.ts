@@ -213,6 +213,11 @@ export const productionScheduleCompleteParamsSchema = z.object({
   rowId: z.string().uuid()
 });
 
+/** キオスク完了の明示指定（トグルではない） */
+export const productionScheduleCompletionIntentBodySchema = z.object({
+  intent: z.enum(['complete', 'incomplete'])
+});
+
 export const productionScheduleOrderParamsSchema = z.object({
   rowId: z.string().uuid()
 });

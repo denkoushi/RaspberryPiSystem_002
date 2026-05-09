@@ -3,6 +3,7 @@ import { memo, useCallback } from 'react';
 import { LeaderOrderResourceCard } from './LeaderOrderResourceCard';
 
 import type { LeaderBoardRow } from './types';
+import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
 import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 
 export type LeaderBoardGridProps = {
@@ -17,7 +18,7 @@ export type LeaderBoardGridProps = {
   onOpenDueDatePicker: (row: LeaderBoardRow) => void;
   dueDatePending: boolean;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
-  onCompleteRow: (rowId: string) => void;
+  onCompleteRow: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
   completePending: boolean;
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
@@ -36,7 +37,7 @@ type SlotCardProps = {
   onOpenDueDatePicker: (row: LeaderBoardRow) => void;
   dueDatePending: boolean;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
-  onCompleteRow: (rowId: string) => void;
+  onCompleteRow: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
   completePending: boolean;
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;

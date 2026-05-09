@@ -59,7 +59,7 @@ import {
 import {
   borrowItem,
   cancelLoan,
-  completeKioskProductionScheduleRow,
+  setKioskProductionScheduleRowCompletion,
   createEmployee,
   createItem,
   deleteEmployee,
@@ -1284,16 +1284,18 @@ export function useUpdateKioskProductionScheduleProcessing() {
   });
 }
 
-export function useCompleteKioskProductionScheduleRow() {
+export function useSetKioskProductionScheduleRowCompletion() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ['kiosk-production-schedule', 'write', 'complete'],
-    mutationFn: (rowId: string) => completeKioskProductionScheduleRow(rowId),
+    mutationKey: ['kiosk-production-schedule', 'write', 'completion'],
+    mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) =>
+      setKioskProductionScheduleRowCompletion(args.rowId, args.intent),
     onMutate: () => {
       void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule'] });
       void queryClient.cancelQueries({ queryKey: ['kiosk-production-schedule-order-usage'] });
     },
-    onSuccess: (data, rowId) => {
+    onSuccess: (data, variables) => {
+      const { rowId } = variables;
       // Optimistic Update: キャッシュを直接更新して即座にUIを更新
       queryClient.setQueriesData<KioskProductionScheduleListCache>(
         { queryKey: ['kiosk-production-schedule'] },
@@ -1318,7 +1320,6 @@ export function useCompleteKioskProductionScheduleRow() {
     }
   });
 }
-
 export function useEmployeeMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({

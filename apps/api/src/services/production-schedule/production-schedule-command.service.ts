@@ -46,13 +46,16 @@ export async function upsertProductionSchedulePartProcessingTypeByFhincd(params:
   return { success: true, processingType: incomingType };
 }
 
-export async function completeProductionScheduleRow(params: {
-  rowId: string;
-  locationKey: string;
-  debugSessionId?: string;
-}): Promise<{
+export type ProductionScheduleCompletionDrive =
+  | { mode: 'toggle' }
+  | { mode: 'intent'; intent: 'complete' | 'incomplete' };
+
+export type ProductionScheduleCompletionResult = {
   success: true;
-  alreadyCompleted: false;
+  /** 後方互換: 従来トグル経路では常に false */
+  alreadyCompleted: boolean;
+  /** 意図指定で状態が変わらなかったとき true */
+  unchanged: boolean;
   rowData: Record<string, unknown>;
   debug?: {
     totalMs: number;
@@ -66,8 +69,30 @@ export async function completeProductionScheduleRow(params: {
     hadAssignment: boolean;
     eventLoop?: ReturnType<typeof snapshotEventLoopObservability>;
   };
-}> {
-  const { rowId, locationKey, debugSessionId } = params;
+};
+
+function buildRowDataWithProgress(
+  current: Record<string, unknown>,
+  isCompleted: boolean
+): Record<string, unknown> {
+  return {
+    ...current,
+    progress: isCompleted ? COMPLETED_PROGRESS_VALUE : ''
+  };
+}
+
+/**
+ * キオスク完了状態を更新する共通実装。
+ * - `toggle`: 既存互換の反転
+ * - `intent`: 明示的に完了/未完了へ（同じ状態への再適用は no-op）
+ */
+export async function driveProductionScheduleRowCompletion(params: {
+  rowId: string;
+  locationKey: string;
+  drive: ProductionScheduleCompletionDrive;
+  debugSessionId?: string;
+}): Promise<ProductionScheduleCompletionResult> {
+  const { rowId, locationKey, drive, debugSessionId } = params;
   const debugEnabled = debugSessionId === '30be23';
   const tTotalStart = performance.now();
   const eventLoop = debugEnabled ? snapshotEventLoopObservability() : null;
@@ -89,12 +114,14 @@ export async function completeProductionScheduleRow(params: {
   });
   const isCompleted = progress?.isCompleted === true;
 
-  // トグル動作: 既に完了している場合は未完了に戻す
-  const nextIsCompleted = !isCompleted;
-  const nextRowData: Record<string, unknown> = {
-    ...current,
-    progress: nextIsCompleted ? COMPLETED_PROGRESS_VALUE : ''
-  };
+  let nextIsCompleted: boolean;
+  if (drive.mode === 'toggle') {
+    nextIsCompleted = !isCompleted;
+  } else {
+    nextIsCompleted = drive.intent === 'complete';
+  }
+
+  const unchanged = drive.mode === 'intent' && nextIsCompleted === isCompleted;
 
   const tFindAssignmentStart = performance.now();
   const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
@@ -107,71 +134,87 @@ export async function completeProductionScheduleRow(params: {
   });
   const findAssignmentMs = performance.now() - tFindAssignmentStart;
 
-  const txStart = performance.now();
   let txUpdateRowMs = 0;
   let txDeleteAssignmentMs: number | null = null;
   let txShiftAssignmentsMs: number | null = null;
   let txShiftAssignmentsCount: number | null = null;
-  await prisma.$transaction(async (tx) => {
-    const tUpdateRowStart = performance.now();
-    await tx.productionScheduleProgress.upsert({
-      where: { csvDashboardRowId: row.id },
-      create: {
-        csvDashboardRowId: row.id,
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        isCompleted: nextIsCompleted
-      },
-      update: { isCompleted: nextIsCompleted }
-    });
-    txUpdateRowMs = performance.now() - tUpdateRowStart;
+  const txStart = performance.now();
 
-    if (currentAssignment) {
-      const tDeleteStart = performance.now();
-      await tx.productionScheduleOrderAssignment.delete({
-        where: {
-          csvDashboardRowId_location: {
-            csvDashboardRowId: row.id,
-            location: locationKey
-          }
-        }
-      });
-      txDeleteAssignmentMs = performance.now() - tDeleteStart;
-
-      const tShiftStart = performance.now();
-      const shiftResult = await tx.productionScheduleOrderAssignment.updateMany({
-        where: {
+  if (!unchanged) {
+    await prisma.$transaction(async (tx) => {
+      const tUpdateRowStart = performance.now();
+      await tx.productionScheduleProgress.upsert({
+        where: { csvDashboardRowId: row.id },
+        create: {
+          csvDashboardRowId: row.id,
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          location: locationKey,
-          resourceCd: currentAssignment.resourceCd,
-          orderNumber: { gt: currentAssignment.orderNumber }
+          isCompleted: nextIsCompleted
         },
-        data: { orderNumber: { decrement: 1 } }
+        update: { isCompleted: nextIsCompleted }
       });
-      txShiftAssignmentsMs = performance.now() - tShiftStart;
-      txShiftAssignmentsCount = shiftResult.count;
-    }
-  });
+      txUpdateRowMs = performance.now() - tUpdateRowStart;
+
+      if (currentAssignment) {
+        const tDeleteStart = performance.now();
+        await tx.productionScheduleOrderAssignment.delete({
+          where: {
+            csvDashboardRowId_location: {
+              csvDashboardRowId: row.id,
+              location: locationKey
+            }
+          }
+        });
+        txDeleteAssignmentMs = performance.now() - tDeleteStart;
+
+        const tShiftStart = performance.now();
+        const shiftResult = await tx.productionScheduleOrderAssignment.updateMany({
+          where: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            location: locationKey,
+            resourceCd: currentAssignment.resourceCd,
+            orderNumber: { gt: currentAssignment.orderNumber }
+          },
+          data: { orderNumber: { decrement: 1 } }
+        });
+        txShiftAssignmentsMs = performance.now() - tShiftStart;
+        txShiftAssignmentsCount = shiftResult.count;
+      }
+    });
+  }
   const txMs = performance.now() - txStart;
-  const fseibanRaw = current.FSEIBAN;
-  const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
-  await dueManagementLearningEventRepository.saveOutcomeEvent({
-    locationKey,
-    eventType: 'manual_complete_toggle',
-    csvDashboardRowId: row.id,
-    fseiban: fseiban.length > 0 ? fseiban : null,
-    isCompleted: nextIsCompleted,
-    occurredAt: new Date(),
-    metadata: {
-      from: 'kiosk_complete_toggle'
-    }
-  });
+
+  const respondedRowData = buildRowDataWithProgress(current, unchanged ? isCompleted : nextIsCompleted);
+
+  if (!unchanged) {
+    const fseibanRaw = current.FSEIBAN;
+    const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
+    const eventType =
+      drive.mode === 'toggle'
+        ? 'manual_complete_toggle'
+        : nextIsCompleted
+          ? 'manual_complete_set'
+          : 'manual_incomplete_set';
+    await dueManagementLearningEventRepository.saveOutcomeEvent({
+      locationKey,
+      eventType,
+      csvDashboardRowId: row.id,
+      fseiban: fseiban.length > 0 ? fseiban : null,
+      isCompleted: nextIsCompleted,
+      occurredAt: new Date(),
+      metadata: {
+        from: drive.mode === 'toggle' ? 'kiosk_complete_toggle' : 'kiosk_complete_intent',
+        ...(drive.mode === 'intent' ? { intent: drive.intent } : {})
+      }
+    });
+  }
 
   const totalMs = performance.now() - tTotalStart;
 
   return {
     success: true,
     alreadyCompleted: false,
-    rowData: nextRowData,
+    unchanged,
+    rowData: respondedRowData,
     ...(debugEnabled
       ? {
           debug: {
@@ -189,6 +232,32 @@ export async function completeProductionScheduleRow(params: {
         }
       : {})
   };
+}
+
+/** @deprecated 互換用。新規は {@link driveProductionScheduleRowCompletion} の `intent` を利用してください。 */
+export async function completeProductionScheduleRow(params: {
+  rowId: string;
+  locationKey: string;
+  debugSessionId?: string;
+}): Promise<ProductionScheduleCompletionResult> {
+  return driveProductionScheduleRowCompletion({
+    ...params,
+    drive: { mode: 'toggle' }
+  });
+}
+
+export async function setProductionScheduleRowCompletionIntent(params: {
+  rowId: string;
+  locationKey: string;
+  intent: 'complete' | 'incomplete';
+  debugSessionId?: string;
+}): Promise<ProductionScheduleCompletionResult> {
+  return driveProductionScheduleRowCompletion({
+    rowId: params.rowId,
+    locationKey: params.locationKey,
+    drive: { mode: 'intent', intent: params.intent },
+    debugSessionId: params.debugSessionId
+  });
 }
 
 export async function upsertProductionScheduleNote(params: {

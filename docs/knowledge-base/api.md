@@ -4836,3 +4836,11 @@ WHERE (
 **解決状況**: ✅ **解決済み**（2026-03-02、実機検証完了）
 
 ---
+
+## KB-375: キオスク生産スケジュール完了 API（`/completion` 主経路・`/complete` トグル互換）
+
+**要約**: キオスク完了の **推奨契約**は `PUT /api/kiosk/production-schedule/:rowId/completion` + JSON `{ "intent": "complete" | "incomplete" }`。**同じ `intent` を再送**しても **状態は変わらず** `unchanged: true`（**二重タップでトグル戻りしない**）。**後方互換**の `PUT …/complete` は **トグル**のまま。**CSV→`ProductionScheduleProgress`** の同期は **`progress` 空文字では手動完了済みを落とさない**（`progress-csv-sync-decision.policy.ts`）。
+
+**参照**: [KB-375](./KB-375-kiosk-leaderboard-completion-integrity.md)·実装 [`complete.ts`](../../apps/api/src/routes/kiosk/production-schedule/complete.ts)·[`production-schedule-command.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts)
+
+---

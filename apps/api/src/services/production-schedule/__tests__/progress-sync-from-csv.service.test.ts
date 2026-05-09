@@ -48,7 +48,7 @@ describe('ProgressSyncFromCsvService', () => {
     );
   });
 
-  it('CSVが新しい場合は空文字を未完了として反映する', async () => {
+  it('CSVが新しい場合でも progress 空文字では手動完了済みを落とさない（同期スキップ）', async () => {
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
       updatedAt: new Date('2026-02-24T00:00:00.000Z'),
       isCompleted: true,
@@ -64,11 +64,31 @@ describe('ProgressSyncFromCsvService', () => {
       ],
     });
 
+    expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
+    expect(prisma.dueManagementOutcomeEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('CSVが新しい場合は空文字を未完了として反映する（未完了の行のみ）', async () => {
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
+      updatedAt: new Date('2026-02-24T00:00:00.000Z'),
+      isCompleted: false,
+    } as never);
+
+    await service.sync({
+      candidates: [
+        {
+          rowId: 'row-2b',
+          rowData: { progress: '', updatedAt: '2026/02/25 10:00' },
+          occurredAt: new Date('2026-02-25T00:00:00.000Z'),
+        },
+      ],
+    });
+
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
-    expect(prisma.dueManagementOutcomeEvent.create).toHaveBeenCalledTimes(1);
+    expect(prisma.dueManagementOutcomeEvent.create).not.toHaveBeenCalled();
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { csvDashboardRowId: 'row-2' },
+        where: { csvDashboardRowId: 'row-2b' },
         create: expect.objectContaining({ isCompleted: false }),
         update: expect.objectContaining({ isCompleted: false }),
       })

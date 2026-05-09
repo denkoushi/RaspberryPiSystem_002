@@ -54,6 +54,14 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
   siteKey?: string;
 }): Promise<Record<string, LeaderboardPartFooterProcessItem[]> | undefined> {
   const { rows, locationKey, siteKey } = params;
+  const preferredFooterRowIds = [...new Set(rows.map((r) => r.id.trim()).filter((id) => id.length > 0))];
+  const preferDisplayedRowSql =
+    preferredFooterRowIds.length > 0
+      ? Prisma.sql`(CASE
+        WHEN "matchedRows"."id" IN (${Prisma.join(preferredFooterRowIds.map((id) => Prisma.sql`${id}`))}) THEN 1
+        ELSE 0
+      END) DESC,`
+      : Prisma.empty;
   const uniqueKeys = new Set<string>();
   const tripleByKey = new Map<
     string,
@@ -101,6 +109,7 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
     "winnerRows" AS (
       SELECT DISTINCT ON (
         COALESCE("matchedRows"."rowData"->>'FSEIBAN', ''),
+        COALESCE(NULLIF(BTRIM("matchedRows"."rowData"->>'ProductNo'), ''), ''),
         COALESCE("matchedRows"."rowData"->>'FHINCD', ''),
         COALESCE("matchedRows"."rowData"->>'FSIGENCD', ''),
         COALESCE("matchedRows"."rowData"->>'FKOJUN', '')
@@ -109,9 +118,15 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
       FROM "matchedRows"
       ORDER BY
         COALESCE("matchedRows"."rowData"->>'FSEIBAN', '') ASC,
+        COALESCE(NULLIF(BTRIM("matchedRows"."rowData"->>'ProductNo'), ''), '') ASC,
         COALESCE("matchedRows"."rowData"->>'FHINCD', '') ASC,
         COALESCE("matchedRows"."rowData"->>'FSIGENCD', '') ASC,
         COALESCE("matchedRows"."rowData"->>'FKOJUN', '') ASC,
+        ${preferDisplayedRowSql}
+        (CASE
+          WHEN ("matchedRows"."rowData"->>'ProductNo') ~ '^[0-9]+$' THEN (("matchedRows"."rowData"->>'ProductNo'))::bigint
+          ELSE -1
+        END) DESC,
         "matchedRows"."createdAt" DESC,
         "matchedRows"."id" DESC
     )

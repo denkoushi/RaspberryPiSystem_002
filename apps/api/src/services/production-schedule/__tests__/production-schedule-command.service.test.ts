@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../lib/errors.js';
 import {
   completeProductionScheduleRow,
+  setProductionScheduleRowCompletionIntent,
   upsertProductionScheduleOrder,
   upsertProductionScheduleProcessingType,
 } from '../production-schedule-command.service.js';
@@ -163,6 +164,27 @@ describe('production-schedule-command.service', () => {
         })
       })
     );
+  });
+
+  it('intent=complete が既に完了なら unchanged で tx を叩かない', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
+      id: 'row-done',
+      rowData: { FSEIBAN: 'S1', progress: '' },
+    } as never);
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({
+      isCompleted: true,
+    } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null as never);
+
+    const result = await setProductionScheduleRowCompletionIntent({
+      rowId: 'row-done',
+      locationKey: 'kiosk-1',
+      intent: 'complete',
+    });
+
+    expect(result.unchanged).toBe(true);
+    expect(result.rowData.progress).toBe('完了');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
 

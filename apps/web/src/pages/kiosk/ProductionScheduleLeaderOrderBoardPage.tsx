@@ -438,8 +438,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   }, [closeNoteModal, noteModalTargetFseiban, registerSeibanToSharedHistory]);
 
   const handleCompleteRow = useCallback(
-    (rowId: string) => {
-      void completeRow(rowId);
+    (rowId: string, intent: 'complete' | 'incomplete') => {
+      void completeRow(rowId, intent);
     },
     [completeRow]
   );
