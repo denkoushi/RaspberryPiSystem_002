@@ -30,9 +30,24 @@
 
 **要約**: ソース CSV に `C` があっても、**厳密3キー**（`ProductNo` + `FKOTEICD`/`FSIGENCD` + `FKOJUN`）で本体 winner と一致しないため **`ProductionScheduleFkojunstMailStatus` に反映されない**ケースが支配的。**同期バグではなくデータ座標の乖離**が主因。
 
+**調査で確定したポイント**:
+
+- `C` の `FKOJUN` は **`801` 偏重**など、本体 `FKOJUN` 集合と重なりが薄い。
+- `FKOTEICD` と本体 `FSIGENCD` は **重複が極小**（調査時 ~0.19% 規模）。
+- キオスク選択資源で見える `C`（例: 12 件）は、**時刻違い重複ではなく別レコード**。
+- よって「`C` が見えない」際の初手は、コード読む前に **3キー一致件数の確認**。
+
+**運用方針（ADR）**:
+
+- **厳密3キー一致行のみ反映**
+- **trim + uppercase 正規化**
+- **Status 取込時 / 本体取込時の両方で再計算**
+- **`FUPDTEDT` 最新優先（非 `C` による巻き戻し可）**
+- **未マッチ `C` は無視**
+
 **方針（製品意思決定）**: [ADR-20260509](../decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md)
 
-**詳細**: [KB-373（詳細）](./KB-373-fkojunst-status-c-key-domain-mismatch.md)
+**詳細**: [KB-373（詳細）](./KB-373-fkojunst-status-c-key-domain-mismatch.md)・[KB-297 調査補遺](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-c-key-domain-mismatch-2026-05-09)
 
 ---
 

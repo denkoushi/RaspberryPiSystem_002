@@ -169,6 +169,16 @@ category: knowledge-base
 - **知見（運用・2026-05-08）**: **外部完了のメール由来は `status` のみ**。**CSV からキーが無くなった**だけでは完了にならない（**旧仕様の dedupe キー消失**は撤去）。**`O`/`P`** は **一覧に出ないが未完了のまま**（製番 **total** に含まれる）。
 - **トラブルシュート**: **外部完了が期待とズレる** → **`fkmail.statusCode`**（**`C`/`X` だけがメール由来完了**）・**生産日程CSV消失**条件（**S/R 相当 winner のみ**）を確認。**Status CSV が空**（dedupe 後キー **0 件**）なら同期スキップ。**マイグレ未適用**は Pi5 **`deploy-status`** / Ansible **`Run prisma migrate deploy`** ログで確認する。**順位で `C`/`X` が見えるがグレーアウトしない** → API の **`progress`**（**`完了`** 字句）と Web の [`normalizeLeaderBoardRow`](../../apps/web/src/features/kiosk/leaderOrderBoard/normalizeLeaderBoardRow.ts) を確認し、Pi5 **`api` / Pi4 `web` の ref** が [deployment.md §2026-05-09](../guides/deployment.md#kiosk-leaderboard-fkojunst-cx-visible-2026-05-09) 以降か検証。
 
+#### 2026-05-09 調査補遺: なぜ `C` が `fkmail` にほぼ載らないのか（キー空間不一致） {#fkojunst-status-c-key-domain-mismatch-2026-05-09}
+
+- **現象**: `FKOJUNST_Status` ソースには `C` が大量にある一方、`fkmail` には `C` がほぼ現れない。
+- **誤解しやすい点**: これは「同期ロジックが `C` だけ落としている」ことを直ちに意味しない。
+- **調査結論**: 厳密 3 キー（`ProductNo + 資源CD + FKOJUN`）で本体 winner と突合すると、`C` 行は **未マッチが支配的**。`FKOJUN`（例: `801` 偏重）と `FKOTEICD` の分布が本体キー集合と交わらない。
+- **運用含意**: 本体に対応行が無い `C` は、現行仕様では **反映しないのが正**（誤完了防止）。
+- **意思決定**: 反映方針は [ADR-20260509](../decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md) を正本とする。  
+  （trim+upper、両取込で再計算、`FUPDTEDT` 最新優先、未マッチ `C` は無視）
+- **詳細調査ログ**: [KB-373](./KB-373-fkojunst-status-c-key-domain-mismatch.md)
+
 ### PowerAutomate 由来の日時字句互換（ISO8601 等・2026-05-01） {#powerautomate-csv-datetime-compat-2026-05-01}
 
 - **Context**: PowerAutomate 変更により **`FUPDTEDT`** が **`YYYY-MM-DDTHH:mm:ss[.SSS]Z`** で届くケースが増えた。旧実装は **`MM/DD/YYYY HH:mm:ss`** のみ受理のため **パース不能**→**epoch 代替**になり、**同一キーで「最新」を決める `FUPDTEDT` 最大**の選定が崩れ、一覧の **`fkmail` 紐付き・工順ST表示**に間接的に影響し得た（可視ポリシー自体は不変）。

@@ -9,45 +9,78 @@ category: knowledge-base
 
 # KB-373: FKOJUNST_Status の完了（`C`）が `fkmail` にほぼ残らない理由（キー空間不一致）
 
-## Context
+## Context（この KB の目的）
 
-- **いつ/どこ**: 2026-05-09 前後。三島研削キオスク順位ボード・`FKOJUNST_Status`（Gmail CSV）と本体生産日程（`ProductionSchedule_Mishima_Grinding`）の整合調査。
-- **背景**: 一覧可視性を `S`/`R`/`C`/`X` に広げた後も、**メール同期先である `ProductionScheduleFkojunstMailStatus`（以下 `fkmail`）に `statusCode='C'` がほぼ存在しない**（実質ゼロに近い）事象を追った。
-- **誤調査の教訓**: スクリーンショット上の **製番・資源表記**の読み取り誤り（例: `FSEIBAN` と `ProductNo`、`表示ラベル` と `FSIGENCD`）がクエリ結果を空にし得る。**照会は DB 上の `ProductNo` / `FSIGENCD` / `FKOJUN` を正本とする**。
+- この KB は「**なぜ `C` が 0 件に見えるのか**」を、**調査の時系列**と**根拠**まで残すための記録。
+- 対象は以下の 2 ソース:
+  - 本体: `ProductionSchedule_Mishima_Grinding`（winner 行の正本）
+  - Status: `FKOJUNST_Status`（Gmail CSV、`fkmail` 同期元）
+- 問題の焦点は、UI 改修ではなく **照合対象そのものが合っているか**。
 
-## Symptoms
+## 先に結論
 
-- **`FKOJUNST_Status` ソース CSV** には **`FKOJUNST='C'` が大量**（調査時点でユニークキー換算おおむね **~2.4 万件規模**の認識。環境により変動）。
-- 一方 **`fkmail.statusCode='C'` は 0 件に近い**（同期結果が他ステータスと整合している場合でも `C` だけ欠落する印象）。
-- キオスクで選べる資源 CD 集合に絞っても、**`C` 行はソース上に少数存在しうる**が、**本体生産日程 winner 行との厳密突合では一致 0 件**になり得る。
+- `C` が `fkmail` に乗らない主因は、**照合ロジックの実装不具合ではなく、上流データのキー空間乖離**。
+- 具体的には、`FKOJUNST_Status` の `C` 行が持つ `FKOJUN` / `FKOTEICD` が、本体 winner の `FKOJUN` / `FSIGENCD` と交わらない。
+- そのため、システムが採用する厳密照合（`ProductNo + 資源CD + FKOJUN`）では、`C` は**未マッチとして無視**される。
 
-## Investigation（仮説 → 検証 → 結果）
+## 調査の時系列（要約）
 
-| 仮説 | 結果 |
-|------|------|
-| H1: メール同期ロジックのバグで `C` だけ落ちる | **REJECTED**（**`C` 以外**は期待どおり `fkmail` に載り、**既存 `fkmail` 行とソース CSV の突合は整合**する観測）。 |
-| H2: 旧「消滅」ベース外部完了や `fkst` が `C` を潰している | **REJECTED（当該経路は別）**。正本統一後は **`fkmail` の `C`/`X` のみ**がメール由来外部完了に効く設計（[ADR-20260508-fkojunst-status-sole-source](../decisions/ADR-20260508-fkojunst-status-sole-source.md)）。`externallyCompletedFromFkojunstDisappeared` 系はメール同期では **`FALSE` 固定**の実装も確認済み。 |
-| H3: **`C` 行の論理キー**が **本体生産日程 winner の論理キー**と**そもそも交わらない** | **CONFIRMED**。厳密3キー **`ProductNo` + 資源 CD（本体 `FSIGENCD` ↔ Status `FKOTEICD`）+ `FKOJUN`** で突合すると、**`C` 行は本体側に対応行が無い**ケースが支配的。 |
-| H3b: `C` における **`FKOJUN` の分布**が本体と別世界 | **CONFIRMED（強いシグナル）**。`C` の `FKOJUN` が **特定値（例: `801`）に極端に集中**する一方、本体側の `FKOJUN` 集合と重なりが薄い、という観測。 |
-| H3c: `FKOTEICD` と `FSIGENCD` の集合の重なり | **CONFIRMED（極小）**。調査時点の集計で **`FKOTEICD` と本体 `FSIGENCD` の一致率が ~0.19% 規模**など、**別キー空間**を示す数値が出た（**環境・日付で変動**）。 |
-| H4: キオスク選択資源に絞った **`C` 12 件**は **タイムスタンプ違いの重複か** | **REJECTED**。**12 件はいずれも別レコード**（`ProductNo` / `FKOJUN` / `FKOTEICD` / `FUPDTEDT` が同一という意味では重複しない）。**`FUPDTEDT` の日付も単一日付に集中しない**（複数月に分散する例）。 |
+1. まず「S/R は順位ボードに漏れなく出るか」「X/C がチップのグレーアウトへ反映されるか」を確認。
+2. 次に「`C` はソース CSV にも無いのか / 同期先 DB だけ無いのか」を分離して確認。
+3. その結果、**ソースには `C` が大量にある**一方、**`fkmail` では `C` がほぼ 0**を確認。
+4. 同期ロジック破損を疑って突合したが、`C` 以外は正常に同期されるため、ロジック単独故障は弱い。
+5. そこで照合キー分布を比較し、`C` の `FKOJUN` / `FKOTEICD` が本体キー集合と乖離していることを確認。
+6. 最後に「選択資源で見える `C` 12 件」の同一性（重複かどうか）を精査し、**重複ではなく別レコード**と確定。
 
-## Root cause
+## 症状（観測）
 
-**上流（生産システム／CSV設計）側のデータ意味のずれ**により、`FKOJUNST_Status` の **`C` 行が指す「工順・資源」の座標**が、**`ProductionSchedule_Mishima_Grinding` の winner 行が保持する座標**と**一致しない**ことが根本である。**アプリの「照合→更新」ロジックが誤っているというより、一致対象が存在しない**ため、`fkmail` に `C` が載らない。
+- `FKOJUNST_Status` ソースには `FKOJUNST='C'` が大量（調査時点でおおむね **~2.4 万件規模**）。
+- 一方 `ProductionScheduleFkojunstMailStatus`（`fkmail`）側の `statusCode='C'` はほぼ 0。
+- キオスクで選択可能な資源に絞っても、`C` 行は存在し得るが、本体 winner と 3 キーで結びつかない。
 
-> **補足（解釈）**: `C` は **製造 order 完了イベント**のように、**工程明細行と 1:1 で対応しない**可能性がある。詳細は上流仕様の確認が必要だが、**本システムが採用する厳密3キー同期では未マッチの `C` は反映されない**のが結果として正しい。
+## 仮説検証（Hypothesis Log）
 
-## Fix（この KB 時点）
+| 仮説 | 検証結果 | 補足 |
+|------|----------|------|
+| H1: 同期ロジックが `C` だけ落としている | **REJECTED** | `C` 以外は同期整合。既存 `fkmail` とソースの一致も確認。 |
+| H2: 旧「消滅」系や `fkst` フォールバックが `C` を潰す | **REJECTED** | 現行は `fkmail` 正本。メール由来完了は `C`/`X` のみ（[ADR-20260508](../decisions/ADR-20260508-fkojunst-status-sole-source.md)）。 |
+| H3: `C` のキーが本体 winner のキー集合と交わらない | **CONFIRMED** | 厳密 3 キー (`ProductNo + FSIGENCD/FKOTEICD + FKOJUN`) で一致 0 が支配的。 |
+| H3b: `C` の `FKOJUN` 分布が特異 | **CONFIRMED** | `C` の `FKOJUN` は **`801` 集中**が強く、本体側集合と重なりが薄い。 |
+| H3c: `FKOTEICD` ↔ `FSIGENCD` が別集合 | **CONFIRMED** | 一致率が **~0.19% 規模**の観測（時点差あり）。 |
+| H4: 資源選択下の `C` 12 件はタイムスタンプ違い重複 | **REJECTED** | 12 件は別レコード。`FUPDTEDT` 日付も単日集中ではない。 |
 
-- **コード変更は本トピックの主目的ではない**（調査のナレッジ化と**照合方針の ADR 化**が主成果）。
-- 将来実装する場合の**方針**は [ADR-20260509-fkojunst-status-completion-matching-policy](../decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md) を正とする。
+## 重要な観測値（時点依存のため参考値）
 
-## Prevention / 運用上の読み方
+- `C` はソース上で大量、同期先でほぼ 0。
+- `C` の `FKOJUN` は `801` 偏重（会話中の検証では「大半」を占める）。
+- `FKOTEICD` と本体 `FSIGENCD` の重なりは極小（~0.19% 規模）。
+- 選択資源内 `C=12` の内訳例: `581:4, 060:2, 305:2, 585:2, 584:1, 586:1`。
+- 上記 12 件は `ProductNo/FKOJUN/FKOTEICD/FUPDTEDT` の組で重複しない。
 
-- **`C` が `fkmail` に少ない**ときは、まず **ソース CSV のキー分布**（特に **`C` の `FKOJUN` / `FKOTEICD`**）と **本体 CSV の `FKOJUN` / `FSIGENCD`** を突き合わせる。
-- **キオスクの表示欠落**を疑う前に、**`fkmail` の有無・`statusCode`** と **winner 行のキー**を同一ツール（SQL）で確認する。
-- **調査用の localhost ingest (`127.0.0.1:7426` 等) はリポジトリに残さない**（[INDEX §三島研削 empty BOM](../INDEX.md) と同方針）。
+> 注記: これらは調査時の DB スナップショットに依存するため、再計測で数値は変動し得る。
+
+## Root cause（根因）
+
+**上流（生産システム/CSV設計）のデータ意味の差**で、`C` 行が指す工程座標が本体 winner と一致しない。  
+つまり「照合しても対象が無い」状態であり、現在の厳密照合ルールでは `C` を取り込めない。
+
+## ユーザー合意の最終方針（この調査で確定）
+
+この調査を受けて確定した方針は [ADR-20260509](../decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md) を正本とする。
+
+- 反映対象は **`ProductNo + 資源CD + FKOJUN` 厳密一致行のみ**。
+- 照合キーは **trim + uppercase** で正規化。
+- 再計算は **Status 取込時 / 本体取込時の両方**で実施。
+- 同一キー衝突は **`FUPDTEDT` 最新**を勝者（新しい非 `C` が完了を巻き戻し得る）。
+- **未マッチ `C` は無視**（表示・件数に載せない）。
+
+## 調査運用チェックリスト（再発時）
+
+1. `C` が見えない場合、先に `fkmail` 件数と `statusCode` 分布を確認。
+2. 次に `C` の `FKOJUN` / `FKOTEICD` 分布を取り、本体 `FKOJUN` / `FSIGENCD` と比較。
+3. 3 キー一致件数を確認（0 なら実装ではなくキー空間問題の可能性が高い）。
+4. 「一部 `C` がある」場合は重複判定（`FUPDTEDT` だけ違うのか）を切り分ける。
+5. 調査用 localhost ingest（`127.0.0.1:7426` 等）はリポジトリへ残さない。
 
 ## 固定 ID（参照用）
 
