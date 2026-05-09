@@ -9,11 +9,11 @@ import {
 import { getResourceNameMapByResourceCds } from '../resource-master.service.js';
 import { resolveProgressOverviewResourceNames } from '../progress-overview-query.service.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
+import { buildLeaderboardPartFooterChipLookupKey } from './leaderboard-part-footer-chip-key.js';
 import {
-  buildLeaderboardPartFooterChipLookupKey,
-  readTrimmedRowDataField,
-  resolveLeaderboardRowSeibanJoinKeyForFooter
-} from './leaderboard-part-footer-chip-key.js';
+  collectLeaderboardFooterPartKeysFromRows,
+  resolveLeaderboardFooterPreferredRowIds
+} from './leaderboard-footer-part-key-collector.js';
 
 export type LeaderboardPartFooterProcessItem = {
   rowId: string;
@@ -43,6 +43,9 @@ const parseProcessOrder = (value: string): number | null => {
 /**
  * 順位ボード一覧行に含まれる部品キーについて、progress-overview と同契約の工程チップ配列を返す。
  * 呼び出し側は `responseProfile=leaderboard` のときのみ利用する。
+ *
+ * `preferredDisplayRowIds` に「装飾リクエストの全 rowId（表示スコープ）」を渡すと、
+ * 重複 CsvDashboardRow が存在する場合でも DISTINCT ON winner が一覧表示と整合する（KB-375 / KB-376）。
  */
 export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params: {
   rows: ReadonlyArray<{
@@ -52,9 +55,12 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
   }>;
   locationKey: string;
   siteKey?: string;
+  /** 画面表示中の一意 rowId 境界（省略時は `rows` の id から導出） */
+  preferredDisplayRowIds?: readonly string[];
 }): Promise<Record<string, LeaderboardPartFooterProcessItem[]> | undefined> {
-  const { rows, locationKey, siteKey } = params;
-  const preferredFooterRowIds = [...new Set(rows.map((r) => r.id.trim()).filter((id) => id.length > 0))];
+  const { rows, locationKey, siteKey, preferredDisplayRowIds } = params;
+
+  const preferredFooterRowIds = resolveLeaderboardFooterPreferredRowIds({ rows, preferredDisplayRowIds });
   const preferDisplayedRowSql =
     preferredFooterRowIds.length > 0
       ? Prisma.sql`(CASE
@@ -62,25 +68,11 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
         ELSE 0
       END) DESC,`
       : Prisma.empty;
-  const uniqueKeys = new Set<string>();
-  const tripleByKey = new Map<
-    string,
-    { seibanJoinKey: string; productNo: string; fhincd: string }
-  >();
 
-  for (const row of rows) {
-    const seibanJoinKey = resolveLeaderboardRowSeibanJoinKeyForFooter(row);
-    const productNo = readTrimmedRowDataField(row.rowData, 'ProductNo');
-    const fhincd = readTrimmedRowDataField(row.rowData, 'FHINCD');
-    if (!seibanJoinKey.length || !fhincd.length) continue;
+  const { uniquePartKeysInOrder: uniquePartKeysInDisplayOrder, tripleByPartKey } =
+    collectLeaderboardFooterPartKeysFromRows(rows);
 
-    const key = buildLeaderboardPartFooterChipLookupKey({ seibanJoinKey, productNo, fhincd });
-    if (uniqueKeys.has(key)) continue;
-    uniqueKeys.add(key);
-    tripleByKey.set(key, { seibanJoinKey, productNo, fhincd });
-  }
-
-  if (tripleByKey.size === 0) {
+  if (tripleByPartKey.size === 0) {
     return undefined;
   }
 
@@ -89,9 +81,13 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
     deviceScopeKey: locationKey
   });
 
-  const targetKeyRows = [...tripleByKey.values()].map(
-    (t) => Prisma.sql`(${t.seibanJoinKey}, ${t.productNo}, ${t.fhincd})`
-  );
+  const targetKeyRows = uniquePartKeysInDisplayOrder.map((key) => {
+    const t = tripleByPartKey.get(key);
+    if (!t) {
+      throw new Error('[leaderboard-footer] internal: part key missing in triple map');
+    }
+    return Prisma.sql`(${t.seibanJoinKey}, ${t.productNo}, ${t.fhincd})`;
+  });
 
   const sqlRows = await prisma.$queryRaw<FooterSqlRow[]>(Prisma.sql`
     WITH "targetKeys" ("seibanJoinKey", "productNo", "fhincd") AS (
@@ -157,7 +153,10 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
 
   const resourceNameMap = await getResourceNameMapByResourceCds(sqlRows.map((r) => r.fsigencd));
 
-  const processesByPartKey = new Map<string, Array<{ processOrder: number | null; rowId: string; resourceCd: string; resourceNames?: string[]; isCompleted: boolean }>>();
+  const processesByPartKey = new Map<
+    string,
+    Array<{ processOrder: number | null; rowId: string; resourceCd: string; resourceNames?: string[]; isCompleted: boolean }>
+  >();
 
   for (const row of sqlRows) {
     const fseiban = row.fseiban.trim();
@@ -170,7 +169,7 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
       productNo,
       fhincd
     });
-    if (!tripleByKey.has(partKey)) {
+    if (!tripleByPartKey.has(partKey)) {
       continue;
     }
 
@@ -192,7 +191,7 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
   }
 
   const out: Record<string, LeaderboardPartFooterProcessItem[]> = {};
-  for (const lookupKey of uniqueKeys) {
+  for (const lookupKey of uniquePartKeysInDisplayOrder) {
     const procs = (processesByPartKey.get(lookupKey) ?? []).slice().sort((a, b) => {
       const ao = a.processOrder ?? Number.MAX_SAFE_INTEGER;
       const bo = b.processOrder ?? Number.MAX_SAFE_INTEGER;

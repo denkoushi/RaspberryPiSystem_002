@@ -10,6 +10,8 @@
 
 ### 🆕 最新アップデート（2026-05-10）
 
+- **KB-376 順位ボード・装飾/フッタの表示スコープ整合（>900 `rowIds`・重複 winner）**: hydrate を **チャンク結合**し、フッタ DISTINCT ON に **`preferredDisplayRowIds`**（リクエスト境界）を明示。**KB**: [KB-376](./knowledge-base/KB-376-leaderboard-footer-display-scope-winner-alignment.md)。**実装**: [`leaderboard-display-row-scope.ts`](../apps/api/src/services/production-schedule/leaderboard/leaderboard-display-row-scope.ts)·[`leaderboard-shell-hydrate.service.ts`](../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-hydrate.service.ts) 他。
+
 - **KB-375 完了整合・本番ロールアウト（API+Web・キオスク 5 台順次・実機 Phase12）**: **`fix/leaderboard-completion-integrity`**（**`c063ab57`**）を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** へ **`update-all-clients.sh`・`--detach --follow`・1 台ずつ**反映（**Detach** **`20260510-074230-10392`** ほか 4 本・いずれも **`failed=0`**）。**`verify-phase12-real.sh`** **PASS 43 / WARN 0 / FAIL 0**（約 **74s**）。**Pi3** は **`skipping: no hosts matched`**（**本ロールアウトで Pi3 専用手順は不要／未実施で正**）。**記録**: [deployment.md §2026-05-10](./guides/deployment.md#kiosk-leaderboard-completion-integrity-2026-05-10)·[KB-375](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)·[EXEC_PLAN.md](../EXEC_PLAN.md) **Progress** 先頭項。
 
 ### 🆕 直近アップデート（2026-05-09）

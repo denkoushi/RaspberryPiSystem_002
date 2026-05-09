@@ -40,6 +40,7 @@ import {
   fetchLeaderboardShellMergedPrefixRows,
   fetchLeaderboardShellRowsContinuationChunk
 } from './leaderboard/leaderboard-row-selection.service.js';
+import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard/leaderboard-display-row-scope.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard/leaderboard-shell-hydrate.service.js';
 import { buildLeaderboardShellFilterFingerprint } from './leaderboard/leaderboard-shell-snapshot-fingerprint.js';
 import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
@@ -534,8 +535,18 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
   hydratedRows: ProductionScheduleRow[];
   locationKey: string;
   siteKey?: string;
+  /**
+   * 装飾対象の表示スコープ rowId（省略時は hydrate 済み行の id から導出）。
+   * shell/board のリクエスト境界とフッタ winner 選定を揃えるために渡す。
+   */
+  preferredDisplayRowIds?: readonly string[];
 }): Promise<ProductionScheduleLeaderboardDecorationPayload> {
-  const { hydratedRows, locationKey, siteKey } = params;
+  const { hydratedRows, locationKey, siteKey, preferredDisplayRowIds } = params;
+
+  const preferredFooterScope =
+    preferredDisplayRowIds !== undefined
+      ? normalizeLeaderboardDisplayRowIdScope(preferredDisplayRowIds)
+      : normalizeLeaderboardDisplayRowIdScope(hydratedRows.map((r) => r.id));
 
   if (hydratedRows.length === 0) {
     return {
@@ -556,7 +567,8 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
   const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
     rows: enrichedRows,
     locationKey,
-    siteKey
+    siteKey,
+    preferredDisplayRowIds: preferredFooterScope
   });
 
   return {
@@ -577,7 +589,9 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
 }): Promise<ProductionScheduleLeaderboardDecorationPayload> {
   const { orderedRowIds, locationKey, siteKey } = params;
 
-  if (orderedRowIds.length === 0) {
+  const preferredDisplayRowIds = normalizeLeaderboardDisplayRowIdScope(orderedRowIds);
+
+  if (preferredDisplayRowIds.length === 0) {
     return {
       rowDecorations: [],
       leaderboardFooterChipsByPartKey: {}
@@ -587,7 +601,7 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
   const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
-    orderedRowIds,
+    orderedRowIds: preferredDisplayRowIds,
     locationKey,
     siteScopedGlobalRankLocation: siteKey?.trim().length ? siteKey.trim() : locationKey,
     leaderboardMaterializedBaseWhere
@@ -602,7 +616,8 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
   return decorateLeaderboardShellRowsForKioskFromHydratedRows({
     hydratedRows: lightRows,
     locationKey,
-    siteKey
+    siteKey,
+    preferredDisplayRowIds
   });
 }
 
@@ -866,7 +881,8 @@ async function enrichLeaderboardListRowsAndFooter(params: {
   const leaderboardFooterChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
     rows: enrichedRows,
     locationKey,
-    siteKey
+    siteKey,
+    preferredDisplayRowIds: normalizeLeaderboardDisplayRowIdScope(enrichedRows.map((r) => r.id))
   });
 
   return {
