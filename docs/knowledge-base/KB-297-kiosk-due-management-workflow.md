@@ -152,7 +152,7 @@ category: knowledge-base
 ### FKOJUNST_Status CSV 由来外部完了（`fkmail` status ベース・2026-05-08 改訂） {#fkojunst-status-external-completion-b-2026-05-02}
 
 - **目的**: キオスクの手動チェックが無くても、**`FKOJUNST_Status` 同期済み `fkmail`** の **status** から **完了相当**を再計算する。**`rowData.FKOJUNST` は変更しない**（`ProductionScheduleExternalCompletion` で別管理）。
-- **正本**: **`ProductionScheduleFkojunstMailStatus.statusCode` のみ**（旧 **dedupe キー消失差分**・**`fkst` フォールバック**は廃止）。仕様は [`fkojunst-mail-status-completion.policy.ts`](../../apps/api/src/services/production-schedule/completion/fkojunst-mail-status-completion.policy.ts) と同一。**完了**: **`C`/`X`**。**一覧非表示・未完了**: **`O`/`P`**（進捗集計の total に残る）。**一覧表示・未完了**: **`S`/`R`**。
+- **正本**: **`ProductionScheduleFkojunstMailStatus.statusCode` のみ**（旧 **dedupe キー消失差分**・**`fkst` フォールバック**は廃止）。仕様は [`fkojunst-mail-status-completion.policy.ts`](../../apps/api/src/services/production-schedule/completion/fkojunst-mail-status-completion.policy.ts) と同一。**一覧表示・完了**: **`C`/`X`**（キオスク順位ボードで完了カード/資源CDをグレーアウト確認できるよう 2026-05-09 に再表示）。**一覧表示・未完了**: **`S`/`R`**。**一覧非表示・未完了**: **`O`/`P`**（進捗集計の total に残る）。
 - **メール同期後の再計算**: 全 winner に対し **`externallyCompletedFromFkojunstMailStatus`** = (**`C`/`X`**)、**`externallyCompletedFromFkojunstDisappeared`** は **常に false** に更新（列は後方互換のため残す）。**`isExternallyCompleted`** = メール完了 **OR** スケジュールCSV消失 **OR** 旧「消失」列（常に false のため実質メール+CSV）。
 - **対象（生産日程CSV「消滅」同期）**: [**`buildFkojunstScheduleCsvDisappearanceEligibleScalarSql`**](../../apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts) — **`fkmail` が `S`/`R`** の winner に限り、本体CSVスナップショット差分で **`externallyCompletedFromScheduleCsvDisappeared`** を更新（**`fkmail` 無し**や **`O`/`P`/`C`/`X` など非 S/R** のメール行は CSV 消失で完了にしない）。
 - **異常時**: **正規化後・dedupe 後にキーが 1 つも無い**ときは **外部完了同期をスキップ**（誤って大量完了扱いにしない）。**`normalizedRows` が空で `fkmail` をクリアする**経路でも **外部完了テーブルは触らない**。
@@ -175,7 +175,7 @@ category: knowledge-base
 - **一般 CsvDashboard**: `CsvDashboardIngestor` の **`occurredAt`** は **`parseCsvDashboardDateColumnToUtc`**（**`YYYY/M/D H:M`（JST→UTC）**＋**同上 ISO8601**）。失敗時は **現在時刻**フォールバックし **`[CsvDashboardIngestor]`** へ **`dashboardId` / `dateColumnName`** 付き **warn**（例: 計測機器貸出ダッシュボード）。
 - **Fix の正本**: [`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)·[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)·テスト上記ファイル。
 - **本番反映（2026-05-01）**: [deployment.md](../guides/deployment.md) 補足（PowerAutomate 日時互換）。**`raspberrypi5` のみ**。**Detach Run ID**（`ansible-update-`）: **`20260501-141453-4379`**（**`failed=0` / `unreachable=0`**・**`ok=130` `changed=4`**）。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **26s**）。
-- **トラブルシュート**: 表示行がおかしいときは **まず** [§FKOJUNST_Status（2026-04-28）](#fkojunst_status-mail-from-gmail-csv-2026-04-28) の **キー・`S`/`R` 可視**を確認。パース周りは **API ログの warn** と **CSV 字句**を突き合わせる。**Pi4/Pi3**: **個別デプロイ不要**（API のみ）。
+- **トラブルシュート**: 表示行がおかしいときは **まず** [§FKOJUNST_Status（2026-04-28）](#fkojunst_status-mail-from-gmail-csv-2026-04-28) の **キー・`S`/`R`/`C`/`X` 可視**を確認。パース周りは **API ログの warn** と **CSV 字句**を突き合わせる。**Pi4/Pi3**: **個別デプロイ不要**（API のみ）。
 
 ### `ProductionSchedule_Mishima_Grinding` CSV に実日付が無いこと（仕様・2026-05-01） {#mishima-grinding-csv-no-date-2026-05-01}
 

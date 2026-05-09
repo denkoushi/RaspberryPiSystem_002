@@ -357,6 +357,49 @@ describe('Kiosk Production Schedule API', () => {
     expect(body.rows.find((row) => row.rowData.ProductNo === '0001')?.rowData.FKOJUNST).toBe('S');
   });
 
+  for (const completedStatus of ['C', 'X'] as const) {
+    it(`shows ${completedStatus} from FKOJUNST_Status mail sync rows`, async () => {
+      const targetRow = await prisma.csvDashboardRow.findFirst({
+        where: {
+          csvDashboardId: DASHBOARD_ID,
+          rowData: { path: ['ProductNo'], equals: '0001' },
+        },
+        select: { id: true },
+      });
+      expect(targetRow).toBeDefined();
+      if (!targetRow) return;
+
+      await prisma.productionScheduleFkojunstMailStatus.upsert({
+        where: { csvDashboardRowId: targetRow.id },
+        create: {
+          csvDashboardId: DASHBOARD_ID,
+          csvDashboardRowId: targetRow.id,
+          sourceCsvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+          fkojun: '210',
+          fkoteicd: '1',
+          fsezono: '0001',
+          statusCode: completedStatus,
+          sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+        },
+        update: {
+          statusCode: completedStatus,
+          sourceUpdatedAt: new Date('2026-04-28T01:05:00.000Z'),
+        },
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/kiosk/production-schedule',
+        headers: { 'x-client-key': CLIENT_KEY },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        rows: Array<{ rowData: { ProductNo?: string; FKOJUNST?: string } }>;
+      };
+      expect(body.rows.find((row) => row.rowData.ProductNo === '0001')?.rowData.FKOJUNST).toBe(completedStatus);
+    });
+  }
+
   it('hides rows when matched FKOJUNST_Status mail sync result is non S/R', async () => {
     const targetRow = await prisma.csvDashboardRow.findFirst({
       where: {

@@ -7,7 +7,7 @@ import { Prisma } from '@prisma/client';
 export function buildFkojunstProductionScheduleListRowDataFkojunstSql(): Prisma.Sql {
   return Prisma.sql`
     CASE
-      WHEN "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R') THEN "fkmail"."statusCode"
+      WHEN "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R', 'C', 'X') THEN "fkmail"."statusCode"
       ELSE ''
     END
   `;
@@ -15,11 +15,11 @@ export function buildFkojunstProductionScheduleListRowDataFkojunstSql(): Prisma.
 
 /**
  * 一覧 COUNT / 明細で同一の可視性条件。
- * - `fkmail` がある、かつ `S` / `R` のときのみ表示
- * - `fkmail` が無い、または `S` / `R` 以外は除外
+ * - `fkmail` がある、かつ `S` / `R` / `C` / `X` のとき表示
+ * - `fkmail` が無い、または `O` / `P` 等は除外
  */
 export function buildFkojunstProductionScheduleListVisibilityWhereSql(): Prisma.Sql {
-  return Prisma.sql`AND "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R')`;
+  return Prisma.sql`AND "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R', 'C', 'X')`;
 }
 
 /**
