@@ -24,8 +24,10 @@ export function buildFkojunstProductionScheduleListVisibilityWhereSql(): Prisma.
 
 /**
  * 生産日程CSV「消滅」判定を適用する winner かどうか。
- * 一覧可視条件と同義で、`fkmail` が `S` / `R` の winner にのみ適用する。
+ * `FKOJUNST_Status` 同期済みで、かつ `C` 以外の winner に適用する。
+ * （`C` は本体キーと整合しない行が多く、メール側の直接反映に頼らず消失完了で完走させる）
+ * 一覧の可視性（S/R/C/X）とは別条件。
  */
 export function buildFkojunstScheduleCsvDisappearanceEligibleScalarSql(): Prisma.Sql {
-  return Prisma.sql`("fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R'))`;
+  return Prisma.sql`("fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" <> 'C')`;
 }

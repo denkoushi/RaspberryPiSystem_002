@@ -138,10 +138,6 @@ export class CsvDashboardIngestor {
             }))
           : productionScheduleDedupRows;
 
-      if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
-        await this.scheduleCsvExternalCompletionSync.capturePreIngestSnapshot();
-      }
-
       const currentProductionScheduleWinnerKeys =
         isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
           ? extractProductionScheduleExternalCompletionKeysFromRows(productionScheduleDedupRows)
