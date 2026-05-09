@@ -684,6 +684,70 @@ describe('Kiosk Production Schedule API', () => {
     expect(completedRow.rowData.progress).toBe('完了');
   });
 
+  it('PUT /completion with intent=complete twice keeps row completed (no accidental toggle)', async () => {
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const first = (list.json() as any).rows.find((r: any) => r.rowData.ProductNo === '0001');
+    expect(first).toBeDefined();
+
+    const once = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${first.id}/completion`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { intent: 'complete' }
+    });
+    expect(once.statusCode).toBe(200);
+    expect((once.json() as any).unchanged).toBe(false);
+
+    const twice = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${first.id}/completion`,
+      headers: { 'x-client-key': CLIENT_KEY },
+      payload: { intent: 'complete' }
+    });
+    expect(twice.statusCode).toBe(200);
+    expect((twice.json() as any).unchanged).toBe(true);
+    expect((twice.json() as any).rowData.progress).toBe('完了');
+
+    const after = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const completedRow = (after.json() as any).rows.find((r: any) => r.id === first.id);
+    expect(completedRow.rowData.progress).toBe('完了');
+  });
+
+  it('legacy PUT /complete twice toggles completion back (compat behavior)', async () => {
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    const target = (list.json() as any).rows.find((r: any) => r.rowData.ProductNo === '0000');
+    expect(target).toBeDefined();
+    expect(target.rowData.progress).not.toBe('完了');
+
+    const firstToggle = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${target.id}/complete`,
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(firstToggle.statusCode).toBe(200);
+    expect((firstToggle.json() as any).rowData.progress).toBe('完了');
+
+    const secondToggle = await app.inject({
+      method: 'PUT',
+      url: `/api/kiosk/production-schedule/${target.id}/complete`,
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(secondToggle.statusCode).toBe(200);
+    expect((secondToggle.json() as any).rowData.progress).not.toBe('完了');
+  });
+
   it('filters by ProductNo partial match', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -742,6 +806,78 @@ describe('Kiosk Production Schedule API', () => {
     const k1 = [rPn1!.rowData.FSEIBAN!, rPn1!.rowData.ProductNo!, rPn1!.rowData.FHINCD!].join('\0');
     expect(chips![k0]?.map((c) => c.resourceCd)).toEqual([rPn0!.rowData.FSIGENCD!]);
     expect(chips![k1]?.map((c) => c.resourceCd)).toEqual([rPn1!.rowData.FSIGENCD!]);
+  });
+
+  it('leaderboardFooterChips prefers CsvDashboardRow ids present on the current leaderboard payload when duplicates share FSEIBAN/FHINCD/ProductNo/FSIGENCD/FKOJUN', async () => {
+    const { buildLeaderboardFooterChipsByPartKeyForScheduleRows } = await import(
+      '../../services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.js'
+    );
+
+    const older = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date('2020-01-01T00:00:00.000Z'),
+        dataHash: 'footer-dup-old',
+        rowData: {
+          ProductNo: 'FDUP1',
+          FSEIBAN: 'FDUP-S',
+          FHINCD: 'FDUP-H',
+          FSIGENCD: '021',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }
+    });
+    const newer = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date('2026-06-01T00:00:00.000Z'),
+        dataHash: 'footer-dup-new',
+        rowData: {
+          ProductNo: 'FDUP1',
+          FSEIBAN: 'FDUP-S',
+          FHINCD: 'FDUP-H',
+          FSIGENCD: '021',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }
+    });
+
+    await prisma.productionScheduleProgress.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: older.id,
+        isCompleted: true
+      }
+    });
+
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+    const partKey = ['FDUP-S', 'FDUP1', 'FDUP-H'].join('\0');
+    const chips = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+      rows: [
+        {
+          id: older.id,
+          seibanJoinKey: 'FDUP-S',
+          rowData: {
+            ProductNo: 'FDUP1',
+            FSEIBAN: 'FDUP-S',
+            FHINCD: 'FDUP-H',
+            FSIGENCD: '021',
+            FKOJUN: '10'
+          }
+        }
+      ],
+      locationKey: 'Test',
+      siteKey: 'Test'
+    });
+
+    expect(chips).toBeDefined();
+    const chip021 = chips![partKey]?.find((c) => c.resourceCd === '021');
+    expect(chip021?.rowId).toBe(older.id);
+    expect(chip021?.isCompleted).toBe(true);
+    expect(chip021?.rowId).not.toBe(newer.id);
   });
 
   it('leaderboard phased read: shell + total + decorations match monolithic leaderboard ordering', async () => {

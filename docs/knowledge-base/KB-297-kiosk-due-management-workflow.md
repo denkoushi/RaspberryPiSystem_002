@@ -2294,8 +2294,8 @@ category: knowledge-base
 ### 仕様（要約）
 
 - **URL**: `/kiosk/production-schedule/leader-order-board`（キオスクヘッダー「順位ボード」から遷移）。
-- **目的**: リーダーが **表示用納期**（`plannedDueDisplay` 系・納期管理ページと同趣旨）で資源グループ内の順を把握し、**行単位**で既存の **手動順番 API**（`ProductionScheduleOrderAssignment`・`PUT .../order`）および **完了 API**（`PUT .../complete`）へ即時反映する（2026-04-02 拡張。**一括「納期順で反映」ボタンは廃止**）。
-- **境界**: ドメインロジックは `apps/web/src/features/kiosk/leaderOrderBoard/`（正規化・`sortLeaderBoardRowsForDisplay`・`filterLeaderBoardRowsByCompletion`・`mergeMachineNameFallback`・Vitest）。API 契約は新設せず既存 order / complete 系を利用。
+- **目的**: リーダーが **表示用納期**（`plannedDueDisplay` 系・納期管理ページと同趣旨）で資源グループ内の順を把握し、**行単位**で既存の **手動順番 API**（`ProductionScheduleOrderAssignment`・`PUT .../order`）および **完了 API**（**主経路**: `PUT .../:rowId/completion` + JSON `{ "intent": "complete" | "incomplete" }`・**互換**: `PUT .../complete` はトグル）へ即時反映する（2026-04-02 拡張。**一括「納期順で反映」ボタンは廃止**）。**完了の誤反転防止・CSV空progressとの整合**は [KB-375](./KB-375-kiosk-leaderboard-completion-integrity.md)。
+- **境界**: ドメインロジックは `apps/web/src/features/kiosk/leaderOrderBoard/`（正規化・`sortLeaderBoardRowsForDisplay`・`filterLeaderBoardRowsByCompletion`・`mergeMachineNameFallback`・Vitest）。API は order に加え **明示完了**（`/completion`）を主経路とする（`/complete` は残置）。
 - **沉浸式**: `usesKioskImmersiveLayout` に `KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX` を含む（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md) と併読）。
 
 ### 状態の永続化・資源順序同期・製番フィルタ連動（2026-04-29） {#leader-order-board-device-and-slot-sync-2026-04-29}

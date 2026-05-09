@@ -14,6 +14,7 @@ import { LeaderOrderRowOrderSelect } from './LeaderOrderRowOrderSelect';
 import { presentLeaderOrderRow } from './leaderOrderRowPresentation';
 
 import type { LeaderBoardRow } from './types';
+import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
 
 export type LeaderOrderResourceRowProps = {
   variant?: 'interactive' | 'signage';
@@ -23,7 +24,7 @@ export type LeaderOrderResourceRowProps = {
   seibanAccentRowClass?: string;
   orderUsageNumbers: readonly number[] | undefined;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
-  onCompleteRow: (rowId: string) => void;
+  onCompleteRow: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
   completePending: boolean;
   orderPending: boolean;
   onOpenDueDatePicker?: (row: LeaderBoardRow) => void;
@@ -80,7 +81,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             disabled={completePending}
             onClick={(e) => {
               e.stopPropagation();
-              onCompleteRow(row.id);
+              onCompleteRow(row.id, row.isCompleted ? 'incomplete' : 'complete');
             }}
           >
             ✓

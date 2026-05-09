@@ -10,6 +10,7 @@ import { LEADER_BOARD_ROW_ESTIMATE_PX, LEADER_BOARD_VIRTUAL_ROW_THRESHOLD } from
 import { resolveSeibanAccentRowClass } from './seibanAccentPalette';
 
 import type { LeaderBoardRow } from './types';
+import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
 import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 
 type Props = {
@@ -27,7 +28,7 @@ type Props = {
   dueDatePending?: boolean;
   orderUsageNumbers: readonly number[] | undefined;
   onOrderChange: (row: LeaderBoardRow, nextValue: string) => void;
-  onCompleteRow: (rowId: string) => void;
+  onCompleteRow: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
   completePending: boolean;
   orderPending: boolean;
   /** 備考の追加・編集。空行はグレー鉛筆、内容ありは色付き鉛筆（親がモーダルを開く） */

@@ -1,5 +1,6 @@
 import { isManualDueDateSet, resolveDisplayDueDate } from '../../features/kiosk/productionSchedule/plannedDueDisplay';
 
+import type { KioskProductionScheduleCompletionIntent } from '../../api/client';
 import type { TableColumnDefinition } from '../../features/kiosk/columnWidth';
 import type { NormalizedScheduleRow } from '../../features/kiosk/productionSchedule/displayRowDerivation';
 
@@ -29,7 +30,7 @@ type ProductionScheduleTableProps = {
   canEditProcessingOrder: boolean;
   processingTypeOptions: ProcessingTypeOption[];
   getAvailableOrders: (resourceCd: string, current: number | null) => number[];
-  handleComplete: (rowId: string) => void;
+  handleComplete: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
   handleOrderChange: (rowId: string, resourceCd: string, nextValue: string) => void;
   handleProcessingChange: (rowId: string, nextValue: string) => void;
   openDueDatePicker: (rowId: string, currentDueDate: string | null) => void;
@@ -54,7 +55,7 @@ type RowCellProps = {
   canEditProcessingOrder: boolean;
   processingTypeOptions: ProcessingTypeOption[];
   getAvailableOrders: (resourceCd: string, current: number | null) => number[];
-  handleComplete: (rowId: string) => void;
+  handleComplete: (rowId: string, intent: KioskProductionScheduleCompletionIntent) => void;
   handleOrderChange: (rowId: string, resourceCd: string, nextValue: string) => void;
   handleProcessingChange: (rowId: string, nextValue: string) => void;
   openDueDatePicker: (rowId: string, currentDueDate: string | null) => void;
@@ -102,7 +103,7 @@ function ProductionScheduleTableCells({
             row.isCompleted ? 'border-slate-400' : 'border-red-500'
           }`}
           aria-label={row.isCompleted ? '未完了に戻す' : '完了にする'}
-          onClick={() => handleComplete(row.id)}
+          onClick={() => handleComplete(row.id, row.isCompleted ? 'incomplete' : 'complete')}
           disabled={completePending}
         >
           ✓

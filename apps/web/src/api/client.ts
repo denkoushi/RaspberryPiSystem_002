@@ -1141,10 +1141,42 @@ export interface KioskProductionScheduleOrderSearchResponse {
   orders: string[];
 }
 
+export type KioskProductionScheduleCompletionIntent = 'complete' | 'incomplete';
+
+/**
+ * キオスク生産日程: 完了状態を明示設定する（非トグル）。
+ * 順位ボード・一覧の主経路。
+ */
+export async function setKioskProductionScheduleRowCompletion(
+  rowId: string,
+  intent: KioskProductionScheduleCompletionIntent
+) {
+  const { data } = await api.put<{
+    success: boolean;
+    unchanged?: boolean;
+    alreadyCompleted: boolean;
+    rowData: Record<string, unknown>;
+    debug?: {
+      totalMs: number;
+      findRowMs: number;
+      findAssignmentMs: number;
+      txMs: number;
+      txUpdateRowMs: number;
+      txDeleteAssignmentMs: number | null;
+      txShiftAssignmentsMs: number | null;
+      txShiftAssignmentsCount: number | null;
+      hadAssignment: boolean;
+    };
+  }>(`/kiosk/production-schedule/${rowId}/completion`, { intent });
+  return data;
+}
+
+/** @deprecated トグル互換 API。新規は {@link setKioskProductionScheduleRowCompletion} を使用 */
 export async function completeKioskProductionScheduleRow(rowId: string) {
   const { data } = await api.put<{
     success: boolean;
     alreadyCompleted: boolean;
+    unchanged?: boolean;
     rowData: Record<string, unknown>;
     debug?: {
       totalMs: number;

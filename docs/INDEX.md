@@ -8,7 +8,13 @@
 
 ## 🎯 目的別インデックス
 
-### 🆕 最新アップデート（2026-05-09）
+### 🆕 最新アップデート（2026-05-10）
+
+- **KB-375 完了整合・本番ロールアウト（API+Web・キオスク 5 台順次・実機 Phase12）**: **`fix/leaderboard-completion-integrity`**（**`c063ab57`**）を **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** へ **`update-all-clients.sh`・`--detach --follow`・1 台ずつ**反映（**Detach** **`20260510-074230-10392`** ほか 4 本・いずれも **`failed=0`**）。**`verify-phase12-real.sh`** **PASS 43 / WARN 0 / FAIL 0**（約 **74s**）。**Pi3** は **`skipping: no hosts matched`**（**本ロールアウトで Pi3 専用手順は不要／未実施で正**）。**記録**: [deployment.md §2026-05-10](./guides/deployment.md#kiosk-leaderboard-completion-integrity-2026-05-10)·[KB-375](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)·[EXEC_PLAN.md](../EXEC_PLAN.md) **Progress** 先頭項。
+
+### 🆕 直近アップデート（2026-05-09）
+
+- **順位ボード・生産日程の完了整合（明示 `/completion`・CSV空progressで手動完了を落とさない・実効完了の共有）**: キオスク完了の **主経路**を `PUT …/completion` + `intent` に寄せ、**同じ intent の再適用は no-op**（`unchanged`）。従来 `PUT …/complete` は **トグル互換**として維持。**CSV→`ProductionScheduleProgress`** は `progress` 空を **手動完了済みへは適用しない**（[`progress-csv-sync-decision.policy.ts`](../apps/api/src/services/production-schedule/progress-csv-sync-decision.policy.ts)）。**KB**: [KB-375](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)·[KB-297 順位ボード節](./knowledge-base/KB-297-kiosk-due-management-workflow.md#リーダー順位ボード納期ベース整列手動順-api-反映2026-04-01)。
 
 - **生産日程CSV「消滅」外部完了の母集団を「FKOJUNST 非C × `occurredAt` ±3ヶ月」へ再定義（API のみ・Pi5）**: 生産日程本体 CSV は **日付窓取得**（運用 **±3ヶ月**）だが **FKOJUNST_Status CSV はより広い窓**のため、旧 **スナップショット差分**だけだと **窓外落下を誤って消滅完了**し得た。加えて **`C` は KB-373 のキー空間不一致**により **消滅母集団から除外**。**Fix**: 母集団を **非C・窓内 winner キー**にし **現 CSV winner と差分**・消滅候補 SQL を **`statusCode <> 'C'`** に拡張。**本番**: **`raspberrypi5` のみ**・**Detach `20260509-170432-1808`**・**Phase12 43/0/0**（約 **190s**）・**Pi3 不要**。**`main` マージ後**は **`main` をデプロイ引数に**。**ナレッジ**: [deployment.md §消滅窓](./guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·[KB-370 §2026-05-09](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-09-schedule-csv-disappearance-nonc-window)·代表 **`89086089`**。
 

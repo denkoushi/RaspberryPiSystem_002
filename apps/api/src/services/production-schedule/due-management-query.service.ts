@@ -12,6 +12,7 @@ import {
   getResourceNameMapByResourceCds
 } from './resource-master.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
+import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
 import {
   createPartSupplementAggregate,
   finalizePartSupplementAggregate,
@@ -215,7 +216,7 @@ export async function getDueManagementSeibanDetail(params: {
       ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') AS "requiredMinutes",
       COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
       "n"."note" AS "note",
-      COALESCE("p"."isCompleted", FALSE) AS "isCompleted",
+      ${buildProductionScheduleEffectiveCompletedSql()} AS "isCompleted",
       "sup"."plannedQuantity" AS "plannedQuantity",
       "sup"."plannedStartDate" AS "plannedStartDate",
       "sup"."plannedEndDate" AS "plannedEndDate"
@@ -223,6 +224,9 @@ export async function getDueManagementSeibanDetail(params: {
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}

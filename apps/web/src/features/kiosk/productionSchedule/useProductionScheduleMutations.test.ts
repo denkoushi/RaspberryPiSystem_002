@@ -5,7 +5,7 @@ import { useProductionScheduleMutations } from './useProductionScheduleMutations
 
 const completeMutation = {
   isPending: false,
-  mutateAsync: vi.fn(async (_rowId: string) => undefined)
+  mutateAsync: vi.fn(async (_args: { rowId: string; intent: 'complete' | 'incomplete' }) => undefined)
 };
 const orderMutation = {
   isPending: false,
@@ -25,7 +25,7 @@ const dueDateMutation = {
 };
 
 vi.mock('../../../api/hooks', () => ({
-  useCompleteKioskProductionScheduleRow: () => completeMutation,
+  useSetKioskProductionScheduleRowCompletion: () => completeMutation,
   useUpdateKioskProductionScheduleOrder: () => orderMutation,
   useUpdateKioskProductionScheduleProcessing: () => processingMutation,
   useUpdateKioskProductionScheduleNote: () => noteMutation,
@@ -127,6 +127,24 @@ describe('useProductionScheduleMutations', () => {
         orderNumber: null
       },
       cachePolicy: 'default'
+    });
+  });
+
+  it('completeRow は intent 付きで完了ミューテーションを呼ぶ', async () => {
+    const { result } = renderHook(() =>
+      useProductionScheduleMutations({
+        isSearchStateWriting: false,
+        noteMaxLength: 100
+      })
+    );
+
+    await act(async () => {
+      await result.current.completeRow('row-z', 'incomplete');
+    });
+
+    expect(completeMutation.mutateAsync).toHaveBeenCalledWith({
+      rowId: 'row-z',
+      intent: 'incomplete'
     });
   });
 });

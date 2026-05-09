@@ -83,7 +83,12 @@ export type OperatorDecisionInput = {
 
 export type OutcomeMetricInput = {
   locationKey: string;
-  eventType: 'progress_sync' | 'manual_complete_toggle' | 'manual_order_update';
+  eventType:
+    | 'progress_sync'
+    | 'manual_complete_toggle'
+    | 'manual_complete_set'
+    | 'manual_incomplete_set'
+    | 'manual_order_update';
   csvDashboardRowId: string;
   fseiban: string | null;
   isCompleted: boolean;
