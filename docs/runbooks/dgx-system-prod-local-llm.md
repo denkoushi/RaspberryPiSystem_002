@@ -4,7 +4,7 @@
 
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
-last-verified: 2026-05-06
+last-verified: 2026-05-10
 related:
 
 - ./local-llm-tailscale-sidecar.md
@@ -64,6 +64,8 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 **メインAI 制御の直列化（Pi5 API）**: `on_demand` 時、**推論側の `/start`・`/stop`** と **DGX リソース UI 経由の `system-prod-gateway` 起停**は、同一プロセス内の **単一キュー**で直列化される（`local-llm-runtime-command-queue.ts` → `enqueueMainLocalLlmRuntimeControl`）。待機が長い場合は `main_llm_control_queue_wait` ログで把握可能。
 
 **用途別停止（Pi5 API）**: `photo_label` / `document_summary` / `admin_console_chat` は **参照カウント 0 でも `/stop` を抑止**（メインAI warm 維持）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行型定義では 3 用途のみ）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。
+
+**本番反映（2026-05-10・メインAI 単一キュー・調停から gateway 自動停止除外・Pi5 API のみ）**: ブランチ **`feature/dgx-single-queue-stop-policy`**（**`23bce3bf`**·**`4d658897`**）を **`raspberrypi5` のみ**へ反映（**`--limit raspberrypi5`・1 台**）。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260510-114418-29512`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 559s**。**実機** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**。Pi4/Pi3 は play **no hosts matched**・**Pi3 専用手順不要**）。**正本**: [deployment.md §2026-05-10](../guides/deployment.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[KB-365 §本番反映（2026-05-10）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)。**トラブルシュート**: 挙動が旧（推論と UI 起停が交叉・実験優先で gateway が止まる）→ Pi5 **`api` Docker イメージ**の ref と **Detach `Git: changed`** を確認。
 
 履歴として **ひとつ前のモード** は `overview.policy.previousMode` に返り、GUI の「直前モードへ戻す」から `SET_POLICY`（**ワークロード自動調停なし**）で復帰できます（**再起動またはマルチプロセス構成では単一ソースではない**。厳密な監査が必要なら将来の永続化を検討）。
 

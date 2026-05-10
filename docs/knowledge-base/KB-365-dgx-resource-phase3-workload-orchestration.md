@@ -2,7 +2,7 @@
 title: KB-365 DGXリソース Phase3・補助ランタイム起停・ワークロード自動調停
 tags: [DGX, DGX_RESOURCE, Pi5, ComfyUI, experiment-lab, 運用]
 audience: [開発者, 運用者]
-last-verified: 2026-05-03
+last-verified: 2026-05-10
 category: knowledge-base
 ---
 
@@ -17,6 +17,25 @@ category: knowledge-base
 - **単一キュー**: メインAI相当の制御 POST（`HttpOnDemandLocalLlmRuntimeController` の `/start`・`/stop` と `executeGatewayRuntimeStartStop`）を **`enqueueMainLocalLlmRuntimeControl`** で直列化（`apps/api/src/services/inference/runtime/local-llm-runtime-command-queue.ts`）。推論経路と DGX 管理経路の競合を抑える。
 - **停止抑止**: `shouldSuppressLocalLlmRuntimeStop` — `photo_label` / `document_summary` / `admin_console_chat` は **常に** release 時の `/stop` を抑止。それ以外の用途（型を拡張した将来）では **warm 窓**のみ抑止。
 - **ポリシー調停**: `experiment_first` + `applyWorkloadChanges` では **private-comfyui のみ**自動停止。**`system-prod-gateway` は自動停止対象から除外**（業務/Agent 維持）。`planWorkloadAdjustmentsBeforePolicyChange`（`dgx-resource.policy-arbitrator.ts`）。
+
+### 本番反映（2026-05-10・Pi5 メインAI 単一キュー確定） {#production-2026-05-10-dgx-main-llm-single-queue}
+
+- **ブランチ**: **`feature/dgx-single-queue-stop-policy`**（**`main` マージ後は `origin/main` HEAD** をデプロイ引数の正本とする）。
+- **代表コミット**: **`23bce3bf`**（`fix(api): serialize DGX runtime control`）·**`4d658897`**（`test(api): align local-llm on_demand route expectations`・CI **run `25617712720` success**）。
+- **ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**）。Pi4／Pi3 play **`skipping: no hosts matched`**（**Pi3 専用手順は対象外・未実施で正**）。
+- **標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **Detach Run ID**: **`20260510-114418-29512`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 559s**·**`Git: changed`**·**Docker compose 再起動 `changed`**·**`Run prisma migrate deploy` / `prisma migrate status` `ok`**）。
+- **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**・Tailscale **`100.106.158.2`**）。**`deploy-status`（Pi4×4）** PASS / **`auto-tuning scheduler` ログ** 件数=1。
+- **仕様確定（本番で有効化された挙動）**:
+  - **単一キュー**: `enqueueMainLocalLlmRuntimeControl` が **推論 on_demand の `HttpOnDemandLocalLlmRuntimeController` `/start`・`/stop`** と **`dgx-resource.gateway-runtime.executor` の `executeGatewayRuntimeStartStop`**（`system-prod-gateway`）を **同居プロセス内で直列実行**（競合する二重 POST の抑止）。
+  - **用途別 `/stop` 抑止**: `shouldSuppressLocalLlmRuntimeStop` — **`photo_label`** / **`document_summary`** / **`admin_console_chat`** は **参照カウント 0 でも release で `/stop` しない**。
+  - **実験優先の事前停止**: **`experiment_first` + `applyWorkloadChanges: true`** で **`private-comfyui` のみ**自動 stop 試行。**`system-prod-gateway` の自動 stop は撤去**済み（実装: `planWorkloadAdjustmentsBeforePolicyChange`）。
+- **ローカル開発の知見**: 先行実装で **`src/routes/system/__tests__/local-llm.test.ts`** が旧前提（admin が常に `/stop` する）のまま残り **4 件 FAIL** → **`4d658897`** で期待値を **抑止後の契約**へ合わせた。
+- **トラブルシュート**:
+  - **キュー待ちが異常に長い** → **同時多発の `/start`/`/stop`** を疑い、ログ **`main_llm_control_queue_*`** を確認。Pi5 **`api` ref** が本節の **`23bce3bf` 系**か。
+  - **実験優先へ切替えたのに業務 gateway が止まる** → arbitrator 以前のイメージまたは **手動 `EXECUTE_TARGET_ACTION`** の痕跡。**Detach** と **コンテナ再作成**を確認。
+  - **実機 Phase12 のみ `deploy-status` FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・他ホスト連続デプロイ後の **再実行**。
+- **参照**: [deployment.md §DGX 単一キュー 2026-05-10](../guides/deployment.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
 
 ## Preconditions
 
