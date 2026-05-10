@@ -1,0 +1,16 @@
+[Unit]
+Description=StackChan Private Bridge
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=raspi5-private
+WorkingDirectory=/home/raspi5-private/stackchan-bridge
+EnvironmentFile=/home/raspi5-private/stackchan-bridge/.env
+ExecStart=/usr/bin/python3 /home/raspi5-private/stackchan-bridge/bridge_server.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

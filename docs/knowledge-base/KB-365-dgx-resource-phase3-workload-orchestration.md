@@ -56,6 +56,15 @@ category: knowledge-base
   - **キュー待ちのみ増加** → **`main_llm_control_queue_wait`** と **`useCase`**（`stackchan_chat` vs 業務）をログで確認。
 - **参照**: [deployment.md §StackChan 本番](../guides/deployment.md#stackchan-production-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
 
+### 私用 Pi5 stackchan-bridge と職場 Pi5 API の境界（2026-05-10 ドキュメント正本） {#private-pi5-stackchan-bridge-boundary-2026-05-10}
+
+- **2系統**:
+  - **Private path**: StackChan / 私用デバイス → **私用 Pi5** の `stackchan-bridge`（[`dgx_runtime_client.py`](../../scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py) の **`DgxUpstreamClient`**）→ **DGX Spark**。**職場 Pi5 API・JWT・`enqueueMainLocalLlmRuntimeControl` 単一キューを通さない**。
+  - **Work path**（上記「StackChan Pi5 API チャット」項）: クライアント → **`POST /api/system/stackchan/chat`（職場 Pi5）** → 同一 **`stackchan_chat`** 用途で **admin と同系 on_demand**・**keep-warm `/stop` 抑止**（`local-llm-runtime-schedule.policy.ts`）。
+- **競合注意**: private bridge が独自に **`POST /start`** しても、職場側キューとは **別プロセス**だが **DGX 上の同一 gateway/backend** を触る。`.env` / vault は **私用と職場で混線禁止**。
+- **検証**: 開発 Mac から DGX を直叩きした結果と、私用 Pi5 からの結果が **一致しない**ことがある（Tailscale ACL・経路差）。**運用切り分けの正は私用 Pi5 上**の `curl` / bridge。
+- **参照**: [stackchan-private-pi5-tailnet-workflow-plan.md §2系統](../plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10)·[KB-stackchan-community-firmware-supply-chain.md](./KB-stackchan-community-firmware-supply-chain.md)·[bridge README](../../scripts/private-pi5-stackchan-bridge/README.md)。
+
 ### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
 
 - **ブランチ（先行反映時）**: **`feat/agent-container-control-target`**（実装 tip **`9fd37c0a`**）。**`main` squash（PR [#284](https://github.com/denkoushi/RaspberryPiSystem_002/pull/284)）**: **`14f105c1`**。**デプロイ ref の正本**は **`origin/main` HEAD**（本項記録時点では **`14f105c1`** と一致）。
