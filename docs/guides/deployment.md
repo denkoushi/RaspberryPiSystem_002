@@ -23,7 +23,7 @@ update-frequency: medium
 - **トラブルシュート**:
   - **フッタと一覧の完了表示がズレる** → Pi5 **`api`** が **`c2e7438a` 以降（またはマージ後 `main` HEAD）**か、**`Git: changed`** と **API コンテナ再作成**を確認（[KB-375](../knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md) の effective completion と混同しない）。
   - **`verify-phase12-real.sh` のみ `deploy-status` FAIL** → [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・再実行。
-- **ナレッジ**: [KB-376](../knowledge-base/KB-376-leaderboard-footer-display-scope-winner-alignment.md)·[ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表コミット **`c2e7438a`**（**マージ後は `main` のマージコミット**を正本化）。
+- **ナレッジ**: [KB-376](../knowledge-base/KB-376-leaderboard-footer-display-scope-winner-alignment.md)·[ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·**`main` マージ** **`1dc2aedd`**·実装 tip **`c2e7438a`**。
 
 ### 補足（2026-05-10 · **キオスク完了整合（KB-375・明示 `/completion`・CSV 同期ガード・実効完了共有）**·**API+Web**·**Pi5→Pi4×4 順次**） {#kiosk-leaderboard-completion-integrity-2026-05-10}
 

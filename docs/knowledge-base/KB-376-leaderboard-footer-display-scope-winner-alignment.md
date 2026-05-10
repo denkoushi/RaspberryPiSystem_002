@@ -49,8 +49,8 @@ update-frequency: medium
 ## Production rollout（2026-05-10）
 
 - **スコープ**: **API のみ**（キオスク Web のビルド対象変更なし）。**対象ホスト**: **`raspberrypi5` のみ**（`./scripts/update-all-clients.sh … --limit raspberrypi5`）。**Pi4 キオスク／Pi3 サイネージ**: 当該 **`--limit`** では Ansible **`skipping: no hosts matched`**（**Pi3 専用手順は未実施**・本変更は Pi5 API コンテナのみで足りる判断）。
-- **ブランチ**: 先行反映 **`feature/leaderboard-footer-winner-rearchitecture`**。マージ後の運用正本は **`main` HEAD**（`./scripts/update-all-clients.sh main … --limit raspberrypi5`）。
-- **代表コミット（先行本番時点）**: **`c2e7438a`**（`fix(kiosk): align leaderboard footer winners with displayed rows`）。
+- **ブランチ**: 先行反映 **`feature/leaderboard-footer-winner-rearchitecture`**。**`main` マージ**: **`1dc2aedd`**（merge:「KB-376 leaderboard footer winner alignment」）·以降の運用正本は **`origin/main` HEAD**（`./scripts/update-all-clients.sh main … --limit raspberrypi5`）。
+- **代表コミット（実装 tip）**: **`c2e7438a`**（`fix(kiosk): align leaderboard footer winners with displayed rows`）。**ドキュメント同梱**: **`0ebe669b`**。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260510-091316-7496`**（`raspberrypi5`·**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 615s**·サマリ **`Git: changed`**·**Docker compose 再起動 `changed`**·**`prisma migrate deploy` / `status` `ok`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh`（Tailscale・Pi5 `100.106.158.2`）→ **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**）。**`deploy-status`（Pi4×4）**: すべて **PASS**。**`auto-tuning scheduler` ログ**: **件数=1**。
 - **ローカル開発・回帰の知見**:
