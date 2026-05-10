@@ -15,7 +15,7 @@ category: knowledge-base
 ## Pi5 メインAI: 単一キュー・用途別停止・実験優先時の gateway 除外（2026-05）
 
 - **単一キュー**: メインAI相当の制御 POST（`HttpOnDemandLocalLlmRuntimeController` の `/start`・`/stop` と `executeGatewayRuntimeStartStop`）を **`enqueueMainLocalLlmRuntimeControl`** で直列化（`apps/api/src/services/inference/runtime/local-llm-runtime-command-queue.ts`）。推論経路と DGX 管理経路の競合を抑える。
-- **停止抑止**: `shouldSuppressLocalLlmRuntimeStop` — `photo_label` / `document_summary` / `admin_console_chat` / **`agent_container_task`** は **常に** release 時の `/stop` を抑止。それ以外の用途（型を拡張した将来）では **warm 窓**のみ抑止。
+- **停止抑止**: `shouldSuppressLocalLlmRuntimeStop` — `photo_label` / `document_summary` / `admin_console_chat` / **`stackchan_chat`** / **`agent_container_task`** は **常に** release 時の `/stop` を抑止。それ以外の用途（型を拡張した将来）では **warm 窓**のみ抑止。
 - **ポリシー調停**: `experiment_first` + `applyWorkloadChanges` では **private-comfyui のみ**自動停止。**`business_first` / `private_ok`** で **`experiment-lab` と `agent-container`** を順に停止試行（いずれも Pi5 に POST URL が揃っている場合）。**`system-prod-gateway` は自動停止対象から除外**（業務/Agent 維持）。`planWorkloadAdjustmentsBeforePolicyChange`（`dgx-resource.policy-arbitrator.ts`）。
 
 ### 本番反映（2026-05-10・Pi5 メインAI 単一キュー確定） {#production-2026-05-10-dgx-main-llm-single-queue}
@@ -28,7 +28,7 @@ category: knowledge-base
 - **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**・Tailscale **`100.106.158.2`**）。**`deploy-status`（Pi4×4）** PASS / **`auto-tuning scheduler` ログ** 件数=1。
 - **仕様確定（本番で有効化された挙動）**:
   - **単一キュー**: `enqueueMainLocalLlmRuntimeControl` が **推論 on_demand の `HttpOnDemandLocalLlmRuntimeController` `/start`・`/stop`** と **`dgx-resource.gateway-runtime.executor` の `executeGatewayRuntimeStartStop`**（`system-prod-gateway`）を **同居プロセス内で直列実行**（競合する二重 POST の抑止）。
-  - **用途別 `/stop` 抑止**: `shouldSuppressLocalLlmRuntimeStop` — **`photo_label`** / **`document_summary`** / **`admin_console_chat`** / **`agent_container_task`** は **参照カウント 0 でも release で `/stop` しない**。
+  - **用途別 `/stop` 抑止**: `shouldSuppressLocalLlmRuntimeStop` — **`photo_label`** / **`document_summary`** / **`admin_console_chat`** / **`stackchan_chat`** / **`agent_container_task`** は **参照カウント 0 でも release で `/stop` しない**。
   - **実験優先の事前停止**: **`experiment_first` + `applyWorkloadChanges: true`** で **`private-comfyui` のみ**自動 stop 試行。**`system-prod-gateway` の自動 stop は撤去**済み（実装: `planWorkloadAdjustmentsBeforePolicyChange`）。
 - **ローカル開発の知見**: 先行実装で **`src/routes/system/__tests__/local-llm.test.ts`** が旧前提（admin が常に `/stop` する）のまま残り **4 件 FAIL** → **`4d658897`** で期待値を **抑止後の契約**へ合わせた。
 - **トラブルシュート**:
@@ -36,6 +36,25 @@ category: knowledge-base
   - **実験優先へ切替えたのに業務 gateway が止まる** → arbitrator 以前のイメージまたは **手動 `EXECUTE_TARGET_ACTION`** の痕跡。**Detach** と **コンテナ再作成**を確認。
   - **実機 Phase12 のみ `deploy-status` FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・他ホスト連続デプロイ後の **再実行**。
 - **参照**: [deployment.md §DGX 単一キュー 2026-05-10](../guides/deployment.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
+
+### 本番反映（2026-05-10・StackChan Pi5 API チャット） {#production-2026-05-10-stackchan-pi5-api-chat}
+
+- **ブランチ（先行反映時）**: **`feat/stackchan-interactive-chat-api`**。**代表コミット（記録時点の tip）**: **`81fe4d2a`**（`feat(api): add StackChan chat API`）。**`main` squash マージ後**は **`origin/main` HEAD** をデプロイ引数の正本とする。
+- **ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。Pi4／Pi3 play **`skipping: no hosts matched`**。**Pi3**: playbook **未適用**（リソース僅少・**専用手順はこの変更では実行しない**）。
+- **標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/stackchan-interactive-chat-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **Detach Run ID**: **`20260510-134157-20990`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 650s**·**`Git: changed`**·**Docker compose 再起動 `changed`**·**`prisma migrate deploy` / `status` `ok`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 54s**・Tailscale **Pi5 `100.106.158.2`**）。
+- **実機（追加スモーク）**: **未認証** `POST https://100.106.158.2/api/system/stackchan/chat` → **HTTP `401`**（ルート登録と認可ゲートの確認。**運用 JWT はログに残さない**）。
+- **仕様（runtime 観点）**:
+  - **用途 ID**: **`stackchan_chat`** を **`ProviderLocalLlmRuntimeController`** が **admin provider と同一**に解決（**`resolveAdminProvider`**・ready probe に **`stackchan_chat` を admin モデルで登録**）。
+  - **単一キュー優先度**: **`MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.agent`**（**`admin_console_chat` と同層**・業務 `business` より後）。
+  - **`LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES`**: **`stackchan_chat` を追加**済み → **`release` でも用途別 `/stop` 抑止**（admin と同系）。
+  - **詳説 system**: **`mergeStackChanDetailSystemPrompt`** が **既存 `system` に詳説ブロックが含まれる場合は二重追記しない**（トークン肥大の抑制）。
+- **トラブルシュート**:
+  - **ルートが無い／404** → Pi5 **`api` の Git ref** が **`81fe4d2a` 以降（またはマージ後 `main`）**か。**Detach `Git: changed`** と **Docker `api` 再作成**を確認。
+  - **`503` LocalLLM** → **`LOCAL_LLM_*`** 設定と **admin チャット**（`POST /api/system/local-llm/chat/completions`）の可否を先に切り分け。
+  - **キュー待ちのみ増加** → **`main_llm_control_queue_wait`** と **`useCase`**（`stackchan_chat` vs 業務）をログで確認。
+- **参照**: [deployment.md §StackChan 本番](../guides/deployment.md#stackchan-production-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
 
 ### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
 

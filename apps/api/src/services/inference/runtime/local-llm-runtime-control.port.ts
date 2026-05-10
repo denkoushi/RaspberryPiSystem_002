@@ -6,6 +6,8 @@ export type LocalLlmRuntimeUseCase =
   | 'photo_label'
   | 'document_summary'
   | 'admin_console_chat'
+  /** StackChan 等の対話クライアント（admin と同一 upstream / runtimeControl を参照） */
+  | 'stackchan_chat'
   /** Cursor/Agent 等が利用する補助コンテナ（DGX gateway の agent-container 経路） */
   | 'agent_container_task';
 

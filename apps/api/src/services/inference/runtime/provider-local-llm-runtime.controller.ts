@@ -87,7 +87,7 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
     if (useCase === 'agent_container_task') {
       return undefined;
     }
-    if (useCase === 'admin_console_chat') {
+    if (useCase === 'admin_console_chat' || useCase === 'stackchan_chat') {
       return this.deps.resolveAdminProvider();
     }
     try {
@@ -151,7 +151,9 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
     const models: Partial<Record<LocalLlmRuntimeUseCase, string>> = {};
     const adminProvider = this.deps.resolveAdminProvider();
     if (adminProvider?.id === provider.id) {
-      models.admin_console_chat = this.deps.resolveAdminModel();
+      const adminModel = this.deps.resolveAdminModel();
+      models.admin_console_chat = adminModel;
+      models.stackchan_chat = adminModel;
     }
     for (const useCase of ROUTED_RUNTIME_USE_CASES) {
       try {

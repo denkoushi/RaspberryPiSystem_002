@@ -209,7 +209,7 @@ const envSchema = z.object({
   LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS: z.coerce.number().int().min(200).max(30_000).default(2000),
   /**
    * true のとき、業務/Agent以外の用途に対してのみ warm 窓で release 後も /stop を送らない。
-   * 業務/Agent用途（photo_label / document_summary / admin_console_chat）は常に停止抑止（ポリシーモジュール）。
+   * 業務/Agent用途（photo_label / document_summary / admin_console_chat / stackchan_chat / agent_container_task）は常に停止抑止（ポリシーモジュール）。
    * 既定 false なら「それ以外」では従来どおり refCount=0 で停止試行。
    */
   LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED: z
