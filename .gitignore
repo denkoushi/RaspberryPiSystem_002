@@ -19,6 +19,8 @@ infrastructure/ansible/group_vars/**/vault.yml
 infrastructure/ansible/host_vars/**/vault.yml
 # ローカル専用: Zero2W エッジの Tailscale IP 等を含むインベントリ断片（.example はコミット）
 infrastructure/ansible/inventory-zero2w-edge-fragment.yml
+# ローカル専用: 私用 Pi5 bridge の接続先・secret を含むインベントリ断片
+infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml
 
 # Logs
 npm-debug.log*

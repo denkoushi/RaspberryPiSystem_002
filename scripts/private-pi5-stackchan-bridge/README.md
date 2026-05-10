@@ -75,6 +75,8 @@
 
 `.env.example` を参照。
 
+標準デプロイ手順は [`docs/runbooks/private-pi5-stackchan-bridge-deploy.md`](../../docs/runbooks/private-pi5-stackchan-bridge-deploy.md) を参照。
+
 必須:
 
 - `DGX_LLM_SHARED_TOKEN`
