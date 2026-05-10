@@ -37,6 +37,29 @@ category: knowledge-base
   - **実機 Phase12 のみ `deploy-status` FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・他ホスト連続デプロイ後の **再実行**。
 - **参照**: [deployment.md §DGX 単一キュー 2026-05-10](../guides/deployment.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
 
+### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
+
+- **ブランチ（先行反映時）**: **`feat/agent-container-control-target`**（実装 tip **`9fd37c0a`**。**`main` マージ後は `origin/main` HEAD** をデプロイ引数の正本とする）。
+- **ホスト（順序固定・Ansible スコープ外は SSH のみ）**:
+  - **① `raspberrypi5` のみ** — `./scripts/update-all-clients.sh … --limit raspberrypi5 --detach --follow`
+  - **② DGX（Tailscale 例 `100.118.82.72`・ユーザー `ubudgxkoushi`）** — **`scp`** で **`gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置し **ゲートウェイ再起動**（詳細は [deployment.md §AgentContainer](../guides/deployment.md#dgx-agent-container-control-target-2026-05-10)）。
+  - **Pi4／Pi3** — 本変更の **`update-all-clients.sh`** では **`skipping: no hosts matched`**。**Pi3** は **個体への playbook 適用なし**（Phase12 で **services 疎通のみ**）。
+- **Detach Run ID（Pi5）**: **`20260510-125420-15123`**（**`PLAY RECAP` `ok=139` `changed=8` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 669s**·**`Git: changed`**·**Docker / api・web 再作成あり**·**`prisma migrate deploy` / `status` ok**）。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**・Pi5 **`100.106.158.2`**）。
+- **仕様（本番で有効になる追加契約）**:
+  - **Control Target `agent-container`**: `overview.targets[]` に **`experiment-lab` の直後**で登場。**`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL` / `_STOP_URL` が両方設定**されているときのみ **`start`/`stop`** capability。**`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`** は任意（未設定時は状態 **`unknown`** になり得るが POST 起停は可）。
+  - **単一キュー**: useCase **`agent_container_task`** を **`ProviderLocalLlmRuntimeController`** 経由で **`HttpOnDemandLocalLlmRuntimeController`** に分離。**ready** は **`/v1/models` ではなく**（設定時）**単純 GET ヘルス**（`optionalSimpleHealthProbeUrl`）で待機。
+  - **keep-warm**: **`LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES`** に **`agent_container_task`** を追加済み（**release でも upstream `/stop` 抑止**）。
+  - **調停**: **`business_first` / `private_ok`** で **`agent-container` の stop** を **`experiment-lab` の後**に計画（POST URL が Pi5 に揃っている場合）。
+  - **DGX gateway**: **`GET /agent-container/health`**（既定 **`AGENT_CONTAINER_HEALTH_MODE=container`** で **`docker ps`** 相当）· **`POST /agent-container/start|stop`**（**`X-Runtime-Control-Token`**）。
+- **知見（DGX・コード反映）**: **`start-gateway-server.sh`** は **既存 PID が生きていると即退出**し **`scp` だけでは新コードが載らない**。**PID を終了し PID ファイルを消してから**スクリプトを再実行する必要がある（**広い `pkill -f` は避ける** · Runbook Phase11 と同趣旨）。
+- **知見（ヘルスチェックレース）**: 再起動直後 **`curl 127.0.0.1:38081/healthz`** が一度 **`Connection refused`** になり得る。**短い待機またはループ再試行**で **200** を確認する。
+- **トラブルシュート**:
+  - **UI に `agent-container` が無い／グリッドだけ古い** → Pi5 **`api`/`web` の ref** と **ブラウザ強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
+  - **補助 POST が 502／タイムアウト** → DGX 側 **`./start-agent-container.sh`** / **`./stop-agent-container.sh`**（既定）の **実行ユーザー権限・timeout**（**`PRIVATE_COMFY_CMD_TIMEOUT_SEC`** 系と共用）を確認。
+  - **Pi5 側で Agent 用ランタイムが no-op** → **`get-local-llm-runtime-controller.ts`** の解決条件（**start/stop・token・health URL 派生**が **揃わないと controller を組み立てない**）を確認。
+- **参照**: [deployment.md §AgentContainer 2026-05-10](../guides/deployment.md#dgx-agent-container-control-target-2026-05-10)·[dgx-system-prod-local-llm.md §AgentContainer 本番反映](../runbooks/dgx-system-prod-local-llm.md)·[`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py)。
+
 ## Preconditions
 
 - Pi5 **`apps/api`** が Tailscale（または許可経路）で **DGX 側の軽い HTTP hook（POST）**に到達できること（URL は運用が DGX で用意）。
