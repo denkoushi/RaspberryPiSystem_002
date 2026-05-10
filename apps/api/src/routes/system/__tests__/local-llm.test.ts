@@ -402,10 +402,10 @@ describe('system local llm routes', () => {
     const calledUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
     expect(calledUrls.some((url) => url.endsWith('/start'))).toBe(true);
     expect(calledUrls.some((url) => url.includes('/v1/chat/completions'))).toBe(true);
-    expect(calledUrls.some((url) => url.endsWith('/stop'))).toBe(true);
+    expect(calledUrls.some((url) => url.endsWith('/stop'))).toBe(false);
   });
 
-  it('runs two sequential admin chats in on_demand mode (start/probe/chat/stop each time)', async () => {
+  it('runs two sequential admin chats in on_demand mode (start/probe/chat each time, stop suppressed)', async () => {
     env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
     env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://100.107.223.92:38081/start';
     env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://100.107.223.92:38081/stop';
@@ -468,7 +468,7 @@ describe('system local llm routes', () => {
     const stopHits = vi.mocked(fetch).mock.calls.filter(([url, init]) => String(url).endsWith('/stop') && init?.method === 'POST')
       .length;
     expect(startHits).toBe(2);
-    expect(stopHits).toBe(2);
+    expect(stopHits).toBe(0);
     expect(chatCallCount).toBe(4);
   });
 
@@ -551,7 +551,7 @@ describe('system local llm routes', () => {
     });
     const calledUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
     expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/start')).toBe(true);
-    expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/stop')).toBe(true);
+    expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/stop')).toBe(false);
   });
 
   it('uses explicit admin provider even when routed use cases stay on another provider', async () => {
@@ -643,7 +643,7 @@ describe('system local llm routes', () => {
     });
     const calledUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
     expect(calledUrls.some((url) => url === 'http://100.118.82.73:38081/start')).toBe(true);
-    expect(calledUrls.some((url) => url === 'http://100.118.82.73:38081/stop')).toBe(true);
+    expect(calledUrls.some((url) => url === 'http://100.118.82.73:38081/stop')).toBe(false);
     expect(calledUrls.some((url) => url === 'http://100.118.82.72:38081/start')).toBe(false);
   });
 
