@@ -105,6 +105,8 @@ category: knowledge-base
 
 ## Troubleshooting
 
+- **本番 Postgres で「JST の当日」の CSV 点数・完了件数が 0 に見える／前日まで混じる**
+  - **暦日ウィンドウの SQL** が **`TimeZone` セッション依存の誤パターン**（例: `(date)::timestamp AT TIME ZONE 'Asia/Tokyo'` だけに頼る）になっていないか確認する。**正しい midnight 拘束 + `AT TIME ZONE 'Asia/Tokyo'` の例**: [KB-377 Appendix `#kb-377-appendix-counting`](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md#kb-377-appendix-counting)。あわせて **`FKOJUNST_Status` メール用 `csvDashboardId` と本体 `PRODUCTION_SCHEDULE_DASHBOARD_ID` を取り違えていないか** を確認する（同 Appendix）。
 - **順位ボードで資源コード（例: `021`）のチップだけグレーアウトしない**
   - まず **`row.isCompleted`（実効完了）が false の理由**へ分解する（メール **`C`/`X`**・手動 **`/completion`**・**CSV消失**）。**`S`/`R` は可視未完**。**winner が現集合に残っていれば差分消失は立たない**典型がある。**詳細ナレッジ**: [KB-377](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md)。
 - **`[CsvDashboardIngestor]` warn と `empty_schedule_csv`**
