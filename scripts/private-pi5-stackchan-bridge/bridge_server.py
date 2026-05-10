@@ -3,20 +3,26 @@ import json
 import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import urlsplit
-from urllib.error import HTTPError, URLError
 
 from dgx_runtime_client import DgxUpstreamClient, config_from_env
-
+from stackchan_chat_core import (
+    ChatCompletionWorkflow,
+    ChatFailure,
+    ChatSuccess,
+    format_simple_success,
+    validate_chat_payload,
+)
 
 LISTEN_HOST = os.getenv("STACKCHAN_BRIDGE_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.getenv("STACKCHAN_BRIDGE_PORT", "18080"))
 
-DGX_MODEL = os.getenv("DGX_MODEL", "system-prod-primary")
 STACKCHAN_TOKEN = os.getenv("STACKCHAN_TOKEN", "")
 
-_DGX_CLIENT = DgxUpstreamClient(config_from_env())
+
+def _default_dgx_model() -> str:
+    return os.getenv("DGX_MODEL", "system-prod-primary")
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: dict) -> None:
@@ -56,23 +62,19 @@ def _read_json(handler: BaseHTTPRequestHandler):
         return None, "invalid json"
 
 
-def _extract_reply_text(upstream: dict) -> str:
-    choices = upstream.get("choices")
-    if not isinstance(choices, list) or not choices:
-        return ""
-    first = choices[0]
-    if not isinstance(first, dict):
-        return ""
-    message = first.get("message")
-    if not isinstance(message, dict):
-        return ""
-    content = message.get("content")
-    if isinstance(content, str):
-        return content.strip()
-    return ""
-
-
 class Handler(BaseHTTPRequestHandler):
+    """HTTP adapter; DGX behaviour is in ChatCompletionWorkflow + DgxUpstreamClient."""
+
+    dgx_client: ClassVar[DgxUpstreamClient] = DgxUpstreamClient(config_from_env())
+    dgx_model: ClassVar[str] = _default_dgx_model()
+
+    @classmethod
+    def install_upstream(cls, client: DgxUpstreamClient, model: str | None = None) -> None:
+        """Override DGX client/model (tests or custom wiring)."""
+        cls.dgx_client = client
+        if model is not None:
+            cls.dgx_model = model
+
     def log_message(self, fmt, *args):
         sys.stderr.write("[stackchan-bridge] " + fmt % args + "\n")
 
@@ -103,114 +105,35 @@ class Handler(BaseHTTPRequestHandler):
             _error_response(self, 400, "BAD_REQUEST", err)
             return
 
-        messages = payload.get("messages", [])
-        if not isinstance(messages, list) or len(messages) == 0:
-            _error_response(self, 400, "BAD_REQUEST", "messages must be non-empty array")
+        validated, verr = validate_chat_payload(payload if isinstance(payload, dict) else None)
+        if verr or validated is None:
+            _error_response(self, 400, "BAD_REQUEST", verr or "bad request")
             return
 
-        try:
-            max_tokens = int(payload.get("maxTokens", 1024))
-            temperature = float(payload.get("temperature", 0.35))
-        except (TypeError, ValueError):
-            _error_response(self, 400, "BAD_REQUEST", "maxTokens/temperature must be numeric")
+        workflow = ChatCompletionWorkflow(self.dgx_client, self.dgx_model)
+        outcome = workflow.run(validated, log=self.log_message)
+
+        if isinstance(outcome, ChatSuccess):
+            if simple_mode:
+                _json_response(self, outcome.status_code, format_simple_success(outcome.parsed))
+            else:
+                _json_response(self, outcome.status_code, outcome.parsed)
             return
-        enable_thinking = bool(payload.get("enableThinking", False))
 
-        upstream_body = {
-            "model": DGX_MODEL,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "chat_template_kwargs": {"enable_thinking": enable_thinking},
-        }
-        req_body = json.dumps(upstream_body, ensure_ascii=False).encode("utf-8")
-
-        auto_start = _DGX_CLIENT.auto_start
-
-        for attempt in range(2):
-            try:
-                status, parsed = _DGX_CLIENT.post_chat_completions(req_body)
-                if simple_mode:
-                    reply_text = _extract_reply_text(parsed)
-                    _json_response(
-                        self,
-                        status,
-                        {
-                            "ok": True,
-                            "replyText": reply_text,
-                            "model": parsed.get("model"),
-                            "usage": parsed.get("usage"),
-                            "upstream": parsed,
-                        },
-                    )
-                else:
-                    _json_response(self, status, parsed)
-                return
-            except HTTPError as e:
-                body = e.read().decode("utf-8", errors="ignore")
-                if attempt == 0 and e.code in (502, 503) and auto_start:
-                    ready, runtime_details = _DGX_CLIENT.ensure_runtime_ready()
-                    if ready:
-                        self.log_message("upstream %s recovered after runtime start", e.code)
-                        continue
-                    _error_response(
-                        self,
-                        e.code,
-                        "UPSTREAM_HTTP_ERROR",
-                        "upstream returned non-2xx after runtime recovery attempt",
-                        retryable=True,
-                        details={"status": e.code, "body": body[:2000], "runtimeRecovery": runtime_details},
-                    )
-                    return
-                _error_response(
-                    self,
-                    e.code,
-                    "UPSTREAM_HTTP_ERROR",
-                    "upstream returned non-2xx",
-                    retryable=e.code in (429, 500, 502, 503, 504),
-                    details={"status": e.code, "body": body[:2000]},
-                )
-                return
-            except URLError as e:
-                if attempt == 0 and auto_start:
-                    ready, runtime_details = _DGX_CLIENT.ensure_runtime_ready()
-                    if ready:
-                        self.log_message("upstream unreachable; recovered after runtime start (%s)", str(e))
-                        continue
-                    _error_response(
-                        self,
-                        502,
-                        "UPSTREAM_UNREACHABLE",
-                        "failed to reach upstream after runtime recovery attempt",
-                        retryable=True,
-                        details={"message": str(e), "runtimeRecovery": runtime_details},
-                    )
-                    return
-                _error_response(
-                    self,
-                    502,
-                    "UPSTREAM_UNREACHABLE",
-                    "failed to reach upstream",
-                    retryable=True,
-                    details={"message": str(e)},
-                )
-                return
-            except TimeoutError:
-                _error_response(self, 504, "UPSTREAM_TIMEOUT", "upstream request timed out", retryable=True)
-                return
-            except Exception as e:
-                _error_response(
-                    self,
-                    500,
-                    "BRIDGE_INTERNAL_ERROR",
-                    "unexpected bridge error",
-                    retryable=False,
-                    details={"message": str(e)},
-                )
-                return
+        if isinstance(outcome, ChatFailure):
+            _error_response(
+                self,
+                outcome.http_status,
+                outcome.code,
+                outcome.message,
+                outcome.retryable,
+                outcome.details,
+            )
+            return
 
 
 def main():
+    Handler.install_upstream(DgxUpstreamClient(config_from_env()), _default_dgx_model())
     server = HTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     print(f"stackchan bridge listening on {LISTEN_HOST}:{LISTEN_PORT}", flush=True)
     server.serve_forever()

@@ -12,7 +12,7 @@
 - Playbook: `infrastructure/ansible/playbooks/private-pi5-stackchan-bridge.yml`
 - Sample inventory: `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample.yml`
 - Deploy wrapper: `scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh`
-- Bridge 実装: `scripts/private-pi5-stackchan-bridge/bridge_server.py` / `scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py`
+- Bridge 実装: `scripts/private-pi5-stackchan-bridge/bridge_server.py` / `scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py` / `scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py`
 
 ## 前提
 
@@ -59,7 +59,7 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 ## Playbook が行うこと
 
 1. Tailscale preflight
-2. `bridge_server.py` / `dgx_runtime_client.py` を私用 Pi5 へ同期
+2. `bridge_server.py` / `stackchan_chat_core.py` / `dgx_runtime_client.py` を私用 Pi5 へ同期
 3. `.env` を template から生成（`0600`）
 4. （任意）StackChan 互換用の **旧 LAN IP alias** を **`stackchan-bridge-compat-ip.service`** で管理
 5. `stackchan-bridge.service` を systemd に配備
@@ -88,7 +88,7 @@ journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
 ```
 
 - `hostname -I` で **現在の DHCP IP** を確認する
-- StackChan 実機の `/chat` を叩いても **bridge ログに POST が出ない**なら、まず **bridge URL の IP ミスマッチ**を疑う
+- StackChan 実機の `/chat` を叩いても **bridge ログに POST が出ない**なら、まず **bridge URL の IP ミスマッチ**を疑う（**`200` でも未達**になり得る。text-only 正本は [stackchan-community-text-only-e2e.md](./stackchan-community-text-only-e2e.md#text-only-done-criteria) 参照）
 - `private_pi5_stackchan_compat_ip` を設定した場合は、`systemctl is-enabled stackchan-bridge-compat-ip.service` と `ip -brief addr show wlan0` で alias が維持されていることも確認する
 
 ## 運用メモ

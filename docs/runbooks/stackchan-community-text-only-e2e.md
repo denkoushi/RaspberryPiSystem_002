@@ -14,6 +14,25 @@ related:
 
 **音声なし**で、StackChan（`AI_StackChan_Ex`）から **私用 Pi5 の `stackchan-bridge`** 経由で LLM 応答が返ることを確認する。
 
+## text-only 完了条件（正本） {#text-only-done-criteria}
+
+次をすべて満たすこと。
+
+1. **bridge 契約**: 実機（または切り分け用クライアント）から Pi5 の **`POST /api/stackchan/chat/simple` が `200`** を返し、JSON に**非空の `replyText`** が含まれる（中身は DGX 応答に従う）。
+2. **利用者が観測できる成功**: StackChan が **その `replyText` を発話**する（スピーカー経路で聞き取れる）。`/speech?say=...` だけが成功し LLM 経路の返答が聞こえない場合は **未完了**。
+3. **境界の確認**: 上記 POST は **私用 Pi5 bridge** に到達している（職場 Pi5 API キューは通していない）。
+
+「`GET /chat?...` が `200`」だけでは **完了とみなさない**。StackChan は **HTTP 200 を返しても本体処理やフォールバックで `わかりません` だけ喋る**ことがある。
+
+## 標準診断（`/chat` 200 なのに bridge が静か）
+
+**第1疑義**: **宛先 IP ミスマッチ**（StackChan の `CHATGPT_API_URL` が **旧 Pi5 IP** のまま等）。
+
+- 症状: StackChan 実機やシリアルでは **`200`** だが、私用 Pi5 で  
+  **`journalctl -u stackchan-bridge --since ...` に当該操作時刻の `POST /api/stackchan/chat/simple` が出ない**。
+- 対処: `hostname -I`（Pi5）と URL 内 IP を突き合わせる。**ファーム再ビルド**で URL を直すか、**playbook 管理の compatibility IP alias**（`private_pi5_stackchan_compat_ip`）で一致させる。
+- 典型的な併発: DGX **502** は別系統。シリアルに **`POST... code: 502`** が出ていれば **upstream / runtime** を疑う（IP ミスマッチとは切り分け可能）。
+
 ## 前提
 
 - 私用 Pi5 で `stackchan-bridge` が動作し、`GET /healthz` が `200`。
@@ -181,6 +200,28 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
   - `GET /chat?...` 実行前に時刻を控え、**その時刻以降の `journalctl -u stackchan-bridge --since ...`** を見る
   - **bridge ログが増えない**なら upstream ではなく **宛先IPミスマッチ** を先に疑う
 - 実測で StackChan 実機の `/chat` が `200` でも、**シリアルに `POST... code: 502` が出て `わかりません` を喋う**なら、StackChan 側ではなく **bridge 以降の upstream 失敗**と判断してよい。
+
+## E2E 検証チェックリスト（text-only → 音声） {#e2e-checklist-text-then-audio}
+
+実機が手元にない場合は、できる項目だけを打ち消しし、**再発条件**（DGX 502、IP ドリフト）を記録する。
+
+### Phase A — text-only（必須）
+
+- [ ] 私用 Pi5: `curl -fsS http://127.0.0.1:18080/healthz`
+- [ ] 私用 Pi5（または LAN 内クライアント）: `POST /api/stackchan/chat/simple` → **`200` + 非空 `replyText`**
+- [ ] StackChan 実機: **同じ応答文がスピーカーから聞こえる**（[完了条件](#text-only-done-criteria)）
+- [ ] `journalctl -u stackchan-bridge` に **対応する `POST`** がある（**`200` 単体では証明にならない**）
+
+### Phase B — 音声入出力（デバイス側 STT/TTS）
+
+- [ ] `http://<StackChan-IP>/speech?say=テスト` でスピーカー動作を確認（スピーカー経路の切り分け）
+- [ ] `SC_ExConfig.yaml` / `yaml/SC_SecConfig.yaml` の **`stt` / `tts` / `wakeword`** を、製作元ファームの仕様に沿って有効化（**音声バイナリは Pi5 bridge に送らない**）
+- [ ] ウェイクワードまたは UI から発話入力後、**bridge ログに `POST /api/stackchan/chat` 系が増える**こと（STT 結果がテキストとして LLM に渡っている証拠）
+
+### Phase C — 再発条件の確認
+
+- [ ] DGX cold start / runtime 停止時: bridge が **`502` / `UPSTREAM_UNREACHABLE`** を返し得る → `DGX_RUNTIME_AUTO_START` と **`DGX_RUNTIME_READY_TIMEOUT_SEC`（300–600）** を確認
+- [ ] Pi5 DHCP 変更後: StackChan URL と **`hostname -I`** の不一致 → **compat alias** または **ファーム再ビルド**
 
 ## ロールバック
 

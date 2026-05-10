@@ -55,7 +55,7 @@ update-frequency: high
 | **Private** | StackChan / 私用デバイス | **私用 Pi5** の `stackchan-bridge` | **DGX Spark**（gateway 直） | bridge 内 **`DgxUpstreamClient`**（[`dgx_runtime_client.py`](../../scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py)）。任意 **`DGX_RUNTIME_AUTO_START`** + **`DGX_RUNTIME_CONTROL_TOKEN`** で **`/start` → `GET /v1/models` 待ち → chat 1 回再試行**（502/503 および初回 `URLError` 時）。**職場 Pi5 API の単一キュー・JWT とは無関係**。 |
 | **Work** | Pi4 / Pi3 等 | **職場 Pi5 API** | DGX Spark | `stackchan_chat` / `admin_console_chat` / `agent_container_task` 等は **`local-llm-on-demand-runtime`** + **`shouldSuppressLocalLlmRuntimeStop`**（keep-warm）。**`POST /api/system/stackchan/chat`** はこちら。 |
 
-- **実装分離（repo）**: HTTP 受付と StackChan 向け JSON は [`bridge_server.py`](../../scripts/private-pi5-stackchan-bridge/bridge_server.py) のみ。DGX への **`/v1/chat/completions`**・**`/start`**・ready ポーリングは **`dgx_runtime_client.py`** に集約。エージェント用の**開発端末固定パス**へのデバッグ書き込みは**持たない**。
+- **実装分離（repo）**: HTTP 受付・認証・JSON I/O は [`bridge_server.py`](../../scripts/private-pi5-stackchan-bridge/bridge_server.py)。入力検証と chat completion ワークフロー（リトライ・`replyText` 整形）は [`stackchan_chat_core.py`](../../scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py)。DGX への **`/v1/chat/completions`**・**`/start`**・ready ポーリングは [`dgx_runtime_client.py`](../../scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py) の **`DgxUpstreamClient`**。エージェント用の**開発端末固定パス**へのデバッグ書き込みは**持たない**。
 - **検証の注意**: 開発 Mac から Tailscale 越しに DGX を直叩きすると **timeout** になりやすい。ACL・経路が **私用 Pi5 経路と一致しない**ため、**切り分けの正は私用 Pi5 上の `curl` / bridge `POST`**（bridge `healthz` が 200 でも upstream 502 は別問題）。
 
 ## 採用しない方針（会話で棄却/優先度低）
@@ -119,10 +119,10 @@ update-frequency: high
 
 ## いまの次アクション（着手順）
 
-1. text-only 成功条件を「bridge `replyText` を StackChan が発話すること」へ固定する
-2. StackChan 側 URL を **現 bridge 設定**へ寄せるか、compatibility alias を継続運用するかを最終決定する
-3. その後 STT/TTS を重ねる
-4. 最後に alias 依存を残すか撤去するかを決める
+1. ~~text-only 成功条件を「bridge `replyText` を StackChan が発話すること」へ固定する~~ → **Runbook 正本** [stackchan-community-text-only-e2e.md §text-only-done-criteria](../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria)
+2. StackChan 側 URL を **現 bridge 設定**へ寄せるか、compatibility alias を継続運用するかを最終決定する（**2026-05-10**: alias を playbook 標準化済み）
+3. **デバイス側 STT/TTS** を [`scripts/stackchan-ai-stackchan-ex/README.md`](../../scripts/stackchan-ai-stackchan-ex/README.md) §5 に従い段階導入し、[E2E チェックリスト](../runbooks/stackchan-community-text-only-e2e.md#e2e-checklist-text-then-audio)で検証する
+4. （将来）Pi5 上 faster-whisper / VOICEVOX 経路は、**現行のデバイス側音声方針**と役割が重複しないため、採用する場合は ADR で境界を再定義する
 
 ## 供給鎖・採用の固定（コミュニティ安全採用・2026-05-10）
 

@@ -131,7 +131,7 @@ update-frequency: high
 - StackChan 実機の `/speech` が動作することを確認し、**TTS 単体は生きている**と切り分けた。
 - StackChan 実機の `/chat` 実行時ログを取得し、**`/api/stackchan/chat/simple` への POST が 502** を返すことを確認した。
 - 同一 payload を Mac から bridge `/simple` に再送し、**DGX upstream 502 / `bad gateway: [Errno 111] Connection refused`** を再現した。
-- private Pi5 bridge 側に、**任意の `DGX_RUNTIME_AUTO_START` + `DGX_RUNTIME_CONTROL_TOKEN`** を使って `502` / `503` 時（および **`DGX_RUNTIME_AUTO_START` 有効時の初回 `URLError`**）に **`/start` -> `/v1/models` ready wait -> 1回再試行** する最小回復策を **`dgx_runtime_client.py`（`DgxUpstreamClient`）** に集約した。HTTP 受付は **`bridge_server.py`** のみ（repo 側。live 反映は別途）。
+- private Pi5 bridge 側に、**任意の `DGX_RUNTIME_AUTO_START` + `DGX_RUNTIME_CONTROL_TOKEN`** を使って `502` / `503` 時（および **`DGX_RUNTIME_AUTO_START` 有効時の初回 `URLError`**）に **`/start` -> `/v1/models` ready wait -> 1回再試行** する最小回復策を **`dgx_runtime_client.py`（`DgxUpstreamClient`）** に集約した。HTTP 受付・レスポンス I/O は **`bridge_server.py`**、入力検証と chat completion オーケストレーションは **`stackchan_chat_core.py`**（repo 側。live 反映は別途・Ansible は 3 ファイルを同期）。
 - Spark 再起動後も、**DGX `/healthz` / `/v1/models` timeout・Pi5 bridge `/healthz` は 200・bridge `/simple` は 502** のままであることを再確認した。
 - DGX upstream 復旧後、Mac から **`POST http://192.168.128.113:18080/api/stackchan/chat/simple`** は **`200` + `replyText`** を返す一方、StackChan の `GET /chat?...` 実行直後に **bridge ログが増えない**ことを確認した。
 - そのため **private Pi5 の現在 IP (`192.168.128.113`)** と **StackChan が見ている bridge IP (`192.168.128.112`)** がずれている仮説を立て、Pi5 `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加した。
@@ -153,6 +153,15 @@ update-frequency: high
 - 実機会話が失敗したときは、**Mac から bridge を直接叩いて bridge 健全性を先に切る**。bridge が 502 の場合は **StackChan を疑う前に upstream runtime を疑う**。
 - 実機会話が失敗したとき、**`/chat` が 200 でも bridge ログが無ければ upstream ではなく IP 経路を疑う**。`hostname -I`（Pi5）・`arp -a`（Mac）・`journalctl --since` をセットで確認する。
 - direct-to-DGX の private bridge を使う場合は、**Pi5 API の on-demand 制御を通らない**ことを前提にする。必要なら **bridge 自身が `DGX_RUNTIME_CONTROL_TOKEN` で runtime 起動を吸収**する。**blue / vLLM cold start** では **60s 未満の ready 待ちでは不足しうる**ため、`.env` の **`DGX_RUNTIME_READY_TIMEOUT_SEC` は 300–600 秒級**を推奨（例は [`.env.example`](../../scripts/private-pi5-stackchan-bridge/.env.example)）。
+
+## Bridge 実装の責務分離（2026-05-10）
+
+- **`bridge_server.py`**: HTTP ルーティング・`STACKCHAN_TOKEN` 検証・JSON I/O のみ。
+- **`stackchan_chat_core.py`**: `messages` 検証、upstream ボディ構築、リトライ付き completion（`ChatCompletionWorkflow`）、`replyText` 抽出。
+- **`dgx_runtime_client.py`**: DGX への生 HTTP（chat・`/start`・ready プローブ）。
+- **音声（STT/TTS）**は **デバイス側**で完結させ、bridge はテキスト境界を維持する（手順: [`scripts/stackchan-ai-stackchan-ex/README.md`](../../scripts/stackchan-ai-stackchan-ex/README.md) §5）。
+- **text-only 完了条件の正本**: [`stackchan-community-text-only-e2e.md` §text-only-done-criteria](../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria)
+- **E2E チェックリスト（text→音声）**: [同 Runbook §e2e-checklist-text-then-audio](../runbooks/stackchan-community-text-only-e2e.md#e2e-checklist-text-then-audio)
 
 ## References
 
