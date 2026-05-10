@@ -39,7 +39,7 @@ category: knowledge-base
 
 ### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
 
-- **ブランチ（先行反映時）**: **`feat/agent-container-control-target`**（実装 tip **`9fd37c0a`**。**`main` マージ後は `origin/main` HEAD** をデプロイ引数の正本とする）。
+- **ブランチ（先行反映時）**: **`feat/agent-container-control-target`**（実装 tip **`9fd37c0a`**）。**`main` squash（PR [#284](https://github.com/denkoushi/RaspberryPiSystem_002/pull/284)）**: **`14f105c1`**。**デプロイ ref の正本**は **`origin/main` HEAD**（本項記録時点では **`14f105c1`** と一致）。
 - **ホスト（順序固定・Ansible スコープ外は SSH のみ）**:
   - **① `raspberrypi5` のみ** — `./scripts/update-all-clients.sh … --limit raspberrypi5 --detach --follow`
   - **② DGX（Tailscale 例 `100.118.82.72`・ユーザー `ubudgxkoushi`）** — **`scp`** で **`gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置し **ゲートウェイ再起動**（詳細は [deployment.md §AgentContainer](../guides/deployment.md#dgx-agent-container-control-target-2026-05-10)）。
