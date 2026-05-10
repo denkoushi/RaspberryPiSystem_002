@@ -46,9 +46,25 @@ update-frequency: medium
 - **回帰テスト**: `kiosk-production-schedule.integration.test.ts`（**>900 `rowIds` + 重複 winner**）・`leaderboard-display-row-scope.test.ts`・`leaderboard-footer-part-key-collector.test.ts`。
 - **新規経路**では **hydrate 上限**を単独で二次実装せず、`leaderboard-display-row-scope` / `fetchLeaderboardScheduleHydratedRowsOrderedByIds` に寄せる。
 
+## Production rollout（2026-05-10）
+
+- **スコープ**: **API のみ**（キオスク Web のビルド対象変更なし）。**対象ホスト**: **`raspberrypi5` のみ**（`./scripts/update-all-clients.sh … --limit raspberrypi5`）。**Pi4 キオスク／Pi3 サイネージ**: 当該 **`--limit`** では Ansible **`skipping: no hosts matched`**（**Pi3 専用手順は未実施**・本変更は Pi5 API コンテナのみで足りる判断）。
+- **ブランチ**: 先行反映 **`feature/leaderboard-footer-winner-rearchitecture`**。マージ後の運用正本は **`main` HEAD**（`./scripts/update-all-clients.sh main … --limit raspberrypi5`）。
+- **代表コミット（先行本番時点）**: **`c2e7438a`**（`fix(kiosk): align leaderboard footer winners with displayed rows`）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260510-091316-7496`**（`raspberrypi5`·**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 615s**·サマリ **`Git: changed`**·**Docker compose 再起動 `changed`**·**`prisma migrate deploy` / `status` `ok`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh`（Tailscale・Pi5 `100.106.158.2`）→ **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**）。**`deploy-status`（Pi4×4）**: すべて **PASS**。**`auto-tuning scheduler` ログ**: **件数=1**。
+- **ローカル開発・回帰の知見**:
+  - Vitest 統合で Postgres 未起動と分かった場合は、リポジトリの **`scripts/test/start-postgres.sh`** で一時コンテナ起動→**`pnpm prisma migrate deploy`** 後に再実行。
+  - **`>900` 件境界**の回帰は、**`leaderboard-decorations` を単体で叩く**より **`buildLeaderboardFooterChipsByPartKeyForScheduleRows` にダミー UUID を 900 件載せた上で、末尾の表示行 id を `preferredDisplayRowIds` で渡す**形が安定（materialization 経路との結合度を下げる）。
+- **トラブルシュート（本番）**:
+  - **フッタがまだ一覧とズレる** → Pi5 **`api` イメージ**が **`c2e7438a` 以降（またはマージ後 `main`）**か、Detach サマリの **`Git: changed`** と **Docker 再起動**有無を確認。
+  - **`verify-phase12-real.sh` で `deploy-status` のみ FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・連続デプロイ直後は **再実行**。
+- **運用コマンド（記録どおり）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/leaderboard-footer-winner-rearchitecture infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**マージ後は第2引数を `main`**）。
+
 ## References
 
 - [KB-375](./KB-375-kiosk-leaderboard-completion-integrity.md)（完了意味の共有）
 - [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)
 - [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md)
 - [docs INDEX](../INDEX.md)
+- [deployment.md §KB-376](../guides/deployment.md#leaderboard-footer-display-scope-winner-alignment-2026-05-10)
