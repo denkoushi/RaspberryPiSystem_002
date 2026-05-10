@@ -86,6 +86,7 @@ export function resolveMainLocalLlmRuntimeControlPriorityForUseCase(
     case 'document_summary':
       return MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.business;
     case 'admin_console_chat':
+    case 'stackchan_chat':
     case 'agent_container_task':
       return MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.agent;
   }

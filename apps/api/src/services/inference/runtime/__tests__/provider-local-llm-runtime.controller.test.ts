@@ -141,6 +141,60 @@ describe('ProviderLocalLlmRuntimeController', () => {
     expect(calledUrls.filter((url) => url === 'http://dgx:38081/legacy/stop')).toHaveLength(1);
   });
 
+  it('routes stackchan_chat to the same admin provider runtime as admin_console_chat', async () => {
+    const providers = createProviders().map((provider, idx) =>
+      idx === 0 ? { ...provider, runtimeControl: undefined } : provider
+    );
+    const router = new InferenceRouter({
+      providers,
+      routes: {
+        document_summary: { providerId: 'dgx_text' },
+        photo_label: { providerId: 'ubuntu_vlm' },
+      },
+    });
+
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/legacy/start') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        return new Response('ready', { status: 200 });
+      }
+      if (url.endsWith('/legacy/stop') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const controller = new ProviderLocalLlmRuntimeController({
+      fetchImpl,
+      globalMode: 'on_demand',
+      router,
+      providers,
+      resolveAdminProvider: () => providers[0],
+      resolveAdminModel: () => 'system-prod-primary',
+      legacyAdminRuntimeControl: {
+        mode: 'on_demand',
+        startUrl: 'http://dgx:38081/legacy/start',
+        stopUrl: 'http://dgx:38081/legacy/stop',
+        controlToken: 'legacy-control',
+        healthBaseUrl: 'http://dgx:38081',
+      },
+      readyTimeoutMs: 30_000,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+    });
+
+    await controller.ensureReady('stackchan_chat');
+    await controller.release('stackchan_chat');
+
+    const calledUrls = fetchImpl.mock.calls.map(([url]) => String(url));
+    expect(calledUrls.filter((url) => url === 'http://dgx:38081/legacy/start')).toHaveLength(1);
+    expect(calledUrls.filter((url) => url === 'http://dgx:38081/legacy/stop')).toHaveLength(1);
+  });
+
   it('passes shouldSuppressStop so release does not POST /stop', async () => {
     const providers = createProviders();
     const router = new InferenceRouter({

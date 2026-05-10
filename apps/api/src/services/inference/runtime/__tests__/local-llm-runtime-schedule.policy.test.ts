@@ -81,5 +81,12 @@ describe('local-llm-runtime-schedule.policy', () => {
         warmWindow: { ...window7to23, enabled: false },
       })
     ).toBe(true);
+    expect(
+      shouldSuppressLocalLlmRuntimeStop({
+        useCase: 'stackchan_chat',
+        now: new Date('2026-04-27T21:59:00.000Z'),
+        warmWindow: { ...window7to23, enabled: false },
+      })
+    ).toBe(true);
   });
 });

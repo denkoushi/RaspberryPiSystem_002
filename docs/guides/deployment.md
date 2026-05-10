@@ -14,7 +14,7 @@ update-frequency: medium
 
 ### 補足（2026-05-10 · **DGX メインAI 単一キュー・用途別停止抑止・実験優先時 gateway 自動停止除外**·**Pi5 API のみ**·**`raspberrypi5` のみ**） {#dgx-main-llm-single-queue-stop-policy-2026-05-10}
 
-- **変更概要（正本）**: [KB-365 §本番反映（2026-05-10）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)。**要点**: **`enqueueMainLocalLlmRuntimeControl`** で **推論 on_demand の `/start`・`/stop`**（`HttpOnDemandLocalLlmRuntimeController`）と **`executeGatewayRuntimeStartStop`**（DGX 管理 UI 経由の `system-prod-gateway`）を **同一キューに直列化**（`local-llm-runtime-command-queue.ts`）。**`shouldSuppressLocalLlmRuntimeStop`** — `photo_label` / `document_summary` / `admin_console_chat` / **`agent_container_task`** は **参照 0 でも release 時 `/stop` 抑止**（業務/Agent warm 維持）。**`experiment_first` + `applyWorkloadChanges`** の事前調停は **`private-comfyui` のみ**自動停止・**`system-prod-gateway` の自動停止を削除**（`dgx-resource.policy-arbitrator.ts` の `planWorkloadAdjustmentsBeforePolicyChange`）。**業務優先・私用OK**への調停では **`experiment-lab` に続けて `agent-container`** も停止試行対象に追加（POST が Pi5 に設定されている場合）。
+- **変更概要（正本）**: [KB-365 §本番反映（2026-05-10）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)。**要点**: **`enqueueMainLocalLlmRuntimeControl`** で **推論 on_demand の `/start`・`/stop`**（`HttpOnDemandLocalLlmRuntimeController`）と **`executeGatewayRuntimeStartStop`**（DGX 管理 UI 経由の `system-prod-gateway`）を **同一キューに直列化**（`local-llm-runtime-command-queue.ts`）。**`shouldSuppressLocalLlmRuntimeStop`** — `photo_label` / `document_summary` / `admin_console_chat` / **`stackchan_chat`** / **`agent_container_task`** は **参照 0 でも release 時 `/stop` 抑止**（業務/Agent warm 維持）。**`experiment_first` + `applyWorkloadChanges`** の事前調停は **`private-comfyui` のみ**自動停止・**`system-prod-gateway` の自動停止を削除**（`dgx-resource.policy-arbitrator.ts` の `planWorkloadAdjustmentsBeforePolicyChange`）。**業務優先・私用OK**への調停では **`experiment-lab` に続けて `agent-container`** も停止試行対象に追加（POST が Pi5 に設定されている場合）。
 - **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**）。**Pi4 キオスク／Pi3 サイネージ**: **`skipping: no hosts matched`**（本変更は **Pi5 `api` のみ**・キオスク `web` 差分なしのため **Pi4 順次不要**。**Pi3** は **リソース僅少のため専用手順の対象外**で、本 play では **当てていない**）。
 - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数を `main`**）。
 - **本番デプロイ（先行反映・実績・2026-05-10）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260510-114418-29512`**（`raspberrypi5`·**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 559s**·サマリ **`Git: changed`**·**Docker compose 再起動 `changed`**·**`Run prisma migrate deploy` / `prisma migrate status` `ok`**）。
@@ -43,6 +43,14 @@ update-frequency: medium
   - **gateway を更新したが挙動が古い** → 上記 **`start-gateway-server.sh` の PID ガード**を疑い **`healthz`** と **プロセス起動時刻**を確認。
   - **実機 Phase12 のみ Pi4 `deploy-status` FAIL** → [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**。
 - **ナレッジ**: [KB-365 §AgentContainer 本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-agent-container)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
+
+### 補足（StackChan / Pi5 API 経由対話 · **`POST /api/system/stackchan/chat`**） {#stackchan-pi5-api-chat}
+
+- **概要**: StackChan 等は **DGX に直接トークンを持たせず**、Pi5 API の **`POST /api/system/stackchan/chat`**（**`ADMIN` / `MANAGER` JWT**）経由で **`LOCAL_LLM_*`（admin と同一 upstream）**へ到達する。**runtime 用途 ID**: **`stackchan_chat`**（単一キューでは **`admin_console_chat` と同優先度（agent 層）**）。**`/stop` 抑止**は admin と同様（warm 維持）。
+- **詳説既定**: サーバ側で **詳説優先の system 指示**をマージ（クライアント先頭 `system` がある場合は追記）。**`max_tokens` 既定 1536**・**`temperature` 既定 0.35**（JSON で上書き可）。
+- **常時待受の運用注意**: 短周期で叩くと **`main_llm_control_queue_wait`** が増え、業務用途（`photo_label` / `document_summary`）と **同一キューで順番待ち**になる。遅延時は Pi5 API ログと DGX gateway を確認。
+- **実装**: [`stackchan.ts`](../../apps/api/src/routes/system/stackchan.ts)·[`stackchan-chat-request.ts`](../../apps/api/src/services/system/stackchan-chat-request.ts)·[`local-llm-on-demand-runtime.ts`](../../apps/api/src/services/system/local-llm-on-demand-runtime.ts)。
+- **正本手順・API 一覧**: [dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)。
 
 ### 補足（2026-05-10 · **KB-376・装飾表示スコープとフッタ winner 選定の整合**·**API のみ**·**`raspberrypi5` のみ**） {#leaderboard-footer-display-scope-winner-alignment-2026-05-10}
 
