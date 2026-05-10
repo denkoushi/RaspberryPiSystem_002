@@ -71,4 +71,5 @@ update-frequency: medium
 - [KB-297 §リーダー順位ボード](./KB-297-kiosk-due-management-workflow.md#リーダー順位ボード納期ベース整列手動順-api-反映2026-04-01)
 - [KB-369 順位ボードAPI内部レイテンシ](./KB-369-leader-order-board-api-internal-latency.md)
 - [KB-376 装飾スコープとフッタwinner整合](./KB-376-leaderboard-footer-display-scope-winner-alignment.md)
+- [KB-377 資源CDチップ・グレーアウトと差分消失の検証ナレッジ](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md)
 - [docs INDEX](../INDEX.md)
