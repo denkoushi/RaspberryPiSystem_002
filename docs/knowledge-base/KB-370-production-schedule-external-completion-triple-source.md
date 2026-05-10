@@ -2,7 +2,7 @@
 title: KB-370 生産スケジュール「実効完了」の外部要因3系統OR統合（手動・工順ST・生産日程CSV）
 tags: [生産スケジュール, CSV, FKOJUNST, 外部完了, 順位ボード]
 audience: [開発者, 運用者]
-last-verified: 2026-05-09
+last-verified: 2026-05-10
 category: knowledge-base
 ---
 
@@ -105,6 +105,8 @@ category: knowledge-base
 
 ## Troubleshooting
 
+- **順位ボードで資源コード（例: `021`）のチップだけグレーアウトしない**
+  - まず **`row.isCompleted`（実効完了）が false の理由**へ分解する（メール **`C`/`X`**・手動 **`/completion`**・**CSV消失**）。**`S`/`R` は可視未完**。**winner が現集合に残っていれば差分消失は立たない**典型がある。**詳細ナレッジ**: [KB-377](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md)。
 - **`[CsvDashboardIngestor]` warn と `empty_schedule_csv`**
   - **0 件 winner** 時の **想定どおりのスキップ**。上流の生産日程CSV・取込ダッシュボード・DEDUP 設定を確認（本当に行が 0 であるべきか）。
 - **実効完了が付かない／期待とずれる**
