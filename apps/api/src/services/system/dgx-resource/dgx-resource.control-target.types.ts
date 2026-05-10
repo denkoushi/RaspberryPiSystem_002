@@ -9,6 +9,7 @@ export const DGX_CONTROL_TARGET_IDS = [
   'system-prod-embedding',
   'private-comfyui',
   'experiment-lab',
+  'agent-container',
   'spark-host',
   'metrics-kpi',
 ] as const;

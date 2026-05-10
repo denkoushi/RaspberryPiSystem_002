@@ -14,6 +14,7 @@ describe('dgx-resource.scenario-planner', () => {
       postPolicyStarts: [],
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: false,
+      agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
     };
 
@@ -25,6 +26,7 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: 'business_to_private',
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: false,
+      agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'business_first',
       inferenceLooksDegraded: false,
@@ -44,6 +46,7 @@ describe('dgx-resource.scenario-planner', () => {
         postPolicyStarts: ['private-comfyui'],
         comfyRuntimeConfigured: true,
         experimentLabRuntimeConfigured: false,
+        agentContainerRuntimeConfigured: false,
         gatewayRuntimeConfigured: true,
       })
     ).toBe(p.planFingerprint);
@@ -54,6 +57,7 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: 'business_to_private',
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
+      agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'business_first',
       inferenceLooksDegraded: false,
@@ -72,6 +76,7 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: 'experiment_to_business',
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
+      agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'experiment_first',
       inferenceLooksDegraded: false,
@@ -86,6 +91,7 @@ describe('dgx-resource.scenario-planner', () => {
       postPolicyStarts: [],
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
+      agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
     });
     expect(p.planFingerprint).toBe(expectedFp);
@@ -96,6 +102,7 @@ describe('dgx-resource.scenario-planner', () => {
       scenarioId: 'business_to_experiment',
       comfyRuntimeConfigured: true,
       experimentLabRuntimeConfigured: true,
+      agentContainerRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
       currentPolicyMode: 'business_first',
       inferenceLooksDegraded: false,
@@ -113,6 +120,7 @@ describe('dgx-resource.scenario-planner', () => {
         postPolicyStarts: ['experiment-lab'],
         comfyRuntimeConfigured: true,
         experimentLabRuntimeConfigured: true,
+        agentContainerRuntimeConfigured: false,
         gatewayRuntimeConfigured: true,
       })
     );

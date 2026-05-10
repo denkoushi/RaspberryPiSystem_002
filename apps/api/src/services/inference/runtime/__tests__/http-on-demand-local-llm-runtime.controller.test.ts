@@ -47,6 +47,43 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
     expect(posts.length).toBe(4);
   });
 
+  it('polls optionalSimpleHealthProbeUrl with GET when set', async () => {
+    let healthN = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('/aux/start') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      if (url.endsWith('/agent/health') && init?.method === 'GET') {
+        healthN += 1;
+        return new Response('ok', { status: healthN >= 2 ? 200 : 503 });
+      }
+      if (url.includes('/aux/stop') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      return new Response('nope', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const c = new HttpOnDemandLocalLlmRuntimeController({
+      fetchImpl,
+      startUrl: 'http://ubuntu/aux/start',
+      stopUrl: 'http://ubuntu/aux/stop',
+      controlToken: 'ctrl',
+      healthCheckBaseUrl: 'http://unused/',
+      llmToken: '',
+      optionalSimpleHealthProbeUrl: 'http://gw/agent/health',
+      readyTimeoutMs: 30_000,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+    });
+
+    await c.ensureReady('photo_label');
+    expect(healthN).toBeGreaterThanOrEqual(2);
+    await c.release('photo_label');
+    expect(fetchImpl.mock.calls.some(([u]) => String(u).endsWith('/aux/stop'))).toBe(true);
+  });
+
   it('concurrent ensureReady shares one start', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;

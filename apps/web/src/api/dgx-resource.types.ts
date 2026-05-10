@@ -7,6 +7,7 @@ export type DgxControlTargetIdApi =
   | 'system-prod-embedding'
   | 'private-comfyui'
   | 'experiment-lab'
+  | 'agent-container'
   | 'spark-host'
   | 'metrics-kpi';
 
@@ -136,7 +137,7 @@ export type DgxResourceScenarioExecuteResultApi = {
 
 export type DgxOperatorRiskLevelApi = 'low' | 'medium' | 'high';
 
-export type DgxOperatorWorkloadIdApi = 'business_vlm' | 'private_comfy' | 'experiment_lab';
+export type DgxOperatorWorkloadIdApi = 'business_vlm' | 'private_comfy' | 'experiment_lab' | 'agent_container';
 
 export type DgxOperatorWorkloadApi = {
   id: DgxOperatorWorkloadIdApi;
@@ -195,6 +196,8 @@ export type DgxResourceOverview = {
     comfyRuntimeControlConfigured: boolean;
     experimentLabHealthConfigured: boolean;
     experimentLabRuntimeControlConfigured: boolean;
+    agentContainerHealthConfigured: boolean;
+    agentContainerRuntimeControlConfigured: boolean;
   };
   targets?: DgxControlTargetSnapshotApi[];
   sparkHost: DgxSparkHostOverview;

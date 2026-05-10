@@ -32,6 +32,7 @@ export type { TargetRuntimeEventLogMode };
 export type WorkloadCapabilityFlags = {
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
+  agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
 };
 
@@ -67,6 +68,7 @@ export async function executeWorkloadTransitionsThenApplyPolicyMode(input: {
     applyWorkloadChanges,
     comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
+    agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
   });
 
@@ -129,6 +131,7 @@ export async function executeOrchestrationScenarioTransition(input: {
     postPolicyStarts,
     comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
+    agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
   });
 
@@ -146,6 +149,7 @@ export async function executeOrchestrationScenarioTransition(input: {
     applyWorkloadChanges: intent.applyWorkloadChanges,
     comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
+    agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
   });
 
@@ -259,6 +263,7 @@ export async function executeOrchestrationScenarioTransition(input: {
               rollbackPolicyMode: policyBefore,
               comfyRuntimeConfigured: capability.comfyRuntimeConfigured,
               experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
+              agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
             },
             policyStore,
             currentPolicyBeforeRollback: policyStore.getPolicyMode(),

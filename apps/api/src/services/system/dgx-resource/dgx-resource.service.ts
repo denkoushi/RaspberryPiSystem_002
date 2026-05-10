@@ -92,6 +92,8 @@ export type DgxResourceOverview = {
     comfyRuntimeControlConfigured: boolean;
     experimentLabHealthConfigured: boolean;
     experimentLabRuntimeControlConfigured: boolean;
+    agentContainerHealthConfigured: boolean;
+    agentContainerRuntimeControlConfigured: boolean;
   };
   /** 標準 Control Target 一覧（監視・許可操作の正規モデル） */
   targets: DgxControlTargetSnapshot[];
@@ -177,12 +179,24 @@ function readExperimentLabRuntimeEndpoints(): { startUrl: string; stopUrl: strin
   return { startUrl: s, stopUrl: sp, ...(t ? { token: t } : {}) };
 }
 
+function readAgentContainerRuntimeEndpoints(): { startUrl: string; stopUrl: string; token?: string } | undefined {
+  const s = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL?.trim();
+  const sp = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL?.trim();
+  if (!s || !sp) return undefined;
+  const t = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN?.trim();
+  return { startUrl: s, stopUrl: sp, ...(t ? { token: t } : {}) };
+}
+
 function comfyRuntimeControlConfigured(): boolean {
   return readComfyRuntimeEndpoints() !== undefined;
 }
 
 function experimentLabRuntimeControlConfigured(): boolean {
   return readExperimentLabRuntimeEndpoints() !== undefined;
+}
+
+function agentContainerRuntimeControlConfigured(): boolean {
+  return readAgentContainerRuntimeEndpoints() !== undefined;
 }
 
 function inferenceHeuristics(bundle: OverviewProbeBundle): {
@@ -200,6 +214,7 @@ type TargetRuntimeEventLogMode = 'default' | 'none';
 export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResourceServicePort {
   const auxTimeoutMs = env.DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS;
   const experimentLabHealthUrl = env.DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL?.trim() || undefined;
+  const agentContainerHealthUrl = env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim() || undefined;
   const emitDgxDebugLog = (
     hypothesisId: 'H1' | 'H2' | 'H3' | 'H4' | 'H5' | 'H6',
     location: string,
@@ -225,6 +240,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     sparkConfigured: boolean;
     experimentLabHealthConfigured: boolean;
     experimentLabProbeUrl: string | undefined;
+    agentContainerHealthConfigured: boolean;
+    agentContainerProbeUrl: string | undefined;
+    agentRtCfg: boolean;
     sparkHost: DgxSparkHostOverview;
     notes: string[];
   }> => {
@@ -315,9 +333,17 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       experimentLabReachable = await probeHttpOk(experimentLabProbeUrl, deps.fetchImpl, deps.probeTimeoutMs);
     }
 
+    const agentContainerHealthConfigured = Boolean(env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim());
+    let agentContainerReachable = false;
+    const agentContainerProbeUrl = env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim();
+    if (agentContainerHealthConfigured && agentContainerProbeUrl) {
+      agentContainerReachable = await probeHttpOk(agentContainerProbeUrl, deps.fetchImpl, deps.probeTimeoutMs);
+    }
+
     const runtimeControlConfigured = gatewayRuntimeControlConfiguredFlag();
     const comfyRtCfg = comfyRuntimeControlConfigured();
     const expLabRtCfg = experimentLabRuntimeControlConfigured();
+    const agentRtCfg = agentContainerRuntimeControlConfigured();
     // #region agent log
     emitDgxDebugLog('H5', 'dgx-resource.service.ts:collectOverviewProbeBundle:runtime-capability', 'runtime control capability snapshot', {
       policyMode,
@@ -330,6 +356,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       comfyReachable,
       experimentLabHealthConfigured,
       experimentLabReachable,
+      agentRtCfg,
+      agentContainerHealthConfigured,
+      agentContainerReachable,
     });
     // #endregion
 
@@ -355,6 +384,10 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       experimentLabReachable,
       experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
       experimentLabRuntimeControlConfigured: expLabRtCfg,
+      agentContainerHealthConfigured,
+      agentContainerReachable,
+      agentContainerProbeUrl: agentContainerProbeUrl ?? undefined,
+      agentContainerRuntimeControlConfigured: agentRtCfg,
     };
 
     const notes: string[] = [];
@@ -390,9 +423,23 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       );
     }
 
+    const acStart = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL?.trim();
+    const acStop = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL?.trim();
+    if ((acStart && !acStop) || (!acStart && acStop)) {
+      notes.push(
+        'DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL / STOP_URL の片方のみ設定されています（起停は無効）'
+      );
+    }
+
     if (!experimentLabHealthConfigured && expLabRtCfg) {
       notes.push(
         'experiment-lab のヘルス URL 未設定のため状態は不明ですが、起停用 POST は利用できます（任意で DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL）'
+      );
+    }
+
+    if (!agentContainerHealthConfigured && agentRtCfg) {
+      notes.push(
+        'agent-container のヘルス URL 未設定のため状態は不明ですが、起停用 POST は利用できます（任意で DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL）'
       );
     }
 
@@ -421,6 +468,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       sparkConfigured,
       experimentLabHealthConfigured,
       experimentLabProbeUrl: experimentLabProbeUrl ?? undefined,
+      agentContainerHealthConfigured,
+      agentContainerProbeUrl: agentContainerProbeUrl ?? undefined,
+      agentRtCfg,
       sparkHost,
       notes,
     };
@@ -571,6 +621,94 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     };
   };
 
+  const runAgentContainerAuxStartStop = async (
+    action: DgxControlTargetAction,
+    reason: string | undefined,
+    eventLog: TargetRuntimeEventLogMode
+  ): Promise<{ ok: true; message: string }> => {
+    const rt = readAgentContainerRuntimeEndpoints();
+    if (!rt) {
+      throw new ApiError(
+        400,
+        'agent-container の起停 URL が Pi5 に未設定です（DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_*）',
+        { targetId: 'agent-container', action },
+        'DGX_TARGET_ACTION_NOT_SUPPORTED'
+      );
+    }
+    await executeAuxHttpRuntimeStartStop(deps, {
+      action,
+      startUrl: rt.startUrl,
+      stopUrl: rt.stopUrl,
+      timeoutMs: auxTimeoutMs,
+      controlToken: rt.token,
+      reason,
+      errorCodePrefix: 'DGX_AGENT_CONTAINER',
+    });
+    if (action === 'stop' && agentContainerHealthUrl) {
+      const firstProbe = await probeHttpGet(agentContainerHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
+      emitDgxDebugLog(
+        'H6',
+        'dgx-resource.service.ts:runAgentContainerAuxStartStop',
+        'agent-container stop post-check first probe',
+        {
+          healthUrl: agentContainerHealthUrl,
+          probeOk: firstProbe.ok,
+          statusCode: firstProbe.statusCode ?? null,
+          errorBrief: firstProbe.errorBrief ?? null,
+        }
+      );
+      if (firstProbe.ok) {
+        deps.policyStore.appendEvent('agent-container 停止確認: ヘルス応答が残っているため停止を再試行します');
+        await executeAuxHttpRuntimeStartStop(deps, {
+          action,
+          startUrl: rt.startUrl,
+          stopUrl: rt.stopUrl,
+          timeoutMs: auxTimeoutMs,
+          controlToken: rt.token,
+          reason: `${reason ?? 'dgx_resource_aux'}_retry1`,
+          errorCodePrefix: 'DGX_AGENT_CONTAINER',
+        });
+        const secondProbe = await probeHttpGet(agentContainerHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
+        emitDgxDebugLog(
+          'H6',
+          'dgx-resource.service.ts:runAgentContainerAuxStartStop',
+          'agent-container stop post-check second probe',
+          {
+            healthUrl: agentContainerHealthUrl,
+            probeOk: secondProbe.ok,
+            statusCode: secondProbe.statusCode ?? null,
+            errorBrief: secondProbe.errorBrief ?? null,
+          }
+        );
+        if (secondProbe.ok) {
+          throw new ApiError(
+            502,
+            '補助ランタイム停止後もヘルス応答が残っています',
+            {
+              targetId: 'agent-container',
+              healthUrl: agentContainerHealthUrl,
+              firstStatusCode: firstProbe.statusCode ?? null,
+              secondStatusCode: secondProbe.statusCode ?? null,
+            },
+            'DGX_AGENT_CONTAINER_STOP_NOT_EFFECTIVE'
+          );
+        }
+      }
+    }
+    if (eventLog === 'default') {
+      deps.policyStore.appendEvent(
+        action === 'start' ? 'agent-container 起動を要求しました' : 'agent-container 停止を要求しました'
+      );
+    }
+    return {
+      ok: true,
+      message:
+        action === 'start'
+          ? 'agent-container 起動リクエストを送信しました'
+          : 'agent-container 停止リクエストを送信しました',
+    };
+  };
+
   const runTargetRuntimeAction = async (
     targetId: DgxControlTargetId,
     action: DgxControlTargetAction,
@@ -584,6 +722,8 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         return runComfyAuxStartStop(action, reason, eventLog);
       case 'experiment-lab':
         return runExperimentLabAuxStartStop(action, reason, eventLog);
+      case 'agent-container':
+        return runAgentContainerAuxStartStop(action, reason, eventLog);
       default:
         throw new ApiError(
           400,
@@ -613,6 +753,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       capability: {
         comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
         experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
+        agentContainerRuntimeConfigured: agentContainerRuntimeControlConfigured(),
         gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
       },
       runTargetRuntimeAction,
@@ -631,6 +772,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       scenarioId,
       comfyRuntimeConfigured: pb.bundle.comfyRuntimeControlConfigured,
       experimentLabRuntimeConfigured: pb.bundle.experimentLabRuntimeControlConfigured,
+      agentContainerRuntimeConfigured: pb.bundle.agentContainerRuntimeControlConfigured,
       gatewayRuntimeConfigured: pb.bundle.runtimeControlConfigured,
       currentPolicyMode: pb.bundle.policyMode,
       inferenceLooksDegraded: hints.inferenceLooksDegraded,
@@ -671,6 +813,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       capability: {
         comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
         experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
+        agentContainerRuntimeConfigured: agentContainerRuntimeControlConfigured(),
         gatewayRuntimeConfigured: gatewayRuntimeControlConfiguredFlag(),
       },
       runTargetRuntimeAction,
@@ -792,6 +935,8 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           comfyRuntimeControlConfigured: pb.comfyRtCfg,
           experimentLabHealthConfigured: pb.experimentLabHealthConfigured,
           experimentLabRuntimeControlConfigured: pb.expLabRtCfg,
+          agentContainerHealthConfigured: pb.agentContainerHealthConfigured,
+          agentContainerRuntimeControlConfigured: pb.agentRtCfg,
         },
         targets,
         sparkHost: pb.sparkHost,

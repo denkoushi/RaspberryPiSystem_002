@@ -284,7 +284,27 @@ const envSchema = z.object({
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().url().optional()
   ),
-  /** 補助ランタイム（Comfy・実験）POST /start|/stop に使うタイムアウト */
+  /**
+   * Agent 用コンテナ（Control Target `agent-container`）の起停と任意ヘルス。
+   * 未設定時は API は読取のみ・ランタイムキューも agent 専用経路は無効（既存契約を維持）。
+   */
+  DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().optional()
+  ),
+  DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().optional()
+  ),
+  /** 補助ランタイム（Comfy・実験・agent-container）POST /start|/stop に使うタイムアウト */
   DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(90_000),
 
   /**

@@ -17,7 +17,7 @@ DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`*
 - `runtime_stop_policy.py`
   - blue 向け `/stop` の挙動（`on_demand` / `keep_warm` / `always_on`）を解決。環境変数: **`BLUE_LLM_RUNTIME_STOP_MODE`（推奨）**、**`BLUE_LLM_RUNTIME_KEEP_WARM`（非推奨・互換）** — 前者が優先
 - `gateway-server.py`
-  - `/healthz` / `/start` / `/stop` / `/v1/*` / `/embed` を localhost 上で束ねる軽量 gateway
+  - `/healthz` / `/start` / `/stop` / `/v1/*` / `/embed` を localhost 上で束ねる軽量 gateway（補助経路: `/private-comfyui/*`・`/experiment-lab/*`・`/agent-container/*` の start/stop/health）
 - `embedding-server.py`
   - `jpegBase64 -> embedding[]` を返す最小 image embedding server
 - `control-server.mjs`

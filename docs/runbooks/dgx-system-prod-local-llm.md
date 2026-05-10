@@ -35,9 +35,9 @@ update-frequency: high
 
 **サーバ API（管理者・マネージャー）**:
 
-- `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。**運用者向け**に **`overview.operator`**（業務 VLM / 私用 Comfy / 実験ラボの 3 ワークロード要約・主要ガイド操作・注意プレビュー）を返す（表示の正本は引き続き `targets[]`。UI はコンソールを優先し、技術 ID は詳細欄へ）。
+- `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。**運用者向け**に **`overview.operator`**（業務 VLM / 私用 Comfy / 実験ラボ / **Agent コンテナ** の要約・主要ガイド操作・注意プレビュー）を返す（表示の正本は引き続き `targets[]`。UI はコンソールを優先し、技術 ID は詳細欄へ）。
 - `GET /api/system/dgx-resource/events?limit=…` — UI 操作の直近履歴（プロセス内リングバッファ）
-- `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が書き込みの正規経路。実行可否は **`GET …/overview` の `targets[].capabilities`** に従う（`system-prod-gateway` に加え、Pi5 で補助 URL を両方設定すると **`private-comfyui`** と **`experiment-lab`** が起停可能）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（任意 **`applyWorkloadChanges`**）も継続。
+- `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が書き込みの正規経路。実行可否は **`GET …/overview` の `targets[].capabilities`** に従う（`system-prod-gateway` に加え、Pi5 で補助 URL を両方設定すると **`private-comfyui`**・**`experiment-lab`**・**`agent-container`** が起停可能）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（任意 **`applyWorkloadChanges`**）も継続。
 
 **Control Targets（`overview.targets` の例）**:
 
@@ -48,6 +48,7 @@ update-frequency: high
 | `system-prod-embedding` | http_probe | 読取のみ |
 | `private-comfyui` | http_probe | 既定は読取のみ。**`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `STOP_URL` が両方**なら `start`/`stop`（POST。**DGX 側 hook** が Pi5/Tailscale から到達可能であること） |
 | `experiment-lab` | http_probe | **`DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_*` が両方**なら `start`/`stop`。状態は任意の **`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL`**（GET）で監視可 |
+| `agent-container` | http_probe | **`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_*` が両方**なら `start`/`stop`（DGX gateway の **`/agent-container/start|stop`** と対応）。状態は任意の **`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`**（GET）。ランタイム確保は **`agent_container_task`** 用途（オンデマンド時・設定済みのとき）で **`/start`→簡易 GET ready** |
 | `spark-host` | http_probe | 読取のみ |
 | `metrics-kpi` | metrics_source | 読取のみ（KPI JSON） |
 
@@ -59,11 +60,11 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - `private_ok`（**私用OK**）— ComfyUI 等の競合を許容。
 - `experiment_first`（**実験優先**）— lab/実験コンテナ検証寄り。**業務 Inference との競合は人手で確認**してください。
 
-**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / Comfy に対して **停止 POST を順に試行**。**実験優先へ切替える前に**（設定済みなら）**私用 Comfy の停止 POST のみ**（**`system-prod-gateway`（業務/Agent メインAI経路）は自動では停止しない**）。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
+**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / **agent-container** / Comfy に対して **停止 POST を順に試行**。**私用OKへ切替える前に**設定済みなら **experiment-lab と agent-container の停止 POST**。**実験優先へ切替える前に**（設定済みなら）**私用 Comfy の停止 POST のみ**（**`system-prod-gateway`（業務/Agent メインAI経路）は自動では停止しない**）。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
 
 **メインAI 制御の直列化（Pi5 API）**: `on_demand` 時、**推論側の `/start`・`/stop`** と **DGX リソース UI 経由の `system-prod-gateway` 起停**は、同一プロセス内の **単一キュー**で直列化される（`local-llm-runtime-command-queue.ts` → `enqueueMainLocalLlmRuntimeControl`）。待機が長い場合は `main_llm_control_queue_wait` ログで把握可能。
 
-**用途別停止（Pi5 API）**: `photo_label` / `document_summary` / `admin_console_chat` は **参照カウント 0 でも `/stop` を抑止**（メインAI warm 維持）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行型定義では 3 用途のみ）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。
+**用途別停止（Pi5 API）**: `photo_label` / `document_summary` / `admin_console_chat` / **`agent_container_task`** は **参照カウント 0 でも `/stop` を抑止**（メインAI・Agent コンテナの warm 維持）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行型定義では主にこの 4 用途）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。Agent 経路のラッパーは `withAgentContainerTaskOnDemandRuntime`（`local-llm-on-demand-runtime.ts`）。
 
 **本番反映（2026-05-10・メインAI 単一キュー・調停から gateway 自動停止除外・Pi5 API のみ）**: ブランチ **`feature/dgx-single-queue-stop-policy`**（**`23bce3bf`**·**`4d658897`**）を **`raspberrypi5` のみ**へ反映（**`--limit raspberrypi5`・1 台**）。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260510-114418-29512`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 559s**。**実機** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**。Pi4/Pi3 は play **no hosts matched**・**Pi3 専用手順不要**）。**正本**: [deployment.md §2026-05-10](../guides/deployment.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[KB-365 §本番反映（2026-05-10）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)。**トラブルシュート**: 挙動が旧（推論と UI 起停が交叉・実験優先で gateway が止まる）→ Pi5 **`api` Docker イメージ**の ref と **Detach `Git: changed`** を確認。
 
@@ -75,6 +76,8 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - `DGX_RESOURCE_COMFYUI_HEALTH_URL` — ComfyUI 等の GET が 200 なら running とみなす
 - **`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — Comfy を Pi5 API 経由で起停するための POST。本文 JSON `{ reason }`・ヘッダ `X-Runtime-Control-Token`（トークン設定時）。
 - **`DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — 実験ラボ論理ターゲットの起停用 POST。
+- **`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — Agent コンテナ（`agent-container`）の起停用 POST（DGX 側は **`gateway-server.py`** の **`/agent-container/start`** / **`/stop`**）。
+- **`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`** — Agent コンテナ GET ヘルス（任意）。gateway 側 **`AGENT_CONTAINER_HEALTH_MODE`**（**`container`** | **`http`**）で **`docker ps`** または HTTP プロキシ。
 - **`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL`** — 実験環境 GET ヘルス（任意）。DGX **`gateway-server.py`** 側では **`experiment_lab_health_mode`**（既定 **`container`**）により **`docker ps`** でコンテナ生存を見る運用が可能（立ち上がり直後の **`v1/models` 502** で overview が沈むのを避ける）
 - **`DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS`** — 上記補助 POST のタイムアウト（既定 90000）
 - `DGX_RESOURCE_EMBEDDING_HEALTH_URL` — 相対なら admin `LOCAL_LLM` baseUrl を prefix

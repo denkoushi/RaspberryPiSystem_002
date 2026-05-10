@@ -25,6 +25,7 @@ const TARGET_LABELS: Partial<Record<string, string>> = {
   'system-prod-inference': 'Inference (/v1/models)',
   'private-comfyui': '私用 ComfyUI',
   'experiment-lab': 'experiment-lab',
+  'agent-container': 'agent-container',
 };
 
 export function buildDgxResourceMonitoringOverview(input: {
@@ -37,6 +38,7 @@ export function buildDgxResourceMonitoringOverview(input: {
   const inferenceTarget = targets.find((t) => t.id === 'system-prod-inference');
   const comfyTarget = targets.find((t) => t.id === 'private-comfyui');
   const expTarget = targets.find((t) => t.id === 'experiment-lab');
+  const agentTarget = targets.find((t) => t.id === 'agent-container');
   const gatewayTarget = targets.find((t) => t.id === 'system-prod-gateway');
 
   const parts = [
@@ -112,6 +114,18 @@ export function buildDgxResourceMonitoringOverview(input: {
     });
   }
 
+  if (
+    agentTarget?.status === 'running' &&
+    (bundle.policyMode === 'business_first' || bundle.policyMode === 'private_ok')
+  ) {
+    alerts.push({
+      level: 'info',
+      code: 'agent_container_active_outside_profile',
+      title: 'agent-container が稼働検知されていますがプロファイルが実験優先ではありません',
+      detail: '業務優先・私用OKでは GPU を空けるため停止調停の対象になり得ます。意図した運用か確認してください',
+    });
+  }
+
   const lastScenarioFailure = input.lastScenarioFailure;
   if (lastScenarioFailure != null) {
     alerts.unshift({
@@ -122,7 +136,13 @@ export function buildDgxResourceMonitoringOverview(input: {
     });
   }
 
-  const targetHighlights = ['system-prod-gateway', 'system-prod-inference', 'private-comfyui', 'experiment-lab'].map((id) => {
+  const targetHighlights = [
+    'system-prod-gateway',
+    'system-prod-inference',
+    'private-comfyui',
+    'experiment-lab',
+    'agent-container',
+  ].map((id) => {
     const t = targets.find((x) => x.id === id);
     return {
       id,

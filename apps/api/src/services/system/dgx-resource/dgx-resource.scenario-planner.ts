@@ -28,6 +28,7 @@ export type ScenarioPlanFingerprintInputs = {
   postPolicyStarts: Array<'private-comfyui' | 'experiment-lab'>;
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
+  agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
 };
 
@@ -92,6 +93,7 @@ export function buildScenarioFingerprintPayload(input: ScenarioPlanFingerprintIn
     capabilities: {
       comfyRuntimeConfigured: input.comfyRuntimeConfigured,
       experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
+      agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
       gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
     },
   };
@@ -107,6 +109,7 @@ export function buildOrchestrationScenarioPreview(input: {
   scenarioId: DgxOrchestrationScenarioId;
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
+  agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
   currentPolicyMode: DgxPolicyMode;
   /** Inference が degraded と判定できるときのみ true（呼び出し側で算出） */
@@ -122,6 +125,7 @@ export function buildOrchestrationScenarioPreview(input: {
     applyWorkloadChanges,
     comfyRuntimeConfigured: input.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
+    agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
   });
 
@@ -175,6 +179,7 @@ export function buildOrchestrationScenarioPreview(input: {
     postPolicyStarts,
     comfyRuntimeConfigured: input.comfyRuntimeConfigured,
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
+    agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
   });
 

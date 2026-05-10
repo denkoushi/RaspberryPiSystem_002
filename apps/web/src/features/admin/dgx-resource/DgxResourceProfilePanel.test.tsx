@@ -50,6 +50,8 @@ describe('DgxResourceProfilePanel', () => {
         comfyRuntimeControlConfigured: false,
         experimentLabHealthConfigured: false,
         experimentLabRuntimeControlConfigured: false,
+        agentContainerHealthConfigured: false,
+        agentContainerRuntimeControlConfigured: false,
       },
       sparkHost: {
         configured: false,

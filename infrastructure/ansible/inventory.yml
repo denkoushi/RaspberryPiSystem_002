@@ -62,6 +62,10 @@ all:
           api_dgx_resource_experiment_lab_runtime_stop_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_stop_url | default('http://100.118.82.72:38081/experiment-lab/stop') }}"
           api_dgx_resource_experiment_lab_runtime_control_token: "{{ vault_api_dgx_resource_experiment_lab_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
           api_dgx_resource_experiment_lab_health_url: "{{ vault_api_dgx_resource_experiment_lab_health_url | default('http://100.118.82.72:38081/experiment-lab/health') }}"
+          api_dgx_resource_agent_container_runtime_start_url: "{{ vault_api_dgx_resource_agent_container_runtime_start_url | default('') }}"
+          api_dgx_resource_agent_container_runtime_stop_url: "{{ vault_api_dgx_resource_agent_container_runtime_stop_url | default('') }}"
+          api_dgx_resource_agent_container_runtime_control_token: "{{ vault_api_dgx_resource_agent_container_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
+          api_dgx_resource_agent_container_health_url: "{{ vault_api_dgx_resource_agent_container_health_url | default('') }}"
           api_dgx_resource_aux_runtime_request_timeout_ms: "{{ vault_api_dgx_resource_aux_runtime_request_timeout_ms | default('90000') }}"
           inference_providers_json: >-
             [{"id":"dgx_primary","baseUrl":"http://100.118.82.72:38081","sharedToken":"{{ vault_api_local_llm_shared_token | default('') }}","defaultModel":"system-prod-primary","timeoutMs":60000,"runtimeControl":{"mode":"on_demand","startUrl":"http://100.118.82.72:38081/start","stopUrl":"http://100.118.82.72:38081/stop","controlToken":"{{ vault_api_local_llm_runtime_control_token | default('') }}","healthBaseUrl":"http://100.118.82.72:38081"}}]

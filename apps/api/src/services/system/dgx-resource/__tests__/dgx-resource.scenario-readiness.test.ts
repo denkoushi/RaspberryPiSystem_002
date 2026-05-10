@@ -39,6 +39,9 @@ function mkBundle(over: Partial<OverviewProbeBundle>): OverviewProbeBundle {
     experimentLabHealthConfigured: false,
     experimentLabReachable: false,
     experimentLabRuntimeControlConfigured: false,
+    agentContainerHealthConfigured: false,
+    agentContainerReachable: false,
+    agentContainerRuntimeControlConfigured: false,
     ...over,
   } as OverviewProbeBundle;
 }

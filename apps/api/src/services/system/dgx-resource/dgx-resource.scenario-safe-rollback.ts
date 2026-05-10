@@ -12,6 +12,7 @@ export type ScenarioRollbackWorkloadContext = {
   rollbackPolicyMode: DgxPolicyMode;
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
+  agentContainerRuntimeConfigured: boolean;
 };
 
 /**
@@ -55,6 +56,16 @@ export async function performSafeScenarioRollback(input: {
       } catch {
         steps.push('experiment-lab 停止の試行が失敗しました（手動確認）');
         policyStore.appendEvent('復帰警告: experiment-lab stop が失敗した可能性があります');
+      }
+    }
+    if (ctx.agentContainerRuntimeConfigured && ctx.policyBefore === 'business_first') {
+      try {
+        await runTargetRuntimeAction('agent-container', 'stop', 'scenario_safe_rollback', 'none');
+        steps.push('agent-container 停止リクエスト（Ready タイムアウト後の復帰）を送信しました');
+        policyStore.appendEvent('復帰: agent-container を停止すべく POST を試行しました');
+      } catch {
+        steps.push('agent-container 停止の試行が失敗しました（手動確認）');
+        policyStore.appendEvent('復帰警告: agent-container stop が失敗した可能性があります');
       }
     }
   }

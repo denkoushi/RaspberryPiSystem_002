@@ -57,6 +57,11 @@ function stopConfirmCopy(targetId: DgxControlTargetIdApi, displayName: string): 
         title: 'experiment-lab を停止しますか？',
         description: '実験コンテナの停止試行です。検証データに注意してください。',
       };
+    case 'agent-container':
+      return {
+        title: 'agent-container を停止しますか？',
+        description: 'Agent 用コンテナの停止試行です。実行中の自動エージェント処理に注意してください。',
+      };
     default:
       return {
         title: `${displayName} を停止しますか？`,
