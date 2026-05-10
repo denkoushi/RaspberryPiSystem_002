@@ -185,4 +185,57 @@ describe('ProviderLocalLlmRuntimeController', () => {
       fetchImpl.mock.calls.filter(([u, init]) => String(u).endsWith('/stop') && init?.method === 'POST').length
     ).toBe(0);
   });
+
+  it('uses agent-container runtime control for agent_container_task', async () => {
+    const providers = createProviders();
+    const router = new InferenceRouter({
+      providers,
+      routes: {
+        document_summary: { providerId: 'dgx_text' },
+        photo_label: { providerId: 'ubuntu_vlm' },
+      },
+    });
+
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/agent-container/start') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      if (url.endsWith('/agent-container/health') && init?.method === 'GET') {
+        return new Response('{"ok":true}', { status: 200 });
+      }
+      if (url.endsWith('/agent-container/stop') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const controller = new ProviderLocalLlmRuntimeController({
+      fetchImpl,
+      globalMode: 'on_demand',
+      router,
+      providers,
+      resolveAdminProvider: () => providers[0],
+      resolveAdminModel: () => 'system-prod-primary',
+      readyTimeoutMs: 30_000,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      shouldSuppressStop: () => true,
+      agentContainerRuntimeControl: {
+        startUrl: 'http://dgx:38081/agent-container/start',
+        stopUrl: 'http://dgx:38081/agent-container/stop',
+        controlToken: 'ctrl',
+        optionalSimpleHealthProbeUrl: 'http://dgx:38081/agent-container/health',
+      },
+    });
+
+    await controller.ensureReady('agent_container_task');
+    await controller.release('agent_container_task');
+    const posts = fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(posts.some(([u]) => String(u).includes('/agent-container/start'))).toBe(true);
+    expect(posts.some(([u]) => String(u).includes('/agent-container/stop'))).toBe(false);
+    const gets = fetchImpl.mock.calls.filter(([, init]) => init?.method === 'GET');
+    expect(gets.some(([u]) => String(u).includes('/agent-container/health'))).toBe(true);
+  });
 });

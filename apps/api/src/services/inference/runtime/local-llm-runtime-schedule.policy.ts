@@ -57,13 +57,14 @@ export function isWithinLocalLlmWarmWindow(now: Date, config: LocalLlmWarmWindow
 }
 
 /**
- * 業務・Agent 相当の用途は refCount=0 でも /stop しない方針（メインAIを維持）。
+ * 業務・Agent 相当の用途は refCount=0 でも /stop しない方針（メインAI・Agent コンテナを維持）。
  * 将来追加される「私用/実験」専用用途はここに含めず、下の warm 窓または停止許可側で扱う。
  */
 export const LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES: readonly LocalLlmRuntimeUseCase[] = [
   'photo_label',
   'document_summary',
   'admin_console_chat',
+  'agent_container_task',
 ];
 
 export function isAlwaysKeepWarmLocalLlmUseCase(useCase: LocalLlmRuntimeUseCase): boolean {

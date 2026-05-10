@@ -46,6 +46,12 @@ class GatewayServerTests(unittest.TestCase):
             experiment_lab_health_url="http://127.0.0.1:38083/v1/models",
             experiment_lab_health_mode="http",
             experiment_lab_container_name="system-prod-trtllm",
+            agent_container_root="/tmp",
+            agent_container_start_cmd="./start-agent-container.sh",
+            agent_container_stop_cmd="./stop-agent-container.sh",
+            agent_container_health_url="http://127.0.0.1:5555/agent-health",
+            agent_container_health_mode="http",
+            agent_container_container_name="dgx-agent-container",
             private_comfy_cmd_timeout_sec=60,
         )
 
@@ -75,6 +81,12 @@ class GatewayServerTests(unittest.TestCase):
             experiment_lab_health_url="http://127.0.0.1:38083/v1/models",
             experiment_lab_health_mode="http",
             experiment_lab_container_name="system-prod-trtllm",
+            agent_container_root="/tmp",
+            agent_container_start_cmd="./start-agent-container.sh",
+            agent_container_stop_cmd="./stop-agent-container.sh",
+            agent_container_health_url="http://127.0.0.1:5555/agent-health",
+            agent_container_health_mode="http",
+            agent_container_container_name="dgx-agent-container",
             private_comfy_cmd_timeout_sec=60,
         )
         module.run_local_command = lambda command, cwd, timeout_sec: (0, "ok")
@@ -90,6 +102,9 @@ class GatewayServerTests(unittest.TestCase):
                 return 200, payload, "text/plain; charset=utf-8"
             if url == "http://127.0.0.1:38083/v1/models":
                 payload = json.dumps({"data": [{"id": "system-prod-primary"}]}).encode("utf-8")
+                return 200, payload, "application/json"
+            if url == "http://127.0.0.1:5555/agent-health":
+                payload = json.dumps({"ok": True}).encode("utf-8")
                 return 200, payload, "application/json"
             if url.endswith("/start"):
                 payload = json.dumps({"ok": True}).encode("utf-8")
@@ -125,6 +140,13 @@ class GatewayServerTests(unittest.TestCase):
             with urllib.request.urlopen(exp_health_req, timeout=5) as response:
                 self.assertEqual(response.status, 200)
 
+            agent_health_req = urllib.request.Request(
+                f"{base_url}/agent-container/health",
+                method="GET",
+            )
+            with urllib.request.urlopen(agent_health_req, timeout=5) as response:
+                self.assertEqual(response.status, 200)
+
             start_req = urllib.request.Request(
                 f"{base_url}/start",
                 data=b"",
@@ -155,6 +177,16 @@ class GatewayServerTests(unittest.TestCase):
                 exp_payload = json.loads(response.read().decode("utf-8"))
             self.assertTrue(exp_payload["ok"])
 
+            agent_req = urllib.request.Request(
+                f"{base_url}/agent-container/start",
+                data=b"",
+                method="POST",
+                headers={"X-Runtime-Control-Token": "runtime-token"},
+            )
+            with urllib.request.urlopen(agent_req, timeout=5) as response:
+                agent_payload = json.loads(response.read().decode("utf-8"))
+            self.assertTrue(agent_payload["ok"])
+
             forbidden_req = urllib.request.Request(
                 f"{base_url}/v1/models",
                 method="GET",
@@ -171,6 +203,7 @@ class GatewayServerTests(unittest.TestCase):
         urls = [c[1] for c in calls]
         self.assertIn("http://blue:38083/v1/models", urls)
         self.assertIn("http://127.0.0.1:8188", urls)
+        self.assertIn("http://127.0.0.1:5555/agent-health", urls)
         start_call = next(c for c in calls if c[1] == "http://control:39090/start")
         self.assertEqual(start_call[3]["X-Runtime-Control-Token"], "runtime-token")
 

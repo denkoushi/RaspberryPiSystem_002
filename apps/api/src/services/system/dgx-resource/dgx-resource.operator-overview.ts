@@ -4,8 +4,8 @@ import type { DgxResourceMonitoringSummary } from './dgx-resource.monitoring-ove
 import { policyLabelJa } from './dgx-resource.policy-profile.js';
 import type { DgxOrchestrationScenarioId } from './dgx-resource.scenario-planner.js';
 
-/** 運用者向けワークロード（3系統）。Control Target の詳細は targetIds で辿る。 */
-export type DgxOperatorWorkloadId = 'business_vlm' | 'private_comfy' | 'experiment_lab';
+/** 運用者向けワークロード（業務・私用・実験・Agent）。Control Target の詳細は targetIds で辿る。 */
+export type DgxOperatorWorkloadId = 'business_vlm' | 'private_comfy' | 'experiment_lab' | 'agent_container';
 
 export type DgxOperatorRiskLevel = 'low' | 'medium' | 'high';
 
@@ -148,6 +148,23 @@ function buildExperimentLabWorkload(targets: DgxControlTargetSnapshot[]): DgxOpe
   };
 }
 
+function buildAgentContainerWorkload(targets: DgxControlTargetSnapshot[]): DgxOperatorWorkload {
+  const t = targets.find((x) => x.id === 'agent-container');
+  const st = t?.status ?? 'unknown';
+  const risk: DgxOperatorRiskLevel = st === 'running' ? 'medium' : 'low';
+  return {
+    id: 'agent_container',
+    labelJa: 'Agent コンテナ（agent-container）',
+    purposeJa: 'Cursor/Agent 等の補助コンテナです。業務推論と GPU を共有し得ます。',
+    risk,
+    status: st,
+    statusHeadlineJa: `agent-container: ${statusJa(st)}`,
+    detailHintJa: 'keep-warm 方針でオンデマンド時も release 後に自動停止しません（Runbook 参照）',
+    relatedTargetIds: ['agent-container'],
+    runtimeControlConfigured: Boolean(t?.capabilities.includes('start') && t?.capabilities.includes('stop')),
+  };
+}
+
 function buildAlertPreview(monitoring: DgxResourceMonitoringSummary, limit: number): string[] {
   return monitoring.alerts.slice(0, limit).map((a) => `${a.title}${a.level === 'danger' ? '（要対応）' : ''}`);
 }
@@ -168,6 +185,7 @@ export function buildDgxResourceOperatorConsole(input: {
     buildBusinessWorkload(targets),
     buildPrivateComfyWorkload(targets),
     buildExperimentLabWorkload(targets),
+    buildAgentContainerWorkload(targets),
   ];
 
   const currentPolicyLabelJa = policyLabelJa(policyMode);

@@ -19,6 +19,13 @@ DGX system-prod 用のローカル gateway。
   BLUE_LLM_BASE_URL           既定: http://127.0.0.1:38083
   RUNTIME_CONTROL_BASE_URL    既定: http://127.0.0.1:39090
   EMBEDDING_BASE_URL          既定: http://127.0.0.1:38100
+  AgentContainer（業務 system-prod と分離したエージェント用コンテナ制御）:
+  AGENT_CONTAINER_ROOT             既定: /srv/dgx/agent-container/bin
+  AGENT_CONTAINER_START_CMD       既定: ./start-agent-container.sh
+  AGENT_CONTAINER_STOP_CMD        既定: ./stop-agent-container.sh
+  AGENT_CONTAINER_HEALTH_URL      http モード時の GET 先（任意）
+  AGENT_CONTAINER_HEALTH_MODE     既定: container（container | http）
+  AGENT_CONTAINER_CONTAINER_NAME  既定: dgx-agent-container
 """
 
 from __future__ import annotations
@@ -58,6 +65,12 @@ class GatewayConfig:
     experiment_lab_health_url: str
     experiment_lab_health_mode: str
     experiment_lab_container_name: str
+    agent_container_root: str
+    agent_container_start_cmd: str
+    agent_container_stop_cmd: str
+    agent_container_health_url: str
+    agent_container_health_mode: str
+    agent_container_container_name: str
     private_comfy_cmd_timeout_sec: int
 
 
@@ -97,6 +110,18 @@ def load_config_from_env() -> GatewayConfig:
         ).strip(),
         experiment_lab_health_mode=(os.environ.get("EXPERIMENT_LAB_HEALTH_MODE") or "container").strip().lower(),
         experiment_lab_container_name=(os.environ.get("EXPERIMENT_LAB_CONTAINER_NAME") or "system-prod-trtllm").strip(),
+        agent_container_root=(os.environ.get("AGENT_CONTAINER_ROOT") or "/srv/dgx/agent-container/bin").strip(),
+        agent_container_start_cmd=(
+            os.environ.get("AGENT_CONTAINER_START_CMD") or "./start-agent-container.sh"
+        ).strip(),
+        agent_container_stop_cmd=(
+            os.environ.get("AGENT_CONTAINER_STOP_CMD") or "./stop-agent-container.sh"
+        ).strip(),
+        agent_container_health_url=(os.environ.get("AGENT_CONTAINER_HEALTH_URL") or "").strip(),
+        agent_container_health_mode=(os.environ.get("AGENT_CONTAINER_HEALTH_MODE") or "container").strip().lower(),
+        agent_container_container_name=(
+            os.environ.get("AGENT_CONTAINER_CONTAINER_NAME") or "dgx-agent-container"
+        ).strip(),
         private_comfy_cmd_timeout_sec=int((os.environ.get("PRIVATE_COMFY_CMD_TIMEOUT_SEC") or "240").strip()),
     )
 
@@ -411,6 +436,23 @@ def make_handler(
                 status, body, content_type = proxy_impl("GET", config.experiment_lab_health_url, b"", {})
                 self._send(status, body, content_type)
                 return
+            if self.path == "/agent-container/health":
+                if config.agent_container_health_mode == "container":
+                    if is_container_running(config.agent_container_container_name):
+                        self._send(200, b'{"ok":true,"mode":"container"}', "application/json; charset=utf-8")
+                    else:
+                        self._send(503, b'{"ok":false,"mode":"container"}', "application/json; charset=utf-8")
+                    return
+                if not config.agent_container_health_url:
+                    self._send(
+                        503,
+                        b'{"ok":false,"reason":"agent_container_health_url_unconfigured"}',
+                        "application/json; charset=utf-8",
+                    )
+                    return
+                status, body, content_type = proxy_impl("GET", config.agent_container_health_url, b"", {})
+                self._send(status, body, content_type)
+                return
             if self.path == "/embed":
                 if not self._embedding_auth_ok():
                     self._send_text(403, "forbidden")
@@ -611,6 +653,83 @@ def make_handler(
                         },
                     )
                     # endregion
+                    payload = json.dumps(
+                        {"ok": False, "path": self.path, "message": str(exc)}
+                    ).encode("utf-8")
+                    self._send(500, payload, "application/json; charset=utf-8")
+                    return
+            if self.path in ("/agent-container/start", "/agent-container/stop"):
+                if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
+                    self._send_text(403, "forbidden")
+                    return
+                command = (
+                    config.agent_container_start_cmd
+                    if self.path.endswith("/start")
+                    else config.agent_container_stop_cmd
+                )
+                try:
+                    rc, output = run_local_command(
+                        command,
+                        config.agent_container_root,
+                        config.private_comfy_cmd_timeout_sec,
+                    )
+                    if rc == 0:
+                        emit_agent_debug_log(
+                            "H9",
+                            "gateway-server.py:agent-container-runtime",
+                            "agent-container runtime command succeeded",
+                            {
+                                "path": self.path,
+                                "exitCode": rc,
+                                "outputSample": output[:200],
+                            },
+                        )
+                        payload = json.dumps({"ok": True, "path": self.path}).encode("utf-8")
+                        self._send(200, payload, "application/json; charset=utf-8")
+                        return
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:agent-container-runtime",
+                        "agent-container runtime command failed",
+                        {
+                            "path": self.path,
+                            "exitCode": rc,
+                            "outputSample": output[:300],
+                        },
+                    )
+                    payload = json.dumps(
+                        {
+                            "ok": False,
+                            "path": self.path,
+                            "exitCode": rc,
+                            "output": output[:400],
+                        }
+                    ).encode("utf-8")
+                    self._send(502, payload, "application/json; charset=utf-8")
+                    return
+                except subprocess.TimeoutExpired:
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:agent-container-runtime",
+                        "agent-container runtime command timeout",
+                        {
+                            "path": self.path,
+                            "timeoutSec": config.private_comfy_cmd_timeout_sec,
+                        },
+                    )
+                    payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
+                    self._send(504, payload, "application/json; charset=utf-8")
+                    return
+                except Exception as exc:
+                    emit_agent_debug_log(
+                        "H9",
+                        "gateway-server.py:agent-container-runtime",
+                        "agent-container runtime command exception",
+                        {
+                            "path": self.path,
+                            "error": str(exc),
+                        },
+                    )
                     payload = json.dumps(
                         {"ok": False, "path": self.path, "message": str(exc)}
                     ).encode("utf-8")

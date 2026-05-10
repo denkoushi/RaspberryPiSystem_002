@@ -15,6 +15,7 @@ export type WorkloadPlannerInput = {
   applyWorkloadChanges: boolean;
   comfyRuntimeConfigured: boolean;
   experimentLabRuntimeConfigured: boolean;
+  agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
 };
 
@@ -33,6 +34,13 @@ export function planWorkloadAdjustmentsBeforePolicyChange(input: WorkloadPlanner
           targetId: 'experiment-lab',
           action: 'stop',
           eventMessageJa: '業務優先: experiment-lab 停止リクエストを送信しました（設定 URL）',
+        });
+      }
+      if (input.agentContainerRuntimeConfigured) {
+        steps.push({
+          targetId: 'agent-container',
+          action: 'stop',
+          eventMessageJa: '業務優先: agent-container 停止リクエストを送信しました（設定 URL）',
         });
       }
       if (input.comfyRuntimeConfigured) {
@@ -62,6 +70,13 @@ export function planWorkloadAdjustmentsBeforePolicyChange(input: WorkloadPlanner
           targetId: 'experiment-lab',
           action: 'stop',
           eventMessageJa: '私用OK: experiment-lab 停止リクエストを送信しました（GPU 解放）',
+        });
+      }
+      if (input.agentContainerRuntimeConfigured) {
+        steps.push({
+          targetId: 'agent-container',
+          action: 'stop',
+          eventMessageJa: '私用OK: agent-container 停止リクエストを送信しました（GPU 解放）',
         });
       }
       return steps;

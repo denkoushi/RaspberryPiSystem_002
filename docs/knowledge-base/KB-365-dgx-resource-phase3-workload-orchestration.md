@@ -15,8 +15,8 @@ category: knowledge-base
 ## Pi5 メインAI: 単一キュー・用途別停止・実験優先時の gateway 除外（2026-05）
 
 - **単一キュー**: メインAI相当の制御 POST（`HttpOnDemandLocalLlmRuntimeController` の `/start`・`/stop` と `executeGatewayRuntimeStartStop`）を **`enqueueMainLocalLlmRuntimeControl`** で直列化（`apps/api/src/services/inference/runtime/local-llm-runtime-command-queue.ts`）。推論経路と DGX 管理経路の競合を抑える。
-- **停止抑止**: `shouldSuppressLocalLlmRuntimeStop` — `photo_label` / `document_summary` / `admin_console_chat` は **常に** release 時の `/stop` を抑止。それ以外の用途（型を拡張した将来）では **warm 窓**のみ抑止。
-- **ポリシー調停**: `experiment_first` + `applyWorkloadChanges` では **private-comfyui のみ**自動停止。**`system-prod-gateway` は自動停止対象から除外**（業務/Agent 維持）。`planWorkloadAdjustmentsBeforePolicyChange`（`dgx-resource.policy-arbitrator.ts`）。
+- **停止抑止**: `shouldSuppressLocalLlmRuntimeStop` — `photo_label` / `document_summary` / `admin_console_chat` / **`agent_container_task`** は **常に** release 時の `/stop` を抑止。それ以外の用途（型を拡張した将来）では **warm 窓**のみ抑止。
+- **ポリシー調停**: `experiment_first` + `applyWorkloadChanges` では **private-comfyui のみ**自動停止。**`business_first` / `private_ok`** で **`experiment-lab` と `agent-container`** を順に停止試行（いずれも Pi5 に POST URL が揃っている場合）。**`system-prod-gateway` は自動停止対象から除外**（業務/Agent 維持）。`planWorkloadAdjustmentsBeforePolicyChange`（`dgx-resource.policy-arbitrator.ts`）。
 
 ### 本番反映（2026-05-10・Pi5 メインAI 単一キュー確定） {#production-2026-05-10-dgx-main-llm-single-queue}
 
@@ -28,7 +28,7 @@ category: knowledge-base
 - **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**・Tailscale **`100.106.158.2`**）。**`deploy-status`（Pi4×4）** PASS / **`auto-tuning scheduler` ログ** 件数=1。
 - **仕様確定（本番で有効化された挙動）**:
   - **単一キュー**: `enqueueMainLocalLlmRuntimeControl` が **推論 on_demand の `HttpOnDemandLocalLlmRuntimeController` `/start`・`/stop`** と **`dgx-resource.gateway-runtime.executor` の `executeGatewayRuntimeStartStop`**（`system-prod-gateway`）を **同居プロセス内で直列実行**（競合する二重 POST の抑止）。
-  - **用途別 `/stop` 抑止**: `shouldSuppressLocalLlmRuntimeStop` — **`photo_label`** / **`document_summary`** / **`admin_console_chat`** は **参照カウント 0 でも release で `/stop` しない**。
+  - **用途別 `/stop` 抑止**: `shouldSuppressLocalLlmRuntimeStop` — **`photo_label`** / **`document_summary`** / **`admin_console_chat`** / **`agent_container_task`** は **参照カウント 0 でも release で `/stop` しない**。
   - **実験優先の事前停止**: **`experiment_first` + `applyWorkloadChanges: true`** で **`private-comfyui` のみ**自動 stop 試行。**`system-prod-gateway` の自動 stop は撤去**済み（実装: `planWorkloadAdjustmentsBeforePolicyChange`）。
 - **ローカル開発の知見**: 先行実装で **`src/routes/system/__tests__/local-llm.test.ts`** が旧前提（admin が常に `/stop` する）のまま残り **4 件 FAIL** → **`4d658897`** で期待値を **抑止後の契約**へ合わせた。
 - **トラブルシュート**:
@@ -36,6 +36,29 @@ category: knowledge-base
   - **実験優先へ切替えたのに業務 gateway が止まる** → arbitrator 以前のイメージまたは **手動 `EXECUTE_TARGET_ACTION`** の痕跡。**Detach** と **コンテナ再作成**を確認。
   - **実機 Phase12 のみ `deploy-status` FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・他ホスト連続デプロイ後の **再実行**。
 - **参照**: [deployment.md §DGX 単一キュー 2026-05-10](../guides/deployment.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
+
+### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
+
+- **ブランチ（先行反映時）**: **`feat/agent-container-control-target`**（実装 tip **`9fd37c0a`**。**`main` マージ後は `origin/main` HEAD** をデプロイ引数の正本とする）。
+- **ホスト（順序固定・Ansible スコープ外は SSH のみ）**:
+  - **① `raspberrypi5` のみ** — `./scripts/update-all-clients.sh … --limit raspberrypi5 --detach --follow`
+  - **② DGX（Tailscale 例 `100.118.82.72`・ユーザー `ubudgxkoushi`）** — **`scp`** で **`gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置し **ゲートウェイ再起動**（詳細は [deployment.md §AgentContainer](../guides/deployment.md#dgx-agent-container-control-target-2026-05-10)）。
+  - **Pi4／Pi3** — 本変更の **`update-all-clients.sh`** では **`skipping: no hosts matched`**。**Pi3** は **個体への playbook 適用なし**（Phase12 で **services 疎通のみ**）。
+- **Detach Run ID（Pi5）**: **`20260510-125420-15123`**（**`PLAY RECAP` `ok=139` `changed=8` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 669s**·**`Git: changed`**·**Docker / api・web 再作成あり**·**`prisma migrate deploy` / `status` ok**）。
+- **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**・Pi5 **`100.106.158.2`**）。
+- **仕様（本番で有効になる追加契約）**:
+  - **Control Target `agent-container`**: `overview.targets[]` に **`experiment-lab` の直後**で登場。**`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL` / `_STOP_URL` が両方設定**されているときのみ **`start`/`stop`** capability。**`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`** は任意（未設定時は状態 **`unknown`** になり得るが POST 起停は可）。
+  - **単一キュー**: useCase **`agent_container_task`** を **`ProviderLocalLlmRuntimeController`** 経由で **`HttpOnDemandLocalLlmRuntimeController`** に分離。**ready** は **`/v1/models` ではなく**（設定時）**単純 GET ヘルス**（`optionalSimpleHealthProbeUrl`）で待機。
+  - **keep-warm**: **`LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES`** に **`agent_container_task`** を追加済み（**release でも upstream `/stop` 抑止**）。
+  - **調停**: **`business_first` / `private_ok`** で **`agent-container` の stop** を **`experiment-lab` の後**に計画（POST URL が Pi5 に揃っている場合）。
+  - **DGX gateway**: **`GET /agent-container/health`**（既定 **`AGENT_CONTAINER_HEALTH_MODE=container`** で **`docker ps`** 相当）· **`POST /agent-container/start|stop`**（**`X-Runtime-Control-Token`**）。
+- **知見（DGX・コード反映）**: **`start-gateway-server.sh`** は **既存 PID が生きていると即退出**し **`scp` だけでは新コードが載らない**。**PID を終了し PID ファイルを消してから**スクリプトを再実行する必要がある（**広い `pkill -f` は避ける** · Runbook Phase11 と同趣旨）。
+- **知見（ヘルスチェックレース）**: 再起動直後 **`curl 127.0.0.1:38081/healthz`** が一度 **`Connection refused`** になり得る。**短い待機またはループ再試行**で **200** を確認する。
+- **トラブルシュート**:
+  - **UI に `agent-container` が無い／グリッドだけ古い** → Pi5 **`api`/`web` の ref** と **ブラウザ強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
+  - **補助 POST が 502／タイムアウト** → DGX 側 **`./start-agent-container.sh`** / **`./stop-agent-container.sh`**（既定）の **実行ユーザー権限・timeout**（**`PRIVATE_COMFY_CMD_TIMEOUT_SEC`** 系と共用）を確認。
+  - **Pi5 側で Agent 用ランタイムが no-op** → **`get-local-llm-runtime-controller.ts`** の解決条件（**start/stop・token・health URL 派生**が **揃わないと controller を組み立てない**）を確認。
+- **参照**: [deployment.md §AgentContainer 2026-05-10](../guides/deployment.md#dgx-agent-container-control-target-2026-05-10)·[dgx-system-prod-local-llm.md §AgentContainer 本番反映](../runbooks/dgx-system-prod-local-llm.md)·[`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py)。
 
 ## Preconditions
 
@@ -47,6 +70,8 @@ category: knowledge-base
 
 - `DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `_STOP_URL`（/ 任意 `_CONTROL_TOKEN`）
 - `DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL` / `_STOP_URL`（/ 任意 `_CONTROL_TOKEN`）
+- **`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL` / `_STOP_URL`（/ 任意 `_CONTROL_TOKEN`）** — Control Target **`agent-container`**（DGX **`gateway-server.py`** の **`/agent-container/start|stop|health`** と対になる Pi5 側 URL）
+- （任意）`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL` — GET で状態表示・停止後確認に利用（未設定でも POST 起停のみは可）
 - （任意）`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL` — GET で状態表示用
 - `DGX_RESOURCE_AUX_RUNTIME_REQUEST_TIMEOUT_MS` — 補助 POST タイムアウト（既定 90000）
 

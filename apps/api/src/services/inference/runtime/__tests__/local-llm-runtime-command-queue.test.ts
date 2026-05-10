@@ -4,6 +4,7 @@ import {
   enqueueMainLocalLlmRuntimeControl,
   MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES,
   resetMainLocalLlmRuntimeControlQueueForTests,
+  resolveMainLocalLlmRuntimeControlPriorityForUseCase,
 } from '../local-llm-runtime-command-queue.js';
 
 describe('enqueueMainLocalLlmRuntimeControl', () => {
@@ -81,5 +82,11 @@ describe('enqueueMainLocalLlmRuntimeControl', () => {
     await Promise.all([blocking, gateway, agent, business]);
 
     expect(order).toEqual(['blocking-start', 'blocking-end', 'business', 'agent', 'gateway']);
+  });
+
+  it('maps agent_container_task to agent priority tier', () => {
+    expect(resolveMainLocalLlmRuntimeControlPriorityForUseCase('agent_container_task')).toBe(
+      MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.agent
+    );
   });
 });

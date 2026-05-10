@@ -90,6 +90,8 @@ function makeOverview(): DgxResourceOverview {
       comfyRuntimeControlConfigured: true,
       experimentLabHealthConfigured: true,
       experimentLabRuntimeControlConfigured: true,
+      agentContainerHealthConfigured: false,
+      agentContainerRuntimeControlConfigured: false,
     },
     targets: [
       {

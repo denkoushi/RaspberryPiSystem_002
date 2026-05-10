@@ -24,6 +24,11 @@ export type HttpOnDemandLocalLlmRuntimeControllerDeps = {
   stopRequestTimeoutMs: number;
   healthPollIntervalMs: number;
   /**
+   * 設定時は ready 待ちをこの URL への単純 GET（認証ヘッダなし）で行う。
+   * Agent コンテナ等、/v1/models と異なるヘルス経路向け。
+   */
+  optionalSimpleHealthProbeUrl?: string;
+  /**
    * true のとき、refCount=0 での release で /stop を送らない（業務/Agent warm 維持・warm 窓など）。
    * 未指定・false は従来どおり停止試行。
    */
@@ -132,6 +137,35 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
 
   private async pollHealthUntilReady(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<void> {
     const deadline = batchStarted + this.deps.readyTimeoutMs;
+    const simpleProbeUrl = this.deps.optionalSimpleHealthProbeUrl?.trim();
+    if (simpleProbeUrl) {
+      while (performance.now() < deadline) {
+        try {
+          const perReqMs = Math.min(10_000, Math.max(1000, this.deps.readyTimeoutMs));
+          const signal = AbortSignal.timeout(perReqMs);
+          const r = await this.deps.fetchImpl(simpleProbeUrl, { method: 'GET', signal });
+          if (r.ok) {
+            await r.text().catch(() => '');
+            return;
+          }
+          await r.text().catch(() => '');
+        } catch {
+          // retry
+        }
+        await new Promise((r) => setTimeout(r, this.deps.healthPollIntervalMs));
+      }
+      log.error(
+        {
+          useCase,
+          action: 'runtime_ready_timeout',
+          latencyMs: Math.round(performance.now() - batchStarted),
+          probeKind: 'simple_http',
+        },
+        '[LocalLlmRuntimeControl] health wait timeout'
+      );
+      throw new Error('LocalLlmRuntimeControl: auxiliary runtime did not become healthy in time');
+    }
+
     const readyProbeModel = this.deps.readyProbeModels?.[useCase]?.trim() || '';
     const readyProbeUrl =
       this.deps.llmToken && readyProbeModel

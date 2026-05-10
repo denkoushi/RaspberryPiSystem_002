@@ -20,6 +20,13 @@ type ProviderLocalLlmRuntimeControllerDeps = {
   stopRequestTimeoutMs: number;
   healthPollIntervalMs: number;
   legacyAdminRuntimeControl?: InferenceProviderRuntimeControlDefinition;
+  /** Agent コンテナ（gateway の agent-container/start|stop）。未設定時は agent_container_task は no-op */
+  agentContainerRuntimeControl?: {
+    startUrl: string;
+    stopUrl: string;
+    controlToken: string;
+    optionalSimpleHealthProbeUrl: string;
+  };
   /** 全 HttpOnDemand インスタンスで共有。true のとき release で /stop を抑止 */
   shouldSuppressStop?: (useCase: LocalLlmRuntimeUseCase) => boolean;
 };
@@ -43,6 +50,8 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
 
   private readonly controllersByProviderId = new Map<string, LocalLlmRuntimeControllerPort>();
 
+  private agentContainerRuntimeResolved: LocalLlmRuntimeControllerPort | undefined;
+
   constructor(private readonly deps: ProviderLocalLlmRuntimeControllerDeps) {}
 
   getMode(): 'always_on' | 'on_demand' {
@@ -58,6 +67,9 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
   }
 
   private resolveController(useCase: LocalLlmRuntimeUseCase): LocalLlmRuntimeControllerPort {
+    if (useCase === 'agent_container_task') {
+      return this.resolveAgentContainerRuntimeController();
+    }
     const provider = this.resolveProvider(useCase);
     if (!provider) {
       return this.noopController;
@@ -72,6 +84,9 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
   }
 
   private resolveProvider(useCase: LocalLlmRuntimeUseCase): InferenceProviderDefinition | undefined {
+    if (useCase === 'agent_container_task') {
+      return undefined;
+    }
     if (useCase === 'admin_console_chat') {
       return this.deps.resolveAdminProvider();
     }
@@ -149,5 +164,35 @@ export class ProviderLocalLlmRuntimeController implements LocalLlmRuntimeControl
       }
     }
     return models;
+  }
+
+  private resolveAgentContainerRuntimeController(): LocalLlmRuntimeControllerPort {
+    if (this.agentContainerRuntimeResolved !== undefined) {
+      return this.agentContainerRuntimeResolved;
+    }
+    const cfg = this.deps.agentContainerRuntimeControl;
+    if (!cfg) {
+      this.agentContainerRuntimeResolved = this.noopController;
+      return this.agentContainerRuntimeResolved;
+    }
+    if (this.deps.globalMode !== 'on_demand') {
+      this.agentContainerRuntimeResolved = this.noopController;
+      return this.agentContainerRuntimeResolved;
+    }
+    this.agentContainerRuntimeResolved = new HttpOnDemandLocalLlmRuntimeController({
+      fetchImpl: this.deps.fetchImpl,
+      startUrl: cfg.startUrl,
+      stopUrl: cfg.stopUrl,
+      controlToken: cfg.controlToken,
+      healthCheckBaseUrl: cfg.optionalSimpleHealthProbeUrl,
+      llmToken: '',
+      optionalSimpleHealthProbeUrl: cfg.optionalSimpleHealthProbeUrl,
+      readyTimeoutMs: this.deps.readyTimeoutMs,
+      startRequestTimeoutMs: this.deps.startRequestTimeoutMs,
+      stopRequestTimeoutMs: this.deps.stopRequestTimeoutMs,
+      healthPollIntervalMs: this.deps.healthPollIntervalMs,
+      shouldSuppressStop: this.deps.shouldSuppressStop,
+    });
+    return this.agentContainerRuntimeResolved;
   }
 }

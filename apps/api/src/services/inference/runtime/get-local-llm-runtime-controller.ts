@@ -15,6 +15,43 @@ const log = logger.child({ component: 'localLlmRuntimeControl' });
 
 let singleton: LocalLlmRuntimeControllerPort | null = null;
 
+function deriveAgentContainerHealthProbeUrl(startUrl: string): string {
+  try {
+    const u = new URL(startUrl);
+    if (u.pathname.endsWith('/start')) {
+      u.pathname = `${u.pathname.slice(0, -'/start'.length)}/health`;
+      return u.toString();
+    }
+    const normalizedPath = u.pathname.endsWith('/') ? u.pathname.slice(0, -1) : u.pathname;
+    return new URL(`${normalizedPath}/health`, u.origin).toString();
+  } catch {
+    return '';
+  }
+}
+
+function resolveAgentContainerRuntimeControlFromEnv():
+  | {
+      startUrl: string;
+      stopUrl: string;
+      controlToken: string;
+      optionalSimpleHealthProbeUrl: string;
+    }
+  | undefined {
+  const startUrl = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL?.trim();
+  const stopUrl = env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL?.trim();
+  if (!startUrl || !stopUrl) return undefined;
+  const controlToken =
+    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN?.trim() ||
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN?.trim() ||
+    env.LOCAL_LLM_SHARED_TOKEN?.trim() ||
+    '';
+  const explicitHealth = env.DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL?.trim();
+  const derived = deriveAgentContainerHealthProbeUrl(startUrl);
+  const optionalSimpleHealthProbeUrl = (explicitHealth || derived).trim();
+  if (!controlToken || !optionalSimpleHealthProbeUrl) return undefined;
+  return { startUrl, stopUrl, controlToken, optionalSimpleHealthProbeUrl };
+}
+
 function resolveAdminConsoleChatModel(): string {
   const runtimeConfig = getInferenceRuntime().getAdminLocalLlmRuntimeConfig();
   return runtimeConfig.model?.trim() || env.LOCAL_LLM_MODEL?.trim() || '';
@@ -77,6 +114,7 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
     stopRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS,
     healthPollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
     shouldSuppressStop: buildUseCaseStopSuppress(),
+    agentContainerRuntimeControl: resolveAgentContainerRuntimeControlFromEnv(),
   });
 }
 

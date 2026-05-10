@@ -35,6 +35,10 @@ export type OverviewProbeBundle = {
   experimentLabReachable: boolean;
   experimentLabProbeUrl?: string;
   experimentLabRuntimeControlConfigured: boolean;
+  agentContainerHealthConfigured: boolean;
+  agentContainerReachable: boolean;
+  agentContainerProbeUrl?: string;
+  agentContainerRuntimeControlConfigured: boolean;
 };
 
 function comfyMetaLines(policyMode: DgxPolicyMode, comfyConfigured: boolean, comfyProbeUrl?: string): string[] {
@@ -75,6 +79,9 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
     experimentLabHealthConfigured,
     experimentLabReachable,
     experimentLabProbeUrl,
+    agentContainerHealthConfigured,
+    agentContainerReachable,
+    agentContainerProbeUrl,
   } = bundle;
 
   const gatewayCardStatus: DgxServiceStatusKind = gatewayStatus.configured
@@ -108,6 +115,11 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
   let experimentLabStatus: DgxServiceStatusKind = 'unknown';
   if (experimentLabHealthConfigured) {
     experimentLabStatus = experimentLabReachable ? 'running' : 'stopped';
+  }
+
+  let agentContainerStatus: DgxServiceStatusKind = 'unknown';
+  if (agentContainerHealthConfigured) {
+    agentContainerStatus = agentContainerReachable ? 'running' : 'stopped';
   }
 
   return [
@@ -158,6 +170,15 @@ export function buildLegacyServiceCards(bundle: OverviewProbeBundle): DgxResourc
         ...(policyMode === 'experiment_first' ? ['実験優先: 業務との GPU 共有に注意'] : []),
       ],
     },
+    {
+      id: 'agent-container',
+      name: 'agent-container',
+      status: agentContainerStatus,
+      badges: [],
+      metaLines: [
+        ...(agentContainerHealthConfigured && agentContainerProbeUrl ? [`probe: GET ${agentContainerProbeUrl}`] : []),
+      ],
+    },
   ];
 }
 
@@ -184,6 +205,10 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
     experimentLabReachable,
     experimentLabProbeUrl,
     experimentLabRuntimeControlConfigured,
+    agentContainerHealthConfigured,
+    agentContainerReachable,
+    agentContainerProbeUrl,
+    agentContainerRuntimeControlConfigured,
   } = bundle;
 
   const gatewayStatusKind: DgxServiceStatusKind = gatewayStatus.configured
@@ -239,6 +264,15 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
   }
 
   const experimentLabCaps: DgxControlTargetSnapshot['capabilities'] = experimentLabRuntimeControlConfigured
+    ? ['readStatus', 'start', 'stop']
+    : ['readStatus'];
+
+  let agentContainerStatusSnapshot: DgxServiceStatusKind = 'unknown';
+  if (agentContainerHealthConfigured) {
+    agentContainerStatusSnapshot = agentContainerReachable ? 'running' : 'stopped';
+  }
+
+  const agentContainerCaps: DgxControlTargetSnapshot['capabilities'] = agentContainerRuntimeControlConfigured
     ? ['readStatus', 'start', 'stop']
     : ['readStatus'];
 
@@ -302,6 +336,18 @@ export function buildControlTargetSnapshots(bundle: OverviewProbeBundle): DgxCon
         ...(experimentLabHealthConfigured && experimentLabProbeUrl ? [`probe: GET ${experimentLabProbeUrl}`] : []),
         ...(experimentLabRuntimeControlConfigured ? ['runtime: POST start/stop（DGX側 hook）'] : ['runtime: URL 未設定（読取のみ）']),
         ...(policyMode === 'experiment_first' ? ['実験優先モードが有効'] : []),
+      ],
+    },
+    {
+      id: 'agent-container',
+      kind: 'http_probe',
+      displayName: 'agent-container',
+      capabilities: agentContainerCaps,
+      status: agentContainerStatusSnapshot,
+      badges: [],
+      metaLines: [
+        ...(agentContainerHealthConfigured && agentContainerProbeUrl ? [`probe: GET ${agentContainerProbeUrl}`] : []),
+        ...(agentContainerRuntimeControlConfigured ? ['runtime: POST start/stop（DGX gateway hook）'] : ['runtime: URL 未設定（読取のみ）']),
       ],
     },
     {

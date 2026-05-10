@@ -364,17 +364,18 @@ describe('createDgxResourceService', () => {
     const svc = makeSvc(store, gateway);
     const ov = await svc.getOverview();
 
-    expect(ov.targets).toHaveLength(7);
+    expect(ov.targets).toHaveLength(8);
     expect(ov.targets.map((t) => t.id)).toEqual([
       'system-prod-gateway',
       'system-prod-inference',
       'system-prod-embedding',
       'private-comfyui',
       'experiment-lab',
+      'agent-container',
       'spark-host',
       'metrics-kpi',
     ]);
-    expect(ov.services).toHaveLength(5);
+    expect(ov.services).toHaveLength(6);
     const comfySvc = ov.services.find((s) => s.id === 'private-comfyui');
     const comfyTgt = ov.targets.find((t) => t.id === 'private-comfyui');
     expect(comfySvc?.status).toBe(comfyTgt?.status);
@@ -563,7 +564,12 @@ describe('createDgxResourceService', () => {
     const ov = await svc.getOverview();
 
     expect(ov.operator).toBeDefined();
-    expect(ov.operator.workloads.map((w) => w.id)).toEqual(['business_vlm', 'private_comfy', 'experiment_lab']);
+    expect(ov.operator.workloads.map((w) => w.id)).toEqual([
+      'business_vlm',
+      'private_comfy',
+      'experiment_lab',
+      'agent_container',
+    ]);
     expect(ov.operator.operatorActions).toHaveLength(4);
     expect(ov.operator.operatorSummary.policyMode).toBe(ov.policy.mode);
   });
