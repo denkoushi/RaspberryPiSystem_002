@@ -1,0 +1,20 @@
+{
+  "description": "PlatformIO Git URL 依存のコミット固定（再現ビルド・供給鎖監査用）。更新する場合は各リポの差分をレビューして SHA を差し替える。",
+  "upstream_ai_stackchan_ex": {
+    "repo": "https://github.com/ronron-gh/AI_StackChan_Ex.git",
+    "pinned_commit": "d894859648d4323044761cd49615694027abeb25",
+    "pinned_at": "2026-05-10",
+    "note": "ローカル tmp クローンの `git rev-parse HEAD`。新規クローン後は必ず一致確認すること。"
+  },
+  "github_lib_deps": {
+    "https://github.com/tobozo/ESP32-targz": "61bc2168ba59b6a9721bbbc4ca44c3428eb1f6d6",
+    "https://github.com/m5stack/M5Module-LLM.git": "5d0a761e0618938039d49091570628934b98be0d",
+    "https://github.com/ronron-gh/arduinoWebSockets.git": "616a619e5d19960ec8b238b7c76c801b4d65374f",
+    "https://github.com/MechaUma/SimpleVox": "f2c589f6193d9743548eb76e98ee31c934e20d86",
+    "https://github.com/ronron-gh/esp8266FTPServer": "8aa47a75d045b37de14da40ea9d85b7821c818e8",
+    "https://github.com/stack-chan/stackchan-arduino.git": "b7b98f5b19c6cae581782fc127f1fa1274b035a8",
+    "https://github.com/tobozo/M5Stack-SD-Updater": "02559369aa29c7727a06640b727805c45ec1fab5"
+  },
+  "arduinoWebSockets_branch_note": "platformio.ini では fix/max_data_size ブランチ参照。ピンはその先端コミット。",
+  "registry_libs_policy": "PlatformIO Registry の `owner/pkg @ x.y.z` は既にバージョン固定。メジャー更新しない限り `pio pkg list` で実解決版を記録し、疑わしければ `owner/name@=x.y.z` に寄せる。"
+}

@@ -1,0 +1,49 @@
+# 私用 Pi5 StackChan bridge 用インベントリ断片（サンプル・コミット可）
+#
+# 使い方:
+#   1. コピー:
+#        cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample.yml \
+#           infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml
+#   2. 接続先と secret をローカル断片へ設定
+#   3. リポジトリ直下で:
+#        ./scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh
+#
+# 参照: docs/runbooks/private-pi5-stackchan-bridge-deploy.md
+
+all:
+  hosts:
+    private-pi5-stackchan-bridge:
+      ansible_host: "100.x.x.x"
+      ansible_user: "raspi5-private"
+      ansible_python_interpreter: /usr/bin/python3
+      ansible_command_timeout: 600
+      ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
+      network_mode: "tailscale"
+      tailscale_enabled: true
+
+      # 鍵ログインや NOPASSWD sudo が未整備ならローカル断片のみに設定する。
+      # ansible_password: "replace-me"
+      # ansible_become_password: "replace-me"
+
+      private_pi5_bridge_user: "raspi5-private"
+      private_pi5_bridge_host: "0.0.0.0"
+      private_pi5_bridge_port: 18080
+      # 任意: StackChan ファームが旧 bridge IP を見ている間の互換 alias
+      # private_pi5_stackchan_compat_ip: "192.168.128.112"
+      # private_pi5_stackchan_compat_interface: "wlan0"
+      # private_pi5_stackchan_compat_prefix: 24
+
+      private_pi5_dgx_base_url: "http://100.118.82.72:38081"
+      private_pi5_dgx_model: "system-prod-primary"
+      private_pi5_dgx_llm_shared_token: "replace-me"
+      private_pi5_dgx_runtime_auto_start: false
+      private_pi5_dgx_runtime_control_token: ""
+      private_pi5_dgx_runtime_start_path: "/start"
+      private_pi5_dgx_runtime_ready_path: "/v1/models"
+      private_pi5_dgx_runtime_ready_timeout_sec: 600
+      private_pi5_dgx_runtime_ready_poll_sec: 1
+
+      # 任意: StackChan -> bridge の簡易認証
+      private_pi5_stackchan_token: ""
+
+      private_pi5_upstream_timeout_sec: 45

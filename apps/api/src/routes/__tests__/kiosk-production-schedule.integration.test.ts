@@ -817,6 +817,7 @@ describe('Kiosk Production Schedule API', () => {
       data: {
         csvDashboardId: DASHBOARD_ID,
         occurredAt: new Date('2020-01-01T00:00:00.000Z'),
+        createdAt: new Date('2020-01-01T00:00:00.000Z'),
         dataHash: 'footer-dup-old',
         rowData: {
           ProductNo: 'FDUP1',
@@ -832,6 +833,7 @@ describe('Kiosk Production Schedule API', () => {
       data: {
         csvDashboardId: DASHBOARD_ID,
         occurredAt: new Date('2026-06-01T00:00:00.000Z'),
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
         dataHash: 'footer-dup-new',
         rowData: {
           ProductNo: 'FDUP1',
@@ -889,6 +891,7 @@ describe('Kiosk Production Schedule API', () => {
       data: {
         csvDashboardId: DASHBOARD_ID,
         occurredAt: new Date('2020-01-01T00:00:00.000Z'),
+        createdAt: new Date('2020-01-01T00:00:00.000Z'),
         dataHash: `footer-dup-miss-old-${randomUUID()}`,
         rowData: {
           ProductNo: 'FDUPX',
@@ -904,6 +907,7 @@ describe('Kiosk Production Schedule API', () => {
       data: {
         csvDashboardId: DASHBOARD_ID,
         occurredAt: new Date('2026-06-01T00:00:00.000Z'),
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
         dataHash: `footer-dup-miss-new-${randomUUID()}`,
         rowData: {
           ProductNo: 'FDUPX',
@@ -960,6 +964,7 @@ describe('Kiosk Production Schedule API', () => {
       data: {
         csvDashboardId: DASHBOARD_ID,
         occurredAt: new Date('2020-01-01T00:00:00.000Z'),
+        createdAt: new Date('2020-01-01T00:00:00.000Z'),
         dataHash: `hy9-dup-old-${randomUUID()}`,
         rowData: {
           ProductNo: 'HY9DUP',
@@ -975,6 +980,7 @@ describe('Kiosk Production Schedule API', () => {
       data: {
         csvDashboardId: DASHBOARD_ID,
         occurredAt: new Date('2026-06-01T00:00:00.000Z'),
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
         dataHash: `hy9-dup-new-${randomUUID()}`,
         rowData: {
           ProductNo: 'HY9DUP',

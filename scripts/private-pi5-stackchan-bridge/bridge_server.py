@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+import json
+import os
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, ClassVar
+from urllib.parse import urlsplit
+
+from dgx_runtime_client import DgxUpstreamClient, config_from_env
+from stackchan_chat_core import (
+    ChatCompletionWorkflow,
+    ChatFailure,
+    ChatSuccess,
+    format_simple_success,
+    validate_chat_payload,
+)
+
+LISTEN_HOST = os.getenv("STACKCHAN_BRIDGE_HOST", "0.0.0.0")
+LISTEN_PORT = int(os.getenv("STACKCHAN_BRIDGE_PORT", "18080"))
+
+STACKCHAN_TOKEN = os.getenv("STACKCHAN_TOKEN", "")
+
+
+def _default_dgx_model() -> str:
+    return os.getenv("DGX_MODEL", "system-prod-primary")
+
+
+def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: dict) -> None:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    handler.send_response(status_code)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _error_response(
+    handler: BaseHTTPRequestHandler,
+    status_code: int,
+    code: str,
+    message: str,
+    retryable: bool = False,
+    details: dict | None = None,
+) -> None:
+    payload: dict[str, Any] = {"ok": False, "error": {"code": code, "message": message, "retryable": retryable}}
+    if details:
+        payload["error"]["details"] = details
+    _json_response(handler, status_code, payload)
+
+
+def _read_json(handler: BaseHTTPRequestHandler):
+    try:
+        content_length = int(handler.headers.get("Content-Length", "0"))
+    except ValueError:
+        return None, "invalid content-length"
+    raw = handler.rfile.read(content_length) if content_length > 0 else b""
+    if not raw:
+        return None, "empty body"
+    try:
+        return json.loads(raw.decode("utf-8")), None
+    except json.JSONDecodeError:
+        return None, "invalid json"
+
+
+class Handler(BaseHTTPRequestHandler):
+    """HTTP adapter; DGX behaviour is in ChatCompletionWorkflow + DgxUpstreamClient."""
+
+    dgx_client: ClassVar[DgxUpstreamClient] = DgxUpstreamClient(config_from_env())
+    dgx_model: ClassVar[str] = _default_dgx_model()
+
+    @classmethod
+    def install_upstream(cls, client: DgxUpstreamClient, model: str | None = None) -> None:
+        """Override DGX client/model (tests or custom wiring)."""
+        cls.dgx_client = client
+        if model is not None:
+            cls.dgx_model = model
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("[stackchan-bridge] " + fmt % args + "\n")
+
+    def do_GET(self):
+        route_path = urlsplit(self.path).path
+        if route_path == "/healthz":
+            _json_response(self, 200, {"ok": True, "service": "stackchan-private-bridge"})
+            return
+        _error_response(self, 404, "NOT_FOUND", "endpoint not found")
+
+    def do_POST(self):
+        route_path = urlsplit(self.path).path
+        raw_paths = {"/api/stackchan/chat", "/api/stackchan/chat/", "/api/system/stackchan/chat", "/api/system/stackchan/chat/"}
+        simple_paths = {"/api/stackchan/chat/simple", "/api/stackchan/chat/simple/"}
+        if route_path not in raw_paths and route_path not in simple_paths:
+            _error_response(self, 404, "NOT_FOUND", "endpoint not found")
+            return
+        simple_mode = route_path in simple_paths
+
+        if STACKCHAN_TOKEN:
+            client_token = self.headers.get("X-Stackchan-Token", "")
+            if client_token != STACKCHAN_TOKEN:
+                _error_response(self, 401, "UNAUTHORIZED", "invalid stackchan token")
+                return
+
+        payload, err = _read_json(self)
+        if err:
+            _error_response(self, 400, "BAD_REQUEST", err)
+            return
+
+        validated, verr = validate_chat_payload(payload if isinstance(payload, dict) else None)
+        if verr or validated is None:
+            _error_response(self, 400, "BAD_REQUEST", verr or "bad request")
+            return
+
+        workflow = ChatCompletionWorkflow(self.dgx_client, self.dgx_model)
+        outcome = workflow.run(validated, log=self.log_message)
+
+        if isinstance(outcome, ChatSuccess):
+            if simple_mode:
+                _json_response(self, outcome.status_code, format_simple_success(outcome.parsed))
+            else:
+                _json_response(self, outcome.status_code, outcome.parsed)
+            return
+
+        if isinstance(outcome, ChatFailure):
+            _error_response(
+                self,
+                outcome.http_status,
+                outcome.code,
+                outcome.message,
+                outcome.retryable,
+                outcome.details,
+            )
+            return
+
+
+def main():
+    Handler.install_upstream(DgxUpstreamClient(config_from_env()), _default_dgx_model())
+    server = HTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
+    print(f"stackchan bridge listening on {LISTEN_HOST}:{LISTEN_PORT}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

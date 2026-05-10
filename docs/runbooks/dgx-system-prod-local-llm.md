@@ -24,6 +24,11 @@ update-frequency: high
 - ただし写真持出 VLM を壊さないため、**途中経路として text 先行の段階切替も取れる**ようにしておく
 - Pi5 API が期待する `/healthz`、`/v1/chat/completions`、`/start`、`/stop` の運用形を維持する
 
+## 私用 Pi5 `stackchan-bridge` との区別（境界・read-only）
+
+- **本 Runbook の主対象**は **職場 Pi5 API** が **`LOCAL_LLM_*`** 経由で扱う **DGX system-prod gateway**（単一キュー・用途別 keep-warm 含む）。
+- **自宅の StackChan 等**は [`scripts/private-pi5-stackchan-bridge`](../../scripts/private-pi5-stackchan-bridge/README.md) により **私用 Pi5 から DGX へ直接** HTTP する。**職場 Pi5 API の `stackchan_chat` 契約とは別系統**（JWT・キューを通さない）。**2系統の正本**: [計画 §2系統](../plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10)·[KB-365 §私用 bridge](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)。
+
 ## 管理コンソール: DGX リソース（Pi5 API 経由）
 
 **目的**: ブラウザから疎通・推論可否の目安・運用ポリシー表示、`on_demand` 時の `/start` `/stop` 要求を **Pi5 の API だけ**に閉じ込める（トークンを Web に持たせない）。

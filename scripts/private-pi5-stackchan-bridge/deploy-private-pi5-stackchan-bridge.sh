@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DEFAULT_FRAGMENT="${PROJECT_ROOT}/infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml"
+INVENTORY_FRAGMENT="${PRIVATE_PI5_STACKCHAN_BRIDGE_INVENTORY:-${DEFAULT_FRAGMENT}}"
+PLAYBOOK_DIR="${PROJECT_ROOT}/infrastructure/ansible"
+PLAYBOOK_PATH="${PLAYBOOK_DIR}/playbooks/private-pi5-stackchan-bridge.yml"
+LIMIT_HOST="${PRIVATE_PI5_STACKCHAN_BRIDGE_LIMIT:-private-pi5-stackchan-bridge}"
+
+if [[ ! -f "${INVENTORY_FRAGMENT}" ]]; then
+  echo "[ERROR] inventory fragment not found: ${INVENTORY_FRAGMENT}" >&2
+  echo "        copy the sample and keep the real fragment untracked." >&2
+  exit 2
+fi
+
+if [[ ! -f "${PLAYBOOK_PATH}" ]]; then
+  echo "[ERROR] playbook not found: ${PLAYBOOK_PATH}" >&2
+  exit 2
+fi
+
+cd "${PLAYBOOK_DIR}"
+exec ansible-playbook "${PLAYBOOK_PATH}" \
+  -i "${INVENTORY_FRAGMENT}" \
+  --limit "${LIMIT_HOST}" \
+  "$@"
