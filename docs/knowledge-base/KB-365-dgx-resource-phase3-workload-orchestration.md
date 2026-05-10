@@ -37,6 +37,25 @@ category: knowledge-base
   - **実機 Phase12 のみ `deploy-status` FAIL** → [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・他ホスト連続デプロイ後の **再実行**。
 - **参照**: [deployment.md §DGX 単一キュー 2026-05-10](../guides/deployment.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
 
+### 本番反映（2026-05-10・StackChan Pi5 API チャット） {#production-2026-05-10-stackchan-pi5-api-chat}
+
+- **ブランチ（先行反映時）**: **`feat/stackchan-interactive-chat-api`**。**代表コミット（記録時点の tip）**: **`81fe4d2a`**（`feat(api): add StackChan chat API`）。**`main` squash マージ後**は **`origin/main` HEAD** をデプロイ引数の正本とする。
+- **ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。Pi4／Pi3 play **`skipping: no hosts matched`**。**Pi3**: playbook **未適用**（リソース僅少・**専用手順はこの変更では実行しない**）。
+- **標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/stackchan-interactive-chat-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **Detach Run ID**: **`20260510-134157-20990`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 650s**·**`Git: changed`**·**Docker compose 再起動 `changed`**·**`prisma migrate deploy` / `status` `ok`**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 54s**・Tailscale **Pi5 `100.106.158.2`**）。
+- **実機（追加スモーク）**: **未認証** `POST https://100.106.158.2/api/system/stackchan/chat` → **HTTP `401`**（ルート登録と認可ゲートの確認。**運用 JWT はログに残さない**）。
+- **仕様（runtime 観点）**:
+  - **用途 ID**: **`stackchan_chat`** を **`ProviderLocalLlmRuntimeController`** が **admin provider と同一**に解決（**`resolveAdminProvider`**・ready probe に **`stackchan_chat` を admin モデルで登録**）。
+  - **単一キュー優先度**: **`MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.agent`**（**`admin_console_chat` と同層**・業務 `business` より後）。
+  - **`LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES`**: **`stackchan_chat` を追加**済み → **`release` でも用途別 `/stop` 抑止**（admin と同系）。
+  - **詳説 system**: **`mergeStackChanDetailSystemPrompt`** が **既存 `system` に詳説ブロックが含まれる場合は二重追記しない**（トークン肥大の抑制）。
+- **トラブルシュート**:
+  - **ルートが無い／404** → Pi5 **`api` の Git ref** が **`81fe4d2a` 以降（またはマージ後 `main`）**か。**Detach `Git: changed`** と **Docker `api` 再作成**を確認。
+  - **`503` LocalLLM** → **`LOCAL_LLM_*`** 設定と **admin チャット**（`POST /api/system/local-llm/chat/completions`）の可否を先に切り分け。
+  - **キュー待ちのみ増加** → **`main_llm_control_queue_wait`** と **`useCase`**（`stackchan_chat` vs 業務）をログで確認。
+- **参照**: [deployment.md §StackChan 本番](../guides/deployment.md#stackchan-production-2026-05-10)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
+
 ### 本番反映（2026-05-10・AgentContainer・Pi5 API + Web + DGX gateway） {#production-2026-05-10-dgx-agent-container}
 
 - **ブランチ（先行反映時）**: **`feat/agent-container-control-target`**（実装 tip **`9fd37c0a`**）。**`main` squash（PR [#284](https://github.com/denkoushi/RaspberryPiSystem_002/pull/284)）**: **`14f105c1`**。**デプロイ ref の正本**は **`origin/main` HEAD**（本項記録時点では **`14f105c1`** と一致）。

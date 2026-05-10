@@ -47,10 +47,42 @@ update-frequency: medium
 ### 補足（StackChan / Pi5 API 経由対話 · **`POST /api/system/stackchan/chat`**） {#stackchan-pi5-api-chat}
 
 - **概要**: StackChan 等は **DGX に直接トークンを持たせず**、Pi5 API の **`POST /api/system/stackchan/chat`**（**`ADMIN` / `MANAGER` JWT**）経由で **`LOCAL_LLM_*`（admin と同一 upstream）**へ到達する。**runtime 用途 ID**: **`stackchan_chat`**（単一キューでは **`admin_console_chat` と同優先度（agent 層）**）。**`/stop` 抑止**は admin と同様（warm 維持）。
-- **詳説既定**: サーバ側で **詳説優先の system 指示**をマージ（クライアント先頭 `system` がある場合は追記）。**`max_tokens` 既定 1536**・**`temperature` 既定 0.35**（JSON で上書き可）。
+- **詳説既定**: サーバ側で **詳説優先の system 指示**をマージ（クライアント先頭 `system` がある場合は追記）。**既に同一詳説ブロックが含まれる `system` は二重追記しない**（履歴再送時のプロンプト肥大化防止）。**`max_tokens` 既定 1536**・**`temperature` 既定 0.35**（JSON で上書き可）。
 - **常時待受の運用注意**: 短周期で叩くと **`main_llm_control_queue_wait`** が増え、業務用途（`photo_label` / `document_summary`）と **同一キューで順番待ち**になる。遅延時は Pi5 API ログと DGX gateway を確認。
 - **実装**: [`stackchan.ts`](../../apps/api/src/routes/system/stackchan.ts)·[`stackchan-chat-request.ts`](../../apps/api/src/services/system/stackchan-chat-request.ts)·[`local-llm-on-demand-runtime.ts`](../../apps/api/src/services/system/local-llm-on-demand-runtime.ts)。
 - **正本手順・API 一覧**: [dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)。
+
+#### 本番反映（2026-05-10・StackChan Pi5 API チャット・**`raspberrypi5` のみ**） {#stackchan-production-2026-05-10}
+
+- **変更概要**: **`feat/stackchan-interactive-chat-api`** を Pi5 API に先行反映。**新規公開契約**: **`POST /api/system/stackchan/chat`**（認可 **`ADMIN` / `MANAGER`**）。**DGX / gateway / control-server のファイル配置変更なし**（既存 admin LocalLLM 経路の再利用）。
+- **代表コミット（ブランチ先端・記録時点）**: **`81fe4d2a`**（`feat(api): add StackChan chat API`）。**`main` へ squash マージ後**は **`origin/main` HEAD** を運用デプロイ引数の正本とする（マージコミット SHA は GitHub の PR 画面で確認）。
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**）。**Pi4 キオスク／Pi3 サイネージ**: **`skipping: no hosts matched`**（**Pi3 個体へ Ansible playbook は当てない**・リソース僅少のため **Pi3 専用手順は本変更のスコープ外**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/stackchan-interactive-chat-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は第2引数を `main`**）。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260510-134157-20990`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 650s（約 10m50s）**·サマリ **`Git: changed`**·**Docker compose 再起動 `changed`**（`Docker restart summary: [{'status': 'ok'}]`）·**`Run prisma migrate deploy` / `prisma migrate status` `ok`**）。
+- **実機（自動・広域）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 54s**・Tailscale **`network_mode=tailscale`**・Pi5 API **`https://100.106.158.2`**）。**`deploy-status`（Pi4×4）** PASS。**Pi3 signage-lite/timer**: PASS（**Pi3 へデプロイ playbook は未実行で正**）。
+- **実機（追加スモーク・ルート存在・認可）**: 認証なし POST で **`401`**（**`AUTH_TOKEN_REQUIRED` / 「認証トークンが必要です」**）を確認済み（**JWT をログやチャットに書かないこと**）。
+
+```bash
+curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/system/stackchan/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"smoke"}]}'
+# 期待: 401
+```
+
+- **仕様（現場が読み取るべきポイント）**:
+  - **upstream**: admin の **`LOCAL_LLM_BASE_URL` / `LOCAL_LLM_SHARED_TOKEN` / `LOCAL_LLM_MODEL`** と同一（`createLocalLlmGateway`）。
+  - **`on_demand`**: **`withStackChanChatOnDemandRuntime`** が **`ensureReady('stackchan_chat')` → 推論 → `release('stackchan_chat')`**。**keep-warm 用途**のため **`release` 後も upstream `/stop` は抑止**され得る（[§単一キュー](#dgx-main-llm-single-queue-stop-policy-2026-05-10) の **`shouldSuppressLocalLlmRuntimeStop`** と整合）。
+  - **単一キュー**: `stackchan_chat` は **`admin_console_chat` と同じ agent 優先度層**（業務 `business` より後）。
+- **知見**:
+  - **デプロイ前**は **`git status` がクリーン**であること（未コミット／未追跡で **`update-all-clients.sh` が即終了**し得る）。
+  - Phase12 は **`POST /api/system/stackchan/chat` の JWT 付き E2E は含まない**（トークンをスクリプトに埋め込まないため）。**運用確認**は管理 UI から発行した短命 JWT か、既存のログイン経路で **`ADMIN`/`MANAGER`** ロールを確認する。
+- **トラブルシュート**:
+  - **`404` / ルート無し** → Pi5 **`api` コンテナ**が **`81fe4d2a` 以降（またはマージ後 `main` HEAD）**か。**Detach サマリ `Git: changed`** と **コンテナ再作成**を確認。
+  - **`401`**（クライアントが JWT 付きなのに）→ ロールが **`ADMIN`/`MANAGER`** か・Authorization ヘッダ形式 **`Bearer <token>`** か。
+  - **`503` `LOCAL_LLM_NOT_CONFIGURED` / `LOCAL_LLM_RUNTIME_*`** → **`LOCAL_LLM_*`** と **`LOCAL_LLM_RUNTIME_CONTROL_*`**（on_demand 時）が Pi5 の **`docker.env` / `api` `.env`** に揃っているか（admin チャットが動くなら StackChan も同経路のはず）。
+  - **応答はあるが詳説が薄い** → クライアントが毎回 **`system` を差し替えていないか**。サーバは **詳説ブロックの重複注入を避ける**ため、**同一文が既に `system` に含まれる場合は追記しない**。
+  - **`verify-phase12-real.sh` のみ `deploy-status` FAIL** → [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·Pi5 **`config/deploy-status.json`**・連続メンテ後は **再実行**。
+- **ナレッジ**: [KB-365 §StackChan 本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-stackchan-pi5-api-chat)·[dgx-system-prod-local-llm.md §管理コンソール](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-10 · **KB-376・装飾表示スコープとフッタ winner 選定の整合**·**API のみ**·**`raspberrypi5` のみ**） {#leaderboard-footer-display-scope-winner-alignment-2026-05-10}
 
