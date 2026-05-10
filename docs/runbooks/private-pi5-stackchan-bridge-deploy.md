@@ -37,6 +37,7 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 - `private_pi5_dgx_llm_shared_token`
 - 必要なら `private_pi5_dgx_runtime_control_token`
 - 必要なら `private_pi5_stackchan_token`
+- 必要なら `private_pi5_stackchan_compat_ip` / `private_pi5_stackchan_compat_interface` / `private_pi5_stackchan_compat_prefix`
 
 `inventory-private-pi5-stackchan-bridge-fragment.yml` は `.gitignore` 済み。
 
@@ -60,9 +61,10 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 1. Tailscale preflight
 2. `bridge_server.py` / `dgx_runtime_client.py` を私用 Pi5 へ同期
 3. `.env` を template から生成（`0600`）
-4. `stackchan-bridge.service` を systemd に配備
-5. `systemctl enable --now`
-6. `GET /healthz` で起動確認
+4. （任意）StackChan 互換用の **旧 LAN IP alias** を **`stackchan-bridge-compat-ip.service`** で管理
+5. `stackchan-bridge.service` を systemd に配備
+6. `systemctl enable --now`
+7. `GET /healthz` で起動確認
 
 ## 検証
 
@@ -78,11 +80,24 @@ ssh <private-pi5-user>@<private-pi5-host> \
 - `systemctl is-active` が `active`
 - `/healthz` が `ok`
 
+StackChan 側が **旧 bridge IP** を見ている疑いがある場合は、追加で次を確認する。
+
+```bash
+ssh <private-pi5-user>@<private-pi5-host> 'hostname -I'
+journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
+```
+
+- `hostname -I` で **現在の DHCP IP** を確認する
+- StackChan 実機の `/chat` を叩いても **bridge ログに POST が出ない**なら、まず **bridge URL の IP ミスマッチ**を疑う
+- `private_pi5_stackchan_compat_ip` を設定した場合は、`systemctl is-enabled stackchan-bridge-compat-ip.service` と `ip -brief addr show wlan0` で alias が維持されていることも確認する
+
 ## 運用メモ
 
 - 秘密は **private Pi5 の `.env`** と **ローカル非追跡 fragment** に限定する。
 - **業務 Pi5 API の `update-all-clients.sh` 経路には混ぜない**。私用経路は private Pi5 専用 playbook で分離する。
 - 将来 SSH 鍵と `NOPASSWD` を整えたら、ローカル fragment から `ansible_password` / `ansible_become_password` を外す。
+- 2026-05-10 実測では、private Pi5 の DHCP IP が **`192.168.128.113`** に変わる一方、StackChan は **旧 IP `192.168.128.112`** を見続けていた。以後の標準運用では、**StackChan 設定更新**または **Pi5 側 compatibility alias** のどちらかを必ず管理対象に含める。
+- 2026-05-10 late: playbook に **`private_pi5_stackchan_compat_ip`** 系変数を追加し、**`stackchan-bridge-compat-ip.service`** を標準管理に組み込んだ。実機で **`enabled` / `active`** と **`wlan0: 192.168.128.113/24 192.168.128.112/24`** を確認済み。
 
 ## 関連
 

@@ -86,14 +86,14 @@ update-frequency: high
 
 - 私用 Pi5 初期セットアップ（OS/SSH/時刻同期）
 - 私用 Pi5 の Tailnet 参加（2026-05-10: `raspi5-private` / `100.89.190.21`）
-- 自宅 LAN から私用 Pi5 API への疎通確認（2026-05-10: Mac から `http://192.168.128.112:18080/healthz` -> `200`）
+- 自宅 LAN から私用 Pi5 API への疎通確認（2026-05-10: 初回は `http://192.168.128.112:18080/healthz` -> `200`。同日 late には private Pi5 の DHCP IP が **`192.168.128.113`** に変動していることを確認）
 - 私用 Pi5 から DGX Spark への疎通確認（2026-05-10: `http://100.118.82.72:38081/healthz` -> `200 ok`）
 - 認証情報（JWT/共有トークン）の保管場所を私用系として分離（2026-05-10: `**DGX_LLM_SHARED_TOKEN` は Pi5 bridge の `.env` のみ**・任意 `**STACKCHAN_TOKEN` は LAN 内ヘッダ認証**・コミュニティファームには **DGX トークンを載せない**方針を [bridge README](../../scripts/private-pi5-stackchan-bridge/README.md)・[KB](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md)・`[scripts/stackchan-ai-stackchan-ex/README.md](../../scripts/stackchan-ai-stackchan-ex/README.md)` に明文化）
 
 ### Phase 1: テキスト対話の最短疎通
 
 - 私用 Pi5 に最小 API（StackChan 受付 -> DGX 問い合わせ）を用意（2026-05-10: `stackchan-bridge` systemd 起動）
-- StackChan からテキスト送受信（音声なし）を確認（2026-05-10 進捗: `AI_StackChan_Ex` を `m5stack-cores3` で build/upload 成功。SD 未挿入では起動ループ、SD + Wi-Fi 設定後は `**192.168.128.124**` を取得。Mac から StackChan ルート `/` は `200`、Pi5 bridge `healthz` は `200`、StackChan `/speech` は `200` / `OK` で `テスト` を発話した。一方、StackChan `/chat` 実行時のシリアルでは `**[HTTP] POST... code: 502**`（StackChan -> private Pi5 bridge `/simple`）を観測し、実機は `**わかりません**` を発話した。さらに Mac から bridge `/simple` に単発 `こんにちは` を送っても `**UPSTREAM_HTTP_ERROR / status: 502 / bad gateway: [Errno 111] Connection refused**` を再現。よって、実機 text-only 未達の主因は **DGX upstream runtime / gateway backend 側**）
+- StackChan からテキスト送受信（音声なし）を確認（2026-05-10 進捗: `AI_StackChan_Ex` を `m5stack-cores3` で build/upload 成功。SD 未挿入では起動ループ、SD + Wi-Fi 設定後は `**192.168.128.124**` を取得。前半は Mac から StackChan ルート `/` は `200`、Pi5 bridge `healthz` は `200`、StackChan `/speech` は `200` / `OK` で `テスト` を発話した一方、StackChan `/chat` 実行時のシリアルでは `**[HTTP] POST... code: 502**`（StackChan -> private Pi5 bridge `/simple`）を観測し、実機は `**わかりません**` を発話した。さらに Mac から bridge `/simple` に単発 `こんにちは` を送っても `**UPSTREAM_HTTP_ERROR / status: 502 / bad gateway: [Errno 111] Connection refused**` を再現し、前半の主因は **DGX upstream runtime / gateway backend 側** と判断。後半は DGX upstream 復旧後も StackChan が **旧 bridge IP `192.168.128.112`** を見ており、private Pi5 の当日 DHCP IP **`192.168.128.113`** と不一致だったため bridge ログが増えない事象を確認。Pi5 `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加した直後、StackChan `/chat` に対応して bridge ログ **`POST /api/stackchan/chat/simple 200`** を確認し、text-only 経路の成立まで到達）
 - エラー時の標準応答（タイムアウト、認証失敗）を定義（2026-05-10: `error.code/message/retryable` 形式）
 - StackChan 側ファームの LLM エンドポイント差し替え（OpenAI固定 -> 私用 Pi5 bridge）（2026-05-10: `[ai_stackchan_ex_private_bridge.patch](../../scripts/private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch)`・`CHATGPT_API_URL` / HTTP 分岐 / 任意 `CHATGPT_STACKCHAN_TOKEN`）
 
@@ -119,10 +119,10 @@ update-frequency: high
 
 ## いまの次アクション（着手順）
 
-1. DGX `system-prod` runtime / gateway backend を復旧し、bridge `/simple` が `replyText` を返す状態へ戻す
-2. bridge 復旧後に StackChan `/chat` で `わかりません` 以外の具体応答を再確認する
-3. text-only 成功条件を「bridge `replyText` を StackChan が発話すること」へ固定する
-4. その後 STT/TTS を重ねる
+1. text-only 成功条件を「bridge `replyText` を StackChan が発話すること」へ固定する
+2. StackChan 側 URL を **現 bridge 設定**へ寄せるか、compatibility alias を継続運用するかを最終決定する
+3. その後 STT/TTS を重ねる
+4. 最後に alias 依存を残すか撤去するかを決める
 
 ## 供給鎖・採用の固定（コミュニティ安全採用・2026-05-10）
 
@@ -198,6 +198,8 @@ git apply /path/to/RaspberryPiSystem_002/scripts/private-pi5-stackchan-bridge/pa
 - 2026-05-10: Mac から StackChan 実機の `/` は `200`、private Pi5 bridge `healthz` は `200`、StackChan `/speech` は `200` / `OK` で `テスト` を発話した。一方で `/chat` 実行時のシリアルでは `**[HTTP] POST... code: 502**` を観測し、実機は `**わかりません**` を発話した。
 - 2026-05-10: Mac から bridge `/api/stackchan/chat/simple` へ単発 `こんにちは` と StackChan 実 payload 再現の両方で、`**UPSTREAM_HTTP_ERROR / status: 502 / bad gateway: [Errno 111] Connection refused**` を再現。現時点の主因は **DGX upstream runtime / gateway backend 側** と判断。
 - 2026-05-10: Spark 再起動後も **DGX `38081/healthz` / `/v1/models` は timeout**、private Pi5 bridge `healthz` は `200`、bridge `/simple` は **`502 bad gateway: [Errno 111] Connection refused`** のままだった。StackChan 実機シリアルでも **`http post failed: connection refused`** を観測し、未復旧を再確認。
+- 2026-05-10: DGX upstream 復旧後、StackChan 実機 (`192.168.128.124`) は **旧 bridge IP `192.168.128.112`** を見ており、private Pi5 の当日 DHCP IP **`192.168.128.113`** とのズレで `GET /chat?...` が bridge に届かないことを確認。private Pi5 `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加すると、bridge ログに **`POST /api/stackchan/chat/simple 200`** が出て通信が成立した。
+- 2026-05-10: private Pi5 の標準 playbook に **compatibility alias 管理**（`private_pi5_stackchan_compat_ip` -> `stackchan-bridge-compat-ip.service`）を追加し、**`enabled` / `active`** 状態で **`wlan0: 192.168.128.113/24 192.168.128.112/24`** を確認。標準手順の範囲で StackChan 旧設定との互換を維持できるようにした。
 
 ## 更新ルール
 

@@ -130,3 +130,10 @@ DGX_RUNTIME_CONTROL_TOKEN=replace-me
 - `.env` は `chmod 600` を維持する。
 - `DGX_LLM_SHARED_TOKEN` はログやチャットに貼らない。
 - **業務系と私用系の資格情報を混線させない**（環境変数名・`.env` ファイル・ホストを分離する）。
+
+## LAN IP drift の注意
+
+- 2026-05-10 実測では、private Pi5 の DHCP IP が **`192.168.128.112` -> `192.168.128.113`** へ変わった一方、StackChan ファームは **旧 bridge IP** を見続けていた。
+- この状態では、StackChan の `GET /chat?...` が **`200`** を返しても **bridge ログに新規 `POST /api/stackchan/chat/simple` が出ない**ことがある。
+- 切り分けは **`hostname -I`（Pi5）** と **`journalctl -u stackchan-bridge --since ...`** を正とし、必要なら **StackChan 側設定更新**または **Pi5 側 compatibility IP alias** で一致させる。
+- 標準 playbook では、任意変数 **`private_pi5_stackchan_compat_ip`**（+ `interface` / `prefix`）を与えると **`stackchan-bridge-compat-ip.service`** を配備して alias を維持できる。

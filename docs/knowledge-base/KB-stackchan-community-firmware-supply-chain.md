@@ -118,6 +118,7 @@ update-frequency: high
 - **第1段階の主因**: SD 未挿入、および Wi-Fi パスワードの誤記（`O` / `0`）。
 - **第2段階の主因**: StackChan からの会話要求は private Pi5 bridge まで届くが、**bridge の先の DGX upstream が 502 / `Connection refused`** を返している。  
   StackChan 固有の不具合ではなく、**upstream runtime の不安定化または未起動**が主因。
+- **第3段階の主因（2026-05-10 late）**: DGX upstream 復旧後も、StackChan ファームが **旧 bridge IP `192.168.128.112`** を見続けていた。一方、private Pi5 の当日 DHCP IP は **`192.168.128.113`** へ変わっていたため、**`GET /chat?...` の `200` だけでは bridge 到達を保証しなかった**。
 
 ### Fix
 
@@ -132,11 +133,16 @@ update-frequency: high
 - 同一 payload を Mac から bridge `/simple` に再送し、**DGX upstream 502 / `bad gateway: [Errno 111] Connection refused`** を再現した。
 - private Pi5 bridge 側に、**任意の `DGX_RUNTIME_AUTO_START` + `DGX_RUNTIME_CONTROL_TOKEN`** を使って `502` / `503` 時（および **`DGX_RUNTIME_AUTO_START` 有効時の初回 `URLError`**）に **`/start` -> `/v1/models` ready wait -> 1回再試行** する最小回復策を **`dgx_runtime_client.py`（`DgxUpstreamClient`）** に集約した。HTTP 受付は **`bridge_server.py`** のみ（repo 側。live 反映は別途）。
 - Spark 再起動後も、**DGX `/healthz` / `/v1/models` timeout・Pi5 bridge `/healthz` は 200・bridge `/simple` は 502** のままであることを再確認した。
+- DGX upstream 復旧後、Mac から **`POST http://192.168.128.113:18080/api/stackchan/chat/simple`** は **`200` + `replyText`** を返す一方、StackChan の `GET /chat?...` 実行直後に **bridge ログが増えない**ことを確認した。
+- そのため **private Pi5 の現在 IP (`192.168.128.113`)** と **StackChan が見ている bridge IP (`192.168.128.112`)** がずれている仮説を立て、Pi5 `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加した。
+- 互換 alias 追加直後、同じ `GET /chat?...` 実行に対して **`journalctl -u stackchan-bridge` に `POST /api/stackchan/chat/simple HTTP/1.1" 200`** が現れ、**StackChan (`192.168.128.124`) -> private Pi5 bridge -> DGX** の text-only 経路が成立した。
 
 ### Prevention
 
 - **文字起こしベースで Wi-Fi パスワードを扱う場合、`O` / `0`, `l` / `1` の混同を必ず二重確認**する。
 - CoreS3 実機では **`wifi.txt` だけに頼らず YAML も併置**する。
+- **bridge URL に IP リテラルを焼き込む場合、Pi5 の DHCP 変動で経路が静かに切れる**。実機の `GET /chat?...` が `200` でも **bridge ログに POST が出なければ宛先IPミスマッチ** を疑う。
+- **将来の再発防止**は、`1.` Pi5 側で compatibility IP を恒久化する、または `2.` StackChan 側設定を現在 IP / mDNS / 固定IP 運用へ揃える、のどちらかに寄せる。
 - bring-up は次の順で固定する。
   1. SD 認識
   2. Wi-Fi 接続（IP 取得）
@@ -145,6 +151,7 @@ update-frequency: high
   5. StackChan `/speech` で TTS 単体確認
   6. bridge `/simple` の単発・実 payload 再現
 - 実機会話が失敗したときは、**Mac から bridge を直接叩いて bridge 健全性を先に切る**。bridge が 502 の場合は **StackChan を疑う前に upstream runtime を疑う**。
+- 実機会話が失敗したとき、**`/chat` が 200 でも bridge ログが無ければ upstream ではなく IP 経路を疑う**。`hostname -I`（Pi5）・`arp -a`（Mac）・`journalctl --since` をセットで確認する。
 - direct-to-DGX の private bridge を使う場合は、**Pi5 API の on-demand 制御を通らない**ことを前提にする。必要なら **bridge 自身が `DGX_RUNTIME_CONTROL_TOKEN` で runtime 起動を吸収**する。**blue / vLLM cold start** では **60s 未満の ready 待ちでは不足しうる**ため、`.env` の **`DGX_RUNTIME_READY_TIMEOUT_SEC` は 300–600 秒級**を推奨（例は [`.env.example`](../../scripts/private-pi5-stackchan-bridge/.env.example)）。
 
 ## References

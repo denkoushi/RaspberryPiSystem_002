@@ -28,6 +28,10 @@ all:
       private_pi5_bridge_user: "raspi5-private"
       private_pi5_bridge_host: "0.0.0.0"
       private_pi5_bridge_port: 18080
+      # 任意: StackChan ファームが旧 bridge IP を見ている間の互換 alias
+      # private_pi5_stackchan_compat_ip: "192.168.128.112"
+      # private_pi5_stackchan_compat_interface: "wlan0"
+      # private_pi5_stackchan_compat_prefix: 24
 
       private_pi5_dgx_base_url: "http://100.118.82.72:38081"
       private_pi5_dgx_model: "system-prod-primary"

@@ -114,7 +114,7 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 3. Mac から Pi5 bridge の `POST /api/stackchan/chat` を叩き、DGX 応答が返ることを確認する。
 4. その後に実機操作で会話を試す。
 
-2026-05-10 実測:
+2026-05-10 実測（前半・DGX upstream 障害切り分け）:
 
 - StackChan 自体の `/` は `200`
 - Pi5 bridge `healthz` は `200`
@@ -128,6 +128,29 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
   を再現した
 
 したがって現時点では、**text-only の第1ゲートは「実機が IP を取り、Pi5 bridge が返答できること」**、第2ゲートは **upstream runtime が 502 なく応答すること** とするのが妥当。
+
+2026-05-10 実測（後半・通信成立の確認）:
+
+- StackChan 実機の IP は **`192.168.128.124`**
+- private Pi5 の当日 DHCP 取得 IP は **`192.168.128.113`**
+- ただし StackChan ファームの `CHATGPT_API_URL` は **旧 bridge IP `192.168.128.112`** を見ていた
+- この状態で `GET /chat?...` は StackChan 側で **`200`** を返しても、**private Pi5 `journalctl -u stackchan-bridge` に新規 `POST /api/stackchan/chat/simple` が現れない**ことを確認した
+- private Pi5 の `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加した直後、同じ `GET /chat?...` 実行で **bridge ログに `POST /api/stackchan/chat/simple HTTP/1.1" 200`** が現れた
+- その後、private Pi5 の標準 playbook に **compatibility alias 管理**を組み込み、**`stackchan-bridge-compat-ip.service`** を **`enabled` / `active`** にした状態でも、再度 `GET /chat?...` と bridge `POST /api/stackchan/chat/simple 200` の対応を確認した
+- さらに **`http://192.168.128.112:18080/healthz`** が **`200`**、**`POST http://192.168.128.112:18080/api/stackchan/chat/simple`** が **`200` + `replyText`** を返すことを確認した
+- よって、**StackChan (`192.168.128.124`) -> private Pi5 compatibility IP (`192.168.128.112`) -> bridge -> DGX** の text-only 経路は成立した
+
+### 5.1) 当日確認した実 IP / 互換 IP
+
+- StackChan 実機: **`192.168.128.124`**
+- private Pi5 DHCP IP: **`192.168.128.113`**
+- StackChan ファーム設定上の bridge IP: **`192.168.128.112`**
+
+重要:
+
+- StackChan 側設定が **旧 IP** のままでも、Pi5 側に **互換 alias** を持たせれば疎通は回復する
+- 逆に、`/chat` が `200` を返しても **bridge ログに新規 POST が無い**なら、**StackChan が誤った IP を見ている**可能性を優先して疑う
+- 一時 `ip addr add ...` で直った場合も、そのままでは再起動で消える。**手作業で終わらせず、playbook 管理の compatibility alias へ昇格**させる
 
 ### 6) 失敗時の切り分け
 
@@ -143,6 +166,8 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 | bridge から `502 bad gateway: [Errno 111] Connection refused` | **DGX runtime / gateway backend 未起動または不安定**。StackChan ではなく upstream を復旧 |
 | Mac から DGX `healthz` / `v1/models` が **timeout** だが、私用 Pi5 の bridge は **200** | **経路・ACL が開発端末と私用 Pi5で異なる**典型。**結論づけは私用 Pi5 上**の `curl` と bridge **`POST /api/stackchan/chat`** を正とする（計画・[KB-365 §私用 bridge](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)）。 |
 | `DGX_RUNTIME_AUTO_START=true` なのに cold start で毎回失敗 | **`DGX_RUNTIME_READY_TIMEOUT_SEC` が短すぎ**（推奨 **300–600**）。bridge は [`dgx_runtime_client.py`](../../scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py) のタイムアウトを使用。 |
+| StackChan `/chat?...` は `200` だが、private Pi5 `journalctl -u stackchan-bridge` に新規 POST が出ない | **StackChan の `CHATGPT_API_URL` が旧 IP を見ている**可能性が高い。Pi5 の現在 LAN IP を確認し、**StackChan 設定更新**または **Pi5 側 compatibility IP alias** で一致させる。 |
+| private Pi5 の `healthz` は `200` だが、Mac から `http://<旧IP>:18080` が timeout | Pi5 が **DHCP で別 IP** を取った。`hostname -I` と `arp -a` を突き合わせ、**現在 IP** と **StackChan が見ている IP** を分離して確認する。 |
 
 - **シリアルログ**: `[HTTP] begin...` に **意図した Pi5 URL** が出ているか。
 - **Pi5**: `journalctl -u stackchan-bridge -n 200` 相当でリクエスト有無を確認。
@@ -152,6 +177,9 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
   - `http://<StackChan-IP>/chat?text=こんにちは` が待てば `200` になるか
   - `http://<Pi5-LAN-IP>:18080/healthz` が `200`
   - `POST /api/stackchan/chat` が `200`
+- **bridge 到達確認のコツ**:
+  - `GET /chat?...` 実行前に時刻を控え、**その時刻以降の `journalctl -u stackchan-bridge --since ...`** を見る
+  - **bridge ログが増えない**なら upstream ではなく **宛先IPミスマッチ** を先に疑う
 - 実測で StackChan 実機の `/chat` が `200` でも、**シリアルに `POST... code: 502` が出て `わかりません` を喋う**なら、StackChan 側ではなく **bridge 以降の upstream 失敗**と判断してよい。
 
 ## ロールバック

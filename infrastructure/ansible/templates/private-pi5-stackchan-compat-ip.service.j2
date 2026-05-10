@@ -1,0 +1,13 @@
+[Unit]
+Description=StackChan compatibility LAN IP for private Pi5 bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c '/usr/sbin/ip addr add {{ private_pi5_stackchan_compat_ip_effective }}/{{ private_pi5_stackchan_compat_prefix_effective }} dev {{ private_pi5_stackchan_compat_interface_effective }} 2>/dev/null || /usr/sbin/ip addr replace {{ private_pi5_stackchan_compat_ip_effective }}/{{ private_pi5_stackchan_compat_prefix_effective }} dev {{ private_pi5_stackchan_compat_interface_effective }}'
+ExecStop=/bin/sh -c '/usr/sbin/ip addr del {{ private_pi5_stackchan_compat_ip_effective }}/{{ private_pi5_stackchan_compat_prefix_effective }} dev {{ private_pi5_stackchan_compat_interface_effective }} 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
