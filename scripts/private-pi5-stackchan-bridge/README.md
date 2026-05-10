@@ -15,6 +15,14 @@
 - [`stackchan_chat_core.py`](./stackchan_chat_core.py) — 入力検証・upstream ボディ生成・DGX 完了ワークフロー（`ChatCompletionWorkflow`）・`replyText` 整形
 - [`dgx_runtime_client.py`](./dgx_runtime_client.py) — DGX への **`/v1/chat/completions`**、任意の **`/start`**、ready ポーリング（`DgxUpstreamClient`）
 
+## ローカル検証（Python）
+
+契約が変わらないことの最低限の回帰として、リポジトリ直下で次を実行できる。
+
+```bash
+python3 -m unittest discover -s scripts/private-pi5-stackchan-bridge/tests -p 'test_*.py'
+```
+
 詳細・検証上の注意（**Mac 直 DGX と私用 Pi5 経路の差**）は [計画ドキュメント](../../docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10)・[KB-365 §私用 bridge](../../docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10) を参照。
 
 ## Endpoint

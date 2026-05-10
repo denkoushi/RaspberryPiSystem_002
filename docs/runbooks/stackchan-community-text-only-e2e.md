@@ -223,6 +223,14 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 - [ ] DGX cold start / runtime 停止時: bridge が **`502` / `UPSTREAM_UNREACHABLE`** を返し得る → `DGX_RUNTIME_AUTO_START` と **`DGX_RUNTIME_READY_TIMEOUT_SEC`（300–600）** を確認
 - [ ] Pi5 DHCP 変更後: StackChan URL と **`hostname -I`** の不一致 → **compat alias** または **ファーム再ビルド**
 
+### デプロイ直後の私用 Pi5 最小確認（`stackchan_chat_core` 同梱後・2026-05-10）
+
+**目的**: 実機 StackChan を触る前に、**systemd とループバック `healthz` と新モジュール実配備**だけを短時間で確かめる。
+
+**手順の正本**: [private-pi5-stackchan-bridge-deploy.md](./private-pi5-stackchan-bridge-deploy.md) の **「実測記録（2026-05-10）」** 節（playbook の `PLAY RECAP`・**Ansible `shell`** による `systemctl` / `curl` / `test -f …/stackchan_chat_core.py`）。
+
+**注意**: ここまで **green** でも、StackChan 側の **text-only 正本**（[`#text-only-done-criteria`](#text-only-done-criteria)）は **別途**満たす必要がある（IP ミスマッチや DGX upstream はこの smoke だけでは判定できない）。
+
 ## ロールバック
 
 - 公式製品の場合は **M5Burner** で工場出荷ファームへ戻せる（製品ドキュメント参照）。

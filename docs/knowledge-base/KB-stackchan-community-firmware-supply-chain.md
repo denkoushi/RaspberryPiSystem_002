@@ -161,7 +161,7 @@ update-frequency: high
 - **`dgx_runtime_client.py`**: DGX への生 HTTP（chat・`/start`・ready プローブ）。
 - **音声（STT/TTS）**は **デバイス側**で完結させ、bridge はテキスト境界を維持する（手順: [`scripts/stackchan-ai-stackchan-ex/README.md`](../../scripts/stackchan-ai-stackchan-ex/README.md) §5）。
 - **text-only 完了条件の正本**: [`stackchan-community-text-only-e2e.md` §text-only-done-criteria](../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria)
-- **E2E チェックリスト（text→音声）**: [同 Runbook §e2e-checklist-text-then-audio](../runbooks/stackchan-community-text-only-e2e.md#e2e-checklist-text-then-audio)
+- **2026-05-10（`stackchan_chat_core` 同梱後）**: 私用 Pi5 へ **標準 playbook を再実行**し、**`PLAY RECAP` `ok=17` `changed=2` `failed=0`** を確認。playbook 付帯 **`/healthz` `200`** に加え、**Ansible `shell`** で **`systemctl is-active stackchan-bridge`・loopback `curl /healthz`・`stackchan_chat_core.py` 実在**を確認（詳細は [private-pi5-stackchan-bridge-deploy.md](../runbooks/private-pi5-stackchan-bridge-deploy.md) **実測記録** 節）。
 
 ## References
 

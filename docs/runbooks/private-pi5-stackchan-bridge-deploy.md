@@ -104,3 +104,37 @@ journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
 - `scripts/private-pi5-stackchan-bridge/README.md`
 - `docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md`
 - `docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md`
+
+## 実測記録（2026-05-10・`stackchan_chat_core` 導入後の標準デプロイ）
+
+**前提**: ローカル非追跡の `inventory-private-pi5-stackchan-bridge-fragment.yml` が存在し、`./scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh` をリポジトリ直下から実行。
+
+**適用リビジョン（記録時点）**: ローカル Git tip **`a27edfc2`**（ブランチ **`feature/stackchan-full-completion`**）。以降 **`main` に取り込まれたらデプロイ引数の ref は `origin/main` HEAD に合わせる**。
+
+**`PLAY RECAP`（抜粋）**:
+
+- `private-pi5-stackchan-bridge`: **`ok=17` `changed=2` `failed=0` `unreachable=0`**
+
+**Playbook で観測された主要変更**:
+
+- `bridge_server.py` / **`stackchan_chat_core.py`** を私用 Pi5 へ同期（`dgx_runtime_client.py` は当該実行では **ファイル内容に変更なし** と playbook が報告）
+- handler により **`stackchan-bridge` サービス再起動**
+- プレイブック付帯の **`GET /healthz`** は **`200`**、`{"ok": true, "service": "stackchan-private-bridge"}` を確認
+
+**本 Runbook「検証」節に相当する事後確認（Ansible 経由・同一 inventory）**:
+
+```bash
+cd infrastructure/ansible
+ansible -i inventory-private-pi5-stackchan-bridge-fragment.yml private-pi5-stackchan-bridge \
+  -m shell -a 'systemctl is-active stackchan-bridge && curl -fsS http://127.0.0.1:18080/healthz && test -f /home/raspi5-private/stackchan-bridge/stackchan_chat_core.py && echo stackchan_chat_core:ok'
+```
+
+**実測結果（2026-05-10 UTC 頃）**:
+
+- `systemctl is-active stackchan-bridge` → **`active`**
+- `curl …/healthz` → **`{"ok": true, "service": "stackchan-private-bridge"}`**
+- リモートに **`stackchan_chat_core.py` が存在**（インポート境界の実配置確認）
+
+**トラブルシュート（再掲）**:
+
+- デプロイ後に StackChan 側だけが黙る場合は、[stackchan-community-text-only-e2e.md §text-only-done-criteria](./stackchan-community-text-only-e2e.md#text-only-done-criteria) と **IP ミスマッチ** を先に切る。compat alias を playbook で管理している場合は `systemctl status stackchan-bridge-compat-ip.service` と `ip -brief addr show` をセットで見る。
