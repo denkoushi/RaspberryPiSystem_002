@@ -9,40 +9,30 @@ import {
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { buildLeaderboardGlobalRankScalarSql } from './leaderboard-global-rank-scalar.sql.js';
+import {
+  chunkLeaderboardRowIdsForHydrate,
+  normalizeLeaderboardDisplayRowIdScope
+} from './leaderboard-display-row-scope.js';
 import type { LeaderboardScheduleRowSql } from './leaderboard-row-selection.service.js';
 
-const MAX_ROWS = 900;
-
 /**
- * leaderboard 一覧と SELECT 構造・可視 WHERE をそろえ、入力 row id 順で行を hydrate する（装飾 API 向け）。
+ * 単一チャンク（長さ <= LEADERBOARD_HYDRATE_SQL_BATCH_MAX）向け hydrate。
+ * @internal 直接利用より `fetchLeaderboardScheduleHydratedRowsOrderedByIds` を使うこと。
  */
-export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
-  orderedRowIds: readonly string[];
+async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
+  orderedRowIdsChunk: readonly string[];
   locationKey: string;
   siteScopedGlobalRankLocation: string;
-  /** 呼び出し元が既に確定している場合、winner materialization クエリを省略 */
-  leaderboardMaterializedBaseWhere?: Prisma.Sql;
+  leaderboardMaterializedBaseWhere: Prisma.Sql;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const { locationKey, siteScopedGlobalRankLocation } = params;
-  const seen = new Set<string>();
-  const uniqueOrdered: string[] = [];
-  for (const raw of params.orderedRowIds) {
-    const id = raw.trim();
-    if (!id.length || seen.has(id)) continue;
-    seen.add(id);
-    uniqueOrdered.push(id);
-    if (uniqueOrdered.length >= MAX_ROWS) break;
-  }
+  const { orderedRowIdsChunk, locationKey, siteScopedGlobalRankLocation, leaderboardMaterializedBaseWhere } =
+    params;
 
-  if (uniqueOrdered.length === 0) {
+  if (orderedRowIdsChunk.length === 0) {
     return [];
   }
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(
-    prisma,
-    params.leaderboardMaterializedBaseWhere
-  );
 
   const processingOrderScalar = Prisma.sql`(
     SELECT "orderNumber"
@@ -58,7 +48,7 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
     LIMIT 1
   )`;
 
-  const orderedIdParts = uniqueOrdered.map((id) => Prisma.sql`${id}`);
+  const orderedIdParts = orderedRowIdsChunk.map((id) => Prisma.sql`${id}`);
   const orderedIdArraySql = Prisma.sql`ARRAY[${Prisma.join(orderedIdParts)}]::text[]`;
 
   return prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
@@ -112,4 +102,47 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
       AND "CsvDashboardRow"."id"::text IN (${Prisma.join(orderedIdParts)})
     ORDER BY array_position(${orderedIdArraySql}, "CsvDashboardRow"."id"::text)
   `;
+}
+
+/**
+ * leaderboard 一覧と SELECT 構造・可視 WHERE をそろえ、入力 row id 順で行を hydrate する（装飾 API 向け）。
+ * ID が LEADERBOARD_HYDRATE_SQL_BATCH_MAX を超える場合は複数クエリに分割し、**表示順を維持して結合**する。
+ */
+export async function fetchLeaderboardScheduleHydratedRowsOrderedByIds(params: {
+  orderedRowIds: readonly string[];
+  locationKey: string;
+  siteScopedGlobalRankLocation: string;
+  /** 呼び出し元が既に確定している場合、winner materialization クエリを省略 */
+  leaderboardMaterializedBaseWhere?: Prisma.Sql;
+}): Promise<LeaderboardScheduleRowSql[]> {
+  const { locationKey, siteScopedGlobalRankLocation } = params;
+
+  const uniqueOrdered = normalizeLeaderboardDisplayRowIdScope(params.orderedRowIds);
+  if (uniqueOrdered.length === 0) {
+    return [];
+  }
+
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(
+    prisma,
+    params.leaderboardMaterializedBaseWhere
+  );
+
+  const chunks = chunkLeaderboardRowIdsForHydrate(uniqueOrdered);
+  const byId = new Map<string, LeaderboardScheduleRowSql>();
+
+  for (const chunk of chunks) {
+    const batch = await fetchLeaderboardScheduleHydratedRowsSingleBatch({
+      orderedRowIdsChunk: chunk,
+      locationKey,
+      siteScopedGlobalRankLocation,
+      leaderboardMaterializedBaseWhere
+    });
+    for (const row of batch) {
+      if (!byId.has(row.id)) {
+        byId.set(row.id, row);
+      }
+    }
+  }
+
+  return uniqueOrdered.map((id) => byId.get(id)).filter((r): r is LeaderboardScheduleRowSql => r !== undefined);
 }

@@ -14,10 +14,9 @@ import {
 } from '../production-schedule-query.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
+import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
 import { resolveFiniteLeaderboardBoardNextCursor } from './leaderboard-board-resource-cursor.js';
 import type { LeaderboardShellSnapshotRecord, LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
-
-const HYDRATE_CHUNK_SIZE = 900;
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
 
@@ -52,26 +51,21 @@ async function hydrateLightLeaderboardRowsFromOrderedIds(params: {
   const siteScopedGlobalRankLocation = params.siteKey?.trim().length ? params.siteKey!.trim() : params.locationKey;
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
-  const combined: LightShellRow[] = [];
-  for (let i = 0; i < params.orderedRowIds.length; i += HYDRATE_CHUNK_SIZE) {
-    const slice = params.orderedRowIds.slice(i, i + HYDRATE_CHUNK_SIZE);
-    const raw = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
-      orderedRowIds: slice,
-      locationKey: params.locationKey,
-      siteScopedGlobalRankLocation,
-      leaderboardMaterializedBaseWhere
-    });
-    const mapped = raw.map(
-      (r) =>
-        ({
-          ...r,
-          actualPerPieceMinutes: null,
-          customerName: null
-        }) as LightShellRow
-    );
-    combined.push(...mapped);
-  }
-  return combined;
+  const raw = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+    orderedRowIds: params.orderedRowIds,
+    locationKey: params.locationKey,
+    siteScopedGlobalRankLocation,
+    leaderboardMaterializedBaseWhere
+  });
+
+  return raw.map(
+    (r) =>
+      ({
+        ...r,
+        actualPerPieceMinutes: null,
+        customerName: null
+      }) as LightShellRow
+  );
 }
 
 /**
@@ -378,7 +372,8 @@ export async function continueLeaderboardCompositeBoard(
   const deco = await decorateLeaderboardShellRowsForKioskFromHydratedRows({
     hydratedRows: mergedRows,
     locationKey: params.listParamsBase.locationKey,
-    siteKey: params.listParamsBase.siteKey
+    siteKey: params.listParamsBase.siteKey,
+    preferredDisplayRowIds: normalizeLeaderboardDisplayRowIdScope(mergedRows.map((r) => r.id))
   });
 
   const decoMap = new Map(deco.rowDecorations.map((d) => [d.id, d]));

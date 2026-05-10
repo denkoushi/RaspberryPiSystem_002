@@ -70,4 +70,5 @@ update-frequency: medium
 - [deployment.md §KB-375 本番（2026-05-10）](../guides/deployment.md#kiosk-leaderboard-completion-integrity-2026-05-10)
 - [KB-297 §リーダー順位ボード](./KB-297-kiosk-due-management-workflow.md#リーダー順位ボード納期ベース整列手動順-api-反映2026-04-01)
 - [KB-369 順位ボードAPI内部レイテンシ](./KB-369-leader-order-board-api-internal-latency.md)
+- [KB-376 装飾スコープとフッタwinner整合](./KB-376-leaderboard-footer-display-scope-winner-alignment.md)
 - [docs INDEX](../INDEX.md)

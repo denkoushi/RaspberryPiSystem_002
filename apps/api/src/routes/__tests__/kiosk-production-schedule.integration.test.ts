@@ -880,6 +880,151 @@ describe('Kiosk Production Schedule API', () => {
     expect(chip021?.rowId).not.toBe(newer.id);
   });
 
+  it('leaderboardFooterChips: if no shell row id matches duplicate CsvDashboardRows, DISTINCT ON falls back and may pick newer incomplete row', async () => {
+    const { buildLeaderboardFooterChipsByPartKeyForScheduleRows } = await import(
+      '../../services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.js'
+    );
+
+    const older = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date('2020-01-01T00:00:00.000Z'),
+        dataHash: `footer-dup-miss-old-${randomUUID()}`,
+        rowData: {
+          ProductNo: 'FDUPX',
+          FSEIBAN: 'FDUPX-S',
+          FHINCD: 'FDUPX-H',
+          FSIGENCD: '021',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }
+    });
+    const newer = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date('2026-06-01T00:00:00.000Z'),
+        dataHash: `footer-dup-miss-new-${randomUUID()}`,
+        rowData: {
+          ProductNo: 'FDUPX',
+          FSEIBAN: 'FDUPX-S',
+          FHINCD: 'FDUPX-H',
+          FSIGENCD: '021',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }
+    });
+
+    await prisma.productionScheduleProgress.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: older.id,
+        isCompleted: true
+      }
+    });
+
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+    const partKey = ['FDUPX-S', 'FDUPX', 'FDUPX-H'].join('\0');
+    const chips = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+      rows: [
+        {
+          id: randomUUID(),
+          seibanJoinKey: 'FDUPX-S',
+          rowData: {
+            ProductNo: 'FDUPX',
+            FSEIBAN: 'FDUPX-S',
+            FHINCD: 'FDUPX-H',
+            FSIGENCD: '021',
+            FKOJUN: '10'
+          }
+        }
+      ],
+      locationKey: 'Test',
+      siteKey: 'Test'
+    });
+
+    expect(chips).toBeDefined();
+    const chip021 = chips![partKey]?.find((c) => c.resourceCd === '021');
+    expect(chip021?.rowId).toBe(newer.id);
+    expect(chip021?.isCompleted).toBe(false);
+  });
+
+  it('leaderboardFooterChips keeps preferred duplicate winner selection beyond 900 preferred row ids', async () => {
+    const { buildLeaderboardFooterChipsByPartKeyForScheduleRows } = await import(
+      '../../services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.js'
+    );
+
+    const older = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date('2020-01-01T00:00:00.000Z'),
+        dataHash: `hy9-dup-old-${randomUUID()}`,
+        rowData: {
+          ProductNo: 'HY9DUP',
+          FSEIBAN: 'HY9DUP-S',
+          FHINCD: 'HY9DUP-H',
+          FSIGENCD: '021',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }
+    });
+    const newer = await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date('2026-06-01T00:00:00.000Z'),
+        dataHash: `hy9-dup-new-${randomUUID()}`,
+        rowData: {
+          ProductNo: 'HY9DUP',
+          FSEIBAN: 'HY9DUP-S',
+          FHINCD: 'HY9DUP-H',
+          FSIGENCD: '021',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }
+    });
+
+    await prisma.productionScheduleProgress.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: older.id,
+        isCompleted: true
+      }
+    });
+
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+    const preferredDisplayRowIds = Array.from({ length: 900 }, () => randomUUID());
+    preferredDisplayRowIds.push(older.id);
+
+    const partKey = ['HY9DUP-S', 'HY9DUP', 'HY9DUP-H'].join('\0');
+    const chips = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+      rows: [
+        {
+          id: older.id,
+          seibanJoinKey: 'HY9DUP-S',
+          rowData: {
+            ProductNo: 'HY9DUP',
+            FSEIBAN: 'HY9DUP-S',
+            FHINCD: 'HY9DUP-H',
+            FSIGENCD: '021',
+            FKOJUN: '10'
+          }
+        }
+      ],
+      locationKey: 'Test',
+      siteKey: 'Test',
+      preferredDisplayRowIds
+    });
+
+    const chip021 = chips?.[partKey]?.find((c) => c.resourceCd === '021');
+    expect(chip021?.rowId).toBe(older.id);
+    expect(chip021?.isCompleted).toBe(true);
+    expect(chip021?.rowId).not.toBe(newer.id);
+  });
+
   it('leaderboard phased read: shell + total + decorations match monolithic leaderboard ordering', async () => {
     const shell = await app.inject({
       method: 'GET',
