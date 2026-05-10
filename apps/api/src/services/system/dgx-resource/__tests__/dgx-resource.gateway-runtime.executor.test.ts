@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 vi.mock('../../../../config/env.js', () => ({
   env: {
+    NODE_ENV: 'test',
+    LOG_LEVEL: 'error',
     LOCAL_LLM_RUNTIME_MODE: 'on_demand',
     LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://127.0.0.1/start',
     LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://127.0.0.1/stop',
@@ -12,9 +14,13 @@ vi.mock('../../../../config/env.js', () => ({
   },
 }));
 
+import { resetMainLocalLlmRuntimeControlQueueForTests } from '../../../inference/runtime/local-llm-runtime-command-queue.js';
 import { executeGatewayRuntimeStartStop } from '../dgx-resource.gateway-runtime.executor.js';
 
 describe('executeGatewayRuntimeStartStop', () => {
+  beforeEach(() => {
+    resetMainLocalLlmRuntimeControlQueueForTests();
+  });
   it('POSTs to start URL with runtime token header', async () => {
     const fetchImpl = vi.fn(async (): Promise<Response> => {
       return {

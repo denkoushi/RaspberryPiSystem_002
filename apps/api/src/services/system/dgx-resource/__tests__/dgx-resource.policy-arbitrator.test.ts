@@ -27,7 +27,7 @@ describe('planWorkloadAdjustmentsBeforePolicyChange', () => {
     expect(plan.every((s) => s.action === 'stop')).toBe(true);
   });
 
-  it('experiment_first stops comfy then gateway when configured', () => {
+  it('experiment_first stops comfy only when configured (gateway は業務/Agent維持のため自動停止しない)', () => {
     const plan = planWorkloadAdjustmentsBeforePolicyChange({
       nextMode: 'experiment_first',
       applyWorkloadChanges: true,
@@ -35,7 +35,7 @@ describe('planWorkloadAdjustmentsBeforePolicyChange', () => {
       experimentLabRuntimeConfigured: false,
       gatewayRuntimeConfigured: true,
     });
-    expect(plan.map((s) => s.targetId)).toEqual(['private-comfyui', 'system-prod-gateway']);
+    expect(plan.map((s) => s.targetId)).toEqual(['private-comfyui']);
     expect(plan.every((s) => s.action === 'stop')).toBe(true);
   });
 

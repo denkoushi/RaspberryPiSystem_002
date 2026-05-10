@@ -474,6 +474,64 @@ describe('createDgxResourceService', () => {
     }
   });
 
+  it('SET_POLICY experiment_first with workload changes stops comfy only and does not stop gateway', async () => {
+    const prev = {
+      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
+      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
+      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
+      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
+    };
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/comfy/start';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/comfy/stop';
+    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'comfy-token';
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token';
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: true,
+          health: { ok: true, statusCode: 200 },
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (): Promise<Response> => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        url: '',
+        text: async () => '',
+        json: async () => ({}),
+      })) as typeof fetch;
+
+      const svc = makeSvc(store, gateway, { fetchImpl });
+
+      const result = await svc.executeAction({
+        type: 'SET_POLICY',
+        policyMode: 'experiment_first',
+        applyWorkloadChanges: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:8188/comfy/stop');
+    } finally {
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
+      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
+      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
+      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
+      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
+      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
+    }
+  });
+
   it('getOverview exposes monitoring.summary with stable shape', async () => {
     const store = new DgxResourcePolicyStore(10);
     const gateway: LocalLlmGateway = {

@@ -2,9 +2,13 @@ import { logger } from '../../../lib/logger.js';
 import { env } from '../../../config/env.js';
 import { getInferenceRuntime } from '../inference-runtime.js';
 
-import type { LocalLlmRuntimeControllerPort } from './local-llm-runtime-control.port.js';
-import { isWithinLocalLlmWarmWindow } from './local-llm-runtime-schedule.policy.js';
+import type { LocalLlmRuntimeControllerPort, LocalLlmRuntimeUseCase } from './local-llm-runtime-control.port.js';
+import {
+  type LocalLlmWarmWindowConfig,
+  shouldSuppressLocalLlmRuntimeStop,
+} from './local-llm-runtime-schedule.policy.js';
 import { NoopLocalLlmRuntimeController } from './noop-local-llm-runtime.controller.js';
+import { resetMainLocalLlmRuntimeControlQueueForTests } from './local-llm-runtime-command-queue.js';
 import { ProviderLocalLlmRuntimeController } from './provider-local-llm-runtime.controller.js';
 
 const log = logger.child({ component: 'localLlmRuntimeControl' });
@@ -16,23 +20,28 @@ function resolveAdminConsoleChatModel(): string {
   return runtimeConfig.model?.trim() || env.LOCAL_LLM_MODEL?.trim() || '';
 }
 
-function buildWarmWindowSuppressStop(): (() => boolean) | undefined {
-  if (!env.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED) {
-    return undefined;
-  }
-  const warmConfig = {
-    enabled: true as const,
+function buildWarmWindowConfig(): LocalLlmWarmWindowConfig {
+  return {
+    enabled: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED,
     timeZone: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_TIMEZONE,
     startHourInclusive: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_START_HOUR,
     endHourExclusive: env.LOCAL_LLM_RUNTIME_WARM_WINDOW_END_HOUR,
   };
-  return () => {
+}
+
+function buildUseCaseStopSuppress(): (useCase: LocalLlmRuntimeUseCase) => boolean {
+  const warmConfig = buildWarmWindowConfig();
+  return (useCase: LocalLlmRuntimeUseCase) => {
     try {
-      return isWithinLocalLlmWarmWindow(new Date(), warmConfig);
+      return shouldSuppressLocalLlmRuntimeStop({
+        useCase,
+        now: new Date(),
+        warmWindow: warmConfig,
+      });
     } catch (err) {
       log.warn(
-        { err, action: 'warm_window_eval_failed' },
-        '[LocalLlmRuntimeControl] warm window evaluation failed; not suppressing stop'
+        { err, useCase, action: 'stop_suppress_eval_failed' },
+        '[LocalLlmRuntimeControl] stop suppress evaluation failed; allowing stop'
       );
       return false;
     }
@@ -67,7 +76,7 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
     startRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS,
     stopRequestTimeoutMs: env.LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS,
     healthPollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-    shouldSuppressStop: buildWarmWindowSuppressStop(),
+    shouldSuppressStop: buildUseCaseStopSuppress(),
   });
 }
 
@@ -81,4 +90,5 @@ export function getLocalLlmRuntimeController(fetchImpl?: typeof fetch): LocalLlm
 /** テスト用 */
 export function resetLocalLlmRuntimeControllerForTests(): void {
   singleton = null;
+  resetMainLocalLlmRuntimeControlQueueForTests();
 }

@@ -53,14 +53,6 @@ export function planWorkloadAdjustmentsBeforePolicyChange(input: WorkloadPlanner
           eventMessageJa: '実験優先: 私用 ComfyUI 停止リクエストを送信しました（GPU 競合緩和）',
         });
       }
-      if (input.gatewayRuntimeConfigured) {
-        steps.push({
-          targetId: 'system-prod-gateway',
-          action: 'stop',
-          eventMessageJa:
-            '実験優先: system-prod-gateway ランタイム停止リクエストを送信しました（業務 LocalLLM / on_demand が影響）',
-        });
-      }
       return steps;
     }
     case 'private_ok': {

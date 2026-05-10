@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { getHourInTimeZone, isWithinLocalLlmWarmWindow } from '../local-llm-runtime-schedule.policy.js';
+import {
+  getHourInTimeZone,
+  isWithinLocalLlmWarmWindow,
+  shouldSuppressLocalLlmRuntimeStop,
+} from '../local-llm-runtime-schedule.policy.js';
 
 const window7to23 = {
   enabled: true,
@@ -46,5 +50,22 @@ describe('local-llm-runtime-schedule.policy', () => {
         endHourExclusive: 7,
       })
     ).toBe(false);
+  });
+
+  it('suppresses stop for business/admin use cases regardless of warm window', () => {
+    expect(
+      shouldSuppressLocalLlmRuntimeStop({
+        useCase: 'photo_label',
+        now: new Date('2026-04-27T21:59:00.000Z'),
+        warmWindow: { ...window7to23, enabled: false },
+      })
+    ).toBe(true);
+    expect(
+      shouldSuppressLocalLlmRuntimeStop({
+        useCase: 'document_summary',
+        now: new Date('2026-04-27T21:59:00.000Z'),
+        warmWindow: { ...window7to23, enabled: false },
+      })
+    ).toBe(true);
   });
 });
