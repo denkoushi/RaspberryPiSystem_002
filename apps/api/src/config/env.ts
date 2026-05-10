@@ -208,8 +208,9 @@ const envSchema = z.object({
   LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(60000),
   LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS: z.coerce.number().int().min(200).max(30_000).default(2000),
   /**
-   * true かつ LOCAL_LLM_RUNTIME_MODE=on_demand のとき、指定タイムゾーンの時間帯内は release 後も /stop を送らず warm 維持する。
-   * 既定は無効（従来どおり refCount=0 で停止）。
+   * true のとき、業務/Agent以外の用途に対してのみ warm 窓で release 後も /stop を送らない。
+   * 業務/Agent用途（photo_label / document_summary / admin_console_chat）は常に停止抑止（ポリシーモジュール）。
+   * 既定 false なら「それ以外」では従来どおり refCount=0 で停止試行。
    */
   LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))

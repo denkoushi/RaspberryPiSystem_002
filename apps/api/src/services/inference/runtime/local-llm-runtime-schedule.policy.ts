@@ -1,3 +1,5 @@
+import type { LocalLlmRuntimeUseCase } from './local-llm-runtime-control.port.js';
+
 /**
  * LocalLLM on_demand 停止タイミングのスケジュール判定（純関数・I/O なし）。
  * Pi5 のコンテナ時計と upstream のTZズレに備え、明示的な IANA タイムゾーンで解釈する。
@@ -52,4 +54,34 @@ export function isWithinLocalLlmWarmWindow(now: Date, config: LocalLlmWarmWindow
   }
   const hour = getHourInTimeZone(now, timeZone);
   return hour >= start && hour < end;
+}
+
+/**
+ * 業務・Agent 相当の用途は refCount=0 でも /stop しない方針（メインAIを維持）。
+ * 将来追加される「私用/実験」専用用途はここに含めず、下の warm 窓または停止許可側で扱う。
+ */
+export const LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES: readonly LocalLlmRuntimeUseCase[] = [
+  'photo_label',
+  'document_summary',
+  'admin_console_chat',
+];
+
+export function isAlwaysKeepWarmLocalLlmUseCase(useCase: LocalLlmRuntimeUseCase): boolean {
+  return LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES.includes(useCase);
+}
+
+/**
+ * release 時に /stop を抑止するか。
+ * - 業務/Agent用途は常に抑止（メインAI維持）
+ * - それ以外は warm 窓が有効なときのみ時間帯内で抑止
+ */
+export function shouldSuppressLocalLlmRuntimeStop(params: {
+  useCase: LocalLlmRuntimeUseCase;
+  now: Date;
+  warmWindow: LocalLlmWarmWindowConfig;
+}): boolean {
+  if (isAlwaysKeepWarmLocalLlmUseCase(params.useCase)) {
+    return true;
+  }
+  return isWithinLocalLlmWarmWindow(params.now, params.warmWindow);
 }

@@ -176,7 +176,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
       startRequestTimeoutMs: 10_000,
       stopRequestTimeoutMs: 10_000,
       healthPollIntervalMs: 1,
-      shouldSuppressStop: () => true,
+      shouldSuppressStop: (_useCase) => true,
     });
 
     await controller.ensureReady('document_summary');

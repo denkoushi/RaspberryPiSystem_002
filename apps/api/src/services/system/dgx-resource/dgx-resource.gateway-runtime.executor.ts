@@ -1,5 +1,9 @@
 import { ApiError } from '../../../lib/errors.js';
 import { env } from '../../../config/env.js';
+import {
+  enqueueMainLocalLlmRuntimeControl,
+  MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES,
+} from '../../inference/runtime/local-llm-runtime-command-queue.js';
 
 import { createTimeoutSignal } from './dgx-resource.probes.js';
 
@@ -39,28 +43,34 @@ export async function executeGatewayRuntimeStartStop(
     throw new ApiError(503, 'ランタイム制御トークンが未設定です', undefined, 'DGX_RUNTIME_TOKEN_MISSING');
   }
 
-  const { signal, cleanup } = createTimeoutSignal(timeoutMs);
-  try {
-    const response = await deps.fetchImpl(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Runtime-Control-Token': token,
-      },
-      body: JSON.stringify({ reason: reason ?? 'dgx_resource_ui' }),
-      signal,
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new ApiError(
-        502,
-        'DGX 側のランタイム制御が拒否または失敗しました',
-        { httpStatus: response.status, body: text.slice(0, 500) },
-        'DGX_RUNTIME_CONTROL_FAILED'
-      );
-    }
-    await response.text().catch(() => '');
-  } finally {
-    cleanup();
-  }
+  await enqueueMainLocalLlmRuntimeControl(
+    `dgx_gateway_runtime_${action}`,
+    async () => {
+      const { signal, cleanup } = createTimeoutSignal(timeoutMs);
+      try {
+        const response = await deps.fetchImpl(targetUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Runtime-Control-Token': token,
+          },
+          body: JSON.stringify({ reason: reason ?? 'dgx_resource_ui' }),
+          signal,
+        });
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          throw new ApiError(
+            502,
+            'DGX 側のランタイム制御が拒否または失敗しました',
+            { httpStatus: response.status, body: text.slice(0, 500) },
+            'DGX_RUNTIME_CONTROL_FAILED'
+          );
+        }
+        await response.text().catch(() => '');
+      } finally {
+        cleanup();
+      }
+    },
+    MAIN_LOCAL_LLM_RUNTIME_CONTROL_PRIORITIES.gatewayControl
+  );
 }

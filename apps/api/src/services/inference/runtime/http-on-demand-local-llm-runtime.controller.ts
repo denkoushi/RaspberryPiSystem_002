@@ -3,6 +3,10 @@ import { performance } from 'node:perf_hooks';
 import { logger } from '../../../lib/logger.js';
 
 import type { LocalLlmRuntimeControllerPort, LocalLlmRuntimeUseCase } from './local-llm-runtime-control.port.js';
+import {
+  enqueueMainLocalLlmRuntimeControl,
+  resolveMainLocalLlmRuntimeControlPriorityForUseCase,
+} from './local-llm-runtime-command-queue.js';
 
 const log = logger.child({ component: 'localLlmRuntimeControl' });
 
@@ -20,10 +24,10 @@ export type HttpOnDemandLocalLlmRuntimeControllerDeps = {
   stopRequestTimeoutMs: number;
   healthPollIntervalMs: number;
   /**
-   * true のとき、refCount=0 での release で /stop を送らない（昼間 warm 維持など）。
+   * true のとき、refCount=0 での release で /stop を送らない（業務/Agent warm 維持・warm 窓など）。
    * 未指定・false は従来どおり停止試行。
    */
-  shouldSuppressStop?: () => boolean;
+  shouldSuppressStop?: (useCase: LocalLlmRuntimeUseCase) => boolean;
 };
 
 /**
@@ -43,7 +47,10 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
   async ensureReady(useCase: LocalLlmRuntimeUseCase): Promise<void> {
     this.refCount += 1;
     if (this.refCount === 1) {
-      this.readyPromise = this.startAndWaitUntilHealthy(useCase);
+      this.readyPromise = enqueueMainLocalLlmRuntimeControl(`runtime_ensure:${useCase}`, () =>
+        this.startAndWaitUntilHealthy(useCase),
+      resolveMainLocalLlmRuntimeControlPriorityForUseCase(useCase)
+      );
     }
     const p = this.readyPromise;
     if (!p) {
@@ -67,14 +74,18 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
       return;
     }
     this.readyPromise = null;
-    if (this.deps.shouldSuppressStop?.() === true) {
+    if (this.deps.shouldSuppressStop?.(useCase) === true) {
       log.info(
         { useCase, action: 'runtime_stop_suppressed' },
-        '[LocalLlmRuntimeControl] stop suppressed (schedule policy)'
+        '[LocalLlmRuntimeControl] stop suppressed (use-case stop policy)'
       );
       return;
     }
-    await this.stopQuietly(useCase);
+    await enqueueMainLocalLlmRuntimeControl(
+      `runtime_release:${useCase}`,
+      () => this.stopQuietly(useCase),
+      resolveMainLocalLlmRuntimeControlPriorityForUseCase(useCase)
+    );
   }
 
   private async startAndWaitUntilHealthy(useCase: LocalLlmRuntimeUseCase): Promise<void> {

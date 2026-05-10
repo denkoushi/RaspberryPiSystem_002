@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { HttpOnDemandLocalLlmRuntimeController } from '../http-on-demand-local-llm-runtime.controller.js';
+import { resetMainLocalLlmRuntimeControlQueueForTests } from '../local-llm-runtime-command-queue.js';
 
 describe('HttpOnDemandLocalLlmRuntimeController', () => {
+  beforeEach(() => {
+    resetMainLocalLlmRuntimeControlQueueForTests();
+  });
   it('starts once and polls chat completions until ready for admin console chat', async () => {
     let chatN = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -132,7 +136,7 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
     );
   });
 
-  it('skips stop when shouldSuppressStop returns true', async () => {
+  it('skips stop when shouldSuppressStop returns true for use case', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.includes('/start') && init?.method === 'POST') {
@@ -159,7 +163,7 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
       startRequestTimeoutMs: 10_000,
       stopRequestTimeoutMs: 10_000,
       healthPollIntervalMs: 1,
-      shouldSuppressStop: () => true,
+      shouldSuppressStop: (_useCase) => true,
     });
 
     await c.ensureReady('admin_console_chat');

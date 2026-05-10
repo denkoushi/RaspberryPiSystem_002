@@ -59,7 +59,11 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - `private_ok`（**私用OK**）— ComfyUI 等の競合を許容。
 - `experiment_first`（**実験優先**）— lab/実験コンテナ検証寄り。**業務 Inference との競合は人手で確認**してください。
 
-**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / Comfy に対して **停止 POST を順に試行**。**実験優先へ切替える前に**（設定済みなら）Comfy 停止試行→業務 **`system-prod-gateway`** ランタイム停止試行。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
+**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / Comfy に対して **停止 POST を順に試行**。**実験優先へ切替える前に**（設定済みなら）**私用 Comfy の停止 POST のみ**（**`system-prod-gateway`（業務/Agent メインAI経路）は自動では停止しない**）。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
+
+**メインAI 制御の直列化（Pi5 API）**: `on_demand` 時、**推論側の `/start`・`/stop`** と **DGX リソース UI 経由の `system-prod-gateway` 起停**は、同一プロセス内の **単一キュー**で直列化される（`local-llm-runtime-command-queue.ts` → `enqueueMainLocalLlmRuntimeControl`）。待機が長い場合は `main_llm_control_queue_wait` ログで把握可能。
+
+**用途別停止（Pi5 API）**: `photo_label` / `document_summary` / `admin_console_chat` は **参照カウント 0 でも `/stop` を抑止**（メインAI warm 維持）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行型定義では 3 用途のみ）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。
 
 履歴として **ひとつ前のモード** は `overview.policy.previousMode` に返り、GUI の「直前モードへ戻す」から `SET_POLICY`（**ワークロード自動調停なし**）で復帰できます（**再起動またはマルチプロセス構成では単一ソースではない**。厳密な監査が必要なら将来の永続化を検討）。
 

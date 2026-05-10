@@ -21,7 +21,7 @@ type ProviderLocalLlmRuntimeControllerDeps = {
   healthPollIntervalMs: number;
   legacyAdminRuntimeControl?: InferenceProviderRuntimeControlDefinition;
   /** 全 HttpOnDemand インスタンスで共有。true のとき release で /stop を抑止 */
-  shouldSuppressStop?: () => boolean;
+  shouldSuppressStop?: (useCase: LocalLlmRuntimeUseCase) => boolean;
 };
 
 class InvalidOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeControllerPort {
