@@ -1,0 +1,21 @@
+#!/bin/sh
+# StackChan compatibility secondary IP — re-apply after NetworkManager (re)configures iface.
+# Deployed by Ansible; same addressing as {{ private_pi5_stackchan_compat_effective_service_name }}.service
+
+set -eu
+
+IFACE_EXPECT="{{ private_pi5_stackchan_compat_interface_effective }}"
+ACTION="${2:-}"
+
+[ "$1" = "$IFACE_EXPECT" ] || exit 0
+
+case "$ACTION" in
+  up|dhcp4-change) ;;
+  *) exit 0 ;;
+esac
+
+# Match oneshot unit: prefer add, fall back to replace (idempotent across reboots and renewals).
+/usr/sbin/ip addr add {{ private_pi5_stackchan_compat_ip_effective }}/{{ private_pi5_stackchan_compat_prefix_effective }} dev "{{ private_pi5_stackchan_compat_interface_effective }}" 2>/dev/null \
+  || /usr/sbin/ip addr replace {{ private_pi5_stackchan_compat_ip_effective }}/{{ private_pi5_stackchan_compat_prefix_effective }} dev "{{ private_pi5_stackchan_compat_interface_effective }}"
+
+exit 0

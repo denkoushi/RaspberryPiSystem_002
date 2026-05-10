@@ -145,4 +145,4 @@ DGX_RUNTIME_CONTROL_TOKEN=replace-me
 - 2026-05-10 実測では、private Pi5 の DHCP IP が **`192.168.128.112` -> `192.168.128.113`** へ変わった一方、StackChan ファームは **旧 bridge IP** を見続けていた。
 - この状態では、StackChan の `GET /chat?...` が **`200`** を返しても **bridge ログに新規 `POST /api/stackchan/chat/simple` が出ない**ことがある。
 - 切り分けは **`hostname -I`（Pi5）** と **`journalctl -u stackchan-bridge --since ...`** を正とし、必要なら **StackChan 側設定更新**または **Pi5 側 compatibility IP alias** で一致させる。
-- 標準 playbook では、任意変数 **`private_pi5_stackchan_compat_ip`**（+ `interface` / `prefix`）を与えると **`stackchan-bridge-compat-ip.service`** を配備して alias を維持できる。
+- 標準 playbook では、任意変数 **`private_pi5_stackchan_compat_ip`**（+ `interface` / `prefix`）を与えると **`stackchan-bridge-compat-ip.service`**（起動時 oneshot）に加え、**NetworkManager dispatcher**（`up` / `dhcp4-change` で同じ `ip addr` 手順を再実行）を配備し、Wi‑Fi 再接続後も alias が戻るようにできる。

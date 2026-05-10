@@ -13,6 +13,7 @@
 - Sample inventory: `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample.yml`
 - Deploy wrapper: `scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh`
 - Bridge 実装: `scripts/private-pi5-stackchan-bridge/bridge_server.py` / `scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py` / `scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py`
+- （`private_pi5_stackchan_compat_ip` 利用時）互換 alias 再適用 hook: `infrastructure/ansible/templates/private-pi5-stackchan-compat-ip-dispatcher.sh.j2` → Pi5 の `/etc/NetworkManager/dispatcher.d/99-stackchan-bridge-compat-ip`
 
 ## 前提
 
@@ -61,7 +62,7 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 1. Tailscale preflight
 2. `bridge_server.py` / `stackchan_chat_core.py` / `dgx_runtime_client.py` を私用 Pi5 へ同期
 3. `.env` を template から生成（`0600`）
-4. （任意）StackChan 互換用の **旧 LAN IP alias** を **`stackchan-bridge-compat-ip.service`** で管理
+4. （任意）StackChan 互換用の **旧 LAN IP alias** を **`stackchan-bridge-compat-ip.service`（oneshot・起動時）** と **NetworkManager dispatcher `up` / `dhcp4-change`（再接続・DHCP 更新後の再適用）** で管理
 5. `stackchan-bridge.service` を systemd に配備
 6. `systemctl enable --now`
 7. `GET /healthz` で起動確認
@@ -89,7 +90,7 @@ journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
 
 - `hostname -I` で **現在の DHCP IP** を確認する
 - StackChan 実機の `/chat` を叩いても **bridge ログに POST が出ない**なら、まず **bridge URL の IP ミスマッチ**を疑う（**`200` でも未達**になり得る。text-only 正本は [stackchan-community-text-only-e2e.md](./stackchan-community-text-only-e2e.md#text-only-done-criteria) 参照）
-- `private_pi5_stackchan_compat_ip` を設定した場合は、`systemctl is-enabled stackchan-bridge-compat-ip.service` と `ip -brief addr show wlan0` で alias が維持されていることも確認する
+- `private_pi5_stackchan_compat_ip` を設定した場合は、`systemctl is-enabled stackchan-bridge-compat-ip.service`・`test -x /etc/NetworkManager/dispatcher.d/99-stackchan-bridge-compat-ip` と `ip -brief addr show wlan0` で alias が維持されていることも確認する（**`systemctl is-active` だけでは不十分**。oneshot は `SubState=exited` のまま alias が消え得るため、**Wi‑Fi 一度切り→再接続後**に `112` が付き直しているかを見る）
 
 ## 運用メモ
 
@@ -98,6 +99,7 @@ journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
 - 将来 SSH 鍵と `NOPASSWD` を整えたら、ローカル fragment から `ansible_password` / `ansible_become_password` を外す。
 - 2026-05-10 実測では、private Pi5 の DHCP IP が **`192.168.128.113`** に変わる一方、StackChan は **旧 IP `192.168.128.112`** を見続けていた。以後の標準運用では、**StackChan 設定更新**または **Pi5 側 compatibility alias** のどちらかを必ず管理対象に含める。
 - 2026-05-10 late: playbook に **`private_pi5_stackchan_compat_ip`** 系変数を追加し、**`stackchan-bridge-compat-ip.service`** を標準管理に組み込んだ。実機で **`enabled` / `active`** と **`wlan0: 192.168.128.113/24 192.168.128.112/24`** を確認済み。
+- 2026-05-10 以降: 調査で **NetworkManager の再接続／DHCP リース更新で secondary alias が消える**一方、**oneshot compat サービスは再実行されない**ことが原因候補として確度が高かったため、**`/etc/NetworkManager/dispatcher.d/99-stackchan-bridge-compat-ip`** を playbook で配布し、対象インタフェースの **`up` と `dhcp4-change`** で **`ip addr add || ip addr replace`** を冪等適用するようにした。
 
 ## 関連
 

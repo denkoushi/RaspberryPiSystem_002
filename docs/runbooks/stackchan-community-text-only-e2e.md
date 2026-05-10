@@ -156,6 +156,7 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 - この状態で `GET /chat?...` は StackChan 側で **`200`** を返しても、**private Pi5 `journalctl -u stackchan-bridge` に新規 `POST /api/stackchan/chat/simple` が現れない**ことを確認した
 - private Pi5 の `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加した直後、同じ `GET /chat?...` 実行で **bridge ログに `POST /api/stackchan/chat/simple HTTP/1.1" 200`** が現れた
 - その後、private Pi5 の標準 playbook に **compatibility alias 管理**を組み込み、**`stackchan-bridge-compat-ip.service`** を **`enabled` / `active`** にした状態でも、再度 `GET /chat?...` と bridge `POST /api/stackchan/chat/simple 200` の対応を確認した
+- **追記（2026-05-10）**: Wi‑Fi 再接続や DHCP 更新で secondary alias が落ちうるため、同 playbook は **NetworkManager dispatcher**（`up` / `dhcp4-change`）でも同じ `ip addr` を冪等適用する。**`systemctl is-active` だけの確認は不十分**（oneshot は `exited` のまま alias 欠落し得る）。切り分け時は **`ip -brief addr show <iface>`** と **再接続後の再確認**を正とする。
 - さらに **`http://192.168.128.112:18080/healthz`** が **`200`**、**`POST http://192.168.128.112:18080/api/stackchan/chat/simple`** が **`200` + `replyText`** を返すことを確認した
 - よって、**StackChan (`192.168.128.124`) -> private Pi5 compatibility IP (`192.168.128.112`) -> bridge -> DGX** の text-only 経路は成立した
 
