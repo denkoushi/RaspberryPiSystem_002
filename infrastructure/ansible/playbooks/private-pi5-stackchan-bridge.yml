@@ -13,6 +13,9 @@
     private_pi5_bridge_unit_path: "/etc/systemd/system/{{ private_pi5_bridge_effective_service_name }}.service"
     private_pi5_bridge_env_path: "{{ private_pi5_bridge_effective_dir }}/.env"
     private_pi5_bridge_effective_port: "{{ (private_pi5_bridge_port | default(18080)) | int }}"
+    private_pi5_bridge_python_path: "{{ private_pi5_bridge_python | default('/usr/bin/python3') }}"
+    private_pi5_bridge_uv_bin: "{{ private_pi5_bridge_uv_path | default('/home/' ~ private_pi5_bridge_effective_user ~ '/.local/bin/uv') }}"
+    private_pi5_bridge_venv_path: "{{ private_pi5_bridge_effective_dir }}/.venv"
     private_pi5_stackchan_compat_ip_effective: "{{ private_pi5_stackchan_compat_ip | default('') | trim }}"
     private_pi5_stackchan_compat_enabled: "{{ (private_pi5_stackchan_compat_ip_effective | length) > 0 }}"
     private_pi5_stackchan_compat_interface_effective: "{{ private_pi5_stackchan_compat_interface | default('wlan0') }}"
@@ -29,6 +32,18 @@
         mode: "0644"
       - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py"
         dest: "{{ private_pi5_bridge_effective_dir }}/dgx_runtime_client.py"
+        mode: "0644"
+      - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-stackchan-bridge/stt_bridge_core.py"
+        dest: "{{ private_pi5_bridge_effective_dir }}/stt_bridge_core.py"
+        mode: "0644"
+      - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-stackchan-bridge/stt_runtime_client.py"
+        dest: "{{ private_pi5_bridge_effective_dir }}/stt_runtime_client.py"
+        mode: "0644"
+      - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-stackchan-bridge/pyproject.toml"
+        dest: "{{ private_pi5_bridge_effective_dir }}/pyproject.toml"
+        mode: "0644"
+      - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-stackchan-bridge/uv.lock"
+        dest: "{{ private_pi5_bridge_effective_dir }}/uv.lock"
         mode: "0644"
 
   pre_tasks:
@@ -68,6 +83,53 @@
         group: "{{ private_pi5_bridge_effective_group }}"
         mode: "{{ item.mode }}"
       loop: "{{ private_pi5_bridge_files }}"
+      notify: Restart private Pi5 bridge
+
+    - name: Check uv binary
+      ansible.builtin.stat:
+        path: "{{ private_pi5_bridge_uv_bin }}"
+      register: private_pi5_bridge_uv_stat
+
+    - name: Install uv for bridge user when missing
+      ansible.builtin.shell: |
+        set -euo pipefail
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: "{{ private_pi5_bridge_effective_user }}"
+      when: not private_pi5_bridge_uv_stat.stat.exists
+
+    - name: Sync bridge venv with uv (default deps)
+      ansible.builtin.command:
+        argv:
+          - "{{ private_pi5_bridge_uv_bin }}"
+          - sync
+          - --frozen
+          - --project
+          - "{{ private_pi5_bridge_effective_dir }}"
+          - --python
+          - "{{ private_pi5_bridge_python_path }}"
+      become: true
+      become_user: "{{ private_pi5_bridge_effective_user }}"
+      when: (private_pi5_stt_provider | default('upstream-openai')) != 'faster-whisper-local'
+      notify: Restart private Pi5 bridge
+
+    - name: Sync bridge venv with uv (include faster-whisper extra)
+      ansible.builtin.command:
+        argv:
+          - "{{ private_pi5_bridge_uv_bin }}"
+          - sync
+          - --frozen
+          - --extra
+          - local-stt
+          - --project
+          - "{{ private_pi5_bridge_effective_dir }}"
+          - --python
+          - "{{ private_pi5_bridge_python_path }}"
+      become: true
+      become_user: "{{ private_pi5_bridge_effective_user }}"
+      when: (private_pi5_stt_provider | default('upstream-openai')) == 'faster-whisper-local'
       notify: Restart private Pi5 bridge
 
     - name: Render bridge environment file

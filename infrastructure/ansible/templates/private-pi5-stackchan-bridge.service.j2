@@ -8,7 +8,7 @@ Type=simple
 User={{ private_pi5_bridge_effective_user }}
 WorkingDirectory={{ private_pi5_bridge_effective_dir }}
 EnvironmentFile={{ private_pi5_bridge_env_path }}
-ExecStart=/usr/bin/python3 {{ private_pi5_bridge_effective_dir }}/bridge_server.py
+ExecStart={{ private_pi5_bridge_venv_path }}/bin/python {{ private_pi5_bridge_effective_dir }}/bridge_server.py
 Restart=always
 RestartSec=2
 

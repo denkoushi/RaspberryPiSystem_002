@@ -2,7 +2,7 @@
 title: "KB: StackChan コミュニティファーム（AI_StackChan_Ex）供給鎖・セキュリティ"
 tags: [StackChan, supply-chain, firmware, security, Pi5, DGX]
 audience: [開発者, 運用者]
-last-verified: 2026-05-10
+last-verified: 2026-05-11
 category: knowledge-base
 update-frequency: high
 ---
@@ -159,9 +159,154 @@ update-frequency: high
 - **`bridge_server.py`**: HTTP ルーティング・`STACKCHAN_TOKEN` 検証・JSON I/O のみ。
 - **`stackchan_chat_core.py`**: `messages` 検証、upstream ボディ構築、リトライ付き completion（`ChatCompletionWorkflow`）、`replyText` 抽出。
 - **`dgx_runtime_client.py`**: DGX への生 HTTP（chat・`/start`・ready プローブ）。
-- **音声（STT/TTS）**は **デバイス側**で完結させ、bridge はテキスト境界を維持する（手順: [`scripts/stackchan-ai-stackchan-ex/README.md`](../../scripts/stackchan-ai-stackchan-ex/README.md) §5）。
+- **音声境界（2026-05-11 最終）**: TTS 再生はデバイス側、STT 文字起こしは private Pi5 bridge（`/api/stackchan/stt`）で処理し、bridge は LLM 境界を含む会話オーケストレーションを担当する。
 - **text-only 完了条件の正本**: [`stackchan-community-text-only-e2e.md` §text-only-done-criteria](../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria)
 - **2026-05-10（`stackchan_chat_core` 同梱後）**: 私用 Pi5 へ **標準 playbook を再実行**し、**`PLAY RECAP` `ok=17` `changed=2` `failed=0`** を確認。playbook 付帯 **`/healthz` `200`** に加え、**Ansible `shell`** で **`systemctl is-active stackchan-bridge`・loopback `curl /healthz`・`stackchan_chat_core.py` 実在**を確認（詳細は [private-pi5-stackchan-bridge-deploy.md](../runbooks/private-pi5-stackchan-bridge-deploy.md) **実測記録** 節）。
+
+## 2026-05-11 追加: `わかりません` 継続事象の根因（payload 空）
+
+### Context
+
+- 2026-05-10 までの対処（DGX 502 切り分け、compatibility alias、NetworkManager dispatcher）後も、実機で `わかりません` が再発した。
+- private Pi5 bridge のログでは **`POST /api/stackchan/chat/simple` が `200`** であり、DGX 由来応答も取得されていたため、障害点は StackChan ファーム側に絞られた。
+
+### Symptoms
+
+- StackChan シリアルで **`[HTTP] POST... code: 200`** が出るのに **`[HTTP] payload length: 0`**。
+- 同じ 1 リクエストで retry 2 回とも `payload length: 0`。
+- bridge 側には同時刻に **`POST /api/stackchan/chat/simple HTTP/1.1" 200 -`** が残る。
+
+### Investigation
+
+#### Hypothesis H: bridge が空ボディを返している
+
+- **REJECTED**。
+- 根拠:
+  - Mac から `POST /api/stackchan/chat/simple` を直接実行すると `Content-Length: 955`（実測）と非空 JSON を返す。
+  - したがって、bridge 応答は空ではない。
+
+#### Hypothesis I: StackChan ファームの HTTP レスポンス読取タイミング不整合
+
+- **CONFIRMED**。
+- 根拠:
+  - `ChatGPT.cpp` `https_post_json()` で `WiFiClient`（HTTP/HTTPS）を内側スコープで生成し、`HTTPClient::getString()` がそのスコープ外で実行され得る構造だった。
+  - `HTTP 200` を受けても payload が空化し、`deserializeJson` 対象が空となり `わかりません` 分岐に入る。
+
+### Root cause
+
+- StackChan ファーム `ChatGPT.cpp` の **`https_post_json` における client ライフタイム不整合**。  
+  `HTTPClient` は成功コードを返すが、本文読取時点で下位 `WiFiClient` が生存しておらず、payload が空になるケースがあった。
+
+### Fix
+
+- `https_post_json` を修正し、`http.getString()` と payload 判定を **HTTP/HTTPS 各分岐の client 生存スコープ内**で実行するように変更。
+- retry（`CHATGPT_HTTP_MAX_ATTEMPTS=2`）と診断ログは維持。
+- 再書き込み後の実測:
+  - シリアル: **`[HTTP] payload length: 1027`**（非空）
+  - 本文: `replyText` を含む JSON を確認
+  - bridge: `POST /api/stackchan/chat/simple 200` と整合
+
+### Prevention
+
+- ファーム側の HTTP ラッパーで、`HTTPClient` と `WiFiClient` の寿命を同一スコープに固定する。
+- `HTTP 200` だけで成功判定せず、**payload 長と `replyText` 有無**を診断ログに必ず残す。
+- private Pi5 bridge とデバイス側の責務を分離し、text 経路と音声経路を独立して切り分ける。
+
+### Current status / Next issue
+
+- **解消済み**: `200` なのに payload が空で `わかりません` になる主因。
+- **継続課題**: 一部実行で `MP3:ERROR_BUFLEN 0` / `I2S: register I2S object to platform failed` が発生。  
+  これは bridge ではなく **デバイス側の音声再生経路**（TTS/MP3/I2S）問題として別トラックで追跡する。
+- 2026-05-11 追加検証: `WebVoiceVoxTTS.cpp` を **`mp3StreamingUrl` から `mp3DownloadUrl` 優先**へ変更して再書き込みしたが、同一シナリオで `MP3:ERROR_BUFLEN 0` は再現。**URL種別だけでは解消しない**ため、次は `AudioFileSourceHTTPSStream` / `PlayMP3` のバッファ供給と I2S 初期化順序を追う。
+
+## 2026-05-11 追加（late）: 無音・failed 発話・Spark 連携疑義の再切り分け
+
+### Context
+
+- ユーザー観測として「音は出る回があるが、`http post failed` など失敗文言を話すため会話として成立していない」が報告された。
+- 同時刻帯で、Mac から private Pi5 bridge / StackChan HTTP / private Pi5 SSH（Tailscale）への到達性が不安定化した。
+
+### Symptoms
+
+- `http://192.168.128.112:18080/healthz` / `/api/stackchan/chat/simple` が timeout / host down。
+- `ansible ... private-pi5-stackchan-bridge -m ping` が `UNREACHABLE`（`ssh ... 100.89.190.21:22 timed out`）。
+- `100.118.82.72:38081`（DGX 側）TCP 到達も timeout。
+- StackChan 側は「音が出る」局面がある一方、内容は `http post failed: connection refused` 系が混在。
+
+### Investigation
+
+#### Hypothesis J: Spark 推論が壊れている（アプリ不具合）
+
+- **INCONCLUSIVE**。
+- 根拠:
+  - 同時間帯で private Pi5 までの SSH 到達自体が失敗しており、アプリ層より前段のネットワーク断が混在。
+  - 到達不能時は `bridge` 実体状態（service active / alias 保持）を取得できず、アプリ原因の断定は不可。
+
+#### Hypothesis K: 音声失敗の主因は `.mp3s` ストリーム供給不足
+
+- **PARTIALLY CONFIRMED**。
+- 根拠:
+  - `mp3StreamingUrl(.mp3s)` 直再生では `avail=0` 連発後 `MP3:ERROR_BUFLEN 0` を高頻度に再現。
+  - `mp3DownloadUrl(.mp3)` 優先で 404 になるケースがあり、URL種別だけでは不十分。
+  - URLプローブ後に `.mp3` を選択しても `BUFLEN` が残る回があり、I2S 切替競合が併発。
+
+#### Hypothesis L: ストリーム直再生をやめれば安定する
+
+- **PARTIALLY CONFIRMED**（完全解消には未到達）。
+- 実装:
+  - `WebVoiceVoxTTS.cpp` を「URL選定（`200` チェック）→ MP3をSPIFFS保存 → `playMP3SPIFFS` 再生」へ変更。
+  - `writeToStream` 経由で **`mp3 download bytes=99885 expected=99885`** を確認（欠損ダウンロードは解消）。
+- 結果:
+  - それでも `MP3:ERROR_BUFLEN 0` と `I2S: register I2S object to platform failed` が残る回あり。
+  - したがって「ダウンロード欠損」は一因だが、根本は I2S ライフサイクル競合を含む。
+
+### Root cause（現時点）
+
+- **複合要因**:
+  1. 時間帯によって **private Pi5 / DGX へのネットワーク到達不能**が発生し、Spark 連携可否の判定自体が不安定。
+  2. 到達可能時でも、デバイス側の音声再生経路で **`BUFLEN` + I2S 競合**が残り、失敗文言発話に繋がる。
+
+### Fix / Mitigation（実施済み）
+
+- ファーム側:
+  - MP3 URL選定を `HTTP 200` 確認付きへ変更。
+  - `.mp3` を SPIFFS に保存してから再生する経路へ切替（ストリーム依存を削減）。
+  - `playMP3` の Mic/Speaker 切替に遅延と成否ログを追加。
+- 診断側:
+  - `debug_stackchan_audio_probe.py` を強化（シリアル切断・Ansible失敗を握りつぶして継続採取）。
+
+### Prevention / Next actions
+
+- private Pi5 / DGX 到達性が落ちたときは、先に **ネットワーク断**として扱い、アプリ改修判定を止める。
+- 音声系は text 経路と分離し、`download complete` / `mp3 begin` / `loopFalse` / `I2S error` を同一 run で採取して判定する。
+- I2S 競合は `Mic↔Speaker` 切替経路の一元化（排他・順序固定）を優先して詰める。
+
+## 2026-05-11 最終（night）: 会話 E2E 成立
+
+### Context
+
+- 上記 late 調査後、STT 経路を private Pi5 bridge に統合し、音声再生の既知失敗経路（I2S 再初期化・chunked MP3 保存失敗）を順に修正した。
+- 目的は「WakeWord から返答発話までを連続で成立させること」。
+
+### Root cause（最終）
+
+- 音声会話不成立は単一原因ではなく、主に以下の複合だった。
+  1. 旧 `M5Unified` での I2S 再初期化競合（`I2S: register I2S object to platform failed`）
+  2. VOICEVOX 応答が chunked transfer の場合に MP3 保存が欠損し得る実装
+  3. STT 経路が private Pi5 bridge 側で未実装だった初期構成
+
+### Fix
+
+- `platformio.ini` で `M5Unified` を `0.1.17` -> `0.2.7` へ更新。
+- `WebVoiceVoxTTS.cpp` の MP3 ダウンロードを chunked transfer 対応の手動保存へ置換し、`bytes=-11 expected=-1` を解消。
+- private Pi5 bridge に `POST /api/stackchan/stt`（`stt_bridge_core.py` / `stt_runtime_client.py`）を追加し、`faster-whisper-local` で運用。
+- `CloudSpeechClient.cpp` から raw WAV を bridge STT endpoint へ送る構成へ変更（`STT_BRIDGE_*` マクロ）。
+- 実機 UI 側は仮想 `BtnB` / `BtnA` の操作経路を整え、ウェイクワード登録・有効化を再現可能化。
+
+### Result
+
+- 実機で **WakeWord -> STT -> LLM -> TTS** が成立し、ユーザー音声質問に対する返答発話を確認。
+- 以降の運用上の注意は「ファーム再書き込み後はモードが初期化されるため、ウェイクワード登録/有効化を再実施する」。
 
 ## References
 
