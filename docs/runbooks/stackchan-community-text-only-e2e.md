@@ -4,6 +4,7 @@ audience: [開発者, 運用者]
 last-verified: 2026-05-11
 related:
   - ../knowledge-base/KB-stackchan-community-firmware-supply-chain.md
+  - ./stackchan-community-realtime-api-migration.md
   - ../../scripts/stackchan-ai-stackchan-ex/README.md
   - ../../scripts/private-pi5-stackchan-bridge/README.md
 ---
@@ -264,6 +265,13 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 - [ ] `SC_ExConfig.yaml` / `yaml/SC_SecConfig.yaml` の **`stt` / `tts` / `wakeword`** を有効化し、**STT 音声は private Pi5 bridge `/api/stackchan/stt` へ送る構成**で一致させる
 - [ ] ウェイクワードまたは UI から発話入力後、**bridge ログに `POST /api/stackchan/chat` 系が増える**こと（STT 結果がテキストとして LLM に渡っている証拠）
 
+### CoreS3 実機の WakeWord 操作（2026-05-11 復旧仕様）
+
+- CoreS3 の物理ボタン非依存構成では、画面タッチを `BtnA` / `BtnB(long)` 相当に割り当てたファームを使う。
+- 左タッチ: `BtnA` 相当（WakeWord 有効/無効切替）。
+- 右タッチ: `BtnB` 長押し相当（WakeWord 登録）。
+- ファーム再書き込み直後は mode 初期化で WakeWord が無効化されるため、**右タッチで登録 -> 左タッチで有効化**を毎回実施する。
+
 ### Phase C — 再発条件の確認
 
 - [ ] DGX cold start / runtime 停止時: bridge が **`502` / `UPSTREAM_UNREACHABLE`** を返し得る → `DGX_RUNTIME_AUTO_START` と **`DGX_RUNTIME_READY_TIMEOUT_SEC`（300–600）** を確認
@@ -285,3 +293,4 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 ## 関連
 
 - 供給鎖: [KB-stackchan-community-firmware-supply-chain.md](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md)
+- Realtime 段階移行: [stackchan-community-realtime-api-migration.md](./stackchan-community-realtime-api-migration.md)

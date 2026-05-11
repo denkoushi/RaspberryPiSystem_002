@@ -58,17 +58,17 @@ env PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=\"http://192.168.128.112:18080/api
 | OpenAI / 他クラウド API キー | 原則 **不要**（bridge 経由なら） | YAML/SPIFFS に残さない運用を推奨 |
 | Wi-Fi パスワード | デバイス設定 | ゲスト SSID / セグメント分割を推奨 |
 
-## 5) 音声（STT/TTS）最小方針 — **デバイス側**で完結
+## 5) 音声（STT/TTS）最小方針 — 正本経路（2026-05-11）
 
-private Pi5 bridge は **`/v1/chat/completions` 相当のテキスト境界**のみを担当する。**マイクPCMやTTS音声ファイルを bridge が受け取る設計にはしない**（責務分離・秘密の保持・帯域）。
+private Pi5 bridge は **LLM 境界に加えて STT 境界（`POST /api/stackchan/stt`）**を担当する。TTS 音声合成/再生はデバイス側（VOICEVOX 利用）で運用する。
 
 ### 推奨アーキテクチャ
 
 | 処理 | 担当 | 注記 |
 |------|------|------|
-| STT | StackChan 実機（またはクラウドSTT） | `SC_ExConfig.yaml` / `yaml/SC_SecConfig.yaml` の `stt` / `apikey.stt` |
-| LLM | Pi5 bridge → DGX | 既存パッチの **`CHATGPT_API_URL`**（`/api/stackchan/chat`）は **テキストPOST** のみ |
-| TTS | StackChan 実機 | `tts` 設定。LLM の応答文字列がそのまま読み上げ対象になる |
+| STT | StackChan 実機 -> Pi5 bridge | 生音声を bridge `POST /api/stackchan/stt` へ送り、`faster-whisper-local` で文字起こし |
+| LLM | Pi5 bridge -> DGX Spark | `CHATGPT_API_URL` は `POST /api/stackchan/chat` / `/simple` を使用 |
+| TTS | StackChan 実機（VOICEVOX） | 返答文字列をデバイス側で音声化・再生 |
 
 ### 最小手順（ビルドは text-only と同じ前提）
 
@@ -76,6 +76,11 @@ private Pi5 bridge は **`/v1/chat/completions` 相当のテキスト境界**の
 2. **スピーカー単体**を `http://<StackChan-IP>/speech?say=テスト` で確認（runbook 参照）。
 3. `app/AiStackChanEx/SC_ExConfig.yaml` で **`stt.type` / `tts.type` / `wakeword.type`** を、**AI_StackChan_Ex 本家ドキュメント**に従い有効化する。クラウド STT を使う場合のみ `apikey.stt` を設定（**DGX 共有トークンとは別**）。
 4. SD に設定を反映して再起動し、**発話 → bridge ログに LLM 用 POST が増える**ことを確認する。増えない場合は **STT 結果が空**または **会話開始トリガが未発火**を疑う。
+
+### 5.1) CoreS3 の WakeWord 操作（復旧仕様）
+
+- 物理ボタンを使わない CoreS3 構成では、左タッチを `BtnA` 相当（WakeWord 有効/無効）、右タッチを `BtnB` 長押し相当（WakeWord 登録）として扱う。
+- ファーム再書き込み後は mode 初期化で WakeWord が無効化されるため、**右タッチで登録 -> 左タッチで有効化**を再実施する。
 
 ### パッチとの関係
 
@@ -85,4 +90,77 @@ private Pi5 bridge は **`/v1/chat/completions` 相当のテキスト境界**の
 
 - ナレッジ: [KB-stackchan-community-firmware-supply-chain.md](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md)
 - 実機 text-only / 音声 E2E: [stackchan-community-text-only-e2e.md](../../docs/runbooks/stackchan-community-text-only-e2e.md)
+- Realtime 段階移行: [stackchan-community-realtime-api-migration.md](../../docs/runbooks/stackchan-community-realtime-api-migration.md)
 - ブリッジ API: [../private-pi5-stackchan-bridge/README.md](../private-pi5-stackchan-bridge/README.md)
+
+## 7) Realtime API 化を先に進めるときの注意（過去失敗の要点）
+
+`AI_StackChan_Ex` 上流では Realtime API まわりで複数の不具合修正が入っている。  
+代表例:
+
+- `db27921`: Core2 で Realtime + TTS 時のヒープ不足
+- `7362c03`: Realtime WebSocket イベント処理の優先度不足による音声途切れ
+- `31fec2e`: Gemini Live 側の変更が OpenAI Realtime に影響（`delay(1)` 追加）
+
+このため、導入順は次を推奨する。
+
+1. `env:m5stack-cores3-realtime` で **Realtime本体のみ**有効化
+2. 遅延・安定性を観測
+3. 必要な場合のみ `REALTIME_API_WITH_TTS` を後段で追加
+
+補足:
+
+- 現在の private Pi5 bridge は HTTP text/STT 境界であり、Realtime の WebSocket 音声境界とは別系統。
+- Spark（DGX）を Realtime 化するには gateway 側の WebSocket 対応が別途必要。
+
+### 7.1) 段階移行の準備を自動化する
+
+次のスクリプトは、Realtime 移行前の定型作業（依存ピン留め、YAML雛形、ビルド/ロールバック手順出力）をまとめて行う。
+
+```bash
+python3 scripts/stackchan-ai-stackchan-ex/prepare_realtime_migration.py /path/to/AI_StackChan_Ex
+```
+
+TTS拡張まで同時に試す場合のみ `--with-tts` を付ける（推奨は後段）。
+
+```bash
+python3 scripts/stackchan-ai-stackchan-ex/prepare_realtime_migration.py /path/to/AI_StackChan_Ex --with-tts
+```
+
+生成物（既定）:
+
+- `.cursor/realtime-migration/SC_SecConfig.realtime.template.yaml`
+- `.cursor/realtime-migration/SC_ExConfig.realtime.template.yaml`
+- `.cursor/realtime-migration/build-realtime.sh`
+- `.cursor/realtime-migration/upload-realtime.sh`
+- `.cursor/realtime-migration/phase1-checklist.md`
+- `.cursor/realtime-migration/rollback-realtime.md`
+
+### 7.2) クローン取得から一気に実行する
+
+上流の clone/checkout から準備、必要なら build まで一発で実行する。
+
+```bash
+python3 scripts/stackchan-ai-stackchan-ex/bootstrap_realtime_migration.py \
+  --target-dir /path/to/AI_StackChan_Ex \
+  --run-build
+```
+
+TTS を同時有効化する場合（非推奨・後段推奨）:
+
+```bash
+python3 scripts/stackchan-ai-stackchan-ex/bootstrap_realtime_migration.py \
+  --target-dir /path/to/AI_StackChan_Ex \
+  --with-tts \
+  --run-build
+```
+
+実機へ書き込みまで自動で行う場合:
+
+```bash
+python3 scripts/stackchan-ai-stackchan-ex/bootstrap_realtime_migration.py \
+  --target-dir /path/to/AI_StackChan_Ex \
+  --run-build \
+  --run-upload \
+  --upload-port /dev/cu.usbmodem1101
+```
