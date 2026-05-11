@@ -308,9 +308,58 @@ update-frequency: high
 - 実機で **WakeWord -> STT -> LLM -> TTS** が成立し、ユーザー音声質問に対する返答発話を確認。
 - 以降の運用上の注意は「ファーム再書き込み後はモードが初期化されるため、ウェイクワード登録/有効化を再実施する」。
 
+## 2026-05-11 追加: Realtime API 先行導入時の失敗履歴（上流由来）
+
+### Context
+
+- 5秒級応答を狙うため Realtime API を先行検討する要求があり、現仕様（text/STT/TTS 分離）へ至った背景を再確認した。
+- 参照した上流は `ronron-gh/AI_StackChan_Ex` の Realtime 関連コミット群。
+
+### Confirmed history
+
+- `db27921`: Core2 で Realtime + TTS を同時有効化するとヒープ不足が出るため、録音バッファを静的配列化。
+- `7362c03`: Realtime WebSocket イベント処理の優先度不足で音声が途切れるため、高優先タスクへ移行。
+- `31fec2e`: Gemini Live の改善が OpenAI Realtime に副作用を出し、`delay(1)` 追加で調整。
+- `f28b966`: 非Realtime ビルドで WebSocket 依存を除外し、通常経路への副作用を遮断。
+
+### Decision
+
+- Realtime 化は「一括切替」ではなく、**Realtime本体 -> 計測 -> TTS拡張**の順で段階導入する。
+- 既存 private Pi5 bridge 経路はロールバック経路として維持する。
+- Spark（DGX）Realtime 化は gateway 側 WebSocket 境界の追加が必要で、現行 text API とは別トラックで扱う。
+
+## 2026-05-11 追加（night）: Realtime 先行導入の仕様不整合と復旧
+
+### Context
+
+- 5秒級応答を狙った試行として、`AI_StackChan_Ex` の Realtime API（OpenAI/Gemini WebSocket）を先行導入した。
+- その後、運用正本仕様が **`faster-whisper (private Pi5) + Qwen3.6 on DGX Spark + VOICEVOX + Home Assistant + StackChan`** であることを再確認した。
+
+### Symptoms
+
+- 実機に `RealtimeAPIKeyError` が表示され、連続会話が成立しない。
+- Realtime 経路では `AI_StackChan_Ex` が OpenAI/Gemini 向けセッションを前提としており、Spark（text API）とは境界が一致しない。
+
+### Root cause
+
+- 障害の主因は API キー文字列の有無ではなく、**Realtime 経路の境界そのものが Spark 現行仕様と不整合**だったこと。
+- すなわち、既存の private Pi5 bridge（HTTP text/STT 境界）を使う構成に対し、Realtime WebSocket 境界を混在させたことが原因。
+
+### Fix
+
+- Realtime 先行導入を停止し、**Spark 正本経路（WakeWord -> STT -> LLM -> TTS）へロールバック**。
+- CoreS3 実機で物理ボタンを使えない構成向けに、UI タッチから `BtnA`/`BtnB(long)` 相当を呼べる経路を戻し、**ウェイクワード登録・有効化を再運用可能化**。
+- 以降、Realtime は「Spark 側に WebSocket 境界が実装された場合のみ」別トラックで再評価する。
+
+### Prevention
+
+- 「遅延改善策」を入れる前に、**現在の正本境界（Spark/text か Realtime/WebSocket か）を先に固定**する。
+- 仕様不整合が疑われる場合は、まず text 経路の完了条件（`replyText` 実発話）に戻してから次の改善を行う。
+
 ## References
 
 - 手順の中心: [`scripts/stackchan-ai-stackchan-ex/README.md`](../../scripts/stackchan-ai-stackchan-ex/README.md)
 - ブリッジ: [`scripts/private-pi5-stackchan-bridge/README.md`](../../scripts/private-pi5-stackchan-bridge/README.md)
 - 計画: [`docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md`](../plans/stackchan-private-pi5-tailnet-workflow-plan.md)
 - 実機 text-only 検証: [`docs/runbooks/stackchan-community-text-only-e2e.md`](../runbooks/stackchan-community-text-only-e2e.md)
+- Realtime 段階移行 Runbook: [`docs/runbooks/stackchan-community-realtime-api-migration.md`](../runbooks/stackchan-community-realtime-api-migration.md)
