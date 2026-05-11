@@ -28,6 +28,9 @@ all:
       private_pi5_bridge_user: "raspi5-private"
       private_pi5_bridge_host: "0.0.0.0"
       private_pi5_bridge_port: 18080
+      # 任意: uv / Python パスを変更したい場合のみ上書き
+      # private_pi5_bridge_python: "/usr/bin/python3"
+      # private_pi5_bridge_uv_path: "/home/raspi5-private/.local/bin/uv"
       # 任意: StackChan ファームが旧 bridge IP を見ている間の互換 alias
       # private_pi5_stackchan_compat_ip: "192.168.128.112"
       # private_pi5_stackchan_compat_interface: "wlan0"
@@ -47,3 +50,17 @@ all:
       private_pi5_stackchan_token: ""
 
       private_pi5_upstream_timeout_sec: 45
+
+      # STT routing (default: DGX/OpenAI-compatible transcription endpoint)
+      private_pi5_stt_provider: "upstream-openai"
+      private_pi5_stt_upstream_base_url: "http://100.118.82.72:38081"
+      private_pi5_stt_upstream_path: "/v1/audio/transcriptions"
+      private_pi5_stt_upstream_auth_mode: "x-llm-token"
+      private_pi5_stt_upstream_token: "replace-me"
+      private_pi5_stt_upstream_model: "whisper-1"
+      private_pi5_stt_upstream_timeout_sec: 60
+
+      # For private_pi5_stt_provider="faster-whisper-local"
+      private_pi5_stt_local_model: "small"
+      private_pi5_stt_local_device: "cpu"
+      private_pi5_stt_local_compute_type: "int8"

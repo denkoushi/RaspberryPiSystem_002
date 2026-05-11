@@ -1,6 +1,6 @@
 # 私用 Pi5 `stackchan-bridge` 標準デプロイ
 
-最終更新: 2026-05-10
+最終更新: 2026-05-11
 
 ## 目的
 
@@ -12,7 +12,7 @@
 - Playbook: `infrastructure/ansible/playbooks/private-pi5-stackchan-bridge.yml`
 - Sample inventory: `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample.yml`
 - Deploy wrapper: `scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh`
-- Bridge 実装: `scripts/private-pi5-stackchan-bridge/bridge_server.py` / `scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py` / `scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py`
+- Bridge 実装: `scripts/private-pi5-stackchan-bridge/bridge_server.py` / `scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py` / `scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py` / `scripts/private-pi5-stackchan-bridge/stt_bridge_core.py` / `scripts/private-pi5-stackchan-bridge/stt_runtime_client.py`
 - （`private_pi5_stackchan_compat_ip` 利用時）互換 alias 再適用 hook: `infrastructure/ansible/templates/private-pi5-stackchan-compat-ip-dispatcher.sh.j2` → Pi5 の `/etc/NetworkManager/dispatcher.d/99-stackchan-bridge-compat-ip`
 
 ## 前提
@@ -38,6 +38,7 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 - `private_pi5_dgx_llm_shared_token`
 - 必要なら `private_pi5_dgx_runtime_control_token`
 - 必要なら `private_pi5_stackchan_token`
+- STT を切り替える場合は `private_pi5_stt_provider` と `private_pi5_stt_*`
 - 必要なら `private_pi5_stackchan_compat_ip` / `private_pi5_stackchan_compat_interface` / `private_pi5_stackchan_compat_prefix`
 
 `inventory-private-pi5-stackchan-bridge-fragment.yml` は `.gitignore` 済み。
@@ -61,11 +62,12 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 
 1. Tailscale preflight
 2. `bridge_server.py` / `stackchan_chat_core.py` / `dgx_runtime_client.py` を私用 Pi5 へ同期
-3. `.env` を template から生成（`0600`）
-4. （任意）StackChan 互換用の **旧 LAN IP alias** を **`stackchan-bridge-compat-ip.service`（oneshot・起動時）** と **NetworkManager dispatcher `up` / `dhcp4-change`（再接続・DHCP 更新後の再適用）** で管理
-5. `stackchan-bridge.service` を systemd に配備
-6. `systemctl enable --now`
-7. `GET /healthz` で起動確認
+3. `pyproject.toml` / `uv.lock` を同期し、`uv sync --frozen` で **`/home/.../stackchan-bridge/.venv`** を再生成/更新
+4. `.env` を template から生成（`0600`）
+5. （任意）StackChan 互換用の **旧 LAN IP alias** を **`stackchan-bridge-compat-ip.service`（oneshot・起動時）** と **NetworkManager dispatcher `up` / `dhcp4-change`（再接続・DHCP 更新後の再適用）** で管理
+6. `stackchan-bridge.service` を systemd に配備（`ExecStart=.venv/bin/python ...`）
+7. `systemctl enable --now`
+8. `GET /healthz` で起動確認
 
 ## 検証
 
@@ -100,6 +102,12 @@ journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
 - 2026-05-10 実測では、private Pi5 の DHCP IP が **`192.168.128.113`** に変わる一方、StackChan は **旧 IP `192.168.128.112`** を見続けていた。以後の標準運用では、**StackChan 設定更新**または **Pi5 側 compatibility alias** のどちらかを必ず管理対象に含める。
 - 2026-05-10 late: playbook に **`private_pi5_stackchan_compat_ip`** 系変数を追加し、**`stackchan-bridge-compat-ip.service`** を標準管理に組み込んだ。実機で **`enabled` / `active`** と **`wlan0: 192.168.128.113/24 192.168.128.112/24`** を確認済み。
 - 2026-05-10 以降: 調査で **NetworkManager の再接続／DHCP リース更新で secondary alias が消える**一方、**oneshot compat サービスは再実行されない**ことが原因候補として確度が高かったため、**`/etc/NetworkManager/dispatcher.d/99-stackchan-bridge-compat-ip`** を playbook で配布し、対象インタフェースの **`up` と `dhcp4-change`** で **`ip addr add || ip addr replace`** を冪等適用するようにした。
+- 2026-05-11: StackChan 側の `HTTP 200` でも `replyText` が空になり `わかりません` が発話される事象は、**`ChatGPT.cpp` の `https_post_json` における `WiFiClient` 寿命不整合**が根因だった。`HTTPClient::getString()` を `WiFiClient` 破棄後に実行し得る構造を修正し、同一処理を **client 生存スコープ内**へ移動。修正後はシリアルで **`[HTTP] payload length: 1027`** を確認し、bridge 側 `POST /api/stackchan/chat/simple 200` と整合。
+- 2026-05-11 時点の未解決: 応答本文取得後に **`MP3:ERROR_BUFLEN 0` / `I2S: register I2S object to platform failed`** が出るケースがあり、**音声再生系（デバイス側）**は継続調査中。private Pi5 bridge の text 経路は正常（`replyText` 取得済み）。
+- 2026-05-11 late: ユーザー観測「音は出るが failed 文言で会話にならない」に対し、Mac からの疎通確認で **`192.168.128.112:18080`（bridge）・`100.89.190.21:22`（private Pi5）・`100.118.82.72:38081`（DGX）同時 timeout** を観測。到達不能時はアプリ不具合判定を停止し、**ネットワーク経路復旧を先行**する運用に切替。
+- 2026-05-11 late: 音声安定化としてファーム側を **`mp3` URL健全性チェック + SPIFFS保存再生**へ変更し、`mp3 download bytes=99885 expected=99885` を確認。ダウンロード欠損は抑制できたが、`MP3:ERROR_BUFLEN 0` / `I2S ... failed` は残る回があり、残課題は **I2S ライフサイクル競合**に絞られた。
+- 2026-05-11 最終: private Pi5 を **`private_pi5_stt_provider=faster-whisper-local`** で再デプロイし、`POST /api/stackchan/stt` を実運用経路へ昇格。StackChan 側は `CloudSpeechClient.cpp` から raw WAV を同 endpoint へ送る構成に切替え、**WakeWord -> STT -> LLM -> TTS** の会話成立を確認。
+- 2026-05-11 最終: デバイス側は `M5Unified 0.2.7` への更新と、`WebVoiceVoxTTS.cpp` の chunked MP3 保存対応により、`I2S ... failed` / `mp3 download bytes=-11 expected=-1` の主再現経路を解消。以後の障害切り分けは、まず `bridge /healthz` と `/api/stackchan/stt` を確認してからデバイス側ログを見る。
 
 ## 関連
 

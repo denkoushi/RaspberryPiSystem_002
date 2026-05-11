@@ -7,6 +7,8 @@ from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
 from dgx_runtime_client import DgxUpstreamClient, config_from_env
+from stt_bridge_core import SttFailure, SttSuccess, SttWorkflow, ValidatedSttRequest, validate_stt_json_payload
+from stt_runtime_client import SttRuntimeClient, config_from_env as stt_config_from_env
 from stackchan_chat_core import (
     ChatCompletionWorkflow,
     ChatFailure,
@@ -66,6 +68,7 @@ class Handler(BaseHTTPRequestHandler):
     """HTTP adapter; DGX behaviour is in ChatCompletionWorkflow + DgxUpstreamClient."""
 
     dgx_client: ClassVar[DgxUpstreamClient] = DgxUpstreamClient(config_from_env())
+    stt_client: ClassVar[SttRuntimeClient] = SttRuntimeClient(stt_config_from_env())
     dgx_model: ClassVar[str] = _default_dgx_model()
 
     @classmethod
@@ -89,10 +92,12 @@ class Handler(BaseHTTPRequestHandler):
         route_path = urlsplit(self.path).path
         raw_paths = {"/api/stackchan/chat", "/api/stackchan/chat/", "/api/system/stackchan/chat", "/api/system/stackchan/chat/"}
         simple_paths = {"/api/stackchan/chat/simple", "/api/stackchan/chat/simple/"}
-        if route_path not in raw_paths and route_path not in simple_paths:
+        stt_paths = {"/api/stackchan/stt", "/api/stackchan/stt/"}
+        if route_path not in raw_paths and route_path not in simple_paths and route_path not in stt_paths:
             _error_response(self, 404, "NOT_FOUND", "endpoint not found")
             return
         simple_mode = route_path in simple_paths
+        stt_mode = route_path in stt_paths
 
         if STACKCHAN_TOKEN:
             client_token = self.headers.get("X-Stackchan-Token", "")
@@ -100,11 +105,64 @@ class Handler(BaseHTTPRequestHandler):
                 _error_response(self, 401, "UNAUTHORIZED", "invalid stackchan token")
                 return
 
+        if stt_mode:
+            content_type = self.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                payload, err = _read_json(self)
+                if err:
+                    _error_response(self, 400, "BAD_REQUEST", err)
+                    return
+                validated_stt, verr = validate_stt_json_payload(payload if isinstance(payload, dict) else None)
+            else:
+                try:
+                    content_length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    _error_response(self, 400, "BAD_REQUEST", "invalid content-length")
+                    return
+                raw = self.rfile.read(content_length) if content_length > 0 else b""
+                if not raw:
+                    _error_response(self, 400, "BAD_REQUEST", "empty body")
+                    return
+                validated_stt = ValidatedSttRequest(
+                    audio_bytes=raw,
+                    content_type=content_type or "audio/wav",
+                    language=self.headers.get("X-Stt-Language") or None,
+                    model=self.headers.get("X-Stt-Model") or None,
+                )
+                verr = None
+            if verr or validated_stt is None:
+                _error_response(self, 400, "BAD_REQUEST", verr or "bad request")
+                return
+
+            stt_workflow = SttWorkflow(self.stt_client)
+            stt_outcome = stt_workflow.run(validated_stt)
+            if isinstance(stt_outcome, SttSuccess):
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "text": stt_outcome.text,
+                        "details": stt_outcome.details,
+                    },
+                )
+                return
+            if isinstance(stt_outcome, SttFailure):
+                _error_response(
+                    self,
+                    stt_outcome.http_status,
+                    stt_outcome.code,
+                    stt_outcome.message,
+                    stt_outcome.retryable,
+                    stt_outcome.details,
+                )
+                return
+            return
+
         payload, err = _read_json(self)
         if err:
             _error_response(self, 400, "BAD_REQUEST", err)
             return
-
         validated, verr = validate_chat_payload(payload if isinstance(payload, dict) else None)
         if verr or validated is None:
             _error_response(self, 400, "BAD_REQUEST", verr or "bad request")
@@ -134,6 +192,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     Handler.install_upstream(DgxUpstreamClient(config_from_env()), _default_dgx_model())
+    Handler.stt_client = SttRuntimeClient(stt_config_from_env())
     server = HTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     print(f"stackchan bridge listening on {LISTEN_HOST}:{LISTEN_PORT}", flush=True)
     server.serve_forever()
