@@ -29,11 +29,18 @@ python3 scripts/stackchan-ai-stackchan-ex/apply_platformio_github_pins.py --dry-
 
 ## 3) private Pi5 bridge 向けビルドフラグ（CoreS3 例: `m5stack-cores3`）
 
-LLM を OpenAI ではなく自宅の Pi5 bridge に向ける最小例（**機密は Pi5 の `.env` にだけ置く**）。
+LLM を OpenAI ではなく自宅の Pi5 bridge に向ける。**機密は Pi5 の `.env` にだけ置く**。
+
+### 3.0) 再現性（重要）
+
+- **`PLATFORMIO_BUILD_FLAGS` に `-DCHATGPT_API_URL=...` を入れてから `pio run` する**のを標準にする。フラグ無しのビルド／フラグ違いの flash は、**上流既定で OpenAI API に戻る**など **設定ドリフト**の典型である（private bridge へ POST が来なくなる）。
+- `replyText` 抽出の安定と Runbook 正本整合のため、URL は **`/api/stackchan/chat/simple`** を推奨する（`/chat` でも可だが [text-only 完了条件](../../docs/runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria) の本文は `/simple` 基準）。
 
 ```text
-PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=\"http://<私用Pi5のLAN-IP>:18080/api/stackchan/chat\" -DCHATGPT_API_USE_AUTH_BEARER=0'
+PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=\"http://<私用Pi5のLAN-IP>:18080/api/stackchan/chat/simple\" -DCHATGPT_API_USE_AUTH_BEARER=0'
 ```
+
+**避けるべき例**: 古い README のコピペで **`/api/stackchan/chat`** のみ固定しつつ、パッチや `ChatGPT.cpp` 側が **`/simple` 前提**になっている／逆、の**不一致**。**実機シリアルの `[HTTP] begin URL=...`** と **Mac `curl` の URL** を同じにする。
 
 任意: bridge の `STACKCHAN_TOKEN` と突き合わせる（**DGX 共有トークンとは別物**）。
 
@@ -45,7 +52,7 @@ PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=\"http://<私用Pi5のLAN-IP>:18080/ap
 
 ```bash
 cd AI_StackChan_Ex/firmware
-env PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=\"http://192.168.128.112:18080/api/stackchan/chat\" -DCHATGPT_API_USE_AUTH_BEARER=0' \
+env PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=\"http://192.168.128.112:18080/api/stackchan/chat/simple\" -DCHATGPT_API_USE_AUTH_BEARER=0' \
   pio run -e m5stack-cores3
 ```
 

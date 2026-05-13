@@ -52,8 +52,8 @@ uv run --project scripts/private-pi5-stackchan-bridge \
 ```json
 {
   "messages": [{ "role": "user", "content": "こんにちは" }],
-  "maxTokens": 256,
-  "temperature": 0.35,
+  "maxTokens": 160,
+  "temperature": 0.2,
   "enableThinking": false
 }
 ```
@@ -128,6 +128,11 @@ uv sync --frozen --extra local-stt --project scripts/private-pi5-stackchan-bridg
 
 - `DGX_LLM_SHARED_TOKEN`
 
+HTTP I/O（STT の生 WAV など **大きめボディ**）:
+
+- `STACKCHAN_BRIDGE_HOST` / `STACKCHAN_BRIDGE_PORT`
+- **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`**（**任意**・**未設定時 3.0 秒**。STT で **`request read timeout`** が出るときは **30〜120 秒級**を試す）
+
 任意:
 
 - `STACKCHAN_TOKEN`（自宅LAN内でも簡易認証を掛けたい場合）
@@ -136,8 +141,14 @@ uv sync --frozen --extra local-stt --project scripts/private-pi5-stackchan-bridg
 - `DGX_RUNTIME_START_PATH` / `DGX_RUNTIME_READY_PATH`
 - `DGX_RUNTIME_READY_TIMEOUT_SEC` / `DGX_RUNTIME_READY_POLL_SEC`
 - `STT_PROVIDER=upstream-openai|faster-whisper-local`
-- `STT_UPSTREAM_BASE_URL` / `STT_UPSTREAM_PATH` / `STT_UPSTREAM_AUTH_MODE` / `STT_UPSTREAM_TOKEN` / `STT_UPSTREAM_MODEL`
+- `STT_UPSTREAM_BASE_URL` / `STT_UPSTREAM_PATH` / `STT_UPSTREAM_AUTH_MODE` / `STT_UPSTREAM_TOKEN` / `STT_UPSTREAM_MODEL` / **`STT_UPSTREAM_TIMEOUT_SEC`**
 - `STT_LOCAL_MODEL` / `STT_LOCAL_DEVICE` / `STT_LOCAL_COMPUTE_TYPE`
+- `STT_LOCAL_LANGUAGE_DEFAULT` / `STT_LOCAL_VAD_FILTER` / `STT_LOCAL_RETRY_WITHOUT_VAD`
+- 低遅延向け chat 予算:
+  - `STACKCHAN_CHAT_DEFAULT_MAX_TOKENS`（既定 `160`）
+  - `STACKCHAN_CHAT_MAX_TOKENS_CAP`（既定 `192`）
+  - `STACKCHAN_CHAT_MAX_MESSAGES`（既定 `8`。system 1件 + 最新会話）
+  - `STACKCHAN_CHAT_ALLOW_THINKING`（既定 `false`）
 
 ## Runtime auto-start（任意）
 
@@ -173,6 +184,14 @@ DGX_RUNTIME_CONTROL_TOKEN=replace-me
 | **OpenAI API キー等** | 原則どこにも置かない | bridge 経由運用なら不要。`SC_SecConfig.yaml` 等にクラウドキーを残さない運用を推奨。 |
 
 ブリッジは `STACKCHAN_TOKEN` が空なら **`X-Stackchan-Token` 検証をスキップ**します。開発・初回疎通で役立ちますが、恒常運用では **トークンを設定**した方がよいです。
+
+## 2026-05-13 追補（STT POST と読取タイムアウト・ファーム URL ドリフト）
+
+- **症状**: `journalctl -u stackchan-bridge` に **`request read timeout after …s`** → **`408` / `REQUEST_TIMEOUT`**。実機は STT 送信直後に **HTTP read 失敗**（コード **`-11`** 等が混在しうる）。
+- **原因候補（CONFIRMED しうるもの）**: `do_POST` が **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`**（既定 **3.0**）でソケット読取を切っている。**WAV が 3 秒以内に送り切れない**と本文読取前に落ちる。上流の **`STT_UPSTREAM_TIMEOUT_SEC`**（OpenAI 互換 transcription）や **`faster-whisper` の推論時間**とは**別レイヤ**。
+- **対処**: Pi5 `.env` で **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC=60`** などへ引き上げ、`systemctl restart stackchan-bridge`。**音声品質・フレームサイズ**に応じて 30〜120 秒程度から調整。
+- **関連（ファーム側）**: **`CHATGPT_API_URL` をビルドフラグで固定**しない `pio run` は **OpenAI 直結既定へ戻り**、**bridge に `/api/stackchan/chat/*` が来ない**ことがある。切り分けは [KB §2026-05-13](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-追補-chatgpt_api_url-ドリフトbridge-リクエスト読取タイムアウトurl-境界の錯覚調査上の断定ルール)・[text-only runbook](../../docs/runbooks/stackchan-community-text-only-e2e.md)。
+- **調査用ログ**: セッションにより **`[DBG][H3]`（ルート）・`[DBG][H1][H2]`（STT）・`[DBG][H4]`（chat）** を `log_message` に出す変更が入っていることがある。本番では冗長なら削るが、障害時は **route と `stt_text_len`** で層を分ける。
 
 ## Security notes
 
@@ -217,3 +236,14 @@ DGX_RUNTIME_CONTROL_TOKEN=replace-me
 - StackChan ファームは STT を private Pi5 bridge へ送る設定に変更し、音声入力を bridge 側で文字起こしして DGX へ転送する流れへ統一。
 - デバイス側は `M5Unified` 更新（`0.1.17` -> `0.2.7`）と chunked MP3 保存対応により主要な再生失敗を解消し、**WakeWord -> STT -> LLM -> TTS** の会話を実機で確認。
 - 運用上の成功判定は `POST /api/stackchan/chat/simple` の `replyText` 非空に加え、`POST /api/stackchan/stt` の応答成功を併せて確認する。
+
+## 2026-05-11 追加メモ（short speech が「聞き取れない」になる場合）
+
+- 症状: ウェイクワードには反応するが、短い指示で `聞き取れない` が出る。
+- 原因候補: `faster-whisper-local` 初回推論で VAD が短音声を落として STT 結果が空になる。
+- 現在の bridge 実装:
+  1. 既定（`language=ja` + `vad_filter=true`）で推論
+  2. **空文字なら1回だけ再試行**（`language=None` + `vad_filter=false`）
+- 調整パラメータ:
+  - `STT_LOCAL_VAD_FILTER=false`（短文優先、誤検出増の可能性あり）
+  - `STT_LOCAL_RETRY_WITHOUT_VAD=true`（推奨）

@@ -2,7 +2,7 @@
 title: "KB: StackChan コミュニティファーム（AI_StackChan_Ex）供給鎖・セキュリティ"
 tags: [StackChan, supply-chain, firmware, security, Pi5, DGX]
 audience: [開発者, 運用者]
-last-verified: 2026-05-11
+last-verified: 2026-05-13
 category: knowledge-base
 update-frequency: high
 ---
@@ -355,6 +355,37 @@ update-frequency: high
 
 - 「遅延改善策」を入れる前に、**現在の正本境界（Spark/text か Realtime/WebSocket か）を先に固定**する。
 - 仕様不整合が疑われる場合は、まず text 経路の完了条件（`replyText` 実発話）に戻してから次の改善を行う。
+
+## 2026-05-13 追補: `CHATGPT_API_URL` ドリフト・bridge リクエスト読取タイムアウト・URL 境界の錯覚・調査上の断定ルール
+
+### Context
+
+- 再ビルド・SD 再配置・ローカル `pio run` だけの書き込みを繰り返すと、**ビルドフラグ無しで OpenAI 直結既定へ戻る**・**別パスを見ている**・**bridge が本文を読み切る前にタイムアウトする**、が混ざり、ログ断片だけで「原因確定」しやすい。
+- 本リポジトリは **手順・supply-chain lock・パッチ**の正本だが、**編集・flash した `ChatGPT.cpp` 等の実体**は多くの場合 **clone 作業ツリー**（例: `/tmp/AI_StackChan_Ex`）側にあり、**Git の `main` だけを見て実機ファームと一致していると決めつけない**。
+
+### Symptoms
+
+- private Pi5 の **`journalctl -u stackchan-bridge`** に **会話用 `POST /api/stackchan/chat/simple` が一切出ない**のに、実機だけがクラウド側や別ホストへ向いている。
+- STT 実行直後、bridge 側に **`request read timeout after 3.0s`**（または同趣旨）と **`408` / `REQUEST_TIMEOUT`**。StackChan シリアルでは **HTTP read 失敗**、`errno` **`-11`**（環境により `EAGAIN` 系の読取タイムアウトとして表現）が混在しうる。
+- OpenAPI や DGX の **`/v1/chat/completions`** などと、StackChan が実際に叩く **`http://<Pi5>:18080/api/stackchan/chat/simple`** を混同し、「経路は合っている」ように見える。
+
+### Investigation
+
+- **CONFIRMED（構成）**: `AI_StackChan_Ex` 系では **`CHATGPT_API_URL` をビルド時マクロで明示**しない限り、**OpenAI API 向け既定 URL**へ落ちうる。**`PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=...'` 無しの `pio run` は設定ドリフトの典型**。
+- **CONFIRMED（bridge 実装）**: private Pi5 bridge（`bridge_server.py`）は `do_POST` で **`connection.settimeout(STACKCHAN_REQUEST_READ_TIMEOUT_SEC)`**（環境変数、**未設定時既定 3.0 秒**）を掛け、**本文読取**に失敗すると **`408` / `request read timed out`** を返しうる。**STT の生 WAV** は **チャット JSON よりボディが大きく**、**3 秒以内に送信が完走しない**とここで落ちうる（上流の `STT_UPSTREAM_TIMEOUT_SEC` や `faster-whisper` 処理時間とは**別レイヤ**）。
+- **CONFIRMED（観測補助）**: 切り分け用に **`[DBG][H3]`（route dispatch）・`[DBG][H1][H2]`（STT 成否・フォールバック）・`[DBG][H4]`（chat に到達）** 等を **`log_message` に出す変更**を入れたセッションがある。**本番で冗長なら実装側で抑制**するが、障害時は **`journalctl` で path と `stt_text_len` を追う**と層が分かれる。
+- **INCONCLUSIVE until 連続 E2E**: **`openapi` のパス誤記や単発 `curl` 成功**だけで「本番経路は直った」と**閉じない**。**WakeWord → STT → LLM → TTS** が**同一条件で複数回**通るまで、ドキュメント・口頭とも **仮説段**として扱う（過去に Realtime / Spark 境界と同一系の**早すぎる確定**が問題になった教訓）。
+
+### Fix / Mitigation
+
+- **毎回** `PLATFORMIO_BUILD_FLAGS` に **私用 Pi5 bridge の URL をフルで固定**する。`replyText` 安定を優先するなら **`.../api/stackchan/chat/simple`**（詳細は [text-only runbook](../runbooks/stackchan-community-text-only-e2e.md)）。
+- STT や大きめボディを扱うなら Pi5 bridge の `.env` で **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`** を **30〜120** 秒規模へ延長し **`stackchan-bridge` を再起動**（WAV サイズ・Wi-Fi 品質に応じて調整）。上流 STT の **`STT_UPSTREAM_TIMEOUT_SEC`** や **`faster-whisper`** の VAD 設定は **その内側**の別ノブ。
+- 宛先 IP は **DHCP ドリフト**と **compat alias**（既存節）をセットで見る。
+
+### Prevention
+
+- CI に乗らない **実機ファーム**は、**ビルドコマンド（env の全文）を作業メモに残す**。「直近成功したフラグセット」と **ずれたビルド**を無意識に flash しない。
+- **分報ログだけで root cause を確定扱いにしない**。**bridge ログ・実機シリアル・Mac `curl` の path/HTTP を同一時刻で突き合わせる**。
 
 ## References
 

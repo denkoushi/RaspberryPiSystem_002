@@ -1,7 +1,7 @@
 ---
 title: Runbook — StackChan コミュニティファーム text-only 疎通（Pi5 bridge → DGX）
 audience: [開発者, 運用者]
-last-verified: 2026-05-11
+last-verified: 2026-05-13
 related:
   - ../knowledge-base/KB-stackchan-community-firmware-supply-chain.md
   - ./stackchan-community-realtime-api-migration.md
@@ -48,6 +48,8 @@ related:
 
 `firmware` ディレクトリで、bridge の URL と bearer 無効を指定する。  
 **推奨**: `replyText` 抽出が安定するため、`/chat` より **`/chat/simple`** を使う。
+
+**重要（再発防止）**: `PLATFORMIO_BUILD_FLAGS` **無し**の `pio run` では **`CHATGPT_API_URL` が未定義**のままになり、**OpenAI 直結など上流既定 URL に戻る**ことがある。実機で **bridge に POST が来ない**ときは、まず **シリアル・ビルドログに意図した `http://<Pi5>:18080/api/stackchan/chat/simple` が焼かれているか**を確認する（[`KB-stackchan-community-firmware-supply-chain` §2026-05-13](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-追補-chatgpt_api_url-ドリフトbridge-リクエスト読取タイムアウトurl-境界の錯覚調査上の断定ルール)）。
 
 ```bash
 cd AI_StackChan_Ex/firmware
@@ -194,6 +196,9 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 | `replyText` は取れているのに発話で失敗する（`MP3:ERROR_BUFLEN 0` / `I2S ... failed`） | text-only 経路は成立。未解決は **音声再生系（デバイス側）**。`/speech?say=...` と同条件で MP3 再生/I2S 初期化を切り分ける。bridge 側を変更せず、デバイス側 TTS 再生経路を調査対象にする。 |
 | Mac から `bridge healthz` / `private Pi5 SSH` / `DGX:38081` が同時に timeout | **アプリ不具合の前にネットワーク断を疑う**。`100.89.190.21:22`（private Pi5）と `100.118.82.72:38081`（DGX）へ TCP 到達性を先に確認し、到達不能時は Spark 連携判定を保留する。 |
 | `mp3` ダウンロードは完了（`bytes == expected`）なのに `MP3:ERROR_BUFLEN 0` が残る | ストリーム欠損ではなく **I2S 切替競合**の可能性が高い。`playMP3` の `Mic.end -> Speaker.begin -> ... -> Speaker.end -> Mic.begin` を排他・順序固定で追跡する。 |
+| STT 直後、bridge が `request read timeout after ...s` / `408 REQUEST_TIMEOUT`、実機が read **`errno -11`** 等 | **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`（既定 3s）が短すぎ**て **WAV 本文を読み切る前**にソケットが切れている典型。**Pi5 bridge `.env` で 30〜120s 級**へ延長して再起動（KB §2026-05-13・[`private-pi5-stackchan-bridge` README](../../scripts/private-pi5-stackchan-bridge/README.md)）。 |
+| OpenAPI / `v1/chat/completions` だけ合っていて、実機は `404` や別ホスト | **StackChan が叩く path は `/api/stackchan/chat` 系**。**文書上の OpenAPI と実リクエスト URL を混同しない**。Mac `curl` は **実機と同じ path** で再現する。 |
+| 「単発修正で root cause 確定」と言いたくなる | **WakeWord→STT→LLM→TTS が連続で複数回成功**するまで**確定扱いしない**（早すぎる断定は Realtime/Spark 混乱時と同種の再発要因）。 |
 
 ### 6.1) 2026-05-11 追加調査（`わかりません` 継続時）
 
