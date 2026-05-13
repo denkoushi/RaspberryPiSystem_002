@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import socket
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, ClassVar
@@ -19,6 +20,11 @@ from stackchan_chat_core import (
 
 LISTEN_HOST = os.getenv("STACKCHAN_BRIDGE_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.getenv("STACKCHAN_BRIDGE_PORT", "18080"))
+_request_read_raw = (os.getenv("STACKCHAN_REQUEST_READ_TIMEOUT_SEC") or "").strip()
+try:
+    REQUEST_READ_TIMEOUT_SEC = float(_request_read_raw) if _request_read_raw else 0.0
+except ValueError:
+    REQUEST_READ_TIMEOUT_SEC = 0.0
 
 STACKCHAN_TOKEN = os.getenv("STACKCHAN_TOKEN", "")
 
@@ -89,6 +95,29 @@ class Handler(BaseHTTPRequestHandler):
         _error_response(self, 404, "NOT_FOUND", "endpoint not found")
 
     def do_POST(self):
+        prev_timeout = None
+        if REQUEST_READ_TIMEOUT_SEC > 0:
+            try:
+                prev_timeout = self.connection.gettimeout()
+                self.connection.settimeout(REQUEST_READ_TIMEOUT_SEC)
+            except (OSError, AttributeError):
+                pass
+        try:
+            self._handle_post()
+        except socket.timeout:
+            self.log_message("request read timeout after %.1fs", REQUEST_READ_TIMEOUT_SEC)
+            try:
+                _error_response(self, 408, "REQUEST_TIMEOUT", "request read timed out")
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
+        finally:
+            if REQUEST_READ_TIMEOUT_SEC > 0:
+                try:
+                    self.connection.settimeout(prev_timeout)
+                except (OSError, AttributeError):
+                    pass
+
+    def _handle_post(self):
         route_path = urlsplit(self.path).path
         raw_paths = {"/api/stackchan/chat", "/api/stackchan/chat/", "/api/system/stackchan/chat", "/api/system/stackchan/chat/"}
         simple_paths = {"/api/stackchan/chat/simple", "/api/stackchan/chat/simple/"}

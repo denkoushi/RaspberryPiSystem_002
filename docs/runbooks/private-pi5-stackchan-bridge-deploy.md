@@ -108,7 +108,7 @@ journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
 - 2026-05-11 late: 音声安定化としてファーム側を **`mp3` URL健全性チェック + SPIFFS保存再生**へ変更し、`mp3 download bytes=99885 expected=99885` を確認。ダウンロード欠損は抑制できたが、`MP3:ERROR_BUFLEN 0` / `I2S ... failed` は残る回があり、残課題は **I2S ライフサイクル競合**に絞られた。
 - 2026-05-11 最終: private Pi5 を **`private_pi5_stt_provider=faster-whisper-local`** で再デプロイし、`POST /api/stackchan/stt` を実運用経路へ昇格。StackChan 側は `CloudSpeechClient.cpp` から raw WAV を同 endpoint へ送る構成に切替え、**WakeWord -> STT -> LLM -> TTS** の会話成立を確認。
 - 2026-05-11 最終: デバイス側は `M5Unified 0.2.7` への更新と、`WebVoiceVoxTTS.cpp` の chunked MP3 保存対応により、`I2S ... failed` / `mp3 download bytes=-11 expected=-1` の主再現経路を解消。以後の障害切り分けは、まず `bridge /healthz` と `/api/stackchan/stt` を確認してからデバイス側ログを見る。
-- 2026-05-13: **STT（生 WAV）や大きめ POST** で stackchan-bridge が **`request read timeout`** / **`408 REQUEST_TIMEOUT`** を返す場合、**HTTP 受付のソケット読取タイムアウト**が短すぎることがある。`bridge_server.py` は **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`**（**未設定時 3.0 秒**）で `connection.settimeout` を掛ける。**30〜120 秒級**へ延長し `stackchan-bridge` を再起動して切り分ける（**`STT_UPSTREAM_TIMEOUT_SEC` や faster-whisper 推論時間とは別**）。あわせて StackChan 側は **`CHATGPT_API_URL` のビルドフラグ抜け**で OpenAI 既定へ戻り **bridge に chat POST が来ない**ことがある（KB §2026-05-13）。
+- 2026-05-13: **STT（生 WAV）や大きめ POST** で stackchan-bridge が **`request read timeout`** / **`408 REQUEST_TIMEOUT`** を返す場合、**HTTP 受付のソケット読取タイムアウト**（**`STACKCHAN_REQUEST_READ_TIMEOUT_SEC` を正にしたときのみ** `connection.settimeout` が掛かる）が**狭すぎる**ことがある。**未設定・0 では無制限読取**。**30〜120 秒級**へ上げるか、不要なら **0** に戻して `stackchan-bridge` を再起動（**`STT_UPSTREAM_TIMEOUT_SEC` や faster-whisper 推論時間とは別**）。あわせて StackChan 側は **`CHATGPT_API_URL` のビルドフラグ抜け**で OpenAI 既定へ戻り **bridge に chat POST が来ない**ことがある（KB §2026-05-13）。
 
 ## 関連
 

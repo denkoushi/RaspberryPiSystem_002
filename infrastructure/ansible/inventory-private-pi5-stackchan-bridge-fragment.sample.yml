@@ -49,6 +49,9 @@ all:
       # 任意: StackChan -> bridge の簡易認証
       private_pi5_stackchan_token: ""
 
+      # 任意: STT 等大きめ POST の本文読取に上限秒（0=無制限・既定）
+      # private_pi5_stackchan_request_read_timeout_sec: 60
+
       private_pi5_upstream_timeout_sec: 45
 
       # STT routing (default: DGX/OpenAI-compatible transcription endpoint)

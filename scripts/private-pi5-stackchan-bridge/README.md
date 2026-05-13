@@ -131,7 +131,7 @@ uv sync --frozen --extra local-stt --project scripts/private-pi5-stackchan-bridg
 HTTP I/O（STT の生 WAV など **大きめボディ**）:
 
 - `STACKCHAN_BRIDGE_HOST` / `STACKCHAN_BRIDGE_PORT`
-- **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`**（**任意**・**未設定時 3.0 秒**。STT で **`request read timeout`** が出るときは **30〜120 秒級**を試す）
+- **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`**（**任意**・**未設定または 0 で POST 本文読取にソケット上限なし**。STT の生 WAV で **`request read timeout` / `408`** が出るときに **30〜120 秒級**を試す）
 
 任意:
 
@@ -188,10 +188,10 @@ DGX_RUNTIME_CONTROL_TOKEN=replace-me
 ## 2026-05-13 追補（STT POST と読取タイムアウト・ファーム URL ドリフト）
 
 - **症状**: `journalctl -u stackchan-bridge` に **`request read timeout after …s`** → **`408` / `REQUEST_TIMEOUT`**。実機は STT 送信直後に **HTTP read 失敗**（コード **`-11`** 等が混在しうる）。
-- **原因候補（CONFIRMED しうるもの）**: `do_POST` が **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`**（既定 **3.0**）でソケット読取を切っている。**WAV が 3 秒以内に送り切れない**と本文読取前に落ちる。上流の **`STT_UPSTREAM_TIMEOUT_SEC`**（OpenAI 互換 transcription）や **`faster-whisper` の推論時間**とは**別レイヤ**。
-- **対処**: Pi5 `.env` で **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC=60`** などへ引き上げ、`systemctl restart stackchan-bridge`。**音声品質・フレームサイズ**に応じて 30〜120 秒程度から調整。
+- **原因候補**: **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC` を正にしている**と `do_POST` が **`connection.settimeout`** で本文読取を切る。**WAV 送りがその秒数に収まらない**と本文読取前に落ちる。**`0` / 未設定**ならこの層は無効（無制限読取）。上流の **`STT_UPSTREAM_TIMEOUT_SEC`** や **`faster-whisper` の推論時間**とは**別レイヤ**。
+- **対処**: Pi5 `.env` で **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC=60`** などへ引き上げ（または狭すぎる値をやめて **`0` に戻す**）、`systemctl restart stackchan-bridge`。
 - **関連（ファーム側）**: **`CHATGPT_API_URL` をビルドフラグで固定**しない `pio run` は **OpenAI 直結既定へ戻り**、**bridge に `/api/stackchan/chat/*` が来ない**ことがある。切り分けは [KB §2026-05-13](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-追補-chatgpt_api_url-ドリフトbridge-リクエスト読取タイムアウトurl-境界の錯覚調査上の断定ルール)・[text-only runbook](../../docs/runbooks/stackchan-community-text-only-e2e.md)。
-- **調査用ログ**: セッションにより **`[DBG][H3]`（ルート）・`[DBG][H1][H2]`（STT）・`[DBG][H4]`（chat）** を `log_message` に出す変更が入っていることがある。本番では冗長なら削るが、障害時は **route と `stt_text_len`** で層を分ける。
+- **調査用ログ**: 一時的に `log_message` へ route や STT バイト数を足すと層が分かりやすい。本番では冗長になり得るため、恒久化するなら行数を最小にする。
 
 ## Security notes
 
