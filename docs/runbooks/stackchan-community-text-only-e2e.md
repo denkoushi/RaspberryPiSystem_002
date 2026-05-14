@@ -1,7 +1,7 @@
 ---
 title: Runbook — StackChan コミュニティファーム text-only 疎通（Pi5 bridge → DGX）
 audience: [開発者, 運用者]
-last-verified: 2026-05-13
+last-verified: 2026-05-14
 related:
   - ../knowledge-base/KB-stackchan-community-firmware-supply-chain.md
   - ./stackchan-community-realtime-api-migration.md
@@ -268,6 +268,8 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 
 - [ ] `http://<StackChan-IP>/speech?say=テスト` でスピーカー動作を確認（スピーカー経路の切り分け）
 - [ ] `SC_ExConfig.yaml` / `yaml/SC_SecConfig.yaml` の **`stt` / `tts` / `wakeword`** を有効化し、**STT 音声は private Pi5 bridge `/api/stackchan/stt` へ送る構成**で一致させる
+- [ ] 私用 Pi5 bridge の `.env` は、短発話対策として **`STT_LOCAL_RETRY_WITHOUT_VAD=true`**（既定）を反映済み。`聞き取れない` が続く場合は **`STT_LOCAL_VAD_FILTER=false`**、または上流 STT が使える環境でのみ **`STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY=true`** を検討する
+- [ ] LLM 応答待ちが長すぎる場合は **`STACKCHAN_CHAT_DEFAULT_MAX_TOKENS=160` / `STACKCHAN_CHAT_MAX_TOKENS_CAP=192` / `STACKCHAN_CHAT_ALLOW_THINKING=false`** が反映されていることを確認する
 - [ ] ウェイクワードまたは UI から発話入力後、**bridge ログに `POST /api/stackchan/chat` 系が増える**こと（STT 結果がテキストとして LLM に渡っている証拠）
 
 ### CoreS3 実機の WakeWord 操作（2026-05-11 復旧仕様）
@@ -281,6 +283,14 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 
 - [ ] DGX cold start / runtime 停止時: bridge が **`502` / `UPSTREAM_UNREACHABLE`** を返し得る → `DGX_RUNTIME_AUTO_START` と **`DGX_RUNTIME_READY_TIMEOUT_SEC`（300–600）** を確認
 - [ ] Pi5 DHCP 変更後: StackChan URL と **`hostname -I`** の不一致 → **compat alias** または **ファーム再ビルド**
+
+### 6.4) 2026-05-14 引き継ぎ: ウェイクワード登録／オフライン／シリアル
+
+- **`Smart Config failed. Running in offline mode.`** や **`IP addr: 0.0.0.0`** のときは、[§4（実機確認・IP 取得）](#4-実機確認まず-ip-取得) を先に直す。**タッチ UI が効いても、この条件が崩れていると STT⇄bridge の検証が成立しない**。
+- 「**ウェイクワード登録開始のまま**」問題は、(A) **VAD 依存の録音**で無音ループになる設計論点、(B) **マイク入力が無い / I2S 初期化競合**、の切り分けが必要。**`rxMic()` 主体と `Audio.Record()` の固定録音では挙動が変わりうる**（詳細・試行フェーズのアウトラインは [KB-stackchan-community-firmware-supply-chain.md §2026-05-14 実機](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-14-追補-実機ワークストリームウェイクワード登録オフラインモードシリアル本-repo-未コミットの試行含む)）。
+- 上流 `AI_StackChan_Ex` の **試験的 C++ 改修**が **別作業ツリー**（`/tmp/...` など）だけに残っている場合、**このリポジトリのファーム状態と実機が一致しない**。**再開時は SHA・パッチ適用セットを自分で記録する**こと。
+- **USB フラッシュ失敗**: `Could not open /dev/cu.usbmodem…` は **ポート名変更・ケーブル**を疑う。`pio … --upload-port` を **`ls /dev/cu.usbmodem*`** と突き合わせる。
+- **シリアル**: macOS で `pio device monitor` が `termios` エラーになる環境がある → **`pyserial` で raw 読取**等が回避策。
 
 ### デプロイ直後の私用 Pi5 最小確認（`stackchan_chat_core` 同梱後・2026-05-10）
 

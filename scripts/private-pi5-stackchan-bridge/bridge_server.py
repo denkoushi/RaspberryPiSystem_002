@@ -8,12 +8,14 @@ from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
 from dgx_runtime_client import DgxUpstreamClient, config_from_env
+from home_assistant_client import HomeAssistantClient, config_from_env as ha_config_from_env
 from stt_bridge_core import SttFailure, SttSuccess, SttWorkflow, ValidatedSttRequest, validate_stt_json_payload
 from stt_runtime_client import SttRuntimeClient, config_from_env as stt_config_from_env
 from stackchan_chat_core import (
     ChatCompletionWorkflow,
     ChatFailure,
     ChatSuccess,
+    ChatValidationConfig,
     format_simple_success,
     validate_chat_payload,
 )
@@ -27,6 +29,31 @@ except ValueError:
     REQUEST_READ_TIMEOUT_SEC = 0.0
 
 STACKCHAN_TOKEN = os.getenv("STACKCHAN_TOKEN", "")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized == "":
+        return default
+    return normalized in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+CHAT_VALIDATION_CONFIG = ChatValidationConfig(
+    default_max_tokens=_env_int("STACKCHAN_CHAT_DEFAULT_MAX_TOKENS", 160),
+    max_tokens_cap=_env_int("STACKCHAN_CHAT_MAX_TOKENS_CAP", 192),
+    max_messages=_env_int("STACKCHAN_CHAT_MAX_MESSAGES", 8),
+    allow_thinking=_env_bool("STACKCHAN_CHAT_ALLOW_THINKING", False),
+)
 
 
 def _default_dgx_model() -> str:
@@ -75,6 +102,7 @@ class Handler(BaseHTTPRequestHandler):
 
     dgx_client: ClassVar[DgxUpstreamClient] = DgxUpstreamClient(config_from_env())
     stt_client: ClassVar[SttRuntimeClient] = SttRuntimeClient(stt_config_from_env())
+    home_assistant_client: ClassVar[HomeAssistantClient] = HomeAssistantClient(ha_config_from_env())
     dgx_model: ClassVar[str] = _default_dgx_model()
 
     @classmethod
@@ -192,12 +220,12 @@ class Handler(BaseHTTPRequestHandler):
         if err:
             _error_response(self, 400, "BAD_REQUEST", err)
             return
-        validated, verr = validate_chat_payload(payload if isinstance(payload, dict) else None)
+        validated, verr = validate_chat_payload(payload if isinstance(payload, dict) else None, CHAT_VALIDATION_CONFIG)
         if verr or validated is None:
             _error_response(self, 400, "BAD_REQUEST", verr or "bad request")
             return
 
-        workflow = ChatCompletionWorkflow(self.dgx_client, self.dgx_model)
+        workflow = ChatCompletionWorkflow(self.dgx_client, self.dgx_model, self.home_assistant_client)
         outcome = workflow.run(validated, log=self.log_message)
 
         if isinstance(outcome, ChatSuccess):
@@ -222,6 +250,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     Handler.install_upstream(DgxUpstreamClient(config_from_env()), _default_dgx_model())
     Handler.stt_client = SttRuntimeClient(stt_config_from_env())
+    Handler.home_assistant_client = HomeAssistantClient(ha_config_from_env())
     server = HTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     print(f"stackchan bridge listening on {LISTEN_HOST}:{LISTEN_PORT}", flush=True)
     server.serve_forever()

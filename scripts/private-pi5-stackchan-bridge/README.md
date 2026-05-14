@@ -14,6 +14,7 @@
 - [`bridge_server.py`](./bridge_server.py) — HTTP 受付・認証・レスポンス送出のみ（ルーティング I/O）
 - [`stackchan_chat_core.py`](./stackchan_chat_core.py) — 入力検証・upstream ボディ生成・DGX 完了ワークフロー（`ChatCompletionWorkflow`）・`replyText` 整形
 - [`dgx_runtime_client.py`](./dgx_runtime_client.py) — DGX への **`/v1/chat/completions`**、任意の **`/start`**、ready ポーリング（`DgxUpstreamClient`）
+- [`home_assistant_client.py`](./home_assistant_client.py) — 任意の Home Assistant 読み取り専用 context（許可 entity の状態）を LLM prompt に注入
 - [`stt_bridge_core.py`](./stt_bridge_core.py) — STT 入力検証と失敗マッピング（`SttWorkflow`）
 - [`stt_runtime_client.py`](./stt_runtime_client.py) — STT 上流呼び出し（OpenAI 互換 transcription）/ optional `faster-whisper` ローカル実行
 
@@ -149,6 +150,11 @@ HTTP I/O（STT の生 WAV など **大きめボディ**）:
   - `STACKCHAN_CHAT_MAX_TOKENS_CAP`（既定 `192`）
   - `STACKCHAN_CHAT_MAX_MESSAGES`（既定 `8`。system 1件 + 最新会話）
   - `STACKCHAN_CHAT_ALLOW_THINKING`（既定 `false`）
+- Home Assistant 読み取り context:
+  - `HOME_ASSISTANT_CONTEXT_ENABLED`（既定 `false`）
+  - `HOME_ASSISTANT_BASE_URL` / `HOME_ASSISTANT_TOKEN`
+  - `HOME_ASSISTANT_CONTEXT_ENTITIES`（カンマ区切り allowlist）
+  - `HOME_ASSISTANT_TIMEOUT_SEC`（既定 `5`）
 
 ## Runtime auto-start（任意）
 
@@ -247,3 +253,10 @@ DGX_RUNTIME_CONTROL_TOKEN=replace-me
 - 調整パラメータ:
   - `STT_LOCAL_VAD_FILTER=false`（短文優先、誤検出増の可能性あり）
   - `STT_LOCAL_RETRY_WITHOUT_VAD=true`（推奨）
+  - **`STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY=true`**（上流 STT が信頼できる環境のみ。コスト・遅延が増える）
+
+## 2026-05-14 引き継ぎ（実機ワークストリームと repo 実装）
+
+- **本リポジトリに入れたもの**: **`home_assistant_client.py`**（Home Assistant **`/api/states/<entity>`** の読み取りのみ・allowlist、`system` メッセージ注入）、**`ChatValidationConfig`** 由来の chat 予算・履歴トリム、**`SttRuntimeConfig`** の **`STT_LOCAL_*`**（VAD オフ再試行・上流 STT フォールバック）、Ansible / `.env.example` / ユニットテストの追随。
+- **別作業ツリーに残っている可能性があるもの**: 上流 **`AI_StackChan_Ex`** の **ウェイクワード登録**まわり（VAD と固定録音の差、UI レイヤのタイムアウト試行など）。これらは **自動的には本 repo に反映されない**。
+- **次に読む順**: [`docs/runbooks/private-pi5-stackchan-bridge-deploy.md`](../../docs/runbooks/private-pi5-stackchan-bridge-deploy.md) → [`KB-stackchan-community-firmware-supply-chain.md` §2026-05-14（bridge 実装）](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-14-追補-private-pi5-bridge-実装低遅延-chatstt-再試行home-assistant-読み取り-context) と [§実機ワークストリーム](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-14-追補-実機ワークストリームウェイクワード登録オフラインモードシリアル本-repo-未コミットの試行含む) → [`stackchan-community-text-only-e2e.md` §6.4](../../docs/runbooks/stackchan-community-text-only-e2e.md#64-2026-05-14-引き継ぎウェイクワード登録オフラインシリアル)。

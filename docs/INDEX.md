@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-14）
+
+- **StackChan 私用 Pi5 bridge: Home Assistant（読み取り context）、chat/SST 運用ノブ、実機フェーズアウトの引き継ぎ KB 反映**: **`home_assistant_client.py`** と env（`HOME_ASSISTANT_*`）、**chat 検証設定**（`STACKCHAN_CHAT_*`）、**`faster-whisper-local`** の **`STT_LOCAL_RETRY_WITHOUT_VAD` / `STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY`** を repo に反映。並行していた **上流 `AI_StackChan_Ex` のウェイクワード登録／オフライン（Smart Config 失敗）／USB 書き込み失敗／`pio device monitor` の termios 問題**は **KB §2026-05-14** と **text-only runbook §6.4** に集約。**正本リンク**: [KB-stackchan-community-firmware-supply-chain.md §2026-05-14](./knowledge-base/KB-stackchan-community-firmware-supply-chain.md)·[private-pi5-stackchan-bridge-deploy.md](./runbooks/private-pi5-stackchan-bridge-deploy.md)·[`scripts/private-pi5-stackchan-bridge/README.md`](../scripts/private-pi5-stackchan-bridge/README.md)·[stackchan-community-text-only-e2e.md §6.4](./runbooks/stackchan-community-text-only-e2e.md#64-2026-05-14-引き継ぎウェイクワード登録オフラインシリアル)。
+
 ### 🆕 最新アップデート（2026-05-13）
 
 - **StackChan 私用経路: 設定ドリフト・STT 読取タイムアウト・調査上の断定ルールを KB/Runbook へ追記**: **`CHATGPT_API_URL` をビルドフラグで毎回固定**しないと `pio run` が **OpenAI 既定へ戻り** private Pi5 bridge に **chat POST が来ない**ことがある。**`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`**（**任意・未設定/0は読取無制限**）を**狭く**しすぎると **STT 生 WAV** で **`request read timeout` / `408`** や実機側 **read `-11`** が先に出る（**`STT_UPSTREAM_TIMEOUT` や whisper 推論とは別レイヤ**）。**OpenAPI のパス**と **`/api/stackchan/chat/simple`** の混同で「経路は合っている」錯覚が起きうるため、**WakeWord→STT→LLM→TTS の連続成功**まで原因を確定扱いしない。**記録**: [KB-stackchan-community-firmware-supply-chain.md §2026-05-13](./knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-追補-chatgpt_api_url-ドリフトbridge-リクエスト読取タイムアウトurl-境界の錯覚調査上の断定ルール)·[stackchan-community-text-only-e2e.md](./runbooks/stackchan-community-text-only-e2e.md)·[private-pi5-stackchan-bridge-deploy.md](./runbooks/private-pi5-stackchan-bridge-deploy.md)·[`scripts/private-pi5-stackchan-bridge/README.md`](../scripts/private-pi5-stackchan-bridge/README.md)·[`scripts/stackchan-ai-stackchan-ex/README.md`](../scripts/stackchan-ai-stackchan-ex/README.md)。

@@ -30,6 +30,19 @@ class SttRuntimeConfig:
     local_model: str = "small"
     local_device: str = "cpu"
     local_compute_type: str = "int8"
+    local_language_default: str = "ja"
+    local_vad_filter: bool = True
+    local_retry_without_vad: bool = True
+    local_fallback_to_upstream_on_empty: bool = False
+
+
+def _env_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized == "":
+        return default
+    return normalized in {"1", "true", "yes", "on"}
 
 
 def _encode_multipart_form(fields: list[tuple[str, str]], files: list[tuple[str, str, bytes, str]]) -> tuple[str, bytes]:
@@ -77,8 +90,16 @@ class SttRuntimeClient:
     def transcribe(self, audio_bytes: bytes, content_type: str, language: str | None, model: str | None) -> tuple[str, dict[str, Any]]:
         provider = self._c.provider.lower()
         if provider == "faster-whisper-local":
-            text = self._transcribe_local(audio_bytes, language)
-            return text, {"provider": provider, "model": self._c.local_model}
+            text, details = self._transcribe_local(audio_bytes, language)
+            if text == "" and self._c.local_fallback_to_upstream_on_empty:
+                text = self._transcribe_upstream(audio_bytes, content_type, language, model)
+                details = {
+                    **details,
+                    "fallbackUsed": True,
+                    "fallbackProvider": "upstream-openai",
+                    "fallbackModel": model or self._c.upstream_model,
+                }
+            return text, {"provider": provider, "model": self._c.local_model, **details}
         text = self._transcribe_upstream(audio_bytes, content_type, language, model)
         return text, {"provider": "upstream-openai", "model": model or self._c.upstream_model}
 
@@ -126,18 +147,31 @@ class SttRuntimeClient:
         )
         return self._whisper_model
 
-    def _transcribe_local(self, audio_bytes: bytes, language: str | None) -> str:
+    def _transcribe_once(self, temp_path: Path, language: str | None, vad_filter: bool) -> str:
         model = self._ensure_whisper_model()
+        segments, _info = model.transcribe(
+            str(temp_path),
+            language=language,
+            vad_filter=vad_filter,
+        )
+        return "".join(seg.text for seg in segments).strip()
+
+    def _transcribe_local(self, audio_bytes: bytes, language: str | None) -> tuple[str, dict[str, Any]]:
         with tempfile.NamedTemporaryFile(prefix="stackchan-stt-", suffix=".wav", delete=False) as fp:
             fp.write(audio_bytes)
             temp_path = Path(fp.name)
         try:
-            segments, _info = model.transcribe(
-                str(temp_path),
-                language=language or "ja",
-                vad_filter=True,
-            )
-            return "".join(seg.text for seg in segments).strip()
+            first_language = language or self._c.local_language_default or None
+            text = self._transcribe_once(temp_path, first_language, self._c.local_vad_filter)
+            retried = False
+            if text == "" and self._c.local_retry_without_vad and (first_language is not None or self._c.local_vad_filter):
+                retried = True
+                text = self._transcribe_once(temp_path, None, False)
+            return text, {
+                "language": first_language,
+                "vadFilter": self._c.local_vad_filter,
+                "retryWithoutVad": retried,
+            }
         finally:
             try:
                 temp_path.unlink(missing_ok=True)
@@ -157,4 +191,8 @@ def config_from_env() -> SttRuntimeConfig:
         local_model=os.getenv("STT_LOCAL_MODEL", "small"),
         local_device=os.getenv("STT_LOCAL_DEVICE", "cpu"),
         local_compute_type=os.getenv("STT_LOCAL_COMPUTE_TYPE", "int8"),
+        local_language_default=os.getenv("STT_LOCAL_LANGUAGE_DEFAULT", "ja"),
+        local_vad_filter=_env_bool(os.getenv("STT_LOCAL_VAD_FILTER"), True),
+        local_retry_without_vad=_env_bool(os.getenv("STT_LOCAL_RETRY_WITHOUT_VAD"), True),
+        local_fallback_to_upstream_on_empty=_env_bool(os.getenv("STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY"), False),
     )

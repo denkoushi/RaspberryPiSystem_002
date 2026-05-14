@@ -29,6 +29,7 @@ class FakeDgxClient:
         self.ensure_calls = 0
 
     def post_chat_completions(self, body: bytes):
+        self.last_body = body
         if not self._post_results:
             raise AssertionError("unexpected post_chat_completions call")
         result = self._post_results.pop(0)
@@ -41,6 +42,14 @@ class FakeDgxClient:
         return self._ready_result
 
 
+class FakeHomeAssistantContext:
+    def __init__(self, lines):
+        self._lines = lines
+
+    def snapshot_lines(self):
+        return list(self._lines)
+
+
 class StackchanChatCoreTests(unittest.TestCase):
     def test_validate_chat_payload_accepts_defaults(self):
         module = load_module()
@@ -51,9 +60,47 @@ class StackchanChatCoreTests(unittest.TestCase):
 
         self.assertIsNone(err)
         self.assertIsNotNone(validated)
-        self.assertEqual(validated.max_tokens, 1024)
+        self.assertEqual(validated.max_tokens, 160)
         self.assertEqual(validated.temperature, 0.35)
         self.assertFalse(validated.enable_thinking)
+
+    def test_validate_chat_payload_caps_tokens_trims_messages_and_disables_thinking(self):
+        module = load_module()
+
+        validated, err = module.validate_chat_payload(
+            {
+                "messages": [
+                    {"role": "system", "content": "あなたはスタックチャンです"},
+                    {"role": "user", "content": "1"},
+                    {"role": "assistant", "content": "2"},
+                    {"role": "user", "content": "3"},
+                ],
+                "maxTokens": 999,
+                "enableThinking": True,
+            },
+            module.ChatValidationConfig(max_messages=3, max_tokens_cap=192, allow_thinking=False),
+        )
+
+        self.assertIsNone(err)
+        self.assertIsNotNone(validated)
+        self.assertEqual(validated.max_tokens, 192)
+        self.assertFalse(validated.enable_thinking)
+        self.assertEqual(
+            validated.messages,
+            [
+                {"role": "system", "content": "あなたはスタックチャンです"},
+                {"role": "assistant", "content": "2"},
+                {"role": "user", "content": "3"},
+            ],
+        )
+
+    def test_validate_chat_payload_rejects_missing_content(self):
+        module = load_module()
+
+        validated, err = module.validate_chat_payload({"messages": [{"role": "user", "content": ""}]})
+
+        self.assertIsNone(validated)
+        self.assertEqual(err, "messages must contain role/content strings")
 
     def test_validate_chat_payload_rejects_empty_messages(self):
         module = load_module()
@@ -98,6 +145,30 @@ class StackchanChatCoreTests(unittest.TestCase):
         self.assertEqual(outcome.parsed, parsed)
         self.assertEqual(client.ensure_calls, 1)
         self.assertEqual(logs, ["upstream 502 recovered after runtime start"])
+
+    def test_workflow_injects_home_assistant_context_when_configured(self):
+        module = load_module()
+        request = module.ValidatedChatRequest(
+            messages=[{"role": "user", "content": "リビングはどう？"}],
+            max_tokens=32,
+            temperature=0.2,
+            enable_thinking=False,
+        )
+        parsed = {"choices": [{"message": {"content": "リビングは明るいです。"}}]}
+        client = FakeDgxClient(post_results=[(200, parsed)])
+
+        workflow = module.ChatCompletionWorkflow(
+            client,
+            "system-prod-primary",
+            FakeHomeAssistantContext(["Living temperature (sensor.living_temperature): 22.3°C"]),
+        )
+        outcome = workflow.run(request)
+
+        self.assertIsInstance(outcome, module.ChatSuccess)
+        sent_body = module.json.loads(client.last_body.decode("utf-8"))
+        self.assertEqual(sent_body["messages"][0]["role"], "system")
+        self.assertIn("Home Assistant current state", sent_body["messages"][0]["content"])
+        self.assertEqual(sent_body["messages"][1]["content"], "リビングはどう？")
 
     def test_workflow_returns_failure_when_runtime_recovery_fails(self):
         module = load_module()

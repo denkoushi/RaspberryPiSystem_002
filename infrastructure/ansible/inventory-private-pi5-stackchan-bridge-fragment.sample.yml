@@ -54,6 +54,20 @@ all:
 
       private_pi5_upstream_timeout_sec: 45
 
+      # Low-latency chat defaults for StackChan voice interaction
+      private_pi5_stackchan_chat_default_max_tokens: 160
+      private_pi5_stackchan_chat_max_tokens_cap: 192
+      private_pi5_stackchan_chat_max_messages: 8
+      private_pi5_stackchan_chat_allow_thinking: false
+
+      # Optional read-only Home Assistant context for LLM replies.
+      # Keep the token in the local non-tracked fragment only.
+      private_pi5_home_assistant_context_enabled: false
+      private_pi5_home_assistant_base_url: "http://homeassistant.local:8123"
+      private_pi5_home_assistant_token: ""
+      private_pi5_home_assistant_context_entities: []
+      private_pi5_home_assistant_timeout_sec: 5
+
       # STT routing (default: DGX/OpenAI-compatible transcription endpoint)
       private_pi5_stt_provider: "upstream-openai"
       private_pi5_stt_upstream_base_url: "http://100.118.82.72:38081"
@@ -67,3 +81,7 @@ all:
       private_pi5_stt_local_model: "small"
       private_pi5_stt_local_device: "cpu"
       private_pi5_stt_local_compute_type: "int8"
+      private_pi5_stt_local_language_default: "ja"
+      private_pi5_stt_local_vad_filter: true
+      private_pi5_stt_local_retry_without_vad: true
+      private_pi5_stt_local_fallback_to_upstream_on_empty: false

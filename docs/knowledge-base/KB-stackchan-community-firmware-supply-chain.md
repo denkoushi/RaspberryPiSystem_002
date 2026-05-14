@@ -2,7 +2,7 @@
 title: "KB: StackChan コミュニティファーム（AI_StackChan_Ex）供給鎖・セキュリティ"
 tags: [StackChan, supply-chain, firmware, security, Pi5, DGX]
 audience: [開発者, 運用者]
-last-verified: 2026-05-13
+last-verified: 2026-05-14
 category: knowledge-base
 update-frequency: high
 ---
@@ -373,6 +373,7 @@ update-frequency: high
 
 - **CONFIRMED（構成）**: `AI_StackChan_Ex` 系では **`CHATGPT_API_URL` をビルド時マクロで明示**しない限り、**OpenAI API 向け既定 URL**へ落ちうる。**`PLATFORMIO_BUILD_FLAGS='-DCHATGPT_API_URL=...'` 無しの `pio run` は設定ドリフトの典型**。
 - **CONFIRMED（bridge 実装）**: private Pi5 bridge（`bridge_server.py`）は **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC` が正の値のときだけ** `do_POST` で **`connection.settimeout(...)`** を掛け、**本文読取**がその秒数を超えると **`socket.timeout`** として **`408` / `request read timed out`** を返す。**未設定・空・`0`・解析不能時は無効**（従来どおりブロッキング読取で上限なし）。**STT の生 WAV** は **チャット JSON よりボディが大きく**、上限を**狭く**しすぎるとここで落ちうる（上流の `STT_UPSTREAM_TIMEOUT_SEC` や `faster-whisper` 処理時間とは**別レイヤ**）。
+- **CONFIRMED（bridge 実装・2026-05-13 追加）**: 音声会話では長文生成と thinking が遅延/無発話に見えやすいため、private Pi5 bridge は `STACKCHAN_CHAT_DEFAULT_MAX_TOKENS=160` / `STACKCHAN_CHAT_MAX_TOKENS_CAP=192` / `STACKCHAN_CHAT_MAX_MESSAGES=8` / `STACKCHAN_CHAT_ALLOW_THINKING=false` を標準値として持つ。`faster-whisper-local` は短発話で VAD が空結果を返す場合に、`STT_LOCAL_RETRY_WITHOUT_VAD=true` なら **language 自動判定 + VAD 無しで1回再試行**する。必要時のみ `STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY=true` で上流 STT へフォールバックできる。
 - **観測補助**: セッション調査で **`log_message` に route や STT 成否を追加**したことがある。本番の `main` 実装では必須ではないが、**`journalctl` で path・`stt success` 行**を追うと chat / STT / upstream の層が分かれる。
 - **INCONCLUSIVE until 連続 E2E**: **`openapi` のパス誤記や単発 `curl` 成功**だけで「本番経路は直った」と**閉じない**。**WakeWord → STT → LLM → TTS** が**同一条件で複数回**通るまで、ドキュメント・口頭とも **仮説段**として扱う（過去に Realtime / Spark 境界と同一系の**早すぎる確定**が問題になった教訓）。
 
@@ -380,12 +381,92 @@ update-frequency: high
 
 - **毎回** `PLATFORMIO_BUILD_FLAGS` に **私用 Pi5 bridge の URL をフルで固定**する。`replyText` 安定を優先するなら **`.../api/stackchan/chat/simple`**（詳細は [text-only runbook](../runbooks/stackchan-community-text-only-e2e.md)）。
 - STT や大きめボディを扱うなら Pi5 bridge の `.env` で **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`** を **30〜120** 秒規模へ**明示設定**し（**未設定は無制限読取**）、**`stackchan-bridge` を再起動**。上流 STT の **`STT_UPSTREAM_TIMEOUT_SEC`** や **`faster-whisper`** の VAD 設定は **その内側**の別ノブ。
+- 短い呼びかけが `聞き取れない` になる場合は、まず `STT_LOCAL_RETRY_WITHOUT_VAD=true` の反映と `STT_LOCAL_VAD_FILTER` を確認する。短文優先なら `STT_LOCAL_VAD_FILTER=false`、安定した上流 STT がある場合だけ `STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY=true` を検討する。
 - 宛先 IP は **DHCP ドリフト**と **compat alias**（既存節）をセットで見る。
 
 ### Prevention
 
 - CI に乗らない **実機ファーム**は、**ビルドコマンド（env の全文）を作業メモに残す**。「直近成功したフラグセット」と **ずれたビルド**を無意識に flash しない。
 - **分報ログだけで root cause を確定扱いにしない**。**bridge ログ・実機シリアル・Mac `curl` の path/HTTP を同一時刻で突き合わせる**。
+
+## 2026-05-14 追補: private Pi5 bridge 実装（低遅延 chat・STT 再試行・Home Assistant 読み取り context）
+
+### Context
+
+- 別案件への切り替えに先立ち、このリポジトリ側で **音声インタラクション向けの bridge 機能**を進め、`main` に取り込む前提で文書とコードを同期した。
+- 目標アーキテクチャ（正本）は変わらない: **`faster-whisper`（私用 Pi5）→ Qwen3.6 on DGX Spark → VOICEVOX（デバイス）→ StackChan**。Home Assistant は **まず読み取り専用 context** から開始する。
+
+### 仕様（リポジトリ実装）
+
+- **Chat 検証・低遅延既定**（`stackchan_chat_core.py` の `ChatValidationConfig`、`bridge_server.py` が環境変数で上書き可）  
+  - 既定値の例: **`maxTokens` デフォルト 160**、**上限キャップ**、**会話メッセージ本数上限**（先頭の `system` 1 件は維持しつつトリム）、**`enableThinking` は既定で効かせない**（`STACKCHAN_CHAT_ALLOW_THINKING` で許可）。
+- **`faster-whisper-local` の短発話耐性**（`stt_runtime_client.py`）  
+  - 初回: 既定言語（例 `ja`）+ `vad_filter=true` で推論。  
+  - **空文字なら 1 回だけ**、`language=None`（自動判定相当）かつ **`vad_filter=false`** で再試行（`STT_LOCAL_RETRY_WITHOUT_VAD`。既定で有効化しやすい）。  
+  - それでも空なら、任意で **`STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY=true`** により上流 transcription（`upstream-openai`）へフォールバック。
+- **Home Assistant（読み取り専用）**（`home_assistant_client.py`）  
+  - **`HOME_ASSISTANT_CONTEXT_ENABLED=true`** かつ base URL・token・**カンマ区切り entity allowlist**（`HOME_ASSISTANT_CONTEXT_ENTITIES`）が揃っているときのみ有効。  
+  - **`GET /api/states/<entity_id>`** で取得した状態を 1 行ずつ整形し、**先頭に `system` メッセージ**として LLM に付与（**デバイス制御はしない**）。
+- **Ansible / `.env.example`**: `private_pi5_stackchan_chat_*`、`private_pi5_stt_local_*`、`private_pi5_home_assistant_*` と playbook の同期ファイルリストに **`home_assistant_client.py`** を追加済み。
+- **回帰テスト**: `scripts/private-pi5-stackchan-bridge/tests/` に `test_stt_runtime_client.py`・`test_home_assistant_client.py` を追加し、既存 `test_stackchan_chat_core.py` を追随。
+
+### 運用上の順序（再開時）
+
+1. 私用 Pi5: playbook 再適用後 **`/healthz`** と **`POST /api/stackchan/chat/simple`**（Mac から）で LLM 層が生きていることを確認。  
+2. 続けて **`POST /api/stackchan/stt`**（短文 WAV）で `STT_LOCAL_*` が期待どおりか `journalctl` で確認。  
+3. StackChan 実機へ戻り、[text-only runbook の E2E チェックリスト](../runbooks/stackchan-community-text-only-e2e.md#e2e-checklist-text-then-audio) に沿って **WakeWord→STT→chat→TTS** を順に復活させる。
+
+## 2026-05-14 追補: 実機ワークストリーム（ウェイクワード登録／オフラインモード／シリアル）— **本 repo 未コミットの試行含む**
+
+### Context
+
+- セッション後半では **上流 `AI_StackChan_Ex` のクローン作業ツリー**（開発者環境では例として `/tmp/AI_StackChan_Ex`。**パスは環境依存**）上で、`AiStackChanMod.cpp` / `WakeWord.cpp` を試験編集していた。**これらの C++ 差分は RaspberryPiSystem_002 の `main` には載っていない**。再開時は「どのツリーでビルドしたか」と **SHA／パッチ一覧**を必ず自分で固定すること。
+- 観測された課題の主軸は **「UI（右タッチ＝ BtnB long 相当）は成功しているが、ウェイクワード登録で音声が取れていない／処理が終わらない」**と **ネットワーク未接続**の切り分け。
+
+### Symptoms
+
+- **`Smart Config failed. Running in offline mode.`** と周辺ログが出て **Wi-Fi IP が取得できない**局面と、ウェイクワード登録で **`ウェイクワード登録開始` が長時間終わらない**局面が混在しうる。**オフラインでもタッチ UI は進む**ため、**「タッチが効く = ネットワークとマイクが正常」ではない**。
+- ウェイクワード登録で **自分の発話が反映されない**（登録インデックスに進まない、無音相当）。
+- `pio run … -t upload` が **`Could not open /dev/cu.usbmodem… port doesn't exist`** で失敗（USB 経路またはポート名の変化）。
+
+### Investigation
+
+#### Hypothesis M: 「登録開始のまま」は VAD/録音経路だけの問題である
+
+- **PARTIALLY CONFIRMED（設計論点）**。  
+  根拠: 登録側が **`rxMic()` など VAD 待ち主体**だと **無音扱いのまま進まず**ユーザーには「終わらない」に見える。対策案として試したのは **通常 STT と同様の固定時間録音**（コードベースにより `Audio::Record()` の 3 秒録音）へ寄せて **無音でもバッファは埋まる**経路を確保すること。ただし **実測での「音声が載った」証明まで到達しないケース**が残った。
+- **区別**: **タイムアウトでモード復帰**させる処理はユーザー体験の安全策になるが、「マイクが死んでいる」疑惑には **ピーク検出ログ／画面表示**などの別証拠が必要（次項）。
+
+#### Hypothesis N: マイク未入力または `M5.Mic` とスピーカ切替競合ではないか
+
+- **INCONCLUSIVE**（2026-05-14 時点・本セッション打ち切り）。  
+  検証計画として **録音波形の統計（例: peak、平均絶対値）をシリアルとディスプレイに出す**改修を検討したが、**USB ポート消失**により当該ビルドの書き込み確認まで至らず。
+
+#### Hypothesis O: 「オフラインモード」のままだと音声対話チェーン全体が検証にならない
+
+- **PARTIALLY CONFIRMED**。  
+  根拠: SD カードの `wifi.txt` / `yaml/SC_SecConfig.yaml` 不備、Smart Config 失敗、または誤った SSID/パス（`O`/`0` 混同等）により **スタック状態**になると、**HTTP での `/chat` や upstream 側の問題と独立に**音声パイプラインの期待動作が揃わない。**まず LAN IP と bridge への到達を正本**として直す。
+
+#### Hypothesis P: macOS 上で `pio device monitor` が使えない
+
+- **OBSERVED**。  
+  ある環境では **`termios.error: (19, 'Operation not supported by device')`** が出て PlatformIO のデバイスモニタが使えなかった。**回避策**: `pyserial` 等で **`/dev/cu.usbmodem*` を直接読む**、`screen`/`minicom` の利用、またはログを UART 側に限定する別手段。
+
+### Fix / Mitigation（試行済み・または推奨の次ステップ）
+
+- **優先順（再度ブリングアップするときの固定順）**: microSD と Wi-Fi が **`0.0.0.0` でない実 IP** を取るまで、ウェイクワードや STT の結論を出さない。既存 Prevention（YAML+txt 併置、パスワード誤記確認）に従う。
+- **登録処理が VAD で止まりうる**場合: 上流ファーム側で「固定秒録音」経路との差分をレビューし、**ログで `record_size`/ピークが 0 に近くないか**を必ず確認。
+- **USB フラッシュ**: `ls /dev/cu.usbmodem*` でポートを確認し、抜き差し後に **`pio … --upload-port`** をやり直す。
+
+### Prevention
+
+- 「タッチイベントが取れている」を **音声入力またはネットワークの正常の代理指標にしない**。  
+- 実機差分は **上流リポジトリの fork/tag** または **このリポジトリの patch ディレクトリ**（[`ai_stackchan_ex_private_bridge.patch`](../../scripts/private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) のように）へ昇格しない限り、**同じ問題を別マシンで再現できない**。
+
+### Current status（2026-05-14）
+
+- **リポ側**: bridge の chat/STT/Home Assistant context 機能と Ansible/Runbook/README/KB の整合を **`main` へ載せる**のが本分。  
+- **実機ウェイクワード/マイク**: **未解決**。次は Wi-Fi とオフラインモードの根治 → 波形統計ログ付きファームでの **死活確認** を推奨。
 
 ## References
 
