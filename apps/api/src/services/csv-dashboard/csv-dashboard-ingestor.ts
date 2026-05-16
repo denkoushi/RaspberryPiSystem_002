@@ -19,7 +19,7 @@ import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
 import { ProductionScheduleCsvIngestExternalCompletionSyncService } from '../production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.js';
-import { extractProductionScheduleExternalCompletionKeysFromRows } from '../production-schedule/external-completion/production-schedule-external-completion-key.js';
+import { ProductionScheduleCanonicalCurrentKeysService } from '../production-schedule/external-completion/production-schedule-canonical-current-keys.service.js';
 import { findCsvDashboardRowsByDataHashes } from './csv-dashboard-existing-rows-by-hash.reader.js';
 
 /**
@@ -32,6 +32,7 @@ export class CsvDashboardIngestor {
   private progressSyncFromCsvService = new ProgressSyncFromCsvService();
   private progressSyncEligibilityPolicy = new ProgressSyncEligibilityPolicy();
   private scheduleCsvExternalCompletionSync = new ProductionScheduleCsvIngestExternalCompletionSyncService();
+  private canonicalScheduleDisappearanceKeys = new ProductionScheduleCanonicalCurrentKeysService();
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -137,11 +138,6 @@ export class CsvDashboardIngestor {
               hash: this.calculateDataHash(row.data, dedupKeyColumns),
             }))
           : productionScheduleDedupRows;
-
-      const currentProductionScheduleWinnerKeys =
-        isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP'
-          ? extractProductionScheduleExternalCompletionKeysFromRows(productionScheduleDedupRows)
-          : [];
 
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
@@ -320,8 +316,12 @@ export class CsvDashboardIngestor {
 
       if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
         try {
+          const canonicalScheduleDisappearanceCurrentKeys =
+            await this.canonicalScheduleDisappearanceKeys.resolveScheduleCsvDisappearanceCanonicalCurrentKeys({
+              scheduleDedupRows: productionScheduleDedupRows,
+            });
           const extResult = await this.scheduleCsvExternalCompletionSync.applyPostIngestFromSnapshot({
-            currentWinnerKeys: currentProductionScheduleWinnerKeys,
+            canonicalScheduleDisappearanceCurrentKeys,
           });
           if (extResult.skipped) {
             logger.warn(

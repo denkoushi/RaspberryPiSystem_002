@@ -80,7 +80,7 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
     });
 
     const r = await svc.applyPostIngestFromSnapshot({
-      currentWinnerKeys: ['210\t588\tP1'],
+      canonicalScheduleDisappearanceCurrentKeys: ['210\t588\tP1'],
       referenceAt: new Date('2026-05-09T12:00:00.000Z'),
     });
 
@@ -94,7 +94,33 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
     ]);
   });
 
-  it('applyPostIngestFromSnapshot skips when ingest batch has no winner keys (empty currentWinnerKeys)', async () => {
+  it('applyPostIngestFromSnapshot accepts deprecated currentWinnerKeys alias', async () => {
+    vi.mocked(noncQuery.queryNonCScheduleDisappearanceCandidateKeys).mockResolvedValue([
+      '200\t021\tP1',
+      '210\t588\tP1',
+    ]);
+
+    const prismaMock = {
+      $transaction: vi.fn(async (fn: (tx: { t: true }) => Promise<void>) => {
+        await fn({ t: true } as never);
+      }),
+    };
+
+    const svc = new ProductionScheduleCsvIngestExternalCompletionSyncService({
+      prismaClient: prismaMock as never,
+    });
+
+    const r = await svc.applyPostIngestFromSnapshot({
+      currentWinnerKeys: ['210\t588\tP1'],
+    });
+
+    expect(r).toEqual({ skipped: false, disappearedDistinctKeys: 1 });
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync).toHaveBeenCalledWith({ t: true }, [
+      '200\t021\tP1',
+    ]);
+  });
+
+  it('applyPostIngestFromSnapshot skips when ingest batch has no canonical keys (empty canonicalScheduleDisappearanceCurrentKeys)', async () => {
     const prismaMock = { $transaction: vi.fn() };
 
     const svc = new ProductionScheduleCsvIngestExternalCompletionSyncService({
@@ -102,7 +128,7 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
     });
 
     const r = await svc.applyPostIngestFromSnapshot({
-      currentWinnerKeys: [],
+      canonicalScheduleDisappearanceCurrentKeys: [],
     });
 
     expect(r).toEqual({ skipped: true, reason: 'empty_schedule_csv' });

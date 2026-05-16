@@ -92,7 +92,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
 }
 
 /**
- * 生産日程CSV 取込後: 取込直前スナップショットとの消滅差分を反映し、工順ST由来2フラグは保持する。
+ * 生産日程CSV 取込後: **正本C現在キー集合に含まれない** winner を CSV消滅として反映し、工順ST由来2フラグは保持する。
  */
 export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync(
   executor: PrismaExecutor,
