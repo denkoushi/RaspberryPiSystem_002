@@ -13,7 +13,7 @@ export type ProductionScheduleCsvIngestExternalCompletionApplyResult =
  *
  * **消滅の定義（置換後）**:
  * - 母集団: DB上の winner のうち `FKOJUNST_Status` 同期済みで **C 以外** かつ `occurredAt` が取り込み基準時刻±3か月窓内
- * - 今回CSVバッチの winner 論理キー集合に **含まれない** キーを「消滅」とみなす
+ * - **正本Cの現在キー集合**（現時点では本体CSV dedupe winner を基準に導出）に **含まれない** キーを「消滅」とみなす
  *
  * 旧来の「取込直前スナップショット比較」は、期間取得CSVとFKOJUNST窓のズレで誤判定しやすいため廃止。
  */
@@ -31,24 +31,32 @@ export class ProductionScheduleCsvIngestExternalCompletionSyncService {
   }
 
   /**
-   * 取込完了後: `FKOJUNST 非C×窓内` 母集団から今回バッチキーを差し引き、消滅キーで外部完了を更新する。
+   * 取込完了後: `FKOJUNST 非C×窓内` 母集団から **正本C現在キー** を差し引き、消滅キーで外部完了を更新する。
    *
-   * **現 winner（＝今回バッチ）が 0 件**のときは異常／信頼不能として**適用しない**（誤全件完了防止）。
+   * **正本C現在キーが 0 件**のときは異常／信頼不能として**適用しない**（誤全件完了防止）。
    */
   async applyPostIngestFromSnapshot(params?: {
+    /** 現在は本体CSV dedupe winner を基準にした正本C current keys。 */
+    canonicalScheduleDisappearanceCurrentKeys?: readonly string[];
+    /**
+     * @deprecated {@link canonicalScheduleDisappearanceCurrentKeys} に改名。
+     */
     currentWinnerKeys?: readonly string[];
     /** 窓計算・ログ用。省略時は `new Date()`（取込完了直後のサーバ時刻） */
     referenceAt?: Date;
   }): Promise<ProductionScheduleCsvIngestExternalCompletionApplyResult> {
+    const resolvedIncomingKeys =
+      params?.canonicalScheduleDisappearanceCurrentKeys ?? params?.currentWinnerKeys;
+
     const currentKeys =
-      params?.currentWinnerKeys !== undefined
-        ? [...params.currentWinnerKeys]
+      resolvedIncomingKeys !== undefined
+        ? [...resolvedIncomingKeys]
         : await queryWinnerLogicalKeys(this.deps.prismaClient);
 
     if (currentKeys.length === 0) {
       logger.warn(
         {},
-        '[ProductionScheduleCsvIngestExternalCompletionSync] skip schedule CSV disappearance diff (empty current winner keys)'
+        '[ProductionScheduleCsvIngestExternalCompletionSync] skip schedule CSV disappearance diff (empty canonical schedule disappearance current keys)'
       );
       return { skipped: true, reason: 'empty_schedule_csv' };
     }
@@ -69,7 +77,7 @@ export class ProductionScheduleCsvIngestExternalCompletionSyncService {
       {
         referenceAt,
         nonCInWindowDistinctKeys: nonCInWindowKeys.length,
-        currentDistinctKeys: currentKeys.length,
+        canonicalScheduleDisappearanceDistinctKeys: currentKeys.length,
         disappearedDistinctKeys,
       },
       '[ProductionScheduleCsvIngestExternalCompletionSync] schedule CSV disappearance diff applied (non-C window mother set)'

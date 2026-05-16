@@ -2,7 +2,7 @@
 title: CIテスト失敗のトラブルシューティングガイド
 tags: [CI/CD, トラブルシューティング, GitHub Actions]
 audience: [開発者]
-last-verified: 2026-04-27
+last-verified: 2026-05-16
 related: [../knowledge-base/ci-cd.md, development.md]
 category: guides
 update-frequency: high
@@ -34,6 +34,8 @@ update-frequency: high
 **症状**: `Security scan (Trivy image web)` で `usr/bin/caddy` 由来の CRITICAL 等（例: **CVE-2026-30836** / `github.com/smallstep/certificates`）が報告され、CI が `failure` になる。
 
 **対処（運用上の暫定）**: 上流で修正版 Caddy／ベースイメージへ追従できるまでの間、**`.trivyignore` に該当 CVE を追記**する（既存の KB-307 系 Trivy 運用と同様）。**恒久対策の代替にしない**こと——ベースイメージまたは Caddy の更新で解消できないかを別途追跡する。
+
+**記録（2026-05-16）**: `security-docker`（web イメージ **`usr/bin/caddy`**・`github.com/golang/go`/`stdlib`）で **HIGH** 複数（**CVE-2026-33811**・**CVE-2026-33814**・**CVE-2026-39820**・**CVE-2026-39836**・**CVE-2026-42499**）が報告され **CI が失敗**。**`.trivyignore`** へ追記し **run `25956906908` で success**。コミット **`0e327378`**。**関連 PR/ブランチ**: **`feat/canonical-schedule-disappearance-current-keys`**（本体実装とは独立した **`chore(ci)`**）。
 
 **参照**: [KB-231 追記節（2026-03-31）](../knowledge-base/api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化)（本事例の記録） / [ci-cd.md §セキュリティ例外](../knowledge-base/ci-cd.md)。
 

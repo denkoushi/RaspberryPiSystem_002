@@ -8,7 +8,7 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
  * `FKOJUNST_Status` 同期済みかつ **status が C 以外** の MaxProductNo winner 行で、
  * `occurredAt` が {@link computeProductionScheduleDisappearanceOccurredAtBounds} の窓内にある論理キー一覧。
  *
- * 生産日程CSVの「今回バッチ」キー集合との差分で消滅完了を決める母集団となる。
+ * 生産日程CSVの **正本C現在キー集合**（現時点では本体CSV dedupe winner 基準）との差分で消滅完了を決める母集団となる。
  */
 export async function queryNonCScheduleDisappearanceCandidateKeys(
   client: PrismaClient,
