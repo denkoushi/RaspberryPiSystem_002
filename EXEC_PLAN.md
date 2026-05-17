@@ -9,6 +9,8 @@
 
 ## Progress
 
+- [x] (2026-05-17 / **ドキュメントのみ・会話整理の固定**） **順位ボードの完了残留問題について、ここまでの進捗・仕様・知見・トラブルシュートを既存ドキュメントへ詳細反映**。**要点**: **2026-05-16 の current keys 修正は「入力整理」であり、ユーザーが期待する「2つのCSVを先に照合した結果で Pi5 DB と差分消失を判定する」実装そのものではない**こと、**2026-05-17 時点では残留ケースが母集団 blind spot / current keys 残留 / ±3ヶ月窓外のどれか未確定**であること、**会話時点の第一候補は 2 CSV 照合結果ベースの current keys 再設計**であることを正本化。**反映**: [`docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md`](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)（Follow-up 2026-05-17）·[`docs/INDEX.md`](./docs/INDEX.md)·[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)·本 `EXEC_PLAN`。**次**: 実データで残留ケースの所属先（母集団 / current / 窓外）を確定し、最小修正と回帰テストへ進む。
+
 - [x] (2026-05-16 / **本番反映・実機検証・ドキュメント同期・`main` マージ完了**） **生産日程CSV「消滅」入力の正本C current keys（本体 dedupe winner のみ。**`FKOJUNST` メール側に FK が無いだけでは「現 winner」から除外しない**）**。**ブランチ**: **`feat/canonical-schedule-disappearance-current-keys`**。**実装**: **`09f06ebf`**（`ProductionScheduleCanonicalCurrentKeysService`·[`csv-dashboard-ingestor.ts`](./apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)·[`production-schedule-csv-ingest-external-completion-sync.service.ts`](./apps/api/src/services/production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.ts)）。**CI**: **`25956906908` success**（直前 **`25956583435` failure** は **`security-docker`** / **`usr/bin/caddy`** Go stdlib **HIGH**。**対処**: [`.trivyignore`](./.trivyignore)·**`0e327378`**）。**本番**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4／Pi3 **`skipping: no hosts matched`**）。**Detach `20260516-181817-25397`**（**`PLAY RECAP` `ok=131` `changed=3` `failed=0` / `unreachable=0`**·リモート **`exit 0`**·ローカル **`--follow` 約 286s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **140s**）。**ナレッジ**: [`docs/guides/deployment.md`](./docs/guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)·[`docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md`](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-16-schedule-csv-disappearance-canonical-current-keys)·[`docs/guides/ci-troubleshooting.md`](./docs/guides/ci-troubleshooting.md#trivy-が-web-イメージの-caddy-バイナリで-cve-を検出してジョブが失敗する)·[`docs/INDEX.md`](./docs/INDEX.md)·[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)。**以降の運用デプロイ**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**。**ローカル `main`** を **`origin/main` に `--ff-only` 同期済み**（マージ後手順）。
 
 - [x] (2026-05-13 / **ドキュメントのみ・CI完了待ち不要（ユーザー合意）**） **StackChan 私用経路の運用知見を KB/Runbook/README/索引へ同期**。**内容**: **`CHATGPT_API_URL` を `PLATFORMIO_BUILD_FLAGS` で毎回固定**しない **`pio run` による OpenAI 既定への設定ドリフト**・**`STACKCHAN_REQUEST_READ_TIMEOUT_SEC`（任意・正で有効・未設定/0は無制限）を狭くしすぎると STT 生 WAV の `request read timeout` / `408` と実機 read `-11`（別レイヤ: `STT_UPSTREAM_TIMEOUT_SEC` / faster-whisper）**・**DGX `v1` 系ドキュメントと `/api/stackchan/chat/simple` の境界混同**・**WakeWord→STT→LLM→TTS 連続成功までの早すぎる root cause 断定の抑止**。**反映**: [`docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md`](./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md)·[`docs/runbooks/stackchan-community-text-only-e2e.md`](./docs/runbooks/stackchan-community-text-only-e2e.md)·[`docs/runbooks/private-pi5-stackchan-bridge-deploy.md`](./docs/runbooks/private-pi5-stackchan-bridge-deploy.md)·[`scripts/private-pi5-stackchan-bridge/README.md`](./scripts/private-pi5-stackchan-bridge/README.md)·[`scripts/stackchan-ai-stackchan-ex/README.md`](./scripts/stackchan-ai-stackchan-ex/README.md)·[`docs/INDEX.md`](./docs/INDEX.md)·[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)·本セクション。
@@ -1130,6 +1132,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-17 / **順位ボード完了残留の会話整理**）: **2026-05-16 の `current keys` 修正**は、**`FKOJUNST_Status` 側に FK が無いだけで本体CSV winner を current から落とさない**ための **誤早期完了防止**であり、**「2つのCSVを先に照合した結果で Pi5 DB と差分消失を判定する」実装とは別物**だった。したがって、**完了済みなのに残る**症状が残っている場合、**2026-05-16 を入れた事実だけでは説明し切れない**。**会話時点の候補**は、**2 CSV 照合結果ベースの current keys** か、**母集団 SQL の blind spot** か、**±3ヶ月窓外**のいずれか。**記録**: [KB-370 Follow-up（2026-05-17）](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#follow-up2026-05-17--未解決残留ケースの会話整理)。
+
 - 観測（2026-05-10 / **私用 Pi5 の標準デプロイは `update-all-clients.sh` に載せない**）: private Pi5 `stackchan-bridge` は **業務 Pi5 inventory / Docker compose / Prisma migrate** と責務が違うため、既存の **Pi5 標準デプロイへ混載すると境界が崩れる**。**最小変更**は **専用 playbook + ローカル非追跡 inventory fragment**。これで **secret を Git に載せず**、**Mac から 1 コマンドで再現**できる。**記録**: [private-pi5-stackchan-bridge-deploy.md](./docs/runbooks/private-pi5-stackchan-bridge-deploy.md)·[`private-pi5-stackchan-bridge.yml`](./infrastructure/ansible/playbooks/private-pi5-stackchan-bridge.yml)·[`deploy-private-pi5-stackchan-bridge.sh`](./scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh)。
 
 - 観測（2026-05-13 / **StackChan / private Pi5 bridge: 設定ドリフトと HTTP 読取タイムアウトの層分離**）: **`CHATGPT_API_URL` 無しの `pio run`** は **上流既定（多くの構成で OpenAI）へ戻り**、**私用 bridge に会話 POST が来ない**ことがある。別系統で、bridge は **`STACKCHAN_REQUEST_READ_TIMEOUT_SEC` を正にしたときだけ** **`connection.settimeout` が POST 本文読取に掛かる**（未設定・0 は無制限読取）。**狭い値**だと **STT の生 WAV** で **bridge が先に `408` / `request read timeout`** になりうる。これは **`STT_UPSTREAM_TIMEOUT_SEC` や faster-whisper 推論**の失敗とは **ログの見え方が似て中身が違う**。**記録**: [KB §2026-05-13](./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-13-追補-chatgpt_api_url-ドリフトbridge-リクエスト読取タイムアウトurl-境界の錯覚調査上の断定ルール)·[bridge README](./scripts/private-pi5-stackchan-bridge/README.md)·[stackchan-ai-stackchan-ex README](./scripts/stackchan-ai-stackchan-ex/README.md)。
@@ -1436,6 +1440,10 @@
 
 ## Decision Log
 
+- 決定（2026-05-17）: **順位ボードの「完了済みなのに残る」問題については、実装前にまず会話で確定した仕様差と未確定点を KB/ExecPlan に固定する**。**2026-05-16 の current keys 修正**は **2 CSV 照合結果ベースの差分消失**とは扱わず、**別の修正**として明記する。  
+  理由: 2026-05-16 の修正意図（誤早期完了防止）と、2026-05-17 にユーザーが問題視している症状（完了残留）を混同すると、後続の調査・実装が再び後退するため。まず文脈を固定し、その後に **実データで残留ケースが母集団 / current / 窓外のどこに属するか**を確定してから最小修正へ進む。  
+  参照: [KB-370 Follow-up（2026-05-17）](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#follow-up2026-05-17--未解決残留ケースの会話整理)·[docs/INDEX.md](./docs/INDEX.md)·[docs/knowledge-base/index.md](./docs/knowledge-base/index.md)
+
 - 決定（2026-05-09）: **`leaderboard-board/continue` の HTTP 契約では、`hasMore` と `snapshotId` が共存すると続き POST で `cursor` を実質必須**とみなす。**API は `resources[].nextCursor` を有限値へ正規化**し、**Web は JSON で `cursor` を省略しない**（`undefined` omit で Zod 400 にならない）。  
   参照: [KB-374](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md)·[deployment §cursor 契約](./docs/guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)·[`leaderboard-board-resource-cursor.ts`](./apps/api/src/services/production-schedule/leaderboard/leaderboard-board-resource-cursor.ts)·[`buildLeaderboardBoardContinuePayload.ts`](./apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderboardBoardContinuePayload.ts)。
 
@@ -1629,6 +1637,18 @@
   日付/担当: 2026-01-31 / KB-217 デプロイ再整備
 
 ## Outcomes & Retrospective
+
+### 順位ボード完了残留の会話整理を文書へ固定（2026-05-17）
+
+**達成事項**:
+- 2026-05-17 時点での会話を、**将来の担当者が議論を後退させずに再開できる粒度**で既存ドキュメントへ反映した
+- **2026-05-16 の修正**を **「current keys 入力整理」**、**2026-05-17 時点の未解決論点**を **「2 CSV 照合結果ベースの current keys か、母集団 blind spot か、窓外か」**として分離して記録した
+- KB の正本、索引、ExecPlan の living sections を同期し、**「何が決着済みで、何が未確定か」**を検索しやすくした
+
+**学んだこと**:
+- この問題は、コード差分だけでなく **会話上の仕様差** を固定しないと、同じ用語でも **別の意味で再解釈されて議論が後退**しやすい
+- 特に **`current keys` 修正**と**「2 CSV を先に照合する」案**は似て見えて役割が違うため、**別の修正として文書上で明確に切り分ける**必要があった
+- 次の実装の成否は、設計議論より先に **実データで残留ケースの所属先を 1 件ずつ確定すること**に掛かっている
 
 ### 着手日補助同期の差分化（2026-05-01）
 
@@ -2193,6 +2213,16 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク順位ボード — 完了済みアイテム残留の実データ確定（2026-05-17）
+
+**概要**: [`KB-370 Follow-up（2026-05-17）`](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#follow-up2026-05-17--未解決残留ケースの会話整理) に固定したとおり、**2026-05-16 の修正は current keys 入力整理**であり、**2 CSV 照合結果ベースの差分消失**は **未実装**。次の担当は、まず **実データで残留ケースがどこで止まっているか**を確定する。
+
+**候補タスク**:
+
+1. **残留ケースの所属先を実データで確定**する。少なくとも **(a) `queryNonCScheduleDisappearanceCandidateKeys` の母集団に入っているか**, **(b) `canonicalScheduleDisappearanceCurrentKeys` 側に残っているか**, **(c) `occurredAt` が ±3ヶ月窓外に落ちていないか**を 1 件ずつ確認する。
+2. **2 CSV 照合結果ベースの current keys** を採る案と、**母集団 SQL の blind spot を埋める案**のどちらが本命かを、上記 1 の結果で決める。
+3. 実装に進む場合は、**最小変更**で 1 経路だけを直し、**残留再現ケース**と **2026-05-16 が守っていた「誤早期完了防止」ケース**の両方をテストで固定する。
 
 ### キオスク順位ボード — `perf/leaderboard-initial20-delta` の整理（任意）
 

@@ -107,6 +107,25 @@ category: knowledge-base
   - **デプロイ前に script が止まる** → **未コミット・未追跡**（stash / commit）。
   - **Trivy 再発** → **`.trivyignore`** の運用方針（上記 CI 項）へ。
 
+## Follow-up（2026-05-17 · **未解決残留ケースの会話整理**）
+
+- **症状（継続）**: 生産システム上では完了済みのアイテムが、**順位ボードに残り続ける**。対象は **手動完了**ではなく、**生産日程CSV 消滅由来の外部完了**。
+- **この時点で確定していること**:
+  - **2026-05-16 の修正は「current keys の入力整理」**であり、**「2つのCSVを先に照合した結果を作ってから Pi5 DB と差分を取る」実装そのものではない**。
+  - **2026-05-16 の意図**は、**`FKOJUNST_Status` 側に FK が無いだけで本体CSV winner を current から落とさない**ことにあり、**メール JOIN 欠落起因の早すぎる消滅完了**を防ぐ側の修正だった。
+  - したがって、**2026-05-16 を入れても「完了済みなのに残る」側の症状が残る**場合、**「本体CSVだけを current keys の正本にしていること」では不足**している可能性がある。
+- **会話時点の整理（2026-05-17）**:
+  - ユーザーが言う **「2つのCSV同士の参照で前処理してから、Pi5との差分消失を実行する」** とは、**生産日程本体CSV** と **`FKOJUNST_Status` CSV** を先に照合し、**その照合結果を「現時点で存在している集合」として扱う**ことを指す。
+  - **現状の実装理解**では、消滅差分の **current keys** は **本体CSV dedupe winner だけ**から組み立てており、**2 CSV 照合結果そのものを current keys の正本にはしていない**。
+  - このため、**ユーザーが想定している「2 CSV の照合結果ベースの差分消失」**と、**現行コードの「本体CSVベースの差分消失」**の間に、まだ仕様差が残っている可能性がある。
+- **この時点での未確定事項**:
+  - 実データ上の残留ケースが、**(a) 母集団から漏れている**, **(b) current keys に残っている**, **(c) ±3ヶ月窓の外に落ちている** のどれで起きているかは、**まだ実データで最終確定していない**。
+  - よって、**2026-05-17 時点ではコード未着手**。まず **会話で得た仕様整理を文書へ固定**し、その後に **実データ確認 -> 実装修正**の順で進める。
+- **次の実装候補（会話時点の第一候補）**:
+  - **「2つのCSVを先に照合した結果を作り、その結果を使って Pi5 DB との差分消失を判定する」** 方向を優先して再設計する。
+  - 言い換えると、**Pi5 DB と直接引く前の current keys を、本体CSV単独ではなく 2 CSV の照合結果で組み立てる**候補を最優先で検討する。
+  - ただし、**母集団 SQL（`queryNonCScheduleDisappearanceCandidateKeys`）の blind spot** でも同じ症状は起こり得るため、**本番データで残留ケースの所属先を確定してから実装に入る**のが安全。
+
 ## Production（2026-05-06）
 
 - **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 の個別デプロイは不要）。
@@ -136,6 +155,7 @@ category: knowledge-base
   - **工順ST**: **2026-05-08 以降**は **メール status（`C`/`X`）**と **生産日程CSV消滅**が主因。**2026-05-09 以降**の消滅は **`fkmail.statusCode <> 'C'` かつ `occurredAt` が ±3ヶ月窓内**の母集団と **現 winner（2026-05-16 以降は正本C・本体CSV dedupe winner 由来）**の差分（[deployment.md 消滅窓項](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·[§2026-05-16 正本C current keys](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）。旧 **dedupe キー消失**完了は **廃止**（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
   - **メール status**: **`C`/`X` のみ**メール由来完了（`?` / 空 / **`O`/`P`** は **未完了**。**`O`/`P`** は一覧にも出ない）。
   - **生産日程CSV（消滅）**: **DEDUP** 取込後に **非C×±3ヶ月母集団** と **現 winner キー**を突合（**2026-05-16 以降、現 winner の正本は本体 CSV の dedupe winner のみ**。**メールに FK が無いだけ**では **現側から除外されない**。詳細は [deployment §2026-05-16](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）。**`C`** は **消滅母集団に入らない**（完了状態は **`C`/`X` メール由来**で見る）。**窓外**に落ちた行だけが CSV から消えても **消滅完了にならない**のが期待どおり。取込が **`empty_schedule_csv`** で skip されていないか ingestor **warn** を確認。歴史的に **`ProductionScheduleCsvIngestLogicalKeySnapshot`** を参照していた場合は **2026-05-09 以降は主経路未使用**（テーブルは残存し得る）。
+  - **2026-05-17 時点の会話上の未解決論点**: **「2 CSV を先に照合した結果で current keys を作るべきか」** と **「母集団 SQL に blind spot が残っているか」** の切り分けがまだ終わっていない。**2026-05-16 は current keys を本体CSV dedupe winner に固定した修正**であり、**2 CSV 照合結果ベースの current keys** は **未実装**。
 - **マイグレ未適用**
   - Pi5 で **`prisma migrate status`** が **`20260506150000`** を **Applied** と報告するか（デプロイ playbook の migrate ログが正本）。
 
@@ -144,3 +164,4 @@ category: knowledge-base
 - ブランチ: `feat/completion-triple-source-unification`（**`main`**: [PR #263](https://github.com/denkoushi/RaspberryPiSystem_002/pull/263) **squash**・先端 **`4af94e05`** を正とする）
 - **空 winner ガード + axios**: **`fix/schedule-csv-empty-guard`**（**`main`**: [PR #264](https://github.com/denkoushi/RaspberryPiSystem_002/pull/264) **squash**・**`f9b1683e`** を正とする）·デプロイ記録は [deployment.md](../guides/deployment.md)（2026-05-06 · 空 winner ガード 項）
 - デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR・**2026-05-09 · 消滅窓** [#schedule-csv-disappearance-nonc-window-2026-05-09](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·**2026-05-16 · 正本C current keys** [#schedule-csv-disappearance-canonical-current-keys-2026-05-16](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）
+- **会話整理（2026-05-17）**: 本節 **Follow-up（2026-05-17）**
