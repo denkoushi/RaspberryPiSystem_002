@@ -93,6 +93,20 @@
 
 ---
 
+### [KB-378] DGX Spark private ComfyUI と Mac アクセス（SSH とトンネルの順番）
+
+**日付**: 2026-05-17
+
+**Summary**:
+
+- **`http://127.0.0.1:8188` は転送があるときだけブラウザで開ける**。先に **`ssh -N -L 8188:127.0.0.1:8188`**（環境により **`-i`・tailnet の `100.x`**）。別ターミナルで `curl`/ブラウザ。
+- **`ssh -N` が無音で進まないのは仕様**。**`<>` 字面による zsh の `parse error`**、**LAN 実 IP の `Connection refused`** と tailnet の **`timeout`** は別評価。管理コンソール **`private_ok`** と **Mac アクセス経路要件は無関係**。
+- **確認**: **`Ctrl+C` でトンネル切断後、ブラウザが開かなくなること**が決定証拠になる。
+
+**参照**: [KB-378](./KB-378-dgx-private-comfyui-mac-ssh-access.md)·[dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md)
+
+---
+
 ### [KB-365] DGXリソース Phase3・補助起停・`SET_POLICY.applyWorkloadChanges`
 
 **日付**: 2026-05-03

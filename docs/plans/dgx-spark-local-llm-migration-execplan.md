@@ -4,9 +4,10 @@
 
 tags: [DGX Spark, LocalLLM, NVIDIA, Docker, Tailscale, セキュリティ, 運用, 計画]
 audience: [運用者, 開発者, AIアシスタント]
-last-verified: 2026-04-29
+last-verified: 2026-05-17
 related:
 
+- ../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md
 - ../runbooks/local-llm-tailscale-sidecar.md
 - ../runbooks/dgx-private-comfyui.md
 - ../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
@@ -30,6 +31,7 @@ update-frequency: high
 
 ## Progress
 
+- (2026-05-17 JST) **private Comfy と Mac と SSH とトンネル（運用手順・誤認の再発防止）**: **転送があるときのみ** Mac のブラウザで **`http://127.0.0.1:8188` が開く**ことを再確認済み運用。**先に `ssh -N -L …`（例: `-i ~/.ssh/id_ed25519_raspi`・tailnet **`100.118.82.72`** が文書一例）**。**`-N` の無出力待機が正常**。**`<user>@…` が `<>` **`parse error`** になる**。**LAN 実 IP の `ssh` と tailnet で別判定**。**`Ctrl+C`** で転送終了すると **ブラウザが開かなくなる**のが転送証拠。**管理コンソール `private_ok`** は経路とは無関係（GPU と業務ワークロードの話は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。詳細 **[KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)** と Runbook **2026-05-17 追補**。
 - (2026-04-29 JST) **private用途 ComfyUI**: repo にコンテナ雛形を追加した（[`scripts/dgx-private-comfyui`](../../scripts/dgx-private-comfyui)、Runbook [`dgx-private-comfyui.md`](../runbooks/dgx-private-comfyui.md)）。ブランチ **`feat/dgx-private-personal-route-hardening`** で [`boundary-check.sh`](../../scripts/dgx-private-comfyui/boundary-check.sh) を追加し、**`COMFYUI_DATA_ROOT` は `/srv/dgx/private-personal` のみ**・**compose 解決結果に `system-prod`/`lab-experiments` バインド禁止**を launcher に集約。公式 Playbook（CUDA 13 / PyTorch `cu130` / ComfyUI GitHub）に沿った **`Dockerfile.example`**。ホスト公開は **127.0.0.1 のみ**、Mac からは **tailnet 経由 SSH `-L 8188:127.0.0.1:8188`** を標準経路とする（LAN 直は運用禁止）。**実測済み**: DGX で `docker compose up -d --build` と `curl -I http://127.0.0.1:8188` 成功、Mac トンネル経由で ComfyUI UI 表示成功。**運用知見**: ACL で `tag:admin -> tag:llm tcp:22` が閉じていると Mac からの SSH は timeout、初回 build の DNS 解決失敗は再試行で回復することがある。**未完了**: `models/checkpoints/` が空のため、workflow 実行と生成物保存の最終確認は checkpoint 配置後に実施する。
 - (2026-04-25 14:37 JST) ドキュメント作業ブランチ `docs/dgx-spark-operations-plan` を作成した。
 - (2026-04-25 14:45 JST) 現行 LocalLLM 構成を確認した。Pi5 API は `LOCAL_LLM_*` により Ubuntu LocalLLM を利用し、`LOCAL_LLM_RUNTIME_MODE=on_demand` と `/start` `/stop` 制御を使う。

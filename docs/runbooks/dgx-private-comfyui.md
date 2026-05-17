@@ -2,10 +2,11 @@
 title: Runbook DGX Spark private ComfyUI（コンテナ・Tailscale）
 tags: [運用, DGX Spark, ComfyUI, Docker, Tailscale, private-personal]
 audience: [運用者, 開発者]
-last-verified: 2026-05-01
+last-verified: 2026-05-17
 related:
   - ../plans/dgx-spark-local-llm-migration-execplan.md
   - ../../scripts/dgx-private-comfyui/README.md
+  - ../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md
   - local-llm-tailscale-sidecar.md
   - dgx-system-prod-local-llm.md
 category: runbooks
@@ -28,16 +29,36 @@ update-frequency: medium
 
 ## 標準アクセス経路（これ以外は運用禁止）
 
-ComfyUI のホスト公開は **`127.0.0.1:8188`（ループバック）のみ**とする。Mac から UI に届ける **唯一の標準経路**は次である。
+ComfyUI のホスト公開は **`127.0.0.1:8188`（ループバック）のみ**とする。**Mac のブラウザが指す `http://127.0.0.1:8188` は「Mac自身のループバック」であり、転送無しでは DGX 上の ComfyUI に届かない**。Mac から UI に届ける **唯一の標準経路**は次である（**順序このとおり**。先にトンネル、後からブラウザ）。
 
-1. Mac が **Tailscale（tailnet）** に参加し、DGX に SSH できること。
-2. ローカル `8188` を DGX のループバックへ転送する:
+### 実行順序（必須）
 
-```bash
-ssh -N -L 8188:127.0.0.1:8188 <dgx_user>@<dgx_tailscale_ip_or_magicdns>
-```
+1. Mac が **Tailscale（tailnet）** に参加し、DGX に **`ssh tcp/22`** で到達できること（環境により **ACL で `tcp:22` が一時許可**が必要。**`timeout`** と **`Connection refused`** は別物。詳細は [KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)）。
+2. **トンネル用ターミナルを 1 本開いたままにする**。ローカル `8188` を DGX のループバックへ転送する。**プレースホルダの `<` と `>` をシェルに入力しない**。次は **環境依存の値を埋めた実例のみ**である：
 
-3. Mac のブラウザで **`http://127.0.0.1:8188`** を開く。
+   ```bash
+   ssh -N -L 8188:127.0.0.1:8188 -i ~/.ssh/id_ed25519_raspi ubudgxkoushi@100.118.82.72
+   ```
+
+   - **tailnet の例として文書記録にある IPv4**: `100.118.82.72`。**実環境では `tailscale ip -4`（DGX側）または管理画面で確認**し、漂移したらこの Runbook を更新する運用でもよい。
+   - **鍵ファイル**は自分の環境に合わせる（複数ホスト運用では `~/.ssh/config` で `IdentityFile` / `LocalForward` を固定してよい）。
+3. **別のターミナル**またはブラウザで次を確認してから UI を開く：
+
+   ```bash
+   curl -I http://127.0.0.1:8188
+   ```
+
+4. ブラウザで **`http://127.0.0.1:8188`** を開く（ローカル側ポートを **`18188:127.0.0.1:8188`** のようにずらしたときは **`http://127.0.0.1:18188`** で **同じ順序**）。
+
+### `ssh -N -L …` が「止まっている」ように見える件（正常）
+
+- **`-N` はログインシェルを開かない**ため、転送だけが成功している場合 **標準出力に何も出ずプロンプトが戻らない**。これが **正常**。別ターミナルでの `curl` / ブラウザが唯一の確認手段。
+- **「別のアプリ経由でも開けていた」ように見える**場合、多くは **ほかのターミナルまたはバックグラウンドで同名のトンネルが生存している**だけ。**切り分け**: すべての関連 `ssh` を切断（トンネル端末で `Ctrl+C`）後、**ブラウザを再読込**し **`127.0.0.1:8188` が不通になる**ことを確認すると、**標準経路は SSH 転送依存**であると実証できる。
+
+### LAN IP（例 `192.168.128.x`）で `Connection refused`
+
+- **ACL を閉じた tailnet と無関係**な経路で **LAN の実 IP に `ssh`** すると、環境により **ポート 22 が listen しない**運用になり **`Connection refused`** になり得る。まず **`sshd` と listen** を本体で確認（手順・ACL は [KB-357](../knowledge-base/infrastructure/security.md)）。
+- **`Private Pi5` を Tailscale に追加したことそのものが、単独の直接原因となることは一般的に期待しない**。拒否／タイムアウトは **到達経路と DGX側のSSH待受の組合せ**で説明する。
 
 **運用禁止（「非推奨」ではなくやらない）**:
 
@@ -143,6 +164,15 @@ sudo nvidia-smi -lgc 300,2100
   - したがって loader は **bf16 側へ揃える**のが正。
 - **補足**: `models/checkpoints/` が空でも、今回の Flux2Klein 系 workflow は `diffusion_models` / `text_encoders` 参照のため、直接原因ではない。
 
+## 2026-05-17 追補（Mac 復旧での実機知見）
+
+- **復旧コンテキスト**: 管理コンソール [`/admin/tools/dgx-resource`](../guides/deployment.md) で運用モードを **私用寄り（`private_ok`）へ切替**済み。**切替によって Mac→Comfy のネットワーク経路要件は変わらない**（GPU 競合許容のみ。業務側との VRAM は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。
+- **`zsh: parse error near '\n'`**: Runbook 旧表記の `<dgx_user>@<dgx_tailnet_ip>` を **`>` `<` を含めてそのまま貼った**ため。シェル上は **記号無しで実ユーザー・実 IP / MagicDNS を入力**すること（本節の実例）。
+- **`Connection refused`（`192.168.128.156` 等・LAN の実 IP で `ssh`）**: 「tailnet が 22 を塞いでいる」より先に **`sshd がその経路・ポートで待受しているか`** を疑う。また **Tailscale と LAN は評価単位が別**（LAN refused が tailnet と同値とは限らない）。
+- **`100.118.82.72`（tailnet）へ `ssh -N -L …` が「無応答」**: **正常系**（転送維持中）。 **`curl -I http://127.0.0.1:8188` が 200 → ブラウザでワークフロー表示**まで到達。
+- **検証済み結論**: トンネル維持中のみ `http://127.0.0.1:8188` が開き、**`Ctrl+C` 後は開かない → SSH 転送が必須**であることを再確認。**「SSH が不要」の誤認**は別セッションの生存トンネルで説明できる。
+- **ナレッジ正本**: [KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)。
+
 ## トラブルシュート（公式 Playbook との対応）
 
 | 症状 | 典型原因 | まず試すこと |
@@ -150,7 +180,10 @@ sudo nvidia-smi -lgc 300,2100
 | GPU が見えない | NVIDIA Container Toolkit / `--gpus` | `docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-smi` |
 | `pip install` でビルド失敗（PyOpenGL 等） | dev ヘッダ不足 | `Dockerfile` に `python3-dev` と `build-essential` が入っているか確認（雛形では含有） |
 | 初回 `docker compose build` が `Temporary failure resolving` で失敗 | DGX 側の一時 DNS 解決不安定 | DGX で `getent hosts ports.ubuntu.com` / `getent hosts developer.download.nvidia.com` を確認し、解決できる状態になってから `./start-private-comfyui.sh` を再実行する |
-| ブラウザが開けない | ポート転送・バインド | DGX で `curl -I http://127.0.0.1:8188`、Mac の SSH `-L` が生きているか |
+| ブラウザが開けない | ポート転送・バインド | **トンネル用 `ssh -N -L …` が生きているか**。**別ターミナルで** `curl -I http://127.0.0.1:8188`。続けて DGX で `curl -I http://127.0.0.1:8188` が 200 か |
+| **`zsh: parse error`** と `\n` | **`<dgx_user>` 等をそのまま貼っている**（`<>` はシェル構文になる） | **`<` `>` を含めず**ユーザー名・IP を実値に置換（本節 **実例**・[KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)） |
+| Mac から **`ssh …@LAN実IP` が `Connection refused`** | **`sshd` が待受しない**構成・サービス停止 | **tailnet と LAN は別判定**。DGX本機で `:22` listen・`ssh` service を確認。**tailnet側は通っても LAN refused は両立しうる** |
+| 「開いていた UI が **`Ctrl+C` 後に開かなくなった」** | **転送のみのセッションを切断した**ため | **標準**。再度 `ssh -N -L …` を張る。**バックグラウンドの別 `ssh`** が無いか `ps`/Activity Monitor で確認 |
 | Mac から DGX へ `ssh ...@100.x.x.x` が timeout | Tailscale ACL で `tag:admin -> tag:llm tcp:22` が未許可 | Tailscale ACL に一時許可を追加し、作業後は不要なら閉じる。鍵エラーなら `authorized_keys` も合わせて確認 |
 | `ssh -N -L ...` 後に何も出ず止まって見える | トンネル専用モード（正常） | 別ターミナルで `curl -I http://127.0.0.1:8188` を実行し `200` を確認する |
 | `bind [127.0.0.1]:8188: Address already in use` | DGX 上で `ssh -L` を実行している | トンネルは **Mac 側**で実行する。必要ならローカル側を `18188` など別ポートに変える |
@@ -164,6 +197,7 @@ sudo nvidia-smi -lgc 300,2100
 
 ## 参照
 
+- [KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)（Mac と SSH とトンネル・順序・切り分け）
 - NVIDIA Playbook（手順の前提）: [Comfy UI Instructions](https://build.nvidia.com/spark/comfy-ui/instructions)
 - 多用途分離の全体文脈: [dgx-spark-local-llm-migration-execplan.md](../plans/dgx-spark-local-llm-migration-execplan.md)
 - LocalLLM と VRAM 競合の背景: [local-llm-tailscale-sidecar.md](./local-llm-tailscale-sidecar.md)
