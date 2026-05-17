@@ -123,6 +123,33 @@ category: knowledge-base
 - **運用観測（ログ）**: 取込時 **`[CsvDashboardIngestor] Schedule CSV disappearance sync skipped (2CSV pairing / status snapshot)`** の **`reason` / `diagnostics`**（**`no_status_ingest_run_at_or_before_reference_at`** 等）で **差分消失スキップ**頻度を追う。**残留が続く**場合は **交差後 current keys 件数**と **母集団（非C×±3ヶ月）** を分離して切り分ける（下記 **Troubleshooting**・旧 **Follow-up 会話整理**）。
 - **デプロイ前 TS（補足）**: **`update-all-clients.sh`** が **ローカルロック**（別プロセスが同一スクリプト実行中）で失敗した場合は **完了待ち**または **該当 pid 終了**後に再実行。
 
+## 運用: Gmail 取込スケジュールと 2CSV 照合の成立条件（2026-05-17 追補） {#kb-370-2csv-schedule-operational-pairing}
+
+2CSV 交差は **実装（PR #290 / `f252793d`）** と別に、**本番の Gmail 取込スケジュールと ingest 履歴**が条件を満たさなければ **`no_status_ingest_run_at_or_before_reference_at` 等で差分消失のみスキップ**しうる。**切り分けの正本**をここに固定する。
+
+### 設定の正本（コード定数ではない）
+
+- **管理コンソール**: CSV インポートスケジュール（例: `/admin/csv-import-schedule`。ラベルは UI 版に従う）。
+- **Pi5 永続化**: **`config/backup.json` の `csvImports`**。更新は **`ImportScheduleAdminService`** 経由で **`backup.json` 保存 → `scheduler.reload()`**（[`import-schedule-admin.service.ts`](../../apps/api/src/services/imports/import-schedule-admin.service.ts)）。
+- **リポジトリのビルトイン（[`system-csv-import-schedule-builtin-rows.ts`](../../apps/api/src/services/imports/system-csv-import-schedule-builtin-rows.ts)）**: **システム予約 ID** の **ensure / 初期マージ**に使われるが、**`enabled` や cron の実効値は `backup.json` 側が優先**されうる。**`FKOJUNST_Status` メール取込はビルトイン上 `enabled: false` になり得る**一方、**本番では管理画面から有効化されている**のが普通にあり得る。**ソースの定数だけから「本番で無効」とは言えない**。
+
+### `tA` / `tB` と「タイミングが妥当か」
+
+- **`tA`**: 当該バッチの **生産日程本体 CSV の DEDUP 取込完了時刻**（ingestor が `scheduleIngestCompletedAt` として渡す）。
+- **`tB`**: **`tB <= tA` を満たす**範囲で **最新の完了 `FKOJUNST_Status` ingest run**（`CsvDashboardIngestRun.completedAt`）。その run の **原本 CSV 1件**だけを Status スナップショットの入力に使う。
+- **実務上の含意**: **同一暦日（または同一取込サイクル）で、少なくとも1件の完了済み Status ingest が `tA` より前に存在する**状態が取りやすい。**cron 上、Status が本体より先に回る**（例: 早朝に Status、その後に本体）構成であれば **`tB <= tA` は成立しやすい**。**具体の時刻・曜日は必ず `backup.json` / 管理画面を正**とする（ビルトインは参考）。
+
+### 管理コンソールのスケジュールとの整合
+
+- **単一の仕組み**: `CsvImportScheduler`（[`csv-import-scheduler.ts`](../../apps/api/src/services/imports/csv-import-scheduler.ts)）が **`backup.json` からロードした各行**を **`node-cron`（tz: `Asia/Tokyo`）** で実行する。管理画面で変えた cron / 有効フラグは **reload 後のアクティブスケジュール**に反映される。
+- **観測例（2026-05-17・場内確認）**: **`ProductionSchedule_FKOJUNST`** と **`ProductionSchedule_FKOJUNST_Status`** が **どちらも「有効」**で、かつ **Status 側が本体より前の时刻帯**に走っている場合、**2CSV の前提（`tB` 選択可能）は満たしやすい**。環境ごとに数値は変わるため **スクショや固定時刻のハードコードは KB に書かず、総則と確認手順を正**とする。
+
+### トラブルシュート／調査上の注意（再発防止）
+
+- **`no_status_ingest_run_at_or_before_reference_at` が出る** → **`FKOJUNST_Status` 用スケジュールが無効**、**まだ一度も成功 ingest が無い**、**本体だけが先に走る日しか無い**、などを疑う。確認は **`csvImports`**・**`CsvDashboardIngestRun`**（対象 dashboardId）・ingestor の **`2CSV pairing / status snapshot`** warn。
+- **誤調査の典型**: ビルトインの **`enabled: false`** だけを根拠に **本番で Status 取込が止まっていると決めつける**こと。**正しくは `backup.json` と管理画面**。
+- **ユーザーが述べていない運用仮定を足さない**: 調査説明に **根拠のないシナリオ**（未取得の手動再取込タイミング等）を付け足すと、**現場の質問とズレた結論**になりうる。**ログ・DB・実際の schedule** に限定して述べる。
+
 ## Follow-up（2026-05-17 · **2CSV 照合 current keys の実装**）
 
 - **実装ブランチ**: **`fix/kiosk-completion-csv-pairing`**（**`origin` へ push 済み**）。**`main` 取り込み**: [PR #290](https://github.com/denkoushi/RaspberryPiSystem_002/pull/290) **squash** **`f252793d`**。本番 Detach・Phase12 記録は上記 **[#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys](#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys)**。
@@ -181,7 +208,7 @@ category: knowledge-base
   - **工順ST**: **2026-05-08 以降**は **メール status（`C`/`X`）**と **生産日程CSV消滅**が主因。**2026-05-09 以降**の消滅は **`fkmail.statusCode <> 'C'` かつ `occurredAt` が ±3ヶ月窓内**の母集団と **現 winner（2026-05-16 以降は正本C・本体CSV dedupe winner 由来）**の差分（[deployment.md 消滅窓項](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·[§2026-05-16 正本C current keys](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）。旧 **dedupe キー消失**完了は **廃止**（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
   - **メール status**: **`C`/`X` のみ**メール由来完了（`?` / 空 / **`O`/`P`** は **未完了**。**`O`/`P`** は一覧にも出ない）。
   - **生産日程CSV（消滅）**: **DEDUP** 取込後に **非C×±3ヶ月母集団** と **現 winner キー**を突合（**2026-05-16–17 以降、現 winner の正本**は **本体 dedupe winner** と **`tB <= tA` の最新完了 `FKOJUNST_Status` ingest run 原本CSV**から復元した **3キー照合スナップショット**の交差。[deployment §2026-05-17 補足](../guides/deployment.md#schedule-csv-disappearance-2csv-intersection-2026-05-17)）。**`C`** は **消滅母集団に入らない**（完了状態は **`C`/`X` メール由来**で見る）。**窓外**に落ちた行だけが CSV から消えても **消滅完了にならない**のが期待どおり。取込が **`empty_schedule_csv`** で skip されていないか ingestor **warn** を確認。**Status ingest run 不足**または **原本CSVから正規化可能な Status 行が 0 件**で **`2CSV pairing / status snapshot`** により **差分消失のみスキップ**した場合も warn（手動・メール完了は維持）。
-  - **2026-05-17 以降**: **2CSV 交差 current keys** を **本番 Pi5 に反映**（**Detach `20260517-151209-29249`**・ tip **`ed733bfe`**・**`main`**: PR #290 squash **`f252793d`**・詳細は [#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys](#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys)）。**残留が続く**場合は **本番ログ**で **交差後キー件数**と **skip 理由**（**`2CSV pairing / status snapshot`**）を確認。
+  - **2026-05-17 以降**: **2CSV 交差 current keys** を **本番 Pi5 に反映**（**Detach `20260517-151209-29249`**・ tip **`ed733bfe`**・**`main`**: PR #290 squash **`f252793d`**・詳細は [#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys](#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys)）。**残留が続く**場合は **本番ログ**で **交差後キー件数**と **skip 理由**（**`2CSV pairing / status snapshot`**）を確認。**運用上の前提（Gmail スケジュール・`tB` 成立）**は [#kb-370-2csv-schedule-operational-pairing](#kb-370-2csv-schedule-operational-pairing) を併読。
 - **マイグレ未適用**
   - Pi5 で **`prisma migrate status`** が **`20260506150000`** を **Applied** と報告するか（デプロイ playbook の migrate ログが正本）。
 
