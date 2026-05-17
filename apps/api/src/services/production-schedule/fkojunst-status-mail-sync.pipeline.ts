@@ -1,6 +1,9 @@
 /**
  * FKOJUNST_Status Gmail CSV sync: read/normalize → FUPDTEDTで最新化 → winner resolve → delete-by-source + createMany.
  */
+import { readFile } from 'node:fs/promises';
+
+import { parse } from 'csv-parse/sync';
 import { Prisma, type PrismaClient } from '@prisma/client';
 
 import {
@@ -114,17 +117,16 @@ export function dedupeFkojunstMailRowsByLatest(rows: FkojunstMailNormalizedRow[]
   return [...byKey.values()];
 }
 
-export async function loadFkojunstMailSourceRows(client: PrismaClient): Promise<{
-  scanned: number;
+/**
+ * DBから既に読み出した `FKOJUNST_Status` 行を、メール同期と同じ正規化に通す。
+ */
+export function collectFkojunstMailNormalizedRowsFromSourceRows(
+  sourceRows: ReadonlyArray<{ id: string; rowData: unknown }>
+): {
   normalizedRows: FkojunstMailNormalizedRow[];
   skippedInvalidStatus: number;
   skippedUnparseableDate: number;
-}> {
-  const sourceRows = await client.csvDashboardRow.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
-    select: { id: true, rowData: true },
-  });
-
+} {
   let skippedInvalidStatus = 0;
   let skippedUnparseableDate = 0;
   const normalizedRows: FkojunstMailNormalizedRow[] = [];
@@ -137,8 +139,76 @@ export async function loadFkojunstMailSourceRows(client: PrismaClient): Promise<
       normalizedRows.push(parsed.row);
     }
   }
+  return { normalizedRows, skippedInvalidStatus, skippedUnparseableDate };
+}
 
-  return { scanned: sourceRows.length, normalizedRows, skippedInvalidStatus, skippedUnparseableDate };
+/**
+ * 原本CSV 1件の行集合を、メール同期と同じ正規化へ通す。
+ */
+export function collectFkojunstMailNormalizedRowsFromCsvRecords(
+  records: ReadonlyArray<Record<string, unknown>>
+): {
+  normalizedRows: FkojunstMailNormalizedRow[];
+  skippedInvalidStatus: number;
+  skippedUnparseableDate: number;
+} {
+  return collectFkojunstMailNormalizedRowsFromSourceRows(
+    records.map((rowData, index) => ({
+      id: `csv-record-${index}`,
+      rowData,
+    }))
+  );
+}
+
+export async function loadFkojunstMailSourceRows(client: PrismaClient): Promise<{
+  scanned: number;
+  normalizedRows: FkojunstMailNormalizedRow[];
+  skippedInvalidStatus: number;
+  skippedUnparseableDate: number;
+}> {
+  const sourceRows = await client.csvDashboardRow.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
+    select: { id: true, rowData: true },
+  });
+
+  const collected = collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows);
+
+  return {
+    scanned: sourceRows.length,
+    normalizedRows: collected.normalizedRows,
+    skippedInvalidStatus: collected.skippedInvalidStatus,
+    skippedUnparseableDate: collected.skippedUnparseableDate,
+  };
+}
+
+/**
+ * 1回の `FKOJUNST_Status` ingest run が保存した原本CSVを読み、同 run のスナップショットだけを正規化する。
+ */
+export async function loadFkojunstMailNormalizedRowsFromCsvFile(params: {
+  csvFilePath: string;
+}): Promise<{
+  scanned: number;
+  normalizedRows: FkojunstMailNormalizedRow[];
+  skippedInvalidStatus: number;
+  skippedUnparseableDate: number;
+}> {
+  const csvText = await readFile(params.csvFilePath, 'utf-8');
+  const records = parse(csvText, {
+    bom: true,
+    columns: true,
+    skip_empty_lines: true,
+    relax_column_count: true,
+    trim: false,
+  }) as Array<Record<string, unknown>>;
+
+  const collected = collectFkojunstMailNormalizedRowsFromCsvRecords(records);
+
+  return {
+    scanned: records.length,
+    normalizedRows: collected.normalizedRows,
+    skippedInvalidStatus: collected.skippedInvalidStatus,
+    skippedUnparseableDate: collected.skippedUnparseableDate,
+  };
 }
 
 export async function resolveFkojunstMailWinnerIdByKey(
