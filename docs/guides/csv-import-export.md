@@ -123,6 +123,14 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - 管理コンソールのスケジュール設定は **「時刻指定」または「間隔（N分ごと）」** を選択できます（**最小5分**）。間隔指定の場合は `*/N * * * *` のcronに変換されます。
 - **システム固定スケジュール行の保存（2026-04-29）**: 固定 ID（例: FKOJUNST / FKOBAINO / 製番→機種名補完）を管理画面から更新するとき、API は [`system-csv-import-schedule-invariants.ts`](../../apps/api/src/services/imports/system-csv-import-schedule-invariants.ts) で **`provider`・`targets`・`replaceExisting` 等をレジストリに整合**し、**cron が文法的に有効でポリシー上許容ならユーザー設定を保持**する（無効・最短間隔違反は既定へ）。本番デプロイ記録は [deployment.md](./deployment.md) 補足（2026-04-29・システム CSV スケジュール）。
 
+#### 生産日程 `FKOJUNST` 系と 2CSV 消滅照合（2026-05-17） {#fkojunst-2csv-disappearance-schedule-notes}
+
+消滅差分の **current keys** は **生産日程本体 CSV** と **`FKOJUNST_Status` メール CSV** の **3キー交差**に依存し、**`tB <= tA`**（本体取込完了 `tA` 以前の最新 Status ingest）を満たす **完了済み Status ingest run** が無いと **差分消失だけスキップ**しうる（ingestor: **`2CSV pairing / status snapshot`**）。
+
+- **確認**: **両方の Gmail 取込スケジュールが有効か**・**cron が意図どおりか**は **`config/backup.json` の `csvImports`** と **管理コンソール**で見る。
+- **落とし穴**: **ビルトイン [`system-csv-import-schedule-builtin-rows.ts`](../../apps/api/src/services/imports/system-csv-import-schedule-builtin-rows.ts) の `enabled` 初期値だけ**から本番状態を推測しない（**`FKOJUNST_Status` がコード上 `false` でも、現場では有効化**が普通にあり得る）。
+- **詳細**: [KB-370 §2CSV 運用](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#kb-370-2csv-schedule-operational-pairing)·[deployment §2026-05-17](./deployment.md#schedule-csv-disappearance-2csv-intersection-2026-05-17)。
+
 ### Production runbook: Gmail CSV dashboard import via SSH and API
 
 **目的**: 管理コンソール（ブラウザ）と同等の **CsvDashboard 定義** と **Gmail 向け CSV インポートスケジュール** を、本番 Pi5 上で **SSH + 管理 API +（必要なら）Prisma** から登録する。今後、別件名・別ダッシュボードで Gmail CSV を増やす場合も、手順の骨格は同じ（**ダッシュボード先行 → スケジュールで `targets[].type = csvDashboards` → 手動実行で疎通**）。
