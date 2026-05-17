@@ -316,18 +316,34 @@ export class CsvDashboardIngestor {
 
       if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
         try {
-          const canonicalScheduleDisappearanceCurrentKeys =
+          const resolution =
             await this.canonicalScheduleDisappearanceKeys.resolveScheduleCsvDisappearanceCanonicalCurrentKeys({
               scheduleDedupRows: productionScheduleDedupRows,
+              scheduleIngestCompletedAt: new Date(),
             });
-          const extResult = await this.scheduleCsvExternalCompletionSync.applyPostIngestFromSnapshot({
-            canonicalScheduleDisappearanceCurrentKeys,
-          });
-          if (extResult.skipped) {
+          if (resolution.outcome === 'skip_disappearance_sync') {
             logger.warn(
-              { dashboardId, reason: extResult.reason },
-              '[CsvDashboardIngestor] Schedule CSV external completion sync skipped'
+              {
+                dashboardId,
+                reason: resolution.reason,
+                diagnostics: resolution.diagnostics,
+              },
+              '[CsvDashboardIngestor] Schedule CSV disappearance sync skipped (2CSV pairing / status snapshot)'
             );
+          } else {
+            const extResult = await this.scheduleCsvExternalCompletionSync.applyPostIngestFromSnapshot({
+              canonicalScheduleDisappearanceCurrentKeys: resolution.keys,
+            });
+            logger.info(
+              { dashboardId, diagnostics: resolution.diagnostics },
+              '[CsvDashboardIngestor] Schedule disappearance canonical keys resolved (2CSV intersection)'
+            );
+            if (extResult.skipped) {
+              logger.warn(
+                { dashboardId, reason: extResult.reason },
+                '[CsvDashboardIngestor] Schedule CSV external completion sync skipped'
+              );
+            }
           }
         } catch (error) {
           logger.error(

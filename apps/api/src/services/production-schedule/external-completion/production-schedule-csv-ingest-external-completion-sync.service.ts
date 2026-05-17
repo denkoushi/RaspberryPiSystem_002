@@ -13,7 +13,7 @@ export type ProductionScheduleCsvIngestExternalCompletionApplyResult =
  *
  * **消滅の定義（置換後）**:
  * - 母集団: DB上の winner のうち `FKOJUNST_Status` 同期済みで **C 以外** かつ `occurredAt` が取り込み基準時刻±3か月窓内
- * - **正本Cの現在キー集合**（現時点では本体CSV dedupe winner を基準に導出）に **含まれない** キーを「消滅」とみなす
+ * - **正本Cの現在キー集合**: **生産日程本体 dedupe winner** のうち、取込完了時点 `tA` までに DB に存在する **`FKOJUNST_Status` スナップショット**と **ADR-20260509 系3キー** が一致する行の論理キーのみ（[`ProductionScheduleCanonicalCurrentKeysService`](./production-schedule-canonical-current-keys.service.ts)）。**`tA` 以前に Status 行が正規化できない場合は差分消失同期のみスキップ**。
  *
  * 旧来の「取込直前スナップショット比較」は、期間取得CSVとFKOJUNST窓のズレで誤判定しやすいため廃止。
  */
@@ -36,7 +36,7 @@ export class ProductionScheduleCsvIngestExternalCompletionSyncService {
    * **正本C現在キーが 0 件**のときは異常／信頼不能として**適用しない**（誤全件完了防止）。
    */
   async applyPostIngestFromSnapshot(params?: {
-    /** 現在は本体CSV dedupe winner を基準にした正本C current keys。 */
+    /** 正本C current keys（本体 winner と Status CSV スナップショットの3キー交差。詳細は canonical サービス）。 */
     canonicalScheduleDisappearanceCurrentKeys?: readonly string[];
     /**
      * @deprecated {@link canonicalScheduleDisappearanceCurrentKeys} に改名。
