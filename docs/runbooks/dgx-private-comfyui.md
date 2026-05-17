@@ -173,6 +173,13 @@ sudo nvidia-smi -lgc 300,2100
 - **検証済み結論**: トンネル維持中のみ `http://127.0.0.1:8188` が開き、**`Ctrl+C` 後は開かない → SSH 転送が必須**であることを再確認。**「SSH が不要」の誤認**は別セッションの生存トンネルで説明できる。
 - **ナレッジ正本**: [KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)。
 
+## 2026-05-17 追補2（生成品質/遅延と NVFP4 移行メモ）
+
+- **モザイク/ゴミ出力**: `fp8` 経路での NaN 伝播が疑われるケースは、**`--bf16-unet`（+ `--bf16-vae` / `--bf16-text-enc`）**を優先し、workflow 側 `weight_dtype=default` と整合させる。
+- **17分超の遅延**: DGX Spark UMA 条件での **safetensors 二重ロード/コピー**が主因になり得る。対策として **`--disable-mmap`** と **`copy=False` パッチ**を併用し、設定反映は **`docker compose up -d --force-recreate`** で行う。
+- **高解像度時の遅さ**: 2048x3008 + 2pass + LoRA 3本 + bf16 は計算量が大きい。経路（SSH）ではなく **モデル量子化と workflow 設計**を見直す。
+- **次タスク（推奨）**: FLUX.2 Klein 9B の **NVFP4** 版を取得し、UNET を段階的に差し替えて比較する。詳細手順は [KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md) を正本とする。
+
 ## トラブルシュート（公式 Playbook との対応）
 
 | 症状 | 典型原因 | まず試すこと |
@@ -198,6 +205,7 @@ sudo nvidia-smi -lgc 300,2100
 ## 参照
 
 - [KB-378](../knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)（Mac と SSH とトンネル・順序・切り分け）
+- [KB-379](../knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)（NVFP4 移行・遅延要因・workflow 調整）
 - NVIDIA Playbook（手順の前提）: [Comfy UI Instructions](https://build.nvidia.com/spark/comfy-ui/instructions)
 - 多用途分離の全体文脈: [dgx-spark-local-llm-migration-execplan.md](../plans/dgx-spark-local-llm-migration-execplan.md)
 - LocalLLM と VRAM 競合の背景: [local-llm-tailscale-sidecar.md](./local-llm-tailscale-sidecar.md)
