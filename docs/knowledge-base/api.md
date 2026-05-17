@@ -107,6 +107,20 @@
 
 ---
 
+### [KB-379] DGX Spark private ComfyUI（NVFP4 移行・遅延要因・workflow 調整）
+
+**日付**: 2026-05-17
+
+**Summary**:
+
+- 生成不良と遅延を **3層で分離**（`fp8` NaN 由来のモザイク / safetensors 二重ロード由来の 17分超 / 6MP+2pass+LoRA の計算量）。
+- 適用済み対策を固定化（`--bf16-*`、`--disable-mmap`、`copy=False`、`up -d --force-recreate`）。
+- **NVFP4 版 FLUX.2 Klein 9B** への移行手順（HF token 確認、download、UNET 差し替え、比較検証 checklist）を記録。
+
+**参照**: [KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)·[dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md)
+
+---
+
 ### [KB-365] DGXリソース Phase3・補助起停・`SET_POLICY.applyWorkloadChanges`
 
 **日付**: 2026-05-03

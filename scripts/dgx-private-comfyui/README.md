@@ -64,6 +64,7 @@ docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-s
 - `--bf16-vae`
 - `--bf16-text-enc`
 - `--disable-dynamic-vram`
+- `--disable-mmap`
 
 環境変数は `.env` で次を指定します（既定値あり）。
 
@@ -76,6 +77,8 @@ docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-s
 
 `Dockerfile.example` は ComfyUI の `comfy/utils.py` にある `copy=True` を `copy=False` に置換するパッチを build 時に適用します。  
 DGX Spark の unified memory で不要コピーを抑え、メモリ圧迫を避ける目的です。
+
+遅延要因の切り分けと NVFP4 移行手順は [KB-379](../../docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md) を参照してください。
 
 ### ホスト側（DGX）安定化手順
 
