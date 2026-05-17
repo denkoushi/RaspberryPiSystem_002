@@ -110,15 +110,23 @@ sudo nvidia-smi -lgc 300,2100
 
 `compose.yaml` では **`127.0.0.1:${COMFYUI_PORT:-8188}` のみ** にポート公開しています（**LAN 全域 `0.0.0.0` バインドは運用禁止**。ループバックのみ）。
 
-Mac からは **tailnet 経由の SSH ポートフォワード**だけを標準とします。
+Mac は **SSH ポートフォワードで「Mac の `127.0.0.1` と DGX の `127.0.0.1:8188`」を繋ぐ**必要があります（**転送無しではブラウザの `127.0.0.1` は Mac 側の空ポート**で、仕様どおり）。
 
-```bash
-ssh -N -L 8188:127.0.0.1:8188 <user>@<dgx-tailscale-ip-or-dns>
-```
+### 手順の順番（省略しない）
 
-ブラウザ: `http://127.0.0.1:8188`
+1. **Tailscale が通る状態**で、**転送を張る SSH を先に開始**して **終了させないでおく**:
 
-詳細・検証チェックリストは Runbook **[dgx-private-comfyui.md](../../docs/runbooks/dgx-private-comfyui.md)** を参照。
+   ```bash
+   ssh -N -L 8188:127.0.0.1:8188 -i ~/.ssh/id_ed25519_raspi ubudgxkoushi@100.118.82.72
+   ```
+
+   **`ssh -N -L`** は転送のみのため **標準出力に何も出ずプロンプトが戻らないのが通常**（異常ではない）。
+2. **別ターミナル**: `curl -I http://127.0.0.1:8188` が **`200`** であることを確認。
+3. **ブラウザ**: `http://127.0.0.1:8188`。
+
+**実例の値と「コピペしてはならないプレースホルダ」を混同しない**こと（`<user>@<host>` で zsh が `parse error` になる）。
+
+**詳細・切り分け表・運用コンソール `private_ok` と独立である旨**: Runbook **`[dgx-private-comfyui.md](../../docs/runbooks/dgx-private-comfyui.md)`**、ナレッジ **[KB-378](../../docs/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md)**。
 
 ## Private と LocalLLM（VRAM）
 
