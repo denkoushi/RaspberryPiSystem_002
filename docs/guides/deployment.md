@@ -151,7 +151,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
   - **Trivy で Caddy HIGH が再発** → **`.trivyignore` の方針**は [ci-troubleshooting §Trivy Caddy](../guides/ci-troubleshooting.md#trivy-が-web-イメージの-caddy-バイナリで-cve-を検出してジョブが失敗する)・**恒久はイメージ／Caddy 更新を追跡**。
 - **ナレッジ**: [KB-370 §Production 2026-05-16](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-16-schedule-csv-disappearance-canonical-current-keys)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表コミット **`09f06ebf`**（本体）·**`0e327378`**（Trivy 抑止）。
 
-### 補足（2026-05-17 · **消滅 current keys の 2CSV 交差（本体 × `FKOJUNST_Status`）**·**実装のみ・デプロイは別途**） {#schedule-csv-disappearance-2csv-intersection-2026-05-17}
+### 補足（2026-05-17 · **消滅 current keys の 2CSV 交差（本体 × `FKOJUNST_Status`）**·**API のみ**·**`raspberrypi5` のみ**） {#schedule-csv-disappearance-2csv-intersection-2026-05-17}
 
 - **目的**: Follow-up で整理した **「2系統 CSV を先に照合した集合を current とみなす」** を、`ProductionScheduleCanonicalCurrentKeysService` 経由で **差分消失の入力**に反映する。
 - **仕様**:
@@ -162,8 +162,15 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
   - **スキップ**: `tA` 以前に完了 ingest run が無い、または `tB` 原本CSVを正規化しても Status 行が **0 件**のとき、**`applyPostIngestFromSnapshot` を呼ばず**差分消失のみスキップ（ingestor **`2CSV pairing / status snapshot`** warn）。
 - **実装参照**: [`schedule-csv-disappearance-canonical-keys.builder.ts`](../../apps/api/src/services/production-schedule/external-completion/schedule-csv-disappearance-canonical-keys.builder.ts)·[`production-schedule-canonical-current-keys.service.ts`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-canonical-current-keys.service.ts)·[`fkojunst-status-mail-sync.pipeline.ts`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts)（`loadFkojunstMailNormalizedRowsFromCsvFile`）·[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)。
 - **自動テスト**: [`schedule-csv-disappearance-canonical-keys.builder.test.ts`](../../apps/api/src/services/production-schedule/external-completion/__tests__/schedule-csv-disappearance-canonical-keys.builder.test.ts)·[`production-schedule-canonical-current-keys.service.test.ts`](../../apps/api/src/services/production-schedule/external-completion/__tests__/production-schedule-canonical-current-keys.service.test.ts)。
-- **作業ブランチ（記録時点）**: **`fix/kiosk-completion-csv-pairing`**（**本番 Detach / Phase12 は未実施**・ユーザー指示で **push 禁止**のセッションがあり得る）。
-- **ナレッジ**: [KB-370 Follow-up 2026-05-17（2CSV）](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#follow-up2026-05-17--2csv-照合-current-keys-の実装)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**）。Pi4 キオスク／Pi3 サイネージ play は **no hosts matched**（**Pi3 は省リソースのため本流 playbook 未適用／本項では専用手順も不要・未実施で正**）。
+- **標準コマンド（先行反映時はブランチ名、マージ後は `main`）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/kiosk-completion-csv-pairing infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` 取り込み後は第2引数を `main`**）。
+- **本番デプロイ（実績・2026-05-17）**: **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260517-151209-29249`**（**`PLAY RECAP` `ok=131` `changed=3` `failed=0` / `unreachable=0`**・リモート **`exit 0`**・ローカル **`--follow` 約 302s**・サマリ **`Git: changed`**）。当該 run **Docker compose 再ビルド／再起動は `skipping`**。**`prisma migrate deploy` / `status`**: **`ok`**（**新規マイグレーションなし**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **最終 PASS 43 / WARN 0 / FAIL 0**（本記録 **約 140s**・Tailscale·Pi5 **`100.106.158.2`**）。
+- **トラブルシュート**:
+  - **`update-all-clients.sh` が「ローカルロック」で即終了** → 別端末で同一スクリプト実行中の **pid** を **終了または完了待ち**してから再実行（ロックファイルは **同コマンドの多重起動防止**）。
+  - **Phase12 で Pi5 へ SSH 中に `Connection closed`・`backup.json` チェックだけ FAIL** → **一時的な SSH 切断**の典型。**数分後に `verify-phase12-real.sh` だけ再実行**（本記録では **42/0/1 → 再試行 43/0/0**）。
+  - **差分消失が妙に付かない／多い** → API ログ **`[CsvDashboardIngestor] Schedule CSV disappearance sync skipped (2CSV pairing / status snapshot)`** の **`reason` / `diagnostics`**（例: **`no_status_ingest_run_at_or_before_reference_at`**・**`no_status_csv_rows_at_or_before_reference_at`**）を確認。**Pi5 `api` ref** が **`ed733bfe` 以降（またはマージ後 `main` HEAD）**か。
+- **ナレッジ**: [KB-370 §Production 2026-05-17](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys)·[Follow-up（2CSV 実装）](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#follow-up2026-05-17--2csv-照合-current-keys-の実装)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表コミット **`ed733bfe`**。
 
 ### 補足（2026-05-09 · **キオスク順位ボード・`FKOJUNST_Status` 完了行（`C`/`X`）一覧再表示 + 既定完了フィルタ `all`**·**API+Web**·**Pi5→Pi4×4・1 台ずつ**） {#kiosk-leaderboard-fkojunst-cx-visible-2026-05-09}
 

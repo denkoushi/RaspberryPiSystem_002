@@ -110,13 +110,28 @@ category: knowledge-base
   - **デプロイ前に script が止まる** → **未コミット・未追跡**（stash / commit）。
   - **Trivy 再発** → **`.trivyignore`** の運用方針（上記 CI 項）へ。
 
+## Production（2026-05-17 · **2CSV 交差・正本C current keys（本体 × Status 原本CSV）**） {#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys}
+
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4 キオスク／Pi3 **no hosts matched**・**Pi3 専用手順は本変更では不要／未実施で正**）。
+- **ブランチ**: **`fix/kiosk-completion-csv-pairing`**（代表 **`ed733bfe`** **`fix(kiosk): align disappearance keys with latest status snapshot`**。**`main` squash マージ後は先端 SHA を正**——マージ後に本節へ **PR 番号**を追記する）。
+- **標準手順**: [deployment.md §2026-05-17](../guides/deployment.md#schedule-csv-disappearance-2csv-intersection-2026-05-17)。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260517-151209-29249`**
+  - **`PLAY RECAP`**: `ok=131` `changed=3` `failed=0` `unreachable=0`・リモート **`exit 0`**・ローカル **`--follow` 約 302s**・**`Git: changed`**
+  - **Docker compose 再ビルド／再起動**: **`skipping`**（当該 run 記録）。**`prisma migrate deploy` / `status`**: **`ok`**（**新規マイグレなし**）
+- **Phase12 実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **最終 PASS 43 / WARN 0 / FAIL 0**（本記録 **約 140s**・Tailscale）。
+  - **1 回目**: Pi5 へ SSH 中に **`Connection closed by … port 22`** が出て **`backup.json` 存在確認** のみ **FAIL**（**42/0/1**）。**2 回目（直後再実行）**: **43/0/0**。
+- **運用観測（ログ）**: 取込時 **`[CsvDashboardIngestor] Schedule CSV disappearance sync skipped (2CSV pairing / status snapshot)`** の **`reason` / `diagnostics`**（**`no_status_ingest_run_at_or_before_reference_at`** 等）で **差分消失スキップ**頻度を追う。**残留が続く**場合は **交差後 current keys 件数**と **母集団（非C×±3ヶ月）** を分離して切り分ける（下記 **Troubleshooting**・旧 **Follow-up 会話整理**）。
+- **デプロイ前 TS（補足）**: **`update-all-clients.sh`** が **ローカルロック**（別プロセスが同一スクリプト実行中）で失敗した場合は **完了待ち**または **該当 pid 終了**後に再実行。
+
 ## Follow-up（2026-05-17 · **2CSV 照合 current keys の実装**）
 
-- **実装（ローカル作業ブランチ）**: **`fix/kiosk-completion-csv-pairing`**。ユーザー指示により **コミット・プッシュは未実施**の想定で記録。
-- **要点**: 消滅の **current keys** を **本体 dedupe winner ∩（`tB <= tA` の最新完了 Status ingest run の原本CSVで復元したスナップショットと3キー一致）** に変更。**`tA`** = 生産日程取込完了時刻（ingestor が `new Date()` を渡す）。
-- **残検証**: 本番データで **残留ケースが解消するか**・**Status 先行遅延**で `skip_disappearance_sync` が増えないかを **`[CsvDashboardIngestor] Schedule CSV disappearance sync skipped`** ログで監視。
+- **実装ブランチ**: **`fix/kiosk-completion-csv-pairing`**（**`origin` へ push 済み**・本番 Detach・Phase12 記録は上記 **[#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys](#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys)**）。
+- **要点**: 消滅の **current keys** を **本体 dedupe winner ∩（`tB <= tA` の最新完了 Status ingest run の原本CSVで復元したスナップショットと3キー一致）** に変更。**`tA`** = 生産日程 DEDUP 取込完了時刻（ingestor が **`scheduleIngestCompletedAt`** として渡す）。
+- **残検証**: 本番データで **残留ケースが解消するか**・**Status 先行遅延**で skip が増えないかを **`[CsvDashboardIngestor] Schedule CSV disappearance sync skipped`** ログで継続監視。
 
 ## Follow-up（2026-05-17 · **未解決残留ケースの会話整理**・旧）
+
+> **追補**: 本節は **2CSV 実装着手前**の会話整理の保存。**実装・Pi5 本番・Phase12**の正本は [§Production 2026-05-17](#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys) および [Follow-up（2CSV 実装）](#follow-up2026-05-17--2csv-照合-current-keys-の実装)。
 
 以下は **実装前**の会話メモ。**解決方針は上記「2CSV 照合」項に統合**。
 
@@ -166,7 +181,7 @@ category: knowledge-base
   - **工順ST**: **2026-05-08 以降**は **メール status（`C`/`X`）**と **生産日程CSV消滅**が主因。**2026-05-09 以降**の消滅は **`fkmail.statusCode <> 'C'` かつ `occurredAt` が ±3ヶ月窓内**の母集団と **現 winner（2026-05-16 以降は正本C・本体CSV dedupe winner 由来）**の差分（[deployment.md 消滅窓項](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·[§2026-05-16 正本C current keys](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）。旧 **dedupe キー消失**完了は **廃止**（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
   - **メール status**: **`C`/`X` のみ**メール由来完了（`?` / 空 / **`O`/`P`** は **未完了**。**`O`/`P`** は一覧にも出ない）。
   - **生産日程CSV（消滅）**: **DEDUP** 取込後に **非C×±3ヶ月母集団** と **現 winner キー**を突合（**2026-05-16–17 以降、現 winner の正本**は **本体 dedupe winner** と **`tB <= tA` の最新完了 `FKOJUNST_Status` ingest run 原本CSV**から復元した **3キー照合スナップショット**の交差。[deployment §2026-05-17 補足](../guides/deployment.md#schedule-csv-disappearance-2csv-intersection-2026-05-17)）。**`C`** は **消滅母集団に入らない**（完了状態は **`C`/`X` メール由来**で見る）。**窓外**に落ちた行だけが CSV から消えても **消滅完了にならない**のが期待どおり。取込が **`empty_schedule_csv`** で skip されていないか ingestor **warn** を確認。**Status ingest run 不足**または **原本CSVから正規化可能な Status 行が 0 件**で **`2CSV pairing / status snapshot`** により **差分消失のみスキップ**した場合も warn（手動・メール完了は維持）。
-  - **2026-05-17 以降**: **2CSV 交差 current keys** 実装済み（作業ブランチ **`fix/kiosk-completion-csv-pairing`**・本番反映前は未デプロイ想定）。残留時は **本番ログ**で **交差後キー件数**と **skip 理由**を確認。
+  - **2026-05-17 以降**: **2CSV 交差 current keys** を **本番 Pi5 に反映**（**Detach `20260517-151209-29249`**・ tip **`ed733bfe`**・詳細は [#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys](#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys)）。**残留が続く**場合は **本番ログ**で **交差後キー件数**と **skip 理由**（**`2CSV pairing / status snapshot`**）を確認。
 - **マイグレ未適用**
   - Pi5 で **`prisma migrate status`** が **`20260506150000`** を **Applied** と報告するか（デプロイ playbook の migrate ログが正本）。
 
