@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, waitFor } from '@testing-library/react';
+import { AxiosError } from 'axios';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -332,5 +333,123 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     invalidateSpy.mockRestore();
+  });
+
+  it('continue が一時失敗しても appendError を立てず、shell 応答が更新されると続きを取得できる', async () => {
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 4,
+      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 },
+        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
+      ]
+    });
+
+    const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 4,
+      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r1-c', 'R1'), row('r2-a', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 20 },
+        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
+      ]
+    });
+
+    const transient = new AxiosError('Network Error');
+    postContinue.mockRejectedValueOnce(transient).mockResolvedValue(afterContinue);
+
+    let boardDataUpdatedAt = 1000;
+    boardHookMock.mockImplementation(() => ({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: boardDataUpdatedAt
+    }));
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 20
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const utils = render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.appendError).toBeNull();
+    });
+
+    boardDataUpdatedAt = 2000;
+    utils.rerender(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(2);
+      expect(latest?.appendError).toBeNull();
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r1-c', 'r2-a']);
+      expect(latest?.listIncomplete).toBe(false);
+    });
+  });
+
+  it('continue が 400 応答などの契約エラーでは appendError を立てる', async () => {
+    const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 4,
+      rows: [row('r1-a', 'R1'), row('r2-a', 'R2')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 }]
+    });
+
+    const err400 = new AxiosError('Request failed');
+    err400.response = {
+      status: 400,
+      statusText: 'Bad Request',
+      data: {},
+      headers: {},
+      config: {} as never
+    };
+    postContinue.mockRejectedValueOnce(err400);
+
+    boardHookMock.mockReturnValue({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: Date.now()
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.appendError).toBeInstanceOf(Error);
+      expect(latest?.appendError?.message).toBe('Request failed');
+    });
   });
 });

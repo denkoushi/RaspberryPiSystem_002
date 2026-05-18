@@ -63,41 +63,6 @@ export { DEFAULT_CLIENT_KEY };
 const KIOSK_KEY_RESET_TS_KEY = 'kiosk-client-key-last-reset-at';
 const KIOSK_KEY_RESET_COOLDOWN_MS = 30000;
 
-function getLeaderboardDebugRunId() {
-  if (typeof window === 'undefined') return `leaderboard-server-${Date.now()}`;
-  const key = 'cursor-debug-leaderboard-run-id';
-  const existing = window.sessionStorage.getItem(key);
-  if (existing) return existing;
-  const created = `leaderboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  window.sessionStorage.setItem(key, created);
-  return created;
-}
-
-function postLeaderboardDebugLog(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>
-) {
-  if (typeof window === 'undefined') return;
-  const runId = getLeaderboardDebugRunId();
-  // #region agent log
-  fetch('http://127.0.0.1:7426/ingest/2502f74a-7c46-49e5-b1c6-8c32b7781f8e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '7a86a1' },
-    body: JSON.stringify({
-      sessionId: '7a86a1',
-      runId,
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now()
-    })
-  }).catch(() => {});
-  // #endregion
-}
-
 export const api = axios.create({
   baseURL: apiBase,
   timeout: readViteApiTimeoutMs()
@@ -1279,31 +1244,11 @@ export async function getKioskProductionScheduleDueManagementManualOrderOverview
 }
 
 export async function getKioskProductionScheduleManualOrderSiteDevices(siteKey: string) {
-  const startedAt = Date.now();
-  try {
-    const { data } = await api.get<{ siteKey: string; deviceScopeKeys: string[] }>(
-      '/kiosk/production-schedule/manual-order/site-devices',
-      { params: { siteKey } }
-    );
-    // #region agent log
-    postLeaderboardDebugLog('H2', 'apps/web/src/api/client.ts:getKioskProductionScheduleManualOrderSiteDevices', 'manual-order site devices response', {
-      durationMs: Date.now() - startedAt,
-      siteKey,
-      deviceScopeKeyCount: data.deviceScopeKeys.length
-    });
-    // #endregion
-    return data;
-  } catch (error) {
-    // #region agent log
-    postLeaderboardDebugLog('H2', 'apps/web/src/api/client.ts:getKioskProductionScheduleManualOrderSiteDevices', 'manual-order site devices error', {
-      durationMs: Date.now() - startedAt,
-      siteKey,
-      message: isAxiosError(error) ? error.message : String(error),
-      status: isAxiosError(error) ? (error.response?.status ?? null) : null
-    });
-    // #endregion
-    throw error;
-  }
+  const { data } = await api.get<{ siteKey: string; deviceScopeKeys: string[] }>(
+    '/kiosk/production-schedule/manual-order/site-devices',
+    { params: { siteKey } }
+  );
+  return data;
 }
 
 export interface ManualOrderResourceAssignmentDevice {
@@ -1312,31 +1257,11 @@ export interface ManualOrderResourceAssignmentDevice {
 }
 
 export async function getKioskProductionScheduleManualOrderResourceAssignments(siteKey: string) {
-  const startedAt = Date.now();
-  try {
-    const { data } = await api.get<{
-      siteKey: string;
-      assignments: ManualOrderResourceAssignmentDevice[];
-    }>('/kiosk/production-schedule/manual-order-resource-assignments', { params: { siteKey } });
-    // #region agent log
-    postLeaderboardDebugLog('H2', 'apps/web/src/api/client.ts:getKioskProductionScheduleManualOrderResourceAssignments', 'manual-order resource assignments response', {
-      durationMs: Date.now() - startedAt,
-      siteKey,
-      assignmentCount: data.assignments.length
-    });
-    // #endregion
-    return data;
-  } catch (error) {
-    // #region agent log
-    postLeaderboardDebugLog('H2', 'apps/web/src/api/client.ts:getKioskProductionScheduleManualOrderResourceAssignments', 'manual-order resource assignments error', {
-      durationMs: Date.now() - startedAt,
-      siteKey,
-      message: isAxiosError(error) ? error.message : String(error),
-      status: isAxiosError(error) ? (error.response?.status ?? null) : null
-    });
-    // #endregion
-    throw error;
-  }
+  const { data } = await api.get<{
+    siteKey: string;
+    assignments: ManualOrderResourceAssignmentDevice[];
+  }>('/kiosk/production-schedule/manual-order-resource-assignments', { params: { siteKey } });
+  return data;
 }
 
 export async function putKioskProductionScheduleManualOrderResourceAssignments(payload: {
