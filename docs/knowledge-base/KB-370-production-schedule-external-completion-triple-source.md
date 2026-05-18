@@ -123,6 +123,21 @@ category: knowledge-base
 - **運用観測（ログ）**: 取込時 **`[CsvDashboardIngestor] Schedule CSV disappearance sync skipped (2CSV pairing / status snapshot)`** の **`reason` / `diagnostics`**（**`no_status_ingest_run_at_or_before_reference_at`** 等）で **差分消失スキップ**頻度を追う。**残留が続く**場合は **交差後 current keys 件数**と **母集団（メール完了以外×±3ヶ月）** を分離して切り分ける（下記 **Troubleshooting**・旧 **Follow-up 会話整理**）。
 - **デプロイ前 TS（補足）**: **`update-all-clients.sh`** が **ローカルロック**（別プロセスが同一スクリプト実行中）で失敗した場合は **完了待ち**または **該当 pid 終了**後に再実行。
 
+## Production（2026-05-18 · **消滅母集団から `X` をコードで `C` と同列に除外**） {#production-2026-05-18-schedule-csv-disappearance-exclude-x-code-alignment}
+
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4 キオスク／Pi3 **no hosts matched**・**Pi3 専用手順は不要／未実施で正**）。
+- **ブランチ**: **`fix/kiosk-completion-exclude-x-from-disappearance`**（機能 **`49d19dce`** **`fix: exclude FKOJUNST X from schedule disappearance candidates`**·CI **`2170bb18`** **`fix(ci): suppress current api image libcap2 trivy finding`**）。
+- **標準手順**: [deployment.md §2026-05-18](../guides/deployment.md#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18)。
+- **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260518-175005-7497`**
+  - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`·リモート **`exit 0`**·ローカル **`--follow` 約 987s**·**Summary success: true**·**`Git: changed`**·**Docker restart** **`ok`**·**`prisma migrate deploy` / `status`**: **`ok`**（**新規マイグレなし**）
+  - **補助ファイル**: **`alerts/alert-20260518-175009.json`**・**`alerts/alert-20260518-180620.json`**（**正常完了でも生成され得る**。**正本は recap / summary**）
+- **Phase12 実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**`real` 約 81s**・Tailscale）。
+- **仕様（要点）**: **`buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql`** を **一覧の消滅候補**と **母集団 winner キー抽出**の双方から再利用し、**`UPPER(BTRIM("fkmail"."statusCode")) NOT IN ('C','X')`** に統一（**`NULL`/空白はメール完了扱いにしない**）。
+- **CI**: API イメージ **`libcap2`** **CVE-2026-4878** は **`.trivyignore`** + **workflow の API scan に `trivyignores`**（**`2170bb18`**）。
+- **トラブルシュート**:
+  - **`X` と完了の解釈がズレる** → **実装が本項の単一ビルダー経由か**・Pi5 ref が **`49d19dce` 以降（または `main` マージ後 HEAD）**か。
+  - **デプロイが ~15–20min** → **compose 再作成付近から完了待ち**。**`--follow` を切らない**。
+
 ## 運用: Gmail 取込スケジュールと 2CSV 照合の成立条件（2026-05-17 追補） {#kb-370-2csv-schedule-operational-pairing}
 
 2CSV 交差は **実装（PR #290 / `f252793d`）** と別に、**本番の Gmail 取込スケジュールと ingest 履歴**が条件を満たさなければ **`no_status_ingest_run_at_or_before_reference_at` 等で差分消失のみスキップ**しうる。**切り分けの正本**をここに固定する。
@@ -216,5 +231,5 @@ category: knowledge-base
 
 - ブランチ: `feat/completion-triple-source-unification`（**`main`**: [PR #263](https://github.com/denkoushi/RaspberryPiSystem_002/pull/263) **squash**・先端 **`4af94e05`** を正とする）
 - **空 winner ガード + axios**: **`fix/schedule-csv-empty-guard`**（**`main`**: [PR #264](https://github.com/denkoushi/RaspberryPiSystem_002/pull/264) **squash**・**`f9b1683e`** を正とする）·デプロイ記録は [deployment.md](../guides/deployment.md)（2026-05-06 · 空 winner ガード 項）
-- デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR・**2026-05-09 · 消滅窓** [#schedule-csv-disappearance-nonc-window-2026-05-09](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·**2026-05-16 · 正本C current keys** [#schedule-csv-disappearance-canonical-current-keys-2026-05-16](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）
+- デプロイ記録: [deployment.md](../guides/deployment.md)（2026-05-06 · 実効完了3系統OR·**2026-05-09 · 消滅窓** [#schedule-csv-disappearance-nonc-window-2026-05-09](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·**2026-05-18 · `X` 除外コード整合** [#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18](../guides/deployment.md#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18)·**2026-05-16 · 正本C current keys** [#schedule-csv-disappearance-canonical-current-keys-2026-05-16](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）
 - **会話整理（2026-05-17・実装前）**: 本ファイル **Follow-up（2026-05-17 · 未解決残留ケースの会話整理・旧）** 節
