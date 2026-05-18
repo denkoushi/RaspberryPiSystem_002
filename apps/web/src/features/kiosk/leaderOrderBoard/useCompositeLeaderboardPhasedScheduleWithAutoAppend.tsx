@@ -11,6 +11,10 @@ import {
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
+import {
+  classifyLeaderboardContinueFailure,
+  normalizeLeaderboardContinueFailure
+} from './leaderboardContinueErrorPolicy';
 
 /**
  * 多資源カードの順位ボード取得（集約 API 1 本＋サーバ側 shell 相当をスロット順に連結）。
@@ -111,8 +115,9 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
         while (!cancelled && runId === appendRunIdRef.current && cur.resources.some((r) => r.hasMore)) {
           setIsAppending(true);
           setAppendError(null);
+          const payload = buildLeaderboardBoardContinuePayload(boardQueryParams, cur);
           const next = await postKioskProductionScheduleLeaderboardBoardContinue(
-            buildLeaderboardBoardContinuePayload(boardQueryParams, cur)
+            payload
           );
           if (next.snapshotExpired) {
             await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
@@ -123,7 +128,10 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
         }
       } catch (e) {
         if (!cancelled && runId === appendRunIdRef.current) {
-          setAppendError(e instanceof Error ? e : new Error(String(e)));
+          const normalized = normalizeLeaderboardContinueFailure(e);
+          if (classifyLeaderboardContinueFailure(normalized) === 'terminal') {
+            setAppendError(normalized);
+          }
         }
       } finally {
         if (runId === appendRunIdRef.current) setIsAppending(false);

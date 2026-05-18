@@ -2,6 +2,12 @@ services:
   db:
     image: pgvector/pgvector:pg15
     restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d borrow_return']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     env_file:
       - .env
     environment:
@@ -25,7 +31,20 @@ services:
       dockerfile: infrastructure/docker/Dockerfile.api
     restart: always
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8080/api/system/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
     env_file:
       - ../../apps/api/.env.example
       - .env
@@ -102,7 +121,8 @@ services:
         VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED: ${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED:-false}
     restart: always
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     volumes:
       - thumbnail-storage:/srv/storage/thumbnails:ro # サムネイルを読み取り専用でマウント
       # 自己署名証明書を使用する場合（工場現場での運用に推奨）
