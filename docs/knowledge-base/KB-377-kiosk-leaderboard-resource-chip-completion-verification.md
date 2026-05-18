@@ -39,7 +39,7 @@ update-frequency: low
 
 ### H3: 生産日程CSVの **論理キー差分消失**で完了になるはず
 
-- **結果**: **当該 `021` の winner 論理キーは、現行の勝者集合にまだ残っており、「消滅」条件を満たさなかった**場合が **CONFIRMED**。**「CSV が2系統だから自動で済む」のではなく、非C×窓の母集合と現キーの集合演算結果**である（詳細は [KB-370](./KB-370-production-schedule-external-completion-triple-source.md)）。
+- **結果**: **当該 `021` の winner 論理キーは、現行の勝者集合にまだ残っており、「消滅」条件を満たさなかった**場合が **CONFIRMED**。**「CSV が2系統だから自動で済む」のではなく、メール完了以外×窓の母集合と現キーの集合演算結果**である（詳細は [KB-370](./KB-370-production-schedule-external-completion-triple-source.md)）。
 - **補足（履歴データ）**: 製番 **`BA1S5301`** など一部では過去タイムスタンプで **`externallyCompletedFromScheduleCsvDisappeared = true`** が少数立っているログがあり得るが、**別バッチ／別時点の話であり、特定スクリーンショット直下の全会が「消滅完了」になるわけではない**。
 
 ### 仕様として採らないもの（ユーザー合意）
@@ -50,7 +50,7 @@ update-frequency: low
 
 1. UI は **`row.isCompleted`（実効完了）**を忠実に表示しており、**データ上未完ならチップも未完表示**となる。
 2. **メール status `S`** は完了ではないため、それだけではグレーアウトにならない。
-3. **差分消失完了**は **「母集団内の論理キーが現 winner から消えた」とき**に限定され、**キーが残存している限り**消失完了にならない（2026-05-09 改訂の **非C×`occurredAt` ±3ヶ月窓**は [KB-370](./KB-370-production-schedule-external-completion-triple-source.md)·[deployment.md §消滅窓](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
+3. **差分消失完了**は **「母集団内の論理キーが現 winner から消えた」とき**に限定され、**キーが残存している限り**消失完了にならない（2026-05-09 改訂の **メール完了（`C`/`X`）以外×`occurredAt` ±3ヶ月窓**は [KB-370](./KB-370-production-schedule-external-completion-triple-source.md)·[deployment.md §消滅窓](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
 
 ## Fix
 
@@ -74,7 +74,7 @@ update-frequency: low
 
 - **仕様質問ファースト**: 「チップ未完成」→ **実効未完のどちら由来か（手動／メールC・X／CSV消滅）** に分解してからコード疑いへ進む。
 - **winner・境界**: 大量 **`rowIds`** やチャンク境界では [KB-376](./KB-376-leaderboard-footer-display-scope-winner-alignment.md) を先に疑う。
-- **消滅ロジック検証**: まず **`empty_schedule_csv` ガード**と **非C×窓母集団**を [KB-370](./KB-370-production-schedule-external-completion-triple-source.md) で確認し、単に「CSVに残っていない気がする」だけで期待を立てない（**winner 論理キーがまだ勝者側に残っている**典型がある）。
+- **消滅ロジック検証**: まず **`empty_schedule_csv` ガード**と **メール完了以外×窓母集団**を [KB-370](./KB-370-production-schedule-external-completion-triple-source.md) で確認し、単に「CSVに残っていない気がする」だけで期待を立てない（**winner 論理キーがまだ勝者側に残っている**典型がある）。
 - **本番で「その日」の件数だけを見るとき**: 「当日取込 0 件」と誤解しやすい **JST 暦日境界の SQL 間違い** と、**Fk Status メール CSV と生産日程本体 CSV のダッシュボード混同**に注意。**詳細**: 下記 Appendix。
 
 <span id="kb-377-appendix-counting"></span>

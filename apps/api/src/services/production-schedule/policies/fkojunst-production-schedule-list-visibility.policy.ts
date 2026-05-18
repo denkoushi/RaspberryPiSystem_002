@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client';
 
+import { buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
+
 /**
  * 生産日程 winner 行の一覧で、工順ST（FKOJUNST）表示の根拠を決める式（SQL 断片）。
  * **正本は FKOJUNST_Status 同期（`fkmail`）のみ**。旧 Gmail FKOJUNST 行（`fkst`）は参照しない。
@@ -24,10 +26,10 @@ export function buildFkojunstProductionScheduleListVisibilityWhereSql(): Prisma.
 
 /**
  * 生産日程CSV「消滅」判定を適用する winner かどうか。
- * `FKOJUNST_Status` 同期済みで、かつ `C` 以外の winner に適用する。
- * （`C` は本体キーと整合しない行が多く、メール側の直接反映に頼らず消失完了で完走させる）
+ * `FKOJUNST_Status` 同期済みで、かつ **メール由来完了（`C` / `X`）以外** の winner に適用する。
+ * （完了コードは {@link ../completion/fkojunst-mail-status-completion.policy.js} の正本に従う）
  * 一覧の可視性（S/R/C/X）とは別条件。
  */
 export function buildFkojunstScheduleCsvDisappearanceEligibleScalarSql(): Prisma.Sql {
-  return Prisma.sql`("fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" <> 'C')`;
+  return Prisma.sql`("fkmail"."id" IS NOT NULL AND ${buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql()})`;
 }

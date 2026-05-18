@@ -330,6 +330,7 @@ jobs:
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
           scanners: 'vuln'
+          trivyignores: '.trivyignore'
 
       - name: Security scan (Trivy image web)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
