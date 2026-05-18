@@ -38,6 +38,74 @@ export function partitionLeaderboardCompositeRowsBySlotOrder(
   return out;
 }
 
+type SlotSlices = ProductionScheduleRow[][];
+
+function slotSlicesAlignWithAuthority(
+  prevSlices: SlotSlices,
+  deltaSlices: SlotSlices,
+  authSlices: SlotSlices,
+  orderedSlotResourceCds: readonly string[]
+): boolean {
+  if (
+    prevSlices.length !== orderedSlotResourceCds.length ||
+    deltaSlices.length !== orderedSlotResourceCds.length ||
+    authSlices.length !== orderedSlotResourceCds.length
+  ) {
+    return false;
+  }
+
+  for (let si = 0; si < orderedSlotResourceCds.length; si += 1) {
+    const p = prevSlices[si]!;
+    const d = deltaSlices[si]!;
+    const a = authSlices[si]!;
+    if (p.length + d.length !== a.length) return false;
+    for (let j = 0; j < p.length; j += 1) {
+      if (p[j]!.id !== a[j]!.id) return false;
+    }
+    for (let j = p.length; j < a.length; j += 1) {
+      const di = j - p.length;
+      if (d[di]!.id !== a[j]!.id) return false;
+    }
+  }
+  return true;
+}
+
+function reconcileRowsWithOptionalDeltaReferences(
+  authorityRows: ProductionScheduleRow[],
+  prevBoardRows: ProductionScheduleRow[],
+  deltaRows: ProductionScheduleRow[]
+): ProductionScheduleRow[] {
+  const prevById = new Map(prevBoardRows.map((r) => [r.id, r] as const));
+  const deltaById = new Map(deltaRows.map((r) => [r.id, r] as const));
+
+  return authorityRows.map((authRow) => {
+    const fromDelta = deltaById.get(authRow.id);
+    if (fromDelta) return fromDelta;
+    const fromPrev = prevById.get(authRow.id);
+    if (fromPrev) return fromPrev;
+    return authRow;
+  });
+}
+
+/**
+ * `deltaRows` をスロット整合・ID 列検証できるときのみ参照再利用マージを行う。
+ */
+export function canMergeLeaderboardContinueDelta(
+  prevBoardRows: ProductionScheduleRow[],
+  nextBoardResponse: ProductionScheduleLeaderboardBoardResponse,
+  orderedSlotResourceCds: readonly string[]
+): boolean {
+  const { rows: authorityRows, deltaRows } = nextBoardResponse;
+  if (!deltaRows) return false;
+
+  const prevSlices = partitionLeaderboardCompositeRowsBySlotOrder(prevBoardRows, orderedSlotResourceCds);
+  const deltaSlices = partitionLeaderboardCompositeRowsBySlotOrder(deltaRows, orderedSlotResourceCds);
+  const authSlices = partitionLeaderboardCompositeRowsBySlotOrder(authorityRows, orderedSlotResourceCds);
+
+  if (!prevSlices || !deltaSlices || !authSlices) return false;
+  return slotSlicesAlignWithAuthority(prevSlices, deltaSlices, authSlices, orderedSlotResourceCds);
+}
+
 /**
  * `continue` が `deltaRows` を同梱したとき、累積 `rows` の表示オブジェクト参照を可能な範囲で再利用する。
  * 不整合・パーティション不能時は `nextBoardResponse` をそのまま返す（安全フォールバック）。
@@ -47,46 +115,16 @@ export function mergeLeaderboardBoardContinueResponseWithOptionalDelta(
   nextBoardResponse: ProductionScheduleLeaderboardBoardResponse,
   orderedSlotResourceCds: readonly string[]
 ): ProductionScheduleLeaderboardBoardResponse {
-  const { rows: authorityRows, deltaRows } = nextBoardResponse;
-  if (!deltaRows) return nextBoardResponse;
-
-  const prevSlices = partitionLeaderboardCompositeRowsBySlotOrder(prevBoardRows, orderedSlotResourceCds);
-  const deltaSlices = partitionLeaderboardCompositeRowsBySlotOrder(deltaRows, orderedSlotResourceCds);
-  const authSlices = partitionLeaderboardCompositeRowsBySlotOrder(authorityRows, orderedSlotResourceCds);
-
-  if (!prevSlices || !deltaSlices || !authSlices) return nextBoardResponse;
-  if (
-    prevSlices.length !== orderedSlotResourceCds.length ||
-    deltaSlices.length !== orderedSlotResourceCds.length ||
-    authSlices.length !== orderedSlotResourceCds.length
-  ) {
+  if (!canMergeLeaderboardContinueDelta(prevBoardRows, nextBoardResponse, orderedSlotResourceCds)) {
     return nextBoardResponse;
   }
 
-  for (let si = 0; si < orderedSlotResourceCds.length; si += 1) {
-    const p = prevSlices[si]!;
-    const d = deltaSlices[si]!;
-    const a = authSlices[si]!;
-    if (p.length + d.length !== a.length) return nextBoardResponse;
-    for (let j = 0; j < p.length; j += 1) {
-      if (p[j]!.id !== a[j]!.id) return nextBoardResponse;
-    }
-    for (let j = p.length; j < a.length; j += 1) {
-      const di = j - p.length;
-      if (d[di]!.id !== a[j]!.id) return nextBoardResponse;
-    }
-  }
-
-  const prevById = new Map(prevBoardRows.map((r) => [r.id, r] as const));
-  const deltaById = new Map(deltaRows.map((r) => [r.id, r] as const));
-
-  const reconciledRows = authorityRows.map((authRow) => {
-    const fromDelta = deltaById.get(authRow.id);
-    if (fromDelta) return fromDelta;
-    const fromPrev = prevById.get(authRow.id);
-    if (fromPrev) return fromPrev;
-    return authRow;
-  });
+  const { rows: authorityRows, deltaRows } = nextBoardResponse;
+  const reconciledRows = reconcileRowsWithOptionalDeltaReferences(
+    authorityRows,
+    prevBoardRows,
+    deltaRows!
+  );
 
   return { ...nextBoardResponse, rows: reconciledRows };
 }

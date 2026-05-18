@@ -248,6 +248,13 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
 - **ローカル回帰（代替）**: `kiosk-production-schedule.integration.test.ts` の **`leaderboard-board continue profile logs`** が各 **`continue`** で **`deltaRows` が配列**であることを確認。併せて [`verification-checklist.md](verification-checklist.md) §6.6.18**。
 - **ナレッジ**: [KB-374 · Dual payload](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
+### 補足（2026-05-19 · **キオスク順位ボード・表示安定化（refetch 時の追補巻き戻し防止）**·**Web**·**Pi5 先行 → Pi4 段階**） {#kiosk-leaderboard-display-stability-refetch-2026-05-19}
+
+- **変更概要（契約不変）**: `leaderboard-board/continue` の **`rows` 正本**は維持。Web が **ポーリング refetch 時に shell 起点で追補を再開して表示が一時的に減る**問題を修正。実装は [`leaderboardBoardAppendSessionPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendSessionPolicy.ts)·[`leaderboardBoardDisplayPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardDisplayPolicy.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx)。
+- **段階導入**: **`raspberrypi5` のみ**で実機確認（順位ボードで **2 分以上待機**し行が消えて戻らないこと）→ 問題なければ Pi4 を **`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** の順で **1 台ずつ**。
+- **ローカル回帰**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__`（追補完了後 refetch テスト含む）。
+- **ナレッジ**: [KB-374 · Web 表示安定化](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#web-表示安定化-refetch-時の追補巻き戻し防止-2026-05-19)。
+
 ### 補足（2026-05-08 · **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767）対策**·**API のみ**·**Pi5 のみ**） {#csv-dedup-ingest-postgres-bind-limit-2026-05-08}
 
 - **変更概要**: `ingestMode === DEDUP` の取込で、既存行照合 **`csvDashboardRow.findMany({ dataHash: { in: incomingHashes } })`** が **単一クエリ**だったため、**`incomingHashes` が数万件**になると **Prisma / PostgreSQL の prepared statement バインド上限（典型 32767）**を超え、**`too many bind variables … received 32768`** で失敗し得た。**対策**: [`findCsvDashboardRowsByDataHashes`](../../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts) で **ハッシュ重複除去＋チャンク分割 `findMany`**・[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) から呼び出し。**新規マイグレーションなし**。

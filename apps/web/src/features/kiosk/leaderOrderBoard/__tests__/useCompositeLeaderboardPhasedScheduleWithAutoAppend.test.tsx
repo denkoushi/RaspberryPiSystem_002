@@ -419,6 +419,75 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
+  it('追補完了後に shell が refetch で行数だけ減っても表示行数は維持する', async () => {
+    const r1a = row('r1-a', 'R1');
+    const r1b = row('r1-b', 'R1');
+    const r1c = row('r1-c', 'R1');
+
+    const shellSmall: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [r1a, r1b],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 }]
+    });
+
+    const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
+      total: 3,
+      rows: [r1a, r1b, r1c],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 20 }]
+    });
+
+    postContinue.mockResolvedValue(afterContinue);
+
+    let boardDataUpdatedAt = 1000;
+    boardHookMock.mockImplementation(() => ({
+      data: shellSmall,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: boardDataUpdatedAt
+    }));
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const utils = render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r1-c']);
+    });
+
+    const continueCallsAfterComplete = postContinue.mock.calls.length;
+
+    boardDataUpdatedAt = 2000;
+    boardHookMock.mockImplementation(() => ({
+      data: shellSmall,
+      isLoading: false,
+      isError: false,
+      isFetching: true,
+      isSuccess: true,
+      dataUpdatedAt: boardDataUpdatedAt
+    }));
+    utils.rerender(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r1-c']);
+      expect(postContinue.mock.calls.length).toBe(continueCallsAfterComplete);
+    });
+  });
+
   it('continue が 400 応答などの契約エラーでは appendError を立てる', async () => {
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 4,

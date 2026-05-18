@@ -46,6 +46,16 @@ category: knowledge-base
 - **Web**: [`mergeLeaderboardBoardContinueResponse.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardContinueResponse.ts) が **`FSIGENCD`（大文字小文字無視）**で `rows` / `deltaRows` をスロット分割し、`prevRows`＋`deltaRows` の合成が **応答の累積 `rows` と同じ ID 列**になることを検証。失敗時は **サーバの `rows` オブジェクト**をそのまま採る（出力不変・安全側）。
 - **段階導入**: 本番では **Pi5 API のみ先行**し、順位ボード続き読み確認後に Pi4 を台ごと展開する運用とする（手順・リスク整理: [deployment.md §continue deltaRows](../guides/deployment.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)）。
 
+## Web 表示安定化: refetch 時の追補巻き戻し防止（2026-05-19）
+
+- **症状**: 順位ボードで行が **一時的に減ってから戻る**／体感が遅い。`deltaRows` 導入後に顕在化しやすい。
+- **根因**: [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) が **`boardQuery.dataUpdatedAt` 更新ごと**に continue 追補を **shell 起点で再開**し、表示が途中段階へ戻っていた（120秒ポーリングと整合）。
+- **Fix（Web・契約不変）**:
+  - [`leaderboardBoardAppendSessionPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendSessionPolicy.ts) … shell **内容指紋**と追補完了状態で **不要な再開を抑止**。
+  - [`leaderboardBoardDisplayPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardDisplayPolicy.ts) … **追補済み行数 ≥ shell** のとき表示を維持（refetch 巻き戻し防止）。
+  - [`mergeLeaderboardBoardContinueResponse.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardContinueResponse.ts) … `canMergeLeaderboardContinueDelta` で **マージ可否を明示**し、失敗時は **`rows` 正本**。
+- **検証**: Web Vitest（追補完了後 refetch でも行数維持）·統合テスト `leaderboard-board continue profile logs`（出力同値）。
+
 ## References
 
 - 代表コミット（機能）: **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）。

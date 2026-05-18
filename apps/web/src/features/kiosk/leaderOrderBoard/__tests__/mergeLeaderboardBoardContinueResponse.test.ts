@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canMergeLeaderboardContinueDelta,
   mergeLeaderboardBoardContinueResponseWithOptionalDelta,
   partitionLeaderboardCompositeRowsBySlotOrder
 } from '../mergeLeaderboardBoardContinueResponse';
@@ -62,6 +63,22 @@ describe('mergeLeaderboardBoardContinueResponseWithOptionalDelta', () => {
     expect(out.rows[1]).toBe(prevB);
     expect(out.rows[2]).toBe(deltaD);
     expect(out.rows[3]).toBe(prevC);
+  });
+
+  it('canMergeLeaderboardContinueDelta が false なら authority 参照をそのまま返す', () => {
+    const prev = mkRow('a', '1');
+    const auth = mkRow('a', '1');
+    const next: ProductionScheduleLeaderboardBoardResponse = {
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      rows: [auth],
+      deltaRows: [mkRow('x', '2')],
+      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 20 }]
+    };
+    expect(canMergeLeaderboardContinueDelta([prev], next, ['1'])).toBe(false);
+    const out = mergeLeaderboardBoardContinueResponseWithOptionalDelta([prev], next, ['1']);
+    expect(out.rows[0]).toBe(auth);
   });
 
   it('FSIGENCD パーティションが壊れていればフォールバックする', () => {
