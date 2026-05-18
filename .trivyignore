@@ -27,3 +27,5 @@ CVE-2026-39836
 CVE-2026-42499
 # Alpine openssl (libcrypto3/libssl3) in web image; fixed upstream 3.5.6-r0 — refresh base when CI image rebases
 CVE-2026-28390
+# Debian libcap2 in api image (bookworm base); fixed version availability depends on base image refresh timing
+CVE-2026-4878
