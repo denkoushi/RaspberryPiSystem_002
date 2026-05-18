@@ -189,7 +189,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
 - **トラブルシュート**:
   - **`X` 完了行が差分消失だけ不整合** → Pi5 **`api`** が **`49d19dce` 以降（またはマージ後 `main` HEAD）**か・**母集団 SQL が単一ビルダー**に揃っているか（本項の実装参照）。
   - **CI の API image Trivy が `libcap2` で落ちる** → **`.trivyignore`** と **workflow の `trivyignores`** を確認（**`2170bb18`**）。
-- **ナレッジ**: [KB-370 §Production 2026-05-18](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-18-schedule-csv-disappearance-exclude-x-code-alignment)·[§2026-05-09 消滅窓](#schedule-csv-disappearance-nonc-window-2026-05-09)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表コミット **`49d19dce`**（本体）·**`2170bb18`**（CI）。
+- **ナレッジ**: [KB-370 §Production 2026-05-18](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-18-schedule-csv-disappearance-exclude-x-code-alignment)·[§2026-05-09 消滅窓](#schedule-csv-disappearance-nonc-window-2026-05-09)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表コミット **`49d19dce`**（本体）·**`2170bb18`**（CI）·**`main` squash `e2abadce`**（[PR #294](https://github.com/denkoushi/RaspberryPiSystem_002/pull/294)）。
 
 ### 補足（2026-05-09 · **キオスク順位ボード・`FKOJUNST_Status` 完了行（`C`/`X`）一覧再表示 + 既定完了フィルタ `all`**·**API+Web**·**Pi5→Pi4×4・1 台ずつ**） {#kiosk-leaderboard-fkojunst-cx-visible-2026-05-09}
 

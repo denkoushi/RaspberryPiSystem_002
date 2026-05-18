@@ -126,7 +126,7 @@ category: knowledge-base
 ## Production（2026-05-18 · **消滅母集団から `X` をコードで `C` と同列に除外**） {#production-2026-05-18-schedule-csv-disappearance-exclude-x-code-alignment}
 
 - **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4 キオスク／Pi3 **no hosts matched**・**Pi3 専用手順は不要／未実施で正**）。
-- **ブランチ**: **`fix/kiosk-completion-exclude-x-from-disappearance`**（機能 **`49d19dce`** **`fix: exclude FKOJUNST X from schedule disappearance candidates`**·CI **`2170bb18`** **`fix(ci): suppress current api image libcap2 trivy finding`**）。
+- **ブランチ**: **`fix/kiosk-completion-exclude-x-from-disappearance`**（機能 **`49d19dce`** **`fix: exclude FKOJUNST X from schedule disappearance candidates`**·CI **`2170bb18`** **`fix(ci): suppress current api image libcap2 trivy finding`**）。**`main`**: [PR #294](https://github.com/denkoushi/RaspberryPiSystem_002/pull/294) **squash** **`e2abadce`**。
 - **標準手順**: [deployment.md §2026-05-18](../guides/deployment.md#schedule-csv-disappearance-exclude-x-code-alignment-2026-05-18)。
 - **Detach Run ID**（接頭辞 `ansible-update-`）: **`20260518-175005-7497`**
   - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`·リモート **`exit 0`**·ローカル **`--follow` 約 987s**·**Summary success: true**·**`Git: changed`**·**Docker restart** **`ok`**·**`prisma migrate deploy` / `status`**: **`ok`**（**新規マイグレなし**）
