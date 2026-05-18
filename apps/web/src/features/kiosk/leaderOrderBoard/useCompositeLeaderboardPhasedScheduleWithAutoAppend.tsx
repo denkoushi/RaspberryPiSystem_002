@@ -16,6 +16,14 @@ import {
   normalizeLeaderboardContinueFailure
 } from './leaderboardContinueErrorPolicy';
 
+/** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
+const SCHEDULE_QUERY_DISABLED = {
+  data: undefined as ProductionScheduleListResponse | undefined,
+  isLoading: false,
+  isError: false,
+  isFetching: false
+};
+
 /**
  * 多資源カードの順位ボード取得（集約 API 1 本＋サーバ側 shell 相当をスロット順に連結）。
  * 取得済み行の装飾は API 応答に同梱される（取得完了を待たずに段階的に表示）。
@@ -152,12 +160,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   const scheduleQuery = useMemo(() => {
     if (!scheduleEnabled || resourceCdsOrdered.length === 0) {
-      return {
-        data: undefined as ProductionScheduleListResponse | undefined,
-        isLoading: false,
-        isError: false,
-        isFetching: false
-      };
+      return SCHEDULE_QUERY_DISABLED;
     }
 
     if (!displayBoard) {

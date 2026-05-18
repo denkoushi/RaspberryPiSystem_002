@@ -2,7 +2,7 @@
 title: KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 tags: [kiosk, production-schedule, leader-order-board, api, performance]
 audience: [開発者]
-last-verified: 2026-05-08
+last-verified: 2026-05-18
 category: knowledge-base
 ---
 
@@ -216,6 +216,15 @@ category: knowledge-base
 - **初回件数**: Web の [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20** に変更。API の許容上限 **160** は維持しつつ、**1資源CDカード20件**で初回負荷を抑える。
 
 実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)・[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)（`listLeaderboardShellProductionScheduleRows` 等）。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の phased ケース。
+
+### 追補（2026-05-18）: board `continue` の winner materialization 共有・純粋組み立て分離（出力不変）
+
+- **課題**: `continueLeaderboardCompositeBoard` の資源ループ内で、`fetchLeaderboardScheduleHydratedRowsOrderedByIds` 経路が従来 **`resolveLeaderboardMaterializedBaseWhere` を資源ごとに呼び得た**（同一リクエスト内で winner id 集合は不変のため冗長）。
+- **方針（仕様同一）**: `resolveLeaderboardMaterializedBaseWhere(prisma)` を **リクエスト内 1 回**だけ実行し、得られた `Prisma.Sql` を全資源の hydrate / assemble に渡す（[`resolveLeaderboardMaterializedBaseWhere` の `precomputed` 引数意図と整合](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)）。
+- **構造（SOLID）**: continue の prefix/チャンク合成ロジックを [`leaderboard-composite-board-continue-assembly.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-continue-assembly.ts) に分離し、HTTP オーケストレーションは [`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts) に閉じる。
+- **装飾**: `decorateLeaderboardShellRowsForKioskFromHydratedRows` への `preferredDisplayRowIds` は **`normalizeLeaderboardDisplayRowIdScope` を 1 回**だけ適用した配列を渡す（二重正規化の回避のみ・返却内容は不変）。
+- **Web**: 集約フック [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) で、`scheduleEnabled=false` 時の `scheduleQuery` に **同一オブジェクト参照**を返し下流の派生再計算を抑制（表示データは不変）。
+- **検証**: 統合テスト [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の `leaderboard-board continue profile logs: multi-resource append reaches hasMore=false` で、**continue ループ完了後の `rows[].id` 列および `total` が、単一 `GET …/leaderboard-board`（同一 `boardResourceCds`・十分な `pageSize`）と一致**することを assert。
 
 ## References
 
