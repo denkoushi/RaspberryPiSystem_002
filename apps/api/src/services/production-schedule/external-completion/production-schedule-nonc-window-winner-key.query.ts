@@ -1,11 +1,12 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 
+import { buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { computeProductionScheduleDisappearanceOccurredAtBounds } from '../policies/schedule-csv-disappearance-occurred-at-window.policy.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 
 /**
- * `FKOJUNST_Status` 同期済みかつ **status が C 以外** の MaxProductNo winner 行で、
+ * `FKOJUNST_Status` 同期済みかつ **メール由来完了（`C` / `X`）以外** の MaxProductNo winner 行で、
  * `occurredAt` が {@link computeProductionScheduleDisappearanceOccurredAtBounds} の窓内にある論理キー一覧。
  *
  * 生産日程CSVの **正本C現在キー集合**（現時点では本体CSV dedupe winner 基準）との差分で消滅完了を決める母集団となる。
@@ -30,7 +31,7 @@ export async function queryNonCScheduleDisappearanceCandidateKeys(
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "cdr"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('cdr')}
-      AND "fkmail"."statusCode" <> 'C'
+      AND ${buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql()}
       AND "cdr"."occurredAt" >= ${windowStart}
       AND "cdr"."occurredAt" <= ${windowEnd}
     ORDER BY 1 ASC

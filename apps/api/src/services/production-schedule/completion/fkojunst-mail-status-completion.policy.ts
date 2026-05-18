@@ -26,3 +26,14 @@ export function buildFkojunstMailStatusCompletedScalarSql(): Prisma.Sql {
     ', '
   )})), FALSE)`;
 }
+
+/**
+ * 生産日程CSV「消滅」母集団に含める `fkmail` 行か（メール由来完了 **C / X 以外**）。
+ * `fkmail` JOIN 済み・エイリアス `fkmail` 前提。{@link buildFkojunstMailStatusCompletedScalarSql} と同じ正規化で判定する。
+ */
+export function buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql(): Prisma.Sql {
+  return Prisma.sql`("fkmail"."statusCode" IS NOT NULL AND NOT COALESCE((UPPER(BTRIM("fkmail"."statusCode")) IN (${Prisma.join(
+    FKOJUNST_MAIL_COMPLETED_STATUS_CODES.map((c) => Prisma.sql`${c}`),
+    ', '
+  )})), FALSE))`;
+}

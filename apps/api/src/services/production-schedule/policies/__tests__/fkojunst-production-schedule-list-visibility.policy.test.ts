@@ -8,12 +8,14 @@ function prismaSqlToLiteralString(sql: { strings: readonly string[]; values: rea
 }
 
 describe('buildFkojunstScheduleCsvDisappearanceEligibleScalarSql', () => {
-  it('requires fkmail row and excludes only status C (C以外に差分消失を適用)', () => {
+  it('requires fkmail row and excludes mail-completed statuses C and X (メール完了は消滅母集団外)', () => {
     const frag = buildFkojunstScheduleCsvDisappearanceEligibleScalarSql();
     const text = prismaSqlToLiteralString(frag as { strings: readonly string[]; values: readonly unknown[] });
 
     expect(text).toMatch(/"fkmail"\."id"\s+IS\s+NOT\s+NULL/i);
-    expect(text).toMatch(/"fkmail"\."statusCode"\s+<>\s+'C'/);
+    expect(text).toMatch(/UPPER\s*\(\s*BTRIM\s*\(\s*"fkmail"\."statusCode"\)/i);
+    expect(text).toMatch(/NOT\s+COALESCE/i);
+    expect(text).toMatch(/IN\s*\(\s*C\s*,\s*X\s*\)/);
     expect(text).not.toMatch(/IN\s*\(\s*'S'\s*,\s*'R'\s*\)/);
   });
 });
