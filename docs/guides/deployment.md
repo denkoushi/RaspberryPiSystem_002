@@ -240,6 +240,14 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
   - **`verify-phase12-real.sh` で `deploy-status` のみ FAIL** → 全台の `--limit` 完了後に再実行し、`isMaintenance` 残留を排除して判定する。
 - **ナレッジ**: [KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md)·[KB-380](../knowledge-base/KB-380-kiosk-leaderboard-network-error-resilience.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
+### 補足（2026-05-18 · **キオスク順位ボード・continue `deltaRows`（dual payload・段階導入）**·**API+Web**·**運用は Pi5 API 先行を推奨**） {#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18}
+
+- **変更概要**: `POST …/leaderboard-board/continue` が **`deltaRows`（任意）** を返す場合がある。**累積 `rows` は従来どおり**返し、`deltaRows` のない環境でも **表示は変わらない**。サーバ実装は [`leaderboard-composite-board-continue-assembly.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-continue-assembly.ts)·[`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)。Web は [`mergeLeaderboardBoardContinueResponse.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardContinueResponse.ts) が **スロット（`FSIGENCD`）整合と ID 列**を検証し、問題があれば **応答本文の `rows` を正本としてそのまま採用**（参照再利用はしない）。
+- **段階導入**: 安定性確認のため **`raspberrypi5` のみ** `--limit raspberrypi5` で API（＋同名リリースの Web を同梱デプロイする場合はセット）を先行反映し、Mac/Tailscale から **順位ボード続き読み**を確認後、Pi4 キオスクを **1 台ずつ**同じ ref で展開。
+- **Detach 記録**: 本機能は **開発ブランチ `feat/leaderboard-continue-delta-safe`（マージ前）** で実装済み。**本番 Detach Run ID は PR マージ後に追記すること**。
+- **ローカル回帰（代替）**: `kiosk-production-schedule.integration.test.ts` の **`leaderboard-board continue profile logs`** が各 **`continue`** で **`deltaRows` が配列**であることを確認。併せて [`verification-checklist.md](verification-checklist.md) §6.6.18**。
+- **ナレッジ**: [KB-374 · Dual payload](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
 ### 補足（2026-05-08 · **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767）対策**·**API のみ**·**Pi5 のみ**） {#csv-dedup-ingest-postgres-bind-limit-2026-05-08}
 
 - **変更概要**: `ingestMode === DEDUP` の取込で、既存行照合 **`csvDashboardRow.findMany({ dataHash: { in: incomingHashes } })`** が **単一クエリ**だったため、**`incomingHashes` が数万件**になると **Prisma / PostgreSQL の prepared statement バインド上限（典型 32767）**を超え、**`too many bind variables … received 32768`** で失敗し得た。**対策**: [`findCsvDashboardRowsByDataHashes`](../../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts) で **ハッシュ重複除去＋チャンク分割 `findMany`**・[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) から呼び出し。**新規マイグレーションなし**。

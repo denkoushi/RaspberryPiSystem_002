@@ -17,6 +17,18 @@ export type ContinueResourceSliceInput = {
   hasMore: boolean;
 };
 
+/**
+ * continue 応答構築: 資源スロットごとのマージ済み行と、このラウンドで追加されたcontinuationチャンク行。
+ *
+ * `incrementalRows`:
+ * - `[]` … continuation を取らなかった（または既に総件すべて取得済み）ため差分チャンクは無いが、差分運用自体は許容。
+ * - `undefined` … 軽量差分チャンクの意味を持てない／安全側フォールバックで hydrate した等。親は `deltaRows` を付与しない。
+ */
+export type ContinueAssembledResourceSlice = {
+  merged: LightShellRow[];
+  incrementalRows: LightShellRow[] | undefined;
+};
+
 export function deriveStateFromSnapshot(
   snap: LeaderboardShellSnapshotRecord | undefined,
   totalForResource: number
@@ -69,7 +81,7 @@ export async function assembleContinueMergedRowsForResource(params: {
   locationKey: string;
   siteKey?: string;
   leaderboardMaterializedBaseWhere: Prisma.Sql;
-}): Promise<LightShellRow[]> {
+}): Promise<ContinueAssembledResourceSlice> {
   const { slice, cont, deps, locationKey, siteKey, leaderboardMaterializedBaseWhere } = params;
 
   const hydrateOrdered = async (ids: readonly string[]) =>
@@ -84,11 +96,13 @@ export async function assembleContinueMergedRowsForResource(params: {
   const snapIds = snap?.orderedRowIds ?? [];
 
   if (!slice.hasMore) {
-    return hydrateOrdered(snapIds);
+    const merged = await hydrateOrdered(snapIds);
+    return { merged, incrementalRows: [] };
   }
 
   if (!cont) {
-    return hydrateOrdered(snapIds);
+    const merged = await hydrateOrdered(snapIds);
+    return { merged, incrementalRows: undefined };
   }
 
   const cursorStart = Math.max(0, Math.floor(slice.cursor ?? 0));
@@ -100,7 +114,9 @@ export async function assembleContinueMergedRowsForResource(params: {
   const chunkRows = cont.rows ?? [];
 
   if (chunkRows.length === 0) {
-    return hydrateOrdered(targetIds);
+    const merged = await hydrateOrdered(targetIds);
+    const incrementalRows = boundNext === cursorStart ? [] : undefined;
+    return { merged, incrementalRows };
   }
 
   const chunkTargetIds = snapIds.slice(cursorStart, boundNext);
@@ -109,7 +125,8 @@ export async function assembleContinueMergedRowsForResource(params: {
     chunkTargetIds.every((id, i) => id === chunkRows[i]!.id);
 
   if (!idsAligned) {
-    return hydrateOrdered(targetIds);
+    const merged = await hydrateOrdered(targetIds);
+    return { merged, incrementalRows: undefined };
   }
 
   const prefixIds = snapIds.slice(0, cursorStart);
@@ -126,8 +143,9 @@ export async function assembleContinueMergedRowsForResource(params: {
 
   const mergedIds = merged.map((r) => r.id);
   if (mergedIds.length !== targetIds.length || mergedIds.some((id, i) => id !== targetIds[i])) {
-    return hydrateOrdered(targetIds);
+    const mergedHydrated = await hydrateOrdered(targetIds);
+    return { merged: mergedHydrated, incrementalRows: undefined };
   }
 
-  return merged;
+  return { merged, incrementalRows: chunkLight };
 }

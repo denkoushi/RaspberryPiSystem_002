@@ -15,6 +15,7 @@ import {
   classifyLeaderboardContinueFailure,
   normalizeLeaderboardContinueFailure
 } from './leaderboardContinueErrorPolicy';
+import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
 
 /** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
 const SCHEDULE_QUERY_DISABLED = {
@@ -67,16 +68,19 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     [leaderboardPhasedBaseParams]
   );
   const resourceCdsOrderedKey = useMemo(() => resourceCdsOrdered.join('\0'), [resourceCdsOrdered]);
+  const orderedResourceCds = useMemo(
+    () => (resourceCdsOrderedKey.length > 0 ? resourceCdsOrderedKey.split('\0') : []),
+    [resourceCdsOrderedKey]
+  );
 
   const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
     if (!scheduleEnabled || resourceCdsOrderedKey.length === 0) return undefined;
     const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
-    const orderedResourceCds = resourceCdsOrderedKey.split('\0');
     return {
       ...baseParams,
       boardResourceCds: orderedResourceCds.join(',')
     };
-  }, [leaderboardPhasedBaseParamsKey, resourceCdsOrderedKey, scheduleEnabled]);
+  }, [leaderboardPhasedBaseParamsKey, orderedResourceCds, resourceCdsOrderedKey, scheduleEnabled]);
 
   const paramsKey = useMemo(() => JSON.stringify(boardQueryParams), [boardQueryParams]);
 
@@ -124,13 +128,17 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           setIsAppending(true);
           setAppendError(null);
           const payload = buildLeaderboardBoardContinuePayload(boardQueryParams, cur);
-          const next = await postKioskProductionScheduleLeaderboardBoardContinue(
+          const nextRaw = await postKioskProductionScheduleLeaderboardBoardContinue(
             payload
           );
-          if (next.snapshotExpired) {
+          if (nextRaw.snapshotExpired) {
             await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
             break;
           }
+          const next =
+            orderedResourceCds.length > 0
+              ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds)
+              : nextRaw;
           setAppendOverride(next);
           cur = next;
         }
@@ -155,7 +163,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     boardQuery.isSuccess,
     boardQueryParams,
     queryClient,
-    scheduleEnabled
+    scheduleEnabled,
+    orderedResourceCds
   ]);
 
   const scheduleQuery = useMemo(() => {

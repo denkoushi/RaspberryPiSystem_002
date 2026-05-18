@@ -59,18 +59,29 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
   });
 
   it('集約 API の rows をスロット順のまま返し、未到達カードがあれば listIncomplete を立て、continue で完了できる', async () => {
+    const r1a = row('r1-a', 'R1');
+    const r1b = row('r1-b', 'R1');
+    const r2a = row('r2-a', 'R2');
+
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 4,
-      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      rows: [r1a, r1b, r2a],
       resources: [
         { resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 },
         { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
       ]
     });
 
+    const r1c = row('r1-c', 'R1');
     const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 4,
-      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r1-c', 'R1'), row('r2-a', 'R2')],
+      rows: [
+        row('r1-a', 'R1'),
+        row('r1-b', 'R1'),
+        r1c,
+        row('r2-a', 'R2')
+      ],
+      deltaRows: [r1c],
       resources: [
         { resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 20 },
         { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
@@ -114,7 +125,12 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     await waitFor(() => {
       expect(postContinue).toHaveBeenCalledTimes(1);
-      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r1-c', 'r2-a']);
+      const data = latest?.scheduleQuery.data;
+      expect(data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r1-c', 'r2-a']);
+      expect(data?.rows[0]).toBe(r1a);
+      expect(data?.rows[1]).toBe(r1b);
+      expect(data?.rows[2]).toBe(r1c);
+      expect(data?.rows[3]).toBe(r2a);
       expect(latest?.listIncomplete).toBe(false);
       expect(latest?.appendError).toBeNull();
     });
