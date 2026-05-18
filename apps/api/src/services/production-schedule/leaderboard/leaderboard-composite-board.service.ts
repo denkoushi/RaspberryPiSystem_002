@@ -2,7 +2,6 @@
  * 順位ボード（複数資源スロット）向け集約取得。
  * 単一資源の shell / continue / COUNT / 装飾を既存サービスに委譲し、HTTP 層とクエリ実装の間に置くオーケストレーションのみを担当する。
  */
-import { prisma } from '../../../lib/prisma.js';
 import {
   countProductionScheduleDashboardVisibleRowsFromListFilters,
   decorateLeaderboardShellRowsForKiosk,
@@ -13,10 +12,14 @@ import {
   type ProductionScheduleListParams
 } from '../production-schedule-query.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
+import { prisma } from '../../../lib/prisma.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
 import { resolveFiniteLeaderboardBoardNextCursor } from './leaderboard-board-resource-cursor.js';
-import type { LeaderboardShellSnapshotRecord, LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
+import {
+  assembleContinueMergedRowsForResource,
+  deriveStateFromSnapshot
+} from './leaderboard-composite-board-continue-assembly.js';
+import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
 
@@ -40,122 +43,6 @@ export type LeaderboardBoardReadResult = {
 };
 
 type ListParamsBase = Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile' | 'resourceCds'>;
-
-async function hydrateLightLeaderboardRowsFromOrderedIds(params: {
-  orderedRowIds: readonly string[];
-  locationKey: string;
-  siteKey?: string;
-}): Promise<LightShellRow[]> {
-  if (params.orderedRowIds.length === 0) return [];
-
-  const siteScopedGlobalRankLocation = params.siteKey?.trim().length ? params.siteKey!.trim() : params.locationKey;
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
-
-  const raw = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
-    orderedRowIds: params.orderedRowIds,
-    locationKey: params.locationKey,
-    siteScopedGlobalRankLocation,
-    leaderboardMaterializedBaseWhere
-  });
-
-  return raw.map(
-    (r) =>
-      ({
-        ...r,
-        actualPerPieceMinutes: null,
-        customerName: null
-      }) as LightShellRow
-  );
-}
-
-/**
- * continue 応答向け: snapshot の確定 prefix はそのままに、続きチャンクのみ continuation が hydrate 済みであれば差分合成する。
- * ID 整合が取れない場合は安全側にフォールバック（対象範囲をまとめて hydrate）。
- */
-async function assembleContinueMergedRowsForResource(params: {
-  slice: {
-    resourceCd: string;
-    snapshotId?: string;
-    cursor?: number;
-    hasMore: boolean;
-  };
-  cont: LeaderboardShellPhasedReadResult | null;
-  deps: { snapshotStore: LeaderboardShellSnapshotStore };
-  locationKey: string;
-  siteKey?: string;
-}): Promise<LightShellRow[]> {
-  const { slice, cont, deps, locationKey, siteKey } = params;
-
-  const hydrateOrdered = async (ids: readonly string[]) =>
-    hydrateLightLeaderboardRowsFromOrderedIds({
-      orderedRowIds: ids,
-      locationKey,
-      siteKey
-    });
-
-  const snap = slice.snapshotId?.trim() ? deps.snapshotStore.get(slice.snapshotId.trim()) : undefined;
-  const snapIds = snap?.orderedRowIds ?? [];
-
-  if (!slice.hasMore) {
-    return hydrateOrdered(snapIds);
-  }
-
-  if (!cont) {
-    return hydrateOrdered(snapIds);
-  }
-
-  const cursorStart = Math.max(0, Math.floor(slice.cursor ?? 0));
-  const rawNext =
-    cont.nextCursor != null ? Math.max(0, Math.floor(cont.nextCursor)) : snapIds.length;
-  const boundNext = Math.min(rawNext, snapIds.length);
-  const targetIds = snapIds.slice(0, boundNext);
-
-  const chunkRows = cont.rows ?? [];
-
-  if (chunkRows.length === 0) {
-    return hydrateOrdered(targetIds);
-  }
-
-  const chunkTargetIds = snapIds.slice(cursorStart, boundNext);
-  const idsAligned =
-    chunkTargetIds.length === chunkRows.length &&
-    chunkTargetIds.every((id, i) => id === chunkRows[i]!.id);
-
-  if (!idsAligned) {
-    return hydrateOrdered(targetIds);
-  }
-
-  const prefixIds = snapIds.slice(0, cursorStart);
-  const prefixHydrated = prefixIds.length > 0 ? await hydrateOrdered(prefixIds) : [];
-  const chunkLight = chunkRows.map(
-    (r) =>
-      ({
-        ...r,
-        actualPerPieceMinutes: null,
-        customerName: null
-      }) as LightShellRow
-  );
-  const merged = [...prefixHydrated, ...chunkLight];
-
-  const mergedIds = merged.map((r) => r.id);
-  if (mergedIds.length !== targetIds.length || mergedIds.some((id, i) => id !== targetIds[i])) {
-    return hydrateOrdered(targetIds);
-  }
-
-  return merged;
-}
-
-function deriveStateFromSnapshot(
-  snap: LeaderboardShellSnapshotRecord | undefined,
-  totalForResource: number
-): { nextCursor: number; hasMore: boolean } {
-  if (!snap) {
-    return { nextCursor: 0, hasMore: false };
-  }
-  const nextCursor = snap.orderedRowIds.length;
-  const hasMore = snap.partialOrdering || nextCursor < totalForResource;
-  return { nextCursor, hasMore };
-}
 
 export async function fetchLeaderboardCompositeBoardShell(
   params: {
@@ -320,6 +207,9 @@ export async function continueLeaderboardCompositeBoard(
     };
   }
 
+  /** 資源ごとの assemble が同一値を参照（リクエストあたり 1 回の winner materialization） */
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+
   const perResourceRows: LightShellRow[][] = [];
   for (let i = 0; i < params.boardResourceCds.length; i += 1) {
     const slice = params.resourceSlices[i]!;
@@ -329,12 +219,14 @@ export async function continueLeaderboardCompositeBoard(
       cont,
       deps,
       locationKey: params.listParamsBase.locationKey,
-      siteKey: params.listParamsBase.siteKey
+      siteKey: params.listParamsBase.siteKey,
+      leaderboardMaterializedBaseWhere
     });
     perResourceRows.push(mergedForResource);
   }
 
   const mergedRows = perResourceRows.flat();
+  const preferredDisplayRowIds = normalizeLeaderboardDisplayRowIdScope(mergedRows.map((r) => r.id));
 
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => {
     const slice = params.resourceSlices[i]!;
@@ -373,7 +265,7 @@ export async function continueLeaderboardCompositeBoard(
     hydratedRows: mergedRows,
     locationKey: params.listParamsBase.locationKey,
     siteKey: params.listParamsBase.siteKey,
-    preferredDisplayRowIds: normalizeLeaderboardDisplayRowIdScope(mergedRows.map((r) => r.id))
+    preferredDisplayRowIds
   });
 
   const decoMap = new Map(deco.rowDecorations.map((d) => [d.id, d]));

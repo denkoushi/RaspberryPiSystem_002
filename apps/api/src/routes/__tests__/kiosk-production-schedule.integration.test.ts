@@ -1222,6 +1222,16 @@ describe('Kiosk Production Schedule API', () => {
 
     expect(board.resources.some((r) => r.hasMore)).toBe(false);
     expect(board.rows.length).toBe(board.total);
+
+    const monolithic = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1,2&pageSize=160&allowResourceOnly=true',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(monolithic.statusCode).toBe(200);
+    const monoBody = monolithic.json() as { rows: Array<{ id: string }>; total: number };
+    expect(monoBody.rows.map((r) => r.id)).toEqual(board.rows.map((r) => r.id));
+    expect(monoBody.total).toBe(board.total);
   });
 
   it('leaderboard shell filler budget caps incremental filler batches for takeCount 20', () => {

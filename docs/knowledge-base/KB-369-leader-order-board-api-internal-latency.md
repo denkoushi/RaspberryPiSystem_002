@@ -2,7 +2,7 @@
 title: KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 tags: [kiosk, production-schedule, leader-order-board, api, performance]
 audience: [開発者]
-last-verified: 2026-05-08
+last-verified: 2026-05-18
 category: knowledge-base
 ---
 
@@ -216,6 +216,27 @@ category: knowledge-base
 - **初回件数**: Web の [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20** に変更。API の許容上限 **160** は維持しつつ、**1資源CDカード20件**で初回負荷を抑える。
 
 実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)・[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)（`listLeaderboardShellProductionScheduleRows` 等）。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の phased ケース。
+
+### 追補（2026-05-18）: board `continue` の winner materialization 共有・純粋組み立て分離（出力不変）
+
+- **課題**: `continueLeaderboardCompositeBoard` の資源ループ内で、`fetchLeaderboardScheduleHydratedRowsOrderedByIds` 経路が従来 **`resolveLeaderboardMaterializedBaseWhere` を資源ごとに呼び得た**（同一リクエスト内で winner id 集合は不変のため冗長）。
+- **方針（仕様同一）**: `resolveLeaderboardMaterializedBaseWhere(prisma)` を **リクエスト内 1 回**だけ実行し、得られた `Prisma.Sql` を全資源の hydrate / assemble に渡す（[`resolveLeaderboardMaterializedBaseWhere` の `precomputed` 引数意図と整合](../../apps/api/src/services/production-schedule/row-resolver/max-product-no-winner-materialization.ts)）。
+- **構造（SOLID）**: continue の prefix/チャンク合成ロジックを [`leaderboard-composite-board-continue-assembly.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-continue-assembly.ts) に分離し、HTTP オーケストレーションは [`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts) に閉じる。
+- **装飾**: `decorateLeaderboardShellRowsForKioskFromHydratedRows` への `preferredDisplayRowIds` は **`normalizeLeaderboardDisplayRowIdScope` を 1 回**だけ適用した配列を渡す（二重正規化の回避のみ・返却内容は不変）。
+- **Web**: 集約フック [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) で、`scheduleEnabled=false` 時の `scheduleQuery` に **同一オブジェクト参照**を返し下流の派生再計算を抑制（表示データは不変）。
+- **検証**: 統合テスト [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の `leaderboard-board continue profile logs: multi-resource append reaches hasMore=false` で、**continue ループ完了後の `rows[].id` 列および `total` が、単一 `GET …/leaderboard-board`（同一 `boardResourceCds`・十分な `pageSize`）と一致**することを assert。
+
+## Production deploy & verification（2026-05-18 · output-stable internal optimization）
+
+- **対象ホスト（ユーザー指定 5 台のみ・順次）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 `--limit` で **1 台ずつ**）。
+- **本番デプロイ（実績）**: `./scripts/update-all-clients.sh perf/leaderboard-board-output-stable-v2 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`。
+- **Detach Run ID**（`ansible-update-`）: **`20260518-205259-21751`**（Pi5・`ok=134 changed=4 failed=0 unreachable=0`）/ **`20260518-210326-27579`**（Pi4・`ok=122 changed=10 failed=0`）/ **`20260518-210844-6675`**（robodrill01・`ok=122 changed=9 failed=0`）/ **`20260518-211243-7536`**（fjv60-80・`ok=122 changed=9 failed=0`）/ **`20260518-211700-30413`**（stonebase01・`ok=129 changed=10 failed=0`）。全 run でリモート **`exit 0`**・`Summary success: true`。
+- **Pi3 方針**: 本件は Pi3 を対象に含めず、各 run の Pi3 play は **`skipping: no hosts matched`**（Pi3 専用手順は未適用で正）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 67s、Pi5 API `100.106.158.2`、`deploy-status` 4 台 PASS）。
+- **回帰（Mac 単体）**: Docker Postgres + `kiosk-production-schedule.integration.test.ts -t "leaderboard-board continue profile logs"` を再実行し、`continue` 完了後の `rows[].id` / `total` が単一 GET と一致することを確認（出力不変）。
+- **トラブルシュート**:
+  - `gh run watch` のローカル timeout は CI 実行失敗を意味しない。`gh run view` で run 終了状態を別途確認する。
+  - 連続デプロイ中の `deploy-status` は `isMaintenance` 残留で一時 FAIL し得るため、全台完了後に `verify-phase12-real.sh` を再実行して最終判定する。
 
 ## References
 
