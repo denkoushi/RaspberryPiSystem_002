@@ -26,13 +26,13 @@ import {
 } from '../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import { buildSeibanRankMapFromMergedOrder } from '../../features/kiosk/leaderOrderBoard/seibanPriority/buildSeibanRankMap';
 import { useCompositeLeaderboardPhasedScheduleWithAutoAppend } from '../../features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend';
+import { useLeaderboardBoardCacheMutationBridge } from '../../features/kiosk/leaderOrderBoard/useLeaderboardBoardCacheMutationBridge';
 import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist';
 import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlotsWithServerSync';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
 import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
-import { useProductionScheduleMutations } from '../../features/kiosk/productionSchedule/useProductionScheduleMutations';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
 import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../hooks/kioskRevealUi';
@@ -141,6 +141,13 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
 
   const searchStateMutation = { isPending: false };
+  const applyMutationPatchRef = useRef<Parameters<typeof useLeaderboardBoardCacheMutationBridge>[1]>(() => {});
+
+  const scheduleEnabled =
+    activeDeviceScopeKey.trim().length > 0 &&
+    hasResourceCategoryResourceSelection &&
+    activeResourceCds.length > 0;
+
   const {
     pauseRefetch: mutationPauseRefetch,
     orderPending,
@@ -151,12 +158,19 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     updateOrder,
     completeRow,
     saveNote
-  } = useProductionScheduleMutations({
-    isSearchStateWriting: searchStateMutation.isPending,
-    noteMaxLength: 100,
-    productionScheduleTargetDeviceScopeKey: targetDeviceScopeKey,
-    productionScheduleOrderCachePolicy: 'leaderBoardFastPath'
-  });
+  } = useLeaderboardBoardCacheMutationBridge(
+    {
+      isSearchStateWriting: searchStateMutation.isPending,
+      noteMaxLength: 100,
+      productionScheduleTargetDeviceScopeKey: targetDeviceScopeKey,
+      productionScheduleOrderCachePolicy: 'leaderBoardFastPath'
+    },
+    (mutation) => applyMutationPatchRef.current(mutation),
+    true
+  );
+
+  const writePause =
+    mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
 
   const invalidateScheduleQueries = () =>
     Promise.all([
@@ -199,24 +213,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     }
   });
 
-  const scheduleEnabled =
-    activeDeviceScopeKey.trim().length > 0 &&
-    hasResourceCategoryResourceSelection &&
-    activeResourceCds.length > 0;
-
-  const writePause =
-    mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
-
-  const resourcesQuery = useKioskProductionScheduleResources({
-    pauseRefetch: writePause,
-    refetchIntervalMs: LEADER_BOARD_RESOURCES_REFETCH_MS
-  });
-
   const {
     scheduleQuery,
     appendError,
     listIncomplete,
-    cacheSyncWarning
+    cacheSyncWarning,
+    applyMutationPatch
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
     resourceCdsOrdered: activeResourceCds,
@@ -226,6 +228,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     macManualOrderV2,
     activeDeviceScopeKey,
     siteKey
+  });
+  applyMutationPatchRef.current = applyMutationPatch;
+
+  const resourcesQuery = useKioskProductionScheduleResources({
+    pauseRefetch: writePause,
+    refetchIntervalMs: LEADER_BOARD_RESOURCES_REFETCH_MS
   });
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
@@ -334,7 +342,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     return buildLeaderBoardGroupedRows(rows, historyProgressQuery.data?.progressBySeiban);
   }, [scheduleQuery.data?.rows, historyProgressQuery.data?.progressBySeiban]);
 
-  const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('all');
+  const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
 
   const sortedGrouped = useMemo(
     () =>

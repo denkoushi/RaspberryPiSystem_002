@@ -100,7 +100,7 @@ describe('useProductionScheduleMutations', () => {
     expect(noteMutation.mutate).toHaveBeenCalledTimes(1);
     expect(noteMutation.mutate).toHaveBeenCalledWith(
       { rowId: 'row-1', note: 'abcde' },
-      { onSettled }
+      expect.objectContaining({ onSettled, onSuccess: expect.any(Function) })
     );
   });
 
@@ -120,14 +120,17 @@ describe('useProductionScheduleMutations', () => {
       });
     });
 
-    expect(orderMutation.mutate).toHaveBeenCalledWith({
-      rowId: 'row-1',
-      payload: {
-        resourceCd: 'R01',
-        orderNumber: null
+    expect(orderMutation.mutate).toHaveBeenCalledWith(
+      {
+        rowId: 'row-1',
+        payload: {
+          resourceCd: 'R01',
+          orderNumber: null
+        },
+        cachePolicy: 'default'
       },
-      cachePolicy: 'default'
-    });
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
   });
 
   it('completeRow は intent 付きで完了ミューテーションを呼ぶ', async () => {
