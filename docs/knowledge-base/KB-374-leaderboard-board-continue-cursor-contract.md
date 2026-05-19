@@ -64,7 +64,15 @@ category: knowledge-base
   - [`leaderboardBoardShellFreshnessPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts) … **`lastCommittedParamsKey` と現 `paramsKey` が不一致のときだけ** placeholder shell を表示から除外（**同一 params の refetch placeholder は維持** — 上節の巻き戻し防止と両立）。
   - [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) … `resolvedShell`・append 開始ガード・解除直後の短い `isLoading`。
 - **Prevention**: `isPlaceholderData` 単体では不足。**検索条件変更（`paramsKey`）** と **最後に確定した params** を併用する。Vitest: `leaderboardBoardShellFreshnessPolicy.test.ts`・`useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx`（params 変更後 placeholder）。
-- **追補（`426889d6` 副作用と修正）**: stale override 防止のため append 用 `useEffect` の deps に `appendOverrideForCurrentParams` を入れた結果、**`setAppendOverride` のたびに effect cleanup で continue ループが中断**し、本番相当（初回 shell 多行でも **複数資源 `hasMore` 残り**）で追補未完・製番 OFF 後も行数が戻らない。**Fix**: [`leaderboardBoardAppendOverrideScopePolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts) で **現 `paramsKey` に属する override のみ**表示・ループ開始に使う（**ref 正本**）。append effect の deps から override 状態を除外（`b0343567` の placeholder 抑制は維持）。`snapshotExpired` 時は `appendOverrideParamsKeyRef` もクリア。**検証**: Vitest — `hasMore` あり continue 完走 → 製番 OFF → placeholder → 全件 shell。
+- **追補（`426889d6` 副作用と本修正 `08613580`）**:
+  - **症状（Pi5 実機・2026-05-19）**: 登録製番フィルタは **1 回目だけ効く**／**OFF で全件に戻らない**／修正デプロイ後は **リロード後に全件表示すらされない**。API の `GET leaderboard-board` は **`q` 解除後に行数が増える**（API 正常）→ **Web の追補・表示合成**が原因。
+  - **根本原因（CONFIRMED）**: stale override 防止のため append 用 `useEffect` の deps に **`appendOverrideForCurrentParams`**（= `setAppendOverride` 連動）を追加（**`426889d6`**）。**`setAppendOverride` のたびに effect cleanup → `cancelled=true` で continue 中断**。`shouldBeginLeaderboardAppendSession` により **同一 shell 指紋では再開しにくい** → 本番相当（初回 shell 多行でも **複数資源 `hasMore` 残り**）で追補未完。副次: **ref と state の非同期ずれ**（`appendOverrideParamsKeyRef` は一致するが state が遅れ、表示用 override を捨てる）。
+  - **Fix（`08613580`・契約不変）**:
+    - [`leaderboardBoardAppendOverrideScopePolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts) … **現 `paramsKey` に属する override のみ**返す（**ref + `overrideParamsKey` が正本**）。
+    - [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) … 表示・loading・ループ開始はスコープ済み override。**append effect の deps から override 状態を除外**（`b0343567` の placeholder 抑制は **維持**）。
+    - `snapshotExpired` 時は **`appendOverrideParamsKeyRef` もクリア**。
+  - **検証**: Vitest — `leaderboardBoardAppendOverrideScopePolicy.test.ts`・`hasMore` あり continue 完走 → 製番 OFF → placeholder → 全件 shell（`useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx`）。
+  - **現場（Pi5→Pi4×4 本番反映後）**: **動作 OK**（ユーザー確認・2026-05-19）。
 
 ## 第1弾 pageSize 80（continue 回数削減・2026-05-19）
 
@@ -196,9 +204,11 @@ category: knowledge-base
 - リスト仮想化
 - **prefix 装飾のラウンド間キャッシュ**（continue ごとの hydrate/enrich 削減）
 
-## 装飾後取り + 初回80/continue40（2026-05-19 · `feat/kiosk-leaderboard-deferred-decorations-fast-initial`）
+## 装飾後取り + 初回80/continue40 + append スコープ（2026-05-19 · `feat/kiosk-leaderboard-deferred-decorations-fast-initial`）
 
-**目的**: 初回は **行の骨格のみ**を先に描画し、機種名・顧客名・資源CDチップは **`leaderboard-decorations` POST** で後取りする。全 continue 完了後の **id / total / 装飾 / `leaderboardFooterChipsByPartKey`** は eager（`includeDecorations` 省略＝**true**）経路と同値。
+**目的**: 初回は **行の骨格のみ**を先に描画し、機種名・顧客名・資源CDチップは **`leaderboard-decorations` POST** で後取りする。全 continue 完了後の **id / total / 装飾 / `leaderboardFooterChipsByPartKey`** は eager（`includeDecorations` 省略＝**true**）経路と同値。**製番 OR フィルタ・リロード・追補**は同一 [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) 経路。
+
+**ブランチ**: **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**。**代表コミット（時系列）**: **`50e8649a`**（装飾後取り API+Web）· **`b0343567`**（製番 OFF 時 placeholder shell 抑制）· **`426889d6`**（stale override 防止・**副作用で continue 中断**）· **`08613580`**（append スコープポリシー + effect deps 修正）。**新規マイグレーションなし**。
 
 ### 仕様（実装の正本）
 
@@ -210,22 +220,72 @@ category: knowledge-base
 | Web 初回 GET | `pageSize=80`・`includeDecorations=false` | [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) |
 | Web continue | `pageSize=40` 固定・`includeDecorations=false` | [`buildLeaderboardBoardContinuePayload.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderboardBoardContinuePayload.ts) |
 | Web 装飾 | **未装飾 rowId のみ**増分 POST → 累積マージ | [`useLeaderboardDeferredBoardDecorations.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardDeferredBoardDecorations.ts)·[`mergeLeaderboardBoardWithDecorations.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardWithDecorations.ts) |
+| Web placeholder | **paramsKey 変更時のみ** 旧 shell 非表示（同一 params の refetch placeholder は維持） | [`leaderboardBoardShellFreshnessPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts)（**`b0343567`**） |
+| Web append スコープ | **現 paramsKey の override のみ**表示・ループ開始；append effect は **override 状態を deps に含めない** | [`leaderboardBoardAppendOverrideScopePolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts)（**`08613580`**） |
 
-**UX 契約**: チップ未到着時は **行だけ先表示**（レイアウト伸び許容）。`isLoading` は **light rows が無い間のみ**。
+**UX 契約**: チップ未到着時は **行だけ先表示**（レイアウト伸び許容）。`isLoading` は **light rows が無い間のみ**（params 変更直後は [§製番 OR](#製番-or-フィルタ解除と-placeholder-shell2026-05-19) の短い loading あり）。
 
-### 本番デプロイ
+**データフロー（後続スレッド用）**:
 
-**未実施**（ローカル実装・テストのみ。コミット前）。
+```mermaid
+sequenceDiagram
+  participant Page as LeaderOrderBoardPage
+  participant Hook as useCompositeLeaderboardPhasedScheduleWithAutoAppend
+  participant RQ as ReactQuery_leaderboard_board
+  participant Dec as leaderboard-decorations_POST
+
+  Page->>Hook: activeQueries to q, boardResourceCds
+  Hook->>RQ: GET leaderboard-board includeDecorations=false pageSize=80
+  Hook->>Hook: shellFreshness + scopedAppendOverride
+  Hook->>RQ: POST continue while hasMore includeDecorations=false
+  Hook->>Dec: 未装飾 rowId のみ増分
+  Hook->>Page: mergeLeaderboardBoardWithDecorations
+```
+
+### 本番デプロイ（2026-05-19 · Pi5→Pi4×4 · 完了）
+
+**標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-deferred-decorations-fast-initial infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。**1 台ずつ順次**。
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+| --- | --- | --- | --- |
+| `raspberrypi5`（最終・`08613580` 含む） | **`20260519-172543-21009`** | `ok=134` `changed=4` `failed=0` | Docker 再起動·`prisma migrate` **ok** |
+| `raspberrypi5`（中間・`426889d6` のみ先行） | **`20260519-160314-32708`** | `failed=0` | 本番不具合再現の中間点（記録） |
+| `raspberrypi4` | **`20260519-174536-24483`** | `ok=122` `changed=10` `failed=0` | `kiosk-browser` / `status-agent` **ok** |
+| `raspi4-robodrill01` | **`20260519-175108-2934`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| `raspi4-fjv60-80` | **`20260519-175540-20432`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| `raspi4-kensaku-stonebase01` | **`20260519-180012-22517`** | `ok=129` `changed=10` `failed=0` | 同上 |
+
+**Pi3**: 各 run **`no hosts matched`**（専用手順未実施で正）。
+
+### 実機検証
+
+| 種別 | 結果 |
+| --- | --- |
+| 自動（Pi5 デプロイ後） | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **77s**） |
+| 自動（Pi4 全台後） | 同上 → **PASS 43 / WARN 0 / FAIL 0**（約 **104s**） |
+| **`deploy-status`（Pi4×4）** | すべて **PASS** |
+| **現場（ユーザー）** | 順位ボード **動作 OK**（リロード・製番 ON/OFF・全件表示・追補） |
 
 ### ローカル回帰（実装時）
 
-- API 統合: `kiosk-production-schedule.integration.test.ts` — `leaderboard-board continue profile logs`（初回 **80**・continue **40**・`includeDecorations=false`・完了後 id/total 一致）
-- Web: `mergeLeaderboardBoardWithDecorations`·composite hook·`buildLeaderboardBoardContinuePayload` の Vitest
+- **API 統合**: `kiosk-production-schedule.integration.test.ts` — `leaderboard-board continue profile logs`（初回 **80**・continue **40**・`includeDecorations=false`・完了後 id/total 一致）
+- **Web Vitest**: `leaderOrderBoard/__tests__/` — ポリシー単体・composite hook（placeholder・stale continue・**hasMore + 製番 OFF**）· **24 tests PASS**（対象 3 ファイル実行時）
+
+### Troubleshooting（本件）
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| 製番 OFF でも行数が絞り込みのまま | Network: **`q` なし GET は行数増**するか | API 正常なら Web。**`b0343567` 未反映** or **`426889d6` の continue 中断**を疑う |
+| リロード後に全件出ない・continue が途中で止まる | append effect が **`setAppendOverride` で再実行**されていないか | **`08613580` 以降**を Pi5+Pi4 に反映。deps に **scoped override 状態を入れない** |
+| 製番 OFF 直後に一瞬 0 行 | **意図**（placeholder shell 抑制 + 新 shell 待ち） | 数秒以内に全件 shell。長引く場合は **GET 失敗**・**paramsKey** を確認 |
+| 装飾チップだけ遅い | **`leaderboard-decorations` POST** の遅延 | 行骨格は先に出る設計。**UX 契約**どおり。全件 id/total は continue 完了後に確定 |
+| Pi5 だけ更新してキオスクが旧挙動 | キオスク Web は **Pi4 上** | **Pi4×4 も同ブランチ**をデプロイ（pageSize 80 系と同じ 5 台パターン） |
+| `leaderboard-board/continue` **400** | cursor 欠落（別件） | [§Root cause](#root-cause) |
 
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
 - **本件（2026-05-19 · pageSize 80 系）**: **`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**（ブランチ **`feat/leaderboard-continue-delta-safe`**）·**`main`**: [PR #297](https://github.com/denkoushi/RaspberryPiSystem_002/pull/297) **squash** **`fae56edd`**。
 - **初回10/追補40（2026-05-19）**: **`1e214213`**（ブランチ **`feat/leaderboard-board-initial-10-continue-40`**）·Pi5 Detach **`20260519-125903-25635`**·**`main`**: [PR #298](https://github.com/denkoushi/RaspberryPiSystem_002/pull/298) **squash** **`5c2bceec`**·[§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)。
-- **装飾後取り（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**（**未マージ・未デプロイ**）·[§装飾後取り](#装飾後取り--初回80continue402026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)。
+- **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../guides/deployment.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
