@@ -208,7 +208,7 @@ category: knowledge-base
 
 **目的**: `POST …/leaderboard-board/continue` の各ラウンドで、スロット数ぶんの `countProductionScheduleDashboardVisibleRowsFromListFilters` を再実行しない。追補セッション中はフィルタ不変のため、shell 時点の **スロット別 `total`** を正本として再利用する。
 
-**ブランチ**: **`perf/leaderboard-board-continue-reuse-totals`**。**代表コミット**: **`438adb0c`**（COUNT 再利用本体）· **`ec938f31`**（Pi5 Web イメージ **Caddy v2.11.3** — **CVE-2026-45135**）。**PR**: [#300](https://github.com/denkoushi/RaspberryPiSystem_002/pull/300)。**`main` マージ後**は **`origin/main` HEAD** を運用デプロイ引数の正本とする。
+**ブランチ**: **`perf/leaderboard-board-continue-reuse-totals`**（マージ済み）。**`main` squash**: **`cabd0889`**（[PR #300](https://github.com/denkoushi/RaspberryPiSystem_002/pull/300)）。**実装系列**: **`438adb0c`**（COUNT 再利用本体）· **`ec938f31`**（Pi5 Web イメージ **Caddy v2.11.3** — **CVE-2026-45135**）· **`a3a4724f`**（本番・現場 OK ドキュメント）。**以降の運用デプロイ引数**は **`main`**（**`origin/main` HEAD**）。
 
 ### Context（調査・2026-05-19 以前）
 
