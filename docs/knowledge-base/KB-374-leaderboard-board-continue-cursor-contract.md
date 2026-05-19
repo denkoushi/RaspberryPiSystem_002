@@ -479,6 +479,72 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 - **Mac から Pi5 URL での検証**は Playwright **`ignoreHTTPSErrors: true`** または証明書例外後に DevTools で **pageerror** を確認するのが早い。
 - **Phase 2 候補**（スコープ外）: React Query persist との役割分担見直し・差分 sync API。
 
+## 端末キャッシュ Phase 2（SWR + 書き込み同期）（2026-05-20）
+
+**目的**: Phase 1 の bootstrap 以外に、**製番 OR / `paramsKey` 変更**・**120s 再検証中**もキャッシュを表示し、**自端末の書き込み**を IDB にミラーする。**Web のみ**·**API 不変**·**出力同値**。
+
+**設計 ADR**: [ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)。
+
+**ブランチ（実装）**: **`feat/kiosk-leaderboard-terminal-cache-phase2-swr`**（tip **`2300da83`**）·**PR [#302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)**。
+
+### 仕様要約
+
+| # | 要件 | 実装 |
+| --- | --- | --- |
+| 1 | SWR 表示（120s 鮮度） | [`leaderboardBoardSwrDisplayPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSwrDisplayPolicy.ts) |
+| 2 | `paramsKey` 変更直後も IDB 即表示 | `suppressPlaceholderShell` 時も cache 優先（旧 placeholder shell は非表示のまま） |
+| 3 | reconcile 不一致 → サーバ正 | 変更なし |
+| 4 | 書き込み成功 → IDB patch | [`leaderboardBoardCachePatchPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePatchPolicy.ts) + [`productionScheduleWriteSuccessListeners.ts`](../../apps/web/src/features/kiosk/productionSchedule/productionScheduleWriteSuccessListeners.ts) |
+| 5 | IDB put は **内容指紋**（順位・備考・納期・完了含む） | [`leaderboardBoardCachePersistPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts) |
+| 6 | 完了フィルタ既定 **未完** | [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) `useState('incomplete')` |
+| 7 | 他端末 SLA **120 秒** | `LEADER_BOARD_SCHEDULE_REFETCH_MS` 維持 |
+
+**ロールバック**: `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=false` で Phase 1 表示ポリシーへ（端末キャッシュ全体オフは Phase 1 と同じ `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false`）。
+
+**検証（ローカル）**: `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard` → **174 PASS**（2026-05-20 記録）。**CI（PR #302）**: **lint-build-unit / e2e / security-docker** すべて **success**（mutation テストは **`onSuccess` コールバック期待**で初回失敗 → **`2300da83`** で修正）。
+
+### 本番デプロイ・実機検証（2026-05-19）
+
+**方針**: Phase 1 と同型で **Pi5 先行 → Pi4 キオスク 4 台順次**（**1 台ずつ `--limit`**）。**Web のみ**·API 不変。
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase2-swr infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+
+| ホスト | 現場名 | Detach Run ID | 備考 |
+| --- | --- | --- | --- |
+| `raspberrypi5` | サーバ（Web+API） | **`20260519-215631-11713`** | **`Git: changed`**·**Docker 再起動 `ok`**·`prisma migrate` **ok** |
+| `raspberrypi4` | 第2工場 kensakuMain | **`20260519-220153-2826`** | **`kiosk-browser` / `status-agent` 再起動** |
+| `raspi4-robodrill01` | RoboDrill01 | **`20260519-220731-12252`** | 同上 |
+| `raspi4-fjv60-80` | FJV60/80 | **`20260519-221143-3419`** | 同上 |
+| `raspi4-kensaku-stonebase01` | Kensaku StoneBase01 | **`20260519-221558-18199`** | 同上 |
+
+**Pi3**: 各 run で **`no hosts matched`**（サイネージは対象外·**専用手順未実施で正**）。
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **70s**）·**`deploy-status`（Pi4×4）** PASS·**Pi3 signage-lite/timer** PASS。
+
+**実機（順位ボード・手動チェックリスト）**:
+
+1. **初回**（IDB 空）: 一覧は従来どおりネットワーク完走待ちが主。**異常な真っ白・pageerror なし**（Phase 1 fix **`3ae93221`** 以降の前提）。
+2. **2 回目以降**（同一 `paramsKey`）: **リロード直後に前回の一覧が即表示**され、裏で `leaderboard-board` + continue が走る（SWR）。
+3. **製番 OR 切替**（`paramsKey` 変更）: 切替直後も **前条件の IDB があれば即表示**（鮮度 120s 内・continue 完走済み）。
+4. **自端末書き込み**: 順位・備考・納期・完了の API 成功後、**リロードなしでも IDB に反映**（他端末は最大 120s SLA）。
+5. **完了フィルタ**: 初回表示が **未完**（`incomplete`）であること（クライアントのみ）。
+
+**知見**:
+
+- **Pi4 は Phase 1 未展開だった**ため、本デプロイで **Phase 1 bootstrap + Phase 2 SWR を一括初反映**。
+- **体感評価は 2 回目以降**（初回 IDB 空は仕様どおり）。
+- **Page 配線**: `useLeaderboardBoardCacheMutationBridge` は **`useComposite` より先**に置き、`applyMutationPatch` は **ref で後から接続**（hook 順序・TypeScript エラー回避）。
+
+**トラブルシュート**:
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| 真っ白画面 | DevTools **`reading 'trim'`** | Phase 1 fix **`3ae93221`** 未反映·**Cmd+Shift+R** |
+| 1 回目だけ遅い | IDB 空 | **正常**·2 回目以降で SWR を確認 |
+| 他端末の変更が遅い | 120s SLA | 意図（`LEADER_BOARD_SCHEDULE_REFETCH_MS`）·即時は自端末書き込みのみ |
+| SWR を止めたい | ビルドフラグ | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=false`（Phase 1 のみ） |
+| キャッシュ全体オフ | 同上 | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false` |
+
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
@@ -486,4 +552,5 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 - **初回10/追補40（2026-05-19）**: **`1e214213`**（ブランチ **`feat/leaderboard-board-initial-10-continue-40`**）·Pi5 Detach **`20260519-125903-25635`**·**`main`**: [PR #298](https://github.com/denkoushi/RaspberryPiSystem_002/pull/298) **squash** **`5c2bceec`**·[§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)。
 - **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../guides/deployment.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
 - **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
+- **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
