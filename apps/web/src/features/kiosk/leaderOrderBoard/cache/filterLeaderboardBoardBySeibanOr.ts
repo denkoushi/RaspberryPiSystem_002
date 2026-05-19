@@ -6,10 +6,8 @@ import type {
 } from '../../../../api/client';
 
 function readRowFseiban(row: ProductionScheduleRow): string {
-  const topLevel =
-    typeof (row as { fseiban?: unknown }).fseiban === 'string'
-      ? String((row as { fseiban: string }).fseiban).trim()
-      : '';
+  const topLevelValue = (row as unknown as { fseiban?: unknown }).fseiban;
+  const topLevel = typeof topLevelValue === 'string' ? topLevelValue.trim() : '';
   if (topLevel.length > 0) return topLevel;
   const data = row.rowData as Record<string, unknown> | undefined;
   if (!data) return '';
