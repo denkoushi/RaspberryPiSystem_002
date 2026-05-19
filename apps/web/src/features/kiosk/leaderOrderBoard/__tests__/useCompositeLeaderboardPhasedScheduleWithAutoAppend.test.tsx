@@ -2,17 +2,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, waitFor, act } from '@testing-library/react';
 import { AxiosError } from 'axios';
 import { createElement } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as client from '../../../../api/client';
 import { useCompositeLeaderboardPhasedScheduleWithAutoAppend } from '../useCompositeLeaderboardPhasedScheduleWithAutoAppend';
 
 import type { ProductionScheduleLeaderboardBoardResponse, ProductionScheduleRow } from '../../../../api/client';
 
+const getLeaderboardBoardMock = vi.fn();
+
 vi.mock('../../../../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../api/client')>();
   return {
     ...actual,
+    getKioskProductionScheduleLeaderboardBoard: (...args: unknown[]) => getLeaderboardBoardMock(...args),
     postKioskProductionScheduleLeaderboardBoardContinue: vi.fn(),
     postKioskProductionScheduleLeaderboardDecorations: vi.fn().mockResolvedValue({
       rowDecorations: [],
@@ -24,20 +27,63 @@ vi.mock('../../../../api/client', async (importOriginal) => {
 const postContinue = vi.mocked(client.postKioskProductionScheduleLeaderboardBoardContinue);
 const postDecorations = vi.mocked(client.postKioskProductionScheduleLeaderboardDecorations);
 
+type BoardHookQueryResult = {
+  data: ProductionScheduleLeaderboardBoardResponse | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  isFetching: boolean;
+  isSuccess: boolean;
+  isPlaceholderData: boolean;
+  dataUpdatedAt: number;
+};
+
+const DISABLED_BOARD_HOOK_RESULT: BoardHookQueryResult = {
+  data: undefined,
+  isLoading: false,
+  isError: false,
+  isFetching: false,
+  isSuccess: false,
+  isPlaceholderData: false,
+  dataUpdatedAt: 0
+};
+
 const boardHookMock = vi.fn();
 
 vi.mock('../../../../api/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../api/hooks')>();
   return {
     ...actual,
-    useKioskProductionScheduleLeaderboardBoard: (...args: unknown[]) => boardHookMock(...args)
+    useKioskProductionScheduleLeaderboardBoard: (params: unknown, options?: { enabled?: boolean }) => {
+      if (options?.enabled === false) {
+        return DISABLED_BOARD_HOOK_RESULT;
+      }
+      return boardHookMock(params, options);
+    }
   };
 });
 
-function row(id: string, resourceCd: string): ProductionScheduleRow {
+function installBoardHookMock(
+  primary: () => BoardHookQueryResult,
+  reconcile?: () => BoardHookQueryResult
+): void {
+  boardHookMock.mockImplementation((params: unknown) => {
+    const q =
+      params != null && typeof params === 'object' && 'q' in params
+        ? (params as { q?: string }).q
+        : undefined;
+    if (q != null && String(q).length > 0 && reconcile) {
+      return reconcile();
+    }
+    return primary();
+  });
+}
+
+function row(id: string, resourceCd: string, fseiban?: string): ProductionScheduleRow {
+  const fs = fseiban ?? `S-${id}`;
   return {
     id,
-    rowData: { FSIGENCD: resourceCd, ProductNo: id, FSEIBAN: `S-${id}`, FHINCD: `P-${id}` }
+    fseiban: fs,
+    rowData: { FSIGENCD: resourceCd, ProductNo: id, FSEIBAN: fs, FHINCD: `P-${id}` }
   } as unknown as ProductionScheduleRow;
 }
 
@@ -56,10 +102,16 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
+    vi.stubEnv('VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED', 'false');
+    vi.stubEnv('VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER', 'true');
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
     });
     boardHookMock.mockReset();
+    getLeaderboardBoardMock.mockReset();
+    getLeaderboardBoardMock.mockResolvedValue(
+      boardPayload({ total: 0, rows: [], resources: [] })
+    );
     postContinue.mockReset();
     postDecorations.mockClear();
     postDecorations.mockResolvedValue({
@@ -68,13 +120,17 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('board 取得は includeDecorations=false で行い、行があれば装飾 API を呼ぶ', async () => {
     const shell = boardPayload({
       total: 1,
       rows: [row('d1', 'R1')],
       resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
     });
-    boardHookMock.mockReturnValue({
+    installBoardHookMock(() => ({
       data: shell,
       isLoading: false,
       isError: false,
@@ -82,10 +138,11 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: Date.now()
-    });
+    }));
 
     function Harness() {
       useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
@@ -102,7 +159,9 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     await waitFor(() => {
       expect(boardHookMock).toHaveBeenCalled();
-      const params = boardHookMock.mock.calls[0]![0] as { includeDecorations?: boolean };
+      const params = boardHookMock.mock.calls.find((c) => (c[1] as { enabled?: boolean } | undefined)?.enabled !== false)?.[0] as {
+        includeDecorations?: boolean;
+      };
       expect(params.includeDecorations).toBe(false);
       expect(postDecorations).toHaveBeenCalled();
     });
@@ -140,7 +199,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     postContinue.mockResolvedValue(afterContinue);
 
-    boardHookMock.mockReturnValue({
+    installBoardHookMock(() => ({
       data: shell,
       isLoading: false,
       isError: false,
@@ -148,12 +207,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: Date.now()
-    });
+    }));
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
           pageSize: 10
@@ -221,7 +281,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     postContinue.mockResolvedValue(afterContinue);
 
-    boardHookMock.mockReturnValue({
+    installBoardHookMock(() => ({
       data: shell,
       isLoading: false,
       isError: false,
@@ -229,12 +289,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: Date.now()
-    });
+    }));
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
@@ -264,7 +325,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
   });
 
   it('GET 応答待ちの間は loading、feedMounts は不要（null）', () => {
-    boardHookMock.mockReturnValue({
+    installBoardHookMock(() => ({
       data: undefined,
       isLoading: true,
       isError: false,
@@ -272,12 +333,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: false,
       isPlaceholderData: false,
       dataUpdatedAt: 0
-    });
+    }));
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
           pageSize: 10
@@ -318,9 +380,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
     });
 
-    postContinue.mockResolvedValueOnce(step1).mockResolvedValueOnce(step2);
+    let continueStep = 0;
+    postContinue.mockImplementation(async () => {
+      continueStep += 1;
+      return continueStep === 1 ? step1 : step2;
+    });
 
-    boardHookMock.mockReturnValue({
+    installBoardHookMock(() => ({
       data: shell,
       isLoading: false,
       isError: false,
@@ -328,12 +394,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: Date.now()
-    });
+    }));
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
@@ -374,7 +441,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       })
     );
 
-    boardHookMock.mockReturnValue({
+    installBoardHookMock(() => ({
       data: shell,
       isLoading: false,
       isError: false,
@@ -382,12 +449,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: Date.now()
-    });
+    }));
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
@@ -435,7 +503,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     postContinue.mockRejectedValueOnce(transient).mockResolvedValue(afterContinue);
 
     let boardDataUpdatedAt = 1000;
-    boardHookMock.mockImplementation(() => ({
+    const boardResult = () => ({
       data: shell,
       isLoading: false,
       isError: false,
@@ -443,12 +511,14 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: boardDataUpdatedAt
-    }));
+    });
+    installBoardHookMock(boardResult);
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
           pageSize: 10
@@ -502,7 +572,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     postContinue.mockResolvedValue(afterContinue);
 
     let boardDataUpdatedAt = 1000;
-    boardHookMock.mockImplementation(() => ({
+    const boardResult = () => ({
       data: shellSmall,
       isLoading: false,
       isError: false,
@@ -510,12 +580,14 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: boardDataUpdatedAt
-    }));
+    });
+    installBoardHookMock(boardResult);
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
@@ -537,7 +609,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     const continueCallsAfterComplete = postContinue.mock.calls.length;
 
     boardDataUpdatedAt = 2000;
-    boardHookMock.mockImplementation(() => ({
+    installBoardHookMock(() => ({
       data: shellSmall,
       isLoading: false,
       isError: false,
@@ -571,7 +643,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     };
     postContinue.mockRejectedValueOnce(err400);
 
-    boardHookMock.mockReturnValue({
+    installBoardHookMock(() => ({
       data: shell,
       isLoading: false,
       isError: false,
@@ -579,12 +651,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isSuccess: true,
       isPlaceholderData: false,
       dataUpdatedAt: Date.now()
-    });
+    }));
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        seibanOrFilters: [],
         leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
@@ -606,67 +679,40 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
-  it('params 変更後の placeholder（旧 q の shell）は表示せず、本物の shell で全件に戻る', async () => {
-    const filteredShell = boardPayload({
-      total: 1,
-      rows: [row('only-filtered', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
-    });
+  it('製番 OFF 後は完走 base を即全件表示し primary continue は増えない', async () => {
     const fullShell = boardPayload({
       total: 3,
-      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      rows: [row('r1-a', 'R1', 'AA1S7M11'), row('r1-b', 'R1', 'OTHER1111'), row('r2-a', 'R2', 'OTHER2222')],
       resources: [
         { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
         { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
       ]
     });
 
-    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
-
-    boardHookMock.mockImplementation(() => {
-      if (phase === 'full') {
-        return {
-          data: fullShell,
-          isLoading: false,
-          isError: false,
-          isFetching: false,
-          isSuccess: true,
-          isPlaceholderData: false,
-          dataUpdatedAt: Date.now()
-        };
-      }
-      if (phase === 'placeholderStale') {
-        return {
-          data: filteredShell,
-          isLoading: false,
-          isError: false,
-          isFetching: true,
-          isSuccess: true,
-          isPlaceholderData: true,
-          dataUpdatedAt: Date.now()
-        };
-      }
-      return {
-        data: filteredShell,
-        isLoading: false,
-        isError: false,
-        isFetching: false,
-        isSuccess: true,
-        isPlaceholderData: false,
-        dataUpdatedAt: Date.now()
-      };
+    const filteredReconcile = boardPayload({
+      total: 1,
+      rows: [row('r1-a', 'R1', 'AA1S7M11')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
     });
 
+    installBoardHookMock(() => ({
+      data: fullShell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    }));
+    getLeaderboardBoardMock.mockResolvedValue(filteredReconcile);
+
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
-    let withQ = true;
+    let withSeiban = true;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: {
-          allowResourceOnly: true,
-          pageSize: 80,
-          ...(withQ ? { q: 'AA1S7M11' } : {})
-        },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        seibanOrFilters: withSeiban ? ['AA1S7M11'] : [],
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -684,22 +730,11 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     const utils = render(tree());
 
     await waitFor(() => {
-      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['only-filtered']);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a']);
     });
 
     act(() => {
-      withQ = false;
-      phase = 'placeholderStale';
-    });
-    utils.rerender(tree());
-
-    await waitFor(() => {
-      expect(latest?.scheduleQuery.isLoading).toBe(true);
-      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
-    });
-
-    act(() => {
-      phase = 'full';
+      withSeiban = false;
     });
     utils.rerender(tree());
 
@@ -711,60 +746,37 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     expect(postContinue).not.toHaveBeenCalled();
   });
 
-  it('params 変更後に旧 params の continue 応答が遅れて返っても表示を上書きしない', async () => {
-    const filteredShell = boardPayload({
-      total: 2,
-      rows: [row('old-1', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 2, pageSize: 80 }]
-    });
+  it('製番 OFF 後に遅延した primary continue 応答でも表示を上書きしない', async () => {
     const fullShell = boardPayload({
       total: 3,
-      rows: [row('new-1', 'R1'), row('new-2', 'R1'), row('new-3', 'R2')],
+      rows: [row('new-1', 'R1', 'AA1S7M11'), row('new-2', 'R1', 'OTHER1111'), row('new-3', 'R2', 'OTHER2222')],
       resources: [
-        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 2, pageSize: 80 },
         { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
       ]
     });
     const staleContinueResult = boardPayload({
       total: 2,
-      rows: [row('old-1', 'R1'), row('old-2', 'R1')],
+      rows: [row('old-1', 'R1', 'AA1S7M11'), row('old-2', 'R1', 'AA1S7M11')],
       resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 }]
     });
 
-    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
-    boardHookMock.mockImplementation(() => {
-      if (phase === 'full') {
-        return {
-          data: fullShell,
-          isLoading: false,
-          isError: false,
-          isFetching: false,
-          isSuccess: true,
-          isPlaceholderData: false,
-          dataUpdatedAt: Date.now()
-        };
-      }
-      if (phase === 'placeholderStale') {
-        return {
-          data: filteredShell,
-          isLoading: false,
-          isError: false,
-          isFetching: true,
-          isSuccess: true,
-          isPlaceholderData: true,
-          dataUpdatedAt: Date.now()
-        };
-      }
-      return {
-        data: filteredShell,
-        isLoading: false,
-        isError: false,
-        isFetching: false,
-        isSuccess: true,
-        isPlaceholderData: false,
-        dataUpdatedAt: Date.now()
-      };
+    const filteredReconcile = boardPayload({
+      total: 1,
+      rows: [row('new-1', 'R1', 'AA1S7M11')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
     });
+
+    installBoardHookMock(() => ({
+      data: fullShell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    }));
+    getLeaderboardBoardMock.mockResolvedValue(filteredReconcile);
 
     let resolveContinue: ((v: ProductionScheduleLeaderboardBoardResponse) => void) | undefined;
     postContinue.mockImplementation(
@@ -775,15 +787,12 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     );
 
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
-    let withQ = true;
+    let withSeiban = true;
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: {
-          allowResourceOnly: true,
-          pageSize: 80,
-          ...(withQ ? { q: 'AA1S7M11' } : {})
-        },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        seibanOrFilters: withSeiban ? ['AA1S7M11'] : [],
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -801,29 +810,19 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     const utils = render(tree());
 
     await waitFor(() => {
-      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['old-1']);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['new-1']);
       expect(postContinue).toHaveBeenCalledTimes(1);
       expect(resolveContinue).toBeTypeOf('function');
     });
 
     act(() => {
-      withQ = false;
-      phase = 'placeholderStale';
-    });
-    utils.rerender(tree());
-
-    await waitFor(() => {
-      expect(latest?.scheduleQuery.isLoading).toBe(true);
-      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
-    });
-
-    act(() => {
-      phase = 'full';
+      withSeiban = false;
     });
     utils.rerender(tree());
 
     await waitFor(() => {
       expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['new-1', 'new-2', 'new-3']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
     });
 
     act(() => {
@@ -835,74 +834,55 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
   });
 
-  it('hasMore ありで continue 完走後、製番 OFF（q 削除）と placeholder 経由で全件 shell に戻る', async () => {
-    const filteredShell = boardPayload({
-      total: 5,
-      rows: [row('only-filtered', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 5, pageSize: 80 }]
-    });
-    const filteredAfterContinue = boardPayload({
-      total: 2,
-      rows: [row('only-filtered', 'R1'), row('filt-2', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 }]
-    });
-    const fullShell = boardPayload({
+  it('primary continue 完走後に製番 OFF しても 0 行にならず全件を即表示する', async () => {
+    const shellBeforeContinue = boardPayload({
       total: 3,
-      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      rows: [row('only-filtered', 'R1', 'AA1S7M11'), row('r2-a', 'R2', 'OTHER2222')],
       resources: [
-        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+    const afterContinue = boardPayload({
+      total: 3,
+      rows: [
+        row('only-filtered', 'R1', 'AA1S7M11'),
+        row('filt-2', 'R1', 'AA1S7M11'),
+        row('r2-a', 'R2', 'OTHER2222')
+      ],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 },
         { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
       ]
     });
 
-    postContinue.mockResolvedValue(filteredAfterContinue);
-
-    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
-
-    boardHookMock.mockImplementation(() => {
-      if (phase === 'full') {
-        return {
-          data: fullShell,
-          isLoading: false,
-          isError: false,
-          isFetching: false,
-          isSuccess: true,
-          isPlaceholderData: false,
-          dataUpdatedAt: Date.now()
-        };
-      }
-      if (phase === 'placeholderStale') {
-        return {
-          data: filteredShell,
-          isLoading: false,
-          isError: false,
-          isFetching: true,
-          isSuccess: true,
-          isPlaceholderData: true,
-          dataUpdatedAt: Date.now()
-        };
-      }
-      return {
-        data: filteredShell,
-        isLoading: false,
-        isError: false,
-        isFetching: false,
-        isSuccess: true,
-        isPlaceholderData: false,
-        dataUpdatedAt: Date.now()
-      };
+    const serverFilteredAfterContinue = boardPayload({
+      total: 2,
+      rows: [row('only-filtered', 'R1', 'AA1S7M11'), row('filt-2', 'R1', 'AA1S7M11')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 }]
     });
 
+    postContinue.mockResolvedValue(afterContinue);
+
+    installBoardHookMock(() => ({
+      data: shellBeforeContinue,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    }));
+    getLeaderboardBoardMock.mockResolvedValue(serverFilteredAfterContinue);
+
     let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
-    let withQ = true;
+    let withSeiban = true;
+    const primaryContinueCallsAtSeibanOn = { count: 0 };
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: {
-          allowResourceOnly: true,
-          pageSize: 80,
-          ...(withQ ? { q: 'AA1S7M11' } : {})
-        },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        seibanOrFilters: withSeiban ? ['AA1S7M11'] : [],
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -925,27 +905,69 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(latest?.listIncomplete).toBe(false);
     });
 
+    primaryContinueCallsAtSeibanOn.count = postContinue.mock.calls.length;
+
     act(() => {
-      withQ = false;
-      phase = 'placeholderStale';
+      withSeiban = false;
     });
     utils.rerender(tree());
 
     await waitFor(() => {
-      expect(latest?.scheduleQuery.isLoading).toBe(true);
-      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
-    });
-
-    act(() => {
-      phase = 'full';
-    });
-    utils.rerender(tree());
-
-    await waitFor(() => {
-      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r2-a']);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['only-filtered', 'filt-2', 'r2-a']);
       expect(latest?.scheduleQuery.isLoading).toBe(false);
     });
 
-    expect(postContinue).toHaveBeenCalledTimes(1);
+    expect(postContinue.mock.calls.length).toBe(primaryContinueCallsAtSeibanOn.count);
   });
+
+  it('reconcile 不一致時はサーバ board の id 列を採用する', async () => {
+    const fullShell = boardPayload({
+      total: 3,
+      rows: [row('r1-a', 'R1', 'AA1S7M11'), row('r1-b', 'R1', 'OTHER1111'), row('r2-a', 'R2', 'OTHER2222')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+    const serverFiltered = boardPayload({
+      total: 1,
+      rows: [row('server-only', 'R1', 'AA1S7M11')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+
+    installBoardHookMock(() => ({
+      data: fullShell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    }));
+    getLeaderboardBoardMock.mockResolvedValue(serverFiltered);
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        seibanOrFilters: ['AA1S7M11'],
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['server-only']);
+    });
+  });
+
 });
