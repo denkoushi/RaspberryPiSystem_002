@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, act } from '@testing-library/react';
 import { AxiosError } from 'axios';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -80,6 +80,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -144,6 +145,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -223,6 +225,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -264,6 +267,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: true,
       isSuccess: false,
+      isPlaceholderData: false,
       dataUpdatedAt: 0
     });
 
@@ -318,6 +322,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -370,6 +375,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -429,6 +435,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: boardDataUpdatedAt
     }));
 
@@ -494,6 +501,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: boardDataUpdatedAt
     }));
 
@@ -527,6 +535,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: true,
       isSuccess: true,
+      isPlaceholderData: true,
       dataUpdatedAt: boardDataUpdatedAt
     }));
     utils.rerender(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
@@ -560,6 +569,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -585,5 +595,109 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(latest?.appendError).toBeInstanceOf(Error);
       expect(latest?.appendError?.message).toBe('Request failed');
     });
+  });
+
+  it('params 変更後の placeholder（旧 q の shell）は表示せず、本物の shell で全件に戻る', async () => {
+    const filteredShell = boardPayload({
+      total: 1,
+      rows: [row('only-filtered', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    const fullShell = boardPayload({
+      total: 3,
+      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+
+    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
+
+    boardHookMock.mockImplementation(() => {
+      if (phase === 'full') {
+        return {
+          data: fullShell,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          isSuccess: true,
+          isPlaceholderData: false,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      if (phase === 'placeholderStale') {
+        return {
+          data: filteredShell,
+          isLoading: false,
+          isError: false,
+          isFetching: true,
+          isSuccess: true,
+          isPlaceholderData: true,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      return {
+        data: filteredShell,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: Date.now()
+      };
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+    let withQ = true;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          ...(withQ ? { q: 'AA1S7M11' } : {})
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['only-filtered']);
+    });
+
+    act(() => {
+      withQ = false;
+      phase = 'placeholderStale';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.isLoading).toBe(true);
+      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
+    });
+
+    act(() => {
+      phase = 'full';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r2-a']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    expect(postContinue).not.toHaveBeenCalled();
   });
 });

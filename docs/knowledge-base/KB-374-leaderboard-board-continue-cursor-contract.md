@@ -56,6 +56,15 @@ category: knowledge-base
   - [`mergeLeaderboardBoardContinueResponse.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardContinueResponse.ts) … `canMergeLeaderboardContinueDelta` で **マージ可否を明示**し、失敗時は **`rows` 正本**。
 - **検証**: Web Vitest（追補完了後 refetch でも行数維持）·統合テスト `leaderboard-board continue profile logs`（出力同値）。
 
+## 製番 OR フィルタ解除と placeholder shell（2026-05-19）
+
+- **症状**: 順位ボード左ペインの登録製番を **OFF（OR 検索解除）** しても、一覧行数が **絞り込みのまま**戻らない（再描画されていないように見える）。仕様は [KB-297 §製番チップ・複数選択](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)（`activeQueries` 空 → `q` なしで全件）。
+- **調査（Pi5 実機）**: `GET leaderboard-board` は **`q` 解除後に行数が増える**（API は正常）。**CONFIRMED**: Web が React Query の **`placeholderData`** により **旧 `paramsKey`（`q` 付き）の shell** を、**新 `paramsKey` 取得中も表示**に使っていた。旧 `useLeaderboardPhasedScheduleWithAutoAppend` は `!isPlaceholderData` でガードしていたが、集約 hook では未適用。
+- **Fix（Web・契約不変）**:
+  - [`leaderboardBoardShellFreshnessPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts) … **`lastCommittedParamsKey` と現 `paramsKey` が不一致のときだけ** placeholder shell を表示から除外（**同一 params の refetch placeholder は維持** — 上節の巻き戻し防止と両立）。
+  - [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) … `resolvedShell`・append 開始ガード・解除直後の短い `isLoading`。
+- **Prevention**: `isPlaceholderData` 単体では不足。**検索条件変更（`paramsKey`）** と **最後に確定した params** を併用する。Vitest: `leaderboardBoardShellFreshnessPolicy.test.ts`・`useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx`（params 変更後 placeholder）。
+
 ## 第1弾 pageSize 80（continue 回数削減・2026-05-19）
 
 - **背景**: 表示安定化（上節）後も **全行揃うまでの体感**が遅い。`deltaRows` は **差分のみ取得ではなく**、クライアント最適化用の任意フィールド（**正本は累積 `rows`**）。遅延の主因は **`pageSize` 小さめ + continue 直列**による **HTTP 往復回数**（Mac ベンチ: 2資源×140行で pageSize 20→80 で完了時間約75%短縮・整合性 OK）。
