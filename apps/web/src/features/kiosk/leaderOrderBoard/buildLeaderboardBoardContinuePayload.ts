@@ -1,4 +1,4 @@
-import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from './constants';
+import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from './constants';
 
 import type {
   KioskProductionScheduleLeaderboardBoardContinuePayload,
@@ -38,6 +38,6 @@ export function buildLeaderboardBoardContinuePayload(
         hasMore: r.hasMore
       };
     }),
-    pageSize: board.pageSize ?? LEADER_ORDER_BOARD_SHELL_PAGE_SIZE
+    pageSize: LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE
   };
 }

@@ -10,7 +10,7 @@ import type {
 const base: KioskProductionScheduleLeaderboardBoardQueryParams = {
   boardResourceCds: 'R1',
   allowResourceOnly: true,
-  pageSize: 80
+  pageSize: 10
 };
 
 describe('buildLeaderboardBoardContinuePayload', () => {
@@ -31,6 +31,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
       ]
     };
     const payload = buildLeaderboardBoardContinuePayload(base, board);
+    expect(payload.pageSize).toBe(40);
     expect(payload.resourceSlices[0]!.cursor).toBe(0);
     expect(payload.resourceSlices[0]!.hasMore).toBe(true);
   });

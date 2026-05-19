@@ -11,7 +11,7 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
-import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
+import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
@@ -129,7 +129,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     void _omitResourceCds;
     return {
       ...rest,
-      pageSize: LEADER_ORDER_BOARD_SHELL_PAGE_SIZE,
+      pageSize: LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE,
       allowResourceOnly: true,
       ...(macManualOrderV2 && activeDeviceScopeKey.trim().length > 0
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
