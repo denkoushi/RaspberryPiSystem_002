@@ -2,7 +2,7 @@
 title: KB-374 leaderboard-board/continue の cursor 契約と HTTP 400（Zod）
 tags: [kiosk, production-schedule, leader-order-board, leaderboard-board, api, web]
 audience: [開発者, 運用者]
-last-verified: 2026-05-19
+last-verified: 2026-05-20
 category: knowledge-base
 ---
 
@@ -549,39 +549,95 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 
 **目的**: 登録製番 OR 切替で **`paramsKey`（無 `q` 完走 board）を固定**し、**IDB 上の全件キャッシュ**をそのままクライアントで絞込表示する。裏で **同じ製番の `q` 付き GET + continue** で照合し、**不一致は常にサーバ正**（Phase 1/2 reconcile と同型）。**Web のみ**·**API 不変**·**ツールバー等の他 `q` は従来どおり API**。
 
-**ブランチ（実装）**: **`feat/kiosk-leaderboard-seiban-or-client-cache-filter`**（**コミット・デプロイはユーザー指示まで保留**）。
+**ブランチ**: **`feat/kiosk-leaderboard-seiban-or-client-cache-filter`**·代表 **`a65c4600`**（`feat(kiosk): add leaderboard seiban OR client cache filter`）·build fix **`84751160`**（`fix(kiosk): make leaderboard seiban filter build-safe`）。**前提**: [端末キャッシュ Phase 2](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)（SWR + IDB persist）が各端末に入っていること。
 
 ### データフロー
 
 1. **Primary**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) が `leaderboardPhasedBase` から **`q` を除外**し、[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) に **`seibanOrFilters`** を渡す。
 2. **GET**: `boardQueryParams` は **無 `q`**（`clientFilterEnabled` 時）。**`paramsKey` は製番 ON/OFF で変わらない** → continue 完走済み IDB を再利用。
 3. **表示**: 完走前でも **手元行に製番完全一致フィルタ**（[`canDisplayLeaderboardSeibanClientFilter`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSeibanClientFilterPolicy.ts)）。**reconcile** は **完走後のみ**（[`canApplyLeaderboardSeibanClientFilter`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSeibanClientFilterPolicy.ts)）。
-4. **照合**: [`useLeaderboardSeibanOrClientFilterOverlay`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardSeibanOrClientFilterOverlay.ts) が `getKioskProductionScheduleLeaderboardBoard`（`q` 付き）+ 必要なら continue → [`reconcileLeaderboardBoardCacheWithServer`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheReconcilePolicy.ts)。
+4. **照合**: [`useLeaderboardSeibanOrClientFilterOverlay`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardSeibanOrClientFilterOverlay.ts) が `getKioskProductionScheduleLeaderboardBoard`（`q` 付き）+ 必要なら [`leaderboardBoardAppendSessionRunner`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendSessionRunner.ts) で continue → [`reconcileLeaderboardBoardCacheWithServer`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheReconcilePolicy.ts)。
 5. **装飾**: IDB の `paramsKey` とは別に **`decorationParamsKey`** へ製番指紋を連結（装飾リセットのみ）。
+6. **Hook 順序**: overlay は **primary の append `useEffect` の後**に配置（前に挟むと append が毎レンダー再開し continue が 1 回で止まる）。
 
 ### ガード・ロールバック
 
 | 条件 | 挙動 |
 | --- | --- |
-| `VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER=false` | 従来どおり **`q` を API `boardQueryParams` に載せる**（legacy） |
+| `VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER=false`（[`leaderboardBoardCacheConstants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheConstants.ts)・省略時 **true**） | 従来どおり **`q` を API `boardQueryParams` に載せる**（legacy） |
 | 製番トグル | **進行中 primary continue をキャンセル**（`appendRunIdRef` 増分）·**遅延 continue 応答は無視** |
 | 製番 OFF + 完走キャッシュ | **即全件表示**（フィルタ解除のみ·**primary continue 増やさない**） |
 | reconcile 不一致 | **`serverVerifiedBoard` で表示上書き**（サーバ正） |
+| 基底 board の行 ID 集合が変わった | **`serverVerifiedBoard` をクリア**（stale reconcile 防止·overlay 内 `baseBoardRowIdsKey` effect） |
 
-### 実装メモ（Vitest）
+### 実装・レビューで入れた修正
 
-- **落とし穴**: `boardQueryParams` の `useMemo` 依存に **`seibanOrFilters` 配列リテラル**を入れると、テスト Harness の毎レンダーで **append effect が再実行**され continue が 1 回で止まる → **`seibanOrFiltersKey`（JSON）に置換**。
-- **検証**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard` → **186 PASS**（2026-05-20 記録）。
+| 項目 | 内容 |
+| --- | --- |
+| **`boardQueryParams` 依存** | **`seibanOrFiltersKey`**（`JSON.stringify`）のみ。生配列を `useMemo` deps に戻すと **append 毎レンダー再実行** → continue 1 回で停止・製番 ON でも全件に見える |
+| **`stableSeibanOrFilters`** | `JSON.parse(seibanOrFiltersKey)` で reconcile 用配列を安定化（lint と append 回帰の両立） |
+| **overlay 配置** | `useCompositeLeaderboardPhasedScheduleWithAutoAppend` 内で **append effect の後** |
+| **`canDisplay` vs `canApply`** | continue 途中は reconcile 不可だが **手元行の OR 絞込表示は可**（`canDisplayLeaderboardSeibanClientFilter`） |
+| **CI `tsc -b`** | [`filterLeaderboardBoardBySeibanOr.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/filterLeaderboardBoardBySeibanOr.ts) の `readRowFseiban`: `(row as unknown as { fseiban?: unknown }).fseiban`（`ProductionScheduleRow` に `fseiban` 型が無いため） |
+
+### 検証（ローカル）
+
+```bash
+pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard
+# 186 tests PASS（2026-05-20）
+
+pnpm --filter @raspi-system/web build
+# CI 初回失敗後 84751160 で PASS
+```
+
+- **CI（機能）**: run **`26130113027`** **success**（初回 **`26129746916`** は **`tsc -b`** で `filterLeaderboardBoardBySeibanOr` の cast 失敗 → **`84751160`** で解消）。
+- **reconcile テスト**: `getLeaderboardBoardMock` のデフォルト空 board だと **serverWins で空表示** → テストごとに **aligned mock** を設定すること。
+
+### 本番デプロイ（2026-05-20 · 部分反映）
+
+**方針**: Phase 2 と同型で **Pi5 先行 → Pi4 キオスク順次**（**1 台ずつ `--limit`**）。**Web のみ**·API 不変·**新規マイグレーションなし**。
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-seiban-or-client-cache-filter infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+
+| ホスト | 現場名 | Detach Run ID | PLAY RECAP | 備考 |
+| --- | --- | --- | --- | --- |
+| `raspberrypi5` | サーバ（Web+API） | **`20260520-080628-31043`** | `ok=134` `changed=4` `failed=0` | **`verify-phase12-real.sh` 43/0/0**（Pi5 デプロイ後） |
+| `raspi4-kensaku-stonebase01` | Kensaku StoneBase01 | **`20260520-081732-25804`** | `ok=129` `changed=11` `failed=0` | `kiosk-browser` / `status-agent` 再起動 |
+| `raspberrypi4` | 第2工場 kensakuMain | — | **未デプロイ** | |
+| `raspi4-robodrill01` | RoboDrill01 | — | **未デプロイ** | |
+| `raspi4-fjv60-80` | FJV60/80 | — | **未デプロイ** | |
+
+**Pi3**: **`no hosts matched`**（サイネージは対象外·専用手順未実施で正）。
+
+### 実機チェックリスト（順位ボード）
+
+1. **製番 ON（1 件）**: 即絞込表示 → 裏 `q` 付き GET+continue 後も **サーバ結果と一致**（不一致時はサーバ正で上書き）。
+2. **製番 OR 追加**: 登録製番を増やしたとき **OR 拡大**（`paramsKey` は無 `q` のまま）。
+3. **製番 OFF**: **完走 IDB があれば即全件**（primary continue を増やさない）。
+4. **continue 途中で製番 ON**: 手元行の OR 絞込は効く（`canDisplay`）。reconcile は **primary 完走後**。
+5. **ツールバー等の他 `q`**: 従来どおり API 経由（本機能のスコープ外）。
+
+### Troubleshooting
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| 製番 ON でも **全件のまま** / continue **1 回で止まる** | `boardQueryParams` deps に **`seibanOrFilters` 生配列**·overlay が **append effect より前** | **`seibanOrFiltersKey` のみ**·overlay を **append 後**に戻す（本ブランチ正本） |
+| reconcile 後に **一瞬古い絞込** | 基底 board 更新後も **`serverVerifiedBoard` 残留** | **`baseBoardRowIdsKey` でクリア**（`84751160` 以降） |
+| continue 途中で **フィルタが効かない** | `canApply` のみ見ている | **`canDisplay`** で手元行絞込は可·reconcile は完走後 |
+| Vitest reconcile が **空表示** | mock が空 board のまま | テスト内で **server と aligned な board** を設定 |
+| CI **`tsc -b` 失敗**（`fseiban`） | 行型に `fseiban` 無し | **`84751160`** の unknown cast パターン |
+| 機能を止めたい | ビルドフラグ | **`VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER=false`** + 再デプロイ |
 
 ### モジュール
 
 | ファイル | 責務 |
 | --- | --- |
 | [`leaderboardBoardFetchParams.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts) | base / reconcile / legacy params |
-| [`filterLeaderboardBoardBySeibanOr.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/filterLeaderboardBoardBySeibanOr.ts) | 完走 board の OR 完全一致絞込 |
+| [`filterLeaderboardBoardBySeibanOr.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/filterLeaderboardBoardBySeibanOr.ts) | 完走 board の OR 完全一致絞込（`fseiban` 読取） |
 | [`leaderboardBoardSeibanClientFilterPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSeibanClientFilterPolicy.ts) | 表示可否 / reconcile 可否 |
 | [`leaderboardBoardAppendSessionRunner.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendSessionRunner.ts) | reconcile 用 continue ループ |
 | [`useLeaderboardSeibanOrClientFilterOverlay.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardSeibanOrClientFilterOverlay.ts) | 表示合成 + reconcile effect |
+| [`cache/__tests__/*.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/__tests__/) | params・filter・policy・overlay の単体テスト |
 
 ## References
 
@@ -591,4 +647,5 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 - **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../guides/deployment.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
 - **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
 - **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
-- 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 本番**·残り Pi4×3 **未デプロイ**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../guides/deployment.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。

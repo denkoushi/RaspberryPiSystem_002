@@ -396,6 +396,33 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
   - **他端末の変更が 120s 超遅い** → SLA 仕様（自端末書き込みは即 patch）。
 - **ナレッジ**: [ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表 **`c581c1e1`** / fix **`2300da83`**。
 
+### 補足（2026-05-20 · **キオスク順位ボード・製番 OR クライアントキャッシュフィルタ**·**Web のみ**·**Pi5 + Pi4 1 台本番反映**） {#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20}
+
+- **変更概要（正本 [KB-374 §製番 OR クライアントキャッシュフィルタ](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#製番-or-クライアントキャッシュフィルタ2026-05-20)）**:
+  - **Web のみ**: 登録製番 OR 切替で **`paramsKey`（無 `q` 完走 board）を固定**し、**IDB 全件をクライアント絞込**（即表示）。裏で **同製番の `q` 付き GET + continue** で照合し、**不一致はサーバ正**。
+  - **製番 OFF**: 完走 IDB があれば **即全件**（primary continue を増やさない）。
+  - **前提**: [端末キャッシュ Phase 2](#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)（SWR + IDB）が各端末に入っていること。
+  - **触らない**: API 契約·一覧 id/total/並び·ツールバー等の他 `q`（従来 API）。**新規マイグレーションなし**。
+- **対象ホスト（実績・部分）**: **`raspberrypi5`** → **`raspi4-kensaku-stonebase01`**（各 **`--limit` で 1 台ずつ**）。**未反映**: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80`。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-seiban-or-client-cache-filter infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **本番デプロイ（Detach Run ID・`ansible-update-` 接頭辞）**:
+
+| ホスト | Detach Run ID | PLAY RECAP |
+| --- | --- | --- |
+| `raspberrypi5` | **`20260520-080628-31043`** | `ok=134` `changed=4` `failed=0` |
+| `raspi4-kensaku-stonebase01` | **`20260520-081732-25804`** | `ok=129` `changed=11` `failed=0` |
+
+- **CI（機能）**: run **`26130113027`** **success**（初回 **`26129746916`** は `tsc -b` 失敗 → fix **`84751160`**）。
+- **実機（自動）**: Pi5 デプロイ後 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
+- **ローカル回帰**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard` → **186 tests PASS**。
+- **ロールバック**: `VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER=false` / 直前 ref へ **`update-all-clients.sh`** 再実行。
+- **推奨残デプロイ**: **`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`**（Phase 2 と同じ 5 台順·1 台ずつ）。
+- **トラブルシュート**:
+  - **製番 ON でも全件** / continue **1 回で止まる** → [KB-374 §Troubleshooting](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#troubleshooting)（`seibanOrFiltersKey`・overlay 順序）。
+  - **Pi4 で効かない** → **当該ホスト未デプロイ**（上表の未反映 3 台）。
+  - **reconcile 後に古い絞込** → **`serverVerifiedBoard` クリア**未反映の旧 bundle → **`84751160` 以降**を再デプロイ。
+- **ナレッジ**: [KB-374 §製番 OR](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#製番-or-クライアントキャッシュフィルタ2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表 **`a65c4600`** / fix **`84751160`**。
+
 ### 補足（2026-05-08 · **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767）対策**·**API のみ**·**Pi5 のみ**） {#csv-dedup-ingest-postgres-bind-limit-2026-05-08}
 
 - **変更概要**: `ingestMode === DEDUP` の取込で、既存行照合 **`csvDashboardRow.findMany({ dataHash: { in: incomingHashes } })`** が **単一クエリ**だったため、**`incomingHashes` が数万件**になると **Prisma / PostgreSQL の prepared statement バインド上限（典型 32767）**を超え、**`too many bind variables … received 32768`** で失敗し得た。**対策**: [`findCsvDashboardRowsByDataHashes`](../../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts) で **ハッシュ重複除去＋チャンク分割 `findMany`**・[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) から呼び出し。**新規マイグレーションなし**。
