@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
@@ -11,6 +11,7 @@ import {
 import { fetchMaxProductNoWinnerRowIdsForDashboard } from '../../services/production-schedule/row-resolver/max-product-no-winner-materialization.js';
 import { buildMaxProductNoWinnerCondition } from '../../services/production-schedule/row-resolver/max-product-no-sql.js';
 import { computeLeaderboardShellFillerBudget } from '../../services/production-schedule/leaderboard/leaderboard-shell-filler-budget.js';
+import * as productionScheduleQueryService from '../../services/production-schedule/production-schedule-query.service.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
@@ -1238,6 +1239,161 @@ describe('Kiosk Production Schedule API', () => {
     const monoBody = monolithic.json() as { rows: Array<{ id: string }>; total: number };
     expect(monoBody.rows.map((r) => r.id)).toEqual(board.rows.map((r) => r.id));
     expect(monoBody.total).toBe(board.total);
+  });
+
+  it('leaderboard-board continue skips COUNT when shell snapshot totals are seeded', async () => {
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 100 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 1, 1, 0, 0, index)),
+        dataHash: `board-count-skip-${index}`,
+        rowData: {
+          ProductNo: `CS${String(index).padStart(4, '0')}`,
+          FSEIBAN: `CS-S${String(index).padStart(7, '0')}`,
+          FHINCD: `CS-P${String(index).padStart(4, '0')}`,
+          FHINMEI: `CS Part ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+    const countSpy = vi.spyOn(
+      productionScheduleQueryService,
+      'countProductionScheduleDashboardVisibleRowsFromListFilters'
+    );
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=80&allowResourceOnly=true&includeDecorations=false',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+    expect(shell.statusCode).toBe(200);
+    const shellBody = shell.json() as {
+      rows: Array<{ id: string }>;
+      resources: Array<{
+        resourceCd: string;
+        snapshotId?: string;
+        nextCursor?: number;
+        hasMore: boolean;
+      }>;
+    };
+    const countCallsAfterShell = countSpy.mock.calls.length;
+    expect(countCallsAfterShell).toBeGreaterThanOrEqual(1);
+
+    if (!shellBody.resources.some((r) => r.hasMore)) {
+      countSpy.mockRestore();
+      return;
+    }
+
+    const cont = await app.inject({
+      method: 'POST',
+      url: '/api/kiosk/production-schedule/leaderboard-board/continue',
+      headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+      payload: {
+        boardResourceCds: '1',
+        allowResourceOnly: true,
+        includeDecorations: false,
+        pageSize: 40,
+        resourceSlices: shellBody.resources.map((r) => ({
+          resourceCd: r.resourceCd,
+          snapshotId: r.snapshotId,
+          cursor: r.nextCursor,
+          hasMore: r.hasMore
+        }))
+      }
+    });
+    expect(cont.statusCode).toBe(200);
+    expect(countSpy.mock.calls.length).toBe(countCallsAfterShell);
+    countSpy.mockRestore();
+  });
+
+  it('leaderboard-board slot scale profile: 2 vs 6 resources', async () => {
+    const rowsPerSlot = 100;
+    const shellPageSize = 80;
+    const continuePageSize = 40;
+
+    for (const slotCount of [2, 6] as const) {
+      const resourceCds = Array.from({ length: slotCount }, (_, i) => String(i + 1));
+      await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+      await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+      await prisma.productionScheduleResourceMaster.createMany({
+        data: resourceCds.map((resourceCd) => ({
+          resourceCd,
+          resourceName: `Resource ${resourceCd}`,
+          resourceClassCd: 'M02',
+          resourceGroupCd: 'G1'
+        })),
+        skipDuplicates: true
+      });
+
+      const seedRows = resourceCds.flatMap((resourceCd, slotIdx) =>
+        Array.from({ length: rowsPerSlot }, (_, index) => ({
+          csvDashboardId: DASHBOARD_ID,
+          occurredAt: new Date(Date.UTC(2026, 2, slotIdx + 1, 0, 0, index)),
+          dataHash: `scale-${resourceCd}-${index}`,
+          rowData: {
+            ProductNo: `P${resourceCd}${String(index).padStart(4, '0')}`,
+            FSEIBAN: `S${resourceCd}-${String(index).padStart(5, '0')}`,
+            FHINCD: `H${resourceCd}-${String(index).padStart(4, '0')}`,
+            FHINMEI: `Part ${resourceCd}-${index}`,
+            FSIGENCD: resourceCd,
+            FKOJUN: '10',
+            progress: ''
+          }
+        }))
+      );
+      await prisma.csvDashboardRow.createMany({ data: seedRows });
+      await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+      const boardCds = resourceCds.join(',');
+      let continueRounds = 0;
+
+      const shellRes = await app.inject({
+        method: 'GET',
+        url: `/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=${boardCds}&pageSize=${shellPageSize}&allowResourceOnly=true&includeDecorations=false`,
+        headers: { 'x-client-key': CLIENT_KEY }
+      });
+      expect(shellRes.statusCode).toBe(200);
+      let board = shellRes.json() as {
+        rows: Array<{ id: string }>;
+        total: number;
+        resources: Array<{
+          resourceCd: string;
+          snapshotId?: string;
+          nextCursor?: number;
+          hasMore: boolean;
+        }>;
+      };
+
+      while (board.resources.some((r) => r.hasMore) && continueRounds < 25) {
+        continueRounds += 1;
+        const contRes = await app.inject({
+          method: 'POST',
+          url: '/api/kiosk/production-schedule/leaderboard-board/continue',
+          headers: { 'x-client-key': CLIENT_KEY, 'content-type': 'application/json' },
+          payload: {
+            boardResourceCds: boardCds,
+            allowResourceOnly: true,
+            includeDecorations: false,
+            pageSize: continuePageSize,
+            resourceSlices: board.resources.map((r) => ({
+              resourceCd: r.resourceCd,
+              snapshotId: r.snapshotId,
+              cursor: r.nextCursor,
+              hasMore: r.hasMore
+            }))
+          }
+        });
+        expect(contRes.statusCode).toBe(200);
+        board = contRes.json() as typeof board;
+      }
+
+      expect(board.resources.some((r) => r.hasMore)).toBe(false);
+      expect(board.rows.length).toBe(slotCount * rowsPerSlot);
+    }
   });
 
   it('leaderboard shell filler budget caps incremental filler batches for takeCount 20', () => {

@@ -204,6 +204,33 @@ category: knowledge-base
 - リスト仮想化
 - **prefix 装飾のラウンド間キャッシュ**（continue ごとの hydrate/enrich 削減）
 
+## continue 時 COUNT 再利用（第1弾 · API のみ · 出力不変）
+
+**目的**: `POST …/leaderboard-board/continue` の各ラウンドで、スロット数ぶんの `countProductionScheduleDashboardVisibleRowsFromListFilters` を再実行しない。追補セッション中はフィルタ不変のため、shell 時点の **スロット別 `total`** を正本として再利用する。
+
+**ブランチ（実装）**: **`perf/leaderboard-board-continue-reuse-totals`**（**コミット/本番反映は別タスク**）。
+
+### 仕様（実装の正本）
+
+| 層 | 内容 | モジュール |
+| --- | --- | --- |
+| shell | `resources[].total` 確定後、`snapshotId` ごとに total を seed | [`leaderboard-composite-board-snapshot-totals.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-snapshot-totals.ts)·[`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts) |
+| continue | seed 済み `snapshotId` なら COUNT 省略；ミス時は従来 COUNT（安全側） | [`resolve-leaderboard-board-resource-totals-for-continue.ts`](../../apps/api/src/services/production-schedule/leaderboard/resolve-leaderboard-board-resource-totals-for-continue.ts) |
+| TTL | `LEADERBOARD_SHELL_SNAPSHOT_TTL_MS`（prefix row cache と同じ） | 上記 snapshot-totals |
+| 触らない | Web・`pageSize`・装飾後取り・`deltaRows` | — |
+
+**契約不変**: 完了後の `rows[].id` 列・`total`・`resources[].total` は従来どおり（統合テスト `leaderboard-board continue profile logs` が正本）。
+
+### ローカル検証（Mac）
+
+- 単体: `leaderboard-composite-board-snapshot-totals.test.ts`・`resolve-leaderboard-board-resource-totals-for-continue.test.ts`
+- 統合: `kiosk-production-schedule.integration.test.ts -t "leaderboard-board"`（**continue skips COUNT**・**continue profile logs**・**slot scale profile**）
+- 統合 `continue skips COUNT`: shell 後の continue で `countProductionScheduleDashboardVisibleRowsFromListFilters` の呼び出し回数が増えないこと
+
+### 本番ゲート（未実施 · 次フェーズ）
+
+- Pi5 キオスク実機で順位ボードを開き、全スロット行が揃うまでの体感と Network（continue 応答時間）を確認（[KB-374 §装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial) と同型の 5 台展開は本件マージ後）
+
 ## 装飾後取り + 初回80/continue40 + append スコープ（2026-05-19 · `feat/kiosk-leaderboard-deferred-decorations-fast-initial`）
 
 **目的**: 初回は **行の骨格のみ**を先に描画し、機種名・顧客名・資源CDチップは **`leaderboard-decorations` POST** で後取りする。全 continue 完了後の **id / total / 装飾 / `leaderboardFooterChipsByPartKey`** は eager（`includeDecorations` 省略＝**true**）経路と同値。**製番 OR フィルタ・リロード・追補**は同一 [`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) 経路。
