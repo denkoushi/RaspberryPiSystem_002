@@ -13,11 +13,16 @@ vi.mock('../../../../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../api/client')>();
   return {
     ...actual,
-    postKioskProductionScheduleLeaderboardBoardContinue: vi.fn()
+    postKioskProductionScheduleLeaderboardBoardContinue: vi.fn(),
+    postKioskProductionScheduleLeaderboardDecorations: vi.fn().mockResolvedValue({
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: {}
+    })
   };
 });
 
 const postContinue = vi.mocked(client.postKioskProductionScheduleLeaderboardBoardContinue);
+const postDecorations = vi.mocked(client.postKioskProductionScheduleLeaderboardDecorations);
 
 const boardHookMock = vi.fn();
 
@@ -56,6 +61,49 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
     boardHookMock.mockReset();
     postContinue.mockReset();
+    postDecorations.mockClear();
+    postDecorations.mockResolvedValue({
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: {}
+    });
+  });
+
+  it('board 取得は includeDecorations=false で行い、行があれば装飾 API を呼ぶ', async () => {
+    const shell = boardPayload({
+      total: 1,
+      rows: [row('d1', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    boardHookMock.mockReturnValue({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      dataUpdatedAt: Date.now()
+    });
+
+    function Harness() {
+      useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(boardHookMock).toHaveBeenCalled();
+      const params = boardHookMock.mock.calls[0]![0] as { includeDecorations?: boolean };
+      expect(params.includeDecorations).toBe(false);
+      expect(postDecorations).toHaveBeenCalled();
+    });
   });
 
   it('集約 API の rows をスロット順のまま返し、未到達カードがあれば listIncomplete を立て、continue で完了できる', async () => {

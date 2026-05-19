@@ -1175,7 +1175,7 @@ describe('Kiosk Production Schedule API', () => {
 
     const shell = await app.inject({
       method: 'GET',
-      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1,2&pageSize=10&allowResourceOnly=true',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1,2&pageSize=80&allowResourceOnly=true&includeDecorations=false',
       headers: { 'x-client-key': CLIENT_KEY }
     });
     expect(shell.statusCode).toBe(200);
@@ -1190,9 +1190,11 @@ describe('Kiosk Production Schedule API', () => {
       }>;
       pageSize: number;
       deltaRows?: Array<{ id: string }>;
+      leaderboardFooterChipsByPartKey?: Record<string, unknown>;
     };
     expect(board.deltaRows).toBeUndefined();
-    expect(board.rows).toHaveLength(20);
+    expect(board.leaderboardFooterChipsByPartKey).toBeUndefined();
+    expect(board.rows).toHaveLength(160);
     expect(board.resources.some((r) => r.hasMore)).toBe(true);
 
     let prevRowLen = board.rows.length;
@@ -1206,6 +1208,7 @@ describe('Kiosk Production Schedule API', () => {
         payload: {
           boardResourceCds: '1,2',
           allowResourceOnly: true,
+          includeDecorations: false,
           resourceSlices: board.resources.map((r) => ({
             resourceCd: r.resourceCd,
             snapshotId: r.snapshotId,

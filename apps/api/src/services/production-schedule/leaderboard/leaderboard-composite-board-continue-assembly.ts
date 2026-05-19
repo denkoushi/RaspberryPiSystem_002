@@ -5,6 +5,10 @@
 import { Prisma } from '@prisma/client';
 
 import type { LeaderboardShellPhasedReadResult } from '../production-schedule-query.service.js';
+import {
+  putLeaderboardBoardPrefixRowsInCache,
+  resolveLeaderboardBoardPrefixRowsFromCache
+} from './leaderboard-composite-board-prefix-row-cache.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
 import type { LeaderboardShellSnapshotRecord, LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
@@ -92,16 +96,47 @@ export async function assembleContinueMergedRowsForResource(params: {
       leaderboardMaterializedBaseWhere
     });
 
+  const hydrateOrderedWithPrefixCache = async (ids: readonly string[]): Promise<LightShellRow[]> => {
+    if (ids.length === 0) return [];
+    const snapshotId = slice.snapshotId?.trim() ?? '';
+    if (snapshotId.length > 0) {
+      const { cachedRows, missingIds } = resolveLeaderboardBoardPrefixRowsFromCache(snapshotId, ids);
+      if (missingIds.length === 0) {
+        return cachedRows;
+      }
+      const hydratedMissing = await hydrateOrdered(missingIds);
+      const byId = new Map<string, LightShellRow>();
+      for (const row of cachedRows) {
+        byId.set(row.id, row);
+      }
+      for (const row of hydratedMissing) {
+        byId.set(row.id, row);
+      }
+      const ordered = ids.map((id) => byId.get(id)).filter((r): r is LightShellRow => r != null);
+      if (ordered.length === ids.length) {
+        putLeaderboardBoardPrefixRowsInCache(snapshotId, ordered);
+        return ordered;
+      }
+    }
+    return hydrateOrdered(ids);
+  };
+
   const snap = slice.snapshotId?.trim() ? deps.snapshotStore.get(slice.snapshotId.trim()) : undefined;
   const snapIds = snap?.orderedRowIds ?? [];
 
   if (!slice.hasMore) {
-    const merged = await hydrateOrdered(snapIds);
+    const merged = await hydrateOrderedWithPrefixCache(snapIds);
+    if (slice.snapshotId?.trim()) {
+      putLeaderboardBoardPrefixRowsInCache(slice.snapshotId.trim(), merged);
+    }
     return { merged, incrementalRows: [] };
   }
 
   if (!cont) {
-    const merged = await hydrateOrdered(snapIds);
+    const merged = await hydrateOrderedWithPrefixCache(snapIds);
+    if (slice.snapshotId?.trim()) {
+      putLeaderboardBoardPrefixRowsInCache(slice.snapshotId.trim(), merged);
+    }
     return { merged, incrementalRows: undefined };
   }
 
@@ -114,7 +149,10 @@ export async function assembleContinueMergedRowsForResource(params: {
   const chunkRows = cont.rows ?? [];
 
   if (chunkRows.length === 0) {
-    const merged = await hydrateOrdered(targetIds);
+    const merged = await hydrateOrderedWithPrefixCache(targetIds);
+    if (slice.snapshotId?.trim()) {
+      putLeaderboardBoardPrefixRowsInCache(slice.snapshotId.trim(), merged);
+    }
     const incrementalRows = boundNext === cursorStart ? [] : undefined;
     return { merged, incrementalRows };
   }
@@ -125,12 +163,15 @@ export async function assembleContinueMergedRowsForResource(params: {
     chunkTargetIds.every((id, i) => id === chunkRows[i]!.id);
 
   if (!idsAligned) {
-    const merged = await hydrateOrdered(targetIds);
+    const merged = await hydrateOrderedWithPrefixCache(targetIds);
+    if (slice.snapshotId?.trim()) {
+      putLeaderboardBoardPrefixRowsInCache(slice.snapshotId.trim(), merged);
+    }
     return { merged, incrementalRows: undefined };
   }
 
   const prefixIds = snapIds.slice(0, cursorStart);
-  const prefixHydrated = prefixIds.length > 0 ? await hydrateOrdered(prefixIds) : [];
+  const prefixHydrated = prefixIds.length > 0 ? await hydrateOrderedWithPrefixCache(prefixIds) : [];
   const chunkLight = chunkRows.map(
     (r) =>
       ({
@@ -143,8 +184,15 @@ export async function assembleContinueMergedRowsForResource(params: {
 
   const mergedIds = merged.map((r) => r.id);
   if (mergedIds.length !== targetIds.length || mergedIds.some((id, i) => id !== targetIds[i])) {
-    const mergedHydrated = await hydrateOrdered(targetIds);
+    const mergedHydrated = await hydrateOrderedWithPrefixCache(targetIds);
+    if (slice.snapshotId?.trim()) {
+      putLeaderboardBoardPrefixRowsInCache(slice.snapshotId.trim(), mergedHydrated);
+    }
     return { merged: mergedHydrated, incrementalRows: undefined };
+  }
+
+  if (slice.snapshotId?.trim()) {
+    putLeaderboardBoardPrefixRowsInCache(slice.snapshotId.trim(), merged);
   }
 
   return { merged, incrementalRows: chunkLight };

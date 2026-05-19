@@ -209,7 +209,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         },
         boardResourceCds,
         page,
-        pageSize
+        pageSize,
+        includeDecorations: query.includeDecorations
       },
       { snapshotStore: deps.leaderboardShellSnapshotStore }
     );
@@ -258,7 +259,8 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
         },
         boardResourceCds,
         resourceSlices: body.resourceSlices,
-        chunkSize
+        chunkSize,
+        includeDecorations: body.includeDecorations
       },
       { snapshotStore: deps.leaderboardShellSnapshotStore }
     );

@@ -23,6 +23,7 @@ export function buildLeaderboardBoardContinuePayload(
   void _ps;
   return {
     ...rest,
+    includeDecorations: false,
     resourceSlices: board.resources.map((r) => {
       const hasSnap = Boolean(r.snapshotId?.trim());
       let cursor: number | undefined;

@@ -32,6 +32,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
     };
     const payload = buildLeaderboardBoardContinuePayload(base, board);
     expect(payload.pageSize).toBe(40);
+    expect(payload.includeDecorations).toBe(false);
     expect(payload.resourceSlices[0]!.cursor).toBe(0);
     expect(payload.resourceSlices[0]!.hasMore).toBe(true);
   });

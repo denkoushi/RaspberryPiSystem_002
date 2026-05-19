@@ -186,9 +186,36 @@ category: knowledge-base
 - リスト仮想化
 - **prefix 装飾のラウンド間キャッシュ**（continue ごとの hydrate/enrich 削減）
 
+## 装飾後取り + 初回80/continue40（2026-05-19 · `feat/kiosk-leaderboard-deferred-decorations-fast-initial`）
+
+**目的**: 初回は **行の骨格のみ**を先に描画し、機種名・顧客名・資源CDチップは **`leaderboard-decorations` POST** で後取りする。全 continue 完了後の **id / total / 装飾 / `leaderboardFooterChipsByPartKey`** は eager（`includeDecorations` 省略＝**true**）経路と同値。
+
+### 仕様（実装の正本）
+
+| 層 | 内容 | モジュール |
+| --- | --- | --- |
+| API 契約 | `includeDecorations`（GET query / continue body、**省略時 true**） | [`shared.ts`](../../apps/api/src/routes/kiosk/production-schedule/shared.ts) |
+| API `false` | shell/continue は **light rows のみ**（board 内装飾スキップ） | [`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts) |
+| API continue prefix | **snapshotId** 単位の light 行キャッシュで prefix 再 hydrate 削減 | [`leaderboard-composite-board-prefix-row-cache.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts) |
+| Web 初回 GET | `pageSize=80`・`includeDecorations=false` | [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)·[`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) |
+| Web continue | `pageSize=40` 固定・`includeDecorations=false` | [`buildLeaderboardBoardContinuePayload.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderboardBoardContinuePayload.ts) |
+| Web 装飾 | **未装飾 rowId のみ**増分 POST → 累積マージ | [`useLeaderboardDeferredBoardDecorations.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardDeferredBoardDecorations.ts)·[`mergeLeaderboardBoardWithDecorations.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardWithDecorations.ts) |
+
+**UX 契約**: チップ未到着時は **行だけ先表示**（レイアウト伸び許容）。`isLoading` は **light rows が無い間のみ**。
+
+### 本番デプロイ
+
+**未実施**（ローカル実装・テストのみ。コミット前）。
+
+### ローカル回帰（実装時）
+
+- API 統合: `kiosk-production-schedule.integration.test.ts` — `leaderboard-board continue profile logs`（初回 **80**・continue **40**・`includeDecorations=false`・完了後 id/total 一致）
+- Web: `mergeLeaderboardBoardWithDecorations`·composite hook·`buildLeaderboardBoardContinuePayload` の Vitest
+
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
 - **本件（2026-05-19 · pageSize 80 系）**: **`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**（ブランチ **`feat/leaderboard-continue-delta-safe`**）·**`main`**: [PR #297](https://github.com/denkoushi/RaspberryPiSystem_002/pull/297) **squash** **`fae56edd`**。
 - **初回10/追補40（2026-05-19）**: **`1e214213`**（ブランチ **`feat/leaderboard-board-initial-10-continue-40`**）·Pi5 Detach **`20260519-125903-25635`**·**`main`**: [PR #298](https://github.com/denkoushi/RaspberryPiSystem_002/pull/298) **squash** **`5c2bceec`**·[§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)。
+- **装飾後取り（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**（**未マージ・未デプロイ**）·[§装飾後取り](#装飾後取り--初回80continue402026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。

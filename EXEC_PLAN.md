@@ -2252,6 +2252,12 @@
 
 ## Next Steps（将来のタスク）
 
+### キオスク順位ボード — 装飾後取り + 初回80/continue40（2026-05-19）
+
+**ブランチ（実装済・未コミット）**: **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`** — board `includeDecorations=false` + Web `leaderboard-decorations` 増分後取り + continue prefix row cache。仕様: [KB-374 §装飾後取り](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り--初回80continue402026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)。
+
+**残タスク**: ローカル統合テスト・Vitest 緑確認 → PR → Pi5 実機（初回行表示まで / 全件揃い）→ 問題なければ Pi4×4 順次デプロイ。
+
 ### キオスク順位ボード — 初回10/追補40 の体感遅延の切り分け（2026-05-19）
 
 **概要**: Pi5 に **`1e214213`** を反映済みだが **pageSize 80 本番より遅い**。**Pi4 展開は中止**（[KB-374 §初回10/追補40](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)）。

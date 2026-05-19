@@ -25,6 +25,8 @@ import {
   normalizeLeaderboardContinueFailure
 } from './leaderboardContinueErrorPolicy';
 import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
+import { mergeLeaderboardBoardWithDecorations } from './mergeLeaderboardBoardWithDecorations';
+import { useLeaderboardDeferredBoardDecorations } from './useLeaderboardDeferredBoardDecorations';
 
 /** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
 const SCHEDULE_QUERY_DISABLED = {
@@ -34,9 +36,17 @@ const SCHEDULE_QUERY_DISABLED = {
   isFetching: false
 };
 
+function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  return queryClient.invalidateQueries({
+    predicate: (q) =>
+      Array.isArray(q.queryKey) &&
+      q.queryKey[0] === 'kiosk-production-schedule' &&
+      q.queryKey[1] === 'leaderboard-decorations'
+  });
+}
+
 /**
- * 多資源カードの順位ボード取得（集約 API 1 本＋サーバ側 shell 相当をスロット順に連結）。
- * 取得済み行の装飾は API 応答に同梱される（取得完了を待たずに段階的に表示）。
+ * 多資源カードの順位ボード取得（集約 API 1 本＋装飾は `leaderboard-decorations` 後取り）。
  */
 export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   /** `resourceCds` / `boardResourceCds` を含めない（集約 params で上書きする） */
@@ -87,7 +97,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
     return {
       ...baseParams,
-      boardResourceCds: orderedResourceCds.join(',')
+      boardResourceCds: orderedResourceCds.join(','),
+      includeDecorations: false
     };
   }, [leaderboardPhasedBaseParamsKey, orderedResourceCds, resourceCdsOrderedKey, scheduleEnabled]);
 
@@ -130,6 +141,16 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   );
 
   const displayBoard = pickLeaderboardBoardForDisplay(boardQuery.data, appendOverride);
+
+  const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
+    useLeaderboardDeferredBoardDecorations({
+      scheduleEnabled,
+      paramsKey,
+      displayBoard,
+      macManualOrderV2,
+      activeDeviceScopeKey,
+      pauseRefetch
+    });
 
   const listIncomplete = useMemo(() => {
     if (!displayBoard) return false;
@@ -174,7 +195,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             lastStartedShellFingerprintRef.current = null;
             setAppendOverride(null);
             appendOverrideRef.current = null;
-            await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+            resetDecorations();
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
+              invalidateLeaderboardDecorationsQueries(queryClient)
+            ]);
             break;
           }
           const next =
@@ -215,6 +240,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     boardQueryParams,
     paramsKey,
     queryClient,
+    resetDecorations,
     scheduleEnabled,
     shellFingerprint,
     orderedResourceCds
@@ -234,28 +260,24 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       };
     }
 
-    const data: ProductionScheduleListResponse = {
-      page: displayBoard.page,
-      pageSize: displayBoard.pageSize,
-      total: displayBoard.total,
-      rows: displayBoard.rows,
-      ...(displayBoard.leaderboardFooterChipsByPartKey
-        ? { leaderboardFooterChipsByPartKey: displayBoard.leaderboardFooterChipsByPartKey }
-        : {})
-    };
+    const data = mergeLeaderboardBoardWithDecorations(displayBoard, accumulatedDecorations);
+    const decorationFailed = decorationsError != null;
 
     return {
       data,
       isLoading: isLeaderboardScheduleInitialLoading(boardQuery.isLoading, displayBoard.rows.length),
-      isError: boardQuery.isError,
-      isFetching: boardQuery.isFetching || isAppending
+      isError: boardQuery.isError || decorationFailed,
+      isFetching: boardQuery.isFetching || isAppending || isDecorationsFetching
     };
   }, [
+    accumulatedDecorations,
     boardQuery.isError,
     boardQuery.isFetching,
     boardQuery.isLoading,
+    decorationsError,
     displayBoard,
     isAppending,
+    isDecorationsFetching,
     resourceCdsOrdered.length,
     scheduleEnabled
   ]);

@@ -5,7 +5,7 @@ export const LEADER_ORDER_BOARD_ORDER_NUMBER_MAX = 10;
 export const LEADER_ORDER_BOARD_PAGE_SIZE = 320;
 
 /** 順位ボード board 初回 GET の `pageSize`（スロットあたり）。API 上限 160。 */
-export const LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE = 10;
+export const LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE = 80;
 
 /** 順位ボード `leaderboard-board/continue` の 1 回あたり chunk（`body.pageSize`）。 */
 export const LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE = 40;
