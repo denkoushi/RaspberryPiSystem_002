@@ -12,4 +12,9 @@ describe('buildLeaderboardBoardCacheKey', () => {
   it('空 siteKey は paramsKey のみ', () => {
     expect(buildLeaderboardBoardCacheKey('', '{"q":"x"}')).toBe('{"q":"x"}');
   });
+
+  it('schedule 未就绪（paramsKey undefined）でも落ちず空キーを返す', () => {
+    expect(buildLeaderboardBoardCacheKey('site-a', undefined)).toBe('site-a');
+    expect(buildLeaderboardBoardCacheKey(undefined, undefined)).toBe('');
+  });
 });

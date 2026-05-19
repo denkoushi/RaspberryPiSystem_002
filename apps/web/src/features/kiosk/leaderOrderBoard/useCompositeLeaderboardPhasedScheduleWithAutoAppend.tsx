@@ -116,7 +116,10 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     };
   }, [leaderboardPhasedBaseParamsKey, orderedResourceCds, resourceCdsOrderedKey, scheduleEnabled]);
 
-  const paramsKey = useMemo(() => JSON.stringify(boardQueryParams), [boardQueryParams]);
+  const paramsKey = useMemo(
+    () => (boardQueryParams != null ? JSON.stringify(boardQueryParams) : ''),
+    [boardQueryParams]
+  );
 
   const [appendOverride, setAppendOverride] = useState<ProductionScheduleLeaderboardBoardResponse | null>(null);
   const [appendError, setAppendError] = useState<Error | null>(null);
