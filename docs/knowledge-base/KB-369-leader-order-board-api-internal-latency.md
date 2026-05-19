@@ -10,7 +10,7 @@ category: knowledge-base
 
 ## Context
 
-本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**`leaderboard-board/continue` の `cursor` 契約と HTTP 400** は [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) に分離記録する。
+本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**`leaderboard-board/continue` の `cursor` 契約と HTTP 400** は [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) に分離記録する。**2026-05-18 追補**: **`continue` 応答の任意 `deltaRows`（dual payload）** と Web 側の **ID 整合検証つきマージ**の要点も [KB-374 · Dual payload](./KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18) に収束させる。
 
 - **運用・合意上の制約（イニシアチブ共通）**: **表示内容を削って速く見せる**ことは禁止。**データ意味・並びの定義・装飾の契約**は従来と同値。改善は **HTTP 形状・クエリ評価・クライアントの取得パターン**に限定する。
 - **対象（一覧 monolithic）**: `GET /api/kiosk/production-schedule`（`responseProfile=leaderboard`）
@@ -213,7 +213,8 @@ category: knowledge-base
 - **目的**: KPI を **「初回に一覧が見え始めるまでの時間」** に固定し、件数確定より **行の先出し**を優先。
 - **Web**: [`useLeaderboardPhasedScheduleWithAutoAppend.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) は **`hasFreshTotal` を append 開始条件から外し**、shell 応答があれば total 未確定でも continue を開始する。
 - **件数表示**: total 未確定中は **`mergedRows.length` を暫定 total** として扱い、取得後に確定値へ置換する。**total 単独失敗では shell rows を全体エラー扱いしない**。
-- **初回件数**: Web の [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20** に変更。API の許容上限 **160** は維持しつつ、**1資源CDカード20件**で初回負荷を抑える。
+- **初回件数（2026-05-08 時点）**: Web の [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20** に変更。API の許容上限 **160** は維持しつつ、**1資源CDカード20件**で初回負荷を抑える。
+- **第1弾 pageSize 80（2026-05-19）**: 上記定数を **80** に引き上げ（**表示内容・並び・件数定義は不変**）。continue 回数削減が目的。詳細は [KB-374 · 第1弾 pageSize 80](./KB-374-leaderboard-board-continue-cursor-contract.md#第1弾-pagesize-80continue-回数削減2026-05-19)。
 
 実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)・[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)（`listLeaderboardShellProductionScheduleRows` 等）。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の phased ケース。
 
@@ -225,6 +226,12 @@ category: knowledge-base
 - **装飾**: `decorateLeaderboardShellRowsForKioskFromHydratedRows` への `preferredDisplayRowIds` は **`normalizeLeaderboardDisplayRowIdScope` を 1 回**だけ適用した配列を渡す（二重正規化の回避のみ・返却内容は不変）。
 - **Web**: 集約フック [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) で、`scheduleEnabled=false` 時の `scheduleQuery` に **同一オブジェクト参照**を返し下流の派生再計算を抑制（表示データは不変）。
 - **検証**: 統合テスト [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の `leaderboard-board continue profile logs: multi-resource append reaches hasMore=false` で、**continue ループ完了後の `rows[].id` 列および `total` が、単一 `GET …/leaderboard-board`（同一 `boardResourceCds`・十分な `pageSize`）と一致**することを assert。
+
+## Production deploy & verification（2026-05-19 · deltaRows + 表示安定化 + pageSize 80）
+
+- **ブランチ**: **`feat/leaderboard-continue-delta-safe`**（**`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**）。
+- **要点**: board `continue` の **累積 `rows` 正本は不変**。任意 **`deltaRows`** はクライアント最適化のみ。体感改善の主因は **refetch 巻き戻し防止（Web）** と **`pageSize` 80 による continue 回数削減（Web）**。
+- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../guides/deployment.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
 
 ## Production deploy & verification（2026-05-18 · output-stable internal optimization）
 

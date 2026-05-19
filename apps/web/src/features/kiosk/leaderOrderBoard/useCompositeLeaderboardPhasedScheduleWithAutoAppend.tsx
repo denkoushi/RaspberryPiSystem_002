@@ -12,9 +12,19 @@ import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
 import {
+  resolveLeaderboardAppendLoopStartBoard,
+  shouldBeginLeaderboardAppendSession
+} from './leaderboardBoardAppendSessionPolicy';
+import {
+  fingerprintLeaderboardBoardShell,
+  isLeaderboardScheduleInitialLoading,
+  pickLeaderboardBoardForDisplay
+} from './leaderboardBoardDisplayPolicy';
+import {
   classifyLeaderboardContinueFailure,
   normalizeLeaderboardContinueFailure
 } from './leaderboardContinueErrorPolicy';
+import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
 
 /** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
 const SCHEDULE_QUERY_DISABLED = {
@@ -67,16 +77,19 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     [leaderboardPhasedBaseParams]
   );
   const resourceCdsOrderedKey = useMemo(() => resourceCdsOrdered.join('\0'), [resourceCdsOrdered]);
+  const orderedResourceCds = useMemo(
+    () => (resourceCdsOrderedKey.length > 0 ? resourceCdsOrderedKey.split('\0') : []),
+    [resourceCdsOrderedKey]
+  );
 
   const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
     if (!scheduleEnabled || resourceCdsOrderedKey.length === 0) return undefined;
     const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
-    const orderedResourceCds = resourceCdsOrderedKey.split('\0');
     return {
       ...baseParams,
       boardResourceCds: orderedResourceCds.join(',')
     };
-  }, [leaderboardPhasedBaseParamsKey, resourceCdsOrderedKey, scheduleEnabled]);
+  }, [leaderboardPhasedBaseParamsKey, orderedResourceCds, resourceCdsOrderedKey, scheduleEnabled]);
 
   const paramsKey = useMemo(() => JSON.stringify(boardQueryParams), [boardQueryParams]);
 
@@ -84,11 +97,23 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const [appendError, setAppendError] = useState<Error | null>(null);
   const [isAppending, setIsAppending] = useState(false);
   const appendRunIdRef = useRef(0);
-  /** 同一 shell 応答（dataUpdatedAt）に対する追補セッションを一度だけ開始する */
-  const appendSessionForShellAtRef = useRef<number | null>(null);
+  const appendCompleteForParamsKeyRef = useRef<string | null>(null);
+  const appendCompleteShellFingerprintRef = useRef<string | null>(null);
+  const lastStartedShellFingerprintRef = useRef<string | null>(null);
+  const lastRetryNonceStartedRef = useRef(0);
+  const [appendRetryGeneration, setAppendRetryGeneration] = useState(0);
+  const appendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
 
   useEffect(() => {
-    appendSessionForShellAtRef.current = null;
+    appendOverrideRef.current = appendOverride;
+  }, [appendOverride]);
+
+  useEffect(() => {
+    appendCompleteForParamsKeyRef.current = null;
+    appendCompleteShellFingerprintRef.current = null;
+    lastStartedShellFingerprintRef.current = null;
+    lastRetryNonceStartedRef.current = 0;
+    setAppendRetryGeneration(0);
     setAppendOverride(null);
     setAppendError(null);
   }, [paramsKey]);
@@ -99,7 +124,12 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     refetchIntervalMs
   });
 
-  const displayBoard = appendOverride ?? boardQuery.data;
+  const shellFingerprint = useMemo(
+    () => fingerprintLeaderboardBoardShell(boardQuery.data),
+    [boardQuery.data]
+  );
+
+  const displayBoard = pickLeaderboardBoardForDisplay(boardQuery.data, appendOverride);
 
   const listIncomplete = useMemo(() => {
     if (!displayBoard) return false;
@@ -108,37 +138,64 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
   useEffect(() => {
     if (!scheduleEnabled || !boardQuery.isSuccess || !boardQuery.data || !boardQueryParams) return;
-    if (!boardQuery.data.resources.some((r) => r.hasMore)) return;
 
-    const shellAt = boardQuery.dataUpdatedAt;
-    if (appendSessionForShellAtRef.current === shellAt) return;
-    appendSessionForShellAtRef.current = shellAt;
+    const shell = boardQuery.data;
+    const shouldBegin = shouldBeginLeaderboardAppendSession({
+      paramsKey,
+      appendCompleteForParamsKey: appendCompleteForParamsKeyRef.current,
+      appendCompleteShellFingerprint: appendCompleteShellFingerprintRef.current,
+      shellFingerprint,
+      lastStartedShellFingerprint: lastStartedShellFingerprintRef.current,
+      shell,
+      appendOverride: appendOverrideRef.current,
+      retryNonce: appendRetryGeneration,
+      lastRetryNonceStarted: lastRetryNonceStartedRef.current
+    });
+
+    if (!shouldBegin) return;
+
+    lastStartedShellFingerprintRef.current = shellFingerprint;
+    lastRetryNonceStartedRef.current = appendRetryGeneration;
 
     const runId = ++appendRunIdRef.current;
     let cancelled = false;
 
     void (async () => {
       try {
-        let cur: ProductionScheduleLeaderboardBoardResponse = boardQuery.data!;
+        let cur = resolveLeaderboardAppendLoopStartBoard(shell, appendOverrideRef.current);
         while (!cancelled && runId === appendRunIdRef.current && cur.resources.some((r) => r.hasMore)) {
           setIsAppending(true);
           setAppendError(null);
           const payload = buildLeaderboardBoardContinuePayload(boardQueryParams, cur);
-          const next = await postKioskProductionScheduleLeaderboardBoardContinue(
-            payload
-          );
-          if (next.snapshotExpired) {
+          const nextRaw = await postKioskProductionScheduleLeaderboardBoardContinue(payload);
+          if (nextRaw.snapshotExpired) {
+            appendCompleteForParamsKeyRef.current = null;
+            appendCompleteShellFingerprintRef.current = null;
+            lastStartedShellFingerprintRef.current = null;
+            setAppendOverride(null);
+            appendOverrideRef.current = null;
             await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
             break;
           }
+          const next =
+            orderedResourceCds.length > 0
+              ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds)
+              : nextRaw;
           setAppendOverride(next);
+          appendOverrideRef.current = next;
           cur = next;
+        }
+        if (!cancelled && runId === appendRunIdRef.current && !cur.resources.some((r) => r.hasMore)) {
+          appendCompleteForParamsKeyRef.current = paramsKey;
+          appendCompleteShellFingerprintRef.current = shellFingerprint;
         }
       } catch (e) {
         if (!cancelled && runId === appendRunIdRef.current) {
           const normalized = normalizeLeaderboardContinueFailure(e);
           if (classifyLeaderboardContinueFailure(normalized) === 'terminal') {
             setAppendError(normalized);
+          } else {
+            setAppendRetryGeneration((n) => n + 1);
           }
         }
       } finally {
@@ -149,13 +206,18 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     return () => {
       cancelled = true;
     };
+    // boardQuery.data は意図的に除外: refetch 更新で continue を再開すると表示が巻き戻る。
+    // shellFingerprint で shell 変化のみ再評価する。
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch-stable append session
   }, [
-    boardQuery.data,
-    boardQuery.dataUpdatedAt,
+    appendRetryGeneration,
     boardQuery.isSuccess,
     boardQueryParams,
+    paramsKey,
     queryClient,
-    scheduleEnabled
+    scheduleEnabled,
+    shellFingerprint,
+    orderedResourceCds
   ]);
 
   const scheduleQuery = useMemo(() => {
@@ -184,7 +246,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     return {
       data,
-      isLoading: boardQuery.isLoading && displayBoard.rows.length === 0,
+      isLoading: isLeaderboardScheduleInitialLoading(boardQuery.isLoading, displayBoard.rows.length),
       isError: boardQuery.isError,
       isFetching: boardQuery.isFetching || isAppending
     };

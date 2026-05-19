@@ -1189,7 +1189,9 @@ describe('Kiosk Production Schedule API', () => {
         hasMore: boolean;
       }>;
       pageSize: number;
+      deltaRows?: Array<{ id: string }>;
     };
+    expect(board.deltaRows).toBeUndefined();
     expect(board.rows).toHaveLength(40);
     expect(board.resources.some((r) => r.hasMore)).toBe(true);
 
@@ -1216,6 +1218,7 @@ describe('Kiosk Production Schedule API', () => {
       expect(cont.statusCode).toBe(200);
       board = cont.json() as typeof board;
       expect(board.snapshotExpired).not.toBe(true);
+      expect(Array.isArray(board.deltaRows)).toBe(true);
       expect(board.rows.length).toBeGreaterThanOrEqual(prevRowLen);
       prevRowLen = board.rows.length;
     }

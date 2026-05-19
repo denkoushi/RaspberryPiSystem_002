@@ -811,6 +811,8 @@ export type LeaderboardBoardResourceSliceResponse = {
 
 export type ProductionScheduleLeaderboardBoardResponse = ProductionScheduleListResponse & {
   snapshotExpired?: boolean;
+  /** 続きチャンクのみ（スロット順連結）。古いサーバまたは安全フォールバック時は未定義 */
+  deltaRows?: ProductionScheduleRow[];
   resources: LeaderboardBoardResourceSliceResponse[];
 };
 

@@ -17,7 +17,8 @@ import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row
 import { resolveFiniteLeaderboardBoardNextCursor } from './leaderboard-board-resource-cursor.js';
 import {
   assembleContinueMergedRowsForResource,
-  deriveStateFromSnapshot
+  deriveStateFromSnapshot,
+  type ContinueAssembledResourceSlice
 } from './leaderboard-composite-board-continue-assembly.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
@@ -37,6 +38,11 @@ export type LeaderboardBoardReadResult = {
   pageSize: number;
   total: number;
   rows: LightShellRow[];
+  /**
+   * 集約 `leaderboard-board/continue` のみ。軽量差分チャンク（スロット順に連結）。
+   * 付与しない場合は古いクライアントのみを想定するか、このラウンドは累積 `rows` が正本。
+   */
+  deltaRows?: LightShellRow[];
   resources: LeaderboardBoardResourceState[];
   snapshotExpired?: boolean;
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
@@ -210,11 +216,11 @@ export async function continueLeaderboardCompositeBoard(
   /** 資源ごとの assemble が同一値を参照（リクエストあたり 1 回の winner materialization） */
   const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
 
-  const perResourceRows: LightShellRow[][] = [];
+  const perResourceAssembled: ContinueAssembledResourceSlice[] = [];
   for (let i = 0; i < params.boardResourceCds.length; i += 1) {
     const slice = params.resourceSlices[i]!;
     const cont = contOutputs[i];
-    const mergedForResource = await assembleContinueMergedRowsForResource({
+    const assembled = await assembleContinueMergedRowsForResource({
       slice,
       cont,
       deps,
@@ -222,10 +228,14 @@ export async function continueLeaderboardCompositeBoard(
       siteKey: params.listParamsBase.siteKey,
       leaderboardMaterializedBaseWhere
     });
-    perResourceRows.push(mergedForResource);
+    perResourceAssembled.push(assembled);
   }
 
-  const mergedRows = perResourceRows.flat();
+  const mergedRows = perResourceAssembled.flatMap((a) => a.merged);
+  const canAttachDelta = perResourceAssembled.every((a) => a.incrementalRows !== undefined);
+  const deltaShellRowsFlattened = canAttachDelta
+    ? perResourceAssembled.flatMap((a) => a.incrementalRows!)
+    : [];
   const preferredDisplayRowIds = normalizeLeaderboardDisplayRowIdScope(mergedRows.map((r) => r.id));
 
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => {
@@ -280,6 +290,11 @@ export async function continueLeaderboardCompositeBoard(
       : r;
   });
 
+  const decoRowById = new Map(rowsWithDeco.map((r) => [r.id, r]));
+  const deltaRowsWithDeco: LightShellRow[] | undefined = canAttachDelta
+    ? deltaShellRowsFlattened.map((shell) => decoRowById.get(shell.id) ?? shell)
+    : undefined;
+
   const totalSum = totals.reduce((a, b) => a + b, 0);
 
   return {
@@ -287,6 +302,7 @@ export async function continueLeaderboardCompositeBoard(
     pageSize: chunkSize,
     total: totalSum,
     rows: rowsWithDeco,
+    ...(deltaRowsWithDeco !== undefined ? { deltaRows: deltaRowsWithDeco } : {}),
     resources,
     leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>
   };
