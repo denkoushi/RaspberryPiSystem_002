@@ -227,6 +227,13 @@ category: knowledge-base
 - **Web**: 集約フック [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) で、`scheduleEnabled=false` 時の `scheduleQuery` に **同一オブジェクト参照**を返し下流の派生再計算を抑制（表示データは不変）。
 - **検証**: 統合テスト [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の `leaderboard-board continue profile logs: multi-resource append reaches hasMore=false` で、**continue ループ完了後の `rows[].id` 列および `total` が、単一 `GET …/leaderboard-board`（同一 `boardResourceCds`・十分な `pageSize`）と一致**することを assert。
 
+## Production deploy & verification（2026-05-19 · continue 時 COUNT 再利用 · 第1弾）
+
+- **ブランチ**: **`perf/leaderboard-board-continue-reuse-totals`**（**`438adb0c`**·Caddy **`ec938f31`**·**PR [#300](https://github.com/denkoushi/RaspberryPiSystem_002/pull/300)**）。
+- **要点**: `leaderboard-board/continue` の **スロット数ぶん COUNT** を、shell 確定時の **`snapshotId` → total** キャッシュで **ヒット時省略**（ミス時は従来 COUNT·同値）。**Web 変更なし**。
+- **本番**: **`raspberrypi5` のみ**·Detach **`20260519-192007-12328`**·**Phase12 43/0/0**·**現場 OK**。
+- **正本**: [KB-374 §continue COUNT 再利用](./KB-374-leaderboard-board-continue-cursor-contract.md#continue-時-count-再利用第1弾--api-のみ--出力不変)·[deployment §COUNT 再利用](../guides/deployment.md#kiosk-leaderboard-continue-count-reuse-2026-05-19)。
+
 ## Production deploy & verification（2026-05-19 · deltaRows + 表示安定化 + pageSize 80）
 
 - **ブランチ**: **`feat/leaderboard-continue-delta-safe`**（**`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**）。
@@ -249,7 +256,8 @@ category: knowledge-base
 
 - [ADR-20260508 · board 集約 API（意思決定・代替案・ロールアウト）](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)
 - 計画メモ（ローカル）: 「仕様不変の順位ボード高速化計画」（`leaderboard-spec-preserving-speedup`）
-- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**·**2026-05-07 · append（continue）項**·**2026-05-07 · snapshot（サーバ内 TTL・`snapshotId`）項**·**2026-05-07 · 資源CDカード単位 phased 項**·**2026-05-08 · board 集約 API 項**）
+- [deployment.md](../guides/deployment.md)（2026-05-06 · winner materialization 項·leaderboard COUNT 並列化項·段階取得項·**2026-05-07 · total materialized 整合・索引・Web stale 項**·**2026-05-07 · append（continue）項**·**2026-05-07 · snapshot（サーバ内 TTL・`snapshotId`）項**·**2026-05-07 · 資源CDカード単位 phased 項**·**2026-05-08 · board 集約 API 項**·**2026-05-19 · continue COUNT 再利用（第1弾）項**）
+- [KB-374 · continue COUNT 再利用（第1弾）](./KB-374-leaderboard-board-continue-cursor-contract.md#continue-時-count-再利用第1弾--api-のみ--出力不変)
 - [ADR-20260507-leaderboard-shell-snapshot](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)
 - [KB-297 · COUNT 並列化（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-api-count-parallel-2026-05-06)
 - [KB-297 · 段階取得（2026-05-06）](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-phased-fetch-2026-05-06)

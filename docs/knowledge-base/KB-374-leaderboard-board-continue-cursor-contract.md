@@ -187,7 +187,7 @@ category: knowledge-base
 | 症状 | 切り分け | 対処 |
 | --- | --- | --- |
 | **pageSize 80 より遅い**（Pi5 に本ブランチ反映済） | Network で **初回 `pageSize=10`** と **continue 回数・各応答時間**を確認。サーバログで **continue あたりの装飾時間** | **Pi4 へは展開しない**（2026-05-19 決定）。ロールバックは Pi5 を **`main`（pageSize 80 系）**へ再デプロイ、または定数 **10/40 → 80/80** へ戻して再検証 |
-| 初回は速いが全件揃うまで遅い | **continue ラウンド数**・**prefix 装飾**を疑う | 第2弾: prefix 装飾キャッシュ・continue 並列化・COUNT 再利用（[KB-369](./KB-369-leader-order-board-api-internal-latency.md)） |
+| 初回は速いが全件揃うまで遅い | **continue ラウンド数**・**prefix 装飾**・**continue あたり COUNT** を疑う | **第1弾 COUNT 再利用**は [§continue COUNT 再利用](#continue-時-count-再利用第1弾--api-のみ--出力不変)（**Pi5 本番・現場 OK**）。残り: prefix 装飾キャッシュ・continue 並列化（[KB-369](./KB-369-leader-order-board-api-internal-latency.md)） |
 | 件数・装飾がおかしい | 統合テスト相当の **完了後 id/total** を単発 GET と照合 | `canAttachDelta` 失敗時は **累積全行装飾**フォールバック（出力不変） |
 | Pi4 が旧挙動のまま | **本ブランチ未デプロイ**（意図どおり） | Pi4 展開する場合は **5 台順次**（[deployment.md §初回10/追補40](../guides/deployment.md#kiosk-leaderboard-initial-10-continue-40-phase1-2026-05-19)）— **現時点では実施しない** |
 
@@ -203,6 +203,114 @@ category: knowledge-base
 - continue 中の進捗 UI
 - リスト仮想化
 - **prefix 装飾のラウンド間キャッシュ**（continue ごとの hydrate/enrich 削減）
+
+## continue 時 COUNT 再利用（第1弾 · API のみ · 出力不変）
+
+**目的**: `POST …/leaderboard-board/continue` の各ラウンドで、スロット数ぶんの `countProductionScheduleDashboardVisibleRowsFromListFilters` を再実行しない。追補セッション中はフィルタ不変のため、shell 時点の **スロット別 `total`** を正本として再利用する。
+
+**ブランチ**: **`perf/leaderboard-board-continue-reuse-totals`**。**代表コミット**: **`438adb0c`**（COUNT 再利用本体）· **`ec938f31`**（Pi5 Web イメージ **Caddy v2.11.3** — **CVE-2026-45135**）。**PR**: [#300](https://github.com/denkoushi/RaspberryPiSystem_002/pull/300)。**`main` マージ後**は **`origin/main` HEAD** を運用デプロイ引数の正本とする。
+
+### Context（調査・2026-05-19 以前）
+
+- **症状**: 装飾後取り（初回80 / continue40）導入後も、**全スロットの行が揃うまで**の壁時計が長い（成功基準は **B: 各スロット行がすべて揃うまで**）。
+- **切り分け（Mac + コード追跡）**: ボトルネックは **Web 再グループより API**。特に **`leaderboard-board/continue` 1 回あたりスロット数ぶんの COUNT**（例: 6 スロット × 100 行/スロットで continue 1 回の `countMsSum` 約 **177ms**、2 スロットで約 **21ms**）。
+- **事前合意（確定）**:
+  - 成功基準 **B**（全スロット行が揃うまで）
+  - 装飾は **後取り維持**（最終表示は同値）
+  - **pageSize 80** 維持（Web 変更なし）
+  - スコープ **API のみ**
+  - 本番ゲート **Pi5 キオスク実機**（Mac テスト後）
+
+### 仕様（実装の正本）
+
+| 層 | 内容 | モジュール |
+| --- | --- | --- |
+| shell | 各 `resources[]` の **`total` 確定後**、`snapshotId` キーで **プロセス内 TTL キャッシュ**に seed | [`leaderboard-composite-board-snapshot-totals.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-snapshot-totals.ts)·[`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts) |
+| continue | 各スロットの `snapshotId` でキャッシュヒット → **COUNT 省略**；**ミス**（TTL 切れ・未 seed・別プロセス）→ **従来どおり COUNT**（**出力同値・安全側**） | [`resolve-leaderboard-board-resource-totals-for-continue.ts`](../../apps/api/src/services/production-schedule/leaderboard/resolve-leaderboard-board-resource-totals-for-continue.ts) |
+| TTL | **`LEADERBOARD_SHELL_SNAPSHOT_TTL_MS`**（既定 **5 分**·最小 **30s**·[`leaderboard-composite-board-prefix-row-cache.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts) と同型） | snapshot-totals |
+| 触らない | Web・`pageSize`・装飾後取り・`deltaRows` 契約 | — |
+
+**データフロー（後続スレッド用）**:
+
+```mermaid
+sequenceDiagram
+  participant Client as Kiosk_Web
+  participant API as Pi5_API
+  participant Cache as snapshot_totals_Map
+  participant DB as Postgres
+
+  Client->>API: GET leaderboard-board (shell)
+  API->>DB: COUNT per slot + fetch rows
+  API->>Cache: seed(snapshotId, total) per resource
+  API-->>Client: resources[].snapshotId, total, rows chunk
+
+  loop until all slots hasMore=false
+    Client->>API: POST leaderboard-board/continue
+    API->>Cache: resolve(snapshotId)
+    alt cache hit
+      API-->>API: skip COUNT
+    else cache miss
+      API->>DB: COUNT (legacy)
+    end
+    API->>DB: fetch continue rows
+    API-->>Client: deltaRows/rows, resources[].total unchanged semantics
+  end
+```
+
+**契約不変**:
+
+- 全 continue 完了後の **`rows[].id` 列**・**`total`**・**`resources[].total`**・装飾後取り完了後の表示は、COUNT 再利用 **あり/なし**で同値（統合テスト **`leaderboard-board continue profile logs`** が正本）。
+- **`snapshotExpired`** 時は従来どおりクライアントが shell 再取得（キャッシュは **プロセスローカル**·[KB-369](./KB-369-leader-order-board-api-internal-latency.md) の snapshot 注意と同型）。
+
+### ローカル検証（Mac + Docker Postgres）
+
+```bash
+./scripts/test/start-postgres.sh
+export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return
+pnpm --filter @raspi-system/api exec prisma migrate deploy
+pnpm --filter @raspi-system/api test -- \
+  src/services/production-schedule/leaderboard/__tests__/leaderboard-composite-board-snapshot-totals.test.ts \
+  src/services/production-schedule/leaderboard/__tests__/resolve-leaderboard-board-resource-totals-for-continue.test.ts
+pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard-board"
+docker stop postgres-test-local && docker rm postgres-test-local
+```
+
+| テスト | 件数 | 確認内容 |
+| --- | --- | --- |
+| `leaderboard-composite-board-snapshot-totals.test.ts` | 4 | TTL·seed·resolve·gc |
+| `resolve-leaderboard-board-resource-totals-for-continue.test.ts` | 2 | ヒット時 COUNT 未呼び出し・ミス時フォールバック |
+| 統合 `continue skips COUNT` | 1 | shell 後 continue で `countProductionScheduleDashboardVisibleRowsFromListFilters` **呼び出し回数が増えない** |
+| 統合 `continue profile logs` / `slot scale profile` | 2 | 完了後 id/total 同値・プロファイル |
+
+### CI（機能ブランチ）
+
+- **PR [#300](https://github.com/denkoushi/RaspberryPiSystem_002/pull/300)**·ブランチ **`perf/leaderboard-board-continue-reuse-totals`**
+- 初回 CI: **`security-docker` 失敗** — Trivy が Caddy **CVE-2026-45135**（v2.11.2）を検出 → **`ec938f31`** で **`Dockerfile.web` を v2.11.3** に更新後 **全ジョブ success**（run **`26090279283`** 付近）。
+- **注**: ブランチ名 `perf/**` は **`ci.yml` の push トリガー対象外**のため、**PR 作成後**に CI が走る。
+
+### 本番反映（2026-05-19 · **`raspberrypi5` のみ**）
+
+- **対象**: **`raspberrypi5` のみ**（**API のみ**·キオスク Pi4 は **Pi5 API** を参照するため **Pi4 順次不要**）。**Pi3**: play **`no hosts matched`**（未適用で正）。
+- **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh perf/leaderboard-board-continue-reuse-totals infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **Detach Run ID**: **`20260519-192007-12328`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit 0`**·ローカル **`--follow` 約 1030s**·サマリ **`Git: changed`**·**Docker 再起動 `ok`**·**`prisma migrate deploy` OK**）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **81s**）。
+- **実機（現場）**: 順位ボード **動作 OK**（全スロット行の完走・表示同値）（**ユーザー確認 2026-05-19**）。
+
+### Troubleshooting（本件）
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| continue は速いが **total/行数が shell 直後とズレる** | Pi5 **`api`** が **`438adb0c` 以降（または `main` HEAD）**か。キャッシュ **ミス**で COUNT フォールバックしているか（ログ・統合テスト同型） | 旧イメージなら **再デプロイ**。データ更新直後は **`snapshotExpired`** で shell 再取得が正 |
+| **体感が変わらない**（Pi4 キオスク） | Pi4 **Web は未変更でも** API は Pi5 — **Pi5 のみ**デプロイで足りる。Network で **continue 応答時間**と **COUNT 相当の待ち** | Pi5 Detach **`Git: changed`** と **api コンテナ再作成**を確認 |
+| **`snapshotExpired` が多い** | API **複数プロセス**でキャッシュがプロセスローカル | [KB-369](./KB-369-leader-order-board-api-internal-latency.md) の snapshot 節·TTL·sticky なしは仕様 |
+| CI **`security-docker` のみ失敗**（Caddy HIGH） | Trivy **`CVE-2026-45135`** | **`Dockerfile.web` `caddy/v2 v2.11.3`**（**`ec938f31`**）または [ci-troubleshooting](../guides/ci-troubleshooting.md) |
+| デプロイ前にスクリプトが **未コミットで停止** | `update-all-clients.sh` preflight | **`git status` クリーン化**（stash/commit） |
+
+### 知見
+
+- **COUNT 再利用は「追補セッション内・同一フィルタ」前提**。フィルタ変更・`snapshotExpired` 後は shell が total を再確定し **再 seed** される。
+- **prefix row cache**（light 行）と **snapshot totals cache**（件数）は **別 Map** だが **TTL 解決ロジックは意図的に同型**（重複は許容·変更時は両方確認）。
+- **第2弾候補**（本件スコープ外）: prefix 装飾のラウンド間キャッシュ・continue 並列化·列ごと先出し API（[KB-369](./KB-369-leader-order-board-api-internal-latency.md)）。
 
 ## 装飾後取り + 初回80/continue40 + append スコープ（2026-05-19 · `feat/kiosk-leaderboard-deferred-decorations-fast-initial`）
 

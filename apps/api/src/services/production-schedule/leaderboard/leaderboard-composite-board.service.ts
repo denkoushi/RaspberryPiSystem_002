@@ -21,7 +21,9 @@ import {
   deriveStateFromSnapshot,
   type ContinueAssembledResourceSlice
 } from './leaderboard-composite-board-continue-assembly.js';
+import { seedLeaderboardBoardSnapshotResourceTotal } from './leaderboard-composite-board-snapshot-totals.js';
 import { seedLeaderboardBoardPrefixRowCache } from './leaderboard-composite-board-prefix-row-cache.js';
+import { resolveLeaderboardBoardResourceTotalsForContinue } from './resolve-leaderboard-board-resource-totals-for-continue.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
@@ -115,6 +117,9 @@ export async function fetchLeaderboardCompositeBoardShell(
     if (snapshotId && shells[i]!.rows.length > 0) {
       seedLeaderboardBoardPrefixRowCache(snapshotId, shells[i]!.rows);
     }
+    if (snapshotId) {
+      seedLeaderboardBoardSnapshotResourceTotal(snapshotId, totals[i] ?? 0);
+    }
   }
 
   const maxPageSize = shells.length > 0 ? Math.max(...shells.map((s) => s.pageSize)) : cappedPageSize;
@@ -165,23 +170,7 @@ export async function continueLeaderboardCompositeBoard(
   const chunkSize = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
 
   const [totals, contOutputs] = await Promise.all([
-    Promise.all(
-      params.boardResourceCds.map((resourceCd) =>
-        countProductionScheduleDashboardVisibleRowsFromListFilters({
-          queryText: params.listParamsBase.queryText,
-          productNos: params.listParamsBase.productNos,
-          machineName: params.listParamsBase.machineName,
-          resourceCds: [resourceCd],
-          assignedOnlyCds: params.listParamsBase.assignedOnlyCds,
-          resourceCategory: params.listParamsBase.resourceCategory,
-          hasNoteOnly: params.listParamsBase.hasNoteOnly,
-          hasDueDateOnly: params.listParamsBase.hasDueDateOnly,
-          allowResourceOnly: params.listParamsBase.allowResourceOnly,
-          locationKey: params.listParamsBase.locationKey,
-          siteKey: params.listParamsBase.siteKey
-        })
-      )
-    ),
+    resolveLeaderboardBoardResourceTotalsForContinue(params.listParamsBase, params.resourceSlices),
     Promise.all(
       params.boardResourceCds.map(async (_resourceCd, i) => {
         const slice = params.resourceSlices[i]!;
