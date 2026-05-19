@@ -21,6 +21,7 @@ import {
   deriveStateFromSnapshot,
   type ContinueAssembledResourceSlice
 } from './leaderboard-composite-board-continue-assembly.js';
+import { seedLeaderboardBoardPrefixRowCache } from './leaderboard-composite-board-prefix-row-cache.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
@@ -57,9 +58,11 @@ export async function fetchLeaderboardCompositeBoardShell(
     boardResourceCds: readonly string[];
     page: number;
     pageSize: number;
+    includeDecorations?: boolean;
   },
   deps: { snapshotStore: LeaderboardShellSnapshotStore }
 ): Promise<LeaderboardBoardReadResult> {
+  const includeDecorations = params.includeDecorations !== false;
   const cappedPageSize = Math.min(Math.max(1, Math.floor(params.pageSize)), 160);
 
   const [shells, totals] = await Promise.all([
@@ -107,13 +110,30 @@ export async function fetchLeaderboardCompositeBoardShell(
     pageSize: shells[i]?.pageSize ?? cappedPageSize
   }));
 
+  for (let i = 0; i < shells.length; i += 1) {
+    const snapshotId = shells[i]?.snapshotId?.trim();
+    if (snapshotId && shells[i]!.rows.length > 0) {
+      seedLeaderboardBoardPrefixRowCache(snapshotId, shells[i]!.rows);
+    }
+  }
+
+  const maxPageSize = shells.length > 0 ? Math.max(...shells.map((s) => s.pageSize)) : cappedPageSize;
+
+  if (!includeDecorations) {
+    return {
+      page: params.page,
+      pageSize: maxPageSize,
+      total: totalSum,
+      rows: mergedRows,
+      resources
+    };
+  }
+
   const { rowsWithDeco, leaderboardFooterChipsByPartKey } = await decorateLeaderboardCompositeBoardShell({
     mergedLightRows: mergedRows,
     locationKey: params.listParamsBase.locationKey,
     siteKey: params.listParamsBase.siteKey
   });
-
-  const maxPageSize = shells.length > 0 ? Math.max(...shells.map((s) => s.pageSize)) : cappedPageSize;
 
   return {
     page: params.page,
@@ -137,9 +157,11 @@ export async function continueLeaderboardCompositeBoard(
       hasMore: boolean;
     }>;
     chunkSize: number;
+    includeDecorations?: boolean;
   },
   deps: { snapshotStore: LeaderboardShellSnapshotStore }
 ): Promise<LeaderboardBoardReadResult> {
+  const includeDecorations = params.includeDecorations !== false;
   const chunkSize = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
 
   const [totals, contOutputs] = await Promise.all([
@@ -260,6 +282,19 @@ export async function continueLeaderboardCompositeBoard(
     };
   });
 
+  const totalSum = totals.reduce((a, b) => a + b, 0);
+
+  if (!includeDecorations) {
+    return {
+      page: 1,
+      pageSize: chunkSize,
+      total: totalSum,
+      rows: mergedRows,
+      ...(canAttachDelta ? { deltaRows: deltaShellRowsFlattened } : {}),
+      resources
+    };
+  }
+
   const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey } =
     await decorateLeaderboardCompositeBoardContinue({
       mergedLightRows: mergedRows,
@@ -269,8 +304,6 @@ export async function continueLeaderboardCompositeBoard(
       locationKey: params.listParamsBase.locationKey,
       siteKey: params.listParamsBase.siteKey
     });
-
-  const totalSum = totals.reduce((a, b) => a + b, 0);
 
   return {
     page: 1,

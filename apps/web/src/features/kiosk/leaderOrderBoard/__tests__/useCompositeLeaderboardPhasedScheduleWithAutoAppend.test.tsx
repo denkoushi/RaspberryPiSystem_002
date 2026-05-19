@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react';
+import { render, waitFor, act } from '@testing-library/react';
 import { AxiosError } from 'axios';
 import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,11 +13,16 @@ vi.mock('../../../../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../../api/client')>();
   return {
     ...actual,
-    postKioskProductionScheduleLeaderboardBoardContinue: vi.fn()
+    postKioskProductionScheduleLeaderboardBoardContinue: vi.fn(),
+    postKioskProductionScheduleLeaderboardDecorations: vi.fn().mockResolvedValue({
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: {}
+    })
   };
 });
 
 const postContinue = vi.mocked(client.postKioskProductionScheduleLeaderboardBoardContinue);
+const postDecorations = vi.mocked(client.postKioskProductionScheduleLeaderboardDecorations);
 
 const boardHookMock = vi.fn();
 
@@ -56,6 +61,50 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
     boardHookMock.mockReset();
     postContinue.mockReset();
+    postDecorations.mockClear();
+    postDecorations.mockResolvedValue({
+      rowDecorations: [],
+      leaderboardFooterChipsByPartKey: {}
+    });
+  });
+
+  it('board 取得は includeDecorations=false で行い、行があれば装飾 API を呼ぶ', async () => {
+    const shell = boardPayload({
+      total: 1,
+      rows: [row('d1', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    boardHookMock.mockReturnValue({
+      data: shell,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      isSuccess: true,
+      isPlaceholderData: false,
+      dataUpdatedAt: Date.now()
+    });
+
+    function Harness() {
+      useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        resourceCdsOrdered: ['R1'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    render(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
+
+    await waitFor(() => {
+      expect(boardHookMock).toHaveBeenCalled();
+      const params = boardHookMock.mock.calls[0]![0] as { includeDecorations?: boolean };
+      expect(params.includeDecorations).toBe(false);
+      expect(postDecorations).toHaveBeenCalled();
+    });
   });
 
   it('集約 API の rows をスロット順のまま返し、未到達カードがあれば listIncomplete を立て、continue で完了できる', async () => {
@@ -96,6 +145,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -175,6 +225,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -216,6 +267,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: true,
       isSuccess: false,
+      isPlaceholderData: false,
       dataUpdatedAt: 0
     });
 
@@ -270,6 +322,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -322,6 +375,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -381,6 +435,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: boardDataUpdatedAt
     }));
 
@@ -446,6 +501,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: boardDataUpdatedAt
     }));
 
@@ -479,6 +535,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: true,
       isSuccess: true,
+      isPlaceholderData: true,
       dataUpdatedAt: boardDataUpdatedAt
     }));
     utils.rerender(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
@@ -512,6 +569,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       isError: false,
       isFetching: false,
       isSuccess: true,
+      isPlaceholderData: false,
       dataUpdatedAt: Date.now()
     });
 
@@ -537,5 +595,345 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(latest?.appendError).toBeInstanceOf(Error);
       expect(latest?.appendError?.message).toBe('Request failed');
     });
+  });
+
+  it('params 変更後の placeholder（旧 q の shell）は表示せず、本物の shell で全件に戻る', async () => {
+    const filteredShell = boardPayload({
+      total: 1,
+      rows: [row('only-filtered', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, total: 1, pageSize: 80 }]
+    });
+    const fullShell = boardPayload({
+      total: 3,
+      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+
+    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
+
+    boardHookMock.mockImplementation(() => {
+      if (phase === 'full') {
+        return {
+          data: fullShell,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          isSuccess: true,
+          isPlaceholderData: false,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      if (phase === 'placeholderStale') {
+        return {
+          data: filteredShell,
+          isLoading: false,
+          isError: false,
+          isFetching: true,
+          isSuccess: true,
+          isPlaceholderData: true,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      return {
+        data: filteredShell,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: Date.now()
+      };
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+    let withQ = true;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          ...(withQ ? { q: 'AA1S7M11' } : {})
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['only-filtered']);
+    });
+
+    act(() => {
+      withQ = false;
+      phase = 'placeholderStale';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.isLoading).toBe(true);
+      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
+    });
+
+    act(() => {
+      phase = 'full';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r2-a']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    expect(postContinue).not.toHaveBeenCalled();
+  });
+
+  it('params 変更後に旧 params の continue 応答が遅れて返っても表示を上書きしない', async () => {
+    const filteredShell = boardPayload({
+      total: 2,
+      rows: [row('old-1', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 2, pageSize: 80 }]
+    });
+    const fullShell = boardPayload({
+      total: 3,
+      rows: [row('new-1', 'R1'), row('new-2', 'R1'), row('new-3', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+    const staleContinueResult = boardPayload({
+      total: 2,
+      rows: [row('old-1', 'R1'), row('old-2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 }]
+    });
+
+    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
+    boardHookMock.mockImplementation(() => {
+      if (phase === 'full') {
+        return {
+          data: fullShell,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          isSuccess: true,
+          isPlaceholderData: false,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      if (phase === 'placeholderStale') {
+        return {
+          data: filteredShell,
+          isLoading: false,
+          isError: false,
+          isFetching: true,
+          isSuccess: true,
+          isPlaceholderData: true,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      return {
+        data: filteredShell,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: Date.now()
+      };
+    });
+
+    let resolveContinue: ((v: ProductionScheduleLeaderboardBoardResponse) => void) | undefined;
+    postContinue.mockImplementation(
+      () =>
+        new Promise<ProductionScheduleLeaderboardBoardResponse>((resolve) => {
+          resolveContinue = resolve;
+        })
+    );
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+    let withQ = true;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          ...(withQ ? { q: 'AA1S7M11' } : {})
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['old-1']);
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(resolveContinue).toBeTypeOf('function');
+    });
+
+    act(() => {
+      withQ = false;
+      phase = 'placeholderStale';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.isLoading).toBe(true);
+      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
+    });
+
+    act(() => {
+      phase = 'full';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['new-1', 'new-2', 'new-3']);
+    });
+
+    act(() => {
+      resolveContinue?.(staleContinueResult);
+    });
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['new-1', 'new-2', 'new-3']);
+    });
+  });
+
+  it('hasMore ありで continue 完走後、製番 OFF（q 削除）と placeholder 経由で全件 shell に戻る', async () => {
+    const filteredShell = boardPayload({
+      total: 5,
+      rows: [row('only-filtered', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 5, pageSize: 80 }]
+    });
+    const filteredAfterContinue = boardPayload({
+      total: 2,
+      rows: [row('only-filtered', 'R1'), row('filt-2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 }]
+    });
+    const fullShell = boardPayload({
+      total: 3,
+      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+
+    postContinue.mockResolvedValue(filteredAfterContinue);
+
+    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
+
+    boardHookMock.mockImplementation(() => {
+      if (phase === 'full') {
+        return {
+          data: fullShell,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          isSuccess: true,
+          isPlaceholderData: false,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      if (phase === 'placeholderStale') {
+        return {
+          data: filteredShell,
+          isLoading: false,
+          isError: false,
+          isFetching: true,
+          isSuccess: true,
+          isPlaceholderData: true,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      return {
+        data: filteredShell,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: Date.now()
+      };
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+    let withQ = true;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          ...(withQ ? { q: 'AA1S7M11' } : {})
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['only-filtered', 'filt-2']);
+      expect(latest?.listIncomplete).toBe(false);
+    });
+
+    act(() => {
+      withQ = false;
+      phase = 'placeholderStale';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.isLoading).toBe(true);
+      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
+    });
+
+    act(() => {
+      phase = 'full';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r2-a']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    expect(postContinue).toHaveBeenCalledTimes(1);
   });
 });

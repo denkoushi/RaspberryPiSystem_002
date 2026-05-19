@@ -798,6 +798,8 @@ export async function postKioskProductionScheduleLeaderboardDecorations(payload:
 /** 順位ボード集約 GET: `boardResourceCds` にスロット順の資源（カンマ区切り） */
 export type KioskProductionScheduleLeaderboardBoardQueryParams = KioskProductionScheduleLeaderboardPhasedQueryParams & {
   boardResourceCds: string;
+  /** 省略時 true。キオスク順位ボードは false で装飾を `leaderboard-decorations` 後取り */
+  includeDecorations?: boolean;
 };
 
 export type LeaderboardBoardResourceSliceResponse = {

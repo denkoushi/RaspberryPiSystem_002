@@ -11,6 +11,7 @@ import {
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
+import { resolveScopedLeaderboardAppendOverride } from './leaderboardBoardAppendOverrideScopePolicy';
 import {
   resolveLeaderboardAppendLoopStartBoard,
   shouldBeginLeaderboardAppendSession
@@ -21,10 +22,17 @@ import {
   pickLeaderboardBoardForDisplay
 } from './leaderboardBoardDisplayPolicy';
 import {
+  isLeaderboardShellReadyForAppend,
+  resolveLeaderboardShellForDisplay,
+  shouldSuppressLeaderboardShellPlaceholder
+} from './leaderboardBoardShellFreshnessPolicy';
+import {
   classifyLeaderboardContinueFailure,
   normalizeLeaderboardContinueFailure
 } from './leaderboardContinueErrorPolicy';
 import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
+import { mergeLeaderboardBoardWithDecorations } from './mergeLeaderboardBoardWithDecorations';
+import { useLeaderboardDeferredBoardDecorations } from './useLeaderboardDeferredBoardDecorations';
 
 /** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
 const SCHEDULE_QUERY_DISABLED = {
@@ -34,9 +42,17 @@ const SCHEDULE_QUERY_DISABLED = {
   isFetching: false
 };
 
+function invalidateLeaderboardDecorationsQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  return queryClient.invalidateQueries({
+    predicate: (q) =>
+      Array.isArray(q.queryKey) &&
+      q.queryKey[0] === 'kiosk-production-schedule' &&
+      q.queryKey[1] === 'leaderboard-decorations'
+  });
+}
+
 /**
- * 多資源カードの順位ボード取得（集約 API 1 本＋サーバ側 shell 相当をスロット順に連結）。
- * 取得済み行の装飾は API 応答に同梱される（取得完了を待たずに段階的に表示）。
+ * 多資源カードの順位ボード取得（集約 API 1 本＋装飾は `leaderboard-decorations` 後取り）。
  */
 export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   /** `resourceCds` / `boardResourceCds` を含めない（集約 params で上書きする） */
@@ -87,7 +103,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
     return {
       ...baseParams,
-      boardResourceCds: orderedResourceCds.join(',')
+      boardResourceCds: orderedResourceCds.join(','),
+      includeDecorations: false
     };
   }, [leaderboardPhasedBaseParamsKey, orderedResourceCds, resourceCdsOrderedKey, scheduleEnabled]);
 
@@ -103,6 +120,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const lastRetryNonceStartedRef = useRef(0);
   const [appendRetryGeneration, setAppendRetryGeneration] = useState(0);
   const appendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
+  const appendOverrideParamsKeyRef = useRef<string | null>(null);
+  const latestParamsKeyRef = useRef<string>(paramsKey);
+  const lastCommittedParamsKeyRef = useRef<string | null>(null);
+
+  latestParamsKeyRef.current = paramsKey;
 
   useEffect(() => {
     appendOverrideRef.current = appendOverride;
@@ -115,6 +137,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     lastRetryNonceStartedRef.current = 0;
     setAppendRetryGeneration(0);
     setAppendOverride(null);
+    appendOverrideParamsKeyRef.current = null;
     setAppendError(null);
   }, [paramsKey]);
 
@@ -124,12 +147,41 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     refetchIntervalMs
   });
 
+  useEffect(() => {
+    if (boardQuery.isSuccess && !boardQuery.isPlaceholderData) {
+      lastCommittedParamsKeyRef.current = paramsKey;
+    }
+  }, [boardQuery.isPlaceholderData, boardQuery.isSuccess, paramsKey]);
+
+  const suppressPlaceholderShell = shouldSuppressLeaderboardShellPlaceholder({
+    paramsKey,
+    isPlaceholderData: boardQuery.isPlaceholderData,
+    lastCommittedParamsKey: lastCommittedParamsKeyRef.current
+  });
+
+  const resolvedShell = resolveLeaderboardShellForDisplay(boardQuery.data, suppressPlaceholderShell);
+
   const shellFingerprint = useMemo(
-    () => fingerprintLeaderboardBoardShell(boardQuery.data),
-    [boardQuery.data]
+    () => fingerprintLeaderboardBoardShell(resolvedShell),
+    [resolvedShell]
   );
 
-  const displayBoard = pickLeaderboardBoardForDisplay(boardQuery.data, appendOverride);
+  const scopedAppendOverride = resolveScopedLeaderboardAppendOverride({
+    paramsKey,
+    overrideParamsKey: appendOverrideParamsKeyRef.current,
+    override: appendOverrideRef.current
+  });
+  const displayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
+
+  const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
+    useLeaderboardDeferredBoardDecorations({
+      scheduleEnabled,
+      paramsKey,
+      displayBoard,
+      macManualOrderV2,
+      activeDeviceScopeKey,
+      pauseRefetch
+    });
 
   const listIncomplete = useMemo(() => {
     if (!displayBoard) return false;
@@ -137,9 +189,17 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   }, [displayBoard]);
 
   useEffect(() => {
-    if (!scheduleEnabled || !boardQuery.isSuccess || !boardQuery.data || !boardQueryParams) return;
+    if (
+      !scheduleEnabled ||
+      !boardQuery.isSuccess ||
+      !isLeaderboardShellReadyForAppend({ suppressPlaceholderShell, shell: resolvedShell }) ||
+      !boardQueryParams
+    ) {
+      return;
+    }
 
-    const shell = boardQuery.data;
+    const shell = resolvedShell;
+    if (!shell) return;
     const shouldBegin = shouldBeginLeaderboardAppendSession({
       paramsKey,
       appendCompleteForParamsKey: appendCompleteForParamsKeyRef.current,
@@ -162,7 +222,15 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     void (async () => {
       try {
-        let cur = resolveLeaderboardAppendLoopStartBoard(shell, appendOverrideRef.current);
+        const runParamsKey = paramsKey;
+        let cur = resolveLeaderboardAppendLoopStartBoard(
+          shell,
+          resolveScopedLeaderboardAppendOverride({
+            paramsKey: runParamsKey,
+            overrideParamsKey: appendOverrideParamsKeyRef.current,
+            override: appendOverrideRef.current
+          })
+        );
         while (!cancelled && runId === appendRunIdRef.current && cur.resources.some((r) => r.hasMore)) {
           setIsAppending(true);
           setAppendError(null);
@@ -174,14 +242,23 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             lastStartedShellFingerprintRef.current = null;
             setAppendOverride(null);
             appendOverrideRef.current = null;
-            await queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+            appendOverrideParamsKeyRef.current = null;
+            resetDecorations();
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
+              invalidateLeaderboardDecorationsQueries(queryClient)
+            ]);
             break;
           }
           const next =
             orderedResourceCds.length > 0
               ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds)
               : nextRaw;
+          if (latestParamsKeyRef.current !== runParamsKey) {
+            return;
+          }
           setAppendOverride(next);
+          appendOverrideParamsKeyRef.current = runParamsKey;
           appendOverrideRef.current = next;
           cur = next;
         }
@@ -215,8 +292,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     boardQueryParams,
     paramsKey,
     queryClient,
+    resetDecorations,
+    resolvedShell,
     scheduleEnabled,
     shellFingerprint,
+    suppressPlaceholderShell,
     orderedResourceCds
   ]);
 
@@ -226,38 +306,43 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     }
 
     if (!displayBoard) {
+      const awaitingFreshShellAfterParamsChange =
+        suppressPlaceholderShell && scopedAppendOverride == null;
       return {
         data: undefined as ProductionScheduleListResponse | undefined,
-        isLoading: boardQuery.isLoading,
+        isLoading: boardQuery.isLoading || awaitingFreshShellAfterParamsChange,
         isError: boardQuery.isError,
         isFetching: boardQuery.isFetching || isAppending
       };
     }
 
-    const data: ProductionScheduleListResponse = {
-      page: displayBoard.page,
-      pageSize: displayBoard.pageSize,
-      total: displayBoard.total,
-      rows: displayBoard.rows,
-      ...(displayBoard.leaderboardFooterChipsByPartKey
-        ? { leaderboardFooterChipsByPartKey: displayBoard.leaderboardFooterChipsByPartKey }
-        : {})
-    };
+    const data = mergeLeaderboardBoardWithDecorations(displayBoard, accumulatedDecorations);
+    const decorationFailed = decorationsError != null;
+
+    const awaitingFreshShellAfterParamsChange =
+      suppressPlaceholderShell && scopedAppendOverride == null && displayBoard.rows.length === 0;
 
     return {
       data,
-      isLoading: isLeaderboardScheduleInitialLoading(boardQuery.isLoading, displayBoard.rows.length),
-      isError: boardQuery.isError,
-      isFetching: boardQuery.isFetching || isAppending
+      isLoading:
+        isLeaderboardScheduleInitialLoading(boardQuery.isLoading, displayBoard.rows.length) ||
+        awaitingFreshShellAfterParamsChange,
+      isError: boardQuery.isError || decorationFailed,
+      isFetching: boardQuery.isFetching || isAppending || isDecorationsFetching
     };
   }, [
+    accumulatedDecorations,
     boardQuery.isError,
     boardQuery.isFetching,
     boardQuery.isLoading,
+    decorationsError,
     displayBoard,
     isAppending,
+    isDecorationsFetching,
     resourceCdsOrdered.length,
-    scheduleEnabled
+    scheduleEnabled,
+    scopedAppendOverride,
+    suppressPlaceholderShell
   ]);
 
   void macManualOrderV2;
