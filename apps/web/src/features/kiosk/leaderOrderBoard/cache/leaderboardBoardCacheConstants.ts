@@ -16,3 +16,11 @@ export function isLeaderboardBoardTerminalCacheEnabled(): boolean {
   if (raw === undefined || raw === '') return true;
   return raw !== 'false' && raw !== '0';
 }
+
+/** Phase 2 SWR 表示（省略時 true・端末キャッシュ無効時は常に false） */
+export function isLeaderboardBoardTerminalCachePhase2SwrEnabled(): boolean {
+  if (!isLeaderboardBoardTerminalCacheEnabled()) return false;
+  const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR;
+  if (raw === undefined || raw === '') return true;
+  return raw !== 'false' && raw !== '0';
+}

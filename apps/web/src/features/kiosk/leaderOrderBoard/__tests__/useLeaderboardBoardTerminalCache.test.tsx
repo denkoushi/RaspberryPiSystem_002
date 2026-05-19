@@ -42,6 +42,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
         networkDisplayBoard: undefined,
         networkSyncToken: 'sync-1',
         networkInitialLoading: true,
+        networkIsFetching: false,
         networkIsError: false,
         suppressPlaceholderShell: false,
         accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
@@ -80,6 +81,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
           networkDisplayBoard: props.network,
           networkSyncToken: props.complete ? 'sync-complete' : 'sync-init',
           networkInitialLoading: false,
+          networkIsFetching: false,
           networkIsError: false,
           suppressPlaceholderShell: false,
           accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
@@ -124,6 +126,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
         networkDisplayBoard: undefined,
         networkSyncToken: 'sync-error',
         networkInitialLoading: false,
+        networkIsFetching: false,
         networkIsError: true,
         suppressPlaceholderShell: false,
         accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
@@ -162,6 +165,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
         networkDisplayBoard: undefined,
         networkSyncToken: 'sync-stale',
         networkInitialLoading: true,
+        networkIsFetching: false,
         networkIsError: false,
         suppressPlaceholderShell: false,
         accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
@@ -173,6 +177,58 @@ describe('useLeaderboardBoardTerminalCache', () => {
     await waitFor(() => {
       expect(result.current.displayBoard).toBeUndefined();
       expect(result.current.isShowingCachedData).toBe(false);
+    });
+  });
+
+  it('applyMutationPatch で IDB put する', async () => {
+    const cached = buildLeaderboardBoardCacheRecord({
+      cacheKey: 'site\u0001params',
+      siteKey: 'site',
+      paramsKey: 'params',
+      board: board(['r1']),
+      decorations: createEmptyAccumulatedLeaderboardDecorations()
+    })!;
+    cached.board.rows[0] = {
+      ...cached.board.rows[0]!,
+      processingOrder: 1
+    } as ProductionScheduleLeaderboardBoardResponse['rows'][number];
+
+    const store: LeaderboardBoardCacheStore = {
+      get: vi.fn().mockResolvedValue(cached),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn()
+    };
+
+    const { result } = renderHook(() =>
+      useLeaderboardBoardTerminalCache({
+        siteKey: 'site',
+        paramsKey: 'params',
+        scheduleEnabled: true,
+        networkDisplayBoard: undefined,
+        networkSyncToken: 'sync-patch',
+        networkInitialLoading: false,
+        networkIsFetching: false,
+        networkIsError: false,
+        suppressPlaceholderShell: false,
+        accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
+        networkBoardComplete: false,
+        store
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.displayBoard).toBeDefined();
+    });
+
+    result.current.applyMutationPatch({
+      kind: 'order',
+      rowId: 'r1',
+      processingOrder: 9
+    });
+
+    await waitFor(() => {
+      expect(store.put).toHaveBeenCalled();
+      expect(result.current.displayBoard?.rows[0]?.processingOrder).toBe(9);
     });
   });
 });

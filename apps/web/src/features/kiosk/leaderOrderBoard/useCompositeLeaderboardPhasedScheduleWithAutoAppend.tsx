@@ -32,7 +32,10 @@ import {
 } from './leaderboardContinueErrorPolicy';
 import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
 import { mergeLeaderboardBoardWithDecorations } from './mergeLeaderboardBoardWithDecorations';
-import { useLeaderboardBoardTerminalCache } from './useLeaderboardBoardTerminalCache';
+import {
+  useLeaderboardBoardTerminalCache,
+  type LeaderboardBoardCacheMutation
+} from './useLeaderboardBoardTerminalCache';
 import { useLeaderboardDeferredBoardDecorations } from './useLeaderboardDeferredBoardDecorations';
 
 /** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
@@ -83,6 +86,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   isShowingCachedData: boolean;
   /** 通信失敗等で前回保存分を表示中 */
   cacheSyncWarning: string | null;
+  applyMutationPatch: (mutation: LeaderboardBoardCacheMutation) => void;
 } {
   const {
     leaderboardPhasedBaseParams,
@@ -206,7 +210,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     displayDecorations,
     isShowingCachedData,
     cacheSyncWarning,
-    purgeCache
+    purgeCache,
+    applyMutationPatch
   } = useLeaderboardBoardTerminalCache({
     siteKey,
     paramsKey,
@@ -214,6 +219,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     networkDisplayBoard,
     networkSyncToken: shellFingerprint,
     networkInitialLoading: boardQuery.isLoading,
+    networkIsFetching: boardQuery.isFetching,
     networkIsError: boardQuery.isError,
     suppressPlaceholderShell,
     accumulatedDecorations,
@@ -361,7 +367,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     const awaitingFreshShellAfterParamsChange =
       suppressPlaceholderShell && scopedAppendOverride == null && displayBoard.rows.length === 0;
 
-    const bootstrapFromCache = isShowingCachedData && boardQuery.isLoading;
+    const hasDisplayableRows = displayBoard.rows.length > 0;
+    const bootstrapFromCache = isShowingCachedData && hasDisplayableRows;
 
     return {
       data,
@@ -397,6 +404,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     feedMounts: null,
     listIncomplete,
     isShowingCachedData,
-    cacheSyncWarning
+    cacheSyncWarning,
+    applyMutationPatch
   };
 }

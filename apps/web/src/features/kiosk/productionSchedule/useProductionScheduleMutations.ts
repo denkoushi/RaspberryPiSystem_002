@@ -9,18 +9,21 @@ import {
   type KioskProductionScheduleOrderCachePolicy
 } from '../../../api/hooks';
 
+import type { ProductionScheduleWriteSuccessListeners } from './productionScheduleWriteSuccessListeners';
 import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
 
 /** 書き込み直後のリスト再取得とポーリング復帰が重ならないよう空ける（体感待ちと Pi 負荷のバランス）。 */
 const WRITE_REFETCH_COOLDOWN_MS = 1800;
 
-type Params = {
+export type UseProductionScheduleMutationsParams = {
   isSearchStateWriting: boolean;
   noteMaxLength: number;
   /** Mac + manual-order v2: 手動順番の書き込み先端末 */
   productionScheduleTargetDeviceScopeKey?: string;
   /** 順位ボード等: 一覧の full invalidate を避ける fast path */
   productionScheduleOrderCachePolicy?: KioskProductionScheduleOrderCachePolicy;
+  /** 書き込み成功後の任意副作用（端末キャッシュミラー等） */
+  writeSuccessListeners?: ProductionScheduleWriteSuccessListeners;
 };
 
 type SaveNoteParams = {
@@ -49,8 +52,11 @@ export const useProductionScheduleMutations = ({
   isSearchStateWriting,
   noteMaxLength,
   productionScheduleTargetDeviceScopeKey,
-  productionScheduleOrderCachePolicy
-}: Params) => {
+  productionScheduleOrderCachePolicy,
+  writeSuccessListeners
+}: UseProductionScheduleMutationsParams) => {
+  const writeSuccessListenersRef = useRef(writeSuccessListeners);
+  writeSuccessListenersRef.current = writeSuccessListeners;
   const completeMutation = useSetKioskProductionScheduleRowCompletion();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
   const processingMutation = useUpdateKioskProductionScheduleProcessing();
@@ -124,17 +130,27 @@ export const useProductionScheduleMutations = ({
   const updateOrder = useCallback(
     ({ rowId, resourceCd, nextValue }: UpdateOrderParams) => {
       const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
-      orderMutation.mutate({
-        rowId,
-        payload: {
-          resourceCd,
-          orderNumber,
-          ...(productionScheduleTargetDeviceScopeKey
-            ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
-            : {})
+      orderMutation.mutate(
+        {
+          rowId,
+          payload: {
+            resourceCd,
+            orderNumber,
+            ...(productionScheduleTargetDeviceScopeKey
+              ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
+              : {})
+          },
+          cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
         },
-        cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
-      });
+        {
+          onSuccess: (data) => {
+            writeSuccessListenersRef.current?.onOrderSuccess?.({
+              rowId,
+              orderNumber: data.orderNumber ?? null
+            });
+          }
+        }
+      );
     },
     [orderMutation, productionScheduleOrderCachePolicy, productionScheduleTargetDeviceScopeKey]
   );
@@ -149,9 +165,16 @@ export const useProductionScheduleMutations = ({
   const saveNote = useCallback(
     ({ rowId, note, onSettled }: SaveNoteParams) => {
       if (noteMutation.isPending) return;
+      const sanitized = sanitizeNote(note, noteMaxLength);
       noteMutation.mutate(
-        { rowId, note: sanitizeNote(note, noteMaxLength) },
+        { rowId, note: sanitized },
         {
+          onSuccess: (data) => {
+            writeSuccessListenersRef.current?.onNoteSuccess?.({
+              rowId,
+              note: data.note ?? null
+            });
+          },
           onSettled
         }
       );
@@ -165,6 +188,12 @@ export const useProductionScheduleMutations = ({
       dueDateMutation.mutate(
         { rowId, dueDate },
         {
+          onSuccess: (data) => {
+            writeSuccessListenersRef.current?.onDueDateSuccess?.({
+              rowId,
+              dueDate: data.dueDate ?? null
+            });
+          },
           onSettled
         }
       );
@@ -174,7 +203,14 @@ export const useProductionScheduleMutations = ({
 
   const completeRow = useCallback(
     async (rowId: string, intent: KioskProductionScheduleCompletionIntent) => {
-      await completeMutation.mutateAsync({ rowId, intent });
+      const data = await completeMutation.mutateAsync({ rowId, intent });
+      if (data?.rowData != null) {
+        writeSuccessListenersRef.current?.onCompletionSuccess?.({
+          rowId,
+          rowData: data.rowData as Record<string, unknown>
+        });
+      }
+      return data;
     },
     [completeMutation]
   );
