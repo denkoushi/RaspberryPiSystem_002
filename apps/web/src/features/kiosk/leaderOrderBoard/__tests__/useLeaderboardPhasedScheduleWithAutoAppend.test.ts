@@ -160,7 +160,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     expect(postContinueMock).toHaveBeenCalledWith(
-      expect.objectContaining({ snapshotId: 'snap-test', cursor: 20, pageSize: 20 })
+      expect.objectContaining({ snapshotId: 'snap-test', cursor: 20, pageSize: 40 })
     );
 
     shellQueryMock = {
@@ -338,7 +338,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     await waitFor(() => {
       expect(postContinueMock).toHaveBeenCalledTimes(1);
-      expect(postContinueMock.mock.calls[0]![0]).toMatchObject({ cursor: 20, pageSize: 20 });
+      expect(postContinueMock.mock.calls[0]![0]).toMatchObject({ cursor: 20, pageSize: 40 });
     });
     expect(totalQueryMock.isSuccess).toBe(false);
 
@@ -353,7 +353,7 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     await waitFor(() => {
       expect(postContinueMock).toHaveBeenCalledTimes(2);
-      expect(postContinueMock.mock.calls[1]![0]).toMatchObject({ cursor: 40, pageSize: 20 });
+      expect(postContinueMock.mock.calls[1]![0]).toMatchObject({ cursor: 40, pageSize: 40 });
     });
     expect(totalQueryMock.isSuccess).toBe(false);
   });

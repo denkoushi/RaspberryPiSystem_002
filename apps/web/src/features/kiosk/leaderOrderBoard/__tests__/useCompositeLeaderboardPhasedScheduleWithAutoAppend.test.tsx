@@ -105,7 +105,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
-          pageSize: 80
+          pageSize: 10
         },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
@@ -182,7 +182,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -200,6 +200,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     const firstPayload = postContinue.mock.calls[0]![0];
+    expect(firstPayload.pageSize).toBe(40);
     expect(firstPayload.resourceSlices[0]!.cursor).toBe(0);
 
     await waitFor(() => {
@@ -224,7 +225,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
-          pageSize: 80
+          pageSize: 10
         },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
@@ -276,7 +277,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -328,7 +329,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -389,7 +390,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
-          pageSize: 80
+          pageSize: 10
         },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
@@ -452,7 +453,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -518,7 +519,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 10 },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
         pauseRefetch: false,

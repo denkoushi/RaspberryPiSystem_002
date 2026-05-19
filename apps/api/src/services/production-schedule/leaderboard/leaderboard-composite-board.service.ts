@@ -4,8 +4,6 @@
  */
 import {
   countProductionScheduleDashboardVisibleRowsFromListFilters,
-  decorateLeaderboardShellRowsForKiosk,
-  decorateLeaderboardShellRowsForKioskFromHydratedRows,
   listLeaderboardShellContinuationProductionScheduleRows,
   listLeaderboardShellProductionScheduleRows,
   type LeaderboardShellPhasedReadResult,
@@ -13,7 +11,10 @@ import {
 } from '../production-schedule-query.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { prisma } from '../../../lib/prisma.js';
-import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
+import {
+  decorateLeaderboardCompositeBoardContinue,
+  decorateLeaderboardCompositeBoardShell
+} from './leaderboard-composite-board-decoration.service.js';
 import { resolveFiniteLeaderboardBoardNextCursor } from './leaderboard-board-resource-cursor.js';
 import {
   assembleContinueMergedRowsForResource,
@@ -106,22 +107,10 @@ export async function fetchLeaderboardCompositeBoardShell(
     pageSize: shells[i]?.pageSize ?? cappedPageSize
   }));
 
-  const deco = await decorateLeaderboardShellRowsForKiosk({
-    orderedRowIds: mergedRows.map((r) => r.id),
+  const { rowsWithDeco, leaderboardFooterChipsByPartKey } = await decorateLeaderboardCompositeBoardShell({
+    mergedLightRows: mergedRows,
     locationKey: params.listParamsBase.locationKey,
     siteKey: params.listParamsBase.siteKey
-  });
-
-  const decoMap = new Map(deco.rowDecorations.map((d) => [d.id, d]));
-  const rowsWithDeco = mergedRows.map((r) => {
-    const d = decoMap.get(r.id);
-    return d
-      ? {
-          ...r,
-          resolvedMachineName: d.resolvedMachineName ?? r.resolvedMachineName,
-          customerName: d.customerName
-        }
-      : r;
   });
 
   const maxPageSize = shells.length > 0 ? Math.max(...shells.map((s) => s.pageSize)) : cappedPageSize;
@@ -132,7 +121,7 @@ export async function fetchLeaderboardCompositeBoardShell(
     total: totalSum,
     rows: rowsWithDeco,
     resources,
-    leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>
+    leaderboardFooterChipsByPartKey
   };
 }
 
@@ -233,10 +222,10 @@ export async function continueLeaderboardCompositeBoard(
 
   const mergedRows = perResourceAssembled.flatMap((a) => a.merged);
   const canAttachDelta = perResourceAssembled.every((a) => a.incrementalRows !== undefined);
-  const deltaShellRowsFlattened = canAttachDelta
+  const incrementalLightRows = canAttachDelta
     ? perResourceAssembled.flatMap((a) => a.incrementalRows!)
     : [];
-  const preferredDisplayRowIds = normalizeLeaderboardDisplayRowIdScope(mergedRows.map((r) => r.id));
+  const deltaShellRowsFlattened = incrementalLightRows;
 
   const resources: LeaderboardBoardResourceState[] = params.boardResourceCds.map((resourceCd, i) => {
     const slice = params.resourceSlices[i]!;
@@ -271,29 +260,15 @@ export async function continueLeaderboardCompositeBoard(
     };
   });
 
-  const deco = await decorateLeaderboardShellRowsForKioskFromHydratedRows({
-    hydratedRows: mergedRows,
-    locationKey: params.listParamsBase.locationKey,
-    siteKey: params.listParamsBase.siteKey,
-    preferredDisplayRowIds
-  });
-
-  const decoMap = new Map(deco.rowDecorations.map((d) => [d.id, d]));
-  const rowsWithDeco = mergedRows.map((r) => {
-    const d = decoMap.get(r.id);
-    return d
-      ? {
-          ...r,
-          resolvedMachineName: d.resolvedMachineName ?? r.resolvedMachineName,
-          customerName: d.customerName
-        }
-      : r;
-  });
-
-  const decoRowById = new Map(rowsWithDeco.map((r) => [r.id, r]));
-  const deltaRowsWithDeco: LightShellRow[] | undefined = canAttachDelta
-    ? deltaShellRowsFlattened.map((shell) => decoRowById.get(shell.id) ?? shell)
-    : undefined;
+  const { rowsWithDeco, deltaRowsWithDeco, leaderboardFooterChipsByPartKey } =
+    await decorateLeaderboardCompositeBoardContinue({
+      mergedLightRows: mergedRows,
+      incrementalLightRows,
+      canAttachDelta,
+      deltaShellRowsFlattened,
+      locationKey: params.listParamsBase.locationKey,
+      siteKey: params.listParamsBase.siteKey
+    });
 
   const totalSum = totals.reduce((a, b) => a + b, 0);
 
@@ -304,6 +279,6 @@ export async function continueLeaderboardCompositeBoard(
     rows: rowsWithDeco,
     ...(deltaRowsWithDeco !== undefined ? { deltaRows: deltaRowsWithDeco } : {}),
     resources,
-    leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>
+    leaderboardFooterChipsByPartKey
   };
 }

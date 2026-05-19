@@ -13,7 +13,7 @@ import {
   useKioskProductionScheduleLeaderboardTotal
 } from '../../../api/hooks';
 
-import { LEADER_ORDER_BOARD_SHELL_PAGE_SIZE } from './constants';
+import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from './constants';
 
 import type { LeaderboardAppendAcquire } from './leaderboard-append-concurrency';
 
@@ -103,7 +103,7 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     () => JSON.parse(paramsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams,
     [paramsKey]
   );
-  const continuePageSize = stableLeaderboardPhasedParams.pageSize ?? LEADER_ORDER_BOARD_SHELL_PAGE_SIZE;
+  const continuePageSize = LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE;
   const continueBaseBody = useMemo(
     () => phasedParamsToExcludeBody(stableLeaderboardPhasedParams),
     [stableLeaderboardPhasedParams]

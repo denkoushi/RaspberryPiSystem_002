@@ -4,8 +4,17 @@ export const LEADER_ORDER_BOARD_ORDER_NUMBER_MAX = 10;
 /** 一覧の単一クエリ時代のページサイズ（順位ボードは shell 側で増分しない）。 */
 export const LEADER_ORDER_BOARD_PAGE_SIZE = 320;
 
-/** 順位ボード段階取得の初回 shell 件数（board 集約 API の `pageSize`・continue も同値）。API 上限 160。 */
-export const LEADER_ORDER_BOARD_SHELL_PAGE_SIZE = 80;
+/** 順位ボード board 初回 GET の `pageSize`（スロットあたり）。API 上限 160。 */
+export const LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE = 10;
+
+/** 順位ボード `leaderboard-board/continue` の 1 回あたり chunk（`body.pageSize`）。 */
+export const LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE = 40;
+
+/**
+ * @deprecated `LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE` と `LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` を使う。
+ * 初回 board GET 用のエイリアス。
+ */
+export const LEADER_ORDER_BOARD_SHELL_PAGE_SIZE = LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE;
 
 /** 順位ボードの資源スロット（進捗一覧の seiban ページ上限とは別物） */
 export const LEADER_BOARD_MIN_RESOURCE_SLOTS = 1;
