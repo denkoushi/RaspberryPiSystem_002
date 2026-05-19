@@ -215,7 +215,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const {
     scheduleQuery,
     appendError,
-    listIncomplete
+    listIncomplete,
+    cacheSyncWarning
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
     resourceCdsOrdered: activeResourceCds,
@@ -223,7 +224,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_SCHEDULE_REFETCH_MS,
     macManualOrderV2,
-    activeDeviceScopeKey
+    activeDeviceScopeKey,
+    siteKey
   });
 
   const orderUsageQuery = useKioskProductionScheduleOrderUsage(
@@ -479,6 +481,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             {appendError != null ? (
               <p className="mb-2 shrink-0 text-sm text-amber-200" role="alert">
                 順位一覧の追補取得に失敗しました（{appendError.message}）。表示は一部のみの可能性があります。少し待ってから再読み込みしてください。
+              </p>
+            ) : null}
+            {cacheSyncWarning != null ? (
+              <p className="mb-2 shrink-0 text-sm text-amber-200" role="status">
+                {cacheSyncWarning}
               </p>
             ) : null}
             <LeaderBoardGrid

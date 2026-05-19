@@ -92,7 +92,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -162,7 +163,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -239,7 +241,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -284,7 +287,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -336,7 +340,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -389,7 +394,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -452,7 +458,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -515,7 +522,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -583,7 +591,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -663,7 +672,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -779,7 +789,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }
@@ -897,7 +908,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
         pauseRefetch: false,
         refetchIntervalMs: 120000,
         macManualOrderV2: false,
-        activeDeviceScopeKey: ''
+        activeDeviceScopeKey: '',
+        siteKey: 'test-site'
       });
       return null;
     }

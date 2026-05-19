@@ -32,6 +32,7 @@ import {
 } from './leaderboardContinueErrorPolicy';
 import { mergeLeaderboardBoardContinueResponseWithOptionalDelta } from './mergeLeaderboardBoardContinueResponse';
 import { mergeLeaderboardBoardWithDecorations } from './mergeLeaderboardBoardWithDecorations';
+import { useLeaderboardBoardTerminalCache } from './useLeaderboardBoardTerminalCache';
 import { useLeaderboardDeferredBoardDecorations } from './useLeaderboardDeferredBoardDecorations';
 
 /** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
@@ -64,6 +65,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   refetchIntervalMs: number;
   macManualOrderV2: boolean;
   activeDeviceScopeKey: string;
+  /** 端末キャッシュの工場スコープ */
+  siteKey: string;
 }): {
   scheduleQuery: {
     data: ProductionScheduleListResponse | undefined;
@@ -76,6 +79,10 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   feedMounts: ReactNode;
   /** いずれかのスロットで総件数に未到達のとき真（左ツールスタック等の UI 用） */
   listIncomplete: boolean;
+  /** 端末キャッシュ表示中 */
+  isShowingCachedData: boolean;
+  /** 通信失敗等で前回保存分を表示中 */
+  cacheSyncWarning: string | null;
 } {
   const {
     leaderboardPhasedBaseParams,
@@ -84,7 +91,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     pauseRefetch,
     refetchIntervalMs,
     macManualOrderV2,
-    activeDeviceScopeKey
+    activeDeviceScopeKey,
+    siteKey
   } = options;
 
   const queryClient = useQueryClient();
@@ -108,7 +116,10 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     };
   }, [leaderboardPhasedBaseParamsKey, orderedResourceCds, resourceCdsOrderedKey, scheduleEnabled]);
 
-  const paramsKey = useMemo(() => JSON.stringify(boardQueryParams), [boardQueryParams]);
+  const paramsKey = useMemo(
+    () => (boardQueryParams != null ? JSON.stringify(boardQueryParams) : ''),
+    [boardQueryParams]
+  );
 
   const [appendOverride, setAppendOverride] = useState<ProductionScheduleLeaderboardBoardResponse | null>(null);
   const [appendError, setAppendError] = useState<Error | null>(null);
@@ -171,17 +182,43 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     overrideParamsKey: appendOverrideParamsKeyRef.current,
     override: appendOverrideRef.current
   });
-  const displayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
+  const networkDisplayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
 
   const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
     useLeaderboardDeferredBoardDecorations({
       scheduleEnabled,
       paramsKey,
-      displayBoard,
+      displayBoard: networkDisplayBoard,
       macManualOrderV2,
       activeDeviceScopeKey,
       pauseRefetch
     });
+
+  const networkBoardComplete = useMemo(() => {
+    if (!networkDisplayBoard) return false;
+    return !networkDisplayBoard.resources.some(
+      (r) => r.hasMore || (typeof r.nextCursor === 'number' && r.nextCursor < r.total)
+    );
+  }, [networkDisplayBoard]);
+
+  const {
+    displayBoard,
+    displayDecorations,
+    isShowingCachedData,
+    cacheSyncWarning,
+    purgeCache
+  } = useLeaderboardBoardTerminalCache({
+    siteKey,
+    paramsKey,
+    scheduleEnabled,
+    networkDisplayBoard,
+    networkSyncToken: shellFingerprint,
+    networkInitialLoading: boardQuery.isLoading,
+    networkIsError: boardQuery.isError,
+    suppressPlaceholderShell,
+    accumulatedDecorations,
+    networkBoardComplete
+  });
 
   const listIncomplete = useMemo(() => {
     if (!displayBoard) return false;
@@ -244,6 +281,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             appendOverrideRef.current = null;
             appendOverrideParamsKeyRef.current = null;
             resetDecorations();
+            purgeCache();
             await Promise.all([
               queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
               invalidateLeaderboardDecorationsQueries(queryClient)
@@ -297,7 +335,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     scheduleEnabled,
     shellFingerprint,
     suppressPlaceholderShell,
-    orderedResourceCds
+    orderedResourceCds,
+    purgeCache
   ]);
 
   const scheduleQuery = useMemo(() => {
@@ -316,29 +355,33 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       };
     }
 
-    const data = mergeLeaderboardBoardWithDecorations(displayBoard, accumulatedDecorations);
-    const decorationFailed = decorationsError != null;
+    const data = mergeLeaderboardBoardWithDecorations(displayBoard, displayDecorations);
+    const decorationFailed = decorationsError != null && !isShowingCachedData;
 
     const awaitingFreshShellAfterParamsChange =
       suppressPlaceholderShell && scopedAppendOverride == null && displayBoard.rows.length === 0;
 
+    const bootstrapFromCache = isShowingCachedData && boardQuery.isLoading;
+
     return {
       data,
       isLoading:
-        isLeaderboardScheduleInitialLoading(boardQuery.isLoading, displayBoard.rows.length) ||
-        awaitingFreshShellAfterParamsChange,
-      isError: boardQuery.isError || decorationFailed,
+        !bootstrapFromCache &&
+        (isLeaderboardScheduleInitialLoading(boardQuery.isLoading, displayBoard.rows.length) ||
+          awaitingFreshShellAfterParamsChange),
+      isError: (boardQuery.isError && !isShowingCachedData) || decorationFailed,
       isFetching: boardQuery.isFetching || isAppending || isDecorationsFetching
     };
   }, [
-    accumulatedDecorations,
     boardQuery.isError,
     boardQuery.isFetching,
     boardQuery.isLoading,
     decorationsError,
     displayBoard,
+    displayDecorations,
     isAppending,
     isDecorationsFetching,
+    isShowingCachedData,
     resourceCdsOrdered.length,
     scheduleEnabled,
     scopedAppendOverride,
@@ -352,6 +395,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     scheduleQuery,
     appendError,
     feedMounts: null,
-    listIncomplete
+    listIncomplete,
+    isShowingCachedData,
+    cacheSyncWarning
   };
 }
