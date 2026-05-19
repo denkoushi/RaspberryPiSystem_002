@@ -721,14 +721,20 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 40 / WARN 0 / FAIL 0**（2026-04-02 時点の項目数基準・Tailscale 到達前提）。
 - [ ] **回帰（任意・Mac・Postgres 起動）**: `pnpm test:postgres:start` の後 `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return pnpm --filter @raspi-system/api exec prisma migrate deploy` を済ませ、`pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard-board continue profile logs"` が成功すること（**continue 完了後の `rows` が単一 GET `leaderboard-board` と id・total 一致**を含む・[KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）。併せて各 `continue` で **`deltaRows` が配列として存在する**こと（任意・[KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18)）。
-- [ ] **表示安定化（2026-05-19・Pi5 先行）**: 順位ボード表示後 **2 分以上**待機し、行が **一時的に消えて戻る**挙動がないこと。Network で **追補完了後の refetch** でも **`leaderboard-board/continue` が不要に連打されない**こと（[deployment §表示安定化](deployment.md#kiosk-leaderboard-display-stability-refetch-2026-05-19)）。
-- [ ] **pageSize 80 第1弾（2026-05-19・Pi5 ゲート → Pi4 順次）**: 全行揃うまでの体感が従来より短いこと。Network で **`leaderboard-board/continue` 回数が減る**こと。行 ID/件数が単発 GET と矛盾しないこと（[deployment §pageSize 80](deployment.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19)）。
+- [x] **表示安定化（2026-05-19・Pi5→Pi4×4 本番反映済）**: 順位ボード表示後 **2 分以上**待機し、行が **一時的に消えて戻る**挙動がないこと（**現場: 表示正常**）。Network で **追補完了後の refetch** でも **`leaderboard-board/continue` が不要に連打されない**こと（[deployment §表示安定化](deployment.md#kiosk-leaderboard-display-stability-refetch-2026-05-19)）。
+- [x] **pageSize 80 第1弾（2026-05-19・Pi5+Pi4 全5台反映済）**: 全行揃うまでの体感が従来より短いこと（**現場: 体感速度維持**）。Network で **`leaderboard-board/continue` 回数が減る**こと。行 ID/件数が単発 GET と矛盾しないこと（[deployment §pageSize 80](deployment.md#kiosk-leaderboard-pagesize-80-phase1-2026-05-19)）。
 - [ ] **手動（任意・実機/VNC）**: `/kiosk/production-schedule/leader-order-board` で **左ペイン「両方/未完/完了」**、子行の **✓ 完了切替**、**順位 `-`〜10**（`-` で納期ベース自動並びへ）、**機種名**（MH/SH で空だった行が進捗履歴で補完されうること）を目視。
 - [ ] **手動（任意・Pi4 推奨）**: **資源内順位**変更直後、**数秒待たずに** UI の並び・ドロップダウンが追従すること（**`leaderBoardFastPath`**・大規模一覧の full refetch 省略）。別台キオスクとの占有表示差は **最大ポーリング間隔**まで起こりうる（KB-297 トラブルシュート）。
 - [ ] **手動（任意・UX polish）**: 子行で **FSEIBAN 右横に「◯個」**・**機種名が他画面同様の半角大文字**に見えること。**上端ヘッダー・左ドロワー**および（比較対象あれば）**手動順番下ペイン等のホバー開閉**が従来より素早いこと。[KB-297 §UX polish（leader order board）](../knowledge-base/KB-297-kiosk-due-management-workflow.md#ux-polish-leader-order-board-2026-04-02)。
 
 **検証日時**: 2026-04-02（`verify-phase12-real.sh` **PASS 40 / WARN 0 / FAIL 0**・`feat/kiosk-leader-order-board-ux-polish` 本番反映後・自動回帰済み）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
+**追補（2026-05-19 · `feat/leaderboard-continue-delta-safe` 本番5台）**
+
+**検証日時**: 2026-05-19（`verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**·`deploy-status` Pi4×4 **PASS**·`status-agent` Pi4×4 **PASS**·現場順位ボード **表示正常・体感速度維持**）
+**検証結果**: ☑ 成功（自動+現場） ☐ 失敗（エラー内容: _______________）
+**参照**: [KB-374 §Production 2026-05-19](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)
 
 **6.6.19 キオスク リーダー順位ボード（製番検索・納期アシスト詳細・左2段スタック）**
 

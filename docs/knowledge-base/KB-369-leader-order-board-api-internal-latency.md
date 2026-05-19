@@ -227,6 +227,12 @@ category: knowledge-base
 - **Web**: 集約フック [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) で、`scheduleEnabled=false` 時の `scheduleQuery` に **同一オブジェクト参照**を返し下流の派生再計算を抑制（表示データは不変）。
 - **検証**: 統合テスト [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の `leaderboard-board continue profile logs: multi-resource append reaches hasMore=false` で、**continue ループ完了後の `rows[].id` 列および `total` が、単一 `GET …/leaderboard-board`（同一 `boardResourceCds`・十分な `pageSize`）と一致**することを assert。
 
+## Production deploy & verification（2026-05-19 · deltaRows + 表示安定化 + pageSize 80）
+
+- **ブランチ**: **`feat/leaderboard-continue-delta-safe`**（**`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**）。
+- **要点**: board `continue` の **累積 `rows` 正本は不変**。任意 **`deltaRows`** はクライアント最適化のみ。体感改善の主因は **refetch 巻き戻し防止（Web）** と **`pageSize` 80 による continue 回数削減（Web）**。
+- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../guides/deployment.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
+
 ## Production deploy & verification（2026-05-18 · output-stable internal optimization）
 
 - **対象ホスト（ユーザー指定 5 台のみ・順次）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 `--limit` で **1 台ずつ**）。
