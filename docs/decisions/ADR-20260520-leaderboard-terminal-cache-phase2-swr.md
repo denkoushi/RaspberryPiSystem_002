@@ -46,9 +46,25 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 | hook | [`useLeaderboardBoardTerminalCache.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) |
 | 書き込み橋 | [`productionScheduleWriteSuccessListeners.ts`](../apps/web/src/features/kiosk/productionSchedule/productionScheduleWriteSuccessListeners.ts) · [`buildLeaderboardBoardCacheWriteSuccessListeners`](../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardCacheMutationBridge.ts) |
 
-## デプロイ（未実施・計画）
+## デプロイ（本番反映済み・2026-05-19）
 
-Pi5 検証 → Pi4 キオスク 4 台順次（Phase 1 と同型）。本 ADR 時点では **ローカル Vitest のみ**。
+**ブランチ**: **`feat/kiosk-leaderboard-terminal-cache-phase2-swr`**（tip **`2300da83`**）·**PR [#302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)**。**Web のみ**·**新規マイグレーションなし**。
+
+**順序（1 台ずつ）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（**Pi3** は **`no hosts matched`**）。
+
+| ホスト | Detach Run ID | PLAY RECAP |
+| --- | --- | --- |
+| `raspberrypi5` | **`20260519-215631-11713`** | `ok=134` `changed=4` `failed=0`（**Docker compose 再起動 `changed`**） |
+| `raspberrypi4` | **`20260519-220153-2826`** | `ok=122` `changed=10` `failed=0`（**`kiosk-browser` / `status-agent` 再起動**） |
+| `raspi4-robodrill01` | **`20260519-220731-12252`** | `ok=122` `changed=9` `failed=0` |
+| `raspi4-fjv60-80` | **`20260519-221143-3419`** | `ok=122` `changed=9` `failed=0` |
+| `raspi4-kensaku-stonebase01` | **`20260519-221558-18199`** | `ok=129` `changed=10` `failed=0` |
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **70s**·Tailscale·Pi5 `100.106.158.2`）·**`deploy-status`（Pi4×4）** すべて **PASS**。
+
+**知見**: Phase 1 は **Pi5 のみ**だったため、Pi4×4 は **Phase 1 + Phase 2 を同時に初反映**（IDB は端末ローカル）。**初回アクセスは IDB 空**のため体感改善は **continue 完走後の 2 回目以降**で評価する（Phase 1 と同型）。
+
+**手順正本**: [deployment.md §端末キャッシュ Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)。
 
 ## Consequences
 

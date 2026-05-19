@@ -365,6 +365,37 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
   - **120s より古いキャッシュ** → 表示ポリシーで **非表示**（意図）。
 - **ナレッジ**: [ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[KB-374 §端末キャッシュ](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表 **`072054f9`** / fix **`3ae93221`**。
 
+### 補足（2026-05-19 · **キオスク順位ボード・端末キャッシュ Phase 2（SWR + 書き込み同期）**·**Web のみ**·**Pi5→Pi4×4 本番反映**） {#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19}
+
+- **変更概要（正本 [KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)）**:
+  - **Web のみ**: Phase 1 の IndexedDB bootstrap に加え、**120s 鮮度内の continue 完走済みスナップショット**を **`paramsKey` 一致時に SWR 表示**（再検証中も維持）。
+  - **書き込み同期**: 順位・備考・納期・完了の API 成功後、**同一 `paramsKey` の IDB を patch**（[`productionScheduleWriteSuccessListeners.ts`](../../apps/web/src/features/kiosk/productionSchedule/productionScheduleWriteSuccessListeners.ts)）。
+  - **IDB put 判定**: 行 ID だけでなく **内容指紋**（順位・備考・納期・完了含む）（[`leaderboardBoardCachePersistPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts)）。
+  - **UX**: 完了フィルタ既定 **`incomplete`**（クライアントのみ·API 不変）。
+  - **触らない**: API 契約·一覧 id/total/並び·装飾意味論。**新規マイグレーションなし**。
+- **対象ホスト（実績）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` で 1 台ずつ**）。**Pi3**: **`no hosts matched`**（専用手順不要）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase2-swr infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **本番デプロイ（Detach Run ID・`ansible-update-` 接頭辞）**:
+
+| ホスト | Detach Run ID | PLAY RECAP |
+| --- | --- | --- |
+| `raspberrypi5` | **`20260519-215631-11713`** | `ok=134` `changed=4` `failed=0` |
+| `raspberrypi4` | **`20260519-220153-2826`** | `ok=122` `changed=10` `failed=0` |
+| `raspi4-robodrill01` | **`20260519-220731-12252`** | `ok=122` `changed=9` `failed=0` |
+| `raspi4-fjv60-80` | **`20260519-221143-3419`** | `ok=122` `changed=9` `failed=0` |
+| `raspi4-kensaku-stonebase01` | **`20260519-221558-18199`** | `ok=129` `changed=10` `failed=0` |
+
+- **CI（機能）**: PR [#302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302) **success**（初回 `useProductionScheduleMutations.test.ts` 2 件失敗 → tip **`2300da83`** で `onSuccess` 期待を追加）。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **70s**）。
+- **ローカル回帰**: `pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard` → **174 tests PASS**。
+- **ロールバック**: `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=false`（Phase 1 のみ）/ `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false`（全体オフ）/ 直前 ref へ **`update-all-clients.sh`** 再実行。
+- **トラブルシュート**:
+  - **1 回目だけ遅い** → **IDB 空**が正常。**continue 完走後の 2 回目以降**で SWR を評価。
+  - **Pi4 で Phase 1 だけ欲しい** → 本リリースは **Phase 1+2 同梱**（Pi4 は Phase 1 未展開だったため初反映が一括）。
+  - **真っ白画面** → [§端末キャッシュ Phase 1](#kiosk-leaderboard-terminal-cache-phase1-2026-05-19) の **`3ae93221`** を参照。
+  - **他端末の変更が 120s 超遅い** → SLA 仕様（自端末書き込みは即 patch）。
+- **ナレッジ**: [ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·代表 **`c581c1e1`** / fix **`2300da83`**。
+
 ### 補足（2026-05-08 · **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767）対策**·**API のみ**·**Pi5 のみ**） {#csv-dedup-ingest-postgres-bind-limit-2026-05-08}
 
 - **変更概要**: `ingestMode === DEDUP` の取込で、既存行照合 **`csvDashboardRow.findMany({ dataHash: { in: incomingHashes } })`** が **単一クエリ**だったため、**`incomingHashes` が数万件**になると **Prisma / PostgreSQL の prepared statement バインド上限（典型 32767）**を超え、**`too many bind variables … received 32768`** で失敗し得た。**対策**: [`findCsvDashboardRowsByDataHashes`](../../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts) で **ハッシュ重複除去＋チャンク分割 `findMany`**・[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) から呼び出し。**新規マイグレーションなし**。
