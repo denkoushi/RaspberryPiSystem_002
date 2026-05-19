@@ -390,10 +390,100 @@ sequenceDiagram
 | Pi5 だけ更新してキオスクが旧挙動 | キオスク Web は **Pi4 上** | **Pi4×4 も同ブランチ**をデプロイ（pageSize 80 系と同じ 5 台パターン） |
 | `leaderboard-board/continue` **400** | cursor 欠落（別件） | [§Root cause](#root-cause) |
 
+## 端末キャッシュ Phase 1（IndexedDB + 裏同期）（2026-05-19 · `feat/kiosk-leaderboard-terminal-cache-phase1`）
+
+**目的**: API 最適化（pageSize 80・装飾後取り・COUNT 再利用）後も残る **端末 cold start**（Pi4 再起動・リロード時の「読み込み中…」）を、**出力同値**のまま短縮する。**Web のみ**·**API 契約変更なし**。
+
+**設計 ADR**: [ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)。
+
+**ブランチ**: **`feat/kiosk-leaderboard-terminal-cache-phase1`**。**代表コミット**: **`072054f9`**（本体）· **`3ae93221`**（真っ白画面 fix）。**依存**: `idb` **^8.0.3**（[`apps/web/package.json`](../../apps/web/package.json)）。
+
+### 仕様（実装の正本）
+
+| # | 要件 | 実装 |
+| --- | --- | --- |
+| 1 | 鮮度 **120s** | `LEADERBOARD_BOARD_CACHE_MAX_AGE_MS` = `LEADER_BOARD_SCHEDULE_REFETCH_MS` |
+| 2 | 不一致 **常にサーバ正** | `reconcileLeaderboardBoardCacheWithServer` → `serverWins` で `delete` |
+| 3 | キー = **`siteKey` + `paramsKey`** | [`buildLeaderboardBoardCacheKey`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheKey.ts)（**`paramsKey` は常に string** — 未就绪時 `''`） |
+| 4 | 通信失敗 **キャッシュ継続** + 警告 | [`LEADERBOARD_BOARD_CACHE_SYNC_WARNING`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheConstants.ts)·Page バナー |
+| 5 | 保存 = **continue 完走後** + 120s ポーリング成功 | `isCompleteLeaderboardBoardSnapshot` + `networkBoardComplete` |
+
+**表示優先**: ネットワークに有効な shell/append 行がある間は **ネットワーク正**。IDB は **初回 loading・placeholder 抑制中の bootstrap** のみ（[`shouldShowLeaderboardBoardTerminalCache`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheDisplayPolicy.ts)）。
+
+**reconcile 直後の put 抑止**: mismatch で purge した **`networkSyncToken`（= shell 指紋）** では同一サイクル **`store.put` しない**（[`skippedNetworkSyncTokenRef`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts)）。
+
+**ロールバック**: `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false`（省略時 **true**）。
+
+**データフロー（後続スレッド用）**:
+
+```mermaid
+sequenceDiagram
+  participant Page as LeaderOrderBoardPage
+  participant Hook as useCompositeLeaderboardPhasedScheduleWithAutoAppend
+  participant TC as useLeaderboardBoardTerminalCache
+  participant IDB as IndexedDB
+  participant Net as ReactQuery_network
+
+  Page->>Hook: siteKey, scheduleEnabled, boardQueryParams
+  Hook->>TC: networkDisplayBoard, paramsKey, shellFingerprint
+  TC->>IDB: get(cacheKey) on mount
+  alt cache hit and bootstrap policy
+    TC-->>Page: displayBoard from IDB (instant)
+  end
+  Hook->>Net: GET/POST leaderboard-board + decorations
+  Net-->>Hook: complete board
+  Hook->>TC: reconcile + put on aligned
+  TC->>IDB: put or delete
+```
+
+### ローカル検証
+
+```bash
+pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
+```
+
+| テスト群 | 件数（記録時点） | 確認内容 |
+| --- | --- | --- |
+| `cache/__tests__/*` | ポリシー・key・record | reconcile・maxAge・`paramsKey undefined` ガード |
+| `useLeaderboardBoardTerminalCache.test.tsx` | hook 統合 | hydrate・network error 警告・reconcile purge・120s 超過非表示 |
+| `useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` | composite | `isShowingCachedData` / `cacheSyncWarning` |
+
+**CI（機能）**: **`26093399804`** **success**（`072054f9`）。
+
+### 本番反映（2026-05-19 · **`raspberrypi5` のみ** · Pi4 未展開）
+
+| 段階 | Detach Run ID | コミット | 結果 |
+| --- | --- | --- | --- |
+| 初回 | **`20260519-203723-29020`** | **`072054f9`** | **`failed=0`**·現場 **真っ白画面** |
+| fix 再デプロイ | **`20260519-205437-31528`** | **`3ae93221`** | **`failed=0`**·Mac/Pi5 **表示 OK** |
+
+- **標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **Pi4×4**: **未デプロイ**（IDB は **各ブラウザローカル** — Pi4 実機効果には **Pi4 Web 更新が必要**）
+- **Pi3**: **`no hosts matched`**（対象外）
+
+### Troubleshooting（本件）
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| **真っ白画面**（`#root` 空） | DevTools **`trim` of undefined** at `buildLeaderboardBoardCacheKey` | **`3ae93221` 以降**を Pi5（+ 必要なら Pi4）へ再デプロイ。**ハードリロード** |
+| 常に「読み込み中…」（改善なし） | IDB 空（初回）または **120s 超過キャッシュ**は表示しない | 1 回 **continue 完走**後に保存される。**2 回目以降**の cold start で効く |
+| 警告「前回保存分です」 | ネットワーク失敗中 | [KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md) と併読。キャッシュ継続は **意図** |
+| reconcile で一瞬古い表示 | mismatch → purge 後 **同一 sync token では put しない** | 次ポーリングでサーバ版に収束 |
+| Pi5 だけ更新 | Pi4 キオスク Web が旧 bundle | **Pi4×4 順次**（装飾後取りと同じ 5 台） |
+| キャッシュ無効化 | 緊急 | ビルド時 **`VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false`** |
+
+### 知見
+
+- **cold start 改善は「2 回目以降」**が主戦場（初回は IDB 空のため従来と同じネットワーク完走）。
+- **`JSON.stringify(undefined)` は `undefined` を返す**（`"undefined"` 文字列ではない）— **`paramsKey` 境界は string 正規化必須**。
+- **Mac から Pi5 URL での検証**は Playwright **`ignoreHTTPSErrors: true`** または証明書例外後に DevTools で **pageerror** を確認するのが早い。
+- **Phase 2 候補**（スコープ外）: React Query persist との役割分担見直し・差分 sync API。
+
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
 - **本件（2026-05-19 · pageSize 80 系）**: **`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**（ブランチ **`feat/leaderboard-continue-delta-safe`**）·**`main`**: [PR #297](https://github.com/denkoushi/RaspberryPiSystem_002/pull/297) **squash** **`fae56edd`**。
 - **初回10/追補40（2026-05-19）**: **`1e214213`**（ブランチ **`feat/leaderboard-board-initial-10-continue-40`**）·Pi5 Detach **`20260519-125903-25635`**·**`main`**: [PR #298](https://github.com/denkoushi/RaspberryPiSystem_002/pull/298) **squash** **`5c2bceec`**·[§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)。
 - **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../guides/deployment.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
+- **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
