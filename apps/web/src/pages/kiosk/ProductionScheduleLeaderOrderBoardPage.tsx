@@ -125,8 +125,9 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     });
 
   const leaderboardPhasedBase = useMemo(() => {
-    const { resourceCds: _omitResourceCds, ...rest } = baseQueryParams;
+    const { resourceCds: _omitResourceCds, q: _omitQ, ...rest } = baseQueryParams;
     void _omitResourceCds;
+    void _omitQ;
     return {
       ...rest,
       pageSize: LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE,
@@ -213,6 +214,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     }
   });
 
+  const dueAssist = useLeaderBoardDueAssist({
+    pauseRefetch: writePause,
+    refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS,
+    initialSeibanFilters: searchConditions.activeQueries
+  });
+
   const {
     scheduleQuery,
     appendError,
@@ -221,6 +228,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     applyMutationPatch
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
+    seibanOrFilters: dueAssist.selectedFseibanFilters,
     resourceCdsOrdered: activeResourceCds,
     scheduleEnabled,
     pauseRefetch: writePause,
@@ -259,11 +267,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [resourcesQuery.data]
   );
 
-  const dueAssist = useLeaderBoardDueAssist({
-    pauseRefetch: writePause,
-    refetchIntervalMs: LEADER_BOARD_SEARCH_STATE_REFETCH_MS,
-    initialSeibanFilters: searchConditions.activeQueries
-  });
   const {
     seibanEvalEnabled,
     setSeibanEvalEnabled,

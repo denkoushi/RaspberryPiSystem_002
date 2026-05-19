@@ -11,6 +11,9 @@ import {
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
+import { normalizeLeaderboardSeibanOrTokens } from './cache/filterLeaderboardBoardBySeibanOr';
+import { isLeaderboardSeibanOrClientFilterEnabled } from './cache/leaderboardBoardCacheConstants';
+import { buildLeaderboardBoardLegacyFetchParams } from './cache/leaderboardBoardFetchParams';
 import { resolveScopedLeaderboardAppendOverride } from './leaderboardBoardAppendOverrideScopePolicy';
 import {
   resolveLeaderboardAppendLoopStartBoard,
@@ -37,6 +40,7 @@ import {
   type LeaderboardBoardCacheMutation
 } from './useLeaderboardBoardTerminalCache';
 import { useLeaderboardDeferredBoardDecorations } from './useLeaderboardDeferredBoardDecorations';
+import { useLeaderboardSeibanOrClientFilterOverlay } from './useLeaderboardSeibanOrClientFilterOverlay';
 
 /** 端末無効時に同一参照を返し、下流の再レンダーを安定させる */
 const SCHEDULE_QUERY_DISABLED = {
@@ -63,6 +67,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   leaderboardPhasedBaseParams: KioskProductionScheduleLeaderboardPhasedQueryParams;
   /** スロット順など、画面上のカード並び */
   resourceCdsOrdered: string[];
+  seibanOrFilters?: string[];
   scheduleEnabled: boolean;
   pauseRefetch: boolean;
   refetchIntervalMs: number;
@@ -91,6 +96,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const {
     leaderboardPhasedBaseParams,
     resourceCdsOrdered,
+    seibanOrFilters = [],
     scheduleEnabled,
     pauseRefetch,
     refetchIntervalMs,
@@ -98,6 +104,14 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     activeDeviceScopeKey,
     siteKey
   } = options;
+
+  const clientFilterEnabled = isLeaderboardSeibanOrClientFilterEnabled();
+  const seibanTokens = useMemo(
+    () => normalizeLeaderboardSeibanOrTokens(seibanOrFilters),
+    [seibanOrFilters]
+  );
+  const seibanOrFiltersKey = useMemo(() => JSON.stringify(seibanOrFilters), [seibanOrFilters]);
+  const stableSeibanOrFilters = useMemo(() => JSON.parse(seibanOrFiltersKey) as string[], [seibanOrFiltersKey]);
 
   const queryClient = useQueryClient();
   const leaderboardPhasedBaseParamsKey = useMemo(
@@ -113,16 +127,36 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const boardQueryParams = useMemo((): KioskProductionScheduleLeaderboardBoardQueryParams | undefined => {
     if (!scheduleEnabled || resourceCdsOrderedKey.length === 0) return undefined;
     const baseParams = JSON.parse(leaderboardPhasedBaseParamsKey) as KioskProductionScheduleLeaderboardPhasedQueryParams;
-    return {
+    const primaryParams: KioskProductionScheduleLeaderboardBoardQueryParams = {
       ...baseParams,
       boardResourceCds: orderedResourceCds.join(','),
       includeDecorations: false
     };
-  }, [leaderboardPhasedBaseParamsKey, orderedResourceCds, resourceCdsOrderedKey, scheduleEnabled]);
+    if (clientFilterEnabled) {
+      return primaryParams;
+    }
+    return buildLeaderboardBoardLegacyFetchParams({
+      phasedBase: baseParams,
+      boardResourceCds: orderedResourceCds,
+      seibanOrFilters: stableSeibanOrFilters
+    });
+  }, [
+    clientFilterEnabled,
+    leaderboardPhasedBaseParamsKey,
+    orderedResourceCds,
+    resourceCdsOrderedKey,
+    scheduleEnabled,
+    stableSeibanOrFilters
+  ]);
 
   const paramsKey = useMemo(
     () => (boardQueryParams != null ? JSON.stringify(boardQueryParams) : ''),
     [boardQueryParams]
+  );
+
+  const decorationParamsKey = useMemo(
+    () => (seibanTokens.length > 0 ? `${paramsKey}\0${seibanOrFiltersKey}` : paramsKey),
+    [paramsKey, seibanOrFiltersKey, seibanTokens.length]
   );
 
   const [appendOverride, setAppendOverride] = useState<ProductionScheduleLeaderboardBoardResponse | null>(null);
@@ -191,7 +225,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
     useLeaderboardDeferredBoardDecorations({
       scheduleEnabled,
-      paramsKey,
+      paramsKey: decorationParamsKey,
       displayBoard: networkDisplayBoard,
       macManualOrderV2,
       activeDeviceScopeKey,
@@ -345,12 +379,26 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     purgeCache
   ]);
 
+  const { displayBoardForUi, listIncompleteForUi } = useLeaderboardSeibanOrClientFilterOverlay({
+    enabled: clientFilterEnabled,
+    seibanOrFilters,
+    orderedResourceCds,
+    leaderboardPhasedBaseParamsKey,
+    displayBoard,
+    networkDisplayBoard,
+    networkBoardComplete,
+    appendRunIdRef,
+    setIsAppending
+  });
+
   const scheduleQuery = useMemo(() => {
     if (!scheduleEnabled || resourceCdsOrdered.length === 0) {
       return SCHEDULE_QUERY_DISABLED;
     }
 
-    if (!displayBoard) {
+    const boardForSchedule = displayBoardForUi;
+
+    if (!boardForSchedule) {
       const awaitingFreshShellAfterParamsChange =
         suppressPlaceholderShell && scopedAppendOverride == null;
       return {
@@ -361,20 +409,21 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       };
     }
 
-    const data = mergeLeaderboardBoardWithDecorations(displayBoard, displayDecorations);
+    const data = mergeLeaderboardBoardWithDecorations(boardForSchedule, displayDecorations);
     const decorationFailed = decorationsError != null && !isShowingCachedData;
 
     const awaitingFreshShellAfterParamsChange =
-      suppressPlaceholderShell && scopedAppendOverride == null && displayBoard.rows.length === 0;
+      suppressPlaceholderShell && scopedAppendOverride == null && boardForSchedule.rows.length === 0;
 
-    const hasDisplayableRows = displayBoard.rows.length > 0;
-    const bootstrapFromCache = isShowingCachedData && hasDisplayableRows;
+    const hasDisplayableRows = boardForSchedule.rows.length > 0;
+    const bootstrapFromCache =
+      isShowingCachedData && hasDisplayableRows && seibanTokens.length === 0;
 
     return {
       data,
       isLoading:
         !bootstrapFromCache &&
-        (isLeaderboardScheduleInitialLoading(boardQuery.isLoading, displayBoard.rows.length) ||
+        (isLeaderboardScheduleInitialLoading(boardQuery.isLoading, boardForSchedule.rows.length) ||
           awaitingFreshShellAfterParamsChange),
       isError: (boardQuery.isError && !isShowingCachedData) || decorationFailed,
       isFetching: boardQuery.isFetching || isAppending || isDecorationsFetching
@@ -384,7 +433,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     boardQuery.isFetching,
     boardQuery.isLoading,
     decorationsError,
-    displayBoard,
+    displayBoardForUi,
     displayDecorations,
     isAppending,
     isDecorationsFetching,
@@ -392,6 +441,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     resourceCdsOrdered.length,
     scheduleEnabled,
     scopedAppendOverride,
+    seibanTokens.length,
     suppressPlaceholderShell
   ]);
 
@@ -402,7 +452,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     scheduleQuery,
     appendError,
     feedMounts: null,
-    listIncomplete,
+    listIncomplete: listIncompleteForUi ?? listIncomplete,
     isShowingCachedData,
     cacheSyncWarning,
     applyMutationPatch

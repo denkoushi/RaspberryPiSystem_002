@@ -545,6 +545,44 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 | SWR を止めたい | ビルドフラグ | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=false`（Phase 1 のみ） |
 | キャッシュ全体オフ | 同上 | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false` |
 
+## 製番 OR クライアントキャッシュフィルタ（2026-05-20）
+
+**目的**: 登録製番 OR 切替で **`paramsKey`（無 `q` 完走 board）を固定**し、**IDB 上の全件キャッシュ**をそのままクライアントで絞込表示する。裏で **同じ製番の `q` 付き GET + continue** で照合し、**不一致は常にサーバ正**（Phase 1/2 reconcile と同型）。**Web のみ**·**API 不変**·**ツールバー等の他 `q` は従来どおり API**。
+
+**ブランチ（実装）**: **`feat/kiosk-leaderboard-seiban-or-client-cache-filter`**（**コミット・デプロイはユーザー指示まで保留**）。
+
+### データフロー
+
+1. **Primary**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) が `leaderboardPhasedBase` から **`q` を除外**し、[`useCompositeLeaderboardPhasedScheduleWithAutoAppend`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) に **`seibanOrFilters`** を渡す。
+2. **GET**: `boardQueryParams` は **無 `q`**（`clientFilterEnabled` 時）。**`paramsKey` は製番 ON/OFF で変わらない** → continue 完走済み IDB を再利用。
+3. **表示**: 完走前でも **手元行に製番完全一致フィルタ**（[`canDisplayLeaderboardSeibanClientFilter`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSeibanClientFilterPolicy.ts)）。**reconcile** は **完走後のみ**（[`canApplyLeaderboardSeibanClientFilter`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSeibanClientFilterPolicy.ts)）。
+4. **照合**: [`useLeaderboardSeibanOrClientFilterOverlay`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardSeibanOrClientFilterOverlay.ts) が `getKioskProductionScheduleLeaderboardBoard`（`q` 付き）+ 必要なら continue → [`reconcileLeaderboardBoardCacheWithServer`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheReconcilePolicy.ts)。
+5. **装飾**: IDB の `paramsKey` とは別に **`decorationParamsKey`** へ製番指紋を連結（装飾リセットのみ）。
+
+### ガード・ロールバック
+
+| 条件 | 挙動 |
+| --- | --- |
+| `VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER=false` | 従来どおり **`q` を API `boardQueryParams` に載せる**（legacy） |
+| 製番トグル | **進行中 primary continue をキャンセル**（`appendRunIdRef` 増分）·**遅延 continue 応答は無視** |
+| 製番 OFF + 完走キャッシュ | **即全件表示**（フィルタ解除のみ·**primary continue 増やさない**） |
+| reconcile 不一致 | **`serverVerifiedBoard` で表示上書き**（サーバ正） |
+
+### 実装メモ（Vitest）
+
+- **落とし穴**: `boardQueryParams` の `useMemo` 依存に **`seibanOrFilters` 配列リテラル**を入れると、テスト Harness の毎レンダーで **append effect が再実行**され continue が 1 回で止まる → **`seibanOrFiltersKey`（JSON）に置換**。
+- **検証**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard` → **186 PASS**（2026-05-20 記録）。
+
+### モジュール
+
+| ファイル | 責務 |
+| --- | --- |
+| [`leaderboardBoardFetchParams.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardFetchParams.ts) | base / reconcile / legacy params |
+| [`filterLeaderboardBoardBySeibanOr.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/filterLeaderboardBoardBySeibanOr.ts) | 完走 board の OR 完全一致絞込 |
+| [`leaderboardBoardSeibanClientFilterPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSeibanClientFilterPolicy.ts) | 表示可否 / reconcile 可否 |
+| [`leaderboardBoardAppendSessionRunner.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendSessionRunner.ts) | reconcile 用 continue ループ |
+| [`useLeaderboardSeibanOrClientFilterOverlay.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardSeibanOrClientFilterOverlay.ts) | 表示合成 + reconcile effect |
+
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。

@@ -24,3 +24,10 @@ export function isLeaderboardBoardTerminalCachePhase2SwrEnabled(): boolean {
   if (raw === undefined || raw === '') return true;
   return raw !== 'false' && raw !== '0';
 }
+
+/** 登録製番 OR を無 `q` 完走 board へクライアントフィルタ（省略時 true） */
+export function isLeaderboardSeibanOrClientFilterEnabled(): boolean {
+  const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER;
+  if (raw === undefined || raw === '') return true;
+  return raw !== 'false' && raw !== '0';
+}
