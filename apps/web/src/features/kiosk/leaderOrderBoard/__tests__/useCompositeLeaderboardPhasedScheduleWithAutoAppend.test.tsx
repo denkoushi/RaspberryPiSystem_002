@@ -39,7 +39,7 @@ function row(id: string, resourceCd: string): ProductionScheduleRow {
 function boardPayload(partial: Partial<ProductionScheduleLeaderboardBoardResponse>): ProductionScheduleLeaderboardBoardResponse {
   return {
     page: 1,
-    pageSize: 20,
+    pageSize: 80,
     total: 0,
     rows: [],
     resources: [],
@@ -67,8 +67,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       total: 4,
       rows: [r1a, r1b, r2a],
       resources: [
-        { resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 },
-        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
+        { resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 80 }
       ]
     });
 
@@ -83,8 +83,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       ],
       deltaRows: [r1c],
       resources: [
-        { resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 20 },
-        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
+        { resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 80 }
       ]
     });
 
@@ -105,7 +105,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
-          pageSize: 20
+          pageSize: 80
         },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
@@ -147,7 +147,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
           snapshotId: sid,
           hasMore: true,
           total: 3,
-          pageSize: 20
+          pageSize: 80
         }
       ]
     });
@@ -162,7 +162,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
           hasMore: false,
           nextCursor: 3,
           total: 3,
-          pageSize: 20
+          pageSize: 80
         }
       ]
     });
@@ -182,7 +182,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -224,7 +224,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
-          pageSize: 20
+          pageSize: 80
         },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
@@ -246,19 +246,19 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 5,
       rows: [row('a1', 'R1'), row('a2', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 20 }]
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 80 }]
     });
 
     const step1: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 5,
       rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 4, total: 5, pageSize: 20 }]
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 4, total: 5, pageSize: 80 }]
     });
 
     const step2: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 5,
       rows: [row('a1', 'R1'), row('a2', 'R1'), row('a3', 'R1'), row('a4', 'R1'), row('a5', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 20 }]
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 5, total: 5, pageSize: 80 }]
     });
 
     postContinue.mockResolvedValueOnce(step1).mockResolvedValueOnce(step2);
@@ -276,7 +276,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -303,7 +303,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 5,
       rows: [row('b1', 'R1'), row('b2', 'R1')],
-      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 20 }]
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 5, pageSize: 80 }]
     });
 
     postContinue.mockResolvedValueOnce(
@@ -328,7 +328,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -356,8 +356,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       total: 4,
       rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
       resources: [
-        { resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 },
-        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
+        { resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 80 }
       ]
     });
 
@@ -365,8 +365,8 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       total: 4,
       rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r1-c', 'R1'), row('r2-a', 'R2')],
       resources: [
-        { resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 20 },
-        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 20 }
+        { resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, nextCursor: 1, total: 1, pageSize: 80 }
       ]
     });
 
@@ -389,7 +389,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
         leaderboardPhasedBaseParams: {
           allowResourceOnly: true,
-          pageSize: 20
+          pageSize: 80
         },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
@@ -427,13 +427,13 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     const shellSmall: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 3,
       rows: [r1a, r1b],
-      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 }]
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80 }]
     });
 
     const afterContinue: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 3,
       rows: [r1a, r1b, r1c],
-      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 20 }]
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 3, total: 3, pageSize: 80 }]
     });
 
     postContinue.mockResolvedValue(afterContinue);
@@ -452,7 +452,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
         resourceCdsOrdered: ['R1'],
         scheduleEnabled: true,
         pauseRefetch: false,
@@ -492,7 +492,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     const shell: ProductionScheduleLeaderboardBoardResponse = boardPayload({
       total: 4,
       rows: [row('r1-a', 'R1'), row('r2-a', 'R2')],
-      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 20 }]
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 2, total: 3, pageSize: 80 }]
     });
 
     const err400 = new AxiosError('Request failed');
@@ -518,7 +518,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     function Harness() {
       latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
-        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 20 },
+        leaderboardPhasedBaseParams: { allowResourceOnly: true, pageSize: 80 },
         resourceCdsOrdered: ['R1', 'R2'],
         scheduleEnabled: true,
         pauseRefetch: false,

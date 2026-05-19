@@ -213,7 +213,8 @@ category: knowledge-base
 - **目的**: KPI を **「初回に一覧が見え始めるまでの時間」** に固定し、件数確定より **行の先出し**を優先。
 - **Web**: [`useLeaderboardPhasedScheduleWithAutoAppend.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardPhasedScheduleWithAutoAppend.ts) は **`hasFreshTotal` を append 開始条件から外し**、shell 応答があれば total 未確定でも continue を開始する。
 - **件数表示**: total 未確定中は **`mergedRows.length` を暫定 total** として扱い、取得後に確定値へ置換する。**total 単独失敗では shell rows を全体エラー扱いしない**。
-- **初回件数**: Web の [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20** に変更。API の許容上限 **160** は維持しつつ、**1資源CDカード20件**で初回負荷を抑える。
+- **初回件数（2026-05-08 時点）**: Web の [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20** に変更。API の許容上限 **160** は維持しつつ、**1資源CDカード20件**で初回負荷を抑える。
+- **第1弾 pageSize 80（2026-05-19）**: 上記定数を **80** に引き上げ（**表示内容・並び・件数定義は不変**）。continue 回数削減が目的。詳細は [KB-374 · 第1弾 pageSize 80](./KB-374-leaderboard-board-continue-cursor-contract.md#第1弾-pagesize-80continue-回数削減2026-05-19)。
 
 実装: [`leaderboard-phased-read.ts`](../../apps/api/src/routes/kiosk/production-schedule/leaderboard-phased-read.ts)・[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)（`listLeaderboardShellProductionScheduleRows` 等）。統合テスト: [`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の phased ケース。
 

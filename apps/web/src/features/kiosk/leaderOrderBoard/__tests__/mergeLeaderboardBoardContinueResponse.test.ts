@@ -23,10 +23,10 @@ describe('mergeLeaderboardBoardContinueResponseWithOptionalDelta', () => {
     const authority = mkRow('a', '10');
     const next: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
-      pageSize: 20,
+      pageSize: 80,
       total: 1,
       rows: [authority],
-      resources: [{ resourceCd: '10', hasMore: false, total: 1, pageSize: 20 }]
+      resources: [{ resourceCd: '10', hasMore: false, total: 1, pageSize: 80 }]
     };
     const prev = mkRow('b', '10');
     const out = mergeLeaderboardBoardContinueResponseWithOptionalDelta([prev], next, ['10']);
@@ -47,13 +47,13 @@ describe('mergeLeaderboardBoardContinueResponseWithOptionalDelta', () => {
 
     const next: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
-      pageSize: 20,
+      pageSize: 80,
       total: 4,
       rows: [authA, authB, authD, authC],
       deltaRows: [deltaD],
       resources: [
-        { resourceCd: '1', hasMore: false, total: 3, pageSize: 20 },
-        { resourceCd: '2', hasMore: false, total: 1, pageSize: 20 }
+        { resourceCd: '1', hasMore: false, total: 3, pageSize: 80 },
+        { resourceCd: '2', hasMore: false, total: 1, pageSize: 80 }
       ]
     };
 
@@ -70,11 +70,11 @@ describe('mergeLeaderboardBoardContinueResponseWithOptionalDelta', () => {
     const auth = mkRow('a', '1');
     const next: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
-      pageSize: 20,
+      pageSize: 80,
       total: 1,
       rows: [auth],
       deltaRows: [mkRow('x', '2')],
-      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 20 }]
+      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
     };
     expect(canMergeLeaderboardContinueDelta([prev], next, ['1'])).toBe(false);
     const out = mergeLeaderboardBoardContinueResponseWithOptionalDelta([prev], next, ['1']);
@@ -86,11 +86,11 @@ describe('mergeLeaderboardBoardContinueResponseWithOptionalDelta', () => {
     const auth = mkRow('a', '1');
     const next: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
-      pageSize: 20,
+      pageSize: 80,
       total: 1,
       rows: [auth],
       deltaRows: [mkRow('x', '2')],
-      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 20 }]
+      resources: [{ resourceCd: '1', hasMore: false, total: 1, pageSize: 80 }]
     };
     const out = mergeLeaderboardBoardContinueResponseWithOptionalDelta([prev], next, ['1']);
     expect(out.rows[0]).toBe(auth);

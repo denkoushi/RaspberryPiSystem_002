@@ -10,14 +10,14 @@ import type {
 const base: KioskProductionScheduleLeaderboardBoardQueryParams = {
   boardResourceCds: 'R1',
   allowResourceOnly: true,
-  pageSize: 20
+  pageSize: 80
 };
 
 describe('buildLeaderboardBoardContinuePayload', () => {
   it('hasMore + snapshotId で nextCursor が欠けていても cursor:0 を載せる（Zod 契約の保険）', () => {
     const board: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
-      pageSize: 20,
+      pageSize: 80,
       total: 3,
       rows: [],
       resources: [
@@ -26,7 +26,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
           snapshotId: '550e8400-e29b-41d4-a716-446655440000',
           hasMore: true,
           total: 3,
-          pageSize: 20
+          pageSize: 80
         }
       ]
     };
@@ -38,7 +38,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
   it('hasMore が false のスライスでは cursor キーを載せない', () => {
     const board: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
-      pageSize: 20,
+      pageSize: 80,
       total: 1,
       rows: [],
       resources: [
@@ -46,7 +46,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
           resourceCd: 'R1',
           hasMore: false,
           total: 1,
-          pageSize: 20
+          pageSize: 80
         }
       ]
     };
@@ -57,7 +57,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
   it('有限の nextCursor は切り捨てて正の cursor にする', () => {
     const board: ProductionScheduleLeaderboardBoardResponse = {
       page: 1,
-      pageSize: 20,
+      pageSize: 80,
       total: 5,
       rows: [],
       resources: [
@@ -67,7 +67,7 @@ describe('buildLeaderboardBoardContinuePayload', () => {
           nextCursor: 9.7,
           hasMore: true,
           total: 5,
-          pageSize: 20
+          pageSize: 80
         }
       ]
     };

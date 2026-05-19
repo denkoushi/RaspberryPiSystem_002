@@ -14,10 +14,10 @@ function row(id: string): ProductionScheduleRow {
 function board(rows: ProductionScheduleRow[], hasMore: boolean): ProductionScheduleLeaderboardBoardResponse {
   return {
     page: 1,
-    pageSize: 20,
+    pageSize: 80,
     total: rows.length,
     rows,
-    resources: [{ resourceCd: 'R1', hasMore, total: 10, pageSize: 20, nextCursor: rows.length }]
+    resources: [{ resourceCd: 'R1', hasMore, total: 10, pageSize: 80, nextCursor: rows.length }]
   };
 }
 

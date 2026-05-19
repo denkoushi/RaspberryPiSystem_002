@@ -2,7 +2,7 @@
 title: KB-374 leaderboard-board/continue の cursor 契約と HTTP 400（Zod）
 tags: [kiosk, production-schedule, leader-order-board, leaderboard-board, api, web]
 audience: [開発者, 運用者]
-last-verified: 2026-05-09
+last-verified: 2026-05-19
 category: knowledge-base
 ---
 
@@ -55,6 +55,16 @@ category: knowledge-base
   - [`leaderboardBoardDisplayPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardDisplayPolicy.ts) … **追補済み行数 ≥ shell** のとき表示を維持（refetch 巻き戻し防止）。
   - [`mergeLeaderboardBoardContinueResponse.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardContinueResponse.ts) … `canMergeLeaderboardContinueDelta` で **マージ可否を明示**し、失敗時は **`rows` 正本**。
 - **検証**: Web Vitest（追補完了後 refetch でも行数維持）·統合テスト `leaderboard-board continue profile logs`（出力同値）。
+
+## 第1弾 pageSize 80（continue 回数削減・2026-05-19）
+
+- **背景**: 表示安定化（上節）後も **全行揃うまでの体感**が遅い。`deltaRows` は **差分のみ取得ではなく**、クライアント最適化用の任意フィールド（**正本は累積 `rows`**）。遅延の主因は **`pageSize` 小さめ + continue 直列**による **HTTP 往復回数**（Mac ベンチ: 2資源×140行で pageSize 20→80 で完了時間約75%短縮・整合性 OK）。
+- **Fix（Web のみ・契約不変）**: [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20 → 80**。API Zod 上限 **160** 内。`rows` 正本・`deltaRows` 失敗時フォールバック・refetch 巻き戻り防止は **変更しない**。
+- **対象外（第2弾）**: continue 内 COUNT/装飾の再利用、continue 並列化、`deltaRows` 契約変更。
+- **ロールバック**: 不整合・体感悪化時は定数を **20 に戻す**（1点）。
+- **展開**: **Pi5 先行**（Web+API コンテナ）→ ゲート通過後 **Pi4 順次**（キオスクは Pi4 Web が `pageSize` を送るため、体感改善には Pi4 反映が必須）。
+- **Pi5 ゲート**: 2分以上ちらつきなし・体感短縮・Network で continue 回数減・行 ID/件数が単発 GET と一致。
+- **検証**: Web Vitest（`useCompositeLeaderboardPhasedScheduleWithAutoAppend` 等）·統合テスト `leaderboard-board continue profile logs`（API 変更なしでも回帰）。
 
 ## References
 

@@ -255,6 +255,19 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://100.106.158.2/api/sys
 - **ローカル回帰**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__`（追補完了後 refetch テスト含む）。
 - **ナレッジ**: [KB-374 · Web 表示安定化](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#web-表示安定化-refetch-時の追補巻き戻し防止-2026-05-19)。
 
+### 補足（2026-05-19 · **キオスク順位ボード・pageSize 80（第1弾・continue 回数削減）**·**Web**·**Pi5 先行 → Pi4 段階**） {#kiosk-leaderboard-pagesize-80-phase1-2026-05-19}
+
+- **変更概要（契約不変）**: [`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **20 → 80**。board 初回 GET と `leaderboard-board/continue` の `pageSize` に反映。**`rows` 正本**・`deltaRows` 任意・表示安定化ロジックは維持。API 実装変更なし（Zod 上限 160 内）。
+- **段階導入**: **`raspberrypi5`** で実機確認（下記ゲート）→ 問題なければ Pi4 を **`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`** の順で **1 台ずつ**（キオスク体感には **Pi4 Web 更新が必須**）。
+- **Pi5 ゲート（実機）**:
+  - 2 分以上、行が **消えて戻らない**
+  - 全行揃うまでの体感が **従来より短い**
+  - Network: `leaderboard-board/continue` の回数が **明確に減る**
+  - 行 ID・件数が **単発 `GET …/leaderboard-board`（十分な pageSize）と矛盾しない**
+- **ローカル回帰**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__`（composite hook 等）·Docker Postgres 上で `kiosk-production-schedule.integration.test.ts -t "leaderboard-board continue profile logs"`。
+- **ロールバック**: 不整合時は定数を **20** に戻して Web を再デプロイ。
+- **ナレッジ**: [KB-374 · 第1弾 pageSize 80](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#第1弾-pagesize-80continue-回数削減2026-05-19)·[KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)。
+
 ### 補足（2026-05-08 · **CSVダッシュボード DEDUP 取込・PostgreSQL バインド上限（32767）対策**·**API のみ**·**Pi5 のみ**） {#csv-dedup-ingest-postgres-bind-limit-2026-05-08}
 
 - **変更概要**: `ingestMode === DEDUP` の取込で、既存行照合 **`csvDashboardRow.findMany({ dataHash: { in: incomingHashes } })`** が **単一クエリ**だったため、**`incomingHashes` が数万件**になると **Prisma / PostgreSQL の prepared statement バインド上限（典型 32767）**を超え、**`too many bind variables … received 32768`** で失敗し得た。**対策**: [`findCsvDashboardRowsByDataHashes`](../../apps/api/src/services/csv-dashboard/csv-dashboard-existing-rows-by-hash.reader.ts) で **ハッシュ重複除去＋チャンク分割 `findMany`**・[`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) から呼び出し。**新規マイグレーションなし**。
