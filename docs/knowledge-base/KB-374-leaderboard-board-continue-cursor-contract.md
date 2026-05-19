@@ -115,9 +115,80 @@ category: knowledge-base
 | `leaderboard-board/continue` が **400** | `cursor` 欠落（別件） | [KB-374 §Root cause](#root-cause)·[`buildLeaderboardBoardContinuePayload`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderboardBoardContinuePayload.ts) |
 | 体感は遅いが continue 回数は減った | 第2弾対象（COUNT/装飾再利用・並列化） | 本リリース範囲外。ロールバックは **`LEADER_ORDER_BOARD_SHELL_PAGE_SIZE=20`** の 1 点 |
 
+## 第1段階 pageSize 初回10 / 追補40 + continue 装飾分離（2026-05-19 · `feat/leaderboard-board-initial-10-continue-40`）
+
+**目的**: 初回表示を **スロットあたり10行**に抑えて「読み込み中…」から一覧が出るまでを短くする。追補は **`pageSize=40` 固定**（`board.pageSize` に依存しない）。**全 continue 完了後**の `rows`（id 列・`total`・装飾・`leaderboardFooterChipsByPartKey`）は **pageSize 80 系と同値**（統合テスト `leaderboard-board continue profile logs` が正本）。
+
+### 仕様（実装の正本）
+
+| 層 | 内容 | 定数 / モジュール |
+| --- | --- | --- |
+| Web 初回 GET | `leaderboard-board?pageSize=10`（スロットあたり） | [`LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)（**10**） |
+| Web continue POST | `body.pageSize` は常に **40** | [`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)·[`buildLeaderboardBoardContinuePayload.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderboardBoardContinuePayload.ts) |
+| Web legacy | `useLeaderboardPhasedScheduleWithAutoAppend` の continue も **40 固定** | 同上 |
+| API shell | 装飾は従来どおり `decorateLeaderboardShellRowsForKiosk`（行数のみ **N×10** に縮小） | [`leaderboard-composite-board-decoration.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-decoration.service.ts) `decorateLeaderboardCompositeBoardShell` |
+| API continue | **増分行**を `decorateLeaderboardShellRowsForKioskFromHydratedRows`、**prefix 行**は `fetchLeaderboardScheduleHydratedRowsOrderedByIds` + machine/customer enrich、**フッタ**は **enrich 前の merged light 行**で `buildLeaderboardFooterChipsByPartKeyForScheduleRows` | 同上 `decorateLeaderboardCompositeBoardContinue` |
+| API フォールバック | `canAttachDelta` 不可時は **累積 merged 全行**を従来どおり一括装飾（出力不変） | 同上 |
+
+**意図的に触らない**: `deltaRows` 契約、`mergeLeaderboardBoardContinueResponse`、refetch 時の表示安定化（[`leaderboardBoardAppendSessionPolicy`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendSessionPolicy.ts) 等）。
+
+**代表コミット**: **`1e214213`**（`feat(kiosk): leaderboard board initial 10 rows and continue chunk 40`）。
+
+### 本番デプロイ（Pi5 のみ · Pi4 展開なし）
+
+**方針（2026-05-19）**: **実機検証のため Pi5 のみ先行反映**。**Pi4 キオスク群へのデプロイは実施しない**（体感が **pageSize 80 本番より遅い**との現場フィードバックのため）。
+
+| 項目 | 値 |
+| --- | --- |
+| ホスト | **`raspberrypi5` のみ**（`--limit raspberrypi5`） |
+| ブランチ | **`feat/leaderboard-board-initial-10-continue-40`**（tip **`1e214213`**） |
+| Detach Run ID | **`20260519-125903-25635`**（`ansible-update-` 接頭辞） |
+| PLAY RECAP | **`ok=134` `changed=4` `failed=0` `unreachable=0`** |
+| サマリ | **`Git: changed`**・Docker 再起動 **`ok`**・リモート **`exit 0`** |
+| Pi4 / Pi3 | **`no hosts matched`**（Pi4 未展開は **意図的**） |
+
+**標準コマンド（記録）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/leaderboard-board-initial-10-continue-40 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+
+### 実機検証
+
+| 種別 | 結果 |
+| --- | --- |
+| 自動 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **35s**） |
+| API スモーク | `GET …/leaderboard-board?…&pageSize=10` → 応答 **`pageSize: 10`**・`resources[].pageSize: 10`（当該資源に行が無い環境では **`rows: 0`** もあり得る） |
+| **現場（Pi5・ユーザー）** | 順位ボードの **表示速度が pageSize 80 展開時より遅くなった**（**初回だけ速い**仮説は **未確認** — **全件揃うまでの体感**が悪化した可能性） |
+
+### 遅延の切り分け（調査メモ · INCONCLUSIVE 〜 仮説）
+
+1. **continue 往復回数の増加**: 初回 **10/スロット**・追補 **40/回**のため、**全件到達までの HTTP ラウンド数**は **pageSize 80 一括初回**より **増えうる**（Mac 統合テストは **最終 id/total 同値**のみ保証し、**途中の壁時計**は測っていない）。
+2. **continue 装飾の prefix 再処理**: 各 continue で **累積 prefix 行**に対し hydrate + enrich を **毎ラウンド再実行**（件数は増分行より軽い設計だが、**累積が大きいと DB/CPU が支配**しうる）。
+3. **増分 enrich 内のフッタ計算**: `decorateLeaderboardShellRowsForKioskFromHydratedRows` は内部でフッタを計算するが、本実装は **merged light 行で別途フッタ**を正本としており、**増分経路のフッタは破棄**（無駄 DB は残りうる）。
+4. **Pi5 のみ更新**: キオスク **Web が Pi4 上**の場合、**Pi5 API だけ新挙動**でも **クライアントが旧 `pageSize` のまま**なら体感は変わらない — 今回の **「Pi5 で遅い」**は **Pi5 上のキオスク／同一 API 利用端末**での観測として記録する。
+
+### Troubleshooting（本件）
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| **pageSize 80 より遅い**（Pi5 に本ブランチ反映済） | Network で **初回 `pageSize=10`** と **continue 回数・各応答時間**を確認。サーバログで **continue あたりの装飾時間** | **Pi4 へは展開しない**（2026-05-19 決定）。ロールバックは Pi5 を **`main`（pageSize 80 系）**へ再デプロイ、または定数 **10/40 → 80/80** へ戻して再検証 |
+| 初回は速いが全件揃うまで遅い | **continue ラウンド数**・**prefix 装飾**を疑う | 第2弾: prefix 装飾キャッシュ・continue 並列化・COUNT 再利用（[KB-369](./KB-369-leader-order-board-api-internal-latency.md)） |
+| 件数・装飾がおかしい | 統合テスト相当の **完了後 id/total** を単発 GET と照合 | `canAttachDelta` 失敗時は **累積全行装飾**フォールバック（出力不変） |
+| Pi4 が旧挙動のまま | **本ブランチ未デプロイ**（意図どおり） | Pi4 展開する場合は **5 台順次**（[deployment.md §初回10/追補40](../guides/deployment.md#kiosk-leaderboard-initial-10-continue-40-phase1-2026-05-19)）— **現時点では実施しない** |
+
+### ローカル回帰（実装時）
+
+- Web: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard/__tests__`（**113 passed**）
+- API 単体: `leaderboard-composite-board-decoration.service.test.ts`（**3 passed**）
+- API 統合: `kiosk-production-schedule.integration.test.ts -t "leaderboard-board continue profile logs"`（初回 **10**・continue **40**・完了後 id/total 一致）
+
+### 次の施策候補（スコープ外 · 記録のみ）
+
+- 列ごと先出し API（計画第2フェーズ）
+- continue 中の進捗 UI
+- リスト仮想化
+- **prefix 装飾のラウンド間キャッシュ**（continue ごとの hydrate/enrich 削減）
+
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
-- **本件（2026-05-19）**: **`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**（ブランチ **`feat/leaderboard-continue-delta-safe`**）。
-- **`main`**: [PR #297](https://github.com/denkoushi/RaspberryPiSystem_002/pull/297) **squash** **`fae56edd`**。
+- **本件（2026-05-19 · pageSize 80 系）**: **`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**（ブランチ **`feat/leaderboard-continue-delta-safe`**）·**`main`**: [PR #297](https://github.com/denkoushi/RaspberryPiSystem_002/pull/297) **squash** **`fae56edd`**。
+- **初回10/追補40（2026-05-19）**: **`1e214213`**（ブランチ **`feat/leaderboard-board-initial-10-continue-40`**）·Pi5 Detach **`20260519-125903-25635`**·[§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
