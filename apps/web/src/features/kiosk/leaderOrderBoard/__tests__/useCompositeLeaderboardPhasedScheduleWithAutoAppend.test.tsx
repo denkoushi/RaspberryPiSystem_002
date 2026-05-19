@@ -823,4 +823,117 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['new-1', 'new-2', 'new-3']);
     });
   });
+
+  it('hasMore ありで continue 完走後、製番 OFF（q 削除）と placeholder 経由で全件 shell に戻る', async () => {
+    const filteredShell = boardPayload({
+      total: 5,
+      rows: [row('only-filtered', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 5, pageSize: 80 }]
+    });
+    const filteredAfterContinue = boardPayload({
+      total: 2,
+      rows: [row('only-filtered', 'R1'), row('filt-2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 }]
+    });
+    const fullShell = boardPayload({
+      total: 3,
+      rows: [row('r1-a', 'R1'), row('r1-b', 'R1'), row('r2-a', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+
+    postContinue.mockResolvedValue(filteredAfterContinue);
+
+    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
+
+    boardHookMock.mockImplementation(() => {
+      if (phase === 'full') {
+        return {
+          data: fullShell,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          isSuccess: true,
+          isPlaceholderData: false,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      if (phase === 'placeholderStale') {
+        return {
+          data: filteredShell,
+          isLoading: false,
+          isError: false,
+          isFetching: true,
+          isSuccess: true,
+          isPlaceholderData: true,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      return {
+        data: filteredShell,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: Date.now()
+      };
+    });
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+    let withQ = true;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          ...(withQ ? { q: 'AA1S7M11' } : {})
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['only-filtered', 'filt-2']);
+      expect(latest?.listIncomplete).toBe(false);
+    });
+
+    act(() => {
+      withQ = false;
+      phase = 'placeholderStale';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.isLoading).toBe(true);
+      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
+    });
+
+    act(() => {
+      phase = 'full';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['r1-a', 'r1-b', 'r2-a']);
+      expect(latest?.scheduleQuery.isLoading).toBe(false);
+    });
+
+    expect(postContinue).toHaveBeenCalledTimes(1);
+  });
 });

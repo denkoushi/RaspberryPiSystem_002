@@ -64,6 +64,7 @@ category: knowledge-base
   - [`leaderboardBoardShellFreshnessPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardShellFreshnessPolicy.ts) … **`lastCommittedParamsKey` と現 `paramsKey` が不一致のときだけ** placeholder shell を表示から除外（**同一 params の refetch placeholder は維持** — 上節の巻き戻し防止と両立）。
   - [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) … `resolvedShell`・append 開始ガード・解除直後の短い `isLoading`。
 - **Prevention**: `isPlaceholderData` 単体では不足。**検索条件変更（`paramsKey`）** と **最後に確定した params** を併用する。Vitest: `leaderboardBoardShellFreshnessPolicy.test.ts`・`useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx`（params 変更後 placeholder）。
+- **追補（`426889d6` 副作用と修正）**: stale override 防止のため append 用 `useEffect` の deps に `appendOverrideForCurrentParams` を入れた結果、**`setAppendOverride` のたびに effect cleanup で continue ループが中断**し、本番相当（初回 shell 多行でも **複数資源 `hasMore` 残り**）で追補未完・製番 OFF 後も行数が戻らない。**Fix**: [`leaderboardBoardAppendOverrideScopePolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/leaderboardBoardAppendOverrideScopePolicy.ts) で **現 `paramsKey` に属する override のみ**表示・ループ開始に使う（**ref 正本**）。append effect の deps から override 状態を除外（`b0343567` の placeholder 抑制は維持）。`snapshotExpired` 時は `appendOverrideParamsKeyRef` もクリア。**検証**: Vitest — `hasMore` あり continue 完走 → 製番 OFF → placeholder → 全件 shell。
 
 ## 第1弾 pageSize 80（continue 回数削減・2026-05-19）
 

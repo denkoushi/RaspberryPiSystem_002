@@ -11,6 +11,7 @@ import {
 import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
+import { resolveScopedLeaderboardAppendOverride } from './leaderboardBoardAppendOverrideScopePolicy';
 import {
   resolveLeaderboardAppendLoopStartBoard,
   shouldBeginLeaderboardAppendSession
@@ -165,9 +166,12 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     [resolvedShell]
   );
 
-  const appendOverrideForCurrentParams =
-    appendOverrideParamsKeyRef.current === paramsKey ? appendOverride : null;
-  const displayBoard = pickLeaderboardBoardForDisplay(resolvedShell, appendOverrideForCurrentParams);
+  const scopedAppendOverride = resolveScopedLeaderboardAppendOverride({
+    paramsKey,
+    overrideParamsKey: appendOverrideParamsKeyRef.current,
+    override: appendOverrideRef.current
+  });
+  const displayBoard = pickLeaderboardBoardForDisplay(resolvedShell, scopedAppendOverride);
 
   const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
     useLeaderboardDeferredBoardDecorations({
@@ -219,7 +223,14 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     void (async () => {
       try {
         const runParamsKey = paramsKey;
-        let cur = resolveLeaderboardAppendLoopStartBoard(shell, appendOverrideForCurrentParams);
+        let cur = resolveLeaderboardAppendLoopStartBoard(
+          shell,
+          resolveScopedLeaderboardAppendOverride({
+            paramsKey: runParamsKey,
+            overrideParamsKey: appendOverrideParamsKeyRef.current,
+            override: appendOverrideRef.current
+          })
+        );
         while (!cancelled && runId === appendRunIdRef.current && cur.resources.some((r) => r.hasMore)) {
           setIsAppending(true);
           setAppendError(null);
@@ -231,6 +242,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             lastStartedShellFingerprintRef.current = null;
             setAppendOverride(null);
             appendOverrideRef.current = null;
+            appendOverrideParamsKeyRef.current = null;
             resetDecorations();
             await Promise.all([
               queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
@@ -278,7 +290,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     appendRetryGeneration,
     boardQuery.isSuccess,
     boardQueryParams,
-      appendOverrideForCurrentParams,
     paramsKey,
     queryClient,
     resetDecorations,
@@ -296,7 +307,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     if (!displayBoard) {
       const awaitingFreshShellAfterParamsChange =
-      suppressPlaceholderShell && appendOverrideForCurrentParams == null;
+        suppressPlaceholderShell && scopedAppendOverride == null;
       return {
         data: undefined as ProductionScheduleListResponse | undefined,
         isLoading: boardQuery.isLoading || awaitingFreshShellAfterParamsChange,
@@ -309,7 +320,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     const decorationFailed = decorationsError != null;
 
     const awaitingFreshShellAfterParamsChange =
-      suppressPlaceholderShell && appendOverrideForCurrentParams == null && displayBoard.rows.length === 0;
+      suppressPlaceholderShell && scopedAppendOverride == null && displayBoard.rows.length === 0;
 
     return {
       data,
@@ -321,7 +332,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     };
   }, [
     accumulatedDecorations,
-    appendOverrideForCurrentParams,
     boardQuery.isError,
     boardQuery.isFetching,
     boardQuery.isLoading,
@@ -331,6 +341,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     isDecorationsFetching,
     resourceCdsOrdered.length,
     scheduleEnabled,
+    scopedAppendOverride,
     suppressPlaceholderShell
   ]);
 
