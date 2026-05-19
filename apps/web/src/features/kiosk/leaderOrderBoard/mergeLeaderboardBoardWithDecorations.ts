@@ -10,9 +10,13 @@ export type LeaderboardRowDecoration = {
   customerName: string | null;
 };
 
+type LeaderboardFooterChipsByPartKey = NonNullable<
+  ProductionScheduleListResponse['leaderboardFooterChipsByPartKey']
+>;
+
 export type AccumulatedLeaderboardDecorations = {
   rowDecorationsById: Map<string, LeaderboardRowDecoration>;
-  leaderboardFooterChipsByPartKey: Record<string, unknown>;
+  leaderboardFooterChipsByPartKey: LeaderboardFooterChipsByPartKey;
 };
 
 export function createEmptyAccumulatedLeaderboardDecorations(): AccumulatedLeaderboardDecorations {
@@ -34,7 +38,7 @@ export function mergeLeaderboardDecorationsIntoAccumulator(
       customerName: d.customerName ?? null
     });
   }
-  const leaderboardFooterChipsByPartKey = {
+  const leaderboardFooterChipsByPartKey: LeaderboardFooterChipsByPartKey = {
     ...prev.leaderboardFooterChipsByPartKey,
     ...(response.leaderboardFooterChipsByPartKey ?? {})
   };
