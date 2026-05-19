@@ -119,7 +119,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const lastRetryNonceStartedRef = useRef(0);
   const [appendRetryGeneration, setAppendRetryGeneration] = useState(0);
   const appendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
+  const appendOverrideParamsKeyRef = useRef<string | null>(null);
+  const latestParamsKeyRef = useRef<string>(paramsKey);
   const lastCommittedParamsKeyRef = useRef<string | null>(null);
+
+  latestParamsKeyRef.current = paramsKey;
 
   useEffect(() => {
     appendOverrideRef.current = appendOverride;
@@ -132,6 +136,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     lastRetryNonceStartedRef.current = 0;
     setAppendRetryGeneration(0);
     setAppendOverride(null);
+    appendOverrideParamsKeyRef.current = null;
     setAppendError(null);
   }, [paramsKey]);
 
@@ -160,7 +165,9 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     [resolvedShell]
   );
 
-  const displayBoard = pickLeaderboardBoardForDisplay(resolvedShell, appendOverride);
+  const appendOverrideForCurrentParams =
+    appendOverrideParamsKeyRef.current === paramsKey ? appendOverride : null;
+  const displayBoard = pickLeaderboardBoardForDisplay(resolvedShell, appendOverrideForCurrentParams);
 
   const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
     useLeaderboardDeferredBoardDecorations({
@@ -211,7 +218,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     void (async () => {
       try {
-        let cur = resolveLeaderboardAppendLoopStartBoard(shell, appendOverrideRef.current);
+        const runParamsKey = paramsKey;
+        let cur = resolveLeaderboardAppendLoopStartBoard(shell, appendOverrideForCurrentParams);
         while (!cancelled && runId === appendRunIdRef.current && cur.resources.some((r) => r.hasMore)) {
           setIsAppending(true);
           setAppendError(null);
@@ -234,7 +242,11 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
             orderedResourceCds.length > 0
               ? mergeLeaderboardBoardContinueResponseWithOptionalDelta(cur.rows, nextRaw, orderedResourceCds)
               : nextRaw;
+          if (latestParamsKeyRef.current !== runParamsKey) {
+            return;
+          }
           setAppendOverride(next);
+          appendOverrideParamsKeyRef.current = runParamsKey;
           appendOverrideRef.current = next;
           cur = next;
         }
@@ -266,6 +278,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     appendRetryGeneration,
     boardQuery.isSuccess,
     boardQueryParams,
+      appendOverrideForCurrentParams,
     paramsKey,
     queryClient,
     resetDecorations,
@@ -283,7 +296,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
 
     if (!displayBoard) {
       const awaitingFreshShellAfterParamsChange =
-        suppressPlaceholderShell && appendOverride == null;
+      suppressPlaceholderShell && appendOverrideForCurrentParams == null;
       return {
         data: undefined as ProductionScheduleListResponse | undefined,
         isLoading: boardQuery.isLoading || awaitingFreshShellAfterParamsChange,
@@ -296,7 +309,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     const decorationFailed = decorationsError != null;
 
     const awaitingFreshShellAfterParamsChange =
-      suppressPlaceholderShell && appendOverride == null && displayBoard.rows.length === 0;
+      suppressPlaceholderShell && appendOverrideForCurrentParams == null && displayBoard.rows.length === 0;
 
     return {
       data,
@@ -308,7 +321,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     };
   }, [
     accumulatedDecorations,
-    appendOverride,
+    appendOverrideForCurrentParams,
     boardQuery.isError,
     boardQuery.isFetching,
     boardQuery.isLoading,

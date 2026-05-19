@@ -700,4 +700,127 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     expect(postContinue).not.toHaveBeenCalled();
   });
+
+  it('params 変更後に旧 params の continue 応答が遅れて返っても表示を上書きしない', async () => {
+    const filteredShell = boardPayload({
+      total: 2,
+      rows: [row('old-1', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: true, nextCursor: 1, total: 2, pageSize: 80 }]
+    });
+    const fullShell = boardPayload({
+      total: 3,
+      rows: [row('new-1', 'R1'), row('new-2', 'R1'), row('new-3', 'R2')],
+      resources: [
+        { resourceCd: 'R1', hasMore: false, total: 2, pageSize: 80 },
+        { resourceCd: 'R2', hasMore: false, total: 1, pageSize: 80 }
+      ]
+    });
+    const staleContinueResult = boardPayload({
+      total: 2,
+      rows: [row('old-1', 'R1'), row('old-2', 'R1')],
+      resources: [{ resourceCd: 'R1', hasMore: false, nextCursor: 2, total: 2, pageSize: 80 }]
+    });
+
+    let phase: 'filtered' | 'placeholderStale' | 'full' = 'filtered';
+    boardHookMock.mockImplementation(() => {
+      if (phase === 'full') {
+        return {
+          data: fullShell,
+          isLoading: false,
+          isError: false,
+          isFetching: false,
+          isSuccess: true,
+          isPlaceholderData: false,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      if (phase === 'placeholderStale') {
+        return {
+          data: filteredShell,
+          isLoading: false,
+          isError: false,
+          isFetching: true,
+          isSuccess: true,
+          isPlaceholderData: true,
+          dataUpdatedAt: Date.now()
+        };
+      }
+      return {
+        data: filteredShell,
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+        dataUpdatedAt: Date.now()
+      };
+    });
+
+    let resolveContinue: ((v: ProductionScheduleLeaderboardBoardResponse) => void) | undefined;
+    postContinue.mockImplementation(
+      () =>
+        new Promise<ProductionScheduleLeaderboardBoardResponse>((resolve) => {
+          resolveContinue = resolve;
+        })
+    );
+
+    let latest: ReturnType<typeof useCompositeLeaderboardPhasedScheduleWithAutoAppend> | undefined;
+    let withQ = true;
+
+    function Harness() {
+      latest = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
+        leaderboardPhasedBaseParams: {
+          allowResourceOnly: true,
+          pageSize: 80,
+          ...(withQ ? { q: 'AA1S7M11' } : {})
+        },
+        resourceCdsOrdered: ['R1', 'R2'],
+        scheduleEnabled: true,
+        pauseRefetch: false,
+        refetchIntervalMs: 120000,
+        macManualOrderV2: false,
+        activeDeviceScopeKey: ''
+      });
+      return null;
+    }
+
+    const tree = () =>
+      createElement(QueryClientProvider, { client: queryClient }, createElement(Harness));
+
+    const utils = render(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['old-1']);
+      expect(postContinue).toHaveBeenCalledTimes(1);
+      expect(resolveContinue).toBeTypeOf('function');
+    });
+
+    act(() => {
+      withQ = false;
+      phase = 'placeholderStale';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.isLoading).toBe(true);
+      expect(latest?.scheduleQuery.data?.rows.length ?? 0).toBe(0);
+    });
+
+    act(() => {
+      phase = 'full';
+    });
+    utils.rerender(tree());
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['new-1', 'new-2', 'new-3']);
+    });
+
+    act(() => {
+      resolveContinue?.(staleContinueResult);
+    });
+
+    await waitFor(() => {
+      expect(latest?.scheduleQuery.data?.rows.map((r) => r.id)).toEqual(['new-1', 'new-2', 'new-3']);
+    });
+  });
 });
