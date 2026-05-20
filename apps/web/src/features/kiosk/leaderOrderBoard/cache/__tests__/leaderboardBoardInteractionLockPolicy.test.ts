@@ -6,19 +6,17 @@ import {
 } from '../leaderboardBoardInteractionLockPolicy';
 
 describe('leaderboardBoardInteractionLockPolicy', () => {
-  it('背景再検証中はロック', () => {
+  it('背景再検証中でもロックしない', () => {
     expect(
       isLeaderboardBoardInteractionLocked({
-        isBackgroundRevalidating: true,
         isMutationInFlight: false
       })
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('mutation 実行中はロック', () => {
     expect(
       isLeaderboardBoardInteractionLocked({
-        isBackgroundRevalidating: false,
         isMutationInFlight: true
       })
     ).toBe(true);

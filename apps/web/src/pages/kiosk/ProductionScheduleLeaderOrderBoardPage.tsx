@@ -146,7 +146,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     macManualOrderV2 && activeDeviceScopeKey.trim().length > 0 ? activeDeviceScopeKey.trim() : undefined;
 
   const searchStateMutation = { isPending: false };
-  const applyMutationPatchRef = useRef<Parameters<typeof useLeaderboardBoardCacheMutationBridge>[1]>(() => {});
+  const applyDisplayMutationRef = useRef<Parameters<typeof useLeaderboardBoardCacheMutationBridge>[1]>(() => {});
 
   const scheduleEnabled =
     activeDeviceScopeKey.trim().length > 0 &&
@@ -170,7 +170,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       productionScheduleTargetDeviceScopeKey: targetDeviceScopeKey,
       productionScheduleOrderCachePolicy: 'leaderBoardFastPath'
     },
-    (mutation) => applyMutationPatchRef.current(mutation),
+    (mutation) => applyDisplayMutationRef.current(mutation),
     true
   );
 
@@ -229,7 +229,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     appendError,
     listIncomplete,
     cacheSyncWarning,
-    applyMutationPatch,
+    applyDisplayMutation,
     isBackgroundRevalidating
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
@@ -242,10 +242,9 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     activeDeviceScopeKey,
     siteKey
   });
-  applyMutationPatchRef.current = applyMutationPatch;
+  applyDisplayMutationRef.current = applyDisplayMutation;
 
   const isInteractionLocked = isLeaderboardBoardInteractionLocked({
-    isBackgroundRevalidating,
     isMutationInFlight: writePause
   });
 

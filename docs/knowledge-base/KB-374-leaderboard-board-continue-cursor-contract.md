@@ -616,6 +616,94 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 | Pi4 3 台で挙動が違う | **未デプロイ** | 上表の **未デプロイ 3 台**を同一手順で **`--limit` 順次** |
 | 機能を止めたい | ビルドフラグ | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false` |
 
+## 操作即表示 × 120秒キャッシュ両立（2026-05-20 · `feat/kiosk-leaderboard-mutation-instant-display`）
+
+**目的**: [Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) の **120秒 SWR / 完走時 IDB put** は維持しつつ、**自端末**の順位・納期・備考・完了を **API 成功直後**に画面へ反映する。**DB は即時**（既存 API）·**他端末は最大 120 秒**（`LEADER_BOARD_SCHEDULE_REFETCH_MS`）·**Web のみ**·**API 不変**。
+
+### 仕様要約
+
+| # | 内容 | モジュール |
+| --- | --- | --- |
+| 1 | patch 正本を共通化 | [`leaderboardBoardApplyMutation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardApplyMutation.ts) |
+| 2 | 表示正本（shell / appendOverride）へ patch | [`leaderboardBoardDisplayMutationCoordinator.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardDisplayMutationCoordinator.ts) + [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) `applyDisplayMutation` |
+| 3 | mutation → IDB 即時ミラー **既定オン** | [`leaderboardBoardCacheConstants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheConstants.ts)（緊急オフ: `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`） |
+| 4 | 120秒完走時の scheduled put | 変更なし（[`leaderboardBoardCacheSyncPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts)） |
+| 5 | 操作ロックは **mutation / writePause のみ**（背景再検証中は操作可） | [`leaderboardBoardInteractionLockPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy.ts) |
+
+**ロールバック**: `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`（IDB 即時ミラーのみオフ·append patch はコード上残る）/ 直前 ref へ再デプロイ。
+
+**ブランチ**: **`feat/kiosk-leaderboard-mutation-instant-display`**·代表コミット **`0d97f0de`**（`fix(kiosk): reflect leaderboard edits before cache refresh`）。**前提**: [Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) / [資源CDフッタチップ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache) が各端末に入っていること（**Web bundle は Pi5 の Docker `web` と Pi4 の `kiosk-browser` が別**·キオスク実機は **Pi4 4 台必須**）。
+
+### データフロー（mutation 成功後）
+
+1. **API 成功**（既存）→ DB は **即時**（本機能のスコープ外·変更なし）。
+2. **`applyIdbMutationPatch`**（[`leaderboardBoardCachePatchPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePatchPolicy.ts)）→ IDB 行単位 patch（**`VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION` 省略時 true**）。
+3. **`resolveDisplayBoardMutationUpdate`**（[`leaderboardBoardDisplayMutationCoordinator.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardDisplayMutationCoordinator.ts)）→ **`shell` 表示**と **`appendOverride`（continue 追補済み一覧）** の両方へ同型 patch。
+4. **120秒 scheduled put / SWR / reconcile** → [Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) **どおり**（他端末・サーバ正との最終整合）。
+
+**誤解しやすい点（CONFIRMED）**: 「キャッシュ先 → 120秒後に DB」ではない。**不足していたのは画面（と IDB ミラー）の即時整合**。Phase 2 改訂で **mutation 即時 IDB 既定オフ** + **背景再検証中ロック**を入れた結果、**自端末の編集が画面に残らない**状態が残っていた。
+
+### 検証（ローカル）
+
+```bash
+pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard
+# 199 tests PASS（2026-05-20·本ブランチ）
+
+pnpm --filter @raspi-system/web build
+# PASS
+```
+
+- **CI（機能）**: push 後 run **`26140346177`**（head **`0d97f0de`**）— デプロイ前に **完了待ちせず** 本番反映（ユーザー判断·2026-05-20）。
+
+### 本番デプロイ（2026-05-20 · **Pi5→Pi4×4 完了・実機検証 OK**）
+
+**方針**: [deployment.md §操作即表示](../guides/deployment.md#kiosk-leaderboard-mutation-instant-display-2026-05-20) と同型。**1 台ずつ `--limit`**·**Pi3 は `no hosts matched`**。
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-mutation-instant-display infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+| --- | --- | --- | --- |
+| `raspberrypi5` | **`20260520-131334-15607`** | `ok=134` `changed=4` `failed=0` | **Docker compose 再起動**·Mac→Pi5 URL 検証可 |
+| `raspi4-kensaku-stonebase01` | **`20260520-131843-7879`** | `ok=129` `changed=10` `failed=0` | `barcode-agent` ready **1 回リトライ**後成功 |
+| `raspberrypi4` | **`20260520-133253-2715`** | `ok=122` `changed=11` `failed=0` | `kiosk-browser` / `status-agent` **ok** |
+| `raspi4-robodrill01` | **`20260520-133748-7589`** | `ok=122` `changed=10` `failed=0` | 同上 |
+| `raspi4-fjv60-80` | **`20260520-134139-3491`** | `ok=122` `changed=9` `failed=0` | 同上 |
+
+**実機（順位ボード·現場）**: **実機検証 OK**（ユーザー確認·2026-05-20）— 下記チェックリストを満たす。
+
+### 実機チェックリスト（順位ボード）
+
+1. **順位・納期・備考**を変更 → **リロードなしで行が変わる**（自端末）。
+2. 上記後に **ハードリロード** → 変更が **IDB 経由で維持**される。
+3. **他端末**（または 120 秒待ち）→ 同じ変更が **最大 120 秒以内**に見える（`LEADER_BOARD_SCHEDULE_REFETCH_MS`·変更なし）。
+4. **cold start / 120秒ポーリング中**も **一覧が空→全件にチラつかない**（Phase 2 改訂 UX 維持）。
+5. **120秒ポーリング中**でも **順位・納期・備考の操作が可能**（背景再検証中ロック解除·`writePause` / mutation 中のみロック）。
+
+### 知見
+
+| 項目 | 内容 |
+| --- | --- |
+| **主因（CONFIRMED）** | continue 追補後は **`appendOverride` が表示正本**·IDB/shell のみ patch では **画面が更新されない** → **displayMutationCoordinator** で shell + appendOverride を同時更新。 |
+| **Phase 2 改訂との関係** | **120s scheduled put / SWR / serverWins replace** は維持·**mutation 即時 IDB は既定オンに戻す**（行 patch のみ·全件 put ではない）。 |
+| **操作ロック** | **`isBackgroundRevalidating`（120s poll の `isFetching`）はロックしない**·**`writePause` / mutation 中のみ**（ポーリング中の編集可能）。 |
+| **continue 追補中（`isAppending`）** | 従来どおり **revalidating 扱い**·本ブランチでは **未変更**（追補中の即反映は別課題）。 |
+| **デプロイ順** | Pi5 + StoneBase01 先行後に Pi4×3 でも **各台 `failed=0`**·**UX は端末 bundle 依存**（Pi5 のみでは Pi4 キオスクに効かない）。 |
+| **Ansible ノイズ** | StoneBase01 で **`barcode-agent` ready 待ち 1 リトライ** — 最終 **failed=0**（デプロイ失敗ではない）。 |
+
+### Troubleshooting
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| 操作後も行が変わらない（自端末） | **`appendOverride` 未 patch** の旧 bundle | 上表 Detach·**`0d97f0de` 以降**·**Cmd+Shift+R** |
+| IDB は変わるが画面だけ古い | shell のみ更新 | **coordinator + `applyDisplayMutation`** 配線確認 |
+| 120秒 poll 中に操作できない | Phase 2 改訂の **背景ロック残存** | **`leaderboardBoardInteractionLockPolicy`**·Page の **`writePause` のみ** |
+| mutation 後 IDB が即更新されない | **`VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`** | **意図**·既定は **省略時 true** |
+| 他端末に即反映されない | **SLA 120秒** | **仕様**·即時は **自端末のみ** |
+| Pi4 だけ直らない | **未デプロイ** | 上表の Detach ID |
+| 機能を止めたい | env / ref | `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false` または直前 ref で **`update-all-clients.sh`** |
+
+**ロールバック**: `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`（IDB 即時ミラーのみオフ·表示 patch ロジックは残る）/ 直前安定 ref へ **5 台再デプロイ**。
+
 ## 製番 OR クライアントキャッシュフィルタ（2026-05-20）
 
 **目的**: 登録製番 OR 切替で **`paramsKey`（無 `q` 完走 board）を固定**し、**IDB 上の全件キャッシュ**をそのままクライアントで絞込表示する。裏で **同じ製番の `q` 付き GET + continue** で照合し、**不一致は常にサーバ正**（Phase 1/2 reconcile と同型）。**Web のみ**·**API 不変**·**ツールバー等の他 `q` は従来どおり API**。
