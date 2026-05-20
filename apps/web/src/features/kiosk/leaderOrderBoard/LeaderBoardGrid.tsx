@@ -23,6 +23,8 @@ export type LeaderBoardGridProps = {
   orderPending: boolean;
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
+  /** 背景同期中など、行操作を明示的に無効化 */
+  interactionLocked?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };
 
@@ -112,8 +114,11 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   orderPending,
   onOpenNote,
   notePending,
+  interactionLocked = false,
   footerResourceChipsByPartKey
 }: LeaderBoardGridProps) {
+  const rowControlsLocked = interactionLocked;
+
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-auto [grid-auto-rows:minmax(14rem,1fr)] md:grid-cols-4 xl:grid-cols-6">
       {resourceCdBySlotIndex.map((cdRaw, slotIndex) => {
@@ -143,13 +148,13 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             resourceJapaneseNames={jpNames}
             orderUsageNumbers={orderUsageNumbers}
             onOpenDueDatePicker={onOpenDueDatePicker}
-            dueDatePending={dueDatePending}
+            dueDatePending={dueDatePending || rowControlsLocked}
             onOrderChange={onOrderChange}
             onCompleteRow={onCompleteRow}
-            completePending={completePending}
-            orderPending={orderPending}
+            completePending={completePending || rowControlsLocked}
+            orderPending={orderPending || rowControlsLocked}
             onOpenNote={onOpenNote}
-            notePending={notePending}
+            notePending={notePending || rowControlsLocked}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
           />
         );

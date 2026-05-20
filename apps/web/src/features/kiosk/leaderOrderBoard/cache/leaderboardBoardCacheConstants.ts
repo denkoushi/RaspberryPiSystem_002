@@ -25,6 +25,13 @@ export function isLeaderboardBoardTerminalCachePhase2SwrEnabled(): boolean {
   return raw !== 'false' && raw !== '0';
 }
 
+/** mutation 成功時の IDB 即時ミラー（省略時 false = 120秒完走時のみ保存） */
+export function isLeaderboardBoardCacheWriteOnMutationEnabled(): boolean {
+  const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION;
+  if (raw === undefined || raw === '') return false;
+  return raw !== 'false' && raw !== '0';
+}
+
 /** 登録製番 OR を無 `q` 完走 board へクライアントフィルタ（省略時 true） */
 export function isLeaderboardSeibanOrClientFilterEnabled(): boolean {
   const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_SEIBAN_OR_CLIENT_FILTER;

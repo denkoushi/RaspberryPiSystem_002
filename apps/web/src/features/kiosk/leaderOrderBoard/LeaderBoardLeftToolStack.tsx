@@ -53,6 +53,8 @@ export type LeaderBoardLeftToolStackProps = {
   registeredSeibansForDisplay: readonly string[];
   /** 製番順評価ON時: 表示順を 1 始まりの順位へ変更（他製番は繰り上げ／繰り下げ） */
   onMoveRegisteredSeibanToRank: (fseiban: string, targetRank1Based: number) => void;
+  /** 背景同期中など、製番検索・登録を明示的に無効化 */
+  interactionLocked?: boolean;
 };
 
 /**
@@ -86,8 +88,10 @@ export function LeaderBoardLeftToolStack({
   seibanEvalEnabled,
   onToggleSeibanEval,
   registeredSeibansForDisplay,
-  onMoveRegisteredSeibanToRank
+  onMoveRegisteredSeibanToRank,
+  interactionLocked = false
 }: LeaderBoardLeftToolStackProps) {
+  const seibanControlsLocked = interactionLocked;
   const rankPickerPanelDomId = useId();
   const rankPickerAnchorRef = useRef<HTMLElement | null>(null);
   const rankPickerPanelRef = useRef<HTMLDivElement | null>(null);
@@ -201,7 +205,7 @@ export function LeaderBoardLeftToolStack({
           <button
             type="button"
             onClick={() => dueAssist.clearFseibanFilters()}
-            disabled={dueAssist.selectedFseibanFilters.length === 0}
+            disabled={seibanControlsLocked || dueAssist.selectedFseibanFilters.length === 0}
             className="mb-2 w-full shrink-0 rounded border border-white/20 bg-slate-800/70 px-2 py-1 text-[10px] text-white/90 hover:bg-slate-800 disabled:opacity-40"
           >
             製番OR検索を全解除
@@ -228,6 +232,7 @@ export function LeaderBoardLeftToolStack({
           <div className="flex shrink-0 gap-1.5">
             <input
               value={dueAssist.searchInput}
+              disabled={seibanControlsLocked}
               onChange={(event) => dueAssist.setSearchInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
@@ -241,7 +246,8 @@ export function LeaderBoardLeftToolStack({
             <button
               type="button"
               onClick={openSearchKeyboard}
-              className="rounded border border-white/20 bg-slate-800 px-2 text-xs text-white hover:bg-slate-700"
+              disabled={seibanControlsLocked}
+              className="rounded border border-white/20 bg-slate-800 px-2 text-xs text-white hover:bg-slate-700 disabled:opacity-50"
               aria-label="キーボードを開く"
             >
               ⌨
@@ -249,7 +255,7 @@ export function LeaderBoardLeftToolStack({
             <button
               type="button"
               onClick={() => void dueAssist.applySearch()}
-              disabled={dueAssist.historyWriting}
+              disabled={seibanControlsLocked || dueAssist.historyWriting}
               className="rounded bg-blue-600 px-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-60"
             >
               登録
@@ -301,6 +307,7 @@ export function LeaderBoardLeftToolStack({
                         aria-label={`順位 ${displayRank}、タップで変更`}
                         aria-haspopup="dialog"
                         aria-expanded={rankPickerForFseiban === fseiban}
+                        disabled={seibanControlsLocked}
                         onClick={() =>
                           setRankPickerForFseiban((prev) => (prev === fseiban ? null : fseiban))
                         }
@@ -312,7 +319,8 @@ export function LeaderBoardLeftToolStack({
                   <button
                     type="button"
                     onClick={() => dueAssist.toggleFseibanFilter(fseiban)}
-                    className="min-w-0 flex-1 px-2 py-2 text-left text-sm font-semibold leading-tight font-mono"
+                    disabled={seibanControlsLocked}
+                    className="min-w-0 flex-1 px-2 py-2 text-left text-sm font-semibold leading-tight font-mono disabled:opacity-50"
                     aria-pressed={filtered}
                   >
                     {fseiban}
@@ -323,6 +331,7 @@ export function LeaderBoardLeftToolStack({
                       'flex min-h-[2.25rem] min-w-[2.25rem] shrink-0 items-center justify-center rounded-r-[0.4rem] text-base font-bold leading-none',
                       filtered ? 'bg-slate-900/25 text-slate-900 hover:bg-slate-900/35' : 'bg-white/15 text-white hover:bg-white/25'
                     )}
+                    disabled={seibanControlsLocked}
                     onClick={(event) => {
                       event.stopPropagation();
                       void dueAssist.removeFromHistory(fseiban);

@@ -14,6 +14,7 @@ import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardCon
 import { normalizeLeaderboardSeibanOrTokens } from './cache/filterLeaderboardBoardBySeibanOr';
 import { isLeaderboardSeibanOrClientFilterEnabled } from './cache/leaderboardBoardCacheConstants';
 import { buildLeaderboardBoardLegacyFetchParams } from './cache/leaderboardBoardFetchParams';
+import { isLeaderboardBoardBackgroundRevalidating } from './cache/leaderboardBoardInteractionLockPolicy';
 import { resolveScopedLeaderboardAppendOverride } from './leaderboardBoardAppendOverrideScopePolicy';
 import {
   resolveLeaderboardAppendLoopStartBoard,
@@ -92,6 +93,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   /** 通信失敗等で前回保存分を表示中 */
   cacheSyncWarning: string | null;
   applyMutationPatch: (mutation: LeaderboardBoardCacheMutation) => void;
+  /** shell/continue/decorations の背景再検証中 */
+  isBackgroundRevalidating: boolean;
 } {
   const {
     leaderboardPhasedBaseParams,
@@ -239,6 +242,26 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     );
   }, [networkDisplayBoard]);
 
+  const isBackgroundRevalidating = useMemo(
+    () =>
+      isLeaderboardBoardBackgroundRevalidating({
+        scheduleEnabled,
+        networkBoardComplete,
+        networkInitialLoading: boardQuery.isLoading,
+        networkIsFetching: boardQuery.isFetching,
+        isAppending,
+        isDecorationsFetching
+      }),
+    [
+      boardQuery.isFetching,
+      boardQuery.isLoading,
+      isAppending,
+      isDecorationsFetching,
+      networkBoardComplete,
+      scheduleEnabled
+    ]
+  );
+
   const {
     displayBoard,
     displayDecorations,
@@ -257,7 +280,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     networkIsError: boardQuery.isError,
     suppressPlaceholderShell,
     accumulatedDecorations,
-    networkBoardComplete
+    networkBoardComplete,
+    isBackgroundRevalidating
   });
 
   const listIncomplete = useMemo(() => {
@@ -455,6 +479,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     listIncomplete: listIncompleteForUi ?? listIncomplete,
     isShowingCachedData,
     cacheSyncWarning,
-    applyMutationPatch
+    applyMutationPatch,
+    isBackgroundRevalidating
   };
 }

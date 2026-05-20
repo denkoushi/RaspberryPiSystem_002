@@ -20,6 +20,8 @@ export type ResolveLeaderboardBoardDisplaySourceInput = {
   networkBoardComplete: boolean;
   networkInitialLoading: boolean;
   networkIsFetching: boolean;
+  /** shell/continue/decorations の背景再検証中 */
+  isBackgroundRevalidating: boolean;
   suppressPlaceholderShell: boolean;
   accumulatedDecorations: AccumulatedLeaderboardDecorations;
   nowMs: number;
@@ -52,21 +54,17 @@ export function isHydratedCacheDisplayable(input: {
 }
 
 /**
- * Phase 2: stale-while-revalidate。完走済みキャッシュを再検証中も表示し、
- * Origin 完走後にネットワークへ切り替える。
+ * Phase 2: stale-while-revalidate。背景再検証中はキャッシュを維持し、
+ * 完走後にのみネットワーク表示へ切り替える。
  */
 export function shouldPreferCacheForSwrDisplay(input: {
   cacheDisplayable: boolean;
-  networkBoardComplete: boolean;
-  networkInitialLoading: boolean;
-  networkIsFetching: boolean;
+  isBackgroundRevalidating: boolean;
   suppressPlaceholderShell: boolean;
   networkDisplayBoard: ProductionScheduleLeaderboardBoardResponse | undefined;
 }): boolean {
   if (!input.cacheDisplayable) return false;
-  if (!input.networkBoardComplete) return true;
-  if (input.networkInitialLoading) return true;
-  if (input.networkIsFetching) return true;
+  if (input.isBackgroundRevalidating) return true;
   if (input.suppressPlaceholderShell && input.networkDisplayBoard == null) return true;
   return false;
 }
@@ -95,9 +93,7 @@ export function resolveLeaderboardBoardDisplaySource(
 
   const preferCache = shouldPreferCacheForSwrDisplay({
     cacheDisplayable,
-    networkBoardComplete: input.networkBoardComplete,
-    networkInitialLoading: input.networkInitialLoading,
-    networkIsFetching: input.networkIsFetching,
+    isBackgroundRevalidating: input.isBackgroundRevalidating,
     suppressPlaceholderShell: input.suppressPlaceholderShell,
     networkDisplayBoard: input.networkDisplayBoard
   });
