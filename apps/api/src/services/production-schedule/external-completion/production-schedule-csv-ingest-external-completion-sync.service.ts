@@ -18,16 +18,23 @@ export type ProductionScheduleCsvIngestExternalCompletionApplyResult =
  *
  * 旧来の「取込直前スナップショット比較」は、期間取得CSVとFKOJUNST窓のズレで誤判定しやすいため廃止。
  */
+type ProductionScheduleCsvIngestExternalCompletionSyncServiceDeps = {
+  prismaClient: typeof prisma;
+  orderAssignmentReconciliationService: ProductionScheduleOrderAssignmentReconciliationService;
+};
+
 export class ProductionScheduleCsvIngestExternalCompletionSyncService {
-  constructor(
-    private readonly deps: {
-      prismaClient: typeof prisma;
-      orderAssignmentReconciliationService?: ProductionScheduleOrderAssignmentReconciliationService;
-    } = {
-      prismaClient: prisma,
-      orderAssignmentReconciliationService: new ProductionScheduleOrderAssignmentReconciliationService()
-    }
-  ) {}
+  private readonly deps: ProductionScheduleCsvIngestExternalCompletionSyncServiceDeps;
+
+  constructor(deps: Partial<ProductionScheduleCsvIngestExternalCompletionSyncServiceDeps> = {}) {
+    const prismaClient = deps.prismaClient ?? prisma;
+    this.deps = {
+      prismaClient,
+      orderAssignmentReconciliationService:
+        deps.orderAssignmentReconciliationService ??
+        new ProductionScheduleOrderAssignmentReconciliationService({ prismaClient }),
+    };
+  }
 
   /**
    * @deprecated スナップショット比較は廃止。呼び出し側の互換のため **no-op**。
@@ -81,7 +88,7 @@ export class ProductionScheduleCsvIngestExternalCompletionSyncService {
       await replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync(tx, disappearedKeys);
     });
 
-    await this.deps.orderAssignmentReconciliationService!.reconcileStaleAssignments();
+    await this.deps.orderAssignmentReconciliationService.reconcileStaleAssignments();
 
     const disappearedDistinctKeys = new Set(disappearedKeys).size;
     logger.info(

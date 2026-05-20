@@ -23,6 +23,12 @@ function mockRow(
   };
 }
 
+function mockReconcileService() {
+  return {
+    reconcileStaleAssignments: vi.fn().mockResolvedValue({ scanned: 0, released: 0 }),
+  };
+}
+
 describe('FkojunstExternalCompletionSyncService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,6 +62,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
 
     const svc = new FkojunstExternalCompletionSyncService({
       prismaClient: prismaMock as never,
+      orderAssignmentReconciliationService: mockReconcileService() as never,
     });
 
     const rows = [

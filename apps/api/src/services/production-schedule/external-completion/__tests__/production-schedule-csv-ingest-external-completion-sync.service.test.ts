@@ -18,6 +18,12 @@ vi.mock('../fkojunst-external-completion-sync.repository.js', () => ({
   replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync: vi.fn(),
 }));
 
+function mockReconcileService() {
+  return {
+    reconcileStaleAssignments: vi.fn().mockResolvedValue({ scanned: 0, released: 0 }),
+  };
+}
+
 describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,6 +58,7 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
 
     const svc = new ProductionScheduleCsvIngestExternalCompletionSyncService({
       prismaClient: prismaMock as never,
+      orderAssignmentReconciliationService: mockReconcileService() as never,
     });
 
     const r = await svc.applyPostIngestFromSnapshot();
@@ -77,6 +84,7 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
 
     const svc = new ProductionScheduleCsvIngestExternalCompletionSyncService({
       prismaClient: prismaMock as never,
+      orderAssignmentReconciliationService: mockReconcileService() as never,
     });
 
     const r = await svc.applyPostIngestFromSnapshot({
@@ -108,6 +116,7 @@ describe('ProductionScheduleCsvIngestExternalCompletionSyncService', () => {
 
     const svc = new ProductionScheduleCsvIngestExternalCompletionSyncService({
       prismaClient: prismaMock as never,
+      orderAssignmentReconciliationService: mockReconcileService() as never,
     });
 
     const r = await svc.applyPostIngestFromSnapshot({
