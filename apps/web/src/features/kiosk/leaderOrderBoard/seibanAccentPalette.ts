@@ -6,7 +6,10 @@
 
 const BORDER_LEFT_WIDTH = 'border-l-4';
 
-/** ダーク背景上で区別しやすい彩度のある左縁（動的連結禁止のため列挙） */
+/**
+ * ダーク背景上で区別しやすい彩度のある左縁（動的連結禁止のため列挙）。
+ * 先頭 8 色は登録製番 OR フィルタ（同時 ~5 件）向けの既存順序を維持する。
+ */
 const SEIBAN_ROW_ACCENT_PALETTE = [
   `${BORDER_LEFT_WIDTH} border-l-amber-400`,
   `${BORDER_LEFT_WIDTH} border-l-cyan-400`,
@@ -15,7 +18,23 @@ const SEIBAN_ROW_ACCENT_PALETTE = [
   `${BORDER_LEFT_WIDTH} border-l-emerald-400`,
   `${BORDER_LEFT_WIDTH} border-l-orange-400`,
   `${BORDER_LEFT_WIDTH} border-l-sky-400`,
-  `${BORDER_LEFT_WIDTH} border-l-fuchsia-400`
+  `${BORDER_LEFT_WIDTH} border-l-fuchsia-400`,
+  `${BORDER_LEFT_WIDTH} border-l-red-400`,
+  `${BORDER_LEFT_WIDTH} border-l-yellow-400`,
+  `${BORDER_LEFT_WIDTH} border-l-lime-400`,
+  `${BORDER_LEFT_WIDTH} border-l-green-400`,
+  `${BORDER_LEFT_WIDTH} border-l-teal-400`,
+  `${BORDER_LEFT_WIDTH} border-l-blue-400`,
+  `${BORDER_LEFT_WIDTH} border-l-indigo-400`,
+  `${BORDER_LEFT_WIDTH} border-l-purple-400`,
+  `${BORDER_LEFT_WIDTH} border-l-pink-400`,
+  `${BORDER_LEFT_WIDTH} border-l-red-300`,
+  `${BORDER_LEFT_WIDTH} border-l-yellow-300`,
+  `${BORDER_LEFT_WIDTH} border-l-lime-300`,
+  `${BORDER_LEFT_WIDTH} border-l-green-300`,
+  `${BORDER_LEFT_WIDTH} border-l-blue-300`,
+  `${BORDER_LEFT_WIDTH} border-l-indigo-300`,
+  `${BORDER_LEFT_WIDTH} border-l-purple-300`
 ] as const;
 
 function normalizeFilters(activeFilters: readonly string[]): string[] {
