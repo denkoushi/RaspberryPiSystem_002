@@ -5,6 +5,8 @@ import {
   type UseProductionScheduleMutationsParams
 } from '../productionSchedule/useProductionScheduleMutations';
 
+import { shouldMirrorLeaderboardMutationToCache } from './cache/leaderboardBoardCacheSyncPolicy';
+
 import type { LeaderboardBoardCacheMutation } from './useLeaderboardBoardTerminalCache';
 import type { ProductionScheduleWriteSuccessListeners } from '../productionSchedule/productionScheduleWriteSuccessListeners';
 
@@ -12,7 +14,7 @@ export function buildLeaderboardBoardCacheWriteSuccessListeners(
   applyMutationPatch: (mutation: LeaderboardBoardCacheMutation) => void,
   terminalCacheEnabled: boolean
 ): ProductionScheduleWriteSuccessListeners {
-  if (!terminalCacheEnabled) return {};
+  if (!terminalCacheEnabled || !shouldMirrorLeaderboardMutationToCache()) return {};
   return {
     onOrderSuccess: ({ rowId, orderNumber }) => {
       applyMutationPatch({ kind: 'order', rowId, processingOrder: orderNumber });

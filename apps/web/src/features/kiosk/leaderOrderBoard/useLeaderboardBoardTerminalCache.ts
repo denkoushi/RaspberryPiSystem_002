@@ -24,10 +24,13 @@ import { reconcileLeaderboardBoardCacheWithServer } from './cache/leaderboardBoa
 import {
   buildLeaderboardBoardCacheRecord,
   deserializeAccumulatedDecorations,
-  isCompleteLeaderboardBoardSnapshot,
   isLeaderboardBoardCacheWithinMaxAge,
   type PersistedLeaderboardBoardCacheRecord
 } from './cache/leaderboardBoardCacheRecord';
+import {
+  resolveScheduledCachePersist,
+  shouldMirrorLeaderboardMutationToCache
+} from './cache/leaderboardBoardCacheSyncPolicy';
 import { resolveLeaderboardBoardDisplaySource } from './cache/leaderboardBoardSwrDisplayPolicy';
 
 import type { LeaderboardBoardCacheStore } from './cache/leaderboardBoardCacheStore.port';
@@ -49,6 +52,8 @@ export type UseLeaderboardBoardTerminalCacheOptions = {
   accumulatedDecorations: AccumulatedLeaderboardDecorations;
   /** ネットワーク側 board が continue 完走済み */
   networkBoardComplete: boolean;
+  /** Phase 2: 背景再検証中はキャッシュ表示を維持 */
+  isBackgroundRevalidating: boolean;
   store?: LeaderboardBoardCacheStore;
 };
 
@@ -84,6 +89,7 @@ export function useLeaderboardBoardTerminalCache(
     suppressPlaceholderShell,
     accumulatedDecorations,
     networkBoardComplete,
+    isBackgroundRevalidating,
     store = defaultLeaderboardBoardCacheStore
   } = options;
 
@@ -96,7 +102,6 @@ export function useLeaderboardBoardTerminalCache(
   const [cacheSyncWarning, setCacheSyncWarning] = useState<string | null>(null);
   const lastContentFingerprintRef = useRef<string | null>(null);
   const loadGenerationRef = useRef(0);
-  const skippedNetworkSyncTokenRef = useRef<string | null>(null);
 
   const purgeCache = useCallback(() => {
     if (!terminalCacheEnabled || cacheKey.length === 0) return;
@@ -142,23 +147,33 @@ export function useLeaderboardBoardTerminalCache(
 
   useEffect(() => {
     if (!terminalCacheEnabled || !scheduleEnabled) return;
-    if (!networkBoardComplete || networkDisplayBoard == null) return;
-    if (!isCompleteLeaderboardBoardSnapshot(networkDisplayBoard)) return;
 
+    const persistDecision = resolveScheduledCachePersist({
+      networkBoardComplete,
+      networkDisplayBoard
+    });
+    if (persistDecision.action === 'skip') return;
+
+    const serverBoard = persistDecision.board;
     if (hydratedRecord != null) {
       const reconcile = reconcileLeaderboardBoardCacheWithServer(
         hydratedRecord.board,
-        networkDisplayBoard
+        serverBoard
       );
-      if (reconcile.kind === 'serverWins') {
-        skippedNetworkSyncTokenRef.current = networkSyncToken;
-        purgeCache();
-        return;
+      if (reconcile.kind === 'aligned') {
+        const contentFingerprint = fingerprintLeaderboardBoardContent(serverBoard);
+        if (
+          shouldSkipCachePut({
+            lastContentFingerprint: lastContentFingerprintRef.current,
+            nextContentFingerprint: contentFingerprint
+          })
+        ) {
+          return;
+        }
       }
     }
 
-    const contentFingerprint = fingerprintLeaderboardBoardContent(networkDisplayBoard);
-    if (skippedNetworkSyncTokenRef.current === networkSyncToken) return;
+    const contentFingerprint = fingerprintLeaderboardBoardContent(serverBoard);
     if (
       shouldSkipCachePut({
         lastContentFingerprint: lastContentFingerprintRef.current,
@@ -172,7 +187,7 @@ export function useLeaderboardBoardTerminalCache(
       cacheKey,
       siteKey,
       paramsKey,
-      board: networkDisplayBoard,
+      board: serverBoard,
       decorations: accumulatedDecorations
     });
     if (record == null || cacheKey.length === 0) return;
@@ -189,7 +204,6 @@ export function useLeaderboardBoardTerminalCache(
     networkDisplayBoard,
     networkSyncToken,
     paramsKey,
-    purgeCache,
     scheduleEnabled,
     siteKey,
     store,
@@ -198,6 +212,7 @@ export function useLeaderboardBoardTerminalCache(
 
   const applyMutationPatch = useCallback(
     (mutation: LeaderboardBoardCacheMutation) => {
+      if (!shouldMirrorLeaderboardMutationToCache()) return;
       if (!terminalCacheEnabled || !scheduleEnabled || cacheKey.length === 0) return;
       setHydratedRecord((prev) => {
         if (prev == null || prev.paramsKey !== paramsKey) return prev;
@@ -261,6 +276,7 @@ export function useLeaderboardBoardTerminalCache(
         networkBoardComplete,
         networkInitialLoading,
         networkIsFetching,
+        isBackgroundRevalidating,
         suppressPlaceholderShell,
         accumulatedDecorations,
         nowMs: Date.now(),
@@ -270,6 +286,7 @@ export function useLeaderboardBoardTerminalCache(
       accumulatedDecorations,
       cacheLoadSettled,
       hydratedRecord,
+      isBackgroundRevalidating,
       networkBoardComplete,
       networkDisplayBoard,
       networkInitialLoading,

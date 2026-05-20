@@ -11,6 +11,10 @@ import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModa
 import { KioskKeyboardModal } from '../../components/kiosk/KioskKeyboardModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { buildLeaderBoardGroupedRows, buildLeaderBoardSortedGrouped } from '../../features/kiosk/leaderOrderBoard/buildLeaderBoardViewModel';
+import {
+  isLeaderboardBoardInteractionLocked,
+  LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE
+} from '../../features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy';
 import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
@@ -225,7 +229,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     appendError,
     listIncomplete,
     cacheSyncWarning,
-    applyMutationPatch
+    applyMutationPatch,
+    isBackgroundRevalidating
   } = useCompositeLeaderboardPhasedScheduleWithAutoAppend({
     leaderboardPhasedBaseParams: leaderboardPhasedBase,
     seibanOrFilters: dueAssist.selectedFseibanFilters,
@@ -238,6 +243,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     siteKey
   });
   applyMutationPatchRef.current = applyMutationPatch;
+
+  const isInteractionLocked = isLeaderboardBoardInteractionLocked({
+    isBackgroundRevalidating,
+    isMutationInFlight: writePause
+  });
 
   const resourcesQuery = useKioskProductionScheduleResources({
     pauseRefetch: writePause,
@@ -464,6 +474,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           setSlotModalOpen={setSlotModalOpen}
           selectedResourceCd={selectedResourceCd}
           listIncomplete={listIncomplete}
+          interactionLocked={isInteractionLocked}
           isSeibanListPanelOpen={isSeibanListPanelOpen}
           onToggleSeibanListPanel={() => setIsSeibanListPanelOpen((open) => !open)}
           seibanEvalEnabled={seibanEvalEnabled}
@@ -499,6 +510,11 @@ export function ProductionScheduleLeaderOrderBoardPage() {
                 {cacheSyncWarning}
               </p>
             ) : null}
+            {isBackgroundRevalidating ? (
+              <p className="mb-2 shrink-0 text-sm text-cyan-100/90" role="status">
+                {LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE}
+              </p>
+            ) : null}
             <LeaderBoardGrid
             resourceCdBySlotIndex={resourceCdBySlotIndex}
             sortedGrouped={sortedGrouped}
@@ -515,6 +531,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
             orderPending={orderPending}
             onOpenNote={handleOpenRowNote}
             notePending={notePending}
+            interactionLocked={isInteractionLocked}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
             />
           </>

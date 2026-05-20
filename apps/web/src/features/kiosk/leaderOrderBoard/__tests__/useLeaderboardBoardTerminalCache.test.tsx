@@ -47,6 +47,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
         suppressPlaceholderShell: false,
         accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
         networkBoardComplete: false,
+        isBackgroundRevalidating: true,
         store
       })
     );
@@ -57,7 +58,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
     });
   });
 
-  it('network 完走版が cache と不一致なら purge する', async () => {
+  it('network 完走版が cache と不一致でもサーバ正本で replace put する', async () => {
     const cached = buildLeaderboardBoardCacheRecord({
       cacheKey: 'site\u0001params',
       siteKey: 'site',
@@ -86,6 +87,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
           suppressPlaceholderShell: false,
           accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
           networkBoardComplete: props.complete,
+          isBackgroundRevalidating: !props.complete,
           store
         }),
       { initialProps: { network: undefined as ProductionScheduleLeaderboardBoardResponse | undefined, complete: false } }
@@ -98,8 +100,8 @@ describe('useLeaderboardBoardTerminalCache', () => {
     rerender({ network: board(['new']), complete: true });
 
     await waitFor(() => {
-      expect(store.delete).toHaveBeenCalledWith('site\u0001params');
-      expect(store.put).not.toHaveBeenCalled();
+      expect(store.put).toHaveBeenCalled();
+      expect(store.delete).not.toHaveBeenCalled();
     });
   });
 
@@ -131,6 +133,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
         suppressPlaceholderShell: false,
         accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
         networkBoardComplete: false,
+        isBackgroundRevalidating: false,
         store
       })
     );
@@ -170,6 +173,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
         suppressPlaceholderShell: false,
         accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
         networkBoardComplete: false,
+        isBackgroundRevalidating: true,
         store
       })
     );
@@ -180,7 +184,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
     });
   });
 
-  it('applyMutationPatch で IDB put する', async () => {
+  it('applyMutationPatch は既定で IDB put しない', async () => {
     const cached = buildLeaderboardBoardCacheRecord({
       cacheKey: 'site\u0001params',
       siteKey: 'site',
@@ -212,12 +216,13 @@ describe('useLeaderboardBoardTerminalCache', () => {
         suppressPlaceholderShell: false,
         accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
         networkBoardComplete: false,
+        isBackgroundRevalidating: true,
         store
       })
     );
 
     await waitFor(() => {
-      expect(result.current.displayBoard).toBeDefined();
+      expect(result.current.displayBoard?.rows[0]?.id).toBe('r1');
     });
 
     result.current.applyMutationPatch({
@@ -226,9 +231,6 @@ describe('useLeaderboardBoardTerminalCache', () => {
       processingOrder: 9
     });
 
-    await waitFor(() => {
-      expect(store.put).toHaveBeenCalled();
-      expect(result.current.displayBoard?.rows[0]?.processingOrder).toBe(9);
-    });
+    expect(store.put).not.toHaveBeenCalled();
   });
 });

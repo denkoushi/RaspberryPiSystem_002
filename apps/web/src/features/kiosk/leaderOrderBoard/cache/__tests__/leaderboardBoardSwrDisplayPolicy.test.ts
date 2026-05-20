@@ -31,13 +31,11 @@ describe('leaderboardBoardSwrDisplayPolicy', () => {
     savedAt: now
   })!;
 
-  it('paramsKey 変更直後は suppressPlaceholderShell でも cache を優先', () => {
+  it('背景再検証中は cache を優先', () => {
     expect(
       shouldPreferCacheForSwrDisplay({
         cacheDisplayable: true,
-        networkBoardComplete: false,
-        networkInitialLoading: true,
-        networkIsFetching: false,
+        isBackgroundRevalidating: true,
         suppressPlaceholderShell: true,
         networkDisplayBoard: undefined
       })
@@ -55,6 +53,7 @@ describe('leaderboardBoardSwrDisplayPolicy', () => {
       networkBoardComplete: true,
       networkInitialLoading: false,
       networkIsFetching: false,
+      isBackgroundRevalidating: false,
       suppressPlaceholderShell: false,
       accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
       nowMs: now,
@@ -75,6 +74,7 @@ describe('leaderboardBoardSwrDisplayPolicy', () => {
       networkBoardComplete: true,
       networkInitialLoading: false,
       networkIsFetching: true,
+      isBackgroundRevalidating: true,
       suppressPlaceholderShell: false,
       accumulatedDecorations: createEmptyAccumulatedLeaderboardDecorations(),
       nowMs: now,

@@ -22,8 +22,9 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 ### 書き込み同期
 
-- 順位・備考・納期・完了の API 成功後、`ProductionScheduleWriteSuccessListeners` 経由で **同一 `paramsKey` の IDB を patch**。
-- React Query 更新（既存）と併用。`leaderBoardFastPath` の invalidate 省略は維持。
+- **2026-05-20 改訂**: IDB 更新は **120秒ポーリングで network 完走後のみ**（`resolveScheduledCachePersist`）。`serverWins` でも purge せずサーバ正本で **replace put**。
+- mutation 成功時の IDB 即時ミラーは **既定無効**（`VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`）。React Query 更新（既存）と併用。`leaderBoardFastPath` の invalidate 省略は維持。
+- 背景再検証中は **キャッシュ表示を維持**し操作を **明示的 disabled**（`leaderboardBoardInteractionLockPolicy`）。
 
 ### UX
 
@@ -41,6 +42,8 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 | 層 | パス |
 | --- | --- |
 | SWR 表示 | [`leaderboardBoardSwrDisplayPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSwrDisplayPolicy.ts) |
+| 同期タイミング | [`leaderboardBoardCacheSyncPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts) |
+| 操作ロック | [`leaderboardBoardInteractionLockPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy.ts) |
 | 内容指紋 | [`leaderboardBoardCachePersistPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts) |
 | mutation patch | [`leaderboardBoardCachePatchPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePatchPolicy.ts) |
 | hook | [`useLeaderboardBoardTerminalCache.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) |
