@@ -583,7 +583,7 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 
 **Pi3**: **`no hosts matched`**（サイネージは対象外·専用手順未実施で正）。
 
-**未デプロイ**: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80`（当該ホストは **Phase 2 初版** または **製番 OR 部分反映** bundle のまま·本改訂の **120s-only put / 操作ロック** は未適用）。
+**Pi4×3 への 120s 改訂単体デプロイ**: 本節記載時点では **未実施**だったが、後続の [§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache) で **`fix/kiosk-leaderboard-footer-chips-terminal-cache`**（`main` + **`e24d5885`**）を **Pi4×3 に反映済み**（2026-05-20）。**120s-only put / 操作ロック** は **`main`（PR #304 · `76e265f2`）** 系 bundle に含まれる。
 
 **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **69s**·Tailscale·Pi5 `100.106.158.2`）·**`deploy-status`（Pi4×4）** PASS。
 
@@ -710,6 +710,121 @@ pnpm --filter @raspi-system/web build
 | [`useLeaderboardSeibanOrClientFilterOverlay.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardSeibanOrClientFilterOverlay.ts) | 表示合成 + reconcile effect |
 | [`cache/__tests__/*.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/__tests__/) | params・filter・policy・overlay の単体テスト |
 
+## 資源CDフッタチップ端末キャッシュ永続化（2026-05-20 · `fix/kiosk-leaderboard-footer-chips-terminal-cache`）
+
+**目的**: [製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20) と [端末キャッシュ Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) 反映後、順位ボードの **行下資源CDフッタチップ**が **空のまま**／**リロード・製番 OR 切替後に出ない**事象を、**API 契約・一覧の id 列・total・並び・表示意味論を変えず**に修正する。**Web のみ**·**新規マイグレーションなし**。
+
+**ブランチ**: **`fix/kiosk-leaderboard-footer-chips-terminal-cache`**·代表コミット **`e24d5885`**（`fix(kiosk): persist leaderboard footer chips in terminal cache`）·**`main` 取り込み後の運用デプロイ引数**は **`main`**。
+
+### Context
+
+- **前提 bundle**: Pi5 は **`main`（PR #304 マージ済）**、キオスク Pi4 は Phase 2 / 製番 OR / 120s 改訂の **部分〜全台**反映済み。StoneBase01 で **製番 OR + 120s 改訂**の実機検証 OK 後、**資源CDチップのみ空**が残った（ユーザー報告·2026-05-20）。
+- **契約**: フッタチップは API の `leaderboardFooterChipsByPartKey`（[KB-297 §一覧内包](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-footer-chips-contract-2026-05-02)）を、装飾後取り経路では [`leaderboard-decorations`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardDeferredBoardDecorations.ts) 累積 → [`mergeLeaderboardBoardWithDecorations`](../../apps/web/src/features/kiosk/leaderOrderBoard/mergeLeaderboardBoardWithDecorations.ts) で表示。端末キャッシュは **board + decorations** を IDB に保存（Phase 2）。
+
+### Symptoms
+
+- **行本体**（順位・納期・機種名等）は SWR / IDB で即表示されるが、**行下の資源CDチップ帯が常に空**、または **装飾 POST 完了直後だけ出てリロードで消える**。
+- **製番 OR を ON/OFF** した直後にチップが消える（行数は製番フィルタどおり）。
+- DevTools **IndexedDB** で当該 `cacheKey` の record に **`decorations.leaderboardFooterChipsByPartKey` が空**、または **古い装飾指紋のまま put されない**。
+
+### Investigation
+
+| 仮説 | 検証 | 結果 |
+| --- | --- | --- |
+| API がチップを返していない | Network で `leaderboard-decorations` 応答の `leaderboardFooterChipsByPartKey` | **REJECTED**（キーあり） |
+| IDB put が **行内容指紋のみ**で、チップ増分を「変更なし」と判定 | [`shouldSkipCachePut`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts)（board のみ）と put ログ | **CONFIRMED** |
+| 製番 OR で **`decorationParamsKey`** が変わり装飾 state がリセット | [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) の `decorationParamsKey` 組み立て | **CONFIRMED**（`paramsKey` + 製番連結を廃止すべき） |
+
+### Root cause
+
+1. **IDB put スキップ**: [`useLeaderboardBoardTerminalCache.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) が **`fingerprintLeaderboardBoardContent`（行 ID 列＋順位・備考・納期・完了）のみ**で `shouldSkipCachePut` していた。**行内容は不変でも `leaderboardFooterChipsByPartKey` だけ増える**ケースで **put がスキップ**され、次回 cold start / SWR で **チップ無しキャッシュ**が表示される。
+2. **装飾取得キーの揺れ**: 製番 OR 有効時に **`decorationParamsKey = paramsKey + seibanOrFiltersKey`** としていたため、登録製番の追加・削除で **`useLeaderboardDeferredBoardDecorations` が state を空にリセット**し、**120s ポーリング完走前**はチップが描画されない時間帯ができる。
+
+### Fix（最小変更・出力同値）
+
+| 層 | 内容 | モジュール |
+| --- | --- | --- |
+| 装飾指紋 | **board 指紋 + decorations 指紋**の両方が同一のときだけ put スキップ | [`fingerprintLeaderboardBoardDecorations`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts)·[`shouldSkipLeaderboardBoardCachePut`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts) |
+| terminal cache | hydrate / put / reconcile 後の fingerprint 更新で **decorations を追跡** | [`useLeaderboardBoardTerminalCache.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) |
+| 装飾 hook キー | **`decorationParamsKey` を `paramsKey` に固定**（製番 OR の ON/OFF で装飾 state をリセットしない） | [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) |
+
+**意図的に触らない**: API Zod·`leaderboard-board` / `continue` の rows 正本·製番 OR の **表示行絞込**（[`filterLeaderboardBoardBySeibanOr`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/filterLeaderboardBoardBySeibanOr.ts)）·120s ポーリング・操作ロック·`serverWins` replace put。
+
+**データフロー（修正後）**:
+
+```mermaid
+sequenceDiagram
+  participant Hook as useCompositeLeaderboard
+  participant Dec as deferred_decorations
+  participant TC as useLeaderboardBoardTerminalCache
+  participant IDB as IndexedDB
+
+  Hook->>Dec: paramsKey 固定で増分 POST
+  Dec-->>Hook: accumulatedDecorations
+  Hook->>TC: board + decorations
+  TC->>TC: fingerprint board AND decorations
+  alt chips added, rows unchanged
+    TC->>IDB: put（スキップしない）
+  else both unchanged
+    TC-->>TC: skip put
+  end
+```
+
+### Prevention
+
+- 端末キャッシュの **put スキップ条件**は **表示に使う全サブツリー**（少なくとも **board 行**と **装飾マップ**）で指紋を分ける。**行 ID 列だけ**では不足。
+- **React Query / 遅延 hook の `queryKey` / `paramsKey`** は [§製番 OR](#製番-or-クライアントキャッシュフィルタ2026-05-20) の **`boardQueryParams`（無 `q`）** と **装飾取得**で **意図的に分離**する場合、**リセット副作用**をテストで固定する。
+- **Vitest**: `leaderboardBoardCachePersistPolicy.test.ts`（チップ追加で decorations 指紋変化・複合 skip）·`useLeaderboardBoardTerminalCache.test.tsx`（decorations 付き put）。
+
+### ローカル検証
+
+```bash
+pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard
+# 196 tests PASS（2026-05-20）
+
+pnpm --filter @raspi-system/web build
+# PASS（pre-commit import 順 lint 修正済み）
+```
+
+### 本番デプロイ（2026-05-20 · Pi5 → Pi4×4 · 完了）
+
+**方針**: 標準 **`update-all-clients.sh`**·**1 台ずつ `--limit`**·**Web のみ**（Pi3 **`no hosts matched`** で正）。
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/kiosk-leaderboard-footer-chips-terminal-cache infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+
+| ホスト | 現場名 | Detach Run ID | PLAY RECAP | 備考 |
+| --- | --- | --- | --- | --- |
+| `raspberrypi5` | サーバ（Web+API） | **`20260520-103202-24115`** | `failed=0` | 先行デプロイ·`verify-phase12-real.sh` **43/0/0** |
+| `raspi4-kensaku-stonebase01` | Kensaku StoneBase01 | **`20260520-103644-1806`** | `failed=0` | **`kiosk-browser` 再起動**·**実機検証 OK**（ユーザー） |
+| `raspberrypi4` | 第2工場 kensakuMain | **`20260520-110912-15304`** | `ok=122` `changed=10` `failed=0` | 同上 |
+| `raspi4-robodrill01` | RoboDrill01 | **`20260520-111402-16821`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| `raspi4-fjv60-80` | FJV60/80 | **`20260520-111744-20691`** | `ok=122` `changed=9` `failed=0` | 同上 |
+
+**Pi4 全台反映後（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **29s**·Tailscale·Pi5 `100.106.158.2`）·**`deploy-status`（Pi4×4）** PASS。
+
+### 実機チェックリスト（順位ボード）
+
+1. **2 回目以降のリロード**（同一 `paramsKey`・continue 完走済み）: **行と資源CDチップが同時に即表示**（SWR）。
+2. **装飾 POST 完走後**に **120s ポーリング**が走っても、**チップが消えない**（IDB に decorations 指紋付きで保存）。
+3. **製番 OR ON → 追加 → OFF**: 行絞込は従来どおり·**チップ帯が製番切替だけで恒久的に空にならない**。
+4. **他端末の変更**: 最大 **120s** で収束（Phase 2 SLA·変更なし）。
+
+### Troubleshooting
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| チップだけ空・行は出る | IDB record の **`leaderboardFooterChipsByPartKey`**·Network **`leaderboard-decorations`** | **`e24d5885` 以降** bundle·**Cmd+Shift+R**·古い IDB は一度削除可 |
+| 装飾直後だけ出て消える | **put スキップ**（行指紋のみ） | 本 Fix·[`shouldSkipLeaderboardBoardCachePut`](#fix最小変更出力同値) |
+| 製番切替でチップだけ消える | **`decorationParamsKey` が製番連結**の旧 bundle | **`e24d5885` 以降**（`paramsKey` 固定） |
+| Pi4 だけ直らない | **未デプロイ** | 上表の Detach Run ID·`deploy-status` |
+| 機能を止めたい | ビルドフラグ | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false`（端末キャッシュ全体オフ） |
+
+### 知見
+
+- **「出力同値」修正でも UI サブリソース（チップ）**は **別指紋**が必要。board 行と **装飾マップは独立に変化**しうる。
+- **製番 OR** は **board の API `q`** だけでなく、**遅延装飾 hook のキー設計**まで含めて一体で見る（[§製番 OR §装飾](#製番-or-クライアントキャッシュフィルタ2026-05-20) 5 項を更新済み）。
+- **Pi5 先行 → StoneBase01 実機 OK → 残 Pi4×3** の順で、**回帰の切り分けコスト**が小さい（標準 [deployment.md §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)）。
+
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
@@ -719,5 +834,6 @@ pnpm --filter @raspi-system/web build
 - **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
 - **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
 - **端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック・2026-05-20）**: **`76e265f2`**·**Pi5 + StoneBase01 部分本番**·実機 **OK**·[§Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)·[deployment §120s 改訂](../guides/deployment.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·CI **`26133411712`**。
-- **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 本番**·残り Pi4×3 **未デプロイ**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../guides/deployment.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 先行本番**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../guides/deployment.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)。
+- **資源CDフッタチップ端末キャッシュ（2026-05-20）**: **`e24d5885`**·**Pi5→Pi4×4 本番・実機 OK**·[§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache)·[deployment §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
