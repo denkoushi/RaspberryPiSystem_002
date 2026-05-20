@@ -34,7 +34,7 @@ type Props = {
   /** 備考の追加・編集。空行はグレー鉛筆、内容ありは色付き鉛筆（親がモーダルを開く） */
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
-  /** 製番 OR フィルタ ON 時のみ行左縁に識別色 */
+  /** 製番 OR フィルタ時も全件表示時も行左縁に識別色（空フィルタ時はハッシュ % 24） */
   activeSeibanFilters?: readonly string[];
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
 };

@@ -35,4 +35,12 @@ describe('seibanAccentPaletteIndexForString', () => {
   it('stable for same input', () => {
     expect(seibanAccentPaletteIndexForString('abc')).toBe(seibanAccentPaletteIndexForString('abc'));
   });
+
+  it('returns index within 24-color palette', () => {
+    for (const sample of ['S001', 'AA1S7M11', 'xyz']) {
+      const idx = seibanAccentPaletteIndexForString(sample);
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(idx).toBeLessThan(24);
+    }
+  });
 });
