@@ -16,9 +16,9 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 - 鮮度 **120 秒**内の **continue 完走済み** IDB スナップショットを、`paramsKey` 一致時に **即表示**。
 - 裏で既存 `leaderboard-board` + continue + `leaderboard-decorations` を実行。
-- **再検証中**（`isLoading` / `isFetching` / continue 未完 / `paramsKey` 変更直後で network 未就绪）はキャッシュを維持。
-- Origin 完走 + reconcile **aligned** → ネットワーク表示 + IDB `put`（**内容指紋**で更新判定）。
-- reconcile **serverWins** → 即 `delete` + ネットワーク表示（Phase 1 維持）。
+- **再検証中**（`isBackgroundRevalidating` = continue 未完 / `isFetching` / `paramsKey` 変更直後で network 未就绪）は **キャッシュ表示を維持**（完了までネットワークへ切替えない）。
+- Origin 完走 + reconcile **aligned** → ネットワーク表示 + IDB `put`（**内容指紋**で更新判定·aligned 時のみ fingerprint スキップ）。
+- reconcile **serverWins** → **purge しない**·サーバ正本で **replace put**（`skippedNetworkSyncTokenRef` は廃止·IDB 空窗を防ぐ）。
 
 ### 書き込み同期
 
@@ -36,6 +36,38 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 | --- | --- |
 | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false` | Phase 1/2 とも無効 |
 | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=false` | Phase 1 表示ポリシーのみ（省略時 true） |
+| `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false` | mutation 成功時の IDB 即時ミラー無効（省略時 false·**2026-05-20 改訂の既定**） |
+
+## Phase 2 改訂（120s 同期 cadence 安定化・2026-05-20）
+
+**ブランチ**: **`feat/kiosk-leaderboard-cache-120s-swr-lock`**（tip **`76e265f2`**）·**CI** run **`26133411712`** **success**。
+
+**背景（現場観測）**: Phase 2 初版（**`2300da83`**）では **mutation 成功ごとに IDB patch**・**serverWins 時 purge**・**同一 sync サイクル内 put 抑止**（`skippedNetworkSyncTokenRef`）が重なり、**キャッシュが効いていない／表示が切り替わる／操作可能に見える**体感が残った。
+
+**追加決定**:
+
+| 項目 | 決定 |
+| --- | --- |
+| IDB 書込タイミング | **120秒ポーリングで network 完走後のみ**（`leaderboardBoardCacheSyncPolicy.resolveScheduledCachePersist`） |
+| mutation → IDB | **既定オフ**（`shouldMirrorLeaderboardMutationToCache()` → `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION`） |
+| serverWins | **purge せず replace put**（正本はサーバ版） |
+| SWR 表示 | **`isBackgroundRevalidating` 中はキャッシュ固定**·完了時のみネットワーク表示へ一度切替 |
+| 操作 | 背景再検証中は **`isInteractionLocked`**（Grid / 左ペイン **明示 disabled** + 短文ステータス） |
+| reconcile fingerprint | **aligned のみスキップ**（不一致でもサーバ版を保存） |
+| 出力 | **API 契約・一覧 id/total/並び・装飾意味論は不変**（回帰テストで固定） |
+
+**本番（部分反映・ユーザー指定 2 台）**: **`raspberrypi5`** → **`raspi4-kensaku-stonebase01`**（各 **`--limit`・1 台ずつ**）。
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+| --- | --- | --- | --- |
+| `raspberrypi5` | **`20260520-095018-31166`** | `ok=131` `changed=3` `failed=0` | 同日 **9:37 開始の同一ブランチ run** が **ローカルロック**中に先行（完了待ち後に本 run で正本ログ取得） |
+| `raspi4-kensaku-stonebase01` | **`20260520-094455-29939`** | `ok=129` `changed=10` `failed=0` | **`kiosk-browser` / `status-agent` 再起動** |
+
+**未反映**: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80`（Phase 2 初版 **`20260519-*`** または製番 OR **`20260520-081732-*`** の bundle のまま）。
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **69s**）·**現場（ユーザー）**: **実機検証 OK**。
+
+**手順正本**: [deployment.md §120s 同期改訂](../guides/deployment.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·[KB-374 §Phase 2 改訂](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)。
 
 ## 実装モジュール
 
@@ -71,8 +103,8 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 ## Consequences
 
-- **良**: 製番 OR 切替・再検証中の体感短縮。自端末入力の IDB 反映。他端末は 120s SLA で収束。
-- **注意**: SWR 中は最大 120s 古い他端末状態を表示しうる（Phase 1 と同型 SLA）。
+- **良**: 製番 OR 切替・再検証中の体感短縮。**120s 完走時のみ IDB 更新**で書込競合と空窗を抑制。**背景更新中の操作ロック**で誤操作・表示チラつきを減らす。
+- **注意**: SWR 中は最大 120s 古い他端末状態を表示しうる（Phase 1 と同型 SLA）。**mutation 即時 IDB ミラーは既定オフ**（他端末変更の即時反映は **React Query のみ**·IDB は次の 120s ポーリングで収束）。
 
 ## References
 

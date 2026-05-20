@@ -545,6 +545,77 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 | SWR を止めたい | ビルドフラグ | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=false`（Phase 1 のみ） |
 | キャッシュ全体オフ | 同上 | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false` |
 
+## 端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック）（2026-05-20 · `feat/kiosk-leaderboard-cache-120s-swr-lock`）
+
+**目的**: [端末キャッシュ Phase 2](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20) の **体感遅延・キャッシュ未効・再検証中の表示切替・操作可能に見える**問題を、**出力同値**のまま最小変更で抑える。**Web のみ**·**API 不変**。
+
+**設計 ADR**: [ADR-20260520 §Phase 2 改訂](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md#phase-2-改訂120s-同期-cadence-安定化2026-05-20)。
+
+**ブランチ（実装）**: **`feat/kiosk-leaderboard-cache-120s-swr-lock`**（tip **`76e265f2`** · `fix(kiosk): stabilize leaderboard cache refresh cadence`）·**CI** run **`26133411712`** **success**。
+
+### 仕様要約（Phase 2 初版からの差分）
+
+| # | Phase 2 初版（`2300da83`） | 本改訂（`76e265f2`） |
+| --- | --- | --- |
+| 1 | mutation 成功時 **IDB patch**（既定オン） | **120秒ポーリング完走時のみ** IDB `put`（[`leaderboardBoardCacheSyncPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts)） |
+| 2 | `serverWins` → **purge** + 同一 token で put 抑止 | **purge しない**·サーバ正本で **replace put**（`skippedNetworkSyncTokenRef` **削除**） |
+| 3 | 再検証中も SWR だが **ネットワーク表示へ切替えうる** | **`isBackgroundRevalidating` 中はキャッシュ固定**·完了時のみ一度切替（[`leaderboardBoardSwrDisplayPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSwrDisplayPolicy.ts)） |
+| 4 | 操作ロックなし（押下は無視されうる） | **`isInteractionLocked`** + Grid/左ペイン **明示 disabled** + 同期中文（[`leaderboardBoardInteractionLockPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy.ts)） |
+| 5 | reconcile fingerprint は常時比較 | **aligned 時のみ** fingerprint スキップ（不一致でもサーバ版を保存） |
+| 6 | — | mutation ミラー **`VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`**（[`leaderboardBoardCacheConstants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheConstants.ts)） |
+
+**維持**: `paramsKey` / `siteKey`·120s 鮮度·完了フィルタ既定 **未完**·製番 OR クライアントフィルタ（[`feat/kiosk-leaderboard-seiban-or-client-cache-filter`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/filterLeaderboardBoardBySeibanOr.ts)）との併用·**一覧の id 列・total・並び・装飾の意味論**。
+
+**ロールバック**: `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=true` で mutation 即時 IDB ミラーを復帰（Phase 2 初版に近い）/ `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR=false` / `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false`。
+
+**検証（ローカル）**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard` → **193 tests PASS**（2026-05-20）·`web build` PASS。
+
+### 本番デプロイ・実機検証（2026-05-20 · 部分反映）
+
+**方針**: ユーザー指定どおり **`raspberrypi5` → `raspi4-kensaku-stonebase01` のみ**（**1 台ずつ `--limit`**）。**Web のみ**·API 不変·**新規マイグレーションなし**。
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-cache-120s-swr-lock infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+
+| ホスト | 現場名 | Detach Run ID | PLAY RECAP | 備考 |
+| --- | --- | --- | --- | --- |
+| `raspberrypi5` | サーバ（Web+API） | **`20260520-095018-31166`** | `ok=131` `changed=3` `failed=0` | **`Docker rebuild: false`**（リモート **Already up to date**）·`prisma migrate` **ok** |
+| `raspi4-kensaku-stonebase01` | Kensaku StoneBase01 | **`20260520-094455-29939`** | `ok=129` `changed=10` `failed=0` | **`kiosk-browser` / `status-agent` 再起動** |
+
+**Pi3**: **`no hosts matched`**（サイネージは対象外·専用手順未実施で正）。
+
+**未デプロイ**: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80`（当該ホストは **Phase 2 初版** または **製番 OR 部分反映** bundle のまま·本改訂の **120s-only put / 操作ロック** は未適用）。
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **69s**·Tailscale·Pi5 `100.106.158.2`）·**`deploy-status`（Pi4×4）** PASS。
+
+**実機（順位ボード・手動·ユーザー確認）**: **実機検証 OK**（2026-05-20）。
+
+**実機チェックリスト（本改訂の評価ポイント）**:
+
+1. **2 回目以降の cold start**（同一 `paramsKey`）: リロード直後 **IDB 即表示**·裏で network 完走。
+2. **120s ポーリング中**: 一覧は **キャッシュ維持**（チラつきで空→再描画しない）·**操作は disabled**（同期中文表示）。
+3. **ポーリング完走後**: 一度だけ **ネットワーク結果へ切替**·IDB が **サーバ正本で更新**。
+4. **自端末 mutation 直後**: **React Query 表示は即更新**·IDB は **既定では更新されない**（次 120s まで他端末視点は SLA どおり）。
+5. **製番 OR**（StoneBase01）: [§製番 OR](#製番-or-クライアントキャッシュフィルタ2026-05-20) と併用·**`paramsKey` 固定 + クライアント絞込**は維持。
+
+### 知見
+
+- **IDB 空窗の主因候補（CONFIRMED）**: `serverWins` 後の **purge** と **`skippedNetworkSyncTokenRef` による同一サイクル put 抑止**が重なると、SWR 表示中に **IDB が空**になり **毎回フル network 待ち**に見えた → **replace put + token 削除**で緩和。
+- **mutation 毎の IDB patch** は **120s ポーリングと競合**し、reconcile・表示切替のノイズ源になりうる → **既定オフ**（緊急時のみ env で復帰）。
+- **`update-all-clients.sh` ローカルロック**: 同一マシンで **別プロセスが実行中**だと **exit 3**（`logs/.update-all-clients.local.lock`）·**完了待ち**または **オーナー PID 確認**（[KB-374 Phase 1 §知見](#知見) と同型）。
+- **デプロイ順**: StoneBase01 を先に完了し Pi5 を後追いしても **Phase12 は広域 PASS**（Pi5 API + 全 Pi4 サービス疎通）·**順位ボード UX は端末ローカル bundle 依存**のため **評価はデプロイ済み端末で実施**。
+
+### Troubleshooting
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| キャッシュが効かない／毎回遅い | DevTools **IndexedDB 空**·`serverWins` 直後 purge | **`76e265f2` 以降** bundle か·**Cmd+Shift+R** |
+| 120s ごとに表示がチラつく | 再検証中に **network 表示へ切替** | 本改訂の **`isBackgroundRevalidating`** 配線を確認 |
+| 同期中に押せる | **disabled 未配線** | `ProductionScheduleLeaderOrderBoardPage` の **`isInteractionLocked`**·Grid/左ペイン |
+| mutation 後 IDB が即更新されない | **`VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`** | **意図**·即時ミラーが必要なら env **true** + 再デプロイ |
+| `update-all-clients.sh` が即終了 exit 3 | **ローカルロック** | `logs/.update-all-clients.local.lock/owner` の **pid** が生存中か·完了待ち |
+| Pi4 3 台で挙動が違う | **未デプロイ** | 上表の **未デプロイ 3 台**を同一手順で **`--limit` 順次** |
+| 機能を止めたい | ビルドフラグ | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false` |
+
 ## 製番 OR クライアントキャッシュフィルタ（2026-05-20）
 
 **目的**: 登録製番 OR 切替で **`paramsKey`（無 `q` 完走 board）を固定**し、**IDB 上の全件キャッシュ**をそのままクライアントで絞込表示する。裏で **同じ製番の `q` 付き GET + continue** で照合し、**不一致は常にサーバ正**（Phase 1/2 reconcile と同型）。**Web のみ**·**API 不変**·**ツールバー等の他 `q` は従来どおり API**。
@@ -647,5 +718,6 @@ pnpm --filter @raspi-system/web build
 - **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../guides/deployment.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
 - **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
 - **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
+- **端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック・2026-05-20）**: **`76e265f2`**·**Pi5 + StoneBase01 部分本番**·実機 **OK**·[§Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)·[deployment §120s 改訂](../guides/deployment.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·CI **`26133411712`**。
 - **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 本番**·残り Pi4×3 **未デプロイ**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../guides/deployment.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
