@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-04-17（製番→機種名補完 `FHINMEI_MH_SH` 本番5台反映後の Phase12 実績追記・§6.6.20）
+最終更新: 2026-04-17（製番→機種名補完 `FHINMEI_MH_SH` 本番5台反映後の Phase12 実績追記・§6.6.20）。**2026-05-20 追記**: 順位ボード製番左縁アクセント 24 色（§6.6.23）。
 
 ## 概要
 
@@ -780,6 +780,20 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **検証日時**: 2026-04-03（上記スクリプト **PASS 41 / WARN 0 / FAIL 0**・`main` に `refactor(api): extract loan grid HTML chrome and layout tokens` 反映後、inventory 6 台を `--limit` 順次・`--foreground` でデプロイ済み・Mac / Tailscale・約 **59s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
+
+**6.6.23 キオスク リーダー順位ボード（製番左縁アクセント 24 色）** {#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20}
+
+**確認ポイント**（[KB-297 §24色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](./deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-20 本番反映後 **約 31s**）。
+- [ ] **全件表示（OR フィルタ OFF）**: 異なる製番の行で **左縁色の種類が 8 色時代より増えている**こと（被りは残り得る）。**同一製番**は **資源 CD スロット横断で同色**。
+- [ ] **登録製番 OR フィルタ ON（~5 件）**: **1 番目〜5 番目の色が 24 色導入前と同じ**（先頭 8 色パレット固定）。同一製番のスロット横断同色を確認。
+- [ ] **強制リロード**: 反映直後は **キオスク強制リロード**（§6.6.4）後に目視。Pi5 **`web`** が **`f8c1f6d2` 以降**であること。
+
+**トラブルシュート**: 左縁が 8 色のまま → Pi5 ref / `web` 再ビルド・強制リロード。OR フィルタ 1〜5 色目が変わった → 先頭 8 色不変のはず（ref 確認）。
+
+**検証日時**: 2026-05-20（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260520-141147-19965`** ほか 4 本·**Pi3 除外**）
+**検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
 #### 6.7 既存データとの互換性確認
 
