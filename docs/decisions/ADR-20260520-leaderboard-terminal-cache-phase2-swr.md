@@ -23,7 +23,7 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 ### 書き込み同期
 
 - **2026-05-20 改訂**: IDB 更新は **120秒ポーリングで network 完走後のみ**（`resolveScheduledCachePersist`）。`serverWins` でも purge せずサーバ正本で **replace put**。
-- mutation 成功時の IDB 即時ミラーは **既定無効**（`VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`）。React Query 更新（既存）と併用。`leaderBoardFastPath` の invalidate 省略は維持。
+- mutation 成功時の IDB 即時ミラーは **2026-05-20 改訂時点では既定無効**（`VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`）。**2026-05-20 本番（[`feat/kiosk-leaderboard-mutation-instant-display`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardDisplayMutationCoordinator.ts)）で既定オンに戻す**（省略時 true·行 patch のみ）。React Query 更新（既存）と併用。`leaderBoardFastPath` の invalidate 省略は維持。
 - 背景再検証中は **キャッシュ表示を維持**し操作を **明示的 disabled**（`leaderboardBoardInteractionLockPolicy`）。
 
 ### UX
@@ -116,6 +116,18 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 | 他端末 SLA | **最大 120 秒**（変更なし） |
 
 **正本**: [KB-374 §操作即表示](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#操作即表示--120秒キャッシュ両立2026-05-20--featkiosk-leaderboard-mutation-instant-display)
+
+### 本番反映（2026-05-20 · `feat/kiosk-leaderboard-mutation-instant-display`）
+
+| 項目 | 内容 |
+| --- | --- |
+| **代表** | **`0d97f0de`** |
+| **対象** | **`raspberrypi5` → `raspi4-kensaku-stonebase01` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80`**（各 1 台ずつ） |
+| **Detach** | **`20260520-131334-15607`** / **`20260520-131843-7879`** / **`20260520-133253-2715`** / **`20260520-133748-7589`** / **`20260520-134139-3491`**（いずれも **`failed=0`**） |
+| **実機** | **実機検証 OK**（ユーザー·2026-05-20） |
+| **手順** | [deployment.md §操作即表示](../guides/deployment.md#kiosk-leaderboard-mutation-instant-display-2026-05-20) |
+
+**マージ後**: 第2引数 **`main`** で再デプロイすれば同一 bundle（PR マージ前提）。
 
 ## Consequences
 
