@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { createEmptyAccumulatedLeaderboardDecorations } from '../../mergeLeaderboardBoardWithDecorations';
 import {
   fingerprintLeaderboardBoardContent,
-  shouldSkipCachePut
+  fingerprintLeaderboardBoardDecorations,
+  shouldSkipCachePut,
+  shouldSkipLeaderboardBoardCachePut
 } from '../leaderboardBoardCachePersistPolicy';
 
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../../api/client';
@@ -38,5 +41,52 @@ describe('leaderboardBoardCachePersistPolicy', () => {
         nextContentFingerprint: fingerprintLeaderboardBoardContent(board([{ id: 'r1', order: 2 }]))
       })
     ).toBe(false);
+  });
+
+  it('fingerprintLeaderboardBoardDecorations はチップ追加で変わる', () => {
+    const empty = createEmptyAccumulatedLeaderboardDecorations();
+    const withChips = {
+      ...empty,
+      leaderboardFooterChipsByPartKey: {
+        'seiban\0pn\0hc': [
+          { rowId: 'row-1', resourceCd: '021', isCompleted: false }
+        ]
+      }
+    };
+    expect(fingerprintLeaderboardBoardDecorations(empty)).not.toBe(
+      fingerprintLeaderboardBoardDecorations(withChips)
+    );
+  });
+
+  it('shouldSkipLeaderboardBoardCachePut は board 同一でも装飾が変われば false', () => {
+    const b = board([{ id: 'r1', order: 1 }]);
+    const boardFp = fingerprintLeaderboardBoardContent(b);
+    const emptyDecoFp = fingerprintLeaderboardBoardDecorations(
+      createEmptyAccumulatedLeaderboardDecorations()
+    );
+    const withChipsDecoFp = fingerprintLeaderboardBoardDecorations({
+      rowDecorationsById: new Map(),
+      leaderboardFooterChipsByPartKey: {
+        'k\0a\0b': [{ rowId: 'r1', resourceCd: '021', isCompleted: true }]
+      }
+    });
+
+    expect(
+      shouldSkipLeaderboardBoardCachePut({
+        lastBoardFingerprint: boardFp,
+        nextBoardFingerprint: boardFp,
+        lastDecorationsFingerprint: emptyDecoFp,
+        nextDecorationsFingerprint: withChipsDecoFp
+      })
+    ).toBe(false);
+
+    expect(
+      shouldSkipLeaderboardBoardCachePut({
+        lastBoardFingerprint: boardFp,
+        nextBoardFingerprint: boardFp,
+        lastDecorationsFingerprint: withChipsDecoFp,
+        nextDecorationsFingerprint: withChipsDecoFp
+      })
+    ).toBe(true);
   });
 });

@@ -157,11 +157,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     [boardQueryParams]
   );
 
-  const decorationParamsKey = useMemo(
-    () => (seibanTokens.length > 0 ? `${paramsKey}\0${seibanOrFiltersKey}` : paramsKey),
-    [paramsKey, seibanOrFiltersKey, seibanTokens.length]
-  );
-
   const [appendOverride, setAppendOverride] = useState<ProductionScheduleLeaderboardBoardResponse | null>(null);
   const [appendError, setAppendError] = useState<Error | null>(null);
   const [isAppending, setIsAppending] = useState(false);
@@ -228,7 +223,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const { accumulatedDecorations, isDecorationsFetching, decorationsError, resetDecorations } =
     useLeaderboardDeferredBoardDecorations({
       scheduleEnabled,
-      paramsKey: decorationParamsKey,
+      paramsKey,
       displayBoard: networkDisplayBoard,
       macManualOrderV2,
       activeDeviceScopeKey,

@@ -184,6 +184,62 @@ describe('useLeaderboardBoardTerminalCache', () => {
     });
   });
 
+  it('board 同一・aligned でも装飾（チップ）が増えたら put する', async () => {
+    const serverBoard = board(['r1']);
+    const cached = buildLeaderboardBoardCacheRecord({
+      cacheKey: 'site\u0001params',
+      siteKey: 'site',
+      paramsKey: 'params',
+      board: serverBoard,
+      decorations: createEmptyAccumulatedLeaderboardDecorations()
+    })!;
+
+    const store: LeaderboardBoardCacheStore = {
+      get: vi.fn().mockResolvedValue(cached),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined)
+    };
+
+    const decorationsWithChips = {
+      rowDecorationsById: new Map(),
+      leaderboardFooterChipsByPartKey: {
+        'k\0p\0h': [{ rowId: 'r1', resourceCd: '021', isCompleted: false }]
+      }
+    };
+
+    const { rerender } = renderHook(
+      (props: { decorations: typeof decorationsWithChips }) =>
+        useLeaderboardBoardTerminalCache({
+          siteKey: 'site',
+          paramsKey: 'params',
+          scheduleEnabled: true,
+          networkDisplayBoard: serverBoard,
+          networkSyncToken: 'sync-deco',
+          networkInitialLoading: false,
+          networkIsFetching: false,
+          networkIsError: false,
+          suppressPlaceholderShell: false,
+          accumulatedDecorations: props.decorations,
+          networkBoardComplete: true,
+          isBackgroundRevalidating: false,
+          store
+        }),
+      { initialProps: { decorations: createEmptyAccumulatedLeaderboardDecorations() } }
+    );
+
+    await waitFor(() => {
+      expect(store.get).toHaveBeenCalled();
+    });
+
+    vi.mocked(store.put).mockClear();
+
+    rerender({ decorations: decorationsWithChips });
+
+    await waitFor(() => {
+      expect(store.put).toHaveBeenCalled();
+    });
+  });
+
   it('applyMutationPatch は既定で IDB put しない', async () => {
     const cached = buildLeaderboardBoardCacheRecord({
       cacheKey: 'site\u0001params',

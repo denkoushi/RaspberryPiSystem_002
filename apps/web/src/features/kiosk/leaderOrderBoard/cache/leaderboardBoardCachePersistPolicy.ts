@@ -1,4 +1,5 @@
 import type { ProductionScheduleLeaderboardBoardResponse } from '../../../../api/client';
+import type { AccumulatedLeaderboardDecorations } from '../mergeLeaderboardBoardWithDecorations';
 
 function progressToken(rowData: unknown): string {
   if (rowData == null || typeof rowData !== 'object') return '';
@@ -23,10 +24,64 @@ export function fingerprintLeaderboardBoardContent(
     .join('\u0002');
 }
 
+function fingerprintProcessChip(chip: {
+  rowId: string;
+  resourceCd: string;
+  isCompleted: boolean;
+  resourceNames?: string[];
+}): string {
+  const names =
+    chip.resourceNames != null && chip.resourceNames.length > 0
+      ? [...chip.resourceNames].sort().join(',')
+      : '';
+  return `${chip.rowId}:${chip.resourceCd}:${chip.isCompleted ? 1 : 0}:${names}`;
+}
+
+/**
+ * 機種名・顧客名・資源CDフッタチップを含む装飾指紋。
+ * チップのみ増えた場合も IDB put 対象になる。
+ */
+export function fingerprintLeaderboardBoardDecorations(
+  decorations: AccumulatedLeaderboardDecorations
+): string {
+  const rowPart = [...decorations.rowDecorationsById.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, d]) => `${id}:${d.resolvedMachineName ?? ''}:${d.customerName ?? ''}`)
+    .join('\u0003');
+
+  const chipPart = Object.keys(decorations.leaderboardFooterChipsByPartKey)
+    .sort()
+    .map((partKey) => {
+      const processes = decorations.leaderboardFooterChipsByPartKey[partKey] ?? [];
+      const procTokens = processes.map((p) => fingerprintProcessChip(p)).sort().join(',');
+      return `${partKey}=[${procTokens}]`;
+    })
+    .join('\u0003');
+
+  return `${rowPart}\u0004${chipPart}`;
+}
+
+/** @deprecated board のみ。新規は shouldSkipLeaderboardBoardCachePut を使用 */
 export function shouldSkipCachePut(input: {
   lastContentFingerprint: string | null;
   nextContentFingerprint: string;
 }): boolean {
   if (input.lastContentFingerprint == null) return false;
   return input.lastContentFingerprint === input.nextContentFingerprint;
+}
+
+/** board と decorations の両方が同一のときだけ IDB put をスキップ */
+export function shouldSkipLeaderboardBoardCachePut(input: {
+  lastBoardFingerprint: string | null;
+  nextBoardFingerprint: string;
+  lastDecorationsFingerprint: string | null;
+  nextDecorationsFingerprint: string;
+}): boolean {
+  if (input.lastBoardFingerprint == null || input.lastDecorationsFingerprint == null) {
+    return false;
+  }
+  return (
+    input.lastBoardFingerprint === input.nextBoardFingerprint &&
+    input.lastDecorationsFingerprint === input.nextDecorationsFingerprint
+  );
 }

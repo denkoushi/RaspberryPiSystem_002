@@ -18,7 +18,8 @@ import {
 } from './cache/leaderboardBoardCachePatchPolicy';
 import {
   fingerprintLeaderboardBoardContent,
-  shouldSkipCachePut
+  fingerprintLeaderboardBoardDecorations,
+  shouldSkipLeaderboardBoardCachePut
 } from './cache/leaderboardBoardCachePersistPolicy';
 import { reconcileLeaderboardBoardCacheWithServer } from './cache/leaderboardBoardCacheReconcilePolicy';
 import {
@@ -100,15 +101,28 @@ export function useLeaderboardBoardTerminalCache(
   const [hydratedRecord, setHydratedRecord] = useState<PersistedLeaderboardBoardCacheRecord | null>(null);
   const [cacheLoadSettled, setCacheLoadSettled] = useState(false);
   const [cacheSyncWarning, setCacheSyncWarning] = useState<string | null>(null);
-  const lastContentFingerprintRef = useRef<string | null>(null);
+  const lastBoardFingerprintRef = useRef<string | null>(null);
+  const lastDecorationsFingerprintRef = useRef<string | null>(null);
   const loadGenerationRef = useRef(0);
+
+  const restoreFingerprintsFromRecord = useCallback((record: PersistedLeaderboardBoardCacheRecord | null) => {
+    if (record == null) {
+      lastBoardFingerprintRef.current = null;
+      lastDecorationsFingerprintRef.current = null;
+      return;
+    }
+    lastBoardFingerprintRef.current = fingerprintLeaderboardBoardContent(record.board);
+    lastDecorationsFingerprintRef.current = fingerprintLeaderboardBoardDecorations(
+      deserializeAccumulatedDecorations(record.decorations)
+    );
+  }, []);
 
   const purgeCache = useCallback(() => {
     if (!terminalCacheEnabled || cacheKey.length === 0) return;
     void store.delete(cacheKey);
     setHydratedRecord(null);
-    lastContentFingerprintRef.current = null;
-  }, [cacheKey, store, terminalCacheEnabled]);
+    restoreFingerprintsFromRecord(null);
+  }, [cacheKey, restoreFingerprintsFromRecord, store, terminalCacheEnabled]);
 
   useEffect(() => {
     if (!terminalCacheEnabled || !scheduleEnabled || cacheKey.length === 0) {
@@ -126,15 +140,14 @@ export function useLeaderboardBoardTerminalCache(
       if (gen !== loadGenerationRef.current) return;
       if (record != null && record.paramsKey !== paramsKey) {
         setHydratedRecord(null);
-        lastContentFingerprintRef.current = null;
+        restoreFingerprintsFromRecord(null);
       } else {
         setHydratedRecord(record);
-        lastContentFingerprintRef.current =
-          record != null ? fingerprintLeaderboardBoardContent(record.board) : null;
+        restoreFingerprintsFromRecord(record);
       }
       setCacheLoadSettled(true);
     })();
-  }, [cacheKey, paramsKey, scheduleEnabled, store, terminalCacheEnabled]);
+  }, [cacheKey, paramsKey, restoreFingerprintsFromRecord, scheduleEnabled, store, terminalCacheEnabled]);
 
   useEffect(() => {
     if (!terminalCacheEnabled || !scheduleEnabled) return;
@@ -155,29 +168,34 @@ export function useLeaderboardBoardTerminalCache(
     if (persistDecision.action === 'skip') return;
 
     const serverBoard = persistDecision.board;
+    const nextBoardFingerprint = fingerprintLeaderboardBoardContent(serverBoard);
+    const nextDecorationsFingerprint =
+      fingerprintLeaderboardBoardDecorations(accumulatedDecorations);
+
     if (hydratedRecord != null) {
       const reconcile = reconcileLeaderboardBoardCacheWithServer(
         hydratedRecord.board,
         serverBoard
       );
-      if (reconcile.kind === 'aligned') {
-        const contentFingerprint = fingerprintLeaderboardBoardContent(serverBoard);
-        if (
-          shouldSkipCachePut({
-            lastContentFingerprint: lastContentFingerprintRef.current,
-            nextContentFingerprint: contentFingerprint
-          })
-        ) {
-          return;
-        }
+      if (
+        reconcile.kind === 'aligned' &&
+        shouldSkipLeaderboardBoardCachePut({
+          lastBoardFingerprint: lastBoardFingerprintRef.current,
+          nextBoardFingerprint,
+          lastDecorationsFingerprint: lastDecorationsFingerprintRef.current,
+          nextDecorationsFingerprint
+        })
+      ) {
+        return;
       }
     }
 
-    const contentFingerprint = fingerprintLeaderboardBoardContent(serverBoard);
     if (
-      shouldSkipCachePut({
-        lastContentFingerprint: lastContentFingerprintRef.current,
-        nextContentFingerprint: contentFingerprint
+      shouldSkipLeaderboardBoardCachePut({
+        lastBoardFingerprint: lastBoardFingerprintRef.current,
+        nextBoardFingerprint,
+        lastDecorationsFingerprint: lastDecorationsFingerprintRef.current,
+        nextDecorationsFingerprint
       })
     ) {
       return;
@@ -192,7 +210,8 @@ export function useLeaderboardBoardTerminalCache(
     });
     if (record == null || cacheKey.length === 0) return;
 
-    lastContentFingerprintRef.current = contentFingerprint;
+    lastBoardFingerprintRef.current = nextBoardFingerprint;
+    lastDecorationsFingerprintRef.current = nextDecorationsFingerprint;
     void store.put(record).then(() => {
       setHydratedRecord(record);
     });
@@ -217,7 +236,10 @@ export function useLeaderboardBoardTerminalCache(
       setHydratedRecord((prev) => {
         if (prev == null || prev.paramsKey !== paramsKey) return prev;
         const next = patchLeaderboardBoardCacheRecord(prev, mutation);
-        lastContentFingerprintRef.current = fingerprintLeaderboardBoardContent(next.board);
+        lastBoardFingerprintRef.current = fingerprintLeaderboardBoardContent(next.board);
+        lastDecorationsFingerprintRef.current = fingerprintLeaderboardBoardDecorations(
+          deserializeAccumulatedDecorations(next.decorations)
+        );
         void store.put(next);
         return next;
       });
