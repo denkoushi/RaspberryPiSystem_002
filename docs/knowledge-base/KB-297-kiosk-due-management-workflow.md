@@ -2521,6 +2521,30 @@ category: knowledge-base
   - **アクセントが付かない**: **製番が空／無効でないか**確認。[2026-05-02 追補節](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02)反映後は**クエリ空でも製番がある行に付く**。旧挙動（クエリ入力が無いと付かない）の場合は SPA が旧バンドル。**強制リロード**と Pi5 **`web`** / Pi4 **`kiosk-browser`** 更新を確認。
   - **納期アシストが横に伸びない / 進捗列が無い**: 古い SPA を疑う → Pi5 `web` と各 Pi4 **`kiosk-browser`** 再起動ログ・`/opt/RaspberryPiSystem_002` の **ブランチ**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 
+### Leader order board: 製番左縁アクセント 24 色（全件表示のハッシュ配色拡張）（2026-05-20） {#leader-order-board-seiban-accent-palette-24-2026-05-20}
+
+- **背景**: [2026-05-02 製番アクセント常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) 以降、**OR フィルタ OFF（全件表示）** では [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が **FNV-1a ハッシュ `% 8`** で左縁色を決定。**同一 `fseiban` の資源 CD スロット横断同色**はコード上保証されるが、製番が多いと **8 色被り**・**amber/orange・cyan/sky** 等の近似色で現場識別が難しい。**登録製番 OR フィルタ ON（同時 ~5 件）** は先頭色のリスト順割当で十分なため **現状維持**。
+- **仕様（要約）**:
+  - **`SEIBAN_ROW_ACCENT_PALETTE`**: **8 → 24 色**。**先頭 8 色の順序は 2026-05-01/02 から不変**（OR フィルタ 1〜8 番目の見え方を維持）。
+  - **追加 16 色**（9〜24 番目）: red / yellow / lime / green / teal / blue / indigo / purple / pink（Tailwind **400**）+ red / yellow / lime / green / blue / indigo / purple（**300**）。いずれも **`border-l-4` リテラル列挙**（JIT 安全）。
+  - **`filters.length === 0`（全件）**: `seibanAccentPaletteIndexForString(fseiban) % 24`。
+  - **`filters.length >= 1`**: リスト内は `indexOf % 24`、リスト外はハッシュ `% 24`（従来ロジック・分母のみ 24）。
+  - **製番ブランク**のみ `undefined`（左縁なし）。**API / DB 契約不変**。
+  - **回帰**: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)（安定性・インデックス 0〜23）。
+- **デプロイ・実機検証（2026-05-20）**:
+  - **ブランチ**: `feat/kiosk-seiban-accent-palette-24`（代表コミット **`be936a6e`**）。
+  - **手順**: [deployment.md](../guides/deployment.md) §2026-05-20·**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**·**`--limit` 1 台ずつ**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。**Pi3 は除外**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260520-141147-19965`** / **`20260520-141629-31940`** / **`20260520-142108-13167`** / **`20260520-142440-24963`** / **`20260520-142830-16409`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **31s**・Tailscale）。
+- **知見**:
+  - **全件表示の色だけ**を改善する最小変更。**OR フィルタ経路の先頭 8 色を触らない**ことで、現場の「登録製番 ~5 件トグル」運用を維持。
+  - **全件表示では製番ごとの色が 8 色時代と変わり得る**（ハッシュ分母変更）。被り低減とのトレードオフ。**同一製番のスロット間一致**は引き続き保証。
+  - 24 色でも製番がさらに増えれば **被りは残る**。次段階の候補は **近似色の整理**・**登録済み製番の履歴順固定色（フィルタ OFF 時のみ）** 等（未実装）。
+- **トラブルシューティング**:
+  - **全件表示で左縁が無い** → [2026-05-02 節](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) の旧 SPA・製番空行を確認。
+  - **色が 8 色時代のまま** → Pi5 **`web`** 反映・キオスク **強制リロード**。
+  - **OR フィルタ ON で色が変わった（1〜5 件）** → 先頭 8 色不変のはず。**ブランチ/ref** を確認。
+
 ### Leader order board: 製番アクセント常時化・進捗一覧製番カード資源チップ集約（2026-05-02） {#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02}
 
 - **目的**: 順位ボードで **登録済み製番行**をクエリ状態に依存せず **左縁の安定配色**で追いやすくする。進捗一覧では **製番カード単位**で工程を跨いだ **資源CDの完了集約チップ帯**を一目で読めるようにする。**Web のみ**・API / DB 契約は不変。
