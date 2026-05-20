@@ -2725,18 +2725,47 @@ category: knowledge-base
 
 ### Leader order board: 資源内順位割当の自動解放（A+α・2026-05-20） {#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20}
 
-- **Context**: 順位ドロップダウンは **`order-usage`（DB 全割当）** に対し **空き番のみ**選択可（[`availableProcessingOrderOptions.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/availableProcessingOrderOptions.ts)）。一方、一覧は **FKOJUNST 可視**＋完了フィルタ（既定 **未完**）で **表示行が部分集合**になり、**完了済み（外部完了 `C`/`X` 等）** や **`fkmail` 無し winner** が **順位だけ DB に残る**と、現場では **5 からしか選べない**等の飛び番に見える（操作ミスではなく設計ギャップ）。
-- **Fix（API のみ・Web/`order-usage` 契約不変）**:
-  - **保持条件（A+α 統合）**: `retain ⇔ NOT 実効完了 AND キオスク一覧可視（fkmail ありかつ S/R/C/X）`。それ以外の winner 行に紐づく `ProductionScheduleOrderAssignment` は **解放**（削除＋同一 `location`×`resourceCd` 内で番号詰め）。
-  - **A**: 実効完了（手動 `ProductionScheduleProgress.isCompleted` **OR** `ProductionScheduleExternalCompletion.isExternallyCompleted`）。
-  - **α**: 一覧非可視（`fkmail` 無し / `O`/`P` / `?` 等）。**手動 ✓ 完了**は従来どおり [`driveProductionScheduleRowCompletion`](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts) 経由で解放（共通化）。
-  - **実装**: [`order-assignment/`](../../apps/api/src/services/production-schedule/order-assignment/)（`order-assignment-retention.policy.ts`·`order-assignment-release.repository.ts`·`order-assignment-reconciliation.service.ts`）。
-  - **トリガ（同期後）**: `FkojunstExternalCompletionSyncService`·`ProductionScheduleCsvIngestExternalCompletionSyncService`·`ProductionScheduleFkojunstMailStatusSyncService`（`fkmail` 空クリア時も reconcile）。
-- **既存幽霊**: **次回 `FKOJUNST_Status` または生産日程本体 CSV 取込同期**で自動掃除（一回性スクリプトは今回スコープ外）。
-- **検証**: Vitest [`order-assignment-reconciliation.integration.test.ts`](../../apps/api/src/services/production-schedule/order-assignment/__tests__/order-assignment-reconciliation.integration.test.ts) 等。
+- **Context（症状）**: 順位ドロップダウンは **`order-usage`（DB 上の全 `ProductionScheduleOrderAssignment`）** に対し **空き番のみ**選択可（[`availableProcessingOrderOptions.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/availableProcessingOrderOptions.ts)）。一方、キオスク一覧は **FKOJUNST 可視**＋完了フィルタ（既定 **未完**）で **表示行が部分集合**。**完了済み（外部完了 `C`/`X` 等）**・**`fkmail` 無し winner**・**論理キー重複の非 winner 旧行**が **順位だけ DB に残る**と、現場では **「080 や 060 が選べず 5 からしか選べない」**等の **飛び番**に見える（操作ミスではなく **一覧可視集合と `order-usage` 母集団の設計ギャップ**）。
+- **調査（2026-05-20 · 実装前）**:
+  - **CONFIRMED**: `order-usage` は **画面フィルタを通過しない**全割当を返す（[§取得整合（2026-05-05）](#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05) と同型の **部分集合 vs 全集合** 問題）。
+  - **CONFIRMED**: 一覧は [`buildFkojunstProductionScheduleListVisibleScalarSql`](../../apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts) で **`S`/`R`/`C`/`X` かつ `fkmail` あり**のみ可視（`O`/`P`/`?`/`fkmail` 無しは非表示）。
+  - **REJECTED**: Web 側ドロップダウン生成バグ単独（`order-usage` 契約どおり **占有番号を除外**しているだけ）。
+- **Fix（API のみ・Web/`order-usage` 契約不変・DB マイグレーションなし）**:
+  - **保持条件（A+α 統合）**: `retain ⇔ NOT 実効完了 AND キオスク一覧可視（fkmail ありかつ S/R/C/X）`。それ以外に **`ProductionScheduleOrderAssignment` が紐づく行**は **解放**（削除＋同一 `location`×`resourceCd` 内で **番号詰め**）。
+  - **A（実効完了）**: 手動 `ProductionScheduleProgress.isCompleted` **OR** `ProductionScheduleExternalCompletion.isExternallyCompleted`（[`buildProductionScheduleEffectiveCompletedSql`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts) 再利用）。
+  - **α（一覧非可視）**: `fkmail` 無し / `O`/`P` / `?` 等。**手動 ✓ 完了**は従来どおり [`driveProductionScheduleRowCompletion`](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts) 経由で **即時解放**（`releaseOrderAssignmentAtLocation` へ共通化）。
+  - **α 拡張（コードレビュー追補）**: **論理キー重複で winner から外れた旧行**（同一 ProductNo×資源×FKOJUN だが **非 winner の `csvDashboardRowId`**）も **解放候補**に含める（[`findStaleOrderAssignmentCandidates`](../../apps/api/src/services/production-schedule/order-assignment/order-assignment-release.repository.ts) の SQL 修正）。
+  - **実装モジュール**: [`order-assignment/`](../../apps/api/src/services/production-schedule/order-assignment/) — [`order-assignment-retention.policy.ts`](../../apps/api/src/services/production-schedule/order-assignment/order-assignment-retention.policy.ts)·[`order-assignment-release.repository.ts`](../../apps/api/src/services/production-schedule/order-assignment/order-assignment-release.repository.ts)·[`order-assignment-reconciliation.service.ts`](../../apps/api/src/services/production-schedule/order-assignment/order-assignment-reconciliation.service.ts)。
+  - **トリガ（同期後・Pi5 API）**: [`FkojunstExternalCompletionSyncService`](../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts)·[`ProductionScheduleCsvIngestExternalCompletionSyncService`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.ts)·[`ProductionScheduleFkojunstMailStatusSyncService`](../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.service.ts)（**`fkmail` 空クリア時も reconcile**）。
+  - **バッチ順**: 解放対象は **`orderNumber` DESC** で処理（大番号から削除→詰めで番号衝突を避ける）。
+  - **ログ**: 1 件以上解放時 `[ProductionScheduleOrderAssignmentReconciliation] stale order assignments released`（`scanned` / `released`）。
+- **既存幽霊データ**: **次回 `FKOJUNST_Status` または生産日程本体 CSV 取込同期**で自動掃除（**一回性マイグレーション／手動 SQL は今回スコープ外**）。
+- **ブランチ / コミット**: **`feat/kiosk-order-assignment-auto-release-a-alpha`**·**`8d2c582c`**（`fix(kiosk): auto-release stale leaderboard order assignments`）·**`643e4f4b`**（`fix(kiosk): merge reconcile deps for external completion sync tests` — CI 修正）。
+- **CI**:
+  - **初回失敗** run **`26146689419`**: `api-db-and-infra` で **4 件** — `orderAssignmentReconciliationService` が **部分 DI テスト**で `undefined`（`FkojunstExternalCompletionSyncService` / `ProductionScheduleCsvIngestExternalCompletionSyncService` のコンストラクタ注入漏れ）。
+  - **修正後成功** run **`26147609881`**: 全ジョブ **success**。
+- **ローカル検証**: order-assignment 関連 Vitest **15 PASS**（policy / release repository / reconciliation integration / command.service）。
+- **本番デプロイ（2026-05-20 · 標準 `update-all-clients.sh` · `--limit` 1 台ずつ）**:
+  - **必須**: **`raspberrypi5`**（**API のみ**·Docker 再ビルドあり）。**Pi4 キオスク単体デプロイは機能上不要**（Pi5 `api` が正本）だが、本セッションでは **Pi5→Pi4×4 全台**をユーザー指示で順次反映（`kiosk-browser` / `status-agent` 再起動のみ）。
+  - **Detach Run ID**（接頭辞 `ansible-update-`）:
+    - Pi5 初回 **`20260520-164356-7722`**（**Docker rebuild**·compose 再起動中 **SSH タイムアウト**が数回出たが **リモート exit 0**）
+    - Pi5 再実行 **`20260520-174409-16528`**（**`PLAY RECAP` `ok=131` `changed=3` `failed=0`**·**Docker 再ビルド skip**·**`prisma migrate` OK**·新規マイグレなし）
+    - **`raspi4-kensaku-stonebase01`** **`20260520-174713-7127`**（**`ok=129` `changed=10` `failed=0`**）
+    - **`raspberrypi4`** **`20260520-180644-29504`**（**`ok=122` `changed=10` `failed=0`**）
+    - **`raspi4-robodrill01`** **`20260520-181206-12995`**（**`ok=122` `changed=9` `failed=0`**）
+    - **`raspi4-fjv60-80`** **`20260520-181622-32182`**（**`ok=122` `changed=9` `failed=0`**）
+  - **Pi3**: 各 run **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）。
+  - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 76–88s**·Tailscale·Pi5 `100.106.158.2`）。
+- **知見**:
+  - **API-only でも Pi4 をデプロイする理由**は **Ansible 慣行（キオスク repo 同期 + `kiosk-browser` 再起動）**であり、**本機能の正本は Pi5 `api` のみ**。
+  - **Pi5 2 回目デプロイ**では diff が小さく **Docker 再ビルドが skip** されても、初回 **`164356-7722`** で API イメージは更新済み。**ref 確認**は `/opt/RaspberryPiSystem_002` の **`643e4f4b` 以降**。
+  - **解放は同期後バッチ**のため、**デプロイ直後は幽霊が残り得る**（次の FKOJUNST / 本体 CSV 同期まで）。
 - **トラブルシュート**:
-  - **反映直後も飛び番** → 同期がまだ走っていない。**Pi5 `api` ref** と FKOJUNST 取込スケジュールを確認。
-  - **順位が消えた** → 対象行が **実効完了**または **一覧非可視**になった。**完了フィルタ「両方」**で行の有無を確認。
+  - **反映直後も飛び番** → **同期未実行**。Pi5 **`api` ref**（**`643e4f4b` 以降**）·FKOJUNST / 本体 CSV 取込スケジュール·API ログの **`stale order assignments released`** を確認。
+  - **順位が消えた** → 対象行が **実効完了**または **一覧非可視**になった。**完了フィルタ「両方」**で行の有無を確認（意図どおりの解放）。
+  - **CI で external completion sync テストが落ちる** → **`ProductionScheduleOrderAssignmentReconciliationService` の DI** を **部分コンストラクタ注入テスト**と揃える（**`643e4f4b`** 参照）。
+  - **Pi5 デプロイ中 SSH タイムアウト** → **`PLAY RECAP` / リモート exit / `Summary success`** を正本とする（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
+- **参照**: [deployment.md §A+α（2026-05-20）](../guides/deployment.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)·[verification-checklist §6.6.24](../guides/verification-checklist.md#kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md) Progress 先頭項。
 
 ### Leader order board: `leaderboard` の COUNT と行 SELECT の並列化（2026-05-06） {#leader-order-board-api-count-parallel-2026-05-06}
 

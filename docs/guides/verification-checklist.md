@@ -781,6 +781,18 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-03（上記スクリプト **PASS 41 / WARN 0 / FAIL 0**・`main` に `refactor(api): extract loan grid HTML chrome and layout tokens` 反映後、inventory 6 台を `--limit` 順次・`--foreground` でデプロイ済み・Mac / Tailscale・約 **59s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
+**6.6.24 キオスク リーダー順位ボード（資源内順位割当 A+α 自動解放）** {#kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20}
+
+**確認ポイント**（[KB-297 §A+α](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](./deployment.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-20 本番反映後 **約 76–88s**）。
+- [ ] **Pi5 API ref**: `/opt/RaspberryPiSystem_002` が **`643e4f4b` 以降**（またはマージ後 `main` HEAD）。
+- [ ] **飛び番（デプロイ直後）**: **次回 FKOJUNST / 本体 CSV 同期前**は **幽霊割当が残り得る**（仕様どおり）。同期後に **080/060 等が選べる**か確認。
+- [ ] **順位消失（意図確認）**: **実効完了**または **一覧非可視**行の順位が **解放**されること。**完了フィルタ「両方」**で行の有無と整合。
+- [ ] **API ログ（任意）**: `[ProductionScheduleOrderAssignmentReconciliation] stale order assignments released`（`scanned` / `released`）。
+
+**トラブルシュート**: 反映直後も飛び番 → 同期未実行・Pi5 ref 確認。CI 失敗（reconcile DI）→ **`643e4f4b`** 参照。
+
 **6.6.23 キオスク リーダー順位ボード（製番左縁アクセント 24 色）** {#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20}
 
 **確認ポイント**（[KB-297 §24色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](./deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)）:
