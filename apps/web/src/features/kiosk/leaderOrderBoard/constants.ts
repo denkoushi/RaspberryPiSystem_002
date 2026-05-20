@@ -7,8 +7,12 @@ export const LEADER_ORDER_BOARD_PAGE_SIZE = 320;
 /** 順位ボード board 初回 GET の `pageSize`（スロットあたり）。API 上限 160。 */
 export const LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE = 80;
 
-/** 順位ボード `leaderboard-board/continue` の 1 回あたり chunk（`body.pageSize`）。 */
-export const LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE = 40;
+/**
+ * 順位ボード `leaderboard-board/continue` の 1 回あたり chunk（`body.pageSize`）。
+ * Pi5 実データベンチで shell=80 と揃えて完走短縮（KB-374 §continue chunk 80/80）。
+ * ロールバックは 40 に戻して Pi4 Web を再デプロイ。
+ */
+export const LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE = 80;
 
 /**
  * @deprecated `LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE` と `LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` を使う。
