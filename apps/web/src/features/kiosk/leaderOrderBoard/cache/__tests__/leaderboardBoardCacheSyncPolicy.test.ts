@@ -37,7 +37,7 @@ describe('leaderboardBoardCacheSyncPolicy', () => {
     ).toEqual({ action: 'put', board });
   });
 
-  it('mutation ミラーは既定で無効', () => {
-    expect(shouldMirrorLeaderboardMutationToCache()).toBe(false);
+  it('mutation ミラーは既定で有効', () => {
+    expect(shouldMirrorLeaderboardMutationToCache()).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import {
   postKioskProductionScheduleLeaderboardBoardContinue,
@@ -13,6 +13,7 @@ import { useKioskProductionScheduleLeaderboardBoard } from '../../../api/hooks';
 import { buildLeaderboardBoardContinuePayload } from './buildLeaderboardBoardContinuePayload';
 import { normalizeLeaderboardSeibanOrTokens } from './cache/filterLeaderboardBoardBySeibanOr';
 import { isLeaderboardSeibanOrClientFilterEnabled } from './cache/leaderboardBoardCacheConstants';
+import { resolveDisplayBoardMutationUpdate } from './cache/leaderboardBoardDisplayMutationCoordinator';
 import { buildLeaderboardBoardLegacyFetchParams } from './cache/leaderboardBoardFetchParams';
 import { isLeaderboardBoardBackgroundRevalidating } from './cache/leaderboardBoardInteractionLockPolicy';
 import { resolveScopedLeaderboardAppendOverride } from './leaderboardBoardAppendOverrideScopePolicy';
@@ -92,7 +93,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   isShowingCachedData: boolean;
   /** 通信失敗等で前回保存分を表示中 */
   cacheSyncWarning: string | null;
-  applyMutationPatch: (mutation: LeaderboardBoardCacheMutation) => void;
+  applyDisplayMutation: (mutation: LeaderboardBoardCacheMutation) => void;
   /** shell/continue/decorations の背景再検証中 */
   isBackgroundRevalidating: boolean;
 } {
@@ -263,7 +264,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     isShowingCachedData,
     cacheSyncWarning,
     purgeCache,
-    applyMutationPatch
+    applyMutationPatch: applyIdbMutationPatch
   } = useLeaderboardBoardTerminalCache({
     siteKey,
     paramsKey,
@@ -278,6 +279,33 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     networkBoardComplete,
     isBackgroundRevalidating
   });
+
+  const resolvedShellRef = useRef(resolvedShell);
+  resolvedShellRef.current = resolvedShell;
+
+  const applyDisplayMutation = useCallback(
+    (mutation: LeaderboardBoardCacheMutation) => {
+      applyIdbMutationPatch(mutation);
+
+      const shell = resolvedShellRef.current;
+      const scopedAppend = resolveScopedLeaderboardAppendOverride({
+        paramsKey,
+        overrideParamsKey: appendOverrideParamsKeyRef.current,
+        override: appendOverrideRef.current
+      });
+      const { nextAppendOverride } = resolveDisplayBoardMutationUpdate({
+        shell,
+        appendOverride: scopedAppend,
+        mutation
+      });
+      if (nextAppendOverride == null) return;
+
+      setAppendOverride(nextAppendOverride);
+      appendOverrideRef.current = nextAppendOverride;
+      appendOverrideParamsKeyRef.current = paramsKey;
+    },
+    [applyIdbMutationPatch, paramsKey]
+  );
 
   const listIncomplete = useMemo(() => {
     if (!displayBoard) return false;
@@ -474,7 +502,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     listIncomplete: listIncompleteForUi ?? listIncomplete,
     isShowingCachedData,
     cacheSyncWarning,
-    applyMutationPatch,
+    applyDisplayMutation,
     isBackgroundRevalidating
   };
 }

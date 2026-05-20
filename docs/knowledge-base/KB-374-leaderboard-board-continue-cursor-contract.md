@@ -616,6 +616,31 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 | Pi4 3 台で挙動が違う | **未デプロイ** | 上表の **未デプロイ 3 台**を同一手順で **`--limit` 順次** |
 | 機能を止めたい | ビルドフラグ | `VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=false` |
 
+## 操作即表示 × 120秒キャッシュ両立（2026-05-20 · `feat/kiosk-leaderboard-mutation-instant-display`）
+
+**目的**: [Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock) の **120秒 SWR / 完走時 IDB put** は維持しつつ、**自端末**の順位・納期・備考・完了を **API 成功直後**に画面へ反映する。**DB は即時**（既存 API）·**他端末は最大 120 秒**（`LEADER_BOARD_SCHEDULE_REFETCH_MS`）·**Web のみ**·**API 不変**。
+
+### 仕様要約
+
+| # | 内容 | モジュール |
+| --- | --- | --- |
+| 1 | patch 正本を共通化 | [`leaderboardBoardApplyMutation.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardApplyMutation.ts) |
+| 2 | 表示正本（shell / appendOverride）へ patch | [`leaderboardBoardDisplayMutationCoordinator.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardDisplayMutationCoordinator.ts) + [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) `applyDisplayMutation` |
+| 3 | mutation → IDB 即時ミラー **既定オン** | [`leaderboardBoardCacheConstants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheConstants.ts)（緊急オフ: `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`） |
+| 4 | 120秒完走時の scheduled put | 変更なし（[`leaderboardBoardCacheSyncPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts)） |
+| 5 | 操作ロックは **mutation / writePause のみ**（背景再検証中は操作可） | [`leaderboardBoardInteractionLockPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy.ts) |
+
+**ロールバック**: `VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION=false`（IDB 即時ミラーのみオフ·append patch はコード上残る）/ 直前 ref へ再デプロイ。
+
+**検証（ローカル）**: `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard` → **199 tests PASS**（2026-05-20·本ブランチ）。
+
+**手動チェックリスト（未デプロイ）**:
+
+1. 順位・納期・備考を変更 → **リロードなしで行が変わる**。
+2. 上記後に **ハードリロード** → 変更が **IDB 経由で維持**される。
+3. **120秒待ち**または他端末で、同じ変更が **最大 120 秒以内**に見える。
+4. cold start / ポーリング中も **一覧が空→全件にチラつかない**（120秒 UX 維持）。
+
 ## 製番 OR クライアントキャッシュフィルタ（2026-05-20）
 
 **目的**: 登録製番 OR 切替で **`paramsKey`（無 `q` 完走 board）を固定**し、**IDB 上の全件キャッシュ**をそのままクライアントで絞込表示する。裏で **同じ製番の `q` 付き GET + continue** で照合し、**不一致は常にサーバ正**（Phase 1/2 reconcile と同型）。**Web のみ**·**API 不変**·**ツールバー等の他 `q` は従来どおり API**。

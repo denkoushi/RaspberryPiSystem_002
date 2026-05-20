@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildLeaderboardBoardCacheRecord } from '../cache/leaderboardBoardCacheRecord';
@@ -240,7 +240,7 @@ describe('useLeaderboardBoardTerminalCache', () => {
     });
   });
 
-  it('applyMutationPatch は既定で IDB put しない', async () => {
+  it('applyMutationPatch は既定で IDB put する', async () => {
     const cached = buildLeaderboardBoardCacheRecord({
       cacheKey: 'site\u0001params',
       siteKey: 'site',
@@ -281,12 +281,17 @@ describe('useLeaderboardBoardTerminalCache', () => {
       expect(result.current.displayBoard?.rows[0]?.id).toBe('r1');
     });
 
-    result.current.applyMutationPatch({
-      kind: 'order',
-      rowId: 'r1',
-      processingOrder: 9
+    act(() => {
+      result.current.applyMutationPatch({
+        kind: 'order',
+        rowId: 'r1',
+        processingOrder: 9
+      });
     });
 
-    expect(store.put).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(store.put).toHaveBeenCalled();
+    });
+    expect(result.current.displayBoard?.rows[0]?.processingOrder).toBe(9);
   });
 });

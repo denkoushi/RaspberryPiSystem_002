@@ -25,10 +25,10 @@ export function isLeaderboardBoardTerminalCachePhase2SwrEnabled(): boolean {
   return raw !== 'false' && raw !== '0';
 }
 
-/** mutation 成功時の IDB 即時ミラー（省略時 false = 120秒完走時のみ保存） */
+/** mutation 成功時の IDB 即時ミラー（省略時 true・緊急オフは env false） */
 export function isLeaderboardBoardCacheWriteOnMutationEnabled(): boolean {
   const raw = import.meta.env.VITE_KIOSK_LEADERBOARD_CACHE_WRITE_ON_MUTATION;
-  if (raw === undefined || raw === '') return false;
+  if (raw === undefined || raw === '') return true;
   return raw !== 'false' && raw !== '0';
 }
 

@@ -1,11 +1,11 @@
 /**
  * 背景再検証中・mutation 実行中は順位ボード操作をロックする。
  */
+/** ユーザー操作の書き込み中のみロック（120秒背景再検証中は操作可・表示は patch/IDB で整合） */
 export function isLeaderboardBoardInteractionLocked(input: {
-  isBackgroundRevalidating: boolean;
   isMutationInFlight: boolean;
 }): boolean {
-  return input.isBackgroundRevalidating || input.isMutationInFlight;
+  return input.isMutationInFlight;
 }
 
 export function isLeaderboardBoardBackgroundRevalidating(input: {

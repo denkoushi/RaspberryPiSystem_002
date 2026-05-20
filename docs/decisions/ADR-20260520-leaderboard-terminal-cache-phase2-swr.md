@@ -101,10 +101,28 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 **手順正本**: [deployment.md §端末キャッシュ Phase 2](../guides/deployment.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)。
 
+## 操作即表示との両立（2026-05-20 · `feat/kiosk-leaderboard-mutation-instant-display`）
+
+[Phase 2 改訂](#phase-2-改訂120s-同期-cadence-安定化2026-05-20) で **mutation 即時 IDB ミラー既定オフ**と **背景再検証中の操作ロック**を入れた結果、**自端末の順位・納期・備考が画面に即反映されない**ギャップが残った。
+
+**追加決定（本ブランチ）**:
+
+| 項目 | 決定 |
+| --- | --- |
+| 120秒 SWR / scheduled IDB put | **維持** |
+| mutation → IDB | **既定オン**（行単位 patch のみ） |
+| appendOverride | **表示正本に patch**（[`leaderboardBoardDisplayMutationCoordinator`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardDisplayMutationCoordinator.ts)） |
+| 操作ロック | **mutation / writePause のみ**（120秒 poll の fetching 中はロックしない） |
+| 他端末 SLA | **最大 120 秒**（変更なし） |
+
+**正本**: [KB-374 §操作即表示](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#操作即表示--120秒キャッシュ両立2026-05-20--featkiosk-leaderboard-mutation-instant-display)
+
 ## Consequences
 
 - **良**: 製番 OR 切替・再検証中の体感短縮。**120s 完走時のみ IDB 更新**で書込競合と空窗を抑制。**背景更新中の操作ロック**で誤操作・表示チラつきを減らす。
 - **注意**: SWR 中は最大 120s 古い他端末状態を表示しうる（Phase 1 と同型 SLA）。**mutation 即時 IDB ミラーは既定オフ**（他端末変更の即時反映は **React Query のみ**·IDB は次の 120s ポーリングで収束）。
+
+**2026-05-20 追記（両立ブランチ）**: 上記「mutation 即時 IDB 既定オフ」は **本ブランチで既定オンに戻す**。scheduled put と SWR は維持。操作ロックは mutation 中のみ。
 
 ## References
 

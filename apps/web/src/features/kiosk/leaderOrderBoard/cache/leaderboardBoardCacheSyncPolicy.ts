@@ -27,7 +27,7 @@ export function resolveScheduledCachePersist(input: {
   return { action: 'put', board: input.networkDisplayBoard };
 }
 
-/** ユーザー操作成功時に IDB を即時ミラーするか（既定 false = 120秒同期のみ） */
+/** ユーザー操作成功時に IDB を即時ミラーするか（既定 true・緊急オフは env false） */
 export function shouldMirrorLeaderboardMutationToCache(): boolean {
   return isLeaderboardBoardCacheWriteOnMutationEnabled();
 }
