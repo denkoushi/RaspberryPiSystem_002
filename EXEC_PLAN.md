@@ -1479,6 +1479,10 @@
 
 ## Decision Log
 
+- 決定（2026-05-20）: **キオスク順位ボードの製番左縁アクセントは、登録製番 OR フィルタ（~5 件）経路を現状維持し、全件表示（`activeQueries` 空）のみパレットを 8→24 色に拡張する**。先頭 8 色の順序は 2026-05-01/02 から不変とし、ハッシュ分母を `% 24` に変更する。**履歴順固定色**・**近似色整理**は第2弾候補とし、今回は実装しない。  
+  理由: 現場観測では OR フィルタ ON 時の識別性は十分で、課題は全件表示の **8 色被りと近似色** に限定されるため。スロット横断同色は [`resolveSeibanAccentRowClass`](./apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が既に保証しており、ロジック変更は不要。  
+  参照: [KB-297 §24色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](./docs/guides/deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·**PR [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)**·**`f8c1f6d2`**
+
 - 決定（2026-05-18）: **生産日程CSV「消滅」母集団および一覧 SQL 上の「消滅候補」フラグは、メール由来完了（`C`/`X`）のいずれにも該当する `fkmail` 行を母集団に含めない**（`X` を `C` と同列に扱い、差分消失ロジックの対象から外す。判定は `fkojunst-mail-status-completion.policy` の完了コード正本と `UPPER(BTRIM(statusCode))` で整合）。  
   理由: `X` もメール完了であり、`C` のみを消滅母集団外にすると運用観測と仕様が食い違い得るため。CSV 側の取込漏れ修正後の前提に合わせる。  
   参照: [KB-370](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)·[`fkojunst-mail-status-completion.policy.ts`](./apps/api/src/services/production-schedule/completion/fkojunst-mail-status-completion.policy.ts)·[`fkojunst-production-schedule-list-visibility.policy.ts`](./apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts)·[`production-schedule-nonc-window-winner-key.query.ts`](./apps/api/src/services/production-schedule/external-completion/production-schedule-nonc-window-winner-key.query.ts)。
@@ -2272,6 +2276,18 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク順位ボード — 製番左縁アクセント 24 色の現場目視（2026-05-20）— **任意**
+
+**概要**: **PR [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)** / **`f8c1f6d2`** は **Pi5→Pi4×4 本番・Phase12 43/0/0** 済み。**全件表示**での左縁識別性改善は **現場目視**で最終確認（強制リロード推奨）。
+
+**チェックリスト**: [verification-checklist §6.6.23](./docs/guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20)
+
+### キオスク順位ボード — 製番左縁アクセント第2弾（2026-05-20）— **ユーザー判断待ち**
+
+**概要**: 24 色でも被り・近似色が残る場合の候補。(1) **近似色の整理**、(2) **登録済み製番の履歴順固定色**（フィルタ OFF 時のみ）、(3) パレット以外の視覚手がかり。
+
+**正本**: [KB-297 §24色 知見](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)
 
 ### キオスク順位ボード — 装飾後取り + append スコープ（2026-05-19）— **完了**
 

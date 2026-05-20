@@ -2,7 +2,7 @@
 title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
-last-verified: 2026-05-05
+last-verified: 2026-05-20
 related:
   - ../decisions/ADR-20260307-kiosk-due-management-model.md
   - ../decisions/ADR-20260319-production-schedule-manual-order-target-location.md
@@ -2523,27 +2523,48 @@ category: knowledge-base
 
 ### Leader order board: 製番左縁アクセント 24 色（全件表示のハッシュ配色拡張）（2026-05-20） {#leader-order-board-seiban-accent-palette-24-2026-05-20}
 
-- **背景**: [2026-05-02 製番アクセント常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) 以降、**OR フィルタ OFF（全件表示）** では [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が **FNV-1a ハッシュ `% 8`** で左縁色を決定。**同一 `fseiban` の資源 CD スロット横断同色**はコード上保証されるが、製番が多いと **8 色被り**・**amber/orange・cyan/sky** 等の近似色で現場識別が難しい。**登録製番 OR フィルタ ON（同時 ~5 件）** は先頭色のリスト順割当で十分なため **現状維持**。
-- **仕様（要約）**:
-  - **`SEIBAN_ROW_ACCENT_PALETTE`**: **8 → 24 色**。**先頭 8 色の順序は 2026-05-01/02 から不変**（OR フィルタ 1〜8 番目の見え方を維持）。
-  - **追加 16 色**（9〜24 番目）: red / yellow / lime / green / teal / blue / indigo / purple / pink（Tailwind **400**）+ red / yellow / lime / green / blue / indigo / purple（**300**）。いずれも **`border-l-4` リテラル列挙**（JIT 安全）。
-  - **`filters.length === 0`（全件）**: `seibanAccentPaletteIndexForString(fseiban) % 24`。
-  - **`filters.length >= 1`**: リスト内は `indexOf % 24`、リスト外はハッシュ `% 24`（従来ロジック・分母のみ 24）。
-  - **製番ブランク**のみ `undefined`（左縁なし）。**API / DB 契約不変**。
-  - **回帰**: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)（安定性・インデックス 0〜23）。
+- **Context（調査起点）**: 現場観測では **登録製番 OR フィルタ ON（同時 ~5 件）** では **同一製番が資源 CD スロット横断で同色**に見え、識別性は十分。**OR フィルタ OFF（全件表示）** では製番数に対し **8 色しか使われず**、**色被り**と **amber/orange・cyan/sky** 等の **近似色** により左縁だけでは製番を追いにくい。**バグではなく配色設計の限界**（[2026-05-02 常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) 時点の `% 8` ハッシュ仕様）。**スロット横断同色**のロジック自体は [`resolveSeibanAccentRowClass`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が **`fseiban` 単位**で決定しており **変更不要**。
+- **Decision（2026-05-20）**: **登録製番 OR フィルタ経路は現状維持**（先頭 8 色・リスト順割当）。**全件表示のみ**パレットを **8 → 24** に拡張しハッシュ分母を `% 24` へ。**履歴順固定色**・**近似色の再整理**は第2弾候補（未実装）。**API / DB 契約不変**。**Web のみ**。
+- **データフロー（着色契約）**:
+  1. [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) が **`activeQueries`**（製番 OR フィルタ文字列配列）を保持。
+  2. `LeaderBoardGrid` → `LeaderOrderResourceCard` → [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) へ **`activeQueries` と行の `fseiban`** を伝播。
+  3. 各行で **`resolveSeibanAccentRowClass(fseiban, activeQueries)`** を呼び、返却 Tailwind クラスを行コンテナ **`border-l-*`** に適用。
+  4. **同一 `fseiban` は常に同一インデックス** → **全資源 CD スロットで同色**（フィルタ ON/OFF いずれも）。
+- **モード別仕様**:
+
+  | 条件 | インデックス決定 | 現場での見え方 |
+  |------|------------------|----------------|
+  | **`activeQueries` 空（全件表示）** | `seibanAccentPaletteIndexForString(fseiban) % 24`（FNV-1a） | 製番ごとに安定色。**8 色時代と色は変わり得る**（分母変更） |
+  | **フィルタ 1 件以上・製番がリスト内** | `filters.indexOf(fseiban) % 24` | **1 番目〜8 番目は 2026-05-01 以前と同色**（先頭 8 色固定） |
+  | **フィルタ 1 件以上・製番がリスト外** | ハッシュ `% 24` | リスト外行の補助色 |
+  | **`fseiban` 空白** | `undefined` | 左縁なし |
+
+- **パレット（`SEIBAN_ROW_ACCENT_PALETTE`・24 色・リテラル列挙）**:
+  - **1〜8（不変・OR フィルタ ~5 件向け）**: amber-400 / cyan-400 / rose-400 / violet-400 / emerald-400 / orange-400 / sky-400 / fuchsia-400。
+  - **9〜17（追加 400 系）**: red / yellow / lime / green / teal / blue / indigo / purple / pink。
+  - **18〜24（追加 300 系）**: red / yellow / lime / green / blue / indigo / purple。
+  - **実装**: [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts)。**回帰**: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts)（安定性・インデックス 0〜23・先頭 8 色順序不変）。
+- **Git / マージ**:
+  - **ブランチ**: `feat/kiosk-seiban-accent-palette-24`（実装 **`be936a6e`**）。
+  - **PR**: [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)（squash マージ **`f8c1f6d2`**）。
 - **デプロイ・実機検証（2026-05-20）**:
-  - **ブランチ**: `feat/kiosk-seiban-accent-palette-24`（代表コミット **`be936a6e`**）。
-  - **手順**: [deployment.md](../guides/deployment.md) §2026-05-20·**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**·**`--limit` 1 台ずつ**。**対象**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。**Pi3 は除外**。
-  - **Detach Run ID**（`ansible-update-`）: **`20260520-141147-19965`** / **`20260520-141629-31940`** / **`20260520-142108-13167`** / **`20260520-142440-24963`** / **`20260520-142830-16409`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
-  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **31s**・Tailscale）。
+  - **手順**: [deployment.md](../guides/deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·**`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`**·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**マージ後は `main`**）。**デプロイ前**: ローカル git **クリーン**必須（`update-all-clients.sh` fail-fast）。
+  - **対象（1 台ずつ）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**。**Pi3**: **`skipping: no hosts matched`**（**Pi5 `web` SPA 配信** + Pi4 **`kiosk-browser` 再起動**のみ。**Pi3 専用手順は未実施で正**）。
+  - **Detach Run ID**（`ansible-update-`）: **`20260520-141147-19965`**（Pi5·**`ok=134` `changed=4`**·Docker compose 再起動）/ **`20260520-141629-31940`**（Pi4·**`ok=122` `changed=10`**）/ **`20260520-142108-13167`**（robodrill·**`ok=122` `changed=9`**）/ **`20260520-142440-24963`**（fjv60-80·**`ok=122` `changed=9`**）/ **`20260520-142830-16409`**（StoneBase01·**`ok=129` `changed=10`**）。いずれも **`failed=0` / `unreachable=0` / exit `0`**。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **31s**・Tailscale·Pi5 API `100.106.158.2`）。**`deploy-status`（Pi4×4）**: すべて **PASS**。
+  - **現場目視（任意）**: [verification-checklist.md](../guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20) §6.6.23。
 - **知見**:
-  - **全件表示の色だけ**を改善する最小変更。**OR フィルタ経路の先頭 8 色を触らない**ことで、現場の「登録製番 ~5 件トグル」運用を維持。
-  - **全件表示では製番ごとの色が 8 色時代と変わり得る**（ハッシュ分母変更）。被り低減とのトレードオフ。**同一製番のスロット間一致**は引き続き保証。
-  - 24 色でも製番がさらに増えれば **被りは残る**。次段階の候補は **近似色の整理**・**登録済み製番の履歴順固定色（フィルタ OFF 時のみ）** 等（未実装）。
+  - **「色を増やすだけ」で全件表示の識別性は改善**するが、**24 色でも被りは残る**（製番数 ≫ 24）。**OR フィルタ ~5 件**は **先頭 8 色不変**のため **運用変更なし**。
+  - **全件表示で色が変わる**のは **意図したトレードオフ**（`% 8` → `% 24`）。**同一製番のスロット横断一致**は維持。
+  - **Pi5 `web` 再ビルドが必須**。Pi4 単体デプロイだけでは SPA バンドルが更新されない。
+  - **第2弾候補（未実装・ユーザー判断待ち）**: (1) 近似色の整理、(2) **登録済み製番の履歴順固定色**（フィルタ OFF 時のみ）、(3) パレット以外の視覚手がかり（製番ラベル強調等）。
 - **トラブルシューティング**:
-  - **全件表示で左縁が無い** → [2026-05-02 節](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) の旧 SPA・製番空行を確認。
-  - **色が 8 色時代のまま** → Pi5 **`web`** 反映・キオスク **強制リロード**。
-  - **OR フィルタ ON で色が変わった（1〜5 件）** → 先頭 8 色不変のはず。**ブランチ/ref** を確認。
+  - **全件表示で左縁が無い** → [2026-05-02 節](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) の旧 SPA・**製番空行**を確認。
+  - **色が 8 色時代のまま / 更新されない** → Pi5 `/opt/RaspberryPiSystem_002` の **ref が `f8c1f6d2` 以降**か、**`docker compose` で `web` 再ビルド**済みか。キオスク **強制リロード**（§6.6.4）。
+  - **OR フィルタ ON（1〜5 件）で 1〜5 色目が変わった** → **先頭 8 色不変**のはず。**ref / キャッシュ**を疑う。
+  - **OR フィルタ 9 件以上** → 9 色目以降は **新パレット**（通常運用 ~5 件では該当しにくい）。
+  - **`verify-phase12-real.sh` のみ `deploy-status` FAIL** → 全台 `--limit` 完走後に再実行（[KB-369](./KB-369-leader-order-board-api-internal-latency.md)）。
+- **関連**: [deployment §2026-05-20](../guides/deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress / Decision Log·[2026-05-01 UX 導入](#leader-order-board-ux-seiban-accent-2026-05-01)·[2026-05-02 常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02)。
 
 ### Leader order board: 製番アクセント常時化・進捗一覧製番カード資源チップ集約（2026-05-02） {#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02}
 
@@ -2557,6 +2578,7 @@ category: knowledge-base
   - **Detach Run ID**（`ansible-update-`）: **`20260502-094331-28033`** / **`20260502-094916-31090`** / **`20260502-095506-23348`** / **`20260502-095947-26960`** / **`20260502-100443-16279`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **114s**・Tailscale）。
 - **知見**: 順位ボードのアクセントを **クエリ入力の有無から切り離す**と、「登録済みだが検索クエリ無し」の行も **同色で追える**。進捗側の資源チップは **純関数集約 + 一覧と共有コンポーネント**に寄せると、カード先頭での **一覧との見え方の一貫性**が保てる。
+- **後続（2026-05-20）**: 本節導入時点の **`% 8` ハッシュ**は全件表示で被りが目立つため、**パレット 24 色拡張**を実施（[§24色](#leader-order-board-seiban-accent-palette-24-2026-05-20)）。**OR フィルタ ~5 件**の先頭 8 色は **本節から不変**。
 - **トラブルシューティング**:
   - **`raspi4-kensaku-stonebase01`** のデプロイで **barcode-agent 待機が一時 RETRYING** が出ても、Ansible が **その後収束して `failed=0`** の場合がある（複合 Docker エージェント構成・リソース競合時）。異常終了時は該当ホストの **`docker compose ps`** / エージェントログを確認。
   - UI が旧のまま → [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** 再構築の有無。
