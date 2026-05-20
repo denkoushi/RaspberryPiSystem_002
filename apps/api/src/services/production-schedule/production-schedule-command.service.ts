@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { resolveSiteKeyFromScopeKey } from '../../lib/location-scope-resolver.js';
 import { COMPLETED_PROGRESS_VALUE, PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { dueManagementLearningEventRepository } from './due-management-learning-event.repository.js';
+import { releaseOrderAssignmentAtLocation } from './order-assignment/order-assignment-release.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
 import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
@@ -156,28 +157,13 @@ export async function driveProductionScheduleRowCompletion(params: {
 
       if (currentAssignment) {
         const tDeleteStart = performance.now();
-        await tx.productionScheduleOrderAssignment.delete({
-          where: {
-            csvDashboardRowId_location: {
-              csvDashboardRowId: row.id,
-              location: locationKey
-            }
-          }
+        const releaseResult = await releaseOrderAssignmentAtLocation(tx, {
+          csvDashboardRowId: row.id,
+          location: locationKey
         });
         txDeleteAssignmentMs = performance.now() - tDeleteStart;
-
-        const tShiftStart = performance.now();
-        const shiftResult = await tx.productionScheduleOrderAssignment.updateMany({
-          where: {
-            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-            location: locationKey,
-            resourceCd: currentAssignment.resourceCd,
-            orderNumber: { gt: currentAssignment.orderNumber }
-          },
-          data: { orderNumber: { decrement: 1 } }
-        });
-        txShiftAssignmentsMs = performance.now() - tShiftStart;
-        txShiftAssignmentsCount = shiftResult.count;
+        txShiftAssignmentsMs = txDeleteAssignmentMs;
+        txShiftAssignmentsCount = releaseResult.shiftCount;
       }
     });
   }

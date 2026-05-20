@@ -9,6 +9,7 @@ import {
   runFkojunstMailReplacementTransaction,
 } from './fkojunst-status-mail-sync.pipeline.js';
 import { FkojunstExternalCompletionSyncService } from './external-completion/fkojunst-external-completion-sync.service.js';
+import { ProductionScheduleOrderAssignmentReconciliationService } from './order-assignment/order-assignment-reconciliation.service.js';
 
 export type ProductionScheduleFkojunstMailStatusSyncResult = import('./fkojunst-status-mail-sync.pipeline.js').FkojunstMailSyncResult;
 
@@ -18,7 +19,8 @@ export type ProductionScheduleFkojunstMailStatusSyncResult = import('./fkojunst-
  */
 export class ProductionScheduleFkojunstMailStatusSyncService {
   constructor(
-    private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService()
+    private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService(),
+    private readonly orderAssignmentReconciliationService: ProductionScheduleOrderAssignmentReconciliationService = new ProductionScheduleOrderAssignmentReconciliationService()
   ) {}
 
   async syncFromStatusMailDashboard(): Promise<ProductionScheduleFkojunstMailStatusSyncResult> {
@@ -37,6 +39,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
         { scanned },
         '[ProductionScheduleFkojunstMailStatusSyncService] skip external completion sync (no normalized FKOJUNST_Status rows)'
       );
+      await this.orderAssignmentReconciliationService.reconcileStaleAssignments();
       return result;
     }
 
@@ -75,6 +78,8 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
         },
         '[ProductionScheduleFkojunstMailStatusSyncService] external completion sync completed'
       );
+    } else {
+      await this.orderAssignmentReconciliationService.reconcileStaleAssignments();
     }
 
     return result;

@@ -2,14 +2,27 @@ import { Prisma } from '@prisma/client';
 
 import { buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
 
+/** キオスク生産日程一覧で表示する FKOJUNST_Status コード（`fkmail` 正本）。 */
+export const FKOJUNST_MAIL_KIOSK_LIST_VISIBLE_STATUS_CODES = ['S', 'R', 'C', 'X'] as const;
+
 /**
  * 生産日程 winner 行の一覧で、工順ST（FKOJUNST）表示の根拠を決める式（SQL 断片）。
  * **正本は FKOJUNST_Status 同期（`fkmail`）のみ**。旧 Gmail FKOJUNST 行（`fkst`）は参照しない。
  */
+export function buildFkojunstProductionScheduleListVisibleScalarSql(): Prisma.Sql {
+  return Prisma.sql`(
+    "fkmail"."id" IS NOT NULL
+    AND UPPER(BTRIM("fkmail"."statusCode")) IN (${Prisma.join(
+      FKOJUNST_MAIL_KIOSK_LIST_VISIBLE_STATUS_CODES.map((c) => Prisma.sql`${c}`),
+      ', '
+    )})
+  )`;
+}
+
 export function buildFkojunstProductionScheduleListRowDataFkojunstSql(): Prisma.Sql {
   return Prisma.sql`
     CASE
-      WHEN "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R', 'C', 'X') THEN "fkmail"."statusCode"
+      WHEN ${buildFkojunstProductionScheduleListVisibleScalarSql()} THEN "fkmail"."statusCode"
       ELSE ''
     END
   `;
@@ -21,7 +34,7 @@ export function buildFkojunstProductionScheduleListRowDataFkojunstSql(): Prisma.
  * - `fkmail` が無い、または `O` / `P` 等は除外
  */
 export function buildFkojunstProductionScheduleListVisibilityWhereSql(): Prisma.Sql {
-  return Prisma.sql`AND "fkmail"."id" IS NOT NULL AND "fkmail"."statusCode" IN ('S', 'R', 'C', 'X')`;
+  return Prisma.sql`AND ${buildFkojunstProductionScheduleListVisibleScalarSql()}`;
 }
 
 /**
