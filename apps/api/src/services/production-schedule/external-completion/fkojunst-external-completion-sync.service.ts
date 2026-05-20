@@ -6,6 +6,7 @@ import {
   type FkojunstMailNormalizedRow,
 } from '../fkojunst-status-mail-sync.pipeline.js';
 import { replaceAllWinnerExternalCompletionStatesFromMailSync } from './fkojunst-external-completion-sync.repository.js';
+import { ProductionScheduleOrderAssignmentReconciliationService } from '../order-assignment/order-assignment-reconciliation.service.js';
 
 export type FkojunstExternalCompletionSyncResult =
   | { skipped: true; reason: 'empty_status_csv' }
@@ -21,7 +22,15 @@ const EXTERNAL_COMPLETION_TX_MAX_WAIT_MS = 15_000;
  * 外部完了のメール由来は **同期済み `fkmail` の status が C/X か**のみで再計算する。
  */
 export class FkojunstExternalCompletionSyncService {
-  constructor(private readonly deps: { prismaClient: typeof prisma } = { prismaClient: prisma }) {}
+  constructor(
+    private readonly deps: {
+      prismaClient: typeof prisma;
+      orderAssignmentReconciliationService?: ProductionScheduleOrderAssignmentReconciliationService;
+    } = {
+      prismaClient: prisma,
+      orderAssignmentReconciliationService: new ProductionScheduleOrderAssignmentReconciliationService()
+    }
+  ) {}
 
   async syncFromCurrentStatusMailDashboard(): Promise<FkojunstExternalCompletionSyncResult> {
     const { normalizedRows } = await loadFkojunstMailSourceRows(this.deps.prismaClient);
@@ -53,6 +62,8 @@ export class FkojunstExternalCompletionSyncService {
       {},
       '[FkojunstExternalCompletionSyncService] external completion recalculated from FKOJUNST_Status mail rows'
     );
+
+    await this.deps.orderAssignmentReconciliationService!.reconcileStaleAssignments();
 
     return { skipped: false };
   }

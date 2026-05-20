@@ -11,6 +11,7 @@ import {
 import { fetchMaxProductNoWinnerRowIdsForDashboard } from '../../services/production-schedule/row-resolver/max-product-no-winner-materialization.js';
 import { buildMaxProductNoWinnerCondition } from '../../services/production-schedule/row-resolver/max-product-no-sql.js';
 import { computeLeaderboardShellFillerBudget } from '../../services/production-schedule/leaderboard/leaderboard-shell-filler-budget.js';
+import { reconcileStaleProductionScheduleOrderAssignments } from '../../services/production-schedule/order-assignment/order-assignment-reconciliation.service.js';
 import * as productionScheduleQueryService from '../../services/production-schedule/production-schedule-query.service.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -1950,6 +1951,117 @@ describe('Kiosk Production Schedule API', () => {
     expect(assignments.map((a) => a.orderNumber)).toEqual([1, 2, 3]);
     const row4Assignment = assignments.find((a) => a.csvDashboardRowId === row4.id);
     expect(row4Assignment?.orderNumber).toBe(3);
+  });
+
+  it('reconcile releases stale order assignments for externally completed rows (A)', async () => {
+    const row = await prisma.csvDashboardRow.findFirst({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: '0001' },
+      },
+      select: { id: true },
+    });
+    expect(row).toBeDefined();
+    if (!row) return;
+
+    await prisma.productionScheduleOrderAssignment.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        location: 'Test',
+        siteKey: 'Test',
+        resourceCd: '1',
+        orderNumber: 1,
+      },
+    });
+    await prisma.productionScheduleExternalCompletion.upsert({
+      where: { csvDashboardRowId: row.id },
+      create: {
+        csvDashboardRowId: row.id,
+        csvDashboardId: DASHBOARD_ID,
+        isExternallyCompleted: true,
+        externallyCompletedFromFkojunstMailStatus: true,
+      },
+      update: {
+        isExternallyCompleted: true,
+        externallyCompletedFromFkojunstMailStatus: true,
+      },
+    });
+
+    const result = await reconcileStaleProductionScheduleOrderAssignments();
+    expect(result.released).toBeGreaterThanOrEqual(1);
+
+    const remaining = await prisma.productionScheduleOrderAssignment.findMany({
+      where: { csvDashboardRowId: row.id, location: 'Test' },
+    });
+    expect(remaining).toHaveLength(0);
+  });
+
+  it('reconcile releases stale order assignments without fkmail (alpha)', async () => {
+    const row = await prisma.csvDashboardRow.findFirst({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: '0001' },
+      },
+      select: { id: true },
+    });
+    expect(row).toBeDefined();
+    if (!row) return;
+
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({
+      where: { csvDashboardRowId: row.id },
+    });
+    await prisma.productionScheduleOrderAssignment.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        location: 'Test',
+        siteKey: 'Test',
+        resourceCd: '1',
+        orderNumber: 2,
+      },
+    });
+
+    await reconcileStaleProductionScheduleOrderAssignments();
+
+    const remaining = await prisma.productionScheduleOrderAssignment.findMany({
+      where: { csvDashboardRowId: row.id, location: 'Test' },
+    });
+    expect(remaining).toHaveLength(0);
+  });
+
+  it('reconcile retains order assignments for visible incomplete rows', async () => {
+    const row = await prisma.csvDashboardRow.findFirst({
+      where: {
+        csvDashboardId: DASHBOARD_ID,
+        rowData: { path: ['ProductNo'], equals: '0001' },
+      },
+      select: { id: true },
+    });
+    expect(row).toBeDefined();
+    if (!row) return;
+
+    await prisma.productionScheduleExternalCompletion.deleteMany({
+      where: { csvDashboardRowId: row.id },
+    });
+    await prisma.productionScheduleOrderAssignment.create({
+      data: {
+        csvDashboardId: DASHBOARD_ID,
+        csvDashboardRowId: row.id,
+        location: 'Test',
+        siteKey: 'Test',
+        resourceCd: '1',
+        orderNumber: 3,
+      },
+    });
+
+    await reconcileStaleProductionScheduleOrderAssignments();
+
+    const remaining = await prisma.productionScheduleOrderAssignment.findMany({
+      where: { csvDashboardRowId: row.id, location: 'Test' },
+    });
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.orderNumber).toBe(3);
   });
 
   it('stores and returns shared search state across kiosks', async () => {

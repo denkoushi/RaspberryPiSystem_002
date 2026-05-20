@@ -2723,6 +2723,21 @@ category: knowledge-base
   - **展開で余計な行が増えた** → 仕様上、手動行の **同一製番は意図的にまとめて載る**。資源・除外・FKOJUNST 可視など **他フィルタ**は従来どおり効く（展開は **`text` / `machineName` だけ緩める**）。
 - **参照**: [deployment.md](../guides/deployment.md)（2026-05-05 evening 項）·[`shared.ts` JSDoc](../../apps/api/src/routes/kiosk/production-schedule/shared.ts)（`responseProfile=leaderboard` の契約説明）。
 
+### Leader order board: 資源内順位割当の自動解放（A+α・2026-05-20） {#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20}
+
+- **Context**: 順位ドロップダウンは **`order-usage`（DB 全割当）** に対し **空き番のみ**選択可（[`availableProcessingOrderOptions.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/availableProcessingOrderOptions.ts)）。一方、一覧は **FKOJUNST 可視**＋完了フィルタ（既定 **未完**）で **表示行が部分集合**になり、**完了済み（外部完了 `C`/`X` 等）** や **`fkmail` 無し winner** が **順位だけ DB に残る**と、現場では **5 からしか選べない**等の飛び番に見える（操作ミスではなく設計ギャップ）。
+- **Fix（API のみ・Web/`order-usage` 契約不変）**:
+  - **保持条件（A+α 統合）**: `retain ⇔ NOT 実効完了 AND キオスク一覧可視（fkmail ありかつ S/R/C/X）`。それ以外の winner 行に紐づく `ProductionScheduleOrderAssignment` は **解放**（削除＋同一 `location`×`resourceCd` 内で番号詰め）。
+  - **A**: 実効完了（手動 `ProductionScheduleProgress.isCompleted` **OR** `ProductionScheduleExternalCompletion.isExternallyCompleted`）。
+  - **α**: 一覧非可視（`fkmail` 無し / `O`/`P` / `?` 等）。**手動 ✓ 完了**は従来どおり [`driveProductionScheduleRowCompletion`](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts) 経由で解放（共通化）。
+  - **実装**: [`order-assignment/`](../../apps/api/src/services/production-schedule/order-assignment/)（`order-assignment-retention.policy.ts`·`order-assignment-release.repository.ts`·`order-assignment-reconciliation.service.ts`）。
+  - **トリガ（同期後）**: `FkojunstExternalCompletionSyncService`·`ProductionScheduleCsvIngestExternalCompletionSyncService`·`ProductionScheduleFkojunstMailStatusSyncService`（`fkmail` 空クリア時も reconcile）。
+- **既存幽霊**: **次回 `FKOJUNST_Status` または生産日程本体 CSV 取込同期**で自動掃除（一回性スクリプトは今回スコープ外）。
+- **検証**: Vitest [`order-assignment-reconciliation.integration.test.ts`](../../apps/api/src/services/production-schedule/order-assignment/__tests__/order-assignment-reconciliation.integration.test.ts) 等。
+- **トラブルシュート**:
+  - **反映直後も飛び番** → 同期がまだ走っていない。**Pi5 `api` ref** と FKOJUNST 取込スケジュールを確認。
+  - **順位が消えた** → 対象行が **実効完了**または **一覧非可視**になった。**完了フィルタ「両方」**で行の有無を確認。
+
 ### Leader order board: `leaderboard` の COUNT と行 SELECT の並列化（2026-05-06） {#leader-order-board-api-count-parallel-2026-05-06}
 
 - **目的**: `responseProfile=leaderboard` の **`GET /api/kiosk/production-schedule`** で、**可視行 `COUNT(*)`** と **製番-aware 行取得**の待ちを **壁時計時間の直列和**にしない（**API 契約・返却内容は不変**）。
@@ -2902,5 +2917,5 @@ category: knowledge-base
 
 - **デプロイが Pi5 で止まる / ローカルだけ未 push エラー**: `update-all-clients.sh` の fail-fast（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）、リモートロック二重起動（deployment.md 2026-03-29 追記）を参照。
 - **キオスクに新画面が出ない**: Pi5 のみ更新して Pi4 を更新していない、またはブラウザキャッシュ。**5 台すべて**順次更新後、kiosk-browser 再起動済みか Ansible ログの `kiosk-browser.service` を確認。
-- **順位ドロップダウンが選べない / 空**: 当該資源で **既に他行が 1〜10 を占有**していると、空き番＋現行値以外は選べない（生産スケジュールと同じ `order-usage` ルール）。**完了行**は順位変更を無効化。
+- **順位ドロップダウンが選べない / 空**: 当該資源で **既に他行が 1〜10 を占有**していると、空き番＋現行値以外は選べない（生産スケジュールと同じ `order-usage` ルール）。**完了行**は順位変更を無効化。**占有行が画面に無い**場合は [§A+α 自動解放（2026-05-20）](#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20) を参照（次回 FKOJUNST/本体 CSV 同期で解放）。
 - **機種名がまだ空**: スケジュールと `history-progress` の両方に製番が無い、またはどちらも機種名フィールドが空。**データ側**の MH/SH 行・進捗同期を疑う（本 UI は補完のみ）。

@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
 import { replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync } from './fkojunst-external-completion-sync.repository.js';
+import { ProductionScheduleOrderAssignmentReconciliationService } from '../order-assignment/order-assignment-reconciliation.service.js';
 import { queryNonCScheduleDisappearanceCandidateKeys } from './production-schedule-nonc-window-winner-key.query.js';
 import { queryWinnerLogicalKeys } from './production-schedule-winner-logical-key.query.js';
 
@@ -18,7 +19,15 @@ export type ProductionScheduleCsvIngestExternalCompletionApplyResult =
  * 旧来の「取込直前スナップショット比較」は、期間取得CSVとFKOJUNST窓のズレで誤判定しやすいため廃止。
  */
 export class ProductionScheduleCsvIngestExternalCompletionSyncService {
-  constructor(private readonly deps: { prismaClient: typeof prisma } = { prismaClient: prisma }) {}
+  constructor(
+    private readonly deps: {
+      prismaClient: typeof prisma;
+      orderAssignmentReconciliationService?: ProductionScheduleOrderAssignmentReconciliationService;
+    } = {
+      prismaClient: prisma,
+      orderAssignmentReconciliationService: new ProductionScheduleOrderAssignmentReconciliationService()
+    }
+  ) {}
 
   /**
    * @deprecated スナップショット比較は廃止。呼び出し側の互換のため **no-op**。
@@ -71,6 +80,8 @@ export class ProductionScheduleCsvIngestExternalCompletionSyncService {
     await this.deps.prismaClient.$transaction(async (tx) => {
       await replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync(tx, disappearedKeys);
     });
+
+    await this.deps.orderAssignmentReconciliationService!.reconcileStaleAssignments();
 
     const disappearedDistinctKeys = new Set(disappearedKeys).size;
     logger.info(
