@@ -2,7 +2,7 @@
 title: KB-374 leaderboard-board/continue の cursor 契約と HTTP 400（Zod）
 tags: [kiosk, production-schedule, leader-order-board, leaderboard-board, api, web]
 audience: [開発者, 運用者]
-last-verified: 2026-05-21
+last-verified: 2026-05-22
 category: knowledge-base
 ---
 
@@ -1191,6 +1191,7 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 - **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
 - **continue chunk 80/160（2026-05-21）**: **`4471a444`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**Pi5→Pi4×4 本番**·Detach **`20260521-203852-9936`** 他 4 台·CI **`26222962417` success**·[§continue 80/160 実装](#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](../guides/deployment.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。
 - **shell 初回最適化 第1弾（2026-05-21 · API のみ · Pi5 本番・実機 OK）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**·Detach Pi5 **`20260521-221507-30100`**·[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)。
+- **shell 選定 SQL 第2弾（2026-05-22 · API のみ · Pi5 本番・実機 OK）**: SQL **共通化 + LATERAL JOIN**·prefix **manual LIMIT / expansion スキップ**·**`56490cfd`**·CI **`26257727724` success**·Detach Pi5 **`20260522-081052-2796`**·[§shell 第2弾](#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ## shell 初回最適化 第1弾（API のみ · 2026-05-21 · 本番反映済み）
@@ -1251,4 +1252,77 @@ pnpm --filter @raspi-system/api exec vitest run \
 pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard-board"
 ```
 
-**残タスク（第2弾）**: manual 行 SELECT の **LIMIT 押し下げ**·相関サブクエリ JOIN 化（[EXEC_PLAN §shell 選定 SQL](../../EXEC_PLAN.md)）。
+**残タスク（第2弾）**: ~~manual 行 SELECT の **LIMIT 押し下げ**·相関サブクエリ JOIN 化~~ → **2026-05-22 完了**（[§shell 第2弾](#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)）。
+
+## shell 選定 SQL 第2弾（API のみ） — 2026-05-22 — **本番反映済み** {#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み}
+
+**ブランチ**: **`feat/kiosk-leaderboard-shell-sql-phase2`**·**代表コミット**: **`56490cfd`**·**CI**: **`26257727724` success**。
+
+### 背景・目的
+
+[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み) で **winner 共有**と **hasMore=false COUNT 省略**を入れた後も、**hasMore スロット**では **manual / expansion / filler の 3 本 SELECT** と **相関サブクエリ（`processingOrder` / `globalRank`）** が **prefix 初回 shell の支配要因**だった。第2弾は **SQL 構造の共通化 + JOIN 化**と **prefix 向け manual LIMIT / expansion スキップ**で、**continue 経路と board 出力契約を変えず**初回 shell の DB 負荷を下げる。
+
+### 仕様（実装）
+
+| 項目 | 内容 |
+| --- | --- |
+| **Step A — SQL 共通化 + JOIN 化** | `leaderboard-shell-rank-join.sql.ts` で **`ord_pick` / `gr_pick` LATERAL JOIN**·`leaderboard-shell-row-projection.sql.ts` で **manual / expansion / filler 共通 SELECT/FROM/ORDER BY**·`leaderboard-shell-row-query.sql.ts` の **`queryLeaderboardShellScheduleRows()`** に集約 |
+| **Step B — prefix 初回のみ LIMIT** | **`fetchLeaderboardShellMergedPrefixRows`** のみ **`prefixLimit`** を渡す·manual は **`LIMIT prefixLimit + 1`（probe）** → **`trimLeaderboardShellManualProbeRows`**·manual **>= prefixLimit** なら **expansion スキップ**（[`leaderboard-shell-priority-fetch-policy.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-priority-fetch-policy.ts)） |
+| **continue / full merge** | **`prefixLimit` 未指定** — 従来どおり full manual + expansion（**順序・件数契約不変**） |
+| **型分離** | `LeaderboardScheduleRowSql` を [`leaderboard-schedule-row.types.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-schedule-row.types.ts) に分離（循環 import 回避） |
+| **不変** | Web·continue 80/160·装飾後取り·第1弾 winner/COUNT·**新規マイグレーションなし**·**出力同値** |
+
+### 接続点
+
+- [`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts): **`processingOrderScalar` → `rankJoins`**·prefix 経路は policy 経由で LIMIT / expansion skip
+- [`leaderboard-shell-hydrate.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-hydrate.service.ts): 型 import を **`leaderboard-schedule-row.types.ts`** に変更
+
+### ローカル検証
+
+```bash
+pnpm --filter @raspi-system/api test -- leaderboard-shell-priority-fetch-policy
+pnpm --filter @raspi-system/api test -- leaderboard-shell-row-selection-compare
+pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard"
+```
+
+- fetch-policy **8 PASS**·compare **6 PASS**·leaderboard unit **39 PASS**·統合 `leaderboard` **18 PASS**
+
+### 本番デプロイ（Pi5 のみ）
+
+- **対象**: **`raspberrypi5` のみ**（API コンテナ·**Pi4/Pi3 不要**）
+- **Detach Run ID**: **`20260522-081052-2796`**（`ok=134` `changed=4` `failed=0`·**Git changed**·Docker rebuild + **`prisma migrate deploy` ok**）
+- **実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **31s**）
+- **手順正本**: [deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
+
+### Pi5 shell ベンチ（実データ·デプロイ直後·`runs=2`）
+
+[`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs):
+
+| profile | 第1弾 median（参考） | 第2弾 median | 第2弾 min | hasMore / completeInShell |
+| --- | --- | --- | --- | --- |
+| robodrill | ~3.0s | ~4.9s | **~3.0s** | 4/6 hasMore · 2 completeInShell |
+| fjv | ~3.1s | **~3.1s** | **~2.8s** | 6/6 hasMore |
+| stonebase | ~5.1s | ~6.6s | ~5.9s | 7/8 hasMore · 1 completeInShell |
+
+**知見**:
+
+- **fjv** は median **同等〜改善**·**robodrill run1** は第1弾と **min 同等（~3.0s）** だが run2 で伸び **median は悪化**（全スロット並列 COUNT + 合成時間の **run 間分散**）。
+- **stonebase** は median **やや悪化** — **expansion スキップ条件**（manual が prefix を埋めないスロット）や **JOIN プラン差**の **EXPLAIN 実測**が第3弾候補。
+- **continue 経路**は第2弾の LIMIT 対象外 — **初回 shell のみ**が最適化スコープ。
+
+### トラブルシューティング
+
+| 症状 | 切り分け |
+| --- | --- |
+| **初回 shell が遅いまま** | 第1弾 COUNT 省略が効く **completeInShell** スロットか確認·**hasMore** スロットは **選定 SQL + COUNT 並列**が支配 |
+| **ベンチ median だけ悪化** | **`runs>=2`** で **min/median 併記**·Pi5 **memory 90%+** 時の一過性 503 と相関調査（[EXEC_PLAN Next Steps](../../EXEC_PLAN.md)） |
+| **continue 順序ずれ** | continue は **`prefixLimit` なし** — `leaderboard-shell-row-selection-compare` と統合テストで **monolithic 同順**を固定 |
+| **Pi4 にデプロイしたが変わらない** | **意図どおり** — 変更は **Pi5 `api` のみ** |
+
+### 残タスク（第3弾候補）
+
+1. **expansion budget LIMIT**（prefix 未充足スロットの expansion 行数上限）
+2. **EXPLAIN ANALYZE** + インデックス見直し（stonebase 等 **manual 未充足**スロット）
+3. **Web 増分 view model**（IDB 2 回目以降 DOM 最小化）— 出力同値 PoC
+
+**正本**: [EXEC_PLAN §Next Steps](../../EXEC_PLAN.md)·[deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)

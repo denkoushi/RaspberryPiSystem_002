@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・shell 選定 SQL 第2弾（API のみ）**·ブランチ **`feat/kiosk-leaderboard-shell-sql-phase2`**·**`56490cfd`**。**仕様**: manual/expansion/filler **SELECT 共通化**·**相関 `processingOrder`/`globalRank` → LATERAL JOIN**·prefix 初回のみ **manual `LIMIT prefixLimit+1`（probe）**·manual **>= prefixLimit** なら **expansion スキップ**·**continue 経路は `prefixLimit` 未指定（不変）**·Web/continue 80/160/装飾後取り/第1弾 winner/COUNT **不変**·**出力同値**·**新規マイグレーションなし**。**ローカル**: fetch-policy 8·compare 6·leaderboard unit 39·統合 `leaderboard` 18 PASS。**CI**: **`26257727724` success**。**本番（Pi5 のみ）**: Detach **`20260522-081052-2796`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **31s**）·shell ベンチ **robodrill median ~4.9s（min ~3.0s）/ fjv median ~3.1s / stonebase median ~6.6s**（[`benchmark-leaderboard-board-shell.mjs`](./scripts/test/benchmark-leaderboard-board-shell.mjs)）。**ナレッジ**: [KB-374 §shell 第2弾](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)·[deployment §shell 第2弾](./docs/guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-21 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・shell 初回最適化 第1弾（API のみ）**·ブランチ **`feat/kiosk-shell-initial-opt-phase1`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·**`143c8814`**。**仕様**: 初回 shell GET で **winner materialization リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**（hasMore は shell と並行 COUNT を await）·**未使用 COUNT reject 握り**·**Web/continue 80/160/装飾後取り/IDB 不変**·**出力同値**。**ローカル**: 単体 2·統合 `leaderboard-board` 5 PASS。**CI**: **`26226698424` success**。**本番（Pi5 のみ）**: Detach **`20260521-221507-30100`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **64s**）·shell ベンチ **robodrill ~3.0s / fjv ~3.1s / stonebase ~5.1s**（[`benchmark-leaderboard-board-shell.mjs`](./scripts/test/benchmark-leaderboard-board-shell.mjs)）。**ナレッジ**: [KB-374 §shell 第1弾](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)·[deployment §shell 第1弾](./docs/guides/deployment.md#kiosk-leaderboard-shell-initial-opt-phase1-2026-05-21)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
 - [x] (2026-05-21 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・continue chunk 80/160（Web のみ）**·ブランチ **`feat/kiosk-leaderboard-continue-chunk-160`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**`4471a444`**。**仕様**: 初回 shell **80/スロット**（不変）·continue **`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` 80→160**（**80/160**）·**API/Zod 上限 160 受け入れ済み**·**`deltaRows`/IDB/製番 OR/装飾後取り 不変**·**スロット並列 fan-out は却下**（[KB-374 §並列化](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#並列化事前検証pi5-実データ--2026-05-20--実装前)）。**ローカル**: leaderOrderBoard Vitest **200 PASS**·`web build` PASS·ベンチ [`benchmark-leaderboard-continue-chunk.mjs`](./scripts/test/benchmark-leaderboard-continue-chunk.mjs) **80 vs 160 全 profile 出力同値 + 5%+ 短縮 PASS**。**CI**: **`26222962417` success**（PR #315 push）。**本番（5台・1台ずつ）**: Detach **`20260521-203852-9936`**（Pi5·`ok=134` `changed=4`）/ **`20260521-205337-26001`**（StoneBase01）/ **`20260521-205915-5232`**（Pi4）/ **`20260521-210531-13345`**（robodrill）/ **`20260521-211045-27096`**（fjv60-80）（各 **`failed=0`**·Pi4 は **`kiosk-browser` 再起動 ok**）。**Pi3**: 除外（`no hosts matched`）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **123s**）·Pi5 ベンチ **robodrill 1.42x / fjv 1.36x / stonebase 1.51x**（continue rounds **2→1 / 4→2 / 10→5**）。**ナレッジ**: [KB-374 §continue 80/160](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](./docs/guides/deployment.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
@@ -2300,17 +2302,22 @@
 
 ## Next Steps（将来のタスク）
 
-### キオスク順位ボード — shell 選定 SQL 最適化（2026-05-21）— **第2弾候補**
+### キオスク順位ボード — shell 選定 SQL 第3弾候補（2026-05-22）
 
-**概要**: **shell 第1弾（winner 共有 + hasMore=false COUNT 省略）** は **Pi5 本番反映済**·[KB-374 §shell 第1弾](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)（**`143c8814`**·Detach **`20260521-221507-30100`**）。本番 shell ベンチでは **全 hasMore スロット**（fjv 等）で **winner 共有のみ**が効き、**manual SELECT LIMIT 化**·**相関→JOIN** が **残支配要因**。
+**概要**: **shell 第2弾（SQL 共通化 + JOIN 化 + prefix manual LIMIT / expansion スキップ）** は **Pi5 本番反映済**·[KB-374 §shell 第2弾](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)（**`56490cfd`**·Detach **`20260522-081052-2796`**）。Pi5 shell ベンチでは **fjv median 同等〜改善**·**robodrill min ~3.0s** だが **run 間分散**·**stonebase median やや悪化** — **expansion 未スキップスロット**と **JOIN プラン**が残支配要因。
 
 **候補タスク**:
 
-1. **shell 選定 SQL** の EXPLAIN / 実測（[`benchmark-leaderboard-board-shell.mjs`](./scripts/test/benchmark-leaderboard-board-shell.mjs)）。
-2. **Pi5 memory 警告**（90%+）と一過性 **503** の相関調査·Docker/API リソース見直し。
-3. **Web 増分 view model**（IDB 2 回目以降の DOM 更新最小化）— 出力同値を維持した PoC。
+1. **expansion budget LIMIT**（prefix 未充足スロットの expansion 行数上限）。
+2. **shell 選定 SQL** の **EXPLAIN ANALYZE** / インデックス見直し（[`benchmark-leaderboard-board-shell.mjs`](./scripts/test/benchmark-leaderboard-board-shell.mjs) と併用）。
+3. **Pi5 memory 警告**（90%+）と一過性 **503** の相関調査·Docker/API リソース見直し。
+4. **Web 増分 view model**（IDB 2 回目以降の DOM 更新最小化）— 出力同値を維持した PoC。
 
 **却下済み（再採用しない）**: スロット並列 fan-out·初回10/continue40 Pi4 展開。
+
+### キオスク順位ボード — shell 選定 SQL 最適化（2026-05-21）— **第2弾完了 → 第3弾へ**
+
+**概要（アーカイブ）**: 第2弾候補として列挙していた **SQL 共通化·相関→JOIN·prefix manual LIMIT** は **2026-05-22 完了**（上記 §第3弾候補 へ引き継ぎ）。
 
 ### キオスク順位ボード — continue chunk 80/160 の現場目視（2026-05-21）— **任意**
 
