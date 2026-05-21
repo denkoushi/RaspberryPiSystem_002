@@ -130,6 +130,22 @@ function strField(data: Record<string, unknown>, key: string): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 
+/** Prisma `Date` / ISO 文字列を `YYYY-MM-DD` に正規化（`formatDueDateSignage` 用） */
+function scheduleDateToIsoDateString(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 10);
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const isoPrefix = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoPrefix) return isoPrefix[1];
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return null;
+}
+
 function resolveMachineTypeCodeFromRowData(data: Record<string, unknown>): string {
   for (const key of MACHINE_TYPE_CODE_KEYS) {
     const v = strField(data, key);
@@ -223,12 +239,8 @@ export function normalizeLeaderBoardRowFromScheduleRow(row: SignageScheduleRowIn
   const resourceCd = strField(data, 'FSIGENCD');
   if (!resourceCd) return null;
 
-  const dueDate =
-    row.dueDate != null && String(row.dueDate).trim().length > 0 ? String(row.dueDate).trim() : null;
-  const plannedEnd =
-    row.plannedEndDate != null && String(row.plannedEndDate).trim().length > 0
-      ? String(row.plannedEndDate).trim()
-      : null;
+  const dueDate = scheduleDateToIsoDateString(row.dueDate);
+  const plannedEnd = scheduleDateToIsoDateString(row.plannedEndDate);
   const displayDue = resolveDisplayDueDate(dueDate, plannedEnd);
 
   const plannedQuantity =

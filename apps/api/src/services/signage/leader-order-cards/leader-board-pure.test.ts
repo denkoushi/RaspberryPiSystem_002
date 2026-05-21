@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   filterLeaderBoardRowsIncompleteForSignage,
+  formatDueDateSignage,
   normalizeConfiguredResourceCds,
+  normalizeLeaderBoardRowFromScheduleRow,
   sortLeaderBoardRowsForDisplaySignage,
+  toLeaderOrderRowSvgModels,
   type SignageLeaderBoardRow,
 } from './leader-board-pure.js';
 
@@ -40,6 +43,36 @@ describe('leader-board-pure', () => {
     };
     const sorted = sortLeaderBoardRowsForDisplaySignage([a, b]);
     expect(sorted.map((r) => r.id)).toEqual(['b', 'a']);
+  });
+
+  it('normalizeLeaderBoardRowFromScheduleRow converts Prisma Date to ISO due for signage label', () => {
+    const normalized = normalizeLeaderBoardRowFromScheduleRow({
+      id: 'r1',
+      rowData: { FSIGENCD: '080', FSEIBAN: 'S1', progress: '進行中' },
+      processingOrder: null,
+      note: null,
+      dueDate: new Date('2026-05-15T00:00:00.000Z'),
+      plannedQuantity: null,
+      plannedEndDate: null,
+    });
+    expect(normalized?.displayDue).toBe('2026-05-15');
+    const [svgRow] = toLeaderOrderRowSvgModels(normalized ? [normalized] : [], undefined, () => 'k');
+    expect(svgRow.dueLabel).toBe(formatDueDateSignage('2026-05-15'));
+    expect(svgRow.dueLabel).not.toBe('—');
+  });
+
+  it('normalizeLeaderBoardRowFromScheduleRow falls back to plannedEndDate when manual due is absent', () => {
+    const normalized = normalizeLeaderBoardRowFromScheduleRow({
+      id: 'r2',
+      rowData: { FSIGENCD: '060', FSEIBAN: 'S2', progress: '進行中' },
+      processingOrder: null,
+      note: null,
+      dueDate: null,
+      plannedQuantity: null,
+      plannedEndDate: new Date('2026-06-01T00:00:00.000Z'),
+    });
+    expect(normalized?.displayDue).toBe('2026-06-01');
+    expect(formatDueDateSignage(normalized!.displayDue)).toBe('6/1(月)');
   });
 
   it('filterLeaderBoardRowsIncompleteForSignage keeps only incomplete rows', () => {
