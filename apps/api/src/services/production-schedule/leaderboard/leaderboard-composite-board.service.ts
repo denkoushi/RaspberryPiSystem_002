@@ -24,6 +24,7 @@ import {
 import { seedLeaderboardBoardSnapshotResourceTotal } from './leaderboard-composite-board-snapshot-totals.js';
 import { seedLeaderboardBoardPrefixRowCache } from './leaderboard-composite-board-prefix-row-cache.js';
 import { resolveLeaderboardBoardResourceTotalsForContinue } from './resolve-leaderboard-board-resource-totals-for-continue.js';
+import { resolveLeaderboardBoardShellResourceTotalFromShell } from './resolve-leaderboard-board-shell-resource-total.js';
 import type { LeaderboardShellSnapshotStore } from './leaderboard-shell-snapshot.store.js';
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
@@ -54,6 +55,32 @@ export type LeaderboardBoardReadResult = {
 
 type ListParamsBase = Omit<ProductionScheduleListParams, 'page' | 'pageSize' | 'responseProfile' | 'resourceCds'>;
 
+function countLeaderboardBoardShellResourceTotal(
+  listParamsBase: ListParamsBase,
+  resourceCd: string
+): Promise<number> {
+  return countProductionScheduleDashboardVisibleRowsFromListFilters({
+    queryText: listParamsBase.queryText,
+    productNos: listParamsBase.productNos,
+    machineName: listParamsBase.machineName,
+    resourceCds: [resourceCd],
+    assignedOnlyCds: listParamsBase.assignedOnlyCds,
+    resourceCategory: listParamsBase.resourceCategory,
+    hasNoteOnly: listParamsBase.hasNoteOnly,
+    hasDueDateOnly: listParamsBase.hasDueDateOnly,
+    allowResourceOnly: listParamsBase.allowResourceOnly,
+    locationKey: listParamsBase.locationKey,
+    siteKey: listParamsBase.siteKey
+  });
+}
+
+function settleUnusedLeaderboardBoardShellCount(promise: Promise<number>): void {
+  void promise.catch(() => {
+    // hasMore=false スロットでは shell.rows.length を total 正本として返すため、
+    // 並行起動済み COUNT の失敗は未処理 reject にしない。
+  });
+}
+
 export async function fetchLeaderboardCompositeBoardShell(
   params: {
     listParamsBase: ListParamsBase;
@@ -67,38 +94,38 @@ export async function fetchLeaderboardCompositeBoardShell(
   const includeDecorations = params.includeDecorations !== false;
   const cappedPageSize = Math.min(Math.max(1, Math.floor(params.pageSize)), 160);
 
-  const [shells, totals] = await Promise.all([
-    Promise.all(
-      params.boardResourceCds.map((resourceCd) =>
-        listLeaderboardShellProductionScheduleRows(
-          {
-            ...params.listParamsBase,
-            page: params.page,
-            pageSize: cappedPageSize,
-            resourceCds: [resourceCd]
-          },
-          deps
-        )
-      )
-    ),
-    Promise.all(
-      params.boardResourceCds.map((resourceCd) =>
-        countProductionScheduleDashboardVisibleRowsFromListFilters({
-          queryText: params.listParamsBase.queryText,
-          productNos: params.listParamsBase.productNos,
-          machineName: params.listParamsBase.machineName,
-          resourceCds: [resourceCd],
-          assignedOnlyCds: params.listParamsBase.assignedOnlyCds,
-          resourceCategory: params.listParamsBase.resourceCategory,
-          hasNoteOnly: params.listParamsBase.hasNoteOnly,
-          hasDueDateOnly: params.listParamsBase.hasDueDateOnly,
-          allowResourceOnly: params.listParamsBase.allowResourceOnly,
-          locationKey: params.listParamsBase.locationKey,
-          siteKey: params.listParamsBase.siteKey
-        })
+  /** continue と同型: 同一 board shell リクエスト内で winner materialization を 1 回だけ */
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+
+  const countPromises = params.boardResourceCds.map((resourceCd) => {
+    const promise = countLeaderboardBoardShellResourceTotal(params.listParamsBase, resourceCd);
+    settleUnusedLeaderboardBoardShellCount(promise);
+    return promise;
+  });
+
+  const shells = await Promise.all(
+    params.boardResourceCds.map((resourceCd) =>
+      listLeaderboardShellProductionScheduleRows(
+        {
+          ...params.listParamsBase,
+          page: params.page,
+          pageSize: cappedPageSize,
+          resourceCds: [resourceCd]
+        },
+        { snapshotStore: deps.snapshotStore, leaderboardMaterializedBaseWhere }
       )
     )
-  ]);
+  );
+
+  const totals = await Promise.all(
+    shells.map((shell, i) => {
+      const totalFromShell = resolveLeaderboardBoardShellResourceTotalFromShell(shell);
+      if (totalFromShell !== undefined) {
+        return Promise.resolve(totalFromShell);
+      }
+      return countPromises[i]!;
+    })
+  );
 
   const mergedRows = shells.flatMap((s) => s.rows);
   const totalSum = totals.reduce((acc, n) => acc + n, 0);

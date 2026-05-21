@@ -219,7 +219,11 @@ function shouldExpandLeaderboardSeibanAcrossResources(resourceCds: readonly stri
 /** 順位ボード段階取得: COUNT・装飾なしの leaderboard 選定のみ（初回は先頭 page 件の並びを確定し snapshot を発行。全件マージは遅延可） */
 export async function listLeaderboardShellProductionScheduleRows(
   params: ProductionScheduleListParams,
-  options: { snapshotStore: LeaderboardShellSnapshotStore }
+  options: {
+    snapshotStore: LeaderboardShellSnapshotStore;
+    /** 集約 shell 等で同一 HTTP リクエスト内 1 回 resolve した値を渡す */
+    leaderboardMaterializedBaseWhere?: Prisma.Sql;
+  }
 ): Promise<LeaderboardShellPhasedReadResult> {
   const { page, pageSize, locationKey } = params;
 
@@ -243,7 +247,10 @@ export async function listLeaderboardShellProductionScheduleRows(
 
   const { queryWhere, leaderboardExpansionWhere, siteScopedGlobalRankLocation } = filters;
 
-  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const leaderboardMaterializedBaseWhere = await resolveLeaderboardMaterializedBaseWhere(
+    prisma,
+    options.leaderboardMaterializedBaseWhere
+  );
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 

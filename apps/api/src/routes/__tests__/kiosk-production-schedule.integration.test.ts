@@ -1311,6 +1311,50 @@ describe('Kiosk Production Schedule API', () => {
     countSpy.mockRestore();
   });
 
+  it('leaderboard-board shell keeps responding when completed slot COUNT rejects after shell settles total', async () => {
+    await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.productionScheduleFkojunstMailStatus.deleteMany({ where: { csvDashboardId: DASHBOARD_ID } });
+    await prisma.csvDashboardRow.createMany({
+      data: Array.from({ length: 2 }, (_, index) => ({
+        csvDashboardId: DASHBOARD_ID,
+        occurredAt: new Date(Date.UTC(2026, 1, 1, 0, 0, index)),
+        dataHash: `board-shell-complete-${index}`,
+        rowData: {
+          ProductNo: `SC${String(index).padStart(4, '0')}`,
+          FSEIBAN: `SC-S${String(index).padStart(7, '0')}`,
+          FHINCD: `SC-P${String(index).padStart(4, '0')}`,
+          FHINMEI: `SC Part ${index}`,
+          FSIGENCD: '1',
+          FKOJUN: '10',
+          progress: ''
+        }
+      }))
+    });
+    await seedDefaultVisibleFkojunstMailStatusForAllDashboardRows();
+
+    const countSpy = vi
+      .spyOn(productionScheduleQueryService, 'countProductionScheduleDashboardVisibleRowsFromListFilters')
+      .mockRejectedValueOnce(new Error('count should not block completed shell slot'));
+
+    const shell = await app.inject({
+      method: 'GET',
+      url: '/api/kiosk/production-schedule/leaderboard-board?boardResourceCds=1&pageSize=80&allowResourceOnly=true&includeDecorations=false',
+      headers: { 'x-client-key': CLIENT_KEY }
+    });
+
+    expect(shell.statusCode).toBe(200);
+    const body = shell.json() as {
+      total: number;
+      rows: Array<{ id: string }>;
+      resources: Array<{ total: number; hasMore: boolean }>;
+    };
+    expect(body.rows).toHaveLength(2);
+    expect(body.total).toBe(2);
+    expect(body.resources).toHaveLength(1);
+    expect(body.resources[0]).toMatchObject({ total: 2, hasMore: false });
+    countSpy.mockRestore();
+  });
+
   it('leaderboard-board slot scale profile: 2 vs 6 resources', async () => {
     const rowsPerSlot = 100;
     const shellPageSize = 80;
