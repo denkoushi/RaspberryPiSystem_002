@@ -162,11 +162,12 @@ update-frequency: medium
 - FULL スロット種別 **`kiosk_leader_order_cards`**。`/admin/signage/schedules` で **`deviceScopeKey`**（キオスクと同じスコープ）と **`resourceCds`**（1〜32件・表示順）を設定。
 - データは生産スケジュール一覧 API と同契約の **`listProductionScheduleRows`**（`allowResourceOnly: true`・資源CDフィルタ）から取得。表示対象はキオスク順位ボードの **「未完」フィルタと同義**（`progress === 完了` の行は **非表示**・`filterLeaderBoardRowsIncompleteForSignage`）。行の並び・表示整形はキオスク **`LeaderOrderResourceCard`** / **`LeaderOrderResourceRow`** に寄せた純関数（`leader-board-pure.ts`）。**製番左縁24色ハッシュ**（`leader-order-seiban-accent-palette.ts`）・**クラスタ行（製番·品目·個数）**・**行下資源チップ**（`buildLeaderboardFooterChipsByPartKeyForScheduleRows`・順位ボードと同契約）。**チェック・手動順位・備考アイコンは JPEG には含めない**（閲覧専用）。
 - **5列×2段**（最大 **10** 資源カード/ページ・**2026-05-21 以降**。それ以前の実装は 4×2・最大8）。超過分は **`slideIntervalSeconds`**（既定 30s）でページ送り（`signage-slide-rotation.ts`）。グリッドの外周・カード間ギャップは横幅を活かすよう詰めている（`layout-contracts`・`build-leader-order-cards-svg`）。列数増加時は **`computeKioskProgressOverviewGridSlots`** でカード幅が自動的に狭くなる。
-- 契約: `apps/api/src/services/signage/signage-layout.types.ts`、`apps/api/src/routes/signage/schemas.ts`。描画: `apps/api/src/services/signage/leader-order-cards/`（`layout-contracts.ts` がグリッド定数の単一情報源）。`cardsPerPage` / Zod は **1〜10**（既定 **10**）、レンダラーは超過時 **warn**。**工場視認性**: タイポ拡大・ヘッダは **資源CD + ` · ` + 日本語名** を1 `<text>`（`<tspan>`）、色は `leader-order-cards-svg-theme.ts` で高コントラスト寄せ。Web `/signage` は **`getSignageCurrentImageUrl` 全画面**（`kiosk_progress_overview` と同型）。Pi3 `/signage-lite` も同一 JPEG 経路。
+- 契約: `apps/api/src/services/signage/signage-layout.types.ts`、`apps/api/src/routes/signage/schemas.ts`。描画: `apps/api/src/services/signage/leader-order-cards/`（`layout-contracts.ts` がグリッド定数の単一情報源）。`cardsPerPage` / Zod は **1〜10**（既定 **10**）、レンダラーは超過時 **warn**。**ヘッダ（2026-05-21 以降）**: 資源CD（mono）+ **加工機名（`resourceJapaneseNames`）を1行・省略なし**（`leader-order-cards-svg-header.ts`・`truncateChars` 不使用・**折り返しなし**）。色は `leader-order-cards-svg-theme.ts` で高コントラスト寄せ。Web `/signage` は **`getSignageCurrentImageUrl` 全画面**（`kiosk_progress_overview` と同型）。Pi3 `/signage-lite` も同一 JPEG 経路。
 - **2026-05-21 キオスク整合（`feat/signage-leader-order-kiosk-aligned`）**: 2026-04-08 までの「納期バッジ＋結合 `machinePartLine`」寄りレイアウトから、キオスク **`LeaderOrderResourceCard` / `LeaderOrderResourceRow`** 最新（製番左縁 **24色ハッシュ**・クラスタ行・行下資源チップ・閲覧専用）へ SVG を再構成。**Web キオスクは変更なし**（配色パレットは Pi5 `leader-order-seiban-accent-palette.ts` で Web `seibanAccentPalette` と同型24色を再実装）。
 - **2026-05-21 納期表示修正（`fix/signage-leader-order-due-date-from-prisma-date`）**: `listProductionScheduleRows` の **`Date` 型** `dueDate` / `plannedEndDate` を **`scheduleDateToIsoDateString`（`YYYY-MM-DD`）** に正規化してから `formatDueDateSignage`。**`String(Date)` によるロケール文字列化**が原因で全行 **`—`** になっていた回帰を修正。
 - **2026-05-21 コンパクト＋未完のみ（`feat/signage-leader-order-cards-compact-incomplete`）**: カード内 **工順・顧客名を非表示**、**機種名10文字上限**（`LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS`）、metrics/tokens で **コンパクト化**。**表示行は未完のみ**（`filterLeaderBoardRowsIncompleteForSignage`・完了行は従来の薄表示から **完全非表示**へ）。フッタチップ解決は **全行**入力のまま（表示行のみフィルタ）。
 - **2026-05-21 5列×2段・最大/既定10（`feat/signage-leader-order-cards-5x2-grid-10`）**: `layout-contracts.ts` で **5×2・容量10**。Zod・管理 `SignageSchedulesPage` の **max/既定10**。**既存 `cardsPerPage: 8` 保存スケジュールは8枚のまま**（空き2枠）。カード幅は列数に応じて自動縮小（フォント・行内容は不変）。
+- **2026-05-21 ヘッダ加工機名・全文1行（`a2f9a2c5`）**: 5×2 本番後の **`…` 省略回帰**を修正。旧 **`computeLeaderOrderHeaderTruncation` + `truncateChars`** を廃止し、**加工機名は全文・1行**（折り返し禁止）。**現場目視 OK**。
 
 **代表ファイル**:
 - `apps/api/src/services/signage/signage.renderer.ts`（分岐 `kiosk_leader_order_cards`）
@@ -180,6 +181,8 @@ update-frequency: medium
 **本番デプロイ（2026-04-08・ブランチ `feat/signage-leader-order-4x8-grid-solid`）**: 初回スロット導入後の追補。**仕様**: `cardsPerPage` / 管理 UI / Zod の **`max 8`** 統一、JPEG SVG 生成の **モジュール分割**（挙動は 4 列×2 段・ページ送りのまま）。**手順**: [deployment.md](../../guides/deployment.md) どおり **`RASPI_SERVER_HOST`**・**`--limit raspberrypi5`**・**`--detach --follow`**（対象 **1 台のみ**・Pi4/Pi3 は `no hosts matched`）。**Detach Run ID**: `20260408-073202-31994`。**`PLAY RECAP`**: `raspberrypi5` **`failed=0`**・リモート **`exit=0`**。**トラブル無し**（本記録時点）。
 
 **本番デプロイ（2026-04-08・ブランチ `feat/signage-leader-order-readability-solid`）**: **工場視認性**（タイポ拡大・1行ヘッダ・高コントラスト）と **SOLID 分割**（`header` / `schedule-row` / `layout-tokens`・`leader-order-cards-svg-header.test.ts`）。**手順**: [deployment.md](../../guides/deployment.md) どおり **`RASPI_SERVER_HOST`**・**`--limit raspberrypi5`**・**`--detach --follow`**（**1 台のみ**・Pi4/Pi3 は `no hosts matched`）。**Detach Run ID**: `20260408-083856-28270`。**`PLAY RECAP`**: `raspberrypi5` **`failed=0`**・リモート **`exit=0`**。**トラブル無し**（本記録時点）。**`main` マージ**: [PR #98](https://github.com/denkoushi/RaspberryPiSystem_002/pull/98)。
+
+**本番デプロイ（2026-05-21・`main` `a2f9a2c5`・ヘッダ加工機名全文）**: **API のみ**。**対象**: **`raspberrypi5` のみ**。**手順**: [deployment.md](../../guides/deployment.md#signage-leader-order-header-full-machine-name-2026-05-21)。**Detach**: `20260521-134013-4448`（**`failed=0`**）。**Phase12**: **43/0/0**（約 **46s**）。**現場**: 加工機名 **`…` なし・1行全文 OK**。
 
 **本番デプロイ（2026-05-21・ブランチ `feat/signage-leader-order-cards-5x2-grid-10`）**: **5列×2段・最大/既定10**（API + 管理 Web）。**対象**: **`raspberrypi5` のみ**。**手順**: [deployment.md](../../guides/deployment.md#signage-leader-order-cards-5x2-grid-10-2026-05-21)。**代表**: **`0fa2d065`**。**CI**: **`26204469250` success**。**Detach**: `20260521-131417-25249`（**`ok=134` `changed=4` `failed=0`**）。**Phase12**: **43/0/0**（約 **28s**）。**`main` マージ**: [PR #314](https://github.com/denkoushi/RaspberryPiSystem_002/pull/314)（squash **`3e37248f`**）。
 
@@ -197,6 +200,8 @@ update-frequency: medium
 - **`cardsPerPage` を 10 にしたが警告ログが出る**: 保存済みスケジュールが旧上限のまま、または Pi5 API が未更新の場合、**再保存**または **`layoutConfig.cardsPerPage` を 1〜10 で整合**。[`signage.renderer.ts`](../../../apps/api/src/services/signage/signage.renderer.ts) は契約外値で **warn**（表示は cap 側に寄せる）。
 - **4列のまま・管理画面の上限が8**: **`feat/signage-leader-order-cards-5x2-grid-10`**（**`0fa2d065` 以降**）未反映。Pi5 **api+web** ref とブラウザキャッシュを確認。
 - **8枚しか出ない（10にしたい）**: スケジュール保存値が **`cardsPerPage: 8`** のまま（後方互換）。管理画面で **10 に再保存**。
+- **ヘッダ加工機名が `…` で切れる**: **`a2f9a2c5` 以前**は `computeLeaderOrderHeaderTruncation` が日本語名を cap。**`a2f9a2c5` 以降の Pi5 api** を確認。5×2 直後に報告された現象 — **本 fix で解消**（現場 OK）。
+- **ヘッダを折り返したい**: **現仕様は折り返し禁止**（1行全文）。要望があれば別 ADR。
 - **見た目の微調整だけしたい**: 文字サイズ・枠線・色は **`leader-order-cards-svg-layout-tokens.ts`** と **`leader-order-cards-svg-theme.ts`** を優先（描画モジュールへの魔法数散在を避ける）。
 - **デザインの目安**: 静的プレビュー [signage-leader-order-cards-kiosk-aligned-preview.html](../../design-previews/signage-leader-order-cards-kiosk-aligned-preview.html)（**コンパクト＋未完のみ**・**2026-05-21 本番反映済み**）。旧レイアウトは [signage-leader-order-cards-preview.html](../../design-previews/signage-leader-order-cards-preview.html)。
 - **完了行が薄く残る（2026-05-21 キオスク整合直後）**: **`feat/signage-leader-order-cards-compact-incomplete`**（**`bdc25afb` 以降**）で **非表示**に変更。Pi5 未更新なら opacity 0.52 の旧挙動のまま。
@@ -207,7 +212,7 @@ update-frequency: medium
 - **左縁色・行下チップが無い**: 旧 JPEG キャッシュまたはスケジュール未再描画 → `slideIntervalSeconds` 待ち・`SIGNAGE_RENDER_DIR`・`GET /api/signage/content` の `layoutConfig.type === 'kiosk_leader_order_cards'` を確認。
 - **行が詰まりすぎ／切れる**: 動的行高は `leader-order-cards-svg-schedule-row.ts` と `layout-tokens`。**チップ数**は `buildLeaderboardFooterChipsByPartKeyForScheduleRows`（キオスク順位ボードと同契約）に依存。
 
-**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・初回〜4×8〜readability〜キオスク整合〜コンパクト＋未完〜納期 Date 正規化〜5×2・max10 2026-05-21）・Phase12 実機検証（PASS 43/0/0）記録済み**
+**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・初回〜4×8〜readability〜キオスク整合〜コンパクト＋未完〜納期 Date 正規化〜5×2・max10〜ヘッダ加工機名全文 2026-05-21）・Phase12 + 現場目視 OK**
 
 ---
 
