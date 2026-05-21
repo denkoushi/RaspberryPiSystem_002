@@ -13,7 +13,7 @@ import {
   chunkLeaderboardRowIdsForHydrate,
   normalizeLeaderboardDisplayRowIdScope
 } from './leaderboard-display-row-scope.js';
-import type { LeaderboardScheduleRowSql } from './leaderboard-row-selection.service.js';
+import type { LeaderboardScheduleRowSql } from './leaderboard-schedule-row.types.js';
 
 /**
  * 単一チャンク（長さ <= LEADERBOARD_HYDRATE_SQL_BATCH_MAX）向け hydrate。

@@ -1,40 +1,28 @@
 import { Prisma } from '@prisma/client';
 
-import { prisma } from '../../../lib/prisma.js';
 import {
-  COMPLETED_PROGRESS_VALUE,
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
 } from '../constants.js';
 import {
-  buildFkojunstProductionScheduleListRowDataFkojunstSql,
   buildFkojunstProductionScheduleListVisibilityWhereSql,
 } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
-import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule-effective-completion.sql.js';
-import { buildLeaderboardGlobalRankScalarSql } from './leaderboard-global-rank-scalar.sql.js';
 import {
   computeLeaderboardShellFillerBudget
 } from './leaderboard-shell-filler-budget.js';
+import {
+  computeLeaderboardShellPriorityFetchPlan,
+  resolveLeaderboardShellSkipExpansionAfterManual,
+  trimLeaderboardShellManualProbeRows,
+} from './leaderboard-shell-priority-fetch-policy.js';
+import { buildLeaderboardShellRankJoinContext } from './leaderboard-shell-rank-join.sql.js';
+import {
+  buildLeaderboardShellFillerOrderBy,
+  buildLeaderboardShellManualOrderBy,
+} from './leaderboard-shell-row-projection.sql.js';
+import { queryLeaderboardShellScheduleRows } from './leaderboard-shell-row-query.sql.js';
+import type { LeaderboardScheduleRowSql } from './leaderboard-schedule-row.types.js';
 
-/**
- * `listProductionScheduleRows` と同一形状（enrich 前）の行。
- * responseProfile=leaderboard 専用の優先取得で使用する。
- */
-export type LeaderboardScheduleRowSql = {
-  id: string;
-  seibanJoinKey: string | null;
-  occurredAt: Date;
-  rowData: Prisma.JsonValue;
-  processingOrder: number | null;
-  globalRank: number | null;
-  note: string | null;
-  processingType: string | null;
-  dueDate: Date | null;
-  plannedQuantity: number | null;
-  plannedStartDate: Date | null;
-  plannedEndDate: Date | null;
-};
-
-const dueSortExpr = Prisma.sql`COALESCE("n"."dueDate", "supplement"."plannedEndDate")`;
+export type { LeaderboardScheduleRowSql } from './leaderboard-schedule-row.types.js';
 
 function readFseibanFromRow(row: LeaderboardScheduleRowSql): string {
   const data = (row.rowData ?? {}) as Record<string, unknown>;
@@ -44,7 +32,7 @@ function readFseibanFromRow(row: LeaderboardScheduleRowSql): string {
 
 export type LeaderboardShellPriorityContext = {
   commonWhere: Prisma.Sql;
-  processingOrderScalar: Prisma.Sql;
+  rankJoins: ReturnType<typeof buildLeaderboardShellRankJoinContext>;
   pSorted: LeaderboardScheduleRowSql[];
 };
 
@@ -59,6 +47,8 @@ async function buildLeaderboardShellPriorityContext(params: {
    * `false`: 展開しない（`resourceCd` 1件カードなど、カード単位で候補を独立させる）。
    */
   seibanExpansion?: boolean;
+  /** shell 初回 prefix のみ。manual LIMIT + expansion スキップに使用 */
+  prefixLimit?: number;
 }): Promise<LeaderboardShellPriorityContext> {
   const {
     leaderboardMaterializedBaseWhere,
@@ -66,73 +56,21 @@ async function buildLeaderboardShellPriorityContext(params: {
     expansionWhere,
     locationKey,
     siteScopedGlobalRankLocation,
-    seibanExpansion = true
+    seibanExpansion = true,
+    prefixLimit
   } = params;
 
   const visibilitySql = buildFkojunstProductionScheduleListVisibilityWhereSql();
   const commonWhere = Prisma.sql`${leaderboardMaterializedBaseWhere} ${queryWhere} ${visibilitySql}`;
+  const rankJoins = buildLeaderboardShellRankJoinContext({ locationKey, siteScopedGlobalRankLocation });
+  const fetchPlan = computeLeaderboardShellPriorityFetchPlan({ prefixLimit });
 
-  const processingOrderScalar = Prisma.sql`(
-    SELECT "orderNumber"
-    FROM "ProductionScheduleOrderAssignment"
-    WHERE "csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND (
-        "location" = ${locationKey}
-        OR "siteKey" = ${locationKey}
-      )
-    ORDER BY
-      CASE WHEN "location" = ${locationKey} THEN 0 ELSE 1 END ASC,
-      "updatedAt" DESC
-    LIMIT 1
-  )`;
+  const manualLimitSql =
+    fetchPlan.manualSqlLimit != null
+      ? Prisma.sql`LIMIT ${fetchPlan.manualSqlLimit}`
+      : Prisma.empty;
 
-  const manualRows = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
-    SELECT
-      "CsvDashboardRow"."id",
-      NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
-      "CsvDashboardRow"."occurredAt",
-      jsonb_build_object(
-        'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',
-        'FSEIBAN', "CsvDashboardRow"."rowData"->>'FSEIBAN',
-        'FHINCD', "CsvDashboardRow"."rowData"->>'FHINCD',
-        'FHINMEI', "CsvDashboardRow"."rowData"->>'FHINMEI',
-        'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
-        'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
-        'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
-        'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
-        'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
-      ) AS "rowData",
-      ${processingOrderScalar} AS "processingOrder",
-      ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
-      NULLIF(TRIM("n"."note"), '') AS "note",
-      COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
-      "n"."dueDate" AS "dueDate",
-      "supplement"."plannedQuantity" AS "plannedQuantity",
-      "supplement"."plannedStartDate" AS "plannedStartDate",
-      "supplement"."plannedEndDate" AS "plannedEndDate"
-    FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleProgress" AS "p"
-      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
-      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleRowNote" AS "n"
-      ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
-      ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
-    LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
-      ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
-      ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${commonWhere}
+  const manualWhere = Prisma.sql`${commonWhere}
       AND EXISTS (
         SELECT 1
         FROM "ProductionScheduleOrderAssignment" AS "ord_m"
@@ -142,18 +80,24 @@ async function buildLeaderboardShellPriorityContext(params: {
             "ord_m"."location" = ${locationKey}
             OR "ord_m"."siteKey" = ${locationKey}
           )
-      )
-    ORDER BY
-      ${processingOrderScalar} ASC NULLS LAST,
-      ${dueSortExpr} ASC NULLS LAST,
-      ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
-      ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
-      (CASE
-        WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
-        ELSE NULL
-      END) ASC NULLS LAST,
-      ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
-  `;
+      )`;
+
+  const manualRowsRaw = await queryLeaderboardShellScheduleRows({
+    rankJoins,
+    whereSql: manualWhere,
+    orderBySql: buildLeaderboardShellManualOrderBy(rankJoins),
+    limitSql: manualLimitSql
+  });
+
+  const skipExpansion = resolveLeaderboardShellSkipExpansionAfterManual({
+    prefixLimit,
+    manualRowCount: manualRowsRaw.length
+  });
+
+  const manualRows = trimLeaderboardShellManualProbeRows({
+    prefixLimit,
+    rows: manualRowsRaw
+  });
 
   const seibanSet = new Set<string>();
   for (const row of manualRows) {
@@ -166,70 +110,21 @@ async function buildLeaderboardShellPriorityContext(params: {
     idToRow.set(r.id, r);
   }
 
-  if (seibanExpansion && seibanSet.size > 0) {
+  if (seibanExpansion && !skipExpansion && seibanSet.size > 0) {
     const seibanList = Array.from(seibanSet);
     const seibanCondition = Prisma.sql`NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') IN (${Prisma.join(
       seibanList.map((s) => Prisma.sql`${s}`)
     )})`;
 
-    const expansionRows = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
-      SELECT
-        "CsvDashboardRow"."id",
-        NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
-        "CsvDashboardRow"."occurredAt",
-        jsonb_build_object(
-          'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',
-          'FSEIBAN', "CsvDashboardRow"."rowData"->>'FSEIBAN',
-          'FHINCD', "CsvDashboardRow"."rowData"->>'FHINCD',
-          'FHINMEI', "CsvDashboardRow"."rowData"->>'FHINMEI',
-          'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
-          'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
-          'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
-          'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
-          'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
-        ) AS "rowData",
-        ${processingOrderScalar} AS "processingOrder",
-        ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
-        NULLIF(TRIM("n"."note"), '') AS "note",
-        COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
-        "n"."dueDate" AS "dueDate",
-        "supplement"."plannedQuantity" AS "plannedQuantity",
-        "supplement"."plannedStartDate" AS "plannedStartDate",
-        "supplement"."plannedEndDate" AS "plannedEndDate"
-      FROM "CsvDashboardRow"
-      LEFT JOIN "ProductionScheduleProgress" AS "p"
-        ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
-        AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
-        ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
-        AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      LEFT JOIN "ProductionScheduleRowNote" AS "n"
-        ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-        AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
-        ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
-      LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
-        ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
-        AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-        ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-        AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
-        ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
-        AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      WHERE ${leaderboardMaterializedBaseWhere} ${expansionWhere} ${visibilitySql}
-        AND ${seibanCondition}
-      ORDER BY
-        ${dueSortExpr} ASC NULLS LAST,
-        ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
-        ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
-        (CASE
-          WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
-          ELSE NULL
-        END) ASC NULLS LAST,
-        ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
-    `;
+    const expansionWhereSql = Prisma.sql`${leaderboardMaterializedBaseWhere} ${expansionWhere} ${visibilitySql}
+        AND ${seibanCondition}`;
+
+    const expansionRows = await queryLeaderboardShellScheduleRows({
+      rankJoins,
+      whereSql: expansionWhereSql,
+      orderBySql: buildLeaderboardShellFillerOrderBy()
+    });
+
     for (const r of expansionRows) {
       if (!idToRow.has(r.id)) {
         idToRow.set(r.id, r);
@@ -238,28 +133,18 @@ async function buildLeaderboardShellPriorityContext(params: {
   }
 
   const pSorted = sortLeaderboardFetchRows(Array.from(idToRow.values()));
-  return { commonWhere, processingOrderScalar, pSorted };
+  return { commonWhere, rankJoins, pSorted };
 }
 
 async function queryLeaderboardShellFillerRows(params: {
   commonWhere: Prisma.Sql;
-  processingOrderScalar: Prisma.Sql;
-  locationKey: string;
-  siteScopedGlobalRankLocation: string;
+  rankJoins: ReturnType<typeof buildLeaderboardShellRankJoinContext>;
   pSorted: LeaderboardScheduleRowSql[];
   takeLimit?: number;
   /** priority 集合外で SQL から除く id（返却済み行・既取得フィラーなど） */
   additionalExcludeIds?: readonly string[];
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const {
-    commonWhere,
-    processingOrderScalar,
-    locationKey,
-    siteScopedGlobalRankLocation,
-    pSorted,
-    takeLimit,
-    additionalExcludeIds
-  } = params;
+  const { commonWhere, rankJoins, pSorted, takeLimit, additionalExcludeIds } = params;
 
   const priorityIdParts = pSorted.map((r) => Prisma.sql`${r.id}`);
   const priorityExcludeSql =
@@ -282,68 +167,16 @@ async function queryLeaderboardShellFillerRows(params: {
   const takeLimitSql =
     takeLimit != null ? Prisma.sql`LIMIT ${Math.max(1, Math.floor(takeLimit))}` : Prisma.empty;
 
-  const raw = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`
-    SELECT
-      "CsvDashboardRow"."id",
-      NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
-      "CsvDashboardRow"."occurredAt",
-      jsonb_build_object(
-        'ProductNo', "CsvDashboardRow"."rowData"->>'ProductNo',
-        'FSEIBAN', "CsvDashboardRow"."rowData"->>'FSEIBAN',
-        'FHINCD', "CsvDashboardRow"."rowData"->>'FHINCD',
-        'FHINMEI', "CsvDashboardRow"."rowData"->>'FHINMEI',
-        'FSIGENCD', "CsvDashboardRow"."rowData"->>'FSIGENCD',
-        'FSIGENSHOYORYO', "CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO',
-        'FKOJUN', "CsvDashboardRow"."rowData"->>'FKOJUN',
-        'FKOJUNST', ( ${buildFkojunstProductionScheduleListRowDataFkojunstSql()} ),
-        'progress', (CASE WHEN ${buildProductionScheduleEffectiveCompletedSql()} THEN ${COMPLETED_PROGRESS_VALUE} ELSE '' END)
-      ) AS "rowData",
-      ${processingOrderScalar} AS "processingOrder",
-      ${buildLeaderboardGlobalRankScalarSql({ siteScopedGlobalRankLocation, locationKey })} AS "globalRank",
-      NULLIF(TRIM("n"."note"), '') AS "note",
-      COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
-      "n"."dueDate" AS "dueDate",
-      "supplement"."plannedQuantity" AS "plannedQuantity",
-      "supplement"."plannedStartDate" AS "plannedStartDate",
-      "supplement"."plannedEndDate" AS "plannedEndDate"
-    FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleProgress" AS "p"
-      ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
-      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleRowNote" AS "n"
-      ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
-      ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
-    LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
-      ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
-      ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkst"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
-      ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    WHERE ${commonWhere}
+  const fillerWhere = Prisma.sql`${commonWhere}
       ${priorityExcludeSql}
-      ${additionalExcludeSql}
-    ORDER BY
-      ${dueSortExpr} ASC NULLS LAST,
-      ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
-      ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
-      (CASE
-        WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^\\d+$' THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
-        ELSE NULL
-      END) ASC NULLS LAST,
-      ("CsvDashboardRow"."rowData"->>'FHINCD') ASC,
-      "CsvDashboardRow"."id"::text ASC
-    ${takeLimitSql}
-  `;
-  return raw ?? [];
+      ${additionalExcludeSql}`;
+
+  return queryLeaderboardShellScheduleRows({
+    rankJoins,
+    whereSql: fillerWhere,
+    orderBySql: buildLeaderboardShellFillerOrderBy(),
+    limitSql: takeLimitSql
+  });
 }
 
 /**
@@ -441,7 +274,10 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
   prefixLimit: number;
 }): Promise<{ mergedPrefix: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
   const limit = Math.max(1, Math.floor(params.prefixLimit));
-  const ctx = await buildLeaderboardShellPriorityContext(params);
+  const ctx = await buildLeaderboardShellPriorityContext({
+    ...params,
+    prefixLimit: limit
+  });
 
   if (ctx.pSorted.length >= limit) {
     if (ctx.pSorted.length > limit) {
@@ -453,9 +289,7 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
 
     const fillerProbe = await queryLeaderboardShellFillerRows({
       commonWhere: ctx.commonWhere,
-      processingOrderScalar: ctx.processingOrderScalar,
-      locationKey: params.locationKey,
-      siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+      rankJoins: ctx.rankJoins,
       pSorted: ctx.pSorted,
       takeLimit: 1
     });
@@ -467,9 +301,7 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
 
   const { rows, mergeFullyCompleted } = await takeLeaderboardShellMergedRowsAfterExclude({
     commonWhere: ctx.commonWhere,
-    processingOrderScalar: ctx.processingOrderScalar,
-    locationKey: params.locationKey,
-    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+    rankJoins: ctx.rankJoins,
     pSorted: ctx.pSorted,
     excludeRowIds: new Set(),
     takeCount: limit
@@ -492,9 +324,7 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
   const ctx = await buildLeaderboardShellPriorityContext(params);
   const fillerRows = await queryLeaderboardShellFillerRows({
     commonWhere: ctx.commonWhere,
-    processingOrderScalar: ctx.processingOrderScalar,
-    locationKey: params.locationKey,
-    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+    rankJoins: ctx.rankJoins,
     pSorted: ctx.pSorted
   });
   return mergeLeaderboardShellPriorityAndFillerFully(ctx.pSorted, fillerRows);
@@ -507,22 +337,12 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
  */
 export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
   commonWhere: Prisma.Sql;
-  processingOrderScalar: Prisma.Sql;
-  locationKey: string;
-  siteScopedGlobalRankLocation: string;
+  rankJoins: ReturnType<typeof buildLeaderboardShellRankJoinContext>;
   pSorted: LeaderboardScheduleRowSql[];
   excludeRowIds: ReadonlySet<string>;
   takeCount: number;
 }): Promise<{ rows: LeaderboardScheduleRowSql[]; mergeFullyCompleted: boolean }> {
-  const {
-    commonWhere,
-    processingOrderScalar,
-    locationKey,
-    siteScopedGlobalRankLocation,
-    pSorted,
-    excludeRowIds,
-    takeCount
-  } = params;
+  const { commonWhere, rankJoins, pSorted, excludeRowIds, takeCount } = params;
   const nTake = Math.max(0, Math.floor(takeCount));
   if (nTake === 0) return { rows: [], mergeFullyCompleted: true };
 
@@ -565,9 +385,7 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
 
     const batch = await queryLeaderboardShellFillerRows({
       commonWhere,
-      processingOrderScalar,
-      locationKey,
-      siteScopedGlobalRankLocation,
+      rankJoins,
       pSorted,
       takeLimit: batchTake,
       additionalExcludeIds: excludeForSql.length > 0 ? excludeForSql : undefined
@@ -685,9 +503,7 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
   const exclude = new Set(params.excludeRowIds.map((id) => id.trim()).filter((id) => id.length > 0));
   return takeLeaderboardShellMergedRowsAfterExclude({
     commonWhere: ctx.commonWhere,
-    processingOrderScalar: ctx.processingOrderScalar,
-    locationKey: params.locationKey,
-    siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
+    rankJoins: ctx.rankJoins,
     pSorted: ctx.pSorted,
     excludeRowIds: exclude,
     takeCount: params.chunkSize
@@ -710,10 +526,9 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
   pageSize: number;
   seibanExpansion?: boolean;
 }): Promise<LeaderboardScheduleRowSql[]> {
-  const { locationKey, siteScopedGlobalRankLocation } = params;
   const pageSize = Math.max(1, params.pageSize);
 
-  const { commonWhere, processingOrderScalar, pSorted } = await buildLeaderboardShellPriorityContext(params);
+  const { commonWhere, rankJoins, pSorted } = await buildLeaderboardShellPriorityContext(params);
 
   if (pSorted.length >= pageSize) {
     return pSorted;
@@ -721,9 +536,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
 
   const { rows } = await takeLeaderboardShellMergedRowsAfterExclude({
     commonWhere,
-    processingOrderScalar,
-    locationKey,
-    siteScopedGlobalRankLocation,
+    rankJoins,
     pSorted,
     excludeRowIds: new Set(),
     takeCount: pageSize
