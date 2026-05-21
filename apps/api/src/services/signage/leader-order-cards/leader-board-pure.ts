@@ -1,5 +1,8 @@
 import { COMPLETED_PROGRESS_VALUE } from '../../production-schedule/constants.js';
 import { normalizeProductionScheduleResourceCd } from '../../production-schedule/policies/resource-category-policy.service.js';
+import { resolveSeibanAccentHexForSignage } from './leader-order-seiban-accent-palette.js';
+
+import type { LeaderboardPartFooterProcessItem } from '../../production-schedule/leaderboard/leaderboard-part-footer-processes.service.js';
 
 /** `listProductionScheduleRows` の1行に相当（このモジュールへの入口） */
 export type SignageScheduleRowInput = {
@@ -11,10 +14,13 @@ export type SignageScheduleRowInput = {
   plannedQuantity: number | null;
   plannedEndDate: Date | null;
   resolvedMachineName?: string | null;
+  seibanJoinKey?: string | null;
+  customerName?: string | null;
 };
 
 export type SignageLeaderBoardRow = {
   id: string;
+  seibanJoinKey: string;
   resourceCd: string;
   dueDate: string | null;
   plannedEndDate: string | null;
@@ -24,6 +30,7 @@ export type SignageLeaderBoardRow = {
   fkojun: string;
   fhincd: string;
   fhinmei: string;
+  customerName: string;
   machineName: string;
   machineTypeCode: string;
   plannedQuantity: number | null;
@@ -32,7 +39,9 @@ export type SignageLeaderBoardRow = {
 };
 
 export type SignageLeaderOrderRowPresentation = {
-  machinePartLine: string;
+  clusterSegments: string[];
+  customerLine: string;
+  machineTypeNameLine: string;
   partNameLine: string;
   quantityInlineJa: string | null;
 };
@@ -41,10 +50,15 @@ export type SignageLeaderOrderSvgRow = {
   fkojun: string;
   dueLabel: string;
   manualDue: boolean;
-  machinePartLine: string;
+  fseiban: string;
+  seibanAccentHex: string | undefined;
+  clusterSegments: string[];
+  customerLine: string;
+  machineTypeNameLine: string;
   partNameLine: string;
   quantityInlineJa: string | null;
   isCompleted: boolean;
+  footerChips: readonly LeaderboardPartFooterProcessItem[];
 };
 
 const DUE_DATE_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -221,9 +235,16 @@ export function normalizeLeaderBoardRowFromScheduleRow(row: SignageScheduleRowIn
       : null;
   const resolvedMachineName =
     typeof row.resolvedMachineName === 'string' ? row.resolvedMachineName.trim() : '';
+  const seibanJoinKeyRaw =
+    typeof row.seibanJoinKey === 'string' && row.seibanJoinKey.trim().length > 0
+      ? row.seibanJoinKey.trim()
+      : strField(data, 'FSEIBAN');
+  const customerName =
+    typeof row.customerName === 'string' ? row.customerName.trim() : '';
 
   return {
     id: row.id,
+    seibanJoinKey: seibanJoinKeyRaw,
     resourceCd: normalizeProductionScheduleResourceCd(resourceCd),
     dueDate,
     plannedEndDate: plannedEnd,
@@ -233,6 +254,7 @@ export function normalizeLeaderBoardRowFromScheduleRow(row: SignageScheduleRowIn
     fkojun: strField(data, 'FKOJUN'),
     fhincd: strField(data, 'FHINCD'),
     fhinmei: strField(data, 'FHINMEI'),
+    customerName,
     machineName: resolvedMachineName,
     machineTypeCode: resolveMachineTypeCodeFromRowData(data),
     plannedQuantity,
@@ -293,32 +315,52 @@ export function sortLeaderBoardRowsForDisplaySignage(rows: readonly SignageLeade
 export function presentLeaderOrderRowSignage(row: SignageLeaderBoardRow): SignageLeaderOrderRowPresentation {
   const machineNameNormalized = normalizeMachineName(row.machineName);
   const fseiban = String(row.fseiban ?? '').trim();
-  const machinePartLine = joinMiddleDot([
-    row.machineTypeCode,
-    machineNameNormalized,
-    fseiban.length > 0 ? fseiban : '',
-    row.fhincd.length > 0 ? row.fhincd : '',
-  ]);
+
+  const clusterSegments: string[] = [];
+  if (fseiban.length > 0) {
+    clusterSegments.push(fseiban);
+  }
+  if (row.fhincd.length > 0) {
+    clusterSegments.push(row.fhincd.trim());
+  }
+
+  const machineTypeNameLine = joinMiddleDot([row.machineTypeCode, machineNameNormalized]);
   const partNameLine = row.fhinmei.trim();
+  const customerLine = row.customerName.trim();
+
   return {
-    machinePartLine,
+    clusterSegments,
+    customerLine,
+    machineTypeNameLine,
     partNameLine,
     quantityInlineJa: formatPlannedQuantityInlineJa(row.plannedQuantity),
   };
 }
 
-export function toLeaderOrderRowSvgModels(rows: SignageLeaderBoardRow[]): SignageLeaderOrderSvgRow[] {
+export function toLeaderOrderRowSvgModels(
+  rows: SignageLeaderBoardRow[],
+  footerChipsByPartKey: Readonly<Record<string, readonly LeaderboardPartFooterProcessItem[]>> | undefined,
+  buildPartKey: (row: SignageLeaderBoardRow) => string
+): SignageLeaderOrderSvgRow[] {
   return rows.map((row) => {
     const pres = presentLeaderOrderRowSignage(row);
     const dueLabel = formatDueDateSignage(row.displayDue) || '—';
+    const partKey = buildPartKey(row);
+    const footerChips = footerChipsByPartKey?.[partKey] ?? [];
+    const fseiban = row.fseiban.trim();
     return {
       fkojun: row.fkojun.trim() || '—',
       dueLabel,
       manualDue: isManualDueDateSet(row.dueDate),
-      machinePartLine: pres.machinePartLine,
+      fseiban,
+      seibanAccentHex: resolveSeibanAccentHexForSignage(fseiban),
+      clusterSegments: pres.clusterSegments,
+      customerLine: pres.customerLine,
+      machineTypeNameLine: pres.machineTypeNameLine,
       partNameLine: pres.partNameLine,
       quantityInlineJa: pres.quantityInlineJa,
       isCompleted: row.isCompleted,
+      footerChips,
     };
   });
 }

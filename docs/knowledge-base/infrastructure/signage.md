@@ -160,7 +160,7 @@ update-frequency: medium
 
 **概要**:
 - FULL スロット種別 **`kiosk_leader_order_cards`**。`/admin/signage/schedules` で **`deviceScopeKey`**（キオスクと同じスコープ）と **`resourceCds`**（1〜32件・表示順）を設定。
-- データは生産スケジュール一覧 API と同契約の **`listProductionScheduleRows`**（`allowResourceOnly: true`・資源CDフィルタ）から取得。行の並び・表示整形はキオスク **`LeaderOrderResourceCard`** に寄せた純関数（`leader-board-pure.ts`）。**チェック・手動順位・備考アイコンは JPEG には含めない**（閲覧専用）。
+- データは生産スケジュール一覧 API と同契約の **`listProductionScheduleRows`**（`allowResourceOnly: true`・資源CDフィルタ）から取得。行の並び・表示整形はキオスク **`LeaderOrderResourceCard`** / **`LeaderOrderResourceRow`** に寄せた純関数（`leader-board-pure.ts`）。**製番左縁24色ハッシュ**（`leader-order-seiban-accent-palette.ts`）・**クラスタ行（製番·品目·個数）**・**行下資源チップ**（`buildLeaderboardFooterChipsByPartKeyForScheduleRows`・順位ボードと同契約）。**チェック・手動順位・備考アイコンは JPEG には含めない**（閲覧専用）。
 - **4列×2段**（最大 **8** 資源カード/ページ）。超過分は **`slideIntervalSeconds`**（既定 30s）でページ送り（`signage-slide-rotation.ts`）。グリッドの外周・カード間ギャップは横幅を活かすよう詰めている（`layout-contracts`・`build-leader-order-cards-svg`）。
 - 契約: `apps/api/src/services/signage/signage-layout.types.ts`、`apps/api/src/routes/signage/schemas.ts`。描画: `apps/api/src/services/signage/leader-order-cards/`（`build-leader-order-cards-svg.ts`・**`leader-order-cards-svg-header.ts`**（1行ヘッダ・`computeLeaderOrderHeaderTruncation`）・**`leader-order-cards-svg-schedule-row.ts`**（製番行）・**`leader-order-cards-svg-layout-tokens.ts`**（文字幅・ストローク係数の単一情報源）・`theme` / `metrics` / `leader-order-cards-svg-card.ts`（組み立て）/ `empty-slot` / `text` 等）。`cardsPerPage` / Zod は **1〜8**、レンダラーは超過時 **warn**。**工場視認性**: タイポ拡大・ヘッダは **資源CD + ` · ` + 日本語名** を1 `<text>`（`<tspan>`）、色は `leader-order-cards-svg-theme.ts` で高コントラスト寄せ。Web `/signage` は **`getSignageCurrentImageUrl` 全画面**（`kiosk_progress_overview` と同型）。Pi3 `/signage-lite` も同一 JPEG 経路。
 
@@ -184,7 +184,7 @@ update-frequency: medium
 - **管理画面で資源CDを保存したが JPEG が古い**: **`GET /api/signage/content`** でスケジュールの `layoutConfig` に `kiosk_leader_order_cards` と `resourceCds` が載っているか確認。`slideIntervalSeconds` 待ちのあと、Pi5 上の **`SIGNAGE_RENDER_DIR`** と **`signage-lite`** のポーリングを確認。
 - **`cardsPerPage` を 8 にしたが警告ログが出る**: 保存済みスケジュールが旧上限のままの場合、**再保存**または **`layoutConfig.cardsPerPage` を 1〜8 で整合**。[`signage.renderer.ts`](../../../apps/api/src/services/signage/signage.renderer.ts) は契約外値で **warn**（表示は cap 側に寄せる）。
 - **見た目の微調整だけしたい**: 文字サイズ・枠線・色は **`leader-order-cards-svg-layout-tokens.ts`** と **`leader-order-cards-svg-theme.ts`** を優先（描画モジュールへの魔法数散在を避ける）。
-- **デザインの目安**: 静的プレビュー [signage-leader-order-cards-preview.html](../../design-previews/signage-leader-order-cards-preview.html)（本番 JPEG と同一ロジックではないがレイアウトの雰囲気確認用）。
+- **デザインの目安**: 静的プレビュー [signage-leader-order-cards-kiosk-aligned-preview.html](../../design-previews/signage-leader-order-cards-kiosk-aligned-preview.html)（キオスク最新準拠の提案・実装ターゲット）。旧レイアウトは [signage-leader-order-cards-preview.html](../../design-previews/signage-leader-order-cards-preview.html)。
 
 **解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・初回〜4×8〜readability まで）・Phase12 実機検証（PASS 43/0/0）記録済み**（2026-04-08 更新）
 

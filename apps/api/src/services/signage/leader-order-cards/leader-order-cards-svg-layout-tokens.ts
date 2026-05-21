@@ -16,11 +16,10 @@ export const LEADER_ORDER_SVG_AVG_CHAR_WIDTH_BODY = 0.55;
 /** 小さめ行の折り返し幅 */
 export const LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL = 0.52;
 
-export const LEADER_ORDER_SVG_CARD_OUTER_STROKE_WIDTH = 2.25;
-export const LEADER_ORDER_SVG_ROW_STROKE_WIDTH = 1.5;
-export const LEADER_ORDER_SVG_ROW_ACCENT_BAR_WIDTH_SCALE = 5;
-export const LEADER_ORDER_SVG_BADGE_STROKE_WIDTH = 1.5;
-export const LEADER_ORDER_SVG_HEADER_REGION_STROKE_WIDTH = 1;
+export const LEADER_ORDER_SVG_CARD_OUTER_STROKE_WIDTH = 1;
+export const LEADER_ORDER_SVG_ROW_STROKE_WIDTH = 1;
+/** 製番左縁（`border-l-4` 相当・px） */
+export const LEADER_ORDER_SVG_ROW_SEIBAN_ACCENT_WIDTH_SCALE = 4;
 
 /** ヘッダ1行テキストのベースライン: cardPad + titleFs × factor（y0 からの相対ではなく card 内側上端から） */
 export const LEADER_ORDER_SVG_HEADER_BASELINE_TITLE_FACTOR = 0.88;
