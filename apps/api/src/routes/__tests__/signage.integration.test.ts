@@ -660,6 +660,56 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
     expect(response.rawPayload).toBeInstanceOf(Buffer);
   });
 
+  it('should accept kiosk_leader_order_cards cardsPerPage 10 in layoutConfig', async () => {
+    const scheduleResponse = await app.inject({
+      method: 'POST',
+      url: '/api/signage/schedules',
+      headers: { ...createAuthHeader(adminToken), 'Content-Type': 'application/json' },
+      payload: {
+        name: 'Test Schedule Kiosk Leader Order Cards 10',
+        contentType: 'TOOLS',
+        layoutConfig: {
+          layout: 'FULL',
+          slots: [
+            {
+              position: 'FULL',
+              kind: 'kiosk_leader_order_cards',
+              config: {
+                deviceScopeKey: 'integration-test-device-scope',
+                resourceCds: ['TESTRES1', 'TESTRES2'],
+                slideIntervalSeconds: 30,
+                cardsPerPage: 10,
+              },
+            },
+          ],
+        },
+        dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startTime: '00:00',
+        endTime: '23:59',
+        priority: 97,
+        enabled: true,
+      },
+    });
+
+    expect(scheduleResponse.statusCode).toBe(200);
+
+    const created = scheduleResponse.json() as {
+      schedule: {
+        id: string;
+        layoutConfig: {
+          layout: 'FULL';
+          slots: Array<{
+            position: 'FULL';
+            kind: 'kiosk_leader_order_cards';
+            config: { cardsPerPage?: number };
+          }>;
+        };
+      };
+    };
+
+    expect(created.schedule.layoutConfig.slots[0]?.config.cardsPerPage).toBe(10);
+  });
+
   it('should accept kiosk_progress_overview seibanPerPage 8 in layoutConfig', async () => {
     const scheduleResponse = await app.inject({
       method: 'POST',
