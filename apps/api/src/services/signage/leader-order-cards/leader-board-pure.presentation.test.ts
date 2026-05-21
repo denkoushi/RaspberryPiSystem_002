@@ -30,6 +30,15 @@ describe('presentLeaderOrderRowSignage', () => {
     expect(pres.machineTypeNameLine).toContain('XY');
     expect(pres.machineTypeNameLine).toContain('L300KP');
     expect(pres.partNameLine).toBe('ストッパー台 (1)');
-    expect(pres.customerLine).toBe('顧客A');
+    expect(pres.customerLine).toBe('');
+  });
+
+  it('truncates machine name to 10 characters for signage', () => {
+    const pres = presentLeaderOrderRowSignage({
+      ...baseRow(),
+      machineName: 'ABCDEFGHIJKLMNOP',
+      machineTypeCode: '',
+    });
+    expect(pres.machineTypeNameLine).toBe('ABCDEFGHI…');
   });
 });

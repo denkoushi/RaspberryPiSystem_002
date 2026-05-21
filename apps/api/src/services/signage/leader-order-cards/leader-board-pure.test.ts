@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  filterLeaderBoardRowsIncompleteForSignage,
   normalizeConfiguredResourceCds,
   sortLeaderBoardRowsForDisplaySignage,
   type SignageLeaderBoardRow,
@@ -39,5 +40,29 @@ describe('leader-board-pure', () => {
     };
     const sorted = sortLeaderBoardRowsForDisplaySignage([a, b]);
     expect(sorted.map((r) => r.id)).toEqual(['b', 'a']);
+  });
+
+  it('filterLeaderBoardRowsIncompleteForSignage keeps only incomplete rows', () => {
+    const incomplete: SignageLeaderBoardRow = {
+      id: 'a',
+      seibanJoinKey: 'S1',
+      resourceCd: 'X',
+      dueDate: null,
+      plannedEndDate: null,
+      displayDue: null,
+      fseiban: 'S1',
+      productNo: '1',
+      fkojun: '1',
+      fhincd: '',
+      fhinmei: '',
+      customerName: '',
+      machineName: '',
+      machineTypeCode: '',
+      plannedQuantity: null,
+      processingOrder: null,
+      isCompleted: false,
+    };
+    const complete = { ...incomplete, id: 'b', isCompleted: true };
+    expect(filterLeaderBoardRowsIncompleteForSignage([incomplete, complete])).toEqual([incomplete]);
   });
 });

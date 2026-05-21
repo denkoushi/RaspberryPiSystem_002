@@ -3,16 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>サイネージ順位ボード資源CDカード — キオスク最新準拠（提案）</title>
+  <title>サイネージ順位ボード資源CDカード — コンパクト（4×2）</title>
   <style>
     /**
-     * 参照（2026-05 時点）:
-     * - apps/web/.../LeaderOrderResourceCard.tsx
-     * - apps/web/.../LeaderOrderResourceRow.tsx
-     * - apps/web/.../LeaderOrderRowClusterLine.tsx
-     * - apps/web/.../seibanAccentPalette.ts（左縁24色）
-     * - apps/web/.../progressOverviewPresentation.ts（資源チップ）
-     * サイネージ FULL `kiosk_leader_order_cards` 向け。操作UI（完了・順位・備考）は非表示。
+     * コンパクト案（2026-05-21）:
+     * - 4列×2段（8資源カード）
+     * - 工順・顧客名は非表示
+     * - 機種名は10文字上限（超過は …）
+     * - 行ブロックを薄くしてカード内の表示件数を稼ぐ
      */
     :root {
       --bg-0: #020617;
@@ -29,7 +27,6 @@
       --chip-done-border: #94a3b8;
       --chip-done-bg: rgba(255, 255, 255, 0.1);
       --chip-done-text: rgba(255, 255, 255, 0.7);
-      /* seibanAccentPalette 先頭8色 → border-left */
       --accent-0: #fbbf24;
       --accent-1: #22d3ee;
       --accent-2: #fb7185;
@@ -56,7 +53,7 @@
     .stage {
       width: 100vw;
       height: 100vh;
-      padding: 8px;
+      padding: 6px;
       display: flex;
       flex-direction: column;
       min-height: 0;
@@ -64,17 +61,19 @@
 
     .badge-proposal {
       position: fixed;
-      top: 8px;
-      right: 10px;
+      top: 6px;
+      right: 8px;
       z-index: 2;
-      padding: 4px 10px;
+      padding: 3px 8px;
       border-radius: 6px;
       border: 1px solid rgba(34, 211, 238, 0.45);
       background: rgba(8, 47, 73, 0.85);
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       color: #a5f3fc;
       letter-spacing: 0.02em;
+      max-width: 42vw;
+      line-height: 1.35;
     }
 
     .grid {
@@ -83,20 +82,19 @@
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       grid-template-rows: repeat(2, 1fr);
-      gap: 6px;
+      gap: 5px;
     }
 
-    /* LeaderOrderResourceCard（選択リングなし・閲覧専用） */
     .resource-card {
       display: flex;
       flex-direction: column;
       min-height: 0;
-      border-radius: 8px;
+      border-radius: 6px;
       border: 1px solid var(--card-border);
       background: var(--card-bg);
-      padding: 8px;
-      font-size: 12px;
-      line-height: 1rem;
+      padding: 5px 6px;
+      font-size: 10px;
+      line-height: 1.2;
       overflow: hidden;
     }
 
@@ -105,23 +103,23 @@
       display: flex;
       flex-wrap: wrap;
       align-items: baseline;
-      column-gap: 8px;
-      row-gap: 2px;
-      margin-bottom: 6px;
-      padding: 0 2px;
+      column-gap: 6px;
+      row-gap: 1px;
+      margin-bottom: 4px;
+      padding: 0 1px;
     }
 
     .resource-cd {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: clamp(13px, 1.35vw, 17px);
+      font-size: clamp(11px, 1.1vw, 14px);
       font-weight: 500;
       letter-spacing: -0.02em;
       color: rgba(255, 255, 255, 0.95);
     }
 
     .resource-jp {
-      font-size: clamp(11px, 1.05vw, 13px);
-      line-height: 1.35;
+      font-size: clamp(9px, 0.9vw, 11px);
+      line-height: 1.25;
       color: rgba(255, 255, 255, 0.78);
       overflow-wrap: anywhere;
     }
@@ -131,17 +129,16 @@
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 3px;
       overflow: hidden;
     }
 
-    /* LeaderOrderResourceRow */
     .schedule-row {
-      border-radius: 4px;
+      border-radius: 3px;
       background: var(--row-bg);
-      padding: 4px 8px 4px 6px;
-      font-size: clamp(9px, 0.95vw, 11px);
-      border-left: 4px solid var(--accent-1);
+      padding: 3px 5px 3px 4px;
+      font-size: clamp(8px, 0.82vw, 10px);
+      border-left: 3px solid var(--accent-1);
     }
 
     .schedule-row.accent-0 { border-left-color: var(--accent-0); }
@@ -160,27 +157,17 @@
 
     .row-top {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 6px;
-      margin-bottom: 2px;
-    }
-
-    .fkojun {
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 1em;
-      color: rgba(255, 255, 255, 0.88);
+      justify-content: flex-end;
+      gap: 4px;
+      margin-bottom: 1px;
+      min-height: 0;
     }
 
     .due {
       flex-shrink: 0;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 0.92em;
+      font-size: 0.95em;
       color: var(--due-auto);
     }
 
@@ -193,9 +180,9 @@
       display: flex;
       flex-wrap: wrap;
       align-items: baseline;
-      gap: 0.2em 0.35em;
+      gap: 0.15em 0.3em;
       color: rgba(255, 255, 255, 0.8);
-      line-height: 1.35;
+      line-height: 1.25;
     }
 
     .cluster .sep {
@@ -205,7 +192,7 @@
 
     .part-name {
       color: rgba(255, 255, 255, 0.6);
-      line-height: 1.3;
+      line-height: 1.2;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -213,30 +200,32 @@
 
     .machine-line {
       color: rgba(255, 255, 255, 0.8);
-      line-height: 1.3;
+      line-height: 1.2;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.95em;
     }
 
     .footer-chips {
-      margin-top: 4px;
-      padding-top: 4px;
+      margin-top: 2px;
+      padding-top: 2px;
       border-top: 1px solid rgba(255, 255, 255, 0.1);
       display: flex;
       flex-wrap: nowrap;
-      gap: 4px;
+      gap: 3px;
       overflow-x: auto;
     }
 
     .chip {
       flex-shrink: 0;
-      border-radius: 4px;
+      border-radius: 3px;
       border: 1px solid var(--chip-active-border);
       background: var(--chip-active-bg);
       color: var(--chip-active-text);
-      padding: 2px 4px;
-      font-size: 9px;
+      padding: 1px 3px;
+      font-size: 8px;
       line-height: 1;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
@@ -250,7 +239,7 @@
     }
 
     .empty-slot {
-      border-radius: 8px;
+      border-radius: 6px;
       border: 1px dashed rgba(148, 163, 184, 0.22);
       background: rgba(15, 23, 42, 0.28);
       min-height: 0;
@@ -258,18 +247,17 @@
 
     .overflow-hint {
       margin-top: auto;
-      padding-top: 2px;
+      padding-top: 1px;
       text-align: right;
-      font-size: 9px;
+      font-size: 8px;
       color: rgba(148, 163, 184, 0.75);
     }
   </style>
 </head>
 <body>
-  <p class="badge-proposal" aria-hidden="true">実装ターゲット · キオスク最新準拠 · 4×2</p>
+  <p class="badge-proposal" aria-hidden="true">コンパクト案 · 4列×2 · 未完のみ · 工順/顧客名なし · 機種名10字</p>
   <div class="stage">
     <div class="grid">
-      <!-- 060 -->
       <article class="resource-card" aria-label="資源 060">
         <header class="card-head">
           <span class="resource-cd">060</span>
@@ -277,35 +265,42 @@
         </header>
         <div class="card-body">
           <section class="schedule-row accent-0">
-            <div class="row-top">
-              <span class="fkojun">010 / 切削</span>
-              <span class="due manual">1/6(火)</span>
-            </div>
+            <div class="row-top"><span class="due manual">1/6(火)</span></div>
             <div class="cluster">
               <span>BA1S1319</span><span class="sep">·</span><span>MD004433830</span><span class="sep">·</span><span>8個</span>
             </div>
             <div class="part-name">ストッパー台 (1)</div>
-            <div class="machine-line">L300KP · XY-2885274</div>
+            <div class="machine-line">L300KP · XY-28852…</div>
             <div class="footer-chips">
               <span class="chip">021</span><span class="chip">080</span><span class="chip done">502</span>
             </div>
           </section>
           <section class="schedule-row accent-1">
-            <div class="row-top">
-              <span class="fkojun">020 / 研削</span>
-              <span class="due">1/8(木)</span>
-            </div>
+            <div class="row-top"><span class="due">1/8(木)</span></div>
             <div class="cluster">
               <span>BA1S1319</span><span class="sep">·</span><span>MD004433831</span><span class="sep">·</span><span>8個</span>
             </div>
             <div class="part-name">シャフトA 外径仕上げ</div>
             <div class="machine-line">L300KP</div>
           </section>
-          <p class="overflow-hint">+3 件</p>
+          <section class="schedule-row accent-2">
+            <div class="row-top"><span class="due">1/9(金)</span></div>
+            <div class="cluster">
+              <span>BA1S1320</span><span class="sep">·</span><span>MD004433832</span>
+            </div>
+            <div class="part-name">カラー 内径</div>
+            <div class="machine-line">L300KP</div>
+          </section>
+          <section class="schedule-row accent-3">
+            <div class="row-top"><span class="due">1/10(土)</span></div>
+            <div class="cluster"><span>BA1S1321</span><span class="sep">·</span><span>MD004433833</span></div>
+            <div class="part-name">フランジ 面取り</div>
+            <div class="machine-line">NLX2500SY…</div>
+          </section>
+          <p class="overflow-hint">+1 件</p>
         </div>
       </article>
 
-      <!-- 080 -->
       <article class="resource-card" aria-label="資源 080">
         <header class="card-head">
           <span class="resource-cd">080</span>
@@ -313,34 +308,30 @@
         </header>
         <div class="card-body">
           <section class="schedule-row accent-2">
-            <div class="row-top">
-              <span class="fkojun">010 / 切削</span>
-              <span class="due">1/7(水)</span>
-            </div>
+            <div class="row-top"><span class="due">1/7(水)</span></div>
             <div class="cluster">
               <span>CX2M1001</span><span class="sep">·</span><span>MH-2044</span><span class="sep">·</span><span>4個</span>
             </div>
-            <div class="part-name">ハウジングA · 工順10</div>
+            <div class="part-name">ハウジングA</div>
             <div class="machine-line">VF-2SS</div>
-            <div class="footer-chips">
-              <span class="chip">060</span><span class="chip">502</span><span class="chip">051</span>
-            </div>
           </section>
           <section class="schedule-row accent-3">
-            <div class="row-top">
-              <span class="fkojun">020 / ボーリング</span>
-              <span class="due manual">1/10(金)</span>
-            </div>
+            <div class="row-top"><span class="due manual">1/10(金)</span></div>
             <div class="cluster">
               <span>CX2M1001</span><span class="sep">·</span><span>MH-2045</span>
             </div>
             <div class="part-name">ブラケットB φ寸法</div>
             <div class="machine-line">VF-2SS</div>
           </section>
+          <section class="schedule-row accent-4">
+            <div class="row-top"><span class="due">1/11(土)</span></div>
+            <div class="cluster"><span>CX2M1002</span><span class="sep">·</span><span>MH-2046</span></div>
+            <div class="part-name">カバー 取付穴</div>
+            <div class="machine-line">VF-2SS</div>
+          </section>
         </div>
       </article>
 
-      <!-- 502 -->
       <article class="resource-card" aria-label="資源 502">
         <header class="card-head">
           <span class="resource-cd">502</span>
@@ -348,34 +339,22 @@
         </header>
         <div class="card-body">
           <section class="schedule-row accent-4">
-            <div class="row-top">
-              <span class="fkojun">005 / 粗加工</span>
-              <span class="due manual">1/5(月)</span>
-            </div>
+            <div class="row-top"><span class="due manual">1/5(月)</span></div>
             <div class="cluster">
               <span>ZZ9K7721</span><span class="sep">·</span><span>PL-9001</span><span class="sep">·</span><span>12個</span>
             </div>
             <div class="part-name">薄板パック 外形</div>
             <div class="machine-line">DMG · DMU50</div>
           </section>
-          <section class="schedule-row accent-5 is-done">
-            <div class="row-top">
-              <span class="fkojun">030 / 検査</span>
-              <span class="due">1/4(日)</span>
-            </div>
-            <div class="cluster">
-              <span>ZZ9K7720</span><span class="sep">·</span><span>PL-9000</span>
-            </div>
-            <div class="part-name">薄板パック（完了）</div>
-            <div class="machine-line">DMG</div>
-            <div class="footer-chips">
-              <span class="chip done">060</span><span class="chip done">080</span>
-            </div>
+          <section class="schedule-row accent-6">
+            <div class="row-top"><span class="due">1/6(火)</span></div>
+            <div class="cluster"><span>ZZ9K7722</span><span class="sep">·</span><span>PL-9002</span></div>
+            <div class="part-name">治具板</div>
+            <div class="machine-line">DMU80PHE…</div>
           </section>
         </div>
       </article>
 
-      <!-- 051 -->
       <article class="resource-card" aria-label="資源 051">
         <header class="card-head">
           <span class="resource-cd">051</span>
@@ -383,10 +362,7 @@
         </header>
         <div class="card-body">
           <section class="schedule-row accent-6">
-            <div class="row-top">
-              <span class="fkojun">010 / 切削</span>
-              <span class="due">1/8(木)</span>
-            </div>
+            <div class="row-top"><span class="due">1/8(木)</span></div>
             <div class="cluster">
               <span>MNO3002</span><span class="sep">·</span><span>SH-1180</span><span class="sep">·</span><span>6個</span>
             </div>
@@ -394,20 +370,22 @@
             <div class="machine-line">NLX2500</div>
           </section>
           <section class="schedule-row accent-7">
-            <div class="row-top">
-              <span class="fkojun">020 / ねじ切り</span>
-              <span class="due">1/9(金)</span>
-            </div>
+            <div class="row-top"><span class="due">1/9(金)</span></div>
             <div class="cluster">
               <span>MNO3002</span><span class="sep">·</span><span>SH-1181</span>
             </div>
             <div class="part-name">M24×1.5 ねじ</div>
             <div class="machine-line">NLX2500</div>
           </section>
+          <section class="schedule-row accent-0">
+            <div class="row-top"><span class="due">1/10(土)</span></div>
+            <div class="cluster"><span>MNO3003</span><span class="sep">·</span><span>SH-1182</span></div>
+            <div class="part-name">軸受け座</div>
+            <div class="machine-line">NLX2500</div>
+          </section>
         </div>
       </article>
 
-      <!-- 052 -->
       <article class="resource-card" aria-label="資源 052">
         <header class="card-head">
           <span class="resource-cd">052</span>
@@ -415,10 +393,7 @@
         </header>
         <div class="card-body">
           <section class="schedule-row accent-0">
-            <div class="row-top">
-              <span class="fkojun">005 / 5軸</span>
-              <span class="due manual">1/11(土)</span>
-            </div>
+            <div class="row-top"><span class="due manual">1/11(土)</span></div>
             <div class="cluster">
               <span>IMP-12</span><span class="sep">·</span><span>MH-3301</span><span class="sep">·</span><span>3個</span>
             </div>
@@ -429,18 +404,20 @@
             </div>
           </section>
           <section class="schedule-row accent-1">
-            <div class="row-top">
-              <span class="fkojun">015 / 検査</span>
-              <span class="due">1/12(日)</span>
-            </div>
+            <div class="row-top"><span class="due">1/12(日)</span></div>
             <div class="cluster"><span>IMP-12</span></div>
             <div class="part-name">インペラ 三次元</div>
+            <div class="machine-line">DMU80</div>
+          </section>
+          <section class="schedule-row accent-2">
+            <div class="row-top"><span class="due">1/13(月)</span></div>
+            <div class="cluster"><span>IMP-13</span><span class="sep">·</span><span>MH-3302</span></div>
+            <div class="part-name">ハブ 仕上げ</div>
             <div class="machine-line">DMU80</div>
           </section>
         </div>
       </article>
 
-      <!-- 空スロット ×3（8枠のうち5資源） -->
       <div class="empty-slot" aria-hidden="true"></div>
       <div class="empty-slot" aria-hidden="true"></div>
       <div class="empty-slot" aria-hidden="true"></div>

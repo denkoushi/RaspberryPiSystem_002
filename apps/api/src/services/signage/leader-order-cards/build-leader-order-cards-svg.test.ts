@@ -32,7 +32,9 @@ describe('buildLeaderOrderCardsSvg', () => {
     expect(svg).toContain('BA1S1319');
     expect(svg).toContain('#fbbf24');
     expect(svg).toContain('8個');
+    expect(svg).toContain('1/6(火)');
     expect(svg).not.toContain('LEADER_ORDER_SVG_BADGE_FILL');
+    expect(svg).not.toContain('010 / 切削');
     expect(svg).toContain('080');
   });
 });

@@ -1,7 +1,4 @@
-import {
-  PO_SIGNAGE_TEXT_MUTED,
-  PO_SIGNAGE_TEXT_PRIMARY,
-} from '../kiosk-progress-overview/progress-overview-signage-theme.js';
+import { PO_SIGNAGE_TEXT_MUTED } from '../kiosk-progress-overview/progress-overview-signage-theme.js';
 import type { SignageLeaderOrderSvgRow } from './leader-board-pure.js';
 import { buildLeaderOrderFooterChipsSvgFragment } from './leader-order-cards-svg-footer-chips.js';
 import {
@@ -51,13 +48,10 @@ export function estimateLeaderOrderScheduleRowHeightPx(
   bodyFs: number,
   smallFs: number
 ): number {
-  const padY = Math.round(8 * scale);
-  let h = padY + Math.round(bodyFs * 1.05);
-  if (row.clusterSegments.length > 0 || row.quantityInlineJa) {
-    h += Math.round(smallFs * 1.15);
-  }
-  if (row.customerLine.length > 0) {
-    h += Math.round(smallFs * 1.1);
+  const padY = Math.round(6 * scale);
+  let h = padY + Math.round(smallFs * 1.12);
+  if (row.clusterSegments.length === 0 && !row.quantityInlineJa) {
+    h = padY + Math.round(bodyFs * 1.05);
   }
   if (row.partNameLine.length > 0) {
     h += Math.round(smallFs * 1.1);
@@ -89,13 +83,8 @@ export function buildLeaderOrderScheduleRowSvgFragment(
   const op = row.isCompleted ? ' opacity="0.52"' : '';
   const accentFill = row.seibanAccentHex ?? 'transparent';
 
-  const lineFkojun = escapeXmlForSvg(truncateChars(row.fkojun, 18));
   const lineDue = escapeXmlForSvg(truncateChars(row.dueLabel, 14));
   const clusterInner = buildClusterTspans(row.clusterSegments, row.quantityInlineJa);
-  const lineCustomer =
-    row.customerLine.length > 0
-      ? escapeXmlForSvg(truncateChars(row.customerLine, Math.floor(textW / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL))))
-      : '';
   const linePart =
     row.partNameLine.length > 0
       ? escapeXmlForSvg(truncateChars(row.partNameLine, Math.floor(textW / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL))))
@@ -105,25 +94,16 @@ export function buildLeaderOrderScheduleRowSvgFragment(
       ? escapeXmlForSvg(truncateChars(row.machineTypeNameLine, Math.floor(textW / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL))))
       : '';
 
-  const padTop = Math.round(6 * L.scale);
-  let y = L.yRow + padTop + Math.round(L.bodyFs * 0.75);
+  const padTop = Math.round(4 * L.scale);
+  let y = L.yRow + padTop + Math.round(L.smallFs * 0.85);
   const rxRow = Math.round(4 * L.scale);
-
-  const topLine = `<text x="${textLeft}" y="${y}" font-family="ui-monospace, monospace" font-size="${L.bodyFs}" fill="${PO_SIGNAGE_TEXT_PRIMARY}">${lineFkojun}</text>
-  <text x="${textRight}" y="${y}" text-anchor="end" font-family="ui-monospace, monospace" font-size="${Math.round(L.bodyFs * 0.92)}" font-weight="${dueWeight}" fill="${dueFill}">${lineDue}</text>`;
-  y += Math.round(L.bodyFs * 1.1);
 
   const clusterLine =
     clusterInner.length > 0
       ? `<text x="${textLeft}" y="${y}" font-family="system-ui, sans-serif" font-size="${L.smallFs}" fill="rgba(255,255,255,0.8)">${clusterInner}</text>`
       : '';
-  if (clusterInner.length > 0) y += Math.round(L.smallFs * 1.12);
-
-  const customerLine =
-    lineCustomer.length > 0
-      ? `<text x="${textLeft}" y="${y}" font-family="system-ui, sans-serif" font-size="${L.smallFs}" fill="rgba(255,255,255,0.7)">${lineCustomer}</text>`
-      : '';
-  if (lineCustomer.length > 0) y += Math.round(L.smallFs * 1.08);
+  const dueLine = `<text x="${textRight}" y="${y}" text-anchor="end" font-family="ui-monospace, monospace" font-size="${Math.round(L.smallFs * 0.95)}" font-weight="${dueWeight}" fill="${dueFill}">${lineDue}</text>`;
+  y += Math.round(L.smallFs * 1.1);
 
   const partLine =
     linePart.length > 0
@@ -154,9 +134,8 @@ export function buildLeaderOrderScheduleRowSvgFragment(
   return `<g${op}>
   <rect x="${L.contentLeft}" y="${L.yRow}" width="${L.innerWidth}" height="${L.rowBlockHeight}" rx="${rxRow}" fill="${LEADER_ORDER_SVG_ROW_BG}" stroke="${LEADER_ORDER_SVG_ROW_BORDER}" stroke-width="${LEADER_ORDER_SVG_ROW_STROKE_WIDTH}"/>
   ${accentRect}
-  ${topLine}
   ${clusterLine}
-  ${customerLine}
+  ${dueLine}
   ${partLine}
   ${machineLine}
   ${footerSvg}
