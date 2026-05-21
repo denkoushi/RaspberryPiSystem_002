@@ -36,7 +36,7 @@ update-frequency: medium
   - **管理画面の上限が8のまま** → **Web 未更新**（Pi5 のみで可）。ブラウザハードリロード。
   - **10枚指定で warn** → 旧 API が cap している可能性 → Pi5 ref 確認。
   - **`cardsPerPage: 8` のまま** → 保存値が8（仕様）。10にしたい場合は **再保存**。
-- **ナレッジ**: [KB-335](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。**`main` マージ**: （本セッション PR 作成後にリンク追記）。
+- **ナレッジ**: [KB-335](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。**`main` マージ**: [PR #314](https://github.com/denkoushi/RaspberryPiSystem_002/pull/314)（squash **`3e37248f`**）。
 
 ### 補足（2026-05-21 · **サイネージ `kiosk_leader_order_cards`・納期表示（Prisma Date 正規化）**·`fix/signage-leader-order-due-date-from-prisma-date`·**API のみ**·**`raspberrypi5` のみ**） {#signage-leader-order-due-date-prisma-date-2026-05-21}
 
