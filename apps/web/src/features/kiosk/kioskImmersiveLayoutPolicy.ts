@@ -36,10 +36,10 @@ const IMMERSIVE_PATH_EXACT = new Set([
 ]);
 
 /**
- * キオスクで「上端ホバーでヘッダーを出す」沉浸式レイアウト（全画面 flex + main flex-1）を使うか。
+ * キオスクで「下辺中央1/3ホバーでヘッダーを出す」沉浸式レイアウト（全画面 flex + main flex-1）を使うか。
  *
  * - allowlist のみ（`/kiosk/photo`・計画納期・通話などは含めない）。
- * - マウス操作前提。`useKioskTopEdgeHeaderReveal` と併用。
+ * - マウス操作前提。`useKioskBottomCenterHeaderReveal` と併用。
  *
  * ルート追加時は本モジュールと `kioskImmersiveLayoutPolicy.test.ts` を更新する。
  */

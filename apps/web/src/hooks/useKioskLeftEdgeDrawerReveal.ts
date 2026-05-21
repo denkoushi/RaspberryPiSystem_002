@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 
 import { useTimedHoverReveal } from './useTimedHoverReveal';
 
-/** 上端ホバー（`useKioskTopEdgeHeaderReveal` の `clientY < 14`）と同じ 14px 帯を左端に適用 */
+/** ヘッダーリビール（`KIOSK_HEADER_REVEAL_BAND_DEPTH_PX` = 14）と同じ深さの帯を左端に適用 */
 export const KIOSK_LEFT_EDGE_HOT_ZONE_PX = 14;
 
 const LEFT_EDGE_HOT_PX = KIOSK_LEFT_EDGE_HOT_ZONE_PX;
