@@ -1,6 +1,8 @@
 import { COMPLETED_PROGRESS_VALUE } from '../../production-schedule/constants.js';
 import { normalizeProductionScheduleResourceCd } from '../../production-schedule/policies/resource-category-policy.service.js';
 import { resolveSeibanAccentHexForSignage } from './leader-order-seiban-accent-palette.js';
+import { LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS } from './leader-order-cards-svg-layout-tokens.js';
+import { truncateChars } from './leader-order-cards-svg-text.js';
 
 import type { LeaderboardPartFooterProcessItem } from '../../production-schedule/leaderboard/leaderboard-part-footer-processes.service.js';
 
@@ -312,6 +314,13 @@ export function sortLeaderBoardRowsForDisplaySignage(rows: readonly SignageLeade
   return [...rows].sort(compareLeaderBoardRowsForDisplay);
 }
 
+/** キオスク順位ボードの「未完」フィルタ（`filterLeaderBoardRowsByCompletion` の incomplete と同義） */
+export function filterLeaderBoardRowsIncompleteForSignage(
+  rows: readonly SignageLeaderBoardRow[]
+): SignageLeaderBoardRow[] {
+  return rows.filter((row) => !row.isCompleted);
+}
+
 export function presentLeaderOrderRowSignage(row: SignageLeaderBoardRow): SignageLeaderOrderRowPresentation {
   const machineNameNormalized = normalizeMachineName(row.machineName);
   const fseiban = String(row.fseiban ?? '').trim();
@@ -324,13 +333,16 @@ export function presentLeaderOrderRowSignage(row: SignageLeaderBoardRow): Signag
     clusterSegments.push(row.fhincd.trim());
   }
 
-  const machineTypeNameLine = joinMiddleDot([row.machineTypeCode, machineNameNormalized]);
+  const machineNameForSignage = truncateChars(
+    machineNameNormalized,
+    LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS
+  );
+  const machineTypeNameLine = joinMiddleDot([row.machineTypeCode, machineNameForSignage]);
   const partNameLine = row.fhinmei.trim();
-  const customerLine = row.customerName.trim();
 
   return {
     clusterSegments,
-    customerLine,
+    customerLine: '',
     machineTypeNameLine,
     partNameLine,
     quantityInlineJa: formatPlannedQuantityInlineJa(row.plannedQuantity),

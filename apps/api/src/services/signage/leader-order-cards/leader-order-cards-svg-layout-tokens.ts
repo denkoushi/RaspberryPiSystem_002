@@ -4,6 +4,9 @@
  * 描画モジュールは「何を描くか」に集中する（定数の単一情報源）。
  */
 
+/** サイネージ行の機種名（`machineName`）表示上限（超過は `…`） */
+export const LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS = 10;
+
 /** 等幅寄りラベル（資源CD・工順）の平均文字幅 ≈ fontSize × ratio */
 export const LEADER_ORDER_SVG_AVG_CHAR_WIDTH_MONO = 0.55;
 

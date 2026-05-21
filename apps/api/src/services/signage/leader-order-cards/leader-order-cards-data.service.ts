@@ -3,6 +3,7 @@ import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from '../../produ
 import { listProductionScheduleRows } from '../../production-schedule/production-schedule-query.service.js';
 import { getResourceNameMapByResourceCds } from '../../production-schedule/resource-master.service.js';
 import {
+  filterLeaderBoardRowsIncompleteForSignage,
   normalizeConfiguredResourceCds,
   normalizeLeaderBoardRowsForSignage,
   sortLeaderBoardRowsForDisplaySignage,
@@ -57,6 +58,7 @@ export async function buildLeaderOrderCardViewModels(options: {
   });
 
   const normalized = normalizeLeaderBoardRowsForSignage(rawRows);
+  const incompleteRows = filterLeaderBoardRowsIncompleteForSignage(normalized);
   const footerChipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
     rows: normalized.map((row) => ({
       id: row.id,
@@ -69,11 +71,11 @@ export async function buildLeaderOrderCardViewModels(options: {
     })),
     locationKey,
     siteKey,
-    preferredDisplayRowIds: normalized.map((r) => r.id),
+    preferredDisplayRowIds: incompleteRows.map((r) => r.id),
   });
 
   const byCd = new Map<string, SignageLeaderBoardRow[]>();
-  for (const row of normalized) {
+  for (const row of incompleteRows) {
     const list = byCd.get(row.resourceCd);
     if (list) {
       list.push(row);
