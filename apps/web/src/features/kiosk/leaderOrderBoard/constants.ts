@@ -4,15 +4,16 @@ export const LEADER_ORDER_BOARD_ORDER_NUMBER_MAX = 10;
 /** 一覧の単一クエリ時代のページサイズ（順位ボードは shell 側で増分しない）。 */
 export const LEADER_ORDER_BOARD_PAGE_SIZE = 320;
 
-/** 順位ボード board 初回 GET の `pageSize`（スロットあたり）。API 上限 160。 */
+/** 順位ボード board 初回 GET の `pageSize`（スロットあたり）。API 上限 160。continue は {@link LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE}（80/160）。 */
 export const LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE = 80;
 
 /**
  * 順位ボード `leaderboard-board/continue` の 1 回あたり chunk（`body.pageSize`）。
- * Pi5 実データベンチで shell=80 と揃えて完走短縮（KB-374 §continue chunk 80/80）。
- * ロールバックは 40 に戻して Pi4 Web を再デプロイ。
+ * 初回 shell は {@link LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE}（80）のまま（80/160）。
+ * Pi5 実データベンチで stonebase 2769 行・出力同値・完走 ~1.51x 短縮（2026-05-21 調査）。
+ * ロールバックは 80 に戻して Pi4 Web を再デプロイ。
  */
-export const LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE = 80;
+export const LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE = 160;
 
 /**
  * @deprecated `LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE` と `LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` を使う。

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Pi5 実データ: continue chunk pageSize A/B（現行 40 vs 候補 80）読み取りベンチ。
+ * Pi5 実データ: continue chunk pageSize A/B（現行 80 vs 候補 160 · 80/160）読み取りベンチ。
  * 出力同値: 完走後 rows[].id 列を比較。
  *
  * Usage:
@@ -11,7 +11,7 @@
 const BASE_URL = (process.env.LEADERBOARD_BENCH_BASE_URL ?? 'https://100.106.158.2').replace(/\/$/, '');
 const CLIENT_KEY = process.env.LEADERBOARD_BENCH_CLIENT_KEY ?? 'client-key-raspberrypi4-kiosk1';
 const SHELL_PAGE_SIZE = 80;
-const CHUNK_SIZES = [40, 80];
+const CHUNK_SIZES = [80, 160];
 const MAX_CONTINUE_ROUNDS = 200;
 const COOLDOWN_MS = 3000;
 
@@ -169,16 +169,16 @@ async function runProfile(profileKey, profile) {
     }
   }
 
-  const baseline = results[40];
-  const candidate = results[80];
+  const baseline = results[80];
+  const candidate = results[160];
   if (!baseline?.error && !candidate?.error) {
     const gate = evaluateGate(baseline, candidate);
-    console.log('\n  --- A/B (40 vs 80) ---');
+    console.log('\n  --- A/B (80 vs 160) ---');
     console.log(`  row ids match: ${gate.idsMatch ? 'YES' : 'NO'}`);
     console.log(`  row count: ${baseline.totalRows} vs ${candidate.totalRows}`);
     console.log(`  http requests: ${baseline.timings.length} vs ${candidate.timings.length}`);
     console.log(`  totalMs: ${baseline.totalMs.toFixed(1)} vs ${candidate.totalMs.toFixed(1)}`);
-    console.log(`  speedup (80 vs 40): ${gate.speedup.toFixed(2)}x (${gate.savedPct >= 0 ? 'saved' : 'lost'} ${Math.abs(gate.savedPct).toFixed(1)}%)`);
+    console.log(`  speedup (160 vs 80): ${gate.speedup.toFixed(2)}x (${gate.savedPct >= 0 ? 'saved' : 'lost'} ${Math.abs(gate.savedPct).toFixed(1)}%)`);
     console.log(`  continue rounds: ${baseline.continueCount} vs ${candidate.continueCount}`);
     console.log(`  avg continue hop: ${baseline.avgContinueMs.toFixed(0)}ms vs ${candidate.avgContinueMs.toFixed(0)}ms`);
     const passOutput = gate.idsMatch && gate.rowCountMatch;
