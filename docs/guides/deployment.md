@@ -32,7 +32,7 @@ update-frequency: medium
   - **納期が `—` のまま** → Pi5 **`api` ref**（**`83501b27` 以降**）·`slideIntervalSeconds` 待ち·JPEG キャッシュ。
   - **キオスクにはあるがサイネージにない** → 上記（**Pi5 未更新**または **コンパクト本番〜本 fix 前**）。
   - **日付が1日ずれる** → 本 fix は **UTC `slice(0,10)`**（due-management 他と同型）。TZ カレンダー表示は進捗一覧の `SIGNAGE_TIMEZONE` 系とは別経路。
-- **ナレッジ**: [KB-335](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。**`main` マージ**: 本ドキュメント追記後 PR（本記録時点）。
+- **ナレッジ**: [KB-335](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。**`main` マージ**: [PR #313](https://github.com/denkoushi/RaspberryPiSystem_002/pull/313)（squash **`2ca80f84`**）。
 
 ### 補足（2026-05-21 · **サイネージ `kiosk_leader_order_cards`・コンパクト＋未完のみ**·`feat/signage-leader-order-cards-compact-incomplete`·**API のみ**·**`raspberrypi5` のみ**） {#signage-leader-order-cards-compact-incomplete-2026-05-21}
 
