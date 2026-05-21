@@ -36,7 +36,7 @@ update-frequency: medium
   - **カードが空** → 当該資源の行が **すべて完了**（仕様どおり）。キオスクで **完了フィルタ「両方」**と比較。
   - **機種名が切れる** → **10文字上限**（`LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS`）。フル表示はキオスク側。
   - **工順・顧客名が無い** → 本リリースの **意図的削除**（遠目密度優先）。
-- **ナレッジ**: [KB-335](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)·[design-previews README](../design-previews/README.md)。**`main` マージ**: 本ドキュメント追記後に PR 作成・squash マージ（本記録時点）。
+- **ナレッジ**: [KB-335](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)·[design-previews README](../design-previews/README.md)。**`main` マージ**: [PR #312](https://github.com/denkoushi/RaspberryPiSystem_002/pull/312)（squash **`2667fc7f`**）。
 
 ### 補足（2026-05-21 · **サイネージ `kiosk_leader_order_cards`・キオスク最新レイアウト整合**·`feat/signage-leader-order-kiosk-aligned`·**API のみ**·**`raspberrypi5` のみ**） {#signage-leader-order-kiosk-aligned-2026-05-21}
 
