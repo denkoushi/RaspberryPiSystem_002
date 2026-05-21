@@ -1190,10 +1190,10 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 - **資源CDフッタチップ端末キャッシュ（2026-05-20）**: **`e24d5885`**·**Pi5→Pi4×4 本番・実機 OK**·[§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache)·[deployment §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 - **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
 - **continue chunk 80/160（2026-05-21）**: **`4471a444`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**Pi5→Pi4×4 本番**·Detach **`20260521-203852-9936`** 他 4 台·CI **`26222962417` success**·[§continue 80/160 実装](#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](../guides/deployment.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。
-- **shell 初回最適化 第1弾（2026-05-21 · API のみ · 未デプロイ）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**（COUNT は shell と並行開始·hasMore スロットのみ await）·[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--未デプロイ)。
+- **shell 初回最適化 第1弾（2026-05-21 · API のみ · Pi5 本番・実機 OK）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**·Detach Pi5 **`20260521-221507-30100`**·[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
-## shell 初回最適化 第1弾（API のみ · 2026-05-21 · 未デプロイ）
+## shell 初回最適化 第1弾（API のみ · 2026-05-21 · 本番反映済み）
 
 **目的**: `GET …/leaderboard-board`（初回 shell）の壁時計を **出力同値**のまま短縮する。Web 変更なし。
 
@@ -1204,12 +1204,44 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 | winner 共有 | board shell 1 リクエスト内で `resolveLeaderboardMaterializedBaseWhere` を **1 回**·全スロット `listLeaderboardShellProductionScheduleRows` に `precomputed` 注入 | [`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts) |
 | COUNT 条件省略 | **`hasMore=false`（prefix で全件確定）** のスロットは `rows.length` を total 正本とし **COUNT 結果を await しない** | [`resolve-leaderboard-board-shell-resource-total.ts`](../../apps/api/src/services/production-schedule/leaderboard/resolve-leaderboard-board-shell-resource-total.ts) |
 | COUNT 並行維持 | hasMore スロット向け COUNT は **shell 選定と同時開始**（従来どおり overlap） | 同上 |
+| 未使用 COUNT の reject 握り | hasMore=false 向けに **開始したが await しない COUNT promise** の reject を **`settleUnusedLeaderboardBoardShellCount`** で握りつぶし（未処理 rejection 防止） | 同上 |
 
 **契約不変**: shell 応答の **`rows[].id` 列**·**`total`**·**`resources[].total`** は従来と同値（`hasMore=false` では COUNT 定義と `rows.length` が一致するため省略可能）。
 
-**計測**: [`scripts/test/benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs)（shell GET 壁時計·`completeInShell` スロット数を表示）。
+**本番反映（2026-05-21 · `raspberrypi5` のみ）**:
 
-**残タスク（第2弾）**: manual 行 SELECT の **LIMIT 押し下げ**·相関サブクエリ JOIN 化（[EXEC_PLAN §shell 選定 SQL](../../EXEC_PLAN.md)）。
+| 項目 | 値 |
+| --- | --- |
+| ブランチ | **`feat/kiosk-shell-initial-opt-phase1`** |
+| 代表コミット | **`143c8814`**（`perf(kiosk): shorten leaderboard board shell critical path`） |
+| PR | [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316) |
+| CI | **`26226698424` success** |
+| Detach Run ID | **`20260521-221507-30100`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit 0`**·ローカル **`--follow` 約 776s**·**`Git: changed`**·**Docker 再起動 ok**） |
+| 実機（自動） | `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **64s**） |
+| Pi4 / Pi3 | **`skipping: no hosts matched`**（**Pi5 `api` のみ**·Pi4 順次 **不要**） |
+
+**本番 shell ベンチ（Pi5 実データ·デプロイ直後·`runs=2`）** — [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs):
+
+| profile | shell median | hasMore / completeInShell | 備考 |
+| --- | --- | --- | --- |
+| robodrill（6 slots） | **~3017ms** | 4/6 hasMore · **2 completeInShell** | COUNT skip **2 スロット分**が効く |
+| fjv（6 slots） | **~3142ms** | **6/6 hasMore** · 0 completeInShell | **winner 共有のみ**（COUNT 省略効果は小） |
+| stonebase（8 slots） | **~5058ms** | 7/8 hasMore · **1 completeInShell** | 同上·支配要因は **shell 選定 SQL** |
+
+**知見**:
+
+- **全スロット hasMore**（fjv 等）では第1弾効果は **winner 共有のみ**で体感差は小さめ。**空/小件数スロット混在**（robodrill の completeInShell=2 等）で COUNT await 省略が効きやすい。
+- **初回ペイントの壁**は引き続き **shell GET**（全スロット選定 + COUNT）。continue 80/160·装飾後取り·IDB SWR とは **別レイヤ**。
+- **第2弾**（manual SELECT LIMIT 化·相関→JOIN）は shell 壁時計の **残支配要因**（[EXEC_PLAN §shell 選定 SQL](../../EXEC_PLAN.md)）。
+
+**トラブルシュート**:
+
+| 症状 | 想定原因 | 対処 |
+| --- | --- | --- |
+| Pi4 で shell が速くならない | **Pi5 `api` のみ**が対象 | Pi4 順次デプロイ **不要**（Pi4 は Pi5 API 参照） |
+| `total` がずれる | **`snapshotExpired`** 後は shell 再取得が正 | キャッシュミス時は COUNT フォールバック（同値） |
+| デプロイ中 `ssh: Operation timed out` | Tailscale 一過性 | **`PLAY RECAP failed=0`** と **`Summary success: true`** を正とする |
+| COUNT reject で shell 500 | 未使用 COUNT promise 未処理 | **`settleUnusedLeaderboardBoardShellCount`**（統合テストで回帰担保） |
 
 **ローカル検証**:
 
@@ -1218,3 +1250,5 @@ pnpm --filter @raspi-system/api exec vitest run \
   src/services/production-schedule/leaderboard/__tests__/resolve-leaderboard-board-shell-resource-total.test.ts
 pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard-board"
 ```
+
+**残タスク（第2弾）**: manual 行 SELECT の **LIMIT 押し下げ**·相関サブクエリ JOIN 化（[EXEC_PLAN §shell 選定 SQL](../../EXEC_PLAN.md)）。

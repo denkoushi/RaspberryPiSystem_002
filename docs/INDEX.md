@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-21 · shell 初回最適化 第1弾）
+
+- **キオスク順位ボード・shell 初回最適化 第1弾（API のみ・Pi5 本番反映済）**: 初回 `GET …/leaderboard-board` で **winner materialization リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**出力同値**·Web 変更なし。**ブランチ**: **`feat/kiosk-shell-initial-opt-phase1`**（**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260521-221507-30100`**·**Phase12** **43/0/0**（約 **64s**）·shell ベンチ **robodrill ~3.0s / fjv ~3.1s / stonebase ~5.1s**。**記録**: [KB-374 §shell 第1弾](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)·[deployment §shell 第1弾](./guides/deployment.md#kiosk-leaderboard-shell-initial-opt-phase1-2026-05-21)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**（Pi4 順次 **不要**）。
+
 ### 🆕 最新アップデート（2026-05-21 · continue chunk 80/80）
 
 - **キオスク順位ボード・continue chunk 80/80（Web のみ・Pi5→Pi4×4 本番反映済）**: 初回 shell **80/スロット**（不変）·continue **`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` 40→80**·**HTTP 往復削減**（Pi5 実データで最大 **~46%** 完走短縮·**出力同値**）。**スロット並列 fan-out は却下**（Pi5 競合で遅化）。**ブランチ**: **`feat/kiosk-leaderboard-continue-chunk-80`**（**`a2a3c960`** / CI **`12c94486`**·**`26195283245` success**）·**本番**: Detach **`20260521-083210-21952`**（Pi5）/ **`20260521-085336-30539`**（StoneBase01）/ **`20260521-085933-4370`** / **`20260521-090422-2566`** / **`20260521-090802-31639`**·**Phase12** **43/0/0**。**記録**: [KB-374 §continue 80/80](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §2026-05-21](./guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main …`**（Pi4 は **`pageSize` 送信元**のため **Pi4 反映必須**）。
