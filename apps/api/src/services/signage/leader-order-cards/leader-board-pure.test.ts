@@ -14,6 +14,7 @@ describe('leader-board-pure', () => {
   it('sortLeaderBoardRowsForDisplaySignage orders by processingOrder then due', () => {
     const a: SignageLeaderBoardRow = {
       id: 'a',
+      seibanJoinKey: 'S1',
       resourceCd: 'X',
       dueDate: null,
       plannedEndDate: null,
@@ -23,6 +24,7 @@ describe('leader-board-pure', () => {
       fkojun: '1',
       fhincd: '',
       fhinmei: '',
+      customerName: '',
       machineName: '',
       machineTypeCode: '',
       plannedQuantity: null,

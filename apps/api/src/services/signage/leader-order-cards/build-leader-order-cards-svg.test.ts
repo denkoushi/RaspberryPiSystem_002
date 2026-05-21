@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'vitest';
+
+import { buildLeaderOrderCardsSvg } from './build-leader-order-cards-svg.js';
+import type { LeaderOrderCardViewModel } from './leader-order-cards-data.service.js';
+
+describe('buildLeaderOrderCardsSvg', () => {
+  it('renders kiosk-aligned row layout (cluster line, seiban accent, no due badge pill)', () => {
+    const cards: LeaderOrderCardViewModel[] = [
+      {
+        resourceCd: '060',
+        resourceJapaneseNames: '旋盤 1号機',
+        rows: [
+          {
+            fkojun: '010 / 切削',
+            dueLabel: '1/6(火)',
+            manualDue: true,
+            fseiban: 'BA1S1319',
+            seibanAccentHex: '#fbbf24',
+            clusterSegments: ['BA1S1319', 'MH-2044'],
+            customerLine: '',
+            machineTypeNameLine: 'L300KP',
+            partNameLine: 'ストッパー台',
+            quantityInlineJa: '8個',
+            isCompleted: false,
+            footerChips: [{ rowId: 'c1', resourceCd: '080', isCompleted: false }],
+          },
+        ],
+      },
+    ];
+
+    const svg = buildLeaderOrderCardsSvg(cards, 1920, 1080);
+    expect(svg).toContain('BA1S1319');
+    expect(svg).toContain('#fbbf24');
+    expect(svg).toContain('8個');
+    expect(svg).not.toContain('LEADER_ORDER_SVG_BADGE_FILL');
+    expect(svg).toContain('080');
+  });
+});

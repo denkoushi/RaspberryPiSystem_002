@@ -3,23 +3,17 @@ import {
   PO_SIGNAGE_TEXT_PRIMARY,
 } from '../kiosk-progress-overview/progress-overview-signage-theme.js';
 import type { SignageLeaderOrderSvgRow } from './leader-board-pure.js';
+import { buildLeaderOrderFooterChipsSvgFragment } from './leader-order-cards-svg-footer-chips.js';
 import {
-  LEADER_ORDER_SVG_AVG_CHAR_WIDTH_BODY,
   LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL,
-  LEADER_ORDER_SVG_BADGE_STROKE_WIDTH,
-  LEADER_ORDER_SVG_ROW_ACCENT_BAR_WIDTH_SCALE,
+  LEADER_ORDER_SVG_ROW_SEIBAN_ACCENT_WIDTH_SCALE,
   LEADER_ORDER_SVG_ROW_STROKE_WIDTH,
 } from './leader-order-cards-svg-layout-tokens.js';
 import {
-  LEADER_ORDER_SVG_ACCENT_AUTO,
-  LEADER_ORDER_SVG_ACCENT_COMPLETED,
-  LEADER_ORDER_SVG_ACCENT_MANUAL,
-  LEADER_ORDER_SVG_BADGE_FILL,
   LEADER_ORDER_SVG_DUE_AUTO,
   LEADER_ORDER_SVG_DUE_MANUAL,
   LEADER_ORDER_SVG_ROW_BG,
   LEADER_ORDER_SVG_ROW_BORDER,
-  LEADER_ORDER_SVG_ROW_LINE3_FILL,
 } from './leader-order-cards-svg-theme.js';
 import { escapeXmlForSvg, truncateChars } from './leader-order-cards-svg-text.js';
 
@@ -31,86 +25,140 @@ export type LeaderOrderScheduleRowLayout = {
   scale: number;
   bodyFs: number;
   smallFs: number;
-  badgeWidthCap: number;
 };
 
-function resolveRowAccentColors(row: SignageLeaderOrderSvgRow): {
-  duePillStroke: string;
-  accentBarFill: string;
-} {
-  if (row.isCompleted) {
-    return { duePillStroke: LEADER_ORDER_SVG_ACCENT_COMPLETED, accentBarFill: LEADER_ORDER_SVG_ACCENT_COMPLETED };
+function buildClusterTspans(segments: string[], quantityInlineJa: string | null): string {
+  const parts: string[] = [];
+  segments.forEach((seg, i) => {
+    if (i > 0) {
+      parts.push(`<tspan fill="${PO_SIGNAGE_TEXT_MUTED}"> · </tspan>`);
+    }
+    parts.push(`<tspan>${escapeXmlForSvg(truncateChars(seg, 24))}</tspan>`);
+  });
+  if (quantityInlineJa) {
+    if (segments.length > 0) {
+      parts.push(`<tspan fill="${PO_SIGNAGE_TEXT_MUTED}"> · </tspan>`);
+    }
+    parts.push(`<tspan>${escapeXmlForSvg(quantityInlineJa)}</tspan>`);
   }
-  if (row.manualDue) {
-    return { duePillStroke: LEADER_ORDER_SVG_DUE_MANUAL, accentBarFill: LEADER_ORDER_SVG_ACCENT_MANUAL };
+  return parts.join('');
+}
+
+/** 行ブロックの縦寸法見積もり（カード内の可視行数計算用）。 */
+export function estimateLeaderOrderScheduleRowHeightPx(
+  row: SignageLeaderOrderSvgRow,
+  scale: number,
+  bodyFs: number,
+  smallFs: number
+): number {
+  const padY = Math.round(8 * scale);
+  let h = padY + Math.round(bodyFs * 1.05);
+  if (row.clusterSegments.length > 0 || row.quantityInlineJa) {
+    h += Math.round(smallFs * 1.15);
   }
-  return { duePillStroke: LEADER_ORDER_SVG_DUE_AUTO, accentBarFill: LEADER_ORDER_SVG_ACCENT_AUTO };
+  if (row.customerLine.length > 0) {
+    h += Math.round(smallFs * 1.1);
+  }
+  if (row.partNameLine.length > 0) {
+    h += Math.round(smallFs * 1.1);
+  }
+  if (row.machineTypeNameLine.length > 0) {
+    h += Math.round(smallFs * 1.1);
+  }
+  if (row.footerChips.length > 0) {
+    h += Math.round(smallFs + 18 * scale);
+  }
+  return h + padY;
 }
 
 /**
- * 1製番行ブロックの SVG（順位ボード資源カード本文用）。
+ * 1製番行ブロックの SVG（キオスク順位ボード子行レイアウト準拠・閲覧専用）。
  */
 export function buildLeaderOrderScheduleRowSvgFragment(
   row: SignageLeaderOrderSvgRow,
   L: LeaderOrderScheduleRowLayout
 ): string {
-  const { duePillStroke, accentBarFill } = resolveRowAccentColors(row);
-  const op = row.isCompleted ? ' opacity="0.52"' : '';
+  const accentW = Math.max(4, Math.round(LEADER_ORDER_SVG_ROW_SEIBAN_ACCENT_WIDTH_SCALE * L.scale));
+  const contentInset = accentW + Math.round(6 * L.scale);
+  const textLeft = L.contentLeft + contentInset;
+  const textRight = L.contentLeft + L.innerWidth - Math.round(6 * L.scale);
+  const textW = Math.max(12, textRight - textLeft);
 
-  const rowTextBudget = Math.max(18, Math.floor(L.innerWidth - L.badgeWidthCap - Math.round(14 * L.scale)));
-  const line1Max = Math.max(
-    6,
-    Math.min(24, Math.floor(rowTextBudget / (L.bodyFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_BODY)))
-  );
-  const line2Max = Math.max(
-    10,
-    Math.min(56, Math.floor(rowTextBudget / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL)))
-  );
-  const line3Max = Math.max(
-    10,
-    Math.min(60, Math.floor(rowTextBudget / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL)))
-  );
-  const line1 = escapeXmlForSvg(truncateChars(row.fkojun, line1Max));
+  const dueFill = row.manualDue ? LEADER_ORDER_SVG_DUE_MANUAL : LEADER_ORDER_SVG_DUE_AUTO;
+  const dueWeight = row.manualDue ? '500' : '400';
+  const op = row.isCompleted ? ' opacity="0.52"' : '';
+  const accentFill = row.seibanAccentHex ?? 'transparent';
+
+  const lineFkojun = escapeXmlForSvg(truncateChars(row.fkojun, 18));
   const lineDue = escapeXmlForSvg(truncateChars(row.dueLabel, 14));
-  const line2 = escapeXmlForSvg(truncateChars(row.machinePartLine, line2Max));
-  const line3 = escapeXmlForSvg(truncateChars(row.partNameLine, line3Max));
-  const qty =
-    row.quantityInlineJa != null
-      ? ` <tspan fill="${PO_SIGNAGE_TEXT_MUTED}" font-size="${L.smallFs}">| ${escapeXmlForSvg(row.quantityInlineJa)}</tspan>`
+  const clusterInner = buildClusterTspans(row.clusterSegments, row.quantityInlineJa);
+  const lineCustomer =
+    row.customerLine.length > 0
+      ? escapeXmlForSvg(truncateChars(row.customerLine, Math.floor(textW / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL))))
+      : '';
+  const linePart =
+    row.partNameLine.length > 0
+      ? escapeXmlForSvg(truncateChars(row.partNameLine, Math.floor(textW / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL))))
+      : '';
+  const lineMachine =
+    row.machineTypeNameLine.length > 0
+      ? escapeXmlForSvg(truncateChars(row.machineTypeNameLine, Math.floor(textW / (L.smallFs * LEADER_ORDER_SVG_AVG_CHAR_WIDTH_SMALL))))
       : '';
 
-  const badgeW = L.badgeWidthCap;
-  const badgeH = Math.max(Math.round(26 * L.scale), L.smallFs + Math.round(10 * L.scale));
-  const badgeX = L.contentLeft + L.innerWidth - badgeW - Math.round(6 * L.scale);
-  const badgeY = L.yRow + Math.round(8 * L.scale);
-  const padL = Math.round(10 * L.scale);
-  const t1 = L.yRow + Math.round(12 * L.scale) + Math.round(L.bodyFs * 0.72);
-  const t2 = t1 + Math.round(L.bodyFs * 1.08);
-  const t3 = t2 + Math.round(L.smallFs * 1.05);
+  const padTop = Math.round(6 * L.scale);
+  let y = L.yRow + padTop + Math.round(L.bodyFs * 0.75);
+  const rxRow = Math.round(4 * L.scale);
 
-  const rxRow = Math.round(6 * L.scale);
+  const topLine = `<text x="${textLeft}" y="${y}" font-family="ui-monospace, monospace" font-size="${L.bodyFs}" fill="${PO_SIGNAGE_TEXT_PRIMARY}">${lineFkojun}</text>
+  <text x="${textRight}" y="${y}" text-anchor="end" font-family="ui-monospace, monospace" font-size="${Math.round(L.bodyFs * 0.92)}" font-weight="${dueWeight}" fill="${dueFill}">${lineDue}</text>`;
+  y += Math.round(L.bodyFs * 1.1);
+
+  const clusterLine =
+    clusterInner.length > 0
+      ? `<text x="${textLeft}" y="${y}" font-family="system-ui, sans-serif" font-size="${L.smallFs}" fill="rgba(255,255,255,0.8)">${clusterInner}</text>`
+      : '';
+  if (clusterInner.length > 0) y += Math.round(L.smallFs * 1.12);
+
+  const customerLine =
+    lineCustomer.length > 0
+      ? `<text x="${textLeft}" y="${y}" font-family="system-ui, sans-serif" font-size="${L.smallFs}" fill="rgba(255,255,255,0.7)">${lineCustomer}</text>`
+      : '';
+  if (lineCustomer.length > 0) y += Math.round(L.smallFs * 1.08);
+
+  const partLine =
+    linePart.length > 0
+      ? `<text x="${textLeft}" y="${y}" font-family="system-ui, sans-serif" font-size="${L.smallFs}" fill="rgba(255,255,255,0.6)">${linePart}</text>`
+      : '';
+  if (linePart.length > 0) y += Math.round(L.smallFs * 1.08);
+
+  const machineLine =
+    lineMachine.length > 0
+      ? `<text x="${textLeft}" y="${y}" font-family="system-ui, sans-serif" font-size="${L.smallFs}" fill="rgba(255,255,255,0.8)">${lineMachine}</text>`
+      : '';
+  if (lineMachine.length > 0) y += Math.round(L.smallFs * 1.05);
+
+  const chipFs = Math.max(9, Math.round(L.smallFs * 0.92));
+  const footerSvg = buildLeaderOrderFooterChipsSvgFragment(row.footerChips, {
+    x: textLeft,
+    y: y + Math.round(4 * L.scale),
+    maxWidth: textW,
+    chipFs,
+    scale: L.scale,
+  });
+
+  const accentRect =
+    row.seibanAccentHex != null
+      ? `<rect x="${L.contentLeft}" y="${L.yRow}" width="${accentW}" height="${L.rowBlockHeight}" rx="${Math.max(1, rxRow - 1)}" fill="${accentFill}"/>`
+      : '';
 
   return `<g${op}>
-  <rect x="${L.contentLeft}" y="${L.yRow}" width="${L.innerWidth}" height="${
-    L.rowBlockHeight
-  }" rx="${rxRow}" fill="${LEADER_ORDER_SVG_ROW_BG}" stroke="${LEADER_ORDER_SVG_ROW_BORDER}" stroke-width="${LEADER_ORDER_SVG_ROW_STROKE_WIDTH}"/>
-  <rect x="${L.contentLeft}" y="${L.yRow}" width="${Math.max(4, Math.round(LEADER_ORDER_SVG_ROW_ACCENT_BAR_WIDTH_SCALE * L.scale))}" height="${
-    L.rowBlockHeight
-  }" rx="${Math.max(1, Math.round(2 * L.scale))}" fill="${accentBarFill}"/>
-  <rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${Math.round(
-    9 * L.scale
-  )}" fill="${LEADER_ORDER_SVG_BADGE_FILL}" stroke="${duePillStroke}" stroke-width="${LEADER_ORDER_SVG_BADGE_STROKE_WIDTH}"/>
-  <text x="${badgeX + Math.round(8 * L.scale)}" y="${badgeY + Math.round(badgeH * 0.72)}" font-family="ui-monospace, monospace" font-size="${
-    L.smallFs
-  }" font-weight="700" fill="${duePillStroke}">${lineDue}</text>
-  <text x="${L.contentLeft + padL}" y="${t1}" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="${
-    L.bodyFs
-  }" font-weight="600" fill="${PO_SIGNAGE_TEXT_PRIMARY}">${line1}</text>
-  <text x="${L.contentLeft + padL}" y="${t2}" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="${
-    L.smallFs
-  }" font-weight="500" fill="${PO_SIGNAGE_TEXT_PRIMARY}">${line2}${qty}</text>
-  <text x="${L.contentLeft + padL}" y="${t3}" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="${
-    L.smallFs
-  }" fill="${LEADER_ORDER_SVG_ROW_LINE3_FILL}">${line3}</text>
+  <rect x="${L.contentLeft}" y="${L.yRow}" width="${L.innerWidth}" height="${L.rowBlockHeight}" rx="${rxRow}" fill="${LEADER_ORDER_SVG_ROW_BG}" stroke="${LEADER_ORDER_SVG_ROW_BORDER}" stroke-width="${LEADER_ORDER_SVG_ROW_STROKE_WIDTH}"/>
+  ${accentRect}
+  ${topLine}
+  ${clusterLine}
+  ${customerLine}
+  ${partLine}
+  ${machineLine}
+  ${footerSvg}
 </g>`;
 }

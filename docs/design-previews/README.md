@@ -13,6 +13,7 @@
 | [manual-order-band-to-operator-rank-preview.html](./manual-order-band-to-operator-rank-preview.html) | **帯分け → 帯内調整 → 資源CDごとの連番確定 → オペレーター提示** を1画面で表した静的モック。上ペインで編集対象選択、中央で帯編集、右で最終順位の受け渡しイメージを表示 |
 | [leader-due-rank-board-preview.html](./leader-due-rank-board-preview.html) | **リーダー順位ボード**（納期ベース・カードグリッド・本番ルート `/kiosk/production-schedule/leader-order-board` の UI 参考） |
 | [signage-leader-order-cards-preview.html](./signage-leader-order-cards-preview.html) | **サイネージ FULL: 順位ボード資源CDカード**（`kiosk_leader_order_cards` の見た目改善プレビュー。4列×2段・最大8カード相当・余白詰め） |
+| [signage-leader-order-cards-kiosk-aligned-preview.html](./signage-leader-order-cards-kiosk-aligned-preview.html) | **サイネージ FULL: 順位ボード資源CDカード** — **キオスク最新**（`LeaderOrderResourceCard` / 製番左縁24色・クラスタ行・行下チップ・閲覧専用）に合わせた 4×2 静的モック。**本番反映済み（2026-05-21・Pi5 のみ・[KB-335](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)）** |
 | [kiosk-part-measurement-header-strip.html](./kiosk-part-measurement-header-strip.html) | **部品測定・編集画面上部帯**（メタ `<dl>` + 中央寄せ折返しスロット・本番 `KioskPartMeasurementEditTopStrip` のレイアウト参考） |
 | [kiosk-part-measurement-template-picker.html](./kiosk-part-measurement-template-picker.html) | **部品測定・テンプレート選択（提案）**（日程固定コンテキスト・候補一覧・図面アイコン＋ホバープレビュー・新規作成導線） |
 | [kiosk-rank-board-card-single-preview.html](./kiosk-rank-board-card-single-preview.html) | **キオスク順位ボード・カード1件**（本番 `LeaderOrderResourceCard` 相当の静的モック。CDN なし） |
