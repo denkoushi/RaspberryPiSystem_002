@@ -1190,4 +1190,31 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 - **資源CDフッタチップ端末キャッシュ（2026-05-20）**: **`e24d5885`**·**Pi5→Pi4×4 本番・実機 OK**·[§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache)·[deployment §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 - **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
 - **continue chunk 80/160（2026-05-21）**: **`4471a444`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**Pi5→Pi4×4 本番**·Detach **`20260521-203852-9936`** 他 4 台·CI **`26222962417` success**·[§continue 80/160 実装](#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](../guides/deployment.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。
+- **shell 初回最適化 第1弾（2026-05-21 · API のみ · 未デプロイ）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**（COUNT は shell と並行開始·hasMore スロットのみ await）·[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--未デプロイ)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+
+## shell 初回最適化 第1弾（API のみ · 2026-05-21 · 未デプロイ）
+
+**目的**: `GET …/leaderboard-board`（初回 shell）の壁時計を **出力同値**のまま短縮する。Web 変更なし。
+
+**変更（API）**:
+
+| 項目 | 内容 | モジュール |
+| --- | --- | --- |
+| winner 共有 | board shell 1 リクエスト内で `resolveLeaderboardMaterializedBaseWhere` を **1 回**·全スロット `listLeaderboardShellProductionScheduleRows` に `precomputed` 注入 | [`leaderboard-composite-board.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board.service.ts)·[`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts) |
+| COUNT 条件省略 | **`hasMore=false`（prefix で全件確定）** のスロットは `rows.length` を total 正本とし **COUNT 結果を await しない** | [`resolve-leaderboard-board-shell-resource-total.ts`](../../apps/api/src/services/production-schedule/leaderboard/resolve-leaderboard-board-shell-resource-total.ts) |
+| COUNT 並行維持 | hasMore スロット向け COUNT は **shell 選定と同時開始**（従来どおり overlap） | 同上 |
+
+**契約不変**: shell 応答の **`rows[].id` 列**·**`total`**·**`resources[].total`** は従来と同値（`hasMore=false` では COUNT 定義と `rows.length` が一致するため省略可能）。
+
+**計測**: [`scripts/test/benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs)（shell GET 壁時計·`completeInShell` スロット数を表示）。
+
+**残タスク（第2弾）**: manual 行 SELECT の **LIMIT 押し下げ**·相関サブクエリ JOIN 化（[EXEC_PLAN §shell 選定 SQL](../../EXEC_PLAN.md)）。
+
+**ローカル検証**:
+
+```bash
+pnpm --filter @raspi-system/api exec vitest run \
+  src/services/production-schedule/leaderboard/__tests__/resolve-leaderboard-board-shell-resource-total.test.ts
+pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard-board"
+```

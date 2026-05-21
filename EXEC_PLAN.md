@@ -2298,13 +2298,13 @@
 
 ## Next Steps（将来のタスク）
 
-### キオスク順位ボード — shell 選定 SQL 最適化（2026-05-21）— **次候補**
+### キオスク順位ボード — shell 選定 SQL 最適化（2026-05-21）— **第2弾候補**
 
-**概要**: **continue chunk 80/160**（**`4471a444`**·[KB-374 §80/160](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)）本番後も、**初回 shell 選定**（~5–7s）と **continue 1 hop の hydrate**（stonebase **~5s/hop×5**）が支配的。**chunk 最適化の次段**。
+**概要**: **shell 第1弾（winner 共有 + hasMore=false COUNT 省略）** は API 実装済み·[KB-374 §shell 第1弾](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--未デプロイ)。本番計測後、**manual SELECT の LIMIT 化**·**相関→JOIN** が残支配要因。
 
 **候補タスク**:
 
-1. **shell 選定 SQL** の EXPLAIN / 実測でボトルネック特定（[KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）。
+1. **shell 選定 SQL** の EXPLAIN / 実測（[`benchmark-leaderboard-board-shell.mjs`](./scripts/test/benchmark-leaderboard-board-shell.mjs)）。
 2. **Pi5 memory 警告**（90%+）と一過性 **503** の相関調査·Docker/API リソース見直し。
 3. **Web 増分 view model**（IDB 2 回目以降の DOM 更新最小化）— 出力同値を維持した PoC。
 
