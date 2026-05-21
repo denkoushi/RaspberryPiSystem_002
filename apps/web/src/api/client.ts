@@ -3141,7 +3141,7 @@ export interface SignageSlotConfig {
   seibanPerPage?: number;
   /** kiosk_leader_order_cards: 表示する資源CD（先頭から順） */
   resourceCds?: string[];
-  /** kiosk_leader_order_cards: 1ページの資源カード数（1〜8・既定はグリッド満杯＝8） */
+  /** kiosk_leader_order_cards: 1ページの資源カード数（1〜10・既定はグリッド満杯＝10） */
   cardsPerPage?: number;
   /** mobile_placement_parts_shelf_grid: ゾーンあたりの最大表示行数（省略時はサーバ既定） */
   maxItemsPerZone?: number;

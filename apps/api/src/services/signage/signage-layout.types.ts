@@ -64,7 +64,7 @@ export interface KioskLeaderOrderCardsSlotConfig {
   deviceScopeKey: string;
   resourceCds: string[];
   slideIntervalSeconds?: number;
-  /** 1ページに並べる資源カード数（4列×2段＝最大8） */
+  /** 1ページに並べる資源カード数（5列×2段＝最大10） */
   cardsPerPage?: number;
 }
 
