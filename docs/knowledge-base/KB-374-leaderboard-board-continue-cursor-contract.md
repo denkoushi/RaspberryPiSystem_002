@@ -2,7 +2,7 @@
 title: KB-374 leaderboard-board/continue の cursor 契約と HTTP 400（Zod）
 tags: [kiosk, production-schedule, leader-order-board, leaderboard-board, api, web]
 audience: [開発者, 運用者]
-last-verified: 2026-05-20
+last-verified: 2026-05-21
 category: knowledge-base
 ---
 
@@ -913,6 +913,180 @@ pnpm --filter @raspi-system/web build
 - **製番 OR** は **board の API `q`** だけでなく、**遅延装飾 hook のキー設計**まで含めて一体で見る（[§製番 OR §装飾](#製番-or-クライアントキャッシュフィルタ2026-05-20) 5 項を更新済み）。
 - **Pi5 先行 → StoneBase01 実機 OK → 残 Pi4×3** の順で、**回帰の切り分けコスト**が小さい（標準 [deployment.md §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)）。
 
+## 並列化事前検証（Pi5 実データ · 2026-05-20 · 実装前）
+
+**目的**: スロット並列 fan-out が **壁時計短縮**と **Pi5 耐久**の両方を満たすか、本番相当データで判定する（**読み取りのみ**）。
+
+**手順（Mac）**: `NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-board-parallel.mjs --profile <robodrill|fjv|stonebase>`（Tailscale 経由 Pi5 `https://100.106.158.2`·`x-client-key: client-key-raspberrypi4-kiosk1`）。
+
+**資源スロット（DB `ProductionScheduleManualOrderResourceAssignment`）**:
+
+| profile | 端末 | スロット数 | resourceCds |
+| --- | --- | --- | --- |
+| robodrill | 第2工場 RoboDrill01 | 6 | 500,051,052,070,24M,26M |
+| fjv | 第2工場 FJV60/80 | 6 | 080,060,501,502,021,033 |
+| stonebase | 第2工場 kensakuMain | 8 | 581,305,584,585,586,587,589,588 |
+
+**比較定義**:
+
+- **直列集約（現行）**: `GET leaderboard-board`（全スロット）→ `POST continue` を **hasMore まで直列**（クライアントと同型）。
+- **並列 per-slot（模擬 fan-out）**: 各 `resourceCd` ごとに上記を **独立完走**し **`Promise.all`**（壁時計 = 最遅スロット）。
+
+**結果（pageSize shell=80 / continue=40 · 可視行のみ · 出力件数は両モード一致）**:
+
+| profile | 直列 totalMs | 並列 wallMs | speedup | HTTP 本数 直列→並列 | 可視行 total |
+| --- | ---: | ---: | ---: | --- | ---: |
+| robodrill | 10,811 | 9,461 | **1.14x** | 4 → 15 | 711 |
+| fjv | 17,426 | 24,317 | **0.72x（遅い）** | 9 → 20 | 911 |
+| stonebase | 69,376 | 77,507 | **0.90x（遅い）** | 20 → 65 | 2,721 |
+
+**Pi5 負荷（検証後スナップショット）**:
+
+- `docker-api-1` CPU **~137%**（ベンチ直後·単発計測）。
+- Postgres `pg_stat_activity` **14** 接続（平常近傍）。
+- stonebase **shell×3 同時**（3 キオスク想定）: 各 **14–16s**（単体 shell ~6.8s より **~2.3x 遅延**·**CONFIRMED 競合**）。
+
+**判定（実装前ゲート）**:
+
+| 仮説 | 結果 |
+| --- | --- |
+| 並列 fan-out で壁時計が劇的短縮 | **REJECTED**（fjv/stonebase は **直列より遅い**·robodrill は **+13%** のみ） |
+| 並列は Pi5 負荷を下げる | **REJECTED**（HTTP 本数 **3–3.2 倍**·同時 shell でレイテンシ悪化） |
+| ボトルネックは API（continue 1 hop） | **CONFIRMED**（stonebase continue-1 **~5s**·shell **~6.8s**） |
+
+**示唆（出力不変）**:
+
+- **素朴なスロット並列化は採用しない**（Pi5 **DB/API 競合**が支配）。
+- 劇的改善の方向性は **① 1 リクエストあたりの API/DB 時間短縮**（prefix 装飾キャッシュ·選定コスト削減）·**② continue chunk 最適化（80/80 等）**·**③ 端末 IDB（2 回目以降）**·**④ サーバ側事前 snapshot 温め**。
+- **列ごと先出し**は「並列 fan-out」とは別設計（**1 接続で段階 push** 等）として再評価。
+
+## continue chunk 80/80 事前検証（Pi5 実データ · 2026-05-20 · 実装前）
+
+**目的**: 現行 **shell=80 / continue=40** と **continue=80** を A/B 比較し、**出力同値**と **完走壁時計**を実データで判定する。
+
+**手順（Mac）**: `NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-chunk.mjs`（全 profile）または `--profile stonebase`。
+
+**結果（読み取りのみ·完走後 `rows[].id` 指紋一致）**:
+
+| profile | 40 totalMs | 80 totalMs | speedup | rounds 40→80 | 判定 |
+| --- | ---: | ---: | ---: | --- | --- |
+| robodrill | 9,820 | 8,506 | **1.15x** | 3→2 | 出力 PASS·**5%+ PASS** |
+| fjv | 20,546 | 11,907 | **1.73x** | 8→4 | 出力 PASS·**5%+ PASS** |
+| stonebase | 72,786 | 39,636 | **1.84x** | 19→10 | 出力 PASS·**5%+ PASS** |
+
+**付帯計測（stonebase · continue=80 完走後）**:
+
+- **`leaderboard-decorations` 一括 2721 行**: **~4.8s**（continue 完走 ~40s に対し **~11%**·二次的要因）。
+- **増分 568+2153 行**: 合計 **~5.0s**（一括と同程度）。
+
+**prefix キャッシュ（現状コード）**:
+
+- **light 行 prefix** は [`leaderboard-composite-board-prefix-row-cache.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-composite-board-prefix-row-cache.ts) で **continue ラウンド間キャッシュ済み**（装飾後取り経路）。
+- 残支配要因は **初回 shell の選定**（~5–7s）と **continue 1 hop の hydrate/合成**（stonebase **~3.4s/hop×10**）。**装飾 enrich のラウンド再実行**は後取り化で continue からは切り離し済み。
+
+**実装前ゲート（continue 80/80）**: **PASS** — **Web 定数 `LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` 40→80** のみで可（API は `pageSize` 受け入れ済み·上限 160）。
+
+**優先度評価**:
+
+| 施策 | 検証 | 推奨 |
+| --- | --- | --- |
+| **continue 80/80** | **PASS（実データ）** | **最優先で実装**（低リスク·最大 45% 短縮） |
+| スロット並列 fan-out | FAIL | 見送り |
+| 装飾 POST 完走後一括 | 一括≈増分 | 効果小（~5s）·UX 契約要確認 |
+| shell 選定コスト削減 | 未検証 | 80/80 後の次候補（劇的改善の残り） |
+
+## continue chunk 80/80 実装（Web のみ · 2026-05-21 · 本番反映済み）
+
+**目的**: [§continue chunk 80/80 事前検証](#continue-chunk-8080-事前検証pi5-実データ--2026-05-20--実装前) で **PASS** した **continue `pageSize` 40→80** を本番へ反映し、**HTTP 往復回数**を減らして **全スロット行が揃うまで（成功基準 B）** の壁時計を短縮する。**スロット並列 fan-out** は [§並列化事前検証](#並列化事前検証pi5-実データ--2026-05-20--実装前) で **却下済み**（本件は **直列 continue の chunk 最適化のみ**）。
+
+**ブランチ**: **`feat/kiosk-leaderboard-continue-chunk-80`**（**`main` から分岐**）。**代表コミット**: **`a2a3c960`**（`feat(kiosk): increase leaderboard continue chunk to 80`）·**CI 修正**: **`12c94486`**（`chore(ci): upgrade API image Debian packages for libgnutls CVEs` — 機能変更なし·下記 Troubleshooting）。
+
+### 仕様（実装の正本）
+
+| 層 | 内容 | 定数 / モジュール |
+| --- | --- | --- |
+| Web shell GET | `leaderboard-board?pageSize=80`（スロットあたり） | [`LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)（**80**·変更なし） |
+| Web continue POST | `body.pageSize` は常に **80** | [`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts)（**40→80**）·[`buildLeaderboardBoardContinuePayload.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderboardBoardContinuePayload.ts) |
+| Web legacy hook | `useLeaderboardPhasedScheduleWithAutoAppend` の continue も **80 固定** | 同上 |
+| API | `pageSize` は既存 Zod（上限 **160**）で受け入れ済み | **変更なし**（Pi5 API 再デプロイは **CI イメージのみ**·下記） |
+
+**意図的に触らない**: `deltaRows` 契約·`mergeLeaderboardBoardContinueResponse`·refetch 表示安定化·装飾後取り（`includeDecorations=false`）·端末キャッシュ（Phase 1/2）·製番 OR クライアントフィルタ·COUNT 再利用（API）·[`kiosk-production-schedule.integration.test.ts`](../../apps/api/src/routes/__tests__/kiosk-production-schedule.integration.test.ts) の **`pageSize: 40`**（API が任意 chunk を受け入れる回帰の意図的固定）。
+
+**現行本番正本（2026-05-21 以降）**: 初回 shell **80/スロット**·continue **80/回**（**80/80**）。歴史節の「continue **40** 固定」は **2026-05-21 以前**の記録。
+
+**ロールバック**: [`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) を **40** に戻し **Pi4×4 Web** を **`main`（または hotfix ブランチ）**で再デプロイ（**env フラグなし**）。API は変更不要。
+
+### ローカル検証（実装時）
+
+```bash
+pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/leaderOrderBoard
+# 200 tests PASS（2026-05-21）
+
+pnpm --filter @raspi-system/web build
+# PASS
+```
+
+| テスト群 | 確認内容 |
+| --- | --- |
+| `buildLeaderboardBoardContinuePayload.test.ts` | continue payload の **`pageSize` = 定数 80** |
+| `useCompositeLeaderboardPhasedScheduleWithAutoAppend.test.tsx` 等 | hook が定数参照で continue を組み立てる |
+| `useLeaderboardPhasedScheduleWithAutoAppend.test.ts` | legacy 経路も **80** |
+
+**読み取りベンチ（再現·Pi5 実データ）**: `NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-chunk.mjs`（[`scripts/test/benchmark-leaderboard-continue-chunk.mjs`](../../scripts/test/benchmark-leaderboard-continue-chunk.mjs)）。**並列 fan-out 却下根拠**: [`scripts/test/benchmark-leaderboard-board-parallel.mjs`](../../scripts/test/benchmark-leaderboard-board-parallel.mjs)。
+
+### CI
+
+| Run | 結果 | 備考 |
+| --- | --- | --- |
+| **`26194548007`** | **failure** | **`security-docker`** — Trivy API イメージ **`libgnutls30`** CVE（Debian パッケージ） |
+| **`26195283245`** | **success** | **`12c94486`** — [`infrastructure/docker/Dockerfile.api`](../../infrastructure/docker/Dockerfile.api) に **`apt-get upgrade -y`** を追加（機能差分なし） |
+
+**注**: ブランチ名 `feat/**` は push 単体では CI が走らない場合がある — **PR 作成後**に全ジョブが走る（[KB-374 §COUNT 再利用 CI](#ci機能ブランチ) と同型）。
+
+### 本番デプロイ（2026-05-21 · **Pi5→Pi4×4 完了**）
+
+**方針**: 標準 **`update-all-clients.sh`**·**1 台ずつ `--limit`**·**Web のみ**（キオスク体感は **Pi4 Web** が `pageSize` を送るため **Pi4 反映必須**）。**Pi5 API** は chunk 受け入れ済みのため **Web 変更単体でも整合**·**`12c94486`** 反映時は Pi5 で **api イメージ再ビルド**あり。
+
+**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-continue-chunk-80 infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+
+| ホスト | 現場名 | Detach Run ID | 備考 |
+| --- | --- | --- | --- |
+| `raspberrypi5` | Pi5 サーバ | **`20260521-083210-21952`** | **`failed=0`**·**`Git: changed`**·Docker 再起動 **ok** |
+| `raspi4-kensaku-stonebase01` | StoneBase01 | **`20260521-085336-30539`** | **`failed=0`**·**`kiosk-browser` / `status-agent` 再起動 ok** |
+| `raspberrypi4` | kensakuMain | **`20260521-085933-4370`** | **`failed=0`** |
+| `raspi4-robodrill01` | RoboDrill01 | **`20260521-090422-2566`** | **`failed=0`** |
+| `raspi4-fjv60-80` | FJV60/80 | **`20260521-090802-31639`** | **`failed=0`** |
+
+**Pi3**: 各 run **`no hosts matched`**（サイネージは対象外·専用手順未実施で正）。
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5+StoneBase 後および **Pi4 全台後**·Tailscale·Pi5 `100.106.158.2`）·**`deploy-status`（Pi4×4）** PASS。
+
+### 実機チェックリスト（順位ボード）
+
+1. DevTools Network で **`POST …/leaderboard-board/continue`** の body **`pageSize: 80`**（旧 bundle は **40**）。
+2. **continue 回数**が [§事前検証](#continue-chunk-8080-事前検証pi5-実データ--2026-05-20--実装前) の **rounds 40→80** 方向に減っている（例: stonebase **19→10**）。
+3. **全スロット行が揃った後**の **行 ID 列・`total`・装飾**が、単発 GET または旧 chunk 完了後と **同値**（出力不変）。
+4. **120s ポーリング**で行が一瞬減って戻らない（[§表示安定化](#web-表示安定化-refetch-時の追補巻き戻し防止-2026-05-19) 維持）。
+5. 必要ならキオスク **強制リロード**（`Cmd+Shift+R`）で旧 bundle を排除。
+
+### Troubleshooting（本件）
+
+| 症状 | 切り分け | 対処 |
+| --- | --- | --- |
+| continue が **`pageSize=40` のまま** | Pi4 **Web bundle** が未反映 | 上表 Detach·**`a2a3c960` 以降**·**強制リロード** |
+| 体感が変わらない（Pi5 のみ更新） | キオスク Web は **Pi4 上** | **Pi4×4** も同ブランチ（pageSize 80 第1弾と同型） |
+| 件数・並びがおかしい | 完了後 id/total | 統合テスト同型で照合·`deltaRows` 失敗時は **`rows` 正本**（変更なし） |
+| CI **`security-docker` のみ失敗**（`libgnutls30`） | Trivy HIGH on API ベースイメージ | **`12c94486`**（`Dockerfile.api` **`apt-get upgrade`**) または [ci-troubleshooting](../guides/ci-troubleshooting.md) |
+| 遅いまま（continue 回数は減った） | 第2弾（shell 選定·prefix 装飾·並列 fan-out） | 本リリース範囲外·[KB-369](./KB-369-leader-order-board-api-internal-latency.md)·ロールバックは **定数 40** |
+| `update-all-clients.sh` が **exit 3** | ローカルロック | `logs/.update-all-clients.local.lock`·別プロセス完了待ち（[§Phase 2 改訂 知見](#知見-1)） |
+
+### 知見
+
+- **continue 80/80** は **Web 定数 1 点**で **最大 ~46% 完走短縮**（stonebase 実データ）·**出力同値**が事前ゲート。**API 変更は不要**（Zod 上限内）。
+- **並列 fan-out は採用しない** — 重い端末ほど **壁時計が悪化**·Pi5 **同時 shell で ~2.3x 遅延**（[§並列化事前検証](#並列化事前検証pi5-実データ--2026-05-20--実装前)）。
+- **装飾 POST**（stonebase 2721 行 ~5s）は continue 完走の **~11%** — chunk 80 の次候補は **shell 選定コスト**（未検証）。
+- **CI**: 機能 push 後の **`security-docker`** 失敗は **Debian ベース CVE** — **API ロジック無関係**·**`apt-get upgrade`** で解消（再発時は Dockerfile.api を確認）。
+
 ## References
 
 - **cursor 契約（2026-05-09）**: 代表 **`6bfd2c2b`**（ブランチ **`fix/kiosk-leaderboard-board-continue-cursor`**）·[deployment §cursor](../guides/deployment.md#leaderboard-board-continue-cursor-contract-2026-05-09)。
@@ -924,4 +1098,5 @@ pnpm --filter @raspi-system/web build
 - **端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック・2026-05-20）**: **`76e265f2`**·**Pi5 + StoneBase01 部分本番**·実機 **OK**·[§Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)·[deployment §120s 改訂](../guides/deployment.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·CI **`26133411712`**。
 - **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 先行本番**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../guides/deployment.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)。
 - **資源CDフッタチップ端末キャッシュ（2026-05-20）**: **`e24d5885`**·**Pi5→Pi4×4 本番・実機 OK**·[§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache)·[deployment §フッタチップ](../guides/deployment.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
+- **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。

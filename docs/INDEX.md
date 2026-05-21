@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-21 · continue chunk 80/80）
+
+- **キオスク順位ボード・continue chunk 80/80（Web のみ・Pi5→Pi4×4 本番反映済）**: 初回 shell **80/スロット**（不変）·continue **`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` 40→80**·**HTTP 往復削減**（Pi5 実データで最大 **~46%** 完走短縮·**出力同値**）。**スロット並列 fan-out は却下**（Pi5 競合で遅化）。**ブランチ**: **`feat/kiosk-leaderboard-continue-chunk-80`**（**`a2a3c960`** / CI **`12c94486`**·**`26195283245` success**）·**本番**: Detach **`20260521-083210-21952`**（Pi5）/ **`20260521-085336-30539`**（StoneBase01）/ **`20260521-085933-4370`** / **`20260521-090422-2566`** / **`20260521-090802-31639`**·**Phase12** **43/0/0**。**記録**: [KB-374 §continue 80/80](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §2026-05-21](./guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main …`**（Pi4 は **`pageSize` 送信元**のため **Pi4 反映必須**）。
+
 ### 🆕 最新アップデート（2026-05-20 · 順位割当 A+α）
 
 - **キオスク順位ボード・資源内順位割当の自動解放（A+α・API のみ・本番反映済）**: **`order-usage`（DB 全割当）** と **一覧（FKOJUNST 可視 + 完了フィルタ）** の **部分集合ギャップ**により、**完了行・非表示行**が **順位だけ残り飛び番**（例: **080/060 が選べず 5 からしか選べない**）。**Fix**: **`retain ⇔ NOT 実効完了 AND 一覧可視（fkmail S/R/C/X）`**·それ以外を **同期後 reconcile で解放**（削除 + 番号詰め）。**ブランチ**: **`feat/kiosk-order-assignment-auto-release-a-alpha`**（**`8d2c582c`** / **`643e4f4b`**）·**CI**: **`26147609881` success**·**本番**: **`raspberrypi5` → Pi4×4**·Detach **`20260520-164356-7722`** ほか 5 本·**Phase12** **43/0/0**（約 **76–88s**）·Pi3 **no hosts matched**。**記録**: [KB-297 §A+α](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](./guides/deployment.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)·[verification-checklist §6.6.24](./guides/verification-checklist.md#kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**（Pi4 は慣行どおり任意）。

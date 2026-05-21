@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as client from '../../../../api/client';
+import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from '../constants';
 import { useCompositeLeaderboardPhasedScheduleWithAutoAppend } from '../useCompositeLeaderboardPhasedScheduleWithAutoAppend';
 
 import type { ProductionScheduleLeaderboardBoardResponse, ProductionScheduleRow } from '../../../../api/client';
@@ -315,7 +316,7 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     const firstPayload = postContinue.mock.calls[0]![0];
-    expect(firstPayload.pageSize).toBe(40);
+    expect(firstPayload.pageSize).toBe(LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE);
     expect(firstPayload.resourceSlices[0]!.cursor).toBe(0);
 
     await waitFor(() => {

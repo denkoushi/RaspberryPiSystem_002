@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE } from '../constants';
 import { useLeaderboardPhasedScheduleWithAutoAppend } from '../useLeaderboardPhasedScheduleWithAutoAppend';
 
 import type { ProductionScheduleRow } from '../../../../api/client';
@@ -160,7 +161,11 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
     });
 
     expect(postContinueMock).toHaveBeenCalledWith(
-      expect.objectContaining({ snapshotId: 'snap-test', cursor: 20, pageSize: 40 })
+      expect.objectContaining({
+        snapshotId: 'snap-test',
+        cursor: 20,
+        pageSize: LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE
+      })
     );
 
     shellQueryMock = {
@@ -338,7 +343,10 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     await waitFor(() => {
       expect(postContinueMock).toHaveBeenCalledTimes(1);
-      expect(postContinueMock.mock.calls[0]![0]).toMatchObject({ cursor: 20, pageSize: 40 });
+      expect(postContinueMock.mock.calls[0]![0]).toMatchObject({
+        cursor: 20,
+        pageSize: LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE
+      });
     });
     expect(totalQueryMock.isSuccess).toBe(false);
 
@@ -353,7 +361,10 @@ describe('useLeaderboardPhasedScheduleWithAutoAppend', () => {
 
     await waitFor(() => {
       expect(postContinueMock).toHaveBeenCalledTimes(2);
-      expect(postContinueMock.mock.calls[1]![0]).toMatchObject({ cursor: 40, pageSize: 40 });
+      expect(postContinueMock.mock.calls[1]![0]).toMatchObject({
+        cursor: 40,
+        pageSize: LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE
+      });
     });
     expect(totalQueryMock.isSuccess).toBe(false);
   });
