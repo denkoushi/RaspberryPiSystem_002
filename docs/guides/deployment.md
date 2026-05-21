@@ -34,7 +34,7 @@ update-frequency: medium
   - **見た目が旧のまま** → Pi5 **`api` ref**（**`7b54d992` 以降**）·`slideIntervalSeconds` 待ち·`GET /api/signage/content` の `kiosk_leader_order_cards`。
   - **左縁色・チップ無し** → 上記と同様（Pi5 未更新またはキャッシュ）。
   - **Pi4 をデプロイしたが変わらない** → 本リリースは **API のみ**（Pi4 デプロイは不要だった）。
-- **ナレッジ**: [KB-335 §キオスク整合](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)·[design-previews README](../design-previews/README.md)。
+- **ナレッジ**: [KB-335 §キオスク整合](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)·[design-previews README](../design-previews/README.md)。**`main` マージ**: [PR #311](https://github.com/denkoushi/RaspberryPiSystem_002/pull/311)（squash **`6cb3bb1e`**）。
 
 ### 補足（2026-05-20 · **キオスク順位ボード・資源内順位割当の自動解放（A+α）**·`feat/kiosk-order-assignment-auto-release-a-alpha`·**API のみ**·Pi5→Pi4×4） {#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20}
 
