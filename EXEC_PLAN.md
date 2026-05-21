@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-21 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・continue chunk 80/160（Web のみ）**·ブランチ **`feat/kiosk-leaderboard-continue-chunk-160`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**`4471a444`**。**仕様**: 初回 shell **80/スロット**（不変）·continue **`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` 80→160**（**80/160**）·**API/Zod 上限 160 受け入れ済み**·**`deltaRows`/IDB/製番 OR/装飾後取り 不変**·**スロット並列 fan-out は却下**（[KB-374 §並列化](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#並列化事前検証pi5-実データ--2026-05-20--実装前)）。**ローカル**: leaderOrderBoard Vitest **200 PASS**·`web build` PASS·ベンチ [`benchmark-leaderboard-continue-chunk.mjs`](./scripts/test/benchmark-leaderboard-continue-chunk.mjs) **80 vs 160 全 profile 出力同値 + 5%+ 短縮 PASS**。**CI**: **`26222962417` success**（PR #315 push）。**本番（5台・1台ずつ）**: Detach **`20260521-203852-9936`**（Pi5·`ok=134` `changed=4`）/ **`20260521-205337-26001`**（StoneBase01）/ **`20260521-205915-5232`**（Pi4）/ **`20260521-210531-13345`**（robodrill）/ **`20260521-211045-27096`**（fjv60-80）（各 **`failed=0`**·Pi4 は **`kiosk-browser` 再起動 ok**）。**Pi3**: 除外（`no hosts matched`）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **123s**）·Pi5 ベンチ **robodrill 1.42x / fjv 1.36x / stonebase 1.51x**（continue rounds **2→1 / 4→2 / 10→5**）。**ナレッジ**: [KB-374 §continue 80/160](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](./docs/guides/deployment.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-21 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・continue chunk 80/80（Web のみ）**·ブランチ **`feat/kiosk-leaderboard-continue-chunk-80`**·**`a2a3c960`** / CI fix **`12c94486`**。**仕様**: 初回 shell **80/スロット**（不変）·continue **`LEADER_ORDER_BOARD_CONTINUE_CHUNK_SIZE` 40→80**·**API/Zod/`deltaRows`/IDB/製番 OR 不変**·**スロット並列 fan-out は却下**（[KB-374 §並列化事前検証](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#並列化事前検証pi5-実データ--2026-05-20--実装前)）。**ローカル**: leaderOrderBoard Vitest **200 PASS**·`web build` PASS·ベンチ [`benchmark-leaderboard-continue-chunk.mjs`](./scripts/test/benchmark-leaderboard-continue-chunk.mjs)。**CI**: 初回 **`26194548007` failure**（`security-docker`·`libgnutls30`）→ **`12c94486`** → **`26195283245` success**。**本番（5台・1台ずつ）**: Detach **`20260521-083210-21952`**（Pi5）/ **`20260521-085336-30539`**（StoneBase01）/ **`20260521-085933-4370`** / **`20260521-090422-2566`** / **`20260521-090802-31639`**（各 **`failed=0`**）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**。**Pi3**: 除外。**ナレッジ**: [KB-374 §continue 80/80](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/80](./docs/guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
 - [x] (2026-05-20 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・資源内順位割当の自動解放（A+α・API のみ）**·ブランチ **`feat/kiosk-order-assignment-auto-release-a-alpha`**·**`8d2c582c`** / **`643e4f4b`**。**仕様**: **`retain ⇔ NOT 実効完了 AND キオスク一覧可視（fkmail S/R/C/X）`**·それ以外は **割当削除 + 番号詰め**·**トリガ** = FKOJUNST mail / 本体 CSV 外部完了 / external completion **同期後 reconcile**·**winner 外旧行**も解放（SQL 追補）·Web/`order-usage`/DB マイグレ **不変**。**CI**: 初回 **`26146689419` failure**（reconcile **部分 DI 未注入**·4 件）→ **`643e4f4b`** → **`26147609881` success**。**ローカル**: order-assignment 関連 Vitest **15 PASS**。**本番（5台・1台ずつ）**: Detach **`20260520-164356-7722`** / **`20260520-174409-16528`**（Pi5）/ **`20260520-174713-7127`**（StoneBase01）/ **`20260520-180644-29504`** / **`20260520-181206-12995`** / **`20260520-181622-32182`**（各 **`failed=0`**）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **76–88s**）。**Pi3**: 除外。**ナレッジ**: [KB-297 §A+α](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](./docs/guides/deployment.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
@@ -2295,6 +2297,24 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク順位ボード — shell 選定 SQL 最適化（2026-05-21）— **次候補**
+
+**概要**: **continue chunk 80/160**（**`4471a444`**·[KB-374 §80/160](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)）本番後も、**初回 shell 選定**（~5–7s）と **continue 1 hop の hydrate**（stonebase **~5s/hop×5**）が支配的。**chunk 最適化の次段**。
+
+**候補タスク**:
+
+1. **shell 選定 SQL** の EXPLAIN / 実測でボトルネック特定（[KB-369](./docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）。
+2. **Pi5 memory 警告**（90%+）と一過性 **503** の相関調査·Docker/API リソース見直し。
+3. **Web 増分 view model**（IDB 2 回目以降の DOM 更新最小化）— 出力同値を維持した PoC。
+
+**却下済み（再採用しない）**: スロット並列 fan-out·初回10/continue40 Pi4 展開。
+
+### キオスク順位ボード — continue chunk 80/160 の現場目視（2026-05-21）— **任意**
+
+**概要**: **PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)** / **`4471a444`** は **Pi5→Pi4×4 本番·Phase12 43/0/0·Pi5 ベンチ出力同値** 済み。**DevTools で `pageSize=160`**·continue **回数減**·表示 **ちらつきなし** を現場目視推奨（強制リロード）。
+
+**チェックリスト**: [KB-374 §80/160 実機チェックリスト](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#実機チェックリスト順位ボード-1)
 
 ### キオスク順位ボード — 製番左縁アクセント 24 色の現場目視（2026-05-20）— **任意**
 
