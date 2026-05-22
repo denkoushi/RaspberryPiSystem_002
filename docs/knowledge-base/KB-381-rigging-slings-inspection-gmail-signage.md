@@ -59,12 +59,40 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **Pi3 について**: `--limit raspberrypi5` のため Pi3 play は **`no hosts matched`**。Pi3 専用手順（リソース僅少向け）は **未適用で正**（サイネージ JPEG 正本は Pi5 API が生成し、Pi3 は既存 `signage-lite` で取得）。
 
+**UI 修正デプロイ（スケジュール編集不可）**: [PR #321](https://github.com/denkoushi/RaspberryPiSystem_002/pull/321) **`011071df`**·Pi5 Detach **`20260522-140422-2321`**（`failed=0`）。
+
+## 現場検証（2026-05-22 · 進行中）
+
+| # | 項目 | 結果 | 備考 |
+|---|------|------|------|
+| 1 | **インポートスケジュール有効化** | **OK** | UI 修正後 `/admin/imports/schedule` で保存成功 |
+| 2 | **Gmail CSV 手動実行** | **OK** | スケジュール画面から手動実行 |
+| 3 | **Gmail 受信箱から対象メール消失** | **OK** | 取込成功後の既存 Gmail 処理どおり（未読→処理→アーカイブ/削除） |
+| 4 | **`RiggingInspectionRecord` 投影確認** | **OK（要 backfill）** | Pi5 DB: **46 件**（全件 `notes.source=gmail`）·**誤従業員紐づけ**（氏名スペース不一致）→ A+B 修正 + backfill 後に再確認 |
+| 5 | **可視化ダッシュボード preset** | **A+B 修正待ち** | `/admin/visualization-dashboards` |
+| 6 | **サイネージ割当・JPEG 表示** | **A+B 修正待ち** | `/admin/signage/schedules` → `[吊具点検]`·CSV 点検が Loan のみ表示だった問題（B） |
+| 7 | **キオスク吊具 borrow → PASS 点検** | **未実施** | best-effort orchestrator |
+
 ## 運用手順（本番・デプロイ後）
 
 1. Pi5 で API 再ビルド済み（上記デプロイで完了）
 2. `/admin/imports/schedule` で `csv-import-rigging-slings-inspection-powerapps` を **有効化**
 3. `/admin/visualization-dashboards` で吊具点検プリセット作成 → `/admin/signage/schedules` で visualization スロット割当
 4. Gmail 未読・件名一致・`control_num` 解決可否を確認（取込ログ / `RiggingInspectionRecord` 件数）
+
+### 誤投影修復（A+B デプロイ後・1 回）
+
+Gmail メールは処理済みのため再取込不可。**CsvDashboard 永続行**から再投影する。
+
+```bash
+# dry-run（削除件数・再投影行数の確認）
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+  pnpm backfill:rigging-inspection-gmail-projection:prod -- --dry-run
+
+# 実行（notes.source=gmail を削除 → 全 CsvDashboardRow 再投影）
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+  pnpm backfill:rigging-inspection-gmail-projection:prod
+```
 
 ## Troubleshooting
 
@@ -76,12 +104,16 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 同一日・同一人・同一管理番号が増えない | dedup 正常動作 | 意図どおり（更新は別経路） |
 | キオスク borrow 後に点検無し | orchestrator **best-effort** / dedup | borrow は成功のまま·API ログ |
 | サイネージに吊具が出ない | 可視化ダッシュボード未作成 | 管理 UI で preset + schedule 割当 |
+| **サイネージに CSV 点検者が出ない** | **A**: CSV 氏名（スペースなし）と従業員マスタ（スペースあり）の不一致で投影失敗·**B**: DataSource が Loan のみカード本文表示 | **A**: `compactEmployeeDisplayName` で resolver 修正·**B**: `RiggingInspectionRecord` を Loan とマージ·既存誤投影は **backfill**（上記） |
+| **投影はあるが加工担当部署に紐づかない** | 誤従業員へ投影済み（section 空の従業員等） | backfill 実行後、`section=加工担当部署` の `RiggingInspectionRecord` 件数を確認 |
 | **管理 UI で「時刻指定が解析できません」** | 既定 cron **`0 * * * *`（毎時）** を Web の `parseCronSchedule` が未対応（2026-05-22 修正前） | **回避**: 管理画面ログイン中に `PUT /api/imports/schedule/csv-import-rigging-slings-inspection-powerapps` で **`{ "enabled": true }` のみ**送信（schedule は変更不要）·**恒久**: Web 修正 **`fix/csv-import-hourly-cron-ui`** を Pi5 へ再デプロイ |
 | **CSVダッシュボードが「選択してください」のまま** | 編集フォームで `provider=gmail` 時に csvDashboards でも件名パターン欄を表示する UI バグ（同上） | 上記 Web 修正で解消·targets.source は **`c4e8a1b2-3d6f-7890-abcd-ef1234567891`** が backup.json に既存なら API 有効化のみで可 |
 
 ## 仕様メモ（後続コンテキスト用）
 
-- **dedup キー**: 正規化した管理番号 + JST 業務日（`inspectionDate` 列）+ 氏名（表示名 resolver 経由）
+- **dedup キー**: 正規化した管理番号 + JST 業務日 + **compact 氏名**（全空白除去·`compactEmployeeDisplayName`）
+- **氏名照合**: CSV `inspectorName`（スペースなし）↔ `Employee.displayName`（スペースあり）は **compact キー**で一致
+- **サイネージ明細**: Loan active/returned を優先し、未出現の点検吊具を `kind=active` でマージ
 - **結果マッピング**: PowerApps CSV の結果列 → `RiggingInspectionResult`（PASS/FAIL/未実施等）
 - **postIngest**: `csv-dashboard-post-ingest.service.ts` が dashboard ID で dispatch·手動 upload も同一 pipeline
 - **共有 UI**: `loan-inspection-card` を計測機器（MI）から抽出·MI renderer は legacy adapter 経由で回帰

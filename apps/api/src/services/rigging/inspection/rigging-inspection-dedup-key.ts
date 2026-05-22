@@ -1,5 +1,5 @@
 import { resolveJstSignageBusinessDate } from '../../../lib/signage-business-day.js';
-import { normalizeEmployeeName } from '../../measuring-instruments/analytics/measuring-instrument-loan-analytics.repository.js';
+import { compactEmployeeDisplayName } from '../../employee/compact-employee-display-name.js';
 
 export function buildRiggingInspectionDedupKey(params: {
   managementNumber: string;
@@ -7,7 +7,7 @@ export function buildRiggingInspectionDedupKey(params: {
   inspectorName: string;
 }): string {
   const managementNumber = params.managementNumber.trim();
-  const inspectorName = normalizeEmployeeName(params.inspectorName);
+  const inspectorName = compactEmployeeDisplayName(params.inspectorName);
   const businessDate = resolveJstSignageBusinessDate(params.inspectedAt);
   return `${managementNumber}|${businessDate}|${inspectorName}`;
 }

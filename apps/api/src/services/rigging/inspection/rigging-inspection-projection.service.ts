@@ -8,6 +8,7 @@ import { RiggingInspectionDedupPolicy } from './rigging-inspection-dedup.policy.
 import { mapRiggingInspectionResult } from './rigging-inspection-result-mapper.js';
 import {
   emptyRiggingInspectionSyncResult,
+  loadRiggingInspectionSourceRowsFromDashboard,
   loadRiggingInspectionSourceRowsFromIngest,
   type RiggingInspectionSyncResult,
 } from './rigging-inspection-sync.pipeline.js';
@@ -25,6 +26,10 @@ function buildGmailNotes(rowData: Record<string, unknown>): string {
   });
 }
 
+type ProjectionContext = {
+  ingestRunId?: string;
+};
+
 export class RiggingInspectionProjectionService {
   private gearResolver = new RiggingGearResolver(prisma);
   private employeeResolver = new EmployeeDisplayNameResolver(prisma);
@@ -37,7 +42,33 @@ export class RiggingInspectionProjectionService {
       return emptyRiggingInspectionSyncResult(scanned);
     }
 
-    const result: RiggingInspectionSyncResult = emptyRiggingInspectionSyncResult(scanned);
+    const result = await this.projectOrderedRows(orderedRows, { ingestRunId: params.ingestRunId });
+    logger.info(
+      { ingestRunId: params.ingestRunId, result },
+      '[RiggingInspectionProjectionService] Rigging inspection sync completed'
+    );
+    return { ...result, csvRowsScanned: scanned };
+  }
+
+  async syncFromPersistedDashboardRows(): Promise<RiggingInspectionSyncResult> {
+    const { scanned, orderedRows } = await loadRiggingInspectionSourceRowsFromDashboard(prisma);
+    if (orderedRows.length === 0) {
+      return emptyRiggingInspectionSyncResult(scanned);
+    }
+
+    const result = await this.projectOrderedRows(orderedRows, {});
+    logger.info(
+      { result },
+      '[RiggingInspectionProjectionService] Rigging inspection persisted dashboard sync completed'
+    );
+    return { ...result, csvRowsScanned: scanned };
+  }
+
+  private async projectOrderedRows(
+    orderedRows: Array<{ rowData: Record<string, unknown> }>,
+    context: ProjectionContext
+  ): Promise<RiggingInspectionSyncResult> {
+    const result: RiggingInspectionSyncResult = emptyRiggingInspectionSyncResult(orderedRows.length);
 
     for (const { rowData } of orderedRows) {
       const managementNumber = asString(rowData.managementNumber);
@@ -50,7 +81,7 @@ export class RiggingInspectionProjectionService {
       if (!gear) {
         result.unmatchedGear += 1;
         logger.warn(
-          { managementNumber, idNum, inspectorName, ingestRunId: params.ingestRunId },
+          { managementNumber, idNum, inspectorName, ingestRunId: context.ingestRunId },
           '[RiggingInspectionProjectionService] Skipped row: rigging gear not found'
         );
         continue;
@@ -60,7 +91,7 @@ export class RiggingInspectionProjectionService {
       if (!employee) {
         result.unmatchedEmployee += 1;
         logger.warn(
-          { managementNumber: gear.managementNumber, inspectorName, ingestRunId: params.ingestRunId },
+          { managementNumber: gear.managementNumber, inspectorName, ingestRunId: context.ingestRunId },
           '[RiggingInspectionProjectionService] Skipped row: employee not found'
         );
         continue;
@@ -70,7 +101,7 @@ export class RiggingInspectionProjectionService {
       if (!mappedResult.ok) {
         result.invalidResult += 1;
         logger.warn(
-          { result: resultRaw, managementNumber: gear.managementNumber, ingestRunId: params.ingestRunId },
+          { result: resultRaw, managementNumber: gear.managementNumber, ingestRunId: context.ingestRunId },
           '[RiggingInspectionProjectionService] Skipped row: invalid inspection result'
         );
         continue;
@@ -79,7 +110,7 @@ export class RiggingInspectionProjectionService {
       if (!inspectedAtRaw) {
         result.invalidDate += 1;
         logger.warn(
-          { managementNumber: gear.managementNumber, ingestRunId: params.ingestRunId },
+          { managementNumber: gear.managementNumber, ingestRunId: context.ingestRunId },
           '[RiggingInspectionProjectionService] Skipped row: missing inspectedAt'
         );
         continue;
@@ -89,7 +120,7 @@ export class RiggingInspectionProjectionService {
       if (!inspectedAt) {
         result.invalidDate += 1;
         logger.warn(
-          { inspectedAtRaw, managementNumber: gear.managementNumber, ingestRunId: params.ingestRunId },
+          { inspectedAtRaw, managementNumber: gear.managementNumber, ingestRunId: context.ingestRunId },
           '[RiggingInspectionProjectionService] Skipped row: invalid inspectedAt'
         );
         continue;
@@ -115,10 +146,6 @@ export class RiggingInspectionProjectionService {
       result.created += 1;
     }
 
-    logger.info(
-      { ingestRunId: params.ingestRunId, result },
-      '[RiggingInspectionProjectionService] Rigging inspection sync completed'
-    );
     return result;
   }
 }

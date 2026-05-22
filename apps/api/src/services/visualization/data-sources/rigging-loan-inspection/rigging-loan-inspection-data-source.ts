@@ -4,7 +4,10 @@ import { resolveJstSignageBusinessDate } from '../../../../lib/signage-business-
 import type { DataSource } from '../data-source.interface.js';
 import type { TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { resolveJstDayRange } from '../_shared/data-source-utils.js';
-import { formatLoanInspectionInstrumentLabel } from '../../shared/loan-inspection-card/format-instrument-label.js';
+import {
+  buildLoanInspectionInstrumentDetails,
+  filterInspectedOnlyDetails,
+} from '../../shared/loan-inspection-card/build-instrument-detail-json.js';
 import { loadCancelledLoanIdSet } from '../measuring-instrument-loan-inspection/load-cancelled-loan-id-set.js';
 import {
   RIGGING_ACTIVE_COUNT_COLUMN,
@@ -84,7 +87,7 @@ export class RiggingLoanInspectionDataSource implements DataSource {
     }
 
     const employeeIds = employees.map((employee) => employee.id);
-    const [inspectedGroup, riggingLoans] = await Promise.all([
+    const [inspectedGroup, riggingLoans, inspectionRecords] = await Promise.all([
       prisma.riggingInspectionRecord.groupBy({
         by: ['employeeId'],
         where: {
@@ -122,6 +125,27 @@ export class RiggingLoanInspectionDataSource implements DataSource {
         },
         orderBy: {
           borrowedAt: 'desc',
+        },
+      }),
+      prisma.riggingInspectionRecord.findMany({
+        where: {
+          employeeId: { in: employeeIds },
+          inspectedAt: {
+            gte: startDateUtc,
+            lt: endDateUtcExclusive,
+          },
+        },
+        select: {
+          employeeId: true,
+          riggingGear: {
+            select: {
+              name: true,
+              managementNumber: true,
+            },
+          },
+        },
+        orderBy: {
+          inspectedAt: 'desc',
         },
       }),
     ]);
@@ -172,6 +196,26 @@ export class RiggingLoanInspectionDataSource implements DataSource {
       }
     }
 
+    type InspectionDetail = { name: string; managementNumber: string };
+    const inspectionDetailsByEmployee = new Map<string, Map<string, InspectionDetail>>();
+    for (const record of inspectionRecords) {
+      const employeeId = record.employeeId;
+      const gear = record.riggingGear;
+      if (!employeeId || !gear) {
+        continue;
+      }
+      const mgmt = gear.managementNumber.trim();
+      const name = gear.name.trim();
+      if (!mgmt && !name) {
+        continue;
+      }
+      const byMgmt = inspectionDetailsByEmployee.get(employeeId) ?? new Map<string, InspectionDetail>();
+      if (!byMgmt.has(mgmt)) {
+        byMgmt.set(mgmt, { name, managementNumber: gear.managementNumber });
+        inspectionDetailsByEmployee.set(employeeId, byMgmt);
+      }
+    }
+
     let inspectedUsers = 0;
     const rows = employees.map((employee) => {
       const inspectedCountToday = inspectedCountByEmployee.get(employee.id) ?? 0;
@@ -179,28 +223,23 @@ export class RiggingLoanInspectionDataSource implements DataSource {
       const returnedMap = returnedDetailsByEmployee.get(employee.id) ?? new Map<string, ReturnedDetail>();
       const activeDetails = Array.from(activeMap.values());
       const returnedDetails = Array.from(returnedMap.values());
-      const nameTokens = [
-        ...activeDetails.map((d) => formatLoanInspectionInstrumentLabel(d.name, d.managementNumber)),
-        ...returnedDetails.map((d) => formatLoanInspectionInstrumentLabel(d.name, d.managementNumber)),
-      ];
+      const loanManagementNumbers = new Set([
+        ...activeMap.keys(),
+        ...returnedMap.keys(),
+      ]);
+      const inspectionMap = inspectionDetailsByEmployee.get(employee.id) ?? new Map<string, InspectionDetail>();
+      const inspectedOnly = filterInspectedOnlyDetails({
+        inspectionDetails: Array.from(inspectionMap.values()),
+        loanManagementNumbers,
+      });
+      const { instrumentDetailsJson, nameTokens } = buildLoanInspectionInstrumentDetails({
+        activeFromLoan: activeDetails,
+        returnedFromLoan: returnedDetails,
+        inspectedOnly,
+      });
       if (inspectedCountToday > 0) {
         inspectedUsers += 1;
       }
-      const instrumentDetailsJson =
-        activeDetails.length + returnedDetails.length > 0
-          ? JSON.stringify([
-              ...activeDetails.map((d) => ({
-                kind: 'active' as const,
-                managementNumber: d.managementNumber,
-                name: d.name,
-              })),
-              ...returnedDetails.map((d) => ({
-                kind: 'returned' as const,
-                managementNumber: d.managementNumber,
-                name: d.name,
-              })),
-            ])
-          : '';
       return {
         従業員名: employee.displayName,
         点検件数: inspectedCountToday,
