@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-05-22（順位ボード・資源CDスロット「順位」ボタン §6.6.25 追記）。**2026-05-20 追記**: 順位ボード製番左縁アクセント 24 色（§6.6.23）。
+最終更新: 2026-05-22（順位ボード·行内順位ピッカー §6.6.27 追記·§6.6.26 はサイネージ SVG / 履歴）。**2026-05-20 追記**: 順位ボード製番左縁アクセント 24 色（§6.6.23）。
 
 ## 概要
 
@@ -823,9 +823,34 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-22（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260522-183756-28111`**·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.26 キオスク リーダー順位ボード（手動順位付き行の背景ハイライト）** {#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22}
+**6.6.26 キオスク リーダー順位ボード（手動順位 — サイネージ SVG 行背景 / キオスク履歴）** {#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22}
 
-**確認ポイント**（[KB-297 §手動順位行ハイライト](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335 §手動順位行](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[deployment §2026-05-22](./deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)）:
+**確認ポイント**（[KB-297 §手動順位行](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335 §手動順位行](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)）:
+
+- [ ] **サイネージ（手動）**: `kiosk_leader_order_cards` で **順位付き未完行**の行ブロック背景 **`rgba(71, 85, 105, 0.82)` 相当**（Pi5 **`api`**·`3acf4c5a` 以降）。
+- [ ] **キオスク（履歴・行背景案）**: **`949eea9c` 以降は行背景ハイライトなし** — 現行確認は **§6.6.27** を正とする。
+
+**6.6.27 キオスク リーダー順位ボード（行内順位ピッカー · 製番順位 UI 統一）** {#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22}
+
+**確認ポイント**（[KB-297 §行内順位ピッカー](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[deployment §行内順位](./deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)）:
+
+- [x] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-22·Detach **`20260522-204821-6687`**·約 **116s**）。
+- [x] **UI 種別**: 行内順位は **`<select>` ではなく** タップで **縦リスト Portal**（製番順位ピッカーと同系）。
+- [x] **行背景**: 順位付き行も **未設定行と同じ暗背景**（`bg-slate-800/80`）。**行全体が明るくならない**。
+- [x] **アンカー（順位 1–10）**: **黄色縁 + 黄色数字（`text-sm`）**。寸法 **`h-7 w-14`**（カードレイアウト不変）。
+- [x] **アンカー（「-」）**: 白枠·白文字·11px。
+- [x] **完了行**: disabled·ハイライトなし。
+- [x] **「-」選択**: 順位解除後、アンカーが **白表示に戻る**。
+- [x] **強制リロード**: 反映後 §6.6.4 実施（Pi5 **`web`** **`949eea9c` 以降**）。
+
+**トラブルシュート**: 旧 `<select>` → ref / 強制リロード。行全体が明るい → 旧 **`3acf4c5a`/`f976bdd8`**。サイネージと見え方が違う → **仕様**（§6.6.26 参照）。
+
+**検証日時**: 2026-05-22（自動 **43/0/0**·Detach **`20260522-204821-6687`**·**Pi5 のみ**）
+**検証結果**: ☑ 成功（自動） ☑ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
+
+**6.6.26（旧チェックリスト · アーカイブ）**
+
+**確認ポイント**（旧·行背景案 — キオスク **`949eea9c` 以降は不適用**）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-22 本番反映後 **約 96s**·**サイネージ `current-image` 含む**）。
 - [ ] **キオスク（手動）**: 順位 **1–10 付与済みの未完行**のみ **slate-600 系の行背景**。**順位未設定行**は従来の暗背景。**完了行**は **薄灰 + grayscale のみ**（ハイライトなし）。

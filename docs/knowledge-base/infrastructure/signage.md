@@ -168,7 +168,7 @@ update-frequency: medium
 - **2026-05-21 コンパクト＋未完のみ（`feat/signage-leader-order-cards-compact-incomplete`）**: カード内 **工順・顧客名を非表示**、**機種名10文字上限**（`LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS`）、metrics/tokens で **コンパクト化**。**表示行は未完のみ**（`filterLeaderBoardRowsIncompleteForSignage`・完了行は従来の薄表示から **完全非表示**へ）。フッタチップ解決は **全行**入力のまま（表示行のみフィルタ）。
 - **2026-05-21 5列×2段・最大/既定10（`feat/signage-leader-order-cards-5x2-grid-10`）**: `layout-contracts.ts` で **5×2・容量10**。Zod・管理 `SignageSchedulesPage` の **max/既定10**。**既存 `cardsPerPage: 8` 保存スケジュールは8枚のまま**（空き2枠）。カード幅は列数に応じて自動縮小（フォント・行内容は不変）。
 - **2026-05-21 ヘッダ加工機名・全文1行（`a2f9a2c5`）**: 5×2 本番後の **`…` 省略回帰**を修正。旧 **`computeLeaderOrderHeaderTruncation` + `truncateChars`** を廃止し、**加工機名は全文・1行**（折り返し禁止）。**現場目視 OK**。
-- **2026-05-22 手動順位付き行の背景ハイライト（`feat/kiosk-leader-board-manual-order-row-highlight`）**: **`processingOrder != null` かつ未完**の行ブロックのみ **`rgba(71, 85, 105, 0.82)`**（キオスク `bg-slate-600/82` と整合）。**完了行はハイライト対象外**（従来の薄表示/非表示ポリシーは [コンパクト＋未完のみ](#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg) のまま）。`leader-board-pure.ts` の **`hasManualOrder`** → `leader-order-cards-svg-schedule-row.ts`。
+- **2026-05-22 手動順位付き行の背景ハイライト（`feat/kiosk-leader-board-manual-order-row-highlight`）**: **`processingOrder != null` かつ未完**の行ブロックのみ **`rgba(71, 85, 105, 0.82)`**（**サイネージ SVG のみ継続**·キオスク Web は [§行内順位ピッカー](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22) へ pivot）。`leader-board-pure.ts` の **`hasManualOrder`** → `leader-order-cards-svg-schedule-row.ts`。
 
 **代表ファイル**:
 - `apps/api/src/services/signage/signage.renderer.ts`（分岐 `kiosk_leader_order_cards`）
@@ -212,7 +212,7 @@ update-frequency: medium
 - **機種名が途中で切れる**: **`LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS`（10）** 意図。定数は `leader-order-cards-svg-layout-tokens.ts`。
 - **納期がすべて `—`（ダッシュ）**: **コンパクト本番〜`83501b27` 前**は `String(Prisma Date)` で **`formatDueDateSignage` が空**→ **`—`**。**`fix/signage-leader-order-due-date-from-prisma-date`** 以降の Pi5 ref を確認。キオスクに納期があるのにサイネージだけ無い場合は本件を疑う。
 - **キオスクと見た目が違う（2026-05-21 以降）**: Pi5 **`api` ref** が **`83501b27` 以降（納期 fix）または `main` HEAD**か確認。**Pi4 デプロイは不要**（API のみ）。Pi3 は **Pi5 未更新**を疑う。**`deviceScopeKey`** はデータスコープのみ。
-- **手動順位行の背景がキオスクと揃わない（2026-05-22 以降）**: **`3acf4c5a` 以降**の Pi5 **`web` + `api`** か確認。**順位未設定 / 完了行**はハイライトしない（仕様）。サイネージのみ旧見た目 → **Pi3 デプロイ不可解**·Pi5 **`api`**·`slideIntervalSeconds` / `SIGNAGE_RENDER_DIR`。
+- **手動順位行の背景がキオスクと揃わない（2026-05-22 以降）**: **意図的分岐** — キオスク **`949eea9c` 以降**は [§行内順位ピッカー](../../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)（**黄色アンカー**·行背景一定）。サイネージは **`3acf4c5a` 以降 api** で **行背景 `rgba(71,85,105,0.82)`**。**順位未設定 / 完了行**は SVG もハイライトしない。
 - **左縁色・行下チップが無い**: 旧 JPEG キャッシュまたはスケジュール未再描画 → `slideIntervalSeconds` 待ち・`SIGNAGE_RENDER_DIR`・`GET /api/signage/content` の `layoutConfig.type === 'kiosk_leader_order_cards'` を確認。
 - **行が詰まりすぎ／切れる**: 動的行高は `leader-order-cards-svg-schedule-row.ts` と `layout-tokens`。**チップ数**は `buildLeaderboardFooterChipsByPartKeyForScheduleRows`（キオスク順位ボードと同契約）に依存。
 

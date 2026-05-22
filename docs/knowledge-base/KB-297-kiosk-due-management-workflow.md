@@ -2679,25 +2679,46 @@ category: knowledge-base
 
 ### Leader order board: 手動順位付き行の背景ハイライト（案A改）（2026-05-22） {#leader-order-board-manual-order-row-highlight-2026-05-22}
 
-- **目的**: **`processingOrder` が付与された未完行**を、同一スロット内の未設定行と区別しやすくする。**行ブロックのみ**背景を変更（資源CDカード全体・製番左縁アクセントは不変）。**Web + サイネージ `kiosk_leader_order_cards` SVG** を同期。
-- **仕様（要約）**:
-  - **ハイライト条件**: **`processingOrder != null` かつ `!isCompleted`**。完了行は **ハイライトしない**（既存 **`opacity-50 grayscale`** 維持）。
-  - **色**: キオスク **`bg-slate-600/82`**。SVG **`rgba(71, 85, 105, 0.82)`**（`LEADER_ORDER_SVG_ROW_BG_RANKED`）。設計プレビュー [leader-board-manual-order-row-highlight-preview.html](../design-previews/leader-board-manual-order-row-highlight-preview.html)（案A改: `slate-600`）。
-  - **Web**: [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) — `hasManualOrder`。
-  - **サイネージ API**: [`toLeaderOrderRowSvgModels`](../../apps/api/src/services/signage/leader-order-cards/leader-board-pure.ts) が **`hasManualOrder`** を付与 → [`leader-order-cards-svg-schedule-row.ts`](../../apps/api/src/services/signage/leader-order-cards/leader-order-cards-svg-schedule-row.ts)。
-  - **不変**: DB·`order-usage`·順位付与 UI（スロット「順位」ボタン・ドロップダウン）·製番左縁24色。
-- **本番デプロイ・実機検証（2026-05-22）**:
-  - **ブランチ**: `feat/kiosk-leader-board-manual-order-row-highlight`（代表 **`3acf4c5a`**）。
-  - **CI**: **`26281606000` success**。
-  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。**対象**: **`raspberrypi5` のみ**。**Pi3 除外**。
-  - **Detach Run ID**: **`20260522-192111-31816`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·exit **`0`**·`--follow` 約 **816s**）。
-  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **96s**）。
-- **知見**:
-  - **スロット「順位」ボタン**（[§スロット順位](#leader-order-board-slot-auto-rank-2026-05-22)）で付与した行も、**手動ドロップダウン**で付与した行も **同じハイライト**。
-  - Pi5 **`web` + `api`** のみ更新。Pi4/Pi3 **Ansible play は `no hosts matched` で正**。
+> **2026-05-22 後半更新（正本）**: キオスク UI は **行背景ハイライトを撤回**し、**順位ドロップダウンのみ**強調に変更済み（[§行内順位ピッカー](#leader-order-board-row-order-rank-picker-2026-05-22)）。**サイネージ SVG の行背景ハイライト**（`LEADER_ORDER_SVG_ROW_BG_RANKED`）は **本節のとおり継続**。
+
+- **目的（初回·2026-05-22 午前）**: **`processingOrder` が付与された未完行**を、同一スロット内の未設定行と区別しやすくする。**行ブロックのみ**背景を変更。**Web + サイネージ SVG** を同期する案。
+- **現行仕様（キオスク Web · `949eea9c` 以降）**:
+  - **行背景**: 常に **`bg-slate-800/80`**（`LeaderOrderResourceRow` — **`hasManualOrder` 分岐なし**）。
+  - **順位 UI**: [**§行内順位ピッカー**](#leader-order-board-row-order-rank-picker-2026-05-22) を参照。
+- **現行仕様（サイネージ API · 変更なし）**:
+  - **条件**: **`processingOrder != null` かつ未完**（`hasManualOrder`）。
+  - **色**: **`rgba(71, 85, 105, 0.82)`**（`LEADER_ORDER_SVG_ROW_BG_RANKED`）。
+  - **実装**: `leader-board-pure.ts` → `leader-order-cards-svg-schedule-row.ts`。
+- **経緯（キオスク）**:
+  1. **`3acf4c5a`**（PR [#325](https://github.com/denkoushi/RaspberryPiSystem_002/pull/325)）: 行 **`bg-slate-600/82`** → **CSS 未生成**で背景透明（[§Tailwind `/82`](#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)）。
+  2. **`f976bdd8`**（PR [#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326)）: **`bg-slate-600/[0.82]`** → 実機で **行全体が明るすぎ**。
+  3. **`949eea9c`**（PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)）: 行背景を戻し **順位アンカーのみ**黄色強調 + 製番順位と同一 Portal。
+- **本番デプロイ（初回·行背景案）**: Detach **`20260522-192111-31816`**（**`ok=134` `changed=4` `failed=0`**·約 **816s**）。**最終 UI** は Detach **`20260522-204821-6687`**（[§行内順位ピッカー](#leader-order-board-row-order-rank-picker-2026-05-22)）。
+- **設計プレビュー（履歴）**: [leader-board-manual-order-row-highlight-preview.html](../design-previews/leader-board-manual-order-row-highlight-preview.html)（行背景案 — **キオスク不採用**）。
 - **トラブルシューティング**:
-  - **ハイライトなし** → 順位未設定 / 完了行 / Pi5 ref / §6.6.4 強制リロード。
-  - **サイネージのみ旧見た目** → Pi5 **`api`** 未反映（Pi3 単体デプロイ不可解）。
+  - **キオスク行全体が明るい** → **`949eea9c` 未反映**（旧行背景案）。
+  - **サイネージのみ旧見た目** → Pi5 **`api`** 未更新（Pi3 単体デプロイ不可解）。
+  - **`bg-slate-600/82` が効かない** → [§Tailwind `/82`](#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)。
+
+### Leader order board: 行内順位ピッカー（製番順位 UI 統一）（2026-05-22） {#leader-order-board-row-order-rank-picker-2026-05-22}
+
+- **目的**: 各行の **`processingOrder` 設定**を、左ペイン登録製番の順位ピッカーと **同一 UI**（アンカー + Portal 縦リスト）に統一。**資源カードサイズ不変**（`h-7 w-14`）。
+- **仕様**:
+  - **対象ファイル**: [`LeaderOrderRowOrderSelect.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderRowOrderSelect.tsx) のみ。
+  - **共通**: [`LeaderBoardRankPickerDropdown.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardRankPickerDropdown.tsx)（[`LeaderBoardSeibanRankPicker.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardSeibanRankPicker.tsx) も利用）。
+  - **リスト**: 「-」+ `availableProcessingOrderOptions`（1–10·現在値 or 空き番）。**emerald 選択**·**白 hover**。
+  - **アンカー**: **「-」** → `border-white/25 bg-slate-900/90 text-[11px] text-white`。**1–10** → `border-yellow-400 bg-slate-900/90 text-sm font-semibold text-yellow-300`。**disabled** → 従来の薄表示。
+  - **不変**: API·DB·サイネージ SVG 行背景·`h-7 w-14` 寸法。
+  - **プレビュー**: [leader-board-ranked-order-select-highlight-preview.html](../design-previews/leader-board-ranked-order-select-highlight-preview.html)。
+- **本番（Pi5 のみ）**: **`949eea9c`**·PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)·CI **`26285460170` success**·Detach **`20260522-204821-6687`**（**`failed=0`**·約 **461s**）·Phase12 **43/0/0**（約 **116s**）·**現場目視 OK**（2026-05-22）。
+- **トラブルシューティング**: 旧 `<select>` → **`web` ref + 強制リロード**（§6.6.4）。ポップアップ背面 → `KIOSK_RANK_PICKER_Z_ABOVE_LEFT_STACK`。黄色にならない → 「-」または完了 disabled。
+
+### Leader order board: Tailwind 不透明度 `/82` が CSS に出ない（2026-05-22） {#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22}
+
+- **症状**: **`bg-slate-600/82`** が dist CSS に **存在せず**、背景透明 → カード背面と同色に見える。
+- **原因**: Tailwind 3.4 の **`/82` はデフォルト opacity スケール外**（`/80` は可·`/82` は不可）。
+- **対策**: **`bg-slate-600/[0.82]`** または **`/80`**。キオスク最終案は [§行内順位ピッカー](#leader-order-board-row-order-rank-picker-2026-05-22) へ移行。
+- **再発防止**: `pnpm --filter @raspi-system/web build` 後、**dist CSS にクラス名があるか**確認。
 
 ### Leader order board: 資源CDスロット「順位」ボタン（製番順評価 ON 時）（2026-05-22） {#leader-order-board-slot-auto-rank-2026-05-22}
 

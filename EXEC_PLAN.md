@@ -8,7 +8,9 @@
 
 ## Progress
 
-- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・手動順位付き行の背景ハイライト（案A改・Web + サイネージ SVG）**·ブランチ **`feat/kiosk-leader-board-manual-order-row-highlight`**·**`3acf4c5a`**。**仕様**: **`processingOrder != null` かつ未完**の行のみ **`slate-600/82`**（Web）·**`rgba(71, 85, 105, 0.82)`**（SVG）·**行ブロックのみ**·完了行は **grayscale のみ**·DB 不変。**ローカル**: leader-order-cards 9 PASS·leaderOrderBoard 208 PASS·eslint PASS。**CI**: **`26281606000` success**。**本番（Pi5 のみ）**: Detach **`20260522-192111-31816`**（`ok=134` `changed=4` `failed=0`·`--follow` 約 **816s**）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **96s**）。**ナレッジ**: [KB-297 §手動順位行](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335](./docs/knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)·[verification-checklist §6.6.26](./docs/guides/verification-checklist.md#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK（自動+現場）・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・行内順位ピッカー（製番順位 UI 統一·黄色アンカー）**·ブランチ **`feat/kiosk-leader-board-order-rank-picker`**·**`949eea9c`**·PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)。**仕様**: `<select>` 廃止 → **`LeaderBoardRankPickerDropdown`**（左ペイン製番順位と同一 Portal）·行背景 **常に `bg-slate-800/80`**·アンカー **`h-7 w-14` 不変**·順位 **1–10** → **`border-yellow-400` + `text-sm text-yellow-300`**·**「-」** → 白枠·11px·**サイネージ SVG 行背景は継続**（キオスクのみ変更）。**経緯**: 行背景案 **`3acf4c5a`** → Tailwind **`/82` 未生成**（**`f976bdd8`** [#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326)）→ 実機で明るすぎ → 本 PR。**CI**: **`26285460170` success**。**本番（Pi5 のみ）**: Detach **`20260522-204821-6687`**（`ok=134` `changed=4` `failed=0`·約 **461s**）。**実機**: Phase12 **43/0/0**（約 **116s**）·**現場目視 OK**。**ナレッジ**: [KB-297 §行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[KB-297 §Tailwind `/82`](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)·[deployment §行内順位](./docs/guides/deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)·[verification-checklist §6.6.27](./docs/guides/verification-checklist.md#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22)。
+
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・手動順位付き行の背景ハイライト（案A改·サイネージ SVG のみ継続）**·ブランチ **`feat/kiosk-leader-board-manual-order-row-highlight`**·**`3acf4c5a`** / fix **`f976bdd8`** [#326]·**キオスク行背景は `949eea9c` で撤回**（[§行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)）。
 
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・`main` マージ**） **キオスク順位ボード・資源CDスロット「順位」ボタン（製番順評価 ON 時・Web のみ）**·ブランチ **`feat/kiosk-leader-board-slot-auto-rank`**·**`b74c54a9`**。**仕様**: 製番順評価 **ON** 時のみタイトル行 **「順位」**·表示順の **`processingOrder == null` 未完行**へ **`order-usage` 空き番 1–10 を昇順に最大 5 件**·既存順位維持·**`listIncomplete` 時 disabled**·**`buildReorderPlan` 却下**·既存 **`PUT …/:rowId/order`** / **`updateOrderAsync`**·API/DB 不変。**ローカル**: leaderOrderBoard 関連 Vitest **15 PASS**·`tsc --noEmit`·eslint PASS。**CI**: **`26279773441` success**。**本番（Pi5 のみ）**: Detach **`20260522-183756-28111`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **74s**）。**ナレッジ**: [KB-297 §スロット順位](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)·[verification-checklist §6.6.25](./docs/guides/verification-checklist.md#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
@@ -1190,6 +1192,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-22 / **キオスク順位ボード · 行背景ハイライト → 行内順位ピッカーへ pivot**）: (1) **`bg-slate-600/82`** は Tailwind 3.4 の **opacity スケール外**（`/80` `/90` のみ）のため **dist CSS にクラス未生成** → 背景透明で **カード背面と同化**（[#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326) **`bg-slate-600/[0.82]`** で生成は復旧）。(2) **任意 opacity 修正後も実機で行全体が明るすぎ** → **行背景案はキオスク撤回**。(3) **採用**: 行内 **`<select>` 廃止** → **`LeaderBoardRankPickerDropdown`**（左ペイン製番順位と同一 Portal）·**順位 1–10 は黄色アンカー**·行背景 **常に `bg-slate-800/80`**·**サイネージ SVG 行背景 `rgba(71,85,105,0.82)` は継続**（意図的分岐）。**本番**: **`949eea9c`**·Detach **`20260522-204821-6687`**·Phase12 **43/0/0**·**現場目視 OK**。**記録**: [KB-297 §行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[KB-297 §Tailwind `/82`](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)·[deployment §行内順位](./docs/guides/deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)。
+
 - 観測（2026-05-22 / **吊具サイネージ · CSV 点検 vs キオスク持出でカード色が異なる**）: **見た目の差はデータ源（CSV/本システム）ではなく chrome 判定** — `hasVisibleLoanState = 貸出中>0 || 返却>0` のみだと **Gmail 投影の点検のみ**（`Loan` なし・`点検件数>0`）は **ダークカード**のまま。**Fix**: **`resolveRiggingHasVisibleLoanState`** を吊具 renderer のみ注入（案 A）·**ヘッダ件数は Loan 実績のまま**。**本番**: Pi5 **`20260522-174718-22503`**·Phase12 **43/0/0**。**記録**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §chrome 統一](./docs/guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)·**`cf8c13bf`**。
 
 - 観測（2026-05-22 / **吊具点検 CSV 全件がサイネージに出ない · dedup · 暦日窓 · デザイン分離**）: (1) **投影 dedup が古い `inspectedAt` を残す**と、サイネージ **`today_jst`（0:00–24:00 JST）** 窓から漏れ **7 名表示**に見える → **incoming が新しければ UPDATE**（`refreshed`）+ backfill。(2) **`unmatchedGear`** — `control_num` 空 + idNum 未登録（80/73/69/82 等）→ **register スクリプト**。(3) **田中俊真 6 行**は **section ≠ 加工担当部署**で意図的除外（26 行 → **18 件/10 名**）。(4) **中黒結合を MI に誤適用**した初回コミット → **吊具 renderer のみ** `rigging-layout-body.ts` へ分離（`49386387`）。(5) **デプロイロック** — 既存 detach へ **`--attach`**。**記録**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./docs/guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)。
@@ -1517,6 +1521,13 @@
   対応: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、`git pull`前後のHEADを比較して変更を検知。コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証で正のテスト（コード変更→再ビルド）と負のテスト（コード変更なし→再ビルドなし）を確認。**[KB-217]**
 
 ## Decision Log
+
+- 決定（2026-05-22）: **キオスク順位ボードの手動順位の視認性は「行背景ハイライト」ではなく「行内順位ピッカーの黄色アンカー」で表現**する。**行背景は全行 `bg-slate-800/80` 固定**（カード寸法 **`h-7 w-14` 不変**）。**UI** は左ペイン製番順位と同一の **`LeaderBoardRankPickerDropdown`（Portal 縦リスト）**。**サイネージ `kiosk_leader_order_cards` の SVG 行背景 `LEADER_ORDER_SVG_ROW_BG_RANKED` は維持**（キオスク Web との見え方差は仕様）。  
+  理由: 行背景案は Tailwind 生成漏れ・実機明るさ・カード背面同化の再発リスクがあり、**順位操作 UI だけを強調**する方が現場要件（順位付き行の識別）とレイアウト安定性を両立するため。  
+  参照: [KB-297 §行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·**PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)**·**`949eea9c`**
+
+- 決定（2026-05-22）: **Tailwind の `/82` 等スケール外 opacity は `[0.82]` 任意値記法を使うか、テーマ opacity スケールへ寄せる**（**`bg-slate-600/82` は禁止**）。**dist CSS にクラスが無いか**を grep で確認してから本番反映する。  
+  参照: [KB-297 §Tailwind `/82`](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)·**PR [#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326)**·**`f976bdd8`**
 
 - 決定（2026-05-22）: **吊具サイネージの青カード（infoContainer chrome）は「Loan あり」に加え「当日点検あり」でも適用**する。**計測機器（MI）は従来どおり Loan のみ**。**注入点**は `RiggingLoanInspectionRenderer.resolveHasVisibleLoanState` のみ（共有 board の optional hook）。**ヘッダ `貸出中/返却` 件数は Loan 実績のまま**（点検のみは `0 ・ 0`）。  
   参照: [KB-381 §chrome 統一](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·**`cf8c13bf`**
@@ -2335,20 +2346,23 @@
 
 ## Next Steps（将来のタスク）
 
-### キオスク順位ボード — 手動順位行ハイライト現場目視（2026-05-22） {#kiosk-leaderboard-manual-order-row-highlight-field-verify-2026-05-22}
+### キオスク順位ボード — 行内順位ピッカー現場目視（2026-05-22） {#kiosk-leaderboard-row-order-rank-picker-field-verify-2026-05-22}
 
-**状態**: **Pi5 デプロイ済**（**`3acf4c5a`**·Detach **`20260522-192111-31816`**·Phase12 **43/0/0**·**§6.6.26 自動 OK**）·**現場目視は未チェック**。
+**状態**: **完了** — **`949eea9c`**·Detach **`20260522-204821-6687`**·Phase12 **43/0/0**·**§6.6.27 自動+現場 OK**（ユーザー·2026-05-22）。
 
-**優先タスク（現場）**:
+**正本**: [KB-297 §行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[deployment §行内順位](./docs/guides/deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)
 
-| # | タスク | 手順 | 完了条件 |
-|---|--------|------|----------|
-| 1 | **キオスク行背景** | 順位付き未完行 vs 未設定行 | **slate-600 系**の行背景のみ |
-| 2 | **完了行** | 完了済み行を表示 | **ハイライトなし**（薄灰+grayscale） |
-| 3 | **サイネージ** | `kiosk_leader_order_cards` スロット | 順位付き未完行の行背景が **同趣旨** |
-| 4 | **「順位」ボタン連携** | §6.6.25 後に一括付与 | 付与行も **同ハイライト** |
+### キオスク順位ボード — 手動順位行ハイライト現場目視（2026-05-22 · サイネージ SVG） {#kiosk-leaderboard-manual-order-row-highlight-field-verify-2026-05-22}
 
-**正本**: [KB-297 §手動順位行](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)
+**状態**: **キオスク行背景案は `949eea9c` で撤回** — サイネージ **SVG 行背景**の現場目視のみ残（任意）。
+
+**正本**: [KB-297 §手動順位行](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[verification-checklist §6.6.26](./docs/guides/verification-checklist.md#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22)
+
+### キオスク順位ボード — 手動順位行ハイライト現場目視（2026-05-22 · 旧·キオスク行背景） {#kiosk-leaderboard-manual-order-row-highlight-field-verify-legacy-2026-05-22}
+
+**状態**: **キャンセル**（行背景案は不採用）。
+
+**旧タスク（参考）**:
 
 ### キオスク順位ボード — スロット「順位」ボタン現場目視（2026-05-22） {#kiosk-leaderboard-slot-auto-rank-field-verify-2026-05-22}
 
