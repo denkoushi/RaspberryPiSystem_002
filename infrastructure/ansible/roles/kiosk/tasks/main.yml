@@ -132,6 +132,16 @@
     - kiosk_browser_result.changed
   changed_when: false
 
+- name: Clear Firefox kiosk profile disk cache when launch or profile prefs change
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}/cache2"
+    state: absent
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_browser_engine_resolved == 'firefox'
+    - (kiosk_launch_script_result is changed) or (kiosk_ff_chrome_userjs is defined and ((kiosk_ff_chrome_userjs['changed'] | default(false)) | bool))
+  register: kiosk_ff_cache_clear_result
+
 # kiosk-launch（URL含む）やservice変更時は再起動して新設定を反映（clientロールの再起動はkioskロールより先に実行されるため）
 - name: Restart kiosk-browser if launch script or service changed
   ansible.builtin.systemd:
@@ -139,7 +149,7 @@
     state: restarted
   when:
     - manage_kiosk_browser | default(false) | bool
-    - (kiosk_launch_script_result is changed) or (kiosk_browser_result is changed) or (kiosk_ff_chrome_userchrome is defined and ((kiosk_ff_chrome_userchrome['changed'] | default(false)) | bool)) or (kiosk_ff_chrome_userjs is defined and ((kiosk_ff_chrome_userjs['changed'] | default(false)) | bool))
+    - (kiosk_launch_script_result is changed) or (kiosk_browser_result is changed) or (kiosk_ff_chrome_userchrome is defined and ((kiosk_ff_chrome_userchrome['changed'] | default(false)) | bool)) or (kiosk_ff_chrome_userjs is defined and ((kiosk_ff_chrome_userjs['changed'] | default(false)) | bool)) or (kiosk_ff_cache_clear_result is defined and ((kiosk_ff_cache_clear_result['changed'] | default(false)) | bool))
 
 - name: Verify kiosk UI is reachable
   ansible.builtin.uri:

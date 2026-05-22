@@ -29,6 +29,17 @@ BROWSER_BIN="{{ kiosk_browser_exec_path | default(kiosk_browser_chromium_binary 
 {# split lines so rendered file never concatenates 1 + FF_PROFILE into one token #}
 KIOSK_FF_MINIMIZE="{% if kiosk_firefox_minimize_chrome_enabled | default(true) | bool %}1{% else %}0{% endif %}"
 FF_PROFILE="/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
+REPO_PATH="{{ repo_path | default('/opt/RaspberryPiSystem_002') }}"
+
+# Pi5 上の Web SPA 更新を Pi4 Firefox に届ける（clientKey だけでは URL が不変でキャッシュされ得る）
+KIOSK_TARGET_URL="{{ kiosk_url }}"
+if APP_REF="$(git -C "${REPO_PATH}" rev-parse --short HEAD 2>/dev/null)"; then
+  if [[ "${KIOSK_TARGET_URL}" == *'?'* ]]; then
+    KIOSK_TARGET_URL="${KIOSK_TARGET_URL}&_appRef=${APP_REF}"
+  else
+    KIOSK_TARGET_URL="${KIOSK_TARGET_URL}?_appRef=${APP_REF}"
+  fi
+fi
 
 COMMON_FLAGS=(
 {% for flag in kiosk_browser_flags_common | default([]) %}
@@ -42,7 +53,7 @@ if [[ "${BROWSER_ENGINE}" == "chromium" ]]; then
 {% for flag in kiosk_browser_flags_chromium | default([]) %}
     {{ flag }}
 {% endfor %}
-    --app="{{ kiosk_url }}"
+    --app="${KIOSK_TARGET_URL}"
     --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }},http://localhost:7071
     "${COMMON_FLAGS[@]}"
   )
@@ -64,7 +75,7 @@ elif [[ "${BROWSER_ENGINE}" == "firefox" ]]; then
   if [[ "${KIOSK_FF_MINIMIZE}" == "1" ]] && [[ -d "${FF_PROFILE}" ]]; then
     PROFILE_ARGS=(--profile "${FF_PROFILE}")
   fi
-  exec "${BROWSER_BIN}" "${PROFILE_ARGS[@]}" "${FIREFOX_FLAGS[@]}" "{{ kiosk_url }}"
+  exec "${BROWSER_BIN}" "${PROFILE_ARGS[@]}" "${FIREFOX_FLAGS[@]}" "${KIOSK_TARGET_URL}"
 else
   echo "Unsupported kiosk browser engine: ${BROWSER_ENGINE}" >&2
   exit 1

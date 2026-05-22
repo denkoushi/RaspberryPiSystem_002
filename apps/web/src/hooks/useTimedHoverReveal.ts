@@ -18,7 +18,7 @@ type TimedHoverRevealInternal = TimedHoverRevealHandlers & {
 
 /**
  * ホットゾーン／パネル hover で開き、leave 後に遅延で閉じる（マウス前提）。
- * ウィンドウ上端の mousemove は含めない（Kiosk ヘッダー用は useKioskTopEdgeHeaderReveal で追加）。
+ * ウィンドウ端の mousemove は含めない（Kiosk ヘッダー用は useKioskEdgeHeaderReveal で追加）。
  */
 export function useTimedHoverReveal(enabled: boolean): TimedHoverRevealInternal {
   const [isVisible, setIsVisible] = useState(false);

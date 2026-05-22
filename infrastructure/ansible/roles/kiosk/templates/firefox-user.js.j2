@@ -1,3 +1,8 @@
 // Ansible-managed: kiosk Firefox profile ({{ kiosk_firefox_profile_dirname | default('kiosk-system') }})
 // Enables loading of userChrome.css for controlled UI minimization.
 user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
+// Pi5 SPA は URL クエリがほぼ固定のため、HTTP キャッシュで旧バンドルが残り得る（KB-311 下端リビール等）
+user_pref("browser.cache.disk.enable", false);
+user_pref("browser.cache.memory.enable", false);
+user_pref("browser.cache.offline.enable", false);
+user_pref("network.http.use-cache", false);

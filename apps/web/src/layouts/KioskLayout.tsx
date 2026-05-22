@@ -12,9 +12,15 @@ import {
   VIEWPORT_HEIGHT_FULL,
   VIEWPORT_MIN_HEIGHT_FULL
 } from '../constants/viewportLayout';
+import {
+  KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
+  KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
+  KIOSK_IMMERSIVE_HEADER_HIDDEN_TRANSFORM_CLASS,
+  KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS,
+  KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS
+} from '../features/kiosk/kioskImmersiveHeaderChrome';
 import { usesKioskImmersiveLayout } from '../features/kiosk/kioskImmersiveLayoutPolicy';
-import { KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS } from '../hooks/kioskRevealUi';
-import { useKioskTopEdgeHeaderReveal } from '../hooks/useKioskTopEdgeHeaderReveal';
+import { useKioskBottomCenterHeaderReveal } from '../hooks/useKioskBottomCenterHeaderReveal';
 
 export function KioskLayout() {
   const clientKey = getResolvedClientKey();
@@ -25,7 +31,7 @@ export function KioskLayout() {
   const location = useLocation();
   const [showSupportModal, setShowSupportModal] = useState(false);
   const immersiveKioskLayout = usesKioskImmersiveLayout(location.pathname);
-  const headerReveal = useKioskTopEdgeHeaderReveal(immersiveKioskLayout);
+  const headerReveal = useKioskBottomCenterHeaderReveal(immersiveKioskLayout);
 
   // client-key が空になってもデフォルトを自動で復元する
   useEffect(() => {
@@ -56,18 +62,23 @@ export function KioskLayout() {
       <KioskRedirect />
       {immersiveKioskLayout ? (
         <div
-          className="pointer-events-auto fixed top-0 left-0 right-0 z-[60] h-3"
+          className={KIOSK_IMMERSIVE_HEADER_HOT_ZONE_CLASS}
           onMouseEnter={headerReveal.onHotZoneEnter}
           aria-hidden
         />
       ) : null}
       <header
         className={clsx(
-          'shrink-0 border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur',
+          'shrink-0 bg-slate-900/80 px-4 py-3 backdrop-blur',
+          !immersiveKioskLayout && 'border-b border-white/10',
+          immersiveKioskLayout && KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
+          immersiveKioskLayout && KIOSK_IMMERSIVE_HEADER_FIXED_CLASS,
           immersiveKioskLayout &&
-            clsx('fixed top-0 right-0 left-0 z-50 shadow-lg', KIOSK_REVEAL_TRANSFORM_TRANSITION_CLASS),
-          immersiveKioskLayout && !headerReveal.isVisible && '-translate-y-full',
-          immersiveKioskLayout && headerReveal.isVisible && 'translate-y-0'
+            !headerReveal.isVisible &&
+            KIOSK_IMMERSIVE_HEADER_HIDDEN_TRANSFORM_CLASS,
+          immersiveKioskLayout &&
+            headerReveal.isVisible &&
+            KIOSK_IMMERSIVE_HEADER_VISIBLE_TRANSFORM_CLASS
         )}
         onMouseEnter={immersiveKioskLayout ? headerReveal.onHeaderMouseEnter : undefined}
         onMouseLeave={immersiveKioskLayout ? headerReveal.onHeaderMouseLeave : undefined}
