@@ -8,7 +8,7 @@ export const LEADER_ORDER_SVG_CARD_BORDER = 'rgba(255, 255, 255, 0.1)';
 
 /** 子行（`bg-slate-800/80`） */
 export const LEADER_ORDER_SVG_ROW_BG = 'rgba(30, 41, 59, 0.8)';
-/** 手動順位付き未完行（キオスク `bg-slate-600/82` 相当） */
+/** 手動順位付き未完行（キオスク `bg-slate-600/[0.82]` 相当） */
 export const LEADER_ORDER_SVG_ROW_BG_RANKED = 'rgba(71, 85, 105, 0.82)';
 export const LEADER_ORDER_SVG_ROW_BORDER = 'rgba(255, 255, 255, 0.08)';
 
