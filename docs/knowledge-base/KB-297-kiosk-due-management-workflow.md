@@ -2677,6 +2677,37 @@ category: knowledge-base
   - **ピッカー左列が画面外** → [**左ペイン・ビューポートクランプ（2026-05-05）**](#leader-order-board-left-pane-viewport-clamp-2026-05-05)（`AnchoredDropdownPortal` の既定クランプ）。
   - **`AnchoredDropdownPortal` の型エラー（ref）**: アンカーの **型を `HTMLElement | null` の `MutableRefObject` に統一**（本変更で `anchorRef` / `panelRef` を緩和）。
 
+### Leader order board: 資源CDスロット「順位」ボタン（製番順評価 ON 時）（2026-05-22） {#leader-order-board-slot-auto-rank-2026-05-22}
+
+- **目的**: 製番順評価 ON で左ペインから製番並びを整えたあと、**各資源CDスロット内の未完行へ順位（`processingOrder`）を一括付与**し、**行ごとのドロップダウン操作**を減らす。**Web のみ**·**API / DB / `search-state` は不変**（既存 **`PUT …/:rowId/order`** と **`order-usage`** 契約をそのまま利用）。
+- **現場ワークフロー（確定）**:
+  1. 納期メールで早い製番を把握
+  2. 左ペイン **製番順評価 ON** → 登録製番を並べる（端末ローカル `localStorage` — [§製番順評価](#leader-order-board-seiban-priority-eval-mode-2026-05-04)）
+  3. スロット内行がその表示順で並ぶ
+  4. 各資源CDカードの **「順位」** で、上から **未設定行**へ空き番を付与（最大 5 行/回）
+- **仕様（要約）**:
+  - **表示**: **製番順評価 ON** のときのみタイトル行右端に **「順位」**（OFF では非表示）。
+  - **対象行**: 当該 `resourceCd`·**表示順**·**`processingOrder == null`**·**未完**（完了フィルタ既定 **`incomplete`**）。
+  - **番号選択**: **`order-usage` に無い 1–10 を昇順**に最大 **`LEADER_BOARD_AUTO_RANK_MAX_ASSIGNMENTS`（5）** 個。例: 1,2 使用済 → 3,4,5,6,7。
+  - **既存順位**: **維持**（未設定行のみ更新）。**手動ドロップダウン**は押下後も有効。
+  - **無効**: **`listIncomplete`** ON·対象 0·空き番 0·実行中。
+  - **実装**: [`buildLeaderBoardAutoRankAssignments.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/buildLeaderBoardAutoRankAssignments.ts)（Vitest）·[`applyLeaderBoardAutoRankAssignments.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/applyLeaderBoardAutoRankAssignments.ts)（直列 PUT）·[`useLeaderBoardSlotAutoRank.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderBoardSlotAutoRank.ts)·[`useProductionScheduleMutations.ts`](../../apps/web/src/features/kiosk/productionSchedule/useProductionScheduleMutations.ts) の **`updateOrderAsync`**。
+  - **設計判断**: **`buildReorderPlan`（全 clear→再付与）** は採用せず — 既存順位維持要件と不一致。
+- **本番デプロイ・実機検証（2026-05-22）**:
+  - **ブランチ**: `feat/kiosk-leader-board-slot-auto-rank`（代表 **`b74c54a9`**）。
+  - **CI**: **`26279773441` success**。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。**対象**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）。**Pi3 除外**。
+  - **Detach Run ID**（`ansible-update-`）: **`20260522-183756-28111`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·exit **`0`**·`--follow` 約 **368s**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **74s**·Tailscale）。
+- **知見**:
+  - **製番順評価**と **順位ボタン**は別レイヤ — 前者は **表示のみ**、後者は **DB 共有の `processingOrder`**。
+  - Pi5 **`web` 再ビルド**だけで Pi4 キオスクにも反映（SPA 配信）。**Pi4 単体デプロイは不要**。
+  - **`updateOrderAsync`** を **`Promise<void>`** に統一し、直列 PUT の型エラーを解消（pre-commit 前に **`tsc --noEmit`** 推奨）。
+- **トラブルシューティング**:
+  - **ボタン非表示** → 製番順評価 OFF / **`web` ref** / §6.6.4 強制リロード。
+  - **無効のまま** → **`listIncomplete`**·全行順位済み·**`order-usage` 満杯**。
+  - **飛び番** → 幽霊割当（[§A+α 自動解放](#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)）·同期前は残り得る。
+
 ### Leader order board: 左ペイン・順位ピッカー ビューポートクランプ（2026-05-05） {#leader-order-board-left-pane-viewport-clamp-2026-05-05}
 
 - **目的**: 左ドロワー直下で **順位ピッカーの左端がビューポート外に欠ける**のを防ぎ、**登録製番行で × と製番の視覚的な食い違い**を減らす。**Web のみ**・**API / DB 不変**。

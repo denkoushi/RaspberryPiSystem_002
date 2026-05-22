@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-22 · 順位ボード・スロット「順位」ボタン）
+
+- **キオスク順位ボード・資源CDスロット「順位」ボタン（製番順評価 ON 時·Web のみ·Pi5 本番反映済）**: 各資源CDカードタイトル右端 **「順位」** で、**表示順の未設定未完行**へ **`order-usage` 空き番 1–10 を昇順に最大 5 件**付与。**`listIncomplete` 時 disabled**·既存 **`PUT …/:rowId/order`**·API/DB 不変。**ブランチ**: **`feat/kiosk-leader-board-slot-auto-rank`**（**`b74c54a9`**·CI **`26279773441` success**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260522-183756-28111`**·**Phase12** **43/0/0**（約 **74s**）。**記録**: [KB-297 §スロット順位](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](./guides/deployment.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)·[verification-checklist §6.6.25](./guides/verification-checklist.md#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**（Pi4/Pi3 **不要**）。**現場目視**: [EXEC_PLAN Next Steps §現場目視](../EXEC_PLAN.md#kiosk-leaderboard-slot-auto-rank-field-verify-2026-05-22)。
+
 ### 🆕 最新アップデート（2026-05-22 · 吊具点検サイネージカード chrome 統一）
 
 - **吊具点検サイネージカード chrome 統一（点検のみも青·API のみ·Pi5 本番反映済）**: Gmail CSV **点検のみ**従業員も **キオスク持出と同じ青カード**（`resolveRiggingHasVisibleLoanState`）·**ヘッダ `貸出中/返却` は Loan 実績のまま**·**MI は従来**。**ブランチ**: **`fix/rigging-inspection-card-chrome-unify`**（**`cf8c13bf`**·CI **`26275892524` success**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260522-174718-22503`**·**Phase12** **43/0/0**（約 **85s**）。**記録**: [KB-381](./knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §chrome 統一](./guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**。

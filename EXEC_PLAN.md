@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・`main` マージ**） **キオスク順位ボード・資源CDスロット「順位」ボタン（製番順評価 ON 時・Web のみ）**·ブランチ **`feat/kiosk-leader-board-slot-auto-rank`**·**`b74c54a9`**。**仕様**: 製番順評価 **ON** 時のみタイトル行 **「順位」**·表示順の **`processingOrder == null` 未完行**へ **`order-usage` 空き番 1–10 を昇順に最大 5 件**·既存順位維持·**`listIncomplete` 時 disabled**·**`buildReorderPlan` 却下**·既存 **`PUT …/:rowId/order`** / **`updateOrderAsync`**·API/DB 不変。**ローカル**: leaderOrderBoard 関連 Vitest **15 PASS**·`tsc --noEmit`·eslint PASS。**CI**: **`26279773441` success**。**本番（Pi5 のみ）**: Detach **`20260522-183756-28111`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **74s**）。**ナレッジ**: [KB-297 §スロット順位](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)·[verification-checklist §6.6.25](./docs/guides/verification-checklist.md#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **吊具点検サイネージカード chrome 統一（点検のみも青）**·ブランチ **`fix/rigging-inspection-card-chrome-unify`**·**`cf8c13bf`**。**仕様**: **`resolveRiggingHasVisibleLoanState`** — Loan または当日 **`点検件数>0`** で青 chrome·共有 board に optional hook·**MI は従来**·**ヘッダ件数は Loan 実績のまま**·**DB マイグレなし**。**CI**: **`26275892524` success**。**本番（Pi5 のみ）**: Detach **`20260522-174718-22503`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **85s**）。**ナレッジ**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §chrome 統一](./docs/guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **吊具点検 dedup refresh · idNum 登録 · サイネージデザイン分離**·ブランチ **`fix/loan-inspection-card-combined-mgmt-numbers`**·**`49386387`**（系列 **`d5ee97ab`** / **`e328bcd2`** / **`49386387`**）。**仕様**: 投影 dedup 時 **incoming `inspectedAt` が新しければ UPDATE**（`refreshed`）·**idNum 80/73/69/82** マスタ登録スクリプト·**吊具 active 複数のみ ` ・ ` 結合**（MI は従来 1 行/機器）·**DB マイグレなし**。**本番（Pi5 のみ）**: Detach **`20260522-160832-6784`** / **`20260522-163138-380`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**。**backfill 再実行**: **103 created / 7 refreshed / unmatchedGear 6**·加工担当 **5/22 暦日 18 件/10 名**（`2026_05_22.csv` 26 行·田中 6 行 section 除外）。**ナレッジ**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./docs/guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
@@ -2330,6 +2332,22 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク順位ボード — スロット「順位」ボタン現場目視（2026-05-22） {#kiosk-leaderboard-slot-auto-rank-field-verify-2026-05-22}
+
+**状態**: **Pi5 デプロイ済**（**`b74c54a9`**·Detach **`20260522-183756-28111`**·Phase12 **43/0/0**·**§6.6.25 自動 OK**）·**現場目視は未チェック**（検証チェックリスト §6.6.25）。
+
+**優先タスク（現場）**:
+
+| # | タスク | 手順 | 完了条件 |
+|---|--------|------|----------|
+| 1 | **製番順評価 ON → 「順位」表示** | 順位ボード左ペインで評価 ON | 各資源CDタイトル右に **「順位」** |
+| 2 | **一括付与（5 件上限）** | 未完・未設定行が 6 件以上のスロットで押下 | **上から 5 行のみ**付与·6 行目以降は未設定のまま |
+| 3 | **空き番昇順** | 1,2 使用済スロットで押下 | **3 から**連番付与 |
+| 4 | **`listIncomplete` 無効** | スロット未完フィルタ ON | ボタン **disabled** |
+| 5 | **ドロップダウン共存** | 一括付与後に 1 行だけ変更 | 個別変更が効く |
+
+**正本**: [KB-297 §スロット順位](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)
 
 ### 吊具点検 Gmail 統合 — デプロイ後運用・現場検証（2026-05-22） {#rigging-slings-inspection-post-deploy-2026-05-22}
 
