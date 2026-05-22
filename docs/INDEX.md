@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-22 · キオスク下端リビール）
+
+- **キオスク沉浸式ヘッダー・下端中央1/3リビール（Web + Pi4 Ansible・本番反映済）**: 上端全幅廃止→**下端14px×中央1/3**で `KioskHeader` を下から表示。**`/kiosk/photo`** を沉浸式 allowlist に追加。Pi4 は **`_appRef`** + Firefox キャッシュ無効。**ブランチ**: **`feat/kiosk-bottom-center-header-reveal`**（**`cbeb6bbc`**·CI **`26262397906` success**）·**本番**: Pi5 → StoneBase01 → Pi4×3 · Detach **`20260522-101951-717`** ほか 5 本·**Phase12** **43/0/0**·**StoneBase01 実機 UI OK**。**記録**: [KB-311](./knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)·[deployment §下端リビール](./guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)·[deploy-status-recovery](./runbooks/deploy-status-recovery.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit <host>`**（キオスク Web は Pi5 配信だが Pi4 は起動 URL・キャッシュのため **Pi4 も反映**）。
+
 ### 🆕 最新アップデート（2026-05-21 · shell 初回最適化 第1弾）
 
 - **キオスク順位ボード・shell 初回最適化 第1弾（API のみ・Pi5 本番反映済）**: 初回 `GET …/leaderboard-board` で **winner materialization リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**出力同値**·Web 変更なし。**ブランチ**: **`feat/kiosk-shell-initial-opt-phase1`**（**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260521-221507-30100`**·**Phase12** **43/0/0**（約 **64s**）·shell ベンチ **robodrill ~3.0s / fjv ~3.1s / stonebase ~5.1s**。**記録**: [KB-374 §shell 第1弾](./knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)·[deployment §shell 第1弾](./guides/deployment.md#kiosk-leaderboard-shell-initial-opt-phase1-2026-05-21)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**（Pi4 順次 **不要**）。

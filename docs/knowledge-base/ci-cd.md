@@ -388,6 +388,11 @@ update-frequency: high
 - PostgreSQL のマイグレーション・シードが必須（`client-key-raspberrypi4-kiosk1` が DB に存在しないと 401 になる）
 - 手順例: `pnpm test:postgres:start` → `pnpm prisma migrate deploy` → `pnpm prisma db seed`（`apps/api` で実行）→ `CI=true DATABASE_URL=... pnpm test:e2e:smoke`
 
+**沉浸式ヘッダー（下端リビール）導入後の E2E 失敗（2026-05-22 追記）**:
+- **事象**: `e2e/kiosk.spec.ts` 等で `getByText(/キオスク端末/i)` が **hidden** のまま `toBeVisible` 失敗（CI run **`26261933696`**）。
+- **要因**: 持出系 URL は `usesKioskImmersiveLayout` でヘッダー既定非表示。**`revealKioskHeader()` より前**に可視性 assert していた。
+- **対策**: URL 遷移確認 → **`revealKioskHeader(page)`** → ナビ／「キオスク端末」の可視 assert（コミット **`cbeb6bbc`**）。参照 [KB-311](./KB-311-kiosk-immersive-header-allowlist.md#e2e--ci-でキオスクナビが不可視)。
+
 **関連ファイル**:  
 - `.github/workflows/ci.yml`  
 - `apps/web/vite.config.ts`  
