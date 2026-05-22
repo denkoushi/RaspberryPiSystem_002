@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK（自動）・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・製番左縁 — 全件表示は無色・OR フィルタ時のみ色分け（方針 A）**·ブランチ **`feat/kiosk-leaderboard-seiban-accent-no-color-all-items`**·**`44777ac7`**。**仕様**: [`seibanAccentPalette.ts`](./apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) — **`activeQueries` 空 → `undefined`（左縁なし）**·**OR フィルタ ON → [§24色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20) どおり現状維持**·**サイネージ JPEG は 24 色ハッシュ不変**（方針 A）·**API/DB 不変**。**ローカル**: `seibanAccentPalette.test.ts` **6 PASS**。**本番（5台・1台ずつ）**: Detach **`20260522-211412-3634`**（Pi5·`ok=134` `changed=4`）/ **`20260522-212202-22657`**（Pi4·`ok=122` `changed=10`）/ **`20260522-212817-24357`** / **`20260522-213340-9415`** / **`20260522-213908-14986`**（各 **`failed=0`**）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **139s**）。**Pi3**: 除外。**ナレッジ**: [KB-297 §全件無色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §全件無色](./docs/guides/deployment.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)·[verification-checklist §6.6.28](./docs/guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK（自動+現場）・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・行内順位ピッカー（製番順位 UI 統一·黄色アンカー）**·ブランチ **`feat/kiosk-leader-board-order-rank-picker`**·**`949eea9c`**·PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)。**仕様**: `<select>` 廃止 → **`LeaderBoardRankPickerDropdown`**（左ペイン製番順位と同一 Portal）·行背景 **常に `bg-slate-800/80`**·アンカー **`h-7 w-14` 不変**·順位 **1–10** → **`border-yellow-400` + `text-sm text-yellow-300`**·**「-」** → 白枠·11px·**サイネージ SVG 行背景は継続**（キオスクのみ変更）。**経緯**: 行背景案 **`3acf4c5a`** → Tailwind **`/82` 未生成**（**`f976bdd8`** [#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326)）→ 実機で明るすぎ → 本 PR。**CI**: **`26285460170` success**。**本番（Pi5 のみ）**: Detach **`20260522-204821-6687`**（`ok=134` `changed=4` `failed=0`·約 **461s**）。**実機**: Phase12 **43/0/0**（約 **116s**）·**現場目視 OK**。**ナレッジ**: [KB-297 §行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[KB-297 §Tailwind `/82`](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)·[deployment §行内順位](./docs/guides/deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)·[verification-checklist §6.6.27](./docs/guides/verification-checklist.md#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22)。
 
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・手動順位付き行の背景ハイライト（案A改·サイネージ SVG のみ継続）**·ブランチ **`feat/kiosk-leader-board-manual-order-row-highlight`**·**`3acf4c5a`** / fix **`f976bdd8`** [#326]·**キオスク行背景は `949eea9c` で撤回**（[§行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)）。
@@ -1548,9 +1550,13 @@
   理由: `order-usage` は **全割当**を返す設計のまま維持し、一覧の **部分集合**とのギャップを **API 側で整合**させるのが **最小変更**かつ **既存キオスク Web に影響しない**ため。  
   参照: [KB-297 §A+α](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](./docs/guides/deployment.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)·**`8d2c582c`**·**`643e4f4b`**
 
+- 決定（2026-05-22）: **キオスク順位ボードの製番左縁アクセントは、全件表示（`activeQueries` 空）では付けず、登録製番 OR フィルタ ON 時のみ色分けする（方針 A）**。OR フィルタ経路は [§24色（2026-05-20）](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20) **どおり維持**（先頭 8 色固定·24 色パレット列挙は残す）。**サイネージ JPEG**（`kiosk_leader_order_cards`）は **ハッシュ 24 色を維持** — キオスク全件無色との **意図的分岐**。  
+  理由: 現場観測で **全件表示の 24 色ハッシュ**は製番数 ≫ 24 のため **被り・近似色**が残り **識別にならない**。一方 **OR フィルタ ~5 件**では **リスト順色分け**が有効。**「色を増やす」（2026-05-20）より「絞ったときだけ色」**が UX 上妥当。  
+  参照: [KB-297 §全件無色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §2026-05-22 全件無色](./docs/guides/deployment.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)·**`44777ac7`**
+
 - 決定（2026-05-20）: **キオスク順位ボードの製番左縁アクセントは、登録製番 OR フィルタ（~5 件）経路を現状維持し、全件表示（`activeQueries` 空）のみパレットを 8→24 色に拡張する**。先頭 8 色の順序は 2026-05-01/02 から不変とし、ハッシュ分母を `% 24` に変更する。**履歴順固定色**・**近似色整理**は第2弾候補とし、今回は実装しない。  
   理由: 現場観測では OR フィルタ ON 時の識別性は十分で、課題は全件表示の **8 色被りと近似色** に限定されるため。スロット横断同色は [`resolveSeibanAccentRowClass`](./apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が既に保証しており、ロジック変更は不要。  
-  参照: [KB-297 §24色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](./docs/guides/deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·**PR [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)**·**`f8c1f6d2`**
+  参照: [KB-297 §24色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](./docs/guides/deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·**PR [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)**·**`f8c1f6d2`**。**（2026-05-22）**: 全件表示ハッシュは **撤回** — [§全件無色 Decision](#decision-log) を正とする。
 
 - 決定（2026-05-18）: **生産日程CSV「消滅」母集団および一覧 SQL 上の「消滅候補」フラグは、メール由来完了（`C`/`X`）のいずれにも該当する `fkmail` 行を母集団に含めない**（`X` を `C` と同列に扱い、差分消失ロジックの対象から外す。判定は `fkojunst-mail-status-completion.policy` の完了コード正本と `UPPER(BTRIM(statusCode))` で整合）。  
   理由: `X` もメール完了であり、`C` のみを消滅母集団外にすると運用観測と仕様が食い違い得るため。CSV 側の取込漏れ修正後の前提に合わせる。  
@@ -2450,17 +2456,23 @@
 
 **チェックリスト**: [KB-374 §80/160 実機チェックリスト](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#実機チェックリスト順位ボード-1)
 
-### キオスク順位ボード — 製番左縁アクセント 24 色の現場目視（2026-05-20）— **任意**
+### キオスク順位ボード — 製番左縁アクセント 24 色の現場目視（2026-05-20）— **アーカイブ（2026-05-22 以降は §6.6.28 を正）**
 
-**概要**: **PR [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)** / **`f8c1f6d2`** は **Pi5→Pi4×4 本番・Phase12 43/0/0** 済み。**全件表示**での左縁識別性改善は **現場目視**で最終確認（強制リロード推奨）。
+**概要**: **PR [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)** / **`f8c1f6d2`** は **Pi5→Pi4×4 本番・Phase12 43/0/0** 済み。**2026-05-22** に全件表示ハッシュは [§全件無色](#kiosk-leaderboard-seiban-accent-no-color-all-items-field-verify-2026-05-22) で **撤回**。
 
-**チェックリスト**: [verification-checklist §6.6.23](./docs/guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20)
+**チェックリスト（履歴）**: [verification-checklist §6.6.23](./docs/guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20)
 
-### キオスク順位ボード — 製番左縁アクセント第2弾（2026-05-20）— **ユーザー判断待ち**
+### キオスク順位ボード — 製番左縁全件無色の現場目視（2026-05-22）— **任意**
 
-**概要**: 24 色でも被り・近似色が残る場合の候補。(1) **近似色の整理**、(2) **登録済み製番の履歴順固定色**（フィルタ OFF 時のみ）、(3) パレット以外の視覚手がかり。
+**概要**: **`44777ac7`** / **`feat/kiosk-leaderboard-seiban-accent-no-color-all-items`** は **Pi5→Pi4×4 本番・Phase12 43/0/0** 済み。**全件無色 + OR フィルタ色分け**を現場目視で最終確認（強制リロード推奨）。
 
-**正本**: [KB-297 §24色 知見](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)
+**チェックリスト**: [verification-checklist §6.6.28](./docs/guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22)
+
+### キオスク順位ボード — 製番左縁アクセント第2弾（2026-05-20）— **一部解決・残候補**
+
+**概要**: 24 色でも被り・近似色が残る場合の候補。(1) **近似色の整理**、(2) ~~**登録済み製番の履歴順固定色**（フィルタ OFF 時のみ）~~ → **2026-05-22 全件無色で (2) は不要**、(3) パレット以外の視覚手がかり（製番ラベル強調等）。
+
+**正本**: [KB-297 §全件無色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)
 
 ### キオスク順位ボード — 装飾後取り + append スコープ（2026-05-19）— **完了**
 
