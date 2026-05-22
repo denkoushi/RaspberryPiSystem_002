@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **吊具点検 dedup refresh · idNum 登録 · サイネージデザイン分離**·ブランチ **`fix/loan-inspection-card-combined-mgmt-numbers`**·**`49386387`**（系列 **`d5ee97ab`** / **`e328bcd2`** / **`49386387`**）。**仕様**: 投影 dedup 時 **incoming `inspectedAt` が新しければ UPDATE**（`refreshed`）·**idNum 80/73/69/82** マスタ登録スクリプト·**吊具 active 複数のみ ` ・ ` 結合**（MI は従来 1 行/機器）·**DB マイグレなし**。**本番（Pi5 のみ）**: Detach **`20260522-160832-6784`** / **`20260522-163138-380`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**。**backfill 再実行**: **103 created / 7 refreshed / unmatchedGear 6**·加工担当 **5/22 暦日 18 件/10 名**（`2026_05_22.csv` 26 行·田中 6 行 section 除外）。**ナレッジ**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./docs/guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **吊具点検 Gmail 統合・サイネージ**·ブランチ **`feat/rigging-slings-inspection-gmail-signage`**·**`283b414b`**。**仕様**: Gmail **`slingsInspectionRecord_PowerApps`** → **`RiggingInspectionRecord`** 投影（dedup: 管理番号 + JST 業務日 + 氏名）·キオスク **`borrow` 後 PASS（best-effort）**·**`rigging_loan_inspection`** サイネージ（共有 **`loan-inspection-card`**）·schedule **`csv-import-rigging-slings-inspection-powerapps`**（**既定 disabled**）·**DB マイグレなし**。**ローカル**: API/Web lint/build·API **1560**·Web **547** PASS。**CI**: **`26267694608` success**。**本番（Pi5 のみ）**: Detach **`20260522-131701-20332`**（`ok=134` `changed=4` `failed=0`·Docker rebuild）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **31s**）。**デプロイ後運用（未実施）**: スケジュール有効化·可視化 preset·サイネージ割当。**ナレッジ**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §吊具点検](./docs/guides/deployment.md#rigging-slings-inspection-gmail-signage-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク沉浸式ヘッダー・下端中央1/3リビール（Web + Pi4 Ansible）**·ブランチ **`feat/kiosk-bottom-center-header-reveal`**·**`cbeb6bbc`**。**仕様**: 下端14px×中央1/3ホットゾーン·非表示時 `pointer-events-none`·`/kiosk/photo` allowlist·Pi4 `_appRef`/Firefox キャッシュ。**ローカル**: Vitest 46·web build·E2E smoke/kiosk。**CI**: **`26262397906` success**（E2E 修正 **`cbeb6bbc`**）。**本番（5台・1台ずつ）**: Detach **`20260522-101951-717`**（Pi5）/ **`102453-31642`**（StoneBase）/ **`103026-4234`** / **`103521-10989`** / **`103915-8240`**（各 **failed=0**）。**実機**: Phase12 **43/0/0**·StoneBase01 **UI OK**。**ナレッジ**: [KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)·[deployment §下端リビール](./docs/guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
@@ -1182,6 +1184,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-22 / **吊具点検 CSV 全件がサイネージに出ない · dedup · 暦日窓 · デザイン分離**）: (1) **投影 dedup が古い `inspectedAt` を残す**と、サイネージ **`today_jst`（0:00–24:00 JST）** 窓から漏れ **7 名表示**に見える → **incoming が新しければ UPDATE**（`refreshed`）+ backfill。(2) **`unmatchedGear`** — `control_num` 空 + idNum 未登録（80/73/69/82 等）→ **register スクリプト**。(3) **田中俊真 6 行**は **section ≠ 加工担当部署**で意図的除外（26 行 → **18 件/10 名**）。(4) **中黒結合を MI に誤適用**した初回コミット → **吊具 renderer のみ** `rigging-layout-body.ts` へ分離（`49386387`）。(5) **デプロイロック** — 既存 detach へ **`--attach`**。**記録**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./docs/guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)。
+
 - 観測（2026-05-22 / **キオスク下端リビール · Pi4 キャッシュ · E2E · Tailscale IP**）: (1) **非表示 `header` が `pointer-events` 有効**だと下辺全域でナビが開く → **`pointer-events-none` + `invisible`**（`b6424984`）。(2) Pi4 Firefox は **`clientKey` 固定 URL** で Pi5 SPA 更新が届かない → **`_appRef=<git HEAD>`** + **`cache2` 削除** + **`user.js` キャッシュ無効**（`8a5369e1`）。(3) CI E2E は沉浸式で **「キオスク端末」が hidden** のまま assert → **`revealKioskHeader()` 後**に可視判定（`cbeb6bbc`）。(4) Pi4 踏み台 SSH の IP は **`tailscale_network` 正本**（`100.101.113.90` 等の誤 IP はタイムアウト）。**記録**: [KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)·[deployment §下端リビール](./docs/guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)·[KB-025](./docs/knowledge-base/ci-cd.md#kb-025-e2eスモークkioskがナビゲーション不可視で失敗する)。
 
 - 観測（2026-05-21 / **continue chunk 80/80 · 並列 fan-out 却下 · CI libgnutls**）: Pi5 実データベンチで **continue 40→80** は **全 profile で出力同値 + 完走短縮（最大 ~46%）** だが、**スロット並列 `Promise.all` fan-out** は **fjv/stonebase で直列より遅い**（HTTP 本数 **3–3.2 倍**·同時 shell **~2.3x 遅延**）→ **素朴な並列化は採用しない**。**CI**: 機能コミット後 **`security-docker` のみ失敗**（API イメージ **`libgnutls30`**）— **ロジック無関係**·**`Dockerfile.api` `apt-get upgrade`**（**`12c94486`**）で全ジョブ green。**キオスク体感**は **Pi4 Web** が `pageSize` を送るため **Pi5 のみでは不変**（pageSize 80 第1弾と同型）。**記録**: [KB-374 §並列化](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#並列化事前検証pi5-実データ--2026-05-20--実装前)·[§continue 80/80](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §2026-05-21](./docs/guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
@@ -1505,6 +1509,14 @@
   対応: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、`git pull`前後のHEADを比較して変更を検知。コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証で正のテスト（コード変更→再ビルド）と負のテスト（コード変更なし→再ビルドなし）を確認。**[KB-217]**
 
 ## Decision Log
+
+- 決定（2026-05-22）: **サイネージ `loan-inspection-card` の active 複数管理番号の ` ・ ` 結合は吊具点検 renderer のみ**とし、**計測機器（MI）は従来の 1 機器 = 管理番号行 + 名称行を維持**する。  
+  理由: 初回は共有 `layout-body.ts` へ適用したが、MI の可読性要件と吊具のコンパクト表示要件が異なるため。**注入点**は `RiggingLoanInspectionRenderer.layoutBodyWithinMaxHeight` のみ。  
+  参照: [KB-381 §サイネージ本文レイアウト](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·**`49386387`**
+
+- 決定（2026-05-22）: **吊具点検 Gmail 投影の dedup 衝突時は、incoming の `inspectedAt` が既存より新しければ UPDATE する**（スキップのみにしない）。  
+  理由: CsvDashboard 再投影・backfill で **dashboard 行の新しい日付**が来ても DB が古いままだと、**暦日 `today_jst` DataSource** から除外される。**カウンタ `refreshed`** で観測可能。  
+  参照: [KB-381 §dedup refresh](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[`rigging-inspection-projection.service.ts`](./apps/api/src/services/rigging/inspection/rigging-inspection-projection.service.ts)·**`e328bcd2`**
 
 - 決定（2026-05-22）: **キオスク順位ボード・shell 選定 SQL 最適化は第2弾までを本番正本とし、第3弾以降（expansion budget LIMIT / EXPLAIN ANALYZE / Web 増分 view model 等）は一旦保留する**。  
   理由: 第2弾本番ベンチで **fjv median 同等〜改善**·**robodrill min ~3.0s** と manual 充足スロットでは十分だが、**stonebase median やや悪化**·**robodrill median の run 間分散**が残り、第3弾単体の ROI は第1・2弾より低い。**manual 未充足時の unlimited expansion** と **hasMore 並列 COUNT** が残支配要因。再開時は **スロット別 manual/expansion 行数の計測**をゲートとする。  
@@ -2314,7 +2326,7 @@
 
 ### 吊具点検 Gmail 統合 — デプロイ後運用・現場検証（2026-05-22） {#rigging-slings-inspection-post-deploy-2026-05-22}
 
-**状態**: **A+B 修正デプロイ済**（**`7ba9306c`**·Detach **`20260522-152051-25493`**·Phase12 **43/0/0**·backfill **88 created**·DataSource 当日 **7 名** 点検表示 OK）。**Gmail 取込 #1–3 OK**·**投影/backfill #4 OK**·**サイネージ DataSource #5–6 OK**·**キオスク E2E #7 未実施**。
+**状態**: **dedup refresh + idNum + デザイン分離 デプロイ済**（**`49386387`**·Detach **`20260522-163138-380`**·Phase12 **43/0/0**·backfill **103 created / 7 refreshed**·加工担当 **5/22 暦日 18 件/10 名**）。**Gmail 取込 #1–3 OK**·**投影/backfill #4 OK**·**サイネージ DataSource #5–6 OK**·**キオスク E2E #7 未実施**。
 
 **優先タスク（運用）**:
 
@@ -2322,20 +2334,20 @@
 |---|--------|------|----------|------|
 | 1 | **Gmail スケジュール有効化** | `/admin/imports/schedule` → **`csv-import-rigging-slings-inspection-powerapps`** を ON | 保存成功 | **OK** |
 | 1b | **Gmail 手動実行 + 受信箱処理** | 同画面「実行」 | 対象メール消失・ingest 成功 | **OK** |
-| 1c | **投影データ確認** | Pi5 DB `RiggingInspectionRecord` | A+B + backfill 後 **88 件** gmail·**加工担当部署 42 件** | **OK** |
-| 2 | **可視化ダッシュボード作成** | `/admin/visualization-dashboards` → **吊具点検プリセット** | DataSource 実機 OK | **OK（API）** |
-| 3 | **サイネージ割当** | `/admin/signage/schedules` → **`[吊具点検]`** スロット | 点検のみ吊具も明細表示 | **OK（API）** |
+| 1c | **投影データ確認** | Pi5 DB `RiggingInspectionRecord` + backfill ログ | **103 created / 7 refreshed**·idNum **80/73/69/82 登録済** | **OK** |
+| 2 | **可視化ダッシュボード作成** | `/admin/visualization-dashboards` → **吊具点検プリセット** | 加工担当 **18 件/10 名**（5/22） | **OK（API）** |
+| 3 | **サイネージ割当** | `/admin/signage/schedules` → **`[吊具点検]`** スロット | 吊具 active **` ・ ` 結合**·MI 従来レイアウト | **OK（API）** |
 | 4 | **キオスク E2E** | 吊具 borrow 成功後 PASS 点検行 | dedup キーで 1 行 | 未実施 |
 
 **後続開発候補（任意）**:
 
-- **section 空従業員への誤投影**（田中俊真/増田雄司 46 件）— CSV 氏名と従業員マスタ compact 衝突調査
-- **`unmatchedGear` 28 件** — `RiggingGear.idNum` マスタ整合
-- dedup 衝突時の **更新 vs スキップ** ポリシー見直し（PowerApps 再送）
+- **section 空従業員への誤投影**（田中俊真/増田雄司 等）— CSV 氏名と従業員マスタ compact 衝突調査
+- **`unmatchedGear` 6 件** — id 78/68 等·`RiggingGear.idNum` マスタ整合
+- サイネージ **カード truncation**（29 名中 12 枚等）— 今回の主因ではないが表示上限の検討余地あり
 - **`control_num` 未解決行**の管理画面アラート
 - 計測機器点検サイネージとの **同一スロット併載** 運用ガイド
 
-**正本**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §A+B 氏名マッチ](./docs/guides/deployment.md#rigging-inspection-name-match-signage-merge-2026-05-22)
+**正本**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./docs/guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)
 
 ### キオスク順位ボード — shell 選定 SQL 第3弾以降（2026-05-22）— **保留 · 後日参照** {#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照}
 

@@ -2,18 +2,23 @@ import type { PrismaClient } from '@prisma/client';
 
 import { resolveJstBusinessDayRange9am, resolveJstSignageBusinessDate } from '../../../lib/signage-business-day.js';
 
+export type RiggingInspectionBusinessDayMatch = {
+  id: string;
+  inspectedAt: Date;
+};
+
 export class RiggingInspectionDedupPolicy {
   constructor(private readonly client: PrismaClient) {}
 
-  async existsForBusinessDay(params: {
+  async findForBusinessDay(params: {
     riggingGearId: string;
     employeeId: string;
     inspectedAt: Date;
-  }): Promise<boolean> {
+  }): Promise<RiggingInspectionBusinessDayMatch | null> {
     const businessDate = resolveJstSignageBusinessDate(params.inspectedAt);
     const { start, end } = resolveJstBusinessDayRange9am(businessDate);
 
-    const existing = await this.client.riggingInspectionRecord.findFirst({
+    return this.client.riggingInspectionRecord.findFirst({
       where: {
         riggingGearId: params.riggingGearId,
         employeeId: params.employeeId,
@@ -22,9 +27,16 @@ export class RiggingInspectionDedupPolicy {
           lt: end,
         },
       },
-      select: { id: true },
+      select: { id: true, inspectedAt: true },
     });
+  }
 
+  async existsForBusinessDay(params: {
+    riggingGearId: string;
+    employeeId: string;
+    inspectedAt: Date;
+  }): Promise<boolean> {
+    const existing = await this.findForBusinessDay(params);
     return existing != null;
   }
 }

@@ -5,6 +5,7 @@ import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../constants.j
 export type RiggingInspectionSyncResult = {
   csvRowsScanned: number;
   created: number;
+  refreshed: number;
   deduped: number;
   unmatchedGear: number;
   unmatchedEmployee: number;
@@ -88,6 +89,7 @@ export function emptyRiggingInspectionSyncResult(scanned = 0): RiggingInspection
   return {
     csvRowsScanned: scanned,
     created: 0,
+    refreshed: 0,
     deduped: 0,
     unmatchedGear: 0,
     unmatchedEmployee: 0,

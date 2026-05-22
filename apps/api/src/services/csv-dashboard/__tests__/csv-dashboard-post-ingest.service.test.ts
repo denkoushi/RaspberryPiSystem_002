@@ -124,6 +124,7 @@ describe('CsvDashboardPostIngestService', () => {
     syncFromRiggingIngestRun.mockResolvedValue({
       csvRowsScanned: 3,
       created: 2,
+      refreshed: 0,
       deduped: 1,
       unmatchedGear: 0,
       unmatchedEmployee: 0,
@@ -360,6 +361,7 @@ describe('CsvDashboardPostIngestService', () => {
     expect(hit.riggingInspectionSync).toEqual({
       csvRowsScanned: 3,
       created: 2,
+      refreshed: 0,
       deduped: 1,
       unmatchedGear: 0,
       unmatchedEmployee: 0,

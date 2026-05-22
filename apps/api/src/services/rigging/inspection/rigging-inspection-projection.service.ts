@@ -126,13 +126,25 @@ export class RiggingInspectionProjectionService {
         continue;
       }
 
-      const isDuplicate = await this.dedupPolicy.existsForBusinessDay({
+      const existing = await this.dedupPolicy.findForBusinessDay({
         riggingGearId: gear.id,
         employeeId: employee.id,
         inspectedAt,
       });
-      if (isDuplicate) {
-        result.deduped += 1;
+      if (existing) {
+        if (inspectedAt.getTime() > existing.inspectedAt.getTime()) {
+          await prisma.riggingInspectionRecord.update({
+            where: { id: existing.id },
+            data: {
+              inspectedAt,
+              result: mappedResult.result,
+              notes: buildGmailNotes(rowData),
+            },
+          });
+          result.refreshed += 1;
+        } else {
+          result.deduped += 1;
+        }
         continue;
       }
 

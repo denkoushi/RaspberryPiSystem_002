@@ -23,6 +23,23 @@ describe('layout-mi-instrument-body', () => {
     expect(lines[1]!.fontSize).toBe(lines[0]!.fontSize);
   });
 
+  it('renders each active instrument on separate management and name lines', () => {
+    const lines = buildBodyLinesForEntrySlice(
+      [
+        { kind: 'active', managementNumber: 'M33E', name: 'ナイロンスリング' },
+        { kind: 'active', managementNumber: 'M02E', name: 'ナイロンスリング' },
+      ],
+      2,
+      400,
+      13,
+      1,
+      4,
+    );
+    expect(lines.length).toBe(5);
+    expect(lines[0]!.text).toBe('M33E');
+    expect(lines[3]!.text).toBe('M02E');
+  });
+
   it('uses larger line height for active font than base', () => {
     const base = 13;
     const activePx = Math.round(base * ACTIVE_BODY_FONT_SCALE);

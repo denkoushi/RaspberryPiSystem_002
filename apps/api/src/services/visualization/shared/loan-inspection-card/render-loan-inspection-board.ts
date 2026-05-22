@@ -2,7 +2,7 @@ import sharp from 'sharp';
 
 import type { RenderConfig, RenderOutput, TableVisualizationData, VisualizationData } from '../../visualization.types.js';
 import { createMd3Tokens, escapeSvgText } from '../../renderers/_design-system/index.js';
-import { planLoanInspectionCardPlacements, type LoanInspectionCardColumns } from './card-layout.js';
+import { planLoanInspectionCardPlacements, type LoanInspectionCardColumns, type LayoutBodyWithinMaxHeightFn } from './card-layout.js';
 import { resolveLoanInspectionCardChrome } from './card-palette.js';
 import { buildLoanInspectionCardSvgFragment } from './card-svg.js';
 import { sortLoanInspectionRowsForDisplay } from './row-priority.js';
@@ -55,10 +55,11 @@ export type LoanInspectionBoardRenderParams = {
     employeeNameColumn?: string;
     inspectionCountColumn?: string;
   };
+  layoutBodyWithinMaxHeight?: LayoutBodyWithinMaxHeightFn;
 };
 
 export async function renderLoanInspectionBoard(params: LoanInspectionBoardRenderParams): Promise<RenderOutput> {
-  const { data, config, defaultTitle, errorPrefix, activeCountColumn, returnedCountColumn, columns, sortOptions } =
+  const { data, config, defaultTitle, errorPrefix, activeCountColumn, returnedCountColumn, columns, sortOptions, layoutBodyWithinMaxHeight } =
     params;
 
   if (data.kind !== 'table') {
@@ -106,6 +107,7 @@ export async function renderLoanInspectionBoard(params: LoanInspectionBoardRende
     cardGap,
     numColumns,
     scale,
+    layoutBodyWithinMaxHeight,
   });
   const cardsSvg = placements
     .map((p) => {
