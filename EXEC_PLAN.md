@@ -2333,7 +2333,7 @@
 
 ### 吊具点検 Gmail 統合 — デプロイ後運用・現場検証（2026-05-22） {#rigging-slings-inspection-post-deploy-2026-05-22}
 
-**状態**: **dedup refresh + idNum + デザイン分離 デプロイ済**（**`49386387`**·Detach **`20260522-163138-380`**·Phase12 **43/0/0**·backfill **103 created / 7 refreshed**·加工担当 **5/22 暦日 18 件/10 名**）。**Gmail 取込 #1–3 OK**·**投影/backfill #4 OK**·**サイネージ DataSource #5–6 OK**·**キオスク E2E #7 未実施**。
+**状態**: **chrome 統一 デプロイ済**（**`3577c0ea`**·PR **#324**·Detach **`20260522-174718-22503`**·Phase12 **43/0/0**）·**dedup refresh + idNum + デザイン分離 デプロイ済**（**`49386387`**·Detach **`20260522-163138-380`**）·**Gmail 取込 #1–3 OK**·**投影/backfill #4 OK**·**サイネージ DataSource #5–6 OK（点検のみも青 chrome）**·**キオスク E2E #7 未実施**。
 
 **優先タスク（運用）**:
 
@@ -2343,7 +2343,7 @@
 | 1b | **Gmail 手動実行 + 受信箱処理** | 同画面「実行」 | 対象メール消失・ingest 成功 | **OK** |
 | 1c | **投影データ確認** | Pi5 DB `RiggingInspectionRecord` + backfill ログ | **103 created / 7 refreshed**·idNum **80/73/69/82 登録済** | **OK** |
 | 2 | **可視化ダッシュボード作成** | `/admin/visualization-dashboards` → **吊具点検プリセット** | 加工担当 **18 件/10 名**（5/22） | **OK（API）** |
-| 3 | **サイネージ割当** | `/admin/signage/schedules` → **`[吊具点検]`** スロット | 吊具 active **` ・ ` 結合**·MI 従来レイアウト | **OK（API）** |
+| 3 | **サイネージ割当** | `/admin/signage/schedules` → **`[吊具点検]`** スロット | 吊具 active **` ・ ` 結合**·**点検のみも青 chrome**（`3577c0ea`） | **OK（API）** |
 | 4 | **キオスク E2E** | 吊具 borrow 成功後 PASS 点検行 | dedup キーで 1 行 | 未実施 |
 
 **後続開発候補（任意）**:
@@ -2351,10 +2351,11 @@
 - **section 空従業員への誤投影**（田中俊真/増田雄司 等）— CSV 氏名と従業員マスタ compact 衝突調査
 - **`unmatchedGear` 6 件** — id 78/68 等·`RiggingGear.idNum` マスタ整合
 - サイネージ **カード truncation**（29 名中 12 枚等）— 今回の主因ではないが表示上限の検討余地あり
+- **ヘッダ `貸出中 0` のまま点検のみ表示** — 必要なら「点検中 N」等の別表示（現状は案 A で据え置き）
 - **`control_num` 未解決行**の管理画面アラート
 - 計測機器点検サイネージとの **同一スロット併載** 運用ガイド
 
-**正本**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./docs/guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)
+**正本**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §chrome 統一](./docs/guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)·[deployment §dedup refresh](./docs/guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)
 
 ### キオスク順位ボード — shell 選定 SQL 第3弾以降（2026-05-22）— **保留 · 後日参照** {#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照}
 
