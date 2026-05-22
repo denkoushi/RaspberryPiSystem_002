@@ -11,6 +11,8 @@ const UNINSPECTED_DATA_SOURCE_TYPE = 'uninspected_machines';
 const UNINSPECTED_RENDERER_TYPE = 'uninspected_machines';
 const MI_LOAN_INSPECTION_DATA_SOURCE_TYPE = 'measuring_instrument_loan_inspection';
 const MI_LOAN_INSPECTION_RENDERER_TYPE = 'measuring_instrument_loan_inspection';
+const RIGGING_LOAN_INSPECTION_DATA_SOURCE_TYPE = 'rigging_loan_inspection';
+const RIGGING_LOAN_INSPECTION_RENDERER_TYPE = 'rigging_loan_inspection';
 const PALLET_VIZ_DATA_SOURCE_TYPE = 'pallet_visualization_board';
 const PALLET_VIZ_RENDERER_TYPE = 'pallet_visualization_board';
 const PALLET_VIZ_DATA_SOURCE_TEMPLATE = JSON.stringify({}, null, 2);
@@ -47,6 +49,21 @@ const MI_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE = JSON.stringify(
   2,
 );
 const MI_LOAN_INSPECTION_RENDERER_TEMPLATE = JSON.stringify(
+  {
+    maxRows: 24,
+  },
+  null,
+  2,
+);
+const RIGGING_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE = JSON.stringify(
+  {
+    sectionEquals: '加工担当部署',
+    period: 'today_jst',
+  },
+  null,
+  2,
+);
+const RIGGING_LOAN_INSPECTION_RENDERER_TEMPLATE = JSON.stringify(
   {
     maxRows: 24,
   },
@@ -97,6 +114,7 @@ export function VisualizationDashboardsPage() {
   const isEditing = Boolean(selectedId) && !isCreating;
   const isUninspectedPreset = dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE;
   const isMeasuringInspectionPreset = dataSourceType.trim() === MI_LOAN_INSPECTION_DATA_SOURCE_TYPE;
+  const isRiggingInspectionPreset = dataSourceType.trim() === RIGGING_LOAN_INSPECTION_DATA_SOURCE_TYPE;
   const isPalletVizPreset = dataSourceType.trim() === PALLET_VIZ_DATA_SOURCE_TYPE;
 
   const palletVizBoardQuery = useQuery({
@@ -303,6 +321,17 @@ export function VisualizationDashboardsPage() {
         return;
       }
     }
+    if (dataSourceType.trim() === RIGGING_LOAN_INSPECTION_DATA_SOURCE_TYPE) {
+      const cfg = dataSourceParsed.value ?? {};
+      const sectionEquals =
+        typeof cfg.sectionEquals === 'string' ? cfg.sectionEquals.trim() : '';
+      if (!sectionEquals) {
+        setFormError(
+          '吊具持出状況（点検可視化）データソースでは sectionEquals が必須です。',
+        );
+        return;
+      }
+    }
 
     if (isCreating) {
       await create.mutateAsync({
@@ -369,6 +398,22 @@ export function VisualizationDashboardsPage() {
     if (!description.trim()) {
       setDescription(
         '加工担当部署の従業員ごとにJST当日の点検有無・貸出中計測機器数・返却件数（返却はカード上グレー）を表示',
+      );
+    }
+    setFormError(null);
+  };
+
+  const applyRiggingInspectionPreset = () => {
+    setDataSourceType(RIGGING_LOAN_INSPECTION_DATA_SOURCE_TYPE);
+    setRendererType(RIGGING_LOAN_INSPECTION_RENDERER_TYPE);
+    setDataSourceConfig(RIGGING_LOAN_INSPECTION_DATA_SOURCE_TEMPLATE);
+    setRendererConfig(RIGGING_LOAN_INSPECTION_RENDERER_TEMPLATE);
+    if (!name.trim()) {
+      setName('吊具持出状況（点検可視化）');
+    }
+    if (!description.trim()) {
+      setDescription(
+        '加工担当部署の従業員ごとにJST当日の点検有無・貸出中吊具数・返却件数（返却はカード上グレー）を表示',
       );
     }
     setFormError(null);
@@ -489,6 +534,9 @@ export function VisualizationDashboardsPage() {
                   <Button variant="secondary" onClick={applyMeasuringInspectionPreset}>
                     計測機器点検可視化プリセットを適用
                   </Button>
+                  <Button variant="secondary" onClick={applyRiggingInspectionPreset}>
+                    吊具点検可視化プリセットを適用
+                  </Button>
                   <Button variant="secondary" onClick={applyPalletVisualizationPreset}>
                     パレット可視化プリセットを適用
                   </Button>
@@ -528,6 +576,14 @@ export function VisualizationDashboardsPage() {
                   </div>
                 )}
                 {isMeasuringInspectionPreset && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-slate-700">
+                      部署フィルタは <code>dataSourceConfig.sectionEquals</code> で設定します。
+                      既定値は「加工担当部署」です。
+                    </p>
+                  </div>
+                )}
+                {isRiggingInspectionPreset && (
                   <div className="mt-3 space-y-2">
                     <p className="text-xs text-slate-700">
                       部署フィルタは <code>dataSourceConfig.sectionEquals</code> で設定します。

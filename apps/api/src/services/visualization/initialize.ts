@@ -5,12 +5,14 @@ import { CsvDashboardTableDataSource } from './data-sources/csv-dashboard-table/
 import { ProductionScheduleDataSource } from './data-sources/production-schedule/index.js';
 import { UninspectedMachinesDataSource } from './data-sources/uninspected-machines/index.js';
 import { MeasuringInstrumentLoanInspectionDataSource } from './data-sources/measuring-instrument-loan-inspection/index.js';
+import { RiggingLoanInspectionDataSource } from './data-sources/rigging-loan-inspection/index.js';
 import { KpiCardsRenderer } from './renderers/kpi-cards/index.js';
 import { BarChartRenderer } from './renderers/bar-chart/index.js';
 import { TableRenderer } from './renderers/table/index.js';
 import { ProgressListRenderer } from './renderers/progress-list/index.js';
 import { UninspectedMachinesRenderer } from './renderers/uninspected-machines/index.js';
 import { MeasuringInstrumentLoanInspectionRenderer } from './renderers/measuring-instrument-loan-inspection/index.js';
+import { RiggingLoanInspectionRenderer } from './renderers/rigging-loan-inspection/index.js';
 import { PalletVisualizationBoardDataSource } from './data-sources/pallet-visualization-board/index.js';
 import { PalletBoardRenderer } from './renderers/pallet-board/index.js';
 
@@ -36,6 +38,10 @@ export function initializeVisualizationModules(): void {
 
   if (!dataSourceRegistry.has('measuring_instrument_loan_inspection')) {
     dataSourceRegistry.register(new MeasuringInstrumentLoanInspectionDataSource());
+  }
+
+  if (!dataSourceRegistry.has('rigging_loan_inspection')) {
+    dataSourceRegistry.register(new RiggingLoanInspectionDataSource());
   }
 
   if (!dataSourceRegistry.has('pallet_visualization_board')) {
@@ -64,6 +70,10 @@ export function initializeVisualizationModules(): void {
 
   if (!rendererRegistry.has('measuring_instrument_loan_inspection')) {
     rendererRegistry.register(new MeasuringInstrumentLoanInspectionRenderer());
+  }
+
+  if (!rendererRegistry.has('rigging_loan_inspection')) {
+    rendererRegistry.register(new RiggingLoanInspectionRenderer());
   }
 
   if (!rendererRegistry.has('pallet_visualization_board')) {

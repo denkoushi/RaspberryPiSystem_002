@@ -1,22 +1,20 @@
-import type { MiBodyLine } from './mi-instrument-display.types.js';
-import { layoutBodyWithinMaxHeight } from './layout-mi-instrument-body.js';
-import { MI_CARD_BOTTOM_PAD_PX, MI_CARD_INNER_PAD_PX, MI_NAMES_START_YPX } from './mi-instrument-card-metrics.js';
-import { parseRowInstrumentEntries } from './row-instrument-entries.js';
+import {
+  planLoanInspectionCardPlacements,
+  type LoanInspectionCardPlacement,
+} from '../../shared/loan-inspection-card/card-layout.js';
+import { MI_INSTRUMENT_DETAIL_COLUMN, type MiBodyLine } from './mi-instrument-display.types.js';
 import type { MiLoanInspectionTableRow } from './row-priority.js';
 
-export type MiCardPlacement = {
+export type MiCardPlacement = LoanInspectionCardPlacement & {
   row: MiLoanInspectionTableRow;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  col: number;
   bodyLines: MiBodyLine[];
 };
 
-/**
- * 4列グリッド・上揃め・行高は行内最大。縦可変1ページ分まで配置、はみ出す行は切り捨て。
- */
+const MI_COLUMNS = {
+  detailColumn: MI_INSTRUMENT_DETAIL_COLUMN,
+  namesColumn: '計測機器名称一覧',
+};
+
 export function planMiInspectionCardPlacements(params: {
   rows: readonly MiLoanInspectionTableRow[];
   cardsTop: number;
@@ -27,74 +25,10 @@ export function planMiInspectionCardPlacements(params: {
   numColumns: number;
   scale: number;
 }): { placements: MiCardPlacement[]; truncated: boolean; placedCount: number; totalRows: number } {
-  const { rows, cardsTop, cardsAreaHeight, padding, cardWidth, cardGap, numColumns, scale } = params;
-  const namesFontSize = Math.max(12, Math.round(13 * scale));
-  const namesStartY = Math.round(MI_NAMES_START_YPX * scale);
-  const bottomPad = Math.round(MI_CARD_BOTTOM_PAD_PX * scale);
-  const innerTextPad = Math.round(MI_CARD_INNER_PAD_PX * scale);
-  const maxWidthPx = cardWidth - innerTextPad * 2;
-  const areaBottom = cardsTop + cardsAreaHeight;
-
-  const placements: MiCardPlacement[] = [];
-  let i = 0;
-  let y = cardsTop;
-
-  while (i < rows.length) {
-    const availableForRow = areaBottom - y;
-    if (availableForRow <= 0) {
-      break;
-    }
-
-    const batch: Array<{
-      row: MiLoanInspectionTableRow;
-      col: number;
-      height: number;
-      bodyLines: MiBodyLine[];
-    }> = [];
-
-    for (let col = 0; col < numColumns && i < rows.length; col += 1, i += 1) {
-      const row = rows[i]!;
-      const entries = parseRowInstrumentEntries(row);
-
-      const laid = layoutBodyWithinMaxHeight({
-        entries,
-        maxWidthPx,
-        baseFontPx: namesFontSize,
-        scale,
-        maxHeight: availableForRow,
-        namesStartY,
-        bottomPad,
-      });
-      const height = Math.min(laid.height, availableForRow);
-
-      batch.push({ row, col, height, bodyLines: laid.bodyLines });
-    }
-
-    const rowMaxH = Math.max(...batch.map((b) => b.height));
-    if (y + rowMaxH > areaBottom) {
-      i -= batch.length;
-      break;
-    }
-
-    for (const b of batch) {
-      const x = padding + b.col * (cardWidth + cardGap);
-      placements.push({
-        row: b.row,
-        x,
-        y,
-        width: cardWidth,
-        height: b.height,
-        col: b.col,
-        bodyLines: b.bodyLines,
-      });
-    }
-    y += rowMaxH + cardGap;
-  }
-
-  return {
-    placements,
-    truncated: i < rows.length,
-    placedCount: placements.length,
-    totalRows: rows.length,
+  return planLoanInspectionCardPlacements({ ...params, columns: MI_COLUMNS }) as {
+    placements: MiCardPlacement[];
+    truncated: boolean;
+    placedCount: number;
+    totalRows: number;
   };
 }

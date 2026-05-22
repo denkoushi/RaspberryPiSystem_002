@@ -9,6 +9,7 @@ import {
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from '../../production-schedule/constants.js';
+import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../../rigging/constants.js';
 import { CsvDashboardPostIngestService } from '../csv-dashboard-post-ingest.service.js';
 
 const syncFromSupplementDashboard = vi.fn();
@@ -18,6 +19,7 @@ const syncFromCurrentStatusMailDashboard = vi.fn();
 const syncFromSeibanMachineNameSupplementDashboard = vi.fn();
 const syncFromCustomerScawDashboard = vi.fn();
 const syncFromFkobainoDashboard = vi.fn();
+const syncFromRiggingIngestRun = vi.fn();
 
 vi.mock('../../production-schedule/order-supplement-sync.service.js', () => ({
   ProductionScheduleOrderSupplementSyncService: vi.fn().mockImplementation(() => ({
@@ -58,6 +60,12 @@ vi.mock('../../production-schedule/customer-scaw-sync.service.js', () => ({
 vi.mock('../../purchase-order-lookup/purchase-order-lookup-sync.service.js', () => ({
   PurchaseOrderLookupSyncService: vi.fn().mockImplementation(() => ({
     syncFromFkobainoDashboard,
+  })),
+}));
+
+vi.mock('../../rigging/inspection/rigging-inspection-projection.service.js', () => ({
+  RiggingInspectionProjectionService: vi.fn().mockImplementation(() => ({
+    syncFromIngestRun: syncFromRiggingIngestRun,
   })),
 }));
 
@@ -112,6 +120,15 @@ describe('CsvDashboardPostIngestService', () => {
       matchedFseibans: 1,
       upserted: 1,
       pruned: 0,
+    });
+    syncFromRiggingIngestRun.mockResolvedValue({
+      csvRowsScanned: 3,
+      created: 2,
+      deduped: 1,
+      unmatchedGear: 0,
+      unmatchedEmployee: 0,
+      invalidResult: 0,
+      invalidDate: 0,
     });
   });
 
@@ -328,6 +345,39 @@ describe('CsvDashboardPostIngestService', () => {
     expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
     expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
+    expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
+    expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();
+  });
+
+  it('runs rigging inspection sync only for the rigging slings inspection dashboard id', async () => {
+    const svc = new CsvDashboardPostIngestService();
+    const hit = await svc.runAfterSuccessfulIngest({
+      dashboardId: RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID,
+      ingestSource: 'gmail',
+      ingestRunId: 'run-rigging-inspection',
+    });
+    expect(hit.riggingInspectionSync).toEqual({
+      csvRowsScanned: 3,
+      created: 2,
+      deduped: 1,
+      unmatchedGear: 0,
+      unmatchedEmployee: 0,
+      invalidResult: 0,
+      invalidDate: 0,
+    });
+    expect(hit.orderSupplementSync).toBeNull();
+    expect(hit.fkojunstSync).toBeNull();
+    expect(hit.fkojunstMailSync).toBeNull();
+    expect(hit.seibanMachineNameSupplementSync).toBeNull();
+    expect(hit.customerScawSync).toBeNull();
+    expect(hit.purchaseOrderLookupSync).toBeNull();
+    expect(syncFromRiggingIngestRun).toHaveBeenCalledTimes(1);
+    expect(syncFromRiggingIngestRun).toHaveBeenCalledWith({ ingestRunId: 'run-rigging-inspection' });
+    expect(syncFromSupplementDashboard).not.toHaveBeenCalled();
+    expect(syncFromFkojunstDashboard).not.toHaveBeenCalled();
+    expect(syncFromStatusMailDashboard).not.toHaveBeenCalled();
+    expect(syncFromCurrentStatusMailDashboard).not.toHaveBeenCalled();
     expect(syncFromSeibanMachineNameSupplementDashboard).not.toHaveBeenCalled();
     expect(syncFromCustomerScawDashboard).not.toHaveBeenCalled();
     expect(syncFromFkobainoDashboard).not.toHaveBeenCalled();

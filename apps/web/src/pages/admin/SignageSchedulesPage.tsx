@@ -61,6 +61,9 @@ function formatVisualizationOptionLabel(dashboard: VisualizationDashboard): stri
   if (dashboard.dataSourceType === 'measuring_instrument_loan_inspection') {
     tags.push('計測機器点検');
   }
+  if (dashboard.dataSourceType === 'rigging_loan_inspection') {
+    tags.push('吊具点検');
+  }
   if (dashboard.rendererType) {
     tags.push(`renderer:${dashboard.rendererType}`);
   }
@@ -70,16 +73,20 @@ function formatVisualizationOptionLabel(dashboard: VisualizationDashboard): stri
 
 function groupVisualizationDashboardsForSignage(dashboards: VisualizationDashboard[] | undefined): {
   pallet: VisualizationDashboard[];
+  rigging: VisualizationDashboard[];
   other: VisualizationDashboard[];
 } {
   const list = dashboards ?? [];
   const pallet = list
     .filter((d) => d.dataSourceType === PALLET_VIZ_DATA_SOURCE)
     .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-  const other = list
-    .filter((d) => d.dataSourceType !== PALLET_VIZ_DATA_SOURCE)
+  const rigging = list
+    .filter((d) => d.dataSourceType === 'rigging_loan_inspection')
     .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-  return { pallet, other };
+  const other = list
+    .filter((d) => d.dataSourceType !== PALLET_VIZ_DATA_SOURCE && d.dataSourceType !== 'rigging_loan_inspection')
+    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  return { pallet, rigging, other };
 }
 
 function VisualizationDashboardGroupedSelect({
@@ -98,7 +105,7 @@ function VisualizationDashboardGroupedSelect({
   isListPending: boolean;
   isListError: boolean;
 }) {
-  const { pallet, other } = useMemo(() => groupVisualizationDashboardsForSignage(dashboards), [dashboards]);
+  const { pallet, rigging, other } = useMemo(() => groupVisualizationDashboardsForSignage(dashboards), [dashboards]);
   const palletMissing =
     !isListPending && !isListError && pallet.length === 0;
 
@@ -127,6 +134,15 @@ function VisualizationDashboardGroupedSelect({
         {pallet.length > 0 ? (
           <optgroup label="パレット可視化">
             {pallet.map((dashboard: VisualizationDashboard) => (
+              <option key={dashboard.id} value={dashboard.id}>
+                {formatVisualizationOptionLabel(dashboard)}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {rigging.length > 0 ? (
+          <optgroup label="吊具点検">
+            {rigging.map((dashboard: VisualizationDashboard) => (
               <option key={dashboard.id} value={dashboard.id}>
                 {formatVisualizationOptionLabel(dashboard)}
               </option>

@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { RiggingGearService } from './rigging-gear.service.js';
 import { EmployeeService } from '../tools/employee.service.js';
+import { RiggingBorrowInspectionOrchestrator } from './inspection/rigging-borrow-inspection.orchestrator.js';
 
 export interface RiggingBorrowInput {
   riggingTagUid?: string;
@@ -39,10 +40,12 @@ interface LoanWithRelations extends Loan {
 export class RiggingLoanService {
   private gearService: RiggingGearService;
   private employeeService: EmployeeService;
+  private borrowInspectionOrchestrator: RiggingBorrowInspectionOrchestrator;
 
   constructor() {
     this.gearService = new RiggingGearService();
     this.employeeService = new EmployeeService();
+    this.borrowInspectionOrchestrator = new RiggingBorrowInspectionOrchestrator();
   }
 
   async borrow(input: RiggingBorrowInput): Promise<LoanWithRelations> {
@@ -120,6 +123,19 @@ export class RiggingLoanService {
     });
 
     logger.info({ loanId: loan.id, riggingGearId: gear.id, employeeId: employee.id }, 'Rigging borrow completed');
+    try {
+      await this.borrowInspectionOrchestrator.recordIfNotDuplicate({
+        riggingGearId: gear.id,
+        employeeId: employee.id,
+        loanId: loan.id,
+        managementNumber: gear.managementNumber,
+        inspectorName: employee.displayName,
+        inspectedAt: loan.borrowedAt,
+        notes: JSON.stringify({ source: 'kiosk' }),
+      });
+    } catch (error) {
+      logger.warn({ err: error, loanId: loan.id }, 'Failed to record rigging inspection after borrow');
+    }
     return loan as LoanWithRelations;
   }
 

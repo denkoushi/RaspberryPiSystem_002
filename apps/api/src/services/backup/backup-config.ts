@@ -250,6 +250,18 @@ export const defaultBackupConfig: BackupConfig = {
       autoBackupAfterImport: { enabled: false, targets: ['csv'] }
     },
     {
+      id: 'csv-import-rigging-slings-inspection-powerapps',
+      name: 'RiggingSlingsInspection_PowerApps (Gmail)',
+      provider: 'gmail',
+      targets: [
+        { type: 'csvDashboards', source: 'c4e8a1b2-3d6f-7890-abcd-ef1234567891' }
+      ],
+      schedule: '0 * * * *',
+      enabled: false,
+      replaceExisting: false,
+      autoBackupAfterImport: { enabled: false, targets: ['csv'] }
+    },
+    {
       id: 'csv-import-productionschedule-fkojunst',
       name: 'ProductionSchedule_FKOJUNST (Gmail)',
       provider: 'gmail',
