@@ -2677,6 +2677,28 @@ category: knowledge-base
   - **ピッカー左列が画面外** → [**左ペイン・ビューポートクランプ（2026-05-05）**](#leader-order-board-left-pane-viewport-clamp-2026-05-05)（`AnchoredDropdownPortal` の既定クランプ）。
   - **`AnchoredDropdownPortal` の型エラー（ref）**: アンカーの **型を `HTMLElement | null` の `MutableRefObject` に統一**（本変更で `anchorRef` / `panelRef` を緩和）。
 
+### Leader order board: 手動順位付き行の背景ハイライト（案A改）（2026-05-22） {#leader-order-board-manual-order-row-highlight-2026-05-22}
+
+- **目的**: **`processingOrder` が付与された未完行**を、同一スロット内の未設定行と区別しやすくする。**行ブロックのみ**背景を変更（資源CDカード全体・製番左縁アクセントは不変）。**Web + サイネージ `kiosk_leader_order_cards` SVG** を同期。
+- **仕様（要約）**:
+  - **ハイライト条件**: **`processingOrder != null` かつ `!isCompleted`**。完了行は **ハイライトしない**（既存 **`opacity-50 grayscale`** 維持）。
+  - **色**: キオスク **`bg-slate-600/82`**。SVG **`rgba(71, 85, 105, 0.82)`**（`LEADER_ORDER_SVG_ROW_BG_RANKED`）。設計プレビュー [leader-board-manual-order-row-highlight-preview.html](../design-previews/leader-board-manual-order-row-highlight-preview.html)（案A改: `slate-600`）。
+  - **Web**: [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) — `hasManualOrder`。
+  - **サイネージ API**: [`toLeaderOrderRowSvgModels`](../../apps/api/src/services/signage/leader-order-cards/leader-board-pure.ts) が **`hasManualOrder`** を付与 → [`leader-order-cards-svg-schedule-row.ts`](../../apps/api/src/services/signage/leader-order-cards/leader-order-cards-svg-schedule-row.ts)。
+  - **不変**: DB·`order-usage`·順位付与 UI（スロット「順位」ボタン・ドロップダウン）·製番左縁24色。
+- **本番デプロイ・実機検証（2026-05-22）**:
+  - **ブランチ**: `feat/kiosk-leader-board-manual-order-row-highlight`（代表 **`3acf4c5a`**）。
+  - **CI**: **`26281606000` success**。
+  - **手順**: [deployment.md](../guides/deployment.md) の **`update-all-clients.sh`**。**対象**: **`raspberrypi5` のみ**。**Pi3 除外**。
+  - **Detach Run ID**: **`20260522-192111-31816`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·exit **`0`**·`--follow` 約 **816s**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **96s**）。
+- **知見**:
+  - **スロット「順位」ボタン**（[§スロット順位](#leader-order-board-slot-auto-rank-2026-05-22)）で付与した行も、**手動ドロップダウン**で付与した行も **同じハイライト**。
+  - Pi5 **`web` + `api`** のみ更新。Pi4/Pi3 **Ansible play は `no hosts matched` で正**。
+- **トラブルシューティング**:
+  - **ハイライトなし** → 順位未設定 / 完了行 / Pi5 ref / §6.6.4 強制リロード。
+  - **サイネージのみ旧見た目** → Pi5 **`api`** 未反映（Pi3 単体デプロイ不可解）。
+
 ### Leader order board: 資源CDスロット「順位」ボタン（製番順評価 ON 時）（2026-05-22） {#leader-order-board-slot-auto-rank-2026-05-22}
 
 - **目的**: 製番順評価 ON で左ペインから製番並びを整えたあと、**各資源CDスロット内の未完行へ順位（`processingOrder`）を一括付与**し、**行ごとのドロップダウン操作**を減らす。**Web のみ**·**API / DB / `search-state` は不変**（既存 **`PUT …/:rowId/order`** と **`order-usage`** 契約をそのまま利用）。

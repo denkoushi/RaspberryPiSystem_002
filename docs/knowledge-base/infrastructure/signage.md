@@ -168,6 +168,7 @@ update-frequency: medium
 - **2026-05-21 コンパクト＋未完のみ（`feat/signage-leader-order-cards-compact-incomplete`）**: カード内 **工順・顧客名を非表示**、**機種名10文字上限**（`LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS`）、metrics/tokens で **コンパクト化**。**表示行は未完のみ**（`filterLeaderBoardRowsIncompleteForSignage`・完了行は従来の薄表示から **完全非表示**へ）。フッタチップ解決は **全行**入力のまま（表示行のみフィルタ）。
 - **2026-05-21 5列×2段・最大/既定10（`feat/signage-leader-order-cards-5x2-grid-10`）**: `layout-contracts.ts` で **5×2・容量10**。Zod・管理 `SignageSchedulesPage` の **max/既定10**。**既存 `cardsPerPage: 8` 保存スケジュールは8枚のまま**（空き2枠）。カード幅は列数に応じて自動縮小（フォント・行内容は不変）。
 - **2026-05-21 ヘッダ加工機名・全文1行（`a2f9a2c5`）**: 5×2 本番後の **`…` 省略回帰**を修正。旧 **`computeLeaderOrderHeaderTruncation` + `truncateChars`** を廃止し、**加工機名は全文・1行**（折り返し禁止）。**現場目視 OK**。
+- **2026-05-22 手動順位付き行の背景ハイライト（`feat/kiosk-leader-board-manual-order-row-highlight`）**: **`processingOrder != null` かつ未完**の行ブロックのみ **`rgba(71, 85, 105, 0.82)`**（キオスク `bg-slate-600/82` と整合）。**完了行はハイライト対象外**（従来の薄表示/非表示ポリシーは [コンパクト＋未完のみ](#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg) のまま）。`leader-board-pure.ts` の **`hasManualOrder`** → `leader-order-cards-svg-schedule-row.ts`。
 
 **代表ファイル**:
 - `apps/api/src/services/signage/signage.renderer.ts`（分岐 `kiosk_leader_order_cards`）
@@ -183,6 +184,8 @@ update-frequency: medium
 **本番デプロイ（2026-04-08・ブランチ `feat/signage-leader-order-readability-solid`）**: **工場視認性**（タイポ拡大・1行ヘッダ・高コントラスト）と **SOLID 分割**（`header` / `schedule-row` / `layout-tokens`・`leader-order-cards-svg-header.test.ts`）。**手順**: [deployment.md](../../guides/deployment.md) どおり **`RASPI_SERVER_HOST`**・**`--limit raspberrypi5`**・**`--detach --follow`**（**1 台のみ**・Pi4/Pi3 は `no hosts matched`）。**Detach Run ID**: `20260408-083856-28270`。**`PLAY RECAP`**: `raspberrypi5` **`failed=0`**・リモート **`exit=0`**。**トラブル無し**（本記録時点）。**`main` マージ**: [PR #98](https://github.com/denkoushi/RaspberryPiSystem_002/pull/98)。
 
 **本番デプロイ（2026-05-21・`main` `a2f9a2c5`・ヘッダ加工機名全文）**: **API のみ**。**対象**: **`raspberrypi5` のみ**。**手順**: [deployment.md](../../guides/deployment.md#signage-leader-order-header-full-machine-name-2026-05-21)。**Detach**: `20260521-134013-4448`（**`failed=0`**）。**Phase12**: **43/0/0**（約 **46s**）。**現場**: 加工機名 **`…` なし・1行全文 OK**。
+
+**本番デプロイ（2026-05-22・ブランチ `feat/kiosk-leader-board-manual-order-row-highlight`）**: **手動順位付き行ハイライト**（Web + API SVG）。**対象**: **`raspberrypi5` のみ**。**手順**: [deployment.md](../../guides/deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)。**代表**: **`3acf4c5a`**。**CI**: **`26281606000` success**。**Detach**: `20260522-192111-31816`（**`ok=134` `changed=4` `failed=0`**·`--follow` 約 **816s**）。**Phase12**: **43/0/0**（約 **96s**）。**Pi4/Pi3**: `no hosts matched`（正）。
 
 **本番デプロイ（2026-05-21・ブランチ `feat/signage-leader-order-cards-5x2-grid-10`）**: **5列×2段・最大/既定10**（API + 管理 Web）。**対象**: **`raspberrypi5` のみ**。**手順**: [deployment.md](../../guides/deployment.md#signage-leader-order-cards-5x2-grid-10-2026-05-21)。**代表**: **`0fa2d065`**。**CI**: **`26204469250` success**。**Detach**: `20260521-131417-25249`（**`ok=134` `changed=4` `failed=0`**）。**Phase12**: **43/0/0**（約 **28s**）。**`main` マージ**: [PR #314](https://github.com/denkoushi/RaspberryPiSystem_002/pull/314)（squash **`3e37248f`**）。
 
@@ -209,10 +212,11 @@ update-frequency: medium
 - **機種名が途中で切れる**: **`LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS`（10）** 意図。定数は `leader-order-cards-svg-layout-tokens.ts`。
 - **納期がすべて `—`（ダッシュ）**: **コンパクト本番〜`83501b27` 前**は `String(Prisma Date)` で **`formatDueDateSignage` が空**→ **`—`**。**`fix/signage-leader-order-due-date-from-prisma-date`** 以降の Pi5 ref を確認。キオスクに納期があるのにサイネージだけ無い場合は本件を疑う。
 - **キオスクと見た目が違う（2026-05-21 以降）**: Pi5 **`api` ref** が **`83501b27` 以降（納期 fix）または `main` HEAD**か確認。**Pi4 デプロイは不要**（API のみ）。Pi3 は **Pi5 未更新**を疑う。**`deviceScopeKey`** はデータスコープのみ。
+- **手動順位行の背景がキオスクと揃わない（2026-05-22 以降）**: **`3acf4c5a` 以降**の Pi5 **`web` + `api`** か確認。**順位未設定 / 完了行**はハイライトしない（仕様）。サイネージのみ旧見た目 → **Pi3 デプロイ不可解**·Pi5 **`api`**·`slideIntervalSeconds` / `SIGNAGE_RENDER_DIR`。
 - **左縁色・行下チップが無い**: 旧 JPEG キャッシュまたはスケジュール未再描画 → `slideIntervalSeconds` 待ち・`SIGNAGE_RENDER_DIR`・`GET /api/signage/content` の `layoutConfig.type === 'kiosk_leader_order_cards'` を確認。
 - **行が詰まりすぎ／切れる**: 動的行高は `leader-order-cards-svg-schedule-row.ts` と `layout-tokens`。**チップ数**は `buildLeaderboardFooterChipsByPartKeyForScheduleRows`（キオスク順位ボードと同契約）に依存。
 
-**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ・初回〜4×8〜readability〜キオスク整合〜コンパクト＋未完〜納期 Date 正規化〜5×2・max10〜ヘッダ加工機名全文 2026-05-21）・Phase12 + 現場目視 OK**
+**解決状況**: ✅ **実装・本番デプロイ（Pi5 のみ·初回〜4×8〜readability〜キオスク整合〜コンパクト＋未完〜納期 Date 正規化〜5×2・max10〜ヘッダ加工機名全文〜手動順位行ハイライト 2026-05-22）・Phase12 + 現場目視 OK（ヘッダ全文）**
 
 ---
 

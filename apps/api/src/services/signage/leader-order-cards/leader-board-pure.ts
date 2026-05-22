@@ -60,6 +60,8 @@ export type SignageLeaderOrderSvgRow = {
   partNameLine: string;
   quantityInlineJa: string | null;
   isCompleted: boolean;
+  /** `processingOrder != null` かつ未完 — キオスク行ハイライトと同条件 */
+  hasManualOrder: boolean;
   footerChips: readonly LeaderboardPartFooterProcessItem[];
 };
 
@@ -384,6 +386,7 @@ export function toLeaderOrderRowSvgModels(
       partNameLine: pres.partNameLine,
       quantityInlineJa: pres.quantityInlineJa,
       isCompleted: row.isCompleted,
+      hasManualOrder: row.processingOrder != null && !row.isCompleted,
       footerChips,
     };
   });

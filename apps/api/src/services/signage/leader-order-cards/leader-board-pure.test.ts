@@ -98,4 +98,33 @@ describe('leader-board-pure', () => {
     const complete = { ...incomplete, id: 'b', isCompleted: true };
     expect(filterLeaderBoardRowsIncompleteForSignage([incomplete, complete])).toEqual([incomplete]);
   });
+
+  it('toLeaderOrderRowSvgModels sets hasManualOrder from processingOrder and completion', () => {
+    const ranked: SignageLeaderBoardRow = {
+      id: 'r1',
+      seibanJoinKey: 'S1',
+      resourceCd: '060',
+      dueDate: null,
+      plannedEndDate: null,
+      displayDue: '2026-04-10T00:00:00.000Z',
+      fseiban: 'S1',
+      productNo: '1',
+      fkojun: '010',
+      fhincd: '',
+      fhinmei: '',
+      customerName: '',
+      machineName: '',
+      machineTypeCode: '',
+      plannedQuantity: null,
+      processingOrder: 3,
+      isCompleted: false,
+    };
+    const unranked = { ...ranked, id: 'r2', processingOrder: null };
+    const completedRanked = { ...ranked, id: 'r3', isCompleted: true };
+
+    const models = toLeaderOrderRowSvgModels([ranked, unranked, completedRanked], undefined, () => 'k');
+    expect(models[0]?.hasManualOrder).toBe(true);
+    expect(models[1]?.hasManualOrder).toBe(false);
+    expect(models[2]?.hasManualOrder).toBe(false);
+  });
 });

@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・手動順位付き行の背景ハイライト（案A改・Web + サイネージ SVG）**·ブランチ **`feat/kiosk-leader-board-manual-order-row-highlight`**·**`3acf4c5a`**。**仕様**: **`processingOrder != null` かつ未完**の行のみ **`slate-600/82`**（Web）·**`rgba(71, 85, 105, 0.82)`**（SVG）·**行ブロックのみ**·完了行は **grayscale のみ**·DB 不変。**ローカル**: leader-order-cards 9 PASS·leaderOrderBoard 208 PASS·eslint PASS。**CI**: **`26281606000` success**。**本番（Pi5 のみ）**: Detach **`20260522-192111-31816`**（`ok=134` `changed=4` `failed=0`·`--follow` 約 **816s**）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **96s**）。**ナレッジ**: [KB-297 §手動順位行](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335](./docs/knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)·[verification-checklist §6.6.26](./docs/guides/verification-checklist.md#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・`main` マージ**） **キオスク順位ボード・資源CDスロット「順位」ボタン（製番順評価 ON 時・Web のみ）**·ブランチ **`feat/kiosk-leader-board-slot-auto-rank`**·**`b74c54a9`**。**仕様**: 製番順評価 **ON** 時のみタイトル行 **「順位」**·表示順の **`processingOrder == null` 未完行**へ **`order-usage` 空き番 1–10 を昇順に最大 5 件**·既存順位維持·**`listIncomplete` 時 disabled**·**`buildReorderPlan` 却下**·既存 **`PUT …/:rowId/order`** / **`updateOrderAsync`**·API/DB 不変。**ローカル**: leaderOrderBoard 関連 Vitest **15 PASS**·`tsc --noEmit`·eslint PASS。**CI**: **`26279773441` success**。**本番（Pi5 のみ）**: Detach **`20260522-183756-28111`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **74s**）。**ナレッジ**: [KB-297 §スロット順位](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)·[verification-checklist §6.6.25](./docs/guides/verification-checklist.md#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **吊具点検サイネージカード chrome 統一（点検のみも青）**·ブランチ **`fix/rigging-inspection-card-chrome-unify`**·**`cf8c13bf`**。**仕様**: **`resolveRiggingHasVisibleLoanState`** — Loan または当日 **`点検件数>0`** で青 chrome·共有 board に optional hook·**MI は従来**·**ヘッダ件数は Loan 実績のまま**·**DB マイグレなし**。**CI**: **`26275892524` success**。**本番（Pi5 のみ）**: Detach **`20260522-174718-22503`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **85s**）。**ナレッジ**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §chrome 統一](./docs/guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
@@ -2332,6 +2334,21 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク順位ボード — 手動順位行ハイライト現場目視（2026-05-22） {#kiosk-leaderboard-manual-order-row-highlight-field-verify-2026-05-22}
+
+**状態**: **Pi5 デプロイ済**（**`3acf4c5a`**·Detach **`20260522-192111-31816`**·Phase12 **43/0/0**·**§6.6.26 自動 OK**）·**現場目視は未チェック**。
+
+**優先タスク（現場）**:
+
+| # | タスク | 手順 | 完了条件 |
+|---|--------|------|----------|
+| 1 | **キオスク行背景** | 順位付き未完行 vs 未設定行 | **slate-600 系**の行背景のみ |
+| 2 | **完了行** | 完了済み行を表示 | **ハイライトなし**（薄灰+grayscale） |
+| 3 | **サイネージ** | `kiosk_leader_order_cards` スロット | 順位付き未完行の行背景が **同趣旨** |
+| 4 | **「順位」ボタン連携** | §6.6.25 後に一括付与 | 付与行も **同ハイライト** |
+
+**正本**: [KB-297 §手動順位行](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[deployment §2026-05-22](./docs/guides/deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)
 
 ### キオスク順位ボード — スロット「順位」ボタン現場目視（2026-05-22） {#kiosk-leaderboard-slot-auto-rank-field-verify-2026-05-22}
 

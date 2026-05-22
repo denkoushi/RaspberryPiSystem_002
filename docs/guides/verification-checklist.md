@@ -823,6 +823,21 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-22（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260522-183756-28111`**·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
+**6.6.26 キオスク リーダー順位ボード（手動順位付き行の背景ハイライト）** {#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22}
+
+**確認ポイント**（[KB-297 §手動順位行ハイライト](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335 §手動順位行](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[deployment §2026-05-22](./deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-22 本番反映後 **約 96s**·**サイネージ `current-image` 含む**）。
+- [ ] **キオスク（手動）**: 順位 **1–10 付与済みの未完行**のみ **slate-600 系の行背景**。**順位未設定行**は従来の暗背景。**完了行**は **薄灰 + grayscale のみ**（ハイライトなし）。
+- [ ] **共存**: スロット **「順位」ボタン**（§6.6.25）や **行ドロップダウン**で付与した行も **同じハイライト**。
+- [ ] **サイネージ（手動）**: `kiosk_leader_order_cards` スロットで **順位付き未完行**の行ブロック背景がキオスクと **同趣旨**（Pi5 **`api`** 更新後·`slideIntervalSeconds` 待ち）。
+- [ ] **強制リロード**: 反映直後は **キオスク強制リロード**（§6.6.4）。Pi5 **`web`/`api`** が **`3acf4c5a` 以降**（または **`main` マージ後 HEAD**）。
+
+**トラブルシュート**: キオスクのみ → Pi5 **`web`** ref / 強制リロード。サイネージのみ → Pi5 **`api`** 未更新（**Pi3 デプロイでは直らない**）。完了行まで明るい → **`isCompleted`** / 旧 ref。
+
+**検証日時**: 2026-05-22（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260522-192111-31816`**·**Pi3 除外**）
+**検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
+
 #### 6.7 既存データとの互換性確認
 
 **6.7.1 既存従業員データの確認**
