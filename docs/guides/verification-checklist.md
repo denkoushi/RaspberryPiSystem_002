@@ -1,6 +1,6 @@
 # 検証チェックリスト
 
-最終更新: 2026-05-22（順位ボード·行内順位ピッカー §6.6.27 追記·§6.6.26 はサイネージ SVG / 履歴）。**2026-05-20 追記**: 順位ボード製番左縁アクセント 24 色（§6.6.23）。
+最終更新: 2026-05-22（順位ボード·製番左縁全件無色 §6.6.28 追記·§6.6.27 は行内順位ピッカー）。**2026-05-20 追記**: 順位ボード製番左縁アクセント 24 色（§6.6.23·**2026-05-22 以降は全件無色が正**）。
 
 ## 概要
 
@@ -795,6 +795,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.23 キオスク リーダー順位ボード（製番左縁アクセント 24 色）** {#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20}
 
+**（2026-05-22 以降）**: 全件表示の左縁着色は **撤回**。**現行チェックは [§6.6.28](#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22) を正**とする。本節は **2026-05-20〜2026-05-21 の履歴**。
+
 **確認ポイント**（[KB-297 §24色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[deployment §2026-05-20](./deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)）:
 
 - [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-20 本番反映後 **約 31s**）。
@@ -805,6 +807,22 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **トラブルシュート**: 左縁が 8 色のまま → Pi5 ref / `web` 再ビルド・強制リロード。OR フィルタ 1〜5 色目が変わった → 先頭 8 色不変のはず（ref 確認）。
 
 **検証日時**: 2026-05-20（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260520-141147-19965`** ほか 4 本·**Pi3 除外**）
+**検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
+
+**6.6.28 キオスク リーダー順位ボード（製番左縁 — 全件無色・OR フィルタ時のみ色分け）** {#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22}
+
+**確認ポイント**（[KB-297 §全件無色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §2026-05-22 全件無色](./deployment.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)）:
+
+- [ ] **回帰（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（2026-05-22 本番反映後 **約 139s**）。
+- [ ] **全件表示（OR フィルタ OFF · `OR検索: なし`）**: **すべての行に左縁色が付いていない**こと（`px-2` の均一 padding·`border-l-*` なし）。**製番テキスト行（クラスタ行）は従来どおり表示**。
+- [ ] **登録製番 OR フィルタ ON（チップ emerald · 1〜~5 件）**: **1 番目〜N 番目の色が [§24色](#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20) 導入前と同じ**（先頭 8 色固定）。**同一製番**は **資源 CD スロット横断で同色**。
+- [ ] **フィルタ OFF → ON → OFF**: チップ押下で **即色付き**·**「製番OR検索を全解除」**で **即無色**（完走済み board のクライアント OR フィルタ·再 fetch 待ちなし）。
+- [ ] **強制リロード**: 反映直後は **キオスク強制リロード**（§6.6.4）後に目視。Pi5 **`web`** が **`44777ac7` 以降**（またはマージ後 `main` HEAD）であること。
+- [ ] **サイネージ（任意·方針 A）**: **`kiosk_leader_order_cards`** JPEG は **左縁 24 色ハッシュのまま**（キオスク全件無色と **一致しないのが仕様**）。
+
+**トラブルシュート**: 全件表示で色が付く → 旧 SPA / Pi5 `web` 未更新 / 強制リロード。OR ON なのに無色 → チップ未押下·製番空。サイネージだけ色あり → **仕様**（方針 A）。
+
+**検証日時**: 2026-05-22（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260522-211412-3634`** ほか 4 本·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
 **6.6.25 キオスク リーダー順位ボード（資源CDスロット「順位」ボタン・製番順評価 ON 時）** {#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22}

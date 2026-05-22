@@ -2518,13 +2518,13 @@ category: knowledge-base
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **67s**・Tailscale）。
 - **知見**: **`activeQueries`** は **クエリ駆動の「どの製番で絞っているか」**の単一ソースに寄せ、アクセントは **製番ごとにハッシュ安定色**へマップすると列が増えても見通しが保てる。**チップは 1 コンポーネント**にまとめると進捗一覧と納期アシストの **見え方ドリフト**を抑えられる。
 - **トラブルシューティング**:
-  - **アクセントが付かない**: **製番が空／無効でないか**確認。[2026-05-02 追補節](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02)反映後は**クエリ空でも製番がある行に付く**。旧挙動（クエリ入力が無いと付かない）の場合は SPA が旧バンドル。**強制リロード**と Pi5 **`web`** / Pi4 **`kiosk-browser`** 更新を確認。
+  - **アクセントが付かない**: **製番が空／無効でないか**確認。**2026-05-22 以降**: **全件表示（OR フィルタ OFF）では左縁なしが仕様** — 色が欲しい場合は **登録製番チップを押して OR フィルタ ON**（[§全件無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)）。**2026-05-02〜2026-05-21**: クエリ空でも製番行に付く（旧仕様）。旧 SPA の場合は **強制リロード**と Pi5 **`web`** / Pi4 **`kiosk-browser`** 更新を確認。
   - **納期アシストが横に伸びない / 進捗列が無い**: 古い SPA を疑う → Pi5 `web` と各 Pi4 **`kiosk-browser`** 再起動ログ・`/opt/RaspberryPiSystem_002` の **ブランチ**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 
 ### Leader order board: 製番左縁アクセント 24 色（全件表示のハッシュ配色拡張）（2026-05-20） {#leader-order-board-seiban-accent-palette-24-2026-05-20}
 
 - **Context（調査起点）**: 現場観測では **登録製番 OR フィルタ ON（同時 ~5 件）** では **同一製番が資源 CD スロット横断で同色**に見え、識別性は十分。**OR フィルタ OFF（全件表示）** では製番数に対し **8 色しか使われず**、**色被り**と **amber/orange・cyan/sky** 等の **近似色** により左縁だけでは製番を追いにくい。**バグではなく配色設計の限界**（[2026-05-02 常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) 時点の `% 8` ハッシュ仕様）。**スロット横断同色**のロジック自体は [`resolveSeibanAccentRowClass`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が **`fseiban` 単位**で決定しており **変更不要**。
-- **Decision（2026-05-20）**: **登録製番 OR フィルタ経路は現状維持**（先頭 8 色・リスト順割当）。**全件表示のみ**パレットを **8 → 24** に拡張しハッシュ分母を `% 24` へ。**履歴順固定色**・**近似色の再整理**は第2弾候補（未実装）。**API / DB 契約不変**。**Web のみ**。
+- **Decision（2026-05-20）**: **登録製番 OR フィルタ経路は現状維持**（先頭 8 色・リスト順割当）。**全件表示のみ**パレットを **8 → 24** に拡張しハッシュ分母を `% 24` へ。**履歴順固定色**・**近似色の再整理**は第2弾候補（未実装）。**API / DB 契約不変**。**Web のみ**。**（2026-05-22 追記）**: 全件表示のハッシュ着色は [§全件無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22) で **撤回**。本節の **OR フィルタ向け 24 色パレット**は **維持**。
 - **データフロー（着色契約）**:
   1. [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) が **`activeQueries`**（製番 OR フィルタ文字列配列）を保持。
   2. `LeaderBoardGrid` → `LeaderOrderResourceCard` → [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx) へ **`activeQueries` と行の `fseiban`** を伝播。
@@ -2559,14 +2559,73 @@ category: knowledge-base
   - **Pi5 `web` 再ビルドが必須**。Pi4 単体デプロイだけでは SPA バンドルが更新されない。
   - **第2弾候補（未実装・ユーザー判断待ち）**: (1) 近似色の整理、(2) **登録済み製番の履歴順固定色**（フィルタ OFF 時のみ）、(3) パレット以外の視覚手がかり（製番ラベル強調等）。
 - **トラブルシューティング**:
-  - **全件表示で左縁が無い** → [2026-05-02 節](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) の旧 SPA・**製番空行**を確認。
+  - **全件表示で左縁が無い** → **2026-05-22 以降は仕様**（[§全件無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)）。**2026-05-21 以前**の旧 SPA・**製番空行**を確認。
   - **色が 8 色時代のまま / 更新されない** → Pi5 `/opt/RaspberryPiSystem_002` の **ref が `f8c1f6d2` 以降**か、**`docker compose` で `web` 再ビルド**済みか。キオスク **強制リロード**（§6.6.4）。
   - **OR フィルタ ON（1〜5 件）で 1〜5 色目が変わった** → **先頭 8 色不変**のはず。**ref / キャッシュ**を疑う。
   - **OR フィルタ 9 件以上** → 9 色目以降は **新パレット**（通常運用 ~5 件では該当しにくい）。
   - **`verify-phase12-real.sh` のみ `deploy-status` FAIL** → 全台 `--limit` 完走後に再実行（[KB-369](./KB-369-leader-order-board-api-internal-latency.md)）。
-- **関連**: [deployment §2026-05-20](../guides/deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress / Decision Log·[2026-05-01 UX 導入](#leader-order-board-ux-seiban-accent-2026-05-01)·[2026-05-02 常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02)。
+- **関連**: [deployment §2026-05-20](../guides/deployment.md#kiosk-leaderboard-seiban-accent-palette-24-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress / Decision Log·[2026-05-01 UX 導入](#leader-order-board-ux-seiban-accent-2026-05-01)·[2026-05-02 常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02)。**後続（2026-05-22）**: 全件表示のハッシュ着色は [§全件無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22) で **撤回**（OR フィルタ ON 時の 24 色パレットは **維持**）。
 
-### Leader order board: 製番アクセント常時化・進捗一覧製番カード資源チップ集約（2026-05-02） {#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02}
+### Leader order board: 製番左縁アクセント — 全件表示は無色・OR フィルタ時のみ色分け（2026-05-22） {#leader-order-board-seiban-accent-no-color-all-items-2026-05-22}
+
+- **Context（調査起点）**: [§24色（2026-05-20）](#leader-order-board-seiban-accent-palette-24-2026-05-20) で全件表示（`activeQueries` 空）の識別性を **パレット 8→24 + ハッシュ `% 24`** で改善したが、現場では **製番数 ≫ 24** のため **色被り・近似色（amber/orange・cyan/sky 等）** が残り、**左縁だけでは製番を追えない**。**一方、登録製番 OR フィルタ ON（同時 ~5 件）** では **リスト順の 1〜N 色目**で **同一製番が資源 CD スロット横断で同色**に見え、識別性は十分。
+- **Decision（2026-05-22 · 方針 A）**: **キオスク Web のみ**、**全件表示（OR フィルタ未選択）では左縁色を付けない**。**登録製番チップ押下（OR フィルタ ON）** 時は [§24色](#leader-order-board-seiban-accent-palette-24-2026-05-20) **どおり現状維持**（先頭 8 色固定·リスト外製番はハッシュ `% 24`）。**サイネージ JPEG**（`kiosk_leader_order_cards`）は **変更しない** — [`leader-order-seiban-accent-palette.ts`](../../apps/api/src/services/signage/leader-order-cards/leader-order-seiban-accent-palette.ts) が **常にハッシュ 24 色**（フィルタ状態の概念なし）。
+- **用語（UI ↔ 実装）**:
+
+  | ユーザー表現 | 実装上の条件 | 左ペイン表示 |
+  |--------------|--------------|--------------|
+  | **登録製番チップ押下** | `activeQueries` / `selectedFseibanFilters` に **1 件以上** | チップ **emerald 強調**·`OR検索: n件（…）` |
+  | **押下なしの全件表示** | 上記が **空** | `OR検索: なし` — 資源スロット·完了フィルタ等のみ |
+
+  - 順位ボード左ペインに **「登録製番」単一ラベルのボタンはない**。相当 UI は **登録済み製番チップ列**（[`LeaderBoardLeftToolStack.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx)）。生産スケジュールの **「登録製番 (n/m)」** ドロップダウンは **別 UI**（`history` / `activeQueries` は search-state で端末間共有）。
+- **仕様（着色契約 · 2026-05-22 以降）**:
+
+  | 条件 | `resolveSeibanAccentRowClass` の返却 | 行コンテナ CSS |
+  |------|--------------------------------------|----------------|
+  | **`fseiban` 空白** | `undefined` | `px-2`（左縁なし） |
+  | **`activeFilters` 空（全件表示）** | **`undefined`**（2026-05-22 変更） | `px-2` |
+  | **フィルタ 1 件以上・製番がリスト内** | `filters.indexOf(fseiban) % 24` → 先頭 8 色は 2026-05-01 以前と同色 | `pl-2 pr-2` + `border-l-4 border-l-*` |
+  | **フィルタ 1 件以上・リスト外** | ハッシュ `% 24` | 同上 |
+  | **同一 `fseiban`** | 資源 CD スロット横断で **常に同色**（フィルタ ON 時） | — |
+
+- **データフロー（不変）**:
+  1. [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) — `searchConditions.activeQueries` ⇔ `dueAssist.selectedFseibanFilters`。
+  2. `LeaderBoardGrid` → `LeaderOrderResourceCard` → [`LeaderOrderResourceRow.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/LeaderOrderResourceRow.tsx)。
+  3. 各行: **`resolveSeibanAccentRowClass(row.fseiban, activeSeibanFilters ?? [])`**。
+  4. **`seibanAccentRowClass` が `undefined`** のとき行は **`px-2`**（色あり時は **`pl-2 pr-2`** + 左縁クラス）。
+- **実装（最小変更 · Web のみ）**:
+  - [`seibanAccentPalette.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) — `filters.length === 0` で **`return undefined`**（2026-05-20 までの **ハッシュ `% 24` 返却を撤回**）。
+  - **24 色パレット列挙**・**`seibanAccentPaletteIndexForString`** は **OR フィルタ ON 時**および **リスト外フォールバック**で **引き続き使用**（削除しない）。
+  - **回帰**: [`seibanAccentPalette.test.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/__tests__/seibanAccentPalette.test.ts) — `filters empty` → **`toBeUndefined()`**。
+  - **触らない**: API / DB·サイネージ SVG·Pi4 Ansible 契約（**Pi5 `web` 再ビルド + Pi4 `kiosk-browser` 再起動**でキオスク反映）。
+- **Git / 本番**:
+  - **ブランチ**: `feat/kiosk-leaderboard-seiban-accent-no-color-all-items`（実装 **`44777ac7`** — `fix: hide leader board seiban accent on all-items view`）。
+  - **本番（2026-05-22 · Pi5→Pi4×4 · 1 台ずつ）**:
+
+    | ホスト | Detach Run ID | PLAY RECAP |
+    |--------|---------------|------------|
+    | `raspberrypi5` | `20260522-211412-3634` | `ok=134` `changed=4` `failed=0` |
+    | `raspberrypi4` | `20260522-212202-22657` | `ok=122` `changed=10` `failed=0` |
+    | `raspi4-robodrill01` | `20260522-212817-24357` | `ok=122` `changed=9` `failed=0` |
+    | `raspi4-fjv60-80` | `20260522-213340-9415` | `ok=122` `changed=9` `failed=0` |
+    | `raspi4-kensaku-stonebase01` | `20260522-213908-14986` | `ok=129` `changed=10` `failed=0` |
+
+  - **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**マージ後 `main`**）。
+  - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 139s**·Tailscale）。
+  - **Pi3**: **`skipping: no hosts matched`**（Pi5 SPA 配信 + Pi4 再起動のみ·**Pi3 専用手順は未実施で正**）。
+- **知見**:
+  - **「色を増やす」より「絞ったときだけ色を使う」**方が、全件表示の **視覚ノイズ**を減らし、2026-05-01 導入時の **「製番で絞った行を左縁で追う」** 意図に近い。
+  - **24 色拡張（2026-05-20）の主目的（全件識別）は本変更で不要**になったが、**OR 9 件以上**・**リスト外製番**のフォールバックとして **パレット自体は残す**。
+  - **キオスクとサイネージの意図的分岐**: サイネージは **常に未完行の集合**を表示し **フィルタ UI がない**ため、**左縁 24 色ハッシュを維持**（方針 A）。キオスク全件とサイネージで **左縁の有無が異なる**のは **仕様**。
+  - **Pi5 `web` 再ビルド必須**。Pi4 単体だけでは SPA バンドルが更新されない（[§24色 知見](#leader-order-board-seiban-accent-palette-24-2026-05-20) と同趣旨）。
+- **トラブルシューティング**:
+  - **全件表示で左縁色が付いている** → 旧 SPA（**`44777ac7` より前**）·Pi5 **`web`** ref·**強制リロード**（[verification-checklist §6.6.4](../guides/verification-checklist.md)）。
+  - **OR フィルタ ON なのに色が付かない** → **製番空行**·`activeQueries` が空のまま（チップ未押下）·ref 確認。
+  - **OR フィルタ 1〜5 色目が 24 色導入前と違う** → **先頭 8 色不変**のはず。**ref / キャッシュ**を疑う（[§24色](#leader-order-board-seiban-accent-palette-24-2026-05-20)）。
+  - **サイネージだけ左縁色がある** → **仕様**（方針 A）。キオスク全件無色と **揃えない**。
+  - **§6.6.23 の「全件で色種類が増えている」チェック** → **2026-05-22 以降は [§6.6.28](../guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22) を正**とする。
+- **関連**: [deployment §2026-05-22 全件無色](../guides/deployment.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)·[verification-checklist §6.6.28](../guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·[§24色（履歴）](#leader-order-board-seiban-accent-palette-24-2026-05-20)·[KB-335 §サイネージ左縁24色](./infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。
+
 
 - **目的**: 順位ボードで **登録済み製番行**をクエリ状態に依存せず **左縁の安定配色**で追いやすくする。進捗一覧では **製番カード単位**で工程を跨いだ **資源CDの完了集約チップ帯**を一目で読めるようにする。**Web のみ**・API / DB 契約は不変。
 - **仕様（要約）**:
@@ -2578,7 +2637,7 @@ category: knowledge-base
   - **Detach Run ID**（`ansible-update-`）: **`20260502-094331-28033`** / **`20260502-094916-31090`** / **`20260502-095506-23348`** / **`20260502-095947-26960`** / **`20260502-100443-16279`**（いずれも **`PLAY RECAP` `failed=0` / `unreachable=0` / exit `0`**）。
   - **自動実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **114s**・Tailscale）。
 - **知見**: 順位ボードのアクセントを **クエリ入力の有無から切り離す**と、「登録済みだが検索クエリ無し」の行も **同色で追える**。進捗側の資源チップは **純関数集約 + 一覧と共有コンポーネント**に寄せると、カード先頭での **一覧との見え方の一貫性**が保てる。
-- **後続（2026-05-20）**: 本節導入時点の **`% 8` ハッシュ**は全件表示で被りが目立つため、**パレット 24 色拡張**を実施（[§24色](#leader-order-board-seiban-accent-palette-24-2026-05-20)）。**OR フィルタ ~5 件**の先頭 8 色は **本節から不変**。
+- **後続（2026-05-20）**: 本節導入時点の **`% 8` ハッシュ**は全件表示で被りが目立つため、**パレット 24 色拡張**を実施（[§24色](#leader-order-board-seiban-accent-palette-24-2026-05-20)）。**OR フィルタ ~5 件**の先頭 8 色は **本節から不変**。**（2026-05-22）**: 全件表示の左縁着色自体を [§全件無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22) で **撤回** — 本節の「クエリ空でも色」は **2026-05-02〜2026-05-21 の履歴**。
 - **トラブルシューティング**:
   - **`raspi4-kensaku-stonebase01`** のデプロイで **barcode-agent 待機が一時 RETRYING** が出ても、Ansible が **その後収束して `failed=0`** の場合がある（複合 Docker エージェント構成・リソース競合時）。異常終了時は該当ホストの **`docker compose ps`** / エージェントログを確認。
   - UI が旧のまま → [verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**・Pi5 **`web`** 再構築の有無。

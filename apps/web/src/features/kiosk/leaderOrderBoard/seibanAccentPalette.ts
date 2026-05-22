@@ -1,7 +1,7 @@
 /**
  * 順位ボード行左縁の識別色を安定割当する（Tailwind クラスはリテラル列挙）。
  * - **フィルタが 1 件以上**: リスト順とアクセントを対応付けし、リスト外の製番行は製番文字列ハッシュで配色。
- * - **フィルタが空**: 製番のみでハッシュ配色（一覧検索のみでも色分け）。
+ * - **フィルタが空（全件表示）**: 左縁なし（色が多すぎて識別しづらいため）。
  */
 
 const BORDER_LEFT_WIDTH = 'border-l-4';
@@ -60,7 +60,7 @@ export function seibanAccentPaletteIndexForString(value: string): number {
 }
 
 /**
- * @returns 行コンテナに付与する Tailwind クラス。製番が空のみ undefined。
+ * @returns 行コンテナに付与する Tailwind クラス。製番が空、または OR フィルタ未選択時は undefined。
  */
 export function resolveSeibanAccentRowClass(
   fseiban: string,
@@ -72,8 +72,7 @@ export function resolveSeibanAccentRowClass(
   }
   const filters = normalizeFilters(activeFilters);
   if (filters.length === 0) {
-    const paletteIdx = seibanAccentPaletteIndexForString(fs);
-    return SEIBAN_ROW_ACCENT_PALETTE[paletteIdx];
+    return undefined;
   }
   const idx = filters.indexOf(fs);
   const paletteIdx =
