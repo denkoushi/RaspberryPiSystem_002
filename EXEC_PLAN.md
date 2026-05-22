@@ -2314,24 +2314,28 @@
 
 ### 吊具点検 Gmail 統合 — デプロイ後運用・現場検証（2026-05-22） {#rigging-slings-inspection-post-deploy-2026-05-22}
 
-**状態**: **Pi5 コード反映済**（**`283b414b`**·Detach **`20260522-131701-20332`**·Phase12 **43/0/0**）。**Gmail 取込・サイネージ表示は管理画面設定が未実施**（schedule 既定 **disabled**）。
+**状態**: **A+B 修正デプロイ済**（**`7ba9306c`**·Detach **`20260522-152051-25493`**·Phase12 **43/0/0**·backfill **88 created**·DataSource 当日 **7 名** 点検表示 OK）。**Gmail 取込 #1–3 OK**·**投影/backfill #4 OK**·**サイネージ DataSource #5–6 OK**·**キオスク E2E #7 未実施**。
 
 **優先タスク（運用）**:
 
-| # | タスク | 手順 | 完了条件 |
-|---|--------|------|----------|
-| 1 | **Gmail スケジュール有効化** | `/admin/imports/schedule` → **`csv-import-rigging-slings-inspection-powerapps`** を ON | 次回 cron 後 ingest ログに投影件数 |
-| 2 | **可視化ダッシュボード作成** | `/admin/visualization-dashboards` → **吊具点検プリセット** | preset ID が signage で選択可能 |
-| 3 | **サイネージ割当** | `/admin/signage/schedules` → **`[吊具点検]`** スロット | Pi3 `current-image` に JPEG 更新 |
-| 4 | **現場 E2E** | Gmail 未読 CSV → `RiggingInspectionRecord` 増分·キオスク吊具 borrow → PASS 行 | KB-381 Troubleshooting に実測追記 |
+| # | タスク | 手順 | 完了条件 | 状態 |
+|---|--------|------|----------|------|
+| 1 | **Gmail スケジュール有効化** | `/admin/imports/schedule` → **`csv-import-rigging-slings-inspection-powerapps`** を ON | 保存成功 | **OK** |
+| 1b | **Gmail 手動実行 + 受信箱処理** | 同画面「実行」 | 対象メール消失・ingest 成功 | **OK** |
+| 1c | **投影データ確認** | Pi5 DB `RiggingInspectionRecord` | A+B + backfill 後 **88 件** gmail·**加工担当部署 42 件** | **OK** |
+| 2 | **可視化ダッシュボード作成** | `/admin/visualization-dashboards` → **吊具点検プリセット** | DataSource 実機 OK | **OK（API）** |
+| 3 | **サイネージ割当** | `/admin/signage/schedules` → **`[吊具点検]`** スロット | 点検のみ吊具も明細表示 | **OK（API）** |
+| 4 | **キオスク E2E** | 吊具 borrow 成功後 PASS 点検行 | dedup キーで 1 行 | 未実施 |
 
 **後続開発候補（任意）**:
 
+- **section 空従業員への誤投影**（田中俊真/増田雄司 46 件）— CSV 氏名と従業員マスタ compact 衝突調査
+- **`unmatchedGear` 28 件** — `RiggingGear.idNum` マスタ整合
 - dedup 衝突時の **更新 vs スキップ** ポリシー見直し（PowerApps 再送）
 - **`control_num` 未解決行**の管理画面アラート
 - 計測機器点検サイネージとの **同一スロット併載** 運用ガイド
 
-**正本**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §吊具点検](./docs/guides/deployment.md#rigging-slings-inspection-gmail-signage-2026-05-22)
+**正本**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §A+B 氏名マッチ](./docs/guides/deployment.md#rigging-inspection-name-match-signage-merge-2026-05-22)
 
 ### キオスク順位ボード — shell 選定 SQL 第3弾以降（2026-05-22）— **保留 · 後日参照** {#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照}
 

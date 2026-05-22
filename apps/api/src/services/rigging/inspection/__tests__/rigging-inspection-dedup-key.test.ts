@@ -9,7 +9,7 @@ describe('buildRiggingInspectionDedupKey', () => {
       inspectedAt: new Date('2026-04-30T01:00:00.000Z'),
       inspectorName: '山田  太郎',
     });
-    expect(key).toBe('RG-001|2026-04-30|山田 太郎');
+    expect(key).toBe('RG-001|2026-04-30|山田太郎');
   });
 
   it('uses the same business date for timestamps on the same JST business day', () => {

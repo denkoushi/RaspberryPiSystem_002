@@ -17,6 +17,8 @@
     "backfill:photo-tool-gallery:prod": "node dist/scripts/backfill-photo-tool-similarity-gallery.js",
     "backfill:order-supplement-planned-end-date": "tsx src/scripts/backfill-order-supplement-planned-end-date.ts",
     "backfill:order-supplement-planned-end-date:prod": "node dist/scripts/backfill-order-supplement-planned-end-date.js",
+    "backfill:rigging-inspection-gmail-projection": "tsx src/scripts/backfill-rigging-inspection-gmail-projection.ts",
+    "backfill:rigging-inspection-gmail-projection:prod": "node dist/scripts/backfill-rigging-inspection-gmail-projection.js",
     "import:resource-groupcd": "tsx src/scripts/import-resource-groupcd.ts",
     "cleanup:pdf-orphans": "tsx src/scripts/cleanup-pdf-storage-orphans.ts",
     "prisma:migrate": "prisma migrate dev",

@@ -95,3 +95,23 @@ export function emptyRiggingInspectionSyncResult(scanned = 0): RiggingInspection
     invalidDate: 0,
   };
 }
+
+export async function loadRiggingInspectionSourceRowsFromDashboard(
+  client: PrismaClient
+): Promise<{
+  scanned: number;
+  orderedRows: Array<{ rowData: Record<string, unknown> }>;
+}> {
+  const rows = await client.csvDashboardRow.findMany({
+    where: {
+      csvDashboardId: RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID,
+    },
+    select: { rowData: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+
+  return {
+    scanned: rows.length,
+    orderedRows: rows.map((r) => ({ rowData: r.rowData as Record<string, unknown> })),
+  };
+}

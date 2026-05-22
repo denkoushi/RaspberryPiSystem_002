@@ -51,10 +51,15 @@ export type LoanInspectionBoardRenderParams = {
   activeCountColumn: string;
   returnedCountColumn: string;
   columns: LoanInspectionCardColumns;
+  sortOptions?: {
+    employeeNameColumn?: string;
+    inspectionCountColumn?: string;
+  };
 };
 
 export async function renderLoanInspectionBoard(params: LoanInspectionBoardRenderParams): Promise<RenderOutput> {
-  const { data, config, defaultTitle, errorPrefix, activeCountColumn, returnedCountColumn, columns } = params;
+  const { data, config, defaultTitle, errorPrefix, activeCountColumn, returnedCountColumn, columns, sortOptions } =
+    params;
 
   if (data.kind !== 'table') {
     const svg = buildMessageSvg('可視化データが不正です', config.width, config.height);
@@ -89,6 +94,7 @@ export async function renderLoanInspectionBoard(params: LoanInspectionBoardRende
   const sortedRows = sortLoanInspectionRowsForDisplay(
     (table.rows ?? []) as readonly LoanInspectionTableRow[],
     activeCountColumn,
+    sortOptions,
   );
   const { placements, truncated, totalRows, placedCount } = planLoanInspectionCardPlacements({
     rows: sortedRows,

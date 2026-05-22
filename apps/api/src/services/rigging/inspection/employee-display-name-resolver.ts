@@ -1,6 +1,6 @@
 import { EmployeeStatus, type Employee, type PrismaClient } from '@prisma/client';
 
-import { normalizeEmployeeName } from '../../measuring-instruments/analytics/measuring-instrument-loan-analytics.repository.js';
+import { compactEmployeeDisplayName } from '../../employee/compact-employee-display-name.js';
 
 export class EmployeeDisplayNameResolver {
   private cache: Map<string, Employee | null> | null = null;
@@ -8,7 +8,7 @@ export class EmployeeDisplayNameResolver {
   constructor(private readonly client: PrismaClient) {}
 
   async findByDisplayName(displayName: string): Promise<Employee | null> {
-    const normalized = normalizeEmployeeName(displayName);
+    const normalized = compactEmployeeDisplayName(displayName);
     if (!normalized) {
       return null;
     }
@@ -26,7 +26,7 @@ export class EmployeeDisplayNameResolver {
     });
     const map = new Map<string, Employee | null>();
     for (const employee of employees) {
-      const key = normalizeEmployeeName(employee.displayName);
+      const key = compactEmployeeDisplayName(employee.displayName);
       if (!key) {
         continue;
       }

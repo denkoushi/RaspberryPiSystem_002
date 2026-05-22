@@ -23,6 +23,9 @@ export class RiggingLoanInspectionRenderer implements Renderer {
         detailColumn: RIGGING_INSTRUMENT_DETAIL_COLUMN,
         namesColumn: RIGGING_NAMES_COLUMN,
       },
+      sortOptions: {
+        inspectionCountColumn: '点検件数',
+      },
     });
   }
 }
