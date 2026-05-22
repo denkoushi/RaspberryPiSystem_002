@@ -29,19 +29,33 @@ function pushActiveInstrumentLines(
   scale: number,
   out: LoanInspectionBodyLine[],
 ): void {
+  pushCombinedActiveInstrumentLines([entry], maxWidthPx, baseFontPx, scale, out);
+}
+
+function pushCombinedActiveInstrumentLines(
+  entries: readonly LoanInspectionInstrumentEntry[],
+  maxWidthPx: number,
+  baseFontPx: number,
+  scale: number,
+  out: LoanInspectionBodyLine[],
+): void {
   const { bodyFontScale } = presentationForInstrumentKind('active');
   const fontSize = Math.max(1, Math.round(baseFontPx * bodyFontScale));
   const lineHeight = computeLineHeightForFont(fontSize, scale);
-  const mgmt = entry.managementNumber.trim();
-  const name = entry.name.trim();
-  const mgmtLine = mgmt
-    ? truncateWithEllipsis(mgmt, maxWidthPx, fontSize)
-    : truncateWithEllipsis('—', maxWidthPx, fontSize);
-  const nameLine = name
-    ? truncateWithEllipsis(name, maxWidthPx, fontSize)
-    : truncateWithEllipsis('—', maxWidthPx, fontSize);
+  const mgmts = entries.map((entry) => entry.managementNumber.trim()).filter(Boolean);
+  const names = [...new Set(entries.map((entry) => entry.name.trim()).filter(Boolean))];
+  const mgmtLine =
+    mgmts.length > 0
+      ? truncateWithEllipsis(mgmts.join(' ・ '), maxWidthPx, fontSize)
+      : truncateWithEllipsis('—', maxWidthPx, fontSize);
+  const nameLine =
+    names.length === 1
+      ? truncateWithEllipsis(names[0]!, maxWidthPx, fontSize)
+      : names.length > 1
+        ? truncateWithEllipsis(names.join(' ・ '), maxWidthPx, fontSize)
+        : truncateWithEllipsis('—', maxWidthPx, fontSize);
   out.push(
-    { text: mgmtLine, fontSize, lineHeight, tone: 'secondary' },
+    { text: mgmtLine, fontSize, lineHeight, tone: 'primary' },
     { text: nameLine, fontSize, lineHeight, tone: 'secondary' },
   );
 }
@@ -78,15 +92,30 @@ export function buildBodyLinesForEntrySlice(
 ): LoanInspectionBodyLine[] {
   const slice = entries.slice(0, Math.max(0, take));
   const out: LoanInspectionBodyLine[] = [];
-  for (let i = 0; i < slice.length; i += 1) {
-    if (i > 0) {
+  let i = 0;
+  let isFirstBlock = true;
+  while (i < slice.length) {
+    if (!isFirstBlock) {
       pushSpacer(gapPx, out);
     }
-    const e = slice[i]!;
-    if (e.kind === 'returned') {
-      pushReturnedInstrumentLine(e, maxWidthPx, baseFontPx, scale, out);
-    } else {
-      pushActiveInstrumentLines(e, maxWidthPx, baseFontPx, scale, out);
+    isFirstBlock = false;
+
+    const entry = slice[i]!;
+    if (entry.kind === 'returned') {
+      pushReturnedInstrumentLine(entry, maxWidthPx, baseFontPx, scale, out);
+      i += 1;
+      continue;
+    }
+
+    const activeGroup: LoanInspectionInstrumentEntry[] = [];
+    while (i < slice.length && slice[i]!.kind === 'active') {
+      activeGroup.push(slice[i]!);
+      i += 1;
+    }
+    if (activeGroup.length >= 2) {
+      pushCombinedActiveInstrumentLines(activeGroup, maxWidthPx, baseFontPx, scale, out);
+    } else if (activeGroup.length === 1) {
+      pushActiveInstrumentLines(activeGroup[0]!, maxWidthPx, baseFontPx, scale, out);
     }
   }
   return out;
@@ -134,7 +163,7 @@ export function layoutBodyWithinMaxHeight(params: {
     const lineHeight = computeLineHeightForFont(fontSize, scale);
     const full = [e.managementNumber.trim(), e.name.trim()].filter(Boolean).join(' ');
     const t = full ? truncateWithEllipsis(full, maxWidthPx, fontSize) : '-';
-    out.push({ text: t, fontSize, lineHeight, tone: 'secondary' });
+    out.push({ text: t, fontSize, lineHeight, tone: 'primary' });
   }
   return {
     bodyLines: out,
