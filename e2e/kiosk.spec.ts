@@ -5,10 +5,10 @@ import { clickByRoleSafe, closeDialogWithEscape, revealKioskHeader } from './hel
 test.describe('キオスク画面', () => {
   test('キオスク初期表示でヘッダーとナビゲーションが見える', async ({ page }) => {
     await page.goto('/kiosk');
-    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
     // defaultMode により /kiosk/tag または /kiosk/photo へ遷移するが、ヘッダーナビは共通
     await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
     await revealKioskHeader(page);
+    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
     await expect(page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first()).toBeVisible();
     await expect(page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first()).toBeVisible();
   });
@@ -38,10 +38,9 @@ test.describe('キオスク画面', () => {
     // KioskRedirectを避けるため、直接/kiosk/tagにアクセス
     await page.goto('/kiosk/tag', { waitUntil: 'networkidle' });
     await expect(page).toHaveURL(/\/kiosk\/tag/);
-    
-    // ヘッダーが表示されるまで待つ
-    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
+
     await revealKioskHeader(page);
+    await expect(page.getByText(/キオスク端末/i)).toBeVisible();
 
     // サイネージボタンをクリックしてモーダルを開く
     const signageButton = page.getByRole('button', { name: 'サイネージ' });

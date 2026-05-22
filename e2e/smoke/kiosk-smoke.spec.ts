@@ -5,10 +5,10 @@ import { revealKioskHeader } from '../helpers';
 test.describe('キオスク画面スモーク', () => {
   test('初期表示でキオスク端末にリダイレクトされる', async ({ page }) => {
     await page.goto('/kiosk');
-    await expect(page.getByText(/キオスク端末/i)).toBeVisible({ timeout: 5000 });
     // defaultMode（tag/photo）いずれでも /kiosk/* に遷移していることを確認
     await expect(page).toHaveURL(/\/kiosk(\/tag|\/photo)?/);
     await revealKioskHeader(page);
+    await expect(page.getByText(/キオスク端末/i)).toBeVisible({ timeout: 5000 });
     await expect(page.locator('a[href="/kiosk"]').filter({ hasText: '持出' }).first()).toBeVisible();
     await expect(page.locator('a[href="/kiosk/rigging/borrow"]').filter({ hasText: '吊具 持出' }).first()).toBeVisible();
   });
