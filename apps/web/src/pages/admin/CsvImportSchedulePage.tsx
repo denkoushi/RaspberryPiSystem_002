@@ -1105,24 +1105,7 @@ export function CsvImportSchedulePage() {
                                 <option value="machines">加工機</option>
                                 <option value="csvDashboards">CSVダッシュボード</option>
                               </select>
-                              {formData.provider === 'gmail' ? (
-                                <select
-                                  className="flex-1 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
-                                  value={target.source}
-                                  onChange={(e) => {
-                                    const newTargets = [...(formData.targets || [])];
-                                    newTargets[index] = { ...target, source: e.target.value };
-                                    setFormData({ ...formData, targets: newTargets });
-                                  }}
-                                >
-                                  <option value="">選択してください</option>
-                                  {(target.type !== 'csvDashboards' && patternsByType[target.type as CsvImportSubjectPatternType] || []).map((pattern) => (
-                                    <option key={pattern.id} value={pattern.pattern}>
-                                      {pattern.pattern}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : target.type === 'csvDashboards' ? (
+                              {target.type === 'csvDashboards' ? (
                                 <select
                                   className="flex-1 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
                                   value={target.source}
@@ -1152,6 +1135,23 @@ export function CsvImportSchedulePage() {
                                   {(csvDashboardsData || []).map((dashboard) => (
                                     <option key={dashboard.id} value={dashboard.id}>
                                       {dashboard.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : formData.provider === 'gmail' ? (
+                                <select
+                                  className="flex-1 rounded-md border-2 border-slate-500 bg-white p-1 text-slate-900 text-xs"
+                                  value={target.source}
+                                  onChange={(e) => {
+                                    const newTargets = [...(formData.targets || [])];
+                                    newTargets[index] = { ...target, source: e.target.value };
+                                    setFormData({ ...formData, targets: newTargets });
+                                  }}
+                                >
+                                  <option value="">選択してください</option>
+                                  {(patternsByType[target.type as CsvImportSubjectPatternType] || []).map((pattern) => (
+                                    <option key={pattern.id} value={pattern.pattern}>
+                                      {pattern.pattern}
                                     </option>
                                   ))}
                                 </select>

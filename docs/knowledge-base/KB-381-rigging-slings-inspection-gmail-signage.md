@@ -76,6 +76,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 同一日・同一人・同一管理番号が増えない | dedup 正常動作 | 意図どおり（更新は別経路） |
 | キオスク borrow 後に点検無し | orchestrator **best-effort** / dedup | borrow は成功のまま·API ログ |
 | サイネージに吊具が出ない | 可視化ダッシュボード未作成 | 管理 UI で preset + schedule 割当 |
+| **管理 UI で「時刻指定が解析できません」** | 既定 cron **`0 * * * *`（毎時）** を Web の `parseCronSchedule` が未対応（2026-05-22 修正前） | **回避**: 管理画面ログイン中に `PUT /api/imports/schedule/csv-import-rigging-slings-inspection-powerapps` で **`{ "enabled": true }` のみ**送信（schedule は変更不要）·**恒久**: Web 修正 **`fix/csv-import-hourly-cron-ui`** を Pi5 へ再デプロイ |
+| **CSVダッシュボードが「選択してください」のまま** | 編集フォームで `provider=gmail` 時に csvDashboards でも件名パターン欄を表示する UI バグ（同上） | 上記 Web 修正で解消·targets.source は **`c4e8a1b2-3d6f-7890-abcd-ef1234567891`** が backup.json に既存なら API 有効化のみで可 |
 
 ## 仕様メモ（後続コンテキスト用）
 

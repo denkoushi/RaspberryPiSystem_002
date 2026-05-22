@@ -9,6 +9,22 @@ import {
 } from '../csv-import-schedule-utils';
 
 describe('csv-import-schedule-utils', () => {
+  it('parses hourly cron schedules (fixed minute, wildcard hour)', () => {
+    const parsed = parseCronSchedule('0 * * * *');
+    expect(parsed.mode).toBe('intervalMinutes');
+    expect(parsed.intervalMinutes).toBe(60);
+    expect(parsed.offsetMinutes).toBe(0);
+    expect(parsed.daysOfWeek).toEqual([]);
+    expect(parsed.isEditable).toBe(true);
+  });
+
+  it('round-trips hourly cron schedules via offset interval formatter', () => {
+    const parsed = parseCronSchedule('0 * * * *');
+    expect(formatOffsetIntervalCronSchedule(parsed.intervalMinutes!, parsed.offsetMinutes!, parsed.daysOfWeek)).toBe(
+      '*/60 * * * *'
+    );
+  });
+
   it('parses interval cron schedules', () => {
     const parsed = parseCronSchedule('*/10 * * * *');
     expect(parsed.mode).toBe('intervalMinutes');
