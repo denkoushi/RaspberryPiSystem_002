@@ -19,16 +19,27 @@ describe('RiggingInspectionDedupPolicy', () => {
     policy = new RiggingInspectionDedupPolicy(client as never);
   });
 
-  it('returns true when a record exists in the same JST business day window', async () => {
-    client.riggingInspectionRecord.findFirst.mockResolvedValue({ id: 'rec-1' });
+  it('returns the existing record when one exists in the same JST business day window', async () => {
+    client.riggingInspectionRecord.findFirst.mockResolvedValue({
+      id: 'rec-1',
+      inspectedAt: new Date('2026-04-30T02:00:00.000Z'),
+    });
 
-    const exists = await policy.existsForBusinessDay({
+    const existing = await policy.findForBusinessDay({
       riggingGearId: 'gear-1',
       employeeId: 'emp-1',
       inspectedAt: new Date('2026-04-30T01:00:00.000Z'),
     });
 
-    expect(exists).toBe(true);
+    expect(existing).toEqual({
+      id: 'rec-1',
+      inspectedAt: new Date('2026-04-30T02:00:00.000Z'),
+    });
+    expect(await policy.existsForBusinessDay({
+      riggingGearId: 'gear-1',
+      employeeId: 'emp-1',
+      inspectedAt: new Date('2026-04-30T01:00:00.000Z'),
+    })).toBe(true);
     expect(client.riggingInspectionRecord.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -43,15 +54,20 @@ describe('RiggingInspectionDedupPolicy', () => {
     );
   });
 
-  it('returns false when no record exists', async () => {
+  it('returns null when no record exists', async () => {
     client.riggingInspectionRecord.findFirst.mockResolvedValue(null);
 
-    const exists = await policy.existsForBusinessDay({
+    const existing = await policy.findForBusinessDay({
       riggingGearId: 'gear-1',
       employeeId: 'emp-1',
       inspectedAt: new Date('2026-04-30T01:00:00.000Z'),
     });
 
-    expect(exists).toBe(false);
+    expect(existing).toBeNull();
+    expect(await policy.existsForBusinessDay({
+      riggingGearId: 'gear-1',
+      employeeId: 'emp-1',
+      inspectedAt: new Date('2026-04-30T01:00:00.000Z'),
+    })).toBe(false);
   });
 });

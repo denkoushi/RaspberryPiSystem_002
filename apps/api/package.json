@@ -19,6 +19,8 @@
     "backfill:order-supplement-planned-end-date:prod": "node dist/scripts/backfill-order-supplement-planned-end-date.js",
     "backfill:rigging-inspection-gmail-projection": "tsx src/scripts/backfill-rigging-inspection-gmail-projection.ts",
     "backfill:rigging-inspection-gmail-projection:prod": "node dist/scripts/backfill-rigging-inspection-gmail-projection.js",
+    "register:rigging-inspection-missing-id-num-gears": "tsx src/scripts/register-rigging-inspection-missing-id-num-gears.ts",
+    "register:rigging-inspection-missing-id-num-gears:prod": "node dist/scripts/register-rigging-inspection-missing-id-num-gears.js",
     "import:resource-groupcd": "tsx src/scripts/import-resource-groupcd.ts",
     "cleanup:pdf-orphans": "tsx src/scripts/cleanup-pdf-storage-orphans.ts",
     "prisma:migrate": "prisma migrate dev",

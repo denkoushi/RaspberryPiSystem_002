@@ -152,7 +152,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 | サイネージに吊具が出ない | 可視化ダッシュボード未作成 | 管理 UI で preset + schedule 割当 |
 | **サイネージに CSV 点検者が出ない** | **A**: CSV 氏名（スペースなし）と従業員マスタ（スペースあり）の不一致で投影失敗·**B**: DataSource が Loan のみカード本文表示 | **A**: `compactEmployeeDisplayName` で resolver 修正·**B**: `RiggingInspectionRecord` を Loan とマージ·既存誤投影は **backfill**（上記） |
 | **投影はあるが加工担当部署に紐づかない** | 誤従業員へ投影済み（section 空の従業員等） | backfill 後も **田中俊真/増田雄司** に 46 件残存例あり → CSV `inspectorName` と従業員マスタの **compact 衝突・重複従業員** を調査 |
-| **`unmatchedGear` が多い** | `control_num` 空で `ID_num` のみ·`RiggingGear.idNum` 未登録 | backfill で **28 件** skip 例·マスタ `idNum` 整合 |
+| **`unmatchedGear` が多い** | `control_num` 空で `ID_num` のみ·`RiggingGear.idNum` 未登録 | backfill で **28 件** skip 例·`pnpm register:rigging-inspection-missing-id-num-gears:prod`（id **80/73/69/82** 等）でマスタ補完 |
+| **CSV 行はあるがサイネージに一部吊具だけ出ない** | 投影 dedup が古い `inspectedAt` を残し、暦日 `today_jst` 窓から漏れる | 再投影時 **新しい `inspectedAt` で refresh**（`RiggingInspectionProjectionService.refreshed`）→ backfill 再実行 |
 | **管理 UI で「時刻指定が解析できません」** | 既定 cron **`0 * * * *`（毎時）** を Web の `parseCronSchedule` が未対応（2026-05-22 修正前） | **回避**: 管理画面ログイン中に `PUT /api/imports/schedule/csv-import-rigging-slings-inspection-powerapps` で **`{ "enabled": true }` のみ**送信（schedule は変更不要）·**恒久**: Web 修正 **`fix/csv-import-hourly-cron-ui`** を Pi5 へ再デプロイ |
 | **CSVダッシュボードが「選択してください」のまま** | 編集フォームで `provider=gmail` 時に csvDashboards でも件名パターン欄を表示する UI バグ（同上） | 上記 Web 修正で解消·targets.source は **`c4e8a1b2-3d6f-7890-abcd-ef1234567891`** が backup.json に既存なら API 有効化のみで可 |
 
