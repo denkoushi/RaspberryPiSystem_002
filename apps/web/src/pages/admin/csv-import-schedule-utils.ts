@@ -107,6 +107,21 @@ export function parseCronSchedule(cronSchedule?: string): ParsedCronSchedule {
     };
   }
 
+  // 毎時（固定分・時はワイルドカード）: "0 * * * *"
+  if (hour === '*' && !minute.includes(',') && !minute.includes('/') && !minute.includes('-')) {
+    const minuteNum = parseInt(minute, 10);
+    if (Number.isInteger(minuteNum) && minuteNum >= 0 && minuteNum < 60) {
+      return {
+        mode: 'intervalMinutes',
+        time: '02:00',
+        daysOfWeek,
+        intervalMinutes: 60,
+        offsetMinutes: minuteNum,
+        isEditable: true
+      };
+    }
+  }
+
   // 分のリスト形式（カンマ区切り）を検出: "15,25,35,45,55"
   if (minute.includes(',') && hour === '*') {
     const minuteList = minute.split(',').map(m => parseInt(m.trim(), 10)).filter(m => !isNaN(m) && m >= 0 && m < 60);
