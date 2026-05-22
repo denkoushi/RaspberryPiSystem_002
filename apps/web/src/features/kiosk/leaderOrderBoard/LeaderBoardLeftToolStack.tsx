@@ -427,6 +427,12 @@ export function LeaderBoardLeftToolStack({
         ) : null}
         <div className="mt-auto shrink-0 text-[10px] text-white/40">
           順位は各行のドロップダウンで保存。「-」で納期順の自動並びへ。
+          {seibanEvalEnabled ? (
+            <>
+              {' '}
+              評価 ON 時、各スロットの「順位」で未設定行に空き番号を自動付与。各行ドロップダウンでも変更可。
+            </>
+          ) : null}
         </div>
       </aside>
       <LeaderBoardSeibanRankPicker

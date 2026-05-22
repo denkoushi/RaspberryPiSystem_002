@@ -9,7 +9,8 @@ const completeMutation = {
 };
 const orderMutation = {
   isPending: false,
-  mutate: vi.fn()
+  mutate: vi.fn(),
+  mutateAsync: vi.fn(async () => ({ orderNumber: 1 }))
 };
 const processingMutation = {
   isPending: false,
@@ -42,6 +43,7 @@ describe('useProductionScheduleMutations', () => {
     dueDateMutation.isPending = false;
     completeMutation.mutateAsync.mockClear();
     orderMutation.mutate.mockClear();
+    orderMutation.mutateAsync.mockClear();
     processingMutation.mutate.mockClear();
     noteMutation.mutate.mockClear();
     dueDateMutation.mutate.mockClear();
@@ -131,6 +133,33 @@ describe('useProductionScheduleMutations', () => {
       },
       expect.objectContaining({ onSuccess: expect.any(Function) })
     );
+  });
+
+  it('updateOrderAsync は orderNumber をそのまま mutateAsync へ渡す', async () => {
+    const { result } = renderHook(() =>
+      useProductionScheduleMutations({
+        isSearchStateWriting: false,
+        noteMaxLength: 100,
+        productionScheduleOrderCachePolicy: 'leaderBoardFastPath'
+      })
+    );
+
+    await act(async () => {
+      await result.current.updateOrderAsync({
+        rowId: 'row-2',
+        resourceCd: 'R02',
+        orderNumber: 3
+      });
+    });
+
+    expect(orderMutation.mutateAsync).toHaveBeenCalledWith({
+      rowId: 'row-2',
+      payload: {
+        resourceCd: 'R02',
+        orderNumber: 3
+      },
+      cachePolicy: 'leaderBoardFastPath'
+    });
   });
 
   it('completeRow は intent 付きで完了ミューテーションを呼ぶ', async () => {

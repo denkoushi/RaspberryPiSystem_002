@@ -33,6 +33,7 @@ import { useCompositeLeaderboardPhasedScheduleWithAutoAppend } from '../../featu
 import { useLeaderboardBoardCacheMutationBridge } from '../../features/kiosk/leaderOrderBoard/useLeaderboardBoardCacheMutationBridge';
 import { useLeaderBoardDueAssist } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardDueAssist';
 import { useLeaderBoardResourceSlotsWithServerSync } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardResourceSlotsWithServerSync';
+import { useLeaderBoardSlotAutoRank } from '../../features/kiosk/leaderOrderBoard/useLeaderBoardSlotAutoRank';
 import { useLeaderOrderBoardDeviceContext } from '../../features/kiosk/leaderOrderBoard/useLeaderOrderBoardDeviceContext';
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
 import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval';
@@ -161,6 +162,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     notePending,
     commitDueDate: commitDueDateMutation,
     updateOrder,
+    updateOrderAsync,
     completeRow,
     saveNote
   } = useLeaderboardBoardCacheMutationBridge(
@@ -398,6 +400,23 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [updateOrder]
   );
 
+  const { handleAutoRank, autoRankDisabled, autoRankPending } = useLeaderBoardSlotAutoRank({
+    seibanEvalEnabled,
+    listIncomplete,
+    interactionLocked: isInteractionLocked,
+    orderPending,
+    sortedGrouped,
+    orderUsageByResourceCd: orderUsageQuery.data,
+    updateOrderAsync
+  });
+
+  const handleAutoRankSlot = useCallback(
+    (resourceCd: string) => {
+      void handleAutoRank(resourceCd);
+    },
+    [handleAutoRank]
+  );
+
   const handleOpenRowDueDate = useCallback(
     (row: LeaderBoardRow) => {
       openDueDatePicker(row.id, row.dueDate);
@@ -515,23 +534,28 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               </p>
             ) : null}
             <LeaderBoardGrid
-            resourceCdBySlotIndex={resourceCdBySlotIndex}
-            sortedGrouped={sortedGrouped}
-            resourceNameMap={resourceNameMap}
-            orderUsageByResourceCd={orderUsageQuery.data}
-            activeSeibanFilters={searchConditions.activeQueries}
-            selectedResourceCd={selectedResourceCd}
-            setSelectedResourceCd={setSelectedResourceCd}
-            onOpenDueDatePicker={handleOpenRowDueDate}
-            dueDatePending={dueDatePending}
-            onOrderChange={handleOrderChange}
-            onCompleteRow={handleCompleteRow}
-            completePending={completePending}
-            orderPending={orderPending}
-            onOpenNote={handleOpenRowNote}
-            notePending={notePending}
-            interactionLocked={isInteractionLocked}
-            footerResourceChipsByPartKey={footerResourceChipsByPartKey}
+              resourceCdBySlotIndex={resourceCdBySlotIndex}
+              sortedGrouped={sortedGrouped}
+              resourceNameMap={resourceNameMap}
+              orderUsageByResourceCd={orderUsageQuery.data}
+              activeSeibanFilters={searchConditions.activeQueries}
+              selectedResourceCd={selectedResourceCd}
+              setSelectedResourceCd={setSelectedResourceCd}
+              onOpenDueDatePicker={handleOpenRowDueDate}
+              dueDatePending={dueDatePending}
+              onOrderChange={handleOrderChange}
+              onCompleteRow={handleCompleteRow}
+              completePending={completePending}
+              orderPending={orderPending}
+              onOpenNote={handleOpenRowNote}
+              notePending={notePending}
+              interactionLocked={isInteractionLocked}
+              footerResourceChipsByPartKey={footerResourceChipsByPartKey}
+              seibanEvalEnabled={seibanEvalEnabled}
+              listIncomplete={listIncomplete}
+              autoRankDisabled={autoRankDisabled}
+              autoRankPending={autoRankPending}
+              onAutoRank={handleAutoRankSlot}
             />
           </>
         )}

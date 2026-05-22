@@ -1,6 +1,9 @@
 /** API 契約に合わせる（`apps/api/src/routes/kiosk/production-schedule/shared.ts`） */
 export const LEADER_ORDER_BOARD_ORDER_NUMBER_MAX = 10;
 
+/** スロット「順位」ボタン1回あたりの最大付与件数 */
+export const LEADER_BOARD_AUTO_RANK_MAX_ASSIGNMENTS = 5;
+
 /** 一覧の単一クエリ時代のページサイズ（順位ボードは shell 側で増分しない）。 */
 export const LEADER_ORDER_BOARD_PAGE_SIZE = 320;
 

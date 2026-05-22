@@ -26,6 +26,11 @@ export type LeaderBoardGridProps = {
   /** 背景同期中など、行操作を明示的に無効化 */
   interactionLocked?: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
+  seibanEvalEnabled?: boolean;
+  listIncomplete?: boolean;
+  autoRankDisabled?: boolean;
+  autoRankPending?: boolean;
+  onAutoRank?: (resourceCd: string) => void;
 };
 
 type SlotCardProps = {
@@ -45,6 +50,11 @@ type SlotCardProps = {
   onOpenNote: (row: LeaderBoardRow) => void;
   notePending: boolean;
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
+  seibanEvalEnabled?: boolean;
+  listIncomplete?: boolean;
+  autoRankDisabled?: boolean;
+  autoRankPending?: boolean;
+  onAutoRank?: (resourceCd: string) => void;
 };
 
 const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
@@ -63,7 +73,11 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
   orderPending,
   onOpenNote,
   notePending,
-  footerResourceChipsByPartKey
+  footerResourceChipsByPartKey,
+  seibanEvalEnabled = false,
+  autoRankDisabled = false,
+  autoRankPending = false,
+  onAutoRank
 }: SlotCardProps) {
   const onSelect = useCallback(() => {
     setSelectedResourceCd(resourceCd);
@@ -91,6 +105,10 @@ const LeaderBoardSlotCard = memo(function LeaderBoardSlotCard({
       onOpenNote={onOpenNote}
       notePending={notePending}
       footerResourceChipsByPartKey={footerResourceChipsByPartKey}
+      seibanEvalEnabled={seibanEvalEnabled}
+      autoRankDisabled={autoRankDisabled}
+      autoRankPending={autoRankPending}
+      onAutoRank={onAutoRank}
     />
   );
 });
@@ -115,7 +133,12 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
   onOpenNote,
   notePending,
   interactionLocked = false,
-  footerResourceChipsByPartKey
+  footerResourceChipsByPartKey,
+  seibanEvalEnabled = false,
+  listIncomplete = false,
+  autoRankDisabled = false,
+  autoRankPending = false,
+  onAutoRank
 }: LeaderBoardGridProps) {
   const rowControlsLocked = interactionLocked;
 
@@ -156,6 +179,10 @@ export const LeaderBoardGrid = memo(function LeaderBoardGrid({
             onOpenNote={onOpenNote}
             notePending={notePending || rowControlsLocked}
             footerResourceChipsByPartKey={footerResourceChipsByPartKey}
+            seibanEvalEnabled={seibanEvalEnabled}
+            autoRankDisabled={autoRankDisabled || rowControlsLocked || listIncomplete}
+            autoRankPending={autoRankPending}
+            onAutoRank={onAutoRank}
           />
         );
       })}

@@ -44,6 +44,12 @@ type UpdateOrderParams = {
   nextValue: string;
 };
 
+type UpdateOrderAsyncParams = {
+  rowId: string;
+  resourceCd: string;
+  orderNumber: number | null;
+};
+
 const sanitizeNote = (value: string, noteMaxLength: number) => {
   return value.replace(/\r?\n/g, '').trim().slice(0, noteMaxLength);
 };
@@ -155,6 +161,28 @@ export const useProductionScheduleMutations = ({
     [orderMutation, productionScheduleOrderCachePolicy, productionScheduleTargetDeviceScopeKey]
   );
 
+  const updateOrderAsync = useCallback(
+    async ({ rowId, resourceCd, orderNumber }: UpdateOrderAsyncParams) => {
+      const data = await orderMutation.mutateAsync({
+        rowId,
+        payload: {
+          resourceCd,
+          orderNumber,
+          ...(productionScheduleTargetDeviceScopeKey
+            ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
+            : {})
+        },
+        cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
+      });
+      writeSuccessListenersRef.current?.onOrderSuccess?.({
+        rowId,
+        orderNumber: data.orderNumber ?? null
+      });
+      return;
+    },
+    [orderMutation, productionScheduleOrderCachePolicy, productionScheduleTargetDeviceScopeKey]
+  );
+
   const updateProcessing = useCallback(
     (rowId: string, nextValue: string) => {
       processingMutation.mutate({ rowId, processingType: nextValue });
@@ -223,6 +251,7 @@ export const useProductionScheduleMutations = ({
     orderError: orderMutation.isError ? orderMutation.error : null,
     resetOrderError: () => orderMutation.reset(),
     updateOrder,
+    updateOrderAsync,
     updateProcessing,
     saveNote,
     commitDueDate,

@@ -37,6 +37,11 @@ type Props = {
   /** 製番 OR フィルタ時も全件表示時も行左縁に識別色（空フィルタ時はハッシュ % 24） */
   activeSeibanFilters?: readonly string[];
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
+  /** 製番順評価 ON 時: スロットタイトルに順位自動付与ボタン */
+  seibanEvalEnabled?: boolean;
+  autoRankDisabled?: boolean;
+  autoRankPending?: boolean;
+  onAutoRank?: (resourceCd: string) => void;
 };
 
 function LeaderOrderResourceCardInner({
@@ -57,7 +62,11 @@ function LeaderOrderResourceCardInner({
   onOpenNote,
   notePending,
   activeSeibanFilters,
-  footerResourceChipsByPartKey
+  footerResourceChipsByPartKey,
+  seibanEvalEnabled = false,
+  autoRankDisabled = false,
+  autoRankPending = false,
+  onAutoRank
 }: Props) {
   const jp = resourceJapaneseNames?.trim() ?? '';
   const isSignage = variant === 'signage';
@@ -121,10 +130,32 @@ function LeaderOrderResourceCardInner({
             : `資源 ${resourceCd}${jp ? ` ${jp}` : ''}。Enter か Space で選択`
       }
     >
-      <div className="mb-1.5 flex shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-0.5">
-        <span className="font-mono text-[15px] font-medium tracking-tight text-white/95">{resourceCd}</span>
-        {jp.length > 0 ? (
-          <span className="min-w-0 break-words text-[12px] leading-snug text-white/78">{jp}</span>
+      <div className="mb-1.5 flex shrink-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 px-0.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="font-mono text-[15px] font-medium tracking-tight text-white/95">{resourceCd}</span>
+          {jp.length > 0 ? (
+            <span className="min-w-0 break-words text-[12px] leading-snug text-white/78">{jp}</span>
+          ) : null}
+        </div>
+        {!isSignage && seibanEvalEnabled && onAutoRank ? (
+          <button
+            type="button"
+            disabled={autoRankDisabled || autoRankPending}
+            aria-label="順位を自動付与"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAutoRank(resourceCd);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className={clsx(
+              'shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold tabular-nums',
+              autoRankDisabled || autoRankPending
+                ? 'cursor-not-allowed border-white/15 bg-slate-900/50 text-white/40'
+                : 'border-violet-300/50 bg-violet-500/25 text-violet-50 hover:bg-violet-500/40'
+            )}
+          >
+            順位
+          </button>
         ) : null}
       </div>
       <div
