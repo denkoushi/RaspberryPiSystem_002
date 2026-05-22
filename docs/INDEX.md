@@ -8,7 +8,15 @@
 
 ## 🎯 目的別インデックス
 
-### 🆕 最新アップデート（2026-05-22 · 順位ボード・手動順位行ハイライト）
+### 🆕 最新アップデート（2026-05-22 · 順位ボード・行内順位ピッカー）
+
+- **キオスク順位ボード・行内順位ピッカー（製番順位 UI 統一·Pi5 本番·実機 OK）**: `<select>` 廃止 → **`LeaderBoardRankPickerDropdown`**（左ペイン製番順位と同一 Portal）。**行背景は常に `bg-slate-800/80`**（カードサイズ **`h-7 w-14` 不変**）。**順位 1–10** → **黄色縁 + `text-sm text-yellow-300`**。**「-」** → 白枠·11px。**サイネージ SVG** の行背景ハイライトは **継続**（キオスクのみ UI 変更）。**`949eea9c`**·PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)·Detach **`20260522-204821-6687`**·Phase12 **43/0/0**。**記録**: [KB-297 §行内順位ピッカー](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[KB-297 §Tailwind `/82`](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)·[deployment §行内順位](./guides/deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)·[verification-checklist §6.6.27](./guides/verification-checklist.md#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。
+
+### 🆕 最新アップデート（2026-05-22 · 順位ボード・手動順位行ハイライト — 履歴）
+
+- **キオスク順位ボード・手動順位付き行の背景ハイライト（案A改·サイネージ SVG のみ継続）**: 初回 **`3acf4c5a`** でキオスク行背景案を導入 → **`/82` CSS 未生成**（[#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326)）→ 実機で明るすぎ → **`949eea9c`** で [§行内順位ピッカー](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22) へ。**記録**: [KB-297 §手動順位行](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)。
+
+### 🆕 最新アップデート（2026-05-22 · 順位ボード・手動順位行ハイライト — 旧索引）
 
 - **キオスク順位ボード・手動順位付き行の背景ハイライト（案A改·Web + サイネージ SVG·Pi5 本番反映済）**: **`processingOrder != null` かつ未完**の行のみ **`slate-600/82`**（Web）·**`rgba(71, 85, 105, 0.82)`**（SVG）·**行ブロックのみ**·完了行はハイライトなし·DB 不変。**ブランチ**: **`feat/kiosk-leader-board-manual-order-row-highlight`**（**`3acf4c5a`**·CI **`26281606000` success**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260522-192111-31816`**·**Phase12** **43/0/0**（約 **96s**）。**記録**: [KB-297 §手動順位行](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335](./knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)·[deployment §2026-05-22](./guides/deployment.md#kiosk-leaderboard-manual-order-row-highlight-2026-05-22)·[verification-checklist §6.6.26](./guides/verification-checklist.md#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**（Pi4/Pi3 **不要**）。**現場目視**: [EXEC_PLAN Next Steps §手動順位行](../EXEC_PLAN.md#kiosk-leaderboard-manual-order-row-highlight-field-verify-2026-05-22)。
 
