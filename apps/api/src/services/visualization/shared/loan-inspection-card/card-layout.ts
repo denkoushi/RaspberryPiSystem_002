@@ -1,5 +1,9 @@
 import type { LoanInspectionBodyLine, LoanInspectionTableRow } from './display.types.js';
-import { layoutBodyWithinMaxHeight } from './layout-body.js';
+import {
+  layoutBodyWithinMaxHeight as defaultLayoutBodyWithinMaxHeight,
+  type LayoutBodyWithinMaxHeightParams,
+  type LayoutBodyWithinMaxHeightResult,
+} from './layout-body.js';
 import {
   LOAN_INSPECTION_CARD_BOTTOM_PAD_PX,
   LOAN_INSPECTION_CARD_INNER_PAD_PX,
@@ -22,6 +26,10 @@ export type LoanInspectionCardColumns = {
   namesColumn: string;
 };
 
+export type LayoutBodyWithinMaxHeightFn = (
+  params: LayoutBodyWithinMaxHeightParams,
+) => LayoutBodyWithinMaxHeightResult;
+
 /**
  * 4列グリッド・上揃え・行高は行内最大。縦可変1ページ分まで配置、はみ出す行は切り捨て。
  */
@@ -35,8 +43,20 @@ export function planLoanInspectionCardPlacements(params: {
   cardGap: number;
   numColumns: number;
   scale: number;
+  layoutBodyWithinMaxHeight?: LayoutBodyWithinMaxHeightFn;
 }): { placements: LoanInspectionCardPlacement[]; truncated: boolean; placedCount: number; totalRows: number } {
-  const { rows, columns, cardsTop, cardsAreaHeight, padding, cardWidth, cardGap, numColumns, scale } = params;
+  const {
+    rows,
+    columns,
+    cardsTop,
+    cardsAreaHeight,
+    padding,
+    cardWidth,
+    cardGap,
+    numColumns,
+    scale,
+    layoutBodyWithinMaxHeight = defaultLayoutBodyWithinMaxHeight,
+  } = params;
   const namesFontSize = Math.max(12, Math.round(13 * scale));
   const namesStartY = Math.round(LOAN_INSPECTION_NAMES_START_YPX * scale);
   const bottomPad = Math.round(LOAN_INSPECTION_CARD_BOTTOM_PAD_PX * scale);

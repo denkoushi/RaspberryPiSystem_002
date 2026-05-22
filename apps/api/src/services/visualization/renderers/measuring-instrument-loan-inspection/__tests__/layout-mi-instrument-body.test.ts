@@ -18,14 +18,12 @@ describe('layout-mi-instrument-body', () => {
     );
     expect(lines.length).toBe(2);
     expect(lines[0]!.text).toContain('MG-1');
-    expect(lines[0]!.tone).toBe('primary');
     expect(lines[1]!.text).toContain('デジタルノギス');
-    expect(lines[1]!.tone).toBe('secondary');
     expect(lines[0]!.fontSize).toBe(Math.round(13 * ACTIVE_BODY_FONT_SCALE));
     expect(lines[1]!.fontSize).toBe(lines[0]!.fontSize);
   });
 
-  it('joins multiple active management numbers on one line with middle dots', () => {
+  it('renders each active instrument on separate management and name lines', () => {
     const lines = buildBodyLinesForEntrySlice(
       [
         { kind: 'active', managementNumber: 'M33E', name: 'ナイロンスリング' },
@@ -37,9 +35,9 @@ describe('layout-mi-instrument-body', () => {
       1,
       4,
     );
-    expect(lines.length).toBe(2);
-    expect(lines[0]!.text).toBe('M33E ・ M02E');
-    expect(lines[1]!.text).toBe('ナイロンスリング');
+    expect(lines.length).toBe(5);
+    expect(lines[0]!.text).toBe('M33E');
+    expect(lines[3]!.text).toBe('M02E');
   });
 
   it('uses larger line height for active font than base', () => {

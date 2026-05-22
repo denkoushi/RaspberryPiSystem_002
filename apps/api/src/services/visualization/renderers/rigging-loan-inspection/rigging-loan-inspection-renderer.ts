@@ -7,6 +7,7 @@ import {
   RIGGING_RETURNED_COUNT_COLUMN,
 } from '../../data-sources/rigging-loan-inspection/rigging-loan-inspection.constants.js';
 import { renderLoanInspectionBoard } from '../../shared/loan-inspection-card/render-loan-inspection-board.js';
+import { layoutRiggingBodyWithinMaxHeight } from './rigging-layout-body.js';
 
 export class RiggingLoanInspectionRenderer implements Renderer {
   readonly type = 'rigging_loan_inspection';
@@ -26,6 +27,7 @@ export class RiggingLoanInspectionRenderer implements Renderer {
       sortOptions: {
         inspectionCountColumn: '点検件数',
       },
+      layoutBodyWithinMaxHeight: layoutRiggingBodyWithinMaxHeight,
     });
   }
 }
