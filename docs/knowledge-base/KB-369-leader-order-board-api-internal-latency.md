@@ -183,6 +183,19 @@ category: knowledge-base
 5. **集約後の API プロセス負荷**  
    1 リクエストが複数スロット分の shell/total/装飾を扱うため、**同時リクエストが少数でも DB 並行性・プール枯渇**に触れうる。アルート別メトリクスや **遅いクエリログ**で監視対象に追加することを推奨。
 
+## shell 選定 SQL 最適化（2026-05-21–22 · **第2弾までで一旦停止**） {#shell-選定-sql-最適化-2026-05-21-22-第2弾までで一旦停止}
+
+**正本**: 詳細・ベンチ・ロードマップは [KB-374 §shell 第1/2弾](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み) および [KB-374 §ロードマップ（保留）](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22) に収束。
+
+| 段階 | 要点 | 本番 |
+| --- | --- | --- |
+| **第1弾** | winner リクエスト内共有·completeInShell の COUNT 省略 | Pi5 **`20260521-221507-30100`** |
+| **第2弾** | SELECT 共通化·LATERAL JOIN·prefix manual LIMIT / expansion スキップ | Pi5 **`20260522-081052-2796`** |
+
+**決定（2026-05-22）**: **第3弾以降は保留**（expansion budget LIMIT / EXPLAIN / Web view model 等）。初回 shell の残コストは **hasMore 並列 COUNT** + **manual 未充足時の unlimited expansion** が中心。**第3弾の期待効果は第1・2弾より低〜中（profile 依存）**。
+
+**再開時**: [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) で **スロット別 manual/expansion 計測** → [EXEC_PLAN §shell 保留](../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)。
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。

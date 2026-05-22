@@ -86,6 +86,7 @@ update-frequency: medium
   - **ベンチ median が run 間でブレる** → **min も併記**して判断（全スロット並列 COUNT + 選定 SQL の合成時間）。
   - **Pi4 で変わらない** → **Pi5 `api` のみ**が対象（Pi4 デプロイ **不要**）。
   - **continue 順序がずれる** → continue は **`prefixLimit` 未指定**（full manual+expansion）— 統合テストで monolithic 同順を確認済。
+- **スコープ（2026-05-22）**: **shell 選定 SQL は第2弾までで一旦停止**。**第3弾以降**（expansion budget LIMIT 等）は **[KB-374 §ロードマップ（保留）](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22)**·[EXEC_PLAN §保留](../../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照) に記録。
 - **ナレッジ**: [KB-374 §shell 第2弾](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)·[KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ### 補足（2026-05-21 · **サイネージ `kiosk_leader_order_cards`・ヘッダ加工機名の全文1行表示**·`main` `a2f9a2c5`·**API のみ**·**`raspberrypi5` のみ**） {#signage-leader-order-header-full-machine-name-2026-05-21}

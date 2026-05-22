@@ -1191,7 +1191,7 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 - **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../guides/deployment.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
 - **continue chunk 80/160（2026-05-21）**: **`4471a444`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**Pi5→Pi4×4 本番**·Detach **`20260521-203852-9936`** 他 4 台·CI **`26222962417` success**·[§continue 80/160 実装](#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](../guides/deployment.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。
 - **shell 初回最適化 第1弾（2026-05-21 · API のみ · Pi5 本番・実機 OK）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**·Detach Pi5 **`20260521-221507-30100`**·[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)。
-- **shell 選定 SQL 第2弾（2026-05-22 · API のみ · Pi5 本番・実機 OK）**: SQL **共通化 + LATERAL JOIN**·prefix **manual LIMIT / expansion スキップ**·**`56490cfd`**·CI **`26257727724` success**·Detach Pi5 **`20260522-081052-2796`**·[§shell 第2弾](#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)。
+- **shell 選定 SQL 第2弾（2026-05-22 · API のみ · Pi5 本番·**第2弾までで一旦停止**）**: SQL **共通化 + LATERAL JOIN**·prefix **manual LIMIT / expansion スキップ**·**`fc485fe3`**（PR [#317](https://github.com/denkoushi/RaspberryPiSystem_002/pull/317)）·Detach Pi5 **`20260522-081052-2796`**·[§shell 第2弾](#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)·[§ロードマップ（保留）](#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
 ## shell 初回最適化 第1弾（API のみ · 2026-05-21 · 本番反映済み）
@@ -1319,10 +1319,92 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 | **continue 順序ずれ** | continue は **`prefixLimit` なし** — `leaderboard-shell-row-selection-compare` と統合テストで **monolithic 同順**を固定 |
 | **Pi4 にデプロイしたが変わらない** | **意図どおり** — 変更は **Pi5 `api` のみ** |
 
-### 残タスク（第3弾候補）
+### スコープ打ち切り（2026-05-22 · **第2弾までで一旦停止**）
 
-1. **expansion budget LIMIT**（prefix 未充足スロットの expansion 行数上限）
-2. **EXPLAIN ANALYZE** + インデックス見直し（stonebase 等 **manual 未充足**スロット）
-3. **Web 増分 view model**（IDB 2 回目以降 DOM 最小化）— 出力同値 PoC
+**決定**: キオスク順位ボード **shell 選定 SQL 最適化は第1弾 + 第2弾を本番正本**とし、**第3弾以降は実装せず保留**（ユーザー判断·2026-05-22）。
 
-**正本**: [EXEC_PLAN §Next Steps](../../EXEC_PLAN.md)·[deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
+**本番正本（マージ済み）**:
+
+| 段階 | 内容 | 代表 | 本番 |
+| --- | --- | --- | --- |
+| **第1弾** | winner 共有·`hasMore=false` COUNT 省略 | **`143c8814`**·PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316) | Detach **`20260521-221507-30100`** |
+| **第2弾** | SQL 共通化 + JOIN 化 + prefix manual LIMIT / expansion スキップ | **`56490cfd`**·PR [#317](https://github.com/denkoushi/RaspberryPiSystem_002/pull/317) squash **`fc485fe3`** | Detach **`20260522-081052-2796`** |
+
+**第2弾打ち切りの理由（要約）**:
+
+- **fjv** は median **同等〜改善**·**robodrill min ~3.0s** と第1弾並み — **manual で prefix が埋まるスロット**では第2弾が効いている。
+- **stonebase median やや悪化**·**robodrill median run 間分散** — 残コストは **manual 未充足時の unlimited expansion**·**hasMore スロット並列 COUNT**·**Pi5 負荷分散** が混在し、**第3弾単体の ROI が第1・2弾より低い**（詳細は下記 §ロードマップ）。
+- **出力同値・実機 OK** が第2弾時点で確認済み — **追加最適化は計測前提の再開**とし、別優先タスクへリソースを回す。
+
+**再開時の入口**: 本節 §ロードマップ·[EXEC_PLAN §shell 保留](../../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)·[deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)。
+
+### ロードマップ（第3弾以降 · **保留 · 後日参照**） {#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22}
+
+**状態**: **未着手·保留**（2026-05-22 時点）。実装再開前に **Pi5 実データ計測**を推奨。
+
+#### 残支配要因（第2弾後）
+
+初回 `GET …/leaderboard-board`（shell）の壁時計は、スロットごとにおおむね次の合成:
+
+1. **hasMore 判定用 COUNT**（hasMore スロットは shell と **並列 await** — 第1弾で completeInShell のみ省略）
+2. **prefix 選定 SQL**（manual → 条件付き expansion → filler マージ）
+3. **winner materialization**（第1弾でリクエスト内 1 回共有済）
+
+第2弾で **manual ≥ prefixLimit（80）** のスロットは **expansion スキップ**済。**manual < 80** のスロットのみ、expansion が **LIMIT なし全件 SELECT** のまま残る（[`leaderboard-row-selection.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-row-selection.service.ts) L113–126）。filler 側は `takeLeaderboardShellMergedRowsAfterExclude` が **budget 付きバッチ**（`computeLeaderboardShellFillerBudget`）だが、**expansion 本体に budget は無い**。
+
+#### 候補施策一覧
+
+| 優先 | 施策 | 期待効果 | 主な対象 profile | 触る境界 | 再開前の計測 |
+| --- | --- | --- | --- | --- | --- |
+| **A** | **expansion budget LIMIT** — manual 未充足時、expansion SELECT に `(prefixLimit - manualCount) + buffer` 等の上限 | **中（条件付き）** — manual 未充足スロット比率が高い board のみ | **stonebase** 等（7/8 hasMore·median 悪化） | API·Pi5 のみ·**出力同値必須** | スロット別 **manual 件数**·**expansion 返却行数**·スキップ率 |
+| **B** | **EXPLAIN ANALYZE + インデックス見直し** — 選定 SQL のプラン差・シーケンシャルスキャン | **不明〜中** — 実測次第 | stonebase·robodrill run2 悪化 | API·DB（索引は migration 要検討） | 遅いスロットの **ANALYZE ログ**·[`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) |
+| **C** | **Pi5 memory 90%+ / 一過性 503 相関** — Docker/API リソース·同時 board 負荷 | **分散低減（間接）** — median ブレ対策 | robodrill（median ~4.9s vs min ~3.0s） | 運用·Compose | Pi5 **メモリログ**·503 発生時刻と shell ベンチの相関 |
+| **D** | **Web 増分 view model** — IDB 2 回目以降 DOM 更新最小化（出力同値 PoC） | **体感（別レイヤ）** — 初回 shell API 速度ではない | 全 Pi4 キオスク | Web のみ | Network **2 回目以降**の描画時間 |
+| **E** | **continue chunk 80/160 現場目視** | **品質確認（任意）** | Pi4 キオスク | Web 反映済 | DevTools **`pageSize=160`**·continue 回数 |
+
+**期待効果の整理（2026-05-22 時点の判断）**:
+
+- **第3弾（A+B）を第1・2弾級の「全 profile 大幅短縮」とは見込まない**（**低〜中**）。
+- **A** は **fjv のように manual が 80 を埋める profile では効果ほぼゼロ**。
+- **C** は API 最適化ではなく **計測環境の安定化** — robodrill の median 悪化切り分けに先立つ候補。
+- **D** は **キオスク初回 shell 遅延**の別軸（[EXEC_PLAN §continue 80/160 現場目視](../../EXEC_PLAN.md) と混同しない）。
+
+#### 施策 A — expansion budget LIMIT（第3弾本命候補）
+
+**現状**: `buildLeaderboardShellPriorityContext` で manual `< prefixLimit` のとき `queryLeaderboardShellScheduleRows`（expansion）に **limitSql なし**。
+
+**案**:
+
+- expansion に **`LIMIT (prefixLimit - manualRows.length) + probeMargin`**（`probeMargin` は merge 順序の安全マージン — compare テストで同順を固定）。
+- 既存 **`resolveLeaderboardShellSkipExpansionAfterManual`** / **`trimLeaderboardShellManualProbeRows`** と同型で **`leaderboard-shell-expansion-fetch-policy.ts`** に閉じる（境界契約の命名規約に従う）。
+- **continue / full merge**（`prefixLimit` 未指定）は **触らない**。
+
+**検証**:
+
+- 既存 **`leaderboard-shell-row-selection-compare`** + 統合 **`leaderboard`** 18 件
+- Pi5 **`benchmark-leaderboard-board-shell.mjs`**（`runs>=3`·min/median 併記）
+- デプロイは **`raspberrypi5` のみ**（第1・2弾と同型）
+
+#### 施策 B — EXPLAIN ANALYZE
+
+**狙い**: stonebase median ~6.6s（第1弾 ~5.1s）の **JOIN プラン差**·**manual 未充足 → 大きい expansion 結果セット**の切り分け。
+
+**手順案**:
+
+1. 本番相当 DB で **遅いスロット 1 件**の manual / expansion / filler を **EXPLAIN (ANALYZE, BUFFERS)**。
+2. `ord_pick` / `gr_pick` LATERAL の **Nested Loop コスト**と **CsvDashboardRow 走査行数**を記録。
+3. 索引追加は **migration 要否を ADR/KB に先に固定**してから。
+
+#### 却下済み（再採用しない）
+
+- **スロット並列 fan-out**（Pi5 実データで fjv/stonebase 悪化 — [§並列化事前検証](#並列化事前検証pi5-実データ--2026-05-20--実装前)）
+- **初回10/continue40 の Pi4 展開**（Pi5 のみ反映·体感 pageSize 80 より遅い — [§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)）
+
+#### 関連ドキュメント索引
+
+- **進捗・決定**: [EXEC_PLAN Decision Log §shell 第2弾打ち切り](../../EXEC_PLAN.md)
+- **デプロイ**: [deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
+- **API レイテンシ全体**: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)
+- **ベンチ**: [`scripts/test/benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs)
+
+**正本**: [EXEC_PLAN §Next Steps（保留）](../../EXEC_PLAN.md)·[deployment §shell 第2弾](../guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)
