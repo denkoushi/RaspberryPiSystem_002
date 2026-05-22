@@ -56,11 +56,26 @@ export type LoanInspectionBoardRenderParams = {
     inspectionCountColumn?: string;
   };
   layoutBodyWithinMaxHeight?: LayoutBodyWithinMaxHeightFn;
+  resolveHasVisibleLoanState?: (
+    row: LoanInspectionTableRow,
+    counts: { activeLoanCount: number; returnedLoanCount: number },
+    context: { inspectionCountColumn?: string },
+  ) => boolean;
 };
 
 export async function renderLoanInspectionBoard(params: LoanInspectionBoardRenderParams): Promise<RenderOutput> {
-  const { data, config, defaultTitle, errorPrefix, activeCountColumn, returnedCountColumn, columns, sortOptions, layoutBodyWithinMaxHeight } =
-    params;
+  const {
+    data,
+    config,
+    defaultTitle,
+    errorPrefix,
+    activeCountColumn,
+    returnedCountColumn,
+    columns,
+    sortOptions,
+    layoutBodyWithinMaxHeight,
+    resolveHasVisibleLoanState,
+  } = params;
 
   if (data.kind !== 'table') {
     const svg = buildMessageSvg('可視化データが不正です', config.width, config.height);
@@ -116,7 +131,13 @@ export async function renderLoanInspectionBoard(params: LoanInspectionBoardRende
       const employeeName = String(row['従業員名'] ?? '-');
       const activeLoanCount = toNumber(row[activeCountColumn], 0);
       const returnedLoanCount = toNumber(row[returnedCountColumn], 0);
-      const hasVisibleLoanState = activeLoanCount > 0 || returnedLoanCount > 0;
+      const hasVisibleLoanState = resolveHasVisibleLoanState
+        ? resolveHasVisibleLoanState(
+            row,
+            { activeLoanCount, returnedLoanCount },
+            { inspectionCountColumn: sortOptions?.inspectionCountColumn },
+          )
+        : activeLoanCount > 0 || returnedLoanCount > 0;
       const chrome = resolveLoanInspectionCardChrome(t, hasVisibleLoanState);
       return buildLoanInspectionCardSvgFragment({
         x,

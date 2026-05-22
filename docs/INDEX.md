@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-22 · 吊具点検サイネージカード chrome 統一）
+
+- **吊具点検サイネージカード chrome 統一（点検のみも青·API のみ·Pi5 本番反映済）**: Gmail CSV **点検のみ**従業員も **キオスク持出と同じ青カード**（`resolveRiggingHasVisibleLoanState`）·**ヘッダ `貸出中/返却` は Loan 実績のまま**·**MI は従来**。**ブランチ**: **`fix/rigging-inspection-card-chrome-unify`**（**`cf8c13bf`**·CI **`26275892524` success**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260522-174718-22503`**·**Phase12** **43/0/0**（約 **85s**）。**記録**: [KB-381](./knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §chrome 統一](./guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**。
+
 ### 🆕 最新アップデート（2026-05-22 · 吊具点検 dedup refresh / サイネージデザイン分離）
 
 - **吊具点検 dedup refresh · idNum 登録 · サイネージデザイン分離（API のみ·Pi5 本番反映済）**: 投影 dedup 時 **`inspectedAt` refresh**·idNum **80/73/69/82** マスタ登録·**吊具 active 複数のみ ` ・ ` 結合**（MI は従来 1 行/機器）。**ブランチ**: **`fix/loan-inspection-card-combined-mgmt-numbers`**（**`49386387`**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260522-160832-6784`** / **`20260522-163138-380`**·**Phase12** **43/0/0**·backfill **103 created / 7 refreshed**·加工担当 **5/22 暦日 18 件/10 名**。**記録**: [KB-381](./knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**。
