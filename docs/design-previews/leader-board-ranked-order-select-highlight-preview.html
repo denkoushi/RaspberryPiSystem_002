@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>順位ボード — 行内順位ドロップダウン（プレビュー）</title>
+  <style>
+    :root {
+      --bg-page: rgb(12 18 34);
+      --card-bg: rgba(15 23 42 / 0.6);
+      --card-border: rgba(255 255 255 / 0.1);
+      --row-base: rgba(30 41 59 / 0.8);
+      --text: rgba(255 255 255 / 0.92);
+      --muted: rgba(255 255 255 / 0.55);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg-page);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .page { max-width: 42rem; margin: 0 auto; padding: 16px 14px 48px; }
+
+    h1 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+
+    .lead {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-bottom: 16px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255 255 255 / 0.1);
+      background: rgba(15 23 42 / 0.55);
+      font-size: 11px;
+      color: rgba(255 255 255 / 0.78);
+    }
+
+    .loc-card {
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      padding: 10px;
+    }
+
+    .loc-head { margin-bottom: 6px; font-size: 15px; font-weight: 500; }
+
+    .loc-row {
+      border-radius: 4px;
+      padding: 4px 8px;
+      background: var(--row-base);
+      margin-bottom: 4px;
+    }
+
+    .loc-row:last-child { margin-bottom: 0; }
+
+    .loc-row-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .btn-complete {
+      width: 28px; height: 28px; border-radius: 9999px;
+      border: 2px solid rgba(255 255 255 / 0.82);
+      background: rgb(15 23 42); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; flex-shrink: 0;
+    }
+
+    /* 旧 select と同寸 h-7 w-14（28×56px）— カードレイアウト不変 */
+    .order-anchor {
+      position: relative;
+      height: 28px;
+      width: 56px;
+      flex-shrink: 0;
+      border-radius: 4px;
+      border: 1px solid rgba(255 255 255 / 0.25);
+      background: rgba(15 23 42 / 0.9);
+      color: #fff;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      padding: 0 6px;
+      cursor: pointer;
+    }
+
+    .order-anchor--set {
+      border-color: rgb(250 204 21);
+      color: rgb(253 224 71);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .order-anchor--disabled {
+      cursor: not-allowed;
+      border-color: rgba(255 255 255 / 0.15);
+      background: rgba(15 23 42 / 0.5);
+      color: rgba(255 255 255 / 0.4);
+      font-weight: 400;
+    }
+
+    .rank-picker {
+      position: fixed;
+      z-index: 85;
+      width: min(12rem, calc(100vw - 2rem));
+      border-radius: 8px;
+      border: 1px solid rgba(255 255 255 / 0.2);
+      background: rgba(2 6 23 / 0.95);
+      padding: 8px;
+      box-shadow: 0 20px 40px rgba(0 0 0 / 0.45);
+      display: none;
+    }
+
+    .rank-picker.is-open { display: block; }
+
+    .rank-picker-title {
+      margin: 0 0 6px;
+      padding: 0 2px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(255 255 255 / 0.55);
+    }
+
+    .rank-picker-list { display: flex; flex-direction: column; gap: 2px; max-height: 14rem; overflow-y: auto; }
+
+    .rank-choice {
+      border: none;
+      border-radius: 6px;
+      padding: 6px 10px;
+      text-align: left;
+      font-size: 14px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: rgba(255 255 255 / 0.95);
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .rank-choice:hover { background: rgba(255 255 255 / 0.1); }
+
+    .rank-choice.is-selected {
+      border: 1px solid rgba(52 211 153 / 0.5);
+      background: rgba(16 185 129 / 0.25);
+      color: rgb(209 250 229);
+      font-weight: 700;
+    }
+
+    .fkojun { flex: 1; font-family: monospace; font-size: 11px; color: rgba(255 255 255 / 0.88); }
+    .due { font-family: monospace; font-size: 10px; color: rgba(103 232 249 / 0.9); }
+    .line2 { margin-top: 2px; color: rgba(255 255 255 / 0.72); font-size: 11px; }
+
+    .note-box {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(52 211 153 / 0.28);
+      background: rgba(6 78 59 / 0.15);
+    }
+
+    .note-box h2 { margin: 0 0 8px; font-size: 13px; color: rgb(167 243 208); }
+
+    .note-box ul {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: rgba(255 255 255 / 0.78);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .note-box code {
+      font-family: ui-monospace, monospace;
+      font-size: 10px;
+      color: rgba(255 255 255 / 0.9);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>順位ボード — 行内順位ドロップダウンのみ変更</h1>
+    <p class="lead">
+      変更対象は <code>LeaderOrderRowOrderSelect</code> のみ。資源カード・行背景・サイズ（<code>h-7 w-14</code>）は従来どおり。
+      ポップアップは左ペイン製番順位と同じ <code>LeaderBoardRankPickerDropdown</code>。
+      数字を選んだあとのアンカー表示は <strong>黄色縁 + 黄色文字</strong>。
+    </p>
+
+    <div class="legend">
+      <span>順位 1–10: border-yellow-400 · text-yellow-300 · text-sm（14px）</span>
+      <span>未設定「-」: text-[11px] · 白文字</span>
+    </div>
+
+    <div class="loc-card">
+      <div class="loc-head">501 東芝MPE-2130</div>
+      <div class="loc-row" data-picker-root>
+        <div class="loc-row-top">
+          <span class="btn-complete">✓</span>
+          <button type="button" class="order-anchor order-anchor--set" data-rank-anchor aria-haspopup="dialog" aria-expanded="false">1</button>
+          <span class="fkojun">200</span>
+          <span class="due">5/13(水)</span>
+        </div>
+        <div class="line2">順位付き — 黄色縁・黄色数字</div>
+        <div class="rank-picker" data-rank-panel role="dialog" aria-label="順位を選択">
+          <p class="rank-picker-title">順位を選択</p>
+          <div class="rank-picker-list" data-rank-list='["-",1,2,3,4,5]' data-selected="1"></div>
+        </div>
+      </div>
+      <div class="loc-row" data-picker-root>
+        <div class="loc-row-top">
+          <span class="btn-complete">✓</span>
+          <button type="button" class="order-anchor" data-rank-anchor aria-haspopup="dialog" aria-expanded="false">-</button>
+          <span class="fkojun">220</span>
+          <span class="due">5/15(金)</span>
+        </div>
+        <div class="line2">未設定 — 従来の select と同じ見た目</div>
+        <div class="rank-picker" data-rank-panel role="dialog" aria-label="順位を選択">
+          <p class="rank-picker-title">順位を選択</p>
+          <div class="rank-picker-list" data-rank-list='["-",1,2,4,5]' data-selected="-"></div>
+        </div>
+      </div>
+      <div class="loc-row" style="opacity:0.5; filter:grayscale(1)">
+        <div class="loc-row-top">
+          <span class="btn-complete">✓</span>
+          <button type="button" class="order-anchor order-anchor--disabled" disabled>3</button>
+          <span class="fkojun">230</span>
+          <span class="due">5/16(土)</span>
+        </div>
+        <div class="line2">完了行 — disabled（変更なし）</div>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <h2>実装メモ</h2>
+      <ul>
+        <li>アンカー寸法: <code>h-7 w-14 px-1.5 text-[11px]</code>（旧 <code>&lt;select&gt;</code> と同一）</li>
+        <li>順位あり: <code>border-yellow-400 bg-slate-900/90 text-sm font-semibold text-yellow-300</code></li>
+        <li>順位なし「-」: <code>border-white/25 bg-slate-900/90 text-white</code></li>
+        <li>ポップアップ: <code>LeaderBoardRankPickerDropdown</code>（左ペイン製番順位と同一 UI）</li>
+        <li>カード・行・他コントロール: 変更なし</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    function syncAnchorStyle(anchor, label) {
+      anchor.textContent = label;
+      anchor.classList.toggle('order-anchor--set', label !== '-');
+    }
+
+    function renderList(container) {
+      const items = JSON.parse(container.dataset.rankList);
+      const selected = String(container.dataset.selected);
+      container.innerHTML = '';
+      items.forEach((item) => {
+        const label = String(item);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rank-choice' + (label === selected ? ' is-selected' : '');
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+          container.dataset.selected = label;
+          const root = container.closest('[data-picker-root]');
+          const anchor = root.querySelector('[data-rank-anchor]');
+          syncAnchorStyle(anchor, label);
+          closeAllPickers();
+          renderList(container);
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    function closeAllPickers() {
+      document.querySelectorAll('[data-rank-panel]').forEach((p) => p.classList.remove('is-open'));
+      document.querySelectorAll('[data-rank-anchor]').forEach((a) => a.setAttribute('aria-expanded', 'false'));
+    }
+
+    document.querySelectorAll('[data-rank-list]').forEach(renderList);
+
+    document.querySelectorAll('[data-rank-anchor]').forEach((anchor) => {
+      anchor.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (anchor.disabled) return;
+        const root = anchor.closest('[data-picker-root]');
+        const panel = root.querySelector('[data-rank-panel]');
+        const open = panel.classList.contains('is-open');
+        closeAllPickers();
+        if (!open) {
+          panel.classList.add('is-open');
+          anchor.setAttribute('aria-expanded', 'true');
+          const rect = anchor.getBoundingClientRect();
+          panel.style.top = `${rect.bottom + 8}px`;
+          panel.style.left = `${Math.min(rect.right - panel.offsetWidth, window.innerWidth - panel.offsetWidth - 16)}px`;
+        }
+      });
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.target.closest('[data-rank-anchor], [data-rank-panel]')) return;
+      closeAllPickers();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeAllPickers();
+    });
+  </script>
+</body>
+</html>
