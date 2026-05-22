@@ -10,7 +10,7 @@ category: knowledge-base
 
 ## Context
 
-`KioskLayout` では、特定ルートのみキオスクナビ（`KioskHeader`）を既定で隠し、**画面下辺の中央 1/3** へマウスを寄せるとヘッダーが**下から上へ**スライド表示する「沉浸式」レイアウトを使う。近傍検知は [`useKioskBottomCenterHeaderReveal`](../../apps/web/src/hooks/useKioskBottomCenterHeaderReveal.ts)（内部で [`kioskHeaderRevealHotZone.ts`](../../apps/web/src/features/kiosk/kioskHeaderRevealHotZone.ts) の純関数判定）。対象 URL は **allowlist** で管理し、計画納期・写真持出・通話などは意図的に除外する。
+`KioskLayout` では、特定ルートのみキオスクナビ（`KioskHeader`）を既定で隠し、**画面下辺の中央 1/3** へマウスを寄せるとヘッダーが**下から上へ**スライド表示する「沉浸式」レイアウトを使う。近傍検知は [`useKioskBottomCenterHeaderReveal`](../../apps/web/src/hooks/useKioskBottomCenterHeaderReveal.ts)（内部で [`kioskHeaderRevealHotZone.ts`](../../apps/web/src/features/kiosk/kioskHeaderRevealHotZone.ts) の純関数判定）。対象 URL は **allowlist** で管理し、計画納期・通話などは意図的に除外する。**持出タブ**（`/kiosk/tag`・`/kiosk/photo`・計測/吊具持出）も下端リビールに統一（2026-05-22 以前は `/kiosk/photo` のみ上辺常時表示）。
 
 **本変更のスコープ外**（上端のまま）:
 
@@ -46,12 +46,12 @@ category: knowledge-base
 
 | 種別 | パス |
 |------|------|
-| 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)） |
+| 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/photo`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)） |
 | `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/part-measurement`（部品測定ハブ・編集・テンプレ・確定一覧。Phase2 以降）, `/kiosk/pallet-visualization`（加工機パレット可視化・[KB-355](./api.md)） |
 
 ### 除外例（false）
 
-- `/kiosk/photo`, `/kiosk/call`, `/kiosk/production-schedule/due-management`, `/kiosk/production-schedule/other`
+- `/kiosk/call`, `/kiosk/production-schedule/due-management`, `/kiosk/production-schedule/other`
 
 ## Prevention
 

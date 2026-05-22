@@ -15,6 +15,7 @@ describe('normalizeKioskPathname', () => {
 describe('usesKioskImmersiveLayout', () => {
   it.each([
     ['/kiosk/tag'],
+    ['/kiosk/photo'],
     ['/kiosk/instruments/borrow'],
     ['/kiosk/rigging/borrow'],
     ['/kiosk/production-schedule'],
@@ -48,7 +49,6 @@ describe('usesKioskImmersiveLayout', () => {
 
   it.each([
     ['/kiosk'],
-    ['/kiosk/photo'],
     ['/kiosk/call'],
     ['/kiosk/production-schedule/due-management'],
     ['/kiosk/production-schedule/other'],
