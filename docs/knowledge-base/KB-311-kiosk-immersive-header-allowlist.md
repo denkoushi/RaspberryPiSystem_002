@@ -81,6 +81,7 @@ category: knowledge-base
 - **パレット可視化で左ペインだけスクロールせずページ全体が動く**: `/kiosk/pallet-visualization` が allowlist に無いと **`usesKioskImmersiveLayout` が false** のままになり、分割ペインの **overflow 前提が崩れる**（2026-04-22 修正・[KB-355](./api.md)）。
 - **E2E スモークでキオスクナビが失敗**: ヘッダー非表示のままクリックしている。`revealKioskHeader()` で**下辺中央**へマウス移動してから操作する（[`kiosk-smoke.spec.ts`](../../e2e/smoke/kiosk-smoke.spec.ts)）。
 - **ナビが出ない**: 下辺**左右 1/3** では開かない（仕様）。**中央 1/3**（画面幅の 33%〜66% 付近）を確認。
+- **Pi5/Mac は新 UI・Pi4 だけ旧挙動（上端リビール等）**: SPA は Pi5 配信。Pi4 Firefox が **`?clientKey=` 固定 URL** で旧バンドルをキャッシュし得る。`kiosk-launch.sh` の **`&_appRef=<git HEAD>`**・プロファイル **`cache2` 削除**・`user.js` の HTTP キャッシュ無効化後に **`kiosk-browser` 再起動**（2026-05-22·`8a5369e1`）。上端に出る **タブ/URL バー**は Firefox `userChrome.css`（アプリのキオスクナビとは別）。
 - **ローカル Web テストで `act(...)` エラー**: シェルに `NODE_ENV=production` が残っていると再現しうる → **`NODE_ENV=test`** を明示して Vitest を実行。
 
 ## References
