@@ -6,10 +6,9 @@ import {
 } from '../seibanAccentPalette';
 
 describe('resolveSeibanAccentRowClass', () => {
-  it('returns stable hash-based class when filters empty', () => {
-    const a = resolveSeibanAccentRowClass('S001', []);
-    expect(a).toBeTruthy();
-    expect(resolveSeibanAccentRowClass('S001', [])).toBe(a);
+  it('returns undefined when OR filters empty (all-items view)', () => {
+    expect(resolveSeibanAccentRowClass('S001', [])).toBeUndefined();
+    expect(resolveSeibanAccentRowClass('S001', ['', '  '])).toBeUndefined();
   });
 
   it('returns undefined when fseiban is blank after trim', () => {
