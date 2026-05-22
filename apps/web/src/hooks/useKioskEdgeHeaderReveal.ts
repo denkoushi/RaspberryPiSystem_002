@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import {
   isPointerInKioskHeaderRevealHotZone,
@@ -22,9 +22,15 @@ export function useKioskEdgeHeaderReveal(
   enabled: boolean,
   hotZone: KioskHeaderRevealHotZoneConfig
 ): KioskEdgeHeaderRevealHandlers {
-  const { open, ...handlers } = useTimedHoverReveal(enabled);
+  const { open, isVisible, onHeaderMouseEnter: keepHeaderHoverOpen, ...handlers } =
+    useTimedHoverReveal(enabled);
   const hotZoneRef = useRef(hotZone);
   hotZoneRef.current = hotZone;
+
+  const onHeaderMouseEnter = useCallback(() => {
+    if (!enabled || !isVisible) return;
+    keepHeaderHoverOpen();
+  }, [enabled, isVisible, keepHeaderHoverOpen]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -37,13 +43,14 @@ export function useKioskEdgeHeaderReveal(
         viewportHeight: window.innerHeight,
         ...hotZoneRef.current
       });
+      // 開くのはホットゾーン命中時のみ（ヘッダー全幅の mouseenter では開かない）
       if (hit) {
         open();
       }
     };
-    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mousemove', onMove, { passive: true });
     return () => window.removeEventListener('mousemove', onMove);
   }, [enabled, open]);
 
-  return handlers;
+  return { ...handlers, isVisible, onHeaderMouseEnter };
 }
