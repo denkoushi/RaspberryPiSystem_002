@@ -22,13 +22,31 @@ describe('buildLeaderOrderCardsSvg', () => {
             partNameLine: 'ストッパー台',
             quantityInlineJa: '8個',
             isCompleted: false,
+            hasManualOrder: true,
             footerChips: [{ rowId: 'c1', resourceCd: '080', isCompleted: false }],
+          },
+          {
+            fkojun: '020 / 仕上',
+            dueLabel: '1/8(木)',
+            manualDue: false,
+            fseiban: 'BA1S1320',
+            seibanAccentHex: '#2dd4bf',
+            clusterSegments: ['BA1S1320'],
+            customerLine: '',
+            machineTypeNameLine: 'L300KP',
+            partNameLine: 'カバー',
+            quantityInlineJa: null,
+            isCompleted: false,
+            hasManualOrder: false,
+            footerChips: [],
           },
         ],
       },
     ];
 
     const svg = buildLeaderOrderCardsSvg(cards, 1920, 1080);
+    expect(svg).toContain('rgba(71, 85, 105, 0.82)');
+    expect(svg).toContain('rgba(30, 41, 59, 0.8)');
     expect(svg).toContain('BA1S1319');
     expect(svg).toContain('#fbbf24');
     expect(svg).toContain('8個');

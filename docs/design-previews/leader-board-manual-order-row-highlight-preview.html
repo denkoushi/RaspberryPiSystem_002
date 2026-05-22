@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>順位ボード — 手動順位付き行の背景ハイライト（実装前プレビュー）</title>
+  <style>
+    /**
+     * 参照:
+     *   LeaderOrderResourceCard  bg-slate-900/60  border-white/10 | selected cyan
+     *   LeaderOrderResourceRow   bg-slate-800/80   (現状)
+     * 手動順位 = processingOrder != null（ドロップダウンに 1–10）
+     */
+    :root {
+      --bg-page: rgb(2 6 23);
+      --card-bg: rgba(15 23 42 / 0.6);
+      --card-border: rgba(255 255 255 / 0.1);
+      --row-base: rgba(30 41 59 / 0.8);
+      --row-ranked-a: rgba(71 85 105 / 0.82);
+      --row-ranked-b: rgba(45 55 72 / 0.88);
+      --row-ranked-c: rgba(30 41 59 / 0.8);
+      --row-ranked-c-ring: rgba(167 139 250 / 0.35);
+      --text: rgba(255 255 255 / 0.92);
+      --muted: rgba(255 255 255 / 0.55);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg-page);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .page {
+      max-width: 72rem;
+      margin: 0 auto;
+      padding: 16px 14px 32px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .lead {
+      margin: 0 0 16px;
+      max-width: 52rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-bottom: 18px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255 255 255 / 0.1);
+      background: rgba(15 23 42 / 0.55);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: rgba(255 255 255 / 0.78);
+    }
+
+    .swatch {
+      width: 28px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1px solid rgba(255 255 255 / 0.12);
+    }
+
+    .swatch--base { background: var(--row-base); }
+    .swatch--a { background: var(--row-ranked-a); }
+    .swatch--b { background: var(--row-ranked-b); }
+    .swatch--c {
+      background: var(--row-ranked-c);
+      box-shadow: inset 0 0 0 1px var(--row-ranked-c-ring);
+    }
+
+    .grid-compare {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .panel-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: rgba(255 255 255 / 0.72);
+    }
+
+    .panel-label strong {
+      color: rgba(255 255 255 / 0.95);
+      font-weight: 600;
+    }
+
+    .panel-label .tag {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .tag--current { background: rgba(100 116 139 / 0.35); color: rgba(226 232 240 / 0.9); }
+    .tag--rec { background: rgba(52 211 153 / 0.22); color: rgb(167 243 208); border: 1px solid rgba(52 211 153 / 0.35); }
+
+    /* LeaderOrderResourceCard */
+    .loc-card {
+      display: flex;
+      min-height: 14rem;
+      flex-direction: column;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      padding: 10px;
+    }
+
+    .loc-head {
+      margin-bottom: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 4px 8px;
+    }
+
+    .loc-resource-cd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 15px;
+      font-weight: 500;
+      color: rgba(255 255 255 / 0.95);
+    }
+
+    .loc-resource-jp {
+      font-size: 12px;
+      color: rgba(255 255 255 / 0.78);
+    }
+
+    .btn-auto-rank {
+      border-radius: 4px;
+      border: 1px solid rgba(196 181 253 / 0.5);
+      background: rgba(139 92 246 / 0.25);
+      color: rgb(245 243 255);
+      padding: 2px 8px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .loc-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    /* LeaderOrderResourceRow base */
+    .loc-row {
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+      background: var(--row-base);
+    }
+
+    .loc-row--ranked-a { background: var(--row-ranked-a); }
+    .loc-row--ranked-b { background: var(--row-ranked-b); }
+    .loc-row--ranked-c {
+      background: var(--row-ranked-c);
+      box-shadow: inset 0 0 0 1px var(--row-ranked-c-ring);
+    }
+
+    /* 製番左縁アクセント（本番と同系） */
+    .loc-row--accent-red { border-left: 3px solid rgb(248 113 113); padding-left: 5px; }
+    .loc-row--accent-teal { border-left: 3px solid rgb(45 212 191); padding-left: 5px; }
+    .loc-row--accent-amber { border-left: 3px solid rgb(251 191 36); padding-left: 5px; }
+
+    .loc-row-top {
+      margin-bottom: 2px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-complete {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+      border-radius: 9999px;
+      border: 2px solid rgba(255 255 255 / 0.82);
+      background: rgb(15 23 42);
+      color: #fff;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .order-select {
+      height: 28px;
+      width: 56px;
+      flex-shrink: 0;
+      border-radius: 4px;
+      border: 1px solid rgba(255 255 255 / 0.25);
+      background: rgba(15 23 42 / 0.9);
+      color: #fff;
+      font-size: 11px;
+      padding: 0 4px;
+    }
+
+    .order-select--set {
+      border-color: rgba(167 139 250 / 0.55);
+      background: rgba(30 27 75 / 0.55);
+      font-weight: 600;
+      color: rgb(237 233 254);
+    }
+
+    .fkojun {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: rgba(255 255 255 / 0.88);
+    }
+
+    .due { font-family: monospace; font-size: 10px; color: rgba(103 232 249 / 0.9); flex-shrink: 0; }
+
+    .line2 {
+      color: rgba(255 255 255 / 0.72);
+      margin-top: 2px;
+    }
+
+    .part { color: rgba(255 255 255 / 0.58); margin-top: 2px; }
+
+    .chips {
+      margin-top: 4px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .chip {
+      border-radius: 4px;
+      border: 1px solid rgba(255 255 255 / 0.12);
+      background: rgba(15 23 42 / 0.5);
+      padding: 1px 5px;
+      font-size: 9px;
+      color: rgba(255 255 255 / 0.65);
+    }
+
+    .note-box {
+      margin-top: 20px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(52 211 153 / 0.28);
+      background: rgba(6 78 59 / 0.15);
+      max-width: 52rem;
+    }
+
+    .note-box h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: rgb(167 243 208);
+    }
+
+    .note-box ul {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: rgba(255 255 255 / 0.78);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .note-box code {
+      font-family: ui-monospace, monospace;
+      font-size: 10px;
+      color: rgba(255 255 255 / 0.9);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>順位ボード — 手動順位付き行の背景ハイライト（実装前）</h1>
+    <p class="lead">
+      <strong>要件</strong>: <code>processingOrder</code> が付いている行（順位ドロップダウンが 1–10）だけ、行ブロック（<code>LeaderOrderResourceRow</code>）の背景を<strong>わずかに明るく</strong>。
+      資源CDカード全体ではなく<strong>行単位</strong>。文字・チップ・製番左縁アクセントが埋もれないこと。
+    </p>
+
+    <div class="legend">
+      <div class="legend-item"><span class="swatch swatch--base"></span> 現状: slate-800/80</div>
+      <div class="legend-item"><span class="swatch swatch--a"></span> 案A（採用）: slate-600/82（700/82 より一段明るい）</div>
+      <div class="legend-item"><span class="swatch swatch--b"></span> 案B: slate-600/88（やや強め）</div>
+      <div class="legend-item"><span class="swatch swatch--c"></span> 案C: 現状 + 内側 violet リング（順位ボタンと同系）</div>
+    </div>
+
+    <div class="grid-compare">
+      <!-- 現状 -->
+      <div class="panel">
+        <div class="panel-label"><strong>現状</strong><span class="tag tag--current">baseline</span></div>
+        <div class="loc-card">
+          <div class="loc-head">
+            <div><span class="loc-resource-cd">200</span> <span class="loc-resource-jp">旋盤 1号機</span></div>
+            <span class="btn-auto-rank">順位</span>
+          </div>
+          <div class="loc-body">
+            <div class="loc-row loc-row--accent-red">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select order-select--set"><option>3</option></select>
+                <span class="fkojun">010 / 切削</span>
+                <span class="due">1/6(火)</span>
+              </div>
+              <div class="line2">BA1S1319 · MD004433830 · 8個</div>
+              <div class="part">ストッパー台 (1)</div>
+              <div class="chips"><span class="chip">200 完了</span><span class="chip">210 未完</span></div>
+            </div>
+            <div class="loc-row loc-row--accent-teal">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select order-select--set"><option>4</option></select>
+                <span class="fkojun">020 / 仕上</span>
+                <span class="due">1/8(木)</span>
+              </div>
+              <div class="line2">BA1S1320 · MD004433831 · 2個</div>
+              <div class="part">カバー (2)</div>
+            </div>
+            <div class="loc-row loc-row--accent-amber">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select"><option>-</option></select>
+                <span class="fkojun">030 / 検査</span>
+                <span class="due">1/10(土)</span>
+              </div>
+              <div class="line2">BA1S1321 · 未設定行（順位なし）</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 案A 推奨 -->
+      <div class="panel">
+        <div class="panel-label"><strong>案A（採用）</strong><span class="tag tag--rec">slate-600/82</span></div>
+        <div class="loc-card">
+          <div class="loc-head">
+            <div><span class="loc-resource-cd">200</span> <span class="loc-resource-jp">旋盤 1号機</span></div>
+            <span class="btn-auto-rank">順位</span>
+          </div>
+          <div class="loc-body">
+            <div class="loc-row loc-row--ranked-a loc-row--accent-red">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select order-select--set"><option>3</option></select>
+                <span class="fkojun">010 / 切削</span>
+                <span class="due">1/6(火)</span>
+              </div>
+              <div class="line2">BA1S1319 · MD004433830 · 8個</div>
+              <div class="part">ストッパー台 (1)</div>
+              <div class="chips"><span class="chip">200 完了</span><span class="chip">210 未完</span></div>
+            </div>
+            <div class="loc-row loc-row--ranked-a loc-row--accent-teal">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select order-select--set"><option>4</option></select>
+                <span class="fkojun">020 / 仕上</span>
+                <span class="due">1/8(木)</span>
+              </div>
+              <div class="line2">BA1S1320 · MD004433831 · 2個</div>
+              <div class="part">カバー (2)</div>
+            </div>
+            <div class="loc-row loc-row--accent-amber">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select"><option>-</option></select>
+                <span class="fkojun">030 / 検査</span>
+                <span class="due">1/10(土)</span>
+              </div>
+              <div class="line2">BA1S1321 · 未設定行（順位なし）</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 案B -->
+      <div class="panel">
+        <div class="panel-label"><strong>案B</strong> やや目立つ</div>
+        <div class="loc-card">
+          <div class="loc-head">
+            <div><span class="loc-resource-cd">210</span> <span class="loc-resource-jp">マシニング</span></div>
+            <span class="btn-auto-rank">順位</span>
+          </div>
+          <div class="loc-body">
+            <div class="loc-row loc-row--ranked-b loc-row--accent-red">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select order-select--set"><option>1</option></select>
+                <span class="fkojun">005 / 粗加工</span>
+                <span class="due">1/5(月)</span>
+              </div>
+              <div class="line2">順位1 — 背景がやや明るい</div>
+            </div>
+            <div class="loc-row">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select"><option>-</option></select>
+                <span class="fkojun">015 / 穴あけ</span>
+                <span class="due">—</span>
+              </div>
+              <div class="line2">順位未設定 — 現状と同じ暗さ</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 案C -->
+      <div class="panel">
+        <div class="panel-label"><strong>案C</strong> リングのみ（背景は現状維持）</div>
+        <div class="loc-card">
+          <div class="loc-head">
+            <div><span class="loc-resource-cd">080</span> <span class="loc-resource-jp">FJV</span></div>
+            <span class="btn-auto-rank">順位</span>
+          </div>
+          <div class="loc-body">
+            <div class="loc-row loc-row--ranked-c loc-row--accent-teal">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select order-select--set"><option>2</option></select>
+                <span class="fkojun">040 / 5軸</span>
+                <span class="due">1/7(水)</span>
+              </div>
+              <div class="line2">violet 内側リング — 「順位」ボタンと同系</div>
+            </div>
+            <div class="loc-row loc-row--accent-red">
+              <div class="loc-row-top">
+                <span class="btn-complete">✓</span>
+                <select class="order-select"><option>-</option></select>
+                <span class="fkojun">050 / 仕上</span>
+                <span class="due">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <h2>実装メモ（案A 採用 — slate-600/82）</h2>
+      <ul>
+        <li>対象: <code>LeaderOrderResourceRow</code> で <code>row.processingOrder != null</code> かつ未完（完了行は既存 <code>opacity-50 grayscale</code> のまま）。</li>
+        <li>Tailwind: 現状 <code>bg-slate-800/80</code> → 順位あり <code>bg-slate-600/82</code>（当初案Aの <code>slate-700/82</code> より一段明るい）。</li>
+        <li>資源CDカード（<code>LeaderOrderResourceCard</code>）の背景は<strong>変更しない</strong> — 行だけ差を付けると未設定行との対比が自然。</li>
+        <li>製番左縁アクセント・フッタチップ・備考鉛筆のコントラストは案Aで維持（案Bは長時間視認でやや疲れやすい）。</li>
+        <li>サイネージ <code>kiosk_leader_order_cards</code>（API SVG）も同条件で <code>LEADER_ORDER_SVG_ROW_BG_RANKED</code>（= <code>slate-600/82</code>）を適用。</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

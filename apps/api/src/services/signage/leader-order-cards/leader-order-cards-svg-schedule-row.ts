@@ -10,6 +10,7 @@ import {
   LEADER_ORDER_SVG_DUE_AUTO,
   LEADER_ORDER_SVG_DUE_MANUAL,
   LEADER_ORDER_SVG_ROW_BG,
+  LEADER_ORDER_SVG_ROW_BG_RANKED,
   LEADER_ORDER_SVG_ROW_BORDER,
 } from './leader-order-cards-svg-theme.js';
 import { escapeXmlForSvg, truncateChars } from './leader-order-cards-svg-text.js';
@@ -97,6 +98,7 @@ export function buildLeaderOrderScheduleRowSvgFragment(
   const padTop = Math.round(4 * L.scale);
   let y = L.yRow + padTop + Math.round(L.smallFs * 0.85);
   const rxRow = Math.round(4 * L.scale);
+  const rowBg = row.hasManualOrder ? LEADER_ORDER_SVG_ROW_BG_RANKED : LEADER_ORDER_SVG_ROW_BG;
 
   const clusterLine =
     clusterInner.length > 0
@@ -132,7 +134,7 @@ export function buildLeaderOrderScheduleRowSvgFragment(
       : '';
 
   return `<g${op}>
-  <rect x="${L.contentLeft}" y="${L.yRow}" width="${L.innerWidth}" height="${L.rowBlockHeight}" rx="${rxRow}" fill="${LEADER_ORDER_SVG_ROW_BG}" stroke="${LEADER_ORDER_SVG_ROW_BORDER}" stroke-width="${LEADER_ORDER_SVG_ROW_STROKE_WIDTH}"/>
+  <rect x="${L.contentLeft}" y="${L.yRow}" width="${L.innerWidth}" height="${L.rowBlockHeight}" rx="${rxRow}" fill="${rowBg}" stroke="${LEADER_ORDER_SVG_ROW_BORDER}" stroke-width="${LEADER_ORDER_SVG_ROW_STROKE_WIDTH}"/>
   ${accentRect}
   ${clusterLine}
   ${dueLine}
