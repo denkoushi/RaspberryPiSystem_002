@@ -23,6 +23,11 @@ import {
   PurchaseOrderLookupSyncService,
   type PurchaseOrderLookupSyncResult,
 } from '../purchase-order-lookup/purchase-order-lookup-sync.service.js';
+import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../rigging/constants.js';
+import {
+  RiggingInspectionProjectionService,
+} from '../rigging/inspection/rigging-inspection-projection.service.js';
+import type { RiggingInspectionSyncResult } from '../rigging/inspection/rigging-inspection-sync.pipeline.js';
 
 export type CsvDashboardIngestSource = 'gmail' | 'manual';
 
@@ -33,6 +38,7 @@ export type CsvDashboardPostIngestResult = {
   seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null;
   customerScawSync: CustomerScawSyncResult | null;
   purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null;
+  riggingInspectionSync: RiggingInspectionSyncResult | null;
 };
 
 /**
@@ -47,7 +53,8 @@ export class CsvDashboardPostIngestService {
     private readonly externalCompletionSyncService: FkojunstExternalCompletionSyncService = new FkojunstExternalCompletionSyncService(),
     private readonly seibanMachineNameSupplementSyncService: ProductionScheduleSeibanMachineNameSupplementSyncService = new ProductionScheduleSeibanMachineNameSupplementSyncService(),
     private readonly customerScawSyncService: ProductionScheduleCustomerScawSyncService = new ProductionScheduleCustomerScawSyncService(),
-    private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService()
+    private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService(),
+    private readonly riggingInspectionProjectionService: RiggingInspectionProjectionService = new RiggingInspectionProjectionService()
   ) {}
 
   async runAfterSuccessfulIngest(params: {
@@ -61,6 +68,7 @@ export class CsvDashboardPostIngestService {
     let seibanMachineNameSupplementSync: SeibanMachineNameSupplementSyncResult | null = null;
     let customerScawSync: CustomerScawSyncResult | null = null;
     let purchaseOrderLookupSync: PurchaseOrderLookupSyncResult | null = null;
+    let riggingInspectionSync: RiggingInspectionSyncResult | null = null;
 
     if (params.dashboardId === PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID) {
       orderSupplementSync = await this.orderSupplementSyncService.syncFromSupplementDashboard();
@@ -148,13 +156,32 @@ export class CsvDashboardPostIngestService {
       );
     }
 
+    if (params.dashboardId === RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID) {
+      if (!params.ingestRunId) {
+        throw new Error('[CsvDashboardPostIngestService] ingestRunId is required for rigging inspection sync');
+      }
+      riggingInspectionSync = await this.riggingInspectionProjectionService.syncFromIngestRun({
+        ingestRunId: params.ingestRunId,
+      });
+      logger.info(
+        {
+          dashboardId: params.dashboardId,
+          ingestSource: params.ingestSource,
+          ingestRunId: params.ingestRunId,
+          syncResult: riggingInspectionSync,
+        },
+        '[CsvDashboardPostIngestService] Rigging inspection sync completed'
+      );
+    }
+
     if (
       orderSupplementSync === null &&
       fkojunstSync === null &&
       fkojunstMailSync === null &&
       seibanMachineNameSupplementSync === null &&
       customerScawSync === null &&
-      purchaseOrderLookupSync === null
+      purchaseOrderLookupSync === null &&
+      riggingInspectionSync === null
     ) {
       return {
         orderSupplementSync: null,
@@ -163,6 +190,7 @@ export class CsvDashboardPostIngestService {
         seibanMachineNameSupplementSync: null,
         customerScawSync: null,
         purchaseOrderLookupSync: null,
+        riggingInspectionSync: null,
       };
     }
 
@@ -173,6 +201,7 @@ export class CsvDashboardPostIngestService {
       seibanMachineNameSupplementSync,
       customerScawSync,
       purchaseOrderLookupSync,
+      riggingInspectionSync,
     };
   }
 }

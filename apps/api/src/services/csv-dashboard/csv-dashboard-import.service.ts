@@ -22,6 +22,8 @@ import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from '../production-schedule/constants.js';
+import { RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID } from '../rigging/constants.js';
+import { ensureRiggingSlingsInspectionPowerappsDashboard } from '../rigging/slings-inspection-powerapps-dashboard.definition.js';
 
 export type CsvDashboardIngestResult = {
   rowsProcessed: number;
@@ -133,6 +135,10 @@ export class CsvDashboardImportService {
     if (dashboardId === PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID) {
       await ensureProductionScheduleFkojunstStatusMailDashboard(prisma);
       return;
+    }
+
+    if (dashboardId === RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID) {
+      await ensureRiggingSlingsInspectionPowerappsDashboard(prisma);
     }
   }
 

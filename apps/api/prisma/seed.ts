@@ -19,6 +19,7 @@ import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
 } from '../src/services/production-schedule/constants.js';
 import { buildProductionScheduleFkojunstStatusMailDashboardDefinition } from '../src/services/production-schedule/fkojunst-status-mail-dashboard.definition.js';
+import { ensureRiggingSlingsInspectionPowerappsDashboard } from '../src/services/rigging/slings-inspection-powerapps-dashboard.definition.js';
 
 const prisma = new PrismaClient();
 const seedDir = dirname(fileURLToPath(import.meta.url));
@@ -515,6 +516,8 @@ async function main() {
       }
     }
   });
+
+  await ensureRiggingSlingsInspectionPowerappsDashboard(prisma);
 
   // CSVインポート件名パターンのデフォルトデータを投入
   const defaultSubjectPatterns = [

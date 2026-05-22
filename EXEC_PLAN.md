@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **吊具点検 Gmail 統合・サイネージ**·ブランチ **`feat/rigging-slings-inspection-gmail-signage`**·**`283b414b`**。**仕様**: Gmail **`slingsInspectionRecord_PowerApps`** → **`RiggingInspectionRecord`** 投影（dedup: 管理番号 + JST 業務日 + 氏名）·キオスク **`borrow` 後 PASS（best-effort）**·**`rigging_loan_inspection`** サイネージ（共有 **`loan-inspection-card`**）·schedule **`csv-import-rigging-slings-inspection-powerapps`**（**既定 disabled**）·**DB マイグレなし**。**ローカル**: API/Web lint/build·API **1560**·Web **547** PASS。**CI**: **`26267694608` success**。**本番（Pi5 のみ）**: Detach **`20260522-131701-20332`**（`ok=134` `changed=4` `failed=0`·Docker rebuild）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **31s**）。**デプロイ後運用（未実施）**: スケジュール有効化·可視化 preset·サイネージ割当。**ナレッジ**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §吊具点検](./docs/guides/deployment.md#rigging-slings-inspection-gmail-signage-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**） **キオスク沉浸式ヘッダー・下端中央1/3リビール（Web + Pi4 Ansible）**·ブランチ **`feat/kiosk-bottom-center-header-reveal`**·**`cbeb6bbc`**。**仕様**: 下端14px×中央1/3ホットゾーン·非表示時 `pointer-events-none`·`/kiosk/photo` allowlist·Pi4 `_appRef`/Firefox キャッシュ。**ローカル**: Vitest 46·web build·E2E smoke/kiosk。**CI**: **`26262397906` success**（E2E 修正 **`cbeb6bbc`**）。**本番（5台・1台ずつ）**: Detach **`20260522-101951-717`**（Pi5）/ **`102453-31642`**（StoneBase）/ **`103026-4234`** / **`103521-10989`** / **`103915-8240`**（各 **failed=0**）。**実機**: Phase12 **43/0/0**·StoneBase01 **UI OK**。**ナレッジ**: [KB-311](./docs/knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)·[deployment §下端リビール](./docs/guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK・ドキュメント同期・PR 経由 `main` マージ**·**第2弾までで一旦停止（第3弾保留）**） **キオスク順位ボード・shell 選定 SQL 第2弾（API のみ）**·ブランチ **`feat/kiosk-leaderboard-shell-sql-phase2`**·**PR [#317](https://github.com/denkoushi/RaspberryPiSystem_002/pull/317)**·squash **`fc485fe3`**（実装 **`56490cfd`**）。**仕様**: manual/expansion/filler **SELECT 共通化**·**相関 `processingOrder`/`globalRank` → LATERAL JOIN**·prefix 初回のみ **manual `LIMIT prefixLimit+1`（probe）**·manual **>= prefixLimit** なら **expansion スキップ**·**continue 経路は `prefixLimit` 未指定（不変）**·Web/continue 80/160/装飾後取り/第1弾 winner/COUNT **不変**·**出力同値**·**新規マイグレーションなし**。**ローカル**: fetch-policy 8·compare 6·leaderboard unit 39·統合 `leaderboard` 18 PASS。**CI**: **`26257727724` success**。**本番（Pi5 のみ）**: Detach **`20260522-081052-2796`**（`ok=134` `changed=4` `failed=0`）·Pi4/Pi3 **no hosts matched**。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **31s**）·shell ベンチ **robodrill median ~4.9s（min ~3.0s）/ fjv median ~3.1s / stonebase median ~6.6s**（[`benchmark-leaderboard-board-shell.mjs`](./scripts/test/benchmark-leaderboard-board-shell.mjs)）。**ナレッジ**: [KB-374 §shell 第2弾](./docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)·[deployment §shell 第2弾](./docs/guides/deployment.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
@@ -2309,6 +2311,27 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 吊具点検 Gmail 統合 — デプロイ後運用・現場検証（2026-05-22） {#rigging-slings-inspection-post-deploy-2026-05-22}
+
+**状態**: **Pi5 コード反映済**（**`283b414b`**·Detach **`20260522-131701-20332`**·Phase12 **43/0/0**）。**Gmail 取込・サイネージ表示は管理画面設定が未実施**（schedule 既定 **disabled**）。
+
+**優先タスク（運用）**:
+
+| # | タスク | 手順 | 完了条件 |
+|---|--------|------|----------|
+| 1 | **Gmail スケジュール有効化** | `/admin/imports/schedule` → **`csv-import-rigging-slings-inspection-powerapps`** を ON | 次回 cron 後 ingest ログに投影件数 |
+| 2 | **可視化ダッシュボード作成** | `/admin/visualization-dashboards` → **吊具点検プリセット** | preset ID が signage で選択可能 |
+| 3 | **サイネージ割当** | `/admin/signage/schedules` → **`[吊具点検]`** スロット | Pi3 `current-image` に JPEG 更新 |
+| 4 | **現場 E2E** | Gmail 未読 CSV → `RiggingInspectionRecord` 増分·キオスク吊具 borrow → PASS 行 | KB-381 Troubleshooting に実測追記 |
+
+**後続開発候補（任意）**:
+
+- dedup �突時の **更新 vs スキップ** ポリシー見直し（PowerApps 再送）
+- **`control_num` 未解決行**の管理画面アラート
+- 計測機器点検サイネージとの **同一スロット併載** 運用ガイド
+
+**正本**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §吊具点検](./docs/guides/deployment.md#rigging-slings-inspection-gmail-signage-2026-05-22)
 
 ### キオスク順位ボード — shell 選定 SQL 第3弾以降（2026-05-22）— **保留 · 後日参照** {#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照}
 

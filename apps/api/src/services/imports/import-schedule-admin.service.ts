@@ -11,6 +11,7 @@ import { FKOBAINO_CSV_IMPORT_SCHEDULE_ID } from './fkobaino-import-schedule.poli
 import { FKOJUNST_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-import-schedule.policy.js';
 import { FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID } from './fkojunst-status-mail-import-schedule.policy.js';
 import { SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID } from './seiban-machine-name-supplement-import-schedule.policy.js';
+import { RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID } from './slings-inspection-import-schedule.policy.js';
 import { normalizeSystemCsvImportRowForPersistence } from './system-csv-import-schedule-invariants.js';
 
 type CsvImportSchedule = NonNullable<BackupConfig['csvImports']>[number];
@@ -150,7 +151,8 @@ export class ImportScheduleAdminService {
       scheduleId === FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID ||
-      scheduleId === FKOBAINO_CSV_IMPORT_SCHEDULE_ID
+      scheduleId === FKOBAINO_CSV_IMPORT_SCHEDULE_ID ||
+      scheduleId === RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID
     ) {
       throw new ApiError(400, 'このスケジュールはシステムで固定されており削除できません');
     }

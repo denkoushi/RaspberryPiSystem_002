@@ -6,6 +6,16 @@ import {
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
 } from '../production-schedule/constants.js';
+import {
+  RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_CRON,
+  RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID,
+  RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID,
+} from '../rigging/constants.js';
+
+export {
+  RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_CRON,
+  RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID,
+} from '../rigging/constants.js';
 
 export type CsvImportScheduleRow = NonNullable<BackupConfig['csvImports']>[number];
 
@@ -106,6 +116,19 @@ export function buildDefaultCustomerScawCsvImportSchedule(): CsvImportScheduleRo
   };
 }
 
+export function buildDefaultRiggingSlingsInspectionCsvImportSchedule(): CsvImportScheduleRow {
+  return {
+    id: RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID,
+    name: 'RiggingSlingsInspection_PowerApps (Gmail)',
+    provider: 'gmail',
+    targets: [{ type: 'csvDashboards', source: RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID }],
+    schedule: RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_CRON,
+    enabled: false,
+    replaceExisting: false,
+    autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+  };
+}
+
 /** システム予約スケジュールID → デフォルト行ビルダー（拡張時はここに追加） */
 export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => CsvImportScheduleRow> = {
   [FKOJUNST_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstCsvImportSchedule,
@@ -113,6 +136,7 @@ export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => C
   [FKOBAINO_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkobainoCsvImportSchedule,
   [SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID]: buildDefaultSeibanMachineNameSupplementCsvImportSchedule,
   [CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID]: buildDefaultCustomerScawCsvImportSchedule,
+  [RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID]: buildDefaultRiggingSlingsInspectionCsvImportSchedule,
 };
 
 export function resolveSystemCsvImportDefaultBuilder(

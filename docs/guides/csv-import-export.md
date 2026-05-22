@@ -109,6 +109,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 - `target.source`は**CSVダッシュボードID**を指定する（件名パターンはダッシュボード設定を使用）
 - Gmail件名は`CsvDashboard.gmailSubjectPattern`から取得するため、スケジュール側で件名を設定する必要はない
 - デフォルト設定には`MeasuringInstrumentLoans`向けの無効スケジュールが含まれている（有効化は運用で実施）
+- **吊具点検 PowerApps（`slingsInspectionRecord_PowerApps`）**: 固定ダッシュボード ID `c4e8a1b2-3d6f-7890-abcd-ef1234567891`・取込後 **postIngest** で `RiggingInspectionRecord` に投影（dedup: 管理番号 + JST 業務日 + 氏名）。固定スケジュール **`csv-import-rigging-slings-inspection-powerapps`**（cron `0 * * * *`・**既定 enabled: false**）。キオスク吊具持出成功時は API 側で PASS 点検を best-effort 作成。サイネージは `rigging_loan_inspection`（計測機器点検可視化と同デザイン）。**本番（2026-05-22）**: Pi5 **`283b414b`**·Detach **`20260522-131701-20332`**·Phase12 **43/0/0** — [deployment.md §吊具点検](../guides/deployment.md#rigging-slings-inspection-gmail-signage-2026-05-22)·[KB-381](../knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)。**デプロイ後**: スケジュール有効化・可視化 preset・サイネージ割当は **管理画面で手動**
 - **落とし穴**: `CsvDashboard.gmailSubjectPattern` が `NULL` / 空文字だと、スケジュールが有効でも対象メールを検索できず取り込みできません（まずダッシュボード側の件名パターンを設定）。
 
 **設定例**（管理コンソール / CSVインポート）:
