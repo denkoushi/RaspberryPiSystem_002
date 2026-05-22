@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-22 · 吊具点検 dedup refresh / サイネージデザイン分離）
+
+- **吊具点検 dedup refresh · idNum 登録 · サイネージデザイン分離（API のみ·Pi5 本番反映済）**: 投影 dedup 時 **`inspectedAt` refresh**·idNum **80/73/69/82** マスタ登録·**吊具 active 複数のみ ` ・ ` 結合**（MI は従来 1 行/機器）。**ブランチ**: **`fix/loan-inspection-card-combined-mgmt-numbers`**（**`49386387`**）·**本番**: **`raspberrypi5` のみ**·Detach **`20260522-160832-6784`** / **`20260522-163138-380`**·**Phase12** **43/0/0**·backfill **103 created / 7 refreshed**·加工担当 **5/22 暦日 18 件/10 名**。**記録**: [KB-381](./knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §dedup refresh](./guides/deployment.md#rigging-inspection-dedup-refresh-signage-layout-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**。
+
 ### 🆕 最新アップデート（2026-05-22 · キオスク下端リビール）
 
 - **キオスク沉浸式ヘッダー・下端中央1/3リビール（Web + Pi4 Ansible・本番反映済）**: 上端全幅廃止→**下端14px×中央1/3**で `KioskHeader` を下から表示。**`/kiosk/photo`** を沉浸式 allowlist に追加。Pi4 は **`_appRef`** + Firefox キャッシュ無効。**ブランチ**: **`feat/kiosk-bottom-center-header-reveal`**（**`cbeb6bbc`**·CI **`26262397906` success**）·**本番**: Pi5 → StoneBase01 → Pi4×3 · Detach **`20260522-101951-717`** ほか 5 本·**Phase12** **43/0/0**·**StoneBase01 実機 UI OK**。**記録**: [KB-311](./knowledge-base/KB-311-kiosk-immersive-header-allowlist.md)·[deployment §下端リビール](./guides/deployment.md#kiosk-bottom-center-header-reveal-2026-05-22)·[deploy-status-recovery](./runbooks/deploy-status-recovery.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。**運用デプロイ（マージ後）**: **`./scripts/update-all-clients.sh main … --limit <host>`**（キオスク Web は Pi5 配信だが Pi4 は起動 URL・キャッシュのため **Pi4 も反映**）。
