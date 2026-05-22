@@ -58,13 +58,11 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   const dueLabel = formatDueDate(row.displayDue) || '—';
   const pres = presentLeaderOrderRow(row);
   const hasNote = Boolean(row.note && row.note.trim().length > 0);
-  const hasManualOrder = row.processingOrder != null && !row.isCompleted;
 
   return (
     <div
       className={clsx(
-        'rounded py-1 text-[11px]',
-        hasManualOrder ? 'bg-slate-600/[0.82]' : 'bg-slate-800/80',
+        'rounded bg-slate-800/80 py-1 text-[11px]',
         seibanAccentRowClass ? clsx('pl-2 pr-2', seibanAccentRowClass) : 'px-2',
         row.isCompleted && 'opacity-50 grayscale'
       )}
