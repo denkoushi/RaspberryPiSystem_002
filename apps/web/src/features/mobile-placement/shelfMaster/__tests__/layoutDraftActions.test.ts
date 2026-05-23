@@ -81,4 +81,20 @@ describe('clearAssignmentsOnCells', () => {
     const next = clearAssignmentsOnCells(entities, [4]);
     expect(next).toHaveLength(0);
   });
+
+  it('removes merged multi-cell entity when all indices are selected', () => {
+    const entities: DraftEntity[] = [
+      {
+        entityKind: 'SHELF',
+        cellIndices: [0, 1, 2],
+        resourceCd: null,
+        resourceName: null,
+        shelfCodeRaw: '中央-中央-01',
+        displayLabel: 'A',
+        aisleLabel: null
+      }
+    ];
+    const next = clearAssignmentsOnCells(entities, [0, 1, 2]);
+    expect(next).toHaveLength(0);
+  });
 });

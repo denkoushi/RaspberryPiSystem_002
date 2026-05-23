@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { toggleLayoutCellSelection } from '../model/layoutCellSelection';
 import { applyLayoutAssignment, clearAssignmentsOnCells } from '../model/layoutDraftActions';
 import { isLayoutDraftDirty, snapshotFromZone } from '../model/layoutDraftDirty';
 import { useSaveShelfLayoutZone, useShelfLayoutZone } from '../useShelfMasterQueries';
@@ -55,16 +56,18 @@ export function useZoneLayoutDraft(zoneId: MacroZoneId | null) {
     [baseline, gridSize, draftEntities]
   );
 
-  const toggleCell = (cells: number[]) => {
-    if (cells.length === 1) {
-      const idx = cells[0]!;
-      setSelectedCells((prev) => {
-        if (!multiMode) return prev.includes(idx) ? [] : [idx];
-        if (prev.includes(idx)) return prev.filter((c) => c !== idx);
-        return [...prev, idx];
-      });
-    }
-  };
+  const toggleCell = useCallback(
+    (cells: number[]) => {
+      setSelectedCells((prev) =>
+        toggleLayoutCellSelection({
+          prevSelected: prev,
+          clickedCells: cells,
+          multiMode
+        })
+      );
+    },
+    [multiMode]
+  );
 
   const handleAssign = (machines: MachineMasterDto[], onError: (msg: string) => void) => {
     if (!zoneQuery.data || !pendingKind) return;
