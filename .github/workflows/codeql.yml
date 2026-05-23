@@ -41,6 +41,7 @@ jobs:
         run: |
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Generate Prisma Client
         run: pnpm --filter @raspi-system/api exec prisma generate

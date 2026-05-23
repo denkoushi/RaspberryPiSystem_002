@@ -60,9 +60,13 @@ jobs:
         run: |
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Run part-search-core tests
         run: pnpm --filter @raspi-system/part-search-core test
+
+      - name: Run shelf-layout-core tests
+        run: pnpm --filter @raspi-system/shelf-layout-core test
 
       - name: Generate Prisma Client
         run: pnpm --filter @raspi-system/api exec prisma generate
@@ -93,6 +97,7 @@ jobs:
         run: |
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Generate Prisma Client
         run: pnpm --filter @raspi-system/api exec prisma generate
@@ -395,6 +400,7 @@ jobs:
         run: |
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Run E2E smoke tests
         env:
@@ -426,6 +432,7 @@ jobs:
         run: |
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Generate Prisma Client
         run: pnpm --filter @raspi-system/api exec prisma generate

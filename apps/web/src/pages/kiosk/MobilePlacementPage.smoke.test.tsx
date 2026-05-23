@@ -92,6 +92,6 @@ describe('MobilePlacementPage', () => {
 
     expect(screen.queryByRole('region', { name: 'Zero2W 棚番配膳の状態' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '棚番配膳一覧（Zero2W）' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Zero2W担当棚' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '棚マスタ' })).toBeInTheDocument();
   });
 });
