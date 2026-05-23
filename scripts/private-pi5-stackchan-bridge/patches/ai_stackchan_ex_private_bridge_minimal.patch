@@ -1,0 +1,217 @@
+diff --git a/firmware/src/llm/ChatGPT/ChatGPT.cpp b/firmware/src/llm/ChatGPT/ChatGPT.cpp
+index d378e22..4bc26f4 100644
+--- a/firmware/src/llm/ChatGPT/ChatGPT.cpp
++++ b/firmware/src/llm/ChatGPT/ChatGPT.cpp
+@@ -3,6 +3,7 @@
+ #include <SPIFFS.h>
+ #include <Avatar.h>
+ #include <HTTPClient.h>
++#include <WiFiClient.h>
+ #include <WiFiClientSecure.h>
+ #include "rootCA/rootCACertificate.h"
+ #include <ArduinoJson.h>
+@@ -16,6 +17,22 @@
+ using namespace m5avatar;
+ extern Avatar avatar;
+ 
++#ifndef CHATGPT_API_URL
++#define CHATGPT_API_URL "https://api.openai.com/v1/chat/completions"
++#endif
++
++#ifndef CHATGPT_API_USE_AUTH_BEARER
++#define CHATGPT_API_USE_AUTH_BEARER 1
++#endif
++
++#ifndef CHATGPT_STACKCHAN_TOKEN
++#define CHATGPT_STACKCHAN_TOKEN ""
++#endif
++
++#ifndef CHATGPT_HTTP_MAX_ATTEMPTS
++#define CHATGPT_HTTP_MAX_ATTEMPTS 2
++#endif
++
+ 
+ const String json_ChatString = 
+ "{\"model\": \"gpt-4o\","
+@@ -145,46 +162,98 @@ void ChatGPT::load_role(){
+ 
+ String ChatGPT::https_post_json(const char* url, const char* json_string, const char* root_ca) {
+   String payload = "";
+-  WiFiClientSecure *client = new WiFiClientSecure;
+-  if(client) {
+-    client -> setCACert(root_ca);
+-    {
+-      // Add a scoping block for HTTPClient https to make sure it is destroyed before WiFiClientSecure *client is 
+-      HTTPClient https;
+-      https.setTimeout( 65000 ); 
+-  
+-      Serial.print("[HTTPS] begin...\n");
+-      if (https.begin(*client, url)) {  // HTTPS
+-        Serial.print("[HTTPS] POST...\n");
+-        // start connection and send HTTP header
+-        https.addHeader("Content-Type", "application/json");
+-        https.addHeader("Authorization", String("Bearer ") + param.api_key);
+-        int httpCode = https.POST((uint8_t *)json_string, strlen(json_string));
+-  
+-        // httpCode will be negative on error
+-        if (httpCode > 0) {
+-          // HTTP header has been send and Server response header has been handled
+-          Serial.printf("[HTTPS] POST... code: %d\n", httpCode);
+-  
+-          // file found at server
+-          if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+-            payload = https.getString();
++  const bool isHttps = String(url).startsWith("https://");
++  for (int attempt = 1; attempt <= CHATGPT_HTTP_MAX_ATTEMPTS; attempt++) {
++    HTTPClient http;
++    http.setTimeout(65000);
++    int httpCode = -1;
++
++    if (isHttps) {
++      WiFiClientSecure secureClient;
++      secureClient.setCACert(root_ca);
++      Serial.printf("[HTTPS] begin... %s (attempt=%d/%d)\n", url, attempt, CHATGPT_HTTP_MAX_ATTEMPTS);
++      if (http.begin(secureClient, url)) {
++        http.addHeader("Content-Type", "application/json");
++        if (strlen(CHATGPT_STACKCHAN_TOKEN) > 0) {
++          http.addHeader("X-Stackchan-Token", CHATGPT_STACKCHAN_TOKEN);
++        }
++#if CHATGPT_API_USE_AUTH_BEARER
++        if (param.api_key.length() > 0) {
++          http.addHeader("Authorization", String("Bearer ") + param.api_key);
++        }
++#endif
++        httpCode = http.POST((uint8_t *)json_string, strlen(json_string));
++      }
++      if (httpCode > 0) {
++        Serial.printf("[HTTP] POST... code: %d (attempt=%d/%d)\n", httpCode, attempt, CHATGPT_HTTP_MAX_ATTEMPTS);
++        payload = http.getString();
++        Serial.printf("[HTTP] payload length: %d\n", payload.length());
++        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
++          if (payload != "") {
+             Serial.println("//////////////");
+             Serial.println(payload);
+             Serial.println("//////////////");
++            http.end();
++            return payload;
+           }
+-        } else {
+-          Serial.printf("[HTTPS] POST... failed, error: %s\n", https.errorToString(httpCode).c_str());
+-        }  
+-        https.end();
++          Serial.println("[HTTP] empty payload; retrying");
++        } else if (attempt == CHATGPT_HTTP_MAX_ATTEMPTS) {
++          http.end();
++          return payload;
++        }
+       } else {
+-        Serial.printf("[HTTPS] Unable to connect\n");
++        String errorMessage = http.errorToString(httpCode);
++        Serial.printf("[HTTP] POST... failed, error: %s (attempt=%d/%d)\n", errorMessage.c_str(), attempt, CHATGPT_HTTP_MAX_ATTEMPTS);
++        payload = String("{\"error\":{\"message\":\"http post failed: ") + errorMessage + String("\"}}");
++        if (attempt == CHATGPT_HTTP_MAX_ATTEMPTS) {
++          http.end();
++          return payload;
++        }
+       }
+-      // End extra scoping block
+-    }  
+-    delete client;
+-  } else {
+-    Serial.println("Unable to create client");
++      http.end();
++    } else {
++      WiFiClient plainClient;
++      Serial.printf("[HTTP] begin... %s (attempt=%d/%d)\n", url, attempt, CHATGPT_HTTP_MAX_ATTEMPTS);
++      if (http.begin(plainClient, url)) {
++        http.addHeader("Content-Type", "application/json");
++        if (strlen(CHATGPT_STACKCHAN_TOKEN) > 0) {
++          http.addHeader("X-Stackchan-Token", CHATGPT_STACKCHAN_TOKEN);
++        }
++#if CHATGPT_API_USE_AUTH_BEARER
++        if (param.api_key.length() > 0) {
++          http.addHeader("Authorization", String("Bearer ") + param.api_key);
++        }
++#endif
++        httpCode = http.POST((uint8_t *)json_string, strlen(json_string));
++      }
++      if (httpCode > 0) {
++        Serial.printf("[HTTP] POST... code: %d (attempt=%d/%d)\n", httpCode, attempt, CHATGPT_HTTP_MAX_ATTEMPTS);
++        payload = http.getString();
++        Serial.printf("[HTTP] payload length: %d\n", payload.length());
++        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
++          if (payload != "") {
++            Serial.println("//////////////");
++            Serial.println(payload);
++            Serial.println("//////////////");
++            http.end();
++            return payload;
++          }
++          Serial.println("[HTTP] empty payload; retrying");
++        } else if (attempt == CHATGPT_HTTP_MAX_ATTEMPTS) {
++          http.end();
++          return payload;
++        }
++      } else {
++        String errorMessage = http.errorToString(httpCode);
++        Serial.printf("[HTTP] POST... failed, error: %s (attempt=%d/%d)\n", errorMessage.c_str(), attempt, CHATGPT_HTTP_MAX_ATTEMPTS);
++        payload = String("{\"error\":{\"message\":\"http post failed: ") + errorMessage + String("\"}}");
++        if (attempt == CHATGPT_HTTP_MAX_ATTEMPTS) {
++          http.end();
++          return payload;
++        }
++      }
++      http.end();
++    }
+   }
+   return payload;
+ }
+@@ -290,7 +359,7 @@ String ChatGPT::execChatGpt(String json_string, String& calledFunc) {
+   avatar.setExpression(Expression::Doubt);
+   avatar.setSpeechFont(&fonts::efontJA_16);
+   avatar.setSpeechText("考え中…");
+-  String ret = https_post_json("https://api.openai.com/v1/chat/completions", json_string.c_str(), root_ca_openai);
++  String ret = https_post_json(CHATGPT_API_URL, json_string.c_str(), root_ca_openai);
+   avatar.setExpression(Expression::Neutral);
+   avatar.setSpeechText("");
+   Serial.println(ret);
+@@ -307,6 +376,27 @@ String ChatGPT::execChatGpt(String json_string, String& calledFunc) {
+       avatar.setSpeechText("");
+       avatar.setExpression(Expression::Neutral);
+     }else{
++      const char* simple_reply = doc["replyText"];
++      if(simple_reply != 0){
++        Serial.println(simple_reply);
++        response = String(simple_reply);
++        std::replace(response.begin(),response.end(),'\n',' ');
++        calledFunc = String("");
++        return response;
++      }
++
++      const char* error_message = doc["error"]["message"];
++      if(error_message != 0){
++        Serial.println(error_message);
++        avatar.setExpression(Expression::Sad);
++        avatar.setSpeechText("エラーです");
++        response = String(error_message);
++        delay(1000);
++        avatar.setSpeechText("");
++        avatar.setExpression(Expression::Neutral);
++        return response;
++      }
++
+       const char* data = doc["choices"][0]["message"]["content"];
+       
+       // content = nullならfunction call
+diff --git a/firmware/platformio.ini b/firmware/platformio.ini
+index 1f7b0ff..8c9e413 100644
+--- a/firmware/platformio.ini
++++ b/firmware/platformio.ini
+@@ -129,7 +129,7 @@ monitor_speed = 115200
+ upload_speed = 1500000
+ lib_deps = 
+-	m5stack/M5Unified @ 0.1.17
++	m5stack/M5Unified @ 0.2.7
+ 	earlephilhower/ESP8266Audio @ ^1.9.7
+ 	bblanchon/ArduinoJson @ ^7
+ 	ESP32WebServer

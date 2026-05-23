@@ -1,6 +1,6 @@
 # 私用 Pi5 `stackchan-bridge` 標準デプロイ
 
-最終更新: 2026-05-14
+最終更新: 2026-05-23
 
 ## 目的
 
@@ -12,7 +12,7 @@
 - Playbook: `infrastructure/ansible/playbooks/private-pi5-stackchan-bridge.yml`
 - Sample inventory: `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample.yml`
 - Deploy wrapper: `scripts/private-pi5-stackchan-bridge/deploy-private-pi5-stackchan-bridge.sh`
-- Bridge 実装: `scripts/private-pi5-stackchan-bridge/bridge_server.py` / `scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py` / `scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py` / `scripts/private-pi5-stackchan-bridge/home_assistant_client.py` / `scripts/private-pi5-stackchan-bridge/stt_bridge_core.py` / `scripts/private-pi5-stackchan-bridge/stt_runtime_client.py`
+- Bridge 実装: `scripts/private-pi5-stackchan-bridge/bridge_server.py` / `scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py` / `scripts/private-pi5-stackchan-bridge/stackchan_utterance_core.py` / `scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py` / `scripts/private-pi5-stackchan-bridge/home_assistant_client.py` / `scripts/private-pi5-stackchan-bridge/stt_bridge_core.py` / `scripts/private-pi5-stackchan-bridge/stt_runtime_client.py`
 - （`private_pi5_stackchan_compat_ip` 利用時）互換 alias 再適用 hook: `infrastructure/ansible/templates/private-pi5-stackchan-compat-ip-dispatcher.sh.j2` → Pi5 の `/etc/NetworkManager/dispatcher.d/99-stackchan-bridge-compat-ip`
 
 ## 前提
@@ -62,7 +62,7 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 ## Playbook が行うこと
 
 1. Tailscale preflight
-2. `bridge_server.py` / `stackchan_chat_core.py` / `dgx_runtime_client.py` / `home_assistant_client.py` / STT 関連を私用 Pi5 へ同期
+2. `bridge_server.py` / `stackchan_chat_core.py` / `stackchan_utterance_core.py` / `dgx_runtime_client.py` / `home_assistant_client.py` / STT 関連を私用 Pi5 へ同期
 3. `pyproject.toml` / `uv.lock` を同期し、`uv sync --frozen` で **`/home/.../stackchan-bridge/.venv`** を再生成/更新
 4. `.env` を template から生成（`0600`）
 5. （任意）StackChan 互換用の **旧 LAN IP alias** を **`stackchan-bridge-compat-ip.service`（oneshot・起動時）** と **NetworkManager dispatcher `up` / `dhcp4-change`（再接続・DHCP 更新後の再適用）** で管理
@@ -83,6 +83,17 @@ ssh <private-pi5-user>@<private-pi5-host> \
 
 - `systemctl is-active` が `active`
 - `/healthz` が `ok`
+
+**utterance（2026-05-23 以降・任意）**:
+
+```bash
+curl -fsS -X POST "http://127.0.0.1:18080/api/stackchan/utterance" \
+  -H "Content-Type: audio/wav" \
+  --data-binary @/path/to/sample.wav
+```
+
+- **期待**: `200` + 非空 `replyText`（`sttText` も返る）。
+- **404**: playbook 未反映 or サービス再起動前 → 再デプロイ。
 
 StackChan 側が **旧 bridge IP** を見ている疑いがある場合は、追加で次を確認する。
 
@@ -111,6 +122,7 @@ journalctl -u stackchan-bridge --since "5 minutes ago" --no-pager
 - 2026-05-11 最終: デバイス側は `M5Unified 0.2.7` への更新と、`WebVoiceVoxTTS.cpp` の chunked MP3 保存対応により、`I2S ... failed` / `mp3 download bytes=-11 expected=-1` の主再現経路を解消。以後の障害切り分けは、まず `bridge /healthz` と `/api/stackchan/stt` を確認してからデバイス側ログを見る。
 - 2026-05-13: **STT（生 WAV）や大きめ POST** で stackchan-bridge が **`request read timeout`** / **`408 REQUEST_TIMEOUT`** を返す場合、**HTTP 受付のソケット読取タイムアウト**（**`STACKCHAN_REQUEST_READ_TIMEOUT_SEC` を正にしたときのみ** `connection.settimeout` が掛かる）が**狭すぎる**ことがある。**未設定・0 では無制限読取**。**30〜120 秒級**へ上げるか、不要なら **0** に戻して `stackchan-bridge` を再起動（**`STT_UPSTREAM_TIMEOUT_SEC` や faster-whisper 推論時間とは別**）。あわせて StackChan 側は **`CHATGPT_API_URL` のビルドフラグ抜け**で OpenAI 既定へ戻り **bridge に chat POST が来ない**ことがある（KB §2026-05-13）。
 - 2026-05-13: 音声会話の実用既定として、bridge は **chat 低遅延予算**（`STACKCHAN_CHAT_DEFAULT_MAX_TOKENS=160` / `STACKCHAN_CHAT_MAX_TOKENS_CAP=192` / `STACKCHAN_CHAT_MAX_MESSAGES=8` / `STACKCHAN_CHAT_ALLOW_THINKING=false`）と、**短発話 STT 再試行**（`STT_LOCAL_RETRY_WITHOUT_VAD=true`）を持つ。`faster-whisper-local` が空結果を返す場合は language 自動判定 + VAD 無しで1回再試行し、任意で `STT_LOCAL_FALLBACK_TO_UPSTREAM_ON_EMPTY` により上流 STT へ逃がせる。
+- 2026-05-23: **`stackchan_utterance_core.py`** と **`POST /api/stackchan/utterance`** を追加（WAV 1 回で STT→LLM→`replyText`）。Ansible 同期対象に含める。**初回 deploy 後に 404** だった事例は **playbook 再実行**で解消。**STT** は `private_pi5_stt_provider=faster-whisper-local` 推奨（DGX `/v1/audio/transcriptions` 不要）。実機は **utterance E2E 未完了・ハード復旧待ち**（[KB §2026-05-23](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)）。
 - 2026-05-14: **`home_assistant_client.py`** を標準デプロイ対象に追加。**Home Assistant** は **`GET /api/states/<entity>`** で **allowlist された entity だけ**を読み、LLM に **`system`** 文言として載せる（**制御 API は呼ばない**）。環境変数は `.env`/Ansible で `HOME_ASSISTANT_CONTEXT_*`。実機の **ウェイクワード／マイク／オフライン問題** は bridge とは独立に切り分けが必要であり、詳細な引き継ぎ・試行済みワークストリームは [KB-stackchan-community-firmware-supply-chain.md §2026-05-14](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-14-追補-実機ワークストリームウェイクワード登録オフラインモードシリアル本-repo-未コミットの試行含む)·[stackchan-community-text-only-e2e §6.4](../runbooks/stackchan-community-text-only-e2e.md#64-2026-05-14-引き継ぎウェイクワード登録オフラインシリアル) に集約した。
 
 ## 関連

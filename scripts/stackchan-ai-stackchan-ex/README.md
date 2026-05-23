@@ -12,8 +12,12 @@
 git clone https://github.com/ronron-gh/AI_StackChan_Ex.git
 cd AI_StackChan_Ex
 git checkout d894859648d4323044761cd49615694027abeb25   # supply-chain-lock.json と一致させる
-git apply /path/to/RaspberryPiSystem_002/scripts/private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch
+# 推奨: 壊れた monolithic patch の代わりに Python 適用スクリプトを使う
+python3 /path/to/RaspberryPiSystem_002/scripts/stackchan-ai-stackchan-ex/apply_chatgpt_private_bridge.py .
+python3 /path/to/RaspberryPiSystem_002/scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py .
 ```
+
+**注意**: [`patches/ai_stackchan_ex_private_bridge.patch`](../private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) は **二重 diff で `git apply` 不可**。Mac USB 一括は [`mac_usb_dev.sh`](./mac_usb_dev.sh) の `setup` が上記 2 スクリプトを実行する。
 
 ## 2) PlatformIO の GitHub 依存をコミットにピン留め
 
@@ -91,7 +95,28 @@ private Pi5 bridge は **LLM 境界に加えて STT 境界（`POST /api/stackcha
 
 ### パッチとの関係
 
-[`patches/ai_stackchan_ex_private_bridge.patch`](../private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) は **HTTP(S) での JSON POST** と **`/simple` 応答のパース**を補強するものであり、**音声コーデックやマイク入力とは独立**。音声を足しても **bridge 側の追加差分は原則不要**。
+- **chat 経路**: [`apply_chatgpt_private_bridge.py`](./apply_chatgpt_private_bridge.py)（旧 [`ai_stackchan_ex_private_bridge.patch`](../private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) の代替）。
+- **utterance 経路**: [`apply_utterance_overlay.py`](./apply_utterance_overlay.py) + [`firmware-overlay/`](./firmware-overlay/)（`STACKCHAN_UTTERANCE_URL` 有効時、`STT_ChatGPT` が Pi5 へ WAV 1 回 POST）。
+- いずれも **音声コーデックやマイク入力とは独立**。utterance 利用時は bridge に **`POST /api/stackchan/utterance`** が必要（[bridge README](../private-pi5-stackchan-bridge/README.md)）。
+
+**実機ステータス（2026-05-23）**: utterance ファーム書き込み後、**画面真っ黒・無音・USB 未認識**で E2E 未完了。再開手順は [KB §2026-05-23](../../docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)。
+
+## 5.2) Mac USB 開発（実機接続）
+
+```bash
+# 初回: clone・パッチ・依存ピン留め
+STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
+  ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh setup
+
+# ビルド・書き込み（USB は /dev/cu.usbmodem* を自動検出）
+STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
+  ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh all
+
+# シリアル監視
+./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh monitor
+```
+
+`STACKCHAN_UTTERANCE_URL` 付きビルドでは、会話1回分を `POST /api/stackchan/utterance` に集約する（[`firmware-overlay/`](./firmware-overlay/) + [`apply_utterance_overlay.py`](./apply_utterance_overlay.py)）。
 
 ## 6) 関連ドキュメント
 

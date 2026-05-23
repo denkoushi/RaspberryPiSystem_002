@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import json
 import os
 import socket
@@ -18,6 +19,13 @@ from stackchan_chat_core import (
     ChatValidationConfig,
     format_simple_success,
     validate_chat_payload,
+)
+from stackchan_utterance_core import (
+    UtteranceFailure,
+    UtteranceSuccess,
+    UtteranceWorkflow,
+    format_utterance_success,
+    validate_utterance_json_payload,
 )
 
 LISTEN_HOST = os.getenv("STACKCHAN_BRIDGE_HOST", "0.0.0.0")
@@ -150,17 +158,82 @@ class Handler(BaseHTTPRequestHandler):
         raw_paths = {"/api/stackchan/chat", "/api/stackchan/chat/", "/api/system/stackchan/chat", "/api/system/stackchan/chat/"}
         simple_paths = {"/api/stackchan/chat/simple", "/api/stackchan/chat/simple/"}
         stt_paths = {"/api/stackchan/stt", "/api/stackchan/stt/"}
-        if route_path not in raw_paths and route_path not in simple_paths and route_path not in stt_paths:
+        utterance_paths = {"/api/stackchan/utterance", "/api/stackchan/utterance/"}
+        if (
+            route_path not in raw_paths
+            and route_path not in simple_paths
+            and route_path not in stt_paths
+            and route_path not in utterance_paths
+        ):
             _error_response(self, 404, "NOT_FOUND", "endpoint not found")
             return
         simple_mode = route_path in simple_paths
         stt_mode = route_path in stt_paths
+        utterance_mode = route_path in utterance_paths
 
         if STACKCHAN_TOKEN:
             client_token = self.headers.get("X-Stackchan-Token", "")
             if client_token != STACKCHAN_TOKEN:
                 _error_response(self, 401, "UNAUTHORIZED", "invalid stackchan token")
                 return
+
+        if utterance_mode:
+            content_type = self.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                payload, err = _read_json(self)
+                if err:
+                    _error_response(self, 400, "BAD_REQUEST", err)
+                    return
+                validated_utt, verr = validate_utterance_json_payload(
+                    payload if isinstance(payload, dict) else None,
+                    CHAT_VALIDATION_CONFIG,
+                )
+            else:
+                try:
+                    content_length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    _error_response(self, 400, "BAD_REQUEST", "invalid content-length")
+                    return
+                raw = self.rfile.read(content_length) if content_length > 0 else b""
+                if not raw:
+                    _error_response(self, 400, "BAD_REQUEST", "empty body")
+                    return
+                raw_headers: dict[str, Any] = {
+                    "audioBase64": base64.b64encode(raw).decode("ascii"),
+                    "contentType": content_type or "audio/wav",
+                }
+                if lang := self.headers.get("X-Stt-Language"):
+                    raw_headers["language"] = lang
+                if stt_model := self.headers.get("X-Stt-Model"):
+                    raw_headers["sttModel"] = stt_model
+                if max_tok := self.headers.get("X-Chat-Max-Tokens"):
+                    raw_headers["maxTokens"] = max_tok
+                if temp := self.headers.get("X-Chat-Temperature"):
+                    raw_headers["temperature"] = temp
+                validated_utt, verr = validate_utterance_json_payload(raw_headers, CHAT_VALIDATION_CONFIG)
+            if verr or validated_utt is None:
+                _error_response(self, 400, "BAD_REQUEST", verr or "bad request")
+                return
+
+            utterance_workflow = UtteranceWorkflow(
+                SttWorkflow(self.stt_client),
+                ChatCompletionWorkflow(self.dgx_client, self.dgx_model, self.home_assistant_client),
+            )
+            utt_outcome = utterance_workflow.run(validated_utt, log=self.log_message)
+            if isinstance(utt_outcome, UtteranceSuccess):
+                _json_response(self, utt_outcome.status_code, format_utterance_success(utt_outcome))
+                return
+            if isinstance(utt_outcome, UtteranceFailure):
+                _error_response(
+                    self,
+                    utt_outcome.http_status,
+                    utt_outcome.code,
+                    utt_outcome.message,
+                    utt_outcome.retryable,
+                    {**(utt_outcome.details or {}), "stage": utt_outcome.stage},
+                )
+                return
+            return
 
         if stt_mode:
             content_type = self.headers.get("Content-Type", "")
