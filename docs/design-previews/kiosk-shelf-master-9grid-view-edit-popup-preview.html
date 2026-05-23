@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>棚マスタ — 9マス俯瞰 + 編集ポップアップ（B採用）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.18);
+      --aisle-b: rgba(56, 189, 248, 0.45);
+      --unused: rgba(15, 23, 42, 0.65);
+      --off: 0.28;
+      --overlay: rgba(2, 6, 23, 0.78);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+    }
+    .page { max-width: 1320px; margin: 0 auto; padding: 0.4rem; }
+    .note {
+      margin: 0 0 0.4rem;
+      font-size: 0.65rem;
+      color: #a7f3d0;
+      line-height: 1.45;
+    }
+    .note strong { color: #fef3c7; }
+
+    .monitor {
+      width: min(1280px, 100%);
+      height: min(1024px, 90vh);
+      margin: 0 auto;
+      border-radius: 14px;
+      border: 3px solid #334155;
+      overflow: hidden;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.4);
+    }
+    .monitor-label {
+      font-size: 0.6rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .kiosk { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.18rem 0.45rem;
+      min-height: 0;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.55);
+    }
+    .top h2 {
+      margin: 0;
+      font-size: 0.72rem;
+      font-weight: 800;
+      line-height: 1.15;
+      flex: 1;
+    }
+    .top .seg {
+      display: flex;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .top .seg button {
+      appearance: none;
+      border: none;
+      background: rgba(255, 255, 255, 0.04);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.62rem;
+      font-weight: 700;
+      line-height: 1.1;
+      padding: 0.14rem 0.42rem;
+      cursor: pointer;
+    }
+    .top .seg button.on { background: rgba(251, 191, 36, 0.18); color: #fef3c7; }
+    .top .seg button:disabled { opacity: var(--off); }
+
+    .stage {
+      flex: 1;
+      position: relative;
+      padding: 0.45rem;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 9マス全面 — 各マスにミニ俯瞰 */
+    .macro-full {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 7px;
+      min-height: 0;
+    }
+
+    .macro-cell {
+      position: relative;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      padding: 0.3rem 0.35rem 0.35rem;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      background: color-mix(in srgb, #6b7280 28%, #0f172a);
+    }
+
+    .macro-head {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-shrink: 0;
+      margin-bottom: 0.2rem;
+      line-height: 1.15;
+      min-height: 0;
+    }
+    .macro-head .name {
+      flex-shrink: 0;
+      font-size: clamp(0.72rem, 1.5vw, 0.92rem);
+      font-weight: 800;
+      line-height: 1.15;
+    }
+    .macro-head .legend {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.55rem;
+      color: var(--muted);
+      line-height: 1.15;
+      white-space: nowrap;
+    }
+    .macro-head .legend span { margin-right: 0.35rem; }
+    .macro-head .legend .dot {
+      display: inline-block;
+      width: 0.45rem;
+      height: 0.45rem;
+      border-radius: 2px;
+      vertical-align: middle;
+      margin-right: 0.12rem;
+    }
+    .dot.machine { background: var(--machine); border: 1px solid var(--machine-b); }
+    .dot.shelf { background: var(--shelf); border: 1px solid var(--shelf-b); }
+
+    .macro-head .btn-edit {
+      appearance: none;
+      flex-shrink: 0;
+      align-self: center;
+      border-radius: 6px;
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      background: rgba(56, 189, 248, 0.12);
+      color: #e0f2fe;
+      font: inherit;
+      font-size: clamp(0.58rem, 1.1vw, 0.68rem);
+      font-weight: 800;
+      line-height: 1.15;
+      padding: 0.06rem 0.38rem;
+      cursor: pointer;
+    }
+    .btn-edit:hover { background: rgba(56, 189, 248, 0.25); }
+
+    /* ミニ俯瞰（見るだけ） */
+    .mini-map {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 3px;
+      min-height: 0;
+      pointer-events: none;
+    }
+    .mini-cell {
+      border-radius: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 1px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .mini-cell .k {
+      font-size: clamp(0.42rem, 0.9vw, 0.52rem);
+      font-weight: 800;
+      opacity: 0.75;
+      line-height: 1;
+    }
+    .mini-cell .t {
+      font-size: clamp(0.48rem, 1vw, 0.62rem);
+      font-weight: 800;
+      line-height: 1.05;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mini-cell.machine {
+      background: var(--machine);
+      border-color: var(--machine-b);
+      color: #cbd5e1;
+    }
+    .mini-cell.shelf {
+      background: linear-gradient(180deg, #5c4010, var(--shelf));
+      border-color: var(--shelf-b);
+      color: #fef3c7;
+    }
+    .mini-cell.aisle {
+      background: var(--aisle);
+      border-color: var(--aisle-b);
+      border-style: dashed;
+      color: #64748b;
+    }
+    .mini-cell.unused {
+      background: var(--unused);
+      color: #475569;
+    }
+    .mini-cell.unused .t { font-size: 0.7rem; opacity: 0.4; }
+
+    /* 編集ポップアップ */
+    .backdrop {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: var(--overlay);
+      z-index: 30;
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem;
+    }
+    .backdrop.open { display: flex; }
+    .modal {
+      width: min(96%, 1080px);
+      max-height: 94%;
+      border-radius: 16px;
+      border: 2px solid var(--amber);
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      padding: 0.5rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    }
+    .modal-top {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-bottom: 0.4rem;
+      flex-shrink: 0;
+    }
+    .modal-top h3 { margin: 0; flex: 1; font-size: 0.95rem; font-weight: 800; color: #fef3c7; }
+    .btn-close {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.3rem 0.55rem;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 0.45rem;
+      min-height: 0;
+    }
+
+    .edit-map {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 6px;
+      border-radius: 12px;
+      border: 2px solid var(--amber);
+      background: rgba(120, 53, 15, 0.1);
+      padding: 6px;
+      min-height: 260px;
+    }
+    .cell {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      padding: 4px 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      gap: 2px;
+    }
+    .cell .kind-badge { font-size: 0.58rem; font-weight: 800; opacity: 0.85; }
+    .cell .main { font-size: clamp(0.78rem, 1.3vw, 1rem); font-weight: 800; line-height: 1.1; }
+    .cell .code { font-family: ui-monospace, monospace; font-size: 0.65rem; color: #7dd3fc; }
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); color: #cbd5e1; }
+    .cell.shelf { background: linear-gradient(180deg, #5c4008, var(--shelf)); border-color: var(--shelf-b); color: #fef3c7; }
+    .cell.aisle { background: var(--aisle); border-color: var(--aisle-b); border-style: dashed; color: #64748b; }
+    .cell.unused { background: var(--unused); color: #64748b; }
+    .cell.unused .main { font-size: 1rem; opacity: 0.45; }
+    .cell.sel { outline: 3px solid var(--sky); outline-offset: 1px; }
+    .cell:disabled { opacity: var(--off); cursor: not-allowed; }
+
+    .dock {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      padding: 0.45rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      overflow: auto;
+    }
+    .dock .hint {
+      font-size: 0.62rem;
+      color: var(--muted);
+      margin: 0 0 0.2rem;
+      line-height: 1.35;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+    .ctl {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 0.38rem 0.52rem;
+      cursor: pointer;
+    }
+    .ctl:disabled { opacity: var(--off); cursor: not-allowed; }
+    .ctl.on { outline: 2px solid #fff; outline-offset: 1px; }
+    .ctl.primary:not(:disabled) {
+      border-color: #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+    }
+    .ctl.danger:not(:disabled) {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecdd3;
+    }
+    .spacer { flex: 1; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <p class="note">
+      <strong>B採用</strong> — 9マスに加工機・置き場を常時表示（見るだけ・ポップアップ不要）。
+      <strong>「編集」</strong> のときだけポップアップで設定。
+    </p>
+
+    <div class="monitor">
+      <div class="monitor-label">20インチ · 俯瞰 = 9マス全面 · 編集のみモーダル</div>
+      <div class="kiosk">
+        <div class="top">
+          <h2>棚マスタ — 工場全体</h2>
+          <div class="seg">
+            <button type="button" class="on">レイアウト</button>
+            <button type="button" disabled>再割当</button>
+            <button type="button" disabled>Zero2W</button>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="macro-full" id="macro-full"></div>
+          <div class="backdrop" id="backdrop">
+            <div class="modal" role="dialog" aria-modal="true">
+              <div class="modal-top">
+                <h3 id="modal-title">編集</h3>
+                <button type="button" class="btn-close" id="btn-close">閉じる · 俯瞰へ</button>
+              </div>
+              <div class="modal-body" id="modal-body"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const KIND = {
+      SHELF: { cls: 'shelf', badge: '棚', k: '棚' },
+      MACHINE: { cls: 'machine', badge: '機', k: '機' },
+      AISLE: { cls: 'aisle', badge: '路', k: '路' },
+      UNUSED: { cls: 'unused', badge: '', k: '', main: '—' },
+    };
+
+    const ZONES = [
+      { id: 'nw', name: '西·北', layout: [
+        { r: 0, c: 0, kind: 'MACHINE', label: 'FJV60' },
+        { r: 0, c: 2, kind: 'SHELF', label: 'FJV北' },
+        { r: 1, c: 1, kind: 'AISLE', label: '路' },
+        { r: 2, c: 0, kind: 'SHELF', label: 'FJV西' },
+      ]},
+      { id: 'n', name: '中央·北', layout: [
+        { r: 0, c: 1, kind: 'MACHINE', label: 'RD02' },
+        { r: 1, c: 0, kind: 'SHELF', label: 'RD02西' },
+        { r: 1, c: 2, kind: 'SHELF', label: 'RD02東' },
+        { r: 2, c: 1, kind: 'AISLE', label: '路' },
+      ]},
+      { id: 'ne', name: '東·北', layout: [
+        { r: 0, c: 0, kind: 'SHELF', label: '置場北' },
+        { r: 1, c: 2, kind: 'MACHINE', label: 'Stone' },
+        { r: 2, c: 2, kind: 'SHELF', label: 'Stone南' },
+      ]},
+      { id: 'w', name: '西·中央', layout: [
+        { r: 0, c: 0, kind: 'AISLE', label: '路' },
+        { r: 1, c: 1, kind: 'MACHINE', label: 'RD01' },
+        { r: 2, c: 0, kind: 'SHELF', label: 'RD01西' },
+      ]},
+      { id: 'c', name: '中央·中央', layout: [
+        { r: 0, c: 0, kind: 'MACHINE', label: 'RD01' },
+        { r: 0, c: 2, kind: 'SHELF', label: 'RD01南' },
+        { r: 1, c: 0, kind: 'SHELF', label: 'RD01西' },
+        { r: 2, c: 2, kind: 'SHELF', label: '置場南' },
+      ]},
+      { id: 'e', name: '東·中央', layout: [
+        { r: 0, c: 2, kind: 'MACHINE', label: 'RD03' },
+        { r: 1, c: 1, kind: 'SHELF', label: 'RD03中' },
+        { r: 2, c: 0, kind: 'AISLE', label: '路' },
+      ]},
+      { id: 'sw', name: '西·南', layout: [
+        { r: 1, c: 1, kind: 'SHELF', label: '置場' },
+        { r: 2, c: 0, kind: 'SHELF', label: '置場西' },
+      ]},
+      { id: 's', name: '中央·南', layout: [
+        { r: 0, c: 0, kind: 'MACHINE', label: 'RD04' },
+        { r: 0, c: 2, kind: 'MACHINE', label: 'RD05' },
+        { r: 1, c: 1, kind: 'AISLE', label: '路' },
+        { r: 2, c: 0, kind: 'SHELF', label: 'RD04南' },
+        { r: 2, c: 2, kind: 'SHELF', label: 'RD05南' },
+      ]},
+      { id: 'se', name: '東·南', layout: [
+        { r: 0, c: 1, kind: 'SHELF', label: '検査北' },
+        { r: 1, c: 0, kind: 'MACHINE', label: '検査' },
+        { r: 2, c: 2, kind: 'SHELF', label: '検査南' },
+      ]},
+    ];
+
+    const zoneData = {};
+    ZONES.forEach((z) => {
+      zoneData[z.id] = buildCells(z.layout);
+    });
+
+    let activeZoneId = null;
+    let editCells = {};
+    let selected = new Set();
+    let pendingKind = null;
+    let dirty = false;
+
+    const els = {
+      macroFull: document.getElementById('macro-full'),
+      backdrop: document.getElementById('backdrop'),
+      modalBody: document.getElementById('modal-body'),
+      modalTitle: document.getElementById('modal-title'),
+      btnClose: document.getElementById('btn-close'),
+    };
+
+    function buildCells(layout) {
+      const cells = {};
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const hit = layout.find((x) => x.r === r && x.c === c);
+          cells[`${r},${c}`] = hit
+            ? { kind: hit.kind, label: hit.label, code: hit.code || '' }
+            : { kind: 'UNUSED', label: '', code: '' };
+        }
+      }
+      return cells;
+    }
+
+    function countKinds(cells) {
+      let m = 0, s = 0;
+      Object.values(cells).forEach((d) => {
+        if (d.kind === 'MACHINE') m++;
+        if (d.kind === 'SHELF') s++;
+      });
+      return { m, s };
+    }
+
+    function miniMapHtml(cells) {
+      let h = '<div class="mini-map">';
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const d = cells[`${r},${c}`];
+          const meta = KIND[d.kind];
+          const text = d.kind === 'UNUSED' ? '—' : (d.label || meta.badge);
+          h += `<div class="mini-cell ${meta.cls}">`;
+          if (meta.k) h += `<span class="k">${meta.k}</span>`;
+          h += `<span class="t">${text}</span></div>`;
+        }
+      }
+      return h + '</div>';
+    }
+
+    function renderOverview() {
+      els.macroFull.innerHTML = '';
+      ZONES.forEach((z) => {
+        const cells = zoneData[z.id];
+        const { m, s } = countKinds(cells);
+        const card = document.createElement('div');
+        card.className = 'macro-cell';
+        card.innerHTML = `
+          <div class="macro-head">
+            <div class="name">${z.name}</div>
+            <div class="legend">
+              <span><i class="dot machine"></i>機${m}</span>
+              <span><i class="dot shelf"></i>棚${s}</span>
+            </div>
+            <button type="button" class="btn-edit" data-edit="${z.id}">編集</button>
+          </div>
+          ${miniMapHtml(cells)}`;
+        card.querySelector('[data-edit]').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openEditor(z.id);
+        });
+        els.macroFull.appendChild(card);
+      });
+    }
+
+    function editMapHtml() {
+      let h = '<div class="edit-map">';
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const d = editCells[`${r},${c}`];
+          const meta = KIND[d.kind];
+          const sel = selected.has(`${r},${c}`);
+          const main = d.kind === 'UNUSED' ? meta.main : d.label || meta.badge;
+          h += `<button type="button" class="cell ${meta.cls}${sel ? ' sel' : ''}" data-rc="${r},${c}">`;
+          if (meta.badge) h += `<span class="kind-badge">${meta.badge}</span>`;
+          h += `<span class="main">${main}</span>`;
+          if (d.code) h += `<span class="code">${d.code}</span>`;
+          h += '</button>';
+        }
+      }
+      return h + '</div>';
+    }
+
+    function dockHtml() {
+      const hasSel = selected.size > 0;
+      return `
+        <div class="dock">
+          <p class="hint">編集モードのみ。俯瞰のミニマスは閲覧専用です。</p>
+          <div class="row">
+            <button type="button" class="ctl" disabled>☐ 複数マス</button>
+            <button type="button" class="ctl" disabled>3×3</button>
+            <button type="button" class="ctl" data-act="clear-sel" ${hasSel ? '' : 'disabled'}>選択解除</button>
+          </div>
+          <div class="row">
+            <button type="button" class="ctl" data-kind="SHELF" ${hasSel ? '' : 'disabled'}>部品置き場</button>
+            <button type="button" class="ctl" data-kind="MACHINE" ${hasSel ? '' : 'disabled'}>加工機</button>
+            <button type="button" class="ctl" data-kind="AISLE" ${hasSel ? '' : 'disabled'}>通路</button>
+            <button type="button" class="ctl" data-kind="UNUSED" ${hasSel ? '' : 'disabled'}>未使用</button>
+          </div>
+          <div class="row">
+            <button type="button" class="ctl primary" data-act="assign" ${pendingKind && hasSel ? '' : 'disabled'}>割当</button>
+            <button type="button" class="ctl danger" data-act="clear-cells" ${hasSel ? '' : 'disabled'}>選択マスを解除</button>
+            <span class="spacer"></span>
+            <button type="button" class="ctl primary" data-act="save" ${dirty ? '' : 'disabled'}>保存</button>
+          </div>
+        </div>`;
+    }
+
+    function refreshModal() {
+      els.modalBody.innerHTML = editMapHtml() + dockHtml();
+      bindModal();
+    }
+
+    function bindModal() {
+      els.modalBody.querySelectorAll('[data-rc]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const k = btn.dataset.rc;
+          if (selected.has(k)) selected.delete(k);
+          else { selected.clear(); selected.add(k); }
+          refreshModal();
+        });
+      });
+      els.modalBody.querySelectorAll('[data-kind]').forEach((b) => {
+        b.addEventListener('click', () => {
+          pendingKind = b.dataset.kind;
+          refreshModal();
+        });
+      });
+      els.modalBody.querySelector('[data-act="clear-sel"]')?.addEventListener('click', () => {
+        selected.clear();
+        refreshModal();
+      });
+      els.modalBody.querySelector('[data-act="assign"]')?.addEventListener('click', () => {
+        selected.forEach((k) => {
+          const d = editCells[k];
+          d.kind = pendingKind;
+          if (pendingKind === 'SHELF') d.label = '新規棚';
+          else if (pendingKind === 'MACHINE') d.label = '加工機';
+          else if (pendingKind === 'AISLE') d.label = '通路';
+          else { d.label = ''; d.code = ''; }
+        });
+        dirty = true;
+        selected.clear();
+        pendingKind = null;
+        refreshModal();
+      });
+      els.modalBody.querySelector('[data-act="clear-cells"]')?.addEventListener('click', () => {
+        selected.forEach((k) => { editCells[k] = { kind: 'UNUSED', label: '', code: '' }; });
+        dirty = true;
+        selected.clear();
+        refreshModal();
+      });
+      els.modalBody.querySelector('[data-act="save"]')?.addEventListener('click', () => {
+        zoneData[activeZoneId] = JSON.parse(JSON.stringify(editCells));
+        dirty = false;
+        closeEditor();
+        renderOverview();
+      });
+      els.modalBody.querySelectorAll('[data-kind]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.kind === pendingKind);
+      });
+    }
+
+    function openEditor(zid) {
+      activeZoneId = zid;
+      editCells = JSON.parse(JSON.stringify(zoneData[zid]));
+      selected.clear();
+      pendingKind = null;
+      dirty = false;
+      const z = ZONES.find((x) => x.id === zid);
+      els.modalTitle.textContent = `編集 — ${z.name}`;
+      refreshModal();
+      els.backdrop.classList.add('open');
+    }
+
+    function closeEditor() {
+      activeZoneId = null;
+      els.backdrop.classList.remove('open');
+    }
+
+    els.btnClose.addEventListener('click', closeEditor);
+    els.backdrop.addEventListener('click', (ev) => {
+      if (ev.target === els.backdrop) closeEditor();
+    });
+
+    renderOverview();
+  </script>
+</body>
+</html>

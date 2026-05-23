@@ -28,7 +28,21 @@ export const shelfMasterTheme = {
   cellDisabled: 'cursor-not-allowed opacity-35',
   ctlRow: 'flex flex-wrap items-center gap-2',
   ctlOff: 'opacity-30 cursor-not-allowed',
-  ctlFlow: 'ring-2 ring-sky-400/70 ring-offset-1 ring-offset-slate-900'
+  ctlFlow: 'ring-2 ring-sky-400/70 ring-offset-1 ring-offset-slate-900',
+  macroOverviewGrid: 'grid flex-1 min-h-0 grid-cols-3 grid-rows-3 gap-2 p-2',
+  macroZoneCard:
+    'flex min-h-0 flex-col rounded-xl border-2 border-white/12 bg-[color-mix(in_srgb,#6b7280_28%,#0f172a)] p-1.5',
+  macroZoneCardClickable: 'cursor-pointer hover:border-sky-500/50',
+  macroHead: 'mb-1 flex shrink-0 items-center gap-1.5 leading-[1.15]',
+  macroName: 'shrink-0 text-[clamp(0.72rem,1.5vw,0.92rem)] font-extrabold',
+  macroLegend: 'min-w-0 flex-1 text-[0.55rem] text-slate-400 whitespace-nowrap',
+  macroEditBtn:
+    'shrink-0 rounded-md border border-sky-500/50 bg-sky-500/10 px-1.5 py-0.5 text-[clamp(0.58rem,1.1vw,0.68rem)] font-extrabold text-sky-100',
+  miniMap: 'pointer-events-none grid min-h-0 flex-1 gap-0.5',
+  miniCell:
+    'flex min-h-0 flex-col items-center justify-center overflow-hidden rounded border p-px text-center',
+  miniCellKind: 'text-[0.42rem] font-extrabold opacity-75 leading-none',
+  miniCellMain: 'max-w-full truncate text-[clamp(0.48rem,1vw,0.62rem)] font-extrabold leading-tight'
 };
 
 export function shelfMasterButtonClass(

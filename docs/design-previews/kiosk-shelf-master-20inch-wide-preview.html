@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>棚マスタ — 20インチ横並び（マスター・ディテール）プレビュー</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --emerald: #34d399;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.14);
+      --aisle-b: rgba(56, 189, 248, 0.5);
+      --unused: rgba(15, 23, 42, 0.55);
+      --off: 0.28;
+      --rail-w: 280px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+    }
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 0.5rem;
+    }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.45rem;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #a7f3d0;
+    }
+    .badge-row span {
+      padding: 0.15rem 0.45rem;
+      border-radius: 6px;
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      background: rgba(20, 83, 45, 0.2);
+    }
+
+    /* 20インチ想定フレーム（1280×1024） */
+    .monitor {
+      width: min(1280px, 100%);
+      height: min(1024px, 92vh);
+      margin: 0 auto;
+      border-radius: 16px;
+      border: 3px solid #334155;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+    .monitor-label {
+      font-size: 0.62rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.25rem;
+      background: rgba(2, 6, 23, 0.8);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .kiosk {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--panel);
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.55);
+      flex-shrink: 0;
+    }
+    .top h2 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 800;
+      flex: 1;
+    }
+    .seg {
+      display: flex;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .seg button {
+      appearance: none;
+      border: none;
+      background: rgba(255, 255, 255, 0.04);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.35rem 0.65rem;
+      cursor: pointer;
+    }
+    .seg button.on {
+      background: rgba(251, 191, 36, 0.18);
+      color: #fef3c7;
+    }
+    .seg button:disabled { opacity: var(--off); cursor: not-allowed; }
+
+    .main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: var(--rail-w) 1fr;
+      min-height: 0;
+    }
+
+    /* 左: 常時 9 区画 */
+    .rail {
+      border-right: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.45);
+      display: flex;
+      flex-direction: column;
+      padding: 0.45rem;
+      min-height: 0;
+    }
+    .rail h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.68rem;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .macro-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 5px;
+      min-height: 0;
+    }
+    .macro {
+      appearance: none;
+      border-radius: 10px;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      font: inherit;
+      cursor: pointer;
+      padding: 0.25rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      transition: outline 0.12s, transform 0.12s;
+    }
+    .macro:hover { transform: scale(1.02); }
+    .macro .name {
+      font-size: 0.72rem;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+    .macro .meta {
+      font-size: 0.58rem;
+      opacity: 0.85;
+      margin-top: 0.12rem;
+    }
+    .macro.on {
+      outline: 3px solid var(--sky);
+      outline-offset: 2px;
+      border-color: var(--sky);
+    }
+    .macro:nth-child(1) { background: color-mix(in srgb, #f59e0b 35%, #111); }
+    .macro:nth-child(2) { background: color-mix(in srgb, #7c3aed 35%, #111); }
+    .macro:nth-child(3) { background: color-mix(in srgb, #dc2626 35%, #111); }
+    .macro:nth-child(4) { background: color-mix(in srgb, #16a34a 35%, #111); }
+    .macro:nth-child(5) { background: color-mix(in srgb, #6b7280 35%, #111); }
+    .macro:nth-child(6) { background: color-mix(in srgb, #78350f 40%, #111); }
+    .macro:nth-child(7) { background: color-mix(in srgb, #ea580c 35%, #111); }
+    .macro:nth-child(8) { background: color-mix(in srgb, #2563eb 35%, #111); }
+    .macro:nth-child(9) { background: color-mix(in srgb, #ec4899 35%, #111); }
+    .compass {
+      margin-top: 0.35rem;
+      text-align: center;
+      font-size: 0.58rem;
+      color: var(--muted);
+    }
+
+    /* 右: factory-map + dock */
+    .workspace {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 0.45rem;
+      gap: 0.45rem;
+    }
+    .map-area {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+    }
+    .factory {
+      display: grid;
+      width: 100%;
+      max-width: 720px;
+      aspect-ratio: 1;
+      max-height: 100%;
+      grid-template-columns: 1fr auto 2fr auto 1fr;
+      grid-template-rows: 1fr auto 2fr auto 1fr;
+      gap: 4px;
+    }
+    .neighbor {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.35);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.2rem;
+      cursor: pointer;
+    }
+    .neighbor:hover { border-color: var(--sky); color: #e2e8f0; }
+    .center-zone {
+      grid-column: 3;
+      grid-row: 3;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      border: 2px solid var(--amber);
+      background: rgba(120, 53, 15, 0.12);
+      padding: 4px;
+      min-height: 0;
+    }
+    .center-zone .ztitle {
+      text-align: center;
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: #fef3c7;
+      margin-bottom: 4px;
+    }
+    .inner-grid {
+      flex: 1;
+      display: grid;
+      gap: 5px;
+      min-height: 0;
+    }
+    .inner-grid.size-3 {
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+    }
+
+    .cell {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      padding: 4px 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 0;
+      gap: 2px;
+    }
+    .cell:disabled { cursor: not-allowed; opacity: var(--off); }
+    .cell .kind-badge {
+      font-size: 0.58rem;
+      font-weight: 800;
+      opacity: 0.85;
+    }
+    .cell .main {
+      font-size: clamp(0.8rem, 1.4vw, 1.05rem);
+      font-weight: 800;
+      line-height: 1.1;
+    }
+    .cell .code {
+      font-family: ui-monospace, monospace;
+      font-size: 0.68rem;
+      color: #7dd3fc;
+    }
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); color: #cbd5e1; }
+    .cell.shelf {
+      background: linear-gradient(180deg, #5c4008, var(--shelf));
+      border-color: var(--shelf-b);
+      color: #fef3c7;
+    }
+    .cell.aisle {
+      background: var(--aisle);
+      border-color: var(--aisle-b);
+      border-style: dashed;
+      color: #64748b;
+    }
+    .cell.unused {
+      background: var(--unused);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: #64748b;
+    }
+    .cell.unused .main { font-size: 1rem; opacity: 0.45; }
+    .cell.sel { outline: 3px solid var(--sky); outline-offset: 1px; }
+
+    .dock {
+      flex-shrink: 0;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      padding: 0.5rem 0.6rem;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.35rem;
+    }
+    .row:last-child { margin-bottom: 0; }
+    .ctl {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.42rem 0.58rem;
+      cursor: pointer;
+    }
+    .ctl:disabled {
+      opacity: var(--off);
+      cursor: not-allowed;
+    }
+    .ctl.flow {
+      border-color: var(--sky);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+    }
+    .ctl.on { outline: 2px solid #fff; outline-offset: 1px; }
+    .ctl.primary:not(:disabled) {
+      border-color: #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+    }
+    .ctl.danger:not(:disabled) {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecdd3;
+    }
+    select.ctl { background: #020617; min-width: 5.5rem; }
+    .spacer { flex: 1; min-width: 8px; }
+
+    .hint {
+      font-size: 0.62rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="badge-row">
+      <span>案: 20インチ · 左に常時9区画 · 右に詳細+操作</span>
+      <span>画面切替なし（マスター・ディテール）</span>
+      <span>操作は押せるもののみ有効</span>
+    </div>
+
+    <div class="monitor">
+      <div class="monitor-label">想定解像度 1280×1024（20インチ横）— 左レール + 右ワークスペース</div>
+      <div class="kiosk" id="kiosk">
+        <div class="top">
+          <h2 id="title">レイアウト — <span id="zone-label">中央·中央</span></h2>
+          <div class="seg">
+            <button type="button" class="on" data-tab="layout">レイアウト</button>
+            <button type="button" data-tab="relocate">再割当</button>
+            <button type="button" data-tab="zero2w" disabled>Zero2W</button>
+          </div>
+        </div>
+
+        <div class="main">
+          <aside class="rail">
+            <h3>工場全体（常時表示）</h3>
+            <div class="macro-grid" id="macro-grid"></div>
+            <p class="compass">↑ 北 · ← 西 … 東 → · ↓ 南</p>
+            <p class="hint">左の区画をタップしても画面は切り替わらず、右の詳細だけ更新します。</p>
+          </aside>
+
+          <div class="workspace">
+            <div class="map-area">
+              <div class="factory" id="factory"></div>
+            </div>
+            <div class="dock" id="dock"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ZONES = [
+      { id: 'nw', name: '西·北', shelves: 4, machines: 1 },
+      { id: 'n', name: '中央·北', shelves: 3, machines: 2 },
+      { id: 'ne', name: '東·北', shelves: 5, machines: 1 },
+      { id: 'w', name: '西·中央', shelves: 2, machines: 1 },
+      { id: 'c', name: '中央·中央', shelves: 6, machines: 2 },
+      { id: 'e', name: '東·中央', shelves: 4, machines: 1 },
+      { id: 'sw', name: '西·南', shelves: 3, machines: 0 },
+      { id: 's', name: '中央·南', shelves: 5, machines: 2 },
+      { id: 'se', name: '東·南', shelves: 4, machines: 1 },
+    ];
+    const NEIGHBORS = {
+      nw: { r: 1, c: 1, label: '西·北' },
+      n: { r: 1, c: 3, label: '中央·北' },
+      ne: { r: 1, c: 5, label: '東·北' },
+      w: { r: 3, c: 1, label: '西·中央' },
+      c: { r: 3, c: 3, label: '中央·中央', center: true },
+      e: { r: 3, c: 5, label: '東·中央' },
+      sw: { r: 5, c: 1, label: '西·南' },
+      s: { r: 5, c: 3, label: '中央·南' },
+      se: { r: 5, c: 5, label: '東·南' },
+    };
+    const ADJ = {
+      c: { nw: 'nw', n: 'n', ne: 'ne', w: 'w', e: 'e', sw: 'sw', s: 's', se: 'se' },
+      nw: { se: 'c', e: 'n', s: 'w' },
+      n: { sw: 'w', s: 'c', se: 'e', w: 'nw', e: 'ne' },
+      ne: { sw: 'c', w: 'n', s: 'e' },
+      w: { ne: 'n', e: 'c', se: 's', n: 'nw', s: 'sw' },
+      e: { nw: 'c', w: 'n', sw: 's', n: 'ne', s: 'se' },
+      sw: { ne: 'c', n: 'w', e: 's' },
+      s: { ne: 'e', n: 'c', nw: 'w', w: 'sw', e: 'se' },
+      se: { nw: 'c', w: 's', n: 'e' },
+    };
+    const SAMPLE = {
+      c: [
+        { r: 0, c: 0, kind: 'MACHINE', label: 'Robodrill01', code: '' },
+        { r: 0, c: 1, kind: 'AISLE', label: '通路', code: '' },
+        { r: 0, c: 2, kind: 'SHELF', label: 'Robodrill01南', code: '中-中-01' },
+        { r: 1, c: 0, kind: 'SHELF', label: 'Robodrill01西', code: '中-中-02' },
+        { r: 1, c: 2, kind: 'UNUSED', label: '', code: '' },
+        { r: 2, c: 0, kind: 'UNUSED', label: '', code: '' },
+        { r: 2, c: 1, kind: 'AISLE', label: '通路', code: '' },
+        { r: 2, c: 2, kind: 'SHELF', label: '置場-南', code: '中-中-03' },
+      ],
+    };
+    const KIND_META = {
+      SHELF: { cls: 'shelf', badge: '棚' },
+      MACHINE: { cls: 'machine', badge: '機' },
+      AISLE: { cls: 'aisle', badge: '路' },
+      UNUSED: { cls: 'unused', badge: '', main: '—' },
+    };
+
+    let zoneId = 'c';
+    let tab = 'layout';
+    let cells = {};
+    let selected = new Set();
+    let pendingKind = null;
+    let dirty = false;
+
+    const els = {
+      macroGrid: document.getElementById('macro-grid'),
+      factory: document.getElementById('factory'),
+      dock: document.getElementById('dock'),
+      zoneLabel: document.getElementById('zone-label'),
+      title: document.getElementById('title'),
+    };
+
+    function zoneName(id) {
+      return ZONES.find((z) => z.id === id)?.name ?? id;
+    }
+
+    function initCells() {
+      const sample = SAMPLE[zoneId] ?? [];
+      cells = {};
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const hit = sample.find((x) => x.r === r && x.c === c);
+          cells[`${r},${c}`] = hit
+            ? { ...hit }
+            : { kind: 'UNUSED', label: '', code: '' };
+        }
+      }
+      selected.clear();
+      pendingKind = null;
+      dirty = false;
+    }
+
+    function renderMacro() {
+      els.macroGrid.innerHTML = '';
+      ZONES.forEach((z) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'macro' + (z.id === zoneId ? ' on' : '');
+        btn.innerHTML = `<span class="name">${z.name}</span><span class="meta">棚${z.shelves} · 機${z.machines}</span>`;
+        btn.addEventListener('click', () => {
+          zoneId = z.id;
+          initCells();
+          renderAll();
+        });
+        els.macroGrid.appendChild(btn);
+      });
+    }
+
+    function renderFactory() {
+      els.factory.innerHTML = '';
+      els.zoneLabel.textContent = zoneName(zoneId);
+      Object.entries(NEIGHBORS).forEach(([dir, cfg]) => {
+        if (cfg.center) {
+          const wrap = document.createElement('div');
+          wrap.className = 'center-zone';
+          wrap.style.gridColumn = cfg.c;
+          wrap.style.gridRow = cfg.r;
+          wrap.innerHTML = `<div class="ztitle">${zoneName(zoneId)}</div>`;
+          const grid = document.createElement('div');
+          grid.className = 'inner-grid size-3';
+          for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+              const data = cells[`${r},${c}`];
+              const meta = KIND_META[data.kind];
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = `cell ${meta.cls}` + (selected.has(`${r},${c}`) ? ' sel' : '');
+              const main = data.kind === 'UNUSED' ? meta.main : data.label || meta.badge;
+              btn.innerHTML =
+                (meta.badge ? `<span class="kind-badge">${meta.badge}</span>` : '') +
+                `<span class="main">${main}</span>` +
+                (data.code ? `<span class="code">${data.code}</span>` : '');
+              if (tab !== 'layout') btn.disabled = true;
+              btn.addEventListener('click', () => toggleCell(r, c));
+              grid.appendChild(btn);
+            }
+          }
+          wrap.appendChild(grid);
+          els.factory.appendChild(wrap);
+          return;
+        }
+        const nid = ADJ[zoneId]?.[dir];
+        if (!nid) {
+          const empty = document.createElement('div');
+          empty.style.gridColumn = cfg.c;
+          empty.style.gridRow = cfg.r;
+          els.factory.appendChild(empty);
+          return;
+        }
+        const nb = document.createElement('button');
+        nb.type = 'button';
+        nb.className = 'neighbor';
+        nb.style.gridColumn = cfg.c;
+        nb.style.gridRow = cfg.r;
+        nb.textContent = zoneName(nid);
+        nb.addEventListener('click', () => {
+          zoneId = nid;
+          initCells();
+          renderAll();
+        });
+        els.factory.appendChild(nb);
+      });
+    }
+
+    function renderDock() {
+      const hasSel = selected.size > 0;
+      els.dock.innerHTML = tab === 'layout' ? `
+        <div class="row">
+          <button type="button" class="ctl" id="btn-multi">☐ 複数マス</button>
+          <select class="ctl" id="grid-size"><option>3×3</option></select>
+          <button type="button" class="ctl" id="btn-clear-sel" ${hasSel ? '' : 'disabled'}>選択解除</button>
+        </div>
+        <div class="row">
+          <button type="button" class="ctl" data-kind="SHELF" ${hasSel ? '' : 'disabled'}>部品置き場</button>
+          <button type="button" class="ctl" data-kind="MACHINE" ${hasSel ? '' : 'disabled'}>加工機</button>
+          <button type="button" class="ctl" data-kind="AISLE" ${hasSel ? '' : 'disabled'}>通路</button>
+          <button type="button" class="ctl" data-kind="UNUSED" ${hasSel ? '' : 'disabled'}>未使用</button>
+        </div>
+        <div class="row">
+          <button type="button" class="ctl primary" id="btn-assign" ${pendingKind && hasSel ? '' : 'disabled'}>選択マスに割当</button>
+          <button type="button" class="ctl danger" id="btn-clear-cells" ${hasSel ? '' : 'disabled'}>選択マスを解除</button>
+          <span class="spacer"></span>
+          <button type="button" class="ctl primary" id="btn-save" ${dirty ? '' : 'disabled'}>レイアウト保存</button>
+        </div>
+      ` : `<p style="margin:0;font-size:0.78rem;color:#94a3b8">再割当モードは本プレビューではレイアウトのみ操作可能です。</p>`;
+
+      if (tab !== 'layout') return;
+      document.getElementById('btn-clear-sel')?.addEventListener('click', () => {
+        selected.clear();
+        renderAll();
+      });
+      document.querySelectorAll('[data-kind]').forEach((b) => {
+        b.addEventListener('click', () => {
+          pendingKind = b.dataset.kind;
+          document.querySelectorAll('[data-kind]').forEach((x) => x.classList.toggle('on', x === b));
+          renderDock();
+          bindDock();
+        });
+      });
+      document.getElementById('btn-assign')?.addEventListener('click', () => {
+        selected.forEach((k) => {
+          const d = cells[k];
+          d.kind = pendingKind;
+          if (pendingKind === 'SHELF') {
+            d.label = 'Robodrill01南';
+            d.code = '中-中-99';
+          } else if (pendingKind === 'MACHINE') {
+            d.label = 'Robodrill01';
+            d.code = '';
+          } else if (pendingKind === 'AISLE') {
+            d.label = '通路';
+            d.code = '';
+          } else {
+            d.label = '';
+            d.code = '';
+          }
+        });
+        dirty = true;
+        selected.clear();
+        pendingKind = null;
+        renderAll();
+      });
+      document.getElementById('btn-clear-cells')?.addEventListener('click', () => {
+        selected.forEach((k) => {
+          cells[k] = { kind: 'UNUSED', label: '', code: '' };
+        });
+        dirty = true;
+        selected.clear();
+        renderAll();
+      });
+      document.getElementById('btn-save')?.addEventListener('click', () => {
+        dirty = false;
+        renderDock();
+        bindDock();
+      });
+    }
+
+    function bindDock() {
+      renderDock();
+    }
+
+    function toggleCell(r, c) {
+      const k = `${r},${c}`;
+      if (selected.has(k)) selected.delete(k);
+      else {
+        selected.clear();
+        selected.add(k);
+      }
+      renderFactory();
+      renderDock();
+      bindDock();
+    }
+
+    function renderAll() {
+      renderMacro();
+      renderFactory();
+      renderDock();
+      bindDock();
+    }
+
+    document.querySelectorAll('.seg button[data-tab]').forEach((b) => {
+      b.addEventListener('click', () => {
+        if (b.disabled) return;
+        tab = b.dataset.tab;
+        document.querySelectorAll('.seg button[data-tab]').forEach((x) => {
+          x.classList.toggle('on', x === b);
+          x.disabled = x.dataset.tab === 'zero2w';
+        });
+        els.title.firstChild.textContent = tab === 'layout' ? 'レイアウト — ' : '再割当 — ';
+        initCells();
+        renderAll();
+      });
+    });
+
+    initCells();
+    renderAll();
+  </script>
+</body>
+</html>

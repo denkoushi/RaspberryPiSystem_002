@@ -54,6 +54,7 @@ export type ShelfLayoutSummary = {
   gridSize: number;
   shelfCount: number;
   machineCount: number;
+  entities: LayoutEntityDto[];
 };
 
 const MACRO_ZONE_IDS: MacroZoneId[] = ['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'];
@@ -147,7 +148,10 @@ export async function listShelfLayoutSummary(): Promise<{ zones: ShelfLayoutSumm
   await ensureZoneLayoutsSeeded();
   const rows = await prisma.mobilePlacementZoneLayout.findMany({
     include: {
-      entities: { select: { entityKind: true } }
+      entities: {
+        include: { shelf: true },
+        orderBy: { createdAt: 'asc' }
+      }
     },
     orderBy: { macroZoneId: 'asc' }
   });
@@ -155,13 +159,15 @@ export async function listShelfLayoutSummary(): Promise<{ zones: ShelfLayoutSumm
   const zones: ShelfLayoutSummary[] = MACRO_ZONE_IDS.map((id) => {
     const row = byId.get(id);
     const meta = getMacroZoneById(id);
-    const entities = row?.entities ?? [];
+    const entityRows = row?.entities ?? [];
+    const entities = entityRows.map((e) => mapLayoutEntity(e));
     return {
       macroZoneId: id,
       displayName: meta.displayName,
       gridSize: row?.gridSize ?? 3,
-      shelfCount: entities.filter((e) => e.entityKind === 'SHELF').length,
-      machineCount: entities.filter((e) => e.entityKind === 'MACHINE').length
+      shelfCount: entityRows.filter((e) => e.entityKind === 'SHELF').length,
+      machineCount: entityRows.filter((e) => e.entityKind === 'MACHINE').length,
+      entities
     };
   });
   return { zones };

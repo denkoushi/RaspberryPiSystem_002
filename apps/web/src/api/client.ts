@@ -891,6 +891,7 @@ export type ShelfLayoutSummaryDto = {
   gridSize: number;
   shelfCount: number;
   machineCount: number;
+  entities: ShelfLayoutEntityDto[];
 };
 
 export async function getMobilePlacementShelfLayoutSummary() {

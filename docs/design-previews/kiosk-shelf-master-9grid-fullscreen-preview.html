@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>棚マスタ — 9マス全面 + インライン / ポップアップ プレビュー</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.14);
+      --aisle-b: rgba(56, 189, 248, 0.5);
+      --unused: rgba(15, 23, 42, 0.55);
+      --off: 0.28;
+      --overlay: rgba(2, 6, 23, 0.72);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+    }
+    .page { max-width: 1320px; margin: 0 auto; padding: 0.4rem; }
+    .mode-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+    .mode-bar .seg {
+      display: flex;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .mode-bar .seg button {
+      appearance: none;
+      border: none;
+      background: rgba(255, 255, 255, 0.05);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 0.35rem 0.65rem;
+      cursor: pointer;
+    }
+    .mode-bar .seg button.on {
+      background: rgba(56, 189, 248, 0.2);
+      color: #e0f2fe;
+    }
+    .mode-bar p {
+      margin: 0;
+      font-size: 0.65rem;
+      color: var(--muted);
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .monitor {
+      width: min(1280px, 100%);
+      height: min(1024px, 90vh);
+      margin: 0 auto;
+      border-radius: 14px;
+      border: 3px solid #334155;
+      overflow: hidden;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.4);
+    }
+    .monitor-label {
+      font-size: 0.6rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.2rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.85);
+    }
+
+    .kiosk {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.4rem 0.55rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.55);
+    }
+    .top h2 { margin: 0; font-size: 0.9rem; font-weight: 800; flex: 1; }
+    .top .seg button {
+      appearance: none;
+      border: none;
+      background: rgba(255, 255, 255, 0.04);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 0.3rem 0.55rem;
+      cursor: pointer;
+    }
+    .top .seg { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .top .seg button.on { background: rgba(251, 191, 36, 0.18); color: #fef3c7; }
+
+    /* 9マス全面 */
+    .stage {
+      flex: 1;
+      position: relative;
+      padding: 0.5rem;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .macro-full {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 8px;
+      min-height: 0;
+    }
+    .macro-cell {
+      position: relative;
+      appearance: none;
+      border-radius: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.14);
+      font: inherit;
+      cursor: pointer;
+      padding: 0.35rem;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      text-align: center;
+      min-height: 0;
+      overflow: hidden;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .macro-cell:hover:not(.expanded) {
+      border-color: rgba(56, 189, 248, 0.5);
+    }
+    .macro-cell .head {
+      flex-shrink: 0;
+      font-size: clamp(0.78rem, 1.8vw, 1rem);
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .macro-cell .meta {
+      font-size: clamp(0.58rem, 1.2vw, 0.72rem);
+      opacity: 0.85;
+      margin-top: 0.15rem;
+    }
+    .macro-cell .mini-hint {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(0.62rem, 1.1vw, 0.75rem);
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .macro-cell:nth-child(1) { background: color-mix(in srgb, #f59e0b 32%, #111); }
+    .macro-cell:nth-child(2) { background: color-mix(in srgb, #7c3aed 32%, #111); }
+    .macro-cell:nth-child(3) { background: color-mix(in srgb, #dc2626 32%, #111); }
+    .macro-cell:nth-child(4) { background: color-mix(in srgb, #16a34a 32%, #111); }
+    .macro-cell:nth-child(5) { background: color-mix(in srgb, #6b7280 32%, #111); }
+    .macro-cell:nth-child(6) { background: color-mix(in srgb, #78350f 38%, #111); }
+    .macro-cell:nth-child(7) { background: color-mix(in srgb, #ea580c 32%, #111); }
+    .macro-cell:nth-child(8) { background: color-mix(in srgb, #2563eb 32%, #111); }
+    .macro-cell:nth-child(9) { background: color-mix(in srgb, #ec4899 32%, #111); }
+
+    /* インライン: 選んだマスが全面に展開 */
+    .macro-full.mode-inline .macro-cell.dimmed {
+      opacity: 0.22;
+      pointer-events: none;
+    }
+    .macro-full.mode-inline .macro-cell.expanded {
+      position: absolute;
+      inset: 0.5rem;
+      z-index: 20;
+      border-color: var(--amber);
+      box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.35);
+      cursor: default;
+      padding: 0.4rem;
+    }
+    .macro-full.mode-inline .macro-cell.expanded .mini-hint { display: none; }
+
+    /* 詳細パネル（インライン内 / ポップアップ内 共通） */
+    .detail-panel {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      min-height: 0;
+      gap: 0.35rem;
+    }
+    .macro-cell.expanded .detail-panel,
+    .modal .detail-panel { display: flex; }
+
+    .detail-top {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+    .detail-top .zname {
+      flex: 1;
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: #fef3c7;
+      text-align: left;
+    }
+    .btn-close {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.28rem 0.5rem;
+      cursor: pointer;
+    }
+
+    .detail-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.4rem;
+      min-height: 0;
+    }
+    @media (max-width: 900px) {
+      .detail-body { grid-template-columns: 1fr; }
+    }
+
+    .inner-map {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 5px;
+      min-height: 0;
+      border-radius: 10px;
+      border: 2px solid var(--amber);
+      background: rgba(120, 53, 15, 0.1);
+      padding: 4px;
+    }
+    .cell {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      gap: 1px;
+    }
+    .cell .kind-badge { font-size: 0.52rem; font-weight: 800; opacity: 0.85; }
+    .cell .main { font-size: clamp(0.65rem, 1.2vw, 0.88rem); font-weight: 800; line-height: 1.1; }
+    .cell .code { font-family: ui-monospace, monospace; font-size: 0.58rem; color: #7dd3fc; }
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); color: #cbd5e1; }
+    .cell.shelf { background: linear-gradient(180deg, #5c4008, var(--shelf)); border-color: var(--shelf-b); color: #fef3c7; }
+    .cell.aisle { background: var(--aisle); border-color: var(--aisle-b); border-style: dashed; color: #64748b; }
+    .cell.unused { background: var(--unused); color: #64748b; }
+    .cell.unused .main { font-size: 0.9rem; opacity: 0.45; }
+    .cell.sel { outline: 2px solid var(--sky); outline-offset: 1px; }
+    .cell:disabled { opacity: var(--off); cursor: not-allowed; }
+
+    .dock {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      padding: 0.4rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      min-height: 0;
+      overflow: auto;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+    .ctl {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid var(--border);
+      background: rgba(255, 255, 255, 0.05);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.35rem 0.5rem;
+      cursor: pointer;
+    }
+    .ctl:disabled { opacity: var(--off); cursor: not-allowed; }
+    .ctl.flow { border-color: var(--sky); box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3); }
+    .ctl.on { outline: 2px solid #fff; outline-offset: 1px; }
+    .ctl.primary:not(:disabled) {
+      border-color: #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+    }
+    .ctl.danger:not(:disabled) {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecdd3;
+    }
+    .spacer { flex: 1; }
+
+    .compass {
+      flex-shrink: 0;
+      text-align: center;
+      font-size: 0.58rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    /* ポップアップ */
+    .backdrop {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: var(--overlay);
+      z-index: 30;
+      align-items: center;
+      justify-content: center;
+      padding: 0.6rem;
+    }
+    .backdrop.open { display: flex; }
+    .modal {
+      width: min(96%, 1100px);
+      max-height: 92%;
+      border-radius: 16px;
+      border: 2px solid var(--amber);
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      padding: 0.5rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    }
+    .modal .detail-panel { display: flex; flex: 1; min-height: 0; }
+    .modal .detail-body { min-height: 280px; }
+
+    .macro-full.mode-popup .macro-cell.selected-ring {
+      outline: 3px solid var(--sky);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="mode-bar">
+      <div class="seg" id="mode-seg">
+        <button type="button" class="on" data-mode="inline">A: 9マス内に直接展開</button>
+        <button type="button" data-mode="popup">B: 選んだ瞬間ポップアップ</button>
+      </div>
+      <p id="mode-desc">区画タップ → そのマスが画面いっぱいに広がり、中で編集。閉じると9マスに戻る。</p>
+    </div>
+
+    <div class="monitor">
+      <div class="monitor-label">20インチ · 9マス = 画面の主役（全面）</div>
+      <div class="kiosk">
+        <div class="top">
+          <h2 id="page-title">棚マスタ — 工場全体</h2>
+          <div class="seg">
+            <button type="button" class="on">レイアウト</button>
+            <button type="button" disabled>再割当</button>
+            <button type="button" disabled>Zero2W</button>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="macro-full mode-inline" id="macro-full"></div>
+          <div class="backdrop" id="backdrop">
+            <div class="modal" role="dialog" aria-modal="true" id="modal">
+              <div class="detail-panel" id="modal-panel"></div>
+            </div>
+          </div>
+        </div>
+        <p class="compass">↑ 北 · ← 西 … 東 → · ↓ 南</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ZONES = [
+      { id: 'nw', name: '西·北' },
+      { id: 'n', name: '中央·北' },
+      { id: 'ne', name: '東·北' },
+      { id: 'w', name: '西·中央' },
+      { id: 'c', name: '中央·中央' },
+      { id: 'e', name: '東·中央' },
+      { id: 'sw', name: '西·南' },
+      { id: 's', name: '中央·南' },
+      { id: 'se', name: '東·南' },
+    ];
+    const SAMPLE = {
+      c: [
+        { r: 0, c: 0, kind: 'MACHINE', label: 'Robodrill01', code: '' },
+        { r: 0, c: 2, kind: 'SHELF', label: 'Robodrill01南', code: '中-中-01' },
+        { r: 1, c: 0, kind: 'SHELF', label: 'Robodrill01西', code: '中-中-02' },
+        { r: 2, c: 2, kind: 'SHELF', label: '置場-南', code: '中-中-03' },
+      ],
+    };
+    const KIND = {
+      SHELF: { cls: 'shelf', badge: '棚' },
+      MACHINE: { cls: 'machine', badge: '機' },
+      AISLE: { cls: 'aisle', badge: '路' },
+      UNUSED: { cls: 'unused', badge: '', main: '—' },
+    };
+
+    let uiMode = 'inline';
+    let activeZoneId = null;
+    let cells = {};
+    let selected = new Set();
+    let pendingKind = null;
+    let dirty = false;
+
+    const els = {
+      macroFull: document.getElementById('macro-full'),
+      backdrop: document.getElementById('backdrop'),
+      modalPanel: document.getElementById('modal-panel'),
+      pageTitle: document.getElementById('page-title'),
+      modeDesc: document.getElementById('mode-desc'),
+    };
+
+    function loadCells(zid) {
+      const sample = SAMPLE[zid] ?? [];
+      cells = {};
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const hit = sample.find((x) => x.r === r && x.c === c);
+          cells[`${r},${c}`] = hit ? { ...hit } : { kind: 'UNUSED', label: '', code: '' };
+        }
+      }
+      selected.clear();
+      pendingKind = null;
+    }
+
+    function dockHtml() {
+      const hasSel = selected.size > 0;
+      return `
+        <div class="dock">
+          <div class="row">
+            <button type="button" class="ctl" data-act="multi">☐ 複数マス</button>
+            <button type="button" class="ctl" disabled>3×3</button>
+            <button type="button" class="ctl" data-act="clear-sel" ${hasSel ? '' : 'disabled'}>選択解除</button>
+          </div>
+          <div class="row">
+            <button type="button" class="ctl" data-kind="SHELF" ${hasSel ? '' : 'disabled'}>部品置き場</button>
+            <button type="button" class="ctl" data-kind="MACHINE" ${hasSel ? '' : 'disabled'}>加工機</button>
+            <button type="button" class="ctl" data-kind="AISLE" ${hasSel ? '' : 'disabled'}>通路</button>
+            <button type="button" class="ctl" data-kind="UNUSED" ${hasSel ? '' : 'disabled'}>未使用</button>
+          </div>
+          <div class="row">
+            <button type="button" class="ctl primary" data-act="assign" ${pendingKind && hasSel ? '' : 'disabled'}>割当</button>
+            <button type="button" class="ctl danger" data-act="clear-cells" ${hasSel ? '' : 'disabled'}>選択マスを解除</button>
+            <span class="spacer"></span>
+            <button type="button" class="ctl primary" data-act="save" ${dirty ? '' : 'disabled'}>保存</button>
+          </div>
+        </div>`;
+    }
+
+    function mapHtml() {
+      let h = '<div class="inner-map">';
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const d = cells[`${r},${c}`];
+          const m = KIND[d.kind];
+          const sel = selected.has(`${r},${c}`);
+          const main = d.kind === 'UNUSED' ? m.main : d.label || m.badge;
+          h += `<button type="button" class="cell ${m.cls}${sel ? ' sel' : ''}" data-rc="${r},${c}">`;
+          if (m.badge) h += `<span class="kind-badge">${m.badge}</span>`;
+          h += `<span class="main">${main}</span>`;
+          if (d.code) h += `<span class="code">${d.code}</span>`;
+          h += '</button>';
+        }
+      }
+      return h + '</div>';
+    }
+
+    function detailPanelHtml(z) {
+      return `
+        <div class="detail-top">
+          <span class="zname">${z.name}</span>
+          <button type="button" class="btn-close" data-act="close">閉じる · 9マスへ</button>
+        </div>
+        <div class="detail-body">
+          ${mapHtml()}
+          ${dockHtml()}
+        </div>`;
+    }
+
+    function bindPanel(root) {
+      root.querySelector('[data-act="close"]')?.addEventListener('click', closeZone);
+      root.querySelectorAll('[data-rc]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const k = btn.dataset.rc;
+          if (selected.has(k)) selected.delete(k);
+          else { selected.clear(); selected.add(k); }
+          refreshDetail();
+        });
+      });
+      root.querySelectorAll('[data-kind]').forEach((b) => {
+        b.addEventListener('click', () => {
+          pendingKind = b.dataset.kind;
+          refreshDetail();
+        });
+      });
+      root.querySelector('[data-act="clear-sel"]')?.addEventListener('click', () => {
+        selected.clear();
+        refreshDetail();
+      });
+      root.querySelector('[data-act="assign"]')?.addEventListener('click', () => {
+        selected.forEach((k) => {
+          const d = cells[k];
+          d.kind = pendingKind;
+          if (pendingKind === 'SHELF') { d.label = 'Robodrill01南'; d.code = '中-中-99'; }
+          else if (pendingKind === 'MACHINE') { d.label = 'Robodrill01'; d.code = ''; }
+          else if (pendingKind === 'AISLE') { d.label = '通路'; d.code = ''; }
+          else { d.label = ''; d.code = ''; }
+        });
+        dirty = true;
+        selected.clear();
+        pendingKind = null;
+        refreshDetail();
+      });
+      root.querySelector('[data-act="clear-cells"]')?.addEventListener('click', () => {
+        selected.forEach((k) => { cells[k] = { kind: 'UNUSED', label: '', code: '' }; });
+        dirty = true;
+        selected.clear();
+        refreshDetail();
+      });
+      root.querySelector('[data-act="save"]')?.addEventListener('click', () => {
+        dirty = false;
+        refreshDetail();
+      });
+    }
+
+    function refreshDetail() {
+      const z = ZONES.find((x) => x.id === activeZoneId);
+      if (!z) return;
+      if (uiMode === 'inline') {
+        const panel = els.macroFull.querySelector(`[data-zone="${activeZoneId}"] .detail-panel`);
+        if (panel) {
+          panel.innerHTML = `
+            <div class="detail-top">
+              <span class="zname">${z.name}</span>
+              <button type="button" class="btn-close" data-act="close">閉じる · 9マスへ</button>
+            </div>
+            <div class="detail-body">${mapHtml()}${dockHtml()}</div>`;
+          bindPanel(panel);
+        }
+      } else {
+        els.modalPanel.innerHTML = detailPanelHtml(z);
+        bindPanel(els.modalPanel);
+      }
+      document.querySelectorAll('[data-kind]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.kind === pendingKind);
+      });
+    }
+
+    function openZoneEditor(zid) {
+      activeZoneId = zid;
+      loadCells(zid);
+      const z = ZONES.find((x) => x.id === zid);
+      els.pageTitle.textContent = `レイアウト — ${z.name}`;
+
+      els.macroFull.querySelectorAll('.macro-cell').forEach((el) => {
+        const id = el.dataset.zone;
+        el.classList.remove('expanded', 'dimmed', 'selected-ring');
+        if (uiMode === 'inline') {
+          if (id === zid) {
+            el.classList.add('expanded');
+            const panel = el.querySelector('.detail-panel');
+            panel.innerHTML = `
+              <div class="detail-top">
+                <span class="zname">${z.name}</span>
+                <button type="button" class="btn-close" data-act="close">閉じる · 9マスへ</button>
+              </div>
+              <div class="detail-body">${mapHtml()}${dockHtml()}</div>`;
+            bindPanel(panel);
+          } else if (activeZoneId) el.classList.add('dimmed');
+        } else {
+          if (id === zid) el.classList.add('selected-ring');
+        }
+      });
+
+      if (uiMode === 'popup') {
+        els.modalPanel.innerHTML = detailPanelHtml(z);
+        bindPanel(els.modalPanel);
+        els.backdrop.classList.add('open');
+      }
+    }
+
+    function closeZone() {
+      activeZoneId = null;
+      dirty = false;
+      els.pageTitle.textContent = '棚マスタ — 工場全体';
+      els.backdrop.classList.remove('open');
+      els.macroFull.querySelectorAll('.macro-cell').forEach((el) => {
+        el.classList.remove('expanded', 'dimmed', 'selected-ring');
+      });
+      renderMacroGrid();
+    }
+
+    function renderMacroGrid() {
+      els.macroFull.innerHTML = '';
+      ZONES.forEach((z, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'macro-cell';
+        btn.dataset.zone = z.id;
+        btn.innerHTML = `
+          <span class="head">${z.name}</span>
+          <span class="meta">棚${(i % 5) + 2} · 機${i % 3}</span>
+          <span class="mini-hint">タップで編集</span>
+          <div class="detail-panel"></div>`;
+        btn.addEventListener('click', (ev) => {
+          if (activeZoneId && uiMode === 'inline' && btn.classList.contains('expanded')) return;
+          if (ev.target.closest('[data-act]') || ev.target.closest('[data-rc]') || ev.target.closest('[data-kind]')) return;
+          if (activeZoneId === z.id && uiMode === 'popup') {
+            closeZone();
+            return;
+          }
+          openZoneEditor(z.id);
+        });
+        els.macroFull.appendChild(btn);
+      });
+    }
+
+    document.getElementById('mode-seg').querySelectorAll('button').forEach((b) => {
+      b.addEventListener('click', () => {
+        uiMode = b.dataset.mode;
+        document.getElementById('mode-seg').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        els.macroFull.className = 'macro-full mode-' + uiMode;
+        els.modeDesc.textContent =
+          uiMode === 'inline'
+            ? '区画タップ → そのマスが画面いっぱいに広がり、中で編集。閉じると9マスに戻る。'
+            : '区画タップ → 9マスは薄く残したままポップアップで編集。閉じると全体図に戻る。';
+        closeZone();
+      });
+    });
+
+    els.backdrop.addEventListener('click', (ev) => {
+      if (ev.target === els.backdrop) closeZone();
+    });
+
+    renderMacroGrid();
+  </script>
+</body>
+</html>
