@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キオスク — 区画内フロアプラン＋再割当（静的プレビュー）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --emerald: #34d399;
+      --rose: #fb7185;
+      --violet: #a78bfa;
+      --machine: #334155;
+      --machine-border: #64748b;
+      --aisle: rgba(56, 189, 248, 0.08);
+      --slot: #292000;
+      --slot-border: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: #f8fafc;
+      line-height: 1.45;
+    }
+    .doc { max-width: 1280px; margin: 0 auto; padding: 0.85rem 1rem 2rem; }
+    h1 { margin: 0 0 0.35rem; font-size: 1.15rem; font-weight: 800; }
+    .lead {
+      margin: 0 0 0.75rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      max-width: 100ch;
+    }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+    .pill {
+      font-size: 0.7rem; font-weight: 700; padding: 0.25rem 0.5rem;
+      border-radius: 999px; border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04); color: #cbd5e1;
+    }
+    .pill em { color: var(--amber); font-style: normal; }
+
+    .kiosk {
+      border-radius: 14px; border: 2px solid #475569; overflow: hidden;
+      background: var(--panel); min-height: min(780px, 78vh);
+      display: flex; flex-direction: column;
+    }
+    .kiosk-bar {
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+      padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.6);
+    }
+    .kiosk-bar h2 { margin: 0; font-size: 0.95rem; font-weight: 800; flex: 1; min-width: 140px; }
+    .mode {
+      display: flex; gap: 0.35rem;
+    }
+    .mode button {
+      appearance: none; border-radius: 8px; border: 2px solid var(--border);
+      background: rgba(255,255,255,0.05); color: #e2e8f0;
+      font: inherit; font-size: 0.75rem; font-weight: 700; padding: 0.35rem 0.6rem; cursor: pointer;
+    }
+    .mode button.on { border-color: var(--sky); background: rgba(56,189,248,0.15); color: #fff; }
+    .mode button.move-on { border-color: var(--amber); background: rgba(251,191,36,0.12); }
+
+    .body { flex: 1; display: grid; grid-template-columns: 280px 1fr; min-height: 0; }
+    @media (max-width: 900px) { .body { grid-template-columns: 1fr; } }
+
+    .zones-panel {
+      border-right: 1px solid var(--border); padding: 0.65rem;
+      overflow: auto; background: rgba(2,6,23,0.45);
+    }
+    .zones-panel .hint { font-size: 0.68rem; color: var(--muted); margin: 0 0 0.5rem; }
+    .zone-list { display: flex; flex-direction: column; gap: 0.35rem; }
+    .zone-btn {
+      appearance: none; text-align: left; border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03);
+      color: #fff; font: inherit; padding: 0.5rem 0.6rem; cursor: pointer;
+    }
+    .zone-btn.on { border-color: var(--amber); box-shadow: inset 0 0 0 1px rgba(251,191,36,0.35); }
+    .zone-btn .zname { font-size: 0.82rem; font-weight: 800; }
+    .zone-btn .zmeta { font-size: 0.65rem; color: var(--muted); margin-top: 0.15rem; }
+
+    .main { padding: 0.65rem; overflow: auto; min-height: 0; display: flex; flex-direction: column; gap: 0.65rem; }
+
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 0.65rem; font-size: 0.68rem; color: #cbd5e1;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .swatch {
+      width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.2);
+    }
+    .swatch.m { background: var(--machine); }
+    .swatch.a { background: var(--aisle); border-color: var(--sky); }
+    .swatch.s { background: var(--slot); border-color: var(--slot-border); }
+
+    .floor-wrap {
+      border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(2,6,23,0.5); padding: 0.65rem;
+    }
+    .floor-title {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .floor-title h3 { margin: 0; font-size: 1rem; font-weight: 800; color: #fef3c7; }
+    .floor-title .sub { font-size: 0.72rem; color: var(--muted); }
+
+    /* フロアプラン grid — 現場レイアウト固定 */
+    .floor {
+      display: grid;
+      gap: 0.35rem;
+      min-height: 360px;
+      position: relative;
+    }
+    .cell {
+      border-radius: 8px;
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-align: center;
+      padding: 0.25rem;
+    }
+    .cell.machine {
+      background: var(--machine);
+      border: 2px solid var(--machine-border);
+      color: #94a3b8;
+      cursor: not-allowed;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    .cell.machine .icon { font-size: 1.1rem; opacity: 0.7; }
+    .cell.aisle {
+      background: var(--aisle);
+      border: 1px dashed rgba(56, 189, 248, 0.35);
+      color: #64748b;
+      font-size: 0.65rem;
+      font-weight: 600;
+    }
+    .cell.wall {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid #1e293b;
+      color: #475569;
+      font-size: 0.62rem;
+    }
+    .cell.empty {
+      background: transparent;
+      border: 1px dotted rgba(255,255,255,0.06);
+      color: #475569;
+    }
+
+    /* 棚スロット — タップ操作 */
+    button.slot {
+      appearance: none;
+      width: 100%; height: 100%; min-height: 72px;
+      border-radius: 10px;
+      border: 2px solid var(--slot-border);
+      background: linear-gradient(180deg, #3d2f00 0%, var(--slot) 100%);
+      color: #fef3c7;
+      font: inherit;
+      cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.15rem; padding: 0.35rem;
+      transition: outline 0.1s, transform 0.1s;
+    }
+    button.slot:hover:not(:disabled) { transform: scale(1.02); }
+    button.slot:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.slot .label { font-size: 0.82rem; font-weight: 800; line-height: 1.15; }
+    button.slot .code { font-family: ui-monospace, monospace; font-size: 0.65rem; color: #7dd3fc; }
+    button.slot .badge {
+      font-size: 0.58rem; font-weight: 800; padding: 0.05rem 0.3rem;
+      border-radius: 4px; background: rgba(167,139,250,0.25); color: var(--violet);
+      border: 1px solid rgba(167,139,250,0.4);
+    }
+    button.slot.src { outline: 3px solid var(--sky); outline-offset: 2px; }
+    button.slot.dst { outline: 3px solid var(--emerald); outline-offset: 2px; }
+    button.slot.ghost-target {
+      border-style: dashed; border-color: var(--emerald);
+      background: rgba(20, 83, 45, 0.25); color: #a7f3d0;
+    }
+
+    .action-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+      padding: 0.65rem; border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.9);
+    }
+    .action-bar .step {
+      font-size: 0.72rem; font-weight: 800; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .action-bar .msg { flex: 1; min-width: 200px; font-size: 0.85rem; font-weight: 600; }
+    .action-bar .msg strong { color: #fef3c7; }
+    .action-bar .msg .mono { font-family: ui-monospace, monospace; color: #7dd3fc; font-size: 0.8rem; }
+    .btn {
+      appearance: none; border-radius: 10px; border: 2px solid var(--border);
+      background: rgba(255,255,255,0.06); color: #fff;
+      font: inherit; font-size: 0.78rem; font-weight: 700;
+      padding: 0.45rem 0.75rem; cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.ok { border-color: var(--emerald); background: #14532d; }
+    .btn.warn { border-color: var(--amber); background: rgba(120,53,15,0.55); }
+
+    .confirm {
+      border-radius: 10px; border: 2px solid rgba(251,191,36,0.45);
+      background: rgba(251,191,36,0.08); padding: 0.65rem;
+      font-size: 0.8rem;
+    }
+    .confirm ul { margin: 0.35rem 0 0; padding-left: 1.1rem; color: #cbd5e1; font-size: 0.75rem; }
+
+    .toast {
+      position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+      padding: 0.55rem 1rem; border-radius: 10px;
+      background: #14532d; border: 1px solid var(--emerald);
+      color: #ecfdf5; font-size: 0.8rem; font-weight: 600;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 99;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    <h1>区画内フロアプラン — 再割当 UI 静的プレビュー</h1>
+    <p class="lead">
+      <strong>DnD なし</strong>・<strong>2 タップ + 確認</strong>。
+      加工機ブロックは操作不可。棚は<strong>通路側スロットだけ</strong>に固定配置（番号＝現場位置）。
+      表示名（Robodrill横）は維持し、正本 ID と Zero2W だけ付け替え。
+    </p>
+    <div class="pill-row">
+      <span class="pill"><em>操作</em> ①移動元 ②移動先 ③確定</span>
+      <span class="pill"><em>左</em> 9区画選択</span>
+      <span class="pill"><em>右</em> 現場レイアウト準拠</span>
+    </div>
+
+    <div class="kiosk">
+      <div class="kiosk-bar">
+        <h2 id="view-title">棚番管理 — 西·北</h2>
+        <div class="mode">
+          <button type="button" class="on" id="btn-view">俯瞰</button>
+          <button type="button" id="btn-move">↔ 場所移動</button>
+        </div>
+      </div>
+      <div class="body">
+        <aside class="zones-panel">
+          <p class="hint">区画を選ぶと、右に<strong>現場と同型のフロアプラン</strong>を表示（スロット位置は初期設定で固定）</p>
+          <div class="zone-list" id="zone-list"></div>
+        </aside>
+        <div class="main">
+          <div class="legend">
+            <span><i class="swatch m"></i> 加工機（置けない・タップ不可）</span>
+            <span><i class="swatch a"></i> 通路</span>
+            <span><i class="swatch s"></i> 棚スロット（タップ可）</span>
+          </div>
+
+          <div class="action-bar" id="action-bar">
+            <span class="step" id="step-label">閲覧</span>
+            <div class="msg" id="action-msg">区画内の棚位置は現場レイアウト固定。「場所移動」で再割当て。</div>
+            <button type="button" class="btn" id="btn-cancel" disabled>キャンセル</button>
+            <button type="button" class="btn ok" id="btn-confirm" disabled>差し替え確定</button>
+          </div>
+
+          <div class="floor-wrap">
+            <div class="floor-title">
+              <h3 id="floor-zone-name">西 · 北</h3>
+              <span class="sub" id="floor-zone-sub">加工機エリアと通路 — 部品は通路側スロットのみ</span>
+            </div>
+            <div class="floor" id="floor"></div>
+          </div>
+
+          <div class="confirm" id="confirm-panel" hidden>
+            <strong>確定時に連動（実装案）</strong>
+            <ul>
+              <li><code>MobilePlacementShelf.shelfCodeRaw</code> を移動先スロット ID へ更新（またはスロット固定で中身だけ移す）</li>
+              <li><code>ClientDevice.haizenPresetShelfCodeRaw</code> を Zero2W 端末へ反映</li>
+              <li>表示名 <strong id="confirm-label">—</strong> は変更しない</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const ZONES = [
+      { id: 'west-north', name: '西 · 北', meta: 'Robodrill列 · 3棚', cols: '1fr 1fr 1fr 1fr', rows: 'auto auto auto auto auto' },
+      { id: 'west-central', name: '西 · 中央', meta: 'FJV60前 · 2棚', cols: '1fr 1fr 1fr', rows: 'auto auto auto auto' },
+      { id: 'west-south', name: '西 · 南', meta: '受け口 · 1棚', cols: '1fr 1fr', rows: 'auto auto auto' },
+      { id: 'central-north', name: '中央 · 北', meta: '未配置', cols: '1fr 1fr', rows: 'auto auto' },
+      { id: 'central-central', name: '中央 · 中央', meta: '受け渡しB · 1棚', cols: '1fr 1fr 1fr', rows: 'auto auto auto' },
+      { id: 'central-south', name: '中央 · 南', meta: '—', cols: '1fr 1fr', rows: 'auto auto' },
+      { id: 'east-north', name: '東 · 北', meta: '—', cols: '1fr 1fr', rows: 'auto auto' },
+      { id: 'east-central', name: '東 · 中央', meta: '—', cols: '1fr 1fr', rows: 'auto auto' },
+      { id: 'east-south', name: '東 · 南', meta: 'StoneBase · 1棚', cols: '1fr 1fr 1fr', rows: 'auto auto auto auto' },
+    ];
+
+    /** 区画ごとのフロアプラン（grid-area で固定位置） */
+    const FLOORPLANS = {
+      'west-north': {
+        gridCols: '1fr 1fr 1fr 1fr',
+        gridRows: '28px 1fr 1fr 36px 1fr',
+        cells: [
+          { type: 'wall', area: '1 / 1 / 2 / 5', text: '▲ 北側（壁）' },
+          { type: 'machine', area: '2 / 1 / 3 / 3', name: 'Robodrill01', sub: '加工機' },
+          { type: 'machine', area: '2 / 3 / 3 / 5', name: 'Robodrill02', sub: '加工機' },
+          { type: 'slot', area: '3 / 1 / 4 / 2', code: '西-北-01', label: 'Kensaku前', zero2w: null },
+          { type: 'slot', area: '3 / 2 / 4 / 3', code: '西-北-02', label: 'Robodrill横', zero2w: 'zero2w-01' },
+          { type: 'empty', area: '3 / 3 / 4 / 4', text: '' },
+          { type: 'slot', area: '3 / 4 / 4 / 5', code: '西-北-03', label: '受け渡し', zero2w: null },
+          { type: 'aisle', area: '4 / 1 / 5 / 5', text: '═══ 東西通路 ═══' },
+          { type: 'slot', area: '5 / 2 / 6 / 4', code: '西-北-05', label: 'Robodrill前', zero2w: null },
+        ]
+      },
+      'west-central': {
+        gridCols: '1fr 1fr 1fr',
+        gridRows: '28px 1fr 36px 1fr',
+        cells: [
+          { type: 'wall', area: '1 / 1 / 2 / 4', text: '▲ 北' },
+          { type: 'machine', area: '2 / 1 / 3 / 3', name: 'FJV60-80', sub: '加工機' },
+          { type: 'empty', area: '2 / 3 / 3 / 4', text: '' },
+          { type: 'aisle', area: '3 / 1 / 4 / 4', text: '南北通路' },
+          { type: 'slot', area: '4 / 1 / 5 / 2', code: '西-中央-01', label: 'FJV60前', zero2w: null },
+          { type: 'slot', area: '4 / 3 / 5 / 4', code: '西-中央-02', label: 'FJV60横', zero2w: null },
+        ]
+      },
+      'west-south': {
+        gridCols: '1fr 1fr',
+        gridRows: '1fr 36px 1fr',
+        cells: [
+          { type: 'slot', area: '1 / 1 / 2 / 2', code: '西-南-01', label: '受け口', zero2w: null },
+          { type: 'machine', area: '1 / 2 / 2 / 3', name: '検査台', sub: '設備' },
+          { type: 'aisle', area: '2 / 1 / 3 / 3', text: '通路' },
+          { type: 'wall', area: '3 / 1 / 4 / 3', text: '▼ 南側' },
+        ]
+      },
+      'central-central': {
+        gridCols: '1fr 1fr 1fr',
+        gridRows: '1fr 36px 1fr',
+        cells: [
+          { type: 'empty', area: '1 / 1 / 2 / 2', text: '' },
+          { type: 'slot', area: '1 / 2 / 2 / 3', code: '中央-中央-02', label: '受け渡し台B', zero2w: null },
+          { type: 'empty', area: '1 / 3 / 2 / 4', text: '' },
+          { type: 'aisle', area: '2 / 1 / 3 / 4', text: '中央通路' },
+          { type: 'machine', area: '3 / 1 / 4 / 4', name: '（加工機なしエリア）', sub: 'スペース' },
+        ]
+      },
+      'east-south': {
+        gridCols: '1fr 1fr 1fr',
+        gridRows: '28px 1fr 36px 1fr',
+        cells: [
+          { type: 'wall', area: '1 / 1 / 2 / 4', text: '▲ 北' },
+          { type: 'machine', area: '2 / 2 / 3 / 4', name: 'StoneBase01', sub: '加工機' },
+          { type: 'slot', area: '2 / 1 / 3 / 2', code: '東-南-03', label: 'StoneBase横', zero2w: null },
+          { type: 'aisle', area: '3 / 1 / 4 / 4', text: '通路' },
+          { type: 'empty', area: '4 / 1 / 5 / 4', text: '空きスロット未設定' },
+        ]
+      }
+    };
+
+    // 簡易プレースホルダ区画
+    ['central-north', 'central-south', 'east-north', 'east-central'].forEach(id => {
+      FLOORPLANS[id] = {
+        gridCols: '1fr 1fr',
+        gridRows: '1fr 1fr',
+        cells: [
+          { type: 'wall', area: '1 / 1 / 2 / 3', text: 'レイアウト未設定（初期投入時に定義）' },
+          { type: 'empty', area: '2 / 1 / 3 / 3', text: '—' },
+        ]
+      };
+    });
+
+    let currentZone = 'west-north';
+    let moveMode = false;
+    let srcCode = null;
+    let dstCode = null;
+    /** @type {Record<string, {code:string,label:string,zero2w:string|null}>} */
+    let slotState = {};
+
+    function initSlotState() {
+      slotState = {};
+      Object.values(FLOORPLANS).forEach(plan => {
+        plan.cells.filter(c => c.type === 'slot').forEach(s => {
+          slotState[s.code] = { code: s.code, label: s.label, zero2w: s.zero2w };
+        });
+      });
+    }
+
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2400);
+    }
+
+    function renderZoneList() {
+      const el = document.getElementById('zone-list');
+      el.innerHTML = ZONES.map(z => `
+        <button type="button" class="zone-btn${z.id === currentZone ? ' on' : ''}" data-zone="${z.id}">
+          <div class="zname">${z.name}</div>
+          <div class="zmeta">${z.meta}</div>
+        </button>
+      `).join('');
+      el.querySelectorAll('.zone-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentZone = btn.dataset.zone;
+          srcCode = dstCode = null;
+          renderZoneList();
+          renderFloor();
+          updateActionBar();
+        });
+      });
+    }
+
+    function renderFloor() {
+      const plan = FLOORPLANS[currentZone];
+      const floor = document.getElementById('floor');
+      const z = ZONES.find(x => x.id === currentZone);
+      document.getElementById('floor-zone-name').textContent = z.name;
+      document.getElementById('view-title').textContent = '棚番管理 — ' + z.name.replace(' · ', '·');
+
+      floor.style.gridTemplateColumns = plan.gridCols;
+      floor.style.gridTemplateRows = plan.gridRows;
+      floor.innerHTML = '';
+
+      plan.cells.forEach(cell => {
+        const div = document.createElement('div');
+        div.style.gridArea = cell.area;
+
+        if (cell.type === 'slot') {
+          const st = slotState[cell.code];
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'slot';
+          if (srcCode === cell.code) btn.classList.add('src');
+          if (dstCode === cell.code) btn.classList.add('dst');
+          btn.innerHTML = `
+            <span class="label">${st.label}</span>
+            <span class="code">${st.code}</span>
+            ${st.zero2w ? `<span class="badge">${st.zero2w}</span>` : ''}
+          `;
+          btn.addEventListener('click', () => onSlotClick(cell.code));
+          div.appendChild(btn);
+        } else if (cell.type === 'machine') {
+          div.className = 'cell machine';
+          div.innerHTML = `<span class="icon">⚙</span><span>${cell.name}</span><span style="font-size:0.62rem;font-weight:600">${cell.sub}</span>`;
+        } else if (cell.type === 'aisle') {
+          div.className = 'cell aisle';
+          div.textContent = cell.text;
+        } else if (cell.type === 'wall') {
+          div.className = 'cell wall';
+          div.textContent = cell.text;
+        } else {
+          div.className = 'cell empty';
+          div.textContent = cell.text || '';
+        }
+        floor.appendChild(div);
+      });
+
+      // 移動モード: 空きスロット候補を ghost 表示（同一区画内・未使用セルは省略、dst 選択時は src 以外の slot）
+      if (moveMode && srcCode) {
+        plan.cells.filter(c => c.type === 'slot' && c.code !== srcCode).forEach(cell => {
+          // already rendered; highlight as potential dst on second step
+        });
+      }
+    }
+
+    function onSlotClick(code) {
+      if (!moveMode) {
+        toast('「場所移動」をオンにしてから、移動元→移動先の順にタップ');
+        return;
+      }
+      if (!srcCode) {
+        srcCode = code;
+        dstCode = null;
+      } else if (code === srcCode) {
+        srcCode = null;
+      } else {
+        dstCode = code;
+      }
+      renderFloor();
+      updateActionBar();
+    }
+
+    function updateActionBar() {
+      const step = document.getElementById('step-label');
+      const msg = document.getElementById('action-msg');
+      const cancel = document.getElementById('btn-cancel');
+      const confirm = document.getElementById('btn-confirm');
+      const panel = document.getElementById('confirm-panel');
+
+      if (!moveMode) {
+        step.textContent = '閲覧';
+        msg.innerHTML = '区画内の棚位置は<strong>現場レイアウト固定</strong>。「場所移動」で再割当て。';
+        cancel.disabled = true;
+        confirm.disabled = true;
+        panel.hidden = true;
+        return;
+      }
+
+      cancel.disabled = false;
+      if (!srcCode) {
+        step.textContent = 'Step 1/3';
+        msg.innerHTML = '<strong>移動元</strong>の棚スロットをタップ（加工機上は不可）';
+        confirm.disabled = true;
+        panel.hidden = true;
+      } else if (!dstCode) {
+        step.textContent = 'Step 2/3';
+        const s = slotState[srcCode];
+        msg.innerHTML = `移動元: <strong>${s.label}</strong> <span class="mono">${srcCode}</span> → <strong>移動先</strong>スロットをタップ`;
+        confirm.disabled = true;
+        panel.hidden = true;
+      } else {
+        step.textContent = 'Step 3/3';
+        const s = slotState[srcCode];
+        const d = slotState[dstCode];
+        msg.innerHTML = `「<strong>${s.label}</strong>」を <span class="mono">${srcCode}</span> → <span class="mono">${dstCode}</span> へ（表示名維持・Zero2W 連動）`;
+        confirm.disabled = false;
+        panel.hidden = false;
+        document.getElementById('confirm-label').textContent = s.label;
+      }
+    }
+
+    document.getElementById('btn-view').addEventListener('click', () => {
+      moveMode = false;
+      srcCode = dstCode = null;
+      document.getElementById('btn-view').classList.add('on');
+      document.getElementById('btn-move').classList.remove('move-on');
+      renderFloor();
+      updateActionBar();
+    });
+
+    document.getElementById('btn-move').addEventListener('click', () => {
+      moveMode = true;
+      srcCode = dstCode = null;
+      document.getElementById('btn-view').classList.remove('on');
+      document.getElementById('btn-move').classList.add('move-on');
+      updateActionBar();
+      toast('移動元 → 移動先 の順にスロットをタップ');
+    });
+
+    document.getElementById('btn-cancel').addEventListener('click', () => {
+      srcCode = dstCode = null;
+      renderFloor();
+      updateActionBar();
+    });
+
+    document.getElementById('btn-confirm').addEventListener('click', () => {
+      if (!srcCode || !dstCode) return;
+      const s = slotState[srcCode];
+      const d = slotState[dstCode];
+      // スロット固定方式: 中身（label, zero2w）を入れ替え、code はセルに紐付いたまま
+      // 再割当て方式B: 表示名ごと移動 — label/zero2w を dst に移し src を空に
+      const movedLabel = s.label;
+      const movedZero = s.zero2w;
+      slotState[dstCode] = { code: dstCode, label: movedLabel, zero2w: movedZero };
+      slotState[srcCode] = { code: srcCode, label: d.label || '（空き）', zero2w: null };
+      toast(`確定: ${movedLabel} → ${dstCode}（デモ）`);
+      srcCode = dstCode = null;
+      renderFloor();
+      updateActionBar();
+    });
+
+    initSlotState();
+    renderZoneList();
+    renderFloor();
+    updateActionBar();
+  </script>
+</body>
+</html>

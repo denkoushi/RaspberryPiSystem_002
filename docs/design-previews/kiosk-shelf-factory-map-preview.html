@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キオスク — 現場全体図→区画詳細→マス割当 v2（静的プレビュー）</title>
+  <style>
+    :root {
+      --bg: #020617; --panel: #0f172a; --border: rgba(148,163,184,0.25);
+      --muted: #94a3b8; --sky: #38bdf8; --amber: #fbbf24; --emerald: #34d399;
+      --machine: #334155; --machine-b: #64748b;
+      --shelf: #422006; --shelf-b: #b45309;
+      --aisle: rgba(56,189,248,0.14); --aisle-b: rgba(56,189,248,0.4);
+      --unused: rgba(15,23,42,0.7);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: system-ui, sans-serif; background: var(--bg); color: #f8fafc; line-height: 1.45; }
+    .doc { max-width: 1180px; margin: 0 auto; padding: 0.75rem 1rem 1.5rem; }
+    h1 { margin: 0 0 0.3rem; font-size: 1.05rem; font-weight: 800; }
+    .lead { margin: 0 0 0.5rem; font-size: 0.76rem; color: var(--muted); max-width: 105ch; }
+    .additions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.55rem; }
+    .additions span { font-size: 0.65rem; font-weight: 700; padding: 0.18rem 0.42rem; border-radius: 6px; border: 1px solid rgba(52,211,153,0.35); background: rgba(20,83,45,0.2); color: #a7f3d0; }
+    .flow { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.55rem; font-size: 0.66rem; font-weight: 700; color: #cbd5e1; }
+    .flow span { padding: 0.18rem 0.4rem; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); }
+    .flow span.on { border-color: var(--sky); color: #fff; background: rgba(56,189,248,0.12); }
+
+    .kiosk { border-radius: 14px; border: 2px solid #475569; overflow: hidden; background: var(--panel); min-height: min(760px, 78vh); display: flex; flex-direction: column; }
+    .bar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); background: rgba(2,6,23,0.55); }
+    .bar h2 { margin: 0; font-size: 0.88rem; font-weight: 800; flex: 1; }
+    .btn-back { appearance: none; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,0.06); color: #fff; font: inherit; font-size: 0.7rem; font-weight: 700; padding: 0.32rem 0.55rem; cursor: pointer; }
+    .body { flex: 1; padding: 0.6rem; overflow: auto; }
+
+    .factory { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; max-width: 620px; margin: 0 auto; aspect-ratio: 1; }
+    .macro { appearance: none; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); font: inherit; cursor: pointer; padding: 0.45rem; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+    .macro .name { font-size: clamp(0.72rem, 2.4vw, 0.9rem); font-weight: 800; }
+    .macro .meta { font-size: 0.6rem; opacity: 0.85; margin-top: 0.15rem; }
+    .macro:nth-child(1){background:color-mix(in srgb,#f59e0b 35%,#111);border-color:#f59e0b}
+    .macro:nth-child(2){background:color-mix(in srgb,#7c3aed 35%,#111);border-color:#7c3aed}
+    .macro:nth-child(3){background:color-mix(in srgb,#dc2626 35%,#111);border-color:#dc2626}
+    .macro:nth-child(4){background:color-mix(in srgb,#16a34a 35%,#111);border-color:#16a34a}
+    .macro:nth-child(5){background:color-mix(in srgb,#6b7280 35%,#111);border-color:#6b7280}
+    .macro:nth-child(6){background:color-mix(in srgb,#78350f 40%,#111);border-color:#ea580c}
+    .macro:nth-child(7){background:color-mix(in srgb,#ea580c 35%,#111);border-color:#ea580c}
+    .macro:nth-child(8){background:color-mix(in srgb,#2563eb 35%,#111);border-color:#2563eb}
+    .macro:nth-child(9){background:color-mix(in srgb,#ec4899 35%,#111);border-color:#ec4899}
+    .compass { max-width: 620px; margin: 0.45rem auto 0; text-align: center; font-size: 0.62rem; color: var(--muted); }
+
+    .detail-hint { font-size: 0.68rem; color: var(--muted); text-align: center; margin-bottom: 0.45rem; }
+    .context-map {
+      display: grid; grid-template-columns: 1fr 10px 2.2fr 10px 1fr; grid-template-rows: 1fr 8px 2.2fr 8px 1fr;
+      aspect-ratio: 1; max-height: min(520px, 52vh); margin: 0 auto; max-width: 720px;
+    }
+    .aisle-h,.aisle-v { background: var(--aisle); border: 1px dashed var(--aisle-b); display: flex; align-items: center; justify-content: center; font-size: 0.48rem; font-weight: 700; color: #64748b; }
+    .aisle-h { grid-column: 1/-1; }
+    .aisle-v { grid-row: 1/-1; }
+    #nb-n{grid-column:3;grid-row:1} #nb-s{grid-column:3;grid-row:5} #nb-w{grid-column:1;grid-row:3} #nb-e{grid-column:5;grid-row:3}
+    #nb-nw{grid-column:1;grid-row:1} #nb-ne{grid-column:5;grid-row:1} #nb-sw{grid-column:1;grid-row:5} #nb-se{grid-column:5;grid-row:5}
+    #ah-n{grid-column:1/6;grid-row:2} #ah-s{grid-column:1/6;grid-row:4} #av-w{grid-column:2;grid-row:1/6} #av-e{grid-column:4;grid-row:1/6}
+
+    .neighbor { border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); overflow: hidden; display: grid; gap: 2px; padding: 2px; background: rgba(0,0,0,0.35); cursor: pointer; width: 100%; height: 100%; }
+    .neighbor-label { grid-column: 1/-1; font-size: 0.48rem; font-weight: 800; text-align: center; color: var(--muted); }
+    .mini { border-radius: 3px; font-size: 0.42rem; font-weight: 700; display: flex; align-items: center; justify-content: center; min-height: 12px; color: rgba(255,255,255,0.45); }
+    .mini.machine{background:var(--machine)} .mini.shelf{background:var(--shelf)} .mini.aisle{background:var(--aisle)}
+
+    .center-zone { grid-column: 3; grid-row: 3; border-radius: 12px; border: 3px solid var(--amber); background: rgba(251,191,36,0.06); padding: 0.3rem; display: flex; flex-direction: column; }
+    .cz-title { font-size: 0.68rem; font-weight: 800; color: #fef3c7; text-align: center; margin-bottom: 0.2rem; }
+    .micro-grid { flex: 1; display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(3,1fr); gap: 3px; min-height: 0; }
+
+    .entity-cell {
+      appearance: none; border-radius: 8px; border: 2px solid rgba(255,255,255,0.12);
+      font: inherit; cursor: pointer; padding: 0.12rem; min-height: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    }
+    .entity-cell.machine { background: var(--machine); border-color: var(--machine-b); color: #94a3b8; }
+    .entity-cell.shelf { background: linear-gradient(180deg,#5c4008,var(--shelf)); border-color: var(--shelf-b); color: #fef3c7; }
+    .entity-cell.aisle { background: var(--aisle); border-color: var(--aisle-b); border-style: dashed; color: #64748b; }
+    .entity-cell.unused { background: var(--unused); color: #475569; }
+    .entity-cell.sel { outline: 3px solid var(--sky); outline-offset: 1px; }
+    .entity-cell.in-sel { outline: 2px dashed var(--emerald); outline-offset: 1px; }
+    .entity-cell .nums { font-size: 0.48rem; opacity: 0.7; font-weight: 600; }
+    .entity-cell .main { font-size: clamp(0.55rem,1.6vw,0.72rem); font-weight: 800; line-height: 1.15; }
+    .entity-cell .code { font-family: ui-monospace,monospace; font-size: 0.42rem; color: #7dd3fc; margin-top: 0.08rem; }
+    .entity-cell .span-badge { font-size: 0.48rem; background: rgba(167,139,250,0.25); color: #c4b5fd; border-radius: 4px; padding: 0 0.2rem; margin-top: 0.08rem; }
+
+    .assign { margin-top: 0.55rem; padding: 0.6rem; border-radius: 12px; border: 1px solid var(--border); background: rgba(2,6,23,0.5); max-width: 560px; margin-left: auto; margin-right: auto; }
+    .assign h3 { margin: 0 0 0.4rem; font-size: 0.78rem; font-weight: 800; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.45rem; align-items: center; }
+    .toggle {
+      appearance: none; border-radius: 8px; border: 2px solid var(--border);
+      background: rgba(255,255,255,0.05); color: #e2e8f0; font: inherit;
+      font-size: 0.68rem; font-weight: 700; padding: 0.32rem 0.5rem; cursor: pointer;
+    }
+    .toggle.on { border-color: var(--emerald); background: rgba(20,83,45,0.35); color: #a7f3d0; }
+    .pick button {
+      appearance: none; border-radius: 9px; border: 2px solid var(--border);
+      background: rgba(255,255,255,0.05); color: #fff; font: inherit;
+      font-size: 0.72rem; font-weight: 800; padding: 0.45rem 0.55rem; cursor: pointer;
+    }
+    .pick button.shelf.on { border-color: var(--shelf-b); background: var(--shelf); color: #fef3c7; }
+    .pick button.machine.on { border-color: var(--machine-b); background: var(--machine); }
+    .field { margin-bottom: 0.4rem; }
+    .field label { display: block; font-size: 0.6rem; font-weight: 700; color: var(--muted); margin-bottom: 0.12rem; }
+    .field input, .field select {
+      width: 100%; border-radius: 8px; border: 1px solid var(--border);
+      background: #020617; color: #fff; font: inherit; font-size: 0.74rem; padding: 0.38rem 0.45rem;
+    }
+    .field input:disabled, .field select:disabled { opacity: 0.45; }
+    .auto-box {
+      padding: 0.45rem; border-radius: 8px; border: 1px dashed rgba(251,191,36,0.4);
+      background: rgba(251,191,36,0.06); font-size: 0.68rem;
+    }
+    .auto-box .big { font-weight: 800; color: #fef3c7; font-size: 0.82rem; }
+    .auto-box .mono { font-family: ui-monospace,monospace; color: #7dd3fc; font-size: 0.72rem; }
+    .auto-box .rule { color: var(--muted); font-size: 0.62rem; margin-top: 0.25rem; }
+    .hidden { display: none !important; }
+    .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); padding: 0.42rem 0.75rem; border-radius: 8px; background: #14532d; border: 1px solid var(--emerald); color: #ecfdf5; font-size: 0.72rem; font-weight: 600; opacity: 0; transition: opacity 0.2s; z-index: 99; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    <h1>現場全体図 → 区画詳細 → マス割当 v2</h1>
+    <p class="lead">追加仕様: 加工機は<strong>マスタ選択</strong>／部品置き場は<strong>正本ID・表示名を自動</strong>（最近傍加工機＋東西南北）／<strong>複数マス結合</strong>可。</p>
+    <div class="additions">
+      <span>加工機マスタ選択</span>
+      <span>置き場 自動採番</span>
+      <span>表示名 = 加工機名+方位</span>
+      <span>2×1 等マス結合</span>
+    </div>
+    <div class="flow" id="flow">
+      <span class="on">① 全体9マス</span><span>② 区画+周辺1/3</span><span>③ 割当</span>
+    </div>
+
+    <div class="kiosk">
+      <div class="bar">
+        <button type="button" class="btn-back hidden" id="btn-back">← 全体図</button>
+        <h2 id="title">現場全体図</h2>
+      </div>
+      <div class="body">
+        <section id="view-top">
+          <div class="factory" id="factory"></div>
+          <div class="compass"><span>↑ 北</span> <span>← 西 … 東 →</span> <span>↓ 南</span></div>
+        </section>
+        <section id="view-detail" class="hidden">
+          <p class="detail-hint">複数マス ON → 数字を順にタップで範囲指定 → 部品置き場/加工機を割当</p>
+          <div class="context-map" id="context-map"></div>
+          <div class="assign">
+            <h3 id="assign-title">マスを選択</h3>
+            <div class="row">
+              <button type="button" class="toggle" id="toggle-multi">☐ 複数マス指定</button>
+              <span id="sel-count" style="font-size:0.65rem;color:var(--muted)"></span>
+            </div>
+            <div class="row pick">
+              <button type="button" class="shelf" id="pick-shelf">📦 部品置き場</button>
+              <button type="button" class="machine" id="pick-machine">⚙ 加工機</button>
+              <button type="button" id="pick-aisle">通路</button>
+              <button type="button" id="pick-clear">解除</button>
+            </div>
+            <div class="field" id="field-machine">
+              <label>加工機（マスタから選択）</label>
+              <select id="sel-master" disabled>
+                <option value="">— 選択 —</option>
+              </select>
+            </div>
+            <div class="auto-box hidden" id="auto-preview">
+              <div class="rule">部品置き場 — 自動生成（編集不可）</div>
+              <div class="big" id="auto-label">—</div>
+              <div class="mono" id="auto-code">—</div>
+              <div class="rule">表示名 = 区画内の最近傍加工機 ＋ 相対方位（東/西/南/北/中央）</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const MACHINE_MASTER = [
+      { id: 'robodrill01', name: 'Robodrill01' },
+      { id: 'robodrill02', name: 'Robodrill02' },
+      { id: 'fjv60', name: 'FJV60-80' },
+      { id: 'stonebase01', name: 'StoneBase01' },
+      { id: 'kensaku', name: 'Kensaku台' },
+    ];
+
+    const ZONES = [
+      { id: 'wn', r: 0, c: 0, name: '西·北', prefix: '西-北' },
+      { id: 'wc', r: 0, c: 1, name: '西·中央', prefix: '西-中央' },
+      { id: 'ws', r: 0, c: 2, name: '西·南', prefix: '西-南' },
+      { id: 'cn', r: 1, c: 0, name: '中央·北', prefix: '中央-北' },
+      { id: 'cc', r: 1, c: 1, name: '中央·中央', prefix: '中央-中央' },
+      { id: 'cs', r: 1, c: 2, name: '中央·南', prefix: '中央-南' },
+      { id: 'en', r: 2, c: 0, name: '東·北', prefix: '東-北' },
+      { id: 'ec', r: 2, c: 1, name: '東·中央', prefix: '東-中央' },
+      { id: 'es', r: 2, c: 2, name: '東·南', prefix: '東-南' },
+    ];
+
+    /** zone -> entities[] */
+    const zoneState = {};
+    let entitySeq = 1;
+
+    function newEntityId() { return 'ent-' + entitySeq++; }
+
+    function initZone(zid) {
+      if (zoneState[zid]) return;
+      zoneState[zid] = { entities: [], nextShelfNo: 1 };
+    }
+    ZONES.forEach(z => initZone(z.id));
+
+    function rc(idx) { return { r: Math.floor(idx / 3), c: idx % 3 }; }
+
+    function directionBetween(fr, fc, tr, tc) {
+      const dr = tr - fr, dc = tc - fc;
+      if (dr === 0 && dc === 0) return '中央';
+      if (Math.abs(dr) > Math.abs(dc)) return dr < 0 ? '北' : '南';
+      if (Math.abs(dc) > Math.abs(dr)) return dc < 0 ? '西' : '東';
+      if (dr < 0 && dc < 0) return '北西';
+      if (dr < 0 && dc > 0) return '北東';
+      if (dr > 0 && dc < 0) return '南西';
+      return '南東';
+    }
+
+    function cellOwner(zid, idx) {
+      const st = zoneState[zid];
+      for (const e of st.entities) {
+        if (e.cells.includes(idx)) return e;
+      }
+      return null;
+    }
+
+    function machineCentroids(zid) {
+      return zoneState[zid].entities
+        .filter(e => e.kind === 'machine' && e.masterId)
+        .map(e => {
+          const pts = e.cells.map(rc);
+          const r = pts.reduce((s, p) => s + p.r, 0) / pts.length;
+          const c = pts.reduce((s, p) => s + p.c, 0) / pts.length;
+          return { entity: e, r, c, name: masterName(e.masterId) };
+        });
+    }
+
+    function masterName(id) {
+      return MACHINE_MASTER.find(m => m.id === id)?.name || id;
+    }
+
+    function nearestMachine(zid, cellIndices) {
+      const machines = machineCentroids(zid);
+      if (machines.length === 0) return { name: '（加工機なし）', dir: '中央' };
+      const pts = cellIndices.map(rc);
+      const cr = pts.reduce((s, p) => s + p.r, 0) / pts.length;
+      const cc = pts.reduce((s, p) => s + p.c, 0) / pts.length;
+      let best = machines[0];
+      let bestD = Infinity;
+      for (const m of machines) {
+        const d = Math.abs(m.r - cr) + Math.abs(m.c - cc);
+        if (d < bestD) { bestD = d; best = m; }
+      }
+      const dir = directionBetween(best.r, best.c, cr, cc);
+      return { name: best.name, dir, masterId: best.entity.masterId };
+    }
+
+    function autoShelfCode(zid) {
+      const st = zoneState[zid];
+      const z = ZONES.find(x => x.id === zid);
+      const n = st.nextShelfNo++;
+      return `${z.prefix}-${String(n).padStart(2, '0')}`;
+    }
+
+    function autoDisplayLabel(zid, cellIndices) {
+      const { name, dir } = nearestMachine(zid, cellIndices);
+      if (name === '（加工机なし）' || name === '（加工機なし）') return `置場-${dir}`;
+      return `${name}${dir}`;
+    }
+
+    function clearCells(zid, indices) {
+      const st = zoneState[zid];
+      st.entities = st.entities.filter(e => {
+        e.cells = e.cells.filter(i => !indices.includes(i));
+        return e.cells.length > 0;
+      });
+    }
+
+    function addEntity(zid, kind, cells, opts = {}) {
+      clearCells(zid, cells);
+      const st = zoneState[zid];
+      const e = {
+        id: newEntityId(),
+        kind,
+        cells: [...cells].sort((a, b) => a - b),
+        masterId: opts.masterId || null,
+        shelfCode: opts.shelfCode || '',
+        displayLabel: opts.displayLabel || '',
+      };
+      if (kind === 'shelf') {
+        e.shelfCode = opts.shelfCode || autoShelfCode(zid);
+        e.displayLabel = opts.displayLabel || autoDisplayLabel(zid, cells);
+      }
+      if (kind === 'machine') {
+        e.displayLabel = masterName(opts.masterId);
+      }
+      st.entities.push(e);
+      return e;
+    }
+
+    // --- seed 西·北 ---
+    addEntity('wn', 'aisle', [0]);
+    addEntity('wn', 'machine', [1, 2], { masterId: 'robodrill01' }); // 2マス結合デモ
+    addEntity('wn', 'shelf', [3], {});
+    addEntity('wn', 'shelf', [4], {});
+    addEntity('wn', 'aisle', [6]);
+    addEntity('wn', 'shelf', [7], {});
+    zoneState.wn.nextShelfNo = 6;
+    // re-label seeded shelves
+    zoneState.wn.entities.filter(e => e.kind === 'shelf').forEach((e, i) => {
+      e.shelfCode = `西-北-${String(i + 1).padStart(2, '0')}`;
+      e.displayLabel = autoDisplayLabel('wn', e.cells);
+    });
+
+    addEntity('wc', 'machine', [1], { masterId: 'fjv60' });
+    addEntity('wc', 'shelf', [3], {});
+    addEntity('wc', 'aisle', [4]);
+    zoneState.wc.entities.filter(e => e.kind === 'shelf').forEach(e => {
+      e.shelfCode = autoShelfCode('wc');
+      e.displayLabel = autoDisplayLabel('wc', e.cells);
+    });
+
+    let currentZoneId = null;
+    let selectedCells = new Set();
+    let multiMode = false;
+    let pendingKind = null;
+
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    function zoneSummary(zid) {
+      const es = zoneState[zid].entities;
+      return `棚${es.filter(e => e.kind === 'shelf').length} · 機${es.filter(e => e.kind === 'machine').length}`;
+    }
+
+    function renderMasterSelect() {
+      const sel = document.getElementById('sel-master');
+      sel.innerHTML = '<option value="">— マスタから選択 —</option>' +
+        MACHINE_MASTER.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    }
+
+    function renderFactory() {
+      document.getElementById('factory').innerHTML = ZONES.map(z => `
+        <button type="button" class="macro" data-z="${z.id}">
+          <span class="name">${z.name}</span><span class="meta">${zoneSummary(z.id)}</span>
+        </button>`).join('');
+      document.querySelectorAll('.macro').forEach(b => b.addEventListener('click', () => openZone(b.dataset.z)));
+    }
+
+    function buildRenderItems(zid) {
+      const items = [];
+      const covered = new Set();
+      for (const e of zoneState[zid].entities) {
+        const rs = e.cells.map(rc);
+        const minR = Math.min(...rs.map(p => p.r)), maxR = Math.max(...rs.map(p => p.r));
+        const minC = Math.min(...rs.map(p => p.c)), maxC = Math.max(...rs.map(p => p.c));
+        e.cells.forEach(i => covered.add(i));
+        items.push({
+          entity: e,
+          minR, maxR, minC, maxC,
+          cells: e.cells,
+          label: e.kind === 'machine' ? masterName(e.masterId) : e.kind === 'shelf' ? e.displayLabel : '通路',
+          code: e.shelfCode || '',
+        });
+      }
+      for (let i = 0; i < 9; i++) {
+        if (!covered.has(i)) items.push({ entity: null, minR: rc(i).r, maxR: rc(i).r, minC: rc(i).c, maxC: rc(i).c, cells: [i], label: '', code: '' });
+      }
+      return items;
+    }
+
+    function renderCenterGrid(z) {
+      const grid = document.getElementById('center-grid');
+      grid.innerHTML = '';
+      for (const item of buildRenderItems(z.id)) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const kind = item.entity ? item.entity.kind : 'unused';
+        btn.className = `entity-cell ${kind}`;
+        btn.style.gridColumn = `${item.minC + 1} / ${item.maxC + 2}`;
+        btn.style.gridRow = `${item.minR + 1} / ${item.maxR + 2}`;
+        const selOverlap = item.cells.some(i => selectedCells.has(i));
+        if (selOverlap) btn.classList.add(selectedCells.size === 1 ? 'sel' : 'in-sel');
+        const nums = item.cells.map(i => i + 1).join(',');
+        btn.innerHTML = `
+          <span class="nums">${nums}</span>
+          <span class="main">${item.label || '—'}</span>
+          ${item.code ? `<span class="code">${item.code}</span>` : ''}
+          ${item.cells.length > 1 ? `<span class="span-badge">${item.cells.length}マス</span>` : ''}
+        `;
+        btn.addEventListener('click', () => onCellClick(item.cells));
+        grid.appendChild(btn);
+      }
+    }
+
+    function miniCellType(zid, idx) {
+      const e = cellOwner(zid, idx);
+      return e ? e.kind : 'unused';
+    }
+
+    function renderNeighborStrip(z, direction) {
+      let slice = [], cols = '1fr 1fr 1fr', rows = 'auto 1fr 1fr 1fr';
+      const cells = [...Array(9)].map((_, i) => miniCellType(z.id, i));
+      if (direction === 'n') slice = [6, 7, 8];
+      if (direction === 's') slice = [0, 1, 2];
+      if (direction === 'w') slice = [2, 5, 8];
+      if (direction === 'e') slice = [0, 3, 6];
+      if (direction === 'nw') { slice = [8]; cols = '1fr'; rows = 'auto 1fr'; }
+      if (direction === 'ne') { slice = [6]; cols = '1fr'; rows = 'auto 1fr'; }
+      if (direction === 'sw') { slice = [2]; cols = '1fr'; rows = 'auto 1fr'; }
+      if (direction === 'se') { slice = [0]; cols = '1fr'; rows = 'auto 1fr'; }
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'neighbor';
+      b.style.gridTemplateColumns = cols; b.style.gridTemplateRows = rows;
+      b.innerHTML = `<div class="neighbor-label">${z.name}</div>` +
+        slice.map(i => `<div class="mini ${cells[i]}">${i + 1}</div>`).join('');
+      b.addEventListener('click', () => openZone(z.id));
+      return b;
+    }
+
+    function zoneAt(r, c) { return ZONES.find(z => z.r === r && z.c === c); }
+    function neighbor(r, c, dr, dc) { return zoneAt(r + dr, c + dc); }
+
+    function openZone(zid) {
+      currentZoneId = zid;
+      if (!multiMode) selectedCells.clear();
+      const z = ZONES.find(x => x.id === zid);
+      document.getElementById('view-top').classList.add('hidden');
+      document.getElementById('view-detail').classList.remove('hidden');
+      document.getElementById('btn-back').classList.remove('hidden');
+      document.getElementById('title').textContent = '区画: ' + z.name;
+
+      const map = document.getElementById('context-map');
+      map.innerHTML = '';
+      const dirs = [['nw',-1,-1],['n',-1,0],['ne',-1,1],['w',0,-1],null,['e',0,1],['sw',1,-1],['s',1,0],['se',1,1]];
+      const ids = ['nb-nw','nb-n','nb-ne','nb-w',null,'nb-e','nb-sw','nb-s','nb-se'];
+      dirs.forEach((d, i) => {
+        if (!d) {
+          const c = document.createElement('div');
+          c.className = 'center-zone';
+          c.innerHTML = `<div class="cz-title">${z.name}（3×3）</div><div class="micro-grid" id="center-grid"></div>`;
+          map.appendChild(c);
+          return;
+        }
+        const el = document.createElement('div'); el.id = ids[i];
+        const nb = neighbor(z.r, z.c, d[1], d[2]);
+        if (nb) el.appendChild(renderNeighborStrip(nb, d[0]));
+        else { el.className = 'neighbor'; el.style.border = 'none'; el.innerHTML = '<div class="neighbor-label">—</div>'; }
+        map.appendChild(el);
+      });
+      ['ah-n','ah-s','av-w','av-e'].forEach(id => {
+        const a = document.createElement('div'); a.id = id;
+        a.className = id.startsWith('ah') ? 'aisle-h' : 'aisle-v';
+        a.textContent = id.includes('n') || id.includes('s') ? '区画間通路' : '区画間通路';
+        map.appendChild(a);
+      });
+      renderCenterGrid(z);
+      updateAssignPanel();
+    }
+
+    function onCellClick(cells) {
+      if (multiMode) {
+        cells.forEach(i => {
+          if (selectedCells.has(i)) selectedCells.delete(i);
+          else selectedCells.add(i);
+        });
+      } else {
+        selectedCells.clear();
+        cells.forEach(i => selectedCells.add(i));
+      }
+      renderCenterGrid(ZONES.find(x => x.id === currentZoneId));
+      updateAssignPanel();
+    }
+
+    function getSelectedIndices() {
+      return [...selectedCells].sort((a, b) => a - b);
+    }
+
+    function updateAssignPanel() {
+      const indices = getSelectedIndices();
+      const title = document.getElementById('assign-title');
+      const selMaster = document.getElementById('sel-master');
+      const autoBox = document.getElementById('auto-preview');
+      document.getElementById('sel-count').textContent = indices.length ? `選択: マス ${indices.map(i => i + 1).join(', ')}` : '';
+
+      if (!indices.length) {
+        title.textContent = 'マスを選択（複数マス ON で結合）';
+        selMaster.disabled = true;
+        autoBox.classList.add('hidden');
+        return;
+      }
+
+      const owner = cellOwner(currentZoneId, indices[0]);
+      const sameEntity = indices.every(i => cellOwner(currentZoneId, i)?.id === owner?.id);
+      title.textContent = sameEntity && owner
+        ? `${owner.kind === 'shelf' ? '部品置き場' : owner.kind === 'machine' ? '加工機' : '通路'} · ${indices.map(i => i + 1).join(',')}（${indices.length}マス）`
+        : `${indices.length}マス選択中`;
+
+      selMaster.disabled = false;
+      if (owner?.kind === 'machine') selMaster.value = owner.masterId || '';
+      else selMaster.value = '';
+
+      if (indices.length >= 1) {
+        autoBox.classList.remove('hidden');
+        document.getElementById('auto-label').textContent = autoDisplayLabel(currentZoneId, indices);
+        document.getElementById('auto-code').textContent = owner?.shelfCode || '（確定時に ' + ZONES.find(z => z.id === currentZoneId).prefix + '-XX 自動採番）';
+      }
+    }
+
+    function applyAssignment(kind) {
+      const indices = getSelectedIndices();
+      if (!indices.length || !currentZoneId) return;
+
+      if (kind === 'clear') {
+        clearCells(currentZoneId, indices);
+        toast('解除');
+      } else if (kind === 'aisle') {
+        addEntity(currentZoneId, 'aisle', indices);
+        toast('通路に設定');
+      } else if (kind === 'shelf') {
+        addEntity(currentZoneId, 'shelf', indices);
+        toast('部品置き場 — 自動: ' + autoDisplayLabel(currentZoneId, indices));
+      } else if (kind === 'machine') {
+        const mid = document.getElementById('sel-master').value;
+        if (!mid) { toast('加工機マスタを選択'); return; }
+        addEntity(currentZoneId, 'machine', indices, { masterId: mid });
+        toast('加工機: ' + masterName(mid) + (indices.length > 1 ? ` (${indices.length}マス)` : ''));
+      }
+      selectedCells.clear();
+      openZone(currentZoneId);
+    }
+
+    document.getElementById('toggle-multi').addEventListener('click', () => {
+      multiMode = !multiMode;
+      document.getElementById('toggle-multi').classList.toggle('on', multiMode);
+      document.getElementById('toggle-multi').textContent = (multiMode ? '☑' : '☐') + ' 複数マス指定';
+      if (!multiMode && selectedCells.size > 1) { selectedCells = new Set([...selectedCells].slice(0, 1)); }
+      if (currentZoneId) openZone(currentZoneId);
+    });
+
+    document.getElementById('pick-shelf').addEventListener('click', () => applyAssignment('shelf'));
+    document.getElementById('pick-machine').addEventListener('click', () => applyAssignment('machine'));
+    document.getElementById('pick-aisle').addEventListener('click', () => applyAssignment('aisle'));
+    document.getElementById('pick-clear').addEventListener('click', () => applyAssignment('clear'));
+
+    document.getElementById('sel-master').addEventListener('change', () => {
+      const indices = getSelectedIndices();
+      const owner = indices.length && cellOwner(currentZoneId, indices[0]);
+      if (owner?.kind === 'machine') {
+        owner.masterId = document.getElementById('sel-master').value;
+        owner.displayLabel = masterName(owner.masterId);
+        openZone(currentZoneId);
+        indices.forEach(i => selectedCells.add(i));
+        updateAssignPanel();
+      }
+    });
+
+    document.getElementById('btn-back').addEventListener('click', () => {
+      currentZoneId = null; selectedCells.clear();
+      document.getElementById('view-top').classList.remove('hidden');
+      document.getElementById('view-detail').classList.add('hidden');
+      document.getElementById('btn-back').classList.add('hidden');
+      document.getElementById('title').textContent = '現場全体図';
+      renderFactory();
+    });
+
+    renderMasterSelect();
+    renderFactory();
+  </script>
+</body>
+</html>

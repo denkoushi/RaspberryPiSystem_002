@@ -313,6 +313,8 @@ model ClientDevice {
   haizenPresetShelfCodeRaw String?
   /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）
   haizenEdgeEnabled        Boolean  @default(false)
+  /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
+  shelfLayoutEditEnabled   Boolean  @default(false)
   lastSeenAt     DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -482,9 +484,58 @@ model OrderPlacementBranchState {
 model MobilePlacementShelf {
   id                      String        @id @default(uuid())
   shelfCodeRaw            String        @unique
+  /// オペレータ向け表示名（例: Robodrill01南）
+  displayLabel            String?
+  /// 段（将来 `-1` 運用。初期 NULL）
+  tier                    Int?
+  /// マクロ区画 ID（nw..se）
+  macroZoneId             String?
   createdAt               DateTime      @default(now())
   createdByClientDeviceId String?
   createdBy               ClientDevice? @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
+  layoutEntities          MobilePlacementLayoutEntity[]
+}
+
+enum MobilePlacementLayoutEntityKind {
+  MACHINE
+  SHELF
+  AISLE
+  UNUSED
+}
+
+model MobilePlacementZoneLayout {
+  id            String   @id @default(uuid())
+  /// マクロ区画 ID（nw | n | ne | w | c | e | sw | s | se）
+  macroZoneId   String   @unique
+  /// 区画内グリッド（3 または 4）
+  gridSize      Int      @default(3)
+  /// 次に採番する棚スロット（1..99）
+  nextShelfSlot Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  entities      MobilePlacementLayoutEntity[]
+}
+
+model MobilePlacementLayoutEntity {
+  id           String                          @id @default(uuid())
+  zoneLayoutId String
+  zoneLayout   MobilePlacementZoneLayout       @relation(fields: [zoneLayoutId], references: [id], onDelete: Cascade)
+  entityKind   MobilePlacementLayoutEntityKind
+  /// 0-index セル番号の JSON 配列
+  cellIndices  Json
+  /// 加工機マスタ resourceCd（MACHINE のみ）
+  resourceCd   String?
+  /// 加工機表示名スナップショット（MACHINE のみ）
+  resourceName String?
+  shelfId      String?
+  shelf        MobilePlacementShelf?           @relation(fields: [shelfId], references: [id], onDelete: SetNull)
+  /// 通路ラベル（AISLE のみ・任意）
+  aisleLabel   String?
+  createdAt    DateTime                        @default(now())
+  updatedAt    DateTime                        @updatedAt
+
+  @@index([zoneLayoutId])
+  @@index([shelfId])
 }
 
 model ClientStatus {

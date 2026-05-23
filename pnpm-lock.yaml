@@ -60,6 +60,9 @@ importers:
       '@raspi-system/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@raspi-system/shelf-layout-core':
+        specifier: workspace:*
+        version: link:../../packages/shelf-layout-core
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -196,6 +199,9 @@ importers:
       '@raspi-system/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@raspi-system/shelf-layout-core':
+        specifier: workspace:*
+        version: link:../../packages/shelf-layout-core
       '@tanstack/react-query':
         specifier: ^5.35.2
         version: 5.90.10(react@18.3.1)
@@ -338,6 +344,30 @@ importers:
       typescript:
         specifier: ^5.4.5
         version: 5.9.3
+
+  packages/shelf-layout-core:
+    devDependencies:
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^7.8.0
+        version: 7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^7.8.0
+        version: 7.18.0(eslint@8.57.1)(typescript@5.9.3)
+      eslint:
+        specifier: ^8.57.0
+        version: 8.57.1
+      eslint-config-prettier:
+        specifier: ^9.1.0
+        version: 9.1.2(eslint@8.57.1)
+      eslint-plugin-import:
+        specifier: ^2.29.1
+        version: 2.32.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
+      vitest:
+        specifier: ^1.5.0
+        version: 1.6.1(@types/node@25.0.1)(@vitest/ui@1.6.1)(jsdom@27.4.0)
 
 packages:
 
@@ -4994,7 +5024,7 @@ snapshots:
       pathe: 1.1.2
       picocolors: 1.1.1
       sirv: 2.0.4
-      vitest: 1.6.1(@types/node@25.0.1)(@vitest/ui@1.6.1)(jsdom@24.0.0)
+      vitest: 1.6.1(@types/node@20.19.25)(@vitest/ui@1.6.1)(jsdom@27.4.0)
 
   '@vitest/utils@1.6.1':
     dependencies:

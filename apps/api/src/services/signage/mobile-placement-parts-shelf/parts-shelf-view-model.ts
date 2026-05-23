@@ -4,6 +4,10 @@ export type PartsShelfRowVm = {
   serial5: string;
   partName: string;
   machine10: string;
+  /** 棚表示名（MobilePlacementShelf.displayLabel） */
+  displayLabel: string | null;
+  /** 正本棚 ID */
+  shelfCodeRaw: string;
 };
 
 export type PartsShelfZoneVm = {

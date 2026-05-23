@@ -7,4 +7,7 @@ export type RegisteredShelfEntryDto = {
   areaId?: 'west' | 'central' | 'east';
   lineId?: 'north' | 'central' | 'south';
   slot?: number;
+  tier?: number;
+  displayLabel?: string | null;
+  macroZoneId?: string | null;
 };

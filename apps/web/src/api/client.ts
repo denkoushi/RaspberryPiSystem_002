@@ -868,6 +868,92 @@ export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: 
   return data;
 }
 
+export type MobilePlacementClientCapabilities = {
+  shelfLayoutEditEnabled: boolean;
+  haizenEdgeEnabled: boolean;
+};
+
+export async function getMobilePlacementClientCapabilities() {
+  const { data } = await api.get<MobilePlacementClientCapabilities>('/mobile-placement/client-capabilities');
+  return data;
+}
+
+export type MachineMasterDto = { resourceCd: string; resourceName: string };
+
+export async function getMobilePlacementMachineMasters() {
+  const { data } = await api.get<{ machines: MachineMasterDto[] }>('/mobile-placement/machine-masters');
+  return data;
+}
+
+export type ShelfLayoutSummaryDto = {
+  macroZoneId: string;
+  displayName: string;
+  gridSize: number;
+  shelfCount: number;
+  machineCount: number;
+};
+
+export async function getMobilePlacementShelfLayoutSummary() {
+  const { data } = await api.get<{ zones: ShelfLayoutSummaryDto[] }>('/mobile-placement/shelf-layout');
+  return data;
+}
+
+export type ShelfLayoutEntityDto = {
+  id: string;
+  entityKind: 'MACHINE' | 'SHELF' | 'AISLE' | 'UNUSED';
+  cellIndices: number[];
+  resourceCd: string | null;
+  resourceName: string | null;
+  shelfCodeRaw: string | null;
+  displayLabel: string | null;
+  aisleLabel: string | null;
+};
+
+export type ShelfLayoutZoneDto = {
+  macroZoneId: string;
+  displayName: string;
+  shelfPrefix: string;
+  gridSize: 3 | 4;
+  nextShelfSlot: number;
+  updatedAt: string;
+  entities: ShelfLayoutEntityDto[];
+  zero2wDeviceCountByShelfCode: Record<string, number>;
+};
+
+export async function getMobilePlacementShelfLayoutZone(macroZoneId: string) {
+  const { data } = await api.get<ShelfLayoutZoneDto>(`/mobile-placement/shelf-layout/zones/${macroZoneId}`);
+  return data;
+}
+
+export async function putMobilePlacementShelfLayoutZone(
+  macroZoneId: string,
+  payload: {
+    gridSize: 3 | 4;
+    expectedUpdatedAt?: string | null;
+    entities: Array<{
+      entityKind: 'MACHINE' | 'SHELF' | 'AISLE' | 'UNUSED';
+      cellIndices: number[];
+      resourceCd?: string | null;
+      resourceName?: string | null;
+      aisleLabel?: string | null;
+      shelfCodeRaw?: string | null;
+    }>;
+  }
+) {
+  const { data } = await api.put<ShelfLayoutZoneDto>(`/mobile-placement/shelf-layout/zones/${macroZoneId}`, payload);
+  return data;
+}
+
+export async function postMobilePlacementShelfRelocate(sourceShelfCodeRaw: string, targetShelfCodeRaw: string) {
+  const encoded = encodeURIComponent(sourceShelfCodeRaw);
+  const { data } = await api.post<{
+    sourceShelfCodeRaw: string;
+    targetShelfCodeRaw: string;
+    movedDisplayLabel: string | null;
+  }>(`/mobile-placement/shelves/${encoded}/relocate`, { targetShelfCodeRaw });
+  return data;
+}
+
 /** 部品名検索（現在棚優先・スケジュール補助）。機種名は登録製番ボタン下段と同系の MH/SH 由来。機種名のみでも可。 */
 export async function getMobilePlacementPartSearchSuggest(q: string, machineName?: string) {
   const { data } = await api.get<PartPlacementSearchSuggestResponse>('/mobile-placement/part-search/suggest', {
@@ -2747,6 +2833,8 @@ export interface ClientDevice {
   defaultMode?: 'PHOTO' | 'TAG' | null;
   /** Zero2W / haizen-agent 配膳エッジとしてキオスク設定対象に含める */
   haizenEdgeEnabled?: boolean;
+  /** キオスク棚レイアウト編集を許可 */
+  shelfLayoutEditEnabled?: boolean;
   /** キオスクのサイネージプレビュー参照先（API が返す場合のみ） */
   signagePreviewTargetApiKey?: string | null;
   lastSeenAt?: string | null;
@@ -2761,7 +2849,12 @@ export async function getClients() {
 
 export async function updateClient(
   id: string,
-  payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null; haizenEdgeEnabled?: boolean }
+  payload: {
+    name?: string;
+    defaultMode?: 'PHOTO' | 'TAG' | null;
+    haizenEdgeEnabled?: boolean;
+    shelfLayoutEditEnabled?: boolean;
+  }
 ) {
   const { data } = await api.put<{ client: ClientDevice }>(`/clients/${id}`, payload);
   return data.client;

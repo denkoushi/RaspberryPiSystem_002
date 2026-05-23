@@ -27,6 +27,17 @@ import {
 } from '../../services/mobile-placement/haizen-placement.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 import { suggestPartPlacementSearch } from '../../services/mobile-placement/part-search/part-search.service.js';
+import {
+  getClientCapabilities,
+  requireShelfLayoutEditEnabled
+} from '../../services/mobile-placement/client-capabilities.service.js';
+import { listMachineMastersForShelfLayout } from '../../services/mobile-placement/machine-master-query.service.js';
+import {
+  getShelfLayoutZone,
+  listShelfLayoutSummary,
+  replaceShelfLayoutZone
+} from '../../services/mobile-placement/shelf-layout-edit.service.js';
+import { relocateMobilePlacementShelf } from '../../services/mobile-placement/shelf-relocate.service.js';
 import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
 
 const registerBodySchema = z.object({
@@ -147,6 +158,33 @@ const haizenTargetDeviceParamsSchema = z.object({
   clientDeviceId: z.string().min(1)
 });
 
+const shelfLayoutZoneParamsSchema = z.object({
+  macroZoneId: z.enum(['nw', 'n', 'ne', 'w', 'c', 'e', 'sw', 's', 'se'])
+});
+
+const shelfLayoutEntitySchema = z.object({
+  entityKind: z.enum(['MACHINE', 'SHELF', 'AISLE', 'UNUSED']),
+  cellIndices: z.array(z.number().int().min(0).max(15)).min(1),
+  resourceCd: z.string().max(100).optional().nullable(),
+  resourceName: z.string().max(200).optional().nullable(),
+  aisleLabel: z.string().max(100).optional().nullable(),
+  shelfCodeRaw: z.string().max(200).optional().nullable()
+});
+
+const replaceShelfLayoutZoneBodySchema = z.object({
+  gridSize: z.union([z.literal(3), z.literal(4)]),
+  expectedUpdatedAt: z.string().datetime().optional().nullable(),
+  entities: z.array(shelfLayoutEntitySchema)
+});
+
+const relocateShelfParamsSchema = z.object({
+  shelfCodeRaw: z.string().min(1)
+});
+
+const relocateShelfBodySchema = z.object({
+  targetShelfCodeRaw: z.string().min(1).max(200)
+});
+
 export async function registerMobilePlacementRoutes(app: FastifyInstance): Promise<void> {
   const kioskDeps = {
     requireClientDevice
@@ -161,6 +199,53 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     await requireClientDevice(request.headers['x-client-key']);
     const shelves = await listRegisteredShelvesFromShelfMaster();
     return { shelves };
+  });
+
+  app.get('/mobile-placement/client-capabilities', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const identity = resolveCredentialIdentity(clientDevice);
+    return getClientCapabilities(identity.clientDeviceId);
+  });
+
+  app.get('/mobile-placement/machine-masters', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    return listMachineMastersForShelfLayout();
+  });
+
+  app.get('/mobile-placement/shelf-layout', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    return listShelfLayoutSummary();
+  });
+
+  app.get('/mobile-placement/shelf-layout/zones/:macroZoneId', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const params = shelfLayoutZoneParamsSchema.parse(request.params);
+    return getShelfLayoutZone(params.macroZoneId);
+  });
+
+  app.put('/mobile-placement/shelf-layout/zones/:macroZoneId', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const identity = resolveCredentialIdentity(clientDevice);
+    await requireShelfLayoutEditEnabled(identity.clientDeviceId);
+    const params = shelfLayoutZoneParamsSchema.parse(request.params);
+    const body = replaceShelfLayoutZoneBodySchema.parse(request.body);
+    return replaceShelfLayoutZone({
+      macroZoneIdRaw: params.macroZoneId,
+      gridSize: body.gridSize,
+      entities: body.entities,
+      expectedUpdatedAt: body.expectedUpdatedAt ?? null,
+      clientDeviceId: identity.clientDeviceId
+    });
+  });
+
+  app.post('/mobile-placement/shelves/:shelfCodeRaw/relocate', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const params = relocateShelfParamsSchema.parse(request.params);
+    const body = relocateShelfBodySchema.parse(request.body);
+    return relocateMobilePlacementShelf({
+      sourceShelfCodeRaw: decodeURIComponent(params.shelfCodeRaw),
+      targetShelfCodeRaw: body.targetShelfCodeRaw
+    });
   });
 
   /**

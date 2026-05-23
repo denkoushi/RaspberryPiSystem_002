@@ -38,6 +38,7 @@ export function ClientsPage() {
   const [editingName, setEditingName] = useState('');
   const [selectedMode, setSelectedMode] = useState<'PHOTO' | 'TAG' | null>(null);
   const [editingHaizenEdge, setEditingHaizenEdge] = useState(false);
+  const [editingShelfLayout, setEditingShelfLayout] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const dateFormatter = useMemo(
     () =>
@@ -59,6 +60,7 @@ export function ClientsPage() {
     setEditingName(client.name);
     setSelectedMode(client.defaultMode ?? 'TAG');
     setEditingHaizenEdge(Boolean(client.haizenEdgeEnabled));
+    setEditingShelfLayout(Boolean(client.shelfLayoutEditEnabled));
     setEditError(null);
   };
 
@@ -76,7 +78,12 @@ export function ClientsPage() {
     try {
       await update.mutateAsync({
         id,
-        payload: { name: normalizedName, defaultMode: selectedMode, haizenEdgeEnabled: editingHaizenEdge }
+        payload: {
+          name: normalizedName,
+          defaultMode: selectedMode,
+          haizenEdgeEnabled: editingHaizenEdge,
+          shelfLayoutEditEnabled: editingShelfLayout
+        }
       });
       setEditingId(null);
       setEditingName('');
@@ -93,6 +100,7 @@ export function ClientsPage() {
     setEditingName('');
     setSelectedMode(null);
     setEditingHaizenEdge(false);
+    setEditingShelfLayout(false);
     setEditError(null);
   };
 
@@ -301,6 +309,7 @@ export function ClientsPage() {
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">APIキー</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">初期表示</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">Zero2W配膳</th>
+                  <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">棚レイアウト編集</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">最終確認</th>
                   <th className="px-4 py-2 text-left text-sm font-bold text-slate-900">操作</th>
                 </tr>
@@ -355,6 +364,24 @@ export function ClientsPage() {
                         ) : (
                           <span className="text-sm font-semibold text-slate-900">
                             {client.haizenEdgeEnabled ? '対象' : '—'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        {isEditing ? (
+                          <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-900">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-emerald-600"
+                              checked={editingShelfLayout}
+                              onChange={(e) => setEditingShelfLayout(e.target.checked)}
+                              aria-label="棚レイアウト編集を許可"
+                            />
+                            許可
+                          </label>
+                        ) : (
+                          <span className="text-sm font-semibold text-slate-900">
+                            {client.shelfLayoutEditEnabled ? '許可' : '—'}
                           </span>
                         )}
                       </td>

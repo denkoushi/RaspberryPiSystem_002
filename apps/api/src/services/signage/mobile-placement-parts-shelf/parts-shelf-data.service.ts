@@ -51,12 +51,26 @@ export async function buildMobilePlacementPartsShelfGridViewModel(
 
   const csvById = new Map(csvRows.map((r) => [r.id, r]));
 
+  const shelfCodes = [...new Set(states.map((s) => s.shelfCodeRaw.trim()).filter((c) => c.length > 0))];
+  const shelfRows =
+    shelfCodes.length > 0
+      ? await prisma.mobilePlacementShelf.findMany({
+          where: { shelfCodeRaw: { in: shelfCodes } },
+          select: { shelfCodeRaw: true, displayLabel: true }
+        })
+      : [];
+  const displayLabelByShelfCode = new Map(shelfRows.map((s) => [s.shelfCodeRaw, s.displayLabel]));
+
   const buckets = new Map<PartsShelfZoneId, PartsShelfRowVm[]>();
   for (const z of ZONE_ORDER) {
     buckets.set(z, []);
   }
 
-  type PendingPlacement = { zoneId: PartsShelfZoneId; fields: ReturnType<typeof readRowData> };
+  type PendingPlacement = {
+    zoneId: PartsShelfZoneId;
+    shelfCodeRaw: string;
+    fields: ReturnType<typeof readRowData>;
+  };
   const pending: PendingPlacement[] = [];
   const fseibanKeys = new Set<string>();
 
@@ -75,7 +89,7 @@ export async function buildMobilePlacementPartsShelfGridViewModel(
     if (fs.length > 0) {
       fseibanKeys.add(fs);
     }
-    pending.push({ zoneId, fields });
+    pending.push({ zoneId, shelfCodeRaw: st.shelfCodeRaw.trim(), fields });
   }
 
   /** 機種名: ProductNo は製造order用途のため使わない。MH/SH 行 FHINMEI 集約（部品検索・進捗一覧と同系） */
@@ -84,7 +98,7 @@ export async function buildMobilePlacementPartsShelfGridViewModel(
     progressRows.map((r) => [r.fseiban.trim(), (r.machineName ?? '').trim()])
   );
 
-  for (const { zoneId, fields } of pending) {
+  for (const { zoneId, shelfCodeRaw, fields } of pending) {
     const partName = buildPartDisplayName(fields);
     const machineSchedule = machineBySeiban.get(fields.fseiban.trim()) ?? '';
     const machine10 = machineTypeDisplayKey(machineSchedule);
@@ -94,6 +108,8 @@ export async function buildMobilePlacementPartsShelfGridViewModel(
       serial5,
       partName,
       machine10,
+      displayLabel: displayLabelByShelfCode.get(shelfCodeRaw) ?? null,
+      shelfCodeRaw
     };
 
     const list = buckets.get(zoneId);

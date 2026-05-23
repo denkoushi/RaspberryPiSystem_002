@@ -1721,7 +1721,7 @@ export function useClientMutations() {
       payload
     }: {
       id: string;
-      payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null; haizenEdgeEnabled?: boolean };
+      payload: { name?: string; defaultMode?: 'PHOTO' | 'TAG' | null; haizenEdgeEnabled?: boolean; shelfLayoutEditEnabled?: boolean };
     }) => updateClient(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });

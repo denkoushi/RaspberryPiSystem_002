@@ -14,6 +14,8 @@ export const mpKioskTheme = {
   /** ページ上部の補助導線 */
   partSearchButton:
     'rounded-lg border-2 border-sky-400 bg-[#0c4a6e] px-3 py-2 text-sm font-bold text-white active:bg-sky-700/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40',
+  partSearchButtonActive:
+    'rounded-lg border-2 border-emerald-500 bg-[#14532d] px-3 py-2 text-sm font-bold text-white active:bg-emerald-700/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40',
 
   /** 下半: amber（棚選択）パネル */
   shelfPanelRoot:

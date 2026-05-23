@@ -11,7 +11,12 @@ import { parseStructuredShelfCode, type RegisteredShelfEntry } from './mobile-pl
  */
 export async function listRegisteredShelvesFromShelfMaster(): Promise<RegisteredShelfEntry[]> {
   const rows = await prisma.mobilePlacementShelf.findMany({
-    select: { shelfCodeRaw: true },
+    select: {
+      shelfCodeRaw: true,
+      displayLabel: true,
+      tier: true,
+      macroZoneId: true
+    },
     orderBy: { shelfCodeRaw: 'asc' }
   });
 
@@ -19,6 +24,9 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
     const parsed = parseStructuredShelfCode(r.shelfCodeRaw);
     return {
       shelfCodeRaw: r.shelfCodeRaw,
+      displayLabel: r.displayLabel,
+      macroZoneId: r.macroZoneId,
+      ...(r.tier != null ? { tier: r.tier } : parsed.tier != null ? { tier: parsed.tier } : {}),
       ...parsed
     };
   });

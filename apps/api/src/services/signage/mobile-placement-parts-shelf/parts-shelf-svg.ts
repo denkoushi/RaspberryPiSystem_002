@@ -93,12 +93,15 @@ export function buildMobilePlacementPartsShelfGridSvg(vm: PartsShelfGridViewMode
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]!;
       const textY = bodyTop + (i + 1) * rowStep - Math.round(2 * scale);
-      const xSerial = innerX + innerPad;
-      const xPart = innerX + innerWc * 0.11;
+      const xShelf = innerX + innerPad;
+      const xPart = innerX + innerWc * 0.22;
       const xMachine = innerX + innerWc - innerPad;
+      const shelfMain = (row.displayLabel?.trim() || row.shelfCodeRaw).slice(0, 14);
+      const shelfSub = row.displayLabel ? row.shelfCodeRaw : row.serial5;
       rowEls.push(`
-        <text x="${xSerial}" y="${textY}" fill="rgba(255,255,255,0.78)" font-size="${fsRow}" font-family="ui-monospace,Consolas,monospace" font-weight="700">${escapeXml(row.serial5)}</text>
-        <text x="${xPart}" y="${textY}" fill="rgba(241,245,249,0.95)" font-size="${fsRow}" font-family="system-ui,sans-serif" font-weight="600">${escapeXml(truncatePart(row.partName, 24))}</text>
+        <text x="${xShelf}" y="${textY - Math.round(fsRow * 0.35)}" fill="rgba(241,245,249,0.95)" font-size="${fsRow}" font-family="system-ui,sans-serif" font-weight="700">${escapeXml(shelfMain)}</text>
+        <text x="${xShelf}" y="${textY + Math.round(fsRow * 0.45)}" fill="rgba(125,211,252,0.85)" font-size="${fsCount}" font-family="ui-monospace,Consolas,monospace" font-weight="600">${escapeXml(truncatePart(shelfSub, 16))}</text>
+        <text x="${xPart}" y="${textY}" fill="rgba(241,245,249,0.95)" font-size="${fsRow}" font-family="system-ui,sans-serif" font-weight="600">${escapeXml(truncatePart(row.partName, 20))}</text>
         <text x="${xMachine}" y="${textY}" text-anchor="end" fill="#ffffff" font-size="${fsRow}" font-family="ui-monospace,Consolas,monospace" font-weight="800">${escapeXml(row.machine10)}</text>
       `);
     }

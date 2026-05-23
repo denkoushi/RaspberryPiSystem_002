@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キオスク — 区画レイアウト編集（9/16マス）静的プレビュー</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --emerald: #34d399;
+      --rose: #fb7185;
+      --violet: #a78bfa;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.12);
+      --aisle-b: rgba(56, 189, 248, 0.45);
+      --unused: rgba(15, 23, 42, 0.6);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg); color: #f8fafc; line-height: 1.45;
+    }
+    .doc { max-width: 1320px; margin: 0 auto; padding: 0.85rem 1rem 2rem; }
+    h1 { margin: 0 0 0.35rem; font-size: 1.12rem; font-weight: 800; }
+    .lead { margin: 0 0 0.65rem; font-size: 0.8rem; color: var(--muted); max-width: 105ch; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.65rem; }
+    .pill {
+      font-size: 0.68rem; font-weight: 700; padding: 0.22rem 0.48rem;
+      border-radius: 999px; border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04); color: #cbd5e1;
+    }
+    .pill em { color: var(--amber); font-style: normal; }
+
+    .kiosk {
+      border-radius: 14px; border: 2px solid #475569; overflow: hidden;
+      background: var(--panel); min-height: min(820px, 80vh);
+      display: flex; flex-direction: column;
+    }
+    .top {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+      padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border);
+      background: rgba(2,6,23,0.55);
+    }
+    .top h2 { margin: 0; font-size: 0.92rem; font-weight: 800; flex: 1; min-width: 160px; }
+    .seg { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .seg button {
+      appearance: none; border: none; background: rgba(255,255,255,0.04);
+      color: #94a3b8; font: inherit; font-size: 0.72rem; font-weight: 700;
+      padding: 0.35rem 0.65rem; cursor: pointer;
+    }
+    .seg button.on { background: rgba(56,189,248,0.2); color: #fff; }
+    .seg button.edit-on { background: rgba(251,191,36,0.15); color: #fef3c7; }
+
+    .layout { flex: 1; display: grid; grid-template-columns: 240px 1fr 280px; min-height: 0; }
+    @media (max-width: 1050px) { .layout { grid-template-columns: 1fr; } }
+
+    .col { border-right: 1px solid var(--border); padding: 0.6rem; overflow: auto; min-height: 0; }
+    .col:last-child { border-right: none; }
+    .col .hint { font-size: 0.65rem; color: var(--muted); margin: 0 0 0.45rem; }
+
+    .zone-btn {
+      display: block; width: 100%; text-align: left;
+      appearance: none; border-radius: 9px; border: 2px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03); color: #fff; font: inherit;
+      padding: 0.45rem 0.55rem; margin-bottom: 0.3rem; cursor: pointer;
+    }
+    .zone-btn.on { border-color: var(--amber); background: rgba(251,191,36,0.08); }
+    .zone-btn .n { font-size: 0.8rem; font-weight: 800; }
+    .zone-btn .m { font-size: 0.62rem; color: var(--muted); margin-top: 0.1rem; }
+
+    .grid-size { display: flex; gap: 0.35rem; margin: 0.5rem 0; }
+    .grid-size button {
+      flex: 1; appearance: none; border-radius: 8px; border: 2px solid var(--border);
+      background: rgba(255,255,255,0.04); color: #e2e8f0;
+      font: inherit; font-size: 0.75rem; font-weight: 800; padding: 0.4rem; cursor: pointer;
+    }
+    .grid-size button.on { border-color: var(--sky); background: rgba(56,189,248,0.12); }
+    .grid-size button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .paint-palette { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+    .paint {
+      appearance: none; text-align: left; border-radius: 9px;
+      border: 2px solid var(--border); background: rgba(255,255,255,0.03);
+      color: #fff; font: inherit; padding: 0.45rem 0.55rem; cursor: pointer;
+      display: flex; align-items: center; gap: 0.45rem;
+    }
+    .paint.on { outline: 2px solid #fff; outline-offset: 1px; }
+    .paint .sw { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.2); }
+    .paint .sw.machine { background: var(--machine); }
+    .paint .sw.shelf { background: var(--shelf); border-color: var(--shelf-b); }
+    .paint .sw.aisle { background: var(--aisle); border-color: var(--aisle-b); }
+    .paint .sw.unused { background: var(--unused); }
+    .paint .tx { font-size: 0.75rem; font-weight: 700; }
+    .paint .sub { font-size: 0.62rem; color: var(--muted); font-weight: 500; }
+
+    .center { display: flex; flex-direction: column; gap: 0.5rem; }
+    .bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+      padding: 0.45rem 0.55rem; border-radius: 10px;
+      border: 1px solid var(--border); background: rgba(2,6,23,0.45);
+      font-size: 0.72rem;
+    }
+    .bar strong { color: #fef3c7; }
+
+    .floor-box {
+      flex: 1; border-radius: 12px; border: 1px solid var(--border);
+      background: rgba(2,6,23,0.4); padding: 0.65rem;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 380px;
+    }
+    .floor-box h3 { margin: 0 0 0.35rem; font-size: 0.95rem; color: #fef3c7; align-self: flex-start; }
+    .floor-box .sub { margin: 0 0 0.65rem; font-size: 0.68rem; color: var(--muted); align-self: flex-start; }
+
+    .grid {
+      display: grid; gap: 6px;
+      width: min(100%, 480px); aspect-ratio: 1;
+    }
+    .grid.size-3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
+    .grid.size-4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); }
+
+    .cell {
+      appearance: none; border-radius: 8px; border: 2px solid transparent;
+      font: inherit; cursor: pointer; padding: 0.25rem;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; min-height: 0; transition: transform 0.08s;
+    }
+    .cell:hover:not(:disabled) { transform: scale(1.03); z-index: 1; }
+    .cell:disabled { cursor: default; }
+    .cell .coord { font-size: 0.55rem; opacity: 0.55; font-weight: 600; }
+    .cell .main { font-size: clamp(0.55rem, 1.8vw, 0.72rem); font-weight: 800; line-height: 1.15; }
+    .cell .code { font-family: ui-monospace, monospace; font-size: 0.52rem; color: #7dd3fc; margin-top: 0.1rem; }
+
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); color: #94a3b8; }
+    .cell.shelf { background: linear-gradient(180deg, #5c4008, var(--shelf)); border-color: var(--shelf-b); color: #fef3c7; }
+    .cell.aisle { background: var(--aisle); border-color: var(--aisle-b); border-style: dashed; color: #64748b; }
+    .cell.unused { background: var(--unused); border-color: rgba(255,255,255,0.06); color: #475569; }
+
+    .cell.sel { outline: 3px solid var(--sky); outline-offset: 1px; }
+
+    .view-mode .cell { cursor: default; }
+    .view-mode .cell.shelf { cursor: pointer; }
+    .view-mode .cell.shelf:hover { outline: 2px solid var(--amber); }
+
+    .detail { font-size: 0.75rem; }
+    .detail h4 { margin: 0 0 0.5rem; font-size: 0.78rem; font-weight: 800; color: #e2e8f0; }
+    .field { margin-bottom: 0.55rem; }
+    .field label { display: block; font-size: 0.65rem; font-weight: 700; color: var(--muted); margin-bottom: 0.2rem; }
+    .field input, .field select {
+      width: 100%; border-radius: 8px; border: 1px solid var(--border);
+      background: #020617; color: #fff; font: inherit; font-size: 0.78rem; padding: 0.4rem 0.5rem;
+    }
+    .field input:disabled { opacity: 0.5; }
+    .preview-code {
+      margin-top: 0.5rem; padding: 0.5rem; border-radius: 8px;
+      border: 1px dashed rgba(251,191,36,0.4); background: rgba(251,191,36,0.06);
+      font-size: 0.72rem;
+    }
+    .preview-code .big { font-weight: 800; color: #fef3c7; font-size: 0.88rem; }
+    .preview-code .mono { font-family: ui-monospace, monospace; color: #7dd3fc; }
+
+    .stats {
+      margin-top: 0.65rem; padding: 0.5rem; border-radius: 8px;
+      background: rgba(15,23,42,0.8); font-size: 0.68rem; color: #cbd5e1;
+    }
+    .stats div { display: flex; justify-content: space-between; margin: 0.15rem 0; }
+
+    .actions { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.65rem; }
+    .btn {
+      appearance: none; border-radius: 9px; border: 2px solid var(--border);
+      background: rgba(255,255,255,0.06); color: #fff;
+      font: inherit; font-size: 0.75rem; font-weight: 700; padding: 0.45rem; cursor: pointer;
+    }
+    .btn.ok { border-color: var(--emerald); background: #14532d; }
+    .btn.warn { border-color: var(--amber); background: rgba(120,53,15,0.5); }
+
+    .toast {
+      position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+      padding: 0.5rem 0.85rem; border-radius: 9px;
+      background: #14532d; border: 1px solid var(--emerald);
+      color: #ecfdf5; font-size: 0.78rem; font-weight: 600;
+      opacity: 0; transition: opacity 0.2s; z-index: 99; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    <h1>区画レイアウト編集 — 9/16 マス + 種別指定（静的プレビュー）</h1>
+    <p class="lead">
+      <strong>初期投入用</strong>: 各区画を 3×3 または 4×4 で区切り、マスごとに
+      <em>加工機 / 部品置き場 / 通路 / 未使用</em> を指定。
+      <strong>部品置き場</strong>だけが棚マスタ（正本 ID + 表示名）になる想定。
+      「オペレータ表示」モードでキオスク再割当の見え方を確認。
+    </p>
+    <div class="pill-row">
+      <span class="pill"><em>編集</em> 左:区画 · 中:グリッド · 右:マス詳細</span>
+      <span class="pill"><em>区画ごと</em> 3×3 or 4×4</span>
+    </div>
+
+    <div class="kiosk" id="kiosk">
+      <div class="top">
+        <h2 id="title">レイアウト編集 — 西·北</h2>
+        <div class="seg">
+          <button type="button" class="on" id="mode-edit">✎ レイアウト編集</button>
+          <button type="button" id="mode-view">👁 オペレータ表示</button>
+        </div>
+      </div>
+
+      <div class="layout">
+        <div class="col">
+          <p class="hint">9 区画 — 編集対象を選択</p>
+          <div id="zone-list"></div>
+          <p class="hint" style="margin-top:0.65rem">この区画のグリッド密度</p>
+          <div class="grid-size">
+            <button type="button" id="size-3">3×3（9マス）</button>
+            <button type="button" id="size-4">4×4（16マス）</button>
+          </div>
+          <div id="paint-wrap">
+            <p class="hint">塗りつぶし種別（マスをクリック）</p>
+            <div class="paint-palette" id="palette"></div>
+          </div>
+        </div>
+
+        <div class="col center">
+          <div class="bar" id="status-bar">
+            編集モード: 種別を選び、マスをクリックして配置
+          </div>
+          <div class="floor-box">
+            <h3 id="zone-label">西 · 北</h3>
+            <p class="sub" id="zone-sub">3×3 グリッド — 北側を上に表示</p>
+            <div class="grid size-3" id="grid"></div>
+          </div>
+        </div>
+
+        <div class="col detail">
+          <h4>選択マス</h4>
+          <div id="cell-detail">
+            <p style="color:var(--muted);font-size:0.72rem">グリッドのマスをクリック</p>
+          </div>
+          <div class="stats" id="stats"></div>
+          <div class="actions" id="edit-actions">
+            <button type="button" class="btn warn" id="btn-fill-aisle">外周を通路で埋める（デモ）</button>
+            <button type="button" class="btn ok" id="btn-save">区画レイアウトを保存（デモ）</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const ZONE_META = [
+      { id: 'west-north', prefix: '西-北', name: '西 · 北' },
+      { id: 'west-central', prefix: '西-中央', name: '西 · 中央' },
+      { id: 'west-south', prefix: '西-南', name: '西 · 南' },
+      { id: 'central-north', prefix: '中央-北', name: '中央 · 北' },
+      { id: 'central-central', prefix: '中央-中央', name: '中央 · 中央' },
+      { id: 'central-south', prefix: '中央-南', name: '中央 · 南' },
+      { id: 'east-north', prefix: '東-北', name: '東 · 北' },
+      { id: 'east-central', prefix: '東-中央', name: '東 · 中央' },
+      { id: 'east-south', prefix: '東-南', name: '東 · 南' },
+    ];
+
+    const PAINT_TYPES = [
+      { id: 'machine', label: '加工機', sub: '部品不可・タップ不可', cls: 'machine' },
+      { id: 'shelf', label: '部品置き場', sub: '棚スロット（正本ID+表示名）', cls: 'shelf' },
+      { id: 'aisle', label: '通路', sub: '置けない・ラベルのみ', cls: 'aisle' },
+      { id: 'unused', label: '未使用', sub: '空白マス', cls: 'unused' },
+    ];
+
+    /** @type {Record<string, { size: 3|4, cells: Record<string, Cell> }>} */
+    const zoneData = {};
+    let currentZone = 'west-north';
+    let paintType = 'shelf';
+    let selectedKey = null;
+    let appMode = 'edit'; // edit | view
+    let shelfCounter = {};
+
+    function cellKey(r, c) { return `${r},${c}`; }
+
+    function defaultCell(type = 'unused') {
+      return { type, machineName: '', displayLabel: '', shelfCode: '' };
+    }
+
+    function initZone(id) {
+      if (zoneData[id]) return;
+      const size = id === 'west-north' ? 4 : 3;
+      zoneData[id] = { size, cells: {} };
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          zoneData[id].cells[cellKey(r, c)] = defaultCell('unused');
+        }
+      }
+      // 西-北 サンプル初期配置
+      if (id === 'west-north' && size === 4) {
+        const preset = {
+          '0,0': { type: 'aisle', machineName: '', displayLabel: '', shelfCode: '' },
+          '0,1': { type: 'machine', machineName: 'Robodrill01', displayLabel: '', shelfCode: '' },
+          '0,2': { type: 'machine', machineName: 'Robodrill02', displayLabel: '', shelfCode: '' },
+          '0,3': { type: 'aisle', machineName: '', displayLabel: '', shelfCode: '' },
+          '1,0': { type: 'shelf', machineName: '', displayLabel: 'Kensaku前', shelfCode: '西-北-01' },
+          '1,1': { type: 'shelf', machineName: '', displayLabel: 'Robodrill横', shelfCode: '西-北-02' },
+          '1,2': { type: 'unused', machineName: '', displayLabel: '', shelfCode: '' },
+          '1,3': { type: 'shelf', machineName: '', displayLabel: '受け渡し', shelfCode: '西-北-03' },
+          '2,0': { type: 'aisle', machineName: '', displayLabel: '東西通路', shelfCode: '' },
+          '2,1': { type: 'aisle', machineName: '', displayLabel: '東西通路', shelfCode: '' },
+          '2,2': { type: 'aisle', machineName: '', displayLabel: '東西通路', shelfCode: '' },
+          '2,3': { type: 'aisle', machineName: '', displayLabel: '東西通路', shelfCode: '' },
+          '3,1': { type: 'shelf', machineName: '', displayLabel: 'Robodrill前', shelfCode: '西-北-05' },
+        };
+        Object.assign(zoneData[id].cells, preset);
+      }
+    }
+
+    ZONE_META.forEach(z => initZone(z.id));
+
+    function toast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    function nextShelfCode(prefix) {
+      if (!shelfCounter[prefix]) shelfCounter[prefix] = 0;
+      shelfCounter[prefix]++;
+      return `${prefix}-${String(shelfCounter[prefix]).padStart(2, '0')}`;
+    }
+
+    function getMeta() { return ZONE_META.find(z => z.id === currentZone); }
+
+    function renderZoneList() {
+      const el = document.getElementById('zone-list');
+      el.innerHTML = ZONE_META.map(z => {
+        const d = zoneData[z.id];
+        const shelves = Object.values(d.cells).filter(c => c.type === 'shelf').length;
+        const sz = d.size;
+        return `<button type="button" class="zone-btn${z.id === currentZone ? ' on' : ''}" data-z="${z.id}">
+          <div class="n">${z.name}</div>
+          <div class="m">${sz}×${sz} · 棚${shelves} · ${z.prefix}</div>
+        </button>`;
+      }).join('');
+      el.querySelectorAll('.zone-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentZone = btn.dataset.z;
+          selectedKey = null;
+          renderAll();
+        });
+      });
+    }
+
+    function renderPalette() {
+      document.getElementById('palette').innerHTML = PAINT_TYPES.map(p => `
+        <button type="button" class="paint${paintType === p.id ? ' on' : ''}" data-p="${p.id}">
+          <span class="sw ${p.cls}"></span>
+          <span><span class="tx">${p.label}</span><br><span class="sub">${p.sub}</span></span>
+        </button>
+      `).join('');
+      document.getElementById('palette').querySelectorAll('.paint').forEach(btn => {
+        btn.addEventListener('click', () => { paintType = btn.dataset.p; renderPalette(); });
+      });
+    }
+
+    function renderGridSizeButtons() {
+      const d = zoneData[currentZone];
+      document.getElementById('size-3').classList.toggle('on', d.size === 3);
+      document.getElementById('size-4').classList.toggle('on', d.size === 4);
+      document.getElementById('size-3').disabled = appMode === 'view';
+      document.getElementById('size-4').disabled = appMode === 'view';
+    }
+
+    function cellLabel(cell) {
+      if (cell.type === 'machine') return cell.machineName || '加工機';
+      if (cell.type === 'shelf') return cell.displayLabel || '（名称）';
+      if (cell.type === 'aisle') return cell.displayLabel || '通路';
+      return '—';
+    }
+
+    function renderGrid() {
+      const meta = getMeta();
+      const d = zoneData[currentZone];
+      const grid = document.getElementById('grid');
+      grid.className = `grid size-${d.size}`;
+      document.getElementById('zone-label').textContent = meta.name;
+      document.getElementById('zone-sub').textContent = `${d.size}×${d.size} グリッド — 北側を上`;
+      document.getElementById('title').textContent = (appMode === 'edit' ? 'レイアウト編集' : 'オペレータ表示') + ' — ' + meta.name.replace(' · ', '·');
+
+      grid.innerHTML = '';
+      for (let r = 0; r < d.size; r++) {
+        for (let c = 0; c < d.size; c++) {
+          const key = cellKey(r, c);
+          const cell = d.cells[key] || defaultCell();
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `cell ${cell.type}${selectedKey === key ? ' sel' : ''}`;
+          btn.disabled = appMode === 'view' && cell.type !== 'shelf';
+          btn.innerHTML = `
+            <span class="coord">${r + 1},${c + 1}</span>
+            <span class="main">${cellLabel(cell)}</span>
+            ${cell.type === 'shelf' && cell.shelfCode ? `<span class="code">${cell.shelfCode}</span>` : ''}
+            ${cell.type === 'machine' ? '<span class="coord">⚙</span>' : ''}
+          `;
+          btn.addEventListener('click', () => onCellClick(r, c, key, cell));
+          grid.appendChild(btn);
+        }
+      }
+
+      document.getElementById('kiosk').classList.toggle('view-mode', appMode === 'view');
+      document.getElementById('paint-wrap').style.display = appMode === 'edit' ? '' : 'none';
+      document.getElementById('edit-actions').style.display = appMode === 'edit' ? '' : 'none';
+      document.getElementById('status-bar').innerHTML = appMode === 'edit'
+        ? '編集: <strong>' + PAINT_TYPES.find(p => p.id === paintType).label + '</strong> — マスをクリックで塗りつぶし'
+        : '表示: <strong>部品置き場</strong>のみタップ可（再割当は別フロー）';
+    }
+
+    function onCellClick(r, c, key, cell) {
+      if (appMode === 'view') {
+        if (cell.type === 'shelf') toast(`${cell.displayLabel} (${cell.shelfCode}) — 再割当フローへ`);
+        return;
+      }
+      selectedKey = key;
+      const meta = getMeta();
+      const d = zoneData[currentZone];
+      const next = { ...cell, type: paintType };
+      if (paintType === 'machine' && !next.machineName) next.machineName = '加工機';
+      if (paintType === 'shelf') {
+        if (!next.displayLabel) next.displayLabel = '';
+        if (!next.shelfCode) next.shelfCode = nextShelfCode(meta.prefix);
+      }
+      if (paintType === 'aisle') next.displayLabel = next.displayLabel || '通路';
+      if (paintType === 'unused') {
+        next.machineName = '';
+        next.displayLabel = '';
+        next.shelfCode = '';
+      }
+      d.cells[key] = next;
+      renderGrid();
+      renderDetail();
+      renderStats();
+    }
+
+    function renderDetail() {
+      const el = document.getElementById('cell-detail');
+      if (!selectedKey || appMode === 'view') {
+        el.innerHTML = appMode === 'view'
+          ? '<p style="color:var(--muted);font-size:0.72rem">部品置き場マスをタップ</p>'
+          : '<p style="color:var(--muted);font-size:0.72rem">グリッドのマスをクリック</p>';
+        return;
+      }
+      const cell = zoneData[currentZone].cells[selectedKey];
+      const [r, c] = selectedKey.split(',').map(Number);
+      el.innerHTML = `
+        <p style="font-size:0.68rem;color:var(--muted);margin:0 0 0.4rem">マス ${r + 1}行 ${c + 1}列 · 種別: ${PAINT_TYPES.find(p => p.id === cell.type)?.label}</p>
+        ${cell.type === 'machine' ? `
+          <div class="field"><label>加工機名</label><input id="inp-machine" value="${cell.machineName || ''}" placeholder="Robodrill01" /></div>
+        ` : ''}
+        ${cell.type === 'shelf' ? `
+          <div class="field"><label>表示名（オペレータ向け）</label><input id="inp-label" value="${cell.displayLabel || ''}" placeholder="Robodrill横" /></div>
+          <div class="field"><label>正本 ID（shelfCodeRaw）</label><input id="inp-code" value="${cell.shelfCode || ''}" /></div>
+          <div class="preview-code">
+            <div class="big" id="pv-label">${cell.displayLabel || '—'}</div>
+            <div class="mono" id="pv-code">${cell.shelfCode || '—'}</div>
+          </div>
+        ` : ''}
+        ${cell.type === 'aisle' ? `
+          <div class="field"><label>通路ラベル（任意）</label><input id="inp-aisle" value="${cell.displayLabel || ''}" placeholder="東西通路" /></div>
+        ` : ''}
+        ${cell.type === 'unused' ? '<p style="font-size:0.72rem;color:var(--muted)">未使用マス</p>' : ''}
+      `;
+      const bind = (id, fn) => {
+        const inp = document.getElementById(id);
+        if (inp) inp.addEventListener('input', fn);
+      };
+      bind('inp-machine', e => { cell.machineName = e.target.value; renderGrid(); });
+      bind('inp-label', e => {
+        cell.displayLabel = e.target.value;
+        document.getElementById('pv-label').textContent = e.target.value || '—';
+        renderGrid();
+      });
+      bind('inp-code', e => {
+        cell.shelfCode = e.target.value;
+        document.getElementById('pv-code').textContent = e.target.value || '—';
+        renderGrid();
+      });
+      bind('inp-aisle', e => { cell.displayLabel = e.target.value; renderGrid(); });
+    }
+
+    function renderStats() {
+      const d = zoneData[currentZone];
+      const vals = Object.values(d.cells);
+      const counts = {
+        machine: vals.filter(c => c.type === 'machine').length,
+        shelf: vals.filter(c => c.type === 'shelf').length,
+        aisle: vals.filter(c => c.type === 'aisle').length,
+        unused: vals.filter(c => c.type === 'unused').length,
+      };
+      document.getElementById('stats').innerHTML = `
+        <div><span>加工機</span><strong>${counts.machine}</strong></div>
+        <div><span>部品置き場</span><strong>${counts.shelf}</strong></div>
+        <div><span>通路</span><strong>${counts.aisle}</strong></div>
+        <div><span>未使用</span><strong>${counts.unused}</strong></div>
+      `;
+    }
+
+    function renderAll() {
+      renderZoneList();
+      renderPalette();
+      renderGridSizeButtons();
+      renderGrid();
+      renderDetail();
+      renderStats();
+    }
+
+    document.getElementById('size-3').addEventListener('click', () => {
+      if (appMode === 'view') return;
+      resizeZone(3);
+    });
+    document.getElementById('size-4').addEventListener('click', () => {
+      if (appMode === 'view') return;
+      resizeZone(4);
+    });
+
+    function resizeZone(size) {
+      const old = zoneData[currentZone];
+      if (old.size === size) return;
+      const cells = {};
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          const k = cellKey(r, c);
+          cells[k] = old.cells[k] ? { ...old.cells[k] } : defaultCell();
+        }
+      }
+      zoneData[currentZone] = { size, cells };
+      selectedKey = null;
+      toast(`${size}×${size} に変更（はみ出しマスは破棄）`);
+      renderAll();
+    }
+
+    document.getElementById('mode-edit').addEventListener('click', () => {
+      appMode = 'edit';
+      document.getElementById('mode-edit').classList.add('on');
+      document.getElementById('mode-view').classList.remove('on');
+      renderAll();
+    });
+    document.getElementById('mode-view').addEventListener('click', () => {
+      appMode = 'view';
+      selectedKey = null;
+      document.getElementById('mode-view').classList.add('on');
+      document.getElementById('mode-edit').classList.remove('on');
+      renderAll();
+      toast('オペレータ向け — 部品置き場のみ反応');
+    });
+
+    document.getElementById('btn-fill-aisle').addEventListener('click', () => {
+      const d = zoneData[currentZone];
+      const s = d.size;
+      for (let r = 0; r < s; r++) {
+        for (let c = 0; c < s; c++) {
+          if (r === 0 || r === s - 1 || c === 0 || c === s - 1) {
+            const k = cellKey(r, c);
+            if (d.cells[k].type === 'unused') d.cells[k] = { type: 'aisle', machineName: '', displayLabel: '通路', shelfCode: '' };
+          }
+        }
+      }
+      toast('外周の未使用マスを通路に（デモ）');
+      renderAll();
+    });
+
+    document.getElementById('btn-save').addEventListener('click', () => {
+      const d = zoneData[currentZone];
+      const shelves = Object.values(d.cells).filter(c => c.type === 'shelf');
+      toast(`保存デモ: 棚 ${shelves.length} 件をマスタへ`);
+    });
+
+    // 棚番カウンタ初期化
+    ZONE_META.forEach(z => {
+      shelfCounter[z.prefix] = 0;
+      Object.values(zoneData[z.id].cells).forEach(c => {
+        if (c.shelfCode && c.shelfCode.startsWith(z.prefix)) {
+          const n = parseInt(c.shelfCode.split('-').pop(), 10);
+          if (n > shelfCounter[z.prefix]) shelfCounter[z.prefix] = n;
+        }
+      });
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>

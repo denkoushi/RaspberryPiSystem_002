@@ -51,7 +51,8 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       id,
       name: body.name,
       defaultMode: body.defaultMode ?? undefined,
-      haizenEdgeEnabled: body.haizenEdgeEnabled
+      haizenEdgeEnabled: body.haizenEdgeEnabled,
+      shelfLayoutEditEnabled: body.shelfLayoutEditEnabled
     });
     return { client };
   });

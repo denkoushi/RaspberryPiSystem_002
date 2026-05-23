@@ -79,6 +79,7 @@ export async function updateClientDevice(params: {
   name?: string;
   defaultMode?: 'PHOTO' | 'TAG' | null;
   haizenEdgeEnabled?: boolean;
+  shelfLayoutEditEnabled?: boolean;
 }) {
   try {
     return await prisma.clientDevice.update({
@@ -86,7 +87,10 @@ export async function updateClientDevice(params: {
       data: {
         name: params.name ?? undefined,
         defaultMode: params.defaultMode ?? undefined,
-        ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {})
+        ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
+        ...(params.shelfLayoutEditEnabled !== undefined
+          ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }
+          : {})
       }
     });
   } catch (error) {

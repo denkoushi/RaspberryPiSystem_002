@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>キオスク — 棚番管理（新タブ）静的プレビュー案</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --panel2: #1e293b;
+      --border: rgba(148, 163, 184, 0.22);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --sky-d: #0c4a6e;
+      --amber: #fbbf24;
+      --amber-d: #78350f;
+      --emerald: #34d399;
+      --emerald-d: #14532d;
+      --rose: #fb7185;
+      --violet: #a78bfa;
+      --teal: #2dd4bf;
+      --zone-yellow: #f59e0b;
+      --zone-purple: #7c3aed;
+      --zone-red: #dc2626;
+      --zone-green: #16a34a;
+      --zone-gray: #6b7280;
+      --zone-brown: #78350f;
+      --zone-orange: #ea580c;
+      --zone-blue: #2563eb;
+      --zone-pink: #ec4899;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .doc {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 0.85rem 1rem 2rem;
+    }
+    h1 {
+      margin: 0 0 0.35rem;
+      font-size: 1.2rem;
+      font-weight: 800;
+    }
+    .lead {
+      margin: 0 0 0.75rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      max-width: 105ch;
+    }
+    .lead code {
+      font-size: 0.9em;
+      background: var(--panel2);
+      padding: 0.08em 0.35em;
+      border-radius: 4px;
+    }
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.85rem;
+    }
+    .pill {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.28rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: #cbd5e1;
+    }
+    .pill strong { color: var(--amber); }
+
+    /* ===== キオスクフレーム（横長 1280 想定） ===== */
+    .kiosk-shell {
+      border-radius: 16px;
+      border: 2px solid #475569;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+    }
+    .kiosk-top {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.45rem 0.75rem;
+      background: #111;
+      border-bottom: 1px solid #333;
+      font-size: 0.72rem;
+      color: #888;
+    }
+    .kiosk-top .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .kiosk-top .dot.r { background: #ef4444; }
+    .kiosk-top .dot.y { background: #eab308; }
+    .kiosk-top .dot.g { background: #22c55e; }
+    .kiosk-top .url {
+      flex: 1;
+      background: #222;
+      border-radius: 6px;
+      padding: 0.25rem 0.55rem;
+      color: #aaa;
+      font-family: ui-monospace, monospace;
+      font-size: 0.68rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* 既存キオスク内タブ */
+    .app-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      background: var(--panel);
+      border-bottom: 2px solid #334155;
+    }
+    .app-tab {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.88rem;
+      font-weight: 700;
+      padding: 0.7rem 1rem;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+    .app-tab:hover { color: #e2e8f0; background: rgba(255,255,255,0.03); }
+    .app-tab.on {
+      color: #fff;
+      border-bottom-color: var(--sky);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .app-tab.new::after {
+      content: "新";
+      margin-left: 0.35rem;
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: #000;
+      background: var(--emerald);
+      padding: 0.05rem 0.35rem;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+
+    .app-body {
+      min-height: min(720px, 72vh);
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      background: var(--panel);
+    }
+    @media (max-width: 960px) {
+      .app-body { grid-template-columns: 1fr; }
+      .side-nav { display: none; }
+    }
+
+    .side-nav {
+      border-right: 1px solid var(--border);
+      padding: 0.65rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      background: rgba(2, 6, 23, 0.55);
+    }
+    .side-nav .label {
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0.35rem 0.45rem 0.15rem;
+    }
+    .nav-btn {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: #cbd5e1;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-align: left;
+      padding: 0.55rem 0.65rem;
+      cursor: pointer;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,0.05); }
+    .nav-btn.on {
+      border-color: rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.1);
+      color: #fef3c7;
+    }
+    .nav-btn small {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-top: 0.15rem;
+    }
+
+    .main-pane {
+      padding: 0.75rem;
+      overflow: auto;
+      min-height: 0;
+    }
+    .view { display: none; }
+    .view.on { display: block; }
+
+    .view-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 0.65rem;
+      margin-bottom: 0.75rem;
+    }
+    .view-head h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 800;
+      flex: 1;
+      min-width: 200px;
+    }
+    .view-head p {
+      margin: 0.2rem 0 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+      max-width: 62ch;
+    }
+    .head-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .btn {
+      appearance: none;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.45rem 0.75rem;
+      cursor: pointer;
+    }
+    .btn:hover { background: rgba(255,255,255,0.1); }
+    .btn.primary { border-color: var(--sky); background: var(--sky-d); }
+    .btn.warn { border-color: var(--amber); background: rgba(120, 53, 15, 0.55); color: #fef3c7; }
+    .btn.ok { border-color: var(--emerald); background: var(--emerald-d); }
+    .btn.danger { border-color: var(--rose); background: rgba(127, 29, 29, 0.45); }
+
+    /* ===== 俯瞰: 9区画マップ + 一覧 ===== */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 0.75rem;
+      align-items: stretch;
+    }
+    @media (max-width: 1100px) {
+      .overview-grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.85);
+      overflow: hidden;
+    }
+    .card-h {
+      padding: 0.5rem 0.65rem;
+      font-size: 0.75rem;
+      font-weight: 800;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.45);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-h span.hint { margin-left: auto; font-weight: 500; color: var(--muted); }
+
+    .zone-map-wrap { padding: 0.65rem; }
+    .zone-axis-labels {
+      display: grid;
+      grid-template-columns: 2.2rem repeat(3, 1fr);
+      gap: 0.35rem;
+      margin-bottom: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: var(--muted);
+      text-align: center;
+    }
+    .zone-axis-labels .corner { visibility: hidden; }
+    .zone-map {
+      display: grid;
+      grid-template-columns: 2.2rem repeat(3, 1fr);
+      grid-template-rows: repeat(3, minmax(88px, 1fr));
+      gap: 0.35rem;
+    }
+    .row-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: var(--muted);
+      writing-mode: horizontal-tb;
+    }
+    .zone-cell {
+      border-radius: 10px;
+      border: 2px solid rgba(255,255,255,0.12);
+      padding: 0.4rem;
+      cursor: pointer;
+      min-height: 88px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .zone-cell:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
+    .zone-cell.on { outline: 3px solid #fff; outline-offset: 1px; }
+    .zone-cell .zone-name { font-size: 0.68rem; font-weight: 800; opacity: 0.9; }
+    .zone-cell .shelf-chips { display: flex; flex-wrap: wrap; gap: 0.2rem; }
+    .mini-chip {
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 0.12rem 0.35rem;
+      border-radius: 5px;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.15);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .mini-chip .code { opacity: 0.75; font-weight: 600; margin-left: 0.15rem; }
+
+    .zone-yellow { background: color-mix(in srgb, var(--zone-yellow) 28%, #111); border-color: var(--zone-yellow); }
+    .zone-purple { background: color-mix(in srgb, var(--zone-purple) 28%, #111); border-color: var(--zone-purple); }
+    .zone-red { background: color-mix(in srgb, var(--zone-red) 28%, #111); border-color: var(--zone-red); }
+    .zone-green { background: color-mix(in srgb, var(--zone-green) 28%, #111); border-color: var(--zone-green); }
+    .zone-gray { background: color-mix(in srgb, var(--zone-gray) 28%, #111); border-color: var(--zone-gray); }
+    .zone-brown { background: color-mix(in srgb, var(--zone-brown) 40%, #111); border-color: var(--zone-orange); }
+    .zone-orange { background: color-mix(in srgb, var(--zone-orange) 28%, #111); border-color: var(--zone-orange); }
+    .zone-blue { background: color-mix(in srgb, var(--zone-blue) 28%, #111); border-color: var(--zone-blue); }
+    .zone-pink { background: color-mix(in srgb, var(--zone-pink) 28%, #111); border-color: var(--zone-pink); }
+
+    .table-wrap { max-height: 420px; overflow: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    th, td {
+      padding: 0.45rem 0.55rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      z-index: 1;
+    }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+    tr.sel td { background: rgba(56, 189, 248, 0.12); }
+    .disp-name { font-weight: 800; color: #fef3c7; }
+    .code-mono {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.72rem;
+      color: #7dd3fc;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      background: rgba(52, 211, 153, 0.15);
+      color: var(--emerald);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+    }
+    .tag.zero { background: rgba(167, 139, 250, 0.15); color: var(--violet); border-color: rgba(167, 139, 250, 0.35); }
+    .tag.empty { background: rgba(148, 163, 184, 0.1); color: var(--muted); border-color: rgba(148, 163, 184, 0.25); }
+
+    /* ===== 新規登録 / 場所移動 ===== */
+    .form-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    @media (max-width: 1000px) {
+      .form-layout { grid-template-columns: 1fr; }
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      margin-bottom: 0.65rem;
+    }
+    .field label {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #cbd5e1;
+    }
+    .field .help {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: -0.15rem;
+    }
+    input[type="text"], select {
+      width: 100%;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: #020617;
+      color: #fff;
+      font: inherit;
+      font-size: 0.88rem;
+      padding: 0.55rem 0.65rem;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--sky);
+    }
+    .choice-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.35rem;
+    }
+    .choice-grid.wide { grid-template-columns: repeat(6, 1fr); }
+    .choice {
+      appearance: none;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      color: #fff;
+      font: inherit;
+      font-size: 0.95rem;
+      font-weight: 800;
+      padding: 0.55rem 0.25rem;
+      cursor: pointer;
+    }
+    .choice.on { border-color: var(--emerald); background: var(--emerald-d); }
+    .slot-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 0.3rem;
+      max-height: 220px;
+      overflow: auto;
+      padding: 0.15rem;
+    }
+    .slot {
+      appearance: none;
+      border: 2px solid rgba(180, 83, 9, 0.55);
+      border-radius: 8px;
+      background: #292000;
+      color: #fef3c7;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 800;
+      padding: 0.45rem 0;
+      cursor: pointer;
+    }
+    .slot.on { border-color: var(--emerald); background: var(--emerald-d); color: #fff; }
+    .slot.occupied { opacity: 0.35; cursor: not-allowed; text-decoration: line-through; }
+
+    .preview-box {
+      border-radius: 12px;
+      border: 2px dashed rgba(251, 191, 36, 0.45);
+      background: rgba(251, 191, 36, 0.06);
+      padding: 0.85rem;
+    }
+    .preview-box .big {
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: #fef3c7;
+      margin: 0 0 0.25rem;
+    }
+    .preview-box .sub {
+      font-family: ui-monospace, monospace;
+      font-size: 1rem;
+      color: #7dd3fc;
+      margin: 0 0 0.5rem;
+    }
+    .preview-box .note {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .move-flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 0.65rem;
+      align-items: center;
+    }
+    @media (max-width: 900px) {
+      .move-flow { grid-template-columns: 1fr; }
+      .move-arrow { transform: rotate(90deg); justify-self: center; }
+    }
+    .move-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+      background: rgba(2, 6, 23, 0.5);
+    }
+    .move-card h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .move-arrow {
+      font-size: 2rem;
+      color: var(--amber);
+      font-weight: 900;
+      text-align: center;
+    }
+    .checklist {
+      margin: 0.5rem 0 0;
+      padding-left: 1.1rem;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+    }
+    .checklist li { margin: 0.25rem 0; }
+
+    /* Zero2W */
+    .device-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.55rem;
+    }
+    .device-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 0.65rem;
+      background: rgba(2, 6, 23, 0.45);
+      cursor: pointer;
+    }
+    .device-card.on { border-color: var(--violet); box-shadow: 0 0 0 1px var(--violet); }
+    .device-card .name { font-weight: 800; font-size: 0.88rem; }
+    .device-card .meta { font-size: 0.68rem; color: var(--muted); margin-top: 0.2rem; }
+    .device-card .shelf { margin-top: 0.45rem; font-size: 0.78rem; color: #fde68a; }
+
+    .toast {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      max-width: 360px;
+      padding: 0.65rem 0.85rem;
+      border-radius: 10px;
+      border: 1px solid rgba(52, 211, 153, 0.45);
+      background: rgba(20, 83, 45, 0.95);
+      color: #ecfdf5;
+      font-size: 0.78rem;
+      font-weight: 600;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 99;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    <h1>キオスク新タブ「棚番管理」— 静的プレビュー案（2026-05）</h1>
+    <p class="lead">
+      想定ルート: <code>/kiosk/mobile-placement/shelf-master</code>（名称は仮）。
+      既存キオスク内タブに <strong>棚番管理</strong> を追加し、Android スマホ向けの <code>+</code> 登録・Zero2W 担当棚を
+      <strong>横長キオスク（1024〜1280px）</strong> で一覧・俯瞰・差し替えできる UI 案。
+      正本 ID は <code>西-北-02</code>（将来 <code>-1</code> 段）、表示名は加工機名等。
+    </p>
+    <div class="pill-row">
+      <span class="pill"><strong>正本</strong> エリア×列×番号（+将来 段）</span>
+      <span class="pill"><strong>表示名</strong> Robodrill横 等</span>
+      <span class="pill"><strong>操作</strong> 新規 / 場所移動 / Zero2W割当</span>
+      <span class="pill"><strong>画面</strong> 9区画マップ + テーブル</span>
+    </div>
+
+    <div class="kiosk-shell">
+      <div class="kiosk-top">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <div class="url">https://&lt;Pi5&gt;/kiosk/mobile-placement/shelf-master?clientKey=…</div>
+      </div>
+
+      <nav class="app-tabs" aria-label="配膳キオスク内タブ">
+        <button type="button" class="app-tab" data-app-tab="placement">配膳（既存）</button>
+        <button type="button" class="app-tab new on" data-app-tab="shelf-master">棚番管理</button>
+        <button type="button" class="app-tab" data-app-tab="zero-status">Zero2W 配膳一覧</button>
+        <button type="button" class="app-tab" data-app-tab="zero-assign">Zero2W 担当棚</button>
+      </nav>
+
+      <div class="app-body" id="shelf-master-app">
+        <aside class="side-nav" aria-label="棚番管理サブメニュー">
+          <div class="label">棚番管理</div>
+          <button type="button" class="nav-btn on" data-view="overview">
+            俯瞰・一覧
+            <small>9区画マップと全棚テーブル</small>
+          </button>
+          <button type="button" class="nav-btn" data-view="register">
+            新規登録
+            <small>区画＋番号＋表示名</small>
+          </button>
+          <button type="button" class="nav-btn" data-view="relocate">
+            場所移動
+            <small>加工機移設・棚番差し替え</small>
+          </button>
+          <button type="button" class="nav-btn" data-view="zero2w">
+            Zero2W 割当
+            <small>端末↔棚の紐付け</small>
+          </button>
+        </aside>
+
+        <main class="main-pane">
+          <!-- ===== 俯瞰 ===== -->
+          <section class="view on" id="view-overview">
+            <div class="view-head">
+              <div>
+                <h2>棚マスタ俯瞰</h2>
+                <p>9区画マップで密度を把握し、右表から詳細操作へ。表示名を大きく、正本 ID を併記。</p>
+              </div>
+              <div class="head-actions">
+                <button type="button" class="btn" data-jump="register">＋ 新規登録</button>
+                <button type="button" class="btn warn" data-jump="relocate">↔ 場所移動</button>
+              </div>
+            </div>
+            <div class="overview-grid">
+              <div class="card">
+                <div class="card-h">工場レイアウト（9区画）<span class="hint">サイネージ色と同系</span></div>
+                <div class="zone-map-wrap">
+                  <div class="zone-axis-labels">
+                    <div class="corner"></div>
+                    <div>北</div><div>中央</div><div>南</div>
+                  </div>
+                  <div class="zone-map" id="zone-map"></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-h">登録済み棚<span class="hint" id="filter-label">全件</span></div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>表示名</th>
+                        <th>正本 ID</th>
+                        <th>段</th>
+                        <th>Zero2W</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="shelf-table"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== 新規登録 ===== -->
+          <section class="view" id="view-register">
+            <div class="view-head">
+              <div>
+                <h2>棚番 新規登録</h2>
+                <p>区画（エリア×列）→ 番号 → 表示名（加工機名）。正本は API 既存形式、表示名は新フィールド想定。</p>
+              </div>
+            </div>
+            <div class="form-layout">
+              <div class="card" style="padding:0.75rem;">
+                <div class="field">
+                  <label>エリア</label>
+                  <div class="choice-grid" id="reg-area"></div>
+                </div>
+                <div class="field">
+                  <label>列</label>
+                  <div class="choice-grid" id="reg-line"></div>
+                </div>
+                <div class="field">
+                  <label>区画内番号（1〜99）</label>
+                  <div class="help">使用中番号はグレーアウト（クリック不可）</div>
+                  <div class="slot-grid" id="reg-slots"></div>
+                </div>
+                <div class="field">
+                  <label>段（将来・任意）</label>
+                  <div class="choice-grid wide" id="reg-tier">
+                    <button type="button" class="choice on" data-tier="">なし</button>
+                    <button type="button" class="choice" data-tier="1">-1</button>
+                    <button type="button" class="choice" data-tier="2">-2</button>
+                    <button type="button" class="choice" data-tier="3">-3</button>
+                  </div>
+                  <div class="help">将来: <code>西-北-02-1</code> 形式。初版は段なしのみでも可。</div>
+                </div>
+              </div>
+              <div>
+                <div class="field">
+                  <label>表示名（オペレータ向け）</label>
+                  <input type="text" id="reg-display" placeholder="例: Robodrill横 / FJV60前" value="Robodrill横" />
+                  <div class="help">加工機名・通称。現場で「あの棚」を指す言葉。</div>
+                </div>
+                <div class="field">
+                  <label>関連加工機（任意・候補から）</label>
+                  <select id="reg-machine">
+                    <option value="">— 手入力のみ —</option>
+                    <option selected>Robodrill01</option>
+                    <option>FJV60-80</option>
+                    <option>StoneBase01</option>
+                    <option>Kensaku台</option>
+                  </select>
+                </div>
+                <div class="preview-box" style="margin-top:0.5rem;">
+                  <p class="big" id="preview-display">Robodrill横</p>
+                  <p class="sub" id="preview-code">西-北-02</p>
+                  <p class="note" id="preview-note">QRラベル: 正本 ID を印字、表示名はラベル下部に大きく（案）</p>
+                </div>
+                <div class="head-actions" style="margin-top:0.75rem;">
+                  <button type="button" class="btn ok" id="btn-register">棚マスタに登録</button>
+                  <button type="button" class="btn" data-jump="overview">キャンセル</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== 場所移動 ===== -->
+          <section class="view" id="view-relocate">
+            <div class="view-head">
+              <div>
+                <h2>場所移動 — 棚番差し替え</h2>
+                <p>加工機移設・レイアウト変更時。表示名は維持し正本 ID を移す、または空棚へ移動して旧 ID を解放。</p>
+              </div>
+            </div>
+            <div class="field" style="max-width:520px;">
+              <label>移動対象の棚</label>
+              <select id="move-source">
+                <option value="西-北-02">Robodrill横（西-北-02）</option>
+                <option value="西-中央-01">FJV60前（西-中央-01）</option>
+                <option value="東-南-03">StoneBase横（東-南-03）</option>
+              </select>
+            </div>
+            <div class="move-flow" style="margin:0.75rem 0;">
+              <div class="move-card">
+                <h3>移動前</h3>
+                <p class="disp-name" id="move-before-name">Robodrill横</p>
+                <p class="code-mono" id="move-before-code">西-北-02</p>
+                <span class="tag zero">zero2w-tanaban01</span>
+              </div>
+              <div class="move-arrow" aria-hidden="true">→</div>
+              <div class="move-card">
+                <h3>移動後（新しい正本 ID）</h3>
+                <div class="field" style="margin-bottom:0.35rem;">
+                  <div class="choice-grid" id="move-area"></div>
+                </div>
+                <div class="field" style="margin-bottom:0.35rem;">
+                  <div class="choice-grid" id="move-line"></div>
+                </div>
+                <div class="slot-grid" id="move-slots" style="max-height:140px;"></div>
+                <p class="code-mono" style="margin-top:0.5rem;" id="move-after-code">西-北-05</p>
+              </div>
+            </div>
+            <div class="card" style="padding:0.75rem;">
+              <strong style="font-size:0.82rem;">実行時に連動（案）</strong>
+              <ul class="checklist">
+                <li><code>MobilePlacementShelf</code> の正本 ID 更新（または旧→新の移行レコード）</li>
+                <li>紐づく <code>ClientDevice.haizenPresetShelfCodeRaw</code> を新 ID に更新</li>
+                <li>進行中の <code>OrderPlacementBranchState</code> / <code>HaizenCurrentPlacement</code> は移行ポリシーを選択（一括移動 or 旧棚を残す）</li>
+                <li>表示名 <strong>Robodrill横</strong> はそのまま（オペレータ認知を維持）</li>
+              </ul>
+              <div class="head-actions" style="margin-top:0.65rem;">
+                <button type="button" class="btn warn" id="btn-relocate">差し替えを確定（デモ）</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===== Zero2W ===== -->
+          <section class="view" id="view-zero2w">
+            <div class="view-head">
+              <div>
+                <h2>Zero2W 担当棚割当</h2>
+                <p>Android 専用ページの内容をキオスク幅で再配置。左: 端末、右: 棚（表示名＋正本 ID）。</p>
+              </div>
+            </div>
+            <div class="form-layout">
+              <div>
+                <div class="card-h">端末（haizenEdgeEnabled）</div>
+                <div class="device-grid" id="device-grid" style="padding:0.65rem;"></div>
+              </div>
+              <div>
+                <div class="card-h">割当先の棚</div>
+                <div style="padding:0.65rem;">
+                  <div class="slot-grid" id="zero-shelf-pick" style="grid-template-columns:repeat(3,1fr); max-height:none;"></div>
+                  <div class="head-actions" style="margin-top:0.65rem;">
+                    <button type="button" class="btn ok" id="btn-zero-save">担当棚を保存（デモ）</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+
+      <div id="ghost-placement" style="display:none; padding:2rem; text-align:center; color:#64748b;">
+        <p style="font-size:1rem; font-weight:700;">配膳メイン（既存）— 本プレビューでは省略</p>
+        <p style="font-size:0.8rem;">実装時は現行 <code>/kiosk/mobile-placement</code> をこのタブから切替</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    const SHELVES = [
+      { code: '西-北-01', display: 'Kensaku前', tier: '', zero2w: '', zone: 'west-north' },
+      { code: '西-北-02', display: 'Robodrill横', tier: '', zero2w: 'zero2w-tanaban01', zone: 'west-north' },
+      { code: '西-中央-01', display: 'FJV60前', tier: '', zero2w: '', zone: 'west-central' },
+      { code: '中央-中央-02', display: '受け渡し台B', tier: '', zero2w: '', zone: 'central-central' },
+      { code: '東-南-03', display: 'StoneBase横', tier: '1', zero2w: '', zone: 'east-south' },
+    ];
+    const ZONES = [
+      { id: 'west-north', label: '西·北', cls: 'zone-yellow', row: '西', col: '北' },
+      { id: 'west-central', label: '西·中央', cls: 'zone-purple', row: '西', col: '中央' },
+      { id: 'west-south', label: '西·南', cls: 'zone-red', row: '西', col: '南' },
+      { id: 'central-north', label: '中央·北', cls: 'zone-green', row: '中央', col: '北' },
+      { id: 'central-central', label: '中央·中央', cls: 'zone-gray', row: '中央', col: '中央' },
+      { id: 'central-south', label: '中央·南', cls: 'zone-brown', row: '中央', col: '南' },
+      { id: 'east-north', label: '東·北', cls: 'zone-orange', row: '東', col: '北' },
+      { id: 'east-central', label: '東·中央', cls: 'zone-blue', row: '東', col: '中央' },
+      { id: 'east-south', label: '東·南', cls: 'zone-pink', row: '東', col: '南' },
+    ];
+    const AREAS = ['西', '中央', '東'];
+    const LINES = ['北', '中央', '南'];
+    const DEVICES = [
+      { id: 'd1', name: 'zero2w-tanaban01', shelf: '西-北-02', meta: '100.x.x.x · 5分前' },
+      { id: 'd2', name: 'zero2w-tanaban02', shelf: null, meta: '未設定 · 1時間前' },
+    ];
+
+    let regArea = '西', regLine = '北', regSlot = 2, regTier = '';
+    let moveArea = '西', moveLine = '北', moveSlot = 5;
+    let selectedZone = null;
+    let selectedDevice = 'd1';
+    let selectedZeroShelf = '西-北-02';
+
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2600);
+    }
+
+    function shelvesInZone(zoneId) {
+      return SHELVES.filter(s => s.zone === zoneId);
+    }
+
+    function renderZoneMap() {
+      const map = document.getElementById('zone-map');
+      map.innerHTML = '';
+      for (let r = 0; r < 3; r++) {
+        map.appendChild(Object.assign(document.createElement('div'), {
+          className: 'row-label',
+          textContent: AREAS[r]
+        }));
+        for (let c = 0; c < 3; c++) {
+          const z = ZONES[r * 3 + c];
+          const cell = document.createElement('button');
+          cell.type = 'button';
+          cell.className = `zone-cell ${z.cls}` + (selectedZone === z.id ? ' on' : '');
+          const items = shelvesInZone(z.id);
+          cell.innerHTML = `<div class="zone-name">${z.label}</div><div class="shelf-chips">${
+            items.length
+              ? items.map(s => `<span class="mini-chip">${s.display}<span class="code">${s.code.split('-').pop()}</span></span>`).join('')
+              : '<span class="mini-chip" style="opacity:.5">—</span>'
+          }</div>`;
+          cell.addEventListener('click', () => {
+            selectedZone = selectedZone === z.id ? null : z.id;
+            renderZoneMap();
+            renderTable();
+          });
+          map.appendChild(cell);
+        }
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('shelf-table');
+      const label = document.getElementById('filter-label');
+      const rows = selectedZone ? SHELVES.filter(s => s.zone === selectedZone) : SHELVES;
+      label.textContent = selectedZone ? ZONES.find(z => z.id === selectedZone).label + ' のみ' : '全件';
+      tbody.innerHTML = rows.map(s => `
+        <tr>
+          <td class="disp-name">${s.display}</td>
+          <td class="code-mono">${s.code}${s.tier ? '-' + s.tier : ''}</td>
+          <td>${s.tier || '—'}</td>
+          <td>${s.zero2w ? `<span class="tag zero">${s.zero2w}</span>` : '<span class="tag empty">—</span>'}</td>
+          <td><button type="button" class="btn" style="padding:0.2rem 0.45rem;font-size:0.68rem;" data-move="${s.code}">移動</button></td>
+        </tr>
+      `).join('');
+      tbody.querySelectorAll('[data-move]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.getElementById('move-source').value = btn.dataset.move;
+          switchView('relocate');
+        });
+      });
+    }
+
+    function occupiedSlots(area, line, exceptCode) {
+      const prefix = `${area}-${line}-`;
+      return new Set(SHELVES.filter(s => s.code.startsWith(prefix) && s.code !== exceptCode).map(s => parseInt(s.code.split('-')[2], 10)));
+    }
+
+    function renderChoiceGrid(containerId, values, selected, onPick, cls) {
+      const el = document.getElementById(containerId);
+      el.innerHTML = values.map(v => `
+        <button type="button" class="choice${selected === v ? ' on' : ''}" data-v="${v}">${v}</button>
+      `).join('');
+      el.querySelectorAll('.choice').forEach(btn => {
+        btn.addEventListener('click', () => onPick(btn.dataset.v));
+      });
+    }
+
+    function renderSlotGrid(containerId, area, line, selected, onPick, exceptCode) {
+      const occ = occupiedSlots(area, line, exceptCode);
+      const el = document.getElementById(containerId);
+      el.innerHTML = '';
+      for (let n = 1; n <= 24; n++) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'slot' + (selected === n ? ' on' : '') + (occ.has(n) ? ' occupied' : '');
+        b.textContent = String(n).padStart(2, '0');
+        if (!occ.has(n)) b.addEventListener('click', () => onPick(n));
+        el.appendChild(b);
+      }
+    }
+
+    function updateRegisterPreview() {
+      const disp = document.getElementById('reg-display').value || '（表示名未入力）';
+      const code = `${regArea}-${regLine}-${String(regSlot).padStart(2, '0')}${regTier ? '-' + regTier : ''}`;
+      document.getElementById('preview-display').textContent = disp;
+      document.getElementById('preview-code').textContent = code;
+    }
+
+    function initRegister() {
+      renderChoiceGrid('reg-area', AREAS, regArea, v => { regArea = v; renderSlotGrid('reg-slots', regArea, regLine, regSlot, n => { regSlot = n; updateRegisterPreview(); }); updateRegisterPreview(); });
+      renderChoiceGrid('reg-line', LINES, regLine, v => { regLine = v; renderSlotGrid('reg-slots', regArea, regLine, regSlot, n => { regSlot = n; updateRegisterPreview(); }); updateRegisterPreview(); });
+      renderSlotGrid('reg-slots', regArea, regLine, regSlot, n => { regSlot = n; updateRegisterPreview(); });
+      document.getElementById('reg-tier').querySelectorAll('.choice').forEach(btn => {
+        btn.addEventListener('click', () => {
+          regTier = btn.dataset.tier;
+          document.getElementById('reg-tier').querySelectorAll('.choice').forEach(b => b.classList.toggle('on', b === btn));
+          updateRegisterPreview();
+        });
+      });
+      document.getElementById('reg-display').addEventListener('input', updateRegisterPreview);
+      document.getElementById('btn-register').addEventListener('click', () => toast('デモ: ' + document.getElementById('preview-code').textContent + ' を登録'));
+    }
+
+    function initRelocate() {
+      renderChoiceGrid('move-area', AREAS, moveArea, v => { moveArea = v; refreshMove(); });
+      renderChoiceGrid('move-line', LINES, moveLine, v => { moveLine = v; refreshMove(); });
+      refreshMove();
+      document.getElementById('btn-relocate').addEventListener('click', () => toast('デモ: 場所移動を確定（旧 ID 解放・Zero2W 連動）'));
+    }
+
+    function refreshMove() {
+      renderSlotGrid('move-slots', moveArea, moveLine, moveSlot, n => { moveSlot = n; document.getElementById('move-after-code').textContent = `${moveArea}-${moveLine}-${String(moveSlot).padStart(2, '0')}`; }, document.getElementById('move-source').value);
+      document.getElementById('move-after-code').textContent = `${moveArea}-${moveLine}-${String(moveSlot).padStart(2, '0')}`;
+    }
+
+    function initZero2w() {
+      const dg = document.getElementById('device-grid');
+      dg.innerHTML = DEVICES.map(d => `
+        <div class="device-card${d.id === selectedDevice ? ' on' : ''}" data-id="${d.id}">
+          <div class="name">${d.name}</div>
+          <div class="meta">${d.meta}</div>
+          <div class="shelf">担当: ${d.shelf ? SHELVES.find(s => s.code === d.shelf)?.display + ' (' + d.shelf + ')' : '未設定'}</div>
+        </div>
+      `).join('');
+      dg.querySelectorAll('.device-card').forEach(card => {
+        card.addEventListener('click', () => { selectedDevice = card.dataset.id; initZero2w(); });
+      });
+      const pick = document.getElementById('zero-shelf-pick');
+      pick.innerHTML = SHELVES.map(s => `
+        <button type="button" class="slot${selectedZeroShelf === s.code ? ' on' : ''}" data-code="${s.code}" style="padding:0.65rem;text-align:left;">
+          <div style="font-size:0.82rem;font-weight:800;color:#fef3c7;">${s.display}</div>
+          <div class="code-mono" style="margin-top:0.15rem;">${s.code}</div>
+        </button>
+      `).join('');
+      pick.querySelectorAll('.slot').forEach(btn => {
+        btn.addEventListener('click', () => { selectedZeroShelf = btn.dataset.code; initZero2w(); });
+      });
+      document.getElementById('btn-zero-save').onclick = () => toast('デモ: ' + DEVICES.find(d => d.id === selectedDevice).name + ' → ' + selectedZeroShelf);
+    }
+
+    function switchView(id) {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('on', b.dataset.view === id));
+      document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'view-' + id));
+    }
+
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+    document.querySelectorAll('[data-jump]').forEach(btn => {
+      btn.addEventListener('click', () => switchView(btn.dataset.jump));
+    });
+
+    document.querySelectorAll('[data-app-tab]').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.app-tab').forEach(t => t.classList.toggle('on', t === tab));
+        const isShelf = tab.dataset.appTab === 'shelf-master';
+        document.getElementById('shelf-master-app').style.display = isShelf ? '' : 'none';
+        document.getElementById('ghost-placement').style.display = isShelf ? 'none' : 'grid';
+        if (tab.dataset.appTab === 'zero-status') toast('実装時: /zero2w-status へ');
+        if (tab.dataset.appTab === 'zero-assign') { switchView('zero2w'); toast('Zero2W割当ビューへ'); }
+      });
+    });
+
+    renderZoneMap();
+    renderTable();
+    initRegister();
+    initRelocate();
+    initZero2w();
+    updateRegisterPreview();
+  </script>
+</body>
+</html>

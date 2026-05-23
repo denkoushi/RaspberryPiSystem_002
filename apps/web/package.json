@@ -13,6 +13,7 @@
   "dependencies": {
     "@digital-go-jp/design-tokens": "1.1.9",
     "@raspi-system/part-search-core": "workspace:*",
+    "@raspi-system/shelf-layout-core": "workspace:*",
     "@raspi-system/shared-types": "workspace:*",
     "@tanstack/react-query": "^5.35.2",
     "@tanstack/react-virtual": "^3.11.2",

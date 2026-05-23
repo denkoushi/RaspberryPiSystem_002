@@ -67,7 +67,8 @@ const clientDisplayNameSchema = z
 export const updateClientSchema = z.object({
   name: clientDisplayNameSchema.optional(),
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable(),
-  haizenEdgeEnabled: z.boolean().optional()
+  haizenEdgeEnabled: z.boolean().optional(),
+  shelfLayoutEditEnabled: z.boolean().optional()
 });
 
 export const requireClientKey = (headerValue: unknown): string => {

@@ -37,9 +37,9 @@ export function MobilePlacementPage() {
         <button
           type="button"
           className={mpKioskTheme.partSearchButton}
-          onClick={() => navigate('/kiosk/mobile-placement/zero2w-assignment')}
+          onClick={() => navigate('/kiosk/mobile-placement/shelf-master')}
         >
-          Zero2W担当棚
+          棚マスタ
         </button>
         <button
           type="button"
@@ -136,7 +136,7 @@ export function MobilePlacementPage() {
         shelfCode={mp.shelfCode}
         onSelectShelf={mp.selectShelf}
         onOpenShelfRegister={() =>
-          navigate('/kiosk/mobile-placement/shelf-register', {
+          navigate('/kiosk/mobile-placement/shelf-master', {
             state: mp.buildShelfRegisterRouteState()
           })
         }
