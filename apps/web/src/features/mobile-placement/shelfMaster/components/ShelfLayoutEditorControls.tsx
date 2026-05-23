@@ -29,7 +29,7 @@ type Props = {
   onSave: () => void;
 };
 
-export function ShelfLayoutEditorDock({
+export function ShelfLayoutEditorControls({
   gates,
   multiMode,
   gridSize,
@@ -47,7 +47,7 @@ export function ShelfLayoutEditorDock({
   onSave
 }: Props) {
   return (
-    <div className={shelfMasterTheme.dock}>
+    <div className={shelfMasterTheme.dockLeft}>
       <div className={shelfMasterTheme.ctlRow}>
         <button
           type="button"

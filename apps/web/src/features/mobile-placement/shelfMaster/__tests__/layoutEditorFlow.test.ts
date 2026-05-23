@@ -28,6 +28,20 @@ describe('getLayoutEditorFlowGates', () => {
     expect(gates.emphasize).toBe('assign');
   });
 
+  it('blocks layout controls when zero2w device is selected', () => {
+    const gates = getLayoutEditorFlowGates({
+      selectedCount: 0,
+      pendingKind: null,
+      selectedMachineCd: '',
+      dirty: false,
+      savePending: false,
+      zero2wDeviceSelected: true
+    });
+    expect(gates.kindButtons).toBe(false);
+    expect(gates.assign).toBe(false);
+    expect(gates.multiMode).toBe(false);
+  });
+
   it('emphasizes save when dirty and no selection', () => {
     const gates = getLayoutEditorFlowGates({
       selectedCount: 0,

@@ -1,11 +1,14 @@
 import { getMacroZoneById, type MacroZoneId } from '@raspi-system/shelf-layout-core';
+import { useCallback, useEffect } from 'react';
 
 import { Dialog } from '../../../../components/ui/Dialog';
 import { getLayoutEditorFlowGates } from '../flow/layoutEditorFlow';
+import { useZero2wAssignmentState } from '../hooks/useZero2wAssignmentState';
 import { useZoneLayoutDraft } from '../hooks/useZoneLayoutDraft';
+import { entityAtCell } from '../model/shelfLayoutGrid';
 
 import { ShelfFactoryMapView } from './ShelfFactoryMapView';
-import { ShelfLayoutEditorDock } from './ShelfLayoutEditorDock';
+import { ShelfLayoutEditorShell } from './ShelfLayoutEditorShell';
 
 import type { MachineMasterDto } from '../../../../api/client';
 
@@ -21,13 +24,61 @@ type Props = {
 export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZoneChange, onMessage }: Props) {
   const draft = useZoneLayoutDraft(isOpen ? zoneId : null);
 
+  const layoutCellsSelected = draft.selectedCells.length > 0;
+
+  const {
+    devices: zero2wDevices,
+    selectedDeviceId: selectedZero2wDeviceId,
+    selectedShelf: selectedZero2wShelf,
+    gates: zero2wGates,
+    selectDevice: selectZero2wDevice,
+    selectShelfFromMap,
+    reset: resetZero2w,
+    save: saveZero2w,
+    savePending: zero2wSavePending
+  } = useZero2wAssignmentState({
+    isOpen,
+    layoutCellsSelected,
+    onMessage
+  });
+
+  const zero2wActive = selectedZero2wDeviceId.length > 0;
+
   const layoutGates = getLayoutEditorFlowGates({
     selectedCount: draft.selectedCells.length,
     pendingKind: draft.pendingKind,
     selectedMachineCd: draft.selectedMachineCd,
     dirty: draft.dirty,
-    savePending: draft.savePending
+    savePending: draft.savePending,
+    zero2wDeviceSelected: zero2wActive
   });
+
+  useEffect(() => {
+    if (!isOpen) {
+      resetZero2w();
+    }
+  }, [isOpen, resetZero2w]);
+
+  useEffect(() => {
+    resetZero2w();
+  }, [zoneId, resetZero2w]);
+
+  const handleToggleCell = useCallback(
+    (cells: number[]) => {
+      if (zero2wGates.mapShelfPick) {
+        const cell = cells[0];
+        if (cell == null) return;
+        const entity = entityAtCell(draft.draftEntities, cell);
+        if (entity?.entityKind === 'SHELF' && entity.shelfCodeRaw) {
+          selectShelfFromMap(entity.shelfCodeRaw);
+        }
+        return;
+      }
+      if (zero2wActive) return;
+      draft.toggleCell(cells);
+    },
+    [draft, zero2wGates.mapShelfPick, selectShelfFromMap, zero2wActive]
+  );
 
   const requestClose = () => {
     if (draft.dirty) {
@@ -43,33 +94,43 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
 
   return (
     <Dialog isOpen={isOpen} onClose={requestClose} title={title} size="full" overlayZIndex={80}>
-      <div className="flex max-h-[min(85vh,900px)] min-h-0 flex-col gap-3">
+      <div className="flex max-h-[min(85vh,900px)] min-h-0 flex-col gap-2">
         {draft.zoneQuery.isLoading ? (
           <p className="text-center text-sm text-slate-400">読み込み中…</p>
         ) : (
           <>
-            <ShelfFactoryMapView
-              zoneId={zoneId}
-              gridSize={draft.gridSize}
-              draftEntities={draft.draftEntities}
-              selectedCells={draft.selectedCells}
-              relocateSource={null}
-              tab="layout"
-              layoutEmphasizeCells={layoutGates.emphasize === 'cells'}
-              relocateEmphasize={null}
-              relocateCellActionable={() => false}
-              relocateCellsDisabled
-              onOpenZone={onZoneChange}
-              onToggleCell={draft.toggleCell}
-            />
-            <ShelfLayoutEditorDock
-              gates={layoutGates}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ShelfFactoryMapView
+                zoneId={zoneId}
+                gridSize={draft.gridSize}
+                draftEntities={draft.draftEntities}
+                selectedCells={draft.selectedCells}
+                relocateSource={null}
+                tab="layout"
+                layoutEmphasizeCells={layoutGates.emphasize === 'cells'}
+                layoutCellsBlocked={zero2wActive}
+                zero2wMapShelfPick={zero2wGates.mapShelfPick}
+                zero2wPickedShelfCode={selectedZero2wShelf || null}
+                relocateEmphasize={null}
+                relocateCellActionable={() => false}
+                relocateCellsDisabled
+                onOpenZone={onZoneChange}
+                onToggleCell={handleToggleCell}
+              />
+            </div>
+            <ShelfLayoutEditorShell
+              layoutGates={layoutGates}
+              zero2wGates={zero2wGates}
               multiMode={draft.multiMode}
               gridSize={draft.gridSize}
               pendingKind={draft.pendingKind}
               selectedMachineCd={draft.selectedMachineCd}
               machines={machines}
-              savePending={draft.savePending}
+              layoutSavePending={draft.savePending}
+              zero2wDevices={zero2wDevices}
+              selectedZero2wDeviceId={selectedZero2wDeviceId}
+              selectedZero2wShelf={selectedZero2wShelf}
+              zero2wSavePending={zero2wSavePending}
               onToggleMulti={() => draft.setMultiMode((v) => !v)}
               onGridSizeChange={draft.handleGridSizeChange}
               onClearSelection={draft.handleDeselectOnly}
@@ -77,7 +138,7 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
               onMachineChange={draft.setSelectedMachineCd}
               onAssign={() => draft.handleAssign(machines, (msg) => onMessage(msg))}
               onClearCells={draft.handleClearCells}
-              onSave={() =>
+              onLayoutSave={() =>
                 draft.saveLayout(
                   () => {
                     onMessage('レイアウトを保存しました');
@@ -86,6 +147,8 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
                   (msg) => onMessage(msg)
                 )
               }
+              onSelectZero2wDevice={selectZero2wDevice}
+              onZero2wSave={saveZero2w}
             />
           </>
         )}

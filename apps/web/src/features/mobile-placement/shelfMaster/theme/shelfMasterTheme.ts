@@ -4,13 +4,27 @@ import { mpKioskTheme } from '../../ui/mobilePlacementKioskTheme';
 
 export const shelfMasterTheme = {
   factoryMap:
-    'mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_2fr_auto_1fr] grid-rows-[1fr_auto_2fr_auto_1fr] gap-1 aspect-square max-h-[52vh]',
+    'mx-auto grid w-full max-w-[min(60rem,100%)] flex-1 min-h-[min(58vh,580px)] max-h-[min(68vh,calc(100%-9.5rem))] grid-cols-[auto_auto_1fr_auto_auto] grid-rows-[auto_auto_1fr_auto_auto] gap-1 aspect-square shrink-0',
   centerZone:
-    'col-start-3 row-start-3 flex flex-col rounded-xl border-2 border-amber-400 bg-amber-950/20 p-1',
+    'col-start-3 row-start-3 flex min-h-0 min-w-0 flex-col rounded-xl border-2 border-amber-400 bg-amber-950/20 p-1',
   centerZoneTitle: 'text-center text-[11px] font-bold text-amber-100',
   neighborBtn:
-    'rounded-lg border border-white/10 bg-black/40 p-1 text-[clamp(0.62rem,2vw,0.78rem)] font-bold text-slate-400',
+    'rounded-lg border border-black/10 bg-black/[0.06] px-1.5 py-1 text-[clamp(0.62rem,1.8vw,0.78rem)] font-bold text-slate-500',
   dock: 'mx-auto w-full max-w-lg space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-3',
+  dockShell:
+    'mx-auto grid w-full max-w-[min(56rem,100%)] shrink-0 grid-cols-1 items-start gap-2 rounded-xl border border-slate-700 bg-slate-900 p-2.5 sm:grid-cols-[1fr_minmax(14rem,1.55fr)] sm:gap-x-2.5',
+  dockLeft: 'flex min-w-0 flex-col gap-1.5',
+  dockRight: 'flex min-h-0 min-w-0 flex-col gap-1 border-slate-600 sm:border-l sm:pl-2.5',
+  dockRightLabel: 'm-0 text-[0.62rem] font-bold text-slate-400',
+  piCardsGrid:
+    'grid max-h-[calc(3*2.65rem+2*0.28rem)] grid-cols-3 gap-1 overflow-x-hidden overflow-y-auto pr-0.5 [scrollbar-width:thin]',
+  piCard:
+    'w-full min-w-0 rounded-lg border-2 border-slate-600 bg-white/[0.04] px-1 py-0.5 text-left text-slate-100',
+  piCardOn: 'border-amber-400 bg-amber-950/45 shadow-[0_0_0_1px_rgba(251,191,36,0.35)]',
+  piCardName: 'truncate text-[0.58rem] font-extrabold leading-tight',
+  piCardSub: 'mt-0.5 truncate font-mono text-[0.5rem] text-sky-300',
+  piSaveBtn:
+    'mt-auto w-full rounded-lg border-2 border-green-700 bg-gradient-to-b from-green-800 to-green-900 px-2 py-1.5 text-[0.72rem] font-extrabold text-emerald-50',
   relocateStatus: 'text-center text-xs font-semibold text-slate-300',
   cellBase:
     'flex min-h-0 flex-col items-center justify-center gap-0.5 rounded-md border p-1 font-bold',
