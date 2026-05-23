@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>区画レイアウト編集 — プレビュー（本番: shelf-master）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --emerald: #34d399;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.14);
+      --aisle-b: rgba(56, 189, 248, 0.5);
+      --unused: rgba(15, 23, 42, 0.55);
+      --off: 0.28;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg); color: #f8fafc;
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 0.5rem; }
+
+    .kiosk {
+      border-radius: 14px; border: 2px solid #475569; overflow: hidden;
+      background: var(--panel); min-height: min(720px, 92vh);
+      display: flex; flex-direction: column;
+    }
+    .top {
+      display: flex; align-items: center; gap: 0.45rem;
+      padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.55);
+    }
+    .top h2 { margin: 0; font-size: 0.9rem; font-weight: 800; flex: 1; }
+    .seg { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .seg button {
+      appearance: none; border: none; background: rgba(255,255,255,0.04);
+      color: #94a3b8; font: inherit; font-size: 0.7rem; font-weight: 700;
+      padding: 0.32rem 0.55rem;
+    }
+    .seg button.on { background: rgba(251, 191, 36, 0.18); color: #fef3c7; }
+    .seg button:disabled { opacity: var(--off); }
+
+    .stage {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 0.5rem; min-height: 0;
+    }
+    .factory {
+      display: grid;
+      width: min(100%, 640px);
+      aspect-ratio: 1;
+      max-height: min(62vh, 540px);
+      grid-template-columns: 1fr auto 2fr auto 1fr;
+      grid-template-rows: 1fr auto 2fr auto 1fr;
+      gap: 4px;
+    }
+    .neighbor {
+      appearance: none; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(0,0,0,0.35); color: #94a3b8;
+      font: inherit; font-size: clamp(0.62rem, 2vw, 0.78rem); font-weight: 700;
+      padding: 0.2rem;
+    }
+    .center-zone {
+      grid-column: 3; grid-row: 3;
+      display: flex; flex-direction: column;
+      border-radius: 12px; border: 2px solid var(--amber);
+      background: rgba(120, 53, 15, 0.12); padding: 4px;
+      min-height: 0;
+    }
+    .center-zone .ztitle {
+      text-align: center; font-size: clamp(0.7rem, 2.2vw, 0.88rem);
+      font-weight: 800; color: #fef3c7; margin-bottom: 4px;
+    }
+    .inner-grid {
+      flex: 1; display: grid; gap: 5px; min-height: 0;
+    }
+    .inner-grid.size-3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
+    .inner-grid.size-4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); }
+
+    .cell {
+      appearance: none; border-radius: 8px; border: 2px solid transparent;
+      font: inherit; cursor: pointer; padding: 4px 2px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; min-height: 0; gap: 2px;
+    }
+    .cell:disabled { cursor: not-allowed; opacity: var(--off); }
+    .cell .kind-badge {
+      font-size: clamp(0.5rem, 1.6vw, 0.58rem); font-weight: 800; opacity: 0.85;
+    }
+    .cell .main {
+      font-size: clamp(0.72rem, 2.8vw, 1.05rem);
+      font-weight: 800; line-height: 1.1;
+    }
+    .cell .code {
+      font-family: ui-monospace, monospace;
+      font-size: clamp(0.58rem, 2vw, 0.72rem);
+      color: #7dd3fc;
+    }
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); color: #cbd5e1; }
+    .cell.shelf {
+      background: linear-gradient(180deg, #5c4008, var(--shelf));
+      border-color: var(--shelf-b); color: #fef3c7;
+    }
+    .cell.aisle {
+      background: var(--aisle); border-color: var(--aisle-b);
+      border-style: dashed; color: #64748b;
+    }
+    .cell.unused {
+      background: var(--unused); border-color: rgba(255,255,255,0.08); color: #64748b;
+    }
+    .cell.unused .main { font-size: clamp(0.85rem, 3vw, 1.2rem); opacity: 0.45; }
+    .cell.sel { outline: 3px solid var(--sky); outline-offset: 1px; }
+    .cells-off .cell { pointer-events: none; opacity: 0.55; }
+
+    .dock {
+      margin: 0 0.5rem 0.5rem;
+      border-radius: 14px; border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      padding: 0.55rem 0.65rem;
+    }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
+    .row:last-child { margin-bottom: 0; }
+
+    .ctl {
+      appearance: none; border-radius: 8px; border: 2px solid var(--border);
+      background: rgba(255,255,255,0.05); color: #e2e8f0;
+      font: inherit; font-size: 0.74rem; font-weight: 700;
+      padding: 0.4rem 0.55rem;
+    }
+    .ctl:disabled {
+      opacity: var(--off);
+      cursor: not-allowed;
+      color: #64748b;
+      border-color: rgba(71, 85, 105, 0.35);
+      background: rgba(15, 23, 42, 0.5);
+    }
+    .ctl.flow {
+      border-color: var(--sky);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+      color: #fff;
+    }
+    .ctl.on { outline: 2px solid #fff; outline-offset: 1px; }
+    .ctl.toggle-on:not(:disabled) {
+      border-color: var(--sky);
+      background: rgba(56, 189, 248, 0.15);
+    }
+    .ctl.kind-shelf.on:not(:disabled) {
+      border-color: var(--shelf-b);
+      background: rgba(180, 83, 9, 0.35);
+    }
+    .ctl.kind-machine.on:not(:disabled) {
+      border-color: var(--machine-b);
+      background: rgba(51, 65, 85, 0.8);
+    }
+    .ctl.kind-aisle.on:not(:disabled) {
+      border-color: var(--aisle-b);
+      background: rgba(56, 189, 248, 0.12);
+    }
+    .ctl.primary:not(:disabled) {
+      border-color: #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+    }
+    .ctl.danger:not(:disabled) {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecdd3;
+    }
+    select.ctl {
+      min-width: 5.5rem;
+      background: #020617;
+    }
+    select.ctl:disabled { opacity: var(--off); }
+    .spacer { flex: 1; min-width: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="kiosk" id="kiosk">
+      <div class="top">
+        <h2>レイアウト — 中央·中央</h2>
+        <div class="seg">
+          <button type="button" class="on">レイアウト</button>
+          <button type="button" disabled>再割当</button>
+          <button type="button" disabled>Zero2W</button>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="factory" id="factory"></div>
+      </div>
+
+      <div class="dock" id="dock">
+        <div class="row">
+          <button type="button" class="ctl" id="btn-multi">☐ 複数マス</button>
+          <select class="ctl" id="grid-size">
+            <option value="3">3×3</option>
+            <option value="4">4×4</option>
+          </select>
+          <button type="button" class="ctl" id="btn-clear-sel" disabled>選択解除</button>
+        </div>
+        <div class="row">
+          <button type="button" class="ctl kind-shelf" data-kind="SHELF" disabled>部品置き場</button>
+          <button type="button" class="ctl kind-machine" data-kind="MACHINE" disabled>加工機</button>
+          <button type="button" class="ctl kind-aisle" data-kind="AISLE" disabled>通路</button>
+          <button type="button" class="ctl kind-unused" data-kind="UNUSED" disabled>未使用</button>
+          <select class="ctl" id="machine-select" disabled hidden>
+            <option value="">加工機を選択</option>
+            <option value="RD01">Robodrill01</option>
+            <option value="RD02">Robodrill02</option>
+            <option value="FJV">FJV60-80</option>
+          </select>
+        </div>
+        <div class="row">
+          <button type="button" class="ctl primary" id="btn-assign" disabled>選択マスに割当</button>
+          <button type="button" class="ctl danger" id="btn-clear-cells" disabled>選択マスを解除</button>
+          <span class="spacer"></span>
+          <button type="button" class="ctl primary" id="btn-save" disabled>レイアウト保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const NEIGHBORS = {
+      nw: { r: 1, c: 1, label: '西·北' },
+      n:  { r: 1, c: 3, label: '中央·北' },
+      ne: { r: 1, c: 5, label: '東·北' },
+      w:  { r: 3, c: 1, label: '西·中央' },
+      c:  { r: 3, c: 3, label: '中央·中央', center: true },
+      e:  { r: 3, c: 5, label: '東·中央' },
+      sw: { r: 5, c: 1, label: '西·南' },
+      s:  { r: 5, c: 3, label: '中央·南' },
+      se: { r: 5, c: 5, label: '東·南' },
+    };
+    const KIND_META = {
+      SHELF: { cls: 'shelf', badge: '棚', defaultMain: '（名称）' },
+      MACHINE: { cls: 'machine', badge: '機', defaultMain: '加工機' },
+      AISLE: { cls: 'aisle', badge: '路', defaultMain: '通路' },
+      UNUSED: { cls: 'unused', badge: '', defaultMain: '—' },
+    };
+
+    let gridSize = 3;
+    let cells = {};
+    let selected = new Set();
+    let pendingKind = null;
+    let multiMode = false;
+    let dirty = false;
+
+    const els = {
+      multi: document.getElementById('btn-multi'),
+      gridSize: document.getElementById('grid-size'),
+      clearSel: document.getElementById('btn-clear-sel'),
+      kindBtns: () => [...document.querySelectorAll('[data-kind]')],
+      machine: document.getElementById('machine-select'),
+      assign: document.getElementById('btn-assign'),
+      clearCells: document.getElementById('btn-clear-cells'),
+      save: document.getElementById('btn-save'),
+      factory: document.getElementById('factory'),
+      kiosk: document.getElementById('kiosk'),
+    };
+
+    function key(r, c) { return `${r},${c}`; }
+
+    function initCells() {
+      cells = {};
+      for (let r = 0; r < gridSize; r++) {
+        for (let c = 0; c < gridSize; c++) {
+          cells[key(r, c)] = { kind: 'UNUSED', label: '', code: '', machine: '' };
+        }
+      }
+      if (gridSize === 3) {
+        cells[key(1, 1)] = { kind: 'SHELF', label: '受け渡しB', code: '中央-中央-01', machine: '' };
+      }
+    }
+    initCells();
+
+    function cellDisplay(cell) {
+      const m = KIND_META[cell.kind] || KIND_META.UNUSED;
+      if (cell.kind === 'MACHINE') return { main: cell.machine || m.defaultMain, code: '', badge: m.badge };
+      if (cell.kind === 'SHELF') return { main: cell.label || m.defaultMain, code: cell.code || '', badge: m.badge };
+      if (cell.kind === 'AISLE') return { main: cell.label || m.defaultMain, code: '', badge: m.badge };
+      return { main: m.defaultMain, code: '', badge: '' };
+    }
+
+    function clearFlowHighlight() {
+      document.querySelectorAll('.flow').forEach((el) => el.classList.remove('flow'));
+    }
+
+    function updateControls() {
+      const hasSel = selected.size > 0;
+      const hasKind = !!pendingKind;
+      const machineOk = pendingKind !== 'MACHINE' || !!els.machine.value;
+      const canAssign = hasSel && hasKind && machineOk;
+
+      els.clearSel.disabled = !hasSel;
+      els.kindBtns().forEach((b) => { b.disabled = !hasSel; });
+      els.machine.disabled = !hasSel || pendingKind !== 'MACHINE';
+      els.machine.hidden = pendingKind !== 'MACHINE' || !hasSel;
+      els.assign.disabled = !canAssign;
+      els.clearCells.disabled = !hasSel;
+      els.save.disabled = !dirty;
+
+      clearFlowHighlight();
+      if (!hasSel) {
+        els.kiosk.classList.remove('cells-off');
+      } else if (!hasKind) {
+        els.kindBtns().forEach((b) => b.classList.add('flow'));
+      } else if (!canAssign) {
+        if (pendingKind === 'MACHINE') els.machine.classList.add('flow');
+      } else {
+        els.assign.classList.add('flow');
+      }
+      if (dirty && !hasSel) {
+        els.save.classList.add('flow');
+      }
+    }
+
+    function renderFactory() {
+      els.factory.innerHTML = '';
+      for (const meta of Object.values(NEIGHBORS)) {
+        if (meta.center) {
+          const wrap = document.createElement('div');
+          wrap.className = 'center-zone';
+          wrap.style.gridColumn = meta.c;
+          wrap.style.gridRow = meta.r;
+          wrap.innerHTML = `<div class="ztitle">${meta.label}</div>`;
+          const grid = document.createElement('div');
+          grid.className = `inner-grid size-${gridSize}`;
+          for (let r = 0; r < gridSize; r++) {
+            for (let c = 0; c < gridSize; c++) {
+              const k = key(r, c);
+              const cell = cells[k];
+              const disp = cellDisplay(cell);
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = `cell ${KIND_META[cell.kind]?.cls || 'unused'}`;
+              if (selected.has(k)) btn.classList.add('sel');
+              btn.innerHTML = `
+                ${disp.badge ? `<span class="kind-badge">${disp.badge}</span>` : ''}
+                <span class="main">${disp.main}</span>
+                ${disp.code ? `<span class="code">${disp.code}</span>` : ''}
+              `;
+              btn.addEventListener('click', () => onCellClick(k));
+              grid.appendChild(btn);
+            }
+          }
+          wrap.appendChild(grid);
+          els.factory.appendChild(wrap);
+        } else {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'neighbor';
+          btn.disabled = true;
+          btn.style.gridColumn = meta.c;
+          btn.style.gridRow = meta.r;
+          btn.textContent = meta.label;
+          els.factory.appendChild(btn);
+        }
+      }
+      updateControls();
+    }
+
+    function onCellClick(k) {
+      if (!multiMode) {
+        if (selected.has(k) && selected.size === 1) selected.clear();
+        else { selected.clear(); selected.add(k); }
+      } else if (selected.has(k)) {
+        selected.delete(k);
+      } else {
+        selected.add(k);
+      }
+      if (selected.size === 0) pendingKind = null;
+      els.kindBtns().forEach((b) => b.classList.toggle('on', b.dataset.kind === pendingKind));
+      renderFactory();
+    }
+
+    function applyAssignment() {
+      if (els.assign.disabled) return;
+      if (pendingKind === 'MACHINE') {
+        const name = els.machine.options[els.machine.selectedIndex]?.text || '';
+        selected.forEach((k) => {
+          cells[k] = { kind: 'MACHINE', label: '', code: '', machine: name };
+        });
+      } else if (pendingKind === 'SHELF') {
+        let n = 1;
+        Object.values(cells).forEach((c) => {
+          const m = c.code?.match(/-(\d{2})$/);
+          if (m) n = Math.max(n, parseInt(m[1], 10) + 1);
+        });
+        selected.forEach((k) => {
+          const prev = cells[k];
+          const code = prev.code || `中央-中央-${String(n++).padStart(2, '0')}`;
+          cells[k] = {
+            kind: 'SHELF',
+            label: prev.label || `置場${code.split('-').pop()}`,
+            code,
+            machine: ''
+          };
+        });
+      } else if (pendingKind === 'AISLE') {
+        selected.forEach((k) => {
+          cells[k] = { kind: 'AISLE', label: '通路', code: '', machine: '' };
+        });
+      } else {
+        selected.forEach((k) => {
+          cells[k] = { kind: 'UNUSED', label: '', code: '', machine: '' };
+        });
+      }
+      dirty = true;
+      selected.clear();
+      pendingKind = null;
+      els.kindBtns().forEach((b) => b.classList.remove('on'));
+      els.machine.value = '';
+      renderFactory();
+    }
+
+    function clearSelectedCells() {
+      if (els.clearCells.disabled) return;
+      selected.forEach((k) => {
+        cells[k] = { kind: 'UNUSED', label: '', code: '', machine: '' };
+      });
+      selected.clear();
+      pendingKind = null;
+      dirty = true;
+      els.kindBtns().forEach((b) => b.classList.remove('on'));
+      renderFactory();
+    }
+
+    els.multi.addEventListener('click', () => {
+      multiMode = !multiMode;
+      els.multi.textContent = multiMode ? '☑ 複数マス' : '☐ 複数マス';
+      els.multi.classList.toggle('toggle-on', multiMode);
+    });
+
+    els.gridSize.addEventListener('change', (e) => {
+      gridSize = Number(e.target.value);
+      selected.clear();
+      pendingKind = null;
+      dirty = false;
+      els.kindBtns().forEach((b) => b.classList.remove('on'));
+      initCells();
+      renderFactory();
+    });
+
+    els.kindBtns().forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        pendingKind = btn.dataset.kind;
+        els.kindBtns().forEach((b) => b.classList.toggle('on', b === btn));
+        if (pendingKind !== 'MACHINE') els.machine.value = '';
+        updateControls();
+      });
+    });
+
+    els.machine.addEventListener('change', updateControls);
+
+    els.clearSel.addEventListener('click', () => {
+      selected.clear();
+      pendingKind = null;
+      els.kindBtns().forEach((b) => b.classList.remove('on'));
+      renderFactory();
+    });
+
+    els.assign.addEventListener('click', applyAssignment);
+    els.clearCells.addEventListener('click', clearSelectedCells);
+    els.save.addEventListener('click', () => {
+      if (els.save.disabled) return;
+      dirty = false;
+      els.save.classList.remove('flow');
+      renderFactory();
+    });
+
+    renderFactory();
+  </script>
+</body>
+</html>

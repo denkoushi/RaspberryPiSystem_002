@@ -1,15 +1,19 @@
-import {
-  MACRO_ZONE_CATALOG,
-  getMacroZoneById,
-  getNeighborMacroZoneId,
-  indexToRc,
-  type MacroZoneId
-} from '@raspi-system/shelf-layout-core';
+import { MACRO_ZONE_CATALOG, getMacroZoneById, type MacroZoneId } from '@raspi-system/shelf-layout-core';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { mpKioskTheme } from '../ui/mobilePlacementKioskTheme';
 
+import { ShelfFactoryMapView } from './components/ShelfFactoryMapView';
+import { ShelfLayoutEditorDock } from './components/ShelfLayoutEditorDock';
+import { ShelfRelocateDock } from './components/ShelfRelocateDock';
+import { ShelfZero2wPanel } from './components/ShelfZero2wPanel';
+import { getLayoutEditorFlowGates } from './flow/layoutEditorFlow';
+import { getRelocateFlowGates } from './flow/relocateFlow';
+import { getZero2wAssignmentFlowGates } from './flow/zero2wAssignmentFlow';
+import { applyLayoutAssignment, clearAssignmentsOnCells } from './model/layoutDraftActions';
+import { isLayoutDraftDirty, snapshotFromZone } from './model/layoutDraftDirty';
+import { entityAtCell } from './model/shelfLayoutGrid';
 import {
   useAssignZero2wPreset,
   useClientCapabilities,
@@ -21,53 +25,18 @@ import {
   useShelfLayoutZone
 } from './useShelfMasterQueries';
 
-import type { ShelfLayoutEntityDto } from '../../../api/client';
+import type { DraftEntity, LayoutDraftSnapshot } from './model/shelfLayoutTypes';
+
 
 type UiTab = 'layout' | 'relocate' | 'zero2w';
-type DraftEntity = Omit<ShelfLayoutEntityDto, 'id'> & { id?: string };
 
 const ZONE_COLORS = ['#f59e0b', '#7c3aed', '#dc2626', '#16a34a', '#6b7280', '#78350f', '#ea580c', '#2563eb', '#ec4899'];
 
-function entityAtCell(entities: DraftEntity[], cellIndex: number): DraftEntity | null {
-  return entities.find((e) => e.cellIndices.includes(cellIndex)) ?? null;
-}
-
-function buildRenderItems(entities: DraftEntity[], gridSize: number) {
-  const covered = new Set<number>();
-  const items: Array<{
-    entity: DraftEntity | null;
-    minR: number;
-    maxR: number;
-    minC: number;
-    maxC: number;
-    cells: number[];
-  }> = [];
-  for (const e of entities) {
-    const rs = e.cellIndices.map((i) => indexToRc(i, gridSize).r);
-    const cs = e.cellIndices.map((i) => indexToRc(i, gridSize).c);
-    const minR = Math.min(...rs);
-    const maxR = Math.max(...rs);
-    const minC = Math.min(...cs);
-    const maxC = Math.max(...cs);
-    e.cellIndices.forEach((i) => covered.add(i));
-    items.push({ entity: e, minR, maxR, minC, maxC, cells: e.cellIndices });
-  }
-  const max = gridSize * gridSize;
-  for (let i = 0; i < max; i += 1) {
-    if (!covered.has(i)) {
-      const { r, c } = indexToRc(i, gridSize);
-      items.push({ entity: null, minR: r, maxR: r, minC: c, maxC: c, cells: [i] });
-    }
-  }
-  return items;
-}
-
-function entityLabel(entity: DraftEntity | null): string {
-  if (!entity) return '—';
-  if (entity.entityKind === 'MACHINE') return entity.resourceName ?? '加工機';
-  if (entity.entityKind === 'SHELF') return entity.displayLabel ?? entity.shelfCodeRaw ?? '棚';
-  if (entity.entityKind === 'AISLE') return entity.aisleLabel ?? '通路';
-  return '—';
+function entitiesFromZone(entities: DraftEntity[]): DraftEntity[] {
+  return entities.map((e) => ({
+    ...e,
+    cellIndices: [...e.cellIndices]
+  }));
 }
 
 export function ShelfMasterPageContent() {
@@ -86,6 +55,7 @@ export function ShelfMasterPageContent() {
   const [tab, setTab] = useState<UiTab>('relocate');
   const [gridSize, setGridSize] = useState<3 | 4>(3);
   const [draftEntities, setDraftEntities] = useState<DraftEntity[]>([]);
+  const [baseline, setBaseline] = useState<LayoutDraftSnapshot | null>(null);
   const [selectedCells, setSelectedCells] = useState<number[]>([]);
   const [multiMode, setMultiMode] = useState(false);
   const [pendingKind, setPendingKind] = useState<DraftEntity['entityKind'] | null>(null);
@@ -97,9 +67,13 @@ export function ShelfMasterPageContent() {
 
   useEffect(() => {
     if (zoneQuery.data) {
+      const entities = entitiesFromZone(zoneQuery.data.entities);
       setGridSize(zoneQuery.data.gridSize);
-      setDraftEntities(zoneQuery.data.entities);
+      setDraftEntities(entities);
+      setBaseline(snapshotFromZone(zoneQuery.data.gridSize, entities));
       setSelectedCells([]);
+      setPendingKind(null);
+      setSelectedMachineCd('');
       setRelocateSource(null);
     }
   }, [zoneQuery.data]);
@@ -122,6 +96,43 @@ export function ShelfMasterPageContent() {
   const zero2wDevices = zero2wQuery.data?.devices ?? [];
   const shelfEntities = draftEntities.filter((e) => e.entityKind === 'SHELF' && e.shelfCodeRaw);
 
+  const dirty = useMemo(
+    () => isLayoutDraftDirty(baseline, { gridSize, entities: draftEntities }),
+    [baseline, gridSize, draftEntities]
+  );
+
+  const layoutGates = getLayoutEditorFlowGates({
+    selectedCount: selectedCells.length,
+    pendingKind,
+    selectedMachineCd,
+    dirty,
+    savePending: saveMutation.isPending
+  });
+
+  const relocateGates = getRelocateFlowGates({
+    relocateSource,
+    relocatePending: relocateMutation.isPending
+  });
+
+  const relocateSourceLabel = useMemo(() => {
+    if (!relocateSource) return null;
+    const entity = draftEntities.find((e) => e.shelfCodeRaw === relocateSource);
+    return entity?.displayLabel ?? relocateSource;
+  }, [relocateSource, draftEntities]);
+
+  const relocateStatusText =
+    relocateSource && relocateGates.emphasize === 'target'
+      ? `移動元: ${relocateSourceLabel} — 移動先をタップ`
+      : relocateGates.statusText;
+
+  const zero2wGates = getZero2wAssignmentFlowGates({
+    selectedDeviceId: selectedZero2wDeviceId,
+    selectedShelf: selectedZero2wShelf,
+    savePending: assignZero2w.isPending
+  });
+
+  const selectedZero2wDevice = zero2wDevices.find((d) => d.id === selectedZero2wDeviceId) ?? null;
+
   const onOpenZone = (id: MacroZoneId) => {
     setZoneId(id);
     setMessage(null);
@@ -131,25 +142,27 @@ export function ShelfMasterPageContent() {
     setZoneId(null);
     setSelectedCells([]);
     setRelocateSource(null);
+    setPendingKind(null);
     setMessage(null);
   };
 
   const toggleCell = (cells: number[]) => {
     if (tab === 'relocate') {
+      if (relocateGates.cellsDisabled) return;
       const entity = entityAtCell(draftEntities, cells[0] ?? -1);
-      if (entity?.entityKind !== 'SHELF' || !entity.shelfCodeRaw) return;
+      if (!relocateGates.isCellActionable(entity)) return;
       if (!relocateSource) {
-        setRelocateSource(entity.shelfCodeRaw);
-        setMessage(`移動元: ${entity.displayLabel ?? entity.shelfCodeRaw}`);
+        setRelocateSource(entity!.shelfCodeRaw!);
+        setMessage(`移動元: ${entity!.displayLabel ?? entity!.shelfCodeRaw}`);
         return;
       }
-      if (relocateSource === entity.shelfCodeRaw) {
+      if (relocateSource === entity!.shelfCodeRaw) {
         setRelocateSource(null);
         setMessage(null);
         return;
       }
       relocateMutation.mutate(
-        { sourceShelfCodeRaw: relocateSource, targetShelfCodeRaw: entity.shelfCodeRaw },
+        { sourceShelfCodeRaw: relocateSource, targetShelfCodeRaw: entity!.shelfCodeRaw! },
         {
           onSuccess: () => {
             setRelocateSource(null);
@@ -172,85 +185,59 @@ export function ShelfMasterPageContent() {
     }
   };
 
-  const applyAssignment = () => {
-    if (!canEditLayout || selectedCells.length === 0 || !pendingKind) return;
-    const sorted = [...selectedCells].sort((a, b) => a - b);
-    const withoutOverlap = draftEntities
-      .map((e) => ({
-        ...e,
-        cellIndices: e.cellIndices.filter((i) => !sorted.includes(i))
-      }))
-      .filter((e) => e.cellIndices.length > 0);
-
-    if (pendingKind === 'UNUSED' || pendingKind === 'AISLE') {
-      setDraftEntities([
-        ...withoutOverlap,
-        {
-          entityKind: pendingKind,
-          cellIndices: sorted,
-          resourceCd: null,
-          resourceName: null,
-          shelfCodeRaw: null,
-          displayLabel: null,
-          aisleLabel: pendingKind === 'AISLE' ? '通路' : null
-        }
-      ]);
-      setSelectedCells([]);
+  const handleAssign = () => {
+    if (!zoneQuery.data || !canEditLayout) return;
+    const result = applyLayoutAssignment({
+      draftEntities,
+      selectedCells,
+      pendingKind: pendingKind!,
+      machines,
+      selectedMachineCd,
+      gridSize,
+      shelfPrefix: zoneQuery.data.shelfPrefix,
+      baseNextShelfSlot: zoneQuery.data.nextShelfSlot
+    });
+    if (!result.ok) {
+      setMessage(result.error);
       return;
     }
-
-    if (pendingKind === 'MACHINE') {
-      const master = machines.find((m) => m.resourceCd === selectedMachineCd);
-      if (!master) {
-        setMessage('加工機マスタを選択してください');
-        return;
-      }
-      setDraftEntities([
-        ...withoutOverlap,
-        {
-          entityKind: 'MACHINE',
-          cellIndices: sorted,
-          resourceCd: master.resourceCd,
-          resourceName: master.resourceName,
-          shelfCodeRaw: null,
-          displayLabel: null,
-          aisleLabel: null
-        }
-      ]);
-      setSelectedCells([]);
-      return;
-    }
-
-    if (pendingKind === 'SHELF') {
-      const existing = sorted.map((i) => entityAtCell(draftEntities, i)).find((e) => e?.entityKind === 'SHELF');
-      setDraftEntities([
-        ...withoutOverlap,
-        {
-          entityKind: 'SHELF',
-          cellIndices: sorted,
-          resourceCd: null,
-          resourceName: null,
-          shelfCodeRaw: existing?.shelfCodeRaw ?? null,
-          displayLabel: existing?.displayLabel ?? null,
-          aisleLabel: null
-        }
-      ]);
-      setSelectedCells([]);
-    }
+    setDraftEntities(result.entities);
+    setSelectedCells([]);
+    setPendingKind(null);
+    setSelectedMachineCd('');
+    setMessage(null);
   };
 
-  const clearSelection = () => {
-    if (selectedCells.length === 0) return;
-    setDraftEntities(
-      draftEntities
-        .map((e) => ({ ...e, cellIndices: e.cellIndices.filter((i) => !selectedCells.includes(i)) }))
-        .filter((e) => e.cellIndices.length > 0)
-    );
+  const handleDeselectOnly = () => {
     setSelectedCells([]);
+    setPendingKind(null);
+    setSelectedMachineCd('');
+  };
+
+  const handleGridSizeChange = (size: 3 | 4) => {
+    setGridSize(size);
+    setSelectedCells([]);
+    setPendingKind(null);
+    setSelectedMachineCd('');
+    setRelocateSource(null);
+    setMessage(null);
+    if (!zoneQuery.data) {
+      return;
+    }
+    const filtered = draftEntities
+      .map((e) => ({ ...e, cellIndices: e.cellIndices.filter((i) => i < size * size) }))
+      .filter((e) => e.cellIndices.length > 0);
+    setDraftEntities(filtered);
+  };
+
+  const handleClearCells = () => {
+    setDraftEntities(clearAssignmentsOnCells(draftEntities, selectedCells));
+    setSelectedCells([]);
+    setPendingKind(null);
   };
 
   const saveLayout = () => {
-    if (!zoneId || !zoneQuery.data) return;
+    if (!zoneId || !zoneQuery.data || !dirty) return;
     saveMutation.mutate(
       {
         gridSize,
@@ -265,13 +252,14 @@ export function ShelfMasterPageContent() {
         }))
       },
       {
-        onSuccess: () => setMessage('レイアウトを保存しました'),
+        onSuccess: () => {
+          setMessage('レイアウトを保存しました');
+          void zoneQuery.refetch();
+        },
         onError: (e: unknown) => setMessage(e instanceof Error ? e.message : '保存に失敗しました')
       }
     );
   };
-
-  const selectedZero2wDevice = zero2wDevices.find((d) => d.id === selectedZero2wDeviceId) ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-slate-950 text-slate-50">
@@ -288,14 +276,40 @@ export function ShelfMasterPageContent() {
         <h1 className="flex-1 text-sm font-bold">{zoneId ? getMacroZoneById(zoneId).displayName : '棚マスタ（現場全体図）'}</h1>
         <div className="flex gap-1">
           {canEditLayout ? (
-            <button type="button" className={tab === 'layout' ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton} onClick={() => setTab('layout')}>
+            <button
+              type="button"
+              className={tab === 'layout' ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton}
+              onClick={() => {
+                setTab('layout');
+                setRelocateSource(null);
+                setMessage(null);
+              }}
+            >
               レイアウト
             </button>
           ) : null}
-          <button type="button" className={tab === 'relocate' ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton} onClick={() => setTab('relocate')}>
+          <button
+            type="button"
+            className={tab === 'relocate' ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton}
+            onClick={() => {
+              setTab('relocate');
+              setSelectedCells([]);
+              setPendingKind(null);
+              setMessage(null);
+            }}
+          >
             再割当
           </button>
-          <button type="button" className={tab === 'zero2w' ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton} onClick={() => setTab('zero2w')}>
+          <button
+            type="button"
+            className={tab === 'zero2w' ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton}
+            onClick={() => {
+              setTab('zero2w');
+              setRelocateSource(null);
+              setSelectedCells([]);
+              setMessage(null);
+            }}
+          >
             Zero2W
           </button>
         </div>
@@ -329,174 +343,66 @@ export function ShelfMasterPageContent() {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
           {tab === 'zero2w' ? (
-            <div className="mx-auto w-full max-w-lg space-y-3 rounded-xl border border-slate-700 bg-slate-900 p-3">
-              <label className="block text-xs font-semibold text-slate-300">Zero2W 端末</label>
-              <select
-                className="w-full rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-sm"
-                value={selectedZero2wDeviceId}
-                onChange={(e) => {
-                  setSelectedZero2wDeviceId(e.target.value);
-                  const dev = zero2wDevices.find((d) => d.id === e.target.value);
-                  setSelectedZero2wShelf(dev?.shelfCodeRaw ?? '');
-                }}
-              >
-                <option value="">— 選択 —</option>
-                {zero2wDevices.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-              <label className="block text-xs font-semibold text-slate-300">担当棚</label>
-              <div className="flex flex-wrap gap-2">
-                {shelfEntities.map((s) => (
-                  <button
-                    key={s.shelfCodeRaw}
-                    type="button"
-                    className={
-                      selectedZero2wShelf === s.shelfCodeRaw
-                        ? 'rounded-lg border-2 border-amber-500 bg-amber-950 px-2 py-1 text-xs font-bold text-amber-100'
-                        : 'rounded-lg border border-slate-600 bg-slate-800 px-2 py-1 text-xs'
-                    }
-                    onClick={() => setSelectedZero2wShelf(s.shelfCodeRaw ?? '')}
-                  >
-                    <div>{s.displayLabel ?? s.shelfCodeRaw}</div>
-                    <div className="font-mono text-[10px] text-sky-300">{s.shelfCodeRaw}</div>
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                className={mpKioskTheme.partSearchButtonActive}
-                disabled={!selectedZero2wDevice || !selectedZero2wShelf || assignZero2w.isPending}
-                onClick={() => {
-                  if (!selectedZero2wDevice) return;
-                  assignZero2w.mutate(
-                    { clientDeviceId: selectedZero2wDevice.id, shelfCodeRaw: selectedZero2wShelf },
-                    {
-                      onSuccess: () => setMessage('Zero2W 担当棚を更新しました'),
-                      onError: (e: unknown) => setMessage(e instanceof Error ? e.message : '更新に失敗しました')
-                    }
-                  );
-                }}
-              >
-                保存
-              </button>
-            </div>
+            <ShelfZero2wPanel
+              gates={zero2wGates}
+              devices={zero2wDevices}
+              shelfEntities={shelfEntities}
+              selectedDeviceId={selectedZero2wDeviceId}
+              selectedShelf={selectedZero2wShelf}
+              savePending={assignZero2w.isPending}
+              onDeviceChange={(id, shelf) => {
+                setSelectedZero2wDeviceId(id);
+                setSelectedZero2wShelf(shelf);
+              }}
+              onShelfPick={setSelectedZero2wShelf}
+              onSave={() => {
+                if (!selectedZero2wDevice) return;
+                assignZero2w.mutate(
+                  { clientDeviceId: selectedZero2wDevice.id, shelfCodeRaw: selectedZero2wShelf },
+                  {
+                    onSuccess: () => setMessage('Zero2W 担当棚を更新しました'),
+                    onError: (e: unknown) => setMessage(e instanceof Error ? e.message : '更新に失敗しました')
+                  }
+                );
+              }}
+            />
           ) : (
             <>
-              <div className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_2fr_auto_1fr] grid-rows-[1fr_auto_2fr_auto_1fr] gap-1 aspect-square max-h-[52vh]">
-                {(['nw', 'n', 'ne', 'w', null, 'e', 'sw', 's', 'se'] as const).map((dir, idx) => {
-                  if (dir === null) {
-                    return (
-                      <div key={`c-${idx}`} className="col-start-3 row-start-3 flex flex-col rounded-xl border-2 border-amber-400 bg-amber-950/20 p-1">
-                        <div className="text-center text-[10px] font-bold text-amber-100">{getMacroZoneById(zoneId).displayName}</div>
-                        <div
-                          className="grid flex-1 gap-0.5"
-                          style={{
-                            gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
-                            gridTemplateRows: `repeat(${gridSize}, minmax(0, 1fr))`
-                          }}
-                        >
-                          {buildRenderItems(draftEntities, gridSize).map((item) => {
-                            const kind = item.entity?.entityKind?.toLowerCase() ?? 'unused';
-                            const sel = item.cells.some((c) => selectedCells.includes(c));
-                            const isRelocateSource = item.entity?.shelfCodeRaw === relocateSource;
-                            return (
-                              <button
-                                key={item.cells.join('-')}
-                                type="button"
-                                className={`flex min-h-0 flex-col items-center justify-center rounded-md border p-0.5 text-[9px] font-bold ${kind === 'machine' ? 'border-slate-500 bg-slate-700' : ''} ${kind === 'shelf' ? 'border-amber-700 bg-amber-950 text-amber-100' : ''} ${kind === 'aisle' ? 'border-dashed border-sky-600 bg-sky-950/30' : ''} ${kind === 'unused' ? 'border-slate-800 bg-slate-900/50 text-slate-500' : ''} ${sel ? 'outline outline-2 outline-sky-400' : ''} ${isRelocateSource ? 'outline outline-2 outline-emerald-400' : ''}`}
-                                style={{
-                                  gridColumn: `${item.minC + 1} / ${item.maxC + 2}`,
-                                  gridRow: `${item.minR + 1} / ${item.maxR + 2}`
-                                }}
-                                onClick={() => toggleCell(item.cells)}
-                              >
-                                <span>{entityLabel(item.entity)}</span>
-                                {item.entity?.shelfCodeRaw ? (
-                                  <span className="font-mono text-[8px] text-sky-300">{item.entity.shelfCodeRaw}</span>
-                                ) : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  }
-                  const neighborId = getNeighborMacroZoneId(zoneId, dir);
-                  if (!neighborId) return <div key={dir} />;
-                  const neighbor = getMacroZoneById(neighborId);
-                  return (
-                    <button
-                      key={dir}
-                      type="button"
-                      className="rounded-lg border border-white/10 bg-black/40 p-1 text-[9px] font-bold text-slate-400"
-                      style={{
-                        gridColumn: dir === 'nw' || dir === 'w' || dir === 'sw' ? 1 : dir === 'n' || dir === 's' ? 3 : 5,
-                        gridRow: dir === 'nw' || dir === 'n' || dir === 'ne' ? 1 : dir === 'w' || dir === 'e' ? 3 : 5
-                      }}
-                      onClick={() => onOpenZone(neighborId)}
-                    >
-                      {neighbor.displayName}
-                    </button>
-                  );
-                })}
-              </div>
+              <ShelfFactoryMapView
+                zoneId={zoneId}
+                gridSize={gridSize}
+                draftEntities={draftEntities}
+                selectedCells={selectedCells}
+                relocateSource={relocateSource}
+                tab={tab}
+                layoutEmphasizeCells={layoutGates.emphasize === 'cells'}
+                relocateEmphasize={relocateGates.emphasize}
+                relocateCellActionable={relocateGates.isCellActionable}
+                relocateCellsDisabled={relocateGates.cellsDisabled}
+                onOpenZone={onOpenZone}
+                onToggleCell={toggleCell}
+              />
 
               {tab === 'layout' && canEditLayout ? (
-                <div className="mx-auto w-full max-w-lg space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" className={multiMode ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton} onClick={() => setMultiMode((v) => !v)}>
-                      {multiMode ? '☑ 複数マス' : '☐ 複数マス'}
-                    </button>
-                    <select
-                      className="rounded-lg border border-slate-600 bg-slate-950 px-2 py-1 text-xs"
-                      value={gridSize}
-                      onChange={(e) => setGridSize(Number(e.target.value) as 3 | 4)}
-                    >
-                      <option value={3}>3×3</option>
-                      <option value={4}>4×4</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(['SHELF', 'MACHINE', 'AISLE', 'UNUSED'] as const).map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        className={pendingKind === k ? mpKioskTheme.partSearchButtonActive : mpKioskTheme.partSearchButton}
-                        onClick={() => setPendingKind(k)}
-                      >
-                        {k === 'SHELF' ? '部品置き場' : k === 'MACHINE' ? '加工機' : k === 'AISLE' ? '通路' : '解除'}
-                      </button>
-                    ))}
-                    <button type="button" className={mpKioskTheme.partSearchButton} onClick={clearSelection}>
-                      選択解除
-                    </button>
-                  </div>
-                  {pendingKind === 'MACHINE' ? (
-                    <select
-                      className="w-full rounded-lg border border-slate-600 bg-slate-950 px-2 py-2 text-sm"
-                      value={selectedMachineCd}
-                      onChange={(e) => setSelectedMachineCd(e.target.value)}
-                    >
-                      <option value="">— マスタから選択 —</option>
-                      {machines.map((m) => (
-                        <option key={m.resourceCd} value={m.resourceCd}>
-                          {m.resourceName} ({m.resourceCd})
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                  <button type="button" className={mpKioskTheme.partSearchButtonActive} onClick={applyAssignment} disabled={selectedCells.length === 0 || !pendingKind}>
-                    選択マスに割当
-                  </button>
-                  <button type="button" className={mpKioskTheme.partSearchButtonActive} onClick={saveLayout} disabled={saveMutation.isPending}>
-                    レイアウト保存
-                  </button>
-                </div>
+                <ShelfLayoutEditorDock
+                  gates={layoutGates}
+                  multiMode={multiMode}
+                  gridSize={gridSize}
+                  pendingKind={pendingKind}
+                  selectedMachineCd={selectedMachineCd}
+                  machines={machines}
+                  savePending={saveMutation.isPending}
+                  onToggleMulti={() => setMultiMode((v) => !v)}
+                  onGridSizeChange={handleGridSizeChange}
+                  onClearSelection={handleDeselectOnly}
+                  onPickKind={setPendingKind}
+                  onMachineChange={setSelectedMachineCd}
+                  onAssign={handleAssign}
+                  onClearCells={handleClearCells}
+                  onSave={saveLayout}
+                />
               ) : tab === 'relocate' ? (
-                <p className="text-center text-xs text-slate-400">部品置き場を2回タップ（移動元 → 移動先）</p>
+                <ShelfRelocateDock statusText={relocateStatusText} />
               ) : null}
             </>
           )}
