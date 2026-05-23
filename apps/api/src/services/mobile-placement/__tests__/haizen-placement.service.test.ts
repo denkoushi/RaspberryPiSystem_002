@@ -167,6 +167,29 @@ describe('haizen-placement.service', () => {
     });
   });
 
+  it('updateHaizenPresetShelfForTarget は shelfCodeRaw null で担当棚を解除する', async () => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValueOnce({
+      id: 'zero-1',
+      name: 'zero2w-tanaban01',
+      apiKey: 'client-key-zero2w-tanaban01-edge1',
+      haizenEdgeEnabled: true
+    } as never);
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({} as never);
+
+    await expect(
+      updateHaizenPresetShelfForTarget({
+        clientDeviceId: 'zero-1',
+        shelfCodeRaw: null
+      })
+    ).resolves.toEqual({ shelfCodeRaw: null });
+
+    expect(prisma.mobilePlacementShelf.findUnique).not.toHaveBeenCalled();
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith({
+      where: { id: 'zero-1' },
+      data: { haizenPresetShelfCodeRaw: null }
+    });
+  });
+
   it('applyHaizenScan は分配番号が範囲外なら 400', async () => {
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({
       id: 'dev-1',

@@ -69,8 +69,11 @@ export function useZoneLayoutDraft(zoneId: MacroZoneId | null) {
     [multiMode]
   );
 
-  const handleAssign = (machines: MachineMasterDto[], onError: (msg: string) => void) => {
-    if (!zoneQuery.data || !pendingKind) return;
+  const handleAssign = (
+    machines: MachineMasterDto[],
+    onError: (msg: string) => void
+  ): string | undefined => {
+    if (!zoneQuery.data || !pendingKind) return undefined;
     const result = applyLayoutAssignment({
       draftEntities,
       selectedCells,
@@ -83,12 +86,13 @@ export function useZoneLayoutDraft(zoneId: MacroZoneId | null) {
     });
     if (!result.ok) {
       onError(result.error);
-      return;
+      return undefined;
     }
     setDraftEntities(result.entities);
     setSelectedCells([]);
     setPendingKind(null);
     setSelectedMachineCd('');
+    return result.assignedShelfCodeRaw;
   };
 
   const handleGridSizeChange = (size: 3 | 4) => {

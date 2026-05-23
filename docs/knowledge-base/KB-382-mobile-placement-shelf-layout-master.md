@@ -16,7 +16,7 @@
 | **リダイレクト** | `/kiosk/mobile-placement/shelf-register` → shelf-master、`/zero2w-assignment` → shelf-master（[`App.tsx`](../../apps/web/src/App.tsx)） |
 | **グローバルヘッダー** | [`KioskHeader.tsx`](../../apps/web/src/components/kiosk/KioskHeader.tsx) — 「パレット」と「要領書」の間に **「棚マスタ」** NavLink（コミット **`a7f23c8a`**・2026-05-23） |
 | **配膳メインから** | [`MobilePlacementPage.tsx`](../../apps/web/src/pages/kiosk/MobilePlacementPage.tsx) の **「棚マスタ」** ボタン |
-| **2 モード（工場全体）** | **レイアウト** — `shelfLayoutEditEnabled === true` の端末のみ UI 表示。**再割当** — 全認証キオスク。**Zero2W 担当棚割当** — レイアウトの **「編集」Dialog** 右（棚番パイ）。専用 Zero2W タブは廃止 |
+| **2 モード（工場全体）** | **レイアウト** — `shelfLayoutEditEnabled === true` の端末のみ UI 表示。**再割当** — 全認証キオスク。**Zero2W 担当棚割当** — レイアウト **「編集」Dialog** 左ドック内の **部品置き場時 Pi セレクト**（加工機セレクトと同型）。専用 Zero2W タブ・右「棚番パイ」列は廃止 |
 | **権限 API** | `GET /api/mobile-placement/client-capabilities` → `{ shelfLayoutEditEnabled, haizenEdgeEnabled, … }`（**`x-client-key` 単位**） |
 | **レイアウト編集 API** | `GET/PUT /api/mobile-placement/shelf-layout`、区画 `…/zones/:macroZoneId`（PUT は **`shelfLayoutEditEnabled` 必須**・403 時 UI は編集モード非表示） |
 | **再割当 API** | `POST /api/mobile-placement/shelves/:shelfCodeRaw/relocate` — **スロット固定・中身移動**（`OrderPlacementBranchState` / `HaizenCurrentPlacement` / `haizenPresetShelfCodeRaw` を一括更新） |
@@ -30,9 +30,9 @@
 **UX（2026-05-23 · 9マス俯瞰 + Dialog）**:
 
 1. **工場全体** — 画面いっぱいの **9 区画**。各区画に **ミニ 3×3** で加工機・置き場・通路を **常時表示**（閲覧専用・タップ不要）
-2. **レイアウト**（`shelfLayoutEditEnabled` 端末）— 区画の **「編集」** → **Dialog** 内で **拡大 factory-map** + **2 列ドック**（左: レイアウト操作 / 右: **棚番パイ** 3 列・3 行表示・以降スクロール）。未保存で閉じるとき確認
+2. **レイアウト**（`shelfLayoutEditEnabled` 端末）— 区画の **「編集」** → **Dialog** 内で **拡大 factory-map** + **単列ドック**（レイアウト操作 + 部品置き場時 **Pi セレクト**）。未保存で閉じるとき確認
 3. **再割当** — 9 区画は常時表示のまま、**区画カードタップ** → Dialog 内 factory-map（隣接区画ボタンで区画切替）。移動元 SHELF → 移動先 SHELF
-4. **Zero2W 担当棚** — **編集 Dialog 右**の棚番パイで端末選択 → 地図上の **SHELF セル**タップ → **「担当棚を保存」**（`PUT …/haizen-target-devices/:id/preset-shelf`）。Pi 選択中はレイアウト用セル操作を抑止（相互排他）
+4. **Zero2W 担当棚** — **部品置き場**を選択したとき（新規割当待ち）または **既存 SHELF マス**を選択したとき、ドロップダウンで **担当なし / Pi** を選ぶ。**他棚に割当済み Pi は選択不可（グレーアウト）**。**既存棚**は **「担当を反映」** で即時 `PUT …/haizen-target-devices/:id/preset-shelf`（`shelfCodeRaw` または **`null` で解除**）。**新規部品置き場 + Pi** は **レイアウト保存成功後**に preset を自動反映（`MobilePlacementShelf` 登録後）
 
 **API**: `GET /api/mobile-placement/shelf-layout` の各 `zones[]` に **`entities[]`** を含む（俯瞰ミニマップ用・後方互換追加）。
 
@@ -51,7 +51,7 @@
 | 項目 | 内容 |
 |------|------|
 | **対象 Dialog** | [`ShelfZoneLayoutDialog.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneLayoutDialog.tsx)（編集）·[`ShelfZoneRelocateDialog.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneRelocateDialog.tsx)（再割当） |
-| **共通シェル** | 新規 [`ShelfMasterZoneDialogFrame.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMasterZoneDialogFrame.tsx) — **map / dock スロット**・寸法・スクロール境界のみ。`layoutEditorFlow` / `zero2wAssignmentFlow` / `relocateFlow` は各 Dialog に残す |
+| **共通シェル** | 新規 [`ShelfMasterZoneDialogFrame.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMasterZoneDialogFrame.tsx) — **map / dock スロット**・寸法・スクロール境界のみ。`layoutEditorFlow`（Pi セレクトゲート含む）/ `relocateFlow` は各 Dialog に残す |
 | **テーマ** | [`shelfMasterTheme.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/theme/shelfMasterTheme.ts) — Dialog 内 `factoryMap` は **`max-w-[26rem]` + `aspect-square`**（俯瞰 9 マスの `macroOverviewGrid` / `miniMap` は別トークンで不変） |
 | **Dialog 基盤** | [`Dialog.tsx`](../../apps/web/src/components/ui/Dialog.tsx) — 任意 **`titleClassName`**（後方互換） |
 | **触らない** | API / Prisma / 手順ゲート / 9 マス [`ShelfMacroOverviewGrid`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMacroOverviewGrid.tsx) |

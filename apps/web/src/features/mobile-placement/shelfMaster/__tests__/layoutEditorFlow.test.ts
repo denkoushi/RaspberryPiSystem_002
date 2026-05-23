@@ -9,7 +9,10 @@ describe('getLayoutEditorFlowGates', () => {
       pendingKind: null,
       selectedMachineCd: '',
       dirty: false,
-      savePending: false
+      savePending: false,
+      selectionIsExistingShelf: false,
+      pendingShelfAssign: false,
+      zero2wPiSelectionNeedsApply: false
     });
     expect(gates.kindButtons).toBe(true);
     expect(gates.assign).toBe(false);
@@ -22,24 +25,45 @@ describe('getLayoutEditorFlowGates', () => {
       pendingKind: 'AISLE',
       selectedMachineCd: '',
       dirty: false,
-      savePending: false
+      savePending: false,
+      selectionIsExistingShelf: false,
+      pendingShelfAssign: false,
+      zero2wPiSelectionNeedsApply: false
     });
     expect(gates.assign).toBe(true);
     expect(gates.emphasize).toBe('assign');
   });
 
-  it('blocks layout controls when zero2w device is selected', () => {
+  it('shows zero2w pi select for pending shelf assign', () => {
     const gates = getLayoutEditorFlowGates({
-      selectedCount: 0,
+      selectedCount: 1,
+      pendingKind: 'SHELF',
+      selectedMachineCd: '',
+      dirty: false,
+      savePending: false,
+      selectionIsExistingShelf: false,
+      pendingShelfAssign: true,
+      zero2wPiSelectionNeedsApply: false
+    });
+    expect(gates.zero2wPiSelect).toBe(true);
+    expect(gates.zero2wPresetApply).toBe(false);
+    expect(gates.assign).toBe(true);
+    expect(gates.emphasize).toBe('assign');
+  });
+
+  it('shows preset apply for existing shelf with pi change', () => {
+    const gates = getLayoutEditorFlowGates({
+      selectedCount: 1,
       pendingKind: null,
       selectedMachineCd: '',
       dirty: false,
       savePending: false,
-      zero2wDeviceSelected: true
+      selectionIsExistingShelf: true,
+      pendingShelfAssign: false,
+      zero2wPiSelectionNeedsApply: true
     });
-    expect(gates.kindButtons).toBe(false);
-    expect(gates.assign).toBe(false);
-    expect(gates.multiMode).toBe(false);
+    expect(gates.zero2wPresetApply).toBe(true);
+    expect(gates.emphasize).toBe('zero2wPresetApply');
   });
 
   it('emphasizes save when dirty and no selection', () => {
@@ -48,7 +72,10 @@ describe('getLayoutEditorFlowGates', () => {
       pendingKind: null,
       selectedMachineCd: '',
       dirty: true,
-      savePending: false
+      savePending: false,
+      selectionIsExistingShelf: false,
+      pendingShelfAssign: false,
+      zero2wPiSelectionNeedsApply: false
     });
     expect(gates.save).toBe(true);
     expect(gates.emphasize).toBe('save');

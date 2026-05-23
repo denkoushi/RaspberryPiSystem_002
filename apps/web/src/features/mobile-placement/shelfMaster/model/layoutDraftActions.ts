@@ -17,7 +17,7 @@ export type ApplyAssignmentInput = {
 };
 
 export type ApplyAssignmentResult =
-  | { ok: true; entities: DraftEntity[] }
+  | { ok: true; entities: DraftEntity[]; assignedShelfCodeRaw?: string }
   | { ok: false; error: string };
 
 function stripSelectedCells(entities: DraftEntity[], sorted: number[]): DraftEntity[] {
@@ -101,7 +101,8 @@ export function applyLayoutAssignment(input: ApplyAssignmentInput): ApplyAssignm
           displayLabel: preview.displayLabel,
           aisleLabel: null
         }
-      ]
+      ],
+      assignedShelfCodeRaw: preview.shelfCodeRaw
     };
   }
 

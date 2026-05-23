@@ -1145,9 +1145,9 @@ export async function getMobilePlacementHaizenTargetDevices() {
 /** Zero2W 担当棚設定: 対象端末の担当棚を更新 */
 export async function putMobilePlacementHaizenTargetPresetShelf(payload: {
   clientDeviceId: string;
-  shelfCodeRaw: string;
+  shelfCodeRaw: string | null;
 }) {
-  const { data } = await api.put<{ shelfCodeRaw: string }>(
+  const { data } = await api.put<{ shelfCodeRaw: string | null }>(
     `/mobile-placement/haizen-target-devices/${payload.clientDeviceId}/preset-shelf`,
     {
       shelfCodeRaw: payload.shelfCodeRaw

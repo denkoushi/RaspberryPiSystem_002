@@ -3,6 +3,8 @@ import { shelfMasterButtonClass, shelfMasterSelectClass, shelfMasterTheme } from
 import type { MachineMasterDto } from '../../../../api/client';
 import type { LayoutEditorFlowGates } from '../flow/layoutEditorFlow';
 import type { DraftEntity } from '../model/shelfLayoutTypes';
+import type { Zero2wPiSelectOption } from '../zero2wPreset/zero2wPiSelectOptions';
+import type { Zero2wPiSelectValue } from '../zero2wPreset/zero2wPiSelectValue';
 
 const KIND_LABELS: Record<Exclude<DraftEntity['entityKind'], never>, string> = {
   SHELF: '部品置き場',
@@ -19,13 +21,18 @@ type Props = {
   selectedMachineCd: string;
   machines: MachineMasterDto[];
   savePending: boolean;
+  zero2wPiOptions: Zero2wPiSelectOption[];
+  selectedPi: Zero2wPiSelectValue;
+  zero2wPresetApplyPending: boolean;
   onToggleMulti: () => void;
   onGridSizeChange: (size: 3 | 4) => void;
   onClearSelection: () => void;
   onPickKind: (kind: DraftEntity['entityKind']) => void;
   onMachineChange: (cd: string) => void;
+  onPiChange: (value: Zero2wPiSelectValue) => void;
   onAssign: () => void;
   onClearCells: () => void;
+  onZero2wPresetApply: () => void;
   onSave: () => void;
 };
 
@@ -37,13 +44,18 @@ export function ShelfLayoutEditorControls({
   selectedMachineCd,
   machines,
   savePending,
+  zero2wPiOptions,
+  selectedPi,
+  zero2wPresetApplyPending,
   onToggleMulti,
   onGridSizeChange,
   onClearSelection,
   onPickKind,
   onMachineChange,
+  onPiChange,
   onAssign,
   onClearCells,
+  onZero2wPresetApply,
   onSave
 }: Props) {
   return (
@@ -112,6 +124,21 @@ export function ShelfLayoutEditorControls({
         </select>
       ) : null}
 
+      {gates.zero2wPiSelect ? (
+        <select
+          className={shelfMasterSelectClass(gates.zero2wPiSelect, gates.emphasize === 'zero2wPiSelect')}
+          value={selectedPi}
+          disabled={!gates.zero2wPiSelect}
+          onChange={(e) => onPiChange(e.target.value)}
+        >
+          {zero2wPiOptions.map((opt) => (
+            <option key={opt.value || '__unchanged__'} value={opt.value} disabled={opt.disabled}>
+              {opt.subLabel ? `${opt.label}（${opt.subLabel}）` : opt.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
       <div className={shelfMasterTheme.ctlRow}>
         <button
           type="button"
@@ -125,6 +152,20 @@ export function ShelfLayoutEditorControls({
         >
           選択マスに割当
         </button>
+        {gates.zero2wPresetApply ? (
+          <button
+            type="button"
+            className={shelfMasterButtonClass(true, {
+              enabled: gates.zero2wPresetApply,
+              flow: gates.emphasize === 'zero2wPresetApply',
+              variant: 'primary'
+            })}
+            disabled={!gates.zero2wPresetApply || zero2wPresetApplyPending}
+            onClick={onZero2wPresetApply}
+          >
+            担当を反映
+          </button>
+        ) : null}
         <button
           type="button"
           className={shelfMasterButtonClass(false, {

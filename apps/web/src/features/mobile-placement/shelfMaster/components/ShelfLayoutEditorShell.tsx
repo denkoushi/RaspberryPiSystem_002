@@ -1,67 +1,57 @@
 import { shelfMasterTheme } from '../theme/shelfMasterTheme';
 
 import { ShelfLayoutEditorControls } from './ShelfLayoutEditorControls';
-import { ShelfZero2wAssignmentRail } from './ShelfZero2wAssignmentRail';
 
 import type { MachineMasterDto } from '../../../../api/client';
 import type { LayoutEditorFlowGates } from '../flow/layoutEditorFlow';
-import type { Zero2wAssignmentFlowGates } from '../flow/zero2wAssignmentFlow';
 import type { DraftEntity } from '../model/shelfLayoutTypes';
-
-type Zero2wDevice = {
-  id: string;
-  name: string;
-  shelfCodeRaw: string | null;
-};
+import type { Zero2wPiSelectOption } from '../zero2wPreset/zero2wPiSelectOptions';
+import type { Zero2wPiSelectValue } from '../zero2wPreset/zero2wPiSelectValue';
 
 type Props = {
   layoutGates: LayoutEditorFlowGates;
-  zero2wGates: Zero2wAssignmentFlowGates;
   multiMode: boolean;
   gridSize: 3 | 4;
   pendingKind: DraftEntity['entityKind'] | null;
   selectedMachineCd: string;
   machines: MachineMasterDto[];
   layoutSavePending: boolean;
-  zero2wDevices: Zero2wDevice[];
-  selectedZero2wDeviceId: string;
-  selectedZero2wShelf: string;
-  zero2wSavePending: boolean;
+  zero2wPiOptions: Zero2wPiSelectOption[];
+  selectedPi: Zero2wPiSelectValue;
+  zero2wPresetApplyPending: boolean;
   onToggleMulti: () => void;
   onGridSizeChange: (size: 3 | 4) => void;
   onClearSelection: () => void;
   onPickKind: (kind: DraftEntity['entityKind']) => void;
   onMachineChange: (cd: string) => void;
+  onPiChange: (value: Zero2wPiSelectValue) => void;
   onAssign: () => void;
   onClearCells: () => void;
+  onZero2wPresetApply: () => void;
   onLayoutSave: () => void;
-  onSelectZero2wDevice: (deviceId: string, currentShelf: string) => void;
-  onZero2wSave: () => void;
 };
 
 export function ShelfLayoutEditorShell({
   layoutGates,
-  zero2wGates,
   multiMode,
   gridSize,
   pendingKind,
   selectedMachineCd,
   machines,
   layoutSavePending,
-  zero2wDevices,
-  selectedZero2wDeviceId,
-  selectedZero2wShelf,
-  zero2wSavePending,
+  zero2wPiOptions,
+  selectedPi,
+  zero2wPresetApplyPending,
   onToggleMulti,
   onGridSizeChange,
   onClearSelection,
   onPickKind,
   onMachineChange,
+  onPiChange,
   onAssign,
   onClearCells,
-  onLayoutSave,
-  onSelectZero2wDevice,
-  onZero2wSave
+  onZero2wPresetApply,
+  onLayoutSave
 }: Props) {
   return (
     <div className={shelfMasterTheme.dockShell}>
@@ -73,23 +63,19 @@ export function ShelfLayoutEditorShell({
         selectedMachineCd={selectedMachineCd}
         machines={machines}
         savePending={layoutSavePending}
+        zero2wPiOptions={zero2wPiOptions}
+        selectedPi={selectedPi}
+        zero2wPresetApplyPending={zero2wPresetApplyPending}
         onToggleMulti={onToggleMulti}
         onGridSizeChange={onGridSizeChange}
         onClearSelection={onClearSelection}
         onPickKind={onPickKind}
         onMachineChange={onMachineChange}
+        onPiChange={onPiChange}
         onAssign={onAssign}
         onClearCells={onClearCells}
+        onZero2wPresetApply={onZero2wPresetApply}
         onSave={onLayoutSave}
-      />
-      <ShelfZero2wAssignmentRail
-        gates={zero2wGates}
-        devices={zero2wDevices}
-        selectedDeviceId={selectedZero2wDeviceId}
-        selectedShelf={selectedZero2wShelf}
-        savePending={zero2wSavePending}
-        onSelectDevice={onSelectZero2wDevice}
-        onSave={onZero2wSave}
       />
     </div>
   );

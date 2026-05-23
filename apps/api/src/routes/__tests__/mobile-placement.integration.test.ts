@@ -665,6 +665,33 @@ describe('mobile-placement API', () => {
     expect(fromDb?.haizenPresetShelfCodeRaw).toBe('西-北-02');
   });
 
+  it('PUT /api/mobile-placement/haizen-target-devices/:id/preset-shelf clears preset with null', async () => {
+    const actor = await createTestClientDevice();
+    const target = await prisma.clientDevice.create({
+      data: {
+        name: 'Test Client zero2w-clear',
+        apiKey: 'client-key-zero2w-clear-1',
+        haizenEdgeEnabled: true,
+        haizenPresetShelfCodeRaw: '西-北-01'
+      }
+    });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/mobile-placement/haizen-target-devices/${target.id}/preset-shelf`,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-key': actor.apiKey
+      },
+      payload: { shelfCodeRaw: null }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ shelfCodeRaw: null });
+
+    const fromDb = await prisma.clientDevice.findUnique({ where: { id: target.id } });
+    expect(fromDb?.haizenPresetShelfCodeRaw).toBeNull();
+  });
+
   it('PATCH /api/mobile-placement/haizen-preset-shelf rejects shelf not in master', async () => {
     const actor = await createTestClientDevice('client-key-zero2w-patch-self-1');
     await prisma.mobilePlacementShelf.create({
