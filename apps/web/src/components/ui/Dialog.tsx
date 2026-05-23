@@ -22,6 +22,8 @@ type DialogProps = PropsWithChildren<{
   initialFocusRef?: RefObject<HTMLElement>;
   size?: DialogSize;
   className?: string;
+  /** タイトル見出しの追加クラス（未指定時は `text-lg font-semibold`） */
+  titleClassName?: string;
   /** 未指定時は Tailwind `z-50`。キオスク左シートより手前に出す場合に数値指定（例: 80） */
   overlayZIndex?: number;
 }>;
@@ -56,6 +58,7 @@ export function Dialog({
   initialFocusRef,
   size = 'md',
   className,
+  titleClassName,
   overlayZIndex,
   children
 }: DialogProps) {
@@ -176,7 +179,11 @@ export function Dialog({
           className
         )}
       >
-        {title ? <h2 id={titleId} className="text-lg font-semibold">{title}</h2> : null}
+        {title ? (
+          <h2 id={titleId} className={clsx('text-lg font-semibold', titleClassName)}>
+            {title}
+          </h2>
+        ) : null}
         {description ? (
           <p id={descriptionId} className={clsx('text-sm text-slate-600', title ? 'mt-2' : undefined)}>
             {description}

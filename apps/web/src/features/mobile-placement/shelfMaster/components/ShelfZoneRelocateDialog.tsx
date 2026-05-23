@@ -2,12 +2,12 @@ import { getMacroZoneById, type MacroZoneId } from '@raspi-system/shelf-layout-c
 import { useEffect, useMemo, useState } from 'react';
 
 
-import { Dialog } from '../../../../components/ui/Dialog';
 import { getRelocateFlowGates } from '../flow/relocateFlow';
 import { entityAtCell } from '../model/shelfLayoutGrid';
 import { useRelocateShelf, useShelfLayoutZone } from '../useShelfMasterQueries';
 
 import { ShelfFactoryMapView } from './ShelfFactoryMapView';
+import { ShelfMasterZoneDialogFrame } from './ShelfMasterZoneDialogFrame';
 import { ShelfRelocateDock } from './ShelfRelocateDock';
 
 import type { DraftEntity } from '../model/shelfLayoutTypes';
@@ -103,30 +103,28 @@ export function ShelfZoneRelocateDialog({ zoneId, isOpen, onClose, onZoneChange,
   const title = `再割当 — ${getMacroZoneById(zoneId).displayName}`;
 
   return (
-    <Dialog isOpen={isOpen} onClose={onClose} title={title} size="full" overlayZIndex={80}>
-      <div className="flex max-h-[min(85vh,900px)] min-h-0 flex-col gap-3">
-        {zoneQuery.isLoading ? (
-          <p className="text-center text-sm text-slate-400">読み込み中…</p>
-        ) : (
-          <>
-            <ShelfFactoryMapView
-              zoneId={zoneId}
-              gridSize={gridSize}
-              draftEntities={draftEntities}
-              selectedCells={[]}
-              relocateSource={relocateSource}
-              tab="relocate"
-              layoutEmphasizeCells={false}
-              relocateEmphasize={relocateGates.emphasize}
-              relocateCellActionable={relocateGates.isCellActionable}
-              relocateCellsDisabled={relocateGates.cellsDisabled}
-              onOpenZone={onZoneChange}
-              onToggleCell={toggleCell}
-            />
-            <ShelfRelocateDock statusText={relocateStatusText} />
-          </>
-        )}
-      </div>
-    </Dialog>
+    <ShelfMasterZoneDialogFrame
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      loading={zoneQuery.isLoading}
+      map={
+        <ShelfFactoryMapView
+          zoneId={zoneId}
+          gridSize={gridSize}
+          draftEntities={draftEntities}
+          selectedCells={[]}
+          relocateSource={relocateSource}
+          tab="relocate"
+          layoutEmphasizeCells={false}
+          relocateEmphasize={relocateGates.emphasize}
+          relocateCellActionable={relocateGates.isCellActionable}
+          relocateCellsDisabled={relocateGates.cellsDisabled}
+          onOpenZone={onZoneChange}
+          onToggleCell={toggleCell}
+        />
+      }
+      dock={<ShelfRelocateDock statusText={relocateStatusText} />}
+    />
   );
 }

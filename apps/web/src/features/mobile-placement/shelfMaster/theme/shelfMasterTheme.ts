@@ -3,8 +3,17 @@ import clsx from 'clsx';
 import { mpKioskTheme } from '../../ui/mobilePlacementKioskTheme';
 
 export const shelfMasterTheme = {
+  /** 区画 Dialog 内の factory-map（スクロールなし・幅基準の正方形） */
   factoryMap:
-    'mx-auto grid w-full max-w-[min(60rem,100%)] flex-1 min-h-[min(58vh,580px)] max-h-[min(68vh,calc(100%-9.5rem))] grid-cols-[auto_auto_1fr_auto_auto] grid-rows-[auto_auto_1fr_auto_auto] gap-1 aspect-square shrink-0',
+    'mx-auto grid w-full max-w-[26rem] grid-cols-[auto_auto_1fr_auto_auto] grid-rows-[auto_auto_1fr_auto_auto] gap-1 aspect-square',
+  dialogPanel:
+    'flex max-h-[min(92dvh,800px)] min-h-0 w-full max-w-[min(96vw,920px)] flex-col !p-2',
+  dialogTitle: 'text-[0.82rem] font-semibold leading-tight',
+  dialogBody: 'flex min-h-0 flex-1 flex-col gap-1.5 overflow-x-hidden overflow-y-auto',
+  dialogMapPane:
+    'shrink-0 overflow-visible rounded-xl border border-slate-300 bg-slate-950 p-1.5',
+  dialogDockPane:
+    'min-h-0 max-h-[min(38dvh,320px)] shrink-0 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-600 bg-slate-900 p-2 [scrollbar-width:thin]',
   centerZone:
     'col-start-3 row-start-3 flex min-h-0 min-w-0 flex-col rounded-xl border-2 border-amber-400 bg-amber-950/20 p-1',
   centerZoneTitle: 'text-center text-[11px] font-bold text-amber-100',
