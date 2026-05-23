@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-23 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK（Pi5+現場）・ドキュメント同期・`main` マージ**） **棚マスタ・区画編集/再割当 Dialog コンパクト化**·ブランチ **`fix/kiosk-shelf-master-zone-dialog-compact`**·**`2e73aeed`**。**仕様**: [`ShelfMasterZoneDialogFrame`](./apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMasterZoneDialogFrame.tsx) — map/dock 分離·モーダル `max-w 920px` / `max-h 92dvh`·Dialog 内 factory-map **`26rem` 正方形**·dock **`max-h 38dvh` 縦スクロール**·**手順ゲート不変**（`layoutEditorFlow` / `zero2wAssignmentFlow` / `relocateFlow`）·**API/DB 不変**。**ローカル**: shelfMaster Vitest **16 PASS**·web lint/build PASS。**CI**: **`26329398253` success**。**本番（5台・1台ずつ）**: Detach **`20260523-183552-18047`**（Pi5·`ok=134` `changed=4`）/ **`20260523-184740-26602`** / **`20260523-185339-16025`** / **`20260523-185841-7412`** / **`20260523-190359-5547`**（Pi4×4·各 **`failed=0`**·`kiosk-browser` 再起動）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**。**現場**: Pi5 **OK** → Pi4 群デプロイ完了（ユーザー）。**ナレッジ**: [KB-382 §コンパクト](./docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#production-deploy--zone-dialog-compact-2026-05-23)·[deployment §コンパクト](./docs/guides/deployment.md#kiosk-shelf-master-zone-dialog-compact-2026-05-23)·[design-previews コンパクト](./docs/design-previews/kiosk-shelf-master-edit-dialog-compact-preview.html)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK（自動）・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・製番左縁 — 全件表示は無色・OR フィルタ時のみ色分け（方針 A）**·ブランチ **`feat/kiosk-leaderboard-seiban-accent-no-color-all-items`**·**`44777ac7`**。**仕様**: [`seibanAccentPalette.ts`](./apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) — **`activeQueries` 空 → `undefined`（左縁なし）**·**OR フィルタ ON → [§24色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20) どおり現状維持**·**サイネージ JPEG は 24 色ハッシュ不変**（方針 A）·**API/DB 不変**。**ローカル**: `seibanAccentPalette.test.ts` **6 PASS**。**本番（5台・1台ずつ）**: Detach **`20260522-211412-3634`**（Pi5·`ok=134` `changed=4`）/ **`20260522-212202-22657`**（Pi4·`ok=122` `changed=10`）/ **`20260522-212817-24357`** / **`20260522-213340-9415`** / **`20260522-213908-14986`**（各 **`failed=0`**）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（約 **139s**）。**Pi3**: 除外。**ナレッジ**: [KB-297 §全件無色](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §全件無色](./docs/guides/deployment.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)·[verification-checklist §6.6.28](./docs/guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
 - [x] (2026-05-22 / **実装完了・本番反映（Pi5 のみ）・実機検証 OK（自動+現場）・ドキュメント同期・PR 経由 `main` マージ**） **キオスク順位ボード・行内順位ピッカー（製番順位 UI 統一·黄色アンカー）**·ブランチ **`feat/kiosk-leader-board-order-rank-picker`**·**`949eea9c`**·PR [#327](https://github.com/denkoushi/RaspberryPiSystem_002/pull/327)。**仕様**: `<select>` 廃止 → **`LeaderBoardRankPickerDropdown`**（左ペイン製番順位と同一 Portal）·行背景 **常に `bg-slate-800/80`**·アンカー **`h-7 w-14` 不変**·順位 **1–10** → **`border-yellow-400` + `text-sm text-yellow-300`**·**「-」** → 白枠·11px·**サイネージ SVG 行背景は継続**（キオスクのみ変更）。**経緯**: 行背景案 **`3acf4c5a`** → Tailwind **`/82` 未生成**（**`f976bdd8`** [#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326)）→ 実機で明るすぎ → 本 PR。**CI**: **`26285460170` success**。**本番（Pi5 のみ）**: Detach **`20260522-204821-6687`**（`ok=134` `changed=4` `failed=0`·約 **461s**）。**実機**: Phase12 **43/0/0**（約 **116s**）·**現場目視 OK**。**ナレッジ**: [KB-297 §行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[KB-297 §Tailwind `/82`](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)·[deployment §行内順位](./docs/guides/deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)·[verification-checklist §6.6.27](./docs/guides/verification-checklist.md#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22)。
@@ -2351,6 +2353,20 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### 棚マスタ — 運用・拡張（2026-05-23） {#shelf-master-follow-up-2026-05-23}
+
+**状態**: **Dialog コンパクト化は完了**（`2e73aeed`·Pi5→Pi4×4 本番·現場 OK）。**正本**: [KB-382](./docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md)
+
+**優先タスク候補**:
+
+| # | タスク | 根拠 | 完了条件 |
+|---|--------|------|----------|
+| 1 | **`feat/kiosk-shelf-layout-master` 系が `main` に未統合の場合の追従** | 本 Dialog fix は feature 系列上に積んだ。`main` のみ運用デプロイ時はマージ順を確認 | `main` HEAD に shelf-layout + compact が含まれる |
+| 2 | **各 Pi4 で棚マスタ回帰（編集・再割当・Zero2W 棚番パイ）** | コンパクト化はレイアウトのみ。手順ゲートは未変更だが現場確認が正 | 4 台で編集 Dialog・再割当 Dialog・保存まで到達 |
+| 3 | **`shelfLayoutEditEnabled` 端末台帳の定期確認** | KB-382 本番で clientKey 不一致が典型 | 操作端末の `client-capabilities` が期待どおり |
+| 4 | **サイネージ `displayLabel` の現場目視** | Pi5 API のみ更新で足りるが、部品棚行の表示は別経路 | サイネージで表示名が期待どおり |
+| 5 | **ExecPlan `mobile-placement-shelf-layout-master.md` のチェックボックス整合** | Phase 表が実装完了と乖離 | 完了フェーズを [x] に更新（別 PR 可） |
 
 ### キオスク順位ボード — 行内順位ピッカー現場目視（2026-05-22） {#kiosk-leaderboard-row-order-rank-picker-field-verify-2026-05-22}
 

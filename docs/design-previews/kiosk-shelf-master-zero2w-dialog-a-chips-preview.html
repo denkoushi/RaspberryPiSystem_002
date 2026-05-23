@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>棚マスタ Zero2W — 案A（Dialog + 担当棚チップ一覧）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --violet: #a78bfa;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.18);
+      --unused: rgba(15, 23, 42, 0.65);
+      --overlay: rgba(2, 6, 23, 0.78);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+    }
+    .page { max-width: 1320px; margin: 0 auto; padding: 0.4rem; }
+    .note {
+      margin: 0 0 0.4rem;
+      font-size: 0.65rem;
+      color: #c4b5fd;
+      line-height: 1.45;
+    }
+    .note strong { color: #fef3c7; }
+    .monitor {
+      width: min(1280px, 100%);
+      height: min(1024px, 90vh);
+      margin: 0 auto;
+      border-radius: 14px;
+      border: 3px solid #334155;
+      overflow: hidden;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+    .monitor-label {
+      font-size: 0.6rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .kiosk { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.18rem 0.45rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.55);
+    }
+    .top h2 { margin: 0; font-size: 0.72rem; font-weight: 800; flex: 1; }
+    .top .seg { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+    .top .seg button {
+      appearance: none;
+      border: none;
+      background: rgba(255, 255, 255, 0.04);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 0.14rem 0.42rem;
+      cursor: pointer;
+    }
+    .top .seg button.on { background: rgba(167, 139, 250, 0.22); color: #ede9fe; }
+    .stage { flex: 1; position: relative; padding: 0.45rem; min-height: 0; }
+    .macro-full {
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 7px;
+      opacity: 0.45;
+      filter: saturate(0.7);
+      pointer-events: none;
+    }
+    .macro-cell {
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      padding: 0.3rem;
+      background: color-mix(in srgb, #6b7280 28%, #0f172a);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .macro-head { font-size: 0.68rem; font-weight: 800; margin-bottom: 0.15rem; }
+    .mini-map {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 2px;
+      min-height: 0;
+    }
+    .mini-cell {
+      border-radius: 4px;
+      font-size: 0.45rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .mini-cell.machine { background: var(--machine); color: #cbd5e1; }
+    .mini-cell.shelf { background: var(--shelf); color: #fef3c7; border-color: var(--shelf-b); }
+    .mini-cell.unused { background: var(--unused); color: #475569; }
+
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      background: var(--overlay);
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem;
+    }
+    .modal {
+      width: min(96%, 920px);
+      max-height: 92%;
+      border-radius: 16px;
+      border: 2px solid var(--violet);
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      padding: 0.5rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    }
+    .modal-top {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-bottom: 0.35rem;
+      flex-shrink: 0;
+    }
+    .modal-top h3 { margin: 0; flex: 1; font-size: 0.92rem; font-weight: 800; color: #ede9fe; }
+    .badge-a {
+      font-size: 0.58rem;
+      font-weight: 800;
+      padding: 0.12rem 0.4rem;
+      border-radius: 6px;
+      background: rgba(167, 139, 250, 0.2);
+      color: #ddd6fe;
+      border: 1px solid rgba(167, 139, 250, 0.45);
+    }
+    .btn-close {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.3rem 0.55rem;
+      cursor: pointer;
+    }
+    .modal-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      min-height: 0;
+      overflow: auto;
+    }
+    label.lbl {
+      display: block;
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    select.dev {
+      width: 100%;
+      max-width: 420px;
+      border-radius: 8px;
+      border: 2px solid rgba(167, 139, 250, 0.55);
+      background: #1e293b;
+      color: #f8fafc;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 0.4rem 0.5rem;
+    }
+    .status {
+      font-size: 0.68rem;
+      color: #a5b4fc;
+      padding: 0.35rem 0.45rem;
+      border-radius: 8px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(129, 140, 248, 0.25);
+    }
+    .chips-wrap {
+      flex: 1;
+      min-height: 120px;
+      border-radius: 12px;
+      border: 2px solid rgba(56, 189, 248, 0.45);
+      background: rgba(15, 23, 42, 0.9);
+      padding: 0.45rem;
+      overflow: auto;
+    }
+    .chips-wrap.flow { box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35); }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .chip {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid #475569;
+      background: #1e293b;
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.35rem 0.45rem;
+      cursor: pointer;
+      text-align: left;
+      min-width: 5.5rem;
+    }
+    .chip .code {
+      display: block;
+      font-family: ui-monospace, monospace;
+      font-size: 0.58rem;
+      color: #7dd3fc;
+      font-weight: 600;
+      margin-top: 0.1rem;
+    }
+    .chip.on {
+      border: 2px solid var(--amber);
+      background: #422006;
+      color: #fef3c7;
+    }
+    .footer {
+      display: flex;
+      gap: 0.35rem;
+      flex-shrink: 0;
+      padding-top: 0.25rem;
+    }
+    .btn-save {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 800;
+      padding: 0.42rem 0.9rem;
+      cursor: pointer;
+    }
+    .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
+    .hint { font-size: 0.6rem; color: var(--muted); line-height: 1.4; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <p class="note">
+      <strong>案A</strong> — 9マス俯瞰は背面のまま。<strong>Zero2W</strong> ボタンで Dialog を開き、
+      <strong>端末 select → 全区画の担当棚チップ一覧</strong> で選択（現行パネルの Dialog 化）。
+      背面の工場位置は参照用（チップ選択中はハイライト連動なしでも可）。
+    </p>
+    <div class="monitor">
+      <div class="monitor-label">20インチ · 案A · Dialog + チップ一覧</div>
+      <div class="kiosk">
+        <div class="top">
+          <h2>棚マスタ — 工場全体</h2>
+          <div class="seg">
+            <button type="button">レイアウト</button>
+            <button type="button">再割当</button>
+            <button type="button" class="on">Zero2W</button>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="macro-full" id="macro-bg"></div>
+          <div class="backdrop">
+            <div class="modal" role="dialog">
+              <div class="modal-top">
+                <span class="badge-a">案A</span>
+                <h3>Zero2W 担当棚の割当</h3>
+                <button type="button" class="btn-close">閉じる · 俯瞰へ</button>
+              </div>
+              <div class="modal-body">
+                <div>
+                  <label class="lbl">Zero2W 端末</label>
+                  <select class="dev" id="device">
+                    <option value="">— 選択 —</option>
+                    <option value="z1">配膳-Zero2W-01（現在: 西-中央-02）</option>
+                    <option value="z2">配膳-Zero2W-02（現在: 未設定）</option>
+                    <option value="z3">配膳-Zero2W-03（現在: 東-南-01）</option>
+                  </select>
+                </div>
+                <p class="status" id="status">端末を選択してください</p>
+                <div>
+                  <label class="lbl">担当棚（全工場 · チップ一覧）</label>
+                  <div class="chips-wrap flow" id="chips-wrap">
+                    <div class="chips" id="chips"></div>
+                  </div>
+                </div>
+                <p class="hint">① 端末 → ② 担当棚チップ → ③ 保存。一覧が長い場合は Dialog 内スクロール。</p>
+                <div class="footer">
+                  <button type="button" class="btn-save" id="save" disabled>保存</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const SHELVES = [
+      { label: 'RD01西', code: '西-中央-01' },
+      { label: 'RD01南', code: '西-中央-02' },
+      { label: 'RD02東', code: '中央-北-03' },
+      { label: 'Stone南', code: '東-北-02' },
+      { label: 'FJV北', code: '西-北-02' },
+      { label: 'RD04南', code: '中央-南-01' },
+      { label: 'RD05南', code: '中央-南-03' },
+      { label: '検査北', code: '東-南-01' },
+      { label: '置場西', code: '西-南-02' },
+    ];
+    const deviceEl = document.getElementById('device');
+    const chipsEl = document.getElementById('chips');
+    const statusEl = document.getElementById('status');
+    const saveEl = document.getElementById('save');
+    let selectedShelf = '';
+
+    SHELVES.forEach((s) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.innerHTML = `${s.label}<span class="code">${s.code}</span>`;
+      b.addEventListener('click', () => {
+        if (!deviceEl.value) return;
+        selectedShelf = s.code;
+        chipsEl.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+        b.classList.add('on');
+        statusEl.textContent = `担当棚: ${s.label}（${s.code}）→ 保存で反映`;
+        saveEl.disabled = false;
+      });
+      chipsEl.appendChild(b);
+    });
+
+    deviceEl.addEventListener('change', () => {
+      selectedShelf = '';
+      chipsEl.querySelectorAll('.chip').forEach((c) => c.classList.remove('on'));
+      saveEl.disabled = true;
+      if (!deviceEl.value) {
+        statusEl.textContent = '端末を選択してください';
+        return;
+      }
+      const name = deviceEl.selectedOptions[0].textContent.split('（')[0];
+      statusEl.textContent = `${name} — 担当棚チップをタップ`;
+    });
+
+    const bg = document.getElementById('macro-bg');
+    const names = ['西·北','中央·北','東·北','西·中央','中央·中央','東·中央','西·南','中央·南','東·南'];
+    names.forEach((n) => {
+      const d = document.createElement('div');
+      d.className = 'macro-cell';
+      d.innerHTML = `<div class="macro-head">${n}</div><div class="mini-map">
+        <div class="mini-cell machine">機</div><div class="mini-cell shelf">棚</div><div class="mini-cell unused">—</div>
+        <div class="mini-cell shelf">棚</div><div class="mini-cell unused">—</div><div class="mini-cell machine">機</div>
+        <div class="mini-cell unused">—</div><div class="mini-cell shelf">棚</div><div class="mini-cell shelf">棚</div>
+      </div>`;
+      bg.appendChild(d);
+    });
+  </script>
+</body>
+</html>

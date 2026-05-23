@@ -38,6 +38,35 @@
 
 **レイアウト Dialog**: 操作誘導は **押せるコントロールのみ有効**。**「選択解除」** / **「選択マスを解除」** / **dirty 時のみレイアウト保存**（従来どおり）。
 
+### 区画 Dialog コンパクト化（2026-05-23 · Web のみ）
+
+**背景**: 9 マス俯瞰＋編集 Dialog 導入後、**フル幅モーダル**と **`factoryMap` の巨大 `min-height`** により、Pi4 キオスク実機で **factory-map がはみ出し**・**ドック（棚番パイ・保存）までスクロール不能**・**操作不能**が発生。
+
+**ブランチ**: `fix/kiosk-shelf-master-zone-dialog-compact`（`feat/kiosk-shelf-layout-master` 系列の上に積む）  
+**代表コミット**: **`2e73aeed`** — `fix(kiosk): compact shelf master zone dialogs`  
+**CI**: GitHub Actions **`26329398253` success**（`2e73aeed` push 後）
+
+**変更範囲（Web のみ・業務ロジック不変）**:
+
+| 項目 | 内容 |
+|------|------|
+| **対象 Dialog** | [`ShelfZoneLayoutDialog.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneLayoutDialog.tsx)（編集）·[`ShelfZoneRelocateDialog.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneRelocateDialog.tsx)（再割当） |
+| **共通シェル** | 新規 [`ShelfMasterZoneDialogFrame.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMasterZoneDialogFrame.tsx) — **map / dock スロット**・寸法・スクロール境界のみ。`layoutEditorFlow` / `zero2wAssignmentFlow` / `relocateFlow` は各 Dialog に残す |
+| **テーマ** | [`shelfMasterTheme.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/theme/shelfMasterTheme.ts) — Dialog 内 `factoryMap` は **`max-w-[26rem]` + `aspect-square`**（俯瞰 9 マスの `macroOverviewGrid` / `miniMap` は別トークンで不変） |
+| **Dialog 基盤** | [`Dialog.tsx`](../../apps/web/src/components/ui/Dialog.tsx) — 任意 **`titleClassName`**（後方互換） |
+| **触らない** | API / Prisma / 手順ゲート / 9 マス [`ShelfMacroOverviewGrid`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMacroOverviewGrid.tsx) |
+
+**UI 寸法（正本）**:
+
+- パネル: `max-w-[min(96vw,920px)]` · `max-h-[min(92dvh,800px)]`
+- **map-pane**: スクロールなし・factory-map 全体表示
+- **dock-pane**: `max-h-[min(38dvh,320px)]` · **縦スクロール**で「担当棚を保存」／再割当確定まで到達
+- ヘッダー: コンパクト（`dialogTitle` 小さめ）
+
+**設計プレビュー（承認済み）**: [`kiosk-shelf-master-edit-dialog-compact-preview.html`](../design-previews/kiosk-shelf-master-edit-dialog-compact-preview.html)（**実装反映済み**）
+
+**ローカル検証**: `apps/web/src/features/mobile-placement/shelfMaster` Vitest **16 PASS** · `pnpm --filter web lint` · `pnpm --filter web build` PASS
+
 ## Symptoms（現場で報告されやすい症状）
 
 | 症状 | 典型原因 |
@@ -48,6 +77,8 @@
 | **管理で ON にしたのにレイアウトが出ない** | Mac/Cursor ブラウザの **`clientKey`** が編集した端末と違う（既定 Mac: **`client-key-mac-kiosk1`** — [`config.ts`](../../apps/web/src/lib/client-key/config.ts)。URL / localStorage に StoneBase 等が残る場合あり） |
 | **再割当で「—」をタップしても無反応** | **再割当モードの仕様** — SHELF 未配置マス。先に **レイアウト編集**で部品置き場を割当 |
 | **Zero2W 列を ON にしたがレイアウトが出ない** | **`haizenEdgeEnabled`** と **`shelfLayoutEditEnabled`** は別フラグ |
+| **編集 Dialog で地図が切れる・保存ボタンが出ない** | 旧 SPA（コンパクト化前）·Pi5 **`web`** 未更新·**強制リロード**未実施（[§コンパクト化デプロイ](#production-deploy--zone-dialog-compact-2026-05-23)） |
+| **再割当 Dialog だけレイアウトが崩れる** | 編集のみ更新された中間ビルド — **再割当も `ShelfMasterZoneDialogFrame` 共有**（`2e73aeed` 以降） |
 
 ## Investigation
 
@@ -85,10 +116,10 @@ curl -sk "https://<Pi5>/api/mobile-placement/shelf-layout" \
 - CI: **`packages/shelf-layout-core`** を **Dockerfile.api / Dockerfile.web** でビルド（`security-docker` 回帰 — 下記 Surprises）  
 - ExecPlan: [mobile-placement-shelf-layout-master.md](../plans/mobile-placement-shelf-layout-master.md)・[ADR-20260523](../decisions/ADR-20260523-mobile-placement-shelf-layout-master.md)
 
-## Production deploy & verification（2026-05-23 · 部分本番）
+## Production deploy & verification（2026-05-23 · 棚レイアウトマスタ機能）
 
 **ブランチ**: `feat/kiosk-shelf-layout-master`  
-**代表コミット**: **`17c9ea6d`**（機能本体）→ **`34527423`** / **`a73d88ea`**（Docker/CI `shelf-layout-core`）→ **`a7f23c8a`**（グローバルヘッダー「棚マスタ」タブ）
+**代表コミット**: **`17c9ea6d`**（機能本体）→ **`34527423`** / **`a73d88ea`**（Docker/CI `shelf-layout-core`）→ **`a7f23c8a`**（グローバルヘッダー「棚マスタ」タブ）→ **`9a1af348`**（編集 Dialog 内棚番パイ統合・Zero2W タブ廃止）
 
 **標準コマンド**:
 
@@ -103,14 +134,49 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 1 | `raspberrypi5` | **`20260523-110553-14539`** | `ok=134` `failed=0` | Docker 再ビルド・**Prisma migrate**・API+Web+サイネージ JPEG |
 | 2 | `raspi4-kensaku-stonebase01` | **`20260523-112124-29513`** | `ok=129` `failed=0` | Pi4 キオスク Web |
 | 3 | `raspberrypi5`（ヘッダータブ） | **`20260523-122744-32213`** | `ok=134` `failed=0` | ref **`a7f23c8a`** |
+| 4 | `raspberrypi5`（棚番パイ Dialog 統合） | **`20260523-175452-20534`** | `ok=134` `changed=4` `failed=0` | ref **`9a1af348`**・Docker 再ビルド |
 
-**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（複数回・Tailscale）
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（複数回・Tailscale。棚番パイ統合デプロイ後も同結果）
 
 **現場検証（ユーザー 2026-05-23）**: Pi4 + Zero2W に **`shelfLayoutEditEnabled`** 設定後、**レイアウトタブ・操作可能**を確認
 
-**未デプロイ（記録時点）**: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` — 同一ブランチ・標準手順で順次可能
-
 **Pi3**: 本機能の必須対象外（`/kiosk` は Pi5 SPA 配信。**`displayLabel` サイネージは Pi5 API のみ**）
+
+### Production deploy — 区画 Dialog コンパクト化（2026-05-23） {#production-deploy--zone-dialog-compact-2026-05-23}
+
+**ブランチ**: `fix/kiosk-shelf-master-zone-dialog-compact`（**`main` マージ後は第2引数 `main`**）  
+**代表コミット**: **`2e73aeed`**  
+**変更**: **Web SPA のみ**（API / Prisma / Pi3 サイネージ **対象外**）
+
+**対象ホスト（1 台ずつ）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-shelf-master-zone-dialog-compact \
+  infrastructure/ansible/inventory.yml --limit <host> --detach --follow
+```
+
+| 順 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|----|--------|---------------|------------|------|
+| 1 | `raspberrypi5` | **`20260523-183552-18047`** | `ok=134` `changed=4` `failed=0` | Docker 再ビルド・`Git: changed` |
+| 2 | `raspberrypi4` | **`20260523-184740-26602`** | `ok=122` `changed=10` `failed=0` | `kiosk-browser` 再起動 |
+| 3 | `raspi4-robodrill01` | **`20260523-185339-16025`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 4 | `raspi4-fjv60-80` | **`20260523-185841-7412`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 5 | `raspi4-kensaku-stonebase01` | **`20260523-190359-5547`** | `ok=129` `changed=10` `failed=0` | 同上 |
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 単独後・Pi4 全台後の各実行で同結果）
+
+**現場検証（ユーザー 2026-05-23）**: Pi5 実機 **OK** → 続けて **Pi4×4 デプロイ完了**
+
+**デプロイ前のローカル前提**: `update-all-clients.sh` は **作業ツリー clean**・**origin へ push 済み**を要求（未コミットのプレビュー HTML は **stash** または別コミットで退避）
+
+**知見**:
+
+- **Pi5 `web` 再ビルド必須** — Pi4 単体では SPA 正本は更新されない（キオスク Web 変更の定石）
+- **map / dock 分離** — 地図は固定表示・操作 UI は dock 縦スクロールに閉じると **小画面キオスクで到達性が安定**
+- **手順ゲートは Frame 外** — コンパクト化で **フロー無効化の回帰を避ける**（SOLID・境界契約）
 
 ### CI
 
@@ -130,7 +196,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - ExecPlan: [mobile-placement-shelf-layout-master.md](../plans/mobile-placement-shelf-layout-master.md)
 - API: [mobile-placement.md](../api/mobile-placement.md)（V22 棚レイアウトマスタ節）
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §棚レイアウトマスタ
-- Deploy: [deployment.md](../guides/deployment.md#mobile-placement-shelf-layout-master-2026-05-23)
+- Deploy（機能本体）: [deployment.md](../guides/deployment.md#mobile-placement-shelf-layout-master-2026-05-23)
+- Deploy（Dialog コンパクト）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-zone-dialog-compact-2026-05-23)
 - Zero2W 関連: [KB-368](./KB-368-zero2w-haizen-placement-tracking.md)
 - 沉浸式ヘッダー: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)
-- 設計プレビュー: `docs/design-previews/kiosk-shelf-factory-map-preview.html` 他
+- 設計プレビュー: [design-previews/README.md](../design-previews/README.md)（`kiosk-shelf-master-*`）

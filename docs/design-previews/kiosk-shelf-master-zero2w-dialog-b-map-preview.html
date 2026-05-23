@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>棚マスタ Zero2W — 案B（Dialog + 区画マップで棚タップ）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --violet: #a78bfa;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.18);
+      --aisle-b: rgba(56, 189, 248, 0.45);
+      --unused: rgba(15, 23, 42, 0.65);
+      --overlay: rgba(2, 6, 23, 0.78);
+      --off: 0.28;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+    }
+    .page { max-width: 1320px; margin: 0 auto; padding: 0.4rem; }
+    .note {
+      margin: 0 0 0.4rem;
+      font-size: 0.65rem;
+      color: #c4b5fd;
+      line-height: 1.45;
+    }
+    .note strong { color: #fef3c7; }
+    .monitor {
+      width: min(1280px, 100%);
+      height: min(1024px, 90vh);
+      margin: 0 auto;
+      border-radius: 14px;
+      border: 3px solid #334155;
+      overflow: hidden;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+    .monitor-label {
+      font-size: 0.6rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .kiosk { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.18rem 0.45rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.55);
+    }
+    .top h2 { margin: 0; font-size: 0.72rem; font-weight: 800; flex: 1; }
+    .top .seg { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+    .top .seg button {
+      appearance: none;
+      border: none;
+      background: rgba(255, 255, 255, 0.04);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 0.14rem 0.42rem;
+      cursor: pointer;
+    }
+    .top .seg button.on { background: rgba(167, 139, 250, 0.22); color: #ede9fe; }
+    .stage { flex: 1; position: relative; padding: 0.45rem; min-height: 0; }
+    .macro-full {
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 7px;
+      opacity: 0.45;
+      filter: saturate(0.7);
+      pointer-events: none;
+    }
+    .macro-cell {
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      padding: 0.25rem;
+      background: color-mix(in srgb, #6b7280 28%, #0f172a);
+      font-size: 0.55rem;
+      font-weight: 800;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      background: var(--overlay);
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem;
+    }
+    .modal {
+      width: min(98%, 1080px);
+      max-height: 94%;
+      border-radius: 16px;
+      border: 2px solid var(--violet);
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      padding: 0.5rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    }
+    .modal-top {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-bottom: 0.35rem;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .modal-top h3 { margin: 0; flex: 1; font-size: 0.92rem; font-weight: 800; color: #ede9fe; min-width: 12rem; }
+    .badge-b {
+      font-size: 0.58rem;
+      font-weight: 800;
+      padding: 0.12rem 0.4rem;
+      border-radius: 6px;
+      background: rgba(56, 189, 248, 0.15);
+      color: #bae6fd;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+    }
+    select.dev {
+      border-radius: 8px;
+      border: 2px solid rgba(167, 139, 250, 0.55);
+      background: #1e293b;
+      color: #f8fafc;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.32rem 0.45rem;
+      min-width: 14rem;
+    }
+    .btn-close {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.08);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.3rem 0.55rem;
+      cursor: pointer;
+    }
+    .modal-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 0.45rem;
+      min-height: 0;
+    }
+    .map-area {
+      position: relative;
+      display: grid;
+      grid-template-columns: 3.2rem 1fr 3.2rem;
+      grid-template-rows: 2.2rem 1fr 2.2rem;
+      gap: 4px;
+      min-height: 280px;
+    }
+    .nav {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.06);
+      color: #cbd5e1;
+      font: inherit;
+      font-size: 0.62rem;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0.2rem;
+    }
+    .nav:hover { background: rgba(56, 189, 248, 0.15); }
+    .nav.on { border-color: var(--sky); color: #e0f2fe; }
+    .map-area .n { grid-column: 2; grid-row: 1; }
+    .map-area .s { grid-column: 2; grid-row: 3; }
+    .map-area .w { grid-column: 1; grid-row: 2; }
+    .map-area .e { grid-column: 3; grid-row: 2; }
+    .factory-map {
+      grid-column: 2;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 6px;
+      border-radius: 12px;
+      border: 2px solid rgba(167, 139, 250, 0.5);
+      background: rgba(76, 29, 149, 0.12);
+      padding: 6px;
+    }
+    .cell {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      padding: 4px 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+    }
+    .cell .kind { font-size: 0.55rem; font-weight: 800; opacity: 0.85; }
+    .cell .main { font-size: clamp(0.72rem, 1.2vw, 0.95rem); font-weight: 800; line-height: 1.1; }
+    .cell .code { font-family: ui-monospace, monospace; font-size: 0.58rem; color: #7dd3fc; }
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); color: #cbd5e1; cursor: not-allowed; opacity: var(--off); }
+    .cell.shelf { background: linear-gradient(180deg, #5c4008, var(--shelf)); border-color: var(--shelf-b); color: #fef3c7; }
+    .cell.shelf:hover:not(:disabled) { outline: 2px solid var(--sky); }
+    .cell.shelf.pick { outline: 3px solid var(--amber); outline-offset: 1px; }
+    .cell.aisle { background: var(--aisle); border-color: var(--aisle-b); border-style: dashed; opacity: var(--off); cursor: not-allowed; }
+    .cell.unused { background: var(--unused); color: #64748b; opacity: var(--off); cursor: not-allowed; }
+    .cell.unused .main { font-size: 1rem; opacity: 0.45; }
+
+    .side {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.95);
+      padding: 0.45rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .side h4 { margin: 0; font-size: 0.75rem; color: #ede9fe; }
+    .status {
+      font-size: 0.68rem;
+      color: #a5b4fc;
+      padding: 0.4rem;
+      border-radius: 8px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(129, 140, 248, 0.25);
+      line-height: 1.4;
+      flex: 1;
+    }
+    .hint { font-size: 0.6rem; color: var(--muted); line-height: 1.4; margin: 0; }
+    .btn-save {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 800;
+      padding: 0.42rem 0.9rem;
+      cursor: pointer;
+      width: 100%;
+    }
+    .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <p class="note">
+      <strong>案B</strong> — 9マス俯瞰は背面のまま。Dialog 内は <strong>再割当と同型</strong>：
+      端末 select → <strong>区画 factory-map で SHELF タップ</strong>（隣接区画ボタンで移動）。
+      位置関係を見ながら担当棚を決められる。
+    </p>
+    <div class="monitor">
+      <div class="monitor-label">20インチ · 案B · Dialog + 区画マップタップ</div>
+      <div class="kiosk">
+        <div class="top">
+          <h2>棚マスタ — 工場全体</h2>
+          <div class="seg">
+            <button type="button">レイアウト</button>
+            <button type="button">再割当</button>
+            <button type="button" class="on">Zero2W</button>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="macro-full" id="macro-bg"></div>
+          <div class="backdrop">
+            <div class="modal" role="dialog">
+              <div class="modal-top">
+                <span class="badge-b">案B</span>
+                <h3>Zero2W 担当棚の割当 — <span id="zone-title">西·中央</span></h3>
+                <select class="dev" id="device">
+                  <option value="">— Zero2W 端末 —</option>
+                  <option value="z1" selected>配膳-Zero2W-01</option>
+                  <option value="z2">配膳-Zero2W-02</option>
+                </select>
+                <button type="button" class="btn-close">閉じる</button>
+              </div>
+              <div class="modal-body">
+                <div class="map-area">
+                  <button type="button" class="nav n" data-z="n">↑ 中央·北</button>
+                  <button type="button" class="nav s" data-z="s">↓ 中央·南</button>
+                  <button type="button" class="nav w" data-z="w">← 西·中央</button>
+                  <button type="button" class="nav e" data-z="e">東·中央 →</button>
+                  <div class="factory-map" id="map"></div>
+                </div>
+                <div class="side">
+                  <h4>操作</h4>
+                  <p class="status" id="status">配膳-Zero2W-01 — 担当にする棚（SHELF）をタップ</p>
+                  <p class="hint">機・通路・未使用マスは無効。区画は上下左右ボタンで切替（再割当 Dialog と同じ骨格）。</p>
+                  <button type="button" class="btn-save" id="save" disabled>保存</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const ZONES = {
+      c: { name: '西·中央', layout: [
+        { r: 0, c: 0, k: 'AISLE', label: '路' },
+        { r: 1, c: 1, k: 'MACHINE', label: 'RD01' },
+        { r: 2, c: 0, k: 'SHELF', label: 'RD01西', code: '西-中央-01' },
+        { r: 2, c: 2, k: 'SHELF', label: 'RD01南', code: '西-中央-02' },
+      ]},
+      n: { name: '中央·北', layout: [
+        { r: 0, c: 1, k: 'MACHINE', label: 'RD02' },
+        { r: 1, c: 2, k: 'SHELF', label: 'RD02東', code: '中央-北-03' },
+      ]},
+      s: { name: '中央·南', layout: [
+        { r: 2, c: 0, k: 'SHELF', label: 'RD04南', code: '中央-南-01' },
+        { r: 2, c: 2, k: 'SHELF', label: 'RD05南', code: '中央-南-03' },
+      ]},
+      w: { name: '西·北', layout: [
+        { r: 0, c: 2, k: 'SHELF', label: 'FJV北', code: '西-北-02' },
+      ]},
+      e: { name: '東·中央', layout: [
+        { r: 1, c: 1, k: 'SHELF', label: 'RD03中', code: '東-中央-02' },
+      ]},
+    };
+    let zoneId = 'c';
+    let pickCode = '';
+    const mapEl = document.getElementById('map');
+    const statusEl = document.getElementById('status');
+    const saveEl = document.getElementById('save');
+    const zoneTitle = document.getElementById('zone-title');
+    const deviceEl = document.getElementById('device');
+
+    function cellAt(layout, r, c) {
+      return layout.find((x) => x.r === r && x.c === c) || { k: 'UNUSED', label: '', code: '' };
+    }
+
+    function renderMap() {
+      const z = ZONES[zoneId];
+      zoneTitle.textContent = z.name;
+      mapEl.innerHTML = '';
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const d = cellAt(z.layout, r, c);
+          const cls = d.k === 'SHELF' ? 'shelf' : d.k === 'MACHINE' ? 'machine' : d.k === 'AISLE' ? 'aisle' : 'unused';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `cell ${cls}${pickCode && d.code === pickCode ? ' pick' : ''}`;
+          btn.disabled = d.k !== 'SHELF';
+          const kind = d.k === 'SHELF' ? '棚' : d.k === 'MACHINE' ? '機' : d.k === 'AISLE' ? '路' : '';
+          btn.innerHTML = kind ? `<span class="kind">${kind}</span>` : '';
+          btn.innerHTML += `<span class="main">${d.label || '—'}</span>`;
+          if (d.code) btn.innerHTML += `<span class="code">${d.code}</span>`;
+          if (d.k === 'SHELF') {
+            btn.addEventListener('click', () => {
+              if (!deviceEl.value) {
+                statusEl.textContent = '先に Zero2W 端末を選択してください';
+                return;
+              }
+              pickCode = d.code;
+              statusEl.textContent = `担当棚: ${d.label}（${d.code}）`;
+              saveEl.disabled = false;
+              renderMap();
+            });
+          }
+          mapEl.appendChild(btn);
+        }
+      }
+    }
+
+    document.querySelectorAll('.nav').forEach((n) => {
+      n.addEventListener('click', () => {
+        zoneId = n.dataset.z;
+        document.querySelectorAll('.nav').forEach((x) => x.classList.toggle('on', x === n));
+        renderMap();
+      });
+    });
+    document.querySelector('.nav.w').classList.add('on');
+
+    deviceEl.addEventListener('change', () => {
+      pickCode = '';
+      saveEl.disabled = true;
+      statusEl.textContent = deviceEl.value
+        ? `${deviceEl.selectedOptions[0].textContent} — 担当にする棚（SHELF）をタップ`
+        : '先に Zero2W 端末を選択してください';
+      renderMap();
+    });
+
+    const bg = document.getElementById('macro-bg');
+    ['西·北','中央·北','東·北','西·中央','中央·中央','東·中央','西·南','中央·南','東·南'].forEach((n) => {
+      const d = document.createElement('div');
+      d.className = 'macro-cell';
+      d.textContent = n;
+      bg.appendChild(d);
+    });
+
+    renderMap();
+  </script>
+</body>
+</html>

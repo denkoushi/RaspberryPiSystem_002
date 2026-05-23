@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>棚マスタ — 編集ポップアップ + 棚番パイ（追加）</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --border: rgba(148, 163, 184, 0.22);
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --amber: #fbbf24;
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.18);
+      --unused: rgba(15, 23, 42, 0.65);
+      --overlay: rgba(2, 6, 23, 0.75);
+      --off: 0.28;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1220;
+      color: #f8fafc;
+    }
+    .page { max-width: 1320px; margin: 0 auto; padding: 0.4rem; }
+    .note {
+      margin: 0 0 0.35rem;
+      font-size: 0.64rem;
+      color: #a7f3d0;
+      line-height: 1.45;
+    }
+    .note strong { color: #fef3c7; }
+
+    .monitor {
+      width: min(1280px, 100%);
+      height: min(1024px, 92vh);
+      margin: 0 auto;
+      border-radius: 14px;
+      border: 3px solid #334155;
+      overflow: hidden;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+    .monitor-label {
+      font-size: 0.6rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 0.2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .kiosk { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .top {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.18rem 0.45rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .top h2 { margin: 0; font-size: 0.72rem; font-weight: 800; flex: 1; }
+    .top .seg { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+    .top .seg button {
+      appearance: none;
+      border: none;
+      background: rgba(255,255,255,0.04);
+      color: #94a3b8;
+      font: inherit;
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 0.14rem 0.42rem;
+      cursor: pointer;
+    }
+    .top .seg button.on { background: rgba(251, 191, 36, 0.18); color: #fef3c7; }
+
+    .stage { flex: 1; position: relative; padding: 0.45rem; min-height: 0; }
+    .macro-full {
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 7px;
+    }
+    .macro-cell {
+      border-radius: 12px;
+      border: 2px solid rgba(255,255,255,0.12);
+      padding: 0.3rem 0.35rem;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: color-mix(in srgb, #6b7280 28%, #0f172a);
+    }
+    .macro-cell.open { border-color: var(--amber); }
+    .macro-head {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-bottom: 0.2rem;
+    }
+    .macro-head .name { font-size: clamp(0.72rem, 1.5vw, 0.92rem); font-weight: 800; }
+    .macro-head .legend { flex: 1; font-size: 0.55rem; color: var(--muted); }
+    .btn-edit {
+      appearance: none;
+      border-radius: 6px;
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      background: rgba(56, 189, 248, 0.12);
+      color: #e0f2fe;
+      font: inherit;
+      font-size: clamp(0.58rem, 1.1vw, 0.68rem);
+      font-weight: 800;
+      padding: 0.06rem 0.38rem;
+      cursor: pointer;
+    }
+    .mini-map {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 3px;
+      pointer-events: none;
+    }
+    .mini-cell {
+      border-radius: 5px;
+      border: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.48rem;
+      font-weight: 800;
+    }
+    .mini-cell.machine { background: var(--machine); color: #cbd5e1; }
+    .mini-cell.shelf { background: var(--shelf); color: #fef3c7; }
+    .mini-cell.unused { background: var(--unused); color: #475569; }
+
+    /* 既存 Dialog（本番: bg-white）— 編集ボタン押下 */
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      background: var(--overlay);
+      z-index: 30;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 0.4rem;
+      overflow-y: auto;
+    }
+    .dialog-panel {
+      width: calc(100% - 0.5rem);
+      border-radius: 12px;
+      border: 2px solid #64748b;
+      background: #fff;
+      color: #0f172a;
+      padding: 0.65rem 0.75rem;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      min-height: 0;
+    }
+    .dialog-panel h2 {
+      margin: 0;
+      font-size: 1.125rem;
+      font-weight: 600;
+    }
+
+    /* factory-map（ShelfFactoryMapView — 本番 max-w-2xl / max-h-[52vh] を拡大） */
+    .factory-map {
+      margin: 0 auto;
+      width: 100%;
+      max-width: min(60rem, 100%);
+      aspect-ratio: 1;
+      max-height: min(68vh, calc(100% - 9.5rem));
+      min-height: min(58vh, 580px);
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-columns: auto auto 1fr auto auto;
+      grid-template-rows: auto auto 1fr auto auto;
+      gap: 5px;
+    }
+    .map-slot {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      min-height: 0;
+      padding: 2px;
+    }
+    /* 本番 neighborBtn: 小さなラベルボタン（セル全体を塗らない） */
+    .neighbor-btn {
+      appearance: none;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      background: rgba(0, 0, 0, 0.06);
+      color: #64748b;
+      font: inherit;
+      font-size: clamp(0.62rem, 1.8vw, 0.78rem);
+      font-weight: 700;
+      line-height: 1.15;
+      padding: 4px 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+    .neighbor-btn:hover { background: rgba(0, 0, 0, 0.1); }
+    .map-slot .center-zone {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      border: 2px solid #fbbf24;
+      background: rgba(120, 53, 15, 0.08);
+      padding: 4px;
+      min-height: 0;
+      min-width: 0;
+    }
+    .center-zone .zt {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #92400e;
+    }
+    .edit-grid {
+      flex: 1;
+      display: grid;
+      gap: 4px;
+      min-height: 0;
+    }
+    .cell {
+      appearance: none;
+      border-radius: 6px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      padding: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .cell .badge { font-size: 0.5rem; font-weight: 800; }
+    .cell .main { font-size: clamp(0.78rem, 2.4vw, 1.08rem); font-weight: 800; }
+    .cell .code { font-family: ui-monospace, monospace; font-size: 0.58rem; color: #0284c7; }
+    .cell.machine { background: #334155; color: #e2e8f0; }
+    .cell.shelf { background: #422006; border-color: #b45309; color: #fef3c7; }
+    .cell.shelf.sel { outline: 2px solid #38bdf8; }
+    .cell.unused { background: #f1f5f9; color: #94a3b8; }
+    .cell.unused .main { font-size: 1rem; opacity: 0.45; }
+
+    /* 既存 ShelfLayoutEditorDock + 右余白に棚番パイ */
+    .dock {
+      margin: 0 auto;
+      width: 100%;
+      max-width: min(56rem, 100%);
+      flex-shrink: 0;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 0.65rem 0.75rem;
+      display: grid;
+      grid-template-columns: 1fr minmax(14rem, 1.55fr);
+      gap: 0.55rem 0.65rem;
+      align-items: start;
+    }
+    .dock-left { display: flex; flex-direction: column; gap: 0.35rem; }
+    .dock-right {
+      border-left: 1px solid rgba(148, 163, 184, 0.25);
+      padding-left: 0.55rem;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .dock-right .lbl {
+      margin: 0;
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+    .pi-cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.28rem;
+      /* 3行分表示 · 4行目以降は縦スクロール */
+      max-height: calc(3 * 2.65rem + 2 * 0.28rem);
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding-right: 0.2rem;
+      scrollbar-width: thin;
+    }
+    .pi-card {
+      appearance: none;
+      width: 100%;
+      min-width: 0;
+      border-radius: 8px;
+      border: 2px solid #475569;
+      background: rgba(255,255,255,0.04);
+      color: #e2e8f0;
+      font: inherit;
+      text-align: left;
+      padding: 0.26rem 0.3rem;
+      cursor: pointer;
+    }
+    .pi-card .name {
+      font-size: 0.58rem;
+      font-weight: 800;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pi-card .sub {
+      font-size: 0.5rem;
+      color: #7dd3fc;
+      font-family: ui-monospace, monospace;
+      margin-top: 0.06rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pi-card.on {
+      border-color: #fbbf24;
+      background: rgba(120, 53, 15, 0.45);
+      box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.35);
+    }
+    .pi-save {
+      appearance: none;
+      margin-top: auto;
+      border-radius: 8px;
+      border: 2px solid #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 0.35rem 0.5rem;
+      cursor: pointer;
+      width: 100%;
+    }
+    .pi-save:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .row { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+    .ctl {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid #475569;
+      background: rgba(255,255,255,0.05);
+      color: #e2e8f0;
+      font: inherit;
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 0.38rem 0.52rem;
+      cursor: pointer;
+    }
+    .ctl:disabled { opacity: var(--off); cursor: not-allowed; }
+    .ctl.on { outline: 2px solid #fff; outline-offset: 1px; }
+    .ctl.flow { box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.55); }
+    .ctl.primary:not(:disabled) {
+      border-color: #15803d;
+      background: linear-gradient(180deg, #166534, #14532d);
+      color: #ecfdf5;
+    }
+    .ctl.danger:not(:disabled) {
+      border-color: rgba(251, 113, 133, 0.45);
+      background: rgba(127, 29, 29, 0.35);
+      color: #fecdd3;
+    }
+    select.ctl {
+      padding: 0.35rem 0.45rem;
+      background: #020617;
+    }
+    .add-badge {
+      grid-column: 1 / -1;
+      font-size: 0.58rem;
+      color: #fde68a;
+      background: rgba(120, 53, 15, 0.35);
+      border: 1px dashed rgba(251, 191, 36, 0.5);
+      border-radius: 6px;
+      padding: 0.2rem 0.4rem;
+      margin-bottom: 0.15rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <p class="note">
+      <strong>正しい差分</strong> — ① 9マス俯瞰はそのまま · ② <strong>「編集」</strong> ポップアップ（`ShelfFactoryMapView` + `ShelfLayoutEditorDock`）の
+      <strong>ドック右</strong> に棚番パイのみ追加。隣接区画ボタンは既存どおり小さなラベル（`neighborBtn`）。
+    </p>
+  </div>
+
+  <div class="monitor">
+    <div class="monitor-label">編集ボタン → 既存 Dialog · ドックに棚番パイ追加（~20台）</div>
+    <div class="kiosk">
+      <div class="top">
+        <h2>棚マスタ — 工場全体</h2>
+        <div class="seg">
+          <button type="button" class="on">レイアウト</button>
+          <button type="button">再割当</button>
+          <button type="button">Zero2W</button>
+        </div>
+      </div>
+      <div class="stage">
+        <div class="macro-full" id="macro-full"></div>
+        <div class="backdrop" id="backdrop">
+          <div class="dialog-panel">
+            <h2 id="dlg-title">編集 — 東·中央</h2>
+            <div class="factory-map" id="factory-map"></div>
+            <div class="dock" id="dock"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const KIND = {
+      SHELF: { cls: 'shelf', badge: '棚' },
+      MACHINE: { cls: 'machine', badge: '機' },
+      UNUSED: { cls: 'unused', badge: '' },
+    };
+    const ZONES = [
+      { id: 'nw', name: '西·北', layout: [{ r: 0, c: 2, kind: 'SHELF', label: 'FJV北' }] },
+      { id: 'n', name: '中央·北', layout: [] },
+      { id: 'ne', name: '東·北', layout: [] },
+      { id: 'w', name: '西·中央', layout: [] },
+      { id: 'c', name: '中央·中央', layout: [] },
+      { id: 'e', name: '東·中央', layout: [
+        { r: 3, c: 0, kind: 'SHELF', label: '置場-中央', code: '東-中央-01' },
+        { r: 1, c: 2, kind: 'MACHINE', label: 'RD03' },
+      ]},
+      { id: 'sw', name: '西·南', layout: [] },
+      { id: 's', name: '中央·南', layout: [] },
+      { id: 'se', name: '東·南', layout: [] },
+    ];
+    const zoneData = {};
+    ZONES.forEach((z) => {
+      const cells = {};
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const hit = z.layout.find((x) => x.r === r && x.c === c);
+          cells[`${r},${c}`] = hit
+            ? { kind: hit.kind, label: hit.label, code: hit.code || '' }
+            : { kind: 'UNUSED', label: '', code: '' };
+        }
+      }
+      zoneData[z.id] = cells;
+    });
+    // 東·中央は 4x4 プレビュー（スクショ合わせ）
+    const edit4x4 = {};
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        if (r === 3 && c === 0) {
+          edit4x4[`${r},${c}`] = { kind: 'SHELF', label: '置場-中央', code: '東-中央-01' };
+        } else if (r === 1 && c === 2) {
+          edit4x4[`${r},${c}`] = { kind: 'MACHINE', label: 'RD03', code: '' };
+        } else {
+          edit4x4[`${r},${c}`] = { kind: 'UNUSED', label: '', code: '' };
+        }
+      }
+    }
+
+    const PIS = Array.from({ length: 20 }, (_, i) => {
+      const n = i + 1;
+      const shelf = ['東-中央-01', '西-北-02', null, '中央-南-01'][i % 4];
+      return { id: `z${n}`, name: `配膳-Z2W-${String(n).padStart(2, '0')}`, shelf };
+    });
+
+    let activeZone = 'e';
+    let gridSize = 4;
+    let editCells = JSON.parse(JSON.stringify(edit4x4));
+    let selected = new Set(['3,0']);
+    let pendingKind = null;
+    let dirty = false;
+    let piId = 'z1';
+
+    const macroFull = document.getElementById('macro-full');
+    const backdrop = document.getElementById('backdrop');
+    const dlgTitle = document.getElementById('dlg-title');
+    const factoryMap = document.getElementById('factory-map');
+    const dockEl = document.getElementById('dock');
+
+    function miniMapHtml(cells) {
+      let h = '<div class="mini-map">';
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          const d = cells[`${r},${c}`];
+          const meta = KIND[d.kind] || KIND.UNUSED;
+          h += `<div class="mini-cell ${meta.cls}">${d.kind === 'UNUSED' ? '—' : d.label}</div>`;
+        }
+      }
+      return h + '</div>';
+    }
+
+    function renderOverview() {
+      macroFull.innerHTML = '';
+      ZONES.forEach((z) => {
+        const card = document.createElement('div');
+        card.className = `macro-cell${z.id === activeZone ? ' open' : ''}`;
+        card.innerHTML = `
+          <div class="macro-head">
+            <div class="name">${z.name}</div>
+            <div class="legend">機/棚</div>
+            <button type="button" class="btn-edit" data-edit="${z.id}">編集</button>
+          </div>
+          ${miniMapHtml(zoneData[z.id])}`;
+        card.querySelector('[data-edit]').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openEditor(z.id);
+        });
+        macroFull.appendChild(card);
+      });
+    }
+
+    const MACRO = {
+      nw: { name: '西·北', row: 0, col: 0 },
+      w: { name: '西·中央', row: 0, col: 1 },
+      sw: { name: '西·南', row: 0, col: 2 },
+      n: { name: '中央·北', row: 1, col: 0 },
+      c: { name: '中央·中央', row: 1, col: 1 },
+      s: { name: '中央·南', row: 1, col: 2 },
+      ne: { name: '東·北', row: 2, col: 0 },
+      e: { name: '東·中央', row: 2, col: 1 },
+      se: { name: '東·南', row: 2, col: 2 }
+    };
+    const DELTA = {
+      nw: [-1, -1], n: [-1, 0], ne: [-1, 1],
+      w: [0, -1], e: [0, 1],
+      sw: [1, -1], s: [1, 0], se: [1, 1]
+    };
+    const SLOT = [
+      { dir: 'nw', col: 1, row: 1 },
+      { dir: 'n', col: 3, row: 1 },
+      { dir: 'ne', col: 5, row: 1 },
+      { dir: 'w', col: 1, row: 3 },
+      { dir: null, col: 3, row: 3 },
+      { dir: 'e', col: 5, row: 3 },
+      { dir: 'sw', col: 1, row: 5 },
+      { dir: 's', col: 3, row: 5 },
+      { dir: 'se', col: 5, row: 5 }
+    ];
+
+    function neighborId(centerId, dir) {
+      const center = MACRO[centerId];
+      const [dr, dc] = DELTA[dir];
+      const nr = center.row + dr;
+      const nc = center.col + dc;
+      const found = Object.entries(MACRO).find(([, z]) => z.row === nr && z.col === nc);
+      return found ? found[0] : null;
+    }
+
+    function renderFactoryMap() {
+      const z = ZONES.find((x) => x.id === activeZone);
+      factoryMap.innerHTML = '';
+      SLOT.forEach((slot) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'map-slot';
+        wrap.style.gridColumn = String(slot.col);
+        wrap.style.gridRow = String(slot.row);
+        if (slot.dir === null) {
+          const center = document.createElement('div');
+          center.className = 'center-zone';
+          center.innerHTML = `<div class="zt">${z.name}</div><div class="edit-grid" id="edit-grid" style="grid-template-columns:repeat(${gridSize},1fr);grid-template-rows:repeat(${gridSize},1fr)"></div>`;
+          wrap.appendChild(center);
+        } else {
+          const nid = neighborId(activeZone, slot.dir);
+          if (nid) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'neighbor-btn';
+            btn.textContent = MACRO[nid].name;
+            btn.title = '隣接区画へ（既存）';
+            wrap.appendChild(btn);
+          }
+        }
+        factoryMap.appendChild(wrap);
+      });
+      const grid = document.getElementById('edit-grid');
+      for (let r = 0; r < gridSize; r++) {
+        for (let c = 0; c < gridSize; c++) {
+          const d = editCells[`${r},${c}`];
+          const meta = KIND[d.kind] || KIND.UNUSED;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `cell ${meta.cls}${selected.has(`${r},${c}`) ? ' sel' : ''}`;
+          btn.dataset.rc = `${r},${c}`;
+          if (meta.badge) btn.innerHTML = `<span class="badge">${meta.badge}</span>`;
+          btn.innerHTML += `<span class="main">${d.kind === 'UNUSED' ? '—' : d.label}</span>`;
+          if (d.code) btn.innerHTML += `<span class="code">${d.code}</span>`;
+          grid.appendChild(btn);
+        }
+      }
+      grid.querySelectorAll('[data-rc]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const k = btn.dataset.rc;
+          if (selected.has(k)) selected.delete(k);
+          else { selected.clear(); selected.add(k); }
+          renderDock();
+          renderFactoryMap();
+        });
+      });
+    }
+
+    function piCardsHtml() {
+      return PIS.map((p) => `
+        <button type="button" class="pi-card${p.id === piId ? ' on' : ''}" data-pi="${p.id}">
+          <div class="name">${p.name}</div>
+          <div class="sub">${p.shelf ?? '未設定'}</div>
+        </button>`).join('');
+    }
+
+    function renderDock() {
+      const hasSel = selected.size > 0;
+      dockEl.innerHTML = `
+        <div class="dock-left">
+          <div class="add-badge">← 既存（変更なし）</div>
+          <div class="row">
+            <button type="button" class="ctl on flow">☑ 複数マス</button>
+            <select class="ctl"><option selected>4×4</option><option>3×3</option></select>
+            <button type="button" class="ctl" ${hasSel ? '' : 'disabled'}>選択解除</button>
+          </div>
+          <div class="row">
+            <button type="button" class="ctl" ${hasSel ? '' : 'disabled'}>部品置き場</button>
+            <button type="button" class="ctl" ${hasSel ? '' : 'disabled'}>加工機</button>
+            <button type="button" class="ctl" ${hasSel ? '' : 'disabled'}>通路</button>
+            <button type="button" class="ctl" ${hasSel ? '' : 'disabled'}>未使用</button>
+          </div>
+          <div class="row">
+            <button type="button" class="ctl primary" ${hasSel ? '' : 'disabled'}>選択マスに割当</button>
+            <button type="button" class="ctl danger" ${hasSel ? '' : 'disabled'}>選択マスを解除</button>
+            <button type="button" class="ctl primary" ${dirty ? '' : 'disabled'}>レイアウト保存</button>
+          </div>
+        </div>
+        <div class="dock-right">
+          <p class="lbl">棚番パイ（追加 · 3列 · 3行表示 · 以降スクロール）</p>
+          <div class="pi-cards">${piCardsHtml()}</div>
+          <button type="button" class="pi-save" id="pi-save">担当棚を保存</button>
+        </div>`;
+      dockEl.querySelectorAll('[data-pi]').forEach((b) => {
+        b.addEventListener('click', () => {
+          piId = b.dataset.pi;
+          renderDock();
+        });
+      });
+    }
+
+    function openEditor(zid) {
+      activeZone = zid;
+      const z = ZONES.find((x) => x.id === zid);
+      dlgTitle.textContent = `編集 — ${z.name}`;
+      if (zid === 'e') editCells = JSON.parse(JSON.stringify(edit4x4));
+      else editCells = JSON.parse(JSON.stringify(zoneData[zid]));
+      selected = new Set();
+      backdrop.style.display = 'flex';
+      document.querySelectorAll('.macro-cell').forEach((c) => c.classList.remove('open'));
+      macroFull.querySelector(`[data-edit="${zid}"]`)?.closest('.macro-cell')?.classList.add('open');
+      renderFactoryMap();
+      renderDock();
+    }
+
+    renderOverview();
+    openEditor('e');
+  </script>
+</body>
+</html>

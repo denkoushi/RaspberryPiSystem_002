@@ -32,6 +32,12 @@
 | [mobile-placement-part-name-incremental-search-preview.html](./mobile-placement-part-name-incremental-search-preview.html) | **配膳スマホ・部品名の段階的絞り込み（口頭照会）** — 「テ」→「テー」→確定の状態例、**ソースX/Y 混在リスト**、候補過多ガード。**実装前の静的モック** |
 | [mobile-placement-gojuon-prune-nav-preview.html](./mobile-placement-gojuon-prune-nav-preview.html) | **配膳スマホ・五十音＋A–Z カーナビ風** — **よく使う語プリセット**／**アルファベットグリッド**（剪定例あり）／プレフィックスで<strong>使えない文字を消す／薄くする</strong>。**実装前の静的モック** |
 | [mobile-placement-part-keyword-and-search-preview.html](./mobile-placement-part-keyword-and-search-preview.html) | **配膳スマホ・登録済み部品を探す最終案** — **五十音・ABC・プリセットの文字ボタンを押した瞬間に条件採用**／**空白区切り AND**（API と同じ前提）／**登録済み候補をリアルタイム絞り込み**／**不要ボタンは非表示**。補助候補なしの静的モック |
+| [kiosk-shelf-master-edit-dialog-compact-preview.html](./kiosk-shelf-master-edit-dialog-compact-preview.html) | **棚マスタ・区画「編集」Dialog（コンパクト案）** — モーダル上限 920px / 92dvh、map 26rem 正方形・スクロールなし、dock 縦スクロールで棚番パイ・保存まで到達。**本番反映済み**（`fix/kiosk-shelf-master-zone-dialog-compact` · **`2e73aeed`**） |
+| [kiosk-shelf-master-9grid-view-edit-popup-preview.html](./kiosk-shelf-master-9grid-view-edit-popup-preview.html) | **棚マスタ — 9マス俯瞰＋編集ポップアップ（B採用・旧案）** — 本番は Dialog + 常時 9 マス俯瞰（[KB-382](../knowledge-base/KB-382-mobile-placement-shelf-layout-master.md)） |
+| [kiosk-shelf-master-9grid-fullscreen-preview.html](./kiosk-shelf-master-9grid-fullscreen-preview.html) | **棚マスタ — 9マス全面（工場全体）** — ミニ 3×3 常時表示の俯瞰 UI 参考 |
+| [kiosk-shelf-master-zero2w-dialog-preview.html](./kiosk-shelf-master-zero2w-dialog-preview.html) | **Zero2W 担当棚（Dialog 統合前の検討）** — 本番は編集 Dialog 右の棚番パイ（`9a1af348` 以降） |
+| [kiosk-shelf-master-zero2w-dialog-a-chips-preview.html](./kiosk-shelf-master-zero2w-dialog-a-chips-preview.html) | Zero2W 割当 UI 案 A（チップ列）·検討用 |
+| [kiosk-shelf-master-zero2w-dialog-b-map-preview.html](./kiosk-shelf-master-zero2w-dialog-b-map-preview.html) | Zero2W 割当 UI 案 B（地図主導）·検討用 |
 | [purchase-order-lookup-fkobaino-preview.html](./purchase-order-lookup-fkobaino-preview.html) | **購買照会（FKOBAINO）** — **「配膳に戻る」常設**／**スキャンで注文番号を入れて照会**（別途「照会」ボタンなし。入力欄は表示のみ）。**結果: 項目ラベルなし・値のみを縦に（順序は 機種名→製番→品名→品番→個数・本文約2倍）**／配色は配膳メイン（`mpKioskTheme`）に合わせた静的モック |
 
 プレビュー HTML は **外部 CDN やネットワークに依存しません**（macOS のシステムフォントのみ）。`file://` のまま Safari で表示できる想定です。
