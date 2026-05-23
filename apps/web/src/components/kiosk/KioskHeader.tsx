@@ -87,6 +87,7 @@ export function KioskHeader({
   const isLoadBalancingActive = pathname.startsWith('/kiosk/production-schedule/load-balancing');
   const isPurchaseOrderLookupActive = pathname.startsWith('/kiosk/purchase-order-lookup');
   const isPalletVisualizationActive = pathname.startsWith('/kiosk/pallet-visualization');
+  const isShelfMasterActive = pathname.startsWith('/kiosk/mobile-placement/shelf-master');
   const isDueManagementActive = pathname.startsWith('/kiosk/production-schedule/due-management');
   const isDocumentsActive = pathname.startsWith('/kiosk/documents');
   const isPartMeasurementActive = pathname.startsWith('/kiosk/part-measurement');
@@ -268,6 +269,12 @@ export function KioskHeader({
             className={() => navClass(isPalletVisualizationActive, 'bg-orange-600 text-white')}
           >
             パレット
+          </NavLink>
+          <NavLink
+            to="/kiosk/mobile-placement/shelf-master"
+            className={() => navClass(isShelfMasterActive, 'bg-stone-600 text-white')}
+          >
+            棚マスタ
           </NavLink>
           <NavLink
             to="/kiosk/documents"
