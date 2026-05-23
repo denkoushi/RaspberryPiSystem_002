@@ -9,6 +9,8 @@ WORKDIR /app/packages/shared-types
 RUN pnpm build
 WORKDIR /app/packages/part-search-core
 RUN pnpm build
+WORKDIR /app/packages/shelf-layout-core
+RUN pnpm build
 WORKDIR /app
 COPY apps/web ./apps/web
 # NFCエージェントのWebSocket URLをビルド時に設定可能にする
