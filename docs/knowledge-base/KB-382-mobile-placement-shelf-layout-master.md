@@ -79,6 +79,7 @@
 | **Zero2W 列を ON にしたがレイアウトが出ない** | **`haizenEdgeEnabled`** と **`shelfLayoutEditEnabled`** は別フラグ |
 | **編集 Dialog で地図が切れる・保存ボタンが出ない** | 旧 SPA（コンパクト化前）·Pi5 **`web`** 未更新·**強制リロード**未実施（[§コンパクト化デプロイ](#production-deploy--zone-dialog-compact-2026-05-23)） |
 | **再割当 Dialog だけレイアウトが崩れる** | 編集のみ更新された中間ビルド — **再割当も `ShelfMasterZoneDialogFrame` 共有**（`2e73aeed` 以降） |
+| **複数マスを結合割当した後、結合ブロックをタップしても選択されず「選択マスを解除」が disabled** | 旧 `useZoneLayoutDraft.toggleCell` が **`cells.length === 1` のみ**処理。割当後は [`ShelfFactoryMapView.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfFactoryMapView.tsx) が結合 entity の **全 `cellIndices`（長さ>1）** を渡すため **no-op** → `selectedCells` が空のまま（[§複数マス選択解除](#production-deploy--multi-cell-selection-clear-2026-05-23)） |
 
 ## Investigation
 
@@ -178,6 +179,91 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - **map / dock 分離** — 地図は固定表示・操作 UI は dock 縦スクロールに閉じると **小画面キオスクで到達性が安定**
 - **手順ゲートは Frame 外** — コンパクト化で **フロー無効化の回帰を避ける**（SOLID・境界契約）
 
+### 複数マス結合後の選択解除不可（2026-05-23 · Web のみ） {#multi-cell-selection-clear-2026-05-23}
+
+**症状（現場）**: レイアウト編集 Dialog で **複数マスを選択して部品置き場（SHELF）を割当**したあと、地図上の **結合ブロックをタップしてもハイライトされない**。**「選択マスを解除」** が常に **disabled** のまま。単一マス割当では再現しにくい。
+
+**調査（CONFIRMED）**:
+
+1. 割当前: 複数マス選択モードで `selectedCells` に複数インデックスが入り、割当 API 呼び出しは成功する。
+2. 割当後: 同一 entity は `cellIndices: [i, j, …]`（長さ > 1）で描画される。
+3. [`ShelfFactoryMapView`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfFactoryMapView.tsx) の `onCellClick` は **結合ブロック全体の `cellIndices` 配列**を `toggleCell` に渡す。
+4. 旧 [`useZoneLayoutDraft.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useZoneLayoutDraft.ts) の `toggleCell` は **`if (cells.length !== 1) return prevSelected`** 相当で **早期 return** → クリックが no-op。
+
+**根本原因**: 選択トグル契約が **「単一マスクリック」前提**のまま残り、**結合 entity（複数 `cellIndices`）** の UI 契約と不一致。
+
+**仕様 A（採用）**:
+
+| 操作 | 挙動 |
+|------|------|
+| **単一マス** | 従来どおり `multiMode` に従いトグル（単一選択 / 複数選択） |
+| **結合ブロック（`clickedCells.length > 1`）** | **entity 単位** — ブロックの全マスが未選択なら **一括選択**、全マスが既に選択済みなら **一括解除** |
+| **「選択マスを解除」** | `selectedCells` が空でなければ従来どおり有効（結合ブロックタップで選択が入るようになったため復帰） |
+
+**Fix（最小・Web のみ）**:
+
+| ファイル | 内容 |
+|----------|------|
+| 新規 [`layoutCellSelection.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellSelection.ts) | 純粋関数 **`toggleLayoutCellSelection`**（境界に閉じた選択契約） |
+| 新規 [`layoutCellSelection.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/layoutCellSelection.test.ts) | 単一 / 複数 / 結合ブロックの **7 ケース** |
+| [`useZoneLayoutDraft.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useZoneLayoutDraft.ts) | `toggleCell` を上記に委譲・`useCallback([multiMode])` |
+| [`layoutDraftActions.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/layoutDraftActions.test.ts) | 複数 `cellIndices` 全選択時の **一括解除** 回帰 |
+
+**ブランチ**: `fix/kiosk-shelf-master-multi-cell-selection`  
+**代表コミット**: **`6adc89f7`** — `fix(kiosk): allow clearing multi-cell shelf layout assignments`  
+**CI**: GitHub Actions **`26332578527` success**（`6adc89f7` push 後）
+
+**ローカル検証**: `apps/web/src/features/mobile-placement/shelfMaster` Vitest **24 PASS** · `pnpm --filter web test` **582 PASS** · lint · build PASS
+
+**触らない**: API / Prisma / Ansible / Pi3 サイネージ
+
+### Production deploy — 複数マス選択解除（2026-05-23） {#production-deploy--multi-cell-selection-clear-2026-05-23}
+
+**変更**: **Web SPA のみ**（Pi5 `web` 再ビルド + Pi4 `kiosk-browser` 再起動）
+
+**対象ホスト（1 台ずつ）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**
+
+**標準コマンド**（**`main` マージ後は第2引数 `main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-shelf-master-multi-cell-selection \
+  infrastructure/ansible/inventory.yml --limit <host> --detach --follow
+```
+
+| 順 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|----|--------|---------------|------------|------|
+| 1 | `raspberrypi5` | **`20260523-214122-22482`** | `ok=134` `changed=4` `failed=0` | Docker `web` 再ビルド |
+| 2 | `raspberrypi4` | **`20260523-215426-5450`** | `ok=122` `changed=10` `failed=0` | `kiosk-browser` 再起動 |
+| 3 | `raspi4-robodrill01` | **`20260523-220023-22658`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 4 | `raspi4-fjv60-80` | **`20260523-220513-20691`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 5 | `raspi4-kensaku-stonebase01` | **`20260523-221011-26349`** | `ok=129` `changed=10` `failed=0` | 同上 |
+
+**Pi3**: **`skipping: no hosts matched`**（想定どおり）
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **113s**・Tailscale・Pi5 `100.106.158.2`）
+
+**HTTP スモーク（Pi5）**:
+
+- `GET /api/system/health` → **`status: ok`**
+- `GET /kiosk/mobile-placement/shelf-master` → **HTTP 200**
+- `GET /kiosk/mobile-placement` → **HTTP 200**
+
+**現場手動（推奨・`shelfLayoutEditEnabled` 端末）**:
+
+1. **レイアウト** → 区画 **編集** Dialog
+2. 複数マス選択 → **部品置き場を割当**
+3. 結合ブロックを **1 回タップ** → 全マスが選択ハイライト
+4. **「選択マスを解除」** または **再タップ** → 選択解除・entity 削除可能
+
+**トラブルシュート**:
+
+| 症状 | 対処 |
+|------|------|
+| 旧挙動のまま | Pi5 **`web` ref** が `6adc89f7` 以降か確認·キオスク **強制リロード** |
+| Pi4 のみ旧 UI | **Pi5 先行デプロイ**漏れ（SPA 正本は Pi5） |
+| レイアウトタブ自体が出ない | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例) — **`shelfLayoutEditEnabled` / `clientKey` 不一致**（本件とは別） |
+
 ### CI
 
 - 初回 **`security-docker` 失敗**: Docker イメージに **`@raspi-system/shelf-layout-core` ビルド漏れ** → **`Dockerfile.api` / `Dockerfile.web` 修正**（**`34527423`**）後 success（run **`26320245567`** 付近）
@@ -198,6 +284,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md) §棚レイアウトマスタ
 - Deploy（機能本体）: [deployment.md](../guides/deployment.md#mobile-placement-shelf-layout-master-2026-05-23)
 - Deploy（Dialog コンパクト）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-zone-dialog-compact-2026-05-23)
+- Deploy（複数マス選択解除）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-multi-cell-selection-clear-2026-05-23)
+- 選択契約実装: [`layoutCellSelection.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellSelection.ts)
 - Zero2W 関連: [KB-368](./KB-368-zero2w-haizen-placement-tracking.md)
 - 沉浸式ヘッダー: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)
 - 設計プレビュー: [design-previews/README.md](../design-previews/README.md)（`kiosk-shelf-master-*`）
