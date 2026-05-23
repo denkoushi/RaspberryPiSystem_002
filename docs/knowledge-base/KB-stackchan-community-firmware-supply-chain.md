@@ -468,6 +468,106 @@ update-frequency: high
 - **リポ側**: bridge の chat/STT/Home Assistant context 機能と Ansible/Runbook/README/KB の整合を **`main` へ載せる**のが本分。  
 - **実機ウェイクワード/マイク**: **未解決**。次は Wi-Fi とオフラインモードの根治 → 波形統計ログ付きファームでの **死活確認** を推奨。
 
+## 2026-05-23: 私用 Pi5 `utterance` 一括 API・ファーム overlay・実機ブリングアップ（**作業中断**）
+
+### Context
+
+- **上流ファーム**: [`ronron-gh/AI_StackChan_Ex`](https://github.com/ronron-gh/AI_StackChan_Ex)（供給鎖固定: [`supply-chain-lock.json`](../../scripts/stackchan-ai-stackchan-ex/supply-chain-lock.json) の `pinned_commit` = `d894859648d4323044761cd49615694027abeb25`）。
+- **目標アーキテクチャ（継続）**: **faster-whisper（private Pi5）→ Qwen3.6 on DGX Spark → VOICEVOX（デバイス）**。職場 Pi5 API（`POST /api/system/stackchan/chat`）とは **別系統**（[計画 §2系統](../plans/stackchan-private-pi5-tailnet-workflow-plan.md#two-path-architecture-private-work-2026-05-10)）。
+- **今回の設計判断**: ESP32 が **STT → LLM → TTS** を多段 HTTP するのをやめ、**私用 Pi5 で 1 リクエストに集約**（`POST /api/stackchan/utterance`）。Realtime API / xiaozhi 全面移行は **見送り**。
+- **作業状態**: リポ実装・実機書き込み・部分疎通まで進んだが、**画面真っ黒・無音・USB シリアル消失**で **実機復旧が未完了のまま中断**（2026-05-23）。
+
+### 仕様（repo 正本）
+
+| 層 | 成果物 | 役割 |
+|----|--------|------|
+| Pi5 bridge | [`stackchan_utterance_core.py`](../../scripts/private-pi5-stackchan-bridge/stackchan_utterance_core.py) | WAV → STT（`SttWorkflow`）→ chat（`ChatCompletionWorkflow`）→ `{ sttText, replyText }` |
+| Pi5 HTTP | [`bridge_server.py`](../../scripts/private-pi5-stackchan-bridge/bridge_server.py) | `POST /api/stackchan/utterance`（`audio/wav` 生バイナリ or JSON `audioBase64`） |
+| テスト | [`tests/test_stackchan_utterance_core.py`](../../scripts/private-pi5-stackchan-bridge/tests/test_stackchan_utterance_core.py) | ワークフロー単体（**20 件 OK** をローカルで確認） |
+| Ansible | [`private-pi5-stackchan-bridge.yml`](../../infrastructure/ansible/playbooks/private-pi5-stackchan-bridge.yml) | `stackchan_utterance_core.py` を Pi5 同期対象に追加 |
+| ファーム適用 | [`apply_chatgpt_private_bridge.py`](../../scripts/stackchan-ai-stackchan-ex/apply_chatgpt_private_bridge.py) | `ChatGPT.cpp` の private bridge POST / `replyText` パース（**`git apply` 不可の monolithic patch の代替**） |
+| ファーム overlay | [`apply_utterance_overlay.py`](../../scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py) + [`firmware-overlay/`](../../scripts/stackchan-ai-stackchan-ex/firmware-overlay/) | `PrivateBridgeUtterance.*`・`STT_ChatGPT` から **utterance 優先** |
+| Mac USB | [`mac_usb_dev.sh`](../../scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh) | clone / パッチ / `PLATFORMIO_BUILD_FLAGS`（`CHATGPT_API_URL` + `STACKCHAN_UTTERANCE_URL`）/ build / upload / monitor |
+
+**ビルドフラグ（CoreS3 / `m5stack-cores3`）**:
+
+- `CHATGPT_API_URL` → `http://<私用Pi5-LAN-IP>:18080/api/stackchan/chat/simple`（履歴・フォールバック）
+- `STACKCHAN_UTTERANCE_URL` → `http://<私用Pi5-LAN-IP>:18080/api/stackchan/utterance`（会話 1 回）
+- `CHATGPT_API_USE_AUTH_BEARER=0`（トークンは任意で `CHATGPT_STACKCHAN_TOKEN`）
+
+**注意**: [`patches/ai_stackchan_ex_private_bridge.patch`](../../scripts/private-pi5-stackchan-bridge/patches/ai_stackchan_ex_private_bridge.patch) は **二重 diff で `git apply` 不可**。適用は **`apply_chatgpt_private_bridge.py` を正**とする。
+
+### 実測ネットワーク（自宅 LAN・2026-05-23）
+
+| 機器 | アドレス | 備考 |
+|------|----------|------|
+| Mac | `192.168.128.191` | 開発端末 |
+| 私用 Pi5 | `192.168.128.113`（`112` は compat alias・同一 MAC） | bridge `:18080` |
+| StackChan（CoreS3） | `192.168.128.116` | USB MAC 付近 `44:1b:f6:e2:7a:e0` |
+| DGX（Tailscale） | `http://100.118.82.72:38081` | LLM upstream |
+
+### Symptoms（時系列）
+
+#### フェーズ A: SD / Wi-Fi（起動ループ・Smart Config）
+
+- `Failed to open SD.` / `/sd/yaml/SC_BasicConfig.yaml does not exist`（**`read_sd_file` 由来**。`main.cpp` の `SD.begin` 成功後でも servo 等の個別ファイルで出うる）。
+- `WiFi connection failed` → **`Waiting for SmartConfig`**（画面 `#####`）で「起動しない」ように見える。
+- **CONFIRMED（過去 KB と同型）**: microSD 未挿入・接触不良・`SC_SecConfig.yaml` 不備・パスワード誤記（`O`/`0`）。
+
+#### フェーズ B: シリアルは正常・画面のみ真っ黒（2026-05-23 昼）
+
+- USB シリアルでは **`Successfully established a Wi-Fi connection`**・`192.168.128.116`・`HTTP server started`・アバター初期化・ヒープ OK まで進む。
+- ユーザー観測は **起動直後 1〜2 秒も文字が出ない・スピーカー無音**。
+- シリアルでは **`[UTTERANCE] record start` / `POST .../utterance`** が **ウェイクワードまたはタッチ**で繰り返し出る。
+- **`[UTTERANCE] POST failed: connection refused`**（Pi5 bridge 未到達 or `stackchan-bridge` 停止）。
+- **切り分け**: **MCU・Wi-Fi・ファームは動作**している可能性が高い。**表示バックライト / LCD / 排線**、または **メインループが utterance 同期 POST で長時間ブロック**して UI が更新されない、の二系統。
+
+#### フェーズ C: 完全無反応（2026-05-23 夕・作業中断直前）
+
+- **起動文字なし・音なし・`/dev/cu.usbmodem*` なし**（Mac で `ls /dev/cu.usb*` が空）。
+- **ファーム破損だけでは説明しにくい**（通常は USB CDC は出る）。**USB 未接続・充電専用ケーブル・電源 OFF・本体故障**を優先疑い。
+
+### Investigation
+
+| 仮説 | 結果 | 根拠 |
+|------|------|------|
+| utterance ファームが起動直後に必ず落ちる | **REJECTED** | シリアルで setup 完走・HTTP 起動を確認（フェーズ B） |
+| SD 未読込で `ESP.restart()` ループ | **PARTIAL** | `SD.begin` 失敗時は `Failed to load SD card settings` → 5 秒再起動（`main.cpp`）。フェーズ B では Wi-Fi まで進んでいる |
+| Pi5 `/utterance` 未デプロイ | **CONFIRMED（初回）** | 初回 deploy 後 **404** → 再 deploy でルート有効化 |
+| DGX `/v1/audio/transcriptions` 不足 | **CONFIRMED** | `STT_PROVIDER=upstream-openai` 時、upstream STT が **404** → **`private_pi5_stt_provider=faster-whisper-local`** で再デプロイ |
+| bridge へ POST `connection refused` | **CONFIRMED** | 実機シリアル・Mac から `113:18080` タイムアウトの時期あり |
+| 画面真っ黒 = ソフトのみ | **INCONCLUSIVE** | シリアル正常とユーザー無表示の矛盾 → **ハード層**を疑うべき |
+| USB ポート消失 = ケーブル/電源 | **LIKELY** | Mac に **usbmodem デバイスゼロ** |
+
+### Fix（実施済み）
+
+- private Pi5: **`stackchan_utterance_core.py`** 追加・playbook 同期・`POST /api/stackchan/utterance` ルート。
+- STT: Ansible **`private_pi5_stt_provider=faster-whisper-local`** 再デプロイ（DGX transcription API 不要）。
+- ファーム: `apply_chatgpt_private_bridge.py`（`ChatGPT::chat()` 削除事故を `\nvoid ChatGPT::chat` 基準で回避）、`apply_utterance_overlay.py`、`mac_usb_dev.sh`。
+- CoreS3 へ **USB upload 成功**（`m5stack-cores3`、ビルドフラグで Pi5 `113` 向け utterance URL）。
+
+### Prevention / 再開時の固定順
+
+1. **ハード**: データ対応 USB 直結 → `ls /dev/cu.usb*`。**出ない**場合は **BOOT 押しながら USB 挿入**（ダウンロードモード）→ それでも出なければ **本体電源・ケーブル・基板**。
+2. **シリアル**: `STACKCHAN_USB_PORT=/dev/cu.usbmodem* ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh monitor`（`pio device monitor` が `termios` で失敗する場合は **pyserial 直読**）。
+3. **SD + Wi-Fi**: `yaml/SC_SecConfig.yaml`・`app/AiStackChanEx/SC_ExConfig.yaml`・任意 `wifi.txt`。**実 IP ≠ `0.0.0.0`** まで進めてから音声検証。
+4. **Pi5 bridge**: `curl -fsS http://127.0.0.1:18080/healthz` → **`POST /api/stackchan/utterance`**（短文 WAV）→ `journalctl -u stackchan-bridge`。
+5. **IP 整合**: `hostname -I`（Pi5）とファームの **`CHATGPT_API_URL` / `STACKCHAN_UTTERANCE_URL`**・compat alias（`192.168.128.112`）。
+6. **utterance E2E**: ウェイクワード **右タッチ登録 → 左タッチ有効化**（再フラッシュ後は必須）。
+7. **完了判定**: [text-only 完了条件](../runbooks/stackchan-community-text-only-e2e.md#text-only-done-criteria) に加え、**utterance 1 回で `replyText` が聞こえる**こと。
+
+### Current status（2026-05-23・中断時点）
+
+| 項目 | 状態 |
+|------|------|
+| repo: `POST /api/stackchan/utterance` + テスト + Ansible | **実装済み**（本セッションで `main` へマージ予定） |
+| Pi5 bridge 実機デプロイ | **部分**（`/utterance` 404 → 再 deploy で解消した記録あり。最終は `connection refused` 観測あり） |
+| ファーム utterance overlay | **書き込み済み**（疎通未完了） |
+| 実機表示・音声 | **未復旧**（真っ黒・無音・USB 未認識） |
+| utterance E2E（聞こえるまで） | **未完了** |
+
+**次のタスク（再開時）**: 実機 **USB 認識・電源** の復旧 → シリアルで boot 完走確認 → Pi5 bridge 到達 → utterance WAV スモーク → WakeWord 再設定。
+
 ## References
 
 - 手順の中心: [`scripts/stackchan-ai-stackchan-ex/README.md`](../../scripts/stackchan-ai-stackchan-ex/README.md)

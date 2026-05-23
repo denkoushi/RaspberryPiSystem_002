@@ -483,6 +483,7 @@ update-frequency: high
 
 ## 📅 更新履歴
 
+- 2026-05-23: StackChan **`POST /api/stackchan/utterance`**（Pi5 一括 STT→LLM）・ファーム `apply_*` / `mac_usb_dev.sh`・実機ブリングアップ（**作業中断**: 画面真っ黒・無音・USB 未認識）を [KB-stackchan-community-firmware-supply-chain.md §2026-05-23](./KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)・[stackchan-community-text-only-e2e §6.5](../runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-一括と実機復旧)・[stackchan-private-pi5-tailnet-workflow-plan](../plans/stackchan-private-pi5-tailnet-workflow-plan.md) に反映。
 - 2026-05-11: StackChan private Pi5 系の最新切り分けを追記。`HTTP 200` でも `payload length: 0` になる `ChatGPT.cpp` の client 寿命不整合修正、late 時点の private Pi5 / DGX 到達不能（network path）と音声再生系（`MP3:ERROR_BUFLEN 0` / `I2S ... failed`）の分離方針を [KB-stackchan-community-firmware-supply-chain.md](./KB-stackchan-community-firmware-supply-chain.md)・[stackchan-community-text-only-e2e.md](../runbooks/stackchan-community-text-only-e2e.md)・[private-pi5-stackchan-bridge-deploy.md](../runbooks/private-pi5-stackchan-bridge-deploy.md)・[`scripts/private-pi5-stackchan-bridge/README.md`](../../scripts/private-pi5-stackchan-bridge/README.md) に反映。
 - 2025-11-18: 初版作成（KB-001〜KB-004）
 - 2025-11-19: KB-005〜KB-017を追加

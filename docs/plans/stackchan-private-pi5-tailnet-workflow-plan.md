@@ -4,7 +4,7 @@
 
 tags: [StackChan, DGX Spark, Raspberry Pi 5, Tailnet, faster-whisper, VOICEVOX, Home Assistant]
 audience: [開発者, 運用者]
-last-verified: 2026-05-10
+last-verified: 2026-05-23
 related:
 
 - ../runbooks/dgx-system-prod-local-llm.md
@@ -201,6 +201,17 @@ git apply /path/to/RaspberryPiSystem_002/scripts/private-pi5-stackchan-bridge/pa
 - 2026-05-10: Spark 再起動後も **DGX `38081/healthz` / `/v1/models` は timeout**、private Pi5 bridge `healthz` は `200`、bridge `/simple` は **`502 bad gateway: [Errno 111] Connection refused`** のままだった。StackChan 実機シリアルでも **`http post failed: connection refused`** を観測し、未復旧を再確認。
 - 2026-05-10: DGX upstream 復旧後、StackChan 実機 (`192.168.128.124`) は **旧 bridge IP `192.168.128.112`** を見ており、private Pi5 の当日 DHCP IP **`192.168.128.113`** とのズレで `GET /chat?...` が bridge に届かないことを確認。private Pi5 `wlan0` に **`192.168.128.112/24` の互換 alias** を一時追加すると、bridge ログに **`POST /api/stackchan/chat/simple 200`** が出て通信が成立した。
 - 2026-05-10: private Pi5 の標準 playbook に **compatibility alias 管理**（`private_pi5_stackchan_compat_ip` -> `stackchan-bridge-compat-ip.service`）を追加し、**`enabled` / `active`** 状態で **`wlan0: 192.168.128.113/24 192.168.128.112/24`** を確認。標準手順の範囲で StackChan 旧設定との互換を維持できるようにした。
+- 2026-05-23: **ESP32 多段 HTTP をやめ Pi5 `POST /api/stackchan/utterance` に集約**する方針で実装（`stackchan_utterance_core.py`・ファーム `apply_utterance_overlay.py`・`mac_usb_dev.sh`）。Realtime 全面移行は見送り。**実機は utterance ファーム書き込み後、画面真っ黒・無音・USB 未認識まで悪化し作業中断**（復旧手順は [KB §2026-05-23](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)）。
+
+## フェーズ追記（2026-05-23・中断時）
+
+| 項目 | 状態 |
+|------|------|
+| repo: utterance API + テスト + Ansible | 完了（`main` マージ予定） |
+| Pi5 `faster-whisper-local` + `/utterance` ルート | 部分（404→再 deploy で解消の記録あり） |
+| ファーム utterance overlay USB 書き込み | 実施済み |
+| utterance E2E（`replyText` 聞こえる） | **未完了** |
+| 実機ハード（LCD/USB/電源） | **要復旧** |
 
 ## 更新ルール
 

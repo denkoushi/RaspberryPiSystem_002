@@ -1,7 +1,7 @@
 ---
 title: Runbook — StackChan コミュニティファーム text-only 疎通（Pi5 bridge → DGX）
 audience: [開発者, 運用者]
-last-verified: 2026-05-14
+last-verified: 2026-05-23
 related:
   - ../knowledge-base/KB-stackchan-community-firmware-supply-chain.md
   - ./stackchan-community-realtime-api-migration.md
@@ -283,6 +283,50 @@ STT/TTS の本実装統合前は、まず次の順で切り分ける。
 
 - [ ] DGX cold start / runtime 停止時: bridge が **`502` / `UPSTREAM_UNREACHABLE`** を返し得る → `DGX_RUNTIME_AUTO_START` と **`DGX_RUNTIME_READY_TIMEOUT_SEC`（300–600）** を確認
 - [ ] Pi5 DHCP 変更後: StackChan URL と **`hostname -I`** の不一致 → **compat alias** または **ファーム再ビルド**
+
+### 6.5) 2026-05-23: `POST /api/stackchan/utterance`（Pi5 一括）と実機復旧
+
+**目的**: ESP32 の多段 HTTP（STT→LLM）をやめ、**私用 Pi5 で 1 回の WAV POST** に集約する（正本: [KB §2026-05-23](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)）。
+
+#### Pi5 bridge 側（Mac / LAN）
+
+```bash
+# healthz
+curl -fsS "http://<私用Pi5-LAN-IP>:18080/healthz"
+
+# utterance（短文 WAV・例）
+curl -fsS -X POST "http://<私用Pi5-LAN-IP>:18080/api/stackchan/utterance" \
+  -H "Content-Type: audio/wav" \
+  --data-binary @sample.wav
+```
+
+- **期待**: `200` + 非空 `replyText`（および `sttText`）。
+- **STT**: `private_pi5_stt_provider=faster-whisper-local`（DGX `/v1/audio/transcriptions` は不要）。
+- **デプロイ**: [`private-pi5-stackchan-bridge-deploy.md`](./private-pi5-stackchan-bridge-deploy.md)（`stackchan_utterance_core.py` 同梱）。
+
+#### ファーム側（Mac USB）
+
+```bash
+cd /path/to/RaspberryPiSystem_002
+STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
+  ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh setup
+STACKCHAN_BRIDGE_BASE_URL=http://<私用Pi5-LAN-IP>:18080 \
+  ./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh all
+```
+
+- `PLATFORMIO_BUILD_FLAGS` に **`CHATGPT_API_URL`**（`/chat/simple`）と **`STACKCHAN_UTTERANCE_URL`**（`/utterance`）が入る。
+- パッチ適用は **`apply_chatgpt_private_bridge.py`**（`git apply` 用 `ai_stackchan_ex_private_bridge.patch` は **壊れている**）。
+
+#### 実機トラブルシュート（2026-05-23 観測）
+
+| 症状 | まず疑うこと | 確認 |
+|------|--------------|------|
+| 画面 `#####` / Smart Config | Wi-Fi 資格情報・SD `SC_SecConfig.yaml` | シリアルで SSID/接続結果 |
+| 画面真っ黒だがシリアルは Wi-Fi/HTTP OK | バックライト/LCD、utterance 同期 POST のブロック | タッチ無しでログ安定するか、BOOT+USB でポート復帰 |
+| 文字も音もなく `/dev/cu.usbmodem*` なし | **USB ケーブル（データ線）・電源・本体** | `ls /dev/cu.usb*`、BOOT 押しながら USB 挿入 |
+| `[UTTERANCE] POST failed: connection refused` | Pi5 bridge 停止・IP ミス・LAN 分断 | Pi5 `systemctl status stackchan-bridge`・`curl healthz` |
+
+**作業中断時点**: 上記のうち **完全無反応（USB 未認識）** まで悪化。**再開はハード復旧が先**。
 
 ### 6.4) 2026-05-14 引き継ぎ: ウェイクワード登録／オフライン／シリアル
 

@@ -42,6 +42,9 @@ uv run --project scripts/private-pi5-stackchan-bridge \
 - `POST /api/stackchan/chat/simple`
   - StackChan 実装向けの簡易レスポンスを返す（`replyText`）
   - 任意設定で、upstream `502` / `503` 時、および **`DGX_RUNTIME_AUTO_START` 有効時の初回到達不能（`URLError`）** に **DGX runtime `/start` -> `/v1/models` ready wait -> 1回再試行** ができる
+- `POST /api/stackchan/utterance`
+  - **推奨（音声会話1回）**: `audio/wav` または JSON (`audioBase64`) → Pi5 で STT → DGX で LLM → `{ sttText, replyText }` を返す
+  - デバイスはこの API だけ叩けばよい（STT + chat の2段を不要化）
 - `POST /api/stackchan/stt`
   - STT 変換 API。`audio/wav` の生バイナリ、または JSON (`audioBase64`) を受け取って `text` を返す
   - provider は `STT_PROVIDER` で切り替え:
