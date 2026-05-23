@@ -241,7 +241,16 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **Pi3**: **`skipping: no hosts matched`**（想定どおり）
 
-**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **113s**・Tailscale・Pi5 `100.106.158.2`）
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（初回記録 **約 113s**・Tailscale・Pi5 `100.106.158.2`）
+
+**main 再検証（2026-05-23 · `main` `655bbe8c`）**:
+
+- **トリガー**: ドキュメント同期コミット（`655bbe8c`）後の **本番健全性の再確認**（デプロイ再実行なし）
+- **コマンド**: 作業ツリー `main` で `./scripts/deploy/verify-phase12-real.sh`
+- **結果**: **PASS 43 / WARN 0 / FAIL 0**（**約 109s**）
+- **内訳（抜粋）**: `deploy-status` **Pi4×4 PASS** · Pi4 **`kiosk/status-agent`×4 PASS** · Pi3 **`signage-lite/timer` PASS** · API ヘルス・納期管理・サイネージ・配膳系スモーク **すべて PASS**
+- **HTTP スモーク（再実行）**: `/api/system/health` **`status: ok`**（memory warning 89.5% は既知の監視メッセージ）· `/kiosk/mobile-placement/shelf-master` **200** · `/kiosk/mobile-placement` **200**
+- **未実施（本再検証の範囲外）**: 各 Pi4 キオスクでの **複数マス割当→結合ブロック解除** の現場手動（[§現場手動](#production-deploy--multi-cell-selection-clear-2026-05-23) はオペレータ確認が正）
 
 **HTTP スモーク（Pi5）**:
 
