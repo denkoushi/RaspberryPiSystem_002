@@ -21,7 +21,22 @@ export const shelfMasterTheme = {
     'rounded-lg border border-black/10 bg-black/[0.06] px-1.5 py-1 text-[clamp(0.62rem,1.8vw,0.78rem)] font-bold text-slate-500',
   dock: 'mx-auto w-full max-w-lg space-y-2 rounded-xl border border-slate-700 bg-slate-900 p-3',
   dockShell:
-    'mx-auto grid w-full max-w-[min(56rem,100%)] shrink-0 grid-cols-1 items-start gap-2 rounded-xl border border-slate-700 bg-slate-900 p-2.5 sm:grid-cols-[1fr_minmax(14rem,1.55fr)] sm:gap-x-2.5',
+    'mx-auto flex w-full max-w-[min(56rem,100%)] shrink-0 flex-col gap-2 rounded-xl border border-slate-700 bg-slate-900 p-2',
+  dockInner: 'flex w-full min-w-0 flex-col gap-1.5',
+  dockRail:
+    'grid w-full items-stretch overflow-hidden rounded-[10px] border border-slate-600/30 bg-slate-900/95 [grid-template-columns:auto_auto_auto_auto]',
+  dockZone:
+    'flex min-w-0 flex-col justify-center gap-1 border-r border-slate-600/20 px-2 py-1.5 last:border-r-0',
+  dockZoneFlow: 'bg-sky-950/25',
+  dockZoneKinds: 'items-center justify-center gap-1.5 px-2.5 py-2',
+  dockZoneDetail: 'min-w-[11rem] max-w-[15rem]',
+  dockZoneCommit: 'min-w-[11.5rem] gap-1',
+  dockZoneTitle: 'm-0 w-full text-center text-[0.68rem] font-extrabold leading-tight tracking-wide text-slate-100',
+  kindsGrid: 'mx-auto grid w-fit max-w-full grid-cols-2 gap-1.5 [grid-template-columns:repeat(2,minmax(0,5.85rem))]',
+  commitMainRow: 'flex w-full items-stretch gap-1.5',
+  commitConfirmBtn:
+    'min-h-12 flex-1 min-w-0 rounded-lg border-2 border-green-700 bg-gradient-to-b from-green-800 to-green-900 px-2 py-2 text-sm font-extrabold text-emerald-50',
+  dockBottom: 'w-full shrink-0',
   dockLeft: 'flex min-w-0 flex-col gap-1.5',
   dockRight: 'flex min-h-0 min-w-0 flex-col gap-1 border-slate-600 sm:border-l sm:pl-2.5',
   dockRightLabel: 'm-0 text-[0.62rem] font-bold text-slate-400',

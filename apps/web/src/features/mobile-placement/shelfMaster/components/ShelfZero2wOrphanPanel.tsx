@@ -40,7 +40,7 @@ export function ShelfZero2wOrphanPanel({
                 disabled={disabled}
                 onClick={() => onClear(orphan.deviceId)}
               >
-                {clearing ? '解除中…' : '担当を外す'}
+                {clearing ? '解除中…' : 'スキャナ割当解除'}
               </button>
             </li>
           );

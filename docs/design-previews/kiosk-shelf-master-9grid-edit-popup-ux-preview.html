@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>棚マスタ — 9マス編集ポップアップ UX 改善プレビュー</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: #0f172a;
+      --surface: #1e293b;
+      --surface-raised: #334155;
+      --border: rgba(148, 163, 184, 0.28);
+      --text: #f8fafc;
+      --text-dim: #cbd5e1;
+      --label: #e2e8f0;
+      --sky: #38bdf8;
+      --sky-dim: #0c4a6e;
+      --amber: #fbbf24;
+      --amber-bg: rgba(120, 53, 15, 0.45);
+      --emerald: #34d399;
+      --emerald-bg: #14532d;
+      --rose: #fb7185;
+      --rose-bg: rgba(127, 29, 29, 0.55);
+      --machine: #334155;
+      --machine-b: #64748b;
+      --shelf: #422006;
+      --shelf-b: #b45309;
+      --aisle: rgba(56, 189, 248, 0.22);
+      --aisle-b: rgba(56, 189, 248, 0.55);
+      --unused: rgba(15, 23, 42, 0.72);
+      --disabled-bg: #1e293b;
+      --disabled-fg: #94a3b8;
+      --disabled-border: #475569;
+      --warn: #fbbf24;
+      --warn-bg: rgba(120, 53, 15, 0.55);
+      --modal-w: min(96vw, 920px);
+      --modal-h: min(92dvh, 800px);
+      --map-size: min(100%, 26rem);
+      --dock-max-h: min(38dvh, 320px);
+      --touch: 48px;
+      --touch-glove: 64px;
+      --font-body: 16px;
+      --font-label: 13px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: var(--font-body);
+      background: #0b1220;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .doc {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 0.75rem 1rem 2.5rem;
+    }
+    .doc > h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.05rem;
+      font-weight: 800;
+    }
+    .doc > .file-id {
+      margin: 0 0 1rem;
+      font-family: ui-monospace, monospace;
+      font-size: var(--font-label);
+      color: var(--sky);
+    }
+
+    /* —— キオスク UI（説明文なし） —— */
+    .kiosk-ui { color: var(--text); }
+
+    .modal-shell {
+      width: var(--modal-w);
+      max-height: var(--modal-h);
+      margin: 0 auto;
+      border-radius: 14px;
+      border: 2px solid #64748b;
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55);
+    }
+    .modal-head {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2, 6, 23, 0.65);
+    }
+    .modal-head h2 {
+      margin: 0;
+      flex: 1;
+      font-size: var(--font-body);
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .btn-close {
+      appearance: none;
+      min-width: var(--touch);
+      min-height: var(--touch);
+      border-radius: 10px;
+      border: 2px solid var(--surface-raised);
+      background: var(--surface);
+      color: #fff;
+      font: inherit;
+      font-size: var(--font-label);
+      font-weight: 700;
+      padding: 0 0.85rem;
+      cursor: pointer;
+    }
+    .btn-close:hover {
+      border-color: var(--sky);
+      background: var(--sky-dim);
+    }
+
+    .modal-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      padding: 0.5rem;
+      overflow: hidden;
+    }
+
+    .map-pane {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      border: 1px solid #475569;
+      background: #020617;
+      padding: 0.4rem;
+    }
+    .factory-map {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto auto;
+      grid-template-rows: auto auto 1fr auto auto;
+      gap: 4px;
+      width: min(var(--map-size), 100%);
+      max-width: 100%;
+      max-height: 100%;
+      margin: 0 auto;
+      aspect-ratio: 1;
+    }
+    .zone-center {
+      grid-column: 3;
+      grid-row: 3;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-radius: 12px;
+      border: 2px solid var(--amber);
+      background: rgba(120, 53, 15, 0.2);
+      padding: 4px;
+    }
+    .zone-title {
+      flex-shrink: 0;
+      text-align: center;
+      font-size: var(--font-label);
+      font-weight: 800;
+      color: #fef3c7;
+      margin-bottom: 3px;
+    }
+    .zone-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 5px;
+      min-height: 0;
+    }
+    .neighbor {
+      appearance: none;
+      min-height: var(--touch);
+      border-radius: 10px;
+      border: 2px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-dim);
+      font: inherit;
+      font-size: var(--font-label);
+      font-weight: 700;
+      padding: 0.25rem 0.35rem;
+      cursor: pointer;
+      line-height: 1.15;
+    }
+    .neighbor:hover:not(:disabled) {
+      border-color: var(--sky);
+      color: #fff;
+      background: var(--sky-dim);
+    }
+    .n-nw { grid-column: 1; grid-row: 1; }
+    .n-n  { grid-column: 3; grid-row: 1; }
+    .n-ne { grid-column: 5; grid-row: 1; }
+    .n-w  { grid-column: 1; grid-row: 3; }
+    .n-e  { grid-column: 5; grid-row: 3; }
+    .n-sw { grid-column: 1; grid-row: 5; }
+    .n-s  { grid-column: 3; grid-row: 5; }
+    .n-se { grid-column: 5; grid-row: 5; }
+
+    .cell {
+      appearance: none;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      font: inherit;
+      cursor: pointer;
+      padding: 3px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      min-height: 0;
+      min-width: 0;
+      color: #fff;
+    }
+    .cell .badge {
+      font-size: var(--font-label);
+      font-weight: 800;
+      opacity: 0.9;
+      color: #e2e8f0;
+    }
+    .cell .main {
+      font-size: clamp(0.8rem, 2.4vw, 1rem);
+      font-weight: 800;
+      line-height: 1.1;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cell .code {
+      font-family: ui-monospace, monospace;
+      font-size: var(--font-label);
+      color: #7dd3fc;
+    }
+    .cell.machine { background: var(--machine); border-color: var(--machine-b); }
+    .cell.shelf { background: linear-gradient(180deg, #5c4008, var(--shelf)); border-color: var(--shelf-b); }
+    .cell.aisle {
+      background: var(--aisle);
+      border-color: var(--aisle-b);
+      border-style: dashed;
+      color: #94a3b8;
+    }
+    .cell.unused { background: var(--unused); border-color: #334155; color: #94a3b8; }
+    .cell.unused .main { opacity: 0.55; }
+    .cell.sel {
+      outline: 3px solid var(--sky);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4);
+    }
+    .cell.flow-target:not(.sel) {
+      outline: 3px solid rgba(251, 191, 36, 0.85);
+      outline-offset: 2px;
+    }
+    .cell.is-disabled {
+      cursor: not-allowed;
+      background: var(--disabled-bg) !important;
+      border: 2px dashed var(--disabled-border) !important;
+      color: var(--disabled-fg) !important;
+    }
+    .cell.is-disabled .code { color: var(--disabled-fg); }
+    .cell.is-warn {
+      outline: 3px solid var(--warn);
+      outline-offset: 2px;
+      animation: pulse-warn 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse-warn {
+      50% { outline-color: #f97316; }
+    }
+
+    .dock-pane {
+      flex-shrink: 0;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      padding: 0.4rem;
+    }
+    .dock-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      width: 100%;
+    }
+    /*
+      操作導線（左→右）:
+      ① マス選択  ②種別  ③詳細(機/Pi)  ④割当＋保存
+      ─────────────────────────────────────────────
+      [下段] オーファン警告          | 解除（破壊・隔離）
+    */
+    .dock-rail {
+      display: grid;
+      grid-template-columns:
+        auto                /* ① マス選択 */
+        auto                /* ② 種別 — 内容幅（約半分の2×2） */
+        auto                /* ③ 詳細 */
+        auto                /* ④ 割当＋保存 */;
+      gap: 0 1px;
+      align-items: stretch;
+      width: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(15, 23, 42, 0.92);
+    }
+    .dock-zone {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.45rem 0.5rem;
+      min-width: 0;
+      border-right: 1px solid rgba(148, 163, 184, 0.15);
+    }
+    .dock-zone:last-child { border-right: none; }
+    .dock-zone.is-flow { background: rgba(12, 74, 110, 0.25); }
+
+    .dock-zone--kinds {
+      align-items: center;
+      justify-content: center;
+      padding: 0.55rem 0.65rem;
+      gap: 0.45rem;
+    }
+    .zone-title {
+      margin: 0;
+      width: 100%;
+      font-size: var(--font-label);
+      font-weight: 800;
+      line-height: 1.2;
+      color: #f1f5f9;
+      letter-spacing: 0.02em;
+      text-align: center;
+    }
+    /* 種別ボタン: 2×2（各列 ≒ 旧幅の半分） */
+    .kinds-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 5.85rem);
+      gap: 0.35rem;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0 auto;
+    }
+    .kinds-grid .btn--kind {
+      flex: none;
+      width: 100%;
+      min-width: 0;
+      justify-content: center;
+      padding: 0 0.35rem;
+      font-size: var(--font-label);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* 詳細ゾーン */
+    .dock-zone--detail {
+      min-width: 11rem;
+      max-width: 15rem;
+    }
+    .dock-zone--detail .select-wrap { width: 100%; }
+    .dock-zone--detail .select-wrap select { width: 100%; }
+    .dock-step-placeholder {
+      width: 100%;
+      min-height: var(--touch);
+      border-radius: 8px;
+      border: 2px dashed rgba(71, 85, 105, 0.45);
+      background: rgba(2, 6, 23, 0.3);
+    }
+
+    /* ④ 確定ゾーン: 確定＋解除（横並び） / スキャナ / 保存 */
+    .dock-zone--commit {
+      gap: 0.3rem;
+      min-width: 11.5rem;
+    }
+    .commit-main-row {
+      display: flex;
+      gap: 0.35rem;
+      width: 100%;
+      align-items: stretch;
+    }
+    .commit-main-row .btn {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    .commit-main-row .btn--primary {
+      min-height: var(--touch-glove);
+    }
+    .commit-main-row .btn--danger {
+      min-height: var(--touch-glove);
+    }
+    .dock-zone--commit > .btn {
+      width: 100%;
+    }
+
+    /* 下段: オーファンのみ */
+    .dock-bottom {
+      display: flex;
+      gap: 0.4rem;
+      align-items: stretch;
+    }
+    .dock-orphan {
+      flex: 1 1 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.5rem;
+      border-radius: 8px;
+      background: var(--warn-bg);
+      border: 1px solid rgba(251, 191, 36, 0.4);
+      min-height: var(--touch);
+    }
+    /* 共有ユーティリティ */
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+      width: 100%;
+    }
+    .select-wrap select { width: 100%; }
+
+    .btn {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      min-height: var(--touch);
+      border-radius: 10px;
+      border: 2px solid var(--surface-raised);
+      background: var(--surface);
+      color: #fff;
+      font: inherit;
+      font-size: var(--font-body);
+      font-weight: 700;
+      padding: 0 0.75rem;
+      cursor: pointer;
+      line-height: 1.15;
+    }
+    .btn--secondary {
+      border-color: #475569;
+      background: rgba(51, 65, 85, 0.65);
+      color: var(--text-dim);
+      font-size: var(--font-label);
+      min-height: var(--touch);
+    }
+    .btn--toggle.on {
+      border-color: var(--sky);
+      background: var(--sky-dim);
+      color: #fff;
+      box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
+    }
+    .btn--kind {
+      flex: 0 0 auto;
+      width: auto;
+      min-width: 0;
+      justify-content: flex-start;
+      padding: 0 0.55rem;
+      font-size: var(--font-label);
+      white-space: nowrap;
+    }
+    .btn--kind.on {
+      border-color: #fff;
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+    }
+    .btn--primary {
+      flex: 0 0 auto;
+      width: auto;
+      min-height: var(--touch-glove);
+      border-color: #15803d;
+      background: linear-gradient(180deg, #166534, var(--emerald-bg));
+      color: #ecfdf5;
+      font-size: 1rem;
+      font-weight: 800;
+      padding: 0 1rem;
+    }
+    .btn--primary:hover:not(.is-disabled) {
+      filter: brightness(1.08);
+    }
+    .btn--assign {
+      flex: 0 0 auto;
+      width: auto;
+      min-height: var(--touch-glove);
+      border-color: #0ea5e9;
+      background: linear-gradient(180deg, #0369a1, var(--sky-dim));
+      color: #fff;
+      font-weight: 800;
+    }
+    .btn--assign.is-flow {
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.45);
+    }
+    .btn--danger {
+      width: auto;
+      min-height: var(--touch);
+      border-color: rgba(251, 113, 133, 0.55);
+      background: var(--rose-bg);
+      color: #fecdd3;
+      font-size: var(--font-label);
+    }
+    .btn--danger-outline {
+      min-height: var(--touch);
+      border-color: rgba(251, 113, 133, 0.45);
+      background: transparent;
+      color: #fda4af;
+      font-size: var(--font-label);
+    }
+    .btn.is-disabled {
+      cursor: not-allowed;
+      background: var(--disabled-bg) !important;
+      border: 2px solid var(--disabled-border) !important;
+      color: var(--disabled-fg) !important;
+      box-shadow: none !important;
+      filter: none !important;
+    }
+    .select-wrap { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+    .select-wrap select {
+      width: 100%;
+      max-width: 100%;
+      min-height: var(--touch);
+      border-radius: 10px;
+      border: 2px solid var(--surface-raised);
+      background: #020617;
+      color: #fff;
+      font: inherit;
+      font-size: var(--font-body);
+      font-weight: 600;
+      padding: 0 0.65rem;
+    }
+    .select-wrap select.is-flow {
+      border-color: var(--sky);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.35);
+    }
+    .select-wrap select.is-disabled {
+      cursor: not-allowed;
+      background: var(--disabled-bg);
+      border-color: var(--disabled-border);
+      color: var(--disabled-fg);
+    }
+
+    .orphan-label {
+      font-family: ui-monospace, monospace;
+      font-size: calc(var(--font-label) * 2);
+      color: #7dd3fc;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    /* —— 状態一覧（ドキュメント領域・キオスク外） —— */
+    .states-section {
+      margin-top: 2.5rem;
+      padding-top: 1.5rem;
+      border-top: 2px solid #334155;
+    }
+    .states-section h2 {
+      margin: 0 0 1rem;
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--text-dim);
+    }
+    .states-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+    .state-card {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      padding: 0.65rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: stretch;
+    }
+    .state-card h3 {
+      margin: 0;
+      font-size: var(--font-label);
+      font-weight: 700;
+      color: var(--sky);
+      text-transform: lowercase;
+    }
+    .state-card .specimen {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 72px;
+      padding: 0.35rem;
+      background: #020617;
+      border-radius: 8px;
+    }
+    .state-card .specimen--wide { min-height: 88px; }
+    .specimen .btn,
+    .specimen .cell { pointer-events: none; }
+    .state-card[data-state="hover"] .btn--primary,
+    .state-card[data-state="hover"] .btn--assign,
+    .state-card[data-state="hover"] .btn--kind.on,
+    .state-card[data-state="hover"] .cell.machine {
+      filter: brightness(1.12);
+      border-color: var(--sky);
+    }
+    .state-card[data-state="selected"] .cell.machine {
+      outline: 3px solid var(--sky);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    <h1>棚マスタ — 9マス編集ポップアップ（UX改善案）</h1>
+    <p class="file-id">kiosk-shelf-master-9grid-edit-popup-ux-preview.html</p>
+
+    <div class="kiosk-ui" id="main-dialog">
+      <div class="modal-shell" role="dialog" aria-labelledby="dlg-title">
+        <header class="modal-head">
+          <h2 id="dlg-title">編集 — 西·北</h2>
+          <button type="button" class="btn-close" id="btn-close">閉じる</button>
+        </header>
+        <div class="modal-body">
+          <div class="map-pane">
+            <div class="factory-map" id="factory-map"></div>
+          </div>
+          <div class="dock-pane">
+            <div class="dock-inner" id="dock"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section class="states-section" aria-label="interactive states">
+      <h2>Interactive states（キオスク UI 外の比較用）</h2>
+      <div class="states-grid" id="states-grid"></div>
+    </section>
+  </div>
+
+  <script>
+    const KIND = {
+      SHELF: { cls: 'shelf', badge: '棚', label: '部品置き場' },
+      MACHINE: { cls: 'machine', badge: '機', label: '加工機' },
+      AISLE: { cls: 'aisle', badge: '路', label: '通路' },
+      UNUSED: { cls: 'unused', badge: '', label: '未使用', main: '—' }
+    };
+
+    const SAMPLE = [
+      { k: 'MACHINE', main: 'RD01', badge: '機' },
+      { k: 'SHELF', main: 'RD01南', code: '西-北-01', badge: '棚' },
+      { k: 'AISLE', main: '通路', badge: '路' },
+      { k: 'UNUSED', main: '—' },
+      { k: 'SHELF', main: 'RD02北', code: '西-北-02', badge: '棚' },
+      { k: 'MACHINE', main: 'MC02', badge: '機' },
+      { k: 'UNUSED', main: '—' },
+      { k: 'AISLE', main: '通路', badge: '路' },
+      { k: 'UNUSED', main: '—' }
+    ];
+
+    const NEIGHBORS = [
+      ['西·北西', 'n-nw'], ['中央·北', 'n-n'], ['東·北東', 'n-ne'],
+      ['西·中央', 'n-w'], null, ['東·中央', 'n-e'],
+      ['西·南西', 'n-sw'], ['中央·南', 'n-s'], ['東·南東', 'n-se']
+    ];
+
+    let multiMode = false;
+    let gridSize = 3;
+    let selected = new Set([1]);
+    let pendingKind = 'SHELF';
+    let machineCd = 'RD01';
+    let piValue = '__unchanged__';
+    let dirty = true;
+    let showOrphan = true;
+
+    function cellHtml(data, idx, extra = '') {
+      const kind = KIND[data.k] || KIND.UNUSED;
+      const sel = selected.has(idx) ? ' sel' : '';
+      const flow = extra.includes('flow-target') ? ' flow-target' : '';
+      return `<button type="button" class="cell ${kind.cls}${sel}${flow}${extra}" data-idx="${idx}">
+        ${data.badge ? `<span class="badge">${data.badge}</span>` : ''}
+        <span class="main">${data.main || kind.main || ''}</span>
+        ${data.code ? `<span class="code">${data.code}</span>` : ''}
+      </button>`;
+    }
+
+    function renderMap() {
+      const fm = document.getElementById('factory-map');
+      let html = '';
+      NEIGHBORS.forEach((entry) => {
+        if (!entry) return;
+        const [label, cls] = entry;
+        html += `<button type="button" class="neighbor ${cls}">${label}</button>`;
+      });
+      html += '<div class="zone-center"><div class="zone-title">西·北</div><div class="zone-grid" id="zone-grid"></div></div>';
+      fm.innerHTML = html;
+      const zg = document.getElementById('zone-grid');
+      zg.style.gridTemplateColumns = `repeat(${gridSize}, 1fr)`;
+      zg.style.gridTemplateRows = `repeat(${gridSize}, 1fr)`;
+      const cells = gridSize === 3 ? SAMPLE : [...SAMPLE, ...SAMPLE.slice(0, 7)];
+      zg.innerHTML = cells
+        .slice(0, gridSize * gridSize)
+        .map((c, i) => {
+          const flow = !selected.size && i === 0 ? ' flow-target' : '';
+          return cellHtml(c, i, flow);
+        })
+        .join('');
+      zg.querySelectorAll('.cell').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const i = Number(btn.dataset.idx);
+          if (multiMode) {
+            if (selected.has(i)) selected.delete(i);
+            else selected.add(i);
+          } else {
+            selected = new Set([i]);
+          }
+          dirty = true;
+          renderAll();
+        });
+      });
+    }
+
+    function btn(cls, label, disabled, attrs = '') {
+      const dis = disabled ? ' is-disabled' : '';
+      return `<button type="button" class="${cls}${dis}" ${attrs} ${disabled ? 'disabled' : ''}>${label}</button>`;
+    }
+
+    /** ポップアップ内の操作フロー入力が残っているか（リセット用） */
+    function hasFlowInput() {
+      return (
+        selected.size > 0 ||
+        pendingKind != null ||
+        machineCd.length > 0 ||
+        piValue !== '__unchanged__' ||
+        multiMode
+      );
+    }
+
+    /** 本番 layoutEditorFlow.getLayoutEditorFlowGates をベースにプレビュー拡張 */
+    function getFlowGates() {
+      const hasSel = selected.size > 0;
+      const hasKind = pendingKind != null;
+      const machineReady = pendingKind !== 'MACHINE' || machineCd.length > 0;
+      const canAssign = hasSel && hasKind && machineReady;
+      const selectionIsExistingShelf = selected.size === 1 && selected.has(1);
+      const pendingShelfAssign = pendingKind === 'SHELF' && hasSel;
+      const showZero2wPi = pendingShelfAssign || selectionIsExistingShelf;
+      const zero2wPiSelectionNeedsApply =
+        selectionIsExistingShelf && piValue !== '__unchanged__';
+      const zero2wPresetApply = selectionIsExistingShelf && zero2wPiSelectionNeedsApply;
+
+      let emphasize = 'cells';
+      if (dirty && !hasSel) {
+        emphasize = 'save';
+      } else if (zero2wPresetApply) {
+        emphasize = 'zero2wPresetApply';
+      } else if (canAssign) {
+        emphasize = 'assign';
+      } else if (showZero2wPi) {
+        emphasize = 'pi';
+      } else if (hasSel && pendingKind === 'MACHINE' && !machineReady) {
+        emphasize = 'machine';
+      } else if (hasSel && !hasKind) {
+        emphasize = 'kinds';
+      }
+
+      return {
+        multiMode: true,
+        gridSize: true,
+        clearSelection: hasSel,
+        kindButtons: hasSel,
+        machineSelect: hasSel && pendingKind === 'MACHINE',
+        zero2wPiSelect: showZero2wPi,
+        assign: canAssign,
+        zero2wPresetApply,
+        resetFlow: hasFlowInput(),
+        save: dirty,
+        emphasize
+      };
+    }
+
+    function renderDock() {
+      const gates = getFlowGates();
+      const emphasize = gates.emphasize;
+
+      const dock = document.getElementById('dock');
+      const confirmEnabled = gates.assign || gates.zero2wPresetApply || gates.save;
+      const confirmCls =
+        emphasize === 'assign' || emphasize === 'zero2wPresetApply' || emphasize === 'save'
+          ? 'btn btn--primary is-flow'
+          : 'btn btn--secondary';
+
+      const showDetail = gates.machineSelect || gates.zero2wPiSelect;
+
+      // ③ 詳細ゾーン（不要時は列ごと隠す）
+      let detailInner = '';
+      if (gates.machineSelect) {
+        detailInner = `<div class="select-wrap">
+          <select class="${emphasize === 'machine' ? 'is-flow' : ''}" id="machine-sel">
+            <option value="">加工機を選択</option>
+            <option value="RD01" ${machineCd === 'RD01' ? 'selected' : ''}>Robodrill01 (RD01)</option>
+            <option value="MC02" ${machineCd === 'MC02' ? 'selected' : ''}>MC02 (MC02)</option>
+          </select>
+        </div>`;
+      } else if (gates.zero2wPiSelect) {
+        detailInner = `<div class="select-wrap">
+          <select class="${emphasize === 'pi' || emphasize === 'zero2wPresetApply' ? 'is-flow' : ''}" id="pi-sel">
+              <option value="__unchanged__" ${piValue === '__unchanged__' ? 'selected' : ''}>変更なし</option>
+              <option value="" ${piValue === '' ? 'selected' : ''}>担当なし</option>
+              <option value="pi-a" ${piValue === 'pi-a' ? 'selected' : ''}>tanaban-zero2w-01</option>
+              <option value="pi-b" disabled>pi-b（他棚担当）</option>
+            </select>
+        </div>`;
+      }
+
+      const railCols = showDetail
+        ? 'auto auto auto auto'
+        : 'auto auto auto';
+
+      let html = `<div class="dock-rail" style="grid-template-columns:${railCols}">
+
+        <!-- ① マス選択 -->
+        <div class="dock-zone dock-zone--cells${emphasize === 'cells' ? ' is-flow' : ''}">
+          ${btn('btn btn--toggle' + (multiMode ? ' on' : ''), '複数区画選択', false)}
+          <div class="select-wrap">
+            <select class="${emphasize === 'cells' ? 'is-flow' : ''}" id="grid-sel">
+              <option value="3" ${gridSize === 3 ? 'selected' : ''}>3×3</option>
+              <option value="4" ${gridSize === 4 ? 'selected' : ''}>4×4</option>
+            </select>
+          </div>
+          ${btn('btn btn--secondary', '選択解除', !gates.clearSelection, 'data-action="clear-selection"')}
+        </div>
+
+        <!-- ② 種別 -->
+        <div class="dock-zone dock-zone--kinds${emphasize === 'kinds' ? ' is-flow' : ''}">
+          <div class="zone-title">区画用途を割当</div>
+          <div class="kinds-grid">
+            ${(['SHELF', 'MACHINE', 'AISLE', 'UNUSED']).map((k) =>
+              btn(
+                `btn btn--kind${pendingKind === k ? ' on' : ''}`,
+                KIND[k].label,
+                !gates.kindButtons,
+                `data-kind="${k}" data-pick="${k}"`
+              )
+            ).join('')}
+          </div>
+        </div>
+
+        <!-- ③ 詳細（加工機/Pi — 不要時は非表示） -->
+        ${showDetail ? `<div class="dock-zone dock-zone--detail${emphasize === 'machine' || emphasize === 'pi' || emphasize === 'zero2wPresetApply' ? ' is-flow' : ''}">
+          ${detailInner}
+        </div>` : ''}
+
+        <!-- ④ 確定（割当 / スキャナ反映 / 保存）＋ 操作リセット -->
+        <div class="dock-zone dock-zone--commit${emphasize === 'assign' || emphasize === 'zero2wPresetApply' || emphasize === 'save' ? ' is-flow' : ''}">
+          <div class="commit-main-row">
+            ${btn(confirmCls, '確定', !confirmEnabled, 'data-action="confirm"')}
+            ${btn('btn btn--secondary', 'リセット', !gates.resetFlow, 'data-action="reset-flow"')}
+          </div>
+        </div>
+
+      </div>`;
+
+      // 下段: オーファン
+      if (showOrphan) {
+        html += `<div class="dock-bottom">
+          <div class="dock-orphan">
+            <span class="orphan-label">zero2w-orphan · 西-北-99</span>
+            ${btn('btn btn--danger-outline', 'スキャナ割当解除', false)}
+          </div>
+        </div>`;
+      }
+
+      dock.innerHTML = html;
+
+      dock.querySelector('.btn--toggle')?.addEventListener('click', () => {
+        multiMode = !multiMode;
+        renderAll();
+      });
+      dock.querySelector('[data-action="clear-selection"]')?.addEventListener('click', (e) => {
+        const el = e.currentTarget;
+        if (el.classList.contains('is-disabled')) return;
+        selected.clear();
+        renderAll();
+      });
+      dock.querySelector('[data-action="reset-flow"]')?.addEventListener('click', (e) => {
+        const el = e.currentTarget;
+        if (el.classList.contains('is-disabled')) return;
+        selected.clear();
+        pendingKind = null;
+        machineCd = '';
+        piValue = '__unchanged__';
+        multiMode = false;
+        renderAll();
+      });
+      dock.querySelectorAll('[data-pick]').forEach((el) => {
+        el.addEventListener('click', () => {
+          if (el.classList.contains('is-disabled')) return;
+          pickKind(el.dataset.pick);
+        });
+      });
+      document.getElementById('grid-sel')?.addEventListener('change', (e) => {
+        gridSize = Number(e.target.value);
+        selected = new Set([0]);
+        renderAll();
+      });
+      document.getElementById('machine-sel')?.addEventListener('change', (e) => {
+        machineCd = e.target.value;
+        renderAll();
+      });
+      document.getElementById('pi-sel')?.addEventListener('change', (e) => {
+        piValue = e.target.value;
+        renderAll();
+      });
+      dock.querySelector('[data-action="confirm"]')?.addEventListener('click', (e) => {
+        const el = e.currentTarget;
+        if (el.classList.contains('is-disabled')) return;
+        const g = getFlowGates();
+        if (g.save) {
+          dirty = false;
+          renderAll();
+          return;
+        }
+        if (g.zero2wPresetApply) {
+          piValue = '__unchanged__';
+          dirty = true;
+          return;
+        }
+        if (g.assign) {
+          dirty = true;
+        }
+        renderAll();
+      });
+    }
+
+    function pickKind(k) {
+      if (!selected.size) return;
+      pendingKind = k;
+      if (k !== 'SHELF') {
+        piValue = '__unchanged__';
+      }
+      renderAll();
+    }
+
+    function renderAll() {
+      renderMap();
+      renderDock();
+    }
+
+    function buildStates() {
+      const grid = document.getElementById('states-grid');
+      const items = [
+        {
+          name: 'normal',
+          html: `<button type="button" class="btn btn--secondary">選択解除</button>`
+        },
+        {
+          name: 'hover',
+          html: `<button type="button" class="btn btn--assign">確定</button>`
+        },
+        {
+          name: 'selected',
+          html: `<button type="button" class="btn btn--kind on" data-kind="SHELF">部品置き場</button>`
+        },
+        {
+          name: 'disabled',
+          html: `<button type="button" class="btn btn--primary is-disabled">確定</button>`
+        },
+        {
+          name: 'warning / invalid',
+          html: `<button type="button" class="cell shelf is-warn"><span class="badge">棚</span><span class="main">RD01南</span><span class="code">西-北-01</span></button>`
+        },
+        {
+          name: 'normal · cell',
+          html: `<button type="button" class="cell machine"><span class="badge">機</span><span class="main">RD01</span></button>`
+        },
+        {
+          name: 'selected · cell',
+          html: `<button type="button" class="cell shelf sel"><span class="badge">棚</span><span class="main">RD01南</span><span class="code">西-北-01</span></button>`
+        },
+        {
+          name: 'disabled · cell',
+          html: `<button type="button" class="cell machine is-disabled"><span class="badge">機</span><span class="main">RD01</span></button>`
+        },
+        {
+          name: 'destructive',
+          html: `<button type="button" class="btn btn--secondary">リセット</button>`
+        },
+        {
+          name: 'primary',
+          html: `<button type="button" class="btn btn--primary">確定</button>`
+        }
+      ];
+      grid.innerHTML = items
+        .map(
+          (it) => `
+        <article class="state-card" data-state="${it.name}">
+          <h3>${it.name}</h3>
+          <div class="specimen${it.name.includes('cell') || it.name === 'warning / invalid' ? '' : ' specimen--wide'}">${it.html}</div>
+        </article>`
+        )
+        .join('');
+    }
+
+    document.getElementById('btn-close').addEventListener('click', () => {
+      document.getElementById('main-dialog').style.opacity = '0.55';
+      setTimeout(() => {
+        document.getElementById('main-dialog').style.opacity = '1';
+      }, 400);
+    });
+
+    renderAll();
+    buildStates();
+  </script>
+</body>
+</html>

@@ -45,6 +45,11 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
     setClearingDeviceId(null);
   }, []);
 
+  const resetFlowInput = useCallback(() => {
+    setSelectedPi(ZERO2W_PI_UNCHANGED);
+    setPendingAfterLayoutSave([]);
+  }, []);
+
   const syncPiForShelf = useCallback(
     (shelfCodeRaw: string | null) => {
       if (!shelfCodeRaw) {
@@ -175,6 +180,7 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
     setSelectedPi,
     pendingAfterLayoutSave,
     reset,
+    resetFlowInput,
     syncPiForShelf,
     queuePresetAfterAssign,
     applyPresetForExistingShelf,

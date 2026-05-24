@@ -1,3 +1,5 @@
+import { hasLayoutEditorFlowInput } from './layoutEditorFlowInput';
+
 import type { DraftEntity } from '../model/shelfLayoutTypes';
 
 export type LayoutEditorEmphasis =
@@ -19,7 +21,7 @@ export type LayoutEditorFlowGates = {
   zero2wPiSelect: boolean;
   assign: boolean;
   zero2wPresetApply: boolean;
-  clearCells: boolean;
+  resetFlow: boolean;
   save: boolean;
   emphasize: LayoutEditorEmphasis;
 };
@@ -30,6 +32,8 @@ export function getLayoutEditorFlowGates(input: {
   selectedMachineCd: string;
   dirty: boolean;
   savePending: boolean;
+  multiMode: boolean;
+  piSelectionActive: boolean;
   /** 単一 SHELF マス選択（既存棚） */
   selectionIsExistingShelf: boolean;
   /** 部品置き場の新規割当待ち */
@@ -69,7 +73,13 @@ export function getLayoutEditorFlowGates(input: {
     zero2wPiSelect: showZero2wPi,
     assign: canAssign,
     zero2wPresetApply,
-    clearCells: hasSel,
+    resetFlow: hasLayoutEditorFlowInput({
+      selectedCount: input.selectedCount,
+      pendingKind: input.pendingKind,
+      selectedMachineCd: input.selectedMachineCd,
+      multiMode: input.multiMode,
+      piSelectionActive: input.piSelectionActive
+    }),
     save: input.dirty && !input.savePending,
     emphasize
   };

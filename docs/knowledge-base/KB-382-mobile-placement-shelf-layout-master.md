@@ -36,7 +36,7 @@
 
 **API**: `GET /api/mobile-placement/shelf-layout` の各 `zones[]` に **`entities[]`** を含む（俯瞰ミニマップ用・後方互換追加）。
 
-**レイアウト Dialog**: 操作誘導は **押せるコントロールのみ有効**。**「選択解除」** / **「選択マスを解除」** / **dirty 時のみレイアウト保存**（従来どおり）。
+**レイアウト Dialog**: 操作誘導は **押せるコントロールのみ有効**。**4 列ドック**（[§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05)）— **「選択解除」**（区画のみ）·**「リセット」**（操作入力のみ）·**「確定」**（保存／Pi 反映／割当の統合）·**dirty 時のレイアウト保存は「確定」に統合**（単独「レイアウト保存」ボタンは廃止）。~~**「選択マスを解除」**~~ は **廃止**（**未使用＋確定**で代替）。
 
 ### 区画 Dialog コンパクト化（2026-05-23 · Web のみ）
 
@@ -203,7 +203,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 |------|------|
 | **単一マス** | 従来どおり `multiMode` に従いトグル（単一選択 / 複数選択） |
 | **結合ブロック（`clickedCells.length > 1`）** | **entity 単位** — ブロックの全マスが未選択なら **一括選択**、全マスが既に選択済みなら **一括解除** |
-| **「選択マスを解除」** | `selectedCells` が空でなければ従来どおり有効（結合ブロックタップで選択が入るようになったため復帰） |
+| **「選択マスを解除」** | ~~専用ボタン~~ → **2026-05 以降は廃止**。[§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05) 参照（**未使用＋確定**で代替） |
 
 **Fix（最小・Web のみ）**:
 
@@ -268,7 +268,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 1. **レイアウト** → 区画 **編集** Dialog
 2. 複数マス選択 → **部品置き場を割当**
 3. 結合ブロックを **1 回タップ** → 全マスが選択ハイライト
-4. **「選択マスを解除」** または **再タップ** → 選択解除・entity 削除可能
+4. 用途を消す場合は **「未使用」→「確定」**。マス選択だけ外す場合は **「選択解除」**（結合ブロックは **再タップ** で一括選択解除も可）
 
 **トラブルシュート**:
 
@@ -277,6 +277,76 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 旧挙動のまま | Pi5 **`web` ref** が `6adc89f7` 以降か確認·キオスク **強制リロード** |
 | Pi4 のみ旧 UI | **Pi5 先行デプロイ**漏れ（SPA 正本は Pi5） |
 | レイアウトタブ自体が出ない | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例) — **`shelfLayoutEditEnabled` / `clientKey` 不一致**（本件とは別） |
+
+### 編集 Dialog ドック UX（確定統合・リセット · Web のみ） {#layout-editor-dock-confirm-reset-2026-05}
+
+**ブランチ**: `feat/kiosk-shelf-layout-editor-dock-confirm-reset`  
+**代表コミット**: **`ca45c479`** — `feat(kiosk): streamline shelf editor dock flow`  
+**プレビュー正本**: [`kiosk-shelf-master-9grid-edit-popup-ux-preview.html`](../design-previews/kiosk-shelf-master-9grid-edit-popup-ux-preview.html)（静的 HTML は**仕様レビュー用**。本番は React 実装）  
+**CI**: GitHub Actions **`26350715019` success**（`ca45c479` push 後）  
+**変更範囲**: **Web のみ**（API / Prisma / Pi3 / Zero2W Ansible **不変**）
+
+**背景**: コンパクト化後の編集 Dialog で、**「選択マスを解除」**・**レイアウト保存**・**担当を反映**・**割当**が縦に並び操作が分散。プレビューで **4 列ドック + 確定 1 本化** を合意。
+
+**ドック 4 列（左→右）**: ① **区画選択**（複数区画選択 / 3×3·4×4 / **選択解除**）→ ② **区画用途を割当** → ③ **加工機 or Pi**（＋オーファン panel）→ ④ **確定** + **リセット**
+
+| 操作 | 意味 | 実装の要点 |
+|------|------|------------|
+| **選択解除** | **地図上の区画ハイライトのみ**外す（種別・Pi・複数区画モード等は維持しうる） | [`useZoneLayoutDraft.handleDeselectOnly`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useZoneLayoutDraft.ts) — `cells` のみクリア |
+| **リセット** | ポップアップ内の **操作入力一式**を初期化（区画選択・種別・加工機・Pi・複数区画モード・保存待ち preset キュー） | [`layoutEditorFlow.resetFlow`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlow.ts) + [`hasLayoutEditorFlowInput`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlowInput.ts) + [`useShelfZero2wPreset.resetFlowInput`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useShelfZero2wPreset.ts)。**ドラフト地図・`dirty` は維持** |
+| **確定** | 状況に応じ **1 アクション**（下記優先順）。**レイアウト保存成功後は Dialog 自動 close**（従来どおり） | [`resolveLayoutEditorConfirmAction`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorConfirmAction.ts) · [`ShelfZoneLayoutDialog`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneLayoutDialog.tsx) の `handleConfirm` |
+| ~~選択マスを解除~~ | **廃止** | SHELF を外す用途は **用途「未使用」→ 確定**。結合ブロックの選択だけ外す用途は **選択解除** または結合ブロック **再タップ**（[§複数マス](#multi-cell-selection-clear-2026-05-23)） |
+
+**統合「確定」の優先順**（`layoutEditorFlow` の `gates.emphasize === 'save'` 時を最優先）:
+
+1. **`save`** — `dirty` かつ保存可能（従来のレイアウト保存）
+2. **`zero2wPresetApply`** — 既存 SHELF 選択時の **担当を反映**（即時 `PUT preset-shelf`）
+3. **`assign`** — 部品置き場／加工機／通路などの **割当**
+
+**二重送信防止（コードレビューで追加）**: `isLayoutEditorConfirmPending` — **`save` 実行中** または **`zero2wPresetApply` 実行中**は **確定ボタン disabled**（Pi 反映中に保存が走る競合を防止）。`assign` は同期 UI のため pending 対象外。
+
+**オーファン panel**: 行ボタン表記を **「スキャナ割当解除」** に変更（[`ShelfZero2wOrphanPanel`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZero2wOrphanPanel.tsx)）。挙動は従来の **「担当を外す」**（`preset-shelf` + `null`）と同じ。
+
+**モジュール境界**:
+
+| ファイル | 責務 |
+|----------|------|
+| [`layoutEditorFlow.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlow.ts) | ゲート（`save` / `assign` / `zero2wPresetApply` / `resetFlow`）。~~`clearCells`~~ 削除 |
+| [`layoutEditorFlowInput.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlowInput.ts) | リセット有効条件（操作入力が空でない） |
+| [`layoutEditorConfirmAction.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorConfirmAction.ts) | 確定アクション解決・pending 判定 |
+| [`ShelfLayoutEditorDock.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfLayoutEditorDock.tsx) | 4 列 UI |
+| [`layoutEditorDockTypes.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/components/layoutEditorDockTypes.ts) | Dock 列の型 |
+| [`ShelfLayoutEditorShell.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfLayoutEditorShell.tsx) / [`ShelfLayoutEditorControls.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfLayoutEditorControls.tsx) | Dock への委譲 |
+
+**ローカル検証**: `apps/web` で `pnpm exec vitest run src/features/mobile-placement/shelfMaster` → **43 PASS**（`layoutEditorFlow.test.ts` / `layoutEditorConfirmAction` 含む）·`pnpm exec tsc --noEmit` · `pnpm build` PASS
+
+**本番デプロイ（2026-05-24 · Pi5 のみ先行）** — [deployment.md §ドック UX](../guides/deployment.md#kiosk-shelf-layout-editor-dock-confirm-reset-2026-05-24) {#production-deploy--layout-editor-dock-2026-05-24}
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260524-123432-32158`** | `ok=134` `changed=4` `failed=0` | Docker compose **changed**·`Git: changed` |
+| Pi4×4 | **未デプロイ**（2026-05-24 時点） | — | 次タスク: Pi5 現場 OK 後に **1 台ずつ** 同ブランチ→**`main` マージ後は `main`** |
+
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-shelf-layout-editor-dock-confirm-reset infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **111s**）
+- **HTTP / バンドル（Pi5）**: `GET https://127.0.0.1/kiosk/mobile-placement/shelf-master` → **200**（Pi5 上 curl）。`docker-web-1` の `/srv/site/assets/index-*.js` に **`resetFlow`・`選択解除`・`スキャナ割当解除`・`リセット`・`確定`** を確認（minify 後文字列）
+- **Pi5 git**: **`ca45c479`** / ブランチ `feat/kiosk-shelf-layout-editor-dock-confirm-reset`
+- **現場手動（推奨 · `shelfLayoutEditEnabled` 端末）**:
+  1. **レイアウト** → 区画 **編集** → **4 列ドック**表示
+  2. マス選択 → **選択解除** でハイライトのみ消えること
+  3. 種別・Pi 入力後 → **リセット** で入力が消え **地図ドラフトは残る**こと
+  4. **確定** で保存／反映／割当が状況どおり 1 ボタンで動くこと·保存後 Dialog が閉じること
+  5. ~~選択マスを解除~~ ボタンが **無い**こと·オーファンが **スキャナ割当解除** 表記であること
+
+**トラブルシュート**:
+
+| 症状 | 調査 | 対処 |
+|------|------|------|
+| 旧 UI（保存単独・選択マスを解除あり） | Pi5 `docker-web-1` の JS に `ShelfLayoutEditorDock` / `resetFlow` があるか·`/opt/...` の **git HEAD** | **`ca45c479` 以降**をデプロイ·キオスク **強制リロード** |
+| Pi4 だけ旧 UI | Pi5 未デプロイ（SPA ビルド正本は Pi5） | **Pi5 先行**後 Pi4 を **1 台ずつ** |
+| 確定が連打できる／保存と Pi 反映が競合 | 旧ビルド（`isLayoutEditorConfirmPending` 未導入） | 上記と同じ |
+| `curl :8080` 失敗 | Pi5 の Web は **80/443**（8080 ではない） | `https://127.0.0.1/...` または Tailscale **`100.106.158.2`** |
+| レイアウトタブ自体が出ない | `client-capabilities` の **`shelfLayoutEditEnabled`** | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例) |
 
 ### Zero2W インライン割当（2026-05-24 · Web + API） {#zero2w-inline-preset-2026-05-24}
 
