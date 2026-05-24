@@ -1,6 +1,6 @@
 # Tailscale ACL 草案 — 私用 Pi5（Hermes / StackChan）
 
-- **Status**: draft（**grants 正本**: [tailscale-policy-hermes-private-pi5-grants.json](./tailscale-policy-hermes-private-pi5-grants.json)・手動適用のみ）
+- **Status**: **applied**（2026-05-24・`tagOwners` は既存 `denkoushi@github` を維持・`grants` 2件追加）
 - **Related**: [tailscale-policy.md](./tailscale-policy.md) · [ADR-20260525](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md)
 
 ## 目的
