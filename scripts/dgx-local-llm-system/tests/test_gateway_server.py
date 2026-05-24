@@ -14,6 +14,9 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "gateway-server.py"
 
 
 def load_module():
+    module_dir = str(MODULE_PATH.parent)
+    if module_dir not in sys.path:
+        sys.path.insert(0, module_dir)
     spec = importlib.util.spec_from_file_location("dgx_gateway_server", MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

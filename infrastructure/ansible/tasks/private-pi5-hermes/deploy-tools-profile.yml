@@ -41,7 +41,7 @@
 
 - name: Deploy Hermes tools config.yaml
   ansible.builtin.template:
-    src: "../templates/private-pi5-hermes/config.tools.yaml.j2"
+    src: "../../templates/private-pi5-hermes/config.tools.yaml.j2"
     dest: "{{ private_pi5_hermes_tools_config_dir }}/config.yaml"
     owner: "{{ private_pi5_hermes_user }}"
     group: "{{ private_pi5_hermes_group }}"

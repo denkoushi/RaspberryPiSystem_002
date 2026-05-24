@@ -156,11 +156,31 @@ systemctl start hermes-dgx-keep-warm.service     # 手動で即時 warm
 journalctl -u hermes-dgx-keep-warm.service -n 20 --no-pager
 ```
 
+## 本番反映（2026-05-24・Phase D0 骨格・私用 Pi5 → DGX 順次）
+
+**対象**: 私用 Pi5（`private-pi5-stackchan-bridge` / `raspi5-private@100.89.190.21`）と DGX Spark（`ubudgxkoushi@100.118.82.72`）のみ。**業務 Pi5 / Pi4 / Pi3 / `update-all-clients.sh` は未使用**。
+
+| 順 | ホスト | 手順 | 結果 |
+|----|--------|------|------|
+| 1 | DGX | `scp gateway-server.py` + **`gateway_llm_auth.py`** → PID 削除 → `start-gateway-server.sh` | `healthz` **200**・`gateway_llm_auth` import OK |
+| 2 | 私用 Pi5 | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | `PLAY RECAP` **ok=40 changed=3 failed=0**（約 **109s**） |
+
+**Ansible 要約**: `tools_profile_enabled=False`（tools 骨格・`hermes-tools-gateway` はスキップ）。`hermes-gateway` / `stackchan-bridge` / `hermes-dgx-keep-warm.timer` は **active**。`hermes doctor`・DGX health・Bearer **`/v1/models` → 200**（playbook verify + 実機 curl）。
+
+**デプロイ中の repo 修正（再発防止）**:
+
+1. **変数自己参照**: playbook `vars` で `private_pi5_hermes_chat_dgx_llm_token` を同名で解決すると **Recursive loop** → `pre_tasks` の `set_fact` + `hostvars[...].get(...)` に変更。
+2. **Jinja include**: `config.chat.yaml.j2` の `{% include 'private-pi5-hermes/config.base.yaml.j2' %}` は tasks からの template 探索で **not found** → 同ディレクトリ名 `config.base.yaml.j2` に変更。`deploy-chat-profile.yml` の `src` は `../../templates/private-pi5-hermes/...`。
+3. **SSH 直叩き**: `raspi5-private@100.89.190.21` はローカル鍵未登録で **Permission denied** のことがある → 検証は **inventory 経由の `ansible -m shell`** を正本とする。
+
+**未実施（意図）**: `LLM_SHARED_ADDITIONAL_TOKENS` の DGX env 追記（fragment が `private_pi5_dgx_llm_shared_token` のみの場合は従来トークンで継続）、`private_pi5_hermes_tools_profile_enabled: true`、Tailscale 草案の管理画面適用。
+
 ## 検証（2026-05-24 実機）
 
 ```bash
 systemctl is-active hermes-gateway   # active
 systemctl is-active stackchan-bridge # active（併用）
+systemctl is-active hermes-dgx-keep-warm.timer  # active（Phase D0 再デプロイ後）
 
 sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \
   curl -sf -o /dev/null -w "bearer=%{http_code}\n" \
@@ -209,6 +229,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 | 圧縮ループ / auto-reset | ツール無効テンプレ未反映 → 再デプロイ |
 | 遅い | keep-warm timer・`private_pi5_dgx_runtime_control_token` → 本 Runbook §DGX keep-warm・[KB E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
 | `/sethome` 案内 | 雑談のみなら無視可 |
+| Ansible **Recursive loop**（chat token） | playbook `vars` で同名変数を参照している → [本番反映 2026-05-24](#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次) の `set_fact` パターン |
+| **config.base.yaml.j2 not found** | include パスが `private-pi5-hermes/...` のまま → 同ディレクトリ `config.base.yaml.j2` |
 
 ## ロールバック
 

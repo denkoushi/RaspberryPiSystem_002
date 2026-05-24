@@ -1,6 +1,6 @@
 # Hermes Agent — chat profile (Discord 雑談)
 # 秘密は profile .env にのみ置く
-{% include 'private-pi5-hermes/config.base.yaml.j2' %}
+{% include 'config.base.yaml.j2' %}
 
 model:
   default: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}

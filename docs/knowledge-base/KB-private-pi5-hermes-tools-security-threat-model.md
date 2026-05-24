@@ -22,11 +22,34 @@ Hermes 雑談プロファイルはツール無効で運用中。将来 web/brows
 ## 境界ポリシー検証
 
 ```bash
-python3 scripts/private-pi5-hermes/validate_boundary_policy.py \
-  --policy scripts/private-pi5-hermes/config/boundary-policy.tools.yaml
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py
+# 既定 policy: scripts/private-pi5-hermes/config/boundary-policy.tools.yaml
 ```
 
 期待: `{"ok": true, ...}`
+
+## 本番デプロイ知見（2026-05-24・Phase D0）
+
+**Context**: `feat/private-pi5-hermes-docs`（`8f3dfc03` 以降の deploy 修正含む）を DGX → 私用 Pi5 に反映。雑談は従来どおり（tools プロファイル未デプロイ）。
+
+**Symptoms / 検証**:
+
+| チェック | 期待 | 実測 |
+|----------|------|------|
+| DGX `healthz` | 200 | OK |
+| Pi5 `hermes-gateway` | active | OK |
+| Bearer `GET /v1/models` | 200 | OK |
+| `tools_profile_enabled` | false | playbook summary どおり |
+
+**Investigation → Fix（Ansible）**:
+
+| 症状 | 根因 | 対策 |
+|------|------|------|
+| `Recursive loop detected`（chat token） | playbook `vars` が `private_pi5_hermes_chat_dgx_llm_token` を自分自身で解決 | `pre_tasks` で `hostvars[inventory_hostname].get(...)` + `set_fact` |
+| `config.base.yaml.j2 not found` | Jinja include が `private-pi5-hermes/...` プレフィックス付き | 同ディレクトリ `{% include 'config.base.yaml.j2' %}` |
+| ローカル SSH で Pi5 不可 | 鍵が Ansible 用のみ | `ansible -i inventory-private-pi5-stackchan-bridge-fragment.yml ...` |
+
+**Prevention**: トークン解決は playbook `vars` に置かず **inventory または `set_fact`**。プロファイル用テンプレ include は **ファイル名のみ**。CI に `ansible-playbook --syntax-check` と boundary `validate_boundary_policy.py` を維持。
 
 ## D1+ チェックリスト（未実施）
 

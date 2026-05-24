@@ -2369,15 +2369,16 @@
 
 ### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase C 完了（実用レベル）**。Discord 雑談 E2E・レイテンシ改善・ドキュメント正本化済み。
+**状態**: **Phase C 完了（実用レベル）** + **Phase D0 骨格デプロイ済（2026-05-24）**（DGX `gateway_llm_auth`・私用 Pi5 chat プロファイル・tools 骨格 OFF）。
 
-**正本**: [plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[KB スキル/フォーラム/設計](./docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
+**正本**: [plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[ExecPlan D0](./docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 | # | タスク | 優先 | 完了条件 |
 |---|--------|------|----------|
 | — | keep-warm / thinking 注入 / max_tokens 128 | **完了** | 体感 OK・KB 実測記録 |
-| 1 | **PR マージ** | 高 | `feat/private-pi5-hermes-docs` → `main`（ユーザー明示時） |
-| 2 | **DGX トークン分離** | 高 | Hermes 専用トークン・gateway 許可 |
+| — | **Phase D0 repo + 実機（chat のみ）** | **完了** | [Runbook §2026-05-24](./docs/runbooks/private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次) |
+| 1 | **main マージ** | 高 | `feat/private-pi5-hermes-docs` → `main`（本セッションで実施） |
+| 2 | **DGX トークン分離（additional）** | 高 | `LLM_SHARED_ADDITIONAL_TOKENS` + fragment `private_pi5_hermes_chat_dgx_llm_token` |
 | 3 | **Hermes 既定プロンプト短縮** | 中 | `in` ~661 削減（任意） |
 | 4 | **作業用プロファイル**（skills 有効） | 低 | 雑談と分離・8K/遅延再計測 |
 | 5 | **title_generation 無効化** | 低 | ログ警告解消 |

@@ -26,8 +26,20 @@ update-frequency: medium
 - [x] `scripts/private-pi5-hermes/lib/` 境界・プロファイル spec
 - [x] Ansible テンプレ分割 + tasks 分割
 - [x] ADR / KB / Tailscale 草案 / 本 ExecPlan
-- [ ] 実機: DGX `LLM_SHARED_ADDITIONAL_TOKENS` 反映（手動・運用者）
+- [x] 実機: DGX `gateway-server.py` + `gateway_llm_auth.py` 反映・再起動（2026-05-24）
+- [x] 実機: 私用 Pi5 Ansible デプロイ（chat のみ・tools 骨格 OFF）
+- [ ] 実機: DGX `LLM_SHARED_ADDITIONAL_TOKENS` 反映（chat/tools トークン分離時・運用者）
 - [ ] 実機: `private_pi5_hermes_tools_profile_enabled: true`（D1）
+
+## 本番反映（2026-05-24）
+
+**順序**: DGX → 私用 Pi5（各 1 台）。詳細・トラブルシュート: [Runbook §本番反映](../runbooks/private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次)。
+
+**Surprises**:
+
+- Ansible playbook `vars` のトークン解決式は **同名キーで再帰**する。`hostvars` + `set_fact` が必須。
+- `config.chat.yaml.j2` の Jinja `include` は **テンプレート相対パス**（`config.base.yaml.j2`）にしないと tasks 配下から失敗する。
+- ローカル `unittest` の `load_module()` は `gateway_llm_auth` を import するため **`sys.path` に `scripts/dgx-local-llm-system` を追加**する必要がある（`test_gateway_server.py` 修正済み）。
 
 ## 検証（repo ローカル）
 

@@ -22,19 +22,6 @@
     private_pi5_hermes_bridge_port: 18080
     private_pi5_hermes_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
     private_pi5_hermes_dgx_model: "{{ private_pi5_dgx_model | default('system-prod-primary') }}"
-    private_pi5_hermes_dgx_llm_shared_token: "{{ private_pi5_dgx_llm_shared_token | default('') }}"
-    private_pi5_hermes_chat_dgx_llm_token: >-
-      {{
-        (private_pi5_hermes_chat_dgx_llm_token | default('') | trim)
-        if (private_pi5_hermes_chat_dgx_llm_token | default('') | trim) | length > 0
-        else (private_pi5_hermes_dgx_llm_shared_token | default('') | trim)
-      }}
-    private_pi5_hermes_tools_effective_dgx_llm_token: >-
-      {{
-        (private_pi5_hermes_tools_dgx_llm_token | default('') | trim)
-        if (private_pi5_hermes_tools_dgx_llm_token | default('') | trim) | length > 0
-        else private_pi5_hermes_chat_dgx_llm_token
-      }}
     private_pi5_hermes_dgx_keep_warm_dir: "{{ private_pi5_hermes_data_dir }}/dgx-keep-warm"
     private_pi5_hermes_dgx_keep_warm_env_path: "{{ private_pi5_hermes_data_dir }}/dgx-keep-warm.env"
     private_pi5_hermes_dgx_keep_warm_active: >-
@@ -55,6 +42,21 @@
       when:
         - network_mode | default('tailscale') == 'tailscale'
         - tailscale_enabled | default(false) | bool
+
+    - name: Resolve Hermes chat DGX token from inventory
+      ansible.builtin.set_fact:
+        private_pi5_hermes_chat_dgx_llm_token: >-
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_chat_dgx_llm_token', '')
+          | default(hostvars[inventory_hostname].get('private_pi5_dgx_llm_shared_token', ''), true)
+          | trim }}
+
+    - name: Resolve Hermes tools DGX token from inventory
+      ansible.builtin.set_fact:
+        private_pi5_hermes_tools_effective_dgx_llm_token: >-
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_tools_dgx_llm_token', '')
+          | default(hostvars[inventory_hostname].get('private_pi5_hermes_chat_dgx_llm_token', hostvars[inventory_hostname].get('private_pi5_dgx_llm_shared_token', ''), true))
+          | trim }}
+      when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
     - name: Validate Hermes prerequisites
       ansible.builtin.assert:
