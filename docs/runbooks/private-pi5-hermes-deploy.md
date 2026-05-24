@@ -251,6 +251,12 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 | Gateway 停止 | `private_pi5_hermes_gateway_enabled: false` → 再デプロイ |
 | Hermes 全体 | `systemctl stop hermes-gateway`・`~/.hermes` 退避（手動） |
 
+## Tailscale（私用 Pi5 分離）
+
+- **grants 正本**: [tailscale-policy-hermes-private-pi5-grants.json](../security/tailscale-policy-hermes-private-pi5-grants.json)（admin にマージ・手動）
+- **検証**: [tailscale-policy-hermes-private-pi5-verification.sh](../security/tailscale-policy-hermes-private-pi5-verification.sh)
+- **草案**: [tailscale-policy-hermes-private-pi5-draft.md](../security/tailscale-policy-hermes-private-pi5-draft.md)
+
 ## 関連
 
 - [private-pi5-stackchan-bridge-deploy.md](./private-pi5-stackchan-bridge-deploy.md)

@@ -2379,7 +2379,8 @@
 | — | **Phase D0 repo + 実機（chat のみ）** | **完了** | [Runbook §2026-05-24](./docs/runbooks/private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次) |
 | 1 | **main マージ** | 高 | `feat/private-pi5-hermes-docs` → `main`（本セッションで実施） |
 | — | **DGX トークン分離（chat）** | **完了** | 2026-05-24 · [Runbook §トークン分離](./docs/runbooks/private-pi5-hermes-deploy.md#トークン分離2026-05-24-実施) |
-| 2 | **Tailscale 草案適用** | 高 | 管理画面反映・私用↔業務の到達性確認 |
+| 2 | **Tailscale grants マージ** | 高 | [grants.json](./docs/security/tailscale-policy-hermes-private-pi5-grants.json) を admin に貼付（**要手動**）·検証 script PASS |
+| — | **Tailscale ベースライン** | **完了** | 2026-05-24 · `tag:private-server` 付与済 · DGX OK · 業務 Pi5 未到達 |
 | 3 | **Hermes 既定プロンプト短縮** | 中 | `in` ~661 削減（任意） |
 | 4 | **作業用プロファイル**（skills 有効） | 低 | 雑談と分離・8K/遅延再計測 |
 | 5 | **title_generation 無効化** | 低 | ログ警告解消 |

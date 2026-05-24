@@ -1,0 +1,17 @@
+{
+  "tagOwners": {
+    "tag:private-server": ["autogroup:admin"]
+  },
+  "grants": [
+    {
+      "src": ["tag:private-server"],
+      "dst": ["tag:llm"],
+      "ip": ["tcp:38081"]
+    },
+    {
+      "src": ["tag:admin"],
+      "dst": ["tag:private-server"],
+      "ip": ["tcp:22"]
+    }
+  ]
+}

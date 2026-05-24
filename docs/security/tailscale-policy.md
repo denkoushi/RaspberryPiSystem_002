@@ -22,6 +22,7 @@
 - `tag:signage`: Pi3/Zero2W（サイネージ、今後増台の可能性）
   - **補足（2026-05-04）**: **ヘッドレス棚番エッジ**（Zero 2 W・キオスク UI なし・`status-agent` のみ）も、更新経路を **Pi 5 → SSH** に揃えるなら **同一タグ族として扱える**（実運用では端末台帳で **用途（サイネージ／棚番エッジ）** を区別する）。**Mac（admin）→ Zero 直 SSH**は本ポリシーでは原則想定外のため、不通時は **Pi 5 踏み台**を正とする（詳細は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）。
 - `tag:llm`: Ubuntu LocalLLM 専用ノード（Tailscale sidecar で分離）
+- `tag:private-server`: 自宅私用 Pi5（Hermes / StackChan bridge・[Hermes grants 草案](./tailscale-policy-hermes-private-pi5-grants.json)）
 
 補足:
 - 台数が増える前提のため、「端末名での許可」は原則禁止。
