@@ -136,7 +136,8 @@ const haizenScanBodySchema = z.object({
 });
 
 const haizenPresetShelfBodySchema = z.object({
-  shelfCodeRaw: z.string().min(1).max(200)
+  /** 構造化棚番。`null` で担当棚を解除する */
+  shelfCodeRaw: z.string().min(1).max(200).nullable()
 });
 
 const haizenCurrentQuerySchema = z

@@ -16,11 +16,6 @@ type Props = {
   relocateSource: string | null;
   tab: 'layout' | 'relocate' | 'zero2w';
   layoutEmphasizeCells: boolean;
-  /** 棚番パイ選択中はレイアウト用セル操作を無効 */
-  layoutCellsBlocked?: boolean;
-  /** Pi 選択後、SHELF セルのみタップ可能 */
-  zero2wMapShelfPick?: boolean;
-  zero2wPickedShelfCode?: string | null;
   relocateEmphasize: 'source' | 'target' | null;
   relocateCellActionable: (entity: DraftEntity | null) => boolean;
   relocateCellsDisabled: boolean;
@@ -36,9 +31,6 @@ export function ShelfFactoryMapView({
   relocateSource,
   tab,
   layoutEmphasizeCells,
-  layoutCellsBlocked = false,
-  zero2wMapShelfPick = false,
-  zero2wPickedShelfCode = null,
   relocateEmphasize,
   relocateCellActionable,
   relocateCellsDisabled,
@@ -62,12 +54,7 @@ export function ShelfFactoryMapView({
                 }}
               >
                 {items.map((item) => {
-                  const layoutSel = item.cells.some((c) => selectedCells.includes(c));
-                  const zero2wSel =
-                    zero2wPickedShelfCode != null &&
-                    zero2wPickedShelfCode.length > 0 &&
-                    item.entity?.shelfCodeRaw === zero2wPickedShelfCode;
-                  const sel = layoutSel || zero2wSel;
+                  const sel = item.cells.some((c) => selectedCells.includes(c));
                   const isRelocateSource = item.entity?.shelfCodeRaw === relocateSource;
                   const relocateFlow =
                     tab === 'relocate' &&
@@ -76,20 +63,10 @@ export function ShelfFactoryMapView({
                     !isRelocateSource;
                   const layoutFlow =
                     tab === 'layout' && layoutEmphasizeCells && !sel && item.entity == null;
-                  const zero2wFlow =
-                    tab === 'layout' &&
-                    zero2wMapShelfPick &&
-                    item.entity?.entityKind === 'SHELF' &&
-                    item.entity.shelfCodeRaw != null &&
-                    !zero2wSel;
                   const disabled =
                     tab === 'relocate'
                       ? relocateCellsDisabled || !relocateCellActionable(item.entity)
-                      : tab === 'zero2w'
-                        ? true
-                        : zero2wMapShelfPick
-                          ? item.entity?.entityKind !== 'SHELF' || item.entity.shelfCodeRaw == null
-                          : layoutCellsBlocked;
+                      : tab === 'zero2w';
 
                   return (
                     <ShelfLayoutGridCell
@@ -97,7 +74,7 @@ export function ShelfFactoryMapView({
                       entity={item.entity}
                       selected={sel}
                       relocateSource={isRelocateSource}
-                      flowHighlight={relocateFlow || layoutFlow || zero2wFlow}
+                      flowHighlight={relocateFlow || layoutFlow}
                       disabled={disabled}
                       onClick={() => onToggleCell(item.cells)}
                       style={{

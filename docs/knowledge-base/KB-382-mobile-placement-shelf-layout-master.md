@@ -16,7 +16,7 @@
 | **リダイレクト** | `/kiosk/mobile-placement/shelf-register` → shelf-master、`/zero2w-assignment` → shelf-master（[`App.tsx`](../../apps/web/src/App.tsx)） |
 | **グローバルヘッダー** | [`KioskHeader.tsx`](../../apps/web/src/components/kiosk/KioskHeader.tsx) — 「パレット」と「要領書」の間に **「棚マスタ」** NavLink（コミット **`a7f23c8a`**・2026-05-23） |
 | **配膳メインから** | [`MobilePlacementPage.tsx`](../../apps/web/src/pages/kiosk/MobilePlacementPage.tsx) の **「棚マスタ」** ボタン |
-| **2 モード（工場全体）** | **レイアウト** — `shelfLayoutEditEnabled === true` の端末のみ UI 表示。**再割当** — 全認証キオスク。**Zero2W 担当棚割当** — レイアウトの **「編集」Dialog** 右（棚番パイ）。専用 Zero2W タブは廃止 |
+| **2 モード（工場全体）** | **レイアウト** — `shelfLayoutEditEnabled === true` の端末のみ UI 表示。**再割当** — 全認証キオスク。**Zero2W 担当棚** — レイアウト **「編集」Dialog** 左ドックの **部品置き場選択時 Pi セレクト**（加工機セレクトと同型）+ **「担当を反映」**。右「棚番パイ」列・専用 Zero2W タブは廃止。**地図外 preset** は警告パネル **「担当を外す」**（棚マス未選択可） |
 | **権限 API** | `GET /api/mobile-placement/client-capabilities` → `{ shelfLayoutEditEnabled, haizenEdgeEnabled, … }`（**`x-client-key` 単位**） |
 | **レイアウト編集 API** | `GET/PUT /api/mobile-placement/shelf-layout`、区画 `…/zones/:macroZoneId`（PUT は **`shelfLayoutEditEnabled` 必須**・403 時 UI は編集モード非表示） |
 | **再割当 API** | `POST /api/mobile-placement/shelves/:shelfCodeRaw/relocate` — **スロット固定・中身移動**（`OrderPlacementBranchState` / `HaizenCurrentPlacement` / `haizenPresetShelfCodeRaw` を一括更新） |
@@ -30,9 +30,9 @@
 **UX（2026-05-23 · 9マス俯瞰 + Dialog）**:
 
 1. **工場全体** — 画面いっぱいの **9 区画**。各区画に **ミニ 3×3** で加工機・置き場・通路を **常時表示**（閲覧専用・タップ不要）
-2. **レイアウト**（`shelfLayoutEditEnabled` 端末）— 区画の **「編集」** → **Dialog** 内で **拡大 factory-map** + **2 列ドック**（左: レイアウト操作 / 右: **棚番パイ** 3 列・3 行表示・以降スクロール）。未保存で閉じるとき確認
+2. **レイアウト**（`shelfLayoutEditEnabled` 端末）— 区画の **「編集」** → **Dialog** 内で **拡大 factory-map** + **単列ドック**（レイアウト操作 + 部品置き場時 **Pi セレクト**）。未保存で閉じるとき確認
 3. **再割当** — 9 区画は常時表示のまま、**区画カードタップ** → Dialog 内 factory-map（隣接区画ボタンで区画切替）。移動元 SHELF → 移動先 SHELF
-4. **Zero2W 担当棚** — **編集 Dialog 右**の棚番パイで端末選択 → 地図上の **SHELF セル**タップ → **「担当棚を保存」**（`PUT …/haizen-target-devices/:id/preset-shelf`）。Pi 選択中はレイアウト用セル操作を抑止（相互排他）
+4. **Zero2W 担当棚** — **部品置き場**を選択したとき（新規割当待ち）または **既存 SHELF マス**を選択したとき、ドロップダウンで **担当なし / Pi** を選ぶ。**他棚に割当済み Pi は選択不可（グレーアウト）**。**既存棚**は **「担当を反映」** で即時 `PUT …/haizen-target-devices/:id/preset-shelf`（`shelfCodeRaw` または **`null` で解除**）。**新規部品置き場 + Pi** は **レイアウト保存成功後**に preset を自動反映（`MobilePlacementShelf` 登録後）。**当区画の地図に無い preset**（例: DB は `中央-南-03`、レイアウトは `中央-南-05` のみ）は Pi セレクト下の **「この区画の地図にない担当棚」** から **端末単位で「担当を外す」**（棚マス未選択可）
 
 **API**: `GET /api/mobile-placement/shelf-layout` の各 `zones[]` に **`entities[]`** を含む（俯瞰ミニマップ用・後方互換追加）。
 
@@ -51,7 +51,7 @@
 | 項目 | 内容 |
 |------|------|
 | **対象 Dialog** | [`ShelfZoneLayoutDialog.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneLayoutDialog.tsx)（編集）·[`ShelfZoneRelocateDialog.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneRelocateDialog.tsx)（再割当） |
-| **共通シェル** | 新規 [`ShelfMasterZoneDialogFrame.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMasterZoneDialogFrame.tsx) — **map / dock スロット**・寸法・スクロール境界のみ。`layoutEditorFlow` / `zero2wAssignmentFlow` / `relocateFlow` は各 Dialog に残す |
+| **共通シェル** | 新規 [`ShelfMasterZoneDialogFrame.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMasterZoneDialogFrame.tsx) — **map / dock スロット**・寸法・スクロール境界のみ。`layoutEditorFlow`（Pi セレクトゲート含む）/ `relocateFlow` は各 Dialog に残す |
 | **テーマ** | [`shelfMasterTheme.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/theme/shelfMasterTheme.ts) — Dialog 内 `factoryMap` は **`max-w-[26rem]` + `aspect-square`**（俯瞰 9 マスの `macroOverviewGrid` / `miniMap` は別トークンで不変） |
 | **Dialog 基盤** | [`Dialog.tsx`](../../apps/web/src/components/ui/Dialog.tsx) — 任意 **`titleClassName`**（後方互換） |
 | **触らない** | API / Prisma / 手順ゲート / 9 マス [`ShelfMacroOverviewGrid`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMacroOverviewGrid.tsx) |
@@ -80,6 +80,7 @@
 | **編集 Dialog で地図が切れる・保存ボタンが出ない** | 旧 SPA（コンパクト化前）·Pi5 **`web`** 未更新·**強制リロード**未実施（[§コンパクト化デプロイ](#production-deploy--zone-dialog-compact-2026-05-23)） |
 | **再割当 Dialog だけレイアウトが崩れる** | 編集のみ更新された中間ビルド — **再割当も `ShelfMasterZoneDialogFrame` 共有**（`2e73aeed` 以降） |
 | **複数マスを結合割当した後、結合ブロックをタップしても選択されず「選択マスを解除」が disabled** | 旧 `useZoneLayoutDraft.toggleCell` が **`cells.length === 1` のみ**処理。割当後は [`ShelfFactoryMapView.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfFactoryMapView.tsx) が結合 entity の **全 `cellIndices`（長さ>1）** を渡すため **no-op** → `selectedCells` が空のまま（[§複数マス選択解除](#production-deploy--multi-cell-selection-clear-2026-05-23)） |
+| **編集 Dialog で Pi がグレーアウトし「担当なし」でも解除できない** | **オーファン preset** — `haizenPresetShelfCodeRaw` が **当区画ドラフトの SHELF 一覧に無い**（レイアウト変更・再配置後の不整合）。グレーアウトは他棚担当の仕様。**「担当を反映」** は **選択中棚に紐づく Pi のみ**解除対象。**対処**: 警告 **「この区画の地図にない担当棚」** → **担当を外す**（[`orphanZero2wDevices.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/orphanZero2wDevices.ts)） |
 
 ## Investigation
 
@@ -97,11 +98,13 @@ curl -sk "https://<Pi5>/api/mobile-placement/shelf-layout" \
 ```
 
 4. 沉浸式ヘッダー疑い → 下辺ホバー後に再試行（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md)）
+5. **Pi グレーアウト・解除不能** — 当該区画 `GET …/shelf-layout/zones/:id` の **`entities[]`（SHELF の `shelfCodeRaw`）** と `GET …/haizen-target-devices` の **`shelfCodeRaw`（preset）** を突合。preset が区画地図に無ければオーファン
 
 ## Root cause（本番検証で確定した例）
 
 - **レイアウトタブ非表示**: DB 上 **`shelfLayoutEditEnabled`** が **`zero2w-tanaban01` 等 Zero2W 端末のみ true** で、実際に操作していた **Pi4 / StoneBase / Mac キー**は **false** のまま — **権限と clientKey の不一致**（設定ミスではなく **対象端末の取り違え**）  
 - **解決（ユーザー確認 2026-05-23）**: **Pi4 と Zero2W** に **`shelfLayoutEditEnabled`** を設定 → **レイアウト操作可能に**
+- **Pi グレーアウト・解除不能（2026-05-24）**: 例 **中央·南** — preset **`中央-南-03`**、レイアウト SHELF は **`中央-南-05` のみ**（03 のマス無し）。**操作ミスではなくデータ不整合 + 旧 UI ギャップ**
 
 ## Fix（最小）
 
@@ -109,12 +112,14 @@ curl -sk "https://<Pi5>/api/mobile-placement/shelf-layout" \
 2. キオスク URL / localStorage の **`clientKey`** がその端末の **`apiKey`** と一致することを確認  
 3. Pi5 に **`feat/kiosk-shelf-layout-master`** 系コミットが載っていること（下記 Detach）。Pi4 は **Web SPA + kiosk-browser 再起動**（標準 `update-all-clients.sh`）  
 4. 沉浸式ページでは **下辺リビール**後にヘッダー操作  
+5. **オーファン preset** — 編集 Dialog で **「この区画の地図にない担当棚」** → **担当を外す** のあと、地図上の正しい SHELF を選び Pi を再割当  
 
 ## Prevention
 
 - 権限変更時は **必ず `GET …/client-capabilities` を当該 `x-client-key` で確認**してから現場へ案内  
 - 管理画面の列名 **「棚レイアウト編集」** と **「Zero2W配膳」** を Runbook / 教育資料で分離  
-- CI: **`packages/shelf-layout-core`** を **Dockerfile.api / Dockerfile.web** でビルド（`security-docker` 回帰 — 下記 Surprises）  
+- CI: **`packages/shelf-layout-core`** を **Dockerfile.api / Dockerfile.web** でビルド（`security-docker` 回帰 — 下記 Surprises）
+- オーファン preset: **ドラフト SHELF 一覧と preset の突合**を Vitest で固定（[`orphanZero2wDevices.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/orphanZero2wDevices.test.ts)）
 - ExecPlan: [mobile-placement-shelf-layout-master.md](../plans/mobile-placement-shelf-layout-master.md)・[ADR-20260523](../decisions/ADR-20260523-mobile-placement-shelf-layout-master.md)
 
 ## Production deploy & verification（2026-05-23 · 棚レイアウトマスタ機能）
@@ -273,9 +278,130 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | Pi4 のみ旧 UI | **Pi5 先行デプロイ**漏れ（SPA 正本は Pi5） |
 | レイアウトタブ自体が出ない | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例) — **`shelfLayoutEditEnabled` / `clientKey` 不一致**（本件とは別） |
 
+### Zero2W インライン割当（2026-05-24 · Web + API） {#zero2w-inline-preset-2026-05-24}
+
+**ブランチ**: `feat/kiosk-shelf-master-zero2w-inline-preset`  
+**代表コミット**: **`55a50a7b`** — `feat(kiosk): inline zero2w preset in shelf master editor`
+
+**背景**: 編集 Dialog 右の **Zero2W「棚番パイ」列**（`ShelfZero2wAssignmentRail`）は、コンパクト化後の **dock 縦スクロール** と相性が悪く、部品置き場割当と **別画面感** だった。加工機割当と同型の **Pi セレクト** に統一する。
+
+**仕様（採用）**:
+
+| 項目 | 内容 |
+|------|------|
+| **Pi セレクト表示** | **部品置き場の新規割当待ち** または **既存 SHELF マス 1 件選択** 時（[`layoutEditorFlow.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlow.ts) の `zero2wPiSelect`） |
+| **他棚担当 Pi** | **グレーアウト**（`device.shelfCodeRaw !== 選択中棚番`）— 誤上書き防止 |
+| **既存棚** | **「担当を反映」** → 即時 `PUT …/haizen-target-devices/:id/preset-shelf`（棚番 or **`null` 解除**） |
+| **新規 SHELF + Pi** | **レイアウト保存成功後**に preset 自動反映（`MobilePlacementShelf` 登録後キュー） |
+| **右レール** | **削除**（`ShelfZero2wAssignmentRail` 廃止） |
+
+**API（同ブランチ）**:
+
+- `PUT …/preset-shelf` で **`{ "shelfCodeRaw": null }` による担当解除**を正式サポート（統合テスト追加）。
+- 管理画面・Zero2W 端末本体の Ansible デプロイは **不要**（キオスク編集 UI + Pi5 API）。
+
+**モジュール境界（`shelfMaster/zero2wPreset/`）**:
+
+- [`zero2wPiSelectOptions.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/zero2wPiSelectOptions.ts) — ドロップダウン・グレーアウト
+- [`shelfSelectionContext.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/shelfSelectionContext.ts) — SHELF 単一選択契約（混在選択は `none`）
+- [`resolveZero2wTargetShelf.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/resolveZero2wTargetShelf.ts) — 選択マスから棚番解決
+- [`pendingZero2wPreset.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/pendingZero2wPreset.ts) — 保存後キュー
+- [`useShelfZero2wPreset.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useShelfZero2wPreset.ts) — API 呼び出し・メッセージ
+
+**ローカル検証**: shelfMaster Vitest **32 PASS**（当時）·API unit+integration **40 PASS**
+
+**CI**: GitHub Actions **`26346833810` success**（`55a50a7b` push 後）
+
+### オーファン preset 解除（2026-05-24 · Web のみ） {#orphan-zero2w-preset-clear-2026-05-24}
+
+**代表コミット**: **`bd4ab988`** — `fix(kiosk): clear orphan zero2w shelf presets from shelf master`
+
+**症状（本番・中央·南で確定）**:
+
+- DB: `zero2w-tanaban01` の **`haizenPresetShelfCodeRaw` = `中央-南-03`**
+- 区画レイアウト: SHELF は **`中央-南-05` のみ**（03 のマス無し）
+- UI: Pi が **グレーアウト**（他棚担当のため）·**「担当なし」→「担当を反映」** は **選択棚に紐づく Pi がいない**ため失敗
+- **操作ミスではない** — レイアウト変更・再配置後の **preset と地図の不整合** + **解除経路の UI ギャップ**
+
+**オーファン定義（当区画）** — [`orphanZero2wDevices.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/orphanZero2wDevices.ts):
+
+1. 端末の preset 棚番が **non-null**
+2. **当区画ドラフト**の SHELF `shelfCodeRaw` 集合に **含まれない**（保存前地図と一致）
+3. 棚番プレフィックスが **当区画 `shelfPrefix` と一致**（他区画担当を誤警告しない）
+
+**Fix（UI）**:
+
+- Pi セレクト直下に **[`ShelfZero2wOrphanPanel`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZero2wOrphanPanel.tsx)** — 見出し **「この区画の地図にない担当棚」**・行ごと **「担当を外す」**
+- **棚マス未選択でも表示**（詰まり解消のため）
+- `clearPresetForDevice(deviceId)` → 既存 API **`preset-shelf` + `null`**（新規 API 不要）
+- 解除中は **該当ボタンのみ** disabled（二重送信防止）
+
+**判定に使わないもの**: `zero2wDeviceCountByShelfCode`（マスタ登録ベースで、レイアウト未配置の棚番もカウントされ得る）
+
+**ローカル検証**: shelfMaster Vitest **37 PASS**（`orphanZero2wDevices.test.ts` 含む）·lint · build PASS
+
+**CI**: GitHub Actions **`26348099235` success**（`bd4ab988` push 後）
+
+### Production deploy — Zero2W インライン + オーファン解除（2026-05-24） {#production-deploy--zero2w-inline-orphan-2026-05-24}
+
+**ブランチ**: `feat/kiosk-shelf-master-zero2w-inline-preset`（**`main` マージ後は第2引数 `main`**）  
+**代表コミット**: **`55a50a7b`**（インライン + API null 解除）→ **`bd4ab988`**（オーファン panel）
+
+**変更範囲**:
+
+| 層 | `55a50a7b` | `bd4ab988` |
+|----|------------|------------|
+| **API** | `preset-shelf` **`null` 解除** | 変更なし |
+| **Web** | 右レール廃止・Pi セレクト・保存後キュー | オーファン panel |
+| **Pi3** | 対象外 | 対象外 |
+
+**対象ホスト（1 台ずつ・Pi5 先行必須）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-shelf-master-zero2w-inline-preset \
+  infrastructure/ansible/inventory.yml --limit <host> --detach --follow
+```
+
+| 順 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|----|--------|---------------|------------|------|
+| 1 | `raspberrypi5` | **`20260524-101500-26170`** | `ok=134` `changed=4` `failed=0` | Docker **api+web** 再ビルド·`Git: changed` |
+| 2 | `raspberrypi4` | **`20260524-103611-3552`** | `ok=122` `changed=10` `failed=0` | `kiosk-browser` 再起動 |
+| 3 | `raspi4-robodrill01` | **`20260524-104215-7888`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 4 | `raspi4-fjv60-80` | **`20260524-104718-254`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 5 | `raspi4-kensaku-stonebase01` | **`20260524-105219-1561`** | `ok=129` `changed=10` `failed=0` | 同上 |
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後・Pi4 全台後 各 **約 107–108s**）
+
+**現場検証（ユーザー 2026-05-24）**:
+
+- **Pi5**: オーファン panel・**担当を外す** → **OK**
+- **Pi4 群**: デプロイ完了（順次 4 台）
+
+**現場手動（推奨・`shelfLayoutEditEnabled` 端末）**:
+
+1. `/kiosk/mobile-placement/shelf-master` → **中央·南** → **編集**（反映直後は **強制リロード**）
+2. **「この区画の地図にない担当棚」** に `zero2w-tanaban01 → 中央-南-03` が出ること
+3. **担当を外す** → Pi 選択可能 → **中央-南-05** へ割当・**担当を反映**
+
+**トラブルシュート**:
+
+| 症状 | 対処 |
+|------|------|
+| Pi グレーアウトのみ・panel 無し | 旧 SPA（**`bd4ab988` より前**）·Pi5 **`web` ref**·強制リロード |
+| 「担当なし」だけでは解除できない | **仕様** — 選択棚に Pi がいないと失敗。**panel の「担当を外す」** を使う |
+| Pi4 だけ旧 UI | **Pi5 未先行デプロイ** |
+| preset は他区画（例 `西-北-01`） | **オーファン panel 対象外**（プレフィックス不一致）— 当該区画の編集では警告しない |
+
+**スコープ外（将来）**: レイアウト保存・再割当時の **preset と地図の自動整合**（[`shelf-relocate.service.ts`](../../apps/api/src/services/mobile-placement/shelf-relocate.service.ts) 強化）
+
 ### CI
 
 - 初回 **`security-docker` 失敗**: Docker イメージに **`@raspi-system/shelf-layout-core` ビルド漏れ** → **`Dockerfile.api` / `Dockerfile.web` 修正**（**`34527423`**）後 success（run **`26320245567`** 付近）
+- **Zero2W インライン**: **`26346833810` success**（`55a50a7b`）
+- **オーファン解除**: **`26348099235` success**（`bd4ab988`）
 
 ### デプロイ TS
 
@@ -294,7 +420,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - Deploy（機能本体）: [deployment.md](../guides/deployment.md#mobile-placement-shelf-layout-master-2026-05-23)
 - Deploy（Dialog コンパクト）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-zone-dialog-compact-2026-05-23)
 - Deploy（複数マス選択解除）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-multi-cell-selection-clear-2026-05-23)
+- Deploy（Zero2W インライン + オーファン）: [deployment.md](../guides/deployment.md#kiosk-shelf-master-zero2w-inline-orphan-2026-05-24)
+- Zero2W インライン: [§zero2w-inline-preset-2026-05-24](#zero2w-inline-preset-2026-05-24)
+- オーファン解除: [§orphan-zero2w-preset-clear-2026-05-24](#orphan-zero2w-preset-clear-2026-05-24)
 - 選択契約実装: [`layoutCellSelection.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellSelection.ts)
+- オーファン判定: [`orphanZero2wDevices.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/orphanZero2wDevices.ts)
 - Zero2W 関連: [KB-368](./KB-368-zero2w-haizen-placement-tracking.md)
 - 沉浸式ヘッダー: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)
 - 設計プレビュー: [design-previews/README.md](../design-previews/README.md)（`kiosk-shelf-master-*`）

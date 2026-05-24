@@ -1,10 +1,17 @@
 import { getMacroZoneById, type MacroZoneId } from '@raspi-system/shelf-layout-core';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { getLayoutEditorFlowGates } from '../flow/layoutEditorFlow';
-import { useZero2wAssignmentState } from '../hooks/useZero2wAssignmentState';
+import { useShelfZero2wPreset } from '../hooks/useShelfZero2wPreset';
 import { useZoneLayoutDraft } from '../hooks/useZoneLayoutDraft';
-import { entityAtCell } from '../model/shelfLayoutGrid';
+import {
+  collectShelfCodesOnZoneMap,
+  findOrphanZero2wDevicesInZone
+} from '../zero2wPreset/orphanZero2wDevices';
+import { resolveZero2wTargetShelfCodeRaw } from '../zero2wPreset/resolveZero2wTargetShelf';
+import { resolveShelfSelectionContext } from '../zero2wPreset/shelfSelectionContext';
+import { buildZero2wPiSelectOptions } from '../zero2wPreset/zero2wPiSelectOptions';
+import { ZERO2W_PI_UNCHANGED } from '../zero2wPreset/zero2wPiSelectValue';
 
 import { ShelfFactoryMapView } from './ShelfFactoryMapView';
 import { ShelfLayoutEditorShell } from './ShelfLayoutEditorShell';
@@ -24,25 +31,65 @@ type Props = {
 export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZoneChange, onMessage }: Props) {
   const draft = useZoneLayoutDraft(isOpen ? zoneId : null);
 
-  const layoutCellsSelected = draft.selectedCells.length > 0;
-
   const {
     devices: zero2wDevices,
-    selectedDeviceId: selectedZero2wDeviceId,
-    selectedShelf: selectedZero2wShelf,
-    gates: zero2wGates,
-    selectDevice: selectZero2wDevice,
-    selectShelfFromMap,
+    selectedPi,
+    setSelectedPi,
     reset: resetZero2w,
-    save: saveZero2w,
-    savePending: zero2wSavePending
-  } = useZero2wAssignmentState({
-    isOpen,
-    layoutCellsSelected,
-    onMessage
-  });
+    syncPiForShelf,
+    queuePresetAfterAssign,
+    applyPresetForExistingShelf,
+    clearPresetForDevice,
+    flushPendingPresets,
+    piSelectionNeedsApply,
+    presetApplyPending,
+    clearingDeviceId
+  } = useShelfZero2wPreset({ isOpen, onMessage });
 
-  const zero2wActive = selectedZero2wDeviceId.length > 0;
+  const shelfContext = useMemo(
+    () => resolveShelfSelectionContext(draft.selectedCells, draft.draftEntities),
+    [draft.selectedCells, draft.draftEntities]
+  );
+
+  const selectionIsExistingShelf = shelfContext.kind === 'shelf';
+  const pendingShelfAssign = draft.pendingKind === 'SHELF' && draft.selectedCells.length > 0;
+
+  const targetShelfCodeRaw = useMemo(() => {
+    if (!draft.zoneQuery.data) {
+      return null;
+    }
+    return resolveZero2wTargetShelfCodeRaw({
+      selectedCells: draft.selectedCells,
+      draftEntities: draft.draftEntities,
+      pendingKind: draft.pendingKind,
+      gridSize: draft.gridSize,
+      shelfPrefix: draft.zoneQuery.data.shelfPrefix,
+      baseNextShelfSlot: draft.zoneQuery.data.nextShelfSlot
+    });
+  }, [
+    draft.selectedCells,
+    draft.draftEntities,
+    draft.pendingKind,
+    draft.gridSize,
+    draft.zoneQuery.data
+  ]);
+
+  const zero2wPiOptions = useMemo(
+    () => buildZero2wPiSelectOptions(zero2wDevices, targetShelfCodeRaw),
+    [zero2wDevices, targetShelfCodeRaw]
+  );
+
+  const orphanZero2wDevices = useMemo(() => {
+    if (!isOpen || !draft.zoneQuery.data) {
+      return [];
+    }
+    const zoneShelfCodes = collectShelfCodesOnZoneMap(draft.draftEntities);
+    return findOrphanZero2wDevicesInZone(
+      zero2wDevices,
+      zoneShelfCodes,
+      draft.zoneQuery.data.shelfPrefix
+    );
+  }, [draft.draftEntities, draft.zoneQuery.data, isOpen, zero2wDevices]);
 
   const layoutGates = getLayoutEditorFlowGates({
     selectedCount: draft.selectedCells.length,
@@ -50,7 +97,9 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
     selectedMachineCd: draft.selectedMachineCd,
     dirty: draft.dirty,
     savePending: draft.savePending,
-    zero2wDeviceSelected: zero2wActive
+    selectionIsExistingShelf,
+    pendingShelfAssign,
+    zero2wPiSelectionNeedsApply: piSelectionNeedsApply(targetShelfCodeRaw)
   });
 
   useEffect(() => {
@@ -63,21 +112,25 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
     resetZero2w();
   }, [zoneId, resetZero2w]);
 
-  const handleToggleCell = useCallback(
-    (cells: number[]) => {
-      if (zero2wGates.mapShelfPick) {
-        const cell = cells[0];
-        if (cell == null) return;
-        const entity = entityAtCell(draft.draftEntities, cell);
-        if (entity?.entityKind === 'SHELF' && entity.shelfCodeRaw) {
-          selectShelfFromMap(entity.shelfCodeRaw);
-        }
-        return;
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    if (shelfContext.kind === 'shelf') {
+      syncPiForShelf(shelfContext.shelfCodeRaw);
+      return;
+    }
+    setSelectedPi(ZERO2W_PI_UNCHANGED);
+  }, [isOpen, setSelectedPi, shelfContext, syncPiForShelf]);
+
+  const handlePickKind = useCallback(
+    (kind: Parameters<typeof draft.setPendingKind>[0]) => {
+      if (kind !== 'SHELF') {
+        setSelectedPi(ZERO2W_PI_UNCHANGED);
       }
-      if (zero2wActive) return;
-      draft.toggleCell(cells);
+      draft.setPendingKind(kind);
     },
-    [draft, zero2wGates.mapShelfPick, selectShelfFromMap, zero2wActive]
+    [draft, setSelectedPi]
   );
 
   const requestClose = () => {
@@ -107,48 +160,58 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
           relocateSource={null}
           tab="layout"
           layoutEmphasizeCells={layoutGates.emphasize === 'cells'}
-          layoutCellsBlocked={zero2wActive}
-          zero2wMapShelfPick={zero2wGates.mapShelfPick}
-          zero2wPickedShelfCode={selectedZero2wShelf || null}
           relocateEmphasize={null}
           relocateCellActionable={() => false}
           relocateCellsDisabled
           onOpenZone={onZoneChange}
-          onToggleCell={handleToggleCell}
+          onToggleCell={draft.toggleCell}
         />
       }
       dock={
         <ShelfLayoutEditorShell
           layoutGates={layoutGates}
-          zero2wGates={zero2wGates}
           multiMode={draft.multiMode}
           gridSize={draft.gridSize}
           pendingKind={draft.pendingKind}
           selectedMachineCd={draft.selectedMachineCd}
           machines={machines}
           layoutSavePending={draft.savePending}
-          zero2wDevices={zero2wDevices}
-          selectedZero2wDeviceId={selectedZero2wDeviceId}
-          selectedZero2wShelf={selectedZero2wShelf}
-          zero2wSavePending={zero2wSavePending}
+          zero2wPiOptions={zero2wPiOptions}
+          selectedPi={selectedPi}
+          orphanZero2wDevices={orphanZero2wDevices}
+          zero2wPresetApplyPending={presetApplyPending}
+          zero2wClearingDeviceId={clearingDeviceId}
+          onClearOrphanPreset={clearPresetForDevice}
           onToggleMulti={() => draft.setMultiMode((v) => !v)}
           onGridSizeChange={draft.handleGridSizeChange}
           onClearSelection={draft.handleDeselectOnly}
-          onPickKind={draft.setPendingKind}
+          onPickKind={handlePickKind}
           onMachineChange={draft.setSelectedMachineCd}
-          onAssign={() => draft.handleAssign(machines, (msg) => onMessage(msg))}
+          onPiChange={setSelectedPi}
+          onAssign={() => {
+            const assignedShelfCodeRaw = draft.handleAssign(machines, (msg) => onMessage(msg));
+            if (assignedShelfCodeRaw) {
+              queuePresetAfterAssign(assignedShelfCodeRaw);
+            }
+          }}
           onClearCells={draft.handleClearCells}
+          onZero2wPresetApply={() => {
+            if (targetShelfCodeRaw) {
+              applyPresetForExistingShelf(targetShelfCodeRaw);
+            }
+          }}
           onLayoutSave={() =>
             draft.saveLayout(
-              () => {
-                onMessage('レイアウトを保存しました');
+              async () => {
+                const flushed = await flushPendingPresets();
+                if (!flushed) {
+                  onMessage('レイアウトを保存しました');
+                }
                 onClose();
               },
               (msg) => onMessage(msg)
             )
           }
-          onSelectZero2wDevice={selectZero2wDevice}
-          onZero2wSave={saveZero2w}
         />
       }
     />

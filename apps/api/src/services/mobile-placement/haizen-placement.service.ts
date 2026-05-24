@@ -82,8 +82,16 @@ export async function getHaizenPresetShelf(clientDeviceId: string): Promise<{ sh
 
 export async function updateHaizenPresetShelf(input: {
   clientDeviceId: string;
-  shelfCodeRaw: string;
-}): Promise<{ shelfCodeRaw: string }> {
+  shelfCodeRaw: string | null;
+}): Promise<{ shelfCodeRaw: string | null }> {
+  if (input.shelfCodeRaw === null) {
+    await prisma.clientDevice.update({
+      where: { id: input.clientDeviceId },
+      data: { haizenPresetShelfCodeRaw: null }
+    });
+    return { shelfCodeRaw: null };
+  }
+
   const raw = input.shelfCodeRaw.trim();
   if (raw.length === 0) {
     throw new ApiError(400, '棚番が空です', undefined, 'HAIZEN_PRESET_EMPTY');
@@ -139,8 +147,8 @@ export async function listHaizenAssignableDevices(): Promise<{ devices: HaizenAs
  */
 export async function updateHaizenPresetShelfForTarget(input: {
   clientDeviceId: string;
-  shelfCodeRaw: string;
-}): Promise<{ shelfCodeRaw: string }> {
+  shelfCodeRaw: string | null;
+}): Promise<{ shelfCodeRaw: string | null }> {
   const target = await prisma.clientDevice.findUnique({
     where: { id: input.clientDeviceId },
     select: { id: true, name: true, apiKey: true, haizenEdgeEnabled: true }
@@ -157,11 +165,9 @@ export async function updateHaizenPresetShelfForTarget(input: {
     );
   }
 
-  const raw = input.shelfCodeRaw.trim();
-  await assertHaizenPresetShelfRegistered(raw);
   return updateHaizenPresetShelf({
     clientDeviceId: target.id,
-    shelfCodeRaw: raw
+    shelfCodeRaw: input.shelfCodeRaw
   });
 }
 

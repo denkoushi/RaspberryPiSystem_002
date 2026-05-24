@@ -35,6 +35,11 @@ export const shelfMasterTheme = {
   piSaveBtn:
     'mt-auto w-full rounded-lg border-2 border-green-700 bg-gradient-to-b from-green-800 to-green-900 px-2 py-1.5 text-[0.72rem] font-extrabold text-emerald-50',
   relocateStatus: 'text-center text-xs font-semibold text-slate-300',
+  orphanAlert:
+    'rounded-lg border border-amber-500/40 bg-amber-950/30 px-2 py-1.5 text-[0.62rem] text-amber-100',
+  orphanAlertTitle: 'mb-1 font-extrabold text-amber-200',
+  orphanAlertRow: 'flex flex-wrap items-center justify-between gap-1.5 py-0.5',
+  orphanAlertLabel: 'min-w-0 flex-1 truncate font-mono text-sky-200',
   cellBase:
     'flex min-h-0 flex-col items-center justify-center gap-0.5 rounded-md border p-1 font-bold',
   cellMain: 'max-w-full overflow-hidden text-ellipsis text-[clamp(0.75rem,2.8vw,1.05rem)] leading-tight',

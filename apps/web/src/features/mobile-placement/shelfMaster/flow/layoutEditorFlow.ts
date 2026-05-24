@@ -1,6 +1,14 @@
 import type { DraftEntity } from '../model/shelfLayoutTypes';
 
-export type LayoutEditorEmphasis = 'cells' | 'kinds' | 'machineSelect' | 'assign' | 'save' | null;
+export type LayoutEditorEmphasis =
+  | 'cells'
+  | 'kinds'
+  | 'machineSelect'
+  | 'zero2wPiSelect'
+  | 'assign'
+  | 'zero2wPresetApply'
+  | 'save'
+  | null;
 
 export type LayoutEditorFlowGates = {
   multiMode: boolean;
@@ -8,7 +16,9 @@ export type LayoutEditorFlowGates = {
   clearSelection: boolean;
   kindButtons: boolean;
   machineSelect: boolean;
+  zero2wPiSelect: boolean;
   assign: boolean;
+  zero2wPresetApply: boolean;
   clearCells: boolean;
   save: boolean;
   emphasize: LayoutEditorEmphasis;
@@ -20,33 +30,28 @@ export function getLayoutEditorFlowGates(input: {
   selectedMachineCd: string;
   dirty: boolean;
   savePending: boolean;
-  /** 棚番パイ選択中はレイアウト用セル操作を抑止 */
-  zero2wDeviceSelected?: boolean;
+  /** 単一 SHELF マス選択（既存棚） */
+  selectionIsExistingShelf: boolean;
+  /** 部品置き場の新規割当待ち */
+  pendingShelfAssign: boolean;
+  zero2wPiSelectionNeedsApply: boolean;
 }): LayoutEditorFlowGates {
-  if (input.zero2wDeviceSelected) {
-    return {
-      multiMode: false,
-      gridSize: false,
-      clearSelection: false,
-      kindButtons: false,
-      machineSelect: false,
-      assign: false,
-      clearCells: false,
-      save: input.dirty && !input.savePending,
-      emphasize: input.dirty ? 'save' : null
-    };
-  }
-
   const hasSel = input.selectedCount > 0;
   const hasKind = input.pendingKind != null;
   const machineReady = input.pendingKind !== 'MACHINE' || input.selectedMachineCd.length > 0;
   const canAssign = hasSel && hasKind && machineReady;
+  const showZero2wPi = input.pendingShelfAssign || input.selectionIsExistingShelf;
+  const zero2wPresetApply = input.selectionIsExistingShelf && input.zero2wPiSelectionNeedsApply;
 
   let emphasize: LayoutEditorEmphasis = 'cells';
   if (input.dirty && !hasSel) {
     emphasize = 'save';
+  } else if (zero2wPresetApply) {
+    emphasize = 'zero2wPresetApply';
   } else if (canAssign) {
     emphasize = 'assign';
+  } else if (showZero2wPi) {
+    emphasize = 'zero2wPiSelect';
   } else if (hasSel && input.pendingKind === 'MACHINE' && !machineReady) {
     emphasize = 'machineSelect';
   } else if (hasSel && !hasKind) {
@@ -61,7 +66,9 @@ export function getLayoutEditorFlowGates(input: {
     clearSelection: hasSel,
     kindButtons: hasSel,
     machineSelect: hasSel && input.pendingKind === 'MACHINE',
+    zero2wPiSelect: showZero2wPi,
     assign: canAssign,
+    zero2wPresetApply,
     clearCells: hasSel,
     save: input.dirty && !input.savePending,
     emphasize
