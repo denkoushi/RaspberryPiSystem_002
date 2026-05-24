@@ -36,7 +36,7 @@
 
 **API**: `GET /api/mobile-placement/shelf-layout` の各 `zones[]` に **`entities[]`** を含む（俯瞰ミニマップ用・後方互換追加）。
 
-**レイアウト Dialog**: 操作誘導は **押せるコントロールのみ有効**。**4 列ドック**（[§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05)）— **「選択解除」**（区画のみ）·**「リセット」**（操作入力のみ）·**「確定」**（保存／Pi 反映／割当の統合）·**dirty 時のレイアウト保存は「確定」に統合**（単独「レイアウト保存」ボタンは廃止）。~~**「選択マスを解除」**~~ は **廃止**（**未使用＋確定**で代替）。
+**レイアウト Dialog**: 操作誘導は **押せるコントロールのみ有効**。**4 列ドック**（[§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05)）— **「選択解除」**（区画のみ）·**「リセット」**（操作入力のみ）·**「確定」**（保存／Pi 反映／割当の統合）·**dirty 時のレイアウト保存は「確定」に統合**（単独「レイアウト保存」ボタンは廃止）。~~**「選択マスを解除」**~~ は **廃止**（**未使用＋確定**で代替 — **1マスずつ空マス**に戻す。結合ブロックのまま残さない）。
 
 ### 区画 Dialog コンパクト化（2026-05-23 · Web のみ）
 
@@ -268,7 +268,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 1. **レイアウト** → 区画 **編集** Dialog
 2. 複数マス選択 → **部品置き場を割当**
 3. 結合ブロックを **1 回タップ** → 全マスが選択ハイライト
-4. 用途を消す場合は **「未使用」→「確定」**。マス選択だけ外す場合は **「選択解除」**（結合ブロックは **再タップ** で一括選択解除も可）
+4. 用途を消す場合は **「未使用」→「確定」** — 選択マスの **用途を外し、1マスずつの空マス**（layout entity なし）に戻す。結合 UNUSED entity は作らない。マス選択だけ外す場合は **「選択解除」**（結合ブロックは **再タップ** で一括選択解除も可）
 
 **トラブルシュート**:
 
@@ -295,7 +295,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | **選択解除** | **地図上の区画ハイライトのみ**外す（種別・Pi・複数区画モード等は維持しうる） | [`useZoneLayoutDraft.handleDeselectOnly`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useZoneLayoutDraft.ts) — `cells` のみクリア |
 | **リセット** | ポップアップ内の **操作入力一式**を初期化（区画選択・種別・加工機・Pi・複数区画モード・保存待ち preset キュー） | [`layoutEditorFlow.resetFlow`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlow.ts) + [`hasLayoutEditorFlowInput`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlowInput.ts) + [`useShelfZero2wPreset.resetFlowInput`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useShelfZero2wPreset.ts)。**ドラフト地図・`dirty` は維持** |
 | **確定** | 状況に応じ **1 アクション**（下記優先順）。**レイアウト保存成功後は Dialog 自動 close**（従来どおり） | [`resolveLayoutEditorConfirmAction`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorConfirmAction.ts) · [`ShelfZoneLayoutDialog`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneLayoutDialog.tsx) の `handleConfirm` |
-| ~~選択マスを解除~~ | **廃止** | SHELF を外す用途は **用途「未使用」→ 確定**。結合ブロックの選択だけ外す用途は **選択解除** または結合ブロック **再タップ**（[§複数マス](#multi-cell-selection-clear-2026-05-23)） |
+| ~~選択マスを解除~~ | **廃止** | 用途削除は **「未使用」→ 確定**（[`releaseLayoutCells`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellRelease.ts) — 選択マスから entity を剥がし **1マス空**に戻す。DB に明示 UNUSED 行は残さない）。結合ブロックの選択だけ外す用途は **選択解除** または結合ブロック **再タップ**（[§複数マス](#multi-cell-selection-clear-2026-05-23)） |
 
 **統合「確定」の優先順**（`layoutEditorFlow` の `gates.emphasize === 'save'` 時を最優先）:
 
