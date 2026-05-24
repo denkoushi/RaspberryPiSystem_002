@@ -167,7 +167,7 @@ sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \
 journalctl -u hermes-gateway -n 30 --no-pager
 ```
 
-**E2E**: Discord DM で応答あり。thinking 注入前は **~1 分/通**、注入後は **だいぶ速い**（DGX 単体ベンチ **~4 s** 級）。正本: [KB Discord E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。
+**E2E**: Discord DM で応答あり。**~1 min/通**（思考 ON）→ inject 後 **数秒** → **max_tokens 128 + 簡潔プロンプト** 後 **8.7〜10.7 s/通**（out=41〜52）。正本: [KB Discord E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。
 
 ## トラブルシュート（クイック）
 
