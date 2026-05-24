@@ -347,6 +347,20 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --check-docker-vo
 
 正本: [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)。
 
+## Phase D2 — file ツールのみ（実機本番反映・2026-05-24）
+
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| 1 | 私用 Pi5 | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | `PLAY RECAP` **ok=61 changed=4 failed=0**（約 **131s**） |
+
+**fragment**: `private_pi5_hermes_tools_file_enabled: true` · `private_pi5_hermes_tools_gateway_enabled: true`（D1 から変更）。
+
+**検証**: `HERMES_TOOLS_PHASE=d2` + `verify-tools-profile-deploy.sh` → **OK** · `verify-tools-file-smoke.sh` → **OK**。
+
+**CI / Git**: `feat/private-pi5-hermes-d2` · `630cdbe1` · CI **`26362979630`** success。
+
+**記録**: [KB Phase D2 本番](../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)。
+
 ## トラブルシュート（クイック）
 
 | 症状 | 参照 |
@@ -364,6 +378,7 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --check-docker-vo
 | **verify-tools** path missing | `~/.hermes-tools` 0700 | `sudo -u hermes test -e` · ansible **`-b`** |
 | ansible inventory **empty** | `-i inventory-private-pi5-stackchan-bridge.yml` は未使用 | **fragment** `-i inventory-private-pi5-stackchan-bridge-fragment.yml` |
 | D2 verify **gateway inactive** | `HERMES_TOOLS_PHASE` 未設定（既定 d1） | **`HERMES_TOOLS_PHASE=d2`** |
+| ansible `script` に env を渡せない | ad-hoc `-a` はパスのみ | `copy` + `shell -a 'HERMES_TOOLS_PHASE=d2 /tmp/...'`（[KB D2](./knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)） |
 | file が workspace 外を触る | `docker_volumes` 未設定 | 再デプロイ · [`config_contract.py`](../../scripts/private-pi5-hermes/lib/config_contract.py) |
 
 ## ロールバック
@@ -382,3 +397,4 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --check-docker-vo
 - [KB 脅威モデル](../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)
 - [KB Phase D1 本番](../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)
 - [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)
+- [KB Phase D2 本番](../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)

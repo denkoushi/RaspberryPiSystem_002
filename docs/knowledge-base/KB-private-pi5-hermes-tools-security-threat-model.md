@@ -70,14 +70,14 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 正本: [KB Phase D1 本番](./KB-private-pi5-hermes-phase-d1-production.md).
 
-## D2 チェックリスト（repo 実装済 · 実機未）
+## D2 チェックリスト（2026-05-24 完了）
 
-- [x] `file` のみ · workspace 限定 · manual 承認（[`config.tools.yaml.j2`](../../infrastructure/ansible/templates/private-pi5-hermes/config.tools.yaml.j2) · [`config_contract.py`](../../scripts/private-pi5-hermes/lib/config_contract.py)）
-- [x] `hermes-tools-gateway` 起動（fragment `tools_gateway_enabled: true` · D2 assert）
-- [ ] 実機デプロイ・`HERMES_TOOLS_PHASE=d2` 検証
+- [x] `file` のみ · workspace 限定 · manual 承認
+- [x] `hermes-tools-gateway` 起動（実機 active）
+- [x] 実機デプロイ・`HERMES_TOOLS_PHASE=d2` 検証 PASS
 - [ ] Discord 回帰（任意）
 
-正本: [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md).
+正本: [KB Phase D2 本番](./KB-private-pi5-hermes-phase-d2-production.md) · [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md).
 
 ## D2+ チェックリスト（未実施）
 
