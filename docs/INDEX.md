@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 🆕 最新アップデート（2026-05-24 · 私用 Pi5 Hermes Agent）
+
+- **私用 Pi5 Hermes Agent（セキュリティ先行・DGX 雑談・Discord 未設定）**: 専用ユーザー **`hermes`**・**Docker 隔離**・**UFW**（SSH + 自宅 LAN → **18080** のみ）・公式 install **v0.14.0**・**`hermes-gateway` は stopped**（Discord 未有効化）。**DGX `/healthz` ok**・**`stackchan-bridge` active** 維持。**Playbook**: [`private-pi5-hermes.yml`](../infrastructure/ansible/playbooks/private-pi5-hermes.yml)·**デプロイ**: [`deploy-private-pi5-hermes.sh`](../scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh)。**記録**: [private-pi5-hermes-agent-plan.md](./plans/private-pi5-hermes-agent-plan.md)·[private-pi5-hermes-deploy.md](./runbooks/private-pi5-hermes-deploy.md)·[KB-private-pi5-hermes-install-noninteractive.md](./knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)·[ADR-20260524](./decisions/ADR-20260524-private-pi5-hermes-security-profile.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。
+
 ### 🆕 最新アップデート（2026-05-22 · 順位ボード・製番左縁全件無色）
 
 - **キオスク順位ボード・製番左縁 — 全件表示は無色・OR フィルタ時のみ色分け（方針 A·Pi5→Pi4×4 本番·実機 OK 自動）**: [§24色](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20) の全件ハッシュ 24 色は **識別性不足**のため撤回。**`activeQueries` 空 = 左縁なし**·**登録製番チップ押下（OR ON）= リスト順色分け（現状維持）**·**サイネージ JPEG は 24 色ハッシュ維持**（キオスクと意図的分岐）。**`44777ac7`**·ブランチ **`feat/kiosk-leaderboard-seiban-accent-no-color-all-items`**·Detach **`20260522-211412-3634`** ほか 4 本·Phase12 **43/0/0**（約 **139s**）。**記録**: [KB-297 §全件無色](./knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §全件無色](./guides/deployment.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)·[verification-checklist §6.6.28](./guides/verification-checklist.md#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。

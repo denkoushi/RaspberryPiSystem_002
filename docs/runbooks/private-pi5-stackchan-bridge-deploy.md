@@ -164,3 +164,7 @@ ansible -i inventory-private-pi5-stackchan-bridge-fragment.yml private-pi5-stack
 **トラブルシュート（再掲）**:
 
 - デプロイ後に StackChan 側だけが黙る場合は、[stackchan-community-text-only-e2e.md §text-only-done-criteria](./stackchan-community-text-only-e2e.md#text-only-done-criteria) と **IP ミスマッチ** を先に切る。compat alias を playbook で管理している場合は `systemctl status stackchan-bridge-compat-ip.service` と `ip -brief addr show` をセットで見る。
+
+## 関連（同一私用 Pi5）
+
+- [private-pi5-hermes-deploy.md](./private-pi5-hermes-deploy.md) — **Hermes Agent**（Discord 雑談・DGX）。**`stackchan-bridge` と UFW で tcp/18080 を共有**するがプロセスは分離。

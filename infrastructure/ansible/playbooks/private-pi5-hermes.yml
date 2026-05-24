@@ -1,0 +1,249 @@
+---
+# 私用 Pi5: Hermes Agent（セキュリティ準備 → インストール → 検証）
+# 在庫: inventory-private-pi5-stackchan-bridge-fragment.yml（ローカル非追跡）
+- name: Private Pi5 Hermes Agent (security-first)
+  hosts: private-pi5-stackchan-bridge
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    private_pi5_hermes_user: hermes
+    private_pi5_hermes_group: hermes
+    private_pi5_hermes_home: "/home/{{ private_pi5_hermes_user }}"
+    private_pi5_hermes_data_dir: "{{ private_pi5_hermes_home }}/.hermes"
+    private_pi5_hermes_bin: "{{ private_pi5_hermes_home }}/.local/bin/hermes"
+    private_pi5_hermes_install_skip_browser: true
+    private_pi5_hermes_enable_ufw: true
+    private_pi5_hermes_lan_cidr: "192.168.128.0/24"
+    private_pi5_hermes_bridge_port: 18080
+    private_pi5_hermes_gateway_enabled: false
+    private_pi5_hermes_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
+    private_pi5_hermes_dgx_model: "{{ private_pi5_dgx_model | default('system-prod-primary') }}"
+    private_pi5_hermes_dgx_llm_shared_token: "{{ private_pi5_dgx_llm_shared_token | default('') }}"
+    private_pi5_hermes_discord_bot_token: ""
+    private_pi5_hermes_discord_allowed_users: ""
+    private_pi5_hermes_install_argv:
+      - /bin/bash
+      - /tmp/hermes-agent-install.sh
+      - --skip-setup
+      - --skip-browser
+
+  pre_tasks:
+    - name: Run Tailscale preflight checks
+      ansible.builtin.include_tasks: "../tasks/preflight-tailscale.yml"
+      when:
+        - network_mode | default('tailscale') == 'tailscale'
+        - tailscale_enabled | default(false) | bool
+
+    - name: Validate Hermes prerequisites
+      ansible.builtin.assert:
+        that:
+          - (private_pi5_hermes_dgx_llm_shared_token | default('') | trim) | length > 0
+        fail_msg: >-
+          private_pi5_hermes_dgx_llm_shared_token (or private_pi5_dgx_llm_shared_token) is required in the local inventory fragment.
+
+  tasks:
+    - name: Ensure git and curl are present
+      ansible.builtin.apt:
+        name:
+          - git
+          - curl
+          - ca-certificates
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create dedicated hermes group
+      ansible.builtin.group:
+        name: "{{ private_pi5_hermes_group }}"
+        state: present
+
+    - name: Create dedicated hermes system user
+      ansible.builtin.user:
+        name: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+        home: "{{ private_pi5_hermes_home }}"
+        shell: /bin/bash
+        create_home: true
+        system: false
+
+    - name: Add hermes user to docker group
+      ansible.builtin.user:
+        name: "{{ private_pi5_hermes_user }}"
+        groups: docker
+        append: true
+
+    - name: Install UFW when enabled
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+      when: private_pi5_hermes_enable_ufw | bool
+
+    - name: Configure UFW default deny incoming
+      community.general.ufw:
+        direction: incoming
+        policy: deny
+      when: private_pi5_hermes_enable_ufw | bool
+
+    - name: Allow SSH through UFW
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+      when: private_pi5_hermes_enable_ufw | bool
+
+    - name: Allow StackChan bridge from home LAN only
+      community.general.ufw:
+        rule: allow
+        proto: tcp
+        port: "{{ private_pi5_hermes_bridge_port }}"
+        src: "{{ private_pi5_hermes_lan_cidr }}"
+      when: private_pi5_hermes_enable_ufw | bool
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+      when: private_pi5_hermes_enable_ufw | bool
+
+    - name: Ensure Hermes data directory exists
+      ansible.builtin.file:
+        path: "{{ private_pi5_hermes_data_dir }}"
+        state: directory
+        owner: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+        mode: "0700"
+
+    - name: Install Hermes optional system packages (avoid install.sh sudo prompts)
+      ansible.builtin.apt:
+        name:
+          - ripgrep
+          - ffmpeg
+          - build-essential
+          - python3-dev
+          - libffi-dev
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Download Hermes official install script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh
+        dest: /tmp/hermes-agent-install.sh
+        mode: "0755"
+        owner: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+
+    - name: Install Hermes Agent (official script, non-interactive)
+      ansible.builtin.command:
+        argv: "{{ private_pi5_hermes_install_argv }}"
+        stdin: /dev/null
+        creates: "{{ private_pi5_hermes_bin }}"
+      become: true
+      become_user: "{{ private_pi5_hermes_user }}"
+      environment:
+        HOME: "{{ private_pi5_hermes_home }}"
+        PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      async: 3600
+      poll: 30
+
+    - name: Check Hermes CLI is installed
+      ansible.builtin.stat:
+        path: "{{ private_pi5_hermes_bin }}"
+      register: private_pi5_hermes_bin_stat
+
+    - name: Fail when Hermes CLI is missing after install
+      ansible.builtin.assert:
+        that:
+          - private_pi5_hermes_bin_stat.stat.exists
+        fail_msg: "Hermes install did not create {{ private_pi5_hermes_bin }}"
+
+    - name: Deploy Hermes config.yaml (security profile)
+      ansible.builtin.template:
+        src: "../templates/private-pi5-hermes.config.yaml.j2"
+        dest: "{{ private_pi5_hermes_data_dir }}/config.yaml"
+        owner: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+        mode: "0600"
+
+    - name: Deploy Hermes .env (secrets)
+      ansible.builtin.template:
+        src: "../templates/private-pi5-hermes.env.j2"
+        dest: "{{ private_pi5_hermes_data_dir }}/.env"
+        owner: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+        mode: "0600"
+
+    - name: Install Hermes gateway systemd unit
+      ansible.builtin.template:
+        src: "../templates/private-pi5-hermes-gateway.service.j2"
+        dest: "/etc/systemd/system/hermes-gateway.service"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd daemon
+
+    - name: Flush handlers before checks
+      ansible.builtin.meta: flush_handlers
+
+    - name: Run hermes doctor
+      ansible.builtin.command:
+        argv:
+          - "{{ private_pi5_hermes_bin }}"
+          - doctor
+      become: true
+      become_user: "{{ private_pi5_hermes_user }}"
+      environment:
+        HOME: "{{ private_pi5_hermes_home }}"
+        PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      register: private_pi5_hermes_doctor
+      changed_when: false
+      failed_when: private_pi5_hermes_doctor.rc != 0
+
+    - name: Verify DGX health from Hermes user
+      ansible.builtin.uri:
+        url: "{{ private_pi5_hermes_dgx_base_url }}/healthz"
+        method: GET
+        headers:
+          X-LLM-Token: "{{ private_pi5_hermes_dgx_llm_shared_token }}"
+        status_code: 200
+        return_content: true
+      become: true
+      become_user: "{{ private_pi5_hermes_user }}"
+      register: private_pi5_hermes_dgx_health
+      changed_when: false
+
+    - name: Verify Docker works for hermes user
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - hello-world
+      become: true
+      become_user: "{{ private_pi5_hermes_user }}"
+      environment:
+        HOME: "{{ private_pi5_hermes_home }}"
+      register: private_pi5_hermes_docker_test
+      changed_when: false
+      failed_when: private_pi5_hermes_docker_test.rc != 0
+
+    - name: Set Hermes gateway service state
+      ansible.builtin.systemd:
+        name: hermes-gateway
+        enabled: "{{ private_pi5_hermes_gateway_enabled | bool }}"
+        state: "{{ 'started' if (private_pi5_hermes_gateway_enabled | bool) else 'stopped' }}"
+      failed_when: false
+
+    - name: Summarize Hermes deployment
+      ansible.builtin.debug:
+        msg:
+          - "hermes_user={{ private_pi5_hermes_user }}"
+          - "hermes_bin={{ private_pi5_hermes_bin }}"
+          - "dgx_health={{ private_pi5_hermes_dgx_health.content | default('n/a') | trim }}"
+          - "gateway_enabled={{ private_pi5_hermes_gateway_enabled }}"
+          - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
+          - "next=Create Discord bot, set DISCORD_* in fragment, re-run playbook with gateway_enabled=true"
+
+  handlers:
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true

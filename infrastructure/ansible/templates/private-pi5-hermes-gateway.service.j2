@@ -1,0 +1,23 @@
+[Unit]
+Description=Hermes Agent Gateway (private Pi5)
+After=network-online.target tailscaled.service docker.service
+Wants=network-online.target docker.service
+ConditionPathExists={{ private_pi5_hermes_data_dir }}/.env
+ConditionPathExists={{ private_pi5_hermes_bin }}
+
+[Service]
+Type=simple
+User={{ private_pi5_hermes_user }}
+Group={{ private_pi5_hermes_group }}
+WorkingDirectory={{ private_pi5_hermes_home }}
+Environment=HOME={{ private_pi5_hermes_home }}
+Environment=PATH={{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile={{ private_pi5_hermes_data_dir }}/.env
+ExecStart={{ private_pi5_hermes_bin }} gateway
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

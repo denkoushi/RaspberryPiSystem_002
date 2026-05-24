@@ -77,6 +77,13 @@ all:
       private_pi5_stt_upstream_model: "whisper-1"
       private_pi5_stt_upstream_timeout_sec: 60
 
+      # --- Hermes Agent（任意・Discord 雑談）---
+      # デプロイ: ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
+      # 正本: docs/runbooks/private-pi5-hermes-deploy.md
+      # private_pi5_hermes_gateway_enabled: false
+      # private_pi5_hermes_discord_bot_token: ""
+      # private_pi5_hermes_discord_allowed_users: ""
+
       # For private_pi5_stt_provider="faster-whisper-local"
       private_pi5_stt_local_model: "small"
       private_pi5_stt_local_device: "cpu"

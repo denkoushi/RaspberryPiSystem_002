@@ -203,6 +203,20 @@ git apply /path/to/RaspberryPiSystem_002/scripts/private-pi5-stackchan-bridge/pa
 - 2026-05-10: private Pi5 の標準 playbook に **compatibility alias 管理**（`private_pi5_stackchan_compat_ip` -> `stackchan-bridge-compat-ip.service`）を追加し、**`enabled` / `active`** 状態で **`wlan0: 192.168.128.113/24 192.168.128.112/24`** を確認。標準手順の範囲で StackChan 旧設定との互換を維持できるようにした。
 - 2026-05-23: **ESP32 多段 HTTP をやめ Pi5 `POST /api/stackchan/utterance` に集約**する方針で実装（`stackchan_utterance_core.py`・ファーム `apply_utterance_overlay.py`・`mac_usb_dev.sh`）。Realtime 全面移行は見送り。**実機は utterance ファーム書き込み後、画面真っ黒・無音・USB 未認識まで悪化し作業中断**（復旧手順は [KB §2026-05-23](../knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)）。
 
+## Hermes Agent（別系統・2026-05-24）
+
+私用 Pi5 上の **音声 StackChan 経路**とは独立して、**Hermes Agent**（Discord 雑談・DGX LLM）を導入した。
+
+| 項目 | 内容 |
+|------|------|
+| 状態 | **基盤デプロイ完了**（CLI v0.14.0・doctor・DGX health・Docker OK） |
+| Gateway | **停止**（Discord Bot / 許可 User ID 未設定） |
+| 正本 | [private-pi5-hermes-agent-plan.md](./private-pi5-hermes-agent-plan.md) |
+| Runbook | [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md) |
+| 障害 KB | [KB-private-pi5-hermes-install-noninteractive.md](../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md) |
+
+**次**: Discord アカウント・Bot 作成 → inventory fragment に token / `DISCORD_ALLOWED_USERS` → `private_pi5_hermes_gateway_enabled: true` → Playbook 再実行。
+
 ## フェーズ追記（2026-05-23・中断時）
 
 | 項目 | 状態 |

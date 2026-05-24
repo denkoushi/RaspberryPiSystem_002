@@ -1,0 +1,43 @@
+# Hermes Agent — private Pi5 セキュリティ先行プロファイル（雑談・DM のみ想定）
+# 秘密は ~/.hermes/.env にのみ置く（本ファイルにトークンを書かない）
+
+model:
+  default: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
+  provider: custom
+  base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
+  context_length: {{ private_pi5_hermes_context_length | default(8192) }}
+
+terminal:
+  backend: docker
+  container_persistent: false
+  docker_forward_env: []
+  env_passthrough: []
+  container_memory: 2048
+  container_cpu: 1
+
+approvals:
+  mode: manual
+  timeout: 120
+
+security:
+  allow_lazy_installs: false
+  allow_private_urls: true
+  tirith_enabled: true
+  tirith_fail_open: false
+
+display:
+  tool_progress: "off"
+
+discord:
+  require_mention: true
+  auto_thread: false
+  reactions: true
+  allow_mentions:
+    everyone: false
+    roles: false
+    users: true
+    replied_user: true
+
+group_sessions_per_user: true
+
+unauthorized_dm_behavior: ignore
