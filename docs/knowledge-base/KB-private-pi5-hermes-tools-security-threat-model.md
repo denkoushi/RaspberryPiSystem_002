@@ -70,9 +70,18 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 正本: [KB Phase D1 本番](./KB-private-pi5-hermes-phase-d1-production.md).
 
+## D2 チェックリスト（repo 実装済 · 実機未）
+
+- [x] `file` のみ · workspace 限定 · manual 承認（[`config.tools.yaml.j2`](../../infrastructure/ansible/templates/private-pi5-hermes/config.tools.yaml.j2) · [`config_contract.py`](../../scripts/private-pi5-hermes/lib/config_contract.py)）
+- [x] `hermes-tools-gateway` 起動（fragment `tools_gateway_enabled: true` · D2 assert）
+- [ ] 実機デプロイ・`HERMES_TOOLS_PHASE=d2` 検証
+- [ ] Discord 回帰（任意）
+
+正本: [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md).
+
 ## D2+ チェックリスト（未実施）
 
-- [ ] `file` のみ · workspace 限定 · manual 承認
+- [ ] （D2 で file は完了予定）
 - [ ] web URL allowlist を `boundary-policy.tools.yaml` と同期
 - [ ] browser 隔離 Docker · `AGENT_BROWSER_ARGS` 実機検証
 - [ ] terminal は最後（または CLI のみ）

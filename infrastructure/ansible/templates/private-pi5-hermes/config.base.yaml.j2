@@ -6,6 +6,15 @@ terminal:
   env_passthrough: []
   container_memory: 2048
   container_cpu: 1
+{% if hermes_terminal_mount_cwd_to_workspace | default(false) | bool %}
+  docker_mount_cwd_to_workspace: true
+{% endif %}
+{% if (hermes_terminal_docker_volumes | default([])) | length > 0 %}
+  docker_volumes:
+{% for mount in hermes_terminal_docker_volumes | default([]) %}
+    - "{{ mount }}"
+{% endfor %}
+{% endif %}
 
 approvals:
   mode: manual

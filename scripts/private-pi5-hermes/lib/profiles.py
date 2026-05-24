@@ -11,17 +11,35 @@ CHAT_PROFILE = HermesProfileSpec(
     systemd_unit="hermes-gateway",
     discord_enabled=True,
     tools_enabled=False,
+    enabled_toolsets=frozenset(),
+    expected_gateway_active=True,
 )
 
-TOOLS_PROFILE = HermesProfileSpec(
+TOOLS_PROFILE_D1 = HermesProfileSpec(
     name="tools",
     data_dir_name="hermes-tools",
     systemd_unit="hermes-tools-gateway",
     discord_enabled=False,
     tools_enabled=False,
+    enabled_toolsets=frozenset(),
+    expected_gateway_active=False,
 )
+
+TOOLS_PROFILE_D2 = HermesProfileSpec(
+    name="tools",
+    data_dir_name="hermes-tools",
+    systemd_unit="hermes-tools-gateway",
+    discord_enabled=False,
+    tools_enabled=True,
+    enabled_toolsets=frozenset({"file"}),
+    expected_gateway_active=True,
+)
+
+# Default tools metadata alias (latest skeleton without file tools).
+TOOLS_PROFILE = TOOLS_PROFILE_D1
 
 PROFILES_BY_NAME: dict[str, HermesProfileSpec] = {
     CHAT_PROFILE.name: CHAT_PROFILE,
     TOOLS_PROFILE.name: TOOLS_PROFILE,
+    "tools-d2": TOOLS_PROFILE_D2,
 }

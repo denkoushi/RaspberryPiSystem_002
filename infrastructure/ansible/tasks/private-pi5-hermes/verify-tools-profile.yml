@@ -4,6 +4,7 @@
     argv:
       - python3
       - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
+      - --check-docker-volumes
   delegate_to: localhost
   become: false
   changed_when: false
@@ -19,7 +20,48 @@
   register: private_pi5_hermes_tools_path_stat
   failed_when: not private_pi5_hermes_tools_path_stat.stat.exists
 
-- name: Ensure Hermes tools gateway is not running
+- name: Read deployed Hermes tools config.yaml
+  ansible.builtin.slurp:
+    src: "{{ private_pi5_hermes_tools_config_dir }}/config.yaml"
+  register: private_pi5_hermes_tools_config_slurp
+
+- name: Set expected Hermes tools workspace docker mount
+  ansible.builtin.set_fact:
+    private_pi5_hermes_tools_workspace_mount: >-
+      {{ private_pi5_hermes_tools_data_dir ~ '/workspace:/workspace' }}
+
+- name: Validate Hermes tools config aligns with Phase D1/D2 contract
+  ansible.builtin.assert:
+    that:
+      - >-
+        {{
+          (private_pi5_hermes_tools_file_enabled | default(false) | bool)
+          == (
+            (
+              private_pi5_hermes_tools_workspace_mount
+            )
+            in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+          )
+        }}
+      - >-
+        {{
+          (
+            private_pi5_hermes_tools_file_enabled | default(false) | bool
+          )
+          ==
+          (
+            not (
+              '\n    - file\n'
+              in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+            )
+          )
+        }}
+    fail_msg: >-
+      tools config.yaml does not match private_pi5_hermes_tools_file_enabled
+      (expected workspace docker mount and file not in disabled_toolsets when D2).
+  when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
+
+- name: Ensure Hermes tools gateway is not running (Phase D1)
   ansible.builtin.command:
     argv:
       - systemctl
@@ -28,6 +70,22 @@
   register: private_pi5_hermes_tools_gateway_active
   changed_when: false
   failed_when: private_pi5_hermes_tools_gateway_active.rc == 0
+  when:
+    - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+    - not (private_pi5_hermes_tools_file_enabled | default(false) | bool)
+
+- name: Ensure Hermes tools gateway is running (Phase D2)
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - hermes-tools-gateway
+  register: private_pi5_hermes_tools_gateway_active_d2
+  changed_when: false
+  failed_when: private_pi5_hermes_tools_gateway_active_d2.rc != 0
+  when:
+    - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+    - private_pi5_hermes_tools_file_enabled | default(false) | bool
 
 - name: Verify DGX accepts tools profile Bearer token
   ansible.builtin.shell:
