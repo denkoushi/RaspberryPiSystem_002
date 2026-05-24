@@ -14,6 +14,7 @@ class ProfilePhase(str, Enum):
 
     D1_SKELETON = "d1"
     D2_FILE_ONLY = "d2"
+    D3_FILE_WEB = "d3"
 
     @classmethod
     def from_tools_flags(
@@ -21,9 +22,12 @@ class ProfilePhase(str, Enum):
         *,
         tools_profile_enabled: bool,
         tools_file_enabled: bool,
+        tools_web_enabled: bool = False,
     ) -> ProfilePhase | None:
         if not tools_profile_enabled:
             return None
+        if tools_web_enabled:
+            return cls.D3_FILE_WEB
         if tools_file_enabled:
             return cls.D2_FILE_ONLY
         return cls.D1_SKELETON
@@ -38,6 +42,8 @@ class ToolsPhaseExpectation:
     require_tools_gateway_active: bool
     require_workspace_docker_mount: bool
     config_must_disable_file_toolset: bool
+    config_must_disable_web_toolset: bool
+    require_website_blocklist: bool
 
     @property
     def hermes_tools_phase_env(self) -> str:
@@ -54,6 +60,8 @@ def expectation_for_phase(phase: ProfilePhase) -> ToolsPhaseExpectation:
             require_tools_gateway_active=False,
             require_workspace_docker_mount=False,
             config_must_disable_file_toolset=True,
+            config_must_disable_web_toolset=True,
+            require_website_blocklist=False,
         )
     if phase is ProfilePhase.D2_FILE_ONLY:
         from .profiles import TOOLS_PROFILE_D2
@@ -64,5 +72,19 @@ def expectation_for_phase(phase: ProfilePhase) -> ToolsPhaseExpectation:
             require_tools_gateway_active=True,
             require_workspace_docker_mount=True,
             config_must_disable_file_toolset=False,
+            config_must_disable_web_toolset=True,
+            require_website_blocklist=False,
+        )
+    if phase is ProfilePhase.D3_FILE_WEB:
+        from .profiles import TOOLS_PROFILE_D3
+
+        return ToolsPhaseExpectation(
+            phase=phase,
+            profile=TOOLS_PROFILE_D3,
+            require_tools_gateway_active=True,
+            require_workspace_docker_mount=True,
+            config_must_disable_file_toolset=False,
+            config_must_disable_web_toolset=False,
+            require_website_blocklist=True,
         )
     raise ValueError(f"unsupported phase: {phase!r}")

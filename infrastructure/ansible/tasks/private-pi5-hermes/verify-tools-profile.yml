@@ -5,8 +5,10 @@
       - python3
       - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
       - --check-docker-volumes
+      - --emit-hermes-security
   delegate_to: localhost
   become: false
+  register: private_pi5_hermes_boundary_policy_validation
   changed_when: false
 
 - name: Check Hermes tools profile paths exist
@@ -29,6 +31,23 @@
   ansible.builtin.set_fact:
     private_pi5_hermes_tools_workspace_mount: >-
       {{ private_pi5_hermes_tools_data_dir ~ '/workspace:/workspace' }}
+
+- name: Parse emitted Hermes security contract
+  ansible.builtin.set_fact:
+    private_pi5_hermes_boundary_policy_contract: >-
+      {{ private_pi5_hermes_boundary_policy_validation.stdout | from_json }}
+
+- name: Set expected Hermes website blocklist domains text
+  ansible.builtin.set_fact:
+    private_pi5_hermes_expected_blocklist_domains_text: >-
+      {{
+        (
+          private_pi5_hermes_boundary_policy_contract.hermes_security.website_blocklist.domains
+          | default([])
+        )
+        | map('regex_replace', '^(.*)$', '- "\\1"')
+        | join('\n')
+      }}
 
 - name: Validate Hermes tools config aligns with Phase D1/D2 contract
   ansible.builtin.assert:
@@ -61,6 +80,54 @@
       (expected workspace docker mount and file not in disabled_toolsets when D2).
   when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
+- name: Validate Hermes tools config aligns with Phase D3 web contract
+  ansible.builtin.assert:
+    that:
+      - >-
+        {{
+          (private_pi5_hermes_tools_web_enabled | default(false) | bool)
+          ==
+          (
+            not (
+              '\n    - web\n'
+              in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+            )
+          )
+        }}
+      - >-
+        {{
+          not (private_pi5_hermes_tools_web_enabled | default(false) | bool)
+          or (
+            'website_blocklist:' in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+            and 'enabled: true' in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+          )
+        }}
+      - >-
+        {{
+          not (private_pi5_hermes_tools_web_enabled | default(false) | bool)
+          or (
+            ((private_pi5_hermes_tools_config_slurp.content | b64decode).split('\nsecurity:\n') | length) == 2
+          )
+        }}
+      - >-
+        {{
+          not (private_pi5_hermes_tools_web_enabled | default(false) | bool)
+          or (
+            (
+              private_pi5_hermes_expected_blocklist_domains_text | trim | length
+            ) == 0
+            or
+            (
+              private_pi5_hermes_expected_blocklist_domains_text
+              in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+            )
+          )
+        }}
+    fail_msg: >-
+      tools config.yaml does not match private_pi5_hermes_tools_web_enabled
+      (expected web not in disabled_toolsets, single security block, and website_blocklist enabled when D3).
+  when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
+
 - name: Ensure Hermes tools gateway is not running (Phase D1)
   ansible.builtin.command:
     argv:
@@ -73,8 +140,9 @@
   when:
     - private_pi5_hermes_tools_profile_enabled | default(false) | bool
     - not (private_pi5_hermes_tools_file_enabled | default(false) | bool)
+    - not (private_pi5_hermes_tools_web_enabled | default(false) | bool)
 
-- name: Ensure Hermes tools gateway is running (Phase D2)
+- name: Ensure Hermes tools gateway is running (Phase D2 or D3)
   ansible.builtin.command:
     argv:
       - systemctl
@@ -85,7 +153,9 @@
   failed_when: private_pi5_hermes_tools_gateway_active_d2.rc != 0
   when:
     - private_pi5_hermes_tools_profile_enabled | default(false) | bool
-    - private_pi5_hermes_tools_file_enabled | default(false) | bool
+    - >-
+      (private_pi5_hermes_tools_file_enabled | default(false) | bool)
+      or (private_pi5_hermes_tools_web_enabled | default(false) | bool)
 
 - name: Verify DGX accepts tools profile Bearer token
   ansible.builtin.shell:

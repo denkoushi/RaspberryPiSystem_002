@@ -25,6 +25,9 @@ security:
   allow_private_urls: true
   tirith_enabled: true
   tirith_fail_open: false
+{% if (hermes_security_extra_lines | default('') | trim) | length > 0 %}
+{{ hermes_security_extra_lines | indent(2, true) }}
+{% endif %}
 
 display:
   tool_progress: "off"

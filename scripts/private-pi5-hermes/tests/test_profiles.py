@@ -8,6 +8,7 @@ from lib.profiles import (
     TOOLS_PROFILE,
     TOOLS_PROFILE_D1,
     TOOLS_PROFILE_D2,
+    TOOLS_PROFILE_D3,
     PROFILES_BY_NAME,
 )
 
@@ -24,6 +25,10 @@ class HermesProfileSpecTests(unittest.TestCase):
         self.assertEqual(TOOLS_PROFILE_D2.enabled_toolsets, frozenset({"file"}))
         self.assertTrue(TOOLS_PROFILE_D2.expected_gateway_active)
 
+    def test_tools_d3_enables_file_and_web(self) -> None:
+        self.assertEqual(TOOLS_PROFILE_D3.enabled_toolsets, frozenset({"file", "web"}))
+        self.assertTrue(TOOLS_PROFILE_D3.expected_gateway_active)
+
     def test_tools_d1_matches_default_alias(self) -> None:
         self.assertEqual(TOOLS_PROFILE, TOOLS_PROFILE_D1)
 
@@ -33,7 +38,10 @@ class HermesProfileSpecTests(unittest.TestCase):
         self.assertFalse(CHAT_PROFILE.tools_enabled)
 
     def test_profiles_registry(self) -> None:
-        self.assertEqual(set(PROFILES_BY_NAME.keys()), {"chat", "tools", "tools-d2"})
+        self.assertEqual(
+            set(PROFILES_BY_NAME.keys()),
+            {"chat", "tools", "tools-d2", "tools-d3"},
+        )
 
 
 if __name__ == "__main__":

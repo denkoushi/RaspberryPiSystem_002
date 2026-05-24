@@ -96,6 +96,9 @@ all:
       # Phase D2: file toolset only (workspace bind + tools gateway on)
       # private_pi5_hermes_tools_file_enabled: true
       # private_pi5_hermes_tools_gateway_enabled: true
+      # Phase D3: file + web (website_blocklist synced from boundary-policy.tools.yaml)
+      # private_pi5_hermes_tools_web_enabled: true
+      # (requires file_enabled + gateway_enabled above)
       # private_pi5_hermes_ssh_ufw_tailscale_only: false
       # private_pi5_hermes_system_prompt: |
       #   （fragment で agent.system_prompt を上書きする場合）

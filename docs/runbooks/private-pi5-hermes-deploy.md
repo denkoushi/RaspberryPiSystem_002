@@ -361,6 +361,41 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --check-docker-vo
 
 **記録**: [KB Phase D2 本番](../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)。
 
+## Phase D3 — file + web（URL 境界同期・repo 実装）
+
+**目的**: D2 の **file** を維持し **`web` を有効化**。`boundary-policy.tools.yaml` の deny 規則を Hermes **`security.website_blocklist`** に同期（[`hermes_security_adapter.py`](../../scripts/private-pi5-hermes/lib/hermes_security_adapter.py)）。**chat は無変更**。
+
+### fragment（必須）
+
+```yaml
+private_pi5_hermes_tools_profile_enabled: true
+private_pi5_hermes_tools_dgx_llm_token: "<dedicated-tools-token>"
+private_pi5_hermes_tools_file_enabled: true
+private_pi5_hermes_tools_web_enabled: true
+private_pi5_hermes_tools_gateway_enabled: true
+```
+
+D3 では playbook が **`tools_web_enabled` 時に file + gateway を assert** する。
+
+### デプロイ・検証
+
+```bash
+./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
+HERMES_TOOLS_PHASE=d3 ./scripts/private-pi5-hermes/verify-tools-profile-deploy.sh
+./scripts/private-pi5-hermes/verify-tools-web-smoke.sh      # 任意（DGX 到達時）
+./scripts/private-pi5-hermes/verify-tools-file-smoke.sh     # D2 回帰・任意
+```
+
+**受け入れ**: D2 条件に加え **`web` が disabled_toolsets に無い** · **`website_blocklist.enabled: true`** · tools/chat Bearer **200**。
+
+**repo 契約チェック**:
+
+```bash
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py --emit-hermes-security
+```
+
+正本: [Phase D3 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)。
+
 ## トラブルシュート（クイック）
 
 | 症状 | 参照 |
@@ -377,9 +412,10 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --check-docker-vo
 | Mac から DGX **curl timeout** | tailnet 経路が Pi5 経由想定 | DGX 上で `127.0.0.1:38081` または Pi5 から curl |
 | **verify-tools** path missing | `~/.hermes-tools` 0700 | `sudo -u hermes test -e` · ansible **`-b`** |
 | ansible inventory **empty** | `-i inventory-private-pi5-stackchan-bridge.yml` は未使用 | **fragment** `-i inventory-private-pi5-stackchan-bridge-fragment.yml` |
-| D2 verify **gateway inactive** | `HERMES_TOOLS_PHASE` 未設定（既定 d1） | **`HERMES_TOOLS_PHASE=d2`** |
-| ansible `script` に env を渡せない | ad-hoc `-a` はパスのみ | `copy` + `shell -a 'HERMES_TOOLS_PHASE=d2 /tmp/...'`（[KB D2](./knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)） |
+| D2 verify **gateway inactive** | `HERMES_TOOLS_PHASE` 未設定（既定 d1） | **`HERMES_TOOLS_PHASE=d2`**（D3 は **`d3`**） |
+| ansible `script` に env を渡せない | ad-hoc `-a` はパスのみ | `copy` + `shell -a 'HERMES_TOOLS_PHASE=d3 /tmp/...'`（[KB D2](./knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)） |
 | file が workspace 外を触る | `docker_volumes` 未設定 | 再デプロイ · [`config_contract.py`](../../scripts/private-pi5-hermes/lib/config_contract.py) |
+| web が LAN に到達 | blocklist 未反映 | 再デプロイ · `validate_boundary_policy.py --emit-hermes-security` |
 
 ## ロールバック
 
@@ -398,3 +434,4 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --check-docker-vo
 - [KB Phase D1 本番](../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)
 - [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)
 - [KB Phase D2 本番](../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)
+- [Phase D3 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)

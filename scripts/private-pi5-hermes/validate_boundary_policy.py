@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib.boundary_policy import BoundaryPolicy, validate_policy_document  # noqa: E402
 from lib.config_contract import workspace_mounts_from_policy  # noqa: E402
+from lib.hermes_security_adapter import hermes_security_emission  # noqa: E402
 
 
 def load_policy(path: Path) -> dict:
@@ -45,6 +46,11 @@ def main() -> int:
         action="store_true",
         help="Emit expected terminal.docker_volumes lines for D2 workspace bind",
     )
+    parser.add_argument(
+        "--emit-hermes-security",
+        action="store_true",
+        help="Emit Hermes security.website_blocklist + expected_llm_base_url JSON (D3)",
+    )
     args = parser.parse_args()
 
     try:
@@ -63,6 +69,14 @@ def main() -> int:
         try:
             policy = BoundaryPolicy.from_mapping(data)
             payload["docker_volumes"] = list(workspace_mounts_from_policy(policy))
+        except ValueError as exc:
+            errors.append(str(exc))
+            payload["ok"] = False
+            payload["errors"] = errors
+    if args.emit_hermes_security:
+        try:
+            policy = BoundaryPolicy.from_mapping(data)
+            payload["hermes_security"] = hermes_security_emission(policy)
         except ValueError as exc:
             errors.append(str(exc))
             payload["ok"] = False

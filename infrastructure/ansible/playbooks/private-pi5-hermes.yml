@@ -86,6 +86,19 @@
         - private_pi5_hermes_tools_profile_enabled | default(false) | bool
         - private_pi5_hermes_tools_file_enabled | default(false) | bool
 
+    - name: Validate Hermes tools Phase D3 requires file and gateway
+      ansible.builtin.assert:
+        that:
+          - private_pi5_hermes_tools_file_enabled | default(false) | bool
+          - private_pi5_hermes_tools_gateway_enabled | default(false) | bool
+        fail_msg: >-
+          Phase D3 (private_pi5_hermes_tools_web_enabled: true) requires
+          private_pi5_hermes_tools_file_enabled: true and
+          private_pi5_hermes_tools_gateway_enabled: true.
+      when:
+        - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+        - private_pi5_hermes_tools_web_enabled | default(false) | bool
+
     - name: Validate Hermes prerequisites
       ansible.builtin.assert:
         that:
