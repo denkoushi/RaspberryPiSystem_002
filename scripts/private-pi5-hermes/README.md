@@ -1,6 +1,6 @@
 # Private Pi5 — Hermes Agent（セキュリティ先行）
 
-自宅 **私用 Pi5** 上で [Hermes Agent](https://hermes-agent.nousresearch.com/docs/) を **専用ユーザー + Docker 隔離 + UFW** で運用するための手順。
+自宅 **私用 Pi5** 上で [Hermes Agent](https://hermes-agent.nousresearch.com/docs/) を **専用ユーザー + Docker 隔離 + UFW** で運用し、**Discord DM（本人のみ）** から DGX で雑談する。
 
 ## ドキュメント正本
 
@@ -9,25 +9,27 @@
 | 計画・進捗 | [private-pi5-hermes-agent-plan.md](../../docs/plans/private-pi5-hermes-agent-plan.md) |
 | Runbook | [private-pi5-hermes-deploy.md](../../docs/runbooks/private-pi5-hermes-deploy.md) |
 | KB（install 障害） | [KB-private-pi5-hermes-install-noninteractive.md](../../docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md) |
+| KB（403 / Bearer） | [KB-private-pi5-hermes-dgx-403-bearer-token.md](../../docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
+| KB（Discord E2E・遅延） | [KB-private-pi5-hermes-discord-e2e-and-latency.md](../../docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
 | ADR（セキュリティ） | [ADR-20260524](../../docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md) |
 
 ## 前提
 
-- **Docker 導入済み**（`raspi5-private` / `hermes` が `docker` グループ）
-- ローカル inventory: `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml`（非追跡）
-- DGX token: `private_pi5_dgx_llm_shared_token`（StackChan bridge と同値可。**分離推奨**）
+- **Docker 導入済み**（`hermes` が `docker` グループ）
+- ローカル inventory: `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml`（**非追跡**）
+- DGX token: `private_pi5_dgx_llm_shared_token`（StackChan と同値可。**分離推奨**）
+- Discord（任意）: `private_pi5_hermes_discord_bot_token` / `private_pi5_hermes_discord_allowed_users` / `private_pi5_hermes_gateway_enabled: true`
 
-## セキュリティプロファイル（デフォルト）
+## セキュリティ + 雑談プロファイル（2026-05-24）
 
 | 項目 | 設定 |
 |------|------|
-| 実行ユーザー | `hermes`（専用） |
-| ツール実行 | `terminal.backend: docker`・永続コンテナなし |
-| 承認 | `approvals.mode: manual` |
-| 秘密 | `~/.hermes/.env` **0600** |
-| 外向き | UFW 既定 deny（SSH + 自宅 LAN の bridge **18080** のみ） |
-| ブラウザ自動化 | インストール時 **`--skip-browser`** |
-| Discord | **未設定時は gateway 起動しない**（systemd は installed・stopped） |
+| 実行ユーザー | `hermes` |
+| ツール実行 | Docker（**雑談時はツール無効** — config テンプレ） |
+| 承認 | `manual` |
+| LLM | `custom:dgx-system-prod` → DGX Bearer |
+| Discord | 許可 User のみ・テンプレ **`require_mention: false`** |
+| 体感レイテンシ | **~30s〜1min/通**（keep-warm 改善候補） |
 
 ## デプロイ
 
@@ -35,36 +37,23 @@
 ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
 ```
 
-Playbook は **対話プロンプト回避**のため、次を行う:
+初回 install は **10〜30 分**（async 3600s）。非対話の要点は [KB install](../../docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)。
 
-1. `ripgrep` / `ffmpeg` / ビルドツールを **root で apt 先行インストール**
-2. 公式 `install.sh` を `/tmp` に取得し、`command` + `stdin: /dev/null` で **`--skip-setup --skip-browser`** 実行（**`curl | bash` は TTY 経由で止まりやすい** — [KB](../../docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)）
-
-初回インストールは Pi5 上で **10〜30 分**かかることがある（async 3600s）。
-
-Discord 準備後（Bot token・自分の User ID を fragment に追記）:
-
-```yaml
-private_pi5_hermes_discord_bot_token: "..."
-private_pi5_hermes_discord_allowed_users: "123456789012345678"
-private_pi5_hermes_gateway_enabled: true
-```
-
-再実行:
-
-```bash
-./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
-```
+Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 venv へ `discord-py` が必要な場合あり（[Runbook](../../docs/runbooks/private-pi5-hermes-deploy.md)）。
 
 ## 手動確認
 
 ```bash
 ssh raspi5-private@<tailscale-ip>
+systemctl is-active hermes-gateway
 sudo -u hermes /home/hermes/.local/bin/hermes doctor
-sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; curl -fsS -H "X-LLM-Token: $OPENAI_API_KEY" http://100.118.82.72:38081/healthz'
+sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \
+  curl -sf -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  http://100.118.82.72:38081/v1/models'
 ```
 
 ## 関連
 
-- [private-pi5-stackchan-bridge](../private-pi5-stackchan-bridge/README.md)（別系統・併用可・同一 UFW 18080）
+- [private-pi5-stackchan-bridge](../private-pi5-stackchan-bridge/README.md)（別系統・併用可）
 - [dgx-system-prod-local-llm.md](../../docs/runbooks/dgx-system-prod-local-llm.md)

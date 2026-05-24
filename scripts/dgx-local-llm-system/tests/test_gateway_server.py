@@ -126,6 +126,15 @@ class GatewayServerTests(unittest.TestCase):
                 payload = json.loads(response.read().decode("utf-8"))
             self.assertEqual(payload["data"][0]["id"], "system-prod-primary")
 
+            bearer_models_req = urllib.request.Request(
+                f"{base_url}/v1/models",
+                method="GET",
+                headers={"Authorization": "Bearer shared-token"},
+            )
+            with urllib.request.urlopen(bearer_models_req, timeout=5) as response:
+                bearer_payload = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(bearer_payload["data"][0]["id"], "system-prod-primary")
+
             comfy_health_req = urllib.request.Request(
                 f"{base_url}/private-comfyui/health",
                 method="GET",

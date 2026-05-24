@@ -76,7 +76,7 @@
 
 - [x] (2026-05-16 / **本番反映・実機検証・ドキュメント同期・`main` マージ完了**） **生産日程CSV「消滅」入力の正本C current keys（本体 dedupe winner のみ。**`FKOJUNST` メール側に FK が無いだけでは「現 winner」から除外しない**）**。**ブランチ**: **`feat/canonical-schedule-disappearance-current-keys`**。**実装**: **`09f06ebf`**（`ProductionScheduleCanonicalCurrentKeysService`·[`csv-dashboard-ingestor.ts`](./apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)·[`production-schedule-csv-ingest-external-completion-sync.service.ts`](./apps/api/src/services/production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.ts)）。**CI**: **`25956906908` success**（直前 **`25956583435` failure** は **`security-docker`** / **`usr/bin/caddy`** Go stdlib **HIGH**。**対処**: [`.trivyignore`](./.trivyignore)·**`0e327378`**）。**本番**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4／Pi3 **`skipping: no hosts matched`**）。**Detach `20260516-181817-25397`**（**`PLAY RECAP` `ok=131` `changed=3` `failed=0` / `unreachable=0`**·リモート **`exit 0`**·ローカル **`--follow` 約 286s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **140s**）。**ナレッジ**: [`docs/guides/deployment.md`](./docs/guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)·[`docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md`](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-16-schedule-csv-disappearance-canonical-current-keys)·[`docs/guides/ci-troubleshooting.md`](./docs/guides/ci-troubleshooting.md#trivy-が-web-イメージの-caddy-バイナリで-cve-を検出してジョブが失敗する)·[`docs/INDEX.md`](./docs/INDEX.md)·[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)。**以降の運用デプロイ**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**。**ローカル `main`** を **`origin/main` に `--ff-only` 同期済み**（マージ後手順）。
 
-- [x] (2026-05-24 / **私用 Pi5 Hermes Agent 基盤デプロイ・ドキュメント反映**） **Hermes Agent v0.14.0** を私用 Pi5 に **セキュリティ先行**で配置（専用 `hermes`・Docker 隔離・UFW・DGX `/healthz` ok・`stackchan-bridge` 維持）。**Gateway は Discord 未設定のため stopped**。**Playbook**: [`private-pi5-hermes.yml`](./infrastructure/ansible/playbooks/private-pi5-hermes.yml)·**実機**: `PLAY RECAP ok=29 changed=6 failed=0`。**知見**: 公式 `install.sh` は **`curl | bash` / 擬似 TTY で対話待ち** — apt 先行 + ファイル実行 + `stdin: /dev/null`（[KB-private-pi5-hermes-install-noninteractive.md](./docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)）。**正本**: [private-pi5-hermes-agent-plan.md](./docs/plans/private-pi5-hermes-agent-plan.md)·[private-pi5-hermes-deploy.md](./docs/runbooks/private-pi5-hermes-deploy.md)·[ADR-20260524](./docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md)·[`scripts/private-pi5-hermes/README.md`](./scripts/private-pi5-hermes/README.md)。
+- [x] (2026-05-24 / **私用 Pi5 Hermes Agent — Discord 雑談 E2E・ドキュメント反映**） **Hermes v0.14.0** + **`hermes-gateway` active**（Discord DM·許可 User のみ）。**DGX**: `gateway-server.py` **Bearer + X-LLM-Token**・Hermes **`custom:dgx-system-prod`**。**雑談プロファイル**: ツール無効・`compression: false`・`reasoning_effort: none`・`require_mention: false`。**E2E**: DM 応答確認（体感 **~30s〜1min/通**）。**知見**: [KB install](./docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)·[KB 403](./docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md)·[KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。**正本**: [plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)·[ADR](./docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md)。
 
 - [~] (2026-05-23 / **作業中断・ユーザー指示**） **StackChan 私用 Pi5 `utterance` 一括 API + ファーム overlay + 実機ブリングアップ**。**完了（repo）**: `POST /api/stackchan/utterance`（[`stackchan_utterance_core.py`](./scripts/private-pi5-stackchan-bridge/stackchan_utterance_core.py)・[`bridge_server.py`](./scripts/private-pi5-stackchan-bridge/bridge_server.py)）·ユニットテスト 20 件·Ansible 同期·[`apply_chatgpt_private_bridge.py`](./scripts/stackchan-ai-stackchan-ex/apply_chatgpt_private_bridge.py) / [`apply_utterance_overlay.py`](./scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py) / [`mac_usb_dev.sh`](./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh)。**実機（部分）**: CoreS3 へ utterance ファーム USB 書き込み成功·シリアルで Wi-Fi `192.168.128.116`・HTTP 起動·`[UTTERANCE] POST` 試行（`connection refused` あり）·Pi5 `faster-whisper-local` 再デプロイ。**未完了**: utterance E2E（`replyText` 聞こえる）·**画面真っ黒・無音・`/dev/cu.usbmodem*` 消失**（ハード復旧が先）。**正本**: [KB §2026-05-23](./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)·[runbook §6.5](./docs/runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-一括と実機復旧)·[計画](./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md)。
 
@@ -2367,19 +2367,20 @@
 
 ## Next Steps（将来のタスク）
 
-### 私用 Pi5 Hermes Agent — Discord 雑談（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
+### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **基盤デプロイ完了**（CLI・doctor・DGX health・Docker・UFW）。**`hermes-gateway` inactive**（Discord 未設定）。
+**状態**: **Phase B 完了**（Discord DM 雑談 E2E·`hermes-gateway` **active**）。**体感レイテンシ ~30s〜1min/通**（改善余地あり）。
 
-**正本**: [private-pi5-hermes-agent-plan.md](./docs/plans/private-pi5-hermes-agent-plan.md)·[private-pi5-hermes-deploy.md](./docs/runbooks/private-pi5-hermes-deploy.md)
+**正本**: [private-pi5-hermes-agent-plan.md](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[private-pi5-hermes-deploy.md](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 | # | タスク | 手順 | 完了条件 |
 |---|--------|------|----------|
-| 1 | **Discord Bot 作成** | Developer Portal | Bot token 取得 |
-| 2 | **許可 User ID** | 自分の Discord User ID を fragment に | `DISCORD_ALLOWED_USERS` 1 件のみ |
-| 3 | **Gateway 有効化** | `private_pi5_hermes_gateway_enabled: true` + Playbook 再実行 | `systemctl is-active hermes-gateway` → **active** |
-| 4 | **雑談 E2E** | DM・メンション必須で送信 | DGX 応答が返る |
-| 5 | **（推奨）DGX トークン分離** | Hermes 専用トークンを vault/fragment に | StackChan 漏洩と影響分離 |
+| 1 | **DGX keep-warm** | StackChan 同様 `/start` または cron（[dgx_runtime_client.py](./scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py) 参照） | 2 通目以降 **10〜30s** で安定（実測記録を KB へ） |
+| 2 | **レイテンシ計測** | Discord 送信時刻 ↔ 応答時刻を 3 回 | KB に cold/warm 表を追記 |
+| 3 | **DGX トークン分離** | Hermes 専用トークンを fragment + gateway 許可リスト | StackChan 漏洩と影響分離 |
+| 4 | **Discord Bot token ローテ** | Developer Portal で再発行（漏洩疑い時） | fragment 更新・gateway 再起動 |
+| 5 | **PR マージ** | `feat/private-pi5-hermes-docs` + gateway Bearer 修正 | `main` へ（ユーザー明示時） |
+| 6 | **`/sethome`（任意）** | cron 結果を Discord に載せる場合のみ `/sethome` | 雑談のみならスキップ可 |
 
 ### 棚マスタ — 運用・拡張（2026-05-24） {#shelf-master-follow-up-2026-05-24}
 

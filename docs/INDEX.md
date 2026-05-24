@@ -8,9 +8,9 @@
 
 ## 🎯 目的別インデックス
 
-### 🆕 最新アップデート（2026-05-24 · 私用 Pi5 Hermes Agent）
+### 🆕 最新アップデート（2026-05-24 · 私用 Pi5 Hermes Agent · Discord 雑談 E2E）
 
-- **私用 Pi5 Hermes Agent（セキュリティ先行・DGX 雑談・Discord 未設定）**: 専用ユーザー **`hermes`**・**Docker 隔離**・**UFW**（SSH + 自宅 LAN → **18080** のみ）・公式 install **v0.14.0**・**`hermes-gateway` は stopped**（Discord 未有効化）。**DGX `/healthz` ok**・**`stackchan-bridge` active** 維持。**Playbook**: [`private-pi5-hermes.yml`](../infrastructure/ansible/playbooks/private-pi5-hermes.yml)·**デプロイ**: [`deploy-private-pi5-hermes.sh`](../scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh)。**記録**: [private-pi5-hermes-agent-plan.md](./plans/private-pi5-hermes-agent-plan.md)·[private-pi5-hermes-deploy.md](./runbooks/private-pi5-hermes-deploy.md)·[KB-private-pi5-hermes-install-noninteractive.md](./knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)·[ADR-20260524](./decisions/ADR-20260524-private-pi5-hermes-security-profile.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。
+- **私用 Pi5 Hermes Agent（セキュリティ先行・DGX 雑談・Discord DM E2E 成功）**: 専用 **`hermes`**・**Docker 隔離**・**UFW**・**v0.14.0**・**`hermes-gateway` active**（fragment で Discord 有効化）。**DGX** `custom:dgx-system-prod` + **Bearer 両対応 gateway**・**雑談プロファイル**（ツール無効・`compression: false`・`reasoning_effort: none`・`require_mention: false`）。**体感 ~30s〜1min/通**（keep-warm で改善候補）。**`stackchan-bridge` active** 維持。**記録**: [private-pi5-hermes-agent-plan.md](./plans/private-pi5-hermes-agent-plan.md)·[private-pi5-hermes-deploy.md](./runbooks/private-pi5-hermes-deploy.md)·[KB install](./knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)·[KB 403](./knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md)·[KB Discord E2E・遅延](./knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[ADR-20260524](./decisions/ADR-20260524-private-pi5-hermes-security-profile.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)。
 
 ### 🆕 最新アップデート（2026-05-22 · 順位ボード・製番左縁全件無色）
 

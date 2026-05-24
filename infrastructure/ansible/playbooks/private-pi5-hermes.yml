@@ -16,12 +16,10 @@
     private_pi5_hermes_enable_ufw: true
     private_pi5_hermes_lan_cidr: "192.168.128.0/24"
     private_pi5_hermes_bridge_port: 18080
-    private_pi5_hermes_gateway_enabled: false
     private_pi5_hermes_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
     private_pi5_hermes_dgx_model: "{{ private_pi5_dgx_model | default('system-prod-primary') }}"
     private_pi5_hermes_dgx_llm_shared_token: "{{ private_pi5_dgx_llm_shared_token | default('') }}"
-    private_pi5_hermes_discord_bot_token: ""
-    private_pi5_hermes_discord_allowed_users: ""
+    # Discord / gateway_enabled は inventory fragment のみ（play 側に空既定を置くと host 変数が潰れる）
     private_pi5_hermes_install_argv:
       - /bin/bash
       - /tmp/hermes-agent-install.sh

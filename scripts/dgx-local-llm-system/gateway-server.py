@@ -3,7 +3,7 @@
 DGX system-prod 用のローカル gateway。
 
 - /healthz は 200 ok
-- /system/metrics は GPU/メモリ JSON（Pi KPI 用）。X-LLM-Token が LLM_SHARED_TOKEN と一致することを要求（/v1/* と同様）
+- /system/metrics は GPU/メモリ JSON（Pi KPI 用）。LLM 認証は X-LLM-Token または Authorization: Bearer（/v1/* と同様）
 - /start /stop は runtime control へ転送
 - /v1/* は active backend へ転送
 
@@ -386,12 +386,25 @@ def proxy_request(method: str, url: str, body: bytes, headers: dict[str, str]) -
         return 502, body, "text/plain; charset=utf-8"
 
 
+def llm_shared_token_ok(headers, expected_token: str) -> bool:
+    """Accept StackChan-style X-LLM-Token or OpenAI-style Bearer (Hermes Agent)."""
+    if not expected_token:
+        return False
+    if headers.get("X-LLM-Token", "") == expected_token:
+        return True
+    auth = headers.get("Authorization", "")
+    return auth == f"Bearer {expected_token}"
+
+
 def make_handler(
     config: GatewayConfig,
     proxy_impl: Callable[[str, str, bytes, dict[str, str]], tuple[int, bytes, str]] = proxy_request,
 ) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "dgx-local-llm-gateway/1.0"
+
+        def _llm_auth_ok(self) -> bool:
+            return llm_shared_token_ok(self.headers, config.llm_shared_token)
 
         def _embedding_auth_ok(self) -> bool:
             if not config.embedding_api_key:
@@ -413,7 +426,7 @@ def make_handler(
                 self._send_text(200, "ok\n")
                 return
             if self.path == "/system/metrics":
-                if self.headers.get("X-LLM-Token", "") != config.llm_shared_token:
+                if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
                 ok, payload = collect_gpu_metrics()
@@ -461,7 +474,7 @@ def make_handler(
                 self._send(status, body, content_type)
                 return
             if self.path.startswith("/v1/"):
-                if self.headers.get("X-LLM-Token", "") != config.llm_shared_token:
+                if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
                 status, body, content_type = proxy_impl(
@@ -749,7 +762,7 @@ def make_handler(
                 self._send(status, resp_body, content_type)
                 return
             if self.path.startswith("/v1/"):
-                if self.headers.get("X-LLM-Token", "") != config.llm_shared_token:
+                if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
                 headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}

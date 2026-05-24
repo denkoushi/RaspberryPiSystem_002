@@ -3,9 +3,72 @@
 
 model:
   default: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
-  provider: custom
+  # 名前付き custom provider を使う（bare `provider: custom` は非 OpenAI URL で OPENAI_API_KEY を送らず no-key-required になる）
+  provider: custom:dgx-system-prod
   base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
-  context_length: {{ private_pi5_hermes_context_length | default(8192) }}
+  # Hermes Agent は最低 64K を要求。DGX 実効コンテキストより大きい値は Hermes 側の検証用（必要なら fragment で上書き）
+  context_length: {{ private_pi5_hermes_context_length | default(65536) }}
+  # system-prod-primary は reasoning 応答があり得る。雑談は none で待ち時間を短縮
+  reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
+
+custom_providers:
+  - name: dgx-system-prod
+    base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
+    key_env: OPENAI_API_KEY
+    default_model: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
+
+# DGX system-prod-primary の実効コンテキストは ~8K（model.context_length: 65536 は Hermes 起動検証用のみ）。
+# デフォルトの hermes-discord ツール群だけでプロンプトが 8K 超になるため、雑談はツール無効化。
+compression:
+  enabled: {{ private_pi5_hermes_compression_enabled | default(false) | bool }}
+
+auxiliary:
+  # auto だと OpenRouter 等を試してタイムアウトし得る（ログ: title_generation Request timed out）
+  title_generation:
+    provider: main
+    timeout: 20
+  compression:
+    provider: custom:dgx-system-prod
+    model: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
+    context_length: {{ private_pi5_hermes_context_length | default(65536) }}
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+agent:
+  disabled_toolsets:
+    - web
+    - browser
+    - terminal
+    - file
+    - code_execution
+    - vision
+    - image_gen
+    - video
+    - video_gen
+    - x_search
+    - moa
+    - tts
+    - skills
+    - todo
+    - memory
+    - session_search
+    - clarify
+    - delegation
+    - cronjob
+    - messaging
+    # hermes-discord 複合から自動復元される非 configurable ツール（雑談では不要）
+    - kanban
+    - discord
+    - discord_admin
+    - homeassistant
+    - spotify
+    - yuanbao
+    - computer_use
+
+platform_toolsets:
+  discord: []
 
 terminal:
   backend: docker
@@ -27,9 +90,11 @@ security:
 
 display:
   tool_progress: "off"
+  show_reasoning: false
 
 discord:
-  require_mention: true
+  # DM のみ・allowed_users で保護するためメンション不要（true だと「こんにちは」だけでは無応答）
+  require_mention: {{ private_pi5_hermes_discord_require_mention | default(false) | bool }}
   auto_thread: false
   reactions: true
   allow_mentions:
