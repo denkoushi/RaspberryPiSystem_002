@@ -28,7 +28,7 @@ update-frequency: medium
 - [x] ADR / KB / Tailscale 草案 / 本 ExecPlan
 - [x] 実機: DGX `gateway-server.py` + `gateway_llm_auth.py` 反映・再起動（2026-05-24）
 - [x] 実機: 私用 Pi5 Ansible デプロイ（chat のみ・tools 骨格 OFF）
-- [ ] 実機: DGX `LLM_SHARED_ADDITIONAL_TOKENS` 反映（chat/tools トークン分離時・運用者）
+- [x] 実機: DGX `LLM_SHARED_ADDITIONAL_TOKENS` 反映（Hermes chat 専用・2026-05-24）
 - [ ] 実機: `private_pi5_hermes_tools_profile_enabled: true`（D1）
 
 ## 本番反映（2026-05-24）

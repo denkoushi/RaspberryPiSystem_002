@@ -13,7 +13,7 @@ Hermes 雑談プロファイルはツール無効で運用中。将来 web/brows
 |------|------|---------|------------|
 | **SSRF / 内部スキャン** | web/browser が 100.x / LAN を探索 | `boundary-policy.tools.yaml` · deny RFC1918 | Hermes allowlist 連携・egress 制限 |
 | **横移動（業務 Pi5）** | 私用 Pi5 から `tag:server` へ | Tailscale 草案（手動適用） | `tag:private-home` 本番化 |
-| **トークン漏洩の影響拡大** | StackChan 漏洩で Hermes も利用可能 | DGX `LLM_SHARED_ADDITIONAL_TOKENS` · fragment 変数分離 | ローテーション Runbook |
+| **トークン漏洩の影響拡大** | StackChan 漏洩で Hermes も利用可能 | DGX `LLM_SHARED_ADDITIONAL_TOKENS` · fragment 変数分離（**chat 分離済 2026-05-24**） | tools トークン・ローテーション Runbook |
 | **docker 脱出** | terminal で host 相当権限 | chat/tools とも terminal 無効（D0） | rootless / 別ホスト検討 |
 | **プロンプトインジェクション** | Discord 経由で危険ツール実行 | Tirith · manual 承認 · tools 無効 | ツール有効時も manual 維持 |
 | **skills 供給鎖** | 悪意 SKILL.md 永続化 | skills 無効 · `allow_lazy_installs: false` | repo 管理 skill のみ |

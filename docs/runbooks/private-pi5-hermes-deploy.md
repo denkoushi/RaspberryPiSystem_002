@@ -173,7 +173,19 @@ journalctl -u hermes-dgx-keep-warm.service -n 20 --no-pager
 2. **Jinja include**: `config.chat.yaml.j2` の `{% include 'private-pi5-hermes/config.base.yaml.j2' %}` は tasks からの template 探索で **not found** → 同ディレクトリ名 `config.base.yaml.j2` に変更。`deploy-chat-profile.yml` の `src` は `../../templates/private-pi5-hermes/...`。
 3. **SSH 直叩き**: `raspi5-private@100.89.190.21` はローカル鍵未登録で **Permission denied** のことがある → 検証は **inventory 経由の `ansible -m shell`** を正本とする。
 
-**未実施（意図）**: `LLM_SHARED_ADDITIONAL_TOKENS` の DGX env 追記（fragment が `private_pi5_dgx_llm_shared_token` のみの場合は従来トークンで継続）、`private_pi5_hermes_tools_profile_enabled: true`、Tailscale 草案の管理画面適用。
+**未実施（意図）**: `private_pi5_hermes_tools_profile_enabled: true`、Tailscale 草案の管理画面適用。
+
+## トークン分離（2026-05-24 実施）
+
+| 項目 | 内容 |
+|------|------|
+| DGX | `LLM_SHARED_TOKEN` は **StackChan 用のまま**。`LLM_SHARED_ADDITIONAL_TOKENS` に **Hermes chat 専用**（`openssl rand -hex 32` 等で生成）を 1 件追加 → gateway 再起動（PID 削除手順） |
+| fragment | `private_pi5_hermes_chat_dgx_llm_token` を設定（**コミット禁止**）。`private_pi5_dgx_llm_shared_token` は StackChan bridge 用のまま |
+| Pi5 | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` で `~/.hermes/.env` と keep-warm env を再配布 |
+
+**検証（DGX 上・127.0.0.1）**: primary `X-LLM-Token` → **200** · chat `Bearer` → **200** · 不正トークン → **403**。**Pi5**: `hermes` ユーザの Bearer → **200**（playbook verify + curl）。
+
+**効果**: Hermes 漏洩時に StackChan 用 primary トークンは共用されない（逆も同様）。
 
 ## 検証（2026-05-24 実機）
 

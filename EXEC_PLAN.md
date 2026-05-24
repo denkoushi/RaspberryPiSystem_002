@@ -2378,7 +2378,8 @@
 | — | keep-warm / thinking 注入 / max_tokens 128 | **完了** | 体感 OK・KB 実測記録 |
 | — | **Phase D0 repo + 実機（chat のみ）** | **完了** | [Runbook §2026-05-24](./docs/runbooks/private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次) |
 | 1 | **main マージ** | 高 | `feat/private-pi5-hermes-docs` → `main`（本セッションで実施） |
-| 2 | **DGX トークン分離（additional）** | 高 | `LLM_SHARED_ADDITIONAL_TOKENS` + fragment `private_pi5_hermes_chat_dgx_llm_token` |
+| — | **DGX トークン分離（chat）** | **完了** | 2026-05-24 · [Runbook §トークン分離](./docs/runbooks/private-pi5-hermes-deploy.md#トークン分離2026-05-24-実施) |
+| 2 | **Tailscale 草案適用** | 高 | 管理画面反映・私用↔業務の到達性確認 |
 | 3 | **Hermes 既定プロンプト短縮** | 中 | `in` ~661 削減（任意） |
 | 4 | **作業用プロファイル**（skills 有効） | 低 | 雑談と分離・8K/遅延再計測 |
 | 5 | **title_generation 無効化** | 低 | ログ警告解消 |
