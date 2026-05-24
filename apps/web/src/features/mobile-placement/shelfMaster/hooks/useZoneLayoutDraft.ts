@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { toggleLayoutCellSelection } from '../model/layoutCellSelection';
-import { applyLayoutAssignment, clearAssignmentsOnCells } from '../model/layoutDraftActions';
+import { applyLayoutAssignment } from '../model/layoutDraftActions';
 import { isLayoutDraftDirty, snapshotFromZone } from '../model/layoutDraftDirty';
 import { useSaveShelfLayoutZone, useShelfLayoutZone } from '../useShelfMasterQueries';
 
@@ -150,13 +150,12 @@ export function useZoneLayoutDraft(zoneId: MacroZoneId | null) {
     handleGridSizeChange,
     handleDeselectOnly: () => {
       setSelectedCells([]);
-      setPendingKind(null);
-      setSelectedMachineCd('');
     },
-    handleClearCells: () => {
-      setDraftEntities(clearAssignmentsOnCells(draftEntities, selectedCells));
+    handleResetFlowState: () => {
       setSelectedCells([]);
       setPendingKind(null);
+      setSelectedMachineCd('');
+      setMultiMode(false);
     },
     saveLayout
   };

@@ -1,6 +1,7 @@
 import { getMacroZoneById, type MacroZoneId } from '@raspi-system/shelf-layout-core';
 import { useCallback, useEffect, useMemo } from 'react';
 
+import { resolveLayoutEditorConfirmAction } from '../flow/layoutEditorConfirmAction';
 import { getLayoutEditorFlowGates } from '../flow/layoutEditorFlow';
 import { useShelfZero2wPreset } from '../hooks/useShelfZero2wPreset';
 import { useZoneLayoutDraft } from '../hooks/useZoneLayoutDraft';
@@ -36,6 +37,7 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
     selectedPi,
     setSelectedPi,
     reset: resetZero2w,
+    resetFlowInput,
     syncPiForShelf,
     queuePresetAfterAssign,
     applyPresetForExistingShelf,
@@ -53,6 +55,7 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
 
   const selectionIsExistingShelf = shelfContext.kind === 'shelf';
   const pendingShelfAssign = draft.pendingKind === 'SHELF' && draft.selectedCells.length > 0;
+  const piSelectionActive = selectedPi !== ZERO2W_PI_UNCHANGED;
 
   const targetShelfCodeRaw = useMemo(() => {
     if (!draft.zoneQuery.data) {
@@ -97,6 +100,8 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
     selectedMachineCd: draft.selectedMachineCd,
     dirty: draft.dirty,
     savePending: draft.savePending,
+    multiMode: draft.multiMode,
+    piSelectionActive,
     selectionIsExistingShelf,
     pendingShelfAssign,
     zero2wPiSelectionNeedsApply: piSelectionNeedsApply(targetShelfCodeRaw)
@@ -132,6 +137,51 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
     },
     [draft, setSelectedPi]
   );
+
+  const handleResetFlow = useCallback(() => {
+    draft.handleResetFlowState();
+    resetFlowInput();
+  }, [draft, resetFlowInput]);
+
+  const handleConfirm = useCallback(() => {
+    const action = resolveLayoutEditorConfirmAction(layoutGates);
+    if (!action) {
+      return;
+    }
+    if (action === 'save') {
+      draft.saveLayout(
+        async () => {
+          const flushed = await flushPendingPresets();
+          if (!flushed) {
+            onMessage('レイアウトを保存しました');
+          }
+          onClose();
+        },
+        (msg) => onMessage(msg)
+      );
+      return;
+    }
+    if (action === 'zero2wPresetApply') {
+      if (targetShelfCodeRaw) {
+        applyPresetForExistingShelf(targetShelfCodeRaw);
+      }
+      return;
+    }
+    const assignedShelfCodeRaw = draft.handleAssign(machines, (msg) => onMessage(msg));
+    if (assignedShelfCodeRaw) {
+      queuePresetAfterAssign(assignedShelfCodeRaw);
+    }
+  }, [
+    applyPresetForExistingShelf,
+    draft,
+    flushPendingPresets,
+    layoutGates,
+    machines,
+    onClose,
+    onMessage,
+    queuePresetAfterAssign,
+    targetShelfCodeRaw
+  ]);
 
   const requestClose = () => {
     if (draft.dirty) {
@@ -169,7 +219,7 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
       }
       dock={
         <ShelfLayoutEditorShell
-          layoutGates={layoutGates}
+          gates={layoutGates}
           multiMode={draft.multiMode}
           gridSize={draft.gridSize}
           pendingKind={draft.pendingKind}
@@ -181,6 +231,7 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
           orphanZero2wDevices={orphanZero2wDevices}
           zero2wPresetApplyPending={presetApplyPending}
           zero2wClearingDeviceId={clearingDeviceId}
+          hasCellSelection={draft.selectedCells.length > 0}
           onClearOrphanPreset={clearPresetForDevice}
           onToggleMulti={() => draft.setMultiMode((v) => !v)}
           onGridSizeChange={draft.handleGridSizeChange}
@@ -188,30 +239,8 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
           onPickKind={handlePickKind}
           onMachineChange={draft.setSelectedMachineCd}
           onPiChange={setSelectedPi}
-          onAssign={() => {
-            const assignedShelfCodeRaw = draft.handleAssign(machines, (msg) => onMessage(msg));
-            if (assignedShelfCodeRaw) {
-              queuePresetAfterAssign(assignedShelfCodeRaw);
-            }
-          }}
-          onClearCells={draft.handleClearCells}
-          onZero2wPresetApply={() => {
-            if (targetShelfCodeRaw) {
-              applyPresetForExistingShelf(targetShelfCodeRaw);
-            }
-          }}
-          onLayoutSave={() =>
-            draft.saveLayout(
-              async () => {
-                const flushed = await flushPendingPresets();
-                if (!flushed) {
-                  onMessage('レイアウトを保存しました');
-                }
-                onClose();
-              },
-              (msg) => onMessage(msg)
-            )
-          }
+          onConfirm={handleConfirm}
+          onResetFlow={handleResetFlow}
         />
       }
     />

@@ -203,7 +203,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 |------|------|
 | **単一マス** | 従来どおり `multiMode` に従いトグル（単一選択 / 複数選択） |
 | **結合ブロック（`clickedCells.length > 1`）** | **entity 単位** — ブロックの全マスが未選択なら **一括選択**、全マスが既に選択済みなら **一括解除** |
-| **「選択マスを解除」** | `selectedCells` が空でなければ従来どおり有効（結合ブロックタップで選択が入るようになったため復帰） |
+| **「選択マスを解除」** | ~~専用ボタン~~ → **2026-05 以降は廃止**。[§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05) 参照（**未使用＋確定**で代替） |
 
 **Fix（最小・Web のみ）**:
 
@@ -268,7 +268,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 1. **レイアウト** → 区画 **編集** Dialog
 2. 複数マス選択 → **部品置き場を割当**
 3. 結合ブロックを **1 回タップ** → 全マスが選択ハイライト
-4. **「選択マスを解除」** または **再タップ** → 選択解除・entity 削除可能
+4. 用途を消す場合は **「未使用」→「確定」**。マス選択だけ外す場合は **「選択解除」**（結合ブロックは **再タップ** で一括選択解除も可）
 
 **トラブルシュート**:
 
@@ -277,6 +277,30 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 旧挙動のまま | Pi5 **`web` ref** が `6adc89f7` 以降か確認·キオスク **強制リロード** |
 | Pi4 のみ旧 UI | **Pi5 先行デプロイ**漏れ（SPA 正本は Pi5） |
 | レイアウトタブ自体が出ない | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例) — **`shelfLayoutEditEnabled` / `clientKey` 不一致**（本件とは別） |
+
+### 編集 Dialog ドック UX（確定統合・リセット · Web のみ） {#layout-editor-dock-confirm-reset-2026-05}
+
+**ブランチ（実装）**: `feat/kiosk-shelf-layout-editor-dock-confirm-reset`（未マージ・未デプロイの場合あり）  
+**プレビュー正本**: [`kiosk-shelf-master-9grid-edit-popup-ux-preview.html`](../design-previews/kiosk-shelf-master-9grid-edit-popup-ux-preview.html)
+
+**ドック 4 列（左→右）**: ① 区画選択（複数区画選択 / 3×3·4×4 / **選択解除**）→ ② **区画用途を割当** → ③ 加工機 or Pi → ④ **確定** + **リセット**
+
+| 操作 | 意味 |
+|------|------|
+| **選択解除** | **地図上の区画ハイライトのみ**外す（種別・Pi の入力途中は維持しうる） |
+| **リセット** | ポップアップ内の **操作入力をすべて初期化**（区画選択・種別・加工機・Pi・複数区画モード・保存待ち preset キュー）。**ドラフト地図・未保存フラグは維持** |
+| **確定** | 状況に応じて **割当** / **既存棚の Pi 反映** / **レイアウト保存**（保存成功後は Dialog **自動 close** — 従来どおり） |
+| ~~選択マスを解除~~ | **廃止** → **未使用** を選び **確定** |
+
+**モジュール境界**:
+
+- [`layoutEditorFlow.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlow.ts) — `resetFlow` ゲート
+- [`layoutEditorFlowInput.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlowInput.ts) — リセット有効条件
+- [`layoutEditorConfirmAction.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorConfirmAction.ts) — 統合「確定」の優先順
+- [`ShelfLayoutEditorDock.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfLayoutEditorDock.tsx) — 4 列 UI
+- オーファン行ボタン: **スキャナ割当解除**（`ShelfZero2wOrphanPanel`）
+
+**ローカル検証**: `apps/web` で `pnpm exec vitest run src/features/mobile-placement/shelfMaster`（**42+ PASS** 想定）
 
 ### Zero2W インライン割当（2026-05-24 · Web + API） {#zero2w-inline-preset-2026-05-24}
 
