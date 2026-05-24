@@ -51,4 +51,5 @@ pnpm --filter web lint
 ## フォローアップ（2026-05-23 · 記録）
 
 - **区画 Dialog コンパクト化**（`fix/kiosk-shelf-master-zone-dialog-compact` · **`2e73aeed`**）: [`ShelfMasterZoneDialogFrame`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfMasterZoneDialogFrame.tsx) 導入。本番 **Pi5→Pi4×4** 完了。正本 [KB-382 §コンパクト](../knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#production-deploy--zone-dialog-compact-2026-05-23)。
+- **未使用→確定で結合マス解放**（`fix/kiosk-shelf-master-release-cells-on-unused` · **`14e164d6`**）: [`layoutCellRelease.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellRelease.ts) — **`UNUSED` は `releaseLayoutCells` のみ**（明示 UNUSED entity を作らず **1マス空**）。本番 **Pi5→Pi4×4** 完了（2026-05-24）。正本 [KB-382 §未使用解放](../knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#production-deploy--unused-release-merged-cells-2026-05-24)。
 - **本 ExecPlan の Phase チェックボックス**は実装完了と乖離しているため、別途 [x] 整合を推奨（`EXEC_PLAN.md` Next Steps §棚マスタ）。
