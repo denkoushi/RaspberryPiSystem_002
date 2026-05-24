@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-24 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK（自動+HTTP）・ドキュメント同期・`main` マージ**） **棚マスタ・未使用→確定で結合マス解放**·ブランチ **`fix/kiosk-shelf-master-release-cells-on-unused`**·**`14e164d6`**。**症状**: 複数マス加工機割当 → **未使用→確定** 後も **結合ブロックのまま**。**Fix**: [`layoutCellRelease.ts`](./apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellRelease.ts) — **`releaseLayoutCells`**（仕様 A: **1マスずつ空マス**·明示 UNUSED entity 不作成）·[`layoutDraftActions.ts`](./apps/web/src/features/mobile-placement/shelfMaster/model/layoutDraftActions.ts) の **`UNUSED` 分岐のみ変更**·**API/DB 不変**。**ローカル**: shelfMaster Vitest **49 PASS**·lint/build PASS。**CI**: **`26352095694` success**。**本番（5台・1台ずつ）**: Detach **`20260524-135448-18222`**（Pi5）/ **`20260524-140937-1264`** / **`20260524-141535-31219`** / **`20260524-142028-18972`** / **`20260524-142526-8014`**（各 **`failed=0`**）。**実機（自動）**: `verify-phase12-real.sh` **43/0/0**（Pi5 後約 **112s**）·shelf-master HTTP **200**·Pi5 HEAD **`14e164d6`**。**現場手動（未使用解放）**: 未記録（次タスク）。**ナレッジ**: [KB-382 §未使用解放](./docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#production-deploy--unused-release-merged-cells-2026-05-24)·[deployment §未使用解放](./docs/guides/deployment.md#kiosk-shelf-master-unused-release-merged-cells-2026-05-24)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-24 / **実装完了・Pi5 本番先行・自動検証 OK・ドキュメント同期・`main` マージ**） **棚マスタ・編集 Dialog ドック UX（確定統合・リセット）**·ブランチ **`feat/kiosk-shelf-layout-editor-dock-confirm-reset`**·**`ca45c479`**。**仕様**: 4 列ドック·**確定**（save → Pi反映 → 割当）·**リセット**（操作入力のみ·ドラフト維持）·**選択解除**（区画のみ）·~~選択マスを解除~~ 廃止·オーファン **スキャナ割当解除**·`isLayoutEditorConfirmPending`。**ローカル**: shelfMaster Vitest **43 PASS**·tsc·build PASS。**CI**: **`26350715019` success**。**本番（Pi5 のみ）**: Detach **`20260524-123432-32158`**（`failed=0`）。**実機**: `verify-phase12-real.sh` **43/0/0**（約 **111s**）·shelf-master **200**·JS バンドル確認。**Pi4×4**: 未デプロイ。**現場手動（ドック UX）**: 未記録（次タスク）。**ナレッジ**: [KB-382 §ドック](./docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#layout-editor-dock-confirm-reset-2026-05)·[deployment §ドック](./docs/guides/deployment.md#kiosk-shelf-layout-editor-dock-confirm-reset-2026-05-24)。
 - [x] (2026-05-24 / **実装完了・本番反映（Pi5→Pi4×4）・実機検証 OK（Pi5+現場）・ドキュメント同期・`main` マージ**） **棚マスタ・Zero2W オーファン preset 解除パネル**·ブランチ **`feat/kiosk-shelf-master-zero2w-inline-preset`**·**`bd4ab988`**。**症状**: preset が当区画地図に無い（例 `中央-南-03` / レイアウト `中央-南-05` のみ）→ Pi グレーアウト·「担当なし」解除不能。**Fix**: [`orphanZero2wDevices.ts`](./apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/orphanZero2wDevices.ts)·[`ShelfZero2wOrphanPanel`](./apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZero2wOrphanPanel.tsx)·`clearPresetForDevice` → 既存 **`preset-shelf` + `null`**·**Web のみ**。**ローカル**: shelfMaster Vitest **37 PASS**·lint/build PASS。**CI**: **`26348099235` success**。**本番（5台）**: Detach **`20260524-101500-26170`**（Pi5）/ **`20260524-103611-3552`** / **`20260524-104215-7888`** / **`20260524-104718-254`** / **`20260524-105219-1561`**（各 **`failed=0`**）。**実機**: `verify-phase12-real.sh` **43/0/0**·**Pi5 現場 OK**（ユーザー）。**ナレッジ**: [KB-382 §オーファン](./docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md#orphan-zero2w-preset-clear-2026-05-24)·[deployment §Zero2W](./docs/guides/deployment.md#kiosk-shelf-master-zero2w-inline-orphan-2026-05-24)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
 
@@ -2365,20 +2367,21 @@
 
 ### 棚マスタ — 運用・拡張（2026-05-24） {#shelf-master-follow-up-2026-05-24}
 
-**状態**: **編集 Dialog ドック UX**（`ca45c479`）は **`main` マージ済**·**Pi5 のみ本番**（Detach **`20260524-123432-32158`**）·Phase12 **43/0/0**·**Pi4×4 未デプロイ**·**現場手動（ドック）は未記録**。**Zero2W インライン**（`55a50a7b`）·**オーファン**（`bd4ab988`）·**Dialog コンパクト**（`2e73aeed`）·**複数マス選択**（`6adc89f7`）は **Pi5→Pi4×4 済**。**正本**: [KB-382](./docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md)
+**状態**: **未使用→確定の結合解放**（`14e164d6`）は **`main` マージ済**·**Pi5→Pi4×4 本番済**（Detach **`20260524-135448-18222`** ほか 4 本）·Phase12 **43/0/0**·**現場手動（未使用解放）は未記録**。**編集 Dialog ドック UX**（`ca45c479`）は **`main` マージ済**·**Pi5 のみ本番**（Detach **`20260524-123432-32158`**）·**Pi4×4 未デプロイ**·**現場手動（ドック）は未記録**。**Zero2W インライン**（`55a50a7b`）·**オーファン**（`bd4ab988`）·**Dialog コンパクト**（`2e73aeed`）·**複数マス選択**（`6adc89f7`）は **Pi5→Pi4×4 済**。**正本**: [KB-382](./docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md)
 
 **優先タスク候補**:
 
 | # | タスク | 根拠 | 完了条件 |
 |---|--------|------|----------|
-| 1 | **Pi5 でドック UX 現場手動** | `ca45c479`·自動のみ | 4 列ドック·選択解除·リセット·確定·スキャナ割当解除·~~選択マスを解除~~ 無し |
-| 2 | **Pi4×4 へドック UX デプロイ（1 台ずつ）** | SPA 正本は Pi5·Pi4 未 | 各 `failed=0`·キオスク強制リロード·必要なら #1 を各台で短く再確認 |
-| 3 | **各 Pi4 でオーファン panel 回帰** | `bd4ab988` | **スキャナ割当解除**（旧「担当を外す」）→ 再割当まで通る |
-| 4 | **各 Pi4 で複数マス→結合ブロック操作** | `6adc89f7` + ドック UX | **選択解除** / 再タップ·用途 **未使用→確定**（~~選択マスを解除~~ は廃止） |
-| 5 | **再割当 + インライン Pi セレクトの回帰** | 右レール廃止 | 再割当 Dialog·編集 Dialog の **確定** / 保存後キュー |
-| 6 | **preset と地図の自動整合（再配置時）** | オーファンは UI 救済のみ | ADR 化（任意） |
-| 7 | **`shelfLayoutEditEnabled` / `clientKey` 台帳** | KB-382 典型障害 | `client-capabilities` が期待どおり |
-| 8 | **サイネージ `displayLabel` 現場目視** | Pi5 API のみ | 部品棚行の表示名が期待どおり |
+| 1 | **キオスク現場手動 — 未使用→確定** | `14e164d6`·自動のみ | 複数マス加工機 → **未使用→確定** → **1マスずつ空マス**（結合ブロック残存なし）·通路は結合のまま |
+| 2 | **Pi5 でドック UX 現場手動** | `ca45c479`·Pi5 のみデプロイ | 4 列ドック·選択解除·リセット·確定·スキャナ割当解除·~~選択マスを解除~~ 無し |
+| 3 | **Pi4×4 へドック UX デプロイ（1 台ずつ）** | SPA 正本は Pi5·Pi4 未 | 各 `failed=0`·キオスク強制リロード·#2 を各台で短く再確認 |
+| 4 | **各 Pi4 でオーファン panel 回帰** | `bd4ab988` | **スキャナ割当解除** → 再割当まで通る |
+| 5 | **各 Pi4 で複数マス→結合ブロック操作** | `6adc89f7` + ドック UX | **選択解除** / 再タップ·**未使用→確定**（`14e164d6` と合わせて確認） |
+| 6 | **再割当 + インライン Pi セレクトの回帰** | 右レール廃止 | 再割当 Dialog·編集 Dialog の **確定** / 保存後キュー |
+| 7 | **preset と地図の自動整合（再配置時）** | オーファンは UI 救済のみ | ADR 化（任意） |
+| 8 | **`shelfLayoutEditEnabled` / `clientKey` 台帳** | KB-382 典型障害 | `client-capabilities` が期待どおり |
+| 9 | **サイネージ `displayLabel` 現場目視** | Pi5 API のみ | 部品棚行の表示名が期待どおり |
 
 ### キオスク順位ボード — 行内順位ピッカー現場目視（2026-05-22） {#kiosk-leaderboard-row-order-rank-picker-field-verify-2026-05-22}
 

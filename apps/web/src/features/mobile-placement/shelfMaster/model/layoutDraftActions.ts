@@ -1,5 +1,6 @@
 
 import { previewShelfFields } from './draftShelfPreview';
+import { stripSelectedCells, releaseLayoutCells } from './layoutCellRelease';
 import { entityAtCell } from './shelfLayoutGrid';
 
 import type { DraftEntity } from './shelfLayoutTypes';
@@ -20,14 +21,7 @@ export type ApplyAssignmentResult =
   | { ok: true; entities: DraftEntity[]; assignedShelfCodeRaw?: string }
   | { ok: false; error: string };
 
-function stripSelectedCells(entities: DraftEntity[], sorted: number[]): DraftEntity[] {
-  return entities
-    .map((e) => ({
-      ...e,
-      cellIndices: e.cellIndices.filter((i) => !sorted.includes(i))
-    }))
-    .filter((e) => e.cellIndices.length > 0);
-}
+export { clearAssignmentsOnCells, releaseLayoutCells } from './layoutCellRelease';
 
 export function applyLayoutAssignment(input: ApplyAssignmentInput): ApplyAssignmentResult {
   const sorted = [...input.selectedCells].sort((a, b) => a - b);
@@ -35,21 +29,28 @@ export function applyLayoutAssignment(input: ApplyAssignmentInput): ApplyAssignm
     return { ok: false, error: '選択または種別が不足しています' };
   }
 
+  if (input.pendingKind === 'UNUSED') {
+    return {
+      ok: true,
+      entities: releaseLayoutCells(input.draftEntities, input.selectedCells)
+    };
+  }
+
   const withoutOverlap = stripSelectedCells(input.draftEntities, sorted);
 
-  if (input.pendingKind === 'UNUSED' || input.pendingKind === 'AISLE') {
+  if (input.pendingKind === 'AISLE') {
     return {
       ok: true,
       entities: [
         ...withoutOverlap,
         {
-          entityKind: input.pendingKind,
+          entityKind: 'AISLE',
           cellIndices: sorted,
           resourceCd: null,
           resourceName: null,
           shelfCodeRaw: null,
           displayLabel: null,
-          aisleLabel: input.pendingKind === 'AISLE' ? '通路' : null
+          aisleLabel: '通路'
         }
       ]
     };
@@ -107,14 +108,4 @@ export function applyLayoutAssignment(input: ApplyAssignmentInput): ApplyAssignm
   }
 
   return { ok: false, error: '不明な種別です' };
-}
-
-export function clearAssignmentsOnCells(
-  draftEntities: DraftEntity[],
-  selectedCells: number[]
-): DraftEntity[] {
-  if (selectedCells.length === 0) {
-    return draftEntities;
-  }
-  return stripSelectedCells(draftEntities, selectedCells);
 }

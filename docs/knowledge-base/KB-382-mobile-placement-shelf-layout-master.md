@@ -36,7 +36,7 @@
 
 **API**: `GET /api/mobile-placement/shelf-layout` の各 `zones[]` に **`entities[]`** を含む（俯瞰ミニマップ用・後方互換追加）。
 
-**レイアウト Dialog**: 操作誘導は **押せるコントロールのみ有効**。**4 列ドック**（[§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05)）— **「選択解除」**（区画のみ）·**「リセット」**（操作入力のみ）·**「確定」**（保存／Pi 反映／割当の統合）·**dirty 時のレイアウト保存は「確定」に統合**（単独「レイアウト保存」ボタンは廃止）。~~**「選択マスを解除」**~~ は **廃止**（**未使用＋確定**で代替）。
+**レイアウト Dialog**: 操作誘導は **押せるコントロールのみ有効**。**4 列ドック**（[§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05)）— **「選択解除」**（区画のみ）·**「リセット」**（操作入力のみ）·**「確定」**（保存／Pi 反映／割当の統合）·**dirty 時のレイアウト保存は「確定」に統合**（単独「レイアウト保存」ボタンは廃止）。~~**「選択マスを解除」**~~ は **廃止**（**未使用＋確定**で代替 — **1マスずつ空マス**に戻す。結合ブロックのまま残さない）。
 
 ### 区画 Dialog コンパクト化（2026-05-23 · Web のみ）
 
@@ -80,6 +80,7 @@
 | **編集 Dialog で地図が切れる・保存ボタンが出ない** | 旧 SPA（コンパクト化前）·Pi5 **`web`** 未更新·**強制リロード**未実施（[§コンパクト化デプロイ](#production-deploy--zone-dialog-compact-2026-05-23)） |
 | **再割当 Dialog だけレイアウトが崩れる** | 編集のみ更新された中間ビルド — **再割当も `ShelfMasterZoneDialogFrame` 共有**（`2e73aeed` 以降） |
 | **複数マスを結合割当した後、結合ブロックをタップしても選択されず「選択マスを解除」が disabled** | 旧 `useZoneLayoutDraft.toggleCell` が **`cells.length === 1` のみ**処理。割当後は [`ShelfFactoryMapView.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfFactoryMapView.tsx) が結合 entity の **全 `cellIndices`（長さ>1）** を渡すため **no-op** → `selectedCells` が空のまま（[§複数マス選択解除](#production-deploy--multi-cell-selection-clear-2026-05-23)） |
+| **複数マスに加工機を割当 →「未使用」→「確定」しても結合ブロックのまま残る** | 旧 `applyLayoutAssignment` の **`UNUSED` 分岐**が **`MACHINE` と同様に結合 `UNUSED` entity を新規作成**していた。正しくは [`releaseLayoutCells`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellRelease.ts) で選択マスから entity を剥がし **1マスずつ空マス**（[§未使用→確定の結合解放](#unused-release-merged-cells-2026-05-24)） |
 | **編集 Dialog で Pi がグレーアウトし「担当なし」でも解除できない** | **オーファン preset** — `haizenPresetShelfCodeRaw` が **当区画ドラフトの SHELF 一覧に無い**（レイアウト変更・再配置後の不整合）。グレーアウトは他棚担当の仕様。**「担当を反映」** は **選択中棚に紐づく Pi のみ**解除対象。**対処**: 警告 **「この区画の地図にない担当棚」** → **担当を外す**（[`orphanZero2wDevices.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/orphanZero2wDevices.ts)） |
 
 ## Investigation
@@ -120,6 +121,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/shelf-layout" \
 - 管理画面の列名 **「棚レイアウト編集」** と **「Zero2W配膳」** を Runbook / 教育資料で分離  
 - CI: **`packages/shelf-layout-core`** を **Dockerfile.api / Dockerfile.web** でビルド（`security-docker` 回帰 — 下記 Surprises）
 - オーファン preset: **ドラフト SHELF 一覧と preset の突合**を Vitest で固定（[`orphanZero2wDevices.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/orphanZero2wDevices.test.ts)）
+- **未使用→確定**: **`MACHINE`→`UNUSED` の結合解放**を [`layoutCellRelease.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/layoutCellRelease.test.ts) / [`layoutDraftActions.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/layoutDraftActions.test.ts) で固定（**明示 `UNUSED` entity は作らない**）
 - ExecPlan: [mobile-placement-shelf-layout-master.md](../plans/mobile-placement-shelf-layout-master.md)・[ADR-20260523](../decisions/ADR-20260523-mobile-placement-shelf-layout-master.md)
 
 ## Production deploy & verification（2026-05-23 · 棚レイアウトマスタ機能）
@@ -268,7 +270,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 1. **レイアウト** → 区画 **編集** Dialog
 2. 複数マス選択 → **部品置き場を割当**
 3. 結合ブロックを **1 回タップ** → 全マスが選択ハイライト
-4. 用途を消す場合は **「未使用」→「確定」**。マス選択だけ外す場合は **「選択解除」**（結合ブロックは **再タップ** で一括選択解除も可）
+4. 用途を消す場合は **「未使用」→「確定」** — 選択マスの **用途を外し、1マスずつの空マス**（layout entity なし）に戻す。結合 UNUSED entity は作らない。マス選択だけ外す場合は **「選択解除」**（結合ブロックは **再タップ** で一括選択解除も可）
 
 **トラブルシュート**:
 
@@ -295,7 +297,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | **選択解除** | **地図上の区画ハイライトのみ**外す（種別・Pi・複数区画モード等は維持しうる） | [`useZoneLayoutDraft.handleDeselectOnly`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useZoneLayoutDraft.ts) — `cells` のみクリア |
 | **リセット** | ポップアップ内の **操作入力一式**を初期化（区画選択・種別・加工機・Pi・複数区画モード・保存待ち preset キュー） | [`layoutEditorFlow.resetFlow`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlow.ts) + [`hasLayoutEditorFlowInput`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorFlowInput.ts) + [`useShelfZero2wPreset.resetFlowInput`](../../apps/web/src/features/mobile-placement/shelfMaster/hooks/useShelfZero2wPreset.ts)。**ドラフト地図・`dirty` は維持** |
 | **確定** | 状況に応じ **1 アクション**（下記優先順）。**レイアウト保存成功後は Dialog 自動 close**（従来どおり） | [`resolveLayoutEditorConfirmAction`](../../apps/web/src/features/mobile-placement/shelfMaster/flow/layoutEditorConfirmAction.ts) · [`ShelfZoneLayoutDialog`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfZoneLayoutDialog.tsx) の `handleConfirm` |
-| ~~選択マスを解除~~ | **廃止** | SHELF を外す用途は **用途「未使用」→ 確定**。結合ブロックの選択だけ外す用途は **選択解除** または結合ブロック **再タップ**（[§複数マス](#multi-cell-selection-clear-2026-05-23)） |
+| ~~選択マスを解除~~ | **廃止** | 用途削除は **「未使用」→ 確定**（[`releaseLayoutCells`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellRelease.ts) — 選択マスから entity を剥がし **1マス空**に戻す。DB に明示 UNUSED 行は残さない）。結合ブロックの選択だけ外す用途は **選択解除** または結合ブロック **再タップ**（[§複数マス](#multi-cell-selection-clear-2026-05-23)） |
 
 **統合「確定」の優先順**（`layoutEditorFlow` の `gates.emphasize === 'save'` 時を最優先）:
 
@@ -347,6 +349,96 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | 確定が連打できる／保存と Pi 反映が競合 | 旧ビルド（`isLayoutEditorConfirmPending` 未導入） | 上記と同じ |
 | `curl :8080` 失敗 | Pi5 の Web は **80/443**（8080 ではない） | `https://127.0.0.1/...` または Tailscale **`100.106.158.2`** |
 | レイアウトタブ自体が出ない | `client-capabilities` の **`shelfLayoutEditEnabled`** | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例) |
+
+### 未使用→確定で結合マスが解放されない（2026-05-24 · Web のみ） {#unused-release-merged-cells-2026-05-24}
+
+**症状（現場）**: 9 マス俯瞰 → 区画 **編集** Dialog → **複数マス選択** → **加工機を割当**（結合ブロック表示）→ 用途 **「未使用」** → **「確定」** 後も、地図上が **結合ブロックのまま**（期待は **1マスずつの空マス**）。
+
+**調査（CONFIRMED）**:
+
+1. [§編集 Dialog ドック UX](#layout-editor-dock-confirm-reset-2026-05) で ~~**「選択マスを解除」**~~ を廃止し、用途削除は **「未使用」→ 確定** に統一された。
+2. [`layoutDraftActions.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutDraftActions.ts) の **`pendingKind === 'UNUSED'`** 分岐が、**`MACHINE` / `SHELF` / `AISLE` と同型**で **新規 `DraftEntity`（`kind: 'UNUSED'`・結合 `cellIndices`）** を `entities` に追加していた。
+3. [`buildRenderItems`](../../apps/web/src/features/mobile-placement/shelfMaster/model/shelfLayoutGrid.ts)（描画）は **entity があるマスを結合ブロックとして描画**するため、**「空マス」にならない**。
+4. 旧「選択マスを解除」相当の正しいドメイン操作は、選択マスを各 entity から **剥がして entity 自体を削除**すること（[`clearAssignmentsOnCells`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellRelease.ts) の後方互換名 → 正名 **`releaseLayoutCells`**）。
+
+**根本原因**: **割当（assign）** と **解放（release）** の境界契約が `applyLayoutAssignment` 内で混在し、`UNUSED` が **「用途ラベル付き結合 entity の作成」** と誤解釈されていた。**`AISLE`（通路の複数マス結合）は仕様どおり entity 作成のまま**。
+
+**仕様（採用 · ユーザー確認 A）**:
+
+| 操作 | 挙動 |
+|------|------|
+| **未使用 → 確定**（選択マスあり） | 選択マスを **1マスずつ空マス**（**layout entity なし**）に戻す。**DB/API に明示 `UNUSED` 行は書かない**（ドラフト上も結合 `UNUSED` entity を新規作成しない） |
+| **通路（AISLE）** | 従来どおり **複数マス結合 entity** を作成 |
+| **加工機 / 部品置き場** | 従来どおり **結合割当** |
+| **結合ブロックの選択だけ外す** | **「選択解除」**（区画ハイライト）または結合ブロック **再タップ**（[§複数マス](#multi-cell-selection-clear-2026-05-23)） |
+
+**Fix（最小・Web のみ）**:
+
+| ファイル | 内容 |
+|----------|------|
+| 新規 [`layoutCellRelease.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutCellRelease.ts) | **`stripSelectedCells`** · **`releaseLayoutCells`**（正名）· **`clearAssignmentsOnCells`**（deprecated エイリアス） |
+| [`layoutDraftActions.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/model/layoutDraftActions.ts) | **`UNUSED` → `releaseLayoutCells` のみ**。`MACHINE` / `SHELF` / `AISLE` は従来どおり |
+| [`layoutCellRelease.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/layoutCellRelease.test.ts) | 全解放・部分解放・空選択 |
+| [`layoutDraftActions.test.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/__tests__/layoutDraftActions.test.ts) | **MACHINE→UNUSED 全解放**・部分解放・**AISLE 回帰** |
+
+**ブランチ**: `fix/kiosk-shelf-master-release-cells-on-unused`  
+**代表コミット**: **`14e164d6`** — `fix(kiosk): release merged shelf layout cells on unused confirm`  
+**CI**: GitHub Actions **`26352095694` success**（`14e164d6` push 後）
+
+**ローカル検証**: `apps/web/src/features/mobile-placement/shelfMaster` Vitest **49 PASS** · `pnpm --filter web lint` · `pnpm --filter web build` PASS
+
+**触らない**: API / Prisma / Ansible / Pi3 サイネージ / Zero2W 端末
+
+### Production deploy — 未使用→確定の結合解放（2026-05-24） {#production-deploy--unused-release-merged-cells-2026-05-24}
+
+**変更**: **Web SPA のみ**（Pi5 `web` 再ビルド + Pi4 `kiosk-browser` 再起動）
+
+**対象ホスト（1 台ずつ · Pi5 先行必須）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**
+
+**標準コマンド**（**`main` マージ後は第2引数 `main`**）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-shelf-master-release-cells-on-unused \
+  infrastructure/ansible/inventory.yml --limit <host> --detach --follow
+```
+
+| 順 | ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|----|--------|---------------|------------|------|
+| 1 | `raspberrypi5` | **`20260524-135448-18222`** | `ok=134` `changed=4` `failed=0` | Docker `web` 再ビルド·`Git: changed` |
+| 2 | `raspberrypi4` | **`20260524-140937-1264`** | `ok=122` `changed=10` `failed=0` | `kiosk-browser` 再起動 |
+| 3 | `raspi4-robodrill01` | **`20260524-141535-31219`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 4 | `raspi4-fjv60-80` | **`20260524-142028-18972`** | `ok=122` `changed=9` `failed=0` | 同上 |
+| 5 | `raspi4-kensaku-stonebase01` | **`20260524-142526-8014`** | `ok=129` `changed=10` `failed=0` | 同上 |
+
+**Pi3**: **`skipping: no hosts matched`**（想定どおり）
+
+**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後 **約 112s**·Tailscale·Pi5 `100.106.158.2`）
+
+**HTTP / ref（Pi5）**:
+
+- `GET https://100.106.158.2/kiosk/mobile-placement/shelf-master` → **HTTP 200**
+- `/opt/RaspberryPiSystem_002` の **git HEAD** → **`14e164d6`**（デプロイブランチと一致）
+- 本番 JS は minify のため **`releaseLayoutCells` 等の関数名はバンドル文字列検索に頼らない**（**git ref + 挙動**で判定）
+
+**現場手動（推奨 · `shelfLayoutEditEnabled` 端末）**:
+
+1. **レイアウト** → 区画 **編集** Dialog
+2. **複数マス選択** → **加工機を割当**（結合ブロックになること）
+3. 用途 **「未使用」** → **「確定」**
+4. **各マスが個別の空マス**（結合ブロックで残らないこと）を確認
+5. （任意）**通路**は複数マス結合のまま割当できること（回帰）
+
+**トラブルシュート**:
+
+| 症状 | 対処 |
+|------|------|
+| 未使用後も結合のまま | Pi5 **`web` ref** が **`14e164d6` 以降**か·キオスク **強制リロード** |
+| Pi4 のみ旧挙動 | **Pi5 先行デプロイ**漏れ（SPA 正本は Pi5） |
+| 単一マスは直るが複数マスのみ残る | **`6adc89f7` 未満**の選択契約 + 旧 `UNUSED` entity 作成の組み合わせ — 本 Fix **`14e164d6`** を全 5 台へ |
+| レイアウトタブ自体が出ない | [§Root cause（本番検証で確定した例）](#root-cause本番検証で確定した例)（本件とは別） |
+
+**ナレッジ**: [deployment.md §未使用解放](../guides/deployment.md#kiosk-shelf-master-unused-release-merged-cells-2026-05-24)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress 先頭
 
 ### Zero2W インライン割当（2026-05-24 · Web + API） {#zero2w-inline-preset-2026-05-24}
 
