@@ -12,7 +12,7 @@
 | **StackChan** | `stackchan-bridge` **active**（同一ホスト・別プロセス） |
 | **DGX 認証** | `LLM_SHARED_TOKEN`＝StackChan · `LLM_SHARED_ADDITIONAL_TOKENS`＝Hermes chat 専用 |
 | **Tailscale** | `tag:private-server` · grants **admin 保存済**（[§Tailscale](#tailscale私用-pi5-分離)） |
-| **tools プロファイル** | **未デプロイ**（`private_pi5_hermes_tools_profile_enabled` 未設定） |
+| **tools プロファイル** | **骨格デプロイ済**（`tools_profile_enabled=True` · `hermes-tools-gateway` **停止**） |
 | **境界ポリシー** | repo 正本のみ（Hermes ランタイム未接続） |
 
 **正本リンク**: [ExecPlan D0](../plans/private-pi5-hermes-tools-security-phase-d0-execplan.md) · [KB 脅威モデル](../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md) · [ADR-20260525](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md)
@@ -188,7 +188,7 @@ journalctl -u hermes-dgx-keep-warm.service -n 20 --no-pager
 2. **Jinja include**: `config.chat.yaml.j2` の `{% include 'private-pi5-hermes/config.base.yaml.j2' %}` は tasks からの template 探索で **not found** → 同ディレクトリ名 `config.base.yaml.j2` に変更。`deploy-chat-profile.yml` の `src` は `../../templates/private-pi5-hermes/...`。
 3. **SSH 直叩き**: `raspi5-private@100.89.190.21` はローカル鍵未登録で **Permission denied** のことがある → 検証は **inventory 経由の `ansible -m shell`** を正本とする。
 
-**未実施（意図）**: `private_pi5_hermes_tools_profile_enabled: true`（Phase D1）。
+**Phase D1 以降**: tools 骨格は **実施済**（[§Phase D1 本番反映](#phase-d1--tools-プロファイル骨格実機本番反映2026-05-24)）。
 
 ## トークン分離（2026-05-24 実施）
 
@@ -261,6 +261,58 @@ private_pi5_hermes_chat_dgx_llm_token: "<hermes-chat-token>"
 python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 ```
 
+## Phase D1 — tools プロファイル骨格（実機）
+
+**目的**: `~/.hermes-tools` を配備し、境界ポリシー正本を実機に置く。**ツールはまだ無効** · **`hermes-tools-gateway` は停止**。
+
+### fragment（必須）
+
+```yaml
+private_pi5_hermes_tools_profile_enabled: true
+private_pi5_hermes_tools_dgx_llm_token: "<dedicated-tools-token>"  # chat と別
+private_pi5_hermes_tools_gateway_enabled: false
+```
+
+Playbook は **tools トークン未設定**または **chat と同一**のとき **fail**。
+
+### DGX（tools トークン）
+
+`LLM_SHARED_ADDITIONAL_TOKENS` を **`<chat-token>,<tools-token>`**（カンマ区切り・chat は既存維持）→ gateway 再起動。
+
+### デプロイ・検証
+
+```bash
+./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
+# Pi5 上（root または sudo）または:
+ansible -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  private-pi5-stackchan-bridge -m script -a scripts/private-pi5-hermes/verify-tools-profile-deploy.sh -b
+```
+
+**受け入れ**: `hermes-gateway` active · `hermes-tools-gateway` inactive · `boundary-policy.tools.yaml` 存在 · tools/chat Bearer とも DGX **200**。
+
+正本: [Phase D1 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d1-execplan.md)。
+
+## Phase D1 — tools プロファイル骨格（実機本番反映・2026-05-24）
+
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| — | DGX | additional 済のため **再起動スキップ** | localhost chat/tools Bearer **200** |
+| 1 | 私用 Pi5 | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | `PLAY RECAP` **ok=57 failed=0**（約 **123s**） |
+
+**fragment（非コミット）**: `private_pi5_hermes_tools_profile_enabled: true` · 専用 `private_pi5_hermes_tools_dgx_llm_token` · `private_pi5_hermes_tools_gateway_enabled: false`。
+
+**追加検証**（`cd infrastructure/ansible` 後）:
+
+```bash
+ansible private-pi5-stackchan-bridge \
+  -i inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m script -a ../../scripts/private-pi5-hermes/verify-tools-profile-deploy.sh -b
+```
+
+**CI / Git**: `feat/private-pi5-hermes-d1` · `15a95e13` · CI **`26361904957`** success → **`main` マージ**。
+
+**記録**: [KB Phase D1 本番](../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)。
+
 ## トラブルシュート（クイック）
 
 | 症状 | 参照 |
@@ -275,6 +327,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 | Tailscale **duplicate tag:private-server** | `tagOwners` に既存キーがあるのに追記した | `grants` のみ追加 · `tagOwners` は `denkoushi@github` のまま |
 | Mac から Pi5 **SSH Permission denied** | ローカル鍵未登録 | `ansible -i inventory-private-pi5-stackchan-bridge-fragment.yml ...` |
 | Mac から DGX **curl timeout** | tailnet 経路が Pi5 経由想定 | DGX 上で `127.0.0.1:38081` または Pi5 から curl |
+| **verify-tools** path missing | `~/.hermes-tools` 0700 | `sudo -u hermes test -e` · ansible **`-b`** |
+| ansible inventory **empty** | `-i inventory-private-pi5-stackchan-bridge.yml` は未使用 | **fragment** `-i inventory-private-pi5-stackchan-bridge-fragment.yml` |
 
 ## ロールバック
 
@@ -290,3 +344,4 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 - [ADR-20260524-private-pi5-hermes-security-profile.md](../decisions/ADR-20260524-private-pi5-hermes-security-profile.md)
 - [ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md)
 - [KB 脅威モデル](../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)
+- [KB Phase D1 本番](../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)

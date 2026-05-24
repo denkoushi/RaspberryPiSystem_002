@@ -12,7 +12,7 @@
 | 領域 | 仕様 |
 |------|------|
 | **プロファイル** | **chat のみ**稼働（`~/.hermes` · `hermes-gateway`） |
-| **tools** | repo/Ansible 骨格あり・**実機未デプロイ**（fragment 未設定） |
+| **tools** | **Phase D1 完了** — `~/.hermes-tools` 骨格・gateway **停止**（[KB D1](./KB-private-pi5-hermes-phase-d1-production.md)） |
 | **DGX LLM** | primary＝StackChan · additional＝Hermes chat（Bearer） |
 | **Tailscale** | `tag:private-server` · DGX `38081` のみ許可 · admin→私用 Pi5 SSH |
 | **Discord** | 許可 User のみ · 全 toolsets 無効 · `max_tokens` 128 · thinking off（gateway 注入） |
@@ -51,7 +51,7 @@
 - トークン・秘密は **fragment のみ**（`.gitignore`）
 - デプロイは **`deploy-private-pi5-hermes.sh` のみ**（`update-all-clients.sh` 禁止）
 - Tailscale 変更前に **verification.sh** のベースラインを取る
-- Phase D1 前に [脅威モデル](./KB-private-pi5-hermes-tools-security-threat-model.md) チェックリストを再読
+- Phase D2 前に [脅威モデル](./KB-private-pi5-hermes-tools-security-threat-model.md) D2 チェックリストを再読
 
 ## References
 

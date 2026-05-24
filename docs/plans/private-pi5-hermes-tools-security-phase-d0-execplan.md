@@ -31,7 +31,7 @@ update-frequency: medium
 - [x] 実機: DGX `LLM_SHARED_ADDITIONAL_TOKENS` 反映（Hermes chat 専用・2026-05-24）
 - [x] 実機: Tailscale grants マージ（admin 保存・`tag:private-server` · verification PASS）
 - [x] Discord E2E（トークン分離後・ユーザー確認 正常）
-- [ ] 実機: `private_pi5_hermes_tools_profile_enabled: true`（**Phase D1**）
+- [x] 実機: `private_pi5_hermes_tools_profile_enabled: true`（**Phase D1** · [KB D1 本番](../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)）
 
 ## マイルストーン（2026-05-24・運用到達点）
 
