@@ -137,7 +137,7 @@ update-frequency: medium
 - [x] 実機 DGX + 私用 Pi5 デプロイ（Phase D0・2026-05-24）
 - [x] 実機 Hermes chat トークン分離 + Discord E2E 正常
 - [x] Tailscale grants 適用（`tag:private-server`）
-- [ ] `private_pi5_hermes_tools_profile_enabled: true`（**Phase D1**）
+- [x] `private_pi5_hermes_tools_profile_enabled: true`（**Phase D1** · 2026-05-24 · [KB D1](../knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)）
 
 ## Decision Log
 
