@@ -25,6 +25,7 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
 
   const [selectedPi, setSelectedPi] = useState<Zero2wPiSelectValue>(ZERO2W_PI_UNCHANGED);
   const [pendingAfterLayoutSave, setPendingAfterLayoutSave] = useState<PendingZero2wPreset[]>([]);
+  const [clearingDeviceId, setClearingDeviceId] = useState<string | null>(null);
 
   const devices: HaizenTargetDeviceOption[] = useMemo(
     () =>
@@ -41,6 +42,7 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
   const reset = useCallback(() => {
     setSelectedPi(ZERO2W_PI_UNCHANGED);
     setPendingAfterLayoutSave([]);
+    setClearingDeviceId(null);
   }, []);
 
   const syncPiForShelf = useCallback(
@@ -117,6 +119,29 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
     [assignMutation, devices, onMessage, selectedPi, syncPiForShelf]
   );
 
+  const clearPresetForDevice = useCallback(
+    (deviceId: string) => {
+      setClearingDeviceId(deviceId);
+      assignMutation.mutate(
+        { clientDeviceId: deviceId, shelfCodeRaw: null },
+        {
+          onSuccess: () => {
+            onMessage('Zero2W 担当棚を解除しました');
+            if (selectedPi === deviceId) {
+              setSelectedPi(ZERO2W_PI_UNCHANGED);
+            }
+            setClearingDeviceId(null);
+          },
+          onError: (e: unknown) => {
+            onMessage(e instanceof Error ? e.message : '担当解除に失敗しました');
+            setClearingDeviceId(null);
+          }
+        }
+      );
+    },
+    [assignMutation, onMessage, selectedPi]
+  );
+
   const flushPendingPresets = useCallback(async (): Promise<boolean> => {
     if (pendingAfterLayoutSave.length === 0) {
       return false;
@@ -153,9 +178,11 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
     syncPiForShelf,
     queuePresetAfterAssign,
     applyPresetForExistingShelf,
+    clearPresetForDevice,
     flushPendingPresets,
     piSelectionNeedsApply,
     presetApplyPending: assignMutation.isPending,
+    clearingDeviceId,
     hasPendingAfterSave: pendingAfterLayoutSave.length > 0
   };
 }

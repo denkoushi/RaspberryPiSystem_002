@@ -1,8 +1,11 @@
 import { shelfMasterButtonClass, shelfMasterSelectClass, shelfMasterTheme } from '../theme/shelfMasterTheme';
 
+import { ShelfZero2wOrphanPanel } from './ShelfZero2wOrphanPanel';
+
 import type { MachineMasterDto } from '../../../../api/client';
 import type { LayoutEditorFlowGates } from '../flow/layoutEditorFlow';
 import type { DraftEntity } from '../model/shelfLayoutTypes';
+import type { OrphanZero2wDevice } from '../zero2wPreset/orphanZero2wDevices';
 import type { Zero2wPiSelectOption } from '../zero2wPreset/zero2wPiSelectOptions';
 import type { Zero2wPiSelectValue } from '../zero2wPreset/zero2wPiSelectValue';
 
@@ -23,7 +26,10 @@ type Props = {
   savePending: boolean;
   zero2wPiOptions: Zero2wPiSelectOption[];
   selectedPi: Zero2wPiSelectValue;
+  orphanZero2wDevices: OrphanZero2wDevice[];
   zero2wPresetApplyPending: boolean;
+  zero2wClearingDeviceId: string | null;
+  onClearOrphanPreset: (deviceId: string) => void;
   onToggleMulti: () => void;
   onGridSizeChange: (size: 3 | 4) => void;
   onClearSelection: () => void;
@@ -46,7 +52,10 @@ export function ShelfLayoutEditorControls({
   savePending,
   zero2wPiOptions,
   selectedPi,
+  orphanZero2wDevices,
   zero2wPresetApplyPending,
+  zero2wClearingDeviceId,
+  onClearOrphanPreset,
   onToggleMulti,
   onGridSizeChange,
   onClearSelection,
@@ -138,6 +147,13 @@ export function ShelfLayoutEditorControls({
           ))}
         </select>
       ) : null}
+
+      <ShelfZero2wOrphanPanel
+        orphans={orphanZero2wDevices}
+        clearingDeviceId={zero2wClearingDeviceId}
+        presetApplyPending={zero2wPresetApplyPending}
+        onClear={onClearOrphanPreset}
+      />
 
       <div className={shelfMasterTheme.ctlRow}>
         <button

@@ -5,6 +5,7 @@ import { ShelfLayoutEditorControls } from './ShelfLayoutEditorControls';
 import type { MachineMasterDto } from '../../../../api/client';
 import type { LayoutEditorFlowGates } from '../flow/layoutEditorFlow';
 import type { DraftEntity } from '../model/shelfLayoutTypes';
+import type { OrphanZero2wDevice } from '../zero2wPreset/orphanZero2wDevices';
 import type { Zero2wPiSelectOption } from '../zero2wPreset/zero2wPiSelectOptions';
 import type { Zero2wPiSelectValue } from '../zero2wPreset/zero2wPiSelectValue';
 
@@ -18,7 +19,10 @@ type Props = {
   layoutSavePending: boolean;
   zero2wPiOptions: Zero2wPiSelectOption[];
   selectedPi: Zero2wPiSelectValue;
+  orphanZero2wDevices: OrphanZero2wDevice[];
   zero2wPresetApplyPending: boolean;
+  zero2wClearingDeviceId: string | null;
+  onClearOrphanPreset: (deviceId: string) => void;
   onToggleMulti: () => void;
   onGridSizeChange: (size: 3 | 4) => void;
   onClearSelection: () => void;
@@ -41,7 +45,10 @@ export function ShelfLayoutEditorShell({
   layoutSavePending,
   zero2wPiOptions,
   selectedPi,
+  orphanZero2wDevices,
   zero2wPresetApplyPending,
+  zero2wClearingDeviceId,
+  onClearOrphanPreset,
   onToggleMulti,
   onGridSizeChange,
   onClearSelection,
@@ -65,7 +72,10 @@ export function ShelfLayoutEditorShell({
         savePending={layoutSavePending}
         zero2wPiOptions={zero2wPiOptions}
         selectedPi={selectedPi}
+        orphanZero2wDevices={orphanZero2wDevices}
         zero2wPresetApplyPending={zero2wPresetApplyPending}
+        zero2wClearingDeviceId={zero2wClearingDeviceId}
+        onClearOrphanPreset={onClearOrphanPreset}
         onToggleMulti={onToggleMulti}
         onGridSizeChange={onGridSizeChange}
         onClearSelection={onClearSelection}

@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { getLayoutEditorFlowGates } from '../flow/layoutEditorFlow';
 import { useShelfZero2wPreset } from '../hooks/useShelfZero2wPreset';
 import { useZoneLayoutDraft } from '../hooks/useZoneLayoutDraft';
+import {
+  collectShelfCodesOnZoneMap,
+  findOrphanZero2wDevicesInZone
+} from '../zero2wPreset/orphanZero2wDevices';
 import { resolveZero2wTargetShelfCodeRaw } from '../zero2wPreset/resolveZero2wTargetShelf';
 import { resolveShelfSelectionContext } from '../zero2wPreset/shelfSelectionContext';
 import { buildZero2wPiSelectOptions } from '../zero2wPreset/zero2wPiSelectOptions';
@@ -35,9 +39,11 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
     syncPiForShelf,
     queuePresetAfterAssign,
     applyPresetForExistingShelf,
+    clearPresetForDevice,
     flushPendingPresets,
     piSelectionNeedsApply,
-    presetApplyPending
+    presetApplyPending,
+    clearingDeviceId
   } = useShelfZero2wPreset({ isOpen, onMessage });
 
   const shelfContext = useMemo(
@@ -72,6 +78,18 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
     () => buildZero2wPiSelectOptions(zero2wDevices, targetShelfCodeRaw),
     [zero2wDevices, targetShelfCodeRaw]
   );
+
+  const orphanZero2wDevices = useMemo(() => {
+    if (!isOpen || !draft.zoneQuery.data) {
+      return [];
+    }
+    const zoneShelfCodes = collectShelfCodesOnZoneMap(draft.draftEntities);
+    return findOrphanZero2wDevicesInZone(
+      zero2wDevices,
+      zoneShelfCodes,
+      draft.zoneQuery.data.shelfPrefix
+    );
+  }, [draft.draftEntities, draft.zoneQuery.data, isOpen, zero2wDevices]);
 
   const layoutGates = getLayoutEditorFlowGates({
     selectedCount: draft.selectedCells.length,
@@ -160,7 +178,10 @@ export function ShelfZoneLayoutDialog({ zoneId, isOpen, machines, onClose, onZon
           layoutSavePending={draft.savePending}
           zero2wPiOptions={zero2wPiOptions}
           selectedPi={selectedPi}
+          orphanZero2wDevices={orphanZero2wDevices}
           zero2wPresetApplyPending={presetApplyPending}
+          zero2wClearingDeviceId={clearingDeviceId}
+          onClearOrphanPreset={clearPresetForDevice}
           onToggleMulti={() => draft.setMultiMode((v) => !v)}
           onGridSizeChange={draft.handleGridSizeChange}
           onClearSelection={draft.handleDeselectOnly}

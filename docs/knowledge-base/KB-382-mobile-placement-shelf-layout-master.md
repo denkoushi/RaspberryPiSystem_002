@@ -32,7 +32,7 @@
 1. **工場全体** — 画面いっぱいの **9 区画**。各区画に **ミニ 3×3** で加工機・置き場・通路を **常時表示**（閲覧専用・タップ不要）
 2. **レイアウト**（`shelfLayoutEditEnabled` 端末）— 区画の **「編集」** → **Dialog** 内で **拡大 factory-map** + **単列ドック**（レイアウト操作 + 部品置き場時 **Pi セレクト**）。未保存で閉じるとき確認
 3. **再割当** — 9 区画は常時表示のまま、**区画カードタップ** → Dialog 内 factory-map（隣接区画ボタンで区画切替）。移動元 SHELF → 移動先 SHELF
-4. **Zero2W 担当棚** — **部品置き場**を選択したとき（新規割当待ち）または **既存 SHELF マス**を選択したとき、ドロップダウンで **担当なし / Pi** を選ぶ。**他棚に割当済み Pi は選択不可（グレーアウト）**。**既存棚**は **「担当を反映」** で即時 `PUT …/haizen-target-devices/:id/preset-shelf`（`shelfCodeRaw` または **`null` で解除**）。**新規部品置き場 + Pi** は **レイアウト保存成功後**に preset を自動反映（`MobilePlacementShelf` 登録後）
+4. **Zero2W 担当棚** — **部品置き場**を選択したとき（新規割当待ち）または **既存 SHELF マス**を選択したとき、ドロップダウンで **担当なし / Pi** を選ぶ。**他棚に割当済み Pi は選択不可（グレーアウト）**。**既存棚**は **「担当を反映」** で即時 `PUT …/haizen-target-devices/:id/preset-shelf`（`shelfCodeRaw` または **`null` で解除**）。**新規部品置き場 + Pi** は **レイアウト保存成功後**に preset を自動反映（`MobilePlacementShelf` 登録後）。**当区画の地図に無い preset**（例: DB は `中央-南-03`、レイアウトは `中央-南-05` のみ）は Pi セレクト下の **「この区画の地図にない担当棚」** から **端末単位で「担当を外す」**（棚マス未選択可）
 
 **API**: `GET /api/mobile-placement/shelf-layout` の各 `zones[]` に **`entities[]`** を含む（俯瞰ミニマップ用・後方互換追加）。
 
@@ -80,6 +80,7 @@
 | **編集 Dialog で地図が切れる・保存ボタンが出ない** | 旧 SPA（コンパクト化前）·Pi5 **`web`** 未更新·**強制リロード**未実施（[§コンパクト化デプロイ](#production-deploy--zone-dialog-compact-2026-05-23)） |
 | **再割当 Dialog だけレイアウトが崩れる** | 編集のみ更新された中間ビルド — **再割当も `ShelfMasterZoneDialogFrame` 共有**（`2e73aeed` 以降） |
 | **複数マスを結合割当した後、結合ブロックをタップしても選択されず「選択マスを解除」が disabled** | 旧 `useZoneLayoutDraft.toggleCell` が **`cells.length === 1` のみ**処理。割当後は [`ShelfFactoryMapView.tsx`](../../apps/web/src/features/mobile-placement/shelfMaster/components/ShelfFactoryMapView.tsx) が結合 entity の **全 `cellIndices`（長さ>1）** を渡すため **no-op** → `selectedCells` が空のまま（[§複数マス選択解除](#production-deploy--multi-cell-selection-clear-2026-05-23)） |
+| **編集 Dialog で Pi がグレーアウトし「担当なし」でも解除できない** | **オーファン preset** — `haizenPresetShelfCodeRaw` が **当区画ドラフトの SHELF 一覧に無い**（レイアウト変更・再配置後の不整合）。グレーアウトは他棚担当の仕様。**「担当を反映」** は **選択中棚に紐づく Pi のみ**解除対象。**対処**: 警告 **「この区画の地図にない担当棚」** → **担当を外す**（[`orphanZero2wDevices.ts`](../../apps/web/src/features/mobile-placement/shelfMaster/zero2wPreset/orphanZero2wDevices.ts)） |
 
 ## Investigation
 
@@ -97,11 +98,13 @@ curl -sk "https://<Pi5>/api/mobile-placement/shelf-layout" \
 ```
 
 4. 沉浸式ヘッダー疑い → 下辺ホバー後に再試行（[KB-311](./KB-311-kiosk-immersive-header-allowlist.md)）
+5. **Pi グレーアウト・解除不能** — 当該区画 `GET …/shelf-layout/zones/:id` の **`entities[]`（SHELF の `shelfCodeRaw`）** と `GET …/haizen-target-devices` の **`shelfCodeRaw`（preset）** を突合。preset が区画地図に無ければオーファン
 
 ## Root cause（本番検証で確定した例）
 
 - **レイアウトタブ非表示**: DB 上 **`shelfLayoutEditEnabled`** が **`zero2w-tanaban01` 等 Zero2W 端末のみ true** で、実際に操作していた **Pi4 / StoneBase / Mac キー**は **false** のまま — **権限と clientKey の不一致**（設定ミスではなく **対象端末の取り違え**）  
 - **解決（ユーザー確認 2026-05-23）**: **Pi4 と Zero2W** に **`shelfLayoutEditEnabled`** を設定 → **レイアウト操作可能に**
+- **Pi グレーアウト・解除不能（2026-05-24）**: 例 **中央·南** — preset **`中央-南-03`**、レイアウト SHELF は **`中央-南-05` のみ**（03 のマス無し）。**操作ミスではなくデータ不整合 + 旧 UI ギャップ**
 
 ## Fix（最小）
 
@@ -109,6 +112,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/shelf-layout" \
 2. キオスク URL / localStorage の **`clientKey`** がその端末の **`apiKey`** と一致することを確認  
 3. Pi5 に **`feat/kiosk-shelf-layout-master`** 系コミットが載っていること（下記 Detach）。Pi4 は **Web SPA + kiosk-browser 再起動**（標準 `update-all-clients.sh`）  
 4. 沉浸式ページでは **下辺リビール**後にヘッダー操作  
+5. **オーファン preset** — 編集 Dialog で **「この区画の地図にない担当棚」** → **担当を外す** のあと、地図上の正しい SHELF を選び Pi を再割当  
 
 ## Prevention
 
