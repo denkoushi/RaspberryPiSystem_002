@@ -36,6 +36,7 @@
 16. **Discord DM**: テンプレ既定 **`require_mention: false`**（`DISCORD_ALLOWED_USERS` で保護）。サーバー運用でメンション必須に戻す場合は inventory で `private_pi5_hermes_discord_require_mention: true`。
 17. **`unauthorized_dm_behavior: ignore`**、許可リストは `DISCORD_ALLOWED_USERS`（inventory → template）。
 18. **keep-warm**: Pi5 `hermes-dgx-keep-warm.timer`（`private_pi5_dgx_runtime_control_token` 要）。コールドスタート用（思考 ON 時の ~100s/通 とは別問題）。
+19. **スキル・記憶**: 雑談プロファイルでは **`disabled_toolsets` に `skills`・`memory`**、`memory.memory_enabled: false`。Hermes の「Self-Evolving Skills」は **能動的ツール**であり、**Discord 雑談だけでは自動蓄積しない**。必要なら **別プロファイル**で有効化（8K・レイテンシトレードオフ）。→ [KB スキル・コミュニティ](../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)。
 
 ## Alternatives
 
@@ -76,4 +77,5 @@
 - [KB-private-pi5-hermes-install-noninteractive.md](../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md)
 - [KB-private-pi5-hermes-dgx-403-bearer-token.md](../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md)
 - [KB-private-pi5-hermes-discord-e2e-and-latency.md](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)
+- [KB-private-pi5-hermes-skills-community-architecture.md](../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)
 - Playbook: [`private-pi5-hermes.yml`](../../infrastructure/ansible/playbooks/private-pi5-hermes.yml)

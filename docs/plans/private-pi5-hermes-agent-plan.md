@@ -8,6 +8,7 @@ related:
   - ../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md
   - ../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md
   - ../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md
+  - ../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md
   - ../decisions/ADR-20260524-private-pi5-hermes-security-profile.md
   - stackchan-private-pi5-tailnet-workflow-plan.md
   - ../../scripts/private-pi5-hermes/README.md
@@ -68,7 +69,7 @@ update-frequency: medium
 | `agent.system_prompt` | 簡潔雑談（既定） | 2〜4 文目安。「詳しく」時のみ長め |
 | `agent.reasoning_effort` | **none** | Hermes が読む正本 |
 | `compression.enabled` | `false` | 8K モデルと不整合回避 |
-| ツール | `disabled_toolsets` + `platform_toolsets.discord: []` | 8K 超過防止 |
+| ツール | `disabled_toolsets` + `platform_toolsets.discord: []` | 8K 超過防止。**`skills` / `memory` 無効**（自己改善・永続記憶なし） |
 | Discord | `require_mention: false` | 許可リストで保護 |
 | DGX thinking | **gateway `inject_blue_chat_completions_defaults`** | `reasoning_effort` だけでは ~100s/通 |
 | keep-warm | `hermes-dgx-keep-warm.timer` | 要 `private_pi5_dgx_runtime_control_token` |
@@ -92,7 +93,7 @@ update-frequency: medium
 |----------|------|------|
 | Phase A 基盤 | **完了** | UFW・hermes・install・doctor |
 | Phase B Discord | **完了** | DM E2E・403/8K/メンション解消 |
-| Phase C 体験 | **ほぼ完了** | keep-warm・thinking 注入・**max_tokens 128 + 簡潔プロンプト** 完了（ユーザー体感 OK） |
+| Phase C 体験 | **完了（実用レベル）** | keep-warm・thinking 注入・max_tokens 128。**体感 OK**（8.7〜10.7 s/通） |
 | DGX gateway | **完了** | Bearer + inject・DGX 再起動済 |
 
 ## フェーズ別チェックリスト
@@ -135,6 +136,21 @@ update-frequency: medium
 - **2026-05-24**: **`agent.reasoning_effort`**（`model.` 直下のみでは CustomProfile に届かない）。
 - **2026-05-24**: **主因は DGX 推論**（思考トークン・out 比例）。経路は通常 **~2〜3 s** 級。
 - **2026-05-24**: **`max_tokens: 128`** + **`agent.system_prompt`（簡潔雑談）**。50〜200 字は可。Pi5 デプロイ後 **8.7〜10.7 s/通**（out=41〜52）。
+- **2026-05-24**: **`skills` / `memory` 無効** — 雑談プロファイルでは **自己改善スキル・永続記憶は使わない**（会話から自然には賢くならない）。
+- **2026-05-24**: **Phase C 完了（実用レベル）** — 遅延主因は DGX 推論。gateway 境界で thinking 注入・共有 runtime client。
+
+## 実装構成（repo・境界）
+
+| モジュール | 責務 | 再利用 |
+|------------|------|--------|
+| `dgx_runtime_client.py` | DGX ready / start / warm | StackChan bridge + Hermes keep-warm |
+| `dgx_keep_warm.py` | systemd oneshot CLI | Pi5 timer のみ |
+| `gateway-server.py` → `inject_blue_*` | blue thinking off 注入 | 全 OpenAI 互換クライアント |
+| Ansible テンプレ | config / env / systemd | 再現可能デプロイ |
+
+設計評価（SOLID・スケールの限界）: [KB スキル・コミュニティ・アーキテクチャ](./../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)。
+
+DGX Spark フォーラム知見（モデル・セキュリティ・活用）: 同上 KB §フォーラム。
 
 ## トラブルシュート索引
 
@@ -143,6 +159,7 @@ update-frequency: medium
 | install ハング | [KB install](./../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md) |
 | HTTP 403 / Bearer | [KB 403](./../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
 | 遅い・8K・圧縮・無応答 | [KB Discord E2E・遅延](./../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
+| スキル・賢くならない・フォーラム | [KB スキル・コミュニティ](./../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md) |
 | デプロイ手順 | [Runbook](./../runbooks/private-pi5-hermes-deploy.md) |
 
 ## 更新ルール

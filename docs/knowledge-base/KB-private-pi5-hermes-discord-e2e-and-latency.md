@@ -53,6 +53,7 @@ sequenceDiagram
 | 圧縮 | `compression.enabled: false` | 8K 上流と Hermes 64K 圧縮要件の不整合 |
 | ツール | `disabled_toolsets` 全主要 + `platform_toolsets.discord: []` | 既定ツール JSON ~53KB が 8K 超の主因 |
 | メモリ | `memory.memory_enabled: false` | プロンプト肥大抑制 |
+| スキル | `disabled_toolsets` に **`skills`** | **自己改善スキルは無効**（雑談のみ。会話からは自動では賢くならない）→ [KB スキル・コミュニティ](./KB-private-pi5-hermes-skills-community-architecture.md) |
 | Discord | `require_mention: false` | DM + `DISCORD_ALLOWED_USERS` |
 | 補助 | `auxiliary.title_generation: main` timeout 20 | `auto` は OpenRouter 試行で遅延（応答後・非ブロック） |
 | keep-warm | `hermes-dgx-keep-warm.timer` | `private_pi5_dgx_runtime_control_token` 必須 |
@@ -268,6 +269,7 @@ journalctl -u hermes-dgx-keep-warm.service -n 3 --no-pager
 
 ## References
 
+- スキル・フォーラム・アーキテクチャ: [KB-private-pi5-hermes-skills-community-architecture.md](./KB-private-pi5-hermes-skills-community-architecture.md)
 - 計画: [private-pi5-hermes-agent-plan.md](../plans/private-pi5-hermes-agent-plan.md)
 - Runbook: [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md)
 - DGX: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)

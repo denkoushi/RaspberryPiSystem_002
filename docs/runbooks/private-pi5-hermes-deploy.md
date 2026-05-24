@@ -18,6 +18,7 @@
 | KB（install） | [KB-private-pi5-hermes-install-noninteractive.md](../knowledge-base/KB-private-pi5-hermes-install-noninteractive.md) |
 | KB（403 / Bearer） | [KB-private-pi5-hermes-dgx-403-bearer-token.md](../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
 | KB（Discord E2E・遅延） | [KB-private-pi5-hermes-discord-e2e-and-latency.md](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
+| KB（スキル・フォーラム・設計） | [KB-private-pi5-hermes-skills-community-architecture.md](../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md) |
 
 ## 前提
 
@@ -40,7 +41,8 @@
 | `custom_providers[].extra_body` | `enable_thinking: false` | Pi5 側（**毎ターン上書きされ得る**） |
 | **DGX gateway** | `inject_blue_chat_completions_defaults` | **正**: blue で thinking off 注入（**~100s → ~数s**） |
 | `compression.enabled` | `false` | 8K 上流と非両立 |
-| `agent.disabled_toolsets` | 全主要 + kanban/discord 系 | ツール JSON が 8K 超の原因 |
+| `agent.disabled_toolsets` | 全主要 + kanban/discord 系 + **`skills`** | 8K 超過防止。**自己改善スキルはオフ** |
+| `memory.memory_enabled` | `false` | 永続ユーザープロファイルなし |
 | `platform_toolsets.discord` | `[]` | Discord でツールなし |
 | `discord.require_mention` | `false` | DM 雑談（許可 User で保護） |
 | `auxiliary.title_generation` | `main` / timeout 20 | OpenRouter 試行タイムアウト回避 |
