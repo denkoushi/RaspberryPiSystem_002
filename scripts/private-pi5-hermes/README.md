@@ -15,7 +15,8 @@
 | ADR（セキュリティ） | [ADR-20260524](../../docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md) |
 | Phase D0（ツール安全） | [ExecPlan](../../docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md) · [ADR-20260525](../../docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md) |
 | Phase D1（tools 骨格） | [ExecPlan D1](../../docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md) · `verify-tools-profile-deploy.sh` |
-| 境界ポリシー | [`lib/boundary_policy.py`](lib/boundary_policy.py) · [`config/boundary-policy.tools.yaml`](config/boundary-policy.tools.yaml) |
+| Phase D2（file のみ） | [ExecPlan D2](../../docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md) · `HERMES_TOOLS_PHASE=d2` · `verify-tools-file-smoke.sh` |
+| 境界ポリシー | [`lib/boundary_policy.py`](lib/boundary_policy.py) · [`config_contract.py`](lib/config_contract.py) · [`config/boundary-policy.tools.yaml`](config/boundary-policy.tools.yaml) |
 
 ## 前提
 

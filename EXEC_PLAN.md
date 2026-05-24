@@ -2371,16 +2371,17 @@
 
 ### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase D1 完了（2026-05-24）** — tools 骨格実機配備・専用 DGX トークン・`hermes-tools-gateway` 停止のまま。**次は Phase D2**（`file` のみ・workspace 限定・manual 承認）。
+**状態**: **Phase D2 完了（2026-05-24）** — file のみ・workspace マウント・`hermes-tools-gateway` active。**次は Phase D3**（web allowlist）。
 
-**正本**: [KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)·[KB Phase D0 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md)·[ExecPlan D1](./docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
+**正本**: [KB Phase D2 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)·[KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)·[ExecPlan D2](./docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 | # | タスク | 優先 | 完了条件 |
 |---|--------|------|----------|
 | — | Phase C（遅延・Discord） | **完了** | KB E2E |
 | — | Phase D0（repo·実機·トークン·Tailscale） | **完了** | [KB Phase D0 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md) |
-| — | Phase D1（tools 骨格·専用トークン·検証） | **完了** | [KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md) · CI **`26361904957`** |
-| **1** | **Phase D2 — `file` toolset のみ** | **高** | workspace 限定 · boundary 同期 · manual 承認 |
+| — | Phase D1（tools 骨格·専用トークン·検証） | **完了** | [KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md) |
+| — | Phase D2（repo·実機·file·gateway active） | **完了** | [KB Phase D2 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md) · CI **`26362979630`** |
+| **1** | **Phase D3 — web allowlist 同期** | **高** | boundary-policy と Hermes config 一致 |
 | 3 | Hermes 既定プロンプト短縮 | 中 | 任意 |
 | 4 | title_generation 無効化 | 低 | ログ警告解消 |
 | 5 | DGX vLLM MTP / reasoning-parser | 低 | フォーラム知見 |

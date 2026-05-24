@@ -15,6 +15,8 @@ class HermesProfileSpec:
     systemd_unit: str
     discord_enabled: bool
     tools_enabled: bool
+    enabled_toolsets: frozenset[str]
+    expected_gateway_active: bool
     workspace_subdir: str = "workspace"
 
     @property

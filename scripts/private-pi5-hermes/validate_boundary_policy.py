@@ -15,7 +15,8 @@ except ImportError:  # pragma: no cover
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.boundary_policy import validate_policy_document  # noqa: E402
+from lib.boundary_policy import BoundaryPolicy, validate_policy_document  # noqa: E402
+from lib.config_contract import workspace_mounts_from_policy  # noqa: E402
 
 
 def load_policy(path: Path) -> dict:
@@ -39,6 +40,11 @@ def main() -> int:
         default=Path(__file__).resolve().parent / "config" / "boundary-policy.tools.yaml",
         help="Path to policy YAML/JSON",
     )
+    parser.add_argument(
+        "--check-docker-volumes",
+        action="store_true",
+        help="Emit expected terminal.docker_volumes lines for D2 workspace bind",
+    )
     args = parser.parse_args()
 
     try:
@@ -48,9 +54,21 @@ def main() -> int:
         return 1
 
     errors = validate_policy_document(data)
-    ok = not errors
-    print(json.dumps({"ok": ok, "policy": str(args.policy), "errors": errors}, ensure_ascii=False))
-    return 0 if ok else 1
+    payload: dict[str, object] = {
+        "ok": not errors,
+        "policy": str(args.policy),
+        "errors": errors,
+    }
+    if args.check_docker_volumes:
+        try:
+            policy = BoundaryPolicy.from_mapping(data)
+            payload["docker_volumes"] = list(workspace_mounts_from_policy(policy))
+        except ValueError as exc:
+            errors.append(str(exc))
+            payload["ok"] = False
+            payload["errors"] = errors
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0 if payload["ok"] else 1
 
 
 if __name__ == "__main__":
