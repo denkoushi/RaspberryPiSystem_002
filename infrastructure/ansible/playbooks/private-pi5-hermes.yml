@@ -52,10 +52,20 @@
 
     - name: Resolve Hermes tools DGX token from inventory
       ansible.builtin.set_fact:
+        private_pi5_hermes_tools_dgx_llm_token_resolved: >-
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_tools_dgx_llm_token', '') | trim }}
         private_pi5_hermes_tools_effective_dgx_llm_token: >-
-          {{ hostvars[inventory_hostname].get('private_pi5_hermes_tools_dgx_llm_token', '')
-          | default(hostvars[inventory_hostname].get('private_pi5_hermes_chat_dgx_llm_token', hostvars[inventory_hostname].get('private_pi5_dgx_llm_shared_token', ''), true))
-          | trim }}
+          {{ hostvars[inventory_hostname].get('private_pi5_hermes_tools_dgx_llm_token', '') | trim }}
+      when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
+
+    - name: Validate Hermes tools profile token is configured
+      ansible.builtin.assert:
+        that:
+          - (private_pi5_hermes_tools_dgx_llm_token_resolved | default('') | trim) | length > 0
+          - private_pi5_hermes_tools_dgx_llm_token_resolved != private_pi5_hermes_chat_dgx_llm_token
+        fail_msg: >-
+          Set private_pi5_hermes_tools_dgx_llm_token in the inventory fragment (dedicated token,
+          must differ from private_pi5_hermes_chat_dgx_llm_token).
       when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
     - name: Validate Hermes prerequisites
@@ -85,6 +95,10 @@
 
     - name: Verify Hermes deployment
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify.yml"
+
+    - name: Verify Hermes tools profile deployment
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-tools-profile.yml"
+      when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
     - name: Summarize Hermes deployment
       ansible.builtin.debug:

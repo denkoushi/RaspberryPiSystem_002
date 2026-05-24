@@ -49,7 +49,7 @@
 
 - name: Deploy Hermes tools .env (secrets)
   ansible.builtin.template:
-    src: "../templates/private-pi5-hermes/env.tools.j2"
+    src: "../../templates/private-pi5-hermes/env.tools.j2"
     dest: "{{ private_pi5_hermes_tools_data_dir }}/.env"
     owner: "{{ private_pi5_hermes_user }}"
     group: "{{ private_pi5_hermes_group }}"
@@ -57,7 +57,7 @@
 
 - name: Install Hermes tools gateway systemd unit
   ansible.builtin.template:
-    src: "../templates/private-pi5-hermes/gateway-tools.service.j2"
+    src: "../../templates/private-pi5-hermes/gateway-tools.service.j2"
     dest: "/etc/systemd/system/hermes-tools-gateway.service"
     owner: root
     group: root

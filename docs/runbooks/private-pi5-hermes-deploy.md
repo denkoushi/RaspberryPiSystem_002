@@ -12,7 +12,7 @@
 | **StackChan** | `stackchan-bridge` **active**（同一ホスト・別プロセス） |
 | **DGX 認証** | `LLM_SHARED_TOKEN`＝StackChan · `LLM_SHARED_ADDITIONAL_TOKENS`＝Hermes chat 専用 |
 | **Tailscale** | `tag:private-server` · grants **admin 保存済**（[§Tailscale](#tailscale私用-pi5-分離)） |
-| **tools プロファイル** | **未デプロイ**（`private_pi5_hermes_tools_profile_enabled` 未設定） |
+| **tools プロファイル** | **骨格デプロイ済**（`tools_profile_enabled=True` · `hermes-tools-gateway` **停止**） |
 | **境界ポリシー** | repo 正本のみ（Hermes ランタイム未接続） |
 
 **正本リンク**: [ExecPlan D0](../plans/private-pi5-hermes-tools-security-phase-d0-execplan.md) · [KB 脅威モデル](../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md) · [ADR-20260525](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md)
@@ -260,6 +260,37 @@ private_pi5_hermes_chat_dgx_llm_token: "<hermes-chat-token>"
 ```bash
 python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 ```
+
+## Phase D1 — tools プロファイル骨格（実機）
+
+**目的**: `~/.hermes-tools` を配備し、境界ポリシー正本を実機に置く。**ツールはまだ無効** · **`hermes-tools-gateway` は停止**。
+
+### fragment（必須）
+
+```yaml
+private_pi5_hermes_tools_profile_enabled: true
+private_pi5_hermes_tools_dgx_llm_token: "<dedicated-tools-token>"  # chat と別
+private_pi5_hermes_tools_gateway_enabled: false
+```
+
+Playbook は **tools トークン未設定**または **chat と同一**のとき **fail**。
+
+### DGX（tools トークン）
+
+`LLM_SHARED_ADDITIONAL_TOKENS` を **`<chat-token>,<tools-token>`**（カンマ区切り・chat は既存維持）→ gateway 再起動。
+
+### デプロイ・検証
+
+```bash
+./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
+# Pi5 上（root または sudo）または:
+ansible -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  private-pi5-stackchan-bridge -m script -a scripts/private-pi5-hermes/verify-tools-profile-deploy.sh -b
+```
+
+**受け入れ**: `hermes-gateway` active · `hermes-tools-gateway` inactive · `boundary-policy.tools.yaml` 存在 · tools/chat Bearer とも DGX **200**。
+
+正本: [Phase D1 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d1-execplan.md)。
 
 ## トラブルシュート（クイック）
 

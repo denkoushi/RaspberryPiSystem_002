@@ -1,0 +1,44 @@
+---
+- name: Validate Hermes tools boundary policy (repo smoke)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Check Hermes tools profile paths exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ private_pi5_hermes_tools_data_dir }}/boundary-policy.tools.yaml"
+    - "{{ private_pi5_hermes_tools_data_dir }}/workspace"
+    - "{{ private_pi5_hermes_tools_data_dir }}/.env"
+    - "{{ private_pi5_hermes_tools_config_dir }}/config.yaml"
+  register: private_pi5_hermes_tools_path_stat
+  failed_when: not private_pi5_hermes_tools_path_stat.stat.exists
+
+- name: Ensure Hermes tools gateway is not running
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - hermes-tools-gateway
+  register: private_pi5_hermes_tools_gateway_active
+  changed_when: false
+  failed_when: private_pi5_hermes_tools_gateway_active.rc == 0
+
+- name: Verify DGX accepts tools profile Bearer token
+  ansible.builtin.shell:
+    cmd: >-
+      set -a && source {{ private_pi5_hermes_tools_data_dir }}/.env && set +a &&
+      curl -sf -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OPENAI_API_KEY"
+      {{ private_pi5_hermes_dgx_base_url }}/v1/models
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  register: private_pi5_hermes_tools_dgx_models
+  changed_when: false
+  failed_when: private_pi5_hermes_tools_dgx_models.stdout | trim != '200'

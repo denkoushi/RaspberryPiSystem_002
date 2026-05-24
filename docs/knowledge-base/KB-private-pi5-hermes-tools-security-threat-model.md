@@ -51,10 +51,17 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 **Prevention**: トークン解決は playbook `vars` に置かず **inventory または `set_fact`**。プロファイル用テンプレ include は **ファイル名のみ**。CI に `ansible-playbook --syntax-check` と boundary `validate_boundary_policy.py` を維持。
 
-## D1+ チェックリスト（未実施）
+## D1 チェックリスト
 
-- [ ] `private_pi5_hermes_tools_profile_enabled: true` + 専用 DGX トークンを additional に登録（`hermes-tools-gateway` は起動しない）
-- [x] Tailscale grants を管理画面に反映（2026-05-24）
+- [x] `private_pi5_hermes_tools_profile_enabled: true` + 専用 `private_pi5_hermes_tools_dgx_llm_token`（chat と別）
+- [x] DGX `LLM_SHARED_ADDITIONAL_TOKENS` に tools トークン追記
+- [x] `deploy-private-pi5-hermes.sh` + `verify-tools-profile-deploy.sh` PASS
+- [x] `hermes-tools-gateway` **stopped**
+- [ ] Discord 回帰 OK（手動）
+- [x] Tailscale grants（2026-05-24）
+
+## D2+ チェックリスト（未実施）
+
 - [ ] `file` のみ · workspace 限定 · manual 承認
 - [ ] web URL allowlist を `boundary-policy.tools.yaml` と同期
 - [ ] browser 隔離 Docker · `AGENT_BROWSER_ARGS` 実機検証
