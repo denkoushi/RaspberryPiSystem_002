@@ -8,7 +8,13 @@ model:
   base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
   # Hermes Agent は最低 64K を要求。DGX 実効コンテキストより大きい値は Hermes 側の検証用（必要なら fragment で上書き）
   context_length: {{ private_pi5_hermes_context_length | default(65536) }}
-  # system-prod-primary は reasoning 応答があり得る。雑談は none で待ち時間を短縮
+  # 雑談の出力上限（未設定時 Hermes 既定が大きく DGX 生成が長引く）
+  max_tokens: {{ private_pi5_hermes_max_tokens | default(256) }}
+  # 参考: gateway は agent.reasoning_effort を読む（model 直下は CustomProfile に届かない）
+  reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
+
+agent:
+  # Hermes gateway が読む正本（model.reasoning_effort だけでは reasoning_config にならない）
   reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
 
 custom_providers:
@@ -16,6 +22,10 @@ custom_providers:
     base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
     key_env: OPENAI_API_KEY
     default_model: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
+    # blue / vLLM (Qwen3.6): reasoning_effort だけでは思考が止まらない。StackChan bridge と同様 enable_thinking を明示 off。
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
 
 # DGX system-prod-primary の実効コンテキストは ~8K（model.context_length: 65536 は Hermes 起動検証用のみ）。
 # デフォルトの hermes-discord ツール群だけでプロンプトが 8K 超になるため、雑談はツール無効化。

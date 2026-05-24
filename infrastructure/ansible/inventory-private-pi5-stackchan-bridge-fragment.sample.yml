@@ -40,6 +40,7 @@ all:
       private_pi5_dgx_model: "system-prod-primary"
       private_pi5_dgx_llm_shared_token: "replace-me"
       private_pi5_dgx_runtime_auto_start: false
+      # Hermes keep-warm（/start）にも必要。未設定時は timer 無効。
       private_pi5_dgx_runtime_control_token: ""
       private_pi5_dgx_runtime_start_path: "/start"
       private_pi5_dgx_runtime_ready_path: "/v1/models"
@@ -81,6 +82,8 @@ all:
       # デプロイ: ./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh
       # 正本: docs/runbooks/private-pi5-hermes-deploy.md
       # private_pi5_hermes_gateway_enabled: false
+      # private_pi5_hermes_dgx_keep_warm_enabled: true
+      # private_pi5_hermes_dgx_keep_warm_interval_min: 10
       # private_pi5_hermes_discord_bot_token: ""
       # private_pi5_hermes_discord_allowed_users: ""
 

@@ -50,6 +50,35 @@ class DgxUpstreamClient:
             headers["X-Runtime-Control-Token"] = self._c.runtime_control_token
         return headers
 
+    def probe_runtime_ready(self) -> tuple[bool, dict[str, Any]]:
+        """Single GET on ready path; does not call /start."""
+        probe_timeout = min(self._c.upstream_timeout_sec, 10.0)
+        ready_req = Request(
+            url=f"{self._c.base_url}{self._c.runtime_ready_path}",
+            method="GET",
+            headers=self._llm_headers(),
+        )
+        try:
+            with urlopen(ready_req, timeout=probe_timeout) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")[:1000]
+                return True, {"status": resp.getcode(), "body": body}
+        except HTTPError as e:
+            return False, {"status": e.code, "body": e.read().decode("utf-8", errors="ignore")[:1000]}
+        except URLError as e:
+            return False, {"message": str(e)}
+        except TimeoutError:
+            return False, {"message": "runtime ready probe timed out"}
+
+    def warm_runtime_if_needed(self) -> tuple[bool, dict[str, Any]]:
+        """GET ready path; POST /start + poll only when not already warm."""
+        ready, probe = self.probe_runtime_ready()
+        if ready:
+            return True, {"phase": "already_warm", "probe": probe}
+        started, details = self.ensure_runtime_ready()
+        if started:
+            details = {**details, "phase": "started"}
+        return started, details
+
     def ensure_runtime_ready(self) -> tuple[bool, dict[str, Any]]:
         """POST /start then poll GET ready path until 200 or timeout."""
         details: dict[str, Any] = {}

@@ -29,7 +29,7 @@
 | 承認 | `manual` |
 | LLM | `custom:dgx-system-prod` → DGX Bearer |
 | Discord | 許可 User のみ・テンプレ **`require_mention: false`** |
-| 体感レイテンシ | **~30s〜1min/通**（keep-warm 改善候補） |
+| 体感レイテンシ | **数秒〜十数秒/通**（2026-05-24: DGX gateway **thinking 注入** + keep-warm）。旧 ~1min/通 は思考 ON が原因 |
 
 ## デプロイ
 
@@ -41,10 +41,15 @@
 
 Discord 有効化後は fragment を更新して再実行。初回のみ Pi5 venv へ `discord-py` が必要な場合あり（[Runbook](../../docs/runbooks/private-pi5-hermes-deploy.md)）。
 
+## DGX keep-warm
+
+fragment に `private_pi5_dgx_runtime_control_token` を設定してデプロイすると、`hermes-dgx-keep-warm.timer` が **10 分毎**（起動 **3 分**後も）DGX を warm します。詳細は [Runbook §keep-warm](../../docs/runbooks/private-pi5-hermes-deploy.md#dgx-keep-warm体感速度)。
+
 ## 手動確認
 
 ```bash
 ssh raspi5-private@<tailscale-ip>
+systemctl is-active hermes-dgx-keep-warm.timer
 systemctl is-active hermes-gateway
 sudo -u hermes /home/hermes/.local/bin/hermes doctor
 sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \

@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic Hermes DGX keep-warm
+
+[Timer]
+OnBootSec={{ private_pi5_hermes_dgx_keep_warm_boot_delay_min | default(3) }}min
+OnUnitActiveSec={{ private_pi5_hermes_dgx_keep_warm_interval_min | default(10) }}min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

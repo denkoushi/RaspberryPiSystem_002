@@ -7,6 +7,7 @@
   become: true
   serial: 1
   vars:
+    private_pi5_repo_root: "{{ playbook_dir | dirname | dirname | dirname | realpath }}"
     private_pi5_hermes_user: hermes
     private_pi5_hermes_group: hermes
     private_pi5_hermes_home: "/home/{{ private_pi5_hermes_user }}"
@@ -19,6 +20,13 @@
     private_pi5_hermes_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
     private_pi5_hermes_dgx_model: "{{ private_pi5_dgx_model | default('system-prod-primary') }}"
     private_pi5_hermes_dgx_llm_shared_token: "{{ private_pi5_dgx_llm_shared_token | default('') }}"
+    private_pi5_hermes_dgx_keep_warm_dir: "{{ private_pi5_hermes_data_dir }}/dgx-keep-warm"
+    private_pi5_hermes_dgx_keep_warm_env_path: "{{ private_pi5_hermes_data_dir }}/dgx-keep-warm.env"
+    private_pi5_hermes_dgx_keep_warm_active: >-
+      {{
+        (private_pi5_hermes_dgx_keep_warm_enabled | default(true) | bool)
+        and ((private_pi5_dgx_runtime_control_token | default('') | trim) | length > 0)
+      }}
     # Discord / gateway_enabled は inventory fragment のみ（play 側に空既定を置くと host 変数が潰れる）
     private_pi5_hermes_install_argv:
       - /bin/bash
@@ -179,6 +187,85 @@
         mode: "0644"
       notify: Reload systemd daemon
 
+    - name: Ensure Hermes DGX keep-warm directory exists
+      ansible.builtin.file:
+        path: "{{ private_pi5_hermes_dgx_keep_warm_dir }}"
+        state: directory
+        owner: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+        mode: "0750"
+
+    - name: Deploy Hermes DGX keep-warm scripts
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py"
+          dest: "{{ private_pi5_hermes_dgx_keep_warm_dir }}/dgx_runtime_client.py"
+          mode: "0644"
+        - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/dgx_keep_warm.py"
+          dest: "{{ private_pi5_hermes_dgx_keep_warm_dir }}/dgx_keep_warm.py"
+          mode: "0755"
+
+    - name: Deploy Hermes DGX keep-warm environment
+      ansible.builtin.template:
+        src: "../templates/private-pi5-hermes-dgx-keep-warm.env.j2"
+        dest: "{{ private_pi5_hermes_dgx_keep_warm_env_path }}"
+        owner: "{{ private_pi5_hermes_user }}"
+        group: "{{ private_pi5_hermes_group }}"
+        mode: "0600"
+
+    - name: Install Hermes DGX keep-warm systemd units
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - src: "../templates/private-pi5-hermes-dgx-keep-warm.service.j2"
+          dest: /etc/systemd/system/hermes-dgx-keep-warm.service
+        - src: "../templates/private-pi5-hermes-dgx-keep-warm.timer.j2"
+          dest: /etc/systemd/system/hermes-dgx-keep-warm.timer
+      notify: Reload systemd daemon
+
+    - name: Enable Hermes DGX keep-warm timer
+      ansible.builtin.systemd:
+        name: hermes-dgx-keep-warm.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: private_pi5_hermes_dgx_keep_warm_active | bool
+
+    - name: Trigger immediate Hermes DGX keep-warm (may take several minutes when cold)
+      ansible.builtin.systemd:
+        name: hermes-dgx-keep-warm.service
+        state: started
+      when: private_pi5_hermes_dgx_keep_warm_active | bool
+      async: 3600
+      poll: 30
+      failed_when: false
+
+    - name: Disable Hermes DGX keep-warm timer when inactive
+      ansible.builtin.systemd:
+        name: hermes-dgx-keep-warm.timer
+        enabled: false
+        state: stopped
+        daemon_reload: true
+      when: not (private_pi5_hermes_dgx_keep_warm_active | bool)
+
+    - name: Warn when keep-warm is requested but runtime control token is missing
+      ansible.builtin.debug:
+        msg: >-
+          hermes-dgx-keep-warm is disabled: set private_pi5_dgx_runtime_control_token
+          in the local inventory fragment (same token as StackChan bridge /start).
+      when:
+        - private_pi5_hermes_dgx_keep_warm_enabled | default(true) | bool
+        - not (private_pi5_hermes_dgx_keep_warm_active | bool)
+
     - name: Flush handlers before checks
       ansible.builtin.meta: flush_handlers
 
@@ -238,6 +325,7 @@
           - "hermes_bin={{ private_pi5_hermes_bin }}"
           - "dgx_health={{ private_pi5_hermes_dgx_health.content | default('n/a') | trim }}"
           - "gateway_enabled={{ private_pi5_hermes_gateway_enabled }}"
+          - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
           - "next=Create Discord bot, set DISCORD_* in fragment, re-run playbook with gateway_enabled=true"
 

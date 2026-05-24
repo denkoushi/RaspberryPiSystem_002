@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-05-24
+最終更新: 2026-05-24（keep-warm・enable_thinking 注入・レイテンシ KB 追補）
 
 ## 目的
 
@@ -34,7 +34,10 @@
 |------|-----|------|
 | `model.provider` | `custom:dgx-system-prod` | `OPENAI_API_KEY` を確実に送る |
 | `model.context_length` | `65536` | Hermes 64K 起動要件（**DGX 実効は ~8K**） |
-| `model.reasoning_effort` | `none` | 応答待ち短縮 |
+| `agent.reasoning_effort` | `none` | Hermes gateway が読む正本（`model.` 直下だけでは不十分） |
+| `model.max_tokens` | `256` | 長い生成抑制 |
+| `custom_providers[].extra_body` | `enable_thinking: false` | Pi5 側（**毎ターン上書きされ得る**） |
+| **DGX gateway** | `inject_blue_chat_completions_defaults` | **正**: blue で thinking off 注入（**~100s → ~数s**） |
 | `compression.enabled` | `false` | 8K 上流と非両立 |
 | `agent.disabled_toolsets` | 全主要 + kanban/discord 系 | ツール JSON が 8K 超の原因 |
 | `platform_toolsets.discord` | `[]` | Discord でツールなし |
@@ -70,7 +73,8 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 4. apt 先行 → 非対話 `install.sh`（`--skip-setup` `--skip-browser`）
 5. `config.yaml` / `.env` 配備
 6. `hermes-gateway.service`（fragment の `gateway_enabled` に従う）
-7. `hermes doctor`・DGX `/healthz`・Docker hello-world
+7. **`hermes-dgx-keep-warm.timer`**（`private_pi5_dgx_runtime_control_token` 設定時）— 10 分毎 + 起動 3 分後に DGX `/start` または ready 確認
+8. `hermes doctor`・DGX `/healthz`・Docker hello-world
 
 ## Discord 有効化
 
@@ -80,8 +84,12 @@ cp infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.sample
 private_pi5_hermes_discord_bot_token: "<bot-token>"
 private_pi5_hermes_discord_allowed_users: "<your-discord-user-id>"
 private_pi5_hermes_gateway_enabled: true
+# keep-warm（体感速度）: StackChan と同じ DGX 制御トークン
+private_pi5_dgx_runtime_control_token: "<runtime-control-token>"
 # 任意: メンション必須に戻す場合
 # private_pi5_hermes_discord_require_mention: true
+# 任意: keep-warm 間隔（分）
+# private_pi5_hermes_dgx_keep_warm_interval_min: 10
 ```
 
 ### Developer Portal
@@ -97,15 +105,20 @@ Playbook 未包含の場合（2026-05-24 実績）:
 sudo -u hermes bash -lc 'source ~/.hermes/hermes-agent/venv/bin/activate && uv pip install discord-py'
 ```
 
-### DGX gateway（Bearer）
+### DGX gateway（Bearer + thinking 注入）
 
-Hermes は **Bearer** で認証。repo の `gateway-server.py` を DGX へ反映:
+Hermes は **Bearer** で認証。repo の `gateway-server.py` には **Bearer 受理**と **blue `chat/completions` への `enable_thinking: false` 注入**が含まれる（Hermes 雑談の体感速度に必須）。
 
 ```bash
 scp scripts/dgx-local-llm-system/gateway-server.py \
   ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/gateway-server.py
-# PID 終了 → start-gateway-server.sh（Runbook: dgx-system-prod-local-llm.md）
+PID=$(cat /srv/dgx/system-prod/logs/gateway-server.pid 2>/dev/null || true)
+[ -n "$PID" ] && kill "$PID" 2>/dev/null; rm -f /srv/dgx/system-prod/logs/gateway-server.pid
+bash /srv/dgx/system-prod/bin/start-gateway-server.sh
+curl -sf http://127.0.0.1:38081/healthz
 ```
+
+詳細: [dgx-system-prod-local-llm.md](./dgx-system-prod-local-llm.md) · [KB Discord E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。
 
 ### デプロイ後
 
@@ -114,6 +127,29 @@ sudo systemctl restart hermes-gateway
 ```
 
 Discord: **`/reset`** → 短いメッセージで試す。
+
+## DGX keep-warm（体感速度）
+
+| 項目 | 内容 |
+|------|------|
+| 目的 | DGX コールドスタート（数十秒〜数分）を Discord 応答前に回避 |
+| 実装 | `hermes-dgx-keep-warm.timer` → `GET /v1/models`、未 ready なら `POST /start` |
+| 前提 | fragment に **`private_pi5_dgx_runtime_control_token`**（StackChan bridge と同値可） |
+| 無効化 | `private_pi5_hermes_dgx_keep_warm_enabled: false` または制御トークン未設定 |
+
+**トークンの入手**（DGX ホストで、値は fragment にのみ保存）:
+
+```bash
+# DGX（例: Tailscale SSH）
+grep '^LLM_RUNTIME_CONTROL_TOKEN=' /srv/dgx/system-prod/secrets/control-server.env
+# → fragment の private_pi5_dgx_runtime_control_token に貼り付け → 再デプロイ
+```
+
+```bash
+systemctl is-active hermes-dgx-keep-warm.timer   # active（トークン設定時）
+systemctl start hermes-dgx-keep-warm.service     # 手動で即時 warm
+journalctl -u hermes-dgx-keep-warm.service -n 20 --no-pager
+```
 
 ## 検証（2026-05-24 実機）
 
@@ -130,7 +166,7 @@ sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \
 journalctl -u hermes-gateway -n 30 --no-pager
 ```
 
-**E2E**: Discord DM で応答あり（体感 **~1 分/通**、改善余地あり）。
+**E2E**: Discord DM で応答あり。thinking 注入前は **~1 分/通**、注入後は **だいぶ速い**（DGX 単体ベンチ **~4 s** 級）。正本: [KB Discord E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。
 
 ## トラブルシュート（クイック）
 
@@ -139,7 +175,7 @@ journalctl -u hermes-gateway -n 30 --no-pager
 | 403 forbidden | [KB 403](../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
 | 無応答（ホーム案内のみ） | `require_mention` → テンプレは false。`/reset` |
 | 圧縮ループ / auto-reset | ツール無効テンプレ未反映 → 再デプロイ |
-| 遅い | reasoning off・DGX cold start → [KB E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
+| 遅い | keep-warm timer・`private_pi5_dgx_runtime_control_token` → 本 Runbook §DGX keep-warm・[KB E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
 | `/sethome` 案内 | 雑談のみなら無視可 |
 
 ## ロールバック

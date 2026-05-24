@@ -57,6 +57,25 @@ class GatewayServerTests(unittest.TestCase):
 
         self.assertEqual(module.resolve_backend_base_url(config), "http://blue:38083")
 
+    def test_inject_blue_chat_completions_defaults_adds_enable_thinking_false(self):
+        module = load_module()
+        body = json.dumps(
+            {"model": "system-prod-primary", "messages": [{"role": "user", "content": "hi"}]}
+        ).encode()
+        out = module.inject_blue_chat_completions_defaults(
+            "/v1/chat/completions", body, "blue"
+        )
+        payload = json.loads(out.decode())
+        self.assertFalse(payload["chat_template_kwargs"]["enable_thinking"])
+
+    def test_inject_blue_chat_completions_defaults_skips_green(self):
+        module = load_module()
+        body = b'{"model":"x"}'
+        out = module.inject_blue_chat_completions_defaults(
+            "/v1/chat/completions", body, "green"
+        )
+        self.assertEqual(out, body)
+
     def test_http_handler_routes_v1_and_runtime_requests(self):
         module = load_module()
         config = module.GatewayConfig(

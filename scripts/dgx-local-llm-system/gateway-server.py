@@ -149,6 +149,33 @@ def read_body(handler: BaseHTTPRequestHandler) -> bytes:
     return handler.rfile.read(length) if length > 0 else b""
 
 
+def inject_blue_chat_completions_defaults(path: str, body: bytes, active_backend: str) -> bytes:
+    """blue/vLLM (Qwen3.6): clients that omit enable_thinking get long reasoning runs.
+
+    Hermes gateway may reset request_overrides each turn; inject here so Pi5/Hermes
+    Discord chat stays fast without per-client extra_body.
+    """
+    if active_backend != "blue":
+        return body
+    if not path.rstrip("/").endswith("/chat/completions"):
+        return body
+    if not body:
+        return body
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return body
+    if not isinstance(payload, dict):
+        return body
+    kwargs = payload.get("chat_template_kwargs")
+    if not isinstance(kwargs, dict):
+        kwargs = {}
+    if kwargs.get("enable_thinking") is not True:
+        kwargs["enable_thinking"] = False
+        payload["chat_template_kwargs"] = kwargs
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
 def run_local_command(command: str, cwd: str, timeout_sec: int) -> tuple[int, str]:
     proc = subprocess.run(
         ["bash", "-lc", command],
@@ -766,10 +793,13 @@ def make_handler(
                     self._send_text(403, "forbidden")
                     return
                 headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
+                upstream_body = inject_blue_chat_completions_defaults(
+                    self.path, body, config.active_backend
+                )
                 status, resp_body, content_type = proxy_impl(
                     "POST",
                     f"{resolve_backend_base_url(config)}{self.path}",
-                    body,
+                    upstream_body,
                     headers,
                 )
                 self._send(status, resp_body, content_type)

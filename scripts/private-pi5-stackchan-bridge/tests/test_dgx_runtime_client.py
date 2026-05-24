@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Unit tests for dgx_runtime_client."""
+
+from __future__ import annotations
+
+import io
+import unittest
+from unittest.mock import patch
+
+from dgx_runtime_client import DgxUpstreamClient, DgxUpstreamConfig
+
+
+def _config(**overrides: object) -> DgxUpstreamConfig:
+    base = dict(
+        base_url="http://dgx.example:38081",
+        llm_shared_token="llm-token",
+        runtime_control_token="ctrl-token",
+        auto_start=True,
+    )
+    base.update(overrides)
+    return DgxUpstreamConfig(**base)
+
+
+class TestDgxRuntimeClient(unittest.TestCase):
+    def test_probe_runtime_ready_success(self):
+        client = DgxUpstreamClient(_config())
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def getcode(self) -> int:
+                return 200
+
+            def read(self) -> bytes:
+                return b'{"data":[]}'
+
+        with patch("dgx_runtime_client.urlopen", return_value=FakeResp()):
+            ok, details = client.probe_runtime_ready()
+
+        self.assertTrue(ok)
+        self.assertEqual(details["status"], 200)
+
+    def test_warm_runtime_if_needed_skips_start_when_warm(self):
+        client = DgxUpstreamClient(_config())
+
+        with patch.object(client, "probe_runtime_ready", return_value=(True, {"status": 200})):
+            with patch.object(client, "ensure_runtime_ready") as ensure:
+                ok, details = client.warm_runtime_if_needed()
+
+        ensure.assert_not_called()
+        self.assertTrue(ok)
+        self.assertEqual(details["phase"], "already_warm")
+
+    def test_warm_runtime_if_needed_calls_start_when_cold(self):
+        client = DgxUpstreamClient(_config())
+
+        with patch.object(client, "probe_runtime_ready", return_value=(False, {"status": 503})):
+            with patch.object(
+                client,
+                "ensure_runtime_ready",
+                return_value=(True, {"start": {"status": 200}}),
+            ) as ensure:
+                ok, details = client.warm_runtime_if_needed()
+
+        ensure.assert_called_once()
+        self.assertTrue(ok)
+        self.assertEqual(details["phase"], "started")
+
+    def test_ensure_runtime_ready_disabled_without_auto_start(self):
+        client = DgxUpstreamClient(_config(auto_start=False))
+        ok, details = client.ensure_runtime_ready()
+        self.assertFalse(ok)
+        self.assertIn("disabled", details["message"])
+
+
+if __name__ == "__main__":
+    unittest.main()

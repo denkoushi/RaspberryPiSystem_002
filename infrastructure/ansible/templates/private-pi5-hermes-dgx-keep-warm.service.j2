@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes DGX runtime keep-warm (probe /start if cold)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ private_pi5_hermes_user }}
+Group={{ private_pi5_hermes_group }}
+WorkingDirectory={{ private_pi5_hermes_dgx_keep_warm_dir }}
+EnvironmentFile={{ private_pi5_hermes_dgx_keep_warm_env_path }}
+ExecStart=/usr/bin/python3 {{ private_pi5_hermes_dgx_keep_warm_dir }}/dgx_keep_warm.py
+StandardOutput=journal
+StandardError=journal

@@ -1,144 +1,227 @@
-# KB-private-pi5-hermes-discord-e2e-and-latency: Discord 雑談 E2E・遅延・8K コンテキスト
+# KB-private-pi5-hermes-discord-e2e-and-latency: Discord 雑談 E2E・遅延・8K・keep-warm・enable_thinking
 
-- **Status**: operational（2026-05-24 実機確認）
-- **Related**: [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md) · [KB-private-pi5-hermes-dgx-403-bearer-token.md](./KB-private-pi5-hermes-dgx-403-bearer-token.md) · [private-pi5-hermes-agent-plan.md](../plans/private-pi5-hermes-agent-plan.md)
+- **Status**: operational（2026-05-24 実機確認・レイテンシ改善済）
+- **Related**: [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md) · [KB-private-pi5-hermes-dgx-403-bearer-token.md](./KB-private-pi5-hermes-dgx-403-bearer-token.md) · [private-pi5-hermes-agent-plan.md](../plans/private-pi5-hermes-agent-plan.md) · [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)
 
 ## Context
 
-私用 Pi5 上の **Hermes Agent v0.14.0**（`hermes-gateway`）から **Discord DM**（許可 User ID のみ）で DGX `system-prod-primary`（`http://100.118.82.72:38081/v1`）へ雑談。StackChan `stackchan-bridge` と **同一ホスト・同一 DGX** だが **プロセス・設定は分離**。
+私用 Pi5 上の **Hermes Agent v0.14.0**（`hermes-gateway`）から **Discord DM**（許可 User ID のみ）で DGX `system-prod-primary`（`http://100.118.82.72:38081/v1`、blue / vLLM / Qwen3.6-27B-NVFP4）へ雑談。
 
-## 確定仕様（雑談プロファイル・config テンプレ）
+StackChan `stackchan-bridge`（`:18080`・`X-LLM-Token`）と **同一 Pi5・同一 DGX** だが **プロセス・ユーザー・設定・認証ヘッダは分離**。
 
-正本: [`private-pi5-hermes.config.yaml.j2`](../../infrastructure/ansible/templates/private-pi5-hermes.config.yaml.j2)
+## アーキテクチャ（応答までの経路）
+
+```mermaid
+sequenceDiagram
+  participant U as Discord User
+  participant H as hermes-gateway Pi5
+  participant G as DGX gateway 38081
+  participant V as vLLM blue 38083
+
+  U->>H: DM メッセージ
+  Note over H: システムプロンプト組立<br/>api_calls=1 通常
+  H->>G: POST /v1/chat/completions stream
+  Note over G: inject enable_thinking false<br/>blue のみ
+  G->>V: 転送
+  V-->>G: トークン生成
+  G-->>H: SSE/stream
+  H-->>U: Discord 返信
+```
+
+| 層 | コンポーネント | 役割 |
+|----|----------------|------|
+| 入口 | Discord Bot · `hermes-gateway.service` | 許可 User のみ・`require_mention: false` |
+| エージェント | Hermes `conversation_loop` | 1 通 ≒ **API call 1 回**（ツール無効時） |
+| 認証 | `Authorization: Bearer`（`OPENAI_API_KEY`） | [KB 403](./KB-private-pi5-hermes-dgx-403-bearer-token.md) |
+| 到達 | Tailscale Pi5 → DGX `100.118.82.72:38081` | |
+| Gateway | `scripts/dgx-local-llm-system/gateway-server.py` | Bearer/X-LLM-Token・**blue chat で thinking 注入** |
+| 推論 | `system-prod-primary` @ `127.0.0.1:38083` | 実効コンテキスト **~8192** |
+| 温存 | `hermes-dgx-keep-warm.timer`（Pi5） | コールドスタート回避（制御トークン要） |
+
+## 確定仕様（雑談プロファイル）
+
+正本テンプレ: [`private-pi5-hermes.config.yaml.j2`](../../infrastructure/ansible/templates/private-pi5-hermes.config.yaml.j2)
 
 | 領域 | 設定 | 意図 |
 |------|------|------|
-| LLM | `provider: custom:dgx-system-prod` + `custom_providers[].key_env: OPENAI_API_KEY` | bare `provider: custom` だと `Bearer no-key-required`（Hermes #28660） |
-| 起動検証 | `model.context_length: 65536` | Hermes は **最低 64K** を要求。**DGX 実 API 上限は ~8192** |
-| 推論 | `model.reasoning_effort: none` | reasoning モデル待ちを短縮（雑談） |
-| 圧縮 | `compression.enabled: false` | 8K モデルで補助圧縮は 64K 必須のため無効 |
-| ツール | `agent.disabled_toolsets`（全主要 + `kanban`/`discord`/`discord_admin`） | 既定 `hermes-discord` ツール JSON が 8K 超の主因 |
-| Discord ツール束 | `platform_toolsets.discord: []` | 明示的にツールなし |
-| メモリ | `memory.memory_enabled: false` | プロンプト肥大化抑制 |
-| Discord | `require_mention: false`（テンプレ既定） | DM + `DISCORD_ALLOWED_USERS` で保護。メンション必須だと無応答に見える |
-| 補助 | `auxiliary.title_generation: main` + `timeout: 20` | `auto` が OpenRouter を試し **Request timed out**（非ブロックだが遅延要因） |
-| 表示 | `display.show_reasoning: false` | Discord に思考ログを出さない |
+| LLM | `provider: custom:dgx-system-prod` + `key_env: OPENAI_API_KEY` | bare `custom` は `no-key-required`（Hermes #28660） |
+| 起動検証 | `model.context_length: 65536` | Hermes 最低 64K。**DGX API 実効 ~8192** |
+| 出力上限 | `model.max_tokens: 256` | 未設定時 Hermes 既定が大きく生成が長引く |
+| 推論（Hermes） | **`agent.reasoning_effort: none`** | gateway が読む正本（`model.` 直下だけでは不十分） |
+| 推論（DGX） | **`custom_providers.extra_body`** + **gateway 注入** | vLLM は `reasoning_effort` だけでは思考が止まらない |
+| 圧縮 | `compression.enabled: false` | 8K 上流と Hermes 64K 圧縮要件の不整合 |
+| ツール | `disabled_toolsets` 全主要 + `platform_toolsets.discord: []` | 既定ツール JSON ~53KB が 8K 超の主因 |
+| メモリ | `memory.memory_enabled: false` | プロンプト肥大抑制 |
+| Discord | `require_mention: false` | DM + `DISCORD_ALLOWED_USERS` |
+| 補助 | `auxiliary.title_generation: main` timeout 20 | `auto` は OpenRouter 試行で遅延（応答後・非ブロック） |
+| keep-warm | `hermes-dgx-keep-warm.timer` | `private_pi5_dgx_runtime_control_token` 必須 |
 
-秘密: [`private-pi5-hermes.env.j2`](../../infrastructure/ansible/templates/private-pi5-hermes.env.j2) — `OPENAI_API_KEY`（DGX トークン）・`DISCORD_*`。**fragment のみ・Git 禁止**。
+秘密: [`private-pi5-hermes.env.j2`](../../infrastructure/ansible/templates/private-pi5-hermes.env.j2) — fragment のみ。
 
-## DGX 側前提（認証）
+## レイテンシ調査（2026-05-24 実測）
 
-- StackChan: **`X-LLM-Token`**
-- Hermes: **`Authorization: Bearer`**
-- DGX `gateway-server.py` は **両方受理**（`llm_shared_token_ok()`）。反映: `scp` → PID 終了 → `start-gateway-server.sh`（[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)）
-- 詳細: [KB-private-pi5-hermes-dgx-403-bearer-token.md](./KB-private-pi5-hermes-dgx-403-bearer-token.md)
+### 症状の変遷
 
-## 実機 E2E タイムライン（2026-05-24）
+| 段階 | ユーザー体感 | `agent.log` の `latency=` | `out` tokens | 主因 |
+|------|-------------|---------------------------|--------------|------|
+| 初回 E2E | ~1 分/通 | 60〜262 s | 303〜1472 | 思考トークン + 8K/ツール問題混在 |
+| keep-warm 後も遅い | ~1〜2 分 | **97〜107 s** | **492〜541** | **思考モード ON**（warm でも遅い） |
+| config `extra_body` のみ | まだ ~1 分 | **57〜90 s** | **288〜456** | Hermes が **毎ターン `request_overrides` を `{}` で上書き**し DGX に未到達 |
+| gateway **inject** 後 | **だいぶ速い**（ユーザー確認） | （要再計測） | — | `enable_thinking: false` が vLLM に届く |
 
-| 時刻（JST） | 事象 |
-|-------------|------|
-| 基盤 | Playbook ok・`hermes-gateway` active・Discord Bot 招待済み |
-| 17:44 | LLM **403 forbidden**（Bearer / gateway 未対応・`no-key-required`） |
-| 17:51〜 | gateway Bearer 修正後も **圧縮 / 8K 超過** |
-| 18:06 | **8193 input tokens** → 圧縮ループ → auto-reset |
-| 18:23 | `/reset` 後 **~1 分**で初回応答（ホーム案内 + 本文） |
-| 18:33 | 雑談応答成功。ユーザー体感 **~1 分/通**（改善余地あり） |
+### DGX 単体ベンチ（Pi5 から・同一モデル）
 
-**成功時の応答例**: 「こんにちは！今日は何をしましょうか？」
+| 条件 | 時間 | completion_tokens | 備考 |
+|------|------|-------------------|------|
+| `reasoning_effort: none` のみ | **~25 s** | 128 | `content` 空・`reasoning` 長文 |
+| `chat_template_kwargs.enable_thinking: false` | **~2 s** | ~11 | 本文あり |
+| Hermes 相当プロンプト + thinking off | **~4 s** | ~20 | in ~658 |
+| gateway 経由・kwargs なし（inject 後） | **~4 s** | ~20 | `inject_blue_chat_completions_defaults` |
+
+**結論**: ボトルネックの **9 割は DGX 推論（思考トークン生成）**。keep-warm は **コールドスタート**用で、思考 ON のままでは **数十〜100 秒/通**は変わらない。
+
+### agent.log の読み方（Pi5）
+
+```bash
+grep -E 'latency=|response ready|API call' /home/hermes/.hermes/logs/agent.log | tail -20
+```
+
+- **`latency=`** … 単一 `chat/completions` の DGX 側時間（秒）
+- **`response ready: time=`** … Discord 受信から送信まで（Hermes オーバーヘッド含む）
+- **`api_calls=1`** … ツール無効なら 1 通 1 回が正常
+
+## Root cause: なぜ `reasoning_effort: none` だけでは足りないか
+
+1. **vLLM / Qwen3.6（blue）** は OpenAI 互換の `reasoning_effort` より **`chat_template_kwargs.enable_thinking`** が効く（[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)・StackChan bridge 同様）。
+2. Hermes **CustomProfile**（`provider=custom`）は Ollama 向けに `think: false` のみ。vLLM には無効。
+3. `custom_providers.extra_body` は `init_agent` で `request_overrides` にマージされるが、**毎ターン** gateway が次で上書きする:
+
+```text
+agent.request_overrides = turn_route.get("request_overrides") or {}
+# turn_route は fast_mode 以外ほぼ {}
+```
+
+→ **Pi5 config だけでは DGX に `enable_thinking: false` が届かない**ことがある。
+
+### Fix（実装済・2026-05-24）
+
+| 層 | 対策 | ファイル |
+|----|------|----------|
+| **DGX（正）** | blue の `POST .../chat/completions` で `enable_thinking: false` を注入（未指定時） | [`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py) `inject_blue_chat_completions_defaults` |
+| Pi5 Hermes | `agent.reasoning_effort: none`・`model.max_tokens: 256`・`extra_body`（将来 Hermes 修正時用） | `private-pi5-hermes.config.yaml.j2` |
+| Pi5 運用 | `hermes-dgx-keep-warm.timer` | [`dgx_keep_warm.py`](../../scripts/private-pi5-hermes/dgx_keep_warm.py) |
+
+**DGX 反映手順**（Runbook 準拠）:
+
+```bash
+scp scripts/dgx-local-llm-system/gateway-server.py \
+  ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/gateway-server.py
+# PID 終了 → rm gateway-server.pid → start-gateway-server.sh
+```
+
+## keep-warm（コールドスタート対策）
+
+| 項目 | 内容 |
+|------|------|
+| 単位 | `hermes-dgx-keep-warm.service`（oneshot）+ `.timer` |
+| 間隔 | 起動 **3 分**後、以降 **10 分**毎 |
+| 処理 | `probe_runtime_ready` → 未 warm なら `POST /start` + `/v1/models` 待ち |
+| 前提 | fragment: `private_pi5_dgx_runtime_control_token`（DGX `LLM_RUNTIME_CONTROL_TOKEN`） |
+| 共有コード | [`dgx_runtime_client.py`](../../scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py)（`warm_runtime_if_needed`） |
+
+**注意**: warm でも **思考 ON** なら ~1 分/通のまま。keep-warm と thinking 注入は **別問題**。
+
+## 実機タイムライン（2026-05-24 JST）
+
+| 時刻 | 事象 |
+|------|------|
+| 17:44 | LLM **403** → [KB 403](./KB-private-pi5-hermes-dgx-403-bearer-token.md) |
+| 18:06 | 8193 tokens・圧縮ループ → ツール無効テンプレ |
+| 18:33 | E2E 成功・体感 ~1 min/通 |
+| 18:57〜19:01 | `latency` 97〜107 s（思考 ON・keep-warm 済） |
+| 19:11〜19:14 | config `extra_body` 後も 57〜90 s（Hermes overrides 上書き） |
+| 19:20 頃 | DGX gateway inject 反映・Hermes 再デプロイ |
+| 19:20+ | ユーザー体感 **だいぶ速い**（DGX 単体 ~4 s 級と整合） |
 
 ## 症状別トラブルシュート
 
-### 1. HTTP 403 forbidden（LLM のみ）
+### HTTP 403
 
 → [KB-private-pi5-hermes-dgx-403-bearer-token.md](./KB-private-pi5-hermes-dgx-403-bearer-token.md)
 
-### 2. メンションなしで無応答（ホーム案内だけ）
+### 無応答（ホーム案内のみ）
 
-- **原因**: `require_mention: true` のとき、プレーンテキストはエージェント未処理。
-- **対処**: テンプレ `require_mention: false` または `@Bot` 付き送信。再デプロイ + `/reset`。
+`require_mention: true` → テンプレは `false`。`/reset`。
 
-### 3. `Context too large` / 圧縮 1/3〜3/3 / auto-reset
+### Context too large / 圧縮ループ
 
-- **原因**: `hermes-discord` 既定ツール定義 + システムプロンプトが **実 API 8192 超**。request dump 例: tools JSON **~53KB 文字**。
-- **対処**: `disabled_toolsets` + `platform_toolsets.discord: []` をテンプレ反映。`/reset`。
+ツール無効テンプレ未反映 → 再デプロイ + `/reset`。
 
-### 4. `Auxiliary compression model … 8,192 < 64,000`
+### 遅い（Typing が長い）
 
-- **原因**: 圧縮補助 LLM の 64K 下限と DGX 8K の不一致。
-- **対処**: `compression.enabled: false`。
+| 確認 | コマンド / 観点 |
+|------|----------------|
+| DGX warm | `curl -H "Authorization: Bearer $KEY" http://100.118.82.72:38081/v1/models` → 200 |
+| keep-warm | `systemctl is-active hermes-dgx-keep-warm.timer` |
+| 思考注入 | gateway `gateway-server.py` が **inject 版**か（DGX 再起動済みか） |
+| agent.log | `latency=` が **&lt;15s** か（数十秒なら thinking 疑い） |
+| 直接ベンチ | Pi5 から `chat_template_kwargs.enable_thinking:false` で ~2〜4 s になるか |
 
-### 5. 遅い（1 分程度・Typing のまま）
+### title_generation 警告
 
-| 要因 | 説明 | 対処 |
-|------|------|------|
-| DGX コールドスタート | モデル未ロード時 `/start` + 読み込み | DGX 側 keep-warm（StackChan bridge の `/start` パターン参照） |
-| reasoning | `system-prod-primary` が思考付き応答 | `reasoning_effort: none`（テンプレ済） |
-| title_generation | OpenRouter 試行タイムアウト | `auxiliary.title_generation: main`（テンプレ済） |
-| 初回ホーム案内 | 初回 DM で `/sethome` 案内が別メッセージ | 無視可。`/sethome` 不要（雑談のみ） |
-| Pi5→DGX 往復 | Tailscale + 推論生成 | 2 通目以降が速いか確認 |
+```
+Title generation failed: Provider 'main' ... no API key
+```
 
-**Pi5 からの smoke（参考）**: 最小 `chat/completions`（`1+1=?`）は **~7s**（2026-05-24）。
-
-### 6. `/sethome` 案内の意味
-
-- cron 結果・横断メッセージの**届け先チャンネル**登録用。
-- **雑談のみならスキップ可**（`/sethome` 不要）。
+応答**後**のバックグラウンド。体感遅延の主因ではない。無視可。
 
 ## 検証コマンド（Pi5）
 
 ```bash
-# gateway
-systemctl is-active hermes-gateway
+systemctl is-active hermes-gateway hermes-dgx-keep-warm.timer stackchan-bridge
 
-# DGX Bearer（hermes ユーザー）
+# Bearer
 sudo -u hermes bash -lc 'set -a; source ~/.hermes/.env; set +a; \
-  curl -sf -o /dev/null -w "bearer=%{http_code}\n" \
+  curl -sf -o /dev/null -w "models=%{http_code}\n" \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   http://100.118.82.72:38081/v1/models'
 
-# Discord 向けツール数（venv）
-sudo -u hermes bash -lc 'source ~/.hermes/hermes-agent/venv/bin/activate; \
-  export PYTHONPATH=/home/hermes/.hermes/hermes-agent; python3 -c "
-import yaml
-from hermes_cli.tools_config import _get_platform_tools
-cfg=yaml.safe_load(open(\"/home/hermes/.hermes/config.yaml\"))
-print(\"discord toolsets\", _get_platform_tools(cfg, \"discord\"))
-"'
+# gateway inject（enable_thinking を付けない）
+sudo -u hermes python3 -c "
+import json, os, time, urllib.request
+from pathlib import Path
+key=[l.split('=',1)[1].strip() for l in Path('/home/hermes/.hermes/.env').read_text().splitlines() if l.startswith('OPENAI_API_KEY=')][0]
+p={'model':'system-prod-primary','messages':[{'role':'user','content':'こんにちは'}],'max_tokens':64}
+t=time.time()
+urllib.request.urlopen(urllib.request.Request('http://100.118.82.72:38081/v1/chat/completions',json.dumps(p).encode(),headers={'Authorization':f'Bearer {key}','Content-Type':'application/json'},method='POST'),timeout=60)
+print('sec', round(time.time()-t,1))
+"
 
-# 直近ログ
-journalctl -u hermes-gateway -n 50 --no-pager
+grep -E 'latency=|response ready' /home/hermes/.hermes/logs/agent.log | tail -10
+journalctl -u hermes-dgx-keep-warm.service -n 3 --no-pager
 ```
-
-期待: `bearer=200`・`discord toolsets set()`（空）。
-
-## 運用手順（障害時）
-
-1. `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`
-2. `sudo systemctl restart hermes-gateway`
-3. Discord **`/reset`**
-4. 短いメッセージで再試行
-
-DGX gateway 更新後は **必ず** Bearer smoke（上記 curl）。
 
 ## Prevention
 
-- 新規 OpenAI 互換クライアント追加時は **Bearer と X-LLM-Token** を gateway で両方受理するか確認。
-- Hermes custom endpoint は **`custom_providers` + `key_env`** をテンプレ固定。
-- 8K 上流では **ツール無効化**を雑談プロファイルの既定とする。
-- Discord 導入チェックリストに **`/reset` 後の 2 通目レイテンシ**を記録する。
+- blue vLLM へ OpenAI 互換クライアントを繋ぐときは **`enable_thinking: false`** を契約に含める（gateway 注入またはクライアント `extra_body`）。
+- Hermes は **`agent.reasoning_effort`** と **`model.max_tokens`** をテンプレで明示。
+- Discord 導入時は `/reset` 後 **3 通**の `latency=` を KB に記録。
+- DGX gateway 更新は **PID ファイル削除**を忘れない（古コードのまま `exit 0` し得る）。
 
-## 未解決・次の改善候補
+## 次の改善候補（さらに速く）
 
-| 優先 | 項目 |
-|------|------|
-| 高 | DGX **keep-warm**（初回数十秒〜数分の削減） |
-| 中 | Hermes 専用 **DGX トークン**（StackChan と分離） |
-| 中 | Discord Bot token **ローテーション**（漏洩疑い時） |
-| 低 | `context_length` と DGX 実 8K の整合（Hermes 64K 下限との両立） |
-| 低 | `/sethome` 初回案内の抑制（Hermes 設定調査） |
+| 優先 | 項目 | 根拠 |
+|------|------|------|
+| 高 | Hermes **システムプロンプト短縮** | 実測 in **~575 tokens**（「こんにちは」だけでも） |
+| 高 | StackChan 同様 **`max_tokens` 160〜192** | bridge は [stackchan_chat_core.py](../../scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py) で cap |
+| 中 | `title_generation` 無効化 | ログ警告・任意 OpenRouter |
+| 中 | より軽量モデル / green backend 検討 | 品質トレードオフ |
+| 低 | Hermes upstream の `request_overrides` 上書き修正 | upstream 取り込み時 |
 
 ## References
 
-- Playbook: [`private-pi5-hermes.yml`](../../infrastructure/ansible/playbooks/private-pi5-hermes.yml)
-- DGX gateway: [`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py)
-- StackChan DGX クライアント: [`dgx_runtime_client.py`](../../scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py)
+- 計画: [private-pi5-hermes-agent-plan.md](../plans/private-pi5-hermes-agent-plan.md)
+- Runbook: [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md)
+- DGX: [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)
+- Playbook: [private-pi5-hermes.yml](../../infrastructure/ansible/playbooks/private-pi5-hermes.yml)
+- Tests: [test_gateway_server.py](../../scripts/dgx-local-llm-system/tests/test_gateway_server.py)

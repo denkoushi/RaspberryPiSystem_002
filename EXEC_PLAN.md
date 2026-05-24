@@ -2369,14 +2369,16 @@
 
 ### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase B 完了**（Discord DM 雑談 E2E·`hermes-gateway` **active**）。**体感レイテンシ ~30s〜1min/通**（改善余地あり）。
+**状態**: **Phase C 進行中**。keep-warm **完了**・DGX gateway **thinking 注入完了**（体感 **だいぶ速い**・ユーザー確認）。さらなる高速化（**&lt;15s** 安定）を探索中。
 
 **正本**: [private-pi5-hermes-agent-plan.md](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[private-pi5-hermes-deploy.md](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 | # | タスク | 手順 | 完了条件 |
 |---|--------|------|----------|
-| 1 | **DGX keep-warm** | StackChan 同様 `/start` または cron（[dgx_runtime_client.py](./scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py) 参照） | 2 通目以降 **10〜30s** で安定（実測記録を KB へ） |
-| 2 | **レイテンシ計測** | Discord 送信時刻 ↔ 応答時刻を 3 回 | KB に cold/warm 表を追記 |
+| 1 | **DGX keep-warm** | **完了**: `hermes-dgx-keep-warm.timer` + [dgx_keep_warm.py](./scripts/private-pi5-hermes/dgx_keep_warm.py) | コールドスタート回避 |
+| 1b | **enable_thinking 注入** | **完了**: [gateway-server.py](./scripts/dgx-local-llm-system/gateway-server.py) `inject_blue_chat_completions_defaults` + DGX 再起動 | **~100s/通 → ~数s**（ベンチ）·Discord 体感改善 |
+| 2 | **レイテンシ計測** | `agent.log` の `latency=` を inject 後に 3 通記録 | KB 表を更新 |
+| 2b | **さらに高速化** | プロンプト短縮・max_tokens 160 級・title_generation off 等 | **&lt;15s** 安定 |
 | 3 | **DGX トークン分離** | Hermes 専用トークンを fragment + gateway 許可リスト | StackChan 漏洩と影響分離 |
 | 4 | **Discord Bot token ローテ** | Developer Portal で再発行（漏洩疑い時） | fragment 更新・gateway 再起動 |
 | 5 | **PR マージ** | `feat/private-pi5-hermes-docs` + gateway Bearer 修正 | `main` へ（ユーザー明示時） |

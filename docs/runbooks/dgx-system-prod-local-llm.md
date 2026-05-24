@@ -515,6 +515,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - **Tailscale / SSH**: 既定 ACL では **Pi5 → DGX の `38081` は通るが `22` は通らない**ことが多い（`38081` のみ許可のため）。ホストへ直接配置する場合は **一時 grant**（`tag:server` → `tag:llm`, `tcp:22`）→ 作業後 **grants から除去**。[tailscale-policy.md](../security/tailscale-policy.md)・[KB-357](../knowledge-base/infrastructure/security.md)。
 - **到達経路の例**: `tag:admin`（Mac）から DGX tailnet IP への直 **HTTP は ACL で届かない**ことが多い → **Pi5 経由**の疎通確認、または **工場 LAN**（例: `192.168.128.156`）と **登録済み SSH 鍵**（LAN と tailnet で同じ公開鍵を `authorized_keys` に載せる必要あり）。
 - **疎通時の注意（blue / vLLM）**: cold start 中は **`127.0.0.1:38083`** および gateway 経由の **`/v1/models`** が **502** や **connection reset** になり得る。`docker logs`（`system-prod-trtllm` 等）で **重み load・`torch.compile`・autotune** 完了まで待つ。最小チャット検証では **`chat_template_kwargs: { "enable_thinking": false }`** を付けないと **`message.content` が空**になりやすい。
+- **gateway 既定注入（2026-05-24・私用 Pi5 Hermes）**: `ACTIVE_LLM_BACKEND=blue` のとき、`gateway-server.py` の **`inject_blue_chat_completions_defaults`** が **`POST /v1/chat/completions`** 本文に **`enable_thinking: false`** を付与（クライアントが省略した場合）。Hermes は `request_overrides` を毎ターン空で上書きするため **Pi5 config だけでは不足**し得る。**記録**: [KB-private-pi5-hermes-discord-e2e-and-latency.md](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。
 - **`keep_warm`**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）かつ active backend が blue のとき、**`POST /stop` 後も** trtllm コンテナと **`/v1/models` が生存**する挙動を確認できる（本番ではリソース方針に合わせ ADR のとおり）。
 
 ### 2026-05-03 blue vLLM と ComfyUI の GPU 競合（502・inference-backend WARN）
