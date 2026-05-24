@@ -29,7 +29,8 @@
 | 承認 | `manual` |
 | LLM | `custom:dgx-system-prod` → DGX Bearer |
 | Discord | 許可 User のみ・テンプレ **`require_mention: false`** |
-| 体感レイテンシ | **数秒〜十数秒/通**（2026-05-24: DGX gateway **thinking 注入** + keep-warm）。旧 ~1min/通 は思考 ON が原因 |
+| 体感レイテンシ | **8.7〜10.7 s/通**（max_tokens 128 + inject + keep-warm） |
+| 主因 | **DGX 推論**（out 比例）。経路 ~2〜3 s |
 
 ## デプロイ
 

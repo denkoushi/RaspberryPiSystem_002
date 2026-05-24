@@ -64,14 +64,15 @@ update-frequency: medium
 |------|-----|------|
 | LLM provider | `custom:dgx-system-prod` + `key_env: OPENAI_API_KEY` | [KB 403](./../knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
 | `context_length` | `65536`（config） | Hermes 起動用。**DGX 実効 ~8192** |
-| `max_tokens` | **256** | 長い生成抑制 |
+| `max_tokens` | **128** | 長い生成抑制（50〜200 字は可） |
+| `agent.system_prompt` | 簡潔雑談（既定） | 2〜4 文目安。「詳しく」時のみ長め |
 | `agent.reasoning_effort` | **none** | Hermes が読む正本 |
 | `compression.enabled` | `false` | 8K モデルと不整合回避 |
 | ツール | `disabled_toolsets` + `platform_toolsets.discord: []` | 8K 超過防止 |
 | Discord | `require_mention: false` | 許可リストで保護 |
 | DGX thinking | **gateway `inject_blue_chat_completions_defaults`** | `reasoning_effort` だけでは ~100s/通 |
 | keep-warm | `hermes-dgx-keep-warm.timer` | 要 `private_pi5_dgx_runtime_control_token` |
-| 体感レイテンシ | **~1 min/通** → **だいぶ速い**（inject 後・ユーザー確認） | 目標 **&lt;15s** は今後のチューニング |
+| 体感レイテンシ | **~1 min/通** → **数秒〜十数秒/通**（inject + max_tokens 128） | 実測 **8.7〜10.7 s**（out=41〜52） |
 
 **既知の残リスク**: `hermes` の docker グループ、DGX トークン共有、SSH Anywhere、8K 会話上限。詳細 [ADR-20260524](../decisions/ADR-20260524-private-pi5-hermes-security-profile.md)。
 
@@ -91,7 +92,7 @@ update-frequency: medium
 |----------|------|------|
 | Phase A 基盤 | **完了** | UFW・hermes・install・doctor |
 | Phase B Discord | **完了** | DM E2E・403/8K/メンション解消 |
-| Phase C 体験 | **進行中** | keep-warm **完了**・thinking 注入 **完了**・さらなる高速化 **探索中** |
+| Phase C 体験 | **ほぼ完了** | keep-warm・thinking 注入・**max_tokens 128 + 簡潔プロンプト** 完了（ユーザー体感 OK） |
 | DGX gateway | **完了** | Bearer + inject・DGX 再起動済 |
 
 ## フェーズ別チェックリスト
@@ -115,7 +116,8 @@ update-frequency: medium
 
 - [x] DGX **keep-warm**（timer + `dgx_keep_warm.py`）
 - [x] **enable_thinking 注入**（DGX gateway + Hermes config）
-- [ ] レイテンシ **&lt;15s** 安定化（プロンプト短縮・max_tokens 調整・実測 KB 追記）
+- [x] **`max_tokens: 128` + 簡潔 `agent.system_prompt`**（Pi5 デプロイ・実測 **&lt;15s** 安定）
+- [ ] Hermes **既定プロンプト本体**の短縮（`in` ~661 削減・任意）
 - [ ] Hermes 専用 DGX トークン
 - [ ] Discord Bot token ローテーション（漏洩疑い時）
 - [ ] PR マージ（ユーザー明示時）
@@ -131,6 +133,8 @@ update-frequency: medium
 - **2026-05-24**: keep-warm は **`hermes-dgx-keep-warm.timer`**。要 **`private_pi5_dgx_runtime_control_token`**。
 - **2026-05-24**: vLLM 遅延の主因は **思考トークン**。Fix は **`chat_template_kwargs.enable_thinking: false`**。Hermes は毎ターン `request_overrides` を空にするため **DGX gateway で注入**（`inject_blue_chat_completions_defaults`）。
 - **2026-05-24**: **`agent.reasoning_effort`**（`model.` 直下のみでは CustomProfile に届かない）。
+- **2026-05-24**: **主因は DGX 推論**（思考トークン・out 比例）。経路は通常 **~2〜3 s** 級。
+- **2026-05-24**: **`max_tokens: 128`** + **`agent.system_prompt`（簡潔雑談）**。50〜200 字は可。Pi5 デプロイ後 **8.7〜10.7 s/通**（out=41〜52）。
 
 ## トラブルシュート索引
 

@@ -1,6 +1,6 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-05-24（keep-warm・enable_thinking 注入・レイテンシ KB 追補）
+最終更新: 2026-05-24（max_tokens 128・簡潔プロンプト・レイテンシ実測追補）
 
 ## 目的
 
@@ -35,7 +35,8 @@
 | `model.provider` | `custom:dgx-system-prod` | `OPENAI_API_KEY` を確実に送る |
 | `model.context_length` | `65536` | Hermes 64K 起動要件（**DGX 実効は ~8K**） |
 | `agent.reasoning_effort` | `none` | Hermes gateway が読む正本（`model.` 直下だけでは不十分） |
-| `model.max_tokens` | `256` | 長い生成抑制 |
+| `model.max_tokens` | `128` | 長い生成抑制（50〜200 字の返答は余裕。fragment で上書き可） |
+| `agent.system_prompt` | 簡潔雑談用（既定） | 文体を短めに。詳しく求められたら長め可 |
 | `custom_providers[].extra_body` | `enable_thinking: false` | Pi5 側（**毎ターン上書きされ得る**） |
 | **DGX gateway** | `inject_blue_chat_completions_defaults` | **正**: blue で thinking off 注入（**~100s → ~数s**） |
 | `compression.enabled` | `false` | 8K 上流と非両立 |

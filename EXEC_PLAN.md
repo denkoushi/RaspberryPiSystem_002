@@ -2369,20 +2369,19 @@
 
 ### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase C 進行中**。keep-warm **完了**・DGX gateway **thinking 注入完了**（体感 **だいぶ速い**・ユーザー確認）。さらなる高速化（**&lt;15s** 安定）を探索中。
+**状態**: **Phase C ほぼ完了**。keep-warm・thinking 注入・**max_tokens 128 + 簡潔プロンプト** 完了（実測 **8.7〜10.7 s/通**・ユーザー体感 OK）。
 
 **正本**: [private-pi5-hermes-agent-plan.md](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[private-pi5-hermes-deploy.md](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 | # | タスク | 手順 | 完了条件 |
 |---|--------|------|----------|
-| 1 | **DGX keep-warm** | **完了**: `hermes-dgx-keep-warm.timer` + [dgx_keep_warm.py](./scripts/private-pi5-hermes/dgx_keep_warm.py) | コールドスタート回避 |
-| 1b | **enable_thinking 注入** | **完了**: [gateway-server.py](./scripts/dgx-local-llm-system/gateway-server.py) `inject_blue_chat_completions_defaults` + DGX 再起動 | **~100s/通 → ~数s**（ベンチ）·Discord 体感改善 |
-| 2 | **レイテンシ計測** | `agent.log` の `latency=` を inject 後に 3 通記録 | KB 表を更新 |
-| 2b | **さらに高速化** | プロンプト短縮・max_tokens 160 級・title_generation off 等 | **&lt;15s** 安定 |
-| 3 | **DGX トークン分離** | Hermes 専用トークンを fragment + gateway 許可リスト | StackChan 漏洩と影響分離 |
-| 4 | **Discord Bot token ローテ** | Developer Portal で再発行（漏洩疑い時） | fragment 更新・gateway 再起動 |
-| 5 | **PR マージ** | `feat/private-pi5-hermes-docs` + gateway Bearer 修正 | `main` へ（ユーザー明示時） |
-| 6 | **`/sethome`（任意）** | cron 結果を Discord に載せる場合のみ `/sethome` | 雑談のみならスキップ可 |
+| 1 | **DGX keep-warm** | **完了** | コールドスタート回避 |
+| 1b | **enable_thinking 注入** | **完了** | ~100s → 数s 級 |
+| 2b | **max_tokens 128 + 簡潔プロンプト** | **完了**·Pi5 デプロイ | **8.7〜10.7 s**（out=41〜52） |
+| 3 | **Hermes 既定プロンプト短縮**（任意） | `in` ~661 削減の調査 | prefill さらに短縮 |
+| 4 | **DGX トークン分離** | Hermes 専用トークン | StackChan 漏洩と影響分離 |
+| 5 | **PR マージ** | `feat/private-pi5-hermes-docs` | `main` へ（ユーザー明示時） |
+| 6 | **`title_generation` 無効化**（任意） | config / upstream 調査 | ログ警告解消 |
 
 ### 棚マスタ — 運用・拡張（2026-05-24） {#shelf-master-follow-up-2026-05-24}
 

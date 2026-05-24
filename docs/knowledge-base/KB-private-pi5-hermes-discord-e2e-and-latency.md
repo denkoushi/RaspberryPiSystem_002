@@ -1,6 +1,6 @@
 # KB-private-pi5-hermes-discord-e2e-and-latency: Discord 雑談 E2E・遅延・8K・keep-warm・enable_thinking
 
-- **Status**: operational（2026-05-24 実機確認・レイテンシ改善済）
+- **Status**: operational（2026-05-24 実機確認・レイテンシ改善済・**max_tokens 128 + 簡潔プロンプト** Pi5 反映済）
 - **Related**: [private-pi5-hermes-deploy.md](../runbooks/private-pi5-hermes-deploy.md) · [KB-private-pi5-hermes-dgx-403-bearer-token.md](./KB-private-pi5-hermes-dgx-403-bearer-token.md) · [private-pi5-hermes-agent-plan.md](../plans/private-pi5-hermes-agent-plan.md) · [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)
 
 ## Context
@@ -46,7 +46,8 @@ sequenceDiagram
 |------|------|------|
 | LLM | `provider: custom:dgx-system-prod` + `key_env: OPENAI_API_KEY` | bare `custom` は `no-key-required`（Hermes #28660） |
 | 起動検証 | `model.context_length: 65536` | Hermes 最低 64K。**DGX API 実効 ~8192** |
-| 出力上限 | `model.max_tokens: 256` | 未設定時 Hermes 既定が大きく生成が長引く |
+| 出力上限 | `model.max_tokens: 128` | 長文生成抑制（50〜200 字は問題なし。fragment で上書き可） |
+| 文体 | `agent.system_prompt`（簡潔雑談） | 通常 2〜4 文。「詳しく」時のみ長め |
 | 推論（Hermes） | **`agent.reasoning_effort: none`** | gateway が読む正本（`model.` 直下だけでは不十分） |
 | 推論（DGX） | **`custom_providers.extra_body`** + **gateway 注入** | vLLM は `reasoning_effort` だけでは思考が止まらない |
 | 圧縮 | `compression.enabled: false` | 8K 上流と Hermes 64K 圧縮要件の不整合 |
@@ -67,9 +68,44 @@ sequenceDiagram
 | 初回 E2E | ~1 分/通 | 60〜262 s | 303〜1472 | 思考トークン + 8K/ツール問題混在 |
 | keep-warm 後も遅い | ~1〜2 分 | **97〜107 s** | **492〜541** | **思考モード ON**（warm でも遅い） |
 | config `extra_body` のみ | まだ ~1 分 | **57〜90 s** | **288〜456** | Hermes が **毎ターン `request_overrides` を `{}` で上書き**し DGX に未到達 |
-| gateway **inject** 後 | **だいぶ速い**（ユーザー確認） | （要再計測） | — | `enable_thinking: false` が vLLM に届く |
+| gateway **inject** 後 | **だいぶ速い**（ユーザー確認） | **2.6〜23.6 s** | 11〜118 | thinking off・**out 比例** |
+| **max_tokens 128 + 簡潔プロンプト** 後 | **さらに速い**（ユーザー確認） | **8.7〜10.7 s** | **41〜52** | 長文生成抑制・文体短縮 |
+
+### inject 後・チューニング前後の Discord 実測（`agent.log`・2026-05-24 JST）
+
+| セッション | 通 | `in` | `out` | `latency=` | `response ready` | 備考 |
+|------------|-----|------|-------|------------|------------------|------|
+| `192633` | 1 | 577 | 11 | **2.6 s** | **5.0 s** | inject 直後・短文 |
+| `192633` | 2 | 601 | 118 | **23.6 s** | **23.7 s** | 長め返答（**out が主因**） |
+| `195448` | 1 | 661 | 41 | **8.7 s** | **10.9 s** | **max_tokens 128 + system_prompt 後** |
+| `195448` | 2 | 715 | 52 | **10.7 s** | **10.7 s** | 同上・2 通目も **&lt;15 s** |
+
+- **`in` 増加（577→661）**: `agent.system_prompt` 追記による固定コスト（Hermes 既定プロンプトは**置換されない**）。
+- **`out` 減少（118→52）**: `max_tokens: 128` + 簡潔プロンプトで **長文生成を抑制** → 体感 **「早くなった」**（ユーザー確認 2026-05-24）。
+
+### DGX 推論 vs 経路（どちらが遅いか）
+
+| 観点 | 結論 | 根拠 |
+|------|------|------|
+| **主因** | **DGX Spark 上の推論**（27B vLLM blue） | `latency=` ≒ `response ready`（23.7 vs 23.6 s） |
+| **経路** | **数秒以下**（通常時） | 5.0 s 体感 − 2.6 s DGX ≒ **~2.4 s**（Hermes + Discord） |
+| **生成量** | **out tokens に強く比例** | out=11→2.6 s / out=118→23.6 s / out=52→10.7 s |
+| **入力サイズ** | prefill コストあり | ベンチ: 大 system **~51 s**（同一経路） |
+| **経路が効く例** | コールドスタート・403・gateway 未更新 | keep-warm / inject / Bearer 系 |
+
+```mermaid
+flowchart LR
+  Discord["Discord"] --> Hermes["Hermes ~2-3s"]
+  Hermes --> Net["Tailscale 小"]
+  Net --> GW["gateway 38081"]
+  GW --> VLLM["vLLM 27B ★"]
+```
+
+**結論**: 障害・コールド以外は **「DGX が何トークン生成するか」** が体感の 9 割。経路最適化だけでは **~100 s/通（思考 ON）** は解決しない。
 
 ### DGX 単体ベンチ（Pi5 から・同一モデル）
+
+[`benchmark-dgx-latency.sh`](../../scripts/private-pi5-hermes/benchmark-dgx-latency.sh) を Pi5 で実行（例: `sudo -u hermes bash /tmp/benchmark-dgx-latency.sh`）:
 
 | 条件 | 時間 | completion_tokens | 備考 |
 |------|------|-------------------|------|
@@ -77,8 +113,10 @@ sequenceDiagram
 | `chat_template_kwargs.enable_thinking: false` | **~2 s** | ~11 | 本文あり |
 | Hermes 相当プロンプト + thinking off | **~4 s** | ~20 | in ~658 |
 | gateway 経由・kwargs なし（inject 後） | **~4 s** | ~20 | `inject_blue_chat_completions_defaults` |
+| `1+1` max_tokens=32 | **~1.8 s** | 短 | inject 後ベンチ |
+| 大 system ~2k tokens | **~51 s** | 508 | **入力肥大の危険** |
 
-**結論**: ボトルネックの **9 割は DGX 推論（思考トークン生成）**。keep-warm は **コールドスタート**用で、思考 ON のままでは **数十〜100 秒/通**は変わらない。
+**結論**: ボトルネックの **9 割は DGX 推論**（思考トークン・**出力トークン数**・入力 prefill）。keep-warm は **コールドスタート**用。思考 ON のままでは **数十〜100 秒/通**は変わらない。
 
 ### agent.log の読み方（Pi5）
 
@@ -108,7 +146,7 @@ agent.request_overrides = turn_route.get("request_overrides") or {}
 | 層 | 対策 | ファイル |
 |----|------|----------|
 | **DGX（正）** | blue の `POST .../chat/completions` で `enable_thinking: false` を注入（未指定時） | [`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py) `inject_blue_chat_completions_defaults` |
-| Pi5 Hermes | `agent.reasoning_effort: none`・`model.max_tokens: 256`・`extra_body`（将来 Hermes 修正時用） | `private-pi5-hermes.config.yaml.j2` |
+| Pi5 Hermes | `agent.reasoning_effort: none`・**`model.max_tokens: 128`**・**`agent.system_prompt`（簡潔雑談）**・`extra_body`（将来用） | `private-pi5-hermes.config.yaml.j2` |
 | Pi5 運用 | `hermes-dgx-keep-warm.timer` | [`dgx_keep_warm.py`](../../scripts/private-pi5-hermes/dgx_keep_warm.py) |
 
 **DGX 反映手順**（Runbook 準拠）:
@@ -142,6 +180,9 @@ scp scripts/dgx-local-llm-system/gateway-server.py \
 | 19:11〜19:14 | config `extra_body` 後も 57〜90 s（Hermes overrides 上書き） |
 | 19:20 頃 | DGX gateway inject 反映・Hermes 再デプロイ |
 | 19:20+ | ユーザー体感 **だいぶ速い**（DGX 単体 ~4 s 級と整合） |
+| 19:26〜19:27 | inject 後実測: **2.6 s / 23.6 s**（out=11 / 118） |
+| 19:55 頃 | **max_tokens 128 + system_prompt** デプロイ・gateway 再起動 |
+| 19:55+ | 実測 **8.7〜10.7 s**（out=41〜52）·ユーザー **「早くなった」** |
 
 ## 症状別トラブルシュート
 
@@ -157,6 +198,10 @@ scp scripts/dgx-local-llm-system/gateway-server.py \
 
 ツール無効テンプレ未反映 → 再デプロイ + `/reset`。
 
+### 返答が短く切れる / 50 字で拒否される
+
+**ならない**（意図した設計）。`max_tokens: 128` は **トークン上限**であり文字数上限ではない。50〜200 字程度は余裕。切れるのは **128 トークン超の長文**のみ。ユーザーが「詳しく」「長く」と言えば上限内で長めに書く（`system_prompt` 既定文）。
+
 ### 遅い（Typing が長い）
 
 | 確認 | コマンド / 観点 |
@@ -164,7 +209,7 @@ scp scripts/dgx-local-llm-system/gateway-server.py \
 | DGX warm | `curl -H "Authorization: Bearer $KEY" http://100.118.82.72:38081/v1/models` → 200 |
 | keep-warm | `systemctl is-active hermes-dgx-keep-warm.timer` |
 | 思考注入 | gateway `gateway-server.py` が **inject 版**か（DGX 再起動済みか） |
-| agent.log | `latency=` が **&lt;15s** か（数十秒なら thinking 疑い） |
+| agent.log | `latency=` が **&lt;15s** か。**`out=` が 100 超**なら max_tokens / プロンプトを疑う |
 | 直接ベンチ | Pi5 から `chat_template_kwargs.enable_thinking:false` で ~2〜4 s になるか |
 
 ### title_generation 警告
@@ -204,19 +249,22 @@ journalctl -u hermes-dgx-keep-warm.service -n 3 --no-pager
 ## Prevention
 
 - blue vLLM へ OpenAI 互換クライアントを繋ぐときは **`enable_thinking: false`** を契約に含める（gateway 注入またはクライアント `extra_body`）。
-- Hermes は **`agent.reasoning_effort`** と **`model.max_tokens`** をテンプレで明示。
-- Discord 導入時は `/reset` 後 **3 通**の `latency=` を KB に記録。
+- Hermes は **`agent.reasoning_effort`**・**`model.max_tokens: 128`**・**`agent.system_prompt`** をテンプレで明示。
+- config 変更後は **`systemctl restart hermes-gateway`**（Playbook は config 配備のみ。再起動は手動または運用で追加検討）。
+- Discord 導入・チューニング時は `/reset` 後 **3 通**の `latency=` / `out=` を KB に記録。
 - DGX gateway 更新は **PID ファイル削除**を忘れない（古コードのまま `exit 0` し得る）。
 
-## 次の改善候補（さらに速く）
+## 次の改善候補
 
 | 優先 | 項目 | 根拠 |
 |------|------|------|
-| 高 | Hermes **システムプロンプト短縮** | 実測 in **~575 tokens**（「こんにちは」だけでも） |
-| 高 | StackChan 同様 **`max_tokens` 160〜192** | bridge は [stackchan_chat_core.py](../../scripts/private-pi5-stackchan-bridge/stackchan_chat_core.py) で cap |
-| 中 | `title_generation` 無効化 | ログ警告・任意 OpenRouter |
-| 中 | より軽量モデル / green backend 検討 | 品質トレードオフ |
-| 低 | Hermes upstream の `request_overrides` 上書き修正 | upstream 取り込み時 |
+| ~~高~~ | ~~`max_tokens` 128 + 簡潔 `system_prompt`~~ | **2026-05-24 実装・Pi5 デプロイ・ユーザー体感 OK** |
+| 中 | Hermes **既定システムプロンプト本体**の短縮（`in` ~661 を下げる） | `system_prompt` は追記のみ。575+ 固定コスト残存 |
+| 中 | `title_generation` 無効化 | ログ警告・任意 OpenRouter（応答後・非ブロック） |
+| 中 | Discord **ストリーミング**（Hermes 対応時） | 初 token までの**体感**短縮 |
+| 低 | より軽量モデル / green backend | 品質トレードオフ |
+| 低 | Hermes upstream の `request_overrides` 上書き修正 | gateway 注入に依存しない恒久策 |
+| 低 | Hermes **専用 DGX トークン** | StackChan 漏洩と影響分離 |
 
 ## References
 

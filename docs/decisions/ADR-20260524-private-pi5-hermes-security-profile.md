@@ -31,7 +31,7 @@
 11. **DGX 認証**: repo `gateway-server.py` は **Bearer と X-LLM-Token の両方**を受理（Hermes は Bearer）。Hermes は **`custom:dgx-system-prod` + `key_env: OPENAI_API_KEY`**（`no-key-required` 回避）。
 12. **ツール**: 雑談時は **`agent.disabled_toolsets`**（全主要 + kanban/discord 系）と **`platform_toolsets.discord: []`**。8K 上流で既定ツール JSON がコンテキストを圧迫するため。
 13. **圧縮**: `compression.enabled: false`（8K モデルと Hermes 64K 圧縮要件の不整合）。
-14. **推論**: **`agent.reasoning_effort: none`**（Hermes gateway が読む正本）+ **`model.max_tokens: 256`**。
+14. **推論**: **`agent.reasoning_effort: none`** + **`model.max_tokens: 128`** + **`agent.system_prompt`（簡潔雑談・追記）**。
 15. **DGX thinking 抑止**: vLLM には **`chat_template_kwargs.enable_thinking: false`** が必須。Hermes config の `extra_body` だけでは **毎ターン `request_overrides` 上書き**で届かないことがあるため、**DGX `gateway-server.py` が blue の `chat/completions` に注入**（2026-05-24）。
 16. **Discord DM**: テンプレ既定 **`require_mention: false`**（`DISCORD_ALLOWED_USERS` で保護）。サーバー運用でメンション必須に戻す場合は inventory で `private_pi5_hermes_discord_require_mention: true`。
 17. **`unauthorized_dm_behavior: ignore`**、許可リストは `DISCORD_ALLOWED_USERS`（inventory → template）。
@@ -66,7 +66,7 @@
 - `allow_private_urls: true` → プロンプト経由の **内部 URL 到達**リスク（Tirith で緩和、ゼロではない）。
 - DGX トークンを StackChan と **共有**（**分離推奨**・未実施）。
 - **長文会話**は DGX ~8K で切れる（圧縮オフのトレードオフ）。
-- **レイテンシ**: keep-warm + gateway thinking 注入で **数秒〜十数秒/通**まで改善（2026-05-24）。さらなる短縮はプロンプト肥大・`max_tokens` 調整が候補。
+- **レイテンシ**: keep-warm + gateway thinking 注入 + **max_tokens 128 / 簡潔プロンプト**で **数秒〜十数秒/通**（2026-05-24 実測 **8.7〜10.7 s**）。主因は **DGX 推論**（out 比例）。経路は通常 **~2〜3 s** 級。
 - UFW の SSH は **Anywhere allow**。
 
 ## References

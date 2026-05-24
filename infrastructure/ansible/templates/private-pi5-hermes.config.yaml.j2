@@ -8,13 +8,9 @@ model:
   base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
   # Hermes Agent は最低 64K を要求。DGX 実効コンテキストより大きい値は Hermes 側の検証用（必要なら fragment で上書き）
   context_length: {{ private_pi5_hermes_context_length | default(65536) }}
-  # 雑談の出力上限（未設定時 Hermes 既定が大きく DGX 生成が長引く）
-  max_tokens: {{ private_pi5_hermes_max_tokens | default(256) }}
+  # 雑談の出力上限（StackChan 160 級より余裕あり。50〜200 字の返答は問題なし）
+  max_tokens: {{ private_pi5_hermes_max_tokens | default(128) }}
   # 参考: gateway は agent.reasoning_effort を読む（model 直下は CustomProfile に届かない）
-  reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
-
-agent:
-  # Hermes gateway が読む正本（model.reasoning_effort だけでは reasoning_config にならない）
   reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
 
 custom_providers:
@@ -47,6 +43,18 @@ memory:
   user_profile_enabled: false
 
 agent:
+  # Hermes gateway が読む正本（model.reasoning_effort だけでは reasoning_config にならない）
+  reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
+  # Hermes 既定プロンプトに追記（置換ではない）。雑談は短め・必要時のみ長め。
+  system_prompt: |
+{% if (private_pi5_hermes_system_prompt | default('') | trim) | length > 0 %}
+{{ private_pi5_hermes_system_prompt | trim | indent(4, first=True) }}
+{% else %}
+    私用 Pi5 の Discord 雑談アシスタントです。
+    通常は 2〜4 文（おおよそ 50〜200 字）で答えてください。
+    ユーザーが「詳しく」「長く」と明示したときだけ、必要な分だけ長めに書いてください。
+    不要な前置き・同内容の繰り返し・長い箇条書きは避けてください。
+{% endif %}
   disabled_toolsets:
     - web
     - browser
