@@ -1,0 +1,45 @@
+---
+- name: Flush handlers before checks
+  ansible.builtin.meta: flush_handlers
+
+- name: Run hermes doctor
+  ansible.builtin.command:
+    argv:
+      - "{{ private_pi5_hermes_bin }}"
+      - doctor
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  environment:
+    HOME: "{{ private_pi5_hermes_home }}"
+    PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: private_pi5_hermes_doctor
+  changed_when: false
+  failed_when: private_pi5_hermes_doctor.rc != 0
+
+- name: Verify DGX health from Hermes user
+  ansible.builtin.uri:
+    url: "{{ private_pi5_hermes_dgx_base_url }}/healthz"
+    method: GET
+    headers:
+      X-LLM-Token: "{{ private_pi5_hermes_chat_dgx_llm_token }}"
+    status_code: 200
+    return_content: true
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  register: private_pi5_hermes_dgx_health
+  changed_when: false
+
+- name: Verify Docker works for hermes user
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - hello-world
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  environment:
+    HOME: "{{ private_pi5_hermes_home }}"
+  register: private_pi5_hermes_docker_test
+  changed_when: false
+  failed_when: private_pi5_hermes_docker_test.rc != 0

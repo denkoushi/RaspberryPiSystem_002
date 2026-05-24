@@ -1,0 +1,32 @@
+# Hermes tools profile — boundary policy (Phase D0, tools not enabled in Hermes yet)
+# Validated by: scripts/private-pi5-hermes/validate_boundary_policy.py
+
+allowed_url_prefixes:
+  - "http://100.118.82.72:38081"
+
+denied_url_prefixes:
+  - "http://127.0.0.1"
+  - "http://localhost"
+  - "http://192.168.128."
+  - "https://"
+
+denied_host_patterns:
+  - "regex:^10\\."
+  - "regex:^172\\.(1[6-9]|2[0-9]|3[0-1])\\."
+  - "regex:^192\\.168\\."
+
+allowed_fs_prefixes:
+  - "/home/hermes/.hermes-tools/workspace"
+
+denied_fs_prefixes:
+  - "/etc"
+  - "/var"
+  - "/home/hermes/.ssh"
+  - "/home/raspi5-private"
+  - "/opt"
+
+smoke_urls:
+  - "http://100.118.82.72:38081/healthz"
+
+smoke_paths:
+  - "/home/hermes/.hermes-tools/workspace/notes.txt"

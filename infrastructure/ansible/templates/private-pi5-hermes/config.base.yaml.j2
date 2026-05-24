@@ -1,0 +1,22 @@
+# Shared Hermes security baseline (chat + tools profiles)
+terminal:
+  backend: docker
+  container_persistent: false
+  docker_forward_env: []
+  env_passthrough: []
+  container_memory: 2048
+  container_cpu: 1
+
+approvals:
+  mode: manual
+  timeout: 120
+
+security:
+  allow_lazy_installs: false
+  allow_private_urls: true
+  tirith_enabled: true
+  tirith_fail_open: false
+
+display:
+  tool_progress: "off"
+  show_reasoning: false

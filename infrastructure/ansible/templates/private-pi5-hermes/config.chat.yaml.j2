@@ -1,0 +1,93 @@
+# Hermes Agent — chat profile (Discord 雑談)
+# 秘密は profile .env にのみ置く
+{% include 'private-pi5-hermes/config.base.yaml.j2' %}
+
+model:
+  default: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
+  provider: custom:dgx-system-prod
+  base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
+  context_length: {{ private_pi5_hermes_context_length | default(65536) }}
+  max_tokens: {{ private_pi5_hermes_max_tokens | default(128) }}
+  reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
+
+custom_providers:
+  - name: dgx-system-prod
+    base_url: {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }}/v1
+    key_env: OPENAI_API_KEY
+    default_model: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+
+compression:
+  enabled: {{ private_pi5_hermes_compression_enabled | default(false) | bool }}
+
+auxiliary:
+  title_generation:
+    provider: main
+    timeout: 20
+  compression:
+    provider: custom:dgx-system-prod
+    model: {{ private_pi5_hermes_dgx_model | default('system-prod-primary') }}
+    context_length: {{ private_pi5_hermes_context_length | default(65536) }}
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+
+agent:
+  reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
+  system_prompt: |
+{% if (private_pi5_hermes_system_prompt | default('') | trim) | length > 0 %}
+{{ private_pi5_hermes_system_prompt | trim | indent(4, first=True) }}
+{% else %}
+    私用 Pi5 の Discord 雑談アシスタントです。
+    通常は 2〜4 文（おおよそ 50〜200 字）で答えてください。
+    ユーザーが「詳しく」「長く」と明示したときだけ、必要な分だけ長めに書いてください。
+    不要な前置き・同内容の繰り返し・長い箇条書きは避けてください。
+{% endif %}
+  disabled_toolsets:
+    - web
+    - browser
+    - terminal
+    - file
+    - code_execution
+    - vision
+    - image_gen
+    - video
+    - video_gen
+    - x_search
+    - moa
+    - tts
+    - skills
+    - todo
+    - memory
+    - session_search
+    - clarify
+    - delegation
+    - cronjob
+    - messaging
+    - kanban
+    - discord
+    - discord_admin
+    - homeassistant
+    - spotify
+    - yuanbao
+    - computer_use
+
+platform_toolsets:
+  discord: []
+
+discord:
+  require_mention: {{ private_pi5_hermes_discord_require_mention | default(false) | bool }}
+  auto_thread: false
+  reactions: true
+  allow_mentions:
+    everyone: false
+    roles: false
+    users: true
+    replied_user: true
+
+group_sessions_per_user: true
+
+unauthorized_dm_behavior: ignore

@@ -442,11 +442,15 @@ BLUE_EXTRA_DOCKER_ARGS='--ipc host --ulimit memlock=-1 --ulimit stack=67108864'
 ```dotenv
 # /srv/dgx/system-prod/secrets/gateway-server.env
 LLM_SHARED_TOKEN=...
+# 任意（2026-05-24 Phase D0）: Hermes chat/tools 専用トークン（カンマ区切り）
+# LLM_SHARED_ADDITIONAL_TOKENS=hermes-chat-token,hermes-tools-token
 LLM_RUNTIME_CONTROL_TOKEN=...
 ACTIVE_LLM_BACKEND=blue
 GREEN_LLM_BASE_URL=http://127.0.0.1:38082
 BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 ```
+
+**複数トークン**: repo [`gateway_llm_auth.py`](../../scripts/dgx-local-llm-system/gateway_llm_auth.py) は `X-LLM-Token` / `Authorization: Bearer` のいずれかが primary または additional に一致すれば 200。私用 Pi5 Hermes の手順は [private-pi5-hermes-deploy.md §Phase D0](./private-pi5-hermes-deploy.md#phase-d0--トークン分離tools-プロファイル2026-05-24)。
 
 メモ:
 

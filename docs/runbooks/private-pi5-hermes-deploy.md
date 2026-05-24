@@ -11,7 +11,9 @@
 | 種別 | パス |
 |------|------|
 | Playbook | `infrastructure/ansible/playbooks/private-pi5-hermes.yml` |
-| Config / env / systemd | `infrastructure/ansible/templates/private-pi5-hermes.*.j2` |
+| Config / env / systemd | `infrastructure/ansible/templates/private-pi5-hermes.*.j2` · 分割: `templates/private-pi5-hermes/` |
+| Phase D0 ExecPlan | [private-pi5-hermes-tools-security-phase-d0-execplan.md](../plans/private-pi5-hermes-tools-security-phase-d0-execplan.md) |
+| ADR Phase D0 | [ADR-20260525](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md) |
 | Deploy wrapper | `scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` |
 | Inventory（ローカル） | `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml`（**非追跡**） |
 | 計画 | [private-pi5-hermes-agent-plan.md](../plans/private-pi5-hermes-agent-plan.md) |
@@ -171,6 +173,33 @@ journalctl -u hermes-gateway -n 30 --no-pager
 
 **E2E**: Discord DM で応答あり。**~1 min/通**（思考 ON）→ inject 後 **数秒** → **max_tokens 128 + 簡潔プロンプト** 後 **8.7〜10.7 s/通**（out=41〜52）。正本: [KB Discord E2E](../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)。
 
+## Phase D0 — トークン分離・tools プロファイル（2026-05-24）
+
+**既定**: 雑談のみ（`private_pi5_hermes_tools_profile_enabled` 未設定 = tools 骨格はデプロイしない）。
+
+### fragment（コミット禁止）
+
+```yaml
+# chat 専用（省略時は private_pi5_dgx_llm_shared_token）
+private_pi5_hermes_chat_dgx_llm_token: "<hermes-chat-token>"
+# tools 専用（D1 以降・DGX LLM_SHARED_ADDITIONAL_TOKENS に登録）
+# private_pi5_hermes_tools_dgx_llm_token: "<hermes-tools-token>"
+# private_pi5_hermes_tools_profile_enabled: true
+# private_pi5_hermes_tools_gateway_enabled: false
+```
+
+### DGX gateway（手動）
+
+1. `/srv/dgx/system-prod/secrets/gateway-server.env` に `LLM_SHARED_ADDITIONAL_TOKENS=token1,token2` を追加（既存 `LLM_SHARED_TOKEN` は StackChan 用のまま可）
+2. [`gateway-server.py`](../../scripts/dgx-local-llm-system/gateway-server.py) を scp 反映後、gateway 再起動（[dgx-system-prod-local-llm.md](./dgx-system-prod-local-llm.md)）
+3. Pi5 再デプロイ
+
+### 境界ポリシー smoke（repo）
+
+```bash
+python3 scripts/private-pi5-hermes/validate_boundary_policy.py
+```
+
 ## トラブルシュート（クイック）
 
 | 症状 | 参照 |
@@ -193,3 +222,5 @@ journalctl -u hermes-gateway -n 30 --no-pager
 - [private-pi5-stackchan-bridge-deploy.md](./private-pi5-stackchan-bridge-deploy.md)
 - [dgx-system-prod-local-llm.md](./dgx-system-prod-local-llm.md)
 - [ADR-20260524-private-pi5-hermes-security-profile.md](../decisions/ADR-20260524-private-pi5-hermes-security-profile.md)
+- [ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md)
+- [KB 脅威モデル](../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)

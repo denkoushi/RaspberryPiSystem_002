@@ -3,6 +3,7 @@ import json
 import sys
 import threading
 import unittest
+from dataclasses import replace
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -25,7 +26,7 @@ class GatewayServerTests(unittest.TestCase):
     def test_resolve_backend_base_url_uses_active_backend(self):
         module = load_module()
         config = module.GatewayConfig(
-            llm_shared_token="shared-token",
+            llm_shared_tokens=frozenset({"shared-token"}),
             runtime_control_token="runtime-token",
             host="127.0.0.1",
             port=38081,
@@ -79,7 +80,7 @@ class GatewayServerTests(unittest.TestCase):
     def test_http_handler_routes_v1_and_runtime_requests(self):
         module = load_module()
         config = module.GatewayConfig(
-            llm_shared_token="shared-token",
+            llm_shared_tokens=frozenset({"shared-token"}),
             runtime_control_token="runtime-token",
             host="127.0.0.1",
             port=38081,
@@ -223,6 +224,29 @@ class GatewayServerTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as exc:
                 urllib.request.urlopen(forbidden_req, timeout=5)
             self.assertEqual(exc.exception.code, 403)
+
+            additional_config = replace(
+                config,
+                llm_shared_tokens=frozenset({"shared-token", "hermes-only"}),
+            )
+            additional_handler = module.make_handler(additional_config, proxy_impl=proxy_impl)
+            additional_httpd = ThreadingHTTPServer(("127.0.0.1", 0), additional_handler)
+            additional_thread = threading.Thread(target=additional_httpd.serve_forever, daemon=True)
+            additional_thread.start()
+            additional_base = f"http://127.0.0.1:{additional_httpd.server_port}"
+            try:
+                hermes_req = urllib.request.Request(
+                    f"{additional_base}/v1/models",
+                    method="GET",
+                    headers={"Authorization": "Bearer hermes-only"},
+                )
+                with urllib.request.urlopen(hermes_req, timeout=5) as response:
+                    hermes_payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(hermes_payload["data"][0]["id"], "system-prod-primary")
+            finally:
+                additional_httpd.shutdown()
+                additional_httpd.server_close()
+                additional_thread.join(timeout=5)
         finally:
             httpd.shutdown()
             httpd.server_close()

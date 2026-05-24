@@ -10,6 +10,9 @@ related:
   - ../knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md
   - ../knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md
   - ../decisions/ADR-20260524-private-pi5-hermes-security-profile.md
+  - ../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md
+  - private-pi5-hermes-tools-security-phase-d0-execplan.md
+  - ../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md
   - stackchan-private-pi5-tailnet-workflow-plan.md
   - ../../scripts/private-pi5-hermes/README.md
   - ../../infrastructure/ansible/playbooks/private-pi5-hermes.yml
@@ -94,6 +97,7 @@ update-frequency: medium
 | Phase A 基盤 | **完了** | UFW・hermes・install・doctor |
 | Phase B Discord | **完了** | DM E2E・403/8K/メンション解消 |
 | Phase C 体験 | **完了（実用レベル）** | keep-warm・thinking 注入・max_tokens 128。**体感 OK**（8.7〜10.7 s/通） |
+| Phase D0 ツール安全基盤 | **repo 完了** | プロファイル分離骨格・DGX 複数トークン・境界ポリシー・Ansible 分割。**tools 既定 OFF** |
 | DGX gateway | **完了** | Bearer + inject・DGX 再起動済 |
 
 ## フェーズ別チェックリスト
@@ -119,9 +123,19 @@ update-frequency: medium
 - [x] **enable_thinking 注入**（DGX gateway + Hermes config）
 - [x] **`max_tokens: 128` + 簡潔 `agent.system_prompt`**（Pi5 デプロイ・実測 **&lt;15s** 安定）
 - [ ] Hermes **既定プロンプト本体**の短縮（`in` ~661 削減・任意）
-- [ ] Hermes 専用 DGX トークン
+- [ ] Hermes 専用 DGX トークン（**DGX 手動反映**・[ExecPlan D0](./private-pi5-hermes-tools-security-phase-d0-execplan.md)）
 - [ ] Discord Bot token ローテーション（漏洩疑い時）
 - [ ] PR マージ（ユーザー明示時）
+
+### Phase D0 — ツール向けセキュリティ基盤（repo 完了）
+
+- [x] DGX `LLM_SHARED_ADDITIONAL_TOKENS`（[`gateway_llm_auth.py`](../../scripts/dgx-local-llm-system/gateway_llm_auth.py)）
+- [x] chat / tools プロファイルテンプレ分割（[`private-pi5-hermes/`](../../infrastructure/ansible/templates/private-pi5-hermes/)）
+- [x] 境界ポリシー [`boundary_policy.py`](../../scripts/private-pi5-hermes/lib/boundary_policy.py)
+- [x] Ansible tasks 分割（[`tasks/private-pi5-hermes/`](../../infrastructure/ansible/tasks/private-pi5-hermes/)）
+- [x] ADR / KB / Tailscale 草案
+- [ ] 実機 DGX additional tokens 反映
+- [ ] `private_pi5_hermes_tools_profile_enabled: true`（D1）
 
 ## Decision Log
 
@@ -138,6 +152,7 @@ update-frequency: medium
 - **2026-05-24**: **`max_tokens: 128`** + **`agent.system_prompt`（簡潔雑談）**。50〜200 字は可。Pi5 デプロイ後 **8.7〜10.7 s/通**（out=41〜52）。
 - **2026-05-24**: **`skills` / `memory` 無効** — 雑談プロファイルでは **自己改善スキル・永続記憶は使わない**（会話から自然には賢くならない）。
 - **2026-05-24**: **Phase C 完了（実用レベル）** — 遅延主因は DGX 推論。gateway 境界で thinking 注入・共有 runtime client。
+- **2026-05-24**: **Phase D0** — chat/tools プロファイル分離・DGX 複数トークン・境界ポリシー正本。tools gateway は fragment 明示時のみ（[ADR-20260525](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md)）。
 
 ## 実装構成（repo・境界）
 

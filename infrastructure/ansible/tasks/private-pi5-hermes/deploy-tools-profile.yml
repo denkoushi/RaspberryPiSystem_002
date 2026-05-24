@@ -1,0 +1,78 @@
+---
+- name: Ensure Hermes tools data directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_tools_data_dir }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Ensure Hermes tools workspace directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_tools_data_dir }}/workspace"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Ensure Hermes tools isolated HOME exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_tools_home }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Ensure Hermes tools config directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_tools_config_dir }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Deploy Hermes tools boundary policy reference
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/boundary-policy.tools.yaml"
+    dest: "{{ private_pi5_hermes_tools_data_dir }}/boundary-policy.tools.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+
+- name: Deploy Hermes tools config.yaml
+  ansible.builtin.template:
+    src: "../templates/private-pi5-hermes/config.tools.yaml.j2"
+    dest: "{{ private_pi5_hermes_tools_config_dir }}/config.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"
+
+- name: Deploy Hermes tools .env (secrets)
+  ansible.builtin.template:
+    src: "../templates/private-pi5-hermes/env.tools.j2"
+    dest: "{{ private_pi5_hermes_tools_data_dir }}/.env"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"
+
+- name: Install Hermes tools gateway systemd unit
+  ansible.builtin.template:
+    src: "../templates/private-pi5-hermes/gateway-tools.service.j2"
+    dest: "/etc/systemd/system/hermes-tools-gateway.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd daemon
+
+- name: Set Hermes tools gateway service state
+  ansible.builtin.systemd:
+    name: hermes-tools-gateway
+    enabled: "{{ private_pi5_hermes_tools_gateway_enabled | default(false) | bool }}"
+    state: >-
+      {{
+        'started'
+        if (private_pi5_hermes_tools_gateway_enabled | default(false) | bool)
+        else 'stopped'
+      }}
+    daemon_reload: true
+  failed_when: false

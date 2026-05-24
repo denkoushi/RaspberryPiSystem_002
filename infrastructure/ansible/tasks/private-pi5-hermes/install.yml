@@ -1,0 +1,82 @@
+---
+- name: Ensure git and curl are present
+  ansible.builtin.apt:
+    name:
+      - git
+      - curl
+      - ca-certificates
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create dedicated hermes group
+  ansible.builtin.group:
+    name: "{{ private_pi5_hermes_group }}"
+    state: present
+
+- name: Create dedicated hermes system user
+  ansible.builtin.user:
+    name: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    home: "{{ private_pi5_hermes_home }}"
+    shell: /bin/bash
+    create_home: true
+    system: false
+
+- name: Add hermes user to docker group
+  ansible.builtin.user:
+    name: "{{ private_pi5_hermes_user }}"
+    groups: docker
+    append: true
+
+- name: Ensure Hermes chat data directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
+
+- name: Install Hermes optional system packages (avoid install.sh sudo prompts)
+  ansible.builtin.apt:
+    name:
+      - ripgrep
+      - ffmpeg
+      - build-essential
+      - python3-dev
+      - libffi-dev
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Download Hermes official install script
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh
+    dest: /tmp/hermes-agent-install.sh
+    mode: "0755"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+
+- name: Install Hermes Agent (official script, non-interactive)
+  ansible.builtin.command:
+    argv: "{{ private_pi5_hermes_install_argv }}"
+    stdin: /dev/null
+    creates: "{{ private_pi5_hermes_bin }}"
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  environment:
+    HOME: "{{ private_pi5_hermes_home }}"
+    PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  async: 3600
+  poll: 30
+
+- name: Check Hermes CLI is installed
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_bin }}"
+  register: private_pi5_hermes_bin_stat
+
+- name: Fail when Hermes CLI is missing after install
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_bin_stat.stat.exists
+    fail_msg: "Hermes install did not create {{ private_pi5_hermes_bin }}"

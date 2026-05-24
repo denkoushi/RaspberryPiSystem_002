@@ -13,12 +13,14 @@
 | KB（Discord E2E・遅延） | [KB-private-pi5-hermes-discord-e2e-and-latency.md](../../docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md) |
 | KB（スキル・フォーラム・設計） | [KB-private-pi5-hermes-skills-community-architecture.md](../../docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md) |
 | ADR（セキュリティ） | [ADR-20260524](../../docs/decisions/ADR-20260524-private-pi5-hermes-security-profile.md) |
+| Phase D0（ツール安全） | [ExecPlan](../../docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md) · [ADR-20260525](../../docs/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md) |
+| 境界ポリシー | [`lib/boundary_policy.py`](lib/boundary_policy.py) · [`config/boundary-policy.tools.yaml`](config/boundary-policy.tools.yaml) |
 
 ## 前提
 
 - **Docker 導入済み**（`hermes` が `docker` グループ）
 - ローカル inventory: `infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml`（**非追跡**）
-- DGX token: `private_pi5_dgx_llm_shared_token`（StackChan と同値可。**分離推奨**）
+- DGX token: `private_pi5_dgx_llm_shared_token`（StackChan）。chat は `private_pi5_hermes_chat_dgx_llm_token`（**分離推奨**・DGX `LLM_SHARED_ADDITIONAL_TOKENS`）
 - Discord（任意）: `private_pi5_hermes_discord_bot_token` / `private_pi5_hermes_discord_allowed_users` / `private_pi5_hermes_gateway_enabled: true`
 
 ## セキュリティ + 雑談プロファイル（2026-05-24）

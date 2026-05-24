@@ -12,6 +12,9 @@
     private_pi5_hermes_group: hermes
     private_pi5_hermes_home: "/home/{{ private_pi5_hermes_user }}"
     private_pi5_hermes_data_dir: "{{ private_pi5_hermes_home }}/.hermes"
+    private_pi5_hermes_tools_data_dir: "{{ private_pi5_hermes_home }}/.hermes-tools"
+    private_pi5_hermes_tools_home: "{{ private_pi5_hermes_tools_data_dir }}/home"
+    private_pi5_hermes_tools_config_dir: "{{ private_pi5_hermes_tools_home }}/.hermes"
     private_pi5_hermes_bin: "{{ private_pi5_hermes_home }}/.local/bin/hermes"
     private_pi5_hermes_install_skip_browser: true
     private_pi5_hermes_enable_ufw: true
@@ -20,6 +23,18 @@
     private_pi5_hermes_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
     private_pi5_hermes_dgx_model: "{{ private_pi5_dgx_model | default('system-prod-primary') }}"
     private_pi5_hermes_dgx_llm_shared_token: "{{ private_pi5_dgx_llm_shared_token | default('') }}"
+    private_pi5_hermes_chat_dgx_llm_token: >-
+      {{
+        (private_pi5_hermes_chat_dgx_llm_token | default('') | trim)
+        if (private_pi5_hermes_chat_dgx_llm_token | default('') | trim) | length > 0
+        else (private_pi5_hermes_dgx_llm_shared_token | default('') | trim)
+      }}
+    private_pi5_hermes_tools_effective_dgx_llm_token: >-
+      {{
+        (private_pi5_hermes_tools_dgx_llm_token | default('') | trim)
+        if (private_pi5_hermes_tools_dgx_llm_token | default('') | trim) | length > 0
+        else private_pi5_hermes_chat_dgx_llm_token
+      }}
     private_pi5_hermes_dgx_keep_warm_dir: "{{ private_pi5_hermes_data_dir }}/dgx-keep-warm"
     private_pi5_hermes_dgx_keep_warm_env_path: "{{ private_pi5_hermes_data_dir }}/dgx-keep-warm.env"
     private_pi5_hermes_dgx_keep_warm_active: >-
@@ -27,7 +42,7 @@
         (private_pi5_hermes_dgx_keep_warm_enabled | default(true) | bool)
         and ((private_pi5_dgx_runtime_control_token | default('') | trim) | length > 0)
       }}
-    # Discord / gateway_enabled は inventory fragment のみ（play 側に空既定を置くと host 変数が潰れる）
+    # Discord / gateway_enabled / tools_* は inventory fragment のみ（play 側に空既定を置くと host 変数が潰れる）
     private_pi5_hermes_install_argv:
       - /bin/bash
       - /tmp/hermes-agent-install.sh
@@ -44,279 +59,30 @@
     - name: Validate Hermes prerequisites
       ansible.builtin.assert:
         that:
-          - (private_pi5_hermes_dgx_llm_shared_token | default('') | trim) | length > 0
+          - (private_pi5_hermes_chat_dgx_llm_token | default('') | trim) | length > 0
         fail_msg: >-
-          private_pi5_hermes_dgx_llm_shared_token (or private_pi5_dgx_llm_shared_token) is required in the local inventory fragment.
+          Set private_pi5_hermes_chat_dgx_llm_token or private_pi5_dgx_llm_shared_token
+          in the local inventory fragment.
 
   tasks:
-    - name: Ensure git and curl are present
-      ansible.builtin.apt:
-        name:
-          - git
-          - curl
-          - ca-certificates
-        state: present
-        update_cache: true
-        cache_valid_time: 3600
+    - name: Install Hermes user and CLI
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/install.yml"
 
-    - name: Create dedicated hermes group
-      ansible.builtin.group:
-        name: "{{ private_pi5_hermes_group }}"
-        state: present
+    - name: Configure UFW for private Pi5 Hermes host
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/ufw.yml"
 
-    - name: Create dedicated hermes system user
-      ansible.builtin.user:
-        name: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-        home: "{{ private_pi5_hermes_home }}"
-        shell: /bin/bash
-        create_home: true
-        system: false
+    - name: Deploy Hermes chat profile
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-chat-profile.yml"
 
-    - name: Add hermes user to docker group
-      ansible.builtin.user:
-        name: "{{ private_pi5_hermes_user }}"
-        groups: docker
-        append: true
+    - name: Deploy Hermes tools profile skeleton
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
+      when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
-    - name: Install UFW when enabled
-      ansible.builtin.apt:
-        name: ufw
-        state: present
-      when: private_pi5_hermes_enable_ufw | bool
+    - name: Configure Hermes DGX keep-warm
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/keep-warm.yml"
 
-    - name: Configure UFW default deny incoming
-      community.general.ufw:
-        direction: incoming
-        policy: deny
-      when: private_pi5_hermes_enable_ufw | bool
-
-    - name: Allow SSH through UFW
-      community.general.ufw:
-        rule: allow
-        name: OpenSSH
-      when: private_pi5_hermes_enable_ufw | bool
-
-    - name: Allow StackChan bridge from home LAN only
-      community.general.ufw:
-        rule: allow
-        proto: tcp
-        port: "{{ private_pi5_hermes_bridge_port }}"
-        src: "{{ private_pi5_hermes_lan_cidr }}"
-      when: private_pi5_hermes_enable_ufw | bool
-
-    - name: Enable UFW
-      community.general.ufw:
-        state: enabled
-      when: private_pi5_hermes_enable_ufw | bool
-
-    - name: Ensure Hermes data directory exists
-      ansible.builtin.file:
-        path: "{{ private_pi5_hermes_data_dir }}"
-        state: directory
-        owner: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-        mode: "0700"
-
-    - name: Install Hermes optional system packages (avoid install.sh sudo prompts)
-      ansible.builtin.apt:
-        name:
-          - ripgrep
-          - ffmpeg
-          - build-essential
-          - python3-dev
-          - libffi-dev
-        state: present
-        update_cache: true
-        cache_valid_time: 3600
-
-    - name: Download Hermes official install script
-      ansible.builtin.get_url:
-        url: https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh
-        dest: /tmp/hermes-agent-install.sh
-        mode: "0755"
-        owner: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-
-    - name: Install Hermes Agent (official script, non-interactive)
-      ansible.builtin.command:
-        argv: "{{ private_pi5_hermes_install_argv }}"
-        stdin: /dev/null
-        creates: "{{ private_pi5_hermes_bin }}"
-      become: true
-      become_user: "{{ private_pi5_hermes_user }}"
-      environment:
-        HOME: "{{ private_pi5_hermes_home }}"
-        PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
-      async: 3600
-      poll: 30
-
-    - name: Check Hermes CLI is installed
-      ansible.builtin.stat:
-        path: "{{ private_pi5_hermes_bin }}"
-      register: private_pi5_hermes_bin_stat
-
-    - name: Fail when Hermes CLI is missing after install
-      ansible.builtin.assert:
-        that:
-          - private_pi5_hermes_bin_stat.stat.exists
-        fail_msg: "Hermes install did not create {{ private_pi5_hermes_bin }}"
-
-    - name: Deploy Hermes config.yaml (security profile)
-      ansible.builtin.template:
-        src: "../templates/private-pi5-hermes.config.yaml.j2"
-        dest: "{{ private_pi5_hermes_data_dir }}/config.yaml"
-        owner: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-        mode: "0600"
-
-    - name: Deploy Hermes .env (secrets)
-      ansible.builtin.template:
-        src: "../templates/private-pi5-hermes.env.j2"
-        dest: "{{ private_pi5_hermes_data_dir }}/.env"
-        owner: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-        mode: "0600"
-
-    - name: Install Hermes gateway systemd unit
-      ansible.builtin.template:
-        src: "../templates/private-pi5-hermes-gateway.service.j2"
-        dest: "/etc/systemd/system/hermes-gateway.service"
-        owner: root
-        group: root
-        mode: "0644"
-      notify: Reload systemd daemon
-
-    - name: Ensure Hermes DGX keep-warm directory exists
-      ansible.builtin.file:
-        path: "{{ private_pi5_hermes_dgx_keep_warm_dir }}"
-        state: directory
-        owner: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-        mode: "0750"
-
-    - name: Deploy Hermes DGX keep-warm scripts
-      ansible.builtin.copy:
-        src: "{{ item.src }}"
-        dest: "{{ item.dest }}"
-        owner: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-        mode: "{{ item.mode }}"
-      loop:
-        - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-stackchan-bridge/dgx_runtime_client.py"
-          dest: "{{ private_pi5_hermes_dgx_keep_warm_dir }}/dgx_runtime_client.py"
-          mode: "0644"
-        - src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/dgx_keep_warm.py"
-          dest: "{{ private_pi5_hermes_dgx_keep_warm_dir }}/dgx_keep_warm.py"
-          mode: "0755"
-
-    - name: Deploy Hermes DGX keep-warm environment
-      ansible.builtin.template:
-        src: "../templates/private-pi5-hermes-dgx-keep-warm.env.j2"
-        dest: "{{ private_pi5_hermes_dgx_keep_warm_env_path }}"
-        owner: "{{ private_pi5_hermes_user }}"
-        group: "{{ private_pi5_hermes_group }}"
-        mode: "0600"
-
-    - name: Install Hermes DGX keep-warm systemd units
-      ansible.builtin.template:
-        src: "{{ item.src }}"
-        dest: "{{ item.dest }}"
-        owner: root
-        group: root
-        mode: "0644"
-      loop:
-        - src: "../templates/private-pi5-hermes-dgx-keep-warm.service.j2"
-          dest: /etc/systemd/system/hermes-dgx-keep-warm.service
-        - src: "../templates/private-pi5-hermes-dgx-keep-warm.timer.j2"
-          dest: /etc/systemd/system/hermes-dgx-keep-warm.timer
-      notify: Reload systemd daemon
-
-    - name: Enable Hermes DGX keep-warm timer
-      ansible.builtin.systemd:
-        name: hermes-dgx-keep-warm.timer
-        enabled: true
-        state: started
-        daemon_reload: true
-      when: private_pi5_hermes_dgx_keep_warm_active | bool
-
-    - name: Trigger immediate Hermes DGX keep-warm (may take several minutes when cold)
-      ansible.builtin.systemd:
-        name: hermes-dgx-keep-warm.service
-        state: started
-      when: private_pi5_hermes_dgx_keep_warm_active | bool
-      async: 3600
-      poll: 30
-      failed_when: false
-
-    - name: Disable Hermes DGX keep-warm timer when inactive
-      ansible.builtin.systemd:
-        name: hermes-dgx-keep-warm.timer
-        enabled: false
-        state: stopped
-        daemon_reload: true
-      when: not (private_pi5_hermes_dgx_keep_warm_active | bool)
-
-    - name: Warn when keep-warm is requested but runtime control token is missing
-      ansible.builtin.debug:
-        msg: >-
-          hermes-dgx-keep-warm is disabled: set private_pi5_dgx_runtime_control_token
-          in the local inventory fragment (same token as StackChan bridge /start).
-      when:
-        - private_pi5_hermes_dgx_keep_warm_enabled | default(true) | bool
-        - not (private_pi5_hermes_dgx_keep_warm_active | bool)
-
-    - name: Flush handlers before checks
-      ansible.builtin.meta: flush_handlers
-
-    - name: Run hermes doctor
-      ansible.builtin.command:
-        argv:
-          - "{{ private_pi5_hermes_bin }}"
-          - doctor
-      become: true
-      become_user: "{{ private_pi5_hermes_user }}"
-      environment:
-        HOME: "{{ private_pi5_hermes_home }}"
-        PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
-      register: private_pi5_hermes_doctor
-      changed_when: false
-      failed_when: private_pi5_hermes_doctor.rc != 0
-
-    - name: Verify DGX health from Hermes user
-      ansible.builtin.uri:
-        url: "{{ private_pi5_hermes_dgx_base_url }}/healthz"
-        method: GET
-        headers:
-          X-LLM-Token: "{{ private_pi5_hermes_dgx_llm_shared_token }}"
-        status_code: 200
-        return_content: true
-      become: true
-      become_user: "{{ private_pi5_hermes_user }}"
-      register: private_pi5_hermes_dgx_health
-      changed_when: false
-
-    - name: Verify Docker works for hermes user
-      ansible.builtin.command:
-        argv:
-          - docker
-          - run
-          - --rm
-          - hello-world
-      become: true
-      become_user: "{{ private_pi5_hermes_user }}"
-      environment:
-        HOME: "{{ private_pi5_hermes_home }}"
-      register: private_pi5_hermes_docker_test
-      changed_when: false
-      failed_when: private_pi5_hermes_docker_test.rc != 0
-
-    - name: Set Hermes gateway service state
-      ansible.builtin.systemd:
-        name: hermes-gateway
-        enabled: "{{ private_pi5_hermes_gateway_enabled | bool }}"
-        state: "{{ 'started' if (private_pi5_hermes_gateway_enabled | bool) else 'stopped' }}"
-      failed_when: false
+    - name: Verify Hermes deployment
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify.yml"
 
     - name: Summarize Hermes deployment
       ansible.builtin.debug:
@@ -325,9 +91,10 @@
           - "hermes_bin={{ private_pi5_hermes_bin }}"
           - "dgx_health={{ private_pi5_hermes_dgx_health.content | default('n/a') | trim }}"
           - "gateway_enabled={{ private_pi5_hermes_gateway_enabled }}"
+          - "tools_profile_enabled={{ private_pi5_hermes_tools_profile_enabled | default(false) }}"
+          - "tools_gateway_enabled={{ private_pi5_hermes_tools_gateway_enabled | default(false) }}"
           - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
-          - "next=Create Discord bot, set DISCORD_* in fragment, re-run playbook with gateway_enabled=true"
 
   handlers:
     - name: Reload systemd daemon

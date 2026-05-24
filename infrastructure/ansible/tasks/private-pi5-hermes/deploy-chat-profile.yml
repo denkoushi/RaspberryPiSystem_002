@@ -1,0 +1,33 @@
+---
+- name: Deploy Hermes chat config.yaml
+  ansible.builtin.template:
+    src: "../templates/private-pi5-hermes/config.chat.yaml.j2"
+    dest: "{{ private_pi5_hermes_data_dir }}/config.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"
+
+- name: Deploy Hermes chat .env (secrets)
+  ansible.builtin.template:
+    src: "../templates/private-pi5-hermes/env.chat.j2"
+    dest: "{{ private_pi5_hermes_data_dir }}/.env"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"
+
+- name: Install Hermes chat gateway systemd unit
+  ansible.builtin.template:
+    src: "../templates/private-pi5-hermes-gateway.service.j2"
+    dest: "/etc/systemd/system/hermes-gateway.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd daemon
+
+- name: Set Hermes chat gateway service state
+  ansible.builtin.systemd:
+    name: hermes-gateway
+    enabled: "{{ private_pi5_hermes_gateway_enabled | bool }}"
+    state: "{{ 'started' if (private_pi5_hermes_gateway_enabled | bool) else 'stopped' }}"
+    daemon_reload: true
+  failed_when: false

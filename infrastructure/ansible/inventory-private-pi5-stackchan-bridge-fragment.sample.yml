@@ -85,6 +85,13 @@ all:
       # private_pi5_hermes_dgx_keep_warm_enabled: true
       # private_pi5_hermes_dgx_keep_warm_interval_min: 10
       # private_pi5_hermes_max_tokens: 128
+      # トークン分離（Phase D0）: 省略時は private_pi5_dgx_llm_shared_token を chat も使用
+      # private_pi5_hermes_chat_dgx_llm_token: ""
+      # private_pi5_hermes_tools_dgx_llm_token: ""
+      # DGX gateway に LLM_SHARED_ADDITIONAL_TOKENS として登録すること
+      # private_pi5_hermes_tools_profile_enabled: false
+      # private_pi5_hermes_tools_gateway_enabled: false
+      # private_pi5_hermes_ssh_ufw_tailscale_only: false
       # private_pi5_hermes_system_prompt: |
       #   （fragment で agent.system_prompt を上書きする場合）
       # private_pi5_hermes_discord_bot_token: ""

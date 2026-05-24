@@ -8,7 +8,8 @@ DGX system-prod 用のローカル gateway。
 - /v1/* は active backend へ転送
 
 環境変数:
-  LLM_SHARED_TOKEN            必須
+  LLM_SHARED_TOKEN            必須（少なくとも1つ有効な LLM トークン）
+  LLM_SHARED_ADDITIONAL_TOKENS  任意（カンマ区切り。Hermes 専用トークン等）
   LLM_RUNTIME_CONTROL_TOKEN   必須
   EMBEDDING_API_KEY           任意
   GATEWAY_LISTEN_HOST         既定: 127.0.0.1
@@ -41,10 +42,12 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
+from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
+
 
 @dataclass(frozen=True)
 class GatewayConfig:
-    llm_shared_token: str
+    llm_shared_tokens: frozenset[str]
     runtime_control_token: str
     host: str
     port: int
@@ -76,7 +79,7 @@ class GatewayConfig:
 
 def load_config_from_env() -> GatewayConfig:
     return GatewayConfig(
-        llm_shared_token=(os.environ.get("LLM_SHARED_TOKEN") or "").strip(),
+        llm_shared_tokens=load_llm_shared_tokens_from_env(),
         runtime_control_token=(os.environ.get("LLM_RUNTIME_CONTROL_TOKEN") or "").strip(),
         host=(os.environ.get("GATEWAY_LISTEN_HOST") or "127.0.0.1").strip(),
         port=int((os.environ.get("GATEWAY_LISTEN_PORT") or "38081").strip()),
@@ -127,7 +130,7 @@ def load_config_from_env() -> GatewayConfig:
 
 
 def require_env(config: GatewayConfig) -> None:
-    if not config.llm_shared_token:
+    if not config.llm_shared_tokens:
         print("LLM_SHARED_TOKEN is required", file=sys.stderr)
         sys.exit(1)
     if not config.runtime_control_token:
@@ -413,16 +416,6 @@ def proxy_request(method: str, url: str, body: bytes, headers: dict[str, str]) -
         return 502, body, "text/plain; charset=utf-8"
 
 
-def llm_shared_token_ok(headers, expected_token: str) -> bool:
-    """Accept StackChan-style X-LLM-Token or OpenAI-style Bearer (Hermes Agent)."""
-    if not expected_token:
-        return False
-    if headers.get("X-LLM-Token", "") == expected_token:
-        return True
-    auth = headers.get("Authorization", "")
-    return auth == f"Bearer {expected_token}"
-
-
 def make_handler(
     config: GatewayConfig,
     proxy_impl: Callable[[str, str, bytes, dict[str, str]], tuple[int, bytes, str]] = proxy_request,
@@ -431,7 +424,7 @@ def make_handler(
         server_version = "dgx-local-llm-gateway/1.0"
 
         def _llm_auth_ok(self) -> bool:
-            return llm_shared_token_ok(self.headers, config.llm_shared_token)
+            return llm_shared_token_ok(self.headers, config.llm_shared_tokens)
 
         def _embedding_auth_ok(self) -> bool:
             if not config.embedding_api_key:

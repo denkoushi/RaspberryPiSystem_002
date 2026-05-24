@@ -1,0 +1,43 @@
+---
+- name: Install UFW when enabled
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  when: private_pi5_hermes_enable_ufw | bool
+
+- name: Configure UFW default deny incoming
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+  when: private_pi5_hermes_enable_ufw | bool
+
+- name: Allow SSH through UFW
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+  when:
+    - private_pi5_hermes_enable_ufw | bool
+    - not (private_pi5_hermes_ssh_ufw_tailscale_only | default(false) | bool)
+
+- name: Allow SSH from Tailscale only through UFW
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    port: "22"
+    interface: tailscale0
+  when:
+    - private_pi5_hermes_enable_ufw | bool
+    - private_pi5_hermes_ssh_ufw_tailscale_only | default(false) | bool
+
+- name: Allow StackChan bridge from home LAN only
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    port: "{{ private_pi5_hermes_bridge_port }}"
+    src: "{{ private_pi5_hermes_lan_cidr }}"
+  when: private_pi5_hermes_enable_ufw | bool
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  when: private_pi5_hermes_enable_ufw | bool
