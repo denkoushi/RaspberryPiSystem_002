@@ -1,6 +1,21 @@
 # 私用 Pi5 Hermes Agent 標準デプロイ
 
-最終更新: 2026-05-24（max_tokens 128・簡潔プロンプト・レイテンシ実測追補）
+最終更新: 2026-05-24（Phase D0 実機完了・トークン分離・Tailscale grants 適用済）
+
+## 運用状態サマリ（2026-05-24 時点）
+
+| 項目 | 状態 |
+|------|------|
+| **Git** | `main` @ `65d21c3f` 以降（`feat/private-pi5-hermes-docs` は **マージ済**） |
+| **対象ホスト** | 私用 Pi5 `raspi5-private`（`100.89.190.21`）· DGX `dgx-local-llm-system`（`100.118.82.72`）のみ |
+| **Hermes** | `hermes-gateway` **active** · Discord DM **応答あり**（トークン分離後も正常） |
+| **StackChan** | `stackchan-bridge` **active**（同一ホスト・別プロセス） |
+| **DGX 認証** | `LLM_SHARED_TOKEN`＝StackChan · `LLM_SHARED_ADDITIONAL_TOKENS`＝Hermes chat 専用 |
+| **Tailscale** | `tag:private-server` · grants **admin 保存済**（[§Tailscale](#tailscale私用-pi5-分離)） |
+| **tools プロファイル** | **未デプロイ**（`private_pi5_hermes_tools_profile_enabled` 未設定） |
+| **境界ポリシー** | repo 正本のみ（Hermes ランタイム未接続） |
+
+**正本リンク**: [ExecPlan D0](../plans/private-pi5-hermes-tools-security-phase-d0-execplan.md) · [KB 脅威モデル](../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md) · [ADR-20260525](../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md)
 
 ## 目的
 
@@ -173,7 +188,7 @@ journalctl -u hermes-dgx-keep-warm.service -n 20 --no-pager
 2. **Jinja include**: `config.chat.yaml.j2` の `{% include 'private-pi5-hermes/config.base.yaml.j2' %}` は tasks からの template 探索で **not found** → 同ディレクトリ名 `config.base.yaml.j2` に変更。`deploy-chat-profile.yml` の `src` は `../../templates/private-pi5-hermes/...`。
 3. **SSH 直叩き**: `raspi5-private@100.89.190.21` はローカル鍵未登録で **Permission denied** のことがある → 検証は **inventory 経由の `ansible -m shell`** を正本とする。
 
-**未実施（意図）**: `private_pi5_hermes_tools_profile_enabled: true`、Tailscale 草案の管理画面適用。
+**未実施（意図）**: `private_pi5_hermes_tools_profile_enabled: true`（Phase D1）。
 
 ## トークン分離（2026-05-24 実施）
 
@@ -186,6 +201,20 @@ journalctl -u hermes-dgx-keep-warm.service -n 20 --no-pager
 **検証（DGX 上・127.0.0.1）**: primary `X-LLM-Token` → **200** · chat `Bearer` → **200** · 不正トークン → **403**。**Pi5**: `hermes` ユーザの Bearer → **200**（playbook verify + curl）。
 
 **効果**: Hermes 漏洩時に StackChan 用 primary トークンは共用されない（逆も同様）。
+
+**Discord E2E（分離後）**: ユーザー確認 **応答あり・正常**（2026-05-24）。
+
+## Tailscale（私用 Pi5 分離・2026-05-24 適用済）
+
+| 項目 | 内容 |
+|------|------|
+| 機械タグ | `tag:private-server`（`raspi5-private`・既存） |
+| `tagOwners` | **既存維持** `"tag:private-server": ["denkoushi@github"]`（重複追加しない） |
+| 追加 `grants` | ① `tag:private-server` → `tag:llm` **`tcp:38081`** ② `tag:admin` → `tag:private-server` **`tcp:22`** |
+| 正本 JSON | [tailscale-policy-hermes-private-pi5-grants.json](../security/tailscale-policy-hermes-private-pi5-grants.json) |
+| 適用後検証 | [verification.sh](../security/tailscale-policy-hermes-private-pi5-verification.sh) → **PASS**（DGX 200 · 業務 Pi5 未到達 · Hermes Bearer 200） |
+
+**管理画面で duplicate `tag:private-server` エラー** → `tagOwners` は触らず **`grants` の2件だけ**追加（[草案 §適用](../security/tailscale-policy-hermes-private-pi5-draft.md)）。
 
 ## 検証（2026-05-24 実機）
 
@@ -243,6 +272,9 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 | `/sethome` 案内 | 雑談のみなら無視可 |
 | Ansible **Recursive loop**（chat token） | playbook `vars` で同名変数を参照している → [本番反映 2026-05-24](#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次) の `set_fact` パターン |
 | **config.base.yaml.j2 not found** | include パスが `private-pi5-hermes/...` のまま → 同ディレクトリ `config.base.yaml.j2` |
+| Tailscale **duplicate tag:private-server** | `tagOwners` に既存キーがあるのに追記した | `grants` のみ追加 · `tagOwners` は `denkoushi@github` のまま |
+| Mac から Pi5 **SSH Permission denied** | ローカル鍵未登録 | `ansible -i inventory-private-pi5-stackchan-bridge-fragment.yml ...` |
+| Mac から DGX **curl timeout** | tailnet 経路が Pi5 経由想定 | DGX 上で `127.0.0.1:38081` または Pi5 から curl |
 
 ## ロールバック
 
@@ -250,12 +282,6 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 |------|------|
 | Gateway 停止 | `private_pi5_hermes_gateway_enabled: false` → 再デプロイ |
 | Hermes 全体 | `systemctl stop hermes-gateway`・`~/.hermes` 退避（手動） |
-
-## Tailscale（私用 Pi5 分離）
-
-- **grants 正本**: [tailscale-policy-hermes-private-pi5-grants.json](../security/tailscale-policy-hermes-private-pi5-grants.json)（admin にマージ・手動）
-- **検証**: [tailscale-policy-hermes-private-pi5-verification.sh](../security/tailscale-policy-hermes-private-pi5-verification.sh)
-- **草案**: [tailscale-policy-hermes-private-pi5-draft.md](../security/tailscale-policy-hermes-private-pi5-draft.md)
 
 ## 関連
 

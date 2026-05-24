@@ -44,7 +44,19 @@ StackChan bridge の LAN `192.168.128.0/24:18080` は **tailnet 非公開**（UF
 | 業務 Pi5 `100.106.158.2:443` | **timeout**（`tailscale status` に業務 Pi5 未表示） |
 | Hermes Bearer → DGX | **200**（トークン分離後） |
 
+## トラブルシュート（管理画面）
+
+| エラー | 対処 |
+|--------|------|
+| `duplicate name "tag:private-server"` | `tagOwners` に既にある → **grants だけ**追加 |
+| 保存後 Hermes/DGX 不通 | 追加した grant の typo · `tag:llm` が DGX 側タグか確認 · [verification.sh](./tailscale-policy-hermes-private-pi5-verification.sh) |
+
+## 適用後（2026-05-24）
+
+- admin 保存済 · verification **PASS**
+- `tagOwners`: `"tag:private-server": ["denkoushi@github"]`（変更なし）
+
 ## 注意
 
 - ACL 誤設定で **Ansible SSH や DGX 到達が遮断**される。変更前にコンソールアクセス経路を確保する。
-- 本ファイルは repo 草案。**自動適用しない**（Phase D0）。
+- repo からの **自動適用はしない**（admin 手動のみ）。

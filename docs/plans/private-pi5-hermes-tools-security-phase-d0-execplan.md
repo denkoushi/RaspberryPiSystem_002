@@ -2,7 +2,7 @@
 title: 私用 Pi5 Hermes ツール向けセキュリティ Phase D0 ExecPlan
 tags: [Hermes Agent, private Pi5, DGX Spark, security, Phase D0]
 audience: [開発者, 運用者]
-last-verified: 2026-05-24
+last-verified: 2026-05-24（実機・Tailscale 適用済）
 related:
   - ../decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md
   - ../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md
@@ -29,7 +29,20 @@ update-frequency: medium
 - [x] 実機: DGX `gateway-server.py` + `gateway_llm_auth.py` 反映・再起動（2026-05-24）
 - [x] 実機: 私用 Pi5 Ansible デプロイ（chat のみ・tools 骨格 OFF）
 - [x] 実機: DGX `LLM_SHARED_ADDITIONAL_TOKENS` 反映（Hermes chat 専用・2026-05-24）
-- [ ] 実機: `private_pi5_hermes_tools_profile_enabled: true`（D1）
+- [x] 実機: Tailscale grants マージ（admin 保存・`tag:private-server` · verification PASS）
+- [x] Discord E2E（トークン分離後・ユーザー確認 正常）
+- [ ] 実機: `private_pi5_hermes_tools_profile_enabled: true`（**Phase D1**）
+
+## マイルストーン（2026-05-24・運用到達点）
+
+**Phase D0 は「repo + 私用 Pi5/DGX 実機 + ネットワーク・トークン分離」まで完了**。雑談は **Phase C と同品質**（8.7〜10.7 s/通）を維持。
+
+| 日付 | 作業 | コミット例 |
+|------|------|------------|
+| 同日 AM | repo 実装・`main` マージ（`0bee0f73` 含む） | `8f3dfc03` … `0bee0f73` |
+| 同日 | DGX→Pi5 順次デプロイ・Ansible 修正 | Runbook §本番反映 |
+| 同日 | Hermes chat トークン分離 | `f3c6be1e`（docs） |
+| 同日 | Tailscale grants 適用 | `6ba313c6` … `65d21c3f`（docs） |
 
 ## 本番反映（2026-05-24）
 
@@ -51,19 +64,22 @@ cd infrastructure/ansible && ansible-playbook playbooks/private-pi5-hermes.yml -
   -i inventory-private-pi5-stackchan-bridge-fragment.sample.yml
 ```
 
-## DGX 手動反映（トークン分離）
+## DGX 手動反映（トークン分離）— **実施済 2026-05-24**
 
-1. Hermes chat 用トークンを生成（StackChan 用と別）
-2. DGX `/srv/dgx/system-prod/secrets/gateway-server.env` に追記:
+1. Hermes chat 用トークンを `openssl rand -hex 32` 等で生成
+2. DGX `gateway-server.env` に `LLM_SHARED_ADDITIONAL_TOKENS=<chat-token>` を追記（`LLM_SHARED_TOKEN` は StackChan 用のまま）
+3. gateway 再起動（PID 削除 → `start-gateway-server.sh`）
+4. fragment に `private_pi5_hermes_chat_dgx_llm_token` を設定 → Pi5 再デプロイ
 
-   ```dotenv
-   LLM_SHARED_ADDITIONAL_TOKENS=hermes-chat-token,hermes-tools-token
-   ```
+詳細: [Runbook §トークン分離](../runbooks/private-pi5-hermes-deploy.md#トークン分離2026-05-24-実施)。
 
-3. gateway 再起動（[Runbook §gateway PID](../runbooks/dgx-system-prod-local-llm.md) 参照）
-4. fragment に `private_pi5_hermes_chat_dgx_llm_token` を設定
+## Tailscale — **実施済 2026-05-24**
 
-## D1 以降
+- `tagOwners` の `tag:private-server` は **`denkoushi@github` を維持**（repo 案の `autogroup:admin` とは別で可）
+- `grants` 2 件のみ admin に追加
+- 検証 script PASS
+
+## D1 以降（次マイルストーン）
 
 [KB 脅威モデル](../knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md) のチェックリストに従う。
 

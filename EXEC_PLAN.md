@@ -76,7 +76,9 @@
 
 - [x] (2026-05-16 / **本番反映・実機検証・ドキュメント同期・`main` マージ完了**） **生産日程CSV「消滅」入力の正本C current keys（本体 dedupe winner のみ。**`FKOJUNST` メール側に FK が無いだけでは「現 winner」から除外しない**）**。**ブランチ**: **`feat/canonical-schedule-disappearance-current-keys`**。**実装**: **`09f06ebf`**（`ProductionScheduleCanonicalCurrentKeysService`·[`csv-dashboard-ingestor.ts`](./apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts)·[`production-schedule-csv-ingest-external-completion-sync.service.ts`](./apps/api/src/services/production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.ts)）。**CI**: **`25956906908` success**（直前 **`25956583435` failure** は **`security-docker`** / **`usr/bin/caddy`** Go stdlib **HIGH**。**対処**: [`.trivyignore`](./.trivyignore)·**`0e327378`**）。**本番**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**。Pi4／Pi3 **`skipping: no hosts matched`**）。**Detach `20260516-181817-25397`**（**`PLAY RECAP` `ok=131` `changed=3` `failed=0` / `unreachable=0`**·リモート **`exit 0`**·ローカル **`--follow` 約 286s**）。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **140s**）。**ナレッジ**: [`docs/guides/deployment.md`](./docs/guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)·[`docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md`](./docs/knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-16-schedule-csv-disappearance-canonical-current-keys)·[`docs/guides/ci-troubleshooting.md`](./docs/guides/ci-troubleshooting.md#trivy-が-web-イメージの-caddy-バイナリで-cve-を検出してジョブが失敗する)·[`docs/INDEX.md`](./docs/INDEX.md)·[`docs/knowledge-base/index.md`](./docs/knowledge-base/index.md)。**以降の運用デプロイ**: **`./scripts/update-all-clients.sh main … --limit raspberrypi5`**。**ローカル `main`** を **`origin/main` に `--ff-only` 同期済み**（マージ後手順）。
 
-- [x] (2026-05-24 / **私用 Pi5 Hermes Agent — Phase C 完了・ドキュメント反映**） **Hermes v0.14.0** + **`hermes-gateway` active**。**Phase C**: keep-warm・DGX **thinking 注入**・**max_tokens 128** + 簡潔プロンプト（**8.7〜10.7 s/通**・体感 OK）。**skills/memory 無効**（自己改善オフ）。**知見**: [KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[KB スキル/フォーラム/設計](./docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)·[KB 403](./docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md)。**ブランチ**: `feat/private-pi5-hermes-docs`。
+- [x] (2026-05-24 / **私用 Pi5 Hermes Agent — Phase C 完了・ドキュメント反映**） **Hermes v0.14.0** + **`hermes-gateway` active**。**Phase C**: keep-warm・DGX **thinking 注入**・**max_tokens 128** + 簡潔プロンプト（**8.7〜10.7 s/通**・体感 OK）。**skills/memory 無効**（自己改善オフ）。**知見**: [KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[KB スキル/フォーラム/設計](./docs/knowledge-base/KB-private-pi5-hermes-skills-community-architecture.md)·[KB 403](./docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md)。**ブランチ**: `feat/private-pi5-hermes-docs`（**`main` マージ済**）。
+
+- [x] (2026-05-24 / **私用 Pi5 Hermes — Phase D0 本番・硬化完了・ドキュメント同期**） **対象**: 私用 Pi5 + DGX のみ（業務 Pi 群・`update-all-clients.sh` 対象外）。**実施**: DGX `gateway_llm_auth` 反映 · Ansible デプロイ（chat）· **Hermes chat トークン分離**（`LLM_SHARED_ADDITIONAL_TOKENS`）· **Tailscale grants**（`tag:private-server` · `denkoushi@github` 維持）· Discord E2E **正常**。**Git**: `main`（`0bee0f73` 実装マージ · `f3c6be1e` トークン · `65d21c3f` Tailscale）。**正本**: [KB Phase D0 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)·[ExecPlan D0](./docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md)。
 
 - [~] (2026-05-23 / **作業中断・ユーザー指示**） **StackChan 私用 Pi5 `utterance` 一括 API + ファーム overlay + 実機ブリングアップ**。**完了（repo）**: `POST /api/stackchan/utterance`（[`stackchan_utterance_core.py`](./scripts/private-pi5-stackchan-bridge/stackchan_utterance_core.py)・[`bridge_server.py`](./scripts/private-pi5-stackchan-bridge/bridge_server.py)）·ユニットテスト 20 件·Ansible 同期·[`apply_chatgpt_private_bridge.py`](./scripts/stackchan-ai-stackchan-ex/apply_chatgpt_private_bridge.py) / [`apply_utterance_overlay.py`](./scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py) / [`mac_usb_dev.sh`](./scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh)。**実機（部分）**: CoreS3 へ utterance ファーム USB 書き込み成功·シリアルで Wi-Fi `192.168.128.116`・HTTP 起動·`[UTTERANCE] POST` 試行（`connection refused` あり）·Pi5 `faster-whisper-local` 再デプロイ。**未完了**: utterance E2E（`replyText` 聞こえる）·**画面真っ黒・無音・`/dev/cu.usbmodem*` 消失**（ハード復旧が先）。**正本**: [KB §2026-05-23](./docs/knowledge-base/KB-stackchan-community-firmware-supply-chain.md#2026-05-23-私用-pi5-utterance-一括-apiファーム-overlay実機ブリングアップ作業中断)·[runbook §6.5](./docs/runbooks/stackchan-community-text-only-e2e.md#65-2026-05-23-post-apistackchanutterancepi5-一括と実機復旧)·[計画](./docs/plans/stackchan-private-pi5-tailnet-workflow-plan.md)。
 
@@ -2369,21 +2371,19 @@
 
 ### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase C 完了（実用レベル）** + **Phase D0 骨格デプロイ済（2026-05-24）**（DGX `gateway_llm_auth`・私用 Pi5 chat プロファイル・tools 骨格 OFF）。
+**状態**: **Phase D0 完了（2026-05-24）** — chat 運用・トークン分離・Tailscale grants まで到達。**次は Phase D1**（tools 骨格デプロイ・gateway は起動しない）。
 
-**正本**: [plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[ExecPlan D0](./docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[KB Discord E2E](./docs/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
+**正本**: [KB Phase D0 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[ExecPlan D0](./docs/plans/private-pi5-hermes-tools-security-phase-d0-execplan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 | # | タスク | 優先 | 完了条件 |
 |---|--------|------|----------|
-| — | keep-warm / thinking 注入 / max_tokens 128 | **完了** | 体感 OK・KB 実測記録 |
-| — | **Phase D0 repo + 実機（chat のみ）** | **完了** | [Runbook §2026-05-24](./docs/runbooks/private-pi5-hermes-deploy.md#本番反映2026-05-24phase-d0-骨格私用-pi5--dgx-順次) |
-| 1 | **main マージ** | 高 | `feat/private-pi5-hermes-docs` → `main`（本セッションで実施） |
-| — | **DGX トークン分離（chat）** | **完了** | 2026-05-24 · [Runbook §トークン分離](./docs/runbooks/private-pi5-hermes-deploy.md#トークン分離2026-05-24-実施) |
-| — | **Tailscale grants マージ** | **完了** | 2026-05-24 admin 保存済 · [verification.sh](./docs/security/tailscale-policy-hermes-private-pi5-verification.sh) PASS |
-| 3 | **Hermes 既定プロンプト短縮** | 中 | `in` ~661 削減（任意） |
-| 4 | **作業用プロファイル**（skills 有効） | 低 | 雑談と分離・8K/遅延再計測 |
-| 5 | **title_generation 無効化** | 低 | ログ警告解消 |
-| 6 | **DGX vLLM MTP / reasoning-parser** | 低 | Qwen3.6 さらなる高速化（フォーラム知見） |
+| — | Phase C（遅延・Discord） | **完了** | KB E2E |
+| — | Phase D0（repo·実機·トークン·Tailscale） | **完了** | [KB Phase D0 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md) |
+| **1** | **Phase D1 — tools プロファイル骨格** | **高** | `tools_profile_enabled: true` · 再デプロイ · `hermes-tools-gateway` **停止のまま** |
+| 2 | tools 用 DGX トークン（additional 2 件目） | 高 | `private_pi5_hermes_tools_dgx_llm_token` |
+| 3 | Hermes 既定プロンプト短縮 | 中 | 任意 |
+| 4 | title_generation 無効化 | 低 | ログ警告解消 |
+| 5 | DGX vLLM MTP / reasoning-parser | 低 | フォーラム知見 |
 
 ### 棚マスタ — 運用・拡張（2026-05-24） {#shelf-master-follow-up-2026-05-24}
 

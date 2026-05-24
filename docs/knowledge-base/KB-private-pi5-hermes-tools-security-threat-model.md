@@ -12,7 +12,7 @@ Hermes 雑談プロファイルはツール無効で運用中。将来 web/brows
 | 脅威 | 症状 | D0 対策 | D1+ で必要 |
 |------|------|---------|------------|
 | **SSRF / 内部スキャン** | web/browser が 100.x / LAN を探索 | `boundary-policy.tools.yaml` · deny RFC1918 | Hermes allowlist 連携・egress 制限 |
-| **横移動（業務 Pi5）** | 私用 Pi5 から `tag:server` へ | [grants.json](../security/tailscale-policy-hermes-private-pi5-grants.json)（admin マージ待ち） | 2026-05-24 ベースライン: 業務 Pi5 未 peer・443 timeout |
+| **横移動（業務 Pi5）** | 私用 Pi5 から `tag:server` へ | [grants.json](../security/tailscale-policy-hermes-private-pi5-grants.json)（**admin 適用済 2026-05-24**） | 定期 verification · 業務 Pi5 tailnet 到達の再確認 |
 | **トークン漏洩の影響拡大** | StackChan 漏洩で Hermes も利用可能 | DGX `LLM_SHARED_ADDITIONAL_TOKENS` · fragment 変数分離（**chat 分離済 2026-05-24**） | tools トークン・ローテーション Runbook |
 | **docker 脱出** | terminal で host 相当権限 | chat/tools とも terminal 無効（D0） | rootless / 別ホスト検討 |
 | **プロンプトインジェクション** | Discord 経由で危険ツール実行 | Tirith · manual 承認 · tools 無効 | ツール有効時も manual 維持 |
@@ -53,8 +53,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 ## D1+ チェックリスト（未実施）
 
-- [ ] `private_pi5_hermes_tools_profile_enabled: true` + 専用 DGX トークンを additional に登録
-- [ ] Tailscale 草案を管理画面に反映
+- [ ] `private_pi5_hermes_tools_profile_enabled: true` + 専用 DGX トークンを additional に登録（`hermes-tools-gateway` は起動しない）
+- [x] Tailscale grants を管理画面に反映（2026-05-24）
 - [ ] `file` のみ · workspace 限定 · manual 承認
 - [ ] web URL allowlist を `boundary-policy.tools.yaml` と同期
 - [ ] browser 隔離 Docker · `AGENT_BROWSER_ARGS` 実機検証
@@ -62,5 +62,6 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 ## References
 
+- [KB Phase D0 本番](./KB-private-pi5-hermes-phase-d0-production.md)
 - [`boundary_policy.py`](../../scripts/private-pi5-hermes/lib/boundary_policy.py)
 - [tailscale-policy-hermes-private-pi5-draft.md](../security/tailscale-policy-hermes-private-pi5-draft.md)

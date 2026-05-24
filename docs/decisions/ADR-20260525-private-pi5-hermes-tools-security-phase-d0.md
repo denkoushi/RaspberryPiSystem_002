@@ -35,15 +35,16 @@
    - `infrastructure/ansible/tasks/private-pi5-hermes/{install,ufw,deploy-chat-profile,deploy-tools-profile,keep-warm,verify}.yml`
 
 6. **Tailscale**
-   - [草案](../security/tailscale-policy-hermes-private-pi5-draft.md) のみ（管理画面への適用は手動）
+   - [草案](../security/tailscale-policy-hermes-private-pi5-draft.md) + [grants.json](../security/tailscale-policy-hermes-private-pi5-grants.json)
+   - **2026-05-24**: admin へ grants マージ済（`tag:private-server` · `tagOwners` は `denkoushi@github` 維持）
 
 7. **tools プロファイルのツール**
    - **全 disabled_toolsets 維持**（web/browser 等は有効化しない）
 
-### 明示的に今回やらないこと
+### 明示的に repo 段階ではやらないこと（実機は 2026-05-24 に別途実施）
 
-- tools gateway の本番起動（`tools_gateway_enabled` 既定 false）
-- Tailscale ACL の自動適用
+- tools gateway の本番起動（`tools_gateway_enabled` 既定 false）— **未実施のまま**
+- Tailscale ACL の **自動**適用（admin 手動は実施済）
 - web/browser/terminal の有効化
 
 ## Alternatives
@@ -64,7 +65,12 @@
 ### 悪い点
 
 - tools gateway は **isolated HOME**（`~/.hermes-tools/home/.hermes`）を使うため、chat と設定ファイルは分離される。ただし D0 では **tools gateway を起動しない**前提で、実機同時稼働は D1 で検証する。
-- DGX 側 `LLM_SHARED_ADDITIONAL_TOKENS` は **手動反映**が必要。
+- DGX 側 `LLM_SHARED_ADDITIONAL_TOKENS` は **初回手動反映**が必要（**2026-05-24 実施済**）。
+
+### 実機到達（2026-05-24）
+
+- DGX + 私用 Pi5 デプロイ · Hermes chat トークン分離 · Tailscale grants · Discord E2E 正常
+- 正本: [KB Phase D0 本番](../knowledge-base/KB-private-pi5-hermes-phase-d0-production.md) · [Runbook](../runbooks/private-pi5-hermes-deploy.md)
 
 ## References
 
