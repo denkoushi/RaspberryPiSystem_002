@@ -113,6 +113,20 @@
         - private_pi5_hermes_tools_profile_enabled | default(false) | bool
         - private_pi5_hermes_tools_browser_enabled | default(false) | bool
 
+    - name: Validate Hermes Phase D5 bridge requires D4 tools profile
+      ansible.builtin.assert:
+        that:
+          - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+          - private_pi5_hermes_tools_file_enabled | default(false) | bool
+          - private_pi5_hermes_tools_web_enabled | default(false) | bool
+          - private_pi5_hermes_tools_browser_enabled | default(false) | bool
+          - private_pi5_hermes_tools_gateway_enabled | default(false) | bool
+          - private_pi5_hermes_gateway_enabled | default(false) | bool
+        fail_msg: >-
+          Phase D5 (private_pi5_hermes_discord_tools_bridge_enabled: true) requires
+          D4 tools flags, tools gateway, and chat gateway (Discord) enabled.
+      when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
+
     - name: Validate Hermes prerequisites
       ansible.builtin.assert:
         that:
@@ -130,6 +144,10 @@
 
     - name: Deploy Hermes chat profile
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-chat-profile.yml"
+
+    - name: Deploy Hermes Discord task bridge (Phase D5)
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-discord-task-bridge.yml"
+      when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
 
     - name: Deploy Hermes tools profile skeleton
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
@@ -151,6 +169,10 @@
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-tools-profile.yml"
       when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
+    - name: Verify Hermes Discord task bridge (Phase D5)
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-task-bridge.yml"
+      when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
+
     - name: Summarize Hermes deployment
       ansible.builtin.debug:
         msg:
@@ -163,6 +185,7 @@
           - "tools_web_enabled={{ private_pi5_hermes_tools_web_enabled | default(false) }}"
           - "tools_browser_enabled={{ private_pi5_hermes_tools_browser_enabled | default(false) }}"
           - "tools_gateway_enabled={{ private_pi5_hermes_tools_gateway_enabled | default(false) }}"
+          - "discord_tools_bridge_enabled={{ private_pi5_hermes_discord_tools_bridge_enabled | default(false) }}"
           - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"
 

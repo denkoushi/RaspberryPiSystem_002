@@ -1,0 +1,67 @@
+---
+# Phase D5: Discord /task bridge plugin + lib (tools profile runner).
+- name: Ensure Hermes discord-task-bridge plugin directory exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0755"
+
+- name: Deploy discord-task-bridge shared Python modules
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/lib/{{ item }}"
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/{{ item }}"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+  loop:
+    - __init__.py
+    - boundary_policy.py
+    - task_bridge_policy.py
+    - task_request.py
+    - tools_profile_runner.py
+    - discord_task_bridge.py
+
+- name: Deploy discord-task-bridge plugin entrypoint
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/lib/discord_task_bridge_plugin.py"
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/__init__.py"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+
+- name: Deploy task-bridge plugin manifest
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/plugin.yaml"
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/plugin.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+
+- name: Deploy task-bridge policy reference on host
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/task-bridge.policy.yaml"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+
+- name: Verify discord-task-bridge policy from repo smoke
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
+      - --validate-task-bridge
+      - --task-bridge-policy
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/config/task-bridge.policy.yaml"
+  register: private_pi5_hermes_task_bridge_validate
+  changed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Assert discord-task-bridge policy validation passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_task_bridge_validate.rc == 0
+    fail_msg: "task-bridge.policy.yaml validation failed on controller"

@@ -2371,11 +2371,11 @@
 
 ### 私用 Pi5 Hermes Agent — セキュア基盤・AI執事北極星（2026-05-24–25） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase D4 本番完了（2026-05-25）** — file+web+browser · agent-browser symlink · `AGENT_BROWSER_ARGS` · 私用 Pi5 のみデプロイ・`HERMES_TOOLS_PHASE=d4` 検証済。**Discord 雑談（chat）はツール無効のまま**（執事化は D5 以降）。
+**状態**: **Phase D4–D5 本番完了（2026-05-25）** — D5: Discord **`/task`** plugin → tools 委譲（file+web+browser）· chat `disabled_toolsets` 不変 · **Discord `/task` E2E は手動未**。
 
 **北極星（ステークホルダー合意・2026-05-25）**: 最終的には **Discord から AI執事**（メモ/リマインド · X 定時 · 簡易アプリ · HA/カメラ定点観測 · **裏で tools 処理**）。**いまは執事機能に直行せず**、Phase 単位でセキュア運用環境を丁寧に構築する。
 
-**正本**: [AI執事ビジョンとロードマップ](./docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md)·[KB Phase D4 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md)·[ExecPlan D4](./docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
+**正本**: [AI執事ビジョンとロードマップ](./docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md)·[KB Phase D5 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)·[KB Phase D4 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 #### 完了（セキュリティフェーズ）
 
@@ -2384,20 +2384,21 @@
 | — | Phase C（遅延・Discord） | **完了** | KB E2E |
 | — | Phase D0–D3 | **完了** | D3: [KB](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) · PR [#336](https://github.com/denkoushi/RaspberryPiSystem_002/pull/336) · CI **`26375912601`** |
 | — | Phase D4 | **完了** | [KB D4](./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md) · 私用 Pi5 デプロイ · `HERMES_TOOLS_PHASE=d4` |
+| — | Phase D5 | **完了** | [KB D5](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) · 私用 Pi5 デプロイ · verify/smoke OK · CI **`26379388504`** success · Discord E2E 手動は未 |
 
-#### D4 以降 — 開発タスク（優先順）
+#### D5 以降 — 開発タスク（優先順）
 
 | # | Phase | タスク | 優先 | 完了条件 |
 |---|-------|--------|------|----------|
-| **1** | **D5** | **Discord ↔ tools 橋（最小）** | **高** | 限定タスクのみ tools 委譲 · chat 雑談維持 · manual 承認 |
-| 2 | — | Discord 回帰（任意） | 低 | D4 後 chat 不変 |
+| **1** | **D5.1** | **承認 Discord 中継** | **高** | manual 承認を Discord で完結 · `/task` タイムアウト解消 |
+| 2 | — | Discord `/task` E2E + 雑談回帰 | 中 | read-only `/task` · 通常メッセージは chat のみ |
 | 3 | **D6** | memory + リマインド（限定スコープ） | 中 | 保持/削除ポリシー · ADR |
-| 5 | **D7** | 定時ジョブ基盤（`cronjob`） | 中 | 失敗時 Discord 通知 · smoke 1 本 |
-| 6 | **D8** | X 定時ダイジェスト | 中 | API/規約 · D7 上 |
-| 7 | **D9** | Home Assistant / カメラ（読取中心） | 中〜低 | egress/UFW 見直し |
-| 8 | **D10** | 簡易アプリ生成 | 低 | terminal 最後 · code 限定 |
-| 9 | — | Hermes 既定プロンプト短縮 | 中 | 任意 |
-| 10 | — | title_generation 無効化 | 低 | ログ警告解消 |
+| 4 | **D7** | 定時ジョブ基盤（`cronjob`） | 中 | 失敗時 Discord 通知 · smoke 1 本 |
+| 5 | **D8** | X 定時ダイジェスト | 中 | API/規約 · D7 上 |
+| 6 | **D9** | Home Assistant / カメラ（読取中心） | 中〜低 | egress/UFW 見直し |
+| 7 | **D10** | 簡易アプリ生成 | 低 | terminal 最後 · code 限定 |
+| 8 | — | Hermes 既定プロンプト短縮 | 中 | 任意 |
+| 9 | — | title_generation 無効化 | 低 | ログ警告解消 |
 
 **議論の記録（要約）**: tools の日常 UI は未整備 · 目標 UI は Discord · D3 playbook verify は Jinja `\n` と blocklist 一括 match で一度失敗 → [KB D3](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) · `verify-tools-profile.yml` 修正済（`main`）。
 

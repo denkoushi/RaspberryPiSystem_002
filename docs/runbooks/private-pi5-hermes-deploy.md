@@ -439,6 +439,33 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-tools-browser-smoke.sh
 
 正本: [Phase D4 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md)。
 
+## Phase D5 — Discord `/task` 橋（実機本番反映・2026-05-25）
+
+**目的**: 雑談（chat）は維持し、**`/task <指示>`** のみ tools プロファイル（D4: file+web+browser）へ委譲。
+
+**fragment（D5）** — D4 に加え:
+
+```yaml
+private_pi5_hermes_discord_tools_bridge_enabled: true
+private_pi5_hermes_gateway_enabled: true
+```
+
+**デプロイ**: 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`（`deploy-discord-task-bridge.yml` が **`~/.hermes/plugins/private-pi5-discord-task-bridge/`** に plugin + policy を配置 · chat テンプレに `plugins.enabled`）。
+
+**検証（repo / Pi5）**:
+
+```bash
+./scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh
+# Pi5（lib + config を REPO_ROOT 下に配置してから）
+REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
+```
+
+**Discord 利用**: `/task List files in workspace`（read-only 推奨）。**`/task` は gateway plugin コマンド**（`hermes task` トップレベル CLI ではない）。承認待ちは [ExecPlan D5](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) 参照。
+
+**記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)。
+
+正本: [Phase D5 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)。
+
 ## トラブルシュート（クイック）
 
 | 症状 | 参照 |
@@ -463,6 +490,9 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-tools-browser-smoke.sh
 | D4 verify: browser が disabled のまま | fragment に **`tools_browser_enabled` 未設定** | `private_pi5_hermes_tools_browser_enabled: true` → 再デプロイ |
 | `install-browser-tooling` rc=1（agent-browser 不在） | 非対話 `hermes setup` は **agent-browser を入れない** | playbook が **node_modules → `~/.local/bin` symlink** · [KB D4](./knowledge-base/KB-private-pi5-hermes-phase-d4-production.md) |
 | Ansible で symlink 後も `command -v` 失敗 | **`bash -lc`** が PATH を上書き | install タスクは **`bash -c` + 明示 export PATH** |
+| `/task` が動かない | D5 フラグ off · plugin 未配置 · **flat deploy で相対 import 失敗** | fragment 有効 → 再デプロイ · gateway restart · [KB D5](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) Investigation |
+| D5 verify: file disabled 不一致 | Ansible **`'    - file\n'`** 厳密 match | [`verify-discord-task-bridge.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-task-bridge.yml) 更新後に再デプロイ · [KB D5](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) |
+| `/task` がタイムアウト | tools **manual 承認** 待ち | read-only タスクで再試行 · D5.1 承認中継は未実装 |
 
 ## ロールバック
 

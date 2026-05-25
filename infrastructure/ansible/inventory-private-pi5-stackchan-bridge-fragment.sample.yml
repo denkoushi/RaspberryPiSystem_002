@@ -103,6 +103,8 @@ all:
       # private_pi5_hermes_tools_browser_enabled: true
       # (requires file + web + gateway above)
       # private_pi5_hermes_browser_agent_args: "--no-sandbox,--disable-dev-shm-usage"
+      # Phase D5: Discord /task → tools profile (requires D4 flags + gateway_enabled)
+      # private_pi5_hermes_discord_tools_bridge_enabled: true
       # private_pi5_hermes_ssh_ufw_tailscale_only: false
       # private_pi5_hermes_system_prompt: |
       #   （fragment で agent.system_prompt を上書きする場合）

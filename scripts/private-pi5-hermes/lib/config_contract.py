@@ -201,3 +201,51 @@ def validate_tools_config_alignment(
             )
 
     return errors
+
+
+def config_declares_discord_task_plugin_enabled(
+    config_text: str,
+    *,
+    plugin_name: str,
+) -> bool:
+    """True when plugins.enabled includes the D5 /task bridge plugin."""
+    needle = plugin_name.strip()
+    if not needle:
+        return False
+    return "plugins:" in config_text and "enabled:" in config_text and needle in config_text
+
+
+def validate_chat_config_bridge_alignment(
+    config_text: str,
+    *,
+    bridge_enabled: bool,
+    plugin_name: str,
+) -> list[str]:
+    """Return errors for chat config vs D5 bridge inventory flag."""
+    errors: list[str] = []
+    if bridge_enabled:
+        if not config_declares_discord_task_plugin_enabled(
+            config_text, plugin_name=plugin_name
+        ):
+            errors.append(
+                "chat config must enable the D5 /task plugin under plugins.enabled "
+                f"({plugin_name!r}) when discord tools bridge is enabled"
+            )
+        if "disabled_toolsets:" not in config_text:
+            errors.append("chat config must retain agent.disabled_toolsets when bridge is enabled")
+        if not config_disables_file_toolset(config_text):
+            errors.append("file must remain disabled on chat profile when bridge is enabled")
+        if not config_disables_web_toolset(config_text):
+            errors.append("web must remain disabled on chat profile when bridge is enabled")
+        if not config_disables_browser_toolset(config_text):
+            errors.append("browser must remain disabled on chat profile when bridge is enabled")
+        if not config_disables_toolset(config_text, "delegation"):
+            errors.append("delegation must remain disabled on chat profile when bridge is enabled")
+    else:
+        if config_declares_discord_task_plugin_enabled(
+            config_text, plugin_name=plugin_name
+        ):
+            errors.append(
+                "D5 /task plugin must not be enabled when discord tools bridge is disabled"
+            )
+    return errors
