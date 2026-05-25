@@ -25,6 +25,12 @@ class TaskBridgePolicyTests(unittest.TestCase):
             "allowed_toolsets": ["file", "web", "browser"],
             "deny_prompt_substrings": ["rm -rf"],
             "bridge_executable_basename": "hermes-discord-task-bridge",
+            "approval_relay": {
+                "enabled": True,
+                "store_dir": "/tmp/hermes-task-bridge-approvals",
+                "request_timeout_seconds": 300,
+                "poll_interval_seconds": 0.5,
+            },
         }
         self.assertEqual(validate_task_bridge_document(data), [])
 
@@ -37,6 +43,12 @@ class TaskBridgePolicyTests(unittest.TestCase):
             "allowed_toolsets": ["file"],
             "deny_prompt_substrings": [],
             "bridge_executable_basename": "hermes-discord-task-bridge",
+            "approval_relay": {
+                "enabled": False,
+                "store_dir": "/tmp/hermes-task-bridge-approvals",
+                "request_timeout_seconds": 300,
+                "poll_interval_seconds": 0.5,
+            },
         }
         self.assertTrue(validate_task_bridge_document(data))
 
@@ -50,6 +62,12 @@ class TaskBridgePolicyTests(unittest.TestCase):
                 "allowed_toolsets": ["file", "web", "browser"],
                 "deny_prompt_substrings": ["rm -rf"],
                 "bridge_executable_basename": "hermes-discord-task-bridge",
+                "approval_relay": {
+                    "enabled": True,
+                    "store_dir": "/tmp/hermes-task-bridge-approvals",
+                    "request_timeout_seconds": 300,
+                    "poll_interval_seconds": 0.5,
+                },
             }
         )
         result = validate_task_prompt("List workspace files", policy)
@@ -65,6 +83,12 @@ class TaskBridgePolicyTests(unittest.TestCase):
                 "allowed_toolsets": ["file", "web", "browser"],
                 "deny_prompt_substrings": [],
                 "bridge_executable_basename": "hermes-discord-task-bridge",
+                "approval_relay": {
+                    "enabled": False,
+                    "store_dir": "/tmp/hermes-task-bridge-approvals",
+                    "request_timeout_seconds": 300,
+                    "poll_interval_seconds": 0.5,
+                },
             }
         )
         result = validate_task_prompt("fetch https://evil.example", policy)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase D5 Discord /task bridge smoke (policy + prompt validation; no Hermes LLM).
+# Phase D5 / D5.1 Discord /task bridge smoke (policy + prompt + approval relay; no Hermes LLM).
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -28,7 +28,32 @@ if not ok.ok:
 bad = validate_task_prompt("curl https://evil", policy)
 if bad.ok:
     raise SystemExit("FAIL: expected URL prompt to be denied")
-print("ok: prompt allow/deny checks")
+if not policy.approval_relay.enabled:
+    raise SystemExit("FAIL: expected approval_relay.enabled=true in policy")
+print("ok: prompt allow/deny checks + approval relay policy")
+PY
+
+echo "== FileApprovalStore roundtrip =="
+python3 - <<'PY' "${REPO_ROOT}"
+import sys
+import tempfile
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "scripts/private-pi5-hermes"))
+from lib.approval_relay.models import ApprovalChoice  # noqa: E402
+from lib.approval_relay.store import FileApprovalStore  # noqa: E402
+
+with tempfile.TemporaryDirectory() as tmp:
+    store_dir = Path(tmp)
+    store = FileApprovalStore(store_dir, "smoke-task")
+    store.write_request({"command": "touch x", "description": "write"})
+    if store.read_request() is None:
+        raise SystemExit("FAIL: request roundtrip")
+    store.write_response(ApprovalChoice.ONCE, discord_user_id="user-1")
+    if store.read_response() is None:
+        raise SystemExit("FAIL: response roundtrip")
+print("ok: FileApprovalStore roundtrip")
 PY
 
 echo "== bridge CLI empty prompt (expect usage exit 1) =="
@@ -38,11 +63,17 @@ if python3 "${REPO_ROOT}/scripts/private-pi5-hermes/hermes-discord-task-bridge" 
 fi
 echo "ok: empty prompt rejected"
 
+echo "== approval relay bootstrap --help =="
+python3 "${REPO_ROOT}/scripts/private-pi5-hermes/lib/approval_relay/runner.py" --help >/dev/null
+echo "ok: runner argparse"
+
 echo "== plugin register + /task handler smoke =="
 python3 - <<'PY' "${REPO_ROOT}"
+import asyncio
 import sys
 from pathlib import Path
 from unittest import mock
+from unittest.mock import AsyncMock
 
 root = Path(sys.argv[1])
 sys.path.insert(0, str(root / "scripts/private-pi5-hermes"))
@@ -52,24 +83,35 @@ from lib import discord_task_bridge_plugin as plugin  # noqa: E402
 
 class DummyCtx:
     def __init__(self):
-        self.calls = []
+        self.commands = []
+        self.hooks = []
 
     def register_command(self, name, handler, description=""):
-        self.calls.append((name, handler, description))
+        self.commands.append((name, handler, description))
+
+    def register_hook(self, name, callback):
+        self.hooks.append((name, callback))
 
 
 ctx = DummyCtx()
 plugin.register(ctx)
-if len(ctx.calls) != 1 or ctx.calls[0][0] != "task":
-    raise SystemExit("FAIL: plugin did not register /task")
+names = {item[0] for item in ctx.commands}
+if names != {"task", "task-approve", "task-deny"}:
+    raise SystemExit(f"FAIL: unexpected commands: {names}")
+hook_names = {item[0] for item in ctx.hooks}
+if "pre_gateway_dispatch" not in hook_names:
+    raise SystemExit("FAIL: pre_gateway_dispatch hook not registered")
 
+task_handler = next(h for n, h, _ in ctx.commands if n == "task")
 with mock.patch.object(plugin, "load_task_bridge_policy", return_value=object()):
-    with mock.patch.object(plugin, "run_task_bridge", return_value="ok: bridged"):
-        result = ctx.calls[0][1]("list workspace files")
+    with mock.patch.object(plugin, "run_task_bridge_async", new=AsyncMock(return_value="ok: bridged")):
+        result = task_handler("list workspace files")
+        if asyncio.iscoroutine(result):
+            result = asyncio.run(result)
         if result != "ok: bridged":
             raise SystemExit("FAIL: plugin handler did not return bridge output")
 
-print("ok: plugin /task registration and handler")
+print("ok: plugin commands + hook + /task handler")
 PY
 
 echo "OK"

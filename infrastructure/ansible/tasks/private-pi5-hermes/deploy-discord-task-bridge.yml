@@ -1,5 +1,5 @@
 ---
-# Phase D5: Discord /task bridge plugin + lib (tools profile runner).
+# Phase D5 / D5.1: Discord /task bridge plugin + lib (tools profile runner + approval relay).
 - name: Ensure Hermes discord-task-bridge plugin directory exists
   ansible.builtin.file:
     path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
@@ -7,6 +7,14 @@
     owner: "{{ private_pi5_hermes_user }}"
     group: "{{ private_pi5_hermes_group }}"
     mode: "0755"
+
+- name: Ensure approval relay store directory exists (Phase D5.1)
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/task-bridge/approvals"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0700"
 
 - name: Deploy discord-task-bridge shared Python modules
   ansible.builtin.copy:
@@ -22,6 +30,40 @@
     - task_request.py
     - tools_profile_runner.py
     - discord_task_bridge.py
+
+- name: Ensure approval relay package directory exists on plugin path
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/approval_relay"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0755"
+
+- name: Deploy discord-task-bridge approval relay package (Phase D5.1)
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/lib/approval_relay/{{ item }}"
+    dest: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/approval_relay/{{ item }}"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0644"
+  loop:
+    - __init__.py
+    - models.py
+    - policy.py
+    - store.py
+    - subprocess_notify.py
+    - runner.py
+    - bootstrap.py
+    - discord_relay.py
+    - coordinator.py
+
+- name: Deploy hermes-task-with-approval-relay CLI (Phase D5.1)
+  ansible.builtin.copy:
+    src: "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/hermes-task-with-approval-relay"
+    dest: "{{ private_pi5_hermes_home }}/.local/bin/hermes-task-with-approval-relay"
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0755"
 
 - name: Deploy discord-task-bridge plugin entrypoint
   ansible.builtin.copy:

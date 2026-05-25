@@ -25,3 +25,10 @@ deny_prompt_substrings:
 
 # Hermes quick_command path on Pi5 (must match config.chat.yaml.j2 when bridge enabled)
 bridge_executable_basename: hermes-discord-task-bridge
+
+# Phase D5.1: Discord approval relay (file IPC between tools subprocess and chat plugin)
+approval_relay:
+  enabled: true
+  store_dir: /home/hermes/.hermes/task-bridge/approvals
+  request_timeout_seconds: 300
+  poll_interval_seconds: 0.5

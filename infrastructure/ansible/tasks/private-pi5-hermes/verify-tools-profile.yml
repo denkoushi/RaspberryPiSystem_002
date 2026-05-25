@@ -167,6 +167,15 @@
   register: private_pi5_hermes_tools_env_slurp
   when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
+- name: Validate Hermes tools Docker disk quota disabled for Pi5 ext4
+  ansible.builtin.assert:
+    that:
+      - "'container_disk: 0' in (private_pi5_hermes_tools_config_slurp.content | b64decode)"
+    fail_msg: >-
+      tools config.yaml must set container_disk: 0 (Hermes default 51200 uses Docker
+      --storage-opt which fails on Pi5 ext4 overlay).
+  when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
+
 - name: Validate Hermes tools config aligns with Phase D4 browser contract
   ansible.builtin.assert:
     that:
