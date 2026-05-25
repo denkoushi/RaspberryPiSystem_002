@@ -71,6 +71,26 @@ describe('dgx-resource.scenario-planner', () => {
     expect(policyIdx).toBeGreaterThan(expStopIdx);
   });
 
+  it('business_to_private adds gateway force-stop before policy when runtime hook exists', () => {
+    const p = buildOrchestrationScenarioPreview({
+      scenarioId: 'business_to_private',
+      comfyRuntimeConfigured: true,
+      experimentLabRuntimeConfigured: true,
+      agentContainerRuntimeConfigured: true,
+      gatewayRuntimeConfigured: true,
+      currentPolicyMode: 'business_first',
+      inferenceLooksDegraded: false,
+      comfyLooksRunning: false,
+    });
+
+    const gatewayForceStopIdx = p.steps.findIndex(
+      (s) => s.kind === 'workload' && s.targetId === 'system-prod-gateway' && s.action === 'stop_force'
+    );
+    const policyIdx = p.steps.findIndex((s) => s.kind === 'policy');
+    expect(gatewayForceStopIdx).toBeGreaterThan(-1);
+    expect(policyIdx).toBeGreaterThan(gatewayForceStopIdx);
+  });
+
   it('buildOrchestrationScenarioPreview includes policy step last when no post-policy steps and aligns fingerprint inputs', () => {
     const p = buildOrchestrationScenarioPreview({
       scenarioId: 'experiment_to_business',

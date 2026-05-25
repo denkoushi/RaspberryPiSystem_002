@@ -4,7 +4,12 @@ import { env } from '../../../config/env.js';
 import { isBusinessFirstSuppressionHintActive, policyLabelJa } from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode, DgxResourceEvent, DgxResourcePolicyStore } from './dgx-resource.policy-store.js';
 
-import type { DgxControlTargetAction, DgxControlTargetId, DgxControlTargetSnapshot } from './dgx-resource.control-target.types.js';
+import type {
+  DgxControlTargetAction,
+  DgxControlTargetId,
+  DgxControlTargetSnapshot,
+  DgxUserControlTargetAction,
+} from './dgx-resource.control-target.types.js';
 import { executeAuxHttpRuntimeStartStop } from './dgx-resource.aux-http-runtime.executor.js';
 import { executeGatewayRuntimeStartStop } from './dgx-resource.gateway-runtime.executor.js';
 import {
@@ -114,7 +119,7 @@ export type DgxResourceActionBody =
   | {
       type: 'EXECUTE_TARGET_ACTION';
       targetId: DgxControlTargetId;
-      action: DgxControlTargetAction;
+      action: DgxUserControlTargetAction;
       reason?: string;
     }
   | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioId }
@@ -143,6 +148,18 @@ export type DgxResourceServiceDeps = {
   /** DGX Spark ホスト疎通（任意） */
   sparkHostStatusUrl?: string;
 };
+
+function ensureAuxRuntimeAction(action: DgxControlTargetAction): DgxUserControlTargetAction {
+  if (action === 'stop_force') {
+    throw new ApiError(
+      400,
+      'この制御ターゲットでは強制停止を実行できません',
+      { action },
+      'DGX_TARGET_ACTION_NOT_SUPPORTED'
+    );
+  }
+  return action;
+}
 
 function buildWarmWindow(): DgxResourceWarmWindow {
   if (!env.LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED) {
@@ -487,15 +504,22 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         deps.policyStore.appendEvent('LocalLLM ランタイム起動を要求しました');
         return { ok: true, message: '起動リクエストを送信しました（反映まで時間がかかる場合があります）' };
       }
-      deps.policyStore.appendEvent('LocalLLM ランタイム停止を要求しました');
-      return { ok: true, message: '停止リクエストを送信しました' };
+      deps.policyStore.appendEvent(
+        action === 'stop_force' ? 'LocalLLM ランタイム強制停止を要求しました' : 'LocalLLM ランタイム停止を要求しました'
+      );
+      return {
+        ok: true,
+        message: action === 'stop_force' ? '強制停止リクエストを送信しました' : '停止リクエストを送信しました',
+      };
     }
     return {
       ok: true,
       message:
         action === 'start'
           ? 'ゲートウェイ起動リクエストを送信しました'
-          : 'ゲートウェイ停止リクエストを送信しました',
+          : action === 'stop_force'
+            ? 'ゲートウェイ強制停止リクエストを送信しました'
+            : 'ゲートウェイ停止リクエストを送信しました',
     };
   };
 
@@ -504,6 +528,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     reason: string | undefined,
     eventLog: TargetRuntimeEventLogMode
   ): Promise<{ ok: true; message: string }> => {
+    const auxAction = ensureAuxRuntimeAction(action);
     const rt = readComfyRuntimeEndpoints();
     if (!rt) {
       throw new ApiError(
@@ -514,7 +539,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       );
     }
     await executeAuxHttpRuntimeStartStop(deps, {
-      action,
+      action: auxAction,
       startUrl: rt.startUrl,
       stopUrl: rt.stopUrl,
       timeoutMs: auxTimeoutMs,
@@ -524,12 +549,12 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     });
     if (eventLog === 'default') {
       deps.policyStore.appendEvent(
-        action === 'start' ? '私用 ComfyUI 起動を要求しました' : '私用 ComfyUI 停止を要求しました'
+        auxAction === 'start' ? '私用 ComfyUI 起動を要求しました' : '私用 ComfyUI 停止を要求しました'
       );
     }
     return {
       ok: true,
-      message: action === 'start' ? 'ComfyUI 起動リクエストを送信しました' : 'ComfyUI 停止リクエストを送信しました',
+      message: auxAction === 'start' ? 'ComfyUI 起動リクエストを送信しました' : 'ComfyUI 停止リクエストを送信しました',
     };
   };
 
@@ -538,6 +563,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     reason: string | undefined,
     eventLog: TargetRuntimeEventLogMode
   ): Promise<{ ok: true; message: string }> => {
+    const auxAction = ensureAuxRuntimeAction(action);
     const rt = readExperimentLabRuntimeEndpoints();
     if (!rt) {
       throw new ApiError(
@@ -548,7 +574,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       );
     }
     await executeAuxHttpRuntimeStartStop(deps, {
-      action,
+      action: auxAction,
       startUrl: rt.startUrl,
       stopUrl: rt.stopUrl,
       timeoutMs: auxTimeoutMs,
@@ -556,7 +582,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       reason,
       errorCodePrefix: 'DGX_EXPERIMENT_LAB',
     });
-    if (action === 'stop' && experimentLabHealthUrl) {
+    if (auxAction === 'stop' && experimentLabHealthUrl) {
       const firstProbe = await probeHttpGet(experimentLabHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
       emitDgxDebugLog(
         'H6',
@@ -572,7 +598,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       if (firstProbe.ok) {
         deps.policyStore.appendEvent('experiment-lab 停止確認: ヘルス応答が残っているため停止を再試行します');
         await executeAuxHttpRuntimeStartStop(deps, {
-          action,
+          action: auxAction,
           startUrl: rt.startUrl,
           stopUrl: rt.stopUrl,
           timeoutMs: auxTimeoutMs,
@@ -609,13 +635,13 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     }
     if (eventLog === 'default') {
       deps.policyStore.appendEvent(
-        action === 'start' ? 'experiment-lab 起動を要求しました' : 'experiment-lab 停止を要求しました'
+        auxAction === 'start' ? 'experiment-lab 起動を要求しました' : 'experiment-lab 停止を要求しました'
       );
     }
     return {
       ok: true,
       message:
-        action === 'start'
+        auxAction === 'start'
           ? 'experiment-lab 起動リクエストを送信しました'
           : 'experiment-lab 停止リクエストを送信しました',
     };
@@ -626,6 +652,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     reason: string | undefined,
     eventLog: TargetRuntimeEventLogMode
   ): Promise<{ ok: true; message: string }> => {
+    const auxAction = ensureAuxRuntimeAction(action);
     const rt = readAgentContainerRuntimeEndpoints();
     if (!rt) {
       throw new ApiError(
@@ -636,7 +663,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       );
     }
     await executeAuxHttpRuntimeStartStop(deps, {
-      action,
+      action: auxAction,
       startUrl: rt.startUrl,
       stopUrl: rt.stopUrl,
       timeoutMs: auxTimeoutMs,
@@ -644,7 +671,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       reason,
       errorCodePrefix: 'DGX_AGENT_CONTAINER',
     });
-    if (action === 'stop' && agentContainerHealthUrl) {
+    if (auxAction === 'stop' && agentContainerHealthUrl) {
       const firstProbe = await probeHttpGet(agentContainerHealthUrl, deps.fetchImpl, deps.probeTimeoutMs);
       emitDgxDebugLog(
         'H6',
@@ -660,7 +687,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       if (firstProbe.ok) {
         deps.policyStore.appendEvent('agent-container 停止確認: ヘルス応答が残っているため停止を再試行します');
         await executeAuxHttpRuntimeStartStop(deps, {
-          action,
+          action: auxAction,
           startUrl: rt.startUrl,
           stopUrl: rt.stopUrl,
           timeoutMs: auxTimeoutMs,
@@ -697,13 +724,13 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     }
     if (eventLog === 'default') {
       deps.policyStore.appendEvent(
-        action === 'start' ? 'agent-container 起動を要求しました' : 'agent-container 停止を要求しました'
+        auxAction === 'start' ? 'agent-container 起動を要求しました' : 'agent-container 停止を要求しました'
       );
     }
     return {
       ok: true,
       message:
-        action === 'start'
+        auxAction === 'start'
           ? 'agent-container 起動リクエストを送信しました'
           : 'agent-container 停止リクエストを送信しました',
     };

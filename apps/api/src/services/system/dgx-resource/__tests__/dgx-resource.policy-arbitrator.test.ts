@@ -54,7 +54,7 @@ describe('planWorkloadAdjustmentsBeforePolicyChange', () => {
     expect(plan.every((s) => s.action === 'stop')).toBe(true);
   });
 
-  it('private_ok stops experiment-lab and agent-container when configured', () => {
+  it('private_ok stops experiment-lab, agent-container, then force-stops gateway when configured', () => {
     expect(
       planWorkloadAdjustmentsBeforePolicyChange({
         nextMode: 'private_ok',
@@ -74,6 +74,11 @@ describe('planWorkloadAdjustmentsBeforePolicyChange', () => {
         targetId: 'agent-container',
         action: 'stop',
         eventMessageJa: '私用OK: agent-container 停止リクエストを送信しました（GPU 解放）',
+      },
+      {
+        targetId: 'system-prod-gateway',
+        action: 'stop_force',
+        eventMessageJa: '私用OK: system-prod-gateway 強制停止リクエストを送信しました（keep_warm 上書き・GPU 解放）',
       },
     ]);
   });

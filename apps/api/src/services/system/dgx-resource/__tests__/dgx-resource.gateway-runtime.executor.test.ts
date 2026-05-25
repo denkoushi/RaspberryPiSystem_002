@@ -15,7 +15,7 @@ vi.mock('../../../../config/env.js', () => ({
 }));
 
 import { resetMainLocalLlmRuntimeControlQueueForTests } from '../../../inference/runtime/local-llm-runtime-command-queue.js';
-import { executeGatewayRuntimeStartStop } from '../dgx-resource.gateway-runtime.executor.js';
+import { executeGatewayRuntimeStartStop, resolveGatewayRuntimeControlUrl } from '../dgx-resource.gateway-runtime.executor.js';
 
 describe('executeGatewayRuntimeStartStop', () => {
   beforeEach(() => {
@@ -57,5 +57,31 @@ describe('executeGatewayRuntimeStartStop', () => {
     await executeGatewayRuntimeStartStop({ fetchImpl }, 'stop');
 
     expect(String(fetchImpl.mock.calls[0]![0])).toBe('http://127.0.0.1/stop');
+  });
+
+  it('POSTs stop_force to force-stop URL', async () => {
+    const fetchImpl = vi.fn(async (): Promise<Response> => {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        url: '',
+        text: async () => '',
+        json: async () => ({}),
+      } as Response;
+    });
+
+    await executeGatewayRuntimeStartStop({ fetchImpl }, 'stop_force');
+
+    expect(String(fetchImpl.mock.calls[0]![0])).toBe('http://127.0.0.1/stop-force');
+  });
+
+  it('resolves force-stop URL from non-standard stop path', () => {
+    expect(resolveGatewayRuntimeControlUrl('stop_force', 'http://x/start', 'http://x/runtime/stop')).toBe(
+      'http://x/runtime/stop-force'
+    );
+    expect(resolveGatewayRuntimeControlUrl('stop_force', 'http://x/start', 'http://x/runtime/control')).toBe(
+      'http://x/runtime/control/force'
+    );
   });
 });

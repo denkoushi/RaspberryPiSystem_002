@@ -21,7 +21,11 @@ export type DgxControlTargetKind = 'gateway' | 'http_probe' | 'metrics_source';
 /** クライアントが実行してよい操作（サーバ側でも再検証する） */
 export type DgxControlTargetCapability = 'readStatus' | 'start' | 'stop';
 
-export type DgxControlTargetAction = 'start' | 'stop';
+/** UI/公開API から実行可能な操作 */
+export type DgxUserControlTargetAction = 'start' | 'stop';
+
+/** 内部オーケストレーションが使う操作 */
+export type DgxControlTargetAction = DgxUserControlTargetAction | 'stop_force';
 
 export type DgxServiceStatusKind = 'running' | 'degraded' | 'stopped' | 'unknown';
 

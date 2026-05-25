@@ -92,7 +92,7 @@ export type ScenarioWorkloadStepPreviewApi = {
   kind: 'workload';
   order: number;
   targetId: string;
-  action: 'start' | 'stop';
+  action: 'start' | 'stop' | 'stop_force';
   summaryJa: string;
 };
 

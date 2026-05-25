@@ -105,6 +105,7 @@ class ControlServerTests(unittest.TestCase):
 
         self.assertEqual(module.resolve_command(config, "start"), "blue-start")
         self.assertEqual(module.resolve_command(config, "stop"), ":")
+        self.assertEqual(module.resolve_command(config, "stop-force"), "blue-stop")
 
     def test_resolve_command_blue_stop_noop_when_always_on_mode(self):
         module = load_module()
@@ -123,6 +124,7 @@ class ControlServerTests(unittest.TestCase):
         )
 
         self.assertEqual(module.resolve_command(config, "stop"), ":")
+        self.assertEqual(module.resolve_command(config, "stop-force"), "blue-stop")
 
     def test_http_handler_keep_warm_still_hard_stops_green_before_start(self):
         module = load_module()
@@ -168,6 +170,45 @@ class ControlServerTests(unittest.TestCase):
             thread.join(timeout=5)
 
         self.assertEqual(calls, ["green-stop", "blue-start", ":"])
+
+    def test_http_handler_stop_force_bypasses_keep_warm(self):
+        module = load_module()
+        config = module.ControlConfig(
+            token="runtime-token",
+            active_backend="blue",
+            start_cmd="legacy-start",
+            stop_cmd="legacy-stop",
+            green_start_cmd="green-start",
+            green_stop_cmd="green-stop",
+            blue_start_cmd="blue-start",
+            blue_stop_cmd="blue-stop",
+            blue_stop_mode="keep_warm",
+            host="127.0.0.1",
+            port=39090,
+        )
+        calls: list[str] = []
+        handler = module.make_handler(config, command_runner=calls.append)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{httpd.server_port}"
+        try:
+            stop_req = urllib.request.Request(
+                f"{base_url}/stop-force",
+                data=b"",
+                method="POST",
+                headers={"X-Runtime-Control-Token": "runtime-token"},
+            )
+            with urllib.request.urlopen(stop_req, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+
+        self.assertEqual(payload["action"], "stop-force")
+        self.assertEqual(payload["backend"], "blue")
+        self.assertEqual(calls, ["blue-stop"])
 
     def test_http_handler_green_active_hard_stops_blue_before_start(self):
         module = load_module()

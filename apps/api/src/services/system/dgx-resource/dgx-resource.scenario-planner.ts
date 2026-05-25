@@ -151,7 +151,9 @@ export function buildOrchestrationScenarioPreview(input: {
       order: order++,
       targetId: s.targetId,
       action: s.action,
-      summaryJa: `${s.targetId}: ${s.action === 'start' ? '起動リクエスト' : '停止リクエスト'}（Pi5 POST）`,
+      summaryJa: `${s.targetId}: ${
+        s.action === 'start' ? '起動リクエスト' : s.action === 'stop_force' ? '強制停止リクエスト' : '停止リクエスト'
+      }（Pi5 POST）`,
     });
   }
 
@@ -216,7 +218,7 @@ export function buildOrchestrationScenarioPreview(input: {
   }
 
   if (scenarioId === 'private_to_business') {
-    warnings.push('私用→業務: 必要に応じて私用 GPU 負荷を止めてから適用すると安全です')
+    warnings.push('私用→業務: private_ok 中に強制停止した業務 LLM を再度 ready まで起動します。Hermes や職場 Pi5 は完了まで一時的に待ちが発生し得ます')
   }
 
   if (

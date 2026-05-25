@@ -79,6 +79,13 @@ export function planWorkloadAdjustmentsBeforePolicyChange(input: WorkloadPlanner
           eventMessageJa: '私用OK: agent-container 停止リクエストを送信しました（GPU 解放）',
         });
       }
+      if (input.gatewayRuntimeConfigured) {
+        steps.push({
+          targetId: 'system-prod-gateway',
+          action: 'stop_force',
+          eventMessageJa: '私用OK: system-prod-gateway 強制停止リクエストを送信しました（keep_warm 上書き・GPU 解放）',
+        });
+      }
       return steps;
     }
   }
