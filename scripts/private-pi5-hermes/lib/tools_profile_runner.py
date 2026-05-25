@@ -8,7 +8,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
+try:
+    from .task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
+except ImportError:
+    from task_bridge_policy import TaskBridgePolicy, toolsets_cli_argument
 
 
 @dataclass(frozen=True)

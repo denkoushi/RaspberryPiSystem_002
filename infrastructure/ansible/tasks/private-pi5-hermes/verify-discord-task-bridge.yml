@@ -34,8 +34,8 @@
         {{
           not (private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool)
           or (
-            '\n    - file\n'
-            in (private_pi5_hermes_chat_config_slurp.content | b64decode)
+            '    - file' in (private_pi5_hermes_chat_config_slurp.content | b64decode)
+            and 'disabled_toolsets:' in (private_pi5_hermes_chat_config_slurp.content | b64decode)
           )
         }}
     fail_msg: >-

@@ -13,21 +13,34 @@ try:
 except ImportError:  # pragma: no cover
     yaml = None  # type: ignore[assignment]
 
-from .task_bridge_policy import (
-    TaskBridgePolicy,
-    toolsets_cli_argument,
-    validate_task_bridge_document,
-    validate_task_prompt,
-)
-from .task_request import TaskRequest
-from .tools_profile_runner import ToolsProfilePaths, run_tools_profile_prompt
+try:
+    from .task_bridge_policy import (
+        TaskBridgePolicy,
+        toolsets_cli_argument,
+        validate_task_bridge_document,
+        validate_task_prompt,
+    )
+    from .task_request import TaskRequest
+    from .tools_profile_runner import ToolsProfilePaths, run_tools_profile_prompt
+except ImportError:
+    from task_bridge_policy import (
+        TaskBridgePolicy,
+        toolsets_cli_argument,
+        validate_task_bridge_document,
+        validate_task_prompt,
+    )
+    from task_request import TaskRequest
+    from tools_profile_runner import ToolsProfilePaths, run_tools_profile_prompt
 
 
 def _default_policy_path() -> Path:
-    # Deployed: ~/.hermes/discord-task-bridge/task-bridge.policy.yaml
-    deployed = Path(__file__).resolve().parent.parent / "task-bridge.policy.yaml"
+    plugin_dir = Path(__file__).resolve().parent
+    deployed = plugin_dir / "task-bridge.policy.yaml"
     if deployed.is_file():
         return deployed
+    repo_policy = plugin_dir.parent / "config" / "task-bridge.policy.yaml"
+    if repo_policy.is_file():
+        return repo_policy
     return Path(__file__).resolve().parent.parent / "config" / "task-bridge.policy.yaml"
 
 

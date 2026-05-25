@@ -98,7 +98,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 - [x] tools 実行は **isolated HOME** + **tools Bearer** · toolsets **file,web,browser 固定**
 - [x] `task-bridge.policy.yaml` + prompt deny list
 - [x] Ansible deploy/verify D5
-- [ ] 実機デプロイ · Discord `/task` E2E
+- [x] 実機デプロイ（私用 Pi5）· Ansible verify + smoke — [KB D5 本番](./KB-private-pi5-hermes-phase-d5-production.md)
+- [ ] Discord `/task` E2E（手動・read-only 推奨）
 - [ ] D5.1 承認 Discord 中継（follow-up）
 
 正本: [ExecPlan D5](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)
@@ -113,7 +114,7 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 | 能力 | 主なリスク | 有効化前に必要 |
 |------|------------|----------------|
-| Discord → tools 委譲 | プロンプトインジェクション · 承認 fatigue | **D5 repo 完了** · `/task` 明示 · [task-bridge.policy.yaml](../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml) |
+| Discord → tools 委譲 | プロンプトインジェクション · 承認 fatigue | **D5 本番（Pi5）** · `/task` 明示 · [task-bridge.policy.yaml](../../scripts/private-pi5-hermes/config/task-bridge.policy.yaml) · [KB D5](./KB-private-pi5-hermes-phase-d5-production.md) |
 | memory / リマインド | プライバシー · 保持範囲 | D6 · 削除手順 · Discord 通知設計 |
 | X 定時 | API/規約 · egress | D8 · boundary 拡張 |
 | Home Assistant / カメラ | LAN 横移動 · 物理セキュリティ | D9 · grants/UFW · 読取専用から |

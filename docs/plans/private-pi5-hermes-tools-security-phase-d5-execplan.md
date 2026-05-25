@@ -28,8 +28,8 @@ Phase D4（**file + web + browser** on tools）の上で、**Discord から `/ta
 - [x] Playbook D5 assert · verify-discord-task-bridge.yml
 - [x] `validate_boundary_policy.py --validate-task-bridge`
 - [x] `verify-discord-task-bridge-smoke.sh` + unittest
-- [ ] 実機デプロイ（私用 Pi5 のみ）
-- [ ] Discord `/task` E2E（read-only 推奨）
+- [x] 実機デプロイ（私用 Pi5 のみ）— 2026-05-25 · [KB D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)
+- [ ] Discord `/task` E2E（read-only 推奨）— Ansible/smoke/plugin OK · Discord 手動は未
 - [ ] Discord 雑談回帰（任意）
 
 ## 前提（inventory fragment・非コミット）
@@ -43,12 +43,12 @@ private_pi5_hermes_gateway_enabled: true
 
 Playbook は **D5 時に D4 tools + chat gateway を assert** する。
 
-## 手順（実機・未実施）
+## 手順（実機・2026-05-25 実施済）
 
-1. fragment を上記に更新
-2. `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`
-3. Discord: 雑談 1 通（chat 不変）→ `/task List files in workspace` 等
-4. `verify-discord-task-bridge-smoke.sh`（Pi5 上は policy 配置後）
+1. fragment を上記に更新 — **完了**
+2. `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` — **2 回目 `failed=0`**（1 回目は verify false negative → 修正後再実行）
+3. Discord: 雑談 1 通 → `/task List files in workspace` — **未実施**（手動）
+4. `verify-discord-task-bridge-smoke.sh` — **repo + Pi5 OK**
 
 ## 受け入れ基準
 

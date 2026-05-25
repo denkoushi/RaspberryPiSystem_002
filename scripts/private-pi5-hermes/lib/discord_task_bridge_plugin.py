@@ -3,12 +3,20 @@
 
 from __future__ import annotations
 
-from .discord_task_bridge import (
-    load_task_bridge_policy,
-    render_task_usage,
-    run_task_bridge,
-)
-from .task_request import TaskRequest
+try:
+    from .discord_task_bridge import (
+        load_task_bridge_policy,
+        render_task_usage,
+        run_task_bridge,
+    )
+    from .task_request import TaskRequest
+except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
+    from discord_task_bridge import (
+        load_task_bridge_policy,
+        render_task_usage,
+        run_task_bridge,
+    )
+    from task_request import TaskRequest
 
 
 def _handle_task_command(raw_args: str) -> str:
