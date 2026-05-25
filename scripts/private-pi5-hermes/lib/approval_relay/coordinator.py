@@ -13,11 +13,13 @@ try:
     from .discord_relay import format_approval_prompt, send_discord_channel_message
     from .models import ApprovalChoice, TaskRunContext
     from .policy import ApprovalRelayPolicy
+    from .session_context import read_gateway_session_context
     from .store import FileApprovalStore
 except ImportError:
     from discord_relay import format_approval_prompt, send_discord_channel_message
     from models import ApprovalChoice, TaskRunContext
     from policy import ApprovalRelayPolicy
+    from session_context import read_gateway_session_context
     from store import FileApprovalStore
 
 
@@ -113,27 +115,3 @@ class DiscordApprovalRelayCoordinator:
             self.store_dir,
             max_age_seconds=float(self.relay_policy.request_timeout_seconds) * 2,
         )
-
-
-def read_gateway_session_context() -> tuple[str, str]:
-    """Best-effort Discord user/channel ids from Hermes gateway session env."""
-    import os
-
-    user_id = ""
-    channel_id = ""
-    try:
-        from gateway.session_context import get_session_env  # type: ignore[import-untyped]
-
-        env = get_session_env() or {}
-        if isinstance(env, dict):
-            user_id = str(env.get("user_id") or env.get("sender_id") or "").strip()
-            channel_id = str(
-                env.get("channel_id") or env.get("chat_id") or env.get("thread_id") or ""
-            ).strip()
-    except ImportError:
-        pass
-    if not user_id:
-        user_id = (os.environ.get("HERMES_SESSION_USER_ID") or "").strip()
-    if not channel_id:
-        channel_id = (os.environ.get("HERMES_SESSION_CHANNEL_ID") or "").strip()
-    return user_id, channel_id

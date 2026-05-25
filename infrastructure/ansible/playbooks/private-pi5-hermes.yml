@@ -162,6 +162,13 @@
     - name: Configure Hermes DGX keep-warm
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/keep-warm.yml"
 
+    - name: Patch Hermes gateway plugin discovery (Phase D5 / D5.1)
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-hermes-gateway-plugin-discover-fix.yml"
+      when: private_pi5_hermes_gateway_enabled | default(false) | bool
+
+    - name: Restart Hermes chat gateway after deploy
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/restart-chat-gateway.yml"
+
     - name: Verify Hermes deployment
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify.yml"
 
