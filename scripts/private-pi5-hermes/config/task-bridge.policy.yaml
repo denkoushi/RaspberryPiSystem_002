@@ -1,0 +1,27 @@
+# Hermes Discord /task bridge policy (Phase D5)
+# Validated by: scripts/private-pi5-hermes/validate_boundary_policy.py --validate-task-bridge
+
+require_tools_phase: d4
+
+max_prompt_chars: 2000
+max_output_chars: 3500
+runner_timeout_seconds: 600
+
+allowed_toolsets:
+  - file
+  - web
+  - browser
+
+# Case-insensitive substring deny list (prompt injection / obvious exfil)
+deny_prompt_substrings:
+  - "rm -rf"
+  - "curl https://"
+  - "wget https://"
+  - "curl http://"
+  - "wget http://"
+  - "disabled_toolsets"
+  - "ignore previous"
+  - "ignore all previous"
+
+# Hermes quick_command path on Pi5 (must match config.chat.yaml.j2 when bridge enabled)
+bridge_executable_basename: hermes-discord-task-bridge

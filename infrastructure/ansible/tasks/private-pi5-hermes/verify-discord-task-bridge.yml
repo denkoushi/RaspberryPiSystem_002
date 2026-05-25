@@ -1,0 +1,43 @@
+---
+# Phase D5: chat /task plugin + policy (no LLM invocation in chat profile).
+- name: Check Hermes discord-task-bridge plugin manifest exists
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/plugin.yaml"
+  register: private_pi5_hermes_bridge_plugin_manifest_stat
+
+- name: Assert discord-task-bridge plugin manifest is present
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_bridge_plugin_manifest_stat.stat.exists
+    fail_msg: >-
+      private-pi5-discord-task-bridge plugin manifest missing under
+      {{ private_pi5_hermes_data_dir }}/plugins/
+
+- name: Read deployed Hermes chat config.yaml for bridge contract
+  ansible.builtin.slurp:
+    src: "{{ private_pi5_hermes_data_dir }}/config.yaml"
+  register: private_pi5_hermes_chat_config_slurp
+
+- name: Validate chat config aligns with Phase D5 bridge contract
+  ansible.builtin.assert:
+    that:
+      - >-
+        {{
+          (private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool)
+          ==
+          (
+            'private-pi5-discord-task-bridge'
+            in (private_pi5_hermes_chat_config_slurp.content | b64decode)
+          )
+        }}
+      - >-
+        {{
+          not (private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool)
+          or (
+            '\n    - file\n'
+            in (private_pi5_hermes_chat_config_slurp.content | b64decode)
+          )
+        }}
+    fail_msg: >-
+      chat config.yaml does not match private_pi5_hermes_discord_tools_bridge_enabled
+      (expected plugins.enabled to include private-pi5-discord-task-bridge and file still disabled).
