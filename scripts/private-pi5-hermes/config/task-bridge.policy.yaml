@@ -27,6 +27,7 @@ deny_prompt_substrings:
 bridge_executable_basename: hermes-discord-task-bridge
 
 # Phase D5.1: Discord approval relay (file IPC between tools subprocess and chat plugin)
+# write_file / patch are gated via pre_tool_call in the tools runner (not only shell approvals).
 approval_relay:
   enabled: true
   store_dir: /home/hermes/.hermes/task-bridge/approvals

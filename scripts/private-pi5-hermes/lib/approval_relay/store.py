@@ -133,6 +133,13 @@ class FileApprovalStore:
             return None
         return ApprovalResponse.from_mapping(data)
 
+    def clear_pending_files(self) -> None:
+        """Remove request/response IPC files after a decision (tool-write gate)."""
+        for name in (self.REQUEST_FILE, self.RESPONSE_FILE):
+            path = self.task_dir / name
+            if path.is_file():
+                path.unlink()
+
     def wait_for_response(
         self,
         timeout_seconds: float,

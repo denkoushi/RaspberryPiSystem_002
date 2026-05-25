@@ -37,6 +37,8 @@
     - coordinator.py
     - runner.py
     - session_context.py
+    - pending_approval.py
+    - tool_write_gate.py
 
 - name: Assert approval relay package is deployed
   ansible.builtin.assert:

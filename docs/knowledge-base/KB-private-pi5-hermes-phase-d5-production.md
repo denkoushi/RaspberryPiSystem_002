@@ -149,6 +149,7 @@ private_pi5_hermes_gateway_enabled: true
 | Discord write `/task` が **承認なし ~23s** で完了 · TUI 生出力 · store に request なし | D5.1 配布後 **`hermes-gateway` 未再起動**（11:27 起動の **D5 旧 plugin がメモリ常駐**）· playbook は `state: started` のみ | verify 前に **gateway restart** を playbook へ追加 · 手動 hotfix 時も **`systemctl restart hermes-gateway`** |
 | restart 後 **`Unknown command /task`** | **`model_tools` import 時の `discover_plugins()`** が先に走り user plugin をスキップ → gateway 側 idempotent discover が **no-op**（※21:55 事象の主因ではない — 下表参照） | **`gateway/run.py` を `discover_plugins(force=True)` にパッチ**（[`deploy-hermes-gateway-plugin-discover-fix.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/deploy-hermes-gateway-plugin-discover-fix.yml)） |
 | restart + discover fix 後も **`Unknown command /task`** | [`read_gateway_session_context()`](../../scripts/private-pi5-hermes/lib/approval_relay/coordinator.py) が **`get_session_env()` を引数なし**で呼ぶ · Pi5 Hermes API は **`get_session_env(name, default) -> str`** · handler 実行時 **TypeError** → gateway plugin dispatch が DEBUG で握りつぶし skill 未登録扱い | [`approval_relay/session_context.py`](../../scripts/private-pi5-hermes/lib/approval_relay/session_context.py) でキー単位アダプタ + `os.environ` フォールバック · verify smoke 追加 |
+| write `/task` が **承認なし**で `write_file` 完了（`request.json` なし） | D5.1 relay は **`tools.approval`（危険シェルコマンド）** のみフック · LLM は **`write_file` / `patch` ツール**で workspace 書き込み（承認経路外） | **`approval_relay/tool_write_gate.py`** — runner が `pre_tool_call` で write ツールを file IPC 承認に接続（2026-05-26 repo） |
 
 ### Discord `/task` E2E（2026-05-25 夜 · write 承認）
 
