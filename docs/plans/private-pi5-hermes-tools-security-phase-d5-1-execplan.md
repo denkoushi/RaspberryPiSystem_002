@@ -26,8 +26,9 @@ Phase D5 の `/task` 橋は tools プロファイルを **subprocess `hermes cha
 - [x] plugin — `/task-approve` · `/task-deny` · `pre_gateway_dispatch`（yes/no テキスト）
 - [x] Ansible deploy/verify D5.1 · smoke 拡張
 - [x] unittest + smoke **PASS**（ローカル）
-- [ ] 実機デプロイ（私用 Pi5）
-- [ ] Discord write タスク E2E（手動）
+- [x] 実機デプロイ（私用 Pi5 · `raspi5-private`）— 2026-05-25 · [KB D5 §D5.1](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映)
+- [x] Pi5 実機: read-only tools · write + file IPC 承認 sim — **OK**
+- [ ] Discord write タスク E2E（手動 · `/task` + yes/`/task-approve`）
 
 ## 設計（確定）
 

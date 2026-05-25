@@ -465,26 +465,33 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 **記録**: [KB Phase D5 本番](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md)。
 
 正本: [Phase D5 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d5-execplan.md) · [ADR D5](../decisions/ADR-20260525-private-pi5-hermes-discord-tools-bridge-d5.md)。
-## Phase D5.1 — Discord 承認中継（2026-05-25 · repo 実装）
+## Phase D5.1 — Discord 承認中継（2026-05-25 · 私用 Pi5 本番反映）
 
 **目的**: `/task` 実行時の **manual 承認**を Discord 上で完結（file IPC · yes/no · `/task-approve`/`/task-deny`）。
 
-**デプロイ**: D5 と同一 playbook（`deploy-discord-task-bridge.yml` が `approval_relay/` · store ディレクトリ · `hermes-task-with-approval-relay` を追加配置）。
+**デプロイ**: 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh`（D5 と同一 · `approval_relay/` · store · CLI 追加）。
 
-**検証**:
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| 1 | 私用 Pi5 `raspi5-private` | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | **`PLAY RECAP` ok=107 changed=9 failed=0**（約 **158s**） |
+
+**Pi5 追加検証**（Runbook 既存パターン）:
 
 ```bash
-./scripts/private-pi5-hermes/verify-discord-task-bridge-smoke.sh
-python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_*.py'
+# tools D4 契約（HERMES_TOOLS_PHASE を明示）
+ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m copy -a "src=scripts/private-pi5-hermes/verify-tools-profile-deploy.sh dest=/tmp/verify-tools-profile-deploy.sh mode=0755" -b
+ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m shell -a "HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh" -b
 ```
 
-**Discord 利用（write タスク）**:
+**Discord 利用（write タスク · 手動 E2E 未）**:
 
 1. `/task Create hello-d51.txt in workspace with content test`
 2. 承認依頼が届いたら `yes` または `/task-approve`
 3. 拒否は `no` または `/task-deny`
 
-**記録**: [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md) · [KB D5 §D5.1](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装完了)
+**記録**: [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md) · [KB D5 §D5.1](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映)
 
 
 ## トラブルシュート（クイック）
@@ -515,6 +522,7 @@ python3 -m unittest discover -s scripts/private-pi5-hermes/tests -p 'test_*.py'
 | D5 verify: file disabled 不一致 | Ansible **`'    - file\n'`** 厳密 match | [`verify-discord-task-bridge.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-task-bridge.yml) 更新後に再デプロイ · [KB D5](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) |
 | `/task` がタイムアウト | tools **manual 承認** 待ち · relay 無効 | read-only で再試行 · D5.1 デプロイ確認 · `/task-approve` / yes |
 | 承認依頼が来ない | `approval_relay.enabled: false` · store 未配置 | policy + [verify-discord-approval-relay.yml](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-approval-relay.yml) |
+| `/task` relay が即失敗 | bash ラッパ hermes → 誤 venv python | [`tools_profile_runner.py`](../../scripts/private-pi5-hermes/lib/tools_profile_runner.py) の venv 解決 · [KB D5 §D5.1 Investigation](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#investigationd51-デプロイ実機検証) |
 | yes/no が雑談になる | pending task なし | write タスク実行中のみ intercept · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) |
 
 ## ロールバック

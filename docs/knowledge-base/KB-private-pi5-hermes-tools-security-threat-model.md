@@ -109,7 +109,9 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 - [x] `/task-approve` · `/task-deny` · yes/no（`pre_gateway_dispatch`）
 - [x] Ansible deploy/verify D5.1 · smoke 拡張
 - [x] unittest + smoke PASS（ローカル）
-- [ ] 実機デプロイ + write E2E
+- [x] 実機デプロイ（私用 Pi5）· Ansible verify + smoke — 2026-05-25
+- [x] Pi5: read-only tools · write + file IPC 承認 sim — [KB D5 §D5.1](./KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映)
+- [ ] Discord `/task` E2E（手動 · write + 承認 UX）
 
 正本: [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md)
 
