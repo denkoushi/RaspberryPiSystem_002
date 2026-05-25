@@ -28,7 +28,8 @@ Phase D5 の `/task` 橋は tools プロファイルを **subprocess `hermes cha
 - [x] unittest + smoke **PASS**（ローカル）
 - [x] 実機デプロイ（私用 Pi5 · `raspi5-private`）— 2026-05-25 · [KB D5 §D5.1](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#phase-d51-追記2026-05-25--repo-実装--私用-pi5-本番反映)
 - [x] Pi5 実機: read-only tools · write + file IPC 承認 sim — **OK**
-- [ ] Discord write タスク E2E（手動 · `/task` + yes/`/task-approve`）— gateway restart 済（2026-05-25 21:40 JST）· 再試行待ち
+- [x] Pi5 実機: session context API fix デプロイ + verify — **OK**（2026-05-25 22:36 JST · [KB D5 §D5.1 本番デプロイ](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイsession-context-api-修正--2026-05-25-2236-jst)）
+- [ ] Discord write タスク E2E（手動 · `/task` + yes/`/task-approve`）— handler 直呼び OK · Discord UI 再試行待ち
 
 ## 設計（確定）
 

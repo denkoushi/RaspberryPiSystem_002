@@ -476,6 +476,7 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 | # | 対象 | 手順 | 結果 |
 |---|------|------|------|
 | 1 | 私用 Pi5 `raspi5-private` | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | **`PLAY RECAP` ok=107 changed=9 failed=0**（約 **158s**） |
+| 2 | 同上（session context API fix） | 同上 · branch `fix/private-pi5-hermes-task-session-context-api` | **`PLAY RECAP` ok=123 changed=6 failed=0**（約 **175s** · 2026-05-25 22:36 JST） |
 
 **Pi5 追加検証**（Runbook 既存パターン）:
 

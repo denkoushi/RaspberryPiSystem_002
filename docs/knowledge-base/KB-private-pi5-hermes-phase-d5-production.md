@@ -107,7 +107,37 @@ private_pi5_hermes_gateway_enabled: true
 | tools D4 契約 | gateway active · Bearer 200 | **OK** |
 | read-only tools 実行 | 承認なし · ~10–60s | **~18s** |
 | write + file IPC 承認 | request → response → ファイル作成 | **OK**（Discord 外 sim） |
-| Discord `/task` E2E | 承認 UX 完結 | **未** |
+| Discord `/task` E2E | 承認 UX 完結 | **未**（Discord UI 手動）· handler 直呼び **OK**（2026-05-25 22:36 JST デプロイ後） |
+
+### 本番デプロイ（session context API 修正 · 2026-05-25 22:36 JST）
+
+| 項目 | 内容 |
+|------|------|
+| **branch** | `fix/private-pi5-hermes-task-session-context-api` @ `79d1fdf3` |
+| **対象** | 私用 Pi5 `raspi5-private`（inventory: `private-pi5-stackchan-bridge`） |
+| **手順** | 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` |
+| **PLAY RECAP** | **ok=123 changed=6 failed=0**（約 **175s**） |
+| **gateway** | `hermes-gateway` **active** · 起動 **22:36:19 JST** · PID **150145** |
+| **配布物** | `approval_relay/session_context.py` · `coordinator.py` re-export · verify smoke 拡張 · gateway restart + `discover_plugins(force=True)` パッチ |
+
+**実機検証（Ansible verify + SSH smoke）**:
+
+| 検証 | 結果 |
+|------|------|
+| `session_context.py` 配置 | **OK** |
+| session context adapter smoke（TypeError → os.environ フォールバック） | **OK** |
+| async `/task` handler smoke | **OK** |
+| gateway/plugin 鮮度（restart ≥ plugin mtime） | **OK** |
+| `discover_plugins(force=True)` パッチ存在 | **OK** |
+| plugin discovery order smoke（`task` handler 登録） | **OK** |
+| handler 直呼び `List files in workspace` | **OK** · ~31s · **TypeError なし** |
+| gateway.log `Unknown command /task` | **21:45 / 21:55 のみ**（デプロイ後 **新規なし**） |
+
+**仕様（session context 契約）**:
+
+- Hermes 現 API: `get_session_env(name: str, default="") -> str`（キー単位）
+- adapter: `HERMES_SESSION_USER_ID` / `HERMES_SESSION_CHAT_ID` / `HERMES_SESSION_THREAD_ID` を順に解決
+- `TypeError` / `ImportError` 時は `os.environ` フォールバック（gateway が plugin 例外を DEBUG で握りつぶすため **plugin 内で完結必須**）
 
 ### Investigation（D5.1 デプロイ・実機検証）
 
@@ -127,6 +157,7 @@ private_pi5_hermes_gateway_enabled: true
 | `/task List files in workspace` | OK · ~23s | read-only · 承認不要 |
 | `/task Create hello-d51.txt ...` | **NG** · ~23s · 承認なしで作成 | 旧 plugin 経路（上表根因） |
 | **gateway restart 後**（21:40 JST · PID 140530） | playbook verify **PASS** · write relay sim **OK** | `hello-d51-restart.txt` · `relay-restart-ok` · ~91s |
+| **session context fix デプロイ後**（22:36 JST · PID 150145） | Ansible verify **PASS** · handler 直呼び **OK** · Unknown command **再発なし** | branch `fix/private-pi5-hermes-task-session-context-api` |
 | Discord write `/task` 再試行 | **要確認** | 承認プロンプト → yes → 作成を期待 |
 
 正本: [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md) · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [Runbook §D5.1](../runbooks/private-pi5-hermes-deploy.md#phase-d51--discord-承認中継2026-05-25--repo-実装)
