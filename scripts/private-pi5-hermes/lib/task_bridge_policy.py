@@ -7,6 +7,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+try:
+    from .approval_relay.policy import ApprovalRelayPolicy, validate_approval_relay_document
+except ImportError:
+    from approval_relay.policy import ApprovalRelayPolicy, validate_approval_relay_document
+
 
 @dataclass(frozen=True)
 class TaskBridgePolicy:
@@ -19,6 +24,7 @@ class TaskBridgePolicy:
     allowed_toolsets: tuple[str, ...]
     deny_prompt_substrings: tuple[str, ...]
     bridge_executable_basename: str
+    approval_relay: ApprovalRelayPolicy
 
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> TaskBridgePolicy:
@@ -51,6 +57,13 @@ class TaskBridgePolicy:
         if not basename:
             raise ValueError("bridge_executable_basename is required")
 
+        relay_raw = data.get("approval_relay")
+        relay_errors = validate_approval_relay_document(
+            relay_raw if isinstance(relay_raw, dict) else None
+        )
+        if relay_errors:
+            raise ValueError("; ".join(relay_errors))
+
         return cls(
             require_tools_phase=phase,
             max_prompt_chars=_positive_int("max_prompt_chars"),
@@ -59,6 +72,9 @@ class TaskBridgePolicy:
             allowed_toolsets=allowed,
             deny_prompt_substrings=_str_tuple("deny_prompt_substrings"),
             bridge_executable_basename=basename,
+            approval_relay=ApprovalRelayPolicy.from_mapping(
+                relay_raw if isinstance(relay_raw, dict) else None
+            ),
         )
 
 
@@ -75,6 +91,9 @@ def validate_task_bridge_document(data: dict[str, Any]) -> list[str]:
         TaskBridgePolicy.from_mapping(data)
     except ValueError as exc:
         errors.append(str(exc))
+    relay_raw = data.get("approval_relay")
+    if relay_raw is not None and not isinstance(relay_raw, dict):
+        errors.append("approval_relay must be a mapping")
     return errors
 
 

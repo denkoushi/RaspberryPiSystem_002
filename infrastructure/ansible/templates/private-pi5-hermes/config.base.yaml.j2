@@ -6,6 +6,9 @@ terminal:
   env_passthrough: []
   container_memory: 2048
   container_cpu: 1
+  # Hermes default container_disk (51200) sets Docker --storage-opt, which requires
+  # overlay on XFS with pquota. Pi5 ext4 fails container create → file tools timeout.
+  container_disk: 0
 {% if hermes_terminal_mount_cwd_to_workspace | default(false) | bool %}
   docker_mount_cwd_to_workspace: true
 {% endif %}

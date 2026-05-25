@@ -173,6 +173,10 @@
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-task-bridge.yml"
       when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
 
+    - name: Verify Hermes Discord approval relay (Phase D5.1)
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/verify-discord-approval-relay.yml"
+      when: private_pi5_hermes_discord_tools_bridge_enabled | default(false) | bool
+
     - name: Summarize Hermes deployment
       ansible.builtin.debug:
         msg:

@@ -1,0 +1,94 @@
+---
+# Phase D5.1: Discord approval relay (file IPC store + plugin commands + bootstrap CLI).
+- name: Read deployed task-bridge policy for approval relay contract
+  ansible.builtin.slurp:
+    src: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/task-bridge.policy.yaml"
+  register: private_pi5_hermes_task_bridge_policy_slurp
+
+- name: Assert approval relay is enabled in deployed policy
+  ansible.builtin.assert:
+    that:
+      - "'approval_relay:' in (private_pi5_hermes_task_bridge_policy_slurp.content | b64decode)"
+      - "'enabled: true' in (private_pi5_hermes_task_bridge_policy_slurp.content | b64decode)"
+      - "'store_dir:' in (private_pi5_hermes_task_bridge_policy_slurp.content | b64decode)"
+    fail_msg: >-
+      task-bridge.policy.yaml on host is missing Phase D5.1 approval_relay section.
+
+- name: Check approval relay store directory exists with restrictive mode
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_data_dir }}/task-bridge/approvals"
+  register: private_pi5_hermes_approval_store_stat
+
+- name: Assert approval relay store directory is present
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_approval_store_stat.stat.exists
+      - private_pi5_hermes_approval_store_stat.stat.isdir
+    fail_msg: >-
+      approval relay store directory missing:
+      {{ private_pi5_hermes_data_dir }}/task-bridge/approvals
+
+- name: Check approval relay package files on plugin path
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/approval_relay/{{ item }}"
+  register: private_pi5_hermes_approval_relay_files
+  loop:
+    - store.py
+    - coordinator.py
+    - runner.py
+
+- name: Assert approval relay package is deployed
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "approval relay module missing: {{ item.item }}"
+  loop: "{{ private_pi5_hermes_approval_relay_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Check hermes-task-with-approval-relay CLI exists
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_home }}/.local/bin/hermes-task-with-approval-relay"
+  register: private_pi5_hermes_approval_relay_cli_stat
+
+- name: Assert hermes-task-with-approval-relay CLI is executable
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_approval_relay_cli_stat.stat.exists
+      - private_pi5_hermes_approval_relay_cli_stat.stat.executable
+    fail_msg: "hermes-task-with-approval-relay CLI missing or not executable"
+
+- name: Smoke approval relay plugin register (3 slash commands + hook)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import runpy
+        import sys
+        plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
+        sys.path.insert(0, plugin_dir)
+        ns = runpy.run_path(plugin_dir + "/__init__.py")
+        register = ns.get("register")
+        assert callable(register), "register() missing"
+        class Ctx:
+            def __init__(self):
+                self.commands = []
+                self.hooks = []
+            def register_command(self, name, handler, description=""):
+                self.commands.append(name)
+            def register_hook(self, name, callback):
+                self.hooks.append(name)
+        ctx = Ctx()
+        register(ctx)
+        assert set(ctx.commands) >= {"task", "task-approve", "task-deny"}, ctx.commands
+        assert "pre_gateway_dispatch" in ctx.hooks
+        print("ok")
+  register: private_pi5_hermes_approval_relay_plugin_smoke
+  changed_when: false
+
+- name: Assert approval relay plugin smoke passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_approval_relay_plugin_smoke.rc == 0
+    fail_msg: "approval relay plugin register smoke failed"

@@ -19,7 +19,7 @@
 | **`/task`** | plugin `ctx.register_command("task", …)` → `run_tools_profile_prompt`（**`--toolsets file,web,browser` 固定**） |
 | **tools** | D4 維持 · `hermes-tools-gateway` **active** · isolated `~/.hermes-tools` HOME |
 | **policy** | `task-bridge.policy.yaml`（prompt 長上限・deny パターン） |
-| **承認** | tools **`approvals.mode: manual`** — 非対話実行は承認待ちでタイムアウトし得る（**D5.1 未実装**） |
+| **承認** | tools **`approvals.mode: manual`** — **D5.1** で Discord 承認中継（file IPC · `/task-approve`/`/task-deny` · yes/no） |
 
 ## fragment（D5 必須・コミット禁止）
 
@@ -74,12 +74,65 @@ private_pi5_hermes_gateway_enabled: true
 - verify 失敗時は **実機 `config.yaml` を slurp して文字列マッチを疑う**（D3/D4 と同型）
 - plugin 変更後は **`hermes-gateway` restart**（デプロイ playbook が再起動する）
 - Pi5 上の Python smoke は **plugin ディレクトリを `sys.path` に載せる**（repo の `lib` パッケージ import とは別）
-- Discord E2E は **read-only プロンプト**から開始 · manual 承認待ちは **D5.1** までタイムアウトし得る
+- Discord E2E は **read-only プロンプト**から開始 · write タスクは **D5.1 承認中継**（[ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md)）
+
+## Phase D5.1 追記（2026-05-25 · repo 実装 + 私用 Pi5 本番反映）
+
+| 項目 | 内容 |
+|------|------|
+| **モジュール** | `scripts/private-pi5-hermes/lib/approval_relay/`（FileApprovalStore · coordinator · runner） |
+| **policy** | `approval_relay.enabled: true` · `store_dir: ~/.hermes/task-bridge/approvals` |
+| **plugin** | `/task-approve` · `/task-deny` · `pre_gateway_dispatch`（pending 時の yes/no） |
+| **runner** | `HERMES_EXEC_ASK=1` + in-process `hermes_cli.main`（notify 登録を同一プロセスに保持） |
+| **branch** | `feat/private-pi5-hermes-phase-d5-1-approval-relay` @ `27c10d05` + hotfix（venv python 解決） |
+
+### 実施タイムライン（2026-05-25 夜）
+
+1. **標準デプロイ**: `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` → **`PLAY RECAP` ok=107 changed=9 failed=0**（約 **158s**）
+2. **Ansible verify**: D5 · D5.1 · tools D4 · `container_disk: 0` — **すべて PASS**
+3. **Pi5 smoke**: plugin 3 コマンド + `pre_gateway_dispatch` + FileApprovalStore ラウンドトリップ — **OK**
+4. **Pi5 tools 契約**: `HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh` — **OK**
+5. **read-only 実機**: tools `hermes chat -q 'List files in workspace' --toolsets file` — **~18s** · workspace 応答 OK
+6. **write + 承認 relay 実機**（`response.json` 自動投入）: `hello-d51-verify.txt` 作成 — **~91s** · 内容 `relay-ok` 確認
+7. **Discord UI E2E**（`/task` + yes/no または slash）— **未実施**（手動・次タスク）
+
+### 検証結果（実機）
+
+| チェック | 期待 | 実測 |
+|----------|------|------|
+| `approval_relay/` 配置 | plugin 配下 | **OK** |
+| store dir `0700` | `~/.hermes/task-bridge/approvals` | **OK** |
+| `hermes-task-with-approval-relay` CLI | executable | **OK** |
+| plugin register | task / task-approve / task-deny + hook | **OK** |
+| tools D4 契約 | gateway active · Bearer 200 | **OK** |
+| read-only tools 実行 | 承認なし · ~10–60s | **~18s** |
+| write + file IPC 承認 | request → response → ファイル作成 | **OK**（Discord 外 sim） |
+| Discord `/task` E2E | 承認 UX 完結 | **未** |
+
+### Investigation（D5.1 デプロイ・実機検証）
+
+| 症状 | 根因 | Fix |
+|------|------|-----|
+| `verify-tools-profile-deploy.sh` が d1 扱いで FAIL | ansible `script` モジュールに **`HERMES_TOOLS_PHASE` 未伝播** | **`HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh`**（Runbook 既存パターン） |
+| approval relay write テストが即 FAIL | **`/home/hermes/.local/bin/hermes` は bash ラッパ** · `_resolve_hermes_python` が `/usr/bin/python3` にフォールバック → `hermes_cli` 不在 | ラッパ内 `exec ".../venv/bin/hermes"` を解析 · fallback **`~/.hermes/hermes-agent/venv/bin/python3`**（[`tools_profile_runner.py`](../../scripts/private-pi5-hermes/lib/tools_profile_runner.py)） |
+| 実機 venv パス想定違い | 当初 `~/.local/share/hermes-agent/venv` を仮定 | 正: **`~/.hermes/hermes-agent/venv/bin/python3`** |
+
+正本: [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md) · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [Runbook §D5.1](../runbooks/private-pi5-hermes-deploy.md#phase-d51--discord-承認中継2026-05-25--repo-実装)
 
 ## 未確認
 
-- Discord 上での **`/task List files in workspace`** 応答（tools 承認フロー含む）
+- Discord 上での **`/task List files in workspace`** 応答（tools 承認フロー含む）— **2026-05-25 実機で初回 E2E 実施・2 件の根因を修正**（下記 KB 追記）
 - 通常雑談メッセージが **chat LLM のみ**のままであることの回帰
+
+## Investigation（Discord `/task` E2E — 2026-05-25 夕方）
+
+| 症状 | 根因 | Fix |
+|------|------|-----|
+| `/task` 送信後 **~5 分無反応**（👀 のみ）→ 長い TUI 出力 | plugin handler が **同期 `subprocess.run`** で tools `hermes chat -q` を実行し **Discord gateway の asyncio ループをブロック**（`heartbeat blocked` 270s+） | **`async def _handle_task_command` + `asyncio.to_thread(run_task_bridge, …)`**（[`discord_task_bridge_plugin.py`](../../scripts/private-pi5-hermes/lib/discord_task_bridge_plugin.py)） |
+| 応答は来るが **Docker 120s タイムアウト**・file 一覧不可 | Hermes 既定 **`container_disk: 51200`** が Docker **`--storage-opt`** を付与 → Pi5 **ext4 overlay** では `containers/create` 失敗（dockerd: `storage-opt is supported only for overlay over xfs with pquota`） | **`container_disk: 0`** を [`config.base.yaml.j2`](../../infrastructure/ansible/templates/private-pi5-hermes/config.base.yaml.j2) に明示 · verify 追加 |
+| 初回 `/task` がさらに遅い | **`nikolaik/python-nodejs:python3.11-nodejs20`** 初回 pull（~3 分） | 実機で **docker pull 済** · 以降は ~1 分前後（LLM+tool） |
+
+**修正後実機（2026-05-25）**: `container_disk: 0` 反映 + イメージ pull 後、`hermes chat -q 'List files in workspace' --toolsets file` → **~54s** · workspace 参照 OK（Docker コンテナ起動成功）。
 
 ## References
 
