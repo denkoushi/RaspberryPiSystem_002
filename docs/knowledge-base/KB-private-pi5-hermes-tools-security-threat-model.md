@@ -79,12 +79,24 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 正本: [KB Phase D2 本番](./KB-private-pi5-hermes-phase-d2-production.md) · [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md).
 
-## D2+ チェックリスト（未実施）
+## D2+ チェックリスト
 
 - [x] （D2 で file 完了 — [KB Phase D2 本番](./KB-private-pi5-hermes-phase-d2-production.md)）
 - [x] web URL allowlist を `boundary-policy.tools.yaml` と同期（**Phase D3 本番完了** · [KB Phase D3 本番](./KB-private-pi5-hermes-phase-d3-production.md) · [ExecPlan D3](../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)）
-- [ ] browser 隔離 Docker · `AGENT_BROWSER_ARGS` 実機検証
+- [ ] browser 隔離 Docker · `AGENT_BROWSER_ARGS` 実機検証（**Phase D4**）
 - [ ] terminal は最後（または CLI のみ）
+
+## AI執事化 — 先読みチェックリスト（未実施・北極星）
+
+製品方針: [AI執事ビジョンとロードマップ](../plans/private-pi5-hermes-butler-vision-and-roadmap.md)。**chat に全ツール直結はしない**（Discord 橋 + tools プロファイル維持）。
+
+| 能力 | 主なリスク | 有効化前に必要 |
+|------|------------|----------------|
+| Discord → tools 委譲 | プロンプトインジェクション · 承認 fatigue | D5 ExecPlan · タスク allowlist · manual 維持 |
+| memory / リマインド | プライバシー · 保持範囲 | D6 · 削除手順 · Discord 通知設計 |
+| X 定時 | API/規約 · egress | D8 · boundary 拡張 |
+| Home Assistant / カメラ | LAN 横移動 · 物理セキュリティ | D9 · grants/UFW · 読取専用から |
+| code / terminal | docker 脱出 · ランサム | D10 · 脅威モデル「最後」遵守 |
 
 ## References
 

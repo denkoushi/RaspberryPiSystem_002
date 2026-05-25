@@ -7,6 +7,7 @@
 | 種別 | パス |
 |------|------|
 | 計画・進捗 | [private-pi5-hermes-agent-plan.md](../../docs/plans/private-pi5-hermes-agent-plan.md) |
+| AI執事ビジョン（北極星・D4以降） | [private-pi5-hermes-butler-vision-and-roadmap.md](../../docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md) |
 | Runbook | [private-pi5-hermes-deploy.md](../../docs/runbooks/private-pi5-hermes-deploy.md) |
 | KB（install 障害） | [KB-private-pi5-hermes-install-noninteractive.md](../../docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md) |
 | KB（403 / Bearer） | [KB-private-pi5-hermes-dgx-403-bearer-token.md](../../docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
