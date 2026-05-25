@@ -1,4 +1,15 @@
-# Hermes Agent — tools profile (Phase D1 skeleton or Phase D2 file-only)
+{%- set hermes_security_extra_lines -%}
+{% if private_pi5_hermes_tools_web_enabled | default(false) | bool %}
+website_blocklist:
+  enabled: true
+  domains:
+{% for domain in private_pi5_hermes_website_blocklist_domains | default([]) %}
+    - "{{ domain }}"
+{% endfor %}
+  shared_files: []
+{% endif %}
+{%- endset -%}
+# Hermes Agent — tools profile (Phase D1 / D2 file-only / D3 file+web)
 {% include 'config.base.yaml.j2' %}
 
 model:
@@ -35,6 +46,11 @@ agent:
   system_prompt: |
 {% if (private_pi5_hermes_tools_system_prompt | default('') | trim) | length > 0 %}
 {{ private_pi5_hermes_tools_system_prompt | trim | indent(4, first=True) }}
+{% elif private_pi5_hermes_tools_web_enabled | default(false) | bool %}
+    私用 Pi5 の Hermes 作業用プロファイル（Phase D3）です。
+    file ツールは {{ private_pi5_hermes_tools_data_dir }}/workspace（コンテナ内 /workspace）のみ操作してください。
+    web ツールは {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }} 配下の HTTP のみ利用してください（HTTPS・LAN・localhost は不可）。
+    workspace 外のパス・削除の連鎖・システム設定変更は行わないでください。危険な操作は手動承認が必要です。
 {% elif private_pi5_hermes_tools_file_enabled | default(false) | bool %}
     私用 Pi5 の Hermes 作業用プロファイル（Phase D2）です。
     file ツールは {{ private_pi5_hermes_tools_data_dir }}/workspace（コンテナ内 /workspace）のみ操作してください。
@@ -44,7 +60,9 @@ agent:
     ツールはまだ無効です。将来の file/web/browser 有効化前に境界ポリシーを確認してください。
 {% endif %}
   disabled_toolsets:
+{% if not (private_pi5_hermes_tools_web_enabled | default(false) | bool) %}
     - web
+{% endif %}
     - browser
     - terminal
 {% if not (private_pi5_hermes_tools_file_enabled | default(false) | bool) %}

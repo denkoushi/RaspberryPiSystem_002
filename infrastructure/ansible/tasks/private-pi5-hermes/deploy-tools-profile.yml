@@ -39,6 +39,32 @@
     group: "{{ private_pi5_hermes_group }}"
     mode: "0644"
 
+- name: Emit Hermes security blocklist from boundary policy (Phase D3)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
+      - --emit-hermes-security
+  delegate_to: localhost
+  become: false
+  register: private_pi5_hermes_security_emit
+  changed_when: false
+  when: private_pi5_hermes_tools_web_enabled | default(false) | bool
+
+- name: Set Hermes website blocklist domains for tools template (Phase D3)
+  ansible.builtin.set_fact:
+    private_pi5_hermes_website_blocklist_domains: >-
+      {{
+        (
+          (private_pi5_hermes_security_emit.stdout | from_json).hermes_security.website_blocklist.domains
+          | default([])
+        )
+      }}
+  when:
+    - private_pi5_hermes_tools_web_enabled | default(false) | bool
+    - private_pi5_hermes_security_emit is defined
+    - private_pi5_hermes_security_emit.rc == 0
+
 - name: Deploy Hermes tools config.yaml
   ansible.builtin.template:
     src: "../../templates/private-pi5-hermes/config.tools.yaml.j2"

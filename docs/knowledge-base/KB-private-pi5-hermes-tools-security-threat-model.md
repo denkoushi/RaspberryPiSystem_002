@@ -81,8 +81,8 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 ## D2+ チェックリスト（未実施）
 
-- [ ] （D2 で file は完了予定）
-- [ ] web URL allowlist を `boundary-policy.tools.yaml` と同期
+- [x] （D2 で file 完了 — [KB Phase D2 本番](./KB-private-pi5-hermes-phase-d2-production.md)）
+- [x] web URL allowlist を `boundary-policy.tools.yaml` と同期（**Phase D3 本番完了** · [KB Phase D3 本番](./KB-private-pi5-hermes-phase-d3-production.md) · [ExecPlan D3](../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)）
 - [ ] browser 隔離 Docker · `AGENT_BROWSER_ARGS` 実機検証
 - [ ] terminal は最後（または CLI のみ）
 
