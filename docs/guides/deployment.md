@@ -634,6 +634,28 @@ update-frequency: medium
   - **`verify-phase12-real.sh` のみ `deploy-status` FAIL** → 全台 `--limit` 完走後に再実行（[KB-369](../knowledge-base/KB-369-leader-order-board-api-internal-latency.md)）。
 - **ナレッジ**: [KB-297 §24色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-palette-24-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)·[verification-checklist §6.6.23](verification-checklist.md#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20)·実装 **`be936a6e`**·**PR [#307](https://github.com/denkoushi/RaspberryPiSystem_002/pull/307)**·**`main` squash `f8c1f6d2`**。
 
+### 補足（2026-05-25 · **DGXリソース `private_ok` 強制メモリ解放（`stop-force`）**·**Pi5→DGX 順次・各 1 台**） {#dgx-resource-private-ok-strong-stop-force-2026-05-25}
+
+- **変更概要（正本）**: [KB-365 §本番反映（2026-05-25）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)。**`private_ok` + `applyWorkloadChanges`** で **`experiment-lab` → `agent-container` 停止**に加え、**`system-prod-gateway` を `POST /stop-force`**（keep_warm 上書き）で計画。**通常 `/stop` は維持**（Hermes・業務 warm 契約）。**Pi5**: `dgx-resource.policy-arbitrator.ts`・`dgx-resource.gateway-runtime.executor.ts`（内部 `stop_force`）·管理 Web 文言。**DGX**: `control-server.py` の **`POST /stop-force`**。**到達経路**: Pi5 → **`38081/stop-force`** → gateway が **`39090/stop-force`** へプロキシ（本番反映時に gateway 未転送だと **404** となるため **`gateway-server.py` も同窗口で更新**）。
+- **代表コミット**: **`7fe1ca15`**（`fix(dgx): force-stop gateway in private_ok mode`）·**`2d91d032`**（`fix(api): keep force stop internal to dgx orchestration`）·**CI `26386720859` success**·gateway 転送は本番デプロイ時 **`fix(dgx): proxy stop-force on gateway`**（`main` マージ後 HEAD）。
+- **対象ホスト（順序固定）**: **① `raspberrypi5` のみ**（**`--limit raspberrypi5`**）。**② DGX Spark**（**`ubudgxkoushi@100.118.82.72`**·Ansible 対象外·**`scp` + PID ガード再起動**）。**Pi4／Pi3**: **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）。
+- **標準コマンド（Pi5）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-strong-private-ok infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **標準手順（DGX）**: [dgx-system-prod-local-llm.md §本番反映 2026-05-25](../runbooks/dgx-system-prod-local-llm.md)（**`control-server.py`** → **`/srv/dgx/system-prod/bin/`**·**`control-server.pid` 停止→削除→`start-control-server.sh`**。続けて **`gateway-server.py`** → **同一 PID ガード手順で `start-gateway-server.sh`**）。
+- **本番デプロイ（実績・2026-05-25）**:
+  - **Pi5** — **Detach `20260525-162034-25035`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 938s**·サマリ **`Git: changed`**·**Docker compose 再起動 `changed`**）。
+  - **DGX control-server** — **`scp scripts/dgx-local-llm-system/control-server.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/control-server.py`**·再起動後 **`39090/healthz` → 401**（トークン未付与で正常）·`grep stop-force` で新コード確認。
+  - **DGX gateway** — 反映前 **`curl -X POST http://127.0.0.1:38081/stop-force` → 404**（転送未実装）→ repo の **`gateway-server.py`** を **`scp`** し再起動後 **`stop-force` → 403**（ダミートークン·**経路到達 OK**）·**`healthz` 200**。
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 デプロイ後 **約 68s**·Tailscale **`100.106.158.2`**）。
+- **知見**:
+  - **`stop_force` は公開 API 契約（`EXECUTE_TARGET_ACTION`）に含めない**。オーケストレーション内部のみ（`DgxControlTargetAction` と `ensureAuxRuntimeAction` ガード）。
+  - **Pi5 の停止 URL は `38081/stop` 派生**のため、**`control-server.py` だけでは不十分**。**gateway が `/stop-force` を `39090` へ転送**する必要がある（`/start`・`/stop` と同型）。
+  - **`start-control-server.sh` / `start-gateway-server.sh` の PID ガード**は Phase12 と同趣旨（**`scp` のみでは旧プロセス継続**）。
+- **トラブルシュート**:
+  - **`private_ok` 後も 27B/vLLM が残る** → Pi5 **`api` ref**·DGX **`control-server.py` に `stop-force`**·**`38081/stop-force` が 404 でないか**（gateway 未更新）。
+  - **管理 UI が旧文言** → Pi5 **`web` 再ビルド**と **強制リロード**（[verification-checklist.md](verification-checklist.md) §6.6.4）。
+  - **強制停止が 403** → **`X-Runtime-Control-Token`** と vault **`api_local_llm_runtime_control_token`** の drift。
+- **ナレッジ**: [KB-365 §2026-05-25](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)·[Runbook §強制停止](../runbooks/dgx-system-prod-local-llm.md#強制停止stop-force)·[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
+
 ### 補足（2026-05-10 · **DGX メインAI 単一キュー・用途別停止抑止・実験優先時 gateway 自動停止除外**·**Pi5 API のみ**·**`raspberrypi5` のみ**） {#dgx-main-llm-single-queue-stop-policy-2026-05-10}
 
 - **変更概要（正本）**: [KB-365 §本番反映（2026-05-10）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)。**要点**: **`enqueueMainLocalLlmRuntimeControl`** で **推論 on_demand の `/start`・`/stop`**（`HttpOnDemandLocalLlmRuntimeController`）と **`executeGatewayRuntimeStartStop`**（DGX 管理 UI 経由の `system-prod-gateway`）を **同一キューに直列化**（`local-llm-runtime-command-queue.ts`）。**`shouldSuppressLocalLlmRuntimeStop`** — `photo_label` / `document_summary` / `admin_console_chat` / **`stackchan_chat`** / **`agent_container_task`** は **参照 0 でも release 時 `/stop` 抑止**（業務/Agent warm 維持）。**`experiment_first` + `applyWorkloadChanges`** の事前調停は **`private-comfyui` のみ**自動停止・**`system-prod-gateway` の自動停止を削除**（`dgx-resource.policy-arbitrator.ts` の `planWorkloadAdjustmentsBeforePolicyChange`）。**業務優先・私用OK**への調停では **`experiment-lab` に続けて `agent-container`** も停止試行対象に追加（POST が Pi5 に設定されている場合）。
