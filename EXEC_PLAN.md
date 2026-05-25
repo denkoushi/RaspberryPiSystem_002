@@ -2371,9 +2371,9 @@
 
 ### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase D2 本番完了（2026-05-24）** · **Phase D3 repo 実装完了（2026-05-25）** — file+web · `website_blocklist` 同期。**次: Phase D3 実機デプロイ**（私用 Pi5 のみ）。
+**状態**: **Phase D3 本番完了（2026-05-25）** — file+web · `website_blocklist` 同期 · 私用 Pi5 のみデプロイ・検証済。**次: browser 隔離フェーズ設計** または Discord 回帰（任意）。
 
-**正本**: [ExecPlan D3](./docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)·[KB Phase D2 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)·[KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)·[ExecPlan D2](./docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
+**正本**: [KB Phase D3 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md)·[ExecPlan D3](./docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)·[KB Phase D2 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)·[KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)·[ExecPlan D2](./docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
 
 | # | タスク | 優先 | 完了条件 |
 |---|--------|------|----------|
@@ -2381,8 +2381,9 @@
 | — | Phase D0（repo·実機·トークン·Tailscale） | **完了** | [KB Phase D0 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md) |
 | — | Phase D1（tools 骨格·専用トークン·検証） | **完了** | [KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md) |
 | — | Phase D2（repo·実機·file·gateway active） | **完了** | [KB Phase D2 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md) · CI **`26362979630`** |
-| — | Phase D3（repo·file+web·blocklist 同期） | **repo 完了** | [ExecPlan D3](./docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md) · ブランチ **`feat/private-pi5-hermes-d3`** |
-| **1** | **Phase D3 実機デプロイ** | **高** | `HERMES_TOOLS_PHASE=d3` PASS · fragment `tools_web_enabled: true` |
+| — | Phase D3（file+web·blocklist·実機） | **完了** | [KB Phase D3 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) · CI **`26375912601`** |
+| **1** | **browser 隔離（次フェーズ）** | **高** | 設計・ExecPlan · sandbox 方針 |
+| 2 | Discord 回帰（任意） | 低 | D3 後も chat 経路不変 |
 | 3 | Hermes 既定プロンプト短縮 | 中 | 任意 |
 | 4 | title_generation 無効化 | 低 | ログ警告解消 |
 | 5 | DGX vLLM MTP / reasoning-parser | 低 | フォーラム知見 |

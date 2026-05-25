@@ -37,18 +37,6 @@
     private_pi5_hermes_boundary_policy_contract: >-
       {{ private_pi5_hermes_boundary_policy_validation.stdout | from_json }}
 
-- name: Set expected Hermes website blocklist domains text
-  ansible.builtin.set_fact:
-    private_pi5_hermes_expected_blocklist_domains_text: >-
-      {{
-        (
-          private_pi5_hermes_boundary_policy_contract.hermes_security.website_blocklist.domains
-          | default([])
-        )
-        | map('regex_replace', '^(.*)$', '- "\\1"')
-        | join('\n')
-      }}
-
 - name: Validate Hermes tools config aligns with Phase D1/D2 contract
   ansible.builtin.assert:
     that:
@@ -106,27 +94,41 @@
         {{
           not (private_pi5_hermes_tools_web_enabled | default(false) | bool)
           or (
-            ((private_pi5_hermes_tools_config_slurp.content | b64decode).split('\nsecurity:\n') | length) == 2
-          )
-        }}
-      - >-
-        {{
-          not (private_pi5_hermes_tools_web_enabled | default(false) | bool)
-          or (
             (
-              private_pi5_hermes_expected_blocklist_domains_text | trim | length
-            ) == 0
-            or
-            (
-              private_pi5_hermes_expected_blocklist_domains_text
-              in (private_pi5_hermes_tools_config_slurp.content | b64decode)
-            )
+              (private_pi5_hermes_tools_config_slurp.content | b64decode)
+              .splitlines()
+              | select('equalto', 'security:')
+              | list
+              | length
+            ) == 1
           )
         }}
     fail_msg: >-
       tools config.yaml does not match private_pi5_hermes_tools_web_enabled
       (expected web not in disabled_toolsets, single security block, and website_blocklist enabled when D3).
   when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
+
+- name: Validate Hermes tools website_blocklist domains in config (Phase D3)
+  ansible.builtin.assert:
+    that:
+      - >-
+        {{
+          (
+            ('"' ~ item ~ '"')
+            in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+          )
+        }}
+    fail_msg: >-
+      tools config.yaml missing website_blocklist domain {{ item }}
+      (expected quoted domain from boundary-policy.tools.yaml).
+  loop: >-
+    {{
+      private_pi5_hermes_boundary_policy_contract.hermes_security.website_blocklist.domains
+      | default([])
+    }}
+  when:
+    - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+    - private_pi5_hermes_tools_web_enabled | default(false) | bool
 
 - name: Ensure Hermes tools gateway is not running (Phase D1)
   ansible.builtin.command:

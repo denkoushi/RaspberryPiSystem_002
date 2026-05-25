@@ -396,6 +396,20 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --emit-hermes-sec
 
 正本: [Phase D3 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)。
 
+## Phase D3 — file + web（実機本番反映・2026-05-25）
+
+| # | 対象 | 手順 | 結果 |
+|---|------|------|------|
+| 1 | 私用 Pi5 | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | `PLAY RECAP` **ok=67 changed=1 failed=0**（約 **123s**） |
+
+**fragment**: `private_pi5_hermes_tools_web_enabled: true` を追加（D2 の file + gateway は維持）。
+
+**検証**: ansible `copy` + `HERMES_TOOLS_PHASE=d3 /tmp/verify-tools-profile-deploy.sh` → **OK** · `verify-tools-file-smoke.sh` → **OK** · Pi5 上 web-smoke curl → **200**。
+
+**CI / Git**: `feat/private-pi5-hermes-d3` · `cfdae77a` · CI **`26375912601`** success。
+
+**記録**: [KB Phase D3 本番](../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md)。
+
 ## トラブルシュート（クイック）
 
 | 症状 | 参照 |
@@ -416,6 +430,7 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --emit-hermes-sec
 | ansible `script` に env を渡せない | ad-hoc `-a` はパスのみ | `copy` + `shell -a 'HERMES_TOOLS_PHASE=d3 /tmp/...'`（[KB D2](./knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)） |
 | file が workspace 外を触る | `docker_volumes` 未設定 | 再デプロイ · [`config_contract.py`](../../scripts/private-pi5-hermes/lib/config_contract.py) |
 | web が LAN に到達 | blocklist 未反映 | 再デプロイ · `validate_boundary_policy.py --emit-hermes-security` |
+| D3 playbook verify 失敗（config は正しい） | Ansible assert の `\n` / blocklist 一括 match | [KB D3](./knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) Investigation · `verify-tools-profile.yml` 更新後に再デプロイ |
 
 ## ロールバック
 
