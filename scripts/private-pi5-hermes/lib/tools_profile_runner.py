@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -60,11 +61,23 @@ def _runner_script_path() -> Path:
     return base / "approval_relay" / "runner.py"
 
 
-def _resolve_hermes_python(hermes_bin: Path) -> Path:
+def _resolve_hermes_python(hermes_bin: Path, hermes_home: str | None = None) -> Path:
     if hermes_bin.is_file():
-        first_line = hermes_bin.read_text(encoding="utf-8").splitlines()[:1]
+        text = hermes_bin.read_text(encoding="utf-8")
+        first_line = text.splitlines()[:1]
         if first_line and first_line[0].startswith("#!"):
-            return Path(first_line[0][2:].strip())
+            interpreter = first_line[0][2:].strip()
+            if "python" in interpreter:
+                return Path(interpreter)
+        match = re.search(r'exec\s+"([^"]+/venv/bin/hermes)"', text)
+        if match:
+            venv_python = Path(match.group(1)).parent / "python3"
+            if venv_python.is_file():
+                return venv_python
+    if hermes_home:
+        fallback = Path(hermes_home) / ".hermes/hermes-agent/venv/bin/python3"
+        if fallback.is_file():
+            return fallback
     return Path("/usr/bin/python3")
 
 
@@ -83,7 +96,7 @@ def _run_with_approval_relay(
     if not runner_script.is_file():
         raise FileNotFoundError(f"approval relay runner missing: {runner_script}")
 
-    python_bin = _resolve_hermes_python(hermes_bin)
+    python_bin = _resolve_hermes_python(hermes_bin, paths.hermes_home)
     argv = [
         str(python_bin),
         str(runner_script),

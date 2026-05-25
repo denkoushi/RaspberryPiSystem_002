@@ -2,6 +2,7 @@
 """Tools profile runner tests (mocked subprocess)."""
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -10,7 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lib.task_bridge_policy import TaskBridgePolicy  # noqa: E402
-from lib.tools_profile_runner import ToolsProfilePaths, run_tools_profile_prompt  # noqa: E402
+from lib.tools_profile_runner import (  # noqa: E402
+    ToolsProfilePaths,
+    _resolve_hermes_python,
+    run_tools_profile_prompt,
+)
 
 
 def _policy_data(**overrides: object) -> dict:
@@ -38,6 +43,21 @@ def _policy() -> TaskBridgePolicy:
 
 
 class ToolsProfileRunnerTests(unittest.TestCase):
+    def test_resolve_hermes_python_from_bash_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            venv_python = root / ".hermes/hermes-agent/venv/bin/python3"
+            venv_python.parent.mkdir(parents=True)
+            venv_python.write_text("", encoding="utf-8")
+            wrapper = root / ".local/bin/hermes"
+            wrapper.parent.mkdir(parents=True)
+            wrapper.write_text(
+                '#!/usr/bin/env bash\nexec "' + str(root / ".hermes/hermes-agent/venv/bin/hermes") + '" "$@"\n',
+                encoding="utf-8",
+            )
+            resolved = _resolve_hermes_python(wrapper, str(root))
+            self.assertEqual(resolved, venv_python)
+
     def test_missing_env_returns_error(self) -> None:
         paths = ToolsProfilePaths(
             hermes_user="hermes",
