@@ -79,17 +79,17 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py
 
 正本: [KB Phase D2 本番](./KB-private-pi5-hermes-phase-d2-production.md) · [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md).
 
-## D4 チェックリスト（repo 実装・2026-05-25）
+## D4 チェックリスト（本番反映・2026-05-25）
 
 - [x] `file` + `web` + `browser` · workspace · `website_blocklist` 維持
 - [x] `browser.auto_local_for_private_urls: true` · クラウド browser env キー禁止
 - [x] `AGENT_BROWSER_ARGS` in tools `.env`（Pi5 向け既定）
-- [x] `install-browser-tooling.yml`（`tools_browser_enabled` 時のみ）
-- [x] `HERMES_TOOLS_PHASE=d4` 検証 script
-- [ ] 実機デプロイ・`browser_navigate` smoke（運用者）
+- [x] `install-browser-tooling.yml`（Chromium + **agent-browser symlink**）
+- [x] 実機デプロイ（私用 Pi5）· `HERMES_TOOLS_PHASE=d4` · browser smoke（契約・バイナリ・境界）
+- [ ] `browser_navigate` LLM E2E（任意）
 - [ ] Discord 回帰（任意）
 
-正本: [ExecPlan D4](../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md)
+正本: [KB Phase D4 本番](./KB-private-pi5-hermes-phase-d4-production.md) · [ExecPlan D4](../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md)
 
 ## D2+ チェックリスト（残）
 

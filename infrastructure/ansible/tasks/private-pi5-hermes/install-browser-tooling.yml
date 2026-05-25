@@ -24,40 +24,67 @@
   ansible.builtin.command:
     argv:
       - /bin/bash
-      - -lc
-      - command -v agent-browser
+      - -c
+      - >-
+        export PATH="{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin";
+        command -v agent-browser
   become: true
   become_user: "{{ private_pi5_hermes_user }}"
   environment:
     HOME: "{{ private_pi5_hermes_tools_home }}"
-    PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
   register: private_pi5_hermes_agent_browser_precheck
   changed_when: false
   failed_when: false
 
-- name: Install Hermes browser stack via CLI (non-interactive)
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      export PATH="{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
-      export HOME="{{ private_pi5_hermes_tools_home }}"
-      if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
-        echo "chromium binary missing after apt install" >&2
-        exit 1
-      fi
-      if "{{ private_pi5_hermes_bin }}" setup --help 2>/dev/null | grep -qi browser; then
-        "{{ private_pi5_hermes_bin }}" setup browser </dev/null || true
-      fi
-      if "{{ private_pi5_hermes_bin }}" setup --help 2>/dev/null | grep -qi tools; then
-        "{{ private_pi5_hermes_bin }}" setup tools </dev/null || true
-      fi
-      command -v agent-browser
-    executable: /bin/bash
+- name: Assert Chromium is available after apt (Phase D4)
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - -lc
+      - >-
+        command -v chromium >/dev/null 2>&1
+        || command -v chromium-browser >/dev/null 2>&1
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  changed_when: false
+
+- name: Ensure Hermes user .local/bin exists
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_home }}/.local/bin"
+    state: directory
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0755"
+
+# Hermes install uses --skip-browser; agent-browser ships in hermes-agent node_modules.
+# `hermes setup tools` is interactive-only — symlink bundled CLI into PATH for gateway + smoke.
+- name: Link agent-browser from Hermes Agent node_modules into user PATH
+  ansible.builtin.file:
+    src: "{{ private_pi5_hermes_data_dir }}/hermes-agent/node_modules/.bin/agent-browser"
+    dest: "{{ private_pi5_hermes_home }}/.local/bin/agent-browser"
+    state: link
+    force: true
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+  when:
+    - not private_pi5_hermes_browser_tooling_marker.stat.exists
+    - private_pi5_hermes_agent_browser_precheck.rc != 0
+
+- name: Verify agent-browser symlink resolves on PATH
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - -c
+      - >-
+        export PATH="{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin";
+        command -v agent-browser
   become: true
   become_user: "{{ private_pi5_hermes_user }}"
   environment:
     HOME: "{{ private_pi5_hermes_tools_home }}"
   register: private_pi5_hermes_browser_cli_install
+  changed_when: false
+  failed_when: private_pi5_hermes_browser_cli_install.rc != 0
   when:
     - not private_pi5_hermes_browser_tooling_marker.stat.exists
     - private_pi5_hermes_agent_browser_precheck.rc != 0
@@ -82,13 +109,14 @@
   ansible.builtin.command:
     argv:
       - /bin/bash
-      - -lc
-      - command -v agent-browser
+      - -c
+      - >-
+        export PATH="{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin";
+        command -v agent-browser
   become: true
   become_user: "{{ private_pi5_hermes_user }}"
   environment:
     HOME: "{{ private_pi5_hermes_tools_home }}"
-    PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
   register: private_pi5_hermes_agent_browser_which
   changed_when: false
   failed_when: private_pi5_hermes_agent_browser_which.rc != 0
