@@ -107,15 +107,16 @@
 
 ---
 
-### [KB-379] DGX Spark private ComfyUI（NVFP4 移行・遅延要因・workflow 調整）
+### [KB-379] DGX Spark private ComfyUI（FLUX.2 Klein 9B 移行・workflow・NVFP4）
 
-**日付**: 2026-05-17
+**日付**: 2026-05-25（初版 2026-05-17）
 
 **Summary**:
 
-- 生成不良と遅延を **3層で分離**（`fp8` NaN 由来のモザイク / safetensors 二重ロード由来の 17分超 / 6MP+2pass+LoRA の計算量）。
-- 適用済み対策を固定化（`--bf16-*`、`--disable-mmap`、`copy=False`、`up -d --force-recreate`）。
-- **NVFP4 版 FLUX.2 Klein 9B** への移行手順（HF token 確認、download、UNET 差し替え、比較検証 checklist）を記録。
+- Ubuntu（RTX 4060）由来 workflow を DGX へ移行し **実用化完了**。標準は **`0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json`**（UNET **nvfp4**、LoRA 強度調整済み）。
+- **破綻画像の主因は `Flux2KleinEnhancer`（CONFIRMED）** → Enhancer 除去 workflow で解消。LoRA / ReferenceLatent / 2段サンプラーは正常。
+- **速度**: 1248×1824 で NVFP4 **2回目約3分台**（FP8 は約5分台）。`system-prod-trtllm` **約57GB** 占有時は Comfy 優先で一時 `docker stop`。
+- Compose 実用フラグ: `--disable-dynamic-vram`・`--reserve-vram 8`・`--disable-pinned-memory`・`--disable-mmap`（`force-recreate` で反映）。
 
 **参照**: [KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)·[dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md)
 

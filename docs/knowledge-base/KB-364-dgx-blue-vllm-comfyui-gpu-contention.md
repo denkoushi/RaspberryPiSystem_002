@@ -36,6 +36,7 @@ category: knowledge-base
 
 - 運用プロファイル **`private_ok`** は **ComfyUI 等との競合を許容**する一方、**`business_first`** では **業務 blue との同時フル稼働は期待しない**（UI・Runbook の説明と整合）
 - 管理 UI の WARN は **裏側が変わらない限り「待つ」だけでは直らない**（ポーリング間隔は UI 側の更新周期に依存）
+- **FLUX.2 Klein 9B 私用生成時**: `system-prod-trtllm`（VLLM::EngineCore）が **約57GB** 占有していると Comfy が遅化しうる（2026-05-25 実測）。Comfy 優先時は `docker stop system-prod-trtllm`、業務復帰時は `docker start`（[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)）
 
 ## References
 

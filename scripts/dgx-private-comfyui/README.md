@@ -58,20 +58,24 @@ docker run --rm --gpus=all nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04 nvidia-s
 
 ### ComfyUI ランタイム
 
-`compose.yaml.example` の既定 command は以下を有効化しています。
+`compose.yaml.example` の既定 command（**2026-05-25・FLUX.2 Klein 9B NVFP4 workflow 実測**）:
 
-- `--bf16-unet`
-- `--bf16-vae`
-- `--bf16-text-enc`
 - `--disable-dynamic-vram`
+- `--reserve-vram 8`
+- `--disable-pinned-memory`
 - `--disable-mmap`
 
 環境変数は `.env` で次を指定します（既定値あり）。
 
 - `CUDA_CACHE_MAXSIZE=4294967296`
 - `NCCL_P2P_DISABLE=1`
+- `PYTORCH_NO_CUDA_MEMORY_CACHING=1`（任意。compose 雛形では既定 `1`）
+
+**推奨 workflow**（ComfyUI にインポート）: `0525_flux2_klein_9b_DGXSpark_photoreal_nvfp4.json`。**`Flux2KleinEnhancer` は使わない**（破綻原因。詳細は [KB-379](../../docs/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)）。
 
 `--use-sage-attention` は導入済み環境でのみ有効化してください（未導入で付けると起動失敗）。
+
+**過去の `--bf16-unet` 系**: fp8 NaN 由来モザイク対策用。NVFP4 標準 workflow では必須ではない。
 
 ### safetensors コピー最小化
 
