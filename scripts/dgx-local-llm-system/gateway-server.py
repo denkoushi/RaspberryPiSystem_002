@@ -4,7 +4,7 @@ DGX system-prod 用のローカル gateway。
 
 - /healthz は 200 ok
 - /system/metrics は GPU/メモリ JSON（Pi KPI 用）。LLM 認証は X-LLM-Token または Authorization: Bearer（/v1/* と同様）
-- /start /stop は runtime control へ転送
+- /start /stop /stop-force は runtime control へ転送
 - /v1/* は active backend へ転送
 
 環境変数:
@@ -509,7 +509,7 @@ def make_handler(
 
         def do_POST(self) -> None:
             body = read_body(self)
-            if self.path in ("/start", "/stop"):
+            if self.path in ("/start", "/stop", "/stop-force"):
                 if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
                     self._send_text(403, "forbidden")
                     return
