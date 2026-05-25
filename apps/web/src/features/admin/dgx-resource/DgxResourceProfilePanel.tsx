@@ -41,6 +41,14 @@ async function confirmWorkloadOrchestration(
       tone: 'danger',
     });
   }
+  if (mode === 'private_ok') {
+    return confirmFn({
+      title: '私用OK：業務 LLM を停止してメモリを空けます',
+      description:
+        'system-prod-gateway を強制停止し、blue keep-warm 中でも業務 LLM を退避します。Comfy 用に Spark メモリを空けますが、職場 Pi5・Hermes・管理チャットは業務優先へ戻して Ready 完了するまで一時的に使えなくなります。',
+      tone: 'danger',
+    });
+  }
   return true;
 }
 
@@ -125,7 +133,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
           <span className="font-semibold text-sky-100/95">切替時にワークロード自動調整</span>
           <span
             className="ml-1 inline-block text-sky-200/80"
-            title="業務優先／実験優先へ切り替えるときだけ Pi5 から停止 POST を試行します。私用OK では通常なし。"
+            title="業務優先／実験優先では補助ワークロード停止を追加します。私用OK は常に業務 LLM を退避し、このチェックは experiment-lab / agent-container の追加停止に効きます。"
           >
             ⓘ
           </span>
@@ -146,7 +154,7 @@ export function DgxResourceProfilePanel({ overview, onControlUiError, postDgxAct
             className="px-4 py-2.5 text-base"
             disabled={busy}
             onClick={async () => {
-              if (applyWorkloadChanges && (p.mode === 'business_first' || p.mode === 'experiment_first')) {
+              if (p.mode === 'private_ok' || (applyWorkloadChanges && (p.mode === 'business_first' || p.mode === 'experiment_first'))) {
                 const ok = await confirmWorkloadOrchestration(confirm, p.mode);
                 if (!ok) return;
               }

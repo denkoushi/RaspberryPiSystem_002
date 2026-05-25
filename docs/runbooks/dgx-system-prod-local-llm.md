@@ -63,12 +63,12 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 **運用プロファイル（`SET_POLICY` / `policy.mode`）**:
 
 - `business_first`（**業務優先**）— 本番 VLM/LocalLLM を最優先。**表示上のみ**私用ワークロード抑制のヒント（GPU は強制しません）。
-- `private_ok`（**私用OK**）— ComfyUI 等の競合を許容。
+- `private_ok`（**私用OK**）— ComfyUI 等の私用ワークロード向けに **業務 LLM を退避**し、Spark メモリを空ける。
 - `experiment_first`（**実験優先**）— lab/実験コンテナ検証寄り。**業務 Inference との競合は人手で確認**してください。
 
-**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / **agent-container** / Comfy に対して **停止 POST を順に試行**。**私用OKへ切替える前に**設定済みなら **experiment-lab と agent-container の停止 POST**。**実験優先へ切替える前に**（設定済みなら）**私用 Comfy の停止 POST のみ**（**`system-prod-gateway`（業務/Agent メインAI経路）は自動では停止しない**）。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
+**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / **agent-container** / Comfy に対して **停止 POST を順に試行**。**私用OKへ切替える前に**は、設定済みなら **experiment-lab と agent-container の停止**に加え、**`system-prod-gateway` へ keep_warm を上書きする強制停止**を試行する。**実験優先へ切替える前に**（設定済みなら）**私用 Comfy の停止 POST のみ**。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
 
-**メインAI 制御の直列化（Pi5 API）**: `on_demand` 時、**推論側の `/start`・`/stop`** と **DGX リソース UI 経由の `system-prod-gateway` 起停**は、同一プロセス内の **単一キュー**で直列化される（`local-llm-runtime-command-queue.ts` → `enqueueMainLocalLlmRuntimeControl`）。待機が長い場合は `main_llm_control_queue_wait` ログで把握可能。
+**メインAI 制御の直列化（Pi5 API）**: `on_demand` 時、**推論側の `/start`・`/stop`** と **DGX リソース UI 経由の `system-prod-gateway` 起停**は、同一プロセス内の **単一キュー**で直列化される（`local-llm-runtime-command-queue.ts` → `enqueueMainLocalLlmRuntimeControl`）。`private_ok` の **強制停止**も同じキューを通す。待機が長い場合は `main_llm_control_queue_wait` ログで把握可能。
 
 **用途別停止（Pi5 API）**: `photo_label` / `document_summary` / `admin_console_chat` / **`stackchan_chat`** / **`agent_container_task`** は **参照カウント 0 でも `/stop` を抑止**（メインAI・Agent コンテナ・StackChan 対話の warm 維持）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行型定義では主にこの 5 用途）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。Agent 経路のラッパーは `withAgentContainerTaskOnDemandRuntime`、StackChan 経路は `withStackChanChatOnDemandRuntime`（`local-llm-on-demand-runtime.ts`）。
 
@@ -394,6 +394,12 @@ systemd 運用では、`/srv/dgx/system-prod/secrets/control-server.env` と `ga
 - **起動時検証**: ガード有効時、`GREEN_LLM_RUNTIME_STOP_CMD` / `BLUE_LLM_RUNTIME_STOP_CMD` と **`LLM_RUNTIME_STOP_CMD`（フォールバック）の両系統から実停止コマンドが解決できること**を起動時に確認する（片側のみしか用意しない検証ホストでは起動を拒否される）。
 - **オプトアウト**: `DGX_LLM_SINGLE_ACTIVE_GUARD=false`（または `0` / `no` / `off`）で **`/start` 前の非アクティブ stop と dual-stop の起動検証を無効化**。通常の `system-prod` では **両 backend の stop コマンドを揃えたうえでガード ON を維持**する。
 - **実装の置き場所**: [`scripts/dgx-local-llm-system/dgx_llm_single_active_guard.py`](../../scripts/dgx-local-llm-system/dgx_llm_single_active_guard.py) に単一アクティブ判定を集約し、`control-server.py` が import して `/start` に組み込む。
+
+#### 強制停止（`/stop-force`）
+
+- **目的**: `private_ok` で Comfy 向けに Spark メモリを空けたいとき、**blue active + `keep_warm` / `always_on`** でも **実ランタイムを確実に落とす**。
+- **通常 `/stop` との違い**: `/stop` は blue の stop policy を尊重し、**keep_warm 系では no-op** になり得る。**`/stop-force`** は **active backend の stop command をそのまま実行**し、**keep_warm を上書き**する。
+- **用途**: 管理コンソールの **`private_ok`** からの私用切替、または明示的に GPU / 統一メモリを空けたい保守操作。**Hermes keep-warm や通常運用の `/stop` 契約は壊さない**。
 
 #### 切替後の 4 点チェック（推奨）
 

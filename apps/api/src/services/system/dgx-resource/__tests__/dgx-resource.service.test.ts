@@ -533,6 +533,76 @@ describe('createDgxResourceService', () => {
     }
   });
 
+  it('SET_POLICY private_ok with workload changes force-stops gateway after auxiliary workloads', async () => {
+    const prev = {
+      expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
+      expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
+      expToken: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN,
+      agentStart: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL,
+      agentStop: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL,
+      agentToken: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN,
+      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
+    };
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = 'http://127.0.0.1:9191/experiment/start';
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = 'http://127.0.0.1:9191/experiment/stop';
+    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = 'exp-token';
+    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = 'http://127.0.0.1:9393/agent/start';
+    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = 'http://127.0.0.1:9393/agent/stop';
+    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN = 'agent-token';
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token';
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: true,
+          health: { ok: true, statusCode: 200 },
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (): Promise<Response> => ({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        url: '',
+        text: async () => '',
+        json: async () => ({}),
+      })) as typeof fetch;
+
+      const svc = makeSvc(store, gateway, { fetchImpl });
+
+      const result = await svc.executeAction({
+        type: 'SET_POLICY',
+        policyMode: 'private_ok',
+        applyWorkloadChanges: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:9191/experiment/stop');
+      expect(String(fetchImpl.mock.calls[1]?.[0])).toBe('http://127.0.0.1:9393/agent/stop');
+      expect(String(fetchImpl.mock.calls[2]?.[0])).toBe('http://127.0.0.1:38081/runtime/stop-force');
+      expect(store.getPolicyMode()).toBe('private_ok');
+    } finally {
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
+      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = prev.expToken;
+      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = prev.agentStart;
+      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = prev.agentStop;
+      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN = prev.agentToken;
+      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
+      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
+      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
+      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
+    }
+  });
+
   it('getOverview exposes monitoring.summary with stable shape', async () => {
     const store = new DgxResourcePolicyStore(10);
     const gateway: LocalLlmGateway = {

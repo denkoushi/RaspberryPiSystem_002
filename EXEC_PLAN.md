@@ -2752,6 +2752,7 @@
 2. **運用観測**: DGX 一本化後の `component: inference` / `useCase: photo_label` と `component: localLlmRuntimeControl` を数回分 spot check し、不要な start/stop やエラー再発がないかを見る。併せて **DGX↔Pi5 token drift**（Runbook 既出）の再発予防を続ける。
 3. **将来課題**: `ねじゲージ` / `金属棒` / `てこ式ダイヤルゲージ` の hard case は、実運用上の痛みが再度強くなった時点で再開する。
 4. **blue / Qwen3.6**: **本番で green から切り替えるか**、cold start・リソース占有・VLM 残課題を材料に**判断して記録**する（検証専用なら `BLUE_LLM_RUNTIME_STOP_MODE` / 互換 `BLUE_LLM_RUNTIME_KEEP_WARM` の運用方針も含む。実装: [runtime_stop_policy.py](./scripts/dgx-local-llm-system/runtime_stop_policy.py)、[ADR-20260427](./docs/decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)）。**2026-04-27**: 本番 DGX への制御層反映手順は [KB-357](./docs/knowledge-base/infrastructure/security.md) へ集約。
+5. **DGX リソース `private_ok` 強化（2026-05-25 着手）**: Comfy 向けに Spark メモリを空けるため、**`private_ok` で `system-prod-gateway` を `stop-force`** し、**blue keep-warm を上書き**して業務 LLM を退避させる。**A のみ**（GUI backend selector は out of scope）。コード変更点は `control-server.py`・Pi5 `dgx-resource` planner/executor/UI・Runbook/KB/ADR へ集約予定。
 5. **将来置換**: green のまま**別 GGUF へ 1:1 置換**するか、blue へ**移行**するかは 4. と一緒に扱う（同じ `system-prod-primary` alias を維持する前提）。
 6. **リポジトリと Pi5 の収束**（**2026-04-27 追記: #203 / `e97c7941` 以降、Pi5 は `update-all-clients.sh main …` で正規追従実績あり**・Detach **`20260427-201319-30682`**・[deployment.md](./docs/guides/deployment.md)）: 今後の差分も **feature → PR → `main` → 同手順**で揃え、**例外的な手動 `rsync`**を減らす。
 

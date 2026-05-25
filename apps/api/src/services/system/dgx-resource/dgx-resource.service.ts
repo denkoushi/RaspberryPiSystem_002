@@ -4,7 +4,12 @@ import { env } from '../../../config/env.js';
 import { isBusinessFirstSuppressionHintActive, policyLabelJa } from './dgx-resource.policy-profile.js';
 import type { DgxPolicyMode, DgxResourceEvent, DgxResourcePolicyStore } from './dgx-resource.policy-store.js';
 
-import type { DgxControlTargetAction, DgxControlTargetId, DgxControlTargetSnapshot } from './dgx-resource.control-target.types.js';
+import type {
+  DgxControlTargetAction,
+  DgxControlTargetId,
+  DgxControlTargetSnapshot,
+  DgxUserControlTargetAction,
+} from './dgx-resource.control-target.types.js';
 import { executeAuxHttpRuntimeStartStop } from './dgx-resource.aux-http-runtime.executor.js';
 import { executeGatewayRuntimeStartStop } from './dgx-resource.gateway-runtime.executor.js';
 import {
@@ -114,7 +119,7 @@ export type DgxResourceActionBody =
   | {
       type: 'EXECUTE_TARGET_ACTION';
       targetId: DgxControlTargetId;
-      action: DgxControlTargetAction;
+      action: DgxUserControlTargetAction;
       reason?: string;
     }
   | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioId }
@@ -487,15 +492,22 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         deps.policyStore.appendEvent('LocalLLM ランタイム起動を要求しました');
         return { ok: true, message: '起動リクエストを送信しました（反映まで時間がかかる場合があります）' };
       }
-      deps.policyStore.appendEvent('LocalLLM ランタイム停止を要求しました');
-      return { ok: true, message: '停止リクエストを送信しました' };
+      deps.policyStore.appendEvent(
+        action === 'stop_force' ? 'LocalLLM ランタイム強制停止を要求しました' : 'LocalLLM ランタイム停止を要求しました'
+      );
+      return {
+        ok: true,
+        message: action === 'stop_force' ? '強制停止リクエストを送信しました' : '停止リクエストを送信しました',
+      };
     }
     return {
       ok: true,
       message:
         action === 'start'
           ? 'ゲートウェイ起動リクエストを送信しました'
-          : 'ゲートウェイ停止リクエストを送信しました',
+          : action === 'stop_force'
+            ? 'ゲートウェイ強制停止リクエストを送信しました'
+            : 'ゲートウェイ停止リクエストを送信しました',
     };
   };
 

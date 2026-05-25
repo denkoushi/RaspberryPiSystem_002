@@ -86,5 +86,6 @@ describe('DgxResourceProfilePanel', () => {
 
     expect(screen.getByText('運用モード（保守・手動切替）')).toBeInTheDocument();
     expect(screen.getByText(/推論レイヤが degraded の可能性があります/)).toBeInTheDocument();
+    expect(screen.getByText(/切替時にワークロード自動調整/)).toBeInTheDocument();
   });
 });

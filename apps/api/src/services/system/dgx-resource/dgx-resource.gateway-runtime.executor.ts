@@ -11,12 +11,20 @@ export type GatewayRuntimeExecutorDeps = {
   fetchImpl: typeof fetch;
 };
 
+function resolveGatewayRuntimeControlUrl(action: 'start' | 'stop' | 'stop_force', startUrl: string, stopUrl: string): string {
+  if (action === 'start') return startUrl;
+  if (action === 'stop') return stopUrl;
+  return stopUrl.endsWith('/stop') ? `${stopUrl}-force` : `${stopUrl}/force`;
+}
+
+export { resolveGatewayRuntimeControlUrl };
+
 /**
- * system-prod gateway への /start | /stop（既存 Pi5→DGX 契約）。
+ * system-prod gateway への /start | /stop | /stop-force（既存 Pi5→DGX 契約の拡張）。
  */
 export async function executeGatewayRuntimeStartStop(
   deps: GatewayRuntimeExecutorDeps,
-  action: 'start' | 'stop',
+  action: 'start' | 'stop' | 'stop_force',
   reason?: string
 ): Promise<void> {
   const startUrl = env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim();
@@ -31,7 +39,7 @@ export async function executeGatewayRuntimeStartStop(
     );
   }
 
-  const targetUrl = action === 'start' ? startUrl! : stopUrl!;
+  const targetUrl = resolveGatewayRuntimeControlUrl(action, startUrl!, stopUrl!);
   const timeoutMs =
     action === 'start'
       ? env.LOCAL_LLM_RUNTIME_START_REQUEST_TIMEOUT_MS
