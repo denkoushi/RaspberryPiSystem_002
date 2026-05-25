@@ -11,6 +11,7 @@ DGX_BASE="${DGX_BASE:-http://100.118.82.72:38081}"
 # d1 = gateway inactive, file disabled
 # d2 = gateway active, file enabled + workspace mount
 # d3 = gateway active, file+web enabled + website_blocklist
+# d4 = gateway active, file+web+browser enabled + website_blocklist + browser config
 HERMES_TOOLS_PHASE="${HERMES_TOOLS_PHASE:-d1}"
 
 expect_gateway_inactive() {
@@ -18,7 +19,7 @@ expect_gateway_inactive() {
 }
 
 expect_gateway_active() {
-  [[ "${HERMES_TOOLS_PHASE}" == "d2" || "${HERMES_TOOLS_PHASE}" == "d3" ]]
+  [[ "${HERMES_TOOLS_PHASE}" == "d2" || "${HERMES_TOOLS_PHASE}" == "d3" || "${HERMES_TOOLS_PHASE}" == "d4" ]]
 }
 
 echo "== tools phase (${HERMES_TOOLS_PHASE}) =="
@@ -84,7 +85,51 @@ web_must_be_enabled() {
   ! web_must_be_disabled
 }
 
+browser_must_be_disabled() {
+  awk '/disabled_toolsets:/{f=1;next} f && /^[[:space:]]*-[[:space:]]*browser[[:space:]]*$/{found=1} f && /^[^[:space:]]/{f=0} END{exit !found}' <<<"${config_text}"
+}
+
+browser_must_be_enabled() {
+  ! browser_must_be_disabled
+}
+
 case "${HERMES_TOOLS_PHASE}" in
+  d4)
+    if [[ "${config_text}" != *"${workspace_mount}"* ]]; then
+      echo "FAIL: missing docker_volumes workspace mount: ${workspace_mount}"
+      exit 1
+    fi
+    if file_must_be_disabled; then
+      echo "FAIL: file must not be in agent.disabled_toolsets for phase d4"
+      exit 1
+    fi
+    if web_must_be_disabled; then
+      echo "FAIL: web must not be in agent.disabled_toolsets for phase d4"
+      exit 1
+    fi
+    if browser_must_be_disabled; then
+      echo "FAIL: browser must not be in agent.disabled_toolsets for phase d4"
+      exit 1
+    fi
+    if [[ "${config_text}" != *"website_blocklist:"* ]] || [[ "${config_text}" != *"enabled: true"* ]]; then
+      echo "FAIL: security.website_blocklist must be enabled for phase d4"
+      exit 1
+    fi
+    if [[ "${config_text}" != *"auto_local_for_private_urls: true"* ]]; then
+      echo "FAIL: browser.auto_local_for_private_urls must be true for phase d4"
+      exit 1
+    fi
+    if ! sudo -u "${HERMES_USER}" test -r "${TOOLS_DATA}/.env"; then
+      echo "FAIL: cannot read tools .env"
+      exit 1
+    fi
+    env_text="$(sudo -u "${HERMES_USER}" cat "${TOOLS_DATA}/.env")"
+    if [[ "${env_text}" != *"AGENT_BROWSER_ARGS="* ]]; then
+      echo "FAIL: AGENT_BROWSER_ARGS missing from tools .env for phase d4"
+      exit 1
+    fi
+    echo "ok: workspace mount; file+web+browser enabled; blocklist; browser local routing"
+    ;;
   d3)
     if [[ "${config_text}" != *"${workspace_mount}"* ]]; then
       echo "FAIL: missing docker_volumes workspace mount: ${workspace_mount}"

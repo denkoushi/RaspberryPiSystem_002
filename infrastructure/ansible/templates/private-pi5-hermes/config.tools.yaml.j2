@@ -9,7 +9,7 @@ website_blocklist:
   shared_files: []
 {% endif %}
 {%- endset -%}
-# Hermes Agent — tools profile (Phase D1 / D2 file-only / D3 file+web)
+# Hermes Agent — tools profile (Phase D1 / D2 / D3 / D4)
 {% include 'config.base.yaml.j2' %}
 
 model:
@@ -41,11 +41,24 @@ memory:
   memory_enabled: false
   user_profile_enabled: false
 
+{% if private_pi5_hermes_tools_browser_enabled | default(false) | bool %}
+browser:
+  auto_local_for_private_urls: true
+  inactivity_timeout: 120
+  command_timeout: 30
+  record_sessions: false
+{% endif %}
+
 agent:
   reasoning_effort: {{ private_pi5_hermes_reasoning_effort | default('none') }}
   system_prompt: |
 {% if (private_pi5_hermes_tools_system_prompt | default('') | trim) | length > 0 %}
 {{ private_pi5_hermes_tools_system_prompt | trim | indent(4, first=True) }}
+{% elif private_pi5_hermes_tools_browser_enabled | default(false) | bool %}
+    私用 Pi5 の Hermes 作業用プロファイル（Phase D4）です。
+    file ツールは {{ private_pi5_hermes_tools_data_dir }}/workspace（コンテナ内 /workspace）のみ操作してください。
+    web / browser は {{ private_pi5_hermes_dgx_base_url | default('http://100.118.82.72:38081') }} 配下の HTTP のみ（HTTPS・LAN・localhost は blocklist で拒否）。
+    クラウド browser プロバイダは使用しません。危険な操作は手動承認が必要です。
 {% elif private_pi5_hermes_tools_web_enabled | default(false) | bool %}
     私用 Pi5 の Hermes 作業用プロファイル（Phase D3）です。
     file ツールは {{ private_pi5_hermes_tools_data_dir }}/workspace（コンテナ内 /workspace）のみ操作してください。
@@ -63,7 +76,9 @@ agent:
 {% if not (private_pi5_hermes_tools_web_enabled | default(false) | bool) %}
     - web
 {% endif %}
+{% if not (private_pi5_hermes_tools_browser_enabled | default(false) | bool) %}
     - browser
+{% endif %}
     - terminal
 {% if not (private_pi5_hermes_tools_file_enabled | default(false) | bool) %}
     - file

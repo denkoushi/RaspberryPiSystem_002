@@ -15,6 +15,7 @@ class ProfilePhase(str, Enum):
     D1_SKELETON = "d1"
     D2_FILE_ONLY = "d2"
     D3_FILE_WEB = "d3"
+    D4_FILE_WEB_BROWSER = "d4"
 
     @classmethod
     def from_tools_flags(
@@ -23,9 +24,12 @@ class ProfilePhase(str, Enum):
         tools_profile_enabled: bool,
         tools_file_enabled: bool,
         tools_web_enabled: bool = False,
+        tools_browser_enabled: bool = False,
     ) -> ProfilePhase | None:
         if not tools_profile_enabled:
             return None
+        if tools_browser_enabled:
+            return cls.D4_FILE_WEB_BROWSER
         if tools_web_enabled:
             return cls.D3_FILE_WEB
         if tools_file_enabled:
@@ -43,6 +47,7 @@ class ToolsPhaseExpectation:
     require_workspace_docker_mount: bool
     config_must_disable_file_toolset: bool
     config_must_disable_web_toolset: bool
+    config_must_disable_browser_toolset: bool
     require_website_blocklist: bool
 
     @property
@@ -61,6 +66,7 @@ def expectation_for_phase(phase: ProfilePhase) -> ToolsPhaseExpectation:
             require_workspace_docker_mount=False,
             config_must_disable_file_toolset=True,
             config_must_disable_web_toolset=True,
+            config_must_disable_browser_toolset=True,
             require_website_blocklist=False,
         )
     if phase is ProfilePhase.D2_FILE_ONLY:
@@ -73,6 +79,7 @@ def expectation_for_phase(phase: ProfilePhase) -> ToolsPhaseExpectation:
             require_workspace_docker_mount=True,
             config_must_disable_file_toolset=False,
             config_must_disable_web_toolset=True,
+            config_must_disable_browser_toolset=True,
             require_website_blocklist=False,
         )
     if phase is ProfilePhase.D3_FILE_WEB:
@@ -85,6 +92,20 @@ def expectation_for_phase(phase: ProfilePhase) -> ToolsPhaseExpectation:
             require_workspace_docker_mount=True,
             config_must_disable_file_toolset=False,
             config_must_disable_web_toolset=False,
+            config_must_disable_browser_toolset=True,
+            require_website_blocklist=True,
+        )
+    if phase is ProfilePhase.D4_FILE_WEB_BROWSER:
+        from .profiles import TOOLS_PROFILE_D4
+
+        return ToolsPhaseExpectation(
+            phase=phase,
+            profile=TOOLS_PROFILE_D4,
+            require_tools_gateway_active=True,
+            require_workspace_docker_mount=True,
+            config_must_disable_file_toolset=False,
+            config_must_disable_web_toolset=False,
+            config_must_disable_browser_toolset=False,
             require_website_blocklist=True,
         )
     raise ValueError(f"unsupported phase: {phase!r}")

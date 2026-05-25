@@ -6,6 +6,7 @@
       - "{{ private_pi5_repo_root }}/scripts/private-pi5-hermes/validate_boundary_policy.py"
       - --check-docker-volumes
       - --emit-hermes-security
+      - --emit-browser-env
   delegate_to: localhost
   become: false
   register: private_pi5_hermes_boundary_policy_validation
@@ -144,7 +145,7 @@
     - not (private_pi5_hermes_tools_file_enabled | default(false) | bool)
     - not (private_pi5_hermes_tools_web_enabled | default(false) | bool)
 
-- name: Ensure Hermes tools gateway is running (Phase D2 or D3)
+- name: Ensure Hermes tools gateway is running (Phase D2, D3, or D4)
   ansible.builtin.command:
     argv:
       - systemctl
@@ -158,6 +159,89 @@
     - >-
       (private_pi5_hermes_tools_file_enabled | default(false) | bool)
       or (private_pi5_hermes_tools_web_enabled | default(false) | bool)
+      or (private_pi5_hermes_tools_browser_enabled | default(false) | bool)
+
+- name: Read deployed Hermes tools .env
+  ansible.builtin.slurp:
+    src: "{{ private_pi5_hermes_tools_data_dir }}/.env"
+  register: private_pi5_hermes_tools_env_slurp
+  when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
+
+- name: Validate Hermes tools config aligns with Phase D4 browser contract
+  ansible.builtin.assert:
+    that:
+      - >-
+        {{
+          (private_pi5_hermes_tools_browser_enabled | default(false) | bool)
+          ==
+          (
+            not (
+              '\n    - browser\n'
+              in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+            )
+          )
+        }}
+      - >-
+        {{
+          not (private_pi5_hermes_tools_browser_enabled | default(false) | bool)
+          or (
+            'auto_local_for_private_urls: true' in (private_pi5_hermes_tools_config_slurp.content | b64decode)
+          )
+        }}
+      - >-
+        {{
+          not (private_pi5_hermes_tools_browser_enabled | default(false) | bool)
+          or (
+            'AGENT_BROWSER_ARGS=' in (private_pi5_hermes_tools_env_slurp.content | b64decode)
+          )
+        }}
+      - >-
+        {{
+          not (private_pi5_hermes_tools_browser_enabled | default(false) | bool)
+          or (
+            (
+              private_pi5_hermes_boundary_policy_contract.hermes_browser
+              .forbidden_cloud_browser_env_keys
+              | default([])
+              | reject(
+                  'in',
+                  (
+                    private_pi5_hermes_boundary_policy_contract.hermes_browser
+                    .forbidden_cloud_browser_env_keys
+                    | select(
+                        'match',
+                        (
+                          '^('
+                          ~ (
+                            (
+                              private_pi5_hermes_tools_env_slurp.content | b64decode
+                            )
+                            | regex_findall('^([A-Z0-9_]+)=', multiline=True)
+                            | join('|')
+                          )
+                          ~ ')$'
+                        )
+                      )
+                    | list
+                  )
+                )
+              | list
+              | length
+            ) == (
+              private_pi5_hermes_boundary_policy_contract.hermes_browser
+              .forbidden_cloud_browser_env_keys
+              | default([])
+              | length
+            )
+          )
+        }}
+    fail_msg: >-
+      tools config/.env does not match private_pi5_hermes_tools_browser_enabled
+      (expected browser not in disabled_toolsets, browser.auto_local_for_private_urls,
+      AGENT_BROWSER_ARGS in tools .env, and no cloud browser API keys when D4).
+  when:
+    - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+    - private_pi5_hermes_tools_env_slurp is defined
 
 - name: Verify DGX accepts tools profile Bearer token
   ansible.builtin.shell:

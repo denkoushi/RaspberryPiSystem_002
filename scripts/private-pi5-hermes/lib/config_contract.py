@@ -66,12 +66,30 @@ def config_disables_web_toolset(config_text: str) -> bool:
     return config_disables_toolset(config_text, "web")
 
 
+def config_disables_browser_toolset(config_text: str) -> bool:
+    return config_disables_toolset(config_text, "browser")
+
+
 def config_declares_file_toolset_enabled(config_text: str) -> bool:
     return not config_disables_file_toolset(config_text)
 
 
 def config_declares_web_toolset_enabled(config_text: str) -> bool:
     return not config_disables_web_toolset(config_text)
+
+
+def config_declares_browser_toolset_enabled(config_text: str) -> bool:
+    return not config_disables_browser_toolset(config_text)
+
+
+def config_declares_browser_auto_local_for_private_urls(config_text: str) -> bool:
+    return bool(
+        re.search(
+            r"browser:\s*\n(?:\s+.+\n)*?\s+auto_local_for_private_urls:\s*true",
+            config_text,
+            re.MULTILINE,
+        )
+    )
 
 
 def config_declares_workspace_mount(config_text: str, expected_mount: str) -> bool:
@@ -110,6 +128,7 @@ def validate_tools_config_alignment(
     *,
     file_toolset_enabled: bool,
     web_toolset_enabled: bool = False,
+    browser_toolset_enabled: bool = False,
 ) -> list[str]:
     """Return human-readable errors; empty means aligned."""
     errors: list[str] = []
@@ -161,5 +180,24 @@ def validate_tools_config_alignment(
     else:
         if not config_disables_web_toolset(config_text):
             errors.append("web must be listed under agent.disabled_toolsets when web is disabled")
+
+    if browser_toolset_enabled:
+        if not web_toolset_enabled:
+            errors.append("browser toolset requires web toolset (Phase D4 ladder)")
+        if not file_toolset_enabled:
+            errors.append("browser toolset requires file toolset (Phase D4 ladder)")
+        if config_disables_browser_toolset(config_text):
+            errors.append(
+                "browser must not appear under agent.disabled_toolsets when browser is enabled"
+            )
+        if not config_declares_browser_auto_local_for_private_urls(config_text):
+            errors.append(
+                "browser.auto_local_for_private_urls must be true when browser is enabled"
+            )
+    else:
+        if not config_disables_browser_toolset(config_text):
+            errors.append(
+                "browser must be listed under agent.disabled_toolsets when browser is disabled"
+            )
 
     return errors

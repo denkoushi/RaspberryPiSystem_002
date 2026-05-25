@@ -7,6 +7,7 @@
 | 種別 | パス |
 |------|------|
 | 計画・進捗 | [private-pi5-hermes-agent-plan.md](../../docs/plans/private-pi5-hermes-agent-plan.md) |
+| AI執事ビジョン（北極星・D4以降） | [private-pi5-hermes-butler-vision-and-roadmap.md](../../docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md) |
 | Runbook | [private-pi5-hermes-deploy.md](../../docs/runbooks/private-pi5-hermes-deploy.md) |
 | KB（install 障害） | [KB-private-pi5-hermes-install-noninteractive.md](../../docs/knowledge-base/KB-private-pi5-hermes-install-noninteractive.md) |
 | KB（403 / Bearer） | [KB-private-pi5-hermes-dgx-403-bearer-token.md](../../docs/knowledge-base/KB-private-pi5-hermes-dgx-403-bearer-token.md) |
@@ -17,6 +18,7 @@
 | Phase D1（tools 骨格） | [ExecPlan D1](../../docs/plans/private-pi5-hermes-tools-security-phase-d1-execplan.md) · `verify-tools-profile-deploy.sh` |
 | Phase D2（file のみ） | [ExecPlan D2](../../docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md) · `HERMES_TOOLS_PHASE=d2` · `verify-tools-file-smoke.sh` |
 | Phase D3（file+web） | [ExecPlan D3](../../docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md) · `HERMES_TOOLS_PHASE=d3` · `verify-tools-web-smoke.sh` |
+| Phase D4（file+web+browser） | [ExecPlan D4](../../docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md) · `HERMES_TOOLS_PHASE=d4` · `verify-tools-browser-smoke.sh` |
 | 境界ポリシー | [`lib/boundary_policy.py`](lib/boundary_policy.py) · [`config_contract.py`](lib/config_contract.py) · [`hermes_security_adapter.py`](lib/hermes_security_adapter.py) · [`config/boundary-policy.tools.yaml`](config/boundary-policy.tools.yaml) |
 
 ## 前提

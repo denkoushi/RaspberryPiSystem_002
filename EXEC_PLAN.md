@@ -2369,24 +2369,37 @@
 
 ## Next Steps（将来のタスク）
 
-### 私用 Pi5 Hermes Agent — 体験改善・硬化（2026-05-24） {#private-pi5-hermes-discord-2026-05-24}
+### 私用 Pi5 Hermes Agent — セキュア基盤・AI執事北極星（2026-05-24–25） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase D3 本番完了（2026-05-25）** — file+web · `website_blocklist` 同期 · 私用 Pi5 のみデプロイ・検証済。**次: browser 隔離フェーズ設計** または Discord 回帰（任意）。
+**状態**: **Phase D4 本番完了（2026-05-25）** — file+web+browser · agent-browser symlink · `AGENT_BROWSER_ARGS` · 私用 Pi5 のみデプロイ・`HERMES_TOOLS_PHASE=d4` 検証済。**Discord 雑談（chat）はツール無効のまま**（執事化は D5 以降）。
 
-**正本**: [KB Phase D3 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md)·[ExecPlan D3](./docs/plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)·[KB Phase D2 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)·[KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md)·[ExecPlan D2](./docs/plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
+**北極星（ステークホルダー合意・2026-05-25）**: 最終的には **Discord から AI執事**（メモ/リマインド · X 定時 · 簡易アプリ · HA/カメラ定点観測 · **裏で tools 処理**）。**いまは執事機能に直行せず**、Phase 単位でセキュア運用環境を丁寧に構築する。
 
-| # | タスク | 優先 | 完了条件 |
-|---|--------|------|----------|
+**正本**: [AI執事ビジョンとロードマップ](./docs/plans/private-pi5-hermes-butler-vision-and-roadmap.md)·[KB Phase D4 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md)·[ExecPlan D4](./docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md)·[plan](./docs/plans/private-pi5-hermes-agent-plan.md)·[KB 脅威モデル](./docs/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md)·[Runbook](./docs/runbooks/private-pi5-hermes-deploy.md)
+
+#### 完了（セキュリティフェーズ）
+
+| # | タスク | 状態 | 記録 |
+|---|--------|------|------|
 | — | Phase C（遅延・Discord） | **完了** | KB E2E |
-| — | Phase D0（repo·実機·トークン·Tailscale） | **完了** | [KB Phase D0 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d0-production.md) |
-| — | Phase D1（tools 骨格·専用トークン·検証） | **完了** | [KB Phase D1 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d1-production.md) |
-| — | Phase D2（repo·実機·file·gateway active） | **完了** | [KB Phase D2 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d2-production.md) · CI **`26362979630`** |
-| — | Phase D3（file+web·blocklist·実機） | **完了** | [KB Phase D3 本番](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) · CI **`26375912601`** |
-| **1** | **browser 隔離（次フェーズ）** | **高** | 設計・ExecPlan · sandbox 方針 |
-| 2 | Discord 回帰（任意） | 低 | D3 後も chat 経路不変 |
-| 3 | Hermes 既定プロンプト短縮 | 中 | 任意 |
-| 4 | title_generation 無効化 | 低 | ログ警告解消 |
-| 5 | DGX vLLM MTP / reasoning-parser | 低 | フォーラム知見 |
+| — | Phase D0–D3 | **完了** | D3: [KB](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) · PR [#336](https://github.com/denkoushi/RaspberryPiSystem_002/pull/336) · CI **`26375912601`** |
+| — | Phase D4 | **完了** | [KB D4](./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md) · 私用 Pi5 デプロイ · `HERMES_TOOLS_PHASE=d4` |
+
+#### D4 以降 — 開発タスク（優先順）
+
+| # | Phase | タスク | 優先 | 完了条件 |
+|---|-------|--------|------|----------|
+| **1** | **D5** | **Discord ↔ tools 橋（最小）** | **高** | 限定タスクのみ tools 委譲 · chat 雑談維持 · manual 承認 |
+| 2 | — | Discord 回帰（任意） | 低 | D4 後 chat 不変 |
+| 3 | **D6** | memory + リマインド（限定スコープ） | 中 | 保持/削除ポリシー · ADR |
+| 5 | **D7** | 定時ジョブ基盤（`cronjob`） | 中 | 失敗時 Discord 通知 · smoke 1 本 |
+| 6 | **D8** | X 定時ダイジェスト | 中 | API/規約 · D7 上 |
+| 7 | **D9** | Home Assistant / カメラ（読取中心） | 中〜低 | egress/UFW 見直し |
+| 8 | **D10** | 簡易アプリ生成 | 低 | terminal 最後 · code 限定 |
+| 9 | — | Hermes 既定プロンプト短縮 | 中 | 任意 |
+| 10 | — | title_generation 無効化 | 低 | ログ警告解消 |
+
+**議論の記録（要約）**: tools の日常 UI は未整備 · 目標 UI は Discord · D3 playbook verify は Jinja `\n` と blocklist 一括 match で一度失敗 → [KB D3](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) · `verify-tools-profile.yml` 修正済（`main`）。
 
 ### 棚マスタ — 運用・拡張（2026-05-24） {#shelf-master-follow-up-2026-05-24}
 

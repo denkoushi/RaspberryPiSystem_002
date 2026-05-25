@@ -1,4 +1,4 @@
-# Hermes tools profile — boundary policy (Phase D0, tools not enabled in Hermes yet)
+# Hermes tools profile — boundary policy (Phase D0–D4; validated by validate_boundary_policy.py)
 # Validated by: scripts/private-pi5-hermes/validate_boundary_policy.py
 
 allowed_url_prefixes:
