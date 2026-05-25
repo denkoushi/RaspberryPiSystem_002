@@ -1,0 +1,29 @@
+---
+# Hermes imports model_tools at startup, which calls discover_plugins() once.
+# If that pass skips opt-in user plugins, gateway/run.py's idempotent
+# discover_plugins() becomes a no-op and /task never registers.
+- name: Check Hermes gateway plugin discover patch state
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -F
+      - discover_plugins(force=True)
+      - "{{ private_pi5_hermes_home }}/.hermes/hermes-agent/gateway/run.py"
+  register: private_pi5_hermes_gateway_discover_patch
+  changed_when: false
+  failed_when: false
+  when: private_pi5_hermes_gateway_enabled | default(false) | bool
+
+- name: Patch Hermes gateway to force plugin rediscovery on startup
+  ansible.builtin.replace:
+    path: "{{ private_pi5_hermes_home }}/.hermes/hermes-agent/gateway/run.py"
+    regexp: |-
+      (        try:
+                  from hermes_cli\.plugins import discover_plugins
+                  )discover_plugins\(\)
+    replace: |-
+      \1discover_plugins(force=True)
+    backup: true
+  when:
+    - private_pi5_hermes_gateway_enabled | default(false) | bool
+    - private_pi5_hermes_gateway_discover_patch.rc != 0

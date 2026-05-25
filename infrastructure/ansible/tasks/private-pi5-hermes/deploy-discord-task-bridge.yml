@@ -56,6 +56,7 @@
     - bootstrap.py
     - discord_relay.py
     - coordinator.py
+    - session_context.py
 
 - name: Deploy hermes-task-with-approval-relay CLI (Phase D5.1)
   ansible.builtin.copy:

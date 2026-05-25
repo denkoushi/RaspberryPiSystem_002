@@ -142,6 +142,8 @@ curl -sf http://127.0.0.1:38081/healthz
 
 ### デプロイ後
 
+標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` は **verify 前に `hermes-gateway` を自動 restart** する（[`restart-chat-gateway.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/restart-chat-gateway.yml)）。手動 hotfix で plugin のみ copy した場合のみ:
+
 ```bash
 sudo systemctl restart hermes-gateway
 ```
@@ -518,10 +520,10 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | D4 verify: browser が disabled のまま | fragment に **`tools_browser_enabled` 未設定** | `private_pi5_hermes_tools_browser_enabled: true` → 再デプロイ |
 | `install-browser-tooling` rc=1（agent-browser 不在） | 非対話 `hermes setup` は **agent-browser を入れない** | playbook が **node_modules → `~/.local/bin` symlink** · [KB D4](./knowledge-base/KB-private-pi5-hermes-phase-d4-production.md) |
 | Ansible で symlink 後も `command -v` 失敗 | **`bash -lc`** が PATH を上書き | install タスクは **`bash -c` + 明示 export PATH** |
-| `/task` が動かない | D5 フラグ off · plugin 未配置 · **flat deploy で相対 import 失敗** | fragment 有効 → 再デプロイ · gateway restart · [KB D5](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) Investigation |
+| `/task` が動かない | D5 フラグ off · plugin 未配置 · **flat deploy で相対 import 失敗** · **restart 後 plugin discover race** | fragment 有効 → 再デプロイ · gateway restart · discover **force** パッチ · [KB D5](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) Investigation |
 | D5 verify: file disabled 不一致 | Ansible **`'    - file\n'`** 厳密 match | [`verify-discord-task-bridge.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-task-bridge.yml) 更新後に再デプロイ · [KB D5](./knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) |
 | `/task` がタイムアウト | tools **manual 承認** 待ち · relay 無効 | read-only で再試行 · D5.1 デプロイ確認 · `/task-approve` / yes |
-| 承認依頼が来ない | `approval_relay.enabled: false` · store 未配置 | policy + [verify-discord-approval-relay.yml](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-approval-relay.yml) |
+| 承認依頼が来ない | `approval_relay.enabled: false` · store 未配置 · **gateway 未再起動（旧 D5 plugin 常駐）** | policy + restart + [verify-discord-approval-relay.yml](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-approval-relay.yml) |
 | `/task` relay が即失敗 | bash ラッパ hermes → 誤 venv python | [`tools_profile_runner.py`](../../scripts/private-pi5-hermes/lib/tools_profile_runner.py) の venv 解決 · [KB D5 §D5.1 Investigation](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#investigationd51-デプロイ実機検証) |
 | yes/no が雑談になる | pending task なし | write タスク実行中のみ intercept · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) |
 

@@ -36,6 +36,7 @@
     - store.py
     - coordinator.py
     - runner.py
+    - session_context.py
 
 - name: Assert approval relay package is deployed
   ansible.builtin.assert:
@@ -91,4 +92,136 @@
   ansible.builtin.assert:
     that:
       - private_pi5_hermes_approval_relay_plugin_smoke.rc == 0
-    fail_msg: "approval relay plugin register smoke failed"
+    fail_msg: "approval relay plugin smoke failed"
+
+- name: Smoke D5.1 async /task handler (must not be sync legacy D5)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import inspect
+        import runpy
+        import sys
+        plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
+        sys.path.insert(0, plugin_dir)
+        ns = runpy.run_path(plugin_dir + "/__init__.py")
+        handler = ns.get("_handle_task_command")
+        assert callable(handler), "_handle_task_command missing"
+        assert inspect.iscoroutinefunction(handler), "expected async D5.1 /task handler"
+        print("ok")
+  register: private_pi5_hermes_approval_relay_async_smoke
+  changed_when: false
+
+- name: Assert D5.1 async /task handler smoke passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_approval_relay_async_smoke.rc == 0
+    fail_msg: >-
+      discord-task-bridge plugin is not D5.1 async handler (gateway may still be running stale code).
+
+- name: Smoke gateway session context adapter (Hermes get_session_env per-key API)
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import sys
+        plugin_dir = "{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge"
+        sys.path.insert(0, plugin_dir)
+        from approval_relay.session_context import read_gateway_session_context
+
+        def good_getter(name, default=""):
+            values = {
+                "HERMES_SESSION_USER_ID": "smoke-user",
+                "HERMES_SESSION_CHAT_ID": "smoke-chan",
+            }
+            return values.get(name, default)
+
+        user_id, channel_id = read_gateway_session_context(env_getter=good_getter)
+        assert user_id == "smoke-user", user_id
+        assert channel_id == "smoke-chan", channel_id
+
+        def bad_getter(_name, _default=""):
+            raise TypeError(
+                "get_session_env() missing 1 required positional argument: 'name'"
+            )
+
+        import os
+        os.environ["HERMES_SESSION_USER_ID"] = "fallback-user"
+        os.environ["HERMES_SESSION_CHAT_ID"] = "fallback-chan"
+        user_id, channel_id = read_gateway_session_context(env_getter=bad_getter)
+        assert user_id == "fallback-user", user_id
+        assert channel_id == "fallback-chan", channel_id
+        print("ok")
+  register: private_pi5_hermes_session_context_smoke
+  changed_when: false
+
+- name: Assert gateway session context adapter smoke passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_session_context_smoke.rc == 0
+    fail_msg: >-
+      approval relay session_context adapter failed (get_session_env API regression).
+
+- name: Check Hermes chat gateway is active for approval relay
+  ansible.builtin.systemd:
+    name: hermes-gateway
+  register: private_pi5_hermes_gateway_for_relay
+
+- name: Assert Hermes chat gateway is running after deploy restart
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_gateway_for_relay.status.ActiveState == 'active'
+    fail_msg: "hermes-gateway is not active after deploy restart"
+
+- name: Assert gateway process started after plugin entrypoint deploy
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      gw_raw="$(systemctl show hermes-gateway -p ActiveEnterTimestamp --value)"
+      gw_ts="$(date -d "${gw_raw}" +%s)"
+      pl_ts="$(stat -c %Y '{{ private_pi5_hermes_data_dir }}/plugins/private-pi5-discord-task-bridge/__init__.py')"
+      test "${gw_ts}" -ge "${pl_ts}"
+  register: private_pi5_hermes_gateway_plugin_freshness
+  changed_when: false
+
+- name: Assert gateway/plugin freshness check passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_gateway_plugin_freshness.rc == 0
+    fail_msg: >-
+      hermes-gateway started before plugin __init__.py was deployed (stale in-memory plugin risk).
+
+- name: Assert Hermes gateway forces plugin rediscovery on startup
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -F
+      - discover_plugins(force=True)
+      - "{{ private_pi5_hermes_home }}/.hermes/hermes-agent/gateway/run.py"
+  register: private_pi5_hermes_gateway_discover_patch_verify
+  changed_when: false
+  failed_when: private_pi5_hermes_gateway_discover_patch_verify.rc != 0
+
+- name: Smoke gateway startup plugin discovery order (model_tools then force)
+  ansible.builtin.command:
+    argv:
+      - "{{ private_pi5_hermes_home }}/.hermes/hermes-agent/venv/bin/python3"
+      - -c
+      - |
+        import model_tools  # noqa: F401 — triggers early discover_plugins()
+        from hermes_cli.plugins import discover_plugins, get_plugin_command_handler
+        discover_plugins(force=True)
+        assert get_plugin_command_handler("task") is not None, "task handler missing after force discover"
+        print("ok")
+  environment:
+    HOME: "{{ private_pi5_hermes_home }}"
+  register: private_pi5_hermes_gateway_discover_order_smoke
+  changed_when: false
+
+- name: Assert gateway startup plugin discovery smoke passed
+  ansible.builtin.assert:
+    that:
+      - private_pi5_hermes_gateway_discover_order_smoke.rc == 0
+    fail_msg: "gateway plugin discovery order smoke failed (task handler missing)"

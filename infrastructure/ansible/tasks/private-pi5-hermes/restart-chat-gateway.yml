@@ -1,0 +1,17 @@
+---
+# Hermes gateway loads Python plugins at process start; config/plugin deploy must restart it.
+- name: Restart Hermes chat gateway to apply config and plugin changes
+  ansible.builtin.systemd:
+    name: hermes-gateway
+    state: restarted
+    daemon_reload: true
+  when: private_pi5_hermes_gateway_enabled | default(false) | bool
+
+- name: Wait for Hermes chat gateway to become active after restart
+  ansible.builtin.systemd:
+    name: hermes-gateway
+  register: private_pi5_hermes_gateway_active_check
+  until: private_pi5_hermes_gateway_active_check.status.ActiveState == 'active'
+  retries: 12
+  delay: 5
+  when: private_pi5_hermes_gateway_enabled | default(false) | bool

@@ -72,7 +72,7 @@ private_pi5_hermes_gateway_enabled: true
 
 - D5 前に fragment の **`discord_tools_bridge_enabled`** と **D4 一式**を一覧確認
 - verify 失敗時は **実機 `config.yaml` を slurp して文字列マッチを疑う**（D3/D4 と同型）
-- plugin 変更後は **`hermes-gateway` restart**（デプロイ playbook が再起動する）
+- plugin 変更後は **`hermes-gateway` restart**（playbook が verify 前に **自動 restart** — [`restart-chat-gateway.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/restart-chat-gateway.yml)）
 - Pi5 上の Python smoke は **plugin ディレクトリを `sys.path` に載せる**（repo の `lib` パッケージ import とは別）
 - Discord E2E は **read-only プロンプト**から開始 · write タスクは **D5.1 承認中継**（[ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md)）
 
@@ -116,6 +116,18 @@ private_pi5_hermes_gateway_enabled: true
 | `verify-tools-profile-deploy.sh` が d1 扱いで FAIL | ansible `script` モジュールに **`HERMES_TOOLS_PHASE` 未伝播** | **`HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh`**（Runbook 既存パターン） |
 | approval relay write テストが即 FAIL | **`/home/hermes/.local/bin/hermes` は bash ラッパ** · `_resolve_hermes_python` が `/usr/bin/python3` にフォールバック → `hermes_cli` 不在 | ラッパ内 `exec ".../venv/bin/hermes"` を解析 · fallback **`~/.hermes/hermes-agent/venv/bin/python3`**（[`tools_profile_runner.py`](../../scripts/private-pi5-hermes/lib/tools_profile_runner.py)） |
 | 実機 venv パス想定違い | 当初 `~/.local/share/hermes-agent/venv` を仮定 | 正: **`~/.hermes/hermes-agent/venv/bin/python3`** |
+| Discord write `/task` が **承認なし ~23s** で完了 · TUI 生出力 · store に request なし | D5.1 配布後 **`hermes-gateway` 未再起動**（11:27 起動の **D5 旧 plugin がメモリ常駐**）· playbook は `state: started` のみ | verify 前に **gateway restart** を playbook へ追加 · 手動 hotfix 時も **`systemctl restart hermes-gateway`** |
+| restart 後 **`Unknown command /task`** | **`model_tools` import 時の `discover_plugins()`** が先に走り user plugin をスキップ → gateway 側 idempotent discover が **no-op**（※21:55 事象の主因ではない — 下表参照） | **`gateway/run.py` を `discover_plugins(force=True)` にパッチ**（[`deploy-hermes-gateway-plugin-discover-fix.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/deploy-hermes-gateway-plugin-discover-fix.yml)） |
+| restart + discover fix 後も **`Unknown command /task`** | [`read_gateway_session_context()`](../../scripts/private-pi5-hermes/lib/approval_relay/coordinator.py) が **`get_session_env()` を引数なし**で呼ぶ · Pi5 Hermes API は **`get_session_env(name, default) -> str`** · handler 実行時 **TypeError** → gateway plugin dispatch が DEBUG で握りつぶし skill 未登録扱い | [`approval_relay/session_context.py`](../../scripts/private-pi5-hermes/lib/approval_relay/session_context.py) でキー単位アダプタ + `os.environ` フォールバック · verify smoke 追加 |
+
+### Discord `/task` E2E（2026-05-25 夜 · write 承認）
+
+| テスト | 結果 | 備考 |
+|--------|------|------|
+| `/task List files in workspace` | OK · ~23s | read-only · 承認不要 |
+| `/task Create hello-d51.txt ...` | **NG** · ~23s · 承認なしで作成 | 旧 plugin 経路（上表根因） |
+| **gateway restart 後**（21:40 JST · PID 140530） | playbook verify **PASS** · write relay sim **OK** | `hello-d51-restart.txt` · `relay-restart-ok` · ~91s |
+| Discord write `/task` 再試行 | **要確認** | 承認プロンプト → yes → 作成を期待 |
 
 正本: [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md) · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [Runbook §D5.1](../runbooks/private-pi5-hermes-deploy.md#phase-d51--discord-承認中継2026-05-25--repo-実装)
 
