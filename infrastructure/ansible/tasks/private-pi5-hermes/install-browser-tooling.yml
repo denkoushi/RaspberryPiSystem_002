@@ -1,0 +1,94 @@
+---
+# Phase D4 only: local agent-browser / Chromium (initial install keeps --skip-browser).
+- name: Install OS packages for Hermes local browser (Phase D4)
+  ansible.builtin.apt:
+    name:
+      - chromium
+      - fonts-liberation
+      - libnss3
+      - libgbm1
+      - libasound2
+      - libatk-bridge2.0-0
+      - libgtk-3-0
+      - xdg-utils
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check if browser tooling marker exists
+  ansible.builtin.stat:
+    path: "{{ private_pi5_hermes_tools_data_dir }}/.browser-tooling-ready"
+  register: private_pi5_hermes_browser_tooling_marker
+
+- name: Check whether agent-browser is already on PATH
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - -lc
+      - command -v agent-browser
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  environment:
+    HOME: "{{ private_pi5_hermes_tools_home }}"
+    PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: private_pi5_hermes_agent_browser_precheck
+  changed_when: false
+  failed_when: false
+
+- name: Install Hermes browser stack via CLI (non-interactive)
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      export PATH="{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      export HOME="{{ private_pi5_hermes_tools_home }}"
+      if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
+        echo "chromium binary missing after apt install" >&2
+        exit 1
+      fi
+      if "{{ private_pi5_hermes_bin }}" setup --help 2>/dev/null | grep -qi browser; then
+        "{{ private_pi5_hermes_bin }}" setup browser </dev/null || true
+      fi
+      if "{{ private_pi5_hermes_bin }}" setup --help 2>/dev/null | grep -qi tools; then
+        "{{ private_pi5_hermes_bin }}" setup tools </dev/null || true
+      fi
+      command -v agent-browser
+    executable: /bin/bash
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  environment:
+    HOME: "{{ private_pi5_hermes_tools_home }}"
+  register: private_pi5_hermes_browser_cli_install
+  when:
+    - not private_pi5_hermes_browser_tooling_marker.stat.exists
+    - private_pi5_hermes_agent_browser_precheck.rc != 0
+
+- name: Mark Hermes browser tooling ready
+  ansible.builtin.file:
+    path: "{{ private_pi5_hermes_tools_data_dir }}/.browser-tooling-ready"
+    state: touch
+    owner: "{{ private_pi5_hermes_user }}"
+    group: "{{ private_pi5_hermes_group }}"
+    mode: "0600"
+  when:
+    - not private_pi5_hermes_browser_tooling_marker.stat.exists
+    - >-
+      private_pi5_hermes_agent_browser_precheck.rc == 0
+      or (
+        private_pi5_hermes_browser_cli_install is defined
+        and private_pi5_hermes_browser_cli_install.rc == 0
+      )
+
+- name: Verify agent-browser is available for hermes user
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - -lc
+      - command -v agent-browser
+  become: true
+  become_user: "{{ private_pi5_hermes_user }}"
+  environment:
+    HOME: "{{ private_pi5_hermes_tools_home }}"
+    PATH: "{{ private_pi5_hermes_home }}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  register: private_pi5_hermes_agent_browser_which
+  changed_when: false
+  failed_when: private_pi5_hermes_agent_browser_which.rc != 0

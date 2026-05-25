@@ -2371,7 +2371,7 @@
 
 ### 私用 Pi5 Hermes Agent — セキュア基盤・AI執事北極星（2026-05-24–25） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase D3 本番完了（2026-05-25）** — file+web · `website_blocklist` 同期 · 私用 Pi5 のみデプロイ・検証済。**Discord 雑談（chat）はツール無効のまま**（執事化は未接続）。
+**状態**: **Phase D3 本番完了（2026-05-25）** — file+web · `website_blocklist` 同期 · 私用 Pi5 のみデプロイ・検証済。**Phase D4（browser 隔離）は repo 実装完了・実機デプロイ未**。**Discord 雑談（chat）はツール無効のまま**（執事化は未接続）。
 
 **北極星（ステークホルダー合意・2026-05-25）**: 最終的には **Discord から AI執事**（メモ/リマインド · X 定時 · 簡易アプリ · HA/カメラ定点観測 · **裏で tools 処理**）。**いまは執事機能に直行せず**、Phase 単位でセキュア運用環境を丁寧に構築する。
 
@@ -2388,7 +2388,7 @@
 
 | # | Phase | タスク | 優先 | 完了条件 |
 |---|-------|--------|------|----------|
-| **1** | **D4** | **browser 隔離** | **高** | ExecPlan · sandbox/`AGENT_BROWSER_ARGS` · 脅威モデル実機 |
+| **1** | **D4** | **browser 隔離** | **高** | **repo 完了** · [ExecPlan D4](./docs/plans/private-pi5-hermes-tools-security-phase-d4-execplan.md) · 実機デプロイ・`HERMES_TOOLS_PHASE=d4` 未 |
 | **2** | **D5** | **Discord ↔ tools 橋（最小）** | **高** | 限定タスクのみ tools 委譲 · chat 雑談維持 · manual 承認 |
 | 3 | — | Discord 回帰（任意） | 低 | D3 後 chat 不変 |
 | 4 | **D6** | memory + リマインド（限定スコープ） | 中 | 保持/削除ポリシー · ADR |

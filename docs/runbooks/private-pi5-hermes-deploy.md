@@ -410,6 +410,30 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --emit-hermes-sec
 
 **記録**: [KB Phase D3 本番](../knowledge-base/KB-private-pi5-hermes-phase-d3-production.md)。
 
+## Phase D4 — file + web + browser（隔離・repo 実装）
+
+**目的**: D3 を維持し **`browser` toolset** を有効化。ローカル **agent-browser** のみ（クラウド browser API キー禁止）。**`AGENT_BROWSER_ARGS`** を tools `.env` に配置。**初回 install は `--skip-browser` 維持**；`private_pi5_hermes_tools_browser_enabled: true` 時のみ `install-browser-tooling.yml` が Chromium + CLI setup を実行。
+
+**fragment（D4）**:
+
+```yaml
+private_pi5_hermes_tools_browser_enabled: true
+# 任意:
+# private_pi5_hermes_browser_agent_args: "--no-sandbox,--disable-dev-shm-usage"
+```
+
+**検証（repo / 実機）**:
+
+```bash
+python3 -m unittest discover -s scripts/private-pi5-hermes/tests -v
+HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh   # ansible copy 後
+HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-browser-smoke.sh
+```
+
+**実機デプロイ**: 未実施（ExecPlan 手順どおり `deploy-private-pi5-hermes.sh`）。
+
+正本: [Phase D4 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md)。
+
 ## トラブルシュート（クイック）
 
 | 症状 | 参照 |
@@ -450,3 +474,4 @@ python3 scripts/private-pi5-hermes/validate_boundary_policy.py --emit-hermes-sec
 - [Phase D2 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d2-execplan.md)
 - [KB Phase D2 本番](../knowledge-base/KB-private-pi5-hermes-phase-d2-production.md)
 - [Phase D3 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d3-execplan.md)
+- [Phase D4 ExecPlan](../plans/private-pi5-hermes-tools-security-phase-d4-execplan.md)

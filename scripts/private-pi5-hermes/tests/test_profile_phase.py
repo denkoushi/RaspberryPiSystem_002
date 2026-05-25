@@ -9,7 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from lib.profile_phase import ProfilePhase, expectation_for_phase  # noqa: E402
-from lib.profiles import TOOLS_PROFILE_D1, TOOLS_PROFILE_D2, TOOLS_PROFILE_D3  # noqa: E402
+from lib.profiles import (  # noqa: E402
+    TOOLS_PROFILE_D1,
+    TOOLS_PROFILE_D2,
+    TOOLS_PROFILE_D3,
+    TOOLS_PROFILE_D4,
+)
 
 
 class ProfilePhaseTests(unittest.TestCase):
@@ -43,6 +48,15 @@ class ProfilePhaseTests(unittest.TestCase):
             ),
             ProfilePhase.D3_FILE_WEB,
         )
+        self.assertEqual(
+            ProfilePhase.from_tools_flags(
+                tools_profile_enabled=True,
+                tools_file_enabled=True,
+                tools_web_enabled=True,
+                tools_browser_enabled=True,
+            ),
+            ProfilePhase.D4_FILE_WEB_BROWSER,
+        )
 
     def test_d1_expectation(self) -> None:
         exp = expectation_for_phase(ProfilePhase.D1_SKELETON)
@@ -65,7 +79,18 @@ class ProfilePhaseTests(unittest.TestCase):
         self.assertTrue(exp.require_tools_gateway_active)
         self.assertTrue(exp.require_website_blocklist)
         self.assertFalse(exp.config_must_disable_web_toolset)
+        self.assertTrue(exp.config_must_disable_browser_toolset)
         self.assertEqual(exp.profile.enabled_toolsets, frozenset({"file", "web"}))
+
+    def test_d4_expectation(self) -> None:
+        exp = expectation_for_phase(ProfilePhase.D4_FILE_WEB_BROWSER)
+        self.assertEqual(exp.profile, TOOLS_PROFILE_D4)
+        self.assertTrue(exp.require_tools_gateway_active)
+        self.assertTrue(exp.require_website_blocklist)
+        self.assertFalse(exp.config_must_disable_browser_toolset)
+        self.assertEqual(
+            exp.profile.enabled_toolsets, frozenset({"file", "web", "browser"})
+        )
 
 
 if __name__ == "__main__":

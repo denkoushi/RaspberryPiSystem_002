@@ -99,6 +99,20 @@
         - private_pi5_hermes_tools_profile_enabled | default(false) | bool
         - private_pi5_hermes_tools_web_enabled | default(false) | bool
 
+    - name: Validate Hermes tools Phase D4 requires file, web, and gateway
+      ansible.builtin.assert:
+        that:
+          - private_pi5_hermes_tools_file_enabled | default(false) | bool
+          - private_pi5_hermes_tools_web_enabled | default(false) | bool
+          - private_pi5_hermes_tools_gateway_enabled | default(false) | bool
+        fail_msg: >-
+          Phase D4 (private_pi5_hermes_tools_browser_enabled: true) requires
+          private_pi5_hermes_tools_file_enabled, private_pi5_hermes_tools_web_enabled,
+          and private_pi5_hermes_tools_gateway_enabled on the tools profile.
+      when:
+        - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+        - private_pi5_hermes_tools_browser_enabled | default(false) | bool
+
     - name: Validate Hermes prerequisites
       ansible.builtin.assert:
         that:
@@ -121,6 +135,12 @@
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/deploy-tools-profile.yml"
       when: private_pi5_hermes_tools_profile_enabled | default(false) | bool
 
+    - name: Install Hermes browser tooling (Phase D4)
+      ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/install-browser-tooling.yml"
+      when:
+        - private_pi5_hermes_tools_profile_enabled | default(false) | bool
+        - private_pi5_hermes_tools_browser_enabled | default(false) | bool
+
     - name: Configure Hermes DGX keep-warm
       ansible.builtin.include_tasks: "../tasks/private-pi5-hermes/keep-warm.yml"
 
@@ -140,6 +160,8 @@
           - "gateway_enabled={{ private_pi5_hermes_gateway_enabled }}"
           - "tools_profile_enabled={{ private_pi5_hermes_tools_profile_enabled | default(false) }}"
           - "tools_file_enabled={{ private_pi5_hermes_tools_file_enabled | default(false) }}"
+          - "tools_web_enabled={{ private_pi5_hermes_tools_web_enabled | default(false) }}"
+          - "tools_browser_enabled={{ private_pi5_hermes_tools_browser_enabled | default(false) }}"
           - "tools_gateway_enabled={{ private_pi5_hermes_tools_gateway_enabled | default(false) }}"
           - "dgx_keep_warm_active={{ private_pi5_hermes_dgx_keep_warm_active }}"
           - "discord_configured={{ (private_pi5_hermes_discord_bot_token | default('') | trim) | length > 0 }}"

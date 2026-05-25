@@ -38,6 +38,7 @@ update-frequency: medium
 | Docker 隔離・手動承認・UFW | Hermes ブラウザ自動化（`--skip-browser`） |
 | Discord gateway（fragment 設定後に有効化） | 雑談プロファイルへの **ツール直結**（執事化は **tools 橋** 経由で将来） |
 | Phase D3 完了（tools: file+web） | Discord からの即時執事化 · 全ツール一括 ON |
+| Phase D4 repo（tools: +browser） | [ExecPlan D4](./private-pi5-hermes-tools-security-phase-d4-execplan.md) · 実機未 |
 | keep-warm・gateway thinking 注入 | |
 
 ## 2系統との関係（私用 Pi5 上の併用）

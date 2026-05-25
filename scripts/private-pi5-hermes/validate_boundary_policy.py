@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib.boundary_policy import BoundaryPolicy, validate_policy_document  # noqa: E402
 from lib.config_contract import workspace_mounts_from_policy  # noqa: E402
+from lib.hermes_browser_adapter import hermes_browser_emission  # noqa: E402
 from lib.hermes_security_adapter import hermes_security_emission  # noqa: E402
 
 
@@ -51,6 +52,11 @@ def main() -> int:
         action="store_true",
         help="Emit Hermes security.website_blocklist + expected_llm_base_url JSON (D3)",
     )
+    parser.add_argument(
+        "--emit-browser-env",
+        action="store_true",
+        help="Emit Hermes browser config + AGENT_BROWSER_ARGS JSON (D4)",
+    )
     args = parser.parse_args()
 
     try:
@@ -77,6 +83,14 @@ def main() -> int:
         try:
             policy = BoundaryPolicy.from_mapping(data)
             payload["hermes_security"] = hermes_security_emission(policy)
+        except ValueError as exc:
+            errors.append(str(exc))
+            payload["ok"] = False
+            payload["errors"] = errors
+    if args.emit_browser_env:
+        try:
+            policy = BoundaryPolicy.from_mapping(data)
+            payload["hermes_browser"] = hermes_browser_emission(policy)
         except ValueError as exc:
             errors.append(str(exc))
             payload["ok"] = False

@@ -101,7 +101,7 @@ update-frequency: medium
 
 | Phase | 名称 | 目的 | 執事との関係 | 優先 |
 |-------|------|------|--------------|------|
-| **D4** | browser 隔離 | sandbox · `AGENT_BROWSER_ARGS` · 脅威モデル実機 | 将来ブラウザ操作の足場 | **高** |
+| **D4** | browser 隔離 | sandbox · `AGENT_BROWSER_ARGS` · 脅威モデル実機 | 将来ブラウザ操作の足場 | **高**（**repo 実装済・実機未**） |
 | **D5** | Discord ↔ tools 橋（最小） | 限定インテントのみ tools プロファイルへ委譲 · manual 承認維持 | **執事の「指示→実行」第一歩** | **高** |
 | **D6** | memory + リマインド（限定） | `memory` のスコープ設計 · 保持/削除ポリシー · Discord 通知 | 執事 §1 | 中 |
 | **D7** | 定時ジョブ基盤 | `cronjob` + 失敗時 Discord 通知 · 1 本の smoke タスク | 執事 §2 の土台 | 中 |

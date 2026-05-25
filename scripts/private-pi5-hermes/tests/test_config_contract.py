@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 from lib.boundary_policy import BoundaryPolicy  # noqa: E402
 from lib.config_contract import (  # noqa: E402
     config_declares_file_toolset_enabled,
+    config_disables_browser_toolset,
     config_disables_file_toolset,
     config_disables_web_toolset,
     docker_volume_mount,
@@ -60,6 +61,7 @@ custom_providers:
 agent:
   disabled_toolsets:
     - web
+    - browser
     - terminal
 """
 
@@ -77,6 +79,7 @@ custom_providers:
   - base_url: http://100.118.82.72:38081/v1
 agent:
   disabled_toolsets:
+    - browser
     - terminal
 security:
   allow_private_urls: true
@@ -95,7 +98,50 @@ security:
 
     def test_d3_config_alignment(self) -> None:
         errors = validate_tools_config_alignment(
-            self._d3_config(), self.policy, file_toolset_enabled=True, web_toolset_enabled=True
+            self._d3_config(),
+            self.policy,
+            file_toolset_enabled=True,
+            web_toolset_enabled=True,
+            browser_toolset_enabled=False,
+        )
+        self.assertEqual(errors, [])
+
+    def _d4_config(self) -> str:
+        blocklist = hermes_security_blocklist_document(self.policy)
+        domains_yaml = "\n".join(f"      - \"{domain}\"" for domain in blocklist["domains"])
+        return f"""
+terminal:
+  backend: docker
+  docker_volumes:
+    - "/home/hermes/.hermes-tools/workspace:/workspace"
+model:
+  base_url: http://100.118.82.72:38081/v1
+custom_providers:
+  - base_url: http://100.118.82.72:38081/v1
+browser:
+  auto_local_for_private_urls: true
+  inactivity_timeout: 120
+  command_timeout: 30
+  record_sessions: false
+agent:
+  disabled_toolsets:
+    - terminal
+security:
+  allow_private_urls: true
+  website_blocklist:
+    enabled: true
+    domains:
+{domains_yaml}
+    shared_files: []
+"""
+
+    def test_d4_config_alignment(self) -> None:
+        errors = validate_tools_config_alignment(
+            self._d4_config(),
+            self.policy,
+            file_toolset_enabled=True,
+            web_toolset_enabled=True,
+            browser_toolset_enabled=True,
         )
         self.assertEqual(errors, [])
 
@@ -105,6 +151,7 @@ agent:
   disabled_toolsets:
     - file
     - web
+    - browser
 """
         errors = validate_tools_config_alignment(
             config, self.policy, file_toolset_enabled=False, web_toolset_enabled=False
@@ -117,8 +164,22 @@ agent:
         )
         self.assertTrue(config_disables_web_toolset("agent:\n  disabled_toolsets:\n    - web\n"))
         self.assertTrue(
+            config_disables_browser_toolset("agent:\n  disabled_toolsets:\n    - browser\n")
+        )
+        self.assertTrue(
             config_declares_file_toolset_enabled("agent:\n  disabled_toolsets:\n    - web\n")
         )
+
+    def test_browser_requires_web_and_file(self) -> None:
+        config = self._d3_config()
+        errors = validate_tools_config_alignment(
+            config,
+            self.policy,
+            file_toolset_enabled=True,
+            web_toolset_enabled=False,
+            browser_toolset_enabled=True,
+        )
+        self.assertTrue(any("requires web" in err for err in errors))
 
     def test_d3_requires_file_when_web_enabled(self) -> None:
         config = """
