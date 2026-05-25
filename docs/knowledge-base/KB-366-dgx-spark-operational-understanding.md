@@ -1,0 +1,161 @@
+---
+title: KB-366 DGX Spark 運用理解（メモリ・モデル・モード切替・KPI）
+tags: [DGX, DGX_RESOURCE, Spark, vLLM, ComfyUI, 運用, メモリ, KPI]
+audience: [開発者, 運用者]
+last-verified: 2026-05-25
+category: knowledge-base
+---
+
+# KB-366: DGX Spark 運用理解（メモリ・モデル・モード切替・KPI）
+
+## Context
+
+2026-05-25 に **`private_ok` 強制停止（`stop-force`）** の本番反映と、その前後の運用確認・議論で整理した **「Spark 上で何が動いているか」** の正本。DGX リソース画面の見方、メモリ KPI の意味、27B/35B の関係、Comfy との両立可否を、後から読んでも迷わないよう **FAQ 形式**で集約する。
+
+**関連**: [KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[Runbook dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment §2026-05-25](../guides/deployment.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)
+
+---
+
+## 1. 業務モードと私用モードでメモリがどう変わるか
+
+| 運用のイメージ | メモリ KPI（概ね） | DGX 上で載っているもの |
+|----------------|-------------------|------------------------|
+| **業務優先 / 私用→業務**（27B 起動後） | **大きい**（例: 80〜100 GiB 台の used/total） | **`system-prod-trtllm`**（vLLM・**Qwen3.6-27B NVFP4**）が **1 本** |
+| **私用OK / 業務→私用**（強制停止後） | **ほぼゼロに近い** | **業務 LLM コンテナは停止**（推論モデル未ロード） |
+
+**理解の要点**
+
+- 私用に切り替えると **業務用 27B を止めてメモリを空ける**のが今回の `private_ok` + `stop-force` の目的（[KB-365 §2026-05-25](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)）。
+- ComfyUI を別途動かせば **Comfy 分だけ**メモリは使う。**業務 27B と Comfy のフル同時稼働は期待しない**（[KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。
+
+---
+
+## 2. 写真ラベル・要領書・Hermes は「別モデル」か
+
+**用途名は複数あるが、DGX 上の業務推論は基本的に 1 系統。**
+
+| 用途（Pi5 API 等） | 経路 |
+|--------------------|------|
+| 写真ラベル（`photo_label`） | 職場 Pi5 → DGX gateway `38081` |
+| 要領書要約（`document_summary`） | 同上 |
+| 管理チャット（`admin_console_chat`） | 同上 |
+| StackChan 職場 API（`stackchan_chat`） | 同上 |
+| **Hermes（私用 Pi5）** | 私用 Pi5 → **同じ DGX gateway**（別マシンだが **同じ `system-prod-primary` エイリアス**） |
+
+inventory 上の正本: `inference_*_provider_id: dgx_primary`・モデル名 **`system-prod-primary`**（[Runbook](../runbooks/dgx-system-prod-local-llm.md)）。
+
+**誤解しやすい点**: 「用途ごとに 27B が何本もロード」ではない。**1 つの vLLM プロセス（+ KV キャッシュ枠）を共有**する。
+
+---
+
+## 3. 27B（blue）と 35B（green）は同時に載るか
+
+**通常運用では同時フルロードしない。** 設計は **green / blue のどちらか一方**。
+
+| 系統 | 実体 | 代表モデル | ポート（ローカル） |
+|------|------|------------|-------------------|
+| **green** | `llama-server` | **Qwen3.5-35B**（GGUF） | `38082` |
+| **blue** | `system-prod-trtllm`（Docker vLLM） | **Qwen3.6-27B**（NVFP4） | `38083` |
+
+- **`ACTIVE_LLM_BACKEND`** が `blue` か `green` かで **アクティブ側が 1 つ**（本番記録・実機確認は **blue**）。
+- **`DGX_LLM_SINGLE_ACTIVE_GUARD`**: `/start` 前に **非アクティブ側を必ず stop**（[Runbook §単一アクティブ](../runbooks/dgx-system-prod-local-llm.md#単一アクティブ運用ガードdgx_llm_single_active_guard)）。
+
+**念のための確認（DGX）**
+
+```bash
+grep '^ACTIVE_LLM_BACKEND=' /srv/dgx/system-prod/secrets/control-server.env
+ss -ltnp | awk '/:38082|:38083/'
+docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
+```
+
+**正常（blue 業務時）**: `ACTIVE_LLM_BACKEND=blue`・**`system-prod-trtllm` 1 つ**・**`38082` 非 listen**・**`llama-server` プロセスなし**。
+
+**異常**: `38082` と `38083` が同時 listen、または llama と vLLM が同時稼働。
+
+---
+
+## 4. KPI のメモリと vLLM の `gpu-memory-utilization 0.85` の違い
+
+**別物。混同しない。**
+
+### vLLM の `--gpu-memory-utilization 0.85`
+
+- **意味**: vLLM が「GPU（DGX Spark では統一メモリ）の **最大何割まで使ってよいか**」の **上限（キャップ）**。
+- **vLLM 公式の既定は `0.9`**。本リポジトリの Runbook 例は **`0.85`（やや控えめの運用値）**（[Runbook BLUE_SERVER_COMMAND 例](../runbooks/dgx-system-prod-local-llm.md)）。
+- **「今ちょうど 85% 使っている」というリアルタイム表示ではない**。起動時に **KV キャッシュ等の枠を確保**し、**起動中はその枠に近い占有が続きやすい**。
+- **下げられるか**: はい（例: `0.65`〜`0.75`）。ただし **同時リクエスト・長文で KV 不足**や **起動失敗**のリスク。Comfy 両立の本命は利用率を下げることではなく **モード切替**（[KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。
+
+### 管理画面 KPI（`Unified Mem` / `Free Mem`）
+
+- **意味**: DGX `gateway-server.py` が **`nvidia-smi` の memory.used / memory.total**（または compute-apps フォールバック）を読んだ **スナップショット**（`GET /system/metrics` → Pi5 `overview.kpis`）。
+- **表示例**: `96 / 128 GiB` と **バー（used÷total の％）**。
+- **リアルタイムに近い実測**だが、ダッシュボードの **ポーリング間隔ごとの点**（厳密な毎秒ストリームではない）。
+- **バーが 85% 付近** = 「設定が 0.85」ではなく **実測の使用率が 85% 前後**。
+
+### なぜ業務時に 100 GiB 台に見えるか
+
+- Spark の **総メモリが大きい**（例: 128 GiB 級）× vLLM が **枠を大きく取る** → KPI の **used が 80〜100 GiB** になりやすい。
+- **27B が 2 本載っているからではない**（単一アクティブガード前提）。
+
+---
+
+## 5. ComfyUI と業務 27B の同時稼働
+
+**フル同時は無理に近い（設計上も運用上も切り替え前提）。**
+
+- 27B（vLLM）だけでも **数十 GB 級**の占有（実測・KB 上 **~57GB** の言及あり: [KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)）。
+- Comfy（FLUX 等）も **数十 GB 級**になり得る。
+- **`gpu-memory-utilization` を少し下げても**、**両方フルは基本無理**。**業務モード ⇔ 私用モード**でどちらかを止める運用が正本。
+
+---
+
+## 6. 管理画面: 「ワークロード自動調整」チェックと切替手順
+
+### チェック項目の正しい名前と場所
+
+- 文言: **「切替時にワークロード自動調整」**（`DgxResourceProfilePanel`）。
+- 場所: `/admin/tools/dgx-resource` を下へスクロール → 折りたたみ **「詳細・保守（通常は不要）」** → **「運用モード（保守・手動切替）」** 内。
+- **画面上部の運用ガイド（4 つの大きい操作）にはこのチェックは無い。**
+
+### いつチェックが要るか
+
+| 操作 | チェック |
+|------|----------|
+| **運用ガイドの「業務→私用」等**（`EXECUTE_ORCHESTRATION_SCENARIO`） | **不要**（API 側で `applyWorkloadChanges: true` 相当） |
+| **保守パネルの「私用OK」ボタンのみ** | **要る**（チェック OFF だと **モード表示だけ変わり、停止 POST が走らない**） |
+
+**API の事実**: `planWorkloadAdjustmentsBeforePolicyChange` は **`applyWorkloadChanges: false` なら空配列**（停止なし）。`private_ok` の確認ダイアログは **チェック無しでも出る**が、**実停止はチェック ON 時のみ**（`dgx-resource.policy-arbitrator.ts` + `SET_POLICY` body）。
+
+**現場確認の推奨**: **運用ガイドの「業務→私用」**で実行（チェック不要）。保守の「私用OK」だけ使う場合は **チェック ON**。
+
+---
+
+## 7. 手動確認の最短手順（現場）
+
+1. `/admin/tools/dgx-resource` を開く。
+2. **運用ガイド**から **業務→私用**（または同等シナリオ）を選び、確認→実行。
+3. KPI で **Unified Mem が大きく下がる**こと、必要なら DGX で `docker ps` に **`system-prod-trtllm` が無い**ことを確認。
+4. Comfy を使う場合は **別途** Mac SSH トンネル等（[KB-378](./KB-378-dgx-private-comfyui-mac-ssh-access.md)）。**`private_ok` は Mac の `127.0.0.1:8188` 経路を変えない。**
+
+---
+
+## 8. `gpu-memory-utilization` を下げる場合（参考）
+
+- **変更場所**: `/srv/dgx/system-prod/secrets/control-server.env` の **`BLUE_SERVER_COMMAND`** 内 `--gpu-memory-utilization 0.85`。
+- **反映**: `control-server.pid` ガード手順で **control-server 再起動** → 業務 LLM の **stop/start**（Runbook 標準）。
+- **トレードオフ**: Comfy 用の空きは **少し**増え得るが、**業務推論の同時処理・安定性**が落ちる可能性。変更前後で **写真ラベル / 要領書** の体感を確認する。
+
+---
+
+## Prevention（再発防止・ドキュメント）
+
+- KPI と vLLM 利用率を **別節**で Runbook に残す（本 KB + Runbook 追補）。
+- 現場手順は **「運用ガイド優先・保守パネルはチェック注意」** を deployment / KB-365 に明記済み。
+- 27B/35B 同時載せの切り分けは **4 点チェック**（Runbook）をデプロイ後に一度実行して記録しておく。
+
+## References
+
+- [KB-365 §private_ok stop-force 本番](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)
+- [KB-364 GPU 競合](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)
+- [ADR-20260428 active backend](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)
+- [vLLM Engine Args — gpu-memory-utilization](https://docs.vllm.ai/en/latest/configuration/engine_args/)（既定 **0.9**）

@@ -143,7 +143,7 @@
 - **Detach**: **`20260503-094340-23537`**（`PLAY RECAP`: **`ok=135` `changed=8` `failed=0` / `unreachable=0`**）
 - **Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
 
-**詳細**: [KB-365（詳細）](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[deployment.md](../guides/deployment.md)（2026-05-03 Phase3 項）
+**詳細**: [KB-365（詳細）](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[KB-366 運用理解](./KB-366-dgx-spark-operational-understanding.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（管理コンソール節）·[deployment.md](../guides/deployment.md)（2026-05-03 Phase3 項）
 
 ---
 

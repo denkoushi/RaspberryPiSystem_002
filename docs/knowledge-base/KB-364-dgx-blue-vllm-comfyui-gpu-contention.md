@@ -43,4 +43,5 @@ category: knowledge-base
 - [Runbook: dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)（トラブルシューティング補足・コンテナ混在）
 - [Runbook: dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md) と [KB-378](./KB-378-dgx-private-comfyui-mac-ssh-access.md)（**Mac と SSH とトンネル**。**本 KB の GPU と独立**だが運用セットで並読）
 - [KB-363](./KB-363-dgx-resource-spark-status-fallback.md)（別事象: `sparkHost` フォールバック）
+- [KB-366](./KB-366-dgx-spark-operational-understanding.md)（運用理解: メモリ KPI・モード切替・Comfy 両立不可の正本）
 - [ADR-20260502-dgx-resource-control-targets.md](../decisions/ADR-20260502-dgx-resource-control-targets.md)
