@@ -2,13 +2,35 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-24
+last-verified: 2026-05-26
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-05-26 · **キオスク負荷調整・機種別月次資源負荷**·**`feat/kiosk-load-balancing-machine-monthly-view`**·**API+Web**·**Pi5→Pi4×4**） {#kiosk-load-balancing-machine-monthly-view-2026-05-26}
+
+- **変更概要**: 負荷調整画面に **「機種別月次負荷」**タブを追加。`GET …/load-balancing/machine-monthly-load`（有効納期月・機種/部品/月×資源）。既存 **資源CD俯瞰**・サジェストは維持。**Prisma マイグレーションなし**。
+- **代表コミット**: **`60b94b9d`** `feat(kiosk): add machine monthly load view`
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 1 台ずつ**）。**Pi3 は除外**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-machine-monthly-view infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-26）**:
+
+| ホスト | Detach Run ID | PLAY RECAP |
+|--------|---------------|------------|
+| `raspberrypi5` | `20260526-151127-15681` | `ok=134` `changed=4` `failed=0` |
+| `raspberrypi4` | `20260526-155923-28871` | `ok=122` `changed=11` `failed=0` |
+| `raspi4-robodrill01` | `20260526-160414-3113` | `ok=122` `changed=10` `failed=0` |
+| `raspi4-fjv60-80` | `20260526-160801-21722` | `ok=122` `changed=10` `failed=0` |
+| `raspi4-kensaku-stonebase01` | `20260526-161142-6365` | `ok=129` `changed=11` `failed=0` |
+
+- **CI（機能 push）**: **`26434510513`**
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi4 デプロイ後）
+- **負荷調整スモーク（手動·推奨）**: `overview` / `machine-monthly-load` / `suggestions` を `curl` またはキオスク UI（[KB-362 §実機検証](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-26)）
+- **トラブルシュート**: **旧タブのみ表示** → Pi4 未デプロイ or 強制リロード（[verification-checklist.md](verification-checklist.md) §6.6.4）·**月が合わない** → 俯瞰は `plannedEndDate` 月、機種別は **有効納期** 月（仕様）·**部品絞り込みで部品表が1件** → `60b94b9d` 以降は部品表は機種全体維持
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[kiosk-production-schedule-load-balancing.md](kiosk-production-schedule-load-balancing.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)
 
 ### 補足（2026-05-26 · **完了正本を手動 + FKOJUNST `C`/`X` のみ**·**`fix/kiosk-completion-status-only`**·**API+DB**·**Pi5 のみ**） {#kiosk-completion-status-only-2026-05-26}
 
