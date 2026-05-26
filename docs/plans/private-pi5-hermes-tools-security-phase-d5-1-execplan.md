@@ -31,7 +31,8 @@ Phase D5 の `/task` 橋は tools プロファイルを **subprocess `hermes cha
 - [x] Pi5 実機: session context API fix デプロイ + verify — **OK**（2026-05-25 22:36 JST · [KB D5 §D5.1 本番デプロイ](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイsession-context-api-修正--2026-05-25-2236-jst)）
 - [x] `write_file` / `patch` 承認ゲート（`pre_tool_call` + 既存 file IPC）— repo 実装（2026-05-26）
 - [x] 私用 Pi5 本番デプロイ + runner smoke（`request.json` 生成）— 2026-05-26 · [KB §write ゲート](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイwrite_file-承認ゲート--2026-05-26-jst)
-- [ ] Discord write タスク E2E（`/task` + yes/`/task-approve`）— Discord UI 手動確認
+- [x] `gateway_actor_context`（slash 時 user 紐付け）— repo + Pi5 デプロイ 2026-05-26 · [KB §actor context](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイgateway-actor-context--yes-ルーティング--2026-05-26-jst)
+- [ ] Discord write タスク E2E（`/task` + yes/`/task-approve`）— Discord UI 手動確認（actor context デプロイ後）
 
 ## 設計（確定）
 
