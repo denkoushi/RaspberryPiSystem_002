@@ -56,6 +56,52 @@ with tempfile.TemporaryDirectory() as tmp:
 print("ok: FileApprovalStore roundtrip")
 PY
 
+echo "== tool write gate (pre_tool_call IPC) =="
+python3 - <<'PY' "${REPO_ROOT}"
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / "scripts/private-pi5-hermes"))
+from lib.approval_relay.models import ApprovalChoice  # noqa: E402
+from lib.approval_relay.tool_write_gate import (  # noqa: E402
+    build_pre_tool_call_handler,
+    summarize_tool_call,
+)
+
+command, description = summarize_tool_call(
+    "write_file",
+    {"path": "hello.txt", "content": "probe"},
+)
+if "hello.txt" not in command or "write file" not in description:
+    raise SystemExit(f"FAIL: unexpected summary: {command!r} {description!r}")
+
+with tempfile.TemporaryDirectory() as tmp:
+    store_dir = Path(tmp)
+    handler = build_pre_tool_call_handler(
+        store_dir=store_dir,
+        task_id="smoke-write-gate",
+        request_timeout_seconds=2.0,
+        poll_interval_seconds=0.05,
+    )
+
+    def _approve() -> None:
+        time.sleep(0.05)
+        from lib.approval_relay.store import FileApprovalStore
+
+        inner = FileApprovalStore(store_dir, "smoke-write-gate")
+        inner.write_response(ApprovalChoice.ONCE)
+
+    threading.Thread(target=_approve, daemon=True).start()
+    if handler("write_file", {"path": "x.txt", "content": "a"}) is not None:
+        raise SystemExit("FAIL: expected write_file to be allowed after approval")
+
+print("ok: tool write gate handler")
+PY
+
 echo "== bridge CLI empty prompt (expect usage exit 1) =="
 if python3 "${REPO_ROOT}/scripts/private-pi5-hermes/hermes-discord-task-bridge" 2>/dev/null; then
   echo "FAIL: expected non-zero exit for empty prompt"

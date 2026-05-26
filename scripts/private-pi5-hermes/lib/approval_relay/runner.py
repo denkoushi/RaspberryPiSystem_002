@@ -13,9 +13,11 @@ from pathlib import Path
 try:
     from .store import FileApprovalStore
     from .subprocess_notify import install_file_approval_relay
+    from .tool_write_gate import install_tool_write_approval_relay
 except ImportError:
     from store import FileApprovalStore
     from subprocess_notify import install_file_approval_relay
+    from tool_write_gate import install_tool_write_approval_relay
 
 
 def _poll_responses_until_stop(
@@ -62,6 +64,7 @@ def run_inprocess_hermes_chat(
     os.environ["HERMES_EXEC_ASK"] = "1"
     os.environ["HERMES_GATEWAY_SESSION"] = session_key
     os.environ["HERMES_TASK_APPROVAL_RELAY"] = "1"
+    os.environ["HERMES_TASK_APPROVAL_GUARD_WRITES"] = "1"
     path_prefix = str(hermes_bin.parent)
     os.environ["PATH"] = f"{path_prefix}:/usr/local/bin:/usr/bin:/bin"
     os.chdir(tools_home)
@@ -107,6 +110,13 @@ def run_inprocess_hermes_chat(
         poll_thread.join(timeout=2.0)
         print(f"hermes_cli.main unavailable: {exc}", file=sys.stderr)
         return 127
+
+    install_tool_write_approval_relay(
+        store_dir=store_dir,
+        task_id=task_id,
+        request_timeout_seconds=request_timeout_seconds,
+        poll_interval_seconds=poll_interval_seconds,
+    )
 
     old_argv = sys.argv
     sys.argv = argv

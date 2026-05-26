@@ -477,6 +477,7 @@ REPO_ROOT=/tmp/smoke-repo /tmp/verify-discord-task-bridge-smoke.sh
 |---|------|------|------|
 | 1 | 私用 Pi5 `raspi5-private` | `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` | **`PLAY RECAP` ok=107 changed=9 failed=0**（約 **158s**） |
 | 2 | 同上（session context API fix） | 同上 · branch `fix/private-pi5-hermes-task-session-context-api` | **`PLAY RECAP` ok=123 changed=6 failed=0**（約 **175s** · 2026-05-25 22:36 JST） |
+| 3 | 同上（`write_file` / `patch` 承認ゲート） | 同上 · branch `feat/private-pi5-hermes-tool-write-approval-gate` · PR #342 | **`PLAY RECAP` ok=123 changed=8 failed=0**（約 **421s** · 2026-05-26 09:01 JST） |
 
 **Pi5 追加検証**（Runbook 既存パターン）:
 
@@ -488,7 +489,16 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
   -m shell -a "HERMES_TOOLS_PHASE=d4 /tmp/verify-tools-profile-deploy.sh" -b
 ```
 
-**Discord 利用（write タスク · 手動 E2E 未）**:
+**write ツール承認ゲート smoke**（`request.json` が作成されること）:
+
+```bash
+ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m copy -a "src=scripts/private-pi5-hermes/verify-tool-write-approval-gate-pi5.sh dest=/tmp/verify-tool-write-approval-gate-pi5.sh mode=0755" -b
+ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m shell -a "sudo -u hermes /tmp/verify-tool-write-approval-gate-pi5.sh" -b
+```
+
+**Discord 利用（write タスク · Discord UI E2E は手動）**:
 
 1. `/task Create hello-d51.txt in workspace with content test`
 2. 承認依頼が届いたら `yes` または `/task-approve`
@@ -527,6 +537,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | 承認依頼が来ない | `approval_relay.enabled: false` · store 未配置 · **gateway 未再起動（旧 D5 plugin 常駐）** | policy + restart + [verify-discord-approval-relay.yml](../../infrastructure/ansible/tasks/private-pi5-hermes/verify-discord-approval-relay.yml) |
 | `/task` relay が即失敗 | bash ラッパ hermes → 誤 venv python | [`tools_profile_runner.py`](../../scripts/private-pi5-hermes/lib/tools_profile_runner.py) の venv 解決 · [KB D5 §D5.1 Investigation](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#investigationd51-デプロイ実機検証) |
 | yes/no が雑談になる | pending task なし | write タスク実行中のみ intercept · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) |
+| write `/task` が承認なしで完了 | D5.1 が **shell 承認のみ** · LLM は `write_file` 使用 | `tool_write_gate.py` デプロイ後再試行 · [KB D5 §write ゲート](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイwrite_file-承認ゲート--2026-05-26-jst) |
 
 ## ロールバック
 

@@ -52,6 +52,8 @@
     - policy.py
     - store.py
     - subprocess_notify.py
+    - pending_approval.py
+    - tool_write_gate.py
     - runner.py
     - bootstrap.py
     - discord_relay.py
