@@ -157,6 +157,7 @@ import {
   updateProductionScheduleLoadBalancingClasses,
   updateProductionScheduleLoadBalancingTransferRules,
   getKioskProductionScheduleLoadBalancingOverview,
+  getKioskProductionScheduleLoadBalancingMachineMonthlyLoad,
   postKioskProductionScheduleLoadBalancingSuggestions,
   getDeployStatus,
   type CancelPayload,
@@ -974,6 +975,9 @@ export function useUpdateProductionScheduleLoadBalancingCapacityBase() {
         queryKey: ['production-schedule-load-balancing-capacity-base', variables.location]
       });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
+      });
     }
   });
 }
@@ -987,6 +991,9 @@ export function useUpdateProductionScheduleLoadBalancingMonthlyCapacity() {
         queryKey: ['production-schedule-load-balancing-monthly-capacity', variables.location, variables.yearMonth]
       });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
+      });
     }
   });
 }
@@ -1000,6 +1007,9 @@ export function useUpdateProductionScheduleLoadBalancingClasses() {
         queryKey: ['production-schedule-load-balancing-classes', variables.location]
       });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
+      });
     }
   });
 }
@@ -1013,6 +1023,9 @@ export function useUpdateProductionScheduleLoadBalancingTransferRules() {
         queryKey: ['production-schedule-load-balancing-transfer-rules', variables.location]
       });
       void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-load-balancing-overview'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load']
+      });
     }
   });
 }
@@ -1032,6 +1045,24 @@ export function useKioskProductionScheduleLoadBalancingOverview(
 export function usePostKioskProductionScheduleLoadBalancingSuggestions() {
   return useMutation({
     mutationFn: postKioskProductionScheduleLoadBalancingSuggestions
+  });
+}
+
+export function useKioskProductionScheduleLoadBalancingMachineMonthlyLoad(
+  params: {
+    fromMonth: string;
+    toMonth: string;
+    targetDeviceScopeKey?: string;
+    machineName?: string;
+    fhincd?: string;
+  },
+  options?: { enabled?: boolean }
+) {
+  const monthOk = /^\d{4}-\d{2}$/.test(params.fromMonth.trim()) && /^\d{4}-\d{2}$/.test(params.toMonth.trim());
+  return useQuery({
+    queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load', params],
+    queryFn: () => getKioskProductionScheduleLoadBalancingMachineMonthlyLoad(params),
+    enabled: (options?.enabled ?? true) && monthOk
   });
 }
 

@@ -4,6 +4,13 @@
 
 キオスク専用の **負荷調整** 画面（`/kiosk/production-schedule/load-balancing`）では、資源CDごとの **月次必要工数**（`FSIGENSHOYORYO` 合計）と **設定した能力** を比較し、超過状況を可視化します。**サジェスト**は工程行（CSV の1行）単位で移管候補を提示するのみで、自動で順番や割当を変更しません。
 
+画面内タブ:
+
+| タブ | 用途 | 月の定義 |
+|------|------|----------|
+| **資源CD俯瞰** | 単月の資源CD別負荷・能力・山崩しサジェスト | `plannedEndDate`（受注補足）の暦月 |
+| **機種別月次負荷** | 機種（MH/SH 行 `FHINMEI`）→ 部品 → 月×資源CDの積み上げ | **有効納期**（行備考 `dueDate` → なければ `plannedEndDate`）の暦月 |
+
 ## 集計ポリシー（サーバ実装に準拠）
 
 - **月次キー**: 受注補足 `ProductionScheduleOrderSupplement.plannedEndDate` の暦月（UTC 月初〜翌月未満）。
@@ -28,8 +35,19 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`
 - `GET /kiosk/production-schedule/load-balancing/overview?month=YYYY-MM&targetDeviceScopeKey=...`
 - `POST /kiosk/production-schedule/load-balancing/suggestions`  
   Body: `{ month, targetDeviceScopeKey?, maxSuggestions?, overResourceCds? }`
+- `GET /kiosk/production-schedule/load-balancing/machine-monthly-load?fromMonth=YYYY-MM&toMonth=YYYY-MM&targetDeviceScopeKey=...&machineName=...&fhincd=...`  
+  - 未完了部品工程のみ。月範囲は最大 **12 か月**。  
+  - `machineName` / `fhincd` は任意（部品行クリックで `fhincd` 絞り込み）。  
+  - 機種名は製番ごとの MH/SH 行 `FHINMEI`（`resolveSeibanMachineDisplayNamesBatched` と同系）。
 
 Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKey` 必須**（未指定時は 400）。
+
+## 機種別月次負荷（UI）
+
+- **開始月・終了月**: 初期値は当月から **6 か月**。
+- **機種選択**: 一覧は期間内の未完了負荷から集計した `FHINMEI`（機種名未登録ラベル含む）。
+- **部品表**: 品番・品名・最早納期・所要分・資源CD。行クリックで当該品番に絞り込み。
+- **グラフ**: 横軸＝月、積み上げ棒（資源CD・上位24）。**明細表**で月×資源CDの分数を確認。
 
 ## データベース
 

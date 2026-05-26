@@ -3,8 +3,10 @@ import { z } from 'zod';
 
 import { ApiError } from '../../../lib/errors.js';
 import { getProductionScheduleLoadBalancingOverview } from '../../../services/production-schedule/load-balancing/load-balancing-overview.service.js';
+import { getProductionScheduleMachineMonthlyLoad } from '../../../services/production-schedule/load-balancing/machine-monthly-load.service.js';
 import { parseYearMonthRangeUtc } from '../../../services/production-schedule/load-balancing/monthly-load-query.service.js';
 import { suggestProductionScheduleLoadBalancing } from '../../../services/production-schedule/load-balancing/reallocation-suggestion.service.js';
+import { assertYearMonthFormat } from '../../../services/production-schedule/load-balancing/year-month-range.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
 
@@ -20,11 +22,29 @@ const suggestionsBodySchema = z.object({
   overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional()
 });
 
+const machineMonthlyLoadQuerySchema = z.object({
+  fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  toMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  machineName: z.string().min(1).max(200).optional(),
+  fhincd: z.string().min(1).max(40).optional()
+});
+
 function assertValidYearMonth(month: string): void {
   try {
     parseYearMonthRangeUtc(month);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'month が不正です';
+    throw new ApiError(400, message);
+  }
+}
+
+function assertValidYearMonthRange(fromMonth: string, toMonth: string): void {
+  try {
+    assertYearMonthFormat(fromMonth);
+    assertYearMonthFormat(toMonth);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '月の指定が不正です';
     throw new ApiError(400, message);
   }
 }
@@ -52,6 +72,46 @@ export async function registerProductionScheduleLoadBalancingRoutes(
       yearMonth: query.month
     });
   });
+
+  app.get(
+    '/kiosk/production-schedule/load-balancing/machine-monthly-load',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const query = machineMonthlyLoadQuerySchema.parse(request.query);
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: query.targetDeviceScopeKey
+      });
+
+      assertValidYearMonthRange(query.fromMonth, query.toMonth);
+
+      try {
+        return await getProductionScheduleMachineMonthlyLoad({
+          siteKeyInput: resolvedSiteKey,
+          deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+          fromMonth: query.fromMonth,
+          toMonth: query.toMonth,
+          machineName: query.machineName,
+          fhincd: query.fhincd
+        });
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
+        if (error instanceof Error) {
+          const recoverableMessages = ['以前である必要があります', '最大 ', 'YYYY-MM 形式'];
+          if (recoverableMessages.some((snippet) => error.message.includes(snippet))) {
+            throw new ApiError(400, error.message);
+          }
+        }
+        throw error;
+      }
+    }
+  );
 
   app.post('/kiosk/production-schedule/load-balancing/suggestions', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);

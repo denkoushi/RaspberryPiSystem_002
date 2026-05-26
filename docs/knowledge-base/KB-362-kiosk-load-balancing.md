@@ -14,19 +14,21 @@ last-verified: 2026-04-30
 ## Symptoms / 使い方
 
 - 画面: `/kiosk/production-schedule/load-balancing`
-- 月を選ぶと資源CD別の **必要分 / 能力分 / 超過** が表示される。
+- **資源CD俯瞰**タブ: 月を選ぶと資源CD別の **必要分 / 能力分 / 超過** が表示される。
+- **機種別月次負荷**タブ: 開始〜終了月（初期6か月）・機種（`FHINMEI`）・部品表・月×資源の積み上げグラフ。
 - 「サジェストを計算」で POST が走り、候補表が表示される（自動適用なし）。
 
 ## Investigation / 仕様メモ
 
 - 集計 SQL は一覧と同様の **FKOJUNST S/R 可視性** を JOIN している。
 - 能力は **月次上書き > 基準 > 未設定（null、計算上は0）**。
+- **機種別月次**は `COALESCE(行備考.dueDate, supplement.plannedEndDate)` の月でバケット（俯瞰タブの `plannedEndDate` 月とは別）。
 
 ## Fix / 実装要点
 
 - 設定 CRUD: `production-schedule-settings/load-balancing/*`
-- キオスク: `load-balancing/overview`, `load-balancing/suggestions`
-- 純粋ロジック: `reallocation-suggestion.engine.ts`（単体テストあり）
+- キオスク: `load-balancing/overview`, `load-balancing/suggestions`, `load-balancing/machine-monthly-load`
+- 純粋ロジック: `reallocation-suggestion.engine.ts`（単体テストあり）、`machine-monthly-load-assembler.ts`
 
 ## Prevention
 
