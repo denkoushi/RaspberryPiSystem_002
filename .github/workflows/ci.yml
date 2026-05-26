@@ -4,7 +4,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Unblock when a prior run is stuck queued on the same group (GitHub Actions incident).
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-v2
   cancel-in-progress: true
 
 on:
