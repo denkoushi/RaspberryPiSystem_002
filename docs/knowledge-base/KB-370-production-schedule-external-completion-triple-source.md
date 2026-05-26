@@ -1,51 +1,59 @@
 ---
-title: KB-370 生産スケジュール「実効完了」の外部要因3系統OR統合（手動・工順ST・生産日程CSV）
+title: KB-370 生産スケジュール「実効完了」の外部要因（手動・FKOJUNST_Status）
 tags: [生産スケジュール, CSV, FKOJUNST, 外部完了, 順位ボード]
 audience: [開発者, 運用者]
-last-verified: 2026-05-18
+last-verified: 2026-05-26
 category: knowledge-base
 ---
 
-# KB-370: 生産スケジュール「実効完了」の外部要因3系統OR統合
+# KB-370: 生産スケジュール「実効完了」の外部要因
 
 ## Context
 
-順位ボード等で参照する **実効完了** を、CSV 由来の複数ソースで一貫させる必要があった。
+順位ボード等で参照する **実効完了** を、手動完了と FKOJUNST_Status 由来の完了で一貫させる必要がある。
 
-## ガード: 生産日程CSVで winner 論理キーが 0 件
-
-**DEDUP** 取込の本体処理の直前時点で **現 winner の論理キー集合が空** の場合、**CSV 由来の「消滅」差分**と **`ProductionScheduleExternalCompletion` の当該列同期**は **行わない**（戻り値 `skipped: true`, `reason: 'empty_schedule_csv'`）。歴史的経路で **`ProductionScheduleCsvIngestLogicalKeySnapshot` を更新していた**場合も **同 skip で抑止**（**2026-05-09** 以降の主経路校区では当該スナップショットは未使用）。空CSVや事故入力で **DB 上の全 winner を一括「消滅完了」扱いにしない**ため。
-
-取込パイプライン側は [`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) で当該 skip を **warn**（`dashboardId` / `reason`）し、観測可能にする。
-
-## Decision（仕様の要約）
+## 2026-05-26 現行正本
 
 実効完了は次の **論理 OR**（いずれかが真なら完了扱い）:
+
+1. **手動**: `ProductionScheduleProgress.isCompleted`
+2. **工順ST（FKOJUNST_Status メール同期 → `ProductionScheduleFkojunstMailStatus`）**
+   - **`statusCode` が `C` または `X`** のとき外部完了
+   - **`S` / `R`**: 一覧表示・未完了
+   - **`O` / `P`**: 一覧非表示・未完了（製番進捗 total には残る）
+
+**生産日程CSV消滅完了は 2026-05-26 に廃止**。`externallyCompletedFromScheduleCsvDisappeared` は後方互換列として残すが、新規同期では true にせず、実効完了へ寄与させない（[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)）。
+
+## Historical: 2026-05-25 以前の3系統OR
+
+2026-05-25 以前は、実効完了を次の **論理 OR** で扱っていた:
 
 1. **手動**: 既存 `ProductionScheduleProgress.isCompleted`
 2. **工順ST（FKOJUNST_Status メール同期 → `ProductionScheduleFkojunstMailStatus`）**
    - **`statusCode` が `C` または `X`** のとき外部完了（**2026-05-08 改訂**: 旧 **dedupe キー消失**・**`O`/`P` による完了**は廃止。`externallyCompletedFromFkojunstDisappeared` は再計算で **常に false**）
    - **`O` / `P`**: 一覧非表示だが **未完了**（製番進捗 total に残る）
-3. **生産日程CSV取込（消滅完了）**
+3. **生産日程CSV取込（消滅完了、2026-05-26 廃止）**
    - **2026-05-09 改訂**: **「`FKOJUNST` メール同期済み winner のうち **メール由来完了（`C` / `X`）以外**」**（SQL 上は `UPPER(BTRIM("fkmail"."statusCode")) NOT IN ('C','X')` 相当）かつ「`occurredAt` が基準日時の UTC **±3 カ月**」**に入る論理キー**を母集団とし、**母集団 − 現 winner（2026-05-16 以降の正本は下項）の論理キー** を **消滅**とみなして `externallyCompletedFromScheduleCsvDisappeared` を更新する（**`C`/`X` は母集団から除外**・`C` 除外の主因は [KB-373](./KB-373-fkojunst-status-c-key-domain-mismatch.md) の **キー空間不一致**。`X` は **2026-05-18** に **同一カテゴリへ揃え**、CSV 取込漏れ是正後の運用と整合）。**旧仕様（〜2026-05-08 以前）**: 取込直前スナップショットと取込後キーの差分・**`S`/`R` winner に限定**する記述は **本項で置換**（正本は [deployment.md §2026-05-09 消滅窓](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
    - **2026-05-16 改訂（正本Cの current keys・第一段）**: **`ProductionScheduleCanonicalCurrentKeysService`** により **今回バッチで確定した生産日程本体 CSV の dedupe winner** から論理キーを構築し、[`applyPostIngestFromSnapshot`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.ts) に渡す。**`FKOJUNST_Status` メールに行が載っていない（FK が無い）ことだけでは**本体 winner を **現集合から落とさない**（過剰な消滅完了を防ぐ）——**2026-05-17 改訂（下項）で「2CSV照合交差」へ拡張**。
    - **2026-05-17 改訂（2CSV 照合・正本C current keys）**: 消滅差分の **現キー集合**は、上記 dedupe winner の **論理キーのうち**、**生産日程CSV取込完了時刻 `tA` 以下で最新完了の `FKOJUNST_Status` ingest run** を **`tB`** として選び、その **原本CSV 1件**（`CsvDashboardIngestRun.csvFilePath`）から復元した Status スナップショット（`FUPDTEDT` 最新で dedupe 済み）と **ADR-20260509** の **3キー（FKOJUN + `FKOTEICD`/`FSIGENCD` + `FSEZONO`/`ProductNo`）** が一致するものに限定する（[`schedule-csv-disappearance-canonical-keys.builder.ts`](../../apps/api/src/services/production-schedule/external-completion/schedule-csv-disappearance-canonical-keys.builder.ts)・[`production-schedule-canonical-current-keys.service.ts`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-canonical-current-keys.service.ts)）。**Status 幕は `dateColumnName` が無く `occurredAt`≈取込時刻**のため、**`tA` は本体CSVの日付列ではなく取込完了時刻**とする。**`tA` 以前に完了 ingest run が無い**、または **原本CSVを正規化しても Status 行が 0 件**のときは **差分消失同期のみスキップ**（手動・メール完了は維持）。**±3ヶ月×（メール完了 `C`/`X` 以外）の母集団**・**空 winner ガード**は変更なし。
-   - **空 winner ガード**（`empty_schedule_csv`）は変更なし。
+   - **空 winner ガード**（`empty_schedule_csv`）は変更なしだった。
 
 論理キーは運用どおり **`FKOJUN` + TAB + 正規化資源CD + TAB + 製造order（ProductNo）**（`FSIGENCD` は trim・大文字化して共通関数で生成）。
 
 ## Data model
 
-- `ProductionScheduleExternalCompletion` に由来別フラグを保持し、同期時に **`isExternallyCompleted` を3列の OR** で更新する:
+- `ProductionScheduleExternalCompletion` に由来別フラグを保持する。2026-05-26 以降、同期時の **`isExternallyCompleted` は `externallyCompletedFromFkojunstMailStatus` と同じ意味**:
   - `externallyCompletedFromFkojunstDisappeared`（**2026-05-08**: メール再計算で **常に false**。列は後方互換のため保持）
   - `externallyCompletedFromFkojunstMailStatus`（**`fkmail` の `C`/`X`**）
-  - `externallyCompletedFromScheduleCsvDisappeared`
+  - `externallyCompletedFromScheduleCsvDisappeared`（**2026-05-26**: 完了判定から廃止。列は後方互換のため保持し、false へ収束）
 - 生産日程CSV用スナップショット: `ProductionScheduleCsvIngestLogicalKeySnapshot`（**2026-05-09**: 消滅差分の主計算からは外し、**DB／repository は互換で存続**）
 
 ## Migration
 
 - `apps/api/prisma/migrations/20260506150000_triple_source_external_completion/migration.sql`
 - 既存 `isExternallyCompleted = true` は **消滅由来列**へバックフィル（移行方針はマイグレーションコメント参照）
+- `apps/api/prisma/migrations/20260526030000_disable_schedule_csv_disappearance_completion/migration.sql`
+- 既存 `externallyCompletedFromScheduleCsvDisappeared = true` は false へ収束し、`isExternallyCompleted` は `externallyCompletedFromFkojunstMailStatus` のみに再計算する。
 
 ## 主な実装参照
 
@@ -211,19 +219,36 @@ category: knowledge-base
 - **Detach Run ID**: **`20260506-171017-29269`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート **`exit 0`**）。
 - **Phase12**: **PASS 43 / WARN 0 / FAIL 0**（**約 146s**）。
 
+## Production（2026-05-26 · **生産日程CSV差分消失完了の廃止**） {#production-2026-05-26-schedule-csv-disappearance-disabled}
+
+- **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 **no hosts matched**・**Pi3 専用手順不要**）
+- **ブランチ**: **`fix/kiosk-completion-status-only`**（代表 **`a970e795`**）
+- **標準手順**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)
+- **Detach Run ID**: **`20260526-121604-8450`**
+  - **`PLAY RECAP`**: `ok=134` `changed=4` `failed=0` `unreachable=0`・リモート **`exit 0`**
+  - **`Run prisma migrate deploy`**: **成功**（**`20260526030000_disable_schedule_csv_disappearance_completion`**）
+- **Phase12 実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）
+- **CI**: **`26429750347`** **success**
+- **事後検証（Pi5 DB）**:
+  - **`externallyCompletedFromScheduleCsvDisappeared = true`** → **0 件**
+  - **`isExternallyCompleted`** は **`externallyCompletedFromFkojunstMailStatus` と一致**（`C`/`X` のみ外部完了）
+- **調査事例（BA1S6202）**: 5/22 の誤グレーは **消失フラグ継続**が主因。**本番反映後**は **`csv_disappeared=f`**。当該資源 **`035`** は **`fk_status=C`** のため **メール正本どおり完了表示**（Status が **`R` のまま未完に見えたい**場合は上流 Status 是正または手動未完）
+- **トラブルシュート**:
+  - **`R`/`S` なのにグレー** → **Pi5 HEAD `a970e795` 以降**か・**`csv_disappeared` はもう完了根拠にならない**（手動完了・**`mail_cx`** を確認）
+  - **消滅完了の件数を日次で見ていた** → **2026-05-26 以降は指標廃止**。代替は **メール `C`/`X` 件数**・**手動完了**・必要なら **監査用 SQL**（[KB-377 §運用近似（履歴）](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md#運用上の実務近似ユーザー合意)）
+
 ## Troubleshooting
 
 - **本番 Postgres で「JST の当日」の CSV 点数・完了件数が 0 に見える／前日まで混じる**
   - **暦日ウィンドウの SQL** が **`TimeZone` セッション依存の誤パターン**（例: `(date)::timestamp AT TIME ZONE 'Asia/Tokyo'` だけに頼る）になっていないか確認する。**正しい midnight 拘束 + `AT TIME ZONE 'Asia/Tokyo'` の例**: [KB-377 Appendix `#kb-377-appendix-counting`](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md#kb-377-appendix-counting)。あわせて **`FKOJUNST_Status` メール用 `csvDashboardId` と本体 `PRODUCTION_SCHEDULE_DASHBOARD_ID` を取り違えていないか** を確認する（同 Appendix）。
 - **順位ボードで資源コード（例: `021`）のチップだけグレーアウトしない**
-  - まず **`row.isCompleted`（実効完了）が false の理由**へ分解する（メール **`C`/`X`**・手動 **`/completion`**・**CSV消失**）。**`S`/`R` は可視未完**。**winner が現集合に残っていれば差分消失は立たない**典型がある。**詳細ナレッジ**: [KB-377](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md)。
+  - まず **`row.isCompleted`（実効完了）が false の理由**へ分解する（メール **`C`/`X`**・手動 **`/completion`**）。**2026-05-26 以降、CSV 差分消失は完了根拠にならない**。**`S`/`R` は可視未完**。**詳細ナレッジ**: [KB-377](./KB-377-kiosk-leaderboard-resource-chip-completion-verification.md)。
 - **`[CsvDashboardIngestor]` warn と `empty_schedule_csv`**
   - **0 件 winner** 時の **想定どおりのスキップ**。上流の生産日程CSV・取込ダッシュボード・DEDUP 設定を確認（本当に行が 0 であるべきか）。
 - **実効完了が付かない／期待とずれる**
-  - **工順ST**: **2026-05-08 以降**は **メール status（`C`/`X`）**と **生産日程CSV消滅**が主因。**2026-05-09 以降**の消滅は **メール由来完了（`C`/`X`）以外**かつ **`occurredAt` が ±3ヶ月窓内**の母集団と **現 winner（2026-05-16 以降は正本C・本体CSV dedupe winner 由来）**の差分（**2026-05-18**: 条件は `fkojunst-mail-status-completion.policy` の `buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql` と一致）（[deployment.md 消滅窓項](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)·[§2026-05-16 正本C current keys](../guides/deployment.md#schedule-csv-disappearance-canonical-current-keys-2026-05-16)）。旧 **dedupe キー消失**完了は **廃止**（[KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)）。
+  - **現行（2026-05-26 以降）**: 実効完了は **手動完了** OR **メール status `C`/`X` のみ**（[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)・[#production-2026-05-26-schedule-csv-disappearance-disabled](#production-2026-05-26-schedule-csv-disappearance-disabled)）。
   - **メール status**: **`C`/`X` のみ**メール由来完了（`?` / 空 / **`O`/`P`** は **未完了**。**`O`/`P`** は一覧にも出ない）。
-  - **生産日程CSV（消滅）**: **DEDUP** 取込後に **メール完了以外×±3ヶ月母集団** と **現 winner キー**を突合（**2026-05-16–17 以降、現 winner の正本**は **本体 dedupe winner** と **`tB <= tA` の最新完了 `FKOJUNST_Status` ingest run 原本CSV**から復元した **3キー照合スナップショット**の交差。[deployment §2026-05-17 補足](../guides/deployment.md#schedule-csv-disappearance-2csv-intersection-2026-05-17)）。**`C`/`X`** は **消滅母集団に入らない**（完了状態は **`C`/`X` メール由来**で見る）。**窓外**に落ちた行だけが CSV から消えても **消滅完了にならない**のが期待どおり。取込が **`empty_schedule_csv`** で skip されていないか ingestor **warn** を確認。**Status ingest run 不足**または **原本CSVから正規化可能な Status 行が 0 件**で **`2CSV pairing / status snapshot`** により **差分消失のみスキップ**した場合も warn（手動・メール完了は維持）。
-  - **2026-05-17 以降**: **2CSV 交差 current keys** を **本番 Pi5 に反映**（**Detach `20260517-151209-29249`**・ tip **`ed733bfe`**・**`main`**: PR #290 squash **`f252793d`**・詳細は [#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys](#production-2026-05-17-schedule-csv-disappearance-2csv-current-keys)）。**残留が続く**場合は **本番ログ**で **交差後キー件数**と **skip 理由**（**`2CSV pairing / status snapshot`**）を確認。**運用上の前提（Gmail スケジュール・`tB` 成立）**は [#kb-370-2csv-schedule-operational-pairing](#kb-370-2csv-schedule-operational-pairing) を併読。
+  - **生産日程CSV（消滅・履歴）**: **2026-05-26 に完了判定から廃止**。旧ロジックの調査は [deployment.md 消滅窓項](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09) 等を参照。**本番で `csv_disappeared` が true の行が残る**場合は **マイグレ未適用**または **Pi5 が `a970e795` より前**を疑う。
 - **マイグレ未適用**
   - Pi5 で **`prisma migrate status`** が **`20260506150000`** を **Applied** と報告するか（デプロイ playbook の migrate ログが正本）。
 

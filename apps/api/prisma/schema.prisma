@@ -1142,17 +1142,17 @@ model ProductionScheduleProgress {
   @@index([csvDashboardId, isCompleted])
 }
 
-/// CSV 由来の実効完了（工順STメール差分・工順ST状態・生産日程CSV差分）を winner 単位で保持する。本体 rowData は変更しない。
-/// `isExternallyCompleted` は下位3フラグの論理OR（後方互換・検索用に同期する）。
+/// CSV 由来の外部完了（現行正本は FKOJUNST_Status C/X）を winner 単位で保持する。本体 rowData は変更しない。
+/// `isExternallyCompleted` は後方互換・検索用に同期する（2026-05-26 以降はメール status 完了のみ）。
 model ProductionScheduleExternalCompletion {
   csvDashboardRowId       String   @id
   csvDashboardId          String
   isExternallyCompleted   Boolean  @default(false)
   /// FKOJUNST_Status メール CSV: 直前スナップショットにあって今回 dedupe キー集合から消えた。
   externallyCompletedFromFkojunstDisappeared Boolean @default(false)
-  /// FKOJUNST メール側 status が完了系（C/P/X/O）。S/R は未完了。
+  /// FKOJUNST メール側 status が完了系（C/X）。S/R/O/P は未完了。
   externallyCompletedFromFkojunstMailStatus   Boolean @default(false)
-  /// 生産日程CSV取込: 取込直前 winner 集合にあって取込後 winner 集合から消えた。
+  /// 生産日程CSV取込の差分消失完了（2026-05-26 廃止、互換列として保持）。
   externallyCompletedFromScheduleCsvDisappeared Boolean @default(false)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt

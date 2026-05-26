@@ -2,7 +2,7 @@
 title: KB-375 順位ボード・生産日程の完了整合（明示完了API・CSV同期・実効完了）
 tags: [キオスク, 生産スケジュール, 順位ボード, 完了, CSV, ナレッジ]
 audience: [開発者, 運用者]
-last-verified: 2026-05-10
+last-verified: 2026-05-26
 related: [KB-297-kiosk-due-management-workflow.md, KB-369-leader-order-board-api-internal-latency.md]
 category: knowledge-base
 update-frequency: medium
@@ -41,6 +41,12 @@ update-frequency: medium
 | CSV同期 | `decideCsvProgressSyncForProductionScheduleRow`：**`完了` のみ true**、**空は手動完了済みなら skip**、他値は skip。 |
 | 表示・集計 | **effective completion** SQL／クエリを **`production-schedule-effective-completion.sql.ts` 等で共有**（一覧・チップ・納期集計を寄せる）。 |
 
+### 2026-05-26 追補: 生産日程CSV差分消失完了の廃止
+
+- **完了正本**は **手動完了** + **FKOJUNST_Status `C` / `X`** に限定する（[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)）。
+- 生産日程CSV差分消失は、Status `R` や Status 欠落期間でも現場残存行を完了グレーにし得るため、実効完了から外した。
+- `externallyCompletedFromScheduleCsvDisappeared` は互換列として残すが、既存 true は migration で false に収束し、以後の取込では完了へ寄与しない。
+
 主要コード:  
 [`production-schedule-command.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts)・[`complete.ts`](../../apps/api/src/routes/kiosk/production-schedule/complete.ts)・[`progress-csv-sync-decision.policy.ts`](../../apps/api/src/services/production-schedule/progress-csv-sync-decision.policy.ts)・[`progress-sync-from-csv.service.ts`](../../apps/api/src/services/production-schedule/progress-sync-from-csv.service.ts)・Web [`client.ts`](../../apps/web/src/api/client.ts) / [`hooks.ts`](../../apps/web/src/api/hooks.ts) / [`useProductionScheduleMutations.ts`](../../apps/web/src/features/kiosk/productionSchedule/useProductionScheduleMutations.ts)。
 
@@ -65,9 +71,20 @@ update-frequency: medium
 - **ローカル preflight の失敗例**: デプロイ実行ユーザのリポに **未追跡ファイル**（例: 診断用 `scripts/diagnose-*.ts`）があると **`ensure_local_repo_ready_for_deploy` が exit 2**。**`git stash push -u`** でツリーをクリーンにしてから再実行。
 - **運用スモーク（手動・推奨）**: キオスク **生産日程一覧**と**順位ボード**で、同一行の **✓** と **資源 CD チップ**・**納期側集計**の完了表示が一致すること。**完了操作**後に **同じ操作を繰り返しても未完に戻らない**（`/completion` の **`unchanged`**）。**CSV 同期**後も **手動完了**が **`progress` 空**だけで落ちないこと（現場で問題になった経路）。
 
+## Production（2026-05-26 · **完了正本を手動 + `C`/`X` のみ**） {#production-2026-05-26-completion-status-only}
+
+- **ブランチ**: **`fix/kiosk-completion-status-only`**（代表 **`a970e795`**）
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**）。Pi4／Pi3 **no hosts matched**（**Pi3 専用手順不要**）
+- **Detach Run ID**: **`20260526-121604-8450`**（`ok=134` `changed=4` `failed=0`）
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）
+- **DB 事後**: **`externallyCompletedFromScheduleCsvDisappeared=true` → 0 件**（effective completion は **手動 OR メール `C`/`X`** のみ）
+- **運用スモーク（自動·DB）**: 製番 **BA1S6202** / **`FSIGENCD=035`** で **`csv_disappeared=f`**。**`fk_status=C`** の行は **意図どおりグレー**（5/22 の **`R` + 消失完了** は再現しない）
+- **記録**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)·[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)
+
 ## References
 
 - [deployment.md §KB-375 本番（2026-05-10）](../guides/deployment.md#kiosk-leaderboard-completion-integrity-2026-05-10)
+- [deployment.md §完了正本限定（2026-05-26）](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)
 - [KB-297 §リーダー順位ボード](./KB-297-kiosk-due-management-workflow.md#リーダー順位ボード納期ベース整列手動順-api-反映2026-04-01)
 - [KB-369 順位ボードAPI内部レイテンシ](./KB-369-leader-order-board-api-internal-latency.md)
 - [KB-376 装飾スコープとフッタwinner整合](./KB-376-leaderboard-footer-display-scope-winner-alignment.md)

@@ -2,31 +2,13 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 
 import { buildFkojunstMailStatusCompletedScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildFkojunstScheduleCsvDisappearanceEligibleScalarSql } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 
 export type PrismaExecutor = Pick<PrismaClient, '$executeRaw'>;
 
-function buildDisappearedKeysValuesSql(disappearedKeys: readonly string[]): Prisma.Sql {
-  return disappearedKeys.length > 0
-    ? Prisma.sql`SELECT * FROM (VALUES ${Prisma.join(
-        disappearedKeys.map((k) => Prisma.sql`(${k})`),
-        ','
-      )}) AS "dk"("k")`
-    : Prisma.sql`SELECT CAST(NULL AS text) AS "k" WHERE FALSE`;
-}
-
 const winnersBaseSql = Prisma.sql`
   SELECT
     "cdr"."id" AS "id",
-    (
-      BTRIM("cdr"."rowData"->>'FKOJUN')
-      || E'\t'
-      || UPPER(BTRIM("cdr"."rowData"->>'FSIGENCD'))
-      || E'\t'
-      || BTRIM("cdr"."rowData"->>'ProductNo')
-    ) AS "rowKey",
-    ${buildFkojunstScheduleCsvDisappearanceEligibleScalarSql()} AS "scheduleCsvWinnerEligible",
     ${buildFkojunstMailStatusCompletedScalarSql()} AS "mailStatusComplete"
   FROM "CsvDashboardRow" AS "cdr"
   LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
@@ -37,8 +19,8 @@ const winnersBaseSql = Prisma.sql`
 `;
 
 /**
- * FKOJUNST_Status メール同期後: `fkmail` の **C/X** を外部完了に反映し、生産日程CSV由来フラグは保持する。
- * 旧「メール dedupe キー消失」ロジックは使わない（`externallyCompletedFromFkojunstDisappeared` は常に false に更新）。
+ * FKOJUNST_Status メール同期後: `fkmail` の **C/X** だけを外部完了に反映する。
+ * 旧「メール dedupe キー消失」と生産日程CSV消滅完了は完了正本から外し、互換列は false に収束させる。
  */
 export async function replaceAllWinnerExternalCompletionStatesFromMailSync(executor: PrismaExecutor): Promise<void> {
   await executor.$executeRaw`
@@ -65,94 +47,33 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
     SELECT
       "c"."id",
       ${PRODUCTION_SCHEDULE_DASHBOARD_ID},
-      (
-        "c"."mailDisappeared"
-        OR "c"."mailStatusComplete"
-        OR COALESCE("ext"."externallyCompletedFromScheduleCsvDisappeared", FALSE)
-      ),
+      "c"."mailStatusComplete",
       "c"."mailDisappeared",
       "c"."mailStatusComplete",
-      COALESCE("ext"."externallyCompletedFromScheduleCsvDisappeared", FALSE),
+      FALSE,
       NOW(),
       NOW()
     FROM "computed" "c"
-    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
-      ON "ext"."csvDashboardRowId" = "c"."id"
     ON CONFLICT ("csvDashboardRowId") DO UPDATE SET
       "externallyCompletedFromFkojunstDisappeared" = EXCLUDED."externallyCompletedFromFkojunstDisappeared",
       "externallyCompletedFromFkojunstMailStatus" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
-      "externallyCompletedFromScheduleCsvDisappeared" = "ProductionScheduleExternalCompletion"."externallyCompletedFromScheduleCsvDisappeared",
-      "isExternallyCompleted" = (
-        EXCLUDED."externallyCompletedFromFkojunstDisappeared"
-        OR EXCLUDED."externallyCompletedFromFkojunstMailStatus"
-        OR "ProductionScheduleExternalCompletion"."externallyCompletedFromScheduleCsvDisappeared"
-      ),
+      "externallyCompletedFromScheduleCsvDisappeared" = FALSE,
+      "isExternallyCompleted" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
       "updatedAt" = NOW()
   `;
 }
 
 /**
- * 生産日程CSV 取込後: **正本C現在キー集合に含まれない** winner を CSV消滅として反映し、工順ST由来2フラグは保持する。
+ * 生産日程CSV消滅完了は廃止済み。
+ *
+ * 互換呼び出しが残っても、差分消失キーは完了に使わず、外部完了を FKOJUNST_Status C/X のみに収束させる。
  */
 export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync(
   executor: PrismaExecutor,
   disappearedScheduleKeys: readonly string[]
 ): Promise<void> {
-  const disappearedScheduleSql = buildDisappearedKeysValuesSql(disappearedScheduleKeys);
-
-  await executor.$executeRaw`
-    WITH "disappearedScheduleKeys" AS (
-      ${disappearedScheduleSql}
-    ),
-    "winners" AS (
-      ${winnersBaseSql}
-    ),
-    "computed" AS (
-      SELECT
-        "w"."id",
-        (
-          "w"."scheduleCsvWinnerEligible"
-          AND EXISTS (SELECT 1 FROM "disappearedScheduleKeys" "dk" WHERE "dk"."k" = "w"."rowKey")
-        ) AS "scheduleDisappeared"
-      FROM "winners" "w"
-    )
-    INSERT INTO "ProductionScheduleExternalCompletion" (
-      "csvDashboardRowId",
-      "csvDashboardId",
-      "isExternallyCompleted",
-      "externallyCompletedFromFkojunstDisappeared",
-      "externallyCompletedFromFkojunstMailStatus",
-      "externallyCompletedFromScheduleCsvDisappeared",
-      "createdAt",
-      "updatedAt"
-    )
-    SELECT
-      "c"."id",
-      ${PRODUCTION_SCHEDULE_DASHBOARD_ID},
-      (
-        COALESCE("ext"."externallyCompletedFromFkojunstDisappeared", FALSE)
-        OR COALESCE("ext"."externallyCompletedFromFkojunstMailStatus", FALSE)
-        OR "c"."scheduleDisappeared"
-      ),
-      COALESCE("ext"."externallyCompletedFromFkojunstDisappeared", FALSE),
-      COALESCE("ext"."externallyCompletedFromFkojunstMailStatus", FALSE),
-      "c"."scheduleDisappeared",
-      NOW(),
-      NOW()
-    FROM "computed" "c"
-    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
-      ON "ext"."csvDashboardRowId" = "c"."id"
-    ON CONFLICT ("csvDashboardRowId") DO UPDATE SET
-      "externallyCompletedFromFkojunstDisappeared" = "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstDisappeared",
-      "externallyCompletedFromFkojunstMailStatus" = "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstMailStatus",
-      "externallyCompletedFromScheduleCsvDisappeared" = EXCLUDED."externallyCompletedFromScheduleCsvDisappeared",
-      "isExternallyCompleted" = (
-        "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstDisappeared"
-        OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstMailStatus"
-        OR EXCLUDED."externallyCompletedFromScheduleCsvDisappeared"
-      ),
-      "updatedAt" = NOW()
-  `;
+  void disappearedScheduleKeys;
+  await replaceAllWinnerExternalCompletionStatesFromMailSync(executor);
 }
 
 /**
