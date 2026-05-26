@@ -134,6 +134,15 @@ SELECT
 - **`externallyCompletedFromScheduleCsvDisappeared = true` かつ `updatedAt` が「今日の暦日内」** といった集合を **「実質、その営業日の CSV 消失に基づく完了結果のスナップショット近似」として扱ってよい**、という **現場運用近似**がある（監査ログや「その瞬間から初めて true だった」証明が欲しいときは **`updatedAt` 単独では不十分**）。
 - メール側の **`FKOJUNST_Status` の取込件数／バッチ件数は、消失近似の直接的なカウントと混ぜない**（系統が別）。
 
+## Production（2026-05-26 · **差分消失廃止後の検証**） {#production-2026-05-26-completion-status-only}
+
+- **本番**: **`raspberrypi5` のみ**·Detach **`20260526-121604-8450`**·実装 **`a970e795`**
+- **Phase12**: **43/0/0**（約 **30s**）
+- **DB 全体**: **`externallyCompletedFromScheduleCsvDisappeared=true` → 0 件**
+- **BA1S6202 / `FSIGENCD=035`**: **`csv_disappeared=f`**。**`fk_status=C`**・**`mail_cx=t`** → **グレーは Status 正本どおり**（調査時の **`R` + 消失** は解消）
+- **SQL 注意**: `rowData` は **`FSEIBAN` / `FSIGENCD`**（`製番` キーでは 0 件になり得る）
+- **記録**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)·[KB-370 §2026-05-26](./KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-26-schedule-csv-disappearance-disabled)
+
 ## References
 
 - [`production-schedule-effective-completion.sql.ts`](../../apps/api/src/services/production-schedule/production-schedule-effective-completion.sql.ts)（実効完了の SQL OR）

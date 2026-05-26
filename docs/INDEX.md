@@ -8,9 +8,9 @@
 
 ## 🎯 目的別インデックス
 
-### 最新アップデート（2026-05-26 · キオスク完了判定の正常化）
+### 最新アップデート（2026-05-26 · キオスク完了判定の正常化 · **本番反映済**）
 
-- **キオスク順位ボード・完了正本の正常化**: 実効完了を **手動完了 + FKOJUNST_Status `C`/`X`** に限定し、**生産日程CSV差分消失による完了**を廃止。`externallyCompletedFromScheduleCsvDisappeared` は互換列として残し、既存 true は migration で false へ収束。**記録**: [ADR-20260526](./decisions/ADR-20260526-production-schedule-completion-status-only.md)·[KB-370](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)·[KB-375](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)。
+- **キオスク順位ボード・完了正本の正常化**: 実効完了を **手動完了 + FKOJUNST_Status `C`/`X`** に限定し、**生産日程CSV差分消失による完了**を廃止。**ブランチ**: **`fix/kiosk-completion-status-only`**·**`a970e795`**·CI **`26429750347` success**·**本番**: **`raspberrypi5` のみ**·Detach **`20260526-121604-8450`**（**`failed=0`**·**`--follow` 約 769s**）·migration **`20260526030000_disable_schedule_csv_disappearance_completion`**·**Phase12 43/0/0**（約 **30s**）·DB **消失フラグ true = 0 件**。**記録**: [deployment §2026-05-26](./guides/deployment.md#kiosk-completion-status-only-2026-05-26)·[ADR-20260526](./decisions/ADR-20260526-production-schedule-completion-status-only.md)·[KB-370](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md#production-2026-05-26-schedule-csv-disappearance-disabled)·[KB-375](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-05-26-completion-status-only)·[KB-377](./knowledge-base/KB-377-kiosk-leaderboard-resource-chip-completion-verification.md#production-2026-05-26-completion-status-only)。
 
 ### 🆕 最新アップデート（2026-05-24 · 私用 Pi5 Hermes Agent · Discord 雑談 E2E）
 

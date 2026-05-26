@@ -18,6 +18,16 @@
   - **良**: `R` / `S` は未完、`C` / `X` は完了という説明に戻る。現場残存行が差分だけでグレーになる再発を防ぐ。
   - **良**: 順位ボード行、資源CDフッタチップ、納期管理、製番進捗が同じ完了意味を共有できる。
   - **悪**: 本当に生産日程から消えたが Status が `C` / `X` にならない行は自動完了しない。上流 Status の是正または手動完了で扱う。
+## Implementation（2026-05-26 本番）
+
+- **ブランチ**: **`fix/kiosk-completion-status-only`**（実装 **`a970e795`**）
+- **対象ホスト**: **`raspberrypi5` のみ**（Pi4／Pi3 **`skipping: no hosts matched`**）
+- **Detach Run ID**: **`20260526-121604-8450`**（`ok=134` `changed=4` `failed=0`）
+- **マイグレーション**: **`20260526030000_disable_schedule_csv_disappearance_completion`** 適用済
+- **Phase12**: **43/0/0**（約 **30s**）
+- **事後 DB**: **`externallyCompletedFromScheduleCsvDisappeared=true` は 0 件**
+- **記録**: [deployment.md §2026-05-26](../guides/deployment.md#kiosk-completion-status-only-2026-05-26)
+
 - **References**:
   - [KB-370 生産スケジュール「実効完了」](../knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)
   - [KB-375 順位ボード・生産日程の完了整合](../knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)
