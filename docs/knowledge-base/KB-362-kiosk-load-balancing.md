@@ -92,7 +92,7 @@ last-verified: 2026-05-26
 
 - **社内移管サジェスト**（既存 `POST .../suggestions`）: 分類/移管ルールに基づき **別の社内資源CD** へ移す候補。移管先にも負荷が載る。
 - **外注候補シミュ**（Phase 0）: 選択した **工程行** を社内資源の必要分から除外する read-only 試算。
-- **推奨セット**（部品単位）: `fseiban` + `productNo` + `fhincd` で束ねた **部品候補** の自動選定・手動入れ替え。試算は `selectedCandidateIds` で行う。**DB 更新なし**。外注先能力は見ない。
+- **推奨セット**（部品単位）: `fseiban` + `productNo` + `fhincd` で束ねた **部品候補** の自動選定・手動入れ替え。候補化時は同一部品の eligible 工程をまるごと `operations` に含める。試算は `selectedCandidateIds` で行う。**DB 更新なし**。外注先能力は見ない。
 
 ### 負荷母集団（資源CD俯瞰・外注・社内移管サジェストのみ）
 
@@ -108,7 +108,7 @@ last-verified: 2026-05-26
 ### 効果指標
 
 - 工程行: `overReductionMinutes = min(行分, 源資源の超過分)` 降順。
-- 部品候補: 同一部品の複数工程を束ね、資源ごとに `min(部品合計, 源超過)` で **二重カウントしない** `totalOverReductionMinutes`。
+- 部品候補: 同一部品の eligible 工程をまるごと束ね、効果計算は対象超過資源ごとに `min(部品工程合計, 源超過)` で **二重カウントしない** `totalOverReductionMinutes`。非超過資源工程は外注試算時に必要分から差し引くが、選定効果は過大計上しない。
 
 ### API
 
@@ -119,7 +119,7 @@ last-verified: 2026-05-26
 | `POST .../outsourcing-simulate` | **`selectedRowIds`** または **`selectedCandidateIds`** のどちらか一方（同時指定・両方空は 400） |
 | `POST .../outsourcing-replacements` | 1 部品を外したときの代替候補（最大 5 件） |
 
-- `candidateId` = 正規化した `fseiban` + `\u001f` + `productNo` + `\u001f` + `fhincd`（UI には生 ID を出さない）。
+- `candidateId` = 正規化した `fseiban` + `\u001f` + `productNo` + `\u001f` + `fhincd`（UI には生 ID を出さない）。3 キーのいずれかが空の行は、無関係な工程を束ねないため部品候補から除外する。
 - `FHINMEI` は行の品名（`LoadBalancingRowCandidate.fhinmei`）。機種名解決は部品名用途に使わない。
 
 ### UI（資源CD俯瞰タブ）

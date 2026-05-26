@@ -425,6 +425,120 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     expect(screen.getByText(/超過解消見込み/)).toBeInTheDocument();
   });
 
+  it('mutation オブジェクト参照が変わっても推奨セットを保持する', async () => {
+    const candidateId = 'S001\u001fP001\u001fH001';
+    const plan = vi.fn().mockResolvedValue({
+      siteKey: '第2工場',
+      yearMonth: '2026-04',
+      mode: 'outsourcing',
+      strategy: 'max_over_reduction',
+      selectedCandidateIds: [candidateId],
+      beforeResources: [],
+      afterResources: [],
+      resolved: true,
+      remainingOverMinutes: 0,
+      totalReducedMinutes: 120,
+      totalOverReductionMinutes: 60
+    });
+    const loadCandidates = vi.fn().mockResolvedValue({
+      siteKey: '第2工場',
+      yearMonth: '2026-04',
+      mode: 'outsourcing',
+      resources: [],
+      candidates: [],
+      externalizationCandidates: [
+        {
+          candidateId,
+          fseiban: 'S001',
+          productNo: 'P001',
+          fhincd: 'H001',
+          fhinmei: '部品A',
+          operations: [{ rowId: 'row-1' }, { rowId: 'row-2' }],
+          impactByResource: [],
+          totalReducedMinutes: 120,
+          totalOverReductionMinutes: 60,
+          resolvesOverResourceCds: ['A01']
+        }
+      ]
+    });
+    const simulate = vi.fn().mockResolvedValue({
+      siteKey: '第2工場',
+      yearMonth: '2026-04',
+      mode: 'outsourcing',
+      beforeResources: [],
+      afterResources: [{ resourceCd: 'A01', requiredMinutes: 120, availableMinutes: 180, overMinutes: 0 }],
+      appliedRows: [],
+      skippedRows: [],
+      summary: {
+        selectedCount: 1,
+        appliedCount: 1,
+        skippedCount: 0,
+        totalReducedMinutes: 120,
+        remainingOverMinutes: 0
+      }
+    });
+
+    mockUseOverview.mockReturnValue({
+      data: {
+        siteKey: '第2工場',
+        yearMonth: '2026-04',
+        resources: [
+          {
+            resourceCd: 'A01',
+            requiredMinutes: 240,
+            availableMinutes: 180,
+            overMinutes: 60,
+            classCode: 'LINE-A'
+          }
+        ]
+      },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockImplementation(() => ({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    }));
+    mockUseOutsourcingPlan.mockImplementation(() => ({
+      mutateAsync: plan,
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    }));
+    mockUseOutsourcingCandidates.mockImplementation(() => ({
+      mutateAsync: loadCandidates,
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    }));
+    mockUseOutsourcingSimulate.mockImplementation(() => ({
+      mutateAsync: simulate,
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    }));
+
+    render(<ProductionScheduleLoadBalancingPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '推奨セットを自動選定' }));
+    });
+
+    expect(screen.getByText(/選択 1 部品/)).toBeInTheDocument();
+    expect(screen.getByText('部品A')).toBeInTheDocument();
+    expect(screen.getByText(/超過解消見込み/)).toBeInTheDocument();
+  });
+
   it('対象月変更時に既存サジェストをリセットする', () => {
     const reset = vi.fn();
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -50,7 +50,11 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
     ReturnType<typeof usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate>['data'] | null
   >(null);
 
-  const overviewParams = useMemo(() => ({ month: month.trim(), ...scopeParams }), [month, scopeParams]);
+  const targetDeviceScopeKey = scopeParams.targetDeviceScopeKey;
+  const overviewParams = useMemo(
+    () => ({ month: month.trim(), targetDeviceScopeKey }),
+    [month, targetDeviceScopeKey]
+  );
   const overviewEnabled = /^\d{4}-\d{2}$/.test(month.trim()) && scopeEnabled;
 
   const overviewQuery = useKioskProductionScheduleLoadBalancingOverview(overviewParams, {
@@ -74,6 +78,18 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
     onSimulateResult: setSimulateResult
   });
   const resetPlanState = planState.resetPlanState;
+  const resetRefs = useRef({
+    suggestions: suggestionsMutation.reset,
+    candidates: candidatesMutation.reset,
+    simulate: simulateMutation.reset,
+    plan: resetPlanState
+  });
+  resetRefs.current = {
+    suggestions: suggestionsMutation.reset,
+    candidates: candidatesMutation.reset,
+    simulate: simulateMutation.reset,
+    plan: resetPlanState
+  };
 
   const resetOutsourcingState = () => {
     setSelectedCandidateRowIds([]);
@@ -89,20 +105,11 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
     setSelectedCandidateRowIds([]);
     setCandidateResult(null);
     setSimulateResult(null);
-    candidatesMutation.reset();
-    simulateMutation.reset();
-    suggestionsMutation.reset();
-    resetPlanState();
-  }, [
-    month,
-    scopeParams,
-    overResourceKey,
-    overResourceOptions,
-    suggestionsMutation,
-    candidatesMutation,
-    simulateMutation,
-    resetPlanState
-  ]);
+    resetRefs.current.candidates();
+    resetRefs.current.simulate();
+    resetRefs.current.suggestions();
+    resetRefs.current.plan();
+  }, [month, targetDeviceScopeKey, overResourceKey, overResourceOptions]);
 
   const displayResources = useMemo(
     () => simulateResult?.afterResources ?? overviewQuery.data?.resources ?? [],

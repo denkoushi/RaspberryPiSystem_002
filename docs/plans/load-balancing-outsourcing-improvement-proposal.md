@@ -84,6 +84,7 @@ export type ExternalizationCandidate = {
 
 - **グループキー規則を明文化**: 既定は `fseiban|productNo|fhincd`。同一品番で工程だけ外す運用がある場合は `fkojun` をキーに含めるフラグ（API クエリ `groupBy?: 'part' | 'part_operation'`）を Phase 1 で検討。
 - **部品名 `fhinmei`**: 機種別月次と同様、表示用にバッチ解決（境界: assembler / service。エンジンは ID のみ）。
+- **レビュー対応（2026-05-26）**: `fseiban|productNo|fhincd` の 3 キーが揃う行だけを部品候補にし、候補の `operations` は同一部品の eligible 工程をまるごと保持する。選定効果は対象超過資源に効く工程だけで再計算し、試算適用時は部品全工程を社内負荷から差し引く。
 
 ---
 
@@ -109,6 +110,7 @@ export type ExternalizationCandidate = {
 ### ブラッシュアップ（採用）
 
 - **`maxCandidates` 切り捨てリスク**: plan 実行前に対象超過資源の候補を **切らない**、または plan 専用で上限を引き上げる。候補一覧 API だけ 100 件 cap を維持。
+- **API 上限整合**: `outsourcing-plan` が最大 500 候補から選ぶため、`outsourcing-simulate` / `outsourcing-replacements` の `selectedCandidateIds` も 500 件まで受け付ける。
 - **未解消時の契約**: `resolved: false` と `remainingOverMinutes`、および「あと N 分相当」のヒント（任意）を返す。
 - **`alternatives`**: 同点候補を UI の入れ替えパネルへ渡す（改善 3 と接続）。
 

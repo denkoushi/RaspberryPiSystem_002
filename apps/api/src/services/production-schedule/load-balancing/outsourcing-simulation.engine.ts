@@ -62,6 +62,21 @@ function isRowInOverFilter(row: LoadBalancingRowCandidate, overResourceCds?: Set
   return overResourceCds.has(row.resourceCd);
 }
 
+function hasCompletePartKey(row: LoadBalancingRowCandidate): boolean {
+  return row.fseiban.trim().length > 0 && row.productNo.trim().length > 0 && row.fhincd.trim().length > 0;
+}
+
+function listOperationsWithCurrentOverImpact(
+  operations: LoadBalancingRowCandidate[],
+  overMap: Map<string, number>,
+  overResourceCds?: Set<string>
+): LoadBalancingRowCandidate[] {
+  return operations.filter((row) => {
+    if (!isRowInOverFilter(row, overResourceCds)) return false;
+    return (overMap.get(row.resourceCd) ?? 0) > 0 && row.requiredMinutes > 0;
+  });
+}
+
 function compareCandidates(a: OutsourcingCandidateItem, b: OutsourcingCandidateItem): number {
   if (b.overReductionMinutes !== a.overReductionMinutes) {
     return b.overReductionMinutes - a.overReductionMinutes;
@@ -121,9 +136,7 @@ export function buildExternalizationCandidates(params: {
   const grouped = new Map<string, LoadBalancingRowCandidate[]>();
 
   for (const row of params.rows) {
-    if (!isRowInOverFilter(row, params.overResourceCds)) continue;
-    const sourceOver = overMap.get(row.resourceCd) ?? 0;
-    if (sourceOver <= 0 || row.requiredMinutes <= 0) continue;
+    if (!hasCompletePartKey(row) || row.requiredMinutes <= 0) continue;
 
     const candidateId = buildPartCandidateId(row.fseiban, row.productNo, row.fhincd);
     const list = grouped.get(candidateId) ?? [];
@@ -134,8 +147,10 @@ export function buildExternalizationCandidates(params: {
   const candidates: ExternalizationCandidate[] = [];
   for (const [candidateId, operations] of grouped) {
     const sortedOps = [...operations].sort((a, b) => a.rowId.localeCompare(b.rowId));
+    const impactOps = listOperationsWithCurrentOverImpact(sortedOps, overMap, params.overResourceCds);
+    if (impactOps.length === 0) continue;
     const first = sortedOps[0]!;
-    const impactByResource = buildImpactByResource(sortedOps, overMap);
+    const impactByResource = buildImpactByResource(impactOps, overMap);
     const totalReducedMinutes = sortedOps.reduce((sum, row) => sum + row.requiredMinutes, 0);
     const totalOverReductionMinutes = impactByResource.reduce(
       (sum, impact) => sum + impact.overReductionMinutes,
@@ -329,7 +344,7 @@ export function simulateExternalizationSelection(params: {
     }
 
     const rowIds = candidate.operations.map((op) => op.rowId);
-    if (allowedRowIds != null && !rowIds.every((rowId) => allowedRowIds.has(rowId))) {
+    if (allowedRowIds != null && !rowIds.some((rowId) => allowedRowIds.has(rowId))) {
       skippedCandidates.push({ candidateId, reason: 'outside_over_resource_filter' });
       continue;
     }
@@ -373,19 +388,19 @@ function computePartCandidateEffect(params: {
   overResourceCds?: Set<string>;
 }): ExternalizationCandidate {
   const overMap = buildOverMap(params.resources);
-  const operations = params.candidate.operations.filter((row) => {
-    if (!isRowInOverFilter(row, params.overResourceCds)) return false;
-    return (overMap.get(row.resourceCd) ?? 0) > 0 && row.requiredMinutes > 0;
-  });
-  const impactByResource = buildImpactByResource(operations, overMap);
-  const totalReducedMinutes = operations.reduce((sum, row) => sum + row.requiredMinutes, 0);
+  const impactOperations = listOperationsWithCurrentOverImpact(
+    params.candidate.operations,
+    overMap,
+    params.overResourceCds
+  );
+  const impactByResource = buildImpactByResource(impactOperations, overMap);
+  const totalReducedMinutes = params.candidate.operations.reduce((sum, row) => sum + row.requiredMinutes, 0);
   const totalOverReductionMinutes = impactByResource.reduce(
     (sum, impact) => sum + impact.overReductionMinutes,
     0
   );
   return {
     ...params.candidate,
-    operations,
     impactByResource,
     totalReducedMinutes,
     totalOverReductionMinutes,
@@ -469,11 +484,8 @@ export function computeExternalizationPlan(params: {
     selectedRowIds: [...appliedRowIds]
   });
 
-  const beforeOverTotal = beforeResources.reduce((sum, resource) => sum + resource.overMinutes, 0);
-  const afterOverTotal = finalSimulation.afterResources.reduce(
-    (sum, resource) => sum + resource.overMinutes,
-    0
-  );
+  const beforeOverTotal = computeRemainingOverMinutes(beforeResources, params.overResourceCds);
+  const afterOverTotal = computeRemainingOverMinutes(finalSimulation.afterResources, params.overResourceCds);
 
   return {
     strategy,
