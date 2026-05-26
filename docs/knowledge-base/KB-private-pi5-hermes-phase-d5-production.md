@@ -151,6 +151,43 @@ private_pi5_hermes_gateway_enabled: true
 | restart + discover fix 後も **`Unknown command /task`** | [`read_gateway_session_context()`](../../scripts/private-pi5-hermes/lib/approval_relay/coordinator.py) が **`get_session_env()` を引数なし**で呼ぶ · Pi5 Hermes API は **`get_session_env(name, default) -> str`** · handler 実行時 **TypeError** → gateway plugin dispatch が DEBUG で握りつぶし skill 未登録扱い | [`approval_relay/session_context.py`](../../scripts/private-pi5-hermes/lib/approval_relay/session_context.py) でキー単位アダプタ + `os.environ` フォールバック · verify smoke 追加 |
 | write `/task` が **承認なし**で `write_file` 完了（`request.json` なし） | D5.1 relay は **`tools.approval`（危険シェルコマンド）** のみフック · LLM は **`write_file` / `patch` ツール**で workspace 書き込み（承認経路外） | **`approval_relay/tool_write_gate.py`** — runner が `pre_tool_call` で write ツールを file IPC 承認に接続（2026-05-26 repo） |
 
+### 本番デプロイ（write_file 承認ゲート · 2026-05-26 JST）
+
+| 項目 | 内容 |
+|------|------|
+| **branch** | `feat/private-pi5-hermes-tool-write-approval-gate` @ `bd87e47c`（PR [#342](https://github.com/denkoushi/RaspberryPiSystem_002/pull/342)） |
+| **対象** | 私用 Pi5 `raspi5-private`（inventory: `private-pi5-stackchan-bridge`）のみ |
+| **手順** | 標準 `./scripts/private-pi5-hermes/deploy-private-pi5-hermes.sh` |
+| **PLAY RECAP** | **ok=123 changed=8 failed=0**（約 **421s**） |
+| **gateway** | `hermes-gateway` **active** · 起動 **2026-05-26 09:01:20 JST** · PID **157959** |
+| **配布物** | `approval_relay/pending_approval.py` · `tool_write_gate.py` · `runner.py`（`install_tool_write_approval_relay`）· `store.clear_pending_files()` |
+
+**実機検証（Ansible verify + Pi5 smoke）**:
+
+| 検証 | 結果 |
+|------|------|
+| playbook D5 / D5.1 / tools D4 verify | **PASS** |
+| `tool_write_gate.py` / `pending_approval.py` 配置 | **OK** |
+| `HERMES_TOOLS_PHASE=d4 verify-tools-profile-deploy.sh` | **OK** |
+| runner + write プロンプト → **`request.json` 生成**（task `verify-write-gate-1779753830`） | **OK** — `pre_tool_call` 承認ゲート発火を確認 |
+| Discord `/task` write E2E（承認 UX 完結） | **未**（手動 · 次タスク） |
+
+**仕様（write ツール承認）**:
+
+- `write_file` / `patch` 実行直前に `pre_tool_call` が **`request.json` を作成**しブロック
+- chat 側 `DiscordApprovalRelayCoordinator.watch_task` が Discord に承認依頼（従来の shell 承認と同一 store）
+- ユーザーが `yes` / `/task-approve` → `response.json` → ツール実行再開
+- 各ツール呼び出し前に **`clear_pending_files()`** で stale IPC を防止
+
+**検証コマンド（Pi5 · Runbook 追記）**:
+
+```bash
+ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m copy -a "src=scripts/private-pi5-hermes/verify-tool-write-approval-gate-pi5.sh dest=/tmp/verify-tool-write-approval-gate-pi5.sh mode=0755" -b
+ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private-pi5-stackchan-bridge-fragment.yml \
+  -m shell -a "sudo -u hermes /tmp/verify-tool-write-approval-gate-pi5.sh" -b
+```
+
 ### Discord `/task` E2E（2026-05-25 夜 · write 承認）
 
 | テスト | 結果 | 備考 |
@@ -159,7 +196,8 @@ private_pi5_hermes_gateway_enabled: true
 | `/task Create hello-d51.txt ...` | **NG** · ~23s · 承認なしで作成 | 旧 plugin 経路（上表根因） |
 | **gateway restart 後**（21:40 JST · PID 140530） | playbook verify **PASS** · write relay sim **OK** | `hello-d51-restart.txt` · `relay-restart-ok` · ~91s |
 | **session context fix デプロイ後**（22:36 JST · PID 150145） | Ansible verify **PASS** · handler 直呼び **OK** · Unknown command **再発なし** | branch `fix/private-pi5-hermes-task-session-context-api` |
-| Discord write `/task` 再試行 | **要確認** | 承認プロンプト → yes → 作成を期待 |
+| Discord write `/task` 再試行（ゲートデプロイ前） | **NG** · 承認なし | `write_file` 経路（上表） |
+| Discord write `/task`（**2026-05-26 ゲートデプロイ後**） | **要確認** | `request.json` は runner smoke で確認済 · Discord UI は手動 |
 
 正本: [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md) · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [Runbook §D5.1](../runbooks/private-pi5-hermes-deploy.md#phase-d51--discord-承認中継2026-05-25--repo-実装)
 

@@ -2,7 +2,7 @@
 title: 私用 Pi5 Hermes ツール向けセキュリティ Phase D5.1 ExecPlan
 tags: [Hermes Agent, private Pi5, Discord, tools profile, Phase D5.1, approval relay]
 audience: [開発者, 運用者]
-last-verified: 2026-05-25
+last-verified: 2026-05-26
 related:
   - private-pi5-hermes-tools-security-phase-d5-execplan.md
   - ../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md
@@ -30,7 +30,8 @@ Phase D5 の `/task` 橋は tools プロファイルを **subprocess `hermes cha
 - [x] Pi5 実機: read-only tools · write + file IPC 承認 sim — **OK**
 - [x] Pi5 実機: session context API fix デプロイ + verify — **OK**（2026-05-25 22:36 JST · [KB D5 §D5.1 本番デプロイ](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイsession-context-api-修正--2026-05-25-2236-jst)）
 - [x] `write_file` / `patch` 承認ゲート（`pre_tool_call` + 既存 file IPC）— repo 実装（2026-05-26）
-- [ ] Discord write タスク E2E（`/task` + yes/`/task-approve`）— **Pi5 再デプロイ後**に確認
+- [x] 私用 Pi5 本番デプロイ + runner smoke（`request.json` 生成）— 2026-05-26 · [KB §write ゲート](../knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイwrite_file-承認ゲート--2026-05-26-jst)
+- [ ] Discord write タスク E2E（`/task` + yes/`/task-approve`）— Discord UI 手動確認
 
 ## 設計（確定）
 
