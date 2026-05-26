@@ -5,6 +5,8 @@ import { ProductionScheduleLoadBalancingPage } from './ProductionScheduleLoadBal
 
 const mockUseOverview = vi.fn();
 const mockUseMachineMonthly = vi.fn();
+const mockUseStartDateLeveling = vi.fn();
+const mockUseStartDateLevelingSimulate = vi.fn();
 const mockUseSiteDevices = vi.fn();
 const mockUseSuggestions = vi.fn();
 const mockIsMacEnvironment = vi.fn();
@@ -13,6 +15,10 @@ vi.mock('../../api/hooks', () => ({
   useKioskProductionScheduleLoadBalancingOverview: (...args: unknown[]) => mockUseOverview(...args),
   useKioskProductionScheduleLoadBalancingMachineMonthlyLoad: (...args: unknown[]) =>
     mockUseMachineMonthly(...args),
+  useKioskProductionScheduleLoadBalancingStartDateLeveling: (...args: unknown[]) =>
+    mockUseStartDateLeveling(...args),
+  usePostKioskProductionScheduleLoadBalancingStartDateLevelingSimulate: (...args: unknown[]) =>
+    mockUseStartDateLevelingSimulate(...args),
   useKioskProductionScheduleManualOrderSiteDevices: (...args: unknown[]) => mockUseSiteDevices(...args),
   usePostKioskProductionScheduleLoadBalancingSuggestions: (...args: unknown[]) => mockUseSuggestions(...args)
 }));
@@ -53,6 +59,33 @@ describe('ProductionScheduleLoadBalancingPage', () => {
       },
       isFetching: false,
       error: null
+    });
+    mockUseStartDateLeveling.mockReturnValue({
+      data: {
+        siteKey: '第2工場',
+        fromMonth: '2026-04',
+        toMonth: '2026-09',
+        bucket: 'month',
+        focusMonth: null,
+        months: ['2026-04', '2026-05'],
+        days: [],
+        resources: [{ resourceCd: '021', workCalendarMode: 'weekdays', requiredMinutes: 100, availableMinutes: 80, overMinutes: 20 }],
+        cells: [],
+        allocatedRows: [],
+        unallocatedRows: [],
+        calendarSettings: [],
+        simulatedMoves: []
+      },
+      isFetching: false,
+      error: null
+    });
+    mockUseStartDateLevelingSimulate.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
     });
   });
 
@@ -171,6 +204,34 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     expect(lastCall?.[0]).toMatchObject({
       fromMonth: '2026-04',
       toMonth: '2026-09'
+    });
+  });
+
+  it('着手日・平準化タブで start-date-leveling を呼ぶ', () => {
+    mockUseOverview.mockReturnValue({
+      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+
+    render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '着手日・平準化' }));
+
+    expect(screen.getByText(/FSIGENSHOYORYO × 指示数/)).toBeInTheDocument();
+    expect(mockUseStartDateLeveling).toHaveBeenCalled();
+    const lastCall = mockUseStartDateLeveling.mock.calls.at(-1);
+    expect(lastCall?.[0]).toMatchObject({
+      fromMonth: '2026-04',
+      toMonth: '2026-09',
+      bucket: 'month'
     });
   });
 

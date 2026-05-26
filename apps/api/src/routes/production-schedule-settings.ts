@@ -20,11 +20,14 @@ import {
   listLoadBalancingClasses,
   listLoadBalancingMonthlyCapacity,
   listLoadBalancingTransferRules,
+  listLoadBalancingWorkCalendars,
   replaceLoadBalancingCapacityBase,
   replaceLoadBalancingClasses,
   replaceLoadBalancingMonthlyCapacity,
-  replaceLoadBalancingTransferRules
+  replaceLoadBalancingTransferRules,
+  replaceLoadBalancingWorkCalendars
 } from '../services/production-schedule/load-balancing/load-balancing-settings.service.js';
+import { WORK_CALENDAR_MODES } from '../services/production-schedule/load-balancing/work-calendar-policy.js';
 
 const resourceCategoryQuerySchema = z.object({
   location: z.string().min(1).max(100).default('shared')
@@ -144,6 +147,18 @@ const loadBalancingTransferRulesBodySchema = z.object({
       })
     )
     .max(300)
+});
+
+const loadBalancingWorkCalendarBodySchema = z.object({
+  location: z.string().min(1).max(100),
+  items: z
+    .array(
+      z.object({
+        resourceCd: z.string().min(1).max(20),
+        workCalendarMode: z.enum(WORK_CALENDAR_MODES)
+      })
+    )
+    .max(500)
 });
 
 export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): void {
@@ -295,6 +310,21 @@ export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): 
   app.put('/production-schedule-settings/load-balancing/transfer-rules', { preHandler: canManage }, async (request) => {
     const body = loadBalancingTransferRulesBodySchema.parse(request.body);
     const settings = await replaceLoadBalancingTransferRules({
+      siteKeyInput: body.location,
+      items: body.items
+    });
+    return { settings };
+  });
+
+  app.get('/production-schedule-settings/load-balancing/work-calendars', { preHandler: canManage }, async (request) => {
+    const query = loadBalancingLocationQuerySchema.parse(request.query);
+    const settings = await listLoadBalancingWorkCalendars(query.location);
+    return { settings };
+  });
+
+  app.put('/production-schedule-settings/load-balancing/work-calendars', { preHandler: canManage }, async (request) => {
+    const body = loadBalancingWorkCalendarBodySchema.parse(request.body);
+    const settings = await replaceLoadBalancingWorkCalendars({
       siteKeyInput: body.location,
       items: body.items
     });

@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { LoadBalancingMachineMonthlyTab } from '../../features/kiosk/loadBalancing/LoadBalancingMachineMonthlyTab';
 import { LoadBalancingMacProxyPanel } from '../../features/kiosk/loadBalancing/LoadBalancingMacProxyPanel';
 import { LoadBalancingOverviewTab } from '../../features/kiosk/loadBalancing/LoadBalancingOverviewTab';
+import { LoadBalancingStartDateLevelingTab } from '../../features/kiosk/loadBalancing/LoadBalancingStartDateLevelingTab';
 import { useProductionScheduleMacDeviceScope } from '../../features/kiosk/loadBalancing/useProductionScheduleMacDeviceScope';
 
-type LoadBalancingView = 'overview' | 'machine-monthly';
+type LoadBalancingView = 'overview' | 'machine-monthly' | 'start-date-leveling';
 
 export function ProductionScheduleLoadBalancingPage() {
   const [view, setView] = useState<LoadBalancingView>('overview');
@@ -37,6 +38,16 @@ export function ProductionScheduleLoadBalancingPage() {
             >
               機種別月次負荷
             </button>
+            <button
+              type="button"
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
+                view === 'start-date-leveling' ? 'bg-fuchsia-700 text-white' : 'bg-slate-800 text-white/80'
+              }`}
+              aria-selected={view === 'start-date-leveling'}
+              onClick={() => setView('start-date-leveling')}
+            >
+              着手日・平準化
+            </button>
           </div>
         </div>
 
@@ -52,8 +63,10 @@ export function ProductionScheduleLoadBalancingPage() {
 
       {view === 'overview' ? (
         <LoadBalancingOverviewTab scopeParams={macScope.scopeParams} scopeEnabled={macScope.scopeEnabled} />
-      ) : (
+      ) : view === 'machine-monthly' ? (
         <LoadBalancingMachineMonthlyTab scopeParams={macScope.scopeParams} scopeEnabled={macScope.scopeEnabled} />
+      ) : (
+        <LoadBalancingStartDateLevelingTab scopeParams={macScope.scopeParams} scopeEnabled={macScope.scopeEnabled} />
       )}
     </div>
   );

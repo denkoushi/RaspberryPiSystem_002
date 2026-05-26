@@ -15,17 +15,19 @@ last-verified: 2026-05-26
 |----------------|----------|------|
 | 2026-04-30 初版 | `feat/kiosk-load-balance-suggest` | 資源CD俯瞰・能力設定・サジェスト（`plannedEndDate` 月） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-machine-monthly-view` | **機種別月次負荷**タブ（有効納期月・機種/部品/積み上げグラフ） |
+| 2026-05-26 拡張 | `feat/kiosk-load-balancing-start-date-leveling` | **着手日・平準化**タブ（日割り・シミュ・稼働日ルール） |
 
-**新規 Prisma マイグレーションなし**（2026-05-26 拡張は既存テーブルのみ参照）。
+**Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
-## 画面構成（2タブ）
+## 画面構成（3タブ）
 
 | タブ | 月の定義 | 主な用途 |
 |------|----------|----------|
 | **資源CD俯瞰** | `ProductionScheduleOrderSupplement.plannedEndDate` の暦月 | 単月の資源CD別 必要/能力/超過・サジェスト |
 | **機種別月次負荷** | **有効納期** = `COALESCE(ProductionScheduleRowNote.dueDate, supplement.plannedEndDate)` の暦月 | 機種（MH/SH の `FHINMEI`）→ 部品 → 月×資源CD の積み上げ |
+| **着手日・平準化** | 日割り後を月合算／日別（着手=`plannedStartDate`、終端=有効納期） | `FSIGENSHOYORYO×指示数`・稼働日ルール・平準化シミュ（DB不変） |
 
-**重要**: 両タブで「月」の意味が異なる。混同すると集計が合わない。
+**重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
 ## 機種別月次負荷 — 仕様（実装正本）
 
@@ -62,6 +64,25 @@ last-verified: 2026-05-26
 | 月範囲 | `year-month-range.ts` |
 | Web タブ | `LoadBalancingMachineMonthlyTab.tsx` |
 | ページシェル | `ProductionScheduleLoadBalancingPage.tsx`（タブ + Mac 代理） |
+
+## 着手日・平準化 — 仕様（実装正本）
+
+### 集計対象
+
+- 機種別月次と同様の **winner / 未完了 / FKOJUNST 可視 / 部品工程 / 資源CD** 条件に加え、
+  **`plannedStartDate` と有効納期が両方ある行**のみ配分対象。
+- **負荷（分）** = `FSIGENSHOYORYO × plannedQuantity`（`plannedQuantity` が正の整数でない行は **未配分**）。
+- **日割り**: 着手日〜有効納期（ inclusive ）の **稼働日**に均等配分。稼働日は資源CDごとに `weekdays` または `calendar_days`（未設定は **weekdays**）。
+- **月次能力**: 既存の基準/月次上書き。日次表示では **月能力 ÷ 当該月の稼働日数** を日次能力線とする。
+
+### API
+
+- `GET .../start-date-leveling` — `bucket=month|day`、`focusMonth`（日次時）、任意 `resourceCd`
+- `POST .../start-date-leveling/simulate` — `moves: [{ rowId, targetDate }]`。**DB 更新なし**（行の全負荷を移動先日に寄せて再集計）
+
+### 管理設定
+
+- `GET/PUT /production-schedule-settings/load-balancing/work-calendars`
 
 ## Symptoms / 使い方
 

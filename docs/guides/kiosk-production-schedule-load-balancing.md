@@ -10,6 +10,7 @@
 |------|------|----------|
 | **資源CD俯瞰** | 単月の資源CD別負荷・能力・山崩しサジェスト | `plannedEndDate`（受注補足）の暦月 |
 | **機種別月次負荷** | 機種（MH/SH 行 `FHINMEI`）→ 部品 → 月×資源CDの積み上げ | **有効納期**（行備考 `dueDate` → なければ `plannedEndDate`）の暦月 |
+| **着手日・平準化** | 着手日〜有効納期の日割り負荷・月/日次・平準化シミュ | **日割り後**を月合算／日別表示（着手日は `plannedStartDate`） |
 
 ## 集計ポリシー（サーバ実装に準拠）
 
@@ -27,8 +28,9 @@
 2. **月次能力**: `YYYY-MM` ごとの上書き（同一資源CDでは月次が基準より優先）。  
 3. **山崩し分類**: 資源CD → `classCode`。  
 4. **移管ルール**: `fromClassCode` → `toClassCode`、優先度、有効、効率係数（移管先に載る負荷は `行工数 / efficiencyRatio`）。
+5. **稼働日ルール**（着手日・平準化タブ用）: 資源CD → `weekdays`（平日）または `calendar_days`（暦日）。未設定は平日扱い。
 
-API（管理者）: `/production-schedule-settings/load-balancing/*`
+API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-calendars` 含む）
 
 ## キオスク API
 
@@ -39,6 +41,12 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`
   - 未完了部品工程のみ。月範囲は最大 **12 か月**。  
   - `machineName` / `fhincd` は任意（部品行クリックで `fhincd` 絞り込み）。  
   - 機種名は製番ごとの MH/SH 行 `FHINMEI`（`resolveSeibanMachineDisplayNamesBatched` と同系）。
+- `GET /kiosk/production-schedule/load-balancing/start-date-leveling?fromMonth=&toMonth=&bucket=month|day&focusMonth=&resourceCd=&targetDeviceScopeKey=...`
+  - 負荷 = **`FSIGENSHOYORYO × plannedQuantity`**（指示数不明は未配分）。
+  - **着手日** = `OrderSupplement.plannedStartDate`、**終端** = 有効納期。期間内を資源CDの稼働日ルールで**均等日割り**し、月次は日割りの合算。
+  - 月範囲は最大 **12 か月**。
+- `POST /kiosk/production-schedule/load-balancing/start-date-leveling/simulate`
+  - Body: 表示条件 + `moves: [{ rowId, targetDate }]`。**DB 更新なし**（指定行の負荷を移動先日に寄せて再集計）。
 
 Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKey` 必須**（未指定時は 400）。
 
@@ -54,11 +62,26 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 - API: `machine-monthly-load-*.ts`, `year-month-range.ts`
 - Web: `LoadBalancingMachineMonthlyTab.tsx`, `LoadBalancingOverviewTab.tsx`, `LoadBalancingMacProxyPanel.tsx`, `mapMachineMonthlyLoadChartRows.ts`
 
+## 着手日・平準化（UI）
+
+- **開始月・終了月**: 初期値は当月から **6 か月**（最大 **12 か月**）。
+- **表示**: **月次**（月×資源の積み上げ）／ **日次**（対象月の日別・資源CD任意で能力比較）。
+- **平準化シミュ**: 行を選び移動先日を指定 → **読み取り専用**（着手日・補助テーブルは更新しない）。
+- **未配分**: 着手日/納期欠損・指示数不明・稼働日なし等を別表で表示。
+
+### 実装ファイル（着手日・平準化）
+
+- API: `start-date-leveling-*.ts`, `work-calendar-policy.ts`, `load-distribution.ts`
+- Web: `LoadBalancingStartDateLevelingTab.tsx`, `mapStartDateLevelingChartRows.ts`
+- 管理: `ProductionScheduleLoadBalancingSettingsSection.tsx`（稼働日ルール）
+
 ## データベース
 
 Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: `ProductionScheduleResourceCapacityBase`, `ProductionScheduleResourceMonthlyCapacity`, `ProductionScheduleLoadBalanceClass`, `ProductionScheduleLoadBalanceTransferRule`（`csvDashboardId` + `siteKey` 単位）。
 
-**機種別月次ビュー**は上記に加え、既存の `CsvDashboardRow` / `ProductionScheduleRowNote` / `ProductionScheduleOrderSupplement` / `ProductionScheduleProgress` を参照するのみ（**新規マイグレーションなし**）。
+**稼働日ルール**（2026-05-26）: `ProductionScheduleResourceWorkCalendar`（マイグレーション `20260526100000_load_balancing_work_calendar`）。
+
+**機種別月次・着手日平準化**は、上記に加え既存の `CsvDashboardRow` / `ProductionScheduleRowNote` / `ProductionScheduleOrderSupplement` / `ProductionScheduleProgress` を参照。
 
 ## 本番デプロイ
 
@@ -66,6 +89,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 |------|----------|------|----------------|
 | 2026-04-30 | `feat/kiosk-load-balance-suggest` | 初版（API+Web+DB） | `d3c37b6f` |
 | 2026-05-26 | `feat/kiosk-load-balancing-machine-monthly-view` | 機種別月次タブ（API+Web） | `60b94b9d` |
+| 2026-05-26 | `feat/kiosk-load-balancing-start-date-leveling` | 着手日・平準化タブ + 稼働日ルール（API+Web+DB） | （未コミット） |
 
 標準手順は [deployment.md](deployment.md)。**Pi5 → Pi4×4 を `--limit` 1 台ずつ**。**Pi3 は除外**。
 

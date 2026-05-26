@@ -6,6 +6,10 @@ import { getProductionScheduleLoadBalancingOverview } from '../../../services/pr
 import { getProductionScheduleMachineMonthlyLoad } from '../../../services/production-schedule/load-balancing/machine-monthly-load.service.js';
 import { parseYearMonthRangeUtc } from '../../../services/production-schedule/load-balancing/monthly-load-query.service.js';
 import { suggestProductionScheduleLoadBalancing } from '../../../services/production-schedule/load-balancing/reallocation-suggestion.service.js';
+import {
+  getProductionScheduleStartDateLeveling,
+  simulateProductionScheduleStartDateLeveling
+} from '../../../services/production-schedule/load-balancing/start-date-leveling.service.js';
 import { assertYearMonthFormat } from '../../../services/production-schedule/load-balancing/year-month-range.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
@@ -28,6 +32,32 @@ const machineMonthlyLoadQuerySchema = z.object({
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   machineName: z.string().min(1).max(200).optional(),
   fhincd: z.string().min(1).max(40).optional()
+});
+
+const startDateLevelingQuerySchema = z.object({
+  fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  toMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  bucket: z.enum(['month', 'day']).default('month'),
+  focusMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  resourceCd: z.string().min(1).max(20).optional()
+});
+
+const startDateLevelingSimulateBodySchema = z.object({
+  fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  toMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  bucket: z.enum(['month', 'day']).default('month'),
+  focusMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  resourceCd: z.string().min(1).max(20).optional(),
+  moves: z
+    .array(
+      z.object({
+        rowId: z.string().min(1).max(80),
+        targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+      })
+    )
+    .max(200)
 });
 
 function assertValidYearMonth(month: string): void {
@@ -104,6 +134,90 @@ export async function registerProductionScheduleLoadBalancingRoutes(
         }
         if (error instanceof Error) {
           const recoverableMessages = ['以前である必要があります', '最大 ', 'YYYY-MM 形式'];
+          if (recoverableMessages.some((snippet) => error.message.includes(snippet))) {
+            throw new ApiError(400, error.message);
+          }
+        }
+        throw error;
+      }
+    }
+  );
+
+  app.get(
+    '/kiosk/production-schedule/load-balancing/start-date-leveling',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const query = startDateLevelingQuerySchema.parse(request.query);
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: query.targetDeviceScopeKey
+      });
+
+      assertValidYearMonthRange(query.fromMonth, query.toMonth);
+
+      try {
+        return await getProductionScheduleStartDateLeveling({
+          siteKeyInput: resolvedSiteKey,
+          deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+          fromMonth: query.fromMonth,
+          toMonth: query.toMonth,
+          bucket: query.bucket,
+          focusMonth: query.focusMonth,
+          resourceCdFilter: query.resourceCd
+        });
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
+        if (error instanceof Error) {
+          const recoverableMessages = ['以前である必要があります', '最大 ', 'YYYY-MM 形式', '稼働日ではありません'];
+          if (recoverableMessages.some((snippet) => error.message.includes(snippet))) {
+            throw new ApiError(400, error.message);
+          }
+        }
+        throw error;
+      }
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/start-date-leveling/simulate',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = startDateLevelingSimulateBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.fromMonth);
+      assertValidYearMonth(body.toMonth);
+
+      try {
+        return await simulateProductionScheduleStartDateLeveling({
+          siteKeyInput: resolvedSiteKey,
+          deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+          fromMonth: body.fromMonth,
+          toMonth: body.toMonth,
+          bucket: body.bucket,
+          focusMonth: body.focusMonth,
+          resourceCdFilter: body.resourceCd,
+          moves: body.moves
+        });
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
+        if (error instanceof Error) {
+          const recoverableMessages = ['以前である必要があります', '最大 ', 'YYYY-MM 形式', '稼働日ではありません'];
           if (recoverableMessages.some((snippet) => error.message.includes(snippet))) {
             throw new ApiError(400, error.message);
           }

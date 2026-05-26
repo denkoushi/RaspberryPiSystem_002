@@ -5,13 +5,17 @@ import {
   useProductionScheduleLoadBalancingClasses,
   useProductionScheduleLoadBalancingMonthlyCapacity,
   useProductionScheduleLoadBalancingTransferRules,
+  useProductionScheduleLoadBalancingWorkCalendars,
   useUpdateProductionScheduleLoadBalancingCapacityBase,
   useUpdateProductionScheduleLoadBalancingClasses,
   useUpdateProductionScheduleLoadBalancingMonthlyCapacity,
-  useUpdateProductionScheduleLoadBalancingTransferRules
+  useUpdateProductionScheduleLoadBalancingTransferRules,
+  useUpdateProductionScheduleLoadBalancingWorkCalendars
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+
+import type { ProductionScheduleLoadBalancingWorkCalendarMode } from '../../api/client';
 
 type Props = {
   location: string;
@@ -32,12 +36,16 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
   const monthlyQuery = useProductionScheduleLoadBalancingMonthlyCapacity(location, yearMonth);
   const classesQuery = useProductionScheduleLoadBalancingClasses(location);
   const rulesQuery = useProductionScheduleLoadBalancingTransferRules(location);
+  const workCalendarsQuery = useProductionScheduleLoadBalancingWorkCalendars(location);
 
   const [baseRows, setBaseRows] = useState<Array<{ resourceCd: string; baseAvailableMinutes: number }>>([]);
   const [monthlyRows, setMonthlyRows] = useState<Array<{ resourceCd: string; availableMinutes: number }>>([]);
   const [classRows, setClassRows] = useState<Array<{ resourceCd: string; classCode: string }>>([]);
   const [ruleRows, setRuleRows] = useState<
     Array<{ fromClassCode: string; toClassCode: string; priority: number; enabled: boolean; efficiencyRatio: number }>
+  >([]);
+  const [workCalendarRows, setWorkCalendarRows] = useState<
+    Array<{ resourceCd: string; workCalendarMode: ProductionScheduleLoadBalancingWorkCalendarMode }>
   >([]);
 
   useEffect(() => {
@@ -56,13 +64,23 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
     setRuleRows(rulesQuery.data?.items ?? []);
   }, [rulesQuery.data?.items]);
 
+  useEffect(() => {
+    setWorkCalendarRows(workCalendarsQuery.data?.items ?? []);
+  }, [workCalendarsQuery.data?.items]);
+
   const mutBase = useUpdateProductionScheduleLoadBalancingCapacityBase();
   const mutMonthly = useUpdateProductionScheduleLoadBalancingMonthlyCapacity();
   const mutClasses = useUpdateProductionScheduleLoadBalancingClasses();
   const mutRules = useUpdateProductionScheduleLoadBalancingTransferRules();
+  const mutWorkCalendars = useUpdateProductionScheduleLoadBalancingWorkCalendars();
 
   const canonicalSiteKey =
-    capacityBaseQuery.data?.siteKey ?? monthlyQuery.data?.siteKey ?? classesQuery.data?.siteKey ?? rulesQuery.data?.siteKey ?? '';
+    capacityBaseQuery.data?.siteKey ??
+    monthlyQuery.data?.siteKey ??
+    classesQuery.data?.siteKey ??
+    rulesQuery.data?.siteKey ??
+    workCalendarsQuery.data?.siteKey ??
+    '';
 
   const handleSaveBase = async () => {
     setMessage(null);
@@ -88,8 +106,73 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
     setMessage('移管ルールを保存しました');
   };
 
+  const handleSaveWorkCalendars = async () => {
+    setMessage(null);
+    await mutWorkCalendars.mutateAsync({ location, items: workCalendarRows });
+    setMessage('稼働日ルールを保存しました');
+  };
+
   return (
     <>
+      <Card title="負荷調整（キオスク）稼働日ルール">
+        <div className="space-y-4">
+          <p className="text-xs font-semibold text-slate-700">
+            着手日・平準化タブの日割りと日次能力換算に使います。未設定の資源CDは「平日のみ」として扱われます。
+          </p>
+          <div className="space-y-2">
+            {workCalendarRows.map((row, index) => (
+              <div key={`${row.resourceCd}-${index}-wc`} className="grid grid-cols-12 gap-2">
+                <input
+                  value={row.resourceCd}
+                  onChange={(event) =>
+                    setWorkCalendarRows((prev) =>
+                      prev.map((item, idx) => (idx === index ? { ...item, resourceCd: event.target.value } : item))
+                    )
+                  }
+                  className="col-span-6 rounded-md border border-slate-300 p-2 text-xs md:col-span-4"
+                  placeholder="資源CD"
+                />
+                <select
+                  value={row.workCalendarMode}
+                  onChange={(event) =>
+                    setWorkCalendarRows((prev) =>
+                      prev.map((item, idx) =>
+                        idx === index
+                          ? {
+                              ...item,
+                              workCalendarMode: event.target.value as ProductionScheduleLoadBalancingWorkCalendarMode
+                            }
+                          : item
+                      )
+                    )
+                  }
+                  className="col-span-6 rounded-md border border-slate-300 p-2 text-xs md:col-span-5"
+                >
+                  <option value="weekdays">平日のみ（月〜金）</option>
+                  <option value="calendar_days">暦日（土日含む）</option>
+                </select>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() =>
+                setWorkCalendarRows((prev) => [...prev, { resourceCd: '', workCalendarMode: 'weekdays' }])
+              }
+            >
+              行を追加
+            </Button>
+            <Button
+              onClick={() => void handleSaveWorkCalendars()}
+              disabled={mutWorkCalendars.isPending || workCalendarsQuery.isLoading}
+            >
+              {mutWorkCalendars.isPending ? '保存中...' : '稼働日ルールを保存'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
       <Card title="負荷調整（キオスク）基準能力">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
