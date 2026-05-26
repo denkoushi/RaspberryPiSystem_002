@@ -21,10 +21,12 @@ except ImportError:  # deployed flat under ~/.hermes/plugins/<name>/
 try:
     from .approval_relay.coordinator import DiscordApprovalRelayCoordinator, read_gateway_session_context
     from .approval_relay.discord_relay import parse_task_approve_args
+    from .approval_relay.gateway_actor_context import stash_from_message_source
     from .approval_relay.models import ApprovalChoice
 except ImportError:
     from approval_relay.coordinator import DiscordApprovalRelayCoordinator, read_gateway_session_context
     from approval_relay.discord_relay import parse_task_approve_args
+    from approval_relay.gateway_actor_context import stash_from_message_source
     from approval_relay.models import ApprovalChoice
 
 _COORDINATOR: DiscordApprovalRelayCoordinator | None = None
@@ -83,11 +85,16 @@ async def _handle_task_deny(_raw_args: str) -> str:
 def _handle_pre_gateway_dispatch(event, gateway=None, **kwargs):
     """Intercept yes/no text when a /task approval is pending (Phase D5.1)."""
     del kwargs
+    source = getattr(event, "source", None)
+    if not bool(getattr(event, "internal", False)):
+        stash_from_message_source(source)
+
     coord = _coordinator()
     if coord is None:
         return None
-    source = getattr(event, "source", None)
     user_id = str(getattr(source, "user_id", "") or "").strip()
+    if not user_id:
+        user_id, _channel_id = read_gateway_session_context()
     text = str(getattr(event, "text", "") or "").strip()
     if not user_id or not text or text.startswith("/"):
         return None

@@ -85,6 +85,55 @@ class CoordinatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ctx.intermediate_messages)
 
 
+class PluginSlashActorBindTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        from lib.approval_relay.gateway_actor_context import clear_gateway_actor_context  # noqa: E402
+
+        clear_gateway_actor_context()
+
+    def test_pre_gateway_stash_enables_task_bind_for_slash_flow(self) -> None:
+        from lib.approval_relay.session_context import read_gateway_session_context  # noqa: E402
+        from lib import discord_task_bridge_plugin as plugin  # noqa: E402
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store_dir = Path(tmp)
+            relay = ApprovalRelayPolicy(
+                enabled=True,
+                store_dir=str(store_dir),
+                request_timeout_seconds=30,
+                poll_interval_seconds=0.05,
+            )
+            coord = DiscordApprovalRelayCoordinator(relay)
+
+            class Platform:
+                value = "discord"
+
+            class Source:
+                user_id = "1507987368462782638"
+                chat_id = "1508026887568490656"
+                platform = Platform()
+
+            class SlashEvent:
+                text = "/task Create file.txt in workspace"
+                source = Source()
+                internal = False
+
+            with mock.patch.object(plugin, "_coordinator", return_value=coord):
+                plugin._handle_pre_gateway_dispatch(SlashEvent())
+
+            user_id, channel_id = read_gateway_session_context()
+            self.assertEqual(user_id, "1507987368462782638")
+            self.assertEqual(channel_id, "1508026887568490656")
+
+            ctx = coord.new_task_context(
+                discord_user_id=user_id,
+                discord_channel_id=channel_id,
+            )
+            index = store_dir / "by-user" / f"{user_id}.json"
+            self.assertTrue(index.is_file(), "by-user index should exist after bind")
+            self.assertEqual(ctx.discord_user_id, user_id)
+
+
 class PluginTextApprovalTests(unittest.TestCase):
     def test_pre_gateway_dispatch_skips_on_yes(self) -> None:
         from lib import discord_task_bridge_plugin as plugin  # noqa: E402
@@ -110,6 +159,7 @@ class PluginTextApprovalTests(unittest.TestCase):
             class Event:
                 text = "yes"
                 source = Source()
+                internal = False
 
             with mock.patch.object(plugin, "_coordinator", return_value=coord):
                 result = plugin._handle_pre_gateway_dispatch(Event())
@@ -125,6 +175,7 @@ class PluginTextApprovalTests(unittest.TestCase):
         class Event:
             text = "hello there"
             source = Source()
+            internal = False
 
         with mock.patch.object(plugin, "_coordinator", return_value=None):
             self.assertIsNone(plugin._handle_pre_gateway_dispatch(Event()))
