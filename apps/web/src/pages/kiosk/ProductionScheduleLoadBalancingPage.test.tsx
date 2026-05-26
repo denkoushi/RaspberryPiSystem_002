@@ -4,12 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProductionScheduleLoadBalancingPage } from './ProductionScheduleLoadBalancingPage';
 
 const mockUseOverview = vi.fn();
+const mockUseMachineMonthly = vi.fn();
 const mockUseSiteDevices = vi.fn();
 const mockUseSuggestions = vi.fn();
 const mockIsMacEnvironment = vi.fn();
 
 vi.mock('../../api/hooks', () => ({
   useKioskProductionScheduleLoadBalancingOverview: (...args: unknown[]) => mockUseOverview(...args),
+  useKioskProductionScheduleLoadBalancingMachineMonthlyLoad: (...args: unknown[]) =>
+    mockUseMachineMonthly(...args),
   useKioskProductionScheduleManualOrderSiteDevices: (...args: unknown[]) => mockUseSiteDevices(...args),
   usePostKioskProductionScheduleLoadBalancingSuggestions: (...args: unknown[]) => mockUseSuggestions(...args)
 }));
@@ -35,6 +38,22 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     vi.setSystemTime(new Date('2026-04-30T12:00:00+09:00'));
     mockIsMacEnvironment.mockReturnValue(false);
     mockUseSiteDevices.mockReturnValue({ data: { deviceScopeKeys: [] } });
+    mockUseMachineMonthly.mockReturnValue({
+      data: {
+        siteKey: '第2工場',
+        fromMonth: '2026-04',
+        toMonth: '2026-09',
+        months: ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'],
+        machines: [{ machineName: 'DFD6362', fseibanCount: 2, requiredMinutes: 300 }],
+        selectedMachineName: null,
+        selectedFhincd: null,
+        parts: [],
+        resourceMonths: [],
+        partRows: []
+      },
+      isFetching: false,
+      error: null
+    });
   });
 
   it('概要を表示してサジェスト計算を実行できる', async () => {
@@ -126,5 +145,66 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     fireEvent.change(screen.getByLabelText('対象月'), { target: { value: '2026-05' } });
 
     expect(reset).toHaveBeenCalledTimes(2);
+  });
+
+  it('機種別月次負荷タブで machine-monthly-load を呼ぶ', () => {
+    mockUseOverview.mockReturnValue({
+      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+
+    render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '機種別月次負荷' }));
+
+    expect(screen.getByText('機種を選択するとグラフを表示します。')).toBeInTheDocument();
+    expect(mockUseMachineMonthly).toHaveBeenCalled();
+    const lastCall = mockUseMachineMonthly.mock.calls.at(-1);
+    expect(lastCall?.[0]).toMatchObject({
+      fromMonth: '2026-04',
+      toMonth: '2026-09'
+    });
+  });
+
+  it('Mac代理時は targetDeviceScopeKey を overview と machine-monthly に渡す', () => {
+    mockIsMacEnvironment.mockReturnValue(true);
+    mockUseSiteDevices.mockReturnValue({
+      data: { deviceScopeKeys: ['pi4-kiosk-1'] }
+    });
+    mockUseOverview.mockReturnValue({
+      data: { siteKey: '第2工場', yearMonth: '2026-04', resources: [] },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+
+    render(<ProductionScheduleLoadBalancingPage />);
+
+    expect(mockUseOverview).toHaveBeenCalledWith(
+      expect.objectContaining({ targetDeviceScopeKey: 'pi4-kiosk-1' }),
+      expect.objectContaining({ enabled: true })
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '機種別月次負荷' }));
+
+    expect(mockUseMachineMonthly).toHaveBeenCalledWith(
+      expect.objectContaining({ targetDeviceScopeKey: 'pi4-kiosk-1' }),
+      expect.objectContaining({ enabled: true })
+    );
   });
 });

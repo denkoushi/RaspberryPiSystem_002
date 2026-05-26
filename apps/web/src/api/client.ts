@@ -484,6 +484,54 @@ export interface ProductionScheduleLoadBalancingSuggestionItem {
   efficiencyRatio: number;
 }
 
+export interface ProductionScheduleLoadBalancingMachineSummary {
+  machineName: string;
+  fseibanCount: number;
+  requiredMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingMachinePartSummary {
+  fhincd: string;
+  fhinmei: string;
+  productNos: string[];
+  fseibans: string[];
+  effectiveDueDateMin: string | null;
+  totalRequiredMinutes: number;
+  resourceCds: string[];
+}
+
+export interface ProductionScheduleLoadBalancingMachineResourceMonthCell {
+  resourceCd: string;
+  month: string;
+  requiredMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingMachinePartRowDetail {
+  rowId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  fkojun: string | null;
+  resourceCd: string;
+  requiredMinutes: number;
+  effectiveDueDate: string;
+  effectiveDueDateSource: 'manual' | 'csv';
+}
+
+export interface ProductionScheduleLoadBalancingMachineMonthlyLoadResponse {
+  siteKey: string;
+  fromMonth: string;
+  toMonth: string;
+  months: string[];
+  machines: ProductionScheduleLoadBalancingMachineSummary[];
+  selectedMachineName: string | null;
+  selectedFhincd: string | null;
+  parts: ProductionScheduleLoadBalancingMachinePartSummary[];
+  resourceMonths: ProductionScheduleLoadBalancingMachineResourceMonthCell[];
+  partRows: ProductionScheduleLoadBalancingMachinePartRowDetail[];
+}
+
 export interface ProductionScheduleDueManagementSummaryItem {
   fseiban: string;
   machineName: string | null;
@@ -1714,6 +1762,20 @@ export async function postKioskProductionScheduleLoadBalancingSuggestions(payloa
     yearMonth: string;
     suggestions: ProductionScheduleLoadBalancingSuggestionItem[];
   }>('/kiosk/production-schedule/load-balancing/suggestions', payload);
+  return data;
+}
+
+export async function getKioskProductionScheduleLoadBalancingMachineMonthlyLoad(params: {
+  fromMonth: string;
+  toMonth: string;
+  targetDeviceScopeKey?: string;
+  machineName?: string;
+  fhincd?: string;
+}) {
+  const { data } = await api.get<ProductionScheduleLoadBalancingMachineMonthlyLoadResponse>(
+    '/kiosk/production-schedule/load-balancing/machine-monthly-load',
+    { params }
+  );
   return data;
 }
 
