@@ -10,10 +10,36 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from lib.approval_relay.gateway_actor_context import (  # noqa: E402
+    clear_gateway_actor_context,
+    stash_from_message_source,
+)
 from lib.approval_relay.session_context import read_gateway_session_context  # noqa: E402
 
 
 class SessionContextTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        clear_gateway_actor_context()
+
+    def test_actor_stash_takes_priority_over_env_getter(self) -> None:
+        class Source:
+            user_id = "actor-user"
+            chat_id = "actor-chan"
+            platform = "discord"
+
+        stash_from_message_source(Source())
+
+        def getter(name: str, default: str = "") -> str:
+            values = {
+                "HERMES_SESSION_USER_ID": "env-user",
+                "HERMES_SESSION_CHAT_ID": "env-chan",
+            }
+            return values.get(name, default)
+
+        user_id, channel_id = read_gateway_session_context(env_getter=getter)
+        self.assertEqual(user_id, "actor-user")
+        self.assertEqual(channel_id, "actor-chan")
+
     def test_reads_user_and_channel_from_env_getter(self) -> None:
         def getter(name: str, default: str = "") -> str:
             values = {

@@ -53,14 +53,21 @@ def read_gateway_session_context(
     *,
     env_getter: SessionEnvGetter | None = None,
 ) -> tuple[str, str]:
-    """Best-effort Discord user/channel ids from Hermes gateway session env."""
+    """Best-effort Discord user/channel ids from gateway actor stash, then session env."""
+    try:
+        from .gateway_actor_context import read_gateway_actor_context
+    except ImportError:
+        from gateway_actor_context import read_gateway_actor_context
+
+    user_id, channel_id = read_gateway_actor_context()
+
     getter = _resolve_session_env_getter(env_getter)
-    user_id = ""
-    channel_id = ""
     if getter is not None:
         try:
-            user_id = _read_from_getter(getter, _SESSION_USER_KEYS)
-            channel_id = _read_from_getter(getter, _SESSION_CHANNEL_KEYS)
+            if not user_id:
+                user_id = _read_from_getter(getter, _SESSION_USER_KEYS)
+            if not channel_id:
+                channel_id = _read_from_getter(getter, _SESSION_CHANNEL_KEYS)
         except ImportError:
             getter = None
     if not user_id:
