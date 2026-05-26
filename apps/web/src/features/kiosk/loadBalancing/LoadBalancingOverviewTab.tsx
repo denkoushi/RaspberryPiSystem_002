@@ -17,11 +17,13 @@ import {
   usePostKioskProductionScheduleLoadBalancingSuggestions
 } from '../../../api/hooks';
 
+import { ExternalizationPlanPanel } from './ExternalizationPlanPanel';
 import {
   listOverResourceCds,
   toggleSelectedResourceCd,
   toggleSelectedRowId
 } from './loadBalancingOutsourcingSelection';
+import { useExternalizationPlanState } from './useExternalizationPlanState';
 
 function defaultYearMonth(): string {
   const d = new Date();
@@ -65,12 +67,21 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
 
   const overResourceKey = useMemo(() => overResourceOptions.join('\t'), [overResourceOptions]);
 
+  const planState = useExternalizationPlanState({
+    overviewParams,
+    overviewEnabled,
+    selectedOverResourceCds,
+    onSimulateResult: setSimulateResult
+  });
+  const resetPlanState = planState.resetPlanState;
+
   const resetOutsourcingState = () => {
     setSelectedCandidateRowIds([]);
     setCandidateResult(null);
     setSimulateResult(null);
     candidatesMutation.reset();
     simulateMutation.reset();
+    resetPlanState();
   };
 
   useEffect(() => {
@@ -81,7 +92,17 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
     candidatesMutation.reset();
     simulateMutation.reset();
     suggestionsMutation.reset();
-  }, [month, scopeParams, overResourceKey, overResourceOptions, suggestionsMutation, candidatesMutation, simulateMutation]);
+    resetPlanState();
+  }, [
+    month,
+    scopeParams,
+    overResourceKey,
+    overResourceOptions,
+    suggestionsMutation,
+    candidatesMutation,
+    simulateMutation,
+    resetPlanState
+  ]);
 
   const displayResources = useMemo(
     () => simulateResult?.afterResources ?? overviewQuery.data?.resources ?? [],
@@ -308,9 +329,34 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
         </div>
       </section>
 
+      <ExternalizationPlanPanel
+        enabled={overviewEnabled}
+        hasOverResources={selectedOverResourceCds.length > 0}
+        selectedCandidateIds={planState.selectedCandidateIds}
+        planResolved={planState.planResolved}
+        planRemainingOverMinutes={planState.planRemainingOverMinutes}
+        candidateById={planState.candidateById}
+        replacementTargetId={planState.replacementTargetId}
+        replacementOptions={planState.replacementOptions}
+        isPlanning={planState.planMutation.isPending}
+        isSimulating={planState.simulateMutation.isPending}
+        isReplacementsLoading={planState.replacementsMutation.isPending}
+        planError={planState.planMutation.error}
+        simulateError={planState.simulateMutation.error}
+        replacementsError={planState.replacementsMutation.error}
+        onAutoPlan={() => void planState.handleAutoPlan()}
+        onRemoveCandidate={(id) => void planState.handleRemoveCandidate(id)}
+        onLoadReplacements={(id) => void planState.handleLoadReplacements(id)}
+        onApplyReplacement={(id) => void planState.handleApplyReplacement(id)}
+        onClearPlan={planState.handleClearPlan}
+      />
+
       <section className="mt-3 rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <p className="text-xs font-semibold text-amber-100">外注候補（社内負荷から除外する試算）</p>
+        <details className="group">
+          <summary className="cursor-pointer text-xs font-semibold text-amber-100">
+            工程行単位の外注候補（従来・折りたたみ）
+          </summary>
+        <div className="mb-2 mt-2 flex flex-wrap items-center gap-2">
           <button
             type="button"
             className="rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
@@ -416,6 +462,7 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
             </p>
           </div>
         ) : null}
+        </details>
       </section>
 
       <section className="mt-3 rounded-lg border border-white/15 bg-slate-950/40 p-2">

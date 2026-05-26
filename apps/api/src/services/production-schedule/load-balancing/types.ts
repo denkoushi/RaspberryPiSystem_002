@@ -18,6 +18,7 @@ export type LoadBalancingRowCandidate = {
   fseiban: string;
   productNo: string;
   fhincd: string;
+  fhinmei: string;
   fkojun: string | null;
   resourceCd: string;
   requiredMinutes: number;

@@ -7,6 +7,7 @@ const row = (partial: Partial<LoadBalancingRowCandidate> & Pick<LoadBalancingRow
   fseiban: 'S1',
   productNo: 'P1',
   fhincd: 'H1',
+  fhinmei: '',
   fkojun: '1',
   ...partial
 });

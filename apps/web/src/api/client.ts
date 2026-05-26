@@ -502,12 +502,71 @@ export interface ProductionScheduleLoadBalancingOutsourcingCandidateItem {
   overReductionMinutes: number;
 }
 
+export interface ProductionScheduleLoadBalancingExternalizationCandidate {
+  candidateId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  operations: Array<{
+    rowId: string;
+    fseiban: string;
+    productNo: string;
+    fhincd: string;
+    fhinmei: string;
+    fkojun: string | null;
+    resourceCd: string;
+    requiredMinutes: number;
+  }>;
+  impactByResource: Array<{
+    resourceCd: string;
+    reducedMinutes: number;
+    overReductionMinutes: number;
+  }>;
+  totalReducedMinutes: number;
+  totalOverReductionMinutes: number;
+  resolvesOverResourceCds: string[];
+}
+
 export interface ProductionScheduleLoadBalancingOutsourcingCandidatesResponse {
   siteKey: string;
   yearMonth: string;
   mode: 'outsourcing';
   resources: ProductionScheduleLoadBalancingOverviewResource[];
   candidates: ProductionScheduleLoadBalancingOutsourcingCandidateItem[];
+  externalizationCandidates: ProductionScheduleLoadBalancingExternalizationCandidate[];
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingPlanResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  strategy: 'max_over_reduction' | 'min_count' | 'min_total_minutes';
+  selectedCandidateIds: string[];
+  beforeResources: ProductionScheduleLoadBalancingOverviewResource[];
+  afterResources: ProductionScheduleLoadBalancingOutsourcingSimulatedResource[];
+  resolved: boolean;
+  remainingOverMinutes: number;
+  totalReducedMinutes: number;
+  totalOverReductionMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingReplacementsResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  removeCandidateId: string;
+  baseSelectedCandidateIds: string[];
+  replacementOptions: Array<{
+    candidateId: string;
+    fseiban: string;
+    productNo: string;
+    fhincd: string;
+    fhinmei: string;
+    afterResources: ProductionScheduleLoadBalancingOutsourcingSimulatedResource[];
+    resolved: boolean;
+    remainingOverMinutes: number;
+  }>;
 }
 
 export interface ProductionScheduleLoadBalancingOutsourcingSimulatedResource
@@ -539,6 +598,10 @@ export interface ProductionScheduleLoadBalancingOutsourcingSimulateResponse {
       | 'zero_minutes'
       | 'resource_not_in_overview'
       | 'outside_over_resource_filter';
+  }>;
+  skippedCandidates?: Array<{
+    candidateId: string;
+    reason: 'not_found' | 'duplicate' | 'no_operations' | 'outside_over_resource_filter';
   }>;
   summary: {
     selectedCount: number;
@@ -1938,10 +2001,39 @@ export async function postKioskProductionScheduleLoadBalancingOutsourcingSimulat
   month: string;
   targetDeviceScopeKey?: string;
   overResourceCds?: string[];
-  selectedRowIds: string[];
+  selectedRowIds?: string[];
+  selectedCandidateIds?: string[];
 }) {
   const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingSimulateResponse>(
     '/kiosk/production-schedule/load-balancing/outsourcing-simulate',
+    payload
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingOutsourcingPlan(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  strategy?: 'max_over_reduction' | 'min_count' | 'min_total_minutes';
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingPlanResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-plan',
+    payload
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingOutsourcingReplacements(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  currentSelectedCandidateIds: string[];
+  removeCandidateId: string;
+  maxOptions?: number;
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingReplacementsResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-replacements',
     payload
   );
   return data;

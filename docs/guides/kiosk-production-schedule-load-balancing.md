@@ -15,7 +15,8 @@
 ## 集計ポリシー（サーバ実装に準拠）
 
 - **月次キー**: 受注補足 `ProductionScheduleOrderSupplement.plannedEndDate` の暦月（UTC 月初〜翌月未満）。
-- **対象行**: 生産スケジュール winner 行（`buildMaxProductNoWinnerCondition`）かつ **FKOJUNST 一覧可視性**（`fkmail` / `fkst` の S/R ポリシー）に一致する行。
+- **対象行（資源CD俯瞰・外注・社内移管）**: winner 行かつ **負荷専用 eligibility**（`fkmail` 必須・**S/R/O/P**・**C/X 除外**・実効未完了）。工数は **`FSIGENSHOYORYO` 合計**（`× plannedQuantity` しない）。
+- **対象行（機種別月次・着手日）**: 従来の一覧可視ポリシー等（タブごとに母集団が異なる）。
 - **未完了**: `ProductionScheduleProgress.isCompleted = false`（または未設定を未完了扱い）。
 - **品目コード**: `FHINCD` が `MH%` / `SH%` の行は集計から除外（一覧の注文検索と同趣旨）。
 - **資源CD**: 大文字・トリム正規化。切断工程除外リスト（資源カテゴリ設定）に該当する CD は集計対象外。
@@ -39,10 +40,16 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
   Body: `{ month, targetDeviceScopeKey?, maxSuggestions?, overResourceCds? }`（**社内移管**サジェスト）
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-candidates`
   Body: `{ month, targetDeviceScopeKey?, overResourceCds?, maxCandidates? }`
-  - 選択した超過資源に載る工程行を、**超過改善効果**（`min(行分, 源資源の超過分)`）降順で返す。
+  - `candidates`（工程行・効果降順）と `externalizationCandidates`（部品単位・`candidateId` 安定キー）。
+- `POST /kiosk/production-schedule/load-balancing/outsourcing-plan`
+  Body: `{ month, targetDeviceScopeKey?, overResourceCds?, strategy? }`（既定 `max_over_reduction`）。
+  - 部品推奨セット・解消可否・残超過を返す。**DB 更新なし**。
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-simulate`
-  Body: `{ month, targetDeviceScopeKey?, overResourceCds?, selectedRowIds[] }`
-  - 選択行の負荷を**社内資源から差し引く** read-only シミュ。**DB 更新なし**。
+  Body: `{ month, targetDeviceScopeKey?, overResourceCds?, selectedRowIds[] | selectedCandidateIds[] }`
+  - **どちらか一方**（同時指定・両方空は 400）。社内負荷除外の read-only シミュ。
+- `POST /kiosk/production-schedule/load-balancing/outsourcing-replacements`
+  Body: `{ month, targetDeviceScopeKey?, overResourceCds?, currentSelectedCandidateIds[], removeCandidateId, maxOptions? }`
+  - 1 部品を外したときの代替候補（既定最大 5 件）。
 - `GET /kiosk/production-schedule/load-balancing/machine-monthly-load?fromMonth=YYYY-MM&toMonth=YYYY-MM&targetDeviceScopeKey=...&machineName=...&fhincd=...`  
   - 未完了部品工程のみ。月範囲は最大 **12 か月**。  
   - `machineName` / `fhincd` は任意（部品行クリックで `fhincd` 絞り込み）。  
@@ -71,14 +78,16 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 ## 資源CD俯瞰・外注候補シミュ（UI）
 
 - **超過資源選択**: `overMinutes > 0` の資源CDを複数選択（初期は全超過資源を選択）。
-- **外注候補取得**: 選択資源の工程行を超過改善効果降順で一覧表示。
-- **累積シミュ**: 候補表で複数行をチェック → 社内負荷から差し引いた後の必要分/超過を比較表示（**DB 更新なし**）。
+- **推奨セット（部品）**: 「推奨セットを自動選定」→ 部品一覧・残超過・**外す** / **入れ替え** / **クリア**（**DB 更新なし**）。
+- **工程行（従来）**: 折りたたみ内で外注候補取得 → チェック → 累積シミュ（Phase 0 互換）。
 - **社内移管サジェスト**: 既存どおり分類/移管ルールに基づく別資源CDへの移管候補（外注候補とは別）。
 
-### 実装ファイル（外注候補シミュ）
+**デプロイ**: 工程行シミュは Pi5 のみデプロイ済み。部品推奨セットは `feat/kiosk-load-balancing-externalization-plan` で **未デプロイ**（2026-05-26 時点）。
 
-- API: `outsourcing-simulation.engine.ts`, `outsourcing-simulation.service.ts`
-- Web: `LoadBalancingOverviewTab.tsx`, `loadBalancingOutsourcingSelection.ts`
+### 実装ファイル（外注・推奨セット）
+
+- API: `load-balancing-eligibility.policy.ts`, `monthly-load-query.service.ts`, `outsourcing-simulation.engine.ts`, `outsourcing-simulation.service.ts`
+- Web: `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingSelection.ts`
 
 ## 着手日・平準化（UI）
 
@@ -108,6 +117,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 | 2026-04-30 | `feat/kiosk-load-balance-suggest` | 初版（API+Web+DB） | `d3c37b6f` |
 | 2026-05-26 | `feat/kiosk-load-balancing-machine-monthly-view` | 機種別月次タブ（API+Web） | `60b94b9d` |
 | 2026-05-26 | `feat/kiosk-load-balancing-start-date-leveling` | 着手日・平準化タブ + 稼働日ルール（API+Web+DB） | （未コミット） |
+| 2026-05-26 | `feat/kiosk-load-balancing-externalization-plan` | 部品推奨セット・負荷母集団修正（API+Web） | **未デプロイ** |
 
 標準手順は [deployment.md](deployment.md)。**Pi5 → Pi4×4 を `--limit` 1 台ずつ**。**Pi3 は除外**。
 

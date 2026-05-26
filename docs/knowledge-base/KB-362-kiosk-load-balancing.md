@@ -17,6 +17,7 @@ last-verified: 2026-05-26
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-machine-monthly-view` | **機種別月次負荷**タブ（有効納期月・機種/部品/積み上げグラフ） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-start-date-leveling` | **着手日・平準化**タブ（日割り・シミュ・稼働日ルール） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-outsourcing-sim` | **資源CD俯瞰・外注候補シミュ**（超過資源選択・効果順候補・累積試算） |
+| 2026-05-26 拡張 | `feat/kiosk-load-balancing-externalization-plan` | **部品単位推奨セット**（負荷母集団修正・自動 plan・入れ替え）— **未デプロイ** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -90,36 +91,76 @@ last-verified: 2026-05-26
 ### 用語
 
 - **社内移管サジェスト**（既存 `POST .../suggestions`）: 分類/移管ルールに基づき **別の社内資源CD** へ移す候補。移管先にも負荷が載る。
-- **外注候補シミュ**（新規）: 選択した工程行を **社内資源の必要分から除外** する read-only 試算。外注先能力は見ない。**DB 更新なし**。
+- **外注候補シミュ**（Phase 0）: 選択した **工程行** を社内資源の必要分から除外する read-only 試算。
+- **推奨セット**（部品単位）: `fseiban` + `productNo` + `fhincd` で束ねた **部品候補** の自動選定・手動入れ替え。試算は `selectedCandidateIds` で行う。**DB 更新なし**。外注先能力は見ない。
 
-### 集計
+### 負荷母集団（資源CD俯瞰・外注・社内移管サジェストのみ）
 
-- 資源CD俯瞰と同じ **`plannedEndDate` 月**・**`FSIGENSHOYORYO` 合計**（指示数なし）。
-- 候補は **超過資源**（`overMinutes > 0`）に載る工程行のみ（`overResourceCds` で絞り込み可）。
+`monthly-load-query.service.ts` + `load-balancing-eligibility.policy.ts` が正本。**機種別月次・着手日タブは従来どおり**（一覧可視ポリシー等）。
+
+| 項目 | 内容 |
+|------|------|
+| 月キー | `plannedEndDate` の暦月 |
+| 工数 | **`FSIGENSHOYORYO` 合計**（行総分。`× plannedQuantity` しない） |
+| FKOJUNST | **`fkmail` あり** かつ **S/R/O/P**（**C/X 除外**） |
+| 完了 | **実効未完了**（手動完了・外部完了は負荷から除外） |
 
 ### 効果指標
 
-- `overReductionMinutes = min(行分, 源資源の超過分)` を降順でソート。
+- 工程行: `overReductionMinutes = min(行分, 源資源の超過分)` 降順。
+- 部品候補: 同一部品の複数工程を束ね、資源ごとに `min(部品合計, 源超過)` で **二重カウントしない** `totalOverReductionMinutes`。
 
 ### API
 
-- `POST .../outsourcing-candidates` — `overResourceCds?`, `maxCandidates?`（既定 100）
-- `POST .../outsourcing-simulate` — `selectedRowIds[]`（最大 200、重複は1回）。`beforeResources` / `afterResources` / `summary` を返す。
+| エンドポイント | 用途 |
+|----------------|------|
+| `POST .../outsourcing-candidates` | 既存 `candidates`（工程行）+ **`externalizationCandidates`**（部品） |
+| `POST .../outsourcing-plan` | 戦略 `max_over_reduction` で部品推奨セット自動選定 |
+| `POST .../outsourcing-simulate` | **`selectedRowIds`** または **`selectedCandidateIds`** のどちらか一方（同時指定・両方空は 400） |
+| `POST .../outsourcing-replacements` | 1 部品を外したときの代替候補（最大 5 件） |
+
+- `candidateId` = 正規化した `fseiban` + `\u001f` + `productNo` + `\u001f` + `fhincd`（UI には生 ID を出さない）。
+- `FHINMEI` は行の品名（`LoadBalancingRowCandidate.fhinmei`）。機種名解決は部品名用途に使わない。
 
 ### UI（資源CD俯瞰タブ）
 
 1. 超過資源を複数選択（初期は全超過資源）
-2. 「外注候補を取得」→ 効果順一覧
-3. チェックで複数行選択 → 「選択行で累積シミュ」
-4. 試算後の必要分/超過を明細表で比較（「シミュ結果をクリア」で元に戻す）
+2. **推奨セット（部品）**: 「推奨セットを自動選定」→ 部品表・残超過・外す / 入れ替え / クリア
+3. **工程行（従来・折りたたみ）**: 外注候補取得 → チェック → 累積シミュ
+4. 試算後の必要分/超過はチャート・明細で共有（シミュ結果クリアで元に戻す）
 
 ### 実装レイヤ
 
 | 層 | ファイル |
 |----|----------|
+| 負荷母集団 | `load-balancing-eligibility.policy.ts`, `monthly-load-query.service.ts` |
 | 純関数 | `outsourcing-simulation.engine.ts` |
 | サービス | `outsourcing-simulation.service.ts` |
-| Web | `LoadBalancingOverviewTab.tsx`, `loadBalancingOutsourcingSelection.ts` |
+| Web | `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingSelection.ts` |
+
+### デプロイ状況
+
+| 機能 | Pi5 | Pi4×4 |
+|------|-----|-------|
+| Phase 0（工程行シミュ） | **デプロイ済み**（`128f89bd`） | 未展開 |
+| 部品推奨セット（本節） | **未デプロイ**（`feat/kiosk-load-balancing-externalization-plan`） | 未展開 |
+
+背景・改善案: [load-balancing-outsourcing-improvement-proposal.md](../plans/load-balancing-outsourcing-improvement-proposal.md)。
+
+## Production deploy（実績 2026-05-26 · 外注候補シミュ · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-outsourcing-sim`
+- **コミット**: **`128f89bd`**
+- **CI**: **`26443561903`** success
+- **ホスト**: `raspberrypi5` のみ（Pi4×4 は未展開）
+
+| 項目 | 値 |
+|------|-----|
+| Detach Run ID | `20260526-183237-15690` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0** |
+
+**手動スモーク（Pi5）**: `outsourcing-candidates` / `outsourcing-simulate` **200** · Web バンドルに `外注候補` 文字列確認。
 
 ## Symptoms / 使い方
 
@@ -127,7 +168,7 @@ last-verified: 2026-05-26
 2. **機種別月次負荷** タブ → 開始月・終了月（初期 **当月〜+6か月**）
 3. 機種（`FHINMEI`）を選択 → 積み上げ棒（上位24資源）・部品表
 4. 部品行クリック → 当該品番に絞り込み（「部品絞り込み解除」で解除）
-5. **資源CD俯瞰** タブ → 超過資源選択 → 外注候補取得 → 複数選択で累積シミュ（DB不変）
+5. **資源CD俯瞰** タブ → 超過資源選択 → **推奨セット自動選定**（部品）または工程行で累積シミュ（DB不変）
 6. **社内移管サジェスト** は同タブ下部（分類/移管ルール前提）
 
 Mac device-scope v2: **`targetDeviceScopeKey` 必須**（未指定 400）。

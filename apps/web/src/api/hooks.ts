@@ -163,6 +163,8 @@ import {
   getKioskProductionScheduleLoadBalancingStartDateLeveling,
   postKioskProductionScheduleLoadBalancingStartDateLevelingSimulate,
   postKioskProductionScheduleLoadBalancingOutsourcingCandidates,
+  postKioskProductionScheduleLoadBalancingOutsourcingPlan,
+  postKioskProductionScheduleLoadBalancingOutsourcingReplacements,
   postKioskProductionScheduleLoadBalancingOutsourcingSimulate,
   postKioskProductionScheduleLoadBalancingSuggestions,
   getDeployStatus,
@@ -1098,6 +1100,18 @@ export function usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates
 export function usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate() {
   return useMutation({
     mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingSimulate
+  });
+}
+
+export function usePostKioskProductionScheduleLoadBalancingOutsourcingPlan() {
+  return useMutation({
+    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingPlan
+  });
+}
+
+export function usePostKioskProductionScheduleLoadBalancingOutsourcingReplacements() {
+  return useMutation({
+    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingReplacements
   });
 }
 
