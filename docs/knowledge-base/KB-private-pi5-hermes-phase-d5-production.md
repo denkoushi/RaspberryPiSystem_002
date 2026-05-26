@@ -150,7 +150,8 @@ private_pi5_hermes_gateway_enabled: true
 | restart 後 **`Unknown command /task`** | **`model_tools` import 時の `discover_plugins()`** が先に走り user plugin をスキップ → gateway 側 idempotent discover が **no-op**（※21:55 事象の主因ではない — 下表参照） | **`gateway/run.py` を `discover_plugins(force=True)` にパッチ**（[`deploy-hermes-gateway-plugin-discover-fix.yml`](../../infrastructure/ansible/tasks/private-pi5-hermes/deploy-hermes-gateway-plugin-discover-fix.yml)） |
 | restart + discover fix 後も **`Unknown command /task`** | [`read_gateway_session_context()`](../../scripts/private-pi5-hermes/lib/approval_relay/coordinator.py) が **`get_session_env()` を引数なし**で呼ぶ · Pi5 Hermes API は **`get_session_env(name, default) -> str`** · handler 実行時 **TypeError** → gateway plugin dispatch が DEBUG で握りつぶし skill 未登録扱い | [`approval_relay/session_context.py`](../../scripts/private-pi5-hermes/lib/approval_relay/session_context.py) でキー単位アダプタ + `os.environ` フォールバック · verify smoke 追加 |
 | write `/task` が **承認なし**で `write_file` 完了（`request.json` なし） | D5.1 relay は **`tools.approval`（危険シェルコマンド）** のみフック · LLM は **`write_file` / `patch` ツール**で workspace 書き込み（承認経路外） | **`approval_relay/tool_write_gate.py`** — runner が `pre_tool_call` で write ツールを file IPC 承認に接続（2026-05-26 repo） |
-| **`yes` が雑談扱い**（承認プロンプト後 · `history=0` chat） | Hermes gateway: **plugin slash `/task` が `_set_session_env` より前**に実行 · `read_gateway_session_context()` が空 → **`by-user/` 未作成** · `try_resolve_text` が active task を見つけられない | **`approval_relay/gateway_actor_context.py`** — `pre_gateway_dispatch` で `event.source` を ContextVar に退避し session 解決の第一候補に（PR [#343](https://github.com/denkoushi/RaspberryPiSystem_002/pull/343)） |
+| **`yes` が雑談扱い**（承認プロンプト後 · `history=0` chat） | Hermes gateway: **plugin slash `/task` が `_set_session_env` より先**に実行 · `read_gateway_session_context()` が空 → **`by-user/` 未作成** · `try_resolve_text` が active task を見つけられない | **`approval_relay/gateway_actor_context.py`** — `pre_gateway_dispatch` で `event.source` を ContextVar に退避し session 解決の第一候補に（PR [#343](https://github.com/denkoushi/RaspberryPiSystem_002/pull/343)） |
+| **`yes` 後に write が進まない**（承認プロンプトは表示 · ファイル未作成） | `runner.py` の **`_poll_responses_until_stop`** が `response.json` を先に読み **`resolve_gateway_approval` + unlink** · `tool_write_gate` の `wait_for_discord_approval` が応答を取りこぼす | **`pattern_key` が `tool:*` のとき poll スレッドは response を触らない**（[`runner.py`](../../scripts/private-pi5-hermes/lib/approval_relay/runner.py) `_poll_thread_should_consume_response` · 2026-05-26 repo） |
 
 ### 本番デプロイ（write_file 承認ゲート · 2026-05-26 JST）
 
@@ -237,7 +238,7 @@ ansible private-pi5-stackchan-bridge -i infrastructure/ansible/inventory-private
 | **session context fix デプロイ後**（22:36 JST · PID 150145） | Ansible verify **PASS** · handler 直呼び **OK** · Unknown command **再発なし** | branch `fix/private-pi5-hermes-task-session-context-api` |
 | Discord write `/task` 再試行（ゲートデプロイ前） | **NG** · 承認なし | `write_file` 経路（上表） |
 | Discord write `/task`（**2026-05-26 ゲートデプロイ後**） | 承認表示 **OK** · `yes` **NG**（雑談） | write ゲートのみ · `by-user` 未作成（上表） |
-| Discord write `/task`（**2026-05-26 actor context デプロイ後**） | **要確認** | Pi5 smoke: `by-user` bind **OK** · Discord UI 手動 |
+| Discord write `/task`（**2026-05-26 actor context デプロイ後**） | 承認表示 **OK** · `yes` **OK** · ファイル作成 **NG** | poll スレッドが `response.json` を消費（上表）· **poll 修正デプロイ後に再試行** |
 
 正本: [ADR D5.1](../decisions/ADR-20260525-private-pi5-hermes-discord-approval-relay-d5-1.md) · [ExecPlan D5.1](../plans/private-pi5-hermes-tools-security-phase-d5-1-execplan.md) · [Runbook §D5.1](../runbooks/private-pi5-hermes-deploy.md#phase-d51--discord-承認中継2026-05-25--repo-実装)
 

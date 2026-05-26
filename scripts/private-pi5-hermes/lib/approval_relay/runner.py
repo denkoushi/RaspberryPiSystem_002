@@ -20,6 +20,18 @@ except ImportError:
     from tool_write_gate import install_tool_write_approval_relay
 
 
+def _poll_thread_should_consume_response(store: FileApprovalStore) -> bool:
+    """Only shell gateway approvals use the poll thread; tool writes use pre_tool_call IPC."""
+    request = store.read_request()
+    if request is None:
+        # No active shell request — do not touch response.json (tool gate may be waiting).
+        return False
+    pattern_key = request.pattern_key
+    if not pattern_key and request.pattern_keys:
+        pattern_key = request.pattern_keys[0]
+    return not str(pattern_key).startswith("tool:")
+
+
 def _poll_responses_until_stop(
     *,
     store_dir: Path,
@@ -35,6 +47,9 @@ def _poll_responses_until_stop(
         return
 
     while not stop_event.is_set():
+        if not _poll_thread_should_consume_response(store):
+            time.sleep(max(poll_interval_seconds, 0.05))
+            continue
         response = store.read_response()
         if response is not None:
             choice = response.choice.value
