@@ -2378,7 +2378,7 @@
 
 ### 私用 Pi5 Hermes Agent — セキュア基盤・AI執事北極星（2026-05-24–25） {#private-pi5-hermes-discord-2026-05-24}
 
-**状態**: **Phase D4–D5 本番完了（2026-05-25）** — D5: Discord **`/task`** plugin → tools 委譲（file+web+browser）· chat `disabled_toolsets` 不変 · **Discord `/task` E2E は手動未**。
+**状態**: **Phase D4–D5 本番完了（2026-05-25）** · **D5.1 承認中継 + 追補 hotfix 本番（2026-05-26）** — write ゲート（#342）· actor context（#343）· **poll スレッド競合修正**（`fix/private-pi5-hermes-tool-write-poll-race` · 私用 Pi5 デプロイ **14:01 JST**）· **Discord `/task` write E2E は手動要確認**。
 
 **北極星（ステークホルダー合意・2026-05-25）**: 最終的には **Discord から AI執事**（メモ/リマインド · X 定時 · 簡易アプリ · HA/カメラ定点観測 · **裏で tools 処理**）。**いまは執事機能に直行せず**、Phase 単位でセキュア運用環境を丁寧に構築する。
 
@@ -2392,13 +2392,15 @@
 | — | Phase D0–D3 | **完了** | D3: [KB](./docs/knowledge-base/KB-private-pi5-hermes-phase-d3-production.md) · PR [#336](https://github.com/denkoushi/RaspberryPiSystem_002/pull/336) · CI **`26375912601`** |
 | — | Phase D4 | **完了** | [KB D4](./docs/knowledge-base/KB-private-pi5-hermes-phase-d4-production.md) · 私用 Pi5 デプロイ · `HERMES_TOOLS_PHASE=d4` |
 | — | Phase D5 | **完了** | [KB D5](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md) · 私用 Pi5 デプロイ · verify/smoke OK · CI **`26379388504`** success · Discord E2E 手動は未 |
+| — | D5.1 承認中継 + hotfix | **本番** | write ゲート #342 · actor #343 · poll race fix · Pi5 **`ok=123`** · smoke: poll/actor **OK** · [KB §poll](./docs/knowledge-base/KB-private-pi5-hermes-phase-d5-production.md#本番デプロイpoll-スレッド--tool-write-承認応答--2026-05-26-jst) |
 
 #### D5 以降 — 開発タスク（優先順）
 
 | # | Phase | タスク | 優先 | 完了条件 |
 |---|-------|--------|------|----------|
-| **1** | **D5.1** | **承認 Discord 中継** | **高** | manual 承認を Discord で完結 · `/task` タイムアウト解消 |
-| 2 | — | Discord `/task` E2E + 雑談回帰 | 中 | read-only `/task` · 通常メッセージは chat のみ |
+| **1** | **D5.1** | **Discord write E2E 手動確認** | **高** | `/task` write → 承認 → `yes` → **ファイル作成**（poll 修正デプロイ後） |
+| 2 | D5.1 | runner 直呼び `verify-tool-write-approval-gate-pi5.sh` 失敗の切り分け | 中 | `request.json` 未作成なのに `write_file` 完了する経路の原因特定 |
+| 3 | — | Discord `/task` read-only + 雑談回帰 | 中 | read-only `/task` · 通常メッセージは chat のみ |
 | 3 | **D6** | memory + リマインド（限定スコープ） | 中 | 保持/削除ポリシー · ADR |
 | 4 | **D7** | 定時ジョブ基盤（`cronjob`） | 中 | 失敗時 Discord 通知 · smoke 1 本 |
 | 5 | **D8** | X 定時ダイジェスト | 中 | API/規約 · D7 上 |
