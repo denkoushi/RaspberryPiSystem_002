@@ -2,7 +2,7 @@
 title: KB-375 順位ボード・生産日程の完了整合（明示完了API・CSV同期・実効完了）
 tags: [キオスク, 生産スケジュール, 順位ボード, 完了, CSV, ナレッジ]
 audience: [開発者, 運用者]
-last-verified: 2026-05-10
+last-verified: 2026-05-26
 related: [KB-297-kiosk-due-management-workflow.md, KB-369-leader-order-board-api-internal-latency.md]
 category: knowledge-base
 update-frequency: medium
@@ -40,6 +40,12 @@ update-frequency: medium
 | Web | `setKioskProductionScheduleRowCompletion`・`useSetKioskProductionScheduleRowCompletion`。UI は **`row.isCompleted` に応じ `complete`/`incomplete` を送信**。 |
 | CSV同期 | `decideCsvProgressSyncForProductionScheduleRow`：**`完了` のみ true**、**空は手動完了済みなら skip**、他値は skip。 |
 | 表示・集計 | **effective completion** SQL／クエリを **`production-schedule-effective-completion.sql.ts` 等で共有**（一覧・チップ・納期集計を寄せる）。 |
+
+### 2026-05-26 追補: 生産日程CSV差分消失完了の廃止
+
+- **完了正本**は **手動完了** + **FKOJUNST_Status `C` / `X`** に限定する（[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)）。
+- 生産日程CSV差分消失は、Status `R` や Status 欠落期間でも現場残存行を完了グレーにし得るため、実効完了から外した。
+- `externallyCompletedFromScheduleCsvDisappeared` は互換列として残すが、既存 true は migration で false に収束し、以後の取込では完了へ寄与しない。
 
 主要コード:  
 [`production-schedule-command.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts)・[`complete.ts`](../../apps/api/src/routes/kiosk/production-schedule/complete.ts)・[`progress-csv-sync-decision.policy.ts`](../../apps/api/src/services/production-schedule/progress-csv-sync-decision.policy.ts)・[`progress-sync-from-csv.service.ts`](../../apps/api/src/services/production-schedule/progress-sync-from-csv.service.ts)・Web [`client.ts`](../../apps/web/src/api/client.ts) / [`hooks.ts`](../../apps/web/src/api/hooks.ts) / [`useProductionScheduleMutations.ts`](../../apps/web/src/features/kiosk/productionSchedule/useProductionScheduleMutations.ts)。

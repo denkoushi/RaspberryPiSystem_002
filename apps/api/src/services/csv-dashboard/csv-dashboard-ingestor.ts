@@ -18,8 +18,6 @@ import { parseCsvDashboardDateColumnToUtc } from './csv-dashboard-datetime-parse
 import type { ColumnDefinition, NormalizedRowData } from './csv-dashboard.types.js';
 import { computeCsvDashboardDedupDiff } from './diff/csv-dashboard-diff.js';
 import { CsvDashboardDedupCleanupService } from './csv-dashboard-dedup-cleanup.service.js';
-import { ProductionScheduleCsvIngestExternalCompletionSyncService } from '../production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.js';
-import { ProductionScheduleCanonicalCurrentKeysService } from '../production-schedule/external-completion/production-schedule-canonical-current-keys.service.js';
 import { findCsvDashboardRowsByDataHashes } from './csv-dashboard-existing-rows-by-hash.reader.js';
 
 /**
@@ -31,8 +29,6 @@ export class CsvDashboardIngestor {
   private dedupCleanupService = new CsvDashboardDedupCleanupService();
   private progressSyncFromCsvService = new ProgressSyncFromCsvService();
   private progressSyncEligibilityPolicy = new ProgressSyncEligibilityPolicy();
-  private scheduleCsvExternalCompletionSync = new ProductionScheduleCsvIngestExternalCompletionSyncService();
-  private canonicalScheduleDisappearanceKeys = new ProductionScheduleCanonicalCurrentKeysService();
 
   /**
    * Gmailから取得したCSVをダッシュボードに取り込む
@@ -315,42 +311,10 @@ export class CsvDashboardIngestor {
       }
 
       if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
-        try {
-          const resolution =
-            await this.canonicalScheduleDisappearanceKeys.resolveScheduleCsvDisappearanceCanonicalCurrentKeys({
-              scheduleDedupRows: productionScheduleDedupRows,
-              scheduleIngestCompletedAt: new Date(),
-            });
-          if (resolution.outcome === 'skip_disappearance_sync') {
-            logger.warn(
-              {
-                dashboardId,
-                reason: resolution.reason,
-                diagnostics: resolution.diagnostics,
-              },
-              '[CsvDashboardIngestor] Schedule CSV disappearance sync skipped (2CSV pairing / status snapshot)'
-            );
-          } else {
-            const extResult = await this.scheduleCsvExternalCompletionSync.applyPostIngestFromSnapshot({
-              canonicalScheduleDisappearanceCurrentKeys: resolution.keys,
-            });
-            logger.info(
-              { dashboardId, diagnostics: resolution.diagnostics },
-              '[CsvDashboardIngestor] Schedule disappearance canonical keys resolved (2CSV intersection)'
-            );
-            if (extResult.skipped) {
-              logger.warn(
-                { dashboardId, reason: extResult.reason },
-                '[CsvDashboardIngestor] Schedule CSV external completion sync skipped'
-              );
-            }
-          }
-        } catch (error) {
-          logger.error(
-            { err: error, dashboardId },
-            '[CsvDashboardIngestor] Schedule CSV external completion sync failed'
-          );
-        }
+        logger.info(
+          { dashboardId },
+          '[CsvDashboardIngestor] Schedule CSV disappearance completion sync disabled by policy'
+        );
       }
 
       logger.info(

@@ -1,6 +1,7 @@
 # ADR-20260508: FKOJUNST_Status（メール同期）を工順ST表示・外部完了の唯一の正本とする
 
 - **Status**: accepted
+- **Superseded by**: [ADR-20260526](./ADR-20260526-production-schedule-completion-status-only.md) のうち **生産日程本体CSVのスナップショット「消滅」同期を完了判定に使う**部分。FKOJUNST_Status を表示・メール由来完了の正本にする決定は引き続き有効。
 - **Context**:
   - 旧仕様では一覧の工順ST列が **`fkmail` 優先・`fkst`（Gmail FKOJUNST）フォールバック**であり、外部完了のメール由来が **dedupe キー消失差分**に依存していた。
   - **運用上の単一の意味の正本**を **`FKOJUNST_Status` CSV → `ProductionScheduleFkojunstMailStatus`** に揃えたい。

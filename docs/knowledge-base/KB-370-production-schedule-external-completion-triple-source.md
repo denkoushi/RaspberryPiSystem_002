@@ -1,51 +1,59 @@
 ---
-title: KB-370 生産スケジュール「実効完了」の外部要因3系統OR統合（手動・工順ST・生産日程CSV）
+title: KB-370 生産スケジュール「実効完了」の外部要因（手動・FKOJUNST_Status）
 tags: [生産スケジュール, CSV, FKOJUNST, 外部完了, 順位ボード]
 audience: [開発者, 運用者]
-last-verified: 2026-05-18
+last-verified: 2026-05-26
 category: knowledge-base
 ---
 
-# KB-370: 生産スケジュール「実効完了」の外部要因3系統OR統合
+# KB-370: 生産スケジュール「実効完了」の外部要因
 
 ## Context
 
-順位ボード等で参照する **実効完了** を、CSV 由来の複数ソースで一貫させる必要があった。
+順位ボード等で参照する **実効完了** を、手動完了と FKOJUNST_Status 由来の完了で一貫させる必要がある。
 
-## ガード: 生産日程CSVで winner 論理キーが 0 件
-
-**DEDUP** 取込の本体処理の直前時点で **現 winner の論理キー集合が空** の場合、**CSV 由来の「消滅」差分**と **`ProductionScheduleExternalCompletion` の当該列同期**は **行わない**（戻り値 `skipped: true`, `reason: 'empty_schedule_csv'`）。歴史的経路で **`ProductionScheduleCsvIngestLogicalKeySnapshot` を更新していた**場合も **同 skip で抑止**（**2026-05-09** 以降の主経路校区では当該スナップショットは未使用）。空CSVや事故入力で **DB 上の全 winner を一括「消滅完了」扱いにしない**ため。
-
-取込パイプライン側は [`csv-dashboard-ingestor.ts`](../../apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts) で当該 skip を **warn**（`dashboardId` / `reason`）し、観測可能にする。
-
-## Decision（仕様の要約）
+## 2026-05-26 現行正本
 
 実効完了は次の **論理 OR**（いずれかが真なら完了扱い）:
+
+1. **手動**: `ProductionScheduleProgress.isCompleted`
+2. **工順ST（FKOJUNST_Status メール同期 → `ProductionScheduleFkojunstMailStatus`）**
+   - **`statusCode` が `C` または `X`** のとき外部完了
+   - **`S` / `R`**: 一覧表示・未完了
+   - **`O` / `P`**: 一覧非表示・未完了（製番進捗 total には残る）
+
+**生産日程CSV消滅完了は 2026-05-26 に廃止**。`externallyCompletedFromScheduleCsvDisappeared` は後方互換列として残すが、新規同期では true にせず、実効完了へ寄与させない（[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)）。
+
+## Historical: 2026-05-25 以前の3系統OR
+
+2026-05-25 以前は、実効完了を次の **論理 OR** で扱っていた:
 
 1. **手動**: 既存 `ProductionScheduleProgress.isCompleted`
 2. **工順ST（FKOJUNST_Status メール同期 → `ProductionScheduleFkojunstMailStatus`）**
    - **`statusCode` が `C` または `X`** のとき外部完了（**2026-05-08 改訂**: 旧 **dedupe キー消失**・**`O`/`P` による完了**は廃止。`externallyCompletedFromFkojunstDisappeared` は再計算で **常に false**）
    - **`O` / `P`**: 一覧非表示だが **未完了**（製番進捗 total に残る）
-3. **生産日程CSV取込（消滅完了）**
+3. **生産日程CSV取込（消滅完了、2026-05-26 廃止）**
    - **2026-05-09 改訂**: **「`FKOJUNST` メール同期済み winner のうち **メール由来完了（`C` / `X`）以外**」**（SQL 上は `UPPER(BTRIM("fkmail"."statusCode")) NOT IN ('C','X')` 相当）かつ「`occurredAt` が基準日時の UTC **±3 カ月**」**に入る論理キー**を母集団とし、**母集団 − 現 winner（2026-05-16 以降の正本は下項）の論理キー** を **消滅**とみなして `externallyCompletedFromScheduleCsvDisappeared` を更新する（**`C`/`X` は母集団から除外**・`C` 除外の主因は [KB-373](./KB-373-fkojunst-status-c-key-domain-mismatch.md) の **キー空間不一致**。`X` は **2026-05-18** に **同一カテゴリへ揃え**、CSV 取込漏れ是正後の運用と整合）。**旧仕様（〜2026-05-08 以前）**: 取込直前スナップショットと取込後キーの差分・**`S`/`R` winner に限定**する記述は **本項で置換**（正本は [deployment.md §2026-05-09 消滅窓](../guides/deployment.md#schedule-csv-disappearance-nonc-window-2026-05-09)）。
    - **2026-05-16 改訂（正本Cの current keys・第一段）**: **`ProductionScheduleCanonicalCurrentKeysService`** により **今回バッチで確定した生産日程本体 CSV の dedupe winner** から論理キーを構築し、[`applyPostIngestFromSnapshot`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-csv-ingest-external-completion-sync.service.ts) に渡す。**`FKOJUNST_Status` メールに行が載っていない（FK が無い）ことだけでは**本体 winner を **現集合から落とさない**（過剰な消滅完了を防ぐ）——**2026-05-17 改訂（下項）で「2CSV照合交差」へ拡張**。
    - **2026-05-17 改訂（2CSV 照合・正本C current keys）**: 消滅差分の **現キー集合**は、上記 dedupe winner の **論理キーのうち**、**生産日程CSV取込完了時刻 `tA` 以下で最新完了の `FKOJUNST_Status` ingest run** を **`tB`** として選び、その **原本CSV 1件**（`CsvDashboardIngestRun.csvFilePath`）から復元した Status スナップショット（`FUPDTEDT` 最新で dedupe 済み）と **ADR-20260509** の **3キー（FKOJUN + `FKOTEICD`/`FSIGENCD` + `FSEZONO`/`ProductNo`）** が一致するものに限定する（[`schedule-csv-disappearance-canonical-keys.builder.ts`](../../apps/api/src/services/production-schedule/external-completion/schedule-csv-disappearance-canonical-keys.builder.ts)・[`production-schedule-canonical-current-keys.service.ts`](../../apps/api/src/services/production-schedule/external-completion/production-schedule-canonical-current-keys.service.ts)）。**Status 幕は `dateColumnName` が無く `occurredAt`≈取込時刻**のため、**`tA` は本体CSVの日付列ではなく取込完了時刻**とする。**`tA` 以前に完了 ingest run が無い**、または **原本CSVを正規化しても Status 行が 0 件**のときは **差分消失同期のみスキップ**（手動・メール完了は維持）。**±3ヶ月×（メール完了 `C`/`X` 以外）の母集団**・**空 winner ガード**は変更なし。
-   - **空 winner ガード**（`empty_schedule_csv`）は変更なし。
+   - **空 winner ガード**（`empty_schedule_csv`）は変更なしだった。
 
 論理キーは運用どおり **`FKOJUN` + TAB + 正規化資源CD + TAB + 製造order（ProductNo）**（`FSIGENCD` は trim・大文字化して共通関数で生成）。
 
 ## Data model
 
-- `ProductionScheduleExternalCompletion` に由来別フラグを保持し、同期時に **`isExternallyCompleted` を3列の OR** で更新する:
+- `ProductionScheduleExternalCompletion` に由来別フラグを保持する。2026-05-26 以降、同期時の **`isExternallyCompleted` は `externallyCompletedFromFkojunstMailStatus` と同じ意味**:
   - `externallyCompletedFromFkojunstDisappeared`（**2026-05-08**: メール再計算で **常に false**。列は後方互換のため保持）
   - `externallyCompletedFromFkojunstMailStatus`（**`fkmail` の `C`/`X`**）
-  - `externallyCompletedFromScheduleCsvDisappeared`
+  - `externallyCompletedFromScheduleCsvDisappeared`（**2026-05-26**: 完了判定から廃止。列は後方互換のため保持し、false へ収束）
 - 生産日程CSV用スナップショット: `ProductionScheduleCsvIngestLogicalKeySnapshot`（**2026-05-09**: 消滅差分の主計算からは外し、**DB／repository は互換で存続**）
 
 ## Migration
 
 - `apps/api/prisma/migrations/20260506150000_triple_source_external_completion/migration.sql`
 - 既存 `isExternallyCompleted = true` は **消滅由来列**へバックフィル（移行方針はマイグレーションコメント参照）
+- `apps/api/prisma/migrations/20260526030000_disable_schedule_csv_disappearance_completion/migration.sql`
+- 既存 `externallyCompletedFromScheduleCsvDisappeared = true` は false へ収束し、`isExternallyCompleted` は `externallyCompletedFromFkojunstMailStatus` のみに再計算する。
 
 ## 主な実装参照
 

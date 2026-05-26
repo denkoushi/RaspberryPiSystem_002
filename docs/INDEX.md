@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-05-26 · キオスク完了判定の正常化）
+
+- **キオスク順位ボード・完了正本の正常化**: 実効完了を **手動完了 + FKOJUNST_Status `C`/`X`** に限定し、**生産日程CSV差分消失による完了**を廃止。`externallyCompletedFromScheduleCsvDisappeared` は互換列として残し、既存 true は migration で false へ収束。**記録**: [ADR-20260526](./decisions/ADR-20260526-production-schedule-completion-status-only.md)·[KB-370](./knowledge-base/KB-370-production-schedule-external-completion-triple-source.md)·[KB-375](./knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md)。
+
 ### 🆕 最新アップデート（2026-05-24 · 私用 Pi5 Hermes Agent · Discord 雑談 E2E）
 
 - **私用 Pi5 Hermes — AI執事ビジョン（2026-05-25）**: 最終的には **Discord から裏で tools**（メモ/リマインド・X 定時・簡易アプリ・HA/カメラ）。**いまはセキュア基盤優先**（chat 雑談はツール無効 · tools は file+web まで本番）。**正本**: [執事ロードマップ](./plans/private-pi5-hermes-butler-vision-and-roadmap.md)·[`EXEC_PLAN`](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)。
