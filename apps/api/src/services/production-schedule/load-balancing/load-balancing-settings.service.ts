@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { normalizeWorkCalendarMode, type WorkCalendarMode } from './work-calendar-policy.js';
 
 const normalizeLocation = (location: string): string => location.trim();
 const normalizeSiteKey = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
@@ -30,6 +31,11 @@ export type LoadBalancingTransferRuleItem = {
   priority: number;
   enabled: boolean;
   efficiencyRatio: number;
+};
+
+export type LoadBalancingWorkCalendarItem = {
+  resourceCd: string;
+  workCalendarMode: WorkCalendarMode;
 };
 
 export async function listLoadBalancingCapacityBase(siteKeyInput: string): Promise<{
@@ -299,4 +305,71 @@ export async function replaceLoadBalancingTransferRules(params: {
   });
 
   return listLoadBalancingTransferRules(siteKey);
+}
+
+export async function listLoadBalancingWorkCalendars(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingWorkCalendarItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  const rows = await prisma.productionScheduleResourceWorkCalendar.findMany({
+    where: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      siteKey
+    },
+    orderBy: [{ resourceCd: 'asc' }],
+    select: {
+      resourceCd: true,
+      workCalendarMode: true
+    }
+  });
+  return {
+    siteKey,
+    items: rows.map((row) => ({
+      resourceCd: row.resourceCd,
+      workCalendarMode: normalizeWorkCalendarMode(row.workCalendarMode)
+    }))
+  };
+}
+
+export async function replaceLoadBalancingWorkCalendars(params: {
+  siteKeyInput: string;
+  items: LoadBalancingWorkCalendarItem[];
+}): Promise<{ siteKey: string; items: LoadBalancingWorkCalendarItem[] }> {
+  const siteKey = normalizeSiteKey(params.siteKeyInput);
+  const unique = new Map<string, LoadBalancingWorkCalendarItem>();
+  for (const item of params.items) {
+    const resourceCd = normalizeResourceCd(item.resourceCd);
+    if (!resourceCd) continue;
+    unique.set(resourceCd, {
+      resourceCd,
+      workCalendarMode: normalizeWorkCalendarMode(item.workCalendarMode)
+    });
+  }
+  const items = [...unique.values()].sort((a, b) => a.resourceCd.localeCompare(b.resourceCd));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.productionScheduleResourceWorkCalendar.deleteMany({
+      where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        siteKey
+      }
+    });
+    if (items.length === 0) return;
+    await tx.productionScheduleResourceWorkCalendar.createMany({
+      data: items.map((item) => ({
+        id: randomUUID(),
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        siteKey,
+        resourceCd: item.resourceCd,
+        workCalendarMode: item.workCalendarMode
+      }))
+    });
+  });
+
+  return listLoadBalancingWorkCalendars(siteKey);
+}
+
+export function buildWorkCalendarModeMap(items: LoadBalancingWorkCalendarItem[]): Map<string, WorkCalendarMode> {
+  return new Map(items.map((item) => [item.resourceCd, item.workCalendarMode]));
 }

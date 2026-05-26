@@ -1324,6 +1324,20 @@ model ProductionScheduleResourceMonthlyCapacity {
   @@index([csvDashboardId, siteKey, yearMonth], map: "PSResourceMonthlyCapacity_idx_month")
 }
 
+/// 負荷平準化: 資源CDごとの稼働日ルール（weekdays | calendar_days）。
+model ProductionScheduleResourceWorkCalendar {
+  id               String   @id @default(uuid())
+  csvDashboardId   String
+  siteKey          String   @db.VarChar(120)
+  resourceCd       String   @db.VarChar(20)
+  workCalendarMode String   @db.VarChar(32)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([csvDashboardId, siteKey, resourceCd], map: "PSResourceWorkCalendar_unique_rc")
+  @@index([csvDashboardId, siteKey], map: "PSResourceWorkCalendar_idx_site")
+}
+
 /// 山崩し用: 資源CDを細分類コードへ割り当てる。
 model ProductionScheduleLoadBalanceClass {
   id             String   @id @default(uuid())

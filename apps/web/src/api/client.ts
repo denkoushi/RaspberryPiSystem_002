@@ -457,6 +457,13 @@ export interface ProductionScheduleLoadBalancingTransferRuleItem {
   efficiencyRatio: number;
 }
 
+export type ProductionScheduleLoadBalancingWorkCalendarMode = 'weekdays' | 'calendar_days';
+
+export interface ProductionScheduleLoadBalancingWorkCalendarItem {
+  resourceCd: string;
+  workCalendarMode: ProductionScheduleLoadBalancingWorkCalendarMode;
+}
+
 export interface ProductionScheduleLoadBalancingOverviewResource {
   resourceCd: string;
   requiredMinutes: number;
@@ -482,6 +489,127 @@ export interface ProductionScheduleLoadBalancingSuggestionItem {
   fromClassCode: string;
   toClassCode: string;
   efficiencyRatio: number;
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingCandidateItem {
+  rowId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fkojun: string | null;
+  resourceCd: string;
+  rowMinutes: number;
+  overReductionMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingExternalizationCandidate {
+  candidateId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  operations: Array<{
+    rowId: string;
+    fseiban: string;
+    productNo: string;
+    fhincd: string;
+    fhinmei: string;
+    fkojun: string | null;
+    resourceCd: string;
+    requiredMinutes: number;
+  }>;
+  impactByResource: Array<{
+    resourceCd: string;
+    reducedMinutes: number;
+    overReductionMinutes: number;
+  }>;
+  totalReducedMinutes: number;
+  totalOverReductionMinutes: number;
+  resolvesOverResourceCds: string[];
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingCandidatesResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  resources: ProductionScheduleLoadBalancingOverviewResource[];
+  candidates: ProductionScheduleLoadBalancingOutsourcingCandidateItem[];
+  externalizationCandidates: ProductionScheduleLoadBalancingExternalizationCandidate[];
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingPlanResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  strategy: 'max_over_reduction' | 'min_count' | 'min_total_minutes';
+  selectedCandidateIds: string[];
+  beforeResources: ProductionScheduleLoadBalancingOverviewResource[];
+  afterResources: ProductionScheduleLoadBalancingOutsourcingSimulatedResource[];
+  resolved: boolean;
+  remainingOverMinutes: number;
+  totalReducedMinutes: number;
+  totalOverReductionMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingReplacementsResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  removeCandidateId: string;
+  baseSelectedCandidateIds: string[];
+  replacementOptions: Array<{
+    candidateId: string;
+    fseiban: string;
+    productNo: string;
+    fhincd: string;
+    fhinmei: string;
+    afterResources: ProductionScheduleLoadBalancingOutsourcingSimulatedResource[];
+    resolved: boolean;
+    remainingOverMinutes: number;
+  }>;
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingSimulatedResource
+  extends ProductionScheduleLoadBalancingOverviewResource {
+  reducedMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingSimulateResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  beforeResources: ProductionScheduleLoadBalancingOverviewResource[];
+  afterResources: ProductionScheduleLoadBalancingOutsourcingSimulatedResource[];
+  appliedRows: Array<{
+    rowId: string;
+    fseiban: string;
+    productNo: string;
+    fhincd: string;
+    fkojun: string | null;
+    resourceCd: string;
+    rowMinutes: number;
+    reducedMinutes: number;
+  }>;
+  skippedRows: Array<{
+    rowId: string;
+    reason:
+      | 'not_found'
+      | 'duplicate'
+      | 'zero_minutes'
+      | 'resource_not_in_overview'
+      | 'outside_over_resource_filter';
+  }>;
+  skippedCandidates?: Array<{
+    candidateId: string;
+    reason: 'not_found' | 'duplicate' | 'no_operations' | 'outside_over_resource_filter';
+  }>;
+  summary: {
+    selectedCount: number;
+    appliedCount: number;
+    skippedCount: number;
+    totalReducedMinutes: number;
+    remainingOverMinutes: number;
+  };
 }
 
 export interface ProductionScheduleLoadBalancingMachineSummary {
@@ -530,6 +658,78 @@ export interface ProductionScheduleLoadBalancingMachineMonthlyLoadResponse {
   parts: ProductionScheduleLoadBalancingMachinePartSummary[];
   resourceMonths: ProductionScheduleLoadBalancingMachineResourceMonthCell[];
   partRows: ProductionScheduleLoadBalancingMachinePartRowDetail[];
+}
+
+export type ProductionScheduleLoadBalancingStartDateLevelingUnallocatedReason =
+  | 'missing_planned_start_date'
+  | 'missing_effective_due_date'
+  | 'invalid_quantity'
+  | 'no_active_days'
+  | 'zero_required_minutes';
+
+export interface ProductionScheduleLoadBalancingStartDateLevelingResource {
+  resourceCd: string;
+  workCalendarMode: ProductionScheduleLoadBalancingWorkCalendarMode;
+  requiredMinutes: number;
+  availableMinutes: number | null;
+  overMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingStartDateLevelingCell {
+  resourceCd: string;
+  bucketKey: string;
+  requiredMinutes: number;
+  availableMinutes: number | null;
+  overMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingStartDateLevelingAllocatedRow {
+  rowId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fkojun: string | null;
+  resourceCd: string;
+  totalMinutes: number;
+  plannedStartDate: string;
+  effectiveDueDate: string;
+  workCalendarMode: ProductionScheduleLoadBalancingWorkCalendarMode;
+}
+
+export interface ProductionScheduleLoadBalancingStartDateLevelingUnallocatedRow {
+  rowId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fkojun: string | null;
+  resourceCd: string;
+  reason: ProductionScheduleLoadBalancingStartDateLevelingUnallocatedReason;
+  perUnitMinutes: number;
+  plannedQuantity: number | null;
+}
+
+export interface ProductionScheduleLoadBalancingStartDateLevelingSimulatedMove {
+  rowId: string;
+  targetDate: string;
+  resourceCd: string;
+  movedMinutes: number;
+  fromDateKeys: string[];
+}
+
+export interface ProductionScheduleLoadBalancingStartDateLevelingResponse {
+  siteKey: string;
+  fromMonth: string;
+  toMonth: string;
+  bucket: 'month' | 'day';
+  focusMonth: string | null;
+  months: string[];
+  days: string[];
+  resources: ProductionScheduleLoadBalancingStartDateLevelingResource[];
+  cells: ProductionScheduleLoadBalancingStartDateLevelingCell[];
+  allocatedRows: ProductionScheduleLoadBalancingStartDateLevelingAllocatedRow[];
+  unallocatedRows: ProductionScheduleLoadBalancingStartDateLevelingUnallocatedRow[];
+  calendarSettings: ProductionScheduleLoadBalancingWorkCalendarItem[];
+  simulatedMoves: ProductionScheduleLoadBalancingStartDateLevelingSimulatedMove[];
 }
 
 export interface ProductionScheduleDueManagementSummaryItem {
@@ -1739,6 +1939,25 @@ export async function updateProductionScheduleLoadBalancingTransferRules(payload
   return data.settings;
 }
 
+export async function getProductionScheduleLoadBalancingWorkCalendars(location: string) {
+  const { data } = await api.get<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingWorkCalendarItem[] };
+  }>('/production-schedule-settings/load-balancing/work-calendars', {
+    params: { location }
+  });
+  return data.settings;
+}
+
+export async function updateProductionScheduleLoadBalancingWorkCalendars(payload: {
+  location: string;
+  items: ProductionScheduleLoadBalancingWorkCalendarItem[];
+}) {
+  const { data } = await api.put<{
+    settings: { siteKey: string; items: ProductionScheduleLoadBalancingWorkCalendarItem[] };
+  }>('/production-schedule-settings/load-balancing/work-calendars', payload);
+  return data.settings;
+}
+
 export async function getKioskProductionScheduleLoadBalancingOverview(params: {
   month: string;
   targetDeviceScopeKey?: string;
@@ -1765,6 +1984,61 @@ export async function postKioskProductionScheduleLoadBalancingSuggestions(payloa
   return data;
 }
 
+export async function postKioskProductionScheduleLoadBalancingOutsourcingCandidates(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  maxCandidates?: number;
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingCandidatesResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-candidates',
+    payload
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingOutsourcingSimulate(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  selectedRowIds?: string[];
+  selectedCandidateIds?: string[];
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingSimulateResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-simulate',
+    payload
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingOutsourcingPlan(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  strategy?: 'max_over_reduction' | 'min_count' | 'min_total_minutes';
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingPlanResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-plan',
+    payload
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingOutsourcingReplacements(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  currentSelectedCandidateIds: string[];
+  removeCandidateId: string;
+  maxOptions?: number;
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingReplacementsResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-replacements',
+    payload
+  );
+  return data;
+}
+
 export async function getKioskProductionScheduleLoadBalancingMachineMonthlyLoad(params: {
   fromMonth: string;
   toMonth: string;
@@ -1775,6 +2049,37 @@ export async function getKioskProductionScheduleLoadBalancingMachineMonthlyLoad(
   const { data } = await api.get<ProductionScheduleLoadBalancingMachineMonthlyLoadResponse>(
     '/kiosk/production-schedule/load-balancing/machine-monthly-load',
     { params }
+  );
+  return data;
+}
+
+export async function getKioskProductionScheduleLoadBalancingStartDateLeveling(params: {
+  fromMonth: string;
+  toMonth: string;
+  bucket?: 'month' | 'day';
+  focusMonth?: string;
+  targetDeviceScopeKey?: string;
+  resourceCd?: string;
+}) {
+  const { data } = await api.get<ProductionScheduleLoadBalancingStartDateLevelingResponse>(
+    '/kiosk/production-schedule/load-balancing/start-date-leveling',
+    { params }
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingStartDateLevelingSimulate(payload: {
+  fromMonth: string;
+  toMonth: string;
+  bucket?: 'month' | 'day';
+  focusMonth?: string;
+  targetDeviceScopeKey?: string;
+  resourceCd?: string;
+  moves: Array<{ rowId: string; targetDate: string }>;
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingStartDateLevelingResponse>(
+    '/kiosk/production-schedule/load-balancing/start-date-leveling/simulate',
+    payload
   );
   return data;
 }

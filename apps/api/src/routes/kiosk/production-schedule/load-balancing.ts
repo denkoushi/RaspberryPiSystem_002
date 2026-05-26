@@ -5,7 +5,17 @@ import { ApiError } from '../../../lib/errors.js';
 import { getProductionScheduleLoadBalancingOverview } from '../../../services/production-schedule/load-balancing/load-balancing-overview.service.js';
 import { getProductionScheduleMachineMonthlyLoad } from '../../../services/production-schedule/load-balancing/machine-monthly-load.service.js';
 import { parseYearMonthRangeUtc } from '../../../services/production-schedule/load-balancing/monthly-load-query.service.js';
+import {
+  getProductionScheduleOutsourcingCandidates,
+  getProductionScheduleOutsourcingPlan,
+  getProductionScheduleOutsourcingReplacements,
+  simulateProductionScheduleOutsourcing
+} from '../../../services/production-schedule/load-balancing/outsourcing-simulation.service.js';
 import { suggestProductionScheduleLoadBalancing } from '../../../services/production-schedule/load-balancing/reallocation-suggestion.service.js';
+import {
+  getProductionScheduleStartDateLeveling,
+  simulateProductionScheduleStartDateLeveling
+} from '../../../services/production-schedule/load-balancing/start-date-leveling.service.js';
 import { assertYearMonthFormat } from '../../../services/production-schedule/load-balancing/year-month-range.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
@@ -22,12 +32,69 @@ const suggestionsBodySchema = z.object({
   overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional()
 });
 
+const outsourcingCandidatesBodySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
+  maxCandidates: z.coerce.number().int().min(1).max(200).optional()
+});
+
+const outsourcingSimulateBodySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
+  selectedRowIds: z.array(z.string().min(1).max(80)).max(200).optional(),
+  selectedCandidateIds: z.array(z.string().min(1).max(200)).max(100).optional()
+});
+
+const outsourcingPlanBodySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
+  strategy: z.enum(['max_over_reduction', 'min_count', 'min_total_minutes']).optional()
+});
+
+const outsourcingReplacementsBodySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
+  currentSelectedCandidateIds: z.array(z.string().min(1).max(200)).max(100),
+  removeCandidateId: z.string().min(1).max(200),
+  maxOptions: z.coerce.number().int().min(1).max(10).optional()
+});
+
 const machineMonthlyLoadQuerySchema = z.object({
   fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
   toMonth: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   machineName: z.string().min(1).max(200).optional(),
   fhincd: z.string().min(1).max(40).optional()
+});
+
+const startDateLevelingQuerySchema = z.object({
+  fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  toMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  bucket: z.enum(['month', 'day']).default('month'),
+  focusMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  resourceCd: z.string().min(1).max(20).optional()
+});
+
+const startDateLevelingSimulateBodySchema = z.object({
+  fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  toMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  bucket: z.enum(['month', 'day']).default('month'),
+  focusMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  resourceCd: z.string().min(1).max(20).optional(),
+  moves: z
+    .array(
+      z.object({
+        rowId: z.string().min(1).max(80),
+        targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+      })
+    )
+    .max(200)
 });
 
 function assertValidYearMonth(month: string): void {
@@ -110,6 +177,197 @@ export async function registerProductionScheduleLoadBalancingRoutes(
         }
         throw error;
       }
+    }
+  );
+
+  app.get(
+    '/kiosk/production-schedule/load-balancing/start-date-leveling',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const query = startDateLevelingQuerySchema.parse(request.query);
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: query.targetDeviceScopeKey
+      });
+
+      assertValidYearMonthRange(query.fromMonth, query.toMonth);
+
+      try {
+        return await getProductionScheduleStartDateLeveling({
+          siteKeyInput: resolvedSiteKey,
+          deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+          fromMonth: query.fromMonth,
+          toMonth: query.toMonth,
+          bucket: query.bucket,
+          focusMonth: query.focusMonth,
+          resourceCdFilter: query.resourceCd
+        });
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
+        if (error instanceof Error) {
+          const recoverableMessages = ['以前である必要があります', '最大 ', 'YYYY-MM 形式', '稼働日ではありません'];
+          if (recoverableMessages.some((snippet) => error.message.includes(snippet))) {
+            throw new ApiError(400, error.message);
+          }
+        }
+        throw error;
+      }
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/start-date-leveling/simulate',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = startDateLevelingSimulateBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.fromMonth);
+      assertValidYearMonth(body.toMonth);
+
+      try {
+        return await simulateProductionScheduleStartDateLeveling({
+          siteKeyInput: resolvedSiteKey,
+          deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+          fromMonth: body.fromMonth,
+          toMonth: body.toMonth,
+          bucket: body.bucket,
+          focusMonth: body.focusMonth,
+          resourceCdFilter: body.resourceCd,
+          moves: body.moves
+        });
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
+        if (error instanceof Error) {
+          const recoverableMessages = ['以前である必要があります', '最大 ', 'YYYY-MM 形式', '稼働日ではありません'];
+          if (recoverableMessages.some((snippet) => error.message.includes(snippet))) {
+            throw new ApiError(400, error.message);
+          }
+        }
+        throw error;
+      }
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/outsourcing-candidates',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = outsourcingCandidatesBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.month);
+
+      return getProductionScheduleOutsourcingCandidates({
+        siteKey: resolvedSiteKey,
+        deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+        yearMonth: body.month,
+        overResourceCds: body.overResourceCds,
+        maxCandidates: body.maxCandidates ?? 100
+      });
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/outsourcing-simulate',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = outsourcingSimulateBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.month);
+
+      return simulateProductionScheduleOutsourcing({
+        siteKey: resolvedSiteKey,
+        deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+        yearMonth: body.month,
+        overResourceCds: body.overResourceCds,
+        selectedRowIds: body.selectedRowIds,
+        selectedCandidateIds: body.selectedCandidateIds
+      });
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/outsourcing-plan',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = outsourcingPlanBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.month);
+
+      return getProductionScheduleOutsourcingPlan({
+        siteKey: resolvedSiteKey,
+        deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+        yearMonth: body.month,
+        overResourceCds: body.overResourceCds,
+        strategy: body.strategy
+      });
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/outsourcing-replacements',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = outsourcingReplacementsBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.month);
+
+      return getProductionScheduleOutsourcingReplacements({
+        siteKey: resolvedSiteKey,
+        deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+        yearMonth: body.month,
+        overResourceCds: body.overResourceCds,
+        currentSelectedCandidateIds: body.currentSelectedCandidateIds,
+        removeCandidateId: body.removeCandidateId,
+        maxOptions: body.maxOptions
+      });
     }
   );
 

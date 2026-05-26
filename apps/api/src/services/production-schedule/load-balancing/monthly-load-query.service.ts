@@ -1,6 +1,6 @@
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildFkojunstProductionScheduleListVisibilityWhereSql } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
+import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligibility.policy.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleExcludedCuttingResourceCd,
@@ -25,6 +25,7 @@ type RawDetailRow = {
   fseiban: string | null;
   productNo: string | null;
   fhincd: string | null;
+  fhinmei: string | null;
   fkojun: string | null;
   resourceCd: string | null;
   requiredMinutes: number | null;
@@ -92,12 +93,14 @@ export async function aggregateMonthlyLoadByResource(params: {
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND COALESCE("p"."isCompleted", FALSE) = FALSE
       AND "supplement"."plannedEndDate" IS NOT NULL
       AND "supplement"."plannedEndDate" >= ${monthStart}
       AND "supplement"."plannedEndDate" < ${monthEndExclusive}
@@ -106,7 +109,7 @@ export async function aggregateMonthlyLoadByResource(params: {
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'SH%'
       )
       AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
-      ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
+      ${buildLoadBalancingRowEligibilityWhereSql()}
     GROUP BY UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'))
   `;
 
@@ -131,6 +134,7 @@ export async function listMonthlyLoadRowCandidates(params: {
       COALESCE(("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "fseiban",
       COALESCE(("CsvDashboardRow"."rowData"->>'ProductNo'), '') AS "productNo",
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINCD'), '') AS "fhincd",
+      COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') AS "fhinmei",
       COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
       (
@@ -150,12 +154,14 @@ export async function listMonthlyLoadRowCandidates(params: {
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND COALESCE("p"."isCompleted", FALSE) = FALSE
       AND "supplement"."plannedEndDate" IS NOT NULL
       AND "supplement"."plannedEndDate" >= ${monthStart}
       AND "supplement"."plannedEndDate" < ${monthEndExclusive}
@@ -164,7 +170,7 @@ export async function listMonthlyLoadRowCandidates(params: {
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'SH%'
       )
       AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
-      ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
+      ${buildLoadBalancingRowEligibilityWhereSql()}
     ORDER BY
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
       ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
@@ -186,6 +192,7 @@ export async function listMonthlyLoadRowCandidates(params: {
       fseiban: String(row.fseiban ?? '').trim(),
       productNo: String(row.productNo ?? '').trim(),
       fhincd: String(row.fhincd ?? '').trim(),
+      fhinmei: String(row.fhinmei ?? '').trim(),
       fkojun: fkojunRaw.length > 0 ? fkojunRaw : null,
       resourceCd: normalizedCd,
       requiredMinutes

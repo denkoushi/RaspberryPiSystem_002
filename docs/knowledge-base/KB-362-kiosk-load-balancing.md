@@ -15,17 +15,21 @@ last-verified: 2026-05-26
 |----------------|----------|------|
 | 2026-04-30 初版 | `feat/kiosk-load-balance-suggest` | 資源CD俯瞰・能力設定・サジェスト（`plannedEndDate` 月） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-machine-monthly-view` | **機種別月次負荷**タブ（有効納期月・機種/部品/積み上げグラフ） |
+| 2026-05-26 拡張 | `feat/kiosk-load-balancing-start-date-leveling` | **着手日・平準化**タブ（日割り・シミュ・稼働日ルール） |
+| 2026-05-26 拡張 | `feat/kiosk-load-balancing-outsourcing-sim` | **資源CD俯瞰・外注候補シミュ**（超過資源選択・効果順候補・累積試算） |
+| 2026-05-26 拡張 | `feat/kiosk-load-balancing-externalization-plan` | **部品単位推奨セット**（負荷母集団修正・自動 plan・入れ替え）— **未デプロイ** |
 
-**新規 Prisma マイグレーションなし**（2026-05-26 拡張は既存テーブルのみ参照）。
+**Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
-## 画面構成（2タブ）
+## 画面構成（3タブ）
 
 | タブ | 月の定義 | 主な用途 |
 |------|----------|----------|
-| **資源CD俯瞰** | `ProductionScheduleOrderSupplement.plannedEndDate` の暦月 | 単月の資源CD別 必要/能力/超過・サジェスト |
+| **資源CD俯瞰** | `ProductionScheduleOrderSupplement.plannedEndDate` の暦月 | 単月の資源CD別 必要/能力/超過・**社内移管サジェスト**・**外注候補シミュ** |
 | **機種別月次負荷** | **有効納期** = `COALESCE(ProductionScheduleRowNote.dueDate, supplement.plannedEndDate)` の暦月 | 機種（MH/SH の `FHINMEI`）→ 部品 → 月×資源CD の積み上げ |
+| **着手日・平準化** | 日割り後を月合算／日別（着手=`plannedStartDate`、終端=有効納期） | `FSIGENSHOYORYO×指示数`・稼働日ルール・平準化シミュ（DB不変） |
 
-**重要**: 両タブで「月」の意味が異なる。混同すると集計が合わない。
+**重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
 ## 機種別月次負荷 — 仕様（実装正本）
 
@@ -63,13 +67,109 @@ last-verified: 2026-05-26
 | Web タブ | `LoadBalancingMachineMonthlyTab.tsx` |
 | ページシェル | `ProductionScheduleLoadBalancingPage.tsx`（タブ + Mac 代理） |
 
+## 着手日・平準化 — 仕様（実装正本）
+
+### 集計対象
+
+- 機種別月次と同様の **winner / 未完了 / FKOJUNST 可視 / 部品工程 / 資源CD** 条件に加え、
+  **`plannedStartDate` と有効納期が両方ある行**のみ配分対象。
+- **負荷（分）** = `FSIGENSHOYORYO × plannedQuantity`（`plannedQuantity` が正の整数でない行は **未配分**）。
+- **日割り**: 着手日〜有効納期（ inclusive ）の **稼働日**に均等配分。稼働日は資源CDごとに `weekdays` または `calendar_days`（未設定は **weekdays**）。
+- **月次能力**: 既存の基準/月次上書き。日次表示では **月能力 ÷ 当該月の稼働日数** を日次能力線とする。
+
+### API
+
+- `GET .../start-date-leveling` — `bucket=month|day`、`focusMonth`（日次時）、任意 `resourceCd`
+- `POST .../start-date-leveling/simulate` — `moves: [{ rowId, targetDate }]`。**DB 更新なし**（行の全負荷を移動先日に寄せて再集計）
+
+### 管理設定
+
+- `GET/PUT /production-schedule-settings/load-balancing/work-calendars`
+
+## 資源CD俯瞰・外注候補シミュ — 仕様（実装正本）
+
+### 用語
+
+- **社内移管サジェスト**（既存 `POST .../suggestions`）: 分類/移管ルールに基づき **別の社内資源CD** へ移す候補。移管先にも負荷が載る。
+- **外注候補シミュ**（Phase 0）: 選択した **工程行** を社内資源の必要分から除外する read-only 試算。
+- **推奨セット**（部品単位）: `fseiban` + `productNo` + `fhincd` で束ねた **部品候補** の自動選定・手動入れ替え。試算は `selectedCandidateIds` で行う。**DB 更新なし**。外注先能力は見ない。
+
+### 負荷母集団（資源CD俯瞰・外注・社内移管サジェストのみ）
+
+`monthly-load-query.service.ts` + `load-balancing-eligibility.policy.ts` が正本。**機種別月次・着手日タブは従来どおり**（一覧可視ポリシー等）。
+
+| 項目 | 内容 |
+|------|------|
+| 月キー | `plannedEndDate` の暦月 |
+| 工数 | **`FSIGENSHOYORYO` 合計**（行総分。`× plannedQuantity` しない） |
+| FKOJUNST | **`fkmail` あり** かつ **S/R/O/P**（**C/X 除外**） |
+| 完了 | **実効未完了**（手動完了・外部完了は負荷から除外） |
+
+### 効果指標
+
+- 工程行: `overReductionMinutes = min(行分, 源資源の超過分)` 降順。
+- 部品候補: 同一部品の複数工程を束ね、資源ごとに `min(部品合計, 源超過)` で **二重カウントしない** `totalOverReductionMinutes`。
+
+### API
+
+| エンドポイント | 用途 |
+|----------------|------|
+| `POST .../outsourcing-candidates` | 既存 `candidates`（工程行）+ **`externalizationCandidates`**（部品） |
+| `POST .../outsourcing-plan` | 戦略 `max_over_reduction` で部品推奨セット自動選定 |
+| `POST .../outsourcing-simulate` | **`selectedRowIds`** または **`selectedCandidateIds`** のどちらか一方（同時指定・両方空は 400） |
+| `POST .../outsourcing-replacements` | 1 部品を外したときの代替候補（最大 5 件） |
+
+- `candidateId` = 正規化した `fseiban` + `\u001f` + `productNo` + `\u001f` + `fhincd`（UI には生 ID を出さない）。
+- `FHINMEI` は行の品名（`LoadBalancingRowCandidate.fhinmei`）。機種名解決は部品名用途に使わない。
+
+### UI（資源CD俯瞰タブ）
+
+1. 超過資源を複数選択（初期は全超過資源）
+2. **推奨セット（部品）**: 「推奨セットを自動選定」→ 部品表・残超過・外す / 入れ替え / クリア
+3. **工程行（従来・折りたたみ）**: 外注候補取得 → チェック → 累積シミュ
+4. 試算後の必要分/超過はチャート・明細で共有（シミュ結果クリアで元に戻す）
+
+### 実装レイヤ
+
+| 層 | ファイル |
+|----|----------|
+| 負荷母集団 | `load-balancing-eligibility.policy.ts`, `monthly-load-query.service.ts` |
+| 純関数 | `outsourcing-simulation.engine.ts` |
+| サービス | `outsourcing-simulation.service.ts` |
+| Web | `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingSelection.ts` |
+
+### デプロイ状況
+
+| 機能 | Pi5 | Pi4×4 |
+|------|-----|-------|
+| Phase 0（工程行シミュ） | **デプロイ済み**（`128f89bd`） | 未展開 |
+| 部品推奨セット（本節） | **未デプロイ**（`feat/kiosk-load-balancing-externalization-plan`） | 未展開 |
+
+背景・改善案: [load-balancing-outsourcing-improvement-proposal.md](../plans/load-balancing-outsourcing-improvement-proposal.md)。
+
+## Production deploy（実績 2026-05-26 · 外注候補シミュ · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-outsourcing-sim`
+- **コミット**: **`128f89bd`**
+- **CI**: **`26443561903`** success
+- **ホスト**: `raspberrypi5` のみ（Pi4×4 は未展開）
+
+| 項目 | 値 |
+|------|-----|
+| Detach Run ID | `20260526-183237-15690` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0** |
+
+**手動スモーク（Pi5）**: `outsourcing-candidates` / `outsourcing-simulate` **200** · Web バンドルに `外注候補` 文字列確認。
+
 ## Symptoms / 使い方
 
 1. キオスク **負荷調整** を開く
 2. **機種別月次負荷** タブ → 開始月・終了月（初期 **当月〜+6か月**）
 3. 機種（`FHINMEI`）を選択 → 積み上げ棒（上位24資源）・部品表
 4. 部品行クリック → 当該品番に絞り込み（「部品絞り込み解除」で解除）
-5. **資源CD俯瞰** タブは従来どおり月1つ・サジェスト計算
+5. **資源CD俯瞰** タブ → 超過資源選択 → **推奨セット自動選定**（部品）または工程行で累積シミュ（DB不変）
+6. **社内移管サジェスト** は同タブ下部（分類/移管ルール前提）
 
 Mac device-scope v2: **`targetDeviceScopeKey` 必須**（未指定 400）。
 
