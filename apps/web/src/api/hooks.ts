@@ -162,6 +162,8 @@ import {
   getKioskProductionScheduleLoadBalancingMachineMonthlyLoad,
   getKioskProductionScheduleLoadBalancingStartDateLeveling,
   postKioskProductionScheduleLoadBalancingStartDateLevelingSimulate,
+  postKioskProductionScheduleLoadBalancingOutsourcingCandidates,
+  postKioskProductionScheduleLoadBalancingOutsourcingSimulate,
   postKioskProductionScheduleLoadBalancingSuggestions,
   getDeployStatus,
   type CancelPayload,
@@ -1084,6 +1086,18 @@ export function useKioskProductionScheduleLoadBalancingOverview(
 export function usePostKioskProductionScheduleLoadBalancingSuggestions() {
   return useMutation({
     mutationFn: postKioskProductionScheduleLoadBalancingSuggestions
+  });
+}
+
+export function usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates() {
+  return useMutation({
+    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingCandidates
+  });
+}
+
+export function usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate() {
+  return useMutation({
+    mutationFn: postKioskProductionScheduleLoadBalancingOutsourcingSimulate
   });
 }
 

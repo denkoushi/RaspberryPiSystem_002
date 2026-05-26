@@ -5,6 +5,10 @@ import { ApiError } from '../../../lib/errors.js';
 import { getProductionScheduleLoadBalancingOverview } from '../../../services/production-schedule/load-balancing/load-balancing-overview.service.js';
 import { getProductionScheduleMachineMonthlyLoad } from '../../../services/production-schedule/load-balancing/machine-monthly-load.service.js';
 import { parseYearMonthRangeUtc } from '../../../services/production-schedule/load-balancing/monthly-load-query.service.js';
+import {
+  getProductionScheduleOutsourcingCandidates,
+  simulateProductionScheduleOutsourcing
+} from '../../../services/production-schedule/load-balancing/outsourcing-simulation.service.js';
 import { suggestProductionScheduleLoadBalancing } from '../../../services/production-schedule/load-balancing/reallocation-suggestion.service.js';
 import {
   getProductionScheduleStartDateLeveling,
@@ -24,6 +28,20 @@ const suggestionsBodySchema = z.object({
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   maxSuggestions: z.coerce.number().int().min(1).max(200).optional(),
   overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional()
+});
+
+const outsourcingCandidatesBodySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
+  maxCandidates: z.coerce.number().int().min(1).max(200).optional()
+});
+
+const outsourcingSimulateBodySchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
+  selectedRowIds: z.array(z.string().min(1).max(80)).max(200)
 });
 
 const machineMonthlyLoadQuerySchema = z.object({
@@ -224,6 +242,58 @@ export async function registerProductionScheduleLoadBalancingRoutes(
         }
         throw error;
       }
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/outsourcing-candidates',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = outsourcingCandidatesBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.month);
+
+      return getProductionScheduleOutsourcingCandidates({
+        siteKey: resolvedSiteKey,
+        deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+        yearMonth: body.month,
+        overResourceCds: body.overResourceCds,
+        maxCandidates: body.maxCandidates ?? 100
+      });
+    }
+  );
+
+  app.post(
+    '/kiosk/production-schedule/load-balancing/outsourcing-simulate',
+    { config: { rateLimit: false } },
+    async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
+      const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
+      const body = outsourcingSimulateBodySchema.parse(request.body ?? {});
+
+      const resolvedSiteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(actorDeviceScopeKey),
+        targetDeviceScopeKey: body.targetDeviceScopeKey
+      });
+
+      assertValidYearMonth(body.month);
+
+      return simulateProductionScheduleOutsourcing({
+        siteKey: resolvedSiteKey,
+        deviceScopeKey: body.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
+        yearMonth: body.month,
+        overResourceCds: body.overResourceCds,
+        selectedRowIds: body.selectedRowIds
+      });
     }
   );
 

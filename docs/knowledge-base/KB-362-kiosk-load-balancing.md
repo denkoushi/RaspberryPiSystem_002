@@ -16,6 +16,7 @@ last-verified: 2026-05-26
 | 2026-04-30 初版 | `feat/kiosk-load-balance-suggest` | 資源CD俯瞰・能力設定・サジェスト（`plannedEndDate` 月） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-machine-monthly-view` | **機種別月次負荷**タブ（有効納期月・機種/部品/積み上げグラフ） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-start-date-leveling` | **着手日・平準化**タブ（日割り・シミュ・稼働日ルール） |
+| 2026-05-26 拡張 | `feat/kiosk-load-balancing-outsourcing-sim` | **資源CD俯瞰・外注候補シミュ**（超過資源選択・効果順候補・累積試算） |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -23,7 +24,7 @@ last-verified: 2026-05-26
 
 | タブ | 月の定義 | 主な用途 |
 |------|----------|----------|
-| **資源CD俯瞰** | `ProductionScheduleOrderSupplement.plannedEndDate` の暦月 | 単月の資源CD別 必要/能力/超過・サジェスト |
+| **資源CD俯瞰** | `ProductionScheduleOrderSupplement.plannedEndDate` の暦月 | 単月の資源CD別 必要/能力/超過・**社内移管サジェスト**・**外注候補シミュ** |
 | **機種別月次負荷** | **有効納期** = `COALESCE(ProductionScheduleRowNote.dueDate, supplement.plannedEndDate)` の暦月 | 機種（MH/SH の `FHINMEI`）→ 部品 → 月×資源CD の積み上げ |
 | **着手日・平準化** | 日割り後を月合算／日別（着手=`plannedStartDate`、終端=有効納期） | `FSIGENSHOYORYO×指示数`・稼働日ルール・平準化シミュ（DB不変） |
 
@@ -84,13 +85,50 @@ last-verified: 2026-05-26
 
 - `GET/PUT /production-schedule-settings/load-balancing/work-calendars`
 
+## 資源CD俯瞰・外注候補シミュ — 仕様（実装正本）
+
+### 用語
+
+- **社内移管サジェスト**（既存 `POST .../suggestions`）: 分類/移管ルールに基づき **別の社内資源CD** へ移す候補。移管先にも負荷が載る。
+- **外注候補シミュ**（新規）: 選択した工程行を **社内資源の必要分から除外** する read-only 試算。外注先能力は見ない。**DB 更新なし**。
+
+### 集計
+
+- 資源CD俯瞰と同じ **`plannedEndDate` 月**・**`FSIGENSHOYORYO` 合計**（指示数なし）。
+- 候補は **超過資源**（`overMinutes > 0`）に載る工程行のみ（`overResourceCds` で絞り込み可）。
+
+### 効果指標
+
+- `overReductionMinutes = min(行分, 源資源の超過分)` を降順でソート。
+
+### API
+
+- `POST .../outsourcing-candidates` — `overResourceCds?`, `maxCandidates?`（既定 100）
+- `POST .../outsourcing-simulate` — `selectedRowIds[]`（最大 200、重複は1回）。`beforeResources` / `afterResources` / `summary` を返す。
+
+### UI（資源CD俯瞰タブ）
+
+1. 超過資源を複数選択（初期は全超過資源）
+2. 「外注候補を取得」→ 効果順一覧
+3. チェックで複数行選択 → 「選択行で累積シミュ」
+4. 試算後の必要分/超過を明細表で比較（「シミュ結果をクリア」で元に戻す）
+
+### 実装レイヤ
+
+| 層 | ファイル |
+|----|----------|
+| 純関数 | `outsourcing-simulation.engine.ts` |
+| サービス | `outsourcing-simulation.service.ts` |
+| Web | `LoadBalancingOverviewTab.tsx`, `loadBalancingOutsourcingSelection.ts` |
+
 ## Symptoms / 使い方
 
 1. キオスク **負荷調整** を開く
 2. **機種別月次負荷** タブ → 開始月・終了月（初期 **当月〜+6か月**）
 3. 機種（`FHINMEI`）を選択 → 積み上げ棒（上位24資源）・部品表
 4. 部品行クリック → 当該品番に絞り込み（「部品絞り込み解除」で解除）
-5. **資源CD俯瞰** タブは従来どおり月1つ・サジェスト計算
+5. **資源CD俯瞰** タブ → 超過資源選択 → 外注候補取得 → 複数選択で累積シミュ（DB不変）
+6. **社内移管サジェスト** は同タブ下部（分類/移管ルール前提）
 
 Mac device-scope v2: **`targetDeviceScopeKey` 必須**（未指定 400）。
 

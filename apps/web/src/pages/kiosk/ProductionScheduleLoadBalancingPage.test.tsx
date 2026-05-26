@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ProductionScheduleLoadBalancingPage } from './ProductionScheduleLoadBalancingPage';
@@ -9,6 +9,8 @@ const mockUseStartDateLeveling = vi.fn();
 const mockUseStartDateLevelingSimulate = vi.fn();
 const mockUseSiteDevices = vi.fn();
 const mockUseSuggestions = vi.fn();
+const mockUseOutsourcingCandidates = vi.fn();
+const mockUseOutsourcingSimulate = vi.fn();
 const mockIsMacEnvironment = vi.fn();
 
 vi.mock('../../api/hooks', () => ({
@@ -20,7 +22,11 @@ vi.mock('../../api/hooks', () => ({
   usePostKioskProductionScheduleLoadBalancingStartDateLevelingSimulate: (...args: unknown[]) =>
     mockUseStartDateLevelingSimulate(...args),
   useKioskProductionScheduleManualOrderSiteDevices: (...args: unknown[]) => mockUseSiteDevices(...args),
-  usePostKioskProductionScheduleLoadBalancingSuggestions: (...args: unknown[]) => mockUseSuggestions(...args)
+  usePostKioskProductionScheduleLoadBalancingSuggestions: (...args: unknown[]) => mockUseSuggestions(...args),
+  usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates: (...args: unknown[]) =>
+    mockUseOutsourcingCandidates(...args),
+  usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate: (...args: unknown[]) =>
+    mockUseOutsourcingSimulate(...args)
 }));
 
 vi.mock('../../lib/client-key/resolver', () => ({
@@ -87,6 +93,22 @@ describe('ProductionScheduleLoadBalancingPage', () => {
       error: null,
       data: null
     });
+    mockUseOutsourcingCandidates.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+    mockUseOutsourcingSimulate.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
   });
 
   it('概要を表示してサジェスト計算を実行できる', async () => {
@@ -146,13 +168,116 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     expect(screen.getByText('A01')).toBeInTheDocument();
     expect(screen.getByText('ABC12345')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'サジェストを計算' }));
+    fireEvent.click(screen.getByRole('button', { name: '社内移管サジェストを計算' }));
 
     expect(mutateAsync).toHaveBeenCalledWith({
       month: '2026-04',
-      maxSuggestions: 40
+      maxSuggestions: 40,
+      overResourceCds: ['A01']
     });
     expect(reset).toHaveBeenCalled();
+  });
+
+  it('外注候補取得と累積シミュを実行できる', async () => {
+    const loadCandidates = vi.fn().mockResolvedValue({
+      siteKey: '第2工場',
+      yearMonth: '2026-04',
+      mode: 'outsourcing',
+      resources: [],
+      candidates: [
+        {
+          rowId: 'row-1',
+          fseiban: 'ABC12345',
+          productNo: '123456',
+          fhincd: 'P-001',
+          fkojun: '10',
+          resourceCd: 'A01',
+          rowMinutes: 60,
+          overReductionMinutes: 60
+        }
+      ]
+    });
+    const simulate = vi.fn().mockResolvedValue({
+      siteKey: '第2工場',
+      yearMonth: '2026-04',
+      mode: 'outsourcing',
+      beforeResources: [],
+      afterResources: [],
+      appliedRows: [],
+      skippedRows: [],
+      summary: {
+        selectedCount: 1,
+        appliedCount: 1,
+        skippedCount: 0,
+        totalReducedMinutes: 60,
+        remainingOverMinutes: 0
+      }
+    });
+
+    mockUseOverview.mockReturnValue({
+      data: {
+        siteKey: '第2工場',
+        yearMonth: '2026-04',
+        resources: [
+          {
+            resourceCd: 'A01',
+            requiredMinutes: 240,
+            availableMinutes: 180,
+            overMinutes: 60,
+            classCode: 'LINE-A'
+          }
+        ]
+      },
+      isFetching: false,
+      error: null
+    });
+    mockUseSuggestions.mockReturnValue({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+    mockUseOutsourcingCandidates.mockReturnValue({
+      mutateAsync: loadCandidates,
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+    mockUseOutsourcingSimulate.mockReturnValue({
+      mutateAsync: simulate,
+      reset: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      data: null
+    });
+
+    render(<ProductionScheduleLoadBalancingPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '外注候補を取得' }));
+    });
+    expect(loadCandidates).toHaveBeenCalledWith({
+      month: '2026-04',
+      maxCandidates: 100,
+      overResourceCds: ['A01']
+    });
+
+    expect(screen.getByRole('checkbox', { name: 'ABC12345 P-001 を外注候補に選択' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'ABC12345 P-001 を外注候補に選択' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '選択行で累積シミュ' }));
+    });
+
+    expect(simulate).toHaveBeenCalledWith({
+      month: '2026-04',
+      overResourceCds: ['A01'],
+      selectedRowIds: ['row-1']
+    });
   });
 
   it('対象月変更時に既存サジェストをリセットする', () => {

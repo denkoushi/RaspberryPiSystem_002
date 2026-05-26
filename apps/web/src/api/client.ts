@@ -491,6 +491,64 @@ export interface ProductionScheduleLoadBalancingSuggestionItem {
   efficiencyRatio: number;
 }
 
+export interface ProductionScheduleLoadBalancingOutsourcingCandidateItem {
+  rowId: string;
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fkojun: string | null;
+  resourceCd: string;
+  rowMinutes: number;
+  overReductionMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingCandidatesResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  resources: ProductionScheduleLoadBalancingOverviewResource[];
+  candidates: ProductionScheduleLoadBalancingOutsourcingCandidateItem[];
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingSimulatedResource
+  extends ProductionScheduleLoadBalancingOverviewResource {
+  reducedMinutes: number;
+}
+
+export interface ProductionScheduleLoadBalancingOutsourcingSimulateResponse {
+  siteKey: string;
+  yearMonth: string;
+  mode: 'outsourcing';
+  beforeResources: ProductionScheduleLoadBalancingOverviewResource[];
+  afterResources: ProductionScheduleLoadBalancingOutsourcingSimulatedResource[];
+  appliedRows: Array<{
+    rowId: string;
+    fseiban: string;
+    productNo: string;
+    fhincd: string;
+    fkojun: string | null;
+    resourceCd: string;
+    rowMinutes: number;
+    reducedMinutes: number;
+  }>;
+  skippedRows: Array<{
+    rowId: string;
+    reason:
+      | 'not_found'
+      | 'duplicate'
+      | 'zero_minutes'
+      | 'resource_not_in_overview'
+      | 'outside_over_resource_filter';
+  }>;
+  summary: {
+    selectedCount: number;
+    appliedCount: number;
+    skippedCount: number;
+    totalReducedMinutes: number;
+    remainingOverMinutes: number;
+  };
+}
+
 export interface ProductionScheduleLoadBalancingMachineSummary {
   machineName: string;
   fseibanCount: number;
@@ -1860,6 +1918,32 @@ export async function postKioskProductionScheduleLoadBalancingSuggestions(payloa
     yearMonth: string;
     suggestions: ProductionScheduleLoadBalancingSuggestionItem[];
   }>('/kiosk/production-schedule/load-balancing/suggestions', payload);
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingOutsourcingCandidates(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  maxCandidates?: number;
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingCandidatesResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-candidates',
+    payload
+  );
+  return data;
+}
+
+export async function postKioskProductionScheduleLoadBalancingOutsourcingSimulate(payload: {
+  month: string;
+  targetDeviceScopeKey?: string;
+  overResourceCds?: string[];
+  selectedRowIds: string[];
+}) {
+  const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingSimulateResponse>(
+    '/kiosk/production-schedule/load-balancing/outsourcing-simulate',
+    payload
+  );
   return data;
 }
 

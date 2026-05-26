@@ -2,13 +2,13 @@
 
 ## 概要
 
-キオスク専用の **負荷調整** 画面（`/kiosk/production-schedule/load-balancing`）では、資源CDごとの **月次必要工数**（`FSIGENSHOYORYO` 合計）と **設定した能力** を比較し、超過状況を可視化します。**サジェスト**は工程行（CSV の1行）単位で移管候補を提示するのみで、自動で順番や割当を変更しません。
+キオスク専用の **負荷調整** 画面（`/kiosk/production-schedule/load-balancing`）では、資源CDごとの **月次必要工数**（`FSIGENSHOYORYO` 合計）と **設定した能力** を比較し、超過状況を可視化します。**社内移管サジェスト**は工程行単位で別資源CDへの移管候補を提示するのみです。**外注候補シミュ**は選択した工程行を社内負荷から除外する試算のみです。いずれも自動で順番や割当を変更しません。
 
 画面内タブ:
 
 | タブ | 用途 | 月の定義 |
 |------|------|----------|
-| **資源CD俯瞰** | 単月の資源CD別負荷・能力・山崩しサジェスト | `plannedEndDate`（受注補足）の暦月 |
+| **資源CD俯瞰** | 単月の資源CD別負荷・能力・社内移管サジェスト・外注候補シミュ | `plannedEndDate`（受注補足）の暦月 |
 | **機種別月次負荷** | 機種（MH/SH 行 `FHINMEI`）→ 部品 → 月×資源CDの積み上げ | **有効納期**（行備考 `dueDate` → なければ `plannedEndDate`）の暦月 |
 | **着手日・平準化** | 着手日〜有効納期の日割り負荷・月/日次・平準化シミュ | **日割り後**を月合算／日別表示（着手日は `plannedStartDate`） |
 
@@ -35,8 +35,14 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
 ## キオスク API
 
 - `GET /kiosk/production-schedule/load-balancing/overview?month=YYYY-MM&targetDeviceScopeKey=...`
-- `POST /kiosk/production-schedule/load-balancing/suggestions`  
-  Body: `{ month, targetDeviceScopeKey?, maxSuggestions?, overResourceCds? }`
+- `POST /kiosk/production-schedule/load-balancing/suggestions`
+  Body: `{ month, targetDeviceScopeKey?, maxSuggestions?, overResourceCds? }`（**社内移管**サジェスト）
+- `POST /kiosk/production-schedule/load-balancing/outsourcing-candidates`
+  Body: `{ month, targetDeviceScopeKey?, overResourceCds?, maxCandidates? }`
+  - 選択した超過資源に載る工程行を、**超過改善効果**（`min(行分, 源資源の超過分)`）降順で返す。
+- `POST /kiosk/production-schedule/load-balancing/outsourcing-simulate`
+  Body: `{ month, targetDeviceScopeKey?, overResourceCds?, selectedRowIds[] }`
+  - 選択行の負荷を**社内資源から差し引く** read-only シミュ。**DB 更新なし**。
 - `GET /kiosk/production-schedule/load-balancing/machine-monthly-load?fromMonth=YYYY-MM&toMonth=YYYY-MM&targetDeviceScopeKey=...&machineName=...&fhincd=...`  
   - 未完了部品工程のみ。月範囲は最大 **12 か月**。  
   - `machineName` / `fhincd` は任意（部品行クリックで `fhincd` 絞り込み）。  
@@ -61,6 +67,18 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 
 - API: `machine-monthly-load-*.ts`, `year-month-range.ts`
 - Web: `LoadBalancingMachineMonthlyTab.tsx`, `LoadBalancingOverviewTab.tsx`, `LoadBalancingMacProxyPanel.tsx`, `mapMachineMonthlyLoadChartRows.ts`
+
+## 資源CD俯瞰・外注候補シミュ（UI）
+
+- **超過資源選択**: `overMinutes > 0` の資源CDを複数選択（初期は全超過資源を選択）。
+- **外注候補取得**: 選択資源の工程行を超過改善効果降順で一覧表示。
+- **累積シミュ**: 候補表で複数行をチェック → 社内負荷から差し引いた後の必要分/超過を比較表示（**DB 更新なし**）。
+- **社内移管サジェスト**: 既存どおり分類/移管ルールに基づく別資源CDへの移管候補（外注候補とは別）。
+
+### 実装ファイル（外注候補シミュ）
+
+- API: `outsourcing-simulation.engine.ts`, `outsourcing-simulation.service.ts`
+- Web: `LoadBalancingOverviewTab.tsx`, `loadBalancingOutsourcingSelection.ts`
 
 ## 着手日・平準化（UI）
 
