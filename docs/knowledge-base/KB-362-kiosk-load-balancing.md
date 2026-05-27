@@ -403,7 +403,7 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 
 **実績（2026-05-27）**: `overview` / `machine-monthly-load` / `start-date-leveling` / `outsourcing-plan` / `outsourcing-simulate` **HTTP 200** · `outsourcing-candidates` **`maxCandidates=200` → 200** · **`maxCandidates=500` → 400**（`maximum: 200`）· Web バンドル **`推奨セットを自動選定`**（`index-2R2Tbs6B.js`）· `outsourcing-plan` **約 1.1s**（超過資源 18 件・`selectedCandidateIds` **220** 件 · `beforeResources`/`afterResources` あり）
 
-**Detach Run ID**: `20260527-191646-1476` · CI **`26504703984`** success · PR（`main` マージ後に番号追記）
+**Detach Run ID**: `20260527-191646-1476` · CI **`26504703984`** success · PR [#351](https://github.com/denkoushi/RaspberryPiSystem_002/pull/351) · **`main`** squash **`c5f02576`**
 
 ### 現場目視（推奨・未記録）
 

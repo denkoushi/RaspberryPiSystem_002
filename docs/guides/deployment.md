@@ -16,7 +16,7 @@ update-frequency: medium
   - **上限単一化**: `outsourcing-simulation.policy.ts`（プール **500**·`maxCandidates` リクエスト **200**·`selectedCandidateIds` **500**）。
   - **自動選定**: `outsourcing-plan` の **`beforeResources`/`afterResources`** を UI に即反映（成功後の **simulate 省略**）。
   - **エラー可視化**: `actionError` 集約·`maxCandidates:500` は **400**（修正前は後続 API 失敗で無反応に見えた）。
-- **代表コミット**: **`cd42ebfe`** `fix(kiosk): align outsourcing plan limits and auto-plan flow`
+- **代表コミット**: **`cd42ebfe`** `fix(kiosk): align outsourcing plan limits and auto-plan flow` · **`main` マージ** squash **`c5f02576`** · PR [#351](https://github.com/denkoushi/RaspberryPiSystem_002/pull/351)
 - **CI**: **`26504703984`** success（`feat/kiosk-load-balancing-ui-p0p1` push）
 - **Prisma マイグレーション**: **なし**
 - **対象ホスト**: **`raspberrypi5` のみ**（続けて Pi4×4 は **`--limit` 1 台ずつ**·**Pi3 除外**）
