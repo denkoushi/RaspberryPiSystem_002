@@ -47,7 +47,9 @@ vi.mock('recharts', () => ({
   YAxis: () => null,
   Tooltip: () => null,
   Legend: () => null,
-  Bar: () => null
+  Bar: () => null,
+  Cell: () => null,
+  LabelList: () => null
 }));
 
 describe('ProductionScheduleLoadBalancingPage', () => {
@@ -187,10 +189,11 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 
     expect(screen.getByText('負荷調整（山崩し支援）')).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: '負荷調整ビュー' })).toBeInTheDocument();
     expect(screen.getByText('A01')).toBeInTheDocument();
     expect(screen.getByText('ABC12345')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '社内移管サジェストを計算' }));
+    fireEvent.click(screen.getByRole('button', { name: '社内移管サジェスト' }));
 
     expect(mutateAsync).toHaveBeenCalledWith({
       month: '2026-04',
@@ -466,7 +469,7 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     });
 
     render(<ProductionScheduleLoadBalancingPage />);
-    fireEvent.click(screen.getByRole('button', { name: '機種別月次負荷' }));
+    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
 
     expect(screen.getByText('機種を選択するとグラフを表示します。')).toBeInTheDocument();
     expect(mockUseMachineMonthly).toHaveBeenCalled();
@@ -493,7 +496,7 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     });
 
     render(<ProductionScheduleLoadBalancingPage />);
-    fireEvent.click(screen.getByRole('button', { name: '着手日・平準化' }));
+    fireEvent.click(screen.getByRole('tab', { name: '着手日・平準化' }));
 
     expect(screen.getByText(/FSIGENSHOYORYO × 指示数/)).toBeInTheDocument();
     expect(mockUseStartDateLeveling).toHaveBeenCalled();
@@ -531,7 +534,7 @@ describe('ProductionScheduleLoadBalancingPage', () => {
       expect.objectContaining({ enabled: true })
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '機種別月次負荷' }));
+    fireEvent.click(screen.getByRole('tab', { name: '機種別月次負荷' }));
 
     expect(mockUseMachineMonthly).toHaveBeenCalledWith(
       expect.objectContaining({ targetDeviceScopeKey: 'pi4-kiosk-1' }),

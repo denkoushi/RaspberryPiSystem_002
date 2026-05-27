@@ -1,3 +1,4 @@
+import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
 import { parsePartCandidateId } from './useExternalizationPlanState';
 
 import type { ProductionScheduleLoadBalancingExternalizationCandidate } from '../../../api/client';
@@ -32,6 +33,7 @@ type Props = {
   onLoadReplacements: (candidateId: string) => void;
   onApplyReplacement: (candidateId: string) => void;
   onClearPlan: () => void;
+  embedded?: boolean;
 };
 
 export function ExternalizationPlanPanel({
@@ -53,15 +55,22 @@ export function ExternalizationPlanPanel({
   onRemoveCandidate,
   onLoadReplacements,
   onApplyReplacement,
-  onClearPlan
+  onClearPlan,
+  embedded = false
 }: Props) {
   return (
-    <section className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2">
+    <section
+      className={
+        embedded
+          ? 'h-full rounded-lg border border-emerald-500/35 bg-emerald-950/20 p-2'
+          : 'mt-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2'
+      }
+    >
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <p className="text-xs font-semibold text-emerald-100">推奨セット（部品単位・自動選定）</p>
+        <LoadBalancingStepHeading step={3}>推奨セットで山を崩す</LoadBalancingStepHeading>
         <button
           type="button"
-          className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+          className="ml-auto rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
           disabled={!enabled || !hasOverResources || isPlanning || isSimulating}
           onClick={() => void onAutoPlan()}
         >
@@ -73,7 +82,7 @@ export function ExternalizationPlanPanel({
             className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white"
             onClick={onClearPlan}
           >
-            推奨セットをクリア
+            クリア
           </button>
         ) : null}
       </div>
@@ -100,19 +109,23 @@ export function ExternalizationPlanPanel({
         </p>
       ) : (
         <>
-          <p className="mb-2 text-[11px] text-white/80">
-            選択 {selectedCandidateIds.length} 部品 /{' '}
+          <div className="mb-2 flex flex-wrap gap-2 text-[11px] text-white/80">
+            <span>
+              選択 <strong className="text-emerald-300">{selectedCandidateIds.length} 部品</strong>
+            </span>
             {planResolved === true ? (
-              <span className="text-emerald-300">超過解消見込み</span>
+              <span className="font-semibold text-emerald-300">超過解消見込み</span>
             ) : planResolved === false ? (
-              <span className="text-amber-300">未解消</span>
+              <span className="font-semibold text-amber-300">未解消</span>
             ) : (
               <span>試算中</span>
             )}
             {planRemainingOverMinutes != null ? (
-              <span className="ml-2">残超過 {Math.round(planRemainingOverMinutes)} 分</span>
+              <span>
+                残超過 <strong className="text-white">{Math.round(planRemainingOverMinutes)} 分</strong>
+              </span>
             ) : null}
-          </p>
+          </div>
           <div className="max-h-64 overflow-auto">
             <table className="w-full border-collapse text-left text-[11px] text-white/90">
               <thead className="sticky top-0 bg-slate-900">
@@ -136,7 +149,7 @@ export function ExternalizationPlanPanel({
                       <td className="px-2 py-1 font-mono">{candidate?.productNo ?? parsed.productNo}</td>
                       <td className="px-2 py-1 font-mono">{candidate?.fhincd ?? parsed.fhincd}</td>
                       <td className="px-2 py-1">{candidate?.fhinmei ?? '—'}</td>
-                      <td className="px-2 py-1">
+                      <td className="px-2 py-1 font-semibold text-emerald-300">
                         {Math.round(candidate?.totalOverReductionMinutes ?? 0)}
                       </td>
                       <td className="px-2 py-1">{candidate?.operations.length ?? '—'}</td>
@@ -144,14 +157,14 @@ export function ExternalizationPlanPanel({
                         <div className="flex flex-wrap gap-1">
                           <button
                             type="button"
-                            className="rounded bg-slate-700 px-2 py-0.5 text-[10px] text-white"
+                            className="rounded bg-rose-800 px-2 py-1 text-[11px] font-semibold text-white"
                             onClick={() => void onRemoveCandidate(candidateId)}
                           >
                             外す
                           </button>
                           <button
                             type="button"
-                            className="rounded bg-emerald-800 px-2 py-0.5 text-[10px] text-white disabled:opacity-40"
+                            className="rounded bg-emerald-800 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
                             disabled={isReplacementsLoading}
                             onClick={() => void onLoadReplacements(candidateId)}
                           >
@@ -183,7 +196,7 @@ export function ExternalizationPlanPanel({
                 </span>
                 <button
                   type="button"
-                  className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] text-white"
+                  className="rounded bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white"
                   onClick={() => void onApplyReplacement(option.candidateId)}
                 >
                   この部品に入れ替え
