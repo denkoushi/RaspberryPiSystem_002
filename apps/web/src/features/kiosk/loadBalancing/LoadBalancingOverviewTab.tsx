@@ -24,6 +24,7 @@ import {
 } from './loadBalancingOverviewSession';
 import { LoadBalancingOverviewSuggestionsSection } from './LoadBalancingOverviewSuggestionsSection';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
+import { lbCard, lbGrid, lbInput, lbPage, lbText } from './loadBalancingUiClasses';
 import { useExternalizationPlanState } from './useExternalizationPlanState';
 
 function defaultYearMonth(): string {
@@ -186,20 +187,18 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
   const hasSelectedOverResources = selectedOverResourceCds.length > 0;
 
   return (
-    <>
-      <section className="rounded-lg border border-white/15 bg-slate-950/40 p-2">
-        <div className="grid gap-3 lg:grid-cols-[190px_minmax(360px,1fr)]">
+    <div className={lbPage.stack}>
+      <section className={lbCard.base}>
+        <div className={lbGrid.topRow}>
           <div>
-            <LoadBalancingStepHeading step={1} className="mb-2">
-              対象月
-            </LoadBalancingStepHeading>
-            <label className="flex flex-col gap-1 text-xs font-semibold text-white/90">
+            <LoadBalancingStepHeading step={1}>対象月</LoadBalancingStepHeading>
+            <label className="flex flex-col gap-1">
               <span className="sr-only">対象月</span>
               <input
                 type="month"
                 value={month}
                 onChange={(event) => setMonth(event.target.value)}
-                className="rounded-md border border-white/30 bg-slate-950 px-2 py-1 text-white"
+                className={lbInput.month}
               />
             </label>
           </div>
@@ -226,25 +225,25 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
       </section>
 
       {overviewQuery.error ? (
-        <div className="rounded-md border border-rose-500/40 bg-rose-950/40 p-2 text-xs text-rose-100">
+        <div className="rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-sm text-rose-100">
           読み込みエラー:{' '}
           {overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}
         </div>
       ) : null}
 
-      {overviewQuery.isFetching ? <p className="text-xs text-white/70">集計を読み込み中…</p> : null}
+      {overviewQuery.isFetching ? <p className={lbText.muted}>集計を読み込み中…</p> : null}
 
       {overviewQuery.data ? (
-        <p className="text-[11px] text-white/60">
+        <p className={lbText.meta}>
           siteKey: <span className="font-mono text-white/90">{overviewQuery.data.siteKey}</span> / yearMonth:{' '}
           <span className="font-mono text-white/90">{overviewQuery.data.yearMonth}</span>（計画完了月）
           {hasSimulation ? <span className="ml-2 text-amber-200">（外注シミュ結果）</span> : null}
         </p>
       ) : null}
 
-      <div className="grid items-stretch gap-2 xl:grid-cols-[minmax(320px,0.88fr)_minmax(390px,1.12fr)]">
-        <section className="min-h-[260px] rounded-lg border border-white/15 bg-slate-950/50 p-2">
-          <p className="mb-2 text-xs font-semibold text-white">資源CD別（上位48・必要分降順）</p>
+      <div className={lbGrid.midRow}>
+        <section className={lbCard.base}>
+          <p className={`mb-2 ${lbText.section}`}>資源CD別（上位48・必要分降順）</p>
           <LoadBalancingOverviewResourceChart rows={chartSlice} />
         </section>
 
@@ -302,6 +301,6 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
         suggestions={suggestionsMutation.data?.suggestions ?? []}
         error={suggestionsMutation.error}
       />
-    </>
+    </div>
   );
 }

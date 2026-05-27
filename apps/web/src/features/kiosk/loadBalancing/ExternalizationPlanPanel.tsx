@@ -1,5 +1,7 @@
 import { parsePartCandidateId } from './loadBalancingExternalization';
+import { formatPositiveReductionMinutes } from './loadBalancingOverviewDisplay';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
+import { lbBtn, lbCard, lbTable, lbText } from './loadBalancingUiClasses';
 
 import type { ProductionScheduleLoadBalancingExternalizationCandidate } from '../../../api/client';
 
@@ -55,54 +57,46 @@ export function ExternalizationPlanPanel({
   embedded = false
 }: Props) {
   return (
-    <section
-      className={
-        embedded
-          ? 'h-full rounded-lg border border-emerald-500/35 bg-emerald-950/20 p-2'
-          : 'mt-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2'
-      }
-    >
+    <section className={embedded ? lbCard.emerald : `mt-3 ${lbCard.emerald}`}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <LoadBalancingStepHeading step={3}>推奨セットで山を崩す</LoadBalancingStepHeading>
+        <LoadBalancingStepHeading step={3} className="mb-0">
+          推奨セットで山を崩す
+        </LoadBalancingStepHeading>
         <button
           type="button"
-          className="ml-auto rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+          className={`${lbBtn.base} ${lbBtn.green} ml-auto`}
           disabled={!enabled || !hasSelectedOverResources || isPlanning || isSimulating}
           onClick={() => void onAutoPlan()}
         >
           {isPlanning ? '選定中…' : '推奨セットを自動選定'}
         </button>
         {selectedCandidateIds.length > 0 ? (
-          <button
-            type="button"
-            className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white"
-            onClick={onClearPlan}
-          >
+          <button type="button" className={`${lbBtn.base} ${lbBtn.slate}`} onClick={onClearPlan}>
             クリア
           </button>
         ) : null}
       </div>
 
       {actionError ? (
-        <p className="mb-2 text-xs text-rose-200" role="alert">
+        <p className={`mb-2 ${lbText.error}`} role="alert">
           {actionError}
         </p>
       ) : null}
 
       {selectedCandidateIds.length === 0 ? (
-        <p className="text-xs text-white/60">
+        <p className={lbText.muted}>
           超過資源を選び「推奨セットを自動選定」を押してください。部品単位で社内負荷除外を試算します（DBは更新しません）。
         </p>
       ) : (
         <>
-          <div className="mb-2 flex flex-wrap gap-2 text-[11px] text-white/80">
+          <div className={`mb-2 flex flex-wrap gap-3 ${lbText.body}`}>
             <span>
-              選択 <strong className="text-emerald-300">{selectedCandidateIds.length} 部品</strong>
+              選択 <strong className={lbText.success}>{selectedCandidateIds.length} 部品</strong>
             </span>
             {planResolved === true ? (
-              <span className="font-semibold text-emerald-300">超過解消見込み</span>
+              <span className={lbText.success}>超過解消見込み</span>
             ) : planResolved === false ? (
-              <span className="font-semibold text-amber-300">未解消</span>
+              <span className={lbText.warning}>未解消</span>
             ) : (
               <span>試算中</span>
             )}
@@ -112,17 +106,17 @@ export function ExternalizationPlanPanel({
               </span>
             ) : null}
           </div>
-          <div className="max-h-64 overflow-auto">
-            <table className="w-full border-collapse text-left text-[11px] text-white/90">
-              <thead className="sticky top-0 bg-slate-900">
-                <tr className="border-b border-white/10">
-                  <th className="px-2 py-1">製番</th>
-                  <th className="px-2 py-1">製造番号</th>
-                  <th className="px-2 py-1">品番</th>
-                  <th className="px-2 py-1">品名</th>
-                  <th className="px-2 py-1">効果</th>
-                  <th className="px-2 py-1">工程数</th>
-                  <th className="px-2 py-1">操作</th>
+          <div className="max-h-[min(220px,30dvh)] overflow-auto">
+            <table className={lbTable.root}>
+              <thead className={lbTable.stickyHead}>
+                <tr className={lbTable.headRow}>
+                  <th className={lbTable.headCell}>製番</th>
+                  <th className={lbTable.headCell}>製造番号</th>
+                  <th className={lbTable.headCell}>品番</th>
+                  <th className={lbTable.headCell}>品名</th>
+                  <th className={lbTable.headCell}>効果</th>
+                  <th className={lbTable.headCell}>工程数</th>
+                  <th className={lbTable.headCell}>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -130,31 +124,35 @@ export function ExternalizationPlanPanel({
                   const candidate = candidateById.get(candidateId);
                   const parsed = parsePartCandidateId(candidateId);
                   return (
-                    <tr key={candidateId} className="border-b border-white/5">
-                      <td className="px-2 py-1 font-mono">{candidate?.fseiban ?? parsed.fseiban}</td>
-                      <td className="px-2 py-1 font-mono">{candidate?.productNo ?? parsed.productNo}</td>
-                      <td className="px-2 py-1 font-mono">{candidate?.fhincd ?? parsed.fhincd}</td>
-                      <td className="px-2 py-1">{candidate?.fhinmei ?? '—'}</td>
-                      <td className="px-2 py-1 font-semibold text-emerald-300">
-                        {Math.round(candidate?.totalOverReductionMinutes ?? 0)}
+                    <tr key={candidateId} className={lbTable.bodyRow}>
+                      <td className={`${lbTable.bodyCell} font-mono`}>
+                        {candidate?.fseiban ?? parsed.fseiban}
                       </td>
-                      <td className="px-2 py-1">{candidate?.operations.length ?? '—'}</td>
-                      <td className="px-2 py-1">
+                      <td className={`${lbTable.bodyCell} font-mono`}>
+                        {candidate?.productNo ?? parsed.productNo}
+                      </td>
+                      <td className={`${lbTable.bodyCell} font-mono`}>{candidate?.fhincd ?? parsed.fhincd}</td>
+                      <td className={lbTable.bodyCell}>{candidate?.fhinmei ?? '—'}</td>
+                      <td className={`${lbTable.bodyCell} ${lbText.success}`}>
+                        {formatPositiveReductionMinutes(candidate?.totalOverReductionMinutes ?? 0)}
+                      </td>
+                      <td className={lbTable.bodyCell}>{candidate?.operations.length ?? '—'}</td>
+                      <td className={lbTable.bodyCell}>
                         <div className="flex flex-wrap gap-1">
                           <button
                             type="button"
-                            className="rounded bg-rose-800 px-2 py-1 text-[11px] font-semibold text-white"
+                            className={lbBtn.roseSm}
                             onClick={() => void onRemoveCandidate(candidateId)}
                           >
                             外す
                           </button>
                           <button
                             type="button"
-                            className="rounded bg-emerald-800 px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
+                            className={`${lbBtn.greenSm} disabled:opacity-40`}
                             disabled={isReplacementsLoading}
                             onClick={() => void onLoadReplacements(candidateId)}
                           >
-                            入れ替え
+                            入替
                           </button>
                         </div>
                       </td>
@@ -168,21 +166,21 @@ export function ExternalizationPlanPanel({
       )}
 
       {replacementTargetId && replacementOptions.length > 0 ? (
-        <div className="mt-3 rounded-md border border-emerald-500/20 bg-slate-950/50 p-2">
-          <p className="mb-2 text-[11px] font-semibold text-emerald-100">代替候補（1件追加で試算）</p>
-          <ul className="space-y-1 text-[11px] text-white/90">
+        <div className={`mt-3 ${lbCard.inset}`}>
+          <p className={`mb-2 text-[0.8125rem] font-semibold text-emerald-100`}>代替候補（1件追加で試算）</p>
+          <ul className={`space-y-1.5 ${lbText.body}`}>
             {replacementOptions.map((option) => (
               <li key={option.candidateId} className="flex flex-wrap items-center gap-2">
                 <span className="font-mono">
                   {option.fseiban} / {option.productNo} / {option.fhincd}
                 </span>
                 <span className="text-white/70">{option.fhinmei || '—'}</span>
-                <span className={option.resolved ? 'text-emerald-300' : 'text-amber-300'}>
+                <span className={option.resolved ? lbText.success : lbText.warning}>
                   残超過 {Math.round(option.remainingOverMinutes)} 分
                 </span>
                 <button
                   type="button"
-                  className="rounded bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white"
+                  className={`${lbBtn.base} rounded-md bg-emerald-700 px-2.5 py-1.5 text-[0.8125rem]`}
                   onClick={() => void onApplyReplacement(option.candidateId)}
                 >
                   この部品に入れ替え

@@ -13,6 +13,7 @@ import {
   loadBalancingTooltipStyle,
   loadBalancingVisibleBarProps
 } from './loadBalancingRechartsDefaults';
+import { lbText } from './loadBalancingUiClasses';
 
 export type OverviewChartRow = {
   cd: string;
@@ -27,7 +28,7 @@ type Props = {
 
 export function LoadBalancingOverviewResourceChart({ rows }: Props) {
   if (rows.length === 0) {
-    return <p className="text-xs text-white/60">表示できるデータがありません（対象月・条件を確認してください）。</p>;
+    return <p className={lbText.muted}>表示できるデータがありません（対象月・条件を確認してください）。</p>;
   }
 
   const chartData = rows.map((row) => ({
@@ -63,7 +64,7 @@ export function LoadBalancingOverviewResourceChart({ rows }: Props) {
             dataKey="overLabel"
             position="top"
             fill="#fde68a"
-            fontSize={10}
+            fontSize={11}
             fontWeight={700}
           />
         </Bar>
