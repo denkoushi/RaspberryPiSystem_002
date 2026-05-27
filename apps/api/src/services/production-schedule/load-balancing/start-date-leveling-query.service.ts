@@ -101,10 +101,26 @@ export async function listStartDateLevelingQueryRows(params: {
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'SH%'
       )
       AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
-      AND "supplement"."plannedStartDate" IS NOT NULL
-      AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NOT NULL
-      AND "supplement"."plannedStartDate" < ${params.rangeEndExclusive}
-      AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") >= ${params.rangeStart}
+      AND (
+        (
+          "supplement"."plannedStartDate" IS NOT NULL
+          AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NOT NULL
+          AND "supplement"."plannedStartDate" < ${params.rangeEndExclusive}
+          AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") >= ${params.rangeStart}
+        )
+        OR (
+          "supplement"."plannedStartDate" IS NULL
+          AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NOT NULL
+          AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") >= ${params.rangeStart}
+          AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") < ${params.rangeEndExclusive}
+        )
+        OR (
+          "supplement"."plannedStartDate" IS NOT NULL
+          AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NULL
+          AND "supplement"."plannedStartDate" >= ${params.rangeStart}
+          AND "supplement"."plannedStartDate" < ${params.rangeEndExclusive}
+        )
+      )
       ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
     ORDER BY
       "supplement"."plannedStartDate" ASC,

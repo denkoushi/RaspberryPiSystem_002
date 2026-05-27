@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import {
   usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates,
@@ -46,6 +46,7 @@ function computeTargetRemainingOverMinutes(
 }
 
 export function useExternalizationPlanState(params: UseExternalizationPlanStateParams) {
+  const { overviewParams, overviewEnabled, selectedOverResourceCds, onSimulateResult } = params;
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
   const [planResolved, setPlanResolved] = useState<boolean | null>(null);
   const [planRemainingOverMinutes, setPlanRemainingOverMinutes] = useState<number | null>(null);
@@ -69,9 +70,26 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
   const planMutation = usePostKioskProductionScheduleLoadBalancingOutsourcingPlan();
   const simulateMutation = usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate();
   const replacementsMutation = usePostKioskProductionScheduleLoadBalancingOutsourcingReplacements();
+  const mutationRefs = useRef({
+    loadCandidates: candidatesMutation.mutateAsync,
+    plan: planMutation.mutateAsync,
+    simulate: simulateMutation.mutateAsync,
+    loadReplacements: replacementsMutation.mutateAsync,
+    resetPlan: planMutation.reset,
+    resetSimulate: simulateMutation.reset,
+    resetReplacements: replacementsMutation.reset
+  });
+  mutationRefs.current = {
+    loadCandidates: candidatesMutation.mutateAsync,
+    plan: planMutation.mutateAsync,
+    simulate: simulateMutation.mutateAsync,
+    loadReplacements: replacementsMutation.mutateAsync,
+    resetPlan: planMutation.reset,
+    resetSimulate: simulateMutation.reset,
+    resetReplacements: replacementsMutation.reset
+  };
 
-  const overResourcePayload =
-    params.selectedOverResourceCds.length > 0 ? params.selectedOverResourceCds : undefined;
+  const overResourcePayload = selectedOverResourceCds.length > 0 ? selectedOverResourceCds : undefined;
 
   const candidateById = useMemo(
     () => new Map(externalizationCandidates.map((candidate) => [candidate.candidateId, candidate])),
@@ -85,48 +103,48 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
     setExternalizationCandidates([]);
     setReplacementTargetId(null);
     setReplacementOptions([]);
-    planMutation.reset();
-    replacementsMutation.reset();
-  }, [planMutation, replacementsMutation]);
+    mutationRefs.current.resetPlan();
+    mutationRefs.current.resetReplacements();
+  }, []);
 
   const runSimulateForSelection = useCallback(
     async (candidateIds: string[]) => {
       if (candidateIds.length === 0) {
-        params.onSimulateResult(null);
+        onSimulateResult(null);
         setPlanRemainingOverMinutes(null);
         setPlanResolved(null);
-        simulateMutation.reset();
+        mutationRefs.current.resetSimulate();
         return;
       }
-      const result = await simulateMutation.mutateAsync({
-        ...params.overviewParams,
+      const result = await mutationRefs.current.simulate({
+        ...overviewParams,
         overResourceCds: overResourcePayload,
         selectedCandidateIds: candidateIds
       });
       const remainingOverMinutes = computeTargetRemainingOverMinutes(
         result.afterResources,
-        params.selectedOverResourceCds
+        selectedOverResourceCds
       );
-      params.onSimulateResult(result);
+      onSimulateResult(result);
       setPlanRemainingOverMinutes(remainingOverMinutes);
       setPlanResolved(remainingOverMinutes <= 0);
     },
-    [overResourcePayload, params, simulateMutation]
+    [onSimulateResult, overResourcePayload, overviewParams, selectedOverResourceCds]
   );
 
   const ensureCandidatesLoaded = useCallback(async () => {
-    const result = await candidatesMutation.mutateAsync({
-      ...params.overviewParams,
+    const result = await mutationRefs.current.loadCandidates({
+      ...overviewParams,
       maxCandidates: 500,
       overResourceCds: overResourcePayload
     });
     setExternalizationCandidates(result.externalizationCandidates ?? []);
     return result.externalizationCandidates ?? [];
-  }, [candidatesMutation, overResourcePayload, params.overviewParams]);
+  }, [overResourcePayload, overviewParams]);
 
   const handleAutoPlan = useCallback(async () => {
-    const plan = await planMutation.mutateAsync({
-      ...params.overviewParams,
+    const plan = await mutationRefs.current.plan({
+      ...overviewParams,
       overResourceCds: overResourcePayload,
       strategy: 'max_over_reduction'
     });
@@ -137,7 +155,7 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
     setReplacementTargetId(null);
     setReplacementOptions([]);
     await runSimulateForSelection(plan.selectedCandidateIds);
-  }, [ensureCandidatesLoaded, overResourcePayload, params.overviewParams, planMutation, runSimulateForSelection]);
+  }, [ensureCandidatesLoaded, overResourcePayload, overviewParams, runSimulateForSelection]);
 
   const handleRemoveCandidate = useCallback(
     async (candidateId: string) => {
@@ -152,8 +170,8 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
 
   const handleLoadReplacements = useCallback(
     async (removeCandidateId: string) => {
-      const result = await replacementsMutation.mutateAsync({
-        ...params.overviewParams,
+      const result = await mutationRefs.current.loadReplacements({
+        ...overviewParams,
         overResourceCds: overResourcePayload,
         currentSelectedCandidateIds: selectedCandidateIds,
         removeCandidateId,
@@ -162,7 +180,7 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
       setReplacementTargetId(removeCandidateId);
       setReplacementOptions(result.replacementOptions);
     },
-    [overResourcePayload, params.overviewParams, replacementsMutation, selectedCandidateIds]
+    [overResourcePayload, overviewParams, selectedCandidateIds]
   );
 
   const handleApplyReplacement = useCallback(
@@ -180,9 +198,9 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
 
   const handleClearPlan = useCallback(() => {
     resetPlanState();
-    params.onSimulateResult(null);
-    simulateMutation.reset();
-  }, [params, resetPlanState, simulateMutation]);
+    onSimulateResult(null);
+    mutationRefs.current.resetSimulate();
+  }, [onSimulateResult, resetPlanState]);
 
   return {
     selectedCandidateIds,
@@ -202,7 +220,7 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
     handleLoadReplacements,
     handleApplyReplacement,
     handleClearPlan,
-    overviewEnabled: params.overviewEnabled,
-    selectedOverResourceCds: params.selectedOverResourceCds
+    overviewEnabled,
+    selectedOverResourceCds
   };
 }

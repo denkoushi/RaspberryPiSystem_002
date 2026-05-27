@@ -83,6 +83,76 @@ describe('buildExternalizationCandidates', () => {
     expect(candidates[0]?.totalOverReductionMinutes).toBe(60);
   });
 
+  it('部品候補は非超過資源の工程も operations に含める', () => {
+    const mixedRows: LoadBalancingRowCandidate[] = [
+      {
+        rowId: 'over-op',
+        fseiban: 'S010',
+        productNo: 'P010',
+        fhincd: 'H010',
+        fhinmei: '部品X',
+        fkojun: '10',
+        resourceCd: 'A01',
+        requiredMinutes: 80
+      },
+      {
+        rowId: 'non-over-op',
+        fseiban: 'S010',
+        productNo: 'P010',
+        fhincd: 'H010',
+        fhinmei: '部品X',
+        fkojun: '20',
+        resourceCd: 'B02',
+        requiredMinutes: 30
+      }
+    ];
+
+    const candidates = buildExternalizationCandidates({
+      resources: baseResources,
+      rows: mixedRows,
+      overResourceCds: new Set(['A01']),
+      maxCandidates: 10
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.operations.map((op) => op.rowId)).toEqual(['non-over-op', 'over-op']);
+    expect(candidates[0]?.totalReducedMinutes).toBe(110);
+    expect(candidates[0]?.totalOverReductionMinutes).toBe(60);
+  });
+
+  it('部品キーが欠ける行は候補に束ねない', () => {
+    const incompleteRows: LoadBalancingRowCandidate[] = [
+      {
+        rowId: 'empty-key-1',
+        fseiban: '',
+        productNo: '',
+        fhincd: '',
+        fhinmei: '',
+        fkojun: '10',
+        resourceCd: 'A01',
+        requiredMinutes: 30
+      },
+      {
+        rowId: 'empty-key-2',
+        fseiban: '',
+        productNo: '',
+        fhincd: '',
+        fhinmei: '',
+        fkojun: '20',
+        resourceCd: 'A01',
+        requiredMinutes: 30
+      }
+    ];
+
+    const candidates = buildExternalizationCandidates({
+      resources: baseResources,
+      rows: incompleteRows,
+      maxCandidates: 10
+    });
+
+    expect(candidates).toHaveLength(0);
+  });
+
   it('overResourceCds で対象外資源の候補を落とす', () => {
     const candidates = buildExternalizationCandidates({
       resources: baseResources,
@@ -154,6 +224,44 @@ describe('simulateExternalizationSelection', () => {
     });
 
     expect(result.appliedRows).toHaveLength(2);
+    expect(result.summary.remainingOverMinutes).toBe(0);
+  });
+
+  it('100件を超える candidateId も試算できる', () => {
+    const manyRows: LoadBalancingRowCandidate[] = Array.from({ length: 101 }, (_, index) => ({
+      rowId: `row-${index}`,
+      fseiban: `S${index}`,
+      productNo: `P${index}`,
+      fhincd: `H${index}`,
+      fhinmei: '',
+      fkojun: String(index),
+      resourceCd: 'A01',
+      requiredMinutes: 1
+    }));
+    const resources = [
+      {
+        resourceCd: 'A01',
+        requiredMinutes: 101,
+        availableMinutes: 0,
+        overMinutes: 101,
+        classCode: null
+      }
+    ];
+    const partCandidates = buildExternalizationCandidates({
+      resources,
+      rows: manyRows,
+      maxCandidates: 500
+    });
+
+    const result = simulateExternalizationSelection({
+      resources,
+      rows: manyRows,
+      partCandidates,
+      selectedCandidateIds: partCandidates.map((candidate) => candidate.candidateId)
+    });
+
+    expect(partCandidates).toHaveLength(101);
+    expect(result.appliedRows).toHaveLength(101);
     expect(result.summary.remainingOverMinutes).toBe(0);
   });
 

@@ -17,6 +17,9 @@ import { Card } from '../../components/ui/Card';
 
 import type { ProductionScheduleLoadBalancingWorkCalendarMode } from '../../api/client';
 
+/** 基準能力は API 側で常に shared に保存・参照（ロケーション切替と無関係）。 */
+const CAPACITY_BASE_LOCATION = 'shared';
+
 type Props = {
   location: string;
 };
@@ -31,8 +34,9 @@ function defaultYearMonth(): string {
 export function ProductionScheduleLoadBalancingSettingsSection({ location }: Props) {
   const [yearMonth, setYearMonth] = useState(defaultYearMonth);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<'success' | 'error'>('success');
 
-  const capacityBaseQuery = useProductionScheduleLoadBalancingCapacityBase(location);
+  const capacityBaseQuery = useProductionScheduleLoadBalancingCapacityBase(CAPACITY_BASE_LOCATION);
   const monthlyQuery = useProductionScheduleLoadBalancingMonthlyCapacity(location, yearMonth);
   const classesQuery = useProductionScheduleLoadBalancingClasses(location);
   const rulesQuery = useProductionScheduleLoadBalancingTransferRules(location);
@@ -74,18 +78,28 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
   const mutRules = useUpdateProductionScheduleLoadBalancingTransferRules();
   const mutWorkCalendars = useUpdateProductionScheduleLoadBalancingWorkCalendars();
 
-  const canonicalSiteKey =
-    capacityBaseQuery.data?.siteKey ??
-    monthlyQuery.data?.siteKey ??
-    classesQuery.data?.siteKey ??
-    rulesQuery.data?.siteKey ??
-    workCalendarsQuery.data?.siteKey ??
-    '';
-
   const handleSaveBase = async () => {
     setMessage(null);
-    await mutBase.mutateAsync({ location, items: baseRows });
-    setMessage('基準能力を保存しました');
+    const items = baseRows
+      .map((row) => ({
+        resourceCd: row.resourceCd.trim(),
+        baseAvailableMinutes: row.baseAvailableMinutes
+      }))
+      .filter((row) => row.resourceCd.length > 0);
+    if (items.length === 0) {
+      setMessageTone('error');
+      setMessage('資源CDが1件以上必要です。');
+      return;
+    }
+    try {
+      const settings = await mutBase.mutateAsync({ location: CAPACITY_BASE_LOCATION, items });
+      setBaseRows(settings.items);
+      setMessageTone('success');
+      setMessage(`基準能力を保存しました（全サイト共通 / ${items.length} 件）。キオスクの各工場から同じ値が参照されます。`);
+    } catch (error) {
+      setMessageTone('error');
+      setMessage(error instanceof Error ? error.message : '基準能力の保存に失敗しました');
+    }
   };
 
   const handleSaveMonthly = async () => {
@@ -176,13 +190,13 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
       <Card title="負荷調整（キオスク）基準能力">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">
-            資源CDごとの基準利用可能分数（分/月相当）。月次上書きが無い場合に適用されます。設定キーは工場スコープ（siteKey）単位です。
+            資源CDごとの基準利用可能分数（分/月相当）。月次上書きが無い場合に適用されます。
           </p>
-          {canonicalSiteKey ? (
-            <p className="text-xs text-slate-600">
-              解決済み siteKey: <span className="font-mono">{canonicalSiteKey}</span>
-            </p>
-          ) : null}
+          <p className="rounded-md border border-sky-200 bg-sky-50 p-2 text-xs text-slate-700">
+            <strong>全サイト共通の基準値</strong>です。ページ上部の「対象ロケーション」を切り替えても、この表の内容は変わりません（保存先 siteKey:{' '}
+            <span className="font-mono">{capacityBaseQuery.data?.siteKey ?? CAPACITY_BASE_LOCATION}</span>）。
+            キオスク（第2工場など）も同じ基準能力を参照します。
+          </p>
           <div className="space-y-2">
             {baseRows.map((row, index) => (
               <div key={`${row.resourceCd}-${index}`} className="grid grid-cols-12 gap-2">
@@ -422,7 +436,16 @@ export function ProductionScheduleLoadBalancingSettingsSection({ location }: Pro
         </div>
       </Card>
 
-      {message ? <p className="text-xs font-semibold text-emerald-700">{message}</p> : null}
+      {message ? (
+        <p
+          className={`text-xs font-semibold ${messageTone === 'error' ? 'text-rose-700' : 'text-emerald-700'}`}
+        >
+          {message}
+        </p>
+      ) : null}
+      {mutBase.isError ? (
+        <p className="text-xs font-semibold text-rose-700">基準能力の保存に失敗しました（通信または権限を確認してください）。</p>
+      ) : null}
     </>
   );
 }

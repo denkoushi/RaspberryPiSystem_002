@@ -23,13 +23,13 @@
 
 ## 能力・ルール設定（管理画面）
 
-**管理** → **生産スケジュール設定** 内の各カードで、ロケーション（端末スコープ文字列）に紐づく **siteKey** 単位で保存します。
+**管理** → **生産スケジュール設定** 内の各カードで保存します。保存単位は設定種別ごとに異なります。
 
-1. **基準能力**: 資源CD → `baseAvailableMinutes`（分）。  
-2. **月次能力**: `YYYY-MM` ごとの上書き（同一資源CDでは月次が基準より優先）。  
-3. **山崩し分類**: 資源CD → `classCode`。  
-4. **移管ルール**: `fromClassCode` → `toClassCode`、優先度、有効、効率係数（移管先に載る負荷は `行工数 / efficiencyRatio`）。
-5. **稼働日ルール**（着手日・平準化タブ用）: 資源CD → `weekdays`（平日）または `calendar_days`（暦日）。未設定は平日扱い。
+1. **基準能力**: 資源CD → `baseAvailableMinutes`（分）。**全 site 共通**（DB の `siteKey = shared`）。管理画面のロケーション切替の影響を受けない。キオスク（第2工場など）も同じ基準値を参照する。  
+2. **月次能力**: `YYYY-MM` ごとの上書き（同一資源CDでは月次が基準より優先）。**siteKey 単位**。  
+3. **山崩し分類**: 資源CD → `classCode`。**siteKey 単位**。  
+4. **移管ルール**: `fromClassCode` → `toClassCode`、優先度、有効、効率係数（移管先に載る負荷は `行工数 / efficiencyRatio`）。**siteKey 単位**。
+5. **稼働日ルール**（着手日・平準化タブ用）: 資源CD → `weekdays`（平日）または `calendar_days`（暦日）。未設定は平日扱い。**siteKey 単位**。
 
 API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-calendars` 含む）
 
@@ -41,12 +41,14 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-candidates`
   Body: `{ month, targetDeviceScopeKey?, overResourceCds?, maxCandidates? }`
   - `candidates`（工程行・効果降順）と `externalizationCandidates`（部品単位・`candidateId` 安定キー）。
+  - 部品候補は `fseiban + productNo + fhincd` の eligible 工程をまるごと束ねる。効果計算は対象超過資源だけを cap し、非超過資源工程を過大評価しない。
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-plan`
   Body: `{ month, targetDeviceScopeKey?, overResourceCds?, strategy? }`（既定 `max_over_reduction`）。
   - 部品推奨セット・解消可否・残超過を返す。**DB 更新なし**。
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-simulate`
   Body: `{ month, targetDeviceScopeKey?, overResourceCds?, selectedRowIds[] | selectedCandidateIds[] }`
   - **どちらか一方**（同時指定・両方空は 400）。社内負荷除外の read-only シミュ。
+  - `selectedCandidateIds` は plan の最大候補数（500）まで受け付ける。
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-replacements`
   Body: `{ month, targetDeviceScopeKey?, overResourceCds?, currentSelectedCandidateIds[], removeCandidateId, maxOptions? }`
   - 1 部品を外したときの代替候補（既定最大 5 件）。
@@ -78,7 +80,7 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 ## 資源CD俯瞰・外注候補シミュ（UI）
 
 - **超過資源選択**: `overMinutes > 0` の資源CDを複数選択（初期は全超過資源を選択）。
-- **推奨セット（部品）**: 「推奨セットを自動選定」→ 部品一覧・残超過・**外す** / **入れ替え** / **クリア**（**DB 更新なし**）。
+- **推奨セット（部品）**: 「推奨セットを自動選定」→ 部品一覧・残超過・**外す** / **入れ替え** / **クリア**（**DB 更新なし**）。部品候補は同一部品の eligible 工程をまるごと外す試算です。
 - **工程行（従来）**: 折りたたみ内で外注候補取得 → チェック → 累積シミュ（Phase 0 互換）。
 - **社内移管サジェスト**: 既存どおり分類/移管ルールに基づく別資源CDへの移管候補（外注候補とは別）。
 

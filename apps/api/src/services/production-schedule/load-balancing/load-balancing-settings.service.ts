@@ -8,6 +8,11 @@ import { normalizeWorkCalendarMode, type WorkCalendarMode } from './work-calenda
 const normalizeLocation = (location: string): string => location.trim();
 const normalizeSiteKey = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
 
+/** 基準能力は全 site 共通。キオスク siteKey（例: 第2工場）と管理ロケーション切替に依存しない。 */
+export const LOAD_BALANCING_CAPACITY_BASE_SITE_KEY = 'shared';
+
+const resolveCapacityBaseSiteKey = (): string => LOAD_BALANCING_CAPACITY_BASE_SITE_KEY;
+
 const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
 
 export type LoadBalancingCapacityBaseItem = {
@@ -42,7 +47,8 @@ export async function listLoadBalancingCapacityBase(siteKeyInput: string): Promi
   siteKey: string;
   items: LoadBalancingCapacityBaseItem[];
 }> {
-  const siteKey = normalizeSiteKey(siteKeyInput);
+  void siteKeyInput;
+  const siteKey = resolveCapacityBaseSiteKey();
   const rows = await prisma.productionScheduleResourceCapacityBase.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -67,7 +73,7 @@ export async function replaceLoadBalancingCapacityBase(params: {
   siteKeyInput: string;
   items: LoadBalancingCapacityBaseItem[];
 }): Promise<{ siteKey: string; items: LoadBalancingCapacityBaseItem[] }> {
-  const siteKey = normalizeSiteKey(params.siteKeyInput);
+  const siteKey = resolveCapacityBaseSiteKey();
   const items = params.items
     .map((item) => ({
       resourceCd: normalizeResourceCd(item.resourceCd),

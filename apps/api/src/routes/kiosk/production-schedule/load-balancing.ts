@@ -20,6 +20,8 @@ import { assertYearMonthFormat } from '../../../services/production-schedule/loa
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
 
+const MAX_EXTERNALIZATION_CANDIDATE_IDS = 500;
+
 const overviewQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
@@ -32,11 +34,11 @@ const suggestionsBodySchema = z.object({
   overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional()
 });
 
-const outsourcingCandidatesBodySchema = z.object({
+export const outsourcingCandidatesBodySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
-  maxCandidates: z.coerce.number().int().min(1).max(200).optional()
+  maxCandidates: z.coerce.number().int().min(1).max(MAX_EXTERNALIZATION_CANDIDATE_IDS).optional()
 });
 
 const outsourcingSimulateBodySchema = z.object({
@@ -44,7 +46,7 @@ const outsourcingSimulateBodySchema = z.object({
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
   selectedRowIds: z.array(z.string().min(1).max(80)).max(200).optional(),
-  selectedCandidateIds: z.array(z.string().min(1).max(200)).max(100).optional()
+  selectedCandidateIds: z.array(z.string().min(1).max(200)).max(MAX_EXTERNALIZATION_CANDIDATE_IDS).optional()
 });
 
 const outsourcingPlanBodySchema = z.object({
@@ -58,7 +60,7 @@ const outsourcingReplacementsBodySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
-  currentSelectedCandidateIds: z.array(z.string().min(1).max(200)).max(100),
+  currentSelectedCandidateIds: z.array(z.string().min(1).max(200)).max(MAX_EXTERNALIZATION_CANDIDATE_IDS),
   removeCandidateId: z.string().min(1).max(200),
   maxOptions: z.coerce.number().int().min(1).max(10).optional()
 });
