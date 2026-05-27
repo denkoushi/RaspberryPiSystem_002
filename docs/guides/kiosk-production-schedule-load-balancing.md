@@ -124,7 +124,29 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 - 2026-05-26 実績・Detach ID・検証: [KB-362 §Production deploy](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-26--機種別月次) / [deployment.md §2026-05-26](deployment.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
 - 2026-04-30 初版: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md) / [deployment.md §2026-04-30](deployment.md)
 
+## 生産システムとの数値突合（重要）
+
+キオスクの月次 H は、**生産システムの「負荷残」「負荷消費」と定義が異なり、一致しないのが正常**です。
+
+| 観点 | 生産システム | キオスク負荷調整 |
+|------|--------------|------------------|
+| 主データ | **資源所要量**（`scawSTSIGENSHOYORYO` 等） | **生産日程 winner 行**（`CsvDashboardRow`） |
+| グラフの日付 | **`FSIGENSHOYOYMD`** | **着手日〜有効納期**（日割り）または **納期月** |
+| 工数行 | **日別**（1日1行） | **工程1行**（`FSIGENSHOYORYO`＝行総分） |
+| `FSIGENSHOYOYMD` | あり | **未取込** |
+
+**設計判断**: 山崩し・平準化の正本軸は **着手日** とする。`FSIGENSHOYOYMD` には合わせない。
+
+- 詳細・数値表: [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
+- 分析: [production-load-balancing-reconciliation-with-production-system-20260527.md](../analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)
+- ADR: [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
+
+**既知の実装ずれ（修正候補）**: 着手日タブは `FSIGENSHOYORYO × plannedQuantity` だが、所要は **総分** のため過大になりうる。FKOJUNST はタブごとに母集団が異なる（俯瞰=S/R/O/P、着手日=S/R/C/X）。
+
+---
+
 ## 関連
 
-- 手動順番・Mac 代理: [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md)
+- 手動順番・Mac 代理: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md)
 - 生産スケジュール設定 UI: `/admin/production-schedule-settings`
+- 生産システム突合: [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)

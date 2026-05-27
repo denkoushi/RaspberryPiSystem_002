@@ -37,6 +37,8 @@
 3. **候補効果は静的** — `listOutsourcingCandidates` は初期 `overMap` 固定。選択済み行を反映した再ランキングはない（累積シミュは `simulate` 側のみ再計算）。
 4. **タブ間の工数定義差** — 資源CD俯瞰は `FSIGENSHOYORYO` 合計、着手日タブは `× plannedQuantity`。外注判断を着手日側に寄せる場合は **業務定義の先決** が必要（改善 5）。
 
+**2026-05-27 追記（生産システム突合）**: 生産の負荷グラフは **`FSIGENSHOYOYMD`（資源所要量 CSV）** 軸。キオスクは **着手日** 軸でよい（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)）。×指示数・FKOJUNST 母集団の修正は [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md) 参照。
+
 ---
 
 ## 結論
