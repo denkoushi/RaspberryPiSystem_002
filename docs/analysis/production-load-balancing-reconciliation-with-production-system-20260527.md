@@ -195,12 +195,16 @@ function resolveTotalMinutes(row: StartDateLevelingQueryRow): number | null {
 
 ### 6.2 実装（2026-05-27 · `feat/kiosk-load-balancing-aggregation-fix`）
 
-| # | タスク | 状態 |
-|---|--------|------|
-| 1 | 着手日集計から **`× plannedQuantity` 削除**（総分のみ） | **完了** |
-| 2 | 機種別・着手日の母集団を **`buildLoadBalancingRowEligibilityWhereSql`** に統一（C/X 除外・S/R/O/P・実効未完了） | **完了** |
-| 3 | ドキュメント・UI に **生産 H との非一致** を注記 | 未着手 |
-| 4 | （任意）所要量 CSV の **参考表示** | 未着手 |
+| # | タスク | コミット | 状態 |
+|---|--------|----------|------|
+| 1 | 着手日集計から **`× plannedQuantity` 削除**（総分のみ） | `bef423fe` | **完了** |
+| 2 | 機種別・着手日の母集団を **`buildLoadBalancingRowEligibilityWhereSql`** に統一（C/X 除外・S/R/O/P・実効未完了） | `bef423fe` | **完了** |
+| 3 | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク `*Resolved`） | `37a7b6d4` | **完了** |
+| 4 | Pi5 本番デプロイ + 実機スモーク | Detach `20260527-161741-7843` | **完了**（Pi4×4 未） |
+| 5 | ドキュメント・UI に **生産 H との非一致** を注記 | — | 未着手 |
+| 6 | （任意）所要量 CSV の **参考表示** | — | 未着手 |
+
+**現場不具合（能力 `—`）**: 管理が `shared` のみに能力を保存し、キオスクが site 直読だったため。**負荷（required）は出るが能力（available）が全 null** が典型。→ タスク 3 で解消（登録済み 9 資源は Pi5 デプロイ後に `availableMinutes` 復元）。
 
 ---
 

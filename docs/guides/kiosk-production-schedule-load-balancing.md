@@ -148,7 +148,31 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 - 分析: [production-load-balancing-reconciliation-with-production-system-20260527.md](../analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)
 - ADR: [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
 
-**2026-05-27 集計修正**（ブランチ `feat/kiosk-load-balancing-aggregation-fix`）: 着手日は **総分のみ**（×指示数廃止）。3タブの負荷母集団を **eligibility** に統一（C/X 除外・実効未完了・`fkmail` 同期済み）。→ [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
+**2026-05-27 集計修正**（ブランチ `feat/kiosk-load-balancing-aggregation-fix` · PR [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)）:
+
+| 項目 | 内容 |
+|------|------|
+| 着手日タブ工数 | **`FSIGENSHOYORYO` 行総分のみ**（`× plannedQuantity` 廃止） |
+| 母集団 | **`buildLoadBalancingRowEligibilityWhereSql`** — 俯瞰・機種別・着手日で統一（C/X 除外・S/R/O/P・実効未完了・`fkmail` 同期済み） |
+| 生産 H との関係 | **数値一致は要件にしない**（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)） |
+| 詳細 | [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md) |
+
+**2026-05-27 `shared` 能力フォールバック**（`37a7b6d4`）:
+
+- 管理は **`siteKey=shared`** に保存しやすいが、キオスクは **`siteKey=工場名`** で読む。
+- キオスク API は **`listLoadBalancing*Resolved`**（5 種）で **`site` 優先 + `shared` 不足分補完**。管理の `replace*` は不変。
+- **症状**: 工程能力がすべて `—` だが `requiredMinutes` は返る → [KB-362 §能力設定](../knowledge-base/KB-362-kiosk-load-balancing.md#能力設定と-shared--sitekey2026-05-27)
+- **本番（Pi5 のみ）**: Detach **`20260527-161741-7843`** — [deployment.md §2026-05-27](deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
+
+---
+
+## 設定読み取り境界（キオスク vs 管理）
+
+| 用途 | API / 関数 | `siteKey` の扱い |
+|------|------------|------------------|
+| 管理 CRUD | `listLoadBalancing*` / `replaceLoadBalancing*` | リクエストのロケーションそのまま（`shared` 可） |
+| キオスク表示・サジェスト | `listLoadBalancing*Resolved` | **site 優先 + shared 補完** |
+| マージ実装 | `load-balancing-settings-merge.ts` | キー単位で site が勝ち、欠損のみ shared |
 
 ---
 

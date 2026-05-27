@@ -185,7 +185,9 @@ last-verified: 2026-05-27
 | 区分 | 内容 |
 |------|------|
 | **実施済み（本 KB）** | 突合結果・用語・ADR のドキュメント化 |
-| **実施済み（2026-05-27）** | 着手日 **×指示数廃止**；機種別・着手日の母集団を **eligibility**（C/X 除外・S/R/O/P・実効未完了）に統一 — `feat/kiosk-load-balancing-aggregation-fix` |
+| **実施済み（2026-05-27）** | 着手日 **×指示数廃止**；機種別・着手日の母集団を **eligibility**（C/X 除外・S/R/O/P・実効未完了）に統一 — **`bef423fe`** |
+| **実施済み（2026-05-27）** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取り）— **`37a7b6d4`** · [KB-362 §能力設定](./KB-362-kiosk-load-balancing.md#能力設定と-shared--sitekey2026-05-27) |
+| **本番（Pi5 のみ）** | Detach **`20260527-161741-7843`** · Phase12 **43/0/0** · PR [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350) — Pi4×4 **未** |
 | **未実施（任意）** | 生産 KPI との **別系統参考表示**；UI で非一致を明示（EXEC_PLAN タスク3） |
 | **実施しない方針** | キオスク負荷調整の正本軸を **`FSIGENSHOYOYMD` に変更** |
 

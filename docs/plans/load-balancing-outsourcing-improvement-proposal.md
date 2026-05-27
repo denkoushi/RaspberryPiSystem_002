@@ -37,7 +37,7 @@
 3. **候補効果は静的** — `listOutsourcingCandidates` は初期 `overMap` 固定。選択済み行を反映した再ランキングはない（累積シミュは `simulate` 側のみ再計算）。
 4. ~~**タブ間の工数定義差**~~ — **2026-05-27 解消**: 3タブとも `FSIGENSHOYORYO` 行総分 + 共通 eligibility。
 
-**2026-05-27 追記（生産システム突合）**: 生産の負荷グラフは **`FSIGENSHOYOYMD`（資源所要量 CSV）** 軸。キオスクは **着手日** 軸でよい（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)）。集計修正は `feat/kiosk-load-balancing-aggregation-fix` — [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)。
+**2026-05-27 追記（生産システム突合 + 本番）**: 生産の負荷グラフは **`FSIGENSHOYOYMD`（資源所要量 CSV）** 軸。キオスクは **着手日** 軸でよい（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)）。集計修正 + **`shared` 能力フォールバック**は **`feat/kiosk-load-balancing-aggregation-fix`**（PR [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)）·Pi5 **`20260527-161741-7843`** — [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[KB-362 §2026-05-27](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--集計修正--shared-フォールバック)。
 
 ---
 

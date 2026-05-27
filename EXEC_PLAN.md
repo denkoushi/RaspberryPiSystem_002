@@ -8,7 +8,9 @@
 
 ## Progress
 
-- [x] (2026-05-27 / **調査完了・ドキュメント反映・`main` マージ予定**） **キオスク負荷調整 × 生産システム — 集計突合（N7/033・5月/7月）**。**発見**: 生産グラフの日付軸は **`FSIGENSHOYOYMD`（資源所要量 CSV）**・キオスクは **着手日〜納期**。**不一致の主因** = データ源差・×`plannedQuantity`・FKOJUNST 母集団差。**決定**: **`FSIGENSHOYOYMD` に合わせない**（着手日正本）— [ADR-20260527](./docs/decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)。**7月**: 所要量 CSV **735H**·残 **≈706H**（`>7/1`）·消費 **≈113H**（`≦7/9` 累積）·キオスク日割り **≈429H**。**検算**: `apps/api/scripts/reconcile-033-may-patterns.mjs`（Pi5）。**ナレッジ**: [KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[分析](./docs/analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)·[ガイド §生産突合](./docs/guides/kiosk-production-schedule-load-balancing.md#生産システムとの数値突合重要)。**実装**: 未着手（次タスク）。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+- [x] (2026-05-27 / **実装完了・Pi5 本番・実機 OK・ドキュメント同期・`main` マージ**） **キオスク負荷調整 — 集計修正 + `shared` 能力フォールバック**·ブランチ **`feat/kiosk-load-balancing-aggregation-fix`**·**`bef423fe`** / **`37a7b6d4`**·[PR #350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)。**Fix**: 着手日 **総分のみ**（×指示数廃止）·3タブ **eligibility** 統一·キオスク **`listLoadBalancing*Resolved`**（site 優先 + shared 補完）。**症状（調査）**: 工程能力すべて `—`（DB 能力が `shared` のみ・旧 site 直読）。**CI**: **`26496156604`** success。**本番**: **`raspberrypi5` のみ**·Detach **`20260527-161741-7843`**（`failed=0`·**`--follow` 約 594s**）·Pi4×4 **未**。**実機**: Phase12 **43/0/0**·curl `overview`/`machine-monthly-load`/`start-date-leveling` **200**·`availableMinutes` **9/27** 資源。**ナレッジ**: [KB-362](./docs/knowledge-base/KB-362-kiosk-load-balancing.md)·[KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[deployment §2026-05-27](./docs/guides/deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)。**残**: Pi4×4 デプロイ·現場目視·UI で生産 H 非一致の明示（任意）。
+
+- [x] (2026-05-27 / **調査完了・実装へ接続済**） **キオスク負荷調整 × 生産システム — 集計突合（N7/033・5月/7月）**。**発見**: 生産グラフの日付軸は **`FSIGENSHOYOYMD`（資源所要量 CSV）**・キオスクは **着手日〜納期**。**不一致の主因** = データ源差・×`plannedQuantity`・FKOJUNST 母集団差。**決定**: **`FSIGENSHOYOYMD` に合わせない**（着手日正本）— [ADR-20260527](./docs/decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)。**7月**: 所要量 CSV **735H**·残 **≈706H**（`>7/1`）·消費 **≈113H**（`≦7/9` 累積）·キオスク日割り **≈429H**。**検算**: `apps/api/scripts/reconcile-033-may-patterns.mjs`（Pi5）。**ナレッジ**: [KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[分析](./docs/analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)·[ガイド §生産突合](./docs/guides/kiosk-production-schedule-load-balancing.md#生産システムとの数値突合重要)。**実装**: 上記集計修正 PR で反映済。
 
 - [ ] (2026-05-26 / **実装完了・未コミット・未デプロイ**） **キオスク負荷調整・外注候補シミュ**·ブランチ **`feat/kiosk-load-balancing-outsourcing-sim`**（`start-date-leveling` 上）。**仕様**: 資源CD俯瞰に超過資源選択·外注候補（効果順）·複数行累積シミュ（社内負荷除外·DB不変）。**API**: `outsourcing-candidates` / `outsourcing-simulate`。**検証（ローカル）**: outsourcing engine Vitest **5 PASS**·selection Vitest **2 PASS**·page Vitest **6 PASS**·`api lint` / `web lint` / `api build` / `web build` **PASS**。**ナレッジ**: [KB-362](./docs/knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](./docs/guides/kiosk-production-schedule-load-balancing.md)。
 
@@ -2392,15 +2394,17 @@
 
 ### キオスク負荷調整 — 集計定義の実装修正（2026-05-27） {#kiosk-load-balancing-aggregation-fix-2026-05-27}
 
-**状態**: **実装完了（未コミット）** — ブランチ **`feat/kiosk-load-balancing-aggregation-fix`**（[KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)）。
+**状態**: **完了（`main` マージ済）** — **`bef423fe`** / **`37a7b6d4`** · PR [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350) · Pi5 Detach **`20260527-161741-7843`** · [KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md) · [KB-362 §2026-05-27](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--集計修正--shared-フォールバック)
 
 | # | タスク | 優先 | 完了条件 |
 |---|--------|------|----------|
-| 1 | 着手日タブ: **`FSIGENSHOYORYO × plannedQuantity` を廃止**（総分のみ） | **高** | ✅ `start-date-leveling-assembler`·型·Web·Vitest |
-| 2 | 3タブ負荷母集団: **`buildLoadBalancingRowEligibilityWhereSql`**（C/X 除外・S/R/O/P・実効未完了） | **高** | ✅ 着手日・機種別クエリ·`ext` JOIN·検算スクリプト正本パターン A |
-| 3 | UI/ガイド: **生産 H との非一致**を画面またはヘルプで明示 | 中 | 運用問い合わせが減る |
-| 4 | （任意）所要量 CSV の **参考表示**（read-only・出所明示） | 低 | 生産 KPI との目視突合のみ。正本は着手日のまま |
-| 5 | `reconcile-033-may-patterns.mjs` を CI/Runbook に組込 | 低 | Pi5 で env 付き再実行手順の定型化 |
+| 1 | 着手日タブ: **`FSIGENSHOYORYO × plannedQuantity` を廃止**（総分のみ） | **高** | ✅ |
+| 2 | 3タブ負荷母集団: **`buildLoadBalancingRowEligibilityWhereSql`** | **高** | ✅ |
+| 3 | **`shared` 能力フォールバック**（`listLoadBalancing*Resolved`） | **高** | ✅ · Pi5 実機 **9/27** 資源で能力復元 |
+| 4 | **Pi4×4 デプロイ**（Web 差分含む） | 中 | 各 `failed=0` · キオスク強制リロード |
+| 5 | UI/ガイド: **生産 H との非一致**を画面またはヘルプで明示 | 中 | 運用問い合わせが減る |
+| 6 | （任意）所要量 CSV の **参考表示**（read-only） | 低 | 生産 KPI との目視突合のみ |
+| 7 | `reconcile-033-may-patterns.mjs` を CI/Runbook に組込 | 低 | Pi5 で env 付き再実行手順の定型化 |
 
 **再検算コマンド（Pi5）**:
 
