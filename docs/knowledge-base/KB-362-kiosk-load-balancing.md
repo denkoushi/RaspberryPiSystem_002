@@ -426,7 +426,7 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 | **部品絞り込み後、部品表が1行だけ** | **2026-05-26 以前の不具合**。修正後は部品表は機種全体のまま |
 | **Pi4 だけ旧UI** | Pi4 未デプロイ or キャッシュ → 該当ホストに `--limit` 再デプロイ、[強制リロード](../guides/verification-checklist.md) §6.6.4 |
 | **API 500 が 400 表示** | ルートは入力検証系のみ 400 化。DB/内部エラーは 500 のまま（ログ確認） |
-| **推奨セット自動選定が無反応** | (1) Mac で **device scope 未選択** → ボタン disabled。(2) 超過資源 **0 件**。(3) **修正前**（`c27aa3ec` 以前）: `maxCandidates:500` / plan>100 件で後続 API **400** かつ **`planError` のみ**で Panel 非表示 — **`cd42ebfe`** で解消。**Pi5 未反映時**は `git rev-parse --short HEAD` が **`cd42ebfe`** か確認して再デプロイ |
+| **推奨セット自動選定が無反応** | (1) Mac で **device scope 未選択** → ボタン disabled。(2) 超過資源 **0 件**。(3) **修正前**（`c27aa3ec` 以前）: `maxCandidates:500` / plan>100 件で後続 API **400** かつ **`planError` のみ**で Panel 非表示 — **`cd42ebfe`** で解消。(4) **修正前**（`cd42ebfe` 〜 reset 修正前）: plan 成功直後に `LoadBalancingOverviewTab` の reset `useEffect` が **overview 同値再評価**で `simulateResult` / plan state を消す — **`loadBalancingOverviewSession.ts` で境界限定 reset**（ブランチ `feat/kiosk-load-balancing-auto-plan-reset-fix`）。(5) **Pi5 未反映時**は `git rev-parse --short HEAD` を確認して再デプロイ |
 | **自動選定は遅いが他タブも重い** | **別系統**: 初回 `machine-monthly-load` **~20s**・`start-date-leveling` **~29s**（2026-05-27 実測）。自動選定は **plan ~1s + candidates**（simulate 省略後）。React Query **`staleTime`** overview **60s** / 重タブ **120s** |
 | **plan は成功するが部品表が空** | `candidates` が 200 cap でメタ未取得 · Network で **400** を確認 · `actionError` 文言 |
 | **チャートだけ更新され部品行がない** | 選定 ID はあるが `externalizationCandidates` に未載の ID（200 件プール外）— 部品行は **selectedCandidateIds** ベースで表示する設計を確認 |
@@ -448,7 +448,20 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 | simulate 必須で遅い | コードレビュー | **REJECTED** plan と同等の before/after を返す |
 | 全タブ初回が重い | curl 計測 | **CONFIRMED** 別 API（月次・平準化） |
 
-**根本原因（無反応）**: **契約不整合** + **エラー表示が plan のみ** + **simulate 直列**。修正は **`cd42ebfe`**（policy 単一化・mapper・`actionError`・simulate 省略）。
+**根本原因（無反応・契約）**: **契約不整合** + **エラー表示が plan のみ** + **simulate 直列**。修正は **`cd42ebfe`**（policy 単一化・mapper・`actionError`・simulate 省略）。
+
+## Investigation（2026-05-27 · 自動選定後に表示が消える）
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| plan / candidates API 失敗 | Pi5 curl · Vitest | **REJECTED**（200・契約整合後） |
+| `mapOutsourcingPlanToSimulateResult` 不正 | 単体テスト・ランタイムログ | **REJECTED** |
+| reset `useEffect` が同値 overview 再評価で発火 | Vitest 回帰・NDJSON ログ | **CONFIRMED** |
+| simulate 省略で最終書き込みが無い | git diff `db04a1b71`→`cd42ebfe` | **CONFIRMED**（復旧手段が消えた） |
+
+**根本原因（表示消失）**: `LoadBalancingOverviewTab` の `useEffect` が **`overResourceOptions` 配列参照**を依存に含み、**月/scope/超過資源集合が同じでも** `setSimulateResult(null)` + `resetPlanState()` を実行していた。
+
+**対策**: `loadBalancingOverviewSession.ts` で **セッション境界**（`month` / `scopeKey` / `overResourceKey`）のみ reset。超過資源の再選択同期は **`overResourceKey` 変化時のみ**。Web: `loadBalancingOverviewSession.ts` · `LoadBalancingOverviewTab.tsx` · 回帰 `ProductionScheduleLoadBalancingPage.test.tsx`。
 
 ## References
 

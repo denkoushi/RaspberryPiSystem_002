@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useKioskProductionScheduleLoadBalancingOverview,
@@ -17,6 +17,11 @@ import { LoadBalancingOverviewLegacyOutsourcingSection } from './LoadBalancingOv
 import { LoadBalancingOverviewResourceChart } from './LoadBalancingOverviewResourceChart';
 import { LoadBalancingOverviewResourceChips } from './LoadBalancingOverviewResourceChips';
 import { LoadBalancingOverviewResultsTable } from './LoadBalancingOverviewResultsTable';
+import {
+  buildLoadBalancingOverviewSessionContext,
+  buildLoadBalancingScopeKey,
+  shouldResetLoadBalancingOverviewSession
+} from './loadBalancingOverviewSession';
 import { LoadBalancingOverviewSuggestionsSection } from './LoadBalancingOverviewSuggestionsSection';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
 import { useExternalizationPlanState } from './useExternalizationPlanState';
@@ -62,6 +67,11 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
   );
 
   const overResourceKey = useMemo(() => overResourceOptions.join('\t'), [overResourceOptions]);
+  const scopeKey = useMemo(() => buildLoadBalancingScopeKey(scopeParams), [scopeParams]);
+  const sessionContext = useMemo(
+    () => buildLoadBalancingOverviewSessionContext(month, scopeKey, overResourceKey),
+    [month, scopeKey, overResourceKey]
+  );
 
   const planState = useExternalizationPlanState({
     overviewParams,
@@ -71,7 +81,7 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
   });
   const resetPlanState = planState.resetPlanState;
 
-  const resetOutsourcingState = () => {
+  const resetOutsourcingState = useCallback(() => {
     setSelectedCandidateRowIds([]);
     setCandidateResult(null);
     setSimulateResult(null);
@@ -79,27 +89,29 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
     candidatesMutation.reset();
     simulateMutation.reset();
     resetPlanState();
-  };
+  }, [candidatesMutation, resetPlanState, simulateMutation, suggestionsMutation]);
+
+  const prevSessionContextRef = useRef<typeof sessionContext | null>(null);
 
   useEffect(() => {
     setSelectedOverResourceCds(overResourceOptions);
-    setSelectedCandidateRowIds([]);
-    setCandidateResult(null);
-    setSimulateResult(null);
-    candidatesMutation.reset();
-    simulateMutation.reset();
-    suggestionsMutation.reset();
-    resetPlanState();
-  }, [
-    month,
-    scopeParams,
-    overResourceKey,
-    overResourceOptions,
-    suggestionsMutation,
-    candidatesMutation,
-    simulateMutation,
-    resetPlanState
-  ]);
+    // overResourceOptions は overResourceKey 変化時の同一レンダーで整合する
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 参照変化だけでは再選択しない
+  }, [overResourceKey]);
+
+  useEffect(() => {
+    const previous = prevSessionContextRef.current;
+    prevSessionContextRef.current = sessionContext;
+
+    if (previous == null) {
+      suggestionsMutation.reset();
+      return;
+    }
+
+    if (shouldResetLoadBalancingOverviewSession(previous, sessionContext)) {
+      resetOutsourcingState();
+    }
+  }, [resetOutsourcingState, sessionContext, suggestionsMutation]);
 
   const displayResources = useMemo(
     () => simulateResult?.afterResources ?? overviewQuery.data?.resources ?? [],
