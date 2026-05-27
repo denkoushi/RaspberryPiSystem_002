@@ -18,7 +18,10 @@ export const lbCard = {
 
 export const lbGrid = {
   topRow: 'grid gap-3.5 md:grid-cols-[200px_minmax(0,1fr)]',
-  midRow: 'grid items-stretch gap-2.5 xl:grid-cols-[minmax(300px,0.9fr)_minmax(380px,1.1fr)]'
+  /** 左: 棒グラフ＋試算表 / 右: 推奨セット（試算表の横余白を右ペインへ） */
+  workspaceRow:
+    'grid items-start gap-2.5 xl:grid-cols-[minmax(300px,0.9fr)_minmax(400px,1.35fr)]',
+  leftStack: 'flex min-w-0 flex-col gap-2.5'
 } as const;
 
 export const lbText = {
@@ -44,12 +47,22 @@ export const lbInput = {
 } as const;
 
 export const lbTable = {
-  root: 'w-full border-collapse text-left text-[0.8125rem] text-white/90',
-  headCell: 'px-2.5 py-2 font-semibold',
-  bodyCell: 'px-2.5 py-2',
+  /** キオスク実機でもプレビュー(body 14px)に揃える — 0.8125rem は Pi 上で小さく見えやすい */
+  root: 'w-full border-collapse text-left text-sm leading-snug text-white/90',
+  compact: 'w-full table-fixed border-collapse text-left text-sm leading-snug text-white/90',
+  headCell: 'px-2 py-1.5 text-sm font-semibold',
+  bodyCell: 'px-2 py-1.5 text-sm',
+  valueCell: 'px-2 py-1.5 text-sm tabular-nums',
   headRow: 'border-b border-white/10',
   bodyRow: 'border-b border-white/5',
-  stickyHead: 'sticky top-0 bg-slate-900'
+  stickyHead: 'sticky top-0 z-[1] bg-slate-900'
+} as const;
+
+/** 試算結果表（4番）— 棒グラフ列幅に収め、数値列は右寄せ・狭幅 */
+export const lbResultsTableCol = {
+  resourceCd: 'w-[13%]',
+  num: 'w-[10%] text-right',
+  classCode: 'min-w-0 truncate'
 } as const;
 
 export const lbBtn = {
@@ -69,8 +82,8 @@ export const lbBtn = {
 
 export const lbChip = {
   grid: 'flex max-h-[min(180px,28dvh)] min-h-[2.25rem] flex-wrap gap-2 overflow-auto',
-  over: 'truncate rounded-lg bg-amber-700 px-3 py-2 font-mono text-[0.8125rem] font-semibold text-white',
-  idle: 'truncate rounded-lg bg-slate-700 px-3 py-2 font-mono text-[0.8125rem] font-semibold text-white/85'
+  over: 'truncate rounded-lg bg-amber-700 px-3 py-2 font-mono text-sm font-semibold text-white',
+  idle: 'truncate rounded-lg bg-slate-700 px-3 py-2 font-mono text-sm font-semibold text-white/85'
 } as const;
 
 export const lbChart = {

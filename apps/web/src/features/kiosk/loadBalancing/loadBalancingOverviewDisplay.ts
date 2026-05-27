@@ -21,10 +21,12 @@ export function overviewResourceRowClassName(overMinutes: number): string {
     : 'border-b border-white/5';
 }
 
+const overCellBase = 'px-2 py-1.5 text-sm tabular-nums';
+
 export function overviewOverCellClassName(overMinutes: number): string {
   return isOverResource(overMinutes)
-    ? 'px-2.5 py-2 font-semibold text-amber-200'
-    : 'px-2.5 py-2 text-white/50';
+    ? `${overCellBase} font-semibold text-amber-200`
+    : `${overCellBase} text-white/50`;
 }
 
 /** 部品選定の効果列（正の削減分 → 「-180分」） */
@@ -41,10 +43,10 @@ export function formatReductionMinutes(
 ): { text: string; className: string } {
   const delta = Math.round(beforeRequiredMinutes - afterRequiredMinutes);
   if (delta > 0) {
-    return { text: `-${delta}分`, className: 'px-2.5 py-2 font-semibold text-emerald-300' };
+    return { text: `-${delta}分`, className: `${overCellBase} font-semibold text-emerald-300` };
   }
   if (delta < 0) {
-    return { text: `+${Math.abs(delta)}分`, className: 'px-2.5 py-2 font-semibold text-amber-200' };
+    return { text: `+${Math.abs(delta)}分`, className: `${overCellBase} font-semibold text-amber-200` };
   }
-  return { text: '変化なし', className: 'px-2.5 py-2 text-white/50' };
+  return { text: '変化なし', className: `${overCellBase} text-white/50` };
 }

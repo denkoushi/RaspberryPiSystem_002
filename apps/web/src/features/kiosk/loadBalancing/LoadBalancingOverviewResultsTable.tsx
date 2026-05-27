@@ -4,7 +4,7 @@ import {
   overviewResourceRowClassName
 } from './loadBalancingOverviewDisplay';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
-import { lbBtn, lbCard, lbTable } from './loadBalancingUiClasses';
+import { lbBtn, lbCard, lbResultsTableCol, lbTable } from './loadBalancingUiClasses';
 
 import type { OverviewResourceBefore, OverviewResourceRowInput } from './loadBalancingOverviewDisplay';
 
@@ -13,30 +13,42 @@ type Props = {
   beforeByResourceCd: Map<string, OverviewResourceBefore>;
   showSimulationColumns: boolean;
   onReset: () => void;
+  /** 棒グラフ列と同幅の左スタック内に配置 */
+  embedded?: boolean;
 };
 
 export function LoadBalancingOverviewResultsTable({
   resources,
   beforeByResourceCd,
   showSimulationColumns,
-  onReset
+  onReset,
+  embedded = false
 }: Props) {
+  const numHead = `${lbTable.headCell} ${lbResultsTableCol.num}`;
+  const numCell = lbTable.valueCell;
+
   return (
     <section className={lbCard.base}>
       <LoadBalancingStepHeading step={4}>試算結果を確認</LoadBalancingStepHeading>
-      <div className="max-h-[min(280px,36dvh)] overflow-auto">
-        <table className={lbTable.root}>
+      <div
+        className={
+          embedded
+            ? 'max-h-[min(240px,32dvh)] overflow-auto'
+            : 'max-h-[min(280px,36dvh)] overflow-auto'
+        }
+      >
+        <table className={lbTable.compact}>
           <thead className={lbTable.stickyHead}>
             <tr className={lbTable.headRow}>
-              <th className={lbTable.headCell}>資源CD</th>
-              <th className={lbTable.headCell}>必要分</th>
-              <th className={lbTable.headCell}>能力分</th>
-              <th className={lbTable.headCell}>超過</th>
+              <th className={`${lbTable.headCell} ${lbResultsTableCol.resourceCd}`}>資源CD</th>
+              <th className={numHead}>必要分</th>
+              <th className={numHead}>能力分</th>
+              <th className={numHead}>超過</th>
               {showSimulationColumns ? (
                 <>
-                  <th className={lbTable.headCell}>試算後必要分</th>
-                  <th className={lbTable.headCell}>試算後超過</th>
-                  <th className={lbTable.headCell}>削減分</th>
+                  <th className={numHead}>試算後必要</th>
+                  <th className={numHead}>試算後超過</th>
+                  <th className={numHead}>削減分</th>
                 </>
               ) : null}
               <th className={lbTable.headCell}>分類</th>
@@ -53,22 +65,32 @@ export function LoadBalancingOverviewResultsTable({
 
               return (
                 <tr key={resource.resourceCd} className={overviewResourceRowClassName(beforeOver)}>
-                  <td className={`${lbTable.bodyCell} font-mono`}>{resource.resourceCd}</td>
-                  <td className={lbTable.bodyCell}>{beforeRequired}</td>
-                  <td className={lbTable.bodyCell}>
+                  <td className={`${lbTable.bodyCell} font-mono ${lbResultsTableCol.resourceCd}`}>
+                    {resource.resourceCd}
+                  </td>
+                  <td className={`${numCell} ${lbResultsTableCol.num}`}>{beforeRequired}</td>
+                  <td className={`${numCell} ${lbResultsTableCol.num}`}>
                     {resource.availableMinutes == null ? '—' : Math.round(resource.availableMinutes)}
                   </td>
-                  <td className={overviewOverCellClassName(beforeOver)}>{beforeOver}</td>
+                  <td className={`${overviewOverCellClassName(beforeOver)} ${lbResultsTableCol.num}`}>
+                    {beforeOver}
+                  </td>
                   {showSimulationColumns ? (
                     <>
-                      <td className={lbTable.bodyCell}>{Math.round(resource.requiredMinutes)}</td>
-                      <td className={overviewOverCellClassName(Math.round(resource.overMinutes))}>
+                      <td className={`${numCell} ${lbResultsTableCol.num}`}>
+                        {Math.round(resource.requiredMinutes)}
+                      </td>
+                      <td
+                        className={`${overviewOverCellClassName(Math.round(resource.overMinutes))} ${lbResultsTableCol.num}`}
+                      >
                         {Math.round(resource.overMinutes)}
                       </td>
-                      <td className={reduction?.className}>{reduction?.text}</td>
+                      <td className={`${reduction?.className} ${lbResultsTableCol.num}`}>{reduction?.text}</td>
                     </>
                   ) : null}
-                  <td className={lbTable.bodyCell}>{resource.classCode ?? '—'}</td>
+                  <td className={`${lbTable.bodyCell} ${lbResultsTableCol.classCode}`}>
+                    {resource.classCode ?? '—'}
+                  </td>
                 </tr>
               );
             })}

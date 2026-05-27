@@ -64,7 +64,7 @@ export function LoadBalancingOverviewResourceChart({ rows }: Props) {
             dataKey="overLabel"
             position="top"
             fill="#fde68a"
-            fontSize={11}
+            fontSize={13}
             fontWeight={700}
           />
         </Bar>
