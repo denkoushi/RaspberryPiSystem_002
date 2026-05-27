@@ -20,7 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
-| 生産スケジュール（負荷調整・山崩し支援） | [KB-362-kiosk-load-balancing.md](./KB-362-kiosk-load-balancing.md) | 1件 | 3タブ・**eligibility 統一**・**`shared` 能力補完**（2026-05-27）·Pi5 デプロイ **`20260527-161741-7843`**·[ガイド](../guides/kiosk-production-schedule-load-balancing.md) |
+| 生産スケジュール（負荷調整・山崩し支援） | [KB-362-kiosk-load-balancing.md](./KB-362-kiosk-load-balancing.md) | 1件 | 3タブ·外注契約整合 **`cd42ebfe`**·Pi5 **`20260527-191646-1476`**·[ADR 外注上限](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md) |
 | 負荷調整×生産システム突合 | [KB-363-load-balancing-production-system-reconciliation.md](./KB-363-load-balancing-production-system-reconciliation.md) | 1件 | **FSIGENSHOYOYMD** vs 着手日·集計修正 **実装済**（PR #350）·検算 `reconcile-033-may-patterns.mjs` |
 | キオスク順位ボード（完了整合・明示 `/completion`・CSV同期） | [KB-375-kiosk-leaderboard-completion-integrity.md](./KB-375-kiosk-leaderboard-completion-integrity.md) | 1件 | **主経路**: `PUT …/completion` + `intent`（同intent再適用は `unchanged`）。**互換**: `/complete` はトグル。**CSV**: 空 `progress` は **手動完了済みを未完にしない**（policy 分離）。**表示**: effective completion を一覧・チップ・集計へ共有。**関連**: [KB-297 §リーダー順位](./KB-297-kiosk-due-management-workflow.md#リーダー順位ボード納期ベース整列手動順-api-反映2026-04-01) |
 | キオスク順位ボード（装飾API・表示スコープとフッタ winner 整合） | [KB-376-leaderboard-footer-display-scope-winner-alignment.md](./KB-376-leaderboard-footer-display-scope-winner-alignment.md) | 1件 | **`rowIds`>900** でも **hydrate チャンク結合**と **`preferredDisplayRowIds`** で **行と 021 チップの winner** を揃える。**関連**: [KB-375](./KB-375-kiosk-leaderboard-completion-integrity.md)·[ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md) |

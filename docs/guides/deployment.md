@@ -10,6 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-27 · **キオスク負荷調整・外注契約整合 + 自動選定フロー**·**`feat/kiosk-load-balancing-ui-p0p1`**·**API+Web**·**Pi5 先行・Pi4×4 未**） {#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27}
+
+- **変更概要**:
+  - **上限単一化**: `outsourcing-simulation.policy.ts`（プール **500**·`maxCandidates` リクエスト **200**·`selectedCandidateIds` **500**）。
+  - **自動選定**: `outsourcing-plan` の **`beforeResources`/`afterResources`** を UI に即反映（成功後の **simulate 省略**）。
+  - **エラー可視化**: `actionError` 集約·`maxCandidates:500` は **400**（修正前は後続 API 失敗で無反応に見えた）。
+- **代表コミット**: **`cd42ebfe`** `fix(kiosk): align outsourcing plan limits and auto-plan flow`
+- **CI**: **`26504703984`** success（`feat/kiosk-load-balancing-ui-p0p1` push）
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（続けて Pi4×4 は **`--limit` 1 台ずつ**·**Pi3 除外**）
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-ui-p0p1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **本番デプロイ（実績·2026-05-27 · Pi5 のみ）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260527-191646-1476` | `ok=134` `changed=4` `failed=0` | Git **`cd42ebfe`** · **`--follow` 約 1498s** |
+| Pi4×4 | — | **未デプロイ** | Web/API 差分あり |
+
+- **実機（自動·Pi5 後）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **115s**）
+- **負荷調整スモーク**: [KB-362 §実機検証 2026-05-27 契約整合](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--外注契約整合--自動選定フロー)
+- **トラブルシュート**:
+  - **自動選定無反応** → Pi5 が **`cd42ebfe` 未満**、または Mac **device scope 未選択**、または **超過資源 0**。[KB-362 §Troubleshooting](../knowledge-base/KB-362-kiosk-load-balancing.md#troubleshooting)
+  - **`maxCandidates:500` で 400** → 仕様（上限 **200**）。フロントは **`loadBalancingOutsourcingLimits.ts`** 参照。
+  - **タブ全体が遅い** → `machine-monthly-load` / `start-date-leveling` の初回クエリ（自動選定とは別）。
+- **ローカル検証**: `pnpm --filter api test outsourcing-simulation.policy` · Web `loadBalancing` 関連 Vitest · `outsourcing` ルートは Pi5 curl スモーク（[KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--外注契約整合--自動選定フロー)）
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ADR 外注上限](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·[kiosk-production-schedule-load-balancing.md](kiosk-production-schedule-load-balancing.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)
+
 ### 補足（2026-05-27 · **キオスク負荷調整・集計修正 + `shared` 能力フォールバック**·**`feat/kiosk-load-balancing-aggregation-fix`**·**API+Web**·**Pi5 先行・Pi4×4 未**） {#kiosk-load-balancing-aggregation-fix-2026-05-27}
 
 - **変更概要**:
