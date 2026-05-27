@@ -239,7 +239,7 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
         <ExternalizationPlanPanel
           embedded
           enabled={overviewEnabled}
-          hasOverResources={hasSelectedOverResources}
+          hasSelectedOverResources={hasSelectedOverResources}
           selectedCandidateIds={planState.selectedCandidateIds}
           planResolved={planState.planResolved}
           planRemainingOverMinutes={planState.planRemainingOverMinutes}
@@ -249,9 +249,7 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
           isPlanning={planState.planMutation.isPending}
           isSimulating={planState.simulateMutation.isPending}
           isReplacementsLoading={planState.replacementsMutation.isPending}
-          planError={planState.planMutation.error}
-          simulateError={planState.simulateMutation.error}
-          replacementsError={planState.replacementsMutation.error}
+          actionError={planState.actionError}
           onAutoPlan={() => void planState.handleAutoPlan()}
           onRemoveCandidate={(id) => void planState.handleRemoveCandidate(id)}
           onLoadReplacements={(id) => void planState.handleLoadReplacements(id)}

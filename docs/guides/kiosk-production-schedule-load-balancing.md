@@ -53,6 +53,7 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-simulate`
   Body: `{ month, targetDeviceScopeKey?, overResourceCds?, selectedRowIds[] | selectedCandidateIds[] }`
   - **どちらか一方**（同時指定・両方空は 400）。社内負荷除外の read-only シミュ。
+  - **`selectedCandidateIds` は最大 500 件**（`outsourcing-simulation.policy.ts` 正本）。`maxCandidates` リクエスト上限は **200**。
 - `POST /kiosk/production-schedule/load-balancing/outsourcing-replacements`
   Body: `{ month, targetDeviceScopeKey?, overResourceCds?, currentSelectedCandidateIds[], removeCandidateId, maxOptions? }`
   - 1 部品を外したときの代替候補（既定最大 5 件）。
@@ -89,12 +90,12 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 - **工程行（従来）**: 折りたたみ内で外注候補取得 → チェック → 累積シミュ（Phase 0 互換）。
 - **社内移管サジェスト**: 既存どおり分類/移管ルールに基づく別資源CDへの移管候補（外注候補とは別）。
 
-**デプロイ**: 工程行シミュは Pi5 のみデプロイ済み。部品推奨セットは `feat/kiosk-load-balancing-externalization-plan` で **未デプロイ**（2026-05-26 時点）。
+**デプロイ**: 工程行シミュ・部品推奨 API は Pi5 で利用可（`main`）。UI P0+P1 は Pi5 `c27aa3ec` デプロイ済み。**契約整合修正**（上限統一・自動選定で plan 結果を即反映）はローカル作業中・**未デプロイ**。Pi4×4 は未展開。詳細は [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)。
 
 ### 実装ファイル（外注・推奨セット）
 
-- API: `load-balancing-eligibility.policy.ts`, `monthly-load-query.service.ts`, `outsourcing-simulation.engine.ts`, `outsourcing-simulation.service.ts`
-- Web: `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingSelection.ts`
+- API: `load-balancing-eligibility.policy.ts`, `outsourcing-simulation.policy.ts`, `monthly-load-query.service.ts`, `outsourcing-simulation.engine.ts`, `outsourcing-simulation.service.ts`
+- Web: `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts`
 
 ## 着手日・平準化（UI）
 
@@ -124,7 +125,8 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 | 2026-04-30 | `feat/kiosk-load-balance-suggest` | 初版（API+Web+DB） | `d3c37b6f` |
 | 2026-05-26 | `feat/kiosk-load-balancing-machine-monthly-view` | 機種別月次タブ（API+Web） | `60b94b9d` |
 | 2026-05-26 | `feat/kiosk-load-balancing-start-date-leveling` | 着手日・平準化タブ + 稼働日ルール（API+Web+DB） | （未コミット） |
-| 2026-05-26 | `feat/kiosk-load-balancing-externalization-plan` | 部品推奨セット・負荷母集団修正（API+Web） | **未デプロイ** |
+| 2026-05-26 | `feat/kiosk-load-balancing-externalization-plan` | 部品推奨セット・負荷母集団修正（API+Web） | Pi5 で `outsourcing-plan` / 画面文言を確認 |
+| 2026-05-27 | （ローカル） | 外注上限統一・自動選定フロー修正 | **未デプロイ** |
 
 標準手順は [deployment.md](deployment.md)。**Pi5 → Pi4×4 を `--limit` 1 台ずつ**。**Pi3 は除外**。
 

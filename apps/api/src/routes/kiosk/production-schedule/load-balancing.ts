@@ -16,9 +16,17 @@ import {
   getProductionScheduleStartDateLeveling,
   simulateProductionScheduleStartDateLeveling
 } from '../../../services/production-schedule/load-balancing/start-date-leveling.service.js';
+import { LOAD_BALANCING_OUTSOURCING_LIMITS } from '../../../services/production-schedule/load-balancing/outsourcing-simulation.policy.js';
 import { assertYearMonthFormat } from '../../../services/production-schedule/load-balancing/year-month-range.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
+
+const {
+  MAX_CANDIDATES_LIST_REQUEST,
+  MAX_SELECTED_CANDIDATE_IDS,
+  MAX_ROW_CANDIDATES_LIST,
+  MAX_OVER_RESOURCE_CDS
+} = LOAD_BALANCING_OUTSOURCING_LIMITS;
 
 const overviewQuerySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
@@ -29,36 +37,36 @@ const suggestionsBodySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
   maxSuggestions: z.coerce.number().int().min(1).max(200).optional(),
-  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional()
+  overResourceCds: z.array(z.string().min(1).max(20)).max(MAX_OVER_RESOURCE_CDS).optional()
 });
 
 const outsourcingCandidatesBodySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
-  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
-  maxCandidates: z.coerce.number().int().min(1).max(200).optional()
+  overResourceCds: z.array(z.string().min(1).max(20)).max(MAX_OVER_RESOURCE_CDS).optional(),
+  maxCandidates: z.coerce.number().int().min(1).max(MAX_CANDIDATES_LIST_REQUEST).optional()
 });
 
 const outsourcingSimulateBodySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
-  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
-  selectedRowIds: z.array(z.string().min(1).max(80)).max(200).optional(),
-  selectedCandidateIds: z.array(z.string().min(1).max(200)).max(100).optional()
+  overResourceCds: z.array(z.string().min(1).max(20)).max(MAX_OVER_RESOURCE_CDS).optional(),
+  selectedRowIds: z.array(z.string().min(1).max(80)).max(MAX_ROW_CANDIDATES_LIST).optional(),
+  selectedCandidateIds: z.array(z.string().min(1).max(200)).max(MAX_SELECTED_CANDIDATE_IDS).optional()
 });
 
 const outsourcingPlanBodySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
-  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
-  strategy: z.enum(['max_over_reduction', 'min_count', 'min_total_minutes']).optional()
+  overResourceCds: z.array(z.string().min(1).max(20)).max(MAX_OVER_RESOURCE_CDS).optional(),
+  strategy: z.enum(['max_over_reduction']).optional()
 });
 
 const outsourcingReplacementsBodySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional(),
-  overResourceCds: z.array(z.string().min(1).max(20)).max(100).optional(),
-  currentSelectedCandidateIds: z.array(z.string().min(1).max(200)).max(100),
+  overResourceCds: z.array(z.string().min(1).max(20)).max(MAX_OVER_RESOURCE_CDS).optional(),
+  currentSelectedCandidateIds: z.array(z.string().min(1).max(200)).max(MAX_SELECTED_CANDIDATE_IDS),
   removeCandidateId: z.string().min(1).max(200),
   maxOptions: z.coerce.number().int().min(1).max(10).optional()
 });

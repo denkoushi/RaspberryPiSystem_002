@@ -13,9 +13,11 @@ import type {
   OutsourcingSkippedCandidate,
   OutsourcingSkippedRow
 } from './outsourcing-simulation.types.js';
+import { LOAD_BALANCING_OUTSOURCING_LIMITS } from './outsourcing-simulation.policy.js';
 import type { LoadBalancingRowCandidate } from './types.js';
 
 const PART_CANDIDATE_SEP = '\u001f';
+const { MAX_PART_CANDIDATE_POOL, DEFAULT_CANDIDATES_LIST } = LOAD_BALANCING_OUTSOURCING_LIMITS;
 
 export function buildPartCandidateId(fseiban: string, productNo: string, fhincd: string): string {
   return [fseiban.trim(), productNo.trim(), fhincd.trim()].join(PART_CANDIDATE_SEP);
@@ -165,7 +167,7 @@ export function buildExternalizationCandidates(params: {
 
 export function listOutsourcingCandidates(params: OutsourcingEngineInput): OutsourcingCandidateItem[] {
   const overMap = buildOverMap(params.resources);
-  const maxCandidates = params.maxCandidates ?? 100;
+  const maxCandidates = params.maxCandidates ?? DEFAULT_CANDIDATES_LIST;
   const candidates: OutsourcingCandidateItem[] = [];
 
   for (const row of params.rows) {
@@ -413,7 +415,7 @@ export function computeExternalizationPlan(params: {
     resources: beforeResources,
     rows: params.rows,
     overResourceCds: params.overResourceCds,
-    maxCandidates: 500
+    maxCandidates: MAX_PART_CANDIDATE_POOL
   });
 
   const selectedCandidateIds: string[] = [];
@@ -504,7 +506,7 @@ export function computeReplacementOptions(params: {
     resources: params.resources,
     rows: params.rows,
     overResourceCds: params.overResourceCds,
-    maxCandidates: 500
+    maxCandidates: MAX_PART_CANDIDATE_POOL
   });
 
   const selectedSet = new Set(baseSelectedCandidateIds);

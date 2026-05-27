@@ -17,7 +17,8 @@ last-verified: 2026-05-27
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-machine-monthly-view` | **機種別月次負荷**タブ（有効納期月・機種/部品/積み上げグラフ） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-start-date-leveling` | **着手日・平準化**タブ（日割り・シミュ・稼働日ルール） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-outsourcing-sim` | **資源CD俯瞰・外注候補シミュ**（超過資源選択・効果順候補・累積試算） |
-| 2026-05-26 拡張 | `feat/kiosk-load-balancing-externalization-plan` | **部品単位推奨セット**（負荷母集団修正・自動 plan・入れ替え）— **未デプロイ** |
+| 2026-05-26 拡張 | `feat/kiosk-load-balancing-externalization-plan` | **部品単位推奨セット**（負荷母集団修正・自動 plan・入れ替え）— Pi5 で `outsourcing-plan` / 画面文言を確認 |
+| 2026-05-27 修正 | （ローカル） | 外注上限 **`outsourcing-simulation.policy.ts` 統一**·自動選定で plan 結果を即反映 — **未デプロイ** |
 | 2026-05-27 修正 | `feat/kiosk-load-balancing-aggregation-fix` · **`bef423fe`** | 着手日 **総分のみ**（×指示数廃止）·3タブ母集団 **eligibility** 統一 |
 | 2026-05-27 修正 | 同上 · **`37a7b6d4`** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取りのみ） |
 
@@ -122,6 +123,16 @@ last-verified: 2026-05-27
 | `POST .../outsourcing-simulate` | **`selectedRowIds`** または **`selectedCandidateIds`** のどちらか一方（同時指定・両方空は 400） |
 | `POST .../outsourcing-replacements` | 1 部品を外したときの代替候補（最大 5 件） |
 
+**上限（単一正本: `outsourcing-simulation.policy.ts`）**
+
+| 項目 | 上限 |
+|------|------|
+| 部品候補プール（plan / simulate 内部） | **500** |
+| `outsourcing-candidates` の `maxCandidates` | **200**（既定 **100**） |
+| `selectedCandidateIds`（simulate / replacements） | **500** |
+| `overResourceCds` | **100** |
+
+- 自動選定 UI は **plan 応答の before/after をチャートに反映**し、続けて candidates（max **200**）で部品表メタを取得する（plan 成功後に simulate を省略してよい）。
 - `candidateId` = 正規化した `fseiban` + `\u001f` + `productNo` + `\u001f` + `fhincd`（UI には生 ID を出さない）。
 - `FHINMEI` は行の品名（`LoadBalancingRowCandidate.fhinmei`）。機種名解決は部品名用途に使わない。
 
@@ -137,16 +148,19 @@ last-verified: 2026-05-27
 | 層 | ファイル |
 |----|----------|
 | 負荷母集団 | `load-balancing-eligibility.policy.ts`, `monthly-load-query.service.ts` |
+| 上限定数 | `outsourcing-simulation.policy.ts` |
 | 純関数 | `outsourcing-simulation.engine.ts` |
 | サービス | `outsourcing-simulation.service.ts` |
-| Web | `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingSelection.ts` |
+| Web | `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts` |
 
 ### デプロイ状況
 
 | 機能 | Pi5 | Pi4×4 |
 |------|-----|-------|
 | Phase 0（工程行シミュ） | **デプロイ済み**（`128f89bd`） | 未展開 |
-| 部品推奨セット（本節） | **未デプロイ**（`feat/kiosk-load-balancing-externalization-plan`） | 未展開 |
+| 部品推奨セット API | **デプロイ済み**（`main` / Pi5 `c27aa3ec` 時点で `outsourcing-plan` 等 **200**） | 未展開 |
+| 部品推奨セット UI（P0+P1） | **デプロイ済み**（`feat/kiosk-load-balancing-ui-p0p1` · `c27aa3ec`） | 未展開 |
+| 契約整合修正（上限・自動選定フロー） | **未デプロイ**（ローカル `feat/kiosk-load-balancing-ui-p0p1` 作業中） | 未展開 |
 
 背景・改善案: [load-balancing-outsourcing-improvement-proposal.md](../plans/load-balancing-outsourcing-improvement-proposal.md)。
 
@@ -343,6 +357,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 | **部品絞り込み後、部品表が1行だけ** | **2026-05-26 以前の不具合**。修正後は部品表は機種全体のまま |
 | **Pi4 だけ旧UI** | Pi4 未デプロイ or キャッシュ → 該当ホストに `--limit` 再デプロイ、[強制リロード](../guides/verification-checklist.md) §6.6.4 |
 | **API 500 が 400 表示** | ルートは入力検証系のみ 400 化。DB/内部エラーは 500 のまま（ログ確認） |
+| **推奨セット自動選定が無反応** | (1) Mac で **device scope 未選択** → ボタン disabled。(2) 超過資源 **0 件**。(3) **修正前**: `maxCandidates:500` / plan>100 件で後続 API **400** かつエラー非表示 — **`outsourcing-simulation.policy.ts` 統一版**で解消（未デプロイ時はローカル/再デプロイ要） |
 | **ローカル API 全件テスト失敗** | Postgres 未起動 / **`pnpm exec prisma migrate deploy` は `apps/api` で実行**（`scripts/test/run-tests.sh` 参照） |
 
 ## Prevention

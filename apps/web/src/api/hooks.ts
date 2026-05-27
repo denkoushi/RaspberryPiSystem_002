@@ -1081,7 +1081,8 @@ export function useKioskProductionScheduleLoadBalancingOverview(
   return useQuery({
     queryKey: ['kiosk-production-schedule-load-balancing-overview', params],
     queryFn: () => getKioskProductionScheduleLoadBalancingOverview(params),
-    enabled: (options?.enabled ?? true) && monthOk
+    enabled: (options?.enabled ?? true) && monthOk,
+    staleTime: 60_000
   });
 }
 
@@ -1129,7 +1130,8 @@ export function useKioskProductionScheduleLoadBalancingMachineMonthlyLoad(
   return useQuery({
     queryKey: ['kiosk-production-schedule-load-balancing-machine-monthly-load', params],
     queryFn: () => getKioskProductionScheduleLoadBalancingMachineMonthlyLoad(params),
-    enabled: (options?.enabled ?? true) && monthOk
+    enabled: (options?.enabled ?? true) && monthOk,
+    staleTime: 120_000
   });
 }
 
@@ -1151,7 +1153,8 @@ export function useKioskProductionScheduleLoadBalancingStartDateLeveling(
   return useQuery({
     queryKey: ['kiosk-production-schedule-load-balancing-start-date-leveling', params],
     queryFn: () => getKioskProductionScheduleLoadBalancingStartDateLeveling(params),
-    enabled: (options?.enabled ?? true) && monthOk && focusOk
+    enabled: (options?.enabled ?? true) && monthOk && focusOk,
+    staleTime: 120_000
   });
 }
 

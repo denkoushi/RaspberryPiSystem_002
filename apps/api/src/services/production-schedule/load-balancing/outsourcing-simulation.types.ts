@@ -39,7 +39,7 @@ export type OutsourcingCandidatesResult = {
   externalizationCandidates: ExternalizationCandidate[];
 };
 
-export type ExternalizationPlanStrategy = 'max_over_reduction' | 'min_count' | 'min_total_minutes';
+export type ExternalizationPlanStrategy = 'max_over_reduction';
 
 export type ExternalizationPlanResult = {
   strategy: ExternalizationPlanStrategy;

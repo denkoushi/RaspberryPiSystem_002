@@ -10,6 +10,7 @@ import {
   simulateExternalizationSelection,
   simulateOutsourcingSelection
 } from './outsourcing-simulation.engine.js';
+import { LOAD_BALANCING_OUTSOURCING_LIMITS } from './outsourcing-simulation.policy.js';
 import type {
   ExternalizationPlanResult,
   ExternalizationPlanStrategy,
@@ -17,6 +18,12 @@ import type {
   OutsourcingCandidatesResult,
   OutsourcingSimulateResult
 } from './outsourcing-simulation.types.js';
+
+const {
+  MAX_PART_CANDIDATE_POOL,
+  DEFAULT_CANDIDATES_LIST,
+  MAX_SELECTED_CANDIDATE_IDS
+} = LOAD_BALANCING_OUTSOURCING_LIMITS;
 
 type LoadBalancingScopeParams = {
   siteKey: string;
@@ -58,14 +65,14 @@ export async function getProductionScheduleOutsourcingCandidates(params: {
     resources: overview.resources,
     rows,
     overResourceCds: overFilter,
-    maxCandidates: params.maxCandidates ?? 100
+    maxCandidates: params.maxCandidates ?? DEFAULT_CANDIDATES_LIST
   });
 
   const externalizationCandidates = buildExternalizationCandidates({
     resources: overview.resources,
     rows,
     overResourceCds: overFilter,
-    maxCandidates: params.maxCandidates ?? 100
+    maxCandidates: params.maxCandidates ?? DEFAULT_CANDIDATES_LIST
   });
 
   return {
@@ -156,11 +163,18 @@ export async function simulateProductionScheduleOutsourcing(params: {
   const { overview, rows, overFilter } = await loadOverviewAndRows(params);
 
   if (hasCandidates) {
+    if (candidateIds.length > MAX_SELECTED_CANDIDATE_IDS) {
+      throw new ApiError(
+        400,
+        `selectedCandidateIds は最大 ${MAX_SELECTED_CANDIDATE_IDS} 件までです`
+      );
+    }
+
     const partCandidates = buildExternalizationCandidates({
       resources: overview.resources,
       rows,
       overResourceCds: overFilter,
-      maxCandidates: 500
+      maxCandidates: MAX_PART_CANDIDATE_POOL
     });
 
     const simulation = simulateExternalizationSelection({

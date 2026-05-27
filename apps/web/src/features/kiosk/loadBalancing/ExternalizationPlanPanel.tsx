@@ -1,5 +1,5 @@
+import { parsePartCandidateId } from './loadBalancingExternalization';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
-import { parsePartCandidateId } from './useExternalizationPlanState';
 
 import type { ProductionScheduleLoadBalancingExternalizationCandidate } from '../../../api/client';
 
@@ -15,7 +15,7 @@ type ReplacementOption = {
 
 type Props = {
   enabled: boolean;
-  hasOverResources: boolean;
+  hasSelectedOverResources: boolean;
   selectedCandidateIds: string[];
   planResolved: boolean | null;
   planRemainingOverMinutes: number | null;
@@ -25,9 +25,7 @@ type Props = {
   isPlanning: boolean;
   isSimulating: boolean;
   isReplacementsLoading: boolean;
-  planError: unknown;
-  simulateError: unknown;
-  replacementsError: unknown;
+  actionError: string | null;
   onAutoPlan: () => void;
   onRemoveCandidate: (candidateId: string) => void;
   onLoadReplacements: (candidateId: string) => void;
@@ -38,7 +36,7 @@ type Props = {
 
 export function ExternalizationPlanPanel({
   enabled,
-  hasOverResources,
+  hasSelectedOverResources,
   selectedCandidateIds,
   planResolved,
   planRemainingOverMinutes,
@@ -48,9 +46,7 @@ export function ExternalizationPlanPanel({
   isPlanning,
   isSimulating,
   isReplacementsLoading,
-  planError,
-  simulateError,
-  replacementsError,
+  actionError,
   onAutoPlan,
   onRemoveCandidate,
   onLoadReplacements,
@@ -71,7 +67,7 @@ export function ExternalizationPlanPanel({
         <button
           type="button"
           className="ml-auto rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
-          disabled={!enabled || !hasOverResources || isPlanning || isSimulating}
+          disabled={!enabled || !hasSelectedOverResources || isPlanning || isSimulating}
           onClick={() => void onAutoPlan()}
         >
           {isPlanning ? '選定中…' : '推奨セットを自動選定'}
@@ -87,19 +83,9 @@ export function ExternalizationPlanPanel({
         ) : null}
       </div>
 
-      {planError ? (
-        <p className="mb-2 text-xs text-rose-200">
-          {planError instanceof Error ? planError.message : String(planError)}
-        </p>
-      ) : null}
-      {simulateError ? (
-        <p className="mb-2 text-xs text-rose-200">
-          {simulateError instanceof Error ? simulateError.message : String(simulateError)}
-        </p>
-      ) : null}
-      {replacementsError ? (
-        <p className="mb-2 text-xs text-rose-200">
-          {replacementsError instanceof Error ? replacementsError.message : String(replacementsError)}
+      {actionError ? (
+        <p className="mb-2 text-xs text-rose-200" role="alert">
+          {actionError}
         </p>
       ) : null}
 

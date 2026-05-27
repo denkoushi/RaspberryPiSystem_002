@@ -307,7 +307,7 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     });
   });
 
-  it('推奨セット自動選定で plan と simulate を呼ぶ', async () => {
+  it('推奨セット自動選定で plan と candidates を呼び simulate は省略する', async () => {
     const plan = vi.fn().mockResolvedValue({
       siteKey: '第2工場',
       yearMonth: '2026-04',
@@ -420,11 +420,12 @@ describe('ProductionScheduleLoadBalancingPage', () => {
       overResourceCds: ['A01'],
       strategy: 'max_over_reduction'
     });
-    expect(simulate).toHaveBeenCalledWith({
+    expect(loadCandidates).toHaveBeenCalledWith({
       month: '2026-04',
-      overResourceCds: ['A01'],
-      selectedCandidateIds: ['S001\u001fP001\u001fH001']
+      maxCandidates: 200,
+      overResourceCds: ['A01']
     });
+    expect(simulate).not.toHaveBeenCalled();
     expect(screen.getByText(/超過解消見込み/)).toBeInTheDocument();
   });
 
