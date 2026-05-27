@@ -31,6 +31,8 @@ last-verified: 2026-05-26
 
 **重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
+**生産システムとの関係**: 生産の積み上げグラフは **`FSIGENSHOYOYMD`（資源所要量）** 軸。キオスクは **着手日・納期** 軸。**数値一致は要件にしない**（2026-05-27 突合）。→ [KB-363](./KB-363-load-balancing-production-system-reconciliation.md) / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
+
 ## 機種別月次負荷 — 仕様（実装正本）
 
 ### 集計対象
@@ -249,6 +251,7 @@ curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/machine-monthly-l
 
 ## References
 
+- [KB-363: 生産システム突合（2026-05-27）](./KB-363-load-balancing-production-system-reconciliation.md)
 - [運用ガイド: kiosk-production-schedule-load-balancing.md](../guides/kiosk-production-schedule-load-balancing.md)
 - [deployment.md §機種別月次 2026-05-26](../guides/deployment.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
 - 初版デプロイ（2026-04-30）: 本ファイル §Production deploy 履歴は [deployment.md §2026-04-30 負荷調整](../guides/deployment.md) 参照

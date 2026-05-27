@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-27 / **調査完了・ドキュメント反映・`main` マージ予定**） **キオスク負荷調整 × 生産システム — 集計突合（N7/033・5月/7月）**。**発見**: 生産グラフの日付軸は **`FSIGENSHOYOYMD`（資源所要量 CSV）**・キオスクは **着手日〜納期**。**不一致の主因** = データ源差・×`plannedQuantity`・FKOJUNST 母集団差。**決定**: **`FSIGENSHOYOYMD` に合わせない**（着手日正本）— [ADR-20260527](./docs/decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)。**7月**: 所要量 CSV **735H**·残 **≈706H**（`>7/1`）·消費 **≈113H**（`≦7/9` 累積）·キオスク日割り **≈429H**。**検算**: `apps/api/scripts/reconcile-033-may-patterns.mjs`（Pi5）。**ナレッジ**: [KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[分析](./docs/analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)·[ガイド §生産突合](./docs/guides/kiosk-production-schedule-load-balancing.md#生産システムとの数値突合重要)。**実装**: 未着手（次タスク）。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [ ] (2026-05-26 / **実装完了・未コミット・未デプロイ**） **キオスク負荷調整・外注候補シミュ**·ブランチ **`feat/kiosk-load-balancing-outsourcing-sim`**（`start-date-leveling` 上）。**仕様**: 資源CD俯瞰に超過資源選択·外注候補（効果順）·複数行累積シミュ（社内負荷除外·DB不変）。**API**: `outsourcing-candidates` / `outsourcing-simulate`。**検証（ローカル）**: outsourcing engine Vitest **5 PASS**·selection Vitest **2 PASS**·page Vitest **6 PASS**·`api lint` / `web lint` / `api build` / `web build` **PASS**。**ナレッジ**: [KB-362](./docs/knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](./docs/guides/kiosk-production-schedule-load-balancing.md)。
 
 - [ ] (2026-05-26 / **実装完了・未コミット・未デプロイ**） **キオスク負荷調整・着手日・平準化タブ**·ブランチ **`feat/kiosk-load-balancing-start-date-leveling`**。**仕様**: 3タブ目「着手日・平準化」·負荷=`FSIGENSHOYORYO×plannedQuantity`·着手〜有効納期を資源CD稼働日で日割り·月/日切替·シミュのみ（DB不変）·管理に稼働日ルール。**DB**: migration **`20260526100000_load_balancing_work_calendar`**。**検証（ローカル）**: work-calendar/load-distribution Vitest **8 PASS**·Web page/chart Vitest **6 PASS**·`api build` / `web build` **PASS**。**ナレッジ**: [KB-362](./docs/knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](./docs/guides/kiosk-production-schedule-load-balancing.md)。
@@ -1224,6 +1226,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-27 / **キオスク負荷調整 × 生産システム · FSIGENSHOYOYMD · N7(033)**）: (1) **生産の積み上げグラフの横軸は `FSIGENSHOYOYMD`**（資源所要量 `scawSTSIGENSHOYORYO`）— **着手日・納期ではない**。(2) **`CsvDashboardRow` に `FSIGENSHOYOYMD` は未取込**（工程1行モデル）。(3) **7月・033 所要量 CSV 合計 735H** に対し、生産 KPI **残706+消費113=819H** は **7/2–7/9 の重なり**で説明可能（単純分割ではない）。(4) **着手日タブの `× plannedQuantity`** で 5月 A=**1087H** vs 総分のみ B=**225H**。(5) **一覧スクリーンショットの標準工数合計 ≈1202H** は **月次706/113/735のいずれとも一致しない**（台帳≠月次 KPI）。(6) **P は着手日 SQL で除外**だが **7月日割りでは P が 419H** と最大寄与。**記録**: [KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[ADR-20260527](./docs/decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)·`reconcile-033-may-patterns.mjs`。
+
 - 観測（2026-05-22 / **キオスク順位ボード · 行背景ハイライト → 行内順位ピッカーへ pivot**）: (1) **`bg-slate-600/82`** は Tailwind 3.4 の **opacity スケール外**（`/80` `/90` のみ）のため **dist CSS にクラス未生成** → 背景透明で **カード背面と同化**（[#326](https://github.com/denkoushi/RaspberryPiSystem_002/pull/326) **`bg-slate-600/[0.82]`** で生成は復旧）。(2) **任意 opacity 修正後も実機で行全体が明るすぎ** → **行背景案はキオスク撤回**。(3) **採用**: 行内 **`<select>` 廃止** → **`LeaderBoardRankPickerDropdown`**（左ペイン製番順位と同一 Portal）·**順位 1–10 は黄色アンカー**·行背景 **常に `bg-slate-800/80`**·**サイネージ SVG 行背景 `rgba(71,85,105,0.82)` は継続**（意図的分岐）。**本番**: **`949eea9c`**·Detach **`20260522-204821-6687`**·Phase12 **43/0/0**·**現場目視 OK**。**記録**: [KB-297 §行内順位ピッカー](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[KB-297 §Tailwind `/82`](./docs/knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-tailwind-opacity-82-pitfall-2026-05-22)·[deployment §行内順位](./docs/guides/deployment.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)。
 
 - 観測（2026-05-22 / **吊具サイネージ · CSV 点検 vs キオスク持出でカード色が異なる**）: **見た目の差はデータ源（CSV/本システム）ではなく chrome 判定** — `hasVisibleLoanState = 貸出中>0 || 返却>0` のみだと **Gmail 投影の点検のみ**（`Loan` なし・`点検件数>0`）は **ダークカード**のまま。**Fix**: **`resolveRiggingHasVisibleLoanState`** を吊具 renderer のみ注入（案 A）·**ヘッダ件数は Loan 実績のまま**。**本番**: Pi5 **`20260522-174718-22503`**·Phase12 **43/0/0**。**記録**: [KB-381](./docs/knowledge-base/KB-381-rigging-slings-inspection-gmail-signage.md)·[deployment §chrome 統一](./docs/guides/deployment.md#rigging-inspection-card-chrome-unify-2026-05-22)·**`cf8c13bf`**。
@@ -1553,6 +1557,10 @@
   対応: Ansibleでリポジトリ変更検知（`repo_changed`）を実装し、`git pull`前後のHEADを比較して変更を検知。コード変更時に`api/web`を`--force-recreate --build`で再作成するように修正。`scripts/update-all-clients.sh`の`git rev-list`解析を`awk`で改善し、タブ文字を含む場合でも正常に動作するように修正。実機検証で正のテスト（コード変更→再ビルド）と負のテスト（コード変更なし→再ビルドなし）を確認。**[KB-217]**
 
 ## Decision Log
+
+- 決定（2026-05-27）: **キオスク負荷調整の集計正本軸は `plannedStartDate`（＋有効納期の日割り）とし、生産の `FSIGENSHOYOYMD`（資源所要量日別 CSV）には合わせない**。生産の「負荷残」「負荷消費」とキオスク月次 H の **数値一致は製品要件にしない**（別 KPI としてドキュメント化）。山崩し・平準化の目的は **キオスク内定義の一貫性**で満たす。  
+  理由: `FSIGENSHOYOYMD` の業務意味が不明確・粒度が日別行で工程行 UI と乖離・着手日の方が現場操作と一致。生産 706/113 は所要量 CSV で **近似再現可能**だがキオスク DB だけでは再現しない。  
+  参照: [ADR-20260527](./docs/decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)·[KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
 
 - 決定（2026-05-22）: **キオスク順位ボードの手動順位の視認性は「行背景ハイライト」ではなく「行内順位ピッカーの黄色アンカー」で表現**する。**行背景は全行 `bg-slate-800/80` 固定**（カード寸法 **`h-7 w-14` 不変**）。**UI** は左ペイン製番順位と同一の **`LeaderBoardRankPickerDropdown`（Portal 縦リスト）**。**サイネージ `kiosk_leader_order_cards` の SVG 行背景 `LEADER_ORDER_SVG_ROW_BG_RANKED` は維持**（キオスク Web との見え方差は仕様）。  
   理由: 行背景案は Tailwind 生成漏れ・実機明るさ・カード背面同化の再発リスクがあり、**順位操作 UI だけを強調**する方が現場要件（順位付き行の識別）とレイアウト安定性を両立するため。  
@@ -2381,6 +2389,25 @@
 ---
 
 ## Next Steps（将来のタスク）
+
+### キオスク負荷調整 — 集計定義の実装修正（2026-05-27） {#kiosk-load-balancing-aggregation-fix-2026-05-27}
+
+**状態**: **調査・ドキュメント完了**（[KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)）·**実装未着手**。
+
+| # | タスク | 優先 | 完了条件 |
+|---|--------|------|----------|
+| 1 | 着手日タブ: **`FSIGENSHOYORYO × plannedQuantity` を廃止**（総分のみ） | **高** | `start-date-leveling-assembler` 修正·Vitest·5月/7月検算で桁が縮む |
+| 2 | 着手日・機種別: **残＝S/R（+必要ならP）／消費＝C/X** の母集団分離（ラベルと一致） | **高** | 一覧可視 SQL と負荷用途の意図を ADR/KB に追記済みの方針どおり実装 |
+| 3 | UI/ガイド: **生産 H との非一致**を画面またはヘルプで明示 | 中 | 運用問い合わせが減る |
+| 4 | （任意）所要量 CSV の **参考表示**（read-only・出所明示） | 低 | 生産 KPI との目視突合のみ。正本は着手日のまま |
+| 5 | `reconcile-033-may-patterns.mjs` を CI/Runbook に組込 | 低 | Pi5 で env 付き再実行手順の定型化 |
+
+**再検算コマンド（Pi5）**:
+
+```bash
+RECONCILE_RESOURCE=033 RECONCILE_YEAR_MONTH=2026-07 RECONCILE_REMAIN_H=706 RECONCILE_CONSUMED_H=113 \
+  node apps/api/scripts/reconcile-033-may-patterns.mjs
+```
 
 ### 私用 Pi5 Hermes Agent — セキュア基盤・AI執事北極星（2026-05-24–25） {#private-pi5-hermes-discord-2026-05-24}
 
