@@ -241,14 +241,25 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
         </p>
       ) : null}
 
-      <div className={lbGrid.midRow}>
-        <section className={lbCard.base}>
-          <p className={`mb-2 ${lbText.section}`}>資源CD別（上位48・必要分降順）</p>
-          <LoadBalancingOverviewResourceChart rows={chartSlice} />
-        </section>
+      <div className={lbGrid.workspaceRow}>
+        <div className={lbGrid.leftStack}>
+          <section className={lbCard.base}>
+            <p className={`mb-2 ${lbText.section}`}>資源CD別（上位48・必要分降順）</p>
+            <LoadBalancingOverviewResourceChart rows={chartSlice} />
+          </section>
+
+          <LoadBalancingOverviewResultsTable
+            embedded
+            resources={displayResources}
+            beforeByResourceCd={beforeResourceMap}
+            showSimulationColumns={hasSimulation}
+            onReset={resetOutsourcingState}
+          />
+        </div>
 
         <ExternalizationPlanPanel
           embedded
+          workspaceLayout
           enabled={overviewEnabled}
           hasSelectedOverResources={hasSelectedOverResources}
           selectedCandidateIds={planState.selectedCandidateIds}
@@ -268,13 +279,6 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
           onClearPlan={planState.handleClearPlan}
         />
       </div>
-
-      <LoadBalancingOverviewResultsTable
-        resources={displayResources}
-        beforeByResourceCd={beforeResourceMap}
-        showSimulationColumns={hasSimulation}
-        onReset={resetOutsourcingState}
-      />
 
       <LoadBalancingOverviewLegacyOutsourcingSection
         overviewEnabled={overviewEnabled}

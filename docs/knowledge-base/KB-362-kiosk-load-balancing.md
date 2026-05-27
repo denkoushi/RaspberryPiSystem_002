@@ -219,6 +219,78 @@ sequenceDiagram
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
 
+## Production deploy（実績 2026-05-28 · 可読性チューニング · Pi5 のみ）
+
+- **ブランチ**: `fix/kiosk-load-balancing-font-layout-tuning`
+- **代表コミット**: **`d1126cb6`** `fix(kiosk): tune load balancing overview readability`
+- **変更範囲**: **Web のみ**（フォント 14px 化・`workspaceRow` レイアウト・試算表 compact）
+- **Prisma マイグレーション**: **なし**
+- **CI**: GitHub Actions **`26544736987`** success
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ** |
+| Detach Run ID | `20260528-084207-21792` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0**（約 **28s**） |
+| Pi5 Git | **`d1126cb6`** |
+| Web バンドル | `index-BBDcMb0B.js`（`workspaceRow` · `table-fixed` · `minmax(400px,1.35fr)`） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-load-balancing-font-layout-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機検証（2026-05-28 · 可読性チューニング）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- Pi5 Git: **`d1126cb6`**
+
+### API / Web スモーク
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+curl -sk -o /dev/null -w "HTTP %{http_code}\n" \
+  "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+# 実績: HTTP 200（約 0.35s）
+
+ssh denkon5sd02@100.106.158.2 \
+  'JS=$(docker exec docker-web-1 sh -c "ls /srv/site/assets/index-*.js | head -1"); \
+   docker exec docker-web-1 grep -o "workspaceRow\|table-fixed\|試算後必要" "$JS" | sort -u'
+# 実績: workspaceRow, table-fixed, 試算後必要（minify 後も識別可）
+```
+
+### 現場目視（推奨）
+
+- [ ] 超過資源チップ・試算表の数値が **プレビュー並みに 14px 相当**で読めること
+- [ ] **左**: 棒グラフ + 試算結果、**右**: 推奨セット表が広いこと（`xl` 以上）
+- [ ] 自動選定後の表示維持（reset 境界は **`95b7f29d` 維持**）
+
+**参照**: [deployment.md §可読性チューニング 2026-05-28](../guides/deployment.md#kiosk-load-balancing-font-layout-tuning-2026-05-28)
+
+## UI ワークスペースレイアウト（2026-05-28 · 可読性チューニング）
+
+| モジュール | 責務 |
+|-----------|------|
+| `lbGrid.workspaceRow` / `leftStack` | 左: グラフ+試算表 / 右: 推奨セット |
+| `lbTable.compact` + `lbResultsTableCol` | 試算表の固定列幅・数値右寄せ |
+| `ExternalizationPlanPanel` `workspaceLayout` | 右ペイン表スクロール拡大 |
+| `loadBalancingRechartsDefaults` | 軸・凡例 **13px**（Pi 実機向け） |
+
+**Troubleshooting**
+
+| 症状 | 確認 |
+|------|------|
+| フォントがプレビューより小さい | Pi5 Git ≥ **`d1126cb6`**、ブラウザキャッシュ、[強制リロード](../guides/verification-checklist.md) |
+| 試算表が依然全幅 | バンドルに `workspaceRow` があるか（古い `index-*.js` キャッシュ） |
+| 3番表が縦に潰れる | 画面幅 `< xl` で 1 カラム — キオスク横画面を推奨 |
+
 ## Production deploy（実績 2026-05-28 · UI レイアウト刷新 · Pi5 のみ）
 
 - **ブランチ**: `feat/kiosk-load-balancing-ui-layout`

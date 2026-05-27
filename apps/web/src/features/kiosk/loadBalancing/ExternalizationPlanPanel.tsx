@@ -34,6 +34,8 @@ type Props = {
   onApplyReplacement: (candidateId: string) => void;
   onClearPlan: () => void;
   embedded?: boolean;
+  /** 左列にグラフ+試算表を置き、右ペインの表スクロールを広げる */
+  workspaceLayout?: boolean;
 };
 
 export function ExternalizationPlanPanel({
@@ -54,10 +56,21 @@ export function ExternalizationPlanPanel({
   onLoadReplacements,
   onApplyReplacement,
   onClearPlan,
-  embedded = false
+  embedded = false,
+  workspaceLayout = false
 }: Props) {
+  const planTableScrollClass = workspaceLayout
+    ? 'max-h-[min(520px,58dvh)] overflow-auto'
+    : 'max-h-[min(220px,30dvh)] overflow-auto';
+
   return (
-    <section className={embedded ? lbCard.emerald : `mt-3 ${lbCard.emerald}`}>
+    <section
+      className={
+        embedded
+          ? `${lbCard.emerald} ${workspaceLayout ? 'min-h-0 xl:min-h-[min(640px,72dvh)]' : ''}`
+          : `mt-3 ${lbCard.emerald}`
+      }
+    >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <LoadBalancingStepHeading step={3} className="mb-0">
           推奨セットで山を崩す
@@ -106,7 +119,7 @@ export function ExternalizationPlanPanel({
               </span>
             ) : null}
           </div>
-          <div className="max-h-[min(220px,30dvh)] overflow-auto">
+          <div className={planTableScrollClass}>
             <table className={lbTable.root}>
               <thead className={lbTable.stickyHead}>
                 <tr className={lbTable.headRow}>
@@ -167,7 +180,7 @@ export function ExternalizationPlanPanel({
 
       {replacementTargetId && replacementOptions.length > 0 ? (
         <div className={`mt-3 ${lbCard.inset}`}>
-          <p className={`mb-2 text-[0.8125rem] font-semibold text-emerald-100`}>代替候補（1件追加で試算）</p>
+          <p className="mb-2 text-sm font-semibold text-emerald-100">代替候補（1件追加で試算）</p>
           <ul className={`space-y-1.5 ${lbText.body}`}>
             {replacementOptions.map((option) => (
               <li key={option.candidateId} className="flex flex-wrap items-center gap-2">
