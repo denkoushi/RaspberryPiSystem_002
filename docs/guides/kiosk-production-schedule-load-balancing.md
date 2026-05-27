@@ -14,12 +14,13 @@
 
 ## UI レイアウト（2026-05-28 · 資源CD俯瞰）
 
-- **正本**: 静的プレビュー [kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html)
+- **正本**: 静的プレビュー [kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html)（**2026-05-28 後半**: ワークスペース配置・表 14px を反映）
 - **契約モジュール**: `loadBalancingUiClasses.ts`（ページ/カード/表/ボタン/チップの Tailwind クラス）
 - **ヘッダー**: `LoadBalancingPageHeader.tsx`（3タブ + Mac 絞込 `V`）
-- **ベースフォント**: ページ `text-sm`（14px）· 表 `text-[0.8125rem]`（13px）· 見出し `text-xl`
+- **ベースフォント**: ページ・表・チップ **`text-sm`（14px）** · 見出し `text-xl` · Recharts 軸 **13px**
+- **ワークスペース（俯瞰・`xl` 以上）**: 左列 = 棒グラフ + 試算結果（compact 表）、右列 = 推奨セット（広い表スクロール）
 - **俯瞰のみ全面適用**。機種別月次・着手日は今後 `loadBalancingUiClasses` を横展開可能
-- **デプロイ**: **Pi5 のみ**（Web SPA 正本）。Pi4 は `kiosk_full_url` 経由で自動反映
+- **デプロイ**: **Pi5 のみ**（Web SPA 正本）。本番 **`d1126cb6`**（[KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--可読性チューニング--pi5-のみ)）
 
 ## 集計ポリシー（サーバ実装に準拠）
 

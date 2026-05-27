@@ -10,6 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **キオスク負荷調整・俯瞰 UI 可読性チューニング**·**`fix/kiosk-load-balancing-font-layout-tuning`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-font-layout-tuning-2026-05-28}
+
+- **変更概要**:
+  - **背景**: ラズパイ実機で静的 HTML プレビューより **2番（超過資源チップ）**・**4番（試算結果表の値）** が小さく見える。4番が全幅で列が広すぎ、3番（推奨セット表）の表示領域が狭い。
+  - **Fix**: 表・チップを **`text-sm`（14px）** に統一。Recharts 軸・凡例 **13px**。試算結果表を **`table-fixed` + 数値列 10% 右寄せ**。
+  - **レイアウト**: **左列** = 棒グラフ + 試算結果（`workspaceRow` / `leftStack`）、**右列** = 推奨セット（`1.35fr`・表スクロール `max-h: min(520px, 58dvh)`）。
+  - **不変**: API / DB / 自動選定・reset 境界（`loadBalancingOverviewSession.ts`）。
+- **代表コミット**: **`d1126cb6`** `fix(kiosk): tune load balancing overview readability`
+- **CI（機能 push）**: **`26544736987`** success
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit` 1 台）。Pi4 / Pi3 は **`skipping: no hosts matched`**（Pi5 SPA 正本）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/kiosk-load-balancing-font-layout-tuning infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-084207-21792` | `ok=134` `changed=4` `failed=0` | **`--follow` 約 298s** · Git **`d1126cb6`** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **28s**）
+- **負荷調整スモーク**: [KB-362 §実機検証 可読性チューニング](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--可読性チューニング)
+- **Web バンドル**: `docker-web-1` → `index-BBDcMb0B.js` に **`workspaceRow`** · **`table-fixed`** · **`minmax(400px,1.35fr)`** · **`試算後必要`**（列見出し短縮）
+- **API 回帰**: `GET …/load-balancing/overview?month=2026-05` **HTTP 200**（約 **0.35s**）
+- **トラブルシュート**:
+  - **字がまだ小さい** → キオスクブラウザのズーム / 解像度。Pi5 が **`d1126cb6` 未満** なら再デプロイ。
+  - **3番表が狭い** → **`xl` 未満**では 1 カラム折りたたみ（意図）。現場は **横画面・幅 ≥1100px** を推奨。
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)
+
 ### 補足（2026-05-28 · **キオスク負荷調整・俯瞰 UI レイアウト刷新**·**`feat/kiosk-load-balancing-ui-layout`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-ui-layout-2026-05-28}
 
 - **変更概要**:
