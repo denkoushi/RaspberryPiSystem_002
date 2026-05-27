@@ -11,6 +11,7 @@ import { buildMaxProductNoWinnerCondition } from '../dist/services/production-sc
 import { buildFkojunstProductionScheduleListVisibilityWhereSql } from '../dist/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.js';
 import { buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql } from '../dist/services/production-schedule/completion/fkojunst-mail-status-completion.policy.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../dist/services/production-schedule/production-schedule-effective-completion.sql.js';
+import { buildLoadBalancingRowEligibilityWhereSql } from '../dist/services/production-schedule/load-balancing/load-balancing-eligibility.policy.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleExcludedCuttingResourceCd,
@@ -89,6 +90,9 @@ async function fetchRows(population) {
       AND "fkmail"."id" IS NOT NULL
       AND ${buildFkojunstMailStatusEligibleForScheduleDisappearanceScalarSql()}
     `;
+  } else if (population === 'load_balancing_eligibility') {
+    fkoFilter = buildLoadBalancingRowEligibilityWhereSql();
+    progressFilter = Prisma.empty;
   } else if (population === 'all_fko' || population === 'cx_any_progress') {
     fkoFilter = Prisma.sql`AND "fkmail"."id" IS NOT NULL AND ${FKO_ST_IN(['C', 'X'])}`;
   }
@@ -367,14 +371,20 @@ async function main() {
 
   const patterns = [
     {
-      id: 'A_current_start_date',
-      label: '現行着手日（S/R/C/X・progress未完・×指示数）',
+      id: 'A_kiosk_start_date_canonical',
+      label: '正本（着手日・eligibility・総分のみ）',
+      population: 'load_balancing_eligibility',
+      useQty: false
+    },
+    {
+      id: 'A_legacy_qty_srcx',
+      label: '旧現行（S/R/C/X・×指示数）— 参考',
       population: 'visible_srcx',
       useQty: true
     },
     {
       id: 'B_no_qty_srcx',
-      label: '×指示数なし（S/R/C/X・progress未完）',
+      label: '×指示数なし（S/R/C/X・progress未完）— 参考',
       population: 'visible_srcx',
       useQty: false
     },
@@ -446,9 +456,10 @@ async function main() {
         opHandlingInCode: {
           O:
             '一覧非表示・未完了。負荷SQLは FSIGENCD 非空必須のため、資源CD未振りのOは母集団に入らない',
-          P: '一覧非表示・未完了。資源CDがCSVにあれば集計対象になりうる。着手日タブは S/R/C/X のみで P は除外',
-          startDateTab: 'buildFkojunstProductionScheduleListVisibilityWhereSql → S,R,C,X',
-          overviewTab: 'load-balancing-eligibility → S,R,O,P（C/X除外・実効未完了）'
+          P: '一覧非表示・未完了。資源CDがCSVにあれば負荷集計対象（eligibility）',
+          startDateTab: 'buildLoadBalancingRowEligibilityWhereSql → C/X除外・S/R/O/P・実効未完了',
+          machineMonthlyTab: '同上（有効納期月）',
+          overviewTab: '同上（plannedEndDate 月）'
         },
         patterns: results.map(({ filter, population, ...r }) => r)
       },

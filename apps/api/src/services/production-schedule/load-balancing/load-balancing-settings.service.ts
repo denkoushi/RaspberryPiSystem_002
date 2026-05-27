@@ -1,14 +1,60 @@
 import { randomUUID } from 'node:crypto';
 
 import { resolveSiteKeyFromScopeKey } from '../../../lib/location-scope-resolver.js';
+import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import {
+  mergeLoadBalancingItemsByResourceCd,
+  mergeLoadBalancingTransferRules,
+  SHARED_LOAD_BALANCING_SITE_KEY,
+  usedSharedFallbackByResourceCd,
+  usedSharedFallbackByTransferRule
+} from './load-balancing-settings-merge.js';
 import { normalizeWorkCalendarMode, type WorkCalendarMode } from './work-calendar-policy.js';
+
+export { SHARED_LOAD_BALANCING_SITE_KEY } from './load-balancing-settings-merge.js';
 
 const normalizeLocation = (location: string): string => location.trim();
 const normalizeSiteKey = (location: string): string => resolveSiteKeyFromScopeKey(normalizeLocation(location));
 
 const normalizeResourceCd = (value: string): string => value.trim().toUpperCase();
+
+function logLoadBalancingSiteSharedResolution(params: {
+  siteKey: string;
+  setting: string;
+  siteItems: readonly unknown[];
+  sharedItems: readonly unknown[];
+  usedSharedSupplement: boolean;
+  yearMonth?: string;
+}): void {
+  if (params.siteKey === SHARED_LOAD_BALANCING_SITE_KEY) {
+    return;
+  }
+  if (params.siteItems.length === 0 && params.sharedItems.length === 0) {
+    logger.warn(
+      {
+        siteKey: params.siteKey,
+        fallbackSiteKey: SHARED_LOAD_BALANCING_SITE_KEY,
+        setting: params.setting,
+        yearMonth: params.yearMonth
+      },
+      'Load balancing settings missing for siteKey and shared'
+    );
+    return;
+  }
+  if (params.usedSharedSupplement) {
+    logger.debug(
+      {
+        siteKey: params.siteKey,
+        fallbackSiteKey: SHARED_LOAD_BALANCING_SITE_KEY,
+        setting: params.setting,
+        yearMonth: params.yearMonth
+      },
+      'Load balancing settings supplemented from shared siteKey'
+    );
+  }
+}
 
 export type LoadBalancingCapacityBaseItem = {
   resourceCd: string;
@@ -38,11 +84,7 @@ export type LoadBalancingWorkCalendarItem = {
   workCalendarMode: WorkCalendarMode;
 };
 
-export async function listLoadBalancingCapacityBase(siteKeyInput: string): Promise<{
-  siteKey: string;
-  items: LoadBalancingCapacityBaseItem[];
-}> {
-  const siteKey = normalizeSiteKey(siteKeyInput);
+async function fetchLoadBalancingCapacityBaseItems(siteKey: string): Promise<LoadBalancingCapacityBaseItem[]> {
   const rows = await prisma.productionScheduleResourceCapacityBase.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -54,13 +96,43 @@ export async function listLoadBalancingCapacityBase(siteKeyInput: string): Promi
       baseAvailableMinutes: true
     }
   });
-  return {
+  return rows.map((row) => ({
+    resourceCd: row.resourceCd,
+    baseAvailableMinutes: row.baseAvailableMinutes
+  }));
+}
+
+export async function listLoadBalancingCapacityBase(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingCapacityBaseItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  const items = await fetchLoadBalancingCapacityBaseItems(siteKey);
+  return { siteKey, items };
+}
+
+export async function listLoadBalancingCapacityBaseResolved(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingCapacityBaseItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  if (siteKey === SHARED_LOAD_BALANCING_SITE_KEY) {
+    return listLoadBalancingCapacityBase(siteKey);
+  }
+
+  const [siteItems, sharedItems] = await Promise.all([
+    fetchLoadBalancingCapacityBaseItems(siteKey),
+    fetchLoadBalancingCapacityBaseItems(SHARED_LOAD_BALANCING_SITE_KEY)
+  ]);
+  const items = mergeLoadBalancingItemsByResourceCd(siteItems, sharedItems);
+  logLoadBalancingSiteSharedResolution({
     siteKey,
-    items: rows.map((row) => ({
-      resourceCd: row.resourceCd,
-      baseAvailableMinutes: row.baseAvailableMinutes
-    }))
-  };
+    setting: 'capacity-base',
+    siteItems,
+    sharedItems,
+    usedSharedSupplement: usedSharedFallbackByResourceCd(siteItems, items)
+  });
+  return { siteKey, items };
 }
 
 export async function replaceLoadBalancingCapacityBase(params: {
@@ -97,16 +169,10 @@ export async function replaceLoadBalancingCapacityBase(params: {
   return listLoadBalancingCapacityBase(siteKey);
 }
 
-export async function listLoadBalancingMonthlyCapacity(params: {
-  siteKeyInput: string;
-  yearMonth: string;
-}): Promise<{
-  siteKey: string;
-  yearMonth: string;
-  items: LoadBalancingMonthlyCapacityItem[];
-}> {
-  const siteKey = normalizeSiteKey(params.siteKeyInput);
-  const yearMonth = params.yearMonth.trim();
+async function fetchLoadBalancingMonthlyCapacityItems(
+  siteKey: string,
+  yearMonth: string
+): Promise<LoadBalancingMonthlyCapacityItem[]> {
   const rows = await prisma.productionScheduleResourceMonthlyCapacity.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -119,14 +185,54 @@ export async function listLoadBalancingMonthlyCapacity(params: {
       availableMinutes: true
     }
   });
-  return {
+  return rows.map((row) => ({
+    resourceCd: row.resourceCd,
+    availableMinutes: row.availableMinutes
+  }));
+}
+
+export async function listLoadBalancingMonthlyCapacity(params: {
+  siteKeyInput: string;
+  yearMonth: string;
+}): Promise<{
+  siteKey: string;
+  yearMonth: string;
+  items: LoadBalancingMonthlyCapacityItem[];
+}> {
+  const siteKey = normalizeSiteKey(params.siteKeyInput);
+  const yearMonth = params.yearMonth.trim();
+  const items = await fetchLoadBalancingMonthlyCapacityItems(siteKey, yearMonth);
+  return { siteKey, yearMonth, items };
+}
+
+export async function listLoadBalancingMonthlyCapacityResolved(params: {
+  siteKeyInput: string;
+  yearMonth: string;
+}): Promise<{
+  siteKey: string;
+  yearMonth: string;
+  items: LoadBalancingMonthlyCapacityItem[];
+}> {
+  const siteKey = normalizeSiteKey(params.siteKeyInput);
+  const yearMonth = params.yearMonth.trim();
+  if (siteKey === SHARED_LOAD_BALANCING_SITE_KEY) {
+    return listLoadBalancingMonthlyCapacity({ siteKeyInput: siteKey, yearMonth });
+  }
+
+  const [siteItems, sharedItems] = await Promise.all([
+    fetchLoadBalancingMonthlyCapacityItems(siteKey, yearMonth),
+    fetchLoadBalancingMonthlyCapacityItems(SHARED_LOAD_BALANCING_SITE_KEY, yearMonth)
+  ]);
+  const items = mergeLoadBalancingItemsByResourceCd(siteItems, sharedItems);
+  logLoadBalancingSiteSharedResolution({
     siteKey,
-    yearMonth,
-    items: rows.map((row) => ({
-      resourceCd: row.resourceCd,
-      availableMinutes: row.availableMinutes
-    }))
-  };
+    setting: 'monthly-capacity',
+    siteItems,
+    sharedItems,
+    usedSharedSupplement: usedSharedFallbackByResourceCd(siteItems, items),
+    yearMonth
+  });
+  return { siteKey, yearMonth, items };
 }
 
 export async function replaceLoadBalancingMonthlyCapacity(params: {
@@ -175,11 +281,7 @@ export async function replaceLoadBalancingMonthlyCapacity(params: {
   return listLoadBalancingMonthlyCapacity({ siteKeyInput: siteKey, yearMonth });
 }
 
-export async function listLoadBalancingClasses(siteKeyInput: string): Promise<{
-  siteKey: string;
-  items: LoadBalancingClassItem[];
-}> {
-  const siteKey = normalizeSiteKey(siteKeyInput);
+async function fetchLoadBalancingClassItems(siteKey: string): Promise<LoadBalancingClassItem[]> {
   const rows = await prisma.productionScheduleLoadBalanceClass.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -191,13 +293,43 @@ export async function listLoadBalancingClasses(siteKeyInput: string): Promise<{
       classCode: true
     }
   });
-  return {
+  return rows.map((row) => ({
+    resourceCd: row.resourceCd,
+    classCode: row.classCode.trim()
+  }));
+}
+
+export async function listLoadBalancingClasses(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingClassItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  const items = await fetchLoadBalancingClassItems(siteKey);
+  return { siteKey, items };
+}
+
+export async function listLoadBalancingClassesResolved(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingClassItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  if (siteKey === SHARED_LOAD_BALANCING_SITE_KEY) {
+    return listLoadBalancingClasses(siteKey);
+  }
+
+  const [siteItems, sharedItems] = await Promise.all([
+    fetchLoadBalancingClassItems(siteKey),
+    fetchLoadBalancingClassItems(SHARED_LOAD_BALANCING_SITE_KEY)
+  ]);
+  const items = mergeLoadBalancingItemsByResourceCd(siteItems, sharedItems);
+  logLoadBalancingSiteSharedResolution({
     siteKey,
-    items: rows.map((row) => ({
-      resourceCd: row.resourceCd,
-      classCode: row.classCode.trim()
-    }))
-  };
+    setting: 'classes',
+    siteItems,
+    sharedItems,
+    usedSharedSupplement: usedSharedFallbackByResourceCd(siteItems, items)
+  });
+  return { siteKey, items };
 }
 
 export async function replaceLoadBalancingClasses(params: {
@@ -236,11 +368,7 @@ export async function replaceLoadBalancingClasses(params: {
   return listLoadBalancingClasses(siteKey);
 }
 
-export async function listLoadBalancingTransferRules(siteKeyInput: string): Promise<{
-  siteKey: string;
-  items: LoadBalancingTransferRuleItem[];
-}> {
-  const siteKey = normalizeSiteKey(siteKeyInput);
+async function fetchLoadBalancingTransferRuleItems(siteKey: string): Promise<LoadBalancingTransferRuleItem[]> {
   const rows = await prisma.productionScheduleLoadBalanceTransferRule.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -255,16 +383,46 @@ export async function listLoadBalancingTransferRules(siteKeyInput: string): Prom
       efficiencyRatio: true
     }
   });
-  return {
+  return rows.map((row) => ({
+    fromClassCode: row.fromClassCode.trim(),
+    toClassCode: row.toClassCode.trim(),
+    priority: row.priority,
+    enabled: row.enabled,
+    efficiencyRatio: row.efficiencyRatio
+  }));
+}
+
+export async function listLoadBalancingTransferRules(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingTransferRuleItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  const items = await fetchLoadBalancingTransferRuleItems(siteKey);
+  return { siteKey, items };
+}
+
+export async function listLoadBalancingTransferRulesResolved(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingTransferRuleItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  if (siteKey === SHARED_LOAD_BALANCING_SITE_KEY) {
+    return listLoadBalancingTransferRules(siteKey);
+  }
+
+  const [siteItems, sharedItems] = await Promise.all([
+    fetchLoadBalancingTransferRuleItems(siteKey),
+    fetchLoadBalancingTransferRuleItems(SHARED_LOAD_BALANCING_SITE_KEY)
+  ]);
+  const items = mergeLoadBalancingTransferRules(siteItems, sharedItems);
+  logLoadBalancingSiteSharedResolution({
     siteKey,
-    items: rows.map((row) => ({
-      fromClassCode: row.fromClassCode.trim(),
-      toClassCode: row.toClassCode.trim(),
-      priority: row.priority,
-      enabled: row.enabled,
-      efficiencyRatio: row.efficiencyRatio
-    }))
-  };
+    setting: 'transfer-rules',
+    siteItems,
+    sharedItems,
+    usedSharedSupplement: usedSharedFallbackByTransferRule(siteItems, items)
+  });
+  return { siteKey, items };
 }
 
 export async function replaceLoadBalancingTransferRules(params: {
@@ -307,11 +465,7 @@ export async function replaceLoadBalancingTransferRules(params: {
   return listLoadBalancingTransferRules(siteKey);
 }
 
-export async function listLoadBalancingWorkCalendars(siteKeyInput: string): Promise<{
-  siteKey: string;
-  items: LoadBalancingWorkCalendarItem[];
-}> {
-  const siteKey = normalizeSiteKey(siteKeyInput);
+async function fetchLoadBalancingWorkCalendarItems(siteKey: string): Promise<LoadBalancingWorkCalendarItem[]> {
   const rows = await prisma.productionScheduleResourceWorkCalendar.findMany({
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -323,13 +477,43 @@ export async function listLoadBalancingWorkCalendars(siteKeyInput: string): Prom
       workCalendarMode: true
     }
   });
-  return {
+  return rows.map((row) => ({
+    resourceCd: row.resourceCd,
+    workCalendarMode: normalizeWorkCalendarMode(row.workCalendarMode)
+  }));
+}
+
+export async function listLoadBalancingWorkCalendars(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingWorkCalendarItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  const items = await fetchLoadBalancingWorkCalendarItems(siteKey);
+  return { siteKey, items };
+}
+
+export async function listLoadBalancingWorkCalendarsResolved(siteKeyInput: string): Promise<{
+  siteKey: string;
+  items: LoadBalancingWorkCalendarItem[];
+}> {
+  const siteKey = normalizeSiteKey(siteKeyInput);
+  if (siteKey === SHARED_LOAD_BALANCING_SITE_KEY) {
+    return listLoadBalancingWorkCalendars(siteKey);
+  }
+
+  const [siteItems, sharedItems] = await Promise.all([
+    fetchLoadBalancingWorkCalendarItems(siteKey),
+    fetchLoadBalancingWorkCalendarItems(SHARED_LOAD_BALANCING_SITE_KEY)
+  ]);
+  const items = mergeLoadBalancingItemsByResourceCd(siteItems, sharedItems);
+  logLoadBalancingSiteSharedResolution({
     siteKey,
-    items: rows.map((row) => ({
-      resourceCd: row.resourceCd,
-      workCalendarMode: normalizeWorkCalendarMode(row.workCalendarMode)
-    }))
-  };
+    setting: 'work-calendars',
+    siteItems,
+    sharedItems,
+    usedSharedSupplement: usedSharedFallbackByResourceCd(siteItems, items)
+  });
+  return { siteKey, items };
 }
 
 export async function replaceLoadBalancingWorkCalendars(params: {

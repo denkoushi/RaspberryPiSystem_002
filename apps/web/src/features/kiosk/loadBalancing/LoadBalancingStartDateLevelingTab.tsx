@@ -39,7 +39,6 @@ const STACK_COLORS = [
 const UNALLOCATED_LABELS: Record<string, string> = {
   missing_planned_start_date: '着手日なし',
   missing_effective_due_date: '有効納期なし',
-  invalid_quantity: '指示数不明',
   no_active_days: '稼働日なし',
   zero_required_minutes: '所要0分'
 };

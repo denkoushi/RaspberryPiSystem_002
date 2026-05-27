@@ -1,6 +1,5 @@
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildFkojunstProductionScheduleListVisibilityWhereSql } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleExcludedCuttingResourceCd,
@@ -8,6 +7,8 @@ import {
   type ResourceCategoryPolicy
 } from '../policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
+import { buildCsvDashboardRowRequiredMinutesSql } from './csv-dashboard-row-required-minutes.sql.js';
+import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligibility.policy.js';
 import { formatYearMonthFromUtcDate } from './year-month-range.js';
 
 export type MachineMonthlyLoadQueryRow = {
@@ -88,13 +89,7 @@ export async function listMachineMonthlyLoadQueryRows(params: {
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') AS "fhinmei",
       COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
-      (
-        CASE
-          WHEN ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') ~ '^\\s*-?\\d+(\\.\\d+)?\\s*$'
-          THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::numeric
-          ELSE 0
-        END
-      )::double precision AS "requiredMinutes",
+      ${buildCsvDashboardRowRequiredMinutesSql()} AS "requiredMinutes",
       COALESCE("n"."dueDate", "supplement"."plannedEndDate") AS "effectiveDueDate",
       "n"."dueDate" AS "noteDueDate",
       "supplement"."plannedEndDate" AS "plannedEndDate"
@@ -108,6 +103,9 @@ export async function listMachineMonthlyLoadQueryRows(params: {
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -116,7 +114,6 @@ export async function listMachineMonthlyLoadQueryRows(params: {
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND COALESCE("p"."isCompleted", FALSE) = FALSE
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NOT NULL
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") >= ${params.rangeStart}
       AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") < ${params.rangeEndExclusive}
@@ -125,7 +122,7 @@ export async function listMachineMonthlyLoadQueryRows(params: {
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'SH%'
       )
       AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
-      ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
+      ${buildLoadBalancingRowEligibilityWhereSql()}
     ORDER BY
       COALESCE("n"."dueDate", "supplement"."plannedEndDate") ASC,
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,

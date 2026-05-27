@@ -3,7 +3,6 @@ import type { WorkCalendarMode } from './work-calendar-policy.js';
 export type StartDateLevelingUnallocatedReason =
   | 'missing_planned_start_date'
   | 'missing_effective_due_date'
-  | 'invalid_quantity'
   | 'no_active_days'
   | 'zero_required_minutes';
 
@@ -14,8 +13,7 @@ export type StartDateLevelingQueryRow = {
   fhincd: string;
   fkojun: string | null;
   resourceCd: string;
-  perUnitMinutes: number;
-  plannedQuantity: number | null;
+  requiredMinutes: number;
   plannedStartDate: Date | null;
   effectiveDueDate: Date | null;
 };
@@ -41,8 +39,7 @@ export type StartDateLevelingUnallocatedRow = {
   fkojun: string | null;
   resourceCd: string;
   reason: StartDateLevelingUnallocatedReason;
-  perUnitMinutes: number;
-  plannedQuantity: number | null;
+  requiredMinutes: number;
 };
 
 export type StartDateLevelingResourceSummary = {

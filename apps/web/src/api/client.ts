@@ -663,7 +663,6 @@ export interface ProductionScheduleLoadBalancingMachineMonthlyLoadResponse {
 export type ProductionScheduleLoadBalancingStartDateLevelingUnallocatedReason =
   | 'missing_planned_start_date'
   | 'missing_effective_due_date'
-  | 'invalid_quantity'
   | 'no_active_days'
   | 'zero_required_minutes';
 
@@ -704,8 +703,7 @@ export interface ProductionScheduleLoadBalancingStartDateLevelingUnallocatedRow 
   fkojun: string | null;
   resourceCd: string;
   reason: ProductionScheduleLoadBalancingStartDateLevelingUnallocatedReason;
-  perUnitMinutes: number;
-  plannedQuantity: number | null;
+  requiredMinutes: number;
 }
 
 export interface ProductionScheduleLoadBalancingStartDateLevelingSimulatedMove {

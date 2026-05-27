@@ -16,7 +16,7 @@ last-verified: 2026-05-27
 - **不一致の主因は取り込み不良ではなく、データ源・粒度・月の載せ方・工数式・FKOJUNST 母集団の差**（複合）。
 - 生産の積み上げグラフの日付軸は **`FSIGENSHOYOYMD`（資源所要量テーブル）** であり、キオスクの **着手日・納期・日割り** とは別物。
 - **`FSIGENSHOYOYMD` にはキオスク負荷調整を合わせない**（着手日基準を正とする）。→ [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
-- 着手日タブの **`FSIGENSHOYORYO × plannedQuantity`** は過大集計の有力因（`FSIGENSHOYORYO` は行総分）。
+- 着手日タブの **`FSIGENSHOYORYO × plannedQuantity`** は過大集計の有力因（`FSIGENSHOYORYO` は行総分）。→ **2026-05-27 修正済み**（`feat/kiosk-load-balancing-aggregation-fix`）。
 
 関連: [KB-362](./KB-362-kiosk-load-balancing.md)（機能正本） / [分析詳細](../analysis/production-load-balancing-reconciliation-with-production-system-20260527.md) / [ガイド](../guides/kiosk-production-schedule-load-balancing.md)
 
@@ -76,8 +76,9 @@ last-verified: 2026-05-27
 | タブ | FKOJUNST | その他 |
 |------|----------|--------|
 | **資源CD俯瞰・外注** | **S/R/O/P**（C/X 除外・実効未完了） | 月=`plannedEndDate`、工数=総分のみ |
-| **機種別月次・着手日** | **S/R/C/X**（一覧可視ポリシー） | progress 未完のみ。着手日は **P/O 除外** |
-| 着手日の工数 | — | **`FSIGENSHOYORYO × plannedQuantity`**（`start-date-leveling-assembler.ts`） |
+| **機種別月次・着手日（修正前）** | **S/R/C/X**（一覧可視ポリシー） | progress 未完のみ。着手日は **P/O 除外** |
+| **機種別月次・着手日（修正後）** | **S/R/O/P**（eligibility） | **C/X 除外**・実効未完了・`fkmail` 必須 |
+| 着手日の工数（修正後） | — | **`FSIGENSHOYORYO` 行総分のみ**（`start-date-leveling-assembler.ts`） |
 
 **O**: `FSIGENCD` 非空が SQL 前提のため、**資源未振りの O は行ごと落ちる**（033 では O 0 件の例あり）。  
 **P**: 俯瞰では入り得るが、**着手日タブの一覧可視条件で SQL 除外**。日割りで対象月に載るかは **着手/納期次第**。
@@ -90,7 +91,7 @@ last-verified: 2026-05-27
 |------|------------|------|
 | 資源CD俯瞰 | `plannedEndDate` の暦月 | `FSIGENSHOYORYO` 合計（×指示数しない） |
 | 機種別月次 | 有効納期の暦月 | 同上 |
-| 着手日・平準化 | 着手〜有効納期を稼働日**日割り**→月合算 | **`FSIGENSHOYORYO × plannedQuantity`** |
+| 着手日・平準化 | 着手〜有効納期を稼働日**日割り**→月合算 | **`FSIGENSHOYORYO` 行総分**（修正後） |
 
 `FSIGENSHOYORYO` は [所要・総分分析](../analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md) のとおり **個数込み総分（分）** が正本。
 
@@ -184,7 +185,10 @@ last-verified: 2026-05-27
 | 区分 | 内容 |
 |------|------|
 | **実施済み（本 KB）** | 突合結果・用語・ADR のドキュメント化 |
-| **未実施（実装候補）** | 着手日から ×指示数削除；着手日母集団の C/X 除外と P の扱い統一；生産 KPI との **別系統参考表示**（任意） |
+| **実施済み（2026-05-27）** | 着手日 **×指示数廃止**；機種別・着手日の母集団を **eligibility**（C/X 除外・S/R/O/P・実効未完了）に統一 — **`bef423fe`** |
+| **実施済み（2026-05-27）** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取り）— **`37a7b6d4`** · [KB-362 §能力設定](./KB-362-kiosk-load-balancing.md#能力設定と-shared--sitekey2026-05-27) |
+| **本番（Pi5 のみ）** | Detach **`20260527-161741-7843`** · Phase12 **43/0/0** · PR [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350) — Pi4×4 **未** |
+| **未実施（任意）** | 生産 KPI との **別系統参考表示**；UI で非一致を明示（EXEC_PLAN タスク3） |
 | **実施しない方針** | キオスク負荷調整の正本軸を **`FSIGENSHOYOYMD` に変更** |
 
 ---

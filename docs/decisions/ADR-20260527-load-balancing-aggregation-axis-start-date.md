@@ -36,7 +36,10 @@ accepted
 ### 悪い
 
 - 生産画面の **706H / 113H** とキオスク数値は **そのままでは一致しない**（運用説明が必要）。
-- 実装面では **×plannedQuantity** や **FKOJUNST 母集団** の修正は **別タスク**（本 ADR では解決しない）。
+- ~~実装面では **×plannedQuantity** や **FKOJUNST 母集団** の修正は **別タスク**~~ → **2026-05-27 実装**（`feat/kiosk-load-balancing-aggregation-fix` · PR [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)）：
+  - **`bef423fe`**: 着手日は総分のみ、3タブ負荷母集団を `buildLoadBalancingRowEligibilityWhereSql` に統一。
+  - **`37a7b6d4`**: 管理 `shared` / キオスク `siteKey` の非対称を、キオスク読み取りの `listLoadBalancing*Resolved`（site 優先 + shared 補完）で解消。資源カテゴリ設定と同型の境界パターン。
+- **本番**: Pi5 Detach **`20260527-161741-7843`**（Pi4×4 は Web 差分のため次段デプロイ）。
 
 ## References
 

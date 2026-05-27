@@ -1,5 +1,5 @@
 import { normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
-import { listLoadBalancingTransferRules } from './load-balancing-settings.service.js';
+import { listLoadBalancingTransferRulesResolved } from './load-balancing-settings.service.js';
 import { getProductionScheduleLoadBalancingOverview } from './load-balancing-overview.service.js';
 import { listMonthlyLoadRowCandidates } from './monthly-load-query.service.js';
 import { computeLoadBalancingSuggestions } from './reallocation-suggestion.engine.js';
@@ -18,7 +18,7 @@ export async function suggestProductionScheduleLoadBalancing(params: {
   const [overview, rows, rules] = await Promise.all([
     getProductionScheduleLoadBalancingOverview(params),
     listMonthlyLoadRowCandidates(params),
-    listLoadBalancingTransferRules(params.siteKey)
+    listLoadBalancingTransferRulesResolved(params.siteKey)
   ]);
 
   const classMap = new Map(

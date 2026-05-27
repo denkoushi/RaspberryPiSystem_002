@@ -1,5 +1,6 @@
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { buildCsvDashboardRowRequiredMinutesSql } from './csv-dashboard-row-required-minutes.sql.js';
 import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligibility.policy.js';
 import {
   getResourceCategoryPolicy,
@@ -76,13 +77,7 @@ export async function aggregateMonthlyLoadByResource(params: {
   const rows = await prisma.$queryRaw<RawAggRow[]>`
     SELECT
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
-      SUM(
-        CASE
-          WHEN ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') ~ '^\\s*-?\\d+(\\.\\d+)?\\s*$'
-          THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::numeric
-          ELSE 0
-        END
-      )::double precision AS "requiredMinutes"
+      SUM(${buildCsvDashboardRowRequiredMinutesSql()})::double precision AS "requiredMinutes"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
       ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -137,13 +132,7 @@ export async function listMonthlyLoadRowCandidates(params: {
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') AS "fhinmei",
       COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
-      (
-        CASE
-          WHEN ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') ~ '^\\s*-?\\d+(\\.\\d+)?\\s*$'
-          THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::numeric
-          ELSE 0
-        END
-      )::double precision AS "requiredMinutes"
+      ${buildCsvDashboardRowRequiredMinutesSql()} AS "requiredMinutes"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleFkojunstStatus" AS "fkst"
       ON "fkst"."csvDashboardRowId" = "CsvDashboardRow"."id"

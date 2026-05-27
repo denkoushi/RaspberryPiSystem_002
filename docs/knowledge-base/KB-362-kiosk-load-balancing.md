@@ -2,7 +2,7 @@
 title: KB-362 キオスク負荷調整（山崩し支援）画面
 tags: [kiosk, production-schedule, load-balancing, machine-monthly-load]
 audience: [開発者, 運用者]
-last-verified: 2026-05-26
+last-verified: 2026-05-27
 ---
 
 # KB-362: キオスク負荷調整（山崩し支援）画面
@@ -18,6 +18,8 @@ last-verified: 2026-05-26
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-start-date-leveling` | **着手日・平準化**タブ（日割り・シミュ・稼働日ルール） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-outsourcing-sim` | **資源CD俯瞰・外注候補シミュ**（超過資源選択・効果順候補・累積試算） |
 | 2026-05-26 拡張 | `feat/kiosk-load-balancing-externalization-plan` | **部品単位推奨セット**（負荷母集団修正・自動 plan・入れ替え）— **未デプロイ** |
+| 2026-05-27 修正 | `feat/kiosk-load-balancing-aggregation-fix` · **`bef423fe`** | 着手日 **総分のみ**（×指示数廃止）·3タブ母集団 **eligibility** 統一 |
+| 2026-05-27 修正 | 同上 · **`37a7b6d4`** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取りのみ） |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -27,7 +29,7 @@ last-verified: 2026-05-26
 |------|----------|----------|
 | **資源CD俯瞰** | `ProductionScheduleOrderSupplement.plannedEndDate` の暦月 | 単月の資源CD別 必要/能力/超過・**社内移管サジェスト**・**外注候補シミュ** |
 | **機種別月次負荷** | **有効納期** = `COALESCE(ProductionScheduleRowNote.dueDate, supplement.plannedEndDate)` の暦月 | 機種（MH/SH の `FHINMEI`）→ 部品 → 月×資源CD の積み上げ |
-| **着手日・平準化** | 日割り後を月合算／日別（着手=`plannedStartDate`、終端=有効納期） | `FSIGENSHOYORYO×指示数`・稼働日ルール・平準化シミュ（DB不変） |
+| **着手日・平準化** | 日割り後を月合算／日別（着手=`plannedStartDate`、終端=有効納期） | `FSIGENSHOYORYO` 総分・稼働日ルール・平準化シミュ（DB不変） |
 
 **重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
@@ -38,8 +40,7 @@ last-verified: 2026-05-26
 ### 集計対象
 
 - **winner 行**（`buildMaxProductNoWinnerCondition`）
-- **未完了**（`ProductionScheduleProgress.isCompleted = false` または未設定）
-- **FKOJUNST 一覧可視性**（既存ポリシー SQL）
+- **負荷 eligibility**（`buildLoadBalancingRowEligibilityWhereSql`）— `fkmail` 同期済み・**C/X 除外**（S/R/O/P）・**実効未完了**
 - **品番** `FHINCD` が `MH%` / `SH%` **以外**（部品工程のみ）
 - **資源CD** 非空・切断工程除外（資源カテゴリ設定）
 - **有効納期** が指定期間内（`fromMonth`〜`toMonth`  inclusive、最大 **12 か月**）
@@ -73,9 +74,9 @@ last-verified: 2026-05-26
 
 ### 集計対象
 
-- 機種別月次と同様の **winner / 未完了 / FKOJUNST 可視 / 部品工程 / 資源CD** 条件に加え、
-  **`plannedStartDate` と有効納期が両方ある行**のみ配分対象。
-- **負荷（分）** = `FSIGENSHOYORYO × plannedQuantity`（`plannedQuantity` が正の整数でない行は **未配分**）。
+ - **負荷 eligibility**（機種別月次と同じ `buildLoadBalancingRowEligibilityWhereSql`）を満たす行を取得する。
+ - **`plannedStartDate` と有効納期が両方ある行**は配分対象。いずれか欠損する行は **未配分**（`missing_planned_start_date` / `missing_effective_due_date`）として返す。
+- **負荷（分）** = **`FSIGENSHOYORYO` 行総分**（0 分は **未配分** `zero_required_minutes`）。
 - **日割り**: 着手日〜有効納期（ inclusive ）の **稼働日**に均等配分。稼働日は資源CDごとに `weekdays` または `calendar_days`（未設定は **weekdays**）。
 - **月次能力**: 既存の基準/月次上書き。日次表示では **月能力 ÷ 当該月の稼働日数** を日次能力線とする。
 
@@ -98,7 +99,7 @@ last-verified: 2026-05-26
 
 ### 負荷母集団（資源CD俯瞰・外注・社内移管サジェストのみ）
 
-`monthly-load-query.service.ts` + `load-balancing-eligibility.policy.ts` が正本。**機種別月次・着手日タブは従来どおり**（一覧可視ポリシー等）。
+`load-balancing-eligibility.policy.ts` が **3タブ共通**の負荷母集団正本（`monthly-load-query` / `machine-monthly-load-query` / `start-date-leveling-query`）。
 
 | 項目 | 内容 |
 |------|------|
@@ -230,11 +231,112 @@ curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/machine-monthly-l
 - [ ] 部品行クリック → 絞り込み → 解除
 - [ ] **資源CD俯瞰** タブ・サジェストが従来どおり動作
 
+## 能力設定と `shared` / `siteKey`（2026-05-27）
+
+### 背景（非対称の典型）
+
+| 保存・参照 | 識別子 | 備考 |
+|------------|--------|------|
+| 管理画面（負荷調整設定） | 既定 **`shared`** | `ProductionScheduleSettingsPage` のロケーション選択 |
+| キオスク API | **`siteKey`（例: `第2工場`）** | 端末の工場スコープから解決 |
+| 資源カテゴリ（切断除外） | **既に** `site` 優先 + `shared` フォールバック | [KB-297](./KB-297-kiosk-due-management-workflow.md) と同型 |
+
+**2026-05-27 以前**: 能力・月次能力・稼働日・分類・移管は **site 直読のみ** のため、管理で `shared` にだけ保存するとキオスクで **工程能力がすべて `—`**・負荷グラフの能力線が出ないように見えた（`requiredMinutes` は API 上存在）。
+
+### 読み取り契約（`37a7b6d4` 以降）
+
+- キオスク向け: `listLoadBalancingCapacityBasesResolved` 等 **`listLoadBalancing*Resolved` ×5**（`load-balancing-settings-merge.ts`）。
+- **マージ規則**: 同一エンティティ種別で **`siteKey` 行を優先**。site に無いキーのみ **`shared` から補完**。
+- **管理向け**: raw `list*` / `replace*` は **変更なし**（保存先は従来どおり `shared` 可）。
+- **ログ**: 補完発生は **`debug`**。site も shared も空のときのみ **`warn`**。
+
+| Resolved API | 補完キー（代表） |
+|------------|------------------|
+| 基準能力 | `resourceCd` |
+| 月次能力上書き | `resourceCd` + `yearMonth` |
+| 資源分類 | `resourceCd` |
+| 移管ルール | `(fromClassCode, toClassCode, priority)` |
+| 稼働日カレンダー | `resourceCd` |
+
+**移管ルールの注意**: site で from/to 相同・priority のみ変更した場合、shared の **別 priority** 行は **両方有効**のまま（DB unique と一致）。
+
+### 実装レイヤ（境界）
+
+| 層 | ファイル |
+|----|----------|
+| マージ純関数 | `load-balancing-settings-merge.ts` |
+| Resolved 読み取り | `load-balancing-settings.service.ts` |
+| 呼び出し | `load-balancing-overview.service.ts` · `start-date-leveling-assembler.ts` · `reallocation-suggestion.service.ts` |
+
+### 調査メモ（Pi5 本番 DB · 2026-05-27）
+
+- `ProductionScheduleResourceCapacityBase`: **9 件すべて `siteKey='shared'`**、site 直指定 **0 件**（当時）。
+- `overview` は `requiredMinutes` **27 資源**返却・能力は **全 `null`**（旧 API）。
+- デプロイ後（`20260527-161741-7843`）: 同月 `overview` で **9/27 資源**に `availableMinutes`（例: `021`→75600、`033`→37800）。未登録資源は **`null` のまま**（仕様）。
+
+## 実機検証（2026-05-27 · 集計修正 + shared フォールバック）
+
+**前提**: Pi5 のみデプロイ（`37a7b6d4`）。Pi4×4 は **未**（Web 文言差分は次段）。
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）
+
+### 手動スモーク（Pi5 · Tailscale `100.106.158.2`）
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+
+curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+
+curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/machine-monthly-load?fromMonth=2026-05&toMonth=2026-10" \
+  -H "x-client-key: ${KEY}"
+
+curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/start-date-leveling?fromMonth=2026-05&toMonth=2026-05&bucket=month" \
+  -H "x-client-key: ${KEY}"
+```
+
+**実績（2026-05-27）**: いずれも **HTTP 200**。`overview` / `start-date-leveling` で **9/27** 資源に `availableMinutes`。`machine-monthly-load` で **machines 約74**・`months` 6。
+
+### 現場目視（推奨）
+
+- [ ] **資源CD俯瞰**: 登録済み資源で工程能力が **`—` 以外**
+- [ ] **機種別月次**: 機種選択後グラフ表示（未選択時は空＝仕様）
+- [ ] **着手日・平準化**: 月次/日次切替・能力線（登録資源のみ）
+
+## Production deploy（実績 2026-05-27 · 集計修正 + shared · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-aggregation-fix`
+- **コミット**: **`bef423fe`** · **`37a7b6d4`**
+- **PR**: [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)
+- **CI**: **`26496156604`** success
+
+| 項目 | 値 |
+|------|-----|
+| Detach Run ID（Pi5） | `20260527-161741-7843` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0** |
+| Pi4×4 | **未デプロイ** |
+
+**標準コマンド**（Pi4 展開時は `<host>` を 1 台ずつ）:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-load-balancing-aggregation-fix infrastructure/ansible/inventory.yml --limit <host> --detach --follow
+```
+
+**参照**: [deployment.md §2026-05-27](../guides/deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
+
 ## Troubleshooting
 
 | 症状 | 確認・対処 |
 |------|------------|
 | `overview` / `machine-monthly-load` が **401/403** | `x-client-key` と端末登録 |
+| **能力分がすべて `—`** | (1) 管理の保存先が **`shared` のみ** かつ **`*Resolved` 未デプロイ**（本件）。(2) 当該資源に能力未登録（`availableMinutes: null` は正常）。(3) キオスク画面の **`siteKey:`** 表示と管理ロケーションの意図が一致するか |
+| **負荷は出るが能力だけ `—`** | `overview` の `requiredMinutes` はあるが `availableMinutes` が全 `null` → 上記 (1) を疑う。curl で JSON 確認 |
+| **デプロイが即拒否** | ローカル **未コミット変更** — `update-all-clients.sh` はリモートブランチのみ |
 | Mac 代理で **400** | `targetDeviceScopeKey` 未指定（device-scope v2） |
 | **月範囲エラー 400** | `fromMonth` > `toMonth`、または **12か月超** |
 | **機種一覧は出るがグラフが空** | 機種未選択（仕様）。または期間内に有効納期付き未完了行なし |
@@ -253,5 +355,7 @@ curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/machine-monthly-l
 
 - [KB-363: 生産システム突合（2026-05-27）](./KB-363-load-balancing-production-system-reconciliation.md)
 - [運用ガイド: kiosk-production-schedule-load-balancing.md](../guides/kiosk-production-schedule-load-balancing.md)
+- [deployment.md §集計修正 2026-05-27](../guides/deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
 - [deployment.md §機種別月次 2026-05-26](../guides/deployment.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
+- [PR #350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)
 - 初版デプロイ（2026-04-30）: 本ファイル §Production deploy 履歴は [deployment.md §2026-04-30 負荷調整](../guides/deployment.md) 参照

@@ -2,13 +2,40 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-26
+last-verified: 2026-05-27
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-05-27 · **キオスク負荷調整・集計修正 + `shared` 能力フォールバック**·**`feat/kiosk-load-balancing-aggregation-fix`**·**API+Web**·**Pi5 先行・Pi4×4 未**） {#kiosk-load-balancing-aggregation-fix-2026-05-27}
+
+- **変更概要**:
+  - **集計修正**: 着手日タブの負荷を **`FSIGENSHOYORYO` 行総分のみ**（`× plannedQuantity` 廃止）。機種別月次・着手日・平準化の母集団を **`buildLoadBalancingRowEligibilityWhereSql`** に統一（`fkmail` 同期済み・**C/X 除外**・S/R/O/P・**実効未完了**）。
+  - **`shared` フォールバック**: 管理画面が **`siteKey=shared`** に保存した能力・月次能力・稼働日・分類・移管ルールを、キオスクの **`siteKey`（工場名）** 読み取りで **`site` 優先 + `shared` 不足分補完**（`listLoadBalancing*Resolved`）。管理の `replace*` / raw `list*` は変更なし。
+- **代表コミット**: **`bef423fe`** `fix(kiosk): align load balancing minutes and eligibility` · **`37a7b6d4`** `fix(kiosk): fallback load balancing settings to shared site`
+- **PR**: [#350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)
+- **CI（機能 push）**: **`26496156604`** success（`lint-build-unit`）
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト（推奨順）**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 1 台ずつ**）。**Pi3 は除外**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-aggregation-fix infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-27 · Pi5 のみ）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260527-161741-7843` | `ok=134` `changed=4` `failed=0` | **`--follow` 約 594s** · Git `changed` |
+| Pi4×4 | — | **未デプロイ** | Web 差分あり（着手日タブ文言等）。API は Pi5 正本 |
+
+- **デプロイ前注意**: ローカルに **未コミット変更** があると `update-all-clients.sh` が拒否される（リモートブランチ限定）。`stash` または commit してから実行。
+- **実機（自動·Pi5 後）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）
+- **負荷調整スモーク（手動·推奨）**: [KB-362 §実機検証 2026-05-27](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--集計修正--shared-フォールバック)
+- **トラブルシュート**:
+  - **工程能力がすべて `—`** → DB の `ProductionScheduleResourceCapacityBase.siteKey` が `shared` のみで旧 API（raw 読み）の可能性。本修正デプロイ後、`overview` で `availableMinutes` が一部復元される（登録済み資源のみ）。
+  - **機種一覧は出るがグラフが空** → 機種未選択（仕様）。
+  - **着手日 API が 400** → `fromMonth` / `toMonth` 必須（`month` 単体は不可）。
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)·[kiosk-production-schedule-load-balancing.md](kiosk-production-schedule-load-balancing.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)
 
 ### 補足（2026-05-26 · **キオスク負荷調整・機種別月次資源負荷**·**`feat/kiosk-load-balancing-machine-monthly-view`**·**API+Web**·**Pi5→Pi4×4**） {#kiosk-load-balancing-machine-monthly-view-2026-05-26}
 

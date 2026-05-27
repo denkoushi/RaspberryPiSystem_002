@@ -1,6 +1,5 @@
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { buildFkojunstProductionScheduleListVisibilityWhereSql } from '../policies/fkojunst-production-schedule-list-visibility.policy.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleExcludedCuttingResourceCd,
@@ -8,6 +7,9 @@ import {
   type ResourceCategoryPolicy
 } from '../policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
+import { buildCsvDashboardRowRequiredMinutesSql } from './csv-dashboard-row-required-minutes.sql.js';
+import { buildLoadBalancingRowEligibilityWhereSql } from './load-balancing-eligibility.policy.js';
+import { buildStartDateLevelingQueryWindowWhereSql } from './start-date-leveling-query-window.policy.js';
 import type { StartDateLevelingQueryRow } from './start-date-leveling.types.js';
 
 type RawRow = {
@@ -17,8 +19,7 @@ type RawRow = {
   fhincd: string | null;
   fkojun: string | null;
   resourceCd: string | null;
-  perUnitMinutes: number | null;
-  plannedQuantity: number | null;
+  requiredMinutes: number | null;
   plannedStartDate: Date | null;
   effectiveDueDate: Date | null;
 };
@@ -38,8 +39,7 @@ function mapRawRows(rows: RawRow[], policy: ResourceCategoryPolicy): StartDateLe
       fhincd: String(row.fhincd ?? '').trim(),
       fkojun: fkojunRaw.length > 0 ? fkojunRaw : null,
       resourceCd: normalizedCd,
-      perUnitMinutes: Number(row.perUnitMinutes ?? 0),
-      plannedQuantity: row.plannedQuantity == null ? null : Number(row.plannedQuantity),
+      requiredMinutes: Number(row.requiredMinutes ?? 0),
       plannedStartDate: row.plannedStartDate,
       effectiveDueDate: row.effectiveDueDate
     });
@@ -67,14 +67,7 @@ export async function listStartDateLevelingQueryRows(params: {
       COALESCE(("CsvDashboardRow"."rowData"->>'FHINCD'), '') AS "fhincd",
       COALESCE(("CsvDashboardRow"."rowData"->>'FKOJUN'), '') AS "fkojun",
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
-      (
-        CASE
-          WHEN ("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO') ~ '^\\s*-?\\d+(\\.\\d+)?\\s*$'
-          THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::numeric
-          ELSE 0
-        END
-      )::double precision AS "perUnitMinutes",
-      "supplement"."plannedQuantity" AS "plannedQuantity",
+      ${buildCsvDashboardRowRequiredMinutesSql()} AS "requiredMinutes",
       "supplement"."plannedStartDate" AS "plannedStartDate",
       COALESCE("n"."dueDate", "supplement"."plannedEndDate") AS "effectiveDueDate"
     FROM "CsvDashboardRow"
@@ -87,6 +80,9 @@ export async function listStartDateLevelingQueryRows(params: {
     LEFT JOIN "ProductionScheduleProgress" AS "p"
       ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -95,20 +91,19 @@ export async function listStartDateLevelingQueryRows(params: {
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND COALESCE("p"."isCompleted", FALSE) = FALSE
       AND (
         UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'MH%'
         AND UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) NOT LIKE 'SH%'
       )
       AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
-      AND "supplement"."plannedStartDate" IS NOT NULL
-      AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") IS NOT NULL
-      AND "supplement"."plannedStartDate" < ${params.rangeEndExclusive}
-      AND COALESCE("n"."dueDate", "supplement"."plannedEndDate") >= ${params.rangeStart}
-      ${buildFkojunstProductionScheduleListVisibilityWhereSql()}
+      ${buildStartDateLevelingQueryWindowWhereSql({
+        rangeStart: params.rangeStart,
+        rangeEndExclusive: params.rangeEndExclusive
+      })}
+      ${buildLoadBalancingRowEligibilityWhereSql()}
     ORDER BY
-      "supplement"."plannedStartDate" ASC,
-      COALESCE("n"."dueDate", "supplement"."plannedEndDate") ASC,
+      "supplement"."plannedStartDate" ASC NULLS LAST,
+      COALESCE("n"."dueDate", "supplement"."plannedEndDate") ASC NULLS LAST,
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
       ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
   `;

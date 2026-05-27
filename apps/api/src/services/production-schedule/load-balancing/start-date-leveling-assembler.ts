@@ -8,9 +8,9 @@ import {
 } from './load-distribution.js';
 import {
   buildWorkCalendarModeMap,
-  listLoadBalancingCapacityBase,
-  listLoadBalancingMonthlyCapacity,
-  listLoadBalancingWorkCalendars
+  listLoadBalancingCapacityBaseResolved,
+  listLoadBalancingMonthlyCapacityResolved,
+  listLoadBalancingWorkCalendarsResolved
 } from './load-balancing-settings.service.js';
 import type {
   StartDateLevelingAllocatedRow,
@@ -33,19 +33,12 @@ import {
 } from './work-calendar-policy.js';
 import { formatYearMonthFromUtcDate, parseYearMonthRangeInclusive } from './year-month-range.js';
 
-function isPositiveIntegerQuantity(value: number | null): value is number {
-  return value != null && Number.isFinite(value) && value > 0 && Number.isInteger(value);
-}
-
 function resolveTotalMinutes(row: StartDateLevelingQueryRow): number | null {
-  if (!isPositiveIntegerQuantity(row.plannedQuantity)) {
+  const requiredMinutes = Number(row.requiredMinutes ?? 0);
+  if (!Number.isFinite(requiredMinutes) || requiredMinutes <= 0) {
     return null;
   }
-  const perUnit = Number(row.perUnitMinutes ?? 0);
-  if (perUnit <= 0) {
-    return null;
-  }
-  return perUnit * row.plannedQuantity;
+  return requiredMinutes;
 }
 
 function toUnallocatedRow(
@@ -60,8 +53,7 @@ function toUnallocatedRow(
     fkojun: row.fkojun,
     resourceCd: row.resourceCd,
     reason,
-    perUnitMinutes: row.perUnitMinutes,
-    plannedQuantity: row.plannedQuantity
+    requiredMinutes: Number(row.requiredMinutes ?? 0)
   };
 }
 
@@ -85,17 +77,17 @@ export async function assembleStartDateLevelingResult(params: {
     params.bucket === 'day' ? (params.focusMonth?.trim() || range.fromMonth) : null;
 
   const [baseCap, monthlyCapByMonth, calendarSettings] = await Promise.all([
-    listLoadBalancingCapacityBase(params.siteKeyInput),
+    listLoadBalancingCapacityBaseResolved(params.siteKeyInput),
     Promise.all(
       range.months.map(async (yearMonth) => {
-        const monthly = await listLoadBalancingMonthlyCapacity({
+        const monthly = await listLoadBalancingMonthlyCapacityResolved({
           siteKeyInput: params.siteKeyInput,
           yearMonth
         });
         return [yearMonth, monthly.items] as const;
       })
     ),
-    listLoadBalancingWorkCalendars(params.siteKeyInput)
+    listLoadBalancingWorkCalendarsResolved(params.siteKeyInput)
   ]);
 
   const siteKey = baseCap.siteKey;
@@ -123,10 +115,6 @@ export async function assembleStartDateLevelingResult(params: {
     }
     const totalMinutes = resolveTotalMinutes(row);
     if (totalMinutes == null) {
-      unallocatedRows.push(toUnallocatedRow(row, 'invalid_quantity'));
-      continue;
-    }
-    if (totalMinutes <= 0) {
       unallocatedRows.push(toUnallocatedRow(row, 'zero_required_minutes'));
       continue;
     }
