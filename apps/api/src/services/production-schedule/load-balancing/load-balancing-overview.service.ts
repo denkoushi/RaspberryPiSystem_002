@@ -1,7 +1,7 @@
 import {
-  listLoadBalancingCapacityBase,
-  listLoadBalancingClasses,
-  listLoadBalancingMonthlyCapacity
+  listLoadBalancingCapacityBaseResolved,
+  listLoadBalancingClassesResolved,
+  listLoadBalancingMonthlyCapacityResolved
 } from './load-balancing-settings.service.js';
 import { aggregateMonthlyLoadByResource } from './monthly-load-query.service.js';
 import type { LoadBalancingOverviewResult } from './types.js';
@@ -18,9 +18,9 @@ export async function getProductionScheduleLoadBalancingOverview(params: {
       deviceScopeKey: params.deviceScopeKey,
       yearMonth: ym
     }),
-    listLoadBalancingCapacityBase(params.siteKey),
-    listLoadBalancingMonthlyCapacity({ siteKeyInput: params.siteKey, yearMonth: ym }),
-    listLoadBalancingClasses(params.siteKey)
+    listLoadBalancingCapacityBaseResolved(params.siteKey),
+    listLoadBalancingMonthlyCapacityResolved({ siteKeyInput: params.siteKey, yearMonth: ym }),
+    listLoadBalancingClassesResolved(params.siteKey)
   ]);
 
   const baseMap = new Map(baseCap.items.map((item) => [item.resourceCd, item.baseAvailableMinutes]));

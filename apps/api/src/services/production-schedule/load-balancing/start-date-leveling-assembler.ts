@@ -8,9 +8,9 @@ import {
 } from './load-distribution.js';
 import {
   buildWorkCalendarModeMap,
-  listLoadBalancingCapacityBase,
-  listLoadBalancingMonthlyCapacity,
-  listLoadBalancingWorkCalendars
+  listLoadBalancingCapacityBaseResolved,
+  listLoadBalancingMonthlyCapacityResolved,
+  listLoadBalancingWorkCalendarsResolved
 } from './load-balancing-settings.service.js';
 import type {
   StartDateLevelingAllocatedRow,
@@ -77,17 +77,17 @@ export async function assembleStartDateLevelingResult(params: {
     params.bucket === 'day' ? (params.focusMonth?.trim() || range.fromMonth) : null;
 
   const [baseCap, monthlyCapByMonth, calendarSettings] = await Promise.all([
-    listLoadBalancingCapacityBase(params.siteKeyInput),
+    listLoadBalancingCapacityBaseResolved(params.siteKeyInput),
     Promise.all(
       range.months.map(async (yearMonth) => {
-        const monthly = await listLoadBalancingMonthlyCapacity({
+        const monthly = await listLoadBalancingMonthlyCapacityResolved({
           siteKeyInput: params.siteKeyInput,
           yearMonth
         });
         return [yearMonth, monthly.items] as const;
       })
     ),
-    listLoadBalancingWorkCalendars(params.siteKeyInput)
+    listLoadBalancingWorkCalendarsResolved(params.siteKeyInput)
   ]);
 
   const siteKey = baseCap.siteKey;

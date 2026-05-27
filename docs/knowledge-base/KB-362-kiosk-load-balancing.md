@@ -229,11 +229,19 @@ curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/machine-monthly-l
 - [ ] 部品行クリック → 絞り込み → 解除
 - [ ] **資源CD俯瞰** タブ・サジェストが従来どおり動作
 
+## 能力設定と `shared` / `siteKey`（2026-05-27）
+
+- 管理画面はロケーション **`shared`** に保存しやすい（`ProductionScheduleSettingsPage` の既定）。キオスクは **`siteKey`（工場名）** で読む。
+- キオスク API は `listLoadBalancing*Resolved` により **`siteKey` 優先 + `shared` 不足分補完**（読み取りのみ。`replace*` は変更なし）。
+- **工程能力がすべて `—`**: DB の `ProductionScheduleResourceCapacityBase.siteKey` が `shared` のみで、resolved 未デプロイ、または site 直読のみの旧 API の可能性を確認。
+- **移管ルール**: 補完キーは `(fromClassCode, toClassCode, priority)`。site で同じ from/to の priority だけ変更した場合、shared の別 priority 行は **両方有効**のまま（DB unique と一致）。
+
 ## Troubleshooting
 
 | 症状 | 確認・対処 |
 |------|------------|
 | `overview` / `machine-monthly-load` が **401/403** | `x-client-key` と端末登録 |
+| **能力分がすべて `—`** | 管理で保存した `siteKey` とキオスクの `siteKey:` 表示が一致するか。`shared` のみの場合は `*Resolved` デプロイ後に復元される |
 | Mac 代理で **400** | `targetDeviceScopeKey` 未指定（device-scope v2） |
 | **月範囲エラー 400** | `fromMonth` > `toMonth`、または **12か月超** |
 | **機種一覧は出るがグラフが空** | 機種未選択（仕様）。または期間内に有効納期付き未完了行なし |

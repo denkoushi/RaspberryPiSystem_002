@@ -5,14 +5,14 @@ import type { StartDateLevelingQueryRow } from '../start-date-leveling.types.js'
 import { parseUtcDateKey } from '../work-calendar-policy.js';
 
 vi.mock('../load-balancing-settings.service.js', () => ({
-  listLoadBalancingCapacityBase: vi.fn().mockResolvedValue({
+  listLoadBalancingCapacityBaseResolved: vi.fn().mockResolvedValue({
     siteKey: '第2工場',
     items: [{ resourceCd: '033', baseAvailableMinutes: 10000 }]
   }),
-  listLoadBalancingMonthlyCapacity: vi.fn().mockResolvedValue({
+  listLoadBalancingMonthlyCapacityResolved: vi.fn().mockResolvedValue({
     items: [{ resourceCd: '033', availableMinutes: 10000 }]
   }),
-  listLoadBalancingWorkCalendars: vi.fn().mockResolvedValue({
+  listLoadBalancingWorkCalendarsResolved: vi.fn().mockResolvedValue({
     items: [{ resourceCd: '033', workCalendarMode: 'weekdays' as const }]
   }),
   buildWorkCalendarModeMap: vi.fn().mockReturnValue(new Map([['033', 'weekdays' as const]]))

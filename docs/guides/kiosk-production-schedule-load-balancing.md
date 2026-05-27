@@ -33,6 +33,12 @@
 
 API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-calendars` 含む）
 
+### 管理 `shared` とキオスク `siteKey`（2026-05-27）
+
+- 管理画面の既定ロケーションは **`shared`**（工場共通設定）。キオスクは端末から **`siteKey`（例: 第2工場）** を解決して読む。
+- キオスク向け読み取り（`*Resolved`）は **`siteKey` 行を優先**し、不足分だけ **`shared` を補完**する（資源カテゴリ設定と同趣旨）。**DB 移行は不要**。
+- **移管ルール**のマージキーは DB と同じ **`fromClassCode` + `toClassCode` + `priority`**。site で priority だけ変えても、shared の別 priority 行は残る（from/to 単位の全面置換ではない）。
+
 ## キオスク API
 
 - `GET /kiosk/production-schedule/load-balancing/overview?month=YYYY-MM&targetDeviceScopeKey=...`
