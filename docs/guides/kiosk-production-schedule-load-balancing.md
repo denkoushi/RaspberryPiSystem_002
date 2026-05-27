@@ -23,13 +23,13 @@
 
 ## 能力・ルール設定（管理画面）
 
-**管理** → **生産スケジュール設定** 内の各カードで、ロケーション（端末スコープ文字列）に紐づく **siteKey** 単位で保存します。
+**管理** → **生産スケジュール設定** 内の各カードで保存します。保存単位は設定種別ごとに異なります。
 
-1. **基準能力**: 資源CD → `baseAvailableMinutes`（分）。  
-2. **月次能力**: `YYYY-MM` ごとの上書き（同一資源CDでは月次が基準より優先）。  
-3. **山崩し分類**: 資源CD → `classCode`。  
-4. **移管ルール**: `fromClassCode` → `toClassCode`、優先度、有効、効率係数（移管先に載る負荷は `行工数 / efficiencyRatio`）。
-5. **稼働日ルール**（着手日・平準化タブ用）: 資源CD → `weekdays`（平日）または `calendar_days`（暦日）。未設定は平日扱い。
+1. **基準能力**: 資源CD → `baseAvailableMinutes`（分）。**全 site 共通**（DB の `siteKey = shared`）。管理画面のロケーション切替の影響を受けない。キオスク（第2工場など）も同じ基準値を参照する。  
+2. **月次能力**: `YYYY-MM` ごとの上書き（同一資源CDでは月次が基準より優先）。**siteKey 単位**。  
+3. **山崩し分類**: 資源CD → `classCode`。**siteKey 単位**。  
+4. **移管ルール**: `fromClassCode` → `toClassCode`、優先度、有効、効率係数（移管先に載る負荷は `行工数 / efficiencyRatio`）。**siteKey 単位**。
+5. **稼働日ルール**（着手日・平準化タブ用）: 資源CD → `weekdays`（平日）または `calendar_days`（暦日）。未設定は平日扱い。**siteKey 単位**。
 
 API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-calendars` 含む）
 

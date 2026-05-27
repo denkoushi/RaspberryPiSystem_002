@@ -76,6 +76,7 @@ last-verified: 2026-05-26
 - **負荷（分）** = `FSIGENSHOYORYO × plannedQuantity`（`plannedQuantity` が正の整数でない行は **未配分**）。
 - **日割り**: 着手日〜有効納期（ inclusive ）の **稼働日**に均等配分。稼働日は資源CDごとに `weekdays` または `calendar_days`（未設定は **weekdays**）。
 - **月次能力**: 既存の基準/月次上書き。日次表示では **月能力 ÷ 当該月の稼働日数** を日次能力線とする。
+- **基準能力**: **全 site 共通**（`siteKey = shared`）。管理のロケーション切替やキオスク siteKey（第2工場）に依存しない。月次能力・山崩し分類・移管ルール・稼働日は従来どおり siteKey 単位。
 
 ### API
 
