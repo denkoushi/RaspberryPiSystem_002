@@ -15,11 +15,11 @@ export const loadBalancingChartMargin = { top: 8, right: 16, left: 0, bottom: 48
 export const loadBalancingTooltipStyle = {
   backgroundColor: '#0f172a',
   borderColor: '#334155',
-  fontSize: 11
+  fontSize: 12
 };
 
-export const loadBalancingAxisTick = { fill: '#e2e8f0', fontSize: 10 };
+export const loadBalancingAxisTick = { fill: '#e2e8f0', fontSize: 11 };
 
-export const loadBalancingLegendStyle = { fontSize: 11, color: '#e2e8f0' };
+export const loadBalancingLegendStyle = { fontSize: 12, color: '#e2e8f0' };
 
 export const loadBalancingGridStroke = '#334155';

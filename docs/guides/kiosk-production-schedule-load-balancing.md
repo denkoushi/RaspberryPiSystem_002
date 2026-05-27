@@ -12,6 +12,15 @@
 | **機種別月次負荷** | 機種（MH/SH 行 `FHINMEI`）→ 部品 → 月×資源CDの積み上げ | **有効納期**（行備考 `dueDate` → なければ `plannedEndDate`）の暦月 |
 | **着手日・平準化** | 着手日〜有効納期の日割り負荷・月/日次・平準化シミュ | **日割り後**を月合算／日別表示（着手日は `plannedStartDate`） |
 
+## UI レイアウト（2026-05-28 · 資源CD俯瞰）
+
+- **正本**: 静的プレビュー [kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html)
+- **契約モジュール**: `loadBalancingUiClasses.ts`（ページ/カード/表/ボタン/チップの Tailwind クラス）
+- **ヘッダー**: `LoadBalancingPageHeader.tsx`（3タブ + Mac 絞込 `V`）
+- **ベースフォント**: ページ `text-sm`（14px）· 表 `text-[0.8125rem]`（13px）· 見出し `text-xl`
+- **俯瞰のみ全面適用**。機種別月次・着手日は今後 `loadBalancingUiClasses` を横展開可能
+- **デプロイ**: **Pi5 のみ**（Web SPA 正本）。Pi4 は `kiosk_full_url` 経由で自動反映
+
 ## 集計ポリシー（サーバ実装に準拠）
 
 - **月次キー**: 受注補足 `ProductionScheduleOrderSupplement.plannedEndDate` の暦月（UTC 月初〜翌月未満）。
@@ -110,7 +119,8 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 ### 実装ファイル（外注・推奨セット）
 
 - API: `load-balancing-eligibility.policy.ts`, `outsourcing-simulation.policy.ts`, `monthly-load-query.service.ts`, `outsourcing-simulation.engine.ts`, `outsourcing-simulation.service.ts`
-- Web: `LoadBalancingOverviewTab.tsx`, `loadBalancingOverviewSession.ts`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts`, `mapOutsourcingPlanToSimulateResult.ts`, `externalizationPlanErrors.ts`
+- Web: `LoadBalancingOverviewTab.tsx`, `LoadBalancingPageHeader.tsx`, `loadBalancingUiClasses.ts`（見た目契約）, `loadBalancingOverviewSession.ts`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts`, `mapOutsourcingPlanToSimulateResult.ts`, `externalizationPlanErrors.ts`
+- UI プレビュー（静的）: [docs/previews/kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html)
 
 ### 推奨セット自動選定（契約・`cd42ebfe`）
 

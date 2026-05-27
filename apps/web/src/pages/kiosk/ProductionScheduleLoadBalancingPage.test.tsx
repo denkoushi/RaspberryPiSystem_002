@@ -284,7 +284,7 @@ describe('ProductionScheduleLoadBalancingPage', () => {
 
     render(<ProductionScheduleLoadBalancingPage />);
 
-    fireEvent.click(screen.getByText('工程行単位の外注候補（従来・折りたたみ）'));
+    fireEvent.click(screen.getByText(/工程行単位の外注候補（従来・折りたたみ）/));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '外注候補を取得' }));
     });

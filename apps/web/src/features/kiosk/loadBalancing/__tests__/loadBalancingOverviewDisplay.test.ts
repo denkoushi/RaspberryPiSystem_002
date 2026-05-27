@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  formatPositiveReductionMinutes,
   formatReductionMinutes,
   overviewOverCellClassName,
   overviewResourceRowClassName
@@ -18,5 +19,7 @@ describe('loadBalancingOverviewDisplay', () => {
       className: expect.stringContaining('text-emerald-300')
     });
     expect(formatReductionMinutes(500, 500).text).toBe('変化なし');
+    expect(formatPositiveReductionMinutes(180)).toBe('-180分');
+    expect(formatPositiveReductionMinutes(0)).toBe('0分');
   });
 });

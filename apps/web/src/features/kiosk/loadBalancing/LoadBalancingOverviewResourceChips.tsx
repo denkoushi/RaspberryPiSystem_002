@@ -1,4 +1,5 @@
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
+import { lbBtn, lbChip, lbChipClassName, lbText } from './loadBalancingUiClasses';
 
 type ChipItem = {
   resourceCd: string;
@@ -30,10 +31,12 @@ export function LoadBalancingOverviewResourceChips({
   return (
     <div className="min-w-0">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <LoadBalancingStepHeading step={2}>超過資源を選択</LoadBalancingStepHeading>
+        <LoadBalancingStepHeading step={2} className="mb-0">
+          超過資源を選択
+        </LoadBalancingStepHeading>
         <button
           type="button"
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
+          className={`${lbBtn.base} ${lbBtn.sky}`}
           disabled={!overviewEnabled || suggestionsPending || !hasSelectedOverResources}
           onClick={onSuggest}
           title={hasSelectedOverResources ? undefined : '超過資源を1件以上選択してください'}
@@ -41,35 +44,25 @@ export function LoadBalancingOverviewResourceChips({
           {suggestionsPending ? 'サジェスト計算中…' : '社内移管サジェスト'}
         </button>
       </div>
-      <div className="mb-2 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="rounded-md bg-slate-700 px-2 py-1 text-[11px] font-semibold text-white"
-          onClick={onSelectAll}
-        >
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        <button type="button" className={`${lbBtn.base} ${lbBtn.slateSm}`} onClick={onSelectAll}>
           超過資源をすべて選択
         </button>
-        <button
-          type="button"
-          className="rounded-md bg-slate-700 px-2 py-1 text-[11px] font-semibold text-white"
-          onClick={onClearSelection}
-        >
+        <button type="button" className={`${lbBtn.base} ${lbBtn.slateSm}`} onClick={onClearSelection}>
           選択解除
         </button>
       </div>
       {chips.length === 0 ? (
-        <p className="text-xs text-white/60">超過資源はありません。</p>
+        <p className={lbText.muted}>超過資源はありません。</p>
       ) : (
-        <div className="grid max-h-[114px] min-h-[34px] grid-cols-[repeat(auto-fill,minmax(102px,1fr))] gap-1.5 overflow-auto pr-0.5">
+        <div className={lbChip.grid}>
           {chips.map((chip) => (
             <button
               key={chip.resourceCd}
               type="button"
               aria-pressed={chip.selected}
               title={`${chip.resourceCd} (+${Math.round(chip.overMinutes)}分)`}
-              className={`truncate rounded-md px-2 py-1.5 text-[11px] font-mono ${
-                chip.selected ? 'bg-amber-600 text-white' : 'bg-slate-800 text-white/80'
-              }`}
+              className={lbChipClassName(chip.selected)}
               onClick={() => onToggle(chip.resourceCd)}
             >
               {chip.resourceCd} (+{Math.round(chip.overMinutes)}分)

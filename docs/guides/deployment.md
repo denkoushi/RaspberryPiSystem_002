@@ -10,6 +10,32 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **キオスク負荷調整・俯瞰 UI レイアウト刷新**·**`feat/kiosk-load-balancing-ui-layout`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-ui-layout-2026-05-28}
+
+- **変更概要**:
+  - **目的**: 資源CD俯瞰タブの **可読性向上**（フォント拡大・カード統合・2カラム密度調整）。静的プレビュー [kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html) を正本に実装。
+  - **実装**: `loadBalancingUiClasses.ts`（見た目契約）·`LoadBalancingPageHeader.tsx`（ヘッダー分離）·俯瞰各 Panel のトークン適用·効果列 **`formatPositiveReductionMinutes`**（`-180分` 表記）·操作ボタン **「入替」**。
+  - **不変**: API / DB / 自動選定フロー / `loadBalancingOverviewSession.ts` の reset 境界（**`main` `95b7f29d` 済み**）。
+- **代表コミット**: **`1698aa61`** `feat(kiosk): refresh load balancing overview layout`
+- **CI（機能 push）**: **`26543316513`** success
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit` 1 台**）。**Pi4 / Pi3**: **`skipping: no hosts matched`**（**Pi5 `web` SPA 正本**·**Pi3 専用手順は未実施で正**）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-ui-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-080048-17562` | `ok=134` `changed=4` `failed=0` | **`--follow` 約 325s** · Git **`1698aa61`** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **29s**）
+- **負荷調整スモーク**: [KB-362 §実機検証 UI レイアウト](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--ui-レイアウト刷新)
+- **Web バンドル確認**: `docker-web-1` `/srv/site/assets/index-CxjsoxtG.js` に **`max-w-[1440px]`** · **`text-xl font-bold`** · **`推奨セットを自動選定`**
+- **API 回帰**: `GET …/load-balancing/overview?month=2026-05` **200**（約 **0.38s**）
+- **トラブルシュート**:
+  - **レイアウトが旧のまま** → Pi5 が **`1698aa61` 未満** またはブラウザキャッシュ → Pi5 再デプロイ + [強制リロード](verification-checklist.md) §6.6.4
+  - **機種別月次 / 着手日タブだけ字が小さい** → **意図どおり**（今回は俯瞰中心。他タブは `loadBalancingUiClasses` 未適用）
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)
+
 ### 補足（2026-05-27 · **キオスク負荷調整・自動選定後の表示維持（reset 境界）**·**`feat/kiosk-load-balancing-auto-plan-reset-fix`**·**Web のみ**·**Pi5→Pi4×4 本番・実機 OK**） {#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27}
 
 - **変更概要**:

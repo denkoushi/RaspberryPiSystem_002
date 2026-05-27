@@ -219,6 +219,67 @@ sequenceDiagram
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
 
+## Production deploy（実績 2026-05-28 · UI レイアウト刷新 · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-ui-layout`
+- **代表コミット**: **`1698aa61`** `feat(kiosk): refresh load balancing overview layout`
+- **変更範囲**: **Web のみ**（見た目契約 `loadBalancingUiClasses.ts` · 俯瞰タブ各コンポーネント · 静的プレビュー HTML）
+- **Prisma マイグレーション**: **なし**
+- **CI（機能 push）**: GitHub Actions **`26543316513`** success
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ**（Pi4×4 **未**·Pi3 **除外**） |
+| Detach Run ID | `20260528-080048-17562` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0**（約 **29s**） |
+| Pi5 Git | **`1698aa61`** |
+| Web バンドル | `docker-web-1` → `/srv/site/assets/index-CxjsoxtG.js`（`max-w-[1440px]` · `text-xl font-bold` · `推奨セットを自動選定`） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-load-balancing-ui-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機検証（2026-05-28 · UI レイアウト刷新）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後約 **29s**）
+- Pi5 Git: **`1698aa61`**
+
+### API / Web スモーク（Pi5 · Tailscale `100.106.158.2`）
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+curl -sk "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+```
+
+**実績（2026-05-28）**: `overview` **HTTP 200**（約 **0.38s**）· Web バンドルに新レイアウト用 Tailwind クラス（`max-w-[1440px]` 等）を確認。
+
+### 現場目視（推奨 · 俯瞰タブ）
+
+- [ ] タイトル **text-xl** 相当・タブ（マゼンタアクティブ）がプレビューに近いこと
+- [ ] ステップ1+2 が **1 カード**、中段が **チャート左 / 推奨セット右**
+- [ ] 超過資源チップ・表・ボタンが **11px 未満に潰れていない**こと
+- [ ] **推奨セットを自動選定** 後、表示維持（reset 境界 **`95b7f29d` 前提**）
+
+**参照**: [deployment.md §UI レイアウト 2026-05-28](../guides/deployment.md#kiosk-load-balancing-ui-layout-2026-05-28)
+
+## UI レイアウト契約（2026-05-28）
+
+| モジュール | 責務 |
+|-----------|------|
+| `loadBalancingUiClasses.ts` | ページ/カード/表/ボタン/チップの Tailwind クラス集合（プレビュー HTML と対応） |
+| `LoadBalancingPageHeader.tsx` | タイトル・3タブ・Mac 絞込 `V` |
+| `loadBalancingOverviewDisplay.ts` | `formatPositiveReductionMinutes`（効果列 `-N分`） |
+
+**保守メモ**: 機種別月次・着手日タブは **ヘッダーのみ** 新デザイン。本文は従来 `text-xs` のまま。横展開する場合は `loadBalancingUiClasses` を当てるだけでよい。
+
 ## Production deploy（実績 2026-05-26 · 外注候補シミュ · Pi5 のみ）
 
 - **ブランチ**: `feat/kiosk-load-balancing-outsourcing-sim`
@@ -515,6 +576,7 @@ curl -sk -X POST "${BASE}/api/kiosk/production-schedule/load-balancing/outsourci
 | **部品絞り込み後、部品表が1行だけ** | **2026-05-26 以前の不具合**。修正後は部品表は機種全体のまま |
 | **Pi4 だけ旧UI** | Pi4 未デプロイ or キャッシュ → 該当ホストに `--limit` 再デプロイ、[強制リロード](../guides/verification-checklist.md) §6.6.4 |
 | **API 500 が 400 表示** | ルートは入力検証系のみ 400 化。DB/内部エラーは 500 のまま（ログ確認） |
+| **文字が極小・余白が不自然** | Pi5 Web が **`1698aa61` 未満**（UI レイアウト刷新前）·ブラウザキャッシュ → Pi5 再デプロイ + [強制リロード](../guides/verification-checklist.md) §6.6.4。バンドルに **`max-w-[1440px]`** があるか確認（[§UI レイアウト 2026-05-28](#実機検証2026-05-28--ui-レイアウト刷新)） |
 | **推奨セット自動選定が無反応** | (1) Mac で **device scope 未選択** → ボタン disabled。(2) 超過資源 **0 件**。(3) **修正前**（`c27aa3ec` 以前）: `maxCandidates:500` / plan>100 件で後続 API **400** かつ **`planError` のみ** — **`cd42ebfe`** で解消。(4) **修正前**（`cd42ebfe` 〜 **`463aeabb` 未満**）: plan **200** 直後に表示が消える → overview 同値再評価で reset — **`463aeabb`** で解消（[§セッション境界](#セッション境界と-reset463aeabb--web-のみ)）。(5) **Pi5 未反映** → `git rev-parse --short HEAD` が **`463aeabb` 以降**か·Web バンドルに **`推奨セットを自動選定`** があるか |
 | **選定直後に一瞬出て消える** | DevTools Network で plan **200** かつ直後に UI だけ空 → **(4)** を疑う。修正後も再発する場合は **強制リロード**（[verification-checklist §6.6.4](../guides/verification-checklist.md)） |
 | **自動選定は遅いが他タブも重い** | **別系統**: 初回 `machine-monthly-load` **~20s**・`start-date-leveling` **~29s**（2026-05-27 実測）。自動選定は **plan ~1s + candidates**（simulate 省略後）。React Query **`staleTime`** overview **60s** / 重タブ **120s** |

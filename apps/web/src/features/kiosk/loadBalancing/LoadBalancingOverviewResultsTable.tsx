@@ -4,6 +4,7 @@ import {
   overviewResourceRowClassName
 } from './loadBalancingOverviewDisplay';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
+import { lbBtn, lbCard, lbTable } from './loadBalancingUiClasses';
 
 import type { OverviewResourceBefore, OverviewResourceRowInput } from './loadBalancingOverviewDisplay';
 
@@ -21,26 +22,24 @@ export function LoadBalancingOverviewResultsTable({
   onReset
 }: Props) {
   return (
-    <section className="rounded-lg border border-white/15 bg-slate-950/40 p-2">
-      <LoadBalancingStepHeading step={4} className="mb-2">
-        試算結果を確認
-      </LoadBalancingStepHeading>
-      <div className="max-h-72 overflow-auto">
-        <table className="w-full border-collapse text-left text-[11px] text-white/90">
-          <thead className="sticky top-0 bg-slate-900">
-            <tr className="border-b border-white/10">
-              <th className="px-2 py-1">資源CD</th>
-              <th className="px-2 py-1">必要分</th>
-              <th className="px-2 py-1">能力分</th>
-              <th className="px-2 py-1">超過</th>
+    <section className={lbCard.base}>
+      <LoadBalancingStepHeading step={4}>試算結果を確認</LoadBalancingStepHeading>
+      <div className="max-h-[min(280px,36dvh)] overflow-auto">
+        <table className={lbTable.root}>
+          <thead className={lbTable.stickyHead}>
+            <tr className={lbTable.headRow}>
+              <th className={lbTable.headCell}>資源CD</th>
+              <th className={lbTable.headCell}>必要分</th>
+              <th className={lbTable.headCell}>能力分</th>
+              <th className={lbTable.headCell}>超過</th>
               {showSimulationColumns ? (
                 <>
-                  <th className="px-2 py-1">試算後必要分</th>
-                  <th className="px-2 py-1">試算後超過</th>
-                  <th className="px-2 py-1">削減分</th>
+                  <th className={lbTable.headCell}>試算後必要分</th>
+                  <th className={lbTable.headCell}>試算後超過</th>
+                  <th className={lbTable.headCell}>削減分</th>
                 </>
               ) : null}
-              <th className="px-2 py-1">分類</th>
+              <th className={lbTable.headCell}>分類</th>
             </tr>
           </thead>
           <tbody>
@@ -54,22 +53,22 @@ export function LoadBalancingOverviewResultsTable({
 
               return (
                 <tr key={resource.resourceCd} className={overviewResourceRowClassName(beforeOver)}>
-                  <td className="px-2 py-1 font-mono">{resource.resourceCd}</td>
-                  <td className="px-2 py-1">{beforeRequired}</td>
-                  <td className="px-2 py-1">
+                  <td className={`${lbTable.bodyCell} font-mono`}>{resource.resourceCd}</td>
+                  <td className={lbTable.bodyCell}>{beforeRequired}</td>
+                  <td className={lbTable.bodyCell}>
                     {resource.availableMinutes == null ? '—' : Math.round(resource.availableMinutes)}
                   </td>
                   <td className={overviewOverCellClassName(beforeOver)}>{beforeOver}</td>
                   {showSimulationColumns ? (
                     <>
-                      <td className="px-2 py-1">{Math.round(resource.requiredMinutes)}</td>
+                      <td className={lbTable.bodyCell}>{Math.round(resource.requiredMinutes)}</td>
                       <td className={overviewOverCellClassName(Math.round(resource.overMinutes))}>
                         {Math.round(resource.overMinutes)}
                       </td>
                       <td className={reduction?.className}>{reduction?.text}</td>
                     </>
                   ) : null}
-                  <td className="px-2 py-1">{resource.classCode ?? '—'}</td>
+                  <td className={lbTable.bodyCell}>{resource.classCode ?? '—'}</td>
                 </tr>
               );
             })}
@@ -77,17 +76,13 @@ export function LoadBalancingOverviewResultsTable({
         </table>
       </div>
       {showSimulationColumns ? (
-        <div className="mt-2 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white"
-            onClick={onReset}
-          >
+        <div className="mt-2.5 flex flex-wrap justify-end gap-2">
+          <button type="button" className={`${lbBtn.base} ${lbBtn.slate}`} onClick={onReset}>
             リセット
           </button>
           <button
             type="button"
-            className="rounded-md bg-emerald-800 px-3 py-2 text-xs font-semibold text-white opacity-40"
+            className={`${lbBtn.base} ${lbBtn.greenLg} opacity-40`}
             disabled
             title="将来の業務フローに接続予定（現在は試算のみ）"
           >

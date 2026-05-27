@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>負荷調整（山崩し支援）— レイアウトプレビュー</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: rgba(15, 23, 42, 0.72);
+      --border: rgba(255, 255, 255, 0.14);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.65);
+      --orange: #f59e0b;
+      --orange-bg: #b45309;
+      --green: #10b981;
+      --green-bg: #059669;
+      --blue: #38bdf8;
+      --magenta: #c026d3;
+      --rose: #e11d48;
+      --radius: 10px;
+      --font: "Hiragino Sans", "Noto Sans JP", "Segoe UI", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.45;
+      min-height: 100dvh;
+      padding: 12px 14px 20px;
+    }
+
+    .page { max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+
+    .header {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--card);
+    }
+    .header h1 { font-size: 1.25rem; font-weight: 700; margin-right: auto; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tab {
+      border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer; color: rgba(255,255,255,0.85);
+      background: #1e293b;
+    }
+    .tab.active { background: var(--magenta); color: #fff; }
+    .tab-v { width: 36px; padding: 8px; font-weight: 800; }
+
+    .card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--card); padding: 12px 14px;
+    }
+
+    .step {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.9375rem; font-weight: 600; margin-bottom: 8px;
+    }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 999px; background: #0284c7;
+      display: grid; place-items: center; font-size: 0.75rem; font-weight: 800;
+    }
+
+    .row-top {
+      display: grid; gap: 14px;
+      grid-template-columns: 200px 1fr;
+    }
+    @media (max-width: 900px) { .row-top { grid-template-columns: 1fr; } }
+
+    input[type="month"] {
+      width: 100%; padding: 8px 10px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.25); background: #020617; color: var(--text);
+      font-size: 0.9375rem;
+    }
+
+    .chips-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .chips-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .btn {
+      border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer; color: #fff;
+    }
+    .btn-sky { background: #0284c7; }
+    .btn-slate { background: #475569; }
+    .btn-green { background: var(--green-bg); }
+    .btn-rose { background: #9f1239; padding: 6px 10px; font-size: 0.8125rem; }
+    .btn-green-sm { background: #047857; padding: 6px 10px; font-size: 0.8125rem; }
+
+    .chips {
+      display: flex; flex-wrap: wrap; gap: 8px;
+    }
+    .chip {
+      border: none; border-radius: 8px; padding: 8px 12px;
+      font-family: ui-monospace, monospace; font-size: 0.8125rem; font-weight: 600;
+      cursor: pointer;
+    }
+    .chip.over { background: var(--orange-bg); color: #fff; }
+    .chip.ok { background: #334155; color: rgba(255,255,255,0.85); }
+
+    .row-mid {
+      display: grid; gap: 10px;
+      grid-template-columns: minmax(300px, 0.9fr) minmax(380px, 1.1fr);
+    }
+    @media (max-width: 1100px) { .row-mid { grid-template-columns: 1fr; } }
+
+    .panel-title { font-size: 0.9375rem; font-weight: 600; margin-bottom: 8px; }
+
+    .chart-bars {
+      display: flex; align-items: flex-end; gap: 6px; height: 220px;
+      padding: 8px 4px 28px; border-bottom: 1px solid var(--border);
+    }
+    .bar-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .bar {
+      width: 100%; max-width: 28px; border-radius: 4px 4px 0 0;
+      background: linear-gradient(180deg, var(--blue), #0ea5e9);
+    }
+    .bar.over { background: linear-gradient(180deg, var(--orange), #d97706); }
+    .bar.cap { height: 40%; background: #34d399; opacity: 0.85; margin-top: -4px; }
+    .bar-label { font-size: 0.625rem; color: var(--muted); transform: rotate(-35deg); white-space: nowrap; }
+
+    .panel-green { border-color: rgba(16, 185, 129, 0.35); background: rgba(6, 78, 59, 0.25); }
+    .panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .panel-head .step { margin-bottom: 0; }
+    .panel-head .btn { margin-left: auto; }
+
+    .summary { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.875rem; margin-bottom: 8px; color: var(--muted); }
+    .summary strong { color: #6ee7b7; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    th { background: #0f172a; font-weight: 600; position: sticky; top: 0; }
+    .mono { font-family: ui-monospace, monospace; }
+    .effect { color: #6ee7b7; font-weight: 600; }
+    .over-cell { color: #fcd34d; font-weight: 600; }
+    .reduction { color: #6ee7b7; font-weight: 600; }
+
+    .table-scroll { max-height: 200px; overflow: auto; }
+
+    .footer-actions {
+      display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <h1>負荷調整（山崩し支援）</h1>
+      <nav class="tabs" aria-label="負荷調整ビュー">
+        <button type="button" class="tab active">資源CD俯瞰</button>
+        <button type="button" class="tab">機種別月次負荷</button>
+        <button type="button" class="tab">着手日・平準化</button>
+        <button type="button" class="tab tab-v" aria-label="対象絞込">V</button>
+      </nav>
+    </header>
+
+    <section class="card row-top">
+      <div>
+        <p class="step"><span class="step-num">1</span>対象月</p>
+        <input type="month" value="2026-05" aria-label="対象月" />
+      </div>
+      <div>
+        <div class="chips-toolbar">
+          <p class="step"><span class="step-num">2</span>超過資源を選択</p>
+          <button type="button" class="btn btn-sky">社内移管サジェスト</button>
+        </div>
+        <div class="chips-actions" style="margin-bottom:8px">
+          <button type="button" class="btn btn-slate" style="padding:6px 10px;font-size:0.8125rem">超過資源をすべて選択</button>
+          <button type="button" class="btn btn-slate" style="padding:6px 10px;font-size:0.8125rem">選択解除</button>
+        </div>
+        <div class="chips">
+          <button type="button" class="chip over">A01 (+480分)</button>
+          <button type="button" class="chip over">B12 (+210分)</button>
+          <button type="button" class="chip over">D03 (+95分)</button>
+          <button type="button" class="chip ok">C07 (+0分)</button>
+          <button type="button" class="chip ok">E11 (+0分)</button>
+          <button type="button" class="chip ok">F02 (+0分)</button>
+          <button type="button" class="chip over">G09 (+120分)</button>
+          <button type="button" class="chip ok">H04 (+0分)</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="row-mid">
+      <section class="card">
+        <p class="panel-title">資源CD別（上位48・必要分降順）</p>
+        <div class="chart-bars" aria-hidden="true">
+          <div class="bar-wrap"><div class="bar over" style="height:88%"></div><span class="bar-label">A01</span></div>
+          <div class="bar-wrap"><div class="bar over" style="height:62%"></div><span class="bar-label">B12</span></div>
+          <div class="bar-wrap"><div class="bar" style="height:45%"></div><span class="bar-label">C07</span></div>
+          <div class="bar-wrap"><div class="bar over" style="height:38%"></div><span class="bar-label">D03</span></div>
+          <div class="bar-wrap"><div class="bar" style="height:52%"></div><span class="bar-label">E11</span></div>
+          <div class="bar-wrap"><div class="bar" style="height:30%"></div><span class="bar-label">F02</span></div>
+          <div class="bar-wrap"><div class="bar over" style="height:48%"></div><span class="bar-label">G09</span></div>
+          <div class="bar-wrap"><div class="bar" style="height:25%"></div><span class="bar-label">H04</span></div>
+        </div>
+      </section>
+
+      <section class="card panel-green">
+        <div class="panel-head">
+          <p class="step"><span class="step-num">3</span>推奨セットで山を崩す</p>
+          <button type="button" class="btn btn-green">推奨セットを自動選定</button>
+          <button type="button" class="btn btn-slate">クリア</button>
+        </div>
+        <div class="summary">
+          <span>選択 <strong>3 部品</strong></span>
+          <span class="effect">超過解消見込み</span>
+          <span>残超過 <strong>0 分</strong></span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>製番</th><th>製造番号</th><th>品番</th><th>品名</th><th>効果</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">S001</td><td class="mono">P001</td><td class="mono">H001</td>
+                <td>部品A</td><td class="effect">-180分</td>
+                <td><button class="btn btn-rose">外す</button> <button class="btn btn-green-sm">入替</button></td>
+              </tr>
+              <tr>
+                <td class="mono">S002</td><td class="mono">P002</td><td class="mono">H002</td>
+                <td>部品B</td><td class="effect">-150分</td>
+                <td><button class="btn btn-rose">外す</button> <button class="btn btn-green-sm">入替</button></td>
+              </tr>
+              <tr>
+                <td class="mono">S004</td><td class="mono">P004</td><td class="mono">H004</td>
+                <td>部品D</td><td class="effect">-150分</td>
+                <td><button class="btn btn-rose">外す</button> <button class="btn btn-green-sm">入替</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <p class="step"><span class="step-num">4</span>試算結果を確認</p>
+      <div class="table-scroll" style="max-height:240px">
+        <table>
+          <thead>
+            <tr>
+              <th>資源CD</th><th>必要分</th><th>能力分</th><th>超過</th>
+              <th>試算後必要分</th><th>試算後超過</th><th>削減分</th><th>分類</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">A01</td><td>720</td><td>240</td><td class="over-cell">480</td>
+              <td>240</td><td>0</td><td class="reduction">-480分</td><td>LINE-A</td>
+            </tr>
+            <tr>
+              <td class="mono">B12</td><td>450</td><td>240</td><td class="over-cell">210</td>
+              <td>240</td><td>0</td><td class="reduction">-210分</td><td>LINE-B</td>
+            </tr>
+            <tr>
+              <td class="mono">D03</td><td>335</td><td>240</td><td class="over-cell">95</td>
+              <td>240</td><td>0</td><td class="reduction">-95分</td><td>LINE-D</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer-actions">
+        <button type="button" class="btn btn-slate">リセット</button>
+        <button type="button" class="btn btn-green" style="padding:10px 18px">計画確定・移管申請へ →</button>
+      </div>
+    </section>
+
+    <details class="card" style="padding:10px 14px">
+      <summary style="cursor:pointer;color:#fcd34d;font-weight:600;font-size:0.875rem">
+        ▶ 工程行単位の外注候補（従来・折りたたみ）
+      </summary>
+    </details>
+
+    <p style="font-size:0.75rem;color:var(--muted);text-align:center">
+      静的プレビュー — 目標レイアウト（モック準拠・body 14px）
+    </p>
+  </div>
+</body>
+</html>
