@@ -35,9 +35,9 @@
 1. **判断単位が工程行** — 同一品番が複数行・複数資源に分散すると、現場の思考（部品単位）とずれる。
 2. **超過解消セットは手動** — 候補は効果順に並ぶだけで、「これを選べば解消」はユーザーが試行錯誤する。
 3. **候補効果は静的** — `listOutsourcingCandidates` は初期 `overMap` 固定。選択済み行を反映した再ランキングはない（累積シミュは `simulate` 側のみ再計算）。
-4. **タブ間の工数定義差** — 資源CD俯瞰は `FSIGENSHOYORYO` 合計、着手日タブは `× plannedQuantity`。外注判断を着手日側に寄せる場合は **業務定義の先決** が必要（改善 5）。
+4. ~~**タブ間の工数定義差**~~ — **2026-05-27 解消**: 3タブとも `FSIGENSHOYORYO` 行総分 + 共通 eligibility。
 
-**2026-05-27 追記（生産システム突合）**: 生産の負荷グラフは **`FSIGENSHOYOYMD`（資源所要量 CSV）** 軸。キオスクは **着手日** 軸でよい（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)）。×指示数・FKOJUNST 母集団の修正は [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md) 参照。
+**2026-05-27 追記（生産システム突合）**: 生産の負荷グラフは **`FSIGENSHOYOYMD`（資源所要量 CSV）** 軸。キオスクは **着手日** 軸でよい（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)）。集計修正は `feat/kiosk-load-balancing-aggregation-fix` — [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)。
 
 ---
 

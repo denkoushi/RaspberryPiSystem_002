@@ -16,8 +16,8 @@
 
 - **月次キー**: 受注補足 `ProductionScheduleOrderSupplement.plannedEndDate` の暦月（UTC 月初〜翌月未満）。
 - **対象行（資源CD俯瞰・外注・社内移管）**: winner 行かつ **負荷専用 eligibility**（`fkmail` 必須・**S/R/O/P**・**C/X 除外**・実効未完了）。工数は **`FSIGENSHOYORYO` 合計**（`× plannedQuantity` しない）。
-- **対象行（機種別月次・着手日）**: 従来の一覧可視ポリシー等（タブごとに母集団が異なる）。
-- **未完了**: `ProductionScheduleProgress.isCompleted = false`（または未設定を未完了扱い）。
+- **対象行（機種別月次・着手日）**: winner 行かつ **上記と同じ負荷専用 eligibility**（`load-balancing-eligibility.policy.ts`）。月キーだけタブごとに異なる（下表参照）。
+- **一覧表示との差**: 生産日程一覧は **S/R/C/X** 可視。**負荷集計**は **C/X 除外・S/R/O/P**（P/O は一覧に出なくても未完了負荷に含む）。
 - **品目コード**: `FHINCD` が `MH%` / `SH%` の行は集計から除外（一覧の注文検索と同趣旨）。
 - **資源CD**: 大文字・トリム正規化。切断工程除外リスト（資源カテゴリ設定）に該当する CD は集計対象外。
 
@@ -55,8 +55,9 @@ API（管理者）: `/production-schedule-settings/load-balancing/*`（`work-cal
   - `machineName` / `fhincd` は任意（部品行クリックで `fhincd` 絞り込み）。  
   - 機種名は製番ごとの MH/SH 行 `FHINMEI`（`resolveSeibanMachineDisplayNamesBatched` と同系）。
 - `GET /kiosk/production-schedule/load-balancing/start-date-leveling?fromMonth=&toMonth=&bucket=month|day&focusMonth=&resourceCd=&targetDeviceScopeKey=...`
-  - 負荷 = **`FSIGENSHOYORYO × plannedQuantity`**（指示数不明は未配分）。
+  - 負荷 = **`FSIGENSHOYORYO` 行総分（分）**（0 分は未配分 `zero_required_minutes`）。
   - **着手日** = `OrderSupplement.plannedStartDate`、**終端** = 有効納期。期間内を資源CDの稼働日ルールで**均等日割り**し、月次は日割りの合算。
+  - 着手日/有効納期が欠損する行は SQL で落とさず **未配分**（`missing_planned_start_date` / `missing_effective_due_date`）として返す。
   - 月範囲は最大 **12 か月**。
 - `POST /kiosk/production-schedule/load-balancing/start-date-leveling/simulate`
   - Body: 表示条件 + `moves: [{ rowId, targetDate }]`。**DB 更新なし**（指定行の負荷を移動先日に寄せて再集計）。
@@ -94,7 +95,7 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 - **開始月・終了月**: 初期値は当月から **6 か月**（最大 **12 か月**）。
 - **表示**: **月次**（月×資源の積み上げ）／ **日次**（対象月の日別・資源CD任意で能力比較）。
 - **平準化シミュ**: 行を選び移動先日を指定 → **読み取り専用**（着手日・補助テーブルは更新しない）。
-- **未配分**: 着手日/納期欠損・指示数不明・稼働日なし等を別表で表示。
+- **未配分**: 着手日/納期欠損・所要0分・稼働日なし等を別表で表示。
 
 ### 実装ファイル（着手日・平準化）
 
@@ -141,7 +142,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 - 分析: [production-load-balancing-reconciliation-with-production-system-20260527.md](../analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)
 - ADR: [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
 
-**既知の実装ずれ（修正候補）**: 着手日タブは `FSIGENSHOYORYO × plannedQuantity` だが、所要は **総分** のため過大になりうる。FKOJUNST はタブごとに母集団が異なる（俯瞰=S/R/O/P、着手日=S/R/C/X）。
+**2026-05-27 集計修正**（ブランチ `feat/kiosk-load-balancing-aggregation-fix`）: 着手日は **総分のみ**（×指示数廃止）。3タブの負荷母集団を **eligibility** に統一（C/X 除外・実効未完了・`fkmail` 同期済み）。→ [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
 
 ---
 

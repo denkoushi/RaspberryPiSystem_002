@@ -36,7 +36,7 @@ accepted
 ### 悪い
 
 - 生産画面の **706H / 113H** とキオスク数値は **そのままでは一致しない**（運用説明が必要）。
-- 実装面では **×plannedQuantity** や **FKOJUNST 母集団** の修正は **別タスク**（本 ADR では解決しない）。
+- ~~実装面では **×plannedQuantity** や **FKOJUNST 母集団** の修正は **別タスク**~~ → **2026-05-27 実装**（`feat/kiosk-load-balancing-aggregation-fix`）：着手日は総分のみ、3タブ負荷母集団を `buildLoadBalancingRowEligibilityWhereSql` に統一。
 
 ## References
 

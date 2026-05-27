@@ -2392,12 +2392,12 @@
 
 ### キオスク負荷調整 — 集計定義の実装修正（2026-05-27） {#kiosk-load-balancing-aggregation-fix-2026-05-27}
 
-**状態**: **調査・ドキュメント完了**（[KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)）·**実装未着手**。
+**状態**: **実装完了（未コミット）** — ブランチ **`feat/kiosk-load-balancing-aggregation-fix`**（[KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)）。
 
 | # | タスク | 優先 | 完了条件 |
 |---|--------|------|----------|
-| 1 | 着手日タブ: **`FSIGENSHOYORYO × plannedQuantity` を廃止**（総分のみ） | **高** | `start-date-leveling-assembler` 修正·Vitest·5月/7月検算で桁が縮む |
-| 2 | 着手日・機種別: **残＝S/R（+必要ならP）／消費＝C/X** の母集団分離（ラベルと一致） | **高** | 一覧可視 SQL と負荷用途の意図を ADR/KB に追記済みの方針どおり実装 |
+| 1 | 着手日タブ: **`FSIGENSHOYORYO × plannedQuantity` を廃止**（総分のみ） | **高** | ✅ `start-date-leveling-assembler`·型·Web·Vitest |
+| 2 | 3タブ負荷母集団: **`buildLoadBalancingRowEligibilityWhereSql`**（C/X 除外・S/R/O/P・実効未完了） | **高** | ✅ 着手日・機種別クエリ·`ext` JOIN·検算スクリプト正本パターン A |
 | 3 | UI/ガイド: **生産 H との非一致**を画面またはヘルプで明示 | 中 | 運用問い合わせが減る |
 | 4 | （任意）所要量 CSV の **参考表示**（read-only・出所明示） | 低 | 生産 KPI との目視突合のみ。正本は着手日のまま |
 | 5 | `reconcile-033-may-patterns.mjs` を CI/Runbook に組込 | 低 | Pi5 で env 付き再実行手順の定型化 |

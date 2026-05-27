@@ -2,7 +2,7 @@
 title: KB-362 キオスク負荷調整（山崩し支援）画面
 tags: [kiosk, production-schedule, load-balancing, machine-monthly-load]
 audience: [開発者, 運用者]
-last-verified: 2026-05-26
+last-verified: 2026-05-27
 ---
 
 # KB-362: キオスク負荷調整（山崩し支援）画面
@@ -27,7 +27,7 @@ last-verified: 2026-05-26
 |------|----------|----------|
 | **資源CD俯瞰** | `ProductionScheduleOrderSupplement.plannedEndDate` の暦月 | 単月の資源CD別 必要/能力/超過・**社内移管サジェスト**・**外注候補シミュ** |
 | **機種別月次負荷** | **有効納期** = `COALESCE(ProductionScheduleRowNote.dueDate, supplement.plannedEndDate)` の暦月 | 機種（MH/SH の `FHINMEI`）→ 部品 → 月×資源CD の積み上げ |
-| **着手日・平準化** | 日割り後を月合算／日別（着手=`plannedStartDate`、終端=有効納期） | `FSIGENSHOYORYO×指示数`・稼働日ルール・平準化シミュ（DB不変） |
+| **着手日・平準化** | 日割り後を月合算／日別（着手=`plannedStartDate`、終端=有効納期） | `FSIGENSHOYORYO` 総分・稼働日ルール・平準化シミュ（DB不変） |
 
 **重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
@@ -38,8 +38,7 @@ last-verified: 2026-05-26
 ### 集計対象
 
 - **winner 行**（`buildMaxProductNoWinnerCondition`）
-- **未完了**（`ProductionScheduleProgress.isCompleted = false` または未設定）
-- **FKOJUNST 一覧可視性**（既存ポリシー SQL）
+- **負荷 eligibility**（`buildLoadBalancingRowEligibilityWhereSql`）— `fkmail` 同期済み・**C/X 除外**（S/R/O/P）・**実効未完了**
 - **品番** `FHINCD` が `MH%` / `SH%` **以外**（部品工程のみ）
 - **資源CD** 非空・切断工程除外（資源カテゴリ設定）
 - **有効納期** が指定期間内（`fromMonth`〜`toMonth`  inclusive、最大 **12 か月**）
@@ -73,9 +72,9 @@ last-verified: 2026-05-26
 
 ### 集計対象
 
-- 機種別月次と同様の **winner / 未完了 / FKOJUNST 可視 / 部品工程 / 資源CD** 条件に加え、
-  **`plannedStartDate` と有効納期が両方ある行**のみ配分対象。
-- **負荷（分）** = `FSIGENSHOYORYO × plannedQuantity`（`plannedQuantity` が正の整数でない行は **未配分**）。
+ - **負荷 eligibility**（機種別月次と同じ `buildLoadBalancingRowEligibilityWhereSql`）を満たす行を取得する。
+ - **`plannedStartDate` と有効納期が両方ある行**は配分対象。いずれか欠損する行は **未配分**（`missing_planned_start_date` / `missing_effective_due_date`）として返す。
+- **負荷（分）** = **`FSIGENSHOYORYO` 行総分**（0 分は **未配分** `zero_required_minutes`）。
 - **日割り**: 着手日〜有効納期（ inclusive ）の **稼働日**に均等配分。稼働日は資源CDごとに `weekdays` または `calendar_days`（未設定は **weekdays**）。
 - **月次能力**: 既存の基準/月次上書き。日次表示では **月能力 ÷ 当該月の稼働日数** を日次能力線とする。
 
@@ -98,7 +97,7 @@ last-verified: 2026-05-26
 
 ### 負荷母集団（資源CD俯瞰・外注・社内移管サジェストのみ）
 
-`monthly-load-query.service.ts` + `load-balancing-eligibility.policy.ts` が正本。**機種別月次・着手日タブは従来どおり**（一覧可視ポリシー等）。
+`load-balancing-eligibility.policy.ts` が **3タブ共通**の負荷母集団正本（`monthly-load-query` / `machine-monthly-load-query` / `start-date-leveling-query`）。
 
 | 項目 | 内容 |
 |------|------|

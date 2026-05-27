@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { FKOJUNST_MAIL_COMPLETED_STATUS_CODES } from '../../completion/fkojunst-mail-status-completion.policy.js';
 import { buildLoadBalancingRowEligibilityWhereSql } from '../load-balancing-eligibility.policy.js';
 
 describe('buildLoadBalancingRowEligibilityWhereSql', () => {
@@ -10,8 +11,12 @@ describe('buildLoadBalancingRowEligibilityWhereSql', () => {
     expect(sql).toContain('"ext"');
     expect(sql).toContain('"p"');
     expect(sql).toContain('statuscode');
-    expect(sql).toContain(' in (');
+    expect(sql).toContain(' not ');
+    expect(sql).toContain('statuscode');
+    expect(sql).toContain('in (?, ?)');
+    expect(FKOJUNST_MAIL_COMPLETED_STATUS_CODES).toEqual(['C', 'X']);
     expect(sql).toContain('isexternallycompleted');
     expect(sql).toContain('iscompleted');
+    expect(sql).toContain('= false');
   });
 });
