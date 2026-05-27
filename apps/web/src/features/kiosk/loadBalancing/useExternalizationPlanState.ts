@@ -7,6 +7,10 @@ import {
   usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate
 } from '../../../api/hooks';
 
+import { formatExternalizationPlanActionError } from './externalizationPlanErrors';
+import { LOAD_BALANCING_OUTSOURCING_LIMITS } from './loadBalancingOutsourcingLimits';
+import { mapOutsourcingPlanToSimulateResult } from './mapOutsourcingPlanToSimulateResult';
+
 import type { ProductionScheduleLoadBalancingExternalizationCandidate } from '../../../api/client';
 
 type ScopeParams = { month: string; targetDeviceScopeKey?: string };
@@ -19,15 +23,6 @@ type UseExternalizationPlanStateParams = {
     result: ReturnType<typeof usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate>['data'] | null
   ) => void;
 };
-
-export function parsePartCandidateId(candidateId: string): {
-  fseiban: string;
-  productNo: string;
-  fhincd: string;
-} {
-  const [fseiban = '', productNo = '', fhincd = ''] = candidateId.split('\u001f');
-  return { fseiban, productNo, fhincd };
-}
 
 function computeTargetRemainingOverMinutes(
   resources: Array<{ resourceCd: string; overMinutes: number }>,
@@ -78,6 +73,22 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
     [externalizationCandidates]
   );
 
+  const actionError = useMemo(
+    () =>
+      formatExternalizationPlanActionError({
+        planError: planMutation.error,
+        candidatesError: candidatesMutation.error,
+        simulateError: simulateMutation.error,
+        replacementsError: replacementsMutation.error
+      }),
+    [
+      planMutation.error,
+      candidatesMutation.error,
+      simulateMutation.error,
+      replacementsMutation.error
+    ]
+  );
+
   const resetPlanState = useCallback(() => {
     setSelectedCandidateIds([]);
     setPlanResolved(null);
@@ -86,8 +97,10 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
     setReplacementTargetId(null);
     setReplacementOptions([]);
     planMutation.reset();
+    candidatesMutation.reset();
+    simulateMutation.reset();
     replacementsMutation.reset();
-  }, [planMutation, replacementsMutation]);
+  }, [candidatesMutation, planMutation, replacementsMutation, simulateMutation]);
 
   const runSimulateForSelection = useCallback(
     async (candidateIds: string[]) => {
@@ -117,7 +130,7 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
   const ensureCandidatesLoaded = useCallback(async () => {
     const result = await candidatesMutation.mutateAsync({
       ...params.overviewParams,
-      maxCandidates: 500,
+      maxCandidates: LOAD_BALANCING_OUTSOURCING_LIMITS.MAX_CANDIDATES_LIST_REQUEST,
       overResourceCds: overResourcePayload
     });
     setExternalizationCandidates(result.externalizationCandidates ?? []);
@@ -125,19 +138,38 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
   }, [candidatesMutation, overResourcePayload, params.overviewParams]);
 
   const handleAutoPlan = useCallback(async () => {
+    planMutation.reset();
+    candidatesMutation.reset();
+    simulateMutation.reset();
+    replacementsMutation.reset();
+
     const plan = await planMutation.mutateAsync({
       ...params.overviewParams,
       overResourceCds: overResourcePayload,
       strategy: 'max_over_reduction'
     });
-    await ensureCandidatesLoaded();
+
     setSelectedCandidateIds(plan.selectedCandidateIds);
     setPlanResolved(plan.resolved);
     setPlanRemainingOverMinutes(plan.remainingOverMinutes);
     setReplacementTargetId(null);
     setReplacementOptions([]);
-    await runSimulateForSelection(plan.selectedCandidateIds);
-  }, [ensureCandidatesLoaded, overResourcePayload, params.overviewParams, planMutation, runSimulateForSelection]);
+    params.onSimulateResult(mapOutsourcingPlanToSimulateResult(plan));
+
+    try {
+      await ensureCandidatesLoaded();
+    } catch {
+      // 候補一覧は補助。plan / 試算表示は維持し、candidatesMutation.error で表示する。
+    }
+  }, [
+    candidatesMutation,
+    ensureCandidatesLoaded,
+    overResourcePayload,
+    params,
+    planMutation,
+    replacementsMutation,
+    simulateMutation
+  ]);
 
   const handleRemoveCandidate = useCallback(
     async (candidateId: string) => {
@@ -181,8 +213,7 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
   const handleClearPlan = useCallback(() => {
     resetPlanState();
     params.onSimulateResult(null);
-    simulateMutation.reset();
-  }, [params, resetPlanState, simulateMutation]);
+  }, [params, resetPlanState]);
 
   return {
     selectedCandidateIds,
@@ -192,6 +223,7 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
     candidateById,
     replacementTargetId,
     replacementOptions,
+    actionError,
     candidatesMutation,
     planMutation,
     simulateMutation,
@@ -206,3 +238,6 @@ export function useExternalizationPlanState(params: UseExternalizationPlanStateP
     selectedOverResourceCds: params.selectedOverResourceCds
   };
 }
+
+// 後方互換: 既存 import を段階的に loadBalancingExternalization へ移す
+export { parsePartCandidateId } from './loadBalancingExternalization';

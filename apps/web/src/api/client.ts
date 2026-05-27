@@ -541,7 +541,7 @@ export interface ProductionScheduleLoadBalancingOutsourcingPlanResponse {
   siteKey: string;
   yearMonth: string;
   mode: 'outsourcing';
-  strategy: 'max_over_reduction' | 'min_count' | 'min_total_minutes';
+  strategy: 'max_over_reduction';
   selectedCandidateIds: string[];
   beforeResources: ProductionScheduleLoadBalancingOverviewResource[];
   afterResources: ProductionScheduleLoadBalancingOutsourcingSimulatedResource[];
@@ -2013,7 +2013,7 @@ export async function postKioskProductionScheduleLoadBalancingOutsourcingPlan(pa
   month: string;
   targetDeviceScopeKey?: string;
   overResourceCds?: string[];
-  strategy?: 'max_over_reduction' | 'min_count' | 'min_total_minutes';
+  strategy?: 'max_over_reduction';
 }) {
   const { data } = await api.post<ProductionScheduleLoadBalancingOutsourcingPlanResponse>(
     '/kiosk/production-schedule/load-balancing/outsourcing-plan',
