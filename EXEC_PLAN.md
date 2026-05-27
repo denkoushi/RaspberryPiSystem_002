@@ -8,6 +8,8 @@
 
 ## Progress
 
+- [x] (2026-05-27 / **実装完了・Pi5→Pi4×4 本番・実機 OK（自動+現場）・ドキュメント同期・`main` マージ**） **キオスク負荷調整 — 自動選定後の表示維持（reset 境界）**·ブランチ **`feat/kiosk-load-balancing-auto-plan-reset-fix`**·**`463aeabb`**。**Fix**: `loadBalancingOverviewSession.ts` — reset を **`month` / `scopeKey` / `overResourceKey`** のみに限定·`overResourceOptions` 参照変化では **plan/simulate 表示を維持**。**範囲**: **Web のみ**·API/DB 不変。**CI**: **`26510107150`**。**本番**: Pi5 Detach **`20260527-212706-19231`** / Pi4 **`20260527-214538-9407`** / robodrill **`20260527-215102-12190`** / fjv60-80 **`20260527-215507-22961`** / StoneBase01 **`20260527-215913-24632`**（各 **`failed=0`**·StoneBase **`barcode-agent` リトライあり**）。**実機**: Phase12 **43/0/0**·curl スモーク OK·**現場目視 OK**（自動選定後に表示維持）。**ナレッジ**: [KB-362 §表示維持](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-27--自動選定表示維持--pi5pi44)·[deployment §2026-05-27](./docs/guides/deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)。**ドキュメントのみ追記は CI 完了待ち不要（ユーザー合意）**。
+
 - [x] (2026-05-27 / **実装完了・Pi5 本番・実機 OK（自動）・ドキュメント同期・`main` マージ**） **キオスク負荷調整 — 外注契約整合 + 自動選定フロー修正**·ブランチ **`feat/kiosk-load-balancing-ui-p0p1`**·PR [#351](https://github.com/denkoushi/RaspberryPiSystem_002/pull/351)·**`main` `c5f02576`**（squash·実装 tip **`cd42ebfe`**）。**Fix**: `outsourcing-simulation.policy.ts` で上限単一化（プール **500**·candidates **200**·simulate **500**）·自動選定は **plan の `beforeResources`/`afterResources` を `mapOutsourcingPlanToSimulateResult` で即反映**（simulate 省略）·`maxCandidates:500` → **400**·Panel **`actionError`**·React Query **staleTime**（overview 60s / 重タブ 120s）。**CI**: **`26504703984`** success。**本番**: **`raspberrypi5` のみ**·Detach **`20260527-191646-1476`**（`failed=0`·**`--follow` 約 1498s**）。**実機**: Phase12 **43/0/0**·curl スモーク OK·`outsourcing-plan` **約 1.1s**（18 超過資源·選定 220 件）。**ナレッジ**: [KB-362](./docs/knowledge-base/KB-362-kiosk-load-balancing.md)·[ADR 外注上限](./docs/decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·[deployment §契約整合](./docs/guides/deployment.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27)。**残**: Pi4×4·現場目視（自動選定・actionError）。
 
 - [x] (2026-05-27 / **実装完了・Pi5 本番・実機 OK・ドキュメント同期・`main` マージ**） **キオスク負荷調整 — 集計修正 + `shared` 能力フォールバック**·ブランチ **`feat/kiosk-load-balancing-aggregation-fix`**·**`bef423fe`** / **`37a7b6d4`**·[PR #350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)。**Fix**: 着手日 **総分のみ**（×指示数廃止）·3タブ **eligibility** 統一·キオスク **`listLoadBalancing*Resolved`**（site 優先 + shared 補完）。**症状（調査）**: 工程能力すべて `—`（DB 能力が `shared` のみ・旧 site 直読）。**CI**: **`26496156604`** success。**本番**: **`raspberrypi5` のみ**·Detach **`20260527-161741-7843`**（`failed=0`·**`--follow` 約 594s**）·Pi4×4 **未**。**実機**: Phase12 **43/0/0**·curl `overview`/`machine-monthly-load`/`start-date-leveling` **200**·`availableMinutes` **9/27** 資源。**ナレッジ**: [KB-362](./docs/knowledge-base/KB-362-kiosk-load-balancing.md)·[KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[deployment §2026-05-27](./docs/guides/deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)。**残**: Pi4×4 デプロイ·現場目視·UI で生産 H 非一致の明示（任意）。
@@ -1230,6 +1232,8 @@
 
 ## Surprises & Discoveries
 
+- 観測（2026-05-27 / **キオスク負荷調整 · 自動選定後に表示が消える**）: **`cd42ebfe` の simulate 省略後**、`LoadBalancingOverviewTab` の reset `useEffect` が **`overResourceOptions` 参照変化**だけで再発火し、plan 成功直後の **`simulateResult` / 部品選定 state をクリア**していた（API は 200）。Vitest 回帰で **CONFIRMED**。**対策（本番反映済）**: `loadBalancingOverviewSession.ts` — **`463aeabb`** · Pi5→Pi4×4 · **現場目視 OK**。**記録**: [KB-362 §Investigation 表示消失](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#investigation2026-05-27--自動選定後に表示が消える)·[§Production deploy 表示維持](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-27--自動選定表示維持--pi5pi44).
+
 - 観測（2026-05-27 / **キオスク負荷調整 · 外注推奨セット · 無反応・契約不整合**）: (1) **エンジンは部品プール 500** なのに **ルートは `maxCandidates`≤200・`selectedCandidateIds`≤100**（修正前）·フロントは **`maxCandidates:500`** 送信。(2) **plan 成功後**に candidates/simulate が **400** でも UI は **`planError` のみ**で **Panel に出ず無反応**。(3) **自動選定の plan 単体は ~1.1s** だが **初回タブは `machine-monthly-load` ~20s・`start-date-leveling` ~29s** と別系統で「全体が遅い」誤認しやすい。(4) **修正後** Pi5 で plan **220 件**·`maxCandidates=500` **400**·simulate（手動検証）は **200**。**記録**: [KB-362 §Investigation](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#investigation2026-05-27--無反応遅延の切り分け)·[ADR 外注上限](./docs/decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·Detach **`20260527-191646-1476`**.
 
 - 観測（2026-05-27 / **キオスク負荷調整 × 生産システム · FSIGENSHOYOYMD · N7(033)**）: (1) **生産の積み上げグラフの横軸は `FSIGENSHOYOYMD`**（資源所要量 `scawSTSIGENSHOYORYO`）— **着手日・納期ではない**。(2) **`CsvDashboardRow` に `FSIGENSHOYOYMD` は未取込**（工程1行モデル）。(3) **7月・033 所要量 CSV 合計 735H** に対し、生産 KPI **残706+消費113=819H** は **7/2–7/9 の重なり**で説明可能（単純分割ではない）。(4) **着手日タブの `× plannedQuantity`** で 5月 A=**1087H** vs 総分のみ B=**225H**。(5) **一覧スクリーンショットの標準工数合計 ≈1202H** は **月次706/113/735のいずれとも一致しない**（台帳≠月次 KPI）。(6) **P は着手日 SQL で除外**だが **7月日割りでは P が 419H** と最大寄与。**記録**: [KB-363](./docs/knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)·[ADR-20260527](./docs/decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)·`reconcile-033-may-patterns.mjs`。
@@ -2400,16 +2404,28 @@
 
 ## Next Steps（将来のタスク）
 
+### キオスク負荷調整 — 表示維持 + Pi4 同期（2026-05-27） {#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27}
+
+**状態**: **完了（`main` マージ済）** — **`463aeabb`** · [KB-362 §表示維持](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--自動選定表示維持) · [deployment §2026-05-27](./docs/guides/deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
+
+| # | タスク | 優先 | 完了条件 |
+|---|--------|------|----------|
+| 1 | reset 境界（`loadBalancingOverviewSession`） | **高** | ✅ **`463aeabb`** |
+| 2 | Pi5 デプロイ + curl/Phase12 | **高** | ✅ **`20260527-212706-19231`** |
+| 3 | **Pi4×4 デプロイ** | 中 | ✅ 各 `failed=0` |
+| 4 | **現場目視**: 自動選定後に表示維持 | 中 | ✅ ユーザー確認済 |
+| 5 | （任意）重タブ API のクエリ/キャッシュ最適化 | 低 | 初回 20–30s の改善 |
+
 ### キオスク負荷調整 — 外注契約整合 + Pi4 展開（2026-05-27） {#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27}
 
-**状態**: **実装・Pi5 本番・ドキュメント同期済** — **`cd42ebfe`** · Pi5 Detach **`20260527-191646-1476`** · [KB-362 §契約整合実機検証](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--外注契約整合--自動選定フロー)
+**状態**: **実装・Pi5 本番・表示維持まで完了** — **`cd42ebfe`** + **`463aeabb`** · [KB-362 §契約整合実機検証](./docs/knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--外注契約整合--自動選定フロー)
 
 | # | タスク | 優先 | 完了条件 |
 |---|--------|------|----------|
 | 1 | policy 単一化 + 自動選定フロー + `actionError` | **高** | ✅ **`cd42ebfe`** |
 | 2 | Pi5 デプロイ + curl/Phase12 | **高** | ✅ Detach **`20260527-191646-1476`** |
-| 3 | **Pi4×4 デプロイ**（`main` マージ後 `--limit` 1 台ずつ） | 中 | 各 `failed=0` · キオスク強制リロード |
-| 4 | **現場目視**: 自動選定・エラー表示・残超過 | 中 | KB-362 チェックリストに記録 |
+| 3 | **Pi4×4 デプロイ**（クライアント同期） | 中 | ✅ **`463aeabb` デプロイ時に実施** |
+| 4 | **現場目視**: 自動選定・エラー表示・残超過 | 中 | ✅ **`463aeabb` 後に OK** |
 | 5 | （任意）重タブ API のクエリ/キャッシュ最適化 | 低 | 初回 20–30s の改善 |
 
 **Pi4 標準コマンド**（`main` マージ後）:

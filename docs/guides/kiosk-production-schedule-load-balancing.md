@@ -90,12 +90,27 @@ Mac の device-scope v2 有効時は、他画面と同様 **`targetDeviceScopeKe
 - **工程行（従来）**: 折りたたみ内で外注候補取得 → チェック → 累積シミュ（Phase 0 互換）。
 - **社内移管サジェスト**: 既存どおり分類/移管ルールに基づく別資源CDへの移管候補（外注候補とは別）。
 
-**デプロイ**: 工程行シミュ・部品推奨 API / UI P0+P1 / **契約整合修正**（上限統一・自動選定で plan 結果を即反映）は Pi5 **`cd42ebfe`** デプロイ済み。Pi4×4 は未展開。詳細は [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)。
+**デプロイ**: 外注・推奨セットは Pi5 **`cd42ebfe`**（契約整合）+ **`463aeabb`**（**自動選定後の表示維持**·Web のみ）·Pi5→Pi4×4 **本番反映済**（2026-05-27）。詳細は [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)。
+
+### 自動選定後の表示維持（`463aeabb`）
+
+**前提**: `cd42ebfe` で plan 成功後は **`outsourcing-simulate` を呼ばず** `mapOutsourcingPlanToSimulateResult` でチャートを更新する。
+
+**不具合（修正前）**: overview の React Query 再評価で `overResourceOptions` の**配列参照だけ**が変わり、reset effect が **plan / simulate 表示を即クリア**していた。
+
+**修正後の契約**:
+
+| イベント | reset（試算破棄） | 超過資源チェック同期 |
+|----------|-------------------|----------------------|
+| `month` / `scopeKey` / `overResourceKey` のいずれか変化 | **する** | `overResourceKey` 変化時 |
+| overview 同値再フェッチのみ | **しない** | **しない** |
+
+正本: `loadBalancingOverviewSession.ts` · UI: `LoadBalancingOverviewTab.tsx` · テスト: `loadBalancingOverviewSession.test.ts` · `ProductionScheduleLoadBalancingPage.test.tsx`（「同値 overview 再評価でも plan 表示維持」）。
 
 ### 実装ファイル（外注・推奨セット）
 
 - API: `load-balancing-eligibility.policy.ts`, `outsourcing-simulation.policy.ts`, `monthly-load-query.service.ts`, `outsourcing-simulation.engine.ts`, `outsourcing-simulation.service.ts`
-- Web: `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts`, `mapOutsourcingPlanToSimulateResult.ts`, `externalizationPlanErrors.ts`
+- Web: `LoadBalancingOverviewTab.tsx`, `loadBalancingOverviewSession.ts`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts`, `mapOutsourcingPlanToSimulateResult.ts`, `externalizationPlanErrors.ts`
 
 ### 推奨セット自動選定（契約・`cd42ebfe`）
 
@@ -146,9 +161,12 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 | 2026-05-26 | `feat/kiosk-load-balancing-machine-monthly-view` | 機種別月次タブ（API+Web） | `60b94b9d` |
 | 2026-05-26 | `feat/kiosk-load-balancing-start-date-leveling` | 着手日・平準化タブ + 稼働日ルール（API+Web+DB） | （未コミット） |
 | 2026-05-26 | `feat/kiosk-load-balancing-externalization-plan` | 部品推奨セット・負荷母集団修正（API+Web） | Pi5 で `outsourcing-plan` / 画面文言を確認 |
-| 2026-05-27 | `feat/kiosk-load-balancing-ui-p0p1` | 外注上限統一・自動選定フロー修正 | Pi5 **`cd42ebfe`**（Pi4×4 未） |
+| 2026-05-27 | `feat/kiosk-load-balancing-ui-p0p1` | 外注上限統一・自動選定フロー修正 | Pi5 **`cd42ebfe`** |
+| 2026-05-27 | `feat/kiosk-load-balancing-auto-plan-reset-fix` | 自動選定後の表示維持（reset 境界） | **`463aeabb`** · Pi5→Pi4×4 |
 
 標準手順は [deployment.md](deployment.md)。**Pi5 → Pi4×4 を `--limit` 1 台ずつ**。**Pi3 は除外**。
+
+- 2026-05-27 表示維持: [KB-362 §Production deploy 表示維持](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-27--自動選定表示維持--pi5pi44) / [deployment.md §2026-05-27](deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
 
 - 2026-05-26 実績・Detach ID・検証: [KB-362 §Production deploy](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-26--機種別月次) / [deployment.md §2026-05-26](deployment.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
 - 2026-04-30 初版: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md) / [deployment.md §2026-04-30](deployment.md)

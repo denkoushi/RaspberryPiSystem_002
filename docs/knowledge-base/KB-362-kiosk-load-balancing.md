@@ -2,7 +2,7 @@
 title: KB-362 キオスク負荷調整（山崩し支援）画面
 tags: [kiosk, production-schedule, load-balancing, machine-monthly-load]
 audience: [開発者, 運用者]
-last-verified: 2026-05-27
+last-verified: 2026-05-28
 ---
 
 # KB-362: キオスク負荷調整（山崩し支援）画面
@@ -21,6 +21,7 @@ last-verified: 2026-05-27
 | 2026-05-27 修正 | `feat/kiosk-load-balancing-ui-p0p1` · **`cd42ebfe`** | 外注上限 **`outsourcing-simulation.policy.ts` 統一**·自動選定で plan 結果を即反映 — **Pi5 デプロイ済み** |
 | 2026-05-27 修正 | `feat/kiosk-load-balancing-aggregation-fix` · **`bef423fe`** | 着手日 **総分のみ**（×指示数廃止）·3タブ母集団 **eligibility** 統一 |
 | 2026-05-27 修正 | 同上 · **`37a7b6d4`** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取りのみ） |
+| 2026-05-27 修正 | `feat/kiosk-load-balancing-auto-plan-reset-fix` · **`463aeabb`** | **自動選定後の表示維持** — overview セッション境界のみ reset（Web のみ）·**Pi5→Pi4×4 本番・実機 OK** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -178,18 +179,45 @@ sequenceDiagram
 | 上限定数 | `outsourcing-simulation.policy.ts` |
 | 純関数 | `outsourcing-simulation.engine.ts` |
 | サービス | `outsourcing-simulation.service.ts` |
-| Web | `LoadBalancingOverviewTab.tsx`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts`, `mapOutsourcingPlanToSimulateResult.ts`, `externalizationPlanErrors.ts`, `loadBalancingExternalization.ts` |
+| Web | `LoadBalancingOverviewTab.tsx`, `loadBalancingOverviewSession.ts`, `useExternalizationPlanState.ts`, `ExternalizationPlanPanel.tsx`, `loadBalancingOutsourcingLimits.ts`, `loadBalancingOutsourcingSelection.ts`, `mapOutsourcingPlanToSimulateResult.ts`, `externalizationPlanErrors.ts`, `loadBalancingExternalization.ts` |
 | 上限 ADR | [ADR-20260527 外注上限](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md) |
 
-### デプロイ状況
+### デプロイ状況（2026-05-27 時点）
 
 | 機能 | Pi5 | Pi4×4 |
 |------|-----|-------|
-| Phase 0（工程行シミュ） | **デプロイ済み**（`128f89bd`） | 未展開 |
-| 部品推奨セット API | **デプロイ済み**（`main` / Pi5 `c27aa3ec` 時点で `outsourcing-plan` 等 **200**） | 未展開 |
-| 部品推奨セット UI（P0+P1 + 契約整合） | **デプロイ済み**（**`cd42ebfe`** · Detach **`20260527-191646-1476`**） | 未展開 |
+| 機種別月次・着手日タブ（API+Web） | **デプロイ済**（`60b94b9d` 系） | **デプロイ済**（2026-05-26 Detach 各台） |
+| 外注契約整合 + 自動選定フロー | **デプロイ済**（**`cd42ebfe`** · **`20260527-191646-1476`**） | **クライアント同期済**（Pi5 SPA 参照·2026-05-27 Pi4 play） |
+| 集計修正 + `shared` 能力フォールバック | **デプロイ済**（**`37a7b6d4`** 系 · **`20260527-161741-7843`**） | **クライアント同期済**（API は Pi5 正本） |
+| **自動選定後の表示維持（reset 境界）** | **デプロイ済**（**`463aeabb`** · **`20260527-212706-19231`**） | **デプロイ済**（**`20260527-214538`〜`215913`** 各台） |
+
+**Pi4 キオスクの Web**: 多くは Pi5 **`kiosk_full_url`** 経由で SPA を読む。**Web 修正は Pi5 デプロイが正本**·Pi4 play は **kiosk-browser 再起動・Ansible 同期**。
 
 背景・改善案: [load-balancing-outsourcing-improvement-proposal.md](../plans/load-balancing-outsourcing-improvement-proposal.md)。
+
+### セッション境界と reset（`463aeabb` · Web のみ）
+
+**症状**: `cd42ebfe` 以降、**推奨セットを自動選定**は API **200** だが、直後に部品表・チャート・`（外注シミュ結果）` 表示が消え **無反応に見える**。
+
+**原因**: `LoadBalancingOverviewTab` の `useEffect` が **`overResourceOptions` の配列参照**を依存に含み、React Query の overview **同値再フェッチ**（`staleTime` 60s 内の再評価）だけで `setSimulateResult(null)` + `resetPlanState()` を実行していた。
+
+**契約（正本）**: `loadBalancingOverviewSession.ts`
+
+| 識別子 | 意味 | 変化時の挙動 |
+|--------|------|----------------|
+| `month` | 俯瞰タブの対象月 | 外注試算 state を **破棄** |
+| `scopeKey` | `targetDeviceScopeKey`（Mac 代理含む） | 同上 |
+| `overResourceKey` | 選択中の超過資源 CD を **ソート連結**したキー | 同上・**超過資源の再選択同期**もこの変化時のみ |
+| （境界外） | `overResourceOptions` 配列の参照・中身が同集合 | **reset しない**（plan / simulate 表示を維持） |
+
+**実装分割**:
+
+- **セッション reset**（`shouldResetLoadBalancingOverviewSession`）: 上記 3 キーのいずれかが変わったときのみ `simulateResult` クリア + `resetPlanState()`。
+- **超過資源 state 同期**: `overResourceKey` 変化時のみ `setSelectedOverResourceCds`（overview 再評価だけでは走らない）。
+
+**テスト**: `loadBalancingOverviewSession.test.ts` · `ProductionScheduleLoadBalancingPage.test.tsx`（同値 overview 再評価でも plan 表示維持）。
+
+**API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
 
 ## Production deploy（実績 2026-05-26 · 外注候補シミュ · Pi5 のみ）
 
@@ -405,12 +433,73 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 
 **Detach Run ID**: `20260527-191646-1476` · CI **`26504703984`** success · PR [#351](https://github.com/denkoushi/RaspberryPiSystem_002/pull/351) · **`main`** squash **`c5f02576`**
 
-### 現場目視（推奨・未記録）
+### 現場目視（契約整合 · 2026-05-27）
 
-- [ ] **資源CD俯瞰** → **推奨セットを自動選定**（応答・一覧・残超過表示）
-- [ ] 失敗時 **actionError** 表示（超過資源 0・scope 未選択等）
+- [x] **資源CD俯瞰** → **推奨セットを自動選定**（応答・一覧·残超過表示）— **reset 修正後（`463aeabb`）に実機 OK**
+- [x] 失敗時 **actionError** 表示（超過資源 0·scope 未選択等）— 仕様どおり
 
 **参照**: [deployment.md §契約整合 2026-05-27](../guides/deployment.md#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27)
+
+## Production deploy（実績 2026-05-27 · 自動選定表示維持 · Pi5→Pi4×4）
+
+- **ブランチ**: `feat/kiosk-load-balancing-auto-plan-reset-fix`
+- **代表コミット**: **`463aeabb`** `fix(kiosk): preserve auto-plan results across overview refresh`
+- **変更範囲**: **Web のみ**（`loadBalancingOverviewSession.ts` · `LoadBalancingOverviewTab.tsx` · Vitest）
+- **Prisma マイグレーション**: **なし**
+- **CI（機能 push）**: GitHub Actions **`26510107150`**（ブランチ push）
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260527-212706-19231` | `ok=134` `changed=4` `failed=0` | Docker web 再ビルド·**`--follow` 約 494s** |
+| `raspberrypi4` | `20260527-214538-9407` | `ok=122` `changed=10` `failed=0` | kiosk-browser 再起動 |
+| `raspi4-robodrill01` | `20260527-215102-12190` | `ok=122` `changed=9` `failed=0` | |
+| `raspi4-fjv60-80` | `20260527-215507-22961` | `ok=122` `changed=9` `failed=0` | |
+| `raspi4-kensaku-stonebase01` | `20260527-215913-24632` | `ok=129` `changed=10` `failed=0` | `barcode-agent` 起動待ち **リトライあり**（最終 `failed=0`） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-load-balancing-auto-plan-reset-fix infrastructure/ansible/inventory.yml --limit <host> --detach --follow
+```
+
+## 実機検証（2026-05-27 · 自動選定表示維持）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後約 **57s**·Pi4 群後約 **53s**）
+- Pi5 Git: **`463aeabb`**
+
+### API スモーク（Pi5 · Tailscale `100.106.158.2`）
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+MONTH="2026-05"
+# overview から overMinutes>0 の資源 CD を overResourceCds に渡す
+curl -sk -X POST "${BASE}/api/kiosk/production-schedule/load-balancing/outsourcing-plan" \
+  -H "x-client-key: ${KEY}" -H "Content-Type: application/json" \
+  -d "{\"month\":\"${MONTH}\",\"overResourceCds\":[\"035\",\"051\",\"052\"],\"strategy\":\"max_over_reduction\"}"
+```
+
+**実績（2026-05-27 · デプロイ後）**:
+
+| エンドポイント | HTTP | 所要時間（目安） | 備考 |
+|--------------|------|------------------|------|
+| `overview` | 200 | ~1.9s | |
+| `outsourcing-plan`（超過 18 資源） | 200 | ~0.8s | `selectedCandidateIds` **220**·超過 **18→0** |
+| `machine-monthly-load` | 200 | ~23.4s | 初回重い（別系統） |
+| `start-date-leveling` | 200 | ~18.5s | 同上 |
+| `outsourcing-candidates` `maxCandidates=500` | **400** | — | `maximum: 200`（契約どおり） |
+
+**Web（Pi5 `docker-web-1`）**: `/srv/site/assets/index-BhBgMfpi.js` に **`推奨セットを自動選定`**・**`simulateResult`** を確認（minify のため関数名は残らない）。
+
+### 現場目視（2026-05-27 · ユーザー確認済）
+
+- [x] **推奨セットを自動選定** 押下後、部品一覧・残超過・`（外注シミュ結果）` が **消えない**
+- [x] 月・device scope・超過資源集合を変えたときのみ試算 state がリセットされる
+
+**参照**: [deployment.md §表示維持 2026-05-27](../guides/deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
 
 ## Troubleshooting
 
@@ -426,7 +515,8 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 | **部品絞り込み後、部品表が1行だけ** | **2026-05-26 以前の不具合**。修正後は部品表は機種全体のまま |
 | **Pi4 だけ旧UI** | Pi4 未デプロイ or キャッシュ → 該当ホストに `--limit` 再デプロイ、[強制リロード](../guides/verification-checklist.md) §6.6.4 |
 | **API 500 が 400 表示** | ルートは入力検証系のみ 400 化。DB/内部エラーは 500 のまま（ログ確認） |
-| **推奨セット自動選定が無反応** | (1) Mac で **device scope 未選択** → ボタン disabled。(2) 超過資源 **0 件**。(3) **修正前**（`c27aa3ec` 以前）: `maxCandidates:500` / plan>100 件で後続 API **400** かつ **`planError` のみ**で Panel 非表示 — **`cd42ebfe`** で解消。**Pi5 未反映時**は `git rev-parse --short HEAD` が **`cd42ebfe`** か確認して再デプロイ |
+| **推奨セット自動選定が無反応** | (1) Mac で **device scope 未選択** → ボタン disabled。(2) 超過資源 **0 件**。(3) **修正前**（`c27aa3ec` 以前）: `maxCandidates:500` / plan>100 件で後続 API **400** かつ **`planError` のみ** — **`cd42ebfe`** で解消。(4) **修正前**（`cd42ebfe` 〜 **`463aeabb` 未満**）: plan **200** 直後に表示が消える → overview 同値再評価で reset — **`463aeabb`** で解消（[§セッション境界](#セッション境界と-reset463aeabb--web-のみ)）。(5) **Pi5 未反映** → `git rev-parse --short HEAD` が **`463aeabb` 以降**か·Web バンドルに **`推奨セットを自動選定`** があるか |
+| **選定直後に一瞬出て消える** | DevTools Network で plan **200** かつ直後に UI だけ空 → **(4)** を疑う。修正後も再発する場合は **強制リロード**（[verification-checklist §6.6.4](../guides/verification-checklist.md)） |
 | **自動選定は遅いが他タブも重い** | **別系統**: 初回 `machine-monthly-load` **~20s**・`start-date-leveling` **~29s**（2026-05-27 実測）。自動選定は **plan ~1s + candidates**（simulate 省略後）。React Query **`staleTime`** overview **60s** / 重タブ **120s** |
 | **plan は成功するが部品表が空** | `candidates` が 200 cap でメタ未取得 · Network で **400** を確認 · `actionError` 文言 |
 | **チャートだけ更新され部品行がない** | 選定 ID はあるが `externalizationCandidates` に未載の ID（200 件プール外）— 部品行は **selectedCandidateIds** ベースで表示する設計を確認 |
@@ -448,7 +538,22 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 | simulate 必須で遅い | コードレビュー | **REJECTED** plan と同等の before/after を返す |
 | 全タブ初回が重い | curl 計測 | **CONFIRMED** 別 API（月次・平準化） |
 
-**根本原因（無反応）**: **契約不整合** + **エラー表示が plan のみ** + **simulate 直列**。修正は **`cd42ebfe`**（policy 単一化・mapper・`actionError`・simulate 省略）。
+**根本原因（無反応・契約）**: **契約不整合** + **エラー表示が plan のみ** + **simulate 直列**。修正は **`cd42ebfe`**（policy 単一化・mapper・`actionError`・simulate 省略）。
+
+## Investigation（2026-05-27 · 自動選定後に表示が消える）
+
+| 仮説 | 検証 | 結果 |
+|------|------|------|
+| plan / candidates API 失敗 | Pi5 curl · Vitest | **REJECTED**（200・契約整合後） |
+| `mapOutsourcingPlanToSimulateResult` 不正 | 単体テスト・ランタイムログ | **REJECTED** |
+| reset `useEffect` が同値 overview 再評価で発火 | Vitest 回帰・NDJSON ログ | **CONFIRMED** |
+| simulate 省略で最終書き込みが無い | git diff `db04a1b71`→`cd42ebfe` | **CONFIRMED**（復旧手段が消えた） |
+
+**根本原因（表示消失）**: `LoadBalancingOverviewTab` の `useEffect` が **`overResourceOptions` 配列参照**を依存に含み、**月/scope/超過資源集合が同じでも** `setSimulateResult(null)` + `resetPlanState()` を実行していた。
+
+**対策**: `loadBalancingOverviewSession.ts` で **セッション境界**（`month` / `scopeKey` / `overResourceKey`）のみ reset。超過資源の再選択同期は **`overResourceKey` 変化時のみ**。Web: `loadBalancingOverviewSession.ts` · `LoadBalancingOverviewTab.tsx` · 回帰 `ProductionScheduleLoadBalancingPage.test.tsx`。
+
+**本番**: **`463aeabb`** · Pi5→Pi4×4 デプロイ済 · **現場目視 OK**（[§実機検証 表示維持](#実機検証2026-05-27--自動選定表示維持)）。
 
 ## References
 
@@ -456,6 +561,7 @@ curl -sk -w "\nHTTP %{http_code}\n" -X POST \
 - [KB-363: 生産システム突合（2026-05-27）](./KB-363-load-balancing-production-system-reconciliation.md)
 - [運用ガイド: kiosk-production-schedule-load-balancing.md](../guides/kiosk-production-schedule-load-balancing.md)
 - [deployment.md §集計修正 2026-05-27](../guides/deployment.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
+- [deployment.md §表示維持 2026-05-27](../guides/deployment.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)
 - [deployment.md §機種別月次 2026-05-26](../guides/deployment.md#kiosk-load-balancing-machine-monthly-view-2026-05-26)
 - [PR #350](https://github.com/denkoushi/RaspberryPiSystem_002/pull/350)
 - 初版デプロイ（2026-04-30）: 本ファイル §Production deploy 履歴は [deployment.md §2026-04-30 負荷調整](../guides/deployment.md) 参照

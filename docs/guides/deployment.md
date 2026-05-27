@@ -2,13 +2,43 @@
 title: デプロイメントガイド
 tags: [デプロイ, 運用, ラズパイ5, Docker]
 audience: [運用者, 開発者]
-last-verified: 2026-05-27
+last-verified: 2026-05-28
 related: [production-setup.md, backup-and-restore.md, monitoring.md, quick-start-deployment.md, environment-setup.md, ansible-ssh-architecture.md]
 category: guides
 update-frequency: medium
 ---
 
 # デプロイメントガイド
+
+### 補足（2026-05-27 · **キオスク負荷調整・自動選定後の表示維持（reset 境界）**·**`feat/kiosk-load-balancing-auto-plan-reset-fix`**·**Web のみ**·**Pi5→Pi4×4 本番・実機 OK**） {#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27}
+
+- **変更概要**:
+  - **症状**: `cd42ebfe` 以降、**推奨セットを自動選定**は API **200** だが、直後に部品表・チャート表示が消え **無反応に見える**。
+  - **原因**: `LoadBalancingOverviewTab` の reset `useEffect` が **`overResourceOptions` 配列参照**だけで再発火（overview 同値再評価でも `simulateResult` / plan state をクリア）。
+  - **対策**: `loadBalancingOverviewSession.ts` — **セッション境界**（`month` / `scopeKey` / `overResourceKey`）のみ reset。超過資源の state 同期も **`overResourceKey` 変化時のみ**。
+- **代表コミット**: **`463aeabb`** `fix(kiosk): preserve auto-plan results across overview refresh`
+- **CI（機能 push）**: **`26510107150`**
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`**（各 **`--limit` 1 台ずつ**）。**Pi3 除外**。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-auto-plan-reset-fix infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-27）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260527-212706-19231` | `ok=134` `changed=4` `failed=0` | **`--follow` 約 494s** · Git **`463aeabb`** |
+| `raspberrypi4` | `20260527-214538-9407` | `ok=122` `changed=10` `failed=0` | |
+| `raspi4-robodrill01` | `20260527-215102-12190` | `ok=122` `changed=9` `failed=0` | |
+| `raspi4-fjv60-80` | `20260527-215507-22961` | `ok=122` `changed=9` `failed=0` | |
+| `raspi4-kensaku-stonebase01` | `20260527-215913-24632` | `ok=129` `changed=10` `failed=0` | `barcode-agent` **リトライあり**（最終成功） |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（Pi5 後約 **57s**·Pi4 群後約 **53s**）
+- **負荷調整スモーク**: [KB-362 §実機検証 表示維持](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-27--自動選定表示維持)
+- **現場目視**: **OK**（自動選定後に表示が維持されること）
+- **トラブルシュート**:
+  - **plan 200 だが表示が消える** → Pi5 Web が **`463aeabb` 未満**、またはブラウザキャッシュ → Pi5 再デプロイ + [強制リロード](verification-checklist.md) §6.6.4
+  - **Pi4 だけ旧挙動** → Pi5 SPA 未更新のまま Pi4 のみ play した場合は稀。通常は **Pi5 `web` が正本**
+  - **StoneBase で barcode-agent リトライ** → デプロイログに `FAILED - RETRYING` が出ても **最終 `failed=0` なら成功**
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[kiosk-production-schedule-load-balancing.md](kiosk-production-schedule-load-balancing.md)·[EXEC_PLAN.md](../../EXEC_PLAN.md)
 
 ### 補足（2026-05-27 · **キオスク負荷調整・外注契約整合 + 自動選定フロー**·**`feat/kiosk-load-balancing-ui-p0p1`**·**API+Web**·**Pi5 先行・Pi4×4 未**） {#kiosk-load-balancing-ui-p0p1-contract-fix-2026-05-27}
 
