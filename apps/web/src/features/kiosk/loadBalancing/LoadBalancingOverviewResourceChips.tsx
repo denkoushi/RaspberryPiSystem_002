@@ -3,6 +3,7 @@ import { lbBtn, lbChip, lbChipClassName, lbText } from './loadBalancingUiClasses
 
 type ChipItem = {
   resourceCd: string;
+  displayName: string;
   overMinutes: number;
   selected: boolean;
 };
@@ -61,11 +62,18 @@ export function LoadBalancingOverviewResourceChips({
               key={chip.resourceCd}
               type="button"
               aria-pressed={chip.selected}
-              title={`${chip.resourceCd} (+${Math.round(chip.overMinutes)}分)`}
+              title={
+                chip.displayName
+                  ? `${chip.resourceCd} ${chip.displayName} (+${Math.round(chip.overMinutes)}分)`
+                  : `${chip.resourceCd} (+${Math.round(chip.overMinutes)}分)`
+              }
               className={lbChipClassName(chip.selected)}
               onClick={() => onToggle(chip.resourceCd)}
             >
-              {chip.resourceCd} (+{Math.round(chip.overMinutes)}分)
+              <span className={lbChip.line1}>
+                {chip.resourceCd} (+{Math.round(chip.overMinutes)}分)
+              </span>
+              {chip.displayName ? <span className={lbChip.line2}>{chip.displayName}</span> : null}
             </button>
           ))}
         </div>

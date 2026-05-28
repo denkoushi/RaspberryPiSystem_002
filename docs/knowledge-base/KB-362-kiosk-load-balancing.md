@@ -22,6 +22,7 @@ last-verified: 2026-05-28
 | 2026-05-27 修正 | `feat/kiosk-load-balancing-aggregation-fix` · **`bef423fe`** | 着手日 **総分のみ**（×指示数廃止）·3タブ母集団 **eligibility** 統一 |
 | 2026-05-27 修正 | 同上 · **`37a7b6d4`** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取りのみ） |
 | 2026-05-27 修正 | `feat/kiosk-load-balancing-auto-plan-reset-fix` · **`463aeabb`** | **自動選定後の表示維持** — overview セッション境界のみ reset（Web のみ）·**Pi5→Pi4×4 本番・実機 OK** |
+| 2026-05-28 UI | `feat/kiosk-load-balancing-resource-display-lines` · **`83470163`** | **資源CD表示名2行** — 超過チップ・棒グラフX軸（`resourceNameMap`）·**Pi5 のみ本番** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -218,6 +219,83 @@ sequenceDiagram
 **テスト**: `loadBalancingOverviewSession.test.ts` · `ProductionScheduleLoadBalancingPage.test.tsx`（同値 overview 再評価でも plan 表示維持）。
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
+
+## Production deploy（実績 2026-05-28 · 資源CD表示名2行 · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-resource-display-lines`
+- **代表コミット**: **`83470163`** `fix(kiosk): show resource names in load balancing overview`
+- **変更範囲**: **Web のみ**（チップ2行・X軸2行・`resolveLoadBalancingResourceDisplayName`）
+- **Prisma マイグレーション**: **なし**
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ** |
+| Detach Run ID | `20260528-095045-19259` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0**（約 **27s**） |
+| Pi5 Git | **`83470163`** |
+| Web バンドル | `index-BsRKGCTo.js`（`resourceNameMap` 参照） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-load-balancing-resource-display-lines infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機検証（2026-05-28 · 資源CD表示名2行）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- Pi5 Git: **`83470163`**
+
+### API / Web スモーク
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
+  "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+# 実績: HTTP 200（約 0.22s）
+
+curl -sk "${BASE}/api/kiosk/production-schedule/resources" -H "x-client-key: ${KEY}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print('587:', d.get('resourceNameMap',{}).get('587'))"
+# 実績例: ['587\u3000GHL-B520T']
+
+ssh denkon5sd02@100.106.158.2 \
+  'JS=$(docker exec docker-web-1 sh -c "ls -t /srv/site/assets/index-*.js | head -1"); \
+   docker exec docker-web-1 sh -c "grep -o resourceNameMap $JS | head -1"'
+# 実績: resourceNameMap
+```
+
+### 現場目視（チェックリスト）
+
+| # | 確認項目 | 期待 |
+|---|----------|------|
+| 1 | ステップ2オレンジチップ | 1行目: `587 (+480分)` 等 · 2行目: `FJV50/80` 等 |
+| 2 | 棒グラフ X 軸 | 各棒下: 1行目=資源CD · 2行目=表示名（名称なし CD は1行のみ） |
+| 3 | チャート外寸 | 従来と同高（`min(260px,34dvh)`）— 下余白で2行表示 |
+| 4 | Mac 絞込 | `scopeEnabled=false` 時は resources 取得を `pauseRefetch` で抑制 |
+
+**参照**: [deployment.md §表示名2行 2026-05-28](../guides/deployment.md#kiosk-load-balancing-resource-display-lines-2026-05-28)
+
+## UI 表示名契約（2026-05-28）
+
+| 要素 | データ源 | 表示 |
+|------|----------|------|
+| 超過チップ | `useKioskProductionScheduleResources` → `resourceNameMap` | `chip-line1` / `chip-line2` |
+| 棒グラフ X 軸 | 同上（`chartSlice.displayName`） | `LoadBalancingOverviewResourceChartXAxisTick` |
+| 名称解決 | `resolveLoadBalancingResourceDisplayName` | `joinManualOrderResourceDisplayNames` と同一規則 |
+
+**Troubleshooting**
+
+| 症状 | 確認 |
+|------|------|
+| 2行目が常に空 | `resourceNameMap[cd]` が空 — 資源マスタ `ProductionScheduleResourceMaster` |
+| チップは2行だが軸が1行 | 旧バンドル — Pi5 Git **`83470163` 未満** |
+| CI で Page テスト失敗 | `ProductionScheduleLoadBalancingPage.test.tsx` に `useKioskProductionScheduleResources` mock 必須 |
 
 ## Production deploy（実績 2026-05-28 · 全幅レイアウト · Pi5 のみ）
 

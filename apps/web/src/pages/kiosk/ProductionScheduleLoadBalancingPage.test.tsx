@@ -13,10 +13,12 @@ const mockUseOutsourcingCandidates = vi.fn();
 const mockUseOutsourcingSimulate = vi.fn();
 const mockUseOutsourcingPlan = vi.fn();
 const mockUseOutsourcingReplacements = vi.fn();
+const mockUseResources = vi.fn();
 const mockIsMacEnvironment = vi.fn();
 
 vi.mock('../../api/hooks', () => ({
   useKioskProductionScheduleLoadBalancingOverview: (...args: unknown[]) => mockUseOverview(...args),
+  useKioskProductionScheduleResources: (...args: unknown[]) => mockUseResources(...args),
   useKioskProductionScheduleLoadBalancingMachineMonthlyLoad: (...args: unknown[]) =>
     mockUseMachineMonthly(...args),
   useKioskProductionScheduleLoadBalancingStartDateLeveling: (...args: unknown[]) =>
@@ -132,6 +134,11 @@ describe('ProductionScheduleLoadBalancingPage', () => {
       isError: false,
       error: null,
       data: null
+    });
+    mockUseResources.mockReturnValue({
+      data: { resourceNameMap: { A01: ['FJV50/80'] } },
+      isFetching: false,
+      error: null
     });
   });
 

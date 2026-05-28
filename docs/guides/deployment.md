@@ -10,6 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **キオスク負荷調整・資源CD表示名（2行チップ/X軸）**·**`feat/kiosk-load-balancing-resource-display-lines`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-resource-display-lines-2026-05-28}
+
+- **変更概要**:
+  - **ステップ2（超過資源チップ）**: 1行目 `資源CD (+超過分)`、2行目 **表示名**（`GET …/resources` の `resourceNameMap`）。
+  - **棒グラフ X 軸**: 1行目=資源CD、2行目=表示名。回転ラベル廃止。**チャート外寸**（`lbChart.container`）は変更せず、下余白を2行軸用に使用。
+  - **境界**: `resolveLoadBalancingResourceDisplayName.ts` — 手動順番と同じ `joinManualOrderResourceDisplayNames` を再利用。API/DB 変更なし。
+- **代表コミット**: **`83470163`** `fix(kiosk): show resource names in load balancing overview`（テスト mock 追補は docs コミットに同梱）
+- **CI（機能 push）**: **`26547746818`** — 初回 `useKioskProductionScheduleResources` mock 不足で失敗 → 修正済み
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit` 1 台）。Pi4 / Pi3 は **不要**（Pi5 SPA 正本）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-resource-display-lines infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-095045-19259` | `ok=134` `changed=4` `failed=0` | **`--follow` 約 317s** · Git **`83470163`** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **27s**）
+- **負荷調整スモーク**: [KB-362 §実機検証 表示名2行](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--資源cd表示名2行)
+- **Web バンドル**: `index-BsRKGCTo.js` — `resourceNameMap` 参照あり
+- **API**: `overview?month=2026-05` **HTTP 200**（約 **0.22s**、`x-client-key` 付き）
+- **トラブルシュート**:
+  - **2行目が出ない** → `resourceNameMap[cd]` が空（マスタ未登録）— 1行目のみは仕様どおり
+  - **旧表示のまま** → Pi5 が **`83470163` 未満** またはキャッシュ → 再デプロイ + [強制リロード](verification-checklist.md) §6.6.4
+  - **X軸が重なる** → バンドルが回転ラベル世代 — `LoadBalancingOverviewResourceChartXAxisTick` 導入後を確認
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)
+
 ### 補足（2026-05-28 · **キオスク負荷調整・俯瞰 UI 全幅レイアウト**·**`fix/kiosk-load-balancing-full-width-layout`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-full-width-layout-2026-05-28}
 
 - **変更概要**:
