@@ -3,20 +3,23 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOverviewChartDisplayNameByCd,
   formatOverviewChartAxisDisplayName,
+  getOverviewChartDisplayNameOffsetY,
   loadBalancingOverviewChartAxisBandHeight,
   loadBalancingOverviewXAxisLayout,
   parseRechartsAxisTickPosition
 } from '../loadBalancingOverviewChartAxis';
 
 describe('loadBalancingOverviewChartAxis', () => {
-  it('ラベルは軸下マージン内（+Y）にのみ配置する契約', () => {
-    expect(loadBalancingOverviewChartAxisBandHeight).toBe(96);
+  it('資源CD（横）→ 余白 → 表示名（縦 +90°）のレイアウト契約', () => {
+    expect(loadBalancingOverviewChartAxisBandHeight).toBe(108);
     expect(loadBalancingOverviewXAxisLayout.displayName.rotationDeg).toBe(90);
-    expect(loadBalancingOverviewXAxisLayout.tickMargin).toBe(8);
-    expect(loadBalancingOverviewXAxisLayout.resourceCd.dy).toBe(10);
-    expect(loadBalancingOverviewXAxisLayout.displayName.dy).toBe(28);
-    expect(loadBalancingOverviewXAxisLayout.displayName.dy).toBeGreaterThan(
-      loadBalancingOverviewXAxisLayout.resourceCd.dy
+    expect(loadBalancingOverviewXAxisLayout.tickMargin).toBe(6);
+    expect(loadBalancingOverviewXAxisLayout.resourceCd.dy).toBe(4);
+    expect(loadBalancingOverviewXAxisLayout.gapBelowResourceCd).toBe(10);
+    expect(getOverviewChartDisplayNameOffsetY()).toBe(
+      loadBalancingOverviewXAxisLayout.resourceCd.dy +
+        loadBalancingOverviewXAxisLayout.resourceCd.lineHeight +
+        loadBalancingOverviewXAxisLayout.gapBelowResourceCd
     );
   });
 
