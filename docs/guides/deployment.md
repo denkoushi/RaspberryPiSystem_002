@@ -10,6 +10,38 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **DGX 業務復帰 Strict Ready と model profile 一致**·**Pi5 のみ**） {#dgx-strict-ready-profile-match-2026-05-28}
+
+- **変更概要（正本）**: [KB-365 §Strict Ready profile 一致](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-strict-ready-model-profile-match)。業務復帰（`private_to_business` / `experiment_to_business`）で **`modelProfileId` 指定時**、Pi5 Strict Ready が **`/v1/models` に加え** `activeProfileId === 選択 ID` と（`state.backend` がある場合）**選択 profile の backend 一致**を必須化。**`/v1/models` のみ OK では execute success にならない**（27B 選択なのに 35B green が稼働したまま success になる不具合の再発防止）。
+- **代表コミット**: **`90ba94d9`** · **ブランチ** **`fix/dgx-strict-ready-profile-match`** · **CI `26575185778` success**（約 **12m54s**）。
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3**: **デプロイ不要**（DGX 側コード変更なし·Pi5 が既存 `GET /system/model-profiles` をポーリング利用）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/dgx-strict-ready-profile-match infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260528-221349-13434`** | **`ok=134` `changed=4` `failed=0`** | Git **`90ba94d9`** · **`--follow` 約 932s** |
+| DGX / Pi4 / Pi3 | **未実施** | — | コード差分なし |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **110s**）。
+- **実機（機能·Pi5 api コンテナ）**:
+  - Git **`90ba94d9`**（`fix(dgx): require selected model profile for strict ready`）
+  - デプロイ JS: `dgx-resource.scenario-readiness.js` に **`model_profile_active` / `model_profile_backend`**
+  - `fetchDgxModelProfilesOverview`（api コンテナ内）→ **`status: ok`** · **`activeProfileId: business_qwen35_35b_gguf`** · **`activeStateBackend: green`** · profiles **2 件**（27B blue / 35B green とも `available`）
+- **仕様（Strict Ready ゲート）**:
+  - `inference_business`: `/v1/models`（従来）
+  - `model_profile_active`: `activeProfileId === 選択 modelProfileId`（**null のままでは未達**）
+  - `model_profile_backend`: `state.backend` 返却時は選択 profile の green/blue と一致（未報告時は active 一致のみで backend check は allowlist 参照）
+- **知見**:
+  - **Phase12 はシナリオ Strict Ready を直接検証しない**（広域ヘルス中心）。業務復帰の profile 一致は **管理 UI 実行**または **api コンテナ内の `fetchDgxModelProfilesOverview` / readiness コード確認**で補完する。
+  - **DGX 変更なし**のため、旧挙動の再発は **Pi5 ref が本修正未満**のときのみ（`90ba94d9` 未満）。
+- **トラブルシュート**:
+  - **27B 選択後も success だが KPI が 20GB 台** → `activeProfileId` / `state.backend` が選択と不一致か確認。**不一致なら本修正後はタイムアウト＋`model_profile_active` 未達**が正しい。
+  - **`readinessChecksJa` に `model_profile_*` が無い** → **`modelProfileId` 未指定**の execute、または **Pi5 api が旧 ref**。
+  - **タイムアウト増加** → cold start + profile 切替に **`LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS`** を運用側で確認（既存 remediation `/start` は維持）。
+- **ナレッジ**: [KB-365 §本番 Strict Ready profile](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-strict-ready-profile-match) · [Runbook §本番 Strict Ready profile](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-strict-ready-profile-match) · [KB-366 §KPI 不一致](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#dgx-strict-ready-model-profile-mismatch-2026-05-28)。
+
 ### 補足（2026-05-28 · **DGX activeProfileId null の Pi5 API 契約修正**·**Pi5 のみ**） {#dgx-active-profile-null-contract-2026-05-28}
 
 - **変更概要（正本）**: [KB-365 §activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)。DGX `GET /system/model-profiles` が **`activeProfileId: null`**（未 start 前·state 未書き込み）でも allowlist 取得成功時、Pi5 `overview.modelProfiles.status` を **`ok`** とみなす。**`PREVIEW_ORCHESTRATION_SCENARIO`（`modelProfileId` 付き）の 503 `DGX_MODEL_PROFILES_UNAVAILABLE` を解消**。

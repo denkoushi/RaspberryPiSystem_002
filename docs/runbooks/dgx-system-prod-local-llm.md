@@ -131,6 +131,19 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **確認**: `scenarioExecute.readinessChecksJa` に上記 code が並び、不一致時は `satisfied: false` のままタイムアウト。
 - **KB**: [KB-365 §Strict Ready profile 一致](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-strict-ready-model-profile-match)。
 
+**本番反映（2026-05-28 · Strict Ready profile 一致 · Pi5 API）** {#本番反映2026-05-28-strict-ready-profile-match}
+
+- **対象**: **Pi5 のみ**（`raspberrypi5` · **`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3 はデプロイ不要**。
+- **ブランチ**: **`fix/dgx-strict-ready-profile-match`**（**`90ba94d9`** · CI **`26575185778` success**）。
+- **変更内容**: 業務復帰 **`modelProfileId` 指定 execute** の success 条件に **profile 一致ゲート**を追加（`/v1/models` 単独 OK 禁止）。
+- **手順**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/dgx-strict-ready-profile-match infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**Detach `20260528-221349-13434`** · **`failed=0`** · 約 **932s**）。
+- **検証**:
+  - Phase12 **`verify-phase12-real.sh` → 43/0/0**（約 **110s**）
+  - Pi5 api コンテナ HEAD **`90ba94d9`** · `model_profile_active` / `model_profile_backend` コード確認
+  - api コンテナ内 `fetchDgxModelProfilesOverview` → **2 profiles** · **`activeStateBackend` 取得可**
+  - **管理 UI**: 私用→業務で **選択 profile と異なる active のまま** execute すると **Strict Ready タイムアウト**（success にならない）ことを確認（推奨）
+- **KB**: [KB-365 §本番 Strict Ready profile](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-strict-ready-profile-match) · [deployment.md §Strict Ready profile](../guides/deployment.md#dgx-strict-ready-profile-match-2026-05-28)。
+
 **本番反映（2026-05-28 · activeProfileId null · Pi5 API 契約修正）** {#本番反映2026-05-28-activeprofileid-null-pi5-api}
 
 - **対象**: **Pi5 のみ**（`raspberrypi5` · **`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3 はデプロイ不要**。

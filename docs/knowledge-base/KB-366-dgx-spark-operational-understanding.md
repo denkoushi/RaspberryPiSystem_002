@@ -163,6 +163,7 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 - **原因**: Strict Ready が **`/v1/models` のみ**で、**`activeProfileId` 不一致**を見ていなかった（旧契約）。
 - **Fix**: Pi5 API で業務復帰 **`modelProfileId` 指定時は profile 一致を Ready 必須**（[KB-365 §Strict Ready profile 一致](./KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-strict-ready-model-profile-match) · [Runbook](../runbooks/dgx-system-prod-local-llm.md#strict-ready-model-profile-match-2026-05-28)）。
 - **切り分け**: `GET /system/model-profiles` の **`activeProfileId` / `state.backend`** と選択 ID を突合。**`/v1/models` だけでは不十分**。
+- **本番反映（2026-05-28）**: Pi5 **`fix/dgx-strict-ready-profile-match`** · **`90ba94d9`** · Detach **`20260528-221349-13434`** · Phase12 **43/0/0** — [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-strict-ready-profile-match) · [Runbook §本番](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-strict-ready-profile-match)。
 
 ## 本番反映（2026-05-28 · 27B manifest `currentStorageLocation`） {#production-2026-05-28-dgx-model-profile-storage-path}
 
