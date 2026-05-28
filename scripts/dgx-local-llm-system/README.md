@@ -199,6 +199,13 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 
 manifest 例は [`model-registry.examples/`](./model-registry.examples/) に置いている。実機では各ディレクトリを `/srv/dgx/shared-models/registry/` へコピーし、HF 実体は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 HF cache は manifest の `currentStorageLocation` に残し、実ファイル移動は手動検証で実施する。
 
+### manifest ストレージパスと UI 可視性
+
+- **`storageLocation`**: 移行**先**（正規配置）。未移行なら存在しないことがある。
+- **`currentStorageLocation`**: **現配置**。HF cache 利用時は **`/srv/dgx/system-prod/data/hf-cache/hub/models--<org>--<model>`**（**`hub/` 配下**）。`hub` を抜いたパスは実在チェックに失敗し、`status: unavailable` になる。
+- **`profile_storage_available()`**（[`model_profiles.py`](./model_profiles.py)）: `currentStorageLocation` と `storageLocation` の **OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `available`。
+- **管理 UI**: Pi5/Web は `status === 'available'` の profile のみドロップダウン表示。manifest パスがずれると **API は 2 件返るが UI は 1 件**になり得る。切り分けは [KB-365 §storage availability](../../docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)。
+
 ```bash
 TOKEN="$(cat /srv/dgx/system-prod/secrets/api-token)"
 curl -sS -H "X-LLM-Token: ${TOKEN}" http://127.0.0.1:38081/system/model-profiles

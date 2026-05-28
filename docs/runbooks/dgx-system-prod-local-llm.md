@@ -110,6 +110,11 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - control API: `POST /start {"modelProfileId":"business_qwen36_27b_nvfp4"}`
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
+- **ストレージパス契約（可用性判定）**:
+  - **`storageLocation`**: 移行**先**（正規配置）。未移行なら存在しないことがある
+  - **`currentStorageLocation`**: **現配置**（移行途中の実体）。HF cache 利用時は **`/srv/dgx/system-prod/data/hf-cache/hub/models--<org>--<model>`** 形式（**`hub/` 配下**）。`hf-cache/models--...` のように **`hub` を抜くと `status: unavailable` になり、管理 UI のドロップダウンに出ない**
+  - DGX `model_profiles.profile_storage_available()` は **`currentStorageLocation` → `storageLocation` の OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `status: available`
+  - **切り分け**: API で profiles が 2 件なのに UI が 1 件だけ → 各 profile の `status` と manifest の `currentStorageLocation` を `ls` で突合する（[KB-365 §model profile storage](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）
 
 **本番反映（2026-05-28・業務復帰モデル選択・Pi5 API+Web + DGX control/gateway）** {#本番反映2026-05-28-業務復帰モデル選択}
 
@@ -118,6 +123,18 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **検証（Pi5 から）**: `curl -sS -H "X-Runtime-Control-Token: $TOKEN" http://100.118.82.72:38081/system/model-profiles` → **`ok: true`**・**`profiles` 2 件**（未 start 前 **`activeProfileId: null` は想定内**）。**`./scripts/deploy/verify-phase12-real.sh`** → **43/0/0**（約 **111s**）。
 - **知見**: 再起動直後 **`curl …/healthz` が Connection refused** → **1s 程度待つと 200**（PID ガード起動スクリプトのレース）。**管理 UI** で業務復帰時にモデル選択が出ない場合は Pi5 **`web` ref** と **`overview.modelProfiles`**（[KB-365 §2026-05-28](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)）。
 - **KB**: [KB-365 §本番 2026-05-28](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)·[deployment.md §2026-05-28](../guides/deployment.md#dgx-business-return-model-selection-2026-05-28)·[KB-366](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-business-return-model-selection)。
+
+**本番反映（2026-05-28 · 27B model profile `currentStorageLocation` 修正 · DGX registry のみ）** {#本番反映2026-05-28-27b-model-profile-storage-path}
+
+- **対象**: **DGX Spark のみ**（`ubudgxkoushi@100.118.82.72`·Ansible 対象外）。**Pi5 / Pi4 / Pi3 はデプロイ不要**（コード変更なし·manifest 正本は DGX registry）。
+- **ブランチ**: **`fix/dgx-model-profile-current-storage-path`**（代表 **`ff5947c8`**·CI **`26569969639`** **success**）。
+- **変更内容**: `business_qwen36_27b_nvfp4` の registry manifest で **`currentStorageLocation` に `/hub/` を追加**（誤: `hf-cache/models--…` → 正: `hf-cache/hub/models--…`）。**control/gateway 再起動は不要**（`model_profiles` は manifest を都度読む）。
+- **手順**:
+  1. ローカル例: `scripts/dgx-local-llm-system/model-registry.examples/business_qwen36_27b_nvfp4/manifest.json`
+  2. `scp` → **`/srv/dgx/shared-models/registry/business_qwen36_27b_nvfp4/manifest.json`**
+- **検証（Pi5 から）**: `curl -H "X-LLM-Token: …" http://100.118.82.72:38081/system/model-profiles` → **`business_qwen36_27b_nvfp4` が `status: available`**・**`business_qwen35_35b_gguf` も `available`**（profiles **2 件とも available**）。管理 UI 業務復帰ドロップダウンで **2 件選択可能**（`enabled && status === 'available'`）。
+- **知見**: API が profiles 2 件返却でも UI が 1 件だけ → **各 profile の `status`** と manifest の **`currentStorageLocation` を `ls` で突合**（[KB-365 §storage availability](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）。
+- **KB**: [KB-365 §本番 storage path](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[deployment.md §storage path](../guides/deployment.md#dgx-model-profile-storage-path-2026-05-28)·[KB-366 §storage path](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)。
 
 **本番反映（2026-05-03・Phase5・運用者コンソール `overview.operator`・ワークロード遷移分離・API+Web）**: ブランチ **`feat/dgx-resource-operator-console`**（代表 **`e88d9206`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-operator-console infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-115446-2532`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（ローカル `--follow` 完了まで **約 826s**）。Pi4／Pi3 は **no hosts matched**（**Pi3 個体へは本変更の Ansible を当てない**）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **97s**）。**仕様**: `/admin/tools/dgx-resource` は **運用者コンソールを主軸**、技術 ID の Control Targets は折りたたみ詳細。`overview.operator` は **`targets[]` と整合する運用者向け要約**（起停可否の契約は引き続き `targets[]`）。**`scenarioExecute.outcomeKind`** で成功／部分失敗／noop を区別可能。**ADR**: [ADR-20260503](../decisions/ADR-20260503-dgx-resource-operator-console.md)。**KB**: [KB-365 §Phase5](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-5-本番反映記録)。**トラブルシュート**: コンソールが旧のまま → **`api`/`web` の同一ブランチ**・[verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**。
 

@@ -10,7 +10,14 @@ if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
 from active_model_state import read_active_model_state, write_active_model_state  # noqa: E402
-from model_profiles import DisabledModelProfileError, UnknownModelProfileError, load_model_profiles, validate_startable_profile  # noqa: E402
+from model_profiles import (  # noqa: E402
+    DisabledModelProfileError,
+    UnknownModelProfileError,
+    load_model_profiles,
+    model_profile_to_api,
+    profile_storage_available,
+    validate_startable_profile,
+)
 
 
 class ModelProfileTests(unittest.TestCase):
@@ -70,6 +77,59 @@ class ModelProfileTests(unittest.TestCase):
                 validate_startable_profile(str(root), "sakamakismile/Qwen3.6-27B-NVFP4")
             with self.assertRaises(DisabledModelProfileError):
                 validate_startable_profile(str(root), "business_disabled")
+
+    def test_profile_available_when_current_storage_location_exists_under_hf_cache_hub(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            hub_storage = Path(tmp) / "hf-cache" / "hub" / "models--sakamakismile--Qwen3.6-27B-NVFP4"
+            hub_storage.mkdir(parents=True)
+            shared_target = Path(tmp) / "shared-models" / "hf" / "sakamakismile" / "Qwen3.6-27B-NVFP4"
+            self.write_manifest(
+                root,
+                "business_qwen36_27b_nvfp4",
+                {
+                    "modelProfileId": "business_qwen36_27b_nvfp4",
+                    "displayNameJa": "Qwen3.6 27B NVFP4",
+                    "backend": "blue",
+                    "servedAlias": "system-prod-primary",
+                    "storageLocation": str(shared_target),
+                    "currentStorageLocation": str(hub_storage),
+                    "enabled": True,
+                },
+            )
+
+            profile = load_model_profiles(str(root))[0]
+            self.assertTrue(profile_storage_available(profile))
+            api = model_profile_to_api(profile)
+            self.assertEqual(api["status"], "available")
+            validate_startable_profile(str(root), "business_qwen36_27b_nvfp4")
+
+    def test_profile_unavailable_when_current_storage_location_missing_hub_segment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            hub_storage = Path(tmp) / "hf-cache" / "hub" / "models--sakamakismile--Qwen3.6-27B-NVFP4"
+            hub_storage.mkdir(parents=True)
+            wrong_current = Path(tmp) / "hf-cache" / "models--sakamakismile--Qwen3.6-27B-NVFP4"
+            shared_target = Path(tmp) / "shared-models" / "hf" / "sakamakismile" / "Qwen3.6-27B-NVFP4"
+            self.write_manifest(
+                root,
+                "business_qwen36_27b_nvfp4",
+                {
+                    "modelProfileId": "business_qwen36_27b_nvfp4",
+                    "displayNameJa": "Qwen3.6 27B NVFP4",
+                    "backend": "blue",
+                    "servedAlias": "system-prod-primary",
+                    "storageLocation": str(shared_target),
+                    "currentStorageLocation": str(wrong_current),
+                    "enabled": True,
+                },
+            )
+
+            profile = load_model_profiles(str(root))[0]
+            self.assertFalse(profile_storage_available(profile))
+            api = model_profile_to_api(profile)
+            self.assertEqual(api["status"], "unavailable")
+            self.assertIn("unavailableReasonJa", api)
 
 
 if __name__ == "__main__":
