@@ -10,6 +10,34 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **DGX 業務復帰モデル選択（`modelProfileId`）**·**Pi5→DGX 順次・各 1 台**） {#dgx-business-return-model-selection-2026-05-28}
+
+- **変更概要（正本）**: [KB-365 §本番反映（2026-05-28）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)。**私用→業務** / **実験→業務** の preview/execute に **`modelProfileId`** を追加。DGX **`GET /system/model-profiles`** が allowlist 正本。Pi5 API は ID を保存せず転送のみ。**`planFingerprint`** に `modelProfileId` を含め、preview と execute の不一致は **`409 DGX_SCENARIO_PLAN_STALE`**。**Strict Ready** は `/v1/models` の `system-prod-primary` を維持（profile 一致は active state で確認）。**モデル start 後も Strict Ready をスキップしない**（`ranModelProfileStart`）。
+- **代表コミット**: **`91be7dcf`**（`feat(dgx): select business return model profiles`）·**CI `26566270315`** — `lint-build-unit` / `e2e-smoke` / `e2e-tests` / `api-db-and-infra` **success** · `security-docker`（Caddy Trivy）**failure** — **本変更と無関係**（main でも同様）。
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト（順序固定）**: **① `raspberrypi5` のみ**（**`--limit raspberrypi5`**）。**② DGX Spark**（**`ubudgxkoushi@100.118.82.72`**·Ansible 対象外·**`scp` + PID ガード再起動**）。**Pi4／Pi3**: **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）。
+- **標準コマンド（Pi5）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-business-model-selection infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **標準手順（DGX）**: [dgx-system-prod-local-llm.md §本番反映 2026-05-28](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-業務復帰モデル選択)。**配置**: `control-server.py`·`gateway-server.py`·`model_profiles.py`·`active_model_state.py` → **`/srv/dgx/system-prod/bin/`**。**registry 例**: `scripts/dgx-local-llm-system/model-registry.examples/*/manifest.json` → **`/srv/dgx/shared-models/registry/<id>/manifest.json`**。**再起動**: **`control-server.pid` / `gateway-server.pid` を `kill` → 削除 → `start-control-server.sh` / `start-gateway-server.sh`**（`scp` のみでは旧プロセス継続）。
+- **本番デプロイ（実績・2026-05-28）**:
+
+| ホスト | Detach Run ID / 手段 | PLAY RECAP / 備考 |
+|--------|----------------------|-------------------|
+| `raspberrypi5` | **`20260528-184011-18178`** | **`ok=134` `changed=4` `failed=0`** · Git **`91be7dcf`** · **`--follow` 約 1195s** |
+| DGX Spark | **`scp` + PID 再起動** | `healthz` 再起動直後 **Connection refused** → **1s 後 200**（起動レース·既知パターン） |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **111s**·Tailscale **`100.106.158.2`**）。
+- **実機（機能·Pi5 から DGX）**: Pi5 `api` コンテナ内 · `curl -H "X-Runtime-Control-Token: …" http://100.118.82.72:38081/system/model-profiles` → **`ok: true`**, **`profiles` 長さ 2**, 未 start 前は **`activeProfileId: null`（想定内）**。Pi5 HEAD **`91be7dcf`**。Web バンドルに **「業務復帰に使うモデルプロファイル」** 文言。API イメージに **`dgx-resource.model-profiles.js`**。
+- **知見**:
+  - **`DgxResourceOperatorConsole` は `modelProfiles={overview.modelProfiles}` を子フローへ渡す**（未渡しだと UI に選択肢が出ない）。
+  - **未知・起動不可 profile** は DGX/Pi5 で **`400` / `409` / `503`**（`assertModelProfileKnownAndStartable`）。
+  - **Strict Ready 補正 start** にも **`modelProfileId` を伝播**（プレビュー選択と実 start のずれ防止）。
+- **トラブルシュート**:
+  - **モデル選択 UI が出ない** → Pi5 **`web` ref**·**`overview.modelProfiles` の API 応答**·OperatorConsole の props 配線。
+  - **`/system/model-profiles` が 404** → DGX **`gateway-server.py` 同窗口反映**·gateway 再起動。
+  - **`healthz` が即 refused** → **1〜数秒待って再試行**（control/gateway 起動レース）。
+  - **管理 UI が旧** → [verification-checklist.md](verification-checklist.md) §6.6.4 **強制リロード**。
+- **ナレッジ**: [KB-365 §2026-05-28](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)·[KB-366 §本番](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-business-return-model-selection)·[Runbook](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-業務復帰モデル選択)·[`EXEC_PLAN.md`](../../EXEC_PLAN.md)。
+
 ### 補足（2026-05-28 · **キオスク負荷調整・overview 棒グラフレイアウト最適化**·**`fix/load-balancing-overview-chart-review`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-overview-chart-layout-2026-05-28}
 
 - **背景（実機所見）**: 直前デプロイ（`d0263cce`）は X 軸ラベル帯 **108px** を確保していたが、Recharts で **`margin.bottom: 108` と `XAxis.height: 108` が二重確保**され、プロット高が **約 40px** に潰れ、ラベル帯下に **約 100px の死んだ余白**が残っていた。また 48 本超で tick が重なり、ホバー時の Tooltip カーソル（`fill:#ccc`）が棒を隠していた。
