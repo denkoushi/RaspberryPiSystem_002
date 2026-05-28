@@ -17,7 +17,7 @@ type Props = SVGProps<SVGTextElement> & {
   displayNameByCd: Record<string, string>;
 };
 
-/** 棒グラフ X 軸: 上段=資源CD、下段=表示名（縦書き -90°）。ペイン外寸は lbChart.container で固定。 */
+/** 棒グラフ X 軸: 上段=資源CD（棒側）、下段=表示名（軸下へ縦書き +90°）。外寸は lbChart.container 固定。 */
 export function LoadBalancingOverviewResourceChartXAxisTick({
   x,
   y,
@@ -33,7 +33,7 @@ export function LoadBalancingOverviewResourceChartXAxisTick({
   return (
     <g transform={`translate(${xPos},${yPos})`}>
       <text
-        textAnchor="middle"
+        textAnchor={resourceCd.textAnchor}
         fill={resourceCd.fill}
         fontSize={resourceCd.fontSize}
         fontFamily={resourceCd.fontFamily}
@@ -43,7 +43,7 @@ export function LoadBalancingOverviewResourceChartXAxisTick({
       </text>
       {nameText ? (
         <text
-          textAnchor="start"
+          textAnchor={nameStyle.textAnchor}
           fill={nameStyle.fill}
           fontSize={nameStyle.fontSize}
           transform={`rotate(${nameStyle.rotationDeg})`}

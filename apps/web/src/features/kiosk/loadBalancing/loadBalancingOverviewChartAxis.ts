@@ -1,19 +1,29 @@
 import type { OverviewChartRow } from './mapOverviewResourceChartRows';
 
-/** 俯瞰棒グラフ X 軸の描画契約（Recharts カスタム tick とプレビュー HTML で共有する意味論） */
+/**
+ * 俯瞰棒グラフ X 軸の描画契約。
+ *
+ * 座標系: Recharts の tick 原点は X 軸線上。+Y は画面下（マージン側）、-Y はプロット（棒）側。
+ * 表示名は rotationDeg=+90 で +Y に伸ばす（-90 はプロット内へ伸びて重なるため使用しない）。
+ */
 export const loadBalancingOverviewXAxisLayout = {
   resourceCd: {
     fill: '#e2e8f0',
     fontSize: 11,
     fontFamily: 'ui-monospace, monospace',
-    dy: -2
+    textAnchor: 'middle' as const,
+    /** 軸線より上（棒側） */
+    dy: -4
   },
   displayName: {
     fill: '#94a3b8',
     fontSize: 10,
-    rotationDeg: -90,
-    dx: -2,
-    dy: 18,
+    textAnchor: 'start' as const,
+    /** 軸線より下へ縦書き（+90° = 時計回り → 文字列は下方向に伸びる） */
+    rotationDeg: 90,
+    dx: -4,
+    /** 軸線直下からマージン内へ */
+    dy: 12,
     maxLength: 18
   }
 } as const;
