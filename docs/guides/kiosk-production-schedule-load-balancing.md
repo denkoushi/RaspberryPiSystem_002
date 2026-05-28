@@ -14,7 +14,7 @@
 
 ## UI レイアウト（2026-05-28 · 資源CD俯瞰）
 
-- **正本**: 静的プレビュー [kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html)（**2026-05-28 後半**: ワークスペース配置・表 14px・**チップ/X軸2行表示名** を反映）
+- **正本**: 静的プレビュー [kiosk-load-balancing-layout-preview.html](../previews/kiosk-load-balancing-layout-preview.html)（**2026-05-28**: ワークスペース配置・表 14px・**X軸=上段CD+下段表示名縦書き** を反映）
 - **契約モジュール**: `loadBalancingUiClasses.ts`（ページ/カード/表/ボタン/チップの Tailwind クラス）
 - **ヘッダー**: `LoadBalancingPageHeader.tsx`（3タブ + Mac 絞込 `V`）
 - **ベースフォント**: ページ・表・チップ **`text-sm`（14px）** · 見出し `text-xl` · Recharts 軸 **13px**
@@ -23,10 +23,11 @@
 - **資源CD表示名（2026-05-28）**:
   - **データ**: 既存 `GET /kiosk/production-schedule/resources` の `resourceNameMap`（新 API なし）
   - **ステップ2チップ**: 1行目 `資源CD (+超過分)` · 2行目 表示名（`lbChip.line1` / `line2`）
-  - **棒グラフ X 軸**: `LoadBalancingOverviewResourceChartXAxisTick` — CD + 表示名の2行。外寸 `lbChart.container` 固定
+  - **棒グラフ X 軸（2026-05-28 縦書き）**: **上段**=資源CD · **下段**=表示名（`-90°`）。`loadBalancingOverviewChartAxis.ts` + `LoadBalancingOverviewResourceChartXAxisTick`。外寸 `lbChart.container` 固定・下余白 **76px**
   - **解決関数**: `resolveLoadBalancingResourceDisplayName.ts`（手動順番 `joinManualOrderResourceDisplayNames` と同一）
+  - **行マッピング**: `mapOverviewResourceChartRows.ts`（必要分降順・上位 48）
 - **俯瞰のみ全面適用**。機種別月次・着手日は今後 `loadBalancingUiClasses` を横展開可能
-- **デプロイ**: **Pi5 のみ**。本番 **`83470163`**（[KB-362 §表示名2行](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--資源cd表示名2行--pi5-のみ)）
+- **デプロイ**: **Pi5 のみ**。本番 **`04c9ad6e`**（[KB-362 §棒グラフX軸縦書き](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--棒グラフx軸縦書き--pi5-のみ)）
 
 ## 集計ポリシー（サーバ実装に準拠）
 
