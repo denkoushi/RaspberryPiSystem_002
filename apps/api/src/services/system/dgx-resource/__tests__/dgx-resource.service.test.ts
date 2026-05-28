@@ -115,6 +115,118 @@ describe('createDgxResourceService', () => {
     expect(overview.modelProfiles.available[0]?.backend).toBe('blue');
   });
 
+  it('overview treats null activeProfileId as ok when allowlist is fetched', async () => {
+    const store = new DgxResourcePolicyStore(20);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            ok: true,
+            activeProfileId: null,
+            profiles: [
+              {
+                id: 'business_qwen35_35b_gguf',
+                displayNameJa: 'Qwen3.5 35B GGUF',
+                backend: 'green',
+                servedAlias: 'system-prod-primary',
+                recommended: false,
+                enabled: true,
+                status: 'available',
+              },
+              {
+                id: 'business_qwen36_27b_nvfp4',
+                displayNameJa: 'Qwen3.6 27B NVFP4',
+                backend: 'blue',
+                servedAlias: 'system-prod-primary',
+                recommended: true,
+                enabled: true,
+                status: 'available',
+              },
+            ],
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+    const overview = await svc.getOverview();
+
+    expect(overview.modelProfiles.status).toBe('ok');
+    expect(overview.modelProfiles.activeProfileId).toBeNull();
+    expect(overview.modelProfiles.errorMessageJa).toBeUndefined();
+    expect(overview.notes.some((note) => note.includes('degraded'))).toBe(false);
+  });
+
+  it('PREVIEW_ORCHESTRATION_SCENARIO succeeds with modelProfileId when activeProfileId is null', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    store.setPolicyMode('private_ok');
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            ok: true,
+            activeProfileId: null,
+            profiles: [
+              {
+                id: 'business_qwen35_35b_gguf',
+                displayNameJa: 'Qwen3.5 35B GGUF',
+                backend: 'green',
+                servedAlias: 'system-prod-primary',
+                recommended: false,
+                enabled: true,
+                status: 'available',
+              },
+            ],
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+    const preview = await svc.executeAction({
+      type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+      scenarioId: 'private_to_business',
+      modelProfileId: 'business_qwen35_35b_gguf',
+    });
+
+    expect(preview.scenarioPreview?.scenarioId).toBe('private_to_business');
+    expect(preview.scenarioPreview?.planFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
   it('SET_POLICY experiment_first updates KPI label and exposes previous mode', async () => {
     const store = new DgxResourcePolicyStore(20);
     const gateway: LocalLlmGateway = {

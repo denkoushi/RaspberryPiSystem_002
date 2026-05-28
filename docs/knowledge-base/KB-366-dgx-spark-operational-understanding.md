@@ -155,6 +155,7 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 - **実機**: `GET /system/model-profiles` → **2 profiles**（未 start 前 **`activeProfileId: null`** は正常）。Phase12 **43/0/0**。
 - **運用上の注意**: **KPI の Unified Mem** は選択した profile の backend 起動後に変化する。**profile ID と `ACTIVE_LLM_BACKEND` env** が食い違う場合は **active state ファイル**（`/srv/dgx/system-prod/state/active-model-profile.json`）と **`GET /system/model-profile`** で確認。
 - **モデルが 1 件しか選べないとき**: DGX API は 2 profile 返却でも、27B が **`status: unavailable`**（manifest の `currentStorageLocation` が実ディスクとずれている）だと UI は 35B のみ表示。**HF 27B の実体は `hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4`** を確認し、registry manifest を合わせる（[KB-365 §storage availability](./KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）。**2026-05-28 本番修正済** → [§storage path 本番](#production-2026-05-28-dgx-model-profile-storage-path)。
+- **業務復帰 503（activeProfileId null）**: ドロップダウンに 2 件出るのに **`DGX_MODEL_PROFILES_UNAVAILABLE`** → DGX は **`activeProfileId: null` が正常**（未 start 前·state 未書き込み）。**現在ロード中かは `/v1/models` で別確認**。Pi5 は allowlist 取得 OK なら **`overview.modelProfiles.status: ok`**（[KB-365 §activeProfileId null](./KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)）。**stop 後も state ファイルは残り得る**（null にならない場合あり）。
 
 ## 本番反映（2026-05-28 · 27B manifest `currentStorageLocation`） {#production-2026-05-28-dgx-model-profile-storage-path}
 

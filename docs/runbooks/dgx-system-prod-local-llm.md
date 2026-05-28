@@ -108,6 +108,11 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - active state: `/srv/dgx/system-prod/state/active-model-profile.json`
 - gateway API: `GET /system/model-profiles` / `GET /system/model-profile`
 - control API: `POST /start {"modelProfileId":"business_qwen36_27b_nvfp4"}`
+- **activeProfileId 契約（Pi5 overview と DGX の違い）**:
+  - **`GET /system/model-profiles`（複数形）**: registry allowlist + **`activeProfileId`**（state ファイルが無ければ **`null`** — **未 start 前は想定内**）。Pi5 `overview.modelProfiles` は **HTTP 200 で profiles が取れれば `status: ok`**（`activeProfileId: null` でも degraded にしない）。
+  - **`GET /system/model-profile`（単数形）**: active state **のみ**。state 無し → **503** `ACTIVE_MODEL_PROFILE_UNAVAILABLE`（一覧 API とは挙動が異なる）。
+  - **state ライフサイクル**: **作成・更新** = `POST /start` で `modelProfileId` 指定時のみ。**`POST /stop` / `stop-force` では state ファイルは削除されない**（停止後も `activeProfileId` が残り得る → **現在ロード中かは `GET /v1/models` / コンテナ状態で別確認**）。
+  - **切り分け（業務復帰 503 `DGX_MODEL_PROFILES_UNAVAILABLE`）**: ① `curl …/system/model-profiles` で profiles 件数・各 `status` ② `activeProfileId` が null でも allowlist 取得 OK なら Pi5 は `ok`（[KB-365 §activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)）③ state 単体は `curl …/system/model-profile`。
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
 - **ストレージパス契約（可用性判定）**:
@@ -115,6 +120,18 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - **`currentStorageLocation`**: **現配置**（移行途中の実体）。HF cache 利用時は **`/srv/dgx/system-prod/data/hf-cache/hub/models--<org>--<model>`** 形式（**`hub/` 配下**）。`hf-cache/models--...` のように **`hub` を抜くと `status: unavailable` になり、管理 UI のドロップダウンに出ない**
   - DGX `model_profiles.profile_storage_available()` は **`currentStorageLocation` → `storageLocation` の OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `status: available`
   - **切り分け**: API で profiles が 2 件なのに UI が 1 件だけ → 各 profile の `status` と manifest の `currentStorageLocation` を `ls` で突合する（[KB-365 §model profile storage](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）
+
+**本番反映（2026-05-28 · activeProfileId null · Pi5 API 契約修正）** {#本番反映2026-05-28-activeprofileid-null-pi5-api}
+
+- **対象**: **Pi5 のみ**（`raspberrypi5` · **`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3 はデプロイ不要**。
+- **ブランチ**: **`fix/dgx-active-profile-null-contract`**（**`f4ec13dc`** · CI **`26572037918` success**）。
+- **変更内容**: Pi5 `fetchDgxModelProfilesOverview` が **`activeProfileId: null` でも allowlist 取得成功なら `status: ok`**。業務復帰 PREVIEW/EXECUTE の **`DGX_MODEL_PROFILES_UNAVAILABLE`（503）** を解消。
+- **手順**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/dgx-active-profile-null-contract infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**Detach `20260528-204344-14223`** · **`failed=0`** · 約 **903s**）。
+- **検証**:
+  - DGX: `curl …/system/model-profiles` → **`activeProfileId: null`** · profiles **2 件 `available`**
+  - Pi5 api: `fetchDgxModelProfilesOverview` → **`status: ok`** · `assertModelProfileKnownAndStartable` 成功
+  - Phase12 **43/0/0**
+- **KB**: [KB-365 §本番 activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-active-profile-null-contract) · [deployment.md §activeProfileId null](../guides/deployment.md#dgx-active-profile-null-contract-2026-05-28)。
 
 **本番反映（2026-05-28・業務復帰モデル選択・Pi5 API+Web + DGX control/gateway）** {#本番反映2026-05-28-業務復帰モデル選択}
 

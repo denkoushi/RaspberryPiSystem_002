@@ -178,14 +178,14 @@ export async function fetchDgxModelProfilesOverview(input: {
       ? body.profiles.map(normalizeDgxModelProfile).filter((p): p is DgxBusinessModelProfile => p !== null)
       : [];
     const activeProfileId = asString(body.activeProfileId) ?? null;
+    // Allowlist fetch succeeded: activeProfileId may be null before first profile-scoped /start (DGX contract).
     return {
       configured: true,
-      status: activeProfileId ? 'ok' : 'degraded',
+      status: 'ok',
       available: profiles,
       activeProfileId,
       pendingProfileId: null,
       lastLoadedProfileId: activeProfileId,
-      ...(!activeProfileId ? { errorMessageJa: 'DGX active profile state が取得できませんでした' } : {}),
     };
   } catch {
     return {
