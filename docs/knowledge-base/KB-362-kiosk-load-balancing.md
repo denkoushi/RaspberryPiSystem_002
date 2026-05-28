@@ -23,7 +23,8 @@ last-verified: 2026-05-28
 | 2026-05-27 修正 | 同上 · **`37a7b6d4`** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取りのみ） |
 | 2026-05-27 修正 | `feat/kiosk-load-balancing-auto-plan-reset-fix` · **`463aeabb`** | **自動選定後の表示維持** — overview セッション境界のみ reset（Web のみ）·**Pi5→Pi4×4 本番・実機 OK** |
 | 2026-05-28 UI | `feat/kiosk-load-balancing-resource-display-lines` · **`83470163`** | **資源CD表示名2行** — 超過チップ・棒グラフX軸（`resourceNameMap`）·**Pi5 のみ本番** |
-| 2026-05-28 UI | `feat/kiosk-load-balancing-vertical-chart-axis` · **`04c9ad6e`** | **棒グラフX軸縦書き** — 上段CD・下段表示名（48本重なり解消）·**Pi5 のみ本番** |
+| 2026-05-28 UI | `feat/kiosk-load-balancing-vertical-chart-axis` · **`04c9ad6e`** | **棒グラフX軸縦書き（初版）** — **`-90°` は実機 NG** → 下記 fix で置換 |
+| 2026-05-28 UI | `feat/kiosk-load-balancing-chart-axis-labels-downward` · **`b7288982`** | **棒グラフX軸表示名を軸下へ（+90°）** · **Pi5 本番** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -221,7 +222,89 @@ sequenceDiagram
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
 
-## Production deploy（実績 2026-05-28 · 棒グラフX軸縦書き · Pi5 のみ）
+## Production deploy（実績 2026-05-28 · 棒グラフX軸表示名を軸下へ · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-chart-axis-labels-downward`
+- **代表コミット**: **`b7288982`** `fix(kiosk): extend load balancing chart axis labels downward`
+- **変更範囲**: **Web のみ**（`rotationDeg: -90` → **`+90`** · 軸レイアウト契約コメント）
+- **Prisma マイグレーション**: **なし**
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ** |
+| Detach Run ID | `20260528-111336-15421` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0** |
+| Pi5 Git | **`b7288982`** |
+| Web バンドル | `index-BZOyV42N.js`（`rotate(90)`） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-load-balancing-chart-axis-labels-downward infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機所見（2026-05-28 · X軸 -90° の問題）
+
+- **症状**: `04c9ad6e` デプロイ後、48 本の X 軸で表示名が **上方向（棒グラフ側）** に伸び、棒・隣ラベルと重なり **判読不能**。
+- **原因**: SVG `rotate(-90)` は tick 原点（X 軸線）から **-Y（プロット内）** へ文字列を伸ばす。横潰れ回避の意図は正しいが **回転符号が逆**。
+- **Fix**: `b7288982` で **`rotationDeg: +90`** — +Y（下余白 76px）のみ使用。資源CDは `dy: -4` で棒側。
+- **教訓**: 静的 HTML（`writing-mode: vertical-rl`）と Recharts SVG の幾何は **別物**。プレビュー OK でも実機 SVG は **符号と dy を契約テストで固定**すること。
+
+## 実機検証（2026-05-28 · 棒グラフX軸表示名を軸下へ）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- Pi5 Git: **`b7288982`**
+
+### API / Web スモーク
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
+  "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+# 実績: HTTP 200（約 0.29s）
+
+ssh denkon5sd02@100.106.158.2 \
+  'JS=/srv/site/assets/index-BZOyV42N.js; \
+   docker exec docker-web-1 sh -c "grep -o \"rotate(90)\" $JS | head -1"'
+# 実績: rotate(90)
+```
+
+### 現場目視（チェックリスト）
+
+| # | 確認項目 | 期待 |
+|---|----------|------|
+| 1 | 表示名の伸び方向 | **下余白内のみ**（棒の上に被らない） |
+| 2 | 資源CD | 軸より **上（棒側）** |
+| 3 | 表示名 | 軸より **下** · 縦書き · 最大 18 文字＋`…` |
+| 4 | 強制リロード | 旧 `-90°` キャッシュ時は §6.6.4 |
+
+**参照**: [deployment.md §軸下方向 2026-05-28](../guides/deployment.md#kiosk-load-balancing-chart-axis-labels-downward-2026-05-28)
+
+## 棒グラフ X 軸レイアウト契約（2026-05-28 · 現行）
+
+| 項目 | 値 |
+|------|-----|
+| tick 原点 | X 軸線上 |
+| 資源CD | `dy: -4`（-Y = 棒側）· `textAnchor: middle` |
+| 表示名 | **`rotationDeg: +90`**（+Y = 下余白）· `dy: 12` |
+| 省略 | `formatOverviewChartAxisDisplayName` · max **18** 文字 |
+| 下余白 | `loadBalancingChartMargin.bottom` = **`loadBalancingOverviewChartXAxisHeight` = 76** |
+
+**Troubleshooting（現行）**
+
+| 症状 | 確認 |
+|------|------|
+| 表示名が棒の上に被る | **`04c9ad6e` 世代（-90°）** — **`b7288982` 以上** + 強制リロード |
+| バンドル確認 | `grep 'rotate(90)'` あり · `rotate(-90)` なし |
+| 下で切れる | 18 文字省略 — 下余白 76px 内の仕様 |
+
+## Production deploy（実績 2026-05-28 · 棒グラフX軸縦書き · Pi5 のみ · 初版・実機 NG）
 
 - **ブランチ**: `feat/kiosk-load-balancing-vertical-chart-axis`
 - **代表コミット**: **`04c9ad6e`** `fix(kiosk): use vertical labels on load balancing overview chart axis`

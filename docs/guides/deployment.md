@@ -10,7 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸縦書き**·**`feat/kiosk-load-balancing-vertical-chart-axis`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-vertical-chart-axis-2026-05-28}
+### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸表示名を軸下へ**·**`feat/kiosk-load-balancing-chart-axis-labels-downward`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-chart-axis-labels-downward-2026-05-28}
+
+- **背景（実機所見）**: 直前デプロイ（`04c9ad6e`）は表示名を **`rotate(-90)`** とし、文字列が **プロット内（上方向）** に伸びて棒・隣ラベルと重なり **全く読めない** 状態だった（[KB-362 §所見](../knowledge-base/KB-362-kiosk-load-balancing.md#実機所見2026-05-28--x軸-90-の問題)）。
+- **Fix**:
+  - 表示名を **`rotationDeg: +90`** に変更 — Recharts tick 原点（X 軸線）から **+Y（下余白）** のみに伸ばす。
+  - 資源CDは **`dy: -4`**（棒側）。表示名は **`dy: 12`** から下方向。省略は従来どおり **18 文字＋`…`**。
+  - 契約: `loadBalancingOverviewChartAxis.ts`（座標コメント付き）· テストで `+90` / `dy` 符号を固定。
+- **代表コミット**: **`b7288982`** `fix(kiosk): extend load balancing chart axis labels downward`
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-chart-axis-labels-downward infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-111336-15421` | `ok=134` `changed=4` `failed=0` | Git **`b7288982`** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- **負荷調整スモーク**: [KB-362 §軸下方向 2026-05-28](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--棒グラフx軸表示名を軸下へ)
+- **Web バンドル**: `index-BZOyV42N.js` — `rotate(90)` あり（**`rotate(-90)` は 0 件**）
+- **API**: `overview?month=2026-05` **HTTP 200**（約 **0.29s**）
+- **トラブルシュート**:
+  - **表示名が棒の上に被る** → 旧 **`04c9ad6e`** 世代（`-90°`）— **`b7288982` 以上** + [強制リロード](verification-checklist.md) §6.6.4
+  - **下で切れる** → 18 文字省略後も下余白 76px 超 — 仕様（全文は今後 Tooltip 拡張可）
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)
+
+### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸縦書き**·**`feat/kiosk-load-balancing-vertical-chart-axis`**·**Web のみ**·**Pi5 本番**·**→ 軸下方向 fix で置換**） {#kiosk-load-balancing-vertical-chart-axis-2026-05-28}
 
 - **変更概要**:
   - **棒グラフ X 軸（資源CD俯瞰・上位48）**: 48 本で横並びラベルが重なる問題を解消。**上段=資源CD（横）**、**下段=表示名（-90° 縦書き）**。チャート外寸 `lbChart.container` は **変更なし**（下余白 `bottom: 76` を軸専用に再配分）。
