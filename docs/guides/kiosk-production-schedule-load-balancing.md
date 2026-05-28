@@ -18,9 +18,10 @@
 - **契約モジュール**: `loadBalancingUiClasses.ts`（ページ/カード/表/ボタン/チップの Tailwind クラス）
 - **ヘッダー**: `LoadBalancingPageHeader.tsx`（3タブ + Mac 絞込 `V`）
 - **ベースフォント**: ページ・表・チップ **`text-sm`（14px）** · 見出し `text-xl` · Recharts 軸 **13px**
-- **ワークスペース（俯瞰・`xl` 以上）**: 左列 = 棒グラフ + 試算結果（compact 表）、右列 = 推奨セット（広い表スクロール）
+- **ワークスペース（俯瞰・`lg` 以上）**: 左列 **1.45fr** = 棒グラフ + 試算結果、右列 **1fr** = 推奨セット
+- **全幅**: ページ `max-w-[1440px]` なし（他キオスク同様）。棒グラフ凡例は **チャート直上**（Recharts 内蔵 Legend 不使用）
 - **俯瞰のみ全面適用**。機種別月次・着手日は今後 `loadBalancingUiClasses` を横展開可能
-- **デプロイ**: **Pi5 のみ**（Web SPA 正本）。本番 **`d1126cb6`**（[KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--可読性チューニング--pi5-のみ)）
+- **デプロイ**: **Pi5 のみ**。本番 **`4ea657a5`**（[KB-362 §全幅](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--全幅レイアウト--pi5-のみ)）
 
 ## 集計ポリシー（サーバ実装に準拠）
 

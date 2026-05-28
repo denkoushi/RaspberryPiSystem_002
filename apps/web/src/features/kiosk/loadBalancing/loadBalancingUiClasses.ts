@@ -4,8 +4,9 @@
  */
 
 export const lbPage = {
-  root: 'mx-auto flex h-full min-h-0 w-full max-w-[1440px] flex-col gap-2.5 overflow-auto px-3.5 py-3 text-sm leading-snug text-white',
-  stack: 'flex flex-col gap-2.5'
+  /** 他キオスク同様に画面幅いっぱい（max-width キャップなし） */
+  root: 'flex h-full min-h-0 w-full min-w-0 flex-col gap-2.5 overflow-auto px-2 py-2 text-sm leading-snug text-white',
+  stack: 'flex min-w-0 flex-col gap-2.5'
 } as const;
 
 export const lbCard = {
@@ -17,10 +18,10 @@ export const lbCard = {
 } as const;
 
 export const lbGrid = {
-  topRow: 'grid gap-3.5 md:grid-cols-[200px_minmax(0,1fr)]',
-  /** 左: 棒グラフ＋試算表 / 右: 推奨セット（試算表の横余白を右ペインへ） */
+  topRow: 'grid gap-3 md:grid-cols-[minmax(11rem,12rem)_minmax(0,1fr)]',
+  /** 左: 棒グラフ＋試算表（広め） / 右: 推奨セット（3番・現状維持） */
   workspaceRow:
-    'grid items-start gap-2.5 xl:grid-cols-[minmax(300px,0.9fr)_minmax(400px,1.35fr)]',
+    'grid min-w-0 items-start gap-2.5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)]',
   leftStack: 'flex min-w-0 flex-col gap-2.5'
 } as const;
 
@@ -60,8 +61,8 @@ export const lbTable = {
 
 /** 試算結果表（4番）— 棒グラフ列幅に収め、数値列は右寄せ・狭幅 */
 export const lbResultsTableCol = {
-  resourceCd: 'w-[13%]',
-  num: 'w-[10%] text-right',
+  resourceCd: 'w-[12%]',
+  num: 'w-[11%] text-right',
   classCode: 'min-w-0 truncate'
 } as const;
 
@@ -87,7 +88,9 @@ export const lbChip = {
 } as const;
 
 export const lbChart = {
-  container: 'h-[min(240px,32dvh)] w-full min-w-0'
+  legend: 'mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/85',
+  legendSwatch: 'inline-block h-3 w-3 shrink-0 rounded-sm',
+  container: 'h-[min(260px,34dvh)] w-full min-w-0'
 } as const;
 
 export function lbTabClassName(active: boolean): string {

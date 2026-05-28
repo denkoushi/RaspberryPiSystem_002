@@ -31,10 +31,10 @@
       font-size: 14px;
       line-height: 1.45;
       min-height: 100dvh;
-      padding: 12px 14px 20px;
+      padding: 8px 8px 16px;
     }
 
-    .page { max-width: 1440px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+    .page { width: 100%; max-width: none; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 
     .header {
       display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
@@ -66,8 +66,8 @@
     }
 
     .row-top {
-      display: grid; gap: 14px;
-      grid-template-columns: 200px 1fr;
+      display: grid; gap: 12px;
+      grid-template-columns: minmax(11rem, 12rem) minmax(0, 1fr);
     }
     @media (max-width: 900px) { .row-top { grid-template-columns: 1fr; } }
 
@@ -102,20 +102,27 @@
 
     .row-workspace {
       display: grid; gap: 10px; align-items: start;
-      grid-template-columns: minmax(300px, 0.9fr) minmax(400px, 1.35fr);
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
     }
-    @media (max-width: 1100px) { .row-workspace { grid-template-columns: 1fr; } }
+    @media (max-width: 1024px) { .row-workspace { grid-template-columns: 1fr; } }
     .col-left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
     .panel-title { font-size: 0.9375rem; font-weight: 600; margin-bottom: 8px; }
 
+    .chart-legend {
+      display: flex; flex-wrap: wrap; gap: 12px 16px; margin-bottom: 8px;
+      font-size: 0.875rem; color: rgba(248,250,252,0.85);
+    }
+    .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
     .chart-bars {
-      display: flex; align-items: flex-end; gap: 6px; height: 220px;
-      padding: 8px 4px 28px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-end; gap: 4px; height: 240px;
+      padding: 4px 2px 28px; border-bottom: 1px solid var(--border);
     }
     .bar-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
     .bar {
-      width: 100%; max-width: 28px; border-radius: 4px 4px 0 0;
+      width: 100%; max-width: 40px; border-radius: 4px 4px 0 0;
       background: linear-gradient(180deg, var(--blue), #0ea5e9);
     }
     .bar.over { background: linear-gradient(180deg, var(--orange), #d97706); }
@@ -135,8 +142,8 @@
     th { background: #0f172a; font-weight: 600; position: sticky; top: 0; }
     table.compact { table-layout: fixed; }
     table.compact .num { text-align: right; font-variant-numeric: tabular-nums; }
-    table.compact .col-cd { width: 13%; }
-    table.compact .col-num { width: 10%; }
+    table.compact .col-cd { width: 12%; }
+    table.compact .col-num { width: 11%; }
     .mono { font-family: ui-monospace, monospace; }
     .effect { color: #6ee7b7; font-weight: 600; }
     .over-cell { color: #fcd34d; font-weight: 600; }
@@ -192,6 +199,11 @@
       <div class="col-left">
         <section class="card">
           <p class="panel-title">資源CD別（上位48・必要分降順）</p>
+          <div class="chart-legend" aria-hidden="true">
+            <span><i class="swatch" style="background:var(--blue)"></i>必要分</span>
+            <span><i class="swatch" style="background:#34d399"></i>能力分</span>
+            <span style="color:#fcd34d"><i class="swatch" style="background:var(--orange)"></i>超過（必要分）</span>
+          </div>
           <div class="chart-bars" aria-hidden="true">
             <div class="bar-wrap"><div class="bar over" style="height:88%"></div><span class="bar-label">A01</span></div>
             <div class="bar-wrap"><div class="bar over" style="height:62%"></div><span class="bar-label">B12</span></div>
@@ -284,7 +296,7 @@
     </details>
 
     <p style="font-size:0.75rem;color:var(--muted);text-align:center">
-      静的プレビュー — 左: 棒グラフ+試算表 / 右: 推奨セット（表 14px・試算表 compact）
+      静的プレビュー — 全幅・左1.45fr（棒グラフ+試算表）/ 右1fr（推奨セット）· 凡例はチャート上
     </p>
   </div>
 </body>
