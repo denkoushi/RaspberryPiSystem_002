@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { LoadBalancingChartContainer } from './LoadBalancingChartContainer';
+import { buildOverviewChartDisplayNameByCd } from './loadBalancingOverviewChartAxis';
 import { LoadBalancingOverviewResourceChartXAxisTick } from './LoadBalancingOverviewResourceChartXAxisTick';
 import {
   LOAD_BALANCING_CAP_FILL,
@@ -17,33 +17,20 @@ import {
 } from './loadBalancingRechartsDefaults';
 import { lbChart, lbText } from './loadBalancingUiClasses';
 
-export type OverviewChartRow = {
-  cd: string;
-  displayName: string;
-  req: number;
-  cap: number;
-  over: number;
-};
+import type { OverviewChartRow } from './mapOverviewResourceChartRows';
+
+export type { OverviewChartRow };
 
 type Props = {
   rows: OverviewChartRow[];
 };
 
 export function LoadBalancingOverviewResourceChart({ rows }: Props) {
-  const displayNameByCd = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const row of rows) {
-      if (row.displayName) {
-        map[row.cd] = row.displayName;
-      }
-    }
-    return map;
-  }, [rows]);
-
   if (rows.length === 0) {
     return <p className={lbText.muted}>表示できるデータがありません（対象月・条件を確認してください）。</p>;
   }
 
+  const displayNameByCd = buildOverviewChartDisplayNameByCd(rows);
   const chartData = rows.map((row) => ({
     ...row,
     overLabel: row.over > 0 ? `+${row.over}` : ''

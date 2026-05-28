@@ -26,6 +26,7 @@ import {
 import { LoadBalancingOverviewSuggestionsSection } from './LoadBalancingOverviewSuggestionsSection';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
 import { lbCard, lbGrid, lbInput, lbPage, lbText } from './loadBalancingUiClasses';
+import { mapOverviewResourceChartRows } from './mapOverviewResourceChartRows';
 import { resolveLoadBalancingResourceDisplayName } from './resolveLoadBalancingResourceDisplayName';
 import { useExternalizationPlanState } from './useExternalizationPlanState';
 
@@ -132,16 +133,10 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
     [simulateResult?.afterResources, overviewQuery.data?.resources]
   );
 
-  const chartSlice = useMemo(() => {
-    const mapped = displayResources.map((resource) => ({
-      cd: resource.resourceCd,
-      displayName: resolveLoadBalancingResourceDisplayName(resource.resourceCd, resourceNameMap),
-      req: Math.round(resource.requiredMinutes),
-      cap: resource.availableMinutes == null ? 0 : Math.round(resource.availableMinutes),
-      over: Math.round(resource.overMinutes)
-    }));
-    return mapped.sort((a, b) => b.req - a.req).slice(0, 48);
-  }, [displayResources, resourceNameMap]);
+  const chartSlice = useMemo(
+    () => mapOverviewResourceChartRows(displayResources, resourceNameMap),
+    [displayResources, resourceNameMap]
+  );
 
   const chipItems = useMemo(
     () =>
