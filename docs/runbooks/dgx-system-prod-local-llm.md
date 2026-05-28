@@ -108,6 +108,11 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - active state: `/srv/dgx/system-prod/state/active-model-profile.json`
 - gateway API: `GET /system/model-profiles` / `GET /system/model-profile`
 - control API: `POST /start {"modelProfileId":"business_qwen36_27b_nvfp4"}`
+- **activeProfileId 契約（Pi5 overview と DGX の違い）**:
+  - **`GET /system/model-profiles`（複数形）**: registry allowlist + **`activeProfileId`**（state ファイルが無ければ **`null`** — **未 start 前は想定内**）。Pi5 `overview.modelProfiles` は **HTTP 200 で profiles が取れれば `status: ok`**（`activeProfileId: null` でも degraded にしない）。
+  - **`GET /system/model-profile`（単数形）**: active state **のみ**。state 無し → **503** `ACTIVE_MODEL_PROFILE_UNAVAILABLE`（一覧 API とは挙動が異なる）。
+  - **state ライフサイクル**: **作成・更新** = `POST /start` で `modelProfileId` 指定時のみ。**`POST /stop` / `stop-force` では state ファイルは削除されない**（停止後も `activeProfileId` が残り得る → **現在ロード中かは `GET /v1/models` / コンテナ状態で別確認**）。
+  - **切り分け（業務復帰 503 `DGX_MODEL_PROFILES_UNAVAILABLE`）**: ① `curl …/system/model-profiles` で profiles 件数・各 `status` ② `activeProfileId` が null でも allowlist 取得 OK なら Pi5 は `ok`（[KB-365 §activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)）③ state 単体は `curl …/system/model-profile`。
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
 - **ストレージパス契約（可用性判定）**:
