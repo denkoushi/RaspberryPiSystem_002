@@ -26,7 +26,8 @@ last-verified: 2026-05-28
 | 2026-05-28 UI | `feat/kiosk-load-balancing-vertical-chart-axis` · **`04c9ad6e`** | **棒グラフX軸縦書き（初版）** — **`-90°` は実機 NG** → 下記 fix で置換 |
 | 2026-05-28 UI | `feat/kiosk-load-balancing-chart-axis-labels-downward` · **`b7288982`** | **棒グラフX軸表示名を軸下へ（+90°）** · **Pi5 本番** · **→ パディング fix で置換** |
 | 2026-05-28 UI | `feat/kiosk-load-balancing-chart-axis-padding` · **`cb339bfa`** | **棒グラフX軸ラベルパディング** — 資源CD/表示名を **+Y のみ** · 帯 **96px** · **Pi5 本番** · **→ CD下余白 fix で置換** |
-| 2026-05-28 UI | `feat/kiosk-load-balancing-axis-label-gap` · **`d0263cce`** | **棒グラフX軸 CD下余白+縦表示名** — 別 `<g>` 配置 · 帯 **108px** · **Pi5 本番** |
+| 2026-05-28 UI | `feat/kiosk-load-balancing-axis-label-gap` · **`d0263cce`** | **棒グラフX軸 CD下余白+縦表示名** — 別 `<g>` 配置 · 帯 **108px** · **Pi5 本番** · **→ overview レイアウト fix で置換** |
+| 2026-05-28 UI | `fix/load-balancing-overview-chart-review` · **`da995573`** | **overview 棒グラフ最適化** — margin 二重解消 · 横スクロール · vertical-rl · ホバー枠線 · **Pi5 本番** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -224,7 +225,103 @@ sequenceDiagram
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
 
-## Production deploy（実績 2026-05-28 · 棒グラフX軸 CD下余白+縦表示名 · Pi5 のみ）
+## Production deploy（実績 2026-05-28 · overview 棒グラフレイアウト最適化 · Pi5 のみ）
+
+- **ブランチ**: `fix/load-balancing-overview-chart-review`
+- **代表コミット**: **`da995573`**（`41f4e904` 本体 + ResizeObserver テストガード）
+- **変更範囲**: **Web のみ**（Recharts margin/XAxis 二重解消 · 横スクロール 40px/tick · `foreignObject`+`vertical-rl` · Y 軸 domain · 点線削除 · Tooltip 枠線 · DEV プレビュー）
+- **Prisma マイグレーション**: **なし**
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ** |
+| Detach Run ID | `20260528-133208-19029` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0**（約 **29s**） |
+| Pi5 Git | **`da995573`** |
+| Web バンドル | `index-BuE63Pux.js`（`gapBelowResourceCd:5` · `tickMargin:2` · `clipPaddingBottom:8` · `writingMode:"vertical-rl"` · `stroke:"#94a3b8"` · `fill:"none"`） |
+| CI | **`26554467995`** — lint/e2e-smoke/api **success** · `security-docker` **failure**（Caddy Trivy·本変更無関係） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/load-balancing-overview-chart-review infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機所見（2026-05-28 · overview 棒グラフ下半分の死んだ余白）
+
+- **症状**: `d0263cce` デプロイ後、カード外寸 **260px** は維持されているが、棒の高さが **約 38px** に潰れ、ラベル帯の下に **約 100px の空白**が残る。表示名の文字数調整だけでは見た目がほとんど変わらない。
+- **原因（CONFIRMED）**: Recharts BarChart で **`margin.bottom: 108` と `XAxis.height: 108` が両方効いていた**。プロット高 = 260 − 4 − 108 − 108 ≈ **40px**。
+- **Fix**: `loadBalancingChartMargin.bottom: 0` — ラベル帯は **XAxis.height のみ**。加えて横スクロール（40px/tick）で 48 本の重なり解消、`getOverviewChartYAxisMax()` で Y 軸上限をデータに合わせ、表示名を `foreignObject`+`vertical-rl`（12px）に変更。
+- **教訓**: Recharts の **margin と axis height は排他的に設計**する。外寸固定 UI では **プロット高を計測**してからラベル帯を調整する。
+
+## 実機検証（2026-05-28 · overview 棒グラフレイアウト最適化）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- Pi5 Git: **`da995573`**
+
+### API / Web スモーク
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
+  "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+# 実績: HTTP 200（約 0.36s）
+
+ssh denkon5sd02@100.106.158.2 \
+  'JS=/srv/site/assets/index-BuE63Pux.js; \
+   docker exec docker-web-1 sh -c "grep -oE \"gapBelowResourceCd:5|tickMargin:2|clipPaddingBottom:8|writingMode:\\\"vertical-rl\\\"|stroke:\\\"#94a3b8\\\"\" $JS | sort -u"'
+# 実績: gapBelowResourceCd:5, tickMargin:2, clipPaddingBottom:8, writingMode:"vertical-rl", stroke:"#94a3b8"
+```
+
+### 現場目視（チェックリスト）
+
+| # | 確認項目 | 期待 |
+|---|----------|------|
+| 1 | 棒の高さ | 最大値付近で **プロット領域の大半**を占める（下半分 108px はラベル帯） |
+| 2 | 横スクロール | 48 本超で **横スクロール** · 1 資源 **40px** 幅 |
+| 3 | 資源CD | 横書き · 軸下上段 |
+| 4 | 表示名 | **vertical-rl** 縦書き · max **7** 文字 · clip **81px** |
+| 5 | ホバー | **枠線のみ**（棒の色が隠れない） |
+| 6 | 背景 | **点線グリッドなし** |
+| 7 | 強制リロード | 旧バンドル（棒潰れ・白ホバー帯）時は §6.6.4 |
+
+**参照**: [deployment.md §overview 棒グラフ 2026-05-28](../guides/deployment.md#kiosk-load-balancing-overview-chart-layout-2026-05-28)
+
+## 棒グラフ X 軸レイアウト契約（2026-05-28 · 現行 · `da995573`）
+
+| 項目 | 値 |
+|------|-----|
+| 外寸 | **`lbChart.container`** = `h-[min(260px,34dvh)]`（変更なし） |
+| Recharts margin | **top 4 · right 12 · left 4 · bottom 0**（**XAxis.height のみ**で下確保） |
+| XAxis.height | **108**（`loadBalancingOverviewChartAxisBandHeight`） |
+| tickMargin | **2** |
+| 資源CD | **`dy: +2`** · **`lineHeight: 12`** · 横書き monospace |
+| CD 下余白 | **`gapBelowResourceCd: 5`** |
+| 表示名 | **`foreignObject` + `writing-mode: vertical-rl`** · fontSize **12** · 開始 Y = **19**（2+12+5）· clip **81px** · max **7** 文字 |
+| 横スクロール | **40px/tick** · category gap **12px** · `ResizeObserver` で viewport 幅追従 |
+| Y 軸 | **`domain: [0, max(req,cap)×1.04]`** |
+| ホバー | Tooltip cursor **`fill:none` · `stroke:#94a3b8`** |
+| 背景 | **CartesianGrid なし** |
+| 契約テスト | `loadBalancingOverviewChartAxis.test.ts` · `loadBalancingOverviewChartPreviewFixtures.test.ts` |
+| DEV プレビュー | `/dev/load-balancing-overview-chart`（本番ビルド除外） |
+
+**Troubleshooting（現行）**
+
+| 症状 | 確認 |
+|------|------|
+| 棒が潰れ下半分が空白 | **`d0263cce` 世代（margin.bottom 二重）** — **`da995573` 以上** + 強制リロード |
+| 表示名が重なる / 読めない | 旧 `rotate(90)` / 単一 `<text>` 世代 — **`da995573` 以上** |
+| ホバーで白い帯 | 旧 Tooltip cursor — **`fill:none`** 確認 |
+| CI web test 落ち | jsdom **`ResizeObserver is not defined`** — **`da995573` のガード** |
+| バンドル確認 | `gapBelowResourceCd:5` · `clipPaddingBottom:8` · `writingMode:"vertical-rl"` |
+
+## Production deploy（実績 2026-05-28 · 棒グラフX軸 CD下余白+縦表示名 · Pi5 のみ · 棒潰れあり）
 
 - **ブランチ**: `feat/kiosk-load-balancing-axis-label-gap`
 - **代表コミット**: **`d0263cce`** `fix(kiosk): separate overview chart labels under resource codes`
@@ -289,7 +386,7 @@ ssh denkon5sd02@100.106.158.2 \
 
 **参照**: [deployment.md §CD下余白 2026-05-28](../guides/deployment.md#kiosk-load-balancing-axis-label-gap-2026-05-28)
 
-## 棒グラフ X 軸レイアウト契約（2026-05-28 · 現行 · `d0263cce`）
+## 棒グラフ X 軸レイアウト契約（2026-05-28 · 履歴 · `d0263cce` 世代 · 棒潰れあり）
 
 | 項目 | 値 |
 |------|-----|
