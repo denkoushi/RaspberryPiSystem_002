@@ -4,6 +4,7 @@ import sys
 import threading
 import unittest
 from dataclasses import replace
+import tempfile
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -60,6 +61,111 @@ class GatewayServerTests(unittest.TestCase):
         )
 
         self.assertEqual(module.resolve_backend_base_url(config), "http://blue:38083")
+
+    def test_model_profile_endpoints_and_active_state_routing(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            storage = Path(tmp) / "hf" / "qwen"
+            storage.mkdir(parents=True)
+            manifest_dir = root / "business_qwen36_27b_nvfp4"
+            manifest_dir.mkdir(parents=True)
+            (manifest_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "modelProfileId": "business_qwen36_27b_nvfp4",
+                        "displayNameJa": "Qwen3.6 27B NVFP4",
+                        "backend": "blue",
+                        "servedAlias": "system-prod-primary",
+                        "sourceModelRef": "sakamakismile/Qwen3.6-27B-NVFP4",
+                        "currentStorageLocation": str(storage),
+                        "enabled": True,
+                        "recommended": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state_path = Path(tmp) / "state" / "active-model-profile.json"
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "activeProfileId": "business_qwen36_27b_nvfp4",
+                        "modelProfileId": "business_qwen36_27b_nvfp4",
+                        "displayNameJa": "Qwen3.6 27B NVFP4",
+                        "backend": "blue",
+                        "servedAlias": "system-prod-primary",
+                        "stateUpdatedAt": "2026-05-28T00:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config = module.GatewayConfig(
+                llm_shared_tokens=frozenset({"shared-token"}),
+                runtime_control_token="runtime-token",
+                host="127.0.0.1",
+                port=38081,
+                active_backend="green",
+                legacy_backend_base_url="http://legacy:38082",
+                green_backend_base_url="http://green:38082",
+                blue_backend_base_url="http://blue:38083",
+                runtime_control_base_url="http://control:39090",
+                embedding_api_key="",
+                embedding_base_url="http://embed:38100",
+                private_comfy_root="/tmp",
+                private_comfy_start_cmd="./start-private-comfyui.sh",
+                private_comfy_stop_cmd="./stop-private-comfyui.sh",
+                private_comfy_health_url="http://127.0.0.1:8188",
+                experiment_lab_root="/tmp",
+                experiment_lab_start_cmd="./start-trtllm-server.sh",
+                experiment_lab_stop_cmd="./stop-trtllm-server.sh",
+                experiment_lab_health_url="http://127.0.0.1:38083/v1/models",
+                experiment_lab_health_mode="http",
+                experiment_lab_container_name="system-prod-trtllm",
+                agent_container_root="/tmp",
+                agent_container_start_cmd="./start-agent-container.sh",
+                agent_container_stop_cmd="./stop-agent-container.sh",
+                agent_container_health_url="http://127.0.0.1:5555/agent-health",
+                agent_container_health_mode="http",
+                agent_container_container_name="dgx-agent-container",
+                private_comfy_cmd_timeout_sec=60,
+                model_registry_root=str(root),
+                active_model_state_path=str(state_path),
+            )
+            calls: list[str] = []
+
+            def proxy_impl(method: str, url: str, body: bytes, headers: dict[str, str]):
+                calls.append(url)
+                return 200, json.dumps({"data": [{"id": "system-prod-primary"}]}).encode(), "application/json"
+
+            handler = module.make_handler(config, proxy_impl=proxy_impl)
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{httpd.server_port}"
+            try:
+                profiles_req = urllib.request.Request(
+                    f"{base_url}/system/model-profiles",
+                    method="GET",
+                    headers={"X-LLM-Token": "shared-token"},
+                )
+                with urllib.request.urlopen(profiles_req, timeout=5) as response:
+                    profiles_payload = json.loads(response.read().decode("utf-8"))
+                models_req = urllib.request.Request(
+                    f"{base_url}/v1/models",
+                    method="GET",
+                    headers={"X-LLM-Token": "shared-token"},
+                )
+                with urllib.request.urlopen(models_req, timeout=5):
+                    pass
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+
+            self.assertEqual(profiles_payload["activeProfileId"], "business_qwen36_27b_nvfp4")
+            self.assertEqual(profiles_payload["profiles"][0]["backend"], "blue")
+            self.assertIn("http://blue:38083/v1/models", calls)
 
     def test_inject_blue_chat_completions_defaults_adds_enable_thinking_false(self):
         module = load_module()

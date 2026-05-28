@@ -2,7 +2,7 @@
 title: KB-366 DGX Spark 運用理解（メモリ・モデル・モード切替・KPI）
 tags: [DGX, DGX_RESOURCE, Spark, vLLM, ComfyUI, 運用, メモリ, KPI]
 audience: [開発者, 運用者]
-last-verified: 2026-05-25
+last-verified: 2026-05-28
 category: knowledge-base
 ---
 
@@ -59,6 +59,7 @@ inventory 上の正本: `inference_*_provider_id: dgx_primary`・モデル名 **
 
 - **`ACTIVE_LLM_BACKEND`** が `blue` か `green` かで **アクティブ側が 1 つ**（本番記録・実機確認は **blue**）。
 - **`DGX_LLM_SINGLE_ACTIVE_GUARD`**: `/start` 前に **非アクティブ側を必ず stop**（[Runbook §単一アクティブ](../runbooks/dgx-system-prod-local-llm.md#単一アクティブ運用ガードdgx_llm_single_active_guard)）。
+- **業務復帰のモデル選択**: 管理 UI の **私用→業務** / **実験→業務** では `modelProfileId` を選ぶ。選択時は DGX manifest の `backend` が優先され、`ACTIVE_LLM_BACKEND` は未指定 start 用の fallback になる。初期 ID は **`business_qwen36_27b_nvfp4`**（blue / 推奨）と **`business_qwen35_35b_gguf`**（green）。
 
 **念のための確認（DGX）**
 
@@ -146,6 +147,13 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 - **トレードオフ**: Comfy 用の空きは **少し**増え得るが、**業務推論の同時処理・安定性**が落ちる可能性。変更前後で **写真ラベル / 要領書** の体感を確認する。
 
 ---
+
+## 本番反映（2026-05-28 · 業務復帰モデル選択） {#production-2026-05-28-dgx-business-return-model-selection}
+
+- **何が変わったか**: 管理 UI の **私用→業務** / **実験→業務** で **`business_qwen36_27b_nvfp4`（blue·推奨）** と **`business_qwen35_35b_gguf`（green）** を選べる。選択は DGX manifest の **`backend`** を `/start` に渡し、**green/blue の「どちらか一方」設計は維持**（§3）。
+- **デプロイ**: Pi5 Detach **`20260528-184011-18178`** → DGX **`scp` + PID 再起動**（[KB-365 §本番](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)）。
+- **実機**: `GET /system/model-profiles` → **2 profiles**（未 start 前 **`activeProfileId: null`** は正常）。Phase12 **43/0/0**。
+- **運用上の注意**: **KPI の Unified Mem** は選択した profile の backend 起動後に変化する。**profile ID と `ACTIVE_LLM_BACKEND` env** が食い違う場合は **active state ファイル**（`/srv/dgx/system-prod/state/active-model-profile.json`）と **`GET /system/model-profile`** で確認。
 
 ## Prevention（再発防止・ドキュメント）
 

@@ -26,6 +26,12 @@ import {
 import { buildDgxResourceMonitoringOverview, type DgxResourceMonitoringSummary } from './dgx-resource.monitoring-overview.js';
 import { buildDgxResourceOperatorConsole, type DgxResourceOperatorConsole } from './dgx-resource.operator-overview.js';
 import {
+  assertModelProfileKnownAndStartable,
+  assertModelProfileSelectionAllowed,
+  fetchDgxModelProfilesOverview,
+  type DgxModelProfilesOverview,
+} from './dgx-resource.model-profiles.js';
+import {
   executeOrchestrationScenarioTransition,
   executeWorkloadTransitionsThenApplyPolicyMode,
 } from './dgx-resource.workload-transition.js';
@@ -110,6 +116,8 @@ export type DgxResourceOverview = {
   monitoring: DgxResourceMonitoringSummary;
   /** 運用者向け表示モデル（targets[] を置き換えない） */
   operator: DgxResourceOperatorConsole;
+  /** DGX 正本の業務復帰 LocalLLM モデルプロファイル */
+  modelProfiles: DgxModelProfilesOverview;
 };
 
 export type DgxResourceActionBody =
@@ -122,12 +130,13 @@ export type DgxResourceActionBody =
       action: DgxUserControlTargetAction;
       reason?: string;
     }
-  | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioId }
+  | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioId; modelProfileId?: string }
   | {
       type: 'EXECUTE_ORCHESTRATION_SCENARIO';
       scenarioId: DgxOrchestrationScenarioId;
       planFingerprint: string;
       confirmed: true;
+      modelProfileId?: string;
     };
 
 export type DgxResourceServicePort = {
@@ -261,6 +270,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     agentContainerProbeUrl: string | undefined;
     agentRtCfg: boolean;
     sparkHost: DgxSparkHostOverview;
+    modelProfiles: DgxModelProfilesOverview;
     notes: string[];
   }> => {
     const generatedAt = new Date().toISOString();
@@ -280,6 +290,13 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     ) {
       modelsProbe = await probeV1Models(adminCfg.baseUrl, adminCfg.sharedToken, deps.fetchImpl, deps.probeTimeoutMs);
     }
+
+    const modelProfiles = await fetchDgxModelProfilesOverview({
+      baseUrl: adminCfg.baseUrl,
+      sharedToken: adminCfg.sharedToken,
+      fetchImpl: deps.fetchImpl,
+      timeoutMs: deps.probeTimeoutMs,
+    });
 
     const metricsConfigured = Boolean(deps.metricsUrl?.trim());
     const metricsFallbackCandidates =
@@ -423,6 +440,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         'DGX Spark ホスト簡易監視は DGX_RESOURCE_SPARK_HOST_STATUS_URL 未設定のため未取得です（メトリクス sidecar の /health 等を Runbook で設定）'
       );
     }
+    if (modelProfiles.status === 'degraded' && modelProfiles.errorMessageJa) {
+      notes.push(`業務モデルプロファイル取得が degraded です: ${modelProfiles.errorMessageJa}`);
+    }
 
     const cStart = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL?.trim();
     const cStop = env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL?.trim();
@@ -489,6 +509,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       agentContainerProbeUrl: agentContainerProbeUrl ?? undefined,
       agentRtCfg,
       sparkHost,
+      modelProfiles,
       notes,
     };
   };
@@ -496,9 +517,10 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   const runGatewayRuntimeStartStop = async (
     action: DgxControlTargetAction,
     reason: string | undefined,
-    eventLog: TargetRuntimeEventLogMode
+    eventLog: TargetRuntimeEventLogMode,
+    modelProfileId?: string
   ): Promise<{ ok: true; message: string }> => {
-    await executeGatewayRuntimeStartStop(deps, action, reason);
+    await executeGatewayRuntimeStartStop(deps, action, reason, modelProfileId);
     if (eventLog === 'default') {
       if (action === 'start') {
         deps.policyStore.appendEvent('LocalLLM ランタイム起動を要求しました');
@@ -740,11 +762,12 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     targetId: DgxControlTargetId,
     action: DgxControlTargetAction,
     reason: string | undefined,
-    eventLog: TargetRuntimeEventLogMode
+    eventLog: TargetRuntimeEventLogMode,
+    modelProfileId?: string
   ): Promise<{ ok: true; message: string }> => {
     switch (targetId) {
       case 'system-prod-gateway':
-        return runGatewayRuntimeStartStop(action, reason, eventLog);
+        return runGatewayRuntimeStartStop(action, reason, eventLog, modelProfileId);
       case 'private-comfyui':
         return runComfyAuxStartStop(action, reason, eventLog);
       case 'experiment-lab':
@@ -791,9 +814,14 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   };
 
   const orchestrationScenarioPreview = async (
-    scenarioId: DgxOrchestrationScenarioId
+    scenarioId: DgxOrchestrationScenarioId,
+    modelProfileId?: string
   ): Promise<DgxResourceActionResult> => {
+    assertModelProfileSelectionAllowed(scenarioId, modelProfileId);
     const pb = await collectOverviewProbeBundle();
+    if (modelProfileId) {
+      assertModelProfileKnownAndStartable(pb.modelProfiles, modelProfileId);
+    }
     const hints = inferenceHeuristics(pb.bundle);
     const preview = buildOrchestrationScenarioPreview({
       scenarioId,
@@ -804,10 +832,12 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       currentPolicyMode: pb.bundle.policyMode,
       inferenceLooksDegraded: hints.inferenceLooksDegraded,
       comfyLooksRunning: hints.comfyLooksRunning,
+      ...(modelProfileId ? { modelProfileId, modelProfiles: pb.modelProfiles.available } : {}),
     });
     // #region agent log
     emitDgxDebugLog('H1', 'dgx-resource.service.ts:orchestrationScenarioPreview', 'preview steps generated', {
       scenarioId,
+      modelProfileId: modelProfileId ?? null,
       currentPolicyMode: pb.bundle.policyMode,
       steps: preview.steps.map((s) => ({
         order: s.order,
@@ -832,11 +862,18 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
 
   const orchestrationScenarioExecute = async (
     scenarioId: DgxOrchestrationScenarioId,
-    planFingerprint: string
+    planFingerprint: string,
+    modelProfileId?: string
   ): Promise<DgxResourceActionResult> => {
+    assertModelProfileSelectionAllowed(scenarioId, modelProfileId);
+    if (modelProfileId) {
+      const pb = await collectOverviewProbeBundle();
+      assertModelProfileKnownAndStartable(pb.modelProfiles, modelProfileId);
+    }
     const result = await executeOrchestrationScenarioTransition({
       scenarioId,
       planFingerprint,
+      ...(modelProfileId ? { modelProfileId } : {}),
       capability: {
         comfyRuntimeConfigured: comfyRuntimeControlConfigured(),
         experimentLabRuntimeConfigured: experimentLabRuntimeControlConfigured(),
@@ -858,6 +895,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     // #region agent log
     emitDgxDebugLog('H3', 'dgx-resource.service.ts:orchestrationScenarioExecute', 'scenario execution completed', {
       scenarioId,
+      modelProfileId: modelProfileId ?? null,
       planFingerprintPrefix: planFingerprint.slice(0, 12),
       success: result.scenarioExecute.success,
       outcomeKind: result.scenarioExecute.outcomeKind,
@@ -881,10 +919,10 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         });
       }
       if (body.type === 'PREVIEW_ORCHESTRATION_SCENARIO') {
-        return orchestrationScenarioPreview(body.scenarioId);
+        return orchestrationScenarioPreview(body.scenarioId, body.modelProfileId);
       }
       if (body.type === 'EXECUTE_ORCHESTRATION_SCENARIO') {
-        return orchestrationScenarioExecute(body.scenarioId, body.planFingerprint);
+        return orchestrationScenarioExecute(body.scenarioId, body.planFingerprint, body.modelProfileId);
       }
       if (body.type === 'EXECUTE_TARGET_ACTION') {
         const r = await handleExecuteTargetAction(body.targetId, body.action, body.reason);
@@ -971,6 +1009,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         notes: pb.notes,
         monitoring,
         operator,
+        modelProfiles: pb.modelProfiles,
       };
     },
   };

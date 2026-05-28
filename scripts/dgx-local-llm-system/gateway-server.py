@@ -4,8 +4,10 @@ DGX system-prod 用のローカル gateway。
 
 - /healthz は 200 ok
 - /system/metrics は GPU/メモリ JSON（Pi KPI 用）。LLM 認証は X-LLM-Token または Authorization: Bearer（/v1/* と同様）
+- /system/model-profiles は DGX 正本の業務用モデル allowlist
+- /system/model-profile は現在ロード済みの active profile state
 - /start /stop /stop-force は runtime control へ転送
-- /v1/* は active backend へ転送
+- /v1/* は active profile state の backend を優先して転送
 
 環境変数:
   LLM_SHARED_TOKEN            必須（少なくとも1つ有効な LLM トークン）
@@ -15,6 +17,8 @@ DGX system-prod 用のローカル gateway。
   GATEWAY_LISTEN_HOST         既定: 127.0.0.1
   GATEWAY_LISTEN_PORT         既定: 38081
   ACTIVE_LLM_BACKEND          既定: green（green / blue）
+  DGX_MODEL_REGISTRY_ROOT     任意: モデルプロファイル manifest の root
+  DGX_ACTIVE_MODEL_STATE_PATH 任意: active model profile state JSON の保存先
   LLAMA_SERVER_BASE_URL       互換用 fallback backend URL
   GREEN_LLM_BASE_URL          既定: http://127.0.0.1:38082
   BLUE_LLM_BASE_URL           既定: http://127.0.0.1:38083
@@ -42,7 +46,9 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
+from active_model_state import active_model_state_to_api, read_active_model_state
 from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
+from model_profiles import load_model_profiles, model_profile_to_api
 
 
 @dataclass(frozen=True)
@@ -75,6 +81,8 @@ class GatewayConfig:
     agent_container_health_mode: str
     agent_container_container_name: str
     private_comfy_cmd_timeout_sec: int
+    model_registry_root: str = "/srv/dgx/shared-models/registry"
+    active_model_state_path: str = "/srv/dgx/system-prod/state/active-model-profile.json"
 
 
 def load_config_from_env() -> GatewayConfig:
@@ -126,6 +134,11 @@ def load_config_from_env() -> GatewayConfig:
             os.environ.get("AGENT_CONTAINER_CONTAINER_NAME") or "dgx-agent-container"
         ).strip(),
         private_comfy_cmd_timeout_sec=int((os.environ.get("PRIVATE_COMFY_CMD_TIMEOUT_SEC") or "240").strip()),
+        model_registry_root=(os.environ.get("DGX_MODEL_REGISTRY_ROOT") or "/srv/dgx/shared-models/registry").strip(),
+        active_model_state_path=(
+            os.environ.get("DGX_ACTIVE_MODEL_STATE_PATH")
+            or "/srv/dgx/system-prod/state/active-model-profile.json"
+        ).strip(),
     )
 
 
@@ -141,8 +154,14 @@ def require_env(config: GatewayConfig) -> None:
         sys.exit(1)
 
 
+def resolve_active_backend(config: GatewayConfig) -> str:
+    state = read_active_model_state(config.active_model_state_path)
+    return state.backend if state is not None else config.active_backend
+
+
 def resolve_backend_base_url(config: GatewayConfig) -> str:
-    if config.active_backend == "blue":
+    active_backend = resolve_active_backend(config)
+    if active_backend == "blue":
         return config.blue_backend_base_url or config.legacy_backend_base_url
     return config.green_backend_base_url or config.legacy_backend_base_url
 
@@ -441,6 +460,13 @@ def make_handler(
         def _send_text(self, status: int, text: str) -> None:
             self._send(status, text.encode("utf-8"), "text/plain; charset=utf-8")
 
+        def _send_json(self, status: int, payload: dict) -> None:
+            self._send(
+                status,
+                json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                "application/json; charset=utf-8",
+            )
+
         def do_GET(self) -> None:
             if self.path == "/healthz":
                 self._send_text(200, "ok\n")
@@ -454,6 +480,42 @@ def make_handler(
                     self._send(200, json.dumps(payload).encode("utf-8"), "application/json; charset=utf-8")
                 else:
                     self._send(503, b'{"ok":false,"reason":"gpu_metrics_unavailable"}', "application/json; charset=utf-8")
+                return
+            if self.path == "/system/model-profiles":
+                if not self._llm_auth_ok():
+                    self._send_text(403, "forbidden")
+                    return
+                try:
+                    profiles = load_model_profiles(config.model_registry_root)
+                    active_state = read_active_model_state(config.active_model_state_path)
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "profiles": [model_profile_to_api(profile) for profile in profiles],
+                            "activeProfileId": active_state.model_profile_id if active_state else None,
+                            "state": active_model_state_to_api(active_state) if active_state else None,
+                        },
+                    )
+                except Exception as exc:
+                    self._send_json(503, {"ok": False, "code": "MODEL_PROFILES_UNAVAILABLE", "message": str(exc)})
+                return
+            if self.path == "/system/model-profile":
+                if not self._llm_auth_ok():
+                    self._send_text(403, "forbidden")
+                    return
+                active_state = read_active_model_state(config.active_model_state_path)
+                if active_state is None:
+                    self._send_json(
+                        503,
+                        {
+                            "ok": False,
+                            "code": "ACTIVE_MODEL_PROFILE_UNAVAILABLE",
+                            "message": "active profile state is unavailable",
+                        },
+                    )
+                    return
+                self._send_json(200, {"ok": True, **active_model_state_to_api(active_state)})
                 return
             if self.path == "/private-comfyui/health":
                 status, body, content_type = proxy_impl("GET", config.private_comfy_health_url, b"", {})
@@ -497,6 +559,7 @@ def make_handler(
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
+                active_backend = resolve_active_backend(config)
                 status, body, content_type = proxy_impl(
                     "GET",
                     f"{resolve_backend_base_url(config)}{self.path}",
@@ -786,8 +849,9 @@ def make_handler(
                     self._send_text(403, "forbidden")
                     return
                 headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
+                active_backend = resolve_active_backend(config)
                 upstream_body = inject_blue_chat_completions_defaults(
-                    self.path, body, config.active_backend
+                    self.path, body, active_backend
                 )
                 status, resp_body, content_type = proxy_impl(
                     "POST",

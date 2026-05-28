@@ -25,7 +25,8 @@ export { resolveGatewayRuntimeControlUrl };
 export async function executeGatewayRuntimeStartStop(
   deps: GatewayRuntimeExecutorDeps,
   action: 'start' | 'stop' | 'stop_force',
-  reason?: string
+  reason?: string,
+  modelProfileId?: string
 ): Promise<void> {
   const startUrl = env.LOCAL_LLM_RUNTIME_CONTROL_START_URL?.trim();
   const stopUrl = env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL?.trim();
@@ -56,13 +57,17 @@ export async function executeGatewayRuntimeStartStop(
     async () => {
       const { signal, cleanup } = createTimeoutSignal(timeoutMs);
       try {
+        const requestBody =
+          action === 'start' && modelProfileId
+            ? { reason: reason ?? 'dgx_resource_ui', modelProfileId }
+            : { reason: reason ?? 'dgx_resource_ui' };
         const response = await deps.fetchImpl(targetUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-Runtime-Control-Token': token,
           },
-          body: JSON.stringify({ reason: reason ?? 'dgx_resource_ui' }),
+          body: JSON.stringify(requestBody),
           signal,
         });
         if (!response.ok) {

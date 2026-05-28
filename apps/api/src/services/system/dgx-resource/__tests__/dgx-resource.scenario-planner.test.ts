@@ -145,4 +145,35 @@ describe('dgx-resource.scenario-planner', () => {
       })
     );
   });
+
+  it('business return modelProfileId changes fingerprint and adds load step', () => {
+    const base = {
+      scenarioId: 'private_to_business' as const,
+      comfyRuntimeConfigured: true,
+      experimentLabRuntimeConfigured: false,
+      agentContainerRuntimeConfigured: false,
+      gatewayRuntimeConfigured: true,
+      currentPolicyMode: 'private_ok' as const,
+      inferenceLooksDegraded: false,
+      comfyLooksRunning: false,
+      modelProfiles: [
+        {
+          id: 'business_qwen36_27b_nvfp4',
+          displayNameJa: 'Qwen3.6 27B NVFP4',
+          backend: 'blue' as const,
+          servedAlias: 'system-prod-primary',
+          recommended: true,
+          enabled: true,
+          status: 'available' as const,
+          canonicalNames: [],
+          legacyNames: [],
+        },
+      ],
+    };
+    const q36 = buildOrchestrationScenarioPreview({ ...base, modelProfileId: 'business_qwen36_27b_nvfp4' });
+    const q35 = buildOrchestrationScenarioPreview({ ...base, modelProfileId: 'business_qwen35_35b_gguf' });
+
+    expect(q36.planFingerprint).not.toBe(q35.planFingerprint);
+    expect(q36.steps.some((s) => s.kind === 'modelProfile' && s.modelProfileId === 'business_qwen36_27b_nvfp4')).toBe(true);
+  });
 });

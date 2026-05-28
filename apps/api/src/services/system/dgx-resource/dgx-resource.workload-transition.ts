@@ -98,6 +98,7 @@ export async function executeWorkloadTransitionsThenApplyPolicyMode(input: {
 export async function executeOrchestrationScenarioTransition(input: {
   scenarioId: DgxOrchestrationScenarioId;
   planFingerprint: string;
+  modelProfileId?: string;
   capability: WorkloadCapabilityFlags;
   runTargetRuntimeAction: RunTargetRuntimeActionFn;
   policyStore: DgxResourcePolicyStore;
@@ -107,7 +108,7 @@ export async function executeOrchestrationScenarioTransition(input: {
   message: string;
   scenarioExecute: DgxResourceScenarioExecuteResult;
 }> {
-  const { scenarioId, planFingerprint, capability, runTargetRuntimeAction, policyStore, readinessCoordinator } = input;
+  const { scenarioId, planFingerprint, modelProfileId, capability, runTargetRuntimeAction, policyStore, readinessCoordinator } = input;
   const intent = resolveScenarioPolicyIntent(scenarioId);
   const policyBefore = policyStore.getPolicyMode();
 
@@ -133,6 +134,7 @@ export async function executeOrchestrationScenarioTransition(input: {
     experimentLabRuntimeConfigured: capability.experimentLabRuntimeConfigured,
     agentContainerRuntimeConfigured: capability.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: capability.gatewayRuntimeConfigured,
+    ...(modelProfileId ? { modelProfileId } : {}),
   });
 
   if (recomputedFingerprint !== planFingerprint.trim()) {
@@ -160,6 +162,7 @@ export async function executeOrchestrationScenarioTransition(input: {
   /** プレビューの step order と順序対応させるカウンタ */
   let stepOrderSeq = 1;
   try {
+    let ranModelProfileStart = false;
     for (const step of plan) {
       await runTargetRuntimeAction(step.targetId, step.action, 'scenario_guide', 'none');
       policyStore.appendEvent(step.eventMessageJa);
@@ -168,6 +171,13 @@ export async function executeOrchestrationScenarioTransition(input: {
 
     const changed = policyStore.setPolicyMode(intent.targetPolicyMode);
     completedStepOrders.push(stepOrderSeq++);
+
+    if (modelProfileId && (scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business')) {
+      await runTargetRuntimeAction('system-prod-gateway', 'start', 'scenario_guide_model_profile', 'none', modelProfileId);
+      policyStore.appendEvent(`業務復帰: 選択モデル ${modelProfileId} のロードを要求しました`);
+      completedStepOrders.push(stepOrderSeq++);
+      ranModelProfileStart = true;
+    }
 
     let outcomeKind: DgxResourceScenarioOutcomeKind = 'success';
     const msgPieces: string[] = [];
@@ -192,7 +202,7 @@ export async function executeOrchestrationScenarioTransition(input: {
 
     let msg: string;
     let noopOrchestration = false;
-    if (!changed && plan.length === 0 && !ranPostSteps) {
+    if (!changed && plan.length === 0 && !ranPostSteps && !ranModelProfileStart) {
       outcomeKind = 'noop';
       msgPieces.length = 0;
       msgPieces.push(`${policyLabelJa(intent.targetPolicyMode)}モードのままです（ガイド）`);
@@ -228,8 +238,14 @@ export async function executeOrchestrationScenarioTransition(input: {
       });
       const runGatewayWithEvent: RunTargetRuntimeActionFn =
         spec.allowGatewayStartRemediation && spec.requireInferenceBusiness
-          ? async (tid, act, reason, ev) => {
-              const out = await runTargetRuntimeAction(tid, act, reason, ev);
+          ? async (tid, act, reason, ev, remediationModelProfileId) => {
+              const out = await runTargetRuntimeAction(
+                tid,
+                act,
+                reason,
+                ev,
+                remediationModelProfileId ?? modelProfileId
+              );
               if (tid === 'system-prod-gateway' && act === 'start' && reason === 'readiness_remediation') {
                 policyStore.appendEvent('Strict Ready 調整: system-prod-gateway に /start を 1 回試行しました');
               }
@@ -245,6 +261,7 @@ export async function executeOrchestrationScenarioTransition(input: {
           collectProbeBundle: readinessCoordinator.collectProbeBundle,
           readinessDeadlineMs: readinessCoordinator.readinessDeadlineMs,
           readinessPollIntervalMs: readinessCoordinator.readinessPollIntervalMs,
+          ...(modelProfileId ? { modelProfileId } : {}),
           runGatewayStartOnceIfNeeded:
             spec.allowGatewayStartRemediation && spec.requireInferenceBusiness ? runGatewayWithEvent : undefined,
         });

@@ -148,6 +148,26 @@ function makeOverview(operator: DgxResourceOperatorConsoleApi): DgxResourceOverv
       targetHighlights: [],
       lastScenarioFailure: null,
     },
+    modelProfiles: {
+      configured: true,
+      status: 'ok',
+      activeProfileId: null,
+      pendingProfileId: null,
+      lastLoadedProfileId: null,
+      available: [
+        {
+          id: 'business_qwen36_27b_nvfp4',
+          displayNameJa: 'Qwen3.6 27B NVFP4',
+          backend: 'blue',
+          servedAlias: 'system-prod-primary',
+          recommended: true,
+          enabled: true,
+          status: 'available',
+          canonicalNames: [],
+          legacyNames: [],
+        },
+      ],
+    },
     operator,
   };
 }
@@ -207,6 +227,7 @@ describe('DgxResourceOperatorConsole', () => {
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
         scenarioId: 'private_to_business',
+        modelProfileId: 'business_qwen36_27b_nvfp4',
       })
     );
     fireEvent.click(screen.getByRole('button', { name: 'OK' }));
@@ -214,6 +235,7 @@ describe('DgxResourceOperatorConsole', () => {
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'EXECUTE_ORCHESTRATION_SCENARIO',
         scenarioId: 'private_to_business',
+        modelProfileId: 'business_qwen36_27b_nvfp4',
         planFingerprint: 'fp-test',
         confirmed: true,
       })
@@ -270,6 +292,7 @@ describe('DgxResourceOperatorConsole', () => {
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
         scenarioId: 'private_to_business',
+        modelProfileId: 'business_qwen36_27b_nvfp4',
       })
     );
   });

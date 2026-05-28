@@ -21,6 +21,8 @@ const orchestrationScenarioIdSchema = z.enum(
   ]
 );
 
+const modelProfileIdSchema = z.string().trim().min(1).max(128).regex(/^[a-z0-9][a-z0-9_-]*$/);
+
 const actionBodySchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('LOCAL_LLM_START'),
@@ -45,6 +47,7 @@ const actionBodySchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('PREVIEW_ORCHESTRATION_SCENARIO'),
     scenarioId: orchestrationScenarioIdSchema,
+    modelProfileId: modelProfileIdSchema.optional(),
   }),
   z.object({
     type: z.literal('EXECUTE_ORCHESTRATION_SCENARIO'),
@@ -53,6 +56,7 @@ const actionBodySchema = z.discriminatedUnion('type', [
     planFingerprint: z.string().trim().min(32).max(128),
     /** 明示的な二段階確認（クライアントは必ず true を送る） */
     confirmed: z.literal(true),
+    modelProfileId: modelProfileIdSchema.optional(),
   }),
 ]);
 

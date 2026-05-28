@@ -7,5 +7,6 @@ export type TargetRuntimeDispatchFn = (
   targetId: DgxControlTargetId,
   action: DgxControlTargetAction,
   reason: string | undefined,
-  eventLog: TargetRuntimeEventLogMode
+  eventLog: TargetRuntimeEventLogMode,
+  modelProfileId?: string
 ) => Promise<{ ok: true; message: string }>;

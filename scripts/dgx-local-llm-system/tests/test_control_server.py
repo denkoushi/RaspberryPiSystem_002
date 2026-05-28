@@ -6,6 +6,7 @@ import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+import tempfile
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "control-server.py"
@@ -209,6 +210,69 @@ class ControlServerTests(unittest.TestCase):
         self.assertEqual(payload["action"], "stop-force")
         self.assertEqual(payload["backend"], "blue")
         self.assertEqual(calls, ["blue-stop"])
+
+    def test_http_handler_start_with_model_profile_selects_backend_and_writes_state(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            storage = Path(tmp) / "hf" / "qwen"
+            storage.mkdir(parents=True)
+            manifest_dir = root / "business_qwen36_27b_nvfp4"
+            manifest_dir.mkdir(parents=True)
+            (manifest_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "modelProfileId": "business_qwen36_27b_nvfp4",
+                        "displayNameJa": "Qwen3.6 27B NVFP4",
+                        "backend": "blue",
+                        "servedAlias": "system-prod-primary",
+                        "currentStorageLocation": str(storage),
+                        "enabled": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state_path = Path(tmp) / "state" / "active-model-profile.json"
+            config = module.ControlConfig(
+                token="runtime-token",
+                active_backend="green",
+                start_cmd="legacy-start",
+                stop_cmd="legacy-stop",
+                green_start_cmd="green-start",
+                green_stop_cmd="green-stop",
+                blue_start_cmd="blue-start",
+                blue_stop_cmd="blue-stop",
+                blue_stop_mode="on_demand",
+                host="127.0.0.1",
+                port=39090,
+                model_registry_root=str(root),
+                active_model_state_path=str(state_path),
+            )
+            calls: list[str] = []
+            handler = module.make_handler(config, command_runner=calls.append)
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{httpd.server_port}"
+            try:
+                start_req = urllib.request.Request(
+                    f"{base_url}/start",
+                    data=json.dumps({"modelProfileId": "business_qwen36_27b_nvfp4"}).encode(),
+                    method="POST",
+                    headers={"X-Runtime-Control-Token": "runtime-token", "Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(start_req, timeout=5) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
+
+            self.assertEqual(payload["backend"], "blue")
+            self.assertEqual(payload["modelProfile"]["activeProfileId"], "business_qwen36_27b_nvfp4")
+            self.assertEqual(calls, ["green-stop", "blue-start"])
+            saved = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["backend"], "blue")
 
     def test_http_handler_green_active_hard_stops_blue_before_start(self):
         module = load_module()

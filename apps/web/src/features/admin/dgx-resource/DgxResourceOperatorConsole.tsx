@@ -34,6 +34,7 @@ export function DgxResourceOperatorConsole({
 
       <DgxResourcePrimaryScenarioFlow
         operator={operator}
+        modelProfiles={overview.modelProfiles}
         postDgxAction={postDgxAction}
         actionBusy={actionBusy}
         onControlUiError={onControlUiError}

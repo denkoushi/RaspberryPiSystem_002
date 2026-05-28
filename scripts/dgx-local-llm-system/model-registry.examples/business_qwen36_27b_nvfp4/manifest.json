@@ -1,0 +1,20 @@
+{
+  "modelProfileId": "business_qwen36_27b_nvfp4",
+  "displayNameJa": "業務 Qwen3.6 27B NVFP4",
+  "descriptionJa": "業務復帰時の推奨モデル。vLLM blue backend で system-prod-primary として提供する。",
+  "backend": "blue",
+  "servedAlias": "system-prod-primary",
+  "enabled": true,
+  "recommended": true,
+  "sourceKind": "huggingface",
+  "sourceModelRef": "sakamakismile/Qwen3.6-27B-NVFP4",
+  "modelFamily": "Qwen3.6",
+  "format": "safetensors",
+  "quantization": "NVFP4",
+  "storageLocation": "/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4",
+  "currentStorageLocation": "/srv/dgx/system-prod/data/hf-cache/models--sakamakismile--Qwen3.6-27B-NVFP4",
+  "storageStatus": "planned_shared_models_migration",
+  "expectedColdStartSec": 180,
+  "canonicalNames": ["Qwen3.6-27B-NVFP4"],
+  "legacyNames": ["system-prod-trtllm", "blue"]
+}

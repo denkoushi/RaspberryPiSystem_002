@@ -13,11 +13,13 @@ DGX system-prod 用: active backend を start/stop する最小 HTTP 制御サ�
   BLUE_LLM_RUNTIME_KEEP_WARM  任意: 互換用（STOP_MODE 未使用時、true で keep_warm 相当）
   DGX_LLM_SINGLE_ACTIVE_GUARD 任意: true/false（既定 true）。true のとき POST /start 前に非アクティブ側へ実 stop を必ず掛け、
                                   green/blue 両方の stop が解決できることを起動時に検証する（単一アクティブ運用）
+  DGX_MODEL_REGISTRY_ROOT     任意: モデルプロファイル manifest の root
+  DGX_ACTIVE_MODEL_STATE_PATH 任意: active model profile state JSON の保存先
   LLM_RUNTIME_LISTEN_HOST    既定: 127.0.0.1
   LLM_RUNTIME_LISTEN_PORT    既定: 39090
 
 HTTP:
-  POST /start       active backend を起動（single-active guard 有効時は非active を hard stop 後）
+  POST /start       active backend を起動（modelProfileId 指定時は profile backend を優先）
   POST /stop        通常停止（blue + keep_warm / always_on では no-op）
   POST /stop-force  強制停止（keep_warm を上書きして active backend を実 stop）
 """
@@ -44,6 +46,8 @@ from dgx_llm_single_active_guard import (  # noqa: E402
     single_active_guard_enabled,
     validate_both_backend_stops_configured,
 )
+from active_model_state import active_model_state_to_api, write_active_model_state  # noqa: E402
+from model_profiles import ModelProfileError, validate_startable_profile  # noqa: E402
 from runtime_stop_policy import (  # noqa: E402
     BlueStopMode,
     should_use_noop_stop_for_blue,
@@ -65,6 +69,8 @@ class ControlConfig:
     blue_stop_mode: BlueStopMode
     host: str
     port: int
+    model_registry_root: str = "/srv/dgx/shared-models/registry"
+    active_model_state_path: str = "/srv/dgx/system-prod/state/active-model-profile.json"
 
 
 def load_config_from_env() -> ControlConfig:
@@ -78,6 +84,11 @@ def load_config_from_env() -> ControlConfig:
         blue_start_cmd=(os.environ.get("BLUE_LLM_RUNTIME_START_CMD") or "").strip(),
         blue_stop_cmd=(os.environ.get("BLUE_LLM_RUNTIME_STOP_CMD") or "").strip(),
         blue_stop_mode=load_blue_stop_mode_from_env(),
+        model_registry_root=(os.environ.get("DGX_MODEL_REGISTRY_ROOT") or "/srv/dgx/shared-models/registry").strip(),
+        active_model_state_path=(
+            os.environ.get("DGX_ACTIVE_MODEL_STATE_PATH")
+            or "/srv/dgx/system-prod/state/active-model-profile.json"
+        ).strip(),
         host=(os.environ.get("LLM_RUNTIME_LISTEN_HOST") or "127.0.0.1").strip(),
         port=int((os.environ.get("LLM_RUNTIME_LISTEN_PORT") or "39090").strip()),
     )
@@ -110,29 +121,44 @@ def run_shell(command: str) -> None:
     )
 
 
-def resolve_command(config: ControlConfig, action: str) -> str:
+def resolve_command(config: ControlConfig, action: str, backend: str | None = None) -> str:
+    active_backend = backend or config.active_backend
     if action == "start":
-        command = config.green_start_cmd if config.active_backend == "green" else config.blue_start_cmd
+        command = config.green_start_cmd if active_backend == "green" else config.blue_start_cmd
         fallback = config.start_cmd
     elif action in {"stop", "stop-force"}:
         if (
             action == "stop"
-            and config.active_backend == "blue"
+            and active_backend == "blue"
             and should_use_noop_stop_for_blue(config.blue_stop_mode)
         ):
             # keep_warm / always_on: 実 stop を掛けず no-op（cold start 回避・常駐相当）
             return ":"
-        command = config.green_stop_cmd if config.active_backend == "green" else config.blue_stop_cmd
+        command = config.green_stop_cmd if active_backend == "green" else config.blue_stop_cmd
         fallback = config.stop_cmd
     else:  # pragma: no cover
         raise ValueError(f"unknown action: {action}")
     resolved = command or fallback
     if not resolved:
         raise SystemExit(
-            f"{action} command is required for ACTIVE_LLM_BACKEND={config.active_backend} "
+            f"{action} command is required for backend={active_backend} "
             "(set backend-specific command or legacy LLM_RUNTIME_* fallback)"
         )
     return resolved
+
+
+def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, object]:
+    length = int(handler.headers.get("Content-Length", "0"))
+    if length <= 0:
+        return {}
+    raw = handler.rfile.read(length)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def make_handler(config: ControlConfig, command_runner: Callable[[str], None] = run_shell) -> type[BaseHTTPRequestHandler]:
@@ -173,16 +199,27 @@ def make_handler(config: ControlConfig, command_runner: Callable[[str], None] = 
                 return
             try:
                 if self.path == "/start":
+                    body = read_json_body(self)
+                    model_profile_id = body.get("modelProfileId")
+                    profile = None
+                    start_backend = config.active_backend
+                    if isinstance(model_profile_id, str) and model_profile_id.strip():
+                        profile = validate_startable_profile(config.model_registry_root, model_profile_id.strip())
+                        start_backend = profile.backend
                     if single_active_guard_enabled():
                         hard_stop = resolve_hard_stop_for_backend(
-                            inactive_backend(config.active_backend),
+                            inactive_backend(start_backend),
                             green_stop_cmd=config.green_stop_cmd,
                             blue_stop_cmd=config.blue_stop_cmd,
                             legacy_stop_cmd=config.stop_cmd,
                         )
                         command_runner(hard_stop)
-                    command_runner(resolve_command(config, "start"))
-                    self._send_json(200, {"ok": True, "action": "start", "backend": config.active_backend})
+                    command_runner(resolve_command(config, "start", start_backend))
+                    payload: dict[str, object] = {"ok": True, "action": "start", "backend": start_backend}
+                    if profile is not None:
+                        state = write_active_model_state(config.active_model_state_path, profile)
+                        payload["modelProfile"] = active_model_state_to_api(state)
+                    self._send_json(200, payload)
                     return
                 if self.path == "/stop":
                     command_runner(resolve_command(config, "stop"))
@@ -196,6 +233,8 @@ def make_handler(config: ControlConfig, command_runner: Callable[[str], None] = 
             except subprocess.CalledProcessError as exc:
                 detail = exc.stderr or exc.stdout or str(exc)
                 self._send_text(500, detail[:2000])
+            except ModelProfileError as exc:
+                self._send_json(exc.status_code, {"ok": False, "code": exc.code, "message": str(exc)})
             except Exception as exc:  # pragma: no cover
                 self._send_text(500, str(exc))
 

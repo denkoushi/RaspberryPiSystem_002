@@ -202,6 +202,7 @@ export function DgxResourceDashboard() {
         <section className="rounded-xl border border-cyan-400/25 bg-slate-950/65 p-3">
           <DgxResourcePrimaryScenarioFlow
             operator={overview.operator}
+            modelProfiles={overview.modelProfiles}
             postDgxAction={postDgxActionAsync}
             actionBusy={mutateAction.isPending}
             externalBusy={scenarioLikelyRunning}

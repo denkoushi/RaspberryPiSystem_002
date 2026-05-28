@@ -67,6 +67,54 @@ describe('createDgxResourceService', () => {
     expect(svc.getEvents(5)[0]?.message).toContain('変更');
   });
 
+  it('overview exposes DGX model profiles from gateway', async () => {
+    const store = new DgxResourcePolicyStore(20);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            ok: true,
+            activeProfileId: 'business_qwen36_27b_nvfp4',
+            profiles: [
+              {
+                id: 'business_qwen36_27b_nvfp4',
+                displayNameJa: 'Qwen3.6 27B NVFP4',
+                backend: 'blue',
+                servedAlias: 'system-prod-primary',
+                recommended: true,
+                enabled: true,
+                status: 'available',
+              },
+            ],
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+    const overview = await svc.getOverview();
+
+    expect(overview.modelProfiles.activeProfileId).toBe('business_qwen36_27b_nvfp4');
+    expect(overview.modelProfiles.available[0]?.backend).toBe('blue');
+  });
+
   it('SET_POLICY experiment_first updates KPI label and exposes previous mode', async () => {
     const store = new DgxResourcePolicyStore(20);
     const gateway: LocalLlmGateway = {
@@ -674,6 +722,72 @@ describe('createDgxResourceService', () => {
       statusCode: 409,
       code: 'DGX_SCENARIO_PLAN_STALE',
     });
+  });
+
+  it('PREVIEW_ORCHESTRATION_SCENARIO rejects unknown or unavailable business model profiles', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            ok: true,
+            activeProfileId: 'business_qwen36_27b_nvfp4',
+            profiles: [
+              {
+                id: 'business_qwen36_27b_nvfp4',
+                displayNameJa: 'Qwen3.6 27B NVFP4',
+                backend: 'blue',
+                servedAlias: 'system-prod-primary',
+                enabled: true,
+                status: 'available',
+              },
+              {
+                id: 'business_disabled',
+                displayNameJa: 'disabled',
+                backend: 'green',
+                servedAlias: 'system-prod-primary',
+                enabled: false,
+                status: 'unavailable',
+              },
+            ],
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(
+      svc.executeAction({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: 'private_to_business',
+        modelProfileId: 'missing',
+      })
+    ).rejects.toMatchObject({ statusCode: 400, code: 'DGX_MODEL_PROFILE_UNKNOWN' });
+
+    await expect(
+      svc.executeAction({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: 'private_to_business',
+        modelProfileId: 'business_disabled',
+      })
+    ).rejects.toMatchObject({ statusCode: 409, code: 'DGX_MODEL_PROFILE_UNAVAILABLE' });
   });
 
   it('business_to_private succeeds only after strict readiness is confirmed', async () => {

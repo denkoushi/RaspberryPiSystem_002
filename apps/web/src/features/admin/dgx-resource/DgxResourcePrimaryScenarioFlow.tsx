@@ -11,6 +11,7 @@ import { orderPrimaryScenarioActions } from './dgxResourceTaskFlows';
 import type {
   DgxOperatorConsoleActionApi,
   DgxOrchestrationScenarioIdApi,
+  DgxModelProfilesOverviewApi,
   DgxResourceActionBody,
   DgxResourceActionResult,
   DgxResourceOperatorConsoleApi,
@@ -70,6 +71,7 @@ function persistPendingState(pending: boolean, scenarioId: DgxOrchestrationScena
 
 type Props = {
   operator: DgxResourceOperatorConsoleApi;
+  modelProfiles?: DgxModelProfilesOverviewApi;
   postDgxAction: (body: DgxResourceActionBody) => Promise<DgxResourceActionResult>;
   actionBusy: boolean;
   externalBusy?: boolean;
@@ -79,6 +81,7 @@ type Props = {
 /** 日常運用向け UI: 4操作を選んで、そのまま確認→実行。 */
 export function DgxResourcePrimaryScenarioFlow({
   operator,
+  modelProfiles,
   postDgxAction,
   actionBusy,
   externalBusy = false,
@@ -88,6 +91,7 @@ export function DgxResourcePrimaryScenarioFlow({
   const confirm = useConfirm();
   const actions = useMemo(() => orderPrimaryScenarioActions(operator.operatorActions), [operator.operatorActions]);
   const [selectedScenarioId, setSelectedScenarioId] = useState<DgxOrchestrationScenarioIdApi | null>(null);
+  const [selectedModelProfileId, setSelectedModelProfileId] = useState<string | null>(null);
   const [flowBusy, setFlowBusy] = useState(false);
   const [globalPending, setGlobalPending] = useState(() => dgxPrimaryScenarioPendingCount > 0 || readPersistedPendingState());
   const [resultNote, setResultNote] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
@@ -105,6 +109,13 @@ export function DgxResourcePrimaryScenarioFlow({
 
   const selectedAction: DgxOperatorConsoleActionApi | undefined =
     selectedScenarioId != null ? actions.find((a) => a.scenarioId === selectedScenarioId) : undefined;
+  const needsModelProfile =
+    selectedAction?.scenarioId === 'private_to_business' || selectedAction?.scenarioId === 'experiment_to_business';
+  const selectableProfiles = useMemo(
+    () => modelProfiles?.available.filter((profile) => profile.enabled && profile.status === 'available') ?? [],
+    [modelProfiles?.available]
+  );
+  const selectedModelProfile = selectableProfiles.find((profile) => profile.id === selectedModelProfileId);
 
   useEffect(() => {
     const sync = () => setGlobalPending(dgxPrimaryScenarioPendingCount > 0);
@@ -119,6 +130,20 @@ export function DgxResourcePrimaryScenarioFlow({
     };
   }, []);
 
+  useEffect(() => {
+    if (!needsModelProfile) return;
+    setSelectedModelProfileId((prev) => {
+      if (prev && selectableProfiles.some((profile) => profile.id === prev)) return prev;
+      const activeSelectable = selectableProfiles.find((profile) => profile.id === modelProfiles?.activeProfileId);
+      return (
+        selectableProfiles.find((profile) => profile.recommended)?.id ??
+        activeSelectable?.id ??
+        selectableProfiles[0]?.id ??
+        null
+      );
+    });
+  }, [modelProfiles?.activeProfileId, needsModelProfile, selectableProfiles]);
+
   const openSimpleConfirm = async () => {
     if (!selectedAction) return;
     await confirm({
@@ -130,6 +155,10 @@ export function DgxResourcePrimaryScenarioFlow({
 
   const executeSelectedScenario = async () => {
     if (!selectedAction || selectedAction.disabledReasonJa) return;
+    if (needsModelProfile && !selectedModelProfileId) {
+      onControlUiError('業務復帰に使うモデルプロファイルを選択してください');
+      return;
+    }
     setFlowBusy(true);
     dgxPrimaryScenarioPendingCount += 1;
     persistPendingState(true, selectedAction.scenarioId);
@@ -140,6 +169,7 @@ export function DgxResourcePrimaryScenarioFlow({
       const previewResult = await postDgxAction({
         type: 'PREVIEW_ORCHESTRATION_SCENARIO',
         scenarioId: selectedAction.scenarioId,
+        ...(needsModelProfile && selectedModelProfileId ? { modelProfileId: selectedModelProfileId } : {}),
       });
       const preview = previewResult.scenarioPreview;
       if (!preview) {
@@ -150,9 +180,12 @@ export function DgxResourcePrimaryScenarioFlow({
         title: `${selectedAction.labelJa} を実行`,
         description: [
           selectedAction.subtitleJa,
+          needsModelProfile && selectedModelProfile
+            ? `業務モデル: ${selectedModelProfile.displayNameJa} [${selectedModelProfile.id}]`
+            : '',
           '',
           ...preview.warnings.slice(0, 2).map((w) => `・${w}`),
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
         tone: preview.warnings.length > 0 ? 'danger' : 'primary',
       });
       if (!ok) return;
@@ -162,6 +195,7 @@ export function DgxResourcePrimaryScenarioFlow({
         scenarioId: preview.scenarioId,
         planFingerprint: preview.planFingerprint,
         confirmed: true,
+        ...(needsModelProfile && selectedModelProfileId ? { modelProfileId: selectedModelProfileId } : {}),
       });
       onControlUiError(null);
       const se = executeResult.scenarioExecute;
@@ -238,6 +272,45 @@ export function DgxResourcePrimaryScenarioFlow({
           );
         })}
       </div>
+
+      {needsModelProfile ? (
+        <div className="rounded-xl border border-cyan-400/25 bg-black/25 p-3">
+          <label className="block text-sm font-semibold text-cyan-100" htmlFor="dgx-business-model-profile">
+            業務復帰でロードする LocalLLM モデル
+          </label>
+          <select
+            id="dgx-business-model-profile"
+            value={selectedModelProfileId ?? ''}
+            disabled={busy || selectableProfiles.length === 0}
+            onChange={(event) => setSelectedModelProfileId(event.target.value || null)}
+            className="mt-2 w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {selectableProfiles.length === 0 ? <option value="">選択できるモデルがありません</option> : null}
+            {selectableProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.displayNameJa} [{profile.id}]
+              </option>
+            ))}
+          </select>
+          {selectedModelProfile ? (
+            <div className="mt-2 space-y-1 text-xs leading-snug text-white/60">
+              <p>
+                backend: {selectedModelProfile.backend} / alias: {selectedModelProfile.servedAlias}
+                {selectedModelProfile.recommended ? ' / 推奨' : ''}
+              </p>
+              <p>
+                実体: {selectedModelProfile.sourceModelRef ?? selectedModelProfile.storageLocation ?? '未取得'} / 系統:{' '}
+                {selectedModelProfile.modelFamily ?? '不明'} / 形式: {selectedModelProfile.format ?? '不明'} / 量子化:{' '}
+                {selectedModelProfile.quantization ?? '不明'}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-amber-200">
+              {modelProfiles?.errorMessageJa ?? 'DGX からモデルプロファイルを取得できませんでした'}
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-black/25 p-3">
         <p className="min-w-[12rem] flex-1 break-words text-sm leading-snug text-white/70">

@@ -14,10 +14,12 @@ DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`*
 - `control-server.py`
   - `LLM_RUNTIME_START_CMD` / `LLM_RUNTIME_STOP_CMD` を実行する最小 HTTP サーバ
   - **`DGX_LLM_SINGLE_ACTIVE_GUARD`**（既定 ON）: `/start` 前に非アクティブ backend を実停止。詳細は [`dgx_llm_single_active_guard.py`](./dgx_llm_single_active_guard.py)
+- `model_profiles.py` / `active_model_state.py`
+  - DGX 正本のモデルプロファイル manifest と active state を管理する。Pi5/Web は `modelProfileId` だけを渡し、backend と表示名は DGX 側で解決する
 - `runtime_stop_policy.py`
   - blue 向け `/stop` の挙動（`on_demand` / `keep_warm` / `always_on`）を解決。環境変数: **`BLUE_LLM_RUNTIME_STOP_MODE`（推奨）**、**`BLUE_LLM_RUNTIME_KEEP_WARM`（非推奨・互換）** — 前者が優先
 - `gateway-server.py`
-  - `/healthz` / `/start` / `/stop` / `/v1/*` / `/embed` を localhost 上で束ねる軽量 gateway（補助経路: `/private-comfyui/*`・`/experiment-lab/*`・`/agent-container/*` の start/stop/health）
+  - `/healthz` / `/start` / `/stop` / `/v1/*` / `/embed` を localhost 上で束ねる軽量 gateway（補助経路: `/private-comfyui/*`・`/experiment-lab/*`・`/agent-container/*` の start/stop/health）。`/system/model-profiles` と `/system/model-profile` で DGX 正本のモデル情報を返す
 - `embedding-server.py`
   - `jpegBase64 -> embedding[]` を返す最小 image embedding server
 - `control-server.mjs`
@@ -57,6 +59,10 @@ DGX Spark 上で `system-prod` 用 LocalLLM を **host build の `llama-server`*
   `/srv/dgx/system-prod/logs/`
 - Hugging Face cache:
   `/srv/dgx/system-prod/data/hf-cache/`
+- model profile registry:
+  `/srv/dgx/shared-models/registry/<modelProfileId>/manifest.json`
+- active model state:
+  `/srv/dgx/system-prod/state/active-model-profile.json`
 
 ## 最小の使い方
 
@@ -184,14 +190,24 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 
 ### Blue/Green backend 切替
 
-- `ACTIVE_LLM_BACKEND=green`
-  - 既定。現行 `llama.cpp` 系 backend を使う
-- `ACTIVE_LLM_BACKEND=blue`
-  - 新しい blue backend を使う。現時点の第一候補は `Qwen3.6-27B-NVFP4` を Spark 向け `vLLM` image で起動する構成
+`POST /start` に `{"modelProfileId":"..."}` がある場合は、manifest の `backend` が `ACTIVE_LLM_BACKEND` より優先される。未指定時だけ従来互換として `ACTIVE_LLM_BACKEND=green|blue` を使う。
 
-切替は `control-server` と `gateway-server` の **両方**で同じ値にそろえる。systemd 運用では
-`secrets/control-server.env` / `secrets/gateway-server.env` に同じ `ACTIVE_LLM_BACKEND` を入れ、`systemctl restart dgx-llm-control dgx-llm-gateway` で反映する。
-`@reboot` / 手動起動の `start-control-server.sh` / `start-gateway-server.sh` も、同じ `secrets/*.env` を自動で `source` する。
+- `business_qwen36_27b_nvfp4`
+  - blue / vLLM / `sakamakismile/Qwen3.6-27B-NVFP4` / alias `system-prod-primary`
+- `business_qwen35_35b_gguf`
+  - green / llama.cpp / `Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf` / alias `system-prod-primary`
+
+manifest 例は [`model-registry.examples/`](./model-registry.examples/) に置いている。実機では各ディレクトリを `/srv/dgx/shared-models/registry/` へコピーし、HF 実体は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 HF cache は manifest の `currentStorageLocation` に残し、実ファイル移動は手動検証で実施する。
+
+```bash
+TOKEN="$(cat /srv/dgx/system-prod/secrets/api-token)"
+curl -sS -H "X-LLM-Token: ${TOKEN}" http://127.0.0.1:38081/system/model-profiles
+curl -sS -H "X-LLM-Token: ${TOKEN}" http://127.0.0.1:38081/system/model-profile
+curl -sS -X POST http://127.0.0.1:38081/start \
+  -H "X-Runtime-Control-Token: $(cat /srv/dgx/system-prod/secrets/runtime-control-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"modelProfileId":"business_qwen36_27b_nvfp4","reason":"manual_profile_smoke"}'
+```
 
 この構成では、Pi5 から見える契約はそのまま固定する。
 

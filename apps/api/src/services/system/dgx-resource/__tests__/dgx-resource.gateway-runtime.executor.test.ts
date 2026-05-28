@@ -42,6 +42,28 @@ describe('executeGatewayRuntimeStartStop', () => {
     expect(JSON.stringify(init?.headers)).toContain('control-token');
   });
 
+  it('includes modelProfileId only for start requests', async () => {
+    const fetchImpl = vi.fn(async (): Promise<Response> => {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        url: '',
+        text: async () => '',
+        json: async () => ({}),
+      } as Response;
+    });
+
+    await executeGatewayRuntimeStartStop({ fetchImpl }, 'start', 'unit_test', 'business_qwen36_27b_nvfp4');
+    await executeGatewayRuntimeStartStop({ fetchImpl }, 'stop', 'unit_test', 'business_qwen36_27b_nvfp4');
+
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body))).toEqual({
+      reason: 'unit_test',
+      modelProfileId: 'business_qwen36_27b_nvfp4',
+    });
+    expect(JSON.parse(String(fetchImpl.mock.calls[1]![1]?.body))).toEqual({ reason: 'unit_test' });
+  });
+
   it('POSTs to stop URL', async () => {
     const fetchImpl = vi.fn(async (): Promise<Response> => {
       return {
