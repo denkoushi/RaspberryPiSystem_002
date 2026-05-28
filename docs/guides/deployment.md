@@ -10,7 +10,35 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸ラベルパディング**·**`feat/kiosk-load-balancing-chart-axis-padding`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-chart-axis-padding-2026-05-28}
+### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸CD下余白+縦表示名**·**`feat/kiosk-load-balancing-axis-label-gap`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-axis-label-gap-2026-05-28}
+
+- **背景（実機所見）**: 直前デプロイ（`cb339bfa`）は資源CD・表示名を **+Y** に寄せたが、**同一 tick 原点から `dy` のみ** で配置していたため、**回転した表示名が資源CDと重なり**、CD の真下に余白がなく **「CD → 余白 → 縦表示名」** の意図どおりにならなかった（[KB-362 §所見](../knowledge-base/KB-362-kiosk-load-balancing.md#実機所見2026-05-28--x軸cdと表示名の重なり)）。
+- **Fix**:
+  - レイアウトを **資源CD（横）→ `gapBelowResourceCd`（10px）→ 表示名（+90° 縦）** の 3 段に分離。
+  - 表示名は **別 `<g transform>`** で `getOverviewChartDisplayNameOffsetY()`（= CD `dy` + `lineHeight` + gap）から開始。
+  - ラベル帯 **`loadBalancingOverviewChartAxisBandHeight` = 108**（旧 96）。`tickMargin: 6` · 資源CD `dy: 4` · `lineHeight: 13`。
+  - 契約テスト: `108/6/4/10/27`（offsetY）を固定。
+- **代表コミット**: **`d0263cce`** `fix(kiosk): separate overview chart labels under resource codes`
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-axis-label-gap infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-122709-25103` | `ok=134` `changed=4` `failed=0` | Git **`d0263cce`** · **`--follow` 約 320s** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **32s**）
+- **負荷調整スモーク**: [KB-362 §CD下余白 2026-05-28](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--棒グラフx軸cd下余白と縦表示名)
+- **Web バンドル**: `index-CzS0ipSK.js` — `gapBelowResourceCd:10` · `lineHeight:13` · `tickMargin:6` · `rotationDeg:90`
+- **API**: `overview?month=2026-05` **HTTP 200**（約 **0.20s**）
+- **CI**: **`26552525583`** — `lint-build-unit` / `e2e-*` / `api-db-and-infra` **success** · `security-docker`（Caddy Trivy）**failure** — **本変更と無関係**（main でも同様）
+- **トラブルシュート**:
+  - **CD と表示名が重なる** → **`cb339bfa` 世代（単一原点+`dy`）** — **`d0263cce` 以上** + [強制リロード](verification-checklist.md) §6.6.4
+  - **バンドル確認** → `grep -E 'gapBelowResourceCd:10|tickMargin:6|rotationDeg:90'` on Pi5 `index-*.js`
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)
+
+### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸ラベルパディング**·**`feat/kiosk-load-balancing-chart-axis-padding`**·**Web のみ**·**Pi5 本番**·**→ CD下余白 fix で置換**） {#kiosk-load-balancing-chart-axis-padding-2026-05-28}
 
 - **背景（実機所見）**: 直前デプロイ（`b7288982`）は表示名を **`+90°`** で軸下へ伸ばしたが、資源CDを **`dy: -4`（-Y = 棒側）** としていたため、**資源CDが棒グラフと重なり**、CD と表示名も **同じ付近で相互に重なって判読不能**（[KB-362 §所見](../knowledge-base/KB-362-kiosk-load-balancing.md#実機所見2026-05-28--x軸dy-符号と重なり)）。
 - **Fix**:

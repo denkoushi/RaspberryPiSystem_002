@@ -25,7 +25,8 @@ last-verified: 2026-05-28
 | 2026-05-28 UI | `feat/kiosk-load-balancing-resource-display-lines` · **`83470163`** | **資源CD表示名2行** — 超過チップ・棒グラフX軸（`resourceNameMap`）·**Pi5 のみ本番** |
 | 2026-05-28 UI | `feat/kiosk-load-balancing-vertical-chart-axis` · **`04c9ad6e`** | **棒グラフX軸縦書き（初版）** — **`-90°` は実機 NG** → 下記 fix で置換 |
 | 2026-05-28 UI | `feat/kiosk-load-balancing-chart-axis-labels-downward` · **`b7288982`** | **棒グラフX軸表示名を軸下へ（+90°）** · **Pi5 本番** · **→ パディング fix で置換** |
-| 2026-05-28 UI | `feat/kiosk-load-balancing-chart-axis-padding` · **`cb339bfa`** | **棒グラフX軸ラベルパディング** — 資源CD/表示名を **+Y のみ** · 帯 **96px** · **Pi5 本番** |
+| 2026-05-28 UI | `feat/kiosk-load-balancing-chart-axis-padding` · **`cb339bfa`** | **棒グラフX軸ラベルパディング** — 資源CD/表示名を **+Y のみ** · 帯 **96px** · **Pi5 本番** · **→ CD下余白 fix で置換** |
+| 2026-05-28 UI | `feat/kiosk-load-balancing-axis-label-gap` · **`d0263cce`** | **棒グラフX軸 CD下余白+縦表示名** — 別 `<g>` 配置 · 帯 **108px** · **Pi5 本番** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -223,7 +224,95 @@ sequenceDiagram
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
 
-## Production deploy（実績 2026-05-28 · 棒グラフX軸ラベルパディング · Pi5 のみ）
+## Production deploy（実績 2026-05-28 · 棒グラフX軸 CD下余白+縦表示名 · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-axis-label-gap`
+- **代表コミット**: **`d0263cce`** `fix(kiosk): separate overview chart labels under resource codes`
+- **変更範囲**: **Web のみ**（`gapBelowResourceCd` · 表示名を **別 `<g>`** · `getOverviewChartDisplayNameOffsetY()` · 帯 **96→108** · 契約テスト）
+- **Prisma マイグレーション**: **なし**
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ** |
+| Detach Run ID | `20260528-122709-25103` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0**（約 **32s**） |
+| Pi5 Git | **`d0263cce`** |
+| Web バンドル | `index-CzS0ipSK.js`（`gapBelowResourceCd:10` · `lineHeight:13` · `tickMargin:6` · `rotationDeg:90`） |
+| CI | **`26552525583`** — lint/e2e/api **success** · `security-docker` **failure**（Caddy Trivy·本変更無関係） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-load-balancing-axis-label-gap infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機所見（2026-05-28 · X軸 CDと表示名の重なり）
+
+- **症状**: `cb339bfa` デプロイ後、資源CD（横）と表示名（+90°）が **同一 tick 原点** から `dy: 10` / `28` だけ離れており、**回転後の表示名が CD 行と視覚的に重なる**。ユーザー要望は **「資源CDの真下にパディング → その下に縦表示名」**。
+- **原因**: Recharts カスタム tick で **2 行を 1 つの `<text>` チェーンではなく 2 つの `<text>` にしたが、表示名の `rotate(90)` は **親原点基準** のため、`dy` だけでは **CD 行の下辺 + 余白** が保証されない。
+- **Fix**: `d0263cce` — CD 行の下に **`gapBelowResourceCd: 10`** を明示し、表示名を **`translate(0, offsetY)` の子 `<g>`** に分離（`offsetY = dy + lineHeight + gap`）。
+- **教訓**: 縦書きラベルは **段ごとに `<g>` を分ける**。プレビュー HTML の `flex-direction: column; gap: 10px` と SVG の対応を **offset 計算式で契約テスト固定**する。
+
+## 実機検証（2026-05-28 · 棒グラフX軸 CD下余白と縦表示名）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- Pi5 Git: **`d0263cce`**
+
+### API / Web スモーク
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
+  "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+# 実績: HTTP 200（約 0.20s）
+
+ssh denkon5sd02@100.106.158.2 \
+  'JS=/srv/site/assets/index-CzS0ipSK.js; \
+   docker exec docker-web-1 sh -c "grep -oE \"gapBelowResourceCd:10|lineHeight:13|tickMargin:6|rotationDeg:90\" $JS | sort -u"'
+# 実績: gapBelowResourceCd:10, lineHeight:13, rotationDeg:90, tickMargin:6
+```
+
+### 現場目視（チェックリスト）
+
+| # | 確認項目 | 期待 |
+|---|----------|------|
+| 1 | 資源CD | 横書き · 軸下 **上段** · 棒に被らない |
+| 2 | CD と表示名の間 | **明確な余白**（約 10px） |
+| 3 | 表示名 | 余白の **下から** **+90°** 縦書き · 帯 **108px** 内 |
+| 4 | 強制リロード | 旧バンドル（`dy:10/28` 単一原点）時は §6.6.4 |
+
+**参照**: [deployment.md §CD下余白 2026-05-28](../guides/deployment.md#kiosk-load-balancing-axis-label-gap-2026-05-28)
+
+## 棒グラフ X 軸レイアウト契約（2026-05-28 · 現行 · `d0263cce`）
+
+| 項目 | 値 |
+|------|-----|
+| tick 原点 | X 軸線上 |
+| tickMargin | **6**（軸線と棒の隙間） |
+| 資源CD | **`dy: +4`** · **`lineHeight: 13`** · `textAnchor: middle`（横書き） |
+| CD 下余白 | **`gapBelowResourceCd: 10`** |
+| 表示名 | **`rotationDeg: +90`** · 開始 Y = **`getOverviewChartDisplayNameOffsetY()`** = **27**（4+13+10）· 別 `<g>` |
+| 省略 | `formatOverviewChartAxisDisplayName` · max **18** 文字 |
+| 下余白 | **`loadBalancingOverviewChartAxisBandHeight` = 108** |
+| 外寸 | **`lbChart.container`** 変更なし |
+
+**Troubleshooting（現行）**
+
+| 症状 | 確認 |
+|------|------|
+| CD と表示名が重なる | **`cb339bfa` 世代** — **`d0263cce` 以上** + 強制リロード |
+| 資源CDが棒に被る | **`b7288982` 世代（`dy: -4`）** — **`cb339bfa` 以上** |
+| 表示名が棒の上に被る | **`04c9ad6e` 世代（-90°）** — **`b7288982` 以上** |
+| バンドル確認 | `gapBelowResourceCd:10` · `tickMargin:6` · `rotationDeg:90` |
+| 下で切れる | 18 文字省略 — 下余白 108px 内の仕様 |
+
+## Production deploy（実績 2026-05-28 · 棒グラフX軸ラベルパディング · Pi5 のみ · CD/表示名重なりあり）
 
 - **ブランチ**: `feat/kiosk-load-balancing-chart-axis-padding`
 - **代表コミット**: **`cb339bfa`** `fix(kiosk): pad load balancing chart axis labels below bars`
@@ -288,26 +377,14 @@ ssh denkon5sd02@100.106.158.2 \
 
 **参照**: [deployment.md §パディング 2026-05-28](../guides/deployment.md#kiosk-load-balancing-chart-axis-padding-2026-05-28)
 
-## 棒グラフ X 軸レイアウト契約（2026-05-28 · 現行 · `cb339bfa`）
+## 棒グラフ X 軸レイアウト契約（2026-05-28 · 履歴 · `cb339bfa` 世代）
 
 | 項目 | 値 |
 |------|-----|
-| tick 原点 | X 軸線上 |
-| tickMargin | **8**（軸線と棒の隙間） |
-| 資源CD | **`dy: +10`**（+Y = マージン内上段）· `textAnchor: middle` |
-| 表示名 | **`rotationDeg: +90`** · **`dy: +28`**（CD 行の下） |
-| 省略 | `formatOverviewChartAxisDisplayName` · max **18** 文字 |
-| 下余白 | **`loadBalancingOverviewChartAxisBandHeight` = 96**（`margin.bottom` / `XAxis.height` と同期） |
-| 外寸 | **`lbChart.container`** = `min(260px,34dvh)` **変更なし** |
+| 資源CD | `dy: +10` · 表示名 `dy: +28`（**同一原点**）· **実機 NG（CD/表示名重なり）** |
+| 下余白 | **96** |
 
-**Troubleshooting（現行）**
-
-| 症状 | 確認 |
-|------|------|
-| 資源CDが棒に被る | **`b7288982` 世代（`dy: -4`）** — **`cb339bfa` 以上** + 強制リロード |
-| 表示名が棒の上に被る | **`04c9ad6e` 世代（-90°）** — **`b7288982` 以上** |
-| バンドル確認 | `tickMargin:8` · `dy:10` · `dy:28` · `rotationDeg:90` |
-| 下で切れる | 18 文字省略 — 下余白 96px 内の仕様 |
+**→ 現行契約は [§現行 d0263cce](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--d0263cce)**
 
 ## Production deploy（実績 2026-05-28 · 棒グラフX軸表示名を軸下へ · Pi5 のみ · 初版・CD 重なりあり）
 

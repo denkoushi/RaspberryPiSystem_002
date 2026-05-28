@@ -1,5 +1,6 @@
 import {
   formatOverviewChartAxisDisplayName,
+  getOverviewChartDisplayNameOffsetY,
   loadBalancingOverviewXAxisLayout,
   parseRechartsAxisTickPosition
 } from './loadBalancingOverviewChartAxis';
@@ -17,7 +18,7 @@ type Props = SVGProps<SVGTextElement> & {
   displayNameByCd: Record<string, string>;
 };
 
-/** 棒グラフ X 軸: 資源CD・表示名とも軸下マージン内（+Y）。外寸は lbChart.container 固定。 */
+/** 棒グラフ X 軸: 資源CD（横）→ 余白 → 表示名（縦 +90°）。外寸は lbChart.container 固定。 */
 export function LoadBalancingOverviewResourceChartXAxisTick({
   x,
   y,
@@ -29,6 +30,7 @@ export function LoadBalancingOverviewResourceChartXAxisTick({
   const { x: xPos, y: yPos } = parseRechartsAxisTickPosition(x, y);
   const nameText = formatOverviewChartAxisDisplayName(displayName);
   const { resourceCd, displayName: nameStyle } = loadBalancingOverviewXAxisLayout;
+  const displayNameOffsetY = getOverviewChartDisplayNameOffsetY();
 
   return (
     <g transform={`translate(${xPos},${yPos})`}>
@@ -42,18 +44,18 @@ export function LoadBalancingOverviewResourceChartXAxisTick({
         {cd}
       </text>
       {nameText ? (
-        <text
-          textAnchor={nameStyle.textAnchor}
-          fill={nameStyle.fill}
-          fontSize={nameStyle.fontSize}
-          transform={`rotate(${nameStyle.rotationDeg})`}
-          x={0}
-          y={0}
-          dx={nameStyle.dx}
-          dy={nameStyle.dy}
-        >
-          {nameText}
-        </text>
+        <g transform={`translate(0,${displayNameOffsetY})`}>
+          <text
+            textAnchor={nameStyle.textAnchor}
+            fill={nameStyle.fill}
+            fontSize={nameStyle.fontSize}
+            transform={`rotate(${nameStyle.rotationDeg})`}
+            x={0}
+            y={0}
+          >
+            {nameText}
+          </text>
+        </g>
       ) : null}
     </g>
   );

@@ -23,11 +23,11 @@
 - **資源CD表示名（2026-05-28）**:
   - **データ**: 既存 `GET /kiosk/production-schedule/resources` の `resourceNameMap`（新 API なし）
   - **ステップ2チップ**: 1行目 `資源CD (+超過分)` · 2行目 表示名（`lbChip.line1` / `line2`）
-  - **棒グラフ X 軸（2026-05-28 現行 · `cb339bfa`）**: **資源CD**=`dy:+10`（+Y·マージン上段）· **表示名**=`dy:+28` + **`+90°`** · **`tickMargin:8`** · 帯 **96px**。`-90°` / **`dy:-4`（棒側）** は実機 NG。`loadBalancingOverviewChartAxis.ts`
+  - **棒グラフ X 軸（2026-05-28 現行 · `d0263cce`）**: **資源CD（横）** → **`gapBelowResourceCd: 10`** → **表示名（+90° 縦）**。表示名は `getOverviewChartDisplayNameOffsetY()` で別 `<g>`。帯 **108px** · `tickMargin:6`。`loadBalancingOverviewChartAxis.ts`
   - **解決関数**: `resolveLoadBalancingResourceDisplayName.ts`（手動順番 `joinManualOrderResourceDisplayNames` と同一）
   - **行マッピング**: `mapOverviewResourceChartRows.ts`（必要分降順・上位 48）
 - **俯瞰のみ全面適用**。機種別月次・着手日は今後 `loadBalancingUiClasses` を横展開可能
-- **デプロイ**: **Pi5 のみ**。本番 **`cb339bfa`**（[KB-362 §パディング](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--棒グラフx軸ラベルパディング--pi5-のみ)）
+- **デプロイ**: **Pi5 のみ**。本番 **`d0263cce`**（[KB-362 §CD下余白](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--棒グラフx軸-cd下余白縦表示名--pi5-のみ)）
 
 ## 集計ポリシー（サーバ実装に準拠）
 
