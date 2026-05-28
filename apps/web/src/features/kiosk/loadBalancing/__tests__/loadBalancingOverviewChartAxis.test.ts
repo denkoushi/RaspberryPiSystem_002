@@ -3,10 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOverviewChartDisplayNameByCd,
   formatOverviewChartAxisDisplayName,
+  loadBalancingOverviewXAxisLayout,
   parseRechartsAxisTickPosition
 } from '../loadBalancingOverviewChartAxis';
 
 describe('loadBalancingOverviewChartAxis', () => {
+  it('表示名は軸下方向（+90°）へ伸ばす契約', () => {
+    expect(loadBalancingOverviewXAxisLayout.displayName.rotationDeg).toBe(90);
+    expect(loadBalancingOverviewXAxisLayout.resourceCd.dy).toBeLessThan(0);
+    expect(loadBalancingOverviewXAxisLayout.displayName.dy).toBeGreaterThan(0);
+  });
+
   describe('parseRechartsAxisTickPosition', () => {
     it('数値座標をそのまま返す', () => {
       expect(parseRechartsAxisTickPosition(12, 34)).toEqual({ x: 12, y: 34 });
