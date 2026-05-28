@@ -10,6 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **キオスク負荷調整・俯瞰 UI 全幅レイアウト**·**`fix/kiosk-load-balancing-full-width-layout`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-full-width-layout-2026-05-28}
+
+- **変更概要**:
+  - **背景**: 実機検証で **1440px キャップ**により左右余白が大きい。棒グラフの **Recharts 凡例**がプロット中央の広い余白に浮く。左列（棒グラフ+試算表）が狭い。
+  - **Fix**: `max-w-[1440px]` 削除で **キオスク全幅**。ワークスペース **左 `1.45fr` / 右 `1fr`**（3番ペインは維持）。凡例を **チャート直上の横並び**（Recharts `<Legend />` 廃止）。`maxBarSize` **40**。
+  - **不変**: API / DB / フォント 14px 契約 / reset 境界。
+- **代表コミット**: **`4ea657a5`** `fix(kiosk): use full-width load balancing overview layout`
+- **CI**: **`26546037648`** success
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit` 1 台）
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/kiosk-load-balancing-full-width-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-091504-17077` | `ok=134` `changed=4` `failed=0` | **`--follow` 約 306s** · Git **`4ea657a5`** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- **負荷調整スモーク**: [KB-362 §実機検証 全幅レイアウト](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--全幅レイアウト)
+- **Web バンドル**: `index-DvjDK_-v.js` — **`1.45fr`** · **`table-fixed`** · **`超過（必要分）`**（外部凡例）
+- **API**: `overview` **HTTP 200**（約 **0.37s**）
+- **トラブルシュート**:
+  - **左右にまだ余白** → 親レイアウト（沉浸式キオスク）の padding を確認。Pi5 Git **`4ea657a5` 未満** なら再デプロイ。
+  - **凡例がプロット中央** → 旧バンドル（`<Legend />` 内蔵）。キャッシュクリア。
+  - **1 カラムに折りたたまれる** → 幅 **`< lg`（1024px）** — 横画面キオスク推奨。
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)
+
 ### 補足（2026-05-28 · **キオスク負荷調整・俯瞰 UI 可読性チューニング**·**`fix/kiosk-load-balancing-font-layout-tuning`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-font-layout-tuning-2026-05-28}
 
 - **変更概要**:

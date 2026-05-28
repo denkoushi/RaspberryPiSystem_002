@@ -219,6 +219,61 @@ sequenceDiagram
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
 
+## Production deploy（実績 2026-05-28 · 全幅レイアウト · Pi5 のみ）
+
+- **ブランチ**: `fix/kiosk-load-balancing-full-width-layout`
+- **代表コミット**: **`4ea657a5`** `fix(kiosk): use full-width load balancing overview layout`
+- **変更範囲**: **Web のみ**（`max-w-[1440px]` 撤廃・左列 1.45fr・外部凡例・棒幅拡大）
+- **CI**: **`26546037648`** success
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ** |
+| Detach Run ID | `20260528-091504-17077` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0** |
+| Pi5 Git | **`4ea657a5`** |
+| Web バンドル | `index-DvjDK_-v.js`（`1.45fr` · `超過（必要分）` · `table-fixed`） |
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh fix/kiosk-load-balancing-full-width-layout infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機検証（2026-05-28 · 全幅レイアウト）
+
+### 自動
+
+- Phase12 **43/0/0** · `overview` **200** · Pi5 Git **`4ea657a5`**
+
+### 現場目視（2026-05-28 · 実施済み所見 → 本修正）
+
+| 所見 | 対応（`4ea657a5`） |
+|------|---------------------|
+| 3番ペイン（推奨セット） | **OK** — 比率 `1fr` で維持 |
+| 画面左右の大きな余白 | **`max-w-[1440px]` 削除** — 他キオスク同様全幅 |
+| 棒グラフ・4番が狭い | 左列 **`1.45fr`** に拡大 |
+| 凡例がプロット中央の余白に浮く | **チャート直上の横並び凡例**（Recharts Legend 廃止） |
+
+- [ ] 再確認: キオスク横画面で全幅・凡例位置・棒/表の視認性
+
+**参照**: [deployment.md §全幅 2026-05-28](../guides/deployment.md#kiosk-load-balancing-full-width-layout-2026-05-28)
+
+## UI 全幅契約（2026-05-28）
+
+| トークン | 値 |
+|---------|-----|
+| `lbPage.root` | `w-full`（**max-width なし**）· `px-2` |
+| `lbGrid.workspaceRow` | `lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,1fr)]` |
+| `lbChart.legend` | チャート外・`必要分` / `能力分` / `超過（必要分）` |
+
+**Troubleshooting**
+
+| 症状 | 確認 |
+|------|------|
+| 1440px で中央寄せのまま | バンドルに `max-w-[1440px]` が残っていないか |
+| 凡例だけ中央に浮く | 旧 JS（内蔵 Legend）。`超過（必要分）` 文字列で新バンドル判定 |
+
 ## Production deploy（実績 2026-05-28 · 可読性チューニング · Pi5 のみ）
 
 - **ブランチ**: `fix/kiosk-load-balancing-font-layout-tuning`
