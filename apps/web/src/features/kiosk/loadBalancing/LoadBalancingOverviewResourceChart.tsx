@@ -47,6 +47,8 @@ export function LoadBalancingOverviewResourceChart({ rows, showOverLabels = true
 
     const update = () => setViewportWidth(el.clientWidth);
     update();
+    if (typeof ResizeObserver === 'undefined') return;
+
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
