@@ -110,6 +110,11 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - control API: `POST /start {"modelProfileId":"business_qwen36_27b_nvfp4"}`
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
+- **ストレージパス契約（可用性判定）**:
+  - **`storageLocation`**: 移行**先**（正規配置）。未移行なら存在しないことがある
+  - **`currentStorageLocation`**: **現配置**（移行途中の実体）。HF cache 利用時は **`/srv/dgx/system-prod/data/hf-cache/hub/models--<org>--<model>`** 形式（**`hub/` 配下**）。`hf-cache/models--...` のように **`hub` を抜くと `status: unavailable` になり、管理 UI のドロップダウンに出ない**
+  - DGX `model_profiles.profile_storage_available()` は **`currentStorageLocation` → `storageLocation` の OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `status: available`
+  - **切り分け**: API で profiles が 2 件なのに UI が 1 件だけ → 各 profile の `status` と manifest の `currentStorageLocation` を `ls` で突合する（[KB-365 §model profile storage](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）
 
 **本番反映（2026-05-28・業務復帰モデル選択・Pi5 API+Web + DGX control/gateway）** {#本番反映2026-05-28-業務復帰モデル選択}
 

@@ -12,7 +12,7 @@
   "format": "safetensors",
   "quantization": "NVFP4",
   "storageLocation": "/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4",
-  "currentStorageLocation": "/srv/dgx/system-prod/data/hf-cache/models--sakamakismile--Qwen3.6-27B-NVFP4",
+  "currentStorageLocation": "/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4",
   "storageStatus": "planned_shared_models_migration",
   "expectedColdStartSec": 180,
   "canonicalNames": ["Qwen3.6-27B-NVFP4"],

@@ -154,6 +154,7 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 - **デプロイ**: Pi5 Detach **`20260528-184011-18178`** → DGX **`scp` + PID 再起動**（[KB-365 §本番](./KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)）。
 - **実機**: `GET /system/model-profiles` → **2 profiles**（未 start 前 **`activeProfileId: null`** は正常）。Phase12 **43/0/0**。
 - **運用上の注意**: **KPI の Unified Mem** は選択した profile の backend 起動後に変化する。**profile ID と `ACTIVE_LLM_BACKEND` env** が食い違う場合は **active state ファイル**（`/srv/dgx/system-prod/state/active-model-profile.json`）と **`GET /system/model-profile`** で確認。
+- **モデルが 1 件しか選べないとき**: DGX API は 2 profile 返却でも、27B が **`status: unavailable`**（manifest の `currentStorageLocation` が実ディスクとずれている）だと UI は 35B のみ表示。**HF 27B の実体は `hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4`** を確認し、registry manifest を合わせる（[KB-365 §storage availability](./KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）。
 
 ## Prevention（再発防止・ドキュメント）
 
