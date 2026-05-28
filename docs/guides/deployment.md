@@ -10,7 +10,37 @@ update-frequency: medium
 
 # デプロイメントガイド
 
-### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸表示名を軸下へ**·**`feat/kiosk-load-balancing-chart-axis-labels-downward`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-chart-axis-labels-downward-2026-05-28}
+### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸ラベルパディング**·**`feat/kiosk-load-balancing-chart-axis-padding`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-chart-axis-padding-2026-05-28}
+
+- **背景（実機所見）**: 直前デプロイ（`b7288982`）は表示名を **`+90°`** で軸下へ伸ばしたが、資源CDを **`dy: -4`（-Y = 棒側）** としていたため、**資源CDが棒グラフと重なり**、CD と表示名も **同じ付近で相互に重なって判読不能**（[KB-362 §所見](../knowledge-base/KB-362-kiosk-load-balancing.md#実機所見2026-05-28--x軸dy-符号と重なり)）。
+- **Fix**:
+  - **資源CD・表示名をいずれも +Y（軸下マージン内）** に配置 — Recharts tick 原点は X 軸線上。**`-Y` はプロット（棒）側**のため資源CDに禁止。
+  - **`tickMargin: 8`** — 軸線と棒下端の隙間。
+  - 資源CD **`dy: +10`** · 表示名 **`dy: +28`**（CD 行の下）· **`rotationDeg: +90`** 維持。
+  - ラベル帯 **`loadBalancingOverviewChartAxisBandHeight` = 96**（旧 76）。`margin.bottom` / `XAxis.height` と同期。**外寸 `lbChart.container` は変更なし**。
+  - 契約テスト: `loadBalancingOverviewChartAxis.test.ts` で `96/8/10/28` を固定。
+- **代表コミット**: **`cb339bfa`** `fix(kiosk): pad load balancing chart axis labels below bars`
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-chart-axis-padding infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-120020-27501` | `ok=134` `changed=4` `failed=0` | Git **`cb339bfa`** · **`--follow` 約 360s** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **34s**）
+- **負荷調整スモーク**: [KB-362 §軸パディング 2026-05-28](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--棒グラフx軸ラベルパディング)
+- **Web バンドル**: `index-Dz8ctC9S.js` — `rotationDeg:90` · `tickMargin:8` · `dy:10` · `dy:28`
+- **API**: `overview?month=2026-05` **HTTP 200**（約 **0.28s**）
+- **CI**: **`26551643029`** — `lint-build-unit` / `e2e-*` / `api-db-and-infra` **success** · `security-docker`（Caddy Trivy）**failure** — **本変更と無関係**（main でも同様）
+- **トラブルシュート**:
+  - **資源CDが棒に被る** → **`b7288982` 世代（`dy: -4`）** — **`cb339bfa` 以上** + [強制リロード](verification-checklist.md) §6.6.4
+  - **下で切れる** → 18 文字省略 — 下余白 **96px** 内の仕様
+  - **バンドル確認** → `grep -E 'tickMargin:8|dy:10|dy:28|rotationDeg:90'` on Pi5 `index-*.js`
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)
+
+### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸表示名を軸下へ**·**`feat/kiosk-load-balancing-chart-axis-labels-downward`**·**Web のみ**·**Pi5 本番**·**→ パディング fix で置換**） {#kiosk-load-balancing-chart-axis-labels-downward-2026-05-28}
 
 - **背景（実機所見）**: 直前デプロイ（`04c9ad6e`）は表示名を **`rotate(-90)`** とし、文字列が **プロット内（上方向）** に伸びて棒・隣ラベルと重なり **全く読めない** 状態だった（[KB-362 §所見](../knowledge-base/KB-362-kiosk-load-balancing.md#実機所見2026-05-28--x軸-90-の問題)）。
 - **Fix**:
