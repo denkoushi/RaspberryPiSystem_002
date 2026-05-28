@@ -36,6 +36,7 @@ update-frequency: high
 **対処（運用上の暫定）**: 上流で修正版 Caddy／ベースイメージへ追従できるまでの間、**`.trivyignore` に該当 CVE を追記**する（既存の KB-307 系 Trivy 運用と同様）。**恒久対策の代替にしない**こと——ベースイメージまたは Caddy の更新で解消できないかを別途追跡する。
 
 **記録（2026-05-16）**: `security-docker`（web イメージ **`usr/bin/caddy`**・`github.com/golang/go`/`stdlib`）で **HIGH** 複数（**CVE-2026-33811**・**CVE-2026-33814**・**CVE-2026-39820**・**CVE-2026-39836**・**CVE-2026-42499**）が報告され **CI が失敗**。**`.trivyignore`** へ追記し **run `25956906908` で success**。コミット **`0e327378`**。**関連 PR/ブランチ**: **`feat/canonical-schedule-disappearance-current-keys`**（本体実装とは独立した **`chore(ci)`**）。
+**記録（2026-05-28）**: 同じく `security-docker` の `Security scan (Trivy image web)` で **`usr/bin/caddy` / `stdlib`** の **HIGH 3件**（**CVE-2026-39823**・**CVE-2026-39825**・**CVE-2026-39826**）が報告され **run `26569170631` が failure**。ローカル `docker build -t raspisys-web:ci -f infrastructure/docker/Dockerfile.web .` と `trivy image --severity HIGH,CRITICAL --ignore-unfixed raspisys-web:ci` で再現し、**`.trivyignore`** へ追記して対処。
 
 **参照**: [KB-231 追記節（2026-03-31）](../knowledge-base/api.md#kb-231-生産スケジュール登録製番上限の拡張8件20件とサイネージアイテム高さの最適化)（本事例の記録） / [ci-cd.md §セキュリティ例外](../knowledge-base/ci-cd.md)。
 
