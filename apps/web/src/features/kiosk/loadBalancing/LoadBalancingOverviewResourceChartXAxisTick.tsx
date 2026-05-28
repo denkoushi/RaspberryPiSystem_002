@@ -1,11 +1,12 @@
 import {
   formatOverviewChartAxisDisplayName,
+  getOverviewChartDisplayNameClipHeight,
   getOverviewChartDisplayNameOffsetY,
   loadBalancingOverviewXAxisLayout,
   parseRechartsAxisTickPosition
 } from './loadBalancingOverviewChartAxis';
 
-import type { SVGProps } from 'react';
+import type { CSSProperties, SVGProps } from 'react';
 
 type TickPayload = {
   value: string;
@@ -14,16 +15,38 @@ type TickPayload = {
 type Props = SVGProps<SVGTextElement> & {
   x?: number | string;
   y?: number | string;
+  index?: number;
   payload?: TickPayload;
   displayNameByCd: Record<string, string>;
+  tickSlotWidth?: number;
 };
 
-/** 棒グラフ X 軸: 資源CD（横）→ 余白 → 表示名（縦 +90°）。外寸は lbChart.container 固定。 */
+function buildOverviewChartDisplayNameStyle(
+  nameStyle: (typeof loadBalancingOverviewXAxisLayout)['displayName'],
+  clipHeight: number
+): CSSProperties {
+  return {
+    writingMode: nameStyle.writingMode,
+    textOrientation: 'mixed',
+    fontSize: `${nameStyle.fontSize}px`,
+    lineHeight: 1.05,
+    letterSpacing: '0.02em',
+    color: nameStyle.fill,
+    fontFamily: nameStyle.fontFamily,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    maxHeight: `${clipHeight}px`
+  };
+}
+
+/** 棒グラフ X 軸: 資源CD（横）→ 余白 → 表示名（vertical-rl）。tick 原点で中央揃え。 */
 export function LoadBalancingOverviewResourceChartXAxisTick({
   x,
   y,
   payload,
-  displayNameByCd
+  displayNameByCd,
+  tickSlotWidth = 40
 }: Props) {
   const cd = payload?.value ?? '';
   const displayName = displayNameByCd[cd] ?? '';
@@ -31,6 +54,7 @@ export function LoadBalancingOverviewResourceChartXAxisTick({
   const nameText = formatOverviewChartAxisDisplayName(displayName);
   const { resourceCd, displayName: nameStyle } = loadBalancingOverviewXAxisLayout;
   const displayNameOffsetY = getOverviewChartDisplayNameOffsetY();
+  const clipHeight = getOverviewChartDisplayNameClipHeight();
 
   return (
     <g transform={`translate(${xPos},${yPos})`}>
@@ -44,18 +68,27 @@ export function LoadBalancingOverviewResourceChartXAxisTick({
         {cd}
       </text>
       {nameText ? (
-        <g transform={`translate(0,${displayNameOffsetY})`}>
-          <text
-            textAnchor={nameStyle.textAnchor}
-            fill={nameStyle.fill}
-            fontSize={nameStyle.fontSize}
-            transform={`rotate(${nameStyle.rotationDeg})`}
-            x={0}
-            y={0}
+        <foreignObject
+          x={-tickSlotWidth / 2}
+          y={displayNameOffsetY}
+          width={tickSlotWidth}
+          height={clipHeight}
+        >
+          <div
+            style={{
+              boxSizing: 'border-box',
+              width: `${tickSlotWidth}px`,
+              height: `${clipHeight}px`,
+              margin: 0,
+              padding: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-start'
+            }}
           >
-            {nameText}
-          </text>
-        </g>
+            <div style={buildOverviewChartDisplayNameStyle(nameStyle, clipHeight)}>{nameText}</div>
+          </div>
+        </foreignObject>
       ) : null}
     </g>
   );
