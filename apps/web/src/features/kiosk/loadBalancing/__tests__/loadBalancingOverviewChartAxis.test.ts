@@ -3,15 +3,21 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOverviewChartDisplayNameByCd,
   formatOverviewChartAxisDisplayName,
+  loadBalancingOverviewChartAxisBandHeight,
   loadBalancingOverviewXAxisLayout,
   parseRechartsAxisTickPosition
 } from '../loadBalancingOverviewChartAxis';
 
 describe('loadBalancingOverviewChartAxis', () => {
-  it('表示名は軸下方向（+90°）へ伸ばす契約', () => {
+  it('ラベルは軸下マージン内（+Y）にのみ配置する契約', () => {
+    expect(loadBalancingOverviewChartAxisBandHeight).toBe(96);
     expect(loadBalancingOverviewXAxisLayout.displayName.rotationDeg).toBe(90);
-    expect(loadBalancingOverviewXAxisLayout.resourceCd.dy).toBeLessThan(0);
-    expect(loadBalancingOverviewXAxisLayout.displayName.dy).toBeGreaterThan(0);
+    expect(loadBalancingOverviewXAxisLayout.tickMargin).toBe(8);
+    expect(loadBalancingOverviewXAxisLayout.resourceCd.dy).toBe(10);
+    expect(loadBalancingOverviewXAxisLayout.displayName.dy).toBe(28);
+    expect(loadBalancingOverviewXAxisLayout.displayName.dy).toBeGreaterThan(
+      loadBalancingOverviewXAxisLayout.resourceCd.dy
+    );
   });
 
   describe('parseRechartsAxisTickPosition', () => {

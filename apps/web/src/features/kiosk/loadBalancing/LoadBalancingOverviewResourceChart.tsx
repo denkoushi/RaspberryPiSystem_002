@@ -1,7 +1,10 @@
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { LoadBalancingChartContainer } from './LoadBalancingChartContainer';
-import { buildOverviewChartDisplayNameByCd } from './loadBalancingOverviewChartAxis';
+import {
+  buildOverviewChartDisplayNameByCd,
+  loadBalancingOverviewXAxisLayout
+} from './loadBalancingOverviewChartAxis';
 import { LoadBalancingOverviewResourceChartXAxisTick } from './LoadBalancingOverviewResourceChartXAxisTick';
 import {
   LOAD_BALANCING_CAP_FILL,
@@ -62,6 +65,7 @@ export function LoadBalancingOverviewResourceChart({ rows }: Props) {
             dataKey="cd"
             interval={0}
             height={loadBalancingOverviewChartXAxisHeight}
+            tickMargin={loadBalancingOverviewXAxisLayout.tickMargin}
             tick={(props) => (
               <LoadBalancingOverviewResourceChartXAxisTick {...props} displayNameByCd={displayNameByCd} />
             )}

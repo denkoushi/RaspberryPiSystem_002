@@ -134,9 +134,9 @@
     }
     .bar-wrap {
       flex: 1; min-width: 0; height: 100%;
-      display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px;
     }
-    .bar-stack { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+    .bar-stack { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 2px; }
     .bar {
       width: 100%; max-width: 40px; border-radius: 4px 4px 0 0;
       background: linear-gradient(180deg, var(--blue), #0ea5e9);
@@ -145,8 +145,8 @@
     .bar.cap { height: 40%; background: #34d399; opacity: 0.85; margin-top: -4px; }
     .bar-label-stack {
       flex-shrink: 0;
-      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-      gap: 2px; height: 76px; max-width: 100%; overflow: hidden;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      gap: 6px; height: 96px; max-width: 100%; overflow: hidden; padding-top: 4px;
     }
     .bar-label-cd {
       font-family: ui-monospace, monospace; font-size: 0.6875rem; line-height: 1;

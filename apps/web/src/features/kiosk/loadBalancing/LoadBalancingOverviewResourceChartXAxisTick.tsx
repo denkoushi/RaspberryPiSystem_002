@@ -17,7 +17,7 @@ type Props = SVGProps<SVGTextElement> & {
   displayNameByCd: Record<string, string>;
 };
 
-/** 棒グラフ X 軸: 上段=資源CD（棒側）、下段=表示名（軸下へ縦書き +90°）。外寸は lbChart.container 固定。 */
+/** 棒グラフ X 軸: 資源CD・表示名とも軸下マージン内（+Y）。外寸は lbChart.container 固定。 */
 export function LoadBalancingOverviewResourceChartXAxisTick({
   x,
   y,

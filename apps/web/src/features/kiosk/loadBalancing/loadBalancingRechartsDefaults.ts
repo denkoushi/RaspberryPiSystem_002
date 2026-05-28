@@ -1,3 +1,5 @@
+import { loadBalancingOverviewChartAxisBandHeight } from './loadBalancingOverviewChartAxis';
+
 /** Recharts 3: zIndex ポータル初回で棒が消えるのを避ける（デフォルト bar=300 はポータル描画） */
 export const loadBalancingVisibleBarProps = {
   zIndex: 0,
@@ -10,11 +12,15 @@ export const LOAD_BALANCING_CAP_FILL = '#34d399';
 export const LOAD_BALANCING_OVER_REQ_FILL = '#f59e0b';
 export const LOAD_BALANCING_OVER_REQ_STROKE = '#be123c';
 
-/** 凡例はチャート外（上部）。下余白は縦書きX軸（上段CD・下段表示名）用 — ペイン外寸は lbChart.container で固定 */
-export const loadBalancingChartMargin = { top: 8, right: 12, left: 4, bottom: 76 };
+/** 凡例はチャート外（上部）。下余白は X 軸ラベル帯 — ペイン外寸は lbChart.container で固定 */
+export const loadBalancingChartMargin = {
+  top: 8,
+  right: 12,
+  left: 4,
+  bottom: loadBalancingOverviewChartAxisBandHeight
+};
 
-/** loadBalancingOverviewXAxisLayout と同期（俯瞰棒グラフのみ） */
-export const loadBalancingOverviewChartXAxisHeight = 76;
+export const loadBalancingOverviewChartXAxisHeight = loadBalancingOverviewChartAxisBandHeight;
 
 export const loadBalancingTooltipStyle = {
   backgroundColor: '#0f172a',
