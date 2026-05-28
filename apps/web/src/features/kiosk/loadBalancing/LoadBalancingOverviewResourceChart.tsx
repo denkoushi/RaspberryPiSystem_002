@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { LoadBalancingChartContainer } from './LoadBalancingChartContainer';
+import { LoadBalancingOverviewResourceChartXAxisTick } from './LoadBalancingOverviewResourceChartXAxisTick';
 import {
   LOAD_BALANCING_CAP_FILL,
   LOAD_BALANCING_OVER_REQ_FILL,
@@ -9,6 +11,7 @@ import {
   loadBalancingAxisTick,
   loadBalancingChartMargin,
   loadBalancingGridStroke,
+  loadBalancingOverviewChartXAxisHeight,
   loadBalancingTooltipStyle,
   loadBalancingVisibleBarProps
 } from './loadBalancingRechartsDefaults';
@@ -16,6 +19,7 @@ import { lbChart, lbText } from './loadBalancingUiClasses';
 
 export type OverviewChartRow = {
   cd: string;
+  displayName: string;
   req: number;
   cap: number;
   over: number;
@@ -26,6 +30,16 @@ type Props = {
 };
 
 export function LoadBalancingOverviewResourceChart({ rows }: Props) {
+  const displayNameByCd = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const row of rows) {
+      if (row.displayName) {
+        map[row.cd] = row.displayName;
+      }
+    }
+    return map;
+  }, [rows]);
+
   if (rows.length === 0) {
     return <p className={lbText.muted}>表示できるデータがありません（対象月・条件を確認してください）。</p>;
   }
@@ -59,11 +73,11 @@ export function LoadBalancingOverviewResourceChart({ rows }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke={loadBalancingGridStroke} />
           <XAxis
             dataKey="cd"
-            angle={-35}
-            textAnchor="end"
             interval={0}
-            height={70}
-            tick={loadBalancingAxisTick}
+            height={loadBalancingOverviewChartXAxisHeight}
+            tick={(props) => (
+              <LoadBalancingOverviewResourceChartXAxisTick {...props} displayNameByCd={displayNameByCd} />
+            )}
           />
           <YAxis tick={loadBalancingAxisTick} width={48} />
           <Tooltip contentStyle={loadBalancingTooltipStyle} />

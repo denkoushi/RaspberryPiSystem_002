@@ -82,9 +82,13 @@ export const lbBtn = {
 } as const;
 
 export const lbChip = {
-  grid: 'flex max-h-[min(180px,28dvh)] min-h-[2.25rem] flex-wrap gap-2 overflow-auto',
-  over: 'truncate rounded-lg bg-amber-700 px-3 py-2 font-mono text-sm font-semibold text-white',
-  idle: 'truncate rounded-lg bg-slate-700 px-3 py-2 font-mono text-sm font-semibold text-white/85'
+  grid: 'flex max-h-[min(180px,28dvh)] min-h-[2.75rem] flex-wrap gap-2 overflow-auto',
+  over:
+    'flex min-w-[5.5rem] max-w-[9rem] flex-col items-start gap-0.5 rounded-lg bg-amber-700 px-3 py-2 text-left text-white',
+  idle:
+    'flex min-w-[5.5rem] max-w-[9rem] flex-col items-start gap-0.5 rounded-lg bg-slate-700 px-3 py-2 text-left text-white/85',
+  line1: 'w-full truncate font-mono text-sm font-semibold leading-tight',
+  line2: 'w-full truncate text-xs font-medium leading-tight opacity-90'
 } as const;
 
 export const lbChart = {

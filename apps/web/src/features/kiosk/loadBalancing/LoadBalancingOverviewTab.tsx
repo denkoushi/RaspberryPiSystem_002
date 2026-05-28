@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useKioskProductionScheduleLoadBalancingOverview,
+  useKioskProductionScheduleResources,
   usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates,
   usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate,
   usePostKioskProductionScheduleLoadBalancingSuggestions
@@ -25,6 +26,7 @@ import {
 import { LoadBalancingOverviewSuggestionsSection } from './LoadBalancingOverviewSuggestionsSection';
 import { LoadBalancingStepHeading } from './LoadBalancingStepHeading';
 import { lbCard, lbGrid, lbInput, lbPage, lbText } from './loadBalancingUiClasses';
+import { resolveLoadBalancingResourceDisplayName } from './resolveLoadBalancingResourceDisplayName';
 import { useExternalizationPlanState } from './useExternalizationPlanState';
 
 function defaultYearMonth(): string {
@@ -58,6 +60,17 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
   const overviewQuery = useKioskProductionScheduleLoadBalancingOverview(overviewParams, {
     enabled: overviewEnabled
   });
+  const resourcesQuery = useKioskProductionScheduleResources({
+    pauseRefetch: !scopeEnabled
+  });
+  const resourceNameMap = useMemo(
+    () => resourcesQuery.data?.resourceNameMap ?? {},
+    [resourcesQuery.data?.resourceNameMap]
+  );
+  const resolveDisplayName = useCallback(
+    (resourceCd: string) => resolveLoadBalancingResourceDisplayName(resourceCd, resourceNameMap),
+    [resourceNameMap]
+  );
   const suggestionsMutation = usePostKioskProductionScheduleLoadBalancingSuggestions();
   const candidatesMutation = usePostKioskProductionScheduleLoadBalancingOutsourcingCandidates();
   const simulateMutation = usePostKioskProductionScheduleLoadBalancingOutsourcingSimulate();
@@ -122,22 +135,24 @@ export function LoadBalancingOverviewTab({ scopeParams, scopeEnabled }: Props) {
   const chartSlice = useMemo(() => {
     const mapped = displayResources.map((resource) => ({
       cd: resource.resourceCd,
+      displayName: resolveLoadBalancingResourceDisplayName(resource.resourceCd, resourceNameMap),
       req: Math.round(resource.requiredMinutes),
       cap: resource.availableMinutes == null ? 0 : Math.round(resource.availableMinutes),
       over: Math.round(resource.overMinutes)
     }));
     return mapped.sort((a, b) => b.req - a.req).slice(0, 48);
-  }, [displayResources]);
+  }, [displayResources, resourceNameMap]);
 
   const chipItems = useMemo(
     () =>
       overResourceOptions.map((resourceCd) => ({
         resourceCd,
+        displayName: resolveDisplayName(resourceCd),
         selected: selectedOverResourceCds.includes(resourceCd),
         overMinutes:
           overviewQuery.data?.resources.find((resource) => resource.resourceCd === resourceCd)?.overMinutes ?? 0
       })),
-    [overResourceOptions, overviewQuery.data?.resources, selectedOverResourceCds]
+    [overResourceOptions, overviewQuery.data?.resources, resolveDisplayName, selectedOverResourceCds]
   );
 
   const handleSuggest = async () => {
