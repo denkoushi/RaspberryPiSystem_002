@@ -10,6 +10,24 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **DGX 27B model profile `currentStorageLocation` 修正**·**DGX registry のみ**） {#dgx-model-profile-storage-path-2026-05-28}
+
+- **変更概要（正本）**: [KB-365 §storage availability](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)。HF cache 利用時の **`currentStorageLocation` は `hf-cache/hub/models--…` 形式**（`hub/` 欠落で **`status: unavailable`** → 管理 UI は 1 件のみ表示）。
+- **代表コミット**: **`ff5947c8`**（manifest 例·Runbook·KB·`test_model_profiles.py`）·**`af0e7e02`**（CI Trivy 抑制）·**ブランチ** **`fix/dgx-model-profile-current-storage-path`**·**CI `26569969639`** **success**。
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **DGX Spark のみ**（**`ubudgxkoushi@100.118.82.72`**·**`scp` manifest 1 ファイル**）。**Pi5 / Pi4 / Pi3**: **デプロイ不要**（Ansible **未実施**·**Pi3 専用手順も未実施で正**）。
+- **標準手順（DGX）**: [dgx-system-prod-local-llm.md §本番 storage path](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)。例 `scripts/dgx-local-llm-system/model-registry.examples/business_qwen36_27b_nvfp4/manifest.json` → **`/srv/dgx/shared-models/registry/business_qwen36_27b_nvfp4/manifest.json`**。**control/gateway 再起動は不要**。
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | 手段 | 備考 |
+|--------|------|------|
+| DGX Spark | **`scp` manifest のみ** | **`currentStorageLocation` に `/hub/` 反映**·PID 再起動 **なし** |
+| `raspberrypi5` / Pi4 / Pi3 | **未実施** | コード差分なし |
+
+- **実機（機能·Pi5 から DGX）**: `curl -H "X-LLM-Token: …" http://100.118.82.72:38081/system/model-profiles` → **`business_qwen36_27b_nvfp4` `available`**（修正前 **`unavailable`**）·**`business_qwen35_35b_gguf` `available`**·**2 件とも `available`**。UI 業務復帰で **2 件選択可能**。
+- **トラブルシュート**: profiles **2 件**なのに UI **1 件** → 各 `status` と manifest の `currentStorageLocation` を **`ls` 突合**（[KB-366](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)）。
+- **ナレッジ**: [KB-365 §本番 storage path](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[KB-366 §storage path](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)·[Runbook](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)。
+
 ### 補足（2026-05-28 · **DGX 業務復帰モデル選択（`modelProfileId`）**·**Pi5→DGX 順次・各 1 台**） {#dgx-business-return-model-selection-2026-05-28}
 
 - **変更概要（正本）**: [KB-365 §本番反映（2026-05-28）](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)。**私用→業務** / **実験→業務** の preview/execute に **`modelProfileId`** を追加。DGX **`GET /system/model-profiles`** が allowlist 正本。Pi5 API は ID を保存せず転送のみ。**`planFingerprint`** に `modelProfileId` を含め、preview と execute の不一致は **`409 DGX_SCENARIO_PLAN_STALE`**。**Strict Ready** は `/v1/models` の `system-prod-primary` を維持（profile 一致は active state で確認）。**モデル start 後も Strict Ready をスキップしない**（`ranModelProfileStart`）。
