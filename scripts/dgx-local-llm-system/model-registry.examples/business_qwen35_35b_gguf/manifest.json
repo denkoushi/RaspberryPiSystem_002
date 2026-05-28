@@ -1,0 +1,20 @@
+{
+  "modelProfileId": "business_qwen35_35b_gguf",
+  "displayNameJa": "業務 Qwen3.5 35B GGUF",
+  "descriptionJa": "llama.cpp green backend の業務復帰用モデル。互換確認や blue 切り戻し時に選択する。",
+  "backend": "green",
+  "servedAlias": "system-prod-primary",
+  "enabled": true,
+  "recommended": false,
+  "sourceKind": "local_file",
+  "sourceModelRef": "Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
+  "modelFamily": "Qwen3.5",
+  "format": "GGUF",
+  "quantization": "Q4_K_XL",
+  "storageLocation": "/srv/dgx/shared-models/llm/gguf/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
+  "currentStorageLocation": "/srv/dgx/shared-models/llm/gguf/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
+  "storageStatus": "shared_models",
+  "expectedColdStartSec": 120,
+  "canonicalNames": ["Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"],
+  "legacyNames": ["llama-server", "green"]
+}

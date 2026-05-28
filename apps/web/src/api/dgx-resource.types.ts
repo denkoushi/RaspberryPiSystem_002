@@ -103,7 +103,18 @@ export type ScenarioPolicyStepPreviewApi = {
   summaryJa: string;
 };
 
-export type ScenarioStepPreviewApi = ScenarioWorkloadStepPreviewApi | ScenarioPolicyStepPreviewApi;
+export type ScenarioModelProfileStepPreviewApi = {
+  kind: 'modelProfile';
+  order: number;
+  modelProfileId: string;
+  displayNameJa?: string;
+  summaryJa: string;
+};
+
+export type ScenarioStepPreviewApi =
+  | ScenarioWorkloadStepPreviewApi
+  | ScenarioPolicyStepPreviewApi
+  | ScenarioModelProfileStepPreviewApi;
 
 export type ScenarioPlanPreviewApi = {
   scenarioId: DgxOrchestrationScenarioIdApi;
@@ -175,6 +186,40 @@ export type DgxResourceOperatorConsoleApi = {
   operatorActions: DgxOperatorConsoleActionApi[];
 };
 
+export type DgxBusinessModelProfileApi = {
+  id: string;
+  displayNameJa: string;
+  backend: 'green' | 'blue';
+  servedAlias: string;
+  recommended: boolean;
+  enabled: boolean;
+  status: 'available' | 'unavailable' | 'unknown';
+  descriptionJa?: string;
+  sourceModelRef?: string;
+  sourceKind?: string;
+  storageLocation?: string;
+  currentStorageLocation?: string;
+  storageStatus?: string;
+  modelFamily?: string;
+  format?: string;
+  quantization?: string;
+  expectedSizeGb?: number;
+  expectedColdStartSec?: number;
+  canonicalNames: string[];
+  legacyNames: string[];
+  unavailableReasonJa?: string;
+};
+
+export type DgxModelProfilesOverviewApi = {
+  configured: boolean;
+  status: 'ok' | 'degraded' | 'unconfigured';
+  available: DgxBusinessModelProfileApi[];
+  activeProfileId: string | null;
+  pendingProfileId: string | null;
+  lastLoadedProfileId: string | null;
+  errorMessageJa?: string;
+};
+
 export type DgxResourceOverview = {
   generatedAt: string;
   kpis: DgxResourceKpis;
@@ -207,6 +252,7 @@ export type DgxResourceOverview = {
   monitoring: DgxResourceMonitoringSummaryApi;
   /** 運用者向け（API が返す新モデル。互換のため一時的に省略可能） */
   operator?: DgxResourceOperatorConsoleApi;
+  modelProfiles?: DgxModelProfilesOverviewApi;
 };
 
 export type DgxResourceEvent = {
@@ -229,12 +275,13 @@ export type DgxResourceActionBody =
       action: 'start' | 'stop';
       reason?: string;
     }
-  | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioIdApi }
+  | { type: 'PREVIEW_ORCHESTRATION_SCENARIO'; scenarioId: DgxOrchestrationScenarioIdApi; modelProfileId?: string }
   | {
       type: 'EXECUTE_ORCHESTRATION_SCENARIO';
       scenarioId: DgxOrchestrationScenarioIdApi;
       planFingerprint: string;
       confirmed: true;
+      modelProfileId?: string;
     };
 
 export type DgxResourceActionResult = {

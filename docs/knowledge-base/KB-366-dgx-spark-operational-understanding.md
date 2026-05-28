@@ -59,6 +59,7 @@ inventory 上の正本: `inference_*_provider_id: dgx_primary`・モデル名 **
 
 - **`ACTIVE_LLM_BACKEND`** が `blue` か `green` かで **アクティブ側が 1 つ**（本番記録・実機確認は **blue**）。
 - **`DGX_LLM_SINGLE_ACTIVE_GUARD`**: `/start` 前に **非アクティブ側を必ず stop**（[Runbook §単一アクティブ](../runbooks/dgx-system-prod-local-llm.md#単一アクティブ運用ガードdgx_llm_single_active_guard)）。
+- **業務復帰のモデル選択**: 管理 UI の **私用→業務** / **実験→業務** では `modelProfileId` を選ぶ。選択時は DGX manifest の `backend` が優先され、`ACTIVE_LLM_BACKEND` は未指定 start 用の fallback になる。初期 ID は **`business_qwen36_27b_nvfp4`**（blue / 推奨）と **`business_qwen35_35b_gguf`**（green）。
 
 **念のための確認（DGX）**
 

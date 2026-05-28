@@ -4,6 +4,7 @@ import type { DgxPolicyMode } from './dgx-resource.policy-store.js';
 import { policyLabelJa } from './dgx-resource.policy-profile.js';
 import { planWorkloadAdjustmentsBeforePolicyChange, type WorkloadAdjustmentStep } from './dgx-resource.policy-arbitrator.js';
 import { buildPostPolicyOrchestrationSteps } from './dgx-resource.scenario-post-policy.js';
+import type { DgxBusinessModelProfile } from './dgx-resource.model-profiles.js';
 
 /** GUI の複合運用ガイド用シナリオ（ユーザー向け日本語説明とは別レイヤー） */
 export type DgxOrchestrationScenarioId =
@@ -30,6 +31,7 @@ export type ScenarioPlanFingerprintInputs = {
   experimentLabRuntimeConfigured: boolean;
   agentContainerRuntimeConfigured: boolean;
   gatewayRuntimeConfigured: boolean;
+  modelProfileId?: string;
 };
 
 export type ScenarioWorkloadStepPreview = {
@@ -47,7 +49,15 @@ export type ScenarioPolicyStepPreview = {
   summaryJa: string;
 };
 
-export type ScenarioStepPreview = ScenarioWorkloadStepPreview | ScenarioPolicyStepPreview;
+export type ScenarioModelProfileStepPreview = {
+  kind: 'modelProfile';
+  order: number;
+  modelProfileId: string;
+  displayNameJa?: string;
+  summaryJa: string;
+};
+
+export type ScenarioStepPreview = ScenarioWorkloadStepPreview | ScenarioPolicyStepPreview | ScenarioModelProfileStepPreview;
 
 export type ScenarioPlanPreview = {
   scenarioId: DgxOrchestrationScenarioId;
@@ -96,6 +106,7 @@ export function buildScenarioFingerprintPayload(input: ScenarioPlanFingerprintIn
       agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
       gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
     },
+    modelProfileId: input.modelProfileId ?? null,
   };
   return JSON.stringify(normalized);
 }
@@ -116,6 +127,8 @@ export function buildOrchestrationScenarioPreview(input: {
   inferenceLooksDegraded: boolean;
   /** private-comfyui が running と判定できるときのみ true */
   comfyLooksRunning: boolean;
+  modelProfileId?: string;
+  modelProfiles?: DgxBusinessModelProfile[];
 }): ScenarioPlanPreview {
   const { scenarioId } = input;
   const { targetPolicyMode, applyWorkloadChanges } = mapScenarioToPolicyInputs(scenarioId);
@@ -164,6 +177,19 @@ export function buildOrchestrationScenarioPreview(input: {
     summaryJa: `運用プロファイルを「${policyLabelJa(targetPolicyMode)}」へ適用します`,
   });
 
+  const selectedModelProfile = input.modelProfileId
+    ? input.modelProfiles?.find((profile) => profile.id === input.modelProfileId)
+    : undefined;
+  if (input.modelProfileId && (scenarioId === 'private_to_business' || scenarioId === 'experiment_to_business')) {
+    steps.push({
+      kind: 'modelProfile',
+      order: order++,
+      modelProfileId: input.modelProfileId,
+      ...(selectedModelProfile ? { displayNameJa: selectedModelProfile.displayNameJa } : {}),
+      summaryJa: `業務モデルをロード: ${selectedModelProfile?.displayNameJa ?? '選択モデル'} [${input.modelProfileId}]`,
+    });
+  }
+
   for (const p of postPolicyWorkloadTemplate) {
     steps.push({
       kind: 'workload',
@@ -183,6 +209,7 @@ export function buildOrchestrationScenarioPreview(input: {
     experimentLabRuntimeConfigured: input.experimentLabRuntimeConfigured,
     agentContainerRuntimeConfigured: input.agentContainerRuntimeConfigured,
     gatewayRuntimeConfigured: input.gatewayRuntimeConfigured,
+    ...(input.modelProfileId ? { modelProfileId: input.modelProfileId } : {}),
   });
 
   const warnings: string[] = [];

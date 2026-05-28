@@ -7,6 +7,7 @@ import { DgxResourcePrimaryScenarioFlow } from './DgxResourcePrimaryScenarioFlow
 import type {
   DgxResourceActionBody,
   DgxResourceActionResult,
+  DgxModelProfilesOverviewApi,
   DgxResourceOperatorConsoleApi,
 } from '../../../api/dgx-resource.types';
 import type { ReactElement } from 'react';
@@ -51,6 +52,27 @@ function makeOperator(): DgxResourceOperatorConsoleApi {
   };
 }
 
+const modelProfiles: DgxModelProfilesOverviewApi = {
+  configured: true,
+  status: 'ok',
+  activeProfileId: null,
+  pendingProfileId: null,
+  lastLoadedProfileId: null,
+  available: [
+    {
+      id: 'business_qwen36_27b_nvfp4',
+      displayNameJa: 'Qwen3.6 27B NVFP4',
+      backend: 'blue',
+      servedAlias: 'system-prod-primary',
+      recommended: true,
+      enabled: true,
+      status: 'available',
+      canonicalNames: [],
+      legacyNames: [],
+    },
+  ],
+};
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error?: unknown) => void;
@@ -92,6 +114,7 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
 
     const props = {
       operator,
+      modelProfiles,
       postDgxAction,
       actionBusy: false,
       onControlUiError: vi.fn(),
@@ -105,6 +128,7 @@ describe('DgxResourcePrimaryScenarioFlow', () => {
       expect(postDgxAction).toHaveBeenCalledWith({
         type: 'EXECUTE_ORCHESTRATION_SCENARIO',
         scenarioId: 'private_to_business',
+        modelProfileId: 'business_qwen36_27b_nvfp4',
         planFingerprint: 'f'.repeat(64),
         confirmed: true,
       });

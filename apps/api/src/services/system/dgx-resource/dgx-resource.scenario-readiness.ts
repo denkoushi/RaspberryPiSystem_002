@@ -185,6 +185,7 @@ export async function waitScenarioReadiness(input: {
   readinessDeadlineMs: number;
   readinessPollIntervalMs: number;
   runGatewayStartOnceIfNeeded?: TargetRuntimeDispatchFn;
+  modelProfileId?: string;
 }): Promise<
   | { ok: true; checksJa: readonly DgxScenarioReadinessCheckJa[]; summaryJa: string; gatewayRemediationRequested: boolean }
   | {
@@ -201,6 +202,7 @@ export async function waitScenarioReadiness(input: {
     readinessDeadlineMs,
     readinessPollIntervalMs,
     runGatewayStartOnceIfNeeded,
+    modelProfileId,
   } = input;
 
   const deadline = Date.now() + readinessDeadlineMs;
@@ -215,7 +217,13 @@ export async function waitScenarioReadiness(input: {
     if (spec.allowGatewayStartRemediation && spec.requireInferenceBusiness && runGatewayStartOnceIfNeeded) {
       const needStart = inferenceBusinessReady(bundle).satisfied === false;
       if (!gatewayRemediationRequested && needStart) {
-        await runGatewayStartOnceIfNeeded('system-prod-gateway', 'start', 'readiness_remediation', 'none');
+        await runGatewayStartOnceIfNeeded(
+          'system-prod-gateway',
+          'start',
+          'readiness_remediation',
+          'none',
+          modelProfileId
+        );
         gatewayRemediationRequested = true;
         await sleep(readinessPollIntervalMs);
         bundle = await collectProbeBundle();

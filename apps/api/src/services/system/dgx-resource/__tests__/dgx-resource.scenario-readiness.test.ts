@@ -134,10 +134,18 @@ describe('dgx-resource.scenario-readiness', () => {
       readinessDeadlineMs: 5000,
       readinessPollIntervalMs: 15,
       runGatewayStartOnceIfNeeded: dispatch,
+      modelProfileId: 'business_qwen36_27b_nvfp4',
     });
 
     expect(res.ok).toBe(true);
     expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(
+      'system-prod-gateway',
+      'start',
+      'readiness_remediation',
+      'none',
+      'business_qwen36_27b_nvfp4'
+    );
   });
 
   it('allReadinessChecksSatisfied が部分充足を検出', () => {
