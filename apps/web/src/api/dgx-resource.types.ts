@@ -134,7 +134,7 @@ export type DgxResourceScenarioExecuteResultApi = {
   recommendedNextJa?: string;
   outcomeKind?: 'success' | 'partial_failure' | 'noop';
   readinessChecksJa?: readonly {
-    code: 'inference_business' | 'private_comfy' | 'experiment_lab';
+    code: 'inference_business' | 'model_profile_active' | 'model_profile_backend' | 'private_comfy' | 'experiment_lab';
     satisfied: boolean;
     detailJa: string;
   }[];
@@ -215,6 +215,7 @@ export type DgxModelProfilesOverviewApi = {
   status: 'ok' | 'degraded' | 'unconfigured';
   available: DgxBusinessModelProfileApi[];
   activeProfileId: string | null;
+  activeStateBackend: 'green' | 'blue' | null;
   pendingProfileId: string | null;
   lastLoadedProfileId: string | null;
   errorMessageJa?: string;

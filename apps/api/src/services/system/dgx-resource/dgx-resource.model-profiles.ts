@@ -31,6 +31,8 @@ export type DgxModelProfilesOverview = {
   status: 'ok' | 'degraded' | 'unconfigured';
   available: DgxBusinessModelProfile[];
   activeProfileId: string | null;
+  /** DGX `GET /system/model-profiles` の `state.backend`（state 未作成時は null） */
+  activeStateBackend: 'green' | 'blue' | null;
   pendingProfileId: string | null;
   lastLoadedProfileId: string | null;
   errorMessageJa?: string;
@@ -56,6 +58,12 @@ const asNumber = (value: unknown): number | undefined =>
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+
+const parseActiveStateBackend = (state: unknown): 'green' | 'blue' | null => {
+  if (!isRecord(state)) return null;
+  const backend = asString(state.backend);
+  return backend === 'green' || backend === 'blue' ? backend : null;
+};
 
 export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfile | null {
   if (!isRecord(value)) return null;
@@ -149,6 +157,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       status: 'unconfigured',
       available: [],
       activeProfileId: null,
+      activeStateBackend: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
       errorMessageJa: 'DGX gateway の baseUrl または共有トークンが未設定です',
@@ -168,6 +177,7 @@ export async function fetchDgxModelProfilesOverview(input: {
         status: 'degraded',
         available: [],
         activeProfileId: null,
+        activeStateBackend: null,
         pendingProfileId: null,
         lastLoadedProfileId: null,
         errorMessageJa: `DGX model profiles API が HTTP ${response.status} を返しました`,
@@ -178,12 +188,14 @@ export async function fetchDgxModelProfilesOverview(input: {
       ? body.profiles.map(normalizeDgxModelProfile).filter((p): p is DgxBusinessModelProfile => p !== null)
       : [];
     const activeProfileId = asString(body.activeProfileId) ?? null;
+    const activeStateBackend = parseActiveStateBackend(body.state);
     // Allowlist fetch succeeded: activeProfileId may be null before first profile-scoped /start (DGX contract).
     return {
       configured: true,
       status: 'ok',
       available: profiles,
       activeProfileId,
+      activeStateBackend,
       pendingProfileId: null,
       lastLoadedProfileId: activeProfileId,
     };
@@ -193,6 +205,7 @@ export async function fetchDgxModelProfilesOverview(input: {
       status: 'degraded',
       available: [],
       activeProfileId: null,
+      activeStateBackend: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
       errorMessageJa: 'DGX model profiles API に接続できませんでした',

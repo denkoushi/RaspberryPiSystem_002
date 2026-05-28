@@ -56,6 +56,7 @@ const modelProfiles: DgxModelProfilesOverviewApi = {
   configured: true,
   status: 'ok',
   activeProfileId: null,
+  activeStateBackend: null,
   pendingProfileId: null,
   lastLoadedProfileId: null,
   available: [

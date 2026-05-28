@@ -98,7 +98,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **`DGX_RESOURCE_SPARK_HOST_STATUS_URL`** — DGX Spark **ホスト**の簡易疎通用（メトリクス sidecar の `/health` 等。**GET が 200** なら管理 UI で「応答あり」）。未設定時は **admin `LOCAL_LLM_BASE_URL` の `/healthz` を既定フォールバック**として使うため、Pi5 から DGX gateway に到達できれば Spark（ホスト）パネルも最低限の生存監視を行う。専用 sidecar を使う場合だけ明示設定する
 - `DGX_RESOURCE_PROBE_TIMEOUT_MS` — プローブのタイムアウト（既定 10000）
 
-**運用コンソール（管理 UI）**: 「目的別ガイド」は Phase4 の **`PREVIEW_ORCHESTRATION_SCENARIO`（指紋取得）→確定後 `EXECUTE_ORCHESTRATION_SCENARIO`** をバックエンド契約として維持。**私用→業務** と **実験→業務** では DGX から取得した **モデルプロファイル**を選択し、同じ `modelProfileId` を preview/execute と DGX `/start` へ渡す。`planFingerprint` には `modelProfileId` も入るため、選択を変えた場合は stale 判定される。単発の保守 `EXECUTE_TARGET_ACTION` start にはモデル選択 UI を付けない。**Phase 7（2026-05-03）** ではフロントを **状態チップ一行 + 4 操作**に最小化し、**確認ダイアログ後にプレビュー→実行を連続**（プレビュー専用ボタンなし。**メイン画面にイベントログタイムラインは出さない**。履歴は **`GET …/events`** とサーバログ）。**Phase 8（2026-05-03）** ではさらに **`overview.kpis` を先頭の KPI ストリップ**へ戻し、読み込み完了後の **`h1「DGX リソース」`** と補助説明を消し、Spark / シナリオ / KPI の長文は **省略せず折り返し表示**に寄せた。**Phase 9** では **`EXECUTE_ORCHESTRATION_SCENARIO` 成功＝Strict Ready 達成まで**（業務復帰は `/v1/models`、私用は Comfy ヘルス、実験は experiment ヘルス必須。待機は `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS` 等。失敗時は安全ロールバック方針。**KB-365 §Phase9**）。**Phase 11（2026-05-04）** では進行中表示を **イベント由来判定 + `sessionStorage` pending** の二系統で維持し、タブ移動後の復帰でも `進行中:` を表示し続ける。**Stale（409）**時は内部的にプレビューを取り直してから実行する運用が前提。単発の起停は **`EXECUTE_TARGET_ACTION`**（**詳細・保守** の Control Targets）。**ガイドが途中停止**した場合は `scenarioExecute.completedStepOrders`・`overview.monitoring.lastScenarioFailure`・`/events` を参照（一部 POST 済みの可能性）。
+**運用コンソール（管理 UI）**: 「目的別ガイド」は Phase4 の **`PREVIEW_ORCHESTRATION_SCENARIO`（指紋取得）→確定後 `EXECUTE_ORCHESTRATION_SCENARIO`** をバックエンド契約として維持。**私用→業務** と **実験→業務** では DGX から取得した **モデルプロファイル**を選択し、同じ `modelProfileId` を preview/execute と DGX `/start` へ渡す。`planFingerprint` には `modelProfileId` も入るため、選択を変えた場合は stale 判定される。単発の保守 `EXECUTE_TARGET_ACTION` start にはモデル選択 UI を付けない。**Phase 7（2026-05-03）** ではフロントを **状態チップ一行 + 4 操作**に最小化し、**確認ダイアログ後にプレビュー→実行を連続**（プレビュー専用ボタンなし。**メイン画面にイベントログタイムラインは出さない**。履歴は **`GET …/events`** とサーバログ）。**Phase 8（2026-05-03）** ではさらに **`overview.kpis` を先頭の KPI ストリップ**へ戻し、読み込み完了後の **`h1「DGX リソース」`** と補助説明を消し、Spark / シナリオ / KPI の長文は **省略せず折り返し表示**に寄せた。**Phase 9** では **`EXECUTE_ORCHESTRATION_SCENARIO` 成功＝Strict Ready 達成まで**（業務復帰は `/v1/models` **+（`modelProfileId` 指定時）`activeProfileId` / `state.backend` 一致**、私用は Comfy ヘルス、実験は experiment ヘルス必須。待機は `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS` 等。失敗時は安全ロールバック方針。**KB-365 §Phase9** · **§Strict Ready profile 一致**）。**Phase 11（2026-05-04）** では進行中表示を **イベント由来判定 + `sessionStorage` pending** の二系統で維持し、タブ移動後の復帰でも `進行中:` を表示し続ける。**Stale（409）**時は内部的にプレビューを取り直してから実行する運用が前提。単発の起停は **`EXECUTE_TARGET_ACTION`**（**詳細・保守** の Control Targets）。**ガイドが途中停止**した場合は `scenarioExecute.completedStepOrders`・`overview.monitoring.lastScenarioFailure`・`/events` を参照（一部 POST 済みの可能性）。
 
 **実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（`dgx-resource.control-target.types.ts`・`dgx-resource.control-targets.builder.ts`・`dgx-resource.gateway-runtime.executor.ts`・`dgx-resource.aux-http-runtime.executor.ts`・`dgx-resource.policy-arbitrator.ts`・`dgx-resource.policy-profile.ts`・**`dgx-resource.operator-overview.ts`**・**`dgx-resource.workload-transition.ts`**）
 
@@ -113,6 +113,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - **`GET /system/model-profile`（単数形）**: active state **のみ**。state 無し → **503** `ACTIVE_MODEL_PROFILE_UNAVAILABLE`（一覧 API とは挙動が異なる）。
   - **state ライフサイクル**: **作成・更新** = `POST /start` で `modelProfileId` 指定時のみ。**`POST /stop` / `stop-force` では state ファイルは削除されない**（停止後も `activeProfileId` が残り得る → **現在ロード中かは `GET /v1/models` / コンテナ状態で別確認**）。
   - **切り分け（業務復帰 503 `DGX_MODEL_PROFILES_UNAVAILABLE`）**: ① `curl …/system/model-profiles` で profiles 件数・各 `status` ② `activeProfileId` が null でも allowlist 取得 OK なら Pi5 は `ok`（[KB-365 §activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)）③ state 単体は `curl …/system/model-profile`。
+  - **切り分け（業務復帰 success だが KPI/モデルが選択と違う）**: ① `activeProfileId` が選択 ID と一致するか ② `state.backend` が manifest の `backend` と一致するか ③ `/v1/models` だけ OK では Pi5 success にならない（[§Strict Ready profile 一致](#strict-ready-model-profile-match-2026-05-28)）。
 - 初期 profile: `business_qwen36_27b_nvfp4`（blue / Qwen3.6 27B NVFP4 / 推奨）と `business_qwen35_35b_gguf`（green / Qwen3.5 35B GGUF）
 - HF 移行: `sakamakismile/Qwen3.6-27B-NVFP4` は `/srv/dgx/shared-models/hf/sakamakismile/Qwen3.6-27B-NVFP4` へ寄せる。既存 cache は manifest の `currentStorageLocation` に残し、実ファイル移動は実機手動確認で行う
 - **ストレージパス契約（可用性判定）**:
@@ -120,6 +121,15 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - **`currentStorageLocation`**: **現配置**（移行途中の実体）。HF cache 利用時は **`/srv/dgx/system-prod/data/hf-cache/hub/models--<org>--<model>`** 形式（**`hub/` 配下**）。`hf-cache/models--...` のように **`hub` を抜くと `status: unavailable` になり、管理 UI のドロップダウンに出ない**
   - DGX `model_profiles.profile_storage_available()` は **`currentStorageLocation` → `storageLocation` の OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `status: available`
   - **切り分け**: API で profiles が 2 件なのに UI が 1 件だけ → 各 profile の `status` と manifest の `currentStorageLocation` を `ls` で突合する（[KB-365 §model profile storage](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）
+
+**Strict Ready と model profile 一致（2026-05-28 · Pi5 API）** {#strict-ready-model-profile-match-2026-05-28}
+
+- **契約**: 私用→業務 / 実験→業務で **`modelProfileId` を指定した execute** は、Strict Ready で次を **すべて**満たすまで **success にしない**。
+  - `inference_business`: `GET /v1/models`（`system-prod-primary`）
+  - `model_profile_active`: `GET /system/model-profiles` の **`activeProfileId === 選択 ID`**
+  - `model_profile_backend`: `state.backend` が返る場合は **選択 profile の green/blue と一致**
+- **確認**: `scenarioExecute.readinessChecksJa` に上記 code が並び、不一致時は `satisfied: false` のままタイムアウト。
+- **KB**: [KB-365 §Strict Ready profile 一致](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-strict-ready-model-profile-match)。
 
 **本番反映（2026-05-28 · activeProfileId null · Pi5 API 契約修正）** {#本番反映2026-05-28-activeprofileid-null-pi5-api}
 

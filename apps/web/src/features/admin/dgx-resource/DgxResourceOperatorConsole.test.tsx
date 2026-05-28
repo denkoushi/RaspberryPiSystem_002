@@ -152,6 +152,7 @@ function makeOverview(operator: DgxResourceOperatorConsoleApi): DgxResourceOverv
       configured: true,
       status: 'ok',
       activeProfileId: null,
+      activeStateBackend: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
       available: [

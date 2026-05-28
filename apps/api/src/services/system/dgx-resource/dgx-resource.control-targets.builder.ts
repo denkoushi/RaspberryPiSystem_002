@@ -8,6 +8,7 @@ import type {
   DgxControlTargetSnapshot,
   DgxServiceStatusKind,
 } from './dgx-resource.control-target.types.js';
+import type { DgxModelProfilesOverview } from './dgx-resource.model-profiles.js';
 import type { MetricsPayload } from './dgx-resource.probes.js';
 import type { LocalLlmRuntimeConfig, LocalLlmStatus } from '../local-llm-proxy.service.js';
 
@@ -16,6 +17,8 @@ export type OverviewProbeBundle = {
   adminCfg: LocalLlmRuntimeConfig;
   gatewayStatus: LocalLlmStatus;
   modelsProbe: { ok: boolean; statusCode?: number; inferenceHint?: string };
+  /** Strict Ready（業務復帰）で active profile / backend 一致を判定するための DGX 正本 */
+  modelProfiles: DgxModelProfilesOverview;
   metricsConfigured: boolean;
   metricsPayload: MetricsPayload | undefined;
   comfyConfigured: boolean;

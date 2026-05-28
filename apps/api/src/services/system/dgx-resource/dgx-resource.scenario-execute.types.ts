@@ -5,7 +5,12 @@ export type DgxResourceScenarioOutcomeKind = 'success' | 'partial_failure' | 'no
 
 /** Strict Ready で検証したゲートの要約（画面表示向け）。 */
 export type DgxScenarioReadinessCheckJa = {
-  code: 'inference_business' | 'private_comfy' | 'experiment_lab';
+  code:
+    | 'inference_business'
+    | 'model_profile_active'
+    | 'model_profile_backend'
+    | 'private_comfy'
+    | 'experiment_lab';
   satisfied: boolean;
   detailJa: string;
 };

@@ -401,6 +401,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       adminCfg,
       gatewayStatus,
       modelsProbe,
+      modelProfiles,
       metricsConfigured,
       metricsPayload,
       comfyConfigured,
