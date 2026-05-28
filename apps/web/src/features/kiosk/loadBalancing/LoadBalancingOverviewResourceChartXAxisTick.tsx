@@ -1,3 +1,9 @@
+import {
+  formatOverviewChartAxisDisplayName,
+  loadBalancingOverviewXAxisLayout,
+  parseRechartsAxisTickPosition
+} from './loadBalancingOverviewChartAxis';
+
 import type { SVGProps } from 'react';
 
 type TickPayload = {
@@ -11,26 +17,42 @@ type Props = SVGProps<SVGTextElement> & {
   displayNameByCd: Record<string, string>;
 };
 
-/** 棒グラフX軸: 1行目=資源CD、2行目=表示名（ペイン外寸は変えず下余白を活用） */
+/** 棒グラフ X 軸: 上段=資源CD、下段=表示名（縦書き -90°）。ペイン外寸は lbChart.container で固定。 */
 export function LoadBalancingOverviewResourceChartXAxisTick({
-  x = 0,
-  y = 0,
+  x,
+  y,
   payload,
   displayNameByCd
 }: Props) {
   const cd = payload?.value ?? '';
   const displayName = displayNameByCd[cd] ?? '';
-  const xPos = typeof x === 'number' ? x : Number(x) || 0;
-  const yPos = typeof y === 'number' ? y : Number(y) || 0;
+  const { x: xPos, y: yPos } = parseRechartsAxisTickPosition(x, y);
+  const nameText = formatOverviewChartAxisDisplayName(displayName);
+  const { resourceCd, displayName: nameStyle } = loadBalancingOverviewXAxisLayout;
 
   return (
     <g transform={`translate(${xPos},${yPos})`}>
-      <text textAnchor="middle" fill="#e2e8f0" fontSize={12} fontFamily="ui-monospace, monospace" dy={14}>
+      <text
+        textAnchor="middle"
+        fill={resourceCd.fill}
+        fontSize={resourceCd.fontSize}
+        fontFamily={resourceCd.fontFamily}
+        dy={resourceCd.dy}
+      >
         {cd}
       </text>
-      {displayName ? (
-        <text textAnchor="middle" fill="#94a3b8" fontSize={11} dy={28}>
-          {displayName.length > 10 ? `${displayName.slice(0, 9)}…` : displayName}
+      {nameText ? (
+        <text
+          textAnchor="start"
+          fill={nameStyle.fill}
+          fontSize={nameStyle.fontSize}
+          transform={`rotate(${nameStyle.rotationDeg})`}
+          x={0}
+          y={0}
+          dx={nameStyle.dx}
+          dy={nameStyle.dy}
+        >
+          {nameText}
         </text>
       ) : null}
     </g>

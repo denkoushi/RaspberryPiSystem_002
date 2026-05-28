@@ -128,13 +128,13 @@
     .swatch { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
 
     .chart-bars {
-      display: flex; align-items: flex-end; gap: 4px; height: 240px;
-      /* 外寸240px固定。下半分の余白を2行軸ラベル用に使う（回転ラベルは使わない） */
-      padding: 4px 2px 52px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-end; gap: 2px; height: 240px;
+      /* 外寸240px固定。下余白を縦書き軸ラベル用に確保（横並び2行は使わない） */
+      padding: 4px 2px 4px; border-bottom: 1px solid var(--border);
     }
     .bar-wrap {
       flex: 1; min-width: 0; height: 100%;
-      display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px;
     }
     .bar-stack { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
     .bar {
@@ -144,13 +144,23 @@
     .bar.over { background: linear-gradient(180deg, var(--orange), #d97706); }
     .bar.cap { height: 40%; background: #34d399; opacity: 0.85; margin-top: -4px; }
     .bar-label-stack {
-      flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 1px;
-      max-width: 100%; text-align: center; line-height: 1.15;
+      flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      gap: 2px; height: 76px; max-width: 100%; overflow: hidden;
     }
-    .bar-label-cd { font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--text); }
+    .bar-label-cd {
+      font-family: ui-monospace, monospace; font-size: 0.6875rem; line-height: 1;
+      color: var(--text); white-space: nowrap;
+    }
     .bar-label-name {
-      font-size: 0.6875rem; color: var(--muted);
-      max-width: 3.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      font-size: 0.625rem; line-height: 1.05; letter-spacing: 0.02em;
+      color: var(--muted);
+      max-height: 58px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .panel-green { border-color: rgba(16, 185, 129, 0.35); background: rgba(6, 78, 59, 0.25); }
@@ -253,38 +263,18 @@
             <span style="color:#fcd34d"><i class="swatch" style="background:var(--orange)"></i>超過（必要分）</span>
           </div>
           <div class="chart-bars" aria-hidden="true">
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar over" style="height:88%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">587</span><span class="bar-label-name">FJV50/80</span></div>
-            </div>
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar over" style="height:62%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">033</span><span class="bar-label-name">5軸加工機</span></div>
-            </div>
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar" style="height:45%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">501</span><span class="bar-label-name">東芝MPE-2130</span></div>
-            </div>
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar over" style="height:38%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">021</span><span class="bar-label-name">ROBODRILL</span></div>
-            </div>
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar" style="height:52%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">500</span><span class="bar-label-name">5軸加工機</span></div>
-            </div>
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar" style="height:30%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">586</span><span class="bar-label-name">FJV60</span></div>
-            </div>
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar over" style="height:48%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">502</span><span class="bar-label-name">FJV50/80</span></div>
-            </div>
-            <div class="bar-wrap">
-              <div class="bar-stack"><div class="bar" style="height:25%"></div></div>
-              <div class="bar-label-stack"><span class="bar-label-cd">504</span><span class="bar-label-name">平面研削</span></div>
-            </div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar over" style="height:88%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">021</span><span class="bar-label-name">HCN-400横型マシニング</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar over" style="height:72%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">589</span><span class="bar-label-name">B8横型マシニングセンタ</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar" style="height:58%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">581</span><span class="bar-label-name">SG-2型研削盤</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar over" style="height:42%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">587</span><span class="bar-label-name">FJV50/80</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar" style="height:35%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">033</span><span class="bar-label-name">5軸加工機</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar over" style="height:28%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">021B</span><span class="bar-label-name">ROBODRILL</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar" style="height:22%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">501</span><span class="bar-label-name">東芝MPE-2130</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar" style="height:18%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">586</span><span class="bar-label-name">FJV60</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar over" style="height:14%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">504</span><span class="bar-label-name">平面研削盤</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar over" style="height:11%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">24M</span><span class="bar-label-name">24M専用ライン</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar" style="height:9%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">500</span><span class="bar-label-name">5軸加工機</span></div></div>
+            <div class="bar-wrap"><div class="bar-stack"><div class="bar over" style="height:7%"></div></div><div class="bar-label-stack"><span class="bar-label-cd">502</span><span class="bar-label-name">FJV50/80</span></div></div>
           </div>
         </section>
 
@@ -368,7 +358,7 @@
     </details>
 
     <p style="font-size:0.75rem;color:var(--muted);text-align:center">
-      静的プレビュー — チップ2行目・棒グラフX軸2行（資源CD＋表示名）· チャート外寸240px固定
+      静的プレビュー — 棒グラフX軸: 資源CD（上段）＋表示名縦書き · チャート外寸240px固定
     </p>
   </div>
 </body>

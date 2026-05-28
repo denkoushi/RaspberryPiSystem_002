@@ -10,10 +10,11 @@ export const LOAD_BALANCING_CAP_FILL = '#34d399';
 export const LOAD_BALANCING_OVER_REQ_FILL = '#f59e0b';
 export const LOAD_BALANCING_OVER_REQ_STROKE = '#be123c';
 
-/** 凡例はチャート外（上部）。下余白は2行X軸（CD＋表示名）用 — ペイン外寸は lbChart.container で固定 */
-export const loadBalancingChartMargin = { top: 8, right: 12, left: 4, bottom: 56 };
+/** 凡例はチャート外（上部）。下余白は縦書きX軸（上段CD・下段表示名）用 — ペイン外寸は lbChart.container で固定 */
+export const loadBalancingChartMargin = { top: 8, right: 12, left: 4, bottom: 76 };
 
-export const loadBalancingOverviewChartXAxisHeight = 56;
+/** loadBalancingOverviewXAxisLayout と同期（俯瞰棒グラフのみ） */
+export const loadBalancingOverviewChartXAxisHeight = 76;
 
 export const loadBalancingTooltipStyle = {
   backgroundColor: '#0f172a',

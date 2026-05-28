@@ -23,6 +23,7 @@ last-verified: 2026-05-28
 | 2026-05-27 修正 | 同上 · **`37a7b6d4`** | 能力/稼働日/分類/移管の **`site` 優先 + `shared` 補完**（キオスク読み取りのみ） |
 | 2026-05-27 修正 | `feat/kiosk-load-balancing-auto-plan-reset-fix` · **`463aeabb`** | **自動選定後の表示維持** — overview セッション境界のみ reset（Web のみ）·**Pi5→Pi4×4 本番・実機 OK** |
 | 2026-05-28 UI | `feat/kiosk-load-balancing-resource-display-lines` · **`83470163`** | **資源CD表示名2行** — 超過チップ・棒グラフX軸（`resourceNameMap`）·**Pi5 のみ本番** |
+| 2026-05-28 UI | `feat/kiosk-load-balancing-vertical-chart-axis` · **`04c9ad6e`** | **棒グラフX軸縦書き** — 上段CD・下段表示名（48本重なり解消）·**Pi5 のみ本番** |
 
 **Prisma**: 機種別月次は既存テーブルのみ。着手日・平準化は **`ProductionScheduleResourceWorkCalendar`** 追加（`20260526100000_load_balancing_work_calendar`）。
 
@@ -219,6 +220,80 @@ sequenceDiagram
 **テスト**: `loadBalancingOverviewSession.test.ts` · `ProductionScheduleLoadBalancingPage.test.tsx`（同値 overview 再評価でも plan 表示維持）。
 
 **API・DB**: 変更なし（デプロイは **Web バンドル**が主。Pi4 play はクライアント側同期）。
+
+## Production deploy（実績 2026-05-28 · 棒グラフX軸縦書き · Pi5 のみ）
+
+- **ブランチ**: `feat/kiosk-load-balancing-vertical-chart-axis`
+- **代表コミット**: **`04c9ad6e`** `fix(kiosk): use vertical labels on load balancing overview chart axis`
+- **変更範囲**: **Web のみ**（俯瞰棒グラフ X 軸レイアウト・`mapOverviewResourceChartRows` / `loadBalancingOverviewChartAxis`）
+- **Prisma マイグレーション**: **なし**
+
+| 項目 | 値 |
+|------|-----|
+| ホスト | **`raspberrypi5` のみ** |
+| Detach Run ID | `20260528-103956-21799` |
+| PLAY RECAP | `ok=134` `changed=4` `failed=0` |
+| Phase12 | **43 / 0 / 0**（約 **30s**） |
+| Pi5 Git | **`04c9ad6e`** |
+| Web バンドル | `index-DwCtJ7W_.js`（`rotate(-90)`） |
+
+**標準コマンド**:
+
+```bash
+export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
+./scripts/update-all-clients.sh feat/kiosk-load-balancing-vertical-chart-axis infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+```
+
+## 実機検証（2026-05-28 · 棒グラフX軸縦書き）
+
+### 自動
+
+- `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**
+- Pi5 Git: **`04c9ad6e`**
+
+### API / Web スモーク
+
+```bash
+KEY="client-key-raspberrypi4-kiosk1"
+BASE="https://100.106.158.2"
+curl -sk -o /dev/null -w "HTTP %{http_code} time %{time_total}s\n" \
+  "${BASE}/api/kiosk/production-schedule/load-balancing/overview?month=2026-05" \
+  -H "x-client-key: ${KEY}"
+# 実績: HTTP 200（約 0.22s）
+
+ssh denkon5sd02@100.106.158.2 \
+  'docker exec docker-web-1 sh -c "grep -o \"rotate(-90)\" /srv/site/assets/index-DwCtJ7W_.js | head -1"'
+# 実績: rotate(-90)
+```
+
+### 現場目視（チェックリスト）
+
+| # | 確認項目 | 期待 |
+|---|----------|------|
+| 1 | 棒グラフ X 軸 | **上段**=資源CD（横）· **下段**=表示名（縦書き）· 48 本で重ならない |
+| 2 | チャート外寸 | `min(260px,34dvh)` 固定 — プロットは下余白分だけ狭くなる |
+| 3 | ステップ2チップ | 従来どおり横2行（CD+超過 / 表示名） |
+| 4 | 名称なし CD | 資源CD のみ（表示名行なし） |
+
+**参照**: [deployment.md §棒グラフX軸縦書き 2026-05-28](../guides/deployment.md#kiosk-load-balancing-vertical-chart-axis-2026-05-28)
+
+## 棒グラフ X 軸レイアウト契約（2026-05-28 · 縦書き）
+
+| 定数 / 関数 | 役割 |
+|-------------|------|
+| `loadBalancingOverviewXAxisLayout` | CD・表示名の色・フォント・`dy`・回転角・最大文字数 |
+| `formatOverviewChartAxisDisplayName` | 軸用省略（既定 18 文字） |
+| `buildOverviewChartDisplayNameByCd` | `OverviewChartRow[]` → tick 参照マップ |
+| `mapOverviewResourceChartRows` | overview 資源 → チャート行（必要分降順・上位 48） |
+| `loadBalancingChartMargin.bottom` / `loadBalancingOverviewChartXAxisHeight` | **76**（同期必須） |
+
+**Troubleshooting（縦書き軸）**
+
+| 症状 | 確認 |
+|------|------|
+| 横2行のまま重なる | 旧バンドル — Pi5 **`04c9ad6e` 未満** または未リロード |
+| 縦書きが無い | `rotate(-90)` がバンドルに無い — 再デプロイ |
+| 表示名が極端に短い | 18 文字省略 — 仕様（ツールチップは今後拡張可） |
 
 ## Production deploy（実績 2026-05-28 · 資源CD表示名2行 · Pi5 のみ）
 

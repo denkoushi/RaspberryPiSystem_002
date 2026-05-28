@@ -10,6 +10,33 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸縦書き**·**`feat/kiosk-load-balancing-vertical-chart-axis`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-vertical-chart-axis-2026-05-28}
+
+- **変更概要**:
+  - **棒グラフ X 軸（資源CD俯瞰・上位48）**: 48 本で横並びラベルが重なる問題を解消。**上段=資源CD（横）**、**下段=表示名（-90° 縦書き）**。チャート外寸 `lbChart.container` は **変更なし**（下余白 `bottom: 76` を軸専用に再配分）。
+  - **モジュール分割**: `mapOverviewResourceChartRows.ts`（行マッピング）· `loadBalancingOverviewChartAxis.ts`（軸レイアウト契約・純関数）· `LoadBalancingOverviewResourceChartXAxisTick.tsx`（SVG 描画）。
+  - **チップ（ステップ2）**: 変更なし（従来どおり 2 行横書き）。API/DB 変更なし。
+- **代表コミット**: **`04c9ad6e`** `fix(kiosk): use vertical labels on load balancing overview chart axis`
+- **CI**: **`26548968317`** — `lint-build-unit` / `api-db-and-infra` / `e2e-*` 成功 · **`security-docker`** は Caddy イメージ Trivy HIGH（本変更と無関係・既知）
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（`--limit` 1 台）
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/kiosk-load-balancing-vertical-chart-axis infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-103956-21799` | `ok=134` `changed=4` `failed=0` | **`--follow` 約 306s** · Git **`04c9ad6e`** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s**）
+- **負荷調整スモーク**: [KB-362 §実機検証 棒グラフX軸縦書き](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--棒グラフx軸縦書き)
+- **Web バンドル**: `index-DwCtJ7W_.js` — `rotate(-90)` あり（軸表示名縦書き）
+- **API**: `overview?month=2026-05` **HTTP 200**（約 **0.22s**、`x-client-key` 付き）
+- **トラブルシュート**:
+  - **X軸が横2行のまま重なる** → Pi5 Git **`04c9ad6e` 未満** またはキャッシュ → 再デプロイ + [強制リロード](verification-checklist.md) §6.6.4
+  - **表示名が出ない** → `resourceNameMap[cd]` 空（マスタ未登録）— 資源CD のみ表示は仕様
+  - **縦書きが切れる** → 名称が長い場合は 18 文字で省略（`formatOverviewChartAxisDisplayName`）
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)·[静的プレビュー](../previews/kiosk-load-balancing-layout-preview.html)
+
 ### 補足（2026-05-28 · **キオスク負荷調整・資源CD表示名（2行チップ/X軸）**·**`feat/kiosk-load-balancing-resource-display-lines`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-resource-display-lines-2026-05-28}
 
 - **変更概要**:
