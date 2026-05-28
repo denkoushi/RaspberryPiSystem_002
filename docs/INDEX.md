@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-05-28 · DGX 業務復帰 Strict Ready profile 一致 · **本番反映済**）
+
+- **DGX 業務復帰 Strict Ready と model profile 一致**: 27B 選択なのに 35B が稼働したまま execute が success になる不具合を修正。**`/v1/models` に加え `activeProfileId` / `state.backend` 一致を Strict Ready 必須**。**ブランチ**: **`fix/dgx-strict-ready-profile-match`** · **`90ba94d9`** · CI **`26575185778` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260528-221349-13434`**（**`failed=0`** · 約 **932s**）· DGX/Pi4/Pi3 **未実施** · Phase12 **43/0/0**（約 **110s**）。**記録**: [deployment §Strict Ready profile](./guides/deployment.md#dgx-strict-ready-profile-match-2026-05-28) · [KB-365 §本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-strict-ready-profile-match) · [Runbook §本番](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-strict-ready-profile-match) · [KB-366 §KPI 不一致](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#dgx-strict-ready-model-profile-mismatch-2026-05-28)。
+
 ### 最新アップデート（2026-05-28 · DGX activeProfileId null · Pi5 API 契約修正 · **本番反映済**）
 
 - **DGX activeProfileId null の Pi5 API 契約修正**: 業務復帰でモデル 2 件選べるのに **503 `DGX_MODEL_PROFILES_UNAVAILABLE`** となる不具合を修正。**`activeProfileId: null` でも allowlist 取得成功時は `overview.modelProfiles.status: ok`**。**ブランチ**: **`fix/dgx-active-profile-null-contract`** · **`f4ec13dc`** · CI **`26572037918` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260528-204344-14223`**（**`failed=0`** · 約 **903s**）· DGX/Pi4/Pi3 **未実施** · **検証**: Pi5 api **`status:ok` + assert 成功** · Phase12 **43/0/0**。**記録**: [deployment §activeProfileId null](./guides/deployment.md#dgx-active-profile-null-contract-2026-05-28) · [KB-365 §本番 activeProfileId null](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-active-profile-null-contract) · [Runbook §本番 activeProfileId null](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-activeprofileid-null-pi5-api)。

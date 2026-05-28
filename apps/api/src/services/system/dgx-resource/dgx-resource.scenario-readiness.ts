@@ -47,6 +47,80 @@ function inferenceBusinessReady(bundle: OverviewProbeBundle): {
   return { satisfied: false, detailJa: `Inference /v1/models 未準備: ${tail}` };
 }
 
+function businessModelProfileActiveReady(
+  bundle: OverviewProbeBundle,
+  selectedProfileId: string
+): { satisfied: boolean; detailJa: string } {
+  const mp = bundle.modelProfiles;
+  if (mp.status !== 'ok') {
+    return {
+      satisfied: false,
+      detailJa:
+        mp.errorMessageJa ??
+        'DGX model profiles API が利用できないため、選択モデルの active 一致を確認できません',
+    };
+  }
+  const selected = mp.available.find((p) => p.id === selectedProfileId);
+  if (!selected) {
+    return {
+      satisfied: false,
+      detailJa: `選択した modelProfileId が allowlist にありません: ${selectedProfileId}`,
+    };
+  }
+  if (mp.activeProfileId === null) {
+    return {
+      satisfied: false,
+      detailJa: `DGX の active profile が未設定です（選択: ${selected.displayNameJa}）。profile 指定の /start 反映を待っています`,
+    };
+  }
+  if (mp.activeProfileId !== selectedProfileId) {
+    const activeProfile = mp.available.find((p) => p.id === mp.activeProfileId);
+    const activeLabel = activeProfile?.displayNameJa ?? mp.activeProfileId;
+    return {
+      satisfied: false,
+      detailJa: `active profile が選択と不一致です（選択: ${selected.displayNameJa}、実際: ${activeLabel}）`,
+    };
+  }
+  return {
+    satisfied: true,
+    detailJa: `選択モデル ${selected.displayNameJa} が DGX active profile と一致しています`,
+  };
+}
+
+function businessModelProfileBackendReady(
+  bundle: OverviewProbeBundle,
+  selectedProfileId: string
+): { satisfied: boolean; detailJa: string } {
+  const mp = bundle.modelProfiles;
+  const selected = mp.available.find((p) => p.id === selectedProfileId);
+  if (!selected) {
+    return { satisfied: false, detailJa: `選択した modelProfileId が allowlist にありません: ${selectedProfileId}` };
+  }
+  if (mp.activeProfileId !== selectedProfileId) {
+    return {
+      satisfied: false,
+      detailJa: 'active profile が選択と一致していないため、backend 整合を確認できません',
+    };
+  }
+  const stateBackend = mp.activeStateBackend;
+  if (stateBackend && stateBackend !== selected.backend) {
+    return {
+      satisfied: false,
+      detailJa: `active backend（${stateBackend}）が選択 profile の backend（${selected.backend}）と不一致です`,
+    };
+  }
+  if (stateBackend) {
+    return {
+      satisfied: true,
+      detailJa: `active backend は選択 profile と一致しています（${stateBackend}）`,
+    };
+  }
+  return {
+    satisfied: true,
+    detailJa: `active profile 一致（backend: ${selected.backend}。state.backend 未報告のため allowlist を参照）`,
+  };
+}
+
 function privateComfyHealthy(bundle: OverviewProbeBundle): { satisfied: boolean; detailJa: string } {
   if (!bundle.comfyConfigured) {
     return { satisfied: false, detailJa: 'DGX_RESOURCE_COMFYUI_HEALTH_URL が未設定のため Comfy Ready を確認できません' };
@@ -147,7 +221,11 @@ function noopReadiness(spec: ScenarioReadinessTargetSpec): boolean {
   );
 }
 
-function evaluateReadinessChecks(bundle: OverviewProbeBundle, spec: ScenarioReadinessTargetSpec): readonly DgxScenarioReadinessCheckJa[] {
+function evaluateReadinessChecks(
+  bundle: OverviewProbeBundle,
+  spec: ScenarioReadinessTargetSpec,
+  options?: { modelProfileId?: string }
+): readonly DgxScenarioReadinessCheckJa[] {
   const checks: DgxScenarioReadinessCheckJa[] = [];
   if (spec.requireInferenceBusiness) {
     const r = inferenceBusinessReady(bundle);
@@ -156,6 +234,20 @@ function evaluateReadinessChecks(bundle: OverviewProbeBundle, spec: ScenarioRead
       satisfied: r.satisfied,
       detailJa: r.detailJa,
     });
+    if (options?.modelProfileId) {
+      const active = businessModelProfileActiveReady(bundle, options.modelProfileId);
+      checks.push({
+        code: 'model_profile_active',
+        satisfied: active.satisfied,
+        detailJa: active.detailJa,
+      });
+      const backend = businessModelProfileBackendReady(bundle, options.modelProfileId);
+      checks.push({
+        code: 'model_profile_backend',
+        satisfied: backend.satisfied,
+        detailJa: backend.detailJa,
+      });
+    }
   }
   if (spec.requirePrivateComfyHealthy) {
     const r = privateComfyHealthy(bundle);
@@ -205,6 +297,8 @@ export async function waitScenarioReadiness(input: {
     modelProfileId,
   } = input;
 
+  const readinessOptions = modelProfileId ? { modelProfileId } : undefined;
+
   const deadline = Date.now() + readinessDeadlineMs;
   let streak = 0;
   let lastChecks: readonly DgxScenarioReadinessCheckJa[] = [];
@@ -212,7 +306,7 @@ export async function waitScenarioReadiness(input: {
 
   while (Date.now() < deadline) {
     let bundle = await collectProbeBundle();
-    lastChecks = evaluateReadinessChecks(bundle, spec);
+    lastChecks = evaluateReadinessChecks(bundle, spec, readinessOptions);
 
     if (spec.allowGatewayStartRemediation && spec.requireInferenceBusiness && runGatewayStartOnceIfNeeded) {
       const needStart = inferenceBusinessReady(bundle).satisfied === false;
@@ -227,7 +321,7 @@ export async function waitScenarioReadiness(input: {
         gatewayRemediationRequested = true;
         await sleep(readinessPollIntervalMs);
         bundle = await collectProbeBundle();
-        lastChecks = evaluateReadinessChecks(bundle, spec);
+        lastChecks = evaluateReadinessChecks(bundle, spec, readinessOptions);
       }
     }
 

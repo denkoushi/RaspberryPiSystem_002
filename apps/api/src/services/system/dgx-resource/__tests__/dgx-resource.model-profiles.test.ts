@@ -39,9 +39,45 @@ describe('fetchDgxModelProfilesOverview', () => {
 
     expect(overview.status).toBe('ok');
     expect(overview.activeProfileId).toBeNull();
+    expect(overview.activeStateBackend).toBeNull();
     expect(overview.lastLoadedProfileId).toBeNull();
     expect(overview.errorMessageJa).toBeUndefined();
     expect(overview.available).toHaveLength(1);
+  });
+
+  it('parses activeStateBackend from state payload', async () => {
+    const fetchImpl = vi.fn(async (): Promise<Response> => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      url: 'http://127.0.0.1:38081/system/model-profiles',
+      text: async () => '',
+      json: async () => ({
+        ok: true,
+        activeProfileId: 'business_qwen36_27b_nvfp4',
+        state: { backend: 'blue', modelProfileId: 'business_qwen36_27b_nvfp4' },
+        profiles: [
+          {
+            id: 'business_qwen36_27b_nvfp4',
+            displayNameJa: 'Qwen3.6 27B NVFP4',
+            backend: 'blue',
+            servedAlias: 'system-prod-primary',
+            recommended: true,
+            enabled: true,
+            status: 'available',
+          },
+        ],
+      }),
+    })) as typeof fetch;
+
+    const overview = await fetchDgxModelProfilesOverview({
+      baseUrl: 'http://127.0.0.1:38081',
+      sharedToken: 'x'.repeat(32),
+      fetchImpl,
+      timeoutMs: 3000,
+    });
+
+    expect(overview.activeStateBackend).toBe('blue');
   });
 
   it('returns degraded when HTTP request fails', async () => {
@@ -74,6 +110,7 @@ describe('assertModelProfileKnownAndStartable', () => {
         configured: true,
         status: 'ok',
         activeProfileId: null,
+        activeStateBackend: null,
         pendingProfileId: null,
         lastLoadedProfileId: null,
         available: [

@@ -1,12 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { OverviewProbeBundle } from '../dgx-resource.control-targets.builder.js';
+import type { DgxModelProfilesOverview } from '../dgx-resource.model-profiles.js';
 import {
   allReadinessChecksSatisfied,
   buildScenarioReadinessTargetSpec,
   isReadinessNoop,
   waitScenarioReadiness,
 } from '../dgx-resource.scenario-readiness.js';
+
+const defaultModelProfiles: DgxModelProfilesOverview = {
+  configured: true,
+  status: 'ok',
+  available: [],
+  activeProfileId: null,
+  activeStateBackend: null,
+  pendingProfileId: null,
+  lastLoadedProfileId: null,
+};
+
+function mkModelProfiles(over: Partial<DgxModelProfilesOverview>): DgxModelProfilesOverview {
+  return { ...defaultModelProfiles, ...over };
+}
 
 function mkBundle(over: Partial<OverviewProbeBundle>): OverviewProbeBundle {
   return {
@@ -26,6 +41,7 @@ function mkBundle(over: Partial<OverviewProbeBundle>): OverviewProbeBundle {
       health: { ok: true, statusCode: 200 },
     },
     modelsProbe: { ok: false },
+    modelProfiles: defaultModelProfiles,
     metricsConfigured: false,
     metricsPayload: undefined,
     comfyConfigured: false,
@@ -45,6 +61,30 @@ function mkBundle(over: Partial<OverviewProbeBundle>): OverviewProbeBundle {
     ...over,
   } as OverviewProbeBundle;
 }
+
+const qwen27 = {
+  id: 'business_qwen36_27b_nvfp4',
+  displayNameJa: 'Qwen3.6 27B NVFP4',
+  backend: 'blue' as const,
+  servedAlias: 'system-prod-primary',
+  recommended: true,
+  enabled: true,
+  status: 'available' as const,
+  canonicalNames: [] as string[],
+  legacyNames: [] as string[],
+};
+
+const qwen35 = {
+  id: 'business_qwen35_35b_gguf',
+  displayNameJa: 'Qwen3.5 35B GGUF',
+  backend: 'green' as const,
+  servedAlias: 'system-prod-primary',
+  recommended: false,
+  enabled: true,
+  status: 'available' as const,
+  canonicalNames: [] as string[],
+  legacyNames: [] as string[],
+};
 
 describe('dgx-resource.scenario-readiness', () => {
   it('buildScenarioReadinessTargetSpec: business復帰ガイドは Inference を必須・補正スタートを許可', () => {
@@ -116,6 +156,11 @@ describe('dgx-resource.scenario-readiness', () => {
     const collect = vi.fn(async () =>
       mkBundle({
         modelsProbe: modelsOk ? { ok: true } : { ok: false, statusCode: 502 },
+        modelProfiles: mkModelProfiles({
+          available: [qwen27],
+          activeProfileId: 'business_qwen36_27b_nvfp4',
+          activeStateBackend: 'blue',
+        }),
       })
     );
     const dispatch = vi.fn(async () => {
@@ -146,6 +191,120 @@ describe('dgx-resource.scenario-readiness', () => {
       'none',
       'business_qwen36_27b_nvfp4'
     );
+  });
+
+  it('waitScenarioReadiness: /v1/models OK でも activeProfileId 不一致なら success にならない', async () => {
+    const bundle = mkBundle({
+      modelsProbe: { ok: true },
+      modelProfiles: mkModelProfiles({
+        available: [qwen27, qwen35],
+        activeProfileId: 'business_qwen35_35b_gguf',
+        activeStateBackend: 'green',
+      }),
+    });
+    const collect = vi.fn(async () => bundle);
+    const res = await waitScenarioReadiness({
+      spec: buildScenarioReadinessTargetSpec({
+        scenarioId: 'private_to_business',
+        willPostPolicyStartComfy: false,
+        willPostPolicyStartExperimentLab: false,
+        localLlmRuntimeMode: 'always_on',
+        gatewayRuntimeConfigured: false,
+      }),
+      collectProbeBundle: collect,
+      readinessDeadlineMs: 120,
+      readinessPollIntervalMs: 40,
+      modelProfileId: 'business_qwen36_27b_nvfp4',
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.checksJa.some((c) => c.code === 'model_profile_active' && !c.satisfied)).toBe(true);
+    expect(res.ok === false && res.checksJa.some((c) => c.code === 'inference_business' && c.satisfied)).toBe(true);
+  });
+
+  it('waitScenarioReadiness: activeProfileId が null のまま業務復帰 Strict Ready は未達', async () => {
+    const bundle = mkBundle({
+      modelsProbe: { ok: true },
+      modelProfiles: mkModelProfiles({
+        available: [qwen27],
+        activeProfileId: null,
+        activeStateBackend: null,
+      }),
+    });
+    const collect = vi.fn(async () => bundle);
+    const res = await waitScenarioReadiness({
+      spec: buildScenarioReadinessTargetSpec({
+        scenarioId: 'experiment_to_business',
+        willPostPolicyStartComfy: false,
+        willPostPolicyStartExperimentLab: false,
+        localLlmRuntimeMode: 'always_on',
+        gatewayRuntimeConfigured: false,
+      }),
+      collectProbeBundle: collect,
+      readinessDeadlineMs: 120,
+      readinessPollIntervalMs: 40,
+      modelProfileId: 'business_qwen36_27b_nvfp4',
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.checksJa.some((c) => c.code === 'model_profile_active' && !c.satisfied)).toBe(true);
+  });
+
+  it('waitScenarioReadiness: 選択 profile と active/backend が一致すれば success', async () => {
+    const bundle = mkBundle({
+      modelsProbe: { ok: true },
+      modelProfiles: mkModelProfiles({
+        available: [qwen27, qwen35],
+        activeProfileId: 'business_qwen36_27b_nvfp4',
+        activeStateBackend: 'blue',
+      }),
+    });
+    const collect = vi.fn(async () => bundle);
+    const res = await waitScenarioReadiness({
+      spec: buildScenarioReadinessTargetSpec({
+        scenarioId: 'private_to_business',
+        willPostPolicyStartComfy: false,
+        willPostPolicyStartExperimentLab: false,
+        localLlmRuntimeMode: 'always_on',
+        gatewayRuntimeConfigured: false,
+      }),
+      collectProbeBundle: collect,
+      readinessDeadlineMs: 2000,
+      readinessPollIntervalMs: 10,
+      modelProfileId: 'business_qwen36_27b_nvfp4',
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.checksJa.some((c) => c.code === 'model_profile_active' && c.satisfied)).toBe(true);
+    expect(res.ok && res.checksJa.some((c) => c.code === 'model_profile_backend' && c.satisfied)).toBe(true);
+  });
+
+  it('waitScenarioReadiness: state.backend が選択 profile と不一致なら success にならない', async () => {
+    const bundle = mkBundle({
+      modelsProbe: { ok: true },
+      modelProfiles: mkModelProfiles({
+        available: [qwen27],
+        activeProfileId: 'business_qwen36_27b_nvfp4',
+        activeStateBackend: 'green',
+      }),
+    });
+    const collect = vi.fn(async () => bundle);
+    const res = await waitScenarioReadiness({
+      spec: buildScenarioReadinessTargetSpec({
+        scenarioId: 'private_to_business',
+        willPostPolicyStartComfy: false,
+        willPostPolicyStartExperimentLab: false,
+        localLlmRuntimeMode: 'always_on',
+        gatewayRuntimeConfigured: false,
+      }),
+      collectProbeBundle: collect,
+      readinessDeadlineMs: 120,
+      readinessPollIntervalMs: 40,
+      modelProfileId: 'business_qwen36_27b_nvfp4',
+    });
+
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.checksJa.some((c) => c.code === 'model_profile_backend' && !c.satisfied)).toBe(true);
   });
 
   it('allReadinessChecksSatisfied が部分充足を検出', () => {

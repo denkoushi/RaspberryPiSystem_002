@@ -91,6 +91,7 @@ describe('createDgxResourceService', () => {
           json: async () => ({
             ok: true,
             activeProfileId: 'business_qwen36_27b_nvfp4',
+            state: { backend: 'blue' },
             profiles: [
               {
                 id: 'business_qwen36_27b_nvfp4',
@@ -112,6 +113,7 @@ describe('createDgxResourceService', () => {
     const overview = await svc.getOverview();
 
     expect(overview.modelProfiles.activeProfileId).toBe('business_qwen36_27b_nvfp4');
+    expect(overview.modelProfiles.activeStateBackend).toBe('blue');
     expect(overview.modelProfiles.available[0]?.backend).toBe('blue');
   });
 
@@ -900,6 +902,130 @@ describe('createDgxResourceService', () => {
         modelProfileId: 'business_disabled',
       })
     ).rejects.toMatchObject({ statusCode: 409, code: 'DGX_MODEL_PROFILE_UNAVAILABLE' });
+  });
+
+  it('private_to_business execute does not succeed when active profile stays on a different model', async () => {
+    const prev = {
+      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
+      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
+      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
+    };
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token';
+    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 90;
+    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 30;
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      store.setPolicyMode('private_ok');
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: true,
+          baseUrl: 'http://127.0.0.1:38081',
+          model: 'm1',
+          timeoutMs: 60_000,
+          health: { ok: true, statusCode: 200 },
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
+        const u = typeof input === 'string' ? input : (input as URL).href;
+        if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({
+              ok: true,
+              activeProfileId: 'business_qwen35_35b_gguf',
+              state: { backend: 'green' },
+              profiles: [
+                {
+                  id: 'business_qwen36_27b_nvfp4',
+                  displayNameJa: 'Qwen3.6 27B NVFP4',
+                  backend: 'blue',
+                  servedAlias: 'system-prod-primary',
+                  recommended: true,
+                  enabled: true,
+                  status: 'available',
+                },
+                {
+                  id: 'business_qwen35_35b_gguf',
+                  displayNameJa: 'Qwen3.5 35B GGUF',
+                  backend: 'green',
+                  servedAlias: 'system-prod-primary',
+                  recommended: false,
+                  enabled: true,
+                  status: 'available',
+                },
+              ],
+            }),
+          } as Response;
+        }
+        if (u === 'http://127.0.0.1:38081/v1/models') {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({ data: [{ id: 'system-prod-primary' }] }),
+          } as Response;
+        }
+        if (u === 'http://127.0.0.1:38081/runtime/start' && init?.method === 'POST') {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({}),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 404,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({}),
+        } as Response;
+      });
+
+      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+      const preview = await svc.executeAction({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: 'private_to_business',
+        modelProfileId: 'business_qwen36_27b_nvfp4',
+      });
+      const execute = await svc.executeAction({
+        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
+        scenarioId: 'private_to_business',
+        modelProfileId: 'business_qwen36_27b_nvfp4',
+        planFingerprint: preview.scenarioPreview!.planFingerprint,
+        confirmed: true,
+      });
+
+      expect(execute.scenarioExecute?.success).toBe(false);
+      expect(execute.scenarioExecute?.readinessChecksJa?.some((c) => c.code === 'inference_business' && c.satisfied)).toBe(true);
+      expect(execute.scenarioExecute?.readinessChecksJa?.some((c) => c.code === 'model_profile_active' && !c.satisfied)).toBe(true);
+      expect(execute.scenarioExecute?.rollback?.attempted).toBe(true);
+    } finally {
+      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
+      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
+      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
+      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
+      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
+      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
+    }
   });
 
   it('business_to_private succeeds only after strict readiness is confirmed', async () => {

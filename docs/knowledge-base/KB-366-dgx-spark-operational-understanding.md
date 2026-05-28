@@ -157,6 +157,14 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 - **モデルが 1 件しか選べないとき**: DGX API は 2 profile 返却でも、27B が **`status: unavailable`**（manifest の `currentStorageLocation` が実ディスクとずれている）だと UI は 35B のみ表示。**HF 27B の実体は `hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4`** を確認し、registry manifest を合わせる（[KB-365 §storage availability](./KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）。**2026-05-28 本番修正済** → [§storage path 本番](#production-2026-05-28-dgx-model-profile-storage-path)。
 - **業務復帰 503（activeProfileId null）**: ドロップダウンに 2 件出るのに **`DGX_MODEL_PROFILES_UNAVAILABLE`** → DGX は **`activeProfileId: null` が正常**（未 start 前·state 未書き込み）。**現在ロード中かは `/v1/models` で別確認**。Pi5 は allowlist 取得 OK なら **`overview.modelProfiles.status: ok`**（[KB-365 §activeProfileId null](./KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)）。**stop 後も state ファイルは残り得る**（null にならない場合あり）。
 
+## 業務復帰 success だが KPI が選択モデルと合わない（2026-05-28） {#dgx-strict-ready-model-profile-mismatch-2026-05-28}
+
+- **症状**: 27B 選択後も **Unified Mem が 20GB 台**・実際は **35B green**。Pi5 execute は **success** になり UI が再操作可能。
+- **原因**: Strict Ready が **`/v1/models` のみ**で、**`activeProfileId` 不一致**を見ていなかった（旧契約）。
+- **Fix**: Pi5 API で業務復帰 **`modelProfileId` 指定時は profile 一致を Ready 必須**（[KB-365 §Strict Ready profile 一致](./KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-strict-ready-model-profile-match) · [Runbook](../runbooks/dgx-system-prod-local-llm.md#strict-ready-model-profile-match-2026-05-28)）。
+- **切り分け**: `GET /system/model-profiles` の **`activeProfileId` / `state.backend`** と選択 ID を突合。**`/v1/models` だけでは不十分**。
+- **本番反映（2026-05-28）**: Pi5 **`fix/dgx-strict-ready-profile-match`** · **`90ba94d9`** · Detach **`20260528-221349-13434`** · Phase12 **43/0/0** — [KB-365 §本番](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-strict-ready-profile-match) · [Runbook §本番](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-strict-ready-profile-match)。
+
 ## 本番反映（2026-05-28 · 27B manifest `currentStorageLocation`） {#production-2026-05-28-dgx-model-profile-storage-path}
 
 - **症状（修正前）**: 業務復帰 UI のモデル選択が **35B のみ**（API は profiles **2 件**·27B は **`unavailable`**）。
