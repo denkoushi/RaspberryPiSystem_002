@@ -10,6 +10,38 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **キオスク負荷調整・overview 棒グラフレイアウト最適化**·**`fix/load-balancing-overview-chart-review`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-overview-chart-layout-2026-05-28}
+
+- **背景（実機所見）**: 直前デプロイ（`d0263cce`）は X 軸ラベル帯 **108px** を確保していたが、Recharts で **`margin.bottom: 108` と `XAxis.height: 108` が二重確保**され、プロット高が **約 40px** に潰れ、ラベル帯下に **約 100px の死んだ余白**が残っていた。また 48 本超で tick が重なり、ホバー時の Tooltip カーソル（`fill:#ccc`）が棒を隠していた。
+- **Fix**:
+  - **`margin.bottom: 0`** — 下余白は **`XAxis.height = 108` のみ**（二重確保廃止）。プロット高 **≈148px**（外寸 260 − top 4 − 108）。
+  - **横スクロール**: 1 資源 **40px** 最小幅 · カテゴリ gap **12px** · 棒/CD/表示名 tick 中央揃え。
+  - **表示名**: `foreignObject` + **`writing-mode: vertical-rl`** · fontSize **12** · clip **81px** · max **7** 文字（`clipPaddingBottom: 8`）。
+  - **Y 軸**: データ最大値 × **1.04**（プロット内余白削減）。
+  - **UI**: 背景点線（`CartesianGrid`）削除 · Tooltip ホバー **枠線のみ**（`fill:none` · `stroke:#94a3b8`）。
+  - **テスト**: jsdom で `ResizeObserver` 未実装のため **`typeof ResizeObserver === 'undefined'` 時は observe スキップ**。
+  - **開発用**: `/dev/load-balancing-overview-chart`（`import.meta.env.DEV` のみ · 本番バンドルに含まない）。
+- **代表コミット**: **`da995573`**（`41f4e904` + ResizeObserver ガード）
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/load-balancing-overview-chart-review infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | `20260528-133208-19029` | `ok=134` `changed=4` `failed=0` | Git **`da995573`** · **`--follow` 約 300s** |
+
+- **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **29s**）
+- **負荷調整スモーク**: [KB-362 §overview 棒グラフ 2026-05-28](../knowledge-base/KB-362-kiosk-load-balancing.md#実機検証2026-05-28--overview-棒グラフレイアウト最適化)
+- **Web バンドル**: `index-BuE63Pux.js` — `gapBelowResourceCd:5` · `tickMargin:2` · `clipPaddingBottom:8` · `writingMode:"vertical-rl"` · `stroke:"#94a3b8"` · `fill:"none"`
+- **API**: `overview?month=2026-05` **HTTP 200**（約 **0.36s**）
+- **CI**: **`26554467995`** — `lint-build-unit` / `e2e-smoke` / `api-db-and-infra` **success** · `security-docker`（Caddy Trivy）**failure** — **本変更と無関係**（main でも同様）
+- **トラブルシュート**:
+  - **棒が潰れて下半分が空白** → **`d0263cce` 世代（margin.bottom 二重）** — **`da995573` 以上** + [強制リロード](verification-checklist.md) §6.6.4
+  - **ホバーで白い帯が棒を隠す** → 旧 Tooltip cursor — **`loadBalancingTooltipCursor`**（枠線のみ）確認
+  - **バンドル確認** → `grep -E 'gapBelowResourceCd:5|clipPaddingBottom:8|writingMode:\"vertical-rl\"' index-*.js` on Pi5
+- **ナレッジ**: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md)
+
 ### 補足（2026-05-28 · **キオスク負荷調整・棒グラフX軸CD下余白+縦表示名**·**`feat/kiosk-load-balancing-axis-label-gap`**·**Web のみ**·**Pi5 本番・実機 OK（自動）**） {#kiosk-load-balancing-axis-label-gap-2026-05-28}
 
 - **背景（実機所見）**: 直前デプロイ（`cb339bfa`）は資源CD・表示名を **+Y** に寄せたが、**同一 tick 原点から `dy` のみ** で配置していたため、**回転した表示名が資源CDと重なり**、CD の真下に余白がなく **「CD → 余白 → 縦表示名」** の意図どおりにならなかった（[KB-362 §所見](../knowledge-base/KB-362-kiosk-load-balancing.md#実機所見2026-05-28--x軸cdと表示名の重なり)）。

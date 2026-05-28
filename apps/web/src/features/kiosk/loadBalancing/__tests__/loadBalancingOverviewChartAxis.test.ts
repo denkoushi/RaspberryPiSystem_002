@@ -3,24 +3,46 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOverviewChartDisplayNameByCd,
   formatOverviewChartAxisDisplayName,
+  getOverviewChartDisplayNameClipHeight,
+  getOverviewChartDisplayNameMaxLength,
   getOverviewChartDisplayNameOffsetY,
+  getOverviewChartMinScrollWidth,
+  getOverviewChartPlotMinWidth,
+  getOverviewChartYAxisMax,
   loadBalancingOverviewChartAxisBandHeight,
+  loadBalancingOverviewChartMinTickSlotWidth,
   loadBalancingOverviewXAxisLayout,
-  parseRechartsAxisTickPosition
+  parseRechartsAxisTickPosition,
+  resolveOverviewChartDisplayNameClipWidth
 } from '../loadBalancingOverviewChartAxis';
 
 describe('loadBalancingOverviewChartAxis', () => {
-  it('資源CD（横）→ 余白 → 表示名（縦 +90°）のレイアウト契約', () => {
+  it('資源CD（横）→ 余白 → 表示名（vertical-rl）のレイアウト契約', () => {
     expect(loadBalancingOverviewChartAxisBandHeight).toBe(108);
-    expect(loadBalancingOverviewXAxisLayout.displayName.rotationDeg).toBe(90);
-    expect(loadBalancingOverviewXAxisLayout.tickMargin).toBe(6);
-    expect(loadBalancingOverviewXAxisLayout.resourceCd.dy).toBe(4);
-    expect(loadBalancingOverviewXAxisLayout.gapBelowResourceCd).toBe(10);
+    expect(loadBalancingOverviewXAxisLayout.displayName.writingMode).toBe('vertical-rl');
+    expect(loadBalancingOverviewXAxisLayout.displayName.fontSize).toBe(12);
+    expect(loadBalancingOverviewXAxisLayout.displayName.charHeight).toBe(11);
+    expect(loadBalancingOverviewXAxisLayout.tickMargin).toBe(2);
+    expect(loadBalancingOverviewXAxisLayout.resourceCd.dy).toBe(2);
+    expect(loadBalancingOverviewXAxisLayout.gapBelowResourceCd).toBe(5);
     expect(getOverviewChartDisplayNameOffsetY()).toBe(
       loadBalancingOverviewXAxisLayout.resourceCd.dy +
         loadBalancingOverviewXAxisLayout.resourceCd.lineHeight +
         loadBalancingOverviewXAxisLayout.gapBelowResourceCd
     );
+    expect(getOverviewChartDisplayNameClipHeight()).toBe(81);
+    expect(getOverviewChartDisplayNameMaxLength()).toBe(7);
+    expect(resolveOverviewChartDisplayNameClipWidth()).toBe(16);
+    expect(resolveOverviewChartDisplayNameClipWidth(24)).toBe(22);
+    expect(loadBalancingOverviewChartMinTickSlotWidth).toBe(40);
+    expect(getOverviewChartPlotMinWidth(48)).toBe(48 * 40);
+    expect(getOverviewChartMinScrollWidth(48)).toBe(48 + 16 + 48 * 40);
+  });
+
+  describe('getOverviewChartYAxisMax', () => {
+    it('データ最大値の 4% ヘッドルームで上限を返す', () => {
+      expect(getOverviewChartYAxisMax([{ req: 72000, cap: 12000 }])).toBe(Math.ceil(72000 * 1.04));
+    });
   });
 
   describe('parseRechartsAxisTickPosition', () => {

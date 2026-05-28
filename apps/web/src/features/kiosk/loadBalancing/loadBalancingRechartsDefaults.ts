@@ -12,12 +12,12 @@ export const LOAD_BALANCING_CAP_FILL = '#34d399';
 export const LOAD_BALANCING_OVER_REQ_FILL = '#f59e0b';
 export const LOAD_BALANCING_OVER_REQ_STROKE = '#be123c';
 
-/** 凡例はチャート外（上部）。下余白は X 軸ラベル帯 — ペイン外寸は lbChart.container で固定 */
+/** 凡例はチャート外（上部）。下余白は XAxis.height のみ（margin.bottom と二重確保しない） */
 export const loadBalancingChartMargin = {
-  top: 8,
+  top: 4,
   right: 12,
   left: 4,
-  bottom: loadBalancingOverviewChartAxisBandHeight
+  bottom: 0
 };
 
 export const loadBalancingOverviewChartXAxisHeight = loadBalancingOverviewChartAxisBandHeight;
@@ -27,6 +27,13 @@ export const loadBalancingTooltipStyle = {
   borderColor: '#334155',
   fontSize: 13
 };
+
+/** BarChart ホバー強調 — デフォルト fill:#ccc の帯は棒を隠すため枠線のみ */
+export const loadBalancingTooltipCursor = {
+  fill: 'none',
+  stroke: '#94a3b8',
+  strokeWidth: 1
+} as const;
 
 /** プレビュー .bar-label(10px)より一段大きく — 実機で軸ラベルが潰れないよう */
 export const loadBalancingAxisTick = { fill: '#e2e8f0', fontSize: 13 };

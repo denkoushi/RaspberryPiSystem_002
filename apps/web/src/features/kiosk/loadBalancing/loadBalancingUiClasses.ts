@@ -94,6 +94,8 @@ export const lbChip = {
 export const lbChart = {
   legend: 'mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/85',
   legendSwatch: 'inline-block h-3 w-3 shrink-0 rounded-sm',
+  /** 俯瞰棒グラフ — ビューポート内で横スクロール */
+  scroll: 'w-full min-w-0 overflow-x-auto overscroll-x-contain',
   container: 'h-[min(260px,34dvh)] w-full min-w-0'
 } as const;
 
