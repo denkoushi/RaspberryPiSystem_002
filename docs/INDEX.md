@@ -8,6 +8,10 @@
 
 ## 🎯 目的別インデックス
 
+### 最新アップデート（2026-05-28 · DGX activeProfileId null · Pi5 API 契約修正 · **本番反映済**）
+
+- **DGX activeProfileId null の Pi5 API 契約修正**: 業務復帰でモデル 2 件選べるのに **503 `DGX_MODEL_PROFILES_UNAVAILABLE`** となる不具合を修正。**`activeProfileId: null` でも allowlist 取得成功時は `overview.modelProfiles.status: ok`**。**ブランチ**: **`fix/dgx-active-profile-null-contract`** · **`f4ec13dc`** · CI **`26572037918` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260528-204344-14223`**（**`failed=0`** · 約 **903s**）· DGX/Pi4/Pi3 **未実施** · **検証**: Pi5 api **`status:ok` + assert 成功** · Phase12 **43/0/0**。**記録**: [deployment §activeProfileId null](./guides/deployment.md#dgx-active-profile-null-contract-2026-05-28) · [KB-365 §本番 activeProfileId null](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-active-profile-null-contract) · [Runbook §本番 activeProfileId null](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-activeprofileid-null-pi5-api)。
+
 ### 最新アップデート（2026-05-28 · DGX 27B model profile ストレージパス · **本番反映済**）
 
 - **DGX 27B `currentStorageLocation` 修正（UI でモデル 2 件選択）**: 業務復帰ドロップダウンが **1 件のみ**だった原因は 27B manifest の **`hub/` 欠落**（`status: unavailable`）。**DGX registry のみ `scp` 反映**·再起動不要。**ブランチ**: **`fix/dgx-model-profile-current-storage-path`**·**`ff5947c8`**·CI **`26569969639` success**·**本番**: **DGX Spark のみ**（Pi5/Pi4/Pi3 **未実施**）·**検証**: `GET /system/model-profiles` → **2 件とも `available`**。**記録**: [deployment §storage path](./guides/deployment.md#dgx-model-profile-storage-path-2026-05-28)·[KB-365 §本番 storage path](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[KB-366 §storage path](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)·[Runbook](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)。

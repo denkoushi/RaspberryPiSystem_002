@@ -10,6 +10,27 @@ update-frequency: medium
 
 # デプロイメントガイド
 
+### 補足（2026-05-28 · **DGX activeProfileId null の Pi5 API 契約修正**·**Pi5 のみ**） {#dgx-active-profile-null-contract-2026-05-28}
+
+- **変更概要（正本）**: [KB-365 §activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-active-profile-id-null)。DGX `GET /system/model-profiles` が **`activeProfileId: null`**（未 start 前·state 未書き込み）でも allowlist 取得成功時、Pi5 `overview.modelProfiles.status` を **`ok`** とみなす。**`PREVIEW_ORCHESTRATION_SCENARIO`（`modelProfileId` 付き）の 503 `DGX_MODEL_PROFILES_UNAVAILABLE` を解消**。
+- **代表コミット**: **`f4ec13dc`** · **ブランチ** **`fix/dgx-active-profile-null-contract`** · **CI `26572037918` success**。
+- **Prisma マイグレーション**: **なし**
+- **対象ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3**: **デプロイ不要**（Pi5 API のみ変更）。
+- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/dgx-active-profile-null-contract infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。
+- **本番デプロイ（実績·2026-05-28）**:
+
+| ホスト | Detach Run ID | PLAY RECAP | 備考 |
+|--------|---------------|------------|------|
+| `raspberrypi5` | **`20260528-204344-14223`** | **`ok=134` `changed=4` `failed=0`** | Git **`f4ec13dc`** · **`--follow` 約 903s** |
+| DGX / Pi4 / Pi3 | **未実施** | — | コード差分なし |
+
+- **実機（機能·Pi5）**:
+  - DGX: `GET /system/model-profiles` → **`activeProfileId: null`** · profiles **2 件とも `available`**
+  - Pi5 `api` コンテナ: `fetchDgxModelProfilesOverview` → **`status: ok`** · `assertModelProfileKnownAndStartable(..., business_qwen35_35b_gguf)` **成功**（修正前は 503）
+  - Phase12 **`verify-phase12-real.sh` → 43/0/0**（約 **116s**）
+- **トラブルシュート**: ドロップダウンに 2 件出るのに 503 → **storage path 問題（KB-365 §storage）と別**。profiles 取得成功 + null active → **Pi5 ref が本修正以降か**を確認。
+- **ナレッジ**: [KB-365 §本番 activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-active-profile-null-contract) · [Runbook §本番 activeProfileId null](../runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-activeprofileid-null-pi5-api) · [KB-366 §503 切り分け](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-business-return-model-selection)。
+
 ### 補足（2026-05-28 · **DGX 27B model profile `currentStorageLocation` 修正**·**DGX registry のみ**） {#dgx-model-profile-storage-path-2026-05-28}
 
 - **変更概要（正本）**: [KB-365 §storage availability](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)。HF cache 利用時の **`currentStorageLocation` は `hf-cache/hub/models--…` 形式**（`hub/` 欠落で **`status: unavailable`** → 管理 UI は 1 件のみ表示）。

@@ -121,6 +121,18 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
   - DGX `model_profiles.profile_storage_available()` は **`currentStorageLocation` → `storageLocation` の OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `status: available`
   - **切り分け**: API で profiles が 2 件なのに UI が 1 件だけ → 各 profile の `status` と manifest の `currentStorageLocation` を `ls` で突合する（[KB-365 §model profile storage](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)）
 
+**本番反映（2026-05-28 · activeProfileId null · Pi5 API 契約修正）** {#本番反映2026-05-28-activeprofileid-null-pi5-api}
+
+- **対象**: **Pi5 のみ**（`raspberrypi5` · **`--limit raspberrypi5`**）。**DGX / Pi4 / Pi3 はデプロイ不要**。
+- **ブランチ**: **`fix/dgx-active-profile-null-contract`**（**`f4ec13dc`** · CI **`26572037918` success**）。
+- **変更内容**: Pi5 `fetchDgxModelProfilesOverview` が **`activeProfileId: null` でも allowlist 取得成功なら `status: ok`**。業務復帰 PREVIEW/EXECUTE の **`DGX_MODEL_PROFILES_UNAVAILABLE`（503）** を解消。
+- **手順**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh fix/dgx-active-profile-null-contract infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**Detach `20260528-204344-14223`** · **`failed=0`** · 約 **903s**）。
+- **検証**:
+  - DGX: `curl …/system/model-profiles` → **`activeProfileId: null`** · profiles **2 件 `available`**
+  - Pi5 api: `fetchDgxModelProfilesOverview` → **`status: ok`** · `assertModelProfileKnownAndStartable` 成功
+  - Phase12 **43/0/0**
+- **KB**: [KB-365 §本番 activeProfileId null](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-active-profile-null-contract) · [deployment.md §activeProfileId null](../guides/deployment.md#dgx-active-profile-null-contract-2026-05-28)。
+
 **本番反映（2026-05-28・業務復帰モデル選択・Pi5 API+Web + DGX control/gateway）** {#本番反映2026-05-28-業務復帰モデル選択}
 
 - **① Pi5 のみ**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-business-model-selection infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach `20260528-184011-18178`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0`**·`--follow` 約 **1195s**·Git **`91be7dcf`**。Pi4／Pi3 **no hosts matched**。
