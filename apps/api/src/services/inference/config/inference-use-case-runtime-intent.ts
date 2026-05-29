@@ -2,12 +2,14 @@ import type { InferenceProviderDefinition } from './inference-provider.types.js'
 import type { InferenceRouter } from '../routing/inference-router.js';
 import type { InferenceUseCase } from '../types/inference-usecase.js';
 import type { LocalLlmRuntimeUseCase } from '../runtime/local-llm-runtime-control.port.js';
+import {
+  assertBusinessProfileIntentEnvConsistency,
+  resolveRuntimeStartProfileIdForBusinessUseCase,
+  type BusinessProfileIntentEnv,
+} from './business-profile-intent.js';
 
-export type InferenceRuntimeIntentEnv = {
+export type InferenceRuntimeIntentEnv = BusinessProfileIntentEnv & {
   runtimeStartProfileEnabled: boolean;
-  photoLabelRuntimeStartProfileId?: string;
-  documentSummaryRuntimeStartProfileId?: string;
-  adminRuntimeStartProfileId?: string;
 };
 
 const ROUTED_USE_CASES: readonly InferenceUseCase[] = ['photo_label', 'document_summary'];
@@ -25,28 +27,14 @@ function isRoutedInferenceUseCase(useCase: LocalLlmRuntimeUseCase): useCase is I
 
 /**
  * 用途ごとの DGX modelProfileId 意図（shadow / opt-in start 用）。
- * 未設定時は undefined（従来どおり reason のみで /start）。
+ * 業務 use case は共通 business profile を優先する。
  */
 export function resolveRuntimeStartProfileIdForUseCase(
   useCase: LocalLlmRuntimeUseCase,
   env: InferenceRuntimeIntentEnv,
   provider: InferenceProviderDefinition
 ): string | undefined {
-  const fromProvider = provider.runtimeStartProfileId?.trim();
-  if (fromProvider) {
-    return fromProvider;
-  }
-
-  if (useCase === 'photo_label') {
-    return env.photoLabelRuntimeStartProfileId?.trim() || undefined;
-  }
-  if (useCase === 'document_summary') {
-    return env.documentSummaryRuntimeStartProfileId?.trim() || undefined;
-  }
-  if (useCase === 'admin_console_chat' || useCase === 'stackchan_chat') {
-    return env.adminRuntimeStartProfileId?.trim() || undefined;
-  }
-  return undefined;
+  return resolveRuntimeStartProfileIdForBusinessUseCase(useCase, env, provider);
 }
 
 export function shouldSendRuntimeStartProfileId(
@@ -97,6 +85,8 @@ export function assertConsistentRuntimeProfileIntentOnSharedProviders(
     provider: InferenceProviderDefinition
   ) => { mode: 'always_on' | 'on_demand' } | undefined
 ): void {
+  assertBusinessProfileIntentEnvConsistency(env);
+
   if (!env.runtimeStartProfileEnabled) {
     return;
   }
@@ -132,9 +122,9 @@ export function assertConsistentRuntimeProfileIntentOnSharedProviders(
       continue;
     }
     throw new Error(
-      `INFERENCE_RUNTIME_START_PROFILE_ENABLED: provider "${providerId}" resolves conflicting runtimeStartProfileId values across use cases (${[...profileIds].join(', ')}). Use one profile per provider or disable opt-in.`
+      `INFERENCE_RUNTIME_START_PROFILE_ENABLED: provider "${providerId}" resolves conflicting runtimeStartProfileId values across use cases (${[...profileIds].join(', ')}). Use INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID for a single shared profile or disable opt-in.`
     );
   }
 }
 
-export { ROUTED_USE_CASES };
+export { ROUTED_USE_CASES, RUNTIME_INTENT_USE_CASES };

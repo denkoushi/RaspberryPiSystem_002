@@ -115,6 +115,7 @@ function buildController(fetchImpl: typeof fetch = fetch): LocalLlmRuntimeContro
   const inferenceRuntime = getInferenceRuntime();
   const runtimeIntentEnv = {
     runtimeStartProfileEnabled: env.INFERENCE_RUNTIME_START_PROFILE_ENABLED,
+    businessRuntimeStartProfileId: env.INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID,
     photoLabelRuntimeStartProfileId: env.INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID,
     documentSummaryRuntimeStartProfileId: env.INFERENCE_DOCUMENT_SUMMARY_RUNTIME_START_PROFILE_ID,
     adminRuntimeStartProfileId: env.INFERENCE_ADMIN_RUNTIME_START_PROFILE_ID,

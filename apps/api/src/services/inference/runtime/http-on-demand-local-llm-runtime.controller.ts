@@ -59,6 +59,11 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
     return 'on_demand';
   }
 
+  /** Provider 層の lease 解放判定用（同一 HttpOnDemand インスタンスへの参照カウント） */
+  getInFlightRefCount(): number {
+    return this.refCount;
+  }
+
   async ensureReady(useCase: LocalLlmRuntimeUseCase): Promise<void> {
     this.refCount += 1;
     if (this.refCount === 1) {

@@ -64,5 +64,22 @@ export function buildDgxResourceRuntimeSummaryItems(
       value: summary.policyLabel,
       toneClass: policyModeBadgeTokens(summary.policyMode).split(' ').find((c) => c.startsWith('text-')) ?? 'text-cyan-100',
     },
+    ...(summary.businessRuntimeIntentProfileId
+      ? [
+          {
+            key: 'intent',
+            label: 'Pi5 業務意図',
+            value: summary.businessRuntimeIntentProfileId,
+            hint:
+              summary.businessRuntimeIntentAlignedWithActive === false
+                ? 'Active Model と不一致（次の on-demand /start で揃えるか業務復帰を再実行）'
+                : summary.businessRuntimeIntentSource
+                  ? `source: ${summary.businessRuntimeIntentSource}`
+                  : undefined,
+            toneClass:
+              summary.businessRuntimeIntentAlignedWithActive === false ? 'text-amber-200' : 'text-sky-100',
+          },
+        ]
+      : []),
   ];
 }

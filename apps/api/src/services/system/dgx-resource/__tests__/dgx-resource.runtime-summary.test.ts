@@ -74,6 +74,15 @@ describe('buildDgxResourceRuntimeSummary', () => {
     expect(summary.policyLabel).toContain('私用');
   });
 
+  it('reports business runtime intent alignment', () => {
+    const summary = buildDgxResourceRuntimeSummary(mkBundle({}), 'business_first', {
+      businessRuntimeStartProfileId: 'business_qwen35_35b_gguf',
+    });
+    expect(summary.businessRuntimeIntentProfileId).toBe('business_qwen35_35b_gguf');
+    expect(summary.businessRuntimeIntentSource).toBe('env');
+    expect(summary.businessRuntimeIntentAlignedWithActive).toBe(true);
+  });
+
   it('handles missing active profile', () => {
     const mp: DgxModelProfilesOverview = {
       configured: true,

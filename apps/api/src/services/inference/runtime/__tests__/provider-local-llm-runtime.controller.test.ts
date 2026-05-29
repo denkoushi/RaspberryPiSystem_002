@@ -299,4 +299,119 @@ describe('ProviderLocalLlmRuntimeController', () => {
     const gets = fetchImpl.mock.calls.filter(([, init]) => init?.method === 'GET');
     expect(gets.some(([u]) => String(u).includes('/agent-container/health'))).toBe(true);
   });
+
+  it('release uses controller pinned at ensureReady when runtime intent env changes mid-flight', async () => {
+    const providers = createProviders();
+    const router = new InferenceRouter({
+      providers,
+      routes: {
+        photo_label: { providerId: 'dgx_text' },
+        document_summary: { providerId: 'dgx_text' },
+      },
+    });
+
+    const startBodies: Array<{ modelProfileId?: string }> = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/start') && init?.method === 'POST') {
+        startBodies.push(JSON.parse(String(init.body)) as { modelProfileId?: string });
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        return new Response('ready', { status: 200 });
+      }
+      if (url.endsWith('/stop') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const runtimeIntentEnv = {
+      runtimeStartProfileEnabled: true,
+      businessRuntimeStartProfileId: 'business_qwen36_27b_nvfp4',
+    };
+
+    const controller = new ProviderLocalLlmRuntimeController({
+      fetchImpl,
+      globalMode: 'on_demand',
+      router,
+      providers,
+      resolveAdminProvider: () => providers[0],
+      resolveAdminModel: () => 'system-prod-primary',
+      readyTimeoutMs: 30_000,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      runtimeIntentEnv,
+    });
+
+    await controller.ensureReady('photo_label');
+    runtimeIntentEnv.businessRuntimeStartProfileId = 'business_qwen35_35b_gguf';
+    await controller.release('photo_label');
+
+    expect(startBodies).toHaveLength(1);
+    expect(startBodies[0]?.modelProfileId).toBe('business_qwen36_27b_nvfp4');
+    const stopCalls = fetchImpl.mock.calls.filter(([url, init]) => String(url).endsWith('/stop') && init?.method === 'POST');
+    expect(stopCalls).toHaveLength(1);
+  });
+
+  it('drops leased controller when ensureReady fails so next retry can re-resolve profile intent', async () => {
+    const providers = createProviders();
+    const router = new InferenceRouter({
+      providers,
+      routes: {
+        photo_label: { providerId: 'dgx_text' },
+      },
+    });
+
+    const startBodies: Array<{ modelProfileId?: string }> = [];
+    let startAttempts = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/start') && init?.method === 'POST') {
+        startBodies.push(JSON.parse(String(init.body)) as { modelProfileId?: string });
+        startAttempts += 1;
+        if (startAttempts === 1) {
+          return new Response('boom', { status: 503 });
+        }
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('/v1/chat/completions') && init?.method === 'POST') {
+        return new Response('ready', { status: 200 });
+      }
+      if (url.endsWith('/stop') && init?.method === 'POST') {
+        return new Response('', { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const runtimeIntentEnv = {
+      runtimeStartProfileEnabled: true,
+      businessRuntimeStartProfileId: 'business_qwen36_27b_nvfp4',
+    };
+
+    const controller = new ProviderLocalLlmRuntimeController({
+      fetchImpl,
+      globalMode: 'on_demand',
+      router,
+      providers,
+      resolveAdminProvider: () => providers[0],
+      resolveAdminModel: () => 'system-prod-primary',
+      readyTimeoutMs: 100,
+      startRequestTimeoutMs: 10_000,
+      stopRequestTimeoutMs: 10_000,
+      healthPollIntervalMs: 1,
+      runtimeIntentEnv,
+    });
+
+    await expect(controller.ensureReady('photo_label')).rejects.toThrow();
+
+    runtimeIntentEnv.businessRuntimeStartProfileId = 'business_qwen35_35b_gguf';
+    await controller.ensureReady('photo_label');
+    await controller.release('photo_label');
+
+    expect(startBodies).toHaveLength(2);
+    expect(startBodies[0]?.modelProfileId).toBe('business_qwen36_27b_nvfp4');
+    expect(startBodies[1]?.modelProfileId).toBe('business_qwen35_35b_gguf');
+  });
 });
