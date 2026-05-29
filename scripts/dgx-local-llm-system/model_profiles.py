@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from profile_capabilities import (
+    capabilities_to_api,
+    parse_declared_capabilities,
+    parse_launcher_hints,
+    parse_vision_requires_mmproj,
+)
 
 
 class ModelProfileError(Exception):
@@ -48,6 +55,9 @@ class ModelProfile:
     recommended: bool = False
     canonical_names: tuple[str, ...] = ()
     legacy_names: tuple[str, ...] = ()
+    declared_capabilities: tuple[str, ...] = ("text",)
+    vision_requires_mmproj: bool = False
+    launcher_hints: dict[str, str] = field(default_factory=dict)
 
 
 def _string(value: Any) -> str | None:
@@ -96,6 +106,10 @@ def load_model_profile_manifest(path: Path) -> ModelProfile:
     if backend not in {"green", "blue"}:
         raise ValueError(f"backend must be green or blue for {profile_id}: {backend}")
 
+    vision_requires_mmproj = parse_vision_requires_mmproj(body, backend)
+    declared_capabilities = parse_declared_capabilities(body, backend)
+    launcher_hints = parse_launcher_hints(body)
+
     return ModelProfile(
         id=profile_id,
         display_name_ja=display_name,
@@ -117,6 +131,9 @@ def load_model_profile_manifest(path: Path) -> ModelProfile:
         recommended=bool(body.get("recommended", False)),
         canonical_names=_string_list(body.get("canonicalNames")),
         legacy_names=_string_list(body.get("legacyNames")),
+        declared_capabilities=declared_capabilities,
+        vision_requires_mmproj=vision_requires_mmproj,
+        launcher_hints=launcher_hints,
     )
 
 
@@ -167,6 +184,11 @@ def model_profile_to_api(profile: ModelProfile) -> dict[str, Any]:
         "legacyNames": list(profile.legacy_names),
         "status": status,
     }
+    payload["declaredCapabilities"] = capabilities_to_api(profile.declared_capabilities)
+    payload["visionRequiresMmproj"] = profile.vision_requires_mmproj
+    if profile.launcher_hints:
+        payload["launcherHints"] = dict(profile.launcher_hints)
+
     optional = {
         "descriptionJa": profile.description_ja,
         "sourceModelRef": profile.source_model_ref,

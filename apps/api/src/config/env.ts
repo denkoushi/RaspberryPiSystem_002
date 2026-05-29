@@ -347,6 +347,27 @@ const envSchema = z.object({
   INFERENCE_DOCUMENT_SUMMARY_INPUT_MAX_CHARS: z.coerce.number().int().min(1000).max(200_000).default(24_000),
   INFERENCE_DOCUMENT_SUMMARY_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
 
+  /**
+   * true のとき on_demand /start に modelProfileId を載せる（opt-in）。
+   * 既定 false: 従来どおり { reason } のみ。
+   */
+  INFERENCE_RUNTIME_START_PROFILE_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
+  /** 用途別 DGX modelProfileId 意図（shadow ログ / opt-in start）。未設定時は送信しない。 */
+  INFERENCE_PHOTO_LABEL_RUNTIME_START_PROFILE_ID: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).max(128).optional()
+  ),
+  INFERENCE_DOCUMENT_SUMMARY_RUNTIME_START_PROFILE_ID: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).max(128).optional()
+  ),
+  INFERENCE_ADMIN_RUNTIME_START_PROFILE_ID: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().min(1).max(128).optional()
+  ),
+
   /** 写真持出 VLM 工具名ラベル: cron（node-cron 5 フィールド: 分 時 日 月 曜） */
   PHOTO_TOOL_LABEL_CRON: z.string().default('*/5 * * * *'),
   PHOTO_TOOL_LABEL_BATCH_SIZE: z.coerce.number().int().min(1).max(20).default(3),

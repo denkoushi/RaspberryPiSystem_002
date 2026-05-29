@@ -30,6 +30,16 @@ category: knowledge-base
 
 ---
 
+## 1b. 35B は VLM か（宣言 vs 今回 ready）
+
+| 観点 | 意味 |
+|------|------|
+| `declaredCapabilities` に `vision` | manifest が **この profile は VLM 想定** と宣言 |
+| `runtimeReadyCapabilities` に `vision` | **今回の起動**で vision 経路が ready（blue は `blue_native_vlm`、green はログの `mmproj=` 検出） |
+| `visionReadyReason` | 判定根拠（例: `mmproj_detected` / `mmproj_missing`） |
+
+**現場**: 写真ラベルが動かないのに KPI が 35B・メモリ低い → **プロセスは動いているが VLM ready ではない**可能性。DGX `GET /system/model-profiles` の `state.runtimeReadyCapabilities` を確認（[ADR-20260529](../decisions/ADR-20260529-dgx-profile-capabilities-runtime-intent.md)）。
+
 ## 2. 写真ラベル・要領書・Hermes は「別モデル」か
 
 **用途名は複数あるが、DGX 上の業務推論は基本的に 1 系統。**

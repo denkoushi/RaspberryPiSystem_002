@@ -6,6 +6,11 @@
   "servedAlias": "system-prod-primary",
   "enabled": true,
   "recommended": true,
+  "declaredCapabilities": ["text", "vision"],
+  "visionRequiresMmproj": false,
+  "launcherHints": {
+    "blueModelDir": "/srv/dgx/system-prod/data/hf-cache/hub/models--sakamakismile--Qwen3.6-27B-NVFP4"
+  },
   "sourceKind": "huggingface",
   "sourceModelRef": "sakamakismile/Qwen3.6-27B-NVFP4",
   "modelFamily": "Qwen3.6",

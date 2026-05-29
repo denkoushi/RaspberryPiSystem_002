@@ -75,6 +75,10 @@ if [[ -n "${EXTRA_ARGS}" ]]; then
   LLAMA_ARGS+=( "${EXTRA_ARGS_ARRAY[@]}" )
 fi
 
+if [[ -n "${MMPROJ}" ]]; then
+  echo "mmproj=${MMPROJ}" >>"${LOG_PATH}"
+fi
+
 nohup "${BIN}" "${LLAMA_ARGS[@]}" >>"${LOG_PATH}" 2>&1 &
 
 echo $! >"${PID_PATH}"

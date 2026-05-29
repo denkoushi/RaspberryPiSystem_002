@@ -24,6 +24,9 @@ export type DgxBusinessModelProfile = {
   canonicalNames: string[];
   legacyNames: string[];
   unavailableReasonJa?: string;
+  declaredCapabilities?: string[];
+  visionRequiresMmproj?: boolean;
+  launcherHints?: Record<string, string>;
 };
 
 export type DgxModelProfilesOverview = {
@@ -95,6 +98,17 @@ export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfil
     canonicalNames: asStringArray(value.canonicalNames),
     legacyNames: asStringArray(value.legacyNames),
     ...(asString(value.unavailableReasonJa) ? { unavailableReasonJa: asString(value.unavailableReasonJa)! } : {}),
+    ...(asStringArray(value.declaredCapabilities).length > 0
+      ? { declaredCapabilities: asStringArray(value.declaredCapabilities) }
+      : {}),
+    ...(value.visionRequiresMmproj === true ? { visionRequiresMmproj: true } : {}),
+    ...(isRecord(value.launcherHints)
+      ? {
+          launcherHints: Object.fromEntries(
+            Object.entries(value.launcherHints).filter(([, v]) => typeof v === 'string' && v.trim())
+          ) as Record<string, string>,
+        }
+      : {}),
   };
 }
 

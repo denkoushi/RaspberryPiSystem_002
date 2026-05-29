@@ -6,6 +6,12 @@
   "servedAlias": "system-prod-primary",
   "enabled": true,
   "recommended": false,
+  "declaredCapabilities": ["text", "vision"],
+  "visionRequiresMmproj": true,
+  "launcherHints": {
+    "llamaServerModel": "/srv/dgx/shared-models/llm/gguf/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
+    "llamaServerAlias": "system-prod-primary"
+  },
   "sourceKind": "local_file",
   "sourceModelRef": "Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf",
   "modelFamily": "Qwen3.5",

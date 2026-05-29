@@ -2,6 +2,13 @@ import { performance } from 'node:perf_hooks';
 
 import { logger } from '../../../lib/logger.js';
 
+import type { InferenceProviderDefinition } from '../config/inference-provider.types.js';
+import {
+  resolveRuntimeStartProfileIdForUseCase,
+  shouldSendRuntimeStartProfileId,
+  type InferenceRuntimeIntentEnv,
+} from '../config/inference-use-case-runtime-intent.js';
+
 import type { LocalLlmRuntimeControllerPort, LocalLlmRuntimeUseCase } from './local-llm-runtime-control.port.js';
 import {
   enqueueMainLocalLlmRuntimeControl,
@@ -33,6 +40,9 @@ export type HttpOnDemandLocalLlmRuntimeControllerDeps = {
    * 未指定・false は従来どおり停止試行。
    */
   shouldSuppressStop?: (useCase: LocalLlmRuntimeUseCase) => boolean;
+  runtimeIntentEnv: InferenceRuntimeIntentEnv;
+  /** 業務 on_demand 用。agent_container 経路では未設定 */
+  provider?: InferenceProviderDefinition;
 };
 
 /**
@@ -108,6 +118,27 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
   }
 
   private async postStart(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<void> {
+    const profileId = this.deps.provider
+      ? resolveRuntimeStartProfileIdForUseCase(useCase, this.deps.runtimeIntentEnv, this.deps.provider)
+      : undefined;
+    const sendProfile = shouldSendRuntimeStartProfileId(this.deps.runtimeIntentEnv, profileId);
+    const body: Record<string, string> = { reason: useCase };
+    if (sendProfile && profileId) {
+      body.modelProfileId = profileId;
+    }
+
+    if (profileId && !sendProfile) {
+      log.info(
+        { useCase, action: 'runtime_start_profile_shadow', modelProfileId: profileId },
+        '[LocalLlmRuntimeControl] runtime start profile intent (shadow only)'
+      );
+    } else if (sendProfile && profileId) {
+      log.info(
+        { useCase, action: 'runtime_start_profile_sent', modelProfileId: profileId },
+        '[LocalLlmRuntimeControl] runtime start includes modelProfileId'
+      );
+    }
+
     const signal = AbortSignal.timeout(this.deps.startRequestTimeoutMs);
     const res = await this.deps.fetchImpl(this.deps.startUrl, {
       method: 'POST',
@@ -115,7 +146,7 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
         'Content-Type': 'application/json',
         'X-Runtime-Control-Token': this.deps.controlToken,
       },
-      body: JSON.stringify({ reason: useCase }),
+      body: JSON.stringify(body),
       signal,
     });
     if (!res.ok) {

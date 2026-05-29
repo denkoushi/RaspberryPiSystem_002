@@ -18,4 +18,9 @@ export type InferenceProviderDefinition = {
   defaultModel: string;
   /** provider ごとの runtime 制御設定（未指定時は always_on 扱い） */
   runtimeControl?: InferenceProviderRuntimeControlDefinition;
+  /**
+   * on_demand /start に載せる DGX modelProfileId（任意）。
+   * INFERENCE_RUNTIME_START_PROFILE_ENABLED=true のときのみ送信。
+   */
+  runtimeStartProfileId?: string;
 };

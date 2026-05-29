@@ -37,6 +37,8 @@ function createProviders(): InferenceProviderDefinition[] {
   ];
 }
 
+const defaultRuntimeIntentEnv = { runtimeStartProfileEnabled: false };
+
 describe('ProviderLocalLlmRuntimeController', () => {
   it('routes document summary and photo label to different runtime endpoints', async () => {
     const providers = createProviders();
@@ -73,6 +75,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
       startRequestTimeoutMs: 10_000,
       stopRequestTimeoutMs: 10_000,
       healthPollIntervalMs: 1,
+      runtimeIntentEnv: defaultRuntimeIntentEnv,
     });
 
     await controller.ensureReady('document_summary');
@@ -131,6 +134,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
       startRequestTimeoutMs: 10_000,
       stopRequestTimeoutMs: 10_000,
       healthPollIntervalMs: 1,
+      runtimeIntentEnv: defaultRuntimeIntentEnv,
     });
 
     await controller.ensureReady('admin_console_chat');
@@ -185,6 +189,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
       startRequestTimeoutMs: 10_000,
       stopRequestTimeoutMs: 10_000,
       healthPollIntervalMs: 1,
+      runtimeIntentEnv: defaultRuntimeIntentEnv,
     });
 
     await controller.ensureReady('stackchan_chat');
@@ -231,6 +236,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
       stopRequestTimeoutMs: 10_000,
       healthPollIntervalMs: 1,
       shouldSuppressStop: (_useCase) => true,
+      runtimeIntentEnv: defaultRuntimeIntentEnv,
     });
 
     await controller.ensureReady('document_summary');
@@ -282,6 +288,7 @@ describe('ProviderLocalLlmRuntimeController', () => {
         controlToken: 'ctrl',
         optionalSimpleHealthProbeUrl: 'http://dgx:38081/agent-container/health',
       },
+      runtimeIntentEnv: defaultRuntimeIntentEnv,
     });
 
     await controller.ensureReady('agent_container_task');
