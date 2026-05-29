@@ -517,6 +517,124 @@ describe('createDgxResourceService', () => {
     });
   });
 
+  it('START_MODEL_PROFILE validates allowlist and POSTs gateway start with modelProfileId', async () => {
+    const prev = {
+      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
+      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
+    };
+    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
+    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
+    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
+    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token-xxxxxxxxxxxxxxxxxxxxxxxx';
+
+    try {
+      const store = new DgxResourcePolicyStore(20);
+      const gateway: LocalLlmGateway = {
+        getStatus: vi.fn(async () => ({
+          configured: true,
+          baseUrl: 'http://127.0.0.1:38081',
+          model: 'm1',
+          timeoutMs: 60_000,
+          health: { ok: true, statusCode: 200 },
+        })),
+        createChatCompletion: vi.fn(),
+      };
+      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
+        const u = typeof input === 'string' ? input : (input as URL).href;
+        if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({
+              ok: true,
+              activeProfileId: null,
+              profiles: [
+                {
+                  id: 'qwen36_35b_uncensored',
+                  displayNameJa: 'qwen36_35b_uncensored',
+                  backend: 'green',
+                  servedAlias: 'system-prod-primary',
+                  enabled: true,
+                  status: 'available',
+                },
+              ],
+            }),
+          } as Response;
+        }
+        if (u === 'http://127.0.0.1:38081/runtime/start') {
+          return {
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            url: u,
+            text: async () => '',
+            json: async () => ({}),
+          } as Response;
+        }
+        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+      });
+      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+      const result = await svc.executeAction({
+        type: 'START_MODEL_PROFILE',
+        modelProfileId: 'qwen36_35b_uncensored',
+        reason: 'unit_test',
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.message).toContain('qwen36_35b_uncensored');
+      const startCall = fetchImpl.mock.calls.find((c) => String(c[0]) === 'http://127.0.0.1:38081/runtime/start');
+      expect(startCall).toBeDefined();
+      expect(JSON.parse(String(startCall![1]?.body))).toEqual({
+        reason: 'unit_test',
+        modelProfileId: 'qwen36_35b_uncensored',
+      });
+    } finally {
+      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
+      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
+      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
+      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
+    }
+  });
+
+  it('START_MODEL_PROFILE rejects unknown modelProfileId', async () => {
+    const store = new DgxResourcePolicyStore(20);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({ ok: true, activeProfileId: null, profiles: [] }),
+        } as Response;
+      }
+      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(
+      svc.executeAction({ type: 'START_MODEL_PROFILE', modelProfileId: 'qwen36_35b_uncensored' })
+    ).rejects.toMatchObject({ code: 'DGX_MODEL_PROFILE_UNKNOWN' });
+  });
+
   it('getOverview includes targets registry aligned with legacy services', async () => {
     const store = new DgxResourcePolicyStore(10);
     const gateway: LocalLlmGateway = {
@@ -905,6 +1023,61 @@ describe('createDgxResourceService', () => {
         modelProfileId: 'business_disabled',
       })
     ).rejects.toMatchObject({ statusCode: 409, code: 'DGX_MODEL_PROFILE_UNAVAILABLE' });
+  });
+
+  it('PREVIEW_ORCHESTRATION_SCENARIO rejects businessOrchestrationEligible=false profile', async () => {
+    const store = new DgxResourcePolicyStore(10);
+    const gateway: LocalLlmGateway = {
+      getStatus: vi.fn(async () => ({
+        configured: true,
+        baseUrl: 'http://127.0.0.1:38081',
+        model: 'm1',
+        timeoutMs: 60_000,
+        health: { ok: true, statusCode: 200 },
+      })),
+      createChatCompletion: vi.fn(),
+    };
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const u = typeof input === 'string' ? input : (input as URL).href;
+      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          url: u,
+          text: async () => '',
+          json: async () => ({
+            ok: true,
+            activeProfileId: null,
+            profiles: [
+              {
+                id: 'qwen36_35b_uncensored',
+                displayNameJa: 'qwen36_35b_uncensored',
+                backend: 'green',
+                servedAlias: 'system-prod-primary',
+                recommended: false,
+                businessOrchestrationEligible: false,
+                enabled: true,
+                status: 'available',
+              },
+            ],
+          }),
+        } as Response;
+      }
+      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+    });
+    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(
+      svc.executeAction({
+        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
+        scenarioId: 'private_to_business',
+        modelProfileId: 'qwen36_35b_uncensored',
+      })
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'DGX_MODEL_PROFILE_NOT_ELIGIBLE_FOR_BUSINESS_RETURN',
+    });
   });
 
   it('private_to_business execute does not succeed when active profile stays on a different model', async () => {

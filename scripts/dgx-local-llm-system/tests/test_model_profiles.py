@@ -106,6 +106,40 @@ class ModelProfileTests(unittest.TestCase):
             self.assertEqual(api["status"], "available")
             validate_startable_profile(str(root), "business_qwen36_27b_nvfp4")
 
+    def test_business_orchestration_eligible_defaults_true_and_can_be_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "registry"
+            storage = Path(tmp) / "gguf"
+            storage.mkdir(parents=True)
+            self.write_manifest(
+                root,
+                "business_qwen36_27b_nvfp4",
+                {
+                    "modelProfileId": "business_qwen36_27b_nvfp4",
+                    "displayNameJa": "Qwen3.6 27B NVFP4",
+                    "backend": "blue",
+                    "servedAlias": "system-prod-primary",
+                    "currentStorageLocation": str(storage),
+                    "enabled": True,
+                },
+            )
+            self.write_manifest(
+                root,
+                "qwen36_35b_uncensored",
+                {
+                    "modelProfileId": "qwen36_35b_uncensored",
+                    "displayNameJa": "uncensored",
+                    "backend": "green",
+                    "servedAlias": "system-prod-primary",
+                    "currentStorageLocation": str(storage),
+                    "businessOrchestrationEligible": False,
+                    "enabled": True,
+                },
+            )
+            profiles = {p.id: model_profile_to_api(p) for p in load_model_profiles(str(root))}
+            self.assertTrue(profiles["business_qwen36_27b_nvfp4"]["businessOrchestrationEligible"])
+            self.assertFalse(profiles["qwen36_35b_uncensored"]["businessOrchestrationEligible"])
+
     def test_declared_capabilities_and_launcher_hints_in_api(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "registry"

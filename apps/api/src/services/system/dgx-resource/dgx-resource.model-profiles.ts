@@ -8,6 +8,8 @@ export type DgxBusinessModelProfile = {
   backend: 'green' | 'blue';
   servedAlias: string;
   recommended: boolean;
+  /** false のとき業務復帰 orchestration では選択不可（既定 true・DGX 未送信時も true） */
+  businessOrchestrationEligible: boolean;
   enabled: boolean;
   status: 'available' | 'unavailable' | 'unknown';
   descriptionJa?: string;
@@ -39,6 +41,8 @@ export type DgxModelProfilesOverview = {
   configured: boolean;
   status: 'ok' | 'degraded' | 'unconfigured';
   available: DgxBusinessModelProfile[];
+  /** 業務復帰 UI / orchestration 用（enabled + available + businessOrchestrationEligible） */
+  businessReturnSelectable: DgxBusinessModelProfile[];
   activeProfileId: string | null;
   /** DGX `GET /system/model-profiles` の `state.backend`（state 未作成時は null） */
   activeStateBackend: 'green' | 'blue' | null;
@@ -106,6 +110,7 @@ export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfil
     backend,
     servedAlias,
     recommended: value.recommended === true,
+    businessOrchestrationEligible: value.businessOrchestrationEligible !== false,
     enabled: value.enabled !== false,
     status: status === 'available' || status === 'unavailable' ? status : 'unknown',
     ...(asString(value.descriptionJa) ? { descriptionJa: asString(value.descriptionJa)! } : {}),
@@ -151,6 +156,47 @@ export function assertModelProfileSelectionAllowed(scenarioId: string, modelProf
   }
 }
 
+export function isProfileEligibleForBusinessOrchestration(profile: DgxBusinessModelProfile): boolean {
+  return profile.businessOrchestrationEligible;
+}
+
+export function filterBusinessReturnSelectableProfiles(
+  modelProfiles: DgxModelProfilesOverview
+): DgxBusinessModelProfile[] {
+  if (modelProfiles.status !== 'ok') {
+    return [];
+  }
+  return modelProfiles.available.filter(
+    (profile) =>
+      profile.enabled &&
+      profile.status === 'available' &&
+      isProfileEligibleForBusinessOrchestration(profile)
+  );
+}
+
+export function enrichModelProfilesOverview(modelProfiles: DgxModelProfilesOverview): DgxModelProfilesOverview {
+  return {
+    ...modelProfiles,
+    businessReturnSelectable: filterBusinessReturnSelectableProfiles(modelProfiles),
+  };
+}
+
+export function assertModelProfileEligibleForBusinessReturn(
+  modelProfiles: DgxModelProfilesOverview,
+  modelProfileId: string
+): DgxBusinessModelProfile {
+  const profile = assertModelProfileKnownAndStartable(modelProfiles, modelProfileId);
+  if (!isProfileEligibleForBusinessOrchestration(profile)) {
+    throw new ApiError(
+      400,
+      '指定された modelProfileId は業務復帰シナリオでは選択できません（私用クイック起動専用の profile です）',
+      { modelProfileId },
+      'DGX_MODEL_PROFILE_NOT_ELIGIBLE_FOR_BUSINESS_RETURN'
+    );
+  }
+  return profile;
+}
+
 export function assertModelProfileKnownAndStartable(
   modelProfiles: DgxModelProfilesOverview,
   modelProfileId: string
@@ -190,17 +236,18 @@ export async function fetchDgxModelProfilesOverview(input: {
   timeoutMs: number;
 }): Promise<DgxModelProfilesOverview> {
   if (!input.baseUrl || !input.sharedToken) {
-    return {
+    return enrichModelProfilesOverview({
       configured: false,
       status: 'unconfigured',
       available: [],
+      businessReturnSelectable: [],
       activeProfileId: null,
       activeStateBackend: null,
       activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
       errorMessageJa: 'DGX gateway の baseUrl または共有トークンが未設定です',
-    };
+    });
   }
   const { signal, cleanup } = createTimeoutSignal(input.timeoutMs);
   try {
@@ -211,17 +258,18 @@ export async function fetchDgxModelProfilesOverview(input: {
       signal,
     });
     if (!response.ok) {
-      return {
+      return enrichModelProfilesOverview({
         configured: true,
         status: 'degraded',
         available: [],
+        businessReturnSelectable: [],
         activeProfileId: null,
         activeStateBackend: null,
         activeRuntimeState: null,
         pendingProfileId: null,
         lastLoadedProfileId: null,
         errorMessageJa: `DGX model profiles API が HTTP ${response.status} を返しました`,
-      };
+      });
     }
     const body = (await response.json()) as GatewayModelProfilesResponse;
     const profiles = Array.isArray(body.profiles)
@@ -231,28 +279,30 @@ export async function fetchDgxModelProfilesOverview(input: {
     const activeStateBackend = parseActiveStateBackend(body.state);
     const activeRuntimeState = parseDgxActiveModelRuntimeState(body.state);
     // Allowlist fetch succeeded: activeProfileId may be null before first profile-scoped /start (DGX contract).
-    return {
+    return enrichModelProfilesOverview({
       configured: true,
       status: 'ok',
       available: profiles,
+      businessReturnSelectable: [],
       activeProfileId,
       activeStateBackend,
       activeRuntimeState,
       pendingProfileId: null,
       lastLoadedProfileId: activeProfileId,
-    };
+    });
   } catch {
-    return {
+    return enrichModelProfilesOverview({
       configured: true,
       status: 'degraded',
       available: [],
+      businessReturnSelectable: [],
       activeProfileId: null,
       activeStateBackend: null,
       activeRuntimeState: null,
       pendingProfileId: null,
       lastLoadedProfileId: null,
       errorMessageJa: 'DGX model profiles API に接続できませんでした',
-    };
+    });
   } finally {
     cleanup();
   }

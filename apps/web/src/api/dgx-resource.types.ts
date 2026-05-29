@@ -198,6 +198,8 @@ export type DgxBusinessModelProfileApi = {
   backend: 'green' | 'blue';
   servedAlias: string;
   recommended: boolean;
+  /** false のとき業務復帰 orchestration では選択不可 */
+  businessOrchestrationEligible?: boolean;
   enabled: boolean;
   status: 'available' | 'unavailable' | 'unknown';
   descriptionJa?: string;
@@ -235,6 +237,8 @@ export type DgxModelProfilesOverviewApi = {
   configured: boolean;
   status: 'ok' | 'degraded' | 'unconfigured';
   available: DgxBusinessModelProfileApi[];
+  /** 業務復帰ドロップダウン用（Pi5 API が算出） */
+  businessReturnSelectable?: DgxBusinessModelProfileApi[];
   activeProfileId: string | null;
   activeStateBackend: 'green' | 'blue' | null;
   pendingProfileId: string | null;
@@ -291,6 +295,7 @@ export type DgxResourceEventsResponse = {
 export type DgxResourceActionBody =
   | { type: 'LOCAL_LLM_START'; reason?: string }
   | { type: 'LOCAL_LLM_STOP'; reason?: string }
+  | { type: 'START_MODEL_PROFILE'; modelProfileId: string; reason?: string }
   | { type: 'SET_POLICY'; policyMode: DgxPolicyModeApi; applyWorkloadChanges?: boolean }
   | {
       type: 'EXECUTE_TARGET_ACTION';
